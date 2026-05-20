@@ -1,6 +1,6 @@
-import type { GeneratedGame } from '@feed/engine/client';
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import type { GeneratedGame } from "@feed/engine/client";
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
 
 interface TimelineDay {
   day: number;
@@ -101,12 +101,12 @@ export const useGameStore = create<GameState>()(
         }),
     }),
     {
-      name: 'feed-game',
+      name: "feed-game",
       partialize: (state) => ({
         // Only persist some state
         speed: state.speed,
         currentTimeMs: state.currentTimeMs,
       }),
-    }
-  )
+    },
+  ),
 );

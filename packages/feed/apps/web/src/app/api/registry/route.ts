@@ -144,11 +144,11 @@ import {
   publicRateLimit,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import type { DrizzleClient } from '@feed/db';
-import { asPublic, asUser } from '@feed/db';
-import { logger, RegistryQuerySchema } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/api";
+import type { DrizzleClient } from "@feed/db";
+import { asPublic, asUser } from "@feed/db";
+import { logger, RegistryQuerySchema } from "@feed/shared";
+import type { NextRequest } from "next/server";
 /**
  * GET /api/registry
  * Fetch all registered users with optional filtering
@@ -158,11 +158,11 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
   // Parse and validate query parameters
   const queryParams = {
-    onChainOnly: searchParams.get('onChainOnly') ?? undefined,
-    sortBy: searchParams.get('sortBy') ?? undefined,
-    sortOrder: searchParams.get('sortOrder') ?? undefined,
-    limit: searchParams.get('limit') ?? undefined,
-    offset: searchParams.get('offset') ?? undefined,
+    onChainOnly: searchParams.get("onChainOnly") ?? undefined,
+    sortBy: searchParams.get("sortBy") ?? undefined,
+    sortOrder: searchParams.get("sortOrder") ?? undefined,
+    limit: searchParams.get("limit") ?? undefined,
+    offset: searchParams.get("offset") ?? undefined,
   };
   const filters = RegistryQuerySchema.parse(queryParams);
 
@@ -182,7 +182,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     ? {
         [filters.sortBy]: filters.sortOrder,
       }
-    : { createdAt: 'desc' as const };
+    : { createdAt: "desc" as const };
 
   // Fetch users from database with RLS (public registry, no auth required)
   const dbOperation = async (db: DrizzleClient) => {
@@ -200,13 +200,13 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     const userIds = usersList.map((u) => u.id);
     const [positionCounts, commentCounts, reactionCounts] = await Promise.all([
       Promise.all(
-        userIds.map((id) => db.position.count({ where: { userId: id } }))
+        userIds.map((id) => db.position.count({ where: { userId: id } })),
       ),
       Promise.all(
-        userIds.map((id) => db.comment.count({ where: { authorId: id } }))
+        userIds.map((id) => db.comment.count({ where: { authorId: id } })),
       ),
       Promise.all(
-        userIds.map((id) => db.reaction.count({ where: { userId: id } }))
+        userIds.map((id) => db.reaction.count({ where: { userId: id } })),
       ),
     ]);
 
@@ -222,17 +222,16 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     return { users: usersWithCounts, totalCount: count };
   };
 
-  const { users, totalCount } =
-    authUser && authUser.userId
-      ? await asUser(authUser, dbOperation)
-      : await asPublic(dbOperation);
+  const { users, totalCount } = authUser?.userId
+    ? await asUser(authUser, dbOperation)
+    : await asPublic(dbOperation);
 
   const usersWithReputation = await Promise.all(
     users.map(async (user) => {
       let reputation: number | null = null;
       if (user.nftTokenId) {
         reputation = await MarketReputationService.getOnChainReputation(
-          user.id
+          user.id,
         );
       }
 
@@ -255,17 +254,17 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
           reactions: user._counts.reactions,
         },
       };
-    })
+    }),
   );
 
   logger.info(
-    'Registry fetched successfully',
+    "Registry fetched successfully",
     {
       total: totalCount,
       returned: usersWithReputation.length,
       onChainOnly: filters.onChainOnly,
     },
-    'GET /api/registry'
+    "GET /api/registry",
   );
 
   const res = successResponse({

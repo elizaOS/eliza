@@ -10,19 +10,19 @@
  * Supports per-NPC tier customization via ActorTierOverrides.
  */
 
-import { type AlphaLevel, GROUP_CONFIG, type TierLevel } from '@feed/shared';
-import { ALPHA_GROUP_CONFIG } from '../config/alpha-group-config';
-import { StaticDataRegistry } from './static-data-registry';
+import { type AlphaLevel, GROUP_CONFIG, type TierLevel } from "@feed/shared";
+import { ALPHA_GROUP_CONFIG } from "../config/alpha-group-config";
+import { StaticDataRegistry } from "./static-data-registry";
 
 // Re-export for convenience
-export type { AlphaLevel, TierLevel } from '@feed/shared';
+export type { AlphaLevel, TierLevel } from "@feed/shared";
 
 /** Valid tier levels */
 const VALID_TIERS: readonly TierLevel[] = [1, 2, 3] as const;
 
 /** Type guard to check if a value is a valid TierLevel */
 export function isValidTier(value: unknown): value is TierLevel {
-  return typeof value === 'number' && VALID_TIERS.includes(value as TierLevel);
+  return typeof value === "number" && VALID_TIERS.includes(value as TierLevel);
 }
 
 /** Assert and return a valid TierLevel, throws if invalid */
@@ -47,34 +47,34 @@ export interface TierConfig {
 
 export const TIER_CONFIG: Record<TierLevel, TierConfig> = {
   1: {
-    name: 'Inner Circle',
+    name: "Inner Circle",
     suffix: "'s Inner Circle",
     maxMembers: GROUP_CONFIG.MAX_GROUP_SIZE, // 12
     minEngagementScore: 80,
     messageFrequency: 0.25,
-    alphaLevel: 'full',
+    alphaLevel: "full",
     inviteProbability: 0.005,
     promotionWaitDays: 30,
     demotionInactiveDays: 30,
   },
   2: {
-    name: 'Community',
+    name: "Community",
     suffix: "'s Community",
     maxMembers: 50,
     minEngagementScore: 50,
     messageFrequency: 0.15,
-    alphaLevel: 'partial',
+    alphaLevel: "partial",
     inviteProbability: 0.02,
     promotionWaitDays: 14,
     demotionInactiveDays: 60,
   },
   3: {
-    name: 'Followers',
+    name: "Followers",
     suffix: "'s Followers",
     maxMembers: 500,
     minEngagementScore: 20,
     messageFrequency: 0.05,
-    alphaLevel: 'public',
+    alphaLevel: "public",
     inviteProbability: 0.1,
     promotionWaitDays: 0,
     demotionInactiveDays: 90,
@@ -106,7 +106,7 @@ export function getTierForEngagementScore(score: number): TierLevel | null {
 export function isEligibleForPromotion(
   currentTier: TierLevel,
   engagementScore: number,
-  daysInCurrentTier: number
+  daysInCurrentTier: number,
 ): boolean {
   if (currentTier === 1) return false;
   const targetTier = (currentTier - 1) as TierLevel;
@@ -121,7 +121,7 @@ export function isEligibleForPromotion(
 /** Check if user should be demoted due to inactivity */
 export function shouldDemote(
   currentTier: TierLevel,
-  daysSinceLastActivity: number
+  daysSinceLastActivity: number,
 ): boolean {
   return daysSinceLastActivity >= TIER_CONFIG[currentTier].demotionInactiveDays;
 }
@@ -195,7 +195,7 @@ export function getTierMessageGuidance(tier: TierLevel | null): string {
  */
 export function getEffectiveTierConfig(
   tier: TierLevel,
-  npcId?: string
+  npcId?: string,
 ): TierConfig {
   const baseConfig = TIER_CONFIG[tier];
 
@@ -218,7 +218,7 @@ export function getEffectiveTierConfig(
     ...baseConfig,
     minEngagementScore: Math.round(
       baseConfig.minEngagementScore *
-        (overrides.minEngagementScoreMultiplier ?? 1)
+        (overrides.minEngagementScoreMultiplier ?? 1),
     ),
     inviteProbability:
       baseConfig.inviteProbability *
@@ -236,7 +236,7 @@ export function getEffectiveTierConfig(
  */
 export function getTierForEngagementScoreWithNpc(
   score: number,
-  npcId?: string
+  npcId?: string,
 ): TierLevel | null {
   for (const tier of ALL_TIERS) {
     const config = getEffectiveTierConfig(tier, npcId);
@@ -272,18 +272,18 @@ export function getNpcFocusWeights(npcId: string): {
   // Use domain-based defaults
   if (actor?.domain && actor.domain.length > 0) {
     // Import would cause circular dependency, so we inline the logic
-    const tradingDomains = ['crypto', 'trading', 'finance', 'defi', 'markets'];
-    const socialDomains = ['media', 'politics', 'entertainment', 'culture'];
-    const techDomains = ['tech', 'ai', 'venture-capital', 'startups'];
+    const tradingDomains = ["crypto", "trading", "finance", "defi", "markets"];
+    const socialDomains = ["media", "politics", "entertainment", "culture"];
+    const techDomains = ["tech", "ai", "venture-capital", "startups"];
 
     const hasTradingFocus = actor.domain.some((d) =>
-      tradingDomains.includes(d.toLowerCase())
+      tradingDomains.includes(d.toLowerCase()),
     );
     const hasSocialFocus = actor.domain.some((d) =>
-      socialDomains.includes(d.toLowerCase())
+      socialDomains.includes(d.toLowerCase()),
     );
     const hasTechFocus = actor.domain.some((d) =>
-      techDomains.includes(d.toLowerCase())
+      techDomains.includes(d.toLowerCase()),
     );
 
     if (hasTradingFocus && !hasSocialFocus) {
@@ -317,7 +317,7 @@ export function isEligibleForPromotionWithNpc(
   currentTier: TierLevel,
   engagementScore: number,
   daysInCurrentTier: number,
-  npcId?: string
+  npcId?: string,
 ): boolean {
   if (currentTier === 1) return false;
 

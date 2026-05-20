@@ -5,7 +5,7 @@
  * only runs on production deployments. This allows staging to run all crons.
  */
 
-import { logger } from '@feed/shared';
+import { logger } from "@feed/shared";
 
 interface CronSchedule {
   path: string;
@@ -22,59 +22,59 @@ interface CronSchedule {
  */
 const ADDITIONAL_CRONS: CronSchedule[] = [
   {
-    path: '/api/cron/metrics-snapshot',
-    schedule: '0 * * * *', // Every hour at minute 0
-    description: 'Hourly metrics snapshot',
+    path: "/api/cron/metrics-snapshot",
+    schedule: "0 * * * *", // Every hour at minute 0
+    description: "Hourly metrics snapshot",
   },
   {
-    path: '/api/cron/markets-tick',
-    schedule: '* * * * *', // Every minute
-    description: 'Markets tick',
+    path: "/api/cron/markets-tick",
+    schedule: "* * * * *", // Every minute
+    description: "Markets tick",
   },
   {
-    path: '/api/cron/npc-tick',
-    schedule: '*/2 * * * *', // Every 2 minutes
-    description: 'NPC tick',
+    path: "/api/cron/npc-tick",
+    schedule: "*/2 * * * *", // Every 2 minutes
+    description: "NPC tick",
   },
   {
-    path: '/api/cron/organization-tick',
-    schedule: '*/5 * * * *', // Every 5 minutes
-    description: 'Organization tick',
+    path: "/api/cron/organization-tick",
+    schedule: "*/5 * * * *", // Every 5 minutes
+    description: "Organization tick",
   },
   {
-    path: '/api/cron/article-tick',
-    schedule: '*/30 * * * *', // Every 30 minutes
-    description: 'Article tick',
+    path: "/api/cron/article-tick",
+    schedule: "*/30 * * * *", // Every 30 minutes
+    description: "Article tick",
   },
   {
-    path: '/api/cron/perp-funding',
-    schedule: '0 */8 * * *', // Every 8 hours at minute 0
-    description: 'Perp funding',
+    path: "/api/cron/perp-funding",
+    schedule: "0 */8 * * *", // Every 8 hours at minute 0
+    description: "Perp funding",
   },
   {
-    path: '/api/cron/world-facts',
-    schedule: '0 6,18 * * *', // At 6 AM and 6 PM
-    description: 'World facts generation',
+    path: "/api/cron/world-facts",
+    schedule: "0 6,18 * * *", // At 6 AM and 6 PM
+    description: "World facts generation",
   },
   {
-    path: '/api/cron/health-check',
-    schedule: '*/5 * * * *', // Every 5 minutes
-    description: 'Health check',
+    path: "/api/cron/health-check",
+    schedule: "*/5 * * * *", // Every 5 minutes
+    description: "Health check",
   },
   {
-    path: '/api/cron/training-check',
-    schedule: '0 * * * *', // Every hour at minute 0
-    description: 'Training check',
+    path: "/api/cron/training-check",
+    schedule: "0 * * * *", // Every hour at minute 0
+    description: "Training check",
   },
   {
-    path: '/api/cron/profile-chain-sync',
-    schedule: '0 */6 * * *', // Every 6 hours at minute 0
-    description: 'Profile chain sync',
+    path: "/api/cron/profile-chain-sync",
+    schedule: "0 */6 * * *", // Every 6 hours at minute 0
+    description: "Profile chain sync",
   },
   {
-    path: '/api/cron/whitelist-topn',
-    schedule: '0 0 * * *', // Daily at 00:00 UTC
-    description: 'Auto-whitelist leaderboard Top N (permanent access)',
+    path: "/api/cron/whitelist-topn",
+    schedule: "0 0 * * *", // Daily at 00:00 UTC
+    description: "Auto-whitelist leaderboard Top N (permanent access)",
   },
 ];
 
@@ -82,12 +82,12 @@ const ADDITIONAL_CRONS: CronSchedule[] = [
  * Check if a cron should run based on its schedule and current time
  */
 function shouldRunCron(schedule: string, now: Date): boolean {
-  const parts = schedule.split(' ');
-  const minute = parts[0] ?? '*';
-  const hour = parts[1] ?? '*';
-  const dayOfMonth = parts[2] ?? '*';
-  const month = parts[3] ?? '*';
-  const dayOfWeek = parts[4] ?? '*';
+  const parts = schedule.split(" ");
+  const minute = parts[0] ?? "*";
+  const hour = parts[1] ?? "*";
+  const dayOfMonth = parts[2] ?? "*";
+  const month = parts[3] ?? "*";
+  const dayOfWeek = parts[4] ?? "*";
 
   const currentMinute = now.getUTCMinutes();
   const currentHour = now.getUTCHours();
@@ -109,23 +109,23 @@ function shouldRunCron(schedule: string, now: Date): boolean {
  * Supports: *, specific values, comma-separated lists, and step values (e.g., *\/5)
  */
 function matchesCronField(field: string, value: number): boolean {
-  if (field === '*') return true;
+  if (field === "*") return true;
 
   // Handle step values (e.g., */5)
-  if (field.startsWith('*/')) {
+  if (field.startsWith("*/")) {
     const step = parseInt(field.slice(2), 10);
     return value % step === 0;
   }
 
   // Handle comma-separated values (e.g., 6,18)
-  if (field.includes(',')) {
-    const values = field.split(',').map((v) => parseInt(v, 10));
+  if (field.includes(",")) {
+    const values = field.split(",").map((v) => parseInt(v, 10));
     return values.includes(value);
   }
 
   // Handle range (e.g., 1-5) - basic support
-  if (field.includes('-')) {
-    const rangeParts = field.split('-').map((v) => parseInt(v, 10));
+  if (field.includes("-")) {
+    const rangeParts = field.split("-").map((v) => parseInt(v, 10));
     const start = rangeParts[0] ?? 0;
     const end = rangeParts[1] ?? 0;
     return value >= start && value <= end;
@@ -152,14 +152,14 @@ export async function triggerScheduledCrons(): Promise<{
   // Get base URL for internal API calls
   const baseUrl = process.env.VERCEL_URL
     ? `https://${process.env.VERCEL_URL}`
-    : 'http://localhost:3000';
+    : "http://localhost:3000";
 
   const cronSecret = process.env.CRON_SECRET;
   if (!cronSecret) {
     logger.warn(
-      'CRON_SECRET not set - cannot trigger internal crons',
+      "CRON_SECRET not set - cannot trigger internal crons",
       undefined,
-      'CronScheduler'
+      "CronScheduler",
     );
     return {
       triggered: [],
@@ -178,14 +178,14 @@ export async function triggerScheduledCrons(): Promise<{
       logger.info(
         `Triggering internal cron: ${cron.description}`,
         { path: cron.path, schedule: cron.schedule },
-        'CronScheduler'
+        "CronScheduler",
       );
 
       const response = await fetch(`${baseUrl}${cron.path}`, {
-        method: 'GET',
+        method: "GET",
         headers: {
           Authorization: `Bearer ${cronSecret}`,
-          'User-Agent': 'vercel-cron/1.0 (internal-scheduler)',
+          "User-Agent": "vercel-cron/1.0 (internal-scheduler)",
         },
         // Don't wait too long for each cron
         signal: AbortSignal.timeout(30000),
@@ -196,14 +196,14 @@ export async function triggerScheduledCrons(): Promise<{
         logger.info(
           `✓ Cron triggered successfully: ${cron.path}`,
           { status: response.status },
-          'CronScheduler'
+          "CronScheduler",
         );
       } else {
         failed.push(cron.path);
         logger.warn(
           `✗ Cron failed: ${cron.path}`,
           { status: response.status, statusText: response.statusText },
-          'CronScheduler'
+          "CronScheduler",
         );
       }
     } catch (error) {
@@ -211,13 +211,13 @@ export async function triggerScheduledCrons(): Promise<{
       logger.error(
         `✗ Cron error: ${cron.path}`,
         { error: error instanceof Error ? error.message : String(error) },
-        'CronScheduler'
+        "CronScheduler",
       );
     }
   }
 
   logger.info(
-    'Internal cron scheduler complete',
+    "Internal cron scheduler complete",
     {
       triggered: triggered.length,
       failed: failed.length,
@@ -225,7 +225,7 @@ export async function triggerScheduledCrons(): Promise<{
       triggeredPaths: triggered,
       failedPaths: failed,
     },
-    'CronScheduler'
+    "CronScheduler",
   );
 
   return { triggered, failed, skipped };
@@ -237,11 +237,11 @@ export async function triggerScheduledCrons(): Promise<{
  */
 export function isInternalCronSchedulerEnabled(): boolean {
   // Always enable if explicitly set
-  if (process.env.ENABLE_INTERNAL_CRON_SCHEDULER === 'true') {
+  if (process.env.ENABLE_INTERNAL_CRON_SCHEDULER === "true") {
     return true;
   }
 
   // Enable on staging/preview (not production)
-  const isProduction = process.env.VERCEL_ENV === 'production';
+  const isProduction = process.env.VERCEL_ENV === "production";
   return !isProduction;
 }

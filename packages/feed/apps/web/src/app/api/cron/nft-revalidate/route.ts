@@ -18,7 +18,7 @@ import {
   removeUserFromNftChat,
   verifyCronAuth,
   withErrorHandling,
-} from '@feed/api';
+} from "@feed/api";
 import {
   and,
   asc,
@@ -30,16 +30,16 @@ import {
   inArray,
   sql,
   users,
-} from '@feed/db';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@feed/db";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 // Maximum time for a single run (Vercel function timeout - 10s buffer)
 // Configurable via environment variable for different deployment environments
 const MAX_RUN_TIME_MS = parseInt(
-  process.env.NFT_REVALIDATE_TIMEOUT_MS ?? '50000',
-  10
+  process.env.NFT_REVALIDATE_TIMEOUT_MS ?? "50000",
+  10,
 );
 // Max users to check per chat per run (avoid overloading RPC)
 const MAX_USERS_PER_CHAT = 20;
@@ -51,21 +51,21 @@ const MAX_CHATS_PER_RUN = 5;
  * Revalidate NFT access for all NFT-gated chats
  */
 export const POST = withErrorHandling(async function POST(
-  request: NextRequest
+  request: NextRequest,
 ): Promise<NextResponse> {
   const startTime = Date.now();
 
   // Verify cron authorization using centralized auth (fail-closed in production)
-  if (!verifyCronAuth(request, { jobName: 'NftRevalidate' })) {
+  if (!verifyCronAuth(request, { jobName: "NftRevalidate" })) {
     logger.warn(
-      'Unauthorized nft-revalidate request attempt',
+      "Unauthorized nft-revalidate request attempt",
       undefined,
-      'nft-revalidate'
+      "nft-revalidate",
     );
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  logger.info('Starting NFT revalidation cron job', {}, 'nft-revalidate');
+  logger.info("Starting NFT revalidation cron job", {}, "nft-revalidate");
 
   // Get NFT-gated chats ordered by lastNftRevalidatedAt for true round-robin processing.
   // NULLS FIRST ensures newly created chats (never revalidated) are processed first.
@@ -82,15 +82,15 @@ export const POST = withErrorHandling(async function POST(
     .where(eq(chats.nftGated, true))
     .orderBy(
       sql`${chats.lastNftRevalidatedAt} ASC NULLS FIRST`,
-      asc(chats.createdAt)
+      asc(chats.createdAt),
     )
     .limit(MAX_CHATS_PER_RUN);
 
   if (nftGatedChats.length === 0) {
-    logger.info('No NFT-gated chats found', {}, 'nft-revalidate');
+    logger.info("No NFT-gated chats found", {}, "nft-revalidate");
     return NextResponse.json({
       success: true,
-      message: 'No NFT-gated chats to process',
+      message: "No NFT-gated chats to process",
     });
   }
 
@@ -105,9 +105,9 @@ export const POST = withErrorHandling(async function POST(
     // Check if we're running out of time
     if (Date.now() - startTime > MAX_RUN_TIME_MS) {
       logger.warn(
-        'NFT revalidation timed out',
+        "NFT revalidation timed out",
         { processed: results.chatsProcessed },
-        'nft-revalidate'
+        "nft-revalidate",
       );
       break;
     }
@@ -122,7 +122,7 @@ export const POST = withErrorHandling(async function POST(
         chat.groupId,
         chat.requiredNftContractAddress,
         chat.requiredNftTokenId,
-        chat.requiredNftChainId
+        chat.requiredNftChainId,
       );
 
       // Update lastNftRevalidatedAt to mark this chat as recently processed
@@ -140,24 +140,24 @@ export const POST = withErrorHandling(async function POST(
       results.errors += chatResult.errors;
     } catch (error) {
       logger.error(
-        'Error processing chat for NFT revalidation',
+        "Error processing chat for NFT revalidation",
         {
           chatId: chat.id,
           error: error instanceof Error ? error.message : String(error),
         },
-        'nft-revalidate'
+        "nft-revalidate",
       );
       results.errors++;
     }
   }
 
   logger.info(
-    'NFT revalidation cron job completed',
+    "NFT revalidation cron job completed",
     {
       duration: Date.now() - startTime,
       ...results,
     },
-    'nft-revalidate'
+    "nft-revalidate",
   );
 
   return NextResponse.json({
@@ -174,7 +174,7 @@ async function revalidateChatAccess(
   groupId: string | null,
   contractAddress: string,
   tokenId: number | null,
-  chainId: number | null
+  chainId: number | null,
 ): Promise<{ checked: number; removed: number; errors: number }> {
   const results = { checked: 0, removed: 0, errors: 0 };
 
@@ -189,8 +189,8 @@ async function revalidateChatAccess(
       .where(
         and(
           eq(chatParticipants.chatId, chatId),
-          eq(chatParticipants.isActive, true)
-        )
+          eq(chatParticipants.isActive, true),
+        ),
       )
       .limit(MAX_USERS_PER_CHAT);
 
@@ -211,7 +211,7 @@ async function revalidateChatAccess(
       userId: p.userId,
       walletAddress: usersMap.get(p.userId)?.walletAddress ?? null,
     }));
-  }, 'nft-revalidate-cron');
+  }, "nft-revalidate-cron");
 
   for (const participant of participants) {
     results.checked++;
@@ -224,7 +224,7 @@ async function revalidateChatAccess(
           chatId,
           groupId,
           participant.userId,
-          'No wallet connected'
+          "No wallet connected",
         );
         results.removed++;
       } catch {
@@ -240,7 +240,7 @@ async function revalidateChatAccess(
       await NFTVerificationService.invalidateOwnershipCache(
         participant.walletAddress,
         contractAddress,
-        chainId ?? undefined
+        chainId ?? undefined,
       );
 
       // Check NFT ownership with fresh data
@@ -248,7 +248,7 @@ async function revalidateChatAccess(
         participant.walletAddress,
         contractAddress,
         tokenId,
-        chainId ?? undefined
+        chainId ?? undefined,
       );
 
       if (!verification.canAccess) {
@@ -256,30 +256,30 @@ async function revalidateChatAccess(
           chatId,
           groupId,
           participant.userId,
-          verification.reason ?? 'No longer owns required NFT'
+          verification.reason ?? "No longer owns required NFT",
         );
         results.removed++;
 
         logger.info(
-          'User removed from NFT-gated chat',
+          "User removed from NFT-gated chat",
           {
             chatId,
             userId: participant.userId,
             reason: verification.reason,
           },
-          'nft-revalidate'
+          "nft-revalidate",
         );
       }
     } catch (error) {
       // Log but don't fail the whole job for one user
       logger.warn(
-        'Error checking NFT ownership for user',
+        "Error checking NFT ownership for user",
         {
           chatId,
           userId: participant.userId,
           error: error instanceof Error ? error.message : String(error),
         },
-        'nft-revalidate'
+        "nft-revalidate",
       );
       results.errors++;
     }

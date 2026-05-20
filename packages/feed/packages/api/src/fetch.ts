@@ -33,7 +33,7 @@ export interface ApiFetchOptions extends RequestInit {
  * @private
  */
 export async function getAccessToken(): Promise<string | null> {
-  if (typeof window === 'undefined') return null;
+  if (typeof window === "undefined") return null;
 
   // TODO: Phase 3 — rename window.__privyGetAccessToken to window.__getAccessToken
   // ALWAYS call getAccessToken() on-demand - it auto-refreshes expired tokens
@@ -91,7 +91,7 @@ export async function apiFetch(input: RequestInfo, init: ApiFetchOptions = {}) {
   let response = await fetch(input, {
     ...rest,
     headers: finalHeaders,
-    credentials: auth ? 'include' : (rest.credentials ?? 'same-origin'),
+    credentials: auth ? "include" : (rest.credentials ?? "same-origin"),
   });
 
   // If we get a 401 and auto-retry is enabled, refresh the token and retry
@@ -103,7 +103,7 @@ export async function apiFetch(input: RequestInfo, init: ApiFetchOptions = {}) {
     response = await fetch(input, {
       ...rest,
       headers: finalHeaders,
-      credentials: 'include',
+      credentials: "include",
     });
   }
 

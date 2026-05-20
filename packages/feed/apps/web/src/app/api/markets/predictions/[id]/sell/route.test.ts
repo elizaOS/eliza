@@ -1,7 +1,7 @@
-import { beforeEach, describe, expect, it, mock } from 'bun:test';
-import type { NextRequest } from 'next/server';
+import { beforeEach, describe, expect, it, mock } from "bun:test";
+import type { NextRequest } from "next/server";
 
-const mockAuthenticate = mock(async () => ({ userId: 'user-1' }));
+const mockAuthenticate = mock(async () => ({ userId: "user-1" }));
 const mockBroadcastToChannel = mock(async () => undefined);
 const mockCheckProgress = mock(async () => undefined);
 const mockTrackServerEvent = mock(async () => undefined);
@@ -12,13 +12,13 @@ const mockSell = mock();
 class BusinessLogicError extends Error {
   constructor(
     message: string,
-    public readonly code: string
+    public readonly code: string,
   ) {
     super(message);
   }
 }
 
-mock.module('@feed/api', () => ({
+mock.module("@feed/api", () => ({
   authenticate: mockAuthenticate,
   BusinessLogicError,
   broadcastToChannel: mockBroadcastToChannel,
@@ -27,18 +27,18 @@ mock.module('@feed/api', () => ({
   successResponse: (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), {
       status,
-      headers: { 'content-type': 'application/json' },
+      headers: { "content-type": "application/json" },
     }),
   withErrorHandling:
     (
       handler: (
         request: NextRequest,
-        context: { params: Promise<{ id: string }> }
-      ) => Promise<Response>
+        context: { params: Promise<{ id: string }> },
+      ) => Promise<Response>,
     ) =>
     async (
       request: NextRequest,
-      context: { params: Promise<{ id: string }> }
+      context: { params: Promise<{ id: string }> },
     ) => {
       try {
         return await handler(request, context);
@@ -50,8 +50,8 @@ mock.module('@feed/api', () => ({
             }),
             {
               status: 400,
-              headers: { 'content-type': 'application/json' },
-            }
+              headers: { "content-type": "application/json" },
+            },
           );
         }
 
@@ -60,7 +60,7 @@ mock.module('@feed/api', () => ({
     },
 }));
 
-mock.module('@feed/core/markets/prediction', () => ({
+mock.module("@feed/core/markets/prediction", () => ({
   PredictionDbAdapter: class PredictionDbAdapter {},
   PredictionMarketService: class PredictionMarketService {
     getMarket = mockGetMarket;
@@ -68,13 +68,13 @@ mock.module('@feed/core/markets/prediction', () => ({
   },
 }));
 
-mock.module('@feed/engine', () => ({
+mock.module("@feed/engine", () => ({
   FEE_CONFIG: {
     TRADING_FEE_RATE: 0.02,
     PLATFORM_SHARE: 0.5,
     REFERRER_SHARE: 0.5,
     MIN_FEE_AMOUNT: 0,
-    FEE_TYPES: { TRADE: 'trade' },
+    FEE_TYPES: { TRADE: "trade" },
   },
   FeeService: {
     processTradingFee: mock(async () => undefined),
@@ -88,7 +88,7 @@ mock.module('@feed/engine', () => ({
   },
 }));
 
-mock.module('@feed/shared', () => ({
+mock.module("@feed/shared", () => ({
   logger: {
     warn: mock(() => undefined),
     debug: mock(() => undefined),
@@ -101,13 +101,13 @@ mock.module('@feed/shared', () => ({
   },
 }));
 
-mock.module('@/lib/posthog/server', () => ({
+mock.module("@/lib/posthog/server", () => ({
   trackServerEvent: mockTrackServerEvent,
 }));
 
-const { POST } = await import('./route');
+const { POST } = await import("./route");
 
-describe('POST /api/markets/predictions/[id]/sell', () => {
+describe("POST /api/markets/predictions/[id]/sell", () => {
   beforeEach(() => {
     mockAuthenticate.mockClear();
     mockBroadcastToChannel.mockClear();
@@ -118,7 +118,7 @@ describe('POST /api/markets/predictions/[id]/sell', () => {
     mockSell.mockReset();
   });
 
-  it('sells shares through the offchain prediction market service', async () => {
+  it("sells shares through the offchain prediction market service", async () => {
     mockSell.mockResolvedValue({
       totalProceeds: 19,
       netProceeds: 18.5,
@@ -126,16 +126,16 @@ describe('POST /api/markets/predictions/[id]/sell', () => {
       feePaid: 0.5,
       remainingShares: 0,
       positionClosed: true,
-      positionId: 'position-2',
+      positionId: "position-2",
       market: { priceImpact: 0.02 },
     });
 
     const response = await POST(
-      new Request('http://localhost/api/markets/predictions/market-2/sell', {
-        method: 'POST',
-        body: JSON.stringify({ shares: 10, positionId: 'position-2' }),
+      new Request("http://localhost/api/markets/predictions/market-2/sell", {
+        method: "POST",
+        body: JSON.stringify({ shares: 10, positionId: "position-2" }),
       }) as NextRequest,
-      { params: Promise.resolve({ id: 'market-2' }) }
+      { params: Promise.resolve({ id: "market-2" }) },
     );
 
     expect(response.status).toBe(200);
@@ -147,13 +147,13 @@ describe('POST /api/markets/predictions/[id]/sell', () => {
       remainingShares: 0,
       positionClosed: true,
       newBalance: 987,
-      positionId: 'position-2',
+      positionId: "position-2",
     });
     expect(mockSell).toHaveBeenCalledWith({
-      userId: 'user-1',
-      marketId: 'market-2',
+      userId: "user-1",
+      marketId: "market-2",
       shares: 10,
-      positionId: 'position-2',
+      positionId: "position-2",
     });
   });
 });

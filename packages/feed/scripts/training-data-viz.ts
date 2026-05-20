@@ -12,9 +12,9 @@
  *   bun run report:training-viz -- --days 30      # 30-day analysis
  */
 
-import { writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { parseArgs } from 'node:util';
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { parseArgs } from "node:util";
 import {
   db,
   desc,
@@ -23,17 +23,17 @@ import {
   posts,
   questions,
   worldEvents,
-} from '@feed/db';
+} from "@feed/db";
 
 const { values: args } = parseArgs({
   options: {
-    days: { type: 'string', default: '7' },
-    open: { type: 'boolean', default: false },
+    days: { type: "string", default: "7" },
+    open: { type: "boolean", default: false },
   },
   strict: true,
 });
 
-const days = Number.parseInt(args.days || '7', 10);
+const days = Number.parseInt(args.days || "7", 10);
 const shouldOpen = args.open ?? false;
 const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
@@ -57,7 +57,7 @@ const [allPosts, allTrades, allEvents, allQuestions] = await Promise.all([
   db.select().from(questions).orderBy(desc(questions.createdAt)),
 ]);
 
-const npcPosts = allPosts.filter((p) => p.type !== 'article');
+const npcPosts = allPosts.filter((p) => p.type !== "article");
 
 // ── Compute metrics ───────────────────────────────────────────────────
 
@@ -78,8 +78,8 @@ for (const len of postLengths) {
   lengthBuckets.set(bucket, (lengthBuckets.get(bucket) || 0) + 1);
 }
 const sortedLengthBuckets = [...lengthBuckets.entries()].sort((a, b) => {
-  const aStart = Number.parseInt(a[0].split('-')[0]!);
-  const bStart = Number.parseInt(b[0].split('-')[0]!);
+  const aStart = Number.parseInt(a[0].split("-")[0]!, 10);
+  const bStart = Number.parseInt(b[0].split("-")[0]!, 10);
   return aStart - bStart;
 });
 
@@ -101,8 +101,8 @@ let exclamationCount = 0;
 let statementCount = 0;
 for (const p of npcPosts) {
   const c = p.content.trim();
-  if (c.endsWith('?')) questionCount++;
-  else if (c.endsWith('!')) exclamationCount++;
+  if (c.endsWith("?")) questionCount++;
+  else if (c.endsWith("!")) exclamationCount++;
   else statementCount++;
 }
 
@@ -124,8 +124,8 @@ for (const [actor, count] of [...postsPerActor.entries()]
   const actorPosts = npcPosts.filter((p) => p.authorId === actor);
   const totalChars = actorPosts.reduce((s, p) => s + p.content.length, 0);
   const upperChars = actorPosts.reduce(
-    (s, p) => s + [...p.content].filter((c) => c >= 'A' && c <= 'Z').length,
-    0
+    (s, p) => s + [...p.content].filter((c) => c >= "A" && c <= "Z").length,
+    0,
   );
   capsRates.push({
     actor,
@@ -152,13 +152,13 @@ function barChart(
     barColor?: string;
     title?: string;
     maxLabelLen?: number;
-  } = {}
+  } = {},
 ): string {
   const {
     width = 600,
     height = 300,
-    barColor = '#4f46e5',
-    title = '',
+    barColor = "#4f46e5",
+    title = "",
     maxLabelLen = 20,
   } = opts;
   if (data.length === 0) return `<p>No data</p>`;
@@ -183,34 +183,34 @@ function barChart(
     // X label (rotated)
     const label =
       d.label.length > maxLabelLen
-        ? d.label.substring(0, maxLabelLen) + '..'
+        ? `${d.label.substring(0, maxLabelLen)}..`
         : d.label;
     svg += `<text x="${x + barWidth / 2}" y="${startY + chartHeight - 5}" text-anchor="end" transform="rotate(-45 ${x + barWidth / 2} ${startY + chartHeight - 5})" font-size="9">${label}</text>`;
   }
-  svg += '</svg>';
+  svg += "</svg>";
   return svg;
 }
 
 function pieChart(
   data: Array<{ label: string; value: number }>,
-  opts: { width?: number; height?: number; title?: string } = {}
+  opts: { width?: number; height?: number; title?: string } = {},
 ): string {
-  const { width = 300, height = 300, title = '' } = opts;
-  if (data.length === 0) return '<p>No data</p>';
+  const { width = 300, height = 300, title = "" } = opts;
+  if (data.length === 0) return "<p>No data</p>";
   const total = data.reduce((s, d) => s + d.value, 0);
-  if (total === 0) return '<p>No data</p>';
+  if (total === 0) return "<p>No data</p>";
   const cx = width / 2;
   const cy = height / 2 + (title ? 10 : 0);
   const r = Math.min(cx, cy) - 50;
   const colors = [
-    '#4f46e5',
-    '#059669',
-    '#d97706',
-    '#dc2626',
-    '#7c3aed',
-    '#0891b2',
-    '#be185d',
-    '#65a30d',
+    "#4f46e5",
+    "#059669",
+    "#d97706",
+    "#dc2626",
+    "#7c3aed",
+    "#0891b2",
+    "#be185d",
+    "#65a30d",
   ];
 
   let svg = `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg" style="font-family:monospace;font-size:10px">`;
@@ -238,7 +238,7 @@ function pieChart(
 
     angle += sliceAngle;
   }
-  svg += '</svg>';
+  svg += "</svg>";
   return svg;
 }
 
@@ -249,9 +249,9 @@ function histogram(
     height?: number;
     title?: string;
     barColor?: string;
-  } = {}
+  } = {},
 ): string {
-  return barChart(data, { ...opts, barColor: opts.barColor || '#059669' });
+  return barChart(data, { ...opts, barColor: opts.barColor || "#059669" });
 }
 
 // ── Generate HTML ─────────────────────────────────────────────────────
@@ -292,7 +292,7 @@ const html = `<!DOCTYPE html>
   <div class="chart-row">
     ${barChart(
       sortedEntities.map(([label, value]) => ({ label, value })),
-      { title: 'Posts per Actor (Top 20)', width: 700, height: 300 }
+      { title: "Posts per Actor (Top 20)", width: 700, height: 300 },
     )}
   </div>
 
@@ -300,7 +300,7 @@ const html = `<!DOCTYPE html>
   <div class="chart-row">
     ${histogram(
       sortedLengthBuckets.map(([label, value]) => ({ label, value })),
-      { title: 'Post Length (chars)', width: 600, height: 250 }
+      { title: "Post Length (chars)", width: 600, height: 250 },
     )}
   </div>
 
@@ -308,15 +308,15 @@ const html = `<!DOCTYPE html>
   <div class="chart-row">
     ${pieChart(
       [...actionCounts.entries()].map(([label, value]) => ({ label, value })),
-      { title: 'Trade Actions', width: 350, height: 300 }
+      { title: "Trade Actions", width: 350, height: 300 },
     )}
     ${pieChart(
       [
-        { label: 'questions', value: questionCount },
-        { label: 'exclamations', value: exclamationCount },
-        { label: 'statements', value: statementCount },
+        { label: "questions", value: questionCount },
+        { label: "exclamations", value: exclamationCount },
+        { label: "statements", value: statementCount },
       ].filter((d) => d.value > 0),
-      { title: 'Sentence Types', width: 350, height: 300 }
+      { title: "Sentence Types", width: 350, height: 300 },
     )}
   </div>
 
@@ -327,7 +327,7 @@ const html = `<!DOCTYPE html>
         label,
         value,
       })),
-      { title: 'Event Types', width: 350, height: 300 }
+      { title: "Event Types", width: 350, height: 300 },
     )}
   </div>
 
@@ -339,11 +339,11 @@ const html = `<!DOCTYPE html>
         value: Math.round(c.rate * 100),
       })),
       {
-        title: 'Uppercase Rate % per Actor',
+        title: "Uppercase Rate % per Actor",
         width: 700,
         height: 280,
-        barColor: '#d97706',
-      }
+        barColor: "#d97706",
+      },
     )}
   </div>
 
@@ -353,15 +353,15 @@ const html = `<!DOCTYPE html>
       [...activityBuckets.entries()]
         .sort((a, b) => a[0] - b[0])
         .map(([posts, count]) => ({
-          label: `${posts} post${posts > 1 ? 's' : ''}`,
+          label: `${posts} post${posts > 1 ? "s" : ""}`,
           value: count,
         })),
       {
-        title: 'NPCs by Post Count',
+        title: "NPCs by Post Count",
         width: 400,
         height: 250,
-        barColor: '#7c3aed',
-      }
+        barColor: "#7c3aed",
+      },
     )}
   </div>
 
@@ -372,11 +372,11 @@ const html = `<!DOCTYPE html>
         .sort((a, b) => a[0] - b[0])
         .map(([hour, count]) => ({ label: `${hour}:00`, value: count })),
       {
-        title: 'Posts by Hour of Day',
+        title: "Posts by Hour of Day",
         width: 700,
         height: 250,
-        barColor: '#0891b2',
-      }
+        barColor: "#0891b2",
+      },
     )}
   </div>
 
@@ -386,12 +386,12 @@ const html = `<!DOCTYPE html>
 </body>
 </html>`;
 
-const outPath = join(process.cwd(), 'training-data-report.html');
+const outPath = join(process.cwd(), "training-data-report.html");
 writeFileSync(outPath, html);
 console.log(`Report written to: ${outPath}`);
 
 if (shouldOpen) {
-  const { $ } = await import('bun');
+  const { $ } = await import("bun");
   await $`open ${outPath} || xdg-open ${outPath} || echo "Open ${outPath} in your browser"`.nothrow();
 }
 

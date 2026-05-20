@@ -1,19 +1,19 @@
-'use client';
+"use client";
 
-import { getProfileUrl } from '@feed/shared';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useMemo, useState } from 'react';
-import { CommentInput } from '@/components/interactions/CommentInput';
-import { CommentInteractionBar } from '@/components/interactions/CommentInteractionBar';
-import { InteractionBar } from '@/components/interactions/InteractionBar';
-import { formatTimeAgo } from '@/components/posts/CommentPreview';
-import { Avatar } from '@/components/shared/Avatar';
-import { TaggedText } from '@/components/shared/TaggedText';
+import { getProfileUrl } from "@feed/shared";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useMemo, useState } from "react";
+import { CommentInput } from "@/components/interactions/CommentInput";
+import { CommentInteractionBar } from "@/components/interactions/CommentInteractionBar";
+import { InteractionBar } from "@/components/interactions/InteractionBar";
+import { formatTimeAgo } from "@/components/posts/CommentPreview";
+import { Avatar } from "@/components/shared/Avatar";
+import { TaggedText } from "@/components/shared/TaggedText";
 import {
   isNpcIdentifier,
   VerifiedBadge,
-} from '@/components/shared/VerifiedBadge';
+} from "@/components/shared/VerifiedBadge";
 
 /**
  * Author info structure
@@ -103,13 +103,13 @@ export function ProfileReplyCard({
 
   // Get the parent content info (either parent comment or post)
   const parentAuthorId = isReplyToComment
-    ? reply.parentComment?.author?.id || reply.parentComment?.authorId || ''
-    : reply.post?.author?.id || reply.post?.authorId || '';
+    ? reply.parentComment?.author?.id || reply.parentComment?.authorId || ""
+    : reply.post?.author?.id || reply.post?.authorId || "";
   const parentAuthorName = isReplyToComment
     ? reply.parentComment?.author?.displayName ||
       reply.parentComment?.author?.username ||
-      'User'
-    : reply.post?.author?.displayName || reply.post?.author?.username || 'User';
+      "User"
+    : reply.post?.author?.displayName || reply.post?.author?.username || "User";
   const parentAuthorUsername = isReplyToComment
     ? reply.parentComment?.author?.username || null
     : reply.post?.author?.username || null;
@@ -117,11 +117,11 @@ export function ProfileReplyCard({
     ? reply.parentComment?.author?.profileImageUrl || null
     : reply.post?.author?.profileImageUrl || null;
   const parentContent = isReplyToComment
-    ? reply.parentComment?.content || ''
-    : reply.post?.content || '';
+    ? reply.parentComment?.content || ""
+    : reply.post?.content || "";
   const parentTimestamp = isReplyToComment
-    ? reply.parentComment?.createdAt || ''
-    : reply.post?.timestamp || '';
+    ? reply.parentComment?.createdAt || ""
+    : reply.post?.timestamp || "";
   const parentAuthorIsNPC = isNpcIdentifier(parentAuthorId);
 
   // Reply author (profile owner) info
@@ -148,7 +148,7 @@ export function ProfileReplyCard({
       reply.post.isShared,
       reply.post.likeCount,
       reply.post.shareCount,
-    ]
+    ],
   );
 
   const parentPostData = useMemo(
@@ -179,14 +179,14 @@ export function ProfileReplyCard({
       reply.post.likeCount,
       reply.post.shareCount,
       reply.post.timestamp,
-    ]
+    ],
   );
 
   const handleTagClick = (tag: string) => {
-    if (tag.startsWith('@')) {
+    if (tag.startsWith("@")) {
       const username = tag.slice(1);
-      router.push(getProfileUrl('', username));
-    } else if (tag.startsWith('$')) {
+      router.push(getProfileUrl("", username));
+    } else if (tag.startsWith("$")) {
       const symbol = tag.slice(1);
       router.push(`/markets?search=${encodeURIComponent(symbol)}`);
     }
@@ -259,12 +259,12 @@ export function ProfileReplyCard({
             {/* Parent Interaction Bar */}
             {isReplyToComment ? (
               <CommentInteractionBar
-                commentId={reply.parentComment!.id}
+                commentId={reply.parentComment?.id}
                 likeCount={reply.parentComment?.likeCount}
                 isLiked={reply.parentComment?.isLiked}
                 replyCount={reply.parentComment?.replyCount}
                 onReplyClick={() =>
-                  router.push(`/comment/${reply.parentComment!.id}`)
+                  router.push(`/comment/${reply.parentComment?.id}`)
                 }
               />
             ) : (

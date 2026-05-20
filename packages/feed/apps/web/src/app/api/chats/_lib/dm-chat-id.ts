@@ -1,8 +1,8 @@
 export function getOtherDmParticipantId(
   chatId: string,
-  currentUserId: string
+  currentUserId: string,
 ): string | null {
-  if (!chatId.startsWith('dm-')) {
+  if (!chatId.startsWith("dm-")) {
     return null;
   }
 
@@ -14,7 +14,7 @@ export function getOtherDmParticipantId(
 
   const suffix = `-${currentUserId}`;
   if (chatId.endsWith(suffix)) {
-    const otherUserId = chatId.slice('dm-'.length, -suffix.length);
+    const otherUserId = chatId.slice("dm-".length, -suffix.length);
     return otherUserId && otherUserId !== currentUserId ? otherUserId : null;
   }
 

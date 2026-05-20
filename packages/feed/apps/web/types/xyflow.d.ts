@@ -1,5 +1,5 @@
-declare module '@xyflow/react' {
-  import type { ComponentType, CSSProperties } from 'react';
+declare module "@xyflow/react" {
+  import type { ComponentType, CSSProperties } from "react";
 
   export interface Node<T = Record<string, unknown>> {
     id: string;
@@ -39,7 +39,7 @@ declare module '@xyflow/react' {
   };
 
   export const Handle: ComponentType<{
-    type: 'source' | 'target';
+    type: "source" | "target";
     position: string;
     style?: CSSProperties;
     id?: string;
@@ -60,4 +60,4 @@ declare module '@xyflow/react' {
   export const BackgroundVariant: { Dots: string };
 }
 
-declare module '@xyflow/react/dist/style.css' {}
+declare module "@xyflow/react/dist/style.css" {}

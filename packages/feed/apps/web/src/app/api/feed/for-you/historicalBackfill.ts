@@ -1,4 +1,4 @@
-import { and, db, gte, isNull, lt, posts, sql } from '@feed/db';
+import { and, db, gte, isNull, lt, posts, sql } from "@feed/db";
 
 export interface ForYouCandidatePost {
   id: string;
@@ -48,7 +48,7 @@ const liveEngagementOrder = sql`
 async function loadForYouEngagementRankedPosts(
   windowStart: Date,
   windowEnd: Date,
-  limit: number
+  limit: number,
 ): Promise<ForYouCandidatePost[]> {
   if (limit <= 0) {
     return [];
@@ -59,7 +59,7 @@ async function loadForYouEngagementRankedPosts(
     gte(posts.timestamp, windowStart),
     lt(posts.timestamp, windowEnd),
     isNull(posts.commentOnPostId),
-    isNull(posts.parentCommentId)
+    isNull(posts.parentCommentId),
   );
 
   return db
@@ -73,23 +73,23 @@ async function loadForYouEngagementRankedPosts(
 export async function loadHistoricalForYouBackfillPosts(
   backfillCutoff: Date,
   cutoff: Date,
-  backfillCapacity: number
+  backfillCapacity: number,
 ): Promise<ForYouCandidatePost[]> {
   return loadForYouEngagementRankedPosts(
     backfillCutoff,
     cutoff,
-    backfillCapacity
+    backfillCapacity,
   );
 }
 
 export async function loadDiscoveryForYouCandidatePosts(
   discoveryStart: Date,
   backfillEnd: Date,
-  discoveryLimit: number
+  discoveryLimit: number,
 ): Promise<ForYouCandidatePost[]> {
   return loadForYouEngagementRankedPosts(
     discoveryStart,
     backfillEnd,
-    discoveryLimit
+    discoveryLimit,
   );
 }

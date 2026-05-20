@@ -5,4 +5,4 @@
  * This allows production code to use the same abstraction as simulation.
  */
 
-export { PostgresStorageProvider } from './postgres-storage-provider';
+export { PostgresStorageProvider } from "./postgres-storage-provider";

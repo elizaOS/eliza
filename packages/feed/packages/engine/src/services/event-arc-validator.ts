@@ -34,9 +34,9 @@
  * ```
  */
 
-import type { WorldEvent } from '@feed/shared';
-import { logger } from '@feed/shared';
-import type { QuestionArcPlan } from './question-arc-planner';
+import type { WorldEvent } from "@feed/shared";
+import { logger } from "@feed/shared";
+import type { QuestionArcPlan } from "./question-arc-planner";
 
 /**
  * Validation result
@@ -87,7 +87,7 @@ export class EventArcValidator {
   validateDayEvents(
     day: number,
     events: WorldEvent[],
-    arcPlans: Map<number | string, QuestionArcPlan>
+    arcPlans: Map<number | string, QuestionArcPlan>,
   ): EventArcValidationResult {
     const issues: string[] = [];
     const warnings: string[] = [];
@@ -97,7 +97,7 @@ export class EventArcValidator {
         (e) =>
           e.relatedQuestion === questionId &&
           e.pointsToward !== null &&
-          e.pointsToward !== undefined
+          e.pointsToward !== undefined,
       );
 
       if (questionEvents.length === 0) continue; // No events for this question today
@@ -108,11 +108,11 @@ export class EventArcValidator {
 
       // Count signal types
       const correctSignals = questionEvents.filter(
-        (e) => e.pointsToward === (arcPlan.outcome ? 'YES' : 'NO')
+        (e) => e.pointsToward === (arcPlan.outcome ? "YES" : "NO"),
       ).length;
 
       const wrongSignals = questionEvents.filter(
-        (e) => e.pointsToward === (arcPlan.outcome ? 'NO' : 'YES')
+        (e) => e.pointsToward === (arcPlan.outcome ? "NO" : "YES"),
       ).length;
 
       const totalSignals = correctSignals + wrongSignals;
@@ -132,11 +132,11 @@ export class EventArcValidator {
       if (variance > 0.3) {
         issues.push(
           `Question ${questionId} Day ${day} (${phase} phase): Signal ratio off by ${(variance * 100).toFixed(0)}%. ` +
-            `Expected ${(expectedCorrectRatio * 100).toFixed(0)}% correct, got ${(actualCorrectRatio * 100).toFixed(0)}%`
+            `Expected ${(expectedCorrectRatio * 100).toFixed(0)}% correct, got ${(actualCorrectRatio * 100).toFixed(0)}%`,
         );
       } else if (variance > 0.2) {
         warnings.push(
-          `Question ${questionId} Day ${day} (${phase}): Moderate variance ${(variance * 100).toFixed(0)}%`
+          `Question ${questionId} Day ${day} (${phase}): Moderate variance ${(variance * 100).toFixed(0)}%`,
         );
       }
     }
@@ -176,14 +176,14 @@ export class EventArcValidator {
     questionId: number | string,
     day: number,
     allEvents: WorldEvent[],
-    actualOutcome: boolean
+    actualOutcome: boolean,
   ): number {
     const relevantEvents = allEvents.filter(
       (e) =>
         e.relatedQuestion === questionId &&
         e.day <= day &&
         e.pointsToward !== null &&
-        e.pointsToward !== undefined
+        e.pointsToward !== undefined,
     );
 
     if (relevantEvents.length === 0) return 0.5; // No info = 50% certainty
@@ -195,7 +195,7 @@ export class EventArcValidator {
 
       // Determine if this signal is correct
       let signal = 0;
-      if ((e.pointsToward === 'YES') === actualOutcome) {
+      if ((e.pointsToward === "YES") === actualOutcome) {
         signal = 1; // Correct signal
       } else {
         signal = -1; // Wrong signal (misdirection)
@@ -221,10 +221,10 @@ export class EventArcValidator {
    */
   private getPhaseForDay(
     day: number,
-    arcPlan: QuestionArcPlan
-  ): 'early' | 'middle' | 'late' | 'climax' | null {
+    arcPlan: QuestionArcPlan,
+  ): "early" | "middle" | "late" | "climax" | null {
     for (const [phaseName, phase] of Object.entries(arcPlan.phases) as Array<
-      ['early' | 'middle' | 'late' | 'climax', { daysRange: [number, number] }]
+      ["early" | "middle" | "late" | "climax", { daysRange: [number, number] }]
     >) {
       const [start, end] = phase.daysRange;
       if (day >= start && day <= end) {
@@ -246,7 +246,7 @@ export class EventArcValidator {
   validateInformationGradient(
     questionId: number | string,
     timeline: Array<{ day: number; events: WorldEvent[] }>,
-    actualOutcome: boolean
+    actualOutcome: boolean,
   ): {
     hasGradient: boolean;
     earlyCertainty: number;
@@ -263,13 +263,13 @@ export class EventArcValidator {
       questionId,
       10,
       earlyEvents,
-      actualOutcome
+      actualOutcome,
     );
     const lateCertainty = this.calculateCertainty(
       questionId,
       30,
       [...earlyEvents, ...lateEvents],
-      actualOutcome
+      actualOutcome,
     );
 
     const gradient = lateCertainty - earlyCertainty;
@@ -279,14 +279,14 @@ export class EventArcValidator {
 
     if (!hasGradient) {
       logger.warn(
-        'No information gradient detected',
+        "No information gradient detected",
         {
           questionId,
           earlyCertainty,
           lateCertainty,
           gradient,
         },
-        'EventArcValidator'
+        "EventArcValidator",
       );
     }
 

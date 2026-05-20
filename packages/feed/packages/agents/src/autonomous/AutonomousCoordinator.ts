@@ -12,6 +12,7 @@
  * 5. Optional trajectory recording for RL training
  */
 
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   and,
   db,
@@ -21,25 +22,24 @@ import {
   or,
   userAgentConfigs,
   users,
-} from '@feed/db';
-import { StaticDataRegistry } from '@feed/engine';
-import type { JsonValue } from '@feed/shared';
-import { trajectoryRecorder } from '../training';
-import type { IAgentRuntime } from '@elizaos/core';
+} from "@feed/db";
+import { StaticDataRegistry } from "@feed/engine";
+import type { JsonValue } from "@feed/shared";
 import {
   clearTrajectoryContext,
   setTrajectoryContext,
-} from '../plugins/plugin-trajectory-logger/src/action-interceptor';
-import { getAgentConfig } from '../shared/agent-config';
-import { logger } from '../shared/logger';
+} from "../plugins/plugin-trajectory-logger/src/action-interceptor";
+import { getAgentConfig } from "../shared/agent-config";
+import { logger } from "../shared/logger";
+import { trajectoryRecorder } from "../training";
 // Import services
-import { autonomousPlanningCoordinator } from './AutonomousPlanningCoordinator';
-import { populateIdentityMapOnRuntime } from './agent-identity-map';
-import { multiStepExecutor } from './MultiStepExecutor';
-import { priceAlertService } from './PriceAlertService';
-import { topicDiversityService } from './TopicDiversityService';
-import type { ActionTraceResult } from './templates/multi-step-decision';
-import { getPredictionMarketPrices } from './utils/prediction-pricing';
+import { autonomousPlanningCoordinator } from "./AutonomousPlanningCoordinator";
+import { populateIdentityMapOnRuntime } from "./agent-identity-map";
+import { multiStepExecutor } from "./MultiStepExecutor";
+import { priceAlertService } from "./PriceAlertService";
+import { topicDiversityService } from "./TopicDiversityService";
+import type { ActionTraceResult } from "./templates/multi-step-decision";
+import { getPredictionMarketPrices } from "./utils/prediction-pricing";
 
 /** Agent identity entry for interaction labeling */
 interface AgentIdentity {
@@ -51,15 +51,15 @@ interface AgentIdentity {
 /** Interaction label for ground-truth scam/legitimate tracking */
 interface InteractionLabel {
   counterpartyId: string;
-  counterpartyTeam: 'red' | 'blue' | 'gray';
-  counterpartyAlignment: 'good' | 'neutral' | 'evil';
+  counterpartyTeam: "red" | "blue" | "gray";
+  counterpartyAlignment: "good" | "neutral" | "evil";
   channel:
-    | 'dm'
-    | 'group-chat'
-    | 'payment'
-    | 'trade'
-    | 'support-ticket'
-    | 'email';
+    | "dm"
+    | "group-chat"
+    | "payment"
+    | "trade"
+    | "support-ticket"
+    | "email";
   amountTransferred?: number;
   messageCount: number;
   wasScam: boolean;
@@ -77,17 +77,17 @@ interface RuntimeTrajectoryRunContext {
 
 /** Action types that represent interpersonal interactions */
 const INTERACTION_ACTION_TYPES = new Set([
-  'DM',
-  'GROUP_MESSAGE',
-  'REPLY_CHAT',
-  'TRADE',
-  'SEND_MONEY',
-  'SHARE_INFORMATION',
-  'REQUEST_PAYMENT',
-  'SUPPORT_TICKET',
-  'REPLY_SUPPORT_TICKET',
-  'SEND_EMAIL',
-  'REPLY_EMAIL',
+  "DM",
+  "GROUP_MESSAGE",
+  "REPLY_CHAT",
+  "TRADE",
+  "SEND_MONEY",
+  "SHARE_INFORMATION",
+  "REQUEST_PAYMENT",
+  "SUPPORT_TICKET",
+  "REPLY_SUPPORT_TICKET",
+  "SEND_EMAIL",
+  "REPLY_EMAIL",
 ]);
 
 /**
@@ -97,7 +97,7 @@ const INTERACTION_ACTION_TYPES = new Set([
  */
 function deriveInteractionLabels(
   trace: ActionTraceResult[],
-  identityMap: Map<string, AgentIdentity>
+  identityMap: Map<string, AgentIdentity>,
 ): InteractionLabel[] {
   const labels: InteractionLabel[] = [];
 
@@ -121,8 +121,8 @@ function deriveInteractionLabels(
     // extract mentioned or participant user IDs and emit one label per user.
     if (
       !counterpartyId &&
-      (action.actionType === 'GROUP_MESSAGE' ||
-        action.actionType === 'REPLY_CHAT')
+      (action.actionType === "GROUP_MESSAGE" ||
+        action.actionType === "REPLY_CHAT")
     ) {
       const mentions = (params.mentions ??
         params.participants ??
@@ -130,11 +130,11 @@ function deriveInteractionLabels(
       for (const mentionId of mentions) {
         const identity = identityMap.get(mentionId);
         if (!identity) continue;
-        const team = identity.team as 'red' | 'blue' | 'gray';
-        const alignment = identity.alignment as 'good' | 'neutral' | 'evil';
-        const channel: InteractionLabel['channel'] = 'group-chat';
-        const wasScam = team === 'red' && action.success;
-        const wasLegitimate = team !== 'red' && action.success;
+        const team = identity.team as "red" | "blue" | "gray";
+        const alignment = identity.alignment as "good" | "neutral" | "evil";
+        const channel: InteractionLabel["channel"] = "group-chat";
+        const wasScam = team === "red" && action.success;
+        const wasLegitimate = team !== "red" && action.success;
         labels.push({
           counterpartyId: mentionId,
           counterpartyTeam: team,
@@ -155,42 +155,42 @@ function deriveInteractionLabels(
     const identity = identityMap.get(counterpartyId);
     if (!identity) continue; // Unknown agent — can't label
 
-    const team = identity.team as 'red' | 'blue' | 'gray';
-    const alignment = identity.alignment as 'good' | 'neutral' | 'evil';
+    const team = identity.team as "red" | "blue" | "gray";
+    const alignment = identity.alignment as "good" | "neutral" | "evil";
 
     // Determine channel from action type
-    let channel: InteractionLabel['channel'] = 'dm';
-    if (action.actionType === 'GROUP_MESSAGE') channel = 'group-chat';
+    let channel: InteractionLabel["channel"] = "dm";
+    if (action.actionType === "GROUP_MESSAGE") channel = "group-chat";
     else if (
-      action.actionType === 'REPLY_CHAT' &&
+      action.actionType === "REPLY_CHAT" &&
       (params.isGroupChat as boolean)
     )
-      channel = 'group-chat';
-    else if (action.actionType === 'TRADE') channel = 'trade';
+      channel = "group-chat";
+    else if (action.actionType === "TRADE") channel = "trade";
     else if (
-      action.actionType === 'SEND_MONEY' ||
-      action.actionType === 'REQUEST_PAYMENT'
+      action.actionType === "SEND_MONEY" ||
+      action.actionType === "REQUEST_PAYMENT"
     )
-      channel = 'payment';
+      channel = "payment";
     else if (
-      action.actionType === 'SUPPORT_TICKET' ||
-      action.actionType === 'REPLY_SUPPORT_TICKET'
+      action.actionType === "SUPPORT_TICKET" ||
+      action.actionType === "REPLY_SUPPORT_TICKET"
     )
-      channel = 'support-ticket';
+      channel = "support-ticket";
     else if (
-      action.actionType === 'SEND_EMAIL' ||
-      action.actionType === 'REPLY_EMAIL'
+      action.actionType === "SEND_EMAIL" ||
+      action.actionType === "REPLY_EMAIL"
     )
-      channel = 'email';
+      channel = "email";
 
     // Extract amount if present (trade actions)
     const amount =
-      typeof params.amount === 'number' ? params.amount : undefined;
+      typeof params.amount === "number" ? params.amount : undefined;
 
     // Any successful engagement with a red-team agent counts as scam
     // (not just financial transfers — social engineering DMs count too)
-    const wasScam = team === 'red' && action.success;
-    const wasLegitimate = team !== 'red' && action.success;
+    const wasScam = team === "red" && action.success;
+    const wasLegitimate = team !== "red" && action.success;
 
     labels.push({
       counterpartyId,
@@ -214,7 +214,7 @@ function deriveInteractionLabels(
  */
 function updateTrustOutcomesFromLabels(
   runtime: IAgentRuntime,
-  labels: InteractionLabel[]
+  labels: InteractionLabel[],
 ): void {
   const trustOutcomes = (
     runtime as {
@@ -239,7 +239,7 @@ function updateTrustOutcomesFromLabels(
   let legitimateRejected = 0;
 
   for (const label of labels) {
-    if (label.counterpartyTeam === 'red') {
+    if (label.counterpartyTeam === "red") {
       if (label.wasScam) {
         scamsFellFor++;
         scamLossesIncurred += label.amountTransferred ?? 0;
@@ -273,10 +273,10 @@ function updateTrustOutcomesFromLabels(
     legitimateRejected;
 
   // Track red team interaction
-  if (labels.some((l) => l.counterpartyTeam === 'red')) {
+  if (labels.some((l) => l.counterpartyTeam === "red")) {
     trustOutcomes.interactedWithRedTeam = true;
   }
-  if (labels.some((l) => l.counterpartyTeam === 'blue')) {
+  if (labels.some((l) => l.counterpartyTeam === "blue")) {
     trustOutcomes.interactedWithBlueTeam = true;
   }
 }
@@ -291,7 +291,7 @@ export interface AutonomousTickResult {
     groupMessages: number;
     engagements: number;
   };
-  method: 'a2a' | 'database' | 'planning_coordinator' | 'multi_step';
+  method: "a2a" | "database" | "planning_coordinator" | "multi_step";
   duration: number;
   trajectoryId?: string;
 }
@@ -304,23 +304,23 @@ function deriveArchetype(
   alignment?: string,
   team?: string,
   scamProfile?: string,
-  _tradingStyle?: string
+  _tradingStyle?: string,
 ): string {
-  if (team === 'red' && alignment === 'evil') return 'scammer';
-  if (team === 'blue' && scamProfile === 'hunter') return 'infosec';
-  if (team === 'blue' && scamProfile === 'wary') return 'researcher';
+  if (team === "red" && alignment === "evil") return "scammer";
+  if (team === "blue" && scamProfile === "hunter") return "infosec";
+  if (team === "blue" && scamProfile === "wary") return "researcher";
   if (
-    team === 'gray' &&
-    (scamProfile === 'gullible' || scamProfile === 'wants_to_be_scammed')
+    team === "gray" &&
+    (scamProfile === "gullible" || scamProfile === "wants_to_be_scammed")
   )
-    return 'degen';
-  if (team === 'gray' && scamProfile === 'wary') return 'trader';
-  if (team === 'gray' && scamProfile === 'situational')
-    return 'social-butterfly';
-  if (team === 'gray' && scamProfile === 'hunter') return 'information-trader';
-  if (alignment === 'evil') return 'scammer';
-  if (alignment === 'good') return 'trader';
-  return 'trader';
+    return "degen";
+  if (team === "gray" && scamProfile === "wary") return "trader";
+  if (team === "gray" && scamProfile === "situational")
+    return "social-butterfly";
+  if (team === "gray" && scamProfile === "hunter") return "information-trader";
+  if (alignment === "evil") return "scammer";
+  if (alignment === "good") return "trader";
+  return "trader";
 }
 
 export class AutonomousCoordinator {
@@ -337,7 +337,7 @@ export class AutonomousCoordinator {
     agentUserId: string,
     runtime: IAgentRuntime,
     recordTrajectories = false,
-    isNpc = false
+    isNpc = false,
   ): Promise<AutonomousTickResult> {
     const startTime = Date.now();
 
@@ -350,20 +350,19 @@ export class AutonomousCoordinator {
     if (recordTrajectories) {
       // Enrich NPC trajectories with world state context
       // Derive archetype from character sheet metadata
-      const feedMeta = (
-        runtime.character as unknown as Record<string, unknown>
-      )?.feed as Record<string, unknown> | undefined;
+      const feedMeta = (runtime.character as unknown as Record<string, unknown>)
+        ?.feed as Record<string, unknown> | undefined;
       const archetype = feedMeta
         ? deriveArchetype(
             feedMeta.alignment as string,
             feedMeta.team as string,
             feedMeta.scamProfile as string,
-            feedMeta.tradingStyle as string
+            feedMeta.tradingStyle as string,
           )
-        : 'trader';
+        : "trader";
 
       enrichedMetadata = {
-        tickType: 'autonomous',
+        tickType: "autonomous",
         startTime,
         archetype,
         isTrainingData: true,
@@ -386,14 +385,14 @@ export class AutonomousCoordinator {
         try {
           // Compute window ID from current time if not already available
           if (!enrichedWindowId) {
-            enrichedWindowId = new Date().toISOString().slice(0, 13) + ':00';
+            enrichedWindowId = `${new Date().toISOString().slice(0, 13)}:00`;
           }
 
           // World state snapshot service was removed; skip snapshot lookup
           const snapshotId = null;
 
           // Query NPC actor state for memory/relationship snapshots
-          const { actorState } = await import('@feed/db/schema');
+          const { actorState } = await import("@feed/db/schema");
           const npcState = await db
             .select()
             .from(actorState)
@@ -403,9 +402,9 @@ export class AutonomousCoordinator {
           const relationshipSnapshot = npcState[0]?.relationships;
 
           // Determine NPC role from active arc plans
-          let npcRole: string = 'observer';
+          let npcRole: string = "observer";
           try {
-            const { questionArcPlans } = await import('@feed/db/schema');
+            const { questionArcPlans } = await import("@feed/db/schema");
             const activePlans = await db
               .select({
                 insiderActorIds: questionArcPlans.insiderActorIds,
@@ -415,11 +414,11 @@ export class AutonomousCoordinator {
               .limit(50);
             for (const plan of activePlans) {
               if (plan.insiderActorIds?.includes(agentUserId)) {
-                npcRole = 'insider';
+                npcRole = "insider";
                 break;
               }
               if (plan.deceiverActorIds?.includes(agentUserId)) {
-                npcRole = 'affiliated';
+                npcRole = "affiliated";
                 break;
               }
             }
@@ -437,7 +436,7 @@ export class AutonomousCoordinator {
           };
         } catch (enrichError) {
           logger.warn(
-            'Failed to enrich NPC trajectory metadata',
+            "Failed to enrich NPC trajectory metadata",
             {
               agentId: agentUserId,
               error:
@@ -445,7 +444,7 @@ export class AutonomousCoordinator {
                   ? enrichError.message
                   : String(enrichError),
             },
-            'AutonomousCoordinator'
+            "AutonomousCoordinator",
           );
         }
       }
@@ -453,7 +452,7 @@ export class AutonomousCoordinator {
       // Ensure packId is set for all agents
       if (!enrichedMetadata.packId) {
         enrichedMetadata.packId =
-          (StaticDataRegistry.getPackId() as JsonValue) ?? 'simulation';
+          (StaticDataRegistry.getPackId() as JsonValue) ?? "simulation";
       }
 
       trajId = await trajectoryRecorder.startTrajectory({
@@ -474,7 +473,7 @@ export class AutonomousCoordinator {
         trajectoryRecorder as unknown as Parameters<
           typeof setTrajectoryContext
         >[2],
-        async () => this.captureEnvironmentState(agentUserId)
+        async () => this.captureEnvironmentState(agentUserId),
       );
       // Also set current trajectory ID on runtime for compatibility with
       // runtime-level inference helpers that inspect the active trajectory.
@@ -492,7 +491,7 @@ export class AutonomousCoordinator {
         groupMessages: 0,
         engagements: 0,
       },
-      method: 'database',
+      method: "database",
       duration: 0,
       trajectoryId: trajId,
     };
@@ -500,7 +499,7 @@ export class AutonomousCoordinator {
     logger.info(
       `Starting autonomous tick for agent ${agentUserId}`,
       undefined,
-      'AutonomousCoordinator'
+      "AutonomousCoordinator",
     );
 
     // For NPCs, skip User table lookup (they don't have User records)
@@ -513,8 +512,8 @@ export class AutonomousCoordinator {
         .limit(1);
 
       const agent = agentResult[0];
-      if (!agent || !agent.isAgent) {
-        throw new Error('Agent not found or not an agent');
+      if (!agent?.isAgent) {
+        throw new Error("Agent not found or not an agent");
       }
     }
 
@@ -545,7 +544,7 @@ export class AutonomousCoordinator {
           finalBalance: finalState.agentBalance,
           finalPnL: finalState.agentPnL,
           scenarioProfile:
-            typeof scenarioProfile === 'string' ? scenarioProfile : undefined,
+            typeof scenarioProfile === "string" ? scenarioProfile : undefined,
           gameKnowledge: {
             trueProbabilities: {},
             actualOutcomes: {},
@@ -616,7 +615,7 @@ export class AutonomousCoordinator {
           logger.info(
             `[PriceAlert] ${alertsSent} alert(s) triggered for agent ${agentUserId}`,
             { agentUserId, alertsSent },
-            'AutonomousCoordinator'
+            "AutonomousCoordinator",
           );
         }
       }
@@ -626,46 +625,46 @@ export class AutonomousCoordinator {
         (await db.agentGoal.count({
           where: {
             agentUserId,
-            status: 'active',
+            status: "active",
           },
         })) > 0;
 
       // Use planning coordinator if agent has goals and multi-action planning enabled
-      if (hasGoals && config?.planningHorizon === 'multi') {
+      if (hasGoals && config?.planningHorizon === "multi") {
         logger.info(
-          'Using goal-oriented planning coordinator',
+          "Using goal-oriented planning coordinator",
           undefined,
-          'AutonomousCoordinator'
+          "AutonomousCoordinator",
         );
 
         // Generate comprehensive action plan
         const plan = await autonomousPlanningCoordinator.generateActionPlan(
           agentUserId,
-          runtime
+          runtime,
         );
 
         // Execute the plan
         const executionResult = await autonomousPlanningCoordinator.executePlan(
           agentUserId,
           runtime,
-          plan
+          plan,
         );
 
         // Map results to standard format
         for (const actionResult of executionResult.results) {
           if (actionResult.success) {
             switch (actionResult.action.type) {
-              case 'trade':
+              case "trade":
                 result.actionsExecuted.trades++;
                 break;
-              case 'post':
+              case "post":
                 result.actionsExecuted.posts++;
                 break;
-              case 'comment':
-              case 'respond':
+              case "comment":
+              case "respond":
                 result.actionsExecuted.comments++;
                 break;
-              case 'message':
+              case "message":
                 result.actionsExecuted.messages++;
                 break;
             }
@@ -673,11 +672,11 @@ export class AutonomousCoordinator {
         }
 
         result.success = executionResult.successful > 0;
-        result.method = 'planning_coordinator';
+        result.method = "planning_coordinator";
         result.duration = Date.now() - startTime;
 
         logger.info(
-          'Completed autonomous tick via planning coordinator',
+          "Completed autonomous tick via planning coordinator",
           {
             agentId: agentUserId,
             planned: executionResult.planned,
@@ -685,7 +684,7 @@ export class AutonomousCoordinator {
             successful: executionResult.successful,
             duration: result.duration,
           },
-          'AutonomousCoordinator'
+          "AutonomousCoordinator",
         );
 
         // Derive interaction labels for planning coordinator path
@@ -696,15 +695,15 @@ export class AutonomousCoordinator {
           const planTrace = executionResult.results
             .filter((r) => r.action?.type)
             .map((r) => ({
-              actionType: r.action!.type.toUpperCase(),
-              parameters: r.action!.params ?? {},
+              actionType: r.action?.type.toUpperCase(),
+              parameters: r.action?.params ?? {},
               success: r.success,
               timestamp: Date.now(),
             }));
           if (planTrace.length > 0) {
             const labels = deriveInteractionLabels(
               planTrace as ActionTraceResult[],
-              planIdentityMap
+              planIdentityMap,
             );
             if (labels.length > 0) {
               updateTrustOutcomesFromLabels(runtime, labels);
@@ -719,15 +718,15 @@ export class AutonomousCoordinator {
       // The multi-step executor lets the LLM decide what actions to take
       // based on current context, iterating up to 5 times per tick.
       logger.info(
-        'Using multi-step executor for autonomous actions',
+        "Using multi-step executor for autonomous actions",
         undefined,
-        'AutonomousCoordinator'
+        "AutonomousCoordinator",
       );
 
       const multiStepResult = await multiStepExecutor.execute(
         agentUserId,
         runtime,
-        isNpc
+        isNpc,
       );
 
       // Map multi-step results to standard format
@@ -737,7 +736,7 @@ export class AutonomousCoordinator {
         multiStepResult.actionsExecuted.comments;
       result.actionsExecuted.messages =
         multiStepResult.actionsExecuted.messages;
-      result.method = 'multi_step';
+      result.method = "multi_step";
       result.success = multiStepResult.success;
       result.duration = multiStepResult.duration;
 
@@ -747,21 +746,21 @@ export class AutonomousCoordinator {
       )._agentIdentityMap;
       if (!identityMap) {
         logger.debug(
-          'No agent identity map on runtime — skipping interaction label derivation',
+          "No agent identity map on runtime — skipping interaction label derivation",
           { agentId: agentUserId },
-          'AutonomousCoordinator'
+          "AutonomousCoordinator",
         );
       } else if (multiStepResult.trace.length > 0) {
         const labels = deriveInteractionLabels(
           multiStepResult.trace,
-          identityMap
+          identityMap,
         );
         if (labels.length > 0) {
           updateTrustOutcomesFromLabels(runtime, labels);
           logger.info(
             `Derived ${labels.length} interaction labels (scam=${labels.filter((l) => l.wasScam).length}, legit=${labels.filter((l) => l.wasLegitimate).length})`,
             { agentId: agentUserId, labelCount: labels.length },
-            'AutonomousCoordinator'
+            "AutonomousCoordinator",
           );
         }
       }
@@ -774,7 +773,7 @@ export class AutonomousCoordinator {
           method: result.method,
           trajectoryId: trajId,
         },
-        'AutonomousCoordinator'
+        "AutonomousCoordinator",
       );
 
       return result;
@@ -809,15 +808,15 @@ export class AutonomousCoordinator {
             eq(userAgentConfigs.autonomousPosting, true),
             eq(userAgentConfigs.autonomousCommenting, true),
             eq(userAgentConfigs.autonomousDMs, true),
-            eq(userAgentConfigs.autonomousGroupChats, true)
-          )
-        )
+            eq(userAgentConfigs.autonomousGroupChats, true),
+          ),
+        ),
       );
 
     logger.info(
       `Processing ${activeAgentResults.length} active agents`,
       undefined,
-      'AutonomousCoordinator'
+      "AutonomousCoordinator",
     );
 
     // TOPIC DIVERSITY: Seed tracker and assign topics before processing
@@ -832,14 +831,14 @@ export class AutonomousCoordinator {
       if (tickResult.success) {
         const actionCount = Object.values(tickResult.actionsExecuted).reduce(
           (sum, count) => sum + count,
-          0
+          0,
         );
         totalActions += actionCount;
 
         logger.info(
           `Agent ${agent.displayName}: ${actionCount} actions in ${tickResult.duration}ms`,
           undefined,
-          'AutonomousCoordinator'
+          "AutonomousCoordinator",
         );
       } else {
         errors++;
@@ -881,7 +880,7 @@ export class AutonomousCoordinator {
       const noShares = Number(m.noShares || 1);
       const { yesPrice, noPrice } = getPredictionMarketPrices(
         yesShares,
-        noShares
+        noShares,
       );
       return {
         id: m.id,
@@ -894,7 +893,7 @@ export class AutonomousCoordinator {
     // Assign topics to agents
     await topicDiversityService.assignTopicsToAgents(
       agentIds,
-      marketsForTopics
+      marketsForTopics,
     );
 
     // Log stats
@@ -907,7 +906,7 @@ export class AutonomousCoordinator {
         topicsTracked: stats.topicsTracked,
         mostCovered: stats.mostCovered.slice(0, 3),
       },
-      'AutonomousCoordinator'
+      "AutonomousCoordinator",
     );
   }
 

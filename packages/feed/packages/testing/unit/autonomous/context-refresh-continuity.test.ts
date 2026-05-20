@@ -1,14 +1,14 @@
-import { describe, expect, mock, test } from 'bun:test';
+import { describe, expect, mock, test } from "bun:test";
 
-const _actualEngine = await import('@feed/engine');
+const _actualEngine = await import("@feed/engine");
 
 async function loadTemplateHelpers() {
-  mock.module('@feed/engine', () => ({
+  mock.module("@feed/engine", () => ({
     ..._actualEngine,
-    NPC_POST_QUALITY_RULES: '',
+    NPC_POST_QUALITY_RULES: "",
   }));
 
-  return import('../../../agents/src/autonomous/templates/multi-step-decision');
+  return import("../../../agents/src/autonomous/templates/multi-step-decision");
 }
 
 function createBaseContext(featuresTrading: string) {
@@ -29,36 +29,36 @@ function createBaseContext(featuresTrading: string) {
   };
 }
 
-describe('MultiStep Prompt Context Refresh Continuity', () => {
-  test('includes continuity section when context refresh summary exists', async () => {
+describe("MultiStep Prompt Context Refresh Continuity", () => {
+  test("includes continuity section when context refresh summary exists", async () => {
     const { Features, buildMultiStepDecisionPrompt } =
       await loadTemplateHelpers();
 
     const { prompt } = buildMultiStepDecisionPrompt({
-      agentName: 'Agent Test',
+      agentName: "Agent Test",
       iterationCount: 1,
       maxIterations: 5,
       traceActionResults: [],
       context: {
         ...createBaseContext(Features.TRADING),
         contextRefreshSummary:
-          'Runtime refreshed after 48h. Keep trading thesis continuity.',
+          "Runtime refreshed after 48h. Keep trading thesis continuity.",
       },
       shareTradeRoll: 0.9,
     });
 
-    expect(prompt).toContain('# Continuity Notes (Previous Runtime)');
+    expect(prompt).toContain("# Continuity Notes (Previous Runtime)");
     expect(prompt).toContain(
-      'Runtime refreshed after 48h. Keep trading thesis continuity.'
+      "Runtime refreshed after 48h. Keep trading thesis continuity.",
     );
   });
 
-  test('omits continuity section when no refresh summary is present', async () => {
+  test("omits continuity section when no refresh summary is present", async () => {
     const { Features, buildMultiStepDecisionPrompt } =
       await loadTemplateHelpers();
 
     const { prompt } = buildMultiStepDecisionPrompt({
-      agentName: 'Agent Test',
+      agentName: "Agent Test",
       iterationCount: 1,
       maxIterations: 5,
       traceActionResults: [],
@@ -66,6 +66,6 @@ describe('MultiStep Prompt Context Refresh Continuity', () => {
       shareTradeRoll: 0.9,
     });
 
-    expect(prompt).not.toContain('# Continuity Notes (Previous Runtime)');
+    expect(prompt).not.toContain("# Continuity Notes (Previous Runtime)");
   });
 });

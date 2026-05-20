@@ -6,13 +6,13 @@
  * authenticate() from auth-middleware.ts.
  */
 
-import { db, eq, users } from '@feed/db';
-import { jwtVerify } from 'jose';
-import { AuthenticationError } from '../../errors';
+import { db, eq, users } from "@feed/db";
+import { jwtVerify } from "jose";
+import { AuthenticationError } from "../../errors";
 
 function getStewardSecret(): Uint8Array {
   return new TextEncoder().encode(
-    process.env.STEWARD_JWT_SECRET ?? 'dev-jwt-secret-change-in-prod'
+    process.env.STEWARD_JWT_SECRET ?? "dev-jwt-secret-change-in-prod",
   );
 }
 
@@ -27,20 +27,20 @@ export type AuthedPrivyUserContext = {
  * Verifies a Steward JWT and returns user context.
  */
 export async function getAuthedUserContextFromPrivyToken(
-  token: string
+  token: string,
 ): Promise<AuthedPrivyUserContext> {
-  if (!token) throw new AuthenticationError('Missing token');
+  if (!token) throw new AuthenticationError("Missing token");
 
   let userId: string;
   try {
     const { payload } = await jwtVerify(token, getStewardSecret(), {
-      issuer: 'steward',
-      algorithms: ['HS256'],
+      issuer: "steward",
+      algorithms: ["HS256"],
     });
-    userId = String(payload['userId'] ?? '');
-    if (!userId) throw new Error('missing userId');
+    userId = String(payload.userId ?? "");
+    if (!userId) throw new Error("missing userId");
   } catch {
-    throw new AuthenticationError('Invalid or expired Steward token');
+    throw new AuthenticationError("Invalid or expired Steward token");
   }
 
   const [dbUser] = await db
@@ -49,7 +49,7 @@ export async function getAuthedUserContextFromPrivyToken(
     .where(eq(users.stewardId, userId))
     .limit(1);
 
-  if (!dbUser) throw new AuthenticationError('User not found');
+  if (!dbUser) throw new AuthenticationError("User not found");
 
   return {
     privyId: userId,

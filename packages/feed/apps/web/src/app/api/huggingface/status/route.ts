@@ -35,16 +35,16 @@
  * ```
  */
 
-import { withErrorHandling } from '@feed/api';
-import { logger } from '@feed/shared';
-import { huggingFaceIntegration } from '@feed/training';
-import { NextResponse } from 'next/server';
+import { withErrorHandling } from "@feed/api";
+import { logger } from "@feed/shared";
+import { huggingFaceIntegration } from "@feed/training";
+import { NextResponse } from "next/server";
 
 export const GET = withErrorHandling(async function GET() {
   logger.info(
-    'Fetching HuggingFace integration status',
+    "Fetching HuggingFace integration status",
     undefined,
-    'HuggingFaceStatus'
+    "HuggingFaceStatus",
   );
 
   // Get validation results
@@ -57,7 +57,7 @@ export const GET = withErrorHandling(async function GET() {
   const newData = await huggingFaceIntegration.hasNewDataToUpload();
 
   return NextResponse.json({
-    status: 'ok',
+    status: "ok",
     ready: validation.ready,
     validation: {
       issues: validation.issues,
@@ -67,13 +67,11 @@ export const GET = withErrorHandling(async function GET() {
     newDataAvailable: newData,
     environment: {
       hasToken: !!(process.env.HUGGING_FACE_TOKEN || process.env.HF_TOKEN),
-      datasetName:
-        process.env.HF_DATASET_NAME || 'feedlabs/agent-benchmarks',
+      datasetName: process.env.HF_DATASET_NAME || "feedlabs/agent-benchmarks",
       trajectoryDatasetName:
-        process.env.HF_TRAJECTORY_DATASET_NAME ||
-        'feedlabs/agent-trajectories',
-      modelNamePrefix: process.env.HF_MODEL_NAME || 'feedlabs/feed-agent',
+        process.env.HF_TRAJECTORY_DATASET_NAME || "feedlabs/agent-trajectories",
+      modelNamePrefix: process.env.HF_MODEL_NAME || "feedlabs/feed-agent",
     },
-    nextScheduledRun: 'Sundays at 2 AM UTC',
+    nextScheduledRun: "Sundays at 2 AM UTC",
   });
 });

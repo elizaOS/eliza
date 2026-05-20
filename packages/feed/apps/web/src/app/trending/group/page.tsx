@@ -1,26 +1,26 @@
-'use client';
+"use client";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
-import { logger } from '@feed/shared';
-import { ArrowLeft, TrendingUp } from 'lucide-react';
-import nextDynamic from 'next/dynamic';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
-import { PostCard } from '@/components/posts/PostCard';
-import { PageContainer } from '@/components/shared/PageContainer';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { apiUrl } from '@/utils/api-url';
+import { logger } from "@feed/shared";
+import { ArrowLeft, TrendingUp } from "lucide-react";
+import nextDynamic from "next/dynamic";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
+import { PostCard } from "@/components/posts/PostCard";
+import { PageContainer } from "@/components/shared/PageContainer";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { apiUrl } from "@/utils/api-url";
 
 const WidgetSidebar = nextDynamic(
   () =>
-    import('@/components/shared/WidgetSidebar').then((m) => ({
+    import("@/components/shared/WidgetSidebar").then((m) => ({
       default: m.WidgetSidebar,
     })),
   {
     ssr: false,
     loading: () => <div className="hidden w-96 flex-none xl:block" />,
-  }
+  },
 );
 
 interface PostData {
@@ -51,7 +51,7 @@ interface TagInfo {
 export default function GroupedTrendingPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const tagsParam = searchParams.get('tags') || '';
+  const tagsParam = searchParams.get("tags") || "";
   const [posts, setPosts] = useState<PostData[]>([]);
   const [loading, setLoading] = useState(true);
   const [tags, setTags] = useState<TagInfo[]>([]);
@@ -65,14 +65,14 @@ export default function GroupedTrendingPage() {
     setLoading(true);
 
     const response = await fetch(
-      apiUrl(`/api/trending/group?tags=${tagsParam}&limit=50`)
+      apiUrl(`/api/trending/group?tags=${tagsParam}&limit=50`),
     );
 
     if (!response.ok) {
       logger.warn(
-        'Failed to fetch grouped trending posts',
+        "Failed to fetch grouped trending posts",
         { tagsParam },
-        'GroupedTrendingPage'
+        "GroupedTrendingPage",
       );
       setLoading(false);
       return;
@@ -94,8 +94,8 @@ export default function GroupedTrendingPage() {
 
   const headerTitle =
     tags.length > 0
-      ? tags.map((t) => t.displayName).join(' · ')
-      : 'Grouped Trending';
+      ? tags.map((t) => t.displayName).join(" · ")
+      : "Grouped Trending";
 
   const headerCategory =
     tags.length > 0 && tags[0]?.category ? tags[0].category : null;

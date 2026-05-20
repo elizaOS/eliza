@@ -10,21 +10,21 @@
  *   feed document   Generate markdown reference from system metadata
  */
 
-import { defineCommand, runMain } from 'citty';
+import { defineCommand, runMain } from "citty";
 
 const main = defineCommand({
   meta: {
-    name: 'feed',
-    version: '0.1.0',
+    name: "feed",
+    version: "0.1.0",
     description:
-      'Feed Runtime — standalone system engine for the Feed simulation',
+      "Feed Runtime — standalone system engine for the Feed simulation",
   },
   subCommands: {
-    dev: () => import('./commands/dev').then((m) => m.default),
-    build: () => import('./commands/build').then((m) => m.default),
-    tick: () => import('./commands/tick').then((m) => m.default),
-    info: () => import('./commands/info').then((m) => m.default),
-    document: () => import('./commands/document').then((m) => m.default),
+    dev: () => import("./commands/dev").then((m) => m.default),
+    build: () => import("./commands/build").then((m) => m.default),
+    tick: () => import("./commands/tick").then((m) => m.default),
+    info: () => import("./commands/info").then((m) => m.default),
+    document: () => import("./commands/document").then((m) => m.default),
   },
 });
 

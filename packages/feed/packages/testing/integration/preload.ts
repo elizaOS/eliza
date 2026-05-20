@@ -10,19 +10,19 @@
  * @module testing/integration/preload
  */
 
-import { setDefaultTimeout } from 'bun:test';
+import { setDefaultTimeout } from "bun:test";
 
 // Set test environment first (before any imports)
 // Using bracket notation to bypass readonly property check
-(process.env as Record<string, string>)['NODE_ENV'] = 'test';
-(process.env as Record<string, string>)['BUN_ENV'] = 'test';
+(process.env as Record<string, string>).NODE_ENV = "test";
+(process.env as Record<string, string>).BUN_ENV = "test";
 
 setDefaultTimeout(30000);
 
 // Reduce LLM timeout for tests (30 seconds instead of default)
-process.env.LLM_TIMEOUT_MS = '30000';
+process.env.LLM_TIMEOUT_MS = "30000";
 
-import { db } from '@feed/db';
+import { db } from "@feed/db";
 
 /**
  * Global test lifecycle hooks for database isolation
@@ -40,18 +40,18 @@ async function cleanupStaleLocks(): Promise<void> {
 
   if (expiredLocks.count > 0) {
     console.log(
-      `[Test Preload] Cleaned up ${expiredLocks.count} expired generation locks`
+      `[Test Preload] Cleaned up ${expiredLocks.count} expired generation locks`,
     );
   }
 
   const testLocks = await db.generationLock.deleteMany({
     where: {
       OR: [
-        { id: { contains: 'test' } },
-        { lockedBy: { contains: 'test' } },
+        { id: { contains: "test" } },
+        { lockedBy: { contains: "test" } },
         {
           AND: [
-            { lockedBy: { startsWith: 'serverless-' } },
+            { lockedBy: { startsWith: "serverless-" } },
             { lockedAt: { lt: new Date(Date.now() - 15 * 60 * 1000) } },
           ],
         },
@@ -61,7 +61,7 @@ async function cleanupStaleLocks(): Promise<void> {
 
   if (testLocks.count > 0) {
     console.log(
-      `[Test Preload] Cleaned up ${testLocks.count} test-related locks`
+      `[Test Preload] Cleaned up ${testLocks.count} test-related locks`,
     );
   }
 }
@@ -73,10 +73,10 @@ async function cleanupTestData(): Promise<void> {
   const testUsers = await db.user.deleteMany({
     where: {
       OR: [
-        { username: { startsWith: 'test-' } },
-        { username: { startsWith: 'lock-test-' } },
-        { username: { startsWith: 'endpoint-lock-' } },
-        { username: { contains: 'integration-test' } },
+        { username: { startsWith: "test-" } },
+        { username: { startsWith: "lock-test-" } },
+        { username: { startsWith: "endpoint-lock-" } },
+        { username: { contains: "integration-test" } },
       ],
     },
   });
@@ -89,7 +89,7 @@ async function cleanupTestData(): Promise<void> {
   const oldTestQuestions = await db.question.deleteMany({
     where: {
       AND: [
-        { text: { startsWith: 'Integration test:' } },
+        { text: { startsWith: "Integration test:" } },
         { createdAt: { lt: new Date(Date.now() - 60 * 60 * 1000) } }, // older than 1 hour
       ],
     },
@@ -97,14 +97,14 @@ async function cleanupTestData(): Promise<void> {
 
   if (oldTestQuestions.count > 0) {
     console.log(
-      `[Test Preload] Cleaned up ${oldTestQuestions.count} old test questions`
+      `[Test Preload] Cleaned up ${oldTestQuestions.count} old test questions`,
     );
   }
 
   const oldTestMarkets = await db.market.deleteMany({
     where: {
       AND: [
-        { question: { startsWith: 'Integration test:' } },
+        { question: { startsWith: "Integration test:" } },
         { createdAt: { lt: new Date(Date.now() - 60 * 60 * 1000) } },
       ],
     },
@@ -112,7 +112,7 @@ async function cleanupTestData(): Promise<void> {
 
   if (oldTestMarkets.count > 0) {
     console.log(
-      `[Test Preload] Cleaned up ${oldTestMarkets.count} old test markets`
+      `[Test Preload] Cleaned up ${oldTestMarkets.count} old test markets`,
     );
   }
 }
@@ -131,43 +131,43 @@ export function isDatabaseAvailable(): boolean {
  * Initialize test environment
  */
 async function initializeTestEnvironment(): Promise<void> {
-  console.log('[Test Preload] Initializing integration test environment...');
+  console.log("[Test Preload] Initializing integration test environment...");
 
   // Verify database connection
   await db.$queryRaw`SELECT 1`;
-  console.log('[Test Preload] ✅ Database connection verified');
+  console.log("[Test Preload] ✅ Database connection verified");
   dbAvailable = true;
 
   // Clean up stale data from previous test runs
   await cleanupStaleLocks();
   await cleanupTestData();
 
-  console.log('[Test Preload] Integration test environment ready');
+  console.log("[Test Preload] Integration test environment ready");
 }
 
 /**
  * Graceful shutdown handler
  */
 async function gracefulShutdown(): Promise<void> {
-  console.log('[Test Preload] Shutting down test environment...');
+  console.log("[Test Preload] Shutting down test environment...");
 
   // Clean up any remaining test data
   await cleanupStaleLocks();
 
   // Disconnect database
   await db.$disconnect();
-  console.log('[Test Preload] Database disconnected');
+  console.log("[Test Preload] Database disconnected");
 }
 
 await initializeTestEnvironment();
 
 // Register shutdown handlers
-process.on('beforeExit', gracefulShutdown);
-process.on('SIGINT', async () => {
+process.on("beforeExit", gracefulShutdown);
+process.on("SIGINT", async () => {
   await gracefulShutdown();
   process.exit(0);
 });
-process.on('SIGTERM', async () => {
+process.on("SIGTERM", async () => {
   await gracefulShutdown();
   process.exit(0);
 });

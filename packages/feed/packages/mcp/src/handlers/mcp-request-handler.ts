@@ -5,9 +5,9 @@
  * Similar to A2A's JsonRpcTransportHandler
  */
 
-import type { JsonValue, StringRecord } from '@feed/shared';
-import { authenticateAgent } from '../auth/agent-auth';
-import { getAvailableTools, getInitializeResult } from '../server/mcp-server';
+import type { JsonValue, StringRecord } from "@feed/shared";
+import { authenticateAgent } from "../auth/agent-auth";
+import { getAvailableTools, getInitializeResult } from "../server/mcp-server";
 import type {
   InitializeParams,
   JsonRpcError,
@@ -18,9 +18,9 @@ import type {
   ToolCallParams,
   ToolCallResult,
   ToolsListResult,
-} from '../types/mcp';
-import { MCPMethod } from '../types/mcp';
-import { executeTool } from './tool-handlers';
+} from "../types/mcp";
+import { MCPMethod } from "../types/mcp";
+import { executeTool } from "./tool-handlers";
 
 /**
  * MCP Request Handler
@@ -34,7 +34,7 @@ export class MCPRequestHandler {
    */
   async handle(
     request: JsonRpcRequest,
-    authContext?: MCPAuthContext
+    authContext?: MCPAuthContext,
   ): Promise<JsonRpcResponse> {
     // Store auth context if provided
     if (authContext) {
@@ -55,7 +55,7 @@ export class MCPRequestHandler {
         return this.createErrorResponse(
           request.id,
           -32601,
-          `Method not found: ${request.method}`
+          `Method not found: ${request.method}`,
         );
     }
   }
@@ -64,7 +64,7 @@ export class MCPRequestHandler {
    * Handle initialize request
    */
   private async handleInitialize(
-    request: JsonRpcRequest
+    request: JsonRpcRequest,
   ): Promise<JsonRpcResponse> {
     const params = request.params as InitializeParams | undefined;
 
@@ -72,7 +72,7 @@ export class MCPRequestHandler {
       return this.createErrorResponse(
         request.id,
         -32602,
-        'Invalid params: initialize requires protocolVersion, capabilities, and clientInfo'
+        "Invalid params: initialize requires protocolVersion, capabilities, and clientInfo",
       );
     }
 
@@ -81,7 +81,7 @@ export class MCPRequestHandler {
       return this.createErrorResponse(
         request.id,
         -32602,
-        'Invalid params: protocolVersion is required'
+        "Invalid params: protocolVersion is required",
       );
     }
 
@@ -89,7 +89,7 @@ export class MCPRequestHandler {
     const result = getInitializeResult(params.protocolVersion);
 
     return {
-      jsonrpc: '2.0',
+      jsonrpc: "2.0",
       id: request.id,
       result: result as unknown as JsonRpcResult,
     };
@@ -100,7 +100,7 @@ export class MCPRequestHandler {
    */
   private async handlePing(request: JsonRpcRequest): Promise<JsonRpcResponse> {
     return {
-      jsonrpc: '2.0',
+      jsonrpc: "2.0",
       id: request.id,
       result: {} as JsonValue,
     };
@@ -110,7 +110,7 @@ export class MCPRequestHandler {
    * Handle tools/list request
    */
   private async handleToolsList(
-    request: JsonRpcRequest
+    request: JsonRpcRequest,
   ): Promise<JsonRpcResponse> {
     const tools = getAvailableTools();
     const result: ToolsListResult = {
@@ -118,7 +118,7 @@ export class MCPRequestHandler {
     };
 
     return {
-      jsonrpc: '2.0',
+      jsonrpc: "2.0",
       id: request.id,
       result: result as unknown as JsonRpcResult,
     };
@@ -128,24 +128,24 @@ export class MCPRequestHandler {
    * Handle tools/call request
    */
   private async handleToolsCall(
-    request: JsonRpcRequest
+    request: JsonRpcRequest,
   ): Promise<JsonRpcResponse> {
     // Require authentication for tool calls
     if (!this.authContext) {
       return this.createErrorResponse(
         request.id,
         -32000,
-        'Authentication required'
+        "Authentication required",
       );
     }
 
     const params = request.params as ToolCallParams | undefined;
 
-    if (!params || !params.name) {
+    if (!params?.name) {
       return this.createErrorResponse(
         request.id,
         -32602,
-        'Invalid params: tools/call requires name and arguments'
+        "Invalid params: tools/call requires name and arguments",
       );
     }
 
@@ -158,7 +158,7 @@ export class MCPRequestHandler {
       return this.createErrorResponse(
         request.id,
         -32001,
-        'Authentication failed'
+        "Authentication failed",
       );
     }
 
@@ -168,12 +168,12 @@ export class MCPRequestHandler {
       const toolResult = await executeTool(
         params.name,
         params.arguments as StringRecord<JsonValue>,
-        agent
+        agent,
       );
 
       // Convert tool result to MCP content format
       const content = this.convertToolResultToContent(
-        toolResult as unknown as JsonValue
+        toolResult as unknown as JsonValue,
       );
 
       const result: ToolCallResult = {
@@ -182,7 +182,7 @@ export class MCPRequestHandler {
       };
 
       return {
-        jsonrpc: '2.0',
+        jsonrpc: "2.0",
         id: request.id,
         result: result as unknown as JsonRpcResult,
       };
@@ -190,12 +190,12 @@ export class MCPRequestHandler {
       // Per MCP spec: Tool execution errors should be reported in tool results
       // with isError: true, not as JSON-RPC protocol errors
       const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error occurred';
+        error instanceof Error ? error.message : "Unknown error occurred";
 
       const result: ToolCallResult = {
         content: [
           {
-            type: 'text',
+            type: "text",
             text: `Tool execution failed: ${errorMessage}`,
           },
         ],
@@ -203,7 +203,7 @@ export class MCPRequestHandler {
       };
 
       return {
-        jsonrpc: '2.0',
+        jsonrpc: "2.0",
         id: request.id,
         result: result as unknown as JsonRpcResult,
       };
@@ -215,24 +215,24 @@ export class MCPRequestHandler {
    * Formats results as readable text content
    */
   private convertToolResultToContent(
-    toolResult: JsonValue
-  ): Array<{ type: 'text'; text: string }> {
+    toolResult: JsonValue,
+  ): Array<{ type: "text"; text: string }> {
     // Handle different result types
-    if (typeof toolResult === 'string') {
+    if (typeof toolResult === "string") {
       return [
         {
-          type: 'text' as const,
+          type: "text" as const,
           text: toolResult,
         },
       ];
     }
 
-    if (typeof toolResult === 'object' && toolResult !== null) {
+    if (typeof toolResult === "object" && toolResult !== null) {
       // Format object results as readable JSON
       const formatted = JSON.stringify(toolResult, null, 2);
       return [
         {
-          type: 'text' as const,
+          type: "text" as const,
           text: formatted,
         },
       ];
@@ -241,7 +241,7 @@ export class MCPRequestHandler {
     // Fallback: convert to string
     return [
       {
-        type: 'text' as const,
+        type: "text" as const,
         text: String(toolResult),
       },
     ];
@@ -254,7 +254,7 @@ export class MCPRequestHandler {
     id: string | number | null,
     code: number,
     message: string,
-    data?: JsonValue
+    data?: JsonValue,
   ): JsonRpcResponse {
     const error: JsonRpcError = {
       code,
@@ -263,7 +263,7 @@ export class MCPRequestHandler {
     };
 
     return {
-      jsonrpc: '2.0',
+      jsonrpc: "2.0",
       id,
       error,
     };

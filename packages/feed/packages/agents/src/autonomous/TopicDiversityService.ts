@@ -12,10 +12,10 @@
  * 5. Domain-aware limits - NPCs in different domains have separate topic pools
  */
 
-import { db, desc, gte, posts } from '@feed/db';
-import { StaticDataRegistry } from '@feed/engine';
-import { jaccardSimilarity } from '@feed/shared';
-import { logger } from '../shared/logger';
+import { db, desc, gte, posts } from "@feed/db";
+import { StaticDataRegistry } from "@feed/engine";
+import { jaccardSimilarity } from "@feed/shared";
+import { logger } from "../shared/logger";
 
 // =============================================================================
 // Types
@@ -42,7 +42,7 @@ interface TopicAssignment {
   /** Market ID if this is a prediction market topic */
   marketId?: string;
   /** Signal direction from arc plan (YES/NO/NEUTRAL) */
-  signalDirection?: 'YES' | 'NO' | 'NEUTRAL';
+  signalDirection?: "YES" | "NO" | "NEUTRAL";
   /** NPC's personality from their character data */
   personality?: string;
   /** NPC's post style from their character data */
@@ -99,16 +99,16 @@ const REPETITIVE_PHRASE_PATTERNS = [
 
 /** Angles for variety in posting - exported for use in prompt construction */
 export const POSTING_ANGLES = [
-  'contrarian', // Disagree with consensus
-  'analytical', // Data/numbers focused
-  'skeptical', // Question the narrative
-  'bullish', // Optimistic take
-  'bearish', // Pessimistic take
-  'humorous', // Joking/sarcastic
-  'insider', // Claim special knowledge
-  'historical', // Compare to past events
-  'questioning', // Ask a question
-  'declarative', // Bold statement
+  "contrarian", // Disagree with consensus
+  "analytical", // Data/numbers focused
+  "skeptical", // Question the narrative
+  "bullish", // Optimistic take
+  "bearish", // Pessimistic take
+  "humorous", // Joking/sarcastic
+  "insider", // Claim special knowledge
+  "historical", // Compare to past events
+  "questioning", // Ask a question
+  "declarative", // Bold statement
 ] as const;
 
 // =============================================================================
@@ -138,130 +138,130 @@ export class TopicDiversityService {
     // Normalize: lowercase, remove punctuation, extract key terms
     const normalized = content
       .toLowerCase()
-      .replace(/[^\w\s]/g, ' ')
-      .replace(/\s+/g, ' ')
+      .replace(/[^\w\s]/g, " ")
+      .replace(/\s+/g, " ")
       .trim();
 
     // Extract key nouns/entities (simple heuristic)
-    const words = normalized.split(' ');
+    const words = normalized.split(" ");
     const stopWords = new Set([
-      'the',
-      'a',
-      'an',
-      'is',
-      'are',
-      'was',
-      'were',
-      'be',
-      'been',
-      'being',
-      'have',
-      'has',
-      'had',
-      'do',
-      'does',
-      'did',
-      'will',
-      'would',
-      'could',
-      'should',
-      'may',
-      'might',
-      'must',
-      'shall',
-      'can',
-      'need',
-      'dare',
-      'ought',
-      'used',
-      'to',
-      'of',
-      'in',
-      'for',
-      'on',
-      'with',
-      'at',
-      'by',
-      'from',
-      'up',
-      'about',
-      'into',
-      'over',
-      'after',
-      'and',
-      'but',
-      'or',
-      'so',
-      'yet',
-      'both',
-      'either',
-      'neither',
-      'not',
-      'only',
-      'own',
-      'same',
-      'than',
-      'too',
-      'very',
-      'just',
-      'also',
-      'now',
-      'here',
-      'there',
-      'when',
-      'where',
-      'why',
-      'how',
-      'all',
-      'each',
-      'every',
-      'few',
-      'more',
-      'most',
-      'other',
-      'some',
-      'such',
-      'no',
-      'nor',
-      'as',
-      'if',
-      'then',
-      'because',
-      'while',
-      'although',
-      'though',
-      'whether',
-      'my',
-      'your',
-      'his',
-      'her',
-      'its',
-      'our',
-      'their',
-      'this',
-      'that',
-      'these',
-      'those',
-      'i',
-      'you',
-      'he',
-      'she',
-      'it',
-      'we',
-      'they',
-      'me',
-      'him',
-      'us',
-      'them',
+      "the",
+      "a",
+      "an",
+      "is",
+      "are",
+      "was",
+      "were",
+      "be",
+      "been",
+      "being",
+      "have",
+      "has",
+      "had",
+      "do",
+      "does",
+      "did",
+      "will",
+      "would",
+      "could",
+      "should",
+      "may",
+      "might",
+      "must",
+      "shall",
+      "can",
+      "need",
+      "dare",
+      "ought",
+      "used",
+      "to",
+      "of",
+      "in",
+      "for",
+      "on",
+      "with",
+      "at",
+      "by",
+      "from",
+      "up",
+      "about",
+      "into",
+      "over",
+      "after",
+      "and",
+      "but",
+      "or",
+      "so",
+      "yet",
+      "both",
+      "either",
+      "neither",
+      "not",
+      "only",
+      "own",
+      "same",
+      "than",
+      "too",
+      "very",
+      "just",
+      "also",
+      "now",
+      "here",
+      "there",
+      "when",
+      "where",
+      "why",
+      "how",
+      "all",
+      "each",
+      "every",
+      "few",
+      "more",
+      "most",
+      "other",
+      "some",
+      "such",
+      "no",
+      "nor",
+      "as",
+      "if",
+      "then",
+      "because",
+      "while",
+      "although",
+      "though",
+      "whether",
+      "my",
+      "your",
+      "his",
+      "her",
+      "its",
+      "our",
+      "their",
+      "this",
+      "that",
+      "these",
+      "those",
+      "i",
+      "you",
+      "he",
+      "she",
+      "it",
+      "we",
+      "they",
+      "me",
+      "him",
+      "us",
+      "them",
     ]);
 
     const keyTerms = words
       .filter((w) => w.length > 3 && !stopWords.has(w))
       .slice(0, 5)
       .sort()
-      .join('_');
+      .join("_");
 
-    return keyTerms || 'generic';
+    return keyTerms || "generic";
   }
 
   /**
@@ -278,11 +278,11 @@ export class TopicDiversityService {
   private getAgentPrimaryDomain(agentId: string): string {
     const actor = StaticDataRegistry.getActor(agentId);
     if (!actor || actor.domain.length === 0) {
-      return 'general';
+      return "general";
     }
     // Handle empty strings in domain array (e.g., [""])
     const firstDomain = actor.domain[0];
-    return firstDomain && firstDomain.trim() !== '' ? firstDomain : 'general';
+    return firstDomain && firstDomain.trim() !== "" ? firstDomain : "general";
   }
 
   /**
@@ -291,11 +291,11 @@ export class TopicDiversityService {
   private getAgentDomains(agentId: string): string[] {
     const actor = StaticDataRegistry.getActor(agentId);
     if (!actor || actor.domain.length === 0) {
-      return ['general'];
+      return ["general"];
     }
     // Filter out empty strings in domain array
-    const validDomains = actor.domain.filter((d) => d && d.trim() !== '');
-    return validDomains.length > 0 ? validDomains : ['general'];
+    const validDomains = actor.domain.filter((d) => d && d.trim() !== "");
+    return validDomains.length > 0 ? validDomains : ["general"];
   }
 
   /**
@@ -317,7 +317,7 @@ export class TopicDiversityService {
    */
   hasRepetitivePhrases(
     agentId: string,
-    content: string
+    content: string,
   ): { hasRepetition: boolean; repeatedPhrase?: string } {
     const contentPhrases = this.extractRepetitivePhrases(content);
     if (contentPhrases.length === 0) {
@@ -332,9 +332,9 @@ export class TopicDiversityService {
     // Check if any phrase has been used before
     for (const phrase of contentPhrases) {
       // Normalize for comparison
-      const normalizedPhrase = phrase.replace(/\d+/g, 'N'); // Replace numbers with N for pattern matching
+      const normalizedPhrase = phrase.replace(/\d+/g, "N"); // Replace numbers with N for pattern matching
       for (const historyPhrase of history.phrases) {
-        const normalizedHistory = historyPhrase.replace(/\d+/g, 'N');
+        const normalizedHistory = historyPhrase.replace(/\d+/g, "N");
         if (normalizedPhrase === normalizedHistory) {
           return { hasRepetition: true, repeatedPhrase: phrase };
         }
@@ -373,7 +373,7 @@ export class TopicDiversityService {
   recordTopicCoverage(
     agentId: string,
     content: string,
-    topicKey?: string
+    topicKey?: string,
   ): void {
     this.cleanupOldEntries();
 
@@ -417,7 +417,7 @@ export class TopicDiversityService {
    */
   canPostAboutTopic(
     agentId: string,
-    topicKey: string
+    topicKey: string,
   ): {
     canPost: boolean;
     reason?: string;
@@ -455,7 +455,7 @@ export class TopicDiversityService {
       if (otherDomains.length > 0) {
         return {
           canPost: false,
-          reason: `Too many ${agentDomain} voices on this topic. Try approaching from your ${otherDomains.join(' or ')} perspective instead.`,
+          reason: `Too many ${agentDomain} voices on this topic. Try approaching from your ${otherDomains.join(" or ")} perspective instead.`,
         };
       }
       return {
@@ -514,7 +514,7 @@ export class TopicDiversityService {
     const similarityCheck = this.isTooSimilarToRecent(content);
     if (similarityCheck.isSimilar) {
       issues.push(
-        `Content is ${Math.round((similarityCheck.similarity ?? 0) * 100)}% similar to a recent post. Add your unique take.`
+        `Content is ${Math.round((similarityCheck.similarity ?? 0) * 100)}% similar to a recent post. Add your unique take.`,
       );
     }
 
@@ -522,7 +522,7 @@ export class TopicDiversityService {
     const phraseCheck = this.hasRepetitivePhrases(agentId, content);
     if (phraseCheck.hasRepetition) {
       issues.push(
-        `You've used the phrase pattern "${phraseCheck.repeatedPhrase}" recently. Try a different angle or phrasing.`
+        `You've used the phrase pattern "${phraseCheck.repeatedPhrase}" recently. Try a different angle or phrasing.`,
       );
     }
 
@@ -536,7 +536,7 @@ export class TopicDiversityService {
    */
   async assignTopicsToAgents(
     agentIds: string[],
-    availableMarkets: PredictionMarketForTopic[]
+    availableMarkets: PredictionMarketForTopic[],
   ): Promise<Map<string, TopicAssignment>> {
     this.cleanupOldEntries();
     this.agentAssignments.clear();
@@ -552,7 +552,7 @@ export class TopicDiversityService {
       if (!agentId) continue;
 
       const agentDomains = this.getAgentDomains(agentId);
-      const primaryDomain = agentDomains[0] ?? 'general';
+      const primaryDomain = agentDomains[0] ?? "general";
 
       // Score each market for THIS agent
       const marketScores = availableMarkets.map((market) => {
@@ -565,11 +565,11 @@ export class TopicDiversityService {
         // Freshness: prefer topics not covered much in their domain
         const domainFreshness = Math.max(
           0,
-          MAX_TOPIC_COVERAGE_PER_DOMAIN - domainCount
+          MAX_TOPIC_COVERAGE_PER_DOMAIN - domainCount,
         );
         const globalFreshness = Math.max(
           0,
-          MAX_TOPIC_COVERAGE_GLOBAL - globalCount
+          MAX_TOPIC_COVERAGE_GLOBAL - globalCount,
         );
 
         // Relevance: check if market keywords match agent domains
@@ -620,7 +620,7 @@ export class TopicDiversityService {
         marketsAvailable: availableMarkets.length,
         assignmentCount: this.agentAssignments.size,
       },
-      'TopicDiversityService'
+      "TopicDiversityService",
     );
 
     return this.agentAssignments;
@@ -660,7 +660,7 @@ export class TopicDiversityService {
         topicsTracked: this.topicCoverage.size,
         agentsWithPhraseHistory: this.agentPhraseHistory.size,
       },
-      'TopicDiversityService'
+      "TopicDiversityService",
     );
   }
 
@@ -673,12 +673,12 @@ export class TopicDiversityService {
   getDiversityInstructions(agentId: string): string {
     const assignment = this.agentAssignments.get(agentId);
     const agentDomains = this.getAgentDomains(agentId);
-    const primaryDomain = agentDomains[0] ?? 'general';
+    const primaryDomain = agentDomains[0] ?? "general";
 
     // Get NPC's actual character data
     const actor = StaticDataRegistry.getActor(agentId);
     const personality =
-      actor?.personality || assignment?.personality || 'unique';
+      actor?.personality || assignment?.personality || "unique";
     const postStyle = actor?.postStyle || assignment?.postStyle;
 
     // Find topics that are over-covered in this NPC's domain
@@ -699,9 +699,9 @@ export class TopicDiversityService {
 # PLAY THE GAME - MIX IT UP
 
 ## Your Personality: ${personality.toUpperCase()}
-${postStyle ? `Your posting style: ${postStyle}` : ''}
+${postStyle ? `Your posting style: ${postStyle}` : ""}
 
-## Your Domain Expertise: ${agentDomains.join(', ').toUpperCase()}
+## Your Domain Expertise: ${agentDomains.join(", ").toUpperCase()}
 Use your unique ${primaryDomain} perspective. Don't just repeat what others say.
 
 ## What to Do This Tick (pick what feels natural):
@@ -719,8 +719,8 @@ ${
     ? overCoveredInDomain
         .slice(0, 3)
         .map((t) => `- ${t}`)
-        .join('\n')
-    : '- None - you have fresh topics available!'
+        .join("\n")
+    : "- None - you have fresh topics available!"
 }
 
 ## Topics Covered A Lot Globally (bring a fresh angle if covering):
@@ -729,8 +729,8 @@ ${
     ? overCoveredGlobally
         .slice(0, 3)
         .map((t) => `- ${t}`)
-        .join('\n')
-    : '- None currently'
+        .join("\n")
+    : "- None currently"
 }
 
 ## Post Ideas Based on YOUR Character:

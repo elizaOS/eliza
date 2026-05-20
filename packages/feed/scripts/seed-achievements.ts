@@ -18,18 +18,18 @@ import {
   challengeDefinitions,
   closeDatabase,
   db,
-} from '@feed/db';
+} from "@feed/db";
 import {
   ACHIEVEMENT_DEFINITIONS,
   ALL_CHALLENGE_DEFINITIONS,
   logger,
-} from '@feed/shared';
+} from "@feed/shared";
 
 async function main(): Promise<void> {
   logger.info(
-    'Seeding achievement definitions...',
+    "Seeding achievement definitions...",
     undefined,
-    'SeedAchievements'
+    "SeedAchievements",
   );
 
   // Upsert achievement definitions
@@ -67,7 +67,7 @@ async function main(): Promise<void> {
   logger.info(
     `Seeded ${ACHIEVEMENT_DEFINITIONS.length} achievement definitions`,
     undefined,
-    'SeedAchievements'
+    "SeedAchievements",
   );
 
   // Upsert challenge definitions
@@ -105,15 +105,15 @@ async function main(): Promise<void> {
   logger.info(
     `Seeded ${ALL_CHALLENGE_DEFINITIONS.length} challenge definitions`,
     undefined,
-    'SeedAchievements'
+    "SeedAchievements",
   );
 
-  logger.info('Achievement seed complete!', undefined, 'SeedAchievements');
+  logger.info("Achievement seed complete!", undefined, "SeedAchievements");
 }
 
 main()
   .catch((error) => {
-    logger.error('Failed to seed achievements', { error }, 'SeedAchievements');
+    logger.error("Failed to seed achievements", { error }, "SeedAchievements");
     process.exit(1);
   })
   .finally(() => closeDatabase());

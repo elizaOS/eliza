@@ -5,10 +5,10 @@
  * so process.env is populated and available inside feed.config.ts.
  */
 
-import { execSync } from 'node:child_process';
-import { type ConfigWatcher, loadConfig, watchConfig } from 'c12';
-import type { FeedConfig } from './augments';
-import type { TickPhase } from './types';
+import { execSync } from "node:child_process";
+import { type ConfigWatcher, loadConfig, watchConfig } from "c12";
+import type { FeedConfig } from "./augments";
+import type { TickPhase } from "./types";
 
 type IsEmpty<T> = keyof T extends never ? true : false;
 
@@ -17,9 +17,9 @@ let _repoRoot: string | undefined | null = null;
 function findRepoRoot(from?: string): string | undefined {
   if (_repoRoot !== null) return _repoRoot;
   try {
-    _repoRoot = execSync('git rev-parse --show-toplevel', {
+    _repoRoot = execSync("git rev-parse --show-toplevel", {
       cwd: from ?? process.cwd(),
-      encoding: 'utf-8',
+      encoding: "utf-8",
       timeout: 3000,
     }).trim();
   } catch {
@@ -66,7 +66,7 @@ export type FeedRuntimeConfig = FeedRuntimeConfigBase &
     : FeedConfig & { [key: string]: unknown });
 
 export const defaultConfig: FeedRuntimeConfig = {
-  systemsDir: './systems',
+  systemsDir: "./systems",
   budgetMs: 60_000,
   dev: {
     watch: true,
@@ -75,13 +75,13 @@ export const defaultConfig: FeedRuntimeConfig = {
 };
 
 export async function loadFeedConfig(
-  cwd?: string
+  cwd?: string,
 ): Promise<{ config: FeedRuntimeConfig; configFile?: string }> {
   const configCwd = cwd ?? process.cwd();
   const repoRoot = findRepoRoot(configCwd);
 
   const resolved = await loadConfig<FeedRuntimeConfig>({
-    name: 'feed',
+    name: "feed",
     cwd: configCwd,
     defaults: defaultConfig,
     rcFile: false,
@@ -97,13 +97,13 @@ export async function loadFeedConfig(
 
 export async function watchFeedConfig(
   cwd?: string,
-  onUpdate?: (config: FeedRuntimeConfig) => void
+  onUpdate?: (config: FeedRuntimeConfig) => void,
 ): Promise<ConfigWatcher<FeedRuntimeConfig>> {
   const configCwd = cwd ?? process.cwd();
   const repoRoot = findRepoRoot(configCwd);
 
   const watcher = await watchConfig<FeedRuntimeConfig>({
-    name: 'feed',
+    name: "feed",
     cwd: configCwd,
     defaults: defaultConfig,
     rcFile: false,
@@ -119,8 +119,6 @@ export async function watchFeedConfig(
   return watcher;
 }
 
-export function defineFeedConfig(
-  config: FeedRuntimeConfig
-): FeedRuntimeConfig {
+export function defineFeedConfig(config: FeedRuntimeConfig): FeedRuntimeConfig {
   return config;
 }

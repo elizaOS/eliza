@@ -1,10 +1,10 @@
-'use client';
+"use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { TutorialState } from '@/components/tutorial/SpotlightTutorial';
-import { DESKTOP_STEPS, MOBILE_STEPS } from './steps';
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { TutorialState } from "@/components/tutorial/SpotlightTutorial";
+import { DESKTOP_STEPS, MOBILE_STEPS } from "./steps";
 
-const STORAGE_KEY = 'feed-markets-tutorial-completed';
+const STORAGE_KEY = "feed-markets-tutorial-completed";
 const AUTO_START_DELAY = 500;
 
 export type MarketsTutorialState = TutorialState;
@@ -14,7 +14,7 @@ interface UseMarketsTutorialOptions {
 }
 
 export function useMarketsTutorial(
-  options?: UseMarketsTutorialOptions
+  options?: UseMarketsTutorialOptions,
 ): MarketsTutorialState {
   const [isActive, setIsActive] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
@@ -23,15 +23,15 @@ export function useMarketsTutorial(
   onBeforeStartRef.current = options?.onBeforeStart;
 
   const steps = useMemo(() => {
-    if (typeof window === 'undefined') return DESKTOP_STEPS;
-    return window.matchMedia('(min-width: 768px)').matches
+    if (typeof window === "undefined") return DESKTOP_STEPS;
+    return window.matchMedia("(min-width: 768px)").matches
       ? DESKTOP_STEPS
       : MOBILE_STEPS;
   }, []);
 
   // Check localStorage on mount
   useEffect(() => {
-    const completed = localStorage.getItem(STORAGE_KEY) === 'true';
+    const completed = localStorage.getItem(STORAGE_KEY) === "true";
     setHasCompleted(completed);
 
     if (!completed) {
@@ -46,7 +46,7 @@ export function useMarketsTutorial(
   }, []);
 
   const markCompleted = useCallback(() => {
-    localStorage.setItem(STORAGE_KEY, 'true');
+    localStorage.setItem(STORAGE_KEY, "true");
     setHasCompleted(true);
   }, []);
 

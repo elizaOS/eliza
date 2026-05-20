@@ -1,8 +1,8 @@
-import type { JsonValue } from '@feed/shared';
-import { type UUID } from '@elizaos/core';
+import type { UUID } from "@elizaos/core";
+import type { JsonValue } from "@feed/shared";
 
 export interface ScamAnalysis {
-  schemaVersion: 'scam-analysis-v1';
+  schemaVersion: "scam-analysis-v1";
   isScamSuspected: boolean;
   threatFamily: string;
   evidence: string[];
@@ -36,7 +36,7 @@ export interface LLMCall {
   privateAnalysis?: ScamAnalysis;
   reasoningAvailable?: boolean;
   reasoningSource?: string;
-  traceVisibility?: 'private' | 'public';
+  traceVisibility?: "private" | "public";
   rawReasoningTrace?: string;
 
   // Parameters
@@ -50,7 +50,7 @@ export interface LLMCall {
   latencyMs?: number;
 
   // Context
-  purpose: 'action' | 'reasoning' | 'evaluation' | 'response' | 'other';
+  purpose: "action" | "reasoning" | "evaluation" | "response" | "other";
   actionType?: string; // e.g., 'post', 'trade', 'comment'
 }
 
@@ -84,7 +84,7 @@ export interface ActionAttempt {
   privateAnalysis?: ScamAnalysis;
   reasoningAvailable?: boolean;
   reasoningSource?: string;
-  traceVisibility?: 'private' | 'public';
+  traceVisibility?: "private" | "public";
 
   // Outcome
   success: boolean;
@@ -143,12 +143,12 @@ export interface EnvironmentState {
  */
 export interface CounterpartyContext {
   counterpartyId?: string;
-  counterpartyAlignment?: 'good' | 'neutral' | 'evil';
-  counterpartyTeam?: 'red' | 'blue' | 'gray';
+  counterpartyAlignment?: "good" | "neutral" | "evil";
+  counterpartyTeam?: "red" | "blue" | "gray";
   /** Admin = system-verified, team = same-team agent, none = unknown/cross-team */
-  senderRole?: 'admin' | 'team' | 'none';
+  senderRole?: "admin" | "team" | "none";
   /** Ground-truth intent of the counterparty in this interaction */
-  interactionIntent?: 'attack' | 'legitimate' | 'neutral';
+  interactionIntent?: "attack" | "legitimate" | "neutral";
   isVerifiedAdmin?: boolean;
 }
 
@@ -245,7 +245,7 @@ export interface Trajectory {
   // Outcome metrics
   metrics: {
     episodeLength: number;
-    finalStatus: 'completed' | 'terminated' | 'error' | 'timeout';
+    finalStatus: "completed" | "terminated" | "error" | "timeout";
 
     // Performance metrics
     finalBalance?: number;
@@ -268,8 +268,8 @@ export interface Trajectory {
     agentVersion?: string;
 
     // Agent alignment context (ground truth from character roster)
-    agentAlignment?: 'good' | 'neutral' | 'evil';
-    agentTeam?: 'red' | 'blue' | 'gray';
+    agentAlignment?: "good" | "neutral" | "evil";
+    agentTeam?: "red" | "blue" | "gray";
     agentScamProfile?: string; // hunter | wary | gullible | etc.
 
     // Environment config
@@ -307,7 +307,7 @@ export interface Trajectory {
  * This is what ART/GRPO actually trains on
  */
 export interface ChatMessage {
-  role: 'system' | 'user' | 'assistant';
+  role: "system" | "user" | "assistant";
   content: string;
   name?: string;
 }
@@ -351,15 +351,15 @@ export interface ARTTrajectory {
     metrics?: Record<string, JsonValue>;
 
     // Agent alignment (for offline RL reward relabeling)
-    agentAlignment?: 'good' | 'neutral' | 'evil';
-    agentTeam?: 'red' | 'blue' | 'gray';
+    agentAlignment?: "good" | "neutral" | "evil";
+    agentTeam?: "red" | "blue" | "gray";
 
     // Per-step counterparty labels (parallel array to messages)
     stepCounterparties?: Array<{
-      counterpartyAlignment?: 'good' | 'neutral' | 'evil';
-      counterpartyTeam?: 'red' | 'blue' | 'gray';
-      senderRole?: 'admin' | 'team' | 'none';
-      interactionIntent?: 'attack' | 'legitimate' | 'neutral';
+      counterpartyAlignment?: "good" | "neutral" | "evil";
+      counterpartyTeam?: "red" | "blue" | "gray";
+      senderRole?: "admin" | "team" | "none";
+      interactionIntent?: "attack" | "legitimate" | "neutral";
     } | null>;
 
     [key: string]: JsonValue | undefined;

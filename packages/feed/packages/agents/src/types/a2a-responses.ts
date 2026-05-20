@@ -4,7 +4,7 @@
  * Strongly typed responses for A2A protocol methods
  */
 
-import type { JsonValue } from './common';
+import type { JsonValue } from "./common";
 
 /**
  * Balance response from a2a.getBalance
@@ -24,7 +24,7 @@ export interface A2AMarketPosition {
   id: string;
   marketId: string;
   question: string;
-  side: 'YES' | 'NO';
+  side: "YES" | "NO";
   shares: number;
   avgPrice: number;
   currentPrice: number;
@@ -37,7 +37,7 @@ export interface A2AMarketPosition {
 export interface A2APerpPosition {
   id: string;
   ticker: string;
-  side: 'long' | 'short';
+  side: "long" | "short";
   size: number;
   amount?: number;
   entryPrice: number;
@@ -239,7 +239,7 @@ export interface A2ATradeHistoryEntry {
   id: string;
   marketId?: string;
   ticker?: string;
-  type: 'prediction' | 'perp';
+  type: "prediction" | "perp";
   action: string;
   amount: number;
   price: number;

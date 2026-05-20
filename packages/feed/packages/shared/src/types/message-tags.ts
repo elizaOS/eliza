@@ -7,21 +7,21 @@
 
 /** Tag types that can appear on messages */
 export type MessageTagType =
-  | 'perps' // Perpetual markets list
-  | 'predictions' // Prediction markets list
-  | 'post' // Single post detail
-  | 'feed' // Feed posts list
-  | 'agent-pnl' // Agent's P&L (balance, positions, trades)
-  | 'owner-pnl'; // Owner's P&L (user's portfolio)
+  | "perps" // Perpetual markets list
+  | "predictions" // Prediction markets list
+  | "post" // Single post detail
+  | "feed" // Feed posts list
+  | "agent-pnl" // Agent's P&L (balance, positions, trades)
+  | "owner-pnl"; // Owner's P&L (user's portfolio)
 
 /** Lucide icon names used for tags */
 export type MessageTagIcon =
-  | 'TrendingUp' // perps
-  | 'Target' // predictions
-  | 'FileText' // post
-  | 'Newspaper' // feed
-  | 'Wallet' // agent-pnl
-  | 'PiggyBank'; // owner-pnl
+  | "TrendingUp" // perps
+  | "Target" // predictions
+  | "FileText" // post
+  | "Newspaper" // feed
+  | "Wallet" // agent-pnl
+  | "PiggyBank"; // owner-pnl
 
 /** Mapping from tag type to its specific data payload */
 interface TagDataMap {
@@ -29,8 +29,8 @@ interface TagDataMap {
   predictions: PredictionsTagData;
   post: PostTagData;
   feed: FeedTagData;
-  'agent-pnl': PnlTagData;
-  'owner-pnl': PnlTagData;
+  "agent-pnl": PnlTagData;
+  "owner-pnl": PnlTagData;
 }
 
 /** Base tag structure with common fields */
@@ -49,12 +49,12 @@ interface MessageTagBase<T extends MessageTagType> {
 
 /** Tag attached to a message - discriminated union based on type */
 export type MessageTag =
-  | MessageTagBase<'perps'>
-  | MessageTagBase<'predictions'>
-  | MessageTagBase<'post'>
-  | MessageTagBase<'feed'>
-  | MessageTagBase<'agent-pnl'>
-  | MessageTagBase<'owner-pnl'>;
+  | MessageTagBase<"perps">
+  | MessageTagBase<"predictions">
+  | MessageTagBase<"post">
+  | MessageTagBase<"feed">
+  | MessageTagBase<"agent-pnl">
+  | MessageTagBase<"owner-pnl">;
 
 /** Action button for system messages */
 export interface MessageAction {
@@ -122,7 +122,7 @@ export interface PredictionsTagData {
   /** Single prediction details (for specific market view) */
   prediction?: PredictionMarketData;
   /** Status filter used (only for list view) */
-  status?: 'active' | 'resolved' | 'all';
+  status?: "active" | "resolved" | "all";
 }
 
 /** Data for post tag */
@@ -238,7 +238,7 @@ export interface PnlTagData {
     /** Trade action: 'open' or 'close' */
     action: string;
     /** Market type: 'prediction' or 'perpetual' */
-    marketType: 'prediction' | 'perpetual';
+    marketType: "prediction" | "perpetual";
     /** Market ID for linking (prediction market ID or perp ticker) */
     marketId: string;
     /** Human-readable display name (market question or perp ticker) */

@@ -5,7 +5,7 @@
  * Uses the secret key for server-to-server communication.
  */
 
-import Stripe from 'stripe';
+import Stripe from "stripe";
 
 /**
  * Lazily initialized Stripe instance
@@ -27,10 +27,10 @@ let _stripe: Stripe | null = null;
 export function getStripeInstance(): Stripe {
   if (!_stripe) {
     if (!process.env.STRIPE_SECRET_KEY) {
-      throw new Error('STRIPE_SECRET_KEY environment variable is required');
+      throw new Error("STRIPE_SECRET_KEY environment variable is required");
     }
     _stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-      apiVersion: '2026-02-25.clover',
+      apiVersion: "2026-02-25.clover",
       typescript: true,
     });
   }
@@ -63,7 +63,7 @@ export const POINTS_CONFIG = {
   POINTS_PER_DOLLAR: 100,
   MIN_AMOUNT_USD: 1,
   MAX_AMOUNT_USD: 1000,
-  CURRENCY: 'usd',
+  CURRENCY: "usd",
 } as const;
 
 /**
@@ -105,11 +105,11 @@ export function validatePurchaseAmount(amountUSD: number): {
  * users to malicious sites after checkout.
  */
 const ALLOWED_REDIRECT_ORIGINS = [
-  'https://feed.market',
-  'https://www.feed.market',
-  'https://staging.feed.market',
-  'http://localhost:3000',
-  'http://localhost:3001',
+  "https://feed.market",
+  "https://www.feed.market",
+  "https://staging.feed.market",
+  "http://localhost:3000",
+  "http://localhost:3001",
 ];
 
 /**
@@ -154,7 +154,7 @@ export function getBaseUrl(requestOrigin?: string): string {
     return `https://${process.env.VERCEL_URL}`;
   }
 
-  return 'http://localhost:3000';
+  return "http://localhost:3000";
 }
 
 /**
@@ -164,15 +164,15 @@ export function getBaseUrl(requestOrigin?: string): string {
  */
 export function constructWebhookEvent(
   payload: string,
-  signature: string
+  signature: string,
 ): Stripe.Event {
   if (!process.env.STRIPE_WEBHOOK_SECRET) {
-    throw new Error('STRIPE_WEBHOOK_SECRET environment variable is required');
+    throw new Error("STRIPE_WEBHOOK_SECRET environment variable is required");
   }
 
   return stripe.webhooks.constructEvent(
     payload,
     signature,
-    process.env.STRIPE_WEBHOOK_SECRET
+    process.env.STRIPE_WEBHOOK_SECRET,
   );
 }

@@ -1,64 +1,64 @@
-'use client';
+"use client";
 
-import type { FeedPost } from '@feed/shared';
-import { logger } from '@feed/shared';
-import { AlertCircle, Loader2 } from 'lucide-react';
-import dynamic from 'next/dynamic';
-import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { InlineComposer } from '@/components/feed/InlineComposer';
+import type { FeedPost } from "@feed/shared";
+import { logger } from "@feed/shared";
+import { AlertCircle, Loader2 } from "lucide-react";
+import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { InlineComposer } from "@/components/feed/InlineComposer";
 import {
   TopGainerCard,
   TopLoserCard,
-} from '@/components/notifications/FeedSignalCards';
-import { FeedToggle } from '@/components/shared/FeedToggle';
-import { PageContainer } from '@/components/shared/PageContainer';
-import { PullToRefreshIndicator } from '@/components/shared/PullToRefreshIndicator';
-import { FeedSkeleton } from '@/components/shared/Skeleton';
-import { useWidgetRefresh } from '@/contexts/WidgetRefreshContext';
-import { useAuth } from '@/hooks/useAuth';
-import { useErrorToasts } from '@/hooks/useErrorToasts';
-import { useFeedSignalCards } from '@/hooks/useFeedSignalCards';
-import { usePullToRefresh } from '@/hooks/usePullToRefresh';
-import { useFeedStore } from '@/stores/feedStore';
-import { useGameStore } from '@/stores/gameStore';
-import { apiUrl } from '@/utils/api-url';
+} from "@/components/notifications/FeedSignalCards";
+import { FeedToggle } from "@/components/shared/FeedToggle";
+import { PageContainer } from "@/components/shared/PageContainer";
+import { PullToRefreshIndicator } from "@/components/shared/PullToRefreshIndicator";
+import { FeedSkeleton } from "@/components/shared/Skeleton";
+import { useWidgetRefresh } from "@/contexts/WidgetRefreshContext";
+import { useAuth } from "@/hooks/useAuth";
+import { useErrorToasts } from "@/hooks/useErrorToasts";
+import { useFeedSignalCards } from "@/hooks/useFeedSignalCards";
+import { usePullToRefresh } from "@/hooks/usePullToRefresh";
+import { useFeedStore } from "@/stores/feedStore";
+import { useGameStore } from "@/stores/gameStore";
+import { apiUrl } from "@/utils/api-url";
 import {
   DailyTopicBanner,
   EmptyFeed,
   ForYouFeedList,
   MixedFeedList,
   PostList,
-} from './components';
+} from "./components";
 import {
   useFeedPosts,
   useFollowingPosts,
   useForYouFeed,
   useNewMarkets,
   useStoriesFeed,
-} from './hooks';
+} from "./hooks";
 
 // Performance: Lazy load heavy components
 const WidgetSidebar = dynamic(
   () =>
-    import('@/components/shared/WidgetSidebar').then((m) => ({
+    import("@/components/shared/WidgetSidebar").then((m) => ({
       default: m.WidgetSidebar,
     })),
   {
     ssr: false,
     loading: () => <div className="hidden w-96 flex-none xl:block" />,
-  }
+  },
 );
 
 const TradesFeed = dynamic(
   () =>
-    import('@/components/trades/TradesFeed').then((m) => ({
+    import("@/components/trades/TradesFeed").then((m) => ({
       default: m.TradesFeed,
     })),
-  { ssr: false }
+  { ssr: false },
 );
 
-type FeedTab = 'latest' | 'stories' | 'forYou' | 'following' | 'trades';
+type FeedTab = "latest" | "stories" | "forYou" | "following" | "trades";
 
 function ForYouFeedError({ onRetry }: { onRetry: () => Promise<void> }) {
   const [isRetrying, setIsRetrying] = useState(false);
@@ -96,7 +96,7 @@ function ForYouFeedError({ onRetry }: { onRetry: () => Promise<void> }) {
         className="inline-flex items-center gap-2 rounded-md bg-primary px-6 py-2 font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
       >
         {isRetrying && <Loader2 className="h-4 w-4 animate-spin" />}
-        {isRetrying ? 'Retrying…' : 'Retry'}
+        {isRetrying ? "Retrying…" : "Retry"}
       </button>
     </div>
   );
@@ -123,7 +123,7 @@ export function FeedClient() {
     useFeedStore();
 
   // Tab state
-  const [tab, setTab] = useState<FeedTab>('forYou');
+  const [tab, setTab] = useState<FeedTab>("forYou");
 
   // Actor names for display
   const [actorNames, setActorNames] = useState<Map<string, string>>(new Map());
@@ -144,10 +144,10 @@ export function FeedClient() {
     fetchPosts,
     refresh: refreshLatest,
     addOptimisticPost,
-  } = useFeedPosts({ enabled: tab === 'latest' });
+  } = useFeedPosts({ enabled: tab === "latest" });
 
   const { posts: followingPosts, loading: followingLoading } =
-    useFollowingPosts({ enabled: tab === 'following' });
+    useFollowingPosts({ enabled: tab === "following" });
 
   const {
     topic: storiesTopic,
@@ -159,7 +159,7 @@ export function FeedClient() {
     error: storiesError,
     refresh: refreshStories,
     loadMore: loadMoreStories,
-  } = useStoriesFeed({ enabled: tab === 'stories' });
+  } = useStoriesFeed({ enabled: tab === "stories" });
 
   const {
     stories: forYouStories,
@@ -170,7 +170,7 @@ export function FeedClient() {
     error: forYouError,
     refresh: refreshForYou,
     loadMore: loadMoreForYou,
-  } = useForYouFeed({ enabled: tab === 'forYou' });
+  } = useForYouFeed({ enabled: tab === "forYou" });
 
   // Feed signal cards (gainer / loser) — latest tab only
   const { gainerCard, loserCard } = useFeedSignalCards();
@@ -178,7 +178,7 @@ export function FeedClient() {
   // New market cards shown at the top of Latest and Hot tabs
   // New market cards only appear on the Latest tab, chronologically merged.
   // Stories and Following tabs show no market cards.
-  const { markets: newMarkets } = useNewMarkets(tab === 'latest');
+  const { markets: newMarkets } = useNewMarkets(tab === "latest");
 
   // Game timeline posts (viewer mode fallback)
   const { allGames, startTime, currentTimeMs } = useGameStore();
@@ -223,30 +223,30 @@ export function FeedClient() {
 
   // Select posts based on current tab (Stories uses its own story renderer)
   const currentPosts = useMemo(() => {
-    if (tab === 'following') return followingPosts;
+    if (tab === "following") return followingPosts;
     if (latestPosts.length > 0) return latestPosts;
     if (startTime && allGames.length > 0) return timelinePosts;
     return latestPosts;
   }, [tab, latestPosts, followingPosts, timelinePosts, startTime, allGames]);
 
   const isLoading =
-    (tab === 'latest' && latestLoading) ||
+    (tab === "latest" && latestLoading) ||
     // Show skeleton while Stories/For You tab hasn't completed its first fetch,
     // preventing the empty-state flash between tab switch and the async effect.
-    (tab === 'stories' && (storiesLoading || !storiesReady)) ||
-    (tab === 'forYou' && (forYouLoading || !forYouReady)) ||
-    (tab === 'following' && followingLoading);
+    (tab === "stories" && (storiesLoading || !storiesReady)) ||
+    (tab === "forYou" && (forYouLoading || !forYouReady)) ||
+    (tab === "following" && followingLoading);
 
   // Load actor names — fire-and-forget, falls back to authorId on failure
   useEffect(() => {
     const loadActorNames = async () => {
       try {
-        const response = await fetch(apiUrl('/api/actors'));
+        const response = await fetch(apiUrl("/api/actors"));
         if (!response.ok) {
           logger.warn(
-            'Failed to load actor names',
+            "Failed to load actor names",
             { status: response.status },
-            'FeedClient'
+            "FeedClient",
           );
           return;
         }
@@ -259,7 +259,7 @@ export function FeedClient() {
         });
         setActorNames(nameMap);
       } catch (err) {
-        logger.warn('Error loading actor names', { error: err }, 'FeedClient');
+        logger.warn("Error loading actor names", { error: err }, "FeedClient");
       }
     };
     void loadActorNames();
@@ -283,12 +283,12 @@ export function FeedClient() {
 
   // Pull-to-refresh
   const handleRefresh = useCallback(async () => {
-    if (tab === 'latest') {
+    if (tab === "latest") {
       await refreshLatest();
       refreshWidgets();
-    } else if (tab === 'forYou') {
+    } else if (tab === "forYou") {
       await refreshForYou();
-    } else if (tab === 'stories') {
+    } else if (tab === "stories") {
       await refreshStories();
     }
   }, [tab, refreshLatest, refreshWidgets, refreshForYou, refreshStories]);
@@ -300,10 +300,10 @@ export function FeedClient() {
   } = usePullToRefresh({
     onRefresh: handleRefresh,
     enabled:
-      tab === 'latest' ||
-      tab === 'trades' ||
-      tab === 'forYou' ||
-      tab === 'stories',
+      tab === "latest" ||
+      tab === "trades" ||
+      tab === "forYou" ||
+      tab === "stories",
   });
 
   const scrollContainerRef = useCallback(
@@ -313,12 +313,12 @@ export function FeedClient() {
         scrollContainerRefObject.current = node;
       }
     },
-    [scrollContainerCallbackRef]
+    [scrollContainerCallbackRef],
   );
 
   // Load more handler
   const handleLoadMore = useCallback(() => {
-    if (tab === 'latest' && cursor) {
+    if (tab === "latest" && cursor) {
       void fetchPosts(cursor, true);
     }
   }, [tab, cursor, fetchPosts]);
@@ -352,16 +352,16 @@ export function FeedClient() {
 
       addOptimisticPost(optimisticPost);
 
-      if (window.location.pathname !== '/feed') {
-        router.push('/feed');
+      if (window.location.pathname !== "/feed") {
+        router.push("/feed");
       }
     },
-    [addOptimisticPost, router]
+    [addOptimisticPost, router],
   );
 
   // Render content based on tab and state
   const renderContent = () => {
-    if (tab === 'trades') {
+    if (tab === "trades") {
       return <TradesFeed containerRef={scrollContainerRefObject} />;
     }
 
@@ -373,7 +373,7 @@ export function FeedClient() {
       );
     }
 
-    if (tab === 'stories') {
+    if (tab === "stories") {
       if (storiesError) return <EmptyFeed variant="stories" />;
       return (
         <>
@@ -393,7 +393,7 @@ export function FeedClient() {
       );
     }
 
-    if (tab === 'forYou') {
+    if (tab === "forYou") {
       if (forYouError) return <ForYouFeedError onRetry={refreshForYou} />;
       if (forYouStories.length === 0) return <EmptyFeed variant="forYou" />;
       return (
@@ -409,14 +409,14 @@ export function FeedClient() {
     }
 
     if (currentPosts.length === 0) {
-      if (tab === 'latest') return <EmptyFeed variant="latest" />;
-      if (tab === 'following')
+      if (tab === "latest") return <EmptyFeed variant="latest" />;
+      if (tab === "following")
         return <EmptyFeed variant="following" isLoading={followingLoading} />;
       return <EmptyFeed variant="default" />;
     }
 
     // Latest tab: merge new market cards chronologically into the post stream
-    if (tab === 'latest') {
+    if (tab === "latest") {
       return (
         <MixedFeedList
           posts={currentPosts}
@@ -464,12 +464,12 @@ export function FeedClient() {
 
               {/* Inline Composer - shown on feed tabs for authenticated users */}
               {authenticated &&
-                (tab === 'latest' || tab === 'forYou' || tab === 'stories') && (
+                (tab === "latest" || tab === "forYou" || tab === "stories") && (
                   <InlineComposer onPostCreated={handlePostCreated} />
                 )}
 
               {/* Feed signal cards — latest tab only */}
-              {tab === 'latest' && (gainerCard ?? loserCard) && (
+              {tab === "latest" && (gainerCard ?? loserCard) && (
                 <div>
                   {gainerCard && <TopGainerCard {...gainerCard} />}
                   {loserCard && <TopLoserCard {...loserCard} />}

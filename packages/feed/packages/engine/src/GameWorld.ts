@@ -3,11 +3,11 @@
  * This is the "reality" of the game - agents observe and predict, but don't influence.
  */
 
-import type { PerpMarketRecord } from '@feed/core/markets/perps';
-import { generateSnowflakeId, type WorldEvent } from '@feed/shared';
-import { EventEmitter } from 'events';
-import { type FeedEvent, FeedGenerator } from './FeedGenerator';
-import type { FeedLLMClient } from './llm/openai-client';
+import { EventEmitter } from "node:events";
+import type { PerpMarketRecord } from "@feed/core/markets/perps";
+import { generateSnowflakeId, type WorldEvent } from "@feed/shared";
+import { type FeedEvent, FeedGenerator } from "./FeedGenerator";
+import type { FeedLLMClient } from "./llm/openai-client";
 import {
   daySummary,
   expertAnalysis,
@@ -16,12 +16,12 @@ import {
   npcConversation,
   renderPrompt,
   rumor,
-} from './prompts';
-import { characterMappingService } from './services/character-mapping-service';
-import { TrendingTopicsEngine } from './TrendingTopicsEngine';
-import type { JsonValue } from './types/common';
-import type { FeedPost } from './types/shared';
-import { firstOrThrow } from './utils/array-utils';
+} from "./prompts";
+import { characterMappingService } from "./services/character-mapping-service";
+import { TrendingTopicsEngine } from "./TrendingTopicsEngine";
+import type { JsonValue } from "./types/common";
+import type { FeedPost } from "./types/shared";
+import { firstOrThrow } from "./utils/array-utils";
 import {
   type EventCooldownState,
   generateSentimentSignal,
@@ -29,8 +29,8 @@ import {
   secureRandom,
   secureShuffle,
   shouldFireEvent,
-} from './utils/entropy';
-import { getPhaseForDay } from './utils/shared-utils';
+} from "./utils/entropy";
+import { getPhaseForDay } from "./utils/shared-utils";
 
 export interface MarketContext {
   markets: PerpMarketRecord[];
@@ -41,12 +41,12 @@ export interface MarketContext {
  * Causal event type for generating events from hidden facts
  */
 export type CausalEventType =
-  | 'leak'
-  | 'rumor'
-  | 'scandal'
-  | 'development'
-  | 'deal'
-  | 'announcement';
+  | "leak"
+  | "rumor"
+  | "scandal"
+  | "development"
+  | "deal"
+  | "announcement";
 
 /**
  * Scheduled causal event from hidden narrative facts
@@ -85,16 +85,16 @@ export interface CausalEventContext {
  * GameWorld Event Types
  */
 export interface GameWorldEvents {
-  'world:started': { data: { question: string; npcs: number } };
-  'day:begins': { data: { day: number } };
-  'npc:action': { npc: string; description: string };
-  'npc:conversation': { description: string };
-  'news:published': { npc: string; description: string };
-  'rumor:spread': { description: string };
-  'clue:revealed': { npc: string; description: string };
-  'development:occurred': { description: string };
-  'feed:post': FeedEvent;
-  'outcome:revealed': { data: { outcome: boolean } };
+  "world:started": { data: { question: string; npcs: number } };
+  "day:begins": { data: { day: number } };
+  "npc:action": { npc: string; description: string };
+  "npc:conversation": { description: string };
+  "news:published": { npc: string; description: string };
+  "rumor:spread": { description: string };
+  "clue:revealed": { npc: string; description: string };
+  "development:occurred": { description: string };
+  "feed:post": FeedEvent;
+  "outcome:revealed": { data: { outcome: boolean } };
   event: { type: string; data: JsonValue };
 }
 
@@ -102,7 +102,7 @@ export interface WorldConfig {
   outcome: boolean;
   numNPCs?: number;
   duration?: number;
-  verbosity?: 'minimal' | 'normal' | 'detailed';
+  verbosity?: "minimal" | "normal" | "detailed";
 }
 
 // WorldEvent is now imported from @feed/shared (see imports above)
@@ -119,16 +119,16 @@ interface EmitterEvent {
 }
 
 type EmitterEventType =
-  | 'world:started'
-  | 'day:begins'
-  | 'npc:action'
-  | 'npc:conversation'
-  | 'news:published'
-  | 'rumor:spread'
-  | 'clue:revealed'
-  | 'development:occurred'
-  | 'outcome:revealed'
-  | 'world:ended';
+  | "world:started"
+  | "day:begins"
+  | "npc:action"
+  | "npc:conversation"
+  | "news:published"
+  | "rumor:spread"
+  | "clue:revealed"
+  | "development:occurred"
+  | "outcome:revealed"
+  | "world:ended";
 
 interface EmitterEventData {
   question?: string | null;
@@ -145,12 +145,12 @@ export interface NPC {
   id: string;
   name: string;
   role:
-    | 'insider'
-    | 'expert'
-    | 'journalist'
-    | 'whistleblower'
-    | 'politician'
-    | 'deceiver';
+    | "insider"
+    | "expert"
+    | "journalist"
+    | "whistleblower"
+    | "politician"
+    | "deceiver";
   knowsTruth: boolean; // Does this NPC know the real outcome?
   reliability: number; // 0-1, how often they tell truth
   personality: string;
@@ -247,15 +247,15 @@ export interface DayEvent {
 interface TypedGameWorldEmitter {
   on<K extends keyof GameWorldEvents>(
     event: K,
-    listener: (data: GameWorldEvents[K]) => void
+    listener: (data: GameWorldEvents[K]) => void,
   ): this;
   emit<K extends keyof GameWorldEvents>(
     event: K,
-    data: GameWorldEvents[K]
+    data: GameWorldEvents[K],
   ): boolean;
   off<K extends keyof GameWorldEvents>(
     event: K,
-    listener: (data: GameWorldEvents[K]) => void
+    listener: (data: GameWorldEvents[K]) => void,
   ): this;
 }
 
@@ -349,7 +349,7 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
       outcome: config.outcome,
       numNPCs: config.numNPCs || 8,
       duration: config.duration || 30,
-      verbosity: config.verbosity || 'normal',
+      verbosity: config.verbosity || "normal",
     };
 
     this.llm = llm;
@@ -467,7 +467,7 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
     const question = this.generateQuestion();
     this.npcs = this.createNPCs();
 
-    this.emitEvent('world:started', {
+    this.emitEvent("world:started", {
       question,
       outcome: this.config.outcome,
       npcs: this.npcs.length,
@@ -479,7 +479,7 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
     for (let day = 1; day <= this.config.duration; day++) {
       this.currentDay = day;
 
-      this.emitEvent('day:begins', { day }, `Day ${day} begins`);
+      this.emitEvent("day:begins", { day }, `Day ${day} begins`);
 
       // Generate real-world events (now async with LLM)
       const worldEvents: WorldEvent[] = [];
@@ -502,7 +502,7 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
         {
           allPreviousEvents: this.events.filter((e) => e.day < day),
           allPreviousPosts: this.recentPosts,
-        }
+        },
       );
 
       // Accumulate posts for trending analysis and update trends
@@ -514,7 +514,7 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
         if (this.trendingTopics) {
           await this.trendingTopics.updateTrends(
             this.recentPosts,
-            this.tickCount
+            this.tickCount,
           );
           this.feedGenerator.updateTrendContext();
         }
@@ -522,7 +522,7 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
 
       // Emit each feed post as it would appear
       feedPosts.forEach((post) => {
-        this.emit('feed:post', post);
+        this.emit("feed:post", post);
       });
 
       // Generate group chat messages
@@ -543,14 +543,14 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
 
     // 3. Reveal outcome
     this.emitEvent(
-      'outcome:revealed',
+      "outcome:revealed",
       { outcome: this.config.outcome },
       `The truth is revealed: The outcome is ${
-        this.config.outcome ? 'SUCCESS' : 'FAILURE'
-      }`
+        this.config.outcome ? "SUCCESS" : "FAILURE"
+      }`,
     );
 
-    this.emitEvent('world:ended', {
+    this.emitEvent("world:ended", {
       outcome: this.config.outcome,
       totalEvents: this.events.length,
     });
@@ -584,36 +584,36 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
       const event = this.createEvent(
         `world-${day}-1`,
         day,
-        'announcement',
+        "announcement",
         rumorText,
         this.npcs
-          .filter((n) => n.role === 'insider')
+          .filter((n) => n.role === "insider")
           .map((n) => n.id)
           .slice(0, 1),
-        'leaked'
+        "leaked",
       );
       this.emitWorldEvent(event);
       events.push(event);
     }
 
     if (day === 5) {
-      const insider = this.npcs.find((n) => n.role === 'insider');
-      const journalist = this.npcs.find((n) => n.role === 'journalist');
+      const insider = this.npcs.find((n) => n.role === "insider");
+      const journalist = this.npcs.find((n) => n.role === "journalist");
 
       // Generate news report using LLM
       const newsReport = journalist
         ? await this.generateNewsReport(day, journalist, allWorldEvents)
         : this.config.outcome
-          ? 'Internal memo shows project ahead of schedule'
-          : 'Leaked documents reveal budget overruns';
+          ? "Internal memo shows project ahead of schedule"
+          : "Leaked documents reveal budget overruns";
 
       const event = this.createEvent(
         `world-${day}-2`,
         day,
-        'leak',
+        "leak",
         newsReport,
         insider ? [insider.id] : [],
-        'leaked'
+        "leaked",
       );
       this.emitWorldEvent(event);
       events.push(event);
@@ -633,36 +633,36 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
 
     // Development event - key turning points
     if (shouldFireEvent(this.eventCooldowns.development, day)) {
-      const experts = this.npcs.filter((n) => n.role === 'expert');
+      const experts = this.npcs.filter((n) => n.role === "expert");
       const expert = experts.length > 0 ? secureShuffle(experts)[0] : undefined;
 
       const expertAnalysisText = expert
         ? await this.generateExpertAnalysis(expert, allWorldEvents)
         : this.config.outcome
-          ? 'Major breakthrough achieved in critical testing phase'
-          : 'Critical system failure discovered during final tests';
+          ? "Major breakthrough achieved in critical testing phase"
+          : "Critical system failure discovered during final tests";
 
       // Mid-phase: moderate signal strength, moderate noise
       const sentimentSignal = generateSentimentSignal(
         this.config.outcome,
         0.5, // medium signal
-        0.25 // moderate noise
+        0.25, // moderate noise
       );
 
       // Pick random mix of experts and insiders
       const relevantNpcs = this.npcs.filter(
-        (n) => n.role === 'expert' || n.role === 'insider'
+        (n) => n.role === "expert" || n.role === "insider",
       );
       const selectedNpcs = securePickN(relevantNpcs, 2);
 
       const event = this.createEvent(
         `world-${day}-${secureRandom().toString(36).slice(2, 8)}`,
         day,
-        'development',
+        "development",
         expertAnalysisText,
         selectedNpcs.map((n) => n.id),
-        'public',
-        this.sentimentToDirection(sentimentSignal)
+        "public",
+        this.sentimentToDirection(sentimentSignal),
       );
       this.emitWorldEvent(event);
       events.push(event);
@@ -674,30 +674,30 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
       const shuffledNpcs = secureShuffle(this.npcs);
       const participants = shuffledNpcs.slice(
         0,
-        2 + Math.floor(secureRandom() * 2)
+        2 + Math.floor(secureRandom() * 2),
       ); // 2-3 participants
 
       const conversationText = await this.generateNPCConversation(
         day,
         participants,
-        allWorldEvents
+        allWorldEvents,
       );
 
       // Meetings can reveal mixed signals
       const sentimentSignal = generateSentimentSignal(
         this.config.outcome,
         0.45,
-        0.3
+        0.3,
       );
 
       const event = this.createEvent(
         `world-${day}-${secureRandom().toString(36).slice(2, 8)}`,
         day,
-        'meeting',
+        "meeting",
         conversationText,
         participants.map((n) => n.id),
-        'leaked',
-        this.sentimentToDirection(sentimentSignal)
+        "leaked",
+        this.sentimentToDirection(sentimentSignal),
       );
       this.emitWorldEvent(event);
       events.push(event);
@@ -730,9 +730,9 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
       this.eventCooldowns.scandal.lastOccurrence = day;
 
       const whistleblowers = this.npcs.filter(
-        (n) => n.role === 'whistleblower'
+        (n) => n.role === "whistleblower",
       );
-      const journalists = this.npcs.filter((n) => n.role === 'journalist');
+      const journalists = this.npcs.filter((n) => n.role === "journalist");
       const whistleblower =
         whistleblowers.length > 0
           ? secureShuffle(whistleblowers)[0]
@@ -743,24 +743,24 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
       const whistleblowerReport = journalist
         ? await this.generateNewsReport(day, journalist, allWorldEvents)
         : this.config.outcome
-          ? 'Whistleblower leaks documents confirming project success'
-          : 'Whistleblower reveals documents showing project failure';
+          ? "Whistleblower leaks documents confirming project success"
+          : "Whistleblower reveals documents showing project failure";
 
       // Late phase: strong signal, low noise
       const sentimentSignal = generateSentimentSignal(
         this.config.outcome,
         0.75, // strong signal
-        0.15 // low noise
+        0.15, // low noise
       );
 
       const event = this.createEvent(
         `world-${day}-${secureRandom().toString(36).slice(2, 8)}`,
         day,
-        'scandal',
+        "scandal",
         whistleblowerReport,
         whistleblower ? [whistleblower.id] : [],
-        'public',
-        this.sentimentToDirection(sentimentSignal)
+        "public",
+        this.sentimentToDirection(sentimentSignal),
       );
       this.emitWorldEvent(event);
       events.push(event);
@@ -776,14 +776,14 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
     if (shouldFireEvent(adjustedDevState, day)) {
       this.eventCooldowns.development.lastOccurrence = day;
 
-      const experts = this.npcs.filter((n) => n.role === 'expert');
+      const experts = this.npcs.filter((n) => n.role === "expert");
       const expert = experts.length > 0 ? secureShuffle(experts)[0] : undefined;
 
       const finalAnalysis = expert
         ? await this.generateExpertAnalysis(expert, allWorldEvents)
         : this.config.outcome
-          ? 'Final test successful - all systems operational'
-          : 'Final test failed - project officially cancelled';
+          ? "Final test successful - all systems operational"
+          : "Final test failed - project officially cancelled";
 
       // Very late (last 3 days): very strong signal
       const signalStrength = daysRemaining <= 3 ? 0.9 : 0.7;
@@ -791,22 +791,22 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
       const sentimentSignal = generateSentimentSignal(
         this.config.outcome,
         signalStrength,
-        noiseLevel
+        noiseLevel,
       );
 
       const relevantNpcs = this.npcs.filter(
-        (n) => n.role === 'insider' || n.role === 'expert'
+        (n) => n.role === "insider" || n.role === "expert",
       );
       const selectedNpcs = securePickN(relevantNpcs, 2);
 
       const event = this.createEvent(
         `world-${day}-${secureRandom().toString(36).slice(2, 8)}`,
         day,
-        'development',
+        "development",
         finalAnalysis,
         selectedNpcs.map((n) => n.id),
-        'public',
-        this.sentimentToDirection(sentimentSignal)
+        "public",
+        this.sentimentToDirection(sentimentSignal),
       );
       this.emitWorldEvent(event);
       events.push(event);
@@ -819,14 +819,14 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
    * Convert a sentiment signal (-1 to 1) to a direction
    * Uses fuzzy threshold to avoid perfect correlation
    */
-  private sentimentToDirection(sentiment: number): 'YES' | 'NO' | null {
+  private sentimentToDirection(sentiment: number): "YES" | "NO" | null {
     // Add slight randomness to threshold
     const threshold = 0.2 + secureRandom() * 0.15;
 
     if (Math.abs(sentiment) < threshold) {
       return null; // Ambiguous
     }
-    return sentiment > 0 ? 'YES' : 'NO';
+    return sentiment > 0 ? "YES" : "NO";
   }
 
   /**
@@ -835,50 +835,50 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
   private createNPCs(): NPC[] {
     const npcTemplates = [
       {
-        role: 'insider' as const,
-        name: 'Insider Ian',
+        role: "insider" as const,
+        name: "Insider Ian",
         knowsTruth: true,
         reliability: 0.9,
       },
       {
-        role: 'expert' as const,
-        name: 'Expert Emma',
+        role: "expert" as const,
+        name: "Expert Emma",
         knowsTruth: false,
         reliability: 0.7,
       },
       {
-        role: 'journalist' as const,
-        name: 'Channel 7 News',
+        role: "journalist" as const,
+        name: "Channel 7 News",
         knowsTruth: false,
         reliability: 0.6,
       },
       {
-        role: 'whistleblower' as const,
-        name: 'Whistleblower Wendy',
+        role: "whistleblower" as const,
+        name: "Whistleblower Wendy",
         knowsTruth: true,
         reliability: 0.95,
       },
       {
-        role: 'politician' as const,
-        name: 'Senator Smith',
+        role: "politician" as const,
+        name: "Senator Smith",
         knowsTruth: false,
         reliability: 0.3,
       },
       {
-        role: 'deceiver' as const,
-        name: 'Conspiracy Carl',
+        role: "deceiver" as const,
+        name: "Conspiracy Carl",
         knowsTruth: false,
         reliability: 0.1,
       },
       {
-        role: 'journalist' as const,
-        name: 'TechJournal',
+        role: "journalist" as const,
+        name: "TechJournal",
         knowsTruth: false,
         reliability: 0.6,
       },
       {
-        role: 'insider' as const,
-        name: 'Engineer Eve',
+        role: "insider" as const,
+        name: "Engineer Eve",
         knowsTruth: true,
         reliability: 0.85,
       },
@@ -897,27 +897,27 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
   private generateQuestion(): string {
     const questions = [
       "Will Project Omega's satellite launch succeed?",
-      'Will the scandal force President Stump to resign?',
-      'Will TechCorp announce the AI breakthrough?',
-      'Will the climate summit reach an agreement?',
-      'Will the merger between MegaCorp and TechGiant close?',
+      "Will the scandal force President Stump to resign?",
+      "Will TechCorp announce the AI breakthrough?",
+      "Will the climate summit reach an agreement?",
+      "Will the merger between MegaCorp and TechGiant close?",
     ];
     // Validate that questions array is non-empty
-    firstOrThrow(questions, 'No questions available');
+    firstOrThrow(questions, "No questions available");
     const index = Math.floor(secureRandom() * questions.length);
     return questions[index]!;
   }
 
   private generatePersonality(): string {
     const personalities = [
-      'cautious',
-      'bold',
-      'analytical',
-      'emotional',
-      'contrarian',
+      "cautious",
+      "bold",
+      "analytical",
+      "emotional",
+      "contrarian",
     ];
     // Validate non-empty (compile-time guarantee, but explicit for safety)
-    firstOrThrow(personalities, 'No personalities available');
+    firstOrThrow(personalities, "No personalities available");
     const index = Math.floor(secureRandom() * personalities.length);
     return personalities[index]!;
   }
@@ -925,7 +925,7 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
   private async generateNewsReport(
     day: number,
     journalist: NPC,
-    events: WorldEvent[]
+    events: WorldEvent[],
   ): Promise<string> {
     if (!this.llm) {
       // Fallback to template-based generation
@@ -935,29 +935,29 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
     }
 
     const reputationContext =
-      journalist.reliability > 0.7 ? 'reliable' : 'questionable';
+      journalist.reliability > 0.7 ? "reliable" : "questionable";
     const truthContext = journalist.knowsTruth
-      ? 'hints at'
-      : 'speculates about';
+      ? "hints at"
+      : "speculates about";
 
     const recentEventsStr =
       events.length > 0
-        ? events.map((e) => e.description).join('; ')
-        : 'Quiet period in the markets.';
+        ? events.map((e) => e.description).join("; ")
+        : "Quiet period in the markets.";
 
     const recentEventsRichContext =
       events.length > 0
         ? `=== RECENT EVENTS (Day ${day}) ===\n${events
             .slice(-10)
             .map((e) => `- [${e.type}] ${e.description}`)
-            .join('\n')}`
-        : '';
+            .join("\n")}`
+        : "";
 
     const prompt = renderPrompt(newsReport, {
       realityGrounding: getRealityGrounding(),
       day: day.toString(),
       question: this.generateQuestion(),
-      outcome: this.config.outcome ? 'YES' : 'NO',
+      outcome: this.config.outcome ? "YES" : "NO",
       journalistName: journalist.name,
       journalistRole: journalist.role,
       journalistReliability: journalist.reliability.toString(),
@@ -970,20 +970,20 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
     const rawResponse = await this.llm.generateJSON<
       | { headline: string; report: string }
       | { response: { headline: string; report: string } }
-    >(prompt, undefined, { promptType: 'world_generate_news_report' });
+    >(prompt, undefined, { promptType: "world_generate_news_report" });
 
     // Handle XML structure
     const response =
-      'response' in rawResponse && rawResponse.response
+      "response" in rawResponse && rawResponse.response
         ? rawResponse.response
         : (rawResponse as { headline: string; report: string });
 
     // Apply character mapping to replace any real names with fictional equivalents
     const processedHeadline = await characterMappingService.transformText(
-      response.headline
+      response.headline,
     );
     const processedReport = await characterMappingService.transformText(
-      response.report
+      response.report,
     );
 
     return `${processedHeadline.transformedText}\n\n${processedReport.transformedText}`;
@@ -991,21 +991,21 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
 
   private async generateRumor(
     day: number,
-    events: WorldEvent[]
+    events: WorldEvent[],
   ): Promise<string> {
     if (!this.llm) {
       // Fallback to template-based generation
       const rumors = this.config.outcome
         ? [
-            'Unconfirmed: Test results exceeding expectations',
-            'Rumor: Key milestone reached ahead of schedule',
+            "Unconfirmed: Test results exceeding expectations",
+            "Rumor: Key milestone reached ahead of schedule",
           ]
         : [
-            'Unconfirmed: Internal memos show concerns',
-            'Rumor: Key stakeholders expressing doubts',
+            "Unconfirmed: Internal memos show concerns",
+            "Rumor: Key stakeholders expressing doubts",
           ];
       // Validate non-empty (compile-time guarantee, but explicit for safety)
-      firstOrThrow(rumors, 'No rumors available');
+      firstOrThrow(rumors, "No rumors available");
       const index = Math.floor(secureRandom() * rumors.length);
       return rumors[index]!;
     }
@@ -1016,29 +1016,29 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
 
     const outcomeHintsByPhase: Record<string, { yes: string; no: string }> = {
       WILD: {
-        yes: 'Keep it cryptic — vague hints of something promising, no specifics',
-        no: 'Keep it cryptic — ominous atmosphere, uneasy whispers, no specifics',
+        yes: "Keep it cryptic — vague hints of something promising, no specifics",
+        no: "Keep it cryptic — ominous atmosphere, uneasy whispers, no specifics",
       },
       CONNECTION: {
-        yes: 'Suggestive but unconfirmed — link a person or event to potential good news',
-        no: 'Suggestive but unconfirmed — link a person or event to trouble brewing',
+        yes: "Suggestive but unconfirmed — link a person or event to potential good news",
+        no: "Suggestive but unconfirmed — link a person or event to trouble brewing",
       },
       CONVERGENCE: {
-        yes: 'Fairly directional — sources are bullish, insider language about upcoming wins',
-        no: 'Fairly directional — sources alarmed, insider language about looming problems',
+        yes: "Fairly directional — sources are bullish, insider language about upcoming wins",
+        no: "Fairly directional — sources alarmed, insider language about looming problems",
       },
       CLIMAX: {
-        yes: 'Strongly directional — near-confirmation of positive outcome, high-stakes tone',
-        no: 'Strongly directional — near-confirmation of negative outcome, high-stakes tone',
+        yes: "Strongly directional — near-confirmation of positive outcome, high-stakes tone",
+        no: "Strongly directional — near-confirmation of negative outcome, high-stakes tone",
       },
       RESOLUTION: {
-        yes: 'Aftermath framing — how insiders are processing the positive outcome',
-        no: 'Aftermath framing — how insiders are processing the negative outcome',
+        yes: "Aftermath framing — how insiders are processing the positive outcome",
+        no: "Aftermath framing — how insiders are processing the negative outcome",
       },
     };
 
     const phaseHints =
-      outcomeHintsByPhase[phaseLabel] ?? outcomeHintsByPhase['CONNECTION']!;
+      outcomeHintsByPhase[phaseLabel] ?? outcomeHintsByPhase.CONNECTION!;
     const outcomeHint = this.config.outcome ? phaseHints.yes : phaseHints.no;
 
     // Handle empty events list
@@ -1047,14 +1047,14 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
         ? events
             .slice(-3)
             .map((e) => e.description)
-            .join('; ')
-        : 'No major public events yet, but tension is building.';
+            .join("; ")
+        : "No major public events yet, but tension is building.";
 
     const prompt = renderPrompt(rumor, {
       realityGrounding: getRealityGrounding(),
       day: day.toString(),
       question: this.generateQuestion(),
-      outcome: this.config.outcome ? 'YES' : 'NO',
+      outcome: this.config.outcome ? "YES" : "NO",
       phaseContext: phaseLabel,
       recentEvents: recentEventsStr,
       outcomeHint,
@@ -1062,17 +1062,17 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
 
     const rawResponse = await this.llm.generateJSON<
       { rumor: string } | { response: { rumor: string } }
-    >(prompt, undefined, { promptType: 'world_generate_rumor' });
+    >(prompt, undefined, { promptType: "world_generate_rumor" });
 
     // Handle XML structure
     const response =
-      'response' in rawResponse && rawResponse.response
+      "response" in rawResponse && rawResponse.response
         ? rawResponse.response
         : (rawResponse as { rumor: string });
 
     // Apply character mapping to replace any real names with fictional equivalents
     const processed = await characterMappingService.transformText(
-      response.rumor
+      response.rumor,
     );
     return processed.transformedText;
   }
@@ -1080,7 +1080,7 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
   private async generateNPCConversation(
     day: number,
     npcs: NPC[],
-    events: WorldEvent[]
+    events: WorldEvent[],
   ): Promise<string> {
     if (!this.llm) {
       return `NPCs debate the situation on Day ${day}. Mixed opinions emerge.`;
@@ -1089,37 +1089,37 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
     const participants = npcs.slice(0, 3);
     const participantsStr = participants
       .map((n) => `${n.name} (${n.role}, knows truth: ${n.knowsTruth})`)
-      .join(', ');
+      .join(", ");
 
     const prompt = renderPrompt(npcConversation, {
       day: day.toString(),
       question: this.generateQuestion(),
-      outcome: this.config.outcome ? 'YES' : 'NO',
+      outcome: this.config.outcome ? "YES" : "NO",
       participants: participantsStr,
       recentEvents:
         events.length > 0
           ? events
               .slice(-2)
               .map((e) => e.description)
-              .join('; ')
-          : 'The current state of the market.',
+              .join("; ")
+          : "The current state of the market.",
     });
 
     const rawResponse = await this.llm.generateJSON<
       { conversation: string } | { response: { conversation: string } }
-    >(prompt, undefined, { promptType: 'world_generate_npc_conversation' });
+    >(prompt, undefined, { promptType: "world_generate_npc_conversation" });
 
     // Handle XML structure
     const response =
-      rawResponse && 'response' in rawResponse && rawResponse.response
+      rawResponse && "response" in rawResponse && rawResponse.response
         ? rawResponse.response
         : (rawResponse as { conversation: string });
 
     // SAFEGUARD: Ensure we have a string before processing
     const textToProcess =
-      typeof response?.conversation === 'string'
+      typeof response?.conversation === "string"
         ? response.conversation
-        : 'NPCs discuss the situation.';
+        : "NPCs discuss the situation.";
 
     // Apply character mapping to replace any real names with fictional equivalents
     const processed =
@@ -1129,33 +1129,33 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
 
   private async generateExpertAnalysis(
     expert: NPC,
-    events: WorldEvent[]
+    events: WorldEvent[],
   ): Promise<string> {
     if (!this.llm) {
       return `${expert.name} publishes analysis: ${
-        this.config.outcome ? 'Indicators positive' : 'Warning signs evident'
+        this.config.outcome ? "Indicators positive" : "Warning signs evident"
       }`;
     }
 
     const confidenceContext = expert.knowsTruth
-      ? 'Confidently points toward truth'
-      : 'Makes educated guesses';
+      ? "Confidently points toward truth"
+      : "Makes educated guesses";
     const reliabilityContext =
-      expert.reliability > 0.7 ? 'accurate' : 'sometimes wrong';
+      expert.reliability > 0.7 ? "accurate" : "sometimes wrong";
 
     const expertEventsRichContext =
       events.length > 0
         ? `=== EVENTS FOR ANALYSIS ===\n${events
             .slice(-8)
             .map((e) => `- [${e.type}] ${e.description}`)
-            .join('\n')}`
-        : '';
+            .join("\n")}`
+        : "";
 
     const prompt = renderPrompt(expertAnalysis, {
       realityGrounding: getRealityGrounding(),
       expertName: expert.name,
       question: this.generateQuestion(),
-      outcome: this.config.outcome ? 'YES' : 'NO',
+      outcome: this.config.outcome ? "YES" : "NO",
       expertRole: expert.role,
       knowsTruth: expert.knowsTruth.toString(),
       reliability: expert.reliability.toString(),
@@ -1164,8 +1164,8 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
           ? events
               .slice(-5)
               .map((e) => e.description)
-              .join('; ')
-          : 'Underlying market indicators.',
+              .join("; ")
+          : "Underlying market indicators.",
       richGameContext: expertEventsRichContext,
       confidenceContext,
       reliabilityContext,
@@ -1173,39 +1173,39 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
 
     const rawResponse = await this.llm.generateJSON<
       { analysis: string } | { response: { analysis: string } }
-    >(prompt, undefined, { promptType: 'world_generate_expert_analysis' });
+    >(prompt, undefined, { promptType: "world_generate_expert_analysis" });
 
     // Handle XML structure
     const response =
-      'response' in rawResponse && rawResponse.response
+      "response" in rawResponse && rawResponse.response
         ? rawResponse.response
         : (rawResponse as { analysis: string });
 
     // Apply character mapping to replace any real names with fictional equivalents
     const processed = await characterMappingService.transformText(
-      response.analysis
+      response.analysis,
     );
     return `${expert.name}: ${processed.transformedText}`;
   }
 
   private async generateDaySummary(
     day: number,
-    events: WorldEvent[]
+    events: WorldEvent[],
   ): Promise<string> {
     if (!this.llm || events.length === 0) {
       if (events.length === 0)
         return `Day ${day}: Quiet day, no major developments`;
       const types = events.map((e) => e.type);
-      if (types.includes('development:occurred'))
+      if (types.includes("development:occurred"))
         return `Day ${day}: MAJOR DEVELOPMENT`;
-      if (types.includes('news:published')) return `Day ${day}: News coverage`;
+      if (types.includes("news:published")) return `Day ${day}: News coverage`;
       return `Day ${day}: ${events.length} events`;
     }
 
     const daySummaryRichContext =
       events.length > 0
-        ? `=== TODAY'S EVENTS ===\n${events.map((e) => `- [${e.type}] ${e.description}`).join('\n')}`
-        : '';
+        ? `=== TODAY'S EVENTS ===\n${events.map((e) => `- [${e.type}] ${e.description}`).join("\n")}`
+        : "";
 
     const dayPhaseLabel = getPhaseForDay(day);
 
@@ -1213,25 +1213,25 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
       realityGrounding: getRealityGrounding(),
       day: day.toString(),
       question: this.generateQuestion(),
-      eventsToday: events.map((e) => `${e.type}: ${e.description}`).join('; '),
+      eventsToday: events.map((e) => `${e.type}: ${e.description}`).join("; "),
       richGameContext: daySummaryRichContext,
-      outcome: this.config.outcome ? 'YES' : 'NO',
+      outcome: this.config.outcome ? "YES" : "NO",
       phaseContext: dayPhaseLabel,
     });
 
     const rawResponse = await this.llm.generateJSON<
       { summary: string } | { response: { summary: string } }
-    >(prompt, undefined, { promptType: 'world_generate_day_summary' });
+    >(prompt, undefined, { promptType: "world_generate_day_summary" });
 
     // Handle XML structure
     const response =
-      'response' in rawResponse && rawResponse.response
+      "response" in rawResponse && rawResponse.response
         ? rawResponse.response
         : (rawResponse as { summary: string });
 
     // Apply character mapping to replace any real names with fictional equivalents
     const processed = await characterMappingService.transformText(
-      response.summary
+      response.summary,
     );
     return processed.transformedText;
   }
@@ -1241,7 +1241,7 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
 
     const totalSentiment = feedPosts.reduce(
       (sum, post) => sum + (post.sentiment ?? 0),
-      0
+      0,
     );
     return totalSentiment / feedPosts.length;
   }
@@ -1251,7 +1251,7 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
    */
   private generateGroupMessages(
     day: number,
-    worldEvents: WorldEvent[]
+    worldEvents: WorldEvent[],
   ): Record<string, GroupMessage[]> {
     const messages: Record<string, GroupMessage[]> = {};
 
@@ -1263,11 +1263,11 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
     if (shouldGenerateGroupMessages) {
       const firstEvent = worldEvents[0];
       if (firstEvent) {
-        messages['group-0'] = [
+        messages["group-0"] = [
           {
-            from: this.npcs[0]?.name || 'Insider',
+            from: this.npcs[0]?.name || "Insider",
             message: `Heard something about ${firstEvent.description}...`,
-            timestamp: `2025-10-${String(day).padStart(2, '0')}T12:00:00Z`,
+            timestamp: `2025-10-${String(day).padStart(2, "0")}T12:00:00Z`,
             clueStrength: 0.5,
           },
         ];
@@ -1293,16 +1293,16 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
   private createEvent(
     id: string,
     day: number,
-    type: WorldEvent['type'],
+    type: WorldEvent["type"],
     description: string,
     actors: string[],
-    visibility: WorldEvent['visibility'],
-    pointsToward?: WorldEvent['pointsToward'],
+    visibility: WorldEvent["visibility"],
+    pointsToward?: WorldEvent["pointsToward"],
     sentimentData?: {
       sentimentSignal: number;
       signalClarity: number;
       sourceReliability: number;
-    }
+    },
   ): WorldEvent {
     // Generate default sentiment data if not provided but pointsToward is
     let sentiment = sentimentData;
@@ -1310,9 +1310,9 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
       // Convert pointsToward to sentiment signal
       sentiment = {
         sentimentSignal: generateSentimentSignal(
-          pointsToward === 'YES',
+          pointsToward === "YES",
           0.6,
-          0.2
+          0.2,
         ),
         signalClarity: 0.5 + secureRandom() * 0.3,
         sourceReliability: 0.5 + secureRandom() * 0.3,
@@ -1343,7 +1343,7 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
   private emitEvent(
     type: EmitterEventType,
     data: EmitterEventData,
-    description?: string
+    description?: string,
   ) {
     const event: EmitterEvent = {
       type,
@@ -1354,7 +1354,7 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
     };
 
     this.emit(type, event);
-    this.emit('event', event);
+    this.emit("event", event);
   }
 
   /**
@@ -1370,7 +1370,7 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
     day: number,
     hour: number,
     marketContext?: MarketContext,
-    causalContext?: CausalEventContext
+    causalContext?: CausalEventContext,
   ): Promise<WorldEvent[]> {
     const events: WorldEvent[] = [];
 
@@ -1380,7 +1380,7 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
       const causalEvents = await this.generateEventsFromCausalContext(
         day,
         hour,
-        causalContext
+        causalContext,
       );
       events.push(...causalEvents);
     }
@@ -1393,11 +1393,11 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
           events.push({
             id: await generateSnowflakeId(),
             day,
-            type: 'scandal',
-            visibility: 'public',
+            type: "scandal",
+            visibility: "public",
             description: `Market crash for ${move.ticker} triggers emergency board meeting. Rumors of insolvency circulate.`,
             actors: [], // Fill with relevant actors
-            pointsToward: 'NO',
+            pointsToward: "NO",
           });
         }
         // If market pumps > 20%
@@ -1405,11 +1405,11 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
           events.push({
             id: await generateSnowflakeId(),
             day,
-            type: 'development',
-            visibility: 'public',
+            type: "development",
+            visibility: "public",
             description: `${move.ticker} stock surges to record highs amidst acquisition rumors.`,
             actors: [],
-            pointsToward: 'YES',
+            pointsToward: "YES",
           });
         }
       }
@@ -1451,7 +1451,7 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
   private async generateEventsFromCausalContext(
     day: number,
     hour: number,
-    causalContext: CausalEventContext
+    causalContext: CausalEventContext,
   ): Promise<WorldEvent[]> {
     const events: WorldEvent[] = [];
 
@@ -1460,7 +1460,7 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
       if (scheduledEvent.day === day && scheduledEvent.hour === hour) {
         // Map CausalEventType to WorldEvent type
         const worldEventType = this.mapCausalEventTypeToWorldEventType(
-          scheduledEvent.eventType
+          scheduledEvent.eventType,
         );
 
         // Calculate sentiment signal based on positive/negative
@@ -1468,17 +1468,17 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
 
         // Find relevant NPCs for this event
         const relevantNpcs = this.findRelevantNpcsForEvent(
-          scheduledEvent.eventType
+          scheduledEvent.eventType,
         );
 
         const worldEvent: WorldEvent = {
           id: await generateSnowflakeId(),
           day,
           type: worldEventType,
-          visibility: 'public',
+          visibility: "public",
           description: scheduledEvent.description,
           actors: relevantNpcs.map((npc) => npc.id),
-          pointsToward: scheduledEvent.isPositive ? 'YES' : 'NO',
+          pointsToward: scheduledEvent.isPositive ? "YES" : "NO",
           sentimentSignal,
           signalClarity: 0.7, // Causal events have high clarity
           sourceReliability: 0.8, // Causal events are reliable
@@ -1497,15 +1497,15 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
    * Map causal event type to WorldEvent type
    */
   private mapCausalEventTypeToWorldEventType(
-    causalType: CausalEventType
-  ): WorldEvent['type'] {
-    const mapping: Record<CausalEventType, WorldEvent['type']> = {
-      leak: 'leak',
-      rumor: 'rumor',
-      scandal: 'scandal',
-      development: 'development',
-      deal: 'deal',
-      announcement: 'announcement',
+    causalType: CausalEventType,
+  ): WorldEvent["type"] {
+    const mapping: Record<CausalEventType, WorldEvent["type"]> = {
+      leak: "leak",
+      rumor: "rumor",
+      scandal: "scandal",
+      development: "development",
+      deal: "deal",
+      announcement: "announcement",
     };
     return mapping[causalType];
   }
@@ -1515,40 +1515,40 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
    */
   private findRelevantNpcsForEvent(eventType: CausalEventType): NPC[] {
     switch (eventType) {
-      case 'leak':
+      case "leak":
         // Leaks come from insiders or whistleblowers
         return this.npcs
           .filter(
-            (npc) => npc.role === 'insider' || npc.role === 'whistleblower'
+            (npc) => npc.role === "insider" || npc.role === "whistleblower",
           )
           .slice(0, 1);
-      case 'rumor':
+      case "rumor":
         // Rumors spread from various sources
         return this.npcs
-          .filter((npc) => npc.role === 'journalist' || npc.role === 'insider')
+          .filter((npc) => npc.role === "journalist" || npc.role === "insider")
           .slice(0, 2);
-      case 'scandal':
+      case "scandal":
         // Scandals involve whistleblowers and journalists
         return this.npcs
           .filter(
-            (npc) => npc.role === 'whistleblower' || npc.role === 'journalist'
+            (npc) => npc.role === "whistleblower" || npc.role === "journalist",
           )
           .slice(0, 2);
-      case 'development':
+      case "development":
         // Developments come from experts
         return this.npcs
-          .filter((npc) => npc.role === 'expert' || npc.role === 'insider')
+          .filter((npc) => npc.role === "expert" || npc.role === "insider")
           .slice(0, 1);
-      case 'deal':
+      case "deal":
         // Deals involve insiders and politicians
         return this.npcs
-          .filter((npc) => npc.role === 'insider' || npc.role === 'politician')
+          .filter((npc) => npc.role === "insider" || npc.role === "politician")
           .slice(0, 2);
-      case 'announcement':
+      case "announcement":
         // Announcements from politicians or journalists
         return this.npcs
           .filter(
-            (npc) => npc.role === 'politician' || npc.role === 'journalist'
+            (npc) => npc.role === "politician" || npc.role === "journalist",
           )
           .slice(0, 1);
       default:
@@ -1563,6 +1563,6 @@ export class GameWorld extends EventEmitter implements TypedGameWorldEmitter {
   private emitWorldEvent(event: WorldEvent) {
     this.events.push(event);
     this.emit(event.type, event);
-    this.emit('event', event);
+    this.emit("event", event);
   }
 }

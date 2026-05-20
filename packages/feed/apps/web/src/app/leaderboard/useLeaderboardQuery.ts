@@ -1,12 +1,12 @@
-'use client';
+"use client";
 
-import type { LeaderboardMetric, LeaderboardScope } from '@feed/shared';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import type { LeaderboardMetric, LeaderboardScope } from "@feed/shared";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
 import {
   fetchLeaderboardData,
   type LeaderboardData,
-} from './fetchLeaderboardData';
+} from "./fetchLeaderboardData";
 
 // Leaderboard pages are cached on the server for a short TTL.
 // Show stale data instantly, then revalidate in the background.
@@ -33,7 +33,7 @@ export function getLeaderboardQueryKey({
   authToken?: string | null;
 }) {
   return [
-    'leaderboard',
+    "leaderboard",
     metric,
     scope,
     page,
@@ -57,7 +57,7 @@ export function getLeaderboardPositionQueryKey({
   authToken?: string | null;
 }) {
   return [
-    'leaderboard-position',
+    "leaderboard-position",
     metric,
     scope,
     pageSize,
@@ -162,7 +162,7 @@ export function useMyLeaderboardPosition({
       return (data.currentUser ?? null) as {
         rank: number;
         page: number;
-        entry: LeaderboardData['leaderboard'][0];
+        entry: LeaderboardData["leaderboard"][0];
       } | null;
     },
     enabled: !!userId && !!authToken,

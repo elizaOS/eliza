@@ -12,10 +12,10 @@ import {
   inArray,
   type LongTermArcState,
   questions,
-} from '@feed/db';
-import { logger } from '@feed/shared';
-import { formatError } from '../utils/error-utils';
-import { StaticDataRegistry } from './static-data-registry';
+} from "@feed/db";
+import { logger } from "@feed/shared";
+import { formatError } from "../utils/error-utils";
+import { StaticDataRegistry } from "./static-data-registry";
 
 export interface ArcContext {
   questionId: string;
@@ -23,7 +23,7 @@ export interface ArcContext {
   orgId: string;
   orgName: string;
   currentPhase: LongTermArcState;
-  behaviorGuidance: 'defensive' | 'cautious' | 'opportunistic' | 'neutral';
+  behaviorGuidance: "defensive" | "cautious" | "opportunistic" | "neutral";
 }
 
 export class ArcContextService {
@@ -85,7 +85,7 @@ export class ArcContextService {
 
       // Match arcs to affiliated orgs
       for (const arc of activeArcs) {
-        const questionText = questionTextMap.get(arc.questionId) ?? '';
+        const questionText = questionTextMap.get(arc.questionId) ?? "";
 
         // Check if question mentions any affiliated org
         const matchedOrgId = affiliatedOrgIds.find((orgId) => {
@@ -114,12 +114,12 @@ export class ArcContextService {
       }
     } catch (error) {
       logger.warn(
-        'Failed to get arc context for NPC',
+        "Failed to get arc context for NPC",
         {
           npcId,
           error: formatError(error),
         },
-        'ArcContextService'
+        "ArcContextService",
       );
     }
 
@@ -130,20 +130,19 @@ export class ArcContextService {
    * Map arc phase to behavioral guidance for NPCs.
    */
   private getBehaviorGuidance(
-    phase: LongTermArcState
-  ): ArcContext['behaviorGuidance'] {
+    phase: LongTermArcState,
+  ): ArcContext["behaviorGuidance"] {
     switch (phase) {
-      case 'crisis':
-      case 'escalation':
-        return 'defensive';
-      case 'tension':
-        return 'cautious';
-      case 'revelation':
-      case 'resolution':
-        return 'opportunistic';
-      case 'setup':
+      case "crisis":
+      case "escalation":
+        return "defensive";
+      case "tension":
+        return "cautious";
+      case "revelation":
+      case "resolution":
+        return "opportunistic";
       default:
-        return 'neutral';
+        return "neutral";
     }
   }
 
@@ -152,20 +151,20 @@ export class ArcContextService {
    */
   getPhaseDescription(phase: LongTermArcState): string {
     switch (phase) {
-      case 'setup':
-        return 'Early stage - situation is developing';
-      case 'tension':
-        return 'Building tension - conflicting signals emerging';
-      case 'escalation':
-        return 'Escalating - stakes are rising rapidly';
-      case 'crisis':
-        return 'Peak crisis - maximum uncertainty and stress';
-      case 'revelation':
-        return 'Truth emerging - key information coming to light';
-      case 'resolution':
-        return 'Resolving - outcome becoming clear';
+      case "setup":
+        return "Early stage - situation is developing";
+      case "tension":
+        return "Building tension - conflicting signals emerging";
+      case "escalation":
+        return "Escalating - stakes are rising rapidly";
+      case "crisis":
+        return "Peak crisis - maximum uncertainty and stress";
+      case "revelation":
+        return "Truth emerging - key information coming to light";
+      case "resolution":
+        return "Resolving - outcome becoming clear";
       default:
-        return 'Unknown phase';
+        return "Unknown phase";
     }
   }
 }

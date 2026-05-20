@@ -24,13 +24,13 @@ export function toISO(val: Date | string): string {
  * returning null if the value is null or undefined.
  */
 export function toISOOrNull(
-  val: Date | string | null | undefined
+  val: Date | string | null | undefined,
 ): string | null {
   if (val == null) return null;
   return toISO(val);
 }
 
-import { FEED_POINTS_SYMBOL } from '../constants/currency';
+import { FEED_POINTS_SYMBOL } from "../constants/currency";
 
 /**
  * Clamp number between min and max values
@@ -68,11 +68,11 @@ export function clamp(value: number, min: number, max: number): number {
  * ```
  */
 export function formatDate(date: Date | string): string {
-  const d = typeof date === 'string' ? new Date(date) : date;
-  return d.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
+  const d = typeof date === "string" ? new Date(date) : date;
+  return d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
   });
 }
 
@@ -91,10 +91,10 @@ export function formatDate(date: Date | string): string {
  * ```
  */
 export function formatTime(date: Date | string): string {
-  const d = typeof date === 'string' ? new Date(date) : date;
-  return d.toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
+  const d = typeof date === "string" ? new Date(date) : date;
+  return d.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
     hour12: true,
   });
 }
@@ -114,12 +114,12 @@ export function formatTime(date: Date | string): string {
  * ```
  */
 export function formatDateTime(date: Date | string): string {
-  const d = typeof date === 'string' ? new Date(date) : date;
-  return new Intl.DateTimeFormat('en-US', {
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
+  const d = typeof date === "string" ? new Date(date) : date;
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
   }).format(d);
 }
 
@@ -170,7 +170,7 @@ export function calculateSentiment(text: string): number {
  * ```
  */
 export function formatRelativeTime(date: Date | string): string {
-  const d = typeof date === 'string' ? new Date(date) : date;
+  const d = typeof date === "string" ? new Date(date) : date;
   const now = new Date();
   const diff = now.getTime() - d.getTime();
   const seconds = Math.floor(diff / 1000);
@@ -202,10 +202,10 @@ export function formatRelativeTime(date: Date | string): string {
  * ```
  */
 export function formatCompactNumber(num: number): string {
-  if (!Number.isFinite(num)) return '0';
+  if (!Number.isFinite(num)) return "0";
   if (Math.abs(num) < 1e3) return num.toString();
 
-  const sign = num < 0 ? '-' : '';
+  const sign = num < 0 ? "-" : "";
   const abs = Math.abs(num);
 
   if (abs >= 1e15) return `${sign}${(abs / 1e15).toFixed(1)}Q`;
@@ -247,20 +247,20 @@ interface FormatCurrencyOptions {
  */
 export function formatCurrency(
   amount: number,
-  options: number | FormatCurrencyOptions = 2
+  options: number | FormatCurrencyOptions = 2,
 ): string {
   const decimals =
-    typeof options === 'number' ? options : (options.decimals ?? 2);
+    typeof options === "number" ? options : (options.decimals ?? 2);
   const useThousandsSeparator =
-    typeof options === 'object' && options.useThousandsSeparator;
+    typeof options === "object" && options.useThousandsSeparator;
 
   // Handle negative numbers: sign before symbol for readability (-$100.00)
   const isNegative = amount < 0;
   const absoluteAmount = Math.abs(amount);
-  const sign = isNegative ? '-' : '';
+  const sign = isNegative ? "-" : "";
 
   if (useThousandsSeparator) {
-    const formatted = absoluteAmount.toLocaleString('en-US', {
+    const formatted = absoluteAmount.toLocaleString("en-US", {
       minimumFractionDigits: decimals,
       maximumFractionDigits: decimals,
     });
@@ -299,7 +299,7 @@ export function formatCompactCurrency(value: number, decimals = 2): string {
   // Handle negative numbers: sign should come before the symbol
   const isNegative = value < 0;
   const abs = Math.abs(value);
-  const sign = isNegative ? '-' : '';
+  const sign = isNegative ? "-" : "";
 
   if (abs >= 1_000_000_000) {
     return `${sign}${FEED_POINTS_SYMBOL}${(abs / 1_000_000_000).toFixed(decimals)}B`;
@@ -351,12 +351,12 @@ export function formatPercentage(value: number): string {
  */
 export function sanitizeId(id: string | undefined | null): string {
   if (!id) {
-    return 'unknown';
+    return "unknown";
   }
   return id
     .toLowerCase()
-    .replace(/\s+/g, '-')
-    .replace(/[^a-z0-9\-_]/g, '')
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9\-_]/g, "")
     .trim();
 }
 
@@ -395,9 +395,9 @@ export function formatNumber(num: number): string {
  */
 export function formatNumberWithSeparators(
   value: number,
-  options: { decimals?: number; locale?: string } = {}
+  options: { decimals?: number; locale?: string } = {},
 ): string {
-  const { decimals = 0, locale = 'en-US' } = options;
+  const { decimals = 0, locale = "en-US" } = options;
 
   if (!Number.isFinite(value)) {
     return (0).toLocaleString(locale, {
@@ -426,14 +426,14 @@ export function formatNumberWithSeparators(
  * ```
  */
 export function getTimeAgo(date: Date | string | null | undefined): string {
-  if (date == null) return 'just now';
-  const d = typeof date === 'string' ? new Date(date) : date;
+  if (date == null) return "just now";
+  const d = typeof date === "string" ? new Date(date) : date;
   const diffMs = Date.now() - d.getTime();
   const diffMins = Math.floor(diffMs / 60_000);
   const diffHours = Math.floor(diffMs / 3_600_000);
   const diffDays = Math.floor(diffMs / 86_400_000);
 
-  if (diffMins < 1) return 'just now';
+  if (diffMins < 1) return "just now";
   if (diffMins < 60) return `${diffMins}m ago`;
   if (diffHours < 24) return `${diffHours}h ago`;
   return `${diffDays}d ago`;
@@ -451,7 +451,7 @@ export function getTimeAgo(date: Date | string | null | undefined): string {
  * ```
  */
 export function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /**
@@ -473,8 +473,8 @@ export function escapeRegex(str: string): string {
  * ```
  */
 export function toNumber(value: unknown, fallback = 0): number {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (typeof value === 'string') {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
     const parsed = Number.parseFloat(value);
     return Number.isFinite(parsed) ? parsed : fallback;
   }
@@ -486,7 +486,7 @@ export function toNumber(value: unknown, fallback = 0): number {
  * Narrows `string | undefined | unknown` to `string`.
  */
 export function isNonEmptyString(value: unknown): value is string {
-  return typeof value === 'string' && value.trim().length > 0;
+  return typeof value === "string" && value.trim().length > 0;
 }
 
 /**
@@ -494,7 +494,7 @@ export function isNonEmptyString(value: unknown): value is string {
  * Narrows `unknown` to `Record<string, unknown>`.
  */
 export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /**
@@ -503,6 +503,6 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
  */
 export function isStringArray(value: unknown): value is string[] {
   return (
-    Array.isArray(value) && value.every((item) => typeof item === 'string')
+    Array.isArray(value) && value.every((item) => typeof item === "string")
   );
 }

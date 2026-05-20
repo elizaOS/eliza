@@ -26,24 +26,24 @@ import {
   eq,
   sql,
   users,
-} from '@feed/db';
+} from "@feed/db";
 import {
   DAILY_LOGIN,
   generateSnowflakeId,
   isValidSnowflakeId,
   logger,
   POINTS,
-} from '@feed/shared';
-import { DistributedLockService } from './distributed-lock-service';
+} from "@feed/shared";
+import { DistributedLockService } from "./distributed-lock-service";
 
 // ─── Errors ──────────────────────────────────────────────────────────────────
 
 export class UserNotFoundError extends Error {
-  readonly code = 'USER_NOT_FOUND' as const;
+  readonly code = "USER_NOT_FOUND" as const;
 
   constructor(userId: string) {
     super(`User not found: ${userId}`);
-    this.name = 'UserNotFoundError';
+    this.name = "UserNotFoundError";
   }
 }
 
@@ -131,7 +131,7 @@ export function getNextMilestone(streak: number): {
  * Exported for testing purposes.
  */
 export function buildClaimResult(
-  partial: Partial<ClaimResult> & { streak: number }
+  partial: Partial<ClaimResult> & { streak: number },
 ): ClaimResult {
   return {
     success: false,
@@ -189,13 +189,13 @@ export function getClaimStatus(lastClaim: Date | null): ClaimStatus {
 
 export class DailyLoginService {
   private static validateUserId(userId: string): void {
-    if (!userId || typeof userId !== 'string') {
-      throw new Error('Invalid userId: must be a non-empty string');
+    if (!userId || typeof userId !== "string") {
+      throw new Error("Invalid userId: must be a non-empty string");
     }
     // Accept both Snowflake IDs and Privy DIDs (did:privy:...)
     // Some users may have Privy IDs as their database ID
     // Check Privy DID first since isValidSnowflakeId throws on non-numeric strings
-    if (userId.startsWith('did:privy:')) {
+    if (userId.startsWith("did:privy:")) {
       return; // Valid Privy DID format
     }
     if (!isValidSnowflakeId(userId)) {
@@ -204,7 +204,7 @@ export class DailyLoginService {
   }
 
   static async getStreakInfo(userId: string): Promise<StreakInfo> {
-    this.validateUserId(userId);
+    DailyLoginService.validateUserId(userId);
 
     try {
       const [user] = await db
@@ -245,16 +245,16 @@ export class DailyLoginService {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
       if (
-        errorMessage.includes('column') &&
-        (errorMessage.includes('dailyLoginStreak') ||
-          errorMessage.includes('lastDailyLogin') ||
-          errorMessage.includes('longestStreak') ||
-          errorMessage.includes('totalDailyLogins'))
+        errorMessage.includes("column") &&
+        (errorMessage.includes("dailyLoginStreak") ||
+          errorMessage.includes("lastDailyLogin") ||
+          errorMessage.includes("longestStreak") ||
+          errorMessage.includes("totalDailyLogins"))
       ) {
         logger.warn(
-          'Daily login columns not found - migration may not be applied',
+          "Daily login columns not found - migration may not be applied",
           { userId, error: errorMessage },
-          'DailyLoginService'
+          "DailyLoginService",
         );
         // Return default values so the UI doesn't break
         return {
@@ -279,13 +279,13 @@ export class DailyLoginService {
     // Validate userId format before querying
     // Accept both Snowflake IDs and Privy DIDs (did:privy:...)
     // Check Privy DID first since isValidSnowflakeId throws on non-numeric strings
-    if (!userId || typeof userId !== 'string') {
-      return buildClaimResult({ streak: 0, error: 'Invalid userId format' });
+    if (!userId || typeof userId !== "string") {
+      return buildClaimResult({ streak: 0, error: "Invalid userId format" });
     }
-    const isPrivyDid = userId.startsWith('did:privy:');
+    const isPrivyDid = userId.startsWith("did:privy:");
     const isSnowflake = !isPrivyDid && isValidSnowflakeId(userId);
     if (!isPrivyDid && !isSnowflake) {
-      return buildClaimResult({ streak: 0, error: 'Invalid userId format' });
+      return buildClaimResult({ streak: 0, error: "Invalid userId format" });
     }
 
     // Acquire distributed lock to prevent concurrent claims by same user
@@ -296,14 +296,14 @@ export class DailyLoginService {
     const lockAcquired = await DistributedLockService.acquireLock({
       lockId,
       durationMs: 30_000, // 30 second lock (should complete in <1s)
-      operation: 'daily-login-claim',
+      operation: "daily-login-claim",
       processId,
     });
 
     if (!lockAcquired) {
       return buildClaimResult({
         streak: 0,
-        error: 'Another claim is in progress. Please try again.',
+        error: "Another claim is in progress. Please try again.",
       });
     }
 
@@ -324,10 +324,10 @@ export class DailyLoginService {
           .from(users)
           .where(eq(users.id, userId))
           .limit(1)
-          .for('update');
+          .for("update");
 
         if (!user) {
-          return buildClaimResult({ streak: 0, error: 'User not found' });
+          return buildClaimResult({ streak: 0, error: "User not found" });
         }
 
         // Check eligibility INSIDE transaction
@@ -336,7 +336,7 @@ export class DailyLoginService {
         if (!status.canClaim) {
           return buildClaimResult({
             streak: Math.max(0, user.dailyLoginStreak),
-            error: 'Cannot claim yet - must wait 24 hours between claims',
+            error: "Cannot claim yet - must wait 24 hours between claims",
           });
         }
 
@@ -369,13 +369,13 @@ export class DailyLoginService {
         await tx.insert(balanceTransactions).values({
           id: await generateSnowflakeId(),
           userId,
-          type: 'deposit',
+          type: "deposit",
           amount: totalAwarded.toString(),
           balanceBefore: balanceBefore.toString(),
           balanceAfter: (balanceBefore + totalAwarded).toString(),
           description: buildDailyLoginRewardBalanceDescription(
             newStreak,
-            milestoneBonus
+            milestoneBonus,
           ),
         });
 
@@ -393,7 +393,7 @@ export class DailyLoginService {
 
       if (result.success) {
         logger.info(
-          'Daily login claimed',
+          "Daily login claimed",
           {
             userId,
             newStreak: result.streak,
@@ -402,7 +402,7 @@ export class DailyLoginService {
             totalAwarded: result.totalAwarded,
             streakReset: result.streakReset,
           },
-          'DailyLoginService'
+          "DailyLoginService",
         );
       }
 
@@ -414,7 +414,7 @@ export class DailyLoginService {
         await DistributedLockService.releaseLock(lockId, processId);
       } catch (releaseError) {
         logger.error(
-          'Failed to release distributed lock',
+          "Failed to release distributed lock",
           {
             lockId,
             processId,
@@ -423,7 +423,7 @@ export class DailyLoginService {
                 ? releaseError.message
                 : String(releaseError),
           },
-          'DailyLoginService'
+          "DailyLoginService",
         );
       }
     }

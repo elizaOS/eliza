@@ -21,9 +21,9 @@ import {
   messages,
   sql,
   users,
-} from '@feed/db';
-import { logger } from '../shared/logger';
-import { generateSnowflakeId } from '../shared/snowflake';
+} from "@feed/db";
+import { logger } from "../shared/logger";
+import { generateSnowflakeId } from "../shared/snowflake";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -36,7 +36,7 @@ export interface DirectShareInformationParams {
 }
 
 export interface ShareInformationMatch {
-  source: 'dm' | 'group_chat' | 'team_chat' | 'post';
+  source: "dm" | "group_chat" | "team_chat" | "post";
   sourceId: string;
   sourceName?: string;
   speaker: string;
@@ -71,7 +71,7 @@ export interface DirectRequestPaymentResult {
 // ── SHARE_INFORMATION executor ──────────────────────────────────────────────
 
 export async function executeDirectShareInformation(
-  params: DirectShareInformationParams
+  params: DirectShareInformationParams,
 ): Promise<DirectShareInformationResult> {
   const { agentUserId, recipientId, keywords, context, askingPrice } = params;
   const cleanRecipientId = recipientId?.trim();
@@ -82,9 +82,9 @@ export async function executeDirectShareInformation(
     sharedWithRecipient: false,
   };
 
-  if (!cleanRecipientId) return { ...empty, error: 'Recipient ID is required' };
+  if (!cleanRecipientId) return { ...empty, error: "Recipient ID is required" };
   if (!keywords?.length)
-    return { ...empty, error: 'At least one keyword is required' };
+    return { ...empty, error: "At least one keyword is required" };
 
   const [recipient] = await db
     .select({ id: users.id })
@@ -112,14 +112,14 @@ export async function executeDirectShareInformation(
       .limit(200);
 
     for (const row of dmRows) {
-      const lc = (row.content ?? '').toLowerCase();
+      const lc = (row.content ?? "").toLowerCase();
       const hit = terms.filter((t) => lc.includes(t));
       if (hit.length > 0) {
         matches.push({
-          source: 'dm',
-          sourceId: row.chatId ?? '',
-          speaker: row.sender ?? 'unknown',
-          content: row.content ?? '',
+          source: "dm",
+          sourceId: row.chatId ?? "",
+          speaker: row.sender ?? "unknown",
+          content: row.content ?? "",
           timestamp: row.time ?? new Date(),
           relevanceScore: hit.length / terms.length,
         });
@@ -150,15 +150,15 @@ export async function executeDirectShareInformation(
         .orderBy(sql`${messages.createdAt} DESC`)
         .limit(50);
       for (const m of gMsgs) {
-        const lc = (m.content ?? '').toLowerCase();
+        const lc = (m.content ?? "").toLowerCase();
         const hit = terms.filter((t) => lc.includes(t));
         if (hit.length > 0) {
           matches.push({
-            source: 'group_chat',
-            sourceId: g.groupId ?? '',
+            source: "group_chat",
+            sourceId: g.groupId ?? "",
             sourceName: g.groupName ?? undefined,
-            speaker: m.sender ?? 'unknown',
-            content: m.content ?? '',
+            speaker: m.sender ?? "unknown",
+            content: m.content ?? "",
             timestamp: m.time ?? new Date(),
             relevanceScore: hit.length / terms.length,
           });
@@ -170,20 +170,20 @@ export async function executeDirectShareInformation(
     const top = matches.slice(0, 10);
 
     if (top.length === 0) {
-      return { ...empty, success: true, error: 'No matching info found' };
+      return { ...empty, success: true, error: "No matching info found" };
     }
 
     const lines = top.map(
       (m, i) =>
-        `[${i + 1}] (${m.source}) ${m.speaker}: "${m.content.slice(0, 200)}"`
+        `[${i + 1}] (${m.source}) ${m.speaker}: "${m.content.slice(0, 200)}"`,
     );
     const price =
-      askingPrice && askingPrice > 0 ? `\nAsking price: $${askingPrice}` : '';
+      askingPrice && askingPrice > 0 ? `\nAsking price: $${askingPrice}` : "";
     const body =
       `[VERIFIED INTEL SHARE]\nFrom: ${agentUserId}\n` +
-      `Keywords: ${keywords.join(', ')}\n` +
-      `Context: ${context || 'Information share'}\n` +
-      `Matches: ${top.length}\n---\n${lines.join('\n')}${price}`;
+      `Keywords: ${keywords.join(", ")}\n` +
+      `Context: ${context || "Information share"}\n` +
+      `Matches: ${top.length}\n---\n${lines.join("\n")}${price}`;
 
     const chatId = await generateSnowflakeId();
     const messageId = await generateSnowflakeId();
@@ -215,7 +215,7 @@ export async function executeDirectShareInformation(
     logger.info(
       `[IntelExecutor] SHARE_INFORMATION: ${agentUserId} → ${cleanRecipientId} (${top.length} matches)`,
       { agentUserId, recipientId: cleanRecipientId, matchCount: top.length },
-      'IntelPaymentExecutors'
+      "IntelPaymentExecutors",
     );
 
     return {
@@ -234,23 +234,23 @@ export async function executeDirectShareInformation(
 // ── REQUEST_PAYMENT executor ────────────────────────────────────────────────
 
 export async function executeDirectRequestPayment(
-  params: DirectRequestPaymentParams
+  params: DirectRequestPaymentParams,
 ): Promise<DirectRequestPaymentResult> {
   const { agentUserId, recipientId, amount, reason, deadline } = params;
   const cleanRecipientId = recipientId?.trim();
 
   if (!cleanRecipientId)
-    return { success: false, error: 'Recipient ID required' };
+    return { success: false, error: "Recipient ID required" };
   if (!Number.isFinite(amount) || amount <= 0)
-    return { success: false, error: 'Amount must be positive' };
-  if (!reason?.trim()) return { success: false, error: 'Reason is required' };
+    return { success: false, error: "Amount must be positive" };
+  if (!reason?.trim()) return { success: false, error: "Reason is required" };
 
   const [recipient] = await db
     .select({ id: users.id })
     .from(users)
     .where(eq(users.id, cleanRecipientId))
     .limit(1);
-  if (!recipient) return { success: false, error: 'Recipient not found' };
+  if (!recipient) return { success: false, error: "Recipient not found" };
 
   try {
     const requestId = await generateSnowflakeId();
@@ -293,7 +293,7 @@ export async function executeDirectRequestPayment(
     logger.info(
       `[IntelExecutor] REQUEST_PAYMENT: ${agentUserId} → ${cleanRecipientId} $${amount}`,
       { agentUserId, recipientId: cleanRecipientId, amount, requestId },
-      'IntelPaymentExecutors'
+      "IntelPaymentExecutors",
     );
 
     return { success: true, requestId };

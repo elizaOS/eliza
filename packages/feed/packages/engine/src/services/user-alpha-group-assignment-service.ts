@@ -27,16 +27,16 @@ import {
   groups,
   isNotNull,
   users,
-} from '@feed/db';
+} from "@feed/db";
 import {
   GROUP_CONFIG,
   generateSnowflakeId,
   logger,
   type TierLevel,
-} from '@feed/shared';
-import { StaticDataRegistry } from './static-data-registry';
-import { TIER_CONFIG } from './tier-config';
-import { TieredGroupService } from './tiered-group-service';
+} from "@feed/shared";
+import { StaticDataRegistry } from "./static-data-registry";
+import { TIER_CONFIG } from "./tier-config";
+import { TieredGroupService } from "./tiered-group-service";
 
 /** Default max members for Tier 3 groups (from TIER_CONFIG) */
 const DEFAULT_TIER3_MAX_MEMBERS = TIER_CONFIG[3].maxMembers;
@@ -119,18 +119,18 @@ export class UserAlphaGroupAssignmentService {
     }
 
     if (user.isActor) {
-      result.errors.push('Cannot assign groups to NPC actors');
+      result.errors.push("Cannot assign groups to NPC actors");
       return result;
     }
 
     if (user.isBanned) {
-      result.errors.push('Cannot assign groups to banned users');
+      result.errors.push("Cannot assign groups to banned users");
       return result;
     }
 
     // Agents inherit from their owner, don't assign directly
     if (user.isAgent) {
-      result.errors.push('Agents inherit group access from their owner');
+      result.errors.push("Agents inherit group access from their owner");
       return result;
     }
 
@@ -143,24 +143,27 @@ export class UserAlphaGroupAssignmentService {
         and(
           eq(groupMembers.userId, userId),
           eq(groupMembers.isActive, true),
-          eq(groups.type, 'npc')
-        )
+          eq(groups.type, "npc"),
+        ),
       );
 
     const currentGroups = existingCount?.count ?? 0;
-    if (currentGroups >= this.TARGET_DEFAULT_GROUPS) {
+    if (
+      currentGroups >= UserAlphaGroupAssignmentService.TARGET_DEFAULT_GROUPS
+    ) {
       // User already has sufficient groups
       result.success = true;
       result.groupsAssigned = 0;
       logger.debug(
-        'User already has sufficient NPC groups',
+        "User already has sufficient NPC groups",
         { userId, currentGroups },
-        'UserAlphaGroupAssignmentService'
+        "UserAlphaGroupAssignmentService",
       );
       return result;
     }
 
-    const groupsNeeded = this.TARGET_DEFAULT_GROUPS - currentGroups;
+    const groupsNeeded =
+      UserAlphaGroupAssignmentService.TARGET_DEFAULT_GROUPS - currentGroups;
 
     // 3. Get NPCs user follows (for prioritization)
     const followedNpcs = await db
@@ -181,24 +184,25 @@ export class UserAlphaGroupAssignmentService {
         and(
           eq(groupMembers.userId, userId),
           eq(groupMembers.isActive, true),
-          eq(groups.type, 'npc')
-        )
+          eq(groups.type, "npc"),
+        ),
       );
 
     const excludeNpcIds = new Set(existingNpcMemberships.map((e) => e.ownerId));
 
     // 5. Find available Tier 3 groups with capacity
-    const availableGroups = await this.findAvailableTier3Groups(
-      excludeNpcIds,
-      groupsNeeded * 3 // Get extra for fallback
-    );
+    const availableGroups =
+      await UserAlphaGroupAssignmentService.findAvailableTier3Groups(
+        excludeNpcIds,
+        groupsNeeded * 3, // Get extra for fallback
+      );
 
     if (availableGroups.length === 0) {
-      result.errors.push('No available Tier 3 groups with capacity');
+      result.errors.push("No available Tier 3 groups with capacity");
       logger.warn(
-        'No available Tier 3 groups for user assignment',
+        "No available Tier 3 groups for user assignment",
         { userId, groupsNeeded },
-        'UserAlphaGroupAssignmentService'
+        "UserAlphaGroupAssignmentService",
       );
       return result;
     }
@@ -216,7 +220,10 @@ export class UserAlphaGroupAssignmentService {
 
     // 7. Assign to groups (up to groupsNeeded)
     for (const group of sortedGroups.slice(0, groupsNeeded)) {
-      const addResult = await this.addUserToGroup(userId, group);
+      const addResult = await UserAlphaGroupAssignmentService.addUserToGroup(
+        userId,
+        group,
+      );
 
       if (addResult.success) {
         result.assignments.push({
@@ -229,7 +236,7 @@ export class UserAlphaGroupAssignmentService {
         result.groupsAssigned++;
       } else if (addResult.error) {
         result.errors.push(
-          `Failed to add to ${group.npcName}: ${addResult.error}`
+          `Failed to add to ${group.npcName}: ${addResult.error}`,
         );
       }
     }
@@ -237,7 +244,7 @@ export class UserAlphaGroupAssignmentService {
     result.success = result.groupsAssigned > 0;
 
     logger.info(
-      'Assigned default alpha groups to user',
+      "Assigned default alpha groups to user",
       {
         userId,
         groupsAssigned: result.groupsAssigned,
@@ -247,11 +254,11 @@ export class UserAlphaGroupAssignmentService {
           tier: a.tier,
         })),
         prioritizedFollowed: result.assignments.filter((a) =>
-          followedNpcIds.has(a.npcId)
+          followedNpcIds.has(a.npcId),
         ).length,
         errors: result.errors.length > 0 ? result.errors : undefined,
       },
-      'UserAlphaGroupAssignmentService'
+      "UserAlphaGroupAssignmentService",
     );
 
     return result;
@@ -267,14 +274,14 @@ export class UserAlphaGroupAssignmentService {
    */
   private static async findAvailableTier3Groups(
     excludeNpcIds: Set<string>,
-    limit: number
+    limit: number,
   ): Promise<AvailableGroup[]> {
     // Ensure all NPCs have their tier groups created (one-time per process)
     // This is idempotent but expensive, so we only run it once.
     // In production, the bootstrap script should handle initial creation.
-    if (!this.tiersEnsuredOnce) {
+    if (!UserAlphaGroupAssignmentService.tiersEnsuredOnce) {
       const allActors = StaticDataRegistry.getAllActors().filter(
-        (a) => !a.isTest
+        (a) => !a.isTest,
       );
 
       // Batch ensure tiers exist for all NPCs (parallel with limit)
@@ -282,10 +289,12 @@ export class UserAlphaGroupAssignmentService {
       for (let i = 0; i < allActors.length; i += batchSize) {
         const batch = allActors.slice(i, i + batchSize);
         await Promise.all(
-          batch.map((actor) => TieredGroupService.ensureAllTiersExist(actor.id))
+          batch.map((actor) =>
+            TieredGroupService.ensureAllTiersExist(actor.id),
+          ),
         );
       }
-      this.tiersEnsuredOnce = true;
+      UserAlphaGroupAssignmentService.tiersEnsuredOnce = true;
     }
 
     // Query all Tier 3 groups with their member counts
@@ -303,15 +312,15 @@ export class UserAlphaGroupAssignmentService {
         groupMembers,
         and(
           eq(groupMembers.groupId, groups.id),
-          eq(groupMembers.isActive, true)
-        )
+          eq(groupMembers.isActive, true),
+        ),
       )
       .where(
         and(
-          eq(groups.type, 'npc'),
+          eq(groups.type, "npc"),
           eq(groups.tier, 3),
-          isNotNull(chats.id) // Only groups with associated chats
-        )
+          isNotNull(chats.id), // Only groups with associated chats
+        ),
       )
       .groupBy(groups.id, groups.ownerId, groups.maxMembers, chats.id);
 
@@ -369,7 +378,7 @@ export class UserAlphaGroupAssignmentService {
    */
   private static async addUserToGroup(
     userId: string,
-    group: AvailableGroup
+    group: AvailableGroup,
   ): Promise<{ success: boolean; error?: string }> {
     const [memberId, participantId] = await Promise.all([
       generateSnowflakeId(),
@@ -383,15 +392,15 @@ export class UserAlphaGroupAssignmentService {
       .where(
         and(
           eq(groupMembers.groupId, group.groupId),
-          eq(groupMembers.userId, userId)
-        )
+          eq(groupMembers.userId, userId),
+        ),
       )
       .limit(1);
 
     if (existingMember) {
       if (existingMember.isActive) {
         // Already an active member
-        return { success: false, error: 'Already a member' };
+        return { success: false, error: "Already a member" };
       }
 
       // Reactivate existing membership in a transaction for atomicity
@@ -440,13 +449,13 @@ export class UserAlphaGroupAssignmentService {
           .where(
             and(
               eq(groupMembers.groupId, group.groupId),
-              eq(groupMembers.isActive, true)
-            )
+              eq(groupMembers.isActive, true),
+            ),
           );
 
         const memberCount = currentCount?.count ?? 0;
         if (memberCount >= group.maxMembers) {
-          throw new Error('GROUP_FULL');
+          throw new Error("GROUP_FULL");
         }
 
         // Add to group members
@@ -454,7 +463,7 @@ export class UserAlphaGroupAssignmentService {
           id: memberId,
           groupId: group.groupId,
           userId,
-          role: 'member',
+          role: "member",
           addedBy: group.npcId, // NPC is the one adding them
           tier: 3,
           isActive: true,
@@ -476,8 +485,8 @@ export class UserAlphaGroupAssignmentService {
 
       return { success: true };
     } catch (error) {
-      if (error instanceof Error && error.message === 'GROUP_FULL') {
-        return { success: false, error: 'Group is at capacity' };
+      if (error instanceof Error && error.message === "GROUP_FULL") {
+        return { success: false, error: "Group is at capacity" };
       }
       throw error;
     }
@@ -508,10 +517,10 @@ export class UserAlphaGroupAssignmentService {
         groupMembers,
         and(
           eq(groupMembers.groupId, groups.id),
-          eq(groupMembers.isActive, true)
-        )
+          eq(groupMembers.isActive, true),
+        ),
       )
-      .where(and(eq(groups.type, 'npc'), eq(groups.tier, 3)))
+      .where(and(eq(groups.type, "npc"), eq(groups.tier, 3)))
       .groupBy(groups.id, groups.maxMembers);
 
     let totalCapacity = 0;
@@ -526,7 +535,7 @@ export class UserAlphaGroupAssignmentService {
     const availableSlots = totalCapacity - currentMembers;
     const fillRate = totalCapacity > 0 ? currentMembers / totalCapacity : 0;
     const maxUsersCanServe = Math.floor(
-      availableSlots / this.TARGET_DEFAULT_GROUPS
+      availableSlots / UserAlphaGroupAssignmentService.TARGET_DEFAULT_GROUPS,
     );
 
     return {

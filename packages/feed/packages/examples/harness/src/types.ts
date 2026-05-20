@@ -48,7 +48,7 @@ export interface TrainableAgent {
   readonly name: string;
 
   /** Language implementation */
-  readonly language: 'typescript' | 'python';
+  readonly language: "typescript" | "python";
 
   /** Initialize the agent with configuration */
   initialize(config: AgentConfig): Promise<void>;
@@ -59,7 +59,7 @@ export interface TrainableAgent {
   /** Execute an action (optional - harness can execute) */
   execute?(
     decision: AgentDecision,
-    client: A2AClientInterface
+    client: A2AClientInterface,
   ): Promise<ActionResult>;
 
   /** Called at end of training run */
@@ -83,13 +83,13 @@ export interface A2AClientInterface {
   getMarketData(marketId: string): Promise<Market>;
   buyShares(
     marketId: string,
-    outcome: 'YES' | 'NO',
-    amount: number
+    outcome: "YES" | "NO",
+    amount: number,
   ): Promise<Trade>;
   sellShares(
     marketId: string,
-    outcome: 'YES' | 'NO',
-    shares: number
+    outcome: "YES" | "NO",
+    shares: number,
   ): Promise<Trade>;
 
   // Social
@@ -115,7 +115,7 @@ export interface A2AClientInterface {
 export interface Position {
   id: string;
   marketId: string;
-  outcome: 'YES' | 'NO';
+  outcome: "YES" | "NO";
   shares: number;
   avgPrice: number;
   currentPrice?: number;
@@ -143,7 +143,7 @@ export interface Post {
 export interface Trade {
   id: string;
   marketId: string;
-  outcome: 'YES' | 'NO';
+  outcome: "YES" | "NO";
   shares: number;
   price: number;
   totalCost: number;
@@ -184,19 +184,19 @@ export interface Notification {
 // ==================== Actions ====================
 
 export type ActionType =
-  | 'BUY_YES'
-  | 'BUY_NO'
-  | 'SELL_SHARES'
-  | 'CREATE_POST'
-  | 'LIKE_POST'
-  | 'COMMENT_POST'
-  | 'VIEW_FEED'
-  | 'DISCOVER_AGENTS'
-  | 'SEARCH_USERS'
-  | 'CHECK_LEADERBOARD'
-  | 'CHECK_NOTIFICATIONS'
-  | 'VIEW_MARKET_DATA'
-  | 'HOLD';
+  | "BUY_YES"
+  | "BUY_NO"
+  | "SELL_SHARES"
+  | "CREATE_POST"
+  | "LIKE_POST"
+  | "COMMENT_POST"
+  | "VIEW_FEED"
+  | "DISCOVER_AGENTS"
+  | "SEARCH_USERS"
+  | "CHECK_LEADERBOARD"
+  | "CHECK_NOTIFICATIONS"
+  | "VIEW_MARKET_DATA"
+  | "HOLD";
 
 // ==================== Archetype ====================
 

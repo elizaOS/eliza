@@ -88,15 +88,15 @@
  * ```
  */
 
-import { authenticate, successResponse, withErrorHandling } from '@feed/api';
+import { authenticate, successResponse, withErrorHandling } from "@feed/api";
 import {
   asUser,
   getBlockedByUserIds,
   getBlockedUserIds,
   getMutedUserIds,
-} from '@feed/db';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/db";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 /** Maximum number of search results to return */
 const AGENT_SEARCH_LIMIT = 20;
@@ -113,7 +113,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
   // Get query parameter
   const { searchParams } = new URL(request.url);
-  const query = searchParams.get('q');
+  const query = searchParams.get("q");
 
   if (!query || query.trim().length < 2) {
     return successResponse({ agents: [] });
@@ -141,13 +141,13 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
               {
                 username: {
                   contains: searchTerm,
-                  mode: 'insensitive',
+                  mode: "insensitive",
                 },
               },
               {
                 displayName: {
                   contains: searchTerm,
-                  mode: 'insensitive',
+                  mode: "insensitive",
                 },
               },
             ],
@@ -182,7 +182,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       take: AGENT_SEARCH_LIMIT,
       orderBy: [
         {
-          username: 'asc',
+          username: "asc",
         },
       ],
     });
@@ -195,14 +195,14 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       profileImageUrl: result.profileImageUrl,
       bio: result.bio,
       // Determine type: prefer 'npc' if isActor, otherwise 'agent'
-      type: result.isActor ? 'npc' : 'agent',
+      type: result.isActor ? "npc" : "agent",
     }));
   });
 
   logger.info(
-    'Agent/NPC search completed',
+    "Agent/NPC search completed",
     { userId: user.userId, query: searchTerm, results: agents.length },
-    'GET /api/agents/search'
+    "GET /api/agents/search",
   );
 
   return successResponse({

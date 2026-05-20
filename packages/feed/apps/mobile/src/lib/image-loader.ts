@@ -1,5 +1,4 @@
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL || 'https://play.feed.market';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://play.feed.market";
 
 export default function imageLoader({
   src,
@@ -9,7 +8,7 @@ export default function imageLoader({
   quality?: number;
 }) {
   // Remote URLs — pass through unchanged
-  if (src.startsWith('http://') || src.startsWith('https://')) {
+  if (src.startsWith("http://") || src.startsWith("https://")) {
     return src;
   }
   // Local static assets — serve from the web app's deployment

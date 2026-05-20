@@ -1,11 +1,11 @@
-'use client';
+"use client";
 
-import { cn } from '@feed/shared';
-import { ArrowRight, Search, X } from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Avatar } from '@/components/shared/Avatar';
-import { apiUrl } from '@/utils/api-url';
+import { cn } from "@feed/shared";
+import { ArrowRight, Search, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Avatar } from "@/components/shared/Avatar";
+import { apiUrl } from "@/utils/api-url";
 
 /**
  * API user structure from registry API.
@@ -39,7 +39,7 @@ interface RegistryEntity {
   username?: string;
   bio?: string;
   imageUrl?: string;
-  type: 'user' | 'actor';
+  type: "user" | "actor";
 }
 
 /**
@@ -78,17 +78,17 @@ interface EntitySearchAutocompleteProps {
   className?: string;
   compact?: boolean;
   onNavigate?: () => void;
-  searchType?: 'all' | 'users' | 'actors' | 'agents' | 'apps';
+  searchType?: "all" | "users" | "actors" | "agents" | "apps";
 }
 
 export function EntitySearchAutocomplete({
   value,
   onChange,
-  placeholder = 'Search...',
+  placeholder = "Search...",
   className,
   compact = false,
   onNavigate,
-  searchType = 'all',
+  searchType = "all",
 }: EntitySearchAutocompleteProps) {
   const router = useRouter();
   const [suggestions, setSuggestions] = useState<RegistryEntity[]>([]);
@@ -113,7 +113,7 @@ export function EntitySearchAutocomplete({
         type: searchType,
       });
       const response = await fetch(
-        apiUrl(`/api/registry/all?${params.toString()}`)
+        apiUrl(`/api/registry/all?${params.toString()}`),
       );
       if (response.ok) {
         const data = await response.json();
@@ -126,7 +126,7 @@ export function EntitySearchAutocomplete({
             username: u.username,
             bio: u.bio,
             imageUrl: u.imageUrl,
-            type: 'user' as const,
+            type: "user" as const,
           }));
         const actors: RegistryEntity[] = (data.actors || []).map(
           (a: ApiActor) => ({
@@ -135,8 +135,8 @@ export function EntitySearchAutocomplete({
             username: undefined,
             bio: a.description || a.role,
             imageUrl: a.imageUrl,
-            type: 'actor' as const,
-          })
+            type: "actor" as const,
+          }),
         );
         const allEntities = [...users, ...actors];
         setSuggestions(allEntities.slice(0, 10));
@@ -165,8 +165,8 @@ export function EntitySearchAutocomplete({
       }
     };
 
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   const navigateToEntity = useCallback(
@@ -178,15 +178,15 @@ export function EntitySearchAutocomplete({
       onNavigate?.();
       setIsOpen(false);
       setSelectedIndex(-1);
-      onChange('');
+      onChange("");
     },
-    [router, onNavigate, onChange]
+    [router, onNavigate, onChange],
   );
 
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLInputElement>) => {
       if (!isOpen) {
-        if (event.key === 'Enter' && suggestions.length > 0 && suggestions[0]) {
+        if (event.key === "Enter" && suggestions.length > 0 && suggestions[0]) {
           event.preventDefault();
           navigateToEntity(suggestions[0]);
         }
@@ -194,17 +194,17 @@ export function EntitySearchAutocomplete({
       }
 
       switch (event.key) {
-        case 'ArrowDown':
+        case "ArrowDown":
           event.preventDefault();
           setSelectedIndex((prev) =>
-            prev < suggestions.length - 1 ? prev + 1 : suggestions.length - 1
+            prev < suggestions.length - 1 ? prev + 1 : suggestions.length - 1,
           );
           break;
-        case 'ArrowUp':
+        case "ArrowUp":
           event.preventDefault();
           setSelectedIndex((prev) => (prev > 0 ? prev - 1 : 0));
           break;
-        case 'Enter':
+        case "Enter":
           event.preventDefault();
           if (selectedIndex >= 0 && selectedIndex < suggestions.length) {
             const entity = suggestions[selectedIndex];
@@ -218,25 +218,25 @@ export function EntitySearchAutocomplete({
             }
           }
           break;
-        case 'Escape':
+        case "Escape":
           setIsOpen(false);
           setSelectedIndex(-1);
           break;
       }
     },
-    [isOpen, suggestions, selectedIndex, navigateToEntity]
+    [isOpen, suggestions, selectedIndex, navigateToEntity],
   );
 
   return (
-    <div ref={wrapperRef} className={cn('relative', className)}>
+    <div ref={wrapperRef} className={cn("relative", className)}>
       <div
         className={cn(
-          'pointer-events-none absolute top-1/2 z-10 -translate-y-1/2',
-          compact ? 'left-3' : 'left-4'
+          "pointer-events-none absolute top-1/2 z-10 -translate-y-1/2",
+          compact ? "left-3" : "left-4",
         )}
       >
         <Search
-          className={cn(compact ? 'h-3.5 w-3.5' : 'h-4 w-4', 'text-primary')}
+          className={cn(compact ? "h-3.5 w-3.5" : "h-4 w-4", "text-primary")}
         />
       </div>
       <input
@@ -252,32 +252,32 @@ export function EntitySearchAutocomplete({
         }}
         onKeyDown={handleKeyDown}
         className={cn(
-          'w-full',
-          'border border-border bg-transparent',
-          'focus:border-border focus:outline-none',
-          'transition-all duration-200',
-          'text-foreground',
-          compact ? 'py-1.5 pr-9 pl-9 text-sm' : 'py-2.5 pr-10 pl-11',
-          'rounded-full'
+          "w-full",
+          "border border-border bg-transparent",
+          "focus:border-border focus:outline-none",
+          "transition-all duration-200",
+          "text-foreground",
+          compact ? "py-1.5 pr-9 pl-9 text-sm" : "py-2.5 pr-10 pl-11",
+          "rounded-full",
         )}
       />
       {value && (
         <button
           onClick={() => {
-            onChange('');
+            onChange("");
             setSuggestions([]);
             setIsOpen(false);
             setSelectedIndex(-1);
           }}
           className={cn(
-            'absolute top-1/2 z-10 -translate-y-1/2 p-1 transition-colors hover:bg-muted/50',
-            compact ? 'right-2' : 'right-3'
+            "absolute top-1/2 z-10 -translate-y-1/2 p-1 transition-colors hover:bg-muted/50",
+            compact ? "right-2" : "right-3",
           )}
         >
           <X
             className={cn(
-              compact ? 'h-3.5 w-3.5' : 'h-4 w-4',
-              'text-muted-foreground'
+              compact ? "h-3.5 w-3.5" : "h-4 w-4",
+              "text-muted-foreground",
             )}
           />
         </button>
@@ -307,15 +307,15 @@ export function EntitySearchAutocomplete({
                   key={entity.id}
                   onClick={() => navigateToEntity(entity)}
                   className={cn(
-                    'flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/50',
-                    selectedIndex === index && 'bg-muted/50'
+                    "flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/50",
+                    selectedIndex === index && "bg-muted/50",
                   )}
                 >
                   <Avatar
                     id={entity.id}
                     src={entity.imageUrl || undefined}
                     name={entity.name}
-                    type={entity.type === 'actor' ? 'actor' : 'user'}
+                    type={entity.type === "actor" ? "actor" : "user"}
                     size="sm"
                     className="shrink-0"
                   />

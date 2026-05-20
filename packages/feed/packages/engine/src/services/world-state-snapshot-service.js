@@ -1,4 +1,4 @@
-import { db, eq, generateSnowflakeId, worldStateSnapshots } from '@feed/db';
+import { db, eq, generateSnowflakeId, worldStateSnapshots } from "@feed/db";
 export class WorldStateSnapshotService {
   /**
    * Capture a complete world state snapshot at the current moment.
@@ -10,14 +10,15 @@ export class WorldStateSnapshotService {
     // Gather state from various tables
     const [predictionMarkets, perpMarkets, worldEvents, orgStates] =
       await Promise.all([
-        this.getPredictionMarketState(),
-        this.getPerpMarketState(),
-        this.getWorldEvents(),
-        this.getOrgStates(),
+        WorldStateSnapshotService.getPredictionMarketState(),
+        WorldStateSnapshotService.getPerpMarketState(),
+        WorldStateSnapshotService.getWorldEvents(),
+        WorldStateSnapshotService.getOrgStates(),
       ]);
     // Get arc/insider state
-    const insiderAssignments = await this.getInsiderAssignments();
-    const arcState = await this.getArcState();
+    const insiderAssignments =
+      await WorldStateSnapshotService.getInsiderAssignments();
+    const arcState = await WorldStateSnapshotService.getArcState();
     await db.insert(worldStateSnapshots).values({
       id,
       windowId,
@@ -47,7 +48,7 @@ export class WorldStateSnapshotService {
     // Query questions table for active prediction markets
     // Return array of { marketId, question, resolvedOutcome }
     try {
-      const { questions } = await import('@feed/db/schema');
+      const { questions } = await import("@feed/db/schema");
       const markets = await db
         .select({
           id: questions.id,
@@ -68,7 +69,7 @@ export class WorldStateSnapshotService {
   static async getPerpMarketState() {
     // Return current perp market prices
     try {
-      const { organizationState } = await import('@feed/db/schema');
+      const { organizationState } = await import("@feed/db/schema");
       const orgs = await db
         .select({
           id: organizationState.id,
@@ -86,7 +87,7 @@ export class WorldStateSnapshotService {
   }
   static async getWorldEvents() {
     try {
-      const { worldEvents } = await import('@feed/db/schema');
+      const { worldEvents } = await import("@feed/db/schema");
       const events = await db
         .select({
           id: worldEvents.id,
@@ -102,7 +103,7 @@ export class WorldStateSnapshotService {
   }
   static async getInsiderAssignments() {
     try {
-      const { questionArcPlans } = await import('@feed/db/schema');
+      const { questionArcPlans } = await import("@feed/db/schema");
       const plans = await db
         .select({
           id: questionArcPlans.id,
@@ -122,7 +123,7 @@ export class WorldStateSnapshotService {
   }
   static async getOrgStates() {
     try {
-      const { organizationState } = await import('@feed/db/schema');
+      const { organizationState } = await import("@feed/db/schema");
       const orgs = await db.select().from(organizationState).limit(100);
       return orgs;
     } catch {

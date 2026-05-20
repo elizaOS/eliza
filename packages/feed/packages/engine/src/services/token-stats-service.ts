@@ -11,8 +11,8 @@
  * 4. Use TokenStatsService.getStats() to query historical data
  */
 
-import { logger } from '@feed/shared';
-import { setTokenUsageCallback } from '../llm/openai-client';
+import { logger } from "@feed/shared";
+import { setTokenUsageCallback } from "../llm/openai-client";
 import {
   calculateEstimatedCost,
   type LLMCallTokenUsage,
@@ -22,7 +22,7 @@ import {
   type TickTokenStats,
   type TokenStatsSummary,
   type TokenUsageCollector,
-} from '../types/token-stats';
+} from "../types/token-stats";
 
 /**
  * Internal collector for a single tick
@@ -30,7 +30,7 @@ import {
 class TickUsageCollector implements TokenUsageCollector {
   private calls: LLMCallTokenUsage[] = [];
 
-  recordCall(usage: Omit<LLMCallTokenUsage, 'callId' | 'timestamp'>): void {
+  recordCall(usage: Omit<LLMCallTokenUsage, "callId" | "timestamp">): void {
     const call: LLMCallTokenUsage = {
       ...usage,
       callId: `call-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`,
@@ -39,7 +39,7 @@ class TickUsageCollector implements TokenUsageCollector {
     this.calls.push(call);
 
     logger.debug(
-      'Token usage recorded',
+      "Token usage recorded",
       {
         provider: usage.provider,
         model: usage.model,
@@ -48,7 +48,7 @@ class TickUsageCollector implements TokenUsageCollector {
         promptType: usage.promptType,
         success: usage.success,
       },
-      'TokenStatsService'
+      "TokenStatsService",
     );
   }
 
@@ -58,7 +58,7 @@ class TickUsageCollector implements TokenUsageCollector {
 
   getStats(): Omit<
     TickTokenStats,
-    'tickId' | 'tickStartedAt' | 'tickCompletedAt' | 'tickDurationMs'
+    "tickId" | "tickStartedAt" | "tickCompletedAt" | "tickDurationMs"
   > {
     const calls = this.calls;
 
@@ -97,7 +97,7 @@ class TickUsageCollector implements TokenUsageCollector {
     }
 
     const byPromptType: PromptTypeStats[] = Array.from(
-      promptTypeMap.entries()
+      promptTypeMap.entries(),
     ).map(([promptType, data]) => ({
       promptType,
       callCount: data.calls.length,
@@ -150,10 +150,10 @@ class TickUsageCollector implements TokenUsageCollector {
 
     const byModel: ModelStats[] = Array.from(modelMap.entries()).map(
       ([key, data]) => {
-        const [, model] = key.split(':');
+        const [, model] = key.split(":");
         return {
           provider: data.provider,
-          model: model ?? 'unknown',
+          model: model ?? "unknown",
           callCount: data.calls.length,
           totalInputTokens: data.totalInput,
           totalOutputTokens: data.totalOutput,
@@ -161,13 +161,13 @@ class TickUsageCollector implements TokenUsageCollector {
           avgTokensPerCall:
             data.calls.length > 0
               ? Math.round(
-                  (data.totalInput + data.totalOutput) / data.calls.length
+                  (data.totalInput + data.totalOutput) / data.calls.length,
                 )
               : 0,
           successRate:
             data.calls.length > 0 ? data.successCount / data.calls.length : 0,
         };
-      }
+      },
     );
 
     return {
@@ -207,9 +207,9 @@ class TokenStatsServiceImpl {
   startTick(tickId?: string): string {
     if (this.isCollecting) {
       logger.warn(
-        'TokenStatsService: startTick called while already collecting. Ending previous tick.',
+        "TokenStatsService: startTick called while already collecting. Ending previous tick.",
         undefined,
-        'TokenStatsService'
+        "TokenStatsService",
       );
       this.endTick();
     }
@@ -228,9 +228,9 @@ class TokenStatsServiceImpl {
     });
 
     logger.info(
-      'Token stats collection started',
+      "Token stats collection started",
       { tickId: id },
-      'TokenStatsService'
+      "TokenStatsService",
     );
 
     return id;
@@ -248,9 +248,9 @@ class TokenStatsServiceImpl {
       !this.currentTickId
     ) {
       logger.warn(
-        'TokenStatsService: endTick called but no tick in progress',
+        "TokenStatsService: endTick called but no tick in progress",
         undefined,
-        'TokenStatsService'
+        "TokenStatsService",
       );
       return null;
     }
@@ -285,7 +285,7 @@ class TokenStatsServiceImpl {
     this.isCollecting = false;
 
     logger.info(
-      'Token stats collection ended',
+      "Token stats collection ended",
       {
         tickId: tickStats.tickId,
         totalCalls: tickStats.totalCalls,
@@ -294,7 +294,7 @@ class TokenStatsServiceImpl {
         outputTokens: tickStats.totalOutputTokens,
         durationMs: tickDurationMs,
       },
-      'TokenStatsService'
+      "TokenStatsService",
     );
 
     return tickStats;
@@ -306,7 +306,7 @@ class TokenStatsServiceImpl {
    */
   getCurrentStats(): Omit<
     TickTokenStats,
-    'tickId' | 'tickCompletedAt' | 'tickDurationMs'
+    "tickId" | "tickCompletedAt" | "tickDurationMs"
   > | null {
     if (!this.isCollecting || !this.currentCollector || !this.tickStartTime) {
       return null;
@@ -347,11 +347,11 @@ class TokenStatsServiceImpl {
     const totalCalls = ticks.reduce((sum, t) => sum + t.totalCalls, 0);
     const totalInputTokens = ticks.reduce(
       (sum, t) => sum + t.totalInputTokens,
-      0
+      0,
     );
     const totalOutputTokens = ticks.reduce(
       (sum, t) => sum + t.totalOutputTokens,
-      0
+      0,
     );
     const totalTokens = totalInputTokens + totalOutputTokens;
 
@@ -419,7 +419,7 @@ class TokenStatsServiceImpl {
       const costs = calculateEstimatedCost(
         m.model,
         m.totalInputTokens,
-        m.totalOutputTokens
+        m.totalOutputTokens,
       );
       estimatedInputCostUSD += costs.inputCostUSD;
       estimatedOutputCostUSD += costs.outputCostUSD;
@@ -450,15 +450,15 @@ class TokenStatsServiceImpl {
    * Useful for tracking calls made outside the normal game tick flow
    */
   recordManualCall(
-    usage: Omit<LLMCallTokenUsage, 'callId' | 'timestamp'>
+    usage: Omit<LLMCallTokenUsage, "callId" | "timestamp">,
   ): void {
     if (this.currentCollector && this.isCollecting) {
       this.currentCollector.recordCall(usage);
     } else {
       logger.debug(
-        'Manual token usage recorded (no tick in progress)',
+        "Manual token usage recorded (no tick in progress)",
         usage,
-        'TokenStatsService'
+        "TokenStatsService",
       );
     }
   }
@@ -482,7 +482,7 @@ class TokenStatsServiceImpl {
       this.currentTickId = null;
       this.isCollecting = false;
     }
-    logger.info('Token stats cleared', undefined, 'TokenStatsService');
+    logger.info("Token stats cleared", undefined, "TokenStatsService");
   }
 }
 

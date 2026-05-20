@@ -1,10 +1,10 @@
-import { beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test';
-import { createHmac } from 'node:crypto';
+import { beforeAll, beforeEach, describe, expect, it, mock } from "bun:test";
+import { createHmac } from "node:crypto";
 
-const _actualShared = await import('@feed/shared');
-const _actualDb = await import('@feed/db');
+const _actualShared = await import("@feed/shared");
+const _actualDb = await import("@feed/db");
 
-const insertReturningMock = mock(async () => [{ id: 'inbox-123' }]);
+const insertReturningMock = mock(async () => [{ id: "inbox-123" }]);
 const insertOnConflictMock = mock(() => ({
   returning: insertReturningMock,
 }));
@@ -14,43 +14,43 @@ const insertValuesMock = mock(() => ({
 const insertMock = mock(() => ({
   values: insertValuesMock,
 }));
-const generateSnowflakeIdMock = mock(async () => 'inbox-123');
+const generateSnowflakeIdMock = mock(async () => "inbox-123");
 
-let ingestSentryWebhook: typeof import('../../../packages/api/src/services/sentry-webhook-inbox-service').ingestSentryWebhook;
+let ingestSentryWebhook: typeof import("../../../packages/api/src/services/sentry-webhook-inbox-service").ingestSentryWebhook;
 
 function computeTimestampPrefixedSignature(
   secret: string,
   timestamp: string,
-  rawBody: string
+  rawBody: string,
 ): string {
-  return createHmac('sha256', secret)
+  return createHmac("sha256", secret)
     .update(`${timestamp}.${rawBody}`)
-    .digest('hex');
+    .digest("hex");
 }
 
 function computeBodyOnlySignature(secret: string, rawBody: string): string {
-  return createHmac('sha256', secret).update(rawBody).digest('hex');
+  return createHmac("sha256", secret).update(rawBody).digest("hex");
 }
 
 function toTimestampDate(timestamp: string): Date {
   return new Date(Number.parseInt(timestamp, 10) * 1000);
 }
 
-describe('ingestSentryWebhook signature compatibility', () => {
+describe("ingestSentryWebhook signature compatibility", () => {
   beforeAll(async () => {
-    mock.module('@feed/db', () => ({
+    mock.module("@feed/db", () => ({
       ..._actualDb,
       db: {
         insert: insertMock,
       },
       generateSnowflakeId: generateSnowflakeIdMock,
       sentryWebhookInboxes: {
-        dedupeKey: 'dedupeKey',
-        id: 'id',
+        dedupeKey: "dedupeKey",
+        id: "id",
       },
     }));
 
-    mock.module('@feed/shared', () => ({
+    mock.module("@feed/shared", () => ({
       ..._actualShared,
       logger: {
         debug: () => {},
@@ -61,7 +61,7 @@ describe('ingestSentryWebhook signature compatibility', () => {
     }));
 
     ({ ingestSentryWebhook } = await import(
-      '../../../packages/api/src/services/sentry-webhook-inbox-service'
+      "../../../packages/api/src/services/sentry-webhook-inbox-service"
     ));
   });
 
@@ -73,16 +73,16 @@ describe('ingestSentryWebhook signature compatibility', () => {
     generateSnowflakeIdMock.mockClear();
   });
 
-  it('accepts timestamp-prefixed signatures', async () => {
+  it("accepts timestamp-prefixed signatures", async () => {
     const rawBody = JSON.stringify({
-      action: 'assigned',
+      action: "assigned",
       data: {
-        project: { slug: 'feed' },
-        issue: { id: '123', shortId: 'BAB-123', title: 'Test issue' },
+        project: { slug: "feed" },
+        issue: { id: "123", shortId: "BAB-123", title: "Test issue" },
       },
     });
-    const timestamp = '1772915046';
-    const secret = 'secret';
+    const timestamp = "1772915046";
+    const secret = "secret";
 
     const result = await ingestSentryWebhook({
       rawBody,
@@ -92,13 +92,13 @@ describe('ingestSentryWebhook signature compatibility', () => {
         signature: computeTimestampPrefixedSignature(
           secret,
           timestamp,
-          rawBody
+          rawBody,
         ),
         timestamp,
-        resource: 'issue',
-        event: 'assigned',
+        resource: "issue",
+        event: "assigned",
         requestId: null,
-        userAgent: 'bun-test',
+        userAgent: "bun-test",
       },
     });
 
@@ -106,16 +106,16 @@ describe('ingestSentryWebhook signature compatibility', () => {
     expect(insertMock).toHaveBeenCalledTimes(1);
   });
 
-  it('accepts body-only signatures used by current Sentry internal integrations', async () => {
+  it("accepts body-only signatures used by current Sentry internal integrations", async () => {
     const rawBody = JSON.stringify({
-      action: 'assigned',
+      action: "assigned",
       data: {
-        project: { slug: 'feed' },
-        issue: { id: '456', shortId: 'BAB-456', title: 'Body-only signature' },
+        project: { slug: "feed" },
+        issue: { id: "456", shortId: "BAB-456", title: "Body-only signature" },
       },
     });
-    const timestamp = '1772915046';
-    const secret = 'secret';
+    const timestamp = "1772915046";
+    const secret = "secret";
 
     const result = await ingestSentryWebhook({
       rawBody,
@@ -124,10 +124,10 @@ describe('ingestSentryWebhook signature compatibility', () => {
       headers: {
         signature: computeBodyOnlySignature(secret, rawBody),
         timestamp,
-        resource: 'issue',
-        event: 'assigned',
+        resource: "issue",
+        event: "assigned",
         requestId: null,
-        userAgent: 'bun-test',
+        userAgent: "bun-test",
       },
     });
 
@@ -135,35 +135,35 @@ describe('ingestSentryWebhook signature compatibility', () => {
     expect(insertMock).toHaveBeenCalledTimes(1);
   });
 
-  it('still rejects invalid signatures', async () => {
+  it("still rejects invalid signatures", async () => {
     const rawBody = JSON.stringify({
-      action: 'assigned',
+      action: "assigned",
       data: {
-        project: { slug: 'feed' },
-        issue: { id: '789', shortId: 'BAB-789', title: 'Bad signature' },
+        project: { slug: "feed" },
+        issue: { id: "789", shortId: "BAB-789", title: "Bad signature" },
       },
     });
-    const timestamp = '1772915046';
+    const timestamp = "1772915046";
 
     const result = await ingestSentryWebhook({
       rawBody,
-      secret: 'secret',
+      secret: "secret",
       now: toTimestampDate(timestamp),
       headers: {
-        signature: '0'.repeat(64),
+        signature: "0".repeat(64),
         timestamp,
-        resource: 'issue',
-        event: 'assigned',
+        resource: "issue",
+        event: "assigned",
         requestId: null,
-        userAgent: 'bun-test',
+        userAgent: "bun-test",
       },
     });
 
     expect(result).toEqual({
       ok: false,
       httpStatus: 401,
-      code: 'INVALID_SIGNATURE',
-      message: 'Sentry webhook signature mismatch.',
+      code: "INVALID_SIGNATURE",
+      message: "Sentry webhook signature mismatch.",
     });
     expect(insertMock).toHaveBeenCalledTimes(0);
   });

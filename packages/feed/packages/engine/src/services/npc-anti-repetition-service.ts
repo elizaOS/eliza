@@ -31,7 +31,7 @@
  * @module services/npc-anti-repetition-service
  */
 
-import { logger } from '@feed/shared';
+import { logger } from "@feed/shared";
 
 /** Maximum posts to track per character */
 const HISTORY_SIZE = 20;
@@ -50,96 +50,96 @@ const MAX_HISTORY_AGE_HOURS = 24;
 
 /** Stop words to filter out when extracting significant words */
 const STOP_WORDS = new Set([
-  'a',
-  'an',
-  'the',
-  'and',
-  'or',
-  'but',
-  'in',
-  'on',
-  'at',
-  'to',
-  'for',
-  'of',
-  'with',
-  'by',
-  'from',
-  'is',
-  'are',
-  'was',
-  'were',
-  'be',
-  'been',
-  'being',
-  'have',
-  'has',
-  'had',
-  'do',
-  'does',
-  'did',
-  'will',
-  'would',
-  'could',
-  'should',
-  'may',
-  'might',
-  'must',
-  'can',
-  'this',
-  'that',
-  'these',
-  'those',
-  'it',
-  'its',
+  "a",
+  "an",
+  "the",
+  "and",
+  "or",
+  "but",
+  "in",
+  "on",
+  "at",
+  "to",
+  "for",
+  "of",
+  "with",
+  "by",
+  "from",
+  "is",
+  "are",
+  "was",
+  "were",
+  "be",
+  "been",
+  "being",
+  "have",
+  "has",
+  "had",
+  "do",
+  "does",
+  "did",
+  "will",
+  "would",
+  "could",
+  "should",
+  "may",
+  "might",
+  "must",
+  "can",
+  "this",
+  "that",
+  "these",
+  "those",
+  "it",
+  "its",
   "it's",
-  'i',
-  'me',
-  'my',
-  'we',
-  'our',
-  'you',
-  'your',
-  'he',
-  'she',
-  'they',
-  'them',
-  'his',
-  'her',
-  'their',
-  'not',
-  'no',
-  'yes',
-  'just',
-  'only',
-  'also',
-  'so',
-  'if',
-  'then',
-  'than',
-  'when',
-  'what',
-  'who',
-  'how',
-  'why',
-  'where',
-  'which',
-  'all',
-  'any',
-  'both',
-  'each',
-  'few',
-  'more',
-  'most',
-  'other',
-  'some',
-  'such',
-  'very',
-  'too',
-  'as',
-  'up',
-  'out',
-  'about',
+  "i",
+  "me",
+  "my",
+  "we",
+  "our",
+  "you",
+  "your",
+  "he",
+  "she",
+  "they",
+  "them",
+  "his",
+  "her",
+  "their",
+  "not",
+  "no",
+  "yes",
+  "just",
+  "only",
+  "also",
+  "so",
+  "if",
+  "then",
+  "than",
+  "when",
+  "what",
+  "who",
+  "how",
+  "why",
+  "where",
+  "which",
+  "all",
+  "any",
+  "both",
+  "each",
+  "few",
+  "more",
+  "most",
+  "other",
+  "some",
+  "such",
+  "very",
+  "too",
+  "as",
+  "up",
+  "out",
+  "about",
 ]);
 
 /** Lower threshold multiplier for early pattern flagging */
@@ -183,7 +183,7 @@ class NPCAntiRepetitionService {
   private extractOpening(content: string): string {
     const words = content.trim().split(/\s+/);
     // Take first 3 words as opening (or fewer if post is short)
-    return words.slice(0, Math.min(3, words.length)).join(' ').toLowerCase();
+    return words.slice(0, Math.min(3, words.length)).join(" ").toLowerCase();
   }
 
   /**
@@ -193,7 +193,7 @@ class NPCAntiRepetitionService {
   private extractSignificantWords(content: string): Set<string> {
     const words = content
       .toLowerCase()
-      .replace(/[^a-z\s]/g, ' ')
+      .replace(/[^a-z\s]/g, " ")
       .split(/\s+/)
       .filter((w) => w.length >= 4 && !STOP_WORDS.has(w));
 
@@ -255,7 +255,7 @@ class NPCAntiRepetitionService {
     for (const post of history.posts) {
       openingCounts.set(
         post.opening,
-        (openingCounts.get(post.opening) || 0) + 1
+        (openingCounts.get(post.opening) || 0) + 1,
       );
     }
 
@@ -305,12 +305,12 @@ class NPCAntiRepetitionService {
     const suggestions: string[] = [];
     if (overusedOpenings.length > 0) {
       suggestions.push(
-        `Avoid starting with "${proposedOpening}" - used in ${Math.round(openingFrequency * 100)}% of recent posts`
+        `Avoid starting with "${proposedOpening}" - used in ${Math.round(openingFrequency * 100)}% of recent posts`,
       );
     }
     if (overusedWords.length > 0) {
       suggestions.push(
-        `Reduce use of: ${overusedWords.slice(0, 3).join(', ')}`
+        `Reduce use of: ${overusedWords.slice(0, 3).join(", ")}`,
       );
     }
 
@@ -339,7 +339,7 @@ class NPCAntiRepetitionService {
     for (const post of history.posts) {
       openingCounts.set(
         post.opening,
-        (openingCounts.get(post.opening) || 0) + 1
+        (openingCounts.get(post.opening) || 0) + 1,
       );
     }
 
@@ -398,7 +398,7 @@ class NPCAntiRepetitionService {
 
     if (analysis.isRepetitive) {
       logger.warn(
-        'Repetitive post detected',
+        "Repetitive post detected",
         {
           actorId,
           repetitionScore: analysis.repetitionScore.toFixed(2),
@@ -406,7 +406,7 @@ class NPCAntiRepetitionService {
           overusedWords: analysis.overusedWords.slice(0, 5),
           suggestions: analysis.suggestions,
         },
-        'AntiRepetition'
+        "AntiRepetition",
       );
     }
   }
@@ -445,9 +445,9 @@ class NPCAntiRepetitionService {
 
     if (cleanedCount > 0) {
       logger.debug(
-        'Cleaned up stale NPC histories',
+        "Cleaned up stale NPC histories",
         { cleanedCount, remaining: this.characterHistories.size },
-        'NPCAntiRepetition'
+        "NPCAntiRepetition",
       );
     }
 
@@ -500,17 +500,17 @@ export function getAvoidedPatternsContext(actorId: string): string {
   const vocabulary = antiRepetitionService.getAvoidedVocabulary(actorId);
 
   if (openings.length === 0 && vocabulary.length === 0) {
-    return '';
+    return "";
   }
 
   let context = "\n=== AVOID THESE (you've overused them) ===\n";
 
   if (openings.length > 0) {
-    context += `Do NOT start with: ${openings.map((o) => `"${o}"`).join(', ')}\n`;
+    context += `Do NOT start with: ${openings.map((o) => `"${o}"`).join(", ")}\n`;
   }
 
   if (vocabulary.length > 0) {
-    context += `Reduce these words: ${vocabulary.join(', ')}\n`;
+    context += `Reduce these words: ${vocabulary.join(", ")}\n`;
   }
 
   return context;

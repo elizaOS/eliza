@@ -85,7 +85,7 @@ import {
   publicRateLimit,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
+} from "@feed/api";
 import {
   and,
   comments,
@@ -95,13 +95,13 @@ import {
   posts,
   reactions,
   shares,
-} from '@feed/db';
+} from "@feed/db";
 import {
   logger,
   PostIdParamSchema,
   PostInteractionsQuerySchema,
-} from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 /**
  * GET /api/posts/[id]/interactions
@@ -112,7 +112,7 @@ import type { NextRequest } from 'next/server';
 export const GET = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ id: string }> }
+    context: { params: Promise<{ id: string }> },
   ) => {
     const { error, user, rateLimitInfo } = await publicRateLimit(request);
     if (error) return error;
@@ -122,10 +122,10 @@ export const GET = withErrorHandling(
     // Validate query parameters
     const { searchParams } = new URL(request.url);
     const queryParams = {
-      includeComments: searchParams.get('includeComments') || 'true',
-      includeReactions: searchParams.get('includeReactions') || 'true',
-      includeShares: searchParams.get('includeShares') || 'false',
-      limit: searchParams.get('limit'),
+      includeComments: searchParams.get("includeComments") || "true",
+      includeReactions: searchParams.get("includeReactions") || "true",
+      includeShares: searchParams.get("includeShares") || "false",
+      limit: searchParams.get("limit"),
     };
     PostInteractionsQuerySchema.parse(queryParams);
 
@@ -183,7 +183,7 @@ export const GET = withErrorHandling(
             .select({ count: count() })
             .from(reactions)
             .where(
-              and(eq(reactions.postId, postId), eq(reactions.type, 'like'))
+              and(eq(reactions.postId, postId), eq(reactions.type, "like")),
             ),
           // Count comments (including replies)
           db
@@ -204,8 +204,8 @@ export const GET = withErrorHandling(
                   and(
                     eq(reactions.postId, postId),
                     eq(reactions.userId, user.userId),
-                    eq(reactions.type, 'like')
-                  )
+                    eq(reactions.type, "like"),
+                  ),
                 )
                 .limit(1)
             : Promise.resolve([null]),
@@ -215,7 +215,10 @@ export const GET = withErrorHandling(
                 .select({ id: shares.id })
                 .from(shares)
                 .where(
-                  and(eq(shares.userId, user.userId), eq(shares.postId, postId))
+                  and(
+                    eq(shares.userId, user.userId),
+                    eq(shares.postId, postId),
+                  ),
                 )
                 .limit(1)
             : Promise.resolve([null]),
@@ -232,7 +235,7 @@ export const GET = withErrorHandling(
       {
         namespace: CACHE_KEYS.POST,
         ttl: 30, // 30 second cache (frequent but can be slightly stale)
-      }
+      },
     );
 
     if (
@@ -242,9 +245,9 @@ export const GET = withErrorHandling(
     ) {
       // Post hasn't been created yet (no interactions)
       logger.info(
-        'Post interactions fetched (not created yet)',
+        "Post interactions fetched (not created yet)",
         { postId },
-        'GET /api/posts/[id]/interactions'
+        "GET /api/posts/[id]/interactions",
       );
       const res = successResponse({
         postId,
@@ -260,14 +263,14 @@ export const GET = withErrorHandling(
     }
 
     logger.info(
-      'Post interactions fetched successfully',
+      "Post interactions fetched successfully",
       {
         postId,
         likeCount: result.likeCount,
         commentCount: result.commentCount,
         shareCount: result.shareCount,
       },
-      'GET /api/posts/[id]/interactions'
+      "GET /api/posts/[id]/interactions",
     );
 
     const res = successResponse({
@@ -282,5 +285,5 @@ export const GET = withErrorHandling(
     });
     if (rateLimitInfo) addPublicReadHeaders(res, rateLimitInfo);
     return res;
-  }
+  },
 );

@@ -59,16 +59,16 @@
  * ```
  */
 
-import { requireAdmin, withErrorHandling } from '@feed/api';
-import { db } from '@feed/db';
-import { logger, toISOOrNull } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { z } from 'zod';
+import { requireAdmin, withErrorHandling } from "@feed/api";
+import { db } from "@feed/db";
+import { logger, toISOOrNull } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { z } from "zod";
 
 const RefundEscrowSchema = z.object({
-  escrowId: z.string().min(1, 'Escrow ID is required'),
-  refundTxHash: z.string().min(1, 'Refund transaction hash is required'),
+  escrowId: z.string().min(1, "Escrow ID is required"),
+  refundTxHash: z.string().min(1, "Refund transaction hash is required"),
   reason: z.string().optional(),
 });
 
@@ -82,9 +82,9 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
   if (!validation.success) {
     return NextResponse.json(
       {
-        error: validation.error.issues[0]?.message || 'Invalid request data',
+        error: validation.error.issues[0]?.message || "Invalid request data",
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -107,24 +107,24 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
 
   if (!escrow) {
     return NextResponse.json(
-      { error: 'Escrow payment not found' },
-      { status: 404 }
+      { error: "Escrow payment not found" },
+      { status: 404 },
     );
   }
 
-  if (escrow.status !== 'paid') {
+  if (escrow.status !== "paid") {
     return NextResponse.json(
       {
         error: `Cannot refund escrow payment with status: ${escrow.status}. Only 'paid' escrows can be refunded.`,
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
   if (escrow.refundTxHash) {
     return NextResponse.json(
-      { error: 'Escrow payment has already been refunded' },
-      { status: 400 }
+      { error: "Escrow payment has already been refunded" },
+      { status: 400 },
     );
   }
 
@@ -135,11 +135,11 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
   // 3. Transaction amount matches escrow amount
   // For now, we trust admin but log the refund
   const refundTxValid =
-    refundTxHash.startsWith('0x') && refundTxHash.length === 66;
+    refundTxHash.startsWith("0x") && refundTxHash.length === 66;
   if (!refundTxValid) {
     return NextResponse.json(
-      { error: 'Invalid refund transaction hash format' },
-      { status: 400 }
+      { error: "Invalid refund transaction hash format" },
+      { status: 400 },
     );
   }
 
@@ -150,21 +150,21 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
       where: { id: escrowId },
     });
 
-    if (!currentEscrow || currentEscrow.status !== 'paid') {
+    if (!currentEscrow || currentEscrow.status !== "paid") {
       throw new Error(
-        `Cannot refund escrow with status: ${currentEscrow?.status || 'not found'}`
+        `Cannot refund escrow with status: ${currentEscrow?.status || "not found"}`,
       );
     }
 
     if (currentEscrow.refundTxHash) {
-      throw new Error('Escrow payment has already been refunded');
+      throw new Error("Escrow payment has already been refunded");
     }
 
     // Update escrow status to refunded
     return await tx.moderationEscrow.update({
       where: { id: escrowId },
       data: {
-        status: 'refunded',
+        status: "refunded",
         refundTxHash,
         refundedBy: adminId,
         refundedAt: new Date(),
@@ -186,7 +186,7 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
       refundTxHash,
       reason,
     },
-    'ModerationEscrow'
+    "ModerationEscrow",
   );
 
   return NextResponse.json({

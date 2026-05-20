@@ -66,11 +66,11 @@ import {
   logAdminView,
   requireAdmin,
   withErrorHandling,
-} from '@feed/api';
-import { db } from '@feed/db';
-import { StaticDataRegistry } from '@feed/engine';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@feed/api";
+import { db } from "@feed/db";
+import { StaticDataRegistry } from "@feed/engine";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 /**
  * GET /api/admin/groups/[id]/messages
@@ -80,7 +80,7 @@ import { NextResponse } from 'next/server';
 export const GET = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ id: string }> }
+    context: { params: Promise<{ id: string }> },
   ) => {
     const admin = await requireAdmin(request);
     const { id: chatId } = await context.params;
@@ -89,15 +89,15 @@ export const GET = withErrorHandling(
     logAdminView({
       adminId: admin.userId,
       ipAddress: getClientIp(request.headers) ?? undefined,
-      resourceType: 'group_messages',
+      resourceType: "group_messages",
       resourceId: chatId,
-      metadata: { action: 'view_group_messages' },
+      metadata: { action: "view_group_messages" },
     });
 
     // Get query parameters
     const { searchParams } = new URL(request.url);
-    const limit = Number.parseInt(searchParams.get('limit') || '100');
-    const offset = Number.parseInt(searchParams.get('offset') || '0');
+    const limit = Number.parseInt(searchParams.get("limit") || "100", 10);
+    const offset = Number.parseInt(searchParams.get("offset") || "0", 10);
 
     // Get chat details
     const chat = await db.chat.findUnique({
@@ -111,14 +111,14 @@ export const GET = withErrorHandling(
     });
 
     if (!chat) {
-      return NextResponse.json({ error: 'Chat not found' }, { status: 404 });
+      return NextResponse.json({ error: "Chat not found" }, { status: 404 });
     }
 
     // Ensure this is a group chat, not a DM
     if (!chat.isGroup) {
       return NextResponse.json(
-        { error: 'This endpoint is only for group chats' },
-        { status: 400 }
+        { error: "This endpoint is only for group chats" },
+        { status: 400 },
       );
     }
 
@@ -131,7 +131,7 @@ export const GET = withErrorHandling(
     const messages = await db.message.findMany({
       where: { chatId },
       orderBy: {
-        createdAt: 'desc',
+        createdAt: "desc",
       },
       skip: offset,
       take: limit,
@@ -162,7 +162,7 @@ export const GET = withErrorHandling(
         createdAt: m.createdAt,
         sender: {
           id: m.senderId,
-          name: user?.displayName || user?.username || actor?.name || 'Unknown',
+          name: user?.displayName || user?.username || actor?.name || "Unknown",
           username: user?.username || null,
           isNPC: !!actor || user?.isActor,
           profileImageUrl: user?.profileImageUrl || actor?.profileImageUrl,
@@ -188,5 +188,5 @@ export const GET = withErrorHandling(
         },
       },
     });
-  }
+  },
 );

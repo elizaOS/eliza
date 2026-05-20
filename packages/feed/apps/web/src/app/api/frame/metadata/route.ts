@@ -45,24 +45,24 @@
  * ```
  */
 
-import { withErrorHandling } from '@feed/api';
-import { NextResponse } from 'next/server';
+import { withErrorHandling } from "@feed/api";
+import { NextResponse } from "next/server";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 export const GET = withErrorHandling(async function GET() {
   const metadata = {
-    name: 'Feed',
-    icon: 'https://feed.market/assets/logos/logo.svg',
-    splashImage: 'https://feed.market/assets/images/og-image.png',
-    splashBackgroundColor: '#0a0a0a',
-    homeUrl: 'https://feed.market',
-    version: 'next',
+    name: "Feed",
+    icon: "https://feed.market/assets/logos/logo.svg",
+    splashImage: "https://feed.market/assets/images/og-image.png",
+    splashBackgroundColor: "#0a0a0a",
+    homeUrl: "https://feed.market",
+    version: "next",
   };
 
   return NextResponse.json(metadata, {
     headers: {
-      'Cache-Control': 'public, max-age=3600',
+      "Cache-Control": "public, max-age=3600",
     },
   });
 });

@@ -1,21 +1,21 @@
-'use client';
+"use client";
 
-import { FEED_POINTS_SYMBOL, cn } from '@feed/shared';
-import { ArrowUpDown, Search, TrendingDown, TrendingUp } from 'lucide-react';
-import { memo, useMemo, useState } from 'react';
-import { Skeleton } from '@/components/shared/Skeleton';
-import type { MarketKey } from '@/stores/marketWatchlistStore';
-import type { PerpMarket, PredictionMarket } from '@/types/markets';
+import { cn, FEED_POINTS_SYMBOL } from "@feed/shared";
+import { ArrowUpDown, Search, TrendingDown, TrendingUp } from "lucide-react";
+import { memo, useMemo, useState } from "react";
+import { Skeleton } from "@/components/shared/Skeleton";
+import type { MarketKey } from "@/stores/marketWatchlistStore";
+import type { PerpMarket, PredictionMarket } from "@/types/markets";
 
-type DashboardTab = 'perps' | 'predictions';
+type DashboardTab = "perps" | "predictions";
 type PerpSort =
-  | 'ticker'
-  | 'price'
-  | 'change'
-  | 'volume'
-  | 'openInterest'
-  | 'fundingRate';
-type PredictionSort = 'question' | 'probability' | 'volume' | 'timeLeft';
+  | "ticker"
+  | "price"
+  | "change"
+  | "volume"
+  | "openInterest"
+  | "fundingRate";
+type PredictionSort = "question" | "probability" | "volume" | "timeLeft";
 
 function formatCompact(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -24,9 +24,9 @@ function formatCompact(n: number): string {
 }
 
 function timeLeft(endDate: string | null | undefined): string {
-  if (!endDate) return '--';
+  if (!endDate) return "--";
   const diff = new Date(endDate).getTime() - Date.now();
-  if (diff <= 0) return 'Ended';
+  if (diff <= 0) return "Ended";
   const days = Math.floor(diff / 86_400_000);
   if (days > 0) return `${days}d`;
   const hours = Math.floor(diff / 3_600_000);
@@ -54,11 +54,11 @@ export const MarketsDashboard = memo(function MarketsDashboard({
   predictionError,
   onSelectMarket,
 }: MarketsDashboardProps) {
-  const [tab, setTab] = useState<DashboardTab>('perps');
-  const [query, setQuery] = useState('');
-  const [perpSort, setPerpSort] = useState<PerpSort>('volume');
+  const [tab, setTab] = useState<DashboardTab>("perps");
+  const [query, setQuery] = useState("");
+  const [perpSort, setPerpSort] = useState<PerpSort>("volume");
   const [perpSortDesc, setPerpSortDesc] = useState(true);
-  const [predSort, setPredSort] = useState<PredictionSort>('volume');
+  const [predSort, setPredSort] = useState<PredictionSort>("volume");
   const [predSortDesc, setPredSortDesc] = useState(true);
 
   const handlePerpSort = (col: PerpSort) => {
@@ -86,23 +86,24 @@ export const MarketsDashboard = memo(function MarketsDashboard({
     if (q) {
       items = items.filter(
         (m) =>
-          m.ticker.toLowerCase().includes(q) || m.name.toLowerCase().includes(q)
+          m.ticker.toLowerCase().includes(q) ||
+          m.name.toLowerCase().includes(q),
       );
     }
     return [...items].sort((a, b) => {
       const dir = perpSortDesc ? -1 : 1;
       switch (perpSort) {
-        case 'ticker':
+        case "ticker":
           return dir * a.ticker.localeCompare(b.ticker);
-        case 'price':
+        case "price":
           return dir * (a.currentPrice - b.currentPrice);
-        case 'change':
+        case "change":
           return dir * ((a.changePercent24h ?? 0) - (b.changePercent24h ?? 0));
-        case 'volume':
+        case "volume":
           return dir * ((a.volume24h ?? 0) - (b.volume24h ?? 0));
-        case 'openInterest':
+        case "openInterest":
           return dir * ((a.openInterest ?? 0) - (b.openInterest ?? 0));
-        case 'fundingRate':
+        case "fundingRate":
           return (
             dir * ((a.fundingRate?.rate ?? 0) - (b.fundingRate?.rate ?? 0))
           );
@@ -113,23 +114,23 @@ export const MarketsDashboard = memo(function MarketsDashboard({
   }, [perpMarkets, q, perpSort, perpSortDesc]);
 
   const filteredPredictions = useMemo(() => {
-    let items = predictionMarkets.filter((m) => m.status === 'active');
+    let items = predictionMarkets.filter((m) => m.status === "active");
     if (q) {
       items = items.filter((m) => m.text.toLowerCase().includes(q));
     }
     return [...items].sort((a, b) => {
       const dir = predSortDesc ? -1 : 1;
       switch (predSort) {
-        case 'question':
+        case "question":
           return dir * a.text.localeCompare(b.text);
-        case 'probability':
+        case "probability":
           return dir * ((a.yesProbability ?? 0) - (b.yesProbability ?? 0));
-        case 'volume': {
+        case "volume": {
           const volA = Number(a.yesShares ?? 0) + Number(a.noShares ?? 0);
           const volB = Number(b.yesShares ?? 0) + Number(b.noShares ?? 0);
           return dir * (volA - volB);
         }
-        case 'timeLeft': {
+        case "timeLeft": {
           const tA = a.endDate
             ? new Date(a.endDate).getTime()
             : Number.MAX_SAFE_INTEGER;
@@ -144,8 +145,8 @@ export const MarketsDashboard = memo(function MarketsDashboard({
     });
   }, [predictionMarkets, q, predSort, predSortDesc]);
 
-  const loading = tab === 'perps' ? perpLoading : predictionLoading;
-  const error = tab === 'perps' ? perpError : predictionError;
+  const loading = tab === "perps" ? perpLoading : predictionLoading;
+  const error = tab === "perps" ? perpError : predictionError;
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
@@ -172,12 +173,12 @@ export const MarketsDashboard = memo(function MarketsDashboard({
         <div className="flex gap-0">
           <button
             type="button"
-            onClick={() => setTab('perps')}
+            onClick={() => setTab("perps")}
             className={cn(
-              '-mb-px border-b-2 px-4 py-2.5 font-semibold text-sm transition-colors',
-              tab === 'perps'
-                ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground hover:text-foreground'
+              "-mb-px border-b-2 px-4 py-2.5 font-semibold text-sm transition-colors",
+              tab === "perps"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground",
             )}
           >
             Perpetuals
@@ -187,17 +188,17 @@ export const MarketsDashboard = memo(function MarketsDashboard({
           </button>
           <button
             type="button"
-            onClick={() => setTab('predictions')}
+            onClick={() => setTab("predictions")}
             className={cn(
-              '-mb-px border-b-2 px-4 py-2.5 font-semibold text-sm transition-colors',
-              tab === 'predictions'
-                ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground hover:text-foreground'
+              "-mb-px border-b-2 px-4 py-2.5 font-semibold text-sm transition-colors",
+              tab === "predictions"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground",
             )}
           >
             Predictions
             <span className="ml-1.5 rounded-full bg-muted/30 px-1.5 py-0.5 font-mono text-[10px]">
-              {predictionMarkets.filter((m) => m.status === 'active').length}
+              {predictionMarkets.filter((m) => m.status === "active").length}
             </span>
           </button>
         </div>
@@ -206,7 +207,7 @@ export const MarketsDashboard = memo(function MarketsDashboard({
       {/* Table */}
       <div className="min-h-0 flex-1 overflow-auto">
         {loading &&
-        (tab === 'perps' ? perpMarkets : predictionMarkets).length === 0 ? (
+        (tab === "perps" ? perpMarkets : predictionMarkets).length === 0 ? (
           <div className="divide-y divide-border">
             {Array.from({ length: 8 }).map((_, i) => (
               <div key={i} className="flex items-center gap-4 px-4 py-3">
@@ -222,13 +223,13 @@ export const MarketsDashboard = memo(function MarketsDashboard({
           <div className="p-8 text-center text-muted-foreground">
             Failed to load markets.
           </div>
-        ) : tab === 'perps' ? (
+        ) : tab === "perps" ? (
           <PerpsTable
             markets={filteredPerps}
             sort={perpSort}
             sortDesc={perpSortDesc}
             onSort={handlePerpSort}
-            onSelect={(ticker) => onSelectMarket({ kind: 'perp', id: ticker })}
+            onSelect={(ticker) => onSelectMarket({ kind: "perp", id: ticker })}
           />
         ) : (
           <PredictionsTable
@@ -236,7 +237,7 @@ export const MarketsDashboard = memo(function MarketsDashboard({
             sort={predSort}
             sortDesc={predSortDesc}
             onSort={handlePredSort}
-            onSelect={(id) => onSelectMarket({ kind: 'prediction', id })}
+            onSelect={(id) => onSelectMarket({ kind: "prediction", id })}
           />
         )}
       </div>
@@ -249,35 +250,35 @@ function SortHeader({
   active,
   desc,
   onClick,
-  align = 'left',
+  align = "left",
 }: {
   label: string;
   active: boolean;
   desc: boolean;
   onClick: () => void;
-  align?: 'left' | 'right';
+  align?: "left" | "right";
 }) {
   return (
     <th
       className={cn(
-        'cursor-pointer select-none whitespace-nowrap px-3 py-2.5 font-semibold text-[11px] text-muted-foreground uppercase tracking-wider transition-colors hover:text-foreground',
-        align === 'right' && 'text-right',
-        active && 'text-foreground'
+        "cursor-pointer select-none whitespace-nowrap px-3 py-2.5 font-semibold text-[11px] text-muted-foreground uppercase tracking-wider transition-colors hover:text-foreground",
+        align === "right" && "text-right",
+        active && "text-foreground",
       )}
       onClick={onClick}
     >
       <span className="inline-flex items-center gap-1">
-        {align === 'right' && active && (
+        {align === "right" && active && (
           <ArrowUpDown
             size={10}
-            className={cn('transition-transform', !desc && 'rotate-180')}
+            className={cn("transition-transform", !desc && "rotate-180")}
           />
         )}
         {label}
-        {align === 'left' && active && (
+        {align === "left" && active && (
           <ArrowUpDown
             size={10}
-            className={cn('transition-transform', !desc && 'rotate-180')}
+            className={cn("transition-transform", !desc && "rotate-180")}
           />
         )}
       </span>
@@ -304,43 +305,43 @@ const PerpsTable = memo(function PerpsTable({
         <tr>
           <SortHeader
             label="Market"
-            active={sort === 'ticker'}
+            active={sort === "ticker"}
             desc={sortDesc}
-            onClick={() => onSort('ticker')}
+            onClick={() => onSort("ticker")}
           />
           <SortHeader
             label="Price"
-            active={sort === 'price'}
+            active={sort === "price"}
             desc={sortDesc}
-            onClick={() => onSort('price')}
+            onClick={() => onSort("price")}
             align="right"
           />
           <SortHeader
             label="24h %"
-            active={sort === 'change'}
+            active={sort === "change"}
             desc={sortDesc}
-            onClick={() => onSort('change')}
+            onClick={() => onSort("change")}
             align="right"
           />
           <SortHeader
             label="Volume"
-            active={sort === 'volume'}
+            active={sort === "volume"}
             desc={sortDesc}
-            onClick={() => onSort('volume')}
+            onClick={() => onSort("volume")}
             align="right"
           />
           <SortHeader
             label="Open Interest"
-            active={sort === 'openInterest'}
+            active={sort === "openInterest"}
             desc={sortDesc}
-            onClick={() => onSort('openInterest')}
+            onClick={() => onSort("openInterest")}
             align="right"
           />
           <SortHeader
             label="Funding"
-            active={sort === 'fundingRate'}
+            active={sort === "fundingRate"}
             desc={sortDesc}
-            onClick={() => onSort('fundingRate')}
+            onClick={() => onSort("fundingRate")}
             align="right"
           />
         </tr>
@@ -385,8 +386,8 @@ const PerpsTable = memo(function PerpsTable({
                 {change != null ? (
                   <span
                     className={cn(
-                      'inline-flex items-center gap-1 font-mono font-semibold text-xs tabular-nums',
-                      change >= 0 ? 'text-green-500' : 'text-red-500'
+                      "inline-flex items-center gap-1 font-mono font-semibold text-xs tabular-nums",
+                      change >= 0 ? "text-green-500" : "text-red-500",
                     )}
                   >
                     {change >= 0 ? (
@@ -394,7 +395,7 @@ const PerpsTable = memo(function PerpsTable({
                     ) : (
                       <TrendingDown size={12} />
                     )}
-                    {change >= 0 ? '+' : ''}
+                    {change >= 0 ? "+" : ""}
                     {change.toFixed(2)}%
                   </span>
                 ) : (
@@ -410,7 +411,7 @@ const PerpsTable = memo(function PerpsTable({
               <td className="px-3 py-3 text-right font-mono text-muted-foreground text-xs tabular-nums">
                 {m.fundingRate?.rate != null
                   ? `${(m.fundingRate.rate * 100).toFixed(4)}%`
-                  : '--'}
+                  : "--"}
               </td>
             </tr>
           );
@@ -446,29 +447,29 @@ const PredictionsTable = memo(function PredictionsTable({
         <tr>
           <SortHeader
             label="Question"
-            active={sort === 'question'}
+            active={sort === "question"}
             desc={sortDesc}
-            onClick={() => onSort('question')}
+            onClick={() => onSort("question")}
           />
           <SortHeader
             label="Yes %"
-            active={sort === 'probability'}
+            active={sort === "probability"}
             desc={sortDesc}
-            onClick={() => onSort('probability')}
+            onClick={() => onSort("probability")}
             align="right"
           />
           <SortHeader
             label="Volume"
-            active={sort === 'volume'}
+            active={sort === "volume"}
             desc={sortDesc}
-            onClick={() => onSort('volume')}
+            onClick={() => onSort("volume")}
             align="right"
           />
           <SortHeader
             label="Time Left"
-            active={sort === 'timeLeft'}
+            active={sort === "timeLeft"}
             desc={sortDesc}
-            onClick={() => onSort('timeLeft')}
+            onClick={() => onSort("timeLeft")}
             align="right"
           />
         </tr>

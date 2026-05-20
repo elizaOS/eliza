@@ -27,7 +27,7 @@
  * ```
  */
 
-import type { A2AClient as A2AClientType, Message, Task } from '@a2a-js/sdk';
+import type { A2AClient as A2AClientType, Message, Task } from "@a2a-js/sdk";
 import type {
   A2AClientInterface,
   AgentInfo,
@@ -39,7 +39,7 @@ import type {
   SystemStats,
   Trade,
   UserInfo,
-} from './types';
+} from "./types";
 
 export interface FeedProductionClientConfig {
   /** Base URL of the Feed server (e.g. http://localhost:3000) */
@@ -62,7 +62,7 @@ export class FeedProductionClient implements A2AClientInterface {
 
   constructor(config: FeedProductionClientConfig) {
     this.config = config;
-    this.contextId = `harness-${config.agentName ?? 'agent'}-${Date.now()}`;
+    this.contextId = `harness-${config.agentName ?? "agent"}-${Date.now()}`;
   }
 
   // ─── Internal A2A plumbing ────────────────────────────────────────────────
@@ -71,14 +71,14 @@ export class FeedProductionClient implements A2AClientInterface {
     if (this.clientInstance) return this.clientInstance;
 
     // Dynamic import keeps the SDK optional if you only use HarnessA2AClient
-    const { A2AClient } = await import('@a2a-js/sdk');
+    const { A2AClient } = await import("@a2a-js/sdk");
     const cardUrl = `${this.config.baseUrl}/.well-known/agent-card`;
     const apiKey = this.config.apiKey;
 
     this.clientInstance = await A2AClient.fromCardUrl(cardUrl, {
       fetchImpl: (url: RequestInfo | URL, init?: RequestInit) => {
         const headers = new Headers(init?.headers);
-        headers.set('x-feed-api-key', apiKey);
+        headers.set("x-feed-api-key", apiKey);
         return fetch(url as RequestInfo, { ...(init ?? {}), headers });
       },
     } as Parameters<typeof A2AClient.fromCardUrl>[1]);
@@ -88,18 +88,18 @@ export class FeedProductionClient implements A2AClientInterface {
 
   private async op<T>(
     operation: string,
-    params: Record<string, unknown> = {}
+    params: Record<string, unknown> = {},
   ): Promise<T> {
     const client = await this.getClient();
 
     const message: Message = {
-      kind: 'message',
+      kind: "message",
       messageId: `h-${Date.now()}-${this.msgId++}`,
-      role: 'user',
+      role: "user",
       contextId: this.contextId,
       parts: [
-        { kind: 'text', text: operation },
-        { kind: 'data', data: { operation, params } },
+        { kind: "text", text: operation },
+        { kind: "data", data: { operation, params } },
       ],
     };
 
@@ -109,8 +109,8 @@ export class FeedProductionClient implements A2AClientInterface {
     const artifacts = (response as Task).artifacts ?? [];
     for (const artifact of artifacts) {
       for (const part of artifact.parts ?? []) {
-        if (part.kind === 'data') {
-          return (part as { kind: 'data'; data: T }).data;
+        if (part.kind === "data") {
+          return (part as { kind: "data"; data: T }).data;
         }
       }
     }
@@ -118,8 +118,8 @@ export class FeedProductionClient implements A2AClientInterface {
     // Fallback: check message parts
     const parts = (response as Message).parts ?? [];
     for (const part of parts) {
-      if (part.kind === 'data') {
-        return (part as { kind: 'data'; data: T }).data;
+      if (part.kind === "data") {
+        return (part as { kind: "data"; data: T }).data;
       }
     }
 
@@ -131,12 +131,12 @@ export class FeedProductionClient implements A2AClientInterface {
 
   async getBalance(): Promise<{ balance: number; currency: string }> {
     return this.op<{ balance: number; currency: string }>(
-      'portfolio.get_balance'
+      "portfolio.get_balance",
     );
   }
 
   async getPositions(): Promise<{ positions: Position[] }> {
-    return this.op<{ positions: Position[] }>('portfolio.get_positions');
+    return this.op<{ positions: Position[] }>("portfolio.get_positions");
   }
 
   async getPortfolio(): Promise<{
@@ -145,76 +145,76 @@ export class FeedProductionClient implements A2AClientInterface {
     pnl: number;
   }> {
     return this.op<{ balance: number; positions: Position[]; pnl: number }>(
-      'portfolio.get_portfolio'
+      "portfolio.get_portfolio",
     );
   }
 
   async getMarkets(): Promise<{ predictions: Market[]; perps: Market[] }> {
     return this.op<{ predictions: Market[]; perps: Market[] }>(
-      'markets.list_prediction'
+      "markets.list_prediction",
     );
   }
 
   async getMarketData(marketId: string): Promise<Market> {
-    return this.op<Market>('markets.get_market', { marketId });
+    return this.op<Market>("markets.get_market", { marketId });
   }
 
   async buyShares(
     marketId: string,
-    outcome: 'YES' | 'NO',
-    amount: number
+    outcome: "YES" | "NO",
+    amount: number,
   ): Promise<Trade> {
-    return this.op<Trade>('markets.buy_shares', { marketId, outcome, amount });
+    return this.op<Trade>("markets.buy_shares", { marketId, outcome, amount });
   }
 
   async sellShares(
     marketId: string,
-    outcome: 'YES' | 'NO',
-    shares: number
+    outcome: "YES" | "NO",
+    shares: number,
   ): Promise<Trade> {
-    return this.op<Trade>('markets.sell_shares', { marketId, outcome, shares });
+    return this.op<Trade>("markets.sell_shares", { marketId, outcome, shares });
   }
 
   async getFeed(limit = 20): Promise<{ posts: Post[] }> {
-    return this.op<{ posts: Post[] }>('social.get_feed', { limit });
+    return this.op<{ posts: Post[] }>("social.get_feed", { limit });
   }
 
   async createPost(content: string): Promise<Post> {
-    return this.op<Post>('social.create_post', { content });
+    return this.op<Post>("social.create_post", { content });
   }
 
   async likePost(
-    postId: string
+    postId: string,
   ): Promise<{ success: boolean; likesCount: number }> {
     return this.op<{ success: boolean; likesCount: number }>(
-      'social.like_post',
-      { postId }
+      "social.like_post",
+      { postId },
     );
   }
 
   async commentPost(postId: string, content: string): Promise<{ id: string }> {
-    return this.op<{ id: string }>('social.comment_post', { postId, content });
+    return this.op<{ id: string }>("social.comment_post", { postId, content });
   }
 
   async discover(): Promise<{ agents: AgentInfo[] }> {
-    return this.op<{ agents: AgentInfo[] }>('users.discover_agents');
+    return this.op<{ agents: AgentInfo[] }>("users.discover_agents");
   }
 
   async searchUsers(query: string): Promise<{ users: UserInfo[] }> {
-    return this.op<{ users: UserInfo[] }>('users.search', { query });
+    return this.op<{ users: UserInfo[] }>("users.search", { query });
   }
 
   async getStats(): Promise<SystemStats> {
-    return this.op<SystemStats>('stats.system');
+    return this.op<SystemStats>("stats.system");
   }
 
   async getLeaderboard(limit = 10): Promise<{ entries: LeaderboardEntry[] }> {
-    return this.op<{ entries: LeaderboardEntry[] }>('stats.leaderboard', {
+    return this.op<{ entries: LeaderboardEntry[] }>("stats.leaderboard", {
       limit,
     });
   }
 
   async getNotifications(): Promise<{ notifications: Notification[] }> {
-    return this.op<{ notifications: Notification[] }>('notifications.list');
+    return this.op<{ notifications: Notification[] }>("notifications.list");
   }
 }

@@ -36,7 +36,7 @@ import {
   relayCronToStaging,
   verifyCronAuth,
   withErrorHandling,
-} from '@feed/api';
+} from "@feed/api";
 import {
   db,
   desc,
@@ -45,19 +45,19 @@ import {
   generateSnowflakeId,
   inArray,
   posts,
-} from '@feed/db';
+} from "@feed/db";
 import {
   FeedLLMClient,
   getActiveEventsForPosting,
   StaticDataRegistry,
   secureRandom,
   worldFactsService,
-} from '@feed/engine';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { z } from 'zod';
-import { ensureEngineServices } from '@/lib/engine/ensure-engine-services';
+} from "@feed/engine";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { ensureEngineServices } from "@/lib/engine/ensure-engine-services";
 
 /**
  * Maximum consecutive errors before aborting the tick (circuit breaker).
@@ -80,16 +80,16 @@ const LLMPostResponseSchema = z.union([
  * Returns the post string or null if extraction fails.
  */
 function extractPostFromResponse(
-  response: z.infer<typeof LLMPostResponseSchema>
+  response: z.infer<typeof LLMPostResponseSchema>,
 ): string {
-  if ('response' in response && response.response?.post) {
+  if ("response" in response && response.response?.post) {
     return response.response.post;
   }
-  if ('post' in response) {
+  if ("post" in response) {
     return response.post;
   }
   // This shouldn't happen after Zod validation, but TypeScript needs it
-  throw new Error('Unexpected response structure after validation');
+  throw new Error("Unexpected response structure after validation");
 }
 
 /** Game state shape for cache */
@@ -102,7 +102,7 @@ interface GameState {
 
 // Vercel function configuration
 export const maxDuration = 300; // 5 minutes max
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 /**
  * Base number of organizations to process per tick.
@@ -154,50 +154,50 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
   ensureEngineServices();
 
   // Verify cron authorization
-  if (!verifyCronAuth(_req, { jobName: 'OrganizationTick' })) {
+  if (!verifyCronAuth(_req, { jobName: "OrganizationTick" })) {
     logger.warn(
-      'Unauthorized organization-tick request attempt',
+      "Unauthorized organization-tick request attempt",
       undefined,
-      'OrganizationTick'
+      "OrganizationTick",
     );
     return NextResponse.json(
-      { error: 'Unauthorized cron request' },
-      { status: 401 }
+      { error: "Unauthorized cron request" },
+      { status: 401 },
     );
   }
 
   const startTime = Date.now();
   const processId = `org-tick-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
-  logger.info('Organization tick started', { processId }, 'OrganizationTick');
+  logger.info("Organization tick started", { processId }, "OrganizationTick");
 
   // Relay to staging if configured (fan-out)
-  const relayResult = await relayCronToStaging(_req, 'organization-tick');
+  const relayResult = await relayCronToStaging(_req, "organization-tick");
   if (relayResult.forwarded) {
     logger.info(
-      'Cron execution relayed to staging (fan-out: continuing local execution)',
+      "Cron execution relayed to staging (fan-out: continuing local execution)",
       { status: relayResult.status, error: relayResult.error },
-      'OrganizationTick'
+      "OrganizationTick",
     );
   }
 
   // Acquire global lock to prevent overlapping cron invocations
   // Duration matches maxDuration (300s) to prevent overlap when ticks take longer than cron interval
   const globalLockAcquired = await DistributedLockService.acquireLock({
-    lockId: 'organization-tick-global',
+    lockId: "organization-tick-global",
     durationMs: 300 * 1000, // 300 seconds (5 minutes) - matches maxDuration
-    operation: 'organization-tick-global',
+    operation: "organization-tick-global",
     processId,
   });
   if (!globalLockAcquired) {
     logger.info(
-      'Organization tick skipped - previous tick still running',
+      "Organization tick skipped - previous tick still running",
       { processId },
-      'OrganizationTick'
+      "OrganizationTick",
     );
     return NextResponse.json({
       success: true,
       skipped: true,
-      reason: 'Previous tick still running',
+      reason: "Previous tick still running",
       processed: 0,
     });
   }
@@ -206,23 +206,23 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
   try {
     // Check GAME_START environment variable
     const gameStartEnv = process.env.GAME_START?.toLowerCase();
-    if (gameStartEnv === 'false' || gameStartEnv === '0') {
+    if (gameStartEnv === "false" || gameStartEnv === "0") {
       logger.info(
-        'Game disabled via GAME_START env var - skipping organization tick',
+        "Game disabled via GAME_START env var - skipping organization tick",
         { GAME_START: process.env.GAME_START },
-        'OrganizationTick'
+        "OrganizationTick",
       );
       return NextResponse.json({
         success: true,
         skipped: true,
-        reason: 'Game disabled via GAME_START environment variable',
+        reason: "Game disabled via GAME_START environment variable",
         processed: 0,
       });
     }
 
     // Check Game status from database (cached for 60s to reduce DB load)
     const gameState = await getCacheOrFetch<GameState | null>(
-      'continuous-game',
+      "continuous-game",
       async () => {
         const [game] = await db
           .select({
@@ -236,19 +236,19 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
           .limit(1);
         return game ?? null;
       },
-      { namespace: 'organization-tick', ttl: 60 }
+      { namespace: "organization-tick", ttl: 60 },
     );
 
     if (!gameState) {
       logger.info(
-        'Organization tick skipped (No continuous game found)',
+        "Organization tick skipped (No continuous game found)",
         {},
-        'OrganizationTick'
+        "OrganizationTick",
       );
       return NextResponse.json({
         success: true,
         skipped: true,
-        reason: 'No continuous game found',
+        reason: "No continuous game found",
         duration: Date.now() - startTime,
         processed: 0,
       });
@@ -256,14 +256,14 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
 
     if (!gameState.isRunning) {
       logger.info(
-        'Organization tick paused (Game is not running)',
+        "Organization tick paused (Game is not running)",
         { gameId: gameState.id },
-        'OrganizationTick'
+        "OrganizationTick",
       );
       return NextResponse.json({
         success: true,
         skipped: true,
-        reason: 'Game is paused',
+        reason: "Game is paused",
         gameId: gameState.id,
         duration: Date.now() - startTime,
         processed: 0,
@@ -273,22 +273,22 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
     // Get all organizations that can post (all types: media, company, vc, government, etc.)
     // Media orgs act as news outlets, companies/VCs post corporate updates and influence narratives
     const allOrgs = StaticDataRegistry.getAllOrganizations().filter(
-      (org) => org.canBeInvolved !== false
+      (org) => org.canBeInvolved !== false,
     );
 
     if (allOrgs.length === 0) {
-      logger.warn('No organizations found in registry', {}, 'OrganizationTick');
+      logger.warn("No organizations found in registry", {}, "OrganizationTick");
       return NextResponse.json({
         success: true,
         processed: 0,
         duration: Date.now() - startTime,
-        warning: 'No organizations found in registry',
+        warning: "No organizations found in registry",
       });
     }
 
     // Query recent posts to enforce cooldown (prevents back-to-back robotic posting)
     const cooldownThreshold = new Date(
-      Date.now() - ORG_MIN_MINUTES_BETWEEN_POSTS * 60 * 1000
+      Date.now() - ORG_MIN_MINUTES_BETWEEN_POSTS * 60 * 1000,
     );
     const orgIds = allOrgs.map((o) => o.id);
 
@@ -322,30 +322,30 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
     const inCooldown = allOrgs.length - eligibleOrgs.length;
     if (inCooldown > 0) {
       logger.debug(
-        'Organizations in cooldown',
+        "Organizations in cooldown",
         {
           total: allOrgs.length,
           eligible: eligibleOrgs.length,
           inCooldown,
           cooldownMinutes: ORG_MIN_MINUTES_BETWEEN_POSTS,
         },
-        'OrganizationTick'
+        "OrganizationTick",
       );
     }
 
     // If all orgs are in cooldown, skip this tick
     if (eligibleOrgs.length === 0) {
       logger.info(
-        'All organizations in cooldown, skipping tick',
+        "All organizations in cooldown, skipping tick",
         { cooldownMinutes: ORG_MIN_MINUTES_BETWEEN_POSTS },
-        'OrganizationTick'
+        "OrganizationTick",
       );
       return NextResponse.json({
         success: true,
         processed: 0,
         duration: Date.now() - startTime,
         skipped: true,
-        reason: 'All organizations in cooldown',
+        reason: "All organizations in cooldown",
       });
     }
 
@@ -366,7 +366,7 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
         totalOrgs: allOrgs.length,
         selectedOrgs: orgsThisTick.map((o) => o.name),
       },
-      'OrganizationTick'
+      "OrganizationTick",
     );
 
     const results: Array<{
@@ -391,7 +391,7 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
         logger.error(
           `Circuit breaker triggered after ${consecutiveOrgErrors} consecutive errors`,
           { processId, orgsRemaining: orgsThisTick.length - results.length },
-          'OrganizationTick'
+          "OrganizationTick",
         );
         break;
       }
@@ -405,8 +405,8 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
             ? `Recent events: ${activeEventsData.activeEvents
                 .slice(0, 3)
                 .map((e) => e.questionId)
-                .join(', ')}`
-            : '';
+                .join(", ")}`
+            : "";
 
         // Build prompt for organization POST (not article - articles are handled by article-tick)
         const prompt = buildOrgPostPrompt(org, worldFactsContext, eventContext);
@@ -417,30 +417,30 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
         >(
           prompt,
           {
-            properties: { post: { type: 'string' } },
-            required: ['post'],
+            properties: { post: { type: "string" } },
+            required: ["post"],
           },
           {
             maxTokens: 280,
             temperature: 0.8,
-          }
+          },
         );
 
         // Validate LLM response with Zod schema
         const parseResult = LLMPostResponseSchema.safeParse(rawResponse);
         if (!parseResult.success) {
           logger.warn(
-            'LLM response failed schema validation',
+            "LLM response failed schema validation",
             {
               orgId: org.id,
               orgName: org.name,
               errors: parseResult.error.issues,
               rawResponse: JSON.stringify(rawResponse).slice(0, 200),
             },
-            'OrganizationTick'
+            "OrganizationTick",
           );
           throw new Error(
-            `Invalid LLM response format: ${parseResult.error.issues.map((e: z.ZodIssue) => e.message).join(', ')}`
+            `Invalid LLM response format: ${parseResult.error.issues.map((e: z.ZodIssue) => e.message).join(", ")}`,
           );
         }
 
@@ -448,7 +448,7 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
         const rawPost = extractPostFromResponse(parseResult.data);
 
         if (rawPost.trim().length === 0) {
-          throw new Error('Empty post content from LLM');
+          throw new Error("Empty post content from LLM");
         }
 
         // Parse response and create post
@@ -473,7 +473,7 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
           dayNumber: gameState.currentDay ?? 1,
           timestamp: postTimestamp, // Staggered for organic feel
           createdAt: now, // Actual creation time
-          type: 'post',
+          type: "post",
         });
 
         postsCreated++;
@@ -481,7 +481,7 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
         results.push({
           orgId: org.id,
           name: org.name,
-          status: 'success',
+          status: "success",
           duration: Date.now() - orgStartTime,
         });
 
@@ -492,7 +492,7 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
             postId,
             duration: Date.now() - orgStartTime,
           },
-          'OrganizationTick'
+          "OrganizationTick",
         );
       } catch (error) {
         errors++;
@@ -504,13 +504,13 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
             error: error instanceof Error ? error.message : String(error),
             consecutiveOrgErrors,
           },
-          'OrganizationTick'
+          "OrganizationTick",
         );
 
         results.push({
           orgId: org.id,
           name: org.name,
-          status: 'error',
+          status: "error",
           error: error instanceof Error ? error.message : String(error),
           duration: Date.now() - orgStartTime,
         });
@@ -526,12 +526,12 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
         postsCreated,
         errors,
       },
-      'OrganizationTick'
+      "OrganizationTick",
     );
 
     // Record metrics
     // Consider success if there were no errors OR if some work succeeded (partial success)
-    recordCronExecution('organization-tick', new Date(startTime), {
+    recordCronExecution("organization-tick", new Date(startTime), {
       success: errors === 0 || postsCreated > 0,
       processed: orgsThisTick.length,
       postsCreated,
@@ -551,8 +551,8 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
   } finally {
     // Always release global lock
     await DistributedLockService.releaseLock(
-      'organization-tick-global',
-      processId
+      "organization-tick-global",
+      processId,
     );
   }
 });
@@ -562,12 +562,12 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
  * Each type has distinct posting patterns that mirror real-world counterparts.
  */
 type OrgType =
-  | 'media'
-  | 'company'
-  | 'vc'
-  | 'government'
-  | 'organization'
-  | 'financial';
+  | "media"
+  | "company"
+  | "vc"
+  | "government"
+  | "organization"
+  | "financial";
 
 /**
  * Posting frequency weights for each organization type.
@@ -613,7 +613,7 @@ function selectWeightedOrganizations<
   // Group by type
   const byType = new Map<OrgType, T[]>();
   for (const org of orgs) {
-    const type = (org.type || 'media') as OrgType;
+    const type = (org.type || "media") as OrgType;
     const list = byType.get(type) || [];
     list.push(org);
     byType.set(type, list);
@@ -625,7 +625,7 @@ function selectWeightedOrganizations<
   // Phase 1: Stratified selection - try to get one from each active type
   // Weight determines which types get priority for the first slots
   const typesByWeight = [...byType.entries()].sort(
-    (a, b) => (ORG_TYPE_WEIGHTS[b[0]] || 1) - (ORG_TYPE_WEIGHTS[a[0]] || 1)
+    (a, b) => (ORG_TYPE_WEIGHTS[b[0]] || 1) - (ORG_TYPE_WEIGHTS[a[0]] || 1),
   );
 
   // Select one from each type (in weight order) until we have enough or run out of types
@@ -649,8 +649,8 @@ function selectWeightedOrganizations<
     const weightedPool: Array<{ org: T; weight: number }> = remaining.map(
       (org) => ({
         org,
-        weight: ORG_TYPE_WEIGHTS[(org.type || 'media') as OrgType] || 1,
-      })
+        weight: ORG_TYPE_WEIGHTS[(org.type || "media") as OrgType] || 1,
+      }),
     );
 
     // Select remaining using weighted random
@@ -659,10 +659,10 @@ function selectWeightedOrganizations<
       let random = secureRandom() * totalWeight;
 
       for (let i = 0; i < weightedPool.length; i++) {
-        random -= weightedPool[i]!.weight;
+        random -= weightedPool[i]?.weight;
         if (random <= 0) {
-          selected.push(weightedPool[i]!.org);
-          selectedIds.add(weightedPool[i]!.org.id);
+          selected.push(weightedPool[i]?.org);
+          selectedIds.add(weightedPool[i]?.org.id);
           weightedPool.splice(i, 1);
           break;
         }
@@ -673,13 +673,13 @@ function selectWeightedOrganizations<
   // Log the distribution for monitoring
   const typeCounts: Record<string, number> = {};
   for (const org of selected) {
-    const type = org.type || 'media';
+    const type = org.type || "media";
     typeCounts[type] = (typeCounts[type] || 0) + 1;
   }
   logger.debug(
-    'Weighted org selection',
+    "Weighted org selection",
     { count: selected.length, distribution: typeCounts },
-    'OrganizationTick'
+    "OrganizationTick",
   );
 
   return selected;
@@ -700,14 +700,14 @@ function selectWeightedOrganizations<
 function buildOrgPostPrompt(
   org: { id: string; name: string; description?: string; type?: string },
   worldFacts: string,
-  eventContext: string
+  eventContext: string,
 ): string {
   const orgStyle = getOrgStyle(org.id);
-  const orgType = (org.type || 'media') as OrgType;
+  const orgType = (org.type || "media") as OrgType;
 
   // Base context for all org types
   const baseContext = `You are posting as ${org.name}.
-${org.description ? `About: ${org.description}` : ''}
+${org.description ? `About: ${org.description}` : ""}
 
 ${worldFacts}
 
@@ -796,5 +796,5 @@ function getOrgStyle(orgId: string): string {
     return org.postStyle;
   }
 
-  return 'Professional news reporting style.';
+  return "Professional news reporting style.";
 }

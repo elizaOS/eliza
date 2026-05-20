@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
-import { cn, logger } from '@feed/shared';
+import { cn, logger } from "@feed/shared";
 import {
   AlertCircle,
   Bell,
@@ -18,51 +18,51 @@ import {
   Shield,
   Sun,
   User,
-} from 'lucide-react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { useTheme } from 'next-themes';
-import { useEffect, useMemo, useState } from 'react';
-import { LoginButton } from '@/components/auth/LoginButton';
-import { LinkSocialAccountsModal } from '@/components/profile/LinkSocialAccountsModal';
-import { ApiKeysTab } from '@/components/settings/ApiKeysTab';
-import { BillingTab } from '@/components/settings/BillingTab';
-import { NotificationsTab } from '@/components/settings/NotificationsTab';
-import { PrivacyTab } from '@/components/settings/PrivacyTab';
-import { SecurityTab } from '@/components/settings/SecurityTab';
-import { Avatar } from '@/components/shared/Avatar';
-import { PageContainer } from '@/components/shared/PageContainer';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { Switch } from '@/components/ui/switch';
-import { useAuth } from '@/hooks/useAuth';
-import { useAuthStore } from '@/stores/authStore';
-import { apiUrl } from '@/utils/api-url';
-import { uploadImage, validateImageFile } from '@/utils/upload-image';
+} from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useTheme } from "next-themes";
+import { useEffect, useMemo, useState } from "react";
+import { LoginButton } from "@/components/auth/LoginButton";
+import { LinkSocialAccountsModal } from "@/components/profile/LinkSocialAccountsModal";
+import { ApiKeysTab } from "@/components/settings/ApiKeysTab";
+import { BillingTab } from "@/components/settings/BillingTab";
+import { NotificationsTab } from "@/components/settings/NotificationsTab";
+import { PrivacyTab } from "@/components/settings/PrivacyTab";
+import { SecurityTab } from "@/components/settings/SecurityTab";
+import { Avatar } from "@/components/shared/Avatar";
+import { PageContainer } from "@/components/shared/PageContainer";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { Switch } from "@/components/ui/switch";
+import { useAuth } from "@/hooks/useAuth";
+import { useAuthStore } from "@/stores/authStore";
+import { apiUrl } from "@/utils/api-url";
+import { uploadImage, validateImageFile } from "@/utils/upload-image";
 
 /**
  * Check if billing feature is enabled
  * Feature flag: NEXT_PUBLIC_BILLING_ENABLED
  */
 function isBillingEnabled(): boolean {
-  return process.env.NEXT_PUBLIC_BILLING_ENABLED === 'true';
+  return process.env.NEXT_PUBLIC_BILLING_ENABLED === "true";
 }
 
 const themeOptions = [
   {
-    value: 'light',
-    label: 'Light',
-    description: 'Light background with dark text',
+    value: "light",
+    label: "Light",
+    description: "Light background with dark text",
     icon: Sun,
   },
   {
-    value: 'dark',
-    label: 'Dark',
-    description: 'Dark background with light text',
+    value: "dark",
+    label: "Dark",
+    description: "Dark background with light text",
     icon: Moon,
   },
   {
-    value: 'system',
-    label: 'System',
-    description: 'Match your system settings',
+    value: "system",
+    label: "System",
+    description: "Match your system settings",
     icon: Monitor,
   },
 ] as const;
@@ -74,8 +74,8 @@ export default function SettingsPage() {
   const { user, setUser } = useAuthStore();
   const [activeTab, setActiveTab] = useState(() => {
     // Check for tab parameter in URL
-    const tab = searchParams?.get('tab');
-    return tab || 'profile';
+    const tab = searchParams?.get("tab");
+    return tab || "profile";
   });
 
   // Sync tab changes with URL
@@ -86,7 +86,7 @@ export default function SettingsPage() {
 
   // Sync tab when URL changes (e.g., browser back/forward)
   useEffect(() => {
-    const tab = searchParams?.get('tab');
+    const tab = searchParams?.get("tab");
     if (tab && tab !== activeTab) {
       setActiveTab(tab);
     }
@@ -97,9 +97,9 @@ export default function SettingsPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showLinkAccountsModal, setShowLinkAccountsModal] = useState(false);
   // Profile settings state
-  const [displayName, setDisplayName] = useState(user?.displayName || '');
-  const [username, setUsername] = useState(user?.username || '');
-  const [bio, setBio] = useState(user?.bio || '');
+  const [displayName, setDisplayName] = useState(user?.displayName || "");
+  const [username, setUsername] = useState(user?.username || "");
+  const [bio, setBio] = useState(user?.bio || "");
   const [profileImage, setProfileImage] = useState<{
     file: File | null;
     preview: string | null;
@@ -144,21 +144,21 @@ export default function SettingsPage() {
   // Must be before any early returns to satisfy Rules of Hooks
   const tabs = useMemo(() => {
     const baseTabs = [
-      { id: 'profile', label: 'Profile', icon: User },
-      { id: 'theme', label: 'Theme', icon: Palette },
-      { id: 'notifications', label: 'Notifications', icon: Bell },
+      { id: "profile", label: "Profile", icon: User },
+      { id: "theme", label: "Theme", icon: Palette },
+      { id: "notifications", label: "Notifications", icon: Bell },
     ];
 
     // Add billing tab if feature flag is enabled
     if (billingEnabled) {
-      baseTabs.push({ id: 'billing', label: 'Billing', icon: Receipt });
+      baseTabs.push({ id: "billing", label: "Billing", icon: Receipt });
     }
 
     // Add remaining tabs
     baseTabs.push(
-      { id: 'security', label: 'Security', icon: Shield },
-      { id: 'privacy', label: 'Privacy', icon: Shield },
-      { id: 'api', label: 'API Keys', icon: Key }
+      { id: "security", label: "Security", icon: Shield },
+      { id: "privacy", label: "Privacy", icon: Shield },
+      { id: "api", label: "API Keys", icon: Key },
     );
 
     return baseTabs;
@@ -198,9 +198,9 @@ export default function SettingsPage() {
 
   // Sync profile fields when user data changes
   useEffect(() => {
-    setDisplayName(user?.displayName ?? '');
-    setUsername(user?.username ?? '');
-    setBio(user?.bio ?? '');
+    setDisplayName(user?.displayName ?? "");
+    setUsername(user?.username ?? "");
+    setBio(user?.bio ?? "");
     setSocialVisibility({
       twitter: user?.showTwitterPublic ?? true,
       farcaster: user?.showFarcasterPublic ?? true,
@@ -232,7 +232,7 @@ export default function SettingsPage() {
   const currentCoverImageUrl =
     coverImage.preview || user?.coverImageUrl || null;
 
-  const handleImageSelect = (file: File, type: 'profile' | 'cover'): void => {
+  const handleImageSelect = (file: File, type: "profile" | "cover"): void => {
     const validationError = validateImageFile(file);
     if (validationError) {
       setErrorMessage(validationError);
@@ -241,7 +241,7 @@ export default function SettingsPage() {
 
     const reader = new FileReader();
     reader.onloadend = () => {
-      if (type === 'profile') {
+      if (type === "profile") {
         setProfileImage({ file, preview: reader.result as string });
       } else {
         setCoverImage({ file, preview: reader.result as string });
@@ -252,13 +252,13 @@ export default function SettingsPage() {
   };
 
   const updateSocialVisibility = async (
-    platform: 'twitter' | 'farcaster' | 'wallet',
-    visible: boolean
+    platform: "twitter" | "farcaster" | "wallet",
+    visible: boolean,
   ) => {
     if (!user?.id) return;
     const token = await getAccessToken();
     const headers: HeadersInit = {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
     };
     if (token) {
       headers.Authorization = `Bearer ${token}`;
@@ -267,10 +267,10 @@ export default function SettingsPage() {
     const response = await fetch(
       apiUrl(`/api/users/${encodeURIComponent(user.id)}/update-visibility`),
       {
-        method: 'POST',
+        method: "POST",
         headers,
         body: JSON.stringify({ platform, visible }),
-      }
+      },
     );
 
     const payload = (await response.json().catch(() => ({}))) as {
@@ -280,7 +280,7 @@ export default function SettingsPage() {
 
     if (!response.ok || !payload.visibility) {
       const message =
-        payload?.error?.message || 'Unable to update visibility preferences.';
+        payload?.error?.message || "Unable to update visibility preferences.";
       setErrorMessage(message);
       return;
     }
@@ -307,13 +307,13 @@ export default function SettingsPage() {
       dailySummary: boolean;
       weeklySummary: boolean;
       monthlySummary: boolean;
-    }>
+    }>,
   ) => {
     if (!user?.id) return;
 
     const token = await getAccessToken();
     const headers: HeadersInit = {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
     };
     if (token) {
       headers.Authorization = `Bearer ${token}`;
@@ -322,10 +322,10 @@ export default function SettingsPage() {
     const response = await fetch(
       `/api/users/${encodeURIComponent(user.id)}/notification-email-preferences`,
       {
-        method: 'POST',
+        method: "POST",
         headers,
         body: JSON.stringify(patch),
-      }
+      },
     );
 
     const payload = (await response.json().catch(() => ({}))) as {
@@ -343,11 +343,11 @@ export default function SettingsPage() {
 
     if (!response.ok || !payload.preferences) {
       const fallbackMessage =
-        typeof payload.error === 'string'
+        typeof payload.error === "string"
           ? payload.error
           : payload.error?.message;
       setErrorMessage(
-        fallbackMessage || 'Unable to update notification email preferences.'
+        fallbackMessage || "Unable to update notification email preferences.",
       );
       return;
     }
@@ -395,9 +395,9 @@ export default function SettingsPage() {
     setSaved(false);
     setErrorMessage(null);
 
-    const trimmedDisplayName = (displayName ?? '').trim();
-    const trimmedUsername = (username ?? '').trim();
-    const trimmedBio = (bio ?? '').trim();
+    const trimmedDisplayName = (displayName ?? "").trim();
+    const trimmedUsername = (username ?? "").trim();
+    const trimmedBio = (bio ?? "").trim();
 
     // Backend now handles ALL signing automatically - no user popups!
     // This includes username changes, bio updates, display name changes.
@@ -405,10 +405,10 @@ export default function SettingsPage() {
 
     const token = await getAccessToken();
     const headers: HeadersInit = {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
     };
     if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
+      headers.Authorization = `Bearer ${token}`;
     }
 
     let nextProfileImageUrl: string | null = null;
@@ -417,14 +417,14 @@ export default function SettingsPage() {
     // Upload images first (if any were changed).
     if (profileImage.file) {
       try {
-        nextProfileImageUrl = await uploadImage(profileImage.file, 'profile');
+        nextProfileImageUrl = await uploadImage(profileImage.file, "profile");
       } catch (err) {
         logger.error(
-          'Profile image upload request failed',
+          "Profile image upload request failed",
           { error: err },
-          'SettingsPage'
+          "SettingsPage",
         );
-        setErrorMessage('Failed to upload profile image.');
+        setErrorMessage("Failed to upload profile image.");
         setSaving(false);
         return;
       }
@@ -432,14 +432,14 @@ export default function SettingsPage() {
 
     if (coverImage.file) {
       try {
-        nextCoverImageUrl = await uploadImage(coverImage.file, 'cover');
+        nextCoverImageUrl = await uploadImage(coverImage.file, "cover");
       } catch (err) {
         logger.error(
-          'Cover image upload request failed',
+          "Cover image upload request failed",
           { error: err },
-          'SettingsPage'
+          "SettingsPage",
         );
-        setErrorMessage('Failed to upload cover image.');
+        setErrorMessage("Failed to upload cover image.");
         setSaving(false);
         return;
       }
@@ -450,7 +450,7 @@ export default function SettingsPage() {
       response = await fetch(
         apiUrl(`/api/users/${encodeURIComponent(user.id)}/update-profile`),
         {
-          method: 'POST',
+          method: "POST",
           headers,
           body: JSON.stringify({
             displayName: trimmedDisplayName,
@@ -461,27 +461,27 @@ export default function SettingsPage() {
               : {}),
             ...(nextCoverImageUrl ? { coverImageUrl: nextCoverImageUrl } : {}),
           }),
-        }
+        },
       );
     } catch (err) {
       logger.error(
-        'Profile update request failed',
+        "Profile update request failed",
         { error: err },
-        'SettingsPage'
+        "SettingsPage",
       );
-      setErrorMessage('Unable to save your changes.');
+      setErrorMessage("Unable to save your changes.");
       setSaving(false);
       return;
     }
 
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      const message = payload?.error || 'Unable to save your changes.';
+      const message = payload?.error || "Unable to save your changes.";
       setErrorMessage(message);
       logger.error(
-        'Failed to save profile settings',
+        "Failed to save profile settings",
         { error: message },
-        'SettingsPage'
+        "SettingsPage",
       );
       setSaving(false);
       return;
@@ -580,10 +580,10 @@ export default function SettingsPage() {
                   key={tab.id}
                   onClick={() => handleTabChange(tab.id)}
                   className={cn(
-                    'relative flex items-center gap-2 whitespace-nowrap px-8 py-3 font-medium text-sm transition-colors',
+                    "relative flex items-center gap-2 whitespace-nowrap px-8 py-3 font-medium text-sm transition-colors",
                     activeTab === tab.id
-                      ? 'text-foreground'
-                      : 'text-muted-foreground hover:text-foreground'
+                      ? "text-foreground"
+                      : "text-muted-foreground hover:text-foreground",
                   )}
                 >
                   <Icon className="h-4 w-4" />
@@ -600,7 +600,7 @@ export default function SettingsPage() {
         <div className="p-4 pb-[calc(1rem+var(--bottom-nav-height))] md:pb-4">
           {/* Tab Content */}
           <div className="pt-6">
-            {activeTab === 'profile' && (
+            {activeTab === "profile" && (
               <div>
                 <div className="space-y-5">
                   <div className="space-y-3">
@@ -644,7 +644,7 @@ export default function SettingsPage() {
                             onChange={(e) => {
                               const file = e.target.files?.[0];
                               if (!file) return;
-                              handleImageSelect(file, 'cover');
+                              handleImageSelect(file, "cover");
                             }}
                           />
                         </label>
@@ -654,8 +654,8 @@ export default function SettingsPage() {
                       <div className="absolute -bottom-12 left-3 sm:-bottom-14 sm:left-4">
                         <div className="group relative h-24 w-24 overflow-hidden rounded-full border-4 border-background bg-background sm:h-28 sm:w-28">
                           <Avatar
-                            id={user?.id || ''}
-                            name={user?.displayName || user?.email || 'User'}
+                            id={user?.id || ""}
+                            name={user?.displayName || user?.email || "User"}
                             type="user"
                             size="lg"
                             src={currentProfileImageUrl || undefined}
@@ -673,7 +673,7 @@ export default function SettingsPage() {
                               onChange={(e) => {
                                 const file = e.target.files?.[0];
                                 if (!file) return;
-                                handleImageSelect(file, 'profile');
+                                handleImageSelect(file, "profile");
                               }}
                             />
                           </label>
@@ -716,7 +716,7 @@ export default function SettingsPage() {
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
                       disabled={Boolean(
-                        usernameChangeLimit && !usernameChangeLimit.canChange
+                        usernameChangeLimit && !usernameChangeLimit.canChange,
                       )}
                       className="min-h-[44px] w-full rounded-lg border border-border px-4 py-3 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-50"
                       placeholder="Enter your username"
@@ -726,7 +726,7 @@ export default function SettingsPage() {
                         <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-yellow-500" />
                         <p className="text-xs text-yellow-500">
                           Username can only be changed once every 24 hours.
-                          Please wait {usernameChangeLimit.hours}h{' '}
+                          Please wait {usernameChangeLimit.hours}h{" "}
                           {usernameChangeLimit.minutes}m before changing again.
                         </p>
                       </div>
@@ -769,13 +769,13 @@ export default function SettingsPage() {
                           <div className="truncate text-muted-foreground text-xs">
                             {user?.hasTwitter && user?.twitterUsername
                               ? `@${user.twitterUsername}`
-                              : 'Not linked'}
+                              : "Not linked"}
                           </div>
                         </div>
                         <Switch
                           checked={socialVisibility.twitter}
                           onCheckedChange={(checked) =>
-                            void updateSocialVisibility('twitter', checked)
+                            void updateSocialVisibility("twitter", checked)
                           }
                           disabled={!user?.hasTwitter}
                         />
@@ -786,13 +786,13 @@ export default function SettingsPage() {
                           <div className="truncate text-muted-foreground text-xs">
                             {user?.hasFarcaster && user?.farcasterUsername
                               ? `@${user.farcasterUsername}`
-                              : 'Not linked'}
+                              : "Not linked"}
                           </div>
                         </div>
                         <Switch
                           checked={socialVisibility.farcaster}
                           onCheckedChange={(checked) =>
-                            void updateSocialVisibility('farcaster', checked)
+                            void updateSocialVisibility("farcaster", checked)
                           }
                           disabled={!user?.hasFarcaster}
                         />
@@ -811,9 +811,9 @@ export default function SettingsPage() {
                     <div className="mt-2 text-muted-foreground text-xs">
                       {user?.email ? (
                         <>
-                          Email:{' '}
+                          Email:{" "}
                           <span className="font-medium">{user.email}</span> (
-                          {user.emailVerified ? 'verified' : 'unverified'})
+                          {user.emailVerified ? "verified" : "unverified"})
                         </>
                       ) : (
                         <div className="space-y-2">
@@ -891,18 +891,18 @@ export default function SettingsPage() {
                       onClick={handleSave}
                       disabled={saving}
                       className={cn(
-                        'flex min-h-[44px] items-center gap-2 px-6 py-3 font-medium transition-all',
-                        'bg-primary text-primary-foreground hover:bg-primary/90',
-                        'disabled:cursor-not-allowed disabled:opacity-50'
+                        "flex min-h-[44px] items-center gap-2 px-6 py-3 font-medium transition-all",
+                        "bg-primary text-primary-foreground hover:bg-primary/90",
+                        "disabled:cursor-not-allowed disabled:opacity-50",
                       )}
                     >
                       <Save className="h-4 w-4" />
                       <span>
                         {saving
-                          ? 'Saving...'
+                          ? "Saving..."
                           : saved
-                            ? 'Saved!'
-                            : 'Save Changes'}
+                            ? "Saved!"
+                            : "Save Changes"}
                       </span>
                     </button>
                   </div>
@@ -915,63 +915,61 @@ export default function SettingsPage() {
               onClose={() => setShowLinkAccountsModal(false)}
             />
 
-            {activeTab === 'theme' && (
+            {activeTab === "theme" && (
               <div className="space-y-5">
                 {!mounted ? (
                   <div className="flex items-center justify-center py-8">
                     <Skeleton className="h-32 w-full" />
                   </div>
                 ) : (
-                  <>
-                    <div className="grid gap-3">
-                      {themeOptions.map((option) => {
-                        const Icon = option.icon;
-                        const isSelected = theme === option.value;
-                        return (
-                          <button
-                            key={option.value}
-                            type="button"
-                            onClick={() => setTheme(option.value)}
-                            className={cn(
-                              'flex items-center gap-3 rounded-lg border p-4 text-left transition-all',
-                              isSelected
-                                ? 'border-primary bg-primary/5'
-                                : 'border-border hover:bg-muted/30'
-                            )}
-                          >
-                            <Icon className="h-5 w-5 shrink-0 text-muted-foreground" />
-                            <div className="flex-1">
-                              <p className="font-medium">{option.label}</p>
-                              <p className="text-muted-foreground text-sm">
-                                {option.description}
-                              </p>
-                            </div>
-                            {isSelected && (
-                              <CheckCircle2 className="h-5 w-5 shrink-0 text-primary" />
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </>
+                  <div className="grid gap-3">
+                    {themeOptions.map((option) => {
+                      const Icon = option.icon;
+                      const isSelected = theme === option.value;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => setTheme(option.value)}
+                          className={cn(
+                            "flex items-center gap-3 rounded-lg border p-4 text-left transition-all",
+                            isSelected
+                              ? "border-primary bg-primary/5"
+                              : "border-border hover:bg-muted/30",
+                          )}
+                        >
+                          <Icon className="h-5 w-5 shrink-0 text-muted-foreground" />
+                          <div className="flex-1">
+                            <p className="font-medium">{option.label}</p>
+                            <p className="text-muted-foreground text-sm">
+                              {option.description}
+                            </p>
+                          </div>
+                          {isSelected && (
+                            <CheckCircle2 className="h-5 w-5 shrink-0 text-primary" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
                 )}
               </div>
             )}
 
             {/* Notifications Tab */}
-            {activeTab === 'notifications' && <NotificationsTab />}
+            {activeTab === "notifications" && <NotificationsTab />}
 
             {/* Billing Tab - Feature Flagged */}
-            {activeTab === 'billing' && billingEnabled && <BillingTab />}
+            {activeTab === "billing" && billingEnabled && <BillingTab />}
 
             {/* Security Tab */}
-            {activeTab === 'security' && <SecurityTab />}
+            {activeTab === "security" && <SecurityTab />}
 
             {/* Privacy Tab */}
-            {activeTab === 'privacy' && <PrivacyTab />}
+            {activeTab === "privacy" && <PrivacyTab />}
 
             {/* API Keys Tab */}
-            {activeTab === 'api' && <ApiKeysTab />}
+            {activeTab === "api" && <ApiKeysTab />}
           </div>
         </div>
       </div>

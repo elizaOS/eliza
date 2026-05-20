@@ -1,24 +1,24 @@
 import {
   Actions,
   type AgentTickContext,
-} from './templates/multi-step-decision';
+} from "./templates/multi-step-decision";
 
 type DecisionParameters = Record<string, unknown>;
 
 const PLACEHOLDER_TOKENS = new Set([
-  '',
-  '0',
-  'none',
-  'null',
-  'nil',
-  'n/a',
-  'na',
-  'unknown',
-  'undefined',
-  'post',
-  'comment',
-  'chat',
-  'user',
+  "",
+  "0",
+  "none",
+  "null",
+  "nil",
+  "n/a",
+  "na",
+  "unknown",
+  "undefined",
+  "post",
+  "comment",
+  "chat",
+  "user",
 ]);
 
 function normalizeToken(value: string): string {
@@ -27,13 +27,13 @@ function normalizeToken(value: string): string {
 
 function normalizeIdInput(value: unknown): string | undefined {
   const trimmed =
-    typeof value === 'string'
+    typeof value === "string"
       ? value.trim()
-      : typeof value === 'number' && Number.isFinite(value)
+      : typeof value === "number" && Number.isFinite(value)
         ? String(Math.trunc(value))
-        : typeof value === 'bigint'
+        : typeof value === "bigint"
           ? value.toString()
-          : '';
+          : "";
   if (!trimmed) {
     return undefined;
   }
@@ -64,14 +64,14 @@ function extractEmbeddedId(value: string): string | undefined {
   const explicitId =
     value.match(/\bid\s*:\s*([A-Za-z0-9_-]+)/i)?.[1] ??
     value.match(
-      /\b(?:postId|commentId|chatId|userId|recipientId)\s*:\s*([A-Za-z0-9_-]+)/i
+      /\b(?:postId|commentId|chatId|userId|recipientId)\s*:\s*([A-Za-z0-9_-]+)/i,
     )?.[1];
   return explicitId?.trim();
 }
 
 function resolveCandidateId<T extends { id: string }>(
   rawValue: unknown,
-  candidates: T[]
+  candidates: T[],
 ): string | undefined {
   const normalizedInput = normalizeIdInput(rawValue);
   if (!normalizedInput) {
@@ -79,7 +79,7 @@ function resolveCandidateId<T extends { id: string }>(
   }
 
   const exact = candidates.find(
-    (candidate) => candidate.id === normalizedInput
+    (candidate) => candidate.id === normalizedInput,
   );
   if (exact) {
     return exact.id;
@@ -88,7 +88,7 @@ function resolveCandidateId<T extends { id: string }>(
   const embeddedId = extractEmbeddedId(normalizedInput);
   if (embeddedId) {
     const embedded = candidates.find(
-      (candidate) => candidate.id === embeddedId
+      (candidate) => candidate.id === embeddedId,
     );
     if (embedded) {
       return embedded.id;
@@ -103,7 +103,7 @@ function resolveCandidateId<T extends { id: string }>(
   const numericPrefix = normalizedInput.match(/^(\d+)/)?.[1];
   if (numericPrefix) {
     const prefixed = candidates.find(
-      (candidate) => candidate.id === numericPrefix
+      (candidate) => candidate.id === numericPrefix,
     );
     if (prefixed) {
       return prefixed.id;
@@ -115,7 +115,7 @@ function resolveCandidateId<T extends { id: string }>(
 
 function dedupeRecentPostAuthors(
   context: AgentTickContext,
-  agentUserId: string
+  agentUserId: string,
 ): Array<{ id: string }> {
   const seen = new Set<string>();
   const authors: Array<{ id: string }> = [];
@@ -133,11 +133,11 @@ function dedupeRecentPostAuthors(
 
 function chooseCommentPost(
   context: AgentTickContext,
-  agentUserId: string
+  agentUserId: string,
 ): string | undefined {
   return (
     context.recentPosts.find(
-      (post) => post.authorId !== agentUserId && !post.agentComment
+      (post) => post.authorId !== agentUserId && !post.agentComment,
     )?.id ??
     context.recentPosts.find((post) => post.authorId !== agentUserId)?.id ??
     context.recentPosts[0]?.id
@@ -146,11 +146,11 @@ function chooseCommentPost(
 
 function chooseLikePost(
   context: AgentTickContext,
-  agentUserId: string
+  agentUserId: string,
 ): string | undefined {
   return (
     context.recentPosts.find(
-      (post) => post.authorId !== agentUserId && !post.agentLiked
+      (post) => post.authorId !== agentUserId && !post.agentLiked,
     )?.id ??
     context.recentPosts.find((post) => post.authorId !== agentUserId)?.id ??
     context.recentPosts[0]?.id
@@ -159,11 +159,11 @@ function chooseLikePost(
 
 function chooseRepostPost(
   context: AgentTickContext,
-  agentUserId: string
+  agentUserId: string,
 ): string | undefined {
   return (
     context.recentPosts.find(
-      (post) => post.authorId !== agentUserId && !post.agentReposted
+      (post) => post.authorId !== agentUserId && !post.agentReposted,
     )?.id ??
     context.recentPosts.find((post) => post.authorId !== agentUserId)?.id ??
     context.recentPosts[0]?.id
@@ -171,7 +171,7 @@ function chooseRepostPost(
 }
 
 function choosePendingCommentTarget(
-  context: AgentTickContext
+  context: AgentTickContext,
 ): { id: string; postId: string } | undefined {
   const target = context.pendingCommentReplies[0];
   if (!target) {
@@ -183,7 +183,7 @@ function choosePendingCommentTarget(
 
 function choosePendingChatId(
   context: AgentTickContext,
-  groupOnly = false
+  groupOnly = false,
 ): string | undefined {
   if (groupOnly) {
     return context.groupChats?.[0]?.id;
@@ -196,7 +196,7 @@ export function normalizeSocialDecisionParameters(
   action: string,
   parameters: DecisionParameters,
   context: AgentTickContext,
-  agentUserId: string
+  agentUserId: string,
 ): DecisionParameters {
   const nextParameters: DecisionParameters = { ...parameters };
   const recentPosts = context.recentPosts.map((post) => ({ id: post.id }));
@@ -217,7 +217,7 @@ export function normalizeSocialDecisionParameters(
     case Actions.COMMENT: {
       const resolvedParentCommentId = resolveCandidateId(
         nextParameters.parentCommentId,
-        pendingReplies
+        pendingReplies,
       );
       const parentTarget = resolvedParentCommentId
         ? pendingReplies.find((reply) => reply.id === resolvedParentCommentId)
@@ -235,7 +235,7 @@ export function normalizeSocialDecisionParameters(
 
       if (resolvedParentCommentId) {
         nextParameters.parentCommentId = resolvedParentCommentId;
-      } else if ('parentCommentId' in nextParameters) {
+      } else if ("parentCommentId" in nextParameters) {
         delete nextParameters.parentCommentId;
       }
 
@@ -245,7 +245,7 @@ export function normalizeSocialDecisionParameters(
     case Actions.REPLY_COMMENT: {
       const resolvedCommentId = resolveCandidateId(
         nextParameters.commentId,
-        pendingReplies
+        pendingReplies,
       );
       const target =
         (resolvedCommentId &&

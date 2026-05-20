@@ -18,17 +18,17 @@ import {
   validateDateRange,
   validateEnum,
   withErrorHandling,
-} from '@feed/api';
-import { db } from '@feed/db';
-import { logger, toISO } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/api";
+import { db } from "@feed/db";
+import { logger, toISO } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 /** Valid period types for growth metrics */
-const VALID_PERIODS = ['day', 'week', 'month'] as const;
+const VALID_PERIODS = ["day", "week", "month"] as const;
 type Period = (typeof VALID_PERIODS)[number];
 
 function validatePeriod(value: string | null): Period {
-  return validateEnum(value, VALID_PERIODS, 'week');
+  return validateEnum(value, VALID_PERIODS, "week");
 }
 
 interface WAUResult {
@@ -78,52 +78,52 @@ interface RetentionCohortResult {
 
 /** Converts Date or string to ISO date string (YYYY-MM-DD) */
 function toDateStr(value: Date | string | null | undefined): string {
-  if (!value) return '';
-  if (value instanceof Date) return toISO(value).split('T')[0] ?? '';
+  if (!value) return "";
+  if (value instanceof Date) return toISO(value).split("T")[0] ?? "";
   return String(value);
 }
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
-  const admin = await requirePermission(request, 'view_stats');
+  const admin = await requirePermission(request, "view_stats");
 
   const rateLimitResult = applyRateLimit(
     admin.userId,
-    RATE_LIMIT_CONFIGS.ADMIN_STATS
+    RATE_LIMIT_CONFIGS.ADMIN_STATS,
   );
   if (!rateLimitResult.allowed) {
     return rateLimitError(rateLimitResult.retryAfter);
   }
 
   const { searchParams } = new URL(request.url);
-  const period = validatePeriod(searchParams.get('period'));
-  const startDate = parseDateParam(searchParams.get('startDate'));
-  const endDate = parseDateParam(searchParams.get('endDate'));
-  const includeTimeSeries = searchParams.get('includeTimeSeries') === 'true';
+  const period = validatePeriod(searchParams.get("period"));
+  const startDate = parseDateParam(searchParams.get("startDate"));
+  const endDate = parseDateParam(searchParams.get("endDate"));
+  const includeTimeSeries = searchParams.get("includeTimeSeries") === "true";
 
   const dateRangeError = validateDateRange(startDate, endDate);
   if (dateRangeError) {
     return successResponse(
       { error: dateRangeError, maxDays: MAX_DATE_RANGE_DAYS },
-      400
+      400,
     );
   }
 
   logger.info(
-    'Growth metrics requested',
+    "Growth metrics requested",
     { period, startDate, endDate, includeTimeSeries },
-    'GET /api/admin/stats/growth'
+    "GET /api/admin/stats/growth",
   );
 
   const now = new Date();
   // Convert to ISO strings for $queryRaw - postgres driver requires string parameters
   const sevenDaysAgo = new Date(
-    now.getTime() - 7 * 24 * 60 * 60 * 1000
+    now.getTime() - 7 * 24 * 60 * 60 * 1000,
   ).toISOString();
   const fourteenDaysAgo = new Date(
-    now.getTime() - 14 * 24 * 60 * 60 * 1000
+    now.getTime() - 14 * 24 * 60 * 60 * 1000,
   ).toISOString();
   const thirtyDaysAgo = new Date(
-    now.getTime() - 30 * 24 * 60 * 60 * 1000
+    now.getTime() - 30 * 24 * 60 * 60 * 1000,
   ).toISOString();
 
   // Execute all queries in parallel for efficiency
@@ -366,18 +366,18 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       cause?: Error;
     };
     logger.error(
-      'Growth metrics query failed',
+      "Growth metrics query failed",
       {
         message: dbError.message,
         code: dbError.code,
         detail: dbError.detail,
         cause: dbError.cause?.message,
-        stack: dbError.stack?.split('\n').slice(0, 5).join('\n'),
+        stack: dbError.stack?.split("\n").slice(0, 5).join("\n"),
       },
-      'GET /api/admin/stats/growth'
+      "GET /api/admin/stats/growth",
     );
     throw new Error(
-      `Database query failed: ${dbError.cause?.message || dbError.message}`
+      `Database query failed: ${dbError.cause?.message || dbError.message}`,
     );
   }
 
@@ -418,8 +418,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         ? 100
         : 0;
 
-  const wauTrend: 'up' | 'down' | 'stable' =
-    wauChange > 5 ? 'up' : wauChange < -5 ? 'down' : 'stable';
+  const wauTrend: "up" | "down" | "stable" =
+    wauChange > 5 ? "up" : wauChange < -5 ? "down" : "stable";
 
   const tradesPerTrader =
     uniqueTraders > 0 ? Math.round((totalTrades / uniqueTraders) * 10) / 10 : 0;
@@ -446,7 +446,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   let timeSeries: Array<{ date: string; wau: number }> = [];
 
   if (includeTimeSeries) {
-    const days = period === 'day' ? 7 : period === 'week' ? 28 : 90;
+    const days = period === "day" ? 7 : period === "week" ? 28 : 90;
     const timeSeriesStartDate =
       startDate ?? new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
     // Convert to ISO string for $queryRaw
@@ -577,22 +577,22 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       retainedD7: number;
       retentionRate: number;
     }>;
-    status: 'ok' | 'no_cohorts' | 'no_retention';
+    status: "ok" | "no_cohorts" | "no_retention";
     message: string;
   } = {
     d7: null,
     cohorts: [],
-    status: 'no_cohorts',
-    message: 'No users signed up 8-35 days ago',
+    status: "no_cohorts",
+    message: "No users signed up 8-35 days ago",
   };
 
   // Get cohort data for last 4 weeks (users who signed up 8-35 days ago)
   // Convert to ISO strings for $queryRaw
   const cohortStart = new Date(
-    now.getTime() - 35 * 24 * 60 * 60 * 1000
+    now.getTime() - 35 * 24 * 60 * 60 * 1000,
   ).toISOString();
   const cohortEnd = new Date(
-    now.getTime() - 8 * 24 * 60 * 60 * 1000
+    now.getTime() - 8 * 24 * 60 * 60 * 1000,
   ).toISOString();
 
   // D7 retention query - use actual activity tables for broader coverage
@@ -689,11 +689,11 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     // Overall D7 retention rate across all cohorts
     if (totalCohortSize > 0) {
       retention.d7 = Math.round((totalRetained / totalCohortSize) * 100);
-      retention.status = 'ok';
+      retention.status = "ok";
       retention.message = `${totalCohortSize} users in ${cohortResult.length} cohorts`;
     } else {
-      retention.status = 'no_cohorts';
-      retention.message = 'No users signed up 8-35 days ago';
+      retention.status = "no_cohorts";
+      retention.message = "No users signed up 8-35 days ago";
     }
   }
 

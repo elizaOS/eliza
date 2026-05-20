@@ -1,17 +1,17 @@
-import { cn } from '@feed/shared';
+import { cn } from "@feed/shared";
 
 interface SeparatorProps {
   className?: string;
-  orientation?: 'horizontal' | 'vertical';
+  orientation?: "horizontal" | "vertical";
 }
 
 export function Separator({
   className,
-  orientation = 'horizontal',
+  orientation = "horizontal",
 }: SeparatorProps) {
-  if (orientation === 'vertical') {
-    return <div className={cn('h-full w-px bg-border', className)} />;
+  if (orientation === "vertical") {
+    return <div className={cn("h-full w-px bg-border", className)} />;
   }
 
-  return <div className={cn('h-px w-full bg-border', className)} />;
+  return <div className={cn("h-px w-full bg-border", className)} />;
 }

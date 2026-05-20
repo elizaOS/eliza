@@ -56,24 +56,24 @@ import {
   successResponse,
   verifyCronAuth,
   withErrorHandling,
-} from '@feed/api';
-import { asSystem } from '@feed/db';
+} from "@feed/api";
+import { asSystem } from "@feed/db";
 import {
-  FeedLLMClient,
   bootstrapGameIfNeeded,
   checkLookaheadStatus,
   executeGameTick,
+  FeedLLMClient,
   generateAheadIfNeeded,
   StaticDataRegistry,
   WorldStateSnapshotService,
-} from '@feed/engine';
-import { logger, toISOOrNull } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/engine";
+import { logger, toISOOrNull } from "@feed/shared";
+import type { NextRequest } from "next/server";
 import {
   isInternalCronSchedulerEnabled,
   triggerScheduledCrons,
-} from '@/lib/cron-scheduler';
-import { ensureEngineServices } from '@/lib/engine/ensure-engine-services';
+} from "@/lib/cron-scheduler";
+import { ensureEngineServices } from "@/lib/engine/ensure-engine-services";
 
 export const maxDuration = 800;
 
@@ -94,12 +94,12 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   ensureEngineServices();
 
   // 1. Verify this is a legitimate cron request using centralized auth
-  if (!verifyCronAuth(request, { jobName: 'GameTickCron' })) {
-    logger.warn('Unauthorized cron request attempt', undefined, 'Cron');
+  if (!verifyCronAuth(request, { jobName: "GameTickCron" })) {
+    logger.warn("Unauthorized cron request attempt", undefined, "Cron");
     throw new AuthorizationError(
-      'Unauthorized cron request',
-      'cron',
-      'execute'
+      "Unauthorized cron request",
+      "cron",
+      "execute",
     );
   }
 
@@ -107,56 +107,56 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   const lockId = `tick-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
 
   // 1.5. Relay to staging if REDIRECT_CRON_STAGING is enabled (fan-out)
-  const relayResult = await relayCronToStaging(request, 'game-tick');
+  const relayResult = await relayCronToStaging(request, "game-tick");
   if (relayResult.forwarded) {
     logger.info(
-      'Cron execution relayed to staging (fan-out: continuing local execution)',
+      "Cron execution relayed to staging (fan-out: continuing local execution)",
       {
         status: relayResult.status,
         error: relayResult.error,
       },
-      'Cron'
+      "Cron",
     );
   }
 
   // 1.6. Check GAME_START environment variable (manual override)
   const gameStartEnv = process.env.GAME_START?.toLowerCase();
-  if (gameStartEnv === 'false' || gameStartEnv === '0') {
+  if (gameStartEnv === "false" || gameStartEnv === "0") {
     logger.info(
-      '⏸️  Game disabled via GAME_START env var - skipping tick',
+      "⏸️  Game disabled via GAME_START env var - skipping tick",
       {
         GAME_START: process.env.GAME_START,
       },
-      'Cron'
+      "Cron",
     );
     return successResponse({
       success: true,
       skipped: true,
-      reason: 'Game disabled via GAME_START environment variable',
+      reason: "Game disabled via GAME_START environment variable",
     });
   }
 
   // 2. Acquire generation lock to prevent concurrent execution
   if (!(await acquireGenerationLock(lockId))) {
     logger.info(
-      'Tick skipped - lock held by another process',
+      "Tick skipped - lock held by another process",
       { lockId },
-      'Cron'
+      "Cron",
     );
     return successResponse({
       success: true,
       skipped: true,
-      reason: 'Lock held by another process',
+      reason: "Lock held by another process",
     });
   }
 
   logger.info(
-    '🎮 Game tick started',
+    "🎮 Game tick started",
     {
       lockId,
-      gameStartEnv: process.env.GAME_START || 'not set (defaults to true)',
+      gameStartEnv: process.env.GAME_START || "not set (defaults to true)",
     },
-    'Cron'
+    "Cron",
   );
 
   try {
@@ -165,31 +165,31 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     const bootstrapResult = await bootstrapGameIfNeeded();
     if (bootstrapResult?.gameStateInitialized) {
       logger.info(
-        '🎮 Game auto-initialized by bootstrap',
+        "🎮 Game auto-initialized by bootstrap",
         {
           actorsCreated: bootstrapResult.actorsCreated,
           organizationsCreated: bootstrapResult.organizationsCreated,
           poolsCreated: bootstrapResult.poolsCreated,
         },
-        'Cron'
+        "Cron",
       );
     }
 
     // 4. Check if we should skip (maintenance mode, etc.) - system operation
     const gameState = await asSystem(async (db) => {
       logger.info(
-        'Cron DB env debug',
+        "Cron DB env debug",
         {
           hasDatabaseUrl: Boolean(process.env.DATABASE_URL),
-          databaseUrlPrefix: process.env.DATABASE_URL?.split('@')[1]?.slice(
+          databaseUrlPrefix: process.env.DATABASE_URL?.split("@")[1]?.slice(
             0,
-            20
+            20,
           ),
           directDatabaseUrlPrefix: process.env.DIRECT_DATABASE_URL?.split(
-            '@'
+            "@",
           )[1]?.slice(0, 20),
         },
-        'Cron'
+        "Cron",
       );
 
       const result = await db.game.findFirst({
@@ -198,7 +198,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
       // Log the actual database values for debugging
       logger.info(
-        'Game state query result',
+        "Game state query result",
         {
           found: !!result,
           id: result?.id,
@@ -211,7 +211,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
           rawIsRunning: result?.isRunning,
           rawIsRunningType: typeof result?.isRunning,
         },
-        'Cron'
+        "Cron",
       );
 
       return result;
@@ -219,23 +219,23 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
     if (!gameState) {
       logger.warn(
-        '⚠️  No game found - skipping tick. Create a game via POST /api/game/control',
+        "⚠️  No game found - skipping tick. Create a game via POST /api/game/control",
         {
           isContinuous: true,
         },
-        'Cron'
+        "Cron",
       );
       return successResponse({
         success: true,
         skipped: true,
-        reason: 'No game found',
+        reason: "No game found",
       });
     }
 
     // Explicit check with detailed logging
     const isRunningValue = gameState.isRunning;
     logger.info(
-      'Checking game running status',
+      "Checking game running status",
       {
         gameId: gameState.id,
         isRunning: isRunningValue,
@@ -246,12 +246,12 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         pausedAt: toISOOrNull(gameState.pausedAt),
         lastTickAt: toISOOrNull(gameState.lastTickAt),
       },
-      'Cron'
+      "Cron",
     );
 
     if (isRunningValue === false) {
       logger.info(
-        '⏸️  Game is paused - skipping tick',
+        "⏸️  Game is paused - skipping tick",
         {
           gameId: gameState.id,
           isRunning: gameState.isRunning,
@@ -262,13 +262,13 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
           message:
             'To start the game, use POST /api/game/control with action: "start"',
         },
-        'Cron'
+        "Cron",
       );
 
       return successResponse({
         success: true,
         skipped: true,
-        reason: 'Game paused',
+        reason: "Game paused",
         gameState: {
           id: gameState.id,
           isRunning: gameState.isRunning,
@@ -284,12 +284,12 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
     if (!bufferStatus.needsGeneration) {
       logger.info(
-        'Buffer sufficient - skipping content generation',
+        "Buffer sufficient - skipping content generation",
         {
           minutesAhead: bufferStatus.minutesAhead,
           latestTimestamp: toISOOrNull(bufferStatus.latestTimestamp),
         },
-        'Cron'
+        "Cron",
       );
 
       // Still execute non-content operations (NPC trading, market updates, etc.)
@@ -299,13 +299,13 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
       const duration = Date.now() - startTime;
       logger.info(
-        '✅ Game tick completed (buffer sufficient, content skipped)',
+        "✅ Game tick completed (buffer sufficient, content skipped)",
         {
           duration: `${duration}ms`,
           bufferMinutes: bufferStatus.minutesAhead,
           marketsUpdated: result.marketsUpdated,
         },
-        'Cron'
+        "Cron",
       );
 
       // Trigger additional crons on non-production environments
@@ -329,13 +329,13 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
     // 6. Buffer is low - generate ahead to maintain 15-minute buffer
     logger.info(
-      'Buffer low - generating ahead',
+      "Buffer low - generating ahead",
       {
         currentAhead: bufferStatus.minutesAhead,
         target: 15,
         latestTimestamp: toISOOrNull(bufferStatus.latestTimestamp),
       },
-      'Cron'
+      "Cron",
     );
 
     // Use game tick LLM client
@@ -343,13 +343,13 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     const lookaheadResult = await generateAheadIfNeeded(llmClient, 15);
 
     logger.info(
-      'Lookahead generation complete',
+      "Lookahead generation complete",
       {
         generated: lookaheadResult.generated,
         windowsGenerated: lookaheadResult.windowsGenerated,
         newLatestTimestamp: toISOOrNull(lookaheadResult.newLatestTimestamp),
       },
-      'Cron'
+      "Cron",
     );
 
     // 7. Execute normal tick operations (NPC trading, market updates, etc.)
@@ -359,7 +359,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
     const duration = Date.now() - startTime;
     logger.info(
-      '✅ Game tick completed',
+      "✅ Game tick completed",
       {
         duration: `${duration}ms`,
         bufferMinutes: bufferStatus.minutesAhead,
@@ -368,11 +368,11 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         events: result.eventsCreated,
         marketsUpdated: result.marketsUpdated,
       },
-      'Cron'
+      "Cron",
     );
 
     // Record metrics
-    recordCronExecution('game-tick', new Date(startTime), {
+    recordCronExecution("game-tick", new Date(startTime), {
       success: true,
       duration,
       postsCreated: result.postsCreated,
@@ -387,28 +387,28 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       | undefined;
     if (isInternalCronSchedulerEnabled()) {
       logger.info(
-        'Triggering internal cron scheduler (non-production)',
+        "Triggering internal cron scheduler (non-production)",
         undefined,
-        'Cron'
+        "Cron",
       );
       internalCrons = await triggerScheduledCrons();
     }
 
     // Capture world state snapshot for trajectory linking (non-critical, don't fail tick)
-    const windowId = new Date().toISOString().slice(0, 13) + ':00';
+    const windowId = `${new Date().toISOString().slice(0, 13)}:00`;
     await WorldStateSnapshotService.captureSnapshot(
       windowId,
-      StaticDataRegistry.getPackId() ?? undefined
+      StaticDataRegistry.getPackId() ?? undefined,
     ).catch((snapshotError: unknown) => {
       logger.warn(
-        'World state snapshot capture failed',
+        "World state snapshot capture failed",
         {
           error:
             snapshotError instanceof Error
               ? snapshotError.message
               : String(snapshotError),
         },
-        'Cron'
+        "Cron",
       );
     });
 
@@ -443,19 +443,19 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   // Security: Verify cron authorization (allows Vercel Cron user-agent)
   if (
     !verifyCronAuth(request, {
-      jobName: 'GameTickCron',
+      jobName: "GameTickCron",
       allowVercelCronUserAgent: true,
     })
   ) {
-    logger.warn('Unauthorized GET request to cron endpoint', undefined, 'Cron');
+    logger.warn("Unauthorized GET request to cron endpoint", undefined, "Cron");
     throw new AuthorizationError(
-      'Use POST for cron execution. This endpoint is triggered by Vercel Cron',
-      'cron',
-      'execute'
+      "Use POST for cron execution. This endpoint is triggered by Vercel Cron",
+      "cron",
+      "execute",
     );
   }
 
-  logger.info('GET request forwarded to POST handler', undefined, 'Cron');
+  logger.info("GET request forwarded to POST handler", undefined, "Cron");
 
   // Forward to POST handler
   return POST(request);

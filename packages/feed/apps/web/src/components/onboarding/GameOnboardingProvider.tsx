@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import type { GameOnboardingStep } from '@feed/shared';
-import { logger, ONBOARDING_STEP_INFO } from '@feed/shared';
+import type { GameOnboardingStep } from "@feed/shared";
+import { logger, ONBOARDING_STEP_INFO } from "@feed/shared";
 import {
   createContext,
   useCallback,
@@ -9,8 +9,8 @@ import {
   useEffect,
   useMemo,
   useState,
-} from 'react';
-import { apiFetch } from '@/utils/api-fetch';
+} from "react";
+import { apiFetch } from "@/utils/api-fetch";
 
 /**
  * Onboarding status from API
@@ -26,15 +26,15 @@ interface OnboardingStatus {
  * Type-guard to validate OnboardingStatus shape at runtime
  */
 function isValidOnboardingStatus(data: unknown): data is OnboardingStatus {
-  if (typeof data !== 'object' || data === null) {
+  if (typeof data !== "object" || data === null) {
     return false;
   }
   const obj = data as Record<string, unknown>;
   return (
-    typeof obj.currentStep === 'string' &&
+    typeof obj.currentStep === "string" &&
     Array.isArray(obj.completedSteps) &&
-    typeof obj.totalReputationEarned === 'number' &&
-    typeof obj.isComplete === 'boolean'
+    typeof obj.totalReputationEarned === "number" &&
+    typeof obj.isComplete === "boolean"
   );
 }
 
@@ -53,7 +53,7 @@ interface GameOnboardingContextValue {
 }
 
 const GameOnboardingContext = createContext<GameOnboardingContextValue | null>(
-  null
+  null,
 );
 
 /**
@@ -88,7 +88,7 @@ export function GameOnboardingProvider({
 
     const fetchStatus = async () => {
       try {
-        const response = await apiFetch('/api/onboarding/game-status', {
+        const response = await apiFetch("/api/onboarding/game-status", {
           signal: controller.signal,
         });
         // Skip state updates if the request was aborted
@@ -105,22 +105,22 @@ export function GameOnboardingProvider({
             }
           } else {
             logger.error(
-              'Invalid onboarding status response shape',
+              "Invalid onboarding status response shape",
               { data },
-              'GameOnboardingProvider'
+              "GameOnboardingProvider",
             );
           }
         }
       } catch (error) {
         // Skip state updates if this was an abort error
-        if (error instanceof Error && error.name === 'AbortError') {
+        if (error instanceof Error && error.name === "AbortError") {
           return;
         }
         // Onboarding is optional, but log errors for debugging
         logger.error(
-          'Failed to fetch onboarding status',
+          "Failed to fetch onboarding status",
           error instanceof Error ? error : { error },
-          'GameOnboardingProvider'
+          "GameOnboardingProvider",
         );
       } finally {
         // Only update loading state if not aborted
@@ -140,8 +140,8 @@ export function GameOnboardingProvider({
   // Complete a step
   const completeStep = useCallback(async (step: GameOnboardingStep) => {
     try {
-      const response = await apiFetch('/api/onboarding/game-complete-step', {
-        method: 'POST',
+      const response = await apiFetch("/api/onboarding/game-complete-step", {
+        method: "POST",
         body: JSON.stringify({ step }),
       });
 
@@ -150,18 +150,18 @@ export function GameOnboardingProvider({
 
         // Runtime validation of response shape
         if (
-          typeof rawData !== 'object' ||
+          typeof rawData !== "object" ||
           rawData === null ||
-          typeof (rawData as Record<string, unknown>).success !== 'boolean' ||
+          typeof (rawData as Record<string, unknown>).success !== "boolean" ||
           typeof (rawData as Record<string, unknown>).reputationAwarded !==
-            'number' ||
-          typeof (rawData as Record<string, unknown>).nextStep !== 'string' ||
-          typeof (rawData as Record<string, unknown>).isComplete !== 'boolean'
+            "number" ||
+          typeof (rawData as Record<string, unknown>).nextStep !== "string" ||
+          typeof (rawData as Record<string, unknown>).isComplete !== "boolean"
         ) {
           logger.error(
-            'Invalid response shape from game-complete-step API',
+            "Invalid response shape from game-complete-step API",
             { rawData },
-            'GameOnboardingProvider'
+            "GameOnboardingProvider",
           );
           return;
         }
@@ -194,9 +194,9 @@ export function GameOnboardingProvider({
     } catch (error) {
       // Onboarding is optional, but log errors for debugging
       logger.error(
-        'Failed to complete onboarding step',
+        "Failed to complete onboarding step",
         error instanceof Error ? error : { error },
-        'GameOnboardingProvider'
+        "GameOnboardingProvider",
       );
     }
   }, []);
@@ -204,34 +204,34 @@ export function GameOnboardingProvider({
   // Skip onboarding
   const skipOnboarding = useCallback(async () => {
     try {
-      const response = await apiFetch('/api/onboarding/game-skip', {
-        method: 'POST',
+      const response = await apiFetch("/api/onboarding/game-skip", {
+        method: "POST",
       });
       if (response.ok) {
         setStatus((prev) =>
-          prev ? { ...prev, isComplete: true, completedSteps: [] } : null
+          prev ? { ...prev, isComplete: true, completedSteps: [] } : null,
         );
         setShowTooltip(false);
       } else {
         // Log non-OK responses so failures are visible
         const responseText = await response
           .text()
-          .catch(() => '(failed to read body)');
+          .catch(() => "(failed to read body)");
         logger.error(
-          'Skip onboarding request failed',
+          "Skip onboarding request failed",
           {
             status: response.status,
             statusText: response.statusText,
             body: responseText,
           },
-          'GameOnboardingProvider'
+          "GameOnboardingProvider",
         );
       }
     } catch (error) {
       logger.error(
-        'Failed to skip onboarding',
+        "Failed to skip onboarding",
         error instanceof Error ? error : { error },
-        'GameOnboardingProvider'
+        "GameOnboardingProvider",
       );
     }
   }, []);
@@ -262,7 +262,7 @@ export function GameOnboardingProvider({
       needsOnboarding,
       showTooltip,
       currentTooltipStep,
-    ]
+    ],
   );
 
   return (
@@ -279,7 +279,7 @@ export function useGameOnboarding(): GameOnboardingContextValue {
   const context = useContext(GameOnboardingContext);
   if (!context) {
     throw new Error(
-      'useGameOnboarding must be used within a GameOnboardingProvider'
+      "useGameOnboarding must be used within a GameOnboardingProvider",
     );
   }
   return context;

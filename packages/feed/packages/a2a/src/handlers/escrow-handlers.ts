@@ -4,36 +4,36 @@
  * Handlers for moderation escrow payment methods via A2A protocol
  */
 
-import { and, db, eq, lt, moderationEscrows, sql, users } from '@feed/db';
-import { generateSnowflakeId, logger } from '@feed/shared';
-import type { SQL } from 'drizzle-orm';
-import { parseEther } from 'ethers';
-import { z } from 'zod';
-import { X402Manager } from '../payments/x402-manager';
+import { and, db, eq, lt, moderationEscrows, sql, users } from "@feed/db";
+import { generateSnowflakeId, logger } from "@feed/shared";
+import type { SQL } from "drizzle-orm";
+import { parseEther } from "ethers";
+import { z } from "zod";
+import { X402Manager } from "../payments/x402-manager";
 import type {
   JsonRpcRequest,
   JsonRpcResponse,
   JsonRpcResult,
-} from '../types/a2a';
-import { ErrorCode } from '../types/a2a';
+} from "../types/a2a";
+import { ErrorCode } from "../types/a2a";
 
 // Initialize x402 manager
 const x402Manager = new X402Manager({
-  rpcUrl: process.env.NEXT_PUBLIC_RPC_URL || 'https://sepolia.base.org',
+  rpcUrl: process.env.NEXT_PUBLIC_RPC_URL || "https://sepolia.base.org",
   paymentTimeout: 15 * 60 * 1000, // 15 minutes
 });
 
 const PAYMENT_RECEIVER =
   process.env.MODERATION_ESCROW_RECEIVER ||
   process.env.NEXT_PUBLIC_TREASURY_ADDRESS ||
-  '0x0000000000000000000000000000000000000000';
+  "0x0000000000000000000000000000000000000000";
 
 // Validate treasury address is configured (warn if zero address)
-if (PAYMENT_RECEIVER === '0x0000000000000000000000000000000000000000') {
+if (PAYMENT_RECEIVER === "0x0000000000000000000000000000000000000000") {
   logger.warn(
-    'MODERATION_ESCROW_RECEIVER or NEXT_PUBLIC_TREASURY_ADDRESS not configured - using zero address',
+    "MODERATION_ESCROW_RECEIVER or NEXT_PUBLIC_TREASURY_ADDRESS not configured - using zero address",
     {},
-    'ModerationEscrow'
+    "ModerationEscrow",
   );
 }
 
@@ -62,7 +62,7 @@ const RefundEscrowPaymentParamsSchema = z.object({
 const ListEscrowPaymentsParamsSchema = z.object({
   recipientId: z.string().optional(),
   adminId: z.string().optional(),
-  status: z.enum(['pending', 'paid', 'refunded', 'expired']).optional(),
+  status: z.enum(["pending", "paid", "refunded", "expired"]).optional(),
   limit: z.number().min(1).max(100).optional().default(50),
   offset: z.number().min(0).optional().default(0),
 });
@@ -72,7 +72,7 @@ const ListEscrowPaymentsParamsSchema = z.object({
  */
 export async function handleCreateEscrowPayment(
   agentId: string,
-  request: JsonRpcRequest
+  request: JsonRpcRequest,
 ): Promise<JsonRpcResponse> {
   // Verify agent is admin
   const adminCheck = await db.user.findUnique({
@@ -80,12 +80,12 @@ export async function handleCreateEscrowPayment(
     select: { id: true, isAdmin: true, walletAddress: true },
   });
 
-  if (!adminCheck || !adminCheck.isAdmin) {
+  if (!adminCheck?.isAdmin) {
     return {
-      jsonrpc: '2.0',
+      jsonrpc: "2.0",
       error: {
         code: ErrorCode.FORBIDDEN,
-        message: 'Only admins can create escrow payments',
+        message: "Only admins can create escrow payments",
       },
       id: request.id,
     };
@@ -93,10 +93,10 @@ export async function handleCreateEscrowPayment(
 
   if (!adminCheck.walletAddress) {
     return {
-      jsonrpc: '2.0',
+      jsonrpc: "2.0",
       error: {
         code: ErrorCode.INVALID_PARAMS,
-        message: 'Admin must have a connected wallet address',
+        message: "Admin must have a connected wallet address",
       },
       id: request.id,
     };
@@ -107,10 +107,10 @@ export async function handleCreateEscrowPayment(
   // Prevent self-payment
   if (params.recipientId === agentId) {
     return {
-      jsonrpc: '2.0',
+      jsonrpc: "2.0",
       error: {
         code: ErrorCode.INVALID_PARAMS,
-        message: 'Cannot create escrow payment to yourself',
+        message: "Cannot create escrow payment to yourself",
       },
       id: request.id,
     };
@@ -130,10 +130,10 @@ export async function handleCreateEscrowPayment(
 
   if (!recipientCheck) {
     return {
-      jsonrpc: '2.0',
+      jsonrpc: "2.0",
       error: {
         code: ErrorCode.INVALID_PARAMS,
-        message: 'Recipient user not found',
+        message: "Recipient user not found",
       },
       id: request.id,
     };
@@ -141,10 +141,10 @@ export async function handleCreateEscrowPayment(
 
   if (recipientCheck.isActor) {
     return {
-      jsonrpc: '2.0',
+      jsonrpc: "2.0",
       error: {
         code: ErrorCode.INVALID_PARAMS,
-        message: 'Cannot send escrow payment to NPCs/actors',
+        message: "Cannot send escrow payment to NPCs/actors",
       },
       id: request.id,
     };
@@ -157,7 +157,7 @@ export async function handleCreateEscrowPayment(
       recipientCheck.walletAddress.toLowerCase()
   ) {
     return {
-      jsonrpc: '2.0',
+      jsonrpc: "2.0",
       error: {
         code: ErrorCode.INVALID_PARAMS,
         message:
@@ -177,18 +177,18 @@ export async function handleCreateEscrowPayment(
         gte: new Date(Date.now() - 5 * 60 * 1000), // Last 5 minutes
       },
       status: {
-        in: ['pending', 'paid'],
+        in: ["pending", "paid"],
       },
     },
   });
 
   if (recentDuplicate) {
     return {
-      jsonrpc: '2.0',
+      jsonrpc: "2.0",
       error: {
         code: ErrorCode.INVALID_PARAMS,
         message:
-          'A similar escrow payment was created recently. Please wait before creating another.',
+          "A similar escrow payment was created recently. Please wait before creating another.",
       },
       id: request.id,
     };
@@ -204,14 +204,14 @@ export async function handleCreateEscrowPayment(
     adminCheck.walletAddress, // Admin sends
     PAYMENT_RECEIVER, // To treasury
     amountInWei,
-    'moderation_escrow',
+    "moderation_escrow",
     {
       adminId: agentId,
       recipientId: params.recipientId,
       recipientWalletAddress: params.recipientWalletAddress, // For refunds
       amountUSD: params.amountUSD,
       reason: params.reason || null,
-    }
+    },
   );
 
   // Create escrow record
@@ -224,7 +224,7 @@ export async function handleCreateEscrowPayment(
       adminId: agentId,
       amountUSD: params.amountUSD.toString(),
       amountWei: amountInWei,
-      status: 'pending',
+      status: "pending",
       reason: params.reason || null,
       paymentRequestId: paymentRequest.requestId,
       expiresAt,
@@ -237,10 +237,10 @@ export async function handleCreateEscrowPayment(
     .returning();
 
   if (!escrow) {
-    throw new Error('Failed to create escrow record');
+    throw new Error("Failed to create escrow record");
   }
 
-  logger.info('A2A Escrow payment created', {
+  logger.info("A2A Escrow payment created", {
     agentId,
     escrowId: escrow.id,
     recipientId: params.recipientId,
@@ -248,7 +248,7 @@ export async function handleCreateEscrowPayment(
   });
 
   return {
-    jsonrpc: '2.0',
+    jsonrpc: "2.0",
     result: {
       success: true,
       escrow: {
@@ -277,7 +277,7 @@ export async function handleCreateEscrowPayment(
  */
 export async function handleVerifyEscrowPayment(
   agentId: string,
-  request: JsonRpcRequest
+  request: JsonRpcRequest,
 ): Promise<JsonRpcResponse> {
   // Verify agent is admin
   const admin = await db.user.findUnique({
@@ -285,12 +285,12 @@ export async function handleVerifyEscrowPayment(
     select: { id: true, isAdmin: true },
   });
 
-  if (!admin || !admin.isAdmin) {
+  if (!admin?.isAdmin) {
     return {
-      jsonrpc: '2.0',
+      jsonrpc: "2.0",
       error: {
         code: ErrorCode.FORBIDDEN,
-        message: 'Only admins can verify escrow payments',
+        message: "Only admins can verify escrow payments",
       },
       id: request.id,
     };
@@ -305,10 +305,10 @@ export async function handleVerifyEscrowPayment(
 
   if (!escrow) {
     return {
-      jsonrpc: '2.0',
+      jsonrpc: "2.0",
       error: {
         code: ErrorCode.INVALID_PARAMS,
-        message: 'Escrow payment not found',
+        message: "Escrow payment not found",
       },
       id: request.id,
     };
@@ -319,21 +319,21 @@ export async function handleVerifyEscrowPayment(
     // Auto-expire if expired
     await db.moderationEscrow.update({
       where: { id: params.escrowId },
-      data: { status: 'expired' },
+      data: { status: "expired" },
     });
     return {
-      jsonrpc: '2.0',
+      jsonrpc: "2.0",
       error: {
         code: ErrorCode.EXPIRED_REQUEST,
-        message: 'Escrow payment has expired',
+        message: "Escrow payment has expired",
       },
       id: request.id,
     };
   }
 
-  if (escrow.status !== 'pending') {
+  if (escrow.status !== "pending") {
     return {
-      jsonrpc: '2.0',
+      jsonrpc: "2.0",
       error: {
         code: ErrorCode.INVALID_PARAMS,
         message: `Escrow payment is already ${escrow.status}`,
@@ -344,10 +344,10 @@ export async function handleVerifyEscrowPayment(
 
   if (!escrow.paymentRequestId) {
     return {
-      jsonrpc: '2.0',
+      jsonrpc: "2.0",
       error: {
         code: ErrorCode.INVALID_PARAMS,
-        message: 'Escrow payment request ID not found',
+        message: "Escrow payment request ID not found",
       },
       id: request.id,
     };
@@ -362,10 +362,10 @@ export async function handleVerifyEscrowPayment(
     params.fromAddress.toLowerCase() !== expectedFromAddress.toLowerCase()
   ) {
     return {
-      jsonrpc: '2.0',
+      jsonrpc: "2.0",
       error: {
         code: ErrorCode.INVALID_PARAMS,
-        message: 'Transaction sender does not match admin wallet address',
+        message: "Transaction sender does not match admin wallet address",
       },
       id: request.id,
     };
@@ -378,14 +378,14 @@ export async function handleVerifyEscrowPayment(
       where: { id: params.escrowId },
     });
 
-    if (!currentEscrow || currentEscrow.status !== 'pending') {
+    if (!currentEscrow || currentEscrow.status !== "pending") {
       throw new Error(
-        `Escrow is already ${currentEscrow?.status || 'not found'}`
+        `Escrow is already ${currentEscrow?.status || "not found"}`,
       );
     }
 
     if (!currentEscrow.paymentRequestId) {
-      throw new Error('Escrow payment request ID not found');
+      throw new Error("Escrow payment request ID not found");
     }
 
     // Verify payment via X402
@@ -400,27 +400,27 @@ export async function handleVerifyEscrowPayment(
     });
 
     if (!x402Result.verified) {
-      throw new Error(x402Result.error || 'Payment verification failed');
+      throw new Error(x402Result.error || "Payment verification failed");
     }
 
     // Update escrow status atomically
     return await tx.moderationEscrow.update({
       where: { id: params.escrowId },
       data: {
-        status: 'paid',
+        status: "paid",
         paymentTxHash: params.txHash,
       },
     });
   });
 
-  logger.info('A2A Escrow payment verified', {
+  logger.info("A2A Escrow payment verified", {
     agentId,
     escrowId: params.escrowId,
     txHash: params.txHash,
   });
 
   return {
-    jsonrpc: '2.0',
+    jsonrpc: "2.0",
     result: {
       success: true,
       escrow: {
@@ -440,7 +440,7 @@ export async function handleVerifyEscrowPayment(
  */
 export async function handleRefundEscrowPayment(
   agentId: string,
-  request: JsonRpcRequest
+  request: JsonRpcRequest,
 ): Promise<JsonRpcResponse> {
   // Verify agent is admin
   const admin = await db.user.findUnique({
@@ -448,12 +448,12 @@ export async function handleRefundEscrowPayment(
     select: { id: true, isAdmin: true },
   });
 
-  if (!admin || !admin.isAdmin) {
+  if (!admin?.isAdmin) {
     return {
-      jsonrpc: '2.0',
+      jsonrpc: "2.0",
       error: {
         code: ErrorCode.FORBIDDEN,
-        message: 'Only admins can refund escrow payments',
+        message: "Only admins can refund escrow payments",
       },
       id: request.id,
     };
@@ -468,18 +468,18 @@ export async function handleRefundEscrowPayment(
 
   if (!escrow) {
     return {
-      jsonrpc: '2.0',
+      jsonrpc: "2.0",
       error: {
         code: ErrorCode.INVALID_PARAMS,
-        message: 'Escrow payment not found',
+        message: "Escrow payment not found",
       },
       id: request.id,
     };
   }
 
-  if (escrow.status !== 'paid') {
+  if (escrow.status !== "paid") {
     return {
-      jsonrpc: '2.0',
+      jsonrpc: "2.0",
       error: {
         code: ErrorCode.INVALID_PARAMS,
         message: `Cannot refund escrow payment with status: ${escrow.status}. Only 'paid' escrows can be refunded.`,
@@ -490,10 +490,10 @@ export async function handleRefundEscrowPayment(
 
   if (escrow.refundTxHash) {
     return {
-      jsonrpc: '2.0',
+      jsonrpc: "2.0",
       error: {
         code: ErrorCode.INVALID_PARAMS,
-        message: 'Escrow payment has already been refunded',
+        message: "Escrow payment has already been refunded",
       },
       id: request.id,
     };
@@ -501,13 +501,13 @@ export async function handleRefundEscrowPayment(
 
   // Verify refund transaction hash format
   const refundTxValid =
-    params.refundTxHash.startsWith('0x') && params.refundTxHash.length === 66;
+    params.refundTxHash.startsWith("0x") && params.refundTxHash.length === 66;
   if (!refundTxValid) {
     return {
-      jsonrpc: '2.0',
+      jsonrpc: "2.0",
       error: {
         code: ErrorCode.INVALID_PARAMS,
-        message: 'Invalid refund transaction hash format',
+        message: "Invalid refund transaction hash format",
       },
       id: request.id,
     };
@@ -520,21 +520,21 @@ export async function handleRefundEscrowPayment(
       where: { id: params.escrowId },
     });
 
-    if (!currentEscrow || currentEscrow.status !== 'paid') {
+    if (!currentEscrow || currentEscrow.status !== "paid") {
       throw new Error(
-        `Cannot refund escrow with status: ${currentEscrow?.status || 'not found'}`
+        `Cannot refund escrow with status: ${currentEscrow?.status || "not found"}`,
       );
     }
 
     if (currentEscrow.refundTxHash) {
-      throw new Error('Escrow payment has already been refunded');
+      throw new Error("Escrow payment has already been refunded");
     }
 
     // Update escrow status to refunded
     return await tx.moderationEscrow.update({
       where: { id: params.escrowId },
       data: {
-        status: 'refunded',
+        status: "refunded",
         refundTxHash: params.refundTxHash,
         refundedBy: agentId,
         refundedAt: new Date(),
@@ -546,14 +546,14 @@ export async function handleRefundEscrowPayment(
     });
   });
 
-  logger.info('A2A Escrow payment refunded', {
+  logger.info("A2A Escrow payment refunded", {
     agentId,
     escrowId: params.escrowId,
     refundTxHash: params.refundTxHash,
   });
 
   return {
-    jsonrpc: '2.0',
+    jsonrpc: "2.0",
     result: {
       success: true,
       escrow: {
@@ -574,7 +574,7 @@ export async function handleRefundEscrowPayment(
  */
 export async function handleListEscrowPayments(
   agentId: string,
-  request: JsonRpcRequest
+  request: JsonRpcRequest,
 ): Promise<JsonRpcResponse> {
   // Verify agent is admin
   const admin = await db.user.findUnique({
@@ -582,12 +582,12 @@ export async function handleListEscrowPayments(
     select: { id: true, isAdmin: true },
   });
 
-  if (!admin || !admin.isAdmin) {
+  if (!admin?.isAdmin) {
     return {
-      jsonrpc: '2.0',
+      jsonrpc: "2.0",
       error: {
         code: ErrorCode.FORBIDDEN,
-        message: 'Only admins can list escrow payments',
+        message: "Only admins can list escrow payments",
       },
       id: request.id,
     };
@@ -599,12 +599,12 @@ export async function handleListEscrowPayments(
   const now = new Date();
   await db
     .update(moderationEscrows)
-    .set({ status: 'expired', updatedAt: new Date() })
+    .set({ status: "expired", updatedAt: new Date() })
     .where(
       and(
-        eq(moderationEscrows.status, 'pending'),
-        lt(moderationEscrows.expiresAt, now)
-      )
+        eq(moderationEscrows.status, "pending"),
+        lt(moderationEscrows.expiresAt, now),
+      ),
     );
 
   const whereConditions: SQL<unknown>[] = [];
@@ -624,7 +624,7 @@ export async function handleListEscrowPayments(
             const conditions: SQL<unknown>[] = [];
             if (params.recipientId)
               conditions.push(
-                eq(moderationEscrows.recipientId, params.recipientId)
+                eq(moderationEscrows.recipientId, params.recipientId),
               );
             if (params.adminId)
               conditions.push(eq(moderationEscrows.adminId, params.adminId));
@@ -672,7 +672,7 @@ export async function handleListEscrowPayments(
   const total = Number(totalResult[0]?.count ?? 0);
 
   return {
-    jsonrpc: '2.0',
+    jsonrpc: "2.0",
     result: {
       success: true,
       escrows: escrowsRaw.map((escrow) => ({
@@ -709,7 +709,7 @@ export async function handleListEscrowPayments(
  */
 export async function handleAppealBanWithEscrow(
   agentId: string,
-  request: JsonRpcRequest
+  request: JsonRpcRequest,
 ): Promise<JsonRpcResponse> {
   const params = z
     .object({
@@ -735,10 +735,10 @@ export async function handleAppealBanWithEscrow(
 
   if (!user) {
     return {
-      jsonrpc: '2.0',
+      jsonrpc: "2.0",
       error: {
         code: ErrorCode.INVALID_PARAMS,
-        message: 'User not found',
+        message: "User not found",
       },
       id: request.id,
     };
@@ -746,10 +746,10 @@ export async function handleAppealBanWithEscrow(
 
   if (!user.isBanned) {
     return {
-      jsonrpc: '2.0',
+      jsonrpc: "2.0",
       error: {
         code: ErrorCode.INVALID_PARAMS,
-        message: 'User is not banned',
+        message: "User is not banned",
       },
       id: request.id,
     };
@@ -770,10 +770,10 @@ export async function handleAppealBanWithEscrow(
 
   if (!escrow) {
     return {
-      jsonrpc: '2.0',
+      jsonrpc: "2.0",
       error: {
         code: ErrorCode.INVALID_PARAMS,
-        message: 'Escrow payment not found for this transaction hash',
+        message: "Escrow payment not found for this transaction hash",
       },
       id: request.id,
     };
@@ -781,18 +781,18 @@ export async function handleAppealBanWithEscrow(
 
   if (escrow.recipientId !== agentId) {
     return {
-      jsonrpc: '2.0',
+      jsonrpc: "2.0",
       error: {
         code: ErrorCode.INVALID_PARAMS,
-        message: 'Escrow payment does not belong to this user',
+        message: "Escrow payment does not belong to this user",
       },
       id: request.id,
     };
   }
 
-  if (escrow.status !== 'paid') {
+  if (escrow.status !== "paid") {
     return {
-      jsonrpc: '2.0',
+      jsonrpc: "2.0",
       error: {
         code: ErrorCode.INVALID_PARAMS,
         message: `Escrow payment is not paid (status: ${escrow.status})`,
@@ -803,11 +803,11 @@ export async function handleAppealBanWithEscrow(
 
   if (escrow.refundTxHash) {
     return {
-      jsonrpc: '2.0',
+      jsonrpc: "2.0",
       error: {
         code: ErrorCode.INVALID_PARAMS,
         message:
-          'Escrow payment has been refunded and cannot be used for appeal',
+          "Escrow payment has been refunded and cannot be used for appeal",
       },
       id: request.id,
     };
@@ -823,20 +823,20 @@ export async function handleAppealBanWithEscrow(
   if (existingAppealWithEscrow) {
     if (existingAppealWithEscrow.id === agentId) {
       return {
-        jsonrpc: '2.0',
+        jsonrpc: "2.0",
         error: {
           code: ErrorCode.INVALID_PARAMS,
-          message: 'You have already used this escrow payment for an appeal',
+          message: "You have already used this escrow payment for an appeal",
         },
         id: request.id,
       };
     }
     return {
-      jsonrpc: '2.0',
+      jsonrpc: "2.0",
       error: {
         code: ErrorCode.INVALID_PARAMS,
         message:
-          'This escrow payment has already been used for an appeal by another user',
+          "This escrow payment has already been used for an appeal by another user",
       },
       id: request.id,
     };
@@ -845,23 +845,23 @@ export async function handleAppealBanWithEscrow(
   // Check if already appealed
   if (user.appealCount >= 1 && !user.appealStaked) {
     return {
-      jsonrpc: '2.0',
+      jsonrpc: "2.0",
       error: {
         code: ErrorCode.INVALID_PARAMS,
         message:
-          'You have already used your free appeal. You must stake $10 for a second review.',
+          "You have already used your free appeal. You must stake $10 for a second review.",
       },
       id: request.id,
     };
   }
 
-  if (user.appealStaked && user.appealStatus === 'human_review') {
+  if (user.appealStaked && user.appealStatus === "human_review") {
     return {
-      jsonrpc: '2.0',
+      jsonrpc: "2.0",
       error: {
         code: ErrorCode.INVALID_PARAMS,
         message:
-          'Your appeal is already in human review. Please wait for a decision.',
+          "Your appeal is already in human review. Please wait for a decision.",
       },
       id: request.id,
     };
@@ -875,26 +875,26 @@ export async function handleAppealBanWithEscrow(
       appealStaked: true,
       appealStakeAmount: escrow.amountUSD.toString(),
       appealStakeTxHash: params.escrowPaymentTxHash,
-      appealStatus: 'lenient_review',
+      appealStatus: "lenient_review",
       appealSubmittedAt: new Date(),
       updatedAt: new Date(),
     })
     .where(eq(users.id, agentId));
 
-  logger.info('A2A Ban appeal with escrow', {
+  logger.info("A2A Ban appeal with escrow", {
     agentId,
     escrowId: escrow.id,
     amountUSD: escrow.amountUSD,
   });
 
   return {
-    jsonrpc: '2.0',
+    jsonrpc: "2.0",
     result: {
       success: true,
       message:
-        'Appeal submitted with escrow payment. Your appeal is under lenient review.',
+        "Appeal submitted with escrow payment. Your appeal is under lenient review.",
       appeal: {
-        status: 'lenient_review',
+        status: "lenient_review",
         escrowId: escrow.id,
         amountUSD: escrow.amountUSD.toString(),
       },

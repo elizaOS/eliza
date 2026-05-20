@@ -1,23 +1,23 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from "bun:test";
 import {
   type BuildSystemStatusInput,
   buildSystemStatusSnapshot,
   formatSystemStatusDiscordMessage,
-} from '@feed/api';
+} from "@feed/api";
 
 function createBaseInput(): BuildSystemStatusInput {
   return {
-    generatedAt: new Date('2026-03-07T12:00:00.000Z'),
+    generatedAt: new Date("2026-03-07T12:00:00.000Z"),
     databaseHealthy: true,
     redisHealthy: true,
     game: {
-      id: 'game-1',
+      id: "game-1",
       isRunning: true,
       pausedAt: null,
       currentTick: 42,
-      lastTickAt: new Date('2026-03-07T11:59:00.000Z'),
+      lastTickAt: new Date("2026-03-07T11:59:00.000Z"),
       tickIntervalMs: 60_000,
-      startedAt: new Date('2026-03-07T08:00:00.000Z'),
+      startedAt: new Date("2026-03-07T08:00:00.000Z"),
     },
     activityMetrics: {
       lastHour: { newUsers: 3, newPosts: 9 },
@@ -35,7 +35,7 @@ function createBaseInput(): BuildSystemStatusInput {
       alerts: [],
       jobs: [
         {
-          jobName: 'game-tick',
+          jobName: "game-tick",
           totalExecutions: 20,
           successfulExecutions: 20,
           skippedExecutions: 0,
@@ -43,8 +43,8 @@ function createBaseInput(): BuildSystemStatusInput {
           avgDurationMs: 1100,
           minDurationMs: 800,
           maxDurationMs: 1500,
-          lastExecution: new Date('2026-03-07T11:59:00.000Z'),
-          lastSuccess: new Date('2026-03-07T11:59:00.000Z'),
+          lastExecution: new Date("2026-03-07T11:59:00.000Z"),
+          lastSuccess: new Date("2026-03-07T11:59:00.000Z"),
           lastFailure: undefined,
           consecutiveFailures: 0,
         },
@@ -69,7 +69,7 @@ function createBaseInput(): BuildSystemStatusInput {
     locks: [],
     tables: [
       {
-        name: 'Post',
+        name: "Post",
         rowCount: 100,
         sizeBytes: 1024,
         sizeMB: 0,
@@ -83,7 +83,7 @@ function createBaseInput(): BuildSystemStatusInput {
         avgDurationMs: 12,
         p95DurationMs: 30,
         p99DurationMs: 60,
-        status: 'healthy',
+        status: "healthy",
       },
       memory: {
         heapUsedMB: 120,
@@ -91,12 +91,12 @@ function createBaseInput(): BuildSystemStatusInput {
         externalMB: 10,
         rssMB: 220,
         usagePercent: 46.9,
-        status: 'healthy',
+        status: "healthy",
       },
       server: {
         uptimeSeconds: 14_400,
-        uptimeFormatted: '4h 0m',
-        env: 'test',
+        uptimeFormatted: "4h 0m",
+        env: "test",
         pid: 1234,
       },
     },
@@ -104,15 +104,15 @@ function createBaseInput(): BuildSystemStatusInput {
       pendingReports: 2,
     },
     environment: {
-      nodeEnv: 'test',
-      vercelEnv: 'preview',
-      region: 'cdg1',
+      nodeEnv: "test",
+      vercelEnv: "preview",
+      region: "cdg1",
     },
   };
 }
 
-describe('system-status-service', () => {
-  test('marks database outages as critical', () => {
+describe("system-status-service", () => {
+  test("marks database outages as critical", () => {
     const snapshot = buildSystemStatusSnapshot({
       ...createBaseInput(),
       databaseHealthy: false,
@@ -130,19 +130,19 @@ describe('system-status-service', () => {
       },
     });
 
-    expect(snapshot.status).toBe('critical');
-    expect(snapshot.criticalIssues).toContain('Database: Unavailable');
+    expect(snapshot.status).toBe("critical");
+    expect(snapshot.criticalIssues).toContain("Database: Unavailable");
     expect(
-      snapshot.subsystems.find((item) => item.key === 'database')?.status
-    ).toBe('critical');
+      snapshot.subsystems.find((item) => item.key === "database")?.status,
+    ).toBe("critical");
   });
 
-  test('promotes stale game ticks and cron failures into critical issues', () => {
+  test("promotes stale game ticks and cron failures into critical issues", () => {
     const snapshot = buildSystemStatusSnapshot({
       ...createBaseInput(),
       game: {
         ...createBaseInput().game!,
-        lastTickAt: new Date('2026-03-07T11:47:00.000Z'),
+        lastTickAt: new Date("2026-03-07T11:47:00.000Z"),
       },
       cron: {
         ...createBaseInput().cron,
@@ -153,23 +153,23 @@ describe('system-status-service', () => {
         },
         alerts: [
           {
-            jobName: 'realtime-drain',
-            type: 'consecutive_failures',
-            message: '5 consecutive failures',
-            severity: 'critical',
+            jobName: "realtime-drain",
+            type: "consecutive_failures",
+            message: "5 consecutive failures",
+            severity: "critical",
           },
         ],
       },
     });
 
-    expect(snapshot.status).toBe('critical');
-    expect(snapshot.criticalIssues).toContain('Game Engine: Tick is stale');
+    expect(snapshot.status).toBe("critical");
+    expect(snapshot.criticalIssues).toContain("Game Engine: Tick is stale");
     expect(snapshot.criticalIssues).toContain(
-      'Cron Jobs: 1 critical cron alert'
+      "Cron Jobs: 1 critical cron alert",
     );
   });
 
-  test('formats discord alerts with environment and issue context', () => {
+  test("formats discord alerts with environment and issue context", () => {
     const snapshot = buildSystemStatusSnapshot({
       ...createBaseInput(),
       performance: {
@@ -177,15 +177,15 @@ describe('system-status-service', () => {
         memory: {
           ...createBaseInput().performance.memory,
           usagePercent: 96,
-          status: 'critical',
+          status: "critical",
         },
       },
     });
 
     const message = formatSystemStatusDiscordMessage(snapshot);
 
-    expect(message).toContain('Feed CRITICAL system alert');
-    expect(message).toContain('Environment: preview');
-    expect(message).toContain('Server Memory: 96% heap used');
+    expect(message).toContain("Feed CRITICAL system alert");
+    expect(message).toContain("Environment: preview");
+    expect(message).toContain("Server Memory: 96% heap used");
   });
 });

@@ -14,39 +14,39 @@
  * Test DID:  steward:test:<userId> Bearer token (integration tests).
  */
 
-import { and, db, eq, isNull, users } from '@feed/db';
-import { type AuthenticatedUser } from '@feed/shared';
-import { jwtVerify } from 'jose';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { verifyAgentSession } from './agent-auth';
+import { and, db, eq, isNull, users } from "@feed/db";
+import type { AuthenticatedUser } from "@feed/shared";
+import { jwtVerify } from "jose";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { verifyAgentSession } from "./agent-auth";
 import {
   DEV_USER_ID_COOKIE_NAME,
   extractDevUserIdFromBearerToken,
-} from './dev-credentials';
+} from "./dev-credentials";
 import {
   AuthenticationError,
   isAuthenticationError,
   ServiceUnavailableError,
-} from './errors';
-import { ensureUserFromSteward } from './users/ensure-user';
+} from "./errors";
+import { ensureUserFromSteward } from "./users/ensure-user";
 
-export type { AuthenticatedUser } from '@feed/shared';
-export { extractErrorMessage } from '@feed/shared';
+export type { AuthenticatedUser } from "@feed/shared";
+export { extractErrorMessage } from "@feed/shared";
 export { AuthenticationError, isAuthenticationError };
 
 // ─── Steward JWT verification ─────────────────────────────────────────────────
 
-const STEWARD_INTERNAL_EMAIL_SUFFIX = '@id.steward.internal';
+const STEWARD_INTERNAL_EMAIL_SUFFIX = "@id.steward.internal";
 
 function getStewardJwtSecret(): Uint8Array {
   const secret = process.env.STEWARD_JWT_SECRET;
   if (!secret) {
-    if (process.env.NODE_ENV === 'production') {
-      throw new ServiceUnavailableError('STEWARD_JWT_SECRET is not configured');
+    if (process.env.NODE_ENV === "production") {
+      throw new ServiceUnavailableError("STEWARD_JWT_SECRET is not configured");
     }
     // Dev fallback matches Steward's own dev default
-    return new TextEncoder().encode('dev-jwt-secret-change-in-prod');
+    return new TextEncoder().encode("dev-jwt-secret-change-in-prod");
   }
   return new TextEncoder().encode(secret);
 }
@@ -63,11 +63,11 @@ interface StewardJwtPayload {
 
 async function verifyStewardToken(token: string): Promise<StewardJwtPayload> {
   const { payload } = await jwtVerify(token, getStewardJwtSecret(), {
-    issuer: 'steward',
-    algorithms: ['HS256'],
+    issuer: "steward",
+    algorithms: ["HS256"],
   });
-  if (!payload['userId'] || typeof payload['userId'] !== 'string') {
-    throw new AuthenticationError('Steward JWT missing userId claim');
+  if (!payload.userId || typeof payload.userId !== "string") {
+    throw new AuthenticationError("Steward JWT missing userId claim");
   }
   return payload as unknown as StewardJwtPayload;
 }
@@ -84,7 +84,7 @@ const USER_SELECT = {
 } as const;
 
 async function resolveUserFromStewardPayload(
-  payload: StewardJwtPayload
+  payload: StewardJwtPayload,
 ): Promise<AuthenticatedUser> {
   const { userId: stewardUserId, email } = payload;
 
@@ -103,7 +103,7 @@ async function resolveUserFromStewardPayload(
   //    Only match on real emails — skip synthetic @id.steward.internal addresses.
   const isRealEmail =
     email &&
-    typeof email === 'string' &&
+    typeof email === "string" &&
     !email.endsWith(STEWARD_INTERNAL_EMAIL_SUFFIX);
 
   if (isRealEmail) {
@@ -125,7 +125,7 @@ async function resolveUserFromStewardPayload(
   // 3. New user: first-ever login via Steward for this user
   const newUser = await ensureUserFromSteward(
     stewardUserId,
-    isRealEmail ? email : undefined
+    isRealEmail ? email : undefined,
   );
   return toAuthUser(newUser);
 }
@@ -153,12 +153,12 @@ function toAuthUser(dbUser: DbUserRow): AuthenticatedUser {
 // ─── authenticate ─────────────────────────────────────────────────────────────
 
 export async function authenticate(
-  request: NextRequest
+  request: NextRequest,
 ): Promise<AuthenticatedUser> {
   // ── Dev bypass: x-dev-user-id header / cookie ──────────────────────────────
-  if (process.env.NODE_ENV !== 'production') {
+  if (process.env.NODE_ENV !== "production") {
     const devUserId =
-      request.headers.get('x-dev-user-id') ??
+      request.headers.get("x-dev-user-id") ??
       request.cookies.get(DEV_USER_ID_COOKIE_NAME)?.value;
     if (devUserId) {
       const [dbUser] = await db
@@ -166,7 +166,7 @@ export async function authenticate(
         .from(users)
         .where(eq(users.id, devUserId))
         .limit(1);
-      if (!dbUser) throw new AuthenticationError('Development user not found');
+      if (!dbUser) throw new AuthenticationError("Development user not found");
       return toAuthUser(dbUser);
     }
   }
@@ -174,19 +174,19 @@ export async function authenticate(
   // ── Extract token ──────────────────────────────────────────────────────────
   // steward-token httpOnly cookie is preferred (set by POST /api/auth/session).
   // Authorization: Bearer falls back for agents and external API clients.
-  const cookieToken = request.cookies.get('steward-token')?.value;
-  const authHeader = request.headers.get('authorization');
-  const headerToken = authHeader?.startsWith('Bearer ')
+  const cookieToken = request.cookies.get("steward-token")?.value;
+  const authHeader = request.headers.get("authorization");
+  const headerToken = authHeader?.startsWith("Bearer ")
     ? authHeader.slice(7)
     : undefined;
   const token = cookieToken ?? headerToken;
 
   if (!token) {
-    throw new AuthenticationError('Missing authentication token');
+    throw new AuthenticationError("Missing authentication token");
   }
 
   // ── Dev Bearer: dev-user:<userId> ──────────────────────────────────────────
-  if (process.env.NODE_ENV !== 'production') {
+  if (process.env.NODE_ENV !== "production") {
     const devBearerUserId = extractDevUserIdFromBearerToken(token);
     if (devBearerUserId) {
       const [dbUser] = await db
@@ -194,7 +194,7 @@ export async function authenticate(
         .from(users)
         .where(eq(users.id, devBearerUserId))
         .limit(1);
-      if (!dbUser) throw new AuthenticationError('Development user not found');
+      if (!dbUser) throw new AuthenticationError("Development user not found");
       return toAuthUser(dbUser);
     }
   }
@@ -202,14 +202,14 @@ export async function authenticate(
   // ── Integration test DID: steward:test:<userId> ────────────────────────────
   const allowTestAuth =
     process.env.ALLOW_TEST_PRIVY_DID_AUTH !== undefined
-      ? ['true', '1', 'yes', 'on'].includes(
-          process.env.ALLOW_TEST_PRIVY_DID_AUTH.toLowerCase()
+      ? ["true", "1", "yes", "on"].includes(
+          process.env.ALLOW_TEST_PRIVY_DID_AUTH.toLowerCase(),
         )
-      : process.env.NODE_ENV === 'development' ||
-        process.env.NODE_ENV === 'test';
+      : process.env.NODE_ENV === "development" ||
+        process.env.NODE_ENV === "test";
 
-  if (allowTestAuth && token.startsWith('steward:test:')) {
-    const embeddedUserId = token.slice('steward:test:'.length);
+  if (allowTestAuth && token.startsWith("steward:test:")) {
+    const embeddedUserId = token.slice("steward:test:".length);
     if (/^\d{15,20}$/.test(embeddedUserId)) {
       // Fast path — snowflake ID embedded directly
       return {
@@ -224,7 +224,7 @@ export async function authenticate(
       .from(users)
       .where(eq(users.id, embeddedUserId))
       .limit(1);
-    if (!dbUser) throw new AuthenticationError('Test user not found');
+    if (!dbUser) throw new AuthenticationError("Test user not found");
     return toAuthUser(dbUser);
   }
 
@@ -249,14 +249,14 @@ export async function authenticate(
   } catch (err) {
     if (isAuthenticationError(err)) throw err;
 
-    const msg = err instanceof Error ? err.message.toLowerCase() : '';
-    if (msg.includes('exp') || msg.includes('expired')) {
+    const msg = err instanceof Error ? err.message.toLowerCase() : "";
+    if (msg.includes("exp") || msg.includes("expired")) {
       throw new AuthenticationError(
-        'Authentication token has expired. Please sign in again.'
+        "Authentication token has expired. Please sign in again.",
       );
     }
     throw new AuthenticationError(
-      'Invalid authentication token. Please sign in again.'
+      "Invalid authentication token. Please sign in again.",
     );
   }
 
@@ -266,12 +266,12 @@ export async function authenticate(
 // ─── authenticateWithDbUser ───────────────────────────────────────────────────
 
 export async function authenticateWithDbUser(
-  request: NextRequest
+  request: NextRequest,
 ): Promise<AuthenticatedUser & { dbUserId: string }> {
   const authUser = await authenticate(request);
   if (!authUser.dbUserId) {
     throw new AuthenticationError(
-      'User profile not found. Please complete onboarding first.'
+      "User profile not found. Please complete onboarding first.",
     );
   }
   return authUser as AuthenticatedUser & { dbUserId: string };
@@ -280,11 +280,11 @@ export async function authenticateWithDbUser(
 // ─── optionalAuth ─────────────────────────────────────────────────────────────
 
 export async function optionalAuth(
-  request: NextRequest
+  request: NextRequest,
 ): Promise<AuthenticatedUser | null> {
-  const cookieToken = request.cookies.get('steward-token')?.value;
-  const authHeader = request.headers.get('authorization');
-  const headerToken = authHeader?.startsWith('Bearer ')
+  const cookieToken = request.cookies.get("steward-token")?.value;
+  const authHeader = request.headers.get("authorization");
+  const headerToken = authHeader?.startsWith("Bearer ")
     ? authHeader.slice(7)
     : undefined;
   const token = cookieToken ?? headerToken;
@@ -315,10 +315,10 @@ export async function optionalAuth(
 // ─── optionalAuthFromHeaders ──────────────────────────────────────────────────
 
 export async function optionalAuthFromHeaders(
-  headers: Headers
+  headers: Headers,
 ): Promise<AuthenticatedUser | null> {
-  const authHeader = headers.get('authorization');
-  if (!authHeader?.startsWith('Bearer ')) return null;
+  const authHeader = headers.get("authorization");
+  if (!authHeader?.startsWith("Bearer ")) return null;
   const token = authHeader.slice(7);
 
   try {
@@ -340,7 +340,7 @@ export async function optionalAuthFromHeaders(
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
-export function authErrorResponse(message = 'Unauthorized') {
+export function authErrorResponse(message = "Unauthorized") {
   return NextResponse.json({ error: message }, { status: 401 });
 }
 
@@ -356,7 +356,7 @@ export async function authenticateUser(req: NextRequest) {
 /** @deprecated — use Steward JWT verification instead */
 export function getPrivyClient(): never {
   throw new Error(
-    '[Phase 2] getPrivyClient() has been removed. Use Steward JWT verification.'
+    "[Phase 2] getPrivyClient() has been removed. Use Steward JWT verification.",
   );
 }
 

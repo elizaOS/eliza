@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, it } from 'bun:test';
-import type { PortfolioBreakdownSnapshot } from '@feed/engine/client';
-import { useWidgetCacheStore } from './widgetCacheStore';
+import { beforeEach, describe, expect, it } from "bun:test";
+import type { PortfolioBreakdownSnapshot } from "@feed/engine/client";
+import { useWidgetCacheStore } from "./widgetCacheStore";
 
 const portfolioA: PortfolioBreakdownSnapshot = {
   wallet: 100,
@@ -26,34 +26,34 @@ const portfolioB: PortfolioBreakdownSnapshot = {
   agentCount: 2,
 };
 
-describe('widgetCacheStore portfolio widget cache', () => {
+describe("widgetCacheStore portfolio widget cache", () => {
   beforeEach(() => {
     useWidgetCacheStore.getState().clearAll();
   });
 
-  it('stores portfolio widget data per user', () => {
-    useWidgetCacheStore.getState().setPortfolioWidget('user-a', portfolioA);
-    useWidgetCacheStore.getState().setPortfolioWidget('user-b', portfolioB);
+  it("stores portfolio widget data per user", () => {
+    useWidgetCacheStore.getState().setPortfolioWidget("user-a", portfolioA);
+    useWidgetCacheStore.getState().setPortfolioWidget("user-b", portfolioB);
 
-    expect(useWidgetCacheStore.getState().getPortfolioWidget('user-a')).toEqual(
-      portfolioA
+    expect(useWidgetCacheStore.getState().getPortfolioWidget("user-a")).toEqual(
+      portfolioA,
     );
-    expect(useWidgetCacheStore.getState().getPortfolioWidget('user-b')).toEqual(
-      portfolioB
+    expect(useWidgetCacheStore.getState().getPortfolioWidget("user-b")).toEqual(
+      portfolioB,
     );
   });
 
-  it('clears only the requested user portfolio widget cache', () => {
-    useWidgetCacheStore.getState().setPortfolioWidget('user-a', portfolioA);
-    useWidgetCacheStore.getState().setPortfolioWidget('user-b', portfolioB);
+  it("clears only the requested user portfolio widget cache", () => {
+    useWidgetCacheStore.getState().setPortfolioWidget("user-a", portfolioA);
+    useWidgetCacheStore.getState().setPortfolioWidget("user-b", portfolioB);
 
-    useWidgetCacheStore.getState().clearPortfolioWidget('user-a');
+    useWidgetCacheStore.getState().clearPortfolioWidget("user-a");
 
-    expect(useWidgetCacheStore.getState().getPortfolioWidget('user-a')).toBe(
-      null
+    expect(useWidgetCacheStore.getState().getPortfolioWidget("user-a")).toBe(
+      null,
     );
-    expect(useWidgetCacheStore.getState().getPortfolioWidget('user-b')).toEqual(
-      portfolioB
+    expect(useWidgetCacheStore.getState().getPortfolioWidget("user-b")).toEqual(
+      portfolioB,
     );
   });
 });

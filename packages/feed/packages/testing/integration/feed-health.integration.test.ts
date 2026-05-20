@@ -10,7 +10,7 @@
  * and would be validated with a live DB in E2E / manual testing.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from "bun:test";
 
 // ---------------------------------------------------------------------------
 // Helpers — mirror the feed-health.ts logic exactly
@@ -20,16 +20,16 @@ function jaccardSimilarity(content1: string, content2: string): number {
   const words1 = new Set(
     content1
       .toLowerCase()
-      .replace(/[^\w\s]/g, '')
+      .replace(/[^\w\s]/g, "")
       .split(/\s+/)
-      .filter((w) => w.length > 3)
+      .filter((w) => w.length > 3),
   );
   const words2 = new Set(
     content2
       .toLowerCase()
-      .replace(/[^\w\s]/g, '')
+      .replace(/[^\w\s]/g, "")
       .split(/\s+/)
-      .filter((w) => w.length > 3)
+      .filter((w) => w.length > 3),
   );
   if (words1.size === 0 || words2.size === 0) return 0;
   const intersection = new Set([...words1].filter((w) => words2.has(w)));
@@ -42,9 +42,9 @@ function firstNWords(text: string, n: number): string {
     .trim()
     .split(/\s+/)
     .slice(0, n)
-    .join(' ')
+    .join(" ")
     .toLowerCase()
-    .replace(/[^a-z0-9 ]/g, '');
+    .replace(/[^a-z0-9 ]/g, "");
 }
 
 interface Post {
@@ -57,7 +57,7 @@ interface Post {
 
 function detectExactDupes(
   posts: Post[],
-  windowMs: number
+  windowMs: number,
 ): Array<{ content: string; count: number; authors: string[] }> {
   const windowStart = new Date(Date.now() - windowMs);
   const recent = posts.filter((p) => p.timestamp >= windowStart);
@@ -79,7 +79,7 @@ function detectExactDupes(
 function detectFirstWordsDupes(
   posts: Post[],
   windowMs: number,
-  n = 8
+  n = 8,
 ): Array<{ prefix: string; count: number; authors: string[] }> {
   const windowStart = new Date(Date.now() - windowMs);
   const recent = posts.filter((p) => p.timestamp >= windowStart);
@@ -87,7 +87,7 @@ function detectFirstWordsDupes(
 
   for (const p of recent) {
     const prefix = firstNWords(p.content, n);
-    if (prefix.split(' ').length < 4) continue;
+    if (prefix.split(" ").length < 4) continue;
     const entry = prefixMap.get(prefix) ?? { count: 0, authors: [] };
     entry.count++;
     if (!entry.authors.includes(p.authorId)) entry.authors.push(p.authorId);
@@ -102,7 +102,7 @@ function detectFirstWordsDupes(
 function detectArticleFlood(
   posts: Post[],
   windowHours: number,
-  maxPerHour: number
+  maxPerHour: number,
 ): Array<{ hour: string; count: number; isFlood: boolean }> {
   const now = Date.now();
   const buckets: Array<{ hour: string; count: number; isFlood: boolean }> = [];
@@ -112,9 +112,9 @@ function detectArticleFlood(
     const bucketEnd = new Date(now - h * 3600_000);
     const count = posts.filter(
       (p) =>
-        p.type === 'article' &&
+        p.type === "article" &&
         p.timestamp >= bucketStart &&
-        p.timestamp < bucketEnd
+        p.timestamp < bucketEnd,
     ).length;
     buckets.unshift({
       hour: bucketStart.toISOString().slice(0, 13),
@@ -128,68 +128,68 @@ function detectArticleFlood(
 // ---------------------------------------------------------------------------
 // 1. Exact duplicate detection
 // ---------------------------------------------------------------------------
-describe('feed health — exact duplicate detection', () => {
+describe("feed health — exact duplicate detection", () => {
   const base = new Date(Date.now() - 5 * 60_000); // 5 min ago
 
-  test('no duplicates when all content is unique', () => {
+  test("no duplicates when all content is unique", () => {
     const posts: Post[] = [
       {
-        id: '1',
-        content: 'Bitcoin surges to new highs',
-        authorId: 'npc-a',
-        type: 'post',
+        id: "1",
+        content: "Bitcoin surges to new highs",
+        authorId: "npc-a",
+        type: "post",
         timestamp: base,
       },
       {
-        id: '2',
-        content: 'Federal reserve holds rates steady',
-        authorId: 'npc-b',
-        type: 'post',
+        id: "2",
+        content: "Federal reserve holds rates steady",
+        authorId: "npc-b",
+        type: "post",
         timestamp: base,
       },
     ];
     expect(detectExactDupes(posts, 60 * 60_000)).toHaveLength(0);
   });
 
-  test('detects exact duplicate from two different NPCs', () => {
+  test("detects exact duplicate from two different NPCs", () => {
     const posts: Post[] = [
       {
-        id: '1',
-        content: 'Bitcoin hits 100k',
-        authorId: 'npc-a',
-        type: 'post',
+        id: "1",
+        content: "Bitcoin hits 100k",
+        authorId: "npc-a",
+        type: "post",
         timestamp: base,
       },
       {
-        id: '2',
-        content: 'Bitcoin hits 100k',
-        authorId: 'npc-b',
-        type: 'post',
+        id: "2",
+        content: "Bitcoin hits 100k",
+        authorId: "npc-b",
+        type: "post",
         timestamp: base,
       },
     ];
     const dupes = detectExactDupes(posts, 60 * 60_000);
     expect(dupes).toHaveLength(1);
     expect(dupes[0]?.count).toBe(2);
-    expect(dupes[0]?.authors).toContain('npc-a');
-    expect(dupes[0]?.authors).toContain('npc-b');
+    expect(dupes[0]?.authors).toContain("npc-a");
+    expect(dupes[0]?.authors).toContain("npc-b");
   });
 
-  test('ignores posts outside time window', () => {
+  test("ignores posts outside time window", () => {
     const old = new Date(Date.now() - 2 * 60 * 60_000); // 2h ago
     const posts: Post[] = [
       {
-        id: '1',
-        content: 'Old duplicate post content here',
-        authorId: 'npc-a',
-        type: 'post',
+        id: "1",
+        content: "Old duplicate post content here",
+        authorId: "npc-a",
+        type: "post",
         timestamp: old,
       },
       {
-        id: '2',
-        content: 'Old duplicate post content here',
-        authorId: 'npc-b',
-        type: 'post',
+        id: "2",
+        content: "Old duplicate post content here",
+        authorId: "npc-b",
+        type: "post",
         timestamp: old,
       },
     ];
@@ -197,20 +197,20 @@ describe('feed health — exact duplicate detection', () => {
     expect(detectExactDupes(posts, 30 * 60_000)).toHaveLength(0);
   });
 
-  test('same author posting same content twice is flagged', () => {
+  test("same author posting same content twice is flagged", () => {
     const posts: Post[] = [
       {
-        id: '1',
-        content: 'Interesting development in markets today',
-        authorId: 'npc-a',
-        type: 'post',
+        id: "1",
+        content: "Interesting development in markets today",
+        authorId: "npc-a",
+        type: "post",
         timestamp: base,
       },
       {
-        id: '2',
-        content: 'Interesting development in markets today',
-        authorId: 'npc-a',
-        type: 'post',
+        id: "2",
+        content: "Interesting development in markets today",
+        authorId: "npc-a",
+        type: "post",
         timestamp: base,
       },
     ];
@@ -223,50 +223,50 @@ describe('feed health — exact duplicate detection', () => {
 // ---------------------------------------------------------------------------
 // 2. First-N-words near-dupe detection
 // ---------------------------------------------------------------------------
-describe('feed health — first-N-words near-dupe detection', () => {
+describe("feed health — first-N-words near-dupe detection", () => {
   const base = new Date(Date.now() - 5 * 60_000);
 
-  test('catches near-duplicates across different authors', () => {
+  test("catches near-duplicates across different authors", () => {
     const posts: Post[] = [
       {
-        id: '1',
+        id: "1",
         content:
-          'Feed social platform launches exciting prediction markets feature today',
-        authorId: 'npc-a',
-        type: 'post',
+          "Feed social platform launches exciting prediction markets feature today",
+        authorId: "npc-a",
+        type: "post",
         timestamp: base,
       },
       {
-        id: '2',
+        id: "2",
         content:
-          'Feed social platform launches exciting prediction markets feature now',
-        authorId: 'npc-b',
-        type: 'post',
+          "Feed social platform launches exciting prediction markets feature now",
+        authorId: "npc-b",
+        type: "post",
         timestamp: base,
       },
     ];
     const dupes = detectFirstWordsDupes(posts, 30 * 60_000, 8);
     expect(dupes).toHaveLength(1);
-    expect(dupes[0]?.authors).toContain('npc-a');
-    expect(dupes[0]?.authors).toContain('npc-b');
+    expect(dupes[0]?.authors).toContain("npc-a");
+    expect(dupes[0]?.authors).toContain("npc-b");
   });
 
-  test('does NOT flag same prefix from same author', () => {
+  test("does NOT flag same prefix from same author", () => {
     const posts: Post[] = [
       {
-        id: '1',
+        id: "1",
         content:
-          'Feed social platform launches exciting prediction markets today',
-        authorId: 'npc-a',
-        type: 'post',
+          "Feed social platform launches exciting prediction markets today",
+        authorId: "npc-a",
+        type: "post",
         timestamp: base,
       },
       {
-        id: '2',
+        id: "2",
         content:
-          'Feed social platform launches exciting prediction markets now',
-        authorId: 'npc-a',
-        type: 'post',
+          "Feed social platform launches exciting prediction markets now",
+        authorId: "npc-a",
+        type: "post",
         timestamp: base,
       },
     ];
@@ -275,20 +275,20 @@ describe('feed health — first-N-words near-dupe detection', () => {
     expect(dupes).toHaveLength(0);
   });
 
-  test('ignores very short prefixes (< 4 words)', () => {
+  test("ignores very short prefixes (< 4 words)", () => {
     const posts: Post[] = [
       {
-        id: '1',
-        content: 'ok good',
-        authorId: 'npc-a',
-        type: 'post',
+        id: "1",
+        content: "ok good",
+        authorId: "npc-a",
+        type: "post",
         timestamp: base,
       },
       {
-        id: '2',
-        content: 'ok good',
-        authorId: 'npc-b',
-        type: 'post',
+        id: "2",
+        content: "ok good",
+        authorId: "npc-b",
+        type: "post",
         timestamp: base,
       },
     ];
@@ -300,14 +300,14 @@ describe('feed health — first-N-words near-dupe detection', () => {
 // ---------------------------------------------------------------------------
 // 3. Article flood detection
 // ---------------------------------------------------------------------------
-describe('feed health — article flood detection', () => {
-  test('flags hour with more than maxPerHour articles', () => {
+describe("feed health — article flood detection", () => {
+  test("flags hour with more than maxPerHour articles", () => {
     const now = Date.now();
     const posts: Post[] = Array.from({ length: 8 }, (_, i) => ({
       id: `art-${i}`,
       content: `Article ${i} content here`,
-      authorId: 'org-media',
-      type: 'article',
+      authorId: "org-media",
+      type: "article",
       timestamp: new Date(now - 30 * 60_000), // 30 min ago (in current bucket)
     }));
 
@@ -316,13 +316,13 @@ describe('feed health — article flood detection', () => {
     expect(buckets[0]?.count).toBe(8);
   });
 
-  test('does not flag hour within limit', () => {
+  test("does not flag hour within limit", () => {
     const now = Date.now();
     const posts: Post[] = Array.from({ length: 2 }, (_, i) => ({
       id: `art-${i}`,
       content: `Article ${i}`,
-      authorId: 'org-media',
-      type: 'article',
+      authorId: "org-media",
+      type: "article",
       timestamp: new Date(now - 30 * 60_000),
     }));
 
@@ -330,13 +330,13 @@ describe('feed health — article flood detection', () => {
     expect(buckets[0]?.isFlood).toBe(false);
   });
 
-  test('only counts article type posts', () => {
+  test("only counts article type posts", () => {
     const now = Date.now();
     const posts: Post[] = Array.from({ length: 10 }, (_, i) => ({
       id: `p-${i}`,
       content: `Post ${i} content here`,
-      authorId: 'npc-a',
-      type: 'post', // NOT article
+      authorId: "npc-a",
+      type: "post", // NOT article
       timestamp: new Date(now - 30 * 60_000),
     }));
 
@@ -349,7 +349,7 @@ describe('feed health — article flood detection', () => {
 // ---------------------------------------------------------------------------
 // 4. Cross-NPC dedup guard (mirrors DirectExecutors logic)
 // ---------------------------------------------------------------------------
-describe('cross-NPC dedup guard (integration)', () => {
+describe("cross-NPC dedup guard (integration)", () => {
   const THRESHOLD = 0.5;
 
   function wouldBeBlocked(newContent: string, recentPosts: Post[]): boolean {
@@ -360,42 +360,42 @@ describe('cross-NPC dedup guard (integration)', () => {
     return false;
   }
 
-  test('first NPC to post a topic is always allowed', () => {
+  test("first NPC to post a topic is always allowed", () => {
     const recent: Post[] = [];
     const newContent =
-      'Federal Reserve announces surprise rate cut of fifty basis points today';
+      "Federal Reserve announces surprise rate cut of fifty basis points today";
     expect(wouldBeBlocked(newContent, recent)).toBe(false);
   });
 
-  test('second NPC posting near-identical content is blocked', () => {
+  test("second NPC posting near-identical content is blocked", () => {
     const recent: Post[] = [
       {
-        id: '1',
+        id: "1",
         content:
-          'Federal Reserve announces surprise rate cut of fifty basis points today',
-        authorId: 'npc-a',
-        type: 'post',
+          "Federal Reserve announces surprise rate cut of fifty basis points today",
+        authorId: "npc-a",
+        type: "post",
         timestamp: new Date(),
       },
     ];
     const newContent =
-      'Federal Reserve announces surprise rate cut of fifty basis points today';
+      "Federal Reserve announces surprise rate cut of fifty basis points today";
     expect(wouldBeBlocked(newContent, recent)).toBe(true);
   });
 
-  test('NPC posting about a completely different topic is allowed', () => {
+  test("NPC posting about a completely different topic is allowed", () => {
     const recent: Post[] = [
       {
-        id: '1',
+        id: "1",
         content:
-          'Federal Reserve announces surprise rate cut of fifty basis points today',
-        authorId: 'npc-a',
-        type: 'post',
+          "Federal Reserve announces surprise rate cut of fifty basis points today",
+        authorId: "npc-a",
+        type: "post",
         timestamp: new Date(),
       },
     ];
     const newContent =
-      'Scientists discover massive undersea volcano erupting near Pacific coast';
+      "Scientists discover massive undersea volcano erupting near Pacific coast";
     expect(wouldBeBlocked(newContent, recent)).toBe(false);
   });
 });

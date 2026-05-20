@@ -4,7 +4,7 @@
  * Defines the interface for game state and world event data access.
  */
 
-import type { GameRecord, StockPriceRecord, WorldEventRecord } from '../types';
+import type { GameRecord, StockPriceRecord, WorldEventRecord } from "../types";
 
 export interface GamePort {
   // Game State Operations
@@ -16,7 +16,7 @@ export interface GamePort {
   // World Events
   getRecentEvents(limit?: number): Promise<WorldEventRecord[]>;
   createEvent(
-    event: Omit<WorldEventRecord, 'timestamp'>
+    event: Omit<WorldEventRecord, "timestamp">,
   ): Promise<WorldEventRecord>;
   getEventsByDay(day: number): Promise<WorldEventRecord[]>;
 
@@ -25,7 +25,7 @@ export interface GamePort {
     organizationId: string,
     price: number,
     change: number,
-    changePercent: number
+    changePercent: number,
   ): Promise<StockPriceRecord>;
   recordDailySnapshot(
     organizationId: string,
@@ -35,14 +35,14 @@ export interface GamePort {
       lowPrice: number;
       closePrice: number;
       volume: number;
-    }
+    },
   ): Promise<StockPriceRecord>;
   getPriceHistory(
     organizationId: string,
-    limit?: number
+    limit?: number,
   ): Promise<StockPriceRecord[]>;
   getDailySnapshots(
     organizationId: string,
-    days?: number
+    days?: number,
   ): Promise<StockPriceRecord[]>;
 }

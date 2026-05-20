@@ -76,12 +76,12 @@ export function definePrompt(prompt: PromptDefinition): PromptDefinition {
  */
 export function renderTemplate(
   template: string,
-  variables: Record<string, string | number | boolean | null | undefined>
+  variables: Record<string, string | number | boolean | null | undefined>,
 ): string {
   let rendered = template;
   for (const [key, value] of Object.entries(variables)) {
-    const pattern = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
-    rendered = rendered.replace(pattern, String(value ?? ''));
+    const pattern = new RegExp(`\\{\\{${key}\\}\\}`, "g");
+    rendered = rendered.replace(pattern, String(value ?? ""));
   }
   return rendered;
 }

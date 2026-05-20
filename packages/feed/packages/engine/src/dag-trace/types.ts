@@ -46,7 +46,7 @@ export interface NodeTrace {
   startMs: number;
   endMs: number;
   durationMs: number;
-  status: 'success' | 'error' | 'skipped' | 'delegated';
+  status: "success" | "error" | "skipped" | "delegated";
   inputs: Record<string, unknown>;
   outputs: Record<string, unknown>;
   error?: string;
@@ -56,7 +56,7 @@ export interface NodeTrace {
 
 export interface SubOperation {
   name: string;
-  type: 'db_write' | 'db_read' | 'llm' | 'computation' | 'external';
+  type: "db_write" | "db_read" | "llm" | "computation" | "external";
   startMs: number;
   endMs: number;
   details: Record<string, unknown>;

@@ -7,11 +7,11 @@
  * Uses LLM to determine appropriate investments based on NPC characteristics.
  */
 
-import { actorState, and, db, eq, getDbInstance, gte, sql } from '@feed/db';
-import { generateSnowflakeId, logger } from '@feed/shared';
-import { loadActorById } from '../actors-loader';
-import { FeedLLMClient } from '../llm/openai-client';
-import { StaticDataRegistry } from './static-data-registry';
+import { actorState, and, db, eq, getDbInstance, gte, sql } from "@feed/db";
+import { generateSnowflakeId, logger } from "@feed/shared";
+import { loadActorById } from "../actors-loader";
+import { FeedLLMClient } from "../llm/openai-client";
+import { StaticDataRegistry } from "./static-data-registry";
 
 /**
  * Initial investment specification
@@ -56,9 +56,9 @@ export class InitialInvestmentService {
   }> {
     const startTime = Date.now();
     logger.info(
-      'Generating initial NPC investments...',
+      "Generating initial NPC investments...",
       undefined,
-      'InitialInvestment'
+      "InitialInvestment",
     );
 
     // Get all NPCs with their affiliations from static registry + dynamic state
@@ -67,7 +67,7 @@ export class InitialInvestmentService {
     const npcs = StaticDataRegistry.getAllActors()
       .map((actor) => {
         const state = actorStateMap.get(actor.id);
-        const tradingBalance = state?.tradingBalance ?? '10000';
+        const tradingBalance = state?.tradingBalance ?? "10000";
         return {
           id: actor.id,
           name: actor.name,
@@ -83,10 +83,10 @@ export class InitialInvestmentService {
     // Get all companies from static registry with dynamic prices
     const orgStates = await getDbInstance().getAllOrganizationStates();
     const priceMap = new Map(
-      orgStates.map((s): [string, number | null] => [s.id, s.currentPrice])
+      orgStates.map((s): [string, number | null] => [s.id, s.currentPrice]),
     );
     const companies = StaticDataRegistry.getAllOrganizations()
-      .filter((o) => o.type === 'company' && o.ticker)
+      .filter((o) => o.type === "company" && o.ticker)
       .map((o) => {
         const currentPriceFromDb = priceMap.get(o.id);
         return {
@@ -103,9 +103,9 @@ export class InitialInvestmentService {
 
     if (companies.length === 0) {
       logger.warn(
-        'No companies found for initial investments',
+        "No companies found for initial investments",
         undefined,
-        'InitialInvestment'
+        "InitialInvestment",
       );
       return { totalNPCs: 0, totalInvestments: 0, totalVolume: 0 };
     }
@@ -116,7 +116,7 @@ export class InitialInvestmentService {
         npcCount: npcs.length,
         companyCount: companies.length,
       },
-      'InitialInvestment'
+      "InitialInvestment",
     );
 
     const llm = FeedLLMClient.forGameTick();
@@ -131,7 +131,7 @@ export class InitialInvestmentService {
         await InitialInvestmentService.generateInvestmentsForBatch(
           batch,
           companies,
-          llm
+          llm,
         );
       allInvestments.push(...batchInvestments);
 
@@ -140,7 +140,7 @@ export class InitialInvestmentService {
         {
           investmentsGenerated: batchInvestments.length,
         },
-        'InitialInvestment'
+        "InitialInvestment",
       );
     }
 
@@ -148,7 +148,7 @@ export class InitialInvestmentService {
     logger.info(
       `Executing ${allInvestments.length} initial investments...`,
       undefined,
-      'InitialInvestment'
+      "InitialInvestment",
     );
     let successfulInvestments = 0;
     let totalVolume = 0;
@@ -160,27 +160,27 @@ export class InitialInvestmentService {
         successfulInvestments++;
         totalVolume += investment.amount;
       } catch (error) {
-        const reason = error instanceof Error ? error.message : 'Unknown error';
+        const reason = error instanceof Error ? error.message : "Unknown error";
         failureReasons[reason] = (failureReasons[reason] || 0) + 1;
         logger.warn(
           `Failed to execute investment: ${investment.npcName} → ${investment.ticker}`,
           { error: reason, amount: investment.amount },
-          'InitialInvestment'
+          "InitialInvestment",
         );
       }
     }
 
     if (Object.keys(failureReasons).length > 0) {
       logger.warn(
-        'Investment execution failures summary',
+        "Investment execution failures summary",
         failureReasons,
-        'InitialInvestment'
+        "InitialInvestment",
       );
     }
 
     const duration = Date.now() - startTime;
     logger.info(
-      'Initial investments complete',
+      "Initial investments complete",
       {
         totalNPCs: npcs.length,
         investmentsGenerated: allInvestments.length,
@@ -188,7 +188,7 @@ export class InitialInvestmentService {
         totalVolume,
         durationMs: duration,
       },
-      'InitialInvestment'
+      "InitialInvestment",
     );
 
     return {
@@ -218,7 +218,7 @@ export class InitialInvestmentService {
       initialPrice: number | null;
       currentPrice: number | null;
     }>,
-    llm: FeedLLMClient
+    llm: FeedLLMClient,
   ): Promise<InitialInvestment[]> {
     // Build NPC profiles for prompt
     const npcProfiles = await Promise.all(
@@ -228,19 +228,19 @@ export class InitialInvestmentService {
 
         const availableBalance = Number(npc.tradingBalance);
         const targetInvestment = Math.floor(
-          availableBalance * (0.5 + Math.random() * 0.25)
+          availableBalance * (0.5 + Math.random() * 0.25),
         ); // 50-75% of balance
 
         return `## ${npc.name}
 - ID: ${npc.id}
 - Balance: $${availableBalance.toLocaleString()}
 - Target Investment: $${targetInvestment.toLocaleString()} (distribute across 2-5 companies)
-- Affiliations: ${npc.affiliations.join(', ') || 'None'}
-- Domain: ${npc.domain.join(', ')}
-- Personality: ${npc.personality || 'Unknown'}
-- Tier: ${npc.tier || 'Unknown'}
-${actorData?.description ? `- Background: ${actorData.description.substring(0, 200)}...` : ''}`;
-      })
+- Affiliations: ${npc.affiliations.join(", ") || "None"}
+- Domain: ${npc.domain.join(", ")}
+- Personality: ${npc.personality || "Unknown"}
+- Tier: ${npc.tier || "Unknown"}
+${actorData?.description ? `- Background: ${actorData.description.substring(0, 200)}...` : ""}`;
+      }),
     );
 
     // Build companies list
@@ -248,9 +248,9 @@ ${actorData?.description ? `- Background: ${actorData.description.substring(0, 2
       .filter((c) => c.ticker)
       .map(
         (c) =>
-          `- ${c.ticker}: ${c.name} @ $${c.currentPrice || c.initialPrice || 100}`
+          `- ${c.ticker}: ${c.name} @ $${c.currentPrice || c.initialPrice || 100}`,
       )
-      .join('\n');
+      .join("\n");
 
     const prompt = `You are generating initial portfolio positions for ${npcs.length} NPCs/traders in a prediction market simulation.
 
@@ -260,7 +260,7 @@ AVAILABLE COMPANIES:
 ${companiesList}
 
 NPCS TO INVEST:
-${npcProfiles.join('\n\n')}
+${npcProfiles.join("\n\n")}
 
 RULES:
 1. Each NPC should invest in 2-5 companies that make sense for their character
@@ -299,28 +299,28 @@ Generate investments for ALL ${npcs.length} NPCs. Each NPC must have 2-5 investm
       {
         // Schema for array items validation (wrapped in investments property for compatibility)
         properties: {
-          npcId: { type: 'string' },
-          npcName: { type: 'string' },
-          ticker: { type: 'string' },
-          orgName: { type: 'string' },
-          amount: { type: 'number' },
-          reasoning: { type: 'string' },
+          npcId: { type: "string" },
+          npcName: { type: "string" },
+          ticker: { type: "string" },
+          orgName: { type: "string" },
+          amount: { type: "number" },
+          reasoning: { type: "string" },
         },
         required: [
-          'npcId',
-          'npcName',
-          'ticker',
-          'orgName',
-          'amount',
-          'reasoning',
+          "npcId",
+          "npcName",
+          "ticker",
+          "orgName",
+          "amount",
+          "reasoning",
         ],
       },
       {
         temperature: 0.7,
         maxTokens: 16000,
-        format: 'json',
-        promptType: 'generate_investments_batch',
-      }
+        format: "json",
+        promptType: "generate_investments_batch",
+      },
     );
 
     logger.debug(
@@ -328,7 +328,7 @@ Generate investments for ALL ${npcs.length} NPCs. Each NPC must have 2-5 investm
       {
         responseKeys: response ? Object.keys(response) : [],
       },
-      'InitialInvestment'
+      "InitialInvestment",
     );
 
     // Validate response is array
@@ -336,13 +336,13 @@ Generate investments for ALL ${npcs.length} NPCs. Each NPC must have 2-5 investm
 
     if (investments.length === 0) {
       logger.warn(
-        'LLM returned empty array, using fallback',
+        "LLM returned empty array, using fallback",
         { npcCount: npcs.length },
-        'InitialInvestment'
+        "InitialInvestment",
       );
       return InitialInvestmentService.generateFallbackInvestments(
         npcs,
-        companies
+        companies,
       );
     }
 
@@ -352,7 +352,7 @@ Generate investments for ALL ${npcs.length} NPCs. Each NPC must have 2-5 investm
         npcCount: npcs.length,
         investmentsCount: investments.length,
       },
-      'InitialInvestment'
+      "InitialInvestment",
     );
 
     return investments;
@@ -374,7 +374,7 @@ Generate investments for ALL ${npcs.length} NPCs. Each NPC must have 2-5 investm
       id: string;
       name: string;
       ticker: string | null;
-    }>
+    }>,
   ): InitialInvestment[] {
     const investments: InitialInvestment[] = [];
 
@@ -382,7 +382,7 @@ Generate investments for ALL ${npcs.length} NPCs. Each NPC must have 2-5 investm
       const availableBalance = Number(npc.tradingBalance);
       // Invest 50-75% of balance (tier affects diversification)
       const investmentPercent =
-        npc.tier === 'S_TIER' ? 0.6 : 0.5 + Math.random() * 0.25;
+        npc.tier === "S_TIER" ? 0.6 : 0.5 + Math.random() * 0.25;
       const targetInvestment = Math.floor(availableBalance * investmentPercent);
 
       // Find companies matching affiliations (primary investments)
@@ -394,17 +394,16 @@ Generate investments for ALL ${npcs.length} NPCs. Each NPC must have 2-5 investm
               c.id.toLowerCase().includes(aff.toLowerCase()) ||
               c.name
                 .toLowerCase()
-                .replace(/\s/g, '')
-                .includes(aff.toLowerCase().replace(/\s/g, ''))
-          )
+                .replace(/\s/g, "")
+                .includes(aff.toLowerCase().replace(/\s/g, "")),
+          ),
       );
 
       // Find companies matching domain expertise (secondary investments)
       const domainCompanies = companies.filter(
         (c) =>
           c.ticker &&
-          npc.domain &&
-          npc.domain.some((d) => c.id.toLowerCase().includes(d.toLowerCase()))
+          npc.domain?.some((d) => c.id.toLowerCase().includes(d.toLowerCase())),
       );
 
       // Combine and deduplicate
@@ -418,10 +417,10 @@ Generate investments for ALL ${npcs.length} NPCs. Each NPC must have 2-5 investm
       let numCompanies = 3;
       let weightDistribution = [0.5, 0.3, 0.2]; // Default: 50%, 30%, 20%
 
-      if (npc.tier === 'S_TIER') {
+      if (npc.tier === "S_TIER") {
         numCompanies = 2;
         weightDistribution = [0.8, 0.2];
-      } else if (npc.tier === 'A_TIER') {
+      } else if (npc.tier === "A_TIER") {
         numCompanies = 3;
         weightDistribution = [0.6, 0.25, 0.15];
       } else {
@@ -447,7 +446,7 @@ Generate investments for ALL ${npcs.length} NPCs. Each NPC must have 2-5 investm
         i++
       ) {
         const company = selectedCompanies[i];
-        if (!company || !company.ticker) continue;
+        if (!company?.ticker) continue;
 
         const weight = weightDistribution[i] || 1 / selectedCompanies.length;
         const amount = Math.floor(targetInvestment * weight);
@@ -456,11 +455,11 @@ Generate investments for ALL ${npcs.length} NPCs. Each NPC must have 2-5 investm
           const isAffiliated = affiliatedCompanies.includes(company);
           const isDomain = domainCompanies.includes(company);
 
-          let reasoning = 'Diversified portfolio investment';
+          let reasoning = "Diversified portfolio investment";
           if (isAffiliated) {
             reasoning = `Direct affiliation with ${company.name}`;
           } else if (isDomain) {
-            reasoning = `Domain expertise in ${npc.domain?.join('/')}`;
+            reasoning = `Domain expertise in ${npc.domain?.join("/")}`;
           }
 
           investments.push({
@@ -478,7 +477,7 @@ Generate investments for ALL ${npcs.length} NPCs. Each NPC must have 2-5 investm
     logger.info(
       `Fallback generated ${investments.length} investments for ${npcs.length} NPCs`,
       undefined,
-      'InitialInvestment'
+      "InitialInvestment",
     );
 
     return investments;
@@ -488,14 +487,14 @@ Generate investments for ALL ${npcs.length} NPCs. Each NPC must have 2-5 investm
    * Execute a single investment by creating a Pool and PoolPosition
    */
   private static async executeInvestment(
-    investment: InitialInvestment
+    investment: InitialInvestment,
   ): Promise<void> {
     // Get organization details from static registry with dynamic price
     const staticOrg = StaticDataRegistry.getAllOrganizations().find(
-      (o) => o.ticker === investment.ticker
+      (o) => o.ticker === investment.ticker,
     );
 
-    if (!staticOrg || !staticOrg.ticker) {
+    if (!staticOrg?.ticker) {
       throw new Error(`Organization not found for ticker ${investment.ticker}`);
     }
 
@@ -524,24 +523,24 @@ Generate investments for ALL ${npcs.length} NPCs. Each NPC must have 2-5 investm
             name: `${investment.npcName} Portfolio`,
             description: `Initial investment portfolio for ${investment.npcName}`,
             isActive: true,
-            totalValue: '0',
-            totalDeposits: '0',
-            availableBalance: '0',
-            lifetimePnL: '0',
+            totalValue: "0",
+            totalDeposits: "0",
+            availableBalance: "0",
+            lifetimePnL: "0",
             performanceFeeRate: 0.05,
-            totalFeesCollected: '0',
+            totalFeesCollected: "0",
             openedAt: now,
             updatedAt: now,
-            status: 'ACTIVE',
+            status: "ACTIVE",
           },
         })
         .catch((error) => {
           // Pool might already exist from race condition, that's fine
           const errorCode =
-            error && typeof error === 'object' && 'code' in error
+            error && typeof error === "object" && "code" in error
               ? error.code
               : null;
-          if (errorCode !== 'P2002') {
+          if (errorCode !== "P2002") {
             // P2002 = unique constraint (already exists)
             throw error;
           }
@@ -556,10 +555,10 @@ Generate investments for ALL ${npcs.length} NPCs. Each NPC must have 2-5 investm
       data: {
         id: positionId,
         poolId: investment.npcId, // Use npcId as poolId
-        marketType: 'perp',
+        marketType: "perp",
         ticker: org.ticker,
         marketId: null,
-        side: 'long', // Initial positions are all long
+        side: "long", // Initial positions are all long
         entryPrice: entryPrice,
         currentPrice: entryPrice,
         size: Number(shares),
@@ -586,15 +585,15 @@ Generate investments for ALL ${npcs.length} NPCs. Each NPC must have 2-5 investm
           eq(actorState.id, investment.npcId),
           gte(
             sql<number>`${actorState.tradingBalance}::numeric`,
-            investment.amount
-          )
-        )
+            investment.amount,
+          ),
+        ),
       )
       .returning({ id: actorState.id });
 
     if (debitResult.length === 0) {
       throw new Error(
-        `Insufficient NPC balance for initial investment: ${investment.npcName} → ${investment.ticker} $${investment.amount}`
+        `Insufficient NPC balance for initial investment: ${investment.npcName} → ${investment.ticker} $${investment.amount}`,
       );
     }
 
@@ -604,10 +603,10 @@ Generate investments for ALL ${npcs.length} NPCs. Each NPC must have 2-5 investm
         id: await generateSnowflakeId(),
         npcActorId: investment.npcId,
         poolId: null,
-        marketType: 'perp',
+        marketType: "perp",
         ticker: org.ticker,
-        action: 'open_long',
-        side: 'long',
+        action: "open_long",
+        side: "long",
         amount: investment.amount,
         price: entryPrice,
         sentiment: null,
@@ -619,7 +618,7 @@ Generate investments for ALL ${npcs.length} NPCs. Each NPC must have 2-5 investm
     logger.debug(
       `Executed initial investment: ${investment.npcName} → ${investment.ticker} $${investment.amount}`,
       undefined,
-      'InitialInvestment'
+      "InitialInvestment",
     );
   }
 }

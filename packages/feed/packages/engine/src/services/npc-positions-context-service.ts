@@ -9,7 +9,7 @@
  * IMPORTANT: Must work in both PostgreSQL and JSON modes (no raw Drizzle queries).
  */
 
-import { db } from '@feed/db';
+import { db } from "@feed/db";
 
 export interface PositionsContextOptions {
   maxPredictionPositionsPerActor?: number;
@@ -23,16 +23,16 @@ function clampNonNegativeInt(value: number, fallback: number): number {
 }
 
 function parseNullableNumber(
-  value: number | string | null | undefined
+  value: number | string | null | undefined,
 ): number | null {
   if (value === null || value === undefined) return null;
-  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
 
 function formatSignedNumber(n: number, decimals = 0): string {
-  const sign = n > 0 ? '+' : n < 0 ? '-' : '';
+  const sign = n > 0 ? "+" : n < 0 ? "-" : "";
   const abs = Math.abs(n);
   const fixed = decimals > 0 ? abs.toFixed(decimals) : String(Math.round(abs));
   return `${sign}${fixed}`;
@@ -57,22 +57,22 @@ function formatQuestionLabel(q: {
 
 export async function buildPositionsPromptContextByActorId(
   actorIds: string[],
-  options: PositionsContextOptions = {}
+  options: PositionsContextOptions = {},
 ): Promise<Record<string, string>> {
   const maxPred = clampNonNegativeInt(
     options.maxPredictionPositionsPerActor ?? 2,
-    2
+    2,
   );
   const maxPerps = clampNonNegativeInt(
     options.maxPerpPositionsPerActor ?? 2,
-    2
+    2,
   );
 
   if (actorIds.length === 0) return {};
 
   const [predictionPositions, perpPositions] = await Promise.all([
     db.position.findMany({
-      where: { userId: { in: actorIds }, status: 'active' },
+      where: { userId: { in: actorIds }, status: "active" },
       select: {
         userId: true,
         side: true,
@@ -100,8 +100,8 @@ export async function buildPositionsPromptContextByActorId(
     new Set(
       predictionPositions
         .map((p) => p.questionId)
-        .filter((q): q is number => typeof q === 'number')
-    )
+        .filter((q): q is number => typeof q === "number"),
+    ),
   );
 
   const questions = questionNumbers.length
@@ -112,7 +112,7 @@ export async function buildPositionsPromptContextByActorId(
     : [];
 
   const questionMap = new Map<number, string>(
-    questions.map((q) => [q.questionNumber, formatQuestionLabel(q)])
+    questions.map((q) => [q.questionNumber, formatQuestionLabel(q)]),
   );
 
   // Group positions by actor
@@ -151,11 +151,11 @@ export async function buildPositionsPromptContextByActorId(
 
       for (const { p, pnl } of scored) {
         const qLabel =
-          typeof p.questionId === 'number'
+          typeof p.questionId === "number"
             ? (questionMap.get(p.questionId) ?? `Q${p.questionId}`)
-            : 'Unknown question';
-        const side = p.side ? 'YES' : 'NO';
-        const pnlText = pnl !== null ? ` (${formatCurrency(pnl)})` : '';
+            : "Unknown question";
+        const side = p.side ? "YES" : "NO";
+        const pnlText = pnl !== null ? ` (${formatCurrency(pnl)})` : "";
         lines.push(`- ${qLabel} → ${side}${pnlText}`);
       }
     }
@@ -172,18 +172,18 @@ export async function buildPositionsPromptContextByActorId(
         const pnlText = formatCurrency(p.unrealizedPnL);
         const liq = Number.isFinite(p.liquidationPrice)
           ? `, liq ${p.liquidationPrice.toFixed(2)}`
-          : '';
+          : "";
         lines.push(`- ${p.ticker} ${side} ${lev} (uPnL ${pnlText}${liq})`);
       }
     }
 
     if (lines.length === 0) {
-      out[actorId] = '';
+      out[actorId] = "";
       continue;
     }
 
     out[actorId] = `=== YOUR CURRENT POSITIONS (bias + trash talk fuel) ===
-${lines.join('\n')}
+${lines.join("\n")}
 Let this bias your tone. If you're down bad, be defensive/coping; if you're up, be smug. Use it to accuse others of bagholding (specifically).
 ====================================================`;
   }

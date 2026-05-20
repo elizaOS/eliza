@@ -1,9 +1,9 @@
-import type { MessageMetadata, MessageType } from '@feed/shared';
+import type { MessageMetadata, MessageType } from "@feed/shared";
 
-export { MessageTypeEnum } from '@feed/shared';
+export { MessageTypeEnum } from "@feed/shared";
 export type { MessageMetadata, MessageType };
 
-export type ChatFilter = 'all' | 'dms' | 'groups';
+export type ChatFilter = "all" | "dms" | "groups";
 
 export interface Chat {
   id: string;

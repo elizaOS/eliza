@@ -18,23 +18,23 @@ import {
   requireUserByIdentifier,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { toISO, UserIdParamSchema } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/api";
+import { toISO, UserIdParamSchema } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 export const GET = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ userId: string }> }
+    context: { params: Promise<{ userId: string }> },
   ) => {
     const authUser = await authenticate(request);
     const { userId } = UserIdParamSchema.parse(await context.params);
 
     if (!authUser.dbUserId) {
       throw new AuthorizationError(
-        'User profile not found. Please complete onboarding first.',
-        'points-history',
-        'read'
+        "User profile not found. Please complete onboarding first.",
+        "points-history",
+        "read",
       );
     }
 
@@ -43,9 +43,9 @@ export const GET = withErrorHandling(
 
     if (authUser.dbUserId !== canonicalUserId) {
       throw new AuthorizationError(
-        'You can only view your own points history',
-        'points-history',
-        'read'
+        "You can only view your own points history",
+        "points-history",
+        "read",
       );
     }
 
@@ -67,9 +67,9 @@ export const GET = withErrorHandling(
       },
       200,
       {
-        'x-feed-deprecated': 'true',
+        "x-feed-deprecated": "true",
         link: '</api/users/[userId]/reputation-history>; rel="successor-version"',
-      }
+      },
     );
-  }
+  },
 );

@@ -9,10 +9,10 @@
  * - TTL: 12 hours (reactions older than this are stale)
  */
 
-import { logger } from '@feed/shared';
-import { getRedisClient } from '../redis/client';
+import { logger } from "@feed/shared";
+import { getRedisClient } from "../redis/client";
 
-const ORG_REACTIONS_PREFIX = 'org-reactions:';
+const ORG_REACTIONS_PREFIX = "org-reactions:";
 const REACTION_TTL_SECONDS = 43200; // 12 hours
 
 export interface OrgReaction {
@@ -20,8 +20,8 @@ export interface OrgReaction {
   npcName: string;
   eventId: string;
   angle: string; // Brief summary of the take/spin
-  actionType: 'post' | 'comment' | 'trade';
-  sentiment: 'positive' | 'negative' | 'neutral' | 'defensive';
+  actionType: "post" | "comment" | "trade";
+  sentiment: "positive" | "negative" | "neutral" | "defensive";
   timestamp: number;
 }
 
@@ -40,7 +40,7 @@ export class OrgCoordinationService {
    */
   async recordOrgReaction(
     orgId: string,
-    reaction: OrgReaction
+    reaction: OrgReaction,
   ): Promise<boolean> {
     const client = getRedisClient();
     if (!client) return false;
@@ -51,24 +51,24 @@ export class OrgCoordinationService {
       await client.expire(key, REACTION_TTL_SECONDS);
 
       logger.debug(
-        'Recorded org reaction',
+        "Recorded org reaction",
         {
           orgId,
           npcId: reaction.npcId,
           eventId: reaction.eventId,
           angle: reaction.angle,
         },
-        'OrgCoordinationService'
+        "OrgCoordinationService",
       );
       return true;
     } catch (error) {
       logger.warn(
-        'Failed to record org reaction',
+        "Failed to record org reaction",
         {
           orgId,
           error: error instanceof Error ? error.message : String(error),
         },
-        'OrgCoordinationService'
+        "OrgCoordinationService",
       );
       return false;
     }
@@ -81,7 +81,7 @@ export class OrgCoordinationService {
   async getCoordinationContext(
     npcOrgIds: string[],
     eventId: string,
-    orgNames: Map<string, string>
+    orgNames: Map<string, string>,
   ): Promise<OrgCoordinationContext[]> {
     const client = getRedisClient();
     if (!client) return [];
@@ -109,7 +109,7 @@ export class OrgCoordinationService {
         // Suggest angles not yet taken
         const suggestedAngles = this.generateAlternativeAngles(
           usedAngles,
-          sentiments
+          sentiments,
         );
 
         contexts.push({
@@ -121,13 +121,13 @@ export class OrgCoordinationService {
         });
       } catch (error) {
         logger.debug(
-          'Failed to get org coordination',
+          "Failed to get org coordination",
           {
             orgId,
             eventId,
             error: error instanceof Error ? error.message : String(error),
           },
-          'OrgCoordinationService'
+          "OrgCoordinationService",
         );
       }
     }
@@ -140,53 +140,53 @@ export class OrgCoordinationService {
    */
   private generateAlternativeAngles(
     usedAngles: string[],
-    usedSentiments: string[]
+    usedSentiments: string[],
   ): string[] {
     const suggestions: string[] = [];
 
     // If all reactions are defensive, suggest offense
     if (
       usedSentiments.length > 0 &&
-      usedSentiments.every((s) => s === 'defensive')
+      usedSentiments.every((s) => s === "defensive")
     ) {
-      suggestions.push('Take an offensive stance - go on the attack');
+      suggestions.push("Take an offensive stance - go on the attack");
     }
 
     // If all reactions are one-sided, suggest nuance
     if (
       usedSentiments.length > 0 &&
-      (usedSentiments.every((s) => s === 'positive') ||
-        usedSentiments.every((s) => s === 'negative'))
+      (usedSentiments.every((s) => s === "positive") ||
+        usedSentiments.every((s) => s === "negative"))
     ) {
-      suggestions.push('Offer a nuanced take with both sides');
+      suggestions.push("Offer a nuanced take with both sides");
     }
 
     // If no one has focused on specific aspects
-    if (!usedAngles.some((a) => a.toLowerCase().includes('financial'))) {
-      suggestions.push('Focus on financial implications');
+    if (!usedAngles.some((a) => a.toLowerCase().includes("financial"))) {
+      suggestions.push("Focus on financial implications");
     }
     if (
       !usedAngles.some(
         (a) =>
-          a.toLowerCase().includes('personal') ||
-          a.toLowerCase().includes('character')
+          a.toLowerCase().includes("personal") ||
+          a.toLowerCase().includes("character"),
       )
     ) {
-      suggestions.push('Focus on personal/character angle');
+      suggestions.push("Focus on personal/character angle");
     }
     if (
       !usedAngles.some(
         (a) =>
-          a.toLowerCase().includes('future') ||
-          a.toLowerCase().includes('prediction')
+          a.toLowerCase().includes("future") ||
+          a.toLowerCase().includes("prediction"),
       )
     ) {
-      suggestions.push('Focus on future implications');
+      suggestions.push("Focus on future implications");
     }
 
     // Suggest staying quiet if too many have spoken
     if (usedAngles.length >= 3) {
-      suggestions.push('Consider not reacting - org has said enough');
+      suggestions.push("Consider not reacting - org has said enough");
     }
 
     return suggestions;
@@ -198,7 +198,7 @@ export class OrgCoordinationService {
   async hasOrgReactedEnough(
     orgId: string,
     eventId: string,
-    threshold: number = 3
+    threshold: number = 3,
   ): Promise<boolean> {
     const client = getRedisClient();
     if (!client) return false;

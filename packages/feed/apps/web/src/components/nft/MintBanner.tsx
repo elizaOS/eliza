@@ -1,12 +1,12 @@
-'use client';
+"use client";
 
-import { Sparkles, Trophy, Wallet } from 'lucide-react';
-import Image from 'next/image';
-import Link from 'next/link';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { Button } from '@/components/ui/button';
-import { useAuth } from '@/hooks/useAuth';
-import { useNftMint } from '@/hooks/useNftMint';
+import { Sparkles, Trophy, Wallet } from "lucide-react";
+import Image from "next/image";
+import Link from "next/link";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { Button } from "@/components/ui/button";
+import { useAuth } from "@/hooks/useAuth";
+import { useNftMint } from "@/hooks/useNftMint";
 
 interface MintBannerProps {
   onMintClick?: () => void;
@@ -143,10 +143,10 @@ export function MintBanner({ onMintClick }: MintBannerProps) {
         </div>
 
         <p className="mb-2 text-foreground text-lg">
-          You ranked{' '}
+          You ranked{" "}
           <span className="font-bold text-[#0066FF]">
             #{eligibility.snapshotRank}
-          </span>{' '}
+          </span>{" "}
           in the Feed Leaderboard!
         </p>
 

@@ -69,18 +69,18 @@
  *                   type: array
  */
 
-import type { JsonRpcRequest, MCPAuthContext } from '@feed/mcp';
+import type { JsonRpcRequest, MCPAuthContext } from "@feed/mcp";
 import {
   getAvailableTools,
   getMCPServerInfo,
   MCPRequestHandler,
-} from '@feed/mcp';
-import type { JsonValue } from '@feed/shared';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@feed/mcp";
+import type { JsonValue } from "@feed/shared";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 // Initialize MCP request handler
 const mcpHandler = new MCPRequestHandler();
@@ -90,11 +90,11 @@ const mcpHandler = new MCPRequestHandler();
  */
 function extractAuthFromHeaders(request: NextRequest): MCPAuthContext {
   // Check for X-Feed-Api-Key header (primary method)
-  const apiKey = request.headers.get('x-feed-api-key');
+  const apiKey = request.headers.get("x-feed-api-key");
 
   // Also check Authorization header with Bearer token for compatibility
-  const authHeader = request.headers.get('authorization');
-  const apiKeyFromAuth = authHeader?.startsWith('Bearer ')
+  const authHeader = request.headers.get("authorization");
+  const apiKeyFromAuth = authHeader?.startsWith("Bearer ")
     ? authHeader.substring(7)
     : null;
 
@@ -115,7 +115,7 @@ function extractAuthFromHeaders(request: NextRequest): MCPAuthContext {
  * Used for discovery and validation (e.g., by Agent0)
  */
 export async function GET(request: NextRequest) {
-  logger.debug('MCP endpoint accessed', { url: request.url }, 'MCP');
+  logger.debug("MCP endpoint accessed", { url: request.url }, "MCP");
 
   const serverInfo = getMCPServerInfo();
   const tools = getAvailableTools();
@@ -127,10 +127,10 @@ export async function GET(request: NextRequest) {
     },
     {
       headers: {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'public, max-age=3600',
+        "Content-Type": "application/json",
+        "Cache-Control": "public, max-age=3600",
       },
-    }
+    },
   );
 }
 
@@ -143,59 +143,59 @@ export async function POST(request: NextRequest) {
 
   // Validate JSON-RPC 2.0 request format
   if (
-    typeof body !== 'object' ||
+    typeof body !== "object" ||
     body === null ||
-    !('jsonrpc' in body) ||
-    !('method' in body) ||
-    !('id' in body)
+    !("jsonrpc" in body) ||
+    !("method" in body) ||
+    !("id" in body)
   ) {
     return NextResponse.json(
       {
-        jsonrpc: '2.0',
+        jsonrpc: "2.0",
         id: null,
         error: {
           code: -32600,
-          message: 'Invalid Request',
+          message: "Invalid Request",
         },
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
   // Validate and type the request
   if (
-    typeof body !== 'object' ||
+    typeof body !== "object" ||
     body === null ||
-    !('jsonrpc' in body) ||
-    !('method' in body) ||
-    !('id' in body)
+    !("jsonrpc" in body) ||
+    !("method" in body) ||
+    !("id" in body)
   ) {
     return NextResponse.json(
       {
-        jsonrpc: '2.0',
+        jsonrpc: "2.0",
         id: null,
         error: {
           code: -32600,
-          message: 'Invalid Request',
+          message: "Invalid Request",
         },
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
   const jsonRpcRequest = body as unknown as JsonRpcRequest;
 
-  if (jsonRpcRequest.jsonrpc !== '2.0') {
+  if (jsonRpcRequest.jsonrpc !== "2.0") {
     return NextResponse.json(
       {
-        jsonrpc: '2.0',
+        jsonrpc: "2.0",
         id: jsonRpcRequest.id,
         error: {
           code: -32600,
           message: 'Invalid Request: jsonrpc must be "2.0"',
         },
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -206,15 +206,14 @@ export async function POST(request: NextRequest) {
   if (!authContext.apiKey) {
     return NextResponse.json(
       {
-        jsonrpc: '2.0',
+        jsonrpc: "2.0",
         id: jsonRpcRequest.id,
         error: {
           code: -32001,
-          message:
-            'Authentication required: X-Feed-Api-Key header is required',
+          message: "Authentication required: X-Feed-Api-Key header is required",
         },
       },
-      { status: 401 }
+      { status: 401 },
     );
   }
 
@@ -223,7 +222,7 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json(response, {
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
     },
   });
 }

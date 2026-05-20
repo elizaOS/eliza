@@ -24,11 +24,11 @@
  * />
  * ```
  */
-import { Award, Shield, ShieldCheck, TrendingUp } from 'lucide-react';
+import { Award, Shield, ShieldCheck, TrendingUp } from "lucide-react";
 
 interface TrustLevelBadgeProps {
   reputationPoints: number;
-  size?: 'sm' | 'md' | 'lg';
+  size?: "sm" | "md" | "lg";
   showProgress?: boolean;
   className?: string;
 }
@@ -37,7 +37,7 @@ interface TrustLevelBadgeProps {
  * Trust level information structure.
  */
 interface TrustLevelInfo {
-  level: 'newcomer' | 'trusted' | 'veteran' | 'elite';
+  level: "newcomer" | "trusted" | "veteran" | "elite";
   label: string;
   min: number;
   max: number;
@@ -51,50 +51,50 @@ interface TrustLevelInfo {
  */
 const TRUST_LEVELS: TrustLevelInfo[] = [
   {
-    level: 'newcomer',
-    label: 'Newcomer',
+    level: "newcomer",
+    label: "Newcomer",
     min: 0,
     max: 999,
-    color: 'text-gray-400',
-    bgColor: 'bg-gray-400',
+    color: "text-gray-400",
+    bgColor: "bg-gray-400",
     Icon: Shield,
   },
   {
-    level: 'trusted',
-    label: 'Trusted',
+    level: "trusted",
+    label: "Trusted",
     min: 1000,
     max: 4999,
-    color: 'text-blue-500',
-    bgColor: 'bg-blue-500',
+    color: "text-blue-500",
+    bgColor: "bg-blue-500",
     Icon: ShieldCheck,
   },
   {
-    level: 'veteran',
-    label: 'Veteran',
+    level: "veteran",
+    label: "Veteran",
     min: 5000,
     max: 9999,
-    color: 'text-purple-500',
-    bgColor: 'bg-purple-500',
+    color: "text-purple-500",
+    bgColor: "bg-purple-500",
     Icon: ShieldCheck,
   },
   {
-    level: 'elite',
-    label: 'Elite',
+    level: "elite",
+    label: "Elite",
     min: 10000,
     max: Number.POSITIVE_INFINITY,
-    color: 'text-yellow-500',
-    bgColor: 'bg-yellow-500',
+    color: "text-yellow-500",
+    bgColor: "bg-yellow-500",
     Icon: Award,
   },
 ];
 
 function getCurrentLevel(points: number): TrustLevelInfo {
   const level = TRUST_LEVELS.find(
-    (level) => points >= level.min && points <= level.max
+    (level) => points >= level.min && points <= level.max,
   );
   const defaultLevel = TRUST_LEVELS[0];
   if (!defaultLevel) {
-    throw new Error('TRUST_LEVELS array is empty');
+    throw new Error("TRUST_LEVELS array is empty");
   }
   return level ?? defaultLevel;
 }
@@ -110,7 +110,7 @@ function getNextLevel(currentLevel: TrustLevelInfo): TrustLevelInfo | null {
 
 function calculateProgress(
   points: number,
-  currentLevel: TrustLevelInfo
+  currentLevel: TrustLevelInfo,
 ): number {
   if (currentLevel.max === Number.POSITIVE_INFINITY) return 100;
 
@@ -121,9 +121,9 @@ function calculateProgress(
 
 export function TrustLevelBadge({
   reputationPoints,
-  size = 'md',
+  size = "md",
   showProgress = true,
-  className = '',
+  className = "",
 }: TrustLevelBadgeProps) {
   const currentLevel = getCurrentLevel(reputationPoints);
   const nextLevel = getNextLevel(currentLevel);
@@ -133,15 +133,15 @@ export function TrustLevelBadge({
 
   // Size classes
   const sizeClasses = {
-    sm: 'w-4 h-4',
-    md: 'w-6 h-6',
-    lg: 'w-8 h-8',
+    sm: "w-4 h-4",
+    md: "w-6 h-6",
+    lg: "w-8 h-8",
   };
 
   const textSizeClasses = {
-    sm: 'text-xs',
-    md: 'text-sm',
-    lg: 'text-base',
+    sm: "text-xs",
+    md: "text-sm",
+    lg: "text-base",
   };
 
   return (
@@ -154,7 +154,7 @@ export function TrustLevelBadge({
             fill="currentColor"
             strokeWidth={1.5}
           />
-          {currentLevel.level === 'elite' && (
+          {currentLevel.level === "elite" && (
             <div className="absolute inset-0 animate-pulse">
               <Icon
                 className={`${sizeClasses[size]} ${color} opacity-50`}
@@ -212,22 +212,22 @@ export function TrustLevelBadge({
  */
 interface TrustLevelIconProps {
   reputationPoints: number;
-  size?: 'sm' | 'md' | 'lg';
+  size?: "sm" | "md" | "lg";
   className?: string;
 }
 
 export function TrustLevelIcon({
   reputationPoints,
-  size = 'md',
-  className = '',
+  size = "md",
+  className = "",
 }: TrustLevelIconProps) {
   const currentLevel = getCurrentLevel(reputationPoints);
   const { Icon, color } = currentLevel;
 
   const sizeClasses = {
-    sm: 'w-4 h-4',
-    md: 'w-5 h-5',
-    lg: 'w-6 h-6',
+    sm: "w-4 h-4",
+    md: "w-5 h-5",
+    lg: "w-6 h-6",
   };
 
   return (

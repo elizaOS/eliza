@@ -34,7 +34,7 @@
  *         description: Admin access required
  */
 
-import { requireAdmin, successResponse, withErrorHandling } from '@feed/api';
+import { requireAdmin, successResponse, withErrorHandling } from "@feed/api";
 import {
   and,
   comments,
@@ -47,11 +47,11 @@ import {
   reactions,
   sql,
   users,
-} from '@feed/db';
-import { logger, toISO } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/db";
+import { logger, toISO } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
-type PeriodType = 'day' | 'week' | 'month';
+type PeriodType = "day" | "week" | "month";
 
 function getDateRange(period: PeriodType): { start: Date; end: Date } {
   const now = new Date();
@@ -59,15 +59,15 @@ function getDateRange(period: PeriodType): { start: Date; end: Date } {
   let start: Date;
 
   switch (period) {
-    case 'day':
+    case "day":
       start = new Date(end);
       start.setDate(start.getDate() - 7); // Last 7 days for daily view
       break;
-    case 'week':
+    case "week":
       start = new Date(end);
       start.setDate(start.getDate() - 28); // Last 4 weeks
       break;
-    case 'month':
+    case "month":
       start = new Date(end);
       start.setMonth(start.getMonth() - 6); // Last 6 months
       break;
@@ -80,28 +80,28 @@ function getDateRange(period: PeriodType): { start: Date; end: Date } {
 }
 
 function formatDateKey(date: Date, period: PeriodType): string {
-  if (period === 'month') {
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+  if (period === "month") {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
   }
-  const isoDate = toISO(date).split('T')[0];
-  return isoDate ?? '';
+  const isoDate = toISO(date).split("T")[0];
+  return isoDate ?? "";
 }
 
-const VALID_PERIODS: PeriodType[] = ['day', 'week', 'month'];
+const VALID_PERIODS: PeriodType[] = ["day", "week", "month"];
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   await requireAdmin(request);
 
   const { searchParams } = new URL(request.url);
-  const periodParam = searchParams.get('period') || 'week';
+  const periodParam = searchParams.get("period") || "week";
   const period: PeriodType = VALID_PERIODS.includes(periodParam as PeriodType)
     ? (periodParam as PeriodType)
-    : 'week';
+    : "week";
 
   logger.info(
-    'Admin analytics requested',
+    "Admin analytics requested",
     { period },
-    'GET /api/admin/analytics'
+    "GET /api/admin/analytics",
   );
 
   const { start, end } = getDateRange(period);
@@ -121,117 +121,117 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     // User signups
     db
       .select({
-        date: (period === 'month'
+        date: (period === "month"
           ? sql<string>`TO_CHAR(DATE_TRUNC('month', ${users.createdAt}), 'YYYY-MM')`
           : sql<string>`DATE(${users.createdAt})`
-        ).as('date'),
+        ).as("date"),
         count: count(),
       })
       .from(users)
       .where(and(gte(users.createdAt, start), lte(users.createdAt, end)))
       .groupBy(
-        period === 'month'
+        period === "month"
           ? sql`DATE_TRUNC('month', ${users.createdAt})`
-          : sql`DATE(${users.createdAt})`
+          : sql`DATE(${users.createdAt})`,
       )
       .orderBy(
-        period === 'month'
+        period === "month"
           ? sql`DATE_TRUNC('month', ${users.createdAt})`
-          : sql`DATE(${users.createdAt})`
+          : sql`DATE(${users.createdAt})`,
       )
       .limit(MAX_DATA_POINTS),
 
     // Posts
     db
       .select({
-        date: (period === 'month'
+        date: (period === "month"
           ? sql<string>`TO_CHAR(DATE_TRUNC('month', ${posts.createdAt}), 'YYYY-MM')`
           : sql<string>`DATE(${posts.createdAt})`
-        ).as('date'),
+        ).as("date"),
         count: count(),
       })
       .from(posts)
       .where(and(gte(posts.createdAt, start), lte(posts.createdAt, end)))
       .groupBy(
-        period === 'month'
+        period === "month"
           ? sql`DATE_TRUNC('month', ${posts.createdAt})`
-          : sql`DATE(${posts.createdAt})`
+          : sql`DATE(${posts.createdAt})`,
       )
       .orderBy(
-        period === 'month'
+        period === "month"
           ? sql`DATE_TRUNC('month', ${posts.createdAt})`
-          : sql`DATE(${posts.createdAt})`
+          : sql`DATE(${posts.createdAt})`,
       )
       .limit(MAX_DATA_POINTS),
 
     // Comments
     db
       .select({
-        date: (period === 'month'
+        date: (period === "month"
           ? sql<string>`TO_CHAR(DATE_TRUNC('month', ${comments.createdAt}), 'YYYY-MM')`
           : sql<string>`DATE(${comments.createdAt})`
-        ).as('date'),
+        ).as("date"),
         count: count(),
       })
       .from(comments)
       .where(and(gte(comments.createdAt, start), lte(comments.createdAt, end)))
       .groupBy(
-        period === 'month'
+        period === "month"
           ? sql`DATE_TRUNC('month', ${comments.createdAt})`
-          : sql`DATE(${comments.createdAt})`
+          : sql`DATE(${comments.createdAt})`,
       )
       .orderBy(
-        period === 'month'
+        period === "month"
           ? sql`DATE_TRUNC('month', ${comments.createdAt})`
-          : sql`DATE(${comments.createdAt})`
+          : sql`DATE(${comments.createdAt})`,
       )
       .limit(MAX_DATA_POINTS),
 
     // Reactions
     db
       .select({
-        date: (period === 'month'
+        date: (period === "month"
           ? sql<string>`TO_CHAR(DATE_TRUNC('month', ${reactions.createdAt}), 'YYYY-MM')`
           : sql<string>`DATE(${reactions.createdAt})`
-        ).as('date'),
+        ).as("date"),
         count: count(),
       })
       .from(reactions)
       .where(
-        and(gte(reactions.createdAt, start), lte(reactions.createdAt, end))
+        and(gte(reactions.createdAt, start), lte(reactions.createdAt, end)),
       )
       .groupBy(
-        period === 'month'
+        period === "month"
           ? sql`DATE_TRUNC('month', ${reactions.createdAt})`
-          : sql`DATE(${reactions.createdAt})`
+          : sql`DATE(${reactions.createdAt})`,
       )
       .orderBy(
-        period === 'month'
+        period === "month"
           ? sql`DATE_TRUNC('month', ${reactions.createdAt})`
-          : sql`DATE(${reactions.createdAt})`
+          : sql`DATE(${reactions.createdAt})`,
       )
       .limit(MAX_DATA_POINTS),
 
     // Follows
     db
       .select({
-        date: (period === 'month'
+        date: (period === "month"
           ? sql<string>`TO_CHAR(DATE_TRUNC('month', ${follows.createdAt}), 'YYYY-MM')`
           : sql<string>`DATE(${follows.createdAt})`
-        ).as('date'),
+        ).as("date"),
         count: count(),
       })
       .from(follows)
       .where(and(gte(follows.createdAt, start), lte(follows.createdAt, end)))
       .groupBy(
-        period === 'month'
+        period === "month"
           ? sql`DATE_TRUNC('month', ${follows.createdAt})`
-          : sql`DATE(${follows.createdAt})`
+          : sql`DATE(${follows.createdAt})`,
       )
       .orderBy(
-        period === 'month'
+        period === "month"
           ? sql`DATE_TRUNC('month', ${follows.createdAt})`
-          : sql`DATE(${follows.createdAt})`
+          : sql`DATE(${follows.createdAt})`,
       )
       .limit(MAX_DATA_POINTS),
   ]);
@@ -261,7 +261,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       reactions: 0,
       follows: 0,
     });
-    if (period === 'month') {
+    if (period === "month") {
       currentDate.setMonth(currentDate.getMonth() + 1);
     } else {
       currentDate.setDate(currentDate.getDate() + 1);
@@ -301,7 +301,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
   // Convert to array, sort, and calculate totals in a single pass for efficiency
   const timeSeries = Array.from(dateMap.values()).sort((a, b) =>
-    a.date.localeCompare(b.date)
+    a.date.localeCompare(b.date),
   );
 
   // Calculate totals in single pass (more efficient than multiple reduce calls)

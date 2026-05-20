@@ -5,4 +5,4 @@
  * coverage still call `/api/user-groups` for the authenticated group listing.
  */
 
-export { GET } from '../groups/route';
+export { GET } from "../groups/route";

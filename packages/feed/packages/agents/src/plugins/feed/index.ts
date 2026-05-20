@@ -23,8 +23,8 @@
  * - No Database Fallback: A2A required for all operations
  */
 
-import type { Plugin } from '@elizaos/core';
-import { logger } from '../../shared/logger';
+import type { Plugin } from "@elizaos/core";
+import { logger } from "../../shared/logger";
 // Import all actions
 import {
   buySharesAction,
@@ -36,9 +36,9 @@ import {
   openPerpPositionAction,
   sellSharesAction,
   sendMessageAction,
-} from './actions';
-import { sharedChatContextEvaluator } from './evaluators/shared-chat-context';
-import { initializeAgentA2AClient } from './integration-a2a-sdk';
+} from "./actions";
+import { sharedChatContextEvaluator } from "./evaluators/shared-chat-context";
+import { initializeAgentA2AClient } from "./integration-a2a-sdk";
 // Import all providers
 import {
   agentWalletProvider,
@@ -60,14 +60,14 @@ import {
   userProfileProvider,
   userWalletProvider,
   workingMemoryProvider,
-} from './providers';
+} from "./providers";
 
 // Export integration services
-export * from './integration';
-export { initializeAgentA2AClient } from './integration-a2a-sdk';
-export * from './services';
+export * from "./integration";
+export { initializeAgentA2AClient } from "./integration-a2a-sdk";
+export * from "./services";
 // Export types for external use
-export type { FeedRuntime } from './types';
+export type { FeedRuntime } from "./types";
 
 /**
  * Feed Plugin Export
@@ -158,9 +158,9 @@ export type { FeedRuntime } from './types';
  * See: /src/lib/agents/AUTONOMOUS_AGENTS_GUIDE.md for complete documentation
  */
 export const feedPlugin: Plugin = {
-  name: 'feed',
+  name: "feed",
   description:
-    'Feed prediction market game integration for AI agents via A2A protocol. Provides access to all 73+ A2A methods for complete platform functionality including trading, social, messaging, and more.',
+    "Feed prediction market game integration for AI agents via A2A protocol. Provides access to all 73+ A2A methods for complete platform functionality including trading, social, messaging, and more.",
 
   providers: [
     goalsProvider, // Agent goals, directives, and constraints - highest priority context
@@ -219,7 +219,7 @@ export const feedPlugin: Plugin = {
  */
 export async function initializeFeedPlugin(
   runtime: {
-    a2aClient?: import('./integration-a2a-sdk').FeedA2AClient | null;
+    a2aClient?: import("./integration-a2a-sdk").FeedA2AClient | null;
     registerPlugin?: (plugin: Plugin) => void | Promise<void>;
     agentId?: string;
   },
@@ -236,20 +236,20 @@ export async function initializeFeedPlugin(
       actions?: string[];
       version?: string;
     };
-  }
+  },
 ) {
-  logger.info('Initializing Feed plugin with A2A SDK', {
+  logger.info("Initializing Feed plugin with A2A SDK", {
     endpoint: config.endpoint,
   });
 
   // Use A2A client - requires agentId from runtime
   if (!runtime.agentId) {
-    throw new Error('Runtime must have agentId to initialize A2A client');
+    throw new Error("Runtime must have agentId to initialize A2A client");
   }
 
   const a2aClient = await initializeAgentA2AClient(runtime.agentId);
 
-  logger.debug('A2A client ready');
+  logger.debug("A2A client ready");
 
   // Inject into runtime
   runtime.a2aClient = a2aClient;
@@ -257,7 +257,7 @@ export async function initializeFeedPlugin(
   // Register plugin
   if (runtime.registerPlugin) {
     runtime.registerPlugin(feedPlugin);
-    logger.debug('Feed plugin registered with A2A client');
+    logger.debug("Feed plugin registered with A2A client");
   }
 
   return { a2aClient, plugin: feedPlugin };

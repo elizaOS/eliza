@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it } from "bun:test";
 
 // Inline the math functions since they're in a script, not a package export
 function gini(values: number[]): number {
@@ -38,69 +38,69 @@ function skewness(values: number[]): number {
   return m3;
 }
 
-describe('Gini coefficient', () => {
-  it('returns 0 for empty array', () => {
+describe("Gini coefficient", () => {
+  it("returns 0 for empty array", () => {
     expect(gini([])).toBe(0);
   });
 
-  it('returns 0 for perfectly equal distribution', () => {
+  it("returns 0 for perfectly equal distribution", () => {
     expect(gini([10, 10, 10, 10])).toBeCloseTo(0, 5);
   });
 
-  it('returns high value for concentrated distribution', () => {
+  it("returns high value for concentrated distribution", () => {
     const result = gini([100, 1, 1, 1]);
     expect(result).toBeGreaterThan(0.7);
   });
 
-  it('returns moderate value for moderate inequality', () => {
+  it("returns moderate value for moderate inequality", () => {
     const result = gini([50, 30, 15, 5]);
     expect(result).toBeGreaterThan(0.2);
     expect(result).toBeLessThan(0.7);
   });
 
-  it('returns 0 for all zeros', () => {
+  it("returns 0 for all zeros", () => {
     expect(gini([0, 0, 0])).toBe(0);
   });
 });
 
-describe('HHI (Herfindahl-Hirschman Index)', () => {
-  it('returns 0 for empty array', () => {
+describe("HHI (Herfindahl-Hirschman Index)", () => {
+  it("returns 0 for empty array", () => {
     expect(hhi([])).toBe(0);
   });
 
-  it('returns 1 for monopoly (single entity)', () => {
+  it("returns 1 for monopoly (single entity)", () => {
     expect(hhi([100])).toBeCloseTo(1, 5);
   });
 
-  it('returns 0.25 for perfect duopoly', () => {
+  it("returns 0.25 for perfect duopoly", () => {
     expect(hhi([50, 50])).toBeCloseTo(0.5, 5);
   });
 
-  it('returns low value for many equal participants', () => {
+  it("returns low value for many equal participants", () => {
     const result = hhi([10, 10, 10, 10, 10, 10, 10, 10, 10, 10]);
     expect(result).toBeCloseTo(0.1, 5);
   });
 
-  it('returns higher value for concentrated market', () => {
+  it("returns higher value for concentrated market", () => {
     const result = hhi([70, 10, 10, 5, 5]);
     expect(result).toBeGreaterThan(0.4);
   });
 });
 
-describe('Standard deviation', () => {
-  it('returns 0 for single value', () => {
+describe("Standard deviation", () => {
+  it("returns 0 for single value", () => {
     expect(stdDev([42])).toBe(0);
   });
 
-  it('returns 0 for empty array', () => {
+  it("returns 0 for empty array", () => {
     expect(stdDev([])).toBe(0);
   });
 
-  it('returns 0 for identical values', () => {
+  it("returns 0 for identical values", () => {
     expect(stdDev([5, 5, 5, 5])).toBeCloseTo(0, 5);
   });
 
-  it('returns correct value for known distribution', () => {
+  it("returns correct value for known distribution", () => {
     // [2, 4, 4, 4, 5, 5, 7, 9] → std ≈ 2.0
     const result = stdDev([2, 4, 4, 4, 5, 5, 7, 9]);
     expect(result).toBeGreaterThan(1.5);
@@ -108,24 +108,24 @@ describe('Standard deviation', () => {
   });
 });
 
-describe('Skewness', () => {
-  it('returns 0 for fewer than 3 values', () => {
+describe("Skewness", () => {
+  it("returns 0 for fewer than 3 values", () => {
     expect(skewness([])).toBe(0);
     expect(skewness([1])).toBe(0);
     expect(skewness([1, 2])).toBe(0);
   });
 
-  it('returns near 0 for symmetric distribution', () => {
+  it("returns near 0 for symmetric distribution", () => {
     const result = skewness([1, 2, 3, 4, 5, 6, 7, 8, 9]);
     expect(Math.abs(result)).toBeLessThan(0.1);
   });
 
-  it('returns positive for right-skewed distribution', () => {
+  it("returns positive for right-skewed distribution", () => {
     const result = skewness([1, 1, 1, 1, 1, 1, 1, 10, 100]);
     expect(result).toBeGreaterThan(0);
   });
 
-  it('returns negative for left-skewed distribution', () => {
+  it("returns negative for left-skewed distribution", () => {
     // Left-skewed: most values clustered high, long tail to the left
     const result = skewness([1, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99]);
     expect(result).toBeLessThan(0);

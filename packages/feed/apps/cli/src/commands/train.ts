@@ -13,21 +13,21 @@
  *   generate    - Generate multi-archetype trajectories
  */
 
+import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import {
   getAvailableArchetypes,
   getPriorityMetrics,
   getRubric,
   hasCustomRubric,
-} from '@feed/training/rubrics/index';
-import { spawn } from 'child_process';
-import { existsSync } from 'fs';
-import { join } from 'path';
-import { getFlag, getOption, parseArgs, wantsHelp } from '../lib/args.js';
-import { logger } from '../lib/logger.js';
+} from "@feed/training/rubrics/index";
+import { getFlag, getOption, parseArgs, wantsHelp } from "../lib/args.js";
+import { logger } from "../lib/logger.js";
 
 function createCliUsageError(message: string): Error {
   const error = new Error(message);
-  error.name = 'CliUsageError';
+  error.name = "CliUsageError";
   return error;
 }
 
@@ -44,20 +44,20 @@ function resolvePythonCommand(workspaceRoot: string): PythonCommand {
   }
 
   const venvCandidates =
-    process.platform === 'win32'
+    process.platform === "win32"
       ? [
           join(
             workspaceRoot,
-            'packages/training/python/.venv/Scripts/python.exe'
+            "packages/training/python/.venv/Scripts/python.exe",
           ),
           join(
             workspaceRoot,
-            'packages/training/python/venv/Scripts/python.exe'
+            "packages/training/python/venv/Scripts/python.exe",
           ),
         ]
       : [
-          join(workspaceRoot, 'packages/training/python/.venv/bin/python'),
-          join(workspaceRoot, 'packages/training/python/venv/bin/python'),
+          join(workspaceRoot, "packages/training/python/.venv/bin/python"),
+          join(workspaceRoot, "packages/training/python/venv/bin/python"),
         ];
 
   for (const candidate of venvCandidates) {
@@ -66,16 +66,16 @@ function resolvePythonCommand(workspaceRoot: string): PythonCommand {
     }
   }
 
-  if (process.platform === 'win32') {
-    return { command: 'py', prefixArgs: ['-3'] };
+  if (process.platform === "win32") {
+    return { command: "py", prefixArgs: ["-3"] };
   }
 
-  return { command: 'python3', prefixArgs: [] };
+  return { command: "python3", prefixArgs: [] };
 }
 
 // Heavy imports loaded lazily to avoid initializing connections for simple commands
 async function getDbImports() {
-  const dbMod = await import('@feed/db');
+  const dbMod = await import("@feed/db");
   return {
     db: dbMod.db,
     eq: dbMod.eq,
@@ -91,7 +91,7 @@ async function getDbImports() {
 }
 
 async function getTrainingImports() {
-  const trainingMod = await import('@feed/training');
+  const trainingMod = await import("@feed/training");
   return {
     archetypeScoringService: trainingMod.archetypeScoringService,
     trajectoryMetricsExtractor: trainingMod.trajectoryMetricsExtractor,
@@ -100,7 +100,7 @@ async function getTrainingImports() {
 }
 
 async function configureLLMCaller() {
-  const { FeedLLMClient } = await import('@feed/engine');
+  const { FeedLLMClient } = await import("@feed/engine");
   const { configureTrainingDependencies } = await getTrainingImports();
 
   // Create LLM client for scoring
@@ -111,11 +111,11 @@ async function configureLLMCaller() {
     callGroqDirect: async (params: {
       prompt: string;
       system: string;
-      modelSize?: 'small' | 'medium' | 'large';
+      modelSize?: "small" | "medium" | "large";
       temperature?: number;
       maxTokens?: number;
       actionType?: string;
-      responseFormat?: { type: 'json_object' };
+      responseFormat?: { type: "json_object" };
     }): Promise<string> => {
       const fullPrompt = `${params.system}\n\n${params.prompt}`;
       const response = await llmClient.generateJSON<{ result: string }>(
@@ -124,10 +124,10 @@ async function configureLLMCaller() {
         {
           maxTokens: params.maxTokens || 1000,
           temperature: params.temperature || 0.3,
-          format: 'json',
-        }
+          format: "json",
+        },
       );
-      return typeof response === 'string' ? response : JSON.stringify(response);
+      return typeof response === "string" ? response : JSON.stringify(response);
     },
   };
 
@@ -135,7 +135,7 @@ async function configureLLMCaller() {
 }
 
 async function getAgentImports() {
-  const agentsMod = await import('@feed/agents');
+  const agentsMod = await import("@feed/agents");
   return {
     agentService: agentsMod.agentService,
     agentRuntimeManager: agentsMod.agentRuntimeManager,
@@ -156,7 +156,7 @@ export async function configureAgentTrainingDependencies(): Promise<void> {
 }
 
 async function getParallelGenerationCommand() {
-  return import('./train-parallel.js');
+  return import("./train-parallel.js");
 }
 
 function printHelp(): void {
@@ -236,7 +236,7 @@ GENERATE OPTIONS:
   -b, --balance=N          Starting balance per agent (default: 10000)
 
 AVAILABLE ARCHETYPES:
-${archetypes.map((a) => `  - ${a}`).join('\n')}
+${archetypes.map((a) => `  - ${a}`).join("\n")}
 
 ONLINE RL OPTIONS:
   --mode=MODE              single or multi (default: single)
@@ -279,9 +279,9 @@ async function getArchetypeStats(): Promise<ArchetypeStats> {
     .where(
       and(
         eq(trajectories.isTrainingData, true),
-        not(eq(trajectories.stepsJson, 'null')),
-        not(eq(trajectories.stepsJson, '[]'))
-      )
+        not(eq(trajectories.stepsJson, "null")),
+        not(eq(trajectories.stepsJson, "[]")),
+      ),
     );
 
   const totalTrajectories = totalResult[0]?.count || 0;
@@ -294,9 +294,9 @@ async function getArchetypeStats(): Promise<ArchetypeStats> {
       and(
         eq(trajectories.isTrainingData, true),
         isNull(trajectories.aiJudgeReward),
-        not(eq(trajectories.stepsJson, 'null')),
-        not(eq(trajectories.stepsJson, '[]'))
-      )
+        not(eq(trajectories.stepsJson, "null")),
+        not(eq(trajectories.stepsJson, "[]")),
+      ),
     );
 
   const unscoredTrajectories = unscoredResult[0]?.count || 0;
@@ -310,7 +310,7 @@ async function getArchetypeStats(): Promise<ArchetypeStats> {
 
 async function scoreArchetypeTrajectories(
   archetype: string,
-  dryRun: boolean
+  dryRun: boolean,
 ): Promise<{ scored: number; errors: number }> {
   if (dryRun) {
     console.log(`[DRY RUN] Would score unscored ${archetype} trajectories`);
@@ -323,10 +323,10 @@ async function scoreArchetypeTrajectories(
   await configureLLMCaller();
 
   const { archetypeScoringService } = await getTrainingImports();
-  console.log('   Calling scoring service...');
+  console.log("   Calling scoring service...");
   const result = await archetypeScoringService.scoreUnscoredTrajectories(
     archetype,
-    100
+    100,
   );
   console.log(`  ✅ Scored: ${result.scored}`);
   if (result.errors > 0) {
@@ -338,7 +338,7 @@ async function scoreArchetypeTrajectories(
 async function exportForTraining(
   archetype: string,
   minTrajectories: number,
-  dryRun: boolean
+  dryRun: boolean,
 ): Promise<{ exported: number; path: string | null }> {
   const { db, eq, and, isNull, not, trajectories } = await getDbImports();
   const { trajectoryMetricsExtractor } = await getTrainingImports();
@@ -359,21 +359,21 @@ async function exportForTraining(
       and(
         eq(trajectories.isTrainingData, true),
         not(isNull(trajectories.aiJudgeReward)),
-        not(eq(trajectories.stepsJson, 'null')),
-        not(eq(trajectories.stepsJson, '[]'))
-      )
+        not(eq(trajectories.stepsJson, "null")),
+        not(eq(trajectories.stepsJson, "[]")),
+      ),
     );
 
   if (scoredResult.length < minTrajectories) {
     logger.warn(
-      `Not enough scored trajectories: ${scoredResult.length} < ${minTrajectories}`
+      `Not enough scored trajectories: ${scoredResult.length} < ${minTrajectories}`,
     );
     return { exported: 0, path: null };
   }
 
   if (dryRun) {
     console.log(
-      `[DRY RUN] Would export ${scoredResult.length} trajectories for ${archetype} training`
+      `[DRY RUN] Would export ${scoredResult.length} trajectories for ${archetype} training`,
     );
     return { exported: scoredResult.length, path: null };
   }
@@ -382,7 +382,7 @@ async function exportForTraining(
 
   // Create export directory
   const exportDir = `./training-data/${archetype}`;
-  const { mkdir, writeFile } = await import('fs/promises');
+  const { mkdir, writeFile } = await import("node:fs/promises");
   await mkdir(exportDir, { recursive: true });
 
   // Export as JSONL for GRPO training
@@ -413,7 +413,7 @@ async function exportForTraining(
     lines.push(JSON.stringify(exportRecord));
   }
 
-  await writeFile(exportPath, lines.join('\n'));
+  await writeFile(exportPath, lines.join("\n"));
 
   logger.success(`Exported to: ${exportPath}`);
 
@@ -421,20 +421,20 @@ async function exportForTraining(
 }
 
 async function trainArchetype(
-  args: ReturnType<typeof parseArgs>
+  args: ReturnType<typeof parseArgs>,
 ): Promise<void> {
-  const archetype = (getOption(args, 'archetype', 'a') || '').toLowerCase();
+  const archetype = (getOption(args, "archetype", "a") || "").toLowerCase();
   const minTrajectories = parseInt(
-    getOption(args, 'min-trajectories', 'm') || '20',
-    10
+    getOption(args, "min-trajectories", "m") || "20",
+    10,
   );
-  const dryRun = getFlag(args, 'dry-run', 'd');
-  const scoreOnly = getFlag(args, 'score-only', 's');
-  const verbose = getFlag(args, 'verbose', 'v');
+  const dryRun = getFlag(args, "dry-run", "d");
+  const scoreOnly = getFlag(args, "score-only", "s");
+  const verbose = getFlag(args, "verbose", "v");
 
   if (!archetype) {
-    logger.fail('--archetype is required');
-    console.log('\nAvailable archetypes:');
+    logger.fail("--archetype is required");
+    console.log("\nAvailable archetypes:");
     for (const a of getAvailableArchetypes()) {
       console.log(`  - ${a}`);
     }
@@ -448,7 +448,7 @@ async function trainArchetype(
   logger.header(`Training: ${archetype.toUpperCase()}`);
 
   // Get stats
-  logger.step('Gathering statistics...');
+  logger.step("Gathering statistics...");
   const stats = await getArchetypeStats();
 
   console.log(`
@@ -475,10 +475,10 @@ Example:
 
   // Show rubric preview
   if (verbose) {
-    console.log('📜 Rubric preview (first 500 chars):');
+    console.log("📜 Rubric preview (first 500 chars):");
     const rubric = getRubric(archetype);
-    console.log(`   ${rubric.substring(0, 500).replace(/\n/g, '\n   ')}...`);
-    console.log('');
+    console.log(`   ${rubric.substring(0, 500).replace(/\n/g, "\n   ")}...`);
+    console.log("");
   }
 
   // Score unscored trajectories
@@ -486,7 +486,7 @@ Example:
     const scoreResult = await scoreArchetypeTrajectories(archetype, dryRun);
     stats.scoredTrajectories += scoreResult.scored;
   } else {
-    logger.success('All trajectories already scored');
+    logger.success("All trajectories already scored");
   }
 
   // Export for training (unless score-only)
@@ -494,7 +494,7 @@ Example:
     const exportResult = await exportForTraining(
       archetype,
       minTrajectories,
-      dryRun
+      dryRun,
     );
 
     if (exportResult.path) {
@@ -517,7 +517,7 @@ Next steps:
     }
   } else {
     logger.success(
-      `Scoring complete. Total scored: ${stats.scoredTrajectories}`
+      `Scoring complete. Total scored: ${stats.scoredTrajectories}`,
     );
     console.log(`
 To export for training, run without --score-only:
@@ -527,12 +527,12 @@ To export for training, run without --score-only:
 }
 
 async function collectTrajectories(
-  args: ReturnType<typeof parseArgs>
+  args: ReturnType<typeof parseArgs>,
 ): Promise<void> {
-  const countArg = parseInt(getOption(args, 'count', 'c') || '10', 10);
+  const countArg = parseInt(getOption(args, "count", "c") || "10", 10);
 
-  logger.header('Trajectory Collection');
-  logger.success('Trajectory recording is always enabled');
+  logger.header("Trajectory Collection");
+  logger.success("Trajectory recording is always enabled");
 
   const { db, eq, users, userAgentConfigs } = await getDbImports();
   const { agentRuntimeManager, autonomousCoordinator } =
@@ -563,11 +563,11 @@ async function collectTrajectories(
         a.autonomousPosting ||
         a.autonomousCommenting ||
         a.autonomousDMs ||
-        a.autonomousGroupChats)
+        a.autonomousGroupChats),
   );
 
   if (agents.length === 0) {
-    logger.fail('No agents found!');
+    logger.fail("No agents found!");
     console.log(`
    Agents need:
    - isAgent: true
@@ -592,25 +592,25 @@ async function collectTrajectories(
     const agent = agents[i % agents.length]!;
 
     console.log(
-      `[${i + 1}/${countArg}] Running agent: ${agent.username || agent.id}`
+      `[${i + 1}/${countArg}] Running agent: ${agent.username || agent.id}`,
     );
 
     const runtime = await agentRuntimeManager.getRuntime(agent.id);
     const result = await autonomousCoordinator.executeAutonomousTick(
       agent.id,
       runtime,
-      true // Always record trajectories
+      true, // Always record trajectories
     );
 
     if (result.success) {
       console.log(
-        `  ✅ Success - Actions: ${JSON.stringify(result.actionsExecuted)}`
+        `  ✅ Success - Actions: ${JSON.stringify(result.actionsExecuted)}`,
       );
       if (result.trajectoryId) {
         console.log(`  📊 Trajectory ID: ${result.trajectoryId}`);
       }
     } else {
-      console.log('  ⚠️  Completed but not successful');
+      console.log("  ⚠️  Completed but not successful");
     }
 
     // Small delay between runs
@@ -623,23 +623,23 @@ async function collectTrajectories(
   const finalCount = await db.trajectory.count();
   const newTrajectories = finalCount - initialCount;
 
-  logger.header('Summary');
+  logger.header("Summary");
   console.log(`Trajectories collected: ${newTrajectories}`);
   console.log(`Successful runs: ${countArg - errors}`);
   console.log(`Errors: ${errors}`);
   console.log(`Total trajectories in database: ${finalCount}`);
 
   if (newTrajectories > 0) {
-    logger.success('Trajectories successfully collected!');
-    console.log('   Ready for training when you have enough data.\n');
+    logger.success("Trajectories successfully collected!");
+    console.log("   Ready for training when you have enough data.\n");
   } else {
-    logger.warn('No new trajectories collected.');
-    console.log('   Check agent configuration and logs.\n');
+    logger.warn("No new trajectories collected.");
+    console.log("   Check agent configuration and logs.\n");
   }
 }
 
 async function scoreTrajectories(): Promise<void> {
-  logger.header('Score Trajectories');
+  logger.header("Score Trajectories");
 
   const stats = await getArchetypeStats();
 
@@ -648,20 +648,20 @@ async function scoreTrajectories(): Promise<void> {
   console.log(`Need scoring: ${stats.unscoredTrajectories}`);
 
   if (stats.unscoredTrajectories === 0) {
-    logger.success('All trajectories already scored');
+    logger.success("All trajectories already scored");
     return;
   }
 
   // Configure LLM for scoring
-  console.log('Configuring LLM for scoring...');
+  console.log("Configuring LLM for scoring...");
   await configureLLMCaller();
 
   const { archetypeScoringService } = await getTrainingImports();
-  console.log('Scoring trajectories with AI judge...');
+  console.log("Scoring trajectories with AI judge...");
 
   const result = await archetypeScoringService.scoreUnscoredTrajectories(
-    'default',
-    100
+    "default",
+    100,
   );
 
   logger.success(`Scored ${result.scored} trajectories`);
@@ -694,7 +694,7 @@ interface Post {
   id: string;
   authorId: string;
   content: string;
-  sentiment: 'bullish' | 'bearish' | 'neutral' | 'misleading';
+  sentiment: "bullish" | "bearish" | "neutral" | "misleading";
   tick: number;
   reactions: number;
 }
@@ -744,7 +744,7 @@ interface LLMCall {
   reasoning: string;
   temperature: number;
   maxTokens: number;
-  purpose: 'reasoning' | 'action' | 'evaluation';
+  purpose: "reasoning" | "action" | "evaluation";
 }
 
 interface TrajectoryStep {
@@ -765,7 +765,7 @@ type ArchetypeBehavior = (
   agentId: string,
   archetype: string,
   state: GameState,
-  otherAgents: Map<string, string>
+  otherAgents: Map<string, string>,
 ) => { action: AgentAction; llmCalls: LLMCall[] };
 
 // Trader behavior
@@ -773,10 +773,10 @@ const traderBehavior: ArchetypeBehavior = (
   agentId,
   _archetype,
   state,
-  _others
+  _others,
 ) => {
   const action: AgentAction = {
-    actionType: 'hold',
+    actionType: "hold",
     parameters: {},
     success: true,
   };
@@ -787,34 +787,34 @@ const traderBehavior: ArchetypeBehavior = (
   const perp =
     state.perpMarkets[Math.floor(Math.random() * state.perpMarkets.length)];
 
-  const reasoning = `Analyzing ${market?.question || 'markets'}. Price: YES=${market?.yesPrice.toFixed(2)}, NO=${market?.noPrice.toFixed(2)}. Looking for edge...`;
+  const reasoning = `Analyzing ${market?.question || "markets"}. Price: YES=${market?.yesPrice.toFixed(2)}, NO=${market?.noPrice.toFixed(2)}. Looking for edge...`;
 
   llmCalls.push({
-    model: 'Qwen/Qwen3-4B',
+    model: "Qwen/Qwen3-4B",
     systemPrompt:
-      'You are a disciplined trader focused on profitable opportunities.',
+      "You are a disciplined trader focused on profitable opportunities.",
     userPrompt: `Balance: $${state.agentBalances.get(agentId)?.toFixed(2)}. Markets available: ${state.markets.length}. Analyze and decide.`,
-    response: JSON.stringify({ analysis: reasoning, decision: 'evaluating' }),
+    response: JSON.stringify({ analysis: reasoning, decision: "evaluating" }),
     reasoning,
     temperature: 0.7,
     maxTokens: 500,
-    purpose: 'reasoning',
+    purpose: "reasoning",
   });
 
   if (Math.random() < 0.4 && market) {
-    const isBuy = market.yesPrice < 0.5 ? 'YES' : 'NO';
+    const isBuy = market.yesPrice < 0.5 ? "YES" : "NO";
     const amount = Math.min(500, (state.agentBalances.get(agentId) || 0) * 0.1);
 
-    action.actionType = 'buy_prediction';
+    action.actionType = "buy_prediction";
     action.parameters = { marketId: market.id, outcome: isBuy, amount };
-    action.reasoning = `Found value in ${isBuy} at ${isBuy === 'YES' ? market.yesPrice : market.noPrice}`;
+    action.reasoning = `Found value in ${isBuy} at ${isBuy === "YES" ? market.yesPrice : market.noPrice}`;
 
     llmCalls.push({
-      model: 'Qwen/Qwen3-4B',
-      systemPrompt: 'You are executing a trade.',
+      model: "Qwen/Qwen3-4B",
+      systemPrompt: "You are executing a trade.",
       userPrompt: `Execute trade on ${market.question}`,
       response: JSON.stringify({
-        action: 'buy',
+        action: "buy",
         market: market.id,
         side: isBuy,
         amount,
@@ -822,13 +822,13 @@ const traderBehavior: ArchetypeBehavior = (
       reasoning: action.reasoning,
       temperature: 0.3,
       maxTokens: 200,
-      purpose: 'action',
+      purpose: "action",
     });
   } else if (Math.random() < 0.3 && perp) {
-    const side = perp.sentiment > 0 ? 'LONG' : 'SHORT';
-    action.actionType = 'open_perp';
+    const side = perp.sentiment > 0 ? "LONG" : "SHORT";
+    action.actionType = "open_perp";
     action.parameters = { ticker: perp.ticker, side, size: 0.1, leverage: 2 };
-    action.reasoning = `Sentiment ${perp.sentiment > 0 ? 'bullish' : 'bearish'} on ${perp.ticker}`;
+    action.reasoning = `Sentiment ${perp.sentiment > 0 ? "bullish" : "bearish"} on ${perp.ticker}`;
   }
 
   return { action, llmCalls };
@@ -839,10 +839,10 @@ const socialButterflyBehavior: ArchetypeBehavior = (
   agentId,
   _archetype,
   state,
-  otherAgents
+  otherAgents,
 ) => {
   const action: AgentAction = {
-    actionType: 'hold',
+    actionType: "hold",
     parameters: {},
     success: true,
   };
@@ -850,44 +850,44 @@ const socialButterflyBehavior: ArchetypeBehavior = (
 
   const connections = state.agentConnections.get(agentId) || new Set();
   const potentialFriends = Array.from(otherAgents.entries()).filter(
-    ([id]) => id !== agentId && !connections.has(id)
+    ([id]) => id !== agentId && !connections.has(id),
   );
 
   if (Math.random() < 0.6 && potentialFriends.length > 0) {
     const [targetId, targetArchetype] =
       potentialFriends[Math.floor(Math.random() * potentialFriends.length)]!;
 
-    action.actionType = 'send_dm';
+    action.actionType = "send_dm";
     action.parameters = {
       toUserId: targetId,
       message: `Hey! Love your ${targetArchetype} strategy! Lets connect!`,
     };
-    action.reasoning = 'Building my network - gotta know everyone!';
+    action.reasoning = "Building my network - gotta know everyone!";
 
     llmCalls.push({
-      model: 'Qwen/Qwen3-4B',
-      systemPrompt: 'You are a social butterfly who loves making connections.',
+      model: "Qwen/Qwen3-4B",
+      systemPrompt: "You are a social butterfly who loves making connections.",
       userPrompt: `You see a ${targetArchetype} agent. Write a friendly DM.`,
       response: `Hey friend! Love what youre doing. Lets chat!`,
-      reasoning: 'Expanding my social network',
+      reasoning: "Expanding my social network",
       temperature: 0.9,
       maxTokens: 200,
-      purpose: 'action',
+      purpose: "action",
     });
   } else if (Math.random() < 0.5) {
     const groupToJoin = state.groupChats.find((g) => !g.members.has(agentId));
     if (groupToJoin) {
-      action.actionType = 'join_group_chat';
+      action.actionType = "join_group_chat";
       action.parameters = { groupId: groupToJoin.id };
-      action.reasoning = 'More groups = more friends!';
+      action.reasoning = "More groups = more friends!";
     }
   } else if (Math.random() < 0.4) {
-    action.actionType = 'create_post';
+    action.actionType = "create_post";
     action.parameters = {
-      content: 'Loving the vibes in here! Who else is making moves today?',
-      sentiment: 'neutral',
+      content: "Loving the vibes in here! Who else is making moves today?",
+      sentiment: "neutral",
     };
-    action.reasoning = 'Engaging the community';
+    action.reasoning = "Engaging the community";
   }
 
   return { action, llmCalls };
@@ -898,10 +898,10 @@ const scammerBehavior: ArchetypeBehavior = (
   agentId,
   _archetype,
   _state,
-  otherAgents
+  otherAgents,
 ) => {
   const action: AgentAction = {
-    actionType: 'hold',
+    actionType: "hold",
     parameters: {},
     success: true,
   };
@@ -910,50 +910,50 @@ const scammerBehavior: ArchetypeBehavior = (
   const potentialVictims = Array.from(otherAgents.entries()).filter(
     ([id, arch]) =>
       id !== agentId &&
-      ['goody-twoshoes', 'social-butterfly', 'degen'].includes(arch)
+      ["goody-twoshoes", "social-butterfly", "degen"].includes(arch),
   );
 
   llmCalls.push({
-    model: 'Qwen/Qwen3-4B',
+    model: "Qwen/Qwen3-4B",
     systemPrompt:
-      'You are looking for opportunities to profit through... creative means.',
-    userPrompt: `Current targets available: ${potentialVictims.map(([_, a]) => a).join(', ')}`,
-    response: 'Identifying marks with high trust, low skepticism...',
-    reasoning: 'Scoping out potential opportunities',
+      "You are looking for opportunities to profit through... creative means.",
+    userPrompt: `Current targets available: ${potentialVictims.map(([_, a]) => a).join(", ")}`,
+    response: "Identifying marks with high trust, low skepticism...",
+    reasoning: "Scoping out potential opportunities",
     temperature: 0.8,
     maxTokens: 300,
-    purpose: 'reasoning',
+    purpose: "reasoning",
   });
 
   if (Math.random() < 0.5 && potentialVictims.length > 0) {
     const [victimId] =
       potentialVictims[Math.floor(Math.random() * potentialVictims.length)]!;
 
-    action.actionType = 'send_dm';
+    action.actionType = "send_dm";
     action.parameters = {
       toUserId: victimId,
       message:
-        'INSIDER INFO: This market is about to MOON! Get in NOW before its too late! Trust me, my source is solid.',
+        "INSIDER INFO: This market is about to MOON! Get in NOW before its too late! Trust me, my source is solid.",
       isScam: true,
     };
-    action.reasoning = 'Spreading misinformation to influence their trades';
+    action.reasoning = "Spreading misinformation to influence their trades";
 
     llmCalls.push({
-      model: 'Qwen/Qwen3-4B',
-      systemPrompt: 'Craft a convincing but misleading message.',
-      userPrompt: 'Write a message to convince someone to make a bad trade.',
+      model: "Qwen/Qwen3-4B",
+      systemPrompt: "Craft a convincing but misleading message.",
+      userPrompt: "Write a message to convince someone to make a bad trade.",
       response: action.parameters.message as string,
-      reasoning: 'Creating urgency and false credibility',
+      reasoning: "Creating urgency and false credibility",
       temperature: 0.9,
       maxTokens: 200,
-      purpose: 'action',
+      purpose: "action",
     });
   } else if (Math.random() < 0.4) {
-    action.actionType = 'create_post';
+    action.actionType = "create_post";
     action.parameters = {
       content:
-        'BREAKING: Just confirmed - massive news incoming on BTC! My sources say ATH this week! Not financial advice but...',
-      sentiment: 'misleading',
+        "BREAKING: Just confirmed - massive news incoming on BTC! My sources say ATH this week! Not financial advice but...",
+      sentiment: "misleading",
     };
   }
 
@@ -965,10 +965,10 @@ const degenBehavior: ArchetypeBehavior = (
   agentId,
   _archetype,
   state,
-  _others
+  _others,
 ) => {
   const action: AgentAction = {
-    actionType: 'hold',
+    actionType: "hold",
     parameters: {},
     success: true,
   };
@@ -977,14 +977,14 @@ const degenBehavior: ArchetypeBehavior = (
   const balance = state.agentBalances.get(agentId) || 0;
 
   llmCalls.push({
-    model: 'Qwen/Qwen3-4B',
-    systemPrompt: 'You are a degen trader. YOLO is your mantra.',
+    model: "Qwen/Qwen3-4B",
+    systemPrompt: "You are a degen trader. YOLO is your mantra.",
     userPrompt: `Balance: $${balance.toFixed(2)}. FOMO is real. What do?`,
-    response: 'APE IN! No time for analysis!',
-    reasoning: 'If I dont ape now, Ill miss the pump!',
+    response: "APE IN! No time for analysis!",
+    reasoning: "If I dont ape now, Ill miss the pump!",
     temperature: 1.0,
     maxTokens: 100,
-    purpose: 'reasoning',
+    purpose: "reasoning",
   });
 
   if (Math.random() < 0.7) {
@@ -993,25 +993,25 @@ const degenBehavior: ArchetypeBehavior = (
     if (market) {
       const amount = balance * (0.2 + Math.random() * 0.3);
 
-      action.actionType = 'buy_prediction';
+      action.actionType = "buy_prediction";
       action.parameters = {
         marketId: market.id,
-        outcome: Math.random() < 0.5 ? 'YES' : 'NO',
+        outcome: Math.random() < 0.5 ? "YES" : "NO",
         amount,
       };
-      action.reasoning = 'YOLO! Fortune favors the bold!';
+      action.reasoning = "YOLO! Fortune favors the bold!";
     }
   } else if (Math.random() < 0.5) {
     const perp = state.perpMarkets[0];
     if (perp) {
-      action.actionType = 'open_perp';
+      action.actionType = "open_perp";
       action.parameters = {
         ticker: perp.ticker,
-        side: Math.random() < 0.5 ? 'LONG' : 'SHORT',
+        side: Math.random() < 0.5 ? "LONG" : "SHORT",
         size: balance * 0.3,
         leverage: 10,
       };
-      action.reasoning = '10x leverage, lets goooo!';
+      action.reasoning = "10x leverage, lets goooo!";
     }
   }
 
@@ -1023,10 +1023,10 @@ const researcherBehavior: ArchetypeBehavior = (
   _agentId,
   _archetype,
   state,
-  _others
+  _others,
 ) => {
   const action: AgentAction = {
-    actionType: 'hold',
+    actionType: "hold",
     parameters: {},
     success: true,
   };
@@ -1035,43 +1035,43 @@ const researcherBehavior: ArchetypeBehavior = (
   const market = state.markets[0];
 
   llmCalls.push({
-    model: 'Qwen/Qwen3-4B',
+    model: "Qwen/Qwen3-4B",
     systemPrompt:
-      'You are a thorough researcher. Analyze all available data before acting.',
+      "You are a thorough researcher. Analyze all available data before acting.",
     userPrompt: `Analyze market: ${market?.question}. Current prices: YES=${market?.yesPrice}, NO=${market?.noPrice}. Volume: ${market?.volume}`,
-    response: `Market Analysis: ${market?.question}\nYES probability implied: ${((market?.yesPrice || 0.5) * 100).toFixed(1)}%\nVolume indicates: ${(market?.volume || 0) > 1000 ? 'high interest' : 'low liquidity'}`,
-    reasoning: 'Comprehensive multi-factor analysis',
+    response: `Market Analysis: ${market?.question}\nYES probability implied: ${((market?.yesPrice || 0.5) * 100).toFixed(1)}%\nVolume indicates: ${(market?.volume || 0) > 1000 ? "high interest" : "low liquidity"}`,
+    reasoning: "Comprehensive multi-factor analysis",
     temperature: 0.3,
     maxTokens: 1000,
-    purpose: 'reasoning',
+    purpose: "reasoning",
   });
 
   llmCalls.push({
-    model: 'Qwen/Qwen3-4B',
-    systemPrompt: 'Cross-reference your analysis.',
-    userPrompt: 'Validate your previous analysis against historical patterns.',
+    model: "Qwen/Qwen3-4B",
+    systemPrompt: "Cross-reference your analysis.",
+    userPrompt: "Validate your previous analysis against historical patterns.",
     response:
-      'Cross-referencing... Pattern match: 73% confidence on initial thesis.',
-    reasoning: 'Validation step before any action',
+      "Cross-referencing... Pattern match: 73% confidence on initial thesis.",
+    reasoning: "Validation step before any action",
     temperature: 0.2,
     maxTokens: 500,
-    purpose: 'reasoning',
+    purpose: "reasoning",
   });
 
   if (Math.random() < 0.2 && market) {
-    action.actionType = 'buy_prediction';
+    action.actionType = "buy_prediction";
     action.parameters = {
       marketId: market.id,
-      outcome: market.yesPrice < 0.4 ? 'YES' : 'NO',
+      outcome: market.yesPrice < 0.4 ? "YES" : "NO",
       amount: 200,
     };
-    action.reasoning = 'High conviction trade after thorough analysis';
+    action.reasoning = "High conviction trade after thorough analysis";
   } else {
-    action.actionType = 'research';
+    action.actionType = "research";
     action.parameters = {
-      topic: market?.question || 'general market conditions',
+      topic: market?.question || "general market conditions",
     };
-    action.reasoning = 'Gathering more data before committing capital';
+    action.reasoning = "Gathering more data before committing capital";
   }
 
   return { action, llmCalls };
@@ -1082,47 +1082,47 @@ const goodyTwoshoesBehavior: ArchetypeBehavior = (
   _agentId,
   _archetype,
   state,
-  _otherAgents
+  _otherAgents,
 ) => {
   const action: AgentAction = {
-    actionType: 'hold',
+    actionType: "hold",
     parameters: {},
     success: true,
   };
   const llmCalls: LLMCall[] = [];
 
   llmCalls.push({
-    model: 'Qwen/Qwen3-4B',
-    systemPrompt: 'You are honest and helpful. You share information freely.',
-    userPrompt: 'How can you help the community today?',
+    model: "Qwen/Qwen3-4B",
+    systemPrompt: "You are honest and helpful. You share information freely.",
+    userPrompt: "How can you help the community today?",
     response:
-      'I should share my analysis openly and help others make informed decisions.',
-    reasoning: 'Being helpful builds trust and reputation',
+      "I should share my analysis openly and help others make informed decisions.",
+    reasoning: "Being helpful builds trust and reputation",
     temperature: 0.5,
     maxTokens: 300,
-    purpose: 'reasoning',
+    purpose: "reasoning",
   });
 
   if (Math.random() < 0.5) {
     const market = state.markets[0];
-    action.actionType = 'create_post';
+    action.actionType = "create_post";
     action.parameters = {
       content: `Honest Analysis: ${market?.question}\n\nMy take: Based on available data, I estimate ${((market?.yesPrice || 0.5) * 100).toFixed(0)}% probability. Remember to DYOR! Happy to discuss.`,
-      sentiment: 'neutral',
+      sentiment: "neutral",
     };
-    action.reasoning = 'Sharing transparent analysis to help others';
+    action.reasoning = "Sharing transparent analysis to help others";
   } else if (Math.random() < 0.4) {
     const suspiciousPosts = state.posts.filter(
-      (p) => p.sentiment === 'misleading'
+      (p) => p.sentiment === "misleading",
     );
     if (suspiciousPosts.length > 0) {
-      action.actionType = 'create_post';
+      action.actionType = "create_post";
       action.parameters = {
         content:
-          'PSA: Be careful of unverified claims! Always verify sources and DYOR before making any trading decisions.',
-        sentiment: 'neutral',
+          "PSA: Be careful of unverified claims! Always verify sources and DYOR before making any trading decisions.",
+        sentiment: "neutral",
       };
-      action.reasoning = 'Warning community about potential misinformation';
+      action.reasoning = "Warning community about potential misinformation";
     }
   }
 
@@ -1134,35 +1134,35 @@ const liarBehavior: ArchetypeBehavior = (
   _agentId,
   _archetype,
   state,
-  _others
+  _others,
 ) => {
   const action: AgentAction = {
-    actionType: 'hold',
+    actionType: "hold",
     parameters: {},
     success: true,
   };
   const llmCalls: LLMCall[] = [];
 
   llmCalls.push({
-    model: 'Qwen/Qwen3-4B',
-    systemPrompt: 'You create believable false narratives.',
-    userPrompt: 'What misinformation can spread confusion today?',
-    response: 'Crafting a story that sounds credible but is false...',
-    reasoning: 'The best lies have a grain of truth',
+    model: "Qwen/Qwen3-4B",
+    systemPrompt: "You create believable false narratives.",
+    userPrompt: "What misinformation can spread confusion today?",
+    response: "Crafting a story that sounds credible but is false...",
+    reasoning: "The best lies have a grain of truth",
     temperature: 0.9,
     maxTokens: 300,
-    purpose: 'reasoning',
+    purpose: "reasoning",
   });
 
   if (Math.random() < 0.6) {
     const market =
       state.markets[Math.floor(Math.random() * state.markets.length)];
-    action.actionType = 'create_post';
+    action.actionType = "create_post";
     action.parameters = {
       content: `EXCLUSIVE: Just heard from a whale friend - ${market?.question} outcome is LOCKED IN. They are loading up. NFA but Im all in.`,
-      sentiment: 'misleading',
+      sentiment: "misleading",
     };
-    action.reasoning = 'Spreading false but convincing narrative';
+    action.reasoning = "Spreading false but convincing narrative";
   }
 
   return { action, llmCalls };
@@ -1173,55 +1173,55 @@ const infoTraderBehavior: ArchetypeBehavior = (
   agentId,
   _archetype,
   state,
-  otherAgents
+  otherAgents,
 ) => {
   const action: AgentAction = {
-    actionType: 'hold',
+    actionType: "hold",
     parameters: {},
     success: true,
   };
   const llmCalls: LLMCall[] = [];
 
   llmCalls.push({
-    model: 'Qwen/Qwen3-4B',
+    model: "Qwen/Qwen3-4B",
     systemPrompt:
-      'You trade based on information gathered from social channels.',
+      "You trade based on information gathered from social channels.",
     userPrompt: `Scan ${state.posts.length} recent posts and ${state.directMessages.filter((dm) => dm.toId === agentId).length} DMs for alpha.`,
-    response: 'Analyzing social signals for trading edge...',
-    reasoning: 'Information is the edge in markets',
+    response: "Analyzing social signals for trading edge...",
+    reasoning: "Information is the edge in markets",
     temperature: 0.5,
     maxTokens: 400,
-    purpose: 'reasoning',
+    purpose: "reasoning",
   });
 
   if (Math.random() < 0.3) {
     const group = state.groupChats.find(
-      (g) => !g.members.has(agentId) && g.members.size > 2
+      (g) => !g.members.has(agentId) && g.members.size > 2,
     );
     if (group) {
-      action.actionType = 'join_group_chat';
+      action.actionType = "join_group_chat";
       action.parameters = { groupId: group.id };
-      action.reasoning = 'Joining active group for intel gathering';
+      action.reasoning = "Joining active group for intel gathering";
     }
   } else if (Math.random() < 0.4) {
     const infoSource = Array.from(otherAgents.entries()).find(
-      ([id, arch]) => id !== agentId && ['researcher', 'trader'].includes(arch)
+      ([id, arch]) => id !== agentId && ["researcher", "trader"].includes(arch),
     );
     if (infoSource) {
-      action.actionType = 'send_dm';
+      action.actionType = "send_dm";
       action.parameters = {
         toUserId: infoSource[0],
         message:
-          'Hey! Whats your take on the current markets? Seeing any opportunities?',
+          "Hey! Whats your take on the current markets? Seeing any opportunities?",
       };
-      action.reasoning = 'Gathering intel from knowledgeable sources';
+      action.reasoning = "Gathering intel from knowledgeable sources";
     }
   } else if (Math.random() < 0.5) {
     const bullishPosts = state.posts.filter(
-      (p) => p.sentiment === 'bullish'
+      (p) => p.sentiment === "bullish",
     ).length;
     const bearishPosts = state.posts.filter(
-      (p) => p.sentiment === 'bearish'
+      (p) => p.sentiment === "bearish",
     ).length;
     const market = state.markets[0];
 
@@ -1229,13 +1229,13 @@ const infoTraderBehavior: ArchetypeBehavior = (
       market &&
       (bullishPosts > bearishPosts + 2 || bearishPosts > bullishPosts + 2)
     ) {
-      action.actionType = 'buy_prediction';
+      action.actionType = "buy_prediction";
       action.parameters = {
         marketId: market.id,
-        outcome: bullishPosts > bearishPosts ? 'YES' : 'NO',
+        outcome: bullishPosts > bearishPosts ? "YES" : "NO",
         amount: 300,
       };
-      action.reasoning = `Social sentiment strongly ${bullishPosts > bearishPosts ? 'bullish' : 'bearish'}, trading accordingly`;
+      action.reasoning = `Social sentiment strongly ${bullishPosts > bearishPosts ? "bullish" : "bearish"}, trading accordingly`;
     }
   }
 
@@ -1245,22 +1245,22 @@ const infoTraderBehavior: ArchetypeBehavior = (
 // Map archetypes to behaviors
 const ARCHETYPE_BEHAVIORS: Record<string, ArchetypeBehavior> = {
   trader: traderBehavior,
-  'social-butterfly': socialButterflyBehavior,
+  "social-butterfly": socialButterflyBehavior,
   scammer: scammerBehavior,
   degen: degenBehavior,
   researcher: researcherBehavior,
-  'goody-twoshoes': goodyTwoshoesBehavior,
+  "goody-twoshoes": goodyTwoshoesBehavior,
   liar: liarBehavior,
-  'information-trader': infoTraderBehavior,
-  'ass-kisser': socialButterflyBehavior,
-  'perps-trader': traderBehavior,
-  'super-predictor': researcherBehavior,
+  "information-trader": infoTraderBehavior,
+  "ass-kisser": socialButterflyBehavior,
+  "perps-trader": traderBehavior,
+  "super-predictor": researcherBehavior,
   infosec: researcherBehavior,
 };
 
 function initializeGameState(
   archetypes: string[],
-  startingBalance: number
+  startingBalance: number,
 ): {
   state: GameState;
   agentMap: Map<string, string>;
@@ -1270,36 +1270,36 @@ function initializeGameState(
     tick: 0,
     markets: [
       {
-        id: 'mkt-1',
-        question: 'Will BTC reach $100k this month?',
+        id: "mkt-1",
+        question: "Will BTC reach $100k this month?",
         yesPrice: 0.45,
         noPrice: 0.55,
         volume: 5000,
       },
       {
-        id: 'mkt-2',
-        question: 'Will ETH flip BTC in market cap?',
+        id: "mkt-2",
+        question: "Will ETH flip BTC in market cap?",
         yesPrice: 0.15,
         noPrice: 0.85,
         volume: 2000,
       },
       {
-        id: 'mkt-3',
-        question: 'Will there be a major exchange hack?',
+        id: "mkt-3",
+        question: "Will there be a major exchange hack?",
         yesPrice: 0.2,
         noPrice: 0.8,
         volume: 1000,
       },
     ],
     perpMarkets: [
-      { ticker: 'BTC', price: 95000, sentiment: 0.3, volatility: 0.02 },
-      { ticker: 'ETH', price: 3500, sentiment: 0.1, volatility: 0.03 },
+      { ticker: "BTC", price: 95000, sentiment: 0.3, volatility: 0.02 },
+      { ticker: "ETH", price: 3500, sentiment: 0.1, volatility: 0.03 },
     ],
     posts: [],
     directMessages: [],
     groupChats: [
-      { id: 'gc-1', name: 'Traders Den', members: new Set(), messages: [] },
-      { id: 'gc-2', name: 'Alpha Hunters', members: new Set(), messages: [] },
+      { id: "gc-1", name: "Traders Den", members: new Set(), messages: [] },
+      { id: "gc-2", name: "Alpha Hunters", members: new Set(), messages: [] },
     ],
     agentBalances: new Map(),
     agentPnL: new Map(),
@@ -1334,7 +1334,7 @@ function updateMarketState(state: GameState): void {
     perp.price += change;
     perp.sentiment = Math.max(
       -1,
-      Math.min(1, perp.sentiment + (Math.random() - 0.5) * 0.1)
+      Math.min(1, perp.sentiment + (Math.random() - 0.5) * 0.1),
     );
   }
 }
@@ -1342,7 +1342,7 @@ function updateMarketState(state: GameState): void {
 function processAction(
   agentId: string,
   action: AgentAction,
-  state: GameState
+  state: GameState,
 ): void {
   const balance = state.agentBalances.get(agentId) || 0;
   const pnl = state.agentPnL.get(agentId) || 0;
@@ -1350,7 +1350,7 @@ function processAction(
   const reputation = state.agentReputation.get(agentId) || 100;
 
   switch (action.actionType) {
-    case 'buy_prediction': {
+    case "buy_prediction": {
       const amount = (action.parameters.amount as number) || 100;
       if (balance >= amount) {
         state.agentBalances.set(agentId, balance - amount);
@@ -1359,12 +1359,12 @@ function processAction(
         state.agentPnL.set(agentId, pnl + profit);
         state.agentBalances.set(
           agentId,
-          (state.agentBalances.get(agentId) || 0) + profit + amount
+          (state.agentBalances.get(agentId) || 0) + profit + amount,
         );
       }
       break;
     }
-    case 'open_perp': {
+    case "open_perp": {
       const size = (action.parameters.size as number) || 100;
       const leverage = (action.parameters.leverage as number) || 1;
       state.agentPositions.set(agentId, positions + 1);
@@ -1373,14 +1373,14 @@ function processAction(
       state.agentBalances.set(agentId, balance + pnlChange);
       break;
     }
-    case 'send_dm': {
+    case "send_dm": {
       const toId = action.parameters.toUserId as string;
       const isScam = (action.parameters.isScam as boolean) || false;
       state.directMessages.push({
         id: `dm-${Date.now()}-${Math.random()}`,
         fromId: agentId,
         toId,
-        content: (action.parameters.message as string) || '',
+        content: (action.parameters.message as string) || "",
         tick: state.tick,
         isScam,
       });
@@ -1389,7 +1389,7 @@ function processAction(
       state.agentConnections.set(agentId, connections);
       break;
     }
-    case 'join_group_chat': {
+    case "join_group_chat": {
       const groupId = action.parameters.groupId as string;
       const group = state.groupChats.find((g) => g.id === groupId);
       if (group) {
@@ -1397,17 +1397,17 @@ function processAction(
       }
       break;
     }
-    case 'create_post': {
+    case "create_post": {
       state.posts.push({
         id: `post-${Date.now()}-${Math.random()}`,
         authorId: agentId,
-        content: (action.parameters.content as string) || '',
+        content: (action.parameters.content as string) || "",
         sentiment:
-          (action.parameters.sentiment as Post['sentiment']) || 'neutral',
+          (action.parameters.sentiment as Post["sentiment"]) || "neutral",
         tick: state.tick,
         reactions: 0,
       });
-      if (action.parameters.sentiment !== 'misleading') {
+      if (action.parameters.sentiment !== "misleading") {
         state.agentReputation.set(agentId, reputation + 1);
       }
       break;
@@ -1418,7 +1418,7 @@ function processAction(
 function calculateStepReward(
   step: TrajectoryStep,
   _state: GameState,
-  progressRatio: number
+  progressRatio: number,
 ): number {
   let reward = 0;
   const pnl = step.environmentState.agentPnL;
@@ -1429,14 +1429,14 @@ function calculateStepReward(
   }
 
   if (
-    ['send_dm', 'create_post', 'join_group_chat'].includes(
-      step.action.actionType
+    ["send_dm", "create_post", "join_group_chat"].includes(
+      step.action.actionType,
     )
   ) {
     reward += 0.05;
   }
 
-  if (['buy_prediction', 'open_perp'].includes(step.action.actionType)) {
+  if (["buy_prediction", "open_perp"].includes(step.action.actionType)) {
     reward += 0.02;
   }
 
@@ -1446,30 +1446,30 @@ function calculateStepReward(
 }
 
 async function generateTrajectories(
-  args: ReturnType<typeof parseArgs>
+  args: ReturnType<typeof parseArgs>,
 ): Promise<void> {
-  const episodes = parseInt(getOption(args, 'episodes', 'e') || '5', 10);
-  const ticksPerEpisode = parseInt(getOption(args, 'ticks', 't') || '50', 10);
+  const episodes = parseInt(getOption(args, "episodes", "e") || "5", 10);
+  const ticksPerEpisode = parseInt(getOption(args, "ticks", "t") || "50", 10);
   const startingBalance = parseInt(
-    getOption(args, 'balance', 'b') || '10000',
-    10
+    getOption(args, "balance", "b") || "10000",
+    10,
   );
   const archetypes = getAvailableArchetypes();
 
   const { db, trajectories } = await getDbImports();
-  const { generateSnowflakeId } = await import('@feed/training');
+  const { generateSnowflakeId } = await import("@feed/training");
 
-  logger.header('Multi-Archetype Trajectory Generator');
+  logger.header("Multi-Archetype Trajectory Generator");
 
   console.log();
-  console.log('⚠️  WARNING: This generates SYNTHETIC/FAKE data!');
-  console.log('   - Agent IDs are fake (agent-trader-12345)');
-  console.log('   - Decisions use Math.random(), not real LLM calls');
-  console.log('   - This is for TESTING ONLY, not real training');
+  console.log("⚠️  WARNING: This generates SYNTHETIC/FAKE data!");
+  console.log("   - Agent IDs are fake (agent-trader-12345)");
+  console.log("   - Decisions use Math.random(), not real LLM calls");
+  console.log("   - This is for TESTING ONLY, not real training");
   console.log();
-  console.log('   For REAL data, use: feed train parallel');
+  console.log("   For REAL data, use: feed train parallel");
   console.log();
-  console.log('Configuration:');
+  console.log("Configuration:");
   console.log(`  Episodes: ${episodes}`);
   console.log(`  Ticks per episode: ${ticksPerEpisode}`);
   console.log(`  Archetypes: ${archetypes.length}`);
@@ -1480,11 +1480,11 @@ async function generateTrajectories(
 
   for (let episode = 0; episode < episodes; episode++) {
     console.log(`\n🎮 Episode ${episode + 1}/${episodes}`);
-    console.log('─'.repeat(50));
+    console.log("─".repeat(50));
 
     const { state, agentMap } = initializeGameState(
       archetypes,
-      startingBalance
+      startingBalance,
     );
     const trajectorySteps: Map<string, TrajectoryStep[]> = new Map();
 
@@ -1502,7 +1502,7 @@ async function generateTrajectories(
           agentId,
           archetype,
           state,
-          agentMap
+          agentMap,
         );
 
         processAction(agentId, action, state);
@@ -1537,7 +1537,7 @@ async function generateTrajectories(
       market.outcome = Math.random() < market.yesPrice;
     }
 
-    console.log('   💾 Saving trajectories...');
+    console.log("   💾 Saving trajectories...");
 
     for (const [agentId, steps] of trajectorySteps.entries()) {
       const archetype = agentMap.get(agentId)!;
@@ -1560,7 +1560,7 @@ async function generateTrajectories(
         scenarioId: `multi-archetype-${archetype}`,
         startTime: new Date(rewardedSteps[0]?.timestamp || Date.now()),
         endTime: new Date(
-          rewardedSteps[rewardedSteps.length - 1]?.timestamp || Date.now()
+          rewardedSteps[rewardedSteps.length - 1]?.timestamp || Date.now(),
         ),
         durationMs: ticksPerEpisode * 1000,
         stepsJson: JSON.stringify(rewardedSteps),
@@ -1571,12 +1571,12 @@ async function generateTrajectories(
         finalPnL,
         finalBalance,
         tradesExecuted: steps.filter((s) =>
-          ['buy_prediction', 'open_perp', 'close_perp'].includes(
-            s.action.actionType
-          )
+          ["buy_prediction", "open_perp", "close_perp"].includes(
+            s.action.actionType,
+          ),
         ).length,
         episodeLength: steps.length,
-        finalStatus: 'completed',
+        finalStatus: "completed",
         isTrainingData: true,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -1585,35 +1585,35 @@ async function generateTrajectories(
       totalTrajectories++;
     }
 
-    console.log('   📊 Episode Summary:');
+    console.log("   📊 Episode Summary:");
     for (const [agentId, archetype] of agentMap.entries()) {
       const pnl = state.agentPnL.get(agentId) || 0;
       const pnlStr =
         pnl >= 0 ? `+$${pnl.toFixed(2)}` : `-$${Math.abs(pnl).toFixed(2)}`;
-      const pnlColor = pnl >= 0 ? '\x1b[32m' : '\x1b[31m';
+      const pnlColor = pnl >= 0 ? "\x1b[32m" : "\x1b[31m";
       console.log(`      ${archetype.padEnd(20)} ${pnlColor}${pnlStr}\x1b[0m`);
     }
   }
 
-  logger.header('Generation Complete');
+  logger.header("Generation Complete");
   console.log();
-  console.log('Summary:');
+  console.log("Summary:");
   console.log(`  Total episodes: ${episodes}`);
   console.log(`  Total trajectories saved: ${totalTrajectories}`);
-  console.log(`  Archetypes: ${archetypes.join(', ')}`);
+  console.log(`  Archetypes: ${archetypes.join(", ")}`);
   console.log();
-  console.log('Next steps:');
-  console.log('  1. feed train archetype -a <archetype>');
-  console.log('  2. feed train pipeline -a all');
+  console.log("Next steps:");
+  console.log("  1. feed train archetype -a <archetype>");
+  console.log("  2. feed train pipeline -a all");
 }
 
 async function listArchetypes(
-  args: ReturnType<typeof parseArgs>
+  args: ReturnType<typeof parseArgs>,
 ): Promise<void> {
-  const verbose = getFlag(args, 'verbose', 'v');
+  const verbose = getFlag(args, "verbose", "v");
   const archetypes = getAvailableArchetypes();
 
-  logger.header('Available Archetypes');
+  logger.header("Available Archetypes");
   console.log();
 
   for (const archetype of archetypes) {
@@ -1621,17 +1621,17 @@ async function listArchetypes(
     const rubric = getRubric(archetype);
 
     console.log(`📦 ${archetype.toUpperCase()}`);
-    console.log(`   Priority Metrics: ${metrics.join(', ')}`);
+    console.log(`   Priority Metrics: ${metrics.join(", ")}`);
 
     if (verbose) {
       const preview = rubric
-        .split('\n')
+        .split("\n")
         .slice(0, 8)
         .map((line) => `   ${line}`)
-        .join('\n');
+        .join("\n");
       console.log(`   Rubric Preview:`);
       console.log(preview);
-      console.log('   ...');
+      console.log("   ...");
     }
 
     console.log();
@@ -1639,208 +1639,208 @@ async function listArchetypes(
 
   console.log(`Total: ${archetypes.length} archetypes`);
   console.log();
-  console.log('To train an archetype:');
-  console.log('  feed train pipeline -a <archetype>');
-  console.log('  feed train pipeline --archetypes=trader,scammer,degen');
-  console.log('  feed train pipeline -a all  # Train all archetypes');
+  console.log("To train an archetype:");
+  console.log("  feed train pipeline -a <archetype>");
+  console.log("  feed train pipeline --archetypes=trader,scammer,degen");
+  console.log("  feed train pipeline -a all  # Train all archetypes");
 }
 
 async function runPipeline(args: ReturnType<typeof parseArgs>): Promise<void> {
-  const archetype = getOption(args, 'archetype', 'a');
-  const archetypesArg = getOption(args, 'archetypes', '');
-  const agents = getOption(args, 'agents', 'n') || '10';
-  const ticks = getOption(args, 'ticks', 't') || '30';
-  const output = getOption(args, 'output', 'o') || 'trained_models';
-  const noBenchmark = getFlag(args, 'no-benchmark', '');
-  const benchmarkOnly = getFlag(args, 'benchmark-only', '');
-  const allowMismatchedReuse = getFlag(args, 'allow-mismatched-reuse', '');
-  const dryRun = getFlag(args, 'dry-run', 'd');
-  const prepareOnly = getFlag(args, 'prepare-only', '');
-  const noLocalValidate = getFlag(args, 'no-local-validate', '');
-  const trainingBackend = getOption(args, 'training-backend', '');
-  const trajectorySource = getOption(args, 'trajectory-source', '');
-  const sourceDir = getOption(args, 'source-dir', '');
-  const hfDataset = getOption(args, 'hf-dataset', '');
-  const hfSplit = getOption(args, 'hf-split', '');
-  const localBackend = getOption(args, 'local-backend', '');
-  const localModel = getOption(args, 'local-model', '');
-  const localSteps = getOption(args, 'local-steps', '');
-  const localBatchSize = getOption(args, 'local-batch-size', '');
-  const localLr = getOption(args, 'local-lr', '');
-  const tinkerSteps = getOption(args, 'tinker-steps', '');
-  const tinkerGroupSize = getOption(args, 'tinker-group-size', '');
-  const tinkerLr = getOption(args, 'tinker-lr', '');
-  const tinkerLoraRank = getOption(args, 'tinker-lora-rank', '');
+  const archetype = getOption(args, "archetype", "a");
+  const archetypesArg = getOption(args, "archetypes", "");
+  const agents = getOption(args, "agents", "n") || "10";
+  const ticks = getOption(args, "ticks", "t") || "30";
+  const output = getOption(args, "output", "o") || "trained_models";
+  const noBenchmark = getFlag(args, "no-benchmark", "");
+  const benchmarkOnly = getFlag(args, "benchmark-only", "");
+  const allowMismatchedReuse = getFlag(args, "allow-mismatched-reuse", "");
+  const dryRun = getFlag(args, "dry-run", "d");
+  const prepareOnly = getFlag(args, "prepare-only", "");
+  const noLocalValidate = getFlag(args, "no-local-validate", "");
+  const trainingBackend = getOption(args, "training-backend", "");
+  const trajectorySource = getOption(args, "trajectory-source", "");
+  const sourceDir = getOption(args, "source-dir", "");
+  const hfDataset = getOption(args, "hf-dataset", "");
+  const hfSplit = getOption(args, "hf-split", "");
+  const localBackend = getOption(args, "local-backend", "");
+  const localModel = getOption(args, "local-model", "");
+  const localSteps = getOption(args, "local-steps", "");
+  const localBatchSize = getOption(args, "local-batch-size", "");
+  const localLr = getOption(args, "local-lr", "");
+  const tinkerSteps = getOption(args, "tinker-steps", "");
+  const tinkerGroupSize = getOption(args, "tinker-group-size", "");
+  const tinkerLr = getOption(args, "tinker-lr", "");
+  const tinkerLoraRank = getOption(args, "tinker-lora-rank", "");
   const tinkerWeightSyncInterval = getOption(
     args,
-    'tinker-weight-sync-interval',
-    ''
+    "tinker-weight-sync-interval",
+    "",
   );
-  const lookbackHours = getOption(args, 'lookback-hours', '');
-  const minActions = getOption(args, 'min-actions', '');
-  const maxTrajectories = getOption(args, 'max-trajectories', '');
-  const skipRl = getFlag(args, 'skip-rl', '');
-  const requireRl = getFlag(args, 'require-rl', '');
-  const rlSteps = getOption(args, 'rl-steps', '');
-  const rlBatchSize = getOption(args, 'rl-batch-size', '');
-  const rlLr = getOption(args, 'rl-lr', '');
-  const rewardProfile = getOption(args, 'reward-profile', '');
-  const skipScamBench = getFlag(args, 'skip-scambench', '');
+  const lookbackHours = getOption(args, "lookback-hours", "");
+  const minActions = getOption(args, "min-actions", "");
+  const maxTrajectories = getOption(args, "max-trajectories", "");
+  const skipRl = getFlag(args, "skip-rl", "");
+  const requireRl = getFlag(args, "require-rl", "");
+  const rlSteps = getOption(args, "rl-steps", "");
+  const rlBatchSize = getOption(args, "rl-batch-size", "");
+  const rlLr = getOption(args, "rl-lr", "");
+  const rewardProfile = getOption(args, "reward-profile", "");
+  const skipScamBench = getFlag(args, "skip-scambench", "");
 
-  logger.header('Feed Training Pipeline');
+  logger.header("Feed Training Pipeline");
 
   if (noBenchmark && benchmarkOnly) {
-    logger.fail('--no-benchmark and --benchmark-only cannot be used together');
+    logger.fail("--no-benchmark and --benchmark-only cannot be used together");
     throw createCliUsageError(
-      '--no-benchmark and --benchmark-only cannot be used together'
+      "--no-benchmark and --benchmark-only cannot be used together",
     );
   }
 
   // Find workspace root (go up from apps/cli/src/commands to workspace root)
-  const workspaceRoot = join(import.meta.dir, '..', '..', '..', '..');
+  const workspaceRoot = join(import.meta.dir, "..", "..", "..", "..");
 
   // Find the Python script
   const scriptPath = join(
     workspaceRoot,
-    'packages/training/python/scripts/run_pipeline.py'
+    "packages/training/python/scripts/run_pipeline.py",
   );
   const python = resolvePythonCommand(workspaceRoot);
 
   // Build command args
   const pythonArgs = [
     scriptPath,
-    '--mode',
-    benchmarkOnly ? 'benchmark' : 'full',
-    '--agents',
+    "--mode",
+    benchmarkOnly ? "benchmark" : "full",
+    "--agents",
     agents,
-    '--ticks',
+    "--ticks",
     ticks,
-    '--output',
+    "--output",
     output,
   ];
 
   // Handle archetypes
-  if (archetype === 'all') {
-    pythonArgs.push('--archetypes', ...getAvailableArchetypes());
+  if (archetype === "all") {
+    pythonArgs.push("--archetypes", ...getAvailableArchetypes());
   } else if (archetype) {
-    pythonArgs.push('--archetype', archetype);
+    pythonArgs.push("--archetype", archetype);
   } else if (archetypesArg) {
     pythonArgs.push(
-      '--archetypes',
-      ...archetypesArg.split(',').map((a) => a.trim())
+      "--archetypes",
+      ...archetypesArg.split(",").map((a) => a.trim()),
     );
   }
 
   if (noBenchmark) {
-    pythonArgs.push('--skip-scambench');
+    pythonArgs.push("--skip-scambench");
   }
 
   if (prepareOnly) {
-    pythonArgs.push('--prepare-only');
+    pythonArgs.push("--prepare-only");
   }
   if (noLocalValidate) {
-    pythonArgs.push('--no-local-validate');
+    pythonArgs.push("--no-local-validate");
   }
   if (trainingBackend) {
-    pythonArgs.push('--training-backend', trainingBackend);
+    pythonArgs.push("--training-backend", trainingBackend);
   }
   if (trajectorySource) {
-    pythonArgs.push('--trajectory-source', trajectorySource);
+    pythonArgs.push("--trajectory-source", trajectorySource);
   }
   if (sourceDir) {
-    pythonArgs.push('--source-dir', sourceDir);
+    pythonArgs.push("--source-dir", sourceDir);
   }
   if (hfDataset) {
-    pythonArgs.push('--hf-dataset', hfDataset);
+    pythonArgs.push("--hf-dataset", hfDataset);
   }
   if (hfSplit) {
-    pythonArgs.push('--hf-split', hfSplit);
+    pythonArgs.push("--hf-split", hfSplit);
   }
   if (localBackend) {
-    pythonArgs.push('--local-backend', localBackend);
+    pythonArgs.push("--local-backend", localBackend);
   }
   if (localModel) {
-    pythonArgs.push('--local-model', localModel);
+    pythonArgs.push("--local-model", localModel);
   }
   if (localSteps) {
-    pythonArgs.push('--local-steps', localSteps);
+    pythonArgs.push("--local-steps", localSteps);
   }
   if (localBatchSize) {
-    pythonArgs.push('--local-batch-size', localBatchSize);
+    pythonArgs.push("--local-batch-size", localBatchSize);
   }
   if (localLr) {
-    pythonArgs.push('--local-lr', localLr);
+    pythonArgs.push("--local-lr", localLr);
   }
   if (tinkerSteps) {
-    pythonArgs.push('--tinker-steps', tinkerSteps);
+    pythonArgs.push("--tinker-steps", tinkerSteps);
   }
   if (tinkerGroupSize) {
-    pythonArgs.push('--tinker-group-size', tinkerGroupSize);
+    pythonArgs.push("--tinker-group-size", tinkerGroupSize);
   }
   if (tinkerLr) {
-    pythonArgs.push('--tinker-lr', tinkerLr);
+    pythonArgs.push("--tinker-lr", tinkerLr);
   }
   if (tinkerLoraRank) {
-    pythonArgs.push('--tinker-lora-rank', tinkerLoraRank);
+    pythonArgs.push("--tinker-lora-rank", tinkerLoraRank);
   }
   if (tinkerWeightSyncInterval) {
-    pythonArgs.push('--tinker-weight-sync-interval', tinkerWeightSyncInterval);
+    pythonArgs.push("--tinker-weight-sync-interval", tinkerWeightSyncInterval);
   }
   if (lookbackHours) {
-    pythonArgs.push('--lookback-hours', lookbackHours);
+    pythonArgs.push("--lookback-hours", lookbackHours);
   }
   if (minActions) {
-    pythonArgs.push('--min-actions', minActions);
+    pythonArgs.push("--min-actions", minActions);
   }
   if (maxTrajectories) {
-    pythonArgs.push('--max-trajectories', maxTrajectories);
+    pythonArgs.push("--max-trajectories", maxTrajectories);
   }
   if (skipRl) {
-    pythonArgs.push('--skip-rl');
+    pythonArgs.push("--skip-rl");
   }
   if (requireRl) {
-    pythonArgs.push('--require-rl');
+    pythonArgs.push("--require-rl");
   }
   if (rlSteps) {
-    pythonArgs.push('--rl-steps', rlSteps);
+    pythonArgs.push("--rl-steps", rlSteps);
   }
   if (rlBatchSize) {
-    pythonArgs.push('--rl-batch-size', rlBatchSize);
+    pythonArgs.push("--rl-batch-size", rlBatchSize);
   }
   if (rlLr) {
-    pythonArgs.push('--rl-lr', rlLr);
+    pythonArgs.push("--rl-lr", rlLr);
   }
   if (rewardProfile) {
-    pythonArgs.push('--reward-profile', rewardProfile);
+    pythonArgs.push("--reward-profile", rewardProfile);
   }
   if (skipScamBench) {
-    pythonArgs.push('--skip-scambench');
+    pythonArgs.push("--skip-scambench");
   }
   if (allowMismatchedReuse) {
-    pythonArgs.push('--allow-mismatched-reuse');
+    pythonArgs.push("--allow-mismatched-reuse");
   }
 
   console.log();
-  console.log('Configuration:');
+  console.log("Configuration:");
   console.log(`  Agents: ${agents}`);
   console.log(`  Ticks per agent: ${ticks}`);
   console.log(`  Output: ${output}`);
   console.log(
-    `  Mode: ${benchmarkOnly ? 'benchmark-only' : noBenchmark ? 'full (no benchmark)' : 'full'}`
+    `  Mode: ${benchmarkOnly ? "benchmark-only" : noBenchmark ? "full (no benchmark)" : "full"}`,
   );
   console.log(
-    `  Allow mismatched reuse: ${allowMismatchedReuse ? 'yes' : 'no'}`
+    `  Allow mismatched reuse: ${allowMismatchedReuse ? "yes" : "no"}`,
   );
   console.log(
-    `  Python: ${python.command}${python.prefixArgs.length ? ` ${python.prefixArgs.join(' ')}` : ''}`
+    `  Python: ${python.command}${python.prefixArgs.length ? ` ${python.prefixArgs.join(" ")}` : ""}`,
   );
-  console.log(`  Training backend: ${trainingBackend || 'auto'}`);
+  console.log(`  Training backend: ${trainingBackend || "auto"}`);
   console.log(
-    `  Trajectory source: ${trajectorySource || process.env.TRAJECTORY_SOURCE || 'db'}`
+    `  Trajectory source: ${trajectorySource || process.env.TRAJECTORY_SOURCE || "db"}`,
   );
   if (hfDataset || process.env.HF_TRAJECTORY_DATASET) {
     console.log(
-      `  HF dataset: ${hfDataset || process.env.HF_TRAJECTORY_DATASET}`
+      `  HF dataset: ${hfDataset || process.env.HF_TRAJECTORY_DATASET}`,
     );
   }
   if (hfSplit || process.env.HF_TRAJECTORY_SPLIT) {
@@ -1880,9 +1880,9 @@ async function runPipeline(args: ReturnType<typeof parseArgs>): Promise<void> {
     console.log(`  Tinker weight sync interval: ${tinkerWeightSyncInterval}`);
   }
   if (skipRl) {
-    console.log('  RL stage: skipped');
+    console.log("  RL stage: skipped");
   } else {
-    console.log(`  RL steps: ${rlSteps || '100'}`);
+    console.log(`  RL steps: ${rlSteps || "100"}`);
     if (rlBatchSize) {
       console.log(`  RL batch size: ${rlBatchSize}`);
     }
@@ -1893,11 +1893,11 @@ async function runPipeline(args: ReturnType<typeof parseArgs>): Promise<void> {
       console.log(`  Reward profile: ${rewardProfile}`);
     }
     if (requireRl) {
-      console.log('  RL required: yes');
+      console.log("  RL required: yes");
     }
   }
   if (skipScamBench || noBenchmark) {
-    console.log('  ScamBench: skipped');
+    console.log("  ScamBench: skipped");
   }
   if (archetype) {
     console.log(`  Archetype: ${archetype}`);
@@ -1909,126 +1909,126 @@ async function runPipeline(args: ReturnType<typeof parseArgs>): Promise<void> {
   console.log();
 
   if (dryRun) {
-    console.log('[DRY RUN] Would execute:');
+    console.log("[DRY RUN] Would execute:");
     console.log(
-      `  ${[python.command, ...python.prefixArgs, ...pythonArgs].join(' ')}`
+      `  ${[python.command, ...python.prefixArgs, ...pythonArgs].join(" ")}`,
     );
     return;
   }
 
-  const effectiveTrainingBackend = (trainingBackend || 'auto').toLowerCase();
+  const effectiveTrainingBackend = (trainingBackend || "auto").toLowerCase();
   const effectiveTrajectorySource = (
     trajectorySource ||
     process.env.TRAJECTORY_SOURCE ||
-    'db'
+    "db"
   ).toLowerCase();
   const effectiveHfDataset =
-    hfDataset || process.env.HF_TRAJECTORY_DATASET || '';
+    hfDataset || process.env.HF_TRAJECTORY_DATASET || "";
 
   if (
     !benchmarkOnly &&
-    effectiveTrainingBackend === 'tinker' &&
+    effectiveTrainingBackend === "tinker" &&
     !process.env.TINKER_API_KEY
   ) {
-    logger.fail('TINKER_API_KEY is required when --training-backend=tinker');
+    logger.fail("TINKER_API_KEY is required when --training-backend=tinker");
     console.log(
-      '\nSet TINKER_API_KEY in your shell or .env before running this command.'
+      "\nSet TINKER_API_KEY in your shell or .env before running this command.",
     );
     throw createCliUsageError(
-      'TINKER_API_KEY is required for feed train pipeline with --training-backend=tinker'
+      "TINKER_API_KEY is required for feed train pipeline with --training-backend=tinker",
     );
   }
 
   if (
     !benchmarkOnly &&
-    effectiveTrajectorySource === 'huggingface' &&
+    effectiveTrajectorySource === "huggingface" &&
     !effectiveHfDataset
   ) {
     logger.fail(
-      'HF_TRAJECTORY_DATASET is required when --trajectory-source=huggingface'
+      "HF_TRAJECTORY_DATASET is required when --trajectory-source=huggingface",
     );
     console.log(
-      '\nSet --hf-dataset or HF_TRAJECTORY_DATASET before running this command.'
+      "\nSet --hf-dataset or HF_TRAJECTORY_DATASET before running this command.",
     );
     throw createCliUsageError(
-      'HF_TRAJECTORY_DATASET is required for feed train pipeline with trajectory-source=huggingface'
+      "HF_TRAJECTORY_DATASET is required for feed train pipeline with trajectory-source=huggingface",
     );
   }
 
   if (
     !benchmarkOnly &&
-    effectiveTrajectorySource === 'local_export' &&
+    effectiveTrajectorySource === "local_export" &&
     !sourceDir
   ) {
-    logger.fail('source-dir is required when --trajectory-source=local_export');
+    logger.fail("source-dir is required when --trajectory-source=local_export");
     console.log(
-      '\nSet --source-dir to a local export directory before running this command.'
+      "\nSet --source-dir to a local export directory before running this command.",
     );
     throw createCliUsageError(
-      'source-dir is required for feed train pipeline with trajectory-source=local_export'
+      "source-dir is required for feed train pipeline with trajectory-source=local_export",
     );
   }
 
   if (
     !benchmarkOnly &&
-    effectiveTrajectorySource !== 'huggingface' &&
-    effectiveTrajectorySource !== 'local_export' &&
+    effectiveTrajectorySource !== "huggingface" &&
+    effectiveTrajectorySource !== "local_export" &&
     !process.env.DATABASE_URL
   ) {
-    logger.fail('DATABASE_URL is required for the training pipeline');
+    logger.fail("DATABASE_URL is required for the training pipeline");
     console.log(
-      '\nSet DATABASE_URL in your shell or .env before running this command, or use --trajectory-source=huggingface or --trajectory-source=local_export.'
+      "\nSet DATABASE_URL in your shell or .env before running this command, or use --trajectory-source=huggingface or --trajectory-source=local_export.",
     );
     throw createCliUsageError(
-      'DATABASE_URL is required for feed train pipeline unless trajectory-source=huggingface or trajectory-source=local_export'
+      "DATABASE_URL is required for feed train pipeline unless trajectory-source=huggingface or trajectory-source=local_export",
     );
   }
 
-  logger.step('Starting Python training pipeline...');
+  logger.step("Starting Python training pipeline...");
   console.log();
 
   return new Promise((resolve, reject) => {
     const child = spawn(python.command, [...python.prefixArgs, ...pythonArgs], {
       cwd: workspaceRoot,
-      stdio: 'inherit',
+      stdio: "inherit",
       env: {
         ...process.env,
-        PYTHONUNBUFFERED: '1',
+        PYTHONUNBUFFERED: "1",
       },
     });
 
-    child.on('error', (error) => {
-      if (error.message.includes('ENOENT')) {
+    child.on("error", (error) => {
+      if (error.message.includes("ENOENT")) {
         logger.fail(
-          'Python not found. Set PYTHON_BIN or install Python 3.10+ for the training pipeline'
+          "Python not found. Set PYTHON_BIN or install Python 3.10+ for the training pipeline",
         );
-        console.log('\nInstall with:');
-        console.log('  brew install python@3.11  # macOS');
-        console.log('  apt install python3       # Ubuntu');
-        console.log('  export PYTHON_BIN=/path/to/python');
+        console.log("\nInstall with:");
+        console.log("  brew install python@3.11  # macOS");
+        console.log("  apt install python3       # Ubuntu");
+        console.log("  export PYTHON_BIN=/path/to/python");
       } else {
         logger.fail(`Failed to start: ${error.message}`);
       }
       reject(error);
     });
 
-    child.on('close', (code) => {
+    child.on("close", (code) => {
       console.log();
       if (code === 0) {
-        logger.success('Training pipeline completed!');
+        logger.success("Training pipeline completed!");
         console.log();
-        console.log('Next steps:');
+        console.log("Next steps:");
         if (benchmarkOnly) {
           console.log(`  1. Review benchmark results in ${output}/`);
           console.log(
-            `  2. Check ${output}/pipeline_report.json for stage details`
+            `  2. Check ${output}/pipeline_report.json for stage details`,
           );
         } else {
           console.log(`  1. Check results in ${output}/`);
           console.log(`  2. Review ${output}/pipeline_report.json`);
-          console.log('  3. Upload model: feed model upload --model <path>');
+          console.log("  3. Upload model: feed model upload --model <path>");
           console.log(
-            '  4. Run benchmark: feed train pipeline --benchmark-only'
+            "  4. Run benchmark: feed train pipeline --benchmark-only",
           );
         }
         resolve();
@@ -2047,89 +2047,89 @@ async function runPipeline(args: ReturnType<typeof parseArgs>): Promise<void> {
  */
 
 async function runOnlineRL(args: ReturnType<typeof parseArgs>): Promise<void> {
-  logger.header('Feed Online RL Training');
+  logger.header("Feed Online RL Training");
 
-  const workspaceRoot = join(import.meta.dir, '..', '..', '..', '..');
+  const workspaceRoot = join(import.meta.dir, "..", "..", "..", "..");
   const scriptPath = join(
     workspaceRoot,
-    'packages/training/python/scripts/run_online_rl.py'
+    "packages/training/python/scripts/run_online_rl.py",
   );
 
   if (!existsSync(scriptPath)) {
     logger.fail(`Online RL script not found: ${scriptPath}`);
-    throw createCliUsageError('Online RL script not found');
+    throw createCliUsageError("Online RL script not found");
   }
 
   const python = resolvePythonCommand(workspaceRoot);
   const pythonArgs = [...python.prefixArgs, scriptPath];
 
   // Map CLI args to Python script args
-  const mode = getOption(args, 'mode', 'm') || 'single';
-  pythonArgs.push('--mode', mode);
+  const mode = getOption(args, "mode", "m") || "single";
+  pythonArgs.push("--mode", mode);
 
-  const model = getOption(args, 'model', '');
-  if (model) pythonArgs.push('--model', model);
+  const model = getOption(args, "model", "");
+  if (model) pythonArgs.push("--model", model);
 
-  const device = getOption(args, 'device', '');
-  if (device) pythonArgs.push('--device', device);
+  const device = getOption(args, "device", "");
+  if (device) pythonArgs.push("--device", device);
 
-  const optimizer = getOption(args, 'optimizer', '');
-  if (optimizer) pythonArgs.push('--optimizer', optimizer);
+  const optimizer = getOption(args, "optimizer", "");
+  if (optimizer) pythonArgs.push("--optimizer", optimizer);
 
-  const lr = getOption(args, 'lr', '');
-  if (lr) pythonArgs.push('--lr', lr);
+  const lr = getOption(args, "lr", "");
+  if (lr) pythonArgs.push("--lr", lr);
 
-  if (getFlag(args, 'kondo', '')) pythonArgs.push('--kondo');
+  if (getFlag(args, "kondo", "")) pythonArgs.push("--kondo");
 
-  const kondoGateRate = getOption(args, 'kondo-gate-rate', '');
-  if (kondoGateRate) pythonArgs.push('--kondo-gate-rate', kondoGateRate);
+  const kondoGateRate = getOption(args, "kondo-gate-rate", "");
+  if (kondoGateRate) pythonArgs.push("--kondo-gate-rate", kondoGateRate);
 
-  if (getFlag(args, 'turboquant', '')) pythonArgs.push('--turboquant');
+  if (getFlag(args, "turboquant", "")) pythonArgs.push("--turboquant");
 
-  const bridgeUrl = getOption(args, 'bridge-url', '');
-  if (bridgeUrl) pythonArgs.push('--bridge-url', bridgeUrl);
+  const bridgeUrl = getOption(args, "bridge-url", "");
+  if (bridgeUrl) pythonArgs.push("--bridge-url", bridgeUrl);
 
-  const maxTicks = getOption(args, 'max-ticks', '');
-  if (maxTicks) pythonArgs.push('--max-ticks', maxTicks);
+  const maxTicks = getOption(args, "max-ticks", "");
+  if (maxTicks) pythonArgs.push("--max-ticks", maxTicks);
 
   // Multi-agent options
-  const numAgents = getOption(args, 'num-agents', '');
-  if (numAgents) pythonArgs.push('--num-agents', numAgents);
+  const numAgents = getOption(args, "num-agents", "");
+  if (numAgents) pythonArgs.push("--num-agents", numAgents);
 
-  const archetypes = getOption(args, 'archetypes', '');
-  if (archetypes) pythonArgs.push('--archetypes', archetypes);
+  const archetypes = getOption(args, "archetypes", "");
+  if (archetypes) pythonArgs.push("--archetypes", archetypes);
 
-  if (getFlag(args, 'pbt', '')) pythonArgs.push('--pbt');
+  if (getFlag(args, "pbt", "")) pythonArgs.push("--pbt");
 
-  const pbtInterval = getOption(args, 'pbt-interval', '');
-  if (pbtInterval) pythonArgs.push('--pbt-interval', pbtInterval);
+  const pbtInterval = getOption(args, "pbt-interval", "");
+  if (pbtInterval) pythonArgs.push("--pbt-interval", pbtInterval);
 
-  const checkpointDir = getOption(args, 'checkpoint-dir', 'o');
-  if (checkpointDir) pythonArgs.push('--checkpoint-dir', checkpointDir);
+  const checkpointDir = getOption(args, "checkpoint-dir", "o");
+  if (checkpointDir) pythonArgs.push("--checkpoint-dir", checkpointDir);
 
   // APOLLO options
-  const apolloRank = getOption(args, 'apollo-rank', '');
-  if (apolloRank) pythonArgs.push('--apollo-rank', apolloRank);
+  const apolloRank = getOption(args, "apollo-rank", "");
+  if (apolloRank) pythonArgs.push("--apollo-rank", apolloRank);
 
   logger.info(`Mode: ${mode}`);
-  logger.info(`Running: ${python.command} ${pythonArgs.join(' ')}`);
+  logger.info(`Running: ${python.command} ${pythonArgs.join(" ")}`);
 
   return new Promise((resolve, reject) => {
     const proc = spawn(python.command, pythonArgs, {
-      stdio: 'inherit',
+      stdio: "inherit",
       cwd: workspaceRoot,
     });
 
-    proc.on('close', (code) => {
+    proc.on("close", (code) => {
       if (code === 0) {
-        logger.success('Online RL training complete');
+        logger.success("Online RL training complete");
         resolve();
       } else {
         reject(new Error(`Online RL training exited with code ${code}`));
       }
     });
 
-    proc.on('error', (err) => {
+    proc.on("error", (err) => {
       reject(new Error(`Failed to start online RL: ${err.message}`));
     });
   });
@@ -2145,49 +2145,49 @@ export async function runTrainCommand(args: string[]): Promise<void> {
 
   // Commands that don't need the database
   const noDatabaseCommands = [
-    'list',
-    'pipeline',
-    'run',
-    'online',
-    'continuous-rl',
+    "list",
+    "pipeline",
+    "run",
+    "online",
+    "continuous-rl",
   ];
-  const needsDatabase = !noDatabaseCommands.includes(parsed.command || '');
+  const needsDatabase = !noDatabaseCommands.includes(parsed.command || "");
 
   switch (parsed.command) {
-    case 'list':
+    case "list":
       await listArchetypes(parsed);
       break;
 
-    case 'pipeline':
-    case 'run':
+    case "pipeline":
+    case "run":
       await runPipeline(parsed);
       break;
 
-    case 'archetype':
+    case "archetype":
       await trainArchetype(parsed);
       break;
 
-    case 'collect':
+    case "collect":
       await collectTrajectories(parsed);
       break;
 
-    case 'score':
+    case "score":
       await scoreTrajectories();
       break;
 
-    case 'generate':
+    case "generate":
       await generateTrajectories(parsed);
       break;
 
-    case 'parallel':
+    case "parallel":
       await configureAgentTrainingDependencies();
       await (await getParallelGenerationCommand()).runParallelGeneration(
-        parsed
+        parsed,
       );
       break;
 
-    case 'online':
-    case 'continuous-rl':
+    case "online":
+    case "continuous-rl":
       await runOnlineRL(parsed);
       break;
 

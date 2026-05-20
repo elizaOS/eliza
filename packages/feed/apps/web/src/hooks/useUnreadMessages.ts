@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
-import { useAuth } from '@/hooks/useAuth';
-import { apiUrl } from '@/utils/api-url';
+import { useEffect, useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
+import { apiUrl } from "@/utils/api-url";
 
 /**
  * Represents unread message counts.
@@ -64,7 +64,7 @@ export function useUnreadMessages() {
       const token = await getAccessToken();
       if (!token) return;
 
-      const response = await fetch(apiUrl('/api/chats/unread-count'), {
+      const response = await fetch(apiUrl("/api/chats/unread-count"), {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -77,13 +77,13 @@ export function useUnreadMessages() {
 
       const data = await response.json();
       const pendingDMRequests =
-        typeof data.pendingDMRequests === 'number'
+        typeof data.pendingDMRequests === "number"
           ? data.pendingDMRequests
-          : typeof data.pendingDMs === 'number'
+          : typeof data.pendingDMs === "number"
             ? data.pendingDMs
             : 0;
       const unreadMessages =
-        typeof data.unreadMessages === 'number'
+        typeof data.unreadMessages === "number"
           ? data.unreadMessages
           : data.hasNewMessages
             ? 1

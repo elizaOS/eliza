@@ -16,7 +16,7 @@ import {
   NotFoundError,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
+} from "@feed/api";
 import {
   and,
   chatParticipants,
@@ -28,9 +28,9 @@ import {
   messages,
   toDatabaseErrorType,
   users,
-} from '@feed/db';
-import { generateSnowflakeId, logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/db";
+import { generateSnowflakeId, logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 /**
  * POST /api/chats/[id]/join-nft
@@ -39,13 +39,13 @@ import type { NextRequest } from 'next/server';
 export const POST = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ id: string }> }
+    context: { params: Promise<{ id: string }> },
   ) => {
     const user = await authenticate(request);
     const { id: chatId } = await context.params;
 
     if (!chatId) {
-      throw new BusinessLogicError('Chat ID is required', 'CHAT_ID_REQUIRED');
+      throw new BusinessLogicError("Chat ID is required", "CHAT_ID_REQUIRED");
     }
 
     // Get the chat
@@ -54,13 +54,13 @@ export const POST = withErrorHandling(
     });
 
     if (!chat) {
-      throw new NotFoundError('Chat', chatId);
+      throw new NotFoundError("Chat", chatId);
     }
 
     if (!chat.nftGated || !chat.requiredNftContractAddress) {
       throw new BusinessLogicError(
-        'This chat is not NFT-gated',
-        'NOT_NFT_GATED'
+        "This chat is not NFT-gated",
+        "NOT_NFT_GATED",
       );
     }
 
@@ -69,14 +69,14 @@ export const POST = withErrorHandling(
       where: and(
         eq(chatParticipants.chatId, chatId),
         eq(chatParticipants.userId, user.userId),
-        eq(chatParticipants.isActive, true)
+        eq(chatParticipants.isActive, true),
       ),
     });
 
     if (existingParticipant) {
       return successResponse({
         success: true,
-        message: 'Already a member of this chat',
+        message: "Already a member of this chat",
         alreadyMember: true,
       });
     }
@@ -90,8 +90,8 @@ export const POST = withErrorHandling(
 
     if (!userData?.walletAddress) {
       throw new BusinessLogicError(
-        'You need to connect a wallet to join NFT-gated chats',
-        'WALLET_REQUIRED'
+        "You need to connect a wallet to join NFT-gated chats",
+        "WALLET_REQUIRED",
       );
     }
 
@@ -99,21 +99,21 @@ export const POST = withErrorHandling(
     await NFTVerificationService.invalidateOwnershipCache(
       userData.walletAddress,
       chat.requiredNftContractAddress,
-      chat.requiredNftChainId ?? undefined
+      chat.requiredNftChainId ?? undefined,
     );
 
     const verification = await NFTVerificationService.verifyChatAccess(
       userData.walletAddress,
       chat.requiredNftContractAddress,
       chat.requiredNftTokenId ?? null,
-      chat.requiredNftChainId ?? undefined
+      chat.requiredNftChainId ?? undefined,
     );
 
     if (!verification.canAccess) {
       throw new BusinessLogicError(
         verification.reason ??
-          'You do not own the required NFT to join this chat',
-        'NFT_REQUIRED'
+          "You do not own the required NFT to join this chat",
+        "NFT_REQUIRED",
       );
     }
 
@@ -127,7 +127,7 @@ export const POST = withErrorHandling(
           where: and(
             eq(chatParticipants.chatId, chatId),
             eq(chatParticipants.userId, user.userId),
-            eq(chatParticipants.isActive, false)
+            eq(chatParticipants.isActive, false),
           ),
         });
 
@@ -158,7 +158,7 @@ export const POST = withErrorHandling(
           const existingMember = await tx.query.groupMembers.findFirst({
             where: and(
               eq(groupMembers.groupId, chat.groupId),
-              eq(groupMembers.userId, user.userId)
+              eq(groupMembers.userId, user.userId),
             ),
           });
 
@@ -180,7 +180,7 @@ export const POST = withErrorHandling(
               id: memberId,
               groupId: chat.groupId,
               userId: user.userId,
-              role: 'member',
+              role: "member",
               addedBy: user.userId,
               joinedAt: now,
               isActive: true,
@@ -194,7 +194,7 @@ export const POST = withErrorHandling(
       if (isUniqueConstraintError(toDatabaseErrorType(error))) {
         return successResponse({
           success: true,
-          message: 'Already a member of this chat',
+          message: "Already a member of this chat",
           alreadyMember: true,
         });
       }
@@ -208,32 +208,32 @@ export const POST = withErrorHandling(
       .where(eq(users.id, user.userId))
       .limit(1);
     const joinerName =
-      joiningUser?.displayName || joiningUser?.username || 'Someone';
+      joiningUser?.displayName || joiningUser?.username || "Someone";
 
     // Create system message for joining
     const messageId = await generateSnowflakeId();
     await db.insert(messages).values({
       id: messageId,
       chatId,
-      senderId: 'system',
-      type: 'system',
+      senderId: "system",
+      type: "system",
       content: `${joinerName} joined the group`,
       createdAt: now,
     });
 
     logger.info(
-      'User joined NFT-gated chat',
+      "User joined NFT-gated chat",
       {
         userId: user.userId,
         chatId,
         contractAddress: chat.requiredNftContractAddress,
       },
-      'POST /api/chats/[id]/join-nft'
+      "POST /api/chats/[id]/join-nft",
     );
 
     return successResponse({
       success: true,
-      message: 'Successfully joined the chat',
+      message: "Successfully joined the chat",
       chat: {
         id: chat.id,
         name: chat.name,
@@ -243,5 +243,5 @@ export const POST = withErrorHandling(
         chainId: chat.requiredNftChainId,
       },
     });
-  }
+  },
 );

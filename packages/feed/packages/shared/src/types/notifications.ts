@@ -1,12 +1,12 @@
 import type {
   AchievementUnlockedNotificationData,
   ChallengeCompletedNotificationData,
-} from '../utils/reward-notifications';
-import type { JsonValue } from './common';
+} from "../utils/reward-notifications";
+import type { JsonValue } from "./common";
 
-export type NotificationDigestFrequency = 'hourly' | 'daily' | 'weekly';
+export type NotificationDigestFrequency = "hourly" | "daily" | "weekly";
 
-export type NotificationDeliveryChannel = 'in-app' | 'email' | 'both';
+export type NotificationDeliveryChannel = "in-app" | "email" | "both";
 
 export interface NotificationDigestSettings {
   digestEnabled: boolean;
@@ -17,14 +17,14 @@ export interface NotificationDigestSettings {
 export const DEFAULT_NOTIFICATION_DIGEST_SETTINGS: NotificationDigestSettings =
   {
     digestEnabled: true,
-    frequency: 'daily',
-    deliveryChannel: 'both',
+    frequency: "daily",
+    deliveryChannel: "both",
   };
 
 export interface MarketResolvedNotificationData {
   marketId: string;
   marketName: string;
-  outcome: 'win' | 'loss';
+  outcome: "win" | "loss";
   points: number;
   agentName?: string;
   deepLink: string;

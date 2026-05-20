@@ -114,15 +114,15 @@ import {
   NotFoundError,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { and, db, eq, follows, or, userBlocks, users } from '@feed/db';
-import { BlockUserSchema, generateSnowflakeId, logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/api";
+import { and, db, eq, follows, or, userBlocks, users } from "@feed/db";
+import { BlockUserSchema, generateSnowflakeId, logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 export const POST = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ userId: string }> }
+    context: { params: Promise<{ userId: string }> },
   ) => {
     // Authenticate the user
     const authUser = await authenticate(request);
@@ -139,14 +139,14 @@ export const POST = withErrorHandling(
         targetUserId,
         action,
       },
-      'POST /api/users/[userId]/block'
+      "POST /api/users/[userId]/block",
     );
 
     // Cannot block yourself
     if (authUser.userId === targetUserId) {
       throw new BusinessLogicError(
-        'Cannot block yourself',
-        'CANNOT_BLOCK_SELF'
+        "Cannot block yourself",
+        "CANNOT_BLOCK_SELF",
       );
     }
 
@@ -163,12 +163,12 @@ export const POST = withErrorHandling(
       .limit(1);
 
     if (!targetUser) {
-      throw new NotFoundError('User', targetUserId);
+      throw new NotFoundError("User", targetUserId);
     }
 
     // Note: Blocking NPCs is allowed - it means they won't add you to group chats
 
-    if (action === 'block') {
+    if (action === "block") {
       // Check if already blocked
       const [existingBlock] = await db
         .select({ id: userBlocks.id })
@@ -176,15 +176,15 @@ export const POST = withErrorHandling(
         .where(
           and(
             eq(userBlocks.blockerId, authUser.userId),
-            eq(userBlocks.blockedId, targetUserId)
-          )
+            eq(userBlocks.blockedId, targetUserId),
+          ),
         )
         .limit(1);
 
       if (existingBlock) {
         throw new BusinessLogicError(
-          'User is already blocked',
-          'ALREADY_BLOCKED'
+          "User is already blocked",
+          "ALREADY_BLOCKED",
         );
       }
 
@@ -201,7 +201,7 @@ export const POST = withErrorHandling(
         .returning();
 
       if (!block) {
-        throw new InternalServerError('Failed to create block record');
+        throw new InternalServerError("Failed to create block record");
       }
 
       // Also unfollow if following
@@ -211,28 +211,28 @@ export const POST = withErrorHandling(
           or(
             and(
               eq(follows.followerId, authUser.userId),
-              eq(follows.followingId, targetUserId)
+              eq(follows.followingId, targetUserId),
             ),
             and(
               eq(follows.followerId, targetUserId),
-              eq(follows.followingId, authUser.userId)
-            )
-          )
+              eq(follows.followingId, authUser.userId),
+            ),
+          ),
         );
 
       logger.info(
-        'User blocked successfully',
+        "User blocked successfully",
         {
           userId: authUser.userId,
           targetUserId,
           blockId: block?.id,
         },
-        'POST /api/users/[userId]/block'
+        "POST /api/users/[userId]/block",
       );
 
       return successResponse({
         success: true,
-        message: 'User blocked successfully',
+        message: "User blocked successfully",
         block,
       });
     }
@@ -242,29 +242,29 @@ export const POST = withErrorHandling(
       .where(
         and(
           eq(userBlocks.blockerId, authUser.userId),
-          eq(userBlocks.blockedId, targetUserId)
-        )
+          eq(userBlocks.blockedId, targetUserId),
+        ),
       )
       .returning();
 
     if (deleted.length === 0) {
-      throw new BusinessLogicError('User is not blocked', 'NOT_BLOCKED');
+      throw new BusinessLogicError("User is not blocked", "NOT_BLOCKED");
     }
 
     logger.info(
-      'User unblocked successfully',
+      "User unblocked successfully",
       {
         userId: authUser.userId,
         targetUserId,
       },
-      'POST /api/users/[userId]/block'
+      "POST /api/users/[userId]/block",
     );
 
     return successResponse({
       success: true,
-      message: 'User unblocked successfully',
+      message: "User unblocked successfully",
     });
-  }
+  },
 );
 
 /**
@@ -274,7 +274,7 @@ export const POST = withErrorHandling(
 export const GET = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ userId: string }> }
+    context: { params: Promise<{ userId: string }> },
   ) => {
     const authUser = await authenticate(request);
     const { userId: targetUserId } = await context.params;
@@ -289,8 +289,8 @@ export const GET = withErrorHandling(
       .where(
         and(
           eq(userBlocks.blockerId, authUser.userId),
-          eq(userBlocks.blockedId, targetUserId)
-        )
+          eq(userBlocks.blockedId, targetUserId),
+        ),
       )
       .limit(1);
 
@@ -298,5 +298,5 @@ export const GET = withErrorHandling(
       isBlocked: !!block,
       block: block ?? null,
     });
-  }
+  },
 );

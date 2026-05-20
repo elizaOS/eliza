@@ -12,8 +12,8 @@
  * - State transition correctness
  */
 
-import { describe, expect, test } from 'bun:test';
-import { DAILY_LOGIN, POINTS } from '@feed/shared';
+import { describe, expect, test } from "bun:test";
+import { DAILY_LOGIN, POINTS } from "@feed/shared";
 
 // ─── Test Helpers ────────────────────────────────────────────────────────────
 
@@ -71,7 +71,7 @@ function getNextMilestone(streak: number): {
  */
 function getClaimStatus(
   lastClaimMs: number | null,
-  now: number = Date.now()
+  now: number = Date.now(),
 ): {
   canClaim: boolean;
   shouldResetStreak: boolean;
@@ -118,7 +118,7 @@ function getClaimStatus(
 }
 
 function formatTimeRemaining(ms: number): string {
-  if (ms <= 0) return 'Now';
+  if (ms <= 0) return "Now";
   const hours = Math.floor(ms / HOUR);
   const minutes = Math.floor((ms % HOUR) / MINUTE);
   return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
@@ -126,17 +126,17 @@ function formatTimeRemaining(ms: number): string {
 
 // ─── Constants Tests ─────────────────────────────────────────────────────────
 
-describe('Daily Login - Constants Validation', () => {
-  test('timing constants are positive and correctly ordered', () => {
+describe("Daily Login - Constants Validation", () => {
+  test("timing constants are positive and correctly ordered", () => {
     expect(DAILY_LOGIN.MIN_CLAIM_INTERVAL_MS).toBe(24 * HOUR);
     expect(DAILY_LOGIN.GRACE_PERIOD_MS).toBe(36 * HOUR);
     expect(DAILY_LOGIN.GRACE_PERIOD_MS).toBeGreaterThan(
-      DAILY_LOGIN.MIN_CLAIM_INTERVAL_MS
+      DAILY_LOGIN.MIN_CLAIM_INTERVAL_MS,
     );
     expect(DAILY_LOGIN.CYCLE_LENGTH).toBe(7);
   });
 
-  test('reward values are all positive integers', () => {
+  test("reward values are all positive integers", () => {
     for (let i = 1; i <= 7; i++) {
       const key = `DAILY_LOGIN_DAY_${i}` as keyof typeof POINTS;
       expect(POINTS[key]).toBeGreaterThan(0);
@@ -144,7 +144,7 @@ describe('Daily Login - Constants Validation', () => {
     }
   });
 
-  test('rewards strictly increase each day', () => {
+  test("rewards strictly increase each day", () => {
     for (let i = 1; i < 7; i++) {
       const curr = `DAILY_LOGIN_DAY_${i}` as keyof typeof POINTS;
       const next = `DAILY_LOGIN_DAY_${i + 1}` as keyof typeof POINTS;
@@ -152,7 +152,7 @@ describe('Daily Login - Constants Validation', () => {
     }
   });
 
-  test('milestones are in ascending order with increasing bonuses', () => {
+  test("milestones are in ascending order with increasing bonuses", () => {
     for (let i = 0; i < MILESTONES.length - 1; i++) {
       const current = MILESTONES[i];
       const next = MILESTONES[i + 1];
@@ -166,9 +166,9 @@ describe('Daily Login - Constants Validation', () => {
 
 // ─── getDailyReward Tests ────────────────────────────────────────────────────
 
-describe('Daily Login - getDailyReward', () => {
-  describe('valid inputs', () => {
-    test('days 1-7 return correct escalating rewards', () => {
+describe("Daily Login - getDailyReward", () => {
+  describe("valid inputs", () => {
+    test("days 1-7 return correct escalating rewards", () => {
       expect(getDailyReward(1)).toBe(50);
       expect(getDailyReward(2)).toBe(75);
       expect(getDailyReward(3)).toBe(100);
@@ -178,11 +178,11 @@ describe('Daily Login - getDailyReward', () => {
       expect(getDailyReward(7)).toBe(200);
     });
 
-    test('day 8 cycles back to day 1 reward', () => {
+    test("day 8 cycles back to day 1 reward", () => {
       expect(getDailyReward(8)).toBe(getDailyReward(1));
     });
 
-    test('full cycle verification (days 1-14)', () => {
+    test("full cycle verification (days 1-14)", () => {
       for (let day = 1; day <= 14; day++) {
         const expectedIdx = (day - 1) % 7;
         const expected =
@@ -192,18 +192,18 @@ describe('Daily Login - getDailyReward', () => {
     });
   });
 
-  describe('boundary conditions', () => {
-    test('day 0 returns day 1 reward (graceful handling)', () => {
+  describe("boundary conditions", () => {
+    test("day 0 returns day 1 reward (graceful handling)", () => {
       expect(getDailyReward(0)).toBe(DAILY_REWARDS[0]);
     });
 
-    test('negative days return day 1 reward', () => {
+    test("negative days return day 1 reward", () => {
       expect(getDailyReward(-1)).toBe(DAILY_REWARDS[0]);
       expect(getDailyReward(-100)).toBe(DAILY_REWARDS[0]);
       expect(getDailyReward(-Number.MAX_SAFE_INTEGER)).toBe(DAILY_REWARDS[0]);
     });
 
-    test('exactly on cycle boundaries', () => {
+    test("exactly on cycle boundaries", () => {
       expect(getDailyReward(7)).toBe(200); // End of cycle 1
       expect(getDailyReward(8)).toBe(50); // Start of cycle 2
       expect(getDailyReward(14)).toBe(200); // End of cycle 2
@@ -211,33 +211,33 @@ describe('Daily Login - getDailyReward', () => {
     });
   });
 
-  describe('extreme values', () => {
-    test('very large streak values cycle correctly', () => {
+  describe("extreme values", () => {
+    test("very large streak values cycle correctly", () => {
       // Type assertion needed since modulo result is always 0-6 but TS doesn't infer this
       type RewardIdx = 0 | 1 | 2 | 3 | 4 | 5 | 6;
       expect(getDailyReward(100)).toBe(
-        DAILY_REWARDS[((100 - 1) % 7) as RewardIdx]
+        DAILY_REWARDS[((100 - 1) % 7) as RewardIdx],
       );
       expect(getDailyReward(365)).toBe(
-        DAILY_REWARDS[((365 - 1) % 7) as RewardIdx]
+        DAILY_REWARDS[((365 - 1) % 7) as RewardIdx],
       );
       expect(getDailyReward(1000)).toBe(
-        DAILY_REWARDS[((1000 - 1) % 7) as RewardIdx]
+        DAILY_REWARDS[((1000 - 1) % 7) as RewardIdx],
       );
       expect(getDailyReward(10000)).toBe(
-        DAILY_REWARDS[((10000 - 1) % 7) as RewardIdx]
+        DAILY_REWARDS[((10000 - 1) % 7) as RewardIdx],
       );
     });
 
-    test('MAX_SAFE_INTEGER cycles correctly without overflow', () => {
+    test("MAX_SAFE_INTEGER cycles correctly without overflow", () => {
       const result = getDailyReward(Number.MAX_SAFE_INTEGER);
       const validRewards: number[] = [...DAILY_REWARDS];
       expect(validRewards.includes(result)).toBe(true);
     });
   });
 
-  describe('type coercion edge cases', () => {
-    test('floating point days are floored to integer day', () => {
+  describe("type coercion edge cases", () => {
+    test("floating point days are floored to integer day", () => {
       // Math.floor ensures floats are handled predictably
       // 1.9 → floor(1.9 - 1) = floor(0.9) = 0 → DAILY_REWARDS[0] = Day 1
       expect(getDailyReward(1.9)).toBe(DAILY_REWARDS[0]);
@@ -249,27 +249,27 @@ describe('Daily Login - getDailyReward', () => {
 
 // ─── getMilestoneBonus Tests ─────────────────────────────────────────────────
 
-describe('Daily Login - getMilestoneBonus', () => {
-  describe('exact milestone days', () => {
+describe("Daily Login - getMilestoneBonus", () => {
+  describe("exact milestone days", () => {
     test.each([
       [7, 500],
       [14, 750],
       [30, 1500],
       [60, 3000],
       [90, 5000],
-    ])('day %i returns bonus %i', (day, expected) => {
+    ])("day %i returns bonus %i", (day, expected) => {
       expect(getMilestoneBonus(day)).toBe(expected);
     });
   });
 
-  describe('non-milestone days', () => {
-    test('day 1 through 6 return 0', () => {
+  describe("non-milestone days", () => {
+    test("day 1 through 6 return 0", () => {
       for (let day = 1; day <= 6; day++) {
         expect(getMilestoneBonus(day)).toBe(0);
       }
     });
 
-    test('days just before milestones return 0', () => {
+    test("days just before milestones return 0", () => {
       expect(getMilestoneBonus(6)).toBe(0);
       expect(getMilestoneBonus(13)).toBe(0);
       expect(getMilestoneBonus(29)).toBe(0);
@@ -277,7 +277,7 @@ describe('Daily Login - getMilestoneBonus', () => {
       expect(getMilestoneBonus(89)).toBe(0);
     });
 
-    test('days just after milestones return 0', () => {
+    test("days just after milestones return 0", () => {
       expect(getMilestoneBonus(8)).toBe(0);
       expect(getMilestoneBonus(15)).toBe(0);
       expect(getMilestoneBonus(31)).toBe(0);
@@ -286,17 +286,17 @@ describe('Daily Login - getMilestoneBonus', () => {
     });
   });
 
-  describe('edge cases', () => {
-    test('day 0 returns 0', () => {
+  describe("edge cases", () => {
+    test("day 0 returns 0", () => {
       expect(getMilestoneBonus(0)).toBe(0);
     });
 
-    test('negative days return 0', () => {
+    test("negative days return 0", () => {
       expect(getMilestoneBonus(-1)).toBe(0);
       expect(getMilestoneBonus(-7)).toBe(0);
     });
 
-    test('days beyond last milestone return 0', () => {
+    test("days beyond last milestone return 0", () => {
       expect(getMilestoneBonus(100)).toBe(0);
       expect(getMilestoneBonus(180)).toBe(0);
       expect(getMilestoneBonus(365)).toBe(0);
@@ -306,16 +306,16 @@ describe('Daily Login - getMilestoneBonus', () => {
 
 // ─── getNextMilestone Tests ──────────────────────────────────────────────────
 
-describe('Daily Login - getNextMilestone', () => {
-  describe('progression through milestones', () => {
-    test('streak 0 targets day 7', () => {
+describe("Daily Login - getNextMilestone", () => {
+  describe("progression through milestones", () => {
+    test("streak 0 targets day 7", () => {
       expect(getNextMilestone(0)).toEqual({
         nextMilestone: 7,
         daysUntilMilestone: 7,
       });
     });
 
-    test('streak 1-6 all target day 7', () => {
+    test("streak 1-6 all target day 7", () => {
       for (let streak = 1; streak <= 6; streak++) {
         expect(getNextMilestone(streak)).toEqual({
           nextMilestone: 7,
@@ -324,14 +324,14 @@ describe('Daily Login - getNextMilestone', () => {
       }
     });
 
-    test('streak 7 targets day 14', () => {
+    test("streak 7 targets day 14", () => {
       expect(getNextMilestone(7)).toEqual({
         nextMilestone: 14,
         daysUntilMilestone: 7,
       });
     });
 
-    test('each milestone advances to next', () => {
+    test("each milestone advances to next", () => {
       expect(getNextMilestone(14)).toEqual({
         nextMilestone: 30,
         daysUntilMilestone: 16,
@@ -347,15 +347,15 @@ describe('Daily Login - getNextMilestone', () => {
     });
   });
 
-  describe('after all milestones', () => {
-    test('streak 90 returns zeros (all achieved)', () => {
+  describe("after all milestones", () => {
+    test("streak 90 returns zeros (all achieved)", () => {
       expect(getNextMilestone(90)).toEqual({
         nextMilestone: 0,
         daysUntilMilestone: 0,
       });
     });
 
-    test('streaks beyond 90 return zeros', () => {
+    test("streaks beyond 90 return zeros", () => {
       expect(getNextMilestone(91)).toEqual({
         nextMilestone: 0,
         daysUntilMilestone: 0,
@@ -371,8 +371,8 @@ describe('Daily Login - getNextMilestone', () => {
     });
   });
 
-  describe('edge cases', () => {
-    test('negative streaks treated as 0', () => {
+  describe("edge cases", () => {
+    test("negative streaks treated as 0", () => {
       // Negative streaks are clamped to 0, so daysUntilMilestone is 7 - 0 = 7
       expect(getNextMilestone(-1)).toEqual({
         nextMilestone: 7,
@@ -388,12 +388,12 @@ describe('Daily Login - getNextMilestone', () => {
 
 // ─── getClaimStatus Tests ────────────────────────────────────────────────────
 
-describe('Daily Login - getClaimStatus', () => {
+describe("Daily Login - getClaimStatus", () => {
   // Use a fixed timestamp for deterministic tests
   const NOW = 1700000000000; // Fixed "now" for all tests
 
-  describe('first-time user (null lastClaim)', () => {
-    test('can claim immediately with no reset', () => {
+  describe("first-time user (null lastClaim)", () => {
+    test("can claim immediately with no reset", () => {
       const status = getClaimStatus(null, NOW);
       expect(status.canClaim).toBe(true);
       expect(status.shouldResetStreak).toBe(false);
@@ -402,29 +402,29 @@ describe('Daily Login - getClaimStatus', () => {
     });
   });
 
-  describe('within 24h window (cannot claim)', () => {
-    test('1 second ago - cannot claim', () => {
+  describe("within 24h window (cannot claim)", () => {
+    test("1 second ago - cannot claim", () => {
       const status = getClaimStatus(NOW - SECOND, NOW);
       expect(status.canClaim).toBe(false);
       expect(status.shouldResetStreak).toBe(false);
       expect(status.timeUntilClaim).toBe(24 * HOUR - SECOND);
     });
 
-    test('1 hour ago - cannot claim', () => {
+    test("1 hour ago - cannot claim", () => {
       const status = getClaimStatus(NOW - HOUR, NOW);
       expect(status.canClaim).toBe(false);
       expect(status.timeUntilClaim).toBe(23 * HOUR);
     });
 
-    test('23 hours 59 minutes ago - still cannot claim', () => {
+    test("23 hours 59 minutes ago - still cannot claim", () => {
       const status = getClaimStatus(NOW - (24 * HOUR - MINUTE), NOW);
       expect(status.canClaim).toBe(false);
       expect(status.timeUntilClaim).toBe(MINUTE);
     });
   });
 
-  describe('exact 24h boundary', () => {
-    test('exactly 24h ago - can claim, streak continues', () => {
+  describe("exact 24h boundary", () => {
+    test("exactly 24h ago - can claim, streak continues", () => {
       const status = getClaimStatus(NOW - 24 * HOUR, NOW);
       expect(status.canClaim).toBe(true);
       expect(status.shouldResetStreak).toBe(false);
@@ -432,29 +432,29 @@ describe('Daily Login - getClaimStatus', () => {
       expect(status.timeUntilReset).toBe(12 * HOUR);
     });
 
-    test('24h + 1ms ago - can claim, streak continues', () => {
+    test("24h + 1ms ago - can claim, streak continues", () => {
       const status = getClaimStatus(NOW - (24 * HOUR + 1), NOW);
       expect(status.canClaim).toBe(true);
       expect(status.shouldResetStreak).toBe(false);
     });
   });
 
-  describe('grace period (24-36h) - can claim, streak continues', () => {
-    test('25 hours ago', () => {
+  describe("grace period (24-36h) - can claim, streak continues", () => {
+    test("25 hours ago", () => {
       const status = getClaimStatus(NOW - 25 * HOUR, NOW);
       expect(status.canClaim).toBe(true);
       expect(status.shouldResetStreak).toBe(false);
       expect(status.timeUntilReset).toBe(11 * HOUR);
     });
 
-    test('30 hours ago', () => {
+    test("30 hours ago", () => {
       const status = getClaimStatus(NOW - 30 * HOUR, NOW);
       expect(status.canClaim).toBe(true);
       expect(status.shouldResetStreak).toBe(false);
       expect(status.timeUntilReset).toBe(6 * HOUR);
     });
 
-    test('35 hours 59 minutes ago - barely within grace', () => {
+    test("35 hours 59 minutes ago - barely within grace", () => {
       const status = getClaimStatus(NOW - (36 * HOUR - MINUTE), NOW);
       expect(status.canClaim).toBe(true);
       expect(status.shouldResetStreak).toBe(false);
@@ -462,50 +462,50 @@ describe('Daily Login - getClaimStatus', () => {
     });
   });
 
-  describe('exact 36h boundary (grace period expires)', () => {
-    test('exactly 36h ago - streak resets', () => {
+  describe("exact 36h boundary (grace period expires)", () => {
+    test("exactly 36h ago - streak resets", () => {
       const status = getClaimStatus(NOW - 36 * HOUR, NOW);
       expect(status.canClaim).toBe(true);
       expect(status.shouldResetStreak).toBe(true);
       expect(status.timeUntilReset).toBe(0);
     });
 
-    test('36h + 1ms ago - streak resets', () => {
+    test("36h + 1ms ago - streak resets", () => {
       const status = getClaimStatus(NOW - (36 * HOUR + 1), NOW);
       expect(status.canClaim).toBe(true);
       expect(status.shouldResetStreak).toBe(true);
     });
   });
 
-  describe('long absence - streak resets', () => {
-    test('48 hours ago', () => {
+  describe("long absence - streak resets", () => {
+    test("48 hours ago", () => {
       const status = getClaimStatus(NOW - 48 * HOUR, NOW);
       expect(status.canClaim).toBe(true);
       expect(status.shouldResetStreak).toBe(true);
     });
 
-    test('1 week ago', () => {
+    test("1 week ago", () => {
       const status = getClaimStatus(NOW - 7 * 24 * HOUR, NOW);
       expect(status.canClaim).toBe(true);
       expect(status.shouldResetStreak).toBe(true);
     });
 
-    test('1 year ago', () => {
+    test("1 year ago", () => {
       const status = getClaimStatus(NOW - 365 * 24 * HOUR, NOW);
       expect(status.canClaim).toBe(true);
       expect(status.shouldResetStreak).toBe(true);
     });
   });
 
-  describe('edge cases', () => {
-    test('future lastClaim (clock skew) - elapsed clamped to 0, cannot claim', () => {
+  describe("edge cases", () => {
+    test("future lastClaim (clock skew) - elapsed clamped to 0, cannot claim", () => {
       // With elapsed clamped to 0, this means timeUntilClaim = 24h
       const status = getClaimStatus(NOW + HOUR, NOW);
       expect(status.canClaim).toBe(false);
       expect(status.timeUntilClaim).toBe(24 * HOUR);
     });
 
-    test('lastClaim at epoch (very old) - streak resets', () => {
+    test("lastClaim at epoch (very old) - streak resets", () => {
       const status = getClaimStatus(0, NOW);
       expect(status.canClaim).toBe(true);
       expect(status.shouldResetStreak).toBe(true);
@@ -515,8 +515,8 @@ describe('Daily Login - getClaimStatus', () => {
 
 // ─── Total Points Calculation Tests ──────────────────────────────────────────
 
-describe('Daily Login - Total Points Calculation', () => {
-  test('day 7 includes both daily reward and milestone bonus', () => {
+describe("Daily Login - Total Points Calculation", () => {
+  test("day 7 includes both daily reward and milestone bonus", () => {
     const reward = getDailyReward(7);
     const bonus = getMilestoneBonus(7);
     expect(reward).toBe(200);
@@ -524,7 +524,7 @@ describe('Daily Login - Total Points Calculation', () => {
     expect(reward + bonus).toBe(700);
   });
 
-  test('cumulative points for first 7 days', () => {
+  test("cumulative points for first 7 days", () => {
     let total = 0;
     for (let day = 1; day <= 7; day++) {
       total += getDailyReward(day) + getMilestoneBonus(day);
@@ -535,7 +535,7 @@ describe('Daily Login - Total Points Calculation', () => {
     expect(total).toBe(1375);
   });
 
-  test('cumulative points for 30 days', () => {
+  test("cumulative points for 30 days", () => {
     let total = 0;
     for (let day = 1; day <= 30; day++) {
       total += getDailyReward(day) + getMilestoneBonus(day);
@@ -546,7 +546,7 @@ describe('Daily Login - Total Points Calculation', () => {
     expect(total).toBe(6375);
   });
 
-  test('cumulative points for 90 days (all milestones)', () => {
+  test("cumulative points for 90 days (all milestones)", () => {
     let total = 0;
     for (let day = 1; day <= 90; day++) {
       total += getDailyReward(day) + getMilestoneBonus(day);
@@ -561,22 +561,22 @@ describe('Daily Login - Total Points Calculation', () => {
 
 // ─── Streak State Transitions ────────────────────────────────────────────────
 
-describe('Daily Login - Streak State Transitions', () => {
-  test('streak increments on valid claim within grace', () => {
+describe("Daily Login - Streak State Transitions", () => {
+  test("streak increments on valid claim within grace", () => {
     const currentStreak = 5;
     const shouldReset = false;
     const newStreak = shouldReset ? 1 : currentStreak + 1;
     expect(newStreak).toBe(6);
   });
 
-  test('streak resets to 1 on claim after grace expires', () => {
+  test("streak resets to 1 on claim after grace expires", () => {
     const currentStreak = 50;
     const shouldReset = true;
     const newStreak = shouldReset ? 1 : currentStreak + 1;
     expect(newStreak).toBe(1);
   });
 
-  test('longestStreak updates when current exceeds it', () => {
+  test("longestStreak updates when current exceeds it", () => {
     const cases = [
       { current: 10, newStreak: 11, expected: 11 },
       { current: 10, newStreak: 10, expected: 10 },
@@ -592,79 +592,79 @@ describe('Daily Login - Streak State Transitions', () => {
 
 // ─── formatTimeRemaining Tests ───────────────────────────────────────────────
 
-describe('Daily Login - formatTimeRemaining', () => {
-  describe('zero and negative values', () => {
+describe("Daily Login - formatTimeRemaining", () => {
+  describe("zero and negative values", () => {
     test('0 returns "Now"', () => {
-      expect(formatTimeRemaining(0)).toBe('Now');
+      expect(formatTimeRemaining(0)).toBe("Now");
     });
 
     test('negative values return "Now"', () => {
-      expect(formatTimeRemaining(-1)).toBe('Now');
-      expect(formatTimeRemaining(-HOUR)).toBe('Now');
-      expect(formatTimeRemaining(-Number.MAX_SAFE_INTEGER)).toBe('Now');
+      expect(formatTimeRemaining(-1)).toBe("Now");
+      expect(formatTimeRemaining(-HOUR)).toBe("Now");
+      expect(formatTimeRemaining(-Number.MAX_SAFE_INTEGER)).toBe("Now");
     });
   });
 
-  describe('minutes only (< 1 hour)', () => {
-    test('1 minute', () => {
-      expect(formatTimeRemaining(MINUTE)).toBe('1m');
+  describe("minutes only (< 1 hour)", () => {
+    test("1 minute", () => {
+      expect(formatTimeRemaining(MINUTE)).toBe("1m");
     });
 
-    test('30 minutes', () => {
-      expect(formatTimeRemaining(30 * MINUTE)).toBe('30m');
+    test("30 minutes", () => {
+      expect(formatTimeRemaining(30 * MINUTE)).toBe("30m");
     });
 
-    test('59 minutes', () => {
-      expect(formatTimeRemaining(59 * MINUTE)).toBe('59m');
+    test("59 minutes", () => {
+      expect(formatTimeRemaining(59 * MINUTE)).toBe("59m");
     });
 
-    test('less than 1 minute rounds down to 0m', () => {
-      expect(formatTimeRemaining(30 * SECOND)).toBe('0m');
-    });
-  });
-
-  describe('hours and minutes', () => {
-    test('exactly 1 hour', () => {
-      expect(formatTimeRemaining(HOUR)).toBe('1h 0m');
-    });
-
-    test('1 hour 30 minutes', () => {
-      expect(formatTimeRemaining(HOUR + 30 * MINUTE)).toBe('1h 30m');
-    });
-
-    test('23 hours 59 minutes', () => {
-      expect(formatTimeRemaining(23 * HOUR + 59 * MINUTE)).toBe('23h 59m');
-    });
-
-    test('24 hours', () => {
-      expect(formatTimeRemaining(24 * HOUR)).toBe('24h 0m');
+    test("less than 1 minute rounds down to 0m", () => {
+      expect(formatTimeRemaining(30 * SECOND)).toBe("0m");
     });
   });
 
-  describe('edge cases', () => {
-    test('very large values format correctly', () => {
+  describe("hours and minutes", () => {
+    test("exactly 1 hour", () => {
+      expect(formatTimeRemaining(HOUR)).toBe("1h 0m");
+    });
+
+    test("1 hour 30 minutes", () => {
+      expect(formatTimeRemaining(HOUR + 30 * MINUTE)).toBe("1h 30m");
+    });
+
+    test("23 hours 59 minutes", () => {
+      expect(formatTimeRemaining(23 * HOUR + 59 * MINUTE)).toBe("23h 59m");
+    });
+
+    test("24 hours", () => {
+      expect(formatTimeRemaining(24 * HOUR)).toBe("24h 0m");
+    });
+  });
+
+  describe("edge cases", () => {
+    test("very large values format correctly", () => {
       const oneWeek = 7 * 24 * HOUR;
-      expect(formatTimeRemaining(oneWeek)).toBe('168h 0m');
+      expect(formatTimeRemaining(oneWeek)).toBe("168h 0m");
     });
   });
 });
 
 // ─── Invariant Tests ─────────────────────────────────────────────────────────
 
-describe('Daily Login - Invariants', () => {
-  test('daily rewards are always positive', () => {
+describe("Daily Login - Invariants", () => {
+  test("daily rewards are always positive", () => {
     for (let day = 1; day <= 1000; day++) {
       expect(getDailyReward(day)).toBeGreaterThan(0);
     }
   });
 
-  test('milestone bonuses are never negative', () => {
+  test("milestone bonuses are never negative", () => {
     for (let day = 0; day <= 1000; day++) {
       expect(getMilestoneBonus(day)).toBeGreaterThanOrEqual(0);
     }
   });
 
-  test('getNextMilestone returns valid values', () => {
+  test("getNextMilestone returns valid values", () => {
     for (let streak = 0; streak <= 100; streak++) {
       const { nextMilestone, daysUntilMilestone } = getNextMilestone(streak);
       expect(nextMilestone).toBeGreaterThanOrEqual(0);
@@ -676,7 +676,7 @@ describe('Daily Login - Invariants', () => {
     }
   });
 
-  test('claim status time values are non-negative', () => {
+  test("claim status time values are non-negative", () => {
     const NOW = 1700000000000;
     const testTimes = [null, NOW, NOW - HOUR, NOW - 25 * HOUR, NOW - 48 * HOUR];
     for (const time of testTimes) {

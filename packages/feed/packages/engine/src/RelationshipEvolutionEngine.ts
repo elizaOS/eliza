@@ -20,18 +20,18 @@ import {
   gte,
   npcInteractions,
   or,
-} from '@feed/db';
-import { generateSnowflakeId, logger } from '@feed/shared';
-import type { FeedLLMClient } from './llm/openai-client';
-import { StaticDataRegistry } from './services/static-data-registry';
-import { isSimulationMode } from './storage-bridge';
-import type { Actor, ActorRelationship, Organization } from './types/shared';
-import { first } from './utils/array-utils';
+} from "@feed/db";
+import { generateSnowflakeId, logger } from "@feed/shared";
+import type { FeedLLMClient } from "./llm/openai-client";
+import { StaticDataRegistry } from "./services/static-data-registry";
+import { isSimulationMode } from "./storage-bridge";
+import type { Actor, ActorRelationship, Organization } from "./types/shared";
+import { first } from "./utils/array-utils";
 
 export interface RelationshipChange {
   actor1Id: string;
   actor2Id: string;
-  action: 'create' | 'update' | 'delete';
+  action: "create" | "update" | "delete";
   newHistory?: string; // The text description
   newType?: string;
   newSentiment?: number;
@@ -42,7 +42,7 @@ export interface RelationshipChange {
 export interface Interaction {
   actor1Id: string;
   actor2Id: string;
-  type: 'mention' | 'reply' | 'article' | 'event' | 'trade';
+  type: "mention" | "reply" | "article" | "event" | "trade";
   sentiment: number;
   context: string;
   timestamp: Date;
@@ -57,22 +57,22 @@ export class RelationshipEvolutionEngine {
    */
   async generateInitialRelationships(
     actors: Actor[],
-    organizations: Organization[]
+    organizations: Organization[],
   ): Promise<number> {
     // In simulation mode, relationships are not persisted to DB
     if (isSimulationMode()) {
       logger.debug(
-        'Skipping initial relationships in simulation mode',
+        "Skipping initial relationships in simulation mode",
         undefined,
-        'RelationshipEvolutionEngine'
+        "RelationshipEvolutionEngine",
       );
       return 0;
     }
 
     logger.info(
-      'Generating initial NPC relationships...',
+      "Generating initial NPC relationships...",
       undefined,
-      'RelationshipEvolutionEngine'
+      "RelationshipEvolutionEngine",
     );
 
     let created = 0;
@@ -96,7 +96,7 @@ export class RelationshipEvolutionEngine {
         // Calculate simple compatibility
         const sharedOrgs =
           actor1.affiliations?.filter((org) =>
-            actor2.affiliations?.includes(org)
+            actor2.affiliations?.includes(org),
           ) || [];
 
         const sharedDomains =
@@ -115,7 +115,7 @@ export class RelationshipEvolutionEngine {
           if (this.llm && sharedOrgs.length > 0) {
             // LLM-DRIVEN: Generate relationship from context
             const org = orgMap.get(first(sharedOrgs)!);
-            const context = `both affiliated with ${org?.name || 'same organization'}`;
+            const context = `both affiliated with ${org?.name || "same organization"}`;
 
             // Check if relationship already exists
             const [existing] = await db
@@ -125,13 +125,13 @@ export class RelationshipEvolutionEngine {
                 or(
                   and(
                     eq(actorRelationships.actor1Id, actor1.id),
-                    eq(actorRelationships.actor2Id, actor2.id)
+                    eq(actorRelationships.actor2Id, actor2.id),
                   ),
                   and(
                     eq(actorRelationships.actor1Id, actor2.id),
-                    eq(actorRelationships.actor2Id, actor1.id)
-                  )
-                )
+                    eq(actorRelationships.actor2Id, actor1.id),
+                  ),
+                ),
               )
               .limit(1);
 
@@ -139,9 +139,9 @@ export class RelationshipEvolutionEngine {
               actor1.name,
               actor2.name,
               context,
-              actor1.personality || '',
-              actor2.personality || '',
-              existing?.history || undefined
+              actor1.personality || "",
+              actor2.personality || "",
+              existing?.history || undefined,
             );
 
             history = llmResult.description;
@@ -151,17 +151,17 @@ export class RelationshipEvolutionEngine {
             // Fallback: Simple template
             const fallbackOrgId = first(sharedOrgs)!;
             const org = orgMap.get(fallbackOrgId);
-            const orgName = org?.name.toLowerCase() || 'same company';
+            const orgName = org?.name.toLowerCase() || "same company";
             history = `both work at ${orgName}`;
-            type = 'acquaintances';
+            type = "acquaintances";
             sentiment = Math.random() * 0.6 - 0.3;
           } else if (sharedDomains.length > 0) {
             history = `both work in ${sharedDomains[0]}`;
-            type = 'acquaintances';
+            type = "acquaintances";
             sentiment = Math.random() * 0.4 - 0.2;
           } else {
-            history = 'professional circles';
-            type = 'acquaintances';
+            history = "professional circles";
+            type = "acquaintances";
             sentiment = 0;
           }
 
@@ -174,13 +174,13 @@ export class RelationshipEvolutionEngine {
               or(
                 and(
                   eq(actorRelationships.actor1Id, actor1.id),
-                  eq(actorRelationships.actor2Id, actor2.id)
+                  eq(actorRelationships.actor2Id, actor2.id),
                 ),
                 and(
                   eq(actorRelationships.actor1Id, actor2.id),
-                  eq(actorRelationships.actor2Id, actor1.id)
-                )
-              )
+                  eq(actorRelationships.actor2Id, actor1.id),
+                ),
+              ),
             )
             .limit(1);
 
@@ -209,7 +209,7 @@ export class RelationshipEvolutionEngine {
     logger.info(
       `Created ${created} initial relationships`,
       { count: created },
-      'RelationshipEvolutionEngine'
+      "RelationshipEvolutionEngine",
     );
     return created;
   }
@@ -223,14 +223,14 @@ export class RelationshipEvolutionEngine {
     context: string,
     personality1: string,
     personality2: string,
-    existingRelationship?: string
+    existingRelationship?: string,
   ): Promise<{ description: string; type: string; sentiment: number }> {
     const prompt = `Analyze the relationship between two NPCs:
 
 NPC 1: ${actor1Name} (${personality1})
 NPC 2: ${actor2Name} (${personality2})
 Context: ${context}
-${existingRelationship ? `Previous relationship: ${existingRelationship}` : 'No previous relationship'}
+${existingRelationship ? `Previous relationship: ${existingRelationship}` : "No previous relationship"}
 
 Write a natural, casual description of their relationship. Be specific and narrative.
 
@@ -254,7 +254,7 @@ Return JSON: { "description": "...", "type": "...", "sentiment": 0.0 }`;
 
     if (!this.llm) {
       throw new Error(
-        'LLM client required for generateRelationshipDescription'
+        "LLM client required for generateRelationshipDescription",
       );
     }
 
@@ -264,13 +264,13 @@ Return JSON: { "description": "...", "type": "...", "sentiment": 0.0 }`;
       sentiment: number;
     }>(
       prompt,
-      { required: ['description', 'type', 'sentiment'] },
-      { maxTokens: 200, temperature: 0.9 }
+      { required: ["description", "type", "sentiment"] },
+      { maxTokens: 200, temperature: 0.9 },
     );
 
     return {
       description: response.description.toLowerCase().trim(),
-      type: response.type || 'acquaintances',
+      type: response.type || "acquaintances",
       sentiment: Math.max(-1, Math.min(1, response.sentiment || 0)),
     };
   }
@@ -279,7 +279,7 @@ Return JSON: { "description": "...", "type": "...", "sentiment": 0.0 }`;
    * Track an interaction between two NPCs
    */
   async trackInteraction(
-    interaction: Omit<Interaction, 'timestamp'>
+    interaction: Omit<Interaction, "timestamp">,
   ): Promise<void> {
     // In simulation mode, interactions are not persisted to DB
     if (isSimulationMode()) {
@@ -313,9 +313,9 @@ Return JSON: { "description": "...", "type": "...", "sentiment": 0.0 }`;
 
     if (!this.llm) {
       logger.warn(
-        'No LLM client available, skipping relationship analysis',
+        "No LLM client available, skipping relationship analysis",
         undefined,
-        'RelationshipEvolutionEngine'
+        "RelationshipEvolutionEngine",
       );
       return 0;
     }
@@ -331,9 +331,9 @@ Return JSON: { "description": "...", "type": "...", "sentiment": 0.0 }`;
 
     if (recentInteractions.length === 0) {
       logger.info(
-        'No recent interactions to analyze',
+        "No recent interactions to analyze",
         undefined,
-        'RelationshipEvolutionEngine'
+        "RelationshipEvolutionEngine",
       );
       return 0;
     }
@@ -346,7 +346,7 @@ Return JSON: { "description": "...", "type": "...", "sentiment": 0.0 }`;
       if (!pairInteractions.has(pairKey)) {
         pairInteractions.set(pairKey, []);
       }
-      pairInteractions.get(pairKey)!.push(interaction);
+      pairInteractions.get(pairKey)?.push(interaction);
     }
 
     logger.info(
@@ -355,7 +355,7 @@ Return JSON: { "description": "...", "type": "...", "sentiment": 0.0 }`;
         pairs: pairInteractions.size,
         interactions: recentInteractions.length,
       },
-      'RelationshipEvolutionEngine'
+      "RelationshipEvolutionEngine",
     );
 
     let updated = 0;
@@ -365,7 +365,7 @@ Return JSON: { "description": "...", "type": "...", "sentiment": 0.0 }`;
       // Need at least 2 interactions to update relationship
       if (interactions.length < 2) continue;
 
-      const [actor1Id, actor2Id] = pairKey.split('_');
+      const [actor1Id, actor2Id] = pairKey.split("_");
       if (!actor1Id || !actor2Id) continue;
 
       // Get existing relationship
@@ -375,8 +375,8 @@ Return JSON: { "description": "...", "type": "...", "sentiment": 0.0 }`;
         .where(
           and(
             eq(actorRelationships.actor1Id, actor1Id),
-            eq(actorRelationships.actor2Id, actor2Id)
-          )
+            eq(actorRelationships.actor2Id, actor2Id),
+          ),
         )
         .limit(1);
 
@@ -396,9 +396,9 @@ Return JSON: { "description": "...", "type": "...", "sentiment": 0.0 }`;
         .slice(0, 5)
         .map(
           (i) =>
-            `- ${i.interactionType}: ${i.context} (sentiment: ${i.sentiment > 0 ? '+' : ''}${i.sentiment.toFixed(2)})`
+            `- ${i.interactionType}: ${i.context} (sentiment: ${i.sentiment > 0 ? "+" : ""}${i.sentiment.toFixed(2)})`,
         )
-        .join('\n');
+        .join("\n");
 
       // Use LLM to generate natural text description with retry logic
       const prompt = `Analyze the evolving relationship between two NPCs based on their recent interactions.
@@ -409,7 +409,7 @@ NPC 2: ${actor2.name}
 Recent interactions (last 7 days):
 ${interactionSummary}
 
-${existing ? `Current relationship: "${existing.history}"` : 'No existing relationship'}
+${existing ? `Current relationship: "${existing.history}"` : "No existing relationship"}
 
 Based on these interactions, write a natural, casual description of how their relationship has evolved.
 
@@ -433,8 +433,8 @@ Also determine:
 Return JSON: { "description": "...", "type": "...", "sentiment": 0.0 }`;
 
       // Retry logic: up to 3 attempts with LLM-generated relationship updates
-      let newHistory = 'professional relationship';
-      let newType = 'acquaintances';
+      let newHistory = "professional relationship";
+      let newType = "acquaintances";
       let newSentiment = avgSentiment;
       const maxRetries = 3;
 
@@ -445,22 +445,22 @@ Return JSON: { "description": "...", "type": "...", "sentiment": 0.0 }`;
           sentiment: number;
         }>(
           prompt,
-          { required: ['description', 'type', 'sentiment'] },
+          { required: ["description", "type", "sentiment"] },
           {
             maxTokens: 200,
             temperature: 0.8,
-            promptType: 'relationship_evolve',
-          }
+            promptType: "relationship_evolve",
+          },
         );
 
         if (response.description && response.description.trim().length > 0) {
           // LLM determines everything - no hardcoded rules
           // Don't trim - let LLM decide length (they know the context)
           newHistory = response.description.toLowerCase().trim();
-          newType = response.type || 'acquaintances';
+          newType = response.type || "acquaintances";
           newSentiment = Math.max(
             -1,
-            Math.min(1, response.sentiment || avgSentiment)
+            Math.min(1, response.sentiment || avgSentiment),
           );
           break; // Success
         }
@@ -468,7 +468,7 @@ Return JSON: { "description": "...", "type": "...", "sentiment": 0.0 }`;
         // Wait before retry (exponential backoff)
         if (attempt < maxRetries - 1) {
           await new Promise((resolve) =>
-            setTimeout(resolve, 1000 * 2 ** attempt)
+            setTimeout(resolve, 1000 * 2 ** attempt),
           );
         }
       }
@@ -484,7 +484,7 @@ Return JSON: { "description": "...", "type": "...", "sentiment": 0.0 }`;
             sentiment: newSentiment,
             strength: Math.min(
               1.0,
-              (existing.strength || 0.5) + interactions.length * 0.05
+              (existing.strength || 0.5) + interactions.length * 0.05,
             ),
             lastInteraction: new Date(),
             interactionCount:
@@ -513,7 +513,7 @@ Return JSON: { "description": "...", "type": "...", "sentiment": 0.0 }`;
 
       updated++;
       logger.info(
-        'Updated relationship',
+        "Updated relationship",
         {
           actor1: actor1.name,
           actor2: actor2.name,
@@ -521,14 +521,14 @@ Return JSON: { "description": "...", "type": "...", "sentiment": 0.0 }`;
           type: newType,
           sentiment: newSentiment.toFixed(2),
         },
-        'RelationshipEvolutionEngine'
+        "RelationshipEvolutionEngine",
       );
     }
 
     logger.info(
       `Updated ${updated} relationships`,
       { count: updated },
-      'RelationshipEvolutionEngine'
+      "RelationshipEvolutionEngine",
     );
     return updated;
   }
@@ -540,7 +540,7 @@ Return JSON: { "description": "...", "type": "...", "sentiment": 0.0 }`;
   async getRelationshipContextForActor(actorId: string): Promise<string> {
     // In simulation mode, relationships are not persisted to DB
     if (isSimulationMode()) {
-      return '';
+      return "";
     }
 
     // Get relationships for this actor
@@ -550,40 +550,40 @@ Return JSON: { "description": "...", "type": "...", "sentiment": 0.0 }`;
       .where(
         or(
           eq(actorRelationships.actor1Id, actorId),
-          eq(actorRelationships.actor2Id, actorId)
-        )
+          eq(actorRelationships.actor2Id, actorId),
+        ),
       )
       .orderBy(desc(actorRelationships.strength))
       .limit(5); // Top 5 strongest only (keep it short)
 
     if (relationships.length === 0) {
-      return '';
+      return "";
     }
 
     // Get the other actor IDs we need to look up
     const otherActorIds = relationships.map((rel) =>
-      rel.actor1Id === actorId ? rel.actor2Id : rel.actor1Id
+      rel.actor1Id === actorId ? rel.actor2Id : rel.actor1Id,
     );
 
     // Get actor names from static registry
     const actorNameMap = new Map(
       otherActorIds.map((id) => {
         const actor = StaticDataRegistry.getActor(id);
-        return [id, actor?.name || 'Unknown'];
-      })
+        return [id, actor?.name || "Unknown"];
+      }),
     );
 
     // SIMPLEST FORMAT: Just list the relationships
     const lines = relationships.map((rel) => {
       const otherActorId =
         rel.actor1Id === actorId ? rel.actor2Id : rel.actor1Id;
-      const otherActorName = actorNameMap.get(otherActorId) || 'Unknown';
+      const otherActorName = actorNameMap.get(otherActorId) || "Unknown";
 
       // Just the text description, no emojis or extra formatting
-      return `- ${otherActorName}: ${rel.history || 'professional relationship'}`;
+      return `- ${otherActorName}: ${rel.history || "professional relationship"}`;
     });
 
-    return lines.join('\n');
+    return lines.join("\n");
   }
 
   // =============================================================================
@@ -594,7 +594,7 @@ Return JSON: { "description": "...", "type": "...", "sentiment": 0.0 }`;
    * Get all relationships for an actor (static method for queries)
    */
   static async getActorRelationships(
-    actorId: string
+    actorId: string,
   ): Promise<ActorRelationship[]> {
     // In simulation mode, relationships are not persisted to DB
     if (isSimulationMode()) {
@@ -607,8 +607,8 @@ Return JSON: { "description": "...", "type": "...", "sentiment": 0.0 }`;
       .where(
         or(
           eq(actorRelationships.actor1Id, actorId),
-          eq(actorRelationships.actor2Id, actorId)
-        )
+          eq(actorRelationships.actor2Id, actorId),
+        ),
       );
 
     return relationships.map((rel) => ({
@@ -616,7 +616,7 @@ Return JSON: { "description": "...", "type": "...", "sentiment": 0.0 }`;
       actor1Id: rel.actor1Id,
       actor2Id: rel.actor2Id,
       relationshipType:
-        rel.relationshipType as ActorRelationship['relationshipType'],
+        rel.relationshipType as ActorRelationship["relationshipType"],
       strength: rel.strength,
       sentiment: rel.sentiment,
       isPublic: rel.isPublic,
@@ -632,7 +632,7 @@ Return JSON: { "description": "...", "type": "...", "sentiment": 0.0 }`;
    */
   static async getRelationship(
     actor1Id: string,
-    actor2Id: string
+    actor2Id: string,
   ): Promise<ActorRelationship | null> {
     // In simulation mode, relationships are not persisted to DB
     if (isSimulationMode()) {
@@ -646,13 +646,13 @@ Return JSON: { "description": "...", "type": "...", "sentiment": 0.0 }`;
         or(
           and(
             eq(actorRelationships.actor1Id, actor1Id),
-            eq(actorRelationships.actor2Id, actor2Id)
+            eq(actorRelationships.actor2Id, actor2Id),
           ),
           and(
             eq(actorRelationships.actor1Id, actor2Id),
-            eq(actorRelationships.actor2Id, actor1Id)
-          )
-        )
+            eq(actorRelationships.actor2Id, actor1Id),
+          ),
+        ),
       )
       .limit(1);
 
@@ -663,7 +663,7 @@ Return JSON: { "description": "...", "type": "...", "sentiment": 0.0 }`;
       actor1Id: relationship.actor1Id,
       actor2Id: relationship.actor2Id,
       relationshipType:
-        relationship.relationshipType as ActorRelationship['relationshipType'],
+        relationship.relationshipType as ActorRelationship["relationshipType"],
       strength: relationship.strength,
       sentiment: relationship.sentiment,
       isPublic: relationship.isPublic,

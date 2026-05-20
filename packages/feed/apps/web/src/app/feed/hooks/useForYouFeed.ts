@@ -1,8 +1,8 @@
-import type { NarrativeStory } from '@feed/shared';
-import { logger } from '@feed/shared';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useAuth } from '@/hooks/useAuth';
-import { useSSEChannel } from '@/hooks/useSSE';
+import type { NarrativeStory } from "@feed/shared";
+import { logger } from "@feed/shared";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
+import { useSSEChannel } from "@/hooks/useSSE";
 
 interface UseForYouFeedOptions {
   enabled?: boolean;
@@ -20,9 +20,9 @@ export interface UseForYouFeedResult {
 }
 
 const PAGE_SIZE = 20;
-const ENDPOINT = '/api/feed/for-you';
+const ENDPOINT = "/api/feed/for-you";
 const SSE_DEBOUNCE_MS = 2_000;
-const LOG_CTX = 'useForYouFeed';
+const LOG_CTX = "useForYouFeed";
 
 interface FeedPageResponse {
   success?: boolean;
@@ -48,13 +48,13 @@ export function shouldStartInitialForYouFetch({
 
 export function getForYouFeedSseChannel(
   enabled: boolean,
-  authReady: boolean
-): 'feed' | null {
-  return enabled && authReady ? 'feed' : null;
+  authReady: boolean,
+): "feed" | null {
+  return enabled && authReady ? "feed" : null;
 }
 
 export function useForYouFeed(
-  options: UseForYouFeedOptions = {}
+  options: UseForYouFeedOptions = {},
 ): UseForYouFeedResult {
   const { enabled = true } = options;
   const { ready: authReady, authenticated, getAccessToken } = useAuth();
@@ -100,7 +100,7 @@ export function useForYouFeed(
   const fetchPage = useCallback(
     async (
       cursor: string | null,
-      signal: AbortSignal
+      signal: AbortSignal,
     ): Promise<FeedPageResponse | null> => {
       const headers = await buildHeaders();
       const url = cursor
@@ -113,7 +113,7 @@ export function useForYouFeed(
       }
       return response.json() as Promise<FeedPageResponse>;
     },
-    [buildHeaders]
+    [buildHeaders],
   );
 
   const loadInitial = useCallback(
@@ -130,8 +130,8 @@ export function useForYouFeed(
         syncHasMore(data.hasMore ?? false);
         setError(null);
       } catch (err) {
-        if (err instanceof Error && err.name === 'AbortError') return;
-        const msg = 'Failed to load For You feed';
+        if (err instanceof Error && err.name === "AbortError") return;
+        const msg = "Failed to load For You feed";
         logger.error(msg, { error: err }, LOG_CTX);
         if (storiesRef.current.length === 0) setError(msg);
       } finally {
@@ -141,7 +141,7 @@ export function useForYouFeed(
         }
       }
     },
-    [fetchPage, syncHasMore]
+    [fetchPage, syncHasMore],
   );
 
   const refresh = useCallback(async () => {
@@ -180,11 +180,11 @@ export function useForYouFeed(
         syncHasMore(data.hasMore ?? false);
       })
       .catch((err) => {
-        if (err instanceof Error && err.name === 'AbortError') return;
+        if (err instanceof Error && err.name === "AbortError") return;
         logger.error(
-          'Failed to load more For You stories',
+          "Failed to load more For You stories",
           { error: err },
-          LOG_CTX
+          LOG_CTX,
         );
       })
       .finally(() => {
@@ -207,7 +207,7 @@ export function useForYouFeed(
       sseDebounceRef.current = setTimeout(() => {
         if (isMountedRef.current) void refresh();
       }, SSE_DEBOUNCE_MS);
-    }, [refresh])
+    }, [refresh]),
   );
 
   // Initial fetch and cleanup

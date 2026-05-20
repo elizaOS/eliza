@@ -1,4 +1,4 @@
-import { definePrompt } from '../define-prompt';
+import { definePrompt } from "../define-prompt";
 
 /**
  * Prompt for generating logos for organizations based on description.
@@ -10,10 +10,10 @@ import { definePrompt } from '../define-prompt';
  * Returns image generation prompt for organization logo.
  */
 export const organizationLogo = definePrompt({
-  id: 'organization-logo',
-  version: '3.0.0',
-  category: 'image',
-  description: 'Generates a logo for organizations based on pfpDescription',
+  id: "organization-logo",
+  version: "3.0.0",
+  category: "image",
+  description: "Generates a logo for organizations based on pfpDescription",
   template: `
 Create a logo for {{organizationName}} (satirical parody of {{originalCompany}}).
 
@@ -38,10 +38,10 @@ IMPORTANT:
  * Returns image generation prompt for organization banner.
  */
 export const organizationBanner = definePrompt({
-  id: 'organization-banner',
-  version: '1.0.0',
-  category: 'image',
-  description: 'Generates organization profile banners',
+  id: "organization-banner",
+  version: "1.0.0",
+  category: "image",
+  description: "Generates organization profile banners",
   template: `
 Create a profile banner (landscape/wide format) for {{organizationName}} (satirical parody of {{originalCompany}}).
 

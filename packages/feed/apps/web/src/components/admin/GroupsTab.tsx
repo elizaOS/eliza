@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { cn } from '@feed/shared';
+import { cn } from "@feed/shared";
 import {
   Calendar,
   MessageCircle,
@@ -8,11 +8,11 @@ import {
   Search,
   User as UserIcon,
   Users,
-} from 'lucide-react';
-import { useCallback, useEffect, useState, useTransition } from 'react';
-import { z } from 'zod';
-import { getAuthToken } from '@/lib/auth';
-import { apiUrl } from '@/utils/api-url';
+} from "lucide-react";
+import { useCallback, useEffect, useState, useTransition } from "react";
+import { z } from "zod";
+import { getAuthToken } from "@/lib/auth";
+import { apiUrl } from "@/utils/api-url";
 
 /**
  * Participant schema for validation.
@@ -82,12 +82,12 @@ type GroupChat = z.infer<typeof GroupChatSchema>;
 export function GroupsTab() {
   const [groups, setGroups] = useState<GroupChat[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState("");
   const [selectedGroup, setSelectedGroup] = useState<GroupChat | null>(null);
   const [sortBy, setSortBy] = useState<
-    'createdAt' | 'memberCount' | 'messageCount'
-  >('createdAt');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+    "createdAt" | "memberCount" | "messageCount"
+  >("createdAt");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [isRefreshing, startRefresh] = useTransition();
 
   const fetchGroups = useCallback(async () => {
@@ -96,7 +96,7 @@ export function GroupsTab() {
       const token = getAuthToken();
 
       if (!token) {
-        throw new Error('Not authenticated');
+        throw new Error("Not authenticated");
       }
 
       const response = await fetch(
@@ -105,17 +105,17 @@ export function GroupsTab() {
           headers: {
             Authorization: `Bearer ${token}`,
           },
-        }
+        },
       );
 
       if (!response.ok) {
-        throw new Error('Failed to fetch groups');
+        throw new Error("Failed to fetch groups");
       }
 
       const data = await response.json();
       const validation = z.array(GroupChatSchema).safeParse(data.data.groups);
       if (!validation.success) {
-        throw new Error('Invalid group data structure');
+        throw new Error("Invalid group data structure");
       }
       setGroups(validation.data || []);
       setIsLoading(false);
@@ -130,42 +130,42 @@ export function GroupsTab() {
     (group) =>
       group.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       group.creatorName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      group.id.toLowerCase().includes(searchTerm.toLowerCase())
+      group.id.toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
   const getGroupTypeLabel = (type: string) => {
     switch (type) {
-      case 'npc-only':
-      case 'npc':
-        return 'NPC Only';
-      case 'npc-mixed':
-        return 'NPC + Users';
-      case 'user':
-        return 'User Created';
-      case 'agent':
-        return 'Agent Group';
-      case 'team':
-        return 'Agents';
+      case "npc-only":
+      case "npc":
+        return "NPC Only";
+      case "npc-mixed":
+        return "NPC + Users";
+      case "user":
+        return "User Created";
+      case "agent":
+        return "Agent Group";
+      case "team":
+        return "Agents";
       default:
-        return 'Unknown';
+        return "Unknown";
     }
   };
 
   const getGroupTypeColor = (type: string) => {
     switch (type) {
-      case 'npc-only':
-      case 'npc':
-        return 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20';
-      case 'npc-mixed':
-        return 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20';
-      case 'user':
-        return 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20';
-      case 'agent':
-        return 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20';
-      case 'team':
-        return 'bg-primary/10 text-primary border-primary/20';
+      case "npc-only":
+      case "npc":
+        return "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20";
+      case "npc-mixed":
+        return "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20";
+      case "user":
+        return "bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20";
+      case "agent":
+        return "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20";
+      case "team":
+        return "bg-primary/10 text-primary border-primary/20";
       default:
-        return 'bg-muted text-muted-foreground border-border';
+        return "bg-muted text-muted-foreground border-border";
     }
   };
 
@@ -177,24 +177,24 @@ export function GroupsTab() {
           <Users className="h-5 w-5 text-primary" />
           <h2 className="font-semibold text-xl">Group Chats</h2>
           <span className="text-muted-foreground text-sm">
-            ({filteredGroups.length}{' '}
-            {filteredGroups.length === 1 ? 'group' : 'groups'})
+            ({filteredGroups.length}{" "}
+            {filteredGroups.length === 1 ? "group" : "groups"})
           </span>
         </div>
         <button
           onClick={fetchGroups}
           disabled={isLoading || isRefreshing}
           className={cn(
-            'flex items-center gap-2 rounded-lg px-4 py-2',
-            'bg-primary text-primary-foreground',
-            'transition-colors hover:bg-primary/90',
-            'disabled:cursor-not-allowed disabled:opacity-50'
+            "flex items-center gap-2 rounded-lg px-4 py-2",
+            "bg-primary text-primary-foreground",
+            "transition-colors hover:bg-primary/90",
+            "disabled:cursor-not-allowed disabled:opacity-50",
           )}
         >
           <RefreshCw
             className={cn(
-              'h-4 w-4',
-              (isLoading || isRefreshing) && 'animate-spin'
+              "h-4 w-4",
+              (isLoading || isRefreshing) && "animate-spin",
             )}
           />
           Refresh
@@ -212,9 +212,9 @@ export function GroupsTab() {
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className={cn(
-              'w-full rounded-lg border border-border py-2 pr-4 pl-10',
-              'bg-background text-foreground',
-              'focus:border-primary focus:outline-none'
+              "w-full rounded-lg border border-border py-2 pr-4 pl-10",
+              "bg-background text-foreground",
+              "focus:border-primary focus:outline-none",
             )}
           />
         </div>
@@ -225,9 +225,9 @@ export function GroupsTab() {
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
             className={cn(
-              'rounded-lg border border-border px-4 py-2',
-              'bg-background text-foreground',
-              'focus:border-primary focus:outline-none'
+              "rounded-lg border border-border px-4 py-2",
+              "bg-background text-foreground",
+              "focus:border-primary focus:outline-none",
             )}
           >
             <option value="createdAt">Created Date</option>
@@ -235,14 +235,14 @@ export function GroupsTab() {
             <option value="messageCount">Message Count</option>
           </select>
           <button
-            onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+            onClick={() => setSortOrder(sortOrder === "asc" ? "desc" : "asc")}
             className={cn(
-              'rounded-lg border border-border px-4 py-2',
-              'bg-background transition-colors hover:bg-muted'
+              "rounded-lg border border-border px-4 py-2",
+              "bg-background transition-colors hover:bg-muted",
             )}
-            title={sortOrder === 'asc' ? 'Ascending' : 'Descending'}
+            title={sortOrder === "asc" ? "Ascending" : "Descending"}
           >
-            {sortOrder === 'asc' ? '↑' : '↓'}
+            {sortOrder === "asc" ? "↑" : "↓"}
           </button>
         </div>
       </div>
@@ -263,9 +263,9 @@ export function GroupsTab() {
             <div
               key={group.id}
               className={cn(
-                'space-y-3 rounded-lg border border-border bg-card p-4',
-                'cursor-pointer transition-colors hover:border-primary',
-                selectedGroup?.id === group.id && 'border-primary'
+                "space-y-3 rounded-lg border border-border bg-card p-4",
+                "cursor-pointer transition-colors hover:border-primary",
+                selectedGroup?.id === group.id && "border-primary",
               )}
               onClick={() => setSelectedGroup(group)}
             >
@@ -273,7 +273,7 @@ export function GroupsTab() {
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
                   <h3 className="truncate font-semibold">
-                    {group.name || 'Unnamed Group'}
+                    {group.name || "Unnamed Group"}
                   </h3>
                   <p className="text-muted-foreground text-xs">
                     ID: {group.id}
@@ -281,8 +281,8 @@ export function GroupsTab() {
                 </div>
                 <span
                   className={cn(
-                    'whitespace-nowrap rounded border px-2 py-1 font-medium text-xs',
-                    getGroupTypeColor(group.groupType)
+                    "whitespace-nowrap rounded border px-2 py-1 font-medium text-xs",
+                    getGroupTypeColor(group.groupType),
                   )}
                 >
                   {getGroupTypeLabel(group.groupType)}
@@ -325,10 +325,10 @@ export function GroupsTab() {
                     <span
                       key={participant.id}
                       className={cn(
-                        'rounded px-2 py-1 text-xs',
+                        "rounded px-2 py-1 text-xs",
                         participant.isNPC
-                          ? 'bg-purple-500/10 text-purple-600 dark:text-purple-400'
-                          : 'bg-muted text-foreground'
+                          ? "bg-purple-500/10 text-purple-600 dark:text-purple-400"
+                          : "bg-muted text-foreground",
                       )}
                     >
                       {participant.name}

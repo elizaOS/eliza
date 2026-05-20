@@ -1,14 +1,14 @@
-'use client';
+"use client";
 
-import type { PerpMarketData, PerpsTagData } from '@feed/shared';
-import { FEED_POINTS_SYMBOL, cn } from '@feed/shared';
-import { TrendingDown, TrendingUp } from 'lucide-react';
-import { useMemo, useState } from 'react';
-import { PerpPriceChart } from '@/components/markets/PerpPriceChart';
-import { PerpTradingModal } from '@/components/markets/PerpTradingModal';
-import { usePerpHistory } from '@/hooks/usePerpHistory';
-import type { MarketTimeRange, PerpMarket } from '@/types/markets';
-import { PanelViewMoreLink } from './PanelViewMoreLink';
+import type { PerpMarketData, PerpsTagData } from "@feed/shared";
+import { cn, FEED_POINTS_SYMBOL } from "@feed/shared";
+import { TrendingDown, TrendingUp } from "lucide-react";
+import { useMemo, useState } from "react";
+import { PerpPriceChart } from "@/components/markets/PerpPriceChart";
+import { PerpTradingModal } from "@/components/markets/PerpTradingModal";
+import { usePerpHistory } from "@/hooks/usePerpHistory";
+import type { MarketTimeRange, PerpMarket } from "@/types/markets";
+import { PanelViewMoreLink } from "./PanelViewMoreLink";
 
 interface PerpsPanelProps {
   data: PerpsTagData;
@@ -23,7 +23,7 @@ function toPerpMarket(market: PerpMarketData): PerpMarket {
   return {
     ticker: market.ticker,
     name: market.name ?? market.ticker,
-    organizationId: '',
+    organizationId: "",
     currentPrice: market.currentPrice,
     change24h: 0,
     changePercent24h: market.changePercent24h,
@@ -33,7 +33,7 @@ function toPerpMarket(market: PerpMarketData): PerpMarket {
     openInterest: market.openInterest ?? 0,
     fundingRate: {
       rate: market.fundingRate ?? 0,
-      nextFundingTime: '',
+      nextFundingTime: "",
       predictedRate: 0,
     },
     maxLeverage:
@@ -45,7 +45,7 @@ function toPerpMarket(market: PerpMarketData): PerpMarket {
   };
 }
 
-type TradeSide = 'long' | 'short';
+type TradeSide = "long" | "short";
 
 interface TradingState {
   market: PerpMarket;
@@ -54,7 +54,7 @@ interface TradingState {
 
 export function PerpsPanel({ data }: PerpsPanelProps) {
   const [tradingState, setTradingState] = useState<TradingState | null>(null);
-  const [timeRange, setTimeRange] = useState<MarketTimeRange>('1D');
+  const [timeRange, setTimeRange] = useState<MarketTimeRange>("1D");
 
   // Fetch history for single market view
   const ticker = data.market?.ticker ?? null;
@@ -104,11 +104,11 @@ export function PerpsPanel({ data }: PerpsPanelProps) {
             <h3 className="font-bold text-xl">{market.ticker}</h3>
             <span
               className={cn(
-                'font-semibold text-sm',
-                isPositive ? 'text-green-500' : 'text-red-500'
+                "font-semibold text-sm",
+                isPositive ? "text-green-500" : "text-red-500",
               )}
             >
-              {isPositive ? '+' : ''}
+              {isPositive ? "+" : ""}
               {displayChangePercent.toFixed(2)}%
             </span>
           </div>
@@ -183,7 +183,7 @@ export function PerpsPanel({ data }: PerpsPanelProps) {
           <button
             type="button"
             onClick={() =>
-              setTradingState({ market: perpMarket, side: 'long' })
+              setTradingState({ market: perpMarket, side: "long" })
             }
             className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-green-600 py-3 font-bold text-sm text-white transition-colors hover:bg-green-700"
           >
@@ -193,7 +193,7 @@ export function PerpsPanel({ data }: PerpsPanelProps) {
           <button
             type="button"
             onClick={() =>
-              setTradingState({ market: perpMarket, side: 'short' })
+              setTradingState({ market: perpMarket, side: "short" })
             }
             className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-red-600 py-3 font-bold text-sm text-white transition-colors hover:bg-red-700"
           >
@@ -248,13 +248,13 @@ export function PerpsPanel({ data }: PerpsPanelProps) {
                 <span className="font-medium text-sm">{market.ticker}</span>
                 <span
                   className={cn(
-                    'font-medium text-sm',
+                    "font-medium text-sm",
                     market.changePercent24h >= 0
-                      ? 'text-green-500'
-                      : 'text-red-500'
+                      ? "text-green-500"
+                      : "text-red-500",
                   )}
                 >
-                  {market.changePercent24h >= 0 ? '+' : ''}
+                  {market.changePercent24h >= 0 ? "+" : ""}
                   {market.changePercent24h.toFixed(2)}%
                 </span>
               </div>
@@ -275,7 +275,7 @@ export function PerpsPanel({ data }: PerpsPanelProps) {
                       {(market.volume24h / 1000).toFixed(1)}K
                     </>
                   ) : (
-                    'Vol: -'
+                    "Vol: -"
                   )}
                 </span>
               </div>
@@ -283,7 +283,7 @@ export function PerpsPanel({ data }: PerpsPanelProps) {
               <button
                 type="button"
                 onClick={() =>
-                  setTradingState({ market: perpMarket, side: 'long' })
+                  setTradingState({ market: perpMarket, side: "long" })
                 }
                 className="mt-2 w-full rounded bg-primary/10 py-1.5 font-medium text-primary text-xs transition-colors hover:bg-primary/20"
               >

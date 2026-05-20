@@ -10,7 +10,7 @@
  * @module achievements
  */
 
-import { relations } from 'drizzle-orm';
+import { relations } from "drizzle-orm";
 import {
   index,
   integer,
@@ -18,8 +18,8 @@ import {
   text,
   timestamp,
   unique,
-} from 'drizzle-orm/pg-core';
-import { users } from './users';
+} from "drizzle-orm/pg-core";
+import { users } from "./users";
 
 /**
  * AchievementDefinition - Seeded achievement definitions
@@ -27,18 +27,18 @@ import { users } from './users';
  * These are inserted via seed script and not user-generated.
  * The id is a human-readable key like 'first_prediction_trade'.
  */
-export const achievementDefinitions = pgTable('AchievementDefinition', {
-  id: text('id').primaryKey(),
-  name: text('name').notNull(),
-  description: text('description').notNull(),
-  category: text('category').notNull(),
-  tier: text('tier').notNull(),
-  iconKey: text('iconKey').notNull(),
-  pointsReward: integer('pointsReward').notNull(),
-  threshold: integer('threshold').notNull(),
-  trackingType: text('trackingType').notNull(),
-  sortOrder: integer('sortOrder').notNull().default(0),
-  createdAt: timestamp('createdAt', { mode: 'date' }).notNull().defaultNow(),
+export const achievementDefinitions = pgTable("AchievementDefinition", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description").notNull(),
+  category: text("category").notNull(),
+  tier: text("tier").notNull(),
+  iconKey: text("iconKey").notNull(),
+  pointsReward: integer("pointsReward").notNull(),
+  threshold: integer("threshold").notNull(),
+  trackingType: text("trackingType").notNull(),
+  sortOrder: integer("sortOrder").notNull().default(0),
+  createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
 });
 
 /**
@@ -48,28 +48,28 @@ export const achievementDefinitions = pgTable('AchievementDefinition', {
  * Insert with onConflictDoNothing() for idempotent unlock attempts.
  */
 export const userAchievements = pgTable(
-  'UserAchievement',
+  "UserAchievement",
   {
-    id: text('id').primaryKey(),
-    userId: text('userId').notNull(),
-    achievementId: text('achievementId').notNull(),
-    unlockedAt: timestamp('unlockedAt', { mode: 'date' })
+    id: text("id").primaryKey(),
+    userId: text("userId").notNull(),
+    achievementId: text("achievementId").notNull(),
+    unlockedAt: timestamp("unlockedAt", { mode: "date" })
       .notNull()
       .defaultNow(),
-    pointsAwarded: integer('pointsAwarded').notNull(),
+    pointsAwarded: integer("pointsAwarded").notNull(),
   },
   (table) => [
-    unique('UserAchievement_userId_achievementId_idx').on(
+    unique("UserAchievement_userId_achievementId_idx").on(
       table.userId,
-      table.achievementId
+      table.achievementId,
     ),
-    index('UserAchievement_userId_idx').on(table.userId),
-    index('UserAchievement_userId_unlockedAt_idx').on(
+    index("UserAchievement_userId_idx").on(table.userId),
+    index("UserAchievement_userId_unlockedAt_idx").on(
       table.userId,
-      table.unlockedAt
+      table.unlockedAt,
     ),
-    index('UserAchievement_unlockedAt_idx').on(table.unlockedAt),
-  ]
+    index("UserAchievement_unlockedAt_idx").on(table.unlockedAt),
+  ],
 );
 
 /**
@@ -78,18 +78,18 @@ export const userAchievements = pgTable(
  * 20 daily + 20 weekly challenges. 3 daily and 2 weekly are selected
  * per period via deterministic hash rotation.
  */
-export const challengeDefinitions = pgTable('ChallengeDefinition', {
-  id: text('id').primaryKey(),
-  name: text('name').notNull(),
-  description: text('description').notNull(),
-  pool: text('pool').notNull(),
-  category: text('category').notNull(),
-  iconKey: text('iconKey').notNull(),
-  pointsReward: integer('pointsReward').notNull(),
-  threshold: integer('threshold').notNull(),
-  trackingType: text('trackingType').notNull(),
-  sortOrder: integer('sortOrder').notNull().default(0),
-  createdAt: timestamp('createdAt', { mode: 'date' }).notNull().defaultNow(),
+export const challengeDefinitions = pgTable("ChallengeDefinition", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description").notNull(),
+  pool: text("pool").notNull(),
+  category: text("category").notNull(),
+  iconKey: text("iconKey").notNull(),
+  pointsReward: integer("pointsReward").notNull(),
+  threshold: integer("threshold").notNull(),
+  trackingType: text("trackingType").notNull(),
+  sortOrder: integer("sortOrder").notNull().default(0),
+  createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
 });
 
 /**
@@ -100,29 +100,29 @@ export const challengeDefinitions = pgTable('ChallengeDefinition', {
  * periodKey is '2026-03-06' for daily or '2026-W10' for weekly.
  */
 export const userChallengeProgress = pgTable(
-  'UserChallengeProgress',
+  "UserChallengeProgress",
   {
-    id: text('id').primaryKey(),
-    userId: text('userId').notNull(),
-    challengeId: text('challengeId').notNull(),
-    periodKey: text('periodKey').notNull(),
-    progress: integer('progress').notNull().default(0),
-    completed: integer('completed').notNull().default(0),
-    completedAt: timestamp('completedAt', { mode: 'date' }),
-    pointsAwarded: integer('pointsAwarded').notNull().default(0),
-    createdAt: timestamp('createdAt', { mode: 'date' }).notNull().defaultNow(),
+    id: text("id").primaryKey(),
+    userId: text("userId").notNull(),
+    challengeId: text("challengeId").notNull(),
+    periodKey: text("periodKey").notNull(),
+    progress: integer("progress").notNull().default(0),
+    completed: integer("completed").notNull().default(0),
+    completedAt: timestamp("completedAt", { mode: "date" }),
+    pointsAwarded: integer("pointsAwarded").notNull().default(0),
+    createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
   },
   (table) => [
-    unique('UserChallengeProgress_userId_challengeId_periodKey_idx').on(
+    unique("UserChallengeProgress_userId_challengeId_periodKey_idx").on(
       table.userId,
       table.challengeId,
-      table.periodKey
+      table.periodKey,
     ),
-    index('UserChallengeProgress_userId_periodKey_idx').on(
+    index("UserChallengeProgress_userId_periodKey_idx").on(
       table.userId,
-      table.periodKey
+      table.periodKey,
     ),
-  ]
+  ],
 );
 
 // Relations
@@ -130,7 +130,7 @@ export const achievementDefinitionsRelations = relations(
   achievementDefinitions,
   ({ many }) => ({
     userAchievements: many(userAchievements),
-  })
+  }),
 );
 
 export const userAchievementsRelations = relations(
@@ -144,14 +144,14 @@ export const userAchievementsRelations = relations(
       fields: [userAchievements.achievementId],
       references: [achievementDefinitions.id],
     }),
-  })
+  }),
 );
 
 export const challengeDefinitionsRelations = relations(
   challengeDefinitions,
   ({ many }) => ({
     progress: many(userChallengeProgress),
-  })
+  }),
 );
 
 export const userChallengeProgressRelations = relations(
@@ -165,7 +165,7 @@ export const userChallengeProgressRelations = relations(
       fields: [userChallengeProgress.challengeId],
       references: [challengeDefinitions.id],
     }),
-  })
+  }),
 );
 
 // Type exports

@@ -1,34 +1,34 @@
-'use client';
+"use client";
 
 import {
   QueryClient,
   QueryClientProvider,
   useQueryClient,
-} from '@tanstack/react-query';
-import { Fragment, Suspense, useEffect, useRef, useState } from 'react';
-import { PostHogErrorBoundary } from '@/components/analytics/PostHogErrorBoundary';
-import { PostHogIdentifier } from '@/components/analytics/PostHogIdentifier';
-import { DevThemeToggle } from '@/components/shared/DevThemeToggle';
-import { ThemeProvider } from '@/components/shared/ThemeProvider';
-import { TooltipProvider } from '@/components/ui/tooltip';
-import { EmbedModeProvider } from '@/contexts/EmbedContext';
-import { FontSizeProvider } from '@/contexts/FontSizeContext';
-import { WidgetRefreshProvider } from '@/contexts/WidgetRefreshContext';
-import { AutoDailyRewardProvider } from '@/hooks/useAutoDailyReward';
-import { SessionHeartbeatProvider } from '@/hooks/useSessionHeartbeat';
-import { getBrowserDevAuthSession } from '@/lib/auth/dev-auth';
-import { hydrateChatCacheFromIndexedDB } from '@/lib/chat/hydrateChatCache';
-import { useAuthStore } from '@/stores/authStore';
-import { DiscordActivityProvider } from './DiscordActivityProvider';
-import { FarcasterMiniAppProvider } from './FarcasterMiniAppProvider';
-import { GameGuideProvider } from './GameGuideProvider';
-import { GamePlaybackManager } from './GamePlaybackManager';
-import { OnboardingProvider } from './OnboardingProvider';
-import { OutcomeNotificationProvider } from './OutcomeNotificationProvider';
-import { PostHogProvider } from './PostHogProvider';
-import { ReferralCaptureProvider } from './ReferralCaptureProvider';
-import { StewardAuthProvider } from './StewardAuthProvider';
-import { TelegramMiniAppProvider } from './TelegramMiniAppProvider';
+} from "@tanstack/react-query";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { PostHogErrorBoundary } from "@/components/analytics/PostHogErrorBoundary";
+import { PostHogIdentifier } from "@/components/analytics/PostHogIdentifier";
+import { DevThemeToggle } from "@/components/shared/DevThemeToggle";
+import { ThemeProvider } from "@/components/shared/ThemeProvider";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { EmbedModeProvider } from "@/contexts/EmbedContext";
+import { FontSizeProvider } from "@/contexts/FontSizeContext";
+import { WidgetRefreshProvider } from "@/contexts/WidgetRefreshContext";
+import { AutoDailyRewardProvider } from "@/hooks/useAutoDailyReward";
+import { SessionHeartbeatProvider } from "@/hooks/useSessionHeartbeat";
+import { getBrowserDevAuthSession } from "@/lib/auth/dev-auth";
+import { hydrateChatCacheFromIndexedDB } from "@/lib/chat/hydrateChatCache";
+import { useAuthStore } from "@/stores/authStore";
+import { DiscordActivityProvider } from "./DiscordActivityProvider";
+import { FarcasterMiniAppProvider } from "./FarcasterMiniAppProvider";
+import { GameGuideProvider } from "./GameGuideProvider";
+import { GamePlaybackManager } from "./GamePlaybackManager";
+import { OnboardingProvider } from "./OnboardingProvider";
+import { OutcomeNotificationProvider } from "./OutcomeNotificationProvider";
+import { PostHogProvider } from "./PostHogProvider";
+import { ReferralCaptureProvider } from "./ReferralCaptureProvider";
+import { StewardAuthProvider } from "./StewardAuthProvider";
+import { TelegramMiniAppProvider } from "./TelegramMiniAppProvider";
 
 /**
  * Hydrates the React Query chat cache from IndexedDB once the authenticated
@@ -74,7 +74,7 @@ export function Providers({
             refetchOnWindowFocus: false,
           },
         },
-      })
+      }),
   );
 
   useEffect(() => {
@@ -98,7 +98,7 @@ export function Providers({
                   <GamePlaybackManager />
                   <WidgetRefreshProvider>
                     {mounted ? (
-                      <Fragment>{children}</Fragment>
+                      children
                     ) : (
                       <div className="min-h-dvh bg-background md:min-h-screen" />
                     )}
@@ -128,7 +128,7 @@ export function Providers({
                     <OutcomeNotificationProvider>
                       <WidgetRefreshProvider>
                         {mounted ? (
-                          <Fragment>{children}</Fragment>
+                          children
                         ) : (
                           <div className="min-h-dvh bg-sidebar md:min-h-screen" />
                         )}

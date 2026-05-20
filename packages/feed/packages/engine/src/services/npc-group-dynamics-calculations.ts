@@ -16,7 +16,7 @@ export interface KickThresholds {
 export interface KickProbabilityResult {
   probability: number;
   reason: string;
-  category: 'inactive' | 'low' | 'over' | 'spam' | 'safe';
+  category: "inactive" | "low" | "over" | "spam" | "safe";
 }
 
 /**
@@ -29,7 +29,7 @@ export interface KickProbabilityResult {
 function calculateDynamicThresholds(
   totalMessages: number,
   participantCount: number,
-  windowDays = 7
+  windowDays = 7,
 ): KickThresholds {
   // Fair share = total messages / participants (what each would have if equal)
   const fairShare = participantCount > 0 ? totalMessages / participantCount : 0;
@@ -72,20 +72,20 @@ export class NPCGroupDynamicsCalculations {
     userMessageCount: number,
     totalMessages: number,
     participantCount: number,
-    windowDays = 7
+    windowDays = 7,
   ): KickProbabilityResult {
     const thresholds = calculateDynamicThresholds(
       totalMessages,
       participantCount,
-      windowDays
+      windowDays,
     );
 
     // Case 1: Never posted - high kick chance (inactive)
     if (userMessageCount === 0) {
       return {
         probability: 0.9,
-        reason: 'Never participated in conversation',
-        category: 'inactive',
+        reason: "Never participated in conversation",
+        category: "inactive",
       };
     }
 
@@ -97,7 +97,7 @@ export class NPCGroupDynamicsCalculations {
       return {
         probability: Math.min(0.99, spamProbability),
         reason: `Spamming: ${userMessageCount} messages (threshold: ${thresholds.spamThreshold})`,
-        category: 'spam',
+        category: "spam",
       };
     }
 
@@ -117,7 +117,7 @@ export class NPCGroupDynamicsCalculations {
       return {
         probability: kickProbability,
         reason: `Over-posting: ${userMessageCount} messages (${userRatio.toFixed(0)}% of total, ideal max: ${thresholds.idealMax})`,
-        category: 'over',
+        category: "over",
       };
     }
 
@@ -133,15 +133,15 @@ export class NPCGroupDynamicsCalculations {
       return {
         probability: Math.max(0.2, lowProbability),
         reason: `Low participation: ${userMessageCount} messages (minimum ideal: ${thresholds.idealMin})`,
-        category: 'low',
+        category: "low",
       };
     }
 
     // Case 5: Good participation - safe zone!
     return {
       probability: 0,
-      reason: '', // No reason needed for safe category
-      category: 'safe',
+      reason: "", // No reason needed for safe category
+      category: "safe",
     };
   }
 }

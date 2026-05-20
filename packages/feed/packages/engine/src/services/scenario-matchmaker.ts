@@ -12,30 +12,30 @@
  *   // → [{ attacker: 'chad-sterling', defender: 'iris-chen', scenarioType: 'social-engineering' }, ...]
  */
 
-import { logger } from '@feed/shared';
+import { logger } from "@feed/shared";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-export type Team = 'red' | 'blue' | 'gray';
-export type ScamProfile = 'scammer' | 'manipulator' | 'naive' | 'wary';
+export type Team = "red" | "blue" | "gray";
+export type ScamProfile = "scammer" | "manipulator" | "naive" | "wary";
 export type AttackCategory =
-  | 'prompt-injection'
-  | 'social-engineering'
-  | 'secret-exfiltration'
-  | 'credential-theft'
-  | 'impersonation'
-  | 'research-assisted'
-  | 'advance-fee-fraud';
+  | "prompt-injection"
+  | "social-engineering"
+  | "secret-exfiltration"
+  | "credential-theft"
+  | "impersonation"
+  | "research-assisted"
+  | "advance-fee-fraud";
 
 export interface ActorProfile {
   id: string;
   name: string;
   team: Team;
-  alignment: 'good' | 'evil' | 'neutral';
+  alignment: "good" | "evil" | "neutral";
   scamProfile: ScamProfile;
-  competence: 'high' | 'mid' | 'low';
+  competence: "high" | "mid" | "low";
 }
 
 export interface Pairing {
@@ -43,7 +43,7 @@ export interface Pairing {
   defender: ActorProfile;
   scenarioType: AttackCategory;
   difficulty: number; // 1-7
-  channel: 'dm' | 'group-chat' | 'support-ticket';
+  channel: "dm" | "group-chat" | "support-ticket";
 }
 
 // ---------------------------------------------------------------------------
@@ -63,16 +63,16 @@ interface InteractionRecord {
 // ---------------------------------------------------------------------------
 
 const ALL_ATTACK_CATEGORIES: AttackCategory[] = [
-  'prompt-injection',
-  'social-engineering',
-  'secret-exfiltration',
-  'credential-theft',
-  'impersonation',
-  'research-assisted',
-  'advance-fee-fraud',
+  "prompt-injection",
+  "social-engineering",
+  "secret-exfiltration",
+  "credential-theft",
+  "impersonation",
+  "research-assisted",
+  "advance-fee-fraud",
 ];
 
-const CHANNELS = ['dm', 'group-chat', 'support-ticket'] as const;
+const CHANNELS = ["dm", "group-chat", "support-ticket"] as const;
 
 export class ScenarioMatchmaker {
   private attackers: ActorProfile[] = [];
@@ -87,14 +87,14 @@ export class ScenarioMatchmaker {
    */
   registerActors(actors: ActorProfile[]): void {
     for (const actor of actors) {
-      if (actor.team === 'red' || actor.alignment === 'evil') {
+      if (actor.team === "red" || actor.alignment === "evil") {
         this.attackers.push(actor);
       } else {
         this.defenders.push(actor);
       }
     }
     logger.info(
-      `Matchmaker: ${this.attackers.length} attackers, ${this.defenders.length} defenders`
+      `Matchmaker: ${this.attackers.length} attackers, ${this.defenders.length} defenders`,
     );
   }
 
@@ -108,7 +108,7 @@ export class ScenarioMatchmaker {
    */
   generatePairings(count: number): Pairing[] {
     if (this.attackers.length === 0 || this.defenders.length === 0) {
-      logger.warn('Matchmaker: no attackers or defenders registered');
+      logger.warn("Matchmaker: no attackers or defenders registered");
       return [];
     }
 
@@ -116,7 +116,7 @@ export class ScenarioMatchmaker {
 
     // Shuffle defenders for variety each round
     const shuffledDefenders = [...this.defenders].sort(
-      () => Math.random() - 0.5
+      () => Math.random() - 0.5,
     );
 
     for (let i = 0; i < count; i++) {
@@ -126,7 +126,7 @@ export class ScenarioMatchmaker {
       const exposure =
         this.defenderAttackExposure.get(defender.id) ?? new Set();
       const unseenCategories = ALL_ATTACK_CATEGORIES.filter(
-        (c) => !exposure.has(c)
+        (c) => !exposure.has(c),
       );
       const scenarioType =
         unseenCategories.length > 0
@@ -167,7 +167,7 @@ export class ScenarioMatchmaker {
     attackerId: string,
     defenderId: string,
     scenarioType: AttackCategory,
-    defenderWon: boolean
+    defenderWon: boolean,
   ): void {
     this.history.push({
       attackerId,
@@ -185,7 +185,7 @@ export class ScenarioMatchmaker {
     if (!this.defenderAttackExposure.has(defenderId)) {
       this.defenderAttackExposure.set(defenderId, new Set());
     }
-    this.defenderAttackExposure.get(defenderId)!.add(scenarioType);
+    this.defenderAttackExposure.get(defenderId)?.add(scenarioType);
 
     // Update difficulty frontier: advance if defender won, hold if lost
     const current = this.defenderDifficultyFrontier.get(defenderId) ?? 1;

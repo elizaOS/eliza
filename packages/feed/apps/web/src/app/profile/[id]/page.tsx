@@ -1,10 +1,10 @@
-import { findUserByIdentifierWithSelect } from '@feed/api';
-import { users } from '@feed/db';
-import { loadActorsData } from '@feed/engine';
-import { extractUsername } from '@feed/shared';
-import { notFound, redirect } from 'next/navigation';
+import { findUserByIdentifierWithSelect } from "@feed/api";
+import { users } from "@feed/db";
+import { loadActorsData } from "@feed/engine";
+import { extractUsername } from "@feed/shared";
+import { notFound, redirect } from "next/navigation";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 function equalsLoose(a: string, b: string): boolean {
   return a.toLowerCase() === b.toLowerCase();
@@ -41,7 +41,7 @@ export default async function LegacyProfileIdPage({
     organizations?.find(
       (o) =>
         (o as { username?: string }).username &&
-        equalsLoose((o as { username: string }).username, identifier)
+        equalsLoose((o as { username: string }).username, identifier),
     );
 
   if (org) {
@@ -53,7 +53,7 @@ export default async function LegacyProfileIdPage({
     actors?.find(
       (a) =>
         (a as { username?: string }).username &&
-        equalsLoose((a as { username: string }).username, identifier)
+        equalsLoose((a as { username: string }).username, identifier),
     ) ||
     actors?.find((a) => a.name.toLowerCase() === idLower);
 

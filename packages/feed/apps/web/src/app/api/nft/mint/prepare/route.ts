@@ -1,6 +1,6 @@
-import { authenticate, successResponse, withErrorHandling } from '@feed/api';
-import { prepareMint } from '@feed/api/services/nft-mint-service';
-import type { NextRequest } from 'next/server';
+import { authenticate, successResponse, withErrorHandling } from "@feed/api";
+import { prepareMint } from "@feed/api/services/nft-mint-service";
+import type { NextRequest } from "next/server";
 
 /**
  * POST /api/nft/mint/prepare

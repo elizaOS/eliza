@@ -14,48 +14,48 @@
  *   4. Client POSTs to /api/auth/session to set httpOnly cookie
  */
 
-import { createHmac } from 'node:crypto';
-import { withErrorHandling } from '@feed/api';
-import { db, eq, users } from '@feed/db';
-import { generateSnowflakeId } from '@feed/shared';
-import { SignJWT } from 'jose';
-import { NextRequest, NextResponse } from 'next/server';
+import { createHmac } from "node:crypto";
+import { withErrorHandling } from "@feed/api";
+import { db, eq, users } from "@feed/db";
+import { generateSnowflakeId } from "@feed/shared";
+import { SignJWT } from "jose";
+import { type NextRequest, NextResponse } from "next/server";
 
 import {
   ensureStewardUser,
   getStewardJwtSecret,
-} from '@/lib/auth/steward-server';
+} from "@/lib/auth/steward-server";
 
 function verifyTelegramInitData(initData: string, botToken: string): boolean {
   const params = new URLSearchParams(initData);
-  const hash = params.get('hash');
+  const hash = params.get("hash");
   if (!hash) return false;
 
-  params.delete('hash');
+  params.delete("hash");
 
   const dataCheckString = [...params.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([k, v]) => `${k}=${v}`)
-    .join('\n');
+    .join("\n");
 
-  const secretKey = createHmac('sha256', 'WebAppData')
+  const secretKey = createHmac("sha256", "WebAppData")
     .update(botToken)
     .digest();
-  const computed = createHmac('sha256', secretKey)
+  const computed = createHmac("sha256", secretKey)
     .update(dataCheckString)
-    .digest('hex');
+    .digest("hex");
   return computed === hash;
 }
 
 async function mintToken(
   stewardUserId: string,
-  telegramId: string
+  telegramId: string,
 ): Promise<string> {
-  return new SignJWT({ userId: stewardUserId, tenantId: 'feed', telegramId })
-    .setProtectedHeader({ alg: 'HS256' })
-    .setIssuer('steward')
+  return new SignJWT({ userId: stewardUserId, tenantId: "feed", telegramId })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuer("steward")
     .setIssuedAt()
-    .setExpirationTime('24h')
+    .setExpirationTime("24h")
     .sign(getStewardJwtSecret());
 }
 
@@ -63,8 +63,8 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
   const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
   if (!BOT_TOKEN) {
     return NextResponse.json(
-      { ok: false, error: 'Telegram authentication not configured' },
-      { status: 503 }
+      { ok: false, error: "Telegram authentication not configured" },
+      { status: 503 },
     );
   }
 
@@ -73,33 +73,33 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
     body = (await req.json()) as typeof body;
   } catch {
     return NextResponse.json(
-      { ok: false, error: 'Invalid request body' },
-      { status: 400 }
+      { ok: false, error: "Invalid request body" },
+      { status: 400 },
     );
   }
 
   const { initData } = body;
   if (!initData) {
     return NextResponse.json(
-      { ok: false, error: 'initData is required' },
-      { status: 400 }
+      { ok: false, error: "initData is required" },
+      { status: 400 },
     );
   }
 
   if (!verifyTelegramInitData(initData, BOT_TOKEN)) {
     return NextResponse.json(
-      { ok: false, error: 'Invalid Telegram initData signature' },
-      { status: 401 }
+      { ok: false, error: "Invalid Telegram initData signature" },
+      { status: 401 },
     );
   }
 
   // Parse Telegram user from initData
   const params = new URLSearchParams(initData);
-  const userParam = params.get('user');
+  const userParam = params.get("user");
   if (!userParam) {
     return NextResponse.json(
-      { ok: false, error: 'No user data in initData' },
-      { status: 400 }
+      { ok: false, error: "No user data in initData" },
+      { status: 400 },
     );
   }
 
@@ -108,8 +108,8 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
     telegramUser = JSON.parse(userParam) as typeof telegramUser;
   } catch {
     return NextResponse.json(
-      { ok: false, error: 'Failed to parse user data' },
-      { status: 400 }
+      { ok: false, error: "Failed to parse user data" },
+      { status: 400 },
     );
   }
 

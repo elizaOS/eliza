@@ -109,15 +109,15 @@ import {
   NotFoundError,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { and, db, eq, userMutes, users } from '@feed/db';
-import { generateSnowflakeId, logger, MuteUserSchema } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/api";
+import { and, db, eq, userMutes, users } from "@feed/db";
+import { generateSnowflakeId, logger, MuteUserSchema } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 export const POST = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ userId: string }> }
+    context: { params: Promise<{ userId: string }> },
   ) => {
     // Authenticate the user
     const authUser = await authenticate(request);
@@ -134,12 +134,12 @@ export const POST = withErrorHandling(
         targetUserId,
         action,
       },
-      'POST /api/users/[userId]/mute'
+      "POST /api/users/[userId]/mute",
     );
 
     // Cannot mute yourself
     if (authUser.userId === targetUserId) {
-      throw new BusinessLogicError('Cannot mute yourself', 'CANNOT_MUTE_SELF');
+      throw new BusinessLogicError("Cannot mute yourself", "CANNOT_MUTE_SELF");
     }
 
     // Check if target user exists
@@ -155,12 +155,12 @@ export const POST = withErrorHandling(
       .limit(1);
 
     if (!targetUser) {
-      throw new NotFoundError('User', targetUserId);
+      throw new NotFoundError("User", targetUserId);
     }
 
     // Note: Muting NPCs is allowed - it hides their posts from your feed
 
-    if (action === 'mute') {
+    if (action === "mute") {
       // Check if already muted
       const [existingMute] = await db
         .select({ id: userMutes.id })
@@ -168,13 +168,13 @@ export const POST = withErrorHandling(
         .where(
           and(
             eq(userMutes.muterId, authUser.userId),
-            eq(userMutes.mutedId, targetUserId)
-          )
+            eq(userMutes.mutedId, targetUserId),
+          ),
         )
         .limit(1);
 
       if (existingMute) {
-        throw new BusinessLogicError('User is already muted', 'ALREADY_MUTED');
+        throw new BusinessLogicError("User is already muted", "ALREADY_MUTED");
       }
 
       // Create mute
@@ -191,18 +191,18 @@ export const POST = withErrorHandling(
       const mute = insertedMute;
 
       logger.info(
-        'User muted successfully',
+        "User muted successfully",
         {
           userId: authUser.userId,
           targetUserId,
           muteId: mute?.id,
         },
-        'POST /api/users/[userId]/mute'
+        "POST /api/users/[userId]/mute",
       );
 
       return successResponse({
         success: true,
-        message: 'User muted successfully',
+        message: "User muted successfully",
         mute,
       });
     }
@@ -212,29 +212,29 @@ export const POST = withErrorHandling(
       .where(
         and(
           eq(userMutes.muterId, authUser.userId),
-          eq(userMutes.mutedId, targetUserId)
-        )
+          eq(userMutes.mutedId, targetUserId),
+        ),
       )
       .returning({ id: userMutes.id });
 
     if (deleted.length === 0) {
-      throw new BusinessLogicError('User is not muted', 'NOT_MUTED');
+      throw new BusinessLogicError("User is not muted", "NOT_MUTED");
     }
 
     logger.info(
-      'User unmuted successfully',
+      "User unmuted successfully",
       {
         userId: authUser.userId,
         targetUserId,
       },
-      'POST /api/users/[userId]/mute'
+      "POST /api/users/[userId]/mute",
     );
 
     return successResponse({
       success: true,
-      message: 'User unmuted successfully',
+      message: "User unmuted successfully",
     });
-  }
+  },
 );
 
 /**
@@ -244,7 +244,7 @@ export const POST = withErrorHandling(
 export const GET = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ userId: string }> }
+    context: { params: Promise<{ userId: string }> },
   ) => {
     const authUser = await authenticate(request);
     const { userId: targetUserId } = await context.params;
@@ -259,8 +259,8 @@ export const GET = withErrorHandling(
       .where(
         and(
           eq(userMutes.muterId, authUser.userId),
-          eq(userMutes.mutedId, targetUserId)
-        )
+          eq(userMutes.mutedId, targetUserId),
+        ),
       )
       .limit(1);
 
@@ -268,5 +268,5 @@ export const GET = withErrorHandling(
       isMuted: !!mute,
       mute: mute || null,
     });
-  }
+  },
 );

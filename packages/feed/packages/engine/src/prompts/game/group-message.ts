@@ -1,5 +1,5 @@
-import { definePrompt } from '../define-prompt';
-import { ANTI_REPETITION_RULES, PARODY_NAME_RULES } from '../shared-sections';
+import { definePrompt } from "../define-prompt";
+import { ANTI_REPETITION_RULES, PARODY_NAME_RULES } from "../shared-sections";
 
 /**
  * Prompt for generating individual private group chat messages with insider info.
@@ -18,10 +18,10 @@ import { ANTI_REPETITION_RULES, PARODY_NAME_RULES } from '../shared-sections';
  *             groupMembers, currentPositions, marketConditions
  */
 export const groupMessage = definePrompt({
-  id: 'group-message',
-  version: '4.0.0',
-  category: 'game',
-  description: 'Private group messages with conversation history',
+  id: "group-message",
+  version: "4.0.0",
+  category: "game",
+  description: "Private group messages with conversation history",
   temperature: 1,
   maxTokens: 600,
   template: `{{realityGrounding}}

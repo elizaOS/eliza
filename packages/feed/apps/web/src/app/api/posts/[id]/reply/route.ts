@@ -104,24 +104,24 @@ import {
   ensureUserForAuth,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { comments, db, eq, posts, users } from '@feed/db';
+} from "@feed/api";
+import { comments, db, eq, posts, users } from "@feed/db";
 import {
   FollowingMechanics,
   GroupChatService,
   MessageQualityChecker,
   parsePostId,
   ReplyRateLimiter,
-} from '@feed/engine';
+} from "@feed/engine";
 import {
   generateSnowflakeId,
   logger,
   PostIdParamSchema,
   ReplyToPostSchema,
-} from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { ensureEngineServices } from '@/lib/engine/ensure-engine-services';
-import { POST as createCommentPOST } from '../comments/route';
+} from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { ensureEngineServices } from "@/lib/engine/ensure-engine-services";
+import { POST as createCommentPOST } from "../comments/route";
 
 /**
  * POST /api/posts/[id]/reply
@@ -130,7 +130,7 @@ import { POST as createCommentPOST } from '../comments/route';
 export const POST = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ id: string }> }
+    context: { params: Promise<{ id: string }> },
   ) => {
     // Wire engine services for notifications
     ensureEngineServices();
@@ -157,7 +157,7 @@ export const POST = withErrorHandling(
 
     const displayName = user.walletAddress
       ? `${user.walletAddress.slice(0, 6)}...${user.walletAddress.slice(-4)}`
-      : 'Anonymous';
+      : "Anonymous";
 
     const { user: dbUser } = await ensureUserForAuth(user, { displayName });
     const canonicalUserId = dbUser.id;
@@ -165,13 +165,13 @@ export const POST = withErrorHandling(
     // 4. Check rate limiting
     const rateLimitResult = await ReplyRateLimiter.canReply(
       canonicalUserId,
-      npcId
+      npcId,
     );
 
     if (!rateLimitResult.allowed) {
       throw new BusinessLogicError(
-        rateLimitResult.reason || 'Rate limit exceeded',
-        'RATE_LIMIT_EXCEEDED'
+        rateLimitResult.reason || "Rate limit exceeded",
+        "RATE_LIMIT_EXCEEDED",
       );
     }
 
@@ -179,14 +179,14 @@ export const POST = withErrorHandling(
     const qualityResult = await MessageQualityChecker.checkQuality(
       content,
       canonicalUserId,
-      'reply',
-      postId
+      "reply",
+      postId,
     );
 
     if (!qualityResult.passed) {
       throw new BusinessLogicError(
-        qualityResult.errors.join('; '),
-        'QUALITY_CHECK_FAILED'
+        qualityResult.errors.join("; "),
+        "QUALITY_CHECK_FAILED",
       );
     }
 
@@ -200,7 +200,7 @@ export const POST = withErrorHandling(
     if (!existingPost) {
       await db.insert(posts).values({
         id: postId,
-        content: '[Game-generated post]',
+        content: "[Game-generated post]",
         authorId: npcId,
         gameId,
         timestamp,
@@ -224,7 +224,7 @@ export const POST = withErrorHandling(
       .returning();
 
     if (!newComment) {
-      throw new BusinessLogicError('Failed to create comment', 'CREATE_FAILED');
+      throw new BusinessLogicError("Failed to create comment", "CREATE_FAILED");
     }
 
     // Get user info for the response
@@ -245,7 +245,7 @@ export const POST = withErrorHandling(
       npcId,
       postId,
       newComment.id,
-      qualityResult.score
+      qualityResult.score,
     );
 
     // 9. Check for following chance
@@ -253,7 +253,7 @@ export const POST = withErrorHandling(
       canonicalUserId,
       npcId,
       rateLimitResult.replyStreak || 0,
-      qualityResult.score
+      qualityResult.score,
     );
 
     let followed = false;
@@ -261,7 +261,7 @@ export const POST = withErrorHandling(
       await FollowingMechanics.recordFollow(
         canonicalUserId,
         npcId,
-        `Streak: ${rateLimitResult.replyStreak}, Quality: ${qualityResult.score.toFixed(2)}`
+        `Streak: ${rateLimitResult.replyStreak}, Quality: ${qualityResult.score.toFixed(2)}`,
       );
       followed = true;
     }
@@ -276,7 +276,7 @@ export const POST = withErrorHandling(
     ) {
       const inviteChance = await GroupChatService.calculateInviteChance(
         canonicalUserId,
-        npcId
+        npcId,
       );
 
       if (
@@ -288,7 +288,7 @@ export const POST = withErrorHandling(
           canonicalUserId,
           npcId,
           inviteChance.chatId,
-          inviteChance.chatName
+          inviteChance.chatName,
         );
         invitedToChat = true;
         chatInfo = {
@@ -301,7 +301,7 @@ export const POST = withErrorHandling(
 
     // 11. Return success with all the feedback
     logger.info(
-      'Reply created successfully',
+      "Reply created successfully",
       {
         postId,
         userId: canonicalUserId,
@@ -311,10 +311,10 @@ export const POST = withErrorHandling(
         marketId, // Optional: for analytics/tracking
         sentiment, // Optional: for analytics/tracking
       },
-      'POST /api/posts/[id]/reply'
+      "POST /api/posts/[id]/reply",
     );
 
-    void checkProgress(user.userId, { type: 'comment_created' });
+    void checkProgress(user.userId, { type: "comment_created" });
 
     return successResponse(
       {
@@ -345,7 +345,7 @@ export const POST = withErrorHandling(
           ...(chatInfo || {}),
         },
       },
-      201
+      201,
     );
-  }
+  },
 );

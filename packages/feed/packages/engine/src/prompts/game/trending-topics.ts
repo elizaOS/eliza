@@ -1,5 +1,5 @@
-import { definePrompt } from '../define-prompt';
-import { ANTI_REPETITION_RULES, PARODY_NAME_RULES } from '../shared-sections';
+import { definePrompt } from "../define-prompt";
+import { ANTI_REPETITION_RULES, PARODY_NAME_RULES } from "../shared-sections";
 
 /**
  * Prompt for generating trending topic descriptions from clustered posts.
@@ -9,10 +9,10 @@ import { ANTI_REPETITION_RULES, PARODY_NAME_RULES } from '../shared-sections';
  * Includes narrative context for connected, evolving trends.
  */
 export const trendingTopics = definePrompt({
-  id: 'trending-topics',
-  version: '2.0.0',
-  category: 'game',
-  description: 'Generates trends with narrative context',
+  id: "trending-topics",
+  version: "2.0.0",
+  category: "game",
+  description: "Generates trends with narrative context",
   temperature: 0.85,
   maxTokens: 3000,
   template: `{{realityGrounding}}

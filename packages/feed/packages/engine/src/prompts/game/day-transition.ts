@@ -1,5 +1,5 @@
-import { definePrompt } from '../define-prompt';
-import { PARODY_NAME_RULES } from '../shared-sections';
+import { definePrompt } from "../define-prompt";
+import { PARODY_NAME_RULES } from "../shared-sections";
 
 /**
  * Prompt for generating day transition summary events.
@@ -12,10 +12,10 @@ import { PARODY_NAME_RULES } from '../shared-sections';
  * Returns XML with day transition summary.
  */
 export const dayTransition = definePrompt({
-  id: 'day-transition',
-  version: '4.0.0',
-  category: 'game',
-  description: 'Generates day transition with full character context',
+  id: "day-transition",
+  version: "4.0.0",
+  category: "game",
+  description: "Generates day transition with full character context",
   temperature: 0.7,
   maxTokens: 2000,
   template: `{{realityGrounding}}

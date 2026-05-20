@@ -32,12 +32,12 @@ import {
   type User,
   users,
   withTransaction,
-} from '@feed/db';
-import { logger } from '../shared/logger';
+} from "@feed/db";
+import { logger } from "../shared/logger";
 
 /** Constants for Agents */
-const TEAM_CHAT_NAME = 'Agents';
-const TEAM_CHAT_DESCRIPTION = 'Coordinate all your agents in one place';
+const TEAM_CHAT_NAME = "Agents";
+const TEAM_CHAT_DESCRIPTION = "Coordinate all your agents in one place";
 
 /**
  * Format a date for display in chat names.
@@ -45,13 +45,13 @@ const TEAM_CHAT_DESCRIPTION = 'Coordinate all your agents in one place';
  * Format: "Jan 24, 10:30 AM"
  */
 export function formatChatDate(date: Date): string {
-  const dateStr = date.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
+  const dateStr = date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
   });
-  const timeStr = date.toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
+  const timeStr = date.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
     hour12: true,
   });
   return `${dateStr}, ${timeStr}`;
@@ -114,13 +114,13 @@ export class TeamChatService {
 
     const result = await withTransaction(async (tx) => {
       await tx.execute(
-        sql`select ${users.id} from ${users} where ${users.id} = ${userId} for update`
+        sql`select ${users.id} from ${users} where ${users.id} = ${userId} for update`,
       );
 
       const [existingInTx] = await tx
         .select()
         .from(groups)
-        .where(and(eq(groups.type, 'team'), eq(groups.ownerId, userId)))
+        .where(and(eq(groups.type, "team"), eq(groups.ownerId, userId)))
         .limit(1);
 
       if (existingInTx) {
@@ -139,7 +139,7 @@ export class TeamChatService {
         id: groupId,
         name: TEAM_CHAT_NAME,
         description: TEAM_CHAT_DESCRIPTION,
-        type: 'team',
+        type: "team",
         ownerId: userId,
         createdById: userId,
         activeChatId: chatId,
@@ -162,7 +162,7 @@ export class TeamChatService {
         id: memberId,
         groupId,
         userId,
-        role: 'owner',
+        role: "owner",
         addedBy: userId,
         joinedAt: now,
         isActive: true,
@@ -191,7 +191,7 @@ export class TeamChatService {
     logger.info(
       `Team chat created for user ${userId}`,
       { groupId: result.groupId, chatId: result.chatId },
-      'TeamChatService'
+      "TeamChatService",
     );
 
     return result;
@@ -211,7 +211,7 @@ export class TeamChatService {
    */
   private async ensureUserIsParticipant(
     userId: string,
-    teamChat: TeamChatInfo
+    teamChat: TeamChatInfo,
   ): Promise<void> {
     // Check if user is already a participant AND group member
     const [[existingParticipant], [existingGroupMember]] = await Promise.all([
@@ -222,8 +222,8 @@ export class TeamChatService {
           and(
             eq(chatParticipants.chatId, teamChat.chatId),
             eq(chatParticipants.userId, userId),
-            eq(chatParticipants.isActive, true)
-          )
+            eq(chatParticipants.isActive, true),
+          ),
         )
         .limit(1),
       db
@@ -233,8 +233,8 @@ export class TeamChatService {
           and(
             eq(groupMembers.groupId, teamChat.groupId),
             eq(groupMembers.userId, userId),
-            eq(groupMembers.isActive, true)
-          )
+            eq(groupMembers.isActive, true),
+          ),
         )
         .limit(1),
     ]);
@@ -254,7 +254,7 @@ export class TeamChatService {
         missingParticipant: !existingParticipant,
         missingGroupMember: !existingGroupMember,
       },
-      'TeamChatService'
+      "TeamChatService",
     );
 
     await withTransaction(async (tx) => {
@@ -289,7 +289,7 @@ export class TeamChatService {
           id: memberId,
           groupId: teamChat.groupId,
           userId,
-          role: 'owner',
+          role: "owner",
           addedBy: userId,
           joinedAt: now,
           isActive: true,
@@ -300,7 +300,7 @@ export class TeamChatService {
           target: [groupMembers.groupId, groupMembers.userId],
           set: {
             isActive: true,
-            role: 'owner',
+            role: "owner",
             joinedAt: now,
           },
         });
@@ -309,7 +309,7 @@ export class TeamChatService {
     logger.info(
       `Repaired chatParticipant record for user ${userId} in team chat ${teamChat.chatId}`,
       { userId, chatId: teamChat.chatId },
-      'TeamChatService'
+      "TeamChatService",
     );
   }
 
@@ -324,10 +324,10 @@ export class TeamChatService {
     const [group] = await db
       .select()
       .from(groups)
-      .where(and(eq(groups.type, 'team'), eq(groups.ownerId, userId)))
+      .where(and(eq(groups.type, "team"), eq(groups.ownerId, userId)))
       .limit(1);
 
-    if (!group || !group.activeChatId) {
+    if (!group?.activeChatId) {
       return null;
     }
 
@@ -361,7 +361,7 @@ export class TeamChatService {
    */
   async validateTeamChatOwnership(
     userId: string,
-    chatId: string
+    chatId: string,
   ): Promise<boolean> {
     const teamChat = await this.getTeamChat(userId);
     if (!teamChat) {
@@ -385,7 +385,7 @@ export class TeamChatService {
    * @returns Team chat with agents or null if not found
    */
   async getTeamChatWithMembers(
-    userId: string
+    userId: string,
   ): Promise<TeamChatWithMembers | null> {
     const teamChat = await this.getTeamChat(userId);
     if (!teamChat) {
@@ -421,8 +421,8 @@ export class TeamChatService {
           eq(groupMembers.groupId, gid),
           eq(groupMembers.isActive, true),
           eq(users.isAgent, true),
-          eq(users.managedBy, userId)
-        )
+          eq(users.managedBy, userId),
+        ),
       )
       .orderBy(users.createdAt);
 
@@ -465,8 +465,8 @@ export class TeamChatService {
         .where(
           and(
             eq(groupMembers.groupId, teamChat.groupId),
-            eq(groupMembers.userId, agentUserId)
-          )
+            eq(groupMembers.userId, agentUserId),
+          ),
         )
         .limit(1),
       db
@@ -475,8 +475,8 @@ export class TeamChatService {
         .where(
           and(
             eq(chatParticipants.chatId, teamChat.chatId),
-            eq(chatParticipants.userId, agentUserId)
-          )
+            eq(chatParticipants.userId, agentUserId),
+          ),
         )
         .limit(1),
     ]);
@@ -500,7 +500,7 @@ export class TeamChatService {
           id: memberId,
           groupId: teamChat.groupId,
           userId: agentUserId,
-          role: 'member',
+          role: "member",
           addedBy: userId,
           joinedAt: now,
           isActive: true,
@@ -513,7 +513,7 @@ export class TeamChatService {
             isActive: true,
             joinedAt: now,
             addedBy: userId,
-            role: 'member',
+            role: "member",
             kickedAt: null,
             kickReason: null,
           },
@@ -541,9 +541,9 @@ export class TeamChatService {
         await tx.insert(messages).values({
           id: messageId,
           chatId: teamChat.chatId,
-          senderId: 'system',
-          type: 'system',
-          content: `🤖 ${agent.displayName || agent.username || 'Agent'} joined the team`,
+          senderId: "system",
+          type: "system",
+          content: `🤖 ${agent.displayName || agent.username || "Agent"} joined the team`,
           createdAt: now,
         });
       }
@@ -558,7 +558,7 @@ export class TeamChatService {
     logger.info(
       `Agent ${agentUserId} added to team chat`,
       { userId, chatId: teamChat.chatId },
-      'TeamChatService'
+      "TeamChatService",
     );
   }
 
@@ -570,7 +570,7 @@ export class TeamChatService {
    */
   async removeAgentFromTeamChat(
     userId: string,
-    agentUserId: string
+    agentUserId: string,
   ): Promise<void> {
     const teamChat = await this.getTeamChat(userId);
     if (!teamChat) {
@@ -586,16 +586,16 @@ export class TeamChatService {
       .limit(1);
 
     // Ownership validation (defense in depth - caller should validate too)
-    if (agent && agent.isAgent && agent.managedBy !== userId) {
+    if (agent?.isAgent && agent.managedBy !== userId) {
       logger.warn(
         `Attempted to remove agent not owned by user`,
         { userId, agentUserId, actualOwner: agent.managedBy },
-        'TeamChatService'
+        "TeamChatService",
       );
       return;
     }
 
-    const agentName = agent?.displayName || agent?.username || 'Agent';
+    const agentName = agent?.displayName || agent?.username || "Agent";
 
     await withTransaction(async (tx) => {
       const now = new Date();
@@ -607,13 +607,13 @@ export class TeamChatService {
         .set({
           isActive: false,
           kickedAt: now,
-          kickReason: 'Agent deleted',
+          kickReason: "Agent deleted",
         })
         .where(
           and(
             eq(groupMembers.groupId, teamChat.groupId),
-            eq(groupMembers.userId, agentUserId)
-          )
+            eq(groupMembers.userId, agentUserId),
+          ),
         );
 
       // 2. Soft-delete from chat participants
@@ -623,16 +623,16 @@ export class TeamChatService {
         .where(
           and(
             eq(chatParticipants.chatId, teamChat.chatId),
-            eq(chatParticipants.userId, agentUserId)
-          )
+            eq(chatParticipants.userId, agentUserId),
+          ),
         );
 
       // 3. Create system message announcing the agent left
       await tx.insert(messages).values({
         id: messageId,
         chatId: teamChat.chatId,
-        senderId: 'system',
-        type: 'system',
+        senderId: "system",
+        type: "system",
         content: `🤖 ${agentName} left the team`,
         createdAt: now,
       });
@@ -647,7 +647,7 @@ export class TeamChatService {
     logger.info(
       `Agent ${agentUserId} removed from team chat`,
       { userId, chatId: teamChat.chatId },
-      'TeamChatService'
+      "TeamChatService",
     );
   }
 
@@ -681,15 +681,15 @@ export class TeamChatService {
       .where(
         and(
           eq(groupMembers.groupId, teamChat.groupId),
-          eq(groupMembers.isActive, true)
-        )
+          eq(groupMembers.isActive, true),
+        ),
       );
 
     const existingMemberIds = new Set(existingMembers.map((m) => m.userId));
 
     // Find agents that need to be added
     const agentsToAdd = allUserAgents.filter(
-      (agent) => !existingMemberIds.has(agent.id)
+      (agent) => !existingMemberIds.has(agent.id),
     );
 
     if (agentsToAdd.length === 0) {
@@ -700,13 +700,13 @@ export class TeamChatService {
     await this.batchAddAgentsToTeamChatSilent(
       userId,
       agentsToAdd.map((a) => a.id),
-      teamChat
+      teamChat,
     );
 
     logger.info(
       `Synced ${agentsToAdd.length} existing agent(s) to team chat`,
       { userId, agentIds: agentsToAdd.map((a) => a.id) },
-      'TeamChatService'
+      "TeamChatService",
     );
 
     return agentsToAdd.length;
@@ -720,7 +720,7 @@ export class TeamChatService {
   private async batchAddAgentsToTeamChatSilent(
     userId: string,
     agentUserIds: string[],
-    teamChat: TeamChatInfo
+    teamChat: TeamChatInfo,
   ): Promise<void> {
     if (agentUserIds.length === 0) return;
 
@@ -729,10 +729,10 @@ export class TeamChatService {
 
       // Generate all IDs upfront
       const memberIds = await Promise.all(
-        agentUserIds.map(() => generateSnowflakeId())
+        agentUserIds.map(() => generateSnowflakeId()),
       );
       const participantIds = await Promise.all(
-        agentUserIds.map(() => generateSnowflakeId())
+        agentUserIds.map(() => generateSnowflakeId()),
       );
 
       // Batch insert group members (with upsert)
@@ -740,7 +740,7 @@ export class TeamChatService {
         id: memberIds[i] as string,
         groupId: teamChat.groupId,
         userId: agentUserId,
-        role: 'member' as const,
+        role: "member" as const,
         addedBy: userId,
         joinedAt: now,
         isActive: true,
@@ -757,7 +757,7 @@ export class TeamChatService {
             isActive: true,
             joinedAt: now,
             addedBy: userId,
-            role: 'member',
+            role: "member",
             kickedAt: null,
             kickReason: null,
           },
@@ -821,7 +821,7 @@ export class TeamChatService {
    */
   async createConversation(
     userId: string,
-    title?: string
+    title?: string,
   ): Promise<{ chat: Chat; teamChat: TeamChatInfo }> {
     const teamChat = await this.ensureTeamChat(userId);
 
@@ -863,7 +863,7 @@ export class TeamChatService {
       const agents = await this.getTeamChatAgents(userId, teamChat.groupId);
       if (agents.length > 0) {
         const agentParticipantIds = await Promise.all(
-          agents.map(() => generateSnowflakeId())
+          agents.map(() => generateSnowflakeId()),
         );
         const agentParticipantValues = agents.map((agent, i) => ({
           id: agentParticipantIds[i] as string,
@@ -888,13 +888,13 @@ export class TeamChatService {
     });
 
     if (!result) {
-      throw new Error('Failed to create conversation');
+      throw new Error("Failed to create conversation");
     }
 
     logger.info(
       `New conversation created for user ${userId}`,
       { chatId: result.id, title: result.name },
-      'TeamChatService'
+      "TeamChatService",
     );
 
     // Return updated team chat info
@@ -911,11 +911,11 @@ export class TeamChatService {
    */
   async switchConversation(
     userId: string,
-    chatId: string
+    chatId: string,
   ): Promise<TeamChatInfo> {
     const teamChat = await this.getTeamChat(userId);
     if (!teamChat) {
-      throw new Error('Team chat not found');
+      throw new Error("Team chat not found");
     }
 
     // Verify the chat belongs to this team's group
@@ -926,7 +926,7 @@ export class TeamChatService {
       .limit(1);
 
     if (!chat) {
-      throw new Error('Conversation not found or does not belong to this team');
+      throw new Error("Conversation not found or does not belong to this team");
     }
 
     // Update active conversation in Group
@@ -939,7 +939,7 @@ export class TeamChatService {
     logger.info(
       `Switched conversation for user ${userId}`,
       { chatId, previousChatId: teamChat.chatId },
-      'TeamChatService'
+      "TeamChatService",
     );
 
     return { ...teamChat, chatId, updatedAt: now };
@@ -955,11 +955,11 @@ export class TeamChatService {
   async renameConversation(
     userId: string,
     chatId: string,
-    newTitle: string
+    newTitle: string,
   ): Promise<void> {
     const teamChat = await this.getTeamChat(userId);
     if (!teamChat) {
-      throw new Error('Team chat not found');
+      throw new Error("Team chat not found");
     }
 
     // Verify the chat belongs to this team's group
@@ -970,7 +970,7 @@ export class TeamChatService {
       .limit(1);
 
     if (!chat) {
-      throw new Error('Conversation not found or does not belong to this team');
+      throw new Error("Conversation not found or does not belong to this team");
     }
 
     await db
@@ -981,7 +981,7 @@ export class TeamChatService {
     logger.info(
       `Renamed conversation ${chatId}`,
       { newTitle },
-      'TeamChatService'
+      "TeamChatService",
     );
   }
 
@@ -1001,7 +1001,7 @@ export class TeamChatService {
       logger.warn(
         `chatNeedsTitle: User does not have a team chat`,
         { chatId, userId },
-        'TeamChatService'
+        "TeamChatService",
       );
       return false;
     }
@@ -1017,7 +1017,7 @@ export class TeamChatService {
       logger.warn(
         `chatNeedsTitle: Chat not found or not owned by user`,
         { chatId, userId },
-        'TeamChatService'
+        "TeamChatService",
       );
       return false;
     }
@@ -1036,12 +1036,12 @@ export class TeamChatService {
   async updateChatTitle(
     chatId: string,
     title: string,
-    userId: string
+    userId: string,
   ): Promise<void> {
     // Validate ownership using team chat
     const teamChat = await this.getTeamChat(userId);
     if (!teamChat) {
-      throw new Error('Team chat not found for user');
+      throw new Error("Team chat not found for user");
     }
 
     // Verify the chat belongs to this team's group
@@ -1052,7 +1052,7 @@ export class TeamChatService {
       .limit(1);
 
     if (!chat) {
-      throw new Error('Chat not found or does not belong to this team');
+      throw new Error("Chat not found or does not belong to this team");
     }
 
     await db
@@ -1063,7 +1063,7 @@ export class TeamChatService {
     logger.info(
       `Updated chat title via LLM generation`,
       { chatId, title, userId },
-      'TeamChatService'
+      "TeamChatService",
     );
   }
 
@@ -1080,7 +1080,7 @@ export class TeamChatService {
   async updateChatTitleIfNull(
     chatId: string,
     title: string,
-    userId: string
+    userId: string,
   ): Promise<boolean> {
     // Validate ownership using team chat
     const teamChat = await this.getTeamChat(userId);
@@ -1088,7 +1088,7 @@ export class TeamChatService {
       logger.warn(
         `Cannot update chat title: team chat not found for user`,
         { chatId, userId },
-        'TeamChatService'
+        "TeamChatService",
       );
       return false;
     }
@@ -1102,8 +1102,8 @@ export class TeamChatService {
         and(
           eq(chats.id, chatId),
           isNull(chats.name),
-          eq(chats.groupId, teamChat.groupId)
-        )
+          eq(chats.groupId, teamChat.groupId),
+        ),
       )
       .returning({ id: chats.id });
 
@@ -1113,7 +1113,7 @@ export class TeamChatService {
       logger.info(
         `Atomically set chat title via LLM generation`,
         { chatId, title, userId },
-        'TeamChatService'
+        "TeamChatService",
       );
     }
 
@@ -1135,18 +1135,18 @@ export class TeamChatService {
     if (userId) {
       const isOwner = await this.validateTeamChatOwnership(userId, chatId);
       if (!isOwner) {
-        throw new Error('Unauthorized: User does not own this chat');
+        throw new Error("Unauthorized: User does not own this chat");
       }
     }
 
     const result = await db
       .select({ count: sql<string>`count(*)` })
       .from(messages)
-      .where(and(eq(messages.chatId, chatId), eq(messages.type, 'user')));
+      .where(and(eq(messages.chatId, chatId), eq(messages.type, "user")));
 
     // COUNT may be returned as string at runtime; convert to number
     const countValue = result[0]?.count;
-    return typeof countValue === 'string'
+    return typeof countValue === "string"
       ? parseInt(countValue, 10)
       : (countValue ?? 0);
   }
@@ -1161,11 +1161,11 @@ export class TeamChatService {
    */
   async deleteConversation(
     userId: string,
-    chatId: string
+    chatId: string,
   ): Promise<string | null> {
     const teamChat = await this.getTeamChat(userId);
     if (!teamChat) {
-      throw new Error('Team chat not found');
+      throw new Error("Team chat not found");
     }
 
     // Verify the chat belongs to this team's group
@@ -1173,12 +1173,12 @@ export class TeamChatService {
     const chatToDelete = conversations.find((c) => c.id === chatId);
 
     if (!chatToDelete) {
-      throw new Error('Conversation not found or does not belong to this team');
+      throw new Error("Conversation not found or does not belong to this team");
     }
 
     // Cannot delete if it's the only conversation
     if (conversations.length <= 1) {
-      throw new Error('Cannot delete the only conversation');
+      throw new Error("Cannot delete the only conversation");
     }
 
     const wasActive = teamChat.chatId === chatId;
@@ -1219,7 +1219,7 @@ export class TeamChatService {
     logger.info(
       `Deleted conversation ${chatId}`,
       { wasActive, newActiveChatId },
-      'TeamChatService'
+      "TeamChatService",
     );
 
     return wasActive ? newActiveChatId : null;

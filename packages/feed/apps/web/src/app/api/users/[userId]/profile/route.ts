@@ -115,11 +115,11 @@ import {
   publicRateLimit,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { logger, toISO, toISOOrNull, UserIdParamSchema } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { sanitizeForJson } from '@/lib/json/sanitize';
-import { getOptionalProfileStats } from '@/lib/users/profile-stats';
+} from "@feed/api";
+import { logger, toISO, toISOOrNull, UserIdParamSchema } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { sanitizeForJson } from "@/lib/json/sanitize";
+import { getOptionalProfileStats } from "@/lib/users/profile-stats";
 
 /**
  * GET Handler for User Profile
@@ -159,7 +159,7 @@ import { getOptionalProfileStats } from '@/lib/users/profile-stats';
 export const GET = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ userId: string }> }
+    context: { params: Promise<{ userId: string }> },
   ) => {
     const { error, rateLimitInfo } = await publicRateLimit(request);
     if (error) return error;
@@ -180,25 +180,25 @@ export const GET = withErrorHandling(
       logger.info(
         "User not found - new Privy user who hasn't completed signup",
         { userId },
-        'GET /api/users/[userId]/profile'
+        "GET /api/users/[userId]/profile",
       );
       return successResponse(
         sanitizeForJson({
           user: null,
-        })
+        }),
       );
     }
 
     // Get cached profile stats (followers, following, posts, etc.)
     const stats = await getOptionalProfileStats(
       dbUser.id,
-      'GET /api/users/[userId]/profile'
+      "GET /api/users/[userId]/profile",
     );
 
     logger.info(
-      'User profile fetched successfully',
+      "User profile fetched successfully",
       { userId, statsAvailable: Boolean(stats) },
-      'GET /api/users/[userId]/profile'
+      "GET /api/users/[userId]/profile",
     );
 
     const res = successResponse(
@@ -235,9 +235,9 @@ export const GET = withErrorHandling(
           createdAt: toISO(dbUser.createdAt),
           stats,
         },
-      })
+      }),
     );
     if (rateLimitInfo) addPublicReadHeaders(res, rateLimitInfo);
     return res;
-  }
+  },
 );

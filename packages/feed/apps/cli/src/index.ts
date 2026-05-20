@@ -10,16 +10,16 @@
  * @packageDocumentation
  */
 
+import { resolve } from "node:path";
 // Load environment variables from project root before any other imports
-import { config } from 'dotenv';
-import { resolve } from 'path';
+import { config } from "dotenv";
 
-config({ path: resolve(process.cwd(), '.env') });
-config({ path: resolve(process.cwd(), '.env.local') });
+config({ path: resolve(process.cwd(), ".env") });
+config({ path: resolve(process.cwd(), ".env.local") });
 
-import { captureCliExceptionAndFlush, initCliSentry } from './sentry.js';
+import { captureCliExceptionAndFlush, initCliSentry } from "./sentry.js";
 
-const VERSION = '0.2.0';
+const VERSION = "0.2.0";
 
 /**
  * Prints the main CLI help text with all available domains and commands.
@@ -84,12 +84,12 @@ async function main(): Promise<void> {
   const domain = args[0];
   const commandArgs = args.slice(1);
 
-  if (!domain || domain === '-h' || domain === '--help') {
+  if (!domain || domain === "-h" || domain === "--help") {
     printHelp();
     process.exit(0);
   }
 
-  if (domain === '-v' || domain === '--version') {
+  if (domain === "-v" || domain === "--version") {
     printVersion();
     process.exit(0);
   }
@@ -97,38 +97,38 @@ async function main(): Promise<void> {
   initCliSentry({ domain, command: commandArgs[0] });
 
   switch (domain) {
-    case 'db':
-      await (await import('./commands/db.js')).runDbCommand(commandArgs);
+    case "db":
+      await (await import("./commands/db.js")).runDbCommand(commandArgs);
       break;
 
-    case 'admin':
-      await (await import('./commands/admin.js')).runAdminCommand(commandArgs);
+    case "admin":
+      await (await import("./commands/admin.js")).runAdminCommand(commandArgs);
       break;
 
-    case 'status':
-      await (await import('./commands/status.js')).runStatusCommand(
-        commandArgs
+    case "status":
+      await (await import("./commands/status.js")).runStatusCommand(
+        commandArgs,
       );
       break;
 
-    case 'train':
-      await (await import('./commands/train.js')).runTrainCommand(commandArgs);
+    case "train":
+      await (await import("./commands/train.js")).runTrainCommand(commandArgs);
       break;
 
-    case 'model':
-      await (await import('./commands/model.js')).runModelCommand(commandArgs);
+    case "model":
+      await (await import("./commands/model.js")).runModelCommand(commandArgs);
       break;
 
-    case 'game':
-      await (await import('./commands/game.js')).runGameCommand(commandArgs);
+    case "game":
+      await (await import("./commands/game.js")).runGameCommand(commandArgs);
       break;
 
-    case 'agent':
-      await (await import('./commands/agent.js')).runAgentCommand(commandArgs);
+    case "agent":
+      await (await import("./commands/agent.js")).runAgentCommand(commandArgs);
       break;
 
-    case 'test':
-      await (await import('./commands/test.js')).runTestCommand(commandArgs);
+    case "test":
+      await (await import("./commands/test.js")).runTestCommand(commandArgs);
       break;
 
     default:
@@ -141,7 +141,7 @@ async function main(): Promise<void> {
 
 if (import.meta.main) {
   main().catch(async (error) => {
-    if (error instanceof Error && error.name === 'CliUsageError') {
+    if (error instanceof Error && error.name === "CliUsageError") {
       console.error(error.message);
       process.exit(1);
       return;

@@ -1,8 +1,8 @@
-import { authenticate, successResponse, withErrorHandling } from '@feed/api';
-import { checkEligibility } from '@feed/api/services/nft-mint-service';
-import { toISO } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import type { EligibilityApiResponse, EligibilityResponse } from '@/types/nft';
+import { authenticate, successResponse, withErrorHandling } from "@feed/api";
+import { checkEligibility } from "@feed/api/services/nft-mint-service";
+import { toISO } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import type { EligibilityApiResponse, EligibilityResponse } from "@/types/nft";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   const authUser = await authenticate(request);
@@ -17,12 +17,12 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     const code = causeCode ?? (error as { code?: string } | null)?.code;
 
     // Missing tables/columns in the DB should not surface as a hard 500 on the waitlist host.
-    if (code === '42P01' || code === '42703') {
+    if (code === "42P01" || code === "42703") {
       const payload = {
         eligible: false,
-        status: 'not_eligible',
+        status: "not_eligible",
         hasMinted: false,
-        reason: 'snapshot_unavailable',
+        reason: "snapshot_unavailable",
       } satisfies EligibilityResponse;
 
       return successResponse({

@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import type { GameOnboardingStep } from '@feed/shared';
-import { cn, ONBOARDING_STEP_ORDER } from '@feed/shared';
-import { Check, ChevronRight, Sparkles, X } from 'lucide-react';
-import { STEP_INFO, useGameOnboarding } from './GameOnboardingProvider';
+import type { GameOnboardingStep } from "@feed/shared";
+import { cn, ONBOARDING_STEP_ORDER } from "@feed/shared";
+import { Check, ChevronRight, Sparkles, X } from "lucide-react";
+import { STEP_INFO, useGameOnboarding } from "./GameOnboardingProvider";
 
 /**
  * Props for GameOnboardingTooltip
@@ -12,7 +12,7 @@ interface GameOnboardingTooltipProps {
   /** Step this tooltip is for */
   step: GameOnboardingStep;
   /** Position of the tooltip */
-  position?: 'top' | 'bottom' | 'left' | 'right';
+  position?: "top" | "bottom" | "left" | "right";
   /** Additional class names */
   className?: string;
   /** Children to wrap with tooltip */
@@ -27,7 +27,7 @@ interface GameOnboardingTooltipProps {
  */
 export function GameOnboardingTooltip({
   step,
-  position = 'bottom',
+  position = "bottom",
   className,
   children,
 }: GameOnboardingTooltipProps) {
@@ -38,37 +38,37 @@ export function GameOnboardingTooltip({
   const stepInfo = STEP_INFO[step];
 
   const positionClasses = {
-    top: 'bottom-full left-1/2 -translate-x-1/2 mb-2',
-    bottom: 'top-full left-1/2 -translate-x-1/2 mt-2',
-    left: 'right-full top-1/2 -translate-y-1/2 mr-2',
-    right: 'left-full top-1/2 -translate-y-1/2 ml-2',
+    top: "bottom-full left-1/2 -translate-x-1/2 mb-2",
+    bottom: "top-full left-1/2 -translate-x-1/2 mt-2",
+    left: "right-full top-1/2 -translate-y-1/2 mr-2",
+    right: "left-full top-1/2 -translate-y-1/2 ml-2",
   };
 
   const arrowClasses = {
-    top: 'top-full left-1/2 -translate-x-1/2 border-l-transparent border-r-transparent border-b-transparent border-t-[var(--color-onboarding-primary)]',
+    top: "top-full left-1/2 -translate-x-1/2 border-l-transparent border-r-transparent border-b-transparent border-t-[var(--color-onboarding-primary)]",
     bottom:
-      'bottom-full left-1/2 -translate-x-1/2 border-l-transparent border-r-transparent border-t-transparent border-b-[var(--color-onboarding-primary)]',
-    left: 'left-full top-1/2 -translate-y-1/2 border-t-transparent border-b-transparent border-r-transparent border-l-[var(--color-onboarding-primary)]',
+      "bottom-full left-1/2 -translate-x-1/2 border-l-transparent border-r-transparent border-t-transparent border-b-[var(--color-onboarding-primary)]",
+    left: "left-full top-1/2 -translate-y-1/2 border-t-transparent border-b-transparent border-r-transparent border-l-[var(--color-onboarding-primary)]",
     right:
-      'right-full top-1/2 -translate-y-1/2 border-t-transparent border-b-transparent border-l-transparent border-r-[var(--color-onboarding-primary)]',
+      "right-full top-1/2 -translate-y-1/2 border-t-transparent border-b-transparent border-l-transparent border-r-[var(--color-onboarding-primary)]",
   };
 
   return (
-    <div className={cn('relative', className)}>
+    <div className={cn("relative", className)}>
       {children}
 
       {isActive && (
         <div
           className={cn(
-            'fade-in slide-in-from-bottom-2 absolute z-50 w-72 animate-in duration-300',
-            positionClasses[position]
+            "fade-in slide-in-from-bottom-2 absolute z-50 w-72 animate-in duration-300",
+            positionClasses[position],
           )}
         >
           {/* Arrow */}
           <div
             className={cn(
-              'absolute h-0 w-0 border-8 border-solid',
-              arrowClasses[position]
+              "absolute h-0 w-0 border-8 border-solid",
+              arrowClasses[position],
             )}
           />
 
@@ -126,8 +126,8 @@ export function GameOnboardingProgress() {
 
   // Use the shared step order, excluding the 'complete' marker step for UI display
   const steps = ONBOARDING_STEP_ORDER.filter(
-    (step): step is Exclude<GameOnboardingStep, 'complete'> =>
-      step !== 'complete'
+    (step): step is Exclude<GameOnboardingStep, "complete"> =>
+      step !== "complete",
   );
 
   const completedCount = status.completedSteps.length;
@@ -168,11 +168,11 @@ export function GameOnboardingProgress() {
             <div
               key={step}
               className={cn(
-                'flex items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors',
+                "flex items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors",
                 isCompleted &&
-                  'bg-[var(--color-onboarding-primary)]/10 text-[var(--color-onboarding-primary)]',
-                isCurrent && !isCompleted && 'bg-muted',
-                !isCompleted && !isCurrent && 'text-muted-foreground'
+                  "bg-[var(--color-onboarding-primary)]/10 text-[var(--color-onboarding-primary)]",
+                isCurrent && !isCompleted && "bg-muted",
+                !isCompleted && !isCurrent && "text-muted-foreground",
               )}
             >
               <div className="flex items-center gap-2">
@@ -194,7 +194,7 @@ export function GameOnboardingProgress() {
       {/* Reputation earned */}
       <div className="mt-3 border-border border-t pt-3 text-center">
         <span className="text-muted-foreground text-sm">
-          Reputation earned:{' '}
+          Reputation earned:{" "}
         </span>
         <span className="font-bold text-[var(--color-onboarding-primary)]">
           {status.totalReputationEarned}

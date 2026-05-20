@@ -1,5 +1,5 @@
-import { definePrompt } from '../define-prompt';
-import { PARODY_NAME_RULES } from '../shared-sections';
+import { definePrompt } from "../define-prompt";
+import { PARODY_NAME_RULES } from "../shared-sections";
 
 /**
  * Prompt for generating relationship-driven posts between NPCs.
@@ -13,11 +13,11 @@ import { PARODY_NAME_RULES } from '../shared-sections';
  * recycled post after post.
  */
 export const socialPost = definePrompt({
-  id: 'social-post',
-  version: '2.0.0',
-  category: 'feed',
+  id: "social-post",
+  version: "2.0.0",
+  category: "feed",
   description:
-    'Generates relationship-driven post — about or directed at another NPC',
+    "Generates relationship-driven post — about or directed at another NPC",
   temperature: 1.0,
   maxTokens: 8000,
   template: `You are {{characterName}}.

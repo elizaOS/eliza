@@ -7,7 +7,7 @@
  * @module services/rss-feed-service
  */
 
-import type { RSSHeadline } from '@feed/db';
+import type { RSSHeadline } from "@feed/db";
 import {
   and,
   db,
@@ -19,9 +19,9 @@ import {
   rssFeedSources,
   rssHeadlines,
   sql,
-} from '@feed/db';
-import { generateSnowflakeId, logger } from '@feed/shared';
-import { parseStringPromise } from 'xml2js';
+} from "@feed/db";
+import { generateSnowflakeId, logger } from "@feed/shared";
+import { parseStringPromise } from "xml2js";
 
 type JsonValue =
   | string
@@ -77,14 +77,14 @@ export class RSSFeedService {
           logger.info(
             `Retrying RSS feed fetch (attempt ${attempt + 1}/${maxRetries})`,
             { url, delayMs },
-            'RSSFeedService'
+            "RSSFeedService",
           );
           await new Promise((resolve) => setTimeout(resolve, delayMs));
         }
 
         const response = await fetch(url, {
           headers: {
-            'User-Agent': 'Mozilla/5.0 (compatible; FeedBot/1.0)',
+            "User-Agent": "Mozilla/5.0 (compatible; FeedBot/1.0)",
           },
           signal: AbortSignal.timeout(15000), // 15 second timeout
         });
@@ -100,7 +100,7 @@ export class RSSFeedService {
         if (parsed.rss?.channel?.[0]) {
           const channel = parsed.rss.channel[0];
           return {
-            title: channel.title?.[0] || 'Unknown Feed',
+            title: channel.title?.[0] || "Unknown Feed",
             items: (channel.item || []).map(
               (item: Record<string, JsonValue>) => {
                 const title = Array.isArray(item.title)
@@ -115,35 +115,35 @@ export class RSSFeedService {
                 const description = Array.isArray(item.description)
                   ? item.description[0]
                   : item.description;
-                const content = Array.isArray(item['content:encoded'])
-                  ? item['content:encoded'][0]
-                  : item['content:encoded'];
+                const content = Array.isArray(item["content:encoded"])
+                  ? item["content:encoded"][0]
+                  : item["content:encoded"];
                 const guidRaw = Array.isArray(item.guid)
                   ? item.guid[0]
                   : item.guid;
                 const guid =
-                  typeof guidRaw === 'object' &&
+                  typeof guidRaw === "object" &&
                   guidRaw !== null &&
                   !Array.isArray(guidRaw) &&
-                  '_' in guidRaw
+                  "_" in guidRaw
                     ? (guidRaw as { _?: JsonValue })._
                     : guidRaw;
 
                 return {
-                  title: typeof title === 'string' ? title : '',
-                  link: typeof link === 'string' ? link : undefined,
-                  pubDate: typeof pubDate === 'string' ? pubDate : undefined,
+                  title: typeof title === "string" ? title : "",
+                  link: typeof link === "string" ? link : undefined,
+                  pubDate: typeof pubDate === "string" ? pubDate : undefined,
                   description:
-                    typeof description === 'string' ? description : undefined,
-                  content: typeof content === 'string' ? content : undefined,
+                    typeof description === "string" ? description : undefined,
+                  content: typeof content === "string" ? content : undefined,
                   guid:
-                    typeof guid === 'string'
+                    typeof guid === "string"
                       ? guid
-                      : typeof guid === 'number'
+                      : typeof guid === "number"
                         ? String(guid)
                         : undefined,
                 };
-              }
+              },
             ),
           };
         }
@@ -151,7 +151,7 @@ export class RSSFeedService {
         // Handle Atom format
         if (parsed.feed?.entry) {
           return {
-            title: parsed.feed.title?.[0] || 'Unknown Feed',
+            title: parsed.feed.title?.[0] || "Unknown Feed",
             items: (parsed.feed.entry || []).map(
               (entry: Record<string, JsonValue>) => {
                 const title = Array.isArray(entry.title)
@@ -161,10 +161,10 @@ export class RSSFeedService {
                   ? entry.link[0]
                   : entry.link;
                 const linkObj =
-                  typeof linkRaw === 'object' &&
+                  typeof linkRaw === "object" &&
                   linkRaw !== null &&
                   !Array.isArray(linkRaw) &&
-                  '$' in linkRaw
+                  "$" in linkRaw
                     ? (linkRaw as { $?: { href?: JsonValue } }).$
                     : undefined;
                 const link = linkObj?.href;
@@ -180,25 +180,25 @@ export class RSSFeedService {
                 const guid = Array.isArray(entry.id) ? entry.id[0] : entry.id;
 
                 return {
-                  title: typeof title === 'string' ? title : '',
-                  link: typeof link === 'string' ? link : undefined,
-                  pubDate: typeof pubDate === 'string' ? pubDate : undefined,
+                  title: typeof title === "string" ? title : "",
+                  link: typeof link === "string" ? link : undefined,
+                  pubDate: typeof pubDate === "string" ? pubDate : undefined,
                   description:
-                    typeof description === 'string' ? description : undefined,
-                  content: typeof content === 'string' ? content : undefined,
+                    typeof description === "string" ? description : undefined,
+                  content: typeof content === "string" ? content : undefined,
                   guid:
-                    typeof guid === 'string'
+                    typeof guid === "string"
                       ? guid
-                      : typeof guid === 'number'
+                      : typeof guid === "number"
                         ? String(guid)
                         : undefined,
                 };
-              }
+              },
             ),
           };
         }
 
-        throw new Error('Unknown feed format');
+        throw new Error("Unknown feed format");
       } catch (error) {
         lastError = error as Error;
 
@@ -207,22 +207,22 @@ export class RSSFeedService {
           logger.error(
             `Failed to fetch RSS feed after ${maxRetries} attempts`,
             { url, error },
-            'RSSFeedService'
+            "RSSFeedService",
           );
           throw lastError;
         }
 
         // Log retry
         logger.warn(
-          'RSS feed fetch failed, will retry',
+          "RSS feed fetch failed, will retry",
           { url, attempt: attempt + 1, error: (error as Error).message },
-          'RSSFeedService'
+          "RSSFeedService",
         );
       }
     }
 
     // Should never reach here, but TypeScript needs this
-    throw lastError || new Error('Failed to fetch RSS feed');
+    throw lastError || new Error("Failed to fetch RSS feed");
   }
 
   /**
@@ -241,7 +241,7 @@ export class RSSFeedService {
     logger.info(
       `Fetching ${sources.length} RSS feeds`,
       undefined,
-      'RSSFeedService'
+      "RSSFeedService",
     );
 
     let fetched = 0;
@@ -263,7 +263,7 @@ export class RSSFeedService {
         if (/^https?:\/\//i.test(trimmedTitle)) continue; // just a URL
         if (
           /\b(subscribe|newsletter|click here|unsubscribe)\b/i.test(
-            trimmedTitle
+            trimmedTitle,
           )
         )
           continue;
@@ -313,7 +313,7 @@ export class RSSFeedService {
     logger.info(
       `RSS fetch complete: ${fetched} feeds fetched, ${stored} headlines stored, ${errors} errors`,
       { fetched, stored, errors },
-      'RSSFeedService'
+      "RSSFeedService",
     );
 
     return { fetched, stored, errors };
@@ -337,8 +337,8 @@ export class RSSFeedService {
           sql`NOT EXISTS (
             SELECT 1 FROM ${parodyHeadlines} 
             WHERE ${parodyHeadlines.originalHeadlineId} = ${rssHeadlines.id}
-          )`
-        )
+          )`,
+        ),
       )
       .orderBy(desc(rssHeadlines.publishedAt))
       .limit(limit);
@@ -363,7 +363,7 @@ export class RSSFeedService {
     logger.info(
       `Cleaned up ${count} old RSS headlines`,
       { count },
-      'RSSFeedService'
+      "RSSFeedService",
     );
 
     return count;

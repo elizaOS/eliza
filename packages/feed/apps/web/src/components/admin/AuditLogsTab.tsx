@@ -15,9 +15,9 @@
  *
  * @returns Audit logs tab element
  */
-'use client';
+"use client";
 
-import { cn } from '@feed/shared';
+import { cn } from "@feed/shared";
 import {
   ChevronLeft,
   ChevronRight,
@@ -25,12 +25,12 @@ import {
   RefreshCw,
   ScrollText,
   Shield,
-} from 'lucide-react';
-import { useCallback, useEffect, useState, useTransition } from 'react';
-import { toast } from 'sonner';
-import { Avatar } from '@/components/shared/Avatar';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { apiUrl } from '@/utils/api-url';
+} from "lucide-react";
+import { useCallback, useEffect, useState, useTransition } from "react";
+import { toast } from "sonner";
+import { Avatar } from "@/components/shared/Avatar";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { apiUrl } from "@/utils/api-url";
 
 interface AuditLog {
   id: string;
@@ -68,8 +68,8 @@ export function AuditLogsTab() {
   const [data, setData] = useState<AuditLogsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, startRefresh] = useTransition();
-  const [actionFilter, setActionFilter] = useState<string>('');
-  const [resourceTypeFilter, setResourceTypeFilter] = useState<string>('');
+  const [actionFilter, setActionFilter] = useState<string>("");
+  const [resourceTypeFilter, setResourceTypeFilter] = useState<string>("");
   const [offset, setOffset] = useState(0);
   const limit = 25;
 
@@ -80,12 +80,12 @@ export function AuditLogsTab() {
           limit: String(limit),
           offset: String(offset),
         });
-        if (actionFilter) params.set('action', actionFilter);
-        if (resourceTypeFilter) params.set('resourceType', resourceTypeFilter);
+        if (actionFilter) params.set("action", actionFilter);
+        if (resourceTypeFilter) params.set("resourceType", resourceTypeFilter);
 
         const response = await fetch(apiUrl(`/api/admin/audit-logs?${params}`));
         if (!response.ok) {
-          toast.error('Failed to load audit logs');
+          toast.error("Failed to load audit logs");
           setLoading(false);
           return;
         }
@@ -100,7 +100,7 @@ export function AuditLogsTab() {
         void fetchLogic();
       }
     },
-    [actionFilter, resourceTypeFilter, offset]
+    [actionFilter, resourceTypeFilter, offset],
   );
 
   useEffect(() => {
@@ -108,33 +108,33 @@ export function AuditLogsTab() {
   }, [fetchLogs]);
 
   const formatDate = (date: string) => {
-    return new Date(date).toLocaleString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
+    return new Date(date).toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
     });
   };
 
   const getActionColor = (action: string) => {
     switch (action) {
-      case 'BAN':
-      case 'DELETE':
-        return 'text-red-500 bg-red-500/10';
-      case 'UNBAN':
-      case 'CREATE':
-        return 'text-green-500 bg-green-500/10';
-      case 'MODIFY':
-        return 'text-blue-500 bg-blue-500/10';
-      case 'VIEW':
-        return 'text-gray-500 bg-gray-500/10';
-      case 'PROMOTE_ADMIN':
-        return 'text-orange-500 bg-orange-500/10';
-      case 'DEMOTE_ADMIN':
-        return 'text-yellow-500 bg-yellow-500/10';
+      case "BAN":
+      case "DELETE":
+        return "text-red-500 bg-red-500/10";
+      case "UNBAN":
+      case "CREATE":
+        return "text-green-500 bg-green-500/10";
+      case "MODIFY":
+        return "text-blue-500 bg-blue-500/10";
+      case "VIEW":
+        return "text-gray-500 bg-gray-500/10";
+      case "PROMOTE_ADMIN":
+        return "text-orange-500 bg-orange-500/10";
+      case "DEMOTE_ADMIN":
+        return "text-yellow-500 bg-yellow-500/10";
       default:
-        return 'text-purple-500 bg-purple-500/10';
+        return "text-purple-500 bg-purple-500/10";
     }
   };
 
@@ -168,8 +168,8 @@ export function AuditLogsTab() {
         >
           <RefreshCw
             className={cn(
-              'h-3.5 w-3.5 sm:h-4 sm:w-4',
-              isRefreshing && 'animate-spin'
+              "h-3.5 w-3.5 sm:h-4 sm:w-4",
+              isRefreshing && "animate-spin",
             )}
           />
           <span className="hidden sm:inline">Refresh</span>
@@ -235,7 +235,7 @@ export function AuditLogsTab() {
                 <div className="hidden sm:block">
                   <Avatar
                     src={log.admin.profileImageUrl || undefined}
-                    alt={log.admin.displayName || 'Admin'}
+                    alt={log.admin.displayName || "Admin"}
                     size="sm"
                   />
                 </div>
@@ -248,12 +248,12 @@ export function AuditLogsTab() {
                       <span className="font-medium text-sm sm:text-base">
                         {log.admin.displayName ||
                           log.admin.username ||
-                          'Unknown Admin'}
+                          "Unknown Admin"}
                       </span>
                       <span
                         className={cn(
-                          'rounded px-1.5 py-0.5 font-medium text-[10px] sm:text-xs',
-                          getActionColor(log.action)
+                          "rounded px-1.5 py-0.5 font-medium text-[10px] sm:text-xs",
+                          getActionColor(log.action),
                         )}
                       >
                         {log.action}
@@ -272,13 +272,13 @@ export function AuditLogsTab() {
                   <div className="space-y-1 text-sm">
                     {log.resourceId && (
                       <div className="text-muted-foreground">
-                        <span className="font-medium">Resource ID:</span>{' '}
+                        <span className="font-medium">Resource ID:</span>{" "}
                         <span className="font-mono">{log.resourceId}</span>
                       </div>
                     )}
                     {log.ipAddress && (
                       <div className="text-muted-foreground">
-                        <span className="font-medium">IP:</span>{' '}
+                        <span className="font-medium">IP:</span>{" "}
                         <span className="font-mono">{log.ipAddress}</span>
                       </div>
                     )}
@@ -289,22 +289,22 @@ export function AuditLogsTab() {
                     <div className="mt-2 rounded-lg bg-muted/50 p-3 font-mono text-xs">
                       {log.previousValue && (
                         <div className="mb-1">
-                          <span className="text-red-500">- Previous:</span>{' '}
+                          <span className="text-red-500">- Previous:</span>{" "}
                           <span className="text-muted-foreground">
                             {JSON.stringify(log.previousValue, null, 2).slice(
                               0,
-                              200
+                              200,
                             )}
                           </span>
                         </div>
                       )}
                       {log.newValue && (
                         <div>
-                          <span className="text-green-500">+ New:</span>{' '}
+                          <span className="text-green-500">+ New:</span>{" "}
                           <span className="text-muted-foreground">
                             {JSON.stringify(log.newValue, null, 2).slice(
                               0,
-                              200
+                              200,
                             )}
                           </span>
                         </div>
@@ -327,7 +327,7 @@ export function AuditLogsTab() {
       {data && (
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="text-muted-foreground text-xs sm:text-sm">
-            Showing {offset + 1} -{' '}
+            Showing {offset + 1} -{" "}
             {Math.min(offset + data.logs.length, offset + limit)}
           </div>
           <div className="flex gap-2">

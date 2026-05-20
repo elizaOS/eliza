@@ -1,16 +1,16 @@
-'use client';
+"use client";
 
-import { cn } from '@feed/shared';
+import { cn } from "@feed/shared";
 import {
   AnimatePresence,
   animate,
   motion,
   useMotionValue,
   useTransform,
-} from 'framer-motion';
-import { ChevronRight, TrendingDown, Trophy, X } from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useRef, useState } from 'react';
+} from "framer-motion";
+import { ChevronRight, TrendingDown, Trophy, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 const AUTO_DISMISS_MS = 10000;
 const PARTICLES_PER_WAVE = 400;
@@ -19,19 +19,19 @@ const WAVE_DELAY_S = 0.08;
 const FADE_START_S = 2;
 const FADE_DURATION_S = 1.5;
 const CONFETTI_COLORS = [
-  '#0066FF',
-  '#22c55e',
-  '#eab308',
-  '#ef4444',
-  '#a855f7',
-  '#3b82f6',
+  "#0066FF",
+  "#22c55e",
+  "#eab308",
+  "#ef4444",
+  "#a855f7",
+  "#3b82f6",
 ];
 
 export interface OutcomeNotification {
   id: string;
   marketId: string;
   marketName: string;
-  outcome: 'win' | 'loss';
+  outcome: "win" | "loss";
   points: number;
   agentName?: string;
   deepLink: string;
@@ -74,7 +74,7 @@ interface Particle {
 function createWaveParticles(
   cx: number,
   cy: number,
-  birthTime: number
+  birthTime: number,
 ): Particle[] {
   return Array.from({ length: PARTICLES_PER_WAVE }, (_, i) => {
     // Full 360 burst but squash vertical range to bias upward
@@ -129,7 +129,7 @@ export function ConfettiCanvas() {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
     // Size canvas to window
@@ -138,7 +138,7 @@ export function ConfettiCanvas() {
       canvas.height = window.innerHeight;
     };
     resize();
-    window.addEventListener('resize', resize);
+    window.addEventListener("resize", resize);
 
     const centerX = canvas.width / 2;
     const centerY = canvas.height / 2;
@@ -225,7 +225,7 @@ export function ConfettiCanvas() {
 
     return () => {
       cancelAnimationFrame(rafId);
-      window.removeEventListener('resize', resize);
+      window.removeEventListener("resize", resize);
     };
   }, []);
 
@@ -251,8 +251,8 @@ function AnimatedPoints({ value, isWin }: { value: number; isWin: boolean }) {
   const motionValue = useMotionValue(startValue);
   const rounded = useTransform(motionValue, (v) => {
     const abs = Math.abs(Math.round(v));
-    const formatted = abs.toLocaleString('en-US');
-    return `${value >= 0 ? '+' : '-'}${formatted}`;
+    const formatted = abs.toLocaleString("en-US");
+    return `${value >= 0 ? "+" : "-"}${formatted}`;
   });
   // Quick scale up, hold, then ease back at the end
   const progress = useTransform(motionValue, [startValue, value], [0, 1]);
@@ -272,7 +272,7 @@ function AnimatedPoints({ value, isWin }: { value: number; isWin: boolean }) {
     motionValue.set(startValue);
     const controls = animate(motionValue, value, {
       duration: 3,
-      ease: 'easeOut',
+      ease: "easeOut",
       delay: 0.4,
     });
     return controls.stop;
@@ -281,34 +281,34 @@ function AnimatedPoints({ value, isWin }: { value: number; isWin: boolean }) {
   return (
     <div
       className={cn(
-        'mb-5 flex items-center justify-center rounded-xl py-3',
-        isWin ? 'bg-green-500/10' : 'bg-red-500/5'
+        "mb-5 flex items-center justify-center rounded-xl py-3",
+        isWin ? "bg-green-500/10" : "bg-red-500/5",
       )}
     >
       <span
         className={cn(
-          'relative font-bold text-2xl tracking-tight',
-          isWin ? 'text-green-500' : 'text-red-500'
+          "relative font-bold text-2xl tracking-tight",
+          isWin ? "text-green-500" : "text-red-500",
         )}
       >
         {/* Invisible placeholder to reserve width for final value */}
         <span className="invisible">
-          {value >= 0 ? '+' : '-'}
-          {Math.abs(value).toLocaleString('en-US', {
+          {value >= 0 ? "+" : "-"}
+          {Math.abs(value).toLocaleString("en-US", {
             maximumFractionDigits: 0,
           })}
         </span>
         {/* Animated value overlaid on top */}
         <span className="absolute inset-0 flex items-center justify-center">
-          <motion.span style={{ scale: numberScale, display: 'inline-block' }}>
+          <motion.span style={{ scale: numberScale, display: "inline-block" }}>
             {rounded}
           </motion.span>
         </span>
       </span>
       <motion.span
         className={cn(
-          'font-bold text-2xl tracking-tight',
-          isWin ? 'text-green-500' : 'text-red-500'
+          "font-bold text-2xl tracking-tight",
+          isWin ? "text-green-500" : "text-red-500",
         )}
         style={{ marginLeft: spacing }}
       >
@@ -342,7 +342,7 @@ export function OutcomeNotificationPopup({
       startedAtRef.current = Date.now();
       timerRef.current = setTimeout(onDismiss, ms);
     },
-    [onDismiss, clearTimer]
+    [onDismiss, clearTimer],
   );
 
   const pauseTimer = useCallback(() => {
@@ -372,9 +372,9 @@ export function OutcomeNotificationPopup({
   // Lock body scroll when visible
   useEffect(() => {
     if (!notification) return;
-    document.body.style.overflow = 'hidden';
+    document.body.style.overflow = "hidden";
     return () => {
-      document.body.style.overflow = '';
+      document.body.style.overflow = "";
     };
   }, [notification]);
 
@@ -383,13 +383,13 @@ export function OutcomeNotificationPopup({
     clearTimer();
     onDismiss();
     // Guard against open redirects — deep links must be relative paths
-    const safeLink = notification.deepLink.startsWith('/')
+    const safeLink = notification.deepLink.startsWith("/")
       ? notification.deepLink
-      : '/';
+      : "/";
     router.push(safeLink);
   }, [notification, onDismiss, clearTimer, router]);
 
-  const isWin = notification?.outcome === 'win';
+  const isWin = notification?.outcome === "win";
 
   return (
     <AnimatePresence>
@@ -405,8 +405,8 @@ export function OutcomeNotificationPopup({
           {/* Backdrop — tinted by outcome, dismiss only */}
           <div
             className={cn(
-              'absolute inset-0 backdrop-blur-md',
-              isWin ? 'bg-green-950/20' : 'bg-red-950/5'
+              "absolute inset-0 backdrop-blur-md",
+              isWin ? "bg-green-950/20" : "bg-red-950/5",
             )}
             onClick={onDismiss}
           />
@@ -430,10 +430,10 @@ export function OutcomeNotificationPopup({
               opacity: 0,
               y: isWin ? -30 : 30,
             }}
-            transition={{ type: 'spring', damping: 20, stiffness: 300 }}
+            transition={{ type: "spring", damping: 20, stiffness: 300 }}
             className={cn(
-              'relative z-10 mx-4 w-full max-w-sm cursor-pointer overflow-hidden rounded-2xl border bg-card shadow-2xl',
-              isWin ? 'border-green-500/20' : 'border-border'
+              "relative z-10 mx-4 w-full max-w-sm cursor-pointer overflow-hidden rounded-2xl border bg-card shadow-2xl",
+              isWin ? "border-green-500/20" : "border-border",
             )}
           >
             {/* Close button */}
@@ -453,10 +453,10 @@ export function OutcomeNotificationPopup({
             {/* Gradient header */}
             <div
               className={cn(
-                'relative flex flex-col items-center px-6 pt-8 pb-10',
+                "relative flex flex-col items-center px-6 pt-8 pb-10",
                 isWin
-                  ? 'bg-gradient-to-b from-green-500/15 to-transparent'
-                  : 'bg-gradient-to-b from-red-500/10 to-transparent'
+                  ? "bg-gradient-to-b from-green-500/15 to-transparent"
+                  : "bg-gradient-to-b from-red-500/10 to-transparent",
               )}
             >
               {/* Icon badge with pulsing glow ring (win only) */}
@@ -471,7 +471,7 @@ export function OutcomeNotificationPopup({
                     transition={{
                       duration: 2,
                       repeat: Number.POSITIVE_INFINITY,
-                      ease: 'easeInOut',
+                      ease: "easeInOut",
                     }}
                   />
                 )}
@@ -479,16 +479,16 @@ export function OutcomeNotificationPopup({
                   initial={{ scale: 0, rotate: -20 }}
                   animate={{ scale: 1, rotate: 0 }}
                   transition={{
-                    type: 'spring',
+                    type: "spring",
                     damping: 12,
                     stiffness: 200,
                     delay: 0.15,
                   }}
                   className={cn(
-                    'relative flex h-16 w-16 items-center justify-center rounded-full',
+                    "relative flex h-16 w-16 items-center justify-center rounded-full",
                     isWin
-                      ? 'bg-green-500/15 ring-2 ring-green-500/30'
-                      : 'bg-red-500/10 ring-2 ring-red-500/20'
+                      ? "bg-green-500/15 ring-2 ring-green-500/30"
+                      : "bg-red-500/10 ring-2 ring-red-500/20",
                   )}
                 >
                   {isWin ? (
@@ -505,11 +505,11 @@ export function OutcomeNotificationPopup({
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2, duration: 0.3 }}
                 className={cn(
-                  'font-bold text-2xl',
-                  isWin ? 'text-green-500' : 'text-red-500'
+                  "font-bold text-2xl",
+                  isWin ? "text-green-500" : "text-red-500",
                 )}
               >
-                {isWin ? 'You Won!' : 'You Lost'}
+                {isWin ? "You Won!" : "You Lost"}
               </motion.h2>
 
               {/* Agent attribution */}
@@ -520,7 +520,7 @@ export function OutcomeNotificationPopup({
                   transition={{ delay: 0.3, duration: 0.3 }}
                   className="mt-1 text-muted-foreground text-sm"
                 >
-                  via your agent{' '}
+                  via your agent{" "}
                   <span className="font-semibold text-foreground">
                     {notification.agentName}
                   </span>
@@ -548,13 +548,13 @@ export function OutcomeNotificationPopup({
             {/* Auto-dismiss progress bar */}
             <div
               className={cn(
-                'h-0.5 origin-left rounded-bl-2xl transition-transform',
-                isWin ? 'bg-green-500' : 'bg-red-500'
+                "h-0.5 origin-left rounded-bl-2xl transition-transform",
+                isWin ? "bg-green-500" : "bg-red-500",
               )}
               style={{
-                transform: 'scaleX(1)',
+                transform: "scaleX(1)",
                 animation: `shrink-bar ${AUTO_DISMISS_MS}ms linear forwards`,
-                animationPlayState: paused ? 'paused' : 'running',
+                animationPlayState: paused ? "paused" : "running",
               }}
             />
           </motion.div>

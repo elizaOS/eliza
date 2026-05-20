@@ -9,35 +9,35 @@ import type {
   Provider,
   ProviderResult,
   State,
-} from '@elizaos/core';
-import { logger } from '../../../shared/logger';
-import type { FeedRuntime } from '../types';
+} from "@elizaos/core";
+import { logger } from "../../../shared/logger";
+import type { FeedRuntime } from "../types";
 
 /**
  * Provider: Market Movers (Gainers & Losers)
  * Gets top gaining and losing stocks/companies via A2A protocol
  */
 export const marketMoversProvider: Provider = {
-  name: 'FEED_MARKET_MOVERS',
+  name: "FEED_MARKET_MOVERS",
   description:
-    'Get top market gainers and losers (stocks with biggest price changes) via A2A protocol',
+    "Get top market gainers and losers (stocks with biggest price changes) via A2A protocol",
 
   get: async (
     runtime: IAgentRuntime,
     _message: Memory,
-    _state: State
+    _state: State,
   ): Promise<ProviderResult> => {
     const feedRuntime = runtime as FeedRuntime;
 
     // A2A is REQUIRED
     if (!feedRuntime.a2aClient?.isConnected()) {
       logger.error(
-        'A2A client not connected - market movers provider requires A2A protocol',
+        "A2A client not connected - market movers provider requires A2A protocol",
         undefined,
-        runtime.agentId
+        runtime.agentId,
       );
       return {
-        text: 'ERROR: A2A client not connected. Cannot fetch market movers. Please ensure A2A server is running.',
+        text: "ERROR: A2A client not connected. Cannot fetch market movers. Please ensure A2A server is running.",
       };
     }
 
@@ -59,7 +59,7 @@ export const marketMoversProvider: Provider = {
         )?.organizations || [];
 
       if (organizations.length === 0) {
-        return { text: 'No market data available.' };
+        return { text: "No market data available." };
       }
 
       // Calculate price changes (use priceChangePercentage if available, otherwise calculate)
@@ -67,7 +67,7 @@ export const marketMoversProvider: Provider = {
         .filter(
           (org) =>
             org.currentPrice &&
-            (org.initialPrice || org.priceChangePercentage !== undefined)
+            (org.initialPrice || org.priceChangePercentage !== undefined),
         )
         .map((org) => {
           const current = org.currentPrice;
@@ -82,7 +82,7 @@ export const marketMoversProvider: Provider = {
             org.ticker ||
             org.name
               .toUpperCase()
-              .replace(/[^A-Z]/g, '')
+              .replace(/[^A-Z]/g, "")
               .substring(0, 5);
 
           return {
@@ -111,20 +111,20 @@ export const marketMoversProvider: Provider = {
           ? gainers
               .map(
                 (g, i) =>
-                  `${i + 1}. ${g.ticker} - ${g.name} - $${g.price.toFixed(2)} (+${g.change.toFixed(2)}%)`
+                  `${i + 1}. ${g.ticker} - ${g.name} - $${g.price.toFixed(2)} (+${g.change.toFixed(2)}%)`,
               )
-              .join('\n')
-          : 'No gainers';
+              .join("\n")
+          : "No gainers";
 
       const losersText =
         losers.length > 0
           ? losers
               .map(
                 (l, i) =>
-                  `${i + 1}. ${l.ticker} - ${l.name} - $${l.price.toFixed(2)} (${l.change.toFixed(2)}%)`
+                  `${i + 1}. ${l.ticker} - ${l.name} - $${l.price.toFixed(2)} (${l.change.toFixed(2)}%)`,
               )
-              .join('\n')
-          : 'No losers';
+              .join("\n")
+          : "No losers";
 
       return {
         text: `Market Movers:
@@ -153,9 +153,9 @@ ${losersText}`,
       };
     } catch (error) {
       logger.error(
-        'Failed to fetch market movers via A2A',
+        "Failed to fetch market movers via A2A",
         { error: error instanceof Error ? error.message : String(error) },
-        'MarketMoversProvider'
+        "MarketMoversProvider",
       );
       throw error;
     }

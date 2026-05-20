@@ -10,15 +10,15 @@ import {
   errorResponse,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { asUser } from '@feed/db';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/api";
+import { asUser } from "@feed/db";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 export const DELETE = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ id: string }> }
+    context: { params: Promise<{ id: string }> },
   ) => {
     const { id: chatId } = await context.params;
     const user = await authenticate(request);
@@ -34,9 +34,9 @@ export const DELETE = withErrorHandling(
 
       if (!participant) {
         throw errorResponse(
-          'You are not a member of this chat.',
-          'NOT_FOUND',
-          404
+          "You are not a member of this chat.",
+          "NOT_FOUND",
+          404,
         );
       }
 
@@ -58,11 +58,11 @@ export const DELETE = withErrorHandling(
 
         if (membership) {
           // Cannot leave if you're the owner
-          if (membership.role === 'owner') {
+          if (membership.role === "owner") {
             throw errorResponse(
-              'Group owners cannot leave. Transfer ownership or delete the group.',
-              'FORBIDDEN',
-              403
+              "Group owners cannot leave. Transfer ownership or delete the group.",
+              "FORBIDDEN",
+              403,
             );
           }
 
@@ -71,7 +71,7 @@ export const DELETE = withErrorHandling(
             data: {
               isActive: false,
               kickedAt: new Date(),
-              kickReason: 'User left',
+              kickReason: "User left",
             },
           });
         }
@@ -86,11 +86,11 @@ export const DELETE = withErrorHandling(
     });
 
     logger.info(
-      'User left chat successfully',
+      "User left chat successfully",
       { chatId, userId: user.userId },
-      'DELETE /api/chats/[id]/participants/me'
+      "DELETE /api/chats/[id]/participants/me",
     );
 
-    return successResponse({ message: 'You have left the chat.' }, 200);
-  }
+    return successResponse({ message: "You have left the chat." }, 200);
+  },
 );

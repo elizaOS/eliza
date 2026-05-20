@@ -1,12 +1,12 @@
-'use client';
+"use client";
 
-import { cn, formatCurrency } from '@feed/shared';
-import { ChevronDown } from 'lucide-react';
-import { useCallback, useMemo, useRef, useState } from 'react';
-import { useOnClickOutside } from '@/hooks/useOnClickOutside';
-import type { TeamTradingSummary } from '@/lib/agents/team-trading-summary';
-import type { PnlHistoryScope } from '@/lib/wallet/pnl-history-types';
-import { PnLChart } from './pnl-chart';
+import { cn, formatCurrency } from "@feed/shared";
+import { ChevronDown } from "lucide-react";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { useOnClickOutside } from "@/hooks/useOnClickOutside";
+import type { TeamTradingSummary } from "@/lib/agents/team-trading-summary";
+import type { PnlHistoryScope } from "@/lib/wallet/pnl-history-types";
+import { PnLChart } from "./pnl-chart";
 
 interface PnLTabProps {
   userId: string;
@@ -25,18 +25,18 @@ interface EntityPnL {
   isSelected?: boolean;
 }
 
-const timeFilters = ['1H', '4H', '1D', '1W', 'ALL'];
+const timeFilters = ["1H", "4H", "1D", "1W", "ALL"];
 
 function getEntitySelectionKey(entity: {
   entityId: string | null;
   scope: PnlHistoryScope;
 }): string {
   switch (entity.scope) {
-    case 'team':
-      return 'team';
-    case 'owner':
-      return 'owner';
-    case 'agent':
+    case "team":
+      return "team";
+    case "owner":
+      return "owner";
+    case "agent":
       return `agent:${entity.entityId}`;
   }
 }
@@ -47,8 +47,8 @@ export function PnLTab({
   teamSummaryLoading,
   teamSummaryError,
 }: PnLTabProps) {
-  const [selectedTime, setSelectedTime] = useState('1D');
-  const [selectedEntityKey, setSelectedEntityKey] = useState('team');
+  const [selectedTime, setSelectedTime] = useState("1D");
+  const [selectedEntityKey, setSelectedEntityKey] = useState("team");
   const [entityDropdownOpen, setEntityDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -62,18 +62,18 @@ export function PnLTab({
     const list: EntityPnL[] = [
       {
         entityId: null,
-        name: 'Team',
+        name: "Team",
         currentPnl: teamSummary.totals.currentPnL,
         lifetimePnl: teamSummary.totals.lifetimePnL,
-        scope: 'team',
+        scope: "team",
         unrealized: teamSummary.totals.unrealizedPnL,
-        isSelected: selectedEntityKey === 'team',
+        isSelected: selectedEntityKey === "team",
       },
     ];
 
     for (const member of teamSummary.members) {
-      const name = member.entityType === 'owner' ? 'You' : member.name;
-      const scope = member.entityType === 'owner' ? 'owner' : 'agent';
+      const name = member.entityType === "owner" ? "You" : member.name;
+      const scope = member.entityType === "owner" ? "owner" : "agent";
 
       list.push({
         entityId: member.id,
@@ -101,7 +101,7 @@ export function PnLTab({
   }, []);
 
   const fmtPnl = (value: number) => {
-    const sign = value >= 0 ? '+' : '-';
+    const sign = value >= 0 ? "+" : "-";
     return `${sign}${formatCurrency(Math.abs(value), { useThousandsSeparator: true })}`;
   };
 
@@ -131,7 +131,7 @@ export function PnLTab({
   // Find selected entity for the hero display
   const selected = entities.find((e) => e.isSelected) ?? entities[0];
 
-  const selectedEntityName = selected?.name ?? 'Team';
+  const selectedEntityName = selected?.name ?? "Team";
 
   return (
     <div className="space-y-3 md:space-y-5">
@@ -149,13 +149,13 @@ export function PnLTab({
             <div className="absolute top-full left-0 z-50 mt-1 min-w-[140px] overflow-hidden rounded-lg border border-border bg-background shadow-lg">
               {entities.map((entity) => (
                 <button
-                  key={`${entity.scope}:${entity.entityId ?? 'team'}`}
+                  key={`${entity.scope}:${entity.entityId ?? "team"}`}
                   onClick={() => handleEntitySelect(entity)}
                   className={cn(
-                    'w-full px-3 py-2 text-left text-sm transition-colors',
+                    "w-full px-3 py-2 text-left text-sm transition-colors",
                     entity.isSelected
-                      ? 'bg-muted font-medium'
-                      : 'hover:bg-muted/50'
+                      ? "bg-muted font-medium"
+                      : "hover:bg-muted/50",
                   )}
                 >
                   {entity.name}
@@ -171,8 +171,8 @@ export function PnLTab({
               onClick={() => setSelectedTime(time)}
               className={`rounded-md px-2.5 py-1 font-medium text-xs transition-colors ${
                 selectedTime === time
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:text-foreground'
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground"
               }`}
             >
               {time}
@@ -190,8 +190,8 @@ export function PnLTab({
             </div>
             <div
               className={cn(
-                'font-semibold text-sm md:text-base',
-                selected.currentPnl >= 0 ? 'text-emerald-500' : 'text-red-500'
+                "font-semibold text-sm md:text-base",
+                selected.currentPnl >= 0 ? "text-emerald-500" : "text-red-500",
               )}
             >
               {fmtPnl(selected.currentPnl)}
@@ -203,8 +203,8 @@ export function PnLTab({
             </div>
             <div
               className={cn(
-                'font-semibold text-sm md:text-base',
-                selected.lifetimePnl >= 0 ? 'text-emerald-500' : 'text-red-500'
+                "font-semibold text-sm md:text-base",
+                selected.lifetimePnl >= 0 ? "text-emerald-500" : "text-red-500",
               )}
             >
               {fmtPnl(selected.lifetimePnl)}
@@ -216,8 +216,8 @@ export function PnLTab({
             </div>
             <div
               className={cn(
-                'font-semibold text-sm md:text-base',
-                selected.unrealized >= 0 ? 'text-emerald-500' : 'text-red-500'
+                "font-semibold text-sm md:text-base",
+                selected.unrealized >= 0 ? "text-emerald-500" : "text-red-500",
               )}
             >
               {fmtPnl(selected.unrealized)}
@@ -229,9 +229,9 @@ export function PnLTab({
       {/* Chart */}
       <div className="rounded-xl border border-border p-2 md:p-3">
         <PnLChart
-          entityId={selected?.scope === 'agent' ? selected.entityId : null}
+          entityId={selected?.scope === "agent" ? selected.entityId : null}
           metricLabel="Current P&L"
-          scope={selected?.scope ?? 'team'}
+          scope={selected?.scope ?? "team"}
           userId={userId}
           timeframe={selectedTime}
         />

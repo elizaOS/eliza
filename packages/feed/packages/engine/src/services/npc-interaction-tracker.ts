@@ -25,9 +25,9 @@ import {
   shares,
   userInteractions,
   users,
-} from '@feed/db';
-import { logger } from '@feed/shared';
-import { ALPHA_GROUP_CONFIG } from '../config/alpha-group-config';
+} from "@feed/db";
+import { logger } from "@feed/shared";
+import { ALPHA_GROUP_CONFIG } from "../config/alpha-group-config";
 
 /**
  * Trading statistics for a user within a time window.
@@ -115,7 +115,7 @@ export class NPCInteractionTracker {
     logger.debug(
       `User ${userId} liked NPC ${post.authorId}'s post`,
       undefined,
-      'NPCInteractionTracker'
+      "NPCInteractionTracker",
     );
   }
 
@@ -147,7 +147,7 @@ export class NPCInteractionTracker {
     logger.debug(
       `User ${userId} shared NPC ${post.authorId}'s post`,
       undefined,
-      'NPCInteractionTracker'
+      "NPCInteractionTracker",
     );
   }
 
@@ -157,7 +157,7 @@ export class NPCInteractionTracker {
    */
   static async getUserTradingStats(
     userId: string,
-    window?: InteractionWindow
+    window?: InteractionWindow,
   ): Promise<TradingStats> {
     const endDate = window?.endDate || new Date();
     const startDate =
@@ -173,10 +173,10 @@ export class NPCInteractionTracker {
       .where(
         and(
           eq(agentTrades.agentUserId, userId),
-          eq(agentTrades.action, 'close'),
+          eq(agentTrades.action, "close"),
           gte(agentTrades.executedAt, startDate),
-          lte(agentTrades.executedAt, endDate)
-        )
+          lte(agentTrades.executedAt, endDate),
+        ),
       );
 
     const totalTrades = trades.length;
@@ -207,7 +207,7 @@ export class NPCInteractionTracker {
     userId: string,
     npcId: string,
     window?: InteractionWindow,
-    focusWeights?: FocusWeights
+    focusWeights?: FocusWeights,
   ): Promise<NPCInteractionScore> {
     const endDate = window?.endDate || new Date();
     const startDate =
@@ -229,8 +229,8 @@ export class NPCInteractionTracker {
         and(
           eq(posts.authorId, npcId),
           gte(posts.timestamp, startDate),
-          lte(posts.timestamp, effectiveEndDate)
-        )
+          lte(posts.timestamp, effectiveEndDate),
+        ),
       );
 
     const npcPostIds = npcPosts.map((p) => p.id);
@@ -244,8 +244,8 @@ export class NPCInteractionTracker {
           eq(userInteractions.userId, userId),
           eq(userInteractions.npcId, npcId),
           gte(userInteractions.timestamp, startDate),
-          lte(userInteractions.timestamp, endDate)
-        )
+          lte(userInteractions.timestamp, endDate),
+        ),
       );
 
     const replyCount = replyInteractions.length;
@@ -265,10 +265,10 @@ export class NPCInteractionTracker {
           and(
             eq(reactions.userId, userId),
             inArray(reactions.postId, npcPostIds),
-            eq(reactions.type, 'like'),
+            eq(reactions.type, "like"),
             gte(reactions.createdAt, startDate),
-            lte(reactions.createdAt, endDate)
-          )
+            lte(reactions.createdAt, endDate),
+          ),
         );
       likeCount = likeResult?.count ?? 0;
     }
@@ -284,8 +284,8 @@ export class NPCInteractionTracker {
             eq(shares.userId, userId),
             inArray(shares.postId, npcPostIds),
             gte(shares.createdAt, startDate),
-            lte(shares.createdAt, endDate)
-          )
+            lte(shares.createdAt, endDate),
+          ),
         );
       shareCount = shareResult?.count ?? 0;
     }
@@ -310,7 +310,7 @@ export class NPCInteractionTracker {
       ALPHA_GROUP_CONFIG.includeTradingActivity ||
       ALPHA_GROUP_CONFIG.fastTrackEnabled
     ) {
-      tradingStats = await this.getUserTradingStats(userId, {
+      tradingStats = await NPCInteractionTracker.getUserTradingStats(userId, {
         startDate,
         endDate,
       });
@@ -329,7 +329,7 @@ export class NPCInteractionTracker {
     // Normalize social score to 0-100
     const socialScore = Math.min(
       100,
-      (rawSocialScore / ALPHA_GROUP_CONFIG.maxExpectedSocialScore) * 100
+      (rawSocialScore / ALPHA_GROUP_CONFIG.maxExpectedSocialScore) * 100,
     );
 
     // Calculate raw trading score (only used in engagement if includeTradingActivity=true)
@@ -345,7 +345,7 @@ export class NPCInteractionTracker {
       // Normalize trading score to 0-100
       tradingScore = Math.min(
         100,
-        (rawTradingScore / ALPHA_GROUP_CONFIG.maxExpectedTradingScore) * 100
+        (rawTradingScore / ALPHA_GROUP_CONFIG.maxExpectedTradingScore) * 100,
       );
     }
 
@@ -388,21 +388,21 @@ export class NPCInteractionTracker {
     if (replyCount < ALPHA_GROUP_CONFIG.minReplies) {
       isEligible = false;
       eligibilityReasons.push(
-        `Need ${ALPHA_GROUP_CONFIG.minReplies - replyCount} more replies`
+        `Need ${ALPHA_GROUP_CONFIG.minReplies - replyCount} more replies`,
       );
     }
 
     if (likeCount < ALPHA_GROUP_CONFIG.minLikes) {
       isEligible = false;
       eligibilityReasons.push(
-        `Need ${ALPHA_GROUP_CONFIG.minLikes - likeCount} more likes`
+        `Need ${ALPHA_GROUP_CONFIG.minLikes - likeCount} more likes`,
       );
     }
 
     if (totalInteractions < ALPHA_GROUP_CONFIG.minTotalInteractions) {
       isEligible = false;
       eligibilityReasons.push(
-        `Need ${ALPHA_GROUP_CONFIG.minTotalInteractions - totalInteractions} more interactions`
+        `Need ${ALPHA_GROUP_CONFIG.minTotalInteractions - totalInteractions} more interactions`,
       );
     }
 
@@ -413,7 +413,7 @@ export class NPCInteractionTracker {
     ) {
       isEligible = false;
       eligibilityReasons.push(
-        `Reply quality too low (${(avgQualityScore * 100).toFixed(0)}% < ${(ALPHA_GROUP_CONFIG.minQualityScore * 100).toFixed(0)}%)`
+        `Reply quality too low (${(avgQualityScore * 100).toFixed(0)}% < ${(ALPHA_GROUP_CONFIG.minQualityScore * 100).toFixed(0)}%)`,
       );
     }
 
@@ -428,7 +428,7 @@ export class NPCInteractionTracker {
     if (interactionsPerDay > ALPHA_GROUP_CONFIG.maxInteractionsPerDay) {
       isEligible = false;
       eligibilityReasons.push(
-        `Too many interactions per day (${interactionsPerDay.toFixed(0)}/day exceeds ${ALPHA_GROUP_CONFIG.maxInteractionsPerDay}/day limit)`
+        `Too many interactions per day (${interactionsPerDay.toFixed(0)}/day exceeds ${ALPHA_GROUP_CONFIG.maxInteractionsPerDay}/day limit)`,
       );
     }
 
@@ -449,15 +449,15 @@ export class NPCInteractionTracker {
       eligibilityReasons.push(
         `Fast-tracked: ${tradingStats.totalTrades} trades, ` +
           `${(tradingStats.winRate * 100).toFixed(0)}% win rate, ` +
-          `${tradingStats.totalPnL.toFixed(0)} P&L`
+          `${tradingStats.totalPnL.toFixed(0)} P&L`,
       );
     }
 
     // Add success message if eligible
     if (isEligible) {
-      eligibilityReasons.push('Eligible for group invite');
+      eligibilityReasons.push("Eligible for group invite");
       eligibilityReasons.push(
-        `Score: ${finalScore.toFixed(0)}/100 (social: ${socialScore.toFixed(0)}, trading: ${tradingScore.toFixed(0)})`
+        `Score: ${finalScore.toFixed(0)}/100 (social: ${socialScore.toFixed(0)}, trading: ${tradingScore.toFixed(0)})`,
       );
     }
 
@@ -491,7 +491,7 @@ export class NPCInteractionTracker {
     npcId: string,
     limit = 10,
     window?: InteractionWindow,
-    focusWeights?: FocusWeights
+    focusWeights?: FocusWeights,
   ): Promise<NPCInteractionScore[]> {
     // Build conditions for finding users who interacted with this NPC
     const conditions = [eq(userInteractions.npcId, npcId)];
@@ -515,9 +515,9 @@ export class NPCInteractionTracker {
           userId,
           npcId,
           window,
-          focusWeights
-        )
-      )
+          focusWeights,
+        ),
+      ),
     );
 
     // Sort by engagement score (descending) and return top N
@@ -534,7 +534,7 @@ export class NPCInteractionTracker {
    */
   static async getUserEngagedNPCs(
     userId: string,
-    window?: InteractionWindow
+    window?: InteractionWindow,
   ): Promise<string[]> {
     const conditions = [eq(userInteractions.userId, userId)];
     if (window) {
@@ -559,7 +559,7 @@ export class NPCInteractionTracker {
    */
   static async checkFastTrackEligibility(
     userId: string,
-    window?: InteractionWindow
+    window?: InteractionWindow,
   ): Promise<{
     eligible: boolean;
     tradingStats: TradingStats;
@@ -574,11 +574,14 @@ export class NPCInteractionTracker {
           totalPnL: 0,
           winRate: 0,
         },
-        reason: 'Fast-track is disabled',
+        reason: "Fast-track is disabled",
       };
     }
 
-    const tradingStats = await this.getUserTradingStats(userId, window);
+    const tradingStats = await NPCInteractionTracker.getUserTradingStats(
+      userId,
+      window,
+    );
 
     if (tradingStats.totalTrades < ALPHA_GROUP_CONFIG.fastTrackMinTrades) {
       return {
@@ -607,7 +610,7 @@ export class NPCInteractionTracker {
     return {
       eligible: true,
       tradingStats,
-      reason: 'Qualifies for fast-track',
+      reason: "Qualifies for fast-track",
     };
   }
 }

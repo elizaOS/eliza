@@ -16,7 +16,7 @@ import {
   requirePermission,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
+} from "@feed/api";
 import {
   and,
   count,
@@ -26,15 +26,15 @@ import {
   groupMembers,
   groups,
   gte,
-} from '@feed/db';
+} from "@feed/db";
 import {
   ALPHA_GROUP_CONFIG,
   AlphaGroupInviteService,
   TIER_CONFIG,
   TieredGroupService,
-} from '@feed/engine';
-import { logger, toISO } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/engine";
+import { logger, toISO } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 /**
  * GET /api/admin/alpha-groups/stats
@@ -47,21 +47,21 @@ import type { NextRequest } from 'next/server';
  * - Recent invite activity
  */
 export const GET = withErrorHandling(async (request: NextRequest) => {
-  const admin = await requirePermission(request, 'view_alpha_groups');
+  const admin = await requirePermission(request, "view_alpha_groups");
 
   // Apply rate limiting
   const rateLimitResult = applyRateLimit(
     admin.userId,
-    RATE_LIMIT_CONFIGS.ADMIN_STATS
+    RATE_LIMIT_CONFIGS.ADMIN_STATS,
   );
   if (!rateLimitResult.allowed) {
     return rateLimitError(rateLimitResult.retryAfter);
   }
 
   logger.info(
-    'Alpha group stats requested',
+    "Alpha group stats requested",
     { adminUserId: admin.userId },
-    'GET /api/admin/alpha-groups/stats'
+    "GET /api/admin/alpha-groups/stats",
   );
 
   const now = new Date();
@@ -99,19 +99,19 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     db
       .select({ count: count() })
       .from(groupInvites)
-      .where(eq(groupInvites.status, 'pending'))
+      .where(eq(groupInvites.status, "pending"))
       .then((r) => r[0]?.count ?? 0),
     // Accepted invites
     db
       .select({ count: count() })
       .from(groupInvites)
-      .where(eq(groupInvites.status, 'accepted'))
+      .where(eq(groupInvites.status, "accepted"))
       .then((r) => r[0]?.count ?? 0),
     // Declined invites
     db
       .select({ count: count() })
       .from(groupInvites)
-      .where(eq(groupInvites.status, 'declined'))
+      .where(eq(groupInvites.status, "declined"))
       .then((r) => r[0]?.count ?? 0),
     // Grandfathered members
     db
@@ -120,8 +120,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       .where(
         and(
           eq(groupMembers.isActive, true),
-          eq(groupMembers.isGrandfathered, true)
-        )
+          eq(groupMembers.isGrandfathered, true),
+        ),
       )
       .then((r) => r[0]?.count ?? 0),
     // Users with declines
@@ -137,8 +137,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       .where(
         gte(
           groupInvites.declineCount,
-          ALPHA_GROUP_CONFIG.inviteDecayMaxDeclines
-        )
+          ALPHA_GROUP_CONFIG.inviteDecayMaxDeclines,
+        ),
       )
       .then((r) => r[0]?.count ?? 0),
     // Tier 1 members
@@ -149,9 +149,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       .where(
         and(
           eq(groupMembers.isActive, true),
-          eq(groups.type, 'npc'),
-          eq(groupMembers.tier, 1)
-        )
+          eq(groups.type, "npc"),
+          eq(groupMembers.tier, 1),
+        ),
       )
       .then((r) => r[0]?.count ?? 0),
     // Tier 2 members
@@ -162,9 +162,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       .where(
         and(
           eq(groupMembers.isActive, true),
-          eq(groups.type, 'npc'),
-          eq(groupMembers.tier, 2)
-        )
+          eq(groups.type, "npc"),
+          eq(groupMembers.tier, 2),
+        ),
       )
       .then((r) => r[0]?.count ?? 0),
     // Tier 3 members
@@ -175,9 +175,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       .where(
         and(
           eq(groupMembers.isActive, true),
-          eq(groups.type, 'npc'),
-          eq(groupMembers.tier, 3)
-        )
+          eq(groups.type, "npc"),
+          eq(groupMembers.tier, 3),
+        ),
       )
       .then((r) => r[0]?.count ?? 0),
     // Invites in last 24h
@@ -197,7 +197,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       .select({ count: count() })
       .from(groupMembers)
       .innerJoin(groups, eq(groupMembers.groupId, groups.id))
-      .where(and(eq(groups.type, 'npc'), gte(groupMembers.joinedAt, oneDayAgo)))
+      .where(and(eq(groups.type, "npc"), gte(groupMembers.joinedAt, oneDayAgo)))
       .then((r) => r[0]?.count ?? 0),
     // Joins in last week
     db
@@ -205,7 +205,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       .from(groupMembers)
       .innerJoin(groups, eq(groupMembers.groupId, groups.id))
       .where(
-        and(eq(groups.type, 'npc'), gte(groupMembers.joinedAt, oneWeekAgo))
+        and(eq(groups.type, "npc"), gte(groupMembers.joinedAt, oneWeekAgo)),
       )
       .then((r) => r[0]?.count ?? 0),
   ]);

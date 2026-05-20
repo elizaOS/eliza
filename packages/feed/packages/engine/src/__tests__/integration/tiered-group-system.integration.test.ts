@@ -23,16 +23,16 @@ import {
   expect,
   setDefaultTimeout,
   test,
-} from 'bun:test';
+} from "bun:test";
 
-import { db } from '@feed/db';
+import { db } from "@feed/db";
 import {
   GroupChatService,
   StaticDataRegistry,
   TieredGroupService,
   UserAlphaGroupAssignmentService,
-} from '@feed/engine';
-import { GROUP_CONFIG, generateSnowflakeId } from '@feed/shared';
+} from "@feed/engine";
+import { GROUP_CONFIG, generateSnowflakeId } from "@feed/shared";
 
 // Set timeout to 60 seconds for integration tests
 setDefaultTimeout(60000);
@@ -49,15 +49,15 @@ function getTestNpc(): { id: string; name: string } {
   const actors = StaticDataRegistry.getAllActors();
   if (actors.length === 0) {
     throw new Error(
-      'No actors in StaticDataRegistry - cannot run integration tests'
+      "No actors in StaticDataRegistry - cannot run integration tests",
     );
   }
   // Use the first non-test actor; fail fast if none found
   const actor = actors.find((a) => !a.isTest);
   if (!actor) {
     throw new Error(
-      'No non-test actors available in StaticDataRegistry - cannot run integration tests. ' +
-        'Ensure real NPC data is loaded before running integration tests.'
+      "No non-test actors available in StaticDataRegistry - cannot run integration tests. " +
+        "Ensure real NPC data is loaded before running integration tests.",
     );
   }
   return { id: actor.id, name: actor.name };
@@ -115,7 +115,7 @@ async function cleanupTestData(): Promise<void> {
 
 // ============ TESTS ============
 
-describe('Tiered Group System', () => {
+describe("Tiered Group System", () => {
   beforeAll(async () => {
     await cleanupTestData();
   });
@@ -124,8 +124,8 @@ describe('Tiered Group System', () => {
     await cleanupTestData();
   });
 
-  describe('TieredGroupService.ensureAllTiersExist', () => {
-    test('should create all 3 tier groups for a real NPC', async () => {
+  describe("TieredGroupService.ensureAllTiersExist", () => {
+    test("should create all 3 tier groups for a real NPC", async () => {
       const npc = getTestNpc();
 
       const tiers = await TieredGroupService.ensureAllTiersExist(npc.id);
@@ -135,20 +135,20 @@ describe('Tiered Group System', () => {
       // Verify tier 1 (Inner Circle)
       const tier1 = tiers.find((t) => t.tier === 1);
       expect(tier1).toBeDefined();
-      expect(tier1!.groupName).toContain('Inner Circle');
-      expect(tier1!.maxMembers).toBe(12);
+      expect(tier1?.groupName).toContain("Inner Circle");
+      expect(tier1?.maxMembers).toBe(12);
 
       // Verify tier 2 (Community)
       const tier2 = tiers.find((t) => t.tier === 2);
       expect(tier2).toBeDefined();
-      expect(tier2!.groupName).toContain('Community');
-      expect(tier2!.maxMembers).toBe(50);
+      expect(tier2?.groupName).toContain("Community");
+      expect(tier2?.maxMembers).toBe(50);
 
       // Verify tier 3 (Followers)
       const tier3 = tiers.find((t) => t.tier === 3);
       expect(tier3).toBeDefined();
-      expect(tier3!.groupName).toContain('Followers');
-      expect(tier3!.maxMembers).toBe(500);
+      expect(tier3?.groupName).toContain("Followers");
+      expect(tier3?.maxMembers).toBe(500);
 
       // All should have associated chats
       for (const tier of tiers) {
@@ -156,7 +156,7 @@ describe('Tiered Group System', () => {
       }
     });
 
-    test('should be idempotent - not create duplicates', async () => {
+    test("should be idempotent - not create duplicates", async () => {
       const npc = getTestNpc();
 
       // Create tiers twice
@@ -165,19 +165,19 @@ describe('Tiered Group System', () => {
 
       // Should have same IDs
       expect(tiers1.map((t) => t.groupId).sort()).toEqual(
-        tiers2.map((t) => t.groupId).sort()
+        tiers2.map((t) => t.groupId).sort(),
       );
     });
 
-    test('should return empty array for unknown NPC', async () => {
+    test("should return empty array for unknown NPC", async () => {
       const tiers =
-        await TieredGroupService.ensureAllTiersExist('unknown-npc-id');
+        await TieredGroupService.ensureAllTiersExist("unknown-npc-id");
       expect(tiers).toHaveLength(0);
     });
   });
 
-  describe('TieredGroupService.getNpcTiers', () => {
-    test('should return all tier groups for an NPC', async () => {
+  describe("TieredGroupService.getNpcTiers", () => {
+    test("should return all tier groups for an NPC", async () => {
       const npc = getTestNpc();
       await TieredGroupService.ensureAllTiersExist(npc.id);
 
@@ -187,27 +187,27 @@ describe('Tiered Group System', () => {
       expect(tiers.map((t) => t.tier).sort()).toEqual([1, 2, 3]);
     });
 
-    test('should return sorted tiers (1, 2, 3)', async () => {
+    test("should return sorted tiers (1, 2, 3)", async () => {
       const npc = getTestNpc();
       await TieredGroupService.ensureAllTiersExist(npc.id);
 
       const tiers = await TieredGroupService.getNpcTiers(npc.id);
 
-      expect(tiers[0]!.tier).toBe(1);
-      expect(tiers[1]!.tier).toBe(2);
-      expect(tiers[2]!.tier).toBe(3);
+      expect(tiers[0]?.tier).toBe(1);
+      expect(tiers[1]?.tier).toBe(2);
+      expect(tiers[2]?.tier).toBe(3);
     });
   });
 
-  describe('TieredGroupService.inviteUserToTier', () => {
+  describe("TieredGroupService.inviteUserToTier", () => {
     afterEach(async () => {
       await cleanupTestData();
     });
 
-    test('should reject user with no engagement (below Tier 3 threshold)', async () => {
+    test("should reject user with no engagement (below Tier 3 threshold)", async () => {
       const npc = getTestNpc();
       const user = await createTestUser({
-        displayName: 'New User No Engagement',
+        displayName: "New User No Engagement",
       });
       await TieredGroupService.ensureAllTiersExist(npc.id);
 
@@ -216,47 +216,47 @@ describe('Tiered Group System', () => {
 
       // Should fail because engagement score is 0 (below min 20 for Tier 3)
       expect(result.success).toBe(false);
-      expect(result.reason).toContain('No available tier');
+      expect(result.reason).toContain("No available tier");
     });
 
-    test('should fail for invalid NPC ID', async () => {
+    test("should fail for invalid NPC ID", async () => {
       const user = await createTestUser({
-        displayName: 'User for Invalid NPC',
+        displayName: "User for Invalid NPC",
       });
 
       const result = await TieredGroupService.inviteUserToTier(
         user.id,
-        'invalid-npc-id'
+        "invalid-npc-id",
       );
 
       expect(result.success).toBe(false);
-      expect(result.reason).toContain('Invalid NPC ID');
+      expect(result.reason).toContain("Invalid NPC ID");
     });
   });
 
-  describe('TieredGroupService.getGlobalAnalytics', () => {
-    test('should return tier analytics structure', async () => {
+  describe("TieredGroupService.getGlobalAnalytics", () => {
+    test("should return tier analytics structure", async () => {
       const analytics = await TieredGroupService.getGlobalAnalytics();
 
-      expect(analytics).toHaveProperty('totalNpcs');
-      expect(analytics).toHaveProperty('totalGroups');
-      expect(analytics).toHaveProperty('totalMembers');
-      expect(analytics).toHaveProperty('totalCapacity');
-      expect(analytics).toHaveProperty('fillRate');
-      expect(analytics).toHaveProperty('tierBreakdown');
+      expect(analytics).toHaveProperty("totalNpcs");
+      expect(analytics).toHaveProperty("totalGroups");
+      expect(analytics).toHaveProperty("totalMembers");
+      expect(analytics).toHaveProperty("totalCapacity");
+      expect(analytics).toHaveProperty("fillRate");
+      expect(analytics).toHaveProperty("tierBreakdown");
 
       expect(analytics.tierBreakdown).toHaveLength(3);
       for (const breakdown of analytics.tierBreakdown) {
-        expect(breakdown).toHaveProperty('tier');
-        expect(breakdown).toHaveProperty('members');
-        expect(breakdown).toHaveProperty('capacity');
-        expect(breakdown).toHaveProperty('fillRate');
+        expect(breakdown).toHaveProperty("tier");
+        expect(breakdown).toHaveProperty("members");
+        expect(breakdown).toHaveProperty("capacity");
+        expect(breakdown).toHaveProperty("fillRate");
       }
     });
   });
 });
 
-describe('UserAlphaGroupAssignmentService', () => {
+describe("UserAlphaGroupAssignmentService", () => {
   beforeAll(async () => {
     await cleanupTestData();
   });
@@ -265,7 +265,7 @@ describe('UserAlphaGroupAssignmentService', () => {
     await cleanupTestData();
   });
 
-  describe('assignDefaultGroups', () => {
+  describe("assignDefaultGroups", () => {
     beforeEach(async () => {
       await cleanupTestData();
     });
@@ -274,63 +274,63 @@ describe('UserAlphaGroupAssignmentService', () => {
       await cleanupTestData();
     });
 
-    test('should not assign groups to non-existent user', async () => {
+    test("should not assign groups to non-existent user", async () => {
       const result = await UserAlphaGroupAssignmentService.assignDefaultGroups(
-        'non-existent-user-id'
+        "non-existent-user-id",
       );
 
       expect(result.success).toBe(false);
       expect(result.groupsAssigned).toBe(0);
-      expect(result.errors).toContain('User non-existent-user-id not found');
+      expect(result.errors).toContain("User non-existent-user-id not found");
     });
 
-    test('should not assign groups to NPC actors', async () => {
+    test("should not assign groups to NPC actors", async () => {
       const npc = getTestNpc();
 
       const result = await UserAlphaGroupAssignmentService.assignDefaultGroups(
-        npc.id
+        npc.id,
       );
 
       expect(result.success).toBe(false);
-      expect(result.errors).toContain('Cannot assign groups to NPC actors');
+      expect(result.errors).toContain("Cannot assign groups to NPC actors");
     });
 
-    test('should not assign groups to agents (they inherit)', async () => {
-      const owner = await createTestUser({ displayName: 'Owner' });
+    test("should not assign groups to agents (they inherit)", async () => {
+      const owner = await createTestUser({ displayName: "Owner" });
       const agent = await createTestUser({
-        displayName: 'Agent',
+        displayName: "Agent",
         isAgent: true,
         managedBy: owner.id,
       });
 
       const result = await UserAlphaGroupAssignmentService.assignDefaultGroups(
-        agent.id
+        agent.id,
       );
 
       expect(result.success).toBe(false);
       expect(result.errors).toContain(
-        'Agents inherit group access from their owner'
+        "Agents inherit group access from their owner",
       );
     });
 
-    test('should return capacity stats', async () => {
+    test("should return capacity stats", async () => {
       const stats = await UserAlphaGroupAssignmentService.getCapacityStats();
 
-      expect(stats).toHaveProperty('totalTier3Groups');
-      expect(stats).toHaveProperty('totalTier3Capacity');
-      expect(stats).toHaveProperty('currentTier3Members');
-      expect(stats).toHaveProperty('availableSlots');
-      expect(stats).toHaveProperty('fillRate');
-      expect(stats).toHaveProperty('maxUsersCanServe');
+      expect(stats).toHaveProperty("totalTier3Groups");
+      expect(stats).toHaveProperty("totalTier3Capacity");
+      expect(stats).toHaveProperty("currentTier3Members");
+      expect(stats).toHaveProperty("availableSlots");
+      expect(stats).toHaveProperty("fillRate");
+      expect(stats).toHaveProperty("maxUsersCanServe");
 
-      expect(typeof stats.fillRate).toBe('number');
+      expect(typeof stats.fillRate).toBe("number");
       expect(stats.fillRate).toBeGreaterThanOrEqual(0);
       expect(stats.fillRate).toBeLessThanOrEqual(1);
     });
   });
 });
 
-describe('Agent Group Inheritance', () => {
+describe("Agent Group Inheritance", () => {
   beforeAll(async () => {
     await cleanupTestData();
   });
@@ -339,13 +339,13 @@ describe('Agent Group Inheritance', () => {
     await cleanupTestData();
   });
 
-  describe('GroupChatService.isInChat', () => {
+  describe("GroupChatService.isInChat", () => {
     afterEach(async () => {
       await cleanupTestData();
     });
 
-    test('should return true for direct member (via default assignment)', async () => {
-      const user = await createTestUser({ displayName: 'Direct Member' });
+    test("should return true for direct member (via default assignment)", async () => {
+      const user = await createTestUser({ displayName: "Direct Member" });
 
       // Use the default assignment service (bypasses engagement requirement)
       const assignResult =
@@ -359,26 +359,26 @@ describe('Agent Group Inheritance', () => {
       const firstAssignment = assignResult.assignments[0]!;
       const isInChat = await GroupChatService.isInChat(
         user.id,
-        firstAssignment.chatId
+        firstAssignment.chatId,
       );
       expect(isInChat).toBe(true);
     });
 
-    test('should return false for non-member', async () => {
+    test("should return false for non-member", async () => {
       const npc = getTestNpc();
-      const user = await createTestUser({ displayName: 'Non Member' });
+      const user = await createTestUser({ displayName: "Non Member" });
 
       const tiers = await TieredGroupService.ensureAllTiersExist(npc.id);
       const tier3 = tiers.find((t) => t.tier === 3);
 
-      const isInChat = await GroupChatService.isInChat(user.id, tier3!.chatId!);
+      const isInChat = await GroupChatService.isInChat(user.id, tier3?.chatId!);
       expect(isInChat).toBe(false);
     });
 
-    test('should return true for agent when owner is member (via default assignment)', async () => {
-      const owner = await createTestUser({ displayName: 'Owner User' });
+    test("should return true for agent when owner is member (via default assignment)", async () => {
+      const owner = await createTestUser({ displayName: "Owner User" });
       const agent = await createTestUser({
-        displayName: 'Agent User',
+        displayName: "Agent User",
         isAgent: true,
         managedBy: owner.id,
       });
@@ -395,23 +395,23 @@ describe('Agent Group Inheritance', () => {
       // Owner should be in chat
       const ownerInChat = await GroupChatService.isInChat(
         owner.id,
-        firstAssignment.chatId
+        firstAssignment.chatId,
       );
       expect(ownerInChat).toBe(true);
 
       // Agent should inherit owner's access
       const agentInChat = await GroupChatService.isInChat(
         agent.id,
-        firstAssignment.chatId
+        firstAssignment.chatId,
       );
       expect(agentInChat).toBe(true);
     });
 
-    test('should return false for agent when owner is not member', async () => {
+    test("should return false for agent when owner is not member", async () => {
       const npc = getTestNpc();
-      const owner = await createTestUser({ displayName: 'Non-member Owner' });
+      const owner = await createTestUser({ displayName: "Non-member Owner" });
       const agent = await createTestUser({
-        displayName: 'Agent of Non-member',
+        displayName: "Agent of Non-member",
         isAgent: true,
         managedBy: owner.id,
       });
@@ -422,22 +422,22 @@ describe('Agent Group Inheritance', () => {
       // Owner is NOT assigned - should not be in chat
       const ownerInChat = await GroupChatService.isInChat(
         owner.id,
-        tier3!.chatId!
+        tier3?.chatId!,
       );
       expect(ownerInChat).toBe(false);
 
       // Agent should NOT inherit access
       const agentInChat = await GroupChatService.isInChat(
         agent.id,
-        tier3!.chatId!
+        tier3?.chatId!,
       );
       expect(agentInChat).toBe(false);
     });
   });
 });
 
-describe('Tier Capacity and Fill Rate', () => {
-  test('isFull should reflect actual capacity', async () => {
+describe("Tier Capacity and Fill Rate", () => {
+  test("isFull should reflect actual capacity", async () => {
     const npc = getTestNpc();
     const tiers = await TieredGroupService.ensureAllTiersExist(npc.id);
 
@@ -448,7 +448,7 @@ describe('Tier Capacity and Fill Rate', () => {
     }
   });
 
-  test('tier capacity matches configuration', async () => {
+  test("tier capacity matches configuration", async () => {
     const npc = getTestNpc();
     const tiers = await TieredGroupService.ensureAllTiersExist(npc.id);
 
@@ -456,19 +456,19 @@ describe('Tier Capacity and Fill Rate', () => {
     const tier2 = tiers.find((t) => t.tier === 2);
     const tier3 = tiers.find((t) => t.tier === 3);
 
-    expect(tier1!.maxMembers).toBe(12);
-    expect(tier2!.maxMembers).toBe(50);
-    expect(tier3!.maxMembers).toBe(500);
+    expect(tier1?.maxMembers).toBe(12);
+    expect(tier2?.maxMembers).toBe(50);
+    expect(tier3?.maxMembers).toBe(500);
   });
 });
 
-describe('Minimum Group Protection', () => {
+describe("Minimum Group Protection", () => {
   afterEach(async () => {
     await cleanupTestData();
   });
 
-  test('user assigned default groups should be at protection threshold', async () => {
-    const user = await createTestUser({ displayName: 'Protected User' });
+  test("user assigned default groups should be at protection threshold", async () => {
+    const user = await createTestUser({ displayName: "Protected User" });
 
     // Assign default groups up to the configured minimum
     const assignResult =
@@ -478,13 +478,13 @@ describe('Minimum Group Protection', () => {
     // User has been assigned exactly TARGET_DEFAULT_GROUPS (the minimum/default)
     // This means they should be protected from being kicked below this threshold
     expect(assignResult.groupsAssigned).toBe(
-      UserAlphaGroupAssignmentService.TARGET_DEFAULT_GROUPS
+      UserAlphaGroupAssignmentService.TARGET_DEFAULT_GROUPS,
     );
   });
 
-  test('TARGET_DEFAULT_GROUPS should match MIN_DEFAULT_GROUPS', () => {
+  test("TARGET_DEFAULT_GROUPS should match MIN_DEFAULT_GROUPS", () => {
     expect(UserAlphaGroupAssignmentService.TARGET_DEFAULT_GROUPS).toBe(
-      GROUP_CONFIG.MIN_DEFAULT_GROUPS
+      GROUP_CONFIG.MIN_DEFAULT_GROUPS,
     );
   });
 });

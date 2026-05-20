@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { useEffect } from 'react';
+import { useEffect } from "react";
 
 /**
  * Handles deep link redirects for Privy OAuth flows and app navigation in Capacitor.
@@ -24,20 +24,20 @@ export function AppUrlListener({
 
     async function init() {
       // Only load Capacitor plugins in native context
-      const { Capacitor } = await import('@capacitor/core');
+      const { Capacitor } = await import("@capacitor/core");
       if (!Capacitor.isNativePlatform()) return;
 
-      const { App } = await import('@capacitor/app');
+      const { App } = await import("@capacitor/app");
 
-      const listener = await App.addListener('appUrlOpen', (event) => {
+      const listener = await App.addListener("appUrlOpen", (event) => {
         const deepLinkUrl = new URL(event.url);
 
         // Handle Privy OAuth redirects — these come back from the external
         // browser after social login (Farcaster, Twitter, Discord, etc.)
         if (
-          deepLinkUrl.searchParams.has('privy_oauth_code') &&
-          deepLinkUrl.searchParams.has('privy_oauth_state') &&
-          deepLinkUrl.searchParams.has('privy_oauth_provider')
+          deepLinkUrl.searchParams.has("privy_oauth_code") &&
+          deepLinkUrl.searchParams.has("privy_oauth_state") &&
+          deepLinkUrl.searchParams.has("privy_oauth_provider")
         ) {
           // Inject the OAuth params into the current WebView URL
           // so Privy's SDK can pick them up and complete authentication
@@ -49,7 +49,7 @@ export function AppUrlListener({
 
         // Handle app deep links (e.g., feed.market/post/123)
         const path = deepLinkUrl.pathname + deepLinkUrl.search;
-        if (path && path !== '/') {
+        if (path && path !== "/") {
           if (onNavigate) {
             onNavigate(path);
           } else {

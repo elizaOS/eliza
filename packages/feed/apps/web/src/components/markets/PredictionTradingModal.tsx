@@ -1,10 +1,10 @@
-'use client';
+"use client";
 
 import {
   calculateExpectedPayout,
   PredictionPricing,
-} from '@feed/core/markets/prediction/client';
-import { FEED_POINTS_SYMBOL, cn, logger } from '@feed/shared';
+} from "@feed/core/markets/prediction/client";
+import { cn, FEED_POINTS_SYMBOL, logger } from "@feed/shared";
 import {
   Ban,
   CheckCircle,
@@ -13,22 +13,22 @@ import {
   TrendingUp,
   Wallet,
   XCircle,
-} from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
-import { toast } from 'sonner';
-import { useAuth } from '@/hooks/useAuth';
-import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
-import { useMarketTracking } from '@/hooks/usePostHog';
-import { usePredictionTrading } from '@/hooks/usePredictionTrading';
+} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
+import { useAuth } from "@/hooks/useAuth";
+import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
+import { useMarketTracking } from "@/hooks/usePostHog";
+import { usePredictionTrading } from "@/hooks/usePredictionTrading";
 import {
   invalidateUserPositions,
   usePredictionPositions,
-} from '@/stores/userPositionsStore';
+} from "@/stores/userPositionsStore";
 import {
   invalidateWalletBalance,
   useWalletBalance,
-} from '@/stores/walletBalanceStore';
-import type { PredictionMarket } from '@/types/markets';
+} from "@/stores/walletBalanceStore";
+import type { PredictionMarket } from "@/types/markets";
 
 /**
  * Props for the PredictionTradingModal component.
@@ -43,7 +43,7 @@ interface PredictionTradingModalProps {
   /** Optional callback when trade succeeds */
   onSuccess?: () => void;
   /** Default side to preselect when modal opens */
-  defaultSide?: 'YES' | 'NO';
+  defaultSide?: "YES" | "NO";
 }
 
 /**
@@ -72,16 +72,16 @@ export function PredictionTradingModal({
   isOpen,
   onClose,
   onSuccess,
-  defaultSide = 'YES',
+  defaultSide = "YES",
 }: PredictionTradingModalProps) {
   const { user, authenticated } = useAuth();
   const { buyPrediction, sellPrediction } = usePredictionTrading();
   const { trackMarketView, trackTrade } = useMarketTracking();
-  const [side, setSide] = useState<'yes' | 'no'>(
-    defaultSide.toLowerCase() as 'yes' | 'no'
+  const [side, setSide] = useState<"yes" | "no">(
+    defaultSide.toLowerCase() as "yes" | "no",
   );
-  const [mode, setMode] = useState<'buy' | 'sell'>('buy');
-  const [sellShares, setSellShares] = useState('');
+  const [mode, setMode] = useState<"buy" | "sell">("buy");
+  const [sellShares, setSellShares] = useState("");
 
   // Get user's prediction positions
   const { positions: userPositions, refresh: refreshPositions } =
@@ -91,7 +91,7 @@ export function PredictionTradingModal({
   const userPosition = useMemo(() => {
     const marketId = String(question.id);
     return userPositions.find(
-      (p) => p.marketId === marketId && p.shares > 0.01
+      (p) => p.marketId === marketId && p.shares > 0.01,
     );
   }, [userPositions, question.id]);
 
@@ -99,19 +99,19 @@ export function PredictionTradingModal({
 
   // Check if market is closed (not active or resolved)
   const isMarketClosed =
-    question.status !== 'active' || question.resolvedOutcome !== undefined;
+    question.status !== "active" || question.resolvedOutcome !== undefined;
 
   // Reset side and mode when modal opens
   useEffect(() => {
     if (isOpen) {
-      setSide(defaultSide.toLowerCase() as 'yes' | 'no');
-      trackMarketView(String(question.id), 'prediction');
+      setSide(defaultSide.toLowerCase() as "yes" | "no");
+      trackMarketView(String(question.id), "prediction");
       if (isMarketClosed && hasPosition) {
-        setMode('sell');
-        setSellShares(String(userPosition?.shares ?? ''));
+        setMode("sell");
+        setSellShares(String(userPosition?.shares ?? ""));
       } else {
-        setMode('buy');
-        setSellShares(String(userPosition?.shares ?? ''));
+        setMode("buy");
+        setSellShares(String(userPosition?.shares ?? ""));
       }
     }
   }, [
@@ -124,7 +124,7 @@ export function PredictionTradingModal({
     trackMarketView,
   ]);
 
-  const [amount, setAmount] = useState('10');
+  const [amount, setAmount] = useState("10");
   const [loading, setLoading] = useState(false);
   const {
     balance,
@@ -140,15 +140,15 @@ export function PredictionTradingModal({
     if (!isOpen) return;
 
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !loading) {
+      if (e.key === "Escape" && !loading) {
         onClose();
       }
     };
 
-    document.addEventListener('keydown', handleEscape);
+    document.addEventListener("keydown", handleEscape);
 
     return () => {
-      document.removeEventListener('keydown', handleEscape);
+      document.removeEventListener("keydown", handleEscape);
     };
   }, [isOpen, onClose, loading]);
 
@@ -163,12 +163,12 @@ export function PredictionTradingModal({
   const currentYesPrice = PredictionPricing.getCurrentPrice(
     yesShares,
     noShares,
-    'yes'
+    "yes",
   );
   const currentNoPrice = PredictionPricing.getCurrentPrice(
     yesShares,
     noShares,
-    'no'
+    "no",
   );
   const displayedYesPrice = question.yesProbability ?? currentYesPrice;
   const displayedNoPrice = question.noProbability ?? currentNoPrice;
@@ -193,18 +193,18 @@ export function PredictionTradingModal({
     const now = new Date();
     const resolution = new Date(question.resolutionDate);
     const diffDays = Math.ceil(
-      (resolution.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+      (resolution.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
     );
     return Math.max(0, diffDays);
   };
 
   const daysLeft = getDaysUntilResolution();
   const selectedSideSurfaceClassName =
-    side === 'yes'
-      ? 'border-blue-500/20 bg-blue-600 text-white hover:bg-blue-700'
-      : 'border-foreground/10 bg-foreground text-background hover:opacity-90';
+    side === "yes"
+      ? "border-blue-500/20 bg-blue-600 text-white hover:bg-blue-700"
+      : "border-foreground/10 bg-foreground text-background hover:opacity-90";
   const sideAccentClassName =
-    side === 'yes' ? 'text-blue-600' : 'text-foreground';
+    side === "yes" ? "text-blue-600" : "text-foreground";
 
   const handleSubmit = async () => {
     if (!user) return;
@@ -215,7 +215,7 @@ export function PredictionTradingModal({
     }
 
     if (showBalanceWarning) {
-      toast.error('Insufficient balance');
+      toast.error("Insufficient balance");
       return;
     }
 
@@ -224,35 +224,35 @@ export function PredictionTradingModal({
     try {
       const result = await buyPrediction({
         marketId: String(question.id),
-        side: side.toUpperCase() as 'YES' | 'NO',
+        side: side.toUpperCase() as "YES" | "NO",
         amount: amountNum,
       });
 
       toast.success(`Bought ${side.toUpperCase()} shares!`, {
         description: `${result.shares.toFixed(2)} shares at ${result.avgPrice.toFixed(3)} each`,
       });
-      trackTrade('buy', String(question.id), amountNum, true);
+      trackTrade("buy", String(question.id), amountNum, true);
 
       // Invalidate cache and refresh balance
       invalidateWalletBalance();
       refreshBalance().catch((err) => {
         logger.warn(
-          'Failed to refresh balance after trade',
+          "Failed to refresh balance after trade",
           { error: err },
-          'PredictionTradingModal'
+          "PredictionTradingModal",
         );
       });
       onClose();
       onSuccess?.();
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : 'Failed to buy shares';
+        err instanceof Error ? err.message : "Failed to buy shares";
       logger.error(
-        'Failed to buy prediction shares',
+        "Failed to buy prediction shares",
         { marketId: question.id, side, amount: amountNum, error: err },
-        'PredictionTradingModal'
+        "PredictionTradingModal",
       );
-      trackTrade('buy', String(question.id), amountNum, false);
+      trackTrade("buy", String(question.id), amountNum, false);
       toast.error(message);
     } finally {
       setLoading(false);
@@ -268,7 +268,7 @@ export function PredictionTradingModal({
       const sharesToSell = Number.parseFloat(sellShares) || 0;
 
       if (sharesToSell < 0.01) {
-        toast.error('Minimum sell is 0.01 shares');
+        toast.error("Minimum sell is 0.01 shares");
         return;
       }
 
@@ -292,44 +292,44 @@ export function PredictionTradingModal({
             : `Loss: ${FEED_POINTS_SYMBOL}${pnl.toFixed(2)}`,
       });
 
-      trackTrade('sell', String(question.id), sharesToSell, true);
+      trackTrade("sell", String(question.id), sharesToSell, true);
 
       // Invalidate caches and refresh
       invalidateWalletBalance();
       invalidateUserPositions();
       refreshBalance().catch((err) => {
         logger.warn(
-          'Failed to refresh balance after sell',
+          "Failed to refresh balance after sell",
           { error: err },
-          'PredictionTradingModal'
+          "PredictionTradingModal",
         );
       });
       refreshPositions().catch((err) => {
         logger.warn(
-          'Failed to refresh positions after sell',
+          "Failed to refresh positions after sell",
           { error: err },
-          'PredictionTradingModal'
+          "PredictionTradingModal",
         );
       });
       onClose();
       onSuccess?.();
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : 'Failed to sell shares';
+        err instanceof Error ? err.message : "Failed to sell shares";
       logger.error(
-        'Failed to sell prediction shares',
+        "Failed to sell prediction shares",
         {
           marketId: question.id,
           shares: Number.parseFloat(sellShares) || 0,
           error: err,
         },
-        'PredictionTradingModal'
+        "PredictionTradingModal",
       );
       trackTrade(
-        'sell',
+        "sell",
         String(question.id),
         Number.parseFloat(sellShares) || 0,
-        false
+        false,
       );
       toast.error(message);
     } finally {
@@ -385,7 +385,7 @@ export function PredictionTradingModal({
                 <Wallet className="h-4 w-4" /> Balance
               </span>
               <span className="font-semibold text-foreground">
-                {balanceLoading ? '...' : formatPrice(balance)}
+                {balanceLoading ? "..." : formatPrice(balance)}
               </span>
             </div>
           )}
@@ -427,15 +427,15 @@ export function PredictionTradingModal({
                 <div className="mb-6 flex gap-2 rounded-lg bg-muted/30 p-1">
                   <button
                     type="button"
-                    onClick={() => setMode('buy')}
+                    onClick={() => setMode("buy")}
                     disabled={loading || isMarketClosed}
                     className={cn(
-                      'flex flex-1 items-center justify-center gap-2 rounded-md py-2.5 font-semibold text-sm transition-all',
-                      mode === 'buy'
-                        ? 'bg-primary text-primary-foreground'
-                        : 'text-muted-foreground hover:text-foreground',
+                      "flex flex-1 items-center justify-center gap-2 rounded-md py-2.5 font-semibold text-sm transition-all",
+                      mode === "buy"
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:text-foreground",
                       (loading || isMarketClosed) &&
-                        'cursor-not-allowed opacity-50'
+                        "cursor-not-allowed opacity-50",
                     )}
                   >
                     <TrendingUp size={16} />
@@ -443,14 +443,14 @@ export function PredictionTradingModal({
                   </button>
                   <button
                     type="button"
-                    onClick={() => setMode('sell')}
+                    onClick={() => setMode("sell")}
                     disabled={loading}
                     className={cn(
-                      'flex flex-1 items-center justify-center gap-2 rounded-md py-2.5 font-semibold text-sm transition-all',
-                      mode === 'sell'
-                        ? 'bg-primary text-primary-foreground'
-                        : 'text-muted-foreground hover:text-foreground',
-                      loading && 'cursor-not-allowed opacity-50'
+                      "flex flex-1 items-center justify-center gap-2 rounded-md py-2.5 font-semibold text-sm transition-all",
+                      mode === "sell"
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:text-foreground",
+                      loading && "cursor-not-allowed opacity-50",
                     )}
                   >
                     <TrendingDown size={16} />
@@ -470,20 +470,20 @@ export function PredictionTradingModal({
               )}
 
               {/* BUY MODE */}
-              {mode === 'buy' && (
+              {mode === "buy" && (
                 <>
                   {/* YES/NO Tabs */}
                   <div className="mb-6 flex gap-3">
                     <button
                       type="button"
-                      onClick={() => setSide('yes')}
+                      onClick={() => setSide("yes")}
                       disabled={loading}
                       className={cn(
-                        'flex flex-1 cursor-pointer items-center justify-center gap-3 rounded py-3 font-bold text-sm transition-all sm:text-base',
-                        side === 'yes'
-                          ? 'border border-blue-500/20 bg-blue-600 text-white hover:bg-blue-700'
-                          : 'bg-muted text-muted-foreground hover:bg-muted',
-                        loading && 'cursor-not-allowed opacity-50'
+                        "flex flex-1 cursor-pointer items-center justify-center gap-3 rounded py-3 font-bold text-sm transition-all sm:text-base",
+                        side === "yes"
+                          ? "border border-blue-500/20 bg-blue-600 text-white hover:bg-blue-700"
+                          : "bg-muted text-muted-foreground hover:bg-muted",
+                        loading && "cursor-not-allowed opacity-50",
                       )}
                     >
                       <CheckCircle size={18} />
@@ -491,14 +491,14 @@ export function PredictionTradingModal({
                     </button>
                     <button
                       type="button"
-                      onClick={() => setSide('no')}
+                      onClick={() => setSide("no")}
                       disabled={loading}
                       className={cn(
-                        'flex flex-1 cursor-pointer items-center justify-center gap-3 rounded py-3 font-bold text-sm transition-all sm:text-base',
-                        side === 'no'
-                          ? 'border border-foreground/10 bg-foreground text-background hover:opacity-90'
-                          : 'bg-muted text-muted-foreground hover:bg-muted',
-                        loading && 'cursor-not-allowed opacity-50'
+                        "flex flex-1 cursor-pointer items-center justify-center gap-3 rounded py-3 font-bold text-sm transition-all sm:text-base",
+                        side === "no"
+                          ? "border border-foreground/10 bg-foreground text-background hover:opacity-90"
+                          : "bg-muted text-muted-foreground hover:bg-muted",
+                        loading && "cursor-not-allowed opacity-50",
                       )}
                     >
                       <XCircle size={18} />
@@ -519,8 +519,8 @@ export function PredictionTradingModal({
                       step="1"
                       disabled={loading}
                       className={cn(
-                        'w-full rounded bg-muted/50 px-4 py-3 font-medium text-base text-foreground focus:bg-muted focus:outline-none focus:ring-2 focus:ring-[#0066FF]/30 sm:text-lg',
-                        loading && 'cursor-not-allowed opacity-50'
+                        "w-full rounded bg-muted/50 px-4 py-3 font-medium text-base text-foreground focus:bg-muted focus:outline-none focus:ring-2 focus:ring-[#0066FF]/30 sm:text-lg",
+                        loading && "cursor-not-allowed opacity-50",
                       )}
                       placeholder={`Min: ${FEED_POINTS_SYMBOL}1`}
                     />
@@ -557,7 +557,7 @@ export function PredictionTradingModal({
                         </span>
                         <span className="font-medium text-foreground">
                           {(
-                            (side === 'yes'
+                            (side === "yes"
                               ? tradeCalculation.newYesPrice
                               : tradeCalculation.newNoPrice) * 100
                           ).toFixed(1)}
@@ -580,7 +580,7 @@ export function PredictionTradingModal({
                             If {side.toUpperCase()} Wins
                           </span>
                           <span
-                            className={cn('font-bold', sideAccentClassName)}
+                            className={cn("font-bold", sideAccentClassName)}
                           >
                             {formatPrice(expectedPayout)}
                           </span>
@@ -589,13 +589,13 @@ export function PredictionTradingModal({
                           <span className="text-muted-foreground">Profit</span>
                           <span
                             className={cn(
-                              'font-bold',
+                              "font-bold",
                               expectedProfit >= 0
-                                ? 'text-green-600'
-                                : 'text-red-600'
+                                ? "text-green-600"
+                                : "text-red-600",
                             )}
                           >
-                            {expectedProfit >= 0 ? '+' : ''}
+                            {expectedProfit >= 0 ? "+" : ""}
                             {formatPrice(expectedProfit)}
                           </span>
                         </div>
@@ -617,7 +617,7 @@ export function PredictionTradingModal({
               )}
 
               {/* SELL MODE */}
-              {mode === 'sell' && userPosition && (
+              {mode === "sell" && userPosition && (
                 <>
                   {/* Position Info */}
                   <div className="mb-6 space-y-2 rounded bg-muted p-4">
@@ -628,10 +628,10 @@ export function PredictionTradingModal({
                       <span className="text-muted-foreground">Side</span>
                       <span
                         className={cn(
-                          'font-bold',
-                          userPosition.side === 'YES'
-                            ? 'text-blue-600'
-                            : 'text-foreground'
+                          "font-bold",
+                          userPosition.side === "YES"
+                            ? "text-blue-600"
+                            : "text-foreground",
                         )}
                       >
                         {userPosition.side}
@@ -663,13 +663,13 @@ export function PredictionTradingModal({
                       </span>
                       <span
                         className={cn(
-                          'font-bold',
+                          "font-bold",
                           (userPosition.unrealizedPnL ?? 0) >= 0
-                            ? 'text-green-600'
-                            : 'text-red-600'
+                            ? "text-green-600"
+                            : "text-red-600",
                         )}
                       >
-                        {(userPosition.unrealizedPnL ?? 0) >= 0 ? '+' : ''}
+                        {(userPosition.unrealizedPnL ?? 0) >= 0 ? "+" : ""}
                         {formatPrice(userPosition.unrealizedPnL ?? 0)}
                       </span>
                     </div>
@@ -689,8 +689,8 @@ export function PredictionTradingModal({
                         max={userPosition.shares}
                         disabled={loading}
                         className={cn(
-                          'flex-1 rounded bg-muted/50 px-4 py-3 font-medium text-base text-foreground focus:bg-muted focus:outline-none focus:ring-2 focus:ring-[#0066FF]/30 sm:text-lg',
-                          loading && 'cursor-not-allowed opacity-50'
+                          "flex-1 rounded bg-muted/50 px-4 py-3 font-medium text-base text-foreground focus:bg-muted focus:outline-none focus:ring-2 focus:ring-[#0066FF]/30 sm:text-lg",
+                          loading && "cursor-not-allowed opacity-50",
                         )}
                         placeholder="0.00"
                       />
@@ -715,7 +715,7 @@ export function PredictionTradingModal({
         {/* Sticky action button */}
         {(!isMarketClosed || hasPosition) && (
           <div className="shrink-0 px-4 py-3 sm:px-6">
-            {mode === 'buy' && (
+            {mode === "buy" && (
               <button
                 type="button"
                 onClick={handleSubmit}
@@ -726,13 +726,13 @@ export function PredictionTradingModal({
                   balanceLoading
                 }
                 className={cn(
-                  'w-full cursor-pointer rounded py-3 font-bold text-base text-foreground transition-all sm:py-4 sm:text-lg',
+                  "w-full cursor-pointer rounded py-3 font-bold text-base text-foreground transition-all sm:py-4 sm:text-lg",
                   selectedSideSurfaceClassName,
                   (loading ||
                     amountNum < 1 ||
                     showBalanceWarning ||
                     balanceLoading) &&
-                    'cursor-not-allowed opacity-50'
+                    "cursor-not-allowed opacity-50",
                 )}
               >
                 {loading ? (
@@ -744,7 +744,7 @@ export function PredictionTradingModal({
                 )}
               </button>
             )}
-            {mode === 'sell' && userPosition && (
+            {mode === "sell" && userPosition && (
               <button
                 type="button"
                 onClick={handleSell}
@@ -754,13 +754,13 @@ export function PredictionTradingModal({
                   (Number.parseFloat(sellShares) || 0) > userPosition.shares
                 }
                 className={cn(
-                  'w-full cursor-pointer rounded py-3 font-bold text-base text-foreground transition-all sm:py-4 sm:text-lg',
-                  'bg-amber-600 hover:bg-amber-700',
+                  "w-full cursor-pointer rounded py-3 font-bold text-base text-foreground transition-all sm:py-4 sm:text-lg",
+                  "bg-amber-600 hover:bg-amber-700",
                   (loading ||
                     (Number.parseFloat(sellShares) || 0) < 0.01 ||
                     (Number.parseFloat(sellShares) || 0) >
                       userPosition.shares) &&
-                    'cursor-not-allowed opacity-50'
+                    "cursor-not-allowed opacity-50",
                 )}
               >
                 {loading ? (

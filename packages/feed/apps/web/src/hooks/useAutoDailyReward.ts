@@ -5,10 +5,10 @@
  * loads the app. Fires once per session — idempotent on the server side.
  */
 
-import { logger } from '@feed/shared';
-import { useEffect, useRef } from 'react';
-import { toast } from 'sonner';
-import { useAuth } from '@/hooks/useAuth';
+import { logger } from "@feed/shared";
+import { useEffect, useRef } from "react";
+import { toast } from "sonner";
+import { useAuth } from "@/hooks/useAuth";
 
 export function useAutoDailyReward(): void {
   const { authenticated, ready, user, getAccessToken, refresh } = useAuth();
@@ -23,8 +23,8 @@ export function useAutoDailyReward(): void {
         const token = await getAccessToken();
         if (!token) return;
 
-        const res = await fetch('/api/users/daily-login', {
-          method: 'POST',
+        const res = await fetch("/api/users/daily-login", {
+          method: "POST",
           headers: { Authorization: `Bearer ${token}` },
         });
 
@@ -32,16 +32,16 @@ export function useAutoDailyReward(): void {
           const result = await res.json();
           if (!result.success) return; // already claimed today or error
           toast.success(
-            `+${result.totalAwarded} reputation! Streak: ${result.streak} days`
+            `+${result.totalAwarded} reputation! Streak: ${result.streak} days`,
           );
-          window.dispatchEvent(new CustomEvent('rewards-updated'));
+          window.dispatchEvent(new CustomEvent("rewards-updated"));
           refresh();
         }
       } catch (err) {
         logger.debug(
-          'Auto daily reward claim failed',
+          "Auto daily reward claim failed",
           { error: err instanceof Error ? err.message : String(err) },
-          'useAutoDailyReward'
+          "useAutoDailyReward",
         );
       }
     };

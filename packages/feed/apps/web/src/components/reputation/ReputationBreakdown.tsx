@@ -24,12 +24,12 @@
  * />
  * ```
  */
-'use client';
+"use client";
 
-import { cn } from '@feed/shared';
-import { Activity, DollarSign, MessageSquare } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { apiUrl } from '@/utils/api-url';
+import { cn } from "@feed/shared";
+import { Activity, DollarSign, MessageSquare } from "lucide-react";
+import { useEffect, useState } from "react";
+import { apiUrl } from "@/utils/api-url";
 
 /**
  * Breakdown data structure from API.
@@ -65,7 +65,7 @@ interface ReputationBreakdownProps {
 
 export function ReputationBreakdown({
   userId,
-  className = '',
+  className = "",
 }: ReputationBreakdownProps) {
   const [breakdown, setBreakdown] = useState<BreakdownData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -74,7 +74,7 @@ export function ReputationBreakdown({
     const fetchBreakdown = async () => {
       setLoading(true);
       const response = await fetch(
-        apiUrl(`/api/reputation/breakdown/${encodeURIComponent(userId)}`)
+        apiUrl(`/api/reputation/breakdown/${encodeURIComponent(userId)}`),
       );
       const data = await response.json();
 
@@ -89,7 +89,7 @@ export function ReputationBreakdown({
 
   if (loading) {
     return (
-      <div className={cn('rounded-lg bg-sidebar p-4', className)}>
+      <div className={cn("rounded-lg bg-sidebar p-4", className)}>
         <div className="text-muted-foreground text-sm">
           Loading breakdown...
         </div>
@@ -99,7 +99,7 @@ export function ReputationBreakdown({
 
   if (!breakdown) {
     return (
-      <div className={cn('rounded-lg bg-sidebar p-4', className)}>
+      <div className={cn("rounded-lg bg-sidebar p-4", className)}>
         <div className="text-muted-foreground text-sm">
           Breakdown data unavailable
         </div>
@@ -109,36 +109,36 @@ export function ReputationBreakdown({
 
   const components = [
     {
-      name: 'PNL Performance',
+      name: "PNL Performance",
       value: breakdown.breakdown.pnlComponent,
       weight: breakdown.weights.pnl * 100,
       icon: DollarSign,
-      color: 'text-green-500',
-      bgColor: 'bg-green-500/10',
+      color: "text-green-500",
+      bgColor: "bg-green-500/10",
       metric: `${breakdown.metrics.normalizedPnL.toFixed(2)} normalized PNL`,
     },
     {
-      name: 'Feedback Score',
+      name: "Feedback Score",
       value: breakdown.breakdown.feedbackComponent,
       weight: breakdown.weights.feedback * 100,
       icon: MessageSquare,
-      color: 'text-blue-500',
-      bgColor: 'bg-blue-500/10',
+      color: "text-blue-500",
+      bgColor: "bg-blue-500/10",
       metric: `${breakdown.metrics.averageFeedbackScore.toFixed(0)}/100 avg (${breakdown.metrics.totalFeedbackCount} reviews)`,
     },
     {
-      name: 'Activity Level',
+      name: "Activity Level",
       value: breakdown.breakdown.activityComponent,
       weight: breakdown.weights.activity * 100,
       icon: Activity,
-      color: 'text-purple-500',
-      bgColor: 'bg-purple-500/10',
+      color: "text-purple-500",
+      bgColor: "bg-purple-500/10",
       metric: `${breakdown.metrics.gamesPlayed} games played`,
     },
   ];
 
   return (
-    <div className={cn('space-y-4 rounded-lg bg-sidebar p-4', className)}>
+    <div className={cn("space-y-4 rounded-lg bg-sidebar p-4", className)}>
       {/* Header */}
       <div className="flex items-center justify-between">
         <h3 className="font-bold text-foreground text-lg">
@@ -170,8 +170,8 @@ export function ReputationBreakdown({
             <div key={component.name} className="space-y-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <div className={cn('rounded p-1.5', component.bgColor)}>
-                    <Icon className={cn('h-4 w-4', component.color)} />
+                  <div className={cn("rounded p-1.5", component.bgColor)}>
+                    <Icon className={cn("h-4 w-4", component.color)} />
                   </div>
                   <div>
                     <div className="font-medium text-foreground text-sm">
@@ -195,7 +195,7 @@ export function ReputationBreakdown({
               {/* Progress Bar */}
               <div className="h-2 w-full rounded-full bg-muted/30">
                 <div
-                  className={cn('h-2 rounded-full', component.bgColor)}
+                  className={cn("h-2 rounded-full", component.bgColor)}
                   style={{ width: `${Math.min(100, component.value)}%` }}
                 />
               </div>

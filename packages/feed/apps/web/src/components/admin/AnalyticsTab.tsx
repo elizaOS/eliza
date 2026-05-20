@@ -17,9 +17,9 @@
  *
  * @returns Analytics tab element
  */
-'use client';
+"use client";
 
-import { cn } from '@feed/shared';
+import { cn } from "@feed/shared";
 import {
   ArrowDown,
   ArrowUp,
@@ -30,8 +30,8 @@ import {
   TrendingUp,
   UserPlus,
   Users,
-} from 'lucide-react';
-import { useCallback, useEffect, useState, useTransition } from 'react';
+} from "lucide-react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 import {
   Area,
   AreaChart,
@@ -45,11 +45,11 @@ import {
   Tooltip,
   XAxis,
   YAxis,
-} from 'recharts';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { apiUrl } from '@/utils/api-url';
+} from "recharts";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { apiUrl } from "@/utils/api-url";
 
-type PeriodType = 'day' | 'week' | 'month';
+type PeriodType = "day" | "week" | "month";
 
 interface TimeSeriesDataPoint {
   date: string;
@@ -77,14 +77,14 @@ interface AnalyticsData {
 export function AnalyticsTab() {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [period, setPeriod] = useState<PeriodType>('week');
+  const [period, setPeriod] = useState<PeriodType>("week");
   const [isRefreshing, startRefresh] = useTransition();
 
   const fetchAnalytics = useCallback(
     (showRefreshing = false) => {
       const fetchLogic = async () => {
         const response = await fetch(
-          apiUrl(`/api/admin/analytics?period=${period}`)
+          apiUrl(`/api/admin/analytics?period=${period}`),
         );
         if (!response.ok) {
           setLoading(false);
@@ -101,7 +101,7 @@ export function AnalyticsTab() {
         void fetchLogic();
       }
     },
-    [period]
+    [period],
   );
 
   useEffect(() => {
@@ -116,13 +116,13 @@ export function AnalyticsTab() {
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
-    if (period === 'month') {
-      return date.toLocaleDateString('en-US', {
-        month: 'short',
-        year: '2-digit',
+    if (period === "month") {
+      return date.toLocaleDateString("en-US", {
+        month: "short",
+        year: "2-digit",
       });
     }
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   };
 
   const formatNumber = (value: number) => {
@@ -134,9 +134,9 @@ export function AnalyticsTab() {
   // Calculate trends (compare last half to first half of period)
   const calculateTrend = (
     data: TimeSeriesDataPoint[],
-    key: keyof TimeSeriesDataPoint
-  ): { value: number; direction: 'up' | 'down' | 'neutral' } => {
-    if (data.length < 2) return { value: 0, direction: 'neutral' };
+    key: keyof TimeSeriesDataPoint,
+  ): { value: number; direction: "up" | "down" | "neutral" } => {
+    if (data.length < 2) return { value: 0, direction: "neutral" };
 
     const midpoint = Math.floor(data.length / 2);
     const firstHalf = data.slice(0, midpoint);
@@ -145,30 +145,30 @@ export function AnalyticsTab() {
     const firstSum = firstHalf.reduce((sum, d) => sum + (d[key] as number), 0);
     const secondSum = secondHalf.reduce(
       (sum, d) => sum + (d[key] as number),
-      0
+      0,
     );
 
     if (firstSum === 0)
       return {
         value: secondSum > 0 ? 100 : 0,
-        direction: secondSum > 0 ? 'up' : 'neutral',
+        direction: secondSum > 0 ? "up" : "neutral",
       };
 
     const percentChange = ((secondSum - firstSum) / firstSum) * 100;
     return {
       value: Math.abs(percentChange),
       direction:
-        percentChange > 5 ? 'up' : percentChange < -5 ? 'down' : 'neutral',
+        percentChange > 5 ? "up" : percentChange < -5 ? "down" : "neutral",
     };
   };
 
   // Static color classes for Tailwind JIT compatibility
   const colorClasses = {
-    blue: { bg: 'bg-blue-500/10', text: 'text-blue-500' },
-    purple: { bg: 'bg-purple-500/10', text: 'text-purple-500' },
-    green: { bg: 'bg-green-500/10', text: 'text-green-500' },
-    red: { bg: 'bg-red-500/10', text: 'text-red-500' },
-    orange: { bg: 'bg-orange-500/10', text: 'text-orange-500' },
+    blue: { bg: "bg-blue-500/10", text: "text-blue-500" },
+    purple: { bg: "bg-purple-500/10", text: "text-purple-500" },
+    green: { bg: "bg-green-500/10", text: "text-green-500" },
+    red: { bg: "bg-red-500/10", text: "text-red-500" },
+    orange: { bg: "bg-orange-500/10", text: "text-orange-500" },
   } as const;
 
   type StatCardColor = keyof typeof colorClasses;
@@ -183,24 +183,24 @@ export function AnalyticsTab() {
     icon: React.ComponentType<{ className?: string }>;
     label: string;
     value: number;
-    trend: { value: number; direction: 'up' | 'down' | 'neutral' };
+    trend: { value: number; direction: "up" | "down" | "neutral" };
     color: StatCardColor;
   }) => (
     <div className="rounded-xl border border-border bg-card p-5 transition-shadow hover:shadow-md">
       <div className="mb-3 flex items-center justify-between">
-        <div className={cn('rounded-lg p-2', colorClasses[color].bg)}>
-          <Icon className={cn('h-5 w-5', colorClasses[color].text)} />
+        <div className={cn("rounded-lg p-2", colorClasses[color].bg)}>
+          <Icon className={cn("h-5 w-5", colorClasses[color].text)} />
         </div>
-        {trend.direction !== 'neutral' && (
+        {trend.direction !== "neutral" && (
           <div
             className={cn(
-              'flex items-center gap-1 rounded-full px-2 py-1 font-medium text-xs',
-              trend.direction === 'up'
-                ? 'bg-green-500/10 text-green-500'
-                : 'bg-red-500/10 text-red-500'
+              "flex items-center gap-1 rounded-full px-2 py-1 font-medium text-xs",
+              trend.direction === "up"
+                ? "bg-green-500/10 text-green-500"
+                : "bg-red-500/10 text-red-500",
             )}
           >
-            {trend.direction === 'up' ? (
+            {trend.direction === "up" ? (
               <ArrowUp className="h-3 w-3" />
             ) : (
               <ArrowDown className="h-3 w-3" />
@@ -240,11 +240,11 @@ export function AnalyticsTab() {
     );
   }
 
-  const userTrend = calculateTrend(data.timeSeries, 'users');
-  const postTrend = calculateTrend(data.timeSeries, 'posts');
-  const commentTrend = calculateTrend(data.timeSeries, 'comments');
-  const reactionTrend = calculateTrend(data.timeSeries, 'reactions');
-  const followTrend = calculateTrend(data.timeSeries, 'follows');
+  const userTrend = calculateTrend(data.timeSeries, "users");
+  const postTrend = calculateTrend(data.timeSeries, "posts");
+  const commentTrend = calculateTrend(data.timeSeries, "comments");
+  const reactionTrend = calculateTrend(data.timeSeries, "reactions");
+  const followTrend = calculateTrend(data.timeSeries, "follows");
 
   return (
     <div className="space-y-6">
@@ -256,7 +256,7 @@ export function AnalyticsTab() {
             Platform Analytics
           </h2>
           <p className="mt-1 text-muted-foreground">
-            {new Date(data.startDate).toLocaleDateString()} -{' '}
+            {new Date(data.startDate).toLocaleDateString()} -{" "}
             {new Date(data.endDate).toLocaleDateString()}
           </p>
         </div>
@@ -264,7 +264,7 @@ export function AnalyticsTab() {
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           {/* Period Selector */}
           <div className="flex rounded-lg border border-border bg-card">
-            {(['day', 'week', 'month'] as const).map((p) => (
+            {(["day", "week", "month"] as const).map((p) => (
               <button
                 key={p}
                 onClick={() => {
@@ -272,13 +272,13 @@ export function AnalyticsTab() {
                   setLoading(true);
                 }}
                 className={cn(
-                  'px-2.5 py-1.5 font-medium text-xs transition-colors first:rounded-l-lg last:rounded-r-lg sm:px-4 sm:py-2 sm:text-sm',
+                  "px-2.5 py-1.5 font-medium text-xs transition-colors first:rounded-l-lg last:rounded-r-lg sm:px-4 sm:py-2 sm:text-sm",
                   period === p
-                    ? 'bg-primary text-primary-foreground'
-                    : 'text-muted-foreground hover:bg-muted'
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-muted",
                 )}
               >
-                {p === 'day' ? '7D' : p === 'week' ? '4W' : '6M'}
+                {p === "day" ? "7D" : p === "week" ? "4W" : "6M"}
               </button>
             ))}
           </div>
@@ -290,8 +290,8 @@ export function AnalyticsTab() {
           >
             <RefreshCw
               className={cn(
-                'h-3.5 w-3.5 sm:h-4 sm:w-4',
-                isRefreshing && 'animate-spin'
+                "h-3.5 w-3.5 sm:h-4 sm:w-4",
+                isRefreshing && "animate-spin",
               )}
             />
             <span className="hidden sm:inline">Refresh</span>
@@ -362,9 +362,9 @@ export function AnalyticsTab() {
             <YAxis stroke="#888" fontSize={12} />
             <Tooltip
               contentStyle={{
-                backgroundColor: '#1a1a1a',
-                border: '1px solid #333',
-                borderRadius: '8px',
+                backgroundColor: "#1a1a1a",
+                border: "1px solid #333",
+                borderRadius: "8px",
               }}
               labelFormatter={(label) => formatDate(label)}
             />
@@ -400,9 +400,9 @@ export function AnalyticsTab() {
               <YAxis stroke="#888" fontSize={11} />
               <Tooltip
                 contentStyle={{
-                  backgroundColor: '#1a1a1a',
-                  border: '1px solid #333',
-                  borderRadius: '8px',
+                  backgroundColor: "#1a1a1a",
+                  border: "1px solid #333",
+                  borderRadius: "8px",
                 }}
                 labelFormatter={(label) => formatDate(label)}
               />
@@ -441,9 +441,9 @@ export function AnalyticsTab() {
               <YAxis stroke="#888" fontSize={11} />
               <Tooltip
                 contentStyle={{
-                  backgroundColor: '#1a1a1a',
-                  border: '1px solid #333',
-                  borderRadius: '8px',
+                  backgroundColor: "#1a1a1a",
+                  border: "1px solid #333",
+                  borderRadius: "8px",
                 }}
                 labelFormatter={(label) => formatDate(label)}
               />
@@ -454,7 +454,7 @@ export function AnalyticsTab() {
                 name="Reactions"
                 stroke="#ef4444"
                 strokeWidth={2}
-                dot={{ fill: '#ef4444', r: 3 }}
+                dot={{ fill: "#ef4444", r: 3 }}
               />
               <Line
                 type="monotone"
@@ -462,7 +462,7 @@ export function AnalyticsTab() {
                 name="Follows"
                 stroke="#f97316"
                 strokeWidth={2}
-                dot={{ fill: '#f97316', r: 3 }}
+                dot={{ fill: "#f97316", r: 3 }}
               />
             </LineChart>
           </ResponsiveContainer>

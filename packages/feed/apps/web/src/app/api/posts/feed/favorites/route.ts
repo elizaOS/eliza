@@ -87,7 +87,7 @@
  * @see {@link /lib/db/context} RLS context
  */
 
-import { optionalAuth, successResponse, withErrorHandling } from '@feed/api';
+import { optionalAuth, successResponse, withErrorHandling } from "@feed/api";
 import {
   and,
   asUser,
@@ -102,9 +102,9 @@ import {
   posts,
   reactions,
   shares,
-} from '@feed/db';
-import { logger, PostFeedQuerySchema } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/db";
+import { logger, PostFeedQuerySchema } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 /**
  * GET /api/posts/feed/favorites
@@ -120,9 +120,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   // If not authenticated, return empty array
   if (!user) {
     logger.info(
-      'Unauthenticated request for favorites feed',
+      "Unauthenticated request for favorites feed",
       {},
-      'GET /api/posts/feed/favorites'
+      "GET /api/posts/feed/favorites",
     );
     return successResponse({
       posts: [],
@@ -134,8 +134,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   // Parse and validate query parameters
   const { searchParams } = new URL(request.url);
   const queryParams = {
-    limit: searchParams.get('limit'),
-    page: searchParams.get('page'),
+    limit: searchParams.get("limit"),
+    page: searchParams.get("page"),
   };
   const validatedQuery = PostFeedQuerySchema.partial().parse(queryParams);
   const limit = Math.min(validatedQuery.limit || 20, 100);
@@ -168,8 +168,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         and(
           inArray(posts.authorId, favoritedUserIds),
           isNull(posts.deletedAt),
-          lte(posts.timestamp, now)
-        )
+          lte(posts.timestamp, now),
+        ),
       )
       .orderBy(desc(posts.createdAt))
       .offset(offset)
@@ -188,8 +188,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       .where(
         and(
           inArray(posts.authorId, favoritedUserIds),
-          lte(posts.timestamp, now)
-        )
+          lte(posts.timestamp, now),
+        ),
       );
     const totalCount = countResult[0]?.value ?? 0;
 
@@ -206,7 +206,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
           })
           .from(reactions)
           .where(
-            and(inArray(reactions.postId, postIds), eq(reactions.type, 'like'))
+            and(inArray(reactions.postId, postIds), eq(reactions.type, "like")),
           )
           .groupBy(reactions.postId),
         dbClient
@@ -234,8 +234,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
             and(
               inArray(reactions.postId, postIds),
               eq(reactions.userId, user.userId),
-              eq(reactions.type, 'like')
-            )
+              eq(reactions.type, "like"),
+            ),
           ),
         dbClient
           .select({
@@ -243,16 +243,19 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
           })
           .from(shares)
           .where(
-            and(inArray(shares.postId, postIds), eq(shares.userId, user.userId))
+            and(
+              inArray(shares.postId, postIds),
+              eq(shares.userId, user.userId),
+            ),
           ),
       ]);
 
     // Create lookup maps for O(1) access
     const reactionMap = new Map(
-      allReactions.map((r) => [r.postId, Number(r.count)])
+      allReactions.map((r) => [r.postId, Number(r.count)]),
     );
     const commentMap = new Map(
-      allComments.map((c) => [c.postId, Number(c.count)])
+      allComments.map((c) => [c.postId, Number(c.count)]),
     );
     const shareMap = new Map(allShares.map((s) => [s.postId, Number(s.count)]));
     const userReactionSet = new Set(userReactions.map((r) => r.postId));
@@ -280,13 +283,13 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   });
 
   logger.info(
-    'Favorites feed fetched successfully',
+    "Favorites feed fetched successfully",
     {
       userId: user.userId,
       count: result.posts.length,
       total: result.totalCount,
     },
-    'GET /api/posts/feed/favorites'
+    "GET /api/posts/feed/favorites",
   );
 
   return successResponse({

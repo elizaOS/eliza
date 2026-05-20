@@ -57,48 +57,48 @@ import {
   successResponse,
   verifyCronAuth,
   withErrorHandling,
-} from '@feed/api';
-import type { ParodyHeadline } from '@feed/db';
+} from "@feed/api";
+import type { ParodyHeadline } from "@feed/db";
 import {
-  FeedLLMClient,
   createParodyHeadlineGenerator,
   dailyTopicService,
+  FeedLLMClient,
   rssFeedService,
   WorldFactsConsolidator,
   worldFactsGenerator,
-} from '@feed/engine';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@feed/engine";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 // Vercel function configuration
 export const maxDuration = 300; // 5 minutes max
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
   // Security: Verify cron authorization (fail-closed in production)
-  requireCronAuth(request, { jobName: 'WorldFactsCron' });
+  requireCronAuth(request, { jobName: "WorldFactsCron" });
 
   const startTime = Date.now();
-  logger.info('🌍 World facts update started', undefined, 'Cron');
+  logger.info("🌍 World facts update started", undefined, "Cron");
 
   // Step 1: Fetch all RSS feeds
   let feedResult = { fetched: 0, stored: 0, errors: 0 };
   try {
-    logger.info('Fetching RSS feeds...', undefined, 'Cron');
+    logger.info("Fetching RSS feeds...", undefined, "Cron");
     feedResult = await rssFeedService.fetchAllFeeds();
     logger.info(
       `RSS feeds fetched: ${feedResult.fetched} sources, ${feedResult.stored} new headlines, ${feedResult.errors} errors`,
       feedResult,
-      'Cron'
+      "Cron",
     );
   } catch (error) {
-    logger.error('Error fetching RSS feeds', { error }, 'Cron');
+    logger.error("Error fetching RSS feeds", { error }, "Cron");
   }
 
   // Step 2: Transform untransformed headlines into parodies
   let parodies: ParodyHeadline[] = [];
   try {
-    logger.info('Generating parody headlines...', undefined, 'Cron');
+    logger.info("Generating parody headlines...", undefined, "Cron");
     const untransformedHeadlines =
       await rssFeedService.getUntransformedHeadlines(20); // Process 20 at a time
 
@@ -107,39 +107,39 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     logger.info(
       `Generated ${parodies.length} parody headlines`,
       { count: parodies.length },
-      'Cron'
+      "Cron",
     );
   } catch (error) {
-    logger.error('Error generating parody headlines', { error }, 'Cron');
+    logger.error("Error generating parody headlines", { error }, "Cron");
   }
 
   // Step 3: Clean up old headlines (older than 7 days)
   let cleaned = 0;
   try {
-    logger.info('Cleaning up old headlines...', undefined, 'Cron');
+    logger.info("Cleaning up old headlines...", undefined, "Cron");
     cleaned = await rssFeedService.cleanupOldHeadlines();
     logger.info(
       `Cleaned up ${cleaned} old headlines`,
       { count: cleaned },
-      'Cron'
+      "Cron",
     );
   } catch (error) {
-    logger.error('Error cleaning up old headlines', { error }, 'Cron');
+    logger.error("Error cleaning up old headlines", { error }, "Cron");
   }
 
   let dailyTopic = null;
   try {
     dailyTopic = await dailyTopicService.ensureTopicForDate(new Date());
   } catch (error) {
-    logger.error('Error selecting daily topic', { error }, 'Cron');
+    logger.error("Error selecting daily topic", { error }, "Cron");
   }
 
   // Step 4: Generate new world facts from game activity
   // This creates fresh context based on events, markets, questions, and actor activity
   logger.info(
-    'Generating new world facts from game activity...',
+    "Generating new world facts from game activity...",
     undefined,
-    'Cron'
+    "Cron",
   );
   let factsResult = {
     generated: 0,
@@ -151,10 +151,10 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     logger.info(
       `Generated ${factsResult.generated} new world facts, archived ${factsResult.archived}`,
       factsResult,
-      'Cron'
+      "Cron",
     );
   } catch (error) {
-    logger.error('Error generating world facts', { error }, 'Cron');
+    logger.error("Error generating world facts", { error }, "Cron");
   }
 
   // Step 5: Consolidate similar world facts to reduce context bloat
@@ -163,14 +163,14 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     const llm = FeedLLMClient.forGameTick();
     const consolidator = new WorldFactsConsolidator(llm);
     consolidationResult = await consolidator.consolidateFacts();
-    logger.info('World facts consolidated', consolidationResult, 'Cron');
+    logger.info("World facts consolidated", consolidationResult, "Cron");
   } catch (error) {
-    logger.error('Error consolidating world facts', { error }, 'Cron');
+    logger.error("Error consolidating world facts", { error }, "Cron");
   }
 
   const duration = Date.now() - startTime;
   logger.info(
-    '✅ World facts update completed',
+    "✅ World facts update completed",
     {
       duration: `${duration}ms`,
       feedsFetched: feedResult.fetched,
@@ -182,7 +182,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       worldFactsArchived: factsResult.archived,
       factsConsolidated: consolidationResult.consolidated,
     },
-    'Cron'
+    "Cron",
   );
 
   return successResponse({
@@ -207,21 +207,21 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   // Security: Verify cron authorization (allows Vercel Cron user-agent)
   if (
     !verifyCronAuth(request, {
-      jobName: 'WorldFactsCron',
+      jobName: "WorldFactsCron",
       allowVercelCronUserAgent: true,
     })
   ) {
-    logger.warn('Unauthorized GET request to cron endpoint', undefined, 'Cron');
+    logger.warn("Unauthorized GET request to cron endpoint", undefined, "Cron");
     return NextResponse.json(
       {
         error:
-          'Use POST for cron execution. This endpoint is triggered by Vercel Cron',
+          "Use POST for cron execution. This endpoint is triggered by Vercel Cron",
       },
-      { status: 401 }
+      { status: 401 },
     );
   }
 
-  logger.info('GET request forwarded to POST handler', undefined, 'Cron');
+  logger.info("GET request forwarded to POST handler", undefined, "Cron");
 
   // Forward to POST handler
   return POST(request);

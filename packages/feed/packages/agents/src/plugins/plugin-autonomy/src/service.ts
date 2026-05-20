@@ -6,11 +6,11 @@ import {
   type Memory,
   Service,
   type UUID,
-} from '@elizaos/core';
-import { v4 as uuidv4 } from 'uuid';
-import { logger } from '../../../shared/logger';
-import type { JsonValue } from '../../../types/common';
-import { AutonomousServiceType } from './types';
+} from "@elizaos/core";
+import { v4 as uuidv4 } from "uuid";
+import { logger } from "../../../shared/logger";
+import type { JsonValue } from "../../../types/common";
+import { AutonomousServiceType } from "./types";
 
 /**
  * Simple autonomous loop service that can be toggled on/off via API
@@ -18,7 +18,7 @@ import { AutonomousServiceType } from './types';
  */
 export class AutonomyService extends Service {
   static serviceType = AutonomousServiceType.AUTONOMOUS;
-  static serviceName = 'Autonomy';
+  static serviceName = "Autonomy";
 
   private isRunning = false;
   private loopInterval?: NodeJS.Timeout;
@@ -29,7 +29,7 @@ export class AutonomyService extends Service {
   constructor(runtime?: IAgentRuntime) {
     super(runtime);
     if (!runtime) {
-      throw new Error('AutonomyService requires an agent runtime');
+      throw new Error("AutonomyService requires an agent runtime");
     }
     this.runtime = runtime;
 
@@ -37,14 +37,14 @@ export class AutonomyService extends Service {
     // This ensures we have a clean room that's not shared with other functionality
     // Generate a proper UUID - ensure it's a valid v4 UUID format
     const roomUUID = uuidv4();
-    logger.info('Generated room UUID', { roomUUID }, 'AutonomyService');
+    logger.info("Generated room UUID", { roomUUID }, "AutonomyService");
     this.autonomousRoomId = asUUID(roomUUID);
-    this.autonomousWorldId = asUUID('00000000-0000-0000-0000-000000000001'); // Default world
+    this.autonomousWorldId = asUUID("00000000-0000-0000-0000-000000000001"); // Default world
 
     logger.info(
-      'Service initialized with room ID',
+      "Service initialized with room ID",
       { roomId: this.autonomousRoomId },
-      'AutonomyService'
+      "AutonomyService",
     );
   }
 
@@ -59,28 +59,28 @@ export class AutonomyService extends Service {
     // Don't override it here
 
     logger.info(
-      'Using autonomous room ID',
+      "Using autonomous room ID",
       { roomId: this.autonomousRoomId },
-      'AutonomyService'
+      "AutonomyService",
     );
 
     // Check current autonomy setting
-    const autonomyEnabled = this.runtime.getSetting('AUTONOMY_ENABLED');
-    const autoStart = this.runtime.getSetting('AUTONOMY_AUTO_START');
+    const autonomyEnabled = this.runtime.getSetting("AUTONOMY_ENABLED");
+    const autoStart = this.runtime.getSetting("AUTONOMY_AUTO_START");
 
     // Ensure the autonomous room exists with proper world context
-    const worldId = asUUID('00000000-0000-0000-0000-000000000001'); // Use a fixed world ID for autonomy
+    const worldId = asUUID("00000000-0000-0000-0000-000000000001"); // Use a fixed world ID for autonomy
 
     // Only set up world/room if runtime has these methods (not available in test mocks)
     if (this.runtime.ensureWorldExists) {
       await this.runtime.ensureWorldExists({
         id: worldId,
-        name: 'Autonomy World',
+        name: "Autonomy World",
         agentId: this.runtime.agentId,
         // serverId removed in alpha - no longer exists on World type
         metadata: {
-          type: 'autonomy',
-          description: 'World for autonomous agent thinking',
+          type: "autonomy",
+          description: "World for autonomous agent thinking",
         },
       });
     }
@@ -92,17 +92,17 @@ export class AutonomyService extends Service {
     if (this.runtime.ensureRoomExists) {
       await this.runtime.ensureRoomExists({
         id: this.autonomousRoomId,
-        name: 'Autonomous Thoughts',
+        name: "Autonomous Thoughts",
         worldId,
         agentId: this.runtime.agentId,
-        source: 'autonomy-plugin',
+        source: "autonomy-plugin",
         // @ts-expect-error AUTONOMOUS is a custom channel type for autonomous agent thinking
         // Not in the ChannelType enum but valid for our use case
-        type: 'AUTONOMOUS',
+        type: "AUTONOMOUS",
         metadata: {
-          source: 'autonomy-plugin',
-          description: 'Room for autonomous agent thinking',
-          type: 'AUTONOMOUS',
+          source: "autonomy-plugin",
+          description: "Room for autonomous agent thinking",
+          type: "AUTONOMOUS",
         },
       });
     }
@@ -111,41 +111,41 @@ export class AutonomyService extends Service {
     if (this.runtime.addParticipant) {
       await this.runtime.addParticipant(
         this.runtime.agentId,
-        this.autonomousRoomId
+        this.autonomousRoomId,
       );
     }
     if (this.runtime.ensureParticipantInRoom) {
       await this.runtime.ensureParticipantInRoom(
         this.runtime.agentId,
-        this.autonomousRoomId
+        this.autonomousRoomId,
       );
     }
 
     logger.info(
-      'Ensured autonomous room exists with world ID',
+      "Ensured autonomous room exists with world ID",
       { worldId: this.autonomousWorldId },
-      'AutonomyService'
+      "AutonomyService",
     );
 
     logger.info(
-      'Settings check',
+      "Settings check",
       { autonomyEnabled, autoStart },
-      'AutonomyService'
+      "AutonomyService",
     );
 
     // Start disabled by default - autonomy should only run when explicitly enabled from frontend
-    if (autonomyEnabled === true || autonomyEnabled === 'true') {
+    if (autonomyEnabled === true || autonomyEnabled === "true") {
       logger.info(
-        'Autonomy is enabled in settings, starting...',
+        "Autonomy is enabled in settings, starting...",
         undefined,
-        'AutonomyService'
+        "AutonomyService",
       );
       await this.startLoop();
     } else {
       logger.info(
-        'Autonomy disabled by default - will wait for frontend activation',
+        "Autonomy disabled by default - will wait for frontend activation",
         undefined,
-        'AutonomyService'
+        "AutonomyService",
       );
     }
 
@@ -158,22 +158,22 @@ export class AutonomyService extends Service {
    */
   private setupSettingsMonitoring(): void {
     setInterval(async () => {
-      const autonomyEnabled = this.runtime.getSetting('AUTONOMY_ENABLED');
+      const autonomyEnabled = this.runtime.getSetting("AUTONOMY_ENABLED");
       const shouldBeRunning =
-        autonomyEnabled === true || autonomyEnabled === 'true';
+        autonomyEnabled === true || autonomyEnabled === "true";
 
       if (shouldBeRunning && !this.isRunning) {
         logger.info(
-          'Settings indicate autonomy should be enabled, starting...',
+          "Settings indicate autonomy should be enabled, starting...",
           undefined,
-          'AutonomyService'
+          "AutonomyService",
         );
         await this.startLoop();
       } else if (!shouldBeRunning && this.isRunning) {
         logger.info(
-          'Settings indicate autonomy should be disabled, stopping...',
+          "Settings indicate autonomy should be disabled, stopping...",
           undefined,
-          'AutonomyService'
+          "AutonomyService",
         );
         await this.stopLoop();
       }
@@ -185,19 +185,19 @@ export class AutonomyService extends Service {
    */
   async startLoop(): Promise<void> {
     if (this.isRunning) {
-      logger.info('Loop already running', undefined, 'AutonomyService');
+      logger.info("Loop already running", undefined, "AutonomyService");
       return;
     }
 
     this.isRunning = true;
 
     // Set setting to persist state
-    this.runtime.setSetting('AUTONOMY_ENABLED', true);
+    this.runtime.setSetting("AUTONOMY_ENABLED", true);
 
     logger.info(
-      'Starting continuous autonomous loop',
+      "Starting continuous autonomous loop",
       { intervalMs: this.intervalMs },
-      'AutonomyService'
+      "AutonomyService",
     );
 
     // Start the loop
@@ -209,7 +209,7 @@ export class AutonomyService extends Service {
    */
   async stopLoop(): Promise<void> {
     if (!this.isRunning) {
-      logger.info('Loop not running', undefined, 'AutonomyService');
+      logger.info("Loop not running", undefined, "AutonomyService");
       return;
     }
 
@@ -221,8 +221,8 @@ export class AutonomyService extends Service {
       this.loopInterval = undefined;
     }
 
-    this.runtime.setSetting('AUTONOMY_ENABLED', false);
-    logger.info('Stopped autonomous loop', undefined, 'AutonomyService');
+    this.runtime.setSetting("AUTONOMY_ENABLED", false);
+    logger.info("Stopped autonomous loop", undefined, "AutonomyService");
   }
 
   /**
@@ -245,9 +245,9 @@ export class AutonomyService extends Service {
    */
   private async performAutonomousThink(): Promise<void> {
     logger.info(
-      'Performing autonomous monologue...',
+      "Performing autonomous monologue...",
       { time: new Date().toLocaleTimeString() },
-      'AutonomyService'
+      "AutonomyService",
     );
 
     // Get the agent's entity first - we'll need it throughout this function
@@ -256,9 +256,9 @@ export class AutonomyService extends Service {
       : { id: this.runtime.agentId };
     if (!agentEntity) {
       logger.error(
-        'Failed to get agent entity, skipping autonomous thought',
+        "Failed to get agent entity, skipping autonomous thought",
         undefined,
-        'AutonomyService'
+        "AutonomyService",
       );
       return;
     }
@@ -271,7 +271,7 @@ export class AutonomyService extends Service {
     const recentMemories = await this.runtime.getMemories({
       roomId: this.autonomousRoomId,
       count: 3,
-      tableName: 'memories',
+      tableName: "memories",
     });
 
     // Find the most recent agent-generated autonomous thought
@@ -282,35 +282,35 @@ export class AutonomyService extends Service {
           m.content?.text &&
           m.content?.metadata &&
           (m.content.metadata as Record<string, JsonValue>)?.isAutonomous ===
-            true
+            true,
       )
       .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))[0];
 
     if (lastAgentThought?.content?.text) {
       lastThought = lastAgentThought.content.text;
       logger.info(
-        'Continuing from last thought',
+        "Continuing from last thought",
         { thoughtPreview: lastThought.substring(0, 50) },
-        'AutonomyService'
+        "AutonomyService",
       );
     } else {
       isFirstThought = true;
       logger.info(
-        'No previous autonomous thoughts found, starting fresh monologue',
+        "No previous autonomous thoughts found, starting fresh monologue",
         undefined,
-        'AutonomyService'
+        "AutonomyService",
       );
     }
 
     // Create introspective monologue prompt (not conversational)
     const monologuePrompt = this.createMonologuePrompt(
       lastThought,
-      isFirstThought
+      isFirstThought,
     );
     logger.info(
-      'Monologue prompt',
+      "Monologue prompt",
       { promptPreview: monologuePrompt.substring(0, 100) },
-      'AutonomyService'
+      "AutonomyService",
     );
 
     // Create an autonomous message that will be processed through the full agent pipeline
@@ -319,12 +319,12 @@ export class AutonomyService extends Service {
       entityId: agentEntity.id ? asUUID(agentEntity.id) : this.runtime.agentId, // Use the agent's entity ID or fallback to agentId
       content: {
         text: monologuePrompt,
-        source: 'autonomous-trigger',
+        source: "autonomous-trigger",
         metadata: {
-          type: 'autonomous-prompt',
+          type: "autonomous-prompt",
           isAutonomous: true,
           isInternalThought: true,
-          channelId: 'autonomous',
+          channelId: "autonomous",
           timestamp: Date.now(),
           isContinuation: !isFirstThought,
         },
@@ -335,9 +335,9 @@ export class AutonomyService extends Service {
     };
 
     logger.info(
-      'Processing autonomous message through full agent pipeline...',
+      "Processing autonomous message through full agent pipeline...",
       undefined,
-      'AutonomyService'
+      "AutonomyService",
     );
 
     // Process the message through the complete agent pipeline
@@ -349,13 +349,13 @@ export class AutonomyService extends Service {
     // 5. Store memories appropriately
     await this.runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
       runtime: this.runtime,
-      source: 'plugin-autonomy',
+      source: "plugin-autonomy",
       message: autonomousMessage,
       callback: async (content: Content): Promise<Memory[]> => {
         logger.info(
-          'Response generated',
+          "Response generated",
           { responsePreview: content.text?.substring(0, 100) },
-          'AutonomyService'
+          "AutonomyService",
         );
 
         // Store the response with autonomous metadata
@@ -371,17 +371,17 @@ export class AutonomyService extends Service {
               thought: content.thought,
               actions: content.actions,
               source:
-                typeof content.source === 'string'
+                typeof content.source === "string"
                   ? content.source
-                  : 'autonomous',
+                  : "autonomous",
               metadata: {
-                ...(typeof content.metadata === 'object' &&
+                ...(typeof content.metadata === "object" &&
                 content.metadata !== null
                   ? content.metadata
                   : {}),
                 isAutonomous: true,
                 isInternalThought: true,
-                channelId: 'autonomous',
+                channelId: "autonomous",
                 timestamp: Date.now(),
               },
             },
@@ -390,12 +390,12 @@ export class AutonomyService extends Service {
           };
 
           // Save the autonomous thought
-          await this.runtime.createMemory(responseMemory, 'messages');
+          await this.runtime.createMemory(responseMemory, "messages");
 
           // Broadcast the thought to WebSocket clients
           await this.broadcastThoughtToMonologue(
             content.text!,
-            responseMemory.id || asUUID(uuidv4())
+            responseMemory.id || asUUID(uuidv4()),
           );
         }
 
@@ -403,17 +403,17 @@ export class AutonomyService extends Service {
       },
       onComplete: async () => {
         logger.info(
-          'Autonomous message processing completed',
+          "Autonomous message processing completed",
           undefined,
-          'AutonomyService'
+          "AutonomyService",
         );
       },
     });
 
     logger.info(
-      'Autonomous message event emitted to agent pipeline',
+      "Autonomous message event emitted to agent pipeline",
       undefined,
-      'AutonomyService'
+      "AutonomyService",
     );
   }
   /**
@@ -421,7 +421,7 @@ export class AutonomyService extends Service {
    */
   private createMonologuePrompt(
     lastThought: string | undefined,
-    isFirstThought: boolean
+    isFirstThought: boolean,
   ): string {
     if (isFirstThought) {
       return `As an AI agent, reflect on your current state and experiences. What are you thinking about right now? What interests you or concerns you? Share your internal thoughts as a stream of consciousness. Don't address anyone - this is your private monologue.
@@ -441,24 +441,24 @@ Generate your next thought (1-2 sentences):`;
    */
   private async broadcastThoughtToMonologue(
     thoughtText: string,
-    messageId: string
+    messageId: string,
   ): Promise<void> {
     // Use the correct messaging API endpoint that exists in server.ts
-    const apiUrl = 'http://localhost:7777/api/messaging/submit';
+    const apiUrl = "http://localhost:7777/api/messaging/submit";
 
     const broadcastData = {
       channel_id: this.autonomousRoomId, // Use autonomous room ID as channel
-      server_id: '00000000-0000-0000-0000-000000000000',
+      server_id: "00000000-0000-0000-0000-000000000000",
       author_id: this.runtime.agentId,
       content: thoughtText,
-      source_type: 'autonomous_thought', // Add missing source_type field
+      source_type: "autonomous_thought", // Add missing source_type field
       raw_message: {
         thought: thoughtText,
         actions: [],
       },
       metadata: {
-        agentName: this.runtime.character?.name || 'ELIZA',
-        channelId: 'autonomous', // Ensure this matches frontend filter
+        agentName: this.runtime.character?.name || "ELIZA",
+        channelId: "autonomous", // Ensure this matches frontend filter
         isAutonomous: true,
         isInternalThought: true,
         messageId,
@@ -467,17 +467,17 @@ Generate your next thought (1-2 sentences):`;
     };
 
     logger.info(
-      'Broadcasting thought to WebSocket',
+      "Broadcasting thought to WebSocket",
       { apiUrl },
-      'AutonomyService'
+      "AutonomyService",
     );
-    logger.debug('Broadcast data', { broadcastData }, 'AutonomyService');
+    logger.debug("Broadcast data", { broadcastData }, "AutonomyService");
 
     // Make HTTP request to broadcast endpoint
     const response = await fetch(apiUrl, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       body: JSON.stringify(broadcastData),
     });
@@ -485,16 +485,16 @@ Generate your next thought (1-2 sentences):`;
     if (response.ok) {
       const responseData = await response.json();
       logger.info(
-        'Successfully broadcasted thought to monologue chat',
+        "Successfully broadcasted thought to monologue chat",
         { responseData },
-        'AutonomyService'
+        "AutonomyService",
       );
     } else {
       const errorText = await response.text();
       logger.warn(
-        'Failed to broadcast thought',
+        "Failed to broadcast thought",
         { status: response.status, statusText: response.statusText, errorText },
-        'AutonomyService'
+        "AutonomyService",
       );
     }
   }
@@ -519,23 +519,23 @@ Generate your next thought (1-2 sentences):`;
   setLoopInterval(ms: number): void {
     if (ms < 100) {
       logger.warn(
-        'Interval too short, minimum is 100ms',
+        "Interval too short, minimum is 100ms",
         { requested: ms },
-        'AutonomyService'
+        "AutonomyService",
       );
       ms = 100;
     }
     if (ms > 60000) {
       logger.warn(
-        'Interval too long, maximum is 1 minute',
+        "Interval too long, maximum is 1 minute",
         { requested: ms },
-        'AutonomyService'
+        "AutonomyService",
       );
       ms = 60000;
     }
 
     this.intervalMs = ms;
-    logger.info('Loop interval set', { intervalMs: ms }, 'AutonomyService');
+    logger.info("Loop interval set", { intervalMs: ms }, "AutonomyService");
   }
 
   /**
@@ -549,7 +549,7 @@ Generate your next thought (1-2 sentences):`;
    * Enable autonomy (sets setting and starts if needed)
    */
   async enableAutonomy(): Promise<void> {
-    this.runtime.setSetting('AUTONOMY_ENABLED', true);
+    this.runtime.setSetting("AUTONOMY_ENABLED", true);
     if (!this.isRunning) {
       await this.startLoop();
     }
@@ -559,7 +559,7 @@ Generate your next thought (1-2 sentences):`;
    * Disable autonomy (sets setting and stops if running)
    */
   async disableAutonomy(): Promise<void> {
-    this.runtime.setSetting('AUTONOMY_ENABLED', false);
+    this.runtime.setSetting("AUTONOMY_ENABLED", false);
     if (this.isRunning) {
       await this.stopLoop();
     }
@@ -574,9 +574,9 @@ Generate your next thought (1-2 sentences):`;
     interval: number;
     autonomousRoomId: UUID;
   } {
-    const enabled = this.runtime.getSetting('AUTONOMY_ENABLED');
+    const enabled = this.runtime.getSetting("AUTONOMY_ENABLED");
     return {
-      enabled: enabled === true || enabled === 'true',
+      enabled: enabled === true || enabled === "true",
       running: this.isRunning,
       interval: this.intervalMs,
       autonomousRoomId: this.autonomousRoomId,
@@ -588,6 +588,6 @@ Generate your next thought (1-2 sentences):`;
   }
 
   get capabilityDescription(): string {
-    return 'Autonomous loop service for continuous agent thinking and actions';
+    return "Autonomous loop service for continuous agent thinking and actions";
   }
 }

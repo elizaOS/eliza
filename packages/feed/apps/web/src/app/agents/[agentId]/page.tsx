@@ -8,12 +8,12 @@
  * @redirect /agents/team?selectAgent=[agentId]
  */
 
-'use client';
+"use client";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
-import { useParams, useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { useParams, useRouter } from "next/navigation";
+import { useEffect } from "react";
 
 /**
  * Agent Detail Page Component

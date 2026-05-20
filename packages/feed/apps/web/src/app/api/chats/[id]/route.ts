@@ -58,8 +58,8 @@ import {
   NotFoundError,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { requireNftChatAccess } from '@feed/api/services/nft-chat-gating-service';
+} from "@feed/api";
+import { requireNftChatAccess } from "@feed/api/services/nft-chat-gating-service";
 import {
   and,
   asc,
@@ -76,16 +76,16 @@ import {
   messageReactions,
   messages,
   users,
-} from '@feed/db';
-import { StaticDataRegistry } from '@feed/engine';
+} from "@feed/db";
+import { StaticDataRegistry } from "@feed/engine";
 import {
   ChatQuerySchema,
   getChainName,
   getCurrentChainId,
   logger,
-} from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { CHAT_PAGE_SIZE } from '@/lib/constants';
+} from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { CHAT_PAGE_SIZE } from "@/lib/constants";
 
 /**
  * GET /api/chats/[id]
@@ -94,7 +94,7 @@ import { CHAT_PAGE_SIZE } from '@/lib/constants';
 export const GET = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ id: string }> }
+    context: { params: Promise<{ id: string }> },
   ) => {
     const { id: chatId } = await context.params;
 
@@ -102,11 +102,11 @@ export const GET = withErrorHandling(
     const { searchParams } = new URL(request.url);
     const query: Record<string, string> = {};
 
-    const all = searchParams.get('all');
-    const debug = searchParams.get('debug');
-    const cursor = searchParams.get('cursor'); // Cursor for pagination (message ID — loads OLDER messages)
-    const after = searchParams.get('after'); // ISO timestamp — loads NEWER messages since this time
-    const limitParam = searchParams.get('limit');
+    const all = searchParams.get("all");
+    const debug = searchParams.get("debug");
+    const cursor = searchParams.get("cursor"); // Cursor for pagination (message ID — loads OLDER messages)
+    const after = searchParams.get("after"); // ISO timestamp — loads NEWER messages since this time
+    const limitParam = searchParams.get("limit");
 
     if (all) query.all = all;
     if (debug) query.debug = debug;
@@ -118,30 +118,30 @@ export const GET = withErrorHandling(
     const effectiveLimit = Math.min(Math.max(limit, 1), 100); // Between 1 and 100
 
     // Check for debug mode (localhost access to game chats)
-    const debugMode = validatedQuery.debug === 'true';
+    const debugMode = validatedQuery.debug === "true";
 
     logger.info(
-      'GET /api/chats/[id]',
+      "GET /api/chats/[id]",
       {
         chatId,
         cursor,
         limit: effectiveLimit,
         debugMode,
       },
-      'GET /api/chats/[id]'
+      "GET /api/chats/[id]",
     );
 
     // Get chat first to check if it's a game chat
     const [chat] = await asSystem(async (db) => {
       return await db.select().from(chats).where(eq(chats.id, chatId)).limit(1);
-    }, 'get-chat-by-id');
+    }, "get-chat-by-id");
 
     if (!chat) {
-      throw new NotFoundError('Chat', chatId);
+      throw new NotFoundError("Chat", chatId);
     }
 
     // Allow debug access to game chats without auth
-    const isGameChat = chat.isGroup && chat.gameId === 'continuous';
+    const isGameChat = chat.isGroup && chat.gameId === "continuous";
     let userId: string | undefined;
     let authUser: Awaited<ReturnType<typeof authenticate>> | null = null;
 
@@ -150,7 +150,7 @@ export const GET = withErrorHandling(
       logger.info(
         `Debug mode access to game chat: ${chatId}`,
         undefined,
-        'GET /api/chats/[id]'
+        "GET /api/chats/[id]",
       );
     } else {
       // Normal mode: require authentication and membership
@@ -164,17 +164,17 @@ export const GET = withErrorHandling(
           .where(
             and(
               eq(chatParticipants.chatId, chatId),
-              eq(chatParticipants.userId, authUser!.userId)
-            )
+              eq(chatParticipants.userId, authUser?.userId),
+            ),
           )
           .limit(1);
       });
 
       if (!isMember) {
         throw new AuthorizationError(
-          'You do not have access to this chat',
-          'chat',
-          'read'
+          "You do not have access to this chat",
+          "chat",
+          "read",
         );
       }
 
@@ -183,7 +183,7 @@ export const GET = withErrorHandling(
 
     // Get chat with messages
     const fetchChatData = async (
-      db: Parameters<Parameters<typeof asSystem>[0]>[0]
+      db: Parameters<Parameters<typeof asSystem>[0]>[0],
     ) => {
       // Get chat participants
       const participantsList = await db
@@ -201,8 +201,8 @@ export const GET = withErrorHandling(
         const afterDate = new Date(after);
         if (Number.isNaN(afterDate.getTime())) {
           throw new BusinessLogicError(
-            'Invalid after timestamp',
-            'INVALID_AFTER_TIMESTAMP'
+            "Invalid after timestamp",
+            "INVALID_AFTER_TIMESTAMP",
           );
         } else {
           messagesList = await db
@@ -211,8 +211,8 @@ export const GET = withErrorHandling(
             .where(
               and(
                 eq(messages.chatId, chatId),
-                gt(messages.createdAt, afterDate)
-              )
+                gt(messages.createdAt, afterDate),
+              ),
             )
             .orderBy(asc(messages.createdAt))
             .limit(effectiveLimit);
@@ -232,8 +232,8 @@ export const GET = withErrorHandling(
             .where(
               and(
                 eq(messages.chatId, chatId),
-                lt(messages.createdAt, cursorMessage.createdAt)
-              )
+                lt(messages.createdAt, cursorMessage.createdAt),
+              ),
             )
             .orderBy(desc(messages.createdAt))
             .limit(effectiveLimit + 1);
@@ -260,11 +260,11 @@ export const GET = withErrorHandling(
 
     const fullChat = authUser
       ? await asUser(authUser, fetchChatData)
-      : await asSystem(fetchChatData, 'get-chat-with-messages-debug');
+      : await asSystem(fetchChatData, "get-chat-with-messages-debug");
 
     // Get participant details
     const fetchParticipantDetails = async (
-      db: Parameters<Parameters<typeof asSystem>[0]>[0]
+      db: Parameters<Parameters<typeof asSystem>[0]>[0],
     ) => {
       const participantUserIds = fullChat.participants.map((p) => p.userId);
       const senderIds = [...new Set(fullChat.messages.map((m) => m.senderId))];
@@ -272,7 +272,7 @@ export const GET = withErrorHandling(
       // Combine participant IDs and sender IDs to include users who left but still have messages
       const allUserIds = [
         ...new Set([...participantUserIds, ...(senderIds as string[])]),
-      ].filter((id) => id !== 'system'); // Exclude system sender
+      ].filter((id) => id !== "system"); // Exclude system sender
 
       const usersList =
         allUserIds.length > 0
@@ -303,7 +303,7 @@ export const GET = withErrorHandling(
 
     const { users: usersList, actors: actorsList } = authUser
       ? await asUser(authUser, fetchParticipantDetails)
-      : await asSystem(fetchParticipantDetails, 'get-chat-participants-debug');
+      : await asSystem(fetchParticipantDetails, "get-chat-participants-debug");
 
     const usersMap = new Map(usersList.map((u) => [u.id, u]));
     const actorsMap = new Map(actorsList.map((a) => [a.id, a]));
@@ -311,7 +311,7 @@ export const GET = withErrorHandling(
     // Get unique sender IDs from messages
     const senderIds = [...new Set(fullChat.messages.map((m) => m.senderId))];
     const participantUserIds = new Set(
-      fullChat.participants.map((p) => p.userId)
+      fullChat.participants.map((p) => p.userId),
     );
 
     // Build participants list including both active participants AND message senders
@@ -323,20 +323,20 @@ export const GET = withErrorHandling(
         const actor = actorsMap.get(p.userId);
         return {
           id: p.userId,
-          displayName: user?.displayName || actor?.name || 'Unknown',
+          displayName: user?.displayName || actor?.name || "Unknown",
           username: user?.username,
           profileImageUrl: user?.profileImageUrl || actor?.profileImageUrl,
         };
       }),
       // Message senders who are no longer participants (left the chat)
       ...(senderIds as string[])
-        .filter((id) => id !== 'system' && !participantUserIds.has(id))
+        .filter((id) => id !== "system" && !participantUserIds.has(id))
         .map((senderId) => {
           const user = usersMap.get(senderId);
           const actor = actorsMap.get(senderId);
           return {
             id: senderId,
-            displayName: user?.displayName || actor?.name || 'Unknown',
+            displayName: user?.displayName || actor?.name || "Unknown",
             username: user?.username,
             profileImageUrl: user?.profileImageUrl || actor?.profileImageUrl,
           };
@@ -356,13 +356,13 @@ export const GET = withErrorHandling(
     } | null = null;
     if (!chat.isGroup && !chat.name && userId) {
       const otherParticipant = fullChat.participants.find(
-        (p) => p.userId !== userId
+        (p) => p.userId !== userId,
       );
       if (otherParticipant) {
         const otherUserData = usersMap.get(otherParticipant.userId);
         if (otherUserData) {
           displayName =
-            otherUserData.displayName || otherUserData.username || 'Unknown';
+            otherUserData.displayName || otherUserData.username || "Unknown";
           otherUser = {
             id: otherParticipant.userId,
             displayName: otherUserData.displayName,
@@ -413,7 +413,7 @@ export const GET = withErrorHandling(
             .from(messageReactions)
             .where(inArray(messageReactions.messageId, messageIds))
             .groupBy(messageReactions.messageId, messageReactions.emoji);
-        }, 'get-message-reaction-counts'),
+        }, "get-message-reaction-counts"),
         authUser
           ? asSystem(async (db) => {
               return await db
@@ -425,10 +425,10 @@ export const GET = withErrorHandling(
                 .where(
                   and(
                     inArray(messageReactions.messageId, messageIds),
-                    eq(messageReactions.userId, authUser!.userId)
-                  )
+                    eq(messageReactions.userId, authUser?.userId),
+                  ),
                 );
-            }, 'get-message-reactions-mine')
+            }, "get-message-reactions-mine")
           : Promise.resolve([]),
       ]);
 
@@ -449,7 +449,7 @@ export const GET = withErrorHandling(
       ...new Set(
         messagesInOrder
           .map((m) => m.replyToMessageId)
-          .filter((id): id is string => !!id)
+          .filter((id): id is string => !!id),
       ),
     ];
     const replyToMessagesMap = new Map<
@@ -466,9 +466,9 @@ export const GET = withErrorHandling(
           })
           .from(messages)
           .where(
-            and(inArray(messages.id, replyToIds), eq(messages.chatId, chatId))
+            and(inArray(messages.id, replyToIds), eq(messages.chatId, chatId)),
           );
-      }, 'get-reply-to-messages');
+      }, "get-reply-to-messages");
 
       for (const rm of replyMessages) {
         const sender = usersMap.get(rm.senderId);
@@ -488,7 +488,7 @@ export const GET = withErrorHandling(
       : null;
 
     logger.info(
-      'Chat fetched successfully',
+      "Chat fetched successfully",
       {
         chatId,
         isGameChat,
@@ -498,7 +498,7 @@ export const GET = withErrorHandling(
         hasMore,
         nextCursor,
       },
-      'GET /api/chats/[id]'
+      "GET /api/chats/[id]",
     );
 
     const chatResponse: {
@@ -555,5 +555,5 @@ export const GET = withErrorHandling(
         limit: effectiveLimit,
       },
     });
-  }
+  },
 );

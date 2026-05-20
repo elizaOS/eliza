@@ -26,8 +26,8 @@ import {
   markets,
   questions,
   worldEvents,
-} from '@feed/db';
-import { logger } from '@feed/shared';
+} from "@feed/db";
+import { logger } from "@feed/shared";
 
 /**
  * Represents an event's expected impact on a prediction market
@@ -44,8 +44,8 @@ export interface EventMarketImpact {
   questionText: string;
 
   /** Direction and strength of impact */
-  direction: 'YES' | 'NO' | 'NEUTRAL';
-  impactStrength: 'weak' | 'moderate' | 'strong';
+  direction: "YES" | "NO" | "NEUTRAL";
+  impactStrength: "weak" | "moderate" | "strong";
 
   /** Suggested price movement (0-1 probability change) */
   suggestedPriceImpact: number;
@@ -67,7 +67,7 @@ export interface MarketEventSummary {
   recentImpacts: EventMarketImpact[];
 
   /** Net direction from all events */
-  netDirection: 'YES' | 'NO' | 'NEUTRAL';
+  netDirection: "YES" | "NO" | "NEUTRAL";
 
   /** Aggregated impact score (-1 to 1) */
   aggregatedImpact: number;
@@ -89,7 +89,7 @@ export class EventMarketLinkerService {
    */
   static async getEventsForMarket(
     questionNumber: number,
-    lookbackHours = 24
+    lookbackHours = 24,
   ): Promise<EventMarketImpact[]> {
     const lookbackDate = new Date(Date.now() - lookbackHours * 60 * 60 * 1000);
 
@@ -106,8 +106,8 @@ export class EventMarketLinkerService {
       .where(
         and(
           eq(worldEvents.relatedQuestion, questionNumber),
-          gte(worldEvents.timestamp, lookbackDate)
-        )
+          gte(worldEvents.timestamp, lookbackDate),
+        ),
       )
       .orderBy(desc(worldEvents.timestamp))
       .limit(20);
@@ -142,15 +142,20 @@ export class EventMarketLinkerService {
     }
 
     return events.map((event) => {
-      const direction = this.determineDirection(event.pointsToward);
+      const direction = EventMarketLinkerService.determineDirection(
+        event.pointsToward,
+      );
       // Without sentiment data in DB, use moderate defaults based on direction
       const impactStrength =
-        this.determineImpactStrengthFromDirection(direction);
-      const suggestedPriceImpact = this.calculateSuggestedImpact(
-        direction,
-        impactStrength,
-        0.5 // Default clarity
-      );
+        EventMarketLinkerService.determineImpactStrengthFromDirection(
+          direction,
+        );
+      const suggestedPriceImpact =
+        EventMarketLinkerService.calculateSuggestedImpact(
+          direction,
+          impactStrength,
+          0.5, // Default clarity
+        );
       const confidence = 0.5; // Default confidence without sentiment data
 
       return {
@@ -181,7 +186,7 @@ export class EventMarketLinkerService {
    * @returns Array of market event summaries
    */
   static async getMarketEventSummaries(
-    lookbackHours = 24
+    lookbackHours = 24,
   ): Promise<MarketEventSummary[]> {
     const lookbackDate = new Date(Date.now() - lookbackHours * 60 * 60 * 1000);
 
@@ -200,8 +205,8 @@ export class EventMarketLinkerService {
         and(
           gte(worldEvents.timestamp, lookbackDate),
           // Only include events with valid relatedQuestion values
-          gte(worldEvents.relatedQuestion, 1)
-        )
+          gte(worldEvents.relatedQuestion, 1),
+        ),
       )
       .orderBy(desc(worldEvents.timestamp))
       .limit(100);
@@ -237,9 +242,9 @@ export class EventMarketLinkerService {
       .from(questions)
       .where(
         and(
-          eq(questions.status, 'active'),
-          inArray(questions.questionNumber, questionNumbers)
-        )
+          eq(questions.status, "active"),
+          inArray(questions.questionNumber, questionNumbers),
+        ),
       )
       .limit(50);
 
@@ -280,14 +285,19 @@ export class EventMarketLinkerService {
 
       // Calculate impacts for each event
       const recentImpacts: EventMarketImpact[] = events.map((event) => {
-        const direction = this.determineDirection(event.pointsToward);
-        const impactStrength =
-          this.determineImpactStrengthFromDirection(direction);
-        const suggestedPriceImpact = this.calculateSuggestedImpact(
-          direction,
-          impactStrength,
-          0.5 // Default clarity
+        const direction = EventMarketLinkerService.determineDirection(
+          event.pointsToward,
         );
+        const impactStrength =
+          EventMarketLinkerService.determineImpactStrengthFromDirection(
+            direction,
+          );
+        const suggestedPriceImpact =
+          EventMarketLinkerService.calculateSuggestedImpact(
+            direction,
+            impactStrength,
+            0.5, // Default clarity
+          );
 
         return {
           eventId: event.eventId,
@@ -307,7 +317,7 @@ export class EventMarketLinkerService {
       let aggregatedImpact = 0;
       for (const impact of recentImpacts) {
         const multiplier =
-          impact.direction === 'YES' ? 1 : impact.direction === 'NO' ? -1 : 0;
+          impact.direction === "YES" ? 1 : impact.direction === "NO" ? -1 : 0;
         aggregatedImpact += impact.suggestedPriceImpact * multiplier;
       }
 
@@ -315,9 +325,9 @@ export class EventMarketLinkerService {
       aggregatedImpact = Math.max(-1, Math.min(1, aggregatedImpact));
 
       // Determine net direction
-      let netDirection: 'YES' | 'NO' | 'NEUTRAL' = 'NEUTRAL';
-      if (aggregatedImpact > 0.05) netDirection = 'YES';
-      else if (aggregatedImpact < -0.05) netDirection = 'NO';
+      let netDirection: "YES" | "NO" | "NEUTRAL" = "NEUTRAL";
+      if (aggregatedImpact > 0.05) netDirection = "YES";
+      else if (aggregatedImpact < -0.05) netDirection = "NO";
 
       // Trading relevant if significant impact
       const tradingRelevant = Math.abs(aggregatedImpact) > 0.03;
@@ -336,16 +346,16 @@ export class EventMarketLinkerService {
 
     // Sort by absolute aggregated impact (most impacted first)
     summaries.sort(
-      (a, b) => Math.abs(b.aggregatedImpact) - Math.abs(a.aggregatedImpact)
+      (a, b) => Math.abs(b.aggregatedImpact) - Math.abs(a.aggregatedImpact),
     );
 
     logger.debug(
-      'Generated market event summaries',
+      "Generated market event summaries",
       {
         marketCount: summaries.length,
         tradingRelevantCount: summaries.filter((s) => s.tradingRelevant).length,
       },
-      'EventMarketLinkerService'
+      "EventMarketLinkerService",
     );
 
     return summaries;
@@ -360,61 +370,61 @@ export class EventMarketLinkerService {
     if (tradingRelevant.length === 0) {
       // IMPORTANT: This string is interpolated into required prompt variables.
       // Returning an empty string will fail prompt rendering (and break the tick).
-      return 'EVENT-MARKET SIGNALS (recent events affecting markets):\n- None';
+      return "EVENT-MARKET SIGNALS (recent events affecting markets):\n- None";
     }
 
     const parts = tradingRelevant.slice(0, 5).map((summary) => {
       const arrow =
-        summary.netDirection === 'YES'
-          ? '↑'
-          : summary.netDirection === 'NO'
-            ? '↓'
-            : '→';
+        summary.netDirection === "YES"
+          ? "↑"
+          : summary.netDirection === "NO"
+            ? "↓"
+            : "→";
       const recentEventDesc =
         summary.recentImpacts.length > 0
-          ? summary.recentImpacts[0]!.eventDescription.substring(0, 50)
-          : 'No recent events';
+          ? summary.recentImpacts[0]?.eventDescription.substring(0, 50)
+          : "No recent events";
 
       return `- "${summary.questionText.substring(0, 40)}..." ${arrow} ${(summary.aggregatedImpact * 100).toFixed(1)}% (${recentEventDesc}...)`;
     });
 
-    return `EVENT-MARKET SIGNALS (recent events affecting markets):\n${parts.join('\n')}`;
+    return `EVENT-MARKET SIGNALS (recent events affecting markets):\n${parts.join("\n")}`;
   }
 
   /**
    * Determine direction from pointsToward field
    */
   private static determineDirection(
-    pointsToward: string | null | undefined
-  ): 'YES' | 'NO' | 'NEUTRAL' {
-    if (pointsToward === 'YES') return 'YES';
-    if (pointsToward === 'NO') return 'NO';
-    return 'NEUTRAL';
+    pointsToward: string | null | undefined,
+  ): "YES" | "NO" | "NEUTRAL" {
+    if (pointsToward === "YES") return "YES";
+    if (pointsToward === "NO") return "NO";
+    return "NEUTRAL";
   }
 
   /**
    * Determine impact strength from direction only (when sentiment data unavailable)
    */
   private static determineImpactStrengthFromDirection(
-    direction: 'YES' | 'NO' | 'NEUTRAL'
-  ): 'weak' | 'moderate' | 'strong' {
+    direction: "YES" | "NO" | "NEUTRAL",
+  ): "weak" | "moderate" | "strong" {
     // Without sentiment data, use moderate for directional signals, weak for neutral
-    if (direction === 'NEUTRAL') return 'weak';
-    return 'moderate';
+    if (direction === "NEUTRAL") return "weak";
+    return "moderate";
   }
 
   /**
    * Calculate suggested price impact
    */
   private static calculateSuggestedImpact(
-    direction: 'YES' | 'NO' | 'NEUTRAL',
-    strength: 'weak' | 'moderate' | 'strong',
-    clarity: number | null | undefined
+    direction: "YES" | "NO" | "NEUTRAL",
+    strength: "weak" | "moderate" | "strong",
+    clarity: number | null | undefined,
   ): number {
-    if (direction === 'NEUTRAL') return 0;
+    if (direction === "NEUTRAL") return 0;
 
     const baseImpact =
-      strength === 'strong' ? 0.1 : strength === 'moderate' ? 0.05 : 0.02;
+      strength === "strong" ? 0.1 : strength === "moderate" ? 0.05 : 0.02;
 
     // Scale by clarity
     const clarityMultiplier = clarity ?? 0.5;

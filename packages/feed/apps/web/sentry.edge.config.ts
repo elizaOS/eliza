@@ -5,7 +5,7 @@
  * We keep this config lightweight and Node-free.
  */
 
-import * as Sentry from '@sentry/nextjs';
+import * as Sentry from "@sentry/nextjs";
 
 const sentryEdgeRelease =
   process.env.SENTRY_RELEASE ??
@@ -20,13 +20,13 @@ Sentry.init({
     process.env.SENTRY_ENVIRONMENT ??
     process.env.VERCEL_ENV ??
     process.env.NODE_ENV ??
-    'development',
+    "development",
 
   release: sentryEdgeRelease,
 
   debug: false,
 
-  tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
+  tracesSampleRate: process.env.NODE_ENV === "production" ? 0.1 : 1.0,
 
   beforeSend(event) {
     if (!process.env.SENTRY_DSN && !process.env.NEXT_PUBLIC_SENTRY_DSN) {

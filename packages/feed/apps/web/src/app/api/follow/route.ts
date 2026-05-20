@@ -1,27 +1,27 @@
-import { BusinessLogicError, withErrorHandling } from '@feed/api';
-import type { NextRequest } from 'next/server';
+import { BusinessLogicError, withErrorHandling } from "@feed/api";
+import type { NextRequest } from "next/server";
 import {
   DELETE as deleteFollow,
   GET as getFollow,
   POST as postFollow,
-} from '../users/[userId]/follow/route';
+} from "../users/[userId]/follow/route";
 
 async function resolveUserId(request: NextRequest): Promise<string> {
   const { searchParams } = new URL(request.url);
-  const queryUserId = searchParams.get('userId')?.trim();
+  const queryUserId = searchParams.get("userId")?.trim();
 
   if (queryUserId) {
     return queryUserId;
   }
 
   const body = await request.json().catch(() => null);
-  const bodyUserId = typeof body?.userId === 'string' ? body.userId.trim() : '';
+  const bodyUserId = typeof body?.userId === "string" ? body.userId.trim() : "";
 
   if (bodyUserId) {
     return bodyUserId;
   }
 
-  throw new BusinessLogicError('userId is required', 'USER_ID_REQUIRED');
+  throw new BusinessLogicError("userId is required", "USER_ID_REQUIRED");
 }
 
 function toContext(userId: string) {

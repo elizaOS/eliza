@@ -5,7 +5,7 @@
  */
 
 // Client-side exports (safe for browser)
-export { getStripe, isStripeEnabled } from './client';
+export { getStripe, isStripeEnabled } from "./client";
 
 // Server-side exports should be imported directly from './server'
 // to avoid bundling server code into client bundles

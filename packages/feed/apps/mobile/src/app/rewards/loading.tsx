@@ -1,1 +1,1 @@
-export { default } from '@web/app/rewards/loading';
+export { default } from "@web/app/rewards/loading";

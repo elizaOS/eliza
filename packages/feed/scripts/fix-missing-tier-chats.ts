@@ -22,19 +22,19 @@ import {
   groupMembers,
   groups,
   isNull,
-} from '@feed/db';
-import { StaticDataRegistry } from '@feed/engine';
-import { generateSnowflakeId } from '@feed/shared';
+} from "@feed/db";
+import { StaticDataRegistry } from "@feed/engine";
+import { generateSnowflakeId } from "@feed/shared";
 
 async function main() {
   const args = process.argv.slice(2);
-  const dryRun = args.includes('--dry-run');
+  const dryRun = args.includes("--dry-run");
 
-  console.log('\n🔧 Fix Missing Tier Chats');
-  console.log('='.repeat(60));
+  console.log("\n🔧 Fix Missing Tier Chats");
+  console.log("=".repeat(60));
 
   if (dryRun) {
-    console.log('DRY RUN MODE - No changes will be made\n');
+    console.log("DRY RUN MODE - No changes will be made\n");
   }
 
   // Find all NPC tier groups without chats
@@ -49,15 +49,15 @@ async function main() {
     .leftJoin(chats, eq(chats.groupId, groups.id))
     .where(
       and(
-        eq(groups.type, 'npc'),
-        isNull(chats.id) // No associated chat
-      )
+        eq(groups.type, "npc"),
+        isNull(chats.id), // No associated chat
+      ),
     );
 
   console.log(`Found ${groupsWithoutChats.length} groups without chats\n`);
 
   if (groupsWithoutChats.length === 0) {
-    console.log('✅ All NPC groups have associated chats!');
+    console.log("✅ All NPC groups have associated chats!");
     process.exit(0);
   }
 
@@ -88,8 +88,8 @@ async function main() {
         .where(
           and(
             eq(groupMembers.groupId, group.id),
-            eq(groupMembers.isActive, true)
-          )
+            eq(groupMembers.isActive, true),
+          ),
         );
 
       // Wrap all inserts in a transaction for atomicity
@@ -130,12 +130,12 @@ async function main() {
             // Only ignore duplicate-key errors; rethrow other errors
             const errorMessage = String(insertError);
             const isDuplicateKey =
-              errorMessage.includes('unique constraint') ||
-              errorMessage.includes('duplicate key') ||
-              errorMessage.includes('UNIQUE constraint failed');
+              errorMessage.includes("unique constraint") ||
+              errorMessage.includes("duplicate key") ||
+              errorMessage.includes("UNIQUE constraint failed");
             if (!isDuplicateKey) {
               console.log(
-                `  ⚠️ Error adding participant ${member.userId}: ${errorMessage}`
+                `  ⚠️ Error adding participant ${member.userId}: ${errorMessage}`,
               );
               throw insertError;
             }
@@ -144,7 +144,7 @@ async function main() {
       });
 
       console.log(
-        `  ✅ Created chat ${chatId} with ${existingMembers.length} participants`
+        `  ✅ Created chat ${chatId} with ${existingMembers.length} participants`,
       );
       fixed++;
     } catch (error) {
@@ -153,13 +153,13 @@ async function main() {
     }
   }
 
-  console.log('\n' + '='.repeat(60));
+  console.log(`\n${"=".repeat(60)}`);
   console.log(`\n📊 Results: ${fixed} fixed, ${errors} errors\n`);
 
   if (!dryRun && fixed > 0) {
-    console.log('✅ Fixed! Now run the migration script again:');
+    console.log("✅ Fixed! Now run the migration script again:");
     console.log(
-      '   bun run scripts/migrate-users-to-default-groups.ts --user=<your-id>'
+      "   bun run scripts/migrate-users-to-default-groups.ts --user=<your-id>",
     );
   }
 
@@ -167,6 +167,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error('Fatal error:', error);
+  console.error("Fatal error:", error);
   process.exit(1);
 });

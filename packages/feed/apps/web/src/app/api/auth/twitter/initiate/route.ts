@@ -35,30 +35,30 @@
  * @see {@link https://developer.twitter.com/en/docs/authentication/oauth-2-0} Twitter OAuth 2.0
  */
 
-import { authenticate, withErrorHandling } from '@feed/api';
-import { db } from '@feed/db';
+import crypto from "node:crypto";
+import { authenticate, withErrorHandling } from "@feed/api";
+import { db } from "@feed/db";
 import {
   generateSnowflakeId,
   getWaitlistBaseUrl,
   logger,
   toISO,
-} from '@feed/shared';
-import crypto from 'crypto';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 /**
  * Generate PKCE code verifier (random string)
  */
 function generateCodeVerifier(): string {
-  return crypto.randomBytes(32).toString('base64url');
+  return crypto.randomBytes(32).toString("base64url");
 }
 
 /**
  * Generate PKCE code challenge from verifier
  */
 function generateCodeChallenge(verifier: string): string {
-  return crypto.createHash('sha256').update(verifier).digest('base64url');
+  return crypto.createHash("sha256").update(verifier).digest("base64url");
 }
 
 export const GET = withErrorHandling(async function GET(request: NextRequest) {
@@ -79,41 +79,41 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
       userId,
       state,
       codeVerifier,
-      returnPath: 'twitter', // Use returnPath to store provider
+      returnPath: "twitter", // Use returnPath to store provider
       expiresAt: new Date(Date.now() + 10 * 60 * 1000),
     },
   });
 
   logger.info(
-    'Created OAuth state record',
+    "Created OAuth state record",
     {
       userId,
       state,
       oauthRecordId: oauthRecord.id,
       expiresAt: toISO(oauthRecord.expiresAt),
     },
-    'TwitterInitiate'
+    "TwitterInitiate",
   );
 
-  const authUrl = new URL('https://x.com/i/oauth2/authorize');
-  authUrl.searchParams.set('response_type', 'code');
-  authUrl.searchParams.set('client_id', process.env.TWITTER_CLIENT_ID!);
+  const authUrl = new URL("https://x.com/i/oauth2/authorize");
+  authUrl.searchParams.set("response_type", "code");
+  authUrl.searchParams.set("client_id", process.env.TWITTER_CLIENT_ID!);
   authUrl.searchParams.set(
-    'redirect_uri',
-    `${getWaitlistBaseUrl()}/api/auth/twitter/callback`
+    "redirect_uri",
+    `${getWaitlistBaseUrl()}/api/auth/twitter/callback`,
   );
   authUrl.searchParams.set(
-    'scope',
-    'tweet.read tweet.write users.read offline.access'
+    "scope",
+    "tweet.read tweet.write users.read offline.access",
   );
-  authUrl.searchParams.set('state', state);
-  authUrl.searchParams.set('code_challenge', codeChallenge);
-  authUrl.searchParams.set('code_challenge_method', 'S256');
+  authUrl.searchParams.set("state", state);
+  authUrl.searchParams.set("code_challenge", codeChallenge);
+  authUrl.searchParams.set("code_challenge_method", "S256");
 
   logger.info(
-    'Initiating Twitter OAuth with PKCE',
-    { userId, state: state.substring(0, 20) + '...' },
-    'TwitterInitiate'
+    "Initiating Twitter OAuth with PKCE",
+    { userId, state: `${state.substring(0, 20)}...` },
+    "TwitterInitiate",
   );
 
   return NextResponse.redirect(authUrl.toString());

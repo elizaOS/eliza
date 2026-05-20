@@ -1,9 +1,9 @@
-import { definePrompt } from '../define-prompt';
+import { definePrompt } from "../define-prompt";
 import {
   ANTI_REPETITION_RULES,
   characterVoiceGuidance,
   PARODY_NAME_RULES,
-} from '../shared-sections';
+} from "../shared-sections";
 
 /**
  * Prompt for generating private group chat messages for the day.
@@ -25,11 +25,11 @@ import {
  *             actorVoiceReference (built from group member postStyle + postExample)
  */
 export const groupMessages = definePrompt({
-  id: 'group-messages',
-  version: '6.0.0',
-  category: 'game',
+  id: "group-messages",
+  version: "6.0.0",
+  category: "game",
   description:
-    'Generates private group chats — unfiltered, unhinged, DM energy',
+    "Generates private group chats — unfiltered, unhinged, DM energy",
   temperature: 1,
   maxTokens: 20000,
   template: `{{realityGrounding}}
@@ -76,7 +76,7 @@ ${PARODY_NAME_RULES}
 
 {{actorVoiceReference}}
 
-${characterVoiceGuidance('actorVoiceReference')}
+${characterVoiceGuidance("actorVoiceReference")}
 
 ${ANTI_REPETITION_RULES}
 

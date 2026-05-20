@@ -14,7 +14,7 @@ import {
   describe,
   expect,
   test,
-} from 'bun:test';
+} from "bun:test";
 import {
   actorState,
   db,
@@ -22,34 +22,34 @@ import {
   type Pool,
   perpPositions,
   poolPositions,
-} from '@feed/db';
+} from "@feed/db";
 import {
   buildFallbackMetricsByPool,
   type FallbackPerpRow,
   type FallbackPositionRow,
   NPCInvestmentManager,
-} from '@feed/engine';
-import { generateSnowflakeId } from '@feed/shared';
+} from "@feed/engine";
+import { generateSnowflakeId } from "@feed/shared";
 
-describe('NPC Leaderboard Fallback Metrics', () => {
-  const TEST_POOL_ID = 'test-fallback-pool-' + Date.now();
-  const TEST_ACTOR_ID = 'test-fallback-actor-' + Date.now();
+describe("NPC Leaderboard Fallback Metrics", () => {
+  const TEST_POOL_ID = `test-fallback-pool-${Date.now()}`;
+  const TEST_ACTOR_ID = `test-fallback-actor-${Date.now()}`;
   const INITIAL_BALANCE = 10000;
 
   const testPool = {
     id: TEST_POOL_ID,
     npcActorId: TEST_ACTOR_ID,
-    name: 'Fallback Test Pool',
-    totalValue: '0',
-    totalDeposits: '0',
-    availableBalance: '0',
-    lifetimePnL: '0',
+    name: "Fallback Test Pool",
+    totalValue: "0",
+    totalDeposits: "0",
+    availableBalance: "0",
+    lifetimePnL: "0",
     performanceFeeRate: 0.05,
-    totalFeesCollected: '0',
+    totalFeesCollected: "0",
     isActive: true,
     openedAt: new Date(),
     updatedAt: new Date(),
-    status: 'ACTIVE',
+    status: "ACTIVE",
   };
 
   async function fetchFallbackInputs() {
@@ -128,7 +128,7 @@ describe('NPC Leaderboard Fallback Metrics', () => {
     await db.delete(actorState).where(eq(actorState.id, TEST_POOL_ID));
   });
 
-  test('should match getPortfolioMetrics when no positions exist', async () => {
+  test("should match getPortfolioMetrics when no positions exist", async () => {
     const live = await NPCInvestmentManager.getPortfolioMetrics(TEST_POOL_ID);
     const { balances, posRows, perpRows } = await fetchFallbackInputs();
 
@@ -136,7 +136,7 @@ describe('NPC Leaderboard Fallback Metrics', () => {
       [testPool as Pool],
       balances,
       posRows as FallbackPositionRow[],
-      perpRows as FallbackPerpRow[]
+      perpRows as FallbackPerpRow[],
     );
     const fallback = fallbackMap.get(TEST_POOL_ID)!;
 
@@ -148,15 +148,15 @@ describe('NPC Leaderboard Fallback Metrics', () => {
     expect(fallback.utilization).toBe(live.utilization);
   });
 
-  test('should match getPortfolioMetrics with open prediction positions', async () => {
+  test("should match getPortfolioMetrics with open prediction positions", async () => {
     const posId = await generateSnowflakeId();
 
     await db.insert(poolPositions).values({
       id: posId,
       poolId: TEST_POOL_ID,
-      marketType: 'prediction',
-      marketId: 'test-market-fb-1',
-      side: 'YES',
+      marketType: "prediction",
+      marketId: "test-market-fb-1",
+      side: "YES",
       entryPrice: 50,
       currentPrice: 60,
       size: 500,
@@ -174,7 +174,7 @@ describe('NPC Leaderboard Fallback Metrics', () => {
       [testPool as Pool],
       balances,
       posRows as FallbackPositionRow[],
-      perpRows as FallbackPerpRow[]
+      perpRows as FallbackPerpRow[],
     );
     const fallback = fallbackMap.get(TEST_POOL_ID)!;
 
@@ -184,7 +184,7 @@ describe('NPC Leaderboard Fallback Metrics', () => {
     expect(fallback.utilization).toBeCloseTo(live.utilization, 2);
   });
 
-  test('should match getPortfolioMetrics with closed positions (realized PnL)', async () => {
+  test("should match getPortfolioMetrics with closed positions (realized PnL)", async () => {
     const pos1Id = await generateSnowflakeId();
     const pos2Id = await generateSnowflakeId();
 
@@ -192,9 +192,9 @@ describe('NPC Leaderboard Fallback Metrics', () => {
       {
         id: pos1Id,
         poolId: TEST_POOL_ID,
-        marketType: 'prediction',
-        marketId: 'test-market-fb-2',
-        side: 'YES',
+        marketType: "prediction",
+        marketId: "test-market-fb-2",
+        side: "YES",
         entryPrice: 50,
         currentPrice: 60,
         size: 100,
@@ -207,9 +207,9 @@ describe('NPC Leaderboard Fallback Metrics', () => {
       {
         id: pos2Id,
         poolId: TEST_POOL_ID,
-        marketType: 'prediction',
-        marketId: 'test-market-fb-3',
-        side: 'NO',
+        marketType: "prediction",
+        marketId: "test-market-fb-3",
+        side: "NO",
         entryPrice: 40,
         currentPrice: 30,
         size: 200,
@@ -228,7 +228,7 @@ describe('NPC Leaderboard Fallback Metrics', () => {
       [testPool as Pool],
       balances,
       posRows as FallbackPositionRow[],
-      perpRows as FallbackPerpRow[]
+      perpRows as FallbackPerpRow[],
     );
     const fallback = fallbackMap.get(TEST_POOL_ID)!;
 
@@ -237,15 +237,15 @@ describe('NPC Leaderboard Fallback Metrics', () => {
     expect(fallback.positionCount).toBe(live.positionCount);
   });
 
-  test('should match getPortfolioMetrics with open perp positions', async () => {
+  test("should match getPortfolioMetrics with open perp positions", async () => {
     const perpId = await generateSnowflakeId();
 
     await db.insert(perpPositions).values({
       id: perpId,
       userId: TEST_POOL_ID,
-      organizationId: 'org-fb-1',
-      ticker: 'ACME',
-      side: 'long',
+      organizationId: "org-fb-1",
+      ticker: "ACME",
+      side: "long",
       entryPrice: 100,
       currentPrice: 120,
       size: 600,
@@ -266,7 +266,7 @@ describe('NPC Leaderboard Fallback Metrics', () => {
       [testPool as Pool],
       balances,
       posRows as FallbackPositionRow[],
-      perpRows as FallbackPerpRow[]
+      perpRows as FallbackPerpRow[],
     );
     const fallback = fallbackMap.get(TEST_POOL_ID)!;
 
@@ -276,7 +276,7 @@ describe('NPC Leaderboard Fallback Metrics', () => {
     expect(fallback.utilization).toBeCloseTo(live.utilization, 2);
   });
 
-  test('should match getPortfolioMetrics with mixed pool + perp positions', async () => {
+  test("should match getPortfolioMetrics with mixed pool + perp positions", async () => {
     const poolPosId = await generateSnowflakeId();
     const perpPosId = await generateSnowflakeId();
     const closedPerpId = await generateSnowflakeId();
@@ -284,9 +284,9 @@ describe('NPC Leaderboard Fallback Metrics', () => {
     await db.insert(poolPositions).values({
       id: poolPosId,
       poolId: TEST_POOL_ID,
-      marketType: 'prediction',
-      marketId: 'test-market-fb-mix',
-      side: 'YES',
+      marketType: "prediction",
+      marketId: "test-market-fb-mix",
+      side: "YES",
       entryPrice: 50,
       currentPrice: 55,
       size: 100,
@@ -301,9 +301,9 @@ describe('NPC Leaderboard Fallback Metrics', () => {
       {
         id: perpPosId,
         userId: TEST_POOL_ID,
-        organizationId: 'org-fb-mix',
-        ticker: 'BETA',
-        side: 'long',
+        organizationId: "org-fb-mix",
+        ticker: "BETA",
+        side: "long",
         entryPrice: 100,
         currentPrice: 95,
         size: 300,
@@ -319,9 +319,9 @@ describe('NPC Leaderboard Fallback Metrics', () => {
       {
         id: closedPerpId,
         userId: TEST_POOL_ID,
-        organizationId: 'org-fb-mix2',
-        ticker: 'GAMMA',
-        side: 'short',
+        organizationId: "org-fb-mix2",
+        ticker: "GAMMA",
+        side: "short",
         entryPrice: 150,
         currentPrice: 140,
         size: 400,
@@ -343,7 +343,7 @@ describe('NPC Leaderboard Fallback Metrics', () => {
       [testPool as Pool],
       balances,
       posRows as FallbackPositionRow[],
-      perpRows as FallbackPerpRow[]
+      perpRows as FallbackPerpRow[],
     );
     const fallback = fallbackMap.get(TEST_POOL_ID)!;
 
@@ -354,16 +354,16 @@ describe('NPC Leaderboard Fallback Metrics', () => {
     expect(fallback.utilization).toBeCloseTo(live.utilization, 2);
   });
 
-  test('should dedupe legacy perp rows in poolPositions', async () => {
+  test("should dedupe legacy perp rows in poolPositions", async () => {
     const sharedId = await generateSnowflakeId();
 
     // Same position exists in both tables (legacy data pattern)
     await db.insert(poolPositions).values({
       id: sharedId,
       poolId: TEST_POOL_ID,
-      marketType: 'perp',
-      ticker: 'ACME',
-      side: 'long',
+      marketType: "perp",
+      ticker: "ACME",
+      side: "long",
       entryPrice: 100,
       currentPrice: 120,
       size: 400,
@@ -379,9 +379,9 @@ describe('NPC Leaderboard Fallback Metrics', () => {
     await db.insert(perpPositions).values({
       id: sharedId,
       userId: TEST_POOL_ID,
-      organizationId: 'org-fb-dedup',
-      ticker: 'ACME',
-      side: 'long',
+      organizationId: "org-fb-dedup",
+      ticker: "ACME",
+      side: "long",
       entryPrice: 100,
       currentPrice: 120,
       size: 400,
@@ -402,7 +402,7 @@ describe('NPC Leaderboard Fallback Metrics', () => {
       [testPool as Pool],
       balances,
       posRows as FallbackPositionRow[],
-      perpRows as FallbackPerpRow[]
+      perpRows as FallbackPerpRow[],
     );
     const fallback = fallbackMap.get(TEST_POOL_ID)!;
 

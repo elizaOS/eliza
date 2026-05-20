@@ -5,8 +5,8 @@
  * All calls are null-safe: getActiveTracer() returns null when tracing is disabled.
  */
 
-import { logger } from '@feed/shared';
-import { GAME_TICK_DAG } from './dag-definition';
+import { logger } from "@feed/shared";
+import { GAME_TICK_DAG } from "./dag-definition";
 import type {
   LLMCallInput,
   LLMCallTrace,
@@ -19,7 +19,7 @@ import type {
   SubOperation,
   TickTrace,
   TokenStatsSummary,
-} from './types';
+} from "./types";
 
 let activeTracer: TickTracer | null = null;
 
@@ -82,12 +82,12 @@ export class TickTracer {
     this.nodes.set(nodeId, {
       nodeId,
       name: dagNode?.name ?? nodeId,
-      phase: dagNode?.phase ?? 'Unknown',
+      phase: dagNode?.phase ?? "Unknown",
       phaseNumber: dagNode?.phaseNumber ?? 0,
       startMs: Date.now(),
       endMs: 0,
       durationMs: 0,
-      status: 'success',
+      status: "success",
       inputs: this.safeSerialize(inputs),
       outputs: {},
       llmCallIds: [],
@@ -101,7 +101,7 @@ export class TickTracer {
     node.endMs = Date.now();
     node.durationMs = node.endMs - node.startMs;
     node.outputs = this.safeSerialize(outputs);
-    node.status = 'success';
+    node.status = "success";
 
     if (this.currentNodeId === nodeId) {
       this.currentNodeId = null;
@@ -113,12 +113,12 @@ export class TickTracer {
     this.nodes.set(nodeId, {
       nodeId,
       name: dagNode?.name ?? nodeId,
-      phase: dagNode?.phase ?? 'Unknown',
+      phase: dagNode?.phase ?? "Unknown",
       phaseNumber: dagNode?.phaseNumber ?? 0,
       startMs: Date.now(),
       endMs: Date.now(),
       durationMs: 0,
-      status: 'skipped',
+      status: "skipped",
       inputs: {},
       outputs: {},
       error: reason,
@@ -133,18 +133,18 @@ export class TickTracer {
   delegateNode(
     nodeId: string,
     source: string,
-    data: Record<string, unknown> = {}
+    data: Record<string, unknown> = {},
   ): void {
     const dagNode = GAME_TICK_DAG.nodes.find((n) => n.id === nodeId);
     this.nodes.set(nodeId, {
       nodeId,
       name: dagNode?.name ?? nodeId,
-      phase: dagNode?.phase ?? 'Unknown',
+      phase: dagNode?.phase ?? "Unknown",
       phaseNumber: dagNode?.phaseNumber ?? 0,
       startMs: Date.now(),
       endMs: Date.now(),
       durationMs: 0,
-      status: 'delegated',
+      status: "delegated",
       inputs: { delegatedTo: source },
       outputs: this.safeSerialize(data),
       llmCallIds: [],
@@ -156,7 +156,7 @@ export class TickTracer {
     if (node) {
       node.endMs = Date.now();
       node.durationMs = node.endMs - node.startMs;
-      node.status = 'error';
+      node.status = "error";
       node.error = error instanceof Error ? error.message : String(error);
     }
     if (this.currentNodeId === nodeId) {
@@ -169,9 +169,9 @@ export class TickTracer {
    */
   recordLLMCall(call: LLMCallInput, explicitNodeId?: string): string {
     this.llmCallCounter++;
-    const callId = `call-${String(this.llmCallCounter).padStart(3, '0')}-${call.promptType}`;
+    const callId = `call-${String(this.llmCallCounter).padStart(3, "0")}-${call.promptType}`;
     const nodeId =
-      explicitNodeId ?? call.nodeId ?? this.currentNodeId ?? 'unknown';
+      explicitNodeId ?? call.nodeId ?? this.currentNodeId ?? "unknown";
 
     const trace: LLMCallTrace = {
       callId,
@@ -237,7 +237,7 @@ export class TickTracer {
   recordNPCDecision(
     npcId: string,
     npcName: string,
-    decision: NPCDecision
+    decision: NPCDecision,
   ): void {
     this.npcNames.set(npcId, npcName);
     const arr = this.npcDecisions.get(npcId) ?? [];
@@ -262,7 +262,7 @@ export class TickTracer {
   recordNPCGroupMessage(
     npcId: string,
     npcName: string,
-    msg: NPCGroupMessage
+    msg: NPCGroupMessage,
   ): void {
     this.npcNames.set(npcId, npcName);
     const arr = this.npcGroupMessages.get(npcId) ?? [];
@@ -352,18 +352,18 @@ export class TickTracer {
       if (value instanceof Error) {
         return { name: value.name, message: value.message, stack: value.stack };
       }
-      if (typeof value === 'bigint') {
+      if (typeof value === "bigint") {
         return value.toString();
       }
-      if (typeof value === 'string' && value.length > MAX_STRING_LENGTH) {
+      if (typeof value === "string" && value.length > MAX_STRING_LENGTH) {
         truncatedKeys.push({ key, originalLength: value.length });
         return (
           value.slice(0, MAX_STRING_LENGTH) +
           `... [truncated ${value.length - MAX_STRING_LENGTH} chars]`
         );
       }
-      if (typeof value === 'object' && value !== null) {
-        if (seen.has(value)) return '[Circular]';
+      if (typeof value === "object" && value !== null) {
+        if (seen.has(value)) return "[Circular]";
         seen.add(value);
       }
       return value;
@@ -377,9 +377,9 @@ export class TickTracer {
       return result;
     } catch (err) {
       logger.warn(
-        'Failed to serialize trace data',
+        "Failed to serialize trace data",
         err instanceof Error ? err : undefined,
-        'DagTrace'
+        "DagTrace",
       );
       return { _serializationError: true };
     }

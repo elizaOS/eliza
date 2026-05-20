@@ -86,18 +86,18 @@
  * @see {@link /lib/serverless-game-tick} Game tick engine
  */
 
-import { successResponse, withErrorHandling } from '@feed/api';
-import { gameService } from '@feed/engine';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+import { successResponse, withErrorHandling } from "@feed/api";
+import { gameService } from "@feed/engine";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 export const GET = withErrorHandling(async (_request: NextRequest) => {
   const games = await gameService.getAllGames();
 
   logger.info(
-    'Games fetched successfully',
+    "Games fetched successfully",
     { count: games.length },
-    'GET /api/games'
+    "GET /api/games",
   );
 
   return successResponse({

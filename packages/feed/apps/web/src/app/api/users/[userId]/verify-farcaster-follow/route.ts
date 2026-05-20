@@ -51,13 +51,13 @@ import {
   requireUserByIdentifier,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { db, eq, users } from '@feed/db';
-import { logger, UserIdParamSchema } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/api";
+import { db, eq, users } from "@feed/db";
+import { logger, UserIdParamSchema } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 // Feed Farcaster FID (playfeed)
-const FEED_FARCASTER_FID = process.env.FARCASTER_FID || '1521916'; // playfeed FID
+const FEED_FARCASTER_FID = process.env.FARCASTER_FID || "1521916"; // playfeed FID
 
 /**
  * POST /api/users/[userId]/verify-farcaster-follow
@@ -66,7 +66,7 @@ const FEED_FARCASTER_FID = process.env.FARCASTER_FID || '1521916'; // playfeed F
 export const POST = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ userId: string }> }
+    context: { params: Promise<{ userId: string }> },
   ) => {
     // Authenticate user
     const authUser = await authenticate(request);
@@ -75,9 +75,9 @@ export const POST = withErrorHandling(
     // Check if the authenticated user has a database record
     if (!authUser.dbUserId) {
       throw new AuthorizationError(
-        'User profile not found. Please complete onboarding first.',
-        'farcaster-follow-verification',
-        'create'
+        "User profile not found. Please complete onboarding first.",
+        "farcaster-follow-verification",
+        "create",
       );
     }
 
@@ -87,9 +87,9 @@ export const POST = withErrorHandling(
     // Verify user is verifying their own follow
     if (authUser.dbUserId !== canonicalUserId) {
       throw new AuthorizationError(
-        'You can only verify your own Farcaster follow',
-        'farcaster-follow-verification',
-        'create'
+        "You can only verify your own Farcaster follow",
+        "farcaster-follow-verification",
+        "create",
       );
     }
 
@@ -107,8 +107,8 @@ export const POST = withErrorHandling(
     // VALIDATION 1: Check if user has linked Farcaster account
     if (!user?.farcasterUsername && !user?.farcasterFid) {
       throw new BusinessLogicError(
-        'Please link your Farcaster account first to verify follow.',
-        'FARCASTER_NOT_LINKED'
+        "Please link your Farcaster account first to verify follow.",
+        "FARCASTER_NOT_LINKED",
       );
     }
 
@@ -116,8 +116,8 @@ export const POST = withErrorHandling(
 
     if (!userFid) {
       throw new BusinessLogicError(
-        'Farcaster FID not found. Please re-link your Farcaster account.',
-        'FARCASTER_FID_NOT_FOUND'
+        "Farcaster FID not found. Please re-link your Farcaster account.",
+        "FARCASTER_FID_NOT_FOUND",
       );
     }
 
@@ -126,8 +126,8 @@ export const POST = withErrorHandling(
     // Check if Neynar API key is configured
     if (!process.env.NEYNAR_API_KEY) {
       throw new BusinessLogicError(
-        'Farcaster verification is not configured. Please contact support.',
-        'NEYNAR_NOT_CONFIGURED'
+        "Farcaster verification is not configured. Please contact support.",
+        "NEYNAR_NOT_CONFIGURED",
       );
     }
 
@@ -136,9 +136,9 @@ export const POST = withErrorHandling(
     let verificationError: string | null = null;
 
     logger.info(
-      'Attempting to verify Farcaster follow',
+      "Attempting to verify Farcaster follow",
       { userId: canonicalUserId, userFid, feedFid: FEED_FARCASTER_FID },
-      'POST /api/users/[userId]/verify-farcaster-follow'
+      "POST /api/users/[userId]/verify-farcaster-follow",
     );
 
     // Use Neynar API to check relationship between user and Feed
@@ -147,20 +147,20 @@ export const POST = withErrorHandling(
       `https://api.neynar.com/v2/farcaster/user/bulk?fids=${userFid}&viewer_fid=${FEED_FARCASTER_FID}`,
       {
         headers: {
-          accept: 'application/json',
+          accept: "application/json",
           api_key: process.env.NEYNAR_API_KEY,
         },
         signal: AbortSignal.timeout(10000), // 10 second timeout
-      }
+      },
     );
 
     if (neynarResponse.ok) {
       const neynarData = await neynarResponse.json();
 
       logger.info(
-        'Neynar API response received',
+        "Neynar API response received",
         { userId: canonicalUserId, hasUsers: !!neynarData.users },
-        'POST /api/users/[userId]/verify-farcaster-follow'
+        "POST /api/users/[userId]/verify-farcaster-follow",
       );
 
       if (neynarData.users && neynarData.users.length > 0) {
@@ -172,51 +172,51 @@ export const POST = withErrorHandling(
         //   - following: true = Feed follows user (not what we want)
         const viewerContext = userData.viewer_context;
 
-        if (viewerContext && viewerContext.followed_by) {
+        if (viewerContext?.followed_by) {
           isFollowing = true;
           logger.info(
-            'User is following @playfeed',
+            "User is following @playfeed",
             { userId: canonicalUserId, userFid },
-            'POST /api/users/[userId]/verify-farcaster-follow'
+            "POST /api/users/[userId]/verify-farcaster-follow",
           );
         } else {
           verificationError =
-            'You are not following @playfeed on Farcaster. Please follow first.';
+            "You are not following @playfeed on Farcaster. Please follow first.";
           logger.warn(
-            'User is not following @playfeed',
+            "User is not following @playfeed",
             { userId: canonicalUserId, userFid, viewerContext },
-            'POST /api/users/[userId]/verify-farcaster-follow'
+            "POST /api/users/[userId]/verify-farcaster-follow",
           );
         }
       } else {
         verificationError =
-          'User not found on Farcaster. Please re-link your account.';
+          "User not found on Farcaster. Please re-link your account.";
         logger.warn(
-          'User not found in Neynar response',
+          "User not found in Neynar response",
           { userId: canonicalUserId, userFid },
-          'POST /api/users/[userId]/verify-farcaster-follow'
+          "POST /api/users/[userId]/verify-farcaster-follow",
         );
       }
     } else if (neynarResponse.status === 404) {
       verificationError =
-        'User not found on Farcaster. Please check your account.';
+        "User not found on Farcaster. Please check your account.";
       logger.warn(
-        'User not found (404) via Neynar',
+        "User not found (404) via Neynar",
         { userId: canonicalUserId, userFid },
-        'POST /api/users/[userId]/verify-farcaster-follow'
+        "POST /api/users/[userId]/verify-farcaster-follow",
       );
     } else {
-      const errorText = await neynarResponse.text().catch(() => '');
+      const errorText = await neynarResponse.text().catch(() => "");
       verificationError = `Neynar API error (${neynarResponse.status}). Please try again later.`;
       logger.error(
-        'Neynar API error',
+        "Neynar API error",
         {
           userId: canonicalUserId,
           userFid,
           status: neynarResponse.status,
           error: errorText,
         },
-        'POST /api/users/[userId]/verify-farcaster-follow'
+        "POST /api/users/[userId]/verify-farcaster-follow",
       );
     }
 
@@ -226,7 +226,7 @@ export const POST = withErrorHandling(
         verified: false,
         message:
           verificationError ||
-          'Could not verify follow. Please ensure you are following @playfeed on Farcaster.',
+          "Could not verify follow. Please ensure you are following @playfeed on Farcaster.",
         reputation: {
           awarded: 0,
           newReputationTotal: 0,
@@ -250,15 +250,15 @@ export const POST = withErrorHandling(
         logger.info(
           `Awarded ${reputationAwarded} reputation for Farcaster follow`,
           { userId: canonicalUserId, reputationAwarded },
-          'POST /api/users/[userId]/verify-farcaster-follow'
+          "POST /api/users/[userId]/verify-farcaster-follow",
         );
       }
     } else {
       // Already awarded, but still successful verification
       logger.info(
-        'Farcaster follow already verified (no additional points)',
+        "Farcaster follow already verified (no additional points)",
         { userId: canonicalUserId },
-        'POST /api/users/[userId]/verify-farcaster-follow'
+        "POST /api/users/[userId]/verify-farcaster-follow",
       );
     }
 
@@ -267,11 +267,11 @@ export const POST = withErrorHandling(
       message:
         reputationAwarded > 0
           ? `Follow verified successfully! You earned ${reputationAwarded} reputation.`
-          : 'Follow verified! You already received reputation for this action.',
+          : "Follow verified! You already received reputation for this action.",
       reputation: {
         awarded: reputationAwarded,
         newReputationTotal,
       },
     });
-  }
+  },
 );

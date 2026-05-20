@@ -5,22 +5,22 @@
  * This enables users to see what their agents are doing in real-time.
  */
 
-import { db, eq, users } from '@feed/db';
-import { logger } from '@feed/shared';
-import { getOrCreateDMChat, sendMessageToChat } from './dm-service';
+import { db, eq, users } from "@feed/db";
+import { logger } from "@feed/shared";
+import { getOrCreateDMChat, sendMessageToChat } from "./dm-service";
 
 export interface AgentTradeDetails {
   /** The agent's user ID */
   agentUserId: string;
   /** Type of market: 'prediction' or 'perp' */
-  marketType: 'prediction' | 'perp';
+  marketType: "prediction" | "perp";
   /** Market ID or ticker symbol */
   marketId?: string;
   ticker?: string;
   /** Trade action: 'open', 'close' */
-  action: 'open' | 'close';
+  action: "open" | "close";
   /** Trade side: 'yes', 'no', 'long', 'short' */
-  side: 'yes' | 'no' | 'long' | 'short';
+  side: "yes" | "no" | "long" | "short";
   /** Amount in dollars */
   amount: number;
   /** Entry/exit price */
@@ -36,7 +36,7 @@ export interface AgentTradeDetails {
  */
 function formatTradeMessage(
   agentName: string,
-  details: AgentTradeDetails
+  details: AgentTradeDetails,
 ): string {
   const {
     marketType,
@@ -51,14 +51,14 @@ function formatTradeMessage(
   } = details;
 
   const marketDisplay =
-    (marketType === 'perp' ? ticker : marketId) ?? 'unknown market';
+    (marketType === "perp" ? ticker : marketId) ?? "unknown market";
   const sideDisplay = side.toUpperCase();
-  const actionEmoji = action === 'open' ? '📈' : '📉';
-  const actionText = action === 'open' ? 'opened' : 'closed';
+  const actionEmoji = action === "open" ? "📈" : "📉";
+  const actionText = action === "open" ? "opened" : "closed";
 
   let message = `${actionEmoji} ${agentName} just ${actionText} a ${sideDisplay} position`;
 
-  if (marketType === 'perp') {
+  if (marketType === "perp") {
     message += ` in ${marketDisplay}`;
   } else {
     message += ` on market ${marketDisplay}`;
@@ -66,8 +66,8 @@ function formatTradeMessage(
 
   message += `: $${amount.toFixed(2)} at $${price.toFixed(4)}`;
 
-  if (action === 'close' && pnl !== undefined) {
-    const pnlSign = pnl >= 0 ? '+' : '';
+  if (action === "close" && pnl !== undefined) {
+    const pnlSign = pnl >= 0 ? "+" : "";
     message += ` (P&L: ${pnlSign}$${pnl.toFixed(2)})`;
   }
 
@@ -85,7 +85,7 @@ function formatTradeMessage(
  * Fails silently if the owner can't be found or DM fails.
  */
 export async function notifyOwnerOfAgentTrade(
-  details: AgentTradeDetails
+  details: AgentTradeDetails,
 ): Promise<void> {
   const { agentUserId } = details;
 
@@ -104,9 +104,9 @@ export async function notifyOwnerOfAgentTrade(
 
     if (!agent) {
       logger.warn(
-        'Agent not found for trade notification',
+        "Agent not found for trade notification",
         { agentUserId },
-        'AgentTradeNotification'
+        "AgentTradeNotification",
       );
       return;
     }
@@ -118,15 +118,15 @@ export async function notifyOwnerOfAgentTrade(
 
     if (!agent.managedBy) {
       logger.warn(
-        'Agent has no owner for trade notification',
+        "Agent has no owner for trade notification",
         { agentUserId },
-        'AgentTradeNotification'
+        "AgentTradeNotification",
       );
       return;
     }
 
     const ownerId = agent.managedBy;
-    const agentName = agent.displayName ?? 'Your agent';
+    const agentName = agent.displayName ?? "Your agent";
 
     // Format the message
     const message = formatTradeMessage(agentName, details);
@@ -138,19 +138,19 @@ export async function notifyOwnerOfAgentTrade(
     await sendMessageToChat(chatId, agentUserId, message);
 
     logger.info(
-      'Sent trade notification to owner',
+      "Sent trade notification to owner",
       {
         agentUserId,
         ownerId,
         marketType: details.marketType,
         action: details.action,
       },
-      'AgentTradeNotification'
+      "AgentTradeNotification",
     );
   } catch (error) {
     // Log but don't throw - notifications shouldn't break trading
     logger.error(
-      'Failed to send trade notification',
+      "Failed to send trade notification",
       {
         agentUserId,
         error:
@@ -162,7 +162,7 @@ export async function notifyOwnerOfAgentTrade(
               }
             : error,
       },
-      'AgentTradeNotification'
+      "AgentTradeNotification",
     );
   }
 }

@@ -1,26 +1,26 @@
-'use client';
+"use client";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
-import { logger } from '@feed/shared';
-import { ArrowLeft, TrendingUp } from 'lucide-react';
-import nextDynamic from 'next/dynamic';
-import { useParams, useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
-import { PostCard } from '@/components/posts/PostCard';
-import { PageContainer } from '@/components/shared/PageContainer';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { apiUrl } from '@/utils/api-url';
+import { logger } from "@feed/shared";
+import { ArrowLeft, TrendingUp } from "lucide-react";
+import nextDynamic from "next/dynamic";
+import { useParams, useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
+import { PostCard } from "@/components/posts/PostCard";
+import { PageContainer } from "@/components/shared/PageContainer";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { apiUrl } from "@/utils/api-url";
 
 const WidgetSidebar = nextDynamic(
   () =>
-    import('@/components/shared/WidgetSidebar').then((m) => ({
+    import("@/components/shared/WidgetSidebar").then((m) => ({
       default: m.WidgetSidebar,
     })),
   {
     ssr: false,
     loading: () => <div className="hidden w-96 flex-none xl:block" />,
-  }
+  },
 );
 
 interface PostData {
@@ -62,13 +62,13 @@ export default function TrendingTagPage() {
 
       const response = await fetch(
         apiUrl(
-          `/api/trending/${encodeURIComponent(tag)}?limit=${PAGE_SIZE}&offset=${requestOffset}`
-        )
+          `/api/trending/${encodeURIComponent(tag)}?limit=${PAGE_SIZE}&offset=${requestOffset}`,
+        ),
       );
 
       if (!response.ok) {
         if (response.status === 404) {
-          logger.warn('Tag not found', { tag }, 'TrendingTagPage');
+          logger.warn("Tag not found", { tag }, "TrendingTagPage");
         }
         if (append) setHasMore(false);
         if (append) setLoadingMore(false);
@@ -112,7 +112,7 @@ export default function TrendingTagPage() {
       if (append) setLoadingMore(false);
       else setLoading(false);
     },
-    [tag]
+    [tag],
   );
 
   useEffect(() => {

@@ -7,30 +7,28 @@
  * is unavailable.
  */
 
-import { logger } from '@feed/shared';
-import OpenAI from 'openai';
-import { first } from '../utils/array-utils';
-import { isPromptLoggingEnabled, logPrompt } from '../utils/prompt-logger';
+import { logger } from "@feed/shared";
+import OpenAI from "openai";
+import { first } from "../utils/array-utils";
+import { isPromptLoggingEnabled, logPrompt } from "../utils/prompt-logger";
 
 // Configuration
 const LLM_TIMEOUT_MS = 15000; // 15 seconds
 const LLM_MAX_RETRIES = 2;
 const GROUPING_MODEL =
   process.env.TRENDING_GROUPING_MODEL ||
-  (process.env.GROQ_API_KEY ? 'llama-3.1-8b-instant' : 'gpt-5-nano');
+  (process.env.GROQ_API_KEY ? "llama-3.1-8b-instant" : "gpt-5-nano");
 const SUMMARY_MODEL =
   process.env.TRENDING_SUMMARY_MODEL ||
-  (process.env.GROQ_API_KEY ? 'llama-3.1-8b-instant' : 'gpt-5-nano');
+  (process.env.GROQ_API_KEY ? "llama-3.1-8b-instant" : "gpt-5-nano");
 
 // Check if LLM is available
 const hasApiKey = !!(process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY);
 const useGroq = !!process.env.GROQ_API_KEY;
 const groqBaseURL =
-  process.env.GROQ_BASE_URL || 'https://api.groq.com/openai/v1';
-const suppressOptionalLlmWarnings = ['1', 'true', 'yes'].includes(
-  (process.env.FEED_SUPPRESS_OPTIONAL_LLM_WARNINGS || '')
-    .trim()
-    .toLowerCase()
+  process.env.GROQ_BASE_URL || "https://api.groq.com/openai/v1";
+const suppressOptionalLlmWarnings = ["1", "true", "yes"].includes(
+  (process.env.FEED_SUPPRESS_OPTIONAL_LLM_WARNINGS || "").trim().toLowerCase(),
 );
 
 // Only initialize OpenAI client if we have an API key
@@ -38,14 +36,14 @@ let openai: OpenAI | null = null;
 if (hasApiKey) {
   openai = new OpenAI({
     apiKey: process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY,
-    baseURL: useGroq ? groqBaseURL : 'https://api.openai.com/v1',
+    baseURL: useGroq ? groqBaseURL : "https://api.openai.com/v1",
     timeout: LLM_TIMEOUT_MS,
   });
 } else if (!suppressOptionalLlmWarnings) {
   logger.warn(
-    'No LLM API key configured (GROQ_API_KEY or OPENAI_API_KEY) - trending grouping will use fallback logic',
+    "No LLM API key configured (GROQ_API_KEY or OPENAI_API_KEY) - trending grouping will use fallback logic",
     undefined,
-    'TrendingGroupingService'
+    "TrendingGroupingService",
   );
 }
 
@@ -95,17 +93,17 @@ export interface GroupedTrend {
  */
 function calculateCost(model: string, tokens: number): number {
   // Groq pricing (as of 2024): free tier, so $0
-  if (model.includes('llama')) {
+  if (model.includes("llama")) {
     return 0;
   }
 
   // OpenAI-compatible pricing (approximate, per 1M tokens)
   // Standard models: $2.50 input, $10 output (average ~$6/1M)
   // Mini models: $0.15 input, $0.60 output (average ~$0.375/1M)
-  if (model.includes('gpt-5-nano')) {
+  if (model.includes("gpt-5-nano")) {
     return (tokens / 1000000) * 0.375;
   }
-  if (model.includes('gpt-5.1')) {
+  if (model.includes("gpt-5.1")) {
     return (tokens / 1000000) * 6;
   }
 
@@ -128,7 +126,7 @@ function calculateCost(model: string, tokens: number): number {
 async function withRetry<T>(
   fn: () => Promise<T>,
   retries: number = LLM_MAX_RETRIES,
-  context = 'LLM call'
+  context = "LLM call",
 ): Promise<T> {
   let lastError: Error | undefined;
 
@@ -142,7 +140,7 @@ async function withRetry<T>(
         logger.warn(
           `${context} failed, retrying in ${delay}ms (attempt ${attempt + 1}/${retries})`,
           { error },
-          'TrendingGroupingService'
+          "TrendingGroupingService",
         );
         await new Promise((resolve) => setTimeout(resolve, delay));
       }
@@ -157,20 +155,20 @@ async function withRetry<T>(
  */
 function fallbackGrouping(tags: TrendingTag[]): Map<string, number> {
   logger.info(
-    'Using fallback grouping logic (no LLM available)',
+    "Using fallback grouping logic (no LLM available)",
     undefined,
-    'TrendingGroupingService'
+    "TrendingGroupingService",
   );
 
   // Simple heuristic: group tags in same category if they have similar post counts
   const categoryGroups = new Map<string, TrendingTag[]>();
 
   for (const tag of tags) {
-    const _category = tag.category || 'general';
+    const _category = tag.category || "general";
     if (!categoryGroups.has(_category)) {
       categoryGroups.set(_category, []);
     }
-    categoryGroups.get(_category)!.push(tag);
+    categoryGroups.get(_category)?.push(tag);
   }
 
   const tagToGroup = new Map<string, number>();
@@ -213,7 +211,7 @@ interface GroupingWithSummary {
  * Use LLM to analyze, group, and summarize related trending tags in a single call
  */
 async function analyzeAndSummarizeTags(
-  tags: TrendingTag[]
+  tags: TrendingTag[],
 ): Promise<GroupingWithSummary> {
   const emptyResult: GroupingWithSummary = {
     tagToGroup: new Map(),
@@ -234,9 +232,9 @@ async function analyzeAndSummarizeTags(
   const tagList = tags
     .map(
       (t, i) =>
-        `${i + 1}. ${t.tag} (${t.category || 'General'}, ${t.postCount} posts${t.summary ? `, context: "${t.summary}"` : ''})`
+        `${i + 1}. ${t.tag} (${t.category || "General"}, ${t.postCount} posts${t.summary ? `, context: "${t.summary}"` : ""})`,
     )
-    .join('\n');
+    .join("\n");
 
   const prompt = `Analyze these trending topics from a tech/crypto/politics social platform. Group related tags and generate summaries.
 
@@ -321,12 +319,12 @@ Return ONLY valid XML. No markdown, no explanations.`;
         model: GROUPING_MODEL,
         messages: [
           {
-            role: 'system',
+            role: "system",
             content:
-              'You are an XML-only assistant that analyzes trending topics. Respond ONLY with valid XML matching the exact format shown. No markdown, no JSON, no explanations.',
+              "You are an XML-only assistant that analyzes trending topics. Respond ONLY with valid XML matching the exact format shown. No markdown, no JSON, no explanations.",
           },
           {
-            role: 'user',
+            role: "user",
             content: prompt,
           },
         ],
@@ -334,7 +332,7 @@ Return ONLY valid XML. No markdown, no explanations.`;
         max_tokens: 2000,
       }),
     LLM_MAX_RETRIES,
-    'Tag grouping and summary analysis'
+    "Tag grouping and summary analysis",
   );
 
   const duration = Date.now() - startTime;
@@ -342,24 +340,24 @@ Return ONLY valid XML. No markdown, no explanations.`;
   const estimatedCost = calculateCost(GROUPING_MODEL, tokensUsed);
 
   logger.debug(
-    'LLM grouping call completed',
+    "LLM grouping call completed",
     {
       durationMs: duration,
       model: GROUPING_MODEL,
       tokensUsed,
       estimatedCostUSD: estimatedCost,
     },
-    'TrendingGroupingService'
+    "TrendingGroupingService",
   );
 
   const content = response.choices[0]?.message?.content?.trim();
   if (content && isPromptLoggingEnabled()) {
     await logPrompt({
-      promptType: 'trending_grouping_with_summary',
+      promptType: "trending_grouping_with_summary",
       input: `System: You are an XML-only assistant that analyzes trending topics. Respond ONLY with valid XML matching the exact format shown. No markdown, no JSON, no explanations.\n\nUser: ${prompt}`,
       output: content,
       metadata: {
-        provider: useGroq ? 'groq' : 'openai',
+        provider: useGroq ? "groq" : "openai",
         model: GROUPING_MODEL,
         temperature: 0.3,
         maxTokens: 2000,
@@ -369,17 +367,17 @@ Return ONLY valid XML. No markdown, no explanations.`;
 
   if (!content) {
     logger.warn(
-      'No content in grouping response, using fallback',
+      "No content in grouping response, using fallback",
       undefined,
-      'TrendingGroupingService'
+      "TrendingGroupingService",
     );
     return { tagToGroup: fallbackGrouping(tags), groupSummaries: new Map() };
   }
 
   // Parse XML response
   const xmlContent = content
-    .replace(/```xml\n?/g, '')
-    .replace(/```\n?/g, '')
+    .replace(/```xml\n?/g, "")
+    .replace(/```\n?/g, "")
     .trim();
 
   const tagToGroup = new Map<string, number>();
@@ -396,7 +394,7 @@ Return ONLY valid XML. No markdown, no explanations.`;
     const summaryMatch = groupContent.match(/<summary>(.*?)<\/summary>/);
     const tagMatches = groupContent.matchAll(/<tag>(.*?)<\/tag>/g);
 
-    if (!idMatch || !idMatch[1]) continue;
+    if (!idMatch?.[1]) continue;
 
     const groupId = Number.parseInt(idMatch[1], 10);
     const tagNames: string[] = [];
@@ -414,19 +412,19 @@ Return ONLY valid XML. No markdown, no explanations.`;
       tagToGroup.set(tagName, groupId);
     }
 
-    if (summaryMatch && summaryMatch[1]) {
+    if (summaryMatch?.[1]) {
       groupSummaries.set(groupId, summaryMatch[1].trim());
     }
   }
 
   logger.info(
-    'LLM grouping analysis complete',
+    "LLM grouping analysis complete",
     {
       totalGroups: groupSummaries.size,
       groupedTags: tagToGroup.size,
       durationMs: duration,
     },
-    'TrendingGroupingService'
+    "TrendingGroupingService",
   );
 
   return { tagToGroup, groupSummaries };
@@ -439,23 +437,23 @@ Return ONLY valid XML. No markdown, no explanations.`;
 export async function generateTrendingSummary(
   tagDisplayName: string,
   category: string | null,
-  recentPosts: string[]
+  recentPosts: string[],
 ): Promise<string> {
   // Combine recent posts for context
-  const context = recentPosts.slice(0, 3).join(' | ');
+  const context = recentPosts.slice(0, 3).join(" | ");
 
   // If no context, return a generic summary
   if (!context || context.trim().length === 0) {
-    return `Trending topic in ${category || 'general'} discussions`;
+    return `Trending topic in ${category || "general"} discussions`;
   }
 
   if (!openai) {
-    return `Trending topic in ${category || 'general'} discussions`;
+    return `Trending topic in ${category || "general"} discussions`;
   }
   // Store in local const after null check to help TypeScript narrow the type
   const client = openai;
 
-  const prompt = `Generate a ONE SENTENCE summary for the trending topic "${tagDisplayName}" (Category: ${category || 'General'}).
+  const prompt = `Generate a ONE SENTENCE summary for the trending topic "${tagDisplayName}" (Category: ${category || "General"}).
 
 Recent posts about this topic:
 ${context}
@@ -484,12 +482,12 @@ One sentence summary:`;
           model: SUMMARY_MODEL,
           messages: [
             {
-              role: 'system',
+              role: "system",
               content:
-                'You are a trending topics summarization expert. Generate concise, engaging one-sentence summaries.',
+                "You are a trending topics summarization expert. Generate concise, engaging one-sentence summaries.",
             },
             {
-              role: 'user',
+              role: "user",
               content: prompt,
             },
           ],
@@ -497,19 +495,19 @@ One sentence summary:`;
           max_tokens: 50,
         }),
       LLM_MAX_RETRIES,
-      'Single trend summary generation'
+      "Single trend summary generation",
     );
   } catch (error) {
     logger.warn(
-      'Trending summary generation failed, using fallback',
+      "Trending summary generation failed, using fallback",
       {
         tagDisplayName,
         category,
         error: error instanceof Error ? error.message : String(error),
       },
-      'TrendingGroupingService'
+      "TrendingGroupingService",
     );
-    return `Trending topic in ${category || 'general'} discussions`;
+    return `Trending topic in ${category || "general"} discussions`;
   }
 
   const duration = Date.now() - startTime;
@@ -517,30 +515,30 @@ One sentence summary:`;
   const estimatedCost = calculateCost(SUMMARY_MODEL, tokensUsed);
 
   logger.debug(
-    'LLM single summary call completed',
+    "LLM single summary call completed",
     {
       durationMs: duration,
       model: SUMMARY_MODEL,
       tokensUsed,
       estimatedCostUSD: estimatedCost,
     },
-    'TrendingGroupingService'
+    "TrendingGroupingService",
   );
 
   let cleanSummary =
     response.choices[0]?.message?.content
       ?.trim()
-      ?.replace(/^["']|["']$/g, '')
-      ?.replace(/\.$/, '')
-      ?.trim() || '';
+      ?.replace(/^["']|["']$/g, "")
+      ?.replace(/\.$/, "")
+      ?.trim() || "";
 
   if (isPromptLoggingEnabled()) {
     await logPrompt({
-      promptType: 'trending_single_summary',
+      promptType: "trending_single_summary",
       input: `System: You are a trending topics summarization expert. Generate concise, engaging one-sentence summaries.\n\nUser: ${prompt}`,
-      output: response.choices[0]?.message?.content || '',
+      output: response.choices[0]?.message?.content || "",
       metadata: {
-        provider: useGroq ? 'groq' : 'openai',
+        provider: useGroq ? "groq" : "openai",
         model: SUMMARY_MODEL,
         temperature: 0.7,
         maxTokens: 50,
@@ -549,20 +547,20 @@ One sentence summary:`;
   }
 
   if (!cleanSummary) {
-    return `Trending topic in ${category || 'general'} discussions`;
+    return `Trending topic in ${category || "general"} discussions`;
   }
 
   if (
-    !cleanSummary.endsWith('.') &&
-    !cleanSummary.endsWith('!') &&
-    !cleanSummary.endsWith('?')
+    !cleanSummary.endsWith(".") &&
+    !cleanSummary.endsWith("!") &&
+    !cleanSummary.endsWith("?")
   ) {
-    cleanSummary += '.';
+    cleanSummary += ".";
   }
 
-  const wordCount = cleanSummary.split(' ').length;
+  const wordCount = cleanSummary.split(" ").length;
   if (wordCount > 20) {
-    cleanSummary = cleanSummary.split(' ').slice(0, 12).join(' ') + '...';
+    cleanSummary = `${cleanSummary.split(" ").slice(0, 12).join(" ")}...`;
   }
 
   return cleanSummary;
@@ -577,7 +575,7 @@ export async function generateTrendingSummaries(
     displayName: string;
     category: string | null;
     recentPosts: string[];
-  }>
+  }>,
 ): Promise<Map<string, string>> {
   const results = new Map<string, string>();
 
@@ -586,7 +584,7 @@ export async function generateTrendingSummaries(
     const summary = await generateTrendingSummary(
       tag.displayName,
       tag.category,
-      tag.recentPosts
+      tag.recentPosts,
     );
     results.set(tag.displayName, summary);
 
@@ -602,7 +600,7 @@ export async function generateTrendingSummaries(
  * Now uses combined grouping + summary in single LLM call for efficiency
  */
 export async function groupTrendingTags(
-  tags: TrendingTag[]
+  tags: TrendingTag[],
 ): Promise<GroupedTrend[]> {
   if (tags.length === 0) {
     return [];
@@ -610,9 +608,9 @@ export async function groupTrendingTags(
 
   const startTime = Date.now();
   logger.info(
-    'Starting trending tags grouping',
+    "Starting trending tags grouping",
     { tagCount: tags.length },
-    'TrendingGroupingService'
+    "TrendingGroupingService",
   );
 
   // Get grouping instructions AND summaries from LLM in single call
@@ -622,12 +620,12 @@ export async function groupTrendingTags(
     ({ tagToGroup, groupSummaries } = await analyzeAndSummarizeTags(tags));
   } catch (error) {
     logger.warn(
-      'Trending tag grouping failed, using fallback grouping',
+      "Trending tag grouping failed, using fallback grouping",
       {
         tagCount: tags.length,
         error: error instanceof Error ? error.message : String(error),
       },
-      'TrendingGroupingService'
+      "TrendingGroupingService",
     );
     tagToGroup = fallbackGrouping(tags);
     groupSummaries = new Map();
@@ -643,7 +641,7 @@ export async function groupTrendingTags(
       if (!groups.has(groupId)) {
         groups.set(groupId, []);
       }
-      groups.get(groupId)!.push(tag);
+      groups.get(groupId)?.push(tag);
     } else {
       ungroupedTags.push(tag);
     }
@@ -668,17 +666,17 @@ export async function groupTrendingTags(
     // Use pre-generated summary from combined LLM call, or fallback
     const summary =
       groupSummaries.get(groupId) ||
-      `${groupTags.map((t) => t.tag).join(', ')} trending in ${primaryTag.category || 'general'}`;
+      `${groupTags.map((t) => t.tag).join(", ")} trending in ${primaryTag.category || "general"}`;
 
     logger.debug(
-      'Created grouped trend',
+      "Created grouped trend",
       {
         groupId,
         tags: groupTags.map((t) => t.tag),
         totalPosts: groupTags.reduce((sum, t) => sum + t.postCount, 0),
         summary,
       },
-      'TrendingGroupingService'
+      "TrendingGroupingService",
     );
 
     result.push({
@@ -702,7 +700,7 @@ export async function groupTrendingTags(
       tagIds: [tag.id],
       category: tag.category,
       totalPostCount: tag.postCount,
-      summary: tag.summary || `Trending in ${tag.category || 'general'}`,
+      summary: tag.summary || `Trending in ${tag.category || "general"}`,
       rank: tag.rank,
     });
   }
@@ -712,14 +710,14 @@ export async function groupTrendingTags(
 
   const duration = Date.now() - startTime;
   logger.info(
-    'Trending tags grouping complete',
+    "Trending tags grouping complete",
     {
       inputTags: tags.length,
       outputGroups: result.length,
       multiTagGroups: result.filter((g) => g.tags.length > 1).length,
       durationMs: duration,
     },
-    'TrendingGroupingService'
+    "TrendingGroupingService",
   );
 
   return result;

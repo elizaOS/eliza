@@ -21,22 +21,22 @@
  * - All dispatches instrumented with action-type and timing telemetry
  */
 
-import { db, eq, messages, userAgentConfigs } from '@feed/db';
-import type { MessageMetadata, MessageTag } from '@feed/shared';
-import { checkUserInput, logger } from '@feed/shared';
 import {
   composePromptFromState,
   type Memory,
   ModelType,
   parseKeyValueXml,
   type State,
-} from '@elizaos/core';
-import { v4 as uuidv4 } from 'uuid';
-import { getEventBus } from '../communication/EventBus';
-import { AuthorizationError } from '../errors';
-import { generateSnowflakeId } from '../shared/snowflake';
-import { agentService } from './AgentService';
-import { notifyTeamChatMessage } from './team-chat-notifications';
+} from "@elizaos/core";
+import { db, eq, messages, userAgentConfigs } from "@feed/db";
+import type { MessageMetadata, MessageTag } from "@feed/shared";
+import { checkUserInput, logger } from "@feed/shared";
+import { v4 as uuidv4 } from "uuid";
+import { getEventBus } from "../communication/EventBus";
+import { AuthorizationError } from "../errors";
+import { generateSnowflakeId } from "../shared/snowflake";
+import { agentService } from "./AgentService";
+import { notifyTeamChatMessage } from "./team-chat-notifications";
 
 // =============================================================================
 // Types
@@ -53,7 +53,7 @@ export type BroadcastFn = (
     type?: string;
     createdAt: string;
     metadata?: MessageMetadata | null;
-  }
+  },
 ) => Promise<void>;
 
 export interface CoordinatorDispatchParams {
@@ -218,7 +218,7 @@ const DECISION_XML_FORMAT_HINT =
   '\n\nYour previous response could not be parsed. Output ONLY this exact XML structure with no text outside the tags:\n<response>\n  <thought>reasoning</thought>\n  <action>ACTION_NAME or ""</action>\n  <parameters>{}</parameters>\n  <isFinish>true or false</isFinish>\n</response>';
 
 const SUMMARY_XML_FORMAT_HINT =
-  '\n\nYour previous response could not be parsed. Output ONLY this exact XML structure with no text outside the tags:\n<response>\n  <thought>reasoning</thought>\n  <text>Your response</text>\n</response>';
+  "\n\nYour previous response could not be parsed. Output ONLY this exact XML structure with no text outside the tags:\n<response>\n  <thought>reasoning</thought>\n  <text>Your response</text>\n</response>";
 
 type ActionTraceResult = {
   actionType: string;
@@ -233,11 +233,11 @@ type ActionTraceResult = {
 };
 
 function formatTraceResults(results: ActionTraceResult[]): string {
-  if (results.length === 0) return 'No actions taken yet in this request.';
+  if (results.length === 0) return "No actions taken yet in this request.";
 
   return results
     .map((result, index) => {
-      const status = result.success ? '✓ Success' : '✗ Failed';
+      const status = result.success ? "✓ Success" : "✗ Failed";
       let output = `${index + 1}. **${result.actionType}** - ${status}`;
 
       if (result.text) {
@@ -251,13 +251,13 @@ function formatTraceResults(results: ActionTraceResult[]): string {
       if (result.values && Object.keys(result.values).length > 0) {
         const valuesStr = Object.entries(result.values)
           .map(([key, value]) => `   - ${key}: ${JSON.stringify(value)}`)
-          .join('\n');
+          .join("\n");
         output += `\n   Values:\n${valuesStr}`;
       }
 
       return output;
     })
-    .join('\n\n');
+    .join("\n\n");
 }
 
 // =============================================================================
@@ -272,7 +272,7 @@ function formatTraceResults(results: ActionTraceResult[]): string {
  * the response to the shared team chat (same teamChatId as the coordinator).
  */
 export async function dispatchAgentChat(
-  params: CoordinatorDispatchParams
+  params: CoordinatorDispatchParams,
 ): Promise<CoordinatorDispatchResult> {
   const dispatchStartMs = Date.now();
 
@@ -281,7 +281,7 @@ export async function dispatchAgentChat(
     ownerId,
     message,
     teamChatId,
-    ownerName = 'User',
+    ownerName = "User",
     ownerUsername,
     broadcastFn,
   } = params;
@@ -290,17 +290,17 @@ export async function dispatchAgentChat(
   const inputCheck = checkUserInput(message);
   if (!inputCheck.safe) {
     logger.warn(
-      '[AgentChatService] Unsafe command blocked before dispatch',
+      "[AgentChatService] Unsafe command blocked before dispatch",
       { agentId, reason: inputCheck.reason },
-      'AgentChatService'
+      "AgentChatService",
     );
     return {
       success: false,
-      response: '',
+      response: "",
       agentId,
       actionsExecuted: 0,
       isLLMFailure: false,
-      error: inputCheck.reason ?? 'Invalid command content',
+      error: inputCheck.reason ?? "Invalid command content",
     };
   }
 
@@ -321,21 +321,21 @@ export async function dispatchAgentChat(
       const ownerAgents = await agentService.listUserAgents(ownerId);
       const needle = agentId.toLowerCase().trim();
       const normalizeAgentName = (value: string | null | undefined): string =>
-        value?.toLowerCase().replace(/[\s\-_.]+/g, '') ?? '';
+        value?.toLowerCase().replace(/[\s\-_.]+/g, "") ?? "";
       const needleNormalized = normalizeAgentName(needle);
       const isGenericSingleAgentReference = new Set([
-        'agent',
-        'agents',
-        'myagent',
-        'myagents',
-        'theagent',
+        "agent",
+        "agents",
+        "myagent",
+        "myagents",
+        "theagent",
       ]).has(needleNormalized);
 
       // 1. Exact match on username or displayName
       let match = ownerAgents.find(
         (a) =>
           a.username?.toLowerCase() === needle ||
-          a.displayName?.toLowerCase() === needle
+          a.displayName?.toLowerCase() === needle,
       );
 
       // 2. Normalized match (strip spaces/punctuation for "larry david" vs "larrydavid")
@@ -351,8 +351,8 @@ export async function dispatchAgentChat(
       // Only accept unambiguous matches to avoid dispatching to the wrong agent.
       if (!match) {
         const partialMatches = ownerAgents.filter((a) => {
-          const uLower = a.username?.toLowerCase() ?? '';
-          const dLower = a.displayName?.toLowerCase() ?? '';
+          const uLower = a.username?.toLowerCase() ?? "";
+          const dLower = a.displayName?.toLowerCase() ?? "";
           return (
             (uLower && (uLower.includes(needle) || needle.includes(uLower))) ||
             (dLower && (dLower.includes(needle) || needle.includes(dLower)))
@@ -362,14 +362,14 @@ export async function dispatchAgentChat(
           match = partialMatches[0];
         } else if (partialMatches.length > 1) {
           logger.warn(
-            '[AgentChatService] Agent resolution failed — ambiguous partial match',
+            "[AgentChatService] Agent resolution failed — ambiguous partial match",
             {
               input: agentId,
               partialMatches: partialMatches.map(
-                (a) => a.displayName ?? a.username ?? a.id
+                (a) => a.displayName ?? a.username ?? a.id,
               ),
             },
-            'AgentChatService'
+            "AgentChatService",
           );
         }
       }
@@ -378,13 +378,13 @@ export async function dispatchAgentChat(
       if (!match && ownerAgents.length === 1 && isGenericSingleAgentReference) {
         match = ownerAgents[0];
         logger.info(
-          '[AgentChatService] Single-agent fallback used',
+          "[AgentChatService] Single-agent fallback used",
           {
             input: agentId,
-            resolvedId: match!.id,
-            resolvedName: match!.displayName ?? match!.username,
+            resolvedId: match?.id,
+            resolvedName: match?.displayName ?? match?.username,
           },
-          'AgentChatService'
+          "AgentChatService",
         );
       }
 
@@ -392,44 +392,44 @@ export async function dispatchAgentChat(
         resolvedAgentId = match.id;
         agentWithConfig = await agentService.getAgentWithConfig(
           resolvedAgentId,
-          ownerId
+          ownerId,
         );
         logger.info(
-          '[AgentChatService] Resolved agent by name fallback',
+          "[AgentChatService] Resolved agent by name fallback",
           {
             input: agentId,
             resolvedId: resolvedAgentId,
             resolvedName: match.displayName ?? match.username,
           },
-          'AgentChatService'
+          "AgentChatService",
         );
       } else {
         // Log available agents for debugging failed resolution
         const available = ownerAgents.map(
-          (a) => `${a.displayName ?? a.username ?? 'unnamed'} (${a.id})`
+          (a) => `${a.displayName ?? a.username ?? "unnamed"} (${a.id})`,
         );
         logger.warn(
-          '[AgentChatService] Agent resolution failed — no match found',
+          "[AgentChatService] Agent resolution failed — no match found",
           { input: agentId, availableAgents: available },
-          'AgentChatService'
+          "AgentChatService",
         );
       }
     }
   } catch (err) {
     const errorMsg =
       err instanceof AuthorizationError
-        ? 'You do not have permission to access this agent.'
+        ? "You do not have permission to access this agent."
         : err instanceof Error
           ? err.message
-          : 'Unknown authorization error';
+          : "Unknown authorization error";
     logger.warn(
-      '[AgentChatService] Ownership check failed',
+      "[AgentChatService] Ownership check failed",
       { agentId: resolvedAgentId, ownerId, error: errorMsg },
-      'AgentChatService'
+      "AgentChatService",
     );
     return {
       success: false,
-      response: '',
+      response: "",
       agentId: resolvedAgentId,
       actionsExecuted: 0,
       isLLMFailure: false,
@@ -439,13 +439,13 @@ export async function dispatchAgentChat(
 
   if (!agentWithConfig) {
     // List available agents in the error so the coordinator can retry with correct ID
-    let availableHint = '';
+    let availableHint = "";
     try {
       const ownerAgents = await agentService.listUserAgents(ownerId);
       if (ownerAgents.length > 0) {
         const names = ownerAgents
           .map((a) => `@${a.username ?? a.displayName ?? a.id}`)
-          .join(', ');
+          .join(", ");
         availableHint = `. Available agents: ${names}`;
       }
     } catch {
@@ -453,7 +453,7 @@ export async function dispatchAgentChat(
     }
     return {
       success: false,
-      response: '',
+      response: "",
       agentId: resolvedAgentId,
       actionsExecuted: 0,
       isLLMFailure: false,
@@ -464,7 +464,7 @@ export async function dispatchAgentChat(
   const agentConfig = agentWithConfig.agentConfig;
   const agentUsername = agentWithConfig.username ?? undefined;
   const agentName =
-    agentWithConfig.displayName ?? agentWithConfig.username ?? 'Agent';
+    agentWithConfig.displayName ?? agentWithConfig.username ?? "Agent";
 
   // Always free tier for coordinator-dispatched calls
   const modelType = ModelType.TEXT_SMALL;
@@ -472,7 +472,7 @@ export async function dispatchAgentChat(
   // --- Get agent runtime ---
   // Dynamic import breaks the circular dep: AgentRuntimeManager → plugin-user-core → dispatch-to-agent → AgentChatService
   const { agentRuntimeManager } = await import(
-    '../runtime/AgentRuntimeManager'
+    "../runtime/AgentRuntimeManager"
   );
   const runtime = await agentRuntimeManager.getRuntime(resolvedAgentId);
 
@@ -503,11 +503,11 @@ export async function dispatchAgentChat(
   let lastState: State | null = null;
 
   const agentProviders = [
-    'AGENT_CONTEXT',
-    'RECENT_MESSAGES',
-    'ACTION_STATE',
-    'ACTIONS',
-    'TEAM_MEMBERS',
+    "AGENT_CONTEXT",
+    "RECENT_MESSAGES",
+    "ACTION_STATE",
+    "ACTIONS",
+    "TEAM_MEMBERS",
   ];
 
   for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
@@ -516,7 +516,7 @@ export async function dispatchAgentChat(
     logger.info(
       `[AgentChatService] Iteration ${iteration}/${MAX_ITERATIONS}`,
       { agentId: resolvedAgentId, actionsCompleted: traceActionResults.length },
-      'AgentChatService'
+      "AgentChatService",
     );
 
     let state: State;
@@ -532,9 +532,9 @@ export async function dispatchAgentChat(
     state.values = {
       ...state.values,
       agentId: resolvedAgentId,
-      system: agentConfig?.systemPrompt ?? 'You are a helpful AI assistant.',
-      personality: agentConfig?.personality ?? '',
-      tradingStrategy: agentConfig?.tradingStrategy ?? '',
+      system: agentConfig?.systemPrompt ?? "You are a helpful AI assistant.",
+      personality: agentConfig?.personality ?? "",
+      tradingStrategy: agentConfig?.tradingStrategy ?? "",
       currentMessage: message,
       iterationCount: iteration,
       maxIterations: MAX_ITERATIONS,
@@ -547,7 +547,7 @@ export async function dispatchAgentChat(
       teamChatOwnerName: ownerName,
       teamChatOwnerUsername: ownerUsername,
       agentName,
-      agentUsername: agentUsername ?? '',
+      agentUsername: agentUsername ?? "",
     };
 
     state.data = {
@@ -586,7 +586,7 @@ export async function dispatchAgentChat(
       logger.warn(
         `[AgentChatService] Failed to parse decision (attempt ${attempt})`,
         { preview: response.substring(0, 200) },
-        'AgentChatService'
+        "AgentChatService",
       );
     }
 
@@ -597,11 +597,11 @@ export async function dispatchAgentChat(
       break;
     }
 
-    const action = ((parsedStep.action as string) ?? '').trim();
+    const action = ((parsedStep.action as string) ?? "").trim();
     const parameters = parsedStep.parameters;
     const isFinish = parsedStep.isFinish;
 
-    if (!action || action === '') {
+    if (!action || action === "") {
       break;
     }
 
@@ -609,11 +609,11 @@ export async function dispatchAgentChat(
     const actionStartMs = Date.now();
     let actionParams: Record<string, unknown> = {};
     if (parameters) {
-      if (typeof parameters === 'string') {
+      if (typeof parameters === "string") {
         try {
           const parsed: unknown = JSON.parse(parameters);
           if (
-            typeof parsed === 'object' &&
+            typeof parsed === "object" &&
             parsed !== null &&
             !Array.isArray(parsed)
           ) {
@@ -621,10 +621,10 @@ export async function dispatchAgentChat(
           }
         } catch {
           logger.warn(
-            `[AgentChatService] Failed to parse action params: ${parameters}`
+            `[AgentChatService] Failed to parse action params: ${parameters}`,
           );
         }
-      } else if (typeof parameters === 'object' && !Array.isArray(parameters)) {
+      } else if (typeof parameters === "object" && !Array.isArray(parameters)) {
         actionParams = parameters as Record<string, unknown>;
       }
     }
@@ -696,7 +696,7 @@ export async function dispatchAgentChat(
               actionResult = {
                 success: firstResult.content?.success ?? false,
                 text:
-                  typeof firstResult.content?.text === 'string'
+                  typeof firstResult.content?.text === "string"
                     ? firstResult.content.text
                     : undefined,
                 values: firstResult.content?.values,
@@ -705,7 +705,7 @@ export async function dispatchAgentChat(
             }
           }
           return [];
-        }
+        },
       );
 
       // Fallback: check stateCache if callback didn't fire
@@ -741,7 +741,7 @@ export async function dispatchAgentChat(
         tag: actionResult?.tag,
       });
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      const errorMsg = error instanceof Error ? error.message : "Unknown error";
       traceActionResults.push({
         actionType: action,
         success: false,
@@ -753,14 +753,14 @@ export async function dispatchAgentChat(
       });
     }
 
-    if (isFinish === 'true' || isFinish === true) {
+    if (isFinish === "true" || isFinish === true) {
       break;
     }
   }
 
   // Log decision loop completion with telemetry (Phase 0 instrumentation)
   logger.info(
-    '[AgentChatService] Decision loop completed',
+    "[AgentChatService] Decision loop completed",
     {
       agentId: resolvedAgentId,
       iterations: iterationsRan,
@@ -770,7 +770,7 @@ export async function dispatchAgentChat(
       totalParseRetries,
       decisionLoopMs: Date.now() - dispatchStartMs,
     },
-    'AgentChatService'
+    "AgentChatService",
   );
 
   // --- Generate summary response ---
@@ -784,9 +784,9 @@ export async function dispatchAgentChat(
     summaryState.values = {
       ...summaryState.values,
       agentId: resolvedAgentId,
-      system: agentConfig?.systemPrompt ?? 'You are a helpful AI assistant.',
-      personality: agentConfig?.personality ?? '',
-      tradingStrategy: agentConfig?.tradingStrategy ?? '',
+      system: agentConfig?.systemPrompt ?? "You are a helpful AI assistant.",
+      personality: agentConfig?.personality ?? "",
+      tradingStrategy: agentConfig?.tradingStrategy ?? "",
       currentMessage: message,
       ownerId,
       ownerName,
@@ -796,7 +796,7 @@ export async function dispatchAgentChat(
       teamChatOwnerName: ownerName,
       teamChatOwnerUsername: ownerUsername,
       agentName,
-      agentUsername: agentUsername ?? '',
+      agentUsername: agentUsername ?? "",
       actionCount: traceActionResults.length,
       actionResults: formatTraceResults(traceActionResults),
       hasActionResults: traceActionResults.length > 0,
@@ -828,7 +828,7 @@ export async function dispatchAgentChat(
 
       if (!extractedText) {
         const textMatch = summaryResponse.match(
-          /<text\b[^>]*?>([\s\S]*?)<\/text>/i
+          /<text\b[^>]*?>([\s\S]*?)<\/text>/i,
         );
         if (textMatch?.[1]) {
           extractedText = textMatch[1].trim();
@@ -841,14 +841,14 @@ export async function dispatchAgentChat(
       logger.warn(
         `[AgentChatService] Failed to parse summary (attempt ${attempt})`,
         { preview: summaryResponse.substring(0, 200) },
-        'AgentChatService'
+        "AgentChatService",
       );
     }
 
     finalResponse =
       extractedText ||
       (traceActionResults.length > 0
-        ? 'Task completed.'
+        ? "Task completed."
         : "I'm ready to help!");
   }
 
@@ -893,21 +893,21 @@ export async function dispatchAgentChat(
     content: responseText,
     chatId: teamChatId,
     senderId: resolvedAgentId,
-    type: 'user',
+    type: "user",
     createdAt: responseTime.toISOString(),
     metadata: messageMetadata,
   }).catch((err) => {
     logger.warn(
       `[AgentChatService] Failed to broadcast agent message`,
       { teamChatId, agentId: resolvedAgentId, error: err },
-      'AgentChatService'
+      "AgentChatService",
     );
   });
 
   // Full dispatch telemetry (Phase 0 instrumentation)
   const totalDurationMs = Date.now() - dispatchStartMs;
   logger.info(
-    '[AgentChatService] Dispatch completed',
+    "[AgentChatService] Dispatch completed",
     {
       agentId: resolvedAgentId,
       iterations: iterationsRan,
@@ -917,7 +917,7 @@ export async function dispatchAgentChat(
       totalParseRetries,
       totalDurationMs,
     },
-    'AgentChatService'
+    "AgentChatService",
   );
 
   // Publish dispatch result to EventBus for inter-agent awareness.
@@ -925,7 +925,7 @@ export async function dispatchAgentChat(
   // to build contextual awareness of what's happening across the team.
   const eventBus = getEventBus();
   eventBus.publish(
-    'agent.dispatch.result',
+    "agent.dispatch.result",
     {
       agentId: resolvedAgentId,
       agentUsername: agentUsername ?? null,
@@ -935,7 +935,7 @@ export async function dispatchAgentChat(
       success: true,
       timestamp: new Date().toISOString(),
     },
-    resolvedAgentId
+    resolvedAgentId,
   );
 
   return {

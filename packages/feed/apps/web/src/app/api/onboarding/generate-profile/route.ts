@@ -39,10 +39,10 @@
  * ```
  */
 
-import { successResponse, withErrorHandling } from '@feed/api';
-import { FeedLLMClient } from '@feed/engine';
-import { logger, sanitizeOnboardingUsername } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+import { successResponse, withErrorHandling } from "@feed/api";
+import { FeedLLMClient } from "@feed/engine";
+import { logger, sanitizeOnboardingUsername } from "@feed/shared";
+import type { NextRequest } from "next/server";
 import {
   adjectives,
   animals,
@@ -51,7 +51,7 @@ import {
   names,
   starWars,
   uniqueNamesGenerator,
-} from 'unique-names-generator';
+} from "unique-names-generator";
 
 interface ProfileData {
   name: string;
@@ -132,32 +132,32 @@ Return your response as XML in this exact format:
   >(
     prompt,
     {
-      required: ['name', 'username', 'bio'],
+      required: ["name", "username", "bio"],
       properties: {
-        name: { type: 'string' },
-        username: { type: 'string' },
-        bio: { type: 'string' },
+        name: { type: "string" },
+        username: { type: "string" },
+        bio: { type: "string" },
       },
     },
     {
       temperature: 1.0,
       maxTokens: 500,
-      promptType: 'generate_onboarding_profile',
-    }
+      promptType: "generate_onboarding_profile",
+    },
   );
 
   // Handle XML structure
   const profileData =
-    'response' in rawProfileData && rawProfileData.response
+    "response" in rawProfileData && rawProfileData.response
       ? rawProfileData.response
       : (rawProfileData as ProfileData);
 
   profileData.username = sanitizeOnboardingUsername(profileData.username);
 
   logger.info(
-    'Generated AI profile',
+    "Generated AI profile",
     profileData,
-    'GET /api/onboarding/generate-profile'
+    "GET /api/onboarding/generate-profile",
   );
 
   return successResponse(profileData);

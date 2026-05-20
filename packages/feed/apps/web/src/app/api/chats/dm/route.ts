@@ -131,15 +131,11 @@ import {
   NotFoundError,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { asUser, hasBlocked } from '@feed/db';
-import {
-  DMChatCreateSchema,
-  generateSnowflakeId,
-  logger,
-} from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { trackServerEvent } from '@/lib/posthog/server';
+} from "@feed/api";
+import { asUser, hasBlocked } from "@feed/db";
+import { DMChatCreateSchema, generateSnowflakeId, logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { trackServerEvent } from "@/lib/posthog/server";
 
 /**
  * POST /api/chats/dm
@@ -154,7 +150,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   // Prevent DMing yourself (business rule validation)
   if (user.userId === targetUserId) {
-    throw new BusinessLogicError('Cannot DM yourself', 'SELF_DM_NOT_ALLOWED');
+    throw new BusinessLogicError("Cannot DM yourself", "SELF_DM_NOT_ALLOWED");
   }
 
   // Create or get DM chat with RLS
@@ -173,14 +169,14 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
     // Reject if target doesn't exist
     if (!targetUser) {
-      throw new NotFoundError('User', targetUserId);
+      throw new NotFoundError("User", targetUserId);
     }
 
     // Reject if target is an NPC actor
     if (targetUser.isActor) {
       throw new BusinessLogicError(
-        'Cannot send direct messages to NPC actors. Use group chats to interact with NPCs.',
-        'INVALID_DM_TARGET'
+        "Cannot send direct messages to NPC actors. Use group chats to interact with NPCs.",
+        "INVALID_DM_TARGET",
       );
     }
 
@@ -192,14 +188,14 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
     if (isBlocked || hasBlockedMe) {
       throw new BusinessLogicError(
-        'Cannot send messages to this user',
-        'BLOCKED_USER'
+        "Cannot send messages to this user",
+        "BLOCKED_USER",
       );
     }
 
     // Create DM chat ID (consistent format - sort IDs for consistency)
     const sortedIds = [user.userId, targetUserId].sort();
-    const chatId = `dm-${sortedIds.join('-')}`;
+    const chatId = `dm-${sortedIds.join("-")}`;
 
     // Try to find existing DM chat (don't use include - query separately)
     let existingChat = await db.chat.findUnique({
@@ -272,15 +268,15 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   });
 
   if (!chat.chat) {
-    throw new Error('Chat creation failed');
+    throw new Error("Chat creation failed");
   }
 
   const chatData = chat.chat; // Type guard - chat.chat is now guaranteed to be non-null
 
   logger.info(
-    'DM chat created or retrieved successfully',
+    "DM chat created or retrieved successfully",
     { chatId: chatData.id, userId: user.userId, targetUserId },
-    'POST /api/chats/dm'
+    "POST /api/chats/dm",
   );
 
   // Track DM created/opened event
@@ -292,12 +288,12 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   });
   const hasParticipants = participants.length > 0;
 
-  trackServerEvent(user.userId, 'dm_opened', {
+  trackServerEvent(user.userId, "dm_opened", {
     chatId: chatData.id,
     recipientId: targetUserId,
     isNewChat: !hasParticipants,
   }).catch((error) => {
-    logger.warn('Failed to track dm_opened event', { error });
+    logger.warn("Failed to track dm_opened event", { error });
   });
 
   return successResponse(
@@ -314,6 +310,6 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         },
       },
     },
-    201
+    201,
   );
 });

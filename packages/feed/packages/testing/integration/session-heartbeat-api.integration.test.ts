@@ -10,7 +10,7 @@
  * Run: bun test integration/session-heartbeat-api.integration.test.ts --preload ./integration/preload.ts
  */
 
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
   and,
   db,
@@ -19,13 +19,13 @@ import {
   userActivityLogs,
   userSessions,
   users,
-} from '@feed/db';
-import { generateSnowflakeId } from '@feed/shared';
+} from "@feed/db";
+import { generateSnowflakeId } from "@feed/shared";
 
 const BASE_URL =
   process.env.TEST_API_URL ||
   process.env.TEST_BASE_URL ||
-  'http://localhost:3000';
+  "http://localhost:3000";
 
 let serverAvailable = false;
 const testUserIds: string[] = [];
@@ -40,14 +40,14 @@ function requireServer(): void {
 
 async function heartbeatRequest(
   body: object,
-  options: { cookie?: string; userAgent?: string } = {}
+  options: { cookie?: string; userAgent?: string } = {},
 ) {
   return fetch(`${BASE_URL}/api/activity/heartbeat`, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
       ...(options.cookie ? { Cookie: options.cookie } : {}),
-      ...(options.userAgent ? { 'User-Agent': options.userAgent } : {}),
+      ...(options.userAgent ? { "User-Agent": options.userAgent } : {}),
     },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(10000),
@@ -70,7 +70,7 @@ async function createTestUser() {
   return userId;
 }
 
-describe('Session Heartbeat API', () => {
+describe("Session Heartbeat API", () => {
   beforeAll(async () => {
     try {
       const response = await fetch(`${BASE_URL}/api/health`, {
@@ -78,11 +78,11 @@ describe('Session Heartbeat API', () => {
       });
       serverAvailable = response.ok;
       console.log(
-        `Server availability: ${serverAvailable ? 'Available' : 'Unavailable'}`
+        `Server availability: ${serverAvailable ? "Available" : "Unavailable"}`,
       );
     } catch {
       serverAvailable = false;
-      console.log('Server not available - tests will be skipped');
+      console.log("Server not available - tests will be skipped");
     }
   });
 
@@ -118,13 +118,13 @@ describe('Session Heartbeat API', () => {
     console.log(`Cleaned up ${testUserIds.length} test users`);
   });
 
-  describe('Request Validation', () => {
-    test('accepts valid heartbeat request', async () => {
+  describe("Request Validation", () => {
+    test("accepts valid heartbeat request", async () => {
       requireServer();
 
       // Without auth, should return success with reason
       const res = await heartbeatRequest({
-        sessionId: 'test-session-123',
+        sessionId: "test-session-123",
         pageViews: 1,
       });
 
@@ -133,7 +133,7 @@ describe('Session Heartbeat API', () => {
       expect(data.success).toBe(true);
     });
 
-    test('rejects missing sessionId', async () => {
+    test("rejects missing sessionId", async () => {
       requireServer();
 
       const res = await heartbeatRequest({
@@ -145,7 +145,7 @@ describe('Session Heartbeat API', () => {
       expect(data.error).toBeDefined();
     });
 
-    test('rejects invalid sessionId type', async () => {
+    test("rejects invalid sessionId type", async () => {
       requireServer();
 
       const res = await heartbeatRequest({
@@ -156,22 +156,22 @@ describe('Session Heartbeat API', () => {
       expect(res.status).toBe(400);
     });
 
-    test('rejects very long sessionId', async () => {
+    test("rejects very long sessionId", async () => {
       requireServer();
 
       const res = await heartbeatRequest({
-        sessionId: 'a'.repeat(200), // Max is 100
+        sessionId: "a".repeat(200), // Max is 100
         pageViews: 1,
       });
 
       expect(res.status).toBe(400);
     });
 
-    test('accepts request without pageViews (defaults to 0)', async () => {
+    test("accepts request without pageViews (defaults to 0)", async () => {
       requireServer();
 
       const res = await heartbeatRequest({
-        sessionId: 'test-session-no-pageviews',
+        sessionId: "test-session-no-pageviews",
       });
 
       expect(res.status).toBe(200);
@@ -180,25 +180,25 @@ describe('Session Heartbeat API', () => {
     });
   });
 
-  describe('Unauthenticated Requests', () => {
-    test('silently accepts unauthenticated requests', async () => {
+  describe("Unauthenticated Requests", () => {
+    test("silently accepts unauthenticated requests", async () => {
       requireServer();
 
       // Without a privy-token cookie, should return success with reason
       const res = await heartbeatRequest({
-        sessionId: 'test-session-unauth',
+        sessionId: "test-session-unauth",
         pageViews: 1,
       });
 
       expect(res.status).toBe(200);
       const data = await res.json();
       expect(data.success).toBe(true);
-      expect(data.reason).toBe('unauthenticated');
+      expect(data.reason).toBe("unauthenticated");
     });
   });
 
-  describe('Rate Limiting', () => {
-    test('rate limits rapid requests from same session', async () => {
+  describe("Rate Limiting", () => {
+    test("rate limits rapid requests from same session", async () => {
       requireServer();
 
       const sessionId = `rate-limit-test-${Date.now()}`;
@@ -219,56 +219,56 @@ describe('Session Heartbeat API', () => {
     });
   });
 
-  describe('Device Detection', () => {
-    test('detects desktop user agent', async () => {
+  describe("Device Detection", () => {
+    test("detects desktop user agent", async () => {
       requireServer();
 
       const res = await heartbeatRequest(
-        { sessionId: 'device-test-desktop' },
+        { sessionId: "device-test-desktop" },
         {
           userAgent:
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        }
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        },
       );
 
       expect(res.status).toBe(200);
     });
 
-    test('detects mobile user agent', async () => {
+    test("detects mobile user agent", async () => {
       requireServer();
 
       const res = await heartbeatRequest(
-        { sessionId: 'device-test-mobile' },
-        { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X)' }
+        { sessionId: "device-test-mobile" },
+        { userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X)" },
       );
 
       expect(res.status).toBe(200);
     });
 
-    test('detects tablet user agent', async () => {
+    test("detects tablet user agent", async () => {
       requireServer();
 
       const res = await heartbeatRequest(
-        { sessionId: 'device-test-tablet' },
-        { userAgent: 'Mozilla/5.0 (iPad; CPU OS 14_0 like Mac OS X)' }
+        { sessionId: "device-test-tablet" },
+        { userAgent: "Mozilla/5.0 (iPad; CPU OS 14_0 like Mac OS X)" },
       );
 
       expect(res.status).toBe(200);
     });
 
-    test('handles missing user agent', async () => {
+    test("handles missing user agent", async () => {
       requireServer();
 
-      const res = await heartbeatRequest({ sessionId: 'device-test-none' });
+      const res = await heartbeatRequest({ sessionId: "device-test-none" });
       expect(res.status).toBe(200);
     });
   });
 
-  describe('Response Format', () => {
-    test('returns success with sessionId', async () => {
+  describe("Response Format", () => {
+    test("returns success with sessionId", async () => {
       requireServer();
 
-      const sessionId = 'response-test-session';
+      const sessionId = "response-test-session";
       const res = await heartbeatRequest({ sessionId });
 
       expect(res.status).toBe(200);
@@ -280,27 +280,27 @@ describe('Session Heartbeat API', () => {
     });
   });
 
-  describe('Error Handling', () => {
-    test('handles malformed JSON gracefully', async () => {
+  describe("Error Handling", () => {
+    test("handles malformed JSON gracefully", async () => {
       requireServer();
 
       const res = await fetch(`${BASE_URL}/api/activity/heartbeat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: 'not valid json {{{',
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "not valid json {{{",
         signal: AbortSignal.timeout(10000),
       });
 
       expect(res.status).toBeLessThan(500);
     });
 
-    test('handles empty body', async () => {
+    test("handles empty body", async () => {
       requireServer();
 
       const res = await fetch(`${BASE_URL}/api/activity/heartbeat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: '',
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "",
         signal: AbortSignal.timeout(10000),
       });
 
@@ -309,8 +309,8 @@ describe('Session Heartbeat API', () => {
     });
   });
 
-  describe('Concurrent Requests', () => {
-    test('handles multiple concurrent heartbeats', async () => {
+  describe("Concurrent Requests", () => {
+    test("handles multiple concurrent heartbeats", async () => {
       requireServer();
 
       const requests = Array(10)
@@ -319,7 +319,7 @@ describe('Session Heartbeat API', () => {
           heartbeatRequest({
             sessionId: `concurrent-test-${i}`,
             pageViews: i,
-          })
+          }),
         );
 
       const responses = await Promise.all(requests);
@@ -331,7 +331,7 @@ describe('Session Heartbeat API', () => {
       }
     });
 
-    test('handles concurrent heartbeats from same session', async () => {
+    test("handles concurrent heartbeats from same session", async () => {
       requireServer();
 
       const sessionId = `same-session-concurrent-${Date.now()}`;
@@ -342,7 +342,7 @@ describe('Session Heartbeat API', () => {
           heartbeatRequest({
             sessionId,
             pageViews: 1,
-          })
+          }),
         );
 
       const responses = await Promise.all(requests);
@@ -356,69 +356,69 @@ describe('Session Heartbeat API', () => {
     });
   });
 
-  describe('Edge Cases', () => {
-    test('handles zero pageViews', async () => {
+  describe("Edge Cases", () => {
+    test("handles zero pageViews", async () => {
       requireServer();
 
       const res = await heartbeatRequest({
-        sessionId: 'edge-zero-pageviews',
+        sessionId: "edge-zero-pageviews",
         pageViews: 0,
       });
 
       expect(res.status).toBe(200);
     });
 
-    test('handles negative pageViews (treats as 0)', async () => {
+    test("handles negative pageViews (treats as 0)", async () => {
       requireServer();
 
       const res = await heartbeatRequest({
-        sessionId: 'edge-negative-pageviews',
+        sessionId: "edge-negative-pageviews",
         pageViews: -5,
       });
 
       expect(res.status).toBe(200);
     });
 
-    test('handles very large pageViews', async () => {
+    test("handles very large pageViews", async () => {
       requireServer();
 
       const res = await heartbeatRequest({
-        sessionId: 'edge-large-pageviews',
+        sessionId: "edge-large-pageviews",
         pageViews: 999999999,
       });
 
       expect(res.status).toBe(200);
     });
 
-    test('handles special characters in sessionId', async () => {
+    test("handles special characters in sessionId", async () => {
       requireServer();
 
       const res = await heartbeatRequest({
-        sessionId: 'session-with-special-chars-!@#$%',
+        sessionId: "session-with-special-chars-!@#$%",
         pageViews: 1,
       });
 
       expect(res.status).toBe(200);
     });
 
-    test('handles unicode in sessionId', async () => {
+    test("handles unicode in sessionId", async () => {
       requireServer();
 
       const res = await heartbeatRequest({
-        sessionId: 'session-日本語-🎉',
+        sessionId: "session-日本語-🎉",
         pageViews: 1,
       });
 
       expect(res.status).toBe(200);
     });
 
-    test('handles additional unknown fields in body', async () => {
+    test("handles additional unknown fields in body", async () => {
       requireServer();
 
       const res = await heartbeatRequest({
-        sessionId: 'edge-extra-fields',
+        sessionId: "edge-extra-fields",
         pageViews: 1,
-        unknownField: 'should be ignored',
+        unknownField: "should be ignored",
         anotherField: 123,
       });
 
@@ -426,36 +426,36 @@ describe('Session Heartbeat API', () => {
     });
   });
 
-  describe('POST Method Only', () => {
-    test('rejects GET requests', async () => {
+  describe("POST Method Only", () => {
+    test("rejects GET requests", async () => {
       requireServer();
 
       const res = await fetch(`${BASE_URL}/api/activity/heartbeat`, {
-        method: 'GET',
+        method: "GET",
         signal: AbortSignal.timeout(10000),
       });
 
       expect(res.status).toBe(405);
     });
 
-    test('rejects PUT requests', async () => {
+    test("rejects PUT requests", async () => {
       requireServer();
 
       const res = await fetch(`${BASE_URL}/api/activity/heartbeat`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId: 'test' }),
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: "test" }),
         signal: AbortSignal.timeout(10000),
       });
 
       expect(res.status).toBe(405);
     });
 
-    test('rejects DELETE requests', async () => {
+    test("rejects DELETE requests", async () => {
       requireServer();
 
       const res = await fetch(`${BASE_URL}/api/activity/heartbeat`, {
-        method: 'DELETE',
+        method: "DELETE",
         signal: AbortSignal.timeout(10000),
       });
 
@@ -463,13 +463,13 @@ describe('Session Heartbeat API', () => {
     });
   });
 
-  describe('Performance', () => {
-    test('responds within reasonable time', async () => {
+  describe("Performance", () => {
+    test("responds within reasonable time", async () => {
       requireServer();
 
       const start = Date.now();
       const res = await heartbeatRequest({
-        sessionId: 'perf-test-session',
+        sessionId: "perf-test-session",
         pageViews: 1,
       });
       const duration = Date.now() - start;
@@ -479,7 +479,7 @@ describe('Session Heartbeat API', () => {
       expect(duration).toBeLessThan(500);
     });
 
-    test('batch of heartbeats completes in reasonable time', async () => {
+    test("batch of heartbeats completes in reasonable time", async () => {
       requireServer();
 
       const start = Date.now();
@@ -489,7 +489,7 @@ describe('Session Heartbeat API', () => {
           heartbeatRequest({
             sessionId: `batch-perf-${i}`,
             pageViews: 1,
-          })
+          }),
         );
 
       await Promise.all(requests);
@@ -501,12 +501,12 @@ describe('Session Heartbeat API', () => {
   });
 });
 
-describe('Session Database Operations', () => {
+describe("Session Database Operations", () => {
   // These tests verify actual database state changes
   // They require a test user and simulated authentication
 
-  describe('Session Creation', () => {
-    test('creates session record for new sessionId', async () => {
+  describe("Session Creation", () => {
+    test("creates session record for new sessionId", async () => {
       // This test verifies the session is created in the database
       // Would need authenticated request to fully test
       const userId = await createTestUser();
@@ -519,12 +519,12 @@ describe('Session Database Operations', () => {
         .limit(1);
 
       expect(user).toBeDefined();
-      expect(user!.id).toBe(userId);
+      expect(user?.id).toBe(userId);
     });
   });
 
-  describe('Activity Log Creation', () => {
-    test('creates activity log entry per user per day', async () => {
+  describe("Activity Log Creation", () => {
+    test("creates activity log entry per user per day", async () => {
       const userId = await createTestUser();
 
       // Create an activity log directly to test structure
@@ -535,7 +535,7 @@ describe('Session Database Operations', () => {
       await db.insert(userActivityLogs).values({
         id: logId,
         userId,
-        activityType: 'session',
+        activityType: "session",
         activityDate: today,
       });
       testActivityLogIds.push(logId);
@@ -548,11 +548,11 @@ describe('Session Database Operations', () => {
         .limit(1);
 
       expect(log).toBeDefined();
-      expect(log!.userId).toBe(userId);
-      expect(log!.activityType).toBe('session');
+      expect(log?.userId).toBe(userId);
+      expect(log?.activityType).toBe("session");
     });
 
-    test('unique constraint prevents duplicate activity logs', async () => {
+    test("unique constraint prevents duplicate activity logs", async () => {
       const userId = await createTestUser();
 
       const today = new Date();
@@ -563,7 +563,7 @@ describe('Session Database Operations', () => {
       await db.insert(userActivityLogs).values({
         id: logId1,
         userId,
-        activityType: 'session',
+        activityType: "session",
         activityDate: today,
       });
       testActivityLogIds.push(logId1);
@@ -576,7 +576,7 @@ describe('Session Database Operations', () => {
         .values({
           id: logId2,
           userId,
-          activityType: 'session',
+          activityType: "session",
           activityDate: today,
         })
         .onConflictDoNothing();
@@ -588,16 +588,16 @@ describe('Session Database Operations', () => {
         .where(
           and(
             eq(userActivityLogs.userId, userId),
-            eq(userActivityLogs.activityType, 'session')
-          )
+            eq(userActivityLogs.activityType, "session"),
+          ),
         );
 
       expect(logs.length).toBe(1);
     });
   });
 
-  describe('Session Update', () => {
-    test('session structure is valid', async () => {
+  describe("Session Update", () => {
+    test("session structure is valid", async () => {
       const userId = await createTestUser();
 
       const sessionId = await generateSnowflakeId();
@@ -610,7 +610,7 @@ describe('Session Database Operations', () => {
         sessionId: clientSessionId,
         startedAt: now,
         lastActiveAt: now,
-        deviceType: 'desktop',
+        deviceType: "desktop",
         pageCount: 5,
         heartbeatCount: 1,
       });
@@ -624,15 +624,15 @@ describe('Session Database Operations', () => {
         .limit(1);
 
       expect(session).toBeDefined();
-      expect(session!.userId).toBe(userId);
-      expect(session!.sessionId).toBe(clientSessionId);
-      expect(session!.deviceType).toBe('desktop');
-      expect(session!.pageCount).toBe(5);
-      expect(session!.heartbeatCount).toBe(1);
-      expect(session!.endedAt).toBeNull();
+      expect(session?.userId).toBe(userId);
+      expect(session?.sessionId).toBe(clientSessionId);
+      expect(session?.deviceType).toBe("desktop");
+      expect(session?.pageCount).toBe(5);
+      expect(session?.heartbeatCount).toBe(1);
+      expect(session?.endedAt).toBeNull();
     });
 
-    test('can update session lastActiveAt and counters', async () => {
+    test("can update session lastActiveAt and counters", async () => {
       const userId = await createTestUser();
 
       const sessionId = await generateSnowflakeId();
@@ -668,15 +668,15 @@ describe('Session Database Operations', () => {
         .where(eq(userSessions.id, sessionId))
         .limit(1);
 
-      expect(session!.pageCount).toBe(5);
-      expect(session!.heartbeatCount).toBe(3);
-      expect(session!.lastActiveAt.getTime()).toBeCloseTo(
+      expect(session?.pageCount).toBe(5);
+      expect(session?.heartbeatCount).toBe(3);
+      expect(session?.lastActiveAt.getTime()).toBeCloseTo(
         newTime.getTime(),
-        -2
+        -2,
       );
     });
 
-    test('can close session by setting endedAt', async () => {
+    test("can close session by setting endedAt", async () => {
       const userId = await createTestUser();
 
       const sessionId = await generateSnowflakeId();
@@ -708,13 +708,13 @@ describe('Session Database Operations', () => {
         .where(eq(userSessions.id, sessionId))
         .limit(1);
 
-      expect(session!.endedAt).not.toBeNull();
-      expect(session!.endedAt!.getTime()).toBeCloseTo(endTime.getTime(), -2);
+      expect(session?.endedAt).not.toBeNull();
+      expect(session?.endedAt?.getTime()).toBeCloseTo(endTime.getTime(), -2);
     });
   });
 
-  describe('Session Queries', () => {
-    test('can find active sessions (endedAt is null)', async () => {
+  describe("Session Queries", () => {
+    test("can find active sessions (endedAt is null)", async () => {
       const userId = await createTestUser();
 
       // Create an active session
@@ -749,11 +749,11 @@ describe('Session Database Operations', () => {
         .select()
         .from(userSessions)
         .where(
-          and(eq(userSessions.userId, userId), isNull(userSessions.endedAt))
+          and(eq(userSessions.userId, userId), isNull(userSessions.endedAt)),
         );
 
       expect(activeSessions.length).toBe(1);
-      expect(activeSessions[0]!.id).toBe(activeSessionId);
+      expect(activeSessions[0]?.id).toBe(activeSessionId);
     });
   });
 });

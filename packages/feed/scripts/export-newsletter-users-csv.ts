@@ -1,14 +1,14 @@
 #!/usr/bin/env bun
 
-import { mkdir } from 'node:fs/promises';
-import { dirname, resolve } from 'node:path';
-import { and, closeDatabase, db, eq, isNotNull, users } from '@feed/db';
-import { getAllVerifiedEmails, type PrivyLinkedAccount } from '@feed/shared';
+import { mkdir } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
+import { and, closeDatabase, db, eq, isNotNull, users } from "@feed/db";
+import { getAllVerifiedEmails, type PrivyLinkedAccount } from "@feed/shared";
 import {
   type LinkedAccount,
   PrivyClient,
   type User as PrivyUser,
-} from '@privy-io/node';
+} from "@privy-io/node";
 
 type CliOptions = {
   databaseUrl: string;
@@ -22,7 +22,7 @@ type CliOptions = {
 type ContactRow = {
   email: string;
   name: string;
-  source: 'db_verified' | 'db_unverified' | 'privy';
+  source: "db_verified" | "db_unverified" | "privy";
 };
 
 type ContactStats = {
@@ -65,13 +65,13 @@ Notes:
 
 function readEnv(name: string): string | undefined {
   const value = process.env[name];
-  if (typeof value !== 'string') return undefined;
+  if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
 function readArgValue(args: string[], name: string): string | undefined {
-  const index = args.findIndex((arg) => arg === name);
+  const index = args.indexOf(name);
   if (index === -1) return undefined;
   const value = args[index + 1];
   if (!value) {
@@ -80,23 +80,23 @@ function readArgValue(args: string[], name: string): string | undefined {
   return value.trim();
 }
 
-function hasFlag(args: string[], flag: '-h' | '--help'): boolean {
+function hasFlag(args: string[], flag: "-h" | "--help"): boolean {
   return args.includes(flag);
 }
 
 function formatTimestampForFile(date: Date): string {
   const yyyy = date.getFullYear();
-  const mm = String(date.getMonth() + 1).padStart(2, '0');
-  const dd = String(date.getDate()).padStart(2, '0');
-  const hh = String(date.getHours()).padStart(2, '0');
-  const min = String(date.getMinutes()).padStart(2, '0');
-  const ss = String(date.getSeconds()).padStart(2, '0');
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  const hh = String(date.getHours()).padStart(2, "0");
+  const min = String(date.getMinutes()).padStart(2, "0");
+  const ss = String(date.getSeconds()).padStart(2, "0");
   return `${yyyy}${mm}${dd}-${hh}${min}${ss}`;
 }
 
 function normalizeName(value: string | null | undefined): string | null {
   if (!value) return null;
-  const trimmed = value.trim().replace(/\s+/g, ' ');
+  const trimmed = value.trim().replace(/\s+/g, " ");
   return trimmed.length > 0 ? trimmed : null;
 }
 
@@ -109,13 +109,13 @@ function normalizeEmail(value: string | null | undefined): string | null {
 }
 
 function fallbackNameFromEmail(email: string): string {
-  const localPart = email.split('@')[0] ?? email;
-  const normalized = localPart.replace(/[._-]+/g, ' ').trim();
+  const localPart = email.split("@")[0] ?? email;
+  const normalized = localPart.replace(/[._-]+/g, " ").trim();
   return normalized.length > 0 ? normalized : email;
 }
 
 function csvEscape(value: string): string {
-  if (value.includes('"') || value.includes(',') || value.includes('\n')) {
+  if (value.includes('"') || value.includes(",") || value.includes("\n")) {
     return `"${value.replaceAll('"', '""')}"`;
   }
   return value;
@@ -135,53 +135,53 @@ function toNumericArg(value: string | undefined, argName: string): number {
 function parseCliOptions(): CliOptions {
   const args = process.argv.slice(2);
 
-  if (hasFlag(args, '-h') || hasFlag(args, '--help')) {
+  if (hasFlag(args, "-h") || hasFlag(args, "--help")) {
     printUsage();
     process.exit(0);
   }
 
   const databaseUrl =
-    readArgValue(args, '--database-url') ?? readEnv('DATABASE_URL');
+    readArgValue(args, "--database-url") ?? readEnv("DATABASE_URL");
   const privyAppId =
-    readArgValue(args, '--privy-app-id') ??
-    readEnv('PRIVY_APP_ID') ??
-    readEnv('NEXT_PUBLIC_PRIVY_APP_ID');
+    readArgValue(args, "--privy-app-id") ??
+    readEnv("PRIVY_APP_ID") ??
+    readEnv("NEXT_PUBLIC_PRIVY_APP_ID");
   const privyAppSecret =
-    readArgValue(args, '--privy-app-secret') ?? readEnv('PRIVY_APP_SECRET');
+    readArgValue(args, "--privy-app-secret") ?? readEnv("PRIVY_APP_SECRET");
 
-  const outputPathArg = readArgValue(args, '--output');
+  const outputPathArg = readArgValue(args, "--output");
   const outputPath = resolve(
     outputPathArg ??
-      `./debug/newsletter-users-${formatTimestampForFile(new Date())}.csv`
+      `./debug/newsletter-users-${formatTimestampForFile(new Date())}.csv`,
   );
 
-  const privyLimitRaw = readArgValue(args, '--privy-limit');
+  const privyLimitRaw = readArgValue(args, "--privy-limit");
   const privyLimit = privyLimitRaw
-    ? toNumericArg(privyLimitRaw, '--privy-limit')
+    ? toNumericArg(privyLimitRaw, "--privy-limit")
     : 100;
   if (privyLimit > 100) {
-    throw new Error('Invalid --privy-limit: maximum allowed value is 100');
+    throw new Error("Invalid --privy-limit: maximum allowed value is 100");
   }
 
-  const maxPrivyPagesRaw = readArgValue(args, '--max-privy-pages');
+  const maxPrivyPagesRaw = readArgValue(args, "--max-privy-pages");
   const maxPrivyPages = maxPrivyPagesRaw
-    ? toNumericArg(maxPrivyPagesRaw, '--max-privy-pages')
+    ? toNumericArg(maxPrivyPagesRaw, "--max-privy-pages")
     : null;
 
   const missing: string[] = [];
   if (!databaseUrl)
-    missing.push('database URL (--database-url or DATABASE_URL)');
+    missing.push("database URL (--database-url or DATABASE_URL)");
   if (!privyAppId) {
     missing.push(
-      'Privy app ID (--privy-app-id or PRIVY_APP_ID/NEXT_PUBLIC_PRIVY_APP_ID)'
+      "Privy app ID (--privy-app-id or PRIVY_APP_ID/NEXT_PUBLIC_PRIVY_APP_ID)",
     );
   }
   if (!privyAppSecret) {
-    missing.push('Privy app secret (--privy-app-secret or PRIVY_APP_SECRET)');
+    missing.push("Privy app secret (--privy-app-secret or PRIVY_APP_SECRET)");
   }
 
   if (missing.length > 0) {
-    throw new Error(`Missing required inputs: ${missing.join(', ')}`);
+    throw new Error(`Missing required inputs: ${missing.join(", ")}`);
   }
 
   return {
@@ -196,11 +196,11 @@ function parseCliOptions(): CliOptions {
 
 function pickFirstString(
   record: Record<string, unknown>,
-  keys: string[]
+  keys: string[],
 ): string | null {
   for (const key of keys) {
     const value = record[key];
-    if (typeof value === 'string') {
+    if (typeof value === "string") {
       const normalized = normalizeName(value);
       if (normalized) return normalized;
     }
@@ -209,26 +209,26 @@ function pickFirstString(
 }
 
 function extractNameFromLinkedAccounts(
-  accounts: LinkedAccount[]
+  accounts: LinkedAccount[],
 ): string | null {
   for (const account of accounts) {
     const accountRecord = account as unknown as Record<string, unknown>;
 
     const fullName = pickFirstString(accountRecord, [
-      'display_name',
-      'name',
-      'username',
+      "display_name",
+      "name",
+      "username",
     ]);
-    if (fullName && !fullName.includes('@')) {
+    if (fullName && !fullName.includes("@")) {
       return fullName;
     }
 
-    const firstName = pickFirstString(accountRecord, ['first_name']);
-    const lastName = pickFirstString(accountRecord, ['last_name']);
+    const firstName = pickFirstString(accountRecord, ["first_name"]);
+    const lastName = pickFirstString(accountRecord, ["last_name"]);
     const combined = normalizeName(
-      `${firstName ?? ''} ${lastName ?? ''}`.trim() || null
+      `${firstName ?? ""} ${lastName ?? ""}`.trim() || null,
     );
-    if (combined && !combined.includes('@')) {
+    if (combined && !combined.includes("@")) {
       return combined;
     }
   }
@@ -239,9 +239,9 @@ function extractNameFromLinkedAccounts(
 function getPrivyVerifiedEmails(user: PrivyUser): string[] {
   const linkedAccounts: PrivyLinkedAccount[] = user.linked_accounts.map(
     (account) => {
-      if (account.type === 'email') {
+      if (account.type === "email") {
         return {
-          type: 'email',
+          type: "email",
           address: account.address,
           verified_at: account.verified_at,
           first_verified_at: account.first_verified_at ?? undefined,
@@ -252,7 +252,7 @@ function getPrivyVerifiedEmails(user: PrivyUser): string[] {
       return {
         type: account.type,
       };
-    }
+    },
   );
 
   return getAllVerifiedEmails({ linkedAccounts });
@@ -261,7 +261,7 @@ function getPrivyVerifiedEmails(user: PrivyUser): string[] {
 function chooseBetterName(
   current: string,
   incoming: string,
-  email: string
+  email: string,
 ): string {
   const normalizedCurrent =
     normalizeName(current) ?? fallbackNameFromEmail(email);
@@ -272,9 +272,9 @@ function chooseBetterName(
 
   const score = (name: string): number => {
     if (name === fallback) return 1;
-    if (name.includes('@')) return 1;
+    if (name.includes("@")) return 1;
     if (name.length <= 2) return 1;
-    if (name.includes(' ')) return 3;
+    if (name.includes(" ")) return 3;
     return 2;
   };
 
@@ -286,7 +286,7 @@ function chooseBetterName(
 function upsertContact(
   contactsByEmail: Map<string, ContactRow>,
   stats: ContactStats,
-  next: ContactRow
+  next: ContactRow,
 ): void {
   const existing = contactsByEmail.get(next.email);
   if (!existing) {
@@ -296,9 +296,9 @@ function upsertContact(
 
   stats.duplicatesMerged += 1;
 
-  const sourceRank = (source: ContactRow['source']): number => {
-    if (source === 'db_verified') return 3;
-    if (source === 'db_unverified') return 2;
+  const sourceRank = (source: ContactRow["source"]): number => {
+    if (source === "db_verified") return 3;
+    if (source === "db_unverified") return 2;
     return 1;
   };
 
@@ -319,7 +319,7 @@ function upsertContact(
 async function loadDbContacts(
   stats: ContactStats,
   contactsByEmail: Map<string, ContactRow>,
-  dbNameByPrivyId: Map<string, string>
+  dbNameByPrivyId: Map<string, string>,
 ): Promise<void> {
   const dbRows = await db
     .select({
@@ -336,8 +336,8 @@ async function loadDbContacts(
         eq(users.isActor, false),
         eq(users.isAgent, false),
         eq(users.isTest, false),
-        isNotNull(users.email)
-      )
+        isNotNull(users.email),
+      ),
     );
 
   stats.dbRowsScanned = dbRows.length;
@@ -359,7 +359,7 @@ async function loadDbContacts(
     upsertContact(contactsByEmail, stats, {
       email,
       name,
-      source: row.emailVerified ? 'db_verified' : 'db_unverified',
+      source: row.emailVerified ? "db_verified" : "db_unverified",
     });
   }
 }
@@ -368,7 +368,7 @@ async function loadPrivyContacts(
   options: CliOptions,
   stats: ContactStats,
   contactsByEmail: Map<string, ContactRow>,
-  dbNameByPrivyId: Map<string, string>
+  dbNameByPrivyId: Map<string, string>,
 ): Promise<void> {
   const privyClient = new PrivyClient({
     appId: options.privyAppId,
@@ -401,14 +401,14 @@ async function loadPrivyContacts(
         upsertContact(contactsByEmail, stats, {
           email,
           name,
-          source: 'privy',
+          source: "privy",
         });
       }
     }
 
     if (stats.privyPagesScanned % 50 === 0) {
       console.log(
-        `[Privy] Processed pages=${stats.privyPagesScanned}, users=${stats.privyUsersScanned}, candidates=${stats.privyCandidates}`
+        `[Privy] Processed pages=${stats.privyPagesScanned}, users=${stats.privyUsersScanned}, candidates=${stats.privyCandidates}`,
       );
     }
 
@@ -424,13 +424,13 @@ async function loadPrivyContacts(
 }
 
 function toCsv(rows: ContactRow[]): string {
-  const lines = ['name,email'];
+  const lines = ["name,email"];
 
   for (const row of rows) {
     lines.push(`${csvEscape(row.name)},${csvEscape(row.email)}`);
   }
 
-  return `${lines.join('\n')}\n`;
+  return `${lines.join("\n")}\n`;
 }
 
 async function writeCsv(outputPath: string, content: string): Promise<void> {
@@ -461,7 +461,7 @@ async function main(): Promise<void> {
     await loadPrivyContacts(options, stats, contactsByEmail, dbNameByPrivyId);
 
     const finalRows = [...contactsByEmail.values()].sort((a, b) =>
-      a.email.localeCompare(b.email)
+      a.email.localeCompare(b.email),
     );
 
     stats.finalRows = finalRows.length;
@@ -469,7 +469,7 @@ async function main(): Promise<void> {
     const csv = toCsv(finalRows);
     await writeCsv(options.outputPath, csv);
 
-    console.log('Newsletter CSV export completed.');
+    console.log("Newsletter CSV export completed.");
     console.log(`- Output: ${options.outputPath}`);
     console.log(`- Final rows: ${stats.finalRows}`);
     console.log(`- DB rows scanned: ${stats.dbRowsScanned}`);

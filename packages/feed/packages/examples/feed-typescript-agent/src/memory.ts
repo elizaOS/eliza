@@ -4,7 +4,7 @@
  * Simple in-memory storage for recent actions and context
  */
 
-import type { JsonValue } from '@feed/shared';
+import type { JsonValue } from "@feed/shared";
 
 export interface MemoryEntry {
   action: string;
@@ -63,7 +63,7 @@ export class AgentMemory {
    */
   getSummary(): string {
     if (this.entries.length === 0) {
-      return 'No recent actions.';
+      return "No recent actions.";
     }
 
     const recent = this.getRecent(5);
@@ -71,11 +71,11 @@ export class AgentMemory {
       .map((entry) => {
         const time = new Date(entry.timestamp).toLocaleTimeString();
         const resultStr =
-          typeof entry.result === 'string'
+          typeof entry.result === "string"
             ? entry.result
             : JSON.stringify(entry.result);
         return `[${time}] ${entry.action}: ${resultStr.substring(0, 100)}`;
       })
-      .join('\n');
+      .join("\n");
   }
 }

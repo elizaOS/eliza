@@ -21,9 +21,9 @@ import {
   type Transaction,
   users,
   withTransaction,
-} from '@feed/db';
-import { generateSnowflakeId, InsufficientFundsError } from '@feed/shared';
-import { EarnedPointsService } from './earned-points-service';
+} from "@feed/db";
+import { generateSnowflakeId, InsufficientFundsError } from "@feed/shared";
+import { EarnedPointsService } from "./earned-points-service";
 
 /**
  * User balance information
@@ -91,7 +91,7 @@ export class WalletService {
    * @param {CacheInvalidationCallback} callback - Cache invalidation function
    */
   static setCacheInvalidationCallback(
-    callback: CacheInvalidationCallback
+    callback: CacheInvalidationCallback,
   ): void {
     WalletService.cacheInvalidationCallback = callback;
   }
@@ -126,7 +126,7 @@ export class WalletService {
     delta: number,
     type: string,
     description: string,
-    relatedId?: string
+    relatedId?: string,
   ): Promise<void> {
     const result = await tx
       .select({
@@ -141,7 +141,7 @@ export class WalletService {
       // Fail-fast: NPCs should have User records after bootstrap (ensureNpcUsers).
       // A missing user here indicates a bug in bootstrap or an invalid userId.
       throw new Error(
-        `User not found for wallet operation: ${userId}. NPCs should have User records after bootstrap.`
+        `User not found for wallet operation: ${userId}. NPCs should have User records after bootstrap.`,
       );
     }
 
@@ -155,13 +155,13 @@ export class WalletService {
       !Number.isFinite(newBalance)
     ) {
       throw new Error(
-        `Invalid wallet mutation for ${userId}: delta=${delta}, balance=${currentBalance}, result=${newBalance}`
+        `Invalid wallet mutation for ${userId}: delta=${delta}, balance=${currentBalance}, result=${newBalance}`,
       );
     }
 
     // Prevent negative balance on debits
     if (delta < 0 && newBalance < 0) {
-      throw new InsufficientFundsError(Math.abs(delta), currentBalance, 'USD');
+      throw new InsufficientFundsError(Math.abs(delta), currentBalance, "USD");
     }
 
     await tx
@@ -239,7 +239,7 @@ export class WalletService {
    */
   static async hasSufficientBalance(
     userId: string,
-    requiredAmount: number
+    requiredAmount: number,
   ): Promise<boolean> {
     const result = await db
       .select({
@@ -283,7 +283,7 @@ export class WalletService {
     type: string,
     description: string,
     relatedId?: string,
-    tx?: Transaction | DrizzleClient
+    tx?: Transaction | DrizzleClient,
   ): Promise<void> {
     const delta = -amount;
 
@@ -294,7 +294,7 @@ export class WalletService {
         delta,
         type,
         description,
-        relatedId
+        relatedId,
       );
     } else {
       await withTransaction(async (transaction) => {
@@ -304,7 +304,7 @@ export class WalletService {
           delta,
           type,
           description,
-          relatedId
+          relatedId,
         );
       });
     }
@@ -321,7 +321,7 @@ export class WalletService {
     type: string,
     description: string,
     relatedId?: string,
-    tx?: Transaction | DrizzleClient
+    tx?: Transaction | DrizzleClient,
   ): Promise<void> {
     if (tx) {
       await WalletService.applyBalanceChange(
@@ -330,7 +330,7 @@ export class WalletService {
         amount,
         type,
         description,
-        relatedId
+        relatedId,
       );
     } else {
       await withTransaction(async (transaction) => {
@@ -340,7 +340,7 @@ export class WalletService {
           amount,
           type,
           description,
-          relatedId
+          relatedId,
         );
       });
     }
@@ -358,7 +358,7 @@ export class WalletService {
     userId: string,
     pnl: number,
     tradeType: string,
-    relatedId?: string
+    relatedId?: string,
   ): Promise<{
     previousLifetimePnL: number;
     newLifetimePnL: number;
@@ -376,14 +376,14 @@ export class WalletService {
         // Fail-fast: NPCs should have User records after bootstrap (ensureNpcUsers).
         // A missing user here indicates a bug in bootstrap or an invalid userId.
         throw new Error(
-          `User not found for PnL recording: ${userId}. NPCs should have User records after bootstrap.`
+          `User not found for PnL recording: ${userId}. NPCs should have User records after bootstrap.`,
         );
       }
 
       // Reject non-finite PnL to prevent lifetime stats corruption
       if (!Number.isFinite(pnl)) {
         throw new Error(
-          `Invalid PnL for ${userId}: pnl=${pnl}, tradeType=${tradeType}`
+          `Invalid PnL for ${userId}: pnl=${pnl}, tradeType=${tradeType}`,
         );
       }
 
@@ -392,7 +392,7 @@ export class WalletService {
 
       if (!Number.isFinite(newLifetimePnL)) {
         throw new Error(
-          `Invalid lifetimePnL for ${userId}: prev=${previousLifetimePnL}, delta=${pnl}`
+          `Invalid lifetimePnL for ${userId}: prev=${previousLifetimePnL}, delta=${pnl}`,
         );
       }
 
@@ -410,7 +410,7 @@ export class WalletService {
           newLifetimePnL,
           tradeType,
           relatedId,
-          tx
+          tx,
         );
 
       return {
@@ -426,7 +426,7 @@ export class WalletService {
    */
   static async getTransactionHistory(
     userId: string,
-    limit = 50
+    limit = 50,
   ): Promise<TransactionHistoryItem[]> {
     const transactions = await db
       .select()
@@ -475,11 +475,11 @@ export class WalletService {
         await tx.insert(balanceTransactions).values({
           id: await generateSnowflakeId(),
           userId,
-          type: 'deposit',
+          type: "deposit",
           amount: String(WalletService.STARTING_BALANCE),
-          balanceBefore: '0',
+          balanceBefore: "0",
           balanceAfter: String(WalletService.STARTING_BALANCE),
-          description: 'Initial deposit - Welcome to Feed!',
+          description: "Initial deposit - Welcome to Feed!",
         });
       });
     }

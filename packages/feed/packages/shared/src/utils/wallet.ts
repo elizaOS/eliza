@@ -1,4 +1,4 @@
-import { getCurrentChainId } from '../config';
+import { getCurrentChainId } from "../config";
 
 /**
  * Returns an Etherscan/Basescan explorer URL for a given transaction hash.
@@ -15,7 +15,7 @@ export function getTxExplorerUrl(txHash: string): string {
     case 84532:
       return `https://sepolia.basescan.org/tx/${txHash}`;
     default:
-      return '';
+      return "";
   }
 }
 
@@ -34,15 +34,15 @@ export function getTxExplorerUrl(txHash: string): string {
 export function formatTokenBalance(
   rawBalance: string,
   decimals: number,
-  maxDecimals = 6
+  maxDecimals = 6,
 ): string {
   const raw = BigInt(rawBalance);
-  if (raw === 0n) return '0';
+  if (raw === 0n) return "0";
   const divisor = 10n ** BigInt(decimals);
   const whole = raw / divisor;
   const remainder = raw % divisor;
   if (remainder === 0n) return whole.toString();
-  const remainderStr = remainder.toString().padStart(decimals, '0');
-  const trimmed = remainderStr.slice(0, maxDecimals).replace(/0+$/, '');
+  const remainderStr = remainder.toString().padStart(decimals, "0");
+  const trimmed = remainderStr.slice(0, maxDecimals).replace(/0+$/, "");
   return trimmed ? `${whole}.${trimmed}` : whole.toString();
 }

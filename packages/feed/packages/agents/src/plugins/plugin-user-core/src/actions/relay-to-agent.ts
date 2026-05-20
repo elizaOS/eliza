@@ -23,48 +23,48 @@ import type {
   IAgentRuntime,
   Memory,
   State,
-} from '@elizaos/core';
+} from "@elizaos/core";
 import {
   type BroadcastFn,
   dispatchAgentChat,
-} from '../../../../services/AgentChatService';
+} from "../../../../services/AgentChatService";
 
 export const relayToAgentAction: Action = {
-  name: 'RELAY_TO_AGENT',
+  name: "RELAY_TO_AGENT",
   description:
-    'Dispatch to an agent with context from previous agent responses. Use after gathering information from other agents to pass their findings to an execution agent.',
+    "Dispatch to an agent with context from previous agent responses. Use after gathering information from other agents to pass their findings to an execution agent.",
 
   // Cast needed: alpha elizaos expects ActionParameter[] (protobuf array).
   parameters: {
     agentId: {
-      type: 'string',
+      type: "string",
       required: true,
       description:
-        'The ID of the target agent — use the [id: ...] shown in Team Members',
+        "The ID of the target agent — use the [id: ...] shown in Team Members",
     },
     command: {
-      type: 'string',
+      type: "string",
       required: true,
-      description: 'The instruction for the target agent',
+      description: "The instruction for the target agent",
     },
     relayContext: {
-      type: 'string',
+      type: "string",
       required: true,
       description:
         'Structured context from other agents to pass along (e.g., "Agent A found: X, Agent B found: Y")',
     },
-  } as unknown as Action['parameters'],
+  } as unknown as Action["parameters"],
 
   examples: [
     [
       {
-        name: 'user',
+        name: "user",
         content: {
-          text: 'Have my research agent analyze trends, then my trader execute on it',
+          text: "Have my research agent analyze trends, then my trader execute on it",
         },
       },
       {
-        name: 'coordinator',
+        name: "coordinator",
         content: {
           text: "I'll relay the research findings to your trading agent for execution.",
         },
@@ -75,7 +75,7 @@ export const relayToAgentAction: Action = {
   validate: async (
     _runtime: IAgentRuntime,
     _message: Memory,
-    state?: State
+    state?: State,
   ): Promise<boolean> => {
     interface TeamMember {
       isAgent: boolean;
@@ -90,7 +90,7 @@ export const relayToAgentAction: Action = {
     _message: Memory,
     state?: State,
     _options?: Record<string, unknown>,
-    _callback?: HandlerCallback
+    _callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const actionParams = state?.data?.actionParams as
       | { agentId?: string; command?: string; relayContext?: string }
@@ -109,7 +109,7 @@ export const relayToAgentAction: Action = {
     if (!agentId || !command || !ownerId || !teamChatId || !broadcastFn) {
       const failResult = {
         success: false,
-        text: 'Missing required parameters for relay dispatch.',
+        text: "Missing required parameters for relay dispatch.",
       };
       _callback?.({ content: failResult as unknown as Content });
       return failResult as unknown as ActionResult;
@@ -133,7 +133,7 @@ export const relayToAgentAction: Action = {
     if (!result.success) {
       const failResult = {
         success: false,
-        text: `Failed to relay to agent: ${result.error ?? 'Unknown error'}`,
+        text: `Failed to relay to agent: ${result.error ?? "Unknown error"}`,
         values: { agentId, command, relayContext, error: result.error },
       };
       _callback?.({ content: failResult as unknown as Content });

@@ -1,14 +1,14 @@
-'use client';
+"use client";
 
-import type { OnboardingProfilePayload } from '@feed/shared';
+import type { OnboardingProfilePayload } from "@feed/shared";
 import {
   cn,
   getAgentDefaultProfileImageUrl,
   logger,
   sanitizeOnboardingUsername,
   TOTAL_AGENT_DEFAULT_PROFILE_PICTURES,
-} from '@feed/shared';
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+} from "@feed/shared";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   AlertCircle,
   Check,
@@ -18,20 +18,20 @@ import {
   RefreshCw,
   Sparkles,
   Upload,
-} from 'lucide-react';
-import Image from 'next/image';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { apiFetch } from '@/utils/api-fetch';
-import { uploadImage, validateImageFile } from '@/utils/upload-image';
+} from "lucide-react";
+import Image from "next/image";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { apiFetch } from "@/utils/api-fetch";
+import { uploadImage, validateImageFile } from "@/utils/upload-image";
 
-import { GAME_GUIDE_SLIDES } from './game-guide-slides';
+import { GAME_GUIDE_SLIDES } from "./game-guide-slides";
 
 /**
  * Imported profile data structure from social platforms.
  */
 export interface ImportedProfileData {
-  platform: 'twitter' | 'farcaster';
+  platform: "twitter" | "farcaster";
   username: string;
   displayName: string;
   bio?: string;
@@ -41,7 +41,7 @@ export interface ImportedProfileData {
   farcasterFid?: string;
 }
 
-const PROFILE_FORM_ID = 'user-onboarding-profile-form';
+const PROFILE_FORM_ID = "user-onboarding-profile-form";
 
 const GUIDE_CONTAINER_VARIANTS = {
   hidden: {},
@@ -65,7 +65,7 @@ const GUIDE_ITEM_VARIANTS_REDUCED = {
 };
 
 interface UserOnboardingFlowProps {
-  phase: 'profile' | 'guide';
+  phase: "profile" | "guide";
   isReplayGuide: boolean;
   isSubmitting: boolean;
   guideSubmitting: boolean;
@@ -100,7 +100,7 @@ function resolveAssetUrl(value?: string | null): string | undefined {
   if (ABSOLUTE_URL_PATTERN.test(value)) {
     return value;
   }
-  if (typeof window !== 'undefined' && value.startsWith('/')) {
+  if (typeof window !== "undefined" && value.startsWith("/")) {
     return new URL(value, window.location.origin).toString();
   }
   return value;
@@ -118,11 +118,11 @@ export function UserOnboardingFlow({
   user,
   importedData,
 }: UserOnboardingFlowProps) {
-  const [username, setUsername] = useState('');
+  const [username, setUsername] = useState("");
   const [profilePictureIndex, setProfilePictureIndex] = useState(1);
   const [bannerIndex, setBannerIndex] = useState(1);
   const [uploadedProfileFile, setUploadedProfileFile] = useState<File | null>(
-    null
+    null,
   );
   const [uploadedProfileImage, setUploadedProfileImage] = useState<
     string | null
@@ -130,10 +130,10 @@ export function UserOnboardingFlow({
   const [uploadedBanner, setUploadedBanner] = useState<string | null>(null);
   const [isCheckingUsername, setIsCheckingUsername] = useState(false);
   const [usernameStatus, setUsernameStatus] = useState<
-    'available' | 'taken' | null
+    "available" | "taken" | null
   >(null);
   const [usernameSuggestion, setUsernameSuggestion] = useState<string | null>(
-    null
+    null,
   );
   const [formError, setFormError] = useState<string | null>(null);
   const [isLoadingDefaults, setIsLoadingDefaults] = useState(true);
@@ -170,22 +170,22 @@ export function UserOnboardingFlow({
   }, []);
 
   useEffect(() => {
-    if (phase !== 'guide') return;
+    if (phase !== "guide") return;
     setGuideSlide(0);
     setGuideDirection(0);
   }, [phase]);
 
   useEffect(() => {
-    if (!importedData || phase !== 'profile') return;
+    if (!importedData || phase !== "profile") return;
 
     logger.info(
-      'Pre-filling profile with imported data',
+      "Pre-filling profile with imported data",
       {
         platform: importedData.platform,
         hasProfileImage: !!importedData.profileImageUrl,
         hasCoverImage: !!importedData.coverImageUrl,
       },
-      'UserOnboardingFlow'
+      "UserOnboardingFlow",
     );
 
     setUsername(sanitizeOnboardingUsername(importedData.username));
@@ -195,7 +195,7 @@ export function UserOnboardingFlow({
     } else {
       setUploadedProfileImage(null);
       setProfilePictureIndex(
-        Math.floor(Math.random() * TOTAL_AGENT_DEFAULT_PROFILE_PICTURES) + 1
+        Math.floor(Math.random() * TOTAL_AGENT_DEFAULT_PROFILE_PICTURES) + 1,
       );
     }
     setUploadedBanner(null);
@@ -203,7 +203,7 @@ export function UserOnboardingFlow({
   }, [importedData, phase]);
 
   useEffect(() => {
-    if (phase !== 'profile') return;
+    if (phase !== "profile") return;
 
     if (importedData) {
       setIsLoadingDefaults(false);
@@ -214,11 +214,11 @@ export function UserOnboardingFlow({
       setIsLoadingDefaults(true);
 
       const [profileResult, assetsResult] = await Promise.allSettled([
-        apiFetch('/api/onboarding/generate-profile', { auth: false }),
-        apiFetch('/api/onboarding/random-assets', { auth: false }),
+        apiFetch("/api/onboarding/generate-profile", { auth: false }),
+        apiFetch("/api/onboarding/random-assets", { auth: false }),
       ]);
 
-      if (profileResult.status === 'fulfilled' && profileResult.value.ok) {
+      if (profileResult.status === "fulfilled" && profileResult.value.ok) {
         const generated =
           (await profileResult.value.json()) as GeneratedProfileResponse;
         setUsername(generated.username);
@@ -226,14 +226,14 @@ export function UserOnboardingFlow({
         setUsername(`user_${Math.random().toString(36).slice(2, 10)}`);
       }
 
-      if (assetsResult.status === 'fulfilled' && assetsResult.value.ok) {
+      if (assetsResult.status === "fulfilled" && assetsResult.value.ok) {
         const assets =
           (await assetsResult.value.json()) as RandomAssetsResponse;
         setProfilePictureIndex(assets.profilePictureIndex);
         setBannerIndex(assets.bannerIndex);
       } else {
         setProfilePictureIndex(
-          Math.floor(Math.random() * TOTAL_AGENT_DEFAULT_PROFILE_PICTURES) + 1
+          Math.floor(Math.random() * TOTAL_AGENT_DEFAULT_PROFILE_PICTURES) + 1,
         );
         setBannerIndex(Math.floor(Math.random() * TOTAL_BANNERS) + 1);
       }
@@ -248,7 +248,7 @@ export function UserOnboardingFlow({
   }, [phase, importedData]);
 
   useEffect(() => {
-    if (phase !== 'profile') return;
+    if (phase !== "profile") return;
     if (!username || username.length < 3) {
       setUsernameStatus(null);
       setUsernameSuggestion(null);
@@ -259,17 +259,17 @@ export function UserOnboardingFlow({
 
     const checkUsername = async () => {
       setIsCheckingUsername(true);
-      let status: 'available' | 'taken' | null = null;
+      let status: "available" | "taken" | null = null;
       let suggestion: string | null = null;
 
       const response = await apiFetch(
         `/api/onboarding/check-username?username=${encodeURIComponent(username)}`,
-        { auth: false }
+        { auth: false },
       ).catch((checkError: Error) => {
         logger.warn(
-          'Username availability check error',
+          "Username availability check error",
           { error: checkError },
-          'UserOnboardingFlow'
+          "UserOnboardingFlow",
         );
         return null;
       });
@@ -279,14 +279,14 @@ export function UserOnboardingFlow({
           available?: boolean;
           suggestion?: string;
         };
-        status = result.available ? 'available' : 'taken';
+        status = result.available ? "available" : "taken";
         suggestion = result.available ? null : (result.suggestion ?? null);
       } else if (response) {
         const body = await response.json();
         logger.warn(
-          'Username availability check failed',
+          "Username availability check failed",
           { status: response.status, body },
-          'UserOnboardingFlow'
+          "UserOnboardingFlow",
         );
       }
 
@@ -309,30 +309,30 @@ export function UserOnboardingFlow({
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (phase !== 'profile' || isSubmitting) return;
+    if (phase !== "profile" || isSubmitting) return;
 
     setFormError(null);
 
     if (!username.trim() || username.length < 3) {
-      setFormError('Please pick a username of at least 3 characters');
+      setFormError("Please pick a username of at least 3 characters");
       return;
     }
 
     if (!/^[a-zA-Z0-9_]+$/.test(username)) {
       setFormError(
-        'Username can only contain letters, numbers, and underscores'
+        "Username can only contain letters, numbers, and underscores",
       );
       return;
     }
 
-    if (usernameStatus === 'taken') {
-      setFormError('Username is already taken. Please choose another.');
+    if (usernameStatus === "taken") {
+      setFormError("Username is already taken. Please choose another.");
       return;
     }
 
     if (!acceptedTerms) {
       setFormError(
-        'Please accept the Terms of Service and Privacy Policy to continue'
+        "Please accept the Terms of Service and Privacy Policy to continue",
       );
       return;
     }
@@ -340,17 +340,17 @@ export function UserOnboardingFlow({
     let profileImageUrl: string | undefined;
     if (uploadedProfileFile) {
       try {
-        profileImageUrl = await uploadImage(uploadedProfileFile, 'profile');
+        profileImageUrl = await uploadImage(uploadedProfileFile, "profile");
       } catch (err) {
         setFormError(
-          err instanceof Error ? err.message : 'Failed to upload profile image'
+          err instanceof Error ? err.message : "Failed to upload profile image",
         );
         return;
       }
     } else {
       profileImageUrl = resolveAssetUrl(
         uploadedProfileImage ??
-          getAgentDefaultProfileImageUrl(profilePictureIndex)
+          getAgentDefaultProfileImageUrl(profilePictureIndex),
       );
     }
 
@@ -358,22 +358,22 @@ export function UserOnboardingFlow({
     const profilePayload: OnboardingProfilePayload = {
       username: trimmedUsername,
       displayName: trimmedUsername,
-      bio: '',
+      bio: "",
       profileImageUrl,
       coverImageUrl: resolveAssetUrl(
-        uploadedBanner ?? `/assets/user-banners/banner-${bannerIndex}.jpg`
+        uploadedBanner ?? `/assets/user-banners/banner-${bannerIndex}.jpg`,
       ),
       importedFrom: importedData?.platform || null,
       twitterId:
-        importedData?.platform === 'twitter' ? importedData.twitterId : null,
+        importedData?.platform === "twitter" ? importedData.twitterId : null,
       twitterUsername:
-        importedData?.platform === 'twitter' ? importedData.username : null,
+        importedData?.platform === "twitter" ? importedData.username : null,
       farcasterFid:
-        importedData?.platform === 'farcaster'
+        importedData?.platform === "farcaster"
           ? importedData.farcasterFid
           : null,
       farcasterUsername:
-        importedData?.platform === 'farcaster' ? importedData.username : null,
+        importedData?.platform === "farcaster" ? importedData.username : null,
       tosAccepted: acceptedTerms,
       privacyPolicyAccepted: acceptedTerms,
     };
@@ -381,11 +381,11 @@ export function UserOnboardingFlow({
     await onSubmitProfile(profilePayload);
   };
 
-  const cycleProfilePicture = (direction: 'next' | 'prev') => {
+  const cycleProfilePicture = (direction: "next" | "prev") => {
     setUploadedProfileFile(null);
     setUploadedProfileImage(null);
     setProfilePictureIndex((prev) => {
-      if (direction === 'next') {
+      if (direction === "next") {
         return prev >= TOTAL_AGENT_DEFAULT_PROFILE_PICTURES ? 1 : prev + 1;
       }
       return prev <= 1 ? TOTAL_AGENT_DEFAULT_PROFILE_PICTURES : prev - 1;
@@ -393,7 +393,7 @@ export function UserOnboardingFlow({
   };
 
   const handleProfileImageUpload = (
-    event: React.ChangeEvent<HTMLInputElement>
+    event: React.ChangeEvent<HTMLInputElement>,
   ) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -411,8 +411,8 @@ export function UserOnboardingFlow({
       setFormError(null);
     };
     reader.onerror = () => {
-      logger.error('Failed to read image file', {}, 'UserOnboardingFlow');
-      setFormError('Failed to read image file. Please try again.');
+      logger.error("Failed to read image file", {}, "UserOnboardingFlow");
+      setFormError("Failed to read image file. Please try again.");
       setUploadedProfileFile(null);
       setUploadedProfileImage(null);
     };
@@ -454,28 +454,28 @@ export function UserOnboardingFlow({
     (href: string) => {
       void onGuideComplete({ nextHref: href });
     },
-    [onGuideComplete]
+    [onGuideComplete],
   );
 
   useEffect(() => {
-    if (phase !== 'guide' || guideSubmitting) return;
+    if (phase !== "guide" || guideSubmitting) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') handleGuideSkip();
-      else if (e.key === 'ArrowRight' || e.key === 'Enter') goGuideNext();
-      else if (e.key === 'ArrowLeft') goGuidePrev();
+      if (e.key === "Escape") handleGuideSkip();
+      else if (e.key === "ArrowRight" || e.key === "Enter") goGuideNext();
+      else if (e.key === "ArrowLeft") goGuidePrev();
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [phase, guideSubmitting, goGuideNext, goGuidePrev, handleGuideSkip]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      if (phase !== 'profile' || !flowRootRef.current) return;
-      if (e.key !== 'Tab') return;
+      if (phase !== "profile" || !flowRootRef.current) return;
+      if (e.key !== "Tab") return;
 
       const focusableElements =
         flowRootRef.current.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
         );
       const firstElement = focusableElements[0];
       const lastElement = focusableElements[focusableElements.length - 1];
@@ -492,25 +492,25 @@ export function UserOnboardingFlow({
         firstElement.focus();
       }
     },
-    [phase]
+    [phase],
   );
 
   useEffect(() => {
-    if (phase !== 'profile') return;
+    if (phase !== "profile") return;
 
-    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener("keydown", handleKeyDown);
 
     const timer = setTimeout(() => {
       if (flowRootRef.current) {
         const firstFocusable = flowRootRef.current.querySelector<HTMLElement>(
-          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
         );
         firstFocusable?.focus();
       }
     }, 100);
 
     return () => {
-      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener("keydown", handleKeyDown);
       clearTimeout(timer);
     };
   }, [phase, handleKeyDown]);
@@ -545,7 +545,7 @@ export function UserOnboardingFlow({
           <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/40 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100">
             <button
               type="button"
-              onClick={() => cycleProfilePicture('prev')}
+              onClick={() => cycleProfilePicture("prev")}
               className="flex h-10 w-10 items-center justify-center rounded-full bg-background/90 shadow-sm transition-transform hover:bg-background active:scale-95"
               aria-label="Previous avatar"
             >
@@ -563,7 +563,7 @@ export function UserOnboardingFlow({
             </label>
             <button
               type="button"
-              onClick={() => cycleProfilePicture('next')}
+              onClick={() => cycleProfilePicture("next")}
               className="flex h-10 w-10 items-center justify-center rounded-full bg-background/90 shadow-sm transition-transform hover:bg-background active:scale-95"
               aria-label="Next avatar"
             >
@@ -589,17 +589,16 @@ export function UserOnboardingFlow({
             type="text"
             value={username}
             onChange={(e) =>
-              setUsername(e.target.value.replace(/[^a-zA-Z0-9_]/g, ''))
+              setUsername(e.target.value.replace(/[^a-zA-Z0-9_]/g, ""))
             }
             placeholder="your_username"
             className={cn(
-              'w-full rounded-xl border-2 bg-muted px-4 py-3.5 pr-12 pl-9 font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-[#0066FF] focus:ring-offset-2',
-              usernameStatus === 'available' && 'border-green-500/50',
-              usernameStatus === 'taken' && 'border-red-500/50',
-              !usernameStatus && 'border-border'
+              "w-full rounded-xl border-2 bg-muted px-4 py-3.5 pr-12 pl-9 font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-[#0066FF] focus:ring-offset-2",
+              usernameStatus === "available" && "border-green-500/50",
+              usernameStatus === "taken" && "border-red-500/50",
+              !usernameStatus && "border-border",
             )}
             maxLength={20}
-            autoFocus
             autoCapitalize="none"
             autoCorrect="off"
             spellCheck={false}
@@ -609,17 +608,17 @@ export function UserOnboardingFlow({
             {isCheckingUsername && (
               <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" />
             )}
-            {usernameStatus === 'available' && !isCheckingUsername && (
+            {usernameStatus === "available" && !isCheckingUsername && (
               <Check className="h-5 w-5 text-green-500" />
             )}
-            {usernameStatus === 'taken' && !isCheckingUsername && (
+            {usernameStatus === "taken" && !isCheckingUsername && (
               <AlertCircle className="h-5 w-5 text-red-500" />
             )}
           </div>
         </div>
-        {usernameStatus === 'taken' && usernameSuggestion && (
+        {usernameStatus === "taken" && usernameSuggestion && (
           <p className="text-center text-muted-foreground text-sm">
-            Username taken. Try:{' '}
+            Username taken. Try:{" "}
             <button
               type="button"
               className="font-medium text-[#0066FF] hover:underline"
@@ -629,7 +628,7 @@ export function UserOnboardingFlow({
             </button>
           </p>
         )}
-        {usernameStatus === 'available' && !isCheckingUsername && (
+        {usernameStatus === "available" && !isCheckingUsername && (
           <p className="text-center text-green-600 text-sm">
             ✓ Username available
           </p>
@@ -662,7 +661,7 @@ export function UserOnboardingFlow({
             className="mt-0.5 h-5 w-5 shrink-0 rounded border-border text-[#0066FF] focus:ring-2 focus:ring-[#0066FF] focus:ring-offset-2"
           />
           <span className="text-muted-foreground text-sm leading-relaxed group-hover:text-foreground">
-            I accept the{' '}
+            I accept the{" "}
             <a
               href="https://docs.feed.market/legal/terms-of-service/"
               target="_blank"
@@ -671,8 +670,8 @@ export function UserOnboardingFlow({
               onClick={(e) => e.stopPropagation()}
             >
               Terms of Service
-            </a>{' '}
-            and{' '}
+            </a>{" "}
+            and{" "}
             <a
               href="https://docs.feed.market/legal/privacy-policy/"
               target="_blank"
@@ -689,7 +688,7 @@ export function UserOnboardingFlow({
   );
 
   const guideBody =
-    phase === 'guide' && guideSlideData ? (
+    phase === "guide" && guideSlideData ? (
       <div className="flex min-h-[min(50vh,420px)] flex-col px-6 py-8 md:px-10">
         <p className="mb-6 text-center text-muted-foreground text-xs uppercase tracking-widest">
           Getting started
@@ -699,12 +698,12 @@ export function UserOnboardingFlow({
             <div
               key={i}
               className={cn(
-                'h-2 rounded-full transition-all duration-200',
+                "h-2 rounded-full transition-all duration-200",
                 i === guideSlide
-                  ? 'w-6 bg-[#0066FF]'
+                  ? "w-6 bg-[#0066FF]"
                   : i < guideSlide
-                    ? 'w-2 bg-[#0066FF]/50'
-                    : 'w-2 bg-muted-foreground/30'
+                    ? "w-2 bg-[#0066FF]/50"
+                    : "w-2 bg-muted-foreground/30",
               )}
             />
           ))}
@@ -744,11 +743,11 @@ export function UserOnboardingFlow({
                     disabled={guideSubmitting}
                     onClick={() => handleGuideCta(cta.href)}
                     className={cn(
-                      'rounded-xl px-5 py-3 font-medium text-sm transition-colors',
+                      "rounded-xl px-5 py-3 font-medium text-sm transition-colors",
                       i === 0
-                        ? 'bg-[#0066FF] text-primary-foreground hover:bg-[#0066FF]/90'
-                        : 'border border-border text-foreground hover:bg-muted',
-                      guideSubmitting && 'cursor-not-allowed opacity-50'
+                        ? "bg-[#0066FF] text-primary-foreground hover:bg-[#0066FF]/90"
+                        : "border border-border text-foreground hover:bg-muted",
+                      guideSubmitting && "cursor-not-allowed opacity-50",
                     )}
                   >
                     {cta.label}
@@ -766,31 +765,31 @@ export function UserOnboardingFlow({
       <div className="flex items-center gap-2">
         <div
           className={cn(
-            'flex h-6 w-6 items-center justify-center rounded-full font-medium text-xs transition-all',
-            phase === 'profile'
-              ? 'bg-[#0066FF] text-white'
-              : 'bg-green-500 text-white'
+            "flex h-6 w-6 items-center justify-center rounded-full font-medium text-xs transition-all",
+            phase === "profile"
+              ? "bg-[#0066FF] text-white"
+              : "bg-green-500 text-white",
           )}
         >
-          {phase === 'profile' ? '1' : <Check className="h-3.5 w-3.5" />}
+          {phase === "profile" ? "1" : <Check className="h-3.5 w-3.5" />}
         </div>
         <span className="hidden text-xs sm:inline">Profile</span>
       </div>
 
       <div
         className={cn(
-          'h-0.5 w-8 rounded-full transition-colors',
-          phase === 'guide' ? 'bg-[#0066FF]/60' : 'bg-muted'
+          "h-0.5 w-8 rounded-full transition-colors",
+          phase === "guide" ? "bg-[#0066FF]/60" : "bg-muted",
         )}
       />
 
       <div className="flex items-center gap-2">
         <div
           className={cn(
-            'flex h-6 w-6 items-center justify-center rounded-full font-medium text-xs transition-all',
-            phase === 'guide'
-              ? 'bg-[#0066FF] text-white'
-              : 'bg-muted text-muted-foreground'
+            "flex h-6 w-6 items-center justify-center rounded-full font-medium text-xs transition-all",
+            phase === "guide"
+              ? "bg-[#0066FF] text-white"
+              : "bg-muted text-muted-foreground",
           )}
         >
           2
@@ -802,23 +801,23 @@ export function UserOnboardingFlow({
 
   const canSubmitProfile =
     !isSubmitting &&
-    usernameStatus !== 'taken' &&
+    usernameStatus !== "taken" &&
     acceptedTerms &&
     username.length >= 3;
 
   const headerTitle =
-    phase === 'profile'
-      ? 'Set up your profile'
+    phase === "profile"
+      ? "Set up your profile"
       : isReplayGuide
-        ? 'Game guide'
-        : 'Welcome to Feed';
+        ? "Game guide"
+        : "Welcome to Feed";
 
   return (
     <div
       ref={flowRootRef}
       className={cn(
-        'flex min-h-dvh flex-col bg-background pb-safe transition-opacity duration-300',
-        isVisible ? 'opacity-100' : 'opacity-0'
+        "flex min-h-dvh flex-col bg-background pb-safe transition-opacity duration-300",
+        isVisible ? "opacity-100" : "opacity-0",
       )}
     >
       <div className="flex shrink-0 items-center justify-between border-border border-b px-4 py-4 pt-safe md:px-6">
@@ -830,23 +829,23 @@ export function UserOnboardingFlow({
             <h1 className="truncate font-bold text-lg md:text-xl">
               {headerTitle}
             </h1>
-            {phase === 'profile' && importedData && (
+            {phase === "profile" && importedData && (
               <p className="text-[#0066FF] text-xs">
-                Imported from{' '}
-                {importedData.platform === 'twitter' ? '𝕏' : 'Farcaster'}
+                Imported from{" "}
+                {importedData.platform === "twitter" ? "𝕏" : "Farcaster"}
               </p>
             )}
-            {phase === 'guide' && !isReplayGuide && (
+            {phase === "guide" && !isReplayGuide && (
               <p className="text-muted-foreground text-xs">
                 Quick tour — then you&apos;re in
               </p>
             )}
-            {phase === 'guide' && isReplayGuide && (
+            {phase === "guide" && isReplayGuide && (
               <p className="text-muted-foreground text-xs">
                 Replay anytime from your menu
               </p>
             )}
-            {user?.username && phase === 'profile' && (
+            {user?.username && phase === "profile" && (
               <p className="truncate text-muted-foreground text-xs">
                 @{user.username}
               </p>
@@ -854,14 +853,14 @@ export function UserOnboardingFlow({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {phase === 'guide' && (
+          {phase === "guide" && (
             <button
               type="button"
               onClick={handleGuideSkip}
               disabled={guideSubmitting}
               className={cn(
-                'rounded-lg px-3 py-2 text-muted-foreground text-sm hover:bg-muted hover:text-foreground',
-                guideSubmitting && 'cursor-not-allowed opacity-40'
+                "rounded-lg px-3 py-2 text-muted-foreground text-sm hover:bg-muted hover:text-foreground",
+                guideSubmitting && "cursor-not-allowed opacity-40",
               )}
             >
               Skip
@@ -883,7 +882,7 @@ export function UserOnboardingFlow({
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:mx-auto md:w-full md:max-w-3xl md:rounded-lg md:border md:border-border">
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
           <div className="mx-auto w-full max-w-lg">
-            {phase === 'guide' ? (
+            {phase === "guide" ? (
               guideBody
             ) : isLoadingDefaults ? (
               <div className="flex flex-col items-center p-6 md:p-8">
@@ -907,13 +906,13 @@ export function UserOnboardingFlow({
 
         <div className="shrink-0 space-y-4 border-border border-t bg-background px-4 py-4 sm:px-6">
           {progressFooter}
-          {phase === 'profile' && !isLoadingDefaults && (
+          {phase === "profile" && !isLoadingDefaults && (
             <button
               type="submit"
               form={PROFILE_FORM_ID}
               className={cn(
-                'w-full rounded-xl bg-[#0066FF] px-6 py-4 font-semibold text-white shadow-lg transition-all hover:bg-[#0055DD] hover:shadow-xl active:scale-[0.98]',
-                !canSubmitProfile && 'cursor-not-allowed opacity-50'
+                "w-full rounded-xl bg-[#0066FF] px-6 py-4 font-semibold text-white shadow-lg transition-all hover:bg-[#0055DD] hover:shadow-xl active:scale-[0.98]",
+                !canSubmitProfile && "cursor-not-allowed opacity-50",
               )}
               disabled={!canSubmitProfile}
             >
@@ -923,11 +922,11 @@ export function UserOnboardingFlow({
                   Creating Profile...
                 </span>
               ) : (
-                'Continue'
+                "Continue"
               )}
             </button>
           )}
-          {phase === 'guide' && (
+          {phase === "guide" && (
             <div className="flex items-center justify-between gap-3">
               {!isFirstGuideSlide ? (
                 <button
@@ -935,10 +934,10 @@ export function UserOnboardingFlow({
                   onClick={goGuidePrev}
                   disabled={guideSubmitting}
                   className={cn(
-                    'flex items-center gap-1 font-medium text-sm transition-colors',
+                    "flex items-center gap-1 font-medium text-sm transition-colors",
                     guideSubmitting
-                      ? 'cursor-not-allowed text-muted-foreground/40'
-                      : 'text-muted-foreground hover:text-foreground'
+                      ? "cursor-not-allowed text-muted-foreground/40"
+                      : "text-muted-foreground hover:text-foreground",
                   )}
                 >
                   <ChevronLeft className="h-4 w-4" />
@@ -952,10 +951,10 @@ export function UserOnboardingFlow({
                 onClick={goGuideNext}
                 disabled={guideSubmitting}
                 className={cn(
-                  'flex min-w-[140px] items-center justify-center gap-2 rounded-xl bg-[#0066FF] px-6 py-4 font-semibold text-primary-foreground text-sm transition-colors',
+                  "flex min-w-[140px] items-center justify-center gap-2 rounded-xl bg-[#0066FF] px-6 py-4 font-semibold text-primary-foreground text-sm transition-colors",
                   guideSubmitting
-                    ? 'cursor-not-allowed opacity-70'
-                    : 'hover:bg-[#0066FF]/90'
+                    ? "cursor-not-allowed opacity-70"
+                    : "hover:bg-[#0066FF]/90",
                 )}
               >
                 {guideSubmitting ? (
@@ -964,7 +963,7 @@ export function UserOnboardingFlow({
                     Saving...
                   </>
                 ) : isLastGuideSlide ? (
-                  'Start playing'
+                  "Start playing"
                 ) : (
                   <>
                     Next

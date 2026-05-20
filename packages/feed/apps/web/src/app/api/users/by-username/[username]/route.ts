@@ -75,7 +75,7 @@ import {
   publicRateLimit,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
+} from "@feed/api";
 import {
   comments,
   count,
@@ -86,9 +86,9 @@ import {
   reactions,
   sql,
   users,
-} from '@feed/db';
-import { logger, toISO, UsernameParamSchema } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/db";
+import { logger, toISO, UsernameParamSchema } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 /**
  * GET /api/users/by-username/[username]
@@ -97,7 +97,7 @@ import type { NextRequest } from 'next/server';
 export const GET = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ username: string }> }
+    context: { params: Promise<{ username: string }> },
   ) => {
     const params = await context.params;
     const { username } = UsernameParamSchema.parse(params);
@@ -140,7 +140,7 @@ export const GET = withErrorHandling(
       .limit(1);
 
     if (!dbUser) {
-      throw new NotFoundError('User', username);
+      throw new NotFoundError("User", username);
     }
 
     // Get counts for stats
@@ -174,9 +174,9 @@ export const GET = withErrorHandling(
     ]);
 
     logger.info(
-      'User profile fetched by username',
+      "User profile fetched by username",
       { username, userId: dbUser.id },
-      'GET /api/users/by-username/[username]'
+      "GET /api/users/by-username/[username]",
     );
 
     const res = successResponse({
@@ -217,5 +217,5 @@ export const GET = withErrorHandling(
     });
     if (rateLimitInfo) addPublicReadHeaders(res, rateLimitInfo);
     return res;
-  }
+  },
 );

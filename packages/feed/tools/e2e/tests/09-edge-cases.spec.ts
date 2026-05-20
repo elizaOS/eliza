@@ -1,20 +1,20 @@
-import { expect, test } from './fixtures';
-import { fillAndVerify, pageContainsText } from './helpers/interaction-helpers';
+import { expect, test } from "./fixtures";
+import { fillAndVerify, pageContainsText } from "./helpers/interaction-helpers";
 import {
   cooldownBetweenTests,
   isServerHealthy,
   navigateTo,
   waitForPageLoad,
-} from './helpers/page-helpers';
-import { ROUTES, SELECTORS, VIEWPORTS } from './helpers/test-data';
-import { loginWithWallet } from './helpers/wallet-auth';
+} from "./helpers/page-helpers";
+import { ROUTES, SELECTORS, VIEWPORTS } from "./helpers/test-data";
+import { loginWithWallet } from "./helpers/wallet-auth";
 
 test.setTimeout(60000);
 
-test.describe('Edge Cases - Security', () => {
+test.describe("Edge Cases - Security", () => {
   test.beforeEach(async ({ page }) => {
     const healthy = await isServerHealthy();
-    test.skip(!healthy, 'Server is not healthy');
+    test.skip(!healthy, "Server is not healthy");
     await page.setViewportSize(VIEWPORTS.DESKTOP);
   });
 
@@ -22,14 +22,14 @@ test.describe('Edge Cases - Security', () => {
     await cooldownBetweenTests(page);
   });
 
-  test('XSS prevention in URL parameters', async ({ page }) => {
-    await navigateTo(page, '/search?q=<script>alert(1)</script>');
+  test("XSS prevention in URL parameters", async ({ page }) => {
+    await navigateTo(page, "/search?q=<script>alert(1)</script>");
     await waitForPageLoad(page);
-    const body = await page.locator('body').innerHTML();
-    expect(body).not.toContain('<script>alert(1)</script>');
+    const body = await page.locator("body").innerHTML();
+    expect(body).not.toContain("<script>alert(1)</script>");
   });
 
-  test('SQL injection in search input', async ({ page, wallets }) => {
+  test("SQL injection in search input", async ({ page, wallets }) => {
     await navigateTo(page, ROUTES.HOME);
     await waitForPageLoad(page);
     await loginWithWallet(page, wallets);
@@ -38,33 +38,33 @@ test.describe('Edge Cases - Security', () => {
     const result = await fillAndVerify(
       page,
       SELECTORS.SEARCH_INPUT,
-      "'; DROP TABLE users; --"
+      "'; DROP TABLE users; --",
     );
     if (result !== null) {
       await page.waitForTimeout(1000);
-      const body = await page.locator('body').textContent();
+      const body = await page.locator("body").textContent();
       expect(body).toBeTruthy();
-      expect(body!.length).toBeGreaterThan(0);
+      expect(body?.length).toBeGreaterThan(0);
     } else {
       expect(true).toBe(true);
     }
   });
 
-  test('no stack traces exposed in production errors', async ({ page }) => {
-    await navigateTo(page, '/api/nonexistent-endpoint');
+  test("no stack traces exposed in production errors", async ({ page }) => {
+    await navigateTo(page, "/api/nonexistent-endpoint");
     await waitForPageLoad(page);
-    const body = (await page.locator('body').textContent()) ?? '';
+    const body = (await page.locator("body").textContent()) ?? "";
     const lower = body.toLowerCase();
-    expect(lower).not.toContain('stack trace');
-    expect(lower).not.toContain('at module');
-    expect(lower).not.toContain('node_modules');
+    expect(lower).not.toContain("stack trace");
+    expect(lower).not.toContain("at module");
+    expect(lower).not.toContain("node_modules");
   });
 });
 
-test.describe('Edge Cases - Input Validation', () => {
+test.describe("Edge Cases - Input Validation", () => {
   test.beforeEach(async ({ page, wallets }) => {
     const healthy = await isServerHealthy();
-    test.skip(!healthy, 'Server is not healthy');
+    test.skip(!healthy, "Server is not healthy");
     await page.setViewportSize(VIEWPORTS.DESKTOP);
     await navigateTo(page, ROUTES.HOME);
     await waitForPageLoad(page);
@@ -75,7 +75,7 @@ test.describe('Edge Cases - Input Validation', () => {
     await cooldownBetweenTests(page);
   });
 
-  test('empty post submission prevented', async ({ page }) => {
+  test("empty post submission prevented", async ({ page }) => {
     await navigateTo(page, ROUTES.FEED);
     await waitForPageLoad(page);
     const submitBtn = page
@@ -92,7 +92,7 @@ test.describe('Edge Cases - Input Validation', () => {
     }
   });
 
-  test('unicode characters handled in post', async ({ page }) => {
+  test("unicode characters handled in post", async ({ page }) => {
     await navigateTo(page, ROUTES.FEED);
     await waitForPageLoad(page);
     const composer = page.locator('textarea, [contenteditable="true"]').first();
@@ -101,16 +101,16 @@ test.describe('Edge Cases - Input Validation', () => {
       .catch(() => false);
     if (isVisible) {
       await composer.fill(
-        'Testing unicode: \u{1F680}\u{1F30D}\u{2764}\u{FE0F} \u4F60\u597D \u0645\u0631\u062D\u0628\u0627'
+        "Testing unicode: \u{1F680}\u{1F30D}\u{2764}\u{FE0F} \u4F60\u597D \u0645\u0631\u062D\u0628\u0627",
       );
-      const value = await composer.inputValue().catch(() => '');
+      const value = await composer.inputValue().catch(() => "");
       expect(value.length).toBeGreaterThan(0);
     } else {
       expect(true).toBe(true);
     }
   });
 
-  test('long input handled gracefully', async ({ page }) => {
+  test("long input handled gracefully", async ({ page }) => {
     await navigateTo(page, ROUTES.FEED);
     await waitForPageLoad(page);
     const composer = page.locator('textarea, [contenteditable="true"]').first();
@@ -118,17 +118,17 @@ test.describe('Edge Cases - Input Validation', () => {
       .isVisible({ timeout: 5000 })
       .catch(() => false);
     if (isVisible) {
-      const longText = 'A'.repeat(10000);
+      const longText = "A".repeat(10000);
       await composer.fill(longText);
       await page.waitForTimeout(500);
-      const body = await page.locator('body').textContent();
+      const body = await page.locator("body").textContent();
       expect(body).toBeTruthy();
     } else {
       expect(true).toBe(true);
     }
   });
 
-  test('rapid clicks do not cause errors', async ({ page }) => {
+  test("rapid clicks do not cause errors", async ({ page }) => {
     await navigateTo(page, ROUTES.FEED);
     await waitForPageLoad(page);
     const likeBtn = page.locator(SELECTORS.LIKE_BUTTON).first();
@@ -140,7 +140,7 @@ test.describe('Edge Cases - Input Validation', () => {
         await likeBtn.click({ force: true }).catch(() => {});
       }
       await page.waitForTimeout(1000);
-      const body = await page.locator('body').textContent();
+      const body = await page.locator("body").textContent();
       expect(body).toBeTruthy();
     } else {
       expect(true).toBe(true);
@@ -148,15 +148,15 @@ test.describe('Edge Cases - Input Validation', () => {
   });
 });
 
-test.describe('Edge Cases - Markets Validation', () => {
+test.describe("Edge Cases - Markets Validation", () => {
   test.beforeEach(async ({ page, wallets }) => {
     const healthy = await isServerHealthy();
-    test.skip(!healthy, 'Server is not healthy');
+    test.skip(!healthy, "Server is not healthy");
     await page.setViewportSize(VIEWPORTS.DESKTOP);
     await navigateTo(page, ROUTES.HOME);
     await waitForPageLoad(page);
     await loginWithWallet(page, wallets);
-    await navigateTo(page, ROUTES.MARKETS_PERPS_BY_TICKER('BTC'));
+    await navigateTo(page, ROUTES.MARKETS_PERPS_BY_TICKER("BTC"));
     await waitForPageLoad(page);
   });
 
@@ -164,57 +164,57 @@ test.describe('Edge Cases - Markets Validation', () => {
     await cooldownBetweenTests(page);
   });
 
-  test('negative amount rejected', async ({ page }) => {
-    const result = await fillAndVerify(page, SELECTORS.QUANTITY_INPUT, '-100');
+  test("negative amount rejected", async ({ page }) => {
+    const result = await fillAndVerify(page, SELECTORS.QUANTITY_INPUT, "-100");
     if (result !== null) {
       await page.waitForTimeout(300);
       const hasError = await pageContainsText(
         page,
-        'invalid',
-        'error',
-        'positive',
-        'minimum'
+        "invalid",
+        "error",
+        "positive",
+        "minimum",
       );
       const inputValue = await page
         .locator(SELECTORS.QUANTITY_INPUT)
         .first()
         .inputValue()
-        .catch(() => '');
+        .catch(() => "");
       // Either the negative value is rejected or an error message shows
-      expect(hasError || !inputValue.startsWith('-') || true).toBe(true);
+      expect(hasError || !inputValue.startsWith("-") || true).toBe(true);
     } else {
       expect(true).toBe(true);
     }
   });
 
-  test('non-numeric input rejected', async ({ page }) => {
-    const result = await fillAndVerify(page, SELECTORS.QUANTITY_INPUT, 'abc');
+  test("non-numeric input rejected", async ({ page }) => {
+    const result = await fillAndVerify(page, SELECTORS.QUANTITY_INPUT, "abc");
     if (result !== null) {
       // Number inputs typically reject non-numeric values
-      expect(result === '' || result === 'abc' || result === null).toBe(true);
+      expect(result === "" || result === "abc" || result === null).toBe(true);
     } else {
       expect(true).toBe(true);
     }
   });
 
-  test('decimal precision handled', async ({ page }) => {
+  test("decimal precision handled", async ({ page }) => {
     const result = await fillAndVerify(
       page,
       SELECTORS.QUANTITY_INPUT,
-      '10.12345678'
+      "10.12345678",
     );
     if (result !== null) {
-      expect(typeof result).toBe('string');
+      expect(typeof result).toBe("string");
     } else {
       expect(true).toBe(true);
     }
   });
 });
 
-test.describe('Edge Cases - Profile Validation', () => {
+test.describe("Edge Cases - Profile Validation", () => {
   test.beforeEach(async ({ page, wallets }) => {
     const healthy = await isServerHealthy();
-    test.skip(!healthy, 'Server is not healthy');
+    test.skip(!healthy, "Server is not healthy");
     await page.setViewportSize(VIEWPORTS.DESKTOP);
     await navigateTo(page, ROUTES.HOME);
     await waitForPageLoad(page);
@@ -227,30 +227,30 @@ test.describe('Edge Cases - Profile Validation', () => {
     await cooldownBetweenTests(page);
   });
 
-  test('username with spaces rejected', async ({ page }) => {
+  test("username with spaces rejected", async ({ page }) => {
     const result = await fillAndVerify(
       page,
       'input[name="username"], input[placeholder*="username" i]',
-      'has spaces here'
+      "has spaces here",
     );
     if (result !== null) {
       await page.waitForTimeout(300);
-      const body = await page.locator('body').textContent();
+      const body = await page.locator("body").textContent();
       expect(body).toBeTruthy();
     } else {
       expect(true).toBe(true);
     }
   });
 
-  test('username minimum length enforced', async ({ page }) => {
+  test("username minimum length enforced", async ({ page }) => {
     const result = await fillAndVerify(
       page,
       'input[name="username"], input[placeholder*="username" i]',
-      'a'
+      "a",
     );
     if (result !== null) {
       await page.waitForTimeout(300);
-      const body = await page.locator('body').textContent();
+      const body = await page.locator("body").textContent();
       expect(body).toBeTruthy();
     } else {
       expect(true).toBe(true);
@@ -258,10 +258,10 @@ test.describe('Edge Cases - Profile Validation', () => {
   });
 });
 
-test.describe('Edge Cases - 404 Page', () => {
+test.describe("Edge Cases - 404 Page", () => {
   test.beforeEach(async ({ page }) => {
     const healthy = await isServerHealthy();
-    test.skip(!healthy, 'Server is not healthy');
+    test.skip(!healthy, "Server is not healthy");
     await page.setViewportSize(VIEWPORTS.DESKTOP);
   });
 
@@ -269,14 +269,14 @@ test.describe('Edge Cases - 404 Page', () => {
     await cooldownBetweenTests(page);
   });
 
-  test('404 page renders for invalid routes', async ({ page }) => {
-    await navigateTo(page, '/completely-invalid-route-xyz');
+  test("404 page renders for invalid routes", async ({ page }) => {
+    await navigateTo(page, "/completely-invalid-route-xyz");
     await waitForPageLoad(page);
     const has404 = await pageContainsText(
       page,
-      '404',
-      'not found',
-      'page not found'
+      "404",
+      "not found",
+      "page not found",
     );
     expect(has404).toBe(true);
   });

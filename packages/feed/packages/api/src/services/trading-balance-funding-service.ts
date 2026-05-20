@@ -8,17 +8,17 @@ import {
   sql,
   users,
   WELCOME_BONUS_BALANCE_DESCRIPTION,
-} from '@feed/db';
-import { generateSnowflakeId, logger } from '@feed/shared';
-import { CACHE_KEYS, invalidateCache } from '../cache';
+} from "@feed/db";
+import { generateSnowflakeId, logger } from "@feed/shared";
+import { CACHE_KEYS, invalidateCache } from "../cache";
 
 const FUNDING_TRANSACTION_TYPES = [
-  'deposit',
-  'crypto_purchase',
-  'stripe_purchase',
-  'stripe_refund',
-  'stripe_dispute',
-  'stripe_dispute_won',
+  "deposit",
+  "crypto_purchase",
+  "stripe_purchase",
+  "stripe_refund",
+  "stripe_dispute",
+  "stripe_dispute_won",
 ] as const;
 
 export interface TradingBalanceFundingResult {
@@ -60,7 +60,7 @@ export class TradingBalanceFundingService {
 
   static async getFundingHistory(
     userId: string,
-    limit = 100
+    limit = 100,
   ): Promise<TradingBalanceFundingHistoryItem[]> {
     const transactions = await db
       .select({
@@ -77,8 +77,8 @@ export class TradingBalanceFundingService {
       .where(
         and(
           eq(balanceTransactions.userId, userId),
-          inArray(balanceTransactions.type, [...FUNDING_TRANSACTION_TYPES])
-        )
+          inArray(balanceTransactions.type, [...FUNDING_TRANSACTION_TYPES]),
+        ),
       )
       .orderBy(desc(balanceTransactions.createdAt))
       .limit(limit);
@@ -97,7 +97,7 @@ export class TradingBalanceFundingService {
 
   static async awardWelcomeBonus(
     userId: string,
-    amount: number
+    amount: number,
   ): Promise<TradingBalanceFundingResult> {
     const result = await db.transaction(async (tx) => {
       const [existingTransaction] = await tx
@@ -108,9 +108,9 @@ export class TradingBalanceFundingService {
             eq(balanceTransactions.userId, userId),
             eq(
               balanceTransactions.description,
-              WELCOME_BONUS_BALANCE_DESCRIPTION
-            )
-          )
+              WELCOME_BONUS_BALANCE_DESCRIPTION,
+            ),
+          ),
         )
         .limit(1);
 
@@ -140,7 +140,7 @@ export class TradingBalanceFundingService {
           success: false,
           balanceDelta: 0,
           newBalance: 0,
-          error: 'User not found',
+          error: "User not found",
         };
       }
 
@@ -159,7 +159,7 @@ export class TradingBalanceFundingService {
       await tx.insert(balanceTransactions).values({
         id: transactionId,
         userId,
-        type: 'deposit',
+        type: "deposit",
         amount: String(amount),
         balanceBefore: String(balanceBefore),
         balanceAfter: String(balanceAfter),
@@ -176,11 +176,11 @@ export class TradingBalanceFundingService {
 
     if (result.success && !result.alreadyProcessed) {
       logger.info(
-        'Welcome bonus funded to trading balance',
+        "Welcome bonus funded to trading balance",
         { userId, amount, newBalance: result.newBalance },
-        'TradingBalanceFundingService'
+        "TradingBalanceFundingService",
       );
-      await this.afterBalanceMutation(userId);
+      await TradingBalanceFundingService.afterBalanceMutation(userId);
     }
 
     return result;
@@ -190,7 +190,7 @@ export class TradingBalanceFundingService {
     userId: string,
     amount: number,
     reason: string,
-    description?: string
+    description?: string,
   ): Promise<TradingBalanceFundingResult> {
     const result = await db.transaction(async (tx) => {
       const [user] = await tx
@@ -204,7 +204,7 @@ export class TradingBalanceFundingService {
           success: false,
           balanceDelta: 0,
           newBalance: 0,
-          error: 'User not found',
+          error: "User not found",
         };
       }
 
@@ -223,7 +223,7 @@ export class TradingBalanceFundingService {
       await tx.insert(balanceTransactions).values({
         id: transactionId,
         userId,
-        type: 'deposit',
+        type: "deposit",
         amount: String(amount),
         balanceBefore: String(balanceBefore),
         balanceAfter: String(balanceAfter),
@@ -243,12 +243,12 @@ export class TradingBalanceFundingService {
     }
 
     logger.info(
-      'Credited trading balance via admin funding adjustment',
+      "Credited trading balance via admin funding adjustment",
       { userId, amount, reason, newBalance: result.newBalance },
-      'TradingBalanceFundingService'
+      "TradingBalanceFundingService",
     );
 
-    await this.afterBalanceMutation(userId);
+    await TradingBalanceFundingService.afterBalanceMutation(userId);
 
     return result;
   }
@@ -258,7 +258,7 @@ export class TradingBalanceFundingService {
     amountUSD: number,
     paymentRequestId: string,
     paymentTxHash?: string,
-    paymentProvider: 'crypto' | 'stripe' = 'crypto'
+    paymentProvider: "crypto" | "stripe" = "crypto",
   ): Promise<TradingBalanceFundingResult> {
     const balanceDelta = Math.floor(amountUSD * 100);
     const transactionType = `${paymentProvider}_purchase`;
@@ -275,8 +275,8 @@ export class TradingBalanceFundingService {
           and(
             eq(balanceTransactions.userId, userId),
             eq(balanceTransactions.type, transactionType),
-            eq(balanceTransactions.relatedId, relatedId)
-          )
+            eq(balanceTransactions.relatedId, relatedId),
+          ),
         )
         .limit(1);
 
@@ -288,9 +288,9 @@ export class TradingBalanceFundingService {
           .limit(1);
 
         logger.info(
-          'Trading balance purchase already processed',
+          "Trading balance purchase already processed",
           { userId, paymentRequestId, paymentProvider, relatedId },
-          'TradingBalanceFundingService'
+          "TradingBalanceFundingService",
         );
         return {
           success: true,
@@ -312,7 +312,7 @@ export class TradingBalanceFundingService {
           success: false,
           balanceDelta: 0,
           newBalance: 0,
-          error: 'User not found',
+          error: "User not found",
         };
       }
 
@@ -356,11 +356,11 @@ export class TradingBalanceFundingService {
 
     if (result.success && !result.alreadyProcessed) {
       logger.info(
-        'Funded trading balance from purchase',
+        "Funded trading balance from purchase",
         { userId, amountUSD, balanceDelta, paymentRequestId, paymentProvider },
-        'TradingBalanceFundingService'
+        "TradingBalanceFundingService",
       );
-      await this.afterBalanceMutation(userId);
+      await TradingBalanceFundingService.afterBalanceMutation(userId);
     }
 
     return result;
@@ -369,13 +369,13 @@ export class TradingBalanceFundingService {
   static async reversePurchaseFunding(
     userId: string,
     paymentIntentId: string,
-    reason: 'refund' | 'dispute',
+    reason: "refund" | "dispute",
     amountUSD: number,
-    stripeEventId: string
+    stripeEventId: string,
   ): Promise<TradingBalanceFundingResult> {
     const requestedDeduction = Math.floor(amountUSD * 100);
     const transactionType =
-      reason === 'refund' ? 'stripe_refund' : 'stripe_dispute';
+      reason === "refund" ? "stripe_refund" : "stripe_dispute";
 
     const result = await db.transaction(async (tx) => {
       const [existingReversal] = await tx
@@ -387,8 +387,8 @@ export class TradingBalanceFundingService {
         .where(
           and(
             eq(balanceTransactions.userId, userId),
-            eq(balanceTransactions.relatedId, stripeEventId)
-          )
+            eq(balanceTransactions.relatedId, stripeEventId),
+          ),
         )
         .limit(1);
 
@@ -400,9 +400,9 @@ export class TradingBalanceFundingService {
           .limit(1);
 
         logger.info(
-          'Trading balance reversal already processed',
+          "Trading balance reversal already processed",
           { userId, stripeEventId, reason },
-          'TradingBalanceFundingService'
+          "TradingBalanceFundingService",
         );
         return {
           success: true,
@@ -424,7 +424,7 @@ export class TradingBalanceFundingService {
           success: false,
           balanceDelta: 0,
           newBalance: 0,
-          error: 'User not found',
+          error: "User not found",
         };
       }
 
@@ -469,7 +469,7 @@ export class TradingBalanceFundingService {
 
     if (result.success && !result.alreadyProcessed) {
       logger.info(
-        'Reversed trading balance funding',
+        "Reversed trading balance funding",
         {
           userId,
           paymentIntentId,
@@ -479,9 +479,9 @@ export class TradingBalanceFundingService {
           newBalance: result.newBalance,
           stripeEventId,
         },
-        'TradingBalanceFundingService'
+        "TradingBalanceFundingService",
       );
-      await this.afterBalanceMutation(userId);
+      await TradingBalanceFundingService.afterBalanceMutation(userId);
     }
 
     return result;
@@ -491,7 +491,7 @@ export class TradingBalanceFundingService {
     userId: string,
     disputeId: string,
     amountUSD: number,
-    stripeEventId: string
+    stripeEventId: string,
   ): Promise<TradingBalanceFundingResult> {
     const balanceDelta = Math.floor(amountUSD * 100);
 
@@ -505,8 +505,8 @@ export class TradingBalanceFundingService {
         .where(
           and(
             eq(balanceTransactions.userId, userId),
-            eq(balanceTransactions.relatedId, stripeEventId)
-          )
+            eq(balanceTransactions.relatedId, stripeEventId),
+          ),
         )
         .limit(1);
 
@@ -518,9 +518,9 @@ export class TradingBalanceFundingService {
           .limit(1);
 
         logger.info(
-          'Dispute win funding credit already processed',
+          "Dispute win funding credit already processed",
           { userId, stripeEventId, disputeId },
-          'TradingBalanceFundingService'
+          "TradingBalanceFundingService",
         );
         return {
           success: true,
@@ -542,7 +542,7 @@ export class TradingBalanceFundingService {
           success: false,
           balanceDelta: 0,
           newBalance: 0,
-          error: 'User not found',
+          error: "User not found",
         };
       }
 
@@ -561,7 +561,7 @@ export class TradingBalanceFundingService {
       await tx.insert(balanceTransactions).values({
         id: transactionId,
         userId,
-        type: 'stripe_dispute_won',
+        type: "stripe_dispute_won",
         amount: String(balanceDelta),
         balanceBefore: String(balanceBefore),
         balanceAfter: String(balanceAfter),
@@ -584,7 +584,7 @@ export class TradingBalanceFundingService {
 
     if (result.success && !result.alreadyProcessed) {
       logger.info(
-        'Re-credited trading balance after dispute win',
+        "Re-credited trading balance after dispute win",
         {
           userId,
           disputeId,
@@ -593,9 +593,9 @@ export class TradingBalanceFundingService {
           newBalance: result.newBalance,
           stripeEventId,
         },
-        'TradingBalanceFundingService'
+        "TradingBalanceFundingService",
       );
-      await this.afterBalanceMutation(userId);
+      await TradingBalanceFundingService.afterBalanceMutation(userId);
     }
 
     return result;

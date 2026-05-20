@@ -51,10 +51,10 @@ import {
   requireAdmin,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { queryMonitor } from '@feed/db';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/api";
+import { queryMonitor } from "@feed/db";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 /**
  * GET /api/admin/performance
@@ -87,13 +87,13 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     }));
 
   logger.info(
-    'Performance metrics requested',
+    "Performance metrics requested",
     {
       bottlenecks: bottlenecks.length,
-      criticalIssues: bottlenecks.filter((b) => b.severity === 'critical')
+      criticalIssues: bottlenecks.filter((b) => b.severity === "critical")
         .length,
     },
-    'GET /api/admin/performance'
+    "GET /api/admin/performance",
   );
 
   return successResponse({
@@ -159,9 +159,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     })),
     recommendations,
     summary: {
-      criticalIssues: bottlenecks.filter((b) => b.severity === 'critical')
+      criticalIssues: bottlenecks.filter((b) => b.severity === "critical")
         .length,
-      warnings: bottlenecks.filter((b) => b.severity === 'warning').length,
+      warnings: bottlenecks.filter((b) => b.severity === "warning").length,
       totalRecommendations: recommendations.length,
     },
   });

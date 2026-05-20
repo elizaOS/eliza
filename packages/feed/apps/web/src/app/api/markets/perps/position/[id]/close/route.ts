@@ -6,17 +6,17 @@ import {
   rateLimitError,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { handlePlayerTrade } from '@feed/engine';
+} from "@feed/api";
+import { handlePlayerTrade } from "@feed/engine";
 import {
   ClosePerpPositionSchema,
   fireAndForgetWithRetry,
   logger,
-} from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { z } from 'zod';
-import { trackServerEvent } from '@/lib/posthog/server';
-import { createPerpMarketService } from '../../../_adapters';
+} from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { z } from "zod";
+import { trackServerEvent } from "@/lib/posthog/server";
+import { createPerpMarketService } from "../../../_adapters";
 
 const IdParamSchema = z.object({
   id: z.string(),
@@ -32,14 +32,14 @@ const IdParamSchema = z.object({
 export const POST = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ id: string }> }
+    context: { params: Promise<{ id: string }> },
   ) => {
     const user = await authenticate(request);
 
     // Rate limit: 10 closes per minute per user
     const rateLimitResult = await checkRateLimitAsync(
       user.userId,
-      RATE_LIMIT_CONFIGS.CLOSE_POSITION
+      RATE_LIMIT_CONFIGS.CLOSE_POSITION,
     );
     if (!rateLimitResult.allowed)
       return rateLimitError(rateLimitResult.retryAfter);
@@ -59,7 +59,7 @@ export const POST = withErrorHandling(
         : {
             percentage: undefined as number | undefined,
             slippage: undefined as number | undefined,
-            orderType: 'market' as const,
+            orderType: "market" as const,
             limitPrice: undefined as number | undefined,
           };
 
@@ -80,8 +80,8 @@ export const POST = withErrorHandling(
     });
 
     // Track analytics event (fire and forget)
-    trackServerEvent(user.userId, 'trade_closed', {
-      type: 'perp',
+    trackServerEvent(user.userId, "trade_closed", {
+      type: "perp",
       ticker: result.ticker,
       side: result.side,
       size: result.size,
@@ -98,27 +98,27 @@ export const POST = withErrorHandling(
       positionId,
     }).catch((error) => {
       logger.warn(
-        'Failed to track trade_closed event',
+        "Failed to track trade_closed event",
         { error: error instanceof Error ? error.message : String(error) },
-        'PerpClose'
+        "PerpClose",
       );
     });
 
     // Handle player influence - closing positions also affects NPC memory
     // The opposite side represents the closing action
-    const closingSide = result.side === 'long' ? 'short' : 'long';
+    const closingSide = result.side === "long" ? "short" : "long";
     fireAndForgetWithRetry(
       () =>
         handlePlayerTrade(user.userId, result.ticker, closingSide, result.size),
       {
-        logContext: 'PerpClose',
+        logContext: "PerpClose",
         metadata: {
           userId: user.userId,
           ticker: result.ticker,
           side: closingSide,
           size: result.size,
         },
-      }
+      },
     );
 
     void invalidateMarketsApiPerpsSnapshot();
@@ -142,5 +142,5 @@ export const POST = withErrorHandling(
       wasLiquidated: false,
       newBalance: result.balance,
     });
-  }
+  },
 );

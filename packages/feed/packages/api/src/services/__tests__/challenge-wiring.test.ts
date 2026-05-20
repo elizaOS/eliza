@@ -4,7 +4,7 @@
  * the rotation/selection logic is deterministic.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from "bun:test";
 import {
   ACHIEVEMENT_DEFINITIONS,
   type AchievementEventType,
@@ -12,52 +12,52 @@ import {
   DAILY_CHALLENGE_DEFINITIONS,
   EVENT_TO_TRACKING_TYPES,
   WEEKLY_CHALLENGE_DEFINITIONS,
-} from '@feed/shared';
+} from "@feed/shared";
 
 // Import the functions we need to test — these are re-exported from @feed/api
 import {
   getActiveDailyChallengeIds,
   getActiveWeeklyChallengeIds,
-} from '../achievement-service';
+} from "../achievement-service";
 
 // ── Definition Integrity ──────────────────────────────────────────
 
-describe('challenge definition integrity', () => {
-  test('all daily challenge IDs are unique', () => {
+describe("challenge definition integrity", () => {
+  test("all daily challenge IDs are unique", () => {
     const ids = DAILY_CHALLENGE_DEFINITIONS.map((d) => d.id);
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  test('all weekly challenge IDs are unique', () => {
+  test("all weekly challenge IDs are unique", () => {
     const ids = WEEKLY_CHALLENGE_DEFINITIONS.map((d) => d.id);
     expect(new Set(ids).size).toBe(ids.length);
   });
 
   test('daily challenges have pool "daily"', () => {
     for (const def of DAILY_CHALLENGE_DEFINITIONS) {
-      expect(def.pool).toBe('daily');
+      expect(def.pool).toBe("daily");
     }
   });
 
   test('weekly challenges have pool "weekly"', () => {
     for (const def of WEEKLY_CHALLENGE_DEFINITIONS) {
-      expect(def.pool).toBe('weekly');
+      expect(def.pool).toBe("weekly");
     }
   });
 
-  test('all challenges have positive thresholds', () => {
+  test("all challenges have positive thresholds", () => {
     for (const def of ALL_CHALLENGE_DEFINITIONS) {
       expect(def.threshold).toBeGreaterThan(0);
     }
   });
 
-  test('all challenges have positive pointsReward', () => {
+  test("all challenges have positive pointsReward", () => {
     for (const def of ALL_CHALLENGE_DEFINITIONS) {
       expect(def.pointsReward).toBeGreaterThan(0);
     }
   });
 
-  test('all achievements have positive thresholds', () => {
+  test("all achievements have positive thresholds", () => {
     for (const def of ACHIEVEMENT_DEFINITIONS) {
       expect(def.threshold).toBeGreaterThan(0);
     }
@@ -66,23 +66,23 @@ describe('challenge definition integrity', () => {
 
 // ── Event-to-TrackingType Mapping ─────────────────────────────────
 
-describe('EVENT_TO_TRACKING_TYPES completeness', () => {
+describe("EVENT_TO_TRACKING_TYPES completeness", () => {
   // Collect all tracking types used by challenge definitions
   const allChallengeTrackingTypes = new Set(
-    ALL_CHALLENGE_DEFINITIONS.map((c) => c.trackingType)
+    ALL_CHALLENGE_DEFINITIONS.map((c) => c.trackingType),
   );
 
   // Collect all tracking types used by achievement definitions
   const allAchievementTrackingTypes = new Set(
-    ACHIEVEMENT_DEFINITIONS.map((a) => a.trackingType)
+    ACHIEVEMENT_DEFINITIONS.map((a) => a.trackingType),
   );
 
   // Collect all tracking types reachable from events
   const allReachableTrackingTypes = new Set(
-    Object.values(EVENT_TO_TRACKING_TYPES).flat()
+    Object.values(EVENT_TO_TRACKING_TYPES).flat(),
   );
 
-  test('every challenge trackingType is reachable from at least one event', () => {
+  test("every challenge trackingType is reachable from at least one event", () => {
     const unreachable: string[] = [];
     for (const tt of allChallengeTrackingTypes) {
       if (!allReachableTrackingTypes.has(tt)) {
@@ -92,7 +92,7 @@ describe('EVENT_TO_TRACKING_TYPES completeness', () => {
     expect(unreachable).toEqual([]);
   });
 
-  test('every achievement trackingType is reachable from at least one event', () => {
+  test("every achievement trackingType is reachable from at least one event", () => {
     const unreachable: string[] = [];
     for (const tt of allAchievementTrackingTypes) {
       if (!allReachableTrackingTypes.has(tt)) {
@@ -102,7 +102,7 @@ describe('EVENT_TO_TRACKING_TYPES completeness', () => {
     expect(unreachable).toEqual([]);
   });
 
-  test('all event types map to at least one tracking type', () => {
+  test("all event types map to at least one tracking type", () => {
     for (const [_event, types] of Object.entries(EVENT_TO_TRACKING_TYPES)) {
       expect(types.length).toBeGreaterThan(0);
     }
@@ -111,33 +111,33 @@ describe('EVENT_TO_TRACKING_TYPES completeness', () => {
 
 // ── Challenge Rotation ────────────────────────────────────────────
 
-describe('challenge rotation', () => {
-  test('selects exactly 3 daily challenges', () => {
-    const ids = getActiveDailyChallengeIds(new Date('2026-03-19'));
+describe("challenge rotation", () => {
+  test("selects exactly 3 daily challenges", () => {
+    const ids = getActiveDailyChallengeIds(new Date("2026-03-19"));
     expect(ids.length).toBe(3);
   });
 
-  test('selects exactly 2 weekly challenges', () => {
-    const ids = getActiveWeeklyChallengeIds(new Date('2026-03-19'));
+  test("selects exactly 2 weekly challenges", () => {
+    const ids = getActiveWeeklyChallengeIds(new Date("2026-03-19"));
     expect(ids.length).toBe(2);
   });
 
-  test('daily selection is deterministic for same date', () => {
-    const a = getActiveDailyChallengeIds(new Date('2026-03-19'));
-    const b = getActiveDailyChallengeIds(new Date('2026-03-19'));
+  test("daily selection is deterministic for same date", () => {
+    const a = getActiveDailyChallengeIds(new Date("2026-03-19"));
+    const b = getActiveDailyChallengeIds(new Date("2026-03-19"));
     expect(a).toEqual(b);
   });
 
-  test('weekly selection is deterministic for same week', () => {
+  test("weekly selection is deterministic for same week", () => {
     // Monday and Wednesday of same week
-    const a = getActiveWeeklyChallengeIds(new Date('2026-03-16')); // Monday
-    const b = getActiveWeeklyChallengeIds(new Date('2026-03-18')); // Wednesday
+    const a = getActiveWeeklyChallengeIds(new Date("2026-03-16")); // Monday
+    const b = getActiveWeeklyChallengeIds(new Date("2026-03-18")); // Wednesday
     expect(a).toEqual(b);
   });
 
-  test('daily selection changes between days', () => {
-    const day1 = getActiveDailyChallengeIds(new Date('2026-03-19'));
-    const day2 = getActiveDailyChallengeIds(new Date('2026-03-20'));
+  test("daily selection changes between days", () => {
+    const day1 = getActiveDailyChallengeIds(new Date("2026-03-19"));
+    const day2 = getActiveDailyChallengeIds(new Date("2026-03-20"));
     // Not guaranteed to be different, but very likely with 20-choose-3
     // At minimum, verify both return valid IDs
     expect(day1.length).toBe(3);
@@ -150,11 +150,11 @@ describe('challenge rotation', () => {
     }
   });
 
-  test('all selected daily IDs are from DAILY_CHALLENGE_DEFINITIONS', () => {
+  test("all selected daily IDs are from DAILY_CHALLENGE_DEFINITIONS", () => {
     const validIds = new Set(DAILY_CHALLENGE_DEFINITIONS.map((d) => d.id));
     for (let day = 1; day <= 31; day++) {
       const ids = getActiveDailyChallengeIds(
-        new Date(`2026-03-${String(day).padStart(2, '0')}`)
+        new Date(`2026-03-${String(day).padStart(2, "0")}`),
       );
       for (const id of ids) {
         expect(validIds.has(id)).toBe(true);
@@ -162,7 +162,7 @@ describe('challenge rotation', () => {
     }
   });
 
-  test('all selected weekly IDs are from WEEKLY_CHALLENGE_DEFINITIONS', () => {
+  test("all selected weekly IDs are from WEEKLY_CHALLENGE_DEFINITIONS", () => {
     const validIds = new Set(WEEKLY_CHALLENGE_DEFINITIONS.map((d) => d.id));
     for (let week = 1; week <= 52; week++) {
       // Use a date in that ISO week
@@ -174,10 +174,10 @@ describe('challenge rotation', () => {
     }
   });
 
-  test('selected daily challenges have no duplicates', () => {
+  test("selected daily challenges have no duplicates", () => {
     for (let day = 1; day <= 31; day++) {
       const ids = getActiveDailyChallengeIds(
-        new Date(`2026-03-${String(day).padStart(2, '0')}`)
+        new Date(`2026-03-${String(day).padStart(2, "0")}`),
       );
       expect(new Set(ids).size).toBe(ids.length);
     }
@@ -186,9 +186,9 @@ describe('challenge rotation', () => {
 
 // ── Event-to-Challenge Wiring ─────────────────────────────────────
 
-describe('event-to-challenge wiring', () => {
+describe("event-to-challenge wiring", () => {
   const eventTypes = Object.keys(
-    EVENT_TO_TRACKING_TYPES
+    EVENT_TO_TRACKING_TYPES,
   ) as AchievementEventType[];
 
   // Every event type must map to at least one tracking type
@@ -202,7 +202,7 @@ describe('event-to-challenge wiring', () => {
   for (const challenge of ALL_CHALLENGE_DEFINITIONS) {
     test(`challenge ${challenge.id} (${challenge.trackingType}) is reachable from an event`, () => {
       const reachable = eventTypes.some((event) =>
-        EVENT_TO_TRACKING_TYPES[event].includes(challenge.trackingType)
+        EVENT_TO_TRACKING_TYPES[event].includes(challenge.trackingType),
       );
       expect(reachable).toBe(true);
     });
@@ -212,7 +212,7 @@ describe('event-to-challenge wiring', () => {
   for (const achievement of ACHIEVEMENT_DEFINITIONS) {
     test(`achievement ${achievement.id} (${achievement.trackingType}) is reachable from an event`, () => {
       const reachable = eventTypes.some((event) =>
-        EVENT_TO_TRACKING_TYPES[event].includes(achievement.trackingType)
+        EVENT_TO_TRACKING_TYPES[event].includes(achievement.trackingType),
       );
       expect(reachable).toBe(true);
     });
@@ -221,12 +221,12 @@ describe('event-to-challenge wiring', () => {
 
 // ── Challenge Selection Simulation ────────────────────────────────
 
-describe('challenge selection simulation', () => {
-  test('over 30 days, all daily challenges appear at least once', () => {
+describe("challenge selection simulation", () => {
+  test("over 30 days, all daily challenges appear at least once", () => {
     const seen = new Set<string>();
     for (let day = 1; day <= 30; day++) {
       const ids = getActiveDailyChallengeIds(
-        new Date(`2026-03-${String(day).padStart(2, '0')}`)
+        new Date(`2026-03-${String(day).padStart(2, "0")}`),
       );
       for (const id of ids) seen.add(id);
     }
@@ -236,7 +236,7 @@ describe('challenge selection simulation', () => {
     expect(seen.size).toBeGreaterThanOrEqual(10);
   });
 
-  test('over 52 weeks, all weekly challenges appear at least once', () => {
+  test("over 52 weeks, all weekly challenges appear at least once", () => {
     const seen = new Set<string>();
     for (let week = 1; week <= 52; week++) {
       const date = new Date(2026, 0, 1 + (week - 1) * 7);

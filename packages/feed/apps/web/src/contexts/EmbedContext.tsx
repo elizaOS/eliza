@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import {
   createContext,
@@ -6,7 +6,7 @@ import {
   useContext,
   useEffect,
   useState,
-} from 'react';
+} from "react";
 
 interface EmbedContextValue {
   /** True when the app is loaded inside an iframe with ?embedded=true. */
@@ -44,17 +44,17 @@ export function EmbedModeProvider({ children }: { children: ReactNode }) {
   const [isEmbedded, setIsEmbedded] = useState(false);
   const [parentOrigin, setParentOrigin] = useState<string | null>(null);
   const [agentSessionToken, setAgentSessionToken] = useState<string | null>(
-    null
+    null,
   );
   const [agentId, setAgentId] = useState<string | null>(null);
 
   // Detect embed mode from URL params
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined") return;
 
     const params = new URLSearchParams(window.location.search);
     const embedded =
-      params.get('embedded') === 'true' || window.self !== window.top;
+      params.get("embedded") === "true" || window.self !== window.top;
 
     if (!embedded) return;
 
@@ -63,7 +63,7 @@ export function EmbedModeProvider({ children }: { children: ReactNode }) {
     // Notify parent that we're ready for auth
     if (window.parent && window.parent !== window) {
       try {
-        window.parent.postMessage({ type: 'FEED_READY' }, '*');
+        window.parent.postMessage({ type: "FEED_READY" }, "*");
       } catch {
         // Cross-origin restriction — parent will still post to us
       }
@@ -76,12 +76,12 @@ export function EmbedModeProvider({ children }: { children: ReactNode }) {
 
     async function authenticateWithCredentials(
       agentIdValue: string,
-      agentSecretValue: string
+      agentSecretValue: string,
     ): Promise<string | null> {
       try {
-        const res = await fetch('/api/agents/auth', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+        const res = await fetch("/api/agents/auth", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             agentId: agentIdValue,
             agentSecret: agentSecretValue,
@@ -100,17 +100,16 @@ export function EmbedModeProvider({ children }: { children: ReactNode }) {
 
     function handleMessage(event: MessageEvent) {
       const data = event.data;
-      if (!data || typeof data !== 'object') return;
-      if (data.type !== 'FEED_AUTH') return;
+      if (!data || typeof data !== "object") return;
+      if (data.type !== "FEED_AUTH") return;
 
       const secret =
-        typeof data.authToken === 'string' ? data.authToken.trim() : null;
-      const id = typeof data.agentId === 'string' ? data.agentId.trim() : null;
+        typeof data.authToken === "string" ? data.authToken.trim() : null;
+      const id = typeof data.agentId === "string" ? data.agentId.trim() : null;
 
       if (id) {
         setAgentId(id);
-        (window as unknown as Record<string, unknown>).__feedEmbedAgentId =
-          id;
+        (window as unknown as Record<string, unknown>).__feedEmbedAgentId = id;
       }
       setParentOrigin(event.origin);
 
@@ -131,8 +130,8 @@ export function EmbedModeProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
   }, [isEmbedded]);
 
   return (

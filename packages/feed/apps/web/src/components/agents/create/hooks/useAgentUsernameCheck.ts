@@ -1,12 +1,12 @@
-import { logger } from '@feed/shared';
-import { useCallback, useEffect, useState } from 'react';
-import { apiUrl } from '@/utils/api-url';
+import { logger } from "@feed/shared";
+import { useCallback, useEffect, useState } from "react";
+import { apiUrl } from "@/utils/api-url";
 
 export type UsernameStatus =
-  | 'available'
-  | 'taken'
-  | 'checking'
-  | 'error'
+  | "available"
+  | "taken"
+  | "checking"
+  | "error"
   | null;
 
 interface UseAgentUsernameCheckResult {
@@ -23,11 +23,11 @@ interface UseAgentUsernameCheckResult {
  */
 export function useAgentUsernameCheck(
   username: string,
-  debounceMs = 500
+  debounceMs = 500,
 ): UseAgentUsernameCheckResult {
   const [usernameStatus, setUsernameStatus] = useState<UsernameStatus>(null);
   const [usernameSuggestion, setUsernameSuggestion] = useState<string | null>(
-    null
+    null,
   );
   const [isCheckingUsername, setIsCheckingUsername] = useState(false);
 
@@ -44,32 +44,32 @@ export function useAgentUsernameCheck(
     // The API also enforces a 20-char limit
 
     setIsCheckingUsername(true);
-    setUsernameStatus('checking');
+    setUsernameStatus("checking");
 
     try {
       const response = await fetch(
         apiUrl(
-          `/api/onboarding/check-username?username=${encodeURIComponent(trimmed)}`
-        )
+          `/api/onboarding/check-username?username=${encodeURIComponent(trimmed)}`,
+        ),
       );
 
       if (response.ok) {
         const result = await response.json();
-        setUsernameStatus(result.available ? 'available' : 'taken');
+        setUsernameStatus(result.available ? "available" : "taken");
         setUsernameSuggestion(
-          result.available ? null : result.suggestion || null
+          result.available ? null : result.suggestion || null,
         );
       } else {
-        setUsernameStatus('error');
+        setUsernameStatus("error");
         setUsernameSuggestion(null);
       }
     } catch (error) {
       logger.error(
-        'Username check failed',
+        "Username check failed",
         error instanceof Error ? error : { error },
-        'useAgentUsernameCheck'
+        "useAgentUsernameCheck",
       );
-      setUsernameStatus('error');
+      setUsernameStatus("error");
       setUsernameSuggestion(null);
     } finally {
       setIsCheckingUsername(false);

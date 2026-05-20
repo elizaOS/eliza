@@ -24,11 +24,11 @@
  */
 export function getProfileUrl(
   userId: string,
-  username?: string | null
+  username?: string | null,
 ): string {
   if (username) {
     // Strip @ if present and use clean username
-    const cleanUsername = username.startsWith('@')
+    const cleanUsername = username.startsWith("@")
       ? username.slice(1)
       : username;
     return `/profile/${cleanUsername}`;
@@ -43,10 +43,10 @@ export function getProfileUrl(
  */
 export function getUserProfileUrl(
   userId: string,
-  username?: string | null
+  username?: string | null,
 ): string {
   if (username) {
-    const cleanUsername = username.startsWith('@')
+    const cleanUsername = username.startsWith("@")
       ? username.slice(1)
       : username;
     return `/u/${cleanUsername}`;
@@ -88,17 +88,17 @@ export function getOrganizationProfileUrl(orgId: string): string {
  */
 export function isUsername(identifier: string): boolean {
   // If it starts with @, it's definitely a username
-  if (identifier.startsWith('@')) {
+  if (identifier.startsWith("@")) {
     return true;
   }
 
   // If it contains "privy" anywhere, it's definitely a user ID, not a username
-  if (identifier.toLowerCase().includes('privy')) {
+  if (identifier.toLowerCase().includes("privy")) {
     return false;
   }
 
   // If it starts with "did:", it's a DID (user ID)
-  if (identifier.startsWith('did:')) {
+  if (identifier.startsWith("did:")) {
     return false;
   }
 
@@ -112,7 +112,7 @@ export function isUsername(identifier: string): boolean {
 
   // If it's a short string without dashes and not a DID, it's likely a username
   // User IDs are typically: "did:privy:..." (long) or UUIDs (contain dashes)
-  return identifier.length <= 42 && !identifier.includes('-');
+  return identifier.length <= 42 && !identifier.includes("-");
 }
 
 /**
@@ -131,5 +131,5 @@ export function isUsername(identifier: string): boolean {
  * ```
  */
 export function extractUsername(identifier: string): string {
-  return identifier.startsWith('@') ? identifier.slice(1) : identifier;
+  return identifier.startsWith("@") ? identifier.slice(1) : identifier;
 }

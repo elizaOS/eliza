@@ -102,7 +102,7 @@
  *
  */
 
-import type { JsonValue } from '@feed/api';
+import type { JsonValue } from "@feed/api";
 import {
   authenticate,
   BusinessLogicError,
@@ -119,7 +119,7 @@ import {
   RATE_LIMIT_CONFIGS,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
+} from "@feed/api";
 import {
   and,
   count,
@@ -130,12 +130,12 @@ import {
   posts,
   shares,
   users,
-} from '@feed/db';
+} from "@feed/db";
 import {
   NPCInteractionTracker,
   parsePostId,
   StaticDataRegistry,
-} from '@feed/engine';
+} from "@feed/engine";
 import {
   generateSnowflakeId,
   isPureRepost,
@@ -143,9 +143,9 @@ import {
   PostIdParamSchema,
   SharePostSchema,
   toISO,
-} from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { trackServerEvent } from '@/lib/posthog/server';
+} from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { trackServerEvent } from "@/lib/posthog/server";
 
 /**
  * POST /api/posts/[id]/share
@@ -159,7 +159,7 @@ import { trackServerEvent } from '@/lib/posthog/server';
 export const POST = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ id: string }> }
+    context: { params: Promise<{ id: string }> },
   ) => {
     // Authenticate user
     const user = await authenticate(request);
@@ -168,7 +168,7 @@ export const POST = withErrorHandling(
     const rateLimitError = checkRateLimitAndDuplicates(
       user.userId,
       null,
-      RATE_LIMIT_CONFIGS.SHARE_POST
+      RATE_LIMIT_CONFIGS.SHARE_POST,
     );
     if (rateLimitError) {
       return rateLimitError;
@@ -183,7 +183,7 @@ export const POST = withErrorHandling(
 
     const fallbackDisplayName = user.walletAddress
       ? `${user.walletAddress.slice(0, 6)}...${user.walletAddress.slice(-4)}`
-      : 'Anonymous';
+      : "Anonymous";
 
     const { user: canonicalUser } = await ensureUserForAuth(user, {
       displayName: fallbackDisplayName,
@@ -223,14 +223,14 @@ export const POST = withErrorHandling(
         .limit(1);
 
       if (!resolvedPost) {
-        throw new NotFoundError('Post', shareTargetPostId);
+        throw new NotFoundError("Post", shareTargetPostId);
       }
 
       shareTargetPost = resolvedPost;
     }
 
     if (shareTargetPost && shareTargetPost.timestamp > now) {
-      throw new NotFoundError('Post', shareTargetPostId);
+      throw new NotFoundError("Post", shareTargetPostId);
     }
 
     if (shareTargetPost) {
@@ -240,7 +240,7 @@ export const POST = withErrorHandling(
       ]);
 
       if (isBlocked || hasBlockedMe) {
-        throw new BusinessLogicError('Cannot share this post', 'BLOCKED_USER');
+        throw new BusinessLogicError("Cannot share this post", "BLOCKED_USER");
       }
     }
 
@@ -249,8 +249,8 @@ export const POST = withErrorHandling(
 
       if (!parseResult.success) {
         throw new BusinessLogicError(
-          'Invalid post ID format',
-          'INVALID_POST_ID_FORMAT'
+          "Invalid post ID format",
+          "INVALID_POST_ID_FORMAT",
         );
       }
 
@@ -265,14 +265,14 @@ export const POST = withErrorHandling(
       if (!existingPost) {
         await db.insert(posts).values({
           id: postId,
-          content: '[Game-generated post]',
+          content: "[Game-generated post]",
           authorId,
           gameId,
           timestamp,
         });
       }
     } else if (shareTargetPost?.deletedAt) {
-      throw new BusinessLogicError('Cannot share deleted post', 'POST_DELETED');
+      throw new BusinessLogicError("Cannot share deleted post", "POST_DELETED");
     }
 
     const [existingShare] = await db
@@ -281,13 +281,13 @@ export const POST = withErrorHandling(
       .where(
         and(
           eq(shares.userId, canonicalUserId),
-          eq(shares.postId, shareTargetPostId)
-        )
+          eq(shares.postId, shareTargetPostId),
+        ),
       )
       .limit(1);
 
     if (existingShare) {
-      throw new BusinessLogicError('Post already shared', 'ALREADY_SHARED');
+      throw new BusinessLogicError("Post already shared", "ALREADY_SHARED");
     }
 
     // Backfill safety: legacy shares may still point at repost IDs
@@ -296,12 +296,12 @@ export const POST = withErrorHandling(
         .select({ id: shares.id })
         .from(shares)
         .where(
-          and(eq(shares.userId, canonicalUserId), eq(shares.postId, postId))
+          and(eq(shares.userId, canonicalUserId), eq(shares.postId, postId)),
         )
         .limit(1);
 
       if (existingRepostShare) {
-        throw new BusinessLogicError('Post already shared', 'ALREADY_SHARED');
+        throw new BusinessLogicError("Post already shared", "ALREADY_SHARED");
       }
     }
 
@@ -326,7 +326,7 @@ export const POST = withErrorHandling(
       .limit(1);
 
     if (originalPost && originalPost.timestamp > now) {
-      throw new NotFoundError('Post', shareTargetPostId);
+      throw new NotFoundError("Post", shareTargetPostId);
     }
 
     let repostPostData = null;
@@ -344,7 +344,7 @@ export const POST = withErrorHandling(
 
       const originalActor = StaticDataRegistry.getActor(originalPost.authorId);
       const originalOrg = StaticDataRegistry.getOrganization(
-        originalPost.authorId
+        originalPost.authorId,
       );
 
       const originalAuthorName =
@@ -360,7 +360,7 @@ export const POST = withErrorHandling(
         originalActor?.profileImageUrl ||
         originalOrg?.imageUrl;
 
-      const repostContent = quoteComment || '';
+      const repostContent = quoteComment || "";
 
       const [createdRepost] = await db
         .insert(posts)
@@ -375,8 +375,8 @@ export const POST = withErrorHandling(
 
       if (!createdRepost) {
         throw new BusinessLogicError(
-          'Failed to create repost',
-          'CREATE_FAILED'
+          "Failed to create repost",
+          "CREATE_FAILED",
         );
       }
 
@@ -410,19 +410,19 @@ export const POST = withErrorHandling(
       await cachedDb.invalidatePostsCache();
       await cachedDb.invalidateActorPostsCache(canonicalUserId);
       logger.info(
-        'Invalidated post caches after repost',
+        "Invalidated post caches after repost",
         { repostId },
-        'POST /api/posts/[id]/share'
+        "POST /api/posts/[id]/share",
       );
 
-      broadcastToChannel('feed', {
-        type: 'new_post',
+      broadcastToChannel("feed", {
+        type: "new_post",
         post: repostPostData as JsonValue,
       });
       logger.info(
-        'Broadcast repost to feed channel',
+        "Broadcast repost to feed channel",
         { repostId, postId: shareTargetPostId },
-        'POST /api/posts/[id]/share'
+        "POST /api/posts/[id]/share",
       );
     }
 
@@ -432,11 +432,7 @@ export const POST = withErrorHandling(
       .where(eq(posts.id, shareTargetPostId))
       .limit(1);
 
-    if (
-      postAuthor &&
-      postAuthor.authorId &&
-      postAuthor.authorId !== canonicalUserId
-    ) {
+    if (postAuthor?.authorId && postAuthor.authorId !== canonicalUserId) {
       const [postAuthorUser] = await db
         .select({ id: users.id })
         .from(users)
@@ -447,7 +443,7 @@ export const POST = withErrorHandling(
         await notifyShare(
           postAuthor.authorId,
           canonicalUserId,
-          shareTargetPostId
+          shareTargetPostId,
         );
       }
     }
@@ -460,29 +456,29 @@ export const POST = withErrorHandling(
 
     // Bust the narrative enrichment cache so isShared reflects immediately
     invalidateCache(narrativeEnrichmentKey(canonicalUserId), {
-      namespace: 'feed',
+      namespace: "feed",
     }).catch((err) =>
       logger.warn(
-        'Failed to invalidate narrative enrichment cache on share',
+        "Failed to invalidate narrative enrichment cache on share",
         { error: err, userId: canonicalUserId },
-        'POST /api/posts/[id]/share'
-      )
+        "POST /api/posts/[id]/share",
+      ),
     );
 
     logger.info(
-      'Post shared successfully',
+      "Post shared successfully",
       { postId: shareTargetPostId, userId: canonicalUserId, shareCount },
-      'POST /api/posts/[id]/share'
+      "POST /api/posts/[id]/share",
     );
 
-    trackServerEvent(canonicalUserId, 'post_shared', {
+    trackServerEvent(canonicalUserId, "post_shared", {
       postId: shareTargetPostId,
       ...(postAuthor?.authorId && { originalAuthorId: postAuthor.authorId }),
       shareCount,
       ...(repostId && { repostId }),
     });
 
-    void checkProgress(canonicalUserId, { type: 'share_created' });
+    void checkProgress(canonicalUserId, { type: "share_created" });
 
     return successResponse(
       {
@@ -492,9 +488,9 @@ export const POST = withErrorHandling(
           repostPost: repostPostData, // Include repost post data for optimistic UI
         },
       },
-      201
+      201,
     );
-  }
+  },
 );
 
 /**
@@ -513,7 +509,7 @@ export const POST = withErrorHandling(
 export const DELETE = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ id: string }> }
+    context: { params: Promise<{ id: string }> },
   ) => {
     // Authenticate user
     const user = await authenticate(request);
@@ -521,7 +517,7 @@ export const DELETE = withErrorHandling(
 
     const fallbackDisplayName = user.walletAddress
       ? `${user.walletAddress.slice(0, 6)}...${user.walletAddress.slice(-4)}`
-      : 'Anonymous';
+      : "Anonymous";
 
     await ensureUserForAuth(user, { displayName: fallbackDisplayName });
     const canonicalUserId = getCanonicalUserId(user);
@@ -552,8 +548,8 @@ export const DELETE = withErrorHandling(
           .where(
             and(
               eq(shares.userId, canonicalUserId),
-              eq(shares.postId, shareTargetPostId)
-            )
+              eq(shares.postId, shareTargetPostId),
+            ),
           )
           .limit(1);
         share = redirectedShare;
@@ -561,7 +557,7 @@ export const DELETE = withErrorHandling(
     }
 
     if (!share) {
-      throw new NotFoundError('Share', `${postId}-${canonicalUserId}`);
+      throw new NotFoundError("Share", `${postId}-${canonicalUserId}`);
     }
 
     const [repostPost] = await db
@@ -571,27 +567,27 @@ export const DELETE = withErrorHandling(
         and(
           eq(posts.authorId, canonicalUserId),
           eq(posts.originalPostId, shareTargetPostId),
-          isNull(posts.deletedAt)
-        )
+          isNull(posts.deletedAt),
+        ),
       )
       .limit(1);
 
     if (repostPost) {
       await db.delete(posts).where(eq(posts.id, repostPost.id));
       logger.info(
-        'Deleted repost post',
+        "Deleted repost post",
         {
           repostPostId: repostPost.id,
           originalPostId: shareTargetPostId,
           requestedPostId: postId,
         },
-        'DELETE /api/posts/[id]/share'
+        "DELETE /api/posts/[id]/share",
       );
     } else {
       logger.warn(
-        'No repost post found to delete',
+        "No repost post found to delete",
         { postId: shareTargetPostId, userId: canonicalUserId },
-        'DELETE /api/posts/[id]/share'
+        "DELETE /api/posts/[id]/share",
       );
     }
 
@@ -606,18 +602,18 @@ export const DELETE = withErrorHandling(
     await cachedDb.invalidatePostsCache();
     await cachedDb.invalidateActorPostsCache(canonicalUserId);
     logger.info(
-      'Invalidated post caches after unshare',
+      "Invalidated post caches after unshare",
       { postId: shareTargetPostId, requestedPostId: postId },
-      'DELETE /api/posts/[id]/share'
+      "DELETE /api/posts/[id]/share",
     );
 
     logger.info(
-      'Post unshared successfully',
+      "Post unshared successfully",
       { postId: shareTargetPostId, userId: canonicalUserId, shareCount },
-      'DELETE /api/posts/[id]/share'
+      "DELETE /api/posts/[id]/share",
     );
 
-    trackServerEvent(canonicalUserId, 'post_unshared', {
+    trackServerEvent(canonicalUserId, "post_unshared", {
       postId: shareTargetPostId,
       shareCount,
     });
@@ -628,5 +624,5 @@ export const DELETE = withErrorHandling(
         isShared: false,
       },
     });
-  }
+  },
 );

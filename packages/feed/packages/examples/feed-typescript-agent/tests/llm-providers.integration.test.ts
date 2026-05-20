@@ -4,74 +4,74 @@
  * Verifies that the multi-provider LLM support works correctly
  */
 
-import { describe, expect, it } from 'bun:test';
-import dotenv from 'dotenv';
-import { AgentDecisionMaker } from '../src/decision';
+import { describe, expect, it } from "bun:test";
+import dotenv from "dotenv";
+import { AgentDecisionMaker } from "../src/decision";
 
-dotenv.config({ path: '.env.local' });
+dotenv.config({ path: ".env.local" });
 
-describe('LLM Provider Configuration', () => {
-  it('should reject when no API keys provided', () => {
+describe("LLM Provider Configuration", () => {
+  it("should reject when no API keys provided", () => {
     expect(() => {
       new AgentDecisionMaker({
-        strategy: 'balanced',
+        strategy: "balanced",
         groqApiKey: undefined,
         anthropicApiKey: undefined,
         openaiApiKey: undefined,
       });
-    }).toThrow('At least one LLM API key is required');
+    }).toThrow("At least one LLM API key is required");
   });
 
-  it('should accept Groq API key', () => {
+  it("should accept Groq API key", () => {
     const maker = new AgentDecisionMaker({
-      strategy: 'balanced',
-      groqApiKey: 'test-key',
+      strategy: "balanced",
+      groqApiKey: "test-key",
     });
 
-    expect(maker.getProvider()).toContain('Groq');
+    expect(maker.getProvider()).toContain("Groq");
   });
 
-  it('should fall back to Claude if Groq not provided', () => {
+  it("should fall back to Claude if Groq not provided", () => {
     const maker = new AgentDecisionMaker({
-      strategy: 'balanced',
-      anthropicApiKey: 'test-key',
+      strategy: "balanced",
+      anthropicApiKey: "test-key",
     });
 
-    expect(maker.getProvider()).toContain('Claude');
+    expect(maker.getProvider()).toContain("Claude");
   });
 
-  it('should fall back to OpenAGI if neither Groq nor Claude provided', () => {
+  it("should fall back to OpenAGI if neither Groq nor Claude provided", () => {
     const maker = new AgentDecisionMaker({
-      strategy: 'balanced',
-      openaiApiKey: 'test-key',
+      strategy: "balanced",
+      openaiApiKey: "test-key",
     });
 
-    expect(maker.getProvider()).toContain('OpenAGI');
+    expect(maker.getProvider()).toContain("OpenAGI");
   });
 
-  it('should prefer Groq over Claude and OpenAGI', () => {
+  it("should prefer Groq over Claude and OpenAGI", () => {
     const maker = new AgentDecisionMaker({
-      strategy: 'balanced',
-      groqApiKey: 'groq-key',
-      anthropicApiKey: 'claude-key',
-      openaiApiKey: 'openai-key',
+      strategy: "balanced",
+      groqApiKey: "groq-key",
+      anthropicApiKey: "claude-key",
+      openaiApiKey: "openai-key",
     });
 
-    expect(maker.getProvider()).toContain('Groq');
+    expect(maker.getProvider()).toContain("Groq");
   });
 
-  it('should prefer Claude over OpenAGI when Groq not available', () => {
+  it("should prefer Claude over OpenAGI when Groq not available", () => {
     const maker = new AgentDecisionMaker({
-      strategy: 'balanced',
-      anthropicApiKey: 'claude-key',
-      openaiApiKey: 'openai-key',
+      strategy: "balanced",
+      anthropicApiKey: "claude-key",
+      openaiApiKey: "openai-key",
     });
 
-    expect(maker.getProvider()).toContain('Claude');
+    expect(maker.getProvider()).toContain("Claude");
   });
 });
 
-describe('LLM Provider Live Test', () => {
+describe("LLM Provider Live Test", () => {
   const hasLLMKey = !!(
     process.env.GROQ_API_KEY ||
     process.env.ANTHROPIC_API_KEY ||
@@ -79,9 +79,9 @@ describe('LLM Provider Live Test', () => {
   );
 
   if (hasLLMKey) {
-    it('should make a real decision with configured provider', async () => {
+    it("should make a real decision with configured provider", async () => {
       const maker = new AgentDecisionMaker({
-        strategy: 'balanced',
+        strategy: "balanced",
         groqApiKey: process.env.GROQ_API_KEY,
         anthropicApiKey: process.env.ANTHROPIC_API_KEY,
         openaiApiKey: process.env.OPENAI_API_KEY,
@@ -94,8 +94,8 @@ describe('LLM Provider Live Test', () => {
         markets: {
           predictions: [
             {
-              id: 'test-1',
-              question: 'Will Bitcoin reach $100k?',
+              id: "test-1",
+              question: "Will Bitcoin reach $100k?",
               yesShares: 35,
               noShares: 65,
             },
@@ -109,15 +109,15 @@ describe('LLM Provider Live Test', () => {
       expect(decision).toBeDefined();
       expect(decision.action).toBeDefined();
       expect([
-        'BUY_YES',
-        'BUY_NO',
-        'SELL',
-        'OPEN_LONG',
-        'OPEN_SHORT',
-        'CLOSE_POSITION',
-        'CREATE_POST',
-        'CREATE_COMMENT',
-        'HOLD',
+        "BUY_YES",
+        "BUY_NO",
+        "SELL",
+        "OPEN_LONG",
+        "OPEN_SHORT",
+        "CLOSE_POSITION",
+        "CREATE_POST",
+        "CREATE_COMMENT",
+        "HOLD",
       ]).toContain(decision.action);
 
       console.log(`   Decision: ${decision.action}`);
@@ -126,12 +126,12 @@ describe('LLM Provider Live Test', () => {
       }
     }, 15000);
   } else {
-    it('Live LLM test skipped - no API keys configured', () => {
-      console.log('\n⚠️  Live LLM test skipped');
-      console.log('   Configure at least one API key to test:');
-      console.log('   - GROQ_API_KEY');
-      console.log('   - ANTHROPIC_API_KEY');
-      console.log('   - OPENAI_API_KEY\n');
+    it("Live LLM test skipped - no API keys configured", () => {
+      console.log("\n⚠️  Live LLM test skipped");
+      console.log("   Configure at least one API key to test:");
+      console.log("   - GROQ_API_KEY");
+      console.log("   - ANTHROPIC_API_KEY");
+      console.log("   - OPENAI_API_KEY\n");
       // Test skipped - no API keys configured
     });
   }

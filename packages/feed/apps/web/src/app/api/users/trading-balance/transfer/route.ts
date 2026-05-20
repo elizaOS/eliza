@@ -1,13 +1,13 @@
-import * as api from '@feed/api';
-import { TransferTradingBalanceSchema } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+import * as api from "@feed/api";
+import { TransferTradingBalanceSchema } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 export const POST = api.withErrorHandling(async (request: NextRequest) => {
   const authUser = await api.authenticate(request);
 
   const rateLimit = await api.checkRateLimitAsync(
     authUser.dbUserId ?? authUser.userId,
-    api.RATE_LIMIT_CONFIGS.A2A_TRANSFER_OPS
+    api.RATE_LIMIT_CONFIGS.A2A_TRANSFER_OPS,
   );
   if (!rateLimit.allowed) {
     return api.rateLimitError(rateLimit.retryAfter);
@@ -29,14 +29,14 @@ export const POST = api.withErrorHandling(async (request: NextRequest) => {
   }
 
   api.logger.info(
-    'Trading balance transfer completed via API route',
+    "Trading balance transfer completed via API route",
     {
       transferId: result.transferId,
       senderUserId: result.senderUserId,
       recipientUserId: result.recipientUserId,
       amount: result.amount,
     },
-    'POST /api/users/trading-balance/transfer'
+    "POST /api/users/trading-balance/transfer",
   );
 
   return api.successResponse({

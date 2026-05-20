@@ -1,4 +1,4 @@
-import type { NarrativeStory } from '@feed/shared';
+import type { NarrativeStory } from "@feed/shared";
 
 const AUTHOR_REPEAT_PENALTY = 0.55;
 const CLUSTER_REPEAT_PENALTY = 0.8;
@@ -23,18 +23,18 @@ export interface ForYouScoreInput {
 
 export function calculateVelocityScore(
   engagementTotal: number,
-  newest: Date
+  newest: Date,
 ): number {
   const ageHours = Math.max(
     (Date.now() - newest.getTime()) / (1000 * 60 * 60),
-    0
+    0,
   );
   return Math.log1p(engagementTotal) / Math.sqrt(ageHours + 1);
 }
 
 export function calculateConversationDepthScore(
   commentCount: number,
-  uniqueAuthors: number
+  uniqueAuthors: number,
 ): number {
   return Math.log1p(commentCount * 1.5 + uniqueAuthors);
 }
@@ -42,7 +42,7 @@ export function calculateConversationDepthScore(
 export function calculateFreshnessScore(newest: Date): number {
   const ageHours = Math.max(
     (Date.now() - newest.getTime()) / (1000 * 60 * 60),
-    0
+    0,
   );
   return Math.exp((-Math.LN2 * ageHours) / 10);
 }
@@ -93,7 +93,7 @@ function getClusterId(story: NarrativeStory): string {
 }
 
 export function diversifyForYouStories(
-  rankedStories: NarrativeStory[]
+  rankedStories: NarrativeStory[],
 ): NarrativeStory[] {
   const remaining = [...rankedStories];
   const result: NarrativeStory[] = [];
@@ -160,11 +160,11 @@ export function diversifyForYouStories(
 const ARTICLE_MAX_GAP = 40;
 
 function isArticleStory(story: NarrativeStory): boolean {
-  return story.itemType === 'article' || story.posts[0]?.type === 'article';
+  return story.itemType === "article" || story.posts[0]?.type === "article";
 }
 
 export function ensureArticleSpacing(
-  stories: NarrativeStory[]
+  stories: NarrativeStory[],
 ): NarrativeStory[] {
   if (stories.length === 0) return stories;
 
@@ -219,8 +219,8 @@ export function ensureArticleSpacing(
   let insPtr = 0;
   for (let i = 0; i < stories.length; i++) {
     // Insert any articles scheduled before this index
-    while (insPtr < insertions.length && insertions[insPtr]!.before === i) {
-      result.push(stories[insertions[insPtr]!.fromIndex]!);
+    while (insPtr < insertions.length && insertions[insPtr]?.before === i) {
+      result.push(stories[insertions[insPtr]?.fromIndex]!);
       insPtr++;
     }
     // Skip items that were pulled forward
@@ -250,7 +250,7 @@ export function spreadNewMarkets(stories: NarrativeStory[]): NarrativeStory[] {
 
     // Two consecutive markets at i and i+1 — find the next non-market after i+1
     const nextPostIdx = result.findIndex(
-      (s, idx) => idx > i + 1 && !s.isNewMarket
+      (s, idx) => idx > i + 1 && !s.isNewMarket,
     );
 
     if (nextPostIdx !== -1) {

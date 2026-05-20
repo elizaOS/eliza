@@ -5,12 +5,12 @@
  * Uses the same decision-making logic but with a simulated A2A interface.
  */
 
-import dotenv from 'dotenv';
+import dotenv from "dotenv";
 
-dotenv.config({ path: '.env.local' });
+dotenv.config({ path: ".env.local" });
 
-import fs from 'fs';
-import path from 'path';
+import fs from "node:fs";
+import path from "node:path";
 
 // Benchmark types (defined locally for examples)
 // NOTE: Benchmark runner is disabled until simulation modules are available as packages
@@ -36,10 +36,10 @@ interface SimulationResult {
   };
 }
 
-const LOG_DIR = './logs';
-const LOG_FILE = path.join(LOG_DIR, 'benchmark.log');
+const LOG_DIR = "./logs";
+const LOG_FILE = path.join(LOG_DIR, "benchmark.log");
 
-function log(message: string, level: 'info' | 'warn' | 'error' = 'info') {
+function log(message: string, level: "info" | "warn" | "error" = "info") {
   const timestamp = new Date().toISOString();
   const logLine = `[${timestamp}] [${level.toUpperCase()}] ${message}\n`;
 
@@ -52,34 +52,34 @@ function log(message: string, level: 'info' | 'warn' | 'error' = 'info') {
 }
 
 async function loadBenchmark(
-  benchmarkFile: string
+  benchmarkFile: string,
 ): Promise<BenchmarkGameSnapshot> {
-  const data = fs.readFileSync(benchmarkFile, 'utf-8');
+  const data = fs.readFileSync(benchmarkFile, "utf-8");
   return JSON.parse(data);
 }
 
 async function runBenchmark(
   benchmarkFile: string,
-  outputDir: string
+  outputDir: string,
 ): Promise<SimulationResult> {
-  log('🎯 Starting Autonomous Agent Benchmark');
+  log("🎯 Starting Autonomous Agent Benchmark");
   log(`Benchmark: ${benchmarkFile}`);
   log(`Output: ${outputDir}`);
 
   // 1. Load benchmark
-  log('📊 Loading benchmark data...');
+  log("📊 Loading benchmark data...");
   const snapshot = await loadBenchmark(benchmarkFile);
   log(`  Loaded: ${snapshot.ticks.length} ticks`);
 
   // 2. Dynamic import of benchmark modules
-  log('🔧 Loading simulation modules...');
+  log("🔧 Loading simulation modules...");
 
   // TODO: Benchmark simulation modules not yet available as packages
   // These would need to be migrated to @feed/testing or similar
   // For now, benchmark runner is disabled
   throw new Error(
-    'Benchmark runner requires simulation modules that are not yet available as packages. ' +
-      'Please use the main app benchmark runner instead.'
+    "Benchmark runner requires simulation modules that are not yet available as packages. " +
+      "Please use the main app benchmark runner instead.",
   );
 
   // Placeholder types for when modules are available
@@ -305,7 +305,7 @@ async function runBenchmark(
 
   // Unreachable - return placeholder to satisfy type checker
   return {
-    id: 'disabled',
+    id: "disabled",
     totalTrades: 0,
     totalPnL: 0,
     winRate: 0,
@@ -319,13 +319,13 @@ async function runBenchmark(
 }
 
 async function runMultiple(
-  benchmarkFile: string,
-  outputDir: string,
-  runs: number
+  _benchmarkFile: string,
+  _outputDir: string,
+  _runs: number,
 ): Promise<{ runs: SimulationResult[]; comparison: unknown }> {
   // Benchmark runner is disabled - see runBenchmark function
   throw new Error(
-    'Benchmark runner requires simulation modules that are not yet available as packages.'
+    "Benchmark runner requires simulation modules that are not yet available as packages.",
   );
 
   // Unreachable code kept for reference
@@ -405,24 +405,25 @@ async function main() {
   const args = process.argv.slice(2);
 
   const benchmarkFile = args
-    .find((a) => a.startsWith('--benchmark='))
-    ?.split('=')[1];
+    .find((a) => a.startsWith("--benchmark="))
+    ?.split("=")[1];
   const outputDir =
-    args.find((a) => a.startsWith('--output='))?.split('=')[1] ??
+    args.find((a) => a.startsWith("--output="))?.split("=")[1] ??
     `./benchmark-results/${Date.now()}`;
   const runs = Number.parseInt(
-    args.find((a) => a.startsWith('--runs='))?.split('=')[1] ?? '1'
+    args.find((a) => a.startsWith("--runs="))?.split("=")[1] ?? "1",
+    10,
   );
 
   if (!benchmarkFile) {
-    console.error('Error: --benchmark is required');
-    console.log('\nUsage:');
+    console.error("Error: --benchmark is required");
+    console.log("\nUsage:");
     console.log(
-      '  bun run src/benchmark-runner.ts --benchmark=path/to/benchmark.json [options]'
+      "  bun run src/benchmark-runner.ts --benchmark=path/to/benchmark.json [options]",
     );
-    console.log('\nOptions:');
-    console.log('  --output=path/to/results  Output directory');
-    console.log('  --runs=5                  Number of runs (default: 1)');
+    console.log("\nOptions:");
+    console.log("  --output=path/to/results  Output directory");
+    console.log("  --runs=5                  Number of runs (default: 1)");
     process.exit(1);
   }
 

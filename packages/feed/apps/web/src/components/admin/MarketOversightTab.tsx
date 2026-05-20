@@ -16,9 +16,9 @@
  *
  * @returns Market oversight tab element
  */
-'use client';
+"use client";
 
-import { cn, formatCompactCurrency, formatDate } from '@feed/shared';
+import { cn, formatCompactCurrency, formatDate } from "@feed/shared";
 import {
   AlertTriangle,
   BarChart2,
@@ -30,13 +30,13 @@ import {
   TrendingUp,
   X,
   XCircle,
-} from 'lucide-react';
-import { useCallback, useEffect, useState, useTransition } from 'react';
-import { toast } from 'sonner';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { apiUrl } from '@/utils/api-url';
+} from "lucide-react";
+import { useCallback, useEffect, useState, useTransition } from "react";
+import { toast } from "sonner";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { apiUrl } from "@/utils/api-url";
 
-type MarketStatus = 'all' | 'active' | 'expired' | 'resolved';
+type MarketStatus = "all" | "active" | "expired" | "resolved";
 
 interface Market {
   id: string;
@@ -54,7 +54,7 @@ interface Market {
   totalVolume: number;
   yesPrice: number;
   noPrice: number;
-  status: 'active' | 'expired' | 'resolved';
+  status: "active" | "expired" | "resolved";
 }
 
 interface MarketStats {
@@ -74,7 +74,7 @@ interface MarketsData {
 }
 
 interface MarketActionBody {
-  action: 'resolve' | 'extend' | 'void';
+  action: "resolve" | "extend" | "void";
   reason?: string;
   resolution?: boolean;
   newEndDate?: string;
@@ -83,27 +83,27 @@ interface MarketActionBody {
 export function MarketOversightTab() {
   const [data, setData] = useState<MarketsData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState<MarketStatus>('all');
+  const [statusFilter, setStatusFilter] = useState<MarketStatus>("all");
   const [isRefreshing, startRefresh] = useTransition();
   const [selectedMarket, setSelectedMarket] = useState<Market | null>(null);
   const [showActionModal, setShowActionModal] = useState(false);
-  const [actionType, setActionType] = useState<'resolve' | 'extend' | 'void'>(
-    'resolve'
+  const [actionType, setActionType] = useState<"resolve" | "extend" | "void">(
+    "resolve",
   );
   const [resolution, setResolution] = useState<boolean>(true);
-  const [extendDate, setExtendDate] = useState('');
-  const [actionReason, setActionReason] = useState('');
+  const [extendDate, setExtendDate] = useState("");
+  const [actionReason, setActionReason] = useState("");
   const [isActioning, startActioning] = useTransition();
 
   const fetchMarkets = useCallback(
     (showRefreshing = false) => {
       const fetchLogic = async () => {
         const params = new URLSearchParams();
-        if (statusFilter !== 'all') params.set('status', statusFilter);
+        if (statusFilter !== "all") params.set("status", statusFilter);
 
         const response = await fetch(apiUrl(`/api/admin/markets?${params}`));
         if (!response.ok) {
-          toast.error('Failed to load market data');
+          toast.error("Failed to load market data");
           setLoading(false);
           return;
         }
@@ -118,7 +118,7 @@ export function MarketOversightTab() {
         void fetchLogic();
       }
     },
-    [statusFilter]
+    [statusFilter],
   );
 
   useEffect(() => {
@@ -127,13 +127,13 @@ export function MarketOversightTab() {
 
   const handleAction = (
     market: Market,
-    action: 'resolve' | 'extend' | 'void'
+    action: "resolve" | "extend" | "void",
   ) => {
     setSelectedMarket(market);
     setActionType(action);
     setResolution(true);
-    setExtendDate('');
-    setActionReason('');
+    setExtendDate("");
+    setActionReason("");
     setShowActionModal(true);
   };
 
@@ -142,32 +142,32 @@ export function MarketOversightTab() {
 
     startActioning(async () => {
       // Validate extend date early
-      if (actionType === 'extend' && !extendDate) {
-        toast.error('Please select a new end date');
+      if (actionType === "extend" && !extendDate) {
+        toast.error("Please select a new end date");
         return;
       }
 
       const body: MarketActionBody = {
         action: actionType,
         reason: actionReason || undefined,
-        ...(actionType === 'resolve' && { resolution }),
-        ...(actionType === 'extend' &&
+        ...(actionType === "resolve" && { resolution }),
+        ...(actionType === "extend" &&
           extendDate && { newEndDate: extendDate }),
       };
 
       const response = await fetch(
         apiUrl(`/api/admin/markets/${selectedMarket.id}`),
         {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
-        }
+        },
       );
 
       if (!response.ok) {
         const text = await response.text();
-        const error = text.startsWith('{') ? JSON.parse(text).error : text;
-        toast.error(error || 'Failed to perform action');
+        const error = text.startsWith("{") ? JSON.parse(text).error : text;
+        toast.error(error || "Failed to perform action");
         return;
       }
 
@@ -180,21 +180,21 @@ export function MarketOversightTab() {
   /** Use shared formatCompactCurrency for currency formatting */
   const formatCurrency = formatCompactCurrency;
 
-  const getStatusBadge = (status: Market['status']) => {
+  const getStatusBadge = (status: Market["status"]) => {
     switch (status) {
-      case 'active':
+      case "active":
         return (
           <span className="flex items-center gap-1 rounded bg-green-500/20 px-2 py-1 font-medium text-green-500 text-xs">
             <Check className="h-3 w-3" /> Active
           </span>
         );
-      case 'expired':
+      case "expired":
         return (
           <span className="flex items-center gap-1 rounded bg-yellow-500/20 px-2 py-1 font-medium text-xs text-yellow-500">
             <Clock className="h-3 w-3" /> Expired
           </span>
         );
-      case 'resolved':
+      case "resolved":
         return (
           <span className="flex items-center gap-1 rounded bg-blue-500/20 px-2 py-1 font-medium text-blue-500 text-xs">
             <Check className="h-3 w-3" /> Resolved
@@ -269,7 +269,7 @@ export function MarketOversightTab() {
       {market.resolved && market.resolution !== null && (
         <div className="mb-4 rounded-lg bg-blue-500/10 p-3 text-center">
           <span className="font-medium">
-            Resolved: {market.resolution ? 'YES ✓' : 'NO ✗'}
+            Resolved: {market.resolution ? "YES ✓" : "NO ✗"}
           </span>
         </div>
       )}
@@ -278,21 +278,21 @@ export function MarketOversightTab() {
       {!market.resolved && (
         <div className="flex flex-col gap-1.5 sm:flex-row sm:gap-2">
           <button
-            onClick={() => handleAction(market, 'resolve')}
+            onClick={() => handleAction(market, "resolve")}
             className="flex flex-1 items-center justify-center gap-1 rounded-lg bg-blue-500/20 px-2.5 py-1.5 font-medium text-blue-500 text-xs transition-colors hover:bg-blue-500/30 sm:px-3 sm:py-2 sm:text-sm"
           >
             <Check className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
             Resolve
           </button>
           <button
-            onClick={() => handleAction(market, 'extend')}
+            onClick={() => handleAction(market, "extend")}
             className="flex flex-1 items-center justify-center gap-1 rounded-lg bg-purple-500/20 px-2.5 py-1.5 font-medium text-purple-500 text-xs transition-colors hover:bg-purple-500/30 sm:px-3 sm:py-2 sm:text-sm"
           >
             <Clock className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
             Extend
           </button>
           <button
-            onClick={() => handleAction(market, 'void')}
+            onClick={() => handleAction(market, "void")}
             className="flex flex-1 items-center justify-center gap-1 rounded-lg bg-red-500/20 px-2.5 py-1.5 font-medium text-red-500 text-xs transition-colors hover:bg-red-500/30 sm:px-3 sm:py-2 sm:text-sm"
           >
             <XCircle className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
@@ -346,7 +346,7 @@ export function MarketOversightTab() {
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           {/* Status Filter */}
           <div className="flex overflow-x-auto rounded-lg border border-border bg-card">
-            {(['all', 'active', 'expired', 'resolved'] as const).map((s) => (
+            {(["all", "active", "expired", "resolved"] as const).map((s) => (
               <button
                 key={s}
                 onClick={() => {
@@ -354,10 +354,10 @@ export function MarketOversightTab() {
                   setLoading(true);
                 }}
                 className={cn(
-                  'whitespace-nowrap px-2 py-1.5 font-medium text-xs transition-colors first:rounded-l-lg last:rounded-r-lg sm:px-3 sm:py-2 sm:text-sm',
+                  "whitespace-nowrap px-2 py-1.5 font-medium text-xs transition-colors first:rounded-l-lg last:rounded-r-lg sm:px-3 sm:py-2 sm:text-sm",
                   statusFilter === s
-                    ? 'bg-primary text-primary-foreground'
-                    : 'text-muted-foreground hover:bg-muted'
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-muted",
                 )}
               >
                 {s.charAt(0).toUpperCase() + s.slice(1)}
@@ -372,8 +372,8 @@ export function MarketOversightTab() {
           >
             <RefreshCw
               className={cn(
-                'h-3.5 w-3.5 sm:h-4 sm:w-4',
-                isRefreshing && 'animate-spin'
+                "h-3.5 w-3.5 sm:h-4 sm:w-4",
+                isRefreshing && "animate-spin",
               )}
             />
             <span className="hidden sm:inline">Refresh</span>
@@ -434,8 +434,8 @@ export function MarketOversightTab() {
         <div className="rounded-xl border border-yellow-500/20 bg-yellow-500/10 p-4">
           <div className="flex items-center gap-2 font-semibold text-yellow-500">
             <AlertTriangle className="h-5 w-5" />
-            {data.stats.expired} market{data.stats.expired > 1 ? 's' : ''} need
-            {data.stats.expired === 1 ? 's' : ''} resolution
+            {data.stats.expired} market{data.stats.expired > 1 ? "s" : ""} need
+            {data.stats.expired === 1 ? "s" : ""} resolution
           </div>
           <p className="mt-1 text-muted-foreground text-sm">
             These markets have passed their end date and require admin action.
@@ -464,11 +464,11 @@ export function MarketOversightTab() {
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-lg rounded-2xl border border-border bg-card p-6">
             <h3 className="mb-4 font-bold text-xl">
-              {actionType === 'resolve'
-                ? 'Resolve Market'
-                : actionType === 'extend'
-                  ? 'Extend Market'
-                  : 'Void Market'}
+              {actionType === "resolve"
+                ? "Resolve Market"
+                : actionType === "extend"
+                  ? "Extend Market"
+                  : "Void Market"}
             </h3>
 
             <div className="mb-4 rounded-lg bg-muted/50 p-3">
@@ -477,7 +477,7 @@ export function MarketOversightTab() {
               </p>
             </div>
 
-            {actionType === 'resolve' && (
+            {actionType === "resolve" && (
               <div className="mb-4">
                 <label className="mb-2 block font-medium text-sm">
                   Resolution
@@ -486,10 +486,10 @@ export function MarketOversightTab() {
                   <button
                     onClick={() => setResolution(true)}
                     className={cn(
-                      'flex-1 rounded-lg border-2 p-4 text-center transition-colors',
+                      "flex-1 rounded-lg border-2 p-4 text-center transition-colors",
                       resolution
-                        ? 'border-green-500 bg-green-500/20 text-green-500'
-                        : 'border-border hover:border-green-500/50'
+                        ? "border-green-500 bg-green-500/20 text-green-500"
+                        : "border-border hover:border-green-500/50",
                     )}
                   >
                     <Check className="mx-auto mb-1 h-6 w-6" />
@@ -498,10 +498,10 @@ export function MarketOversightTab() {
                   <button
                     onClick={() => setResolution(false)}
                     className={cn(
-                      'flex-1 rounded-lg border-2 p-4 text-center transition-colors',
+                      "flex-1 rounded-lg border-2 p-4 text-center transition-colors",
                       !resolution
-                        ? 'border-red-500 bg-red-500/20 text-red-500'
-                        : 'border-border hover:border-red-500/50'
+                        ? "border-red-500 bg-red-500/20 text-red-500"
+                        : "border-border hover:border-red-500/50",
                     )}
                   >
                     <X className="mx-auto mb-1 h-6 w-6" />
@@ -511,7 +511,7 @@ export function MarketOversightTab() {
               </div>
             )}
 
-            {actionType === 'extend' && (
+            {actionType === "extend" && (
               <div className="mb-4">
                 <label className="mb-2 block font-medium text-sm">
                   New End Date
@@ -526,7 +526,7 @@ export function MarketOversightTab() {
               </div>
             )}
 
-            {actionType === 'void' && (
+            {actionType === "void" && (
               <div className="mb-4 rounded-lg bg-red-500/10 p-3 text-red-500">
                 <AlertTriangle className="mb-1 h-5 w-5" />
                 <p className="text-sm">
@@ -538,7 +538,7 @@ export function MarketOversightTab() {
 
             <div className="mb-4">
               <label className="mb-2 block font-medium text-sm">
-                Reason {actionType !== 'extend' && '(optional)'}
+                Reason {actionType !== "extend" && "(optional)"}
               </label>
               <textarea
                 value={actionReason}
@@ -561,15 +561,15 @@ export function MarketOversightTab() {
                 onClick={executeAction}
                 disabled={isActioning}
                 className={cn(
-                  'flex-1 rounded-lg px-4 py-2 font-medium transition-colors disabled:opacity-50',
-                  actionType === 'resolve'
-                    ? 'bg-blue-500 text-white hover:bg-blue-600'
-                    : actionType === 'extend'
-                      ? 'bg-purple-500 text-white hover:bg-purple-600'
-                      : 'bg-red-500 text-white hover:bg-red-600'
+                  "flex-1 rounded-lg px-4 py-2 font-medium transition-colors disabled:opacity-50",
+                  actionType === "resolve"
+                    ? "bg-blue-500 text-white hover:bg-blue-600"
+                    : actionType === "extend"
+                      ? "bg-purple-500 text-white hover:bg-purple-600"
+                      : "bg-red-500 text-white hover:bg-red-600",
                 )}
               >
-                {isActioning ? 'Processing...' : 'Confirm'}
+                {isActioning ? "Processing..." : "Confirm"}
               </button>
             </div>
           </div>

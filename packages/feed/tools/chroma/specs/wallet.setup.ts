@@ -11,16 +11,16 @@
  * Account #0 from 'test test test test test test test test test test test junk'
  */
 export const ANVIL_WALLET = {
-  seedPhrase: 'test test test test test test test test test test test junk',
-  password: 'Tester@1234',
+  seedPhrase: "test test test test test test test test test test test junk",
+  password: "Tester@1234",
 } as const;
 
 /**
  * Local Anvil network configuration
  */
 export const ANVIL_NETWORK = {
-  name: 'Anvil Local',
-  rpcUrl: 'http://localhost:8545',
+  name: "Anvil Local",
+  rpcUrl: "http://localhost:8545",
   chainId: 31337,
-  symbol: 'ETH',
+  symbol: "ETH",
 } as const;

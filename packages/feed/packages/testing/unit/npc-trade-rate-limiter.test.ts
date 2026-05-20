@@ -5,14 +5,14 @@
  * Uses a custom provider to avoid dependency on environment config.
  */
 
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import {
   type NpcTradeRateLimitConfig,
   NpcTradeRateLimiter,
   type NpcTradeRateLimitProvider,
   resetNpcTradeRateLimitProvider,
   setNpcTradeRateLimitProvider,
-} from '@feed/engine';
+} from "@feed/engine";
 
 /**
  * Test provider that allows full control over rate limiting behavior.
@@ -26,12 +26,12 @@ class TestableNpcTradeRateLimitProvider implements NpcTradeRateLimitProvider {
     private config: {
       maxTradesPerDay: number;
       minMinutesBetweenTrades: number;
-    }
+    },
   ) {}
 
   async canTrade(
     npcId: string,
-    _config: NpcTradeRateLimitConfig
+    _config: NpcTradeRateLimitConfig,
   ): Promise<boolean> {
     const now = Date.now();
 
@@ -44,7 +44,7 @@ class TestableNpcTradeRateLimitProvider implements NpcTradeRateLimitProvider {
     }
 
     // Check daily limit
-    const today = new Date().toISOString().split('T')[0]!;
+    const today = new Date().toISOString().split("T")[0]!;
     const dailyData = this.dailyTradeCount.get(npcId);
 
     if (
@@ -62,7 +62,7 @@ class TestableNpcTradeRateLimitProvider implements NpcTradeRateLimitProvider {
     const now = Date.now();
     this.lastTradeTime.set(npcId, now);
 
-    const today = new Date().toISOString().split('T')[0]!;
+    const today = new Date().toISOString().split("T")[0]!;
     const dailyData = this.dailyTradeCount.get(npcId);
 
     if (dailyData !== undefined && dailyData.date === today) {
@@ -89,7 +89,7 @@ class TestableNpcTradeRateLimitProvider implements NpcTradeRateLimitProvider {
       return null;
     }
 
-    const today = new Date().toISOString().split('T')[0]!;
+    const today = new Date().toISOString().split("T")[0]!;
 
     return {
       lastTradeTime: lastTrade ?? 0,
@@ -99,7 +99,7 @@ class TestableNpcTradeRateLimitProvider implements NpcTradeRateLimitProvider {
   }
 }
 
-describe('NpcTradeRateLimiter', () => {
+describe("NpcTradeRateLimiter", () => {
   let testProvider: TestableNpcTradeRateLimitProvider;
 
   beforeEach(async () => {
@@ -116,22 +116,22 @@ describe('NpcTradeRateLimiter', () => {
     resetNpcTradeRateLimitProvider();
   });
 
-  describe('Cooldown Logic', () => {
-    it('should allow trade when no previous trades exist', async () => {
-      const npcId = 'npc-test-1';
+  describe("Cooldown Logic", () => {
+    it("should allow trade when no previous trades exist", async () => {
+      const npcId = "npc-test-1";
 
       const canTrade = await NpcTradeRateLimiter.canTrade(npcId);
       expect(canTrade).toBe(true);
     });
 
-    it('should block trade within cooldown period', async () => {
+    it("should block trade within cooldown period", async () => {
       testProvider = new TestableNpcTradeRateLimitProvider({
         maxTradesPerDay: 20,
         minMinutesBetweenTrades: 5, // 5 minutes cooldown
       });
       setNpcTradeRateLimitProvider(testProvider);
 
-      const npcId = 'npc-test-2';
+      const npcId = "npc-test-2";
 
       // First trade should succeed
       const canTrade1 = await NpcTradeRateLimiter.canTrade(npcId);
@@ -144,14 +144,14 @@ describe('NpcTradeRateLimiter', () => {
       expect(canTrade2).toBe(false);
     });
 
-    it('should allow trade when cooldown is 0 (no cooldown)', async () => {
+    it("should allow trade when cooldown is 0 (no cooldown)", async () => {
       testProvider = new TestableNpcTradeRateLimitProvider({
         maxTradesPerDay: 100,
         minMinutesBetweenTrades: 0, // No cooldown
       });
       setNpcTradeRateLimitProvider(testProvider);
 
-      const npcId = 'npc-test-3';
+      const npcId = "npc-test-3";
 
       // First trade
       await NpcTradeRateLimiter.recordTrade(npcId);
@@ -161,14 +161,14 @@ describe('NpcTradeRateLimiter', () => {
       expect(canTrade).toBe(true);
     });
 
-    it('should allow multiple rapid trades with no cooldown', async () => {
+    it("should allow multiple rapid trades with no cooldown", async () => {
       testProvider = new TestableNpcTradeRateLimitProvider({
         maxTradesPerDay: 100,
         minMinutesBetweenTrades: 0,
       });
       setNpcTradeRateLimitProvider(testProvider);
 
-      const npcId = 'npc-test-4';
+      const npcId = "npc-test-4";
 
       // Multiple rapid trades should all be allowed with 0 cooldown
       await NpcTradeRateLimiter.recordTrade(npcId);
@@ -181,15 +181,15 @@ describe('NpcTradeRateLimiter', () => {
     });
   });
 
-  describe('Daily Trade Limit', () => {
-    it('should allow trades up to the daily limit', async () => {
+  describe("Daily Trade Limit", () => {
+    it("should allow trades up to the daily limit", async () => {
       testProvider = new TestableNpcTradeRateLimitProvider({
         maxTradesPerDay: 3,
         minMinutesBetweenTrades: 0, // Disable cooldown for this test
       });
       setNpcTradeRateLimitProvider(testProvider);
 
-      const npcId = 'npc-test-5';
+      const npcId = "npc-test-5";
 
       // First 3 trades should be allowed
       for (let i = 0; i < 3; i++) {
@@ -203,14 +203,14 @@ describe('NpcTradeRateLimiter', () => {
       expect(canTrade).toBe(false);
     });
 
-    it('should track daily count accurately', async () => {
+    it("should track daily count accurately", async () => {
       testProvider = new TestableNpcTradeRateLimitProvider({
         maxTradesPerDay: 5,
         minMinutesBetweenTrades: 0,
       });
       setNpcTradeRateLimitProvider(testProvider);
 
-      const npcId = 'npc-test-6';
+      const npcId = "npc-test-6";
 
       // Record 3 trades
       await NpcTradeRateLimiter.recordTrade(npcId);
@@ -219,17 +219,17 @@ describe('NpcTradeRateLimiter', () => {
 
       const stats = await NpcTradeRateLimiter.getStats(npcId);
       expect(stats).not.toBeNull();
-      expect(stats!.dailyCount).toBe(3);
+      expect(stats?.dailyCount).toBe(3);
     });
 
-    it('should block when daily limit is 1', async () => {
+    it("should block when daily limit is 1", async () => {
       testProvider = new TestableNpcTradeRateLimitProvider({
         maxTradesPerDay: 1,
         minMinutesBetweenTrades: 0,
       });
       setNpcTradeRateLimitProvider(testProvider);
 
-      const npcId = 'npc-test-7';
+      const npcId = "npc-test-7";
 
       const canTrade1 = await NpcTradeRateLimiter.canTrade(npcId);
       expect(canTrade1).toBe(true);
@@ -240,15 +240,15 @@ describe('NpcTradeRateLimiter', () => {
     });
   });
 
-  describe('Combined Cooldown + Daily Limit', () => {
-    it('should enforce both cooldown and daily limit', async () => {
+  describe("Combined Cooldown + Daily Limit", () => {
+    it("should enforce both cooldown and daily limit", async () => {
       testProvider = new TestableNpcTradeRateLimitProvider({
         maxTradesPerDay: 2,
         minMinutesBetweenTrades: 5, // 5 minute cooldown
       });
       setNpcTradeRateLimitProvider(testProvider);
 
-      const npcId = 'npc-test-8';
+      const npcId = "npc-test-8";
 
       // First trade allowed
       const canTrade1 = await NpcTradeRateLimiter.canTrade(npcId);
@@ -261,16 +261,16 @@ describe('NpcTradeRateLimiter', () => {
     });
   });
 
-  describe('Multiple NPCs', () => {
-    it('should track rate limits independently per NPC', async () => {
+  describe("Multiple NPCs", () => {
+    it("should track rate limits independently per NPC", async () => {
       testProvider = new TestableNpcTradeRateLimitProvider({
         maxTradesPerDay: 2,
         minMinutesBetweenTrades: 0,
       });
       setNpcTradeRateLimitProvider(testProvider);
 
-      const npcId1 = 'npc-test-9';
-      const npcId2 = 'npc-test-10';
+      const npcId1 = "npc-test-9";
+      const npcId2 = "npc-test-10";
 
       // NPC 1 uses up all trades
       await NpcTradeRateLimiter.recordTrade(npcId1);
@@ -286,41 +286,41 @@ describe('NpcTradeRateLimiter', () => {
     });
   });
 
-  describe('Stats Reporting', () => {
-    it('should return null stats for unknown NPC', async () => {
-      const stats = await NpcTradeRateLimiter.getStats('unknown-npc');
+  describe("Stats Reporting", () => {
+    it("should return null stats for unknown NPC", async () => {
+      const stats = await NpcTradeRateLimiter.getStats("unknown-npc");
       expect(stats).toBeNull();
     });
 
-    it('should return accurate stats after trades', async () => {
+    it("should return accurate stats after trades", async () => {
       testProvider = new TestableNpcTradeRateLimitProvider({
         maxTradesPerDay: 10,
         minMinutesBetweenTrades: 0,
       });
       setNpcTradeRateLimitProvider(testProvider);
 
-      const npcId = 'npc-test-11';
+      const npcId = "npc-test-11";
 
       await NpcTradeRateLimiter.recordTrade(npcId);
       await NpcTradeRateLimiter.recordTrade(npcId);
 
       const stats = await NpcTradeRateLimiter.getStats(npcId);
       expect(stats).not.toBeNull();
-      expect(stats!.dailyCount).toBe(2);
-      expect(stats!.lastTradeTime).toBeGreaterThan(0);
-      expect(stats!.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(stats?.dailyCount).toBe(2);
+      expect(stats?.lastTradeTime).toBeGreaterThan(0);
+      expect(stats?.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     });
   });
 
-  describe('Reset for Testing', () => {
-    it('should clear all state when reset', async () => {
+  describe("Reset for Testing", () => {
+    it("should clear all state when reset", async () => {
       testProvider = new TestableNpcTradeRateLimitProvider({
         maxTradesPerDay: 1,
         minMinutesBetweenTrades: 0,
       });
       setNpcTradeRateLimitProvider(testProvider);
 
-      const npcId = 'npc-test-12';
+      const npcId = "npc-test-12";
 
       // Use up the daily limit
       await NpcTradeRateLimiter.recordTrade(npcId);
@@ -336,8 +336,8 @@ describe('NpcTradeRateLimiter', () => {
     });
   });
 
-  describe('Custom Provider Integration', () => {
-    it('should allow setting a custom provider', async () => {
+  describe("Custom Provider Integration", () => {
+    it("should allow setting a custom provider", async () => {
       const customProvider: NpcTradeRateLimitProvider = {
         canTrade: mock(async () => false),
         recordTrade: mock(async () => {}),
@@ -347,12 +347,12 @@ describe('NpcTradeRateLimiter', () => {
 
       setNpcTradeRateLimitProvider(customProvider);
 
-      const canTrade = await NpcTradeRateLimiter.canTrade('any-npc');
+      const canTrade = await NpcTradeRateLimiter.canTrade("any-npc");
       expect(canTrade).toBe(false);
       expect(customProvider.canTrade).toHaveBeenCalled();
     });
 
-    it('should return null for provider stats with custom provider', () => {
+    it("should return null for provider stats with custom provider", () => {
       const customProvider: NpcTradeRateLimitProvider = {
         canTrade: async () => true,
         recordTrade: async () => {},
@@ -367,7 +367,7 @@ describe('NpcTradeRateLimiter', () => {
       expect(stats).toBeNull();
     });
 
-    it('should return 0 for cleanup with custom provider', () => {
+    it("should return 0 for cleanup with custom provider", () => {
       const customProvider: NpcTradeRateLimitProvider = {
         canTrade: async () => true,
         recordTrade: async () => {},
@@ -383,20 +383,20 @@ describe('NpcTradeRateLimiter', () => {
     });
   });
 
-  describe('Default In-Memory Provider', () => {
+  describe("Default In-Memory Provider", () => {
     beforeEach(() => {
       // Reset to default in-memory provider
       resetNpcTradeRateLimitProvider();
     });
 
-    it('should report provider stats for in-memory provider', () => {
+    it("should report provider stats for in-memory provider", () => {
       const stats = NpcTradeRateLimiter.getProviderStats();
       expect(stats).not.toBeNull();
-      expect(stats!.lastTradeTime).toBe(0);
-      expect(stats!.dailyTradeCount).toBe(0);
+      expect(stats?.lastTradeTime).toBe(0);
+      expect(stats?.dailyTradeCount).toBe(0);
     });
 
-    it('should report cleanup count as 0 when no stale entries', () => {
+    it("should report cleanup count as 0 when no stale entries", () => {
       const cleaned = NpcTradeRateLimiter.cleanupStaleEntries();
       expect(cleaned).toBe(0);
     });

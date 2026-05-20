@@ -42,8 +42,8 @@
  * ```
  */
 
-import { PredictionPricing } from '@feed/core/markets/prediction/pricing';
-import { logger } from '@feed/shared';
+import { PredictionPricing } from "@feed/core/markets/prediction/pricing";
+import { logger } from "@feed/shared";
 
 /**
  * A concentrated liquidity position
@@ -219,7 +219,7 @@ export class ConcentratedLiquidityPool {
     return PredictionPricing.getCurrentPrice(
       effectiveLiquidity.yesShares,
       effectiveLiquidity.noShares,
-      'yes'
+      "yes",
     );
   }
 
@@ -247,7 +247,7 @@ export class ConcentratedLiquidityPool {
     }
 
     if (liquidityAmount <= 0) {
-      throw new Error('Liquidity amount must be positive');
+      throw new Error("Liquidity amount must be positive");
     }
 
     const id = `clp-${++this.positionCounter}`;
@@ -265,14 +265,14 @@ export class ConcentratedLiquidityPool {
     this.positions.set(id, position);
 
     logger.debug(
-      'Added concentrated liquidity position',
+      "Added concentrated liquidity position",
       {
         id,
         ownerId,
         amount: liquidityAmount,
         range: `[${lowerPrice}, ${upperPrice}]`,
       },
-      'ConcentratedLiquidityPool'
+      "ConcentratedLiquidityPool",
     );
 
     return position;
@@ -283,7 +283,7 @@ export class ConcentratedLiquidityPool {
    */
   removeLiquidityPosition(
     positionId: string,
-    ownerId: string
+    ownerId: string,
   ): RemovePositionResult {
     const position = this.positions.get(positionId);
 
@@ -308,12 +308,12 @@ export class ConcentratedLiquidityPool {
     this.positions.delete(positionId);
 
     logger.debug(
-      'Removed concentrated liquidity position',
+      "Removed concentrated liquidity position",
       {
         id: positionId,
         returned: result.totalValue,
       },
-      'ConcentratedLiquidityPool'
+      "ConcentratedLiquidityPool",
     );
 
     return result;
@@ -322,7 +322,7 @@ export class ConcentratedLiquidityPool {
   /**
    * Execute a buy order with concentrated liquidity
    */
-  buy(side: 'yes' | 'no', usdAmount: number): ConcentratedTradeResult {
+  buy(side: "yes" | "no", usdAmount: number): ConcentratedTradeResult {
     // Get effective liquidity at current price
     const effective = this.getEffectiveLiquidityAtCurrentPrice();
 
@@ -335,13 +335,13 @@ export class ConcentratedLiquidityPool {
       effective.yesShares,
       effective.noShares,
       side,
-      netAmount
+      netAmount,
     );
 
     // Update base pool proportionally
     const liquidityRatio = this.state.baseYesShares / effective.yesShares;
 
-    if (side === 'yes') {
+    if (side === "yes") {
       this.state.baseYesShares = calc.newYesShares * liquidityRatio;
       this.state.baseNoShares = calc.newNoShares * liquidityRatio;
     } else {
@@ -373,7 +373,7 @@ export class ConcentratedLiquidityPool {
   /**
    * Execute a sell order with concentrated liquidity
    */
-  sell(side: 'yes' | 'no', sharesToSell: number): ConcentratedTradeResult {
+  sell(side: "yes" | "no", sharesToSell: number): ConcentratedTradeResult {
     // Get effective liquidity at current price
     const effective = this.getEffectiveLiquidityAtCurrentPrice();
 
@@ -382,7 +382,7 @@ export class ConcentratedLiquidityPool {
       effective.yesShares,
       effective.noShares,
       side,
-      sharesToSell
+      sharesToSell,
     );
 
     // For sell, totalCost contains the proceeds (USD received)
@@ -439,7 +439,7 @@ export class ConcentratedLiquidityPool {
     const currentPrice = PredictionPricing.getCurrentPrice(
       yesShares,
       noShares,
-      'yes'
+      "yes",
     );
 
     // Add concentrated positions that are in range
@@ -545,7 +545,7 @@ export class ConcentratedLiquidityPool {
     const baseLiquidity = this.state.baseYesShares + this.state.baseNoShares;
     const concentratedLiquidity = this.getTotalConcentratedLiquidity();
     const activePositions = Array.from(this.positions.values()).filter(
-      (p) => p.isActive
+      (p) => p.isActive,
     ).length;
 
     return {
@@ -583,7 +583,7 @@ export function createPoolFromMarket(market: {
  */
 export function calculateOptimalRange(
   expectedProbability: number,
-  uncertainty = 0.15
+  uncertainty = 0.15,
 ): { lowerPrice: number; upperPrice: number } {
   const lowerPrice = Math.max(0.05, expectedProbability - uncertainty);
   const upperPrice = Math.min(0.95, expectedProbability + uncertainty);
@@ -606,7 +606,7 @@ export function estimateFeeAPR(
   liquidityAmount: number,
   lowerPrice: number,
   upperPrice: number,
-  dailyVolume: number
+  dailyVolume: number,
 ): {
   estimatedDailyFees: number;
   estimatedAnnualFees: number;
@@ -627,7 +627,7 @@ export function estimateFeeAPR(
     // Currently out of range
     const distanceToRange = Math.min(
       Math.abs(currentPrice - lowerPrice),
-      Math.abs(currentPrice - upperPrice)
+      Math.abs(currentPrice - upperPrice),
     );
     timeInRange = Math.max(0, 1 - distanceToRange * 5);
   }

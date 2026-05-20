@@ -29,11 +29,11 @@ const RSS_CACHE_MAX_AGE_SECONDS = 300;
  */
 function escapeXml(unsafe: string): string {
   return unsafe
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
 }
 
 /**
@@ -60,8 +60,8 @@ export function buildRssXml(channel: RssChannel, items: RssItem[]): string {
     .map((item) => {
       const title = escapeXml(item.title);
       const link = item.link ? escapeXml(item.link) : channelLink;
-      const description = item.description ? escapeXml(item.description) : '';
-      const pubDate = item.pubDate.includes(',')
+      const description = item.description ? escapeXml(item.description) : "";
+      const pubDate = item.pubDate.includes(",")
         ? item.pubDate
         : toRfc1123(new Date(item.pubDate));
 
@@ -69,10 +69,10 @@ export function buildRssXml(channel: RssChannel, items: RssItem[]): string {
       <title>${title}</title>
       <link>${link}</link>
       <pubDate>${pubDate}</pubDate>
-      ${description ? `<description>${description}</description>` : ''}
+      ${description ? `<description>${description}</description>` : ""}
     </item>`;
     })
-    .join('\n');
+    .join("\n");
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
@@ -93,6 +93,6 @@ ${itemElements}
  */
 export function getRssCacheHeaders(): Record<string, string> {
   return {
-    'Cache-Control': `public, max-age=${RSS_CACHE_MAX_AGE_SECONDS}, s-maxage=${RSS_CACHE_MAX_AGE_SECONDS}`,
+    "Cache-Control": `public, max-age=${RSS_CACHE_MAX_AGE_SECONDS}, s-maxage=${RSS_CACHE_MAX_AGE_SECONDS}`,
   };
 }

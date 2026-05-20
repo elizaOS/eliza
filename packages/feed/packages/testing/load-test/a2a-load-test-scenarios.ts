@@ -5,15 +5,15 @@
  * to stress test rate limiting and performance under load.
  */
 
-import type { JsonRpcParams } from '@feed/a2a';
-import type { LoadTestConfig } from './load-test-simulator';
+import type { JsonRpcParams } from "@feed/a2a";
+import type { LoadTestConfig } from "./load-test-simulator";
 
 /**
  * Generate A2A request body for a given method
  */
 export function generateA2ARequest(method: string, params?: JsonRpcParams) {
   return {
-    jsonrpc: '2.0',
+    jsonrpc: "2.0",
     method,
     params: params || {},
     id: Math.floor(Math.random() * 1000000),
@@ -23,12 +23,12 @@ export function generateA2ARequest(method: string, params?: JsonRpcParams) {
 /**
  * Common A2A headers for agent authentication
  */
-export function getA2AHeaders(agentId = 'test-agent-1') {
+export function getA2AHeaders(agentId = "test-agent-1") {
   return {
-    'Content-Type': 'application/json',
-    'x-agent-id': agentId,
-    'x-agent-address': '0x1234567890123456789012345678901234567890',
-    'x-agent-token-id': '1',
+    "Content-Type": "application/json",
+    "x-agent-id": agentId,
+    "x-agent-address": "0x1234567890123456789012345678901234567890",
+    "x-agent-token-id": "1",
   };
 }
 
@@ -38,36 +38,36 @@ export function getA2AHeaders(agentId = 'test-agent-1') {
  */
 export const A2A_METHODS = {
   // Agent Discovery (2)
-  DISCOVER: { method: 'a2a.discover', params: {} },
-  GET_INFO: { method: 'a2a.getInfo', params: { agentId: 'feed-agent' } },
+  DISCOVER: { method: "a2a.discover", params: {} },
+  GET_INFO: { method: "a2a.getInfo", params: { agentId: "feed-agent" } },
 
   // Market Operations (3)
-  GET_MARKET_DATA: { method: 'a2a.getMarketData', params: { marketId: '1' } },
+  GET_MARKET_DATA: { method: "a2a.getMarketData", params: { marketId: "1" } },
   GET_MARKET_PRICES: {
-    method: 'a2a.getMarketPrices',
-    params: { marketIds: ['1', '2'] as string[] },
+    method: "a2a.getMarketPrices",
+    params: { marketIds: ["1", "2"] as string[] },
   },
   SUBSCRIBE_MARKET: {
-    method: 'a2a.subscribeMarket',
-    params: { marketId: '1' },
+    method: "a2a.subscribeMarket",
+    params: { marketId: "1" },
   },
 
   // Portfolio (3)
-  GET_BALANCE: { method: 'a2a.getBalance', params: {} },
-  GET_POSITIONS: { method: 'a2a.getPositions', params: {} },
+  GET_BALANCE: { method: "a2a.getBalance", params: {} },
+  GET_POSITIONS: { method: "a2a.getPositions", params: {} },
   GET_USER_WALLET: {
-    method: 'a2a.getUserWallet',
-    params: { userId: 'user-1' },
+    method: "a2a.getUserWallet",
+    params: { userId: "user-1" },
   },
 
   // Payments (2)
   PAYMENT_REQUEST: {
-    method: 'a2a.paymentRequest',
-    params: { to: '0x...', amount: '1000000', service: 'test' },
+    method: "a2a.paymentRequest",
+    params: { to: "0x...", amount: "1000000", service: "test" },
   },
   PAYMENT_RECEIPT: {
-    method: 'a2a.paymentReceipt',
-    params: { requestId: 'req-1', txHash: '0x...' },
+    method: "a2a.paymentReceipt",
+    params: { requestId: "req-1", txHash: "0x..." },
   },
 } as const;
 
@@ -77,11 +77,11 @@ export const A2A_METHODS = {
 function generateA2AEndpoint(
   methodConfig: { method: string; params: JsonRpcParams },
   weight: number,
-  agentId = 'test-agent-1'
+  agentId = "test-agent-1",
 ) {
   return {
-    path: '/api/a2a',
-    method: 'POST' as const,
+    path: "/api/a2a",
+    method: "POST" as const,
     weight,
     headers: getA2AHeaders(agentId),
     body: generateA2ARequest(methodConfig.method, methodConfig.params),

@@ -11,24 +11,24 @@
  * @module services/npc-character-config
  */
 
-import { logger } from '@feed/shared';
+import { logger } from "@feed/shared";
 import {
   type RngFunction,
   randomChance,
   shuffleArray,
-} from '../utils/randomization';
-import { StaticDataRegistry } from './static-data-registry';
+} from "../utils/randomization";
+import { StaticDataRegistry } from "./static-data-registry";
 
 /**
  * Personality type derived from actor's personality field
  */
 export type PersonalityType =
-  | 'chaotic' // High randomness, unpredictable
-  | 'provocative' // Controversial, attention-seeking
-  | 'corporate' // Measured, professional
-  | 'analytical' // Data-driven, precise
-  | 'eccentric' // Quirky, unique patterns
-  | 'default'; // Standard behavior
+  | "chaotic" // High randomness, unpredictable
+  | "provocative" // Controversial, attention-seeking
+  | "corporate" // Measured, professional
+  | "analytical" // Data-driven, precise
+  | "eccentric" // Quirky, unique patterns
+  | "default"; // Standard behavior
 
 /**
  * Character-specific configuration derived from actor data
@@ -59,48 +59,48 @@ export interface CharacterConfig {
  */
 const PERSONALITY_KEYWORDS: Record<PersonalityType, string[]> = {
   chaotic: [
-    'chaotic',
-    'unhinged',
-    'wild',
-    'erratic',
-    'manic',
-    'unpredictable',
-    'stream of consciousness',
+    "chaotic",
+    "unhinged",
+    "wild",
+    "erratic",
+    "manic",
+    "unpredictable",
+    "stream of consciousness",
   ],
   provocative: [
-    'provocative',
-    'controversial',
-    'aggressive',
-    'combative',
-    'narcissist',
-    'showman',
-    'bully',
+    "provocative",
+    "controversial",
+    "aggressive",
+    "combative",
+    "narcissist",
+    "showman",
+    "bully",
   ],
   corporate: [
-    'corporate',
-    'professional',
-    'measured',
-    'executive',
-    'ceo',
-    'director',
-    'responsible',
+    "corporate",
+    "professional",
+    "measured",
+    "executive",
+    "ceo",
+    "director",
+    "responsible",
   ],
   analytical: [
-    'analytical',
-    'data',
-    'technical',
-    'academic',
-    'researcher',
-    'scientist',
-    'engineer',
+    "analytical",
+    "data",
+    "technical",
+    "academic",
+    "researcher",
+    "scientist",
+    "engineer",
   ],
   eccentric: [
-    'eccentric',
-    'quirky',
-    'unique',
-    'weird',
-    'philosopher',
-    'visionary',
+    "eccentric",
+    "quirky",
+    "unique",
+    "weird",
+    "philosopher",
+    "visionary",
   ],
   default: [],
 };
@@ -178,48 +178,48 @@ function getRivalryMap(): Map<string, string[]> {
  */
 const DOMAIN_KEYWORDS: Record<string, string[]> = {
   ai: [
-    'artificial intelligence',
-    'machine learning',
-    'neural',
-    'model',
-    'llm',
-    'gpt',
-    'claude',
-    'agi',
+    "artificial intelligence",
+    "machine learning",
+    "neural",
+    "model",
+    "llm",
+    "gpt",
+    "claude",
+    "agi",
   ],
   tech: [
-    'technology',
-    'software',
-    'hardware',
-    'computer',
-    'digital',
-    'app',
-    'platform',
+    "technology",
+    "software",
+    "hardware",
+    "computer",
+    "digital",
+    "app",
+    "platform",
   ],
-  crypto: ['bitcoin', 'ethereum', 'blockchain', 'token', 'defi', 'nft', 'web3'],
+  crypto: ["bitcoin", "ethereum", "blockchain", "token", "defi", "nft", "web3"],
   finance: [
-    'market',
-    'stock',
-    'investment',
-    'trading',
-    'fund',
-    'asset',
-    'capital',
+    "market",
+    "stock",
+    "investment",
+    "trading",
+    "fund",
+    "asset",
+    "capital",
   ],
   politics: [
-    'government',
-    'congress',
-    'senate',
-    'election',
-    'policy',
-    'regulation',
+    "government",
+    "congress",
+    "senate",
+    "election",
+    "policy",
+    "regulation",
   ],
-  health: ['medical', 'vaccine', 'disease', 'healthcare', 'pharmaceutical'],
-  climate: ['environment', 'carbon', 'renewable', 'energy', 'sustainability'],
-  space: ['rocket', 'satellite', 'mars', 'orbit', 'launch'],
-  culture: ['art', 'music', 'fashion', 'entertainment', 'media'],
-  safety: ['alignment', 'risk', 'responsible', 'constitutional'],
-  research: ['study', 'paper', 'science', 'academic'],
+  health: ["medical", "vaccine", "disease", "healthcare", "pharmaceutical"],
+  climate: ["environment", "carbon", "renewable", "energy", "sustainability"],
+  space: ["rocket", "satellite", "mars", "orbit", "launch"],
+  culture: ["art", "music", "fashion", "entertainment", "media"],
+  safety: ["alignment", "risk", "responsible", "constitutional"],
+  research: ["study", "paper", "science", "academic"],
 };
 
 /**
@@ -232,22 +232,22 @@ const voicePatternsCache = new Map<string, RegExp[]>();
  * Determine personality type from actor's personality field
  */
 function derivePersonalityType(
-  personality: string | undefined
+  personality: string | undefined,
 ): PersonalityType {
-  if (!personality) return 'default';
+  if (!personality) return "default";
 
   const lowerPersonality = personality.toLowerCase();
 
   for (const [type, keywords] of Object.entries(PERSONALITY_KEYWORDS) as Array<
     [PersonalityType, string[]]
   >) {
-    if (type === 'default') continue;
+    if (type === "default") continue;
     if (keywords.some((kw) => lowerPersonality.includes(kw))) {
       return type;
     }
   }
 
-  return 'default';
+  return "default";
 }
 
 /**
@@ -257,7 +257,7 @@ function derivePersonalityType(
  */
 function deriveVoicePatterns(
   actorId: string,
-  postStyle: string | undefined
+  postStyle: string | undefined,
 ): RegExp[] {
   if (!postStyle) return [];
 
@@ -269,16 +269,16 @@ function deriveVoicePatterns(
   const styleLower = postStyle.toLowerCase();
 
   // Check for ALL CAPS style
-  if (styleLower.includes('all caps') || styleLower.includes('caps')) {
+  if (styleLower.includes("all caps") || styleLower.includes("caps")) {
     patterns.push(/^[A-Z\s\d.,!?'"()-]+$/);
   }
 
   // Check for specific style indicators
-  if (styleLower.includes('exclamation')) {
+  if (styleLower.includes("exclamation")) {
     patterns.push(/!{2,}/);
   }
 
-  if (styleLower.includes('stream of consciousness')) {
+  if (styleLower.includes("stream of consciousness")) {
     patterns.push(/\.\.\.|—|–/);
   }
 
@@ -292,7 +292,7 @@ function deriveVoicePatterns(
  */
 const DEFAULT_CONFIG: CharacterConfig = {
   temperature: 0.8,
-  personalityType: 'default',
+  personalityType: "default",
   domains: [],
   rivals: [],
   voicePatterns: [],
@@ -386,7 +386,7 @@ export function getCharacterTemperature(actorId: string): number {
  */
 export function checkVoiceConsistency(
   actorId: string,
-  postContent: string
+  postContent: string,
 ): {
   matchesVoice: boolean;
   matchedPatterns: string[];
@@ -441,22 +441,22 @@ export function checkVoiceConsistency(
 export function shouldPostAboutTopic(
   actorId: string,
   topicText: string,
-  rng: RngFunction = Math.random
+  rng: RngFunction = Math.random,
 ): boolean {
   const actor = StaticDataRegistry.getActor(actorId);
   const config = getCharacterConfigOrDefault(actorId);
 
   // Normalize text: lowercase, remove punctuation (hyphens, etc.), collapse whitespace
   const normalizeText = (text: string): string =>
-    text.toLowerCase().replace(/[-_]/g, ' ').replace(/\s+/g, ' ').trim();
+    text.toLowerCase().replace(/[-_]/g, " ").replace(/\s+/g, " ").trim();
 
   /**
    * Check if keyword matches as a whole word in text.
    * Uses word boundaries to prevent "gpu" matching "GPUpdate" or "tech" matching "biotech".
    */
   const matchesWholeWord = (text: string, keyword: string): boolean => {
-    const escapedKeyword = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const wordBoundaryPattern = new RegExp(`\\b${escapedKeyword}\\b`, 'i');
+    const escapedKeyword = keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const wordBoundaryPattern = new RegExp(`\\b${escapedKeyword}\\b`, "i");
     return wordBoundaryPattern.test(text);
   };
 
@@ -467,14 +467,14 @@ export function shouldPostAboutTopic(
     const isIgnored = actor.ignoreTopics.some((ignoredTopic) => {
       const keywords = DOMAIN_KEYWORDS[ignoredTopic] || [ignoredTopic];
       return keywords.some((kw) =>
-        matchesWholeWord(topicNormalized, normalizeText(kw))
+        matchesWholeWord(topicNormalized, normalizeText(kw)),
       );
     });
     if (isIgnored) {
       logger.debug(
         `Actor ${actorId} ignoring topic`,
         { topicText: topicText.substring(0, 50) },
-        'NPCCharacterConfig'
+        "NPCCharacterConfig",
       );
       return false;
     }
@@ -493,7 +493,7 @@ export function shouldPostAboutTopic(
     // Domain keyword expansions
     const keywords = DOMAIN_KEYWORDS[domain] || [];
     return keywords.some((kw) =>
-      matchesWholeWord(topicNormalized, normalizeText(kw))
+      matchesWholeWord(topicNormalized, normalizeText(kw)),
     );
   });
 
@@ -514,7 +514,7 @@ export function shouldPostAboutTopic(
     logger.debug(
       `Actor ${actorId} posting off-domain`,
       { topicText: topicText.substring(0, 50), probability: scaledProbability },
-      'NPCCharacterConfig'
+      "NPCCharacterConfig",
     );
     return true;
   }
@@ -531,7 +531,7 @@ export function shouldPostAboutTopic(
  */
 export function shouldGenerateOrganicPost(
   actorId: string,
-  rng: RngFunction = Math.random
+  rng: RngFunction = Math.random,
 ): boolean {
   const config = getCharacterConfigOrDefault(actorId);
   return randomChance(config.organicPostProbability, rng);
@@ -548,7 +548,7 @@ export function shouldGenerateOrganicPost(
 export function getTemplatePosts(
   actorId: string,
   count: number = 3,
-  rng: RngFunction = Math.random
+  rng: RngFunction = Math.random,
 ): string[] {
   const config = getCharacterConfigOrDefault(actorId);
 
@@ -582,7 +582,7 @@ export function logVoiceMetrics(actorId: string, postContent: string): void {
 
   if (!result.matchesVoice) {
     logger.warn(
-      'Voice consistency issue detected',
+      "Voice consistency issue detected",
       {
         actorId,
         voiceScore: result.voiceScore,
@@ -590,17 +590,17 @@ export function logVoiceMetrics(actorId: string, postContent: string): void {
         violatedAntiPatterns: result.violatedAntiPatterns,
         postPreview: postContent.slice(0, 100),
       },
-      'VoiceMetrics'
+      "VoiceMetrics",
     );
   } else if (result.voiceScore < 0.3 && result.matchedPatterns.length === 0) {
     logger.debug(
-      'Low voice score (no distinctive patterns matched)',
+      "Low voice score (no distinctive patterns matched)",
       {
         actorId,
         voiceScore: result.voiceScore,
         postPreview: postContent.slice(0, 100),
       },
-      'VoiceMetrics'
+      "VoiceMetrics",
     );
   }
 }

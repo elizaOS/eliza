@@ -5,21 +5,21 @@ import {
   expect,
   setDefaultTimeout,
   test,
-} from 'bun:test';
+} from "bun:test";
 import {
   TradingBalanceTransferService,
   TradingPerformanceService,
-} from '@feed/api';
-import { balanceTransactions, db, eq, inArray, sql, users } from '@feed/db';
+} from "@feed/api";
+import { balanceTransactions, db, eq, inArray, sql, users } from "@feed/db";
 import {
   calculatePortfolioBreakdown,
   calculatePortfolioPnL,
-} from '@feed/engine';
+} from "@feed/engine";
 import {
   generateSnowflakeId,
   PEER_TRANSFER_IN_TRANSACTION_TYPE,
   PEER_TRANSFER_OUT_TRANSACTION_TYPE,
-} from '@feed/shared';
+} from "@feed/shared";
 
 setDefaultTimeout(30000);
 
@@ -54,7 +54,7 @@ async function createTestUser(params: {
     displayName: username,
     virtualBalance: params.initialBalance.toFixed(2),
     totalDeposited: params.totalDeposited.toFixed(2),
-    totalWithdrawn: '0',
+    totalWithdrawn: "0",
     reputationPoints: 1000,
     isActor: params.isActor ?? false,
     isAgent: params.isAgent ?? false,
@@ -66,11 +66,11 @@ async function createTestUser(params: {
     await db.insert(balanceTransactions).values({
       id: await generateSnowflakeId(),
       userId: id,
-      type: 'deposit',
+      type: "deposit",
       amount: params.totalDeposited.toFixed(2),
-      balanceBefore: '0',
+      balanceBefore: "0",
       balanceAfter: params.initialBalance.toFixed(2),
-      description: 'integration seed deposit',
+      description: "integration seed deposit",
     });
   }
 
@@ -78,13 +78,13 @@ async function createTestUser(params: {
   return { id, username };
 }
 
-describe('TradingBalanceTransferService - Integration', () => {
+describe("TradingBalanceTransferService - Integration", () => {
   beforeAll(async () => {
     dbAvailable = await checkDatabaseHealth();
 
     if (!dbAvailable) {
       console.warn(
-        '⚠️  Database not available - trading balance transfer integration tests will be skipped'
+        "⚠️  Database not available - trading balance transfer integration tests will be skipped",
       );
     }
   });
@@ -100,18 +100,18 @@ describe('TradingBalanceTransferService - Integration', () => {
     await db.delete(users).where(inArray(users.id, testUserIds));
   });
 
-  test('moves trading balance atomically without polluting funding totals or PnL', async () => {
+  test("moves trading balance atomically without polluting funding totals or PnL", async () => {
     if (!dbAvailable) {
       return;
     }
 
     const sender = await createTestUser({
-      usernamePrefix: 'tb-transfer-sender',
+      usernamePrefix: "tb-transfer-sender",
       initialBalance: 500,
       totalDeposited: 500,
     });
     const receiver = await createTestUser({
-      usernamePrefix: 'tb-transfer-receiver',
+      usernamePrefix: "tb-transfer-receiver",
       initialBalance: 0,
       totalDeposited: 0,
     });
@@ -120,7 +120,7 @@ describe('TradingBalanceTransferService - Integration', () => {
       senderUserId: sender.id,
       recipientIdentifier: receiver.username,
       amount: 200,
-      note: 'integration test',
+      note: "integration test",
     });
 
     expect(result.success).toBe(true);
@@ -168,7 +168,7 @@ describe('TradingBalanceTransferService - Integration', () => {
       [
         PEER_TRANSFER_OUT_TRANSACTION_TYPE,
         PEER_TRANSFER_IN_TRANSACTION_TYPE,
-      ].includes(row.type)
+      ].includes(row.type),
     );
 
     expect(peerTransferRows).toHaveLength(2);
@@ -178,8 +178,8 @@ describe('TradingBalanceTransferService - Integration', () => {
           row.userId === sender.id &&
           row.type === PEER_TRANSFER_OUT_TRANSACTION_TYPE &&
           Number(row.amount) === -200 &&
-          row.relatedId === result.transferId
-      )
+          row.relatedId === result.transferId,
+      ),
     ).toBe(true);
     expect(
       peerTransferRows.some(
@@ -187,8 +187,8 @@ describe('TradingBalanceTransferService - Integration', () => {
           row.userId === receiver.id &&
           row.type === PEER_TRANSFER_IN_TRANSACTION_TYPE &&
           Number(row.amount) === 200 &&
-          row.relatedId === result.transferId
-      )
+          row.relatedId === result.transferId,
+      ),
     ).toBe(true);
 
     const senderBreakdown = await calculatePortfolioBreakdown(sender.id);
@@ -196,10 +196,10 @@ describe('TradingBalanceTransferService - Integration', () => {
     const senderPnL = await calculatePortfolioPnL(sender.id);
     const receiverPnL = await calculatePortfolioPnL(receiver.id);
     const senderTrading = await TradingPerformanceService.getWalletEntry(
-      sender.id
+      sender.id,
     );
     const receiverTrading = await TradingPerformanceService.getWalletEntry(
-      receiver.id
+      receiver.id,
     );
 
     expect(senderBreakdown?.netPeerTransfers).toBe(-200);
@@ -220,18 +220,18 @@ describe('TradingBalanceTransferService - Integration', () => {
     expect(Number(receiverTrading?.capitalBase ?? 0)).toBe(200);
   });
 
-  test('rejects actor recipients', async () => {
+  test("rejects actor recipients", async () => {
     if (!dbAvailable) {
       return;
     }
 
     const sender = await createTestUser({
-      usernamePrefix: 'tb-transfer-human',
+      usernamePrefix: "tb-transfer-human",
       initialBalance: 100,
       totalDeposited: 100,
     });
     const actor = await createTestUser({
-      usernamePrefix: 'tb-transfer-actor',
+      usernamePrefix: "tb-transfer-actor",
       initialBalance: 0,
       totalDeposited: 0,
       isActor: true,
@@ -245,8 +245,8 @@ describe('TradingBalanceTransferService - Integration', () => {
 
     expect(result).toEqual({
       success: false,
-      errorCode: 'RECIPIENT_NOT_ALLOWED',
-      error: 'Recipient must be a Feed user, not an actor or agent',
+      errorCode: "RECIPIENT_NOT_ALLOWED",
+      error: "Recipient must be a Feed user, not an actor or agent",
     });
   });
 });

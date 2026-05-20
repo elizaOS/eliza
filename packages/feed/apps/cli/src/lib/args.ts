@@ -37,7 +37,7 @@ export interface ParsedArgs {
  */
 export function parseArgs(args: string[]): ParsedArgs {
   const result: ParsedArgs = {
-    command: '',
+    command: "",
     positional: [],
     flags: {},
     options: {},
@@ -47,14 +47,14 @@ export function parseArgs(args: string[]): ParsedArgs {
     const arg = args[i];
     if (!arg) continue;
 
-    if (arg.startsWith('--')) {
-      const [key, value] = arg.slice(2).split('=');
+    if (arg.startsWith("--")) {
+      const [key, value] = arg.slice(2).split("=");
       if (key) {
         if (value !== undefined) {
           result.options[key] = value;
         } else {
           const nextArg = args[i + 1];
-          if (nextArg && !nextArg.startsWith('-')) {
+          if (nextArg && !nextArg.startsWith("-")) {
             result.options[key] = nextArg;
             i++;
           } else {
@@ -62,10 +62,10 @@ export function parseArgs(args: string[]): ParsedArgs {
           }
         }
       }
-    } else if (arg.startsWith('-') && arg.length === 2) {
+    } else if (arg.startsWith("-") && arg.length === 2) {
       const key = arg.slice(1);
       const nextArg = args[i + 1];
-      if (nextArg && !nextArg.startsWith('-')) {
+      if (nextArg && !nextArg.startsWith("-")) {
         result.options[key] = nextArg;
         i++;
       } else {
@@ -89,9 +89,7 @@ export function parseArgs(args: string[]): ParsedArgs {
  */
 export function wantsHelp(args: ParsedArgs): boolean {
   return (
-    args.flags['help'] === true ||
-    args.flags['h'] === true ||
-    args.command === 'help'
+    args.flags.help === true || args.flags.h === true || args.command === "help"
   );
 }
 
@@ -112,7 +110,7 @@ export function wantsHelp(args: ParsedArgs): boolean {
 export function getOption(
   args: ParsedArgs,
   long: string,
-  short?: string
+  short?: string,
 ): string | undefined {
   return args.options[long] ?? (short ? args.options[short] : undefined);
 }
@@ -134,7 +132,7 @@ export function getOption(
 export function getFlag(
   args: ParsedArgs,
   long: string,
-  short?: string
+  short?: string,
 ): boolean {
   return (
     args.flags[long] === true || (short ? args.flags[short] === true : false)

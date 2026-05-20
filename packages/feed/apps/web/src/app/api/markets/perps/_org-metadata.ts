@@ -1,13 +1,13 @@
-import type { PerpMarketRecord } from '@feed/core/markets/perps';
-import { db, organizations } from '@feed/db';
-import { inArray } from 'drizzle-orm';
+import type { PerpMarketRecord } from "@feed/core/markets/perps";
+import { db, organizations } from "@feed/db";
+import { inArray } from "drizzle-orm";
 
 /**
  * Merge Organization display name + logo for perp rows by ticker.
  * On-chain snapshots use `${symbol} Perpetual` as name; this replaces with org data.
  */
 export async function mergeOrganizationMetadataForPerpMarkets(
-  markets: PerpMarketRecord[]
+  markets: PerpMarketRecord[],
 ): Promise<PerpMarketRecord[]> {
   if (markets.length === 0) return markets;
 
@@ -24,9 +24,9 @@ export async function mergeOrganizationMetadataForPerpMarkets(
   const byTicker = new Map(
     orgRows
       .filter((r): r is typeof r & { ticker: string } =>
-        Boolean(r.ticker?.trim())
+        Boolean(r.ticker?.trim()),
       )
-      .map((r) => [r.ticker.toUpperCase(), r])
+      .map((r) => [r.ticker.toUpperCase(), r]),
   );
 
   return markets.map((m) => {

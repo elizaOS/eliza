@@ -16,9 +16,9 @@
  * - Single entity loads: Direct import (fastest)
  */
 
-import { actors } from './data/actors';
-import { organizations } from './data/organizations';
-import type { ActorData, ActorsDatabase, Organization } from './types/shared';
+import { actors } from "./data/actors";
+import { organizations } from "./data/organizations";
+import type { ActorData, ActorsDatabase, Organization } from "./types/shared";
 
 /**
  * Options for selective data loading

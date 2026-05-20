@@ -1,12 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
-import { apiFetch, getPrivyAccessToken } from './api-fetch';
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { apiFetch, getPrivyAccessToken } from "./api-fetch";
 
 const originalFetch = globalThis.fetch;
 const originalWindow = globalThis.window;
 
 function setWindow(getAccessToken?: () => Promise<string | null>) {
   const storage = new Map<string, string>();
-  Object.defineProperty(globalThis, 'window', {
+  Object.defineProperty(globalThis, "window", {
     configurable: true,
     value: {
       __privyGetAccessToken: getAccessToken,
@@ -30,7 +30,7 @@ function setWindow(getAccessToken?: () => Promise<string | null>) {
   });
 }
 
-describe('apiFetch', () => {
+describe("apiFetch", () => {
   beforeEach(() => {
     globalThis.fetch = originalFetch;
     setWindow();
@@ -38,49 +38,49 @@ describe('apiFetch', () => {
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
-    Object.defineProperty(globalThis, 'window', {
+    Object.defineProperty(globalThis, "window", {
       configurable: true,
       value: originalWindow,
     });
   });
 
-  it('returns null when the Privy access token getter rejects', async () => {
+  it("returns null when the Privy access token getter rejects", async () => {
     setWindow(() =>
       Promise.reject({
-        code: 'session_expired',
-        message: 'Session expired',
-        stack: 'stack',
-      })
+        code: "session_expired",
+        message: "Session expired",
+        stack: "stack",
+      }),
     );
 
     await expect(getPrivyAccessToken()).resolves.toBeNull();
   });
 
-  it('still performs the request when token retrieval rejects', async () => {
+  it("still performs the request when token retrieval rejects", async () => {
     const fetchMock = mock((_input: RequestInfo | URL, _init?: RequestInit) =>
       Promise.resolve(
         new Response(JSON.stringify({ ok: true }), {
           status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        })
-      )
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
     );
     globalThis.fetch = fetchMock as unknown as typeof fetch;
     setWindow(() =>
       Promise.reject({
-        code: 'session_expired',
-        message: 'Session expired',
-        stack: 'stack',
-      })
+        code: "session_expired",
+        message: "Session expired",
+        stack: "stack",
+      }),
     );
 
-    const response = await apiFetch('/api/users/me');
+    const response = await apiFetch("/api/users/me");
 
     expect(response.status).toBe(200);
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0]?.[1]?.credentials).toBe('include');
+    expect(fetchMock.mock.calls[0]?.[1]?.credentials).toBe("include");
     expect(
-      new Headers(fetchMock.mock.calls[0]?.[1]?.headers).has('Authorization')
+      new Headers(fetchMock.mock.calls[0]?.[1]?.headers).has("Authorization"),
     ).toBe(false);
   });
 });

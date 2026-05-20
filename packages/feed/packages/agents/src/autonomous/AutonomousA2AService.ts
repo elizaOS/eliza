@@ -7,17 +7,17 @@
  * @packageDocumentation
  */
 
-import { db, eq, users } from '@feed/db';
-import type { IAgentRuntime } from '@elizaos/core';
-import type { FeedRuntime } from '../plugins/feed/types';
-import { agentPnLService } from '../services/AgentPnLService';
+import type { IAgentRuntime } from "@elizaos/core";
+import { db, eq, users } from "@feed/db";
+import type { FeedRuntime } from "../plugins/feed/types";
+import { agentPnLService } from "../services/AgentPnLService";
 import {
   getAgentConfig,
   isAutonomousTradingEnabled,
-} from '../shared/agent-config';
-import { logger } from '../shared/logger';
-import { trackAgentTradeExecuted } from './track-agent-trade';
-import { getPredictionMarketPrices } from './utils/prediction-pricing';
+} from "../shared/agent-config";
+import { logger } from "../shared/logger";
+import { trackAgentTradeExecuted } from "./track-agent-trade";
+import { getPredictionMarketPrices } from "./utils/prediction-pricing";
 
 /**
  * Type guard to check if runtime has A2A client
@@ -26,8 +26,7 @@ import { getPredictionMarketPrices } from './utils/prediction-pricing';
  */
 function isFeedRuntime(runtime: IAgentRuntime): runtime is FeedRuntime {
   return (
-    'a2aClient' in runtime &&
-    (runtime as FeedRuntime).a2aClient !== undefined
+    "a2aClient" in runtime && (runtime as FeedRuntime).a2aClient !== undefined
   );
 }
 
@@ -62,7 +61,7 @@ interface PortfolioPosition {
   amount: number;
   price: number;
   pnl?: number;
-  type: 'prediction' | 'perp';
+  type: "prediction" | "perp";
 }
 
 /**
@@ -82,17 +81,17 @@ export class AutonomousA2AService {
    */
   async executeA2ATrade(
     agentUserId: string,
-    runtime: IAgentRuntime
+    runtime: IAgentRuntime,
   ): Promise<{
     success: boolean;
     tradeId?: string;
     marketId?: string;
     ticker?: string;
     side?: string;
-    marketType?: 'prediction' | 'perp';
+    marketType?: "prediction" | "perp";
   }> {
     if (!isFeedRuntime(runtime) || !runtime.a2aClient?.isConnected()) {
-      logger.debug('A2A not available, skipping A2A trade', { agentUserId });
+      logger.debug("A2A not available, skipping A2A trade", { agentUserId });
       return {
         success: false,
         marketId: undefined,
@@ -110,7 +109,7 @@ export class AutonomousA2AService {
     const agent = agentResult[0];
     const config = await getAgentConfig(agentUserId);
 
-    if (!agent || !agent.isAgent || !isAutonomousTradingEnabled(config)) {
+    if (!agent?.isAgent || !isAutonomousTradingEnabled(config)) {
       return {
         success: false,
         marketId: undefined,
@@ -125,15 +124,15 @@ export class AutonomousA2AService {
 
     // Get available markets (both prediction and perpetual)
     const predictionsResponse = (await a2aClient.sendRequest(
-      'a2a.getPredictions',
+      "a2a.getPredictions",
       {
-        status: 'active',
-      }
+        status: "active",
+      },
     )) as { predictions?: PredictionMarket[] };
 
     const perpetualsResponse = (await a2aClient.sendRequest(
-      'a2a.getPerpetuals',
-      {}
+      "a2a.getPerpetuals",
+      {},
     )) as {
       perpetuals?: Array<{
         ticker: string;
@@ -151,7 +150,7 @@ export class AutonomousA2AService {
       perpetualsResponse.perpetuals.length > 0;
 
     if (!hasPredictions && !hasPerpetuals) {
-      logger.debug('No markets available for trading', { agentUserId });
+      logger.debug("No markets available for trading", { agentUserId });
       return {
         success: false,
         marketId: undefined,
@@ -163,8 +162,8 @@ export class AutonomousA2AService {
 
     // Get portfolio for context
     const portfolio = (await a2aClient.sendRequest(
-      'a2a.getPortfolio',
-      {}
+      "a2a.getPortfolio",
+      {},
     )) as unknown as {
       balance: number;
       positions: Array<PortfolioPosition>;
@@ -172,7 +171,7 @@ export class AutonomousA2AService {
     };
 
     // Shuffle markets to provide variety and avoid bias toward first markets
-    const { shuffleArray } = await import('@feed/engine');
+    const { shuffleArray } = await import("@feed/engine");
     const shuffledPredictions = hasPredictions
       ? shuffleArray([...predictionsResponse.predictions!])
       : [];
@@ -184,7 +183,7 @@ export class AutonomousA2AService {
     const predictions = shuffledPredictions.slice(0, 5);
     const perpetuals = shuffledPerpetuals.slice(0, 5);
 
-    const prompt = `${config?.systemPrompt ?? 'You are an autonomous trading agent.'}
+    const prompt = `${config?.systemPrompt ?? "You are an autonomous trading agent."}
 
 You are ${agent.displayName}, an autonomous trading agent making a prediction market trading decision.
 
@@ -200,16 +199,16 @@ ${
         .map((m: PredictionMarket, i: number) => {
           const { yesPrice, noPrice } = getPredictionMarketPrices(
             m.yesShares,
-            m.noShares
+            m.noShares,
           );
           return `${i + 1}. "${m.question}"
    - Market ID: ${m.id}
    - YES: ${(yesPrice * 100).toFixed(1)}% (${m.yesShares} shares)
    - NO: ${(noPrice * 100).toFixed(1)}% (${m.noShares} shares)
-   - Liquidity: $${m.liquidity?.toFixed(0) || '0'}`;
+   - Liquidity: $${m.liquidity?.toFixed(0) || "0"}`;
         })
-        .join('\n\n')
-    : '(None available)'
+        .join("\n\n")
+    : "(None available)"
 }
 
 Available Perpetual Markets:
@@ -219,14 +218,14 @@ ${
         .map((m, i: number) => {
           const priceChange = m.priceChange24h || 0;
           const changePercent = (priceChange * 100).toFixed(1);
-          const trend = priceChange > 0 ? '📈' : priceChange < 0 ? '📉' : '➡️';
+          const trend = priceChange > 0 ? "📈" : priceChange < 0 ? "📉" : "➡️";
           return `${i + 1}. ${m.ticker}
    - Current Price: $${m.price.toFixed(2)}
    - 24h Change: ${trend} ${changePercent}%
    - Volume: $${m.volume24h.toFixed(0)}`;
         })
-        .join('\n\n')
-    : '(None available)'
+        .join("\n\n")
+    : "(None available)"
 }
 
 Analyze these markets and decide if you should trade. Consider:
@@ -267,22 +266,22 @@ If you don't see a good opportunity: {"action": "hold", "reasoning": "why not"}
 Your JSON response:`;
 
     // Call LLM for decision
-    const { callGroqDirect } = await import('../llm/direct-groq');
+    const { callGroqDirect } = await import("../llm/direct-groq");
     const decision = await callGroqDirect({
       prompt,
       system: config?.systemPrompt ?? undefined,
-      modelSize: 'large',
+      modelSize: "large",
       runtime, // Pass runtime to access W&B trained models AND trajectory context
       temperature: 0.7,
       maxTokens: 400,
-      actionType: 'evaluate_a2a_trade',
-      purpose: 'action', // RLAIF: This is a trading action decision
+      actionType: "evaluate_a2a_trade",
+      purpose: "action", // RLAIF: This is a trading action decision
     });
 
     // Parse decision
     const jsonMatch = decision.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      logger.debug('No valid JSON in LLM response', {
+      logger.debug("No valid JSON in LLM response", {
         agentUserId,
         responseLength: decision.length,
       });
@@ -296,22 +295,22 @@ Your JSON response:`;
     }
 
     const tradeDecision = JSON.parse(jsonMatch[0]) as {
-      action: 'trade' | 'hold';
+      action: "trade" | "hold";
       trade?: {
-        type?: 'prediction' | 'perp';
+        type?: "prediction" | "perp";
         marketId?: string;
-        outcome?: 'YES' | 'NO';
+        outcome?: "YES" | "NO";
         amount?: number;
         ticker?: string;
-        side?: 'LONG' | 'SHORT';
+        side?: "LONG" | "SHORT";
         size?: number;
         leverage?: number;
         reasoning: string;
       };
     };
 
-    if (tradeDecision.action !== 'trade' || !tradeDecision.trade) {
-      logger.debug('Agent decided to hold', { agentUserId });
+    if (tradeDecision.action !== "trade" || !tradeDecision.trade) {
+      logger.debug("Agent decided to hold", { agentUserId });
       return {
         success: false,
         marketId: undefined,
@@ -322,15 +321,15 @@ Your JSON response:`;
     }
 
     const trade = tradeDecision.trade;
-    const tradeType = trade.type || 'prediction'; // Default to prediction for backward compat
+    const tradeType = trade.type || "prediction"; // Default to prediction for backward compat
 
     // Execute based on trade type
-    if (tradeType === 'perp') {
+    if (tradeType === "perp") {
       // Perpetual market trade
       const { ticker, side, size, leverage, reasoning } = trade;
 
       if (!ticker || !side || !size || size < 10 || size > portfolio.balance) {
-        logger.warn('Invalid perp trade parameters', {
+        logger.warn("Invalid perp trade parameters", {
           ticker,
           side,
           size,
@@ -346,14 +345,14 @@ Your JSON response:`;
       }
 
       const perpLeverage = leverage || 1;
-      const tradeResult = (await a2aClient.sendRequest('a2a.openPosition', {
+      const tradeResult = (await a2aClient.sendRequest("a2a.openPosition", {
         ticker,
         side,
         size,
         leverage: perpLeverage,
       })) as { positionId?: string; entryPrice?: number };
 
-      logger.info('A2A LLM-based perp trade executed', {
+      logger.info("A2A LLM-based perp trade executed", {
         agentUserId,
         ticker,
         side,
@@ -366,10 +365,10 @@ Your JSON response:`;
       await agentPnLService.recordTrade({
         agentId: agentUserId,
         userId: agentUserId, // A2A trades are self-managed
-        marketType: 'perp',
+        marketType: "perp",
         ticker,
-        action: 'open',
-        side: side.toLowerCase() as 'long' | 'short',
+        action: "open",
+        side: side.toLowerCase() as "long" | "short",
         amount: size,
         price: tradeResult.entryPrice || 0,
         reasoning: `LLM decision (${perpLeverage}x leverage): ${reasoning}`,
@@ -378,8 +377,8 @@ Your JSON response:`;
       const ownerId = agent?.managedBy ?? agentUserId;
       trackAgentTradeExecuted(agentUserId, {
         agent_id: agentUserId,
-        market_type: 'perp',
-        action: 'open',
+        market_type: "perp",
+        action: "open",
         ticker,
         side,
         amount: size,
@@ -392,7 +391,7 @@ Your JSON response:`;
         marketId: undefined,
         ticker,
         side,
-        marketType: 'perp',
+        marketType: "perp",
       };
     }
     // Prediction market trade
@@ -405,7 +404,7 @@ Your JSON response:`;
       amount < 10 ||
       amount > portfolio.balance
     ) {
-      logger.warn('Invalid prediction trade parameters', {
+      logger.warn("Invalid prediction trade parameters", {
         marketId,
         outcome,
         amount,
@@ -420,13 +419,13 @@ Your JSON response:`;
       };
     }
 
-    const tradeResult = (await a2aClient.sendRequest('a2a.buyShares', {
+    const tradeResult = (await a2aClient.sendRequest("a2a.buyShares", {
       marketId,
       outcome,
       amount,
     })) as { shares?: number; avgPrice?: number; positionId?: string };
 
-    logger.info('A2A LLM-based trade executed', {
+    logger.info("A2A LLM-based trade executed", {
       agentUserId,
       marketId,
       outcome,
@@ -439,10 +438,10 @@ Your JSON response:`;
     await agentPnLService.recordTrade({
       agentId: agentUserId,
       userId: agentUserId, // A2A trades are self-managed
-      marketType: 'prediction',
+      marketType: "prediction",
       marketId,
-      action: 'open',
-      side: outcome.toLowerCase() as 'yes' | 'no',
+      action: "open",
+      side: outcome.toLowerCase() as "yes" | "no",
       amount,
       price: tradeResult.avgPrice || 0,
       reasoning: `LLM decision: ${reasoning}`,
@@ -451,8 +450,8 @@ Your JSON response:`;
     const ownerId = agent?.managedBy ?? agentUserId;
     trackAgentTradeExecuted(agentUserId, {
       agent_id: agentUserId,
-      market_type: 'prediction',
-      action: 'buy',
+      market_type: "prediction",
+      action: "buy",
       market_id: marketId,
       side: outcome,
       amount,
@@ -465,7 +464,7 @@ Your JSON response:`;
       marketId,
       ticker: undefined,
       side: outcome,
-      marketType: 'prediction',
+      marketType: "prediction",
     };
   }
 
@@ -475,10 +474,10 @@ Your JSON response:`;
   async createA2APost(
     agentUserId: string,
     runtime: IAgentRuntime,
-    content: string
+    content: string,
   ): Promise<{ success: boolean; postId?: string }> {
     if (!isFeedRuntime(runtime) || !runtime.a2aClient?.isConnected()) {
-      logger.debug('A2A not connected, skipping A2A post', { agentUserId });
+      logger.debug("A2A not connected, skipping A2A post", { agentUserId });
       return { success: false };
     }
 
@@ -490,7 +489,7 @@ Your JSON response:`;
     const agent = agentResult[0];
     const postingConfig = await getAgentConfig(agentUserId);
 
-    if (!agent || !agent.isAgent || !postingConfig?.autonomousPosting) {
+    if (!agent?.isAgent || !postingConfig?.autonomousPosting) {
       return { success: false };
     }
 
@@ -498,12 +497,12 @@ Your JSON response:`;
     const a2aClient = runtime.a2aClient;
 
     // Create post via A2A
-    const postResult = (await a2aClient.sendRequest('a2a.createPost', {
+    const postResult = (await a2aClient.sendRequest("a2a.createPost", {
       content,
-      type: 'post',
+      type: "post",
     })) as { postId?: string };
 
-    logger.info('A2A post created', {
+    logger.info("A2A post created", {
       agentUserId,
       postId: postResult.postId,
       contentLength: content.length,
@@ -517,7 +516,7 @@ Your JSON response:`;
    */
   async engageWithTrending(
     agentUserId: string,
-    runtime: IAgentRuntime
+    runtime: IAgentRuntime,
   ): Promise<{ success: boolean; engagements: number }> {
     if (!isFeedRuntime(runtime) || !runtime.a2aClient?.isConnected()) {
       return { success: false, engagements: 0 };
@@ -530,7 +529,7 @@ Your JSON response:`;
       .limit(1);
     const agent = agentResult[0];
 
-    if (!agent || !agent.isAgent) {
+    if (!agent?.isAgent) {
       return { success: false, engagements: 0 };
     }
 
@@ -539,10 +538,10 @@ Your JSON response:`;
 
     // Get trending topics
     const trendingResponse = (await a2aClient.sendRequest(
-      'a2a.getTrendingTags',
+      "a2a.getTrendingTags",
       {
         limit: 3,
-      }
+      },
     )) as {
       tags?: Array<{
         name: string;
@@ -560,7 +559,7 @@ Your JSON response:`;
 
     // Engage with top trending topic
     const topTag = trendingResponse.tags[0]!;
-    const postsResponse = (await a2aClient.sendRequest('a2a.getPostsByTag', {
+    const postsResponse = (await a2aClient.sendRequest("a2a.getPostsByTag", {
       tag: topTag.name,
       limit: 5,
       offset: 0,
@@ -576,14 +575,14 @@ Your JSON response:`;
     if (postsResponse?.posts && postsResponse.posts.length > 0) {
       // Like first post
       const post = postsResponse.posts[0];
-      if (post && post.id) {
-        await a2aClient.sendRequest('a2a.likePost', {
+      if (post?.id) {
+        await a2aClient.sendRequest("a2a.likePost", {
           postId: post.id,
           userId: agentUserId, // Pass the agent's actual user ID
         });
         engagements++;
 
-        logger.info('A2A engagement completed', {
+        logger.info("A2A engagement completed", {
           agentUserId,
           tag: topTag.name,
           engagements,
@@ -599,7 +598,7 @@ Your JSON response:`;
    */
   async monitorPositions(
     agentUserId: string,
-    runtime: IAgentRuntime
+    runtime: IAgentRuntime,
   ): Promise<{ success: boolean; actionsTaken: number }> {
     if (!isFeedRuntime(runtime) || !runtime.a2aClient?.isConnected()) {
       return { success: false, actionsTaken: 0 };
@@ -613,11 +612,7 @@ Your JSON response:`;
     const agent = agentResult[0];
     const tradingConfig = await getAgentConfig(agentUserId);
 
-    if (
-      !agent ||
-      !agent.isAgent ||
-      !isAutonomousTradingEnabled(tradingConfig)
-    ) {
+    if (!agent?.isAgent || !isAutonomousTradingEnabled(tradingConfig)) {
       return { success: false, actionsTaken: 0 };
     }
 
@@ -625,7 +620,7 @@ Your JSON response:`;
     const a2aClient = runtime.a2aClient;
 
     // Get positions via A2A
-    const positionsResponse = (await a2aClient.sendRequest('a2a.getPositions', {
+    const positionsResponse = (await a2aClient.sendRequest("a2a.getPositions", {
       userId: agentUserId,
     })) as { perpPositions?: PerpPosition[] };
 
@@ -643,13 +638,13 @@ Your JSON response:`;
           100;
 
         // Close if losing > 25%
-        if (position.side === 'long' && pnlPercent < -25) {
-          await a2aClient.sendRequest('a2a.closePosition', {
+        if (position.side === "long" && pnlPercent < -25) {
+          await a2aClient.sendRequest("a2a.closePosition", {
             positionId: position.id,
           });
           actions++;
 
-          logger.info('A2A stop-loss triggered', {
+          logger.info("A2A stop-loss triggered", {
             agentUserId,
             positionId: position.id,
             pnlPercent,
@@ -657,13 +652,13 @@ Your JSON response:`;
         }
 
         // Take profits if > 100%
-        if (position.side === 'long' && pnlPercent > 100) {
-          await a2aClient.sendRequest('a2a.closePosition', {
+        if (position.side === "long" && pnlPercent > 100) {
+          await a2aClient.sendRequest("a2a.closePosition", {
             positionId: position.id,
           });
           actions++;
 
-          logger.info('A2A take-profit triggered', {
+          logger.info("A2A take-profit triggered", {
             agentUserId,
             positionId: position.id,
             pnlPercent,

@@ -9,10 +9,10 @@
  * is enabled.
  */
 
-import { db, userAgentConfigs } from '@feed/db';
-import { StaticDataRegistry } from '@feed/engine';
-import type { IAgentRuntime } from '@elizaos/core';
-import { getAgentConfig } from '../shared/agent-config';
+import type { IAgentRuntime } from "@elizaos/core";
+import { db, userAgentConfigs } from "@feed/db";
+import { StaticDataRegistry } from "@feed/engine";
+import { getAgentConfig } from "../shared/agent-config";
 
 /** Agent identity entry for interaction labeling */
 export interface AgentIdentity {
@@ -40,8 +40,8 @@ export async function buildAgentIdentityMap(): Promise<
         | undefined;
       if (!feed) continue;
       map.set(actor.id, {
-        team: (feed.team as string) ?? 'gray',
-        alignment: (feed.alignment as string) ?? 'neutral',
+        team: (feed.team as string) ?? "gray",
+        alignment: (feed.alignment as string) ?? "neutral",
         instanceId: actor.id,
       });
     }
@@ -61,8 +61,8 @@ export async function buildAgentIdentityMap(): Promise<
       if (!agent.userId) continue;
       // User agents default to gray/neutral — team/alignment not stored in DB schema
       map.set(agent.userId, {
-        team: 'gray',
-        alignment: 'neutral',
+        team: "gray",
+        alignment: "neutral",
         instanceId: agent.userId,
       });
     }
@@ -80,7 +80,7 @@ export async function buildAgentIdentityMap(): Promise<
 export async function populateIdentityMapOnRuntime(
   runtime: IAgentRuntime,
   agentUserId: string,
-  isNpc: boolean
+  isNpc: boolean,
 ): Promise<void> {
   const identityMap = await buildAgentIdentityMap();
   (
@@ -93,18 +93,18 @@ export async function populateIdentityMapOnRuntime(
       runtime.character as unknown as { feed?: Record<string, unknown> }
     ).feed;
     (runtime as { _agentTeam?: string })._agentTeam =
-      (feed?.team as string) ?? 'gray';
+      (feed?.team as string) ?? "gray";
     (runtime as { _agentAlignment?: string })._agentAlignment =
-      (feed?.alignment as string) ?? 'neutral';
+      (feed?.alignment as string) ?? "neutral";
   } else {
     const config = await getAgentConfig(agentUserId);
     const alignment = (config as Record<string, unknown>)?.alignment;
     const team = (config as Record<string, unknown>)?.team;
     (runtime as { _agentTeam?: string })._agentTeam =
-      team === 'red' || team === 'blue' ? (team as string) : 'gray';
+      team === "red" || team === "blue" ? (team as string) : "gray";
     (runtime as { _agentAlignment?: string })._agentAlignment =
-      alignment === 'good' || alignment === 'evil'
+      alignment === "good" || alignment === "evil"
         ? (alignment as string)
-        : 'neutral';
+        : "neutral";
   }
 }

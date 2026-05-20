@@ -1,21 +1,21 @@
-import { describe, it } from 'bun:test';
-import fs from 'node:fs/promises';
-import path from 'node:path';
-import * as ts from 'typescript';
+import { describe, it } from "bun:test";
+import fs from "node:fs/promises";
+import path from "node:path";
+import * as ts from "typescript";
 
 const API_ROOT = path.resolve(
   import.meta.dir,
-  '../../../../apps/web/src/app/api'
+  "../../../../apps/web/src/app/api",
 );
 
 const HTTP_METHOD_EXPORTS = new Set([
-  'GET',
-  'POST',
-  'PUT',
-  'PATCH',
-  'DELETE',
-  'OPTIONS',
-  'HEAD',
+  "GET",
+  "POST",
+  "PUT",
+  "PATCH",
+  "DELETE",
+  "OPTIONS",
+  "HEAD",
 ]);
 
 async function listRouteFiles(dir: string): Promise<string[]> {
@@ -30,7 +30,7 @@ async function listRouteFiles(dir: string): Promise<string[]> {
     }
     if (
       entry.isFile() &&
-      (entry.name === 'route.ts' || entry.name === 'route.tsx')
+      (entry.name === "route.ts" || entry.name === "route.tsx")
     ) {
       files.push(fullPath);
     }
@@ -40,14 +40,14 @@ async function listRouteFiles(dir: string): Promise<string[]> {
 }
 
 function getScriptKind(filePath: string): ts.ScriptKind {
-  return filePath.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
+  return filePath.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
 }
 
 function isExported(node: {
   modifiers?: ts.NodeArray<ts.ModifierLike>;
 }): boolean {
   return Boolean(
-    node.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)
+    node.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword),
   );
 }
 
@@ -56,28 +56,28 @@ function isWithErrorHandlingCall(expr: ts.Expression | undefined): boolean {
 
   const callee = expr.expression;
   if (ts.isIdentifier(callee)) {
-    return callee.text === 'withErrorHandling';
+    return callee.text === "withErrorHandling";
   }
   if (ts.isPropertyAccessExpression(callee)) {
-    return callee.name.text === 'withErrorHandling';
+    return callee.name.text === "withErrorHandling";
   }
 
   return false;
 }
 
-describe('apps/web API routes', () => {
-  it('wraps all exported HTTP handlers with withErrorHandling()', async () => {
+describe("apps/web API routes", () => {
+  it("wraps all exported HTTP handlers with withErrorHandling()", async () => {
     const routeFiles = await listRouteFiles(API_ROOT);
     const violations: string[] = [];
 
     for (const filePath of routeFiles) {
-      const text = await fs.readFile(filePath, 'utf8');
+      const text = await fs.readFile(filePath, "utf8");
       const sourceFile = ts.createSourceFile(
         filePath,
         text,
         ts.ScriptTarget.Latest,
         true,
-        getScriptKind(filePath)
+        getScriptKind(filePath),
       );
 
       for (const statement of sourceFile.statements) {
@@ -88,7 +88,7 @@ describe('apps/web API routes', () => {
           isExported(statement)
         ) {
           violations.push(
-            `${path.relative(process.cwd(), filePath)}: ${statement.name.text} exported as function (must be wrapped via withErrorHandling)`
+            `${path.relative(process.cwd(), filePath)}: ${statement.name.text} exported as function (must be wrapped via withErrorHandling)`,
           );
         }
 
@@ -100,7 +100,7 @@ describe('apps/web API routes', () => {
 
             if (!isWithErrorHandlingCall(decl.initializer)) {
               violations.push(
-                `${path.relative(process.cwd(), filePath)}: ${exportName} export is not wrapped via withErrorHandling`
+                `${path.relative(process.cwd(), filePath)}: ${exportName} export is not wrapped via withErrorHandling`,
               );
             }
           }
@@ -111,9 +111,9 @@ describe('apps/web API routes', () => {
     if (violations.length > 0) {
       throw new Error(
         [
-          'All Next.js App Router API route exports (GET/POST/...) must be wrapped via withErrorHandling().',
+          "All Next.js App Router API route exports (GET/POST/...) must be wrapped via withErrorHandling().",
           ...violations.sort(),
-        ].join('\n')
+        ].join("\n"),
       );
     }
   });

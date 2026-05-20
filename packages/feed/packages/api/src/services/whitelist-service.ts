@@ -14,19 +14,19 @@ import {
   users,
   whitelist,
   whitelistConfig,
-} from '@feed/db';
-import { UserAlphaGroupAssignmentService } from '@feed/engine';
-import { logger } from '@feed/shared';
-import { nanoid } from 'nanoid';
+} from "@feed/db";
+import { UserAlphaGroupAssignmentService } from "@feed/engine";
+import { logger } from "@feed/shared";
+import { nanoid } from "nanoid";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 export type WhitelistSource =
-  | 'snapshot_first_100'
-  | 'admin_manual'
-  | 'leaderboard';
+  | "snapshot_first_100"
+  | "admin_manual"
+  | "leaderboard";
 
 interface AddToWhitelistParams {
   userId: string;
@@ -45,7 +45,7 @@ export const DEFAULT_WHITELIST_LEADERBOARD_THRESHOLD = 100;
 export const MAX_WHITELIST_LEADERBOARD_THRESHOLD = 25_000;
 
 export function normalizeWhitelistLeaderboardThreshold(
-  value: number | null | undefined
+  value: number | null | undefined,
 ): number {
   if (!Number.isFinite(value) || value === undefined || value === null) {
     return DEFAULT_WHITELIST_LEADERBOARD_THRESHOLD;
@@ -84,7 +84,7 @@ export async function isUserWhitelisted(userId: string): Promise<boolean> {
  * whitelist cron. Returns false if the user cannot be ranked.
  */
 export async function isUserWhitelistedByLeaderboard(
-  userId: string
+  userId: string,
 ): Promise<boolean> {
   const threshold = await getEffectiveWhitelistLeaderboardThreshold();
   const [user] = await db
@@ -117,21 +117,21 @@ export async function isUserWhitelistedByLeaderboard(
           gt(users.reputationPoints, user.reputationPoints),
           and(
             eq(users.reputationPoints, user.reputationPoints),
-            gt(users.invitePoints, user.invitePoints)
+            gt(users.invitePoints, user.invitePoints),
           ),
           and(
             eq(users.reputationPoints, user.reputationPoints),
             eq(users.invitePoints, user.invitePoints),
-            lt(users.createdAt, user.createdAt)
+            lt(users.createdAt, user.createdAt),
           ),
           and(
             eq(users.reputationPoints, user.reputationPoints),
             eq(users.invitePoints, user.invitePoints),
             eq(users.createdAt, user.createdAt),
-            lt(users.id, user.id)
-          )
-        )
-      )
+            lt(users.id, user.id),
+          ),
+        ),
+      ),
     );
 
   const rank = Number(result?.count ?? 0) + 1;
@@ -145,7 +145,7 @@ export async function isUserWhitelistedByLeaderboard(
  * - no entry => fall back to leaderboard threshold
  */
 export async function checkWhitelistAccess(
-  userId: string
+  userId: string,
 ): Promise<{ allowed: boolean; source: string | null }> {
   const [entry] = await db
     .select({ source: whitelist.source, revokedAt: whitelist.revokedAt })
@@ -166,7 +166,7 @@ export async function checkWhitelistAccess(
 
   const leaderboardAllowed = await isUserWhitelistedByLeaderboard(userId);
   if (leaderboardAllowed) {
-    return { allowed: true, source: 'leaderboard' };
+    return { allowed: true, source: "leaderboard" };
   }
 
   return { allowed: false, source: null };
@@ -217,7 +217,7 @@ export async function addToWhitelist({
     .returning({ id: whitelist.id });
 
   // An upsert always returns a row — but guard just in case.
-  if (!result) throw new Error('Whitelist upsert returned no rows');
+  if (!result) throw new Error("Whitelist upsert returned no rows");
 
   // If the returned id matches what we tried to insert, it's a new/replaced row.
   // If it doesn't match, the row was already active and untouched.
@@ -231,21 +231,21 @@ export async function addToWhitelist({
       .then((assignmentResult) => {
         if (assignmentResult.groupsAssigned > 0) {
           logger.info(
-            'Assigned default alpha groups to whitelisted user',
+            "Assigned default alpha groups to whitelisted user",
             {
               userId,
               groupsAssigned: assignmentResult.groupsAssigned,
               source,
             },
-            'addToWhitelist'
+            "addToWhitelist",
           );
         }
       })
       .catch((error) => {
         logger.error(
-          'Failed to assign default alpha groups to whitelisted user',
+          "Failed to assign default alpha groups to whitelisted user",
           { userId, error: String(error) },
-          'addToWhitelist'
+          "addToWhitelist",
         );
       });
   }
@@ -257,7 +257,7 @@ export async function addToWhitelist({
  * Soft-revoke a user from the whitelist by setting revokedAt.
  */
 export async function removeFromWhitelist(
-  userId: string
+  userId: string,
 ): Promise<{ removed: boolean }> {
   const [entry] = await db
     .select({ id: whitelist.id, revokedAt: whitelist.revokedAt })
@@ -330,7 +330,7 @@ export async function listWhitelistEntries(options?: {
         r.username?.toLowerCase().includes(q) ||
         r.userId.toLowerCase().includes(q) ||
         r.walletAddress?.toLowerCase().includes(q) ||
-        r.displayName?.toLowerCase().includes(q)
+        r.displayName?.toLowerCase().includes(q),
     );
   }
 
@@ -372,7 +372,7 @@ export async function getWhitelistStats() {
 // Config
 // ---------------------------------------------------------------------------
 
-const CONFIG_ID = 'default';
+const CONFIG_ID = "default";
 
 /**
  * Get the whitelist configuration (leaderboard threshold, etc.).
@@ -390,7 +390,7 @@ export async function getWhitelistConfig() {
 export async function getEffectiveWhitelistLeaderboardThreshold(): Promise<number> {
   const config = await getWhitelistConfig();
   return normalizeWhitelistLeaderboardThreshold(
-    config?.leaderboardRankThreshold
+    config?.leaderboardRankThreshold,
   );
 }
 
@@ -409,7 +409,7 @@ export async function updateWhitelistConfig({
     .values({
       id: CONFIG_ID,
       leaderboardRankThreshold,
-      leaderboardCategory: leaderboardCategory ?? 'all',
+      leaderboardCategory: leaderboardCategory ?? "all",
       updatedAt: now,
       updatedBy: updatedBy ?? null,
     })
@@ -460,7 +460,7 @@ export async function autoWhitelistCurrentTopN(): Promise<{
       desc(users.reputationPoints),
       desc(users.invitePoints),
       asc(users.createdAt),
-      asc(users.id)
+      asc(users.id),
     )
     .limit(topN);
   const userIds = topUsers.map((user) => user.id);
@@ -490,7 +490,7 @@ export async function autoWhitelistCurrentTopN(): Promise<{
 
   const existingMap = new Map(existing.map((e) => [e.userId, e.revokedAt]));
   const toInsert = userIds.filter(
-    (id) => !snapshotSet.has(id) && !existingMap.has(id)
+    (id) => !snapshotSet.has(id) && !existingMap.has(id),
   );
 
   const skippedExisting = existing.length;
@@ -510,7 +510,7 @@ export async function autoWhitelistCurrentTopN(): Promise<{
   const rows = toInsert.map((userId) => ({
     id: nanoid(),
     userId,
-    source: 'leaderboard' as WhitelistSource,
+    source: "leaderboard" as WhitelistSource,
     reason: `Auto-whitelisted by leaderboard (Top ${topN})`,
     grantedBy: null,
     grantedAt: now,

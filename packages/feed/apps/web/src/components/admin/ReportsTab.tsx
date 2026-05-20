@@ -18,25 +18,25 @@
  *
  * @returns Reports tab element
  */
-'use client';
+"use client";
 
-import { cn, logger } from '@feed/shared';
-import { AlertCircle, CheckCircle, Clock, Flag, XCircle } from 'lucide-react';
-import { useCallback, useEffect, useState, useTransition } from 'react';
-import { toast } from 'sonner';
-import { Avatar } from '@/components/shared/Avatar';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { apiUrl } from '@/utils/api-url';
+import { cn, logger } from "@feed/shared";
+import { AlertCircle, CheckCircle, Clock, Flag, XCircle } from "lucide-react";
+import { useCallback, useEffect, useState, useTransition } from "react";
+import { toast } from "sonner";
+import { Avatar } from "@/components/shared/Avatar";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { apiUrl } from "@/utils/api-url";
 
 /**
  * Report evaluation structure from AI.
  */
 interface ReportEvaluation {
   outcome:
-    | 'valid_report'
-    | 'invalid_report'
-    | 'abusive_reporter'
-    | 'insufficient_evidence';
+    | "valid_report"
+    | "invalid_report"
+    | "abusive_reporter"
+    | "insufficient_evidence";
   confidence: number;
   reasoning: string;
   recommendedActions: string[];
@@ -100,23 +100,23 @@ interface ReportStats {
 /**
  * Status filter type for reports tab.
  */
-type StatusFilter = 'all' | 'pending' | 'reviewing' | 'resolved' | 'dismissed';
+type StatusFilter = "all" | "pending" | "reviewing" | "resolved" | "dismissed";
 /**
  * Priority filter type for reports tab.
  */
-type PriorityFilter = 'all' | 'low' | 'normal' | 'high' | 'critical';
+type PriorityFilter = "all" | "low" | "normal" | "high" | "critical";
 
 export function ReportsTab() {
   const [reports, setReports] = useState<Report[]>([]);
   const [stats, setStats] = useState<ReportStats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>('all');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>("all");
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
   const [showActionModal, setShowActionModal] = useState(false);
   const [showEvaluationModal, setShowEvaluationModal] = useState(false);
   const [evaluatingReportId, setEvaluatingReportId] = useState<string | null>(
-    null
+    null,
   );
   const [, startRefresh] = useTransition();
 
@@ -125,17 +125,17 @@ export function ReportsTab() {
       const fetchLogic = async () => {
         try {
           const params = new URLSearchParams({
-            limit: '100',
+            limit: "100",
           });
-          if (statusFilter !== 'all') params.set('status', statusFilter);
-          if (priorityFilter !== 'all') params.set('priority', priorityFilter);
+          if (statusFilter !== "all") params.set("status", statusFilter);
+          if (priorityFilter !== "all") params.set("priority", priorityFilter);
 
           const response = await fetch(apiUrl(`/api/admin/reports?${params}`));
           if (!response.ok) {
             logger.error(
-              'Failed to fetch reports',
+              "Failed to fetch reports",
               { status: response.status },
-              'ReportsTab'
+              "ReportsTab",
             );
             setLoading(false);
             return;
@@ -146,9 +146,9 @@ export function ReportsTab() {
           setLoading(false);
         } catch (err) {
           logger.error(
-            'Error fetching reports',
+            "Error fetching reports",
             err instanceof Error ? err : { error: err },
-            'ReportsTab'
+            "ReportsTab",
           );
           setLoading(false);
         }
@@ -160,22 +160,22 @@ export function ReportsTab() {
         void fetchLogic();
       }
     },
-    [statusFilter, priorityFilter]
+    [statusFilter, priorityFilter],
   );
 
   const fetchStats = useCallback(() => {
     const fetchLogic = async () => {
       try {
-        const response = await fetch(apiUrl('/api/admin/reports/stats'));
+        const response = await fetch(apiUrl("/api/admin/reports/stats"));
         if (!response.ok) return;
 
         const data = await response.json();
         setStats(data);
       } catch (err) {
         logger.error(
-          'Error fetching report stats',
+          "Error fetching report stats",
           err instanceof Error ? err : { error: err },
-          'ReportsTab'
+          "ReportsTab",
         );
       }
     };
@@ -190,17 +190,17 @@ export function ReportsTab() {
   const handleAction = async (
     reportId: string,
     action: string,
-    resolution: string
+    resolution: string,
   ) => {
     const response = await fetch(apiUrl(`/api/admin/reports/${reportId}`), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action, resolution }),
     });
 
     if (!response.ok) {
       const error = await response.json();
-      toast.error(error.message || 'Failed to take action');
+      toast.error(error.message || "Failed to take action");
       return;
     }
 
@@ -213,14 +213,14 @@ export function ReportsTab() {
   const handleEvaluate = async (reportId: string) => {
     setEvaluatingReportId(reportId);
     const response = await fetch(apiUrl(`/api/admin/reports/${reportId}`), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'evaluate' }),
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "evaluate" }),
     });
 
     if (!response.ok) {
       const error = await response.json();
-      toast.error(error.message || 'Failed to evaluate report');
+      toast.error(error.message || "Failed to evaluate report");
       setEvaluatingReportId(null);
       return;
     }
@@ -240,54 +240,54 @@ export function ReportsTab() {
   };
 
   const formatDate = (date: string) => {
-    return new Date(date).toLocaleString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
+    return new Date(date).toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
     });
   };
 
   const getCategoryColor = (category: string) => {
     switch (category) {
-      case 'hate_speech':
-      case 'violence':
-      case 'self_harm':
-        return 'text-red-500 bg-red-500/10 border-red-500/20';
-      case 'harassment':
-        return 'text-orange-500 bg-orange-500/10 border-orange-500/20';
-      case 'spam':
-        return 'text-yellow-500 bg-yellow-500/10 border-yellow-500/20';
+      case "hate_speech":
+      case "violence":
+      case "self_harm":
+        return "text-red-500 bg-red-500/10 border-red-500/20";
+      case "harassment":
+        return "text-orange-500 bg-orange-500/10 border-orange-500/20";
+      case "spam":
+        return "text-yellow-500 bg-yellow-500/10 border-yellow-500/20";
       default:
-        return 'text-blue-500 bg-blue-500/10 border-blue-500/20';
+        return "text-blue-500 bg-blue-500/10 border-blue-500/20";
     }
   };
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
-      case 'critical':
-        return 'text-red-600 bg-red-600/10';
-      case 'high':
-        return 'text-orange-600 bg-orange-600/10';
-      case 'normal':
-        return 'text-blue-600 bg-blue-600/10';
-      case 'low':
-        return 'text-gray-600 bg-gray-600/10';
+      case "critical":
+        return "text-red-600 bg-red-600/10";
+      case "high":
+        return "text-orange-600 bg-orange-600/10";
+      case "normal":
+        return "text-blue-600 bg-blue-600/10";
+      case "low":
+        return "text-gray-600 bg-gray-600/10";
       default:
-        return 'text-gray-600 bg-gray-600/10';
+        return "text-gray-600 bg-gray-600/10";
     }
   };
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'pending':
+      case "pending":
         return <Clock className="h-4 w-4 text-yellow-500" />;
-      case 'reviewing':
+      case "reviewing":
         return <AlertCircle className="h-4 w-4 text-blue-500" />;
-      case 'resolved':
+      case "resolved":
         return <CheckCircle className="h-4 w-4 text-green-500" />;
-      case 'dismissed':
+      case "dismissed":
         return <XCircle className="h-4 w-4 text-gray-500" />;
       default:
         return null;
@@ -359,16 +359,16 @@ export function ReportsTab() {
             Status:
           </span>
           {(
-            ['all', 'pending', 'reviewing', 'resolved', 'dismissed'] as const
+            ["all", "pending", "reviewing", "resolved", "dismissed"] as const
           ).map((s) => (
             <button
               key={s}
               onClick={() => setStatusFilter(s)}
               className={cn(
-                'rounded px-2 py-1 font-medium text-[10px] transition-colors sm:px-3 sm:py-1.5 sm:text-sm',
+                "rounded px-2 py-1 font-medium text-[10px] transition-colors sm:px-3 sm:py-1.5 sm:text-sm",
                 statusFilter === s
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted text-muted-foreground hover:bg-muted/80",
               )}
             >
               {s.charAt(0).toUpperCase() + s.slice(1)}
@@ -380,15 +380,15 @@ export function ReportsTab() {
           <span className="mr-1 self-center text-muted-foreground text-xs sm:text-sm">
             Priority:
           </span>
-          {(['all', 'critical', 'high', 'normal', 'low'] as const).map((p) => (
+          {(["all", "critical", "high", "normal", "low"] as const).map((p) => (
             <button
               key={p}
               onClick={() => setPriorityFilter(p)}
               className={cn(
-                'rounded px-2 py-1 font-medium text-[10px] transition-colors sm:px-3 sm:py-1.5 sm:text-sm',
+                "rounded px-2 py-1 font-medium text-[10px] transition-colors sm:px-3 sm:py-1.5 sm:text-sm",
                 priorityFilter === p
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted text-muted-foreground hover:bg-muted/80",
               )}
             >
               {p.charAt(0).toUpperCase() + p.slice(1)}
@@ -421,16 +421,16 @@ export function ReportsTab() {
                     <div className="flex flex-wrap items-center gap-2">
                       <span
                         className={cn(
-                          'rounded border px-2 py-0.5 font-medium text-xs',
-                          getCategoryColor(report.category)
+                          "rounded border px-2 py-0.5 font-medium text-xs",
+                          getCategoryColor(report.category),
                         )}
                       >
-                        {report.category.replace('_', ' ')}
+                        {report.category.replace("_", " ")}
                       </span>
                       <span
                         className={cn(
-                          'rounded px-2 py-0.5 font-medium text-xs',
-                          getPriorityColor(report.priority)
+                          "rounded px-2 py-0.5 font-medium text-xs",
+                          getPriorityColor(report.priority),
                         )}
                       >
                         {report.priority}
@@ -449,12 +449,12 @@ export function ReportsTab() {
                     <div className="flex items-center gap-2">
                       <Avatar
                         src={report.reporter.profileImageUrl || undefined}
-                        alt={report.reporter.displayName || 'Reporter'}
+                        alt={report.reporter.displayName || "Reporter"}
                         size="sm"
                       />
                       <span className="text-muted-foreground">
                         {report.reporter.displayName ||
-                          report.reporter.username}{' '}
+                          report.reporter.username}{" "}
                         reported
                       </span>
                     </div>
@@ -467,7 +467,7 @@ export function ReportsTab() {
                               report.reportedUser.profileImageUrl || undefined
                             }
                             alt={
-                              report.reportedUser.displayName || 'Reported user'
+                              report.reportedUser.displayName || "Reported user"
                             }
                             size="sm"
                           />
@@ -495,25 +495,25 @@ export function ReportsTab() {
                     <div className="mb-2">
                       <span
                         className={cn(
-                          'rounded px-2 py-1 font-medium text-xs',
-                          report.evaluation.outcome === 'valid_report'
-                            ? 'bg-green-500/20 text-green-500'
-                            : report.evaluation.outcome === 'abusive_reporter'
-                              ? 'bg-red-500/20 text-red-500'
-                              : report.evaluation.outcome === 'invalid_report'
-                                ? 'bg-yellow-500/20 text-yellow-500'
-                                : 'bg-gray-500/20 text-gray-500'
+                          "rounded px-2 py-1 font-medium text-xs",
+                          report.evaluation.outcome === "valid_report"
+                            ? "bg-green-500/20 text-green-500"
+                            : report.evaluation.outcome === "abusive_reporter"
+                              ? "bg-red-500/20 text-red-500"
+                              : report.evaluation.outcome === "invalid_report"
+                                ? "bg-yellow-500/20 text-yellow-500"
+                                : "bg-gray-500/20 text-gray-500",
                         )}
                       >
-                        {report.evaluation.outcome.replace('_', ' ')} (
+                        {report.evaluation.outcome.replace("_", " ")} (
                         {Math.round(report.evaluation.confidence * 100)}%)
                       </span>
                     </div>
                   )}
 
                   {/* Actions */}
-                  {report.status === 'pending' ||
-                  report.status === 'reviewing' ? (
+                  {report.status === "pending" ||
+                  report.status === "reviewing" ? (
                     <div className="flex flex-wrap gap-2">
                       <button
                         onClick={() => handleEvaluate(report.id)}
@@ -521,8 +521,8 @@ export function ReportsTab() {
                         className="rounded bg-purple-500 px-3 py-1 text-sm text-white transition-colors hover:bg-purple-600 disabled:opacity-50"
                       >
                         {evaluatingReportId === report.id
-                          ? 'Evaluating...'
-                          : 'Evaluate'}
+                          ? "Evaluating..."
+                          : "Evaluate"}
                       </button>
                       <button
                         onClick={() => {
@@ -537,8 +537,8 @@ export function ReportsTab() {
                         onClick={() =>
                           handleAction(
                             report.id,
-                            'dismiss',
-                            'Dismissed by admin'
+                            "dismiss",
+                            "Dismissed by admin",
                           )
                         }
                         className="rounded bg-muted px-3 py-1 text-foreground text-sm transition-colors hover:bg-muted/80"
@@ -566,7 +566,7 @@ export function ReportsTab() {
                       )}
                       {report.resolver && (
                         <div className="mt-1 text-muted-foreground text-xs">
-                          Resolved by{' '}
+                          Resolved by{" "}
                           {report.resolver.displayName ||
                             report.resolver.username}
                         </div>
@@ -593,7 +593,7 @@ export function ReportsTab() {
       )}
 
       {/* Evaluation Modal */}
-      {showEvaluationModal && selectedReport && selectedReport.evaluation && (
+      {showEvaluationModal && selectedReport?.evaluation && (
         <EvaluationModal
           report={selectedReport}
           evaluation={selectedReport.evaluation}
@@ -626,14 +626,14 @@ function EvaluationModal({
 }: EvaluationModalProps) {
   const getOutcomeColor = (outcome: string) => {
     switch (outcome) {
-      case 'valid_report':
-        return 'text-green-500 bg-green-500/10 border-green-500/20';
-      case 'abusive_reporter':
-        return 'text-red-500 bg-red-500/10 border-red-500/20';
-      case 'invalid_report':
-        return 'text-yellow-500 bg-yellow-500/10 border-yellow-500/20';
+      case "valid_report":
+        return "text-green-500 bg-green-500/10 border-green-500/20";
+      case "abusive_reporter":
+        return "text-red-500 bg-red-500/10 border-red-500/20";
+      case "invalid_report":
+        return "text-yellow-500 bg-yellow-500/10 border-yellow-500/20";
       default:
-        return 'text-gray-500 bg-gray-500/10 border-gray-500/20';
+        return "text-gray-500 bg-gray-500/10 border-gray-500/20";
     }
   };
 
@@ -646,13 +646,13 @@ function EvaluationModal({
         <div className="mb-4">
           <div
             className={cn(
-              'rounded-lg border px-4 py-3',
-              getOutcomeColor(evaluation.outcome)
+              "rounded-lg border px-4 py-3",
+              getOutcomeColor(evaluation.outcome),
             )}
           >
             <div className="mb-2 flex items-center justify-between">
               <span className="font-semibold text-lg">
-                {evaluation.outcome.replace('_', ' ').toUpperCase()}
+                {evaluation.outcome.replace("_", " ").toUpperCase()}
               </span>
               <span className="text-sm">
                 Confidence: {Math.round(evaluation.confidence * 100)}%
@@ -718,14 +718,14 @@ function EvaluationModal({
           <h3 className="mb-2 font-semibold text-sm">Report Details</h3>
           <div className="rounded-lg bg-muted/50 p-3 text-sm">
             <p>
-              <strong>Category:</strong> {report.category.replace('_', ' ')}
+              <strong>Category:</strong> {report.category.replace("_", " ")}
             </p>
             <p>
               <strong>Reason:</strong> {report.reason}
             </p>
             {report.evidence && (
               <p>
-                <strong>Evidence:</strong>{' '}
+                <strong>Evidence:</strong>{" "}
                 <a
                   href={report.evidence}
                   target="_blank"
@@ -754,13 +754,13 @@ function EvaluationModal({
 }
 
 function ActionModal({ report, onClose, onAction }: ActionModalProps) {
-  const [action, setAction] = useState('resolve');
-  const [resolution, setResolution] = useState('');
+  const [action, setAction] = useState("resolve");
+  const [resolution, setResolution] = useState("");
   const [isSubmitting, startSubmit] = useTransition();
 
   const handleSubmit = () => {
     if (!resolution.trim()) {
-      toast.error('Please provide a resolution message');
+      toast.error("Please provide a resolution message");
       return;
     }
 
@@ -777,14 +777,14 @@ function ActionModal({ report, onClose, onAction }: ActionModalProps) {
         {/* Report Details */}
         <div className="mb-4 rounded-lg bg-muted/50 p-4">
           <p className="mb-2 text-muted-foreground text-sm">
-            <strong>Category:</strong> {report.category.replace('_', ' ')}
+            <strong>Category:</strong> {report.category.replace("_", " ")}
           </p>
           <p className="mb-2 text-muted-foreground text-sm">
             <strong>Reason:</strong> {report.reason}
           </p>
           {report.evidence && (
             <p className="text-muted-foreground text-sm">
-              <strong>Evidence:</strong>{' '}
+              <strong>Evidence:</strong>{" "}
               <a
                 href={report.evidence}
                 target="_blank"
@@ -804,8 +804,8 @@ function ActionModal({ report, onClose, onAction }: ActionModalProps) {
               AI Evaluation
             </div>
             <div className="text-sm">
-              <strong>Outcome:</strong>{' '}
-              {report.evaluation.outcome.replace('_', ' ')} (
+              <strong>Outcome:</strong>{" "}
+              {report.evaluation.outcome.replace("_", " ")} (
               {Math.round(report.evaluation.confidence * 100)}% confidence)
             </div>
             <p className="mt-1 text-muted-foreground text-xs">
@@ -860,7 +860,7 @@ function ActionModal({ report, onClose, onAction }: ActionModalProps) {
             disabled={isSubmitting || !resolution.trim()}
             className="flex-1 rounded-lg bg-primary px-4 py-2 text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
           >
-            {isSubmitting ? 'Submitting...' : 'Submit'}
+            {isSubmitting ? "Submitting..." : "Submit"}
           </button>
         </div>
       </div>

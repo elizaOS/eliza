@@ -78,11 +78,11 @@
  * @see {@link /lib/logger} Logging utilities
  */
 
-import { withErrorHandling } from '@feed/api';
-import { db } from '@feed/db';
-import { StaticDataRegistry } from '@feed/engine';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+import { withErrorHandling } from "@feed/api";
+import { db } from "@feed/db";
+import { StaticDataRegistry } from "@feed/engine";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 /**
  * GET /api/actors/[actorId]/historical-stats
@@ -96,14 +96,14 @@ import { NextResponse } from 'next/server';
  */
 export const GET = withErrorHandling(async function GET(
   _req: NextRequest,
-  { params }: { params: Promise<{ actorId: string }> }
+  { params }: { params: Promise<{ actorId: string }> },
 ) {
   const { actorId } = await params;
 
   const actor = StaticDataRegistry.getActor(actorId);
 
   if (!actor) {
-    return NextResponse.json({ error: 'Actor not found' }, { status: 404 });
+    return NextResponse.json({ error: "Actor not found" }, { status: 404 });
   }
 
   // Get actor's posts from COMPLETED games only
@@ -119,7 +119,7 @@ export const GET = withErrorHandling(async function GET(
     include: {
       // We'll need to join with resolved questions to calculate accuracy
     },
-    orderBy: { createdAt: 'desc' },
+    orderBy: { createdAt: "desc" },
     take: 100, // Last 100 posts
   });
 

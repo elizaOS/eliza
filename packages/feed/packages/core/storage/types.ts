@@ -27,7 +27,7 @@ export interface Timestamped {
 export interface ActorRecord {
   id: string;
   name: string;
-  tier?: 'central' | 'major' | 'supporting' | 'minor';
+  tier?: "central" | "major" | "supporting" | "minor";
   personality?: string;
   domain?: string[];
   description?: string;
@@ -51,7 +51,7 @@ export interface ActorStateRecord {
 export interface OrganizationRecord {
   id: string;
   name: string;
-  type: 'company' | 'media' | 'government';
+  type: "company" | "media" | "government";
   ticker?: string;
   description?: string;
   initialPrice?: number;
@@ -103,7 +103,7 @@ export interface AgentConfigRecord {
   autonomousDMs: boolean;
   autonomousGroupChats: boolean;
   a2aEnabled: boolean;
-  modelTier: 'free' | 'pro';
+  modelTier: "free" | "pro";
   updatedAt: Date;
 }
 
@@ -113,7 +113,7 @@ export interface AgentConfigRecord {
 
 export interface PostRecord {
   id: string;
-  type: 'post' | 'article' | 'reply' | 'comment' | 'repost';
+  type: "post" | "article" | "reply" | "comment" | "repost";
   content: string;
   fullContent?: string;
   articleTitle?: string;
@@ -146,7 +146,7 @@ export interface QuestionRecord {
   scenarioId: number;
   outcome: boolean;
   rank: number;
-  status: 'active' | 'resolved' | 'cancelled';
+  status: "active" | "resolved" | "cancelled";
   resolutionDate: Date;
   resolvedOutcome?: boolean;
   createdAt: Date;
@@ -192,7 +192,7 @@ export interface MarketSnapshotRecord {
 export interface PoolPositionRecord {
   id: string;
   poolId: string;
-  marketType: 'perp' | 'prediction';
+  marketType: "perp" | "prediction";
   ticker?: string;
   marketId?: string;
   side: string;
@@ -217,7 +217,7 @@ export interface NpcTradeRecord {
   id: string;
   npcActorId: string;
   poolId?: string;
-  marketType: 'perp' | 'prediction';
+  marketType: "perp" | "prediction";
   ticker?: string;
   marketId?: string;
   action: string;
@@ -232,7 +232,7 @@ export interface NpcTradeRecord {
 export interface AgentTradeRecord {
   id: string;
   agentUserId: string;
-  marketType: 'perp' | 'prediction';
+  marketType: "perp" | "prediction";
   ticker?: string;
   marketId?: string;
   action: string;
@@ -322,7 +322,7 @@ export interface StockPriceRecord {
 
 export interface ChatRecord {
   id: string;
-  type: 'dm' | 'group';
+  type: "dm" | "group";
   name?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -333,7 +333,7 @@ export interface MessageRecord {
   chatId: string;
   senderId: string;
   content: string;
-  type: 'text' | 'system' | 'trade';
+  type: "text" | "system" | "trade";
   createdAt: Date;
   editedAt?: Date;
   deletedAt?: Date;

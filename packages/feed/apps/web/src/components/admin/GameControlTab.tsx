@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { cn } from '@feed/shared';
+import { cn } from "@feed/shared";
 import {
   Activity,
   Clock,
@@ -14,11 +14,11 @@ import {
   TrendingUp,
   Users,
   Zap,
-} from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { apiUrl } from '@/utils/api-url';
-import { WorldFactsSection } from './WorldFactsSection';
+} from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { apiUrl } from "@/utils/api-url";
+import { WorldFactsSection } from "./WorldFactsSection";
 
 /**
  * Game state structure for game control tab.
@@ -130,10 +130,10 @@ export function GameControlTab() {
   const [autoRefresh, setAutoRefresh] = useState(true);
 
   const fetchStats = useCallback(async () => {
-    const response = await fetch(apiUrl('/api/admin/game-stats'));
+    const response = await fetch(apiUrl("/api/admin/game-stats"));
     if (!response.ok) {
       setLoading(false);
-      setError('Failed to load stats');
+      setError("Failed to load stats");
       return;
     }
     const data = await response.json();
@@ -153,11 +153,11 @@ export function GameControlTab() {
     return () => clearInterval(interval);
   }, [autoRefresh, fetchStats]);
 
-  const handleGameControl = async (action: 'start' | 'pause') => {
+  const handleGameControl = async (action: "start" | "pause") => {
     setActionLoading(true);
-    const response = await fetch(apiUrl('/api/game/control'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    const response = await fetch(apiUrl("/api/game/control"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action }),
     });
 
@@ -173,7 +173,7 @@ export function GameControlTab() {
   };
 
   const formatUptime = (minutes: number) => {
-    if (minutes < 1) return '< 1 min';
+    if (minutes < 1) return "< 1 min";
     if (minutes < 60) return `${Math.round(minutes)} min`;
     const hours = Math.floor(minutes / 60);
     const mins = Math.round(minutes % 60);
@@ -194,44 +194,44 @@ export function GameControlTab() {
     label,
     value,
     subValue,
-    color = 'blue',
+    color = "blue",
     trend,
   }: {
     icon: React.ComponentType<{ className?: string }>;
     label: string;
     value: string | number;
     subValue?: string;
-    color?: 'blue' | 'green' | 'purple' | 'orange' | 'red' | 'yellow';
-    trend?: 'up' | 'down' | 'neutral';
+    color?: "blue" | "green" | "purple" | "orange" | "red" | "yellow";
+    trend?: "up" | "down" | "neutral";
   }) => {
     const colorClasses = {
-      blue: 'text-blue-500 bg-blue-500/10',
-      green: 'text-green-500 bg-green-500/10',
-      purple: 'text-purple-500 bg-purple-500/10',
-      orange: 'text-orange-500 bg-orange-500/10',
-      red: 'text-red-500 bg-red-500/10',
-      yellow: 'text-yellow-500 bg-yellow-500/10',
+      blue: "text-blue-500 bg-blue-500/10",
+      green: "text-green-500 bg-green-500/10",
+      purple: "text-purple-500 bg-purple-500/10",
+      orange: "text-orange-500 bg-orange-500/10",
+      red: "text-red-500 bg-red-500/10",
+      yellow: "text-yellow-500 bg-yellow-500/10",
     };
 
     return (
       <div className="rounded-lg border border-border bg-card p-4 transition-shadow hover:shadow-md">
         <div className="mb-2 flex items-start justify-between">
           <div
-            className={cn('rounded-lg p-2', colorClasses[color].split(' ')[1])}
+            className={cn("rounded-lg p-2", colorClasses[color].split(" ")[1])}
           >
             <Icon
-              className={cn('h-5 w-5', colorClasses[color].split(' ')[0])}
+              className={cn("h-5 w-5", colorClasses[color].split(" ")[0])}
             />
           </div>
           {trend && (
             <TrendingUp
               className={cn(
-                'h-4 w-4',
-                trend === 'up'
-                  ? 'text-green-500'
-                  : trend === 'down'
-                    ? 'text-red-500'
-                    : 'text-gray-400'
+                "h-4 w-4",
+                trend === "up"
+                  ? "text-green-500"
+                  : trend === "down"
+                    ? "text-red-500"
+                    : "text-gray-400",
               )}
             />
           )}
@@ -257,7 +257,7 @@ export function GameControlTab() {
   if (error || !stats) {
     return (
       <div className="p-8 text-center text-red-500">
-        {error || 'Failed to load game statistics'}
+        {error || "Failed to load game statistics"}
       </div>
     );
   }
@@ -279,14 +279,14 @@ export function GameControlTab() {
             <button
               onClick={() => setAutoRefresh(!autoRefresh)}
               className={cn(
-                'rounded-lg px-3 py-2 text-sm transition-colors',
+                "rounded-lg px-3 py-2 text-sm transition-colors",
                 autoRefresh
-                  ? 'bg-green-500/20 text-green-500'
-                  : 'bg-gray-500/20 text-gray-500'
+                  ? "bg-green-500/20 text-green-500"
+                  : "bg-gray-500/20 text-gray-500",
               )}
             >
               <RefreshCw
-                className={cn('h-4 w-4', autoRefresh && 'animate-spin')}
+                className={cn("h-4 w-4", autoRefresh && "animate-spin")}
               />
             </button>
             <button
@@ -302,13 +302,13 @@ export function GameControlTab() {
         {/* Control Buttons */}
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <button
-            onClick={() => handleGameControl('start')}
+            onClick={() => handleGameControl("start")}
             disabled={actionLoading || gameState.isRunning}
             className={cn(
-              'flex items-center justify-center gap-3 rounded-lg px-6 py-4 font-semibold transition-all',
+              "flex items-center justify-center gap-3 rounded-lg px-6 py-4 font-semibold transition-all",
               gameState.isRunning
-                ? 'cursor-default border-2 border-green-500/50 bg-green-500/20 text-green-500'
-                : 'bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50'
+                ? "cursor-default border-2 border-green-500/50 bg-green-500/20 text-green-500"
+                : "bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50",
             )}
           >
             {gameState.isRunning ? (
@@ -325,17 +325,17 @@ export function GameControlTab() {
           </button>
 
           <button
-            onClick={() => handleGameControl('pause')}
+            onClick={() => handleGameControl("pause")}
             disabled={actionLoading || !gameState.isRunning}
             className={cn(
-              'flex items-center justify-center gap-3 rounded-lg px-6 py-4 font-semibold transition-all',
+              "flex items-center justify-center gap-3 rounded-lg px-6 py-4 font-semibold transition-all",
               !gameState.isRunning
-                ? 'cursor-default border-2 border-gray-500/50 bg-gray-500/20 text-gray-500'
-                : 'bg-red-600 text-white hover:bg-red-700 disabled:opacity-50'
+                ? "cursor-default border-2 border-gray-500/50 bg-gray-500/20 text-gray-500"
+                : "bg-red-600 text-white hover:bg-red-700 disabled:opacity-50",
             )}
           >
             <Pause className="h-5 w-5" />
-            {!gameState.isRunning ? 'Game Paused' : 'Pause Game'}
+            {!gameState.isRunning ? "Game Paused" : "Pause Game"}
           </button>
         </div>
 
@@ -364,7 +364,7 @@ export function GameControlTab() {
             <div className="font-semibold">
               {gameState.timeSinceLastTickMs !== null
                 ? `${Math.round(gameState.timeSinceLastTickMs / 1000)}s ago`
-                : 'Never'}
+                : "Never"}
             </div>
           </div>
         </div>
@@ -610,7 +610,7 @@ export function GameControlTab() {
               <div className="font-bold text-2xl">
                 {llmStats.avgLatencyMs24h !== null
                   ? `${llmStats.avgLatencyMs24h}ms`
-                  : 'N/A'}
+                  : "N/A"}
               </div>
             </div>
           </div>

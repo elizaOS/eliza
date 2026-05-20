@@ -10,9 +10,9 @@
  */
 export interface MockCheckoutSession {
   id: string;
-  object: 'checkout.session';
-  payment_status: 'paid' | 'unpaid' | 'no_payment_required';
-  status: 'complete' | 'expired' | 'open';
+  object: "checkout.session";
+  payment_status: "paid" | "unpaid" | "no_payment_required";
+  status: "complete" | "expired" | "open";
   payment_intent: string | null;
   amount_total: number;
   currency: string;
@@ -30,17 +30,17 @@ export interface MockCheckoutSession {
  */
 export interface MockDispute {
   id: string;
-  object: 'dispute';
+  object: "dispute";
   amount: number;
   currency: string;
   status:
-    | 'won'
-    | 'lost'
-    | 'needs_response'
-    | 'under_review'
-    | 'warning_needs_response'
-    | 'warning_under_review'
-    | 'warning_closed';
+    | "won"
+    | "lost"
+    | "needs_response"
+    | "under_review"
+    | "warning_needs_response"
+    | "warning_under_review"
+    | "warning_closed";
   payment_intent: string;
   charge: string;
   metadata: Record<string, string>;
@@ -51,7 +51,7 @@ export interface MockDispute {
  */
 export interface MockCharge {
   id: string;
-  object: 'charge';
+  object: "charge";
   amount: number;
   amount_refunded: number;
   currency: string;
@@ -65,7 +65,7 @@ export interface MockCharge {
  */
 export interface MockStripeEvent<T = unknown> {
   id: string;
-  object: 'event';
+  object: "event";
   type: string;
   created: number;
   data: {
@@ -84,7 +84,7 @@ export function createCheckoutCompletedEvent(
     paymentIntentId?: string;
     eventId?: string;
     app?: string;
-  } = {}
+  } = {},
 ): MockStripeEvent<MockCheckoutSession> {
   const balanceUnits = Math.floor(amountUSD * 100);
   const sessionId = options.sessionId ?? `cs_test_${Date.now()}`;
@@ -93,26 +93,26 @@ export function createCheckoutCompletedEvent(
 
   return {
     id: eventId,
-    object: 'event',
-    type: 'checkout.session.completed',
+    object: "event",
+    type: "checkout.session.completed",
     created: Math.floor(Date.now() / 1000),
     data: {
       object: {
         id: sessionId,
-        object: 'checkout.session',
-        payment_status: 'paid',
-        status: 'complete',
+        object: "checkout.session",
+        payment_status: "paid",
+        status: "complete",
         payment_intent: paymentIntentId,
         amount_total: amountUSD * 100, // cents
-        currency: 'usd',
+        currency: "usd",
         metadata: {
           ...(options.app !== undefined
             ? { app: options.app }
-            : { app: 'feed' }),
+            : { app: "feed" }),
           userId,
           balanceUnits: balanceUnits.toString(),
           amountUSD: amountUSD.toString(),
-          purchaseType: 'trading_balance',
+          purchaseType: "trading_balance",
         },
       },
     },
@@ -125,30 +125,30 @@ export function createCheckoutCompletedEvent(
 export function createCheckoutExpiredEvent(
   sessionId?: string,
   eventId?: string,
-  options: { app?: string } = {}
+  options: { app?: string } = {},
 ): MockStripeEvent<MockCheckoutSession> {
   return {
     id: eventId ?? `evt_test_${Date.now()}`,
-    object: 'event',
-    type: 'checkout.session.expired',
+    object: "event",
+    type: "checkout.session.expired",
     created: Math.floor(Date.now() / 1000),
     data: {
       object: {
         id: sessionId ?? `cs_test_${Date.now()}`,
-        object: 'checkout.session',
-        payment_status: 'unpaid',
-        status: 'expired',
+        object: "checkout.session",
+        payment_status: "unpaid",
+        status: "expired",
         payment_intent: null,
         amount_total: 0,
-        currency: 'usd',
+        currency: "usd",
         metadata: {
           ...(options.app !== undefined
             ? { app: options.app }
-            : { app: 'feed' }),
-          userId: '',
-          balanceUnits: '',
-          amountUSD: '',
-          purchaseType: 'trading_balance',
+            : { app: "feed" }),
+          userId: "",
+          balanceUnits: "",
+          amountUSD: "",
+          purchaseType: "trading_balance",
         },
       },
     },
@@ -166,7 +166,7 @@ export function createDisputeCreatedEvent(
     chargeId?: string;
     eventId?: string;
     app?: string;
-  } = {}
+  } = {},
 ): MockStripeEvent<MockDispute> {
   const disputeId = options.disputeId ?? `dp_test_${Date.now()}`;
   const chargeId = options.chargeId ?? `ch_test_${Date.now()}`;
@@ -174,20 +174,20 @@ export function createDisputeCreatedEvent(
 
   return {
     id: eventId,
-    object: 'event',
-    type: 'charge.dispute.created',
+    object: "event",
+    type: "charge.dispute.created",
     created: Math.floor(Date.now() / 1000),
     data: {
       object: {
         id: disputeId,
-        object: 'dispute',
+        object: "dispute",
         amount: amountUSD * 100, // cents
-        currency: 'usd',
-        status: 'needs_response',
+        currency: "usd",
+        status: "needs_response",
         payment_intent: paymentIntentId,
         charge: chargeId,
         metadata:
-          options.app !== undefined ? { app: options.app } : { app: 'feed' },
+          options.app !== undefined ? { app: options.app } : { app: "feed" },
       },
     },
   };
@@ -204,7 +204,7 @@ export function createDisputeWonEvent(
     chargeId?: string;
     eventId?: string;
     app?: string;
-  } = {}
+  } = {},
 ): MockStripeEvent<MockDispute> {
   const disputeId = options.disputeId ?? `dp_test_${Date.now()}`;
   const chargeId = options.chargeId ?? `ch_test_${Date.now()}`;
@@ -212,20 +212,20 @@ export function createDisputeWonEvent(
 
   return {
     id: eventId,
-    object: 'event',
-    type: 'charge.dispute.closed',
+    object: "event",
+    type: "charge.dispute.closed",
     created: Math.floor(Date.now() / 1000),
     data: {
       object: {
         id: disputeId,
-        object: 'dispute',
+        object: "dispute",
         amount: amountUSD * 100, // cents
-        currency: 'usd',
-        status: 'won',
+        currency: "usd",
+        status: "won",
         payment_intent: paymentIntentId,
         charge: chargeId,
         metadata:
-          options.app !== undefined ? { app: options.app } : { app: 'feed' },
+          options.app !== undefined ? { app: options.app } : { app: "feed" },
       },
     },
   };
@@ -242,11 +242,11 @@ export function createDisputeLostEvent(
     chargeId?: string;
     eventId?: string;
     app?: string;
-  } = {}
+  } = {},
 ): MockStripeEvent<MockDispute> {
   const event = createDisputeWonEvent(paymentIntentId, amountUSD, options);
-  event.type = 'charge.dispute.closed';
-  (event.data.object as MockDispute).status = 'lost';
+  event.type = "charge.dispute.closed";
+  (event.data.object as MockDispute).status = "lost";
   return event;
 }
 
@@ -261,27 +261,27 @@ export function createChargeRefundedEvent(
     chargeId?: string;
     eventId?: string;
     app?: string;
-  } = {}
+  } = {},
 ): MockStripeEvent<MockCharge> {
   const chargeId = options.chargeId ?? `ch_test_${Date.now()}`;
   const eventId = options.eventId ?? `evt_test_${Date.now()}`;
 
   return {
     id: eventId,
-    object: 'event',
-    type: 'charge.refunded',
+    object: "event",
+    type: "charge.refunded",
     created: Math.floor(Date.now() / 1000),
     data: {
       object: {
         id: chargeId,
-        object: 'charge',
+        object: "charge",
         amount: originalAmountUSD * 100, // cents
         amount_refunded: amountRefundedUSD * 100, // cents
-        currency: 'usd',
+        currency: "usd",
         payment_intent: paymentIntentId,
         refunded: amountRefundedUSD === originalAmountUSD,
         metadata:
-          options.app !== undefined ? { app: options.app } : { app: 'feed' },
+          options.app !== undefined ? { app: options.app } : { app: "feed" },
       },
     },
   };

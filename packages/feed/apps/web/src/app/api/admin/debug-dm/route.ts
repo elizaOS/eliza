@@ -51,7 +51,7 @@
  * ```
  */
 
-import { requireAdmin, successResponse, withErrorHandling } from '@feed/api';
+import { requireAdmin, successResponse, withErrorHandling } from "@feed/api";
 import {
   asSystem,
   chatParticipants,
@@ -60,24 +60,24 @@ import {
   desc,
   inArray,
   messages,
-} from '@feed/db';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/db";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   // Require admin authentication
   await requireAdmin(request);
 
   const { searchParams } = new URL(request.url);
-  const userId = searchParams.get('userId');
+  const userId = searchParams.get("userId");
 
   if (!userId) {
     return successResponse({
-      error: 'userId parameter required',
+      error: "userId parameter required",
     });
   }
 
-  logger.info('Debug DM lookup', { userId }, 'GET /api/admin/debug-dm');
+  logger.info("Debug DM lookup", { userId }, "GET /api/admin/debug-dm");
 
   // Get user info (try by ID, username, or privyId)
   let user = await db.user.findUnique({
@@ -164,12 +164,12 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         chatIds.map((chatId) =>
           database.message.count({
             where: { chatId: { equals: chatId } },
-          })
-        )
+          }),
+        ),
       );
 
       return { chatsList, allParticipants, allMessages, messageCounts };
-    }, 'admin-debug-dm');
+    }, "admin-debug-dm");
 
   // Get all user IDs from participants
   const participantUserIds = [...new Set(allParticipants.map((p) => p.userId))];
@@ -204,20 +204,20 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   });
 
   logger.info(
-    'Debug DM results',
+    "Debug DM results",
     {
       userId,
       participantsCount: participants.length,
       chatsCount: chatsList.length,
     },
-    'GET /api/admin/debug-dm'
+    "GET /api/admin/debug-dm",
   );
 
   return successResponse({
     user,
     note: user
       ? `User database ID: ${user.id}, Privy ID: ${user.privyId}`
-      : 'User not found',
+      : "User not found",
     participantRecords: participants,
     chats: chatsList.map((chat, index) => ({
       id: chat.id,

@@ -7,15 +7,15 @@
  * Run: bun test integration/timeseries-api.integration.test.ts --preload ./integration/preload.ts
  */
 
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { db, inArray, systemMetricsSnapshots } from '@feed/db';
-import { generateSnowflakeId } from '@feed/shared';
-import { getAdminToken } from './helpers';
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { db, inArray, systemMetricsSnapshots } from "@feed/db";
+import { generateSnowflakeId } from "@feed/shared";
+import { getAdminToken } from "./helpers";
 
 const BASE_URL =
   process.env.TEST_API_URL ||
   process.env.TEST_BASE_URL ||
-  'http://localhost:3000';
+  "http://localhost:3000";
 
 let serverAvailable = false;
 let devAdminToken: string | null = null;
@@ -24,10 +24,10 @@ const testSnapshotIds: string[] = [];
 
 async function adminRequest(path: string, options: RequestInit = {}) {
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
     ...(options.headers as Record<string, string>),
   };
-  if (devAdminToken) headers['x-dev-admin-token'] = devAdminToken;
+  if (devAdminToken) headers["x-dev-admin-token"] = devAdminToken;
 
   return fetch(`${BASE_URL}${path}`, {
     ...options,
@@ -40,7 +40,7 @@ async function publicRequest(path: string, options: RequestInit = {}) {
   return fetch(`${BASE_URL}${path}`, {
     ...options,
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
       ...(options.headers as Record<string, string>),
     },
     signal: AbortSignal.timeout(15000),
@@ -53,7 +53,7 @@ async function publicRequest(path: string, options: RequestInit = {}) {
  */
 function isRateLimited(response: Response): boolean {
   if (response.status === 429) {
-    console.log('Rate limited - skipping test assertions');
+    console.log("Rate limited - skipping test assertions");
     return true;
   }
   return false;
@@ -68,7 +68,7 @@ async function createTestSnapshot(
     newSignups: number;
     tradingVolume: string;
     activeMarkets: number;
-  }> = {}
+  }> = {},
 ) {
   const snapshotId = await generateSnowflakeId();
   const timestamp = overrides.timestamp || new Date();
@@ -77,20 +77,20 @@ async function createTestSnapshot(
   await db.insert(systemMetricsSnapshots).values({
     id: snapshotId,
     timestamp,
-    environment: overrides.environment || 'development',
+    environment: overrides.environment || "development",
     totalUsers: overrides.totalUsers ?? 1000,
     activeUsers: overrides.activeUsers ?? 100,
     newSignups: overrides.newSignups ?? 10,
-    tradingVolume: overrides.tradingVolume ?? '50000.00',
+    tradingVolume: overrides.tradingVolume ?? "50000.00",
     activeMarkets: overrides.activeMarkets ?? 25,
     openPositions: 150,
-    perpVolume: '10000.00',
+    perpVolume: "10000.00",
     activePerpPositions: 50,
     postsCreated: 20,
     commentsCreated: 50,
     reactionsCreated: 100,
-    totalVirtualBalance: '1000000.00',
-    feesCollectedHourly: '5000.00',
+    totalVirtualBalance: "1000000.00",
+    feesCollectedHourly: "5000.00",
     apiUptime: 99.9,
     avgResponseTime: 50,
     errorRate: 0.1,
@@ -103,7 +103,7 @@ async function createTestSnapshot(
   return snapshotId;
 }
 
-describe('Time-Series API', () => {
+describe("Time-Series API", () => {
   beforeAll(async () => {
     // Check server availability
     try {
@@ -112,20 +112,20 @@ describe('Time-Series API', () => {
       });
       serverAvailable = response.ok;
       console.log(
-        `Server availability: ${serverAvailable ? 'Available' : 'Unavailable'}`
+        `Server availability: ${serverAvailable ? "Available" : "Unavailable"}`,
       );
     } catch {
       serverAvailable = false;
-      console.log('Server not available - tests will be skipped');
+      console.log("Server not available - tests will be skipped");
     }
 
     // Get dev admin token from env or credentials
     devAdminToken = getAdminToken();
     if (devAdminToken) {
       authAvailable = true;
-      console.log('Admin auth available');
+      console.log("Admin auth available");
     } else {
-      console.log('Dev credentials not available - auth tests will be skipped');
+      console.log("Dev credentials not available - auth tests will be skipped");
       authAvailable = false;
     }
 
@@ -160,40 +160,40 @@ describe('Time-Series API', () => {
           .where(inArray(systemMetricsSnapshots.id, testSnapshotIds));
         console.log(`Cleaned up ${testSnapshotIds.length} test snapshots`);
       } catch (error) {
-        console.error('Error cleaning up test snapshots:', error);
+        console.error("Error cleaning up test snapshots:", error);
       }
     }
   });
 
-  describe('Authentication & Authorization', () => {
-    test('returns 401/403 without admin authentication', async () => {
+  describe("Authentication & Authorization", () => {
+    test("returns 401/403 without admin authentication", async () => {
       if (!serverAvailable) {
-        console.log('SKIPPED: Server not available');
+        console.log("SKIPPED: Server not available");
         return;
       }
 
-      const response = await publicRequest('/api/admin/stats/timeseries');
+      const response = await publicRequest("/api/admin/stats/timeseries");
 
       expect([401, 403]).toContain(response.status);
     });
 
-    test('accepts valid admin token', async () => {
+    test("accepts valid admin token", async () => {
       if (!serverAvailable || !authAvailable) {
-        console.log('SKIPPED: Server or auth not available');
+        console.log("SKIPPED: Server or auth not available");
         return;
       }
 
-      const response = await adminRequest('/api/admin/stats/timeseries');
+      const response = await adminRequest("/api/admin/stats/timeseries");
 
       expect(response.status).toBe(200);
     });
   });
 
-  describe('Query Parameters', () => {
-    test('uses default date range (7 days) when not specified', async () => {
+  describe("Query Parameters", () => {
+    test("uses default date range (7 days) when not specified", async () => {
       if (!serverAvailable || !authAvailable) return;
 
-      const response = await adminRequest('/api/admin/stats/timeseries');
+      const response = await adminRequest("/api/admin/stats/timeseries");
       const data = await response.json();
 
       if (isRateLimited(response)) return;
@@ -204,7 +204,7 @@ describe('Time-Series API', () => {
         const startDate = new Date(data.metadata.startDate);
         const endDate = new Date(data.metadata.endDate);
         const daysDiff = Math.ceil(
-          (endDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000)
+          (endDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000),
         );
 
         expect(daysDiff).toBeGreaterThanOrEqual(6);
@@ -212,14 +212,14 @@ describe('Time-Series API', () => {
       }
     });
 
-    test('accepts custom date range', async () => {
+    test("accepts custom date range", async () => {
       if (!serverAvailable || !authAvailable) return;
 
       const endDate = new Date();
       const startDate = new Date(endDate.getTime() - 3 * 24 * 60 * 60 * 1000);
 
       const response = await adminRequest(
-        `/api/admin/stats/timeseries?startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`
+        `/api/admin/stats/timeseries?startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`,
       );
       const data = await response.json();
 
@@ -228,77 +228,77 @@ describe('Time-Series API', () => {
       expect(data.metadata?.startDate).toBe(startDate.toISOString());
     });
 
-    test('auto-selects hourly granularity for short date ranges', async () => {
+    test("auto-selects hourly granularity for short date ranges", async () => {
       if (!serverAvailable || !authAvailable) return;
 
       const endDate = new Date();
       const startDate = new Date(endDate.getTime() - 2 * 24 * 60 * 60 * 1000);
 
       const response = await adminRequest(
-        `/api/admin/stats/timeseries?startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`
+        `/api/admin/stats/timeseries?startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`,
       );
       const data = await response.json();
 
       if (isRateLimited(response)) return;
       expect(response.status).toBe(200);
       if (data.metadata) {
-        expect(data.metadata.granularity).toBe('hourly');
+        expect(data.metadata.granularity).toBe("hourly");
       }
     });
 
-    test('auto-selects daily granularity for long date ranges', async () => {
+    test("auto-selects daily granularity for long date ranges", async () => {
       if (!serverAvailable || !authAvailable) return;
 
       const endDate = new Date();
       const startDate = new Date(endDate.getTime() - 14 * 24 * 60 * 60 * 1000);
 
       const response = await adminRequest(
-        `/api/admin/stats/timeseries?startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`
+        `/api/admin/stats/timeseries?startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`,
       );
       const data = await response.json();
 
       if (isRateLimited(response)) return;
       expect(response.status).toBe(200);
       if (data.metadata) {
-        expect(data.metadata.granularity).toBe('daily');
+        expect(data.metadata.granularity).toBe("daily");
       }
     });
 
-    test('accepts explicit granularity parameter', async () => {
+    test("accepts explicit granularity parameter", async () => {
       if (!serverAvailable || !authAvailable) return;
 
       const response = await adminRequest(
-        '/api/admin/stats/timeseries?granularity=daily'
+        "/api/admin/stats/timeseries?granularity=daily",
       );
       const data = await response.json();
 
       if (isRateLimited(response)) return;
       expect(response.status).toBe(200);
       if (data.metadata) {
-        expect(data.metadata.granularity).toBe('daily');
+        expect(data.metadata.granularity).toBe("daily");
       }
     });
 
-    test('accepts environment parameter', async () => {
+    test("accepts environment parameter", async () => {
       if (!serverAvailable || !authAvailable) return;
 
       const response = await adminRequest(
-        '/api/admin/stats/timeseries?environment=development'
+        "/api/admin/stats/timeseries?environment=development",
       );
       const data = await response.json();
 
       if (isRateLimited(response)) return;
       expect(response.status).toBe(200);
       if (data.metadata) {
-        expect(data.metadata.environment).toBe('development');
+        expect(data.metadata.environment).toBe("development");
       }
     });
 
-    test('rejects invalid environment value', async () => {
+    test("rejects invalid environment value", async () => {
       if (!serverAvailable || !authAvailable) return;
 
       const response = await adminRequest(
-        '/api/admin/stats/timeseries?environment=invalid'
+        "/api/admin/stats/timeseries?environment=invalid",
       );
 
       if (isRateLimited(response)) return;
@@ -307,11 +307,11 @@ describe('Time-Series API', () => {
     });
   });
 
-  describe('Response Format', () => {
-    test('returns timeSeries array', async () => {
+  describe("Response Format", () => {
+    test("returns timeSeries array", async () => {
       if (!serverAvailable || !authAvailable) return;
 
-      const response = await adminRequest('/api/admin/stats/timeseries');
+      const response = await adminRequest("/api/admin/stats/timeseries");
       const data = await response.json();
 
       if (isRateLimited(response)) return;
@@ -319,10 +319,10 @@ describe('Time-Series API', () => {
       expect(Array.isArray(data.timeSeries)).toBe(true);
     });
 
-    test('timeSeries entries have correct structure', async () => {
+    test("timeSeries entries have correct structure", async () => {
       if (!serverAvailable || !authAvailable) return;
 
-      const response = await adminRequest('/api/admin/stats/timeseries');
+      const response = await adminRequest("/api/admin/stats/timeseries");
       const data = await response.json();
 
       if (isRateLimited(response)) return;
@@ -344,10 +344,10 @@ describe('Time-Series API', () => {
       }
     });
 
-    test('returns summary statistics', async () => {
+    test("returns summary statistics", async () => {
       if (!serverAvailable || !authAvailable) return;
 
-      const response = await adminRequest('/api/admin/stats/timeseries');
+      const response = await adminRequest("/api/admin/stats/timeseries");
       const data = await response.json();
 
       if (isRateLimited(response)) return;
@@ -361,10 +361,10 @@ describe('Time-Series API', () => {
       }
     });
 
-    test('returns metadata with coverage info', async () => {
+    test("returns metadata with coverage info", async () => {
       if (!serverAvailable || !authAvailable) return;
 
-      const response = await adminRequest('/api/admin/stats/timeseries');
+      const response = await adminRequest("/api/admin/stats/timeseries");
       const data = await response.json();
 
       if (isRateLimited(response)) return;
@@ -375,13 +375,13 @@ describe('Time-Series API', () => {
         expect(data.metadata.snapshotCount).toBeGreaterThanOrEqual(0);
         expect(data.metadata.expectedSnapshots).toBeGreaterThanOrEqual(0);
         expect(data.metadata.coverage).toBeGreaterThanOrEqual(0);
-        expect(typeof data.metadata.hasGaps).toBe('boolean');
+        expect(typeof data.metadata.hasGaps).toBe("boolean");
       }
     });
   });
 
-  describe('Data Aggregation', () => {
-    test('aggregates hourly data to daily correctly', async () => {
+  describe("Data Aggregation", () => {
+    test("aggregates hourly data to daily correctly", async () => {
       if (!serverAvailable || !authAvailable) return;
 
       const endDate = new Date();
@@ -389,13 +389,13 @@ describe('Time-Series API', () => {
 
       // Get hourly data
       const hourlyResponse = await adminRequest(
-        `/api/admin/stats/timeseries?startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}&granularity=hourly`
+        `/api/admin/stats/timeseries?startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}&granularity=hourly`,
       );
       const hourlyData = await hourlyResponse.json();
 
       // Get daily data
       const dailyResponse = await adminRequest(
-        `/api/admin/stats/timeseries?startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}&granularity=daily`
+        `/api/admin/stats/timeseries?startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}&granularity=daily`,
       );
       const dailyData = await dailyResponse.json();
 
@@ -409,16 +409,16 @@ describe('Time-Series API', () => {
         dailyData.timeSeries?.length > 0
       ) {
         expect(dailyData.timeSeries.length).toBeLessThanOrEqual(
-          hourlyData.timeSeries.length
+          hourlyData.timeSeries.length,
         );
       }
     });
 
-    test('daily aggregation sums incremental metrics', async () => {
+    test("daily aggregation sums incremental metrics", async () => {
       if (!serverAvailable || !authAvailable) return;
 
       const response = await adminRequest(
-        '/api/admin/stats/timeseries?granularity=daily'
+        "/api/admin/stats/timeseries?granularity=daily",
       );
       const data = await response.json();
 
@@ -434,12 +434,12 @@ describe('Time-Series API', () => {
     });
   });
 
-  describe('Gap Detection', () => {
-    test('detects gaps in snapshot data', async () => {
+  describe("Gap Detection", () => {
+    test("detects gaps in snapshot data", async () => {
       if (!serverAvailable || !authAvailable) return;
 
       // Query a range that might have gaps
-      const response = await adminRequest('/api/admin/stats/timeseries');
+      const response = await adminRequest("/api/admin/stats/timeseries");
       const data = await response.json();
 
       if (isRateLimited(response)) return;
@@ -447,15 +447,15 @@ describe('Time-Series API', () => {
       expect(data.metadata).toBeDefined();
 
       if (data.metadata) {
-        expect(typeof data.metadata.hasGaps).toBe('boolean');
-        expect(typeof data.fallbackAvailable).toBe('boolean');
+        expect(typeof data.metadata.hasGaps).toBe("boolean");
+        expect(typeof data.fallbackAvailable).toBe("boolean");
       }
     });
 
-    test('reports coverage percentage', async () => {
+    test("reports coverage percentage", async () => {
       if (!serverAvailable || !authAvailable) return;
 
-      const response = await adminRequest('/api/admin/stats/timeseries');
+      const response = await adminRequest("/api/admin/stats/timeseries");
       const data = await response.json();
 
       if (isRateLimited(response)) return;
@@ -465,19 +465,19 @@ describe('Time-Series API', () => {
         // Coverage is a percentage, should be >= 0
         // Can exceed 100% if more snapshots than expected (due to test data)
         expect(data.metadata.coverage).toBeGreaterThanOrEqual(0);
-        expect(typeof data.metadata.coverage).toBe('number');
+        expect(typeof data.metadata.coverage).toBe("number");
       }
     });
   });
 
-  describe('Rate Limiting', () => {
-    test('respects rate limits', async () => {
+  describe("Rate Limiting", () => {
+    test("respects rate limits", async () => {
       if (!serverAvailable || !authAvailable) return;
 
       // Make multiple rapid requests
       const promises = Array(5)
         .fill(null)
-        .map(() => adminRequest('/api/admin/stats/timeseries'));
+        .map(() => adminRequest("/api/admin/stats/timeseries"));
 
       const responses = await Promise.all(promises);
 
@@ -488,14 +488,14 @@ describe('Time-Series API', () => {
     });
   });
 
-  describe('Edge Cases', () => {
-    test('handles empty date range gracefully', async () => {
+  describe("Edge Cases", () => {
+    test("handles empty date range gracefully", async () => {
       if (!serverAvailable || !authAvailable) return;
 
       const futureDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
       const response = await adminRequest(
-        `/api/admin/stats/timeseries?startDate=${futureDate.toISOString()}`
+        `/api/admin/stats/timeseries?startDate=${futureDate.toISOString()}`,
       );
       const data = await response.json();
 
@@ -506,25 +506,25 @@ describe('Time-Series API', () => {
       }
     });
 
-    test('handles very large date ranges', async () => {
+    test("handles very large date ranges", async () => {
       if (!serverAvailable || !authAvailable) return;
 
       const endDate = new Date();
       const startDate = new Date(endDate.getTime() - 365 * 24 * 60 * 60 * 1000);
 
       const response = await adminRequest(
-        `/api/admin/stats/timeseries?startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`
+        `/api/admin/stats/timeseries?startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`,
       );
 
       // Should either succeed with daily aggregation, return error, or rate limit
       expect([200, 400, 429]).toContain(response.status);
     });
 
-    test('handles invalid date formats', async () => {
+    test("handles invalid date formats", async () => {
       if (!serverAvailable || !authAvailable) return;
 
       const response = await adminRequest(
-        '/api/admin/stats/timeseries?startDate=not-a-date'
+        "/api/admin/stats/timeseries?startDate=not-a-date",
       );
 
       // Should use default, return error, or rate limit

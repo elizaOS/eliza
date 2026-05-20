@@ -4,44 +4,44 @@
  * Priority: Groq > Claude > OpenAI
  */
 
-import OpenAI from 'openai';
-import 'dotenv/config';
-import { logger } from '@feed/shared';
-import type { JsonValue } from '../types/common';
-import type { LLMCallTokenUsage } from '../types/token-stats';
-import { first } from '../utils/array-utils';
-import { isPromptLoggingEnabled, logPrompt } from '../utils/prompt-logger';
+import OpenAI from "openai";
+import "dotenv/config";
+import { logger } from "@feed/shared";
+import type { JsonValue } from "../types/common";
+import type { LLMCallTokenUsage } from "../types/token-stats";
+import { first } from "../utils/array-utils";
+import { isPromptLoggingEnabled, logPrompt } from "../utils/prompt-logger";
 import {
   cleanMarkdownCodeBlocks,
   extractJsonFromText,
   parseContinuationContent,
-} from './json-continuation-parser';
-import type { LLMJsonSchema as JSONSchema } from './types';
-import { parseXML } from './xml-parser';
+} from "./json-continuation-parser";
+import type { LLMJsonSchema as JSONSchema } from "./types";
+import { parseXML } from "./xml-parser";
 
-type LLMProvider = 'elizacloud' | 'groq' | 'claude' | 'openai';
-type LLMDisabledContext = 'default' | 'gameTick';
+type LLMProvider = "elizacloud" | "groq" | "claude" | "openai";
+type LLMDisabledContext = "default" | "gameTick";
 
 /**
  * Token usage callback function type
  * Called after each LLM call with usage statistics
  */
 export type TokenUsageCallback = (
-  usage: Omit<LLMCallTokenUsage, 'callId' | 'timestamp'>
+  usage: Omit<LLMCallTokenUsage, "callId" | "timestamp">,
 ) => void;
 
 // Global token usage callback (can be set by TokenStatsService)
 let globalTokenUsageCallback: TokenUsageCallback | null = null;
 
 // Global LLM call detail callback (can be set by DAG trace interceptor)
-import { getLLMCallCallback } from '../dag-trace/llm-interceptor';
+import { getLLMCallCallback } from "../dag-trace/llm-interceptor";
 
 /**
  * Set the global token usage callback
  * Used by TokenStatsService to collect usage across all LLM calls
  */
 export function setTokenUsageCallback(
-  callback: TokenUsageCallback | null
+  callback: TokenUsageCallback | null,
 ): void {
   globalTokenUsageCallback = callback;
 }
@@ -59,14 +59,14 @@ function resolveElizaCloudConfig():
   const apiKey = process.env.ELIZACLOUD_API_KEY;
   if (!apiKey) return undefined;
   const base =
-    process.env.ELIZACLOUD_API_URL?.replace(/\/$/, '') ||
-    'https://elizacloud.ai';
+    process.env.ELIZACLOUD_API_URL?.replace(/\/$/, "") ||
+    "https://elizacloud.ai";
   // ElizaCloud uses /api/v1 (OpenAI-compatible); the SDK appends /chat/completions
   return { apiKey, baseURL: `${base}/api/v1` };
 }
 
 function resolveGroqBaseURL(): string {
-  return process.env.GROQ_BASE_URL || 'https://api.groq.com/openai/v1';
+  return process.env.GROQ_BASE_URL || "https://api.groq.com/openai/v1";
 }
 
 function resolveGroqDefaultModel(): string {
@@ -74,7 +74,7 @@ function resolveGroqDefaultModel(): string {
     process.env.MARKET_DECISION_MODEL ||
     process.env.GROQ_PRIMARY_MODEL ||
     process.env.GROQ_LARGE_MODEL ||
-    'openai/gpt-oss-120b'
+    "openai/gpt-oss-120b"
   );
 }
 
@@ -85,17 +85,17 @@ function resolveGroqDefaultModel(): string {
 
 export class FeedLLMClient {
   private client: OpenAI | null = null;
-  private provider: LLMProvider = 'openai';
+  private provider: LLMProvider = "openai";
   private groqKey: string | undefined;
   private claudeKey: string | undefined;
   private openaiKey: string | undefined;
-  private missingKeyContext: LLMDisabledContext = 'default';
+  private missingKeyContext: LLMDisabledContext = "default";
 
   /**
    * Create a FeedLLMClient configured to use ElizaCloud (Priority #1)
    */
   static forElizaCloud(): FeedLLMClient {
-    return new FeedLLMClient('', 'elizacloud');
+    return new FeedLLMClient("", "elizacloud");
   }
 
   /**
@@ -103,7 +103,7 @@ export class FeedLLMClient {
    * This is a convenience factory method for forcing Groq without passing undefined parameters
    */
   static forGroq(): FeedLLMClient {
-    return new FeedLLMClient('', 'groq');
+    return new FeedLLMClient("", "groq");
   }
 
   /**
@@ -111,7 +111,7 @@ export class FeedLLMClient {
    * This is a convenience factory method for forcing Claude without passing undefined parameters
    */
   static forClaude(): FeedLLMClient {
-    return new FeedLLMClient('', 'claude');
+    return new FeedLLMClient("", "claude");
   }
 
   /**
@@ -119,7 +119,7 @@ export class FeedLLMClient {
    * This is a convenience factory method for forcing OpenAI without passing undefined parameters
    */
   static forOpenAI(apiKey?: string): FeedLLMClient {
-    return new FeedLLMClient(apiKey || '', 'openai');
+    return new FeedLLMClient(apiKey || "", "openai");
   }
 
   /**
@@ -127,13 +127,13 @@ export class FeedLLMClient {
    * Priority: ElizaCloud > Groq > Claude > OpenAI
    */
   static forGameTick(): FeedLLMClient {
-    return new FeedLLMClient('', undefined, 'gameTick');
+    return new FeedLLMClient("", undefined, "gameTick");
   }
 
   constructor(
     apiKey?: string,
     forceProvider?: LLMProvider,
-    missingKeyContext: LLMDisabledContext = 'default'
+    missingKeyContext: LLMDisabledContext = "default",
   ) {
     this.missingKeyContext = missingKeyContext;
 
@@ -147,7 +147,7 @@ export class FeedLLMClient {
     // For large batch operations (like NPC trading), we need longer timeouts
     // since Groq can take 30-60 seconds for complex prompts
     const isTestEnv =
-      process.env.NODE_ENV === 'test' || process.env.BUN_ENV === 'test';
+      process.env.NODE_ENV === "test" || process.env.BUN_ENV === "test";
     // Test: 120 seconds (2 min) to allow for large batch operations
     // Production: 300 seconds (5 minutes) for safety
     const timeoutMs = isTestEnv ? 120000 : 300000;
@@ -156,98 +156,98 @@ export class FeedLLMClient {
     const sdkMaxRetries = 2;
 
     // Force specific provider if requested
-    if (forceProvider === 'elizacloud' && elizaCloud) {
-      logger.info('Using ElizaCloud (forced)', undefined, 'FeedLLMClient');
+    if (forceProvider === "elizacloud" && elizaCloud) {
+      logger.info("Using ElizaCloud (forced)", undefined, "FeedLLMClient");
       this.client = new OpenAI({
         apiKey: elizaCloud.apiKey,
         baseURL: elizaCloud.baseURL,
-        defaultHeaders: { 'X-API-Key': elizaCloud.apiKey },
+        defaultHeaders: { "X-API-Key": elizaCloud.apiKey },
         timeout: timeoutMs,
         maxRetries: sdkMaxRetries,
       });
-      this.provider = 'elizacloud';
-    } else if (forceProvider === 'groq' && this.groqKey) {
-      logger.info('Using Groq (forced)', undefined, 'FeedLLMClient');
+      this.provider = "elizacloud";
+    } else if (forceProvider === "groq" && this.groqKey) {
+      logger.info("Using Groq (forced)", undefined, "FeedLLMClient");
       this.client = new OpenAI({
         apiKey: this.groqKey,
         baseURL: resolveGroqBaseURL(),
         timeout: timeoutMs,
         maxRetries: sdkMaxRetries,
       });
-      this.provider = 'groq';
-    } else if (forceProvider === 'claude' && this.claudeKey) {
-      logger.info('Using Claude (forced)', undefined, 'FeedLLMClient');
+      this.provider = "groq";
+    } else if (forceProvider === "claude" && this.claudeKey) {
+      logger.info("Using Claude (forced)", undefined, "FeedLLMClient");
       this.client = new OpenAI({
         apiKey: this.claudeKey,
-        baseURL: 'https://api.anthropic.com/v1',
+        baseURL: "https://api.anthropic.com/v1",
         timeout: timeoutMs,
         maxRetries: sdkMaxRetries,
       });
-      this.provider = 'claude';
-    } else if (forceProvider === 'openai' && this.openaiKey) {
-      logger.info('Using OpenAI (forced)', undefined, 'FeedLLMClient');
+      this.provider = "claude";
+    } else if (forceProvider === "openai" && this.openaiKey) {
+      logger.info("Using OpenAI (forced)", undefined, "FeedLLMClient");
       this.client = new OpenAI({
         apiKey: this.openaiKey,
         timeout: timeoutMs,
         maxRetries: sdkMaxRetries,
       });
-      this.provider = 'openai';
+      this.provider = "openai";
     } else if (elizaCloud) {
       logger.info(
-        'Using ElizaCloud (unified inference)',
+        "Using ElizaCloud (unified inference)",
         undefined,
-        'FeedLLMClient'
+        "FeedLLMClient",
       );
       this.client = new OpenAI({
         apiKey: elizaCloud.apiKey,
         baseURL: elizaCloud.baseURL,
-        defaultHeaders: { 'X-API-Key': elizaCloud.apiKey },
+        defaultHeaders: { "X-API-Key": elizaCloud.apiKey },
         timeout: timeoutMs,
         maxRetries: sdkMaxRetries,
       });
-      this.provider = 'elizacloud';
+      this.provider = "elizacloud";
     } else if (this.groqKey) {
-      logger.info('Using Groq (fast inference)', undefined, 'FeedLLMClient');
+      logger.info("Using Groq (fast inference)", undefined, "FeedLLMClient");
       this.client = new OpenAI({
         apiKey: this.groqKey,
         baseURL: resolveGroqBaseURL(),
         timeout: timeoutMs,
         maxRetries: sdkMaxRetries,
       });
-      this.provider = 'groq';
+      this.provider = "groq";
     } else if (this.claudeKey) {
       logger.info(
-        'Using Claude via OpenAI-compatible API',
+        "Using Claude via OpenAI-compatible API",
         undefined,
-        'FeedLLMClient'
+        "FeedLLMClient",
       );
       this.client = new OpenAI({
         apiKey: this.claudeKey,
-        baseURL: 'https://api.anthropic.com/v1',
+        baseURL: "https://api.anthropic.com/v1",
         timeout: timeoutMs,
         maxRetries: sdkMaxRetries,
       });
-      this.provider = 'claude';
+      this.provider = "claude";
     } else if (this.openaiKey) {
-      logger.info('Using OpenAI (fallback)', undefined, 'FeedLLMClient');
+      logger.info("Using OpenAI (fallback)", undefined, "FeedLLMClient");
       this.client = new OpenAI({
         apiKey: this.openaiKey,
         timeout: timeoutMs,
         maxRetries: sdkMaxRetries,
       });
-      this.provider = 'openai';
+      this.provider = "openai";
     } else {
       this.client = null;
-      const suppressOptionalWarnings = ['1', 'true', 'yes'].includes(
-        (process.env.FEED_SUPPRESS_OPTIONAL_LLM_WARNINGS || '')
+      const suppressOptionalWarnings = ["1", "true", "yes"].includes(
+        (process.env.FEED_SUPPRESS_OPTIONAL_LLM_WARNINGS || "")
           .trim()
-          .toLowerCase()
+          .toLowerCase(),
       );
       if (!suppressOptionalWarnings) {
         logger.warn(
-          'No LLM API key configured - FeedLLMClient is disabled',
+          "No LLM API key configured - FeedLLMClient is disabled",
           { missingKeyContext: this.missingKeyContext },
-          'FeedLLMClient'
+          "FeedLLMClient",
         );
       }
     }
@@ -256,26 +256,26 @@ export class FeedLLMClient {
   private assertEnabled(): void {
     if (this.client) return;
 
-    if (this.missingKeyContext === 'gameTick') {
+    if (this.missingKeyContext === "gameTick") {
       throw new Error(
-        '❌ No API key found for game tick operations!\n' +
-          '   Set one of these environment variables:\n' +
-          '   - ELIZACLOUD_API_KEY (recommended — single key for all inference)\n' +
-          '   - GROQ_API_KEY (direct Groq)\n' +
-          '   - ANTHROPIC_API_KEY\n' +
-          '   - OPENAI_API_KEY\n' +
-          '   Example: export ELIZACLOUD_API_KEY=elc_...'
+        "❌ No API key found for game tick operations!\n" +
+          "   Set one of these environment variables:\n" +
+          "   - ELIZACLOUD_API_KEY (recommended — single key for all inference)\n" +
+          "   - GROQ_API_KEY (direct Groq)\n" +
+          "   - ANTHROPIC_API_KEY\n" +
+          "   - OPENAI_API_KEY\n" +
+          "   Example: export ELIZACLOUD_API_KEY=elc_...",
       );
     }
 
     throw new Error(
-      '❌ No API key found!\n' +
-        '   Set one of these environment variables (in priority order):\n' +
-        '   - ELIZACLOUD_API_KEY (recommended — single key for all inference)\n' +
-        '   - GROQ_API_KEY (direct Groq, fast inference)\n' +
-        '   - ANTHROPIC_API_KEY (Claude)\n' +
-        '   - OPENAI_API_KEY (fallback)\n' +
-        '   Example: export ELIZACLOUD_API_KEY=elc_...'
+      "❌ No API key found!\n" +
+        "   Set one of these environment variables (in priority order):\n" +
+        "   - ELIZACLOUD_API_KEY (recommended — single key for all inference)\n" +
+        "   - GROQ_API_KEY (direct Groq, fast inference)\n" +
+        "   - ANTHROPIC_API_KEY (Claude)\n" +
+        "   - OPENAI_API_KEY (fallback)\n" +
+        "   Example: export ELIZACLOUD_API_KEY=elc_...",
     );
   }
 
@@ -291,12 +291,12 @@ export class FeedLLMClient {
       model?: string;
       temperature?: number;
       maxTokens?: number;
-      format?: 'xml' | 'json';
+      format?: "xml" | "json";
       /** Prompt type identifier for logging and monitoring */
       promptType?: string;
       /** Prompt template for logging and monitoring */
       promptTemplate?: string;
-    } = {}
+    } = {},
   ): Promise<T> {
     this.assertEnabled();
     const defaultModel = this.getDefaultModel();
@@ -305,15 +305,15 @@ export class FeedLLMClient {
       model = defaultModel,
       temperature = 0.7,
       maxTokens = 32000,
-      format = 'xml',
-      promptType = 'unknown',
+      format = "xml",
+      promptType = "unknown",
       promptTemplate,
     } = options;
 
     // OpenAI can enforce JSON mode, but we default to XML for robustness
     const useJsonFormat =
-      this.provider === 'openai' && format === 'json'
-        ? { type: 'json_object' as const }
+      this.provider === "openai" && format === "json"
+        ? { type: "json_object" as const }
         : undefined;
 
     // Feed world context - pre-condition LLM to expect parody names
@@ -328,27 +328,27 @@ WORLD RULES:
 `;
 
     const systemContent =
-      format === 'xml'
+      format === "xml"
         ? feedContext +
-          'You are an XML-only assistant. CRITICAL INSTRUCTIONS:\n' +
-          '1. Respond ONLY with valid XML - NO explanations, NO reasoning, NO markdown\n' +
-          '2. Start your response IMMEDIATELY with < (the opening tag)\n' +
-          '3. End your response with > (the closing tag)\n' +
+          "You are an XML-only assistant. CRITICAL INSTRUCTIONS:\n" +
+          "1. Respond ONLY with valid XML - NO explanations, NO reasoning, NO markdown\n" +
+          "2. Start your response IMMEDIATELY with < (the opening tag)\n" +
+          "3. End your response with > (the closing tag)\n" +
           '4. Do NOT write "Okay, let\'s see" or any thinking process\n' +
           '5. Do NOT write "Here is the XML" or any preamble\n' +
-          '6. Just output the pure XML structure directly\n' +
+          "6. Just output the pure XML structure directly\n" +
           'WRONG: "Okay, let\'s see. I need to..."\n' +
           'CORRECT: "<decisions><decision>..."'
         : feedContext +
-          'You are a JSON-only assistant. You must respond ONLY with valid JSON. No explanations, no markdown, no other text.';
+          "You are a JSON-only assistant. You must respond ONLY with valid JSON. No explanations, no markdown, no other text.";
 
     const messages = [
       {
-        role: 'system' as const,
+        role: "system" as const,
         content: systemContent,
       },
       {
-        role: 'user' as const,
+        role: "user" as const,
         content: prompt,
       },
     ];
@@ -364,24 +364,24 @@ WORLD RULES:
         // tokens from consuming output budget. Applies to:
         // - qwen3 models (Groq): supports 'none'
         // - GPT-5 series (OpenAI/ElizaCloud): supports 'minimal'
-        const isQwen3Model = model.includes('qwen3');
-        const isGpt5Model = model.includes('gpt-5');
+        const isQwen3Model = model.includes("qwen3");
+        const isGpt5Model = model.includes("gpt-5");
 
         callStartTime = Date.now();
-        const response = await this.client!.chat.completions.create({
+        const response = await this.client?.chat.completions.create({
           model,
           messages,
           ...(useJsonFormat ? { response_format: useJsonFormat } : {}),
           temperature,
           max_tokens: maxTokens,
-          ...(isQwen3Model ? { reasoning_effort: 'none' as const } : {}),
-          ...(isGpt5Model ? { reasoning_effort: 'minimal' as const } : {}),
+          ...(isQwen3Model ? { reasoning_effort: "none" as const } : {}),
+          ...(isGpt5Model ? { reasoning_effort: "minimal" as const } : {}),
         });
         const callDurationMs = Date.now() - callStartTime;
 
         const firstChoice = first(response.choices);
-        if (!firstChoice || !firstChoice.message.content) {
-          throw new Error('LLM response missing content');
+        if (!firstChoice?.message.content) {
+          throw new Error("LLM response missing content");
         }
         let content = firstChoice.message.content;
         let finishReason = firstChoice.finish_reason;
@@ -405,14 +405,14 @@ WORLD RULES:
         });
 
         // Handle truncation by continuing generation (for models with 32k+ context)
-        if (finishReason === 'length') {
+        if (finishReason === "length") {
           logger.warn(
-            'Response truncated, attempting continuation',
+            "Response truncated, attempting continuation",
             {
               model,
               tokensUsed: maxTokens,
             },
-            'FeedLLMClient'
+            "FeedLLMClient",
           );
 
           // Try to continue generation up to 2 more times
@@ -420,7 +420,7 @@ WORLD RULES:
           const maxContinuations = 2;
 
           while (
-            finishReason === 'length' &&
+            finishReason === "length" &&
             continuationAttempts < maxContinuations
           ) {
             continuationAttempts++;
@@ -429,13 +429,13 @@ WORLD RULES:
             const continuationMessages = [
               ...messages,
               {
-                role: 'assistant' as const,
+                role: "assistant" as const,
                 content: content,
               },
               {
-                role: 'user' as const,
+                role: "user" as const,
                 content:
-                  'Continue from where you left off. Complete the remaining JSON array entries.',
+                  "Continue from where you left off. Complete the remaining JSON array entries.",
               },
             ];
 
@@ -444,54 +444,54 @@ WORLD RULES:
               {
                 contentLength: content.length,
               },
-              'FeedLLMClient'
+              "FeedLLMClient",
             );
 
             const continuationResponse =
-              await this.client!.chat.completions.create({
+              await this.client?.chat.completions.create({
                 model,
                 messages: continuationMessages,
                 ...(useJsonFormat ? { response_format: useJsonFormat } : {}),
                 temperature,
                 max_tokens: maxTokens,
-                ...(isQwen3Model ? { reasoning_effort: 'none' as const } : {}),
+                ...(isQwen3Model ? { reasoning_effort: "none" as const } : {}),
               });
 
             const contChoice = first(continuationResponse.choices);
-            if (!contChoice || !contChoice.message.content) {
+            if (!contChoice?.message.content) {
               throw new Error(
-                'LLM continuation response missing choices or content - invalid API response'
+                "LLM continuation response missing choices or content - invalid API response",
               );
             }
             const continuationContent = contChoice.message.content;
-            finishReason = contChoice.finish_reason ?? 'stop';
+            finishReason = contChoice.finish_reason ?? "stop";
 
             // Append continuation to content
             content += continuationContent;
 
-            if (finishReason !== 'length') {
+            if (finishReason !== "length") {
               logger.info(
-                'Continuation successful',
+                "Continuation successful",
                 {
                   attempts: continuationAttempts,
                   finalLength: content.length,
                 },
-                'FeedLLMClient'
+                "FeedLLMClient",
               );
               break;
             }
           }
 
           // If still truncated after max continuations, throw error
-          if (finishReason === 'length') {
+          if (finishReason === "length") {
             throw new Error(
-              `Response truncated at ${maxTokens} tokens after ${continuationAttempts} continuation attempts.`
+              `Response truncated at ${maxTokens} tokens after ${continuationAttempts} continuation attempts.`,
             );
           }
         }
 
         // Parse based on requested format
-        if (format === 'xml') {
+        if (format === "xml") {
           // Use XML parser (more robust, handles malformed content better)
           const xmlResult = parseXML(content);
 
@@ -500,12 +500,12 @@ WORLD RULES:
           }
 
           logger.debug(
-            'Successfully parsed XML response',
+            "Successfully parsed XML response",
             {
               hasData: xmlResult.data !== null,
               isArray: Array.isArray(xmlResult.data),
             },
-            'FeedLLMClient'
+            "FeedLLMClient",
           );
 
           // Log parsed output for monitoring
@@ -551,16 +551,16 @@ WORLD RULES:
         }
         // Use JSON parser
         // If we had a continuation, use the advanced parser
-        if (content.includes('Continue from where you left off')) {
+        if (content.includes("Continue from where you left off")) {
           const parsed = parseContinuationContent(content);
           if (parsed !== null) {
             logger.info(
-              'Successfully parsed continuation content',
+              "Successfully parsed continuation content",
               {
                 isArray: Array.isArray(parsed),
-                items: Array.isArray(parsed) ? parsed.length : 'N/A',
+                items: Array.isArray(parsed) ? parsed.length : "N/A",
               },
-              'FeedLLMClient'
+              "FeedLLMClient",
             );
 
             // Report token usage via callback
@@ -602,11 +602,11 @@ WORLD RULES:
             return parsed as T;
           }
           logger.error(
-            'Failed to parse continuation content, attempting fallback',
+            "Failed to parse continuation content, attempting fallback",
             {
               contentPreview: content.substring(0, 200),
             },
-            'FeedLLMClient'
+            "FeedLLMClient",
           );
         }
 
@@ -618,7 +618,7 @@ WORLD RULES:
 
         if (schema && !this.validateSchema(parsed, schema)) {
           throw new Error(
-            `Response does not match schema. Missing required fields: ${schema.required?.join(', ')}`
+            `Response does not match schema. Missing required fields: ${schema.required?.join(", ")}`,
           );
         }
 
@@ -669,13 +669,13 @@ WORLD RULES:
           headers?: Headers;
         };
         const isTestEnv =
-          process.env.NODE_ENV === 'test' || process.env.BUN_ENV === 'test';
+          process.env.NODE_ENV === "test" || process.env.BUN_ENV === "test";
 
         // Handle 429 rate limit errors
         const isRateLimitError =
           err?.status === 429 ||
-          err?.message?.includes('429') ||
-          err?.message?.includes('rate_limit');
+          err?.message?.includes("429") ||
+          err?.message?.includes("rate_limit");
 
         if (isRateLimitError) {
           // Retry with backoff in both test and production environments
@@ -687,10 +687,10 @@ WORLD RULES:
             let delay = initialDelayMs * 2 ** (retryCount - 1);
 
             // Check for retry-after header
-            const retryAfter = err.headers?.get?.('retry-after');
+            const retryAfter = err.headers?.get?.("retry-after");
             if (retryAfter) {
               const retryAfterSeconds = Number.parseInt(retryAfter, 10);
-              if (!isNaN(retryAfterSeconds)) {
+              if (!Number.isNaN(retryAfterSeconds)) {
                 delay = (retryAfterSeconds + 1) * 1000; // Add 1 second buffer
               }
             }
@@ -704,11 +704,11 @@ WORLD RULES:
               {
                 attempt: retryCount,
                 maxRetries,
-                retryAfterHeader: retryAfter || 'not provided',
+                retryAfterHeader: retryAfter || "not provided",
                 delay,
                 isTestEnv,
               },
-              'FeedLLMClient'
+              "FeedLLMClient",
             );
 
             await new Promise((resolve) => setTimeout(resolve, delay));
@@ -722,21 +722,21 @@ WORLD RULES:
           (err?.status === 502 ||
             err?.status === 503 ||
             err?.status === 504 ||
-            err?.message?.includes('502') ||
-            err?.message?.includes('503') ||
-            err?.message?.includes('service_unavailable'))
+            err?.message?.includes("502") ||
+            err?.message?.includes("503") ||
+            err?.message?.includes("service_unavailable"))
         ) {
           retryCount++;
           const delay = initialDelayMs * 2 ** (retryCount - 1);
 
           logger.warn(
-            `LLM Service Error (${err.status || 'unknown'}), retrying in ${delay}ms...`,
+            `LLM Service Error (${err.status || "unknown"}), retrying in ${delay}ms...`,
             {
               attempt: retryCount,
               maxRetries,
               error: err.message,
             },
-            'FeedLLMClient'
+            "FeedLLMClient",
           );
 
           await new Promise((resolve) => setTimeout(resolve, delay));
@@ -745,11 +745,11 @@ WORLD RULES:
 
         // Handle timeout errors with exponential backoff
         const isTimeoutError =
-          err?.message?.includes('timed out') ||
-          err?.message?.includes('timeout') ||
-          err?.message?.includes('ETIMEDOUT') ||
-          err?.message?.includes('ECONNRESET') ||
-          err?.message?.includes('APIConnectionTimeoutError');
+          err?.message?.includes("timed out") ||
+          err?.message?.includes("timeout") ||
+          err?.message?.includes("ETIMEDOUT") ||
+          err?.message?.includes("ECONNRESET") ||
+          err?.message?.includes("APIConnectionTimeoutError");
 
         if (isTimeoutError && retryCount < maxRetries) {
           retryCount++;
@@ -763,7 +763,7 @@ WORLD RULES:
               maxRetries,
               error: err.message,
             },
-            'FeedLLMClient'
+            "FeedLLMClient",
           );
 
           await new Promise((resolve) => setTimeout(resolve, delay));
@@ -772,7 +772,7 @@ WORLD RULES:
 
         // Report failed call via callback (if we have basic info)
         if (globalTokenUsageCallback) {
-          const errMessage = err?.message || 'Unknown error';
+          const errMessage = err?.message || "Unknown error";
           globalTokenUsageCallback({
             provider: this.provider,
             model,
@@ -797,7 +797,7 @@ WORLD RULES:
    */
   private async logParsedOutput(
     data: JsonValue,
-    promptType: string
+    promptType: string,
   ): Promise<void> {
     if (!isPromptLoggingEnabled()) {
       return;
@@ -806,12 +806,12 @@ WORLD RULES:
     // Parsed output is logged via the main flow
     // This provides additional structured data for monitoring
     logger.debug(
-      'Parsed LLM output',
+      "Parsed LLM output",
       {
         promptType,
-        dataType: Array.isArray(data) ? 'array' : typeof data,
+        dataType: Array.isArray(data) ? "array" : typeof data,
       },
-      'FeedLLMClient'
+      "FeedLLMClient",
     );
   }
 
@@ -829,14 +829,14 @@ WORLD RULES:
       temperature?: number;
       maxTokens?: number;
       format?: string;
-    }
+    },
   ): Promise<void> {
     if (!isPromptLoggingEnabled()) {
       return;
     }
 
     await logPrompt({
-      promptType: metadata.promptType || 'unknown',
+      promptType: metadata.promptType || "unknown",
       promptTemplate: metadata.promptTemplate,
       input,
       output,
@@ -855,7 +855,7 @@ WORLD RULES:
    */
   private validateSchema(
     data: Record<string, JsonValue>,
-    schema: JSONSchema
+    schema: JSONSchema,
   ): boolean {
     // Basic validation - check required fields exist
     if (schema.required) {
@@ -864,7 +864,7 @@ WORLD RULES:
           logger.error(
             `Missing required field: ${field}`,
             undefined,
-            'FeedLLMClient'
+            "FeedLLMClient",
           );
           return false;
         }
@@ -878,18 +878,18 @@ WORLD RULES:
    */
   private getDefaultModel(): string {
     switch (this.provider) {
-      case 'groq':
+      case "groq":
         return resolveGroqDefaultModel();
-      case 'claude':
-        return 'claude-sonnet-4-5';
-      case 'openai':
-        return 'gpt-5-nano';
-      case 'elizacloud':
+      case "claude":
+        return "claude-sonnet-4-5";
+      case "openai":
+        return "gpt-5-nano";
+      case "elizacloud":
         // ElizaCloud uses provider-prefixed model IDs (openai/*, anthropic/*, etc.)
         // Allow override via env; default to gpt-5-nano with reasoning_effort=minimal.
-        return process.env.ELIZACLOUD_DEFAULT_MODEL || 'openai/gpt-5-nano';
+        return process.env.ELIZACLOUD_DEFAULT_MODEL || "openai/gpt-5-nano";
       default:
-        return 'gpt-5-nano';
+        return "gpt-5-nano";
     }
   }
 

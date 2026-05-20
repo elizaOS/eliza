@@ -17,7 +17,7 @@ import {
   requireAdmin,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
+} from "@feed/api";
 import {
   and,
   chatParticipants,
@@ -28,17 +28,17 @@ import {
   groups,
   inArray,
   sql,
-} from '@feed/db';
-import { generateSnowflakeId, logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { z } from 'zod';
+} from "@feed/db";
+import { generateSnowflakeId, logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { z } from "zod";
 
 const CreateNftCollectionGroupSchema = z.object({
   name: z.string().min(1).max(100),
   description: z.string().max(500).optional(),
   contractAddress: z
     .string()
-    .regex(/^0x[a-fA-F0-9]{40}$/, 'Invalid contract address format')
+    .regex(/^0x[a-fA-F0-9]{40}$/, "Invalid contract address format")
     .transform((addr) => addr.toLowerCase()),
   chainId: z.number().int().positive(),
   tokenId: z.number().int().min(0).nullable().optional(),
@@ -54,8 +54,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   logAdminView({
     adminId: admin.userId,
     ipAddress: getClientIp(request.headers) ?? undefined,
-    resourceType: 'nft-groups',
-    metadata: { action: 'list_nft_gated_groups' },
+    resourceType: "nft-groups",
+    metadata: { action: "list_nft_gated_groups" },
   });
 
   const chatsList = await db
@@ -87,8 +87,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       .where(
         and(
           inArray(chatParticipants.chatId, chatIds),
-          eq(chatParticipants.isActive, true)
-        )
+          eq(chatParticipants.isActive, true),
+        ),
       )
       .groupBy(chatParticipants.chatId);
 
@@ -121,9 +121,9 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   logAdminView({
     adminId: admin.userId,
     ipAddress: getClientIp(request.headers) ?? undefined,
-    resourceType: 'nft-groups',
+    resourceType: "nft-groups",
     metadata: {
-      action: 'create_nft_gated_group',
+      action: "create_nft_gated_group",
       contractAddress: data.contractAddress,
       chainId: data.chainId,
     },
@@ -145,7 +145,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       id: groupId,
       name: data.name,
       description: data.description ?? null,
-      type: 'user',
+      type: "user",
       ownerId: admin.userId,
       createdById: admin.userId,
       createdAt: now,
@@ -174,7 +174,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         id: memberId,
         groupId,
         userId: admin.userId,
-        role: 'owner',
+        role: "owner",
         addedBy: admin.userId,
         joinedAt: now,
         isActive: true,
@@ -192,7 +192,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   });
 
   logger.info(
-    'NFT-gated group created by admin',
+    "NFT-gated group created by admin",
     {
       adminId: admin.userId,
       groupId: result.groupId,
@@ -200,7 +200,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       contractAddress: data.contractAddress,
       chainId: data.chainId,
     },
-    'POST /api/admin/groups/nft-collection'
+    "POST /api/admin/groups/nft-collection",
   );
 
   return successResponse(
@@ -215,6 +215,6 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         chainId: data.chainId,
       },
     },
-    201
+    201,
   );
 });

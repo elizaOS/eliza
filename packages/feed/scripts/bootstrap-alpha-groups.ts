@@ -14,25 +14,25 @@
  *   --npc=<id>   Only bootstrap a specific NPC (for testing)
  */
 
-import { StaticDataRegistry, TieredGroupService } from '@feed/engine';
-import { logger } from '@feed/shared';
+import { StaticDataRegistry, TieredGroupService } from "@feed/engine";
+import { logger } from "@feed/shared";
 
 async function main() {
   const args = process.argv.slice(2);
-  const dryRun = args.includes('--dry-run');
-  const specificNpc = args.find((a) => a.startsWith('--npc='))?.split('=')[1];
+  const dryRun = args.includes("--dry-run");
+  const specificNpc = args.find((a) => a.startsWith("--npc="))?.split("=")[1];
 
   logger.info(
-    'Alpha Group Tier Bootstrap started',
+    "Alpha Group Tier Bootstrap started",
     { dryRun, specificNpc },
-    'bootstrap-alpha-groups'
+    "bootstrap-alpha-groups",
   );
 
   if (dryRun) {
     logger.info(
-      'DRY RUN MODE - No changes will be made',
+      "DRY RUN MODE - No changes will be made",
       {},
-      'bootstrap-alpha-groups'
+      "bootstrap-alpha-groups",
     );
   }
 
@@ -43,7 +43,7 @@ async function main() {
     : allActors.filter((a) => !a.isTest); // Exclude test actors
 
   if (npcs.length === 0) {
-    logger.error('No NPCs found', { specificNpc }, 'bootstrap-alpha-groups');
+    logger.error("No NPCs found", { specificNpc }, "bootstrap-alpha-groups");
     process.exit(1);
   }
 
@@ -54,7 +54,7 @@ async function main() {
   const totalCapacity = tier1Capacity + tier2Capacity + tier3Capacity;
 
   logger.info(
-    'NPCs to process',
+    "NPCs to process",
     {
       npcCount: npcs.length,
       expectedGroups: npcs.length * 3,
@@ -65,14 +65,14 @@ async function main() {
         total: totalCapacity,
       },
     },
-    'bootstrap-alpha-groups'
+    "bootstrap-alpha-groups",
   );
 
   if (dryRun) {
     logger.info(
-      'Dry run complete',
+      "Dry run complete",
       { npcCount: npcs.length },
-      'bootstrap-alpha-groups'
+      "bootstrap-alpha-groups",
     );
     process.exit(0);
   }
@@ -93,45 +93,45 @@ async function main() {
 
       if (newTiers.length > 0) {
         logger.info(
-          'Created tiers for NPC',
+          "Created tiers for NPC",
           {
             ...progress,
             npcId: npc.id,
             npcName: npc.name,
             tiersCreated: newTiers.length,
           },
-          'bootstrap-alpha-groups'
+          "bootstrap-alpha-groups",
         );
         created += newTiers.length;
       } else {
         logger.debug(
-          'All tiers already exist for NPC',
+          "All tiers already exist for NPC",
           { ...progress, npcId: npc.id, npcName: npc.name },
-          'bootstrap-alpha-groups'
+          "bootstrap-alpha-groups",
         );
         skipped += 3;
       }
     } catch (error) {
       logger.error(
-        'Failed to create tiers for NPC',
+        "Failed to create tiers for NPC",
         { ...progress, npcId: npc.id, npcName: npc.name, error: String(error) },
-        'bootstrap-alpha-groups'
+        "bootstrap-alpha-groups",
       );
       errors++;
     }
   }
 
   logger.info(
-    'Bootstrap complete',
+    "Bootstrap complete",
     { created, skipped, errors },
-    'bootstrap-alpha-groups'
+    "bootstrap-alpha-groups",
   );
 
   // Verify final state
   const analytics = await TieredGroupService.getGlobalAnalytics();
 
   logger.info(
-    'Final state verification',
+    "Final state verification",
     {
       totalNpcs: analytics.totalNpcs,
       totalGroups: analytics.totalGroups,
@@ -145,18 +145,18 @@ async function main() {
         fillRate: `${(tier.fillRate * 100).toFixed(1)}%`,
       })),
     },
-    'bootstrap-alpha-groups'
+    "bootstrap-alpha-groups",
   );
 
-  logger.info('Done!', {}, 'bootstrap-alpha-groups');
+  logger.info("Done!", {}, "bootstrap-alpha-groups");
   process.exit(0);
 }
 
 main().catch((error) => {
   logger.error(
-    'Fatal error in bootstrap script',
+    "Fatal error in bootstrap script",
     { error: String(error) },
-    'bootstrap-alpha-groups'
+    "bootstrap-alpha-groups",
   );
   process.exit(1);
 });

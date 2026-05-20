@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { Calendar, Clock, X } from 'lucide-react';
-import Image from 'next/image';
-import { useEffect } from 'react';
+import { Calendar, Clock, X } from "lucide-react";
+import Image from "next/image";
+import { useEffect } from "react";
 
 /**
  * Upcoming event detail modal component for displaying full event information.
@@ -60,30 +60,30 @@ export function UpcomingEventsDetailModal({
   useEffect(() => {
     if (!isOpen) {
       // Ensure body overflow is reset when modal is closed
-      document.body.style.overflow = '';
+      document.body.style.overflow = "";
       return;
     }
 
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === "Escape") {
         onClose();
       }
     };
 
-    document.addEventListener('keydown', handleEscape);
+    document.addEventListener("keydown", handleEscape);
     // Prevent body scroll when modal is open
-    document.body.style.overflow = 'hidden';
+    document.body.style.overflow = "hidden";
 
     return () => {
-      document.removeEventListener('keydown', handleEscape);
-      document.body.style.overflow = '';
+      document.removeEventListener("keydown", handleEscape);
+      document.body.style.overflow = "";
     };
   }, [isOpen, onClose]);
 
   // Cleanup on unmount (for HMR)
   useEffect(() => {
     return () => {
-      document.body.style.overflow = '';
+      document.body.style.overflow = "";
     };
   }, []);
 
@@ -92,13 +92,13 @@ export function UpcomingEventsDetailModal({
   const formatFullDate = (date: string, time?: string) => {
     // Try to parse if it's a full date string
     const dateObj = new Date(date);
-    if (!isNaN(dateObj.getTime())) {
-      return dateObj.toLocaleString('en-US', {
-        month: 'long',
-        day: 'numeric',
-        year: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
+    if (!Number.isNaN(dateObj.getTime())) {
+      return dateObj.toLocaleString("en-US", {
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
         hour12: true,
       });
     }
@@ -196,7 +196,7 @@ export function UpcomingEventsDetailModal({
                     <p className="text-foreground text-sm">
                       <span className="font-semibold text-gray-400">
                         Related Question:
-                      </span>{' '}
+                      </span>{" "}
                       #{event.relatedQuestion}
                     </p>
                   </div>
@@ -207,7 +207,7 @@ export function UpcomingEventsDetailModal({
                     <p className="text-foreground text-sm">
                       <span className="font-semibold text-gray-400">
                         Source:
-                      </span>{' '}
+                      </span>{" "}
                       {event.source}
                     </p>
                   </div>

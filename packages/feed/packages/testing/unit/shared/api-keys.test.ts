@@ -3,22 +3,22 @@
  * Tests for API key generation and verification
  */
 
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it } from "bun:test";
 import {
   generateApiKey,
   generateTestApiKey,
   hashApiKey,
   verifyApiKey,
-} from '@feed/api';
+} from "@feed/api";
 
-describe('API Key Utilities', () => {
-  describe('generateApiKey', () => {
-    it('should generate a key with correct prefix', () => {
+describe("API Key Utilities", () => {
+  describe("generateApiKey", () => {
+    it("should generate a key with correct prefix", () => {
       const key = generateApiKey();
-      expect(key.startsWith('bab_live_')).toBe(true);
+      expect(key.startsWith("bab_live_")).toBe(true);
     });
 
-    it('should generate unique keys', () => {
+    it("should generate unique keys", () => {
       const keys = [
         generateApiKey(),
         generateApiKey(),
@@ -31,7 +31,7 @@ describe('API Key Utilities', () => {
       expect(uniqueKeys.size).toBe(keys.length);
     });
 
-    it('should generate keys of consistent length', () => {
+    it("should generate keys of consistent length", () => {
       const key1 = generateApiKey();
       const key2 = generateApiKey();
 
@@ -40,20 +40,20 @@ describe('API Key Utilities', () => {
       expect(key2.length).toBe(73);
     });
 
-    it('should only contain valid characters', () => {
+    it("should only contain valid characters", () => {
       const key = generateApiKey();
-      const suffix = key.replace('bab_live_', '');
+      const suffix = key.replace("bab_live_", "");
       expect(/^[a-f0-9]+$/.test(suffix)).toBe(true);
     });
   });
 
-  describe('generateTestApiKey', () => {
-    it('should generate a key with test prefix', () => {
+  describe("generateTestApiKey", () => {
+    it("should generate a key with test prefix", () => {
       const key = generateTestApiKey();
-      expect(key.startsWith('bab_test_')).toBe(true);
+      expect(key.startsWith("bab_test_")).toBe(true);
     });
 
-    it('should generate unique test keys', () => {
+    it("should generate unique test keys", () => {
       const keys = [
         generateTestApiKey(),
         generateTestApiKey(),
@@ -65,8 +65,8 @@ describe('API Key Utilities', () => {
     });
   });
 
-  describe('hashApiKey', () => {
-    it('should produce consistent hashes for same input', () => {
+  describe("hashApiKey", () => {
+    it("should produce consistent hashes for same input", () => {
       const key = generateApiKey();
       const hash1 = hashApiKey(key);
       const hash2 = hashApiKey(key);
@@ -74,7 +74,7 @@ describe('API Key Utilities', () => {
       expect(hash1).toBe(hash2);
     });
 
-    it('should produce different hashes for different inputs', () => {
+    it("should produce different hashes for different inputs", () => {
       const key1 = generateApiKey();
       const key2 = generateApiKey();
 
@@ -84,7 +84,7 @@ describe('API Key Utilities', () => {
       expect(hash1).not.toBe(hash2);
     });
 
-    it('should produce 64-character hex hash', () => {
+    it("should produce 64-character hex hash", () => {
       const key = generateApiKey();
       const hash = hashApiKey(key);
 
@@ -93,15 +93,15 @@ describe('API Key Utilities', () => {
     });
   });
 
-  describe('verifyApiKey', () => {
-    it('should verify correct API key against hash', () => {
+  describe("verifyApiKey", () => {
+    it("should verify correct API key against hash", () => {
       const key = generateApiKey();
       const hash = hashApiKey(key);
 
       expect(verifyApiKey(key, hash)).toBe(true);
     });
 
-    it('should reject incorrect API key', () => {
+    it("should reject incorrect API key", () => {
       const key1 = generateApiKey();
       const key2 = generateApiKey();
       const hash1 = hashApiKey(key1);
@@ -109,10 +109,10 @@ describe('API Key Utilities', () => {
       expect(verifyApiKey(key2, hash1)).toBe(false);
     });
 
-    it('should reject modified API key', () => {
+    it("should reject modified API key", () => {
       const key = generateApiKey();
       const hash = hashApiKey(key);
-      const modifiedKey = key + 'x';
+      const modifiedKey = `${key}x`;
 
       expect(verifyApiKey(modifiedKey, hash)).toBe(false);
     });

@@ -24,18 +24,18 @@
  * @see https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app
  */
 
-import { withErrorHandling } from '@feed/api';
-import { logger } from '@feed/shared';
-import { createHmac, timingSafeEqual } from 'crypto';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { z } from 'zod';
+import { createHmac, timingSafeEqual } from "node:crypto";
+import { withErrorHandling } from "@feed/api";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { z } from "zod";
 
 /** Maximum age of initData before it's considered stale (5 minutes). */
 const MAX_AUTH_AGE_SECONDS = 300;
 
 const RequestSchema = z.object({
-  initData: z.string().min(1, 'initData is required'),
+  initData: z.string().min(1, "initData is required"),
 });
 
 interface TelegramUser {
@@ -65,17 +65,17 @@ interface ValidatedInitData {
  */
 function validateTelegramInitData(
   initDataRaw: string,
-  botToken: string
+  botToken: string,
 ): { valid: true; data: ValidatedInitData } | { valid: false; reason: string } {
   // Parse the URL-encoded initData string
   const params = new URLSearchParams(initDataRaw);
 
   // Extract and remove the hash
-  const hash = params.get('hash');
+  const hash = params.get("hash");
   if (!hash) {
-    return { valid: false, reason: 'missing hash parameter' };
+    return { valid: false, reason: "missing hash parameter" };
   }
-  params.delete('hash');
+  params.delete("hash");
 
   // Sort remaining parameters alphabetically and construct the data check string.
   // Each entry is formatted as `key=value` and joined with newlines.
@@ -84,63 +84,63 @@ function validateTelegramInitData(
     entries.push(`${key}=${value}`);
   }
   entries.sort();
-  const dataCheckString = entries.join('\n');
+  const dataCheckString = entries.join("\n");
 
   // Step 1: Derive the secret key from the bot token.
   // secret_key = HMAC-SHA-256("WebAppData", bot_token)
-  const secretKey = createHmac('sha256', 'WebAppData')
+  const secretKey = createHmac("sha256", "WebAppData")
     .update(botToken)
     .digest();
 
   // Step 2: Compute the expected hash.
   // data_hash = HMAC-SHA-256(secret_key, data_check_string)
-  const computedHash = createHmac('sha256', secretKey)
+  const computedHash = createHmac("sha256", secretKey)
     .update(dataCheckString)
-    .digest('hex');
+    .digest("hex");
 
   // Step 3: Compare using timing-safe comparison.
-  const hashBuffer = Buffer.from(hash, 'hex');
-  const computedBuffer = Buffer.from(computedHash, 'hex');
+  const hashBuffer = Buffer.from(hash, "hex");
+  const computedBuffer = Buffer.from(computedHash, "hex");
 
   if (hashBuffer.length !== computedBuffer.length) {
-    return { valid: false, reason: 'hash length mismatch' };
+    return { valid: false, reason: "hash length mismatch" };
   }
 
   if (!timingSafeEqual(hashBuffer, computedBuffer)) {
-    return { valid: false, reason: 'hash verification failed' };
+    return { valid: false, reason: "hash verification failed" };
   }
 
   // Step 4: Validate auth_date freshness to prevent replay attacks.
-  const authDateStr = params.get('auth_date');
+  const authDateStr = params.get("auth_date");
   if (!authDateStr) {
-    return { valid: false, reason: 'missing auth_date' };
+    return { valid: false, reason: "missing auth_date" };
   }
 
   const authDate = Number.parseInt(authDateStr, 10);
   if (Number.isNaN(authDate)) {
-    return { valid: false, reason: 'invalid auth_date' };
+    return { valid: false, reason: "invalid auth_date" };
   }
 
   const now = Math.floor(Date.now() / 1000);
   if (now - authDate > MAX_AUTH_AGE_SECONDS) {
-    return { valid: false, reason: 'auth_date expired' };
+    return { valid: false, reason: "auth_date expired" };
   }
 
   // Step 5: Parse user data from the validated initData.
-  const userStr = params.get('user');
+  const userStr = params.get("user");
   if (!userStr) {
-    return { valid: false, reason: 'missing user data' };
+    return { valid: false, reason: "missing user data" };
   }
 
   let user: TelegramUser;
   try {
     user = JSON.parse(userStr) as TelegramUser;
   } catch {
-    return { valid: false, reason: 'malformed user JSON' };
+    return { valid: false, reason: "malformed user JSON" };
   }
 
   if (!user.id || !user.first_name) {
-    return { valid: false, reason: 'incomplete user data' };
+    return { valid: false, reason: "incomplete user data" };
   }
 
   return {
@@ -148,9 +148,9 @@ function validateTelegramInitData(
     data: {
       user,
       authDate,
-      queryId: params.get('query_id') ?? undefined,
-      chatType: params.get('chat_type') ?? undefined,
-      chatInstance: params.get('chat_instance') ?? undefined,
+      queryId: params.get("query_id") ?? undefined,
+      chatType: params.get("chat_type") ?? undefined,
+      chatInstance: params.get("chat_instance") ?? undefined,
     },
   };
 }
@@ -163,13 +163,13 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     // Log a warning and return a clear error — this is a deployment
     // configuration issue, not a runtime error.
     logger.warn(
-      'Telegram initData validation skipped: TELEGRAM_BOT_TOKEN not configured',
+      "Telegram initData validation skipped: TELEGRAM_BOT_TOKEN not configured",
       {},
-      'TelegramMiniApp'
+      "TelegramMiniApp",
     );
     return NextResponse.json(
-      { error: 'Telegram validation not configured' },
-      { status: 501 }
+      { error: "Telegram validation not configured" },
+      { status: 501 },
     );
   }
 
@@ -177,14 +177,14 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
   const parsed = RequestSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
-      { error: 'Missing or invalid initData' },
-      { status: 400 }
+      { error: "Missing or invalid initData" },
+      { status: 400 },
     );
   }
 
@@ -194,20 +194,20 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   if (!result.valid) {
     logger.warn(
-      'Telegram initData validation failed',
+      "Telegram initData validation failed",
       { reason: result.reason },
-      'TelegramMiniApp'
+      "TelegramMiniApp",
     );
     return NextResponse.json(
-      { error: 'Invalid initData', reason: result.reason },
-      { status: 403 }
+      { error: "Invalid initData", reason: result.reason },
+      { status: 403 },
     );
   }
 
   logger.info(
-    'Telegram initData validated successfully',
+    "Telegram initData validated successfully",
     { userId: result.data.user.id, username: result.data.user.username },
-    'TelegramMiniApp'
+    "TelegramMiniApp",
   );
 
   return NextResponse.json({

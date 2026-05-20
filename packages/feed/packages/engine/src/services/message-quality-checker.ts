@@ -6,14 +6,7 @@
  * chat invite chances, and risk of being booted from group chats.
  */
 
-import {
-  comments,
-  db,
-  desc,
-  eq,
-  messages,
-  userInteractions,
-} from '@feed/db';
+import { comments, db, desc, eq, messages, userInteractions } from "@feed/db";
 
 /**
  * Message quality check result
@@ -46,8 +39,8 @@ export class MessageQualityChecker {
   static async checkQuality(
     message: string,
     userId: string,
-    contextType: 'reply' | 'groupchat' | 'dm',
-    contextId: string
+    contextType: "reply" | "groupchat" | "dm",
+    contextId: string,
   ): Promise<QualityCheckResult> {
     const errors: string[] = [];
     const warnings: string[] = [];
@@ -57,7 +50,7 @@ export class MessageQualityChecker {
       message,
       contextType,
       errors,
-      warnings
+      warnings,
     );
 
     // 2. Check for duplicates
@@ -67,7 +60,7 @@ export class MessageQualityChecker {
       contextType,
       contextId,
       errors,
-      warnings
+      warnings,
     );
 
     // 3. Check content quality
@@ -75,7 +68,7 @@ export class MessageQualityChecker {
       message,
       contextType,
       errors,
-      warnings
+      warnings,
     );
 
     // Calculate overall score (weighted average)
@@ -100,36 +93,36 @@ export class MessageQualityChecker {
    */
   private static checkLength(
     message: string,
-    contextType: 'reply' | 'groupchat' | 'dm',
+    contextType: "reply" | "groupchat" | "dm",
     errors: string[],
-    warnings: string[]
+    warnings: string[],
   ): number {
     const length = message.trim().length;
 
     if (length < MessageQualityChecker.MIN_LENGTH) {
-      errors.push('Message cannot be empty');
+      errors.push("Message cannot be empty");
       return 0;
     }
 
     if (length > MessageQualityChecker.MAX_LENGTH) {
       errors.push(
-        `Message too long (max ${MessageQualityChecker.MAX_LENGTH} characters)`
+        `Message too long (max ${MessageQualityChecker.MAX_LENGTH} characters)`,
       );
       return 0;
     }
 
     // DMs: allow any non-empty length without soft warnings
-    if (contextType === 'dm') {
+    if (contextType === "dm") {
       return 1.0;
     }
 
     if (length < MessageQualityChecker.IDEAL_MIN_LENGTH) {
-      warnings.push('Message is short (still allowed)');
+      warnings.push("Message is short (still allowed)");
       return 0.6;
     }
 
     if (length > MessageQualityChecker.IDEAL_MAX_LENGTH) {
-      warnings.push('Message is a bit long for best quality score');
+      warnings.push("Message is a bit long for best quality score");
       return 0.8;
     }
 
@@ -143,10 +136,10 @@ export class MessageQualityChecker {
   private static async checkUniqueness(
     message: string,
     userId: string,
-    contextType: 'reply' | 'groupchat' | 'dm',
+    contextType: "reply" | "groupchat" | "dm",
     contextId: string,
     errors: string[],
-    warnings: string[]
+    warnings: string[],
   ): Promise<number> {
     // Skip uniqueness check for game chats (empty contextId)
     if (!contextId) {
@@ -156,7 +149,7 @@ export class MessageQualityChecker {
     // Get recent messages from this user
     let recentMessages: string[] = [];
 
-    if (contextType === 'reply') {
+    if (contextType === "reply") {
       // Check comments from this user on any post
       const recentComments = await db
         .select({ content: comments.content })
@@ -165,7 +158,7 @@ export class MessageQualityChecker {
         .orderBy(desc(comments.createdAt))
         .limit(20);
       recentMessages = recentComments.map((c) => c.content);
-    } else if (contextType === 'dm' || contextType === 'groupchat') {
+    } else if (contextType === "dm" || contextType === "groupchat") {
       // Check messages from this user in this chat
       const recentChatMessages = await db
         .select({ content: messages.content })
@@ -183,18 +176,18 @@ export class MessageQualityChecker {
     for (const recentMessage of recentMessages) {
       const similarity = MessageQualityChecker.calculateSimilarity(
         normalizedMessage,
-        MessageQualityChecker.normalizeText(recentMessage)
+        MessageQualityChecker.normalizeText(recentMessage),
       );
       highestSimilarity = Math.max(highestSimilarity, similarity);
 
       if (similarity >= MessageQualityChecker.DUPLICATE_THRESHOLD) {
-        errors.push('Message is too similar to a recent message you posted');
+        errors.push("Message is too similar to a recent message you posted");
         return 0;
       }
     }
 
     if (highestSimilarity > 0.7) {
-      warnings.push('Message is somewhat similar to a recent message');
+      warnings.push("Message is somewhat similar to a recent message");
       return 0.7;
     }
 
@@ -206,22 +199,22 @@ export class MessageQualityChecker {
    */
   private static checkContent(
     message: string,
-    contextType: 'reply' | 'groupchat' | 'dm',
+    contextType: "reply" | "groupchat" | "dm",
     errors: string[],
-    warnings: string[]
+    warnings: string[],
   ): number {
     const trimmed = message.trim();
 
     // Check for all caps (spam indicator)
     const capsRatio = (trimmed.match(/[A-Z]/g) || []).length / trimmed.length;
     if (capsRatio > 0.7 && trimmed.length > 20) {
-      warnings.push('Excessive caps usage may lower quality score');
+      warnings.push("Excessive caps usage may lower quality score");
       return 0.6;
     }
 
     // Check for repeated characters (spammy)
     if (/(.)\1{4,}/.test(trimmed)) {
-      warnings.push('Repeated characters detected');
+      warnings.push("Repeated characters detected");
       return 0.7;
     }
 
@@ -229,15 +222,15 @@ export class MessageQualityChecker {
     const punctuationRatio =
       (trimmed.match(/[!?.,;:]/g) || []).length / trimmed.length;
     if (punctuationRatio > 0.3) {
-      warnings.push('Excessive punctuation usage');
+      warnings.push("Excessive punctuation usage");
       return 0.7;
     }
 
     // Skip word-count softness for DMs
-    if (contextType !== 'dm') {
+    if (contextType !== "dm") {
       const words = trimmed.split(/\s+/).filter((w) => w.length > 0);
       if (words.length < 3) {
-        warnings.push('Message has very few words (still allowed)');
+        warnings.push("Message has very few words (still allowed)");
         return 0.6;
       }
     }
@@ -245,7 +238,7 @@ export class MessageQualityChecker {
     // Check for URL spam (multiple URLs)
     const urlCount = (trimmed.match(/https?:\/\//gi) || []).length;
     if (urlCount > 2) {
-      errors.push('Too many URLs in message');
+      errors.push("Too many URLs in message");
       return 0;
     }
 
@@ -258,8 +251,8 @@ export class MessageQualityChecker {
   private static normalizeText(text: string): string {
     return text
       .toLowerCase()
-      .replace(/[^\w\s]/g, '')
-      .replace(/\s+/g, ' ')
+      .replace(/[^\w\s]/g, "")
+      .replace(/\s+/g, " ")
       .trim();
   }
 
@@ -298,10 +291,10 @@ export class MessageQualityChecker {
       interactions.reduce((sum, i) => sum + i.qualityScore, 0) /
       interactions.length;
     const highQualityCount = interactions.filter(
-      (i) => i.qualityScore >= 0.8
+      (i) => i.qualityScore >= 0.8,
     ).length;
     const lowQualityCount = interactions.filter(
-      (i) => i.qualityScore < 0.5
+      (i) => i.qualityScore < 0.5,
     ).length;
 
     return {

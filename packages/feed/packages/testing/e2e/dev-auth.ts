@@ -1,15 +1,15 @@
-import { db, eq, users } from '@feed/db';
-import { generateSnowflakeId } from '@feed/shared';
-import type { Page } from '@playwright/test';
-import { createHash } from 'crypto';
+import { createHash } from "node:crypto";
+import { db, eq, users } from "@feed/db";
+import { generateSnowflakeId } from "@feed/shared";
+import type { Page } from "@playwright/test";
 
-const PLAYWRIGHT_DEV_USERNAME = 'playwright-dev-admin';
-const PLAYWRIGHT_DEV_DISPLAY_NAME = 'Playwright Dev Admin';
-const PRIVY_TOKEN_COOKIE_NAME = 'privy-token';
-const DEV_USER_ID_COOKIE_NAME = 'feed-dev-user-id';
-const DEV_ADMIN_TOKEN_COOKIE_NAME = 'feed-dev-admin-token';
-export const PLAYWRIGHT_DEV_AUTH_STORAGE_KEY = 'feed-playwright-dev-auth';
-const DEV_ADMIN_USER_ID = 'dev-admin-local';
+const PLAYWRIGHT_DEV_USERNAME = "playwright-dev-admin";
+const PLAYWRIGHT_DEV_DISPLAY_NAME = "Playwright Dev Admin";
+const PRIVY_TOKEN_COOKIE_NAME = "privy-token";
+const DEV_USER_ID_COOKIE_NAME = "feed-dev-user-id";
+const DEV_ADMIN_TOKEN_COOKIE_NAME = "feed-dev-admin-token";
+export const PLAYWRIGHT_DEV_AUTH_STORAGE_KEY = "feed-playwright-dev-auth";
+const DEV_ADMIN_USER_ID = "dev-admin-local";
 
 export interface BrowserDevAuthSession {
   userId: string;
@@ -23,9 +23,9 @@ function createPlaywrightTestPrivyToken(userId: string): string {
 }
 
 function deriveSecret(seed: string, purpose: string): string {
-  const hash = createHash('sha256')
+  const hash = createHash("sha256")
     .update(`feed-dev:${seed}:${purpose}`)
-    .digest('hex');
+    .digest("hex");
   return `dev_${purpose}_${hash.substring(0, 32)}`;
 }
 
@@ -33,14 +33,14 @@ function getLocalDevCredentials(): {
   adminUserId: string;
   devAdminToken: string;
 } | null {
-  if (process.env.NODE_ENV === 'production') {
+  if (process.env.NODE_ENV === "production") {
     return null;
   }
 
-  const seed = process.env.HOSTNAME || 'localhost';
+  const seed = process.env.HOSTNAME || "localhost";
   return {
     adminUserId: DEV_ADMIN_USER_ID,
-    devAdminToken: deriveSecret(seed, 'admin'),
+    devAdminToken: deriveSecret(seed, "admin"),
   };
 }
 
@@ -48,7 +48,7 @@ async function ensurePlaywrightDevUser(): Promise<BrowserDevAuthSession> {
   const creds = getLocalDevCredentials();
   if (!creds) {
     throw new Error(
-      'Development credentials are unavailable. Local E2E auth requires development mode.'
+      "Development credentials are unavailable. Local E2E auth requires development mode.",
     );
   }
 
@@ -68,7 +68,7 @@ async function ensurePlaywrightDevUser(): Promise<BrowserDevAuthSession> {
   const userValues = {
     username: PLAYWRIGHT_DEV_USERNAME,
     displayName,
-    bio: 'Local Playwright admin account',
+    bio: "Local Playwright admin account",
     isAdmin: true,
     profileComplete: true,
     hasUsername: true,
@@ -102,7 +102,7 @@ async function ensurePlaywrightDevUser(): Promise<BrowserDevAuthSession> {
 
 export async function installPlaywrightDevAuth(
   page: Page,
-  baseURL: string
+  baseURL: string,
 ): Promise<BrowserDevAuthSession> {
   const session = await ensurePlaywrightDevUser();
 
@@ -111,19 +111,19 @@ export async function installPlaywrightDevAuth(
       name: PRIVY_TOKEN_COOKIE_NAME,
       value: session.accessToken,
       url: baseURL,
-      sameSite: 'Lax',
+      sameSite: "Lax",
     },
     {
       name: DEV_USER_ID_COOKIE_NAME,
       value: session.userId,
       url: baseURL,
-      sameSite: 'Lax',
+      sameSite: "Lax",
     },
     {
       name: DEV_ADMIN_TOKEN_COOKIE_NAME,
-      value: session.adminToken ?? '',
+      value: session.adminToken ?? "",
       url: baseURL,
-      sameSite: 'Lax',
+      sameSite: "Lax",
     },
   ]);
 
@@ -137,10 +137,10 @@ export async function installPlaywrightDevAuth(
     {
       storageKey: PLAYWRIGHT_DEV_AUTH_STORAGE_KEY,
       authSession: session,
-    }
+    },
   );
 
-  await page.goto(`${baseURL}/?dev=true`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`${baseURL}/?dev=true`, { waitUntil: "domcontentloaded" });
   await page.evaluate(
     ({ storageKey, authSession }) => {
       window.localStorage.setItem(storageKey, JSON.stringify(authSession));
@@ -151,7 +151,7 @@ export async function installPlaywrightDevAuth(
     {
       storageKey: PLAYWRIGHT_DEV_AUTH_STORAGE_KEY,
       authSession: session,
-    }
+    },
   );
 
   return session;

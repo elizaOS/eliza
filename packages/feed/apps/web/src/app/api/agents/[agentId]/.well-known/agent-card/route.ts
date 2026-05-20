@@ -52,14 +52,14 @@
  * ```
  */
 
-import { generateAgentCardSync } from '@feed/a2a';
-import { getAgentConfig } from '@feed/agents';
-import { withErrorHandling } from '@feed/api';
-import { agentRegistries, db, eq } from '@feed/db';
-import { toISOOrNull } from '@feed/shared';
-import { NextResponse } from 'next/server';
+import { generateAgentCardSync } from "@feed/a2a";
+import { getAgentConfig } from "@feed/agents";
+import { withErrorHandling } from "@feed/api";
+import { agentRegistries, db, eq } from "@feed/db";
+import { toISOOrNull } from "@feed/shared";
+import { NextResponse } from "next/server";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 type AgentCard = ReturnType<typeof generateAgentCardSync>;
 
@@ -88,7 +88,7 @@ type ExtendedAgentCard = AgentCard & Agent0Extensions;
 
 export const GET = withErrorHandling(async function GET(
   _req: Request,
-  { params }: { params: Promise<{ agentId: string }> }
+  { params }: { params: Promise<{ agentId: string }> },
 ) {
   const { agentId } = await params;
 
@@ -103,12 +103,12 @@ export const GET = withErrorHandling(async function GET(
     },
   });
 
-  if (!agent || !agent.isAgent) {
+  if (!agent?.isAgent) {
     return NextResponse.json(
       {
-        error: 'Agent not found',
+        error: "Agent not found",
       },
-      { status: 404 }
+      { status: 404 },
     );
   }
 
@@ -161,8 +161,8 @@ export const GET = withErrorHandling(async function GET(
 
   return NextResponse.json(responseCard, {
     headers: {
-      'Content-Type': 'application/json',
-      'Cache-Control': 'public, max-age=3600', // Cache for 1 hour
+      "Content-Type": "application/json",
+      "Cache-Control": "public, max-age=3600", // Cache for 1 hour
     },
   });
 });

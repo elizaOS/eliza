@@ -1,27 +1,27 @@
-import { beforeEach, describe, expect, it, mock } from 'bun:test';
+import { beforeEach, describe, expect, it, mock } from "bun:test";
 
 const whitelistTable = {
-  id: 'id',
-  userId: 'userId',
-  source: 'source',
-  revokedAt: 'revokedAt',
+  id: "id",
+  userId: "userId",
+  source: "source",
+  revokedAt: "revokedAt",
 };
 const whitelistConfigTable = {
-  id: 'id',
-  leaderboardRankThreshold: 'leaderboardRankThreshold',
+  id: "id",
+  leaderboardRankThreshold: "leaderboardRankThreshold",
 };
-const nftSnapshotTable = { userId: 'userId' };
+const nftSnapshotTable = { userId: "userId" };
 const usersTable = {
-  id: 'id',
-  reputationPoints: 'reputationPoints',
-  invitePoints: 'invitePoints',
-  createdAt: 'createdAt',
-  isActor: 'isActor',
-  isAgent: 'isAgent',
+  id: "id",
+  reputationPoints: "reputationPoints",
+  invitePoints: "invitePoints",
+  createdAt: "createdAt",
+  isActor: "isActor",
+  isAgent: "isAgent",
 };
 
 let mockWhitelistEntry: {
-  source: 'leaderboard' | 'admin_manual' | 'snapshot_first_100';
+  source: "leaderboard" | "admin_manual" | "snapshot_first_100";
   revokedAt: Date | null;
 } | null = null;
 let mockWhitelistConfigRow: { leaderboardRankThreshold: number | null } | null =
@@ -54,7 +54,7 @@ const mockDbSelect = mock((fields?: unknown) => ({
         where: () => ({
           limit: () =>
             Promise.resolve(
-              mockWhitelistConfigRow ? [mockWhitelistConfigRow] : []
+              mockWhitelistConfigRow ? [mockWhitelistConfigRow] : [],
             ),
         }),
       };
@@ -62,9 +62,9 @@ const mockDbSelect = mock((fields?: unknown) => ({
 
     if (table === usersTable) {
       const isCountQuery =
-        typeof fields === 'object' &&
+        typeof fields === "object" &&
         fields !== null &&
-        'count' in (fields as Record<string, unknown>);
+        "count" in (fields as Record<string, unknown>);
 
       if (isCountQuery) {
         return {
@@ -102,14 +102,14 @@ const mockDbInsert = mock(() => ({
   }),
 }));
 
-mock.module('@feed/db', () => ({
+mock.module("@feed/db", () => ({
   db: {
     select: mockDbSelect,
     insert: mockDbInsert,
   },
   and: (...args: unknown[]) => args,
   asc: (col: unknown) => col,
-  count: () => 'count',
+  count: () => "count",
   desc: (col: unknown) => col,
   eq: (a: unknown, b: unknown) => [a, b],
   gt: (a: unknown, b: unknown) => [a, b],
@@ -127,13 +127,13 @@ mock.module('@feed/db', () => ({
   whitelistConfig: whitelistConfigTable,
 }));
 
-mock.module('@feed/engine', () => ({
+mock.module("@feed/engine", () => ({
   UserAlphaGroupAssignmentService: {
     assignDefaultGroups: mock(() => Promise.resolve()),
   },
 }));
 
-mock.module('@feed/shared', () => ({
+mock.module("@feed/shared", () => ({
   logger: {
     info: mock(),
     warn: mock(),
@@ -142,58 +142,58 @@ mock.module('@feed/shared', () => ({
   },
 }));
 
-mock.module('nanoid', () => ({
-  nanoid: mock(() => 'mock-id'),
+mock.module("nanoid", () => ({
+  nanoid: mock(() => "mock-id"),
 }));
 
-mock.module('../services/whitelist-email-service', () => ({
+mock.module("../services/whitelist-email-service", () => ({
   sendWhitelistWelcomeEmailToUser: mock(() => Promise.resolve()),
   sendWhitelistWelcomeEmailsToUsers: mock(() => Promise.resolve()),
 }));
 
 const { checkWhitelistAccess, isUserWhitelistedByLeaderboard } = await import(
-  '../services/whitelist-service'
+  "../services/whitelist-service"
 );
 
-describe('whitelist access resolution', () => {
+describe("whitelist access resolution", () => {
   beforeEach(() => {
     mockDbSelect.mockClear();
     mockDbInsert.mockClear();
     mockWhitelistEntry = null;
     mockWhitelistConfigRow = { leaderboardRankThreshold: 25_000 };
     mockUserRow = {
-      id: 'user-1',
+      id: "user-1",
       reputationPoints: 5_000,
       invitePoints: 300,
-      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
       isActor: false,
       isAgent: false,
     };
     mockUsersAheadCount = 0;
   });
 
-  it('allows users with an active whitelist entry', async () => {
+  it("allows users with an active whitelist entry", async () => {
     mockWhitelistEntry = {
-      source: 'admin_manual',
+      source: "admin_manual",
       revokedAt: null,
     };
 
-    const result = await checkWhitelistAccess('user-1');
+    const result = await checkWhitelistAccess("user-1");
 
     expect(result).toEqual({
       allowed: true,
-      source: 'admin_manual',
+      source: "admin_manual",
     });
   });
 
-  it('does not bypass revoked whitelist entries with leaderboard access', async () => {
+  it("does not bypass revoked whitelist entries with leaderboard access", async () => {
     mockWhitelistEntry = {
-      source: 'leaderboard',
-      revokedAt: new Date('2026-03-01T00:00:00.000Z'),
+      source: "leaderboard",
+      revokedAt: new Date("2026-03-01T00:00:00.000Z"),
     };
     mockUsersAheadCount = 10;
 
-    const result = await checkWhitelistAccess('user-1');
+    const result = await checkWhitelistAccess("user-1");
 
     expect(result).toEqual({
       allowed: false,
@@ -201,21 +201,21 @@ describe('whitelist access resolution', () => {
     });
   });
 
-  it('allows users inside the leaderboard threshold when no whitelist row exists', async () => {
+  it("allows users inside the leaderboard threshold when no whitelist row exists", async () => {
     mockUsersAheadCount = 12_999;
 
-    const result = await checkWhitelistAccess('user-1');
+    const result = await checkWhitelistAccess("user-1");
 
     expect(result).toEqual({
       allowed: true,
-      source: 'leaderboard',
+      source: "leaderboard",
     });
   });
 
-  it('rejects users outside the configured leaderboard threshold', async () => {
+  it("rejects users outside the configured leaderboard threshold", async () => {
     mockUsersAheadCount = 25_000;
 
-    const result = await checkWhitelistAccess('user-1');
+    const result = await checkWhitelistAccess("user-1");
 
     expect(result).toEqual({
       allowed: false,
@@ -223,35 +223,35 @@ describe('whitelist access resolution', () => {
     });
   });
 
-  it('returns false for actors and agents in dynamic leaderboard checks', async () => {
+  it("returns false for actors and agents in dynamic leaderboard checks", async () => {
     mockUserRow = {
-      id: 'user-1',
+      id: "user-1",
       reputationPoints: 5_000,
       invitePoints: 300,
-      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
       isActor: true,
       isAgent: false,
     };
 
-    await expect(isUserWhitelistedByLeaderboard('user-1')).resolves.toBe(false);
+    await expect(isUserWhitelistedByLeaderboard("user-1")).resolves.toBe(false);
 
     mockUserRow = {
-      id: 'user-1',
+      id: "user-1",
       reputationPoints: 5_000,
       invitePoints: 300,
-      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
       isActor: false,
       isAgent: true,
     };
 
-    await expect(isUserWhitelistedByLeaderboard('user-1')).resolves.toBe(false);
+    await expect(isUserWhitelistedByLeaderboard("user-1")).resolves.toBe(false);
   });
 
-  it('returns false when the user does not exist in the users table', async () => {
+  it("returns false when the user does not exist in the users table", async () => {
     mockUserRow = null;
 
-    await expect(isUserWhitelistedByLeaderboard('nonexistent')).resolves.toBe(
-      false
+    await expect(isUserWhitelistedByLeaderboard("nonexistent")).resolves.toBe(
+      false,
     );
   });
 });

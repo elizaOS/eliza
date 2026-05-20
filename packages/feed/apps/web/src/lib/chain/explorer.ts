@@ -5,7 +5,7 @@
  * Supports Ethereum mainnet, Sepolia testnet, Base mainnet, and Base Sepolia.
  */
 
-import { getCurrentChainId } from '@feed/shared';
+import { getCurrentChainId } from "@feed/shared";
 
 /**
  * Get the block explorer URL for a transaction hash based on the current chain.
@@ -25,7 +25,7 @@ export function getExplorerTxUrl(txHash: string): string {
     case 84532:
       return `https://sepolia.basescan.org/tx/${txHash}`;
     case 31337:
-      return '';
+      return "";
     default:
       return `https://sepolia.basescan.org/tx/${txHash}`;
   }
@@ -40,17 +40,17 @@ export function getExplorerBaseUrl(): string {
   const chainId = getCurrentChainId();
   switch (chainId) {
     case 1:
-      return 'https://etherscan.io';
+      return "https://etherscan.io";
     case 11155111:
-      return 'https://sepolia.etherscan.io';
+      return "https://sepolia.etherscan.io";
     case 8453:
-      return 'https://basescan.org';
+      return "https://basescan.org";
     case 84532:
-      return 'https://sepolia.basescan.org';
+      return "https://sepolia.basescan.org";
     case 31337:
-      return '';
+      return "";
     default:
-      return 'https://sepolia.basescan.org';
+      return "https://sepolia.basescan.org";
   }
 }
 
@@ -64,13 +64,13 @@ export function getExplorerName(): string {
   switch (chainId) {
     case 1:
     case 11155111:
-      return 'Etherscan';
+      return "Etherscan";
     case 8453:
     case 84532:
-      return 'BaseScan';
+      return "BaseScan";
     case 31337:
-      return 'Local';
+      return "Local";
     default:
-      return 'BaseScan';
+      return "BaseScan";
   }
 }

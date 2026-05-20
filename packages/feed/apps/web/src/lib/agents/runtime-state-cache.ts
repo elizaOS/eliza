@@ -24,7 +24,7 @@ export function getRuntimeStateCache(runtime: unknown):
 
 export function cleanupRuntimeStateCache(
   runtime: unknown,
-  messageId?: string
+  messageId?: string,
 ): void {
   if (!messageId) return;
   const stateCache = getRuntimeStateCache(runtime);

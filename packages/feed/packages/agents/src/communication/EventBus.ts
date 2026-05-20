@@ -7,11 +7,11 @@
  * @packageDocumentation
  */
 
-import { logger } from '../shared/logger';
-import type { JsonValue } from '../types/common';
+import { logger } from "../shared/logger";
+import type { JsonValue } from "../types/common";
 
 export type EventHandler<T extends JsonValue = JsonValue> = (
-  data: T
+  data: T,
 ) => void | Promise<void>;
 
 /**
@@ -57,7 +57,7 @@ export class EventBus {
   subscribe<T extends JsonValue = JsonValue>(
     eventType: string,
     handler: EventHandler<T>,
-    filter?: (event: AgentEvent<T>) => boolean
+    filter?: (event: AgentEvent<T>) => boolean,
   ): string {
     const subscriptionId = `sub-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
@@ -74,8 +74,8 @@ export class EventBus {
 
     // Type cast needed since we're storing in a non-generic map
     this.subscriptions
-      .get(eventType)!
-      .push(subscription as Subscription<JsonValue>);
+      .get(eventType)
+      ?.push(subscription as Subscription<JsonValue>);
 
     return subscriptionId;
   }
@@ -110,7 +110,7 @@ export class EventBus {
     eventType: string,
     data: T,
     agentId?: string,
-    metadata?: Record<string, JsonValue>
+    metadata?: Record<string, JsonValue>,
   ): Promise<void> {
     const event: AgentEvent<T> = {
       type: eventType,
@@ -145,9 +145,9 @@ export class EventBus {
             logger.error(
               `Error in handler for ${eventType}`,
               error instanceof Error ? error : new Error(String(error)),
-              'EventBus'
+              "EventBus",
             );
-          })
+          }),
         );
       }
     }
@@ -177,16 +177,16 @@ export class EventBus {
    * Supports wildcards: "market.*" matches "market.update", "market.create", etc.
    */
   private matchesEventType(eventType: string, pattern: string): boolean {
-    if (pattern === '*') {
+    if (pattern === "*") {
       return true; // Match all
     }
 
-    if (!pattern.includes('*')) {
+    if (!pattern.includes("*")) {
       return eventType === pattern; // Exact match
     }
 
     // Wildcard matching
-    const regexPattern = pattern.replace(/\./g, '\\.').replace(/\*/g, '.*');
+    const regexPattern = pattern.replace(/\./g, "\\.").replace(/\*/g, ".*");
     const regex = new RegExp(`^${regexPattern}$`);
 
     return regex.test(eventType);
@@ -222,7 +222,7 @@ export class EventBus {
     if (!eventType) {
       return Array.from(this.subscriptions.values()).reduce(
         (sum, subs) => sum + subs.length,
-        0
+        0,
       );
     }
 

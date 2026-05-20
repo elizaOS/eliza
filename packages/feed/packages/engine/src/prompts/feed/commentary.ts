@@ -1,14 +1,14 @@
-import { definePrompt } from '../define-prompt';
+import { definePrompt } from "../define-prompt";
 
 /**
  * Prompt for generating in-character commentary on events/developments.
  * Actor-first design: identity dominates, minimal shared rules.
  */
 export const commentary = definePrompt({
-  id: 'commentary',
-  version: '6.0.0',
-  category: 'feed',
-  description: 'Generates in-character commentary — actor identity first',
+  id: "commentary",
+  version: "6.0.0",
+  category: "feed",
+  description: "Generates in-character commentary — actor identity first",
   temperature: 1,
   maxTokens: 8000,
   template: `You are {{characterName}}.

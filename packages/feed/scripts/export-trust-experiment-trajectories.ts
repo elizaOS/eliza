@@ -9,9 +9,9 @@
  * This TypeScript version is kept for backward compatibility but will be removed.
  */
 
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import path from 'node:path';
-import { parseArgs } from 'node:util';
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { parseArgs } from "node:util";
 import {
   and,
   closeDatabase,
@@ -25,12 +25,12 @@ import {
   trajectories,
   userAgentConfigs,
   users,
-} from '@feed/db';
-import { config as loadDotenv } from 'dotenv';
+} from "@feed/db";
+import { config as loadDotenv } from "dotenv";
 
-const FEED_REPO_ROOT = path.resolve(import.meta.dir, '..');
-loadDotenv({ path: path.join(FEED_REPO_ROOT, '.env') });
-loadDotenv({ path: path.join(FEED_REPO_ROOT, '.env.local') });
+const FEED_REPO_ROOT = path.resolve(import.meta.dir, "..");
+loadDotenv({ path: path.join(FEED_REPO_ROOT, ".env") });
+loadDotenv({ path: path.join(FEED_REPO_ROOT, ".env.local") });
 
 interface ExportOptions {
   manifestPath: string;
@@ -77,34 +77,34 @@ function parseJsonObject(value: unknown): Record<string, unknown> {
   if (!value) {
     return {};
   }
-  if (typeof value === 'string') {
+  if (typeof value === "string") {
     try {
       const parsed = JSON.parse(value);
-      return parsed && typeof parsed === 'object'
+      return parsed && typeof parsed === "object"
         ? (parsed as Record<string, unknown>)
         : {};
     } catch {
       return {};
     }
   }
-  return value && typeof value === 'object'
+  return value && typeof value === "object"
     ? (value as Record<string, unknown>)
     : {};
 }
 
 function formatExportWarning(error: unknown): string {
-  if (typeof error === 'object' && error !== null) {
+  if (typeof error === "object" && error !== null) {
     const code =
       (error as { cause?: { code?: string }; code?: string }).cause?.code ??
       (error as { code?: string }).code;
-    if (code === 'ECONNREFUSED') {
-      return 'Database connection refused while exporting trust experiment trajectories.';
+    if (code === "ECONNREFUSED") {
+      return "Database connection refused while exporting trust experiment trajectories.";
     }
   }
 
   const message = error instanceof Error ? error.message : String(error);
-  if (message.startsWith('Failed query:')) {
-    return 'Database query failed while exporting trust experiment trajectories. Check database availability and connection settings.';
+  if (message.startsWith("Failed query:")) {
+    return "Database query failed while exporting trust experiment trajectories. Check database availability and connection settings.";
   }
 
   return message;
@@ -114,11 +114,11 @@ function parseOptions(): ExportOptions {
   const { values } = parseArgs({
     args: Bun.argv.slice(2),
     options: {
-      manifest: { type: 'string' },
-      'lookback-hours': { type: 'string', default: '24' },
+      manifest: { type: "string" },
+      "lookback-hours": { type: "string", default: "24" },
       output: {
-        type: 'string',
-        default: 'training-data/trust-experiment-exports',
+        type: "string",
+        default: "training-data/trust-experiment-exports",
       },
     },
     strict: true,
@@ -126,10 +126,10 @@ function parseOptions(): ExportOptions {
   });
 
   if (!values.manifest) {
-    throw new Error('--manifest is required');
+    throw new Error("--manifest is required");
   }
 
-  const lookbackHours = parseInt(values['lookback-hours'], 10);
+  const lookbackHours = parseInt(values["lookback-hours"], 10);
 
   return {
     manifestPath: path.resolve(process.cwd(), values.manifest as string),
@@ -145,7 +145,7 @@ async function readManifest(manifestPath: string): Promise<{
   batchId?: string;
   agents: ManifestAgentRecord[];
 }> {
-  const raw = JSON.parse(await readFile(manifestPath, 'utf-8')) as ManifestFile;
+  const raw = JSON.parse(await readFile(manifestPath, "utf-8")) as ManifestFile;
   const generatedAt =
     raw.generatedAt && !Number.isNaN(new Date(raw.generatedAt).getTime())
       ? new Date(raw.generatedAt)
@@ -154,11 +154,11 @@ async function readManifest(manifestPath: string): Promise<{
   return {
     generatedAt,
     experimentRunId:
-      typeof raw.experimentRunId === 'string' && raw.experimentRunId.trim()
+      typeof raw.experimentRunId === "string" && raw.experimentRunId.trim()
         ? raw.experimentRunId.trim()
         : undefined,
     batchId:
-      typeof raw.batchId === 'string' && raw.batchId.trim()
+      typeof raw.batchId === "string" && raw.batchId.trim()
         ? raw.batchId.trim()
         : undefined,
     agents: (raw.agents ?? []).flatMap((agent) =>
@@ -167,25 +167,25 @@ async function readManifest(manifestPath: string): Promise<{
             {
               instanceId: agent.instanceId,
               username: agent.username,
-              modelSize: agent.modelSize ?? 'unknown',
-              trainingProfile: agent.trainingProfile ?? 'unknown',
+              modelSize: agent.modelSize ?? "unknown",
+              trainingProfile: agent.trainingProfile ?? "unknown",
             },
           ]
-        : []
+        : [],
     ),
   };
 }
 
 async function readRegisteredAgents(
-  manifestPath: string
+  manifestPath: string,
 ): Promise<Map<string, RegisteredAgentRecord>> {
   const registeredPath = path.join(
     path.dirname(manifestPath),
-    'registered-agents.json'
+    "registered-agents.json",
   );
 
   try {
-    const raw = JSON.parse(await readFile(registeredPath, 'utf-8')) as {
+    const raw = JSON.parse(await readFile(registeredPath, "utf-8")) as {
       agents?: Array<{
         instanceId?: string;
         agentId?: string;
@@ -207,13 +207,13 @@ async function readRegisteredAgents(
                   userId: agent.agentId,
                   username: agent.username,
                   displayName: agent.displayName ?? agent.username,
-                  modelSize: agent.modelSize ?? 'unknown',
-                  trainingProfile: agent.trainingProfile ?? 'unknown',
+                  modelSize: agent.modelSize ?? "unknown",
+                  trainingProfile: agent.trainingProfile ?? "unknown",
                 } satisfies RegisteredAgentRecord,
               ] as const,
             ]
-          : []
-      )
+          : [],
+      ),
     );
   } catch {
     return new Map();
@@ -225,13 +225,13 @@ async function main(): Promise<void> {
   const manifest = await readManifest(options.manifestPath);
   const agents = manifest.agents;
   const registeredAgentsByInstanceId = await readRegisteredAgents(
-    options.manifestPath
+    options.manifestPath,
   );
   if (agents.length === 0) {
-    throw new Error('Manifest did not contain any agents');
+    throw new Error("Manifest did not contain any agents");
   }
 
-  const exportStamp = new Date().toISOString().replaceAll(':', '-');
+  const exportStamp = new Date().toISOString().replaceAll(":", "-");
   const exportDir = path.join(options.outputDir, exportStamp);
   await mkdir(exportDir, { recursive: true });
 
@@ -260,16 +260,16 @@ async function main(): Promise<void> {
   let exportWarning: string | null = null;
   const exactBatchId = manifest.batchId ?? manifest.experimentRunId;
   const selectionStrategy = exactBatchId
-    ? 'exact_batch_id'
-    : 'lookback_heuristic';
+    ? "exact_batch_id"
+    : "lookback_heuristic";
 
   try {
     const registeredAgentIds = Array.from(
       new Set(
         Array.from(registeredAgentsByInstanceId.values()).map(
-          (agent) => agent.userId
-        )
-      )
+          (agent) => agent.userId,
+        ),
+      ),
     );
     const userRowsByUsername =
       usernames.length > 0
@@ -300,12 +300,15 @@ async function main(): Promise<void> {
 
     const userRows = Array.from(
       new Map(
-        [...userRowsByUsername, ...userRowsById].map((row) => [row.userId, row])
-      ).values()
+        [...userRowsByUsername, ...userRowsById].map((row) => [
+          row.userId,
+          row,
+        ]),
+      ).values(),
     );
 
     const lookbackCutoff = new Date(
-      Date.now() - options.lookbackHours * 60 * 60 * 1000
+      Date.now() - options.lookbackHours * 60 * 60 * 1000,
     );
     const cutoff =
       manifest.generatedAt && manifest.generatedAt > lookbackCutoff
@@ -331,10 +334,10 @@ async function main(): Promise<void> {
               and(
                 inArray(
                   trajectories.agentId,
-                  userRows.map((row) => row.userId)
+                  userRows.map((row) => row.userId),
                 ),
-                gte(trajectories.createdAt, cutoff)
-              )
+                gte(trajectories.createdAt, cutoff),
+              ),
             )
         : [];
 
@@ -359,7 +362,7 @@ async function main(): Promise<void> {
     }
 
     const userRowsByUserId = new Map<string, UserCandidate>(
-      userRows.map((row) => [row.userId, row])
+      userRows.map((row) => [row.userId, row]),
     );
     const candidatesByUsername = new Map<string, UserCandidate[]>();
     for (const userRow of userRows) {
@@ -370,7 +373,7 @@ async function main(): Promise<void> {
 
     matchedAgents = agents.flatMap((agent) => {
       const exactRegistered = registeredAgentsByInstanceId.get(
-        agent.instanceId
+        agent.instanceId,
       );
       if (exactRegistered) {
         const registeredUser = userRowsByUserId.get(exactRegistered.userId);
@@ -423,7 +426,7 @@ async function main(): Promise<void> {
     if (agentIds.length === 0) {
       exportWarning = exactBatchId
         ? `No trust experiment users matched the database for batch ${exactBatchId}.`
-        : 'No trust experiment users matched the current database.';
+        : "No trust experiment users matched the current database.";
     } else {
       trajectoryRows = await db
         .select()
@@ -432,12 +435,12 @@ async function main(): Promise<void> {
           exactBatchId
             ? and(
                 inArray(trajectories.agentId, agentIds),
-                eq(trajectories.batchId, exactBatchId)
+                eq(trajectories.batchId, exactBatchId),
               )
             : and(
                 inArray(trajectories.agentId, agentIds),
-                gte(trajectories.createdAt, cutoff)
-              )
+                gte(trajectories.createdAt, cutoff),
+              ),
         )
         .orderBy(desc(trajectories.createdAt));
 
@@ -480,8 +483,8 @@ async function main(): Promise<void> {
   }
 
   await writeFile(
-    path.join(exportDir, 'manifest.json'),
-    JSON.stringify(
+    path.join(exportDir, "manifest.json"),
+    `${JSON.stringify(
       {
         exportedAt: new Date().toISOString(),
         sourceManifest: options.manifestPath,
@@ -498,20 +501,20 @@ async function main(): Promise<void> {
         warning: exportWarning,
       },
       null,
-      2
-    ) + '\n',
-    'utf-8'
+      2,
+    )}\n`,
+    "utf-8",
   );
 
   await writeFile(
-    path.join(exportDir, 'matched-agents.json'),
-    JSON.stringify({ agents: matchedAgents }, null, 2) + '\n',
-    'utf-8'
+    path.join(exportDir, "matched-agents.json"),
+    `${JSON.stringify({ agents: matchedAgents }, null, 2)}\n`,
+    "utf-8",
   );
   await writeFile(
-    path.join(exportDir, 'agent-configs.json'),
-    JSON.stringify({ agentConfigs: configRows }, null, 2) + '\n',
-    'utf-8'
+    path.join(exportDir, "agent-configs.json"),
+    `${JSON.stringify({ agentConfigs: configRows }, null, 2)}\n`,
+    "utf-8",
   );
   const rewardRowsByTrajectoryId = new Map<string, typeof rewardRows>();
   for (const rewardRow of rewardRows) {
@@ -527,7 +530,7 @@ async function main(): Promise<void> {
       metadata.rewardJudgmentCount = rowRewardJudgments.length;
       metadata.latestRewardJudgmentScore =
         rowRewardJudgments[0]?.overallScore ?? null;
-      metadata.rewardJudgmentSource = 'sidecar_export';
+      metadata.rewardJudgmentSource = "sidecar_export";
     }
     return {
       ...row,
@@ -536,19 +539,19 @@ async function main(): Promise<void> {
     };
   });
   await writeFile(
-    path.join(exportDir, 'trajectories.jsonl'),
-    `${enrichedTrajectoryRows.map((row) => JSON.stringify(row)).join('\n')}${enrichedTrajectoryRows.length ? '\n' : ''}`,
-    'utf-8'
+    path.join(exportDir, "trajectories.jsonl"),
+    `${enrichedTrajectoryRows.map((row) => JSON.stringify(row)).join("\n")}${enrichedTrajectoryRows.length ? "\n" : ""}`,
+    "utf-8",
   );
   await writeFile(
-    path.join(exportDir, 'llm-call-logs.jsonl'),
-    `${llmCallRows.map((row) => JSON.stringify(row)).join('\n')}${llmCallRows.length ? '\n' : ''}`,
-    'utf-8'
+    path.join(exportDir, "llm-call-logs.jsonl"),
+    `${llmCallRows.map((row) => JSON.stringify(row)).join("\n")}${llmCallRows.length ? "\n" : ""}`,
+    "utf-8",
   );
   await writeFile(
-    path.join(exportDir, 'reward-judgments.jsonl'),
-    `${rewardRows.map((row) => JSON.stringify(row)).join('\n')}${rewardRows.length ? '\n' : ''}`,
-    'utf-8'
+    path.join(exportDir, "reward-judgments.jsonl"),
+    `${rewardRows.map((row) => JSON.stringify(row)).join("\n")}${rewardRows.length ? "\n" : ""}`,
+    "utf-8",
   );
 
   console.log(`Export complete: ${exportDir}`);
@@ -569,7 +572,7 @@ void (async () => {
     try {
       await closeDatabase();
     } catch (closeError) {
-      console.error('Failed to close database connections:', closeError);
+      console.error("Failed to close database connections:", closeError);
       process.exitCode = 1;
     }
     process.exit(process.exitCode ?? 0);

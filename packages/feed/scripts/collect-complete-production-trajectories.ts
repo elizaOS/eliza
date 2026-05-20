@@ -1,9 +1,9 @@
 #!/usr/bin/env bun
 
-import { existsSync, promises as fs, mkdirSync } from 'node:fs';
-import path from 'node:path';
-import { config as loadEnvFile } from 'dotenv';
-import { Client } from 'pg';
+import { existsSync, promises as fs, mkdirSync } from "node:fs";
+import path from "node:path";
+import { config as loadEnvFile } from "dotenv";
+import { Client } from "pg";
 
 type CliOptions = {
   envFile: string;
@@ -75,7 +75,7 @@ Options:
 }
 
 function readArgValue(args: string[], name: string): string | null {
-  const exactIndex = args.findIndex((arg) => arg === name);
+  const exactIndex = args.indexOf(name);
   if (exactIndex !== -1) {
     const value = args[exactIndex + 1];
     if (!value) {
@@ -102,7 +102,7 @@ function hasFlag(args: string[], flag: string): boolean {
 }
 
 function timestampForPath(date: Date): string {
-  return date.toISOString().replace(/[:]/g, '-').replace(/\..+$/, 'Z');
+  return date.toISOString().replace(/[:]/g, "-").replace(/\..+$/, "Z");
 }
 
 function parsePositiveInteger(value: string, flagName: string): number {
@@ -115,34 +115,34 @@ function parsePositiveInteger(value: string, flagName: string): number {
 
 function parseArgs(): CliOptions {
   const args = process.argv.slice(2);
-  if (hasFlag(args, '--help') || hasFlag(args, '-h')) {
+  if (hasFlag(args, "--help") || hasFlag(args, "-h")) {
     printUsage();
     process.exit(0);
   }
 
   const now = new Date();
   const defaultOutputDir = path.join(
-    'training-data',
-    'production-trajectories',
-    'validated-runs',
-    timestampForPath(now)
+    "training-data",
+    "production-trajectories",
+    "validated-runs",
+    timestampForPath(now),
   );
 
   return {
-    envFile: readArgValue(args, '--env-file') ?? '.env.production.local',
+    envFile: readArgValue(args, "--env-file") ?? ".env.production.local",
     count: parsePositiveInteger(
-      readArgValue(args, '--count') ?? '3',
-      '--count'
+      readArgValue(args, "--count") ?? "3",
+      "--count",
     ),
     minSteps: parsePositiveInteger(
-      readArgValue(args, '--min-steps') ?? '1',
-      '--min-steps'
+      readArgValue(args, "--min-steps") ?? "1",
+      "--min-steps",
     ),
     minLlmCalls: parsePositiveInteger(
-      readArgValue(args, '--min-llm-calls') ?? '1',
-      '--min-llm-calls'
+      readArgValue(args, "--min-llm-calls") ?? "1",
+      "--min-llm-calls",
     ),
-    outputDir: readArgValue(args, '--output-dir') ?? defaultOutputDir,
+    outputDir: readArgValue(args, "--output-dir") ?? defaultOutputDir,
   };
 }
 
@@ -163,7 +163,7 @@ function normalizeNumber(value: number | string | null): number | null {
   if (value === null) {
     return null;
   }
-  return typeof value === 'number' ? value : Number(value);
+  return typeof value === "number" ? value : Number(value);
 }
 
 async function main(): Promise<void> {
@@ -210,43 +210,43 @@ async function main(): Promise<void> {
       ORDER BY u."virtualBalance" DESC
       LIMIT $1
     `,
-    [options.count * 2 + 2]
+    [options.count * 2 + 2],
   );
   await client.end();
   const candidates = candidateResult.rows;
 
   if (candidates.length === 0) {
-    throw new Error('No eligible autonomous agents found');
+    throw new Error("No eligible autonomous agents found");
   }
 
-  const dbMod = await import('@feed/db');
-  const agentsMod = await import('@feed/agents');
+  const dbMod = await import("@feed/db");
+  const agentsMod = await import("@feed/agents");
 
   const summaries: CollectedTrajectorySummary[] = [];
 
   for (let index = 0; index < options.count; index++) {
     const candidate = candidates[index % candidates.length];
     if (!candidate) {
-      throw new Error('Candidate agent missing during collection');
+      throw new Error("Candidate agent missing during collection");
     }
 
     console.log(
-      `[${index + 1}/${options.count}] Collecting validated trajectory for ${candidate.username || candidate.id}`
+      `[${index + 1}/${options.count}] Collecting validated trajectory for ${candidate.username || candidate.id}`,
     );
 
     const runtime = await agentsMod.agentRuntimeManager.getRuntime(
-      candidate.id
+      candidate.id,
     );
     const result = await agentsMod.autonomousCoordinator.executeAutonomousTick(
       candidate.id,
       runtime,
       true,
-      false
+      false,
     );
 
     if (!result.trajectoryId) {
       throw new Error(
-        `Tick for ${candidate.id} did not return a trajectory id`
+        `Tick for ${candidate.id} did not return a trajectory id`,
       );
     }
 
@@ -274,21 +274,21 @@ async function main(): Promise<void> {
       })
       .from(dbMod.llmCallLogs)
       .where(
-        dbMod.eq(dbMod.llmCallLogs.trajectoryId, result.trajectoryId)
+        dbMod.eq(dbMod.llmCallLogs.trajectoryId, result.trajectoryId),
       )) as LlmCountRow[];
 
-    const llmCallCount = Number(llmCountRows[0]?.count ?? '0');
-    const hasSteps = trajectory.stepsJson !== '[]';
+    const llmCallCount = Number(llmCountRows[0]?.count ?? "0");
+    const hasSteps = trajectory.stepsJson !== "[]";
 
     if (!hasSteps || trajectory.episodeLength < options.minSteps) {
       throw new Error(
-        `Trajectory ${result.trajectoryId} failed validation: episodeLength=${trajectory.episodeLength}, hasSteps=${hasSteps}`
+        `Trajectory ${result.trajectoryId} failed validation: episodeLength=${trajectory.episodeLength}, hasSteps=${hasSteps}`,
       );
     }
 
     if (llmCallCount < options.minLlmCalls) {
       throw new Error(
-        `Trajectory ${result.trajectoryId} failed validation: llmCallCount=${llmCallCount}`
+        `Trajectory ${result.trajectoryId} failed validation: llmCallCount=${llmCallCount}`,
       );
     }
 
@@ -305,7 +305,7 @@ async function main(): Promise<void> {
 
     summaries.push(summary);
     console.log(
-      `  validated ${summary.trajectory_id} with ${summary.episode_length} steps and ${summary.llm_call_count} llm calls`
+      `  validated ${summary.trajectory_id} with ${summary.episode_length} steps and ${summary.llm_call_count} llm calls`,
     );
   }
 
@@ -324,12 +324,12 @@ async function main(): Promise<void> {
   };
 
   await fs.writeFile(
-    path.join(outputRoot, 'collection-manifest.json'),
+    path.join(outputRoot, "collection-manifest.json"),
     JSON.stringify(manifest, null, 2),
-    'utf8'
+    "utf8",
   );
 
-  console.log('');
+  console.log("");
   console.log(`Validated ${summaries.length} fresh trajectories`);
   console.log(`Output: ${outputRoot}`);
   console.log(`Since timestamp: ${startedAt.toISOString()}`);

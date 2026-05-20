@@ -20,11 +20,11 @@ import {
   mock,
   setDefaultTimeout,
   test,
-} from 'bun:test';
-import { existsSync, readFileSync } from 'fs';
-import { resolveLiveLlmTestConfig } from '../../../../testing/integration/helpers/live-runtime';
+} from "bun:test";
+import { existsSync, readFileSync } from "node:fs";
+import { resolveLiveLlmTestConfig } from "../../../../testing/integration/helpers/live-runtime";
 // import { GameGenerator } from '@/engine/GameGenerator'; // Removed static import
-import type { GeneratedGame, Question } from '../../types/shared';
+import type { GeneratedGame, Question } from "../../types/shared";
 
 // Set timeout to 10 minutes for LLM-based generation
 setDefaultTimeout(600000);
@@ -32,25 +32,25 @@ setDefaultTimeout(600000);
 // Mock world-context to avoid DB calls BEFORE importing GameGenerator
 const mockWorldContext = {
   generateWorldContext: async () => ({
-    worldActors: 'Test Actor 1, Test Actor 2',
-    currentMarkets: 'Active Markets: None currently active',
-    activePredictions: 'Active Questions: None currently active',
-    recentTrades: 'Recent Trades: No recent activity',
+    worldActors: "Test Actor 1, Test Actor 2",
+    currentMarkets: "Active Markets: None currently active",
+    activePredictions: "Active Questions: None currently active",
+    recentTrades: "Recent Trades: No recent activity",
     currentDateTime: new Date().toISOString(),
     currentDate: new Date().toDateString(),
     currentTime: new Date().toTimeString(),
-    currentYear: '2025',
-    currentMonth: 'October',
-    currentDay: '15',
-    realityGrounding: 'Reality grounding context',
-    worldFacts: 'World facts context',
+    currentYear: "2025",
+    currentMonth: "October",
+    currentDay: "15",
+    realityGrounding: "Reality grounding context",
+    worldFacts: "World facts context",
   }),
-  generateCurrentMarkets: async () => 'Active Markets: None currently active',
+  generateCurrentMarkets: async () => "Active Markets: None currently active",
   generateActivePredictions: async () =>
-    'Active Questions: None currently active',
-  generateRecentTrades: async () => 'Recent Trades: No recent activity',
-  generateWorldActors: () => 'Test Actor 1, Test Actor 2',
-  getParodyActorNames: () => ['Test Actor 1', 'Test Actor 2'],
+    "Active Questions: None currently active",
+  generateRecentTrades: async () => "Recent Trades: No recent activity",
+  generateWorldActors: () => "Test Actor 1, Test Actor 2",
+  getParodyActorNames: () => ["Test Actor 1", "Test Actor 2"],
   getForbiddenRealNames: () => [],
   validateNoRealNames: () => [],
   validateGeneratedContent: () => ({ errors: [], isValid: true }),
@@ -58,28 +58,28 @@ const mockWorldContext = {
     dateISO: new Date().toISOString(),
     dateFull: new Date().toDateString(),
     time: new Date().toTimeString(),
-    year: '2025',
-    month: 'October',
-    day: '15',
+    year: "2025",
+    month: "October",
+    day: "15",
   }),
-  getRealityGrounding: async () => 'Reality grounding context',
-  getMinimalRealityGrounding: async () => 'Minimal reality grounding',
-  getFullRealityGrounding: async () => 'Full reality grounding',
+  getRealityGrounding: async () => "Reality grounding context",
+  getMinimalRealityGrounding: async () => "Minimal reality grounding",
+  getFullRealityGrounding: async () => "Full reality grounding",
   checkRealityGrounding: () => ({ score: 1, feedback: [] }),
 };
 
-mock.module('@feed/engine', () => mockWorldContext);
+mock.module("@feed/engine", () => mockWorldContext);
 
 // Load environment variables from .env files
 const loadEnvFile = (filePath: string) => {
   if (!existsSync(filePath)) return;
-  const envContent = readFileSync(filePath, 'utf-8');
-  for (const line of envContent.split('\n')) {
+  const envContent = readFileSync(filePath, "utf-8");
+  for (const line of envContent.split("\n")) {
     const trimmed = line.trim();
-    if (trimmed && !trimmed.startsWith('#')) {
-      const [key, ...valueParts] = trimmed.split('=');
+    if (trimmed && !trimmed.startsWith("#")) {
+      const [key, ...valueParts] = trimmed.split("=");
       if (key && valueParts.length > 0) {
-        const value = valueParts.join('=').replace(/^["']|["']$/g, '');
+        const value = valueParts.join("=").replace(/^["']|["']$/g, "");
         if (!process.env[key]) {
           process.env[key] = value;
         }
@@ -88,49 +88,49 @@ const loadEnvFile = (filePath: string) => {
   }
 };
 
-loadEnvFile('.env.test');
-loadEnvFile('.env.local');
+loadEnvFile(".env.test");
+loadEnvFile(".env.local");
 
 const hasLLMKey = !!(
-  (process.env.GROQ_API_KEY?.trim() ?? '') !== '' ||
-  (process.env.ANTHROPIC_API_KEY?.trim() ?? '') !== '' ||
-  (process.env.OPENAI_API_KEY?.trim() ?? '') !== ''
+  (process.env.GROQ_API_KEY?.trim() ?? "") !== "" ||
+  (process.env.ANTHROPIC_API_KEY?.trim() ?? "") !== "" ||
+  (process.env.OPENAI_API_KEY?.trim() ?? "") !== ""
 );
 const liveLlmConfig = resolveLiveLlmTestConfig();
 
 const requireLLMKey = () => {
   if (!hasLLMKey) {
     throw new Error(
-      'SECURITY TESTS REQUIRE LLM API KEY. ' +
-        'Set GROQ_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY to run these tests. ' +
-        'These tests validate actual engine functionality and MUST NOT be skipped.'
+      "SECURITY TESTS REQUIRE LLM API KEY. " +
+        "Set GROQ_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY to run these tests. " +
+        "These tests validate actual engine functionality and MUST NOT be skipped.",
     );
   }
 };
 
-describe.skipIf(!liveLlmConfig.enabled)('Security: Prevent Cheating', () => {
+describe.skipIf(!liveLlmConfig.enabled)("Security: Prevent Cheating", () => {
   // Shared game instance - generated once before all tests that need it
   let game: GeneratedGame | null = null;
 
   beforeAll(async () => {
     requireLLMKey();
 
-    console.log('Generating shared game for security tests...');
-    const { GameGenerator } = await import('../../GameGenerator');
+    console.log("Generating shared game for security tests...");
+    const { GameGenerator } = await import("../../GameGenerator");
     const generator = new GameGenerator();
     game = await generator.generateCompleteGame();
-    console.log('Game generated successfully');
+    console.log("Game generated successfully");
   });
 
-  describe('No Predetermined Outcome Access', () => {
-    test('question outcomes not visible before resolution', async () => {
+  describe("No Predetermined Outcome Access", () => {
+    test("question outcomes not visible before resolution", async () => {
       // Game must be generated - enforced by beforeAll
       expect(game).toBeDefined();
 
       // Simulate what an API would return
-      const publicQuestions = game!.setup.questions.map((q) => {
+      const publicQuestions = game?.setup.questions.map((q) => {
         // Before resolution, outcome should not be visible
-        if (q.status !== 'resolved') {
+        if (q.status !== "resolved") {
           const { outcome: _outcome, ...publicQuestion } = q;
           return publicQuestion;
         }
@@ -138,21 +138,21 @@ describe.skipIf(!liveLlmConfig.enabled)('Security: Prevent Cheating', () => {
       });
 
       const activeQuestions = publicQuestions.filter(
-        (q) => !q.status || q.status === 'active'
+        (q) => !q.status || q.status === "active",
       );
 
       for (const q of activeQuestions) {
         if ((q as Question).outcome !== undefined) {
           console.log(
-            'FAILED CHEATING TEST DEBUG:',
-            JSON.stringify(q, null, 2)
+            "FAILED CHEATING TEST DEBUG:",
+            JSON.stringify(q, null, 2),
           );
         }
         expect((q as Question).outcome).toBeUndefined();
       }
     });
 
-    test('posts dont directly reveal predetermined outcomes', async () => {
+    test("posts dont directly reveal predetermined outcomes", async () => {
       // Game must be generated - enforced by beforeAll
       expect(game).toBeDefined();
 
@@ -165,7 +165,7 @@ describe.skipIf(!liveLlmConfig.enabled)('Security: Prevent Cheating', () => {
 
       let suspiciousPosts = 0;
 
-      for (const day of game!.timeline) {
+      for (const day of game?.timeline) {
         for (const post of day.feedPosts) {
           for (const pattern of suspiciousPatterns) {
             if (pattern.test(post.content)) {
@@ -176,9 +176,9 @@ describe.skipIf(!liveLlmConfig.enabled)('Security: Prevent Cheating', () => {
         }
       }
 
-      const totalPosts = game!.timeline.reduce(
+      const totalPosts = game?.timeline.reduce(
         (sum, d) => sum + d.feedPosts.length,
-        0
+        0,
       );
       const suspiciousRate = suspiciousPosts / totalPosts;
 
@@ -186,28 +186,28 @@ describe.skipIf(!liveLlmConfig.enabled)('Security: Prevent Cheating', () => {
     });
   });
 
-  describe('No Future Information Access', () => {
-    test('cannot infer future events from current state', () => {
+  describe("No Future Information Access", () => {
+    test("cannot infer future events from current state", () => {
       const queuedContent = [
         {
           scheduledFor: new Date(Date.now() + 5 * 60 * 1000),
-          content: 'Future post 1',
+          content: "Future post 1",
         },
         {
           scheduledFor: new Date(Date.now() + 10 * 60 * 1000),
-          content: 'Future post 2',
+          content: "Future post 2",
         },
       ];
 
       const currentTime = new Date();
       const accessibleContent = queuedContent.filter(
-        (item) => item.scheduledFor <= currentTime
+        (item) => item.scheduledFor <= currentTime,
       );
 
       expect(accessibleContent.length).toBe(0);
     });
 
-    test('market prices dont leak future values', () => {
+    test("market prices dont leak future values", () => {
       const currentPrice = 100;
 
       // Current price should NOT account for future trades
@@ -215,12 +215,12 @@ describe.skipIf(!liveLlmConfig.enabled)('Security: Prevent Cheating', () => {
     });
   });
 
-  describe('No Hidden Knowledge Access', () => {
-    test('NPC persona reliability not visible to users', async () => {
+  describe("No Hidden Knowledge Access", () => {
+    test("NPC persona reliability not visible to users", async () => {
       // Game must be generated - enforced by beforeAll
       expect(game).toBeDefined();
 
-      const publicActors = game!.setup.mainActors.map((actor) => {
+      const publicActors = game?.setup.mainActors.map((actor) => {
         const {
           persona: _persona,
           trackRecord: _trackRecord,
@@ -233,16 +233,16 @@ describe.skipIf(!liveLlmConfig.enabled)('Security: Prevent Cheating', () => {
         expect(actor.persona).toBeUndefined();
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         expect(
-          (actor as { trackRecord?: unknown }).trackRecord
+          (actor as { trackRecord?: unknown }).trackRecord,
         ).toBeUndefined();
       }
     });
 
-    test('insider status not visible to users', async () => {
+    test("insider status not visible to users", async () => {
       // Game must be generated - enforced by beforeAll
       expect(game).toBeDefined();
 
-      const publicQuestions = game!.setup.questions.map((q) => {
+      const publicQuestions = game?.setup.questions.map((q) => {
         if (q.metadata?.arcPlan) {
           const { metadata: _metadata, ...publicQuestion } = q;
           return publicQuestion;
@@ -256,16 +256,16 @@ describe.skipIf(!liveLlmConfig.enabled)('Security: Prevent Cheating', () => {
     });
   });
 
-  describe('Information Gradient Integrity', () => {
-    test('early game doesnt reveal too much', async () => {
+  describe("Information Gradient Integrity", () => {
+    test("early game doesnt reveal too much", async () => {
       // Game must be generated - enforced by beforeAll
       expect(game).toBeDefined();
 
-      const earlyDays = game!.timeline.filter((d) => d.day <= 10);
+      const earlyDays = game?.timeline.filter((d) => d.day <= 10);
       const earlyEvents = earlyDays.flatMap((d) => d.events);
 
       const hintsGiven = earlyEvents.filter(
-        (e) => e.pointsToward !== null && e.pointsToward !== undefined
+        (e) => e.pointsToward !== null && e.pointsToward !== undefined,
       ).length;
 
       const hintRate = hintsGiven / earlyEvents.length;
@@ -273,15 +273,15 @@ describe.skipIf(!liveLlmConfig.enabled)('Security: Prevent Cheating', () => {
       expect(hintRate).toBeLessThan(0.3);
     });
 
-    test('late game provides sufficient clarity', async () => {
+    test("late game provides sufficient clarity", async () => {
       // Game must be generated - enforced by beforeAll
       expect(game).toBeDefined();
 
-      const lateDays = game!.timeline.filter((d) => d.day >= 25);
+      const lateDays = game?.timeline.filter((d) => d.day >= 25);
       const lateEvents = lateDays.flatMap((d) => d.events);
 
       const hintsGiven = lateEvents.filter(
-        (e) => e.pointsToward !== null && e.pointsToward !== undefined
+        (e) => e.pointsToward !== null && e.pointsToward !== undefined,
       ).length;
 
       const hintRate = hintsGiven / lateEvents.length;
@@ -290,28 +290,28 @@ describe.skipIf(!liveLlmConfig.enabled)('Security: Prevent Cheating', () => {
     });
   });
 
-  describe('Fair Information Distribution', () => {
-    test('all players have access to same public information', () => {
+  describe("Fair Information Distribution", () => {
+    test("all players have access to same public information", () => {
       const player1Info = {
-        posts: ['post1', 'post2', 'post3'],
-        events: ['event1', 'event2'],
+        posts: ["post1", "post2", "post3"],
+        events: ["event1", "event2"],
         marketPrices: { BTC: 50000 },
       };
 
       const player2Info = {
-        posts: ['post1', 'post2', 'post3'],
-        events: ['event1', 'event2'],
+        posts: ["post1", "post2", "post3"],
+        events: ["event1", "event2"],
         marketPrices: { BTC: 50000 },
       };
 
       expect(player1Info).toEqual(player2Info);
     });
 
-    test('group chat membership provides fair insider advantage', async () => {
+    test("group chat membership provides fair insider advantage", async () => {
       // Game must be generated - enforced by beforeAll
       expect(game).toBeDefined();
 
-      const groupChats = game!.setup.groupChats;
+      const groupChats = game?.setup.groupChats;
 
       for (const group of groupChats) {
         expect(group.members.length).toBeGreaterThan(0);
@@ -320,12 +320,12 @@ describe.skipIf(!liveLlmConfig.enabled)('Security: Prevent Cheating', () => {
     });
   });
 
-  describe('Temporal Integrity', () => {
-    test('posts have valid timestamps in sequence', async () => {
+  describe("Temporal Integrity", () => {
+    test("posts have valid timestamps in sequence", async () => {
       // Game must be generated - enforced by beforeAll
       expect(game).toBeDefined();
 
-      const allPosts = game!.timeline.flatMap((d) => d.feedPosts);
+      const allPosts = game?.timeline.flatMap((d) => d.feedPosts);
 
       for (let i = 1; i < allPosts.length; i++) {
         const prev = allPosts[i - 1];
@@ -340,11 +340,11 @@ describe.skipIf(!liveLlmConfig.enabled)('Security: Prevent Cheating', () => {
       }
     });
 
-    test('event timestamps match their day numbers', async () => {
+    test("event timestamps match their day numbers", async () => {
       // Game must be generated - enforced by beforeAll
       expect(game).toBeDefined();
 
-      for (const dayData of game!.timeline) {
+      for (const dayData of game?.timeline) {
         for (const event of dayData.events) {
           expect(event.day).toBe(dayData.day);
           expect(event.day).toBeGreaterThanOrEqual(1);

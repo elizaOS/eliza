@@ -1,18 +1,18 @@
-'use client';
+"use client";
 
-import { cn } from '@feed/shared';
-import { ArrowDown, ArrowUp, Filter, Search, Star } from 'lucide-react';
-import { useMemo, useState } from 'react';
-import { formatPrice, formatVolume } from '@/lib/market-formatters';
-import type { PerpMarket } from '@/types/markets';
-import { useWatchlistStore } from '../../_hooks/useWatchlistStore';
+import { cn } from "@feed/shared";
+import { ArrowDown, ArrowUp, Filter, Search, Star } from "lucide-react";
+import { useMemo, useState } from "react";
+import { formatPrice, formatVolume } from "@/lib/market-formatters";
+import type { PerpMarket } from "@/types/markets";
+import { useWatchlistStore } from "../../_hooks/useWatchlistStore";
 
 type SortKey =
-  | 'ticker'
-  | 'currentPrice'
-  | 'changePercent24h'
-  | 'volume24h'
-  | 'openInterest';
+  | "ticker"
+  | "currentPrice"
+  | "changePercent24h"
+  | "volume24h"
+  | "openInterest";
 
 interface PerpsMarketListPanelProps {
   markets: PerpMarket[];
@@ -28,10 +28,10 @@ export function PerpsMarketListPanel({
   onCollapse,
 }: PerpsMarketListPanelProps) {
   const { toggleFavorite, isFavorite } = useWatchlistStore();
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState("");
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
-  const [sortKey, setSortKey] = useState<SortKey>('volume24h');
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [sortKey, setSortKey] = useState<SortKey>("volume24h");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -45,14 +45,14 @@ export function PerpsMarketListPanel({
         : favorites.filter(
             (m) =>
               m.ticker.toLowerCase().includes(q) ||
-              m.name.toLowerCase().includes(q)
+              m.name.toLowerCase().includes(q),
           );
 
     const sorted = [...searched].sort((a, b) => {
       const valA = a[sortKey] ?? 0;
       const valB = b[sortKey] ?? 0;
-      if (valA < valB) return sortDirection === 'desc' ? 1 : -1;
-      if (valA > valB) return sortDirection === 'desc' ? -1 : 1;
+      if (valA < valB) return sortDirection === "desc" ? 1 : -1;
+      if (valA > valB) return sortDirection === "desc" ? -1 : 1;
       return a.ticker.localeCompare(b.ticker);
     });
 
@@ -61,11 +61,11 @@ export function PerpsMarketListPanel({
 
   const toggleSort = (key: SortKey) => {
     if (key === sortKey) {
-      setSortDirection((d) => (d === 'desc' ? 'asc' : 'desc'));
+      setSortDirection((d) => (d === "desc" ? "asc" : "desc"));
       return;
     }
     setSortKey(key);
-    setSortDirection('desc');
+    setSortDirection("desc");
   };
 
   return (
@@ -79,8 +79,8 @@ export function PerpsMarketListPanel({
             type="button"
             onClick={() => setShowFavoritesOnly((v) => !v)}
             className={cn(
-              'rounded p-1.5 text-muted-foreground transition-colors hover:bg-muted/20 hover:text-foreground',
-              showFavoritesOnly && 'bg-muted/20 text-primary'
+              "rounded p-1.5 text-muted-foreground transition-colors hover:bg-muted/20 hover:text-foreground",
+              showFavoritesOnly && "bg-muted/20 text-primary",
             )}
             aria-label="Toggle favorites filter"
           >
@@ -117,31 +117,31 @@ export function PerpsMarketListPanel({
               <th className="w-10 px-3 py-2" />
               <th
                 className="cursor-pointer px-2 py-2 hover:text-foreground"
-                onClick={() => toggleSort('ticker')}
+                onClick={() => toggleSort("ticker")}
               >
                 <Header
                   label="Market"
-                  active={sortKey === 'ticker'}
+                  active={sortKey === "ticker"}
                   direction={sortDirection}
                 />
               </th>
               <th
                 className="cursor-pointer px-2 py-2 text-right hover:text-foreground"
-                onClick={() => toggleSort('currentPrice')}
+                onClick={() => toggleSort("currentPrice")}
               >
                 <Header
                   label="Price"
-                  active={sortKey === 'currentPrice'}
+                  active={sortKey === "currentPrice"}
                   direction={sortDirection}
                 />
               </th>
               <th
                 className="cursor-pointer px-3 py-2 text-right hover:text-foreground"
-                onClick={() => toggleSort('changePercent24h')}
+                onClick={() => toggleSort("changePercent24h")}
               >
                 <Header
                   label="24h"
-                  active={sortKey === 'changePercent24h'}
+                  active={sortKey === "changePercent24h"}
                   direction={sortDirection}
                 />
               </th>
@@ -156,8 +156,8 @@ export function PerpsMarketListPanel({
                 <tr
                   key={m.ticker}
                   className={cn(
-                    'cursor-pointer border-white/5 border-b transition-colors hover:bg-muted/20',
-                    isActive && 'bg-muted/30'
+                    "cursor-pointer border-white/5 border-b transition-colors hover:bg-muted/20",
+                    isActive && "bg-muted/30",
                   )}
                   onClick={() => onSelectTicker(m.ticker)}
                 >
@@ -169,14 +169,14 @@ export function PerpsMarketListPanel({
                         toggleFavorite(m.ticker);
                       }}
                       className={cn(
-                        'text-muted-foreground/60 transition-colors hover:text-yellow-400',
-                        isFavorite(m.ticker) && 'text-yellow-400'
+                        "text-muted-foreground/60 transition-colors hover:text-yellow-400",
+                        isFavorite(m.ticker) && "text-yellow-400",
                       )}
                       aria-label={`Toggle favorite for ${m.ticker}`}
                     >
                       <Star
                         size={14}
-                        fill={isFavorite(m.ticker) ? 'currentColor' : 'none'}
+                        fill={isFavorite(m.ticker) ? "currentColor" : "none"}
                       />
                     </button>
                   </td>
@@ -214,13 +214,13 @@ export function PerpsMarketListPanel({
                   <td className="px-3 py-2 text-right">
                     <div
                       className={cn(
-                        'inline-flex items-center justify-end rounded-full px-2 py-0.5 font-bold text-[10px] tabular-nums',
+                        "inline-flex items-center justify-end rounded-full px-2 py-0.5 font-bold text-[10px] tabular-nums",
                         changePositive
-                          ? 'bg-green-500/10 text-green-500'
-                          : 'bg-red-500/10 text-red-500'
+                          ? "bg-green-500/10 text-green-500"
+                          : "bg-red-500/10 text-red-500",
                       )}
                     >
-                      {changePositive ? '+' : ''}
+                      {changePositive ? "+" : ""}
                       {(m.changePercent24h ?? 0).toFixed(2)}%
                     </div>
                   </td>
@@ -251,13 +251,13 @@ function Header({
 }: {
   label: string;
   active: boolean;
-  direction: 'asc' | 'desc';
+  direction: "asc" | "desc";
 }) {
   return (
     <span className="inline-flex items-center gap-1">
       {label}
       {active &&
-        (direction === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />)}
+        (direction === "asc" ? <ArrowUp size={12} /> : <ArrowDown size={12} />)}
     </span>
   );
 }

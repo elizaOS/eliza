@@ -1,16 +1,16 @@
-import { describe, expect, it } from 'bun:test';
-import { trajectoryLoggerPlugin } from '../index';
-import { TrajectoryLoggerService } from '../TrajectoryLoggerService';
+import { describe, expect, it } from "bun:test";
+import { trajectoryLoggerPlugin } from "../index";
+import { TrajectoryLoggerService } from "../TrajectoryLoggerService";
 
-describe('trajectory logger plugin contract', () => {
-  it('registers the logger as a plugin service', () => {
+describe("trajectory logger plugin contract", () => {
+  it("registers the logger as a plugin service", () => {
     expect(trajectoryLoggerPlugin.services).toContain(TrajectoryLoggerService);
-    expect(TrajectoryLoggerService.serviceType).toBe('trajectory_logger');
+    expect(TrajectoryLoggerService.serviceType).toBe("trajectory_logger");
   });
 
-  it('normalizes runtime environment state for step logging', () => {
+  it("normalizes runtime environment state for step logging", () => {
     const logger = new TrajectoryLoggerService();
-    const trajectoryId = logger.startTrajectory('agent-1');
+    const trajectoryId = logger.startTrajectory("agent-1");
 
     const stepId = logger.startStep(trajectoryId, {
       timestamp: 123,

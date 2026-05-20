@@ -7,8 +7,8 @@
  * @module testing/chroma/helpers/interaction-helpers
  */
 
-import type { Locator, Page } from '@playwright/test';
-import { TIMEOUTS } from './test-data';
+import type { Locator, Page } from "@playwright/test";
+import { TIMEOUTS } from "./test-data";
 
 /**
  * Click a tab by text content and wait for content to change.
@@ -17,11 +17,11 @@ import { TIMEOUTS } from './test-data';
 export async function clickTab(
   page: Page,
   tabName: string,
-  timeout = TIMEOUTS.MEDIUM
+  timeout = TIMEOUTS.MEDIUM,
 ): Promise<boolean> {
   const tab = page
     .locator(
-      `[role="tab"]:has-text("${tabName}"), button:has-text("${tabName}"), a:has-text("${tabName}")`
+      `[role="tab"]:has-text("${tabName}"), button:has-text("${tabName}"), a:has-text("${tabName}")`,
     )
     .first();
 
@@ -31,12 +31,12 @@ export async function clickTab(
 
   if (!isVisible) return false;
 
-  const contentBefore = await page.locator('body').textContent();
+  const contentBefore = await page.locator("body").textContent();
   await tab.click({ force: true, timeout }).catch(() => {});
   await page.waitForTimeout(1000);
 
   // Verify content changed or tab was activated
-  const contentAfter = await page.locator('body').textContent();
+  const contentAfter = await page.locator("body").textContent();
   return contentBefore !== contentAfter || isVisible;
 }
 
@@ -47,7 +47,7 @@ export async function clickTab(
 export async function fillAndVerify(
   page: Page,
   selector: string,
-  value: string
+  value: string,
 ): Promise<string | null> {
   const input = page.locator(selector).first();
   const isVisible = await input
@@ -70,7 +70,7 @@ export async function fillAndVerify(
 export async function clickButtonAndWaitForResponse(
   page: Page,
   buttonSelector: string,
-  urlPattern: string | RegExp
+  urlPattern: string | RegExp,
 ): Promise<number | null> {
   const button = page.locator(buttonSelector).first();
   const isVisible = await button
@@ -99,22 +99,22 @@ export async function clickButtonAndWaitForResponse(
  */
 export async function waitForToast(
   page: Page,
-  textPattern?: string | RegExp
+  textPattern?: string | RegExp,
 ): Promise<string | null> {
   const toastSelector =
     '[data-testid="toast"], [role="status"], [data-sonner-toast], li[data-type]';
   const toast = page.locator(toastSelector).first();
 
   try {
-    await toast.waitFor({ state: 'visible', timeout: TIMEOUTS.MEDIUM });
+    await toast.waitFor({ state: "visible", timeout: TIMEOUTS.MEDIUM });
     const text = await toast.textContent();
 
     if (textPattern) {
       const pattern =
         textPattern instanceof RegExp
           ? textPattern
-          : new RegExp(textPattern, 'i');
-      if (!pattern.test(text || '')) return null;
+          : new RegExp(textPattern, "i");
+      if (!pattern.test(text || "")) return null;
     }
 
     return text;
@@ -130,7 +130,7 @@ export async function waitForToast(
 export async function openModal(
   page: Page,
   triggerSelector: string,
-  modalSelector = '[role="dialog"]'
+  modalSelector = '[role="dialog"]',
 ): Promise<Locator | null> {
   const trigger = page.locator(triggerSelector).first();
   const isVisible = await trigger
@@ -154,12 +154,12 @@ export async function openModal(
  * Close any open modal via Escape, close button, or clicking outside.
  */
 export async function closeModal(page: Page): Promise<void> {
-  await page.keyboard.press('Escape').catch(() => {});
+  await page.keyboard.press("Escape").catch(() => {});
   await page.waitForTimeout(300);
 
   const closeButton = page
     .locator(
-      'button[aria-label*="close" i], button[aria-label*="dismiss" i], button:has(svg.lucide-x)'
+      'button[aria-label*="close" i], button[aria-label*="dismiss" i], button:has(svg.lucide-x)',
     )
     .first();
   if (await closeButton.isVisible({ timeout: 500 }).catch(() => false)) {
@@ -174,7 +174,7 @@ export async function closeModal(page: Page): Promise<void> {
  */
 export async function scrollToLoadMore(
   page: Page,
-  itemSelector: string
+  itemSelector: string,
 ): Promise<{ before: number; after: number }> {
   const before = await page
     .locator(itemSelector)
@@ -196,7 +196,7 @@ export async function scrollToLoadMore(
  */
 export async function verifyElementInteractable(
   page: Page,
-  selector: string
+  selector: string,
 ): Promise<boolean> {
   const element = page.locator(selector).first();
   const isVisible = await element
@@ -219,7 +219,7 @@ export async function verifyElementInteractable(
 export async function switchTabAndVerifyContent(
   page: Page,
   tabName: string,
-  expectedContentSelector: string
+  expectedContentSelector: string,
 ): Promise<boolean> {
   const clicked = await clickTab(page, tabName);
   if (!clicked) return false;
@@ -234,7 +234,7 @@ export async function switchTabAndVerifyContent(
  * Get the BASE_URL for constructing full URLs in tests.
  */
 export function getBaseUrl(): string {
-  return process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:3000';
+  return process.env.PLAYWRIGHT_BASE_URL || "http://localhost:3000";
 }
 
 /**
@@ -243,10 +243,10 @@ export function getBaseUrl(): string {
 export async function navigateToTab(
   page: Page,
   basePath: string,
-  tabName: string
+  tabName: string,
 ): Promise<void> {
   await page.goto(`${getBaseUrl()}${basePath}?tab=${tabName}`, {
-    waitUntil: 'domcontentloaded',
+    waitUntil: "domcontentloaded",
     timeout: 45000,
   });
   await page.waitForTimeout(1500);
@@ -259,7 +259,7 @@ export async function pageContainsText(
   page: Page,
   ...texts: string[]
 ): Promise<boolean> {
-  const content = await page.locator('body').textContent();
+  const content = await page.locator("body").textContent();
   if (!content) return false;
   const lower = content.toLowerCase();
   return texts.some((t) => lower.includes(t.toLowerCase()));
@@ -271,7 +271,7 @@ export async function pageContainsText(
  */
 export async function clickFirstVisible(
   page: Page,
-  selectors: string[]
+  selectors: string[],
 ): Promise<boolean> {
   for (const selector of selectors) {
     const el = page.locator(selector).first();

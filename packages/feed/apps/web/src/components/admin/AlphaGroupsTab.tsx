@@ -9,9 +9,9 @@
  * @access Admin with view_alpha_groups permission
  */
 
-'use client';
+"use client";
 
-import { cn } from '@feed/shared';
+import { cn } from "@feed/shared";
 import {
   Activity,
   ChevronDown,
@@ -22,10 +22,10 @@ import {
   Shield,
   TrendingUp,
   Users,
-} from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
-import { z } from 'zod';
-import { apiUrl } from '@/utils/api-url';
+} from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { z } from "zod";
+import { apiUrl } from "@/utils/api-url";
 
 /**
  * Zod schema for tier statistics.
@@ -99,7 +99,7 @@ const AlphaGroupStatsSchema = z.object({
   }),
 });
 
-type AlphaGroupStats = z.infer<typeof AlphaGroupStatsSchema>['data'];
+type AlphaGroupStats = z.infer<typeof AlphaGroupStatsSchema>["data"];
 
 /**
  * Zod schema for config response.
@@ -109,7 +109,7 @@ const AlphaGroupConfigSchema = z.object({
   data: z.object({
     config: z.record(
       z.string(),
-      z.union([z.number(), z.boolean(), z.object({}).passthrough()])
+      z.union([z.number(), z.boolean(), z.object({}).passthrough()]),
     ),
     tierConfig: z.record(
       z.string(),
@@ -121,7 +121,7 @@ const AlphaGroupConfigSchema = z.object({
         alphaLevel: z.string(),
         promotionWaitDays: z.number(),
         demotionInactiveDays: z.number(),
-      })
+      }),
     ),
     instructions: z.object({
       howToUpdate: z.string(),
@@ -131,7 +131,7 @@ const AlphaGroupConfigSchema = z.object({
   }),
 });
 
-type AlphaGroupConfig = z.infer<typeof AlphaGroupConfigSchema>['data'];
+type AlphaGroupConfig = z.infer<typeof AlphaGroupConfigSchema>["data"];
 
 /**
  * Format percentage for display.
@@ -144,10 +144,10 @@ function formatPercent(value: number): string {
  * Get color class based on fill rate.
  */
 function getFillRateColor(rate: number): string {
-  if (rate < 0.5) return 'text-green-400';
-  if (rate < 0.75) return 'text-yellow-400';
-  if (rate < 0.9) return 'text-orange-400';
-  return 'text-red-400';
+  if (rate < 0.5) return "text-green-400";
+  if (rate < 0.75) return "text-yellow-400";
+  if (rate < 0.9) return "text-orange-400";
+  return "text-red-400";
 }
 
 /**
@@ -155,14 +155,14 @@ function getFillRateColor(rate: number): string {
  */
 function getTierColor(tier: string): string {
   switch (tier) {
-    case '1':
-      return 'bg-purple-600/20 text-purple-300 border-purple-500';
-    case '2':
-      return 'bg-blue-600/20 text-blue-300 border-blue-500';
-    case '3':
-      return 'bg-green-600/20 text-green-300 border-green-500';
+    case "1":
+      return "bg-purple-600/20 text-purple-300 border-purple-500";
+    case "2":
+      return "bg-blue-600/20 text-blue-300 border-blue-500";
+    case "3":
+      return "bg-green-600/20 text-green-300 border-green-500";
     default:
-      return 'bg-gray-600/20 text-gray-300 border-gray-500';
+      return "bg-gray-600/20 text-gray-300 border-gray-500";
   }
 }
 
@@ -180,9 +180,9 @@ export function AlphaGroupsTab() {
     setIsLoading(true);
     setError(null);
 
-    const response = await fetch(apiUrl('/api/admin/alpha-groups/stats'), {
+    const response = await fetch(apiUrl("/api/admin/alpha-groups/stats"), {
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
     });
 
@@ -210,9 +210,9 @@ export function AlphaGroupsTab() {
    * Fetch alpha group configuration.
    */
   const fetchConfig = useCallback(async () => {
-    const response = await fetch(apiUrl('/api/admin/alpha-groups/config'), {
+    const response = await fetch(apiUrl("/api/admin/alpha-groups/config"), {
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
     });
 
@@ -360,7 +360,7 @@ export function AlphaGroupsTab() {
           {Object.entries(stats.tiers).map(([tierId, tier]) => (
             <div
               key={tierId}
-              className={cn('rounded-lg border p-4', getTierColor(tierId))}
+              className={cn("rounded-lg border p-4", getTierColor(tierId))}
             >
               <div className="flex items-center justify-between">
                 <h4 className="font-semibold">{tier.name}</h4>
@@ -374,12 +374,12 @@ export function AlphaGroupsTab() {
                 <div className="mt-2 h-2 rounded-full bg-background/30">
                   <div
                     className={cn(
-                      'h-2 rounded-full',
+                      "h-2 rounded-full",
                       tier.fillRate < 0.75
-                        ? 'bg-green-500'
+                        ? "bg-green-500"
                         : tier.fillRate < 0.9
-                          ? 'bg-yellow-500'
-                          : 'bg-red-500'
+                          ? "bg-yellow-500"
+                          : "bg-red-500",
                     )}
                     style={{
                       width: `${Math.min(100, tier.fillRate * 100)}%`,
@@ -388,8 +388,8 @@ export function AlphaGroupsTab() {
                 </div>
                 <p
                   className={cn(
-                    'mt-1 text-sm',
-                    getFillRateColor(tier.fillRate)
+                    "mt-1 text-sm",
+                    getFillRateColor(tier.fillRate),
                   )}
                 >
                   {formatPercent(tier.fillRate)} full
@@ -446,13 +446,13 @@ export function AlphaGroupsTab() {
               <h3 className="font-semibold">Invite Decay</h3>
               <span
                 className={cn(
-                  'rounded-full px-2 py-1 text-xs',
+                  "rounded-full px-2 py-1 text-xs",
                   stats.inviteDecay.enabled
-                    ? 'bg-green-500/10 text-green-500'
-                    : 'bg-muted text-muted-foreground'
+                    ? "bg-green-500/10 text-green-500"
+                    : "bg-muted text-muted-foreground",
                 )}
               >
-                {stats.inviteDecay.enabled ? 'Enabled' : 'Disabled'}
+                {stats.inviteDecay.enabled ? "Enabled" : "Disabled"}
               </span>
             </div>
             {stats.inviteDecay.enabled && (
@@ -472,7 +472,7 @@ export function AlphaGroupsTab() {
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Cooldown Range</span>
                   <span>
-                    {stats.inviteDecay.baseHours}h -{' '}
+                    {stats.inviteDecay.baseHours}h -{" "}
                     {stats.inviteDecay.maxHours}h
                   </span>
                 </div>
@@ -485,15 +485,15 @@ export function AlphaGroupsTab() {
               <h3 className="font-semibold">Grandfathering</h3>
               <span
                 className={cn(
-                  'rounded-full px-2 py-1 text-xs',
+                  "rounded-full px-2 py-1 text-xs",
                   stats.grandfathering.grandfatheringEnabled
-                    ? 'bg-green-500/10 text-green-500'
-                    : 'bg-muted text-muted-foreground'
+                    ? "bg-green-500/10 text-green-500"
+                    : "bg-muted text-muted-foreground",
                 )}
               >
                 {stats.grandfathering.grandfatheringEnabled
-                  ? 'Enabled'
-                  : 'Disabled'}
+                  ? "Enabled"
+                  : "Disabled"}
               </span>
             </div>
             <div className="mt-3 flex items-center gap-2">
@@ -573,10 +573,10 @@ export function AlphaGroupsTab() {
                 <div className="flex items-center gap-2">
                   <span
                     className={cn(
-                      'h-2.5 w-2.5 rounded-full',
+                      "h-2.5 w-2.5 rounded-full",
                       stats.config.fastTrackEnabled
-                        ? 'bg-green-500'
-                        : 'bg-muted-foreground'
+                        ? "bg-green-500"
+                        : "bg-muted-foreground",
                     )}
                   />
                   <span className="text-sm">Fast Track</span>
@@ -584,10 +584,10 @@ export function AlphaGroupsTab() {
                 <div className="flex items-center gap-2">
                   <span
                     className={cn(
-                      'h-2.5 w-2.5 rounded-full',
+                      "h-2.5 w-2.5 rounded-full",
                       stats.config.includeTradingActivity
-                        ? 'bg-green-500'
-                        : 'bg-muted-foreground'
+                        ? "bg-green-500"
+                        : "bg-muted-foreground",
                     )}
                   />
                   <span className="text-sm">Trading Activity</span>
@@ -595,10 +595,10 @@ export function AlphaGroupsTab() {
                 <div className="flex items-center gap-2">
                   <span
                     className={cn(
-                      'h-2.5 w-2.5 rounded-full',
+                      "h-2.5 w-2.5 rounded-full",
                       stats.config.perNpcCustomizationEnabled
-                        ? 'bg-green-500'
-                        : 'bg-muted-foreground'
+                        ? "bg-green-500"
+                        : "bg-muted-foreground",
                     )}
                   />
                   <span className="text-sm">Per-NPC Customization</span>

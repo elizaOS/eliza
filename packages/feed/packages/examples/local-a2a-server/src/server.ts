@@ -5,30 +5,30 @@
  * with local anvil and doesn't require the full Feed infrastructure.
  */
 
-import { Database } from 'bun:sqlite';
-import cors from 'cors';
-import dotenv from 'dotenv';
-import { ethers } from 'ethers';
-import express, { type Request, type Response } from 'express';
-import { createServer } from 'http';
-import { WebSocketServer } from 'ws';
-import { agentCard } from './agent-card';
-import { setupDatabase } from './database/setup';
-import { A2AHandler } from './handlers/a2a-handler';
-import { MarketHandler } from './handlers/market-handler';
-import { PortfolioHandler } from './handlers/portfolio-handler';
-import { SocialHandler } from './handlers/social-handler';
-import { AgentRegistry } from './services/agent-registry';
-import { LocalBlockchain } from './services/local-blockchain';
+import { Database } from "bun:sqlite";
+import { createServer } from "node:http";
+import cors from "cors";
+import dotenv from "dotenv";
+import { ethers } from "ethers";
+import express, { type Request, type Response } from "express";
+import { WebSocketServer } from "ws";
+import { agentCard } from "./agent-card";
+import { setupDatabase } from "./database/setup";
+import { A2AHandler } from "./handlers/a2a-handler";
+import { MarketHandler } from "./handlers/market-handler";
+import { PortfolioHandler } from "./handlers/portfolio-handler";
+import { SocialHandler } from "./handlers/social-handler";
+import { AgentRegistry } from "./services/agent-registry";
+import { LocalBlockchain } from "./services/local-blockchain";
 
 dotenv.config();
 
 const PORT = process.env.A2A_PORT || 3001;
-const RPC_URL = process.env.RPC_URL || 'http://localhost:8545';
-const CHAIN_ID = process.env.CHAIN_ID || '31337';
+const RPC_URL = process.env.RPC_URL || "http://localhost:8545";
+const CHAIN_ID = process.env.CHAIN_ID || "31337";
 
 // Initialize database using Bun's native SQLite
-const db = new Database('./data/a2a.db', { create: true });
+const db = new Database("./data/a2a.db", { create: true });
 setupDatabase(db);
 
 // Initialize services
@@ -47,7 +47,7 @@ const a2aHandler = new A2AHandler(
   agentRegistry,
   marketHandler,
   socialHandler,
-  portfolioHandler
+  portfolioHandler,
 );
 
 // Create Express app
@@ -56,14 +56,14 @@ app.use(cors());
 app.use(express.json());
 
 // Agent card endpoint
-app.get('/.well-known/agent-card', (_req: Request, res: Response) => {
+app.get("/.well-known/agent-card", (_req: Request, res: Response) => {
   res.json(agentCard);
 });
 
 // Health check
-app.get('/health', (_req: Request, res: Response) => {
+app.get("/health", (_req: Request, res: Response) => {
   res.json({
-    status: 'ok',
+    status: "ok",
     chainId: CHAIN_ID,
     rpcUrl: RPC_URL,
     agents: agentRegistry.getAgentCount(),
@@ -71,34 +71,34 @@ app.get('/health', (_req: Request, res: Response) => {
 });
 
 // JSON-RPC 2.0 endpoint
-app.post('/api/a2a', async (req: Request, res: Response) => {
+app.post("/api/a2a", async (req: Request, res: Response) => {
   const { jsonrpc, method, params, id } = req.body;
 
-  if (jsonrpc !== '2.0') {
+  if (jsonrpc !== "2.0") {
     return res.json({
-      jsonrpc: '2.0',
-      error: { code: -32600, message: 'Invalid Request' },
+      jsonrpc: "2.0",
+      error: { code: -32600, message: "Invalid Request" },
       id,
     });
   }
 
   // Extract agent info from headers
-  const agentId = req.headers['x-agent-id'] as string;
-  const agentAddress = req.headers['x-agent-address'] as string;
-  const tokenId = req.headers['x-agent-token-id'] as string;
+  const agentId = req.headers["x-agent-id"] as string;
+  const agentAddress = req.headers["x-agent-address"] as string;
+  const tokenId = req.headers["x-agent-token-id"] as string;
 
   // Handle method — catch handler errors and return JSON-RPC error instead of crashing
   try {
     const result = await a2aHandler.handleMethod(method, params, {
       agentId,
       address: agentAddress,
-      tokenId: parseInt(tokenId || '0'),
+      tokenId: parseInt(tokenId || "0", 10),
     });
-    res.json({ jsonrpc: '2.0', result, id });
+    res.json({ jsonrpc: "2.0", result, id });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     res.json({
-      jsonrpc: '2.0',
+      jsonrpc: "2.0",
       error: { code: -32000, message },
       id,
     });
@@ -109,12 +109,12 @@ app.post('/api/a2a', async (req: Request, res: Response) => {
 const server = createServer(app);
 
 // Create WebSocket server for real-time updates
-const wss = new WebSocketServer({ server, path: '/ws' });
+const wss = new WebSocketServer({ server, path: "/ws" });
 
-wss.on('connection', (ws) => {
-  console.log('New WebSocket connection');
+wss.on("connection", (ws) => {
+  console.log("New WebSocket connection");
 
-  ws.on('message', async (data) => {
+  ws.on("message", async (data) => {
     const message = JSON.parse(data.toString());
     const { method, params, id } = message;
 
@@ -127,15 +127,15 @@ wss.on('connection', (ws) => {
 
     ws.send(
       JSON.stringify({
-        jsonrpc: '2.0',
+        jsonrpc: "2.0",
         result,
         id,
-      })
+      }),
     );
   });
 
-  ws.on('close', () => {
-    console.log('WebSocket connection closed');
+  ws.on("close", () => {
+    console.log("WebSocket connection closed");
   });
 });
 

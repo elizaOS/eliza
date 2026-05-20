@@ -12,11 +12,11 @@
  *   bun run scripts/pull_bun_docs.ts [--base-url https://bun.com] [--sitemap /docs/sitemap.xml] [--output bun] [--workers 16]
  */
 
-import { mkdir } from 'node:fs/promises';
+import { mkdir } from "node:fs/promises";
 
-const DEFAULT_BASE_URL = 'https://bun.com';
-const DEFAULT_SITEMAP = '/docs/sitemap.xml';
-const DEFAULT_OUTPUT = 'bun';
+const DEFAULT_BASE_URL = "https://bun.com";
+const DEFAULT_SITEMAP = "/docs/sitemap.xml";
+const DEFAULT_OUTPUT = "bun";
 const DEFAULT_WORKERS = 16;
 
 type Options = {
@@ -41,10 +41,10 @@ function getArg(flag: string, fallback: string): string {
 }
 
 const opts: Options = {
-  baseUrl: getArg('--base-url', DEFAULT_BASE_URL),
-  sitemapPath: getArg('--sitemap', DEFAULT_SITEMAP),
-  output: getArg('--output', DEFAULT_OUTPUT),
-  workers: Number(getArg('--workers', String(DEFAULT_WORKERS))),
+  baseUrl: getArg("--base-url", DEFAULT_BASE_URL),
+  sitemapPath: getArg("--sitemap", DEFAULT_SITEMAP),
+  output: getArg("--output", DEFAULT_OUTPUT),
+  workers: Number(getArg("--workers", String(DEFAULT_WORKERS))),
 };
 
 async function fetchText(url: string): Promise<string> {
@@ -68,32 +68,32 @@ function extractLocs(xml: string): string[] {
 function urlToPage(
   url: string,
   baseUrl: string,
-  outputRoot: string
+  outputRoot: string,
 ): Page | null {
   if (!url.startsWith(baseUrl)) return null;
-  const rel = url.slice(baseUrl.length).replace(/^\/+/, ''); // drop leading slash(es)
+  const rel = url.slice(baseUrl.length).replace(/^\/+/, ""); // drop leading slash(es)
   if (!rel) return null;
-  const path = rel.replace(/\/+$/, ''); // trim trailing slash
+  const path = rel.replace(/\/+$/, ""); // trim trailing slash
 
   // Drop leading "docs/" if present for cleaner local structure.
-  const cleaned = path.startsWith('docs/') ? path.slice('docs/'.length) : path;
+  const cleaned = path.startsWith("docs/") ? path.slice("docs/".length) : path;
 
-  const parts = cleaned.split('/');
-  const filename = parts.pop() || 'index';
-  const dir = [outputRoot, ...parts].join('/');
-  const output = `${dir ? `${dir}/` : ''}${filename}.md`;
+  const parts = cleaned.split("/");
+  const filename = parts.pop() || "index";
+  const dir = [outputRoot, ...parts].join("/");
+  const output = `${dir ? `${dir}/` : ""}${filename}.md`;
   return { url, path: cleaned, output };
 }
 
 async function ensureDir(path: string) {
-  const dir = path.split('/').slice(0, -1).join('/');
+  const dir = path.split("/").slice(0, -1).join("/");
   if (!dir) return;
   await mkdir(dir, { recursive: true });
 }
 
 async function writeFile(path: string, content: string) {
   await ensureDir(path);
-  await Bun.write(path, content.endsWith('\n') ? content : `${content}\n`);
+  await Bun.write(path, content.endsWith("\n") ? content : `${content}\n`);
 }
 
 async function pullDocs(options: Options) {

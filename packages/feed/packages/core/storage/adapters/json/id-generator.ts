@@ -8,7 +8,7 @@ export class JsonIdGenerator {
   private counters: Map<string, number> = new Map();
   private prefix: string;
 
-  constructor(prefix = 'json') {
+  constructor(prefix = "json") {
     this.prefix = prefix;
   }
 

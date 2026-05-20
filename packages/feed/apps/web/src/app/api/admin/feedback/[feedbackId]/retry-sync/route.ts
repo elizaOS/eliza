@@ -11,11 +11,11 @@ import {
   successResponse,
   syncFeedbackToLinear,
   withErrorHandling,
-} from '@feed/api';
-import { db } from '@feed/db';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { z } from 'zod';
+} from "@feed/api";
+import { db } from "@feed/db";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { z } from "zod";
 
 /**
  * Zod schema for validating Linear-synced feedback metadata.
@@ -35,7 +35,7 @@ type LinearSyncedMetadata = z.infer<typeof LinearSyncedMetadataSchema>;
  */
 function parseLinearSyncedMetadata(rawMetadata: unknown): LinearSyncedMetadata {
   const normalizedMetadata =
-    rawMetadata && typeof rawMetadata === 'object' ? rawMetadata : {};
+    rawMetadata && typeof rawMetadata === "object" ? rawMetadata : {};
   return LinearSyncedMetadataSchema.parse(normalizedMetadata);
 }
 
@@ -58,9 +58,9 @@ export const POST = withErrorHandling(
     const linearConfig = getLinearConfig();
     if (!linearConfig) {
       return errorResponse(
-        'Linear integration not configured. Set LINEAR_API_KEY and LINEAR_TEAM_ID.',
-        'LINEAR_NOT_CONFIGURED',
-        400
+        "Linear integration not configured. Set LINEAR_API_KEY and LINEAR_TEAM_ID.",
+        "LINEAR_NOT_CONFIGURED",
+        400,
       );
     }
 
@@ -75,7 +75,7 @@ export const POST = withErrorHandling(
     });
 
     if (!feedback) {
-      return errorResponse('Feedback not found', 'FEEDBACK_NOT_FOUND', 404);
+      return errorResponse("Feedback not found", "FEEDBACK_NOT_FOUND", 404);
     }
 
     // Check if already synced - validate metadata at runtime
@@ -89,16 +89,16 @@ export const POST = withErrorHandling(
           identifier: metadata.linearIssueIdentifier,
           url: metadata.linearIssueUrl,
         },
-        message: 'Feedback already synced to Linear',
+        message: "Feedback already synced to Linear",
       });
     }
 
     // Get user info for the sync - distinguish between orphaned feedback and deleted user
     if (!feedback.fromUserId) {
       return errorResponse(
-        'Feedback has no associated user (orphaned feedback)',
-        'ORPHANED_FEEDBACK',
-        400
+        "Feedback has no associated user (orphaned feedback)",
+        "ORPHANED_FEEDBACK",
+        400,
       );
     }
 
@@ -109,9 +109,9 @@ export const POST = withErrorHandling(
 
     if (!user) {
       return errorResponse(
-        'User for feedback not found (may have been deleted)',
-        'USER_NOT_FOUND',
-        404
+        "User for feedback not found (may have been deleted)",
+        "USER_NOT_FOUND",
+        404,
       );
     }
 
@@ -128,10 +128,10 @@ export const POST = withErrorHandling(
 
     // Validate updated metadata at runtime
     const updatedMetadata = parseLinearSyncedMetadata(
-      updatedFeedback?.metadata
+      updatedFeedback?.metadata,
     );
 
-    logger.info('Manual Linear sync completed', {
+    logger.info("Manual Linear sync completed", {
       feedbackId,
       linearIssueId: updatedMetadata.linearIssueId,
     });
@@ -146,7 +146,7 @@ export const POST = withErrorHandling(
             url: updatedMetadata.linearIssueUrl,
           }
         : null,
-      message: 'Successfully synced to Linear',
+      message: "Successfully synced to Linear",
     });
-  }
+  },
 );

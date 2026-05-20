@@ -1,9 +1,9 @@
-import { definePrompt } from '../define-prompt';
+import { definePrompt } from "../define-prompt";
 import {
   ANTI_REPETITION_RULES,
   NO_HASHTAGS_OR_EMOJIS,
   PARODY_NAME_RULES,
-} from '../shared-sections';
+} from "../shared-sections";
 
 /**
  * Prompt for generating biased news articles about world events.
@@ -15,10 +15,10 @@ import {
  * Returns XML with title, summary, content, slant, sentiment, etc.
  */
 export const biasedArticle = definePrompt({
-  id: 'biased-article',
-  version: '2.0.0',
-  category: 'game',
-  description: 'Generates biased articles with full narrative context',
+  id: "biased-article",
+  version: "2.0.0",
+  category: "game",
+  description: "Generates biased articles with full narrative context",
   temperature: 0.85,
   maxTokens: 5000,
   template: `{{realityGrounding}}

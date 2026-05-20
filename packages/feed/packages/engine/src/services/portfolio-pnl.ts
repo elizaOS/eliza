@@ -9,14 +9,14 @@ import {
   perpPositions,
   positions,
   users,
-} from '@feed/db';
+} from "@feed/db";
 import {
   CANONICAL_AGENT_TRANSFER_TRANSACTION_TYPES,
   CANONICAL_PEER_TRANSFER_TRANSACTION_TYPES,
   resolveUserIdentifierKind,
   toNumber,
-} from '@feed/shared';
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
+} from "@feed/shared";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 
 export interface PortfolioPnLSnapshot {
   lifetimePnL: number;
@@ -33,7 +33,7 @@ export interface PortfolioPnLSnapshot {
 }
 
 export async function calculatePortfolioPnL(
-  userId: string
+  userId: string,
 ): Promise<PortfolioPnLSnapshot | null> {
   const normalizedUserId = userId.trim();
   if (!normalizedUserId) {
@@ -42,9 +42,9 @@ export async function calculatePortfolioPnL(
 
   const kind = resolveUserIdentifierKind(normalizedUserId);
   const whereClause =
-    kind === 'id'
+    kind === "id"
       ? eq(users.id, normalizedUserId)
-      : kind === 'privyId'
+      : kind === "privyId"
         ? eq(users.privyId, normalizedUserId)
         : sql`lower(${users.username}) = lower(${normalizedUserId})`;
 
@@ -62,7 +62,7 @@ export async function calculatePortfolioPnL(
     .limit(1);
 
   let user = userResult[0];
-  if (!user && kind !== 'id') {
+  if (!user && kind !== "id") {
     const fallbackResult = await db
       .select({
         id: users.id,
@@ -82,7 +82,7 @@ export async function calculatePortfolioPnL(
 
   const canonicalUserId = user.id;
   const positionUserIds = Array.from(
-    new Set([canonicalUserId, user.privyId].filter(Boolean))
+    new Set([canonicalUserId, user.privyId].filter(Boolean)),
   ) as string[];
 
   const perpPositionResults = await db
@@ -93,8 +93,8 @@ export async function calculatePortfolioPnL(
     .where(
       and(
         inArray(perpPositions.userId, positionUserIds),
-        isNull(perpPositions.closedAt)
-      )
+        isNull(perpPositions.closedAt),
+      ),
     );
 
   // For prediction positions, we need to join with markets
@@ -111,8 +111,8 @@ export async function calculatePortfolioPnL(
     .where(
       and(
         inArray(positions.userId, positionUserIds),
-        eq(markets.resolved, false)
-      )
+        eq(markets.resolved, false),
+      ),
     );
 
   const totalDeposited = toNumber(user.totalDeposited);
@@ -130,16 +130,16 @@ export async function calculatePortfolioPnL(
         inArray(balanceTransactions.type, [
           ...CANONICAL_AGENT_TRANSFER_TRANSACTION_TYPES,
           ...CANONICAL_PEER_TRANSFER_TRANSACTION_TYPES,
-          'transfer_sent',
-          'transfer_received',
-        ])
-      )
+          "transfer_sent",
+          "transfer_received",
+        ]),
+      ),
     )
     .limit(1);
 
   const perpUnrealized = perpPositionResults.reduce(
     (sum, position) => sum + toNumber(position.unrealizedPnL),
-    0
+    0,
   );
 
   const predictionUnrealized = predictionPositionResults.reduce(
@@ -161,7 +161,7 @@ export async function calculatePortfolioPnL(
 
       return sum + shares * (currentPrice - avgPrice);
     },
-    0
+    0,
   );
 
   const totalUnrealizedPnL = perpUnrealized + predictionUnrealized;

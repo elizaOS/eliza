@@ -1,31 +1,31 @@
-'use client';
+"use client";
 
 import {
-  FEED_POINTS_SYMBOL,
   cn,
+  FEED_POINTS_SYMBOL,
   formatCompactCurrency,
   logger,
-} from '@feed/shared';
+} from "@feed/shared";
 import {
   ChevronDown,
   ExternalLink,
   Loader2,
   TrendingDown,
   TrendingUp,
-} from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
-import { Switch } from '@/components/ui/switch';
-import { useAgent0Reputation } from '@/hooks/useAgent0Reputation';
-import { useAgentTotalPnL } from '@/hooks/useAgentTotalPnL';
-import { useAuth } from '@/hooks/useAuth';
-import { useCollapsibleHeight } from '@/hooks/useCollapsibleHeight';
-import { usePortfolioPnL } from '@/hooks/usePortfolioPnL';
-import type { UserPositionsSnapshot } from '@/lib/markets/user-positions-types';
+} from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
+import { Switch } from "@/components/ui/switch";
+import { useAgent0Reputation } from "@/hooks/useAgent0Reputation";
+import { useAgentTotalPnL } from "@/hooks/useAgentTotalPnL";
+import { useAuth } from "@/hooks/useAuth";
+import { useCollapsibleHeight } from "@/hooks/useCollapsibleHeight";
+import { usePortfolioPnL } from "@/hooks/usePortfolioPnL";
+import type { UserPositionsSnapshot } from "@/lib/markets/user-positions-types";
 import {
   usePerpPositions,
   usePredictionPositions,
-} from '@/stores/userPositionsStore';
+} from "@/stores/userPositionsStore";
 
 /** Portfolio breakdown snapshot (matches profile page calculation) */
 interface PortfolioSnapshot {
@@ -54,13 +54,13 @@ interface AgentSidebarSummaryResponse {
 
 type AgentPnLProps =
   | {
-      entityType: 'agent';
+      entityType: "agent";
       agentId: string;
       entityName: string;
       userId?: never;
     }
   | {
-      entityType: 'user';
+      entityType: "user";
       userId: string;
       entityName: string;
       agentId?: never;
@@ -69,7 +69,7 @@ type AgentPnLProps =
 /** Returns true if a prediction position is still open (not resolved/closed) */
 function isOpenPrediction(p: { resolved?: boolean; status?: string }): boolean {
   if (p.resolved) return false;
-  if (p.status && p.status !== 'active') return false;
+  if (p.status && p.status !== "active") return false;
   return true;
 }
 
@@ -77,11 +77,11 @@ function isOpenPrediction(p: { resolved?: boolean; status?: string }): boolean {
 function getResolutionLabel(p: {
   resolution?: boolean | null;
   status?: string;
-}): { text: string; variant: 'green' | 'red' | 'muted' } {
-  if (p.status === 'cancelled') return { text: 'Cancelled', variant: 'muted' };
-  if (p.resolution === true) return { text: 'Won', variant: 'green' };
-  if (p.resolution === false) return { text: 'Lost', variant: 'red' };
-  return { text: 'Closed', variant: 'muted' };
+}): { text: string; variant: "green" | "red" | "muted" } {
+  if (p.status === "cancelled") return { text: "Cancelled", variant: "muted" };
+  if (p.resolution === true) return { text: "Won", variant: "green" };
+  if (p.resolution === false) return { text: "Lost", variant: "red" };
+  return { text: "Closed", variant: "muted" };
 }
 
 /** Collapsible section with smooth height animation */
@@ -112,16 +112,16 @@ function CollapsibleSection({
         </span>
         <ChevronDown
           className={cn(
-            'h-3.5 w-3.5 text-muted-foreground transition-transform duration-200',
-            isOpen && 'rotate-180'
+            "h-3.5 w-3.5 text-muted-foreground transition-transform duration-200",
+            isOpen && "rotate-180",
           )}
         />
       </button>
       <div
         style={{
-          height: height === undefined ? 'auto' : height,
-          overflow: 'hidden',
-          transition: 'height 200ms ease-out',
+          height: height === undefined ? "auto" : height,
+          overflow: "hidden",
+          transition: "height 200ms ease-out",
         }}
       >
         <div ref={contentRef} className="px-2 pb-2">
@@ -139,7 +139,7 @@ function CollapsibleSection({
 export function AgentPnL(props: AgentPnLProps) {
   const { entityType, entityName } = props;
 
-  if (entityType === 'user') {
+  if (entityType === "user") {
     return <UserPnL userId={props.userId} entityName={entityName} />;
   }
 
@@ -156,8 +156,8 @@ function UserPnL({
 }) {
   const router = useRouter();
   const [expandedSections, setExpandedSections] = useState<
-    Set<'predictions' | 'perps'>
-  >(new Set(['predictions', 'perps']));
+    Set<"predictions" | "perps">
+  >(new Set(["predictions", "perps"]));
   const [showClosed, setShowClosed] = useState(false);
 
   const { data: portfolio, loading: portfolioLoading } = usePortfolioPnL({
@@ -175,7 +175,7 @@ function UserPnL({
   // Filter to only user's personal positions (exclude agent positions)
   const perps = (perpsData ?? []).filter((p) => !p.isAgentPosition);
   const userPredictions = (predictionsData ?? []).filter(
-    (p) => !p.isAgentPosition
+    (p) => !p.isAgentPosition,
   );
   const openPredictions = userPredictions.filter(isOpenPrediction);
   const closedPredictions = userPredictions.filter((p) => !isOpenPrediction(p));
@@ -183,7 +183,7 @@ function UserPnL({
     ? [...openPredictions, ...closedPredictions]
     : openPredictions;
 
-  const toggleSection = useCallback((section: 'predictions' | 'perps') => {
+  const toggleSection = useCallback((section: "predictions" | "perps") => {
     setExpandedSections((prev) => {
       const next = new Set(prev);
       if (next.has(section)) {
@@ -213,10 +213,10 @@ function UserPnL({
         <h3 className="font-semibold text-sm">{entityName} P&L</h3>
         <div
           className={cn(
-            'flex items-center gap-1 rounded-full px-2 py-0.5 font-medium text-xs',
+            "flex items-center gap-1 rounded-full px-2 py-0.5 font-medium text-xs",
             isProfitable
-              ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-              : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+              ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+              : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
           )}
         >
           {isProfitable ? (
@@ -224,7 +224,7 @@ function UserPnL({
           ) : (
             <TrendingDown className="h-3 w-3" />
           )}
-          {totalPnL >= 0 ? '+' : ''}
+          {totalPnL >= 0 ? "+" : ""}
           {formatCompactCurrency(totalPnL)}
         </div>
       </div>
@@ -265,11 +265,11 @@ function UserPnL({
           <span className="text-muted-foreground">Total P&L</span>
           <span
             className={cn(
-              'font-semibold',
-              isProfitable ? 'text-green-600' : 'text-red-600'
+              "font-semibold",
+              isProfitable ? "text-green-600" : "text-red-600",
             )}
           >
-            {totalPnL >= 0 ? '+' : ''}
+            {totalPnL >= 0 ? "+" : ""}
             {formatCompactCurrency(totalPnL)}
           </span>
         </div>
@@ -299,7 +299,7 @@ function UserPnL({
       <div className="flex flex-col rounded-lg border border-border bg-card/50 p-3 lg:min-h-0 lg:flex-1 lg:overflow-hidden">
         <div className="mb-2 flex shrink-0 items-center justify-between">
           <span className="font-medium text-sm">
-            {showClosed ? 'All Positions' : 'Open Positions'}
+            {showClosed ? "All Positions" : "Open Positions"}
           </span>
           {closedPredictions.length > 0 && (
             <label className="flex items-center gap-1.5 text-muted-foreground text-xs">
@@ -315,7 +315,7 @@ function UserPnL({
 
         {predictions.length === 0 && perps.length === 0 ? (
           <div className="flex items-center justify-center py-4 text-muted-foreground text-xs">
-            {showClosed ? 'No positions' : 'No open positions'}
+            {showClosed ? "No positions" : "No open positions"}
           </div>
         ) : (
           <div className="space-y-2 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
@@ -324,8 +324,8 @@ function UserPnL({
               <CollapsibleSection
                 title="Predictions"
                 count={predictions.length}
-                isOpen={expandedSections.has('predictions')}
-                onToggle={() => toggleSection('predictions')}
+                isOpen={expandedSections.has("predictions")}
+                onToggle={() => toggleSection("predictions")}
               >
                 <div className="space-y-1">
                   {predictions.map((pos) => {
@@ -339,8 +339,8 @@ function UserPnL({
                           router.push(`/markets/predictions/${pos.marketId}`)
                         }
                         className={cn(
-                          'flex w-full items-center justify-between rounded bg-muted/30 px-2 py-1.5 text-left text-xs transition-colors hover:bg-muted/50',
-                          closed && 'opacity-60'
+                          "flex w-full items-center justify-between rounded bg-muted/30 px-2 py-1.5 text-left text-xs transition-colors hover:bg-muted/50",
+                          closed && "opacity-60",
                         )}
                       >
                         <div className="min-w-0 flex-1">
@@ -351,15 +351,15 @@ function UserPnL({
                             {closed && (
                               <span
                                 className={cn(
-                                  'shrink-0 rounded-full px-1.5 py-0.5 font-medium text-[10px] leading-none',
+                                  "shrink-0 rounded-full px-1.5 py-0.5 font-medium text-[10px] leading-none",
                                   {
-                                    'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400':
-                                      resolution?.variant === 'green',
-                                    'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400':
-                                      resolution?.variant === 'red',
-                                    'bg-muted text-muted-foreground':
-                                      resolution?.variant === 'muted',
-                                  }
+                                    "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400":
+                                      resolution?.variant === "green",
+                                    "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400":
+                                      resolution?.variant === "red",
+                                    "bg-muted text-muted-foreground":
+                                      resolution?.variant === "muted",
+                                  },
                                 )}
                               >
                                 {resolution?.text}
@@ -369,10 +369,10 @@ function UserPnL({
                           <div className="flex items-center gap-2 text-muted-foreground">
                             <span
                               className={cn(
-                                'font-medium',
-                                pos.side === 'YES'
-                                  ? 'text-green-600'
-                                  : 'text-red-600'
+                                "font-medium",
+                                pos.side === "YES"
+                                  ? "text-green-600"
+                                  : "text-red-600",
                               )}
                             >
                               {pos.side}
@@ -383,13 +383,13 @@ function UserPnL({
                         {pos.unrealizedPnL !== undefined && (
                           <span
                             className={cn(
-                              'ml-2 shrink-0 font-medium',
+                              "ml-2 shrink-0 font-medium",
                               Number(pos.unrealizedPnL) >= 0
-                                ? 'text-green-600'
-                                : 'text-red-600'
+                                ? "text-green-600"
+                                : "text-red-600",
                             )}
                           >
-                            {Number(pos.unrealizedPnL) >= 0 ? '+' : ''}
+                            {Number(pos.unrealizedPnL) >= 0 ? "+" : ""}
                             {formatCompactCurrency(Number(pos.unrealizedPnL))}
                           </span>
                         )}
@@ -405,8 +405,8 @@ function UserPnL({
               <CollapsibleSection
                 title="Perpetuals"
                 count={perps.length}
-                isOpen={expandedSections.has('perps')}
-                onToggle={() => toggleSection('perps')}
+                isOpen={expandedSections.has("perps")}
+                onToggle={() => toggleSection("perps")}
               >
                 <div className="space-y-1">
                   {perps.map((pos) => (
@@ -423,10 +423,10 @@ function UserPnL({
                         <div className="flex items-center gap-2 text-muted-foreground">
                           <span
                             className={cn(
-                              'font-medium',
-                              pos.side === 'long'
-                                ? 'text-green-600'
-                                : 'text-red-600'
+                              "font-medium",
+                              pos.side === "long"
+                                ? "text-green-600"
+                                : "text-red-600",
                             )}
                           >
                             {pos.side.toUpperCase()}
@@ -443,13 +443,13 @@ function UserPnL({
                       {pos.unrealizedPnL !== undefined && (
                         <span
                           className={cn(
-                            'ml-2 shrink-0 font-medium',
+                            "ml-2 shrink-0 font-medium",
                             Number(pos.unrealizedPnL) >= 0
-                              ? 'text-green-600'
-                              : 'text-red-600'
+                              ? "text-green-600"
+                              : "text-red-600",
                           )}
                         >
-                          {Number(pos.unrealizedPnL) >= 0 ? '+' : ''}
+                          {Number(pos.unrealizedPnL) >= 0 ? "+" : ""}
                           {formatCompactCurrency(Number(pos.unrealizedPnL))}
                         </span>
                       )}
@@ -478,11 +478,11 @@ function AgentPnLView({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedSections, setExpandedSections] = useState<
-    Set<'predictions' | 'perps'>
-  >(new Set(['predictions', 'perps']));
+    Set<"predictions" | "perps">
+  >(new Set(["predictions", "perps"]));
   const [showClosed, setShowClosed] = useState(false);
   const [summary, setSummary] = useState<AgentSidebarSummaryResponse | null>(
-    null
+    null,
   );
 
   const agentRow = summary?.agent;
@@ -515,7 +515,7 @@ function AgentPnLView({
       try {
         const token = await getAccessToken();
         if (!token) {
-          throw new Error('Authentication required');
+          throw new Error("Authentication required");
         }
 
         const response = await fetch(`/api/agents/${agentId}/summary`, {
@@ -531,7 +531,7 @@ function AgentPnLView({
 
         const data = (await response.json()) as AgentSidebarSummaryResponse;
         if (!data.success) {
-          throw new Error('Failed to fetch agent summary');
+          throw new Error("Failed to fetch agent summary");
         }
 
         if (cancelled) {
@@ -545,12 +545,12 @@ function AgentPnLView({
         }
 
         const message =
-          err instanceof Error ? err.message : 'Failed to load agent summary';
+          err instanceof Error ? err.message : "Failed to load agent summary";
         setError(message);
         logger.error(
-          'Failed to fetch agent sidebar summary',
+          "Failed to fetch agent sidebar summary",
           { error: message, agentId },
-          'AgentPnLView'
+          "AgentPnLView",
         );
       } finally {
         if (!cancelled) {
@@ -571,7 +571,7 @@ function AgentPnLView({
   const allPerps = summary?.positions.perpetuals.positions ?? [];
   const openPredictions = allPredictions.filter(isOpenPrediction);
   const closedPredictions = allPredictions.filter(
-    (position) => !isOpenPrediction(position)
+    (position) => !isOpenPrediction(position),
   );
   const openPerps = allPerps.filter((position) => !position.closedAt);
   const closedPerps = allPerps.filter((position) => Boolean(position.closedAt));
@@ -580,7 +580,7 @@ function AgentPnLView({
     : openPredictions;
   const perps = showClosed ? [...openPerps, ...closedPerps] : openPerps;
 
-  const toggleSection = useCallback((section: 'predictions' | 'perps') => {
+  const toggleSection = useCallback((section: "predictions" | "perps") => {
     setExpandedSections((prev) => {
       const next = new Set(prev);
       if (next.has(section)) {
@@ -603,7 +603,7 @@ function AgentPnLView({
   if (!summary) {
     return (
       <div className="p-4 text-muted-foreground text-sm">
-        Failed to load agent P&L: {error ?? 'Unknown error'}
+        Failed to load agent P&L: {error ?? "Unknown error"}
       </div>
     );
   }
@@ -620,10 +620,10 @@ function AgentPnLView({
         <h3 className="font-semibold text-sm">{entityName} P&L</h3>
         <div
           className={cn(
-            'flex items-center gap-1 rounded-full px-2 py-0.5 font-medium text-xs',
+            "flex items-center gap-1 rounded-full px-2 py-0.5 font-medium text-xs",
             isProfitable
-              ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-              : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+              ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+              : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
           )}
         >
           {isProfitable ? (
@@ -631,7 +631,7 @@ function AgentPnLView({
           ) : (
             <TrendingDown className="h-3 w-3" />
           )}
-          {totalPnL >= 0 ? '+' : ''}
+          {totalPnL >= 0 ? "+" : ""}
           {formatCompactCurrency(totalPnL)}
         </div>
       </div>
@@ -690,10 +690,10 @@ function AgentPnLView({
               className="flex items-center justify-between gap-2 text-foreground transition-colors hover:text-[#0066FF]"
             >
               <span className="truncate">
-                Agent0 · Trust{' '}
+                Agent0 · Trust{" "}
                 {agent0Profile.reputation?.trustScore != null
                   ? agent0Profile.reputation.trustScore.toFixed(0)
-                  : '—'}
+                  : "—"}
                 %
               </span>
               <ExternalLink className="h-3 w-3 shrink-0" />
@@ -708,11 +708,11 @@ function AgentPnLView({
           <span className="text-muted-foreground">Total P&L</span>
           <span
             className={cn(
-              'font-semibold',
-              isProfitable ? 'text-green-600' : 'text-red-600'
+              "font-semibold",
+              isProfitable ? "text-green-600" : "text-red-600",
             )}
           >
-            {totalPnL >= 0 ? '+' : ''}
+            {totalPnL >= 0 ? "+" : ""}
             {formatCompactCurrency(totalPnL)}
           </span>
         </div>
@@ -740,7 +740,7 @@ function AgentPnLView({
       <div className="flex flex-col rounded-lg border border-border bg-card/50 p-3 lg:min-h-0 lg:flex-1 lg:overflow-hidden">
         <div className="mb-2 flex shrink-0 items-center justify-between">
           <span className="font-medium text-sm">
-            {showClosed ? 'All Positions' : 'Open Positions'}
+            {showClosed ? "All Positions" : "Open Positions"}
           </span>
           {(closedPredictions.length > 0 || closedPerps.length > 0) && (
             <label className="flex items-center gap-1.5 text-muted-foreground text-xs">
@@ -756,7 +756,7 @@ function AgentPnLView({
 
         {predictions.length === 0 && perps.length === 0 ? (
           <div className="flex items-center justify-center py-4 text-muted-foreground text-xs">
-            {showClosed ? 'No positions' : 'No open positions'}
+            {showClosed ? "No positions" : "No open positions"}
           </div>
         ) : (
           <div className="space-y-2 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
@@ -765,8 +765,8 @@ function AgentPnLView({
               <CollapsibleSection
                 title="Predictions"
                 count={predictions.length}
-                isOpen={expandedSections.has('predictions')}
-                onToggle={() => toggleSection('predictions')}
+                isOpen={expandedSections.has("predictions")}
+                onToggle={() => toggleSection("predictions")}
               >
                 <div className="space-y-1">
                   {predictions.map((pos) => {
@@ -780,8 +780,8 @@ function AgentPnLView({
                           router.push(`/markets/predictions/${pos.marketId}`)
                         }
                         className={cn(
-                          'flex w-full items-center justify-between rounded bg-muted/30 px-2 py-1.5 text-left text-xs transition-colors hover:bg-muted/50',
-                          closed && 'opacity-60'
+                          "flex w-full items-center justify-between rounded bg-muted/30 px-2 py-1.5 text-left text-xs transition-colors hover:bg-muted/50",
+                          closed && "opacity-60",
                         )}
                       >
                         <div className="min-w-0 flex-1">
@@ -792,15 +792,15 @@ function AgentPnLView({
                             {closed && (
                               <span
                                 className={cn(
-                                  'shrink-0 rounded-full px-1.5 py-0.5 font-medium text-[10px] leading-none',
+                                  "shrink-0 rounded-full px-1.5 py-0.5 font-medium text-[10px] leading-none",
                                   {
-                                    'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400':
-                                      resolution?.variant === 'green',
-                                    'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400':
-                                      resolution?.variant === 'red',
-                                    'bg-muted text-muted-foreground':
-                                      resolution?.variant === 'muted',
-                                  }
+                                    "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400":
+                                      resolution?.variant === "green",
+                                    "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400":
+                                      resolution?.variant === "red",
+                                    "bg-muted text-muted-foreground":
+                                      resolution?.variant === "muted",
+                                  },
                                 )}
                               >
                                 {resolution?.text}
@@ -810,10 +810,10 @@ function AgentPnLView({
                           <div className="flex items-center gap-2 text-muted-foreground">
                             <span
                               className={cn(
-                                'font-medium',
-                                pos.side === 'YES'
-                                  ? 'text-green-600'
-                                  : 'text-red-600'
+                                "font-medium",
+                                pos.side === "YES"
+                                  ? "text-green-600"
+                                  : "text-red-600",
                               )}
                             >
                               {pos.side}
@@ -824,13 +824,13 @@ function AgentPnLView({
                         {pos.unrealizedPnL !== undefined && (
                           <span
                             className={cn(
-                              'ml-2 shrink-0 font-medium',
+                              "ml-2 shrink-0 font-medium",
                               Number(pos.unrealizedPnL) >= 0
-                                ? 'text-green-600'
-                                : 'text-red-600'
+                                ? "text-green-600"
+                                : "text-red-600",
                             )}
                           >
-                            {Number(pos.unrealizedPnL) >= 0 ? '+' : ''}
+                            {Number(pos.unrealizedPnL) >= 0 ? "+" : ""}
                             {formatCompactCurrency(Number(pos.unrealizedPnL))}
                           </span>
                         )}
@@ -846,8 +846,8 @@ function AgentPnLView({
               <CollapsibleSection
                 title="Perpetuals"
                 count={perps.length}
-                isOpen={expandedSections.has('perps')}
-                onToggle={() => toggleSection('perps')}
+                isOpen={expandedSections.has("perps")}
+                onToggle={() => toggleSection("perps")}
               >
                 <div className="space-y-1">
                   {perps.map((pos) => (
@@ -864,10 +864,10 @@ function AgentPnLView({
                         <div className="flex items-center gap-2 text-muted-foreground">
                           <span
                             className={cn(
-                              'font-medium',
-                              pos.side === 'long'
-                                ? 'text-green-600'
-                                : 'text-red-600'
+                              "font-medium",
+                              pos.side === "long"
+                                ? "text-green-600"
+                                : "text-red-600",
                             )}
                           >
                             {pos.side.toUpperCase()}
@@ -884,13 +884,13 @@ function AgentPnLView({
                       {pos.unrealizedPnL !== undefined && (
                         <span
                           className={cn(
-                            'ml-2 shrink-0 font-medium',
+                            "ml-2 shrink-0 font-medium",
                             Number(pos.unrealizedPnL) >= 0
-                              ? 'text-green-600'
-                              : 'text-red-600'
+                              ? "text-green-600"
+                              : "text-red-600",
                           )}
                         >
-                          {Number(pos.unrealizedPnL) >= 0 ? '+' : ''}
+                          {Number(pos.unrealizedPnL) >= 0 ? "+" : ""}
                           {formatCompactCurrency(Number(pos.unrealizedPnL))}
                         </span>
                       )}

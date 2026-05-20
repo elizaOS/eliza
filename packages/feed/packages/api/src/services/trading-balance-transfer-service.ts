@@ -7,26 +7,26 @@ import {
   inArray,
   sql,
   users,
-} from '@feed/db';
+} from "@feed/db";
 import {
   CANONICAL_PEER_TRANSFER_TRANSACTION_TYPES,
   generateSnowflakeId,
   logger,
   PEER_TRANSFER_IN_TRANSACTION_TYPE,
   PEER_TRANSFER_OUT_TRANSACTION_TYPE,
-} from '@feed/shared';
-import { CACHE_KEYS, cachedDb, invalidateCache } from '../cache';
-import { findUserByIdentifier } from '../users/user-lookup';
+} from "@feed/shared";
+import { CACHE_KEYS, cachedDb, invalidateCache } from "../cache";
+import { findUserByIdentifier } from "../users/user-lookup";
 
 const MAX_TRANSFER_AMOUNT = 1_000_000;
 
 export type TradingBalanceTransferErrorCode =
-  | 'INVALID_AMOUNT'
-  | 'SELF_TRANSFER'
-  | 'SENDER_NOT_ALLOWED'
-  | 'RECIPIENT_NOT_FOUND'
-  | 'RECIPIENT_NOT_ALLOWED'
-  | 'INSUFFICIENT_BALANCE';
+  | "INVALID_AMOUNT"
+  | "SELF_TRANSFER"
+  | "SENDER_NOT_ALLOWED"
+  | "RECIPIENT_NOT_FOUND"
+  | "RECIPIENT_NOT_ALLOWED"
+  | "INSUFFICIENT_BALANCE";
 
 export interface TradingBalanceTransferSuccess {
   success: true;
@@ -55,12 +55,12 @@ export type TradingBalanceTransferResult =
   | TradingBalanceTransferFailure;
 
 function buildTransferDescription(params: {
-  direction: 'in' | 'out';
+  direction: "in" | "out";
   counterpartyLabel: string;
   note?: string;
 }): string {
   const base =
-    params.direction === 'out'
+    params.direction === "out"
       ? `Trading balance transfer to ${params.counterpartyLabel}`
       : `Trading balance transfer from ${params.counterpartyLabel}`;
 
@@ -73,10 +73,10 @@ export class TradingBalanceTransferService {
       id: string;
       privyId?: string | null;
       username?: string | null;
-    }>
+    }>,
   ): Promise<void> {
     const uniqueUsers = Array.from(
-      new Map(usersToInvalidate.map((user) => [user.id, user])).values()
+      new Map(usersToInvalidate.map((user) => [user.id, user])).values(),
     );
 
     await Promise.allSettled(
@@ -88,13 +88,13 @@ export class TradingBalanceTransferService {
           privyId: user.privyId,
           username: user.username,
         }),
-      ])
+      ]),
     );
   }
 
   static async getTransferHistory(
     userId: string,
-    limit = 100
+    limit = 100,
   ): Promise<
     Array<{
       id: string;
@@ -124,8 +124,8 @@ export class TradingBalanceTransferService {
           eq(balanceTransactions.userId, userId),
           inArray(balanceTransactions.type, [
             ...CANONICAL_PEER_TRANSFER_TRANSACTION_TYPES,
-          ])
-        )
+          ]),
+        ),
       )
       .orderBy(desc(balanceTransactions.createdAt))
       .limit(limit);
@@ -160,8 +160,8 @@ export class TradingBalanceTransferService {
     ) {
       return {
         success: false,
-        errorCode: 'INVALID_AMOUNT',
-        error: 'Amount must be greater than 0 and within the allowed limit',
+        errorCode: "INVALID_AMOUNT",
+        error: "Amount must be greater than 0 and within the allowed limit",
       };
     }
 
@@ -176,24 +176,24 @@ export class TradingBalanceTransferService {
     if (!recipient) {
       return {
         success: false,
-        errorCode: 'RECIPIENT_NOT_FOUND',
-        error: 'Recipient not found',
+        errorCode: "RECIPIENT_NOT_FOUND",
+        error: "Recipient not found",
       };
     }
 
     if (recipient.id === senderUserId) {
       return {
         success: false,
-        errorCode: 'SELF_TRANSFER',
-        error: 'Cannot transfer trading balance to yourself',
+        errorCode: "SELF_TRANSFER",
+        error: "Cannot transfer trading balance to yourself",
       };
     }
 
     if (recipient.isActor || recipient.isAgent) {
       return {
         success: false,
-        errorCode: 'RECIPIENT_NOT_ALLOWED',
-        error: 'Recipient must be a Feed user, not an actor or agent',
+        errorCode: "RECIPIENT_NOT_ALLOWED",
+        error: "Recipient must be a Feed user, not an actor or agent",
       };
     }
 
@@ -211,26 +211,26 @@ export class TradingBalanceTransferService {
         })
         .from(users)
         .where(inArray(users.id, userIds))
-        .for('update');
+        .for("update");
 
       const sender = lockedUsers.find((user) => user.id === senderUserId);
       const recipientUser = lockedUsers.find(
-        (user) => user.id === recipient.id
+        (user) => user.id === recipient.id,
       );
 
       if (!sender || sender.isActor || sender.isAgent) {
         return {
           success: false,
-          errorCode: 'SENDER_NOT_ALLOWED',
-          error: 'Only Feed users can send trading balance',
+          errorCode: "SENDER_NOT_ALLOWED",
+          error: "Only Feed users can send trading balance",
         } satisfies TradingBalanceTransferFailure;
       }
 
       if (!recipientUser || recipientUser.isActor || recipientUser.isAgent) {
         return {
           success: false,
-          errorCode: 'RECIPIENT_NOT_ALLOWED',
-          error: 'Recipient must be a Feed user, not an actor or agent',
+          errorCode: "RECIPIENT_NOT_ALLOWED",
+          error: "Recipient must be a Feed user, not an actor or agent",
         } satisfies TradingBalanceTransferFailure;
       }
 
@@ -240,8 +240,8 @@ export class TradingBalanceTransferService {
       if (senderBalanceBefore < amount) {
         return {
           success: false,
-          errorCode: 'INSUFFICIENT_BALANCE',
-          error: 'Insufficient trading balance',
+          errorCode: "INSUFFICIENT_BALANCE",
+          error: "Insufficient trading balance",
         } satisfies TradingBalanceTransferFailure;
       }
 
@@ -281,7 +281,7 @@ export class TradingBalanceTransferService {
           balanceAfter: String(senderBalanceAfter),
           relatedId: transferId,
           description: buildTransferDescription({
-            direction: 'out',
+            direction: "out",
             counterpartyLabel: recipientLabel,
             note,
           }),
@@ -295,7 +295,7 @@ export class TradingBalanceTransferService {
           balanceAfter: String(recipientBalanceAfter),
           relatedId: transferId,
           description: buildTransferDescription({
-            direction: 'in',
+            direction: "in",
             counterpartyLabel: senderLabel,
             note,
           }),
@@ -321,17 +321,17 @@ export class TradingBalanceTransferService {
 
     if (result.success) {
       logger.info(
-        'Trading balance peer transfer completed',
+        "Trading balance peer transfer completed",
         {
           transferId: result.transferId,
           senderUserId: result.senderUserId,
           recipientUserId: result.recipientUserId,
           amount: result.amount,
         },
-        'TradingBalanceTransferService'
+        "TradingBalanceTransferService",
       );
 
-      await this.afterBalanceMutation([
+      await TradingBalanceTransferService.afterBalanceMutation([
         {
           id: result.senderUserId,
           privyId: result.senderPrivyId,

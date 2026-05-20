@@ -86,7 +86,7 @@ import {
   requireTargetByIdentifier,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
+} from "@feed/api";
 import {
   actorFollows,
   and,
@@ -99,15 +99,15 @@ import {
   not,
   userActorFollows,
   users,
-} from '@feed/db';
-import { StaticDataRegistry } from '@feed/engine';
+} from "@feed/db";
+import { StaticDataRegistry } from "@feed/engine";
 import {
   logger,
   toISO,
   UserFollowersQuerySchema,
   UserIdParamSchema,
-} from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 interface FollowerResponse {
   id: string;
@@ -128,7 +128,7 @@ interface FollowerResponse {
 export const GET = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ userId: string }> }
+    context: { params: Promise<{ userId: string }> },
   ) => {
     const authUser = await optionalAuth(request);
     const params = await context.params;
@@ -137,9 +137,9 @@ export const GET = withErrorHandling(
     // Validate query parameters
     const { searchParams } = new URL(request.url);
     const queryParams = {
-      page: searchParams.get('page'),
-      limit: searchParams.get('limit'),
-      includeMutual: searchParams.get('includeMutual'),
+      page: searchParams.get("page"),
+      limit: searchParams.get("limit"),
+      includeMutual: searchParams.get("includeMutual"),
     };
     UserFollowersQuerySchema.parse(queryParams);
 
@@ -201,23 +201,23 @@ export const GET = withErrorHandling(
           displayName: f.followerName,
           username: f.followerUsername || null,
           profileImageUrl: f.followerProfileImageUrl || null,
-          bio: f.followerDescription || '',
+          bio: f.followerDescription || "",
           followedAt: toISO(f.createdAt),
           isActor: true,
           tier: f.followerTier || undefined,
         })),
         ...userActorFollowersList.map((f) => ({
           id: f.userId,
-          displayName: f.userDisplayName || '',
+          displayName: f.userDisplayName || "",
           username: f.userUsername || null,
           profileImageUrl: f.userProfileImageUrl || null,
-          bio: f.userBio || '',
+          bio: f.userBio || "",
           followedAt: toISO(f.createdAt),
           isActor: false,
         })),
       ].sort(
         (a, b) =>
-          new Date(b.followedAt).getTime() - new Date(a.followedAt).getTime()
+          new Date(b.followedAt).getTime() - new Date(a.followedAt).getTime(),
       );
     } else {
       // Target is a regular user
@@ -243,8 +243,8 @@ export const GET = withErrorHandling(
           and(
             eq(followStatuses.userId, targetId),
             eq(followStatuses.isActive, true),
-            not(eq(followStatuses.followReason, 'user_followed'))
-          )
+            not(eq(followStatuses.followReason, "user_followed")),
+          ),
         )
         .orderBy(desc(followStatuses.followedAt));
 
@@ -253,16 +253,16 @@ export const GET = withErrorHandling(
         npcIds
           .map((id) => StaticDataRegistry.getActor(id))
           .filter((a): a is NonNullable<typeof a> => a !== null)
-          .map((a) => [a.id, a])
+          .map((a) => [a.id, a]),
       );
 
       followersList = [
         ...userFollows.map((f) => ({
           id: f.followerId,
-          displayName: f.followerDisplayName || '',
+          displayName: f.followerDisplayName || "",
           username: f.followerUsername || null,
           profileImageUrl: f.followerProfileImageUrl || null,
-          bio: f.followerBio || '',
+          bio: f.followerBio || "",
           followedAt: toISO(f.createdAt),
           isActor: false,
         })),
@@ -273,7 +273,7 @@ export const GET = withErrorHandling(
             displayName: actor?.name || f.npcId,
             username: actor?.username || null,
             profileImageUrl: actor?.profileImageUrl || null,
-            bio: actor?.description || '',
+            bio: actor?.description || "",
             followedAt: toISO(f.followedAt),
             isActor: true,
             tier: actor?.tier || undefined,
@@ -281,7 +281,7 @@ export const GET = withErrorHandling(
         }),
       ].sort(
         (a, b) =>
-          new Date(b.followedAt).getTime() - new Date(a.followedAt).getTime()
+          new Date(b.followedAt).getTime() - new Date(a.followedAt).getTime(),
       );
     }
 
@@ -303,8 +303,8 @@ export const GET = withErrorHandling(
           .where(
             and(
               eq(follows.followerId, authUser.userId),
-              inArray(follows.followingId, followerIds)
-            )
+              inArray(follows.followingId, followerIds),
+            ),
           );
         for (const f of userFollowResults) {
           followedUserIds.add(f.followingId);
@@ -320,8 +320,8 @@ export const GET = withErrorHandling(
           .where(
             and(
               eq(userActorFollows.userId, authUser.userId),
-              inArray(userActorFollows.actorId, actorFollowerIds)
-            )
+              inArray(userActorFollows.actorId, actorFollowerIds),
+            ),
           );
         for (const f of actorFollowResults) {
           followedActorIds.add(f.actorId);
@@ -337,14 +337,14 @@ export const GET = withErrorHandling(
     }
 
     logger.info(
-      'Followers fetched successfully',
+      "Followers fetched successfully",
       { targetId, count: followersList.length, isActor: !!targetActor },
-      'GET /api/users/[userId]/followers'
+      "GET /api/users/[userId]/followers",
     );
 
     return successResponse({
       followers: followersList,
       count: followersList.length,
     });
-  }
+  },
 );

@@ -12,80 +12,80 @@
  *   bun run scripts/seed-database.ts --stats  # Show database stats
  */
 
-import { closeDatabase } from '@feed/db';
-import { GameBootstrapService } from '@feed/engine';
-import { logger } from '@feed/shared';
+import { closeDatabase } from "@feed/db";
+import { GameBootstrapService } from "@feed/engine";
+import { logger } from "@feed/shared";
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
-  const forceReseed = args.includes('--force');
-  const showStats = args.includes('--stats');
+  const forceReseed = args.includes("--force");
+  const showStats = args.includes("--stats");
 
   logger.info(
-    '════════════════════════════════════════════════════════════',
+    "════════════════════════════════════════════════════════════",
     undefined,
-    'SeedDatabase'
+    "SeedDatabase",
   );
   logger.info(
-    'Feed Database Seeder',
+    "Feed Database Seeder",
     { forceReseed, showStats },
-    'SeedDatabase'
+    "SeedDatabase",
   );
   logger.info(
-    '════════════════════════════════════════════════════════════',
+    "════════════════════════════════════════════════════════════",
     undefined,
-    'SeedDatabase'
+    "SeedDatabase",
   );
 
   try {
     if (showStats) {
       const stats = await GameBootstrapService.getStats();
-      logger.info('Database Statistics', stats, 'SeedDatabase');
+      logger.info("Database Statistics", stats, "SeedDatabase");
       return;
     }
 
     if (forceReseed) {
-      logger.info('Force reseeding all data...', undefined, 'SeedDatabase');
+      logger.info("Force reseeding all data...", undefined, "SeedDatabase");
       const result = await GameBootstrapService.forceFullSync();
-      logger.info('Force reseed complete', result, 'SeedDatabase');
+      logger.info("Force reseed complete", result, "SeedDatabase");
     } else {
       logger.info(
-        'Running bootstrap (will only seed missing data)...',
+        "Running bootstrap (will only seed missing data)...",
         undefined,
-        'SeedDatabase'
+        "SeedDatabase",
       );
       const result = await GameBootstrapService.bootstrapIfNeeded();
       if (result) {
-        logger.info('Bootstrap complete', result, 'SeedDatabase');
+        logger.info("Bootstrap complete", result, "SeedDatabase");
       } else {
         logger.info(
-          'Bootstrap skipped (recently run or no changes needed)',
+          "Bootstrap skipped (recently run or no changes needed)",
           undefined,
-          'SeedDatabase'
+          "SeedDatabase",
         );
         // Force a fresh check
         const freshResult = await GameBootstrapService.forceFullSync();
-        logger.info('Fresh sync complete', freshResult, 'SeedDatabase');
+        logger.info("Fresh sync complete", freshResult, "SeedDatabase");
       }
     }
 
     // Show final stats
     const stats = await GameBootstrapService.getStats();
     logger.info(
-      '════════════════════════════════════════════════════════════',
+      "════════════════════════════════════════════════════════════",
       undefined,
-      'SeedDatabase'
+      "SeedDatabase",
     );
-    logger.info('Database Summary', stats, 'SeedDatabase');
+    logger.info("Database Summary", stats, "SeedDatabase");
     logger.info(
-      '════════════════════════════════════════════════════════════',
+      "════════════════════════════════════════════════════════════",
       undefined,
-      'SeedDatabase'
+      "SeedDatabase",
     );
 
-    logger.info('Seed complete!', undefined, 'SeedDatabase');
+    logger.info("Seed complete!", undefined, "SeedDatabase");
   } catch (error) {
-    logger.error('Seed failed', { error }, 'SeedDatabase');
+    logger.error("Seed failed", { error }, "SeedDatabase");
     throw error;
   } finally {
     await closeDatabase();
@@ -96,7 +96,7 @@ if (import.meta.main) {
   main()
     .then(() => process.exit(0))
     .catch((error) => {
-      console.error('Fatal error:', error);
+      console.error("Fatal error:", error);
       process.exit(1);
     });
 }

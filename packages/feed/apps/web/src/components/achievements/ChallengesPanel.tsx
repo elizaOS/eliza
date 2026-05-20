@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { POINTS } from '@feed/shared';
+import { POINTS } from "@feed/shared";
 import {
   Calendar,
   CheckCircle2,
@@ -10,10 +10,10 @@ import {
   Target,
   Trophy,
   Zap,
-} from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
-import { Tooltip } from '@/components/ui/tooltip';
-import { useAuth } from '@/hooks/useAuth';
+} from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Tooltip } from "@/components/ui/tooltip";
+import { useAuth } from "@/hooks/useAuth";
 
 interface ChallengeWithProgress {
   id: string;
@@ -53,7 +53,7 @@ const CATEGORY_ICONS: Record<string, typeof Target> = {
 
 function formatCountdown(resetsAt: string): string {
   const diff = new Date(resetsAt).getTime() - Date.now();
-  if (diff <= 0) return 'Resetting...';
+  if (diff <= 0) return "Resetting...";
   const hours = Math.floor(diff / (1000 * 60 * 60));
   if (hours >= 24) {
     const days = Math.floor(hours / 24);
@@ -66,15 +66,15 @@ function ChallengeItem({ challenge }: { challenge: ChallengeWithProgress }) {
   const Icon = CATEGORY_ICONS[challenge.category] ?? Target;
   const progressPct = Math.min(
     100,
-    (challenge.progress / challenge.threshold) * 100
+    (challenge.progress / challenge.threshold) * 100,
   );
 
   return (
     <div
       className={`rounded-lg border p-4 transition-all ${
         challenge.completed
-          ? 'border-green-500/20 bg-green-500/5'
-          : 'border-border'
+          ? "border-green-500/20 bg-green-500/5"
+          : "border-border"
       }`}
     >
       <div className="flex items-start gap-3">
@@ -91,8 +91,8 @@ function ChallengeItem({ challenge }: { challenge: ChallengeWithProgress }) {
               <h4
                 className={`font-semibold text-sm ${
                   challenge.completed
-                    ? 'text-green-600 dark:text-green-400'
-                    : 'text-foreground'
+                    ? "text-green-600 dark:text-green-400"
+                    : "text-foreground"
                 }`}
               >
                 {challenge.name}
@@ -113,7 +113,7 @@ function ChallengeItem({ challenge }: { challenge: ChallengeWithProgress }) {
             </div>
             <span
               className={`shrink-0 font-bold text-sm ${
-                challenge.completed ? 'text-green-500' : 'text-green-600'
+                challenge.completed ? "text-green-500" : "text-green-600"
               }`}
             >
               +{challenge.pointsReward}
@@ -161,7 +161,7 @@ function DotProgress({
   return (
     <div
       className={`flex items-center justify-between rounded-lg border p-3 ${
-        allDone ? 'border-green-500/20 bg-green-500/5' : 'border-border'
+        allDone ? "border-green-500/20 bg-green-500/5" : "border-border"
       }`}
     >
       <div className="flex items-center gap-2">
@@ -170,7 +170,7 @@ function DotProgress({
             <div
               key={i}
               className={`h-2 w-2 rounded-full ${
-                i < completed ? 'bg-primary' : 'bg-muted-foreground/30'
+                i < completed ? "bg-primary" : "bg-muted-foreground/30"
               }`}
             />
           ))}
@@ -181,7 +181,7 @@ function DotProgress({
       </div>
       <span
         className={`font-medium text-xs ${
-          allDone ? 'text-green-500' : 'text-muted-foreground'
+          allDone ? "text-green-500" : "text-muted-foreground"
         }`}
       >
         +{bonus} bonus
@@ -194,7 +194,7 @@ export function ChallengesPanel() {
   const { authenticated, getAccessToken } = useAuth();
   const [data, setData] = useState<ChallengesData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [countdown, setCountdown] = useState({ daily: '', weekly: '' });
+  const [countdown, setCountdown] = useState({ daily: "", weekly: "" });
 
   const fetchChallenges = useCallback(async () => {
     if (!authenticated) {
@@ -206,7 +206,7 @@ export function ChallengesPanel() {
       setLoading(false);
       return;
     }
-    const res = await fetch('/api/challenges', {
+    const res = await fetch("/api/challenges", {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (res.ok) {
@@ -253,10 +253,10 @@ export function ChallengesPanel() {
   if (!data) return null;
 
   const dailyCompleted = data.daily.challenges.filter(
-    (c) => c.completed
+    (c) => c.completed,
   ).length;
   const weeklyCompleted = data.weekly.challenges.filter(
-    (c) => c.completed
+    (c) => c.completed,
   ).length;
 
   return (

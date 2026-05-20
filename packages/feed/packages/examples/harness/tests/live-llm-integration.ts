@@ -10,18 +10,18 @@
  * Run: bun run tests/live-llm-integration.ts
  */
 
-import { archetypeAgent } from '../src/agents/archetype-agent';
-import { createLLMAgent } from '../src/agents/llm-agent';
-import { getArchetype } from '../src/archetypes';
-import { runHarness } from '../src/harness';
+import { archetypeAgent } from "../src/agents/archetype-agent";
+import { createLLMAgent } from "../src/agents/llm-agent";
+import { getArchetype } from "../src/archetypes";
+import { runHarness } from "../src/harness";
 
-const A2A_URL = 'http://localhost:3001';
-const GREEN = '\x1b[32m';
-const RED = '\x1b[31m';
-const CYAN = '\x1b[36m';
-const BOLD = '\x1b[1m';
-const DIM = '\x1b[2m';
-const RESET = '\x1b[0m';
+const A2A_URL = "http://localhost:3001";
+const GREEN = "\x1b[32m";
+const RED = "\x1b[31m";
+const CYAN = "\x1b[36m";
+const BOLD = "\x1b[1m";
+const DIM = "\x1b[2m";
+const RESET = "\x1b[0m";
 
 // ─── Pre-flight checks ────────────────────────────────────────────────────────
 
@@ -29,7 +29,7 @@ async function checkServer(): Promise<boolean> {
   try {
     const r = await fetch(`${A2A_URL}/health`);
     const j = (await r.json()) as { status?: string };
-    return r.ok && j.status === 'ok';
+    return r.ok && j.status === "ok";
   } catch {
     return false;
   }
@@ -39,7 +39,7 @@ const serverUp = await checkServer();
 if (!serverUp) {
   console.error(`${RED}✗ Local A2A server not running on ${A2A_URL}${RESET}`);
   console.error(
-    '  Start it with: cd packages/examples/local-a2a-server && bun run src/server.ts'
+    "  Start it with: cd packages/examples/local-a2a-server && bun run src/server.ts",
   );
   process.exit(1);
 }
@@ -49,21 +49,21 @@ const hasGroq = !!process.env.GROQ_API_KEY;
 const hasOpenAI = !!process.env.OPENAI_API_KEY;
 if (!hasGroq && !hasOpenAI) {
   console.error(
-    `${RED}✗ No LLM key found. Set GROQ_API_KEY or OPENAI_API_KEY.${RESET}`
+    `${RED}✗ No LLM key found. Set GROQ_API_KEY or OPENAI_API_KEY.${RESET}`,
   );
   process.exit(1);
 }
-const provider = hasGroq ? 'groq' : 'openai';
+const provider = hasGroq ? "groq" : "openai";
 console.log(`${GREEN}✓ LLM provider${RESET}: ${provider}\n`);
 
 // ─── Test 1: ArchetypeAgent against all archetypes ─────────────────────────────
 
 console.log(
-  `${BOLD}${CYAN}Test 1: ArchetypeAgent × 4 archetypes × 3 ticks${RESET}`
+  `${BOLD}${CYAN}Test 1: ArchetypeAgent × 4 archetypes × 3 ticks${RESET}`,
 );
 
-const archetypes = ['trader', 'degen', 'researcher', 'scammer'].map(
-  getArchetype
+const archetypes = ["trader", "degen", "researcher", "scammer"].map(
+  getArchetype,
 );
 
 const r1 = await runHarness({
@@ -95,7 +95,7 @@ if (r1.errors.length > 0) {
 for (const t of r1.trajectories) {
   if (t.steps.length !== 3) {
     console.error(
-      `${RED}✗ Trajectory ${t.archetype} has ${t.steps.length} steps, expected 3${RESET}`
+      `${RED}✗ Trajectory ${t.archetype} has ${t.steps.length} steps, expected 3${RESET}`,
     );
     pass1 = false;
   }
@@ -104,14 +104,14 @@ for (const t of r1.trajectories) {
       console.error(`${RED}✗ Step missing action${RESET}`);
       pass1 = false;
     }
-    if (typeof s.reward !== 'number') {
+    if (typeof s.reward !== "number") {
       console.error(`${RED}✗ Step missing reward${RESET}`);
       pass1 = false;
     }
   }
 }
 
-for (const arch of ['trader', 'degen', 'researcher', 'scammer']) {
+for (const arch of ["trader", "degen", "researcher", "scammer"]) {
   if (!r1.stats.byArchetype[arch]) {
     console.error(`${RED}✗ Missing stats for ${arch}${RESET}`);
     pass1 = false;
@@ -120,7 +120,7 @@ for (const arch of ['trader', 'degen', 'researcher', 'scammer']) {
 
 if (pass1) {
   console.log(
-    `${GREEN}✓ ArchetypeAgent test passed${RESET} — ${r1.agentsRun} agents, ${r1.totalTicks} ticks, 0 errors\n`
+    `${GREEN}✓ ArchetypeAgent test passed${RESET} — ${r1.agentsRun} agents, ${r1.totalTicks} ticks, 0 errors\n`,
   );
 } else {
   console.log(`${RED}✗ ArchetypeAgent test FAILED${RESET}\n`);
@@ -129,15 +129,15 @@ if (pass1) {
 // ─── Test 2: LLMAgent vs real GROQ/OpenAI ─────────────────────────────────────
 
 console.log(
-  `${BOLD}${CYAN}Test 2: LLMAgent (${provider}) × trader + degen × 3 ticks${RESET}`
+  `${BOLD}${CYAN}Test 2: LLMAgent (${provider}) × trader + degen × 3 ticks${RESET}`,
 );
 
-const llmAgent = createLLMAgent({ provider: provider as 'groq' | 'openai' });
+const llmAgent = createLLMAgent({ provider: provider as "groq" | "openai" });
 
 const r2 = await runHarness({
   a2aUrl: A2A_URL,
   agents: [llmAgent],
-  archetypes: [getArchetype('trader'), getArchetype('degen')],
+  archetypes: [getArchetype("trader"), getArchetype("degen")],
   instancesPerAgent: 1,
   ticksPerAgent: 3,
   parallelAgents: 2,
@@ -172,28 +172,28 @@ for (const t of r2.trajectories) {
 
 // Count actual LLM decisions (non-HOLD, non-error)
 const llmActions = r2.trajectories.flatMap((t) =>
-  t.steps.map((s) => s.decision.action)
+  t.steps.map((s) => s.decision.action),
 );
-const holdCount = llmActions.filter((a) => a === 'HOLD').length;
+const holdCount = llmActions.filter((a) => a === "HOLD").length;
 const realActions = llmActions.length - holdCount;
-console.log(`${DIM}  LLM actions: ${llmActions.join(', ')}${RESET}`);
+console.log(`${DIM}  LLM actions: ${llmActions.join(", ")}${RESET}`);
 
 if (r2.errors.length > 0) {
-  console.log(`${RED}  Errors: ${r2.errors.join(', ')}${RESET}`);
+  console.log(`${RED}  Errors: ${r2.errors.join(", ")}${RESET}`);
 }
 
 if (pass2) {
   console.log(
-    `${GREEN}✓ LLMAgent test passed${RESET} — ${realActions}/${llmActions.length} real actions (${holdCount} HOLDs)\n`
+    `${GREEN}✓ LLMAgent test passed${RESET} — ${realActions}/${llmActions.length} real actions (${holdCount} HOLDs)\n`,
   );
   for (const t of r2.trajectories) {
     console.log(
-      `${DIM}  [${t.archetype}] reward=${t.totalReward.toFixed(1)}${RESET}`
+      `${DIM}  [${t.archetype}] reward=${t.totalReward.toFixed(1)}${RESET}`,
     );
     for (const s of t.steps) {
-      const icon = s.result.success ? '✅' : '❌';
+      const icon = s.result.success ? "✅" : "❌";
       console.log(
-        `    ${icon} ${s.decision.action.padEnd(18)} ${s.decision.reasoning.slice(0, 70)}`
+        `    ${icon} ${s.decision.action.padEnd(18)} ${s.decision.reasoning.slice(0, 70)}`,
       );
     }
   }
@@ -204,17 +204,17 @@ if (pass2) {
 // ─── Test 3: clientFactory offline (SimulationA2AAdapter) ────────────────────
 
 console.log(
-  `\n${BOLD}${CYAN}Test 3: Offline mode (SimulationA2AAdapter) — no server needed${RESET}`
+  `\n${BOLD}${CYAN}Test 3: Offline mode (SimulationA2AAdapter) — no server needed${RESET}`,
 );
 
-import { SimulationAdapter } from '../src/offline-adapter';
+import { SimulationAdapter } from "../src/offline-adapter";
 
 let simIdx = 0;
 
 const r3 = await runHarness({
-  a2aUrl: '',
+  a2aUrl: "",
   agents: [archetypeAgent],
-  archetypes: [getArchetype('trader'), getArchetype('researcher')],
+  archetypes: [getArchetype("trader"), getArchetype("researcher")],
   instancesPerAgent: 1,
   ticksPerAgent: 5,
   parallelAgents: 2,
@@ -241,7 +241,7 @@ if (r3.totalTicks !== 10) {
 
 if (pass3) {
   console.log(
-    `${GREEN}✓ Offline simulation passed${RESET} — ${r3.agentsRun} agents, ${r3.totalTicks} ticks, no server\n`
+    `${GREEN}✓ Offline simulation passed${RESET} — ${r3.agentsRun} agents, ${r3.totalTicks} ticks, no server\n`,
   );
 } else {
   console.log(`${RED}✗ Offline simulation FAILED${RESET}\n`);
@@ -250,14 +250,14 @@ if (pass3) {
 // ─── Test 4: harness CLI smoke test ──────────────────────────────────────────
 
 console.log(`${BOLD}${CYAN}Test 4: CLI smoke test${RESET}`);
-const cliProc = Bun.spawn(['bun', 'run', 'src/cli.ts', 'list-archetypes'], {
-  cwd: new URL('..', import.meta.url).pathname,
-  stdout: 'pipe',
-  stderr: 'pipe',
+const cliProc = Bun.spawn(["bun", "run", "src/cli.ts", "list-archetypes"], {
+  cwd: new URL("..", import.meta.url).pathname,
+  stdout: "pipe",
+  stderr: "pipe",
 });
 const cliExit = await cliProc.exited;
 const cliOut = await new Response(cliProc.stdout).text();
-const cliOk = cliExit === 0 && cliOut.includes('trader');
+const cliOk = cliExit === 0 && cliOut.includes("trader");
 
 if (cliOk) {
   console.log(`${GREEN}✓ CLI list-archetypes works${RESET}`);
@@ -270,6 +270,6 @@ if (cliOk) {
 
 const allPass = pass1 && pass2 && pass3 && cliOk;
 console.log(
-  `\n${BOLD}${allPass ? GREEN + '✅ ALL TESTS PASSED' : RED + '❌ SOME TESTS FAILED'}${RESET}\n`
+  `\n${BOLD}${allPass ? `${GREEN}✅ ALL TESTS PASSED` : `${RED}❌ SOME TESTS FAILED`}${RESET}\n`,
 );
 process.exit(allPass ? 0 : 1);

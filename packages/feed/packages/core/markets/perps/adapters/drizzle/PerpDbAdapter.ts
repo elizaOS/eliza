@@ -5,16 +5,16 @@ import {
   perpMarketSnapshots,
   perpPositions,
   type Transaction,
-} from '@feed/db';
-import { generateSnowflakeId } from '@feed/shared';
-import type { InferInsertModel } from 'drizzle-orm';
-import { and, asc, count, eq, isNull } from 'drizzle-orm';
+} from "@feed/db";
+import { generateSnowflakeId } from "@feed/shared";
+import type { InferInsertModel } from "drizzle-orm";
+import { and, asc, count, eq, isNull } from "drizzle-orm";
 import type {
   PerpDbPort,
   PerpMarketRecord,
   PerpPositionRecord,
   PerpSide,
-} from '../../types';
+} from "../../types";
 
 type NewPerpPosition = InferInsertModel<typeof perpPositions>;
 type DrizzleClient = typeof defaultDb | Transaction;
@@ -64,7 +64,7 @@ export class PerpDbAdapter implements PerpDbPort {
       .from(perpMarketSnapshots)
       .leftJoin(
         organizations,
-        eq(perpMarketSnapshots.organizationId, organizations.id)
+        eq(perpMarketSnapshots.organizationId, organizations.id),
       )
       .orderBy(asc(perpMarketSnapshots.ticker));
     const rows =
@@ -91,7 +91,7 @@ export class PerpDbAdapter implements PerpDbPort {
         rate: 0,
         nextFundingTime: new Date().toISOString(),
         predictedRate: 0,
-      }) as PerpMarketRecord['fundingRate'],
+      }) as PerpMarketRecord["fundingRate"],
       maxLeverage: Number(s.maxLeverage ?? 100),
       minOrderSize: Number(s.minOrderSize ?? 10),
       bidPrice: s.bidPrice ? Number(s.bidPrice) : undefined,
@@ -100,7 +100,7 @@ export class PerpDbAdapter implements PerpDbPort {
       bidDepth: s.bidDepth ? Number(s.bidDepth) : undefined,
       askDepth: s.askDepth ? Number(s.askDepth) : undefined,
       liquidityRegime:
-        (s.liquidityRegime as PerpMarketRecord['liquidityRegime']) ?? undefined,
+        (s.liquidityRegime as PerpMarketRecord["liquidityRegime"]) ?? undefined,
       quoteUpdatedAt: s.quoteUpdatedAt ?? undefined,
       markPrice: s.markPrice ? Number(s.markPrice) : undefined,
       indexPrice: s.indexPrice ? Number(s.indexPrice) : undefined,
@@ -130,14 +130,14 @@ export class PerpDbAdapter implements PerpDbPort {
       .select()
       .from(perpPositions)
       .where(
-        and(eq(perpPositions.userId, userId), isNull(perpPositions.closedAt))
+        and(eq(perpPositions.userId, userId), isNull(perpPositions.closedAt)),
       );
     return positions.map(mapPosition);
   }
 
   async getOpenPositionByUserAndTicker(
     userId: string,
-    ticker: string
+    ticker: string,
   ): Promise<PerpPositionRecord | null> {
     const [pos] = await this.dbClient
       .select()
@@ -146,8 +146,8 @@ export class PerpDbAdapter implements PerpDbPort {
         and(
           eq(perpPositions.userId, userId),
           eq(perpPositions.ticker, ticker),
-          isNull(perpPositions.closedAt)
-        )
+          isNull(perpPositions.closedAt),
+        ),
       )
       .limit(1);
     return pos ? mapPosition(pos) : null;
@@ -159,12 +159,12 @@ export class PerpDbAdapter implements PerpDbPort {
       .from(perpPositions)
       .where(and(eq(perpPositions.id, id), isNull(perpPositions.closedAt)))
       .limit(1)
-      .for('update');
+      .for("update");
     return pos ? mapPosition(pos) : null;
   }
 
   async upsertPosition(
-    position: Omit<PerpPositionRecord, 'id'> & { id?: string }
+    position: Omit<PerpPositionRecord, "id"> & { id?: string },
   ): Promise<PerpPositionRecord> {
     const now = new Date();
     const id = position.id ?? (await generateSnowflakeId());
@@ -206,16 +206,16 @@ export class PerpDbAdapter implements PerpDbPort {
     updates: Partial<
       Pick<
         PerpPositionRecord,
-        | 'currentPrice'
-        | 'unrealizedPnL'
-        | 'unrealizedPnLPercent'
-        | 'fundingPaid'
-        | 'liquidationPrice'
-        | 'lastUpdated'
-        | 'size'
-        | 'entryPrice'
+        | "currentPrice"
+        | "unrealizedPnL"
+        | "unrealizedPnLPercent"
+        | "fundingPaid"
+        | "liquidationPrice"
+        | "lastUpdated"
+        | "size"
+        | "entryPrice"
       >
-    >
+    >,
   ): Promise<void> {
     // Only set fields that are explicitly provided (not undefined)
     const setFields: Record<string, unknown> = {
@@ -247,7 +247,7 @@ export class PerpDbAdapter implements PerpDbPort {
       .update(perpPositions)
       .set(setFields)
       .where(
-        and(eq(perpPositions.id, positionId), isNull(perpPositions.closedAt))
+        and(eq(perpPositions.id, positionId), isNull(perpPositions.closedAt)),
       );
   }
 
@@ -256,13 +256,13 @@ export class PerpDbAdapter implements PerpDbPort {
     updates: Partial<
       Pick<
         PerpPositionRecord,
-        | 'currentPrice'
-        | 'closedAt'
-        | 'realizedPnL'
-        | 'unrealizedPnL'
-        | 'unrealizedPnLPercent'
+        | "currentPrice"
+        | "closedAt"
+        | "realizedPnL"
+        | "unrealizedPnL"
+        | "unrealizedPnLPercent"
       >
-    >
+    >,
   ): Promise<void> {
     const closedAt = updates.closedAt ?? new Date();
     // Only set fields that are explicitly provided (not undefined)
@@ -283,7 +283,7 @@ export class PerpDbAdapter implements PerpDbPort {
       .update(perpPositions)
       .set(setFields)
       .where(
-        and(eq(perpPositions.id, positionId), isNull(perpPositions.closedAt))
+        and(eq(perpPositions.id, positionId), isNull(perpPositions.closedAt)),
       );
   }
 
@@ -292,28 +292,28 @@ export class PerpDbAdapter implements PerpDbPort {
     updates: Partial<
       Pick<
         PerpMarketRecord,
-        | 'currentPrice'
-        | 'price24hAgo'
-        | 'change24h'
-        | 'changePercent24h'
-        | 'high24h'
-        | 'low24h'
-        | 'volume24h'
-        | 'openInterest'
-        | 'fundingRate'
-        | 'bidPrice'
-        | 'askPrice'
-        | 'spreadBps'
-        | 'bidDepth'
-        | 'askDepth'
-        | 'liquidityRegime'
-        | 'quoteUpdatedAt'
-        | 'markPrice'
-        | 'indexPrice'
-        | 'maxLeverage'
-        | 'minOrderSize'
+        | "currentPrice"
+        | "price24hAgo"
+        | "change24h"
+        | "changePercent24h"
+        | "high24h"
+        | "low24h"
+        | "volume24h"
+        | "openInterest"
+        | "fundingRate"
+        | "bidPrice"
+        | "askPrice"
+        | "spreadBps"
+        | "bidDepth"
+        | "askDepth"
+        | "liquidityRegime"
+        | "quoteUpdatedAt"
+        | "markPrice"
+        | "indexPrice"
+        | "maxLeverage"
+        | "minOrderSize"
       >
-    >
+    >,
   ): Promise<void> {
     const now = new Date();
     const existing = await this.dbClient
@@ -327,7 +327,7 @@ export class PerpDbAdapter implements PerpDbPort {
       // Use init-snapshots script in @feed/engine to seed from static organization data
       throw new Error(
         `Cannot update market snapshot for ${ticker}: snapshot not found. ` +
-          'Run perp market seeding to create snapshots from static organization data.'
+          "Run perp market seeding to create snapshots from static organization data.",
       );
     }
 

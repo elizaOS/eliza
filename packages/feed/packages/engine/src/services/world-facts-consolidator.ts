@@ -14,11 +14,11 @@
  * running 3x/day = ~$9/month.
  */
 
-import { and, db, desc, eq, inArray, worldFacts } from '@feed/db';
-import { generateSnowflakeId, logger } from '@feed/shared';
-import { cosineSimilarity, getEmbeddings } from '../llm/embedding-client';
-import { FeedLLMClient } from '../llm/openai-client';
-import { ContentQualityGate } from './content-quality-gate';
+import { and, db, desc, eq, inArray, worldFacts } from "@feed/db";
+import { generateSnowflakeId, logger } from "@feed/shared";
+import { cosineSimilarity, getEmbeddings } from "../llm/embedding-client";
+import type { FeedLLMClient } from "../llm/openai-client";
+import { ContentQualityGate } from "./content-quality-gate";
 
 interface ConsolidationResult {
   consolidated: number;
@@ -75,16 +75,16 @@ export class WorldFactsConsolidator {
       .where(
         and(
           eq(worldFacts.isActive, true),
-          eq(worldFacts.source, 'auto-generated')
-        )
+          eq(worldFacts.source, "auto-generated"),
+        ),
       )
       .orderBy(desc(worldFacts.createdAt));
 
     if (facts.length < MIN_FACTS_TO_CONSOLIDATE) {
       logger.info(
-        'Skipping consolidation — not enough facts',
+        "Skipping consolidation — not enough facts",
         { activeCount: facts.length, threshold: MIN_FACTS_TO_CONSOLIDATE },
-        'WorldFactsConsolidator'
+        "WorldFactsConsolidator",
       );
       return result;
     }
@@ -114,9 +114,9 @@ export class WorldFactsConsolidator {
 
     if (factsWithEmbeddings.length === 0) {
       logger.warn(
-        'No embeddings available — skipping consolidation',
+        "No embeddings available — skipping consolidation",
         undefined,
-        'WorldFactsConsolidator'
+        "WorldFactsConsolidator",
       );
       return result;
     }
@@ -125,14 +125,14 @@ export class WorldFactsConsolidator {
     const clusters = this.clusterFacts(factsWithEmbeddings);
 
     logger.info(
-      'Fact clustering complete',
+      "Fact clustering complete",
       {
         totalFacts: factsWithEmbeddings.length,
         clusters: clusters.length,
         multiFactClusters: clusters.filter((c) => c.length >= MIN_CLUSTER_SIZE)
           .length,
       },
-      'WorldFactsConsolidator'
+      "WorldFactsConsolidator",
     );
 
     // 4. Consolidate each multi-fact cluster
@@ -148,10 +148,10 @@ export class WorldFactsConsolidator {
       }
 
       // 5. Quality gate on consolidated output (source = original cluster texts)
-      const clusterSource = cluster.map((f) => f.value).join(' ');
+      const clusterSource = cluster.map((f) => f.value).join(" ");
       const quality = await ContentQualityGate.validateWorldFact(
         consolidatedText,
-        clusterSource
+        clusterSource,
       );
 
       if (quality.passed) {
@@ -160,8 +160,8 @@ export class WorldFactsConsolidator {
           .toLowerCase()
           .split(/\s+/)
           .slice(0, 5)
-          .join('_')
-          .replace(/[^a-z0-9_]/g, '')
+          .join("_")
+          .replace(/[^a-z0-9_]/g, "")
           .substring(0, 50);
 
         const key = `consolidated_${keyWords}_${Date.now()}`;
@@ -176,11 +176,11 @@ export class WorldFactsConsolidator {
         await db.transaction(async (tx) => {
           await tx.insert(worldFacts).values({
             id: await generateSnowflakeId(),
-            category: 'general',
+            category: "general",
             key,
             label,
             value: consolidatedText,
-            source: 'consolidated',
+            source: "consolidated",
             priority: 1,
             qualityScore: quality.score,
             generationDepth: 1, // Quality-gated LLM synthesis — included in prompts to replace archived originals
@@ -197,8 +197,8 @@ export class WorldFactsConsolidator {
               .where(
                 and(
                   eq(worldFacts.isActive, true),
-                  inArray(worldFacts.id, clusterIds)
-                )
+                  inArray(worldFacts.id, clusterIds),
+                ),
               );
           }
         });
@@ -210,18 +210,18 @@ export class WorldFactsConsolidator {
         // Read-side qualityScore filter catches contaminated individuals.
         // Next consolidation sweep will retry this cluster.
         logger.warn(
-          'Consolidated fact failed quality gate — keeping originals active',
+          "Consolidated fact failed quality gate — keeping originals active",
           { reasons: quality.reasons, clusterSize: cluster.length },
-          'WorldFactsConsolidator'
+          "WorldFactsConsolidator",
         );
         result.skipped += cluster.length;
       }
     }
 
     logger.info(
-      'Consolidation sweep complete',
+      "Consolidation sweep complete",
       result,
-      'WorldFactsConsolidator'
+      "WorldFactsConsolidator",
     );
 
     return result;
@@ -274,7 +274,7 @@ export class WorldFactsConsolidator {
       if (!groups.has(root)) {
         groups.set(root, []);
       }
-      groups.get(root)!.push(facts[i]!);
+      groups.get(root)?.push(facts[i]!);
     }
 
     return Array.from(groups.values());
@@ -285,9 +285,9 @@ export class WorldFactsConsolidator {
    * Returns null if the LLM call fails.
    */
   private async consolidateCluster(
-    cluster: FactWithEmbedding[]
+    cluster: FactWithEmbedding[],
   ): Promise<string | null> {
-    const factList = cluster.map((f, i) => `${i + 1}. ${f.value}`).join('\n');
+    const factList = cluster.map((f, i) => `${i + 1}. ${f.value}`).join("\n");
 
     const prompt = `These world facts describe overlapping or related topics. Write a single concise fact (1-2 sentences) that captures the key information from all of them. Preserve specific names, numbers, and outcomes. Do not invent new information.
 
@@ -306,32 +306,32 @@ Respond with ONLY this exact XML structure (no other text):
         prompt,
         {
           properties: {
-            fact: { type: 'string' },
+            fact: { type: "string" },
           },
-          required: ['fact'],
+          required: ["fact"],
         },
         {
           temperature: 0.3,
           maxTokens: 200,
-          format: 'xml',
-          promptType: 'world_facts_consolidation',
-        }
+          format: "xml",
+          promptType: "world_facts_consolidation",
+        },
       );
 
       const data =
-        'response' in response && response.response
+        "response" in response && response.response
           ? response.response
           : (response as { fact: string });
 
       return data.fact?.trim() || null;
     } catch (error) {
       logger.error(
-        'Failed to consolidate fact cluster',
+        "Failed to consolidate fact cluster",
         {
           error: error instanceof Error ? error.message : String(error),
           clusterSize: cluster.length,
         },
-        'WorldFactsConsolidator'
+        "WorldFactsConsolidator",
       );
       return null;
     }

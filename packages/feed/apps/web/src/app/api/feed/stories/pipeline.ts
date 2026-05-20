@@ -23,26 +23,22 @@ import {
   shares,
   sql,
   users,
-} from '@feed/db';
+} from "@feed/db";
 import {
   dailyTopicService,
   isTextOnTopic,
   StaticDataRegistry,
-} from '@feed/engine';
-import type {
-  ArcStateType,
-  NarrativePost,
-  NarrativeStory,
-} from '@feed/shared';
-import { logger } from '@feed/shared';
-import { compareFeedStories } from '@/app/api/feed/feed-cursor';
-import { spreadNewMarkets } from '@/app/api/feed/for-you/scoring';
+} from "@feed/engine";
+import type { ArcStateType, NarrativePost, NarrativeStory } from "@feed/shared";
+import { logger } from "@feed/shared";
+import { compareFeedStories } from "@/app/api/feed/feed-cursor";
+import { spreadNewMarkets } from "@/app/api/feed/for-you/scoring";
 import {
   calculateArcStateMultiplier,
   calculateResolutionBoost,
   calculateStoryScore,
-} from '@/app/api/feed/narrative/scoring';
-import { dedupeQuestionMarketRows } from '../questionMarketRows';
+} from "@/app/api/feed/narrative/scoring";
+import { dedupeQuestionMarketRows } from "../questionMarketRows";
 
 // Safety guard against runaway queries — NOT a content cap. The ranking
 // pipeline scores, diversifies, and orders all candidates regardless.
@@ -52,38 +48,38 @@ const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000;
 const NEW_MARKET_WINDOW_MS = 24 * 60 * 60 * 1000;
 const BACKFILL_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const TOPIC_MATCH_MULTIPLIER = 2.0;
-const GENERAL_STORY_KEY = '__general__';
+const GENERAL_STORY_KEY = "__general__";
 
 function toISOStringStrict(
   date: Date | string | null | undefined,
   fieldName: string,
-  postId: string
+  postId: string,
 ): string {
   if (date === null || date === undefined) {
     logger.warn(
       `Null/undefined ${fieldName} for post ${postId}`,
       { postId },
-      'StoriesPipeline'
+      "StoriesPipeline",
     );
     return new Date().toISOString();
   }
   if (date instanceof Date) {
-    if (isNaN(date.getTime())) {
+    if (Number.isNaN(date.getTime())) {
       logger.warn(
         `Invalid Date for ${fieldName} on post ${postId}`,
         { postId },
-        'StoriesPipeline'
+        "StoriesPipeline",
       );
       return new Date().toISOString();
     }
     return date.toISOString();
   }
   const parsed = new Date(date);
-  if (!isNaN(parsed.getTime())) return parsed.toISOString();
+  if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
   logger.warn(
     `Unparseable ${fieldName} "${date}" for post ${postId}`,
     { postId },
-    'StoriesPipeline'
+    "StoriesPipeline",
   );
   return new Date().toISOString();
 }
@@ -112,7 +108,7 @@ export interface StoriesPipelineResult {
 
 export async function buildStoriesFeed(): Promise<StoriesPipelineResult> {
   const todaysTopic = await dailyTopicService.getCurrentTopic().catch((err) => {
-    logger.warn('Failed to get daily topic', { error: err }, 'StoriesPipeline');
+    logger.warn("Failed to get daily topic", { error: err }, "StoriesPipeline");
     return null;
   });
 
@@ -140,8 +136,8 @@ export async function buildStoriesFeed(): Promise<StoriesPipelineResult> {
         gte(posts.timestamp, cutoff),
         lte(posts.timestamp, now),
         isNull(posts.commentOnPostId),
-        isNull(posts.parentCommentId)
-      )
+        isNull(posts.parentCommentId),
+      ),
     )
     .orderBy(desc(posts.timestamp))
     .limit(SAFETY_CANDIDATE_LIMIT);
@@ -181,8 +177,8 @@ export async function buildStoriesFeed(): Promise<StoriesPipelineResult> {
           lt(posts.timestamp, cutoff),
           isNull(posts.commentOnPostId),
           isNull(posts.parentCommentId),
-          eq(questions.topicKey, todaysTopic.topicKey)
-        )
+          eq(questions.topicKey, todaysTopic.topicKey),
+        ),
       )
       .orderBy(desc(posts.timestamp))
       .limit(remainingCapacity);
@@ -220,8 +216,8 @@ export async function buildStoriesFeed(): Promise<StoriesPipelineResult> {
             lt(posts.timestamp, cutoff),
             isNull(posts.commentOnPostId),
             isNull(posts.parentCommentId),
-            isNull(posts.relatedQuestion)
-          )
+            isNull(posts.relatedQuestion),
+          ),
         )
         .orderBy(desc(posts.timestamp))
         .limit(standaloneCapacity * 3);
@@ -261,7 +257,7 @@ export async function buildStoriesFeed(): Promise<StoriesPipelineResult> {
   // Single CTE for all engagement counts — avoids N separate round-trips
   const postIdsArray = sql`ARRAY[${sql.join(
     postIds.map((id) => sql`${id}`),
-    sql`, `
+    sql`, `,
   )}]::text[]`;
 
   const engagementRows = await db.execute(sql`
@@ -308,11 +304,11 @@ export async function buildStoriesFeed(): Promise<StoriesPipelineResult> {
     ? (engagementRows as Record<string, unknown>[])
     : [];
   for (const row of engagementResultRows) {
-    const postId = String(row['post_id'] ?? '');
+    const postId = String(row.post_id ?? "");
     if (!postId) continue;
-    reactionMap.set(postId, Number(row['like_count'] ?? 0));
-    commentMap.set(postId, Number(row['comment_count'] ?? 0));
-    shareMap.set(postId, Number(row['share_count'] ?? 0));
+    reactionMap.set(postId, Number(row.like_count ?? 0));
+    commentMap.set(postId, Number(row.comment_count ?? 0));
+    shareMap.set(postId, Number(row.share_count ?? 0));
   }
 
   const authorIds = [...new Set(recentPosts.map((p) => p.authorId))];
@@ -332,7 +328,7 @@ export async function buildStoriesFeed(): Promise<StoriesPipelineResult> {
     ...new Set(
       recentPosts
         .filter((p) => p.originalPostId)
-        .map((p) => p.originalPostId as string)
+        .map((p) => p.originalPostId as string),
     ),
   ];
   const originalPostMap = new Map<
@@ -390,7 +386,7 @@ export async function buildStoriesFeed(): Promise<StoriesPipelineResult> {
     ...new Set(
       recentPosts
         .map((p) => p.relatedQuestion)
-        .filter((q): q is number => q !== null && q !== undefined)
+        .filter((q): q is number => q !== null && q !== undefined),
     ),
   ];
   const questionMetaMap = new Map<number, QuestionMeta>();
@@ -410,11 +406,11 @@ export async function buildStoriesFeed(): Promise<StoriesPipelineResult> {
     rows.forEach((q) =>
       questionMetaMap.set(q.questionNumber, {
         title: q.text,
-        status: q.status ?? 'active',
+        status: q.status ?? "active",
         arcState: (q.arcState as ArcStateType | null) ?? null,
         resolutionDate: q.resolutionDate,
         topicKey: q.topicKey ?? null,
-      })
+      }),
     );
   }
 
@@ -425,7 +421,7 @@ export async function buildStoriesFeed(): Promise<StoriesPipelineResult> {
     const likeCount = reactionMap.get(post.id) ?? 0;
     const commentCount = commentMap.get(post.id) ?? 0;
     const shareCount = shareMap.get(post.id) ?? 0;
-    const timestamp = toISOStringStrict(post.timestamp, 'timestamp', post.id);
+    const timestamp = toISOStringStrict(post.timestamp, "timestamp", post.id);
 
     const authorUser = userMap.get(post.authorId);
     const actorRecord = StaticDataRegistry.getActor(post.authorId);
@@ -436,16 +432,16 @@ export async function buildStoriesFeed(): Promise<StoriesPipelineResult> {
     let authorName = post.authorId;
     let authorUsername: string | null = null;
     let authorProfileImageUrl: string | null = null;
-    const authorType: 'actor' | 'news' | 'user' = actorRecord
-      ? 'actor'
+    const authorType: "actor" | "news" | "user" = actorRecord
+      ? "actor"
       : orgRecord
-        ? 'news'
-        : 'user';
+        ? "news"
+        : "user";
 
     // Filter org "NEW MARKET:" announcements — NewMarketCard is the canonical surface
     if (
       orgRecord &&
-      post.content.trimStart().toUpperCase().startsWith('NEW MARKET:')
+      post.content.trimStart().toUpperCase().startsWith("NEW MARKET:")
     ) {
       continue;
     }
@@ -465,12 +461,12 @@ export async function buildStoriesFeed(): Promise<StoriesPipelineResult> {
       authorProfileImageUrl = authorUser.profileImageUrl;
     }
 
-    const isRepost = post.type === 'repost';
-    const isQuote = isRepost && post.content !== '';
+    const isRepost = post.type === "repost";
+    const isQuote = isRepost && post.content !== "";
     const originalPostData = post.originalPostId
       ? (originalPostMap.get(post.originalPostId) ?? null)
       : null;
-    let originalPost: NarrativePost['originalPost'] = null;
+    let originalPost: NarrativePost["originalPost"] = null;
     if (originalPostData) {
       const origActor = StaticDataRegistry.getActor(originalPostData.authorId);
       const origOrg = origActor
@@ -499,8 +495,8 @@ export async function buildStoriesFeed(): Promise<StoriesPipelineResult> {
           null,
         timestamp: toISOStringStrict(
           originalPostData.timestamp,
-          'timestamp',
-          originalPostData.id
+          "timestamp",
+          originalPostData.id,
         ),
       };
     }
@@ -551,14 +547,14 @@ export async function buildStoriesFeed(): Promise<StoriesPipelineResult> {
   for (const [storyKey, storyPosts] of storyPostMap) {
     storyPosts.sort(
       (a, b) =>
-        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
     );
 
-    const newestTimestamp = new Date(storyPosts[0]!.timestamp);
+    const newestTimestamp = new Date(storyPosts[0]?.timestamp);
     const totalLikes = storyPosts.reduce((acc, p) => acc + p.likeCount, 0);
     const totalComments = storyPosts.reduce(
       (acc, p) => acc + p.commentCount,
-      0
+      0,
     );
     const totalShares = storyPosts.reduce((acc, p) => acc + p.shareCount, 0);
     const questionNumber =
@@ -567,12 +563,12 @@ export async function buildStoriesFeed(): Promise<StoriesPipelineResult> {
       questionNumber !== null ? questionMetaMap.get(questionNumber) : null;
     const storyTitle =
       meta?.title ??
-      (questionNumber !== null ? `Story #${questionNumber}` : 'General');
+      (questionNumber !== null ? `Story #${questionNumber}` : "General");
     const arcState = meta?.arcState ?? null;
     const storyTopicKey = meta?.topicKey ?? null;
 
     // Skip resolved or expired questions
-    if (meta?.status === 'resolved') continue;
+    if (meta?.status === "resolved") continue;
     if (meta?.resolutionDate && meta.resolutionDate <= now) continue;
 
     const baseScore = calculateStoryScore(
@@ -580,7 +576,7 @@ export async function buildStoriesFeed(): Promise<StoriesPipelineResult> {
       totalComments,
       totalShares,
       storyPosts.length,
-      newestTimestamp
+      newestTimestamp,
     );
     const resolutionBoost = meta?.resolutionDate
       ? calculateResolutionBoost(meta.resolutionDate)
@@ -620,7 +616,7 @@ export async function buildStoriesFeed(): Promise<StoriesPipelineResult> {
         post.commentCount,
         post.shareCount,
         1,
-        new Date(post.timestamp)
+        new Date(post.timestamp),
       ),
     }))
     .sort((a, b) => b.score - a.score);
@@ -629,7 +625,7 @@ export async function buildStoriesFeed(): Promise<StoriesPipelineResult> {
     const rawTitle =
       post.articleTitle ??
       (post.content.length > 80
-        ? post.content.slice(0, 80).replace(/\s+\S*$/, '') + '…'
+        ? `${post.content.slice(0, 80).replace(/\s+\S*$/, "")}…`
         : post.content);
     stories.push({
       storyKey: `post:${post.id}`,
@@ -656,7 +652,7 @@ export async function buildStoriesFeed(): Promise<StoriesPipelineResult> {
       .from(questions)
       .innerJoin(
         markets,
-        sql`lower(trim(${markets.question})) = lower(trim(${questions.text}))`
+        sql`lower(trim(${markets.question})) = lower(trim(${questions.text}))`,
       )
       .where(inArray(questions.questionNumber, storyQuestionNumbers))
       .orderBy(desc(markets.createdAt));
@@ -664,7 +660,7 @@ export async function buildStoriesFeed(): Promise<StoriesPipelineResult> {
       dedupeQuestionMarketRows(marketRows).map((r) => [
         r.questionNumber,
         r.marketId,
-      ])
+      ]),
     );
     for (const story of stories) {
       if (story.questionNumber !== null) {
@@ -681,7 +677,7 @@ export async function buildStoriesFeed(): Promise<StoriesPipelineResult> {
   const existingQuestionNumbers = new Set(
     stories
       .map((s) => s.questionNumber)
-      .filter((qn): qn is number => qn !== null)
+      .filter((qn): qn is number => qn !== null),
   );
 
   const newMarketRows = await db
@@ -701,25 +697,25 @@ export async function buildStoriesFeed(): Promise<StoriesPipelineResult> {
     .leftJoin(arcStates, eq(arcStates.questionId, questions.id))
     .leftJoin(
       markets,
-      sql`lower(trim(${markets.question})) = lower(trim(${questions.text}))`
+      sql`lower(trim(${markets.question})) = lower(trim(${questions.text}))`,
     )
     .where(
       and(
-        eq(questions.status, 'active'),
+        eq(questions.status, "active"),
         gte(questions.createdAt, newMarketCutoff),
         lt(
           questions.resolutionDate,
-          new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
+          new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000),
         ),
         not(
           inArray(
             questions.questionNumber,
             existingQuestionNumbers.size > 0
               ? [...existingQuestionNumbers]
-              : [-1]
-          )
-        )
-      )
+              : [-1],
+          ),
+        ),
+      ),
     )
     .orderBy(desc(questions.createdAt), desc(markets.createdAt));
 
@@ -727,7 +723,7 @@ export async function buildStoriesFeed(): Promise<StoriesPipelineResult> {
   // unique questions from the surfaced new-market set.
   const newMarketQuestions = dedupeQuestionMarketRows(newMarketRows).slice(
     0,
-    MAX_NEW_MARKET_CANDIDATES
+    MAX_NEW_MARKET_CANDIDATES,
   );
 
   for (const question of newMarketQuestions) {
@@ -735,7 +731,7 @@ export async function buildStoriesFeed(): Promise<StoriesPipelineResult> {
       (now.getTime() - question.createdAt.getTime()) / (1000 * 60 * 60);
     const recencyScore = Math.exp((-Math.LN2 * hoursSinceOpen) / 6);
     const arcMultiplier = calculateArcStateMultiplier(
-      (question.arcState as ArcStateType | null) ?? null
+      (question.arcState as ArcStateType | null) ?? null,
     );
     const topicBoost =
       todaysTopicKey && question.topicKey === todaysTopicKey
@@ -744,7 +740,7 @@ export async function buildStoriesFeed(): Promise<StoriesPipelineResult> {
 
     // Track the NPC "NEW MARKET:" anchor post for InteractionBar hydration
     const anchorPost = recentPosts.find(
-      (p) => p.relatedQuestion === question.questionNumber
+      (p) => p.relatedQuestion === question.questionNumber,
     );
     let anchorPostId: string | null = null;
     if (anchorPost) {
@@ -763,8 +759,8 @@ export async function buildStoriesFeed(): Promise<StoriesPipelineResult> {
         type: anchorPost.type,
         timestamp: toISOStringStrict(
           anchorPost.timestamp,
-          'timestamp',
-          anchorPost.id
+          "timestamp",
+          anchorPost.id,
         ),
         authorId: anchorPost.authorId,
         authorName:
@@ -789,7 +785,7 @@ export async function buildStoriesFeed(): Promise<StoriesPipelineResult> {
         isLiked: false,
         isShared: false,
         relatedQuestion: anchorPost.relatedQuestion ?? null,
-        authorType: anchorActor ? 'actor' : anchorOrg ? 'news' : 'user',
+        authorType: anchorActor ? "actor" : anchorOrg ? "news" : "user",
       };
       anchorPostById[anchorPost.id] = anchorNarrative;
       anchorPostId = anchorPost.id;
@@ -814,7 +810,7 @@ export async function buildStoriesFeed(): Promise<StoriesPipelineResult> {
       anchorPostId,
       topicKey: question.topicKey ?? null,
       topicLabel: question.topicLabel ?? null,
-      itemType: 'market',
+      itemType: "market",
       clusterId: question.marketId ?? `market:${question.questionNumber}`,
     });
   }
@@ -840,7 +836,7 @@ export async function buildStoriesFeed(): Promise<StoriesPipelineResult> {
 export async function enrichStoriesForUser(
   stories: NarrativeStory[],
   postIds: string[],
-  userId: string
+  userId: string,
 ): Promise<void> {
   const [userLikes, userShares] = await Promise.all([
     db
@@ -850,8 +846,8 @@ export async function enrichStoriesForUser(
         and(
           inArray(reactions.postId, postIds),
           eq(reactions.userId, userId),
-          eq(reactions.type, 'like')
-        )
+          eq(reactions.type, "like"),
+        ),
       ),
     db
       .select({ postId: shares.postId })

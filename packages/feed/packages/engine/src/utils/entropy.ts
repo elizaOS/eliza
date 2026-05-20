@@ -10,7 +10,7 @@
  * For simple shuffling/variety in prompts, use `randomization.ts` instead.
  */
 
-import { randomBytes } from 'crypto';
+import { randomBytes } from "node:crypto";
 
 // =============================================================================
 // Core Random
@@ -96,7 +96,7 @@ export const biasedRandomCount = (min: number, max: number): number =>
  * ```
  */
 export function weightedPick<T>(items: T[], weight: (item: T) => number): T {
-  if (items.length === 0) throw new Error('Empty array');
+  if (items.length === 0) throw new Error("Empty array");
   if (items.length === 1) return items[0]!;
 
   const weights = items.map(weight);
@@ -125,11 +125,11 @@ export function weightedPick<T>(items: T[], weight: (item: T) => number): T {
  * ```
  */
 export const urgencyWeight = (
-  multiplier = 5
+  multiplier = 5,
 ): (<T extends { resolutionDate?: Date | string | null }>(q: T) => number) => {
   const now = Date.now();
   return <T extends { resolutionDate?: Date | string | null }>(
-    q: T
+    q: T,
   ): number => {
     const rd = q.resolutionDate;
     if (!rd) return 1;
@@ -163,14 +163,14 @@ export interface EventCooldownState {
 /** Check if event should fire (mutates lastOccurrence on true) */
 export function shouldFireEvent(
   state: EventCooldownState,
-  now: number
+  now: number,
 ): boolean {
   const elapsed = now - state.lastOccurrence;
   if (elapsed < state.minCooldown) return false;
 
   const prob = Math.min(
     state.maxProbability,
-    state.baseProbability + (elapsed - state.minCooldown) * state.decayRate
+    state.baseProbability + (elapsed - state.minCooldown) * state.decayRate,
   );
 
   if (secureRandom() < prob) {
@@ -188,14 +188,14 @@ export function shouldFireEvent(
 export const generateSentimentSignal = (
   positive: boolean,
   strength: number,
-  noise = 0.2
+  noise = 0.2,
 ): number =>
   Math.max(
     -1,
     Math.min(
       1,
-      (positive ? strength : -strength) + (secureRandom() - 0.5) * 2 * noise
-    )
+      (positive ? strength : -strength) + (secureRandom() - 0.5) * 2 * noise,
+    ),
   );
 
 // =============================================================================
@@ -208,8 +208,8 @@ export class SeededRandom {
 
   constructor(seed: number | string) {
     const n =
-      typeof seed === 'string'
-        ? seed.split('').reduce((a, c) => a + c.charCodeAt(0), 0)
+      typeof seed === "string"
+        ? seed.split("").reduce((a, c) => a + c.charCodeAt(0), 0)
         : seed;
     this.s = [n ^ 0xdeadbeef, n ^ 0x12345678];
   }

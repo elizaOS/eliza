@@ -14,22 +14,22 @@ import {
   requireAdmin,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/api";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   await requireAdmin(request);
 
   logger.info(
-    'System health check requested',
+    "System health check requested",
     {},
-    'GET /api/admin/system-health'
+    "GET /api/admin/system-health",
   );
 
   const snapshot = await getSystemStatusSnapshot();
   const legacyStatus =
-    snapshot.status === 'warning' ? 'degraded' : snapshot.status;
+    snapshot.status === "warning" ? "degraded" : snapshot.status;
 
   return successResponse({
     ...snapshot,

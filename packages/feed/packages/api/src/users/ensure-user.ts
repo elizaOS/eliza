@@ -6,15 +6,12 @@
  * information.
  */
 
-import { db, eq, type User, users } from '@feed/db';
-import {
-  generateSnowflakeId,
-  resolveUserIdentifierKind,
-} from '@feed/shared';
-import { sql } from 'drizzle-orm';
-import type { AuthenticatedUser } from '../auth-middleware';
-import { cachedDb } from '../cache/cached-database-service';
-import { findUserByIdentifier } from './user-lookup';
+import { db, eq, type User, users } from "@feed/db";
+import { generateSnowflakeId, resolveUserIdentifierKind } from "@feed/shared";
+import { sql } from "drizzle-orm";
+import type { AuthenticatedUser } from "../auth-middleware";
+import { cachedDb } from "../cache/cached-database-service";
+import { findUserByIdentifier } from "./user-lookup";
 
 /**
  * Options for ensuring user exists
@@ -29,17 +26,17 @@ export interface EnsureUserOptions {
 
 export type CanonicalUser = Pick<
   User,
-  | 'id'
-  | 'privyId'
-  | 'stewardId'
-  | 'username'
-  | 'displayName'
-  | 'walletAddress'
-  | 'isActor'
-  | 'profileImageUrl'
+  | "id"
+  | "privyId"
+  | "stewardId"
+  | "username"
+  | "displayName"
+  | "walletAddress"
+  | "isActor"
+  | "profileImageUrl"
 >;
 
-type MinimalUser = Pick<User, 'id'>;
+type MinimalUser = Pick<User, "id">;
 
 const canonicalUserSelect = {
   id: users.id,
@@ -53,7 +50,7 @@ const canonicalUserSelect = {
 };
 
 async function findMinimalUserByIdentifierDirect(
-  identifier: string
+  identifier: string,
 ): Promise<MinimalUser | null> {
   const normalizedIdentifier = identifier.trim();
 
@@ -63,9 +60,9 @@ async function findMinimalUserByIdentifierDirect(
 
   const kind = resolveUserIdentifierKind(normalizedIdentifier);
   const condition =
-    kind === 'id'
+    kind === "id"
       ? eq(users.id, normalizedIdentifier)
-      : kind === 'privyId'
+      : kind === "privyId"
         ? eq(users.privyId, normalizedIdentifier)
         : sql`lower(${users.username}) = lower(${normalizedIdentifier})`;
 
@@ -82,7 +79,7 @@ async function findMinimalUserByIdentifierDirect(
   // Minimal public bootstrap stores the incoming identifier in users.id even
   // when the original lookup was by username, so the conflict-reload path must
   // also retry by primary key for any non-ID identifier kind.
-  if (kind !== 'id') {
+  if (kind !== "id") {
     const [byId] = await db
       .select({ id: users.id })
       .from(users)
@@ -96,7 +93,7 @@ async function findMinimalUserByIdentifierDirect(
 
 async function findCanonicalUserByAuthIdentifiersDirect(
   privyId: string,
-  userId: string
+  userId: string,
 ): Promise<CanonicalUser | null> {
   const [byPrivyId] = await db
     .select(canonicalUserSelect)
@@ -125,7 +122,7 @@ async function findCanonicalUserByAuthIdentifiersDirect(
  * and insert attempt.
  */
 export async function ensureMinimalUserByIdentifier(
-  identifier: string
+  identifier: string,
 ): Promise<MinimalUser> {
   const normalizedIdentifier = identifier.trim();
 
@@ -162,7 +159,7 @@ export async function ensureMinimalUserByIdentifier(
     await findMinimalUserByIdentifierDirect(normalizedIdentifier);
 
   if (!concurrentUser) {
-    throw new Error('Failed to create or find user');
+    throw new Error("Failed to create or find user");
   }
 
   return concurrentUser;
@@ -190,7 +187,7 @@ export async function ensureMinimalUserByIdentifier(
  */
 export async function ensureUserForAuth(
   user: AuthenticatedUser,
-  options: EnsureUserOptions = {}
+  options: EnsureUserOptions = {},
 ): Promise<{ user: CanonicalUser }> {
   const privyId = user.privyId ?? user.userId;
   const canonicalUserId = user.dbUserId ?? user.userId;
@@ -257,7 +254,7 @@ export async function ensureUserForAuth(
         {
           username: usernameChanged ? oldUsername : undefined,
           privyId: privyIdChanged ? oldPrivyId : undefined,
-        }
+        },
       );
 
       return { user: updatedUser };
@@ -294,11 +291,11 @@ export async function ensureUserForAuth(
   if (!createdUser) {
     const concurrentUser = await findCanonicalUserByAuthIdentifiersDirect(
       privyId,
-      canonicalUserId
+      canonicalUserId,
     );
 
     if (!concurrentUser) {
-      throw new Error('Failed to create or find user');
+      throw new Error("Failed to create or find user");
     }
 
     user.dbUserId = concurrentUser.id;
@@ -321,7 +318,7 @@ export async function ensureUserForAuth(
  * Get canonical user ID
  */
 export function getCanonicalUserId(
-  user: Pick<AuthenticatedUser, 'userId' | 'dbUserId'>
+  user: Pick<AuthenticatedUser, "userId" | "dbUserId">,
 ): string {
   return user.dbUserId ?? user.userId;
 }
@@ -337,7 +334,7 @@ export function getCanonicalUserId(
  */
 export async function ensureUserFromSteward(
   stewardUserId: string,
-  email?: string
+  email?: string,
 ): Promise<{
   id: string;
   stewardId: string | null;
@@ -385,7 +382,7 @@ export async function ensureUserFromSteward(
 
   if (!existing) {
     throw new Error(
-      `ensureUserFromSteward: failed to find or create user for stewardId ${stewardUserId}`
+      `ensureUserFromSteward: failed to find or create user for stewardId ${stewardUserId}`,
     );
   }
 

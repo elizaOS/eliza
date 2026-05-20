@@ -1,8 +1,8 @@
 import type {
   PredictionResolutionSSE,
   PredictionTradeSSE,
-} from '@/hooks/usePredictionMarketStream';
-import type { PredictionMarket } from '@/types/markets';
+} from "@/hooks/usePredictionMarketStream";
+import type { PredictionMarket } from "@/types/markets";
 
 export interface PredictionMarketTerminalState extends PredictionMarket {
   liquidity?: number;
@@ -25,7 +25,7 @@ export interface PredictionMarketLiveState {
 
 export function buildPredictionTerminalState(
   base: PredictionMarket | null,
-  live: PredictionMarketLiveState | null
+  live: PredictionMarketLiveState | null,
 ): PredictionMarketTerminalState | null {
   if (!base) {
     return null;
@@ -42,14 +42,14 @@ export function buildPredictionTerminalState(
     liquidity: live.liquidity,
     yesProbability: live.yesProbability,
     noProbability: live.noProbability,
-    resolved: live.resolved ?? base.status === 'resolved',
+    resolved: live.resolved ?? base.status === "resolved",
     resolution: live.resolution ?? base.resolvedOutcome,
   };
 }
 
 export function buildPredictionLiveStateFromTrade(
   event: PredictionTradeSSE,
-  previous?: PredictionMarketLiveState | null
+  previous?: PredictionMarketLiveState | null,
 ): PredictionMarketLiveState {
   return {
     marketId: event.marketId,
@@ -65,7 +65,7 @@ export function buildPredictionLiveStateFromTrade(
 
 export function buildPredictionLiveStateFromResolution(
   event: PredictionResolutionSSE,
-  previous?: PredictionMarketLiveState | null
+  previous?: PredictionMarketLiveState | null,
 ): PredictionMarketLiveState {
   return {
     marketId: event.marketId,
@@ -77,13 +77,13 @@ export function buildPredictionLiveStateFromResolution(
     yesProbability: event.yesPrice,
     noProbability: event.noPrice,
     resolved: true,
-    resolution: event.winningSide === 'yes',
+    resolution: event.winningSide === "yes",
   };
 }
 
 export function isSamePredictionLiveState(
   left: PredictionMarketLiveState | null,
-  right: PredictionMarketLiveState | null
+  right: PredictionMarketLiveState | null,
 ): boolean {
   if (left === right) {
     return true;

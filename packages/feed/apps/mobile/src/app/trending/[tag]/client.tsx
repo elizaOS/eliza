@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import TrendingPage from '@web/app/trending/[tag]/page';
+import TrendingPage from "@web/app/trending/[tag]/page";
 
 export function PageContent() {
   return <TrendingPage />;

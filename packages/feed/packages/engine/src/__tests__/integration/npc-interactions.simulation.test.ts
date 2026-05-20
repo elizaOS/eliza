@@ -1,50 +1,50 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync } from 'fs';
-import { tmpdir } from 'os';
-import { join } from 'path';
-import type { LLMJsonClient } from '../../llm/types';
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { LLMJsonClient } from "../../llm/types";
 import {
   npcSocialEngagementService,
   processNPCSocialEngagements,
-} from '../../services/npc-social-engagement-service';
+} from "../../services/npc-social-engagement-service";
 import {
   type DiscourseActor,
   generateNPCRepliesFromPreviousTicks,
-} from '../../services/post-generation-helpers';
-import { StaticDataRegistry } from '../../services/static-data-registry';
+} from "../../services/post-generation-helpers";
+import { StaticDataRegistry } from "../../services/static-data-registry";
 import {
   db,
   initializeDatabaseMode,
   initializeSimulationMode,
-} from '../../storage-bridge';
+} from "../../storage-bridge";
 
 const mockLLM: LLMJsonClient = {
   async generateJSON<T>(_prompt, _schema, options) {
-    const promptType = options?.promptType ?? 'unknown';
+    const promptType = options?.promptType ?? "unknown";
 
-    if (promptType === 'npc-comment') {
-      return { comment: 'Valid NPC comment.' } as T;
+    if (promptType === "npc-comment") {
+      return { comment: "Valid NPC comment." } as T;
     }
 
-    if (promptType === 'npc-comment-reply') {
-      return { comment: 'Valid NPC comment reply.' } as T;
+    if (promptType === "npc-comment-reply") {
+      return { comment: "Valid NPC comment reply." } as T;
     }
 
-    if (promptType === 'npc_quote_post') {
-      return { response: { quote_comment: 'Quote-post commentary.' } } as T;
+    if (promptType === "npc_quote_post") {
+      return { response: { quote_comment: "Quote-post commentary." } } as T;
     }
 
-    if (promptType === 'npc_reply_to_post') {
-      return { response: { reply: 'Reply content.' } } as T;
+    if (promptType === "npc_reply_to_post") {
+      return { response: { reply: "Reply content." } } as T;
     }
 
     return {} as T;
   },
 };
 
-describe('NPC interactions (simulation mode)', () => {
+describe("NPC interactions (simulation mode)", () => {
   beforeEach(async () => {
-    const basePath = mkdtempSync(join(tmpdir(), 'feed-engine-npc-'));
+    const basePath = mkdtempSync(join(tmpdir(), "feed-engine-npc-"));
     await initializeSimulationMode(basePath);
   });
 
@@ -52,22 +52,22 @@ describe('NPC interactions (simulation mode)', () => {
     initializeDatabaseMode();
   });
 
-  test('processNPCSocialEngagements creates likes/shares/comments', async () => {
+  test("processNPCSocialEngagements creates likes/shares/comments", async () => {
     const actors = StaticDataRegistry.getAllActors();
     expect(actors.length).toBeGreaterThanOrEqual(2);
 
     const a1 = actors[0]!;
     const a2 = actors[1]!;
-    const now = new Date('2026-01-01T00:10:00.000Z');
+    const now = new Date("2026-01-01T00:10:00.000Z");
     const postTime = new Date(now.getTime() - 5 * 60 * 1000);
 
     await db.post.create({
       data: {
-        id: 'seed-post-1',
-        type: 'post',
-        content: 'Seed post one.',
+        id: "seed-post-1",
+        type: "post",
+        content: "Seed post one.",
         authorId: a1.id,
-        gameId: 'continuous',
+        gameId: "continuous",
         dayNumber: 1,
         timestamp: postTime,
       },
@@ -75,11 +75,11 @@ describe('NPC interactions (simulation mode)', () => {
 
     await db.post.create({
       data: {
-        id: 'seed-post-2',
-        type: 'post',
-        content: 'Seed post two.',
+        id: "seed-post-2",
+        type: "post",
+        content: "Seed post two.",
         authorId: a2.id,
-        gameId: 'continuous',
+        gameId: "continuous",
         dayNumber: 1,
         timestamp: postTime,
       },
@@ -110,25 +110,25 @@ describe('NPC interactions (simulation mode)', () => {
     expect(comments.some((c) => c.parentCommentId !== null)).toBe(true);
   });
 
-  test('quoted author can comment on quote-posts (clapback)', async () => {
+  test("quoted author can comment on quote-posts (clapback)", async () => {
     const actors = StaticDataRegistry.getAllActors();
     expect(actors.length).toBeGreaterThanOrEqual(2);
 
     const originalAuthor = actors[0]!;
     const quoter = actors[1]!;
-    const now = new Date('2026-01-01T00:40:00.000Z');
+    const now = new Date("2026-01-01T00:40:00.000Z");
     const postTime = new Date(now.getTime() - 5 * 60 * 1000);
 
-    const originalPostId = 'seed-orig-post';
-    const quotePostId = 'seed-quote-post';
+    const originalPostId = "seed-orig-post";
+    const quotePostId = "seed-quote-post";
 
     await db.post.create({
       data: {
         id: originalPostId,
-        type: 'post',
-        content: 'Original post to be quote-posted.',
+        type: "post",
+        content: "Original post to be quote-posted.",
         authorId: originalAuthor.id,
-        gameId: 'continuous',
+        gameId: "continuous",
         dayNumber: 1,
         timestamp: postTime,
       },
@@ -137,11 +137,11 @@ describe('NPC interactions (simulation mode)', () => {
     await db.post.create({
       data: {
         id: quotePostId,
-        type: 'quote',
-        content: 'Quote commentary on the original post.',
+        type: "quote",
+        content: "Quote commentary on the original post.",
         authorId: quoter.id,
         originalPostId,
-        gameId: 'continuous',
+        gameId: "continuous",
         dayNumber: 1,
         timestamp: postTime,
       },
@@ -161,24 +161,24 @@ describe('NPC interactions (simulation mode)', () => {
     expect(clapbacks.length).toBeGreaterThan(0);
   });
 
-  test('generateNPCRepliesFromPreviousTicks can create quote-posts', async () => {
+  test("generateNPCRepliesFromPreviousTicks can create quote-posts", async () => {
     const actors = StaticDataRegistry.getAllActors();
     expect(actors.length).toBeGreaterThanOrEqual(4);
 
     const originalAuthor = actors[2]!;
     const engager = actors[3]!;
 
-    const now = new Date('2026-01-01T00:20:00.000Z');
-    const originalPostId = 'orig-quote-target';
+    const now = new Date("2026-01-01T00:20:00.000Z");
+    const originalPostId = "orig-quote-target";
     const originalPostTime = new Date(now.getTime() - 5 * 60 * 1000);
 
     await db.post.create({
       data: {
         id: originalPostId,
-        type: 'post',
-        content: 'Original post to be quote-posted.',
+        type: "post",
+        content: "Original post to be quote-posted.",
         authorId: originalAuthor.id,
-        gameId: 'continuous',
+        gameId: "continuous",
         dayNumber: 1,
         timestamp: originalPostTime,
       },
@@ -216,45 +216,45 @@ describe('NPC interactions (simulation mode)', () => {
     const created = await generateNPCRepliesFromPreviousTicks(
       mockLLM,
       discourseActors,
-      '',
+      "",
       now,
       1,
       1,
-      { random: () => 0, quoteProbability: 1 }
+      { random: () => 0, quoteProbability: 1 },
     );
 
     expect(created).toBe(1);
 
     const quotes = await db.post.findMany({
-      where: { type: 'quote', originalPostId },
+      where: { type: "quote", originalPostId },
     });
 
     expect(quotes.length).toBe(1);
     expect(quotes[0]?.authorId).not.toBe(originalAuthor.id);
 
     expect(
-      await db.npcInteraction.count({ where: { interactionType: 'quote' } })
+      await db.npcInteraction.count({ where: { interactionType: "quote" } }),
     ).toBeGreaterThan(0);
   });
 
-  test('generateNPCRepliesFromPreviousTicks can create replies', async () => {
+  test("generateNPCRepliesFromPreviousTicks can create replies", async () => {
     const actors = StaticDataRegistry.getAllActors();
     expect(actors.length).toBeGreaterThanOrEqual(6);
 
     const originalAuthor = actors[4]!;
     const engager = actors[5]!;
 
-    const now = new Date('2026-01-01T00:30:00.000Z');
-    const originalPostId = 'orig-reply-target';
+    const now = new Date("2026-01-01T00:30:00.000Z");
+    const originalPostId = "orig-reply-target";
     const originalPostTime = new Date(now.getTime() - 5 * 60 * 1000);
 
     await db.post.create({
       data: {
         id: originalPostId,
-        type: 'post',
-        content: 'Original post to be replied to.',
+        type: "post",
+        content: "Original post to be replied to.",
         authorId: originalAuthor.id,
-        gameId: 'continuous',
+        gameId: "continuous",
         dayNumber: 1,
         timestamp: originalPostTime,
       },
@@ -292,17 +292,17 @@ describe('NPC interactions (simulation mode)', () => {
     const created = await generateNPCRepliesFromPreviousTicks(
       mockLLM,
       discourseActors,
-      '',
+      "",
       now,
       1,
       1,
-      { random: () => 0, quoteProbability: 0 }
+      { random: () => 0, quoteProbability: 0 },
     );
 
     expect(created).toBe(1);
 
     const replies = await db.post.findMany({
-      where: { type: 'reply', commentOnPostId: originalPostId },
+      where: { type: "reply", commentOnPostId: originalPostId },
     });
 
     expect(replies.length).toBe(1);
@@ -310,7 +310,7 @@ describe('NPC interactions (simulation mode)', () => {
     expect(replies[0]?.originalPostId).toBe(originalPostId);
 
     expect(
-      await db.npcInteraction.count({ where: { interactionType: 'reply' } })
+      await db.npcInteraction.count({ where: { interactionType: "reply" } }),
     ).toBeGreaterThan(0);
   });
 });

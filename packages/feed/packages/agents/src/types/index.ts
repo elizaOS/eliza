@@ -29,8 +29,8 @@ export {
   type PaymentReceipt,
   type PaymentRequest,
   PaymentRequestSchema,
-} from '@feed/a2a';
-export * from './a2a-responses';
-export * from './agent-registry';
-export * from './common';
-export * from './entities';
+} from "@feed/a2a";
+export * from "./a2a-responses";
+export * from "./agent-registry";
+export * from "./common";
+export * from "./entities";

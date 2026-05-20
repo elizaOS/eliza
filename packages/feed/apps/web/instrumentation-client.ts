@@ -13,27 +13,27 @@
  * - Configures proper environment and release tracking
  */
 
-import * as Sentry from '@sentry/nextjs';
+import * as Sentry from "@sentry/nextjs";
 
 const sentryDisabled =
-  process.env.NEXT_PUBLIC_DISABLE_SENTRY === 'true' ||
-  process.env.DISABLE_SENTRY === 'true';
+  process.env.NEXT_PUBLIC_DISABLE_SENTRY === "true" ||
+  process.env.DISABLE_SENTRY === "true";
 const sentryClientRelease =
   process.env.NEXT_PUBLIC_SENTRY_RELEASE ??
   process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA;
 
 // Log initialization status in development
-if (process.env.NODE_ENV === 'development') {
+if (process.env.NODE_ENV === "development") {
   if (sentryDisabled) {
-    console.info('[Sentry Client] Disabled via DISABLE_SENTRY flag');
+    console.info("[Sentry Client] Disabled via DISABLE_SENTRY flag");
   } else if (!process.env.NEXT_PUBLIC_SENTRY_DSN) {
     console.warn(
-      '[Sentry Client] NEXT_PUBLIC_SENTRY_DSN is not configured. Add it to your .env.local file to enable error tracking.'
+      "[Sentry Client] NEXT_PUBLIC_SENTRY_DSN is not configured. Add it to your .env.local file to enable error tracking.",
     );
   } else {
     console.log(
-      '[Sentry Client] Initializing with DSN:',
-      process.env.NEXT_PUBLIC_SENTRY_DSN.substring(0, 20) + '...'
+      "[Sentry Client] Initializing with DSN:",
+      `${process.env.NEXT_PUBLIC_SENTRY_DSN.substring(0, 20)}...`,
     );
   }
 }
@@ -46,7 +46,7 @@ if (!sentryDisabled) {
     environment:
       process.env.NEXT_PUBLIC_SENTRY_ENVIRONMENT ??
       process.env.NODE_ENV ??
-      'development',
+      "development",
 
     // Release tracking (set via environment variable or CI/CD)
     release: sentryClientRelease,
@@ -58,7 +58,7 @@ if (!sentryDisabled) {
     // Use tracesSampler for better control over transaction sampling
     tracesSampler: (samplingContext) => {
       // Sample 100% of transactions in development
-      if (process.env.NODE_ENV === 'development') {
+      if (process.env.NODE_ENV === "development") {
         return 1.0;
       }
 
@@ -66,7 +66,7 @@ if (!sentryDisabled) {
       const { request } = samplingContext;
 
       // Sample more of important transactions
-      if (request?.url?.includes('/api/')) {
+      if (request?.url?.includes("/api/")) {
         return 0.2; // 20% of API calls
       }
 
@@ -81,32 +81,32 @@ if (!sentryDisabled) {
 
     // Session Replay configuration
     replaysOnErrorSampleRate: 1.0, // Always record replays when errors occur
-    replaysSessionSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0, // 10% of sessions in prod, 100% in dev
+    replaysSessionSampleRate: process.env.NODE_ENV === "production" ? 0.1 : 1.0, // 10% of sessions in prod, 100% in dev
 
     // Profiling (optional, for performance analysis)
-    profilesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
+    profilesSampleRate: process.env.NODE_ENV === "production" ? 0.1 : 1.0,
 
     // Filter out common non-actionable errors
     ignoreErrors: [
       // Browser extensions
-      'top.GLOBALS',
-      'originalCreateNotification',
-      'canvas.contentDocument',
-      'MyApp_RemoveAllHighlights',
-      'atomicFindClose',
-      'fb_xd_fragment',
-      'bmi_SafeAddOnload',
-      'conduitPage',
+      "top.GLOBALS",
+      "originalCreateNotification",
+      "canvas.contentDocument",
+      "MyApp_RemoveAllHighlights",
+      "atomicFindClose",
+      "fb_xd_fragment",
+      "bmi_SafeAddOnload",
+      "conduitPage",
       // Network errors that are often not actionable
-      'NetworkError',
-      'Network request failed',
-      'Failed to fetch',
+      "NetworkError",
+      "Network request failed",
+      "Failed to fetch",
       // Privacy/Ad blockers
-      'Blocked a frame with origin',
-      'ResizeObserver loop limit exceeded',
+      "Blocked a frame with origin",
+      "ResizeObserver loop limit exceeded",
       // Chrome extensions
-      'chrome-extension://',
-      'moz-extension://',
+      "chrome-extension://",
+      "moz-extension://",
     ],
 
     // Filter out URLs that shouldn't be tracked
@@ -142,7 +142,7 @@ if (!sentryDisabled) {
         networkCaptureBodies: false,
       }),
       Sentry.captureConsoleIntegration({
-        levels: ['error'], // Only capture console.error
+        levels: ["error"], // Only capture console.error
       }),
     ],
 
@@ -150,23 +150,23 @@ if (!sentryDisabled) {
     beforeSend(event, hint) {
       // Don't send events if DSN is not configured
       if (!process.env.NEXT_PUBLIC_SENTRY_DSN) {
-        if (process.env.NODE_ENV === 'development') {
+        if (process.env.NODE_ENV === "development") {
           console.warn(
-            '[Sentry] NEXT_PUBLIC_SENTRY_DSN is not configured. Events will not be sent to Sentry.'
+            "[Sentry] NEXT_PUBLIC_SENTRY_DSN is not configured. Events will not be sent to Sentry.",
           );
         }
         return null;
       }
 
       // Filter out development-only errors in production
-      if (process.env.NODE_ENV === 'production' && event.exception) {
+      if (process.env.NODE_ENV === "production" && event.exception) {
         const error = hint.originalException;
         if (error instanceof Error) {
           // Filter out common development errors
           if (
-            error.message.includes('development') ||
-            error.message.includes('localhost') ||
-            error.message.includes('Hydration')
+            error.message.includes("development") ||
+            error.message.includes("localhost") ||
+            error.message.includes("Hydration")
           ) {
             return null;
           }
@@ -180,8 +180,8 @@ if (!sentryDisabled) {
     beforeSendTransaction(event) {
       // Filter out health check endpoints
       if (
-        event.transaction === '/api/health' ||
-        event.transaction === '/health'
+        event.transaction === "/api/health" ||
+        event.transaction === "/health"
       ) {
         return null;
       }

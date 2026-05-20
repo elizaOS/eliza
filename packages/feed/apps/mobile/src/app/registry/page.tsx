@@ -1,12 +1,12 @@
-'use client';
+"use client";
 
-import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
 export default function MobileRegistryRedirect() {
   const router = useRouter();
   useEffect(() => {
-    router.replace('/admin?tab=registry');
+    router.replace("/admin?tab=registry");
   }, [router]);
   return null;
 }

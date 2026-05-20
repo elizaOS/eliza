@@ -6,14 +6,8 @@
  * points for trades.
  */
 
-import {
-  db,
-  eq,
-  pointsTransactions,
-  type Transaction,
-  users,
-} from '@feed/db';
-import { generateSnowflakeId, logger } from '@feed/shared';
+import { db, eq, pointsTransactions, type Transaction, users } from "@feed/db";
+import { generateSnowflakeId, logger } from "@feed/shared";
 
 /**
  * Earned Points Service Class
@@ -37,7 +31,7 @@ export class EarnedPointsService {
   private static calculateReputationPoints(
     invitePoints: number,
     earnedPoints: number,
-    bonusPoints: number
+    bonusPoints: number,
   ): number {
     return (
       EarnedPointsService.BASE_POINTS +
@@ -114,7 +108,7 @@ export class EarnedPointsService {
     const newReputationPoints = EarnedPointsService.calculateReputationPoints(
       user.invitePoints,
       newEarnedPoints,
-      user.bonusPoints
+      user.bonusPoints,
     );
 
     await db
@@ -126,14 +120,14 @@ export class EarnedPointsService {
       .where(eq(users.id, userId));
 
     logger.info(
-      'Updated earned points from P&L',
+      "Updated earned points from P&L",
       {
         userId,
         lifetimePnL,
         earnedPoints: newEarnedPoints,
         reputationPoints: newReputationPoints,
       },
-      'EarnedPointsService'
+      "EarnedPointsService",
     );
   }
 
@@ -159,7 +153,7 @@ export class EarnedPointsService {
     newLifetimePnL: number,
     tradeType: string,
     relatedId?: string,
-    tx?: Transaction
+    tx?: Transaction,
   ): Promise<number> {
     const database = tx ?? db;
     const computedEarnedPoints =
@@ -194,7 +188,7 @@ export class EarnedPointsService {
     // Log if there was a pre-existing mismatch (for monitoring purposes)
     // Points may be out of sync due to concurrent updates or race conditions
     const expectedPointsFromPreviousPnL = EarnedPointsService.pnlToPoints(
-      storedLifetimePnL - (newLifetimePnL - storedLifetimePnL)
+      storedLifetimePnL - (newLifetimePnL - storedLifetimePnL),
     );
     if (
       expectedPointsFromPreviousPnL !== currentEarnedPoints &&
@@ -203,7 +197,7 @@ export class EarnedPointsService {
       // storedLifetimePnL should equal newLifetimePnL since we're in the same transaction
       // If they differ, something unexpected happened
       logger.warn(
-        'Earned points may have been out of sync (auto-correcting)',
+        "Earned points may have been out of sync (auto-correcting)",
         {
           userId,
           storedLifetimePnL,
@@ -211,7 +205,7 @@ export class EarnedPointsService {
           currentEarnedPoints,
           computedNewPoints: computedEarnedPoints,
         },
-        'EarnedPointsService'
+        "EarnedPointsService",
       );
     }
 
@@ -224,7 +218,7 @@ export class EarnedPointsService {
     const newReputationPoints = EarnedPointsService.calculateReputationPoints(
       user.invitePoints,
       newEarnedPoints,
-      user.bonusPoints
+      user.bonusPoints,
     );
 
     // Update user and create transaction
@@ -242,7 +236,7 @@ export class EarnedPointsService {
       amount: earnedPointsDelta,
       pointsBefore: user.reputationPoints,
       pointsAfter: newReputationPoints,
-      reason: 'trading_pnl',
+      reason: "trading_pnl",
       metadata: JSON.stringify({
         tradeType,
         relatedId,
@@ -255,7 +249,7 @@ export class EarnedPointsService {
     });
 
     logger.info(
-      'Awarded earned points for P&L',
+      "Awarded earned points for P&L",
       {
         userId,
         storedLifetimePnL,
@@ -264,7 +258,7 @@ export class EarnedPointsService {
         totalEarnedPoints: newEarnedPoints,
         totalReputationPoints: newReputationPoints,
       },
-      'EarnedPointsService'
+      "EarnedPointsService",
     );
 
     return earnedPointsDelta;
@@ -288,17 +282,17 @@ export class EarnedPointsService {
     userId: string,
     points: number,
     reason: string,
-    tx: Transaction | typeof db = db
+    tx: Transaction | typeof db = db,
   ): Promise<number> {
     // Validate points parameter
     if (!Number.isFinite(points)) {
       throw new Error(
-        `Invalid points value: ${points}. Points must be a finite number.`
+        `Invalid points value: ${points}. Points must be a finite number.`,
       );
     }
     if (points < 0) {
       throw new Error(
-        `Invalid points value: ${points}. Bonus points must be non-negative.`
+        `Invalid points value: ${points}. Bonus points must be non-negative.`,
       );
     }
 
@@ -333,7 +327,7 @@ export class EarnedPointsService {
     const newReputationPoints = EarnedPointsService.calculateReputationPoints(
       user.invitePoints,
       user.earnedPoints,
-      newBonusPoints
+      newBonusPoints,
     );
 
     // Update user
@@ -361,7 +355,7 @@ export class EarnedPointsService {
     });
 
     logger.info(
-      'Awarded bonus points',
+      "Awarded bonus points",
       {
         userId,
         points,
@@ -369,7 +363,7 @@ export class EarnedPointsService {
         totalBonusPoints: newBonusPoints,
         totalReputationPoints: newReputationPoints,
       },
-      'EarnedPointsService'
+      "EarnedPointsService",
     );
 
     return newBonusPoints;
@@ -392,7 +386,7 @@ export class EarnedPointsService {
     logger.info(
       `Syncing earned points for ${usersList.length} users`,
       {},
-      'EarnedPointsService'
+      "EarnedPointsService",
     );
 
     let successCount = 0;
@@ -404,13 +398,13 @@ export class EarnedPointsService {
     }
 
     logger.info(
-      'Bulk sync complete',
+      "Bulk sync complete",
       {
         total: usersList.length,
         success: successCount,
         errors: errorCount,
       },
-      'EarnedPointsService'
+      "EarnedPointsService",
     );
 
     return { success: successCount, errors: errorCount };

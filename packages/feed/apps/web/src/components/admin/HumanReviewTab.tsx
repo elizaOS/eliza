@@ -16,15 +16,15 @@
  *
  * @returns Human review tab element
  */
-'use client';
+"use client";
 
-import { cn, formatDateTime, type JsonValue } from '@feed/shared';
-import { AlertCircle, DollarSign } from 'lucide-react';
-import { useCallback, useEffect, useState, useTransition } from 'react';
-import { toast } from 'sonner';
-import { Avatar } from '@/components/shared/Avatar';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { apiUrl } from '@/utils/api-url';
+import { cn, formatDateTime, type JsonValue } from "@feed/shared";
+import { AlertCircle, DollarSign } from "lucide-react";
+import { useCallback, useEffect, useState, useTransition } from "react";
+import { toast } from "sonner";
+import { Avatar } from "@/components/shared/Avatar";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { apiUrl } from "@/utils/api-url";
 
 /**
  * Appeal structure for human review tab.
@@ -58,9 +58,9 @@ export function HumanReviewTab() {
   const [showActionModal, setShowActionModal] = useState(false);
 
   const fetchAppeals = useCallback(async () => {
-    const response = await fetch(apiUrl('/api/admin/moderation/human-review'));
+    const response = await fetch(apiUrl("/api/admin/moderation/human-review"));
     if (!response.ok) {
-      toast.error('Failed to load appeals');
+      toast.error("Failed to load appeals");
       setLoading(false);
       return;
     }
@@ -75,21 +75,21 @@ export function HumanReviewTab() {
 
   const handleAction = async (
     userId: string,
-    action: 'approve' | 'deny',
-    reasoning: string
+    action: "approve" | "deny",
+    reasoning: string,
   ) => {
     const response = await fetch(
       `/api/admin/moderation/human-review/${userId}`,
       {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, reasoning }),
-      }
+      },
     );
 
     if (!response.ok) {
       const error = await response.json();
-      toast.error(error.message || 'Failed to process appeal');
+      toast.error(error.message || "Failed to process appeal");
       return;
     }
 
@@ -99,7 +99,7 @@ export function HumanReviewTab() {
   };
 
   const formatDate = (date: Date | null) =>
-    date ? formatDateTime(date) : 'N/A';
+    date ? formatDateTime(date) : "N/A";
 
   if (loading) {
     return (
@@ -136,7 +136,7 @@ export function HumanReviewTab() {
               <div className="flex items-start gap-4">
                 <Avatar
                   src={appeal.profileImageUrl || undefined}
-                  alt={appeal.displayName || appeal.username || 'User'}
+                  alt={appeal.displayName || appeal.username || "User"}
                   size="md"
                 />
                 <div className="min-w-0 flex-1">
@@ -167,7 +167,7 @@ export function HumanReviewTab() {
                       <div className="text-muted-foreground">Stake Amount</div>
                       <div className="flex items-center gap-1 font-medium">
                         <DollarSign className="h-4 w-4" />
-                        {appeal.appealStakeAmount?.toFixed(2) || 'N/A'}
+                        {appeal.appealStakeAmount?.toFixed(2) || "N/A"}
                       </div>
                     </div>
                     <div>
@@ -189,7 +189,7 @@ export function HumanReviewTab() {
                       Ban Reason
                     </div>
                     <div className="rounded bg-muted/50 p-2 text-sm">
-                      {appeal.bannedReason || 'No reason provided'}
+                      {appeal.bannedReason || "No reason provided"}
                     </div>
                   </div>
 
@@ -252,19 +252,19 @@ interface ActionModalProps {
   onClose: () => void;
   onAction: (
     userId: string,
-    action: 'approve' | 'deny',
-    reasoning: string
+    action: "approve" | "deny",
+    reasoning: string,
   ) => void;
 }
 
 function ActionModal({ appeal, onAction, onClose }: ActionModalProps) {
-  const [action, setAction] = useState<'approve' | 'deny'>('approve');
-  const [reasoning, setReasoning] = useState('');
+  const [action, setAction] = useState<"approve" | "deny">("approve");
+  const [reasoning, setReasoning] = useState("");
   const [isSubmitting, startSubmit] = useTransition();
 
   const handleSubmit = () => {
     if (!reasoning.trim()) {
-      toast.error('Please provide reasoning for your decision');
+      toast.error("Please provide reasoning for your decision");
       return;
     }
 
@@ -283,7 +283,7 @@ function ActionModal({ appeal, onAction, onClose }: ActionModalProps) {
           <div className="flex items-center gap-2">
             <Avatar
               src={appeal.profileImageUrl || undefined}
-              alt={appeal.displayName || appeal.username || 'User'}
+              alt={appeal.displayName || appeal.username || "User"}
               size="sm"
             />
             <span className="font-medium">
@@ -296,7 +296,7 @@ function ActionModal({ appeal, onAction, onClose }: ActionModalProps) {
           <label className="mb-2 block font-medium text-sm">Decision</label>
           <select
             value={action}
-            onChange={(e) => setAction(e.target.value as 'approve' | 'deny')}
+            onChange={(e) => setAction(e.target.value as "approve" | "deny")}
             className="w-full rounded-lg border border-border bg-background px-3 py-2"
           >
             <option value="approve">
@@ -329,18 +329,18 @@ function ActionModal({ appeal, onAction, onClose }: ActionModalProps) {
             onClick={handleSubmit}
             disabled={isSubmitting || !reasoning.trim()}
             className={cn(
-              'flex-1 rounded-lg px-4 py-2 transition-colors',
-              action === 'approve'
-                ? 'bg-green-500 text-white hover:bg-green-600'
-                : 'bg-red-500 text-white hover:bg-red-600',
-              'disabled:opacity-50'
+              "flex-1 rounded-lg px-4 py-2 transition-colors",
+              action === "approve"
+                ? "bg-green-500 text-white hover:bg-green-600"
+                : "bg-red-500 text-white hover:bg-red-600",
+              "disabled:opacity-50",
             )}
           >
             {isSubmitting
-              ? 'Processing...'
-              : action === 'approve'
-                ? 'Approve Appeal'
-                : 'Deny Appeal'}
+              ? "Processing..."
+              : action === "approve"
+                ? "Approve Appeal"
+                : "Deny Appeal"}
           </button>
         </div>
       </div>

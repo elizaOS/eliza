@@ -77,7 +77,7 @@ import {
   logAdminView,
   requireAdmin,
   withErrorHandling,
-} from '@feed/api';
+} from "@feed/api";
 import {
   asc,
   asSystem,
@@ -89,10 +89,10 @@ import {
   inArray,
   messages,
   users,
-} from '@feed/db';
-import { StaticDataRegistry } from '@feed/engine';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@feed/db";
+import { StaticDataRegistry } from "@feed/engine";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 /**
  * GET /api/admin/groups
@@ -107,22 +107,22 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   logAdminView({
     adminId: admin.userId,
     ipAddress: getClientIp(request.headers) ?? undefined,
-    resourceType: 'groups',
-    metadata: { action: 'list_all_groups' },
+    resourceType: "groups",
+    metadata: { action: "list_all_groups" },
   });
 
   // Get query parameters
   const { searchParams } = new URL(request.url);
-  const creatorFilter = searchParams.get('creator'); // Filter by creator name
-  const sortBy = searchParams.get('sortBy') || 'createdAt'; // createdAt, memberCount, messageCount
-  const sortOrder = searchParams.get('sortOrder') || 'desc';
+  const creatorFilter = searchParams.get("creator"); // Filter by creator name
+  const sortBy = searchParams.get("sortBy") || "createdAt"; // createdAt, memberCount, messageCount
+  const sortOrder = searchParams.get("sortOrder") || "desc";
   const limit = Math.min(
-    Math.max(1, parseInt(searchParams.get('limit') || '50', 10) || 50),
-    200
+    Math.max(1, parseInt(searchParams.get("limit") || "50", 10) || 50),
+    200,
   );
   const offset = Math.max(
     0,
-    parseInt(searchParams.get('offset') || '0', 10) || 0
+    parseInt(searchParams.get("offset") || "0", 10) || 0,
   );
 
   // Get all data using asSystem in a single call to avoid nested async issues
@@ -134,7 +134,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         .from(chats)
         .where(eq(chats.isGroup, true))
         .orderBy(
-          sortOrder === 'asc' ? asc(chats.createdAt) : desc(chats.createdAt)
+          sortOrder === "asc" ? asc(chats.createdAt) : desc(chats.createdAt),
         );
 
       // Get all chat IDs
@@ -247,7 +247,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         allUserGroups,
       };
     },
-    'admin-groups'
+    "admin-groups",
   );
 
   // Create maps for quick lookup
@@ -272,8 +272,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     const hasNPCs = actorParticipantIds.length > 0;
     const hasUsers = usersInChat.filter((u) => !u.isActor).length > 0;
 
-    let groupType = 'unknown';
-    let creatorName = 'Unknown';
+    let groupType = "unknown";
+    let creatorName = "Unknown";
     let creatorId: string | null = null;
 
     // First, try to get type from Group schema (authoritative)
@@ -292,27 +292,27 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         creatorName = ownerActor.name;
         creatorId = ownerActor.id;
       } else if (ownerUser) {
-        creatorName = ownerUser.displayName || ownerUser.username || 'Unknown';
+        creatorName = ownerUser.displayName || ownerUser.username || "Unknown";
         creatorId = ownerUser.id;
       }
     } else {
       // Legacy chats without linked Group - infer type from participants
       if (hasNPCs && !hasUsers) {
-        groupType = 'npc-only';
+        groupType = "npc-only";
         const creator = actorsInChat[0];
         if (creator) {
           creatorName = creator.name;
           creatorId = creator.id;
         }
       } else if (hasNPCs && hasUsers) {
-        groupType = 'npc-mixed';
+        groupType = "npc-mixed";
         const creator = actorsInChat[0];
         if (creator) {
           creatorName = creator.name;
           creatorId = creator.id;
         }
       } else {
-        groupType = 'user';
+        groupType = "user";
       }
     }
 
@@ -331,7 +331,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
       return {
         id: p.userId,
-        name: user?.displayName || user?.username || actor?.name || 'Unknown',
+        name: user?.displayName || user?.username || actor?.name || "Unknown",
         username: user?.username || null,
         isNPC: !!actor || user?.isActor,
         profileImageUrl: user?.profileImageUrl || actor?.profileImageUrl,
@@ -350,7 +350,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         createdAt: m.createdAt,
         sender: {
           id: m.senderId,
-          name: user?.displayName || user?.username || actor?.name || 'Unknown',
+          name: user?.displayName || user?.username || actor?.name || "Unknown",
           isNPC: !!actor || user?.isActor,
         },
       };
@@ -375,15 +375,15 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   const filteredChats = enrichedChats.filter((c) => c !== null);
 
   // Sort if needed
-  if (sortBy === 'memberCount') {
+  if (sortBy === "memberCount") {
     filteredChats.sort((a, b) => {
-      const order = sortOrder === 'asc' ? 1 : -1;
-      return order * (a!.memberCount - b!.memberCount);
+      const order = sortOrder === "asc" ? 1 : -1;
+      return order * (a?.memberCount - b?.memberCount);
     });
-  } else if (sortBy === 'messageCount') {
+  } else if (sortBy === "messageCount") {
     filteredChats.sort((a, b) => {
-      const order = sortOrder === 'asc' ? 1 : -1;
-      return order * (a!.messageCount - b!.messageCount);
+      const order = sortOrder === "asc" ? 1 : -1;
+      return order * (a?.messageCount - b?.messageCount);
     });
   }
 

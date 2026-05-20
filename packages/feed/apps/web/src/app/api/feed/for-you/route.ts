@@ -4,12 +4,12 @@ import {
   publicRateLimit,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import type { NarrativeStory } from '@feed/shared';
-import { toISO } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { decodeCursor, encodeCursor, findCursorIndex } from '../feed-cursor';
-import { buildForYouFeed } from './pipeline';
+} from "@feed/api";
+import type { NarrativeStory } from "@feed/shared";
+import { toISO } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { decodeCursor, encodeCursor, findCursorIndex } from "../feed-cursor";
+import { buildForYouFeed } from "./pipeline";
 
 const PAGE_SIZE = 20;
 // 1-minute per-user ranked snapshot. Scoring compute is ~20ms (in-memory
@@ -23,14 +23,14 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     error: rateLimitError,
     user,
     rateLimitInfo,
-  } = await publicRateLimit(request, 'read');
+  } = await publicRateLimit(request, "read");
   if (rateLimitError) {
     return rateLimitError;
   }
 
   const { searchParams } = request.nextUrl;
-  const cursorParam = searchParams.get('cursor');
-  const rawLimit = Number(searchParams.get('limit') ?? PAGE_SIZE);
+  const cursorParam = searchParams.get("cursor");
+  const rawLimit = Number(searchParams.get("limit") ?? PAGE_SIZE);
   const limit = Number.isFinite(rawLimit)
     ? Math.min(PAGE_SIZE, Math.max(1, rawLimit))
     : PAGE_SIZE;
@@ -40,7 +40,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   // authenticated users each get their own personalised ranking.
   const cacheKey = userId
     ? `feed:for-you:ranked:v1:${userId}`
-    : 'feed:for-you:ranked:v1:anon';
+    : "feed:for-you:ranked:v1:anon";
 
   const fullResult = await getCacheOrFetch<{
     stories: NarrativeStory[];
@@ -56,7 +56,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   const nextCursor = lastStory
     ? encodeCursor(
         lastStory.finalRankScore ?? lastStory.storyScore,
-        lastStory.storyKey
+        lastStory.storyKey,
       )
     : null;
 
@@ -70,13 +70,13 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
   if (rateLimitInfo) {
     if (userId) {
-      response.headers.set('Cache-Control', 'private, no-store');
-      response.headers.set('X-RateLimit-Limit', rateLimitInfo.limit.toString());
+      response.headers.set("Cache-Control", "private, no-store");
+      response.headers.set("X-RateLimit-Limit", rateLimitInfo.limit.toString());
       response.headers.set(
-        'X-RateLimit-Remaining',
-        rateLimitInfo.remaining.toString()
+        "X-RateLimit-Remaining",
+        rateLimitInfo.remaining.toString(),
       );
-      response.headers.set('X-RateLimit-Reset', toISO(rateLimitInfo.resetAt));
+      response.headers.set("X-RateLimit-Reset", toISO(rateLimitInfo.resetAt));
     } else {
       addPublicReadHeaders(response, rateLimitInfo);
     }

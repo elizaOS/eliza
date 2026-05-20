@@ -11,66 +11,63 @@
  * compatibility with Next.js App Router (Web standard Request/Response).
  */
 
-import { withErrorHandling } from '@feed/api';
-import { logger } from '@feed/shared';
-import { Bot, InlineKeyboard, webhookCallback } from 'grammy';
+import { withErrorHandling } from "@feed/api";
+import { logger } from "@feed/shared";
+import { Bot, InlineKeyboard, webhookCallback } from "grammy";
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
 
-const MINIAPP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://feed.market';
+const MINIAPP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://feed.market";
 
 function createBot(): Bot {
   if (!token) {
-    throw new Error('TELEGRAM_BOT_TOKEN is not configured');
+    throw new Error("TELEGRAM_BOT_TOKEN is not configured");
   }
 
   const bot = new Bot(token);
 
-  const openAppKeyboard = new InlineKeyboard().webApp(
-    'Open Feed',
-    MINIAPP_URL
-  );
+  const openAppKeyboard = new InlineKeyboard().webApp("Open Feed", MINIAPP_URL);
 
-  bot.command('start', async (ctx) => {
-    const firstName = ctx.from?.first_name ?? 'there';
+  bot.command("start", async (ctx) => {
+    const firstName = ctx.from?.first_name ?? "there";
 
     logger.info(
-      'Telegram bot /start command received',
+      "Telegram bot /start command received",
       { userId: ctx.from?.id, username: ctx.from?.username },
-      'TelegramBot'
+      "TelegramBot",
     );
 
     await ctx.reply(
       `Hey ${firstName}! Welcome to Feed.\n\nTap the button below to jump in.`,
-      { reply_markup: openAppKeyboard }
+      { reply_markup: openAppKeyboard },
     );
   });
 
-  bot.command('help', async (ctx) => {
+  bot.command("help", async (ctx) => {
     logger.info(
-      'Telegram bot /help command received',
+      "Telegram bot /help command received",
       { userId: ctx.from?.id },
-      'TelegramBot'
+      "TelegramBot",
     );
 
     await ctx.reply(
-      'Feed is a prediction market game where you bet on what happens next.\n\nTap below to open the app and start playing.',
-      { reply_markup: openAppKeyboard }
+      "Feed is a prediction market game where you bet on what happens next.\n\nTap below to open the app and start playing.",
+      { reply_markup: openAppKeyboard },
     );
   });
 
-  bot.on('message', async (ctx) => {
+  bot.on("message", async (ctx) => {
     await ctx.reply(
       "Tap the button below to open Feed. That's where the action is.",
       {
         reply_markup: openAppKeyboard,
-      }
+      },
     );
   });
 
   bot.catch((err) => {
-    logger.error('Telegram bot error', { error: err.message }, 'TelegramBot');
+    logger.error("Telegram bot error", { error: err.message }, "TelegramBot");
   });
 
   return bot;
@@ -91,7 +88,7 @@ let handler: WebhookHandler | null = null;
 
 function getHandler(): WebhookHandler {
   if (!handler) {
-    handler = webhookCallback(getBot(), 'std/http', {
+    handler = webhookCallback(getBot(), "std/http", {
       secretToken: webhookSecret,
     }) as WebhookHandler;
   }
@@ -99,22 +96,22 @@ function getHandler(): WebhookHandler {
 }
 
 export const POST = withErrorHandling(async function POST(
-  request: Request
+  request: Request,
 ): Promise<Response> {
   if (!token) {
-    return new Response(JSON.stringify({ error: 'Bot not configured' }), {
+    return new Response(JSON.stringify({ error: "Bot not configured" }), {
       status: 503,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { "Content-Type": "application/json" },
     });
   }
 
   if (!webhookSecret) {
     return new Response(
-      JSON.stringify({ error: 'Webhook secret not configured' }),
+      JSON.stringify({ error: "Webhook secret not configured" }),
       {
         status: 503,
-        headers: { 'Content-Type': 'application/json' },
-      }
+        headers: { "Content-Type": "application/json" },
+      },
     );
   }
 

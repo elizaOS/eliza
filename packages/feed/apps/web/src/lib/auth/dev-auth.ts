@@ -1,10 +1,10 @@
-'use client';
+"use client";
 
-import { isRecord } from '@feed/shared';
+import { isRecord } from "@feed/shared";
 
-const DEV_USER_ID_COOKIE_NAME = 'feed-dev-user-id';
-const DEV_ADMIN_TOKEN_COOKIE_NAME = 'feed-dev-admin-token';
-export const PLAYWRIGHT_DEV_AUTH_STORAGE_KEY = 'feed-playwright-dev-auth';
+const DEV_USER_ID_COOKIE_NAME = "feed-dev-user-id";
+const DEV_ADMIN_TOKEN_COOKIE_NAME = "feed-dev-admin-token";
+export const PLAYWRIGHT_DEV_AUTH_STORAGE_KEY = "feed-playwright-dev-auth";
 
 export interface BrowserDevAuthSession {
   userId: string;
@@ -16,7 +16,7 @@ export interface BrowserDevAuthSession {
 }
 
 export function getBrowserDevAuthSession(): BrowserDevAuthSession | null {
-  if (typeof window === 'undefined') {
+  if (typeof window === "undefined") {
     return null;
   }
 
@@ -31,9 +31,9 @@ export function getBrowserDevAuthSession(): BrowserDevAuthSession | null {
       return null;
     }
 
-    const userId = typeof parsed.userId === 'string' ? parsed.userId : null;
+    const userId = typeof parsed.userId === "string" ? parsed.userId : null;
     const accessToken =
-      typeof parsed.accessToken === 'string' ? parsed.accessToken : null;
+      typeof parsed.accessToken === "string" ? parsed.accessToken : null;
 
     if (!userId || !accessToken) {
       return null;
@@ -43,12 +43,12 @@ export function getBrowserDevAuthSession(): BrowserDevAuthSession | null {
       userId,
       accessToken,
       adminToken:
-        typeof parsed.adminToken === 'string' ? parsed.adminToken : undefined,
+        typeof parsed.adminToken === "string" ? parsed.adminToken : undefined,
       displayName:
-        typeof parsed.displayName === 'string' ? parsed.displayName : undefined,
-      email: typeof parsed.email === 'string' ? parsed.email : undefined,
+        typeof parsed.displayName === "string" ? parsed.displayName : undefined,
+      email: typeof parsed.email === "string" ? parsed.email : undefined,
       walletAddress:
-        typeof parsed.walletAddress === 'string'
+        typeof parsed.walletAddress === "string"
           ? parsed.walletAddress
           : undefined,
     };
@@ -58,7 +58,7 @@ export function getBrowserDevAuthSession(): BrowserDevAuthSession | null {
 }
 
 export function clearBrowserDevAuthSession(): void {
-  if (typeof window === 'undefined') {
+  if (typeof window === "undefined") {
     return;
   }
 

@@ -17,10 +17,10 @@ import {
   getDbInstance,
   markets,
   questions,
-} from '@feed/db';
-import { logger } from '@feed/shared';
-import { StaticDataRegistry } from './services/static-data-registry';
-import { getGameDayNumber } from './utils/date-utils';
+} from "@feed/db";
+import { logger } from "@feed/shared";
+import { StaticDataRegistry } from "./services/static-data-registry";
+import { getGameDayNumber } from "./utils/date-utils";
 
 /**
  * Active market summary for NPC context (lightweight)
@@ -55,7 +55,7 @@ class GameService {
 
     // Combine static and dynamic data, filter to companies
     return staticOrgs
-      .filter((org) => org.type === 'company')
+      .filter((org) => org.type === "company")
       .map((org) => ({
         id: org.id,
         name: org.name,
@@ -147,15 +147,15 @@ class GameService {
       .limit(1);
 
     if (!game) {
-      logger.warn('No continuous game found', {}, 'GameService');
+      logger.warn("No continuous game found", {}, "GameService");
       return 1;
     }
 
     if (!game.startedAt) {
       logger.warn(
-        'Game startedAt is null - using stored currentDay',
+        "Game startedAt is null - using stored currentDay",
         { currentDay: game.currentDay },
-        'GameService'
+        "GameService",
       );
       return game.currentDay ?? 1;
     }

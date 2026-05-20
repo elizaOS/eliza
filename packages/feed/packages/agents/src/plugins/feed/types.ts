@@ -3,8 +3,8 @@
  * Type definitions for the Feed A2A plugin
  */
 
-import type { IAgentRuntime } from '@elizaos/core';
-import type { FeedA2AClient } from './integration-a2a-sdk';
+import type { IAgentRuntime } from "@elizaos/core";
+import type { FeedA2AClient } from "./integration-a2a-sdk";
 
 /**
  * Extended runtime with A2A client
@@ -91,7 +91,7 @@ export interface ChatInfo {
  */
 export interface TradeActionParams {
   marketId: string;
-  side: 'YES' | 'NO';
+  side: "YES" | "NO";
   amount: number;
 }
 

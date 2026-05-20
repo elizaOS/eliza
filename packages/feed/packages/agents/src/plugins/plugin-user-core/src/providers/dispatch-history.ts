@@ -17,56 +17,49 @@
  * - Avoid re-dispatching when a response already exists
  */
 
-import {
-  and,
-  db,
-  desc,
-  eq,
-  messages as messagesTable,
-  users,
-} from '@feed/db';
 import type {
   IAgentRuntime,
   Memory,
   Provider,
   ProviderResult,
   State,
-} from '@elizaos/core';
+} from "@elizaos/core";
+import { and, db, desc, eq, messages as messagesTable, users } from "@feed/db";
 
 function formatRelativeTime(date: Date): string {
   const diffMs = Date.now() - date.getTime();
   const mins = Math.floor(diffMs / 60_000);
   const hours = Math.floor(diffMs / 3_600_000);
   const days = Math.floor(diffMs / 86_400_000);
-  if (mins < 1) return 'just now';
+  if (mins < 1) return "just now";
   if (mins < 60) return `${mins}m ago`;
   if (hours < 24) return `${hours}h ago`;
   return `${days}d ago`;
 }
 
 function formatTime(date: Date): string {
-  return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+  return `${date.getHours().toString().padStart(2, "0")}:${date.getMinutes().toString().padStart(2, "0")}`;
 }
 
 /** Max chars to include per agent message before truncating */
 const PREVIEW_LENGTH = 400;
 
 export const coordinatorDispatchHistoryProvider: Provider = {
-  name: 'DISPATCH_HISTORY',
-  description: 'Recent responses from agents in this team chat',
+  name: "DISPATCH_HISTORY",
+  description: "Recent responses from agents in this team chat",
 
   get: async (
     _runtime: IAgentRuntime,
     _message: Memory,
-    state: State
+    state: State,
   ): Promise<ProviderResult> => {
     const teamChatId = state?.values?.teamChatId as string | undefined;
 
     if (!teamChatId) {
       return {
         data: { agentMessages: [], count: 0 },
-        values: { dispatchHistory: '', hasDispatchHistory: false },
-        text: '',
+        values: { dispatchHistory: "", hasDispatchHistory: false },
+        text: "",
       };
     }
 
@@ -84,7 +77,7 @@ export const coordinatorDispatchHistoryProvider: Provider = {
       .from(messagesTable)
       .innerJoin(
         users,
-        and(eq(messagesTable.senderId, users.id), eq(users.isAgent, true))
+        and(eq(messagesTable.senderId, users.id), eq(users.isAgent, true)),
       )
       .where(eq(messagesTable.chatId, teamChatId))
       .orderBy(desc(messagesTable.createdAt))
@@ -94,10 +87,10 @@ export const coordinatorDispatchHistoryProvider: Provider = {
       return {
         data: { agentMessages: [], count: 0 },
         values: {
-          dispatchHistory: 'No agent responses in this chat yet.',
+          dispatchHistory: "No agent responses in this chat yet.",
           hasDispatchHistory: false,
         },
-        text: '',
+        text: "",
       };
     }
 
@@ -107,7 +100,7 @@ export const coordinatorDispatchHistoryProvider: Provider = {
       .map((msg) => {
         const handle = msg.username
           ? `@${msg.username}`
-          : (msg.displayName ?? 'Agent');
+          : (msg.displayName ?? "Agent");
         const time = formatTime(msg.createdAt);
         const rel = formatRelativeTime(msg.createdAt);
         const preview =
@@ -116,7 +109,7 @@ export const coordinatorDispatchHistoryProvider: Provider = {
             : msg.content;
         return `${time} (${rel}) ${handle}: "${preview}"`;
       })
-      .join('\n');
+      .join("\n");
 
     const header = `## Recent Agent Responses in Team Chat\n`;
     const fullText = header + formatted;

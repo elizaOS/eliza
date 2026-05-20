@@ -1,12 +1,12 @@
-import { ingestSentryWebhook, withErrorHandling } from '@feed/api';
-import { logger } from '@feed/shared';
-import { NextResponse } from 'next/server';
+import { ingestSentryWebhook, withErrorHandling } from "@feed/api";
+import { logger } from "@feed/shared";
+import { NextResponse } from "next/server";
 
 const DEFAULT_MAX_TIMESTAMP_SKEW_SECONDS = 300;
 const MIN_TIMESTAMP_SKEW_SECONDS = 30;
 const MAX_TIMESTAMP_SKEW_SECONDS = 3600;
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
 function parseMaxTimestampSkewSeconds(): number {
@@ -22,7 +22,7 @@ function parseMaxTimestampSkewSeconds(): number {
 
   return Math.max(
     MIN_TIMESTAMP_SKEW_SECONDS,
-    Math.min(MAX_TIMESTAMP_SKEW_SECONDS, parsed)
+    Math.min(MAX_TIMESTAMP_SKEW_SECONDS, parsed),
   );
 }
 
@@ -30,17 +30,17 @@ export const POST = withErrorHandling(async function POST(request: Request) {
   const webhookSecret = process.env.SENTRY_WEBHOOK_SECRET?.trim();
   if (!webhookSecret) {
     logger.error(
-      'Sentry webhook secret is missing. Rejecting webhook ingestion.',
+      "Sentry webhook secret is missing. Rejecting webhook ingestion.",
       {},
-      'SentryWebhook'
+      "SentryWebhook",
     );
     return NextResponse.json(
       {
         error:
-          'Sentry webhook endpoint is not configured. Set SENTRY_WEBHOOK_SECRET.',
-        code: 'WEBHOOK_NOT_CONFIGURED',
+          "Sentry webhook endpoint is not configured. Set SENTRY_WEBHOOK_SECRET.",
+        code: "WEBHOOK_NOT_CONFIGURED",
       },
-      { status: 503 }
+      { status: 503 },
     );
   }
 
@@ -50,19 +50,19 @@ export const POST = withErrorHandling(async function POST(request: Request) {
     secret: webhookSecret,
     maxTimestampSkewSeconds: parseMaxTimestampSkewSeconds(),
     headers: {
-      signature: request.headers.get('sentry-hook-signature'),
-      timestamp: request.headers.get('sentry-hook-timestamp'),
-      resource: request.headers.get('sentry-hook-resource'),
-      event: request.headers.get('sentry-hook-event'),
-      requestId: request.headers.get('x-request-id'),
-      userAgent: request.headers.get('user-agent'),
+      signature: request.headers.get("sentry-hook-signature"),
+      timestamp: request.headers.get("sentry-hook-timestamp"),
+      resource: request.headers.get("sentry-hook-resource"),
+      event: request.headers.get("sentry-hook-event"),
+      requestId: request.headers.get("x-request-id"),
+      userAgent: request.headers.get("user-agent"),
     },
   });
 
   if (!result.ok) {
     return NextResponse.json(
       { error: result.message, code: result.code },
-      { status: result.httpStatus }
+      { status: result.httpStatus },
     );
   }
 

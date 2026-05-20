@@ -18,13 +18,13 @@ import {
   not,
   trainedModels,
   trajectories,
-} from '@feed/db';
-import { logger } from '@feed/shared';
+} from "@feed/db";
+import { logger } from "@feed/shared";
 
 export interface ModelSelectionResult {
   modelId: string;
   modelPath: string;
-  strategy: 'base' | 'continue' | 'force_first';
+  strategy: "base" | "continue" | "force_first";
   reason: string;
   metadata?: {
     bundleCount?: number;
@@ -43,7 +43,7 @@ export interface TrainingBundle {
 export class ModelSelectionService {
   /** Default base model - uses Qwen3-4B-128K (4B params, 128K context). Scale up via MODEL_TIER or AVAILABLE_VRAM_GB env vars */
   private readonly BASE_MODEL =
-    process.env.BASE_MODEL || 'unsloth/Qwen3-4B-128K';
+    process.env.BASE_MODEL || "unsloth/Qwen3-4B-128K";
   private readonly BUNDLE_THRESHOLD = 1000;
   private readonly MIN_BUNDLES_FOR_TRAINING = 100;
   private readonly MAX_TRAINING_EXAMPLES = 2000;
@@ -72,9 +72,9 @@ export class ModelSelectionService {
    */
   async selectBaseModel(): Promise<ModelSelectionResult> {
     logger.info(
-      'Selecting base model for training...',
+      "Selecting base model for training...",
       undefined,
-      'ModelSelectionService'
+      "ModelSelectionService",
     );
 
     // Count available training bundles (always fetch for accurate metrics)
@@ -85,15 +85,15 @@ export class ModelSelectionService {
 
     if (forceFirst) {
       logger.info(
-        'No models exist - forcing first model creation',
+        "No models exist - forcing first model creation",
         undefined,
-        'ModelSelectionService'
+        "ModelSelectionService",
       );
       return {
         modelId: this.BASE_MODEL,
         modelPath: this.BASE_MODEL,
-        strategy: 'force_first',
-        reason: 'No trained models exist - creating first model from base',
+        strategy: "force_first",
+        reason: "No trained models exist - creating first model from base",
         metadata: {
           baseModel: this.BASE_MODEL,
           bundleCount, // Use actual count, not 0
@@ -103,14 +103,14 @@ export class ModelSelectionService {
     logger.info(
       `Found ${bundleCount} training bundles`,
       undefined,
-      'ModelSelectionService'
+      "ModelSelectionService",
     );
 
     // Not enough data yet
     if (bundleCount < this.MIN_BUNDLES_FOR_TRAINING) {
       throw new Error(
         `Insufficient training data: ${bundleCount} bundles ` +
-          `(need ${this.MIN_BUNDLES_FOR_TRAINING} minimum)`
+          `(need ${this.MIN_BUNDLES_FOR_TRAINING} minimum)`,
       );
     }
 
@@ -119,12 +119,12 @@ export class ModelSelectionService {
       logger.info(
         `Bundle count ${bundleCount} < ${this.BUNDLE_THRESHOLD} - using base model`,
         undefined,
-        'ModelSelectionService'
+        "ModelSelectionService",
       );
       return {
         modelId: this.BASE_MODEL,
         modelPath: this.BASE_MODEL,
-        strategy: 'base',
+        strategy: "base",
         reason: `Training from base model (${bundleCount} bundles < ${this.BUNDLE_THRESHOLD} threshold)`,
         metadata: {
           bundleCount,
@@ -138,15 +138,15 @@ export class ModelSelectionService {
 
     if (!bestModel) {
       logger.warn(
-        'No best model found despite bundle threshold - using base model',
+        "No best model found despite bundle threshold - using base model",
         undefined,
-        'ModelSelectionService'
+        "ModelSelectionService",
       );
       return {
         modelId: this.BASE_MODEL,
         modelPath: this.BASE_MODEL,
-        strategy: 'base',
-        reason: 'No previous models available - using base model',
+        strategy: "base",
+        reason: "No previous models available - using base model",
         metadata: {
           bundleCount,
           baseModel: this.BASE_MODEL,
@@ -160,7 +160,7 @@ export class ModelSelectionService {
         bestModelId: bestModel.modelId,
         bestScore: bestModel.benchmarkScore,
       },
-      'ModelSelectionService'
+      "ModelSelectionService",
     );
 
     // Use storagePath for model path (e.g., HuggingFace URL)
@@ -169,8 +169,8 @@ export class ModelSelectionService {
     return {
       modelId: bestModel.modelId,
       modelPath: modelStoragePath,
-      strategy: 'continue',
-      reason: `Continuing from best model (score: ${bestModel.benchmarkScore?.toFixed(3) || 'N/A'})`,
+      strategy: "continue",
+      reason: `Continuing from best model (score: ${bestModel.benchmarkScore?.toFixed(3) || "N/A"})`,
       metadata: {
         bundleCount,
         bestModelScore: bestModel.benchmarkScore || undefined,
@@ -197,9 +197,9 @@ export class ModelSelectionService {
       .from(trainedModels)
       .where(
         and(
-          inArray(trainedModels.status, ['ready', 'deployed']),
-          isNotNull(trainedModels.benchmarkScore)
-        )
+          inArray(trainedModels.status, ["ready", "deployed"]),
+          isNotNull(trainedModels.benchmarkScore),
+        ),
       )
       .orderBy(desc(trainedModels.benchmarkScore))
       .limit(1);
@@ -208,22 +208,22 @@ export class ModelSelectionService {
 
     if (!model) {
       logger.warn(
-        'No benchmarked models found',
+        "No benchmarked models found",
         undefined,
-        'ModelSelectionService'
+        "ModelSelectionService",
       );
       return null;
     }
 
     logger.info(
-      'Found best performing model',
+      "Found best performing model",
       {
         modelId: model.modelId,
         version: model.version,
         benchmarkScore: model.benchmarkScore,
         avgReward: model.avgReward,
       },
-      'ModelSelectionService'
+      "ModelSelectionService",
     );
 
     return model;
@@ -249,9 +249,9 @@ export class ModelSelectionService {
           eq(trajectories.isTrainingData, true),
           eq(trajectories.usedInTraining, false),
           isNotNull(trajectories.aiJudgeReward),
-          not(eq(trajectories.stepsJson, 'null')),
-          not(eq(trajectories.stepsJson, '[]'))
-        )
+          not(eq(trajectories.stepsJson, "null")),
+          not(eq(trajectories.stepsJson, "[]")),
+        ),
       );
 
     return result[0]?.count || 0;
@@ -277,7 +277,7 @@ export class ModelSelectionService {
     const result = await db
       .select({ count: count() })
       .from(trainedModels)
-      .where(inArray(trainedModels.status, ['training', 'ready', 'deployed']));
+      .where(inArray(trainedModels.status, ["training", "ready", "deployed"]));
 
     return result[0]?.count || 0;
   }
@@ -326,9 +326,9 @@ export class ModelSelectionService {
           eq(trajectories.isTrainingData, true),
           eq(trajectories.usedInTraining, false),
           isNotNull(trajectories.aiJudgeReward),
-          not(eq(trajectories.stepsJson, 'null')),
-          not(eq(trajectories.stepsJson, '[]'))
-        )
+          not(eq(trajectories.stepsJson, "null")),
+          not(eq(trajectories.stepsJson, "[]")),
+        ),
       )
       .orderBy(desc(trajectories.createdAt));
 
@@ -341,7 +341,7 @@ export class ModelSelectionService {
     logger.info(
       `Retrieved ${result.length} trajectories for training`,
       { limit, available: result.length },
-      'ModelSelectionService'
+      "ModelSelectionService",
     );
 
     return result;
@@ -373,15 +373,15 @@ export class ModelSelectionService {
     const trainedModelCount = await this.countTrainedModels();
     const bestModel = await this.getBestPerformingModel();
 
-    let recommendation = '';
+    let recommendation = "";
     if (trainedModelCount === 0) {
-      recommendation = 'Force first model creation';
+      recommendation = "Force first model creation";
     } else if (bundleCount < this.MIN_BUNDLES_FOR_TRAINING) {
-      recommendation = 'Not ready - need more data';
+      recommendation = "Not ready - need more data";
     } else if (bundleCount < this.BUNDLE_THRESHOLD) {
-      recommendation = 'Train from base model';
+      recommendation = "Train from base model";
     } else {
-      recommendation = 'Train from best performing model';
+      recommendation = "Train from best performing model";
     }
 
     return {

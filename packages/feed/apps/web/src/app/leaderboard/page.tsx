@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 import {
   formatCurrency,
@@ -8,51 +8,51 @@ import {
   getProfileUrl,
   type LeaderboardMetric,
   type LeaderboardScope,
-} from '@feed/shared';
+} from "@feed/shared";
 import {
   Bot,
   ChevronLeft,
   ChevronRight,
   Crosshair,
   Trophy,
-} from 'lucide-react';
-import nextDynamic from 'next/dynamic';
-import Link from 'next/link';
-import { useEffect, useRef, useState } from 'react';
-import type { LeaderboardUser } from '@/app/leaderboard/fetchLeaderboardData';
+} from "lucide-react";
+import nextDynamic from "next/dynamic";
+import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
+import type { LeaderboardUser } from "@/app/leaderboard/fetchLeaderboardData";
 import {
   useLeaderboardQuery,
   useMyLeaderboardPosition,
   usePrefetchNextPage,
-} from '@/app/leaderboard/useLeaderboardQuery';
-import { FollowButton } from '@/components/interactions/FollowButton';
-import type { SelectedUser } from '@/components/leaderboard/LeaderboardWidgetSidebar';
-import { OnChainBadge } from '@/components/profile/OnChainBadge';
-import { Avatar } from '@/components/shared/Avatar';
-import { LeaderboardToggle } from '@/components/shared/LeaderboardToggle';
-import { PageContainer } from '@/components/shared/PageContainer';
-import { RankNumber } from '@/components/shared/RankBadge';
-import { LeaderboardSkeleton } from '@/components/shared/Skeleton';
-import { useAuth } from '@/hooks/useAuth';
+} from "@/app/leaderboard/useLeaderboardQuery";
+import { FollowButton } from "@/components/interactions/FollowButton";
+import type { SelectedUser } from "@/components/leaderboard/LeaderboardWidgetSidebar";
+import { OnChainBadge } from "@/components/profile/OnChainBadge";
+import { Avatar } from "@/components/shared/Avatar";
+import { LeaderboardToggle } from "@/components/shared/LeaderboardToggle";
+import { PageContainer } from "@/components/shared/PageContainer";
+import { RankNumber } from "@/components/shared/RankBadge";
+import { LeaderboardSkeleton } from "@/components/shared/Skeleton";
+import { useAuth } from "@/hooks/useAuth";
 
 const LeaderboardWidgetSidebar = nextDynamic(
   () =>
-    import('@/components/leaderboard/LeaderboardWidgetSidebar').then((m) => ({
+    import("@/components/leaderboard/LeaderboardWidgetSidebar").then((m) => ({
       default: m.LeaderboardWidgetSidebar,
     })),
   {
     ssr: false,
     loading: () => <div className="hidden w-96 flex-none xl:block" />,
-  }
+  },
 );
 
 export default function LeaderboardPage() {
   const { authenticated, getAccessToken, user } = useAuth();
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedMetric, setSelectedMetric] =
-    useState<LeaderboardMetric>('reputation');
+    useState<LeaderboardMetric>("reputation");
   const [selectedScope, setSelectedScope] =
-    useState<LeaderboardScope>('wallet');
+    useState<LeaderboardScope>("wallet");
   const [selectedUser, setSelectedUser] = useState<SelectedUser | null>(null);
   const [authToken, setAuthToken] = useState<string | null>(null);
   const scrollToUserRef = useRef(false);
@@ -129,7 +129,7 @@ export default function LeaderboardPage() {
   // isLoading = true only on first load (no cached data). isFetching = true during any fetch.
   const loading = isLoading;
   const error =
-    queryError && !leaderboardData ? 'Failed to fetch leaderboard' : null;
+    queryError && !leaderboardData ? "Failed to fetch leaderboard" : null;
 
   useEffect(() => {
     if (scrollToUserRef.current && !loading) {
@@ -137,7 +137,7 @@ export default function LeaderboardPage() {
       setTimeout(() => {
         document
           .querySelector('[data-current-user="true"]')
-          ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          ?.scrollIntoView({ behavior: "smooth", block: "center" });
       }, 100);
     }
   }, [loading]);
@@ -162,7 +162,7 @@ export default function LeaderboardPage() {
   const handlePreviousPage = () => {
     if (currentPage > 1) {
       setCurrentPage(currentPage - 1);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      window.scrollTo({ top: 0, behavior: "smooth" });
     }
   };
 
@@ -172,7 +172,7 @@ export default function LeaderboardPage() {
       currentPage < leaderboardData.pagination.totalPages
     ) {
       setCurrentPage(currentPage + 1);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      window.scrollTo({ top: 0, behavior: "smooth" });
     }
   };
 
@@ -212,7 +212,7 @@ export default function LeaderboardPage() {
     });
   };
 
-  const isTeamView = selectedScope === 'team';
+  const isTeamView = selectedScope === "team";
   const currentUserRowId =
     authenticated && user
       ? isTeamView && currentUserPosition
@@ -229,22 +229,22 @@ export default function LeaderboardPage() {
     Record<LeaderboardScope, string>
   > = {
     reputation: {
-      wallet: 'Individual wallets ranked by reputation',
-      team: 'Users + their AI agents combined, ranked by team reputation',
+      wallet: "Individual wallets ranked by reputation",
+      team: "Users + their AI agents combined, ranked by team reputation",
     },
     trading: {
       wallet:
-        'Individual wallets ranked by realized trading return: lifetime P&L divided by capital base',
-      team: 'Teams ranked by combined realized return, with owner-agent transfers excluded from team capital base',
+        "Individual wallets ranked by realized trading return: lifetime P&L divided by capital base",
+      team: "Teams ranked by combined realized return, with owner-agent transfers excluded from team capital base",
     },
   };
 
   const formatRelativeTime = (iso: string): string => {
     const seconds = Math.max(
       0,
-      Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
+      Math.floor((Date.now() - new Date(iso).getTime()) / 1000),
     );
-    if (seconds < 10) return 'just now';
+    if (seconds < 10) return "just now";
     if (seconds < 60) return `${seconds}s ago`;
     const minutes = Math.floor(seconds / 60);
     if (minutes < 60) return `${minutes}m ago`;
@@ -267,7 +267,7 @@ export default function LeaderboardPage() {
     const formatted = `${Math.abs(percent).toFixed(1)}%`;
     if (percent > 0) return `+${formatted}`;
     if (percent < 0) return `-${formatted}`;
-    return '0.0%';
+    return "0.0%";
   };
 
   const getTradingReturn = (player: LeaderboardUser): number =>
@@ -281,7 +281,7 @@ export default function LeaderboardPage() {
       : player.lifetimePnL;
 
   const getDisplayValue = (player: LeaderboardUser): number => {
-    if (selectedMetric === 'trading') {
+    if (selectedMetric === "trading") {
       return getTradingReturn(player);
     }
 
@@ -293,22 +293,22 @@ export default function LeaderboardPage() {
   };
 
   const formatDisplayValue = (value: number): string => {
-    if (selectedMetric === 'trading') {
+    if (selectedMetric === "trading") {
       return formatTradingReturn(value);
     }
     return formatNumberWithSeparators(value);
   };
 
   const getDisplayLabel = (): string => {
-    if (selectedMetric === 'trading') {
-      return isTeamView ? 'Team Trading Return' : 'Trading Return';
+    if (selectedMetric === "trading") {
+      return isTeamView ? "Team Trading Return" : "Trading Return";
     }
-    return isTeamView ? 'Team Reputation' : 'Reputation';
+    return isTeamView ? "Team Reputation" : "Reputation";
   };
 
   const renderPlayerRow = (
     player: LeaderboardUser,
-    variant: 'desktop' | 'mobile' | 'pinned'
+    variant: "desktop" | "mobile" | "pinned",
   ) => {
     const isCurrentUser = currentUserRowId
       ? player.id === currentUserRowId
@@ -316,14 +316,14 @@ export default function LeaderboardPage() {
     const displayValue = getDisplayValue(player);
     const formattedValue = formatDisplayValue(displayValue ?? 0);
     const secondaryTradingPnL =
-      selectedMetric === 'trading'
+      selectedMetric === "trading"
         ? formatTradingPnL(getTradingLifetimePnL(player))
         : null;
-    const isPinned = variant === 'pinned';
+    const isPinned = variant === "pinned";
 
     const content = (
       <div
-        className={`flex items-center ${variant === 'mobile' ? 'gap-2 sm:gap-4' : 'gap-4'}`}
+        className={`flex items-center ${variant === "mobile" ? "gap-2 sm:gap-4" : "gap-4"}`}
       >
         <div className="shrink-0">
           <RankNumber rank={player.rank} size="md" />
@@ -331,13 +331,13 @@ export default function LeaderboardPage() {
         <div className="relative shrink-0">
           <Avatar
             id={player.id}
-            name={player.displayName || player.username || 'User'}
+            name={player.displayName || player.username || "User"}
             size="md"
             src={player.profileImageUrl || undefined}
           />
           {authenticated && !isCurrentUser && !isPinned && (
             <div
-              className={`absolute -right-1 -bottom-0.5 ${variant === 'mobile' ? '' : ''}`}
+              className={`absolute -right-1 -bottom-0.5 ${variant === "mobile" ? "" : ""}`}
               onClick={(e) => e.stopPropagation()}
               onKeyDown={(e) => e.stopPropagation()}
             >
@@ -356,9 +356,9 @@ export default function LeaderboardPage() {
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
             <h3
-              className={`truncate font-semibold text-foreground ${variant === 'mobile' ? 'text-sm sm:text-base' : ''}`}
+              className={`truncate font-semibold text-foreground ${variant === "mobile" ? "text-sm sm:text-base" : ""}`}
             >
-              {player.displayName || player.username || 'Anonymous'}
+              {player.displayName || player.username || "Anonymous"}
             </h3>
             {player.isAgent ? (
               <span className="flex shrink-0 items-center gap-0.5 rounded bg-blue-500/10 px-1.5 py-0.5 text-blue-500 text-xs">
@@ -378,12 +378,12 @@ export default function LeaderboardPage() {
               </span>
             )}
           </div>
-          {variant !== 'mobile' && player.username && (
+          {variant !== "mobile" && player.username && (
             <p className="truncate text-muted-foreground text-sm">
               @{player.username}
             </p>
           )}
-          {variant === 'mobile' && (
+          {variant === "mobile" && (
             <div className="space-y-0.5 text-xs sm:text-sm">
               <div className="flex items-center gap-2">
                 <span className="font-bold text-foreground">
@@ -393,8 +393,8 @@ export default function LeaderboardPage() {
                   player.agentCount !== undefined &&
                   player.agentCount > 0 && (
                     <span className="text-muted-foreground">
-                      {player.agentCount}{' '}
-                      {player.agentCount === 1 ? 'agent' : 'agents'}
+                      {player.agentCount}{" "}
+                      {player.agentCount === 1 ? "agent" : "agents"}
                     </span>
                   )}
               </div>
@@ -406,19 +406,19 @@ export default function LeaderboardPage() {
             </div>
           )}
         </div>
-        {variant !== 'mobile' && (
+        {variant !== "mobile" && (
           <div className="shrink-0 text-right">
             <div className="font-bold text-foreground text-lg">
               {formattedValue}
             </div>
-            {selectedMetric === 'trading' ? (
+            {selectedMetric === "trading" ? (
               <div className="space-y-0.5 text-right">
                 <div className="text-muted-foreground text-xs">
                   {getDisplayLabel()}
                   {isTeamView &&
                     player.agentCount !== undefined &&
                     player.agentCount > 0 &&
-                    ` (${player.agentCount} ${player.agentCount === 1 ? 'agent' : 'agents'})`}
+                    ` (${player.agentCount} ${player.agentCount === 1 ? "agent" : "agents"})`}
                 </div>
                 <div className="text-muted-foreground text-xs">
                   Lifetime P&amp;L {secondaryTradingPnL}
@@ -430,7 +430,7 @@ export default function LeaderboardPage() {
                 {isTeamView &&
                   player.agentCount !== undefined &&
                   player.agentCount > 0 &&
-                  ` (${player.agentCount} ${player.agentCount === 1 ? 'agent' : 'agents'})`}
+                  ` (${player.agentCount} ${player.agentCount === 1 ? "agent" : "agents"})`}
               </div>
             )}
           </div>
@@ -451,13 +451,13 @@ export default function LeaderboardPage() {
             No Results Yet
           </p>
           <p className="text-sm">
-            {selectedMetric === 'trading'
+            {selectedMetric === "trading"
               ? isTeamView
-                ? 'No teams have realized trading return yet. Start trading to appear here!'
-                : 'No wallets have realized trading return yet. Start trading to appear here!'
+                ? "No teams have realized trading return yet. Start trading to appear here!"
+                : "No wallets have realized trading return yet. Start trading to appear here!"
               : isTeamView
-                ? 'No teams have reputation yet. Start playing to appear here!'
-                : 'No wallets have reputation yet. Start playing to appear here!'}
+                ? "No teams have reputation yet. Start playing to appear here!"
+                : "No wallets have reputation yet. Start playing to appear here!"}
           </p>
         </div>
       </div>
@@ -505,40 +505,40 @@ export default function LeaderboardPage() {
                 <div
                   role="button"
                   tabIndex={0}
-                  aria-label={`View profile for ${player.displayName || player.username || 'Anonymous'}`}
+                  aria-label={`View profile for ${player.displayName || player.username || "Anonymous"}`}
                   onClick={(e) => {
                     e.preventDefault();
                     handleUserClick(player);
                   }}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
+                    if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
                       handleUserClick(player);
                     }
                   }}
-                  data-current-user={isCurrentUser ? 'true' : undefined}
+                  data-current-user={isCurrentUser ? "true" : undefined}
                   className={`hidden flex-1 cursor-pointer px-4 py-3 text-left transition-colors xl:block ${
                     isPlayerSelected
-                      ? 'border-l-4 border-l-foreground bg-muted/30'
+                      ? "border-l-4 border-l-foreground bg-muted/30"
                       : isCurrentUser
-                        ? 'border-l-4 border-l-foreground bg-muted/20 hover:bg-muted/30'
-                        : 'border-l-4 border-l-transparent hover:bg-muted/30'
+                        ? "border-l-4 border-l-foreground bg-muted/20 hover:bg-muted/30"
+                        : "border-l-4 border-l-transparent hover:bg-muted/30"
                   }`}
                 >
-                  {renderPlayerRow(player, 'desktop')}
+                  {renderPlayerRow(player, "desktop")}
                 </div>
 
                 {/* Mobile/Tablet: direct link to profile */}
                 <Link
-                  href={getProfileUrl(player.id, player.username) || '#'}
-                  data-current-user={isCurrentUser ? 'true' : undefined}
+                  href={getProfileUrl(player.id, player.username) || "#"}
+                  data-current-user={isCurrentUser ? "true" : undefined}
                   className={`block flex-1 px-4 py-1.5 transition-colors xl:hidden ${
                     isCurrentUser
-                      ? 'border-l-4 border-l-foreground bg-muted/20'
-                      : 'hover:bg-muted/30'
+                      ? "border-l-4 border-l-foreground bg-muted/20"
+                      : "hover:bg-muted/30"
                   }`}
                 >
-                  {renderPlayerRow(player, 'mobile')}
+                  {renderPlayerRow(player, "mobile")}
                 </Link>
               </div>
             );
@@ -551,7 +551,7 @@ export default function LeaderboardPage() {
             <div className="mb-1 text-muted-foreground text-xs">
               Your position
             </div>
-            {renderPlayerRow(currentUserPosition.entry, 'pinned')}
+            {renderPlayerRow(currentUserPosition.entry, "pinned")}
           </div>
         )}
 

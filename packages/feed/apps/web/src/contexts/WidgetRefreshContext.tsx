@@ -6,11 +6,11 @@
  * triggered globally (e.g., pull-to-refresh gesture).
  */
 
-'use client';
+"use client";
 
-import { logger } from '@feed/shared';
-import type { ReactNode } from 'react';
-import { createContext, useContext, useRef } from 'react';
+import { logger } from "@feed/shared";
+import type { ReactNode } from "react";
+import { createContext, useContext, useRef } from "react";
 
 /**
  * Widget refresh context interface.
@@ -26,7 +26,7 @@ interface WidgetRefreshContextType {
 }
 
 const WidgetRefreshContext = createContext<WidgetRefreshContextType | null>(
-  null
+  null,
 );
 
 const noopWidgetRefreshContext: WidgetRefreshContextType = {
@@ -89,18 +89,18 @@ export function useWidgetRefresh() {
     return context;
   }
 
-  if (process.env.NODE_ENV !== 'production') {
+  if (process.env.NODE_ENV !== "production") {
     throw new Error(
-      'useWidgetRefresh must be used within WidgetRefreshProvider'
+      "useWidgetRefresh must be used within WidgetRefreshProvider",
     );
   }
 
   if (!hasLoggedMissingWidgetRefreshProvider) {
     hasLoggedMissingWidgetRefreshProvider = true;
     logger.error(
-      'WidgetRefreshProvider missing in production, using no-op refresh context',
+      "WidgetRefreshProvider missing in production, using no-op refresh context",
       undefined,
-      'WidgetRefreshContext'
+      "WidgetRefreshContext",
     );
   }
 

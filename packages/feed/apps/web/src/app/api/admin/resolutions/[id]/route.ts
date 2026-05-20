@@ -12,11 +12,11 @@ import {
   requireAdmin,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { db, eq, questions } from '@feed/db';
-import { logger, toISO } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { z } from 'zod';
+} from "@feed/api";
+import { db, eq, questions } from "@feed/db";
+import { logger, toISO } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { z } from "zod";
 
 /** Hours to postpone resolution after rejection (default: 24h) */
 const POSTPONE_HOURS = (() => {
@@ -29,13 +29,13 @@ const ParamsSchema = z.object({
 });
 
 const BodySchema = z.object({
-  action: z.enum(['approve', 'reject']),
+  action: z.enum(["approve", "reject"]),
 });
 
 export const POST = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ id: string }> }
+    context: { params: Promise<{ id: string }> },
   ) => {
     const admin = await requireAdmin(request);
 
@@ -43,7 +43,7 @@ export const POST = withErrorHandling(
     const rateLimitResponse = checkRateLimitAndDuplicates(
       admin.userId,
       null,
-      RATE_LIMIT_CONFIGS.ADMIN_ACTION
+      RATE_LIMIT_CONFIGS.ADMIN_ACTION,
     );
     if (rateLimitResponse) return rateLimitResponse;
 
@@ -63,41 +63,41 @@ export const POST = withErrorHandling(
       .limit(1);
 
     if (!existing) {
-      return errorResponse('Question not found', 'NOT_FOUND', 404);
+      return errorResponse("Question not found", "NOT_FOUND", 404);
     }
 
     // Validate the question is in a valid state for review
-    if (existing.status !== 'active') {
+    if (existing.status !== "active") {
       return errorResponse(
-        'Question is not active and cannot be reviewed',
-        'INVALID_STATE',
-        400
+        "Question is not active and cannot be reviewed",
+        "INVALID_STATE",
+        400,
       );
     }
 
     if (!existing.requiresManualReview) {
       return errorResponse(
-        'Question does not require manual review',
-        'NOT_REVIEWABLE',
-        400
+        "Question does not require manual review",
+        "NOT_REVIEWABLE",
+        400,
       );
     }
 
-    if (existing.resolutionReviewStatus === 'approved') {
+    if (existing.resolutionReviewStatus === "approved") {
       return errorResponse(
-        'Question already approved',
-        'ALREADY_APPROVED',
-        400
+        "Question already approved",
+        "ALREADY_APPROVED",
+        400,
       );
     }
 
     const now = new Date();
 
-    if (action === 'approve') {
+    if (action === "approve") {
       await db
         .update(questions)
         .set({
-          resolutionReviewStatus: 'approved',
+          resolutionReviewStatus: "approved",
           resolutionReviewedAt: now,
           resolutionReviewedBy: admin.userId,
           updatedAt: now,
@@ -105,13 +105,13 @@ export const POST = withErrorHandling(
         .where(eq(questions.id, id));
 
       logger.info(
-        'Resolution approved',
+        "Resolution approved",
         {
           questionId: id,
           questionNumber: existing.questionNumber,
           reviewedBy: admin.userId,
         },
-        'AdminResolutions'
+        "AdminResolutions",
       );
 
       return successResponse({ success: true });
@@ -124,7 +124,7 @@ export const POST = withErrorHandling(
       .update(questions)
       .set({
         requiresManualReview: false,
-        resolutionReviewStatus: 'rejected',
+        resolutionReviewStatus: "rejected",
         resolutionReviewedAt: now,
         resolutionReviewedBy: admin.userId,
         resolutionConfidence: null,
@@ -136,19 +136,19 @@ export const POST = withErrorHandling(
       .where(eq(questions.id, id));
 
     logger.info(
-      'Resolution rejected',
+      "Resolution rejected",
       {
         questionId: id,
         questionNumber: existing.questionNumber,
         reviewedBy: admin.userId,
         postponedUntil: toISO(postponed),
       },
-      'AdminResolutions'
+      "AdminResolutions",
     );
 
     return successResponse({
       success: true,
       postponedUntil: toISO(postponed),
     });
-  }
+  },
 );

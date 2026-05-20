@@ -41,13 +41,13 @@
  * - charge.refunded: Reverse funded balance (Phase 2)
  */
 
-import { TradingBalanceFundingService, withErrorHandling } from '@feed/api';
-import { and, balanceTransactions, db, eq } from '@feed/db';
-import { logger } from '@feed/shared';
-import { NextResponse } from 'next/server';
-import type Stripe from 'stripe';
-import { trackServerEvent } from '@/lib/posthog/server';
-import { constructWebhookEvent, stripe } from '@/lib/stripe/server';
+import { TradingBalanceFundingService, withErrorHandling } from "@feed/api";
+import { and, balanceTransactions, db, eq } from "@feed/db";
+import { logger } from "@feed/shared";
+import { NextResponse } from "next/server";
+import type Stripe from "stripe";
+import { trackServerEvent } from "@/lib/posthog/server";
+import { constructWebhookEvent, stripe } from "@/lib/stripe/server";
 
 /**
  * Result from webhook event handlers
@@ -69,17 +69,17 @@ interface WebhookHandlerResult {
  */
 export const POST = withErrorHandling(async function POST(req: Request) {
   const body = await req.text();
-  const signature = req.headers.get('stripe-signature');
+  const signature = req.headers.get("stripe-signature");
 
   if (!signature) {
     logger.error(
-      'Stripe webhook received without signature',
+      "Stripe webhook received without signature",
       {},
-      'StripeWebhook'
+      "StripeWebhook",
     );
     return NextResponse.json(
-      { error: 'Missing stripe-signature header' },
-      { status: 400 }
+      { error: "Missing stripe-signature header" },
+      { status: 400 },
     );
   }
 
@@ -89,22 +89,22 @@ export const POST = withErrorHandling(async function POST(req: Request) {
   try {
     event = constructWebhookEvent(body, signature);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
+    const message = err instanceof Error ? err.message : "Unknown error";
     logger.error(
-      'Stripe webhook signature verification failed',
+      "Stripe webhook signature verification failed",
       { error: message },
-      'StripeWebhook'
+      "StripeWebhook",
     );
     return NextResponse.json(
-      { error: 'Webhook signature verification failed' },
-      { status: 400 }
+      { error: "Webhook signature verification failed" },
+      { status: 400 },
     );
   }
 
   logger.info(
     `Stripe webhook received: ${event.type}`,
     { eventId: event.id, type: event.type },
-    'StripeWebhook'
+    "StripeWebhook",
   );
 
   // Filter events by app metadata — only process events belonging to this app (feed).
@@ -118,11 +118,11 @@ export const POST = withErrorHandling(async function POST(req: Request) {
         ?.metadata as Record<string, string> | undefined
     )?.app;
 
-  if (appMetadata && appMetadata !== 'feed') {
+  if (appMetadata && appMetadata !== "feed") {
     logger.info(
       `Ignoring Stripe event for different app: ${appMetadata}`,
       { eventId: event.id, type: event.type, app: appMetadata },
-      'StripeWebhook'
+      "StripeWebhook",
     );
     return NextResponse.json({ received: true, ignored: true });
   }
@@ -132,47 +132,47 @@ export const POST = withErrorHandling(async function POST(req: Request) {
 
   try {
     switch (event.type) {
-      case 'checkout.session.completed':
+      case "checkout.session.completed":
         result = await handleCheckoutSessionCompleted(
           event.data.object,
-          event.id
+          event.id,
         );
         break;
 
-      case 'checkout.session.async_payment_succeeded':
+      case "checkout.session.async_payment_succeeded":
         // Same handling as completed - async payment methods (bank debits, etc.)
         result = await handleCheckoutSessionCompleted(
           event.data.object,
-          event.id
+          event.id,
         );
         break;
 
-      case 'checkout.session.expired':
+      case "checkout.session.expired":
         await handleCheckoutSessionExpired(event.data.object);
         break;
 
-      case 'checkout.session.async_payment_failed':
+      case "checkout.session.async_payment_failed":
         await handleCheckoutSessionFailed(event.data.object);
         break;
 
-      case 'charge.dispute.created':
+      case "charge.dispute.created":
         result = await handleDisputeCreated(
           event.data.object as Stripe.Dispute,
-          event.id
+          event.id,
         );
         break;
 
-      case 'charge.dispute.closed':
+      case "charge.dispute.closed":
         result = await handleDisputeClosed(
           event.data.object as Stripe.Dispute,
-          event.id
+          event.id,
         );
         break;
 
-      case 'charge.refunded':
+      case "charge.refunded":
         result = await handleChargeRefunded(
           event.data.object as Stripe.Charge,
-          event.id
+          event.id,
         );
         break;
 
@@ -180,25 +180,25 @@ export const POST = withErrorHandling(async function POST(req: Request) {
         logger.info(
           `Unhandled Stripe event type: ${event.type}`,
           { eventId: event.id },
-          'StripeWebhook'
+          "StripeWebhook",
         );
     }
   } catch (err) {
     // Unexpected error - return 500 so Stripe retries
-    const message = err instanceof Error ? err.message : 'Unknown error';
+    const message = err instanceof Error ? err.message : "Unknown error";
     logger.error(
-      'Webhook handler threw unexpected error',
+      "Webhook handler threw unexpected error",
       {
         eventId: event.id,
         eventType: event.type,
         error: message,
         stack: err instanceof Error ? err.stack : undefined,
       },
-      'StripeWebhook'
+      "StripeWebhook",
     );
     return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
+      { error: "Internal server error" },
+      { status: 500 },
     );
   }
 
@@ -206,17 +206,17 @@ export const POST = withErrorHandling(async function POST(req: Request) {
   // (but NOT for idempotent duplicates or intentional skips)
   if (!result.success && !result.alreadyProcessed) {
     logger.error(
-      'Webhook handler returned failure, requesting retry',
+      "Webhook handler returned failure, requesting retry",
       {
         eventId: event.id,
         eventType: event.type,
         error: result.error,
       },
-      'StripeWebhook'
+      "StripeWebhook",
     );
     return NextResponse.json(
-      { error: result.error || 'Processing failed' },
-      { status: 500 }
+      { error: result.error || "Processing failed" },
+      { status: 500 },
     );
   }
 
@@ -231,20 +231,20 @@ export const POST = withErrorHandling(async function POST(req: Request) {
  */
 async function handleCheckoutSessionCompleted(
   session: Stripe.Checkout.Session,
-  eventId: string
+  eventId: string,
 ): Promise<WebhookHandlerResult> {
   // Check payment status first - for async payment methods (bank debits, SEPA, etc.),
   // checkout.session.completed may fire before payment is actually confirmed.
   // We should only fund trading balance when payment_status is 'paid'.
   // For async methods, checkout.session.async_payment_succeeded will fire when paid.
-  if (session.payment_status !== 'paid') {
+  if (session.payment_status !== "paid") {
     logger.info(
-      'Checkout session completed but payment not yet confirmed, waiting for async_payment_succeeded',
+      "Checkout session completed but payment not yet confirmed, waiting for async_payment_succeeded",
       {
         sessionId: session.id,
         paymentStatus: session.payment_status,
       },
-      'StripeWebhook'
+      "StripeWebhook",
     );
     // Return success - don't retry, async_payment_succeeded will fire when paid
     return { success: true };
@@ -255,23 +255,23 @@ async function handleCheckoutSessionCompleted(
   let fullSession = session;
   if (!session.metadata || Object.keys(session.metadata).length === 0) {
     logger.info(
-      'Retrieving full session from Stripe API',
+      "Retrieving full session from Stripe API",
       { sessionId: session.id },
-      'StripeWebhook'
+      "StripeWebhook",
     );
     try {
       fullSession = await stripe.checkout.sessions.retrieve(session.id);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unknown error';
+      const message = err instanceof Error ? err.message : "Unknown error";
       logger.error(
-        'Failed to retrieve full session from Stripe API',
+        "Failed to retrieve full session from Stripe API",
         {
           sessionId: session.id,
           eventId,
           error: message,
           stack: err instanceof Error ? err.stack : undefined,
         },
-        'StripeWebhook'
+        "StripeWebhook",
       );
       // Return failure so Stripe retries the webhook
       return {
@@ -284,22 +284,22 @@ async function handleCheckoutSessionCompleted(
   const metadata = fullSession.metadata;
 
   logger.info(
-    'Processing checkout.session.completed',
+    "Processing checkout.session.completed",
     {
       sessionId: session.id,
       hasMetadata: !!metadata,
       metadataKeys: metadata ? Object.keys(metadata) : [],
       metadata,
     },
-    'StripeWebhook'
+    "StripeWebhook",
   );
 
   if (!metadata || Object.keys(metadata).length === 0) {
     // No metadata - can't process, but don't retry (likely not our checkout)
     logger.warn(
-      'Checkout session completed without metadata',
+      "Checkout session completed without metadata",
       { sessionId: session.id },
-      'StripeWebhook'
+      "StripeWebhook",
     );
     return { success: true }; // Don't retry - intentional skip
   }
@@ -308,32 +308,32 @@ async function handleCheckoutSessionCompleted(
   const { userId, amountUSD, purchaseType } = metadata;
 
   // Validate this is a trading balance purchase
-  if (purchaseType !== 'trading_balance' && purchaseType !== 'points') {
+  if (purchaseType !== "trading_balance" && purchaseType !== "points") {
     logger.info(
-      'Checkout session is not a trading balance purchase, skipping',
+      "Checkout session is not a trading balance purchase, skipping",
       { sessionId: session.id, purchaseType },
-      'StripeWebhook'
+      "StripeWebhook",
     );
     return { success: true }; // Intentional skip
   }
 
   if (!userId || !balanceUnits || !amountUSD) {
     logger.error(
-      'Checkout session metadata missing required fields',
+      "Checkout session metadata missing required fields",
       { sessionId: session.id, metadata },
-      'StripeWebhook'
+      "StripeWebhook",
     );
-    return { success: false, error: 'Missing required metadata fields' };
+    return { success: false, error: "Missing required metadata fields" };
   }
 
   // Extract payment intent ID for tracking
   const paymentIntentId =
-    typeof session.payment_intent === 'string'
+    typeof session.payment_intent === "string"
       ? session.payment_intent
       : session.payment_intent?.id;
 
   logger.info(
-    'Processing trading balance purchase from Stripe checkout',
+    "Processing trading balance purchase from Stripe checkout",
     {
       sessionId: session.id,
       userId,
@@ -342,21 +342,21 @@ async function handleCheckoutSessionCompleted(
       paymentIntentId,
       eventId,
     },
-    'StripeWebhook'
+    "StripeWebhook",
   );
 
   // Fund the user's trading balance
   // Uses session.id as paymentRequestId for idempotency
   // The funding service will reject if this session ID was already processed
   logger.info(
-    'Calling TradingBalanceFundingService.fundPurchase',
+    "Calling TradingBalanceFundingService.fundPurchase",
     {
       userId,
       amountUSD: parseFloat(amountUSD),
       sessionId: fullSession.id,
       paymentIntentId,
     },
-    'StripeWebhook'
+    "StripeWebhook",
   );
 
   const result = await TradingBalanceFundingService.fundPurchase(
@@ -364,37 +364,37 @@ async function handleCheckoutSessionCompleted(
     parseFloat(amountUSD),
     fullSession.id, // paymentRequestId - unique, ensures idempotency
     paymentIntentId, // paymentTxHash - Stripe payment intent ID
-    'stripe' // paymentProvider
+    "stripe", // paymentProvider
   );
 
   logger.info(
-    'TradingBalanceFundingService.fundPurchase result',
+    "TradingBalanceFundingService.fundPurchase result",
     { result },
-    'StripeWebhook'
+    "StripeWebhook",
   );
 
   if (result.success && result.alreadyProcessed) {
     logger.info(
-      'Trading balance purchase already processed (idempotency check passed)',
+      "Trading balance purchase already processed (idempotency check passed)",
       {
         sessionId: fullSession.id,
         userId,
         transactionId: result.transactionId,
       },
-      'StripeWebhook'
+      "StripeWebhook",
     );
     return { success: true, alreadyProcessed: true };
   }
 
   if (!result.success) {
     logger.error(
-      'Failed to fund trading balance after Stripe checkout',
+      "Failed to fund trading balance after Stripe checkout",
       {
         sessionId: fullSession.id,
         userId,
         error: result.error,
       },
-      'StripeWebhook'
+      "StripeWebhook",
     );
     return { success: false, error: result.error };
   }
@@ -408,11 +408,11 @@ async function handleCheckoutSessionCompleted(
       newBalance: result.newBalance,
       amountUSD,
     },
-    'StripeWebhook'
+    "StripeWebhook",
   );
 
-  trackServerEvent(userId, 'trading_balance_purchase_completed', {
-    paymentProvider: 'stripe',
+  trackServerEvent(userId, "trading_balance_purchase_completed", {
+    paymentProvider: "stripe",
     amountUSD: parseFloat(amountUSD),
     balanceDelta: result.balanceDelta,
     newBalance: result.newBalance,
@@ -429,23 +429,23 @@ async function handleCheckoutSessionCompleted(
  * Session expired without payment. Just log for monitoring.
  */
 async function handleCheckoutSessionExpired(
-  session: Stripe.Checkout.Session
+  session: Stripe.Checkout.Session,
 ): Promise<void> {
   const metadata = session.metadata;
   const userId = metadata?.userId;
 
   logger.info(
-    'Stripe checkout session expired',
+    "Stripe checkout session expired",
     {
       sessionId: session.id,
-      userId: userId || 'unknown',
+      userId: userId || "unknown",
       amountUSD: metadata?.amountUSD,
     },
-    'StripeWebhook'
+    "StripeWebhook",
   );
 
   if (userId) {
-    trackServerEvent(userId, 'stripe_checkout_expired', {
+    trackServerEvent(userId, "stripe_checkout_expired", {
       sessionId: session.id,
       ...(metadata?.amountUSD
         ? { amountUSD: parseFloat(metadata.amountUSD) }
@@ -460,23 +460,23 @@ async function handleCheckoutSessionExpired(
  * Async payment method (bank debit, etc.) failed after initial authorization.
  */
 async function handleCheckoutSessionFailed(
-  session: Stripe.Checkout.Session
+  session: Stripe.Checkout.Session,
 ): Promise<void> {
   const metadata = session.metadata;
   const userId = metadata?.userId;
 
   logger.warn(
-    'Stripe checkout async payment failed',
+    "Stripe checkout async payment failed",
     {
       sessionId: session.id,
-      userId: userId || 'unknown',
+      userId: userId || "unknown",
       amountUSD: metadata?.amountUSD,
     },
-    'StripeWebhook'
+    "StripeWebhook",
   );
 
   if (userId) {
-    trackServerEvent(userId, 'stripe_checkout_failed', {
+    trackServerEvent(userId, "stripe_checkout_failed", {
       sessionId: session.id,
       ...(metadata?.amountUSD
         ? { amountUSD: parseFloat(metadata.amountUSD) }
@@ -493,24 +493,24 @@ async function handleCheckoutSessionFailed(
  */
 async function handleDisputeCreated(
   dispute: Stripe.Dispute,
-  eventId: string
+  eventId: string,
 ): Promise<WebhookHandlerResult> {
   // Get the charge to find the original payment
   const chargeId =
-    typeof dispute.charge === 'string' ? dispute.charge : dispute.charge?.id;
+    typeof dispute.charge === "string" ? dispute.charge : dispute.charge?.id;
 
   if (!chargeId) {
     logger.error(
-      'Dispute created without charge ID',
+      "Dispute created without charge ID",
       { disputeId: dispute.id },
-      'StripeWebhook'
+      "StripeWebhook",
     );
     return { success: true }; // Don't retry - can't process without charge ID
   }
 
   // Retrieve the charge to get payment intent
   const charge = await stripe.charges.retrieve(chargeId, {
-    expand: ['payment_intent'],
+    expand: ["payment_intent"],
   });
 
   const paymentIntent = charge.payment_intent as Stripe.PaymentIntent | null;
@@ -518,9 +518,9 @@ async function handleDisputeCreated(
 
   if (!paymentIntentId) {
     logger.error(
-      'Dispute charge has no payment intent',
+      "Dispute charge has no payment intent",
       { disputeId: dispute.id, chargeId },
-      'StripeWebhook'
+      "StripeWebhook",
     );
     return { success: true }; // Don't retry - can't process without payment intent
   }
@@ -537,8 +537,8 @@ async function handleDisputeCreated(
     .where(
       and(
         eq(balanceTransactions.relatedId, paymentIntentId),
-        eq(balanceTransactions.type, 'stripe_purchase')
-      )
+        eq(balanceTransactions.type, "stripe_purchase"),
+      ),
     )
     .limit(1);
 
@@ -546,9 +546,9 @@ async function handleDisputeCreated(
 
   if (!originalTx) {
     logger.warn(
-      'No original purchase transaction found for disputed payment',
+      "No original purchase transaction found for disputed payment",
       { disputeId: dispute.id, paymentIntentId },
-      'StripeWebhook'
+      "StripeWebhook",
     );
     return { success: true }; // Don't retry - not our transaction
   }
@@ -556,7 +556,7 @@ async function handleDisputeCreated(
   const amountUSD = dispute.amount / 100; // Stripe uses cents
 
   logger.warn(
-    'Processing dispute (chargeback) - deducting points',
+    "Processing dispute (chargeback) - deducting points",
     {
       disputeId: dispute.id,
       chargeId,
@@ -566,23 +566,23 @@ async function handleDisputeCreated(
       status: dispute.status,
       paymentIntentId,
     },
-    'StripeWebhook'
+    "StripeWebhook",
   );
 
   // Deduct points from user
   const result = await TradingBalanceFundingService.reversePurchaseFunding(
     originalTx.userId,
     paymentIntentId,
-    'dispute',
+    "dispute",
     amountUSD,
-    eventId
+    eventId,
   );
 
   if (result.success && result.alreadyProcessed) {
     logger.info(
-      'Dispute deduction already processed (idempotency check passed)',
+      "Dispute deduction already processed (idempotency check passed)",
       { disputeId: dispute.id, eventId, transactionId: result.transactionId },
-      'StripeWebhook'
+      "StripeWebhook",
     );
     return { success: true, alreadyProcessed: true };
   }
@@ -596,11 +596,11 @@ async function handleDisputeCreated(
         balanceDelta: result.balanceDelta,
         newBalance: result.newBalance,
       },
-      'StripeWebhook'
+      "StripeWebhook",
     );
 
-    trackServerEvent(originalTx.userId, 'trading_balance_dispute_deducted', {
-      paymentProvider: 'stripe',
+    trackServerEvent(originalTx.userId, "trading_balance_dispute_deducted", {
+      paymentProvider: "stripe",
       disputeId: dispute.id,
       amountUSD,
       balanceDelta: result.balanceDelta,
@@ -612,13 +612,13 @@ async function handleDisputeCreated(
   }
 
   logger.error(
-    'Failed to deduct points for dispute',
+    "Failed to deduct points for dispute",
     {
       disputeId: dispute.id,
       userId: originalTx.userId,
       error: result.error,
     },
-    'StripeWebhook'
+    "StripeWebhook",
   );
   return { success: false, error: result.error };
 }
@@ -631,18 +631,18 @@ async function handleDisputeCreated(
  */
 async function handleDisputeClosed(
   dispute: Stripe.Dispute,
-  eventId: string
+  eventId: string,
 ): Promise<WebhookHandlerResult> {
   // Determine outcome
-  const merchantWon = dispute.status === 'won';
+  const merchantWon = dispute.status === "won";
 
   logger.info(
-    `Stripe dispute closed: ${merchantWon ? 'MERCHANT WON' : 'CUSTOMER WON'}`,
+    `Stripe dispute closed: ${merchantWon ? "MERCHANT WON" : "CUSTOMER WON"}`,
     {
       disputeId: dispute.id,
       status: dispute.status,
     },
-    'StripeWebhook'
+    "StripeWebhook",
   );
 
   // Only take action if merchant won - re-credit the points
@@ -653,20 +653,20 @@ async function handleDisputeClosed(
 
   // Get the charge to find the original payment
   const chargeId =
-    typeof dispute.charge === 'string' ? dispute.charge : dispute.charge?.id;
+    typeof dispute.charge === "string" ? dispute.charge : dispute.charge?.id;
 
   if (!chargeId) {
     logger.error(
-      'Dispute closed without charge ID',
+      "Dispute closed without charge ID",
       { disputeId: dispute.id },
-      'StripeWebhook'
+      "StripeWebhook",
     );
     return { success: true }; // Don't retry - can't process without charge ID
   }
 
   // Retrieve the charge to get payment intent
   const charge = await stripe.charges.retrieve(chargeId, {
-    expand: ['payment_intent'],
+    expand: ["payment_intent"],
   });
 
   const paymentIntent = charge.payment_intent as Stripe.PaymentIntent | null;
@@ -674,9 +674,9 @@ async function handleDisputeClosed(
 
   if (!paymentIntentId) {
     logger.error(
-      'Dispute charge has no payment intent',
+      "Dispute charge has no payment intent",
       { disputeId: dispute.id, chargeId },
-      'StripeWebhook'
+      "StripeWebhook",
     );
     return { success: true }; // Don't retry - can't process without payment intent
   }
@@ -694,8 +694,8 @@ async function handleDisputeClosed(
     .where(
       and(
         eq(balanceTransactions.relatedId, paymentIntentId),
-        eq(balanceTransactions.type, 'stripe_purchase')
-      )
+        eq(balanceTransactions.type, "stripe_purchase"),
+      ),
     )
     .limit(1);
 
@@ -703,9 +703,9 @@ async function handleDisputeClosed(
 
   if (!originalPurchase) {
     logger.warn(
-      'No original purchase found for won dispute - cannot re-credit',
+      "No original purchase found for won dispute - cannot re-credit",
       { disputeId: dispute.id, paymentIntentId },
-      'StripeWebhook'
+      "StripeWebhook",
     );
     return { success: true }; // Don't retry - no deduction to reverse
   }
@@ -713,13 +713,13 @@ async function handleDisputeClosed(
   const amountUSD = dispute.amount / 100; // Stripe uses cents
 
   logger.info(
-    'Re-crediting trading balance after winning dispute',
+    "Re-crediting trading balance after winning dispute",
     {
       disputeId: dispute.id,
       userId: originalPurchase.userId,
       amountUSD,
     },
-    'StripeWebhook'
+    "StripeWebhook",
   );
 
   // Re-credit trading balance to user
@@ -727,14 +727,14 @@ async function handleDisputeClosed(
     originalPurchase.userId,
     dispute.id,
     amountUSD,
-    eventId
+    eventId,
   );
 
   if (result.success && result.alreadyProcessed) {
     logger.info(
-      'Dispute win re-credit already processed (idempotency check passed)',
+      "Dispute win re-credit already processed (idempotency check passed)",
       { disputeId: dispute.id, eventId, transactionId: result.transactionId },
-      'StripeWebhook'
+      "StripeWebhook",
     );
     return { success: true, alreadyProcessed: true };
   }
@@ -748,32 +748,32 @@ async function handleDisputeClosed(
         balanceDelta: result.balanceDelta,
         newBalance: result.newBalance,
       },
-      'StripeWebhook'
+      "StripeWebhook",
     );
 
     trackServerEvent(
       originalPurchase.userId,
-      'trading_balance_dispute_recredited',
+      "trading_balance_dispute_recredited",
       {
-        paymentProvider: 'stripe',
+        paymentProvider: "stripe",
         disputeId: dispute.id,
         amountUSD,
         balanceDelta: result.balanceDelta,
         newBalance: result.newBalance,
-      }
+      },
     );
 
     return { success: true, alreadyProcessed: result.alreadyProcessed };
   }
 
   logger.error(
-    'Failed to re-credit trading balance after dispute won',
+    "Failed to re-credit trading balance after dispute won",
     {
       disputeId: dispute.id,
       userId: originalPurchase.userId,
       error: result.error,
     },
-    'StripeWebhook'
+    "StripeWebhook",
   );
   return { success: false, error: result.error };
 }
@@ -790,20 +790,20 @@ async function handleDisputeClosed(
  */
 async function handleChargeRefunded(
   charge: Stripe.Charge,
-  eventId: string
+  eventId: string,
 ): Promise<WebhookHandlerResult> {
   const totalRefundedCents = charge.amount_refunded;
   const totalRefundedUSD = totalRefundedCents / 100;
   const paymentIntentId =
-    typeof charge.payment_intent === 'string'
+    typeof charge.payment_intent === "string"
       ? charge.payment_intent
       : charge.payment_intent?.id;
 
   if (!paymentIntentId) {
     logger.error(
-      'Refund charge has no payment intent',
+      "Refund charge has no payment intent",
       { chargeId: charge.id },
-      'StripeWebhook'
+      "StripeWebhook",
     );
     return { success: true }; // Don't retry - can't process without payment intent
   }
@@ -820,8 +820,8 @@ async function handleChargeRefunded(
     .where(
       and(
         eq(balanceTransactions.relatedId, paymentIntentId),
-        eq(balanceTransactions.type, 'stripe_purchase')
-      )
+        eq(balanceTransactions.type, "stripe_purchase"),
+      ),
     )
     .limit(1);
 
@@ -829,9 +829,9 @@ async function handleChargeRefunded(
 
   if (!originalTx) {
     logger.warn(
-      'No original purchase transaction found for refunded charge',
+      "No original purchase transaction found for refunded charge",
       { chargeId: charge.id, paymentIntentId },
-      'StripeWebhook'
+      "StripeWebhook",
     );
     return { success: true }; // Don't retry - not our transaction
   }
@@ -849,8 +849,8 @@ async function handleChargeRefunded(
     .where(
       and(
         eq(balanceTransactions.userId, originalTx.userId),
-        eq(balanceTransactions.type, 'stripe_refund')
-      )
+        eq(balanceTransactions.type, "stripe_refund"),
+      ),
     );
 
   // Filter refunds to only those for this specific payment intent
@@ -867,7 +867,7 @@ async function handleChargeRefunded(
   // balanceTransactions stores amount as string
   const alreadyDeductedPoints = refundsForThisPayment.reduce(
     (sum, tx) => sum + Math.abs(Number(tx.amount)),
-    0
+    0,
   );
 
   // Calculate total refunded balance units based on cumulative USD
@@ -878,14 +878,14 @@ async function handleChargeRefunded(
 
   if (incrementalPointsToDeduct <= 0) {
     logger.info(
-      'Refund already fully processed (incremental calculation)',
+      "Refund already fully processed (incremental calculation)",
       {
         chargeId: charge.id,
         eventId,
         totalRefundedPoints,
         alreadyDeductedPoints,
       },
-      'StripeWebhook'
+      "StripeWebhook",
     );
     return { success: true, alreadyProcessed: true };
   }
@@ -894,7 +894,7 @@ async function handleChargeRefunded(
   const incrementalAmountUSD = incrementalPointsToDeduct / 100;
 
   logger.info(
-    'Processing refund - deducting points',
+    "Processing refund - deducting points",
     {
       chargeId: charge.id,
       userId: originalTx.userId,
@@ -907,24 +907,24 @@ async function handleChargeRefunded(
       fullRefund: charge.refunded,
       paymentIntentId,
     },
-    'StripeWebhook'
+    "StripeWebhook",
   );
 
   // Deduct the incremental amount
   const result = await TradingBalanceFundingService.reversePurchaseFunding(
     originalTx.userId,
     paymentIntentId,
-    'refund',
+    "refund",
     incrementalAmountUSD,
-    eventId
+    eventId,
   );
 
   if (result.success) {
     if (result.alreadyProcessed) {
       logger.info(
-        'Refund already processed (idempotency check passed)',
+        "Refund already processed (idempotency check passed)",
         { chargeId: charge.id, eventId },
-        'StripeWebhook'
+        "StripeWebhook",
       );
       return { success: true, alreadyProcessed: true };
     }
@@ -938,11 +938,11 @@ async function handleChargeRefunded(
         newBalance: result.newBalance,
         fullRefund: charge.refunded,
       },
-      'StripeWebhook'
+      "StripeWebhook",
     );
 
-    trackServerEvent(originalTx.userId, 'trading_balance_refund_deducted', {
-      paymentProvider: 'stripe',
+    trackServerEvent(originalTx.userId, "trading_balance_refund_deducted", {
+      paymentProvider: "stripe",
       chargeId: charge.id,
       amountUSD: incrementalAmountUSD,
       balanceDelta: result.balanceDelta,
@@ -954,13 +954,13 @@ async function handleChargeRefunded(
   }
 
   logger.error(
-    'Failed to deduct points for refund',
+    "Failed to deduct points for refund",
     {
       chargeId: charge.id,
       userId: originalTx.userId,
       error: result.error,
     },
-    'StripeWebhook'
+    "StripeWebhook",
   );
   return { success: false, error: result.error };
 }

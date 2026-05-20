@@ -1,10 +1,10 @@
-import { toNumber } from '@feed/shared';
+import { toNumber } from "@feed/shared";
 import {
   isOpenPredictionPosition,
   type UserPositionsSnapshot,
-} from '@/lib/markets/user-positions-types';
+} from "@/lib/markets/user-positions-types";
 
-export type TeamScope = 'owner_agents' | 'agents_only';
+export type TeamScope = "owner_agents" | "agents_only";
 
 export interface TeamTotals {
   walletBalance: number;
@@ -15,7 +15,7 @@ export interface TeamTotals {
 }
 
 export interface TeamMemberTradingSummary {
-  entityType: 'owner' | 'agent';
+  entityType: "owner" | "agent";
   id: string;
   name: string;
   username: string | null;
@@ -58,7 +58,7 @@ function sumMemberTotals(members: TeamMemberTradingSummary[]): TeamTotals {
       unrealizedPnL: 0,
       currentPnL: 0,
       openPositions: 0,
-    }
+    },
   );
 }
 
@@ -112,7 +112,7 @@ export function buildTeamTradingSummary({
   }
 
   const ownerRow: TeamMemberTradingSummary = {
-    entityType: 'owner',
+    entityType: "owner",
     id: ownerId,
     name: ownerName,
     username: null,
@@ -130,9 +130,9 @@ export function buildTeamTradingSummary({
     const openPositions = byMember.get(agent.id)?.openPositions ?? 0;
 
     return {
-      entityType: 'agent',
+      entityType: "agent",
       id: agent.id,
-      name: agent.name ?? 'Agent',
+      name: agent.name ?? "Agent",
       username: agent.username ?? null,
       walletBalance: agent.virtualBalance,
       lifetimePnL: toNumber(agent.lifetimePnL),

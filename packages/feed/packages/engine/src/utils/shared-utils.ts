@@ -4,8 +4,8 @@
  * Consolidated utility functions used across the engine
  */
 
-import { CONTEXT_LIMITS, truncateText } from './context-limits';
-import { pickRandom, shuffleArray } from './randomization';
+import { CONTEXT_LIMITS, truncateText } from "./context-limits";
+import { pickRandom, shuffleArray } from "./randomization";
 
 /**
  * Format actor voice context with postStyle and randomized postExample
@@ -28,21 +28,21 @@ export function formatActorVoiceContext(actor: {
     !actor.voice &&
     !actor.personality
   ) {
-    return '';
+    return "";
   }
 
   const parts: string[] = [];
-  const actorName = actor.name || 'this character';
+  const actorName = actor.name || "this character";
   const realName = actor.realName?.trim();
 
   // Header with clear instruction
   if (realName) {
     parts.push(
-      `\n   === REAL PERSON (DO NOT NAME IN OUTPUT): ${realName.toUpperCase()} ===`
+      `\n   === REAL PERSON (DO NOT NAME IN OUTPUT): ${realName.toUpperCase()} ===`,
     );
     parts.push(`   === PARODY CHARACTER: ${actorName.toUpperCase()} ===`);
     parts.push(
-      `   OUTPUT RULE: Never mention the real name. Always use the parody name/handle.`
+      `   OUTPUT RULE: Never mention the real name. Always use the parody name/handle.`,
     );
   } else {
     parts.push(`\n   === VOICE FOR ${actorName.toUpperCase()} ===`);
@@ -84,9 +84,9 @@ export function formatActorVoiceContext(actor: {
     const maxLength = Math.max(...lengths);
     const hasLowercase = examples.some((ex) => ex === ex.toLowerCase());
     const hasAllCaps = examples.some(
-      (ex) => ex === ex.toUpperCase() && ex.length > 3
+      (ex) => ex === ex.toUpperCase() && ex.length > 3,
     );
-    const hasMultiLine = examples.some((ex) => ex.includes('\n'));
+    const hasMultiLine = examples.some((ex) => ex.includes("\n"));
 
     parts.push(`   EXAMPLE POSTS (MATCH VOICE; VARY LENGTH):`);
     examples.forEach((ex, i) => {
@@ -95,35 +95,35 @@ export function formatActorVoiceContext(actor: {
 
     // Add derived voice hints
     const hints: string[] = [];
-    if (hasLowercase) hints.push('lowercase');
-    if (hasAllCaps) hints.push('ALL CAPS');
-    if (hasMultiLine) hints.push('multi-line');
+    if (hasLowercase) hints.push("lowercase");
+    if (hasAllCaps) hints.push("ALL CAPS");
+    if (hasMultiLine) hints.push("multi-line");
 
     if (hints.length > 0) {
-      parts.push(`   VOICE PATTERN: ${hints.join(', ')}`);
+      parts.push(`   VOICE PATTERN: ${hints.join(", ")}`);
     }
 
     // Encourage entropy in length/cadence (prevents monotone outputs over long runs)
     type LengthTarget = {
-      label: 'VERY SHORT' | 'SHORT' | 'MEDIUM' | 'LONG';
+      label: "VERY SHORT" | "SHORT" | "MEDIUM" | "LONG";
       guidance: string;
     };
     const maxLenAll = Math.max(...actor.postExample.map((ex) => ex.length));
     const lengthTargets: LengthTarget[] = [
-      { label: 'VERY SHORT', guidance: '1-3 words or a clipped fragment.' },
-      { label: 'SHORT', guidance: 'a single punchy sentence.' },
+      { label: "VERY SHORT", guidance: "1-3 words or a clipped fragment." },
+      { label: "SHORT", guidance: "a single punchy sentence." },
     ];
     if (maxLenAll >= 90) {
       lengthTargets.push({
-        label: 'MEDIUM',
-        guidance: '1-2 sentences with a specific detail.',
+        label: "MEDIUM",
+        guidance: "1-2 sentences with a specific detail.",
       });
     }
     if (maxLenAll >= 140) {
       lengthTargets.push({
-        label: 'LONG',
+        label: "LONG",
         guidance:
-          '2-4 sentences or a mini-thread, still under the character limit.',
+          "2-4 sentences or a mini-thread, still under the character limit.",
       });
     }
 
@@ -132,11 +132,11 @@ export function formatActorVoiceContext(actor: {
     parts.push(`   LENGTH RANGE (examples): ${minLength}-${maxLength} chars`);
     parts.push(`   THIS POST: Aim for ${chosen.label} (${chosen.guidance})`);
     parts.push(
-      `   YOUR POST MUST: Match tone and quirks from examples above. Avoid monotone cadence over time.`
+      `   YOUR POST MUST: Match tone and quirks from examples above. Avoid monotone cadence over time.`,
     );
   }
 
-  return parts.join('\n');
+  return parts.join("\n");
 }
 
 type ToneGuardrailsActor = {
@@ -155,15 +155,15 @@ type SlangToken = {
 };
 
 const GENERIC_SLANG_TOKENS: SlangToken[] = [
-  { display: 'W', needle: 'w', wholeWord: true },
-  { display: 'L', needle: 'l', wholeWord: true },
-  { display: 'dawg', needle: 'dawg', wholeWord: true },
-  { display: 'bro', needle: 'bro', wholeWord: true },
-  { display: 'fam', needle: 'fam', wholeWord: true },
-  { display: 'fr fr', needle: 'fr fr', wholeWord: false },
-  { display: 'no cap', needle: 'no cap', wholeWord: false },
-  { display: 'rizz', needle: 'rizz', wholeWord: true },
-  { display: 'ratio', needle: 'ratio', wholeWord: true },
+  { display: "W", needle: "w", wholeWord: true },
+  { display: "L", needle: "l", wholeWord: true },
+  { display: "dawg", needle: "dawg", wholeWord: true },
+  { display: "bro", needle: "bro", wholeWord: true },
+  { display: "fam", needle: "fam", wholeWord: true },
+  { display: "fr fr", needle: "fr fr", wholeWord: false },
+  { display: "no cap", needle: "no cap", wholeWord: false },
+  { display: "rizz", needle: "rizz", wholeWord: true },
+  { display: "ratio", needle: "ratio", wholeWord: true },
 ];
 
 function buildToneCorpus(actor: ToneGuardrailsActor): string {
@@ -171,17 +171,17 @@ function buildToneCorpus(actor: ToneGuardrailsActor): string {
   if (actor.voice) parts.push(actor.voice);
   if (actor.postStyle) parts.push(actor.postStyle);
   if (actor.postExample && actor.postExample.length > 0) {
-    parts.push(actor.postExample.join('\n'));
+    parts.push(actor.postExample.join("\n"));
   }
-  return parts.join('\n').toLowerCase();
+  return parts.join("\n").toLowerCase();
 }
 
 function corpusIncludesToken(corpusLower: string, token: SlangToken): boolean {
   if (!corpusLower) return false;
   if (!token.wholeWord) return corpusLower.includes(token.needle);
   const pattern = new RegExp(
-    `\\b${token.needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`,
-    'i'
+    `\\b${token.needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
+    "i",
   );
   return pattern.test(corpusLower);
 }
@@ -194,16 +194,16 @@ function corpusIncludesToken(corpusLower: string, token: SlangToken): boolean {
 export function formatActorToneGuardrails(actor: ToneGuardrailsActor): string {
   const corpusLower = buildToneCorpus(actor);
   const forbidden = GENERIC_SLANG_TOKENS.filter(
-    (t) => !corpusIncludesToken(corpusLower, t)
+    (t) => !corpusIncludesToken(corpusLower, t),
   )
     .map((t) => t.display)
     .slice(0, 9);
 
-  if (forbidden.length === 0) return '';
+  if (forbidden.length === 0) return "";
 
   return `\n=== TONE GUARDRAILS (VOICE-STRICT) ===
 - Avoid generic internet slang unless it's explicitly part of YOUR character voice/examples.
-- For THIS character, DO NOT use: ${forbidden.join(', ')}
+- For THIS character, DO NOT use: ${forbidden.join(", ")}
 =====================================`;
 }
 
@@ -216,26 +216,26 @@ type TradingGuardrailsActor = {
   postExample?: string[];
 };
 
-const DEGEN_DOMAIN_MARKERS = new Set<string>(['trading', 'defi', 'nft']);
+const DEGEN_DOMAIN_MARKERS = new Set<string>(["trading", "defi", "nft"]);
 
 const DEGEN_KEYWORDS = [
-  'degen',
-  'wagmi',
-  'ngmi',
-  '100x',
-  'options',
-  'insider trading',
-  'leverage',
-  'liquidation',
-  'liq ',
-  'pnl',
-  'upnl',
-  'funding',
-  'perp',
-  'futures',
-  'ape ',
-  'aping',
-  'floor',
+  "degen",
+  "wagmi",
+  "ngmi",
+  "100x",
+  "options",
+  "insider trading",
+  "leverage",
+  "liquidation",
+  "liq ",
+  "pnl",
+  "upnl",
+  "funding",
+  "perp",
+  "futures",
+  "ape ",
+  "aping",
+  "floor",
 ] as const;
 
 const TICKER_PATTERN = /\$[a-z]{2,10}\b/;
@@ -251,12 +251,12 @@ export function isDegenSpeaker(actor: TradingGuardrailsActor): boolean {
   if (domains.some((d) => DEGEN_DOMAIN_MARKERS.has(d))) return true;
 
   const corpus = [
-    actor.personality ?? '',
-    actor.voice ?? '',
-    actor.postStyle ?? '',
+    actor.personality ?? "",
+    actor.voice ?? "",
+    actor.postStyle ?? "",
     ...(actor.postExample ?? []),
   ]
-    .join('\n')
+    .join("\n")
     .toLowerCase();
 
   // If they naturally talk in ticker notation in their own voice/examples, allow it.
@@ -270,11 +270,11 @@ export function isDegenSpeaker(actor: TradingGuardrailsActor): boolean {
  * (tickers, exact prices, liquidation talk).
  */
 export function formatActorFinanceGuardrails(
-  actor: TradingGuardrailsActor
+  actor: TradingGuardrailsActor,
 ): string {
-  if (isDegenSpeaker(actor)) return '';
+  if (isDegenSpeaker(actor)) return "";
 
-  const who = actor.name ? ` for ${actor.name}` : '';
+  const who = actor.name ? ` for ${actor.name}` : "";
 
   return `\n=== FINANCE/TICKER GUARDRAILS${who} ===
 - DO NOT talk in tickers: no $OPENAGI / $NVDAI / $XYZ or similar.
@@ -314,7 +314,7 @@ export function formatCharacterInfoWithEntropy(actor: {
     reliability?: number;
     expertise?: string[];
     willingToLie?: boolean;
-    selfInterest?: 'wealth' | 'reputation' | 'ideology' | 'chaos';
+    selfInterest?: "wealth" | "reputation" | "ideology" | "chaos";
     favorsActors?: string[];
     opposesActors?: string[];
     favorsOrgs?: string[];
@@ -330,17 +330,17 @@ export function formatCharacterInfoWithEntropy(actor: {
   currentPositions?: string; // Market positions
 }): string {
   const parts: string[] = [];
-  const actorName = actor.name || 'Unknown';
+  const actorName = actor.name || "Unknown";
   const realName = actor.realName?.trim();
 
   // Always anchor with the real person/org name first (do not use in output).
   if (realName) {
     parts.push(
-      `=== REAL PERSON (DO NOT NAME IN OUTPUT): ${realName.toUpperCase()} ===`
+      `=== REAL PERSON (DO NOT NAME IN OUTPUT): ${realName.toUpperCase()} ===`,
     );
     parts.push(`=== PARODY CHARACTER: ${actorName.toUpperCase()} ===`);
     parts.push(
-      `OUTPUT RULE: Never mention the real name. Always use the parody name/handle.`
+      `OUTPUT RULE: Never mention the real name. Always use the parody name/handle.`,
     );
   } else {
     parts.push(`=== CHARACTER: ${actorName.toUpperCase()} ===`);
@@ -352,7 +352,7 @@ export function formatCharacterInfoWithEntropy(actor: {
   // Identity/Description (core character)
   if (actor.description) {
     sections.push({
-      type: 'description',
+      type: "description",
       content: `IDENTITY: ${actor.description}`,
     });
   }
@@ -360,7 +360,7 @@ export function formatCharacterInfoWithEntropy(actor: {
   // Profile description (their self-description/bio)
   if (actor.profileDescription) {
     sections.push({
-      type: 'profileDescription',
+      type: "profileDescription",
       content: `BIO (how you describe yourself): ${actor.profileDescription}`,
     });
   }
@@ -369,23 +369,23 @@ export function formatCharacterInfoWithEntropy(actor: {
   if (actor.domain && actor.domain.length > 0) {
     const shuffledDomains = shuffleArray(actor.domain);
     sections.push({
-      type: 'domain',
-      content: `INTERESTS/DOMAIN: ${shuffledDomains.join(', ')}`,
+      type: "domain",
+      content: `INTERESTS/DOMAIN: ${shuffledDomains.join(", ")}`,
     });
   }
 
   // Affiliations
   if (actor.affiliations && actor.affiliations.length > 0) {
     sections.push({
-      type: 'affiliations',
-      content: `AFFILIATIONS: ${shuffleArray(actor.affiliations).join(', ')}`,
+      type: "affiliations",
+      content: `AFFILIATIONS: ${shuffleArray(actor.affiliations).join(", ")}`,
     });
   }
 
   // Tier
   if (actor.tier) {
     sections.push({
-      type: 'tier',
+      type: "tier",
       content: `INFLUENCE TIER: ${actor.tier}`,
     });
   }
@@ -393,7 +393,7 @@ export function formatCharacterInfoWithEntropy(actor: {
   // Personality
   if (actor.personality) {
     sections.push({
-      type: 'personality',
+      type: "personality",
       content: `PERSONALITY: ${actor.personality}`,
     });
   }
@@ -401,7 +401,7 @@ export function formatCharacterInfoWithEntropy(actor: {
   // Voice (critical for matching real person's style)
   if (actor.voice) {
     sections.push({
-      type: 'voice',
+      type: "voice",
       content: `VOICE/SPEAKING STYLE: ${actor.voice}`,
     });
   }
@@ -409,7 +409,7 @@ export function formatCharacterInfoWithEntropy(actor: {
   // Post Style
   if (actor.postStyle) {
     sections.push({
-      type: 'postStyle',
+      type: "postStyle",
       content: `WRITING STYLE: ${actor.postStyle}`,
     });
   }
@@ -420,48 +420,48 @@ export function formatCharacterInfoWithEntropy(actor: {
   // ALLIES - separate section for maximum visibility
   if (actor.persona?.favorsActors && actor.persona.favorsActors.length > 0) {
     const allyVerbs = shuffleArray([
-      'defend',
-      'support',
-      'back up',
-      'co-sign',
-      'ride for',
-      'stand with',
+      "defend",
+      "support",
+      "back up",
+      "co-sign",
+      "ride for",
+      "stand with",
     ]);
     sections.push({
-      type: 'allies',
-      content: `🟢 YOUR ALLIES (${allyVerbs[0]}, ${allyVerbs[1]}): ${shuffleArray(actor.persona.favorsActors).join(', ')}\n→ When they post, you agree. When they're attacked, you defend.`,
+      type: "allies",
+      content: `🟢 YOUR ALLIES (${allyVerbs[0]}, ${allyVerbs[1]}): ${shuffleArray(actor.persona.favorsActors).join(", ")}\n→ When they post, you agree. When they're attacked, you defend.`,
     });
   }
 
   // RIVALS - separate section for maximum visibility
   if (actor.persona?.opposesActors && actor.persona.opposesActors.length > 0) {
     const rivalVerbs = shuffleArray([
-      'attack',
-      'undermine',
-      'subtweet',
-      'ratio',
-      'dunk on',
-      'mock',
+      "attack",
+      "undermine",
+      "subtweet",
+      "ratio",
+      "dunk on",
+      "mock",
     ]);
     sections.push({
-      type: 'rivals',
-      content: `🔴 YOUR RIVALS (${rivalVerbs[0]}, ${rivalVerbs[1]}): ${shuffleArray(actor.persona.opposesActors).join(', ')}\n→ You have BEEF. Look for opportunities to clown them.`,
+      type: "rivals",
+      content: `🔴 YOUR RIVALS (${rivalVerbs[0]}, ${rivalVerbs[1]}): ${shuffleArray(actor.persona.opposesActors).join(", ")}\n→ You have BEEF. Look for opportunities to clown them.`,
     });
   }
 
   // SUPPORTED ORGS - separate section
   if (actor.persona?.favorsOrgs && actor.persona.favorsOrgs.length > 0) {
     sections.push({
-      type: 'favorsOrgs',
-      content: `🏢 ORGS YOU SUPPORT: ${shuffleArray(actor.persona.favorsOrgs).join(', ')}\n→ Shill subtly. Their wins are your wins.`,
+      type: "favorsOrgs",
+      content: `🏢 ORGS YOU SUPPORT: ${shuffleArray(actor.persona.favorsOrgs).join(", ")}\n→ Shill subtly. Their wins are your wins.`,
     });
   }
 
   // OPPOSED ORGS - separate section
   if (actor.persona?.opposesOrgs && actor.persona.opposesOrgs.length > 0) {
     sections.push({
-      type: 'opposesOrgs',
-      content: `🚫 ORGS YOU OPPOSE: ${shuffleArray(actor.persona.opposesOrgs).join(', ')}\n→ Spread FUD. Their losses make you happy.`,
+      type: "opposesOrgs",
+      content: `🚫 ORGS YOU OPPOSE: ${shuffleArray(actor.persona.opposesOrgs).join(", ")}\n→ Spread FUD. Their losses make you happy.`,
     });
   }
 
@@ -469,23 +469,23 @@ export function formatCharacterInfoWithEntropy(actor: {
   if (actor.persona?.selfInterest) {
     const motivationFramings: Record<string, string[]> = {
       wealth: [
-        'Motivated by WEALTH 💰 - everything is about money, valuations, gains',
+        "Motivated by WEALTH 💰 - everything is about money, valuations, gains",
         'PRIMARY DRIVER: MONEY - you think in terms of "what does this mean for my bag?"',
-        'WEALTH-FOCUSED: Your posts often tie back to financial implications',
+        "WEALTH-FOCUSED: Your posts often tie back to financial implications",
       ],
       reputation: [
-        'Motivated by REPUTATION 🏆 - clout, followers, being proven right matters most',
-        'PRIMARY DRIVER: CLOUT - you need to be seen as smart, connected, influential',
-        'EGO-DRIVEN: Being right, having hot takes, getting engagement is your oxygen',
+        "Motivated by REPUTATION 🏆 - clout, followers, being proven right matters most",
+        "PRIMARY DRIVER: CLOUT - you need to be seen as smart, connected, influential",
+        "EGO-DRIVEN: Being right, having hot takes, getting engagement is your oxygen",
       ],
       ideology: [
-        'Motivated by IDEOLOGY ⚔️ - true believer, pushes agenda, fights enemies',
-        'PRIMARY DRIVER: THE CAUSE - you are a crusader, constantly pushing your worldview',
-        'IDEOLOGUE: Everything connects to your mission. Allies are soldiers, rivals are enemies.',
+        "Motivated by IDEOLOGY ⚔️ - true believer, pushes agenda, fights enemies",
+        "PRIMARY DRIVER: THE CAUSE - you are a crusader, constantly pushing your worldview",
+        "IDEOLOGUE: Everything connects to your mission. Allies are soldiers, rivals are enemies.",
       ],
       chaos: [
-        'Motivated by CHAOS 🔥 - stirs drama, provocative, loves to watch things burn',
-        'PRIMARY DRIVER: ENTERTAINMENT - you post to get reactions, start fights, cause drama',
+        "Motivated by CHAOS 🔥 - stirs drama, provocative, loves to watch things burn",
+        "PRIMARY DRIVER: ENTERTAINMENT - you post to get reactions, start fights, cause drama",
         "AGENT OF CHAOS: You don't take sides consistently. You take whatever position causes the most drama.",
       ],
     };
@@ -494,7 +494,7 @@ export function formatCharacterInfoWithEntropy(actor: {
       const randomFraming =
         framings[Math.floor(Math.random() * framings.length)];
       sections.push({
-        type: 'motivation',
+        type: "motivation",
         content: randomFraming!,
       });
     }
@@ -504,38 +504,34 @@ export function formatCharacterInfoWithEntropy(actor: {
   if (actor.persona?.willingToLie !== undefined) {
     if (actor.persona.willingToLie) {
       const deceptionFramings = shuffleArray([
-        '🎭 DECEPTION: You LIE strategically. Say whatever benefits you, truth is optional.',
-        '⚠️ WILLING TO DECEIVE: You spread FUD, exaggerate, mislead when it serves your interests.',
+        "🎭 DECEPTION: You LIE strategically. Say whatever benefits you, truth is optional.",
+        "⚠️ WILLING TO DECEIVE: You spread FUD, exaggerate, mislead when it serves your interests.",
         "🐍 STRATEGIC LIAR: Your statements aren't always sincere. You manipulate narrative.",
       ]);
       sections.push({
-        type: 'deception',
+        type: "deception",
         content: deceptionFramings[0]!,
       });
     } else {
       const honestyFramings = shuffleArray([
-        '✓ HONEST: You tell the truth (as you see it). Your credibility matters to you.',
+        "✓ HONEST: You tell the truth (as you see it). Your credibility matters to you.",
         "📢 STRAIGHT SHOOTER: You don't BS. Your takes are genuine, even if unpopular.",
-        '💎 AUTHENTIC: You say what you mean. People trust your word.',
+        "💎 AUTHENTIC: You say what you mean. People trust your word.",
       ]);
       sections.push({
-        type: 'honesty',
+        type: "honesty",
         content: honestyFramings[0]!,
       });
     }
   }
 
   // Track record (if they have history)
-  if (
-    actor.trackRecord &&
-    actor.trackRecord.totalPosts &&
-    actor.trackRecord.totalPosts > 0
-  ) {
+  if (actor.trackRecord?.totalPosts && actor.trackRecord.totalPosts > 0) {
     const accuracy = actor.trackRecord.historicalAccuracy
       ? `${(actor.trackRecord.historicalAccuracy * 100).toFixed(0)}%`
-      : 'unknown';
+      : "unknown";
     sections.push({
-      type: 'trackRecord',
+      type: "trackRecord",
       content: `TRACK RECORD: ${actor.trackRecord.totalPosts} posts, ${accuracy} accuracy`,
     });
   }
@@ -543,7 +539,7 @@ export function formatCharacterInfoWithEntropy(actor: {
   // Relationship context (rich descriptions of relationships)
   if (actor.relationshipContext) {
     sections.push({
-      type: 'relationships',
+      type: "relationships",
       content: `YOUR RELATIONSHIPS:\n${actor.relationshipContext}`,
     });
   }
@@ -551,7 +547,7 @@ export function formatCharacterInfoWithEntropy(actor: {
   // Current market positions (if trading)
   if (actor.currentPositions) {
     sections.push({
-      type: 'positions',
+      type: "positions",
       content: `YOUR CURRENT POSITIONS:\n${actor.currentPositions}`,
     });
   }
@@ -561,18 +557,18 @@ export function formatCharacterInfoWithEntropy(actor: {
     const shuffledExamples = shuffleArray(actor.postExample);
     const examples = shuffledExamples.slice(
       0,
-      Math.min(5, shuffledExamples.length)
+      Math.min(5, shuffledExamples.length),
     );
 
     const lengths = examples.map((ex) => ex.length);
     const avgLength = Math.round(
-      lengths.reduce((sum, len) => sum + len, 0) / lengths.length
+      lengths.reduce((sum, len) => sum + len, 0) / lengths.length,
     );
     const minLength = Math.min(...lengths);
     const maxLength = Math.max(...lengths);
     const hasLowercase = examples.some((ex) => ex === ex.toLowerCase());
     const hasAllCaps = examples.some(
-      (ex) => ex === ex.toUpperCase() && ex.length > 3
+      (ex) => ex === ex.toUpperCase() && ex.length > 3,
     );
 
     let examplesSection = `EXAMPLE POSTS (MATCH THIS STYLE EXACTLY):\n`;
@@ -581,18 +577,18 @@ export function formatCharacterInfoWithEntropy(actor: {
     });
 
     const hints: string[] = [];
-    if (avgLength < 50) hints.push('ultra-short');
-    else if (avgLength < 100) hints.push('short');
-    if (hasLowercase) hints.push('lowercase');
-    if (hasAllCaps) hints.push('ALL CAPS');
+    if (avgLength < 50) hints.push("ultra-short");
+    else if (avgLength < 100) hints.push("short");
+    if (hasLowercase) hints.push("lowercase");
+    if (hasAllCaps) hints.push("ALL CAPS");
 
     if (hints.length > 0) {
-      examplesSection += `VOICE PATTERNS: ${hints.join(', ')}\n`;
+      examplesSection += `VOICE PATTERNS: ${hints.join(", ")}\n`;
     }
     examplesSection += `LENGTH (examples): ~${avgLength} chars (range ${minLength}-${maxLength}). Vary cadence; do not get monotone.`;
 
     sections.push({
-      type: 'examples',
+      type: "examples",
       content: examplesSection,
     });
   }
@@ -602,18 +598,18 @@ export function formatCharacterInfoWithEntropy(actor: {
     const personaParts: string[] = [];
     if (actor.persona.reliability !== undefined) {
       personaParts.push(
-        `Reliability: ${(actor.persona.reliability * 100).toFixed(0)}%`
+        `Reliability: ${(actor.persona.reliability * 100).toFixed(0)}%`,
       );
     }
     if (actor.persona.expertise && actor.persona.expertise.length > 0) {
       personaParts.push(
-        `Expert in: ${shuffleArray(actor.persona.expertise).join(', ')}`
+        `Expert in: ${shuffleArray(actor.persona.expertise).join(", ")}`,
       );
     }
     if (personaParts.length > 0) {
       sections.push({
-        type: 'persona',
-        content: `PERSONA: ${personaParts.join(' | ')}`,
+        type: "persona",
+        content: `PERSONA: ${personaParts.join(" | ")}`,
       });
     }
   }
@@ -621,23 +617,23 @@ export function formatCharacterInfoWithEntropy(actor: {
   // Emotional Context
   if (actor.emotionalContext) {
     sections.push({
-      type: 'emotional',
+      type: "emotional",
       content: `CURRENT MOOD/CONTEXT: ${actor.emotionalContext}`,
     });
   }
 
   // Shuffle sections for entropy (but keep examples near the end for emphasis)
-  const nonExampleSections = sections.filter((s) => s.type !== 'examples');
-  const exampleSections = sections.filter((s) => s.type === 'examples');
+  const nonExampleSections = sections.filter((s) => s.type !== "examples");
+  const exampleSections = sections.filter((s) => s.type === "examples");
   const shuffledNonExamples = shuffleArray(nonExampleSections);
 
   // Build final output with varied formatting
   parts.push(
-    `╔══════════════════════════════════════════════════════════════════╗`
+    `╔══════════════════════════════════════════════════════════════════╗`,
   );
   parts.push(`║ CHARACTER: ${actorName.toUpperCase()}`);
   parts.push(
-    `╚══════════════════════════════════════════════════════════════════╝`
+    `╚══════════════════════════════════════════════════════════════════╝`,
   );
 
   // Add shuffled sections
@@ -650,81 +646,81 @@ export function formatCharacterInfoWithEntropy(actor: {
     parts.push(`\n${section.content}`);
   });
 
-  return parts.join('\n');
+  return parts.join("\n");
 }
 
 /** Phase name constants */
 export type GamePhase =
-  | 'WILD'
-  | 'CONNECTION'
-  | 'CONVERGENCE'
-  | 'CLIMAX'
-  | 'RESOLUTION';
+  | "WILD"
+  | "CONNECTION"
+  | "CONVERGENCE"
+  | "CLIMAX"
+  | "RESOLUTION";
 
 /** Get the current phase based on game day */
 export function getPhaseForDay(day: number): GamePhase {
-  if (day <= 10) return 'WILD';
-  if (day <= 20) return 'CONNECTION';
-  if (day <= 25) return 'CONVERGENCE';
-  if (day <= 29) return 'CLIMAX';
-  return 'RESOLUTION';
+  if (day <= 10) return "WILD";
+  if (day <= 20) return "CONNECTION";
+  if (day <= 25) return "CONVERGENCE";
+  if (day <= 29) return "CLIMAX";
+  return "RESOLUTION";
 }
 
 /** Phase guidance content (shared between all phase context builders) */
 const PHASE_GUIDANCE: Record<GamePhase, { range: string; bullets: string[] }> =
   {
     WILD: {
-      range: 'Days 1-10',
+      range: "Days 1-10",
       bullets: [
-        'Generate mysterious, disconnected events',
-        'Drop vague hints and rumors',
-        'Create speculation and uncertainty',
-        'Events feel random and chaotic',
-        'Minimal concrete information',
-        'Seeds of storylines being planted',
+        "Generate mysterious, disconnected events",
+        "Drop vague hints and rumors",
+        "Create speculation and uncertainty",
+        "Events feel random and chaotic",
+        "Minimal concrete information",
+        "Seeds of storylines being planted",
       ],
     },
     CONNECTION: {
-      range: 'Days 11-20',
+      range: "Days 11-20",
       bullets: [
-        'Begin connecting previous events',
-        'Reveal relationships between actors',
-        'Provide more concrete information',
-        'Story threads start emerging',
-        'Patterns become visible',
-        'Narratives begin to take shape',
+        "Begin connecting previous events",
+        "Reveal relationships between actors",
+        "Provide more concrete information",
+        "Story threads start emerging",
+        "Patterns become visible",
+        "Narratives begin to take shape",
       ],
     },
     CONVERGENCE: {
-      range: 'Days 21-25',
+      range: "Days 21-25",
       bullets: [
-        'Major storyline convergence',
-        'Big revelations about questions',
-        'Clear narrative threads',
-        'Dramatic developments accelerating',
-        'Truth starts emerging',
-        'Stakes are raised significantly',
+        "Major storyline convergence",
+        "Big revelations about questions",
+        "Clear narrative threads",
+        "Dramatic developments accelerating",
+        "Truth starts emerging",
+        "Stakes are raised significantly",
       ],
     },
     CLIMAX: {
-      range: 'Days 26-29',
+      range: "Days 26-29",
       bullets: [
-        'Maximum drama and uncertainty',
-        'Conflicting final clues',
-        'Rapid developments',
-        'High stakes moments',
-        'Resolution seems imminent',
-        'Tension at peak',
+        "Maximum drama and uncertainty",
+        "Conflicting final clues",
+        "Rapid developments",
+        "High stakes moments",
+        "Resolution seems imminent",
+        "Tension at peak",
       ],
     },
     RESOLUTION: {
-      range: 'Day 30',
+      range: "Day 30",
       bullets: [
-        'Definitive outcomes',
-        'All questions resolved',
-        'Epilogue content',
-        'Narrative closure',
-        'The story concludes with clear endings',
+        "Definitive outcomes",
+        "All questions resolved",
+        "Epilogue content",
+        "Narrative closure",
+        "The story concludes with clear endings",
       ],
     },
   };
@@ -735,7 +731,7 @@ const PHASE_GUIDANCE: Record<GamePhase, { range: string; bullets: string[] }> =
 export function buildPhaseContext(day: number): string {
   const phase = getPhaseForDay(day);
   const { range, bullets } = PHASE_GUIDANCE[phase];
-  return `Phase: ${phase} (${range})\n${bullets.map((b) => `- ${b}`).join('\n')}`;
+  return `Phase: ${phase} (${range})\n${bullets.map((b) => `- ${b}`).join("\n")}`;
 }
 
 /**
@@ -743,7 +739,7 @@ export function buildPhaseContext(day: number): string {
  */
 export function getPhaseNarrativeGuidance(phase: GamePhase): string {
   const { range, bullets } = PHASE_GUIDANCE[phase];
-  return `=== CURRENT PHASE: ${phase} (${range}) ===\n${bullets.join('. ')}.`;
+  return `=== CURRENT PHASE: ${phase} (${range}) ===\n${bullets.join(". ")}.`;
 }
 
 /**
@@ -751,16 +747,16 @@ export function getPhaseNarrativeGuidance(phase: GamePhase): string {
  * Handles both string and number IDs
  */
 export function toQuestionIdNumberOrNull(
-  id: string | number | null | undefined
+  id: string | number | null | undefined,
 ): number | null {
   if (id === null || id === undefined) {
     return null;
   }
-  if (typeof id === 'number') {
+  if (typeof id === "number") {
     return id;
   }
   const parsed = parseInt(id, 10);
-  return isNaN(parsed) ? null : parsed;
+  return Number.isNaN(parsed) ? null : parsed;
 }
 
 /**
@@ -769,18 +765,18 @@ export function toQuestionIdNumberOrNull(
  */
 export function generateBehavioralModifier(): string {
   const modifiers = shuffleArray([
-    '💡 THIS POST: Focus on your relationships. Who are you supporting or attacking?',
-    '💡 THIS POST: Let your personality shine through. What makes YOU unique?',
-    '💡 THIS POST: Channel your motivation. What drives you? Show it.',
-    '💡 THIS POST: Consider your allies. Can you co-sign or defend them?',
-    '💡 THIS POST: Consider your rivals. Can you subtweet or dunk on them?',
-    '💡 THIS POST: Be authentic to your voice. Short? Long? ALL CAPS? lowercase?',
+    "💡 THIS POST: Focus on your relationships. Who are you supporting or attacking?",
+    "💡 THIS POST: Let your personality shine through. What makes YOU unique?",
+    "💡 THIS POST: Channel your motivation. What drives you? Show it.",
+    "💡 THIS POST: Consider your allies. Can you co-sign or defend them?",
+    "💡 THIS POST: Consider your rivals. Can you subtweet or dunk on them?",
+    "💡 THIS POST: Be authentic to your voice. Short? Long? ALL CAPS? lowercase?",
     "💡 THIS POST: Show your expertise. What do you know that others don't?",
-    '💡 THIS POST: React emotionally. How does this make you FEEL?',
-    '💡 THIS POST: Think about your bag. How does this affect your interests?',
+    "💡 THIS POST: React emotionally. How does this make you FEEL?",
+    "💡 THIS POST: Think about your bag. How does this affect your interests?",
     "💡 THIS POST: Be provocative. What's the take that gets engagement?",
-    '💡 THIS POST: Connect to a broader narrative. What story is this part of?',
-    '💡 THIS POST: Flex your position. What do you know from your org?',
+    "💡 THIS POST: Connect to a broader narrative. What story is this part of?",
+    "💡 THIS POST: Flex your position. What do you know from your org?",
   ]);
   return modifiers[0]!;
 }
@@ -807,7 +803,7 @@ export function buildCharacterFeedContext(options: {
     priority: 1 + Math.floor(Math.random() * 3),
     content: truncateText(
       options.characterInfo,
-      CONTEXT_LIMITS.MAX_SECTION_LENGTH
+      CONTEXT_LIMITS.MAX_SECTION_LENGTH,
     ),
   });
 
@@ -817,7 +813,7 @@ export function buildCharacterFeedContext(options: {
       priority: 2 + Math.floor(Math.random() * 4),
       content: truncateText(
         options.comprehensiveContext,
-        CONTEXT_LIMITS.MAX_SECTION_LENGTH
+        CONTEXT_LIMITS.MAX_SECTION_LENGTH,
       ),
     });
   }
@@ -828,7 +824,7 @@ export function buildCharacterFeedContext(options: {
       priority: 3 + Math.floor(Math.random() * 8),
       content: truncateText(
         `\n=== TRENDING TOPICS ===\n${options.trendingTopics}`,
-        CONTEXT_LIMITS.MAX_SECTION_LENGTH
+        CONTEXT_LIMITS.MAX_SECTION_LENGTH,
       ),
     });
   }
@@ -838,7 +834,7 @@ export function buildCharacterFeedContext(options: {
       priority: 3 + Math.floor(Math.random() * 8),
       content: truncateText(
         `\n=== TODAY'S EVENTS ===\n${options.currentEvents}`,
-        CONTEXT_LIMITS.MAX_SECTION_LENGTH
+        CONTEXT_LIMITS.MAX_SECTION_LENGTH,
       ),
     });
   }
@@ -848,7 +844,7 @@ export function buildCharacterFeedContext(options: {
       priority: 3 + Math.floor(Math.random() * 8),
       content: truncateText(
         `\n=== ONGOING NARRATIVES ===\n${options.ongoingNarratives}`,
-        CONTEXT_LIMITS.MAX_SECTION_LENGTH
+        CONTEXT_LIMITS.MAX_SECTION_LENGTH,
       ),
     });
   }
@@ -858,7 +854,7 @@ export function buildCharacterFeedContext(options: {
       priority: 3 + Math.floor(Math.random() * 8),
       content: truncateText(
         `\n=== RECENT POSTS FROM OTHERS ===\n${options.recentPosts}`,
-        CONTEXT_LIMITS.MAX_SECTION_LENGTH
+        CONTEXT_LIMITS.MAX_SECTION_LENGTH,
       ),
     });
   }
@@ -879,7 +875,7 @@ export function buildCharacterFeedContext(options: {
     return a.priority - b.priority;
   });
 
-  const fullContext = sortedSections.map((s) => s.content).join('\n');
+  const fullContext = sortedSections.map((s) => s.content).join("\n");
   return truncateText(fullContext, CONTEXT_LIMITS.MAX_TOTAL_CONTEXT_LENGTH);
 }
 
@@ -903,10 +899,10 @@ export function buildCharacterFeedContext(options: {
  * ```
  */
 export function deriveStrategyFromPersonality(
-  personality: string | null | undefined
-): 'aggressive' | 'conservative' | 'balanced' {
+  personality: string | null | undefined,
+): "aggressive" | "conservative" | "balanced" {
   if (!personality) {
-    return 'balanced';
+    return "balanced";
   }
 
   const personalityLower = personality.toLowerCase();
@@ -921,14 +917,14 @@ export function deriveStrategyFromPersonality(
     /\bnon-?conservative\b/.test(personalityLower);
 
   // Apply precedence: aggressive > conservative > balanced
-  if (tokens.includes('aggressive') && !hasNotAggressive) {
-    return 'aggressive';
+  if (tokens.includes("aggressive") && !hasNotAggressive) {
+    return "aggressive";
   }
-  if (tokens.includes('conservative') && !hasNotConservative) {
-    return 'conservative';
+  if (tokens.includes("conservative") && !hasNotConservative) {
+    return "conservative";
   }
 
-  return 'balanced';
+  return "balanced";
 }
 
 /**
@@ -943,7 +939,7 @@ export function deriveStrategyFromPersonality(
 export async function rateLimitedParallel<T>(
   tasks: Array<() => Promise<T>>,
   batchSize = 5,
-  delayMs = 100
+  delayMs = 100,
 ): Promise<Array<T | null>> {
   const results: Array<T | null> = [];
 
@@ -952,7 +948,7 @@ export async function rateLimitedParallel<T>(
     const batchResults = await Promise.allSettled(batch.map((task) => task()));
 
     for (const result of batchResults) {
-      if (result.status === 'fulfilled') {
+      if (result.status === "fulfilled") {
         results.push(result.value);
       } else {
         // Silently handle failures - caller can filter nulls
@@ -988,19 +984,19 @@ export function stripHashtagsAndEmojis(content: string): string {
   let processed = content;
 
   // Strip hashtags (LLMs love to add them despite instructions)
-  processed = processed.replace(/#\w+/g, '');
+  processed = processed.replace(/#\w+/g, "");
 
   // Strip emojis
-  processed = processed.replace(EMOJI_REGEX, '');
+  processed = processed.replace(EMOJI_REGEX, "");
 
   // Normalize paragraph breaks: 3+ newlines → 2 newlines
-  processed = processed.replace(/\n{3,}/g, '\n\n');
+  processed = processed.replace(/\n{3,}/g, "\n\n");
 
   // Normalize horizontal whitespace (spaces/tabs) without affecting newlines
-  processed = processed.replace(/[^\S\n]+/g, ' ');
+  processed = processed.replace(/[^\S\n]+/g, " ");
 
   // Clean up spaces around newlines
-  processed = processed.replace(/ *\n */g, '\n');
+  processed = processed.replace(/ *\n */g, "\n");
 
   // Trim the result
   processed = processed.trim();

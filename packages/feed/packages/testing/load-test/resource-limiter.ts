@@ -5,7 +5,7 @@
  * backs off or stops if memory/CPU gets too high
  */
 
-import { logger } from '@feed/shared';
+import { logger } from "@feed/shared";
 
 export interface ResourceLimits {
   maxMemoryMB: number;
@@ -44,13 +44,13 @@ export class ResourceLimiter {
     }, this.limits.checkIntervalMs);
 
     logger.info(
-      'Resource limiter started',
+      "Resource limiter started",
       {
         maxMemoryMB: this.limits.maxMemoryMB,
         maxMemoryPercent: this.limits.maxMemoryPercent,
         maxConcurrentRequests: this.limits.maxConcurrentRequests,
       },
-      'ResourceLimiter'
+      "ResourceLimiter",
     );
   }
 
@@ -64,7 +64,7 @@ export class ResourceLimiter {
     }
     this.stopped = false;
 
-    logger.info('Resource limiter stopped', undefined, 'ResourceLimiter');
+    logger.info("Resource limiter stopped", undefined, "ResourceLimiter");
   }
 
   /**
@@ -77,12 +77,12 @@ export class ResourceLimiter {
 
     if (this.activeRequests >= this.limits.maxConcurrentRequests) {
       logger.warn(
-        'Max concurrent requests reached',
+        "Max concurrent requests reached",
         {
           active: this.activeRequests,
           max: this.limits.maxConcurrentRequests,
         },
-        'ResourceLimiter'
+        "ResourceLimiter",
       );
       return false;
     }
@@ -136,39 +136,39 @@ export class ResourceLimiter {
     // Check memory usage
     if (usage.memoryMB > this.limits.maxMemoryMB) {
       logger.error(
-        'Memory limit exceeded - stopping test',
+        "Memory limit exceeded - stopping test",
         {
           currentMB: usage.memoryMB,
           limitMB: this.limits.maxMemoryMB,
         },
-        'ResourceLimiter'
+        "ResourceLimiter",
       );
-      this.emergencyStop('Memory limit exceeded');
+      this.emergencyStop("Memory limit exceeded");
       return;
     }
 
     if (usage.memoryPercent > this.limits.maxMemoryPercent) {
       logger.error(
-        'Memory percentage limit exceeded - stopping test',
+        "Memory percentage limit exceeded - stopping test",
         {
           currentPercent: usage.memoryPercent,
           limitPercent: this.limits.maxMemoryPercent,
         },
-        'ResourceLimiter'
+        "ResourceLimiter",
       );
-      this.emergencyStop('Memory percentage limit exceeded');
+      this.emergencyStop("Memory percentage limit exceeded");
       return;
     }
 
     // Warn if approaching limits
     if (usage.memoryPercent > this.limits.maxMemoryPercent * 0.9) {
       logger.warn(
-        'Approaching memory limit',
+        "Approaching memory limit",
         {
           currentPercent: usage.memoryPercent,
           limitPercent: this.limits.maxMemoryPercent,
         },
-        'ResourceLimiter'
+        "ResourceLimiter",
       );
     }
   }
@@ -182,12 +182,12 @@ export class ResourceLimiter {
     this.stopped = true;
 
     logger.error(
-      'EMERGENCY STOP - Test halted to prevent system crash',
+      "EMERGENCY STOP - Test halted to prevent system crash",
       {
         reason,
         usage: this.getUsage(),
       },
-      'ResourceLimiter'
+      "ResourceLimiter",
     );
 
     if (this.onStopCallback) {

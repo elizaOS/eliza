@@ -22,20 +22,20 @@
  * @see {@link https://github.com/a2a-js/sdk | A2A SDK Documentation}
  */
 
-export { feedAgentCard } from './feed-agent-card';
-export { FeedAgentExecutor } from './executors/feed-executor';
-export type { ListTasksParams, ListTasksResult } from './extended-task-store';
-export { ExtendedTaskStore } from './extended-task-store';
-export * from './handlers/escrow-handlers';
-export * from './payments';
+export { FeedAgentExecutor } from "./executors/feed-executor";
+export type { ListTasksParams, ListTasksResult } from "./extended-task-store";
+export { ExtendedTaskStore } from "./extended-task-store";
+export { feedAgentCard } from "./feed-agent-card";
+export * from "./handlers/escrow-handlers";
+export * from "./payments";
 export {
   PersistentTaskStore,
   type TaskStatusUpdate,
-} from './persistent-task-store';
+} from "./persistent-task-store";
 export {
   generateAgentCard,
   generateAgentCardSync,
-} from './sdk/agent-card-generator';
-export * from './types';
-export * from './utils';
-export * from './validation';
+} from "./sdk/agent-card-generator";
+export * from "./types";
+export * from "./utils";
+export * from "./validation";

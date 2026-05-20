@@ -85,7 +85,7 @@ import {
   validateDateRange,
   validateEnum,
   withErrorHandling,
-} from '@feed/api';
+} from "@feed/api";
 import {
   and,
   db,
@@ -94,12 +94,12 @@ import {
   lte,
   type SystemMetricsSnapshot,
   systemMetricsSnapshots,
-} from '@feed/db';
-import { logger, toISO } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/db";
+import { logger, toISO } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
-const VALID_GRANULARITIES = ['hourly', 'daily'] as const;
-const VALID_ENVIRONMENTS = ['production', 'staging', 'development'] as const;
+const VALID_GRANULARITIES = ["hourly", "daily"] as const;
+const VALID_ENVIRONMENTS = ["production", "staging", "development"] as const;
 
 type Granularity = (typeof VALID_GRANULARITIES)[number];
 
@@ -193,11 +193,11 @@ interface TimeSeriesSummary {
 }
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
-  const admin = await requirePermission(request, 'view_stats');
+  const admin = await requirePermission(request, "view_stats");
 
   const rateLimitResult = applyRateLimit(
     admin.userId,
-    RATE_LIMIT_CONFIGS.ADMIN_STATS
+    RATE_LIMIT_CONFIGS.ADMIN_STATS,
   );
   if (!rateLimitResult.allowed) {
     return rateLimitError(rateLimitResult.retryAfter);
@@ -207,36 +207,36 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
   // Parse parameters
   const startDate =
-    parseDateParam(searchParams.get('startDate')) ??
+    parseDateParam(searchParams.get("startDate")) ??
     new Date(Date.now() - 7 * 24 * 60 * 60 * 1000); // Default: 7 days ago
-  const endDate = parseDateParam(searchParams.get('endDate')) ?? new Date();
+  const endDate = parseDateParam(searchParams.get("endDate")) ?? new Date();
   const environment = validateEnum(
-    searchParams.get('environment'),
+    searchParams.get("environment"),
     VALID_ENVIRONMENTS,
-    getDeploymentEnvironment()
+    getDeploymentEnvironment(),
   );
 
   // Auto-select granularity based on date range
   const daysDiff = Math.ceil(
-    (endDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000)
+    (endDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000),
   );
-  const defaultGranularity: Granularity = daysDiff <= 3 ? 'hourly' : 'daily';
+  const defaultGranularity: Granularity = daysDiff <= 3 ? "hourly" : "daily";
   const granularity = validateEnum(
-    searchParams.get('granularity'),
+    searchParams.get("granularity"),
     VALID_GRANULARITIES,
-    defaultGranularity
+    defaultGranularity,
   );
 
   // Validate date range
   const dateRangeError = validateDateRange(startDate, endDate);
   if (dateRangeError) {
-    return errorResponse(dateRangeError, 'INVALID_DATE_RANGE', 400, {
+    return errorResponse(dateRangeError, "INVALID_DATE_RANGE", 400, {
       maxDays: MAX_DATE_RANGE_DAYS,
     });
   }
 
   logger.info(
-    'Time-series stats requested',
+    "Time-series stats requested",
     {
       startDate: toISO(startDate),
       endDate: toISO(endDate),
@@ -244,7 +244,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       granularity,
       daysDiff,
     },
-    'GET /api/admin/stats/timeseries'
+    "GET /api/admin/stats/timeseries",
   );
 
   // Query snapshots
@@ -255,8 +255,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       and(
         eq(systemMetricsSnapshots.environment, environment),
         gte(systemMetricsSnapshots.timestamp, startDate),
-        lte(systemMetricsSnapshots.timestamp, endDate)
-      )
+        lte(systemMetricsSnapshots.timestamp, endDate),
+      ),
     )
     .orderBy(systemMetricsSnapshots.timestamp);
 
@@ -265,9 +265,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   // For hourly: calculate actual hours in range (not daysDiff * 24, which overestimates sub-day ranges)
   const hoursDiff = Math.max(
     1,
-    Math.ceil((endDate.getTime() - startDate.getTime()) / (60 * 60 * 1000))
+    Math.ceil((endDate.getTime() - startDate.getTime()) / (60 * 60 * 1000)),
   );
-  const expectedSnapshots = granularity === 'hourly' ? hoursDiff : daysDiff;
+  const expectedSnapshots = granularity === "hourly" ? hoursDiff : daysDiff;
 
   // Handle edge cases: division by zero, exceeding 100%
   let coverage: number;
@@ -284,7 +284,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
   // Format or aggregate data based on granularity
   let timeSeriesData: FormattedSnapshot[] | DailyAggregatedSnapshot[];
-  if (granularity === 'daily' && snapshots.length > 0) {
+  if (granularity === "daily" && snapshots.length > 0) {
     timeSeriesData = aggregateToDaily(snapshots);
   } else {
     timeSeriesData = snapshots.map(formatSnapshot);
@@ -346,16 +346,16 @@ function formatSnapshot(snapshot: SystemMetricsSnapshot): FormattedSnapshot {
 }
 
 function aggregateToDaily(
-  snapshots: SystemMetricsSnapshot[]
+  snapshots: SystemMetricsSnapshot[],
 ): DailyAggregatedSnapshot[] {
   const dailyMap = new Map<string, SystemMetricsSnapshot[]>();
 
   for (const snapshot of snapshots) {
-    const dateKey = toISO(snapshot.timestamp).split('T')[0]!;
+    const dateKey = toISO(snapshot.timestamp).split("T")[0]!;
     if (!dailyMap.has(dateKey)) {
       dailyMap.set(dateKey, []);
     }
-    dailyMap.get(dateKey)!.push(snapshot);
+    dailyMap.get(dateKey)?.push(snapshot);
   }
 
   return Array.from(dailyMap.entries()).map(([date, daySnapshots]) => {
@@ -369,28 +369,28 @@ function aggregateToDaily(
     // Sum incremental metrics
     const totalVolume = daySnapshots.reduce(
       (sum, s) => sum + Number(s.tradingVolume),
-      0
+      0,
     );
     const totalPerpVolume = daySnapshots.reduce(
       (sum, s) => sum + Number(s.perpVolume),
-      0
+      0,
     );
     const totalPosts = daySnapshots.reduce((sum, s) => sum + s.postsCreated, 0);
     const totalComments = daySnapshots.reduce(
       (sum, s) => sum + s.commentsCreated,
-      0
+      0,
     );
     const totalReactions = daySnapshots.reduce(
       (sum, s) => sum + s.reactionsCreated,
-      0
+      0,
     );
     const totalNewSignups = daySnapshots.reduce(
       (sum, s) => sum + s.newSignups,
-      0
+      0,
     );
     const totalFees = daySnapshots.reduce(
       (sum, s) => sum + Number(s.feesCollectedHourly),
-      0
+      0,
     );
 
     // Average system proxy metrics
@@ -441,7 +441,7 @@ function aggregateToDaily(
 }
 
 function calculateSummary(
-  snapshots: SystemMetricsSnapshot[]
+  snapshots: SystemMetricsSnapshot[],
 ): TimeSeriesSummary | null {
   if (snapshots.length === 0) {
     return null;
@@ -452,7 +452,7 @@ function calculateSummary(
 
   const totalVolume = snapshots.reduce(
     (sum, s) => sum + Number(s.tradingVolume),
-    0
+    0,
   );
   const totalPosts = snapshots.reduce((sum, s) => sum + s.postsCreated, 0);
   const totalNewUsers = snapshots.reduce((sum, s) => sum + s.newSignups, 0);
@@ -467,8 +467,8 @@ function calculateSummary(
   const actualHoursSpan = Math.max(
     1,
     Math.ceil(
-      (last.timestamp.getTime() - first.timestamp.getTime()) / (60 * 60 * 1000)
-    )
+      (last.timestamp.getTime() - first.timestamp.getTime()) / (60 * 60 * 1000),
+    ),
   );
   const daysInRange = Math.max(1, actualHoursSpan / 24);
 
@@ -484,7 +484,7 @@ function calculateSummary(
       growthRate:
         first.totalUsers > 0
           ? Math.round(
-              ((last.totalUsers - first.totalUsers) / first.totalUsers) * 10000
+              ((last.totalUsers - first.totalUsers) / first.totalUsers) * 10000,
             ) / 100
           : 0,
       newUsers: totalNewUsers,

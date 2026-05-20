@@ -7,7 +7,7 @@
  * Run with: bun test packages/testing/unit/prediction-markets-store.test.ts --preload ./packages/testing/unit/preload.ts
  */
 
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
 type MockFetchResponse = {
   ok: boolean;
@@ -39,16 +39,16 @@ const mockFetch = mock<MockFetch>(() =>
       ok: true,
       status: 200,
       body: {
-        questions: [{ id: 'market-1', question: 'Will ETH go up?' }],
+        questions: [{ id: "market-1", question: "Will ETH go up?" }],
       },
-    })
-  )
+    }),
+  ),
 );
 
 // @ts-expect-error - mock global fetch
 globalThis.fetch = mockFetch;
 
-const actualReact = await import('react');
+const actualReact = await import("react");
 const reactMock = {
   ...actualReact,
   useCallback: (fn: Function) => fn,
@@ -56,17 +56,17 @@ const reactMock = {
   useMemo: (factory: Function) => factory(),
   useRef: (value: unknown) => ({ current: value }),
 };
-mock.module('react', () => ({
+mock.module("react", () => ({
   ...reactMock,
   default: actualReact.default ?? reactMock,
 }));
 
-mock.module('zustand/react/shallow', () => ({
+mock.module("zustand/react/shallow", () => ({
   useShallow: (fn: Function) => fn,
 }));
 
 const { usePredictionMarketsStore } = await import(
-  '@/stores/predictionMarketsStore'
+  "@/stores/predictionMarketsStore"
 );
 
 function resetStore() {
@@ -95,10 +95,10 @@ beforeEach(() => {
         ok: true,
         status: 200,
         body: {
-          questions: [{ id: 'market-1', question: 'Will ETH go up?' }],
+          questions: [{ id: "market-1", question: "Will ETH go up?" }],
         },
-      })
-    )
+      }),
+    ),
   );
 });
 
@@ -106,30 +106,30 @@ afterEach(() => {
   resetStore();
 });
 
-describe('Prediction Markets Store', () => {
-  test('stores fetch failures in state instead of rejecting', async () => {
+describe("Prediction Markets Store", () => {
+  test("stores fetch failures in state instead of rejecting", async () => {
     mockFetch.mockImplementation(() =>
       Promise.resolve(
         createResponse({
           ok: false,
           status: 503,
           body: {},
-        })
-      )
+        }),
+      ),
     );
 
     await expect(
-      usePredictionMarketsStore.getState().fetchMarkets()
+      usePredictionMarketsStore.getState().fetchMarkets(),
     ).resolves.toBeUndefined();
 
     const state = usePredictionMarketsStore.getState();
-    expect(state.error).toBe('Failed to fetch prediction markets: 503');
+    expect(state.error).toBe("Failed to fetch prediction markets: 503");
     expect(state.loading).toBe(false);
     expect(state.fetchPromise).toBeNull();
     expect(state.markets).toEqual([]);
   });
 
-  test('clears failed fetchPromise so a later retry can succeed', async () => {
+  test("clears failed fetchPromise so a later retry can succeed", async () => {
     mockFetch
       .mockImplementationOnce(() =>
         Promise.resolve(
@@ -137,8 +137,8 @@ describe('Prediction Markets Store', () => {
             ok: false,
             status: 429,
             body: {},
-          })
-        )
+          }),
+        ),
       )
       .mockImplementationOnce(() =>
         Promise.resolve(
@@ -146,10 +146,10 @@ describe('Prediction Markets Store', () => {
             ok: true,
             status: 200,
             body: {
-              questions: [{ id: 'market-2', question: 'Will BTC rally?' }],
+              questions: [{ id: "market-2", question: "Will BTC rally?" }],
             },
-          })
-        )
+          }),
+        ),
       );
 
     await usePredictionMarketsStore.getState().fetchMarkets();
@@ -162,8 +162,8 @@ describe('Prediction Markets Store', () => {
     // Store assigns API `questions` verbatim; runtime rows may omit PredictionMarket-only fields.
     expect(state.markets).toHaveLength(1);
     expect(state.markets[0]).toMatchObject({
-      id: 'market-2',
-      question: 'Will BTC rally?',
+      id: "market-2",
+      question: "Will BTC rally?",
     });
   });
 });

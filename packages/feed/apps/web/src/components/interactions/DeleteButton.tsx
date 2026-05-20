@@ -1,10 +1,10 @@
-'use client';
+"use client";
 
-import { cn, logger } from '@feed/shared';
-import { Trash2 } from 'lucide-react';
-import { useState } from 'react';
-import { useAuth } from '@/hooks/useAuth';
-import { apiUrl } from '@/utils/api-url';
+import { cn, logger } from "@feed/shared";
+import { Trash2 } from "lucide-react";
+import { useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
+import { apiUrl } from "@/utils/api-url";
 
 /**
  * Delete button component for post deletion.
@@ -28,15 +28,15 @@ import { apiUrl } from '@/utils/api-url';
 interface DeleteButtonProps {
   postId: string;
   postAuthorId: string;
-  size?: 'sm' | 'md' | 'lg';
+  size?: "sm" | "md" | "lg";
   className?: string;
   onDeleted?: () => void;
 }
 
 const sizeClasses = {
-  sm: 'text-xs gap-1',
-  md: 'h-10 px-3 text-sm gap-1.5',
-  lg: 'h-12 px-4 text-base gap-2',
+  sm: "text-xs gap-1",
+  md: "h-10 px-3 text-sm gap-1.5",
+  lg: "h-12 px-4 text-base gap-2",
 };
 
 const iconSizes = {
@@ -48,7 +48,7 @@ const iconSizes = {
 export function DeleteButton({
   postId,
   postAuthorId,
-  size = 'md',
+  size = "md",
   className,
   onDeleted,
 }: DeleteButtonProps) {
@@ -64,9 +64,9 @@ export function DeleteButton({
   const handleDelete = async () => {
     setIsDeleting(true);
     const response = await fetch(apiUrl(`/api/posts/${postId}`), {
-      method: 'DELETE',
+      method: "DELETE",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
     });
 
@@ -75,13 +75,13 @@ export function DeleteButton({
     if (!response.ok) {
       setIsDeleting(false);
       setShowConfirmation(false);
-      throw new Error(data.error || 'Failed to delete post');
+      throw new Error(data.error || "Failed to delete post");
     }
 
     logger.info(
-      'Post deleted successfully',
+      "Post deleted successfully",
       { postId, userId: user.id },
-      'DeleteButton'
+      "DeleteButton",
     );
 
     // Call callback if provided
@@ -104,10 +104,10 @@ export function DeleteButton({
         onClick={handleClick}
         disabled={isDeleting}
         className={cn(
-          'flex items-center bg-transparent transition-all duration-200 hover:text-red-500',
+          "flex items-center bg-transparent transition-all duration-200 hover:text-red-500",
           sizeClasses[size],
-          isDeleting && 'cursor-not-allowed opacity-50',
-          className
+          isDeleting && "cursor-not-allowed opacity-50",
+          className,
         )}
         title="Delete post"
       >
@@ -142,7 +142,7 @@ export function DeleteButton({
                 disabled={isDeleting}
                 className="rounded-lg bg-red-500 px-4 py-2 text-primary-foreground transition-colors hover:bg-red-600 disabled:opacity-50"
               >
-                {isDeleting ? 'Deleting...' : 'Delete'}
+                {isDeleting ? "Deleting..." : "Delete"}
               </button>
             </div>
           </div>

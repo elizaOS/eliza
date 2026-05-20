@@ -4,8 +4,8 @@
  * Creates test user and generates auth tokens for load testing
  */
 
-import { db, inArray, users } from '@feed/db';
-import { generateSnowflakeId } from '@feed/shared';
+import { db, inArray, users } from "@feed/db";
+import { generateSnowflakeId } from "@feed/shared";
 
 export interface TestUser {
   userId: string;
@@ -25,8 +25,8 @@ export async function createTestUser(username: string): Promise<TestUser> {
     id: userId,
     username,
     displayName: `Load Test User ${username}`,
-    bio: 'Automated load test user',
-    virtualBalance: '10000',
+    bio: "Automated load test user",
+    virtualBalance: "10000",
     reputationPoints: 1000,
     updatedAt: new Date(),
     profileComplete: true,

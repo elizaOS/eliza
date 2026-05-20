@@ -10,18 +10,18 @@
  * deprecated in favor of using isActive flag for soft deletes.
  */
 
-import postgres from 'postgres';
+import postgres from "postgres";
 
 async function main() {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
-    console.error('DATABASE_URL is required');
+    console.error("DATABASE_URL is required");
     process.exit(1);
   }
 
   const sql = postgres(databaseUrl);
 
-  console.log('Checking post-push indexes...\n');
+  console.log("Checking post-push indexes...\n");
 
   // GroupMember: Drop old partial index if it exists (replaced by full unique constraint)
   // The full unique constraint is now managed in schema + migration 0018
@@ -29,11 +29,11 @@ async function main() {
     DROP INDEX IF EXISTS "GroupMember_groupId_userId_active_key"
   `;
   console.log(
-    '✓ Dropped old GroupMember_groupId_userId_active_key partial index (replaced by full unique constraint)'
+    "✓ Dropped old GroupMember_groupId_userId_active_key partial index (replaced by full unique constraint)",
   );
 
   await sql.end();
-  console.log('\n✓ Post-push indexes complete!');
+  console.log("\n✓ Post-push indexes complete!");
 }
 
 main().catch(console.error);

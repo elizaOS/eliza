@@ -1,9 +1,9 @@
-import { definePrompt } from '../define-prompt';
+import { definePrompt } from "../define-prompt";
 import {
   ANTI_REPETITION_RULES,
   characterVoiceGuidance,
   PARODY_NAME_RULES,
-} from '../shared-sections';
+} from "../shared-sections";
 
 /**
  * Prompt for generating brief conversations between NPCs about game events.
@@ -16,10 +16,10 @@ import {
  * Returns XML with NPC conversation.
  */
 export const npcConversation = definePrompt({
-  id: 'npc-conversation',
-  version: '4.0.0',
-  category: 'world',
-  description: 'Generates NPC conversations with full character context',
+  id: "npc-conversation",
+  version: "4.0.0",
+  category: "world",
+  description: "Generates NPC conversations with full character context",
   temperature: 0.8,
   maxTokens: 1500,
   template: `{{realityGrounding}}
@@ -51,7 +51,7 @@ Recent events sparking this conversation:
 
 ${PARODY_NAME_RULES}
 
-${characterVoiceGuidance('participantProfiles')}
+${characterVoiceGuidance("participantProfiles")}
 
 === CONVERSATION REQUIREMENTS ===
 Generate a natural conversation (2-4 exchanges) where:

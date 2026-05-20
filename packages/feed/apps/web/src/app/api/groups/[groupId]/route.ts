@@ -17,11 +17,11 @@ import {
   authenticate,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { asUser } from '@feed/db';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { z } from 'zod';
+} from "@feed/api";
+import { asUser } from "@feed/db";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { z } from "zod";
 
 const UpdateGroupSchema = z.object({
   name: z.string().min(1).max(100).optional(),
@@ -35,7 +35,7 @@ const UpdateGroupSchema = z.object({
 export const GET = withErrorHandling(
   async (
     request: NextRequest,
-    { params }: { params: Promise<{ groupId: string }> }
+    { params }: { params: Promise<{ groupId: string }> },
   ) => {
     const user = await authenticate(request);
     const { groupId } = await params;
@@ -47,7 +47,7 @@ export const GET = withErrorHandling(
       });
 
       if (!group) {
-        throw new ApiError('Group not found', 404);
+        throw new ApiError("Group not found", 404);
       }
 
       // Fetch members
@@ -58,7 +58,7 @@ export const GET = withErrorHandling(
       // Check if user is a member
       const userMembership = members.find((m) => m.userId === user.userId);
       if (!userMembership) {
-        throw new ApiError('You are not a member of this group', 403);
+        throw new ApiError("You are not a member of this group", 403);
       }
 
       // Fetch member user details
@@ -88,35 +88,35 @@ export const GET = withErrorHandling(
         members: memberUsers.map((u) => {
           const membership = members.find((m) => m.userId === u.id);
           // Determine member type: NPC (isActor), Agent (isAgent), or User
-          const memberType = u.isActor ? 'npc' : u.isAgent ? 'agent' : 'user';
+          const memberType = u.isActor ? "npc" : u.isAgent ? "agent" : "user";
           return {
             id: u.id,
             displayName: u.displayName,
             username: u.username,
             profileImageUrl: u.profileImageUrl,
             memberType,
-            role: membership?.role ?? 'member',
+            role: membership?.role ?? "member",
             isAdmin:
-              membership?.role === 'admin' || membership?.role === 'owner',
-            isOwner: membership?.role === 'owner',
+              membership?.role === "admin" || membership?.role === "owner",
+            isOwner: membership?.role === "owner",
             joinedAt: membership?.joinedAt || new Date(),
           };
         }),
         userRole: userMembership.role,
         isAdmin:
-          userMembership.role === 'admin' || userMembership.role === 'owner',
-        isOwner: userMembership.role === 'owner',
+          userMembership.role === "admin" || userMembership.role === "owner",
+        isOwner: userMembership.role === "owner",
       };
     });
 
     logger.info(
-      'Group details retrieved',
+      "Group details retrieved",
       { userId: user.userId, groupId },
-      'GET /api/groups/:groupId'
+      "GET /api/groups/:groupId",
     );
 
     return successResponse({ group: groupDetails });
-  }
+  },
 );
 
 /**
@@ -126,7 +126,7 @@ export const GET = withErrorHandling(
 export const PATCH = withErrorHandling(
   async (
     request: NextRequest,
-    { params }: { params: Promise<{ groupId: string }> }
+    { params }: { params: Promise<{ groupId: string }> },
   ) => {
     const user = await authenticate(request);
     const { groupId } = await params;
@@ -143,8 +143,8 @@ export const PATCH = withErrorHandling(
         },
       });
 
-      if (!membership || !['admin', 'owner'].includes(membership.role)) {
-        throw new ApiError('Only group admins can update group details', 403);
+      if (!membership || !["admin", "owner"].includes(membership.role)) {
+        throw new ApiError("Only group admins can update group details", 403);
       }
 
       // Update group
@@ -171,13 +171,13 @@ export const PATCH = withErrorHandling(
     });
 
     logger.info(
-      'Group updated',
+      "Group updated",
       { userId: user.userId, groupId },
-      'PATCH /api/groups/:groupId'
+      "PATCH /api/groups/:groupId",
     );
 
     return successResponse({ group: updatedGroup });
-  }
+  },
 );
 
 /**
@@ -187,7 +187,7 @@ export const PATCH = withErrorHandling(
 export const DELETE = withErrorHandling(
   async (
     request: NextRequest,
-    { params }: { params: Promise<{ groupId: string }> }
+    { params }: { params: Promise<{ groupId: string }> },
   ) => {
     const user = await authenticate(request);
     const { groupId } = await params;
@@ -202,8 +202,8 @@ export const DELETE = withErrorHandling(
         },
       });
 
-      if (!membership || membership.role !== 'owner') {
-        throw new ApiError('Only the group owner can delete the group', 403);
+      if (!membership || membership.role !== "owner") {
+        throw new ApiError("Only the group owner can delete the group", 403);
       }
 
       // Find the chat for this group (Chat.groupId → Group.id)
@@ -249,11 +249,11 @@ export const DELETE = withErrorHandling(
     });
 
     logger.info(
-      'Group deleted',
+      "Group deleted",
       { userId: user.userId, groupId },
-      'DELETE /api/groups/:groupId'
+      "DELETE /api/groups/:groupId",
     );
 
     return successResponse({ success: true });
-  }
+  },
 );

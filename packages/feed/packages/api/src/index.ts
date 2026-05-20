@@ -6,7 +6,7 @@
  */
 
 // Re-export auth types from shared
-export type { AuthenticatedUser } from '@feed/shared';
+export type { AuthenticatedUser } from "@feed/shared";
 // Logger
 export {
   extractErrorMessage,
@@ -14,7 +14,7 @@ export {
   Logger,
   type LogLevel,
   logger,
-} from '@feed/shared';
+} from "@feed/shared";
 // Admin Audit Logging
 export {
   type AdminAuditContext,
@@ -22,7 +22,7 @@ export {
   logAdminDelete,
   logAdminModify,
   logAdminView,
-} from './admin-audit';
+} from "./admin-audit";
 // Admin Middleware
 export {
   type AuthenticatedAdminUser,
@@ -32,7 +32,7 @@ export {
   requireAdmin,
   requirePermission,
   requireSuperAdmin,
-} from './admin-middleware';
+} from "./admin-middleware";
 // Agent Authentication
 export {
   type AgentSession,
@@ -43,12 +43,12 @@ export {
   setSessionStore,
   verifyAgentCredentials,
   verifyAgentSession,
-} from './agent-auth';
+} from "./agent-auth";
 // Agent avatar idempotency (fal pipeline)
 export {
   executeAgentAvatarOnce,
   getCachedAgentAvatarUrl,
-} from './agents/agent-avatar-idempotency';
+} from "./agents/agent-avatar-idempotency";
 // Auth Middleware
 export {
   type AuthenticationError,
@@ -60,7 +60,7 @@ export {
   isAuthenticationError,
   optionalAuth,
   optionalAuthFromHeaders,
-} from './auth-middleware';
+} from "./auth-middleware";
 // Cache
 export {
   CACHE_KEYS,
@@ -81,7 +81,7 @@ export {
   narrativeEnrichmentKey,
   setCache,
   warmCache,
-} from './cache';
+} from "./cache";
 // Cron Authentication
 export {
   type CronHandler,
@@ -89,7 +89,7 @@ export {
   requireCronAuth,
   verifyCronAuth,
   withCronAuth,
-} from './cron-auth';
+} from "./cron-auth";
 // Development credentials (for local testing)
 export {
   type DevCredentials,
@@ -99,13 +99,13 @@ export {
   isValidCronSecret,
   isValidDevAdminToken,
   logDevCredentials,
-} from './dev-credentials';
+} from "./dev-credentials";
 // Env helpers (server-only)
 export {
   getNotificationEmailFromEnv,
   getPrivyAppIdFromEnv,
   getTrimmedEnv,
-} from './env';
+} from "./env";
 // Error Handler (Next.js specific)
 export {
   asyncHandler,
@@ -116,16 +116,16 @@ export {
   setDefaultErrorCapture,
   successResponse,
   withErrorHandling,
-} from './error-handler';
+} from "./error-handler";
 // Errors
 export {
   ApiError,
   AuthenticationError as AuthError,
   AuthorizationError,
-  FeedError,
   BadRequestError,
   BusinessLogicError,
   ConflictError,
+  FeedError,
   ForbiddenError,
   InternalServerError,
   isAuthenticationError as isAuthError,
@@ -135,7 +135,7 @@ export {
   ServiceUnavailableError,
   UnauthorizedError,
   ValidationError,
-} from './errors';
+} from "./errors";
 // Fetch utilities
 export {
   type ApiFetchOptions,
@@ -143,7 +143,7 @@ export {
   getAccessToken,
   /** @deprecated Use `getAccessToken` instead. */
   getPrivyAccessToken,
-} from './fetch';
+} from "./fetch";
 // Linear Integration
 export {
   type CreateIssueInput,
@@ -156,13 +156,13 @@ export {
   type LinearFeedbackData,
   type LinearIssue,
   syncFeedbackToLinear,
-} from './linear';
+} from "./linear";
 // Monitoring
-export { cronMetrics, recordCronExecution } from './monitoring/cron-metrics';
-export * from './monitoring/monitored-cache';
-export * from './monitoring/monitored-storage';
+export { cronMetrics, recordCronExecution } from "./monitoring/cron-metrics";
+export * from "./monitoring/monitored-cache";
+export * from "./monitoring/monitored-storage";
 // Performance monitoring (moved from @feed/shared)
-export { performanceMonitor } from './monitoring/performance-monitor';
+export { performanceMonitor } from "./monitoring/performance-monitor";
 // Profile utilities
 export {
   type BackendSignedUpdateParams,
@@ -174,7 +174,7 @@ export {
   type ProfileMetadata,
   updateProfileBackendSigned,
   verifyBackendSignedUpdate,
-} from './profile';
+} from "./profile";
 // Query Parameter Utilities
 export {
   createEnumValidator,
@@ -182,7 +182,7 @@ export {
   parseDateParam,
   validateDateRange,
   validateEnum,
-} from './query-params';
+} from "./query-params";
 // Rate Limiting
 export {
   addPublicReadHeaders,
@@ -208,7 +208,7 @@ export {
   RATE_LIMIT_CONFIGS,
   rateLimitError,
   resetRateLimit,
-} from './rate-limiting';
+} from "./rate-limiting";
 // Realtime
 export {
   generateConnectionId,
@@ -220,9 +220,9 @@ export {
   signRealtimeToken,
   toStreamKey,
   verifyRealtimeToken,
-} from './realtime';
-export { connections } from './realtime/connection-registry';
-export { drainOutboxBatch, enqueueOutbox } from './realtime/outbox';
+} from "./realtime";
+export { connections } from "./realtime/connection-registry";
+export { drainOutboxBatch, enqueueOutbox } from "./realtime/outbox";
 // Redis
 export {
   closeRedis,
@@ -237,24 +237,24 @@ export {
   safePublish,
   streamAdd,
   streamRead,
-} from './redis';
+} from "./redis";
 // Services
-export * from './services';
+export * from "./services";
 export {
   type AuthedPrivyUserContext,
   getAuthedUserContextFromPrivyToken,
   getAuthedUserContextFromPrivyTokenBundle,
-} from './services/privy/authed-user';
+} from "./services/privy/authed-user";
 export {
   extractPrivyApiDiagnostics,
   type PrivyApiDiagnostics,
   redactJwtLikeTokens,
-} from './services/privy/error-diagnostics';
+} from "./services/privy/error-diagnostics";
 // Privy (embedded wallet server-side helpers - kept for NFT mint service)
 export {
   type PrivyUserWalletsLite,
   pickEmbeddedEvmWallet,
-} from './services/privy/user-wallets';
+} from "./services/privy/user-wallets";
 // SSE Event Broadcasting
 export {
   type AgentActivityEvent,
@@ -269,17 +269,17 @@ export {
   type MessageActivityData,
   type PostActivityData,
   type TradeActivityData,
-} from './sse/event-broadcaster';
+} from "./sse/event-broadcaster";
 // Storage utilities (moved from @feed/shared)
 export {
   getStorageClient,
   type UploadOptions,
   type UploadResult,
-} from './storage/s3-client';
+} from "./storage/s3-client";
 // Swagger
-export * from './swagger';
+export * from "./swagger";
 // Types
-export type { ErrorLike, JsonValue, StringRecord } from './types';
+export type { ErrorLike, JsonValue, StringRecord } from "./types";
 // User management utilities
 export {
   type CanonicalUser,
@@ -293,7 +293,7 @@ export {
   requireTargetByIdentifier,
   requireUserByIdentifier,
   type TargetLookupResult,
-} from './users';
+} from "./users";
 // Server-side utilities (require Node.js crypto)
 export {
   budgetTokens,
@@ -327,9 +327,9 @@ export {
   truncateToTokenLimitSync,
   validateUserApiKey,
   verifyApiKey,
-} from './utils';
+} from "./utils";
 // Wallet auth utilities
 export {
   requireFreshToken,
   type TokenFreshnessResult,
-} from './wallet-auth';
+} from "./wallet-auth";

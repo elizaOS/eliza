@@ -2,7 +2,7 @@ export function sanitizeForJson<T>(value: T): T {
   const seen = new WeakSet<object>();
 
   const visit = (input: unknown): unknown => {
-    if (typeof input === 'bigint') {
+    if (typeof input === "bigint") {
       return input.toString();
     }
 
@@ -14,14 +14,14 @@ export function sanitizeForJson<T>(value: T): T {
       return input.map((item) => visit(item));
     }
 
-    if (input && typeof input === 'object') {
+    if (input && typeof input === "object") {
       if (seen.has(input)) {
         return null;
       }
       seen.add(input);
 
       return Object.fromEntries(
-        Object.entries(input).map(([key, nested]) => [key, visit(nested)])
+        Object.entries(input).map(([key, nested]) => [key, visit(nested)]),
       );
     }
 

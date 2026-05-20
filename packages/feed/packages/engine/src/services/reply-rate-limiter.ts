@@ -4,8 +4,8 @@
  * Enforces exactly 1 reply per hour per NPC for each player.
  */
 
-import { and, db, desc, eq, userInteractions } from '@feed/db';
-import { generateSnowflakeId } from '@feed/shared';
+import { and, db, desc, eq, userInteractions } from "@feed/db";
+import { generateSnowflakeId } from "@feed/shared";
 
 export interface RateLimitResult {
   allowed: boolean;
@@ -24,7 +24,7 @@ export class ReplyRateLimiter {
 
   static getExpectedNextReplyTime(lastReplyTime: Date): Date {
     return new Date(
-      lastReplyTime.getTime() + ReplyRateLimiter.IDEAL_REPLY_INTERVAL_MS
+      lastReplyTime.getTime() + ReplyRateLimiter.IDEAL_REPLY_INTERVAL_MS,
     );
   }
 
@@ -33,7 +33,7 @@ export class ReplyRateLimiter {
    */
   static async canReply(
     userId: string,
-    npcId: string
+    npcId: string,
   ): Promise<RateLimitResult> {
     // Get last interaction with this NPC
     const [lastInteraction] = await db
@@ -42,8 +42,8 @@ export class ReplyRateLimiter {
       .where(
         and(
           eq(userInteractions.userId, userId),
-          eq(userInteractions.npcId, npcId)
-        )
+          eq(userInteractions.npcId, npcId),
+        ),
       )
       .orderBy(desc(userInteractions.timestamp))
       .limit(1);
@@ -62,21 +62,21 @@ export class ReplyRateLimiter {
 
     // Calculate expected next reply time using IDEAL_REPLY_INTERVAL_MS
     const expectedNextReply = ReplyRateLimiter.getExpectedNextReplyTime(
-      lastInteraction.timestamp
+      lastInteraction.timestamp,
     );
 
     // Too soon - need to wait
     if (timeSinceLastReply < ReplyRateLimiter.MIN_REPLY_INTERVAL_MS) {
       const nextAllowedAt = new Date(
         lastInteraction.timestamp.getTime() +
-          ReplyRateLimiter.MIN_REPLY_INTERVAL_MS
+          ReplyRateLimiter.MIN_REPLY_INTERVAL_MS,
       );
       const minutesUntilNextReply = Math.ceil(
-        (nextAllowedAt.getTime() - now.getTime()) / (60 * 1000)
+        (nextAllowedAt.getTime() - now.getTime()) / (60 * 1000),
       );
 
       const minutesUntilExpected = Math.ceil(
-        (expectedNextReply.getTime() - now.getTime()) / (60 * 1000)
+        (expectedNextReply.getTime() - now.getTime()) / (60 * 1000),
       );
 
       return {
@@ -115,7 +115,7 @@ export class ReplyRateLimiter {
    */
   private static async calculateReplyStreak(
     userId: string,
-    npcId: string
+    npcId: string,
   ): Promise<number> {
     const interactions = await db
       .select({
@@ -125,8 +125,8 @@ export class ReplyRateLimiter {
       .where(
         and(
           eq(userInteractions.userId, userId),
-          eq(userInteractions.npcId, npcId)
-        )
+          eq(userInteractions.npcId, npcId),
+        ),
       )
       .orderBy(desc(userInteractions.timestamp))
       .limit(24);
@@ -161,7 +161,7 @@ export class ReplyRateLimiter {
     npcId: string,
     postId: string,
     commentId: string,
-    qualityScore: number
+    qualityScore: number,
   ): Promise<void> {
     await db.insert(userInteractions).values({
       id: await generateSnowflakeId(),
@@ -184,8 +184,8 @@ export class ReplyRateLimiter {
       .where(
         and(
           eq(userInteractions.userId, userId),
-          eq(userInteractions.npcId, npcId)
-        )
+          eq(userInteractions.npcId, npcId),
+        ),
       )
       .orderBy(desc(userInteractions.timestamp));
 
@@ -201,7 +201,7 @@ export class ReplyRateLimiter {
 
     const currentStreak = await ReplyRateLimiter.calculateReplyStreak(
       userId,
-      npcId
+      npcId,
     );
     const averageQuality =
       interactions.reduce((sum, i) => sum + i.qualityScore, 0) /
@@ -211,7 +211,7 @@ export class ReplyRateLimiter {
     const longestStreak = await ReplyRateLimiter.calculateLongestStreak(
       userId,
       npcId,
-      interactions
+      interactions,
     );
 
     return {
@@ -229,7 +229,7 @@ export class ReplyRateLimiter {
   private static async calculateLongestStreak(
     _userId: string,
     _npcId: string,
-    interactions: Array<{ timestamp: Date }>
+    interactions: Array<{ timestamp: Date }>,
   ): Promise<number> {
     if (interactions.length < 2) return interactions.length;
 
@@ -274,7 +274,7 @@ export class ReplyRateLimiter {
       if (!npcMap.has(interaction.npcId)) {
         npcMap.set(interaction.npcId, []);
       }
-      npcMap.get(interaction.npcId)!.push(interaction);
+      npcMap.get(interaction.npcId)?.push(interaction);
     }
 
     // Calculate stats for each NPC
@@ -285,7 +285,7 @@ export class ReplyRateLimiter {
           npcId,
           ...npcStats,
         };
-      })
+      }),
     );
 
     return stats;

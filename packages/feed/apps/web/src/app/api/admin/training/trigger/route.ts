@@ -71,10 +71,10 @@ import {
   logAdminView,
   requireAdmin,
   withErrorHandling,
-} from '@feed/api';
-import { automationPipeline } from '@feed/training';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@feed/api";
+import { automationPipeline } from "@feed/training";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const admin = await requireAdmin(request);
@@ -85,8 +85,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   logAdminModify({
     adminId: admin.userId,
     ipAddress: getClientIp(request.headers) ?? undefined,
-    resourceType: 'training',
-    metadata: { action: 'trigger_training', force, batchSize },
+    resourceType: "training",
+    metadata: { action: "trigger_training", force, batchSize },
   });
 
   const result = await automationPipeline.triggerTraining({
@@ -104,8 +104,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   logAdminView({
     adminId: admin.userId,
     ipAddress: getClientIp(request.headers) ?? undefined,
-    resourceType: 'training',
-    metadata: { action: 'check_readiness' },
+    resourceType: "training",
+    metadata: { action: "check_readiness" },
   });
 
   // Get training readiness

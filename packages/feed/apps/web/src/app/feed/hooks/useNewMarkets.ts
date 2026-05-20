@@ -1,6 +1,6 @@
-import { logger } from '@feed/shared';
-import { useEffect, useState } from 'react';
-import type { NewMarketEntry } from '@/app/api/feed/new-markets/route';
+import { logger } from "@feed/shared";
+import { useEffect, useState } from "react";
+import type { NewMarketEntry } from "@/app/api/feed/new-markets/route";
 
 interface UseNewMarketsResult {
   markets: NewMarketEntry[];
@@ -29,18 +29,18 @@ export function useNewMarkets(enabled = true): UseNewMarketsResult {
     const controller = new AbortController();
     setLoading(true);
 
-    fetch('/api/feed/new-markets', { signal: controller.signal })
+    fetch("/api/feed/new-markets", { signal: controller.signal })
       .then(async (res) => {
         if (!res.ok) return;
         const data = (await res.json()) as { markets?: NewMarketEntry[] };
         setMarkets(data.markets ?? []);
       })
       .catch((err) => {
-        if (err instanceof Error && err.name === 'AbortError') return;
+        if (err instanceof Error && err.name === "AbortError") return;
         logger.warn(
-          'Failed to fetch new markets',
+          "Failed to fetch new markets",
           { error: err },
-          'useNewMarkets'
+          "useNewMarkets",
         );
       })
       .finally(() => setLoading(false));

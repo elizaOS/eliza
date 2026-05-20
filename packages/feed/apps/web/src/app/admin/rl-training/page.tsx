@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 /**
  * RL Training Admin Dashboard
@@ -15,21 +15,21 @@ import {
   Play,
   RefreshCw,
   TrendingUp,
-} from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
-import { AdminStandalonePage } from '@/components/admin/AdminStandalonePage';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+} from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { AdminStandalonePage } from "@/components/admin/AdminStandalonePage";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { apiUrl } from '@/utils/api-url';
+} from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { apiUrl } from "@/utils/api-url";
 
 interface ModelInfo {
   modelId: string;
@@ -99,10 +99,10 @@ export default function RLTrainingDashboard() {
   const [benchmarkSummary, setBenchmarkSummary] =
     useState<BenchmarkSummary | null>(null);
   const [modelSelection, setModelSelection] = useState<ModelSelection | null>(
-    null
+    null,
   );
   const [trainingStatus, setTrainingStatus] = useState<TrainingStatus | null>(
-    null
+    null,
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -114,14 +114,14 @@ export default function RLTrainingDashboard() {
     setError(null);
 
     // Fetch models
-    const modelsRes = await fetch(apiUrl('/api/admin/training/models'));
+    const modelsRes = await fetch(apiUrl("/api/admin/training/models"));
     const modelsData = await modelsRes.json();
     if (modelsData.models) {
       setModels(modelsData.models);
     }
 
     // Fetch benchmark summary
-    const benchmarkRes = await fetch(apiUrl('/api/admin/training/benchmark'));
+    const benchmarkRes = await fetch(apiUrl("/api/admin/training/benchmark"));
     const benchmarkData = await benchmarkRes.json();
     if (benchmarkData.summary) {
       setBenchmarkSummary(benchmarkData.summary);
@@ -129,7 +129,7 @@ export default function RLTrainingDashboard() {
 
     // Fetch model selection
     const selectionRes = await fetch(
-      apiUrl('/api/admin/training/model-selection')
+      apiUrl("/api/admin/training/model-selection"),
     );
     const selectionData = await selectionRes.json();
     if (selectionData.success) {
@@ -137,7 +137,7 @@ export default function RLTrainingDashboard() {
     }
 
     // Fetch training status
-    const statusRes = await fetch(apiUrl('/api/admin/training/trigger'));
+    const statusRes = await fetch(apiUrl("/api/admin/training/trigger"));
     const statusData = await statusRes.json();
     if (statusData) {
       setTrainingStatus(statusData);
@@ -148,19 +148,19 @@ export default function RLTrainingDashboard() {
 
   // Trigger training
   const triggerTraining = async (force = false) => {
-    setActionStatus('Triggering training...');
-    const res = await fetch(apiUrl('/api/admin/training/trigger'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    setActionStatus("Triggering training...");
+    const res = await fetch(apiUrl("/api/admin/training/trigger"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ force }),
     });
     const data = await res.json();
 
     if (data.success) {
-      setActionStatus('✅ Training triggered successfully!');
+      setActionStatus("✅ Training triggered successfully!");
       setTimeout(() => fetchData(), 2000);
     } else {
-      setActionStatus(`❌ ${data.error || 'Failed to trigger training'}`);
+      setActionStatus(`❌ ${data.error || "Failed to trigger training"}`);
     }
     setTimeout(() => setActionStatus(null), 5000);
   };
@@ -168,20 +168,20 @@ export default function RLTrainingDashboard() {
   // Benchmark a model
   const benchmarkModel = async (modelId: string) => {
     setActionStatus(`Benchmarking ${modelId}...`);
-    const res = await fetch(apiUrl('/api/admin/training/benchmark'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    const res = await fetch(apiUrl("/api/admin/training/benchmark"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ modelId, compare: true }),
     });
     const data = await res.json();
 
     if (data.success) {
       setActionStatus(
-        `✅ Benchmark complete! Score: ${data.benchmark.benchmarkScore.toFixed(3)}`
+        `✅ Benchmark complete! Score: ${data.benchmark.benchmarkScore.toFixed(3)}`,
       );
       setTimeout(() => fetchData(), 2000);
     } else {
-      setActionStatus(`❌ ${data.error || 'Benchmarking failed'}`);
+      setActionStatus(`❌ ${data.error || "Benchmarking failed"}`);
     }
     setTimeout(() => setActionStatus(null), 8000);
   };
@@ -207,7 +207,7 @@ export default function RLTrainingDashboard() {
         </div>
         <Button onClick={() => fetchData()} disabled={loading}>
           <RefreshCw
-            className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`}
+            className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`}
           />
           Refresh
         </Button>
@@ -241,7 +241,7 @@ export default function RLTrainingDashboard() {
           <CardContent>
             <div className="font-bold text-2xl">{models.length}</div>
             <p className="text-muted-foreground text-xs">
-              {models.filter((m) => m.status === 'deployed').length} deployed
+              {models.filter((m) => m.status === "deployed").length} deployed
             </p>
           </CardContent>
         </Card>
@@ -288,10 +288,10 @@ export default function RLTrainingDashboard() {
           </CardHeader>
           <CardContent>
             <div className="font-bold text-2xl">
-              {trainingStatus?.ready ? '✅ Ready' : '⏳ Waiting'}
+              {trainingStatus?.ready ? "✅ Ready" : "⏳ Waiting"}
             </div>
             <p className="text-muted-foreground text-xs">
-              Quality:{' '}
+              Quality:{" "}
               {((trainingStatus?.stats.dataQuality || 0) * 100).toFixed(0)}%
             </p>
           </CardContent>
@@ -333,11 +333,11 @@ export default function RLTrainingDashboard() {
                           <h3 className="font-semibold">{model.modelId}</h3>
                           <Badge
                             variant={
-                              model.status === 'deployed'
-                                ? 'default'
-                                : model.status === 'ready'
-                                  ? 'secondary'
-                                  : 'outline'
+                              model.status === "deployed"
+                                ? "default"
+                                : model.status === "ready"
+                                  ? "secondary"
+                                  : "outline"
                             }
                           >
                             {model.status}
@@ -356,8 +356,8 @@ export default function RLTrainingDashboard() {
                           Created: {new Date(model.createdAt).toLocaleString()}
                           {model.deployedAt && (
                             <>
-                              {' '}
-                              • Deployed:{' '}
+                              {" "}
+                              • Deployed:{" "}
                               {new Date(model.deployedAt).toLocaleString()}
                             </>
                           )}
@@ -412,11 +412,11 @@ export default function RLTrainingDashboard() {
                           <div className="flex-1">
                             <div className="font-medium">{model.modelId}</div>
                             <div className="text-muted-foreground text-sm">
-                              Score: {model.score?.toFixed(3) || 'N/A'}
+                              Score: {model.score?.toFixed(3) || "N/A"}
                               {model.accuracy && (
                                 <>
-                                  {' '}
-                                  • Accuracy:{' '}
+                                  {" "}
+                                  • Accuracy:{" "}
                                   {(model.accuracy * 100).toFixed(1)}%
                                 </>
                               )}
@@ -424,9 +424,9 @@ export default function RLTrainingDashboard() {
                           </div>
                           <Badge
                             variant={
-                              model.status === 'deployed'
-                                ? 'default'
-                                : 'secondary'
+                              model.status === "deployed"
+                                ? "default"
+                                : "secondary"
                             }
                           >
                             {model.status}
@@ -465,12 +465,12 @@ export default function RLTrainingDashboard() {
                         </div>
                         <div className="text-right">
                           <div className="font-semibold">
-                            {model.score?.toFixed(3) || 'N/A'}
+                            {model.score?.toFixed(3) || "N/A"}
                           </div>
                           <div className="text-muted-foreground text-sm">
                             {model.accuracy
                               ? `${(model.accuracy * 100).toFixed(1)}%`
-                              : 'N/A'}
+                              : "N/A"}
                           </div>
                         </div>
                       </div>
@@ -517,7 +517,7 @@ export default function RLTrainingDashboard() {
                         Best Score
                       </div>
                       <div className="font-bold text-2xl">
-                        {modelSelection.summary.bestScore?.toFixed(3) || 'N/A'}
+                        {modelSelection.summary.bestScore?.toFixed(3) || "N/A"}
                       </div>
                     </div>
                   </div>
@@ -583,7 +583,7 @@ export default function RLTrainingDashboard() {
               {trainingStatus && (
                 <div className="space-y-4">
                   <Alert
-                    variant={trainingStatus.ready ? 'default' : 'destructive'}
+                    variant={trainingStatus.ready ? "default" : "destructive"}
                   >
                     {trainingStatus.ready ? (
                       <CheckCircle className="h-4 w-4" />
@@ -591,7 +591,7 @@ export default function RLTrainingDashboard() {
                       <Clock className="h-4 w-4" />
                     )}
                     <AlertTitle>
-                      {trainingStatus.ready ? 'Ready to Train' : 'Not Ready'}
+                      {trainingStatus.ready ? "Ready to Train" : "Not Ready"}
                     </AlertTitle>
                     <AlertDescription>{trainingStatus.reason}</AlertDescription>
                   </Alert>
@@ -689,7 +689,7 @@ export default function RLTrainingDashboard() {
                 </p>
                 <div className="space-y-2">
                   {models
-                    .filter((m) => !m.benchmarkScore && m.status === 'ready')
+                    .filter((m) => !m.benchmarkScore && m.status === "ready")
                     .map((model) => (
                       <div
                         key={model.modelId}
@@ -706,7 +706,7 @@ export default function RLTrainingDashboard() {
                       </div>
                     ))}
                   {models.filter(
-                    (m) => !m.benchmarkScore && m.status === 'ready'
+                    (m) => !m.benchmarkScore && m.status === "ready",
                   ).length === 0 && (
                     <div className="text-muted-foreground text-sm">
                       No models need benchmarking

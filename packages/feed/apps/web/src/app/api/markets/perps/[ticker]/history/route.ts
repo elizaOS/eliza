@@ -54,7 +54,7 @@ import {
   publicRateLimit,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
+} from "@feed/api";
 import {
   and,
   db,
@@ -63,13 +63,13 @@ import {
   gte,
   perpMarketSnapshots,
   stockPrices,
-} from '@feed/db';
-import { toISO } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { z } from 'zod';
-import { chooseBucketMs } from '@/lib/api/chart-utils';
+} from "@feed/db";
+import { toISO } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { z } from "zod";
+import { chooseBucketMs } from "@/lib/api/chart-utils";
 
-type TimeRange = '1H' | '4H' | '1D' | '1W' | 'ALL';
+type TimeRange = "1H" | "4H" | "1D" | "1W" | "ALL";
 
 const ParamsSchema = z.object({
   ticker: z.string().min(1).max(20),
@@ -79,18 +79,18 @@ const QuerySchema = z.object({
   limit: z
     .preprocess(
       (value) => (value === null ? undefined : value),
-      z.coerce.number().min(1).max(2000)
+      z.coerce.number().min(1).max(2000),
     )
     .optional()
     .default(200),
-  range: z.enum(['1H', '4H', '1D', '1W', 'ALL']).optional(),
+  range: z.enum(["1H", "4H", "1D", "1W", "ALL"]).optional(),
 });
 
 const RANGE_MS: Record<TimeRange, number> = {
-  '1H': 60 * 60 * 1000,
-  '4H': 4 * 60 * 60 * 1000,
-  '1D': 24 * 60 * 60 * 1000,
-  '1W': 7 * 24 * 60 * 60 * 1000,
+  "1H": 60 * 60 * 1000,
+  "4H": 4 * 60 * 60 * 1000,
+  "1D": 24 * 60 * 60 * 1000,
+  "1W": 7 * 24 * 60 * 60 * 1000,
   ALL: 0,
 };
 
@@ -100,7 +100,7 @@ function downsampleStockPrices(
     timestamp: Date;
     volume: number | null;
   }>,
-  maxPoints: number
+  maxPoints: number,
 ): Array<{
   price: number;
   timestamp: Date;
@@ -188,7 +188,7 @@ function downsampleStockPrices(
 export const GET = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ ticker: string }> }
+    context: { params: Promise<{ ticker: string }> },
   ) => {
     const { error, rateLimitInfo } = await publicRateLimit(request);
     if (error) return error;
@@ -196,8 +196,8 @@ export const GET = withErrorHandling(
     const { ticker } = ParamsSchema.parse(await context.params);
     const { searchParams } = new URL(request.url);
     const { limit, range } = QuerySchema.parse({
-      limit: searchParams.get('limit'),
-      range: searchParams.get('range'),
+      limit: searchParams.get("limit"),
+      range: searchParams.get("range"),
     });
 
     // Look up the organizationId from the perp market snapshot
@@ -211,14 +211,14 @@ export const GET = withErrorHandling(
       return successResponse({
         ticker,
         history: [],
-        message: 'Market not found',
+        message: "Market not found",
       });
     }
 
     const now = new Date();
-    const selectedRange = (range ?? 'ALL') as TimeRange;
+    const selectedRange = (range ?? "ALL") as TimeRange;
     const since =
-      selectedRange === 'ALL'
+      selectedRange === "ALL"
         ? null
         : new Date(now.getTime() - RANGE_MS[selectedRange]);
 
@@ -240,9 +240,9 @@ export const GET = withErrorHandling(
         since
           ? and(
               eq(stockPrices.organizationId, marketSnapshot.organizationId),
-              gte(stockPrices.timestamp, since)
+              gte(stockPrices.timestamp, since),
             )
-          : eq(stockPrices.organizationId, marketSnapshot.organizationId)
+          : eq(stockPrices.organizationId, marketSnapshot.organizationId),
       )
       .orderBy(desc(stockPrices.timestamp))
       // When a range is selected, fetch more raw points so downsampling has enough signal.
@@ -256,7 +256,7 @@ export const GET = withErrorHandling(
             timestamp: p.timestamp,
             volume: p.volume,
           })),
-          limit
+          limit,
         ).map((p) => ({
           id: null as string | null,
           price: p.price,
@@ -287,5 +287,5 @@ export const GET = withErrorHandling(
     });
     if (rateLimitInfo) addPublicReadHeaders(res, rateLimitInfo);
     return res;
-  }
+  },
 );

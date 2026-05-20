@@ -10,10 +10,10 @@
  * can skip embedding-based checks without crashing the pipeline.
  */
 
-import { logger } from '@feed/shared';
-import OpenAI from 'openai';
+import { logger } from "@feed/shared";
+import OpenAI from "openai";
 
-const EMBEDDING_MODEL = 'text-embedding-3-small';
+const EMBEDDING_MODEL = "text-embedding-3-small";
 const MAX_BATCH_SIZE = 100;
 
 let openaiClient: OpenAI | null = null;
@@ -31,12 +31,12 @@ function getClient(): OpenAI | null {
   const elizacloudKey = process.env.ELIZACLOUD_API_KEY;
   if (elizacloudKey) {
     const base =
-      process.env.ELIZACLOUD_API_URL?.replace(/\/$/, '') ||
-      'https://api.elizacloud.com';
+      process.env.ELIZACLOUD_API_URL?.replace(/\/$/, "") ||
+      "https://api.elizacloud.com";
     logger.debug(
-      'EmbeddingClient using ElizaCloud',
+      "EmbeddingClient using ElizaCloud",
       { baseURL: `${base}/openai/v1` },
-      'EmbeddingClient'
+      "EmbeddingClient",
     );
     openaiClient = new OpenAI({
       apiKey: elizacloudKey,
@@ -50,9 +50,9 @@ function getClient(): OpenAI | null {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     logger.warn(
-      'Neither ELIZACLOUD_API_KEY nor OPENAI_API_KEY set — embedding-based quality checks will be skipped',
+      "Neither ELIZACLOUD_API_KEY nor OPENAI_API_KEY set — embedding-based quality checks will be skipped",
       undefined,
-      'EmbeddingClient'
+      "EmbeddingClient",
     );
     return null;
   }
@@ -77,20 +77,20 @@ export async function getEmbedding(text: string): Promise<number[] | null> {
     });
     const latencyMs = Date.now() - startTime;
     logger.debug(
-      'Embedding request completed',
+      "Embedding request completed",
       { latencyMs, textLength: text.length },
-      'EmbeddingClient'
+      "EmbeddingClient",
     );
     return response.data[0]?.embedding ?? null;
   } catch (error) {
     const latencyMs = Date.now() - startTime;
     logger.error(
-      'Embedding request failed',
+      "Embedding request failed",
       {
         error: error instanceof Error ? error.message : String(error),
         latencyMs,
       },
-      'EmbeddingClient'
+      "EmbeddingClient",
     );
     return null;
   }
@@ -101,7 +101,7 @@ export async function getEmbedding(text: string): Promise<number[] | null> {
  * Returns an array aligned with the input — null entries for failures.
  */
 export async function getEmbeddings(
-  texts: string[]
+  texts: string[],
 ): Promise<(number[] | null)[]> {
   const client = getClient();
   if (!client) return texts.map(() => null);
@@ -122,9 +122,9 @@ export async function getEmbeddings(
       });
       const latencyMs = Date.now() - batchStartTime;
       logger.debug(
-        'Batch embedding request completed',
+        "Batch embedding request completed",
         { latencyMs, batchSize: batch.length, batchOffset: i },
-        'EmbeddingClient'
+        "EmbeddingClient",
       );
 
       // Response data is ordered by index
@@ -135,7 +135,7 @@ export async function getEmbeddings(
     } catch (error) {
       const latencyMs = Date.now() - batchStartTime;
       logger.error(
-        'Batch embedding request failed',
+        "Batch embedding request failed",
         {
           error: error instanceof Error ? error.message : String(error),
           latencyMs,
@@ -143,7 +143,7 @@ export async function getEmbeddings(
           batchSize: batch.length,
           totalTexts: texts.length,
         },
-        'EmbeddingClient'
+        "EmbeddingClient",
       );
       // Fill failed batch with nulls, preserve earlier successful results
       for (let j = 0; j < batch.length; j++) {

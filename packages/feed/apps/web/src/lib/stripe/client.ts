@@ -5,8 +5,8 @@
  * Uses the publishable key for client-to-Stripe communication.
  */
 
-import { logger } from '@feed/shared';
-import { loadStripe, type Stripe } from '@stripe/stripe-js';
+import { logger } from "@feed/shared";
+import { loadStripe, type Stripe } from "@stripe/stripe-js";
 
 let stripePromise: Promise<Stripe | null> | null = null;
 let stripeDisabledLogged = false;
@@ -26,9 +26,9 @@ export function getStripe(): Promise<Stripe | null> {
       // Only log once to avoid console spam
       if (!stripeDisabledLogged) {
         logger.error(
-          'NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY is not configured',
+          "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY is not configured",
           undefined,
-          'Stripe'
+          "Stripe",
         );
         stripeDisabledLogged = true;
       }

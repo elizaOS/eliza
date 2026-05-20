@@ -1,7 +1,7 @@
-import { MobileProfileResolvePage } from './client';
+import { MobileProfileResolvePage } from "./client";
 
 export function generateStaticParams() {
-  return [{ id: '_placeholder' }];
+  return [{ id: "_placeholder" }];
 }
 
 export default function Page() {

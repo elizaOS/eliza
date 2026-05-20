@@ -4,23 +4,23 @@
  * Handles agents creating posts autonomously
  */
 
-import { countTokensSync, truncateToTokenLimitSync } from '@feed/api';
-import { agentTrades, db, desc, eq, posts } from '@feed/db';
+import type { IAgentRuntime } from "@elizaos/core";
+import { parseKeyValueXml } from "@elizaos/core";
+import { countTokensSync, truncateToTokenLimitSync } from "@feed/api";
+import { agentTrades, db, desc, eq, posts } from "@feed/db";
 import {
   characterMappingService,
   formatRandomContext,
   generateRandomMarketContext,
   generateWorldContext,
-} from '@feed/engine';
-import { getTimeAgo } from '@feed/shared';
-import type { IAgentRuntime } from '@elizaos/core';
-import { parseKeyValueXml } from '@elizaos/core';
-import { callGroqDirect } from '../llm/direct-groq';
-import { agentService } from '../services/AgentService';
-import { getAgentConfig } from '../shared/agent-config';
-import { logger } from '../shared/logger';
-import { getAgentContext } from './agent-context';
-import { executeDirectPost } from './DirectExecutors';
+} from "@feed/engine";
+import { getTimeAgo } from "@feed/shared";
+import { callGroqDirect } from "../llm/direct-groq";
+import { agentService } from "../services/AgentService";
+import { getAgentConfig } from "../shared/agent-config";
+import { logger } from "../shared/logger";
+import { getAgentContext } from "./agent-context";
+import { executeDirectPost } from "./DirectExecutors";
 
 export class AutonomousPostingService {
   /**
@@ -30,7 +30,7 @@ export class AutonomousPostingService {
    */
   async createAgentPost(
     agentUserId: string,
-    _runtime: IAgentRuntime
+    _runtime: IAgentRuntime,
   ): Promise<string | null> {
     // Resolve agent context (NPC vs USER_CONTROLLED)
     const { displayName: agentDisplayName, lifetimePnL: agentLifetimePnL } =
@@ -74,25 +74,25 @@ export class AutonomousPostingService {
     const MAX_TOKENS = 280;
 
     // Get NPC actor data for rich character context
-    let npcVoice = '';
-    let npcPersonality = '';
-    let npcDomains = '';
-    let npcPostExamples = '';
+    let npcVoice = "";
+    let npcPersonality = "";
+    let npcDomains = "";
+    let npcPostExamples = "";
     try {
-      const { StaticDataRegistry } = await import('@feed/engine');
+      const { StaticDataRegistry } = await import("@feed/engine");
       const actor = StaticDataRegistry.getActor(agentUserId);
       if (actor) {
-        npcVoice = actor.voice || '';
-        npcPersonality = actor.personality || '';
-        npcDomains = actor.domain?.join(', ') || '';
+        npcVoice = actor.voice || "";
+        npcPersonality = actor.personality || "";
+        npcDomains = actor.domain?.join(", ") || "";
         if (actor.postExample && actor.postExample.length > 0) {
           const shuffled = [...actor.postExample].sort(
-            () => Math.random() - 0.5
+            () => Math.random() - 0.5,
           );
           npcPostExamples = shuffled
             .slice(0, 3)
             .map((e) => `  "${e}"`)
-            .join('\n');
+            .join("\n");
         }
       }
     } catch {
@@ -101,22 +101,22 @@ export class AutonomousPostingService {
 
     const prompt = `You are ${agentDisplayName}.
 
-${npcPersonality ? `PERSONALITY: ${npcPersonality}` : ''}
-${npcDomains ? `YOUR INTERESTS: ${npcDomains}` : ''}
-${npcVoice ? `YOUR VOICE: ${npcVoice}` : ''}
-${npcPostExamples ? `HOW YOU TALK (match this style):\n${npcPostExamples}` : ''}
+${npcPersonality ? `PERSONALITY: ${npcPersonality}` : ""}
+${npcDomains ? `YOUR INTERESTS: ${npcDomains}` : ""}
+${npcVoice ? `YOUR VOICE: ${npcVoice}` : ""}
+${npcPostExamples ? `HOW YOU TALK (match this style):\n${npcPostExamples}` : ""}
 
 YOUR RECENT POSTS (DO NOT repeat any theme, phrase, topic, or structure):
-${recentPosts.length > 0 ? recentPosts.map((p, i) => `[${i + 1}] "${p.content}" (${getTimeAgo(p.createdAt)})`).join('\n') : 'No recent posts yet — this is your first impression. Make it count.'}
+${recentPosts.length > 0 ? recentPosts.map((p, i) => `[${i + 1}] "${p.content}" (${getTimeAgo(p.createdAt)})`).join("\n") : "No recent posts yet — this is your first impression. Make it count."}
 
 YOUR STATE:
-${recentTrades.length > 0 ? `Recent trades: ${recentTrades.map((t) => `${t.action} ${t.ticker}`).join(', ')}` : 'No recent trades'}
+${recentTrades.length > 0 ? `Recent trades: ${recentTrades.map((t) => `${t.action} ${t.ticker}`).join(", ")}` : "No recent trades"}
 P&L: ${agentLifetimePnL}
 
 WHAT'S HAPPENING IN THE WORLD:
-${worldContext.worldFacts || 'Things are quiet.'}
-${worldContext.currentMarkets ? `\nMarkets: ${worldContext.currentMarkets}` : ''}
-${worldContext.realityGrounding || ''}
+${worldContext.worldFacts || "Things are quiet."}
+${worldContext.currentMarkets ? `\nMarkets: ${worldContext.currentMarkets}` : ""}
+${worldContext.realityGrounding || ""}
 
 KNOWN PEOPLE AND COMPANIES:
 ${worldContext.worldActors}
@@ -153,7 +153,7 @@ Or skip if you have nothing fresh to say:
       // 30K with 2K safety margin
       logger.warn(
         `Post generation prompt too long: ${estimatedTokens} tokens, truncating`,
-        { agentUserId }
+        { agentUserId },
       );
       const truncated = truncateToTokenLimitSync(prompt, 30000, {
         ellipsis: true,
@@ -177,27 +177,27 @@ Or skip if you have nothing fresh to say:
       const postContent = await callGroqDirect({
         prompt: currentPrompt,
         system: config?.systemPrompt ?? undefined,
-        modelSize: 'large', // Uses trained W&B model if available, else qwen3-32b
+        modelSize: "large", // Uses trained W&B model if available, else qwen3-32b
         runtime: _runtime, // Pass runtime to access W&B trained models AND trajectory context
         temperature: isRetry ? 0.6 : 0.8,
         maxTokens: MAX_TOKENS,
-        actionType: 'generate_autonomous_post',
-        purpose: 'action', // RLAIF: This is a content generation action
+        actionType: "generate_autonomous_post",
+        purpose: "action", // RLAIF: This is a content generation action
       });
 
       // Extract <response>...</response> block before parsing
       const responseMatch = postContent.match(
-        /<response>([\s\S]*?)<\/response>/i
+        /<response>([\s\S]*?)<\/response>/i,
       );
       if (!responseMatch) {
         logger.warn(
-          'No <response> block found in post generation',
+          "No <response> block found in post generation",
           {
             agentUserId,
             attempt,
             raw: postContent.substring(0, 300),
           },
-          'AutonomousPosting'
+          "AutonomousPosting",
         );
         continue;
       }
@@ -210,14 +210,14 @@ Or skip if you have nothing fresh to say:
       } | null;
 
       // Check if agent chose to skip
-      if (parsed?.action === 'skip') {
+      if (parsed?.action === "skip") {
         logger.info(
           `Agent ${agentDisplayName} chose to skip posting`,
           {
             agentUserId,
-            reason: parsed.reason || 'No reason given',
+            reason: parsed.reason || "No reason given",
           },
-          'AutonomousPosting'
+          "AutonomousPosting",
         );
         return null;
       }
@@ -225,19 +225,19 @@ Or skip if you have nothing fresh to say:
       // Check if we got valid text
       if (!parsed?.text || parsed.text.trim().length === 0) {
         logger.warn(
-          'Failed to parse XML response in post generation',
+          "Failed to parse XML response in post generation",
           {
             agentUserId,
             attempt,
             raw: postContent.substring(0, 300),
           },
-          'AutonomousPosting'
+          "AutonomousPosting",
         );
         continue;
       }
 
       // Success! Clean up the response and capture LLM output
-      cleanContent = parsed.text.trim().replace(/^["']|["']$/g, '');
+      cleanContent = parsed.text.trim().replace(/^["']|["']$/g, "");
       llmCompletion = postContent;
       usedPrompt = currentPrompt;
       break;
@@ -248,7 +248,7 @@ Or skip if you have nothing fresh to say:
       logger.error(
         `Failed to generate valid post after ${MAX_ATTEMPTS} attempts`,
         { agentUserId },
-        'AutonomousPosting'
+        "AutonomousPosting",
       );
       return null;
     }
@@ -264,18 +264,18 @@ Or skip if you have nothing fresh to say:
           original: cleanContent.substring(0, 100),
           fixed: processed.transformedText.substring(0, 100),
         },
-        'AutonomousPosting'
+        "AutonomousPosting",
       );
     }
 
     logger.info(
-      'LLM generated post',
+      "LLM generated post",
       {
         agentUserId,
         content: cleanContent,
         length: cleanContent.length,
       },
-      'AutonomousPosting'
+      "AutonomousPosting",
     );
 
     if (!cleanContent || cleanContent.length < 10) {
@@ -285,7 +285,7 @@ Or skip if you have nothing fresh to say:
           content: cleanContent,
           length: cleanContent.length,
         },
-        'AutonomousPosting'
+        "AutonomousPosting",
       );
       return null;
     }
@@ -300,16 +300,16 @@ Or skip if you have nothing fresh to say:
       logger.warn(
         `Failed to create post: ${result.error}`,
         { agentUserId },
-        'AutonomousPosting'
+        "AutonomousPosting",
       );
       return null;
     }
 
     // Log the post with prompt and completion for debugging/review
     await agentService.createLog(agentUserId, {
-      type: 'post',
-      level: 'info',
-      message: `Created post: ${cleanContent.substring(0, 100)}${cleanContent.length > 100 ? '...' : ''}`,
+      type: "post",
+      level: "info",
+      message: `Created post: ${cleanContent.substring(0, 100)}${cleanContent.length > 100 ? "..." : ""}`,
       prompt: usedPrompt ?? undefined,
       completion: llmCompletion ?? undefined,
       metadata: {
@@ -322,7 +322,7 @@ Or skip if you have nothing fresh to say:
     logger.info(
       `Agent ${agentDisplayName} created post: ${result.postId}`,
       undefined,
-      'AutonomousPosting'
+      "AutonomousPosting",
     );
 
     return result.postId ?? null;

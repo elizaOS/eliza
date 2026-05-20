@@ -8,9 +8,9 @@
  * Uses DistributedLockService under the hood with resource-specific lock IDs.
  */
 
-import { logger } from '@feed/shared';
-import { randomBytes } from 'crypto';
-import { DistributedLockService } from './distributed-lock-service';
+import { randomBytes } from "node:crypto";
+import { logger } from "@feed/shared";
+import { DistributedLockService } from "./distributed-lock-service";
 
 /**
  * Execute a function with a question-level lock.
@@ -31,21 +31,21 @@ import { DistributedLockService } from './distributed-lock-service';
 export async function withQuestionLock<T>(
   questionNumber: number,
   fn: () => Promise<T>,
-  options: { durationMs?: number; skipIfLocked: true }
+  options: { durationMs?: number; skipIfLocked: true },
 ): Promise<T | undefined>;
 export async function withQuestionLock<T>(
   questionNumber: number,
   fn: () => Promise<T>,
-  options?: { durationMs?: number; skipIfLocked?: false }
+  options?: { durationMs?: number; skipIfLocked?: false },
 ): Promise<T>;
 export async function withQuestionLock<T>(
   questionNumber: number,
   fn: () => Promise<T>,
-  options?: { durationMs?: number; skipIfLocked?: boolean }
+  options?: { durationMs?: number; skipIfLocked?: boolean },
 ): Promise<T | undefined> {
   const lockId = `question-resolve-${questionNumber}`;
   const durationMs = options?.durationMs ?? 60_000; // Default 60s
-  const processId = `ql-${Date.now()}-${randomBytes(4).toString('hex')}`;
+  const processId = `ql-${Date.now()}-${randomBytes(4).toString("hex")}`;
 
   const acquired = await DistributedLockService.acquireLock({
     lockId,
@@ -59,12 +59,12 @@ export async function withQuestionLock<T>(
       logger.info(
         `Question ${questionNumber} resolution already in progress, skipping`,
         { lockId },
-        'ResourceLocks'
+        "ResourceLocks",
       );
       return undefined;
     }
     throw new Error(
-      `Question ${questionNumber} resolution already in progress (locked)`
+      `Question ${questionNumber} resolution already in progress (locked)`,
     );
   }
 
@@ -94,21 +94,21 @@ export async function withQuestionLock<T>(
 export async function withMarketLock<T>(
   marketId: string,
   fn: () => Promise<T>,
-  options: { durationMs?: number; skipIfLocked: true }
+  options: { durationMs?: number; skipIfLocked: true },
 ): Promise<T | undefined>;
 export async function withMarketLock<T>(
   marketId: string,
   fn: () => Promise<T>,
-  options?: { durationMs?: number; skipIfLocked?: false }
+  options?: { durationMs?: number; skipIfLocked?: false },
 ): Promise<T>;
 export async function withMarketLock<T>(
   marketId: string,
   fn: () => Promise<T>,
-  options?: { durationMs?: number; skipIfLocked?: boolean }
+  options?: { durationMs?: number; skipIfLocked?: boolean },
 ): Promise<T | undefined> {
   const lockId = `market-update-${marketId}`;
   const durationMs = options?.durationMs ?? 30_000; // Default 30s
-  const processId = `ml-${Date.now()}-${randomBytes(4).toString('hex')}`;
+  const processId = `ml-${Date.now()}-${randomBytes(4).toString("hex")}`;
 
   const acquired = await DistributedLockService.acquireLock({
     lockId,
@@ -122,7 +122,7 @@ export async function withMarketLock<T>(
       logger.info(
         `Market ${marketId} update already in progress, skipping`,
         { lockId },
-        'ResourceLocks'
+        "ResourceLocks",
       );
       return undefined;
     }
@@ -148,21 +148,21 @@ export async function withMarketLock<T>(
 export async function withNPCLock<T>(
   npcId: string,
   fn: () => Promise<T>,
-  options: { durationMs?: number; skipIfLocked: true }
+  options: { durationMs?: number; skipIfLocked: true },
 ): Promise<T | undefined>;
 export async function withNPCLock<T>(
   npcId: string,
   fn: () => Promise<T>,
-  options?: { durationMs?: number; skipIfLocked?: false }
+  options?: { durationMs?: number; skipIfLocked?: false },
 ): Promise<T>;
 export async function withNPCLock<T>(
   npcId: string,
   fn: () => Promise<T>,
-  options?: { durationMs?: number; skipIfLocked?: boolean }
+  options?: { durationMs?: number; skipIfLocked?: boolean },
 ): Promise<T | undefined> {
   const lockId = `npc-trade-${npcId}`;
   const durationMs = options?.durationMs ?? 120_000; // Default 2 min for LLM calls
-  const processId = `npc-${Date.now()}-${randomBytes(4).toString('hex')}`;
+  const processId = `npc-${Date.now()}-${randomBytes(4).toString("hex")}`;
 
   const acquired = await DistributedLockService.acquireLock({
     lockId,
@@ -176,7 +176,7 @@ export async function withNPCLock<T>(
       logger.info(
         `NPC ${npcId} trade already in progress, skipping`,
         { lockId },
-        'ResourceLocks'
+        "ResourceLocks",
       );
       return undefined;
     }
@@ -206,7 +206,7 @@ export async function withNPCLock<T>(
  * @returns True if the question is currently locked
  */
 export async function isQuestionLocked(
-  questionNumber: number
+  questionNumber: number,
 ): Promise<boolean> {
   const lockId = `question-resolve-${questionNumber}`;
   // Try to acquire with short duration (100ms) - will fail if locked
@@ -214,12 +214,12 @@ export async function isQuestionLocked(
     lockId,
     durationMs: 100, // Very short duration
     operation: `check-lock-${questionNumber}`,
-    processId: 'check-only',
+    processId: "check-only",
   });
 
   if (acquired) {
     // Release immediately - we were just checking
-    await DistributedLockService.releaseLock(lockId, 'check-only');
+    await DistributedLockService.releaseLock(lockId, "check-only");
     return false;
   }
   return true;

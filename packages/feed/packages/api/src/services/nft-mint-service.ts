@@ -10,7 +10,7 @@
  * @module api/services/nft-mint-service
  */
 
-import { randomBytes } from 'node:crypto';
+import { randomBytes } from "node:crypto";
 import {
   and,
   db,
@@ -19,15 +19,15 @@ import {
   nftCollection,
   nftOwnership,
   nftSnapshot,
-} from '@feed/db';
+} from "@feed/db";
 import {
   hardhat,
   logger,
   mainnet,
   sepolia,
   ValidationError,
-} from '@feed/shared';
-import { nanoid } from 'nanoid';
+} from "@feed/shared";
+import { nanoid } from "nanoid";
 import {
   type Address,
   type Chain,
@@ -38,9 +38,9 @@ import {
   http,
   isAddress,
   keccak256,
-} from 'viem';
-import { privateKeyToAccount } from 'viem/accounts';
-import { getNftChainId } from './nft/nft-chain';
+} from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { getNftChainId } from "./nft/nft-chain";
 
 // ============================================================================
 // Types
@@ -50,10 +50,10 @@ import { getNftChainId } from './nft/nft-chain';
  * Status of user's NFT mint eligibility
  */
 export type EligibilityStatus =
-  | 'not_authenticated'
-  | 'not_eligible'
-  | 'eligible'
-  | 'already_minted';
+  | "not_authenticated"
+  | "not_eligible"
+  | "eligible"
+  | "already_minted";
 
 /**
  * Result of eligibility check
@@ -109,15 +109,15 @@ export interface ConfirmResult {
 const CHAIN_CONFIG: Record<number, { chain: Chain; rpcUrl: string }> = {
   [hardhat.id]: {
     chain: hardhat,
-    rpcUrl: 'http://localhost:8545',
+    rpcUrl: "http://localhost:8545",
   },
   [mainnet.id]: {
     chain: mainnet,
-    rpcUrl: process.env.ETH_MAINNET_RPC_URL ?? 'https://eth.llamarpc.com',
+    rpcUrl: process.env.ETH_MAINNET_RPC_URL ?? "https://eth.llamarpc.com",
   },
   [sepolia.id]: {
     chain: sepolia,
-    rpcUrl: process.env.ETH_SEPOLIA_RPC_URL ?? 'https://rpc.sepolia.org',
+    rpcUrl: process.env.ETH_SEPOLIA_RPC_URL ?? "https://rpc.sepolia.org",
   },
 };
 
@@ -126,14 +126,14 @@ const CHAIN_CONFIG: Record<number, { chain: Chain; rpcUrl: string }> = {
  */
 const PROTO_MONKEYS_MINT_ABI = [
   {
-    name: 'mint',
-    type: 'function',
-    stateMutability: 'nonpayable',
+    name: "mint",
+    type: "function",
+    stateMutability: "nonpayable",
     inputs: [
-      { name: 'to', type: 'address' },
-      { name: 'deadline', type: 'uint256' },
-      { name: 'nonce', type: 'bytes32' },
-      { name: 'signature', type: 'bytes' },
+      { name: "to", type: "address" },
+      { name: "deadline", type: "uint256" },
+      { name: "nonce", type: "bytes32" },
+      { name: "signature", type: "bytes" },
     ],
     outputs: [],
   },
@@ -144,11 +144,11 @@ const PROTO_MONKEYS_MINT_ABI = [
  */
 const HAS_MINTED_ABI = [
   {
-    name: 'hasMinted',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [{ name: '', type: 'address' }],
-    outputs: [{ name: '', type: 'bool' }],
+    name: "hasMinted",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "", type: "address" }],
+    outputs: [{ name: "", type: "bool" }],
   },
 ] as const;
 
@@ -156,7 +156,7 @@ const HAS_MINTED_ABI = [
  * ERC-721 Transfer event signature
  */
 const TRANSFER_EVENT_SIGNATURE =
-  '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef' as const;
+  "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef" as const;
 
 /**
  * Maximum token ID in the ProtoMonkeys collection.
@@ -187,8 +187,8 @@ function getChainConfig(chainId: number) {
   if (!config) {
     throw new ValidationError(
       `Unsupported chain ID: ${chainId}`,
-      ['chainId'],
-      [{ field: 'chainId', message: `Chain ${chainId} not supported` }]
+      ["chainId"],
+      [{ field: "chainId", message: `Chain ${chainId} not supported` }],
     );
   }
   return config;
@@ -221,23 +221,23 @@ function validateConfig(): {
 
   if (!contractAddress || !isAddress(contractAddress)) {
     throw new ValidationError(
-      'NFT contract not configured',
-      ['contractAddress'],
-      [{ field: 'contractAddress', message: 'NFT_CONTRACT_ADDRESS not set' }]
+      "NFT contract not configured",
+      ["contractAddress"],
+      [{ field: "contractAddress", message: "NFT_CONTRACT_ADDRESS not set" }],
     );
   }
 
   if (!Number.isFinite(chainId) || chainId <= 0) {
     throw new ValidationError(
-      'NFT chain not configured',
-      ['chainId'],
+      "NFT chain not configured",
+      ["chainId"],
       [
         {
-          field: 'chainId',
+          field: "chainId",
           message:
-            'Chain ID not configured. Set NEXT_PUBLIC_CHAIN_ID (or CHAIN_ID) to the chain where the NFT contract is deployed.',
+            "Chain ID not configured. Set NEXT_PUBLIC_CHAIN_ID (or CHAIN_ID) to the chain where the NFT contract is deployed.",
         },
-      ]
+      ],
     );
   }
 
@@ -245,14 +245,14 @@ function validateConfig(): {
   const PRIVATE_KEY_REGEX = /^0x[a-fA-F0-9]{64}$/;
   if (!signerPrivateKey || !PRIVATE_KEY_REGEX.test(signerPrivateKey)) {
     throw new ValidationError(
-      'NFT signer not configured',
-      ['signerPrivateKey'],
+      "NFT signer not configured",
+      ["signerPrivateKey"],
       [
         {
-          field: 'signerPrivateKey',
-          message: 'NFT_SIGNER_PRIVATE_KEY must be valid 66-char hex key',
+          field: "signerPrivateKey",
+          message: "NFT_SIGNER_PRIVATE_KEY must be valid 66-char hex key",
         },
-      ]
+      ],
     );
   }
 
@@ -260,19 +260,19 @@ function validateConfig(): {
 }
 
 async function resolveUserEmbeddedWalletAddress(
-  _userId: string
+  _userId: string,
 ): Promise<Address> {
   // Phase 2: Privy embedded wallets removed. NFT minting is currently disabled.
   // This path should not be reached (NFT feature flag prevents it).
   throw new ValidationError(
-    'NFT minting unavailable',
-    ['wallet'],
+    "NFT minting unavailable",
+    ["wallet"],
     [
       {
-        field: 'wallet',
-        message: 'NFT minting is not available in this version.',
+        field: "wallet",
+        message: "NFT minting is not available in this version.",
       },
-    ]
+    ],
   );
 }
 
@@ -282,13 +282,13 @@ async function resolveUserEmbeddedWalletAddress(
 async function checkHasMintedOnChain(
   walletAddress: Address,
   contractAddress: Address,
-  chainId: number
+  chainId: number,
 ): Promise<boolean> {
   const client = getPublicClient(chainId);
   return client.readContract({
     address: contractAddress,
     abi: HAS_MINTED_ABI,
-    functionName: 'hasMinted',
+    functionName: "hasMinted",
     args: [walletAddress],
   }) as Promise<boolean>;
 }
@@ -309,7 +309,7 @@ export async function reconcileOnChainMint(
   userId: string,
   walletAddress: Address,
   contractAddress: Address,
-  chainId: number
+  chainId: number,
 ): Promise<void> {
   const client = getPublicClient(chainId);
   const normalizedWallet = walletAddress.toLowerCase() as Address;
@@ -318,27 +318,27 @@ export async function reconcileOnChainMint(
   const logs = await client.getLogs({
     address: contractAddress,
     event: {
-      type: 'event',
-      name: 'Transfer',
+      type: "event",
+      name: "Transfer",
       inputs: [
-        { type: 'address', name: 'from', indexed: true },
-        { type: 'address', name: 'to', indexed: true },
-        { type: 'uint256', name: 'tokenId', indexed: true },
+        { type: "address", name: "from", indexed: true },
+        { type: "address", name: "to", indexed: true },
+        { type: "uint256", name: "tokenId", indexed: true },
       ],
     },
     args: {
-      from: '0x0000000000000000000000000000000000000000' as Address,
+      from: "0x0000000000000000000000000000000000000000" as Address,
       to: walletAddress,
     },
     fromBlock: getContractDeployBlock(),
-    toBlock: 'latest',
+    toBlock: "latest",
   });
 
   if (logs.length === 0) {
     logger.warn(
-      'reconcileOnChainMint: no Transfer(0x0 -> wallet) found',
+      "reconcileOnChainMint: no Transfer(0x0 -> wallet) found",
       { userId, walletAddress, contractAddress },
-      'NFTMintService'
+      "NFTMintService",
     );
     return;
   }
@@ -349,9 +349,9 @@ export async function reconcileOnChainMint(
 
   if (mintedTokenId < 1 || mintedTokenId > MAX_TOKEN_ID) {
     logger.warn(
-      'reconcileOnChainMint: tokenId out of range',
+      "reconcileOnChainMint: tokenId out of range",
       { userId, walletAddress, mintedTokenId },
-      'NFTMintService'
+      "NFTMintService",
     );
     return;
   }
@@ -371,7 +371,7 @@ export async function reconcileOnChainMint(
         mintTxHash: txHash,
       })
       .where(
-        and(eq(nftSnapshot.userId, userId), eq(nftSnapshot.hasMinted, false))
+        and(eq(nftSnapshot.userId, userId), eq(nftSnapshot.hasMinted, false)),
       );
 
     // 2. Upsert NftOwnership (replace stale record if one exists for this tokenId)
@@ -446,9 +446,9 @@ export async function reconcileOnChainMint(
   });
 
   logger.info(
-    'reconcileOnChainMint: reconciled desync',
+    "reconcileOnChainMint: reconciled desync",
     { userId, walletAddress, tokenId: mintedTokenId, txHash },
-    'NFTMintService'
+    "NFTMintService",
   );
 }
 
@@ -456,7 +456,7 @@ export async function reconcileOnChainMint(
  * Generate a unique nonce for minting
  */
 function generateNonce(): Hex {
-  return `0x${randomBytes(32).toString('hex')}` as Hex;
+  return `0x${randomBytes(32).toString("hex")}` as Hex;
 }
 
 /**
@@ -468,13 +468,13 @@ function createMessageHash(
   deadline: number,
   nonce: Hex,
   chainId: number,
-  contractAddress: Address
+  contractAddress: Address,
 ): Hex {
   return keccak256(
     encodePacked(
-      ['address', 'uint256', 'bytes32', 'uint256', 'address'],
-      [to, BigInt(deadline), nonce, BigInt(chainId), contractAddress]
-    )
+      ["address", "uint256", "bytes32", "uint256", "address"],
+      [to, BigInt(deadline), nonce, BigInt(chainId), contractAddress],
+    ),
   );
 }
 
@@ -485,11 +485,11 @@ function encodeMintCall(
   to: Address,
   deadline: number,
   nonce: Hex,
-  signature: Hex
+  signature: Hex,
 ): Hex {
   return encodeFunctionData({
     abi: PROTO_MONKEYS_MINT_ABI,
-    functionName: 'mint',
+    functionName: "mint",
     args: [to, BigInt(deadline), nonce, signature],
   });
 }
@@ -505,7 +505,7 @@ function encodeMintCall(
  * @returns Eligibility result with status and optional minted NFT info
  */
 export async function checkEligibility(
-  userId: string
+  userId: string,
 ): Promise<EligibilityResult> {
   // Get snapshot entry for this user
   const [snapshotEntry] = await db
@@ -527,9 +527,9 @@ export async function checkEligibility(
   if (!snapshotEntry) {
     return {
       eligible: false,
-      status: 'not_eligible',
+      status: "not_eligible",
       hasMinted: false,
-      reason: 'not_in_top_100',
+      reason: "not_in_top_100",
     };
   }
 
@@ -548,7 +548,7 @@ export async function checkEligibility(
 
     return {
       eligible: true,
-      status: 'already_minted',
+      status: "already_minted",
       snapshotRank: snapshotEntry.rank,
       snapshotPoints: snapshotEntry.points,
       snapshotTakenAt: snapshotEntry.snapshotTakenAt,
@@ -558,7 +558,7 @@ export async function checkEligibility(
             tokenId: mintedNft.tokenId,
             name: mintedNft.name,
             thumbnailUrl: mintedNft.thumbnailUrl ?? mintedNft.imageUrl,
-            txHash: snapshotEntry.mintTxHash ?? '',
+            txHash: snapshotEntry.mintTxHash ?? "",
           }
         : undefined,
     };
@@ -578,7 +578,7 @@ export async function checkEligibility(
         const hasMintedOnChain = await checkHasMintedOnChain(
           embeddedWallet,
           contractAddress as Address,
-          chainId
+          chainId,
         );
 
         if (hasMintedOnChain) {
@@ -587,9 +587,9 @@ export async function checkEligibility(
           onChainMintConfirmed = true;
 
           logger.warn(
-            'checkEligibility: on-chain hasMinted=true but DB false — reconciling',
+            "checkEligibility: on-chain hasMinted=true but DB false — reconciling",
             { userId, embeddedWallet, contractAddress },
-            'NFTMintService'
+            "NFTMintService",
           );
 
           try {
@@ -597,13 +597,13 @@ export async function checkEligibility(
               userId,
               embeddedWallet,
               contractAddress as Address,
-              chainId
+              chainId,
             );
           } catch (reconcileErr) {
             // Reconciliation failed (e.g. getLogs block-range error), but we still
             // know the user minted — don't fall through to 'eligible'.
             logger.warn(
-              'checkEligibility: reconciliation failed, returning already_minted without NFT details',
+              "checkEligibility: reconciliation failed, returning already_minted without NFT details",
               {
                 userId,
                 error:
@@ -611,7 +611,7 @@ export async function checkEligibility(
                     ? reconcileErr.message
                     : String(reconcileErr),
               },
-              'NFTMintService'
+              "NFTMintService",
             );
           }
 
@@ -625,7 +625,7 @@ export async function checkEligibility(
             .where(eq(nftSnapshot.userId, userId))
             .limit(1);
 
-          let mintedNft: EligibilityResult['mintedNft'];
+          let mintedNft: EligibilityResult["mintedNft"];
           if (updated?.mintedTokenId) {
             const [nftData] = await db
               .select({
@@ -643,14 +643,14 @@ export async function checkEligibility(
                 tokenId: nftData.tokenId,
                 name: nftData.name,
                 thumbnailUrl: nftData.thumbnailUrl ?? nftData.imageUrl,
-                txHash: updated.mintTxHash ?? '',
+                txHash: updated.mintTxHash ?? "",
               };
             }
           }
 
           return {
             eligible: true,
-            status: 'already_minted',
+            status: "already_minted",
             snapshotRank: snapshotEntry.rank,
             snapshotPoints: snapshotEntry.points,
             snapshotTakenAt: snapshotEntry.snapshotTakenAt,
@@ -665,7 +665,7 @@ export async function checkEligibility(
     if (onChainMintConfirmed) {
       return {
         eligible: true,
-        status: 'already_minted',
+        status: "already_minted",
         snapshotRank: snapshotEntry.rank,
         snapshotPoints: snapshotEntry.points,
         snapshotTakenAt: snapshotEntry.snapshotTakenAt,
@@ -674,15 +674,15 @@ export async function checkEligibility(
     }
     // Don't block eligibility checks if on-chain verification fails
     logger.warn(
-      'checkEligibility: on-chain hasMinted check failed, using DB state',
+      "checkEligibility: on-chain hasMinted check failed, using DB state",
       { userId, error: e instanceof Error ? e.message : String(e) },
-      'NFTMintService'
+      "NFTMintService",
     );
   }
 
   return {
     eligible: true,
-    status: 'eligible',
+    status: "eligible",
     snapshotRank: snapshotEntry.rank,
     snapshotPoints: snapshotEntry.points,
     snapshotTakenAt: snapshotEntry.snapshotTakenAt,
@@ -704,16 +704,16 @@ export async function prepareMint(userId: string): Promise<PrepareResult> {
   const eligibility = await checkEligibility(userId);
   if (!eligibility.eligible) {
     throw new ValidationError(
-      'User not eligible to mint',
-      ['userId'],
-      [{ field: 'userId', message: eligibility.reason ?? 'Not eligible' }]
+      "User not eligible to mint",
+      ["userId"],
+      [{ field: "userId", message: eligibility.reason ?? "Not eligible" }],
     );
   }
   if (eligibility.hasMinted) {
     throw new ValidationError(
-      'User has already minted',
-      ['userId'],
-      [{ field: 'userId', message: 'Already minted' }]
+      "User has already minted",
+      ["userId"],
+      [{ field: "userId", message: "Already minted" }],
     );
   }
 
@@ -733,7 +733,7 @@ export async function prepareMint(userId: string): Promise<PrepareResult> {
     deadline,
     nonce,
     chainId,
-    contractAddress
+    contractAddress,
   );
 
   // Sign with eth_sign format (adds "\x19Ethereum Signed Message:\n32" prefix)
@@ -745,7 +745,7 @@ export async function prepareMint(userId: string): Promise<PrepareResult> {
   const encodedData = encodeMintCall(walletAddress, deadline, nonce, signature);
 
   logger.info(
-    'Prepared mint transaction',
+    "Prepared mint transaction",
     {
       userId,
       walletAddress,
@@ -753,7 +753,7 @@ export async function prepareMint(userId: string): Promise<PrepareResult> {
       chainId,
       contractAddress,
     },
-    'NFTMintService'
+    "NFTMintService",
   );
 
   return {
@@ -778,22 +778,22 @@ export async function prepareMint(userId: string): Promise<PrepareResult> {
 export async function confirmMint(
   userId: string,
   txHash: Hex,
-  walletAddress: Hex
+  walletAddress: Hex,
 ): Promise<ConfirmResult> {
   // Validate inputs
   if (!/^0x[a-fA-F0-9]{64}$/.test(txHash)) {
     throw new ValidationError(
-      'Invalid transaction hash',
-      ['txHash'],
-      [{ field: 'txHash', message: 'Must be 66 character hex string' }]
+      "Invalid transaction hash",
+      ["txHash"],
+      [{ field: "txHash", message: "Must be 66 character hex string" }],
     );
   }
 
   if (!isAddress(walletAddress)) {
     throw new ValidationError(
-      'Invalid wallet address',
-      ['walletAddress'],
-      [{ field: 'walletAddress', message: 'Invalid Ethereum address' }]
+      "Invalid wallet address",
+      ["walletAddress"],
+      [{ field: "walletAddress", message: "Invalid Ethereum address" }],
     );
   }
 
@@ -805,14 +805,14 @@ export async function confirmMint(
   const expectedEmbeddedWallet = await resolveUserEmbeddedWalletAddress(userId);
   if (expectedEmbeddedWallet.toLowerCase() !== normalizedWallet.toLowerCase()) {
     throw new ValidationError(
-      'Wallet mismatch',
-      ['walletAddress'],
+      "Wallet mismatch",
+      ["walletAddress"],
       [
         {
-          field: 'walletAddress',
-          message: 'Wallet does not match authenticated user embedded wallet',
+          field: "walletAddress",
+          message: "Wallet does not match authenticated user embedded wallet",
         },
-      ]
+      ],
     );
   }
 
@@ -824,25 +824,25 @@ export async function confirmMint(
     receipt = await client.getTransactionReceipt({ hash: txHash });
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : 'Failed to get receipt';
+      error instanceof Error ? error.message : "Failed to get receipt";
     throw new ValidationError(
       `Transaction not found: ${message}`,
-      ['txHash'],
-      [{ field: 'txHash', message: 'Transaction not found on chain' }]
+      ["txHash"],
+      [{ field: "txHash", message: "Transaction not found on chain" }],
     );
   }
 
-  if (receipt.status !== 'success') {
+  if (receipt.status !== "success") {
     throw new ValidationError(
-      'Transaction failed',
-      ['txHash'],
-      [{ field: 'txHash', message: 'Transaction reverted' }]
+      "Transaction failed",
+      ["txHash"],
+      [{ field: "txHash", message: "Transaction reverted" }],
     );
   }
 
   // Parse Transfer event: Transfer(from=0x0, to=walletAddress, tokenId)
   const ZERO_TOPIC =
-    '0x0000000000000000000000000000000000000000000000000000000000000000';
+    "0x0000000000000000000000000000000000000000000000000000000000000000";
 
   const mintLog = receipt.logs.find((log) => {
     const [sig, from, to, tokenId] = log.topics;
@@ -856,9 +856,9 @@ export async function confirmMint(
 
   if (!mintLog?.topics[3]) {
     throw new ValidationError(
-      'Mint event not found in transaction',
-      ['txHash'],
-      [{ field: 'txHash', message: 'No Transfer from 0x0 found for wallet' }]
+      "Mint event not found in transaction",
+      ["txHash"],
+      [{ field: "txHash", message: "No Transfer from 0x0 found for wallet" }],
     );
   }
 
@@ -868,8 +868,13 @@ export async function confirmMint(
   if (mintedTokenId < 1 || mintedTokenId > MAX_TOKEN_ID) {
     throw new ValidationError(
       `Invalid token ID: ${mintedTokenId}`,
-      ['tokenId'],
-      [{ field: 'tokenId', message: `Token ID out of range 1-${MAX_TOKEN_ID}` }]
+      ["tokenId"],
+      [
+        {
+          field: "tokenId",
+          message: `Token ID out of range 1-${MAX_TOKEN_ID}`,
+        },
+      ],
     );
   }
 
@@ -891,17 +896,17 @@ export async function confirmMint(
 
     if (!snapshotEntry) {
       throw new ValidationError(
-        'User not in snapshot',
-        ['userId'],
-        [{ field: 'userId', message: 'Not eligible' }]
+        "User not in snapshot",
+        ["userId"],
+        [{ field: "userId", message: "Not eligible" }],
       );
     }
 
     if (snapshotEntry.hasMinted) {
       throw new ValidationError(
-        'Already minted',
-        ['userId'],
-        [{ field: 'userId', message: 'User already minted' }]
+        "Already minted",
+        ["userId"],
+        [{ field: "userId", message: "User already minted" }],
       );
     }
 
@@ -979,14 +984,14 @@ export async function confirmMint(
   });
 
   logger.info(
-    'Confirmed mint transaction',
+    "Confirmed mint transaction",
     {
       userId,
       txHash,
       tokenId: mintedTokenId,
       blockNumber: Number(receipt.blockNumber),
     },
-    'NFTMintService'
+    "NFTMintService",
   );
 
   return {
@@ -995,7 +1000,7 @@ export async function confirmMint(
     nft: {
       tokenId: mintedTokenId,
       name: result.nftData?.name ?? `ProtoMonkey #${mintedTokenId}`,
-      imageUrl: result.nftData?.imageUrl ?? '',
+      imageUrl: result.nftData?.imageUrl ?? "",
       thumbnailUrl: result.nftData?.thumbnailUrl ?? null,
       storyTitle: result.nftData?.storyTitle ?? null,
     },
@@ -1011,9 +1016,9 @@ export async function confirmMint(
 export async function getTokenMetadata(tokenId: number) {
   if (tokenId < 1 || tokenId > MAX_TOKEN_ID) {
     throw new ValidationError(
-      'Invalid token ID',
-      ['tokenId'],
-      [{ field: 'tokenId', message: `Must be between 1 and ${MAX_TOKEN_ID}` }]
+      "Invalid token ID",
+      ["tokenId"],
+      [{ field: "tokenId", message: `Must be between 1 and ${MAX_TOKEN_ID}` }],
     );
   }
 
@@ -1033,9 +1038,9 @@ export async function getTokenMetadata(tokenId: number) {
 
   if (!nft) {
     throw new ValidationError(
-      'NFT not found',
-      ['tokenId'],
-      [{ field: 'tokenId', message: `Token ${tokenId} not found` }]
+      "NFT not found",
+      ["tokenId"],
+      [{ field: "tokenId", message: `Token ${tokenId} not found` }],
     );
   }
 
@@ -1043,7 +1048,7 @@ export async function getTokenMetadata(tokenId: number) {
   const baseUrl =
     configuredBaseUrl && configuredBaseUrl.length > 0
       ? configuredBaseUrl
-      : 'https://feed.market';
+      : "https://feed.market";
 
   return {
     name: nft.name,

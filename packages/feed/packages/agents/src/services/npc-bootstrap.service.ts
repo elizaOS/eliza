@@ -19,16 +19,16 @@ import {
   loadActorById,
   type StaticActor,
   StaticDataRegistry,
-} from '@feed/engine';
-import type { ActorData, AgentCapabilities } from '@feed/shared';
+} from "@feed/engine";
+import type { ActorData, AgentCapabilities } from "@feed/shared";
 import {
   logger,
   mapActorToOASFDomains,
   mapActorToOASFSkills,
-} from '@feed/shared';
-import { agentRuntimeManager } from '../runtime/AgentRuntimeManager';
-import { AgentStatus, AgentType } from '../types/agent-registry';
-import { agentRegistry } from './agent-registry.service';
+} from "@feed/shared";
+import { agentRuntimeManager } from "../runtime/AgentRuntimeManager";
+import { AgentStatus, AgentType } from "../types/agent-registry";
+import { agentRegistry } from "./agent-registry.service";
 
 /**
  * Result of NPC bootstrap operation
@@ -120,7 +120,7 @@ export class NPCBootstrapService {
         logger.error(
           `NPC bootstrap failed: ${actor.name}`,
           { actorId: actor.id, error: errorMessage },
-          'NPCBootstrapService'
+          "NPCBootstrapService",
         );
         // Continue to next NPC - don't let one failure stop the entire bootstrap
       }
@@ -142,7 +142,7 @@ export class NPCBootstrapService {
         durationMs,
         avgPerNpcMs,
       },
-      'NPCBootstrapService'
+      "NPCBootstrapService",
     );
 
     return result;
@@ -160,13 +160,13 @@ export class NPCBootstrapService {
    * @private
    */
   private async bootstrapSingleNpc(
-    actor: StaticActor
+    actor: StaticActor,
   ): Promise<{ registered: boolean; initialized: boolean }> {
     // Use debug level for per-NPC logs to reduce startup noise
     logger.debug(
       `Bootstrapping NPC: ${actor.name} (${actor.id})`,
       undefined,
-      'NPCBootstrapService'
+      "NPCBootstrapService",
     );
 
     let registered = false;
@@ -178,7 +178,7 @@ export class NPCBootstrapService {
       logger.debug(
         `NPC ${actor.id} already registered, initializing runtime only`,
         undefined,
-        'NPCBootstrapService'
+        "NPCBootstrapService",
       );
       // Skip registration but still initialize runtime
     } else {
@@ -210,7 +210,7 @@ export class NPCBootstrapService {
       logger.debug(
         `NPC ${actor.id} registered successfully`,
         undefined,
-        'NPCBootstrapService'
+        "NPCBootstrapService",
       );
     }
 
@@ -220,7 +220,7 @@ export class NPCBootstrapService {
     logger.debug(
       `NPC ${actor.id} runtime created (agentId: ${runtime.agentId})`,
       undefined,
-      'NPCBootstrapService'
+      "NPCBootstrapService",
     );
 
     return { registered, initialized };
@@ -245,7 +245,7 @@ export class NPCBootstrapService {
       parts.push(actorData.description);
     } else {
       parts.push(
-        `You are ${actorData.name}, a character in the Feed prediction market game.`
+        `You are ${actorData.name}, a character in the Feed prediction market game.`,
       );
     }
 
@@ -261,13 +261,13 @@ export class NPCBootstrapService {
 
     // Add game context
     parts.push(
-      'You participate in prediction markets, social interactions, and autonomous trading.'
+      "You participate in prediction markets, social interactions, and autonomous trading.",
     );
     parts.push(
-      'You maintain your personality while engaging with users and other agents.'
+      "You maintain your personality while engaging with users and other agents.",
     );
 
-    return parts.join('\n\n');
+    return parts.join("\n\n");
   }
 
   /**
@@ -289,33 +289,33 @@ export class NPCBootstrapService {
     return {
       // Standard NPC strategies
       strategies: [
-        'prediction_markets',
-        'social_interaction',
-        'autonomous_trading',
+        "prediction_markets",
+        "social_interaction",
+        "autonomous_trading",
       ],
 
       // NPCs can interact with all market types
-      markets: ['prediction', 'perpetual', 'spot'],
+      markets: ["prediction", "perpetual", "spot"],
 
       // Standard NPC actions
       actions: [
-        'trade',
-        'post',
-        'comment',
-        'like',
-        'message',
-        'analyze_market',
-        'manage_portfolio',
+        "trade",
+        "post",
+        "comment",
+        "like",
+        "message",
+        "analyze_market",
+        "manage_portfolio",
       ],
 
-      version: '1.0.0',
+      version: "1.0.0",
 
       // NPCs support x402 payments in game
       x402Support: true,
 
       // Platform and user type
-      platform: 'feed',
-      userType: 'npc',
+      platform: "feed",
+      userType: "npc",
 
       // OASF Taxonomy Support (Agent0 SDK v0.31.0)
       skills: oasfSkills,
@@ -365,7 +365,7 @@ export class NPCBootstrapService {
 
     // AgentRegistry entry is preserved for history
     // Status will be set to TERMINATED by clearRuntimeInstance
-    logger.debug(`NPC ${actorId} removed`, undefined, 'NPCBootstrapService');
+    logger.debug(`NPC ${actorId} removed`, undefined, "NPCBootstrapService");
   }
 
   /**
@@ -384,7 +384,7 @@ export class NPCBootstrapService {
     // Bootstrap again (will use latest ActorData)
     await this.bootstrapNpc(actorId);
 
-    logger.debug(`NPC ${actorId} refreshed`, undefined, 'NPCBootstrapService');
+    logger.debug(`NPC ${actorId} refreshed`, undefined, "NPCBootstrapService");
   }
 
   /**
@@ -411,10 +411,10 @@ export class NPCBootstrapService {
     const registered = registrations.length;
     const initialized = registrations.filter(
       (r) =>
-        r.status === AgentStatus.INITIALIZED || r.status === AgentStatus.ACTIVE
+        r.status === AgentStatus.INITIALIZED || r.status === AgentStatus.ACTIVE,
     ).length;
     const active = registrations.filter(
-      (r) => r.status === AgentStatus.ACTIVE
+      (r) => r.status === AgentStatus.ACTIVE,
     ).length;
 
     return {

@@ -1,14 +1,14 @@
-'use client';
+"use client";
 
 /**
  * Error boundary for individual prediction market detail page.
  * Catches chart rendering errors and provides recovery UI.
  */
 
-import * as Sentry from '@sentry/nextjs';
-import { AlertTriangle, RefreshCw } from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import * as Sentry from "@sentry/nextjs";
+import { AlertTriangle, RefreshCw } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
 export default function PredictionDetailError({
   error,
@@ -21,10 +21,10 @@ export default function PredictionDetailError({
 
   useEffect(() => {
     Sentry.withScope((scope) => {
-      scope.setTag('errorBoundary', 'prediction-detail');
-      scope.setTag('page', 'markets/predictions/[id]');
+      scope.setTag("errorBoundary", "prediction-detail");
+      scope.setTag("page", "markets/predictions/[id]");
       if (error.digest) {
-        scope.setTag('errorDigest', error.digest);
+        scope.setTag("errorDigest", error.digest);
       }
       Sentry.captureException(error);
     });
@@ -53,7 +53,7 @@ export default function PredictionDetailError({
             Try again
           </button>
           <button
-            onClick={() => router.push('/markets?tab=predictions')}
+            onClick={() => router.push("/markets?tab=predictions")}
             className="rounded-md bg-secondary px-6 py-2 text-secondary-foreground transition-colors hover:bg-secondary/90"
           >
             Back to Predictions

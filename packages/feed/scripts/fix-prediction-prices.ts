@@ -17,12 +17,12 @@
  *   bun run scripts/fix-prediction-prices.ts --apply       # Apply the fix
  */
 
-import { parseArgs } from 'node:util';
-import { db, eq, poolPositions, sql } from '@feed/db';
+import { parseArgs } from "node:util";
+import { db, eq, poolPositions, sql } from "@feed/db";
 
 const { values: args } = parseArgs({
   options: {
-    apply: { type: 'boolean', default: false },
+    apply: { type: "boolean", default: false },
   },
   strict: true,
 });
@@ -30,9 +30,9 @@ const { values: args } = parseArgs({
 const dryRun = !args.apply;
 
 async function main() {
-  console.log('=== Prediction Market Price Fix ===');
+  console.log("=== Prediction Market Price Fix ===");
   console.log(
-    `Mode: ${dryRun ? 'DRY RUN (use --apply to execute)' : 'APPLYING FIXES'}\n`
+    `Mode: ${dryRun ? "DRY RUN (use --apply to execute)" : "APPLYING FIXES"}\n`,
   );
 
   // Get current state
@@ -46,46 +46,46 @@ async function main() {
       maxCurrent: sql<number>`max("currentPrice")`,
     })
     .from(poolPositions)
-    .where(eq(poolPositions.marketType, 'prediction'));
+    .where(eq(poolPositions.marketType, "prediction"));
 
   const s = stats[0];
   if (!s || s.total === 0) {
-    console.log('No prediction positions found. Nothing to fix.');
+    console.log("No prediction positions found. Nothing to fix.");
     process.exit(0);
   }
 
-  console.log('BEFORE:');
+  console.log("BEFORE:");
   console.log(`  Prediction positions: ${s.total}`);
   console.log(
-    `  entryPrice:   min=${s.minEntry?.toFixed(4)}, max=${s.maxEntry?.toFixed(4)}, avg=${s.avgEntry?.toFixed(4)}`
+    `  entryPrice:   min=${s.minEntry?.toFixed(4)}, max=${s.maxEntry?.toFixed(4)}, avg=${s.avgEntry?.toFixed(4)}`,
   );
   console.log(
-    `  currentPrice: min=${s.minCurrent?.toFixed(4)}, max=${s.maxCurrent?.toFixed(4)}`
+    `  currentPrice: min=${s.minCurrent?.toFixed(4)}, max=${s.maxCurrent?.toFixed(4)}`,
   );
 
   // Detect if data needs fixing: if max entryPrice > 10, it's likely scaled
   const needsFix = (s.maxEntry ?? 0) > 10;
   if (!needsFix) {
     console.log(
-      '\n  Prices look correct (max entryPrice < 10). No fix needed.'
+      "\n  Prices look correct (max entryPrice < 10). No fix needed.",
     );
     process.exit(0);
   }
 
   console.log(
-    `\n  Max entryPrice ${s.maxEntry?.toFixed(2)} > 10 — data appears to have * 100 scaling.`
+    `\n  Max entryPrice ${s.maxEntry?.toFixed(2)} > 10 — data appears to have * 100 scaling.`,
   );
 
   if (dryRun) {
     console.log(
-      '\n  Would divide entryPrice and currentPrice by 100 for all prediction positions.'
+      "\n  Would divide entryPrice and currentPrice by 100 for all prediction positions.",
     );
-    console.log('  Run with --apply to execute.');
+    console.log("  Run with --apply to execute.");
     process.exit(0);
   }
 
   // Apply fix
-  console.log('\nApplying fix...');
+  console.log("\nApplying fix...");
 
   await db
     .update(poolPositions)
@@ -93,7 +93,7 @@ async function main() {
       entryPrice: sql`"entryPrice" / 100`,
       currentPrice: sql`"currentPrice" / 100`,
     })
-    .where(eq(poolPositions.marketType, 'prediction'));
+    .where(eq(poolPositions.marketType, "prediction"));
 
   // Verify
   const after = await db
@@ -106,17 +106,17 @@ async function main() {
       maxCurrent: sql<number>`max("currentPrice")`,
     })
     .from(poolPositions)
-    .where(eq(poolPositions.marketType, 'prediction'));
+    .where(eq(poolPositions.marketType, "prediction"));
 
   const a = after[0];
-  console.log('\nAFTER:');
+  console.log("\nAFTER:");
   console.log(
-    `  entryPrice:   min=${a?.minEntry?.toFixed(4)}, max=${a?.maxEntry?.toFixed(4)}, avg=${a?.avgEntry?.toFixed(4)}`
+    `  entryPrice:   min=${a?.minEntry?.toFixed(4)}, max=${a?.maxEntry?.toFixed(4)}, avg=${a?.avgEntry?.toFixed(4)}`,
   );
   console.log(
-    `  currentPrice: min=${a?.minCurrent?.toFixed(4)}, max=${a?.maxCurrent?.toFixed(4)}`
+    `  currentPrice: min=${a?.minCurrent?.toFixed(4)}, max=${a?.maxCurrent?.toFixed(4)}`,
   );
-  console.log('\nDone.');
+  console.log("\nDone.");
 
   process.exit(0);
 }

@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { logger } from '@feed/shared';
-import { useCallback, useEffect, useState } from 'react';
-import type { TeamTradingSummary } from '@/lib/agents/team-trading-summary';
+import { logger } from "@feed/shared";
+import { useCallback, useEffect, useState } from "react";
+import type { TeamTradingSummary } from "@/lib/agents/team-trading-summary";
 
 interface TeamDashboardResponse {
   success: boolean;
@@ -49,10 +49,10 @@ export function useTeamTradingSummary({
       try {
         const token = await getAccessToken();
         if (!token) {
-          throw new Error('Authentication required');
+          throw new Error("Authentication required");
         }
 
-        const response = await fetch('/api/agents/team-dashboard', {
+        const response = await fetch("/api/agents/team-dashboard", {
           headers: {
             Authorization: `Bearer ${token}`,
           },
@@ -65,7 +65,7 @@ export function useTeamTradingSummary({
 
         const data = (await response.json()) as TeamDashboardResponse;
         if (!data.success) {
-          throw new Error('Failed to fetch team summary');
+          throw new Error("Failed to fetch team summary");
         }
 
         if (cancelled) {
@@ -79,13 +79,13 @@ export function useTeamTradingSummary({
         }
 
         const message =
-          err instanceof Error ? err.message : 'Failed to load team summary';
+          err instanceof Error ? err.message : "Failed to load team summary";
         setError(message);
         setSummary(null);
         logger.error(
-          'Failed to fetch team trading summary',
+          "Failed to fetch team trading summary",
           { error: message },
-          'useTeamTradingSummary'
+          "useTeamTradingSummary",
         );
       } finally {
         if (!cancelled) {

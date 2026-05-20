@@ -9,16 +9,16 @@
  * - Ban/unban with moderation flags
  */
 
-import { expect, test } from '@playwright/test';
+import { expect, test } from "@playwright/test";
 
 const BASE_URL =
   process.env.PLAYWRIGHT_BASE_URL ||
   process.env.TEST_BASE_URL ||
-  process.env.TEST_API_URL?.replace(/\/api$/, '') ||
+  process.env.TEST_API_URL?.replace(/\/api$/, "") ||
   process.env.NEXT_PUBLIC_APP_URL ||
-  'http://127.0.0.1:3400';
+  "http://127.0.0.1:3400";
 
-test.describe('Admin Registry Panel', () => {
+test.describe("Admin Registry Panel", () => {
   // Skip: Registry tab has an RSC rendering error ("Event handlers cannot be passed to
   // Client Component props") that prevents content from loading. This is a pre-existing
   // UI issue unrelated to test infrastructure.
@@ -33,7 +33,7 @@ test.describe('Admin Registry Panel', () => {
       .waitForSelector('[data-testid="admin-dashboard"]', { timeout: 10000 })
       .catch(async () => {
         // If test ID doesn't exist, wait for any admin content
-        await page.waitForSelector('text=Admin', { timeout: 10000 });
+        await page.waitForSelector("text=Admin", { timeout: 10000 });
       });
 
     // Open the navigation dropdown to reveal tab buttons
@@ -45,15 +45,15 @@ test.describe('Admin Registry Panel', () => {
       });
   });
 
-  test('should display registry tab and load entities', async ({ page }) => {
+  test("should display registry tab and load entities", async ({ page }) => {
     // Click on Registry tab
-    await page.click('text=Registry');
+    await page.click("text=Registry");
 
     // Wait for registry content to load
-    await page.waitForSelector('text=ERC8004 Registry', { timeout: 10000 });
+    await page.waitForSelector("text=ERC8004 Registry", { timeout: 10000 });
 
     // Check that totals are displayed
-    await expect(page.locator('text=Total')).toBeVisible();
+    await expect(page.locator("text=Total")).toBeVisible();
 
     // Check that entity cards are displayed (at least one)
     const entityCards = page
@@ -62,15 +62,15 @@ test.describe('Admin Registry Panel', () => {
     await expect(entityCards.first()).toBeVisible({ timeout: 5000 });
   });
 
-  test('should display reputation scores with color coding', async ({
+  test("should display reputation scores with color coding", async ({
     page,
   }) => {
-    await page.click('text=Registry');
-    await page.waitForSelector('text=ERC8004 Registry', { timeout: 10000 });
+    await page.click("text=Registry");
+    await page.waitForSelector("text=ERC8004 Registry", { timeout: 10000 });
 
     // Look for reputation display (should show score/100 or pts)
     const reputationElements = page.locator(
-      'text=/Reputation|\\d+\\/100|\\d+ pts/'
+      "text=/Reputation|\\d+\\/100|\\d+ pts/",
     );
     const count = await reputationElements.count();
 
@@ -81,20 +81,20 @@ test.describe('Admin Registry Panel', () => {
       // Check for color coding (green, yellow, orange, red based on score)
       const reputationCard = page.locator('[class*="reputation"]').first();
       if ((await reputationCard.count()) > 0) {
-        const className = await reputationCard.getAttribute('class');
+        const className = await reputationCard.getAttribute("class");
         expect(className).toMatch(/green|yellow|orange|red|purple/);
       }
     }
   });
 
-  test('should display scammer and CSAM flags', async ({ page }) => {
-    await page.click('text=Registry');
-    await page.waitForSelector('text=ERC8004 Registry', { timeout: 10000 });
+  test("should display scammer and CSAM flags", async ({ page }) => {
+    await page.click("text=Registry");
+    await page.waitForSelector("text=ERC8004 Registry", { timeout: 10000 });
 
     // Look for moderation badges
-    const scammerBadge = page.locator('text=Scammer');
-    const csamBadge = page.locator('text=CSAM');
-    const bannedBadge = page.locator('text=Banned');
+    const scammerBadge = page.locator("text=Scammer");
+    const csamBadge = page.locator("text=CSAM");
+    const bannedBadge = page.locator("text=Banned");
 
     // These may or may not exist depending on data, but if they do, they should be visible
     const scammerCount = await scammerBadge.count();
@@ -113,12 +113,12 @@ test.describe('Admin Registry Panel', () => {
     }
   });
 
-  test('should show feedback button for agents', async ({ page }) => {
-    await page.click('text=Registry');
-    await page.waitForSelector('text=ERC8004 Registry', { timeout: 10000 });
+  test("should show feedback button for agents", async ({ page }) => {
+    await page.click("text=Registry");
+    await page.waitForSelector("text=ERC8004 Registry", { timeout: 10000 });
 
     // Filter to agents tab
-    await page.click('text=/Agents/');
+    await page.click("text=/Agents/");
     await page.waitForTimeout(1000); // Wait for filter to apply
 
     // Look for feedback buttons (only shown for users with agent0TokenId)
@@ -131,17 +131,17 @@ test.describe('Admin Registry Panel', () => {
     }
   });
 
-  test('should show ban/unban button for users', async ({ page }) => {
-    await page.click('text=Registry');
-    await page.waitForSelector('text=ERC8004 Registry', { timeout: 10000 });
+  test("should show ban/unban button for users", async ({ page }) => {
+    await page.click("text=Registry");
+    await page.waitForSelector("text=ERC8004 Registry", { timeout: 10000 });
 
     // Filter to users tab
-    await page.click('text=/Users/');
+    await page.click("text=/Users/");
     await page.waitForTimeout(1000);
 
     // Look for ban/unban buttons
     const banButtons = page.locator(
-      'button:has-text("Ban"), button:has-text("Unban")'
+      'button:has-text("Ban"), button:has-text("Unban")',
     );
     const count = await banButtons.count();
 
@@ -151,11 +151,11 @@ test.describe('Admin Registry Panel', () => {
     }
   });
 
-  test('should open feedback modal when feedback button is clicked', async ({
+  test("should open feedback modal when feedback button is clicked", async ({
     page,
   }) => {
-    await page.click('text=Registry');
-    await page.waitForSelector('text=ERC8004 Registry', { timeout: 10000 });
+    await page.click("text=Registry");
+    await page.waitForSelector("text=ERC8004 Registry", { timeout: 10000 });
 
     const feedbackButtons = page.locator('button:has-text("Feedback")');
     const count = await feedbackButtons.count();
@@ -164,15 +164,15 @@ test.describe('Admin Registry Panel', () => {
       await feedbackButtons.first().click();
 
       // Wait for feedback modal to appear
-      await page.waitForSelector('text=Give Feedback', { timeout: 5000 });
+      await page.waitForSelector("text=Give Feedback", { timeout: 5000 });
 
       // Verify modal content
-      await expect(page.locator('text=Rate')).toBeVisible();
+      await expect(page.locator("text=Rate")).toBeVisible();
 
       // Close modal
       await page.click('button:has-text("Cancel")').catch(() => {
         // If cancel button doesn't exist, press Escape
-        page.keyboard.press('Escape');
+        page.keyboard.press("Escape");
       });
     } else {
       // Skip test if no feedback buttons available
@@ -180,9 +180,9 @@ test.describe('Admin Registry Panel', () => {
     }
   });
 
-  test('should open ban modal when ban button is clicked', async ({ page }) => {
-    await page.click('text=Registry');
-    await page.waitForSelector('text=ERC8004 Registry', { timeout: 10000 });
+  test("should open ban modal when ban button is clicked", async ({ page }) => {
+    await page.click("text=Registry");
+    await page.waitForSelector("text=ERC8004 Registry", { timeout: 10000 });
 
     const banButtons = page.locator('button:has-text("Ban")');
     const count = await banButtons.count();
@@ -191,12 +191,12 @@ test.describe('Admin Registry Panel', () => {
       await banButtons.first().click();
 
       // Wait for ban modal to appear
-      await page.waitForSelector('text=Ban User', { timeout: 5000 });
+      await page.waitForSelector("text=Ban User", { timeout: 5000 });
 
       // Verify modal content
-      await expect(page.locator('text=Reason for ban')).toBeVisible();
-      await expect(page.locator('text=Mark as Scammer')).toBeVisible();
-      await expect(page.locator('text=Mark as CSAM')).toBeVisible();
+      await expect(page.locator("text=Reason for ban")).toBeVisible();
+      await expect(page.locator("text=Mark as Scammer")).toBeVisible();
+      await expect(page.locator("text=Mark as CSAM")).toBeVisible();
 
       // Verify checkboxes are present
       const scammerCheckbox = page.locator('input[id="isScammer"]');
@@ -213,12 +213,12 @@ test.describe('Admin Registry Panel', () => {
     }
   });
 
-  test('should filter entities by type', async ({ page }) => {
-    await page.click('text=Registry');
-    await page.waitForSelector('text=ERC8004 Registry', { timeout: 10000 });
+  test("should filter entities by type", async ({ page }) => {
+    await page.click("text=Registry");
+    await page.waitForSelector("text=ERC8004 Registry", { timeout: 10000 });
 
     // Test Users filter
-    await page.click('text=/Users/');
+    await page.click("text=/Users/");
     await page.waitForTimeout(1000);
     // Verify user entities are shown (or empty state)
     const userCards = page.locator('[class*="rounded-2xl"]');
@@ -226,45 +226,45 @@ test.describe('Admin Registry Panel', () => {
       .toBeVisible({ timeout: 5000 })
       .catch(() => {
         // Empty state is also valid
-        expect(page.locator('text=No entities found')).toBeVisible();
+        expect(page.locator("text=No entities found")).toBeVisible();
       });
 
     // Test Agents filter
-    await page.click('text=/Agents/');
+    await page.click("text=/Agents/");
     await page.waitForTimeout(1000);
 
     // Test Actors filter
-    await page.click('text=/Actors/');
+    await page.click("text=/Actors/");
     await page.waitForTimeout(1000);
 
     // Test Apps filter
-    await page.click('text=/Apps/');
+    await page.click("text=/Apps/");
     await page.waitForTimeout(1000);
 
     // Test All filter
-    await page.click('text=/All/');
+    await page.click("text=/All/");
     await page.waitForTimeout(1000);
   });
 
-  test('should search entities', async ({ page }) => {
-    await page.click('text=Registry');
-    await page.waitForSelector('text=ERC8004 Registry', { timeout: 10000 });
+  test("should search entities", async ({ page }) => {
+    await page.click("text=Registry");
+    await page.waitForSelector("text=ERC8004 Registry", { timeout: 10000 });
 
     // Find search input
     const searchInput = page.locator('input[placeholder*="Search"]');
     await expect(searchInput).toBeVisible();
 
     // Type in search
-    await searchInput.fill('test');
+    await searchInput.fill("test");
     await page.waitForTimeout(500); // Wait for debounce
 
     // Verify results update (may show filtered results or empty state)
     await page.waitForTimeout(1000);
   });
 
-  test('should toggle on-chain only filter', async ({ page }) => {
-    await page.click('text=Registry');
-    await page.waitForSelector('text=ERC8004 Registry', { timeout: 10000 });
+  test("should toggle on-chain only filter", async ({ page }) => {
+    await page.click("text=Registry");
+    await page.waitForSelector("text=ERC8004 Registry", { timeout: 10000 });
 
     // Find on-chain only button
     const onChainButton = page.locator('button:has-text("On-chain Only")');
@@ -279,9 +279,9 @@ test.describe('Admin Registry Panel', () => {
     await page.waitForTimeout(1000);
   });
 
-  test('should display entity details correctly', async ({ page }) => {
-    await page.click('text=Registry');
-    await page.waitForSelector('text=ERC8004 Registry', { timeout: 10000 });
+  test("should display entity details correctly", async ({ page }) => {
+    await page.click("text=Registry");
+    await page.waitForSelector("text=ERC8004 Registry", { timeout: 10000 });
 
     // Find first entity card
     const entityCard = page.locator('[class*="rounded-2xl"]').first();
@@ -300,12 +300,12 @@ test.describe('Admin Registry Panel', () => {
     }
   });
 
-  test('should display feedback count when available', async ({ page }) => {
-    await page.click('text=Registry');
-    await page.waitForSelector('text=ERC8004 Registry', { timeout: 10000 });
+  test("should display feedback count when available", async ({ page }) => {
+    await page.click("text=Registry");
+    await page.waitForSelector("text=ERC8004 Registry", { timeout: 10000 });
 
     // Look for feedback count text (e.g., "5 reviews")
-    const feedbackCount = page.locator('text=/\\d+ reviews/');
+    const feedbackCount = page.locator("text=/\\d+ reviews/");
     const count = await feedbackCount.count();
 
     if (count > 0) {
@@ -313,9 +313,9 @@ test.describe('Admin Registry Panel', () => {
     }
   });
 
-  test('should display wallet address with copy button', async ({ page }) => {
-    await page.click('text=Registry');
-    await page.waitForSelector('text=ERC8004 Registry', { timeout: 10000 });
+  test("should display wallet address with copy button", async ({ page }) => {
+    await page.click("text=Registry");
+    await page.waitForSelector("text=ERC8004 Registry", { timeout: 10000 });
 
     // Look for wallet address display
     const walletAddress = page

@@ -26,20 +26,20 @@ import {
   referrals,
   sql,
   users,
-} from '@feed/db';
-import { StaticDataRegistry } from '@feed/engine';
+} from "@feed/db";
+import { StaticDataRegistry } from "@feed/engine";
 import {
   generateSnowflakeId,
   logger,
   POINTS,
   type PointsReason,
   toISO,
-} from '@feed/shared';
+} from "@feed/shared";
 import type {
   LeaderboardPosition,
   LeaderboardResult,
   LeaderboardScope,
-} from './leaderboard-types';
+} from "./leaderboard-types";
 
 /**
  * Maximum number of unqualified referrals that can earn signup reputation at any time.
@@ -51,7 +51,7 @@ const UNQUALIFIED_REFERRAL_LIMIT = 10;
 /**
  * Leaderboard category type (legacy — used by existing getLeaderboard)
  */
-type LeaderboardCategory = 'all' | 'earned' | 'referral';
+type LeaderboardCategory = "all" | "earned" | "referral";
 
 /**
  * Result of awarding reputation to a user.
@@ -93,8 +93,8 @@ function buildAwardReputationResult(
   reputationAwarded: number,
   newReputationTotal: number,
   extras?: Partial<
-    Pick<AwardReputationResult, 'success' | 'alreadyAwarded' | 'error'>
-  >
+    Pick<AwardReputationResult, "success" | "alreadyAwarded" | "error">
+  >,
 ): AwardReputationResult {
   return {
     success: extras?.success ?? true,
@@ -122,7 +122,7 @@ export class ReputationService {
     userId: string,
     amount: number,
     reason: PointsReason,
-    metadata?: Record<string, JsonValue>
+    metadata?: Record<string, JsonValue>,
   ): Promise<AwardReputationResult> {
     // Get current user state
     const userResult = await db
@@ -154,7 +154,7 @@ export class ReputationService {
     if (!user) {
       return buildAwardReputationResult(0, 0, {
         success: false,
-        error: 'User not found',
+        error: "User not found",
       });
     }
 
@@ -193,59 +193,59 @@ export class ReputationService {
 
     // Set the appropriate tracking flag and update the correct reputation bucket.
     switch (reason) {
-      case 'referral_signup':
+      case "referral_signup":
         updateData.invitePoints = user.invitePoints + amount;
         break;
-      case 'profile_completion':
+      case "profile_completion":
         updateData.bonusPoints = user.bonusPoints + amount;
         updateData.pointsAwardedForProfile = true;
         break;
-      case 'farcaster_link':
+      case "farcaster_link":
         updateData.bonusPoints = user.bonusPoints + amount;
         updateData.pointsAwardedForFarcaster = true;
         break;
-      case 'farcaster_follow':
+      case "farcaster_follow":
         updateData.bonusPoints = user.bonusPoints + amount;
         updateData.pointsAwardedForFarcasterFollow = true;
         break;
-      case 'twitter_link':
+      case "twitter_link":
         updateData.bonusPoints = user.bonusPoints + amount;
         updateData.pointsAwardedForTwitter = true;
         break;
-      case 'twitter_follow':
+      case "twitter_follow":
         updateData.bonusPoints = user.bonusPoints + amount;
         updateData.pointsAwardedForTwitterFollow = true;
         break;
-      case 'discord_link':
+      case "discord_link":
         updateData.bonusPoints = user.bonusPoints + amount;
         updateData.pointsAwardedForDiscord = true;
         break;
-      case 'discord_join':
+      case "discord_join":
         updateData.bonusPoints = user.bonusPoints + amount;
         updateData.pointsAwardedForDiscordJoin = true;
         break;
-      case 'telegram_link':
+      case "telegram_link":
         updateData.bonusPoints = user.bonusPoints + amount;
         updateData.pointsAwardedForTelegram = true;
         break;
-      case 'wallet_connect':
+      case "wallet_connect":
         updateData.bonusPoints = user.bonusPoints + amount;
         updateData.pointsAwardedForWallet = true;
         break;
-      case 'referral_bonus':
+      case "referral_bonus":
         updateData.bonusPoints = user.bonusPoints + amount;
         updateData.pointsAwardedForReferralBonus = true;
         break;
-      case 'share_action':
-      case 'share_to_twitter':
+      case "share_action":
+      case "share_to_twitter":
         updateData.bonusPoints = user.bonusPoints + amount;
         updateData.pointsAwardedForShare = true;
         break;
-      case 'private_group_create':
+      case "private_group_create":
         updateData.bonusPoints = user.bonusPoints + amount;
         updateData.pointsAwardedForPrivateGroup = true;
         break;
-      case 'private_channel_create':
+      case "private_channel_create":
         updateData.bonusPoints = user.bonusPoints + amount;
         updateData.pointsAwardedForPrivateChannel = true;
         break;
@@ -273,7 +273,7 @@ export class ReputationService {
     logger.info(
       `Awarded ${amount} reputation to user ${userId} for ${reason}`,
       { userId, amount, reason, reputationBefore, reputationAfter },
-      'ReputationService'
+      "ReputationService",
     );
 
     return buildAwardReputationResult(amount, reputationAfter);
@@ -286,7 +286,7 @@ export class ReputationService {
     userId: string,
     amount: number,
     reason: PointsReason,
-    metadata?: Record<string, JsonValue>
+    metadata?: Record<string, JsonValue>,
   ): Promise<AwardReputationResult> {
     return ReputationService.awardReputation(userId, amount, reason, metadata);
   }
@@ -295,12 +295,12 @@ export class ReputationService {
    * Award reputation for profile completion (username + image + bio).
    */
   static async awardProfileCompletion(
-    userId: string
+    userId: string,
   ): Promise<AwardReputationResult> {
     return ReputationService.awardReputation(
       userId,
       POINTS.PROFILE_COMPLETION,
-      'profile_completion'
+      "profile_completion",
     );
   }
 
@@ -309,13 +309,13 @@ export class ReputationService {
    */
   static async awardFarcasterLink(
     userId: string,
-    farcasterUsername?: string
+    farcasterUsername?: string,
   ): Promise<AwardReputationResult> {
     return ReputationService.awardReputation(
       userId,
       POINTS.FARCASTER_LINK,
-      'farcaster_link',
-      farcasterUsername ? { farcasterUsername } : undefined
+      "farcaster_link",
+      farcasterUsername ? { farcasterUsername } : undefined,
     );
   }
 
@@ -323,13 +323,13 @@ export class ReputationService {
    * Award reputation for Farcaster follow.
    */
   static async awardFarcasterFollow(
-    userId: string
+    userId: string,
   ): Promise<AwardReputationResult> {
     return ReputationService.awardReputation(
       userId,
       POINTS.FARCASTER_FOLLOW,
-      'farcaster_follow',
-      { action: 'follow_playfeed' }
+      "farcaster_follow",
+      { action: "follow_playfeed" },
     );
   }
 
@@ -337,49 +337,49 @@ export class ReputationService {
    * Award reputation for Twitter follow.
    */
   static async awardTwitterFollow(
-    userId: string
+    userId: string,
   ): Promise<AwardReputationResult> {
     return ReputationService.awardReputation(
       userId,
       POINTS.TWITTER_FOLLOW,
-      'twitter_follow',
-      { action: 'follow_playfeed' }
+      "twitter_follow",
+      { action: "follow_playfeed" },
     );
   }
 
   static async awardDiscordLink(
     userId: string,
-    discordUsername?: string
+    discordUsername?: string,
   ): Promise<AwardReputationResult> {
     return ReputationService.awardReputation(
       userId,
       POINTS.DISCORD_LINK,
-      'discord_link',
-      discordUsername ? { discordUsername } : undefined
+      "discord_link",
+      discordUsername ? { discordUsername } : undefined,
     );
   }
 
   static async awardDiscordJoin(
     userId: string,
-    discordUsername?: string
+    discordUsername?: string,
   ): Promise<AwardReputationResult> {
     return ReputationService.awardReputation(
       userId,
       POINTS.DISCORD_JOIN,
-      'discord_join',
-      discordUsername ? { discordUsername } : undefined
+      "discord_join",
+      discordUsername ? { discordUsername } : undefined,
     );
   }
 
   static async awardTelegramLink(
     userId: string,
-    telegramUsername?: string
+    telegramUsername?: string,
   ): Promise<AwardReputationResult> {
     return ReputationService.awardReputation(
       userId,
       POINTS.TELEGRAM_LINK,
-      'telegram_link',
-      telegramUsername ? { telegramUsername } : undefined
+      "telegram_link",
+      telegramUsername ? { telegramUsername } : undefined,
     );
   }
 
@@ -388,13 +388,13 @@ export class ReputationService {
    */
   static async awardTwitterLink(
     userId: string,
-    twitterUsername?: string
+    twitterUsername?: string,
   ): Promise<AwardReputationResult> {
     return ReputationService.awardReputation(
       userId,
       POINTS.TWITTER_LINK,
-      'twitter_link',
-      twitterUsername ? { twitterUsername } : undefined
+      "twitter_link",
+      twitterUsername ? { twitterUsername } : undefined,
     );
   }
 
@@ -403,13 +403,13 @@ export class ReputationService {
    */
   static async awardWalletConnect(
     userId: string,
-    walletAddress?: string
+    walletAddress?: string,
   ): Promise<AwardReputationResult> {
     return ReputationService.awardReputation(
       userId,
       POINTS.WALLET_CONNECT,
-      'wallet_connect',
-      walletAddress ? { walletAddress } : undefined
+      "wallet_connect",
+      walletAddress ? { walletAddress } : undefined,
     );
   }
 
@@ -420,11 +420,11 @@ export class ReputationService {
     userId: string,
     platform: string,
     contentType: string,
-    contentId?: string
+    contentId?: string,
   ): Promise<AwardReputationResult> {
     const amount =
-      platform === 'twitter' ? POINTS.SHARE_TO_TWITTER : POINTS.SHARE_ACTION;
-    const reason = platform === 'twitter' ? 'share_to_twitter' : 'share_action';
+      platform === "twitter" ? POINTS.SHARE_TO_TWITTER : POINTS.SHARE_ACTION;
+    const reason = platform === "twitter" ? "share_to_twitter" : "share_action";
 
     return ReputationService.awardReputation(userId, amount, reason, {
       platform,
@@ -438,13 +438,13 @@ export class ReputationService {
    */
   static async awardPrivateGroupCreate(
     userId: string,
-    groupId?: string
+    groupId?: string,
   ): Promise<AwardReputationResult> {
     return ReputationService.awardReputation(
       userId,
       POINTS.PRIVATE_GROUP_CREATE,
-      'private_group_create',
-      groupId ? { groupId } : undefined
+      "private_group_create",
+      groupId ? { groupId } : undefined,
     );
   }
 
@@ -453,13 +453,13 @@ export class ReputationService {
    */
   static async awardPrivateChannelCreate(
     userId: string,
-    channelId?: string
+    channelId?: string,
   ): Promise<AwardReputationResult> {
     return ReputationService.awardReputation(
       userId,
       POINTS.PRIVATE_CHANNEL_CREATE,
-      'private_channel_create',
-      channelId ? { channelId } : undefined
+      "private_channel_create",
+      channelId ? { channelId } : undefined,
     );
   }
 
@@ -471,7 +471,7 @@ export class ReputationService {
    */
   static async awardReferralSignup(
     referrerId: string,
-    referredUserId: string
+    referredUserId: string,
   ): Promise<AwardReputationResult> {
     // Count unqualified referrals with points already awarded (toward the limit)
     // Unqualified = completed AND qualifiedAt IS NULL AND signupPointsAwarded = true
@@ -481,10 +481,10 @@ export class ReputationService {
       .where(
         and(
           eq(referrals.referrerId, referrerId),
-          eq(referrals.status, 'completed'),
+          eq(referrals.status, "completed"),
           isNull(referrals.qualifiedAt),
-          eq(referrals.signupPointsAwarded, true)
-        )
+          eq(referrals.signupPointsAwarded, true),
+        ),
       );
 
     const unqualifiedCount = unqualifiedCountResult?.count ?? 0;
@@ -494,7 +494,7 @@ export class ReputationService {
       logger.info(
         `Unqualified referral limit reached for user ${referrerId}. Points deferred.`,
         { referrerId, unqualifiedCount, limit: UNQUALIFIED_REFERRAL_LIMIT },
-        'ReputationService'
+        "ReputationService",
       );
       // Don't return error - we still track the referral, just defer reputation.
     }
@@ -569,7 +569,7 @@ export class ReputationService {
           !hasDifferentIdentifiers
         ) {
           logger.warn(
-            'Self-referral detected: same IP within 15 minutes with no different identifiers',
+            "Self-referral detected: same IP within 15 minutes with no different identifiers",
             {
               referrerId,
               referredUserId,
@@ -579,12 +579,12 @@ export class ReputationService {
               referrerPrivyId: referrer.privyId,
               referredPrivyId: referredUser.privyId,
             },
-            'ReputationService'
+            "ReputationService",
           );
           return buildAwardReputationResult(0, 0, {
             success: false,
             error:
-              'Self-referral detected: accounts created from same IP within 15 minutes with no different identifiers',
+              "Self-referral detected: accounts created from same IP within 15 minutes with no different identifiers",
           });
         }
 
@@ -595,7 +595,7 @@ export class ReputationService {
           !hasDifferentIdentifiers
         ) {
           logger.warn(
-            'Potential self-referral: same IP within 24 hours with no different identifiers',
+            "Potential self-referral: same IP within 24 hours with no different identifiers",
             {
               referrerId,
               referredUserId,
@@ -603,12 +603,12 @@ export class ReputationService {
               referrerWallet: referrer.walletAddress,
               referredWallet: referredUser.walletAddress,
             },
-            'ReputationService'
+            "ReputationService",
           );
           // Continue to award points but mark as suspicious
         } else if (hasDifferentIdentifiers) {
           logger.info(
-            'Allowing referral despite same IP: users have different identifiers',
+            "Allowing referral despite same IP: users have different identifiers",
             {
               referrerId,
               referredUserId,
@@ -618,7 +618,7 @@ export class ReputationService {
               hasDifferentFarcaster,
               hasDifferentTwitter,
             },
-            'ReputationService'
+            "ReputationService",
           );
         }
       }
@@ -628,17 +628,17 @@ export class ReputationService {
     let result: AwardReputationResult;
 
     if (shouldAwardPoints) {
-      result = await this.awardReputation(
+      result = await ReputationService.awardReputation(
         referrerId,
         POINTS.REFERRAL_SIGNUP,
-        'referral_signup',
+        "referral_signup",
         {
           referredUserId,
           referrerIpHash: referrer?.registrationIpHash || null,
           referredIpHash: referredUser?.registrationIpHash || null,
           sameIp:
             referrer?.registrationIpHash === referredUser?.registrationIpHash,
-        }
+        },
       );
     } else {
       // Reputation deferred - return success but with 0 reputation awarded.
@@ -650,7 +650,7 @@ export class ReputationService {
 
       result = buildAwardReputationResult(
         0,
-        userResult[0]?.reputationPoints ?? 0
+        userResult[0]?.reputationPoints ?? 0,
       );
     }
 
@@ -661,8 +661,8 @@ export class ReputationService {
       .where(
         and(
           eq(referrals.referrerId, referrerId),
-          eq(referrals.referredUserId, referredUserId)
-        )
+          eq(referrals.referredUserId, referredUserId),
+        ),
       )
       .orderBy(desc(referrals.createdAt))
       .limit(1);
@@ -728,7 +728,7 @@ export class ReputationService {
    * Uses FIFO ordering based on completedAt timestamp
    */
   static async awardPendingReferralSignupPoints(
-    referrerId: string
+    referrerId: string,
   ): Promise<AwardReputationResult | null> {
     // Check current unqualified count to see if there's a slot available
     const [unqualifiedCountResult] = await db
@@ -737,10 +737,10 @@ export class ReputationService {
       .where(
         and(
           eq(referrals.referrerId, referrerId),
-          eq(referrals.status, 'completed'),
+          eq(referrals.status, "completed"),
           isNull(referrals.qualifiedAt),
-          eq(referrals.signupPointsAwarded, true)
-        )
+          eq(referrals.signupPointsAwarded, true),
+        ),
       );
 
     const unqualifiedCount = unqualifiedCountResult?.count ?? 0;
@@ -761,9 +761,9 @@ export class ReputationService {
       .where(
         and(
           eq(referrals.referrerId, referrerId),
-          eq(referrals.status, 'completed'),
-          eq(referrals.signupPointsAwarded, false)
-        )
+          eq(referrals.status, "completed"),
+          eq(referrals.signupPointsAwarded, false),
+        ),
       )
       .orderBy(asc(referrals.completedAt))
       .limit(1);
@@ -776,15 +776,15 @@ export class ReputationService {
     }
 
     // Award the deferred signup reputation.
-    const result = await this.awardReputation(
+    const result = await ReputationService.awardReputation(
       referrerId,
       POINTS.REFERRAL_SIGNUP,
-      'referral_signup',
+      "referral_signup",
       {
         referredUserId: pendingReferral.referredUserId,
         deferredAward: true,
         originalCompletedAt: pendingReferral.completedAt?.toISOString() ?? null,
-      }
+      },
     );
 
     if (result.success) {
@@ -810,7 +810,7 @@ export class ReputationService {
           referralId: pendingReferral.id,
           reputationAwarded: result.reputationAwarded,
         },
-        'ReputationService'
+        "ReputationService",
       );
     }
 
@@ -821,7 +821,7 @@ export class ReputationService {
    * Check and qualify referral when a referred user links a social account.
    */
   static async checkAndQualifyReferral(
-    referredUserId: string
+    referredUserId: string,
   ): Promise<AwardReputationResult | null> {
     // Get user with referrer info and social account status
     const userResult = await db
@@ -837,7 +837,7 @@ export class ReputationService {
 
     const user = userResult[0];
 
-    if (!user || !user.referredBy) {
+    if (!user?.referredBy) {
       return null;
     }
 
@@ -859,8 +859,8 @@ export class ReputationService {
         and(
           eq(referrals.referrerId, user.referredBy),
           eq(referrals.referredUserId, referredUserId),
-          eq(referrals.status, 'completed')
-        )
+          eq(referrals.status, "completed"),
+        ),
       )
       .orderBy(desc(referrals.completedAt))
       .limit(1);
@@ -871,7 +871,7 @@ export class ReputationService {
       logger.warn(
         `No referral record found for referrer ${user.referredBy} and referred user ${referredUserId}`,
         { referrerId: user.referredBy, referredUserId },
-        'ReputationService'
+        "ReputationService",
       );
       return null;
     }
@@ -885,11 +885,11 @@ export class ReputationService {
     const qualificationResult = await ReputationService.awardReputation(
       user.referredBy,
       POINTS.REFERRAL_QUALIFIED,
-      'referral_qualified',
+      "referral_qualified",
       {
         referredUserId,
         qualifiedAt: new Date().toISOString(),
-      }
+      },
     );
 
     if (qualificationResult.success) {
@@ -907,12 +907,12 @@ export class ReputationService {
           referralId: referral.id,
           reputationAwarded: qualificationResult.reputationAwarded,
         },
-        'ReputationService'
+        "ReputationService",
       );
 
       // When a referral becomes qualified, a slot opens for pending referrals
       // Award signup reputation to the oldest pending referral (FIFO).
-      await this.awardPendingReferralSignupPoints(user.referredBy);
+      await ReputationService.awardPendingReferralSignupPoints(user.referredBy);
     }
 
     return qualificationResult;
@@ -935,33 +935,33 @@ export class ReputationService {
       pointsAwardedForShare: boolean;
       pointsAwardedForTelegram: boolean;
     },
-    reason: PointsReason
+    reason: PointsReason,
   ): boolean {
     switch (reason) {
-      case 'profile_completion':
+      case "profile_completion":
         return user.pointsAwardedForProfile;
-      case 'farcaster_link':
+      case "farcaster_link":
         return user.pointsAwardedForFarcaster;
-      case 'farcaster_follow':
+      case "farcaster_follow":
         return user.pointsAwardedForFarcasterFollow;
-      case 'twitter_link':
+      case "twitter_link":
         return user.pointsAwardedForTwitter;
-      case 'twitter_follow':
+      case "twitter_follow":
         return user.pointsAwardedForTwitterFollow;
-      case 'discord_link':
+      case "discord_link":
         return user.pointsAwardedForDiscord;
-      case 'discord_join':
+      case "discord_join":
         return user.pointsAwardedForDiscordJoin;
-      case 'telegram_link':
+      case "telegram_link":
         return user.pointsAwardedForTelegram;
-      case 'wallet_connect':
+      case "wallet_connect":
         return user.pointsAwardedForWallet;
-      case 'referral_bonus':
+      case "referral_bonus":
         return user.pointsAwardedForReferralBonus;
-      case 'referral_qualified':
+      case "referral_qualified":
         return false;
-      case 'share_action':
-      case 'share_to_twitter':
+      case "share_action":
+      case "share_to_twitter":
         return user.pointsAwardedForShare;
       default:
         return false;
@@ -989,7 +989,7 @@ export class ReputationService {
 
     const transactions = await ReputationService.getReputationHistory(
       userId,
-      50
+      50,
     );
 
     return {
@@ -1022,7 +1022,7 @@ export class ReputationService {
 
   static async getReputationHistory(
     userId: string,
-    limit = 100
+    limit = 100,
   ): Promise<ReputationHistoryItem[]> {
     const transactions = await db
       .select()
@@ -1050,7 +1050,7 @@ export class ReputationService {
     page = 1,
     pageSize = 100,
     minPoints = 500,
-    pointsCategory: LeaderboardCategory = 'all'
+    pointsCategory: LeaderboardCategory = "all",
   ) {
     const skip = (page - 1) * pageSize;
 
@@ -1074,7 +1074,7 @@ export class ReputationService {
     // Build users query based on category
     // All modes exclude actors (isActor=false) AND agents (isAgent=false)
     let usersResult;
-    if (pointsCategory === 'all') {
+    if (pointsCategory === "all") {
       usersResult = await db
         .select(userSelectFields)
         .from(users)
@@ -1082,10 +1082,10 @@ export class ReputationService {
           and(
             eq(users.isActor, false),
             eq(users.isAgent, false),
-            gte(users.reputationPoints, minPoints)
-          )
+            gte(users.reputationPoints, minPoints),
+          ),
         );
-    } else if (pointsCategory === 'earned') {
+    } else if (pointsCategory === "earned") {
       usersResult = await db
         .select(userSelectFields)
         .from(users)
@@ -1093,8 +1093,8 @@ export class ReputationService {
           and(
             eq(users.isActor, false),
             eq(users.isAgent, false),
-            ne(users.earnedPoints, 0)
-          )
+            ne(users.earnedPoints, 0),
+          ),
         );
     } else {
       usersResult = await db
@@ -1104,8 +1104,8 @@ export class ReputationService {
           and(
             eq(users.isActor, false),
             eq(users.isAgent, false),
-            gt(users.invitePoints, 0)
-          )
+            gt(users.invitePoints, 0),
+          ),
         );
     }
 
@@ -1129,7 +1129,7 @@ export class ReputationService {
       })),
     ];
 
-    if (pointsCategory === 'all') {
+    if (pointsCategory === "all") {
       // Get actor states with sufficient reputation points
       const actorStates = await db
         .select({
@@ -1165,16 +1165,16 @@ export class ReputationService {
               nftTokenId: null as number | null,
             };
           })
-          .filter((a): a is NonNullable<typeof a> => a !== null)
+          .filter((a): a is NonNullable<typeof a> => a !== null),
       );
     }
 
-    const sortField: 'allPoints' | 'earnedPoints' | 'invitePoints' =
-      pointsCategory === 'all'
-        ? 'allPoints'
-        : pointsCategory === 'earned'
-          ? 'earnedPoints'
-          : 'invitePoints';
+    const sortField: "allPoints" | "earnedPoints" | "invitePoints" =
+      pointsCategory === "all"
+        ? "allPoints"
+        : pointsCategory === "earned"
+          ? "earnedPoints"
+          : "invitePoints";
 
     combined.sort((a, b) => {
       const comparison = b[sortField] - a[sortField];
@@ -1182,14 +1182,14 @@ export class ReputationService {
         return comparison;
       }
 
-      if (pointsCategory === 'referral') {
+      if (pointsCategory === "referral") {
         const referralComparison = b.referralCount - a.referralCount;
         if (referralComparison !== 0) {
           return referralComparison;
         }
       }
 
-      if (pointsCategory === 'earned') {
+      if (pointsCategory === "earned") {
         const pnlComparison = b.lifetimePnL - a.lifetimePnL;
         if (pnlComparison !== 0) {
           return pnlComparison;
@@ -1243,8 +1243,8 @@ export class ReputationService {
       .where(
         and(
           gt(users.reputationPoints, user.reputationPoints),
-          eq(users.isActor, false)
-        )
+          eq(users.isActor, false),
+        ),
       );
 
     // Count actors with more points using actorState table
@@ -1264,7 +1264,7 @@ export class ReputationService {
    */
   static async getWalletLeaderboard(
     page = 1,
-    pageSize = 100
+    pageSize = 100,
   ): Promise<LeaderboardResult> {
     const skip = (page - 1) * pageSize;
 
@@ -1294,7 +1294,7 @@ export class ReputationService {
       .orderBy(
         desc(users.reputationPoints),
         asc(users.createdAt),
-        asc(users.id)
+        asc(users.id),
       )
       .limit(pageSize)
       .offset(skip);
@@ -1321,8 +1321,8 @@ export class ReputationService {
       page,
       pageSize,
       totalPages: Math.ceil(totalCount / pageSize),
-      leaderboardType: 'wallet',
-      leaderboardMetric: 'reputation',
+      leaderboardType: "wallet",
+      leaderboardMetric: "reputation",
     };
   }
 
@@ -1331,7 +1331,7 @@ export class ReputationService {
    */
   static async getTeamLeaderboard(
     page = 1,
-    pageSize = 100
+    pageSize = 100,
   ): Promise<LeaderboardResult> {
     const skip = (page - 1) * pageSize;
 
@@ -1408,8 +1408,8 @@ export class ReputationService {
       page,
       pageSize,
       totalPages: Math.ceil(totalCount / pageSize),
-      leaderboardType: 'team',
-      leaderboardMetric: 'reputation',
+      leaderboardType: "team",
+      leaderboardMetric: "reputation",
     };
   }
 
@@ -1420,7 +1420,7 @@ export class ReputationService {
   static async getUserPosition(
     userId: string,
     leaderboardType: LeaderboardScope,
-    pageSize = 100
+    pageSize = 100,
   ): Promise<LeaderboardPosition | null> {
     const positionSelectFields = {
       id: users.id,
@@ -1446,7 +1446,7 @@ export class ReputationService {
     const user = userResult[0];
 
     const effectiveUserId =
-      leaderboardType === 'team' && user.isAgent && user.managedBy
+      leaderboardType === "team" && user.isAgent && user.managedBy
         ? user.managedBy
         : user.id;
 
@@ -1461,7 +1461,7 @@ export class ReputationService {
       effectiveUser = managerResult[0];
     }
 
-    if (leaderboardType === 'wallet') {
+    if (leaderboardType === "wallet") {
       const effectiveReputationPoints = effectiveUser.reputationPoints ?? 0;
       const [higherCount] = await db
         .select({ count: count() })
@@ -1477,12 +1477,12 @@ export class ReputationService {
                   lt(users.createdAt, effectiveUser.createdAt),
                   and(
                     eq(users.createdAt, effectiveUser.createdAt),
-                    lt(users.id, effectiveUser.id)
-                  )
-                )
-              )
-            )
-          )
+                    lt(users.id, effectiveUser.id),
+                  ),
+                ),
+              ),
+            ),
+          ),
         );
 
       const rank = Number(higherCount?.count ?? 0) + 1;
@@ -1516,8 +1516,8 @@ export class ReputationService {
         and(
           eq(users.managedBy, effectiveUserId),
           eq(users.isAgent, true),
-          eq(users.isActor, false)
-        )
+          eq(users.isActor, false),
+        ),
       );
 
     const teamReputation =
@@ -1558,8 +1558,8 @@ export class ReputationService {
         and(
           eq(users.managedBy, effectiveUserId),
           eq(users.isAgent, true),
-          eq(users.isActor, false)
-        )
+          eq(users.isActor, false),
+        ),
       );
 
     return {

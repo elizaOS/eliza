@@ -1,4 +1,4 @@
-import { definePrompt } from '../define-prompt';
+import { definePrompt } from "../define-prompt";
 
 /**
  * Prompt for generating humorous profile pictures for new users.
@@ -10,10 +10,10 @@ import { definePrompt } from '../define-prompt';
  * Returns image generation prompt for user profile picture.
  */
 export const userProfilePicture = definePrompt({
-  id: 'user-profile-picture',
-  version: '1.0.0',
-  category: 'image',
-  description: 'Generates humorous profile pictures for new users',
+  id: "user-profile-picture",
+  version: "1.0.0",
+  category: "image",
+  description: "Generates humorous profile pictures for new users",
   template: `
 Create a humorous and memetic profile picture for a social media user. The image should be funny, relatable, and reflect internet culture.
 

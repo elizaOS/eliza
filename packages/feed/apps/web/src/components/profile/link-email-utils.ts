@@ -1,16 +1,16 @@
 import {
   isPrivyAlreadyLinkedError,
   isPrivyLinkFlowCancellationError,
-} from '@/lib/privy-link-account-errors';
+} from "@/lib/privy-link-account-errors";
 
 export function getLinkedEmail(
   privyEmail?: string | null,
-  storedEmail?: string | null
+  storedEmail?: string | null,
 ): string | null {
-  const normalizedPrivy = privyEmail?.trim() || '';
+  const normalizedPrivy = privyEmail?.trim() || "";
   if (normalizedPrivy) return normalizedPrivy;
 
-  const normalizedStored = storedEmail?.trim() || '';
+  const normalizedStored = storedEmail?.trim() || "";
   return normalizedStored || null;
 }
 

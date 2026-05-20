@@ -19,9 +19,9 @@
  * RUN_REAL_ENGINE_TESTS=true bun test engine-components-validation
  */
 
-import { beforeAll, describe, expect, setDefaultTimeout, test } from 'bun:test';
-import { existsSync, readFileSync } from 'fs';
-import { resolveLiveLlmTestConfig } from '../../../../testing/integration/helpers/live-runtime';
+import { beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
+import { existsSync, readFileSync } from "node:fs";
+import { resolveLiveLlmTestConfig } from "../../../../testing/integration/helpers/live-runtime";
 
 // Set timeout to 5 minutes
 setDefaultTimeout(300000);
@@ -29,13 +29,13 @@ setDefaultTimeout(300000);
 // Load environment
 const loadEnvFile = (filePath: string) => {
   if (!existsSync(filePath)) return;
-  const envContent = readFileSync(filePath, 'utf-8');
-  for (const line of envContent.split('\n')) {
+  const envContent = readFileSync(filePath, "utf-8");
+  for (const line of envContent.split("\n")) {
     const trimmed = line.trim();
-    if (trimmed && !trimmed.startsWith('#')) {
-      const [key, ...valueParts] = trimmed.split('=');
+    if (trimmed && !trimmed.startsWith("#")) {
+      const [key, ...valueParts] = trimmed.split("=");
       if (key && valueParts.length > 0) {
-        const value = valueParts.join('=').replace(/^["']|["']$/g, '');
+        const value = valueParts.join("=").replace(/^["']|["']$/g, "");
         if (!process.env[key]) {
           process.env[key] = value;
         }
@@ -44,45 +44,45 @@ const loadEnvFile = (filePath: string) => {
   }
 };
 
-loadEnvFile('.env');
-loadEnvFile('.env.test');
-loadEnvFile('.env.local');
+loadEnvFile(".env");
+loadEnvFile(".env.test");
+loadEnvFile(".env.local");
 
 const hasLLMKey = !!(
-  (process.env.GROQ_API_KEY?.trim() ?? '') !== '' ||
-  (process.env.ANTHROPIC_API_KEY?.trim() ?? '') !== '' ||
-  (process.env.OPENAI_API_KEY?.trim() ?? '') !== ''
+  (process.env.GROQ_API_KEY?.trim() ?? "") !== "" ||
+  (process.env.ANTHROPIC_API_KEY?.trim() ?? "") !== "" ||
+  (process.env.OPENAI_API_KEY?.trim() ?? "") !== ""
 );
 const liveLlmConfig = resolveLiveLlmTestConfig();
 const shouldSkipLiveLlmTests =
-  !liveLlmConfig.enabled && process.env.RUN_REAL_ENGINE_TESTS !== 'true';
+  !liveLlmConfig.enabled && process.env.RUN_REAL_ENGINE_TESTS !== "true";
 
 const requireLLMKey = () => {
   if (!hasLLMKey) {
     throw new Error(
-      'ENGINE COMPONENT TESTS REQUIRE LLM API KEY. ' +
-        'Set GROQ_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY to run these tests. ' +
-        'These tests validate actual engine functionality and MUST NOT be skipped.'
+      "ENGINE COMPONENT TESTS REQUIRE LLM API KEY. " +
+        "Set GROQ_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY to run these tests. " +
+        "These tests validate actual engine functionality and MUST NOT be skipped.",
     );
   }
 };
 
-describe.skipIf(shouldSkipLiveLlmTests)('Engine Components Validation', () => {
+describe.skipIf(shouldSkipLiveLlmTests)("Engine Components Validation", () => {
   beforeAll(() => {
     requireLLMKey();
-    console.log('\n🔧 Testing Individual Engine Components');
-    console.log('==========================================\n');
+    console.log("\n🔧 Testing Individual Engine Components");
+    console.log("==========================================\n");
   });
 
-  describe('ArticleGenerator', () => {
-    test('generates article from event context', async () => {
-      const { ArticleGenerator } = await import('../../ArticleGenerator');
-      const { FeedLLMClient } = await import('../../llm/openai-client');
+  describe("ArticleGenerator", () => {
+    test("generates article from event context", async () => {
+      const { ArticleGenerator } = await import("../../ArticleGenerator");
+      const { FeedLLMClient } = await import("../../llm/openai-client");
       const { StaticDataRegistry } = await import(
-        '../../services/static-data-registry'
+        "../../services/static-data-registry"
       );
 
-      console.log('📰 Testing ArticleGenerator...');
+      console.log("📰 Testing ArticleGenerator...");
 
       const llm = FeedLLMClient.forGameTick();
       const generator = new ArticleGenerator(llm);
@@ -91,32 +91,32 @@ describe.skipIf(shouldSkipLiveLlmTests)('Engine Components Validation', () => {
       const allActors = StaticDataRegistry.getAllActors();
       const actors = allActors.slice(0, 10).map((a) => ({
         ...a,
-        tier: a.tier || ('B_TIER' as const),
-        role: a.role || ('supporting' as const),
-        initialLuck: a.initialLuck || ('medium' as const),
+        tier: a.tier || ("B_TIER" as const),
+        role: a.role || ("supporting" as const),
+        initialLuck: a.initialLuck || ("medium" as const),
         initialMood: a.initialMood || 0,
       }));
 
       const organizations = StaticDataRegistry.getAllOrganizations().filter(
-        (o) => o.type === 'media'
+        (o) => o.type === "media",
       );
 
       // Create a mock event
       const mockEvent = {
-        id: 'test-event-1',
+        id: "test-event-1",
         day: 1,
-        type: 'announcement' as const,
+        type: "announcement" as const,
         description:
-          'TechCorp announces new AI product that will revolutionize the market',
+          "TechCorp announces new AI product that will revolutionize the market",
         actors: actors.slice(0, 2).map((a) => a.id),
-        visibility: 'public' as const,
+        visibility: "public" as const,
       };
 
       const articles = await generator.generateArticlesForEvent(
         mockEvent,
         organizations.slice(0, 2),
         actors,
-        []
+        [],
       );
 
       console.log(`   Generated ${articles.length} articles`);
@@ -132,20 +132,20 @@ describe.skipIf(shouldSkipLiveLlmTests)('Engine Components Validation', () => {
         expect(article.authorOrgId).toBeDefined();
 
         const isMocked =
-          article.title.toLowerCase().includes('mock') ||
-          article.content.toLowerCase().includes('mock content');
+          article.title.toLowerCase().includes("mock") ||
+          article.content.toLowerCase().includes("mock content");
         expect(isMocked).toBe(false);
         console.log(`   ✅ "${article.title.substring(0, 50)}..."`);
       }
     });
   });
 
-  describe('QuestionManager', () => {
-    test('generates prediction questions', async () => {
-      const { QuestionManager } = await import('../../QuestionManager');
-      const { FeedLLMClient } = await import('../../llm/openai-client');
+  describe("QuestionManager", () => {
+    test("generates prediction questions", async () => {
+      const { QuestionManager } = await import("../../QuestionManager");
+      const { FeedLLMClient } = await import("../../llm/openai-client");
 
-      console.log('❓ Testing QuestionManager...');
+      console.log("❓ Testing QuestionManager...");
 
       const llm = FeedLLMClient.forGameTick();
       const manager = new QuestionManager(llm);
@@ -155,19 +155,19 @@ describe.skipIf(shouldSkipLiveLlmTests)('Engine Components Validation', () => {
       const deadlineMs = Date.now() + 60000; // 1 minute deadline
       const questionsCreated = await manager.generateQuestionsForContinuousGame(
         2, // Generate 2 questions
-        deadlineMs
+        deadlineMs,
       );
 
       console.log(`   Generated ${questionsCreated} questions`);
 
       // Should create at least 0 questions (may be limited by existing questions)
       expect(questionsCreated).toBeGreaterThanOrEqual(0);
-      console.log('   ✅ QuestionManager generates questions successfully');
+      console.log("   ✅ QuestionManager generates questions successfully");
     });
 
-    test('resolves questions with proper outcome', async () => {
-      const { QuestionManager } = await import('../../QuestionManager');
-      const { FeedLLMClient } = await import('../../llm/openai-client');
+    test("resolves questions with proper outcome", async () => {
+      const { QuestionManager } = await import("../../QuestionManager");
+      const { FeedLLMClient } = await import("../../llm/openai-client");
 
       const llm = FeedLLMClient.forGameTick();
       const manager = new QuestionManager(llm);
@@ -175,31 +175,31 @@ describe.skipIf(shouldSkipLiveLlmTests)('Engine Components Validation', () => {
       // Create a question to resolve
       const question = {
         id: 1,
-        text: 'Will AI continue to advance in 2025?',
+        text: "Will AI continue to advance in 2025?",
         scenario: 1,
         outcome: true,
         rank: 1,
-        status: 'active' as const,
+        status: "active" as const,
       };
 
       const resolved = manager.resolveQuestion(question, true);
 
-      expect(resolved.status).toBe('resolved');
+      expect(resolved.status).toBe("resolved");
       expect(resolved.resolvedOutcome).toBe(true);
 
-      console.log('   ✅ Question resolution works correctly');
+      console.log("   ✅ Question resolution works correctly");
     });
   });
 
-  describe('FeedGenerator', () => {
-    test('generates feed posts', async () => {
-      const { FeedGenerator } = await import('../../FeedGenerator');
-      const { FeedLLMClient } = await import('../../llm/openai-client');
+  describe("FeedGenerator", () => {
+    test("generates feed posts", async () => {
+      const { FeedGenerator } = await import("../../FeedGenerator");
+      const { FeedLLMClient } = await import("../../llm/openai-client");
       const { StaticDataRegistry } = await import(
-        '../../services/static-data-registry'
+        "../../services/static-data-registry"
       );
 
-      console.log('📝 Testing FeedGenerator...');
+      console.log("📝 Testing FeedGenerator...");
 
       const llm = FeedLLMClient.forGameTick();
       const generator = new FeedGenerator(llm);
@@ -208,21 +208,21 @@ describe.skipIf(shouldSkipLiveLlmTests)('Engine Components Validation', () => {
       const allActors = StaticDataRegistry.getAllActors();
       const actors = allActors.slice(0, 5).map((a) => ({
         ...a,
-        tier: a.tier || ('B_TIER' as const),
-        role: a.role || ('supporting' as const),
-        initialLuck: a.initialLuck || ('medium' as const),
+        tier: a.tier || ("B_TIER" as const),
+        role: a.role || ("supporting" as const),
+        initialLuck: a.initialLuck || ("medium" as const),
         initialMood: a.initialMood || 0,
       }));
 
       // Create mock events for feed generation
       const events = [
         {
-          id: 'event-1',
+          id: "event-1",
           day: 1,
-          type: 'announcement' as const,
-          description: 'Major tech company announces new product launch',
+          type: "announcement" as const,
+          description: "Major tech company announces new product launch",
           actors: actors.slice(0, 2).map((a) => a.id),
-          visibility: 'public' as const,
+          visibility: "public" as const,
         },
       ];
 
@@ -235,10 +235,10 @@ describe.skipIf(shouldSkipLiveLlmTests)('Engine Components Validation', () => {
 
       // Filter posts with actual content (rate limiting may cause some empty posts)
       const postsWithContent = posts.filter(
-        (p) => p.content && p.content.length > 10
+        (p) => p.content && p.content.length > 10,
       );
       console.log(
-        `   Posts with valid content: ${postsWithContent.length}/${posts.length}`
+        `   Posts with valid content: ${postsWithContent.length}/${posts.length}`,
       );
 
       // If we have posts with content, validate them
@@ -247,31 +247,31 @@ describe.skipIf(shouldSkipLiveLlmTests)('Engine Components Validation', () => {
         expect(post.content.length).toBeGreaterThan(10);
         expect(post.author).toBeDefined();
 
-        const isMocked = post.content.toLowerCase().includes('mock post');
+        const isMocked = post.content.toLowerCase().includes("mock post");
         expect(isMocked).toBe(false);
 
         console.log(
-          `   ✅ [${post.authorName}] "${post.content.substring(0, 40)}..."`
+          `   ✅ [${post.authorName}] "${post.content.substring(0, 40)}..."`,
         );
       }
 
       // If no posts with content, log warning but don't fail
       // (rate limiting in test environment is acceptable)
       if (postsWithContent.length === 0 && posts.length > 0) {
-        console.log('   ⚠️  All posts have empty content (likely rate limited)');
+        console.log("   ⚠️  All posts have empty content (likely rate limited)");
       }
     });
   });
 
-  describe('PerpMarketService', () => {
-    test('initializes and can fetch market snapshots', async () => {
-      console.log('📈 Testing PerpMarketService...');
+  describe("PerpMarketService", () => {
+    test("initializes and can fetch market snapshots", async () => {
+      console.log("📈 Testing PerpMarketService...");
 
       const { PerpMarketService, PerpDbAdapter } = await import(
-        '@feed/core/markets/perps'
+        "@feed/core/markets/perps"
       );
-      const { WalletService } = await import('../../services/wallet-service');
-      const { FEE_CONFIG } = await import('../../config/fees');
+      const { WalletService } = await import("../../services/wallet-service");
+      const { FEE_CONFIG } = await import("../../config/fees");
 
       const service = new PerpMarketService({
         db: new PerpDbAdapter(),
@@ -281,16 +281,16 @@ describe.skipIf(shouldSkipLiveLlmTests)('Engine Components Validation', () => {
               userId,
               amount,
               reason,
-              description ?? '',
-              relatedId
+              description ?? "",
+              relatedId,
             ),
           credit: ({ userId, amount, reason, description, relatedId }) =>
             WalletService.credit(
               userId,
               amount,
               reason,
-              description ?? '',
-              relatedId
+              description ?? "",
+              relatedId,
             ),
           recordPnL: async ({ userId, pnl, reason, relatedId }) => {
             await WalletService.recordPnL(userId, pnl, reason, relatedId);
@@ -312,35 +312,35 @@ describe.skipIf(shouldSkipLiveLlmTests)('Engine Components Validation', () => {
 
       if (markets.length > 0) {
         const market = markets[0];
-        expect(market).toHaveProperty('ticker');
-        expect(market).toHaveProperty('price');
+        expect(market).toHaveProperty("ticker");
+        expect(market).toHaveProperty("price");
         console.log(
-          `   ✅ Sample market: ${market?.ticker} @ $${market?.price}`
+          `   ✅ Sample market: ${market?.ticker} @ $${market?.price}`,
         );
       }
     });
   });
 
-  describe('MarketDecisionEngine', () => {
-    test('generates NPC trading decisions', async () => {
-      console.log('💹 Testing MarketDecisionEngine...');
+  describe("MarketDecisionEngine", () => {
+    test("generates NPC trading decisions", async () => {
+      console.log("💹 Testing MarketDecisionEngine...");
 
       // Verify static registry connection
       const { StaticDataRegistry } = await import(
-        '../../services/static-data-registry'
+        "../../services/static-data-registry"
       );
       const allActors = StaticDataRegistry.getAllActors();
       console.log(
-        `   Static registry loaded, found ${allActors.length} actors`
+        `   Static registry loaded, found ${allActors.length} actors`,
       );
 
       const { MarketDecisionEngine } = await import(
-        '../../MarketDecisionEngine'
+        "../../MarketDecisionEngine"
       );
       const { MarketContextService } = await import(
-        '../../services/market-context-service'
+        "../../services/market-context-service"
       );
-      const { FeedLLMClient } = await import('../../llm/openai-client');
+      const { FeedLLMClient } = await import("../../llm/openai-client");
 
       const llm = FeedLLMClient.forGameTick();
       const contextService = new MarketContextService();
@@ -356,27 +356,27 @@ describe.skipIf(shouldSkipLiveLlmTests)('Engine Components Validation', () => {
         expect(decision.action).toBeDefined();
         expect(
           [
-            'buy_yes',
-            'buy_no',
-            'open_long',
-            'open_short',
-            'close_position',
-            'hold',
-          ].includes(decision.action)
+            "buy_yes",
+            "buy_no",
+            "open_long",
+            "open_short",
+            "close_position",
+            "hold",
+          ].includes(decision.action),
         ).toBe(true);
 
         console.log(
-          `   ✅ NPC ${decision.npcId}: ${decision.action}${decision.amount ? ` $${decision.amount}` : ''}`
+          `   ✅ NPC ${decision.npcId}: ${decision.action}${decision.amount ? ` $${decision.amount}` : ""}`,
         );
       }
     });
   });
 
-  describe('GameClock Modes', () => {
-    test('realtime mode tracks actual time', async () => {
-      const { GameClock } = await import('../../GameClock');
+  describe("GameClock Modes", () => {
+    test("realtime mode tracks actual time", async () => {
+      const { GameClock } = await import("../../GameClock");
 
-      console.log('⏰ Testing realtime mode...');
+      console.log("⏰ Testing realtime mode...");
 
       const clock = GameClock.realtime();
       const time1 = clock.now();
@@ -387,17 +387,17 @@ describe.skipIf(shouldSkipLiveLlmTests)('Engine Components Validation', () => {
       const time2 = clock.now();
 
       expect(time2.timestamp.getTime()).toBeGreaterThanOrEqual(
-        time1.timestamp.getTime()
+        time1.timestamp.getTime(),
       );
       console.log(`   ✅ Realtime: ${time2.timestamp.toISOString()}`);
     });
 
-    test('simulated mode allows fast-forward', async () => {
-      const { GameClock } = await import('../../GameClock');
+    test("simulated mode allows fast-forward", async () => {
+      const { GameClock } = await import("../../GameClock");
 
-      console.log('⏱️  Testing simulated mode...');
+      console.log("⏱️  Testing simulated mode...");
 
-      const startDate = new Date('2025-01-01T00:00:00Z');
+      const startDate = new Date("2025-01-01T00:00:00Z");
       const clock = GameClock.simulated(startDate, startDate);
 
       // Initial state
@@ -413,16 +413,16 @@ describe.skipIf(shouldSkipLiveLlmTests)('Engine Components Validation', () => {
       console.log(`   ✅ After 48 hours: Day ${time.day}, Tick ${time.tick}`);
     });
 
-    test('fed-in time allows specific timestamps', async () => {
-      const { GameClock } = await import('../../GameClock');
+    test("fed-in time allows specific timestamps", async () => {
+      const { GameClock } = await import("../../GameClock");
 
-      console.log('📅 Testing fed-in time mode...');
+      console.log("📅 Testing fed-in time mode...");
 
-      const startDate = new Date('2025-01-01T00:00:00Z');
+      const startDate = new Date("2025-01-01T00:00:00Z");
       const clock = GameClock.simulated(startDate, startDate);
 
       // Set specific time
-      const targetDate = new Date('2025-01-15T14:30:00Z');
+      const targetDate = new Date("2025-01-15T14:30:00Z");
       clock.setTime(targetDate);
 
       const time = clock.now();
@@ -434,13 +434,13 @@ describe.skipIf(shouldSkipLiveLlmTests)('Engine Components Validation', () => {
     });
   });
 
-  describe('InMemoryStateStore (Offline Mode)', () => {
-    test('supports full game simulation without database', async () => {
+  describe("InMemoryStateStore (Offline Mode)", () => {
+    test("supports full game simulation without database", async () => {
       const { InMemoryStateStore } = await import(
-        '../../adapters/InMemoryStateStore'
+        "../../adapters/InMemoryStateStore"
       );
 
-      console.log('🧠 Testing offline simulation...');
+      console.log("🧠 Testing offline simulation...");
 
       const store = new InMemoryStateStore({
         numPredictionMarkets: 3,
@@ -467,12 +467,12 @@ describe.skipIf(shouldSkipLiveLlmTests)('Engine Components Validation', () => {
           ];
 
         if (agent && market && !market.resolved && agent.balance > 10) {
-          const side = Math.random() > 0.5 ? 'YES' : 'NO';
+          const side = Math.random() > 0.5 ? "YES" : "NO";
           const result = store.buyPredictionShares(
             agent.id,
             market.id,
             side,
-            10
+            10,
           );
           if (result.success) tradesExecuted++;
         }
@@ -489,7 +489,7 @@ describe.skipIf(shouldSkipLiveLlmTests)('Engine Components Validation', () => {
       console.log(`   ✅ Executed ${tradesExecuted} trades`);
       console.log(`   ✅ Final day: ${progress.day}`);
       console.log(
-        `   ✅ Markets resolved: ${finalState.predictionMarkets.filter((m) => m.resolved).length}/${finalState.predictionMarkets.length}`
+        `   ✅ Markets resolved: ${finalState.predictionMarkets.filter((m) => m.resolved).length}/${finalState.predictionMarkets.length}`,
       );
 
       expect(ticksProcessed).toBeGreaterThan(0);

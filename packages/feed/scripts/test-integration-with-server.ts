@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
+import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import {
   cpSync,
   existsSync,
@@ -12,28 +12,25 @@ import {
   statSync,
   symlinkSync,
   writeFileSync,
-} from 'node:fs';
-import { createServer } from 'node:net';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
-import { setTimeout as delay } from 'node:timers/promises';
+} from "node:fs";
+import { createServer } from "node:net";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 
-const rootDir = path.resolve(import.meta.dir, '..');
-const appDir = path.join(rootDir, 'apps/web');
+const rootDir = path.resolve(import.meta.dir, "..");
+const appDir = path.join(rootDir, "apps/web");
 const requestedBaseUrl =
   process.env.TEST_BASE_URL ||
   process.env.TEST_API_URL ||
-  'http://127.0.0.1:3100';
+  "http://127.0.0.1:3100";
 const requestedUrl = new URL(requestedBaseUrl);
 const serverHostname = requestedUrl.hostname;
 const serverPort =
-  requestedUrl.port || (requestedUrl.protocol === 'https:' ? '443' : '80');
+  requestedUrl.port || (requestedUrl.protocol === "https:" ? "443" : "80");
 const includeOptionalIntegrationTests =
-  process.env.RUN_OPTIONAL_INTEGRATION_TESTS === '1';
-const portReservationDir = path.join(
-  tmpdir(),
-  'feed-integration-server-ports'
-);
+  process.env.RUN_OPTIONAL_INTEGRATION_TESTS === "1";
+const portReservationDir = path.join(tmpdir(), "feed-integration-server-ports");
 const optionalIntegrationTestMatchers = [
   /agent-actions-persistence\.integration\.test\.ts$/,
   /agent0-localnet\.test\.ts$/,
@@ -63,12 +60,12 @@ const testPrivyDidPattern =
 
 async function isServerReady(
   serverBaseUrl: string,
-  timeoutMs: number = 30_000
+  timeoutMs: number = 30_000,
 ): Promise<boolean> {
   try {
     const response = await fetch(`${serverBaseUrl}/api/health`, {
       signal: AbortSignal.timeout(timeoutMs),
-      cache: 'no-store',
+      cache: "no-store",
     });
     return response.ok;
   } catch {
@@ -88,12 +85,12 @@ function isProcessAlive(pid: number): boolean {
 async function supportsTestPrivyDidAuth(baseUrl: string): Promise<boolean> {
   try {
     const response = await fetch(`${baseUrl}/api/waitlist/bonus/email`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
-        Authorization: 'Bearer did:privy:test-123456789012345',
+        "Content-Type": "application/json",
+        Authorization: "Bearer did:privy:test-123456789012345",
       },
-      body: JSON.stringify({ email: 'probe@example.com' }),
+      body: JSON.stringify({ email: "probe@example.com" }),
       signal: AbortSignal.timeout(10_000),
     });
 
@@ -104,15 +101,15 @@ async function supportsTestPrivyDidAuth(baseUrl: string): Promise<boolean> {
 }
 
 async function warmSwaggerRoutes(baseUrl: string) {
-  for (const route of ['/api/docs', '/api-docs']) {
+  for (const route of ["/api/docs", "/api-docs"]) {
     const response = await fetch(`${baseUrl}${route}`, {
       signal: AbortSignal.timeout(120_000),
-      cache: 'no-store',
+      cache: "no-store",
     });
 
     if (!response.ok) {
       throw new Error(
-        `Failed to warm ${route} at ${baseUrl}: ${response.status}`
+        `Failed to warm ${route} at ${baseUrl}: ${response.status}`,
       );
     }
   }
@@ -120,13 +117,13 @@ async function warmSwaggerRoutes(baseUrl: string) {
 
 async function isPortAvailable(
   hostname: string,
-  port: number
+  port: number,
 ): Promise<boolean> {
   return await new Promise<boolean>((resolve) => {
     const server = createServer();
     server.unref();
 
-    server.once('error', () => resolve(false));
+    server.once("error", () => resolve(false));
     server.listen({ host: hostname, port }, () => {
       server.close(() => resolve(true));
     });
@@ -138,7 +135,7 @@ function reservePort(hostname: string, port: number): PortReservation | null {
 
   const reservationPath = path.join(
     portReservationDir,
-    `${hostname.replace(/[^a-zA-Z0-9.-]/g, '_')}-${port}.json`
+    `${hostname.replace(/[^a-zA-Z0-9.-]/g, "_")}-${port}.json`,
   );
 
   try {
@@ -150,23 +147,23 @@ function reservePort(hostname: string, port: number): PortReservation | null {
         port,
         reservedAt: Date.now(),
       }),
-      { flag: 'wx' }
+      { flag: "wx" },
     );
 
     return { port, lockPath: reservationPath };
   } catch (error) {
     const reservationError = error as NodeJS.ErrnoException;
-    if (reservationError.code !== 'EEXIST') {
+    if (reservationError.code !== "EEXIST") {
       throw error;
     }
 
     try {
       const existingReservation = JSON.parse(
-        readFileSync(reservationPath, 'utf-8')
+        readFileSync(reservationPath, "utf-8"),
       ) as { pid?: number } | null;
 
       if (
-        typeof existingReservation?.pid === 'number' &&
+        typeof existingReservation?.pid === "number" &&
         !isProcessAlive(existingReservation.pid)
       ) {
         rmSync(reservationPath, { force: true });
@@ -189,21 +186,21 @@ function releasePortReservation(reservation: PortReservation | null) {
 
 function prepareIsolatedWorkspace(port: number): IsolatedWorkspace {
   const workspaceDir = mkdtempSync(
-    path.join(tmpdir(), `feed-integration-workspace-${port}-`)
+    path.join(tmpdir(), `feed-integration-workspace-${port}-`),
   );
-  const isolatedAppDir = path.join(workspaceDir, 'apps', 'web');
-  const appNodeModulesPath = path.join(appDir, 'node_modules');
+  const isolatedAppDir = path.join(workspaceDir, "apps", "web");
+  const appNodeModulesPath = path.join(appDir, "node_modules");
   const rootEntriesToLink = [
-    'node_modules',
-    'packages',
-    'package.json',
-    'bun.lock',
-    'turbo.json',
-    'tsconfig.json',
-    'tsconfig.build.json',
-    '.env',
-    '.env.local',
-    '.env.production.local',
+    "node_modules",
+    "packages",
+    "package.json",
+    "bun.lock",
+    "turbo.json",
+    "tsconfig.json",
+    "tsconfig.build.json",
+    ".env",
+    ".env.local",
+    ".env.production.local",
   ];
 
   mkdirSync(path.dirname(isolatedAppDir), { recursive: true });
@@ -215,11 +212,11 @@ function prepareIsolatedWorkspace(port: number): IsolatedWorkspace {
       const baseName = path.basename(sourcePath);
 
       if (
-        baseName === 'node_modules' ||
-        baseName === 'dist' ||
-        baseName === '.turbo' ||
-        baseName === '.next' ||
-        baseName.startsWith('.next-')
+        baseName === "node_modules" ||
+        baseName === "dist" ||
+        baseName === ".turbo" ||
+        baseName === ".next" ||
+        baseName.startsWith(".next-")
       ) {
         return false;
       }
@@ -231,8 +228,8 @@ function prepareIsolatedWorkspace(port: number): IsolatedWorkspace {
   if (existsSync(appNodeModulesPath)) {
     symlinkSync(
       appNodeModulesPath,
-      path.join(isolatedAppDir, 'node_modules'),
-      'dir'
+      path.join(isolatedAppDir, "node_modules"),
+      "dir",
     );
   }
 
@@ -245,7 +242,7 @@ function prepareIsolatedWorkspace(port: number): IsolatedWorkspace {
     symlinkSync(
       sourcePath,
       path.join(workspaceDir, entry),
-      statSync(sourcePath).isDirectory() ? 'dir' : 'file'
+      statSync(sourcePath).isDirectory() ? "dir" : "file",
     );
   }
 
@@ -267,7 +264,7 @@ function collectTestFiles(targets: string[]): string[] {
         continue;
       }
 
-      if (entry.isFile() && entry.name.endsWith('.test.ts')) {
+      if (entry.isFile() && entry.name.endsWith(".test.ts")) {
         files.push(entryPath);
       }
     }
@@ -294,15 +291,15 @@ function collectTestFiles(targets: string[]): string[] {
 }
 
 function isOptionalIntegrationTest(filePath: string): boolean {
-  const normalizedPath = filePath.replaceAll(path.sep, '/');
+  const normalizedPath = filePath.replaceAll(path.sep, "/");
   return optionalIntegrationTestMatchers.some((matcher) =>
-    matcher.test(normalizedPath)
+    matcher.test(normalizedPath),
   );
 }
 
 function requiresTestPrivyDidAuth(targets: string[]): boolean {
   for (const filePath of collectTestFiles(targets)) {
-    if (testPrivyDidPattern.test(readFileSync(filePath, 'utf-8'))) {
+    if (testPrivyDidPattern.test(readFileSync(filePath, "utf-8"))) {
       return true;
     }
   }
@@ -312,7 +309,7 @@ function requiresTestPrivyDidAuth(targets: string[]): boolean {
 
 async function findAvailablePort(
   hostname: string,
-  preferredPort: number
+  preferredPort: number,
 ): Promise<PortReservation> {
   for (let port = preferredPort; port < preferredPort + 20; port += 1) {
     if (await isPortAvailable(hostname, port)) {
@@ -324,22 +321,22 @@ async function findAvailablePort(
   }
 
   throw new Error(
-    `Unable to find an available port for integration server starting at ${preferredPort}`
+    `Unable to find an available port for integration server starting at ${preferredPort}`,
   );
 }
 
 async function waitForServer(
   server: ChildProcessWithoutNullStreams,
-  serverBaseUrl: string
+  serverBaseUrl: string,
 ) {
   const deadline = Date.now() + 300_000;
-  let stdoutBuffer = '';
-  let stderrBuffer = '';
+  let stdoutBuffer = "";
+  let stderrBuffer = "";
 
-  server.stdout.on('data', (chunk) => {
+  server.stdout.on("data", (chunk) => {
     stdoutBuffer = (stdoutBuffer + chunk.toString()).slice(-12000);
   });
-  server.stderr.on('data', (chunk) => {
+  server.stderr.on("data", (chunk) => {
     stderrBuffer = (stderrBuffer + chunk.toString()).slice(-12000);
   });
 
@@ -348,8 +345,8 @@ async function waitForServer(
       throw new Error(
         `Integration test server exited early with code ${server.exitCode}\n` +
           stdoutBuffer +
-          '\n' +
-          stderrBuffer
+          "\n" +
+          stderrBuffer,
       );
     }
 
@@ -363,8 +360,8 @@ async function waitForServer(
   throw new Error(
     `Timed out waiting for integration test server at ${serverBaseUrl}\n` +
       stdoutBuffer +
-      '\n' +
-      stderrBuffer
+      "\n" +
+      stderrBuffer,
   );
 }
 
@@ -373,13 +370,13 @@ async function stopServer(server: ChildProcessWithoutNullStreams) {
     return;
   }
 
-  server.kill('SIGTERM');
+  server.kill("SIGTERM");
   await new Promise<void>((resolve) => {
     const forceKillTimer = setTimeout(() => {
-      server.kill('SIGKILL');
+      server.kill("SIGKILL");
     }, 5000);
 
-    server.once('exit', () => {
+    server.once("exit", () => {
       clearTimeout(forceKillTimer);
       resolve();
     });
@@ -389,20 +386,20 @@ async function stopServer(server: ChildProcessWithoutNullStreams) {
 async function runTestFile(filePath: string, env: NodeJS.ProcessEnv) {
   const relativeFilePath = path.relative(rootDir, filePath);
   const proc = spawn(
-    'bun',
+    "bun",
     [
-      'test',
-      '--preload',
-      './packages/testing/integration/preload.ts',
-      '--max-concurrency',
-      '1',
+      "test",
+      "--preload",
+      "./packages/testing/integration/preload.ts",
+      "--max-concurrency",
+      "1",
       relativeFilePath,
     ],
     {
       cwd: rootDir,
       env,
-      stdio: 'inherit',
-    }
+      stdio: "inherit",
+    },
   );
 
   const heartbeat = setInterval(() => {
@@ -410,8 +407,8 @@ async function runTestFile(filePath: string, env: NodeJS.ProcessEnv) {
   }, 5000);
 
   return await new Promise<number>((resolve, reject) => {
-    proc.once('error', reject);
-    proc.once('exit', (code) => {
+    proc.once("error", reject);
+    proc.once("exit", (code) => {
       clearInterval(heartbeat);
       resolve(code ?? 1);
     });
@@ -421,7 +418,7 @@ async function runTestFile(filePath: string, env: NodeJS.ProcessEnv) {
 async function runWithOwnedServer(
   filePath: string,
   hostname: string,
-  preferredPort: number
+  preferredPort: number,
 ) {
   const portReservation = await findAvailablePort(hostname, preferredPort);
   const effectiveBaseUrl = `${requestedUrl.protocol}//${hostname}:${portReservation.port}`;
@@ -430,25 +427,25 @@ async function runWithOwnedServer(
     ...process.env,
     TEST_BASE_URL: effectiveBaseUrl,
     TEST_API_URL: effectiveBaseUrl,
-    DISABLE_RATE_LIMITING: 'true',
-    ALLOW_TEST_PRIVY_DID_AUTH: 'true',
-    PERP_SETTLEMENT_MODE: 'simulation',
-    NEXT_PUBLIC_PERP_SETTLEMENT_MODE: 'simulation',
+    DISABLE_RATE_LIMITING: "true",
+    ALLOW_TEST_PRIVY_DID_AUTH: "true",
+    PERP_SETTLEMENT_MODE: "simulation",
+    NEXT_PUBLIC_PERP_SETTLEMENT_MODE: "simulation",
   };
 
   console.warn(
-    `🧪 Starting isolated integration server at ${effectiveBaseUrl}`
+    `🧪 Starting isolated integration server at ${effectiveBaseUrl}`,
   );
 
   const server = spawn(
-    'bunx',
+    "bunx",
     [
-      'next',
-      'dev',
-      '--webpack',
-      '--hostname',
+      "next",
+      "dev",
+      "--webpack",
+      "--hostname",
       hostname,
-      '--port',
+      "--port",
       `${portReservation.port}`,
     ],
     {
@@ -456,13 +453,13 @@ async function runWithOwnedServer(
       env: {
         ...sharedEnv,
       },
-      stdio: 'pipe',
-    }
+      stdio: "pipe",
+    },
   );
 
   try {
     await waitForServer(server, effectiveBaseUrl);
-    if (path.basename(filePath) === 'swagger.integration.test.ts') {
+    if (path.basename(filePath) === "swagger.integration.test.ts") {
       await warmSwaggerRoutes(effectiveBaseUrl);
     }
     return await runTestFile(filePath, sharedEnv);
@@ -477,11 +474,11 @@ async function main() {
   const hasExplicitTargets = process.argv.length > 2;
   const testTargets = hasExplicitTargets
     ? process.argv.slice(2)
-    : ['packages/testing/integration/'];
+    : ["packages/testing/integration/"];
   let testFiles = [...new Set(collectTestFiles(testTargets))].sort();
   if (!hasExplicitTargets && !includeOptionalIntegrationTests) {
     testFiles = testFiles.filter(
-      (filePath) => !isOptionalIntegrationTest(filePath)
+      (filePath) => !isOptionalIntegrationTest(filePath),
     );
   }
   const hasExplicitBaseUrl =
@@ -497,13 +494,13 @@ async function main() {
 
   if (explicitServerReady && needsTestPrivyDidAuth && !canReuseServer) {
     throw new Error(
-      `Explicit integration server at ${requestedBaseUrl} does not support test Privy DID auth`
+      `Explicit integration server at ${requestedBaseUrl} does not support test Privy DID auth`,
     );
   }
 
   if (testFiles.length === 0) {
     throw new Error(
-      `No integration test files found for targets: ${testTargets.join(', ')}`
+      `No integration test files found for targets: ${testTargets.join(", ")}`,
     );
   }
 
@@ -512,7 +509,7 @@ async function main() {
       collectTestFiles(testTargets).length - testFiles.length;
     if (excludedCount > 0) {
       console.log(
-        `ℹ️ Excluding ${excludedCount} optional integration files from the default deterministic suite`
+        `ℹ️ Excluding ${excludedCount} optional integration files from the default deterministic suite`,
       );
     }
   }
@@ -525,7 +522,7 @@ async function main() {
 
   for (const filePath of testFiles) {
     console.log(
-      `\n🧪 Running integration file: ${path.relative(rootDir, filePath)}`
+      `\n🧪 Running integration file: ${path.relative(rootDir, filePath)}`,
     );
 
     const exitCode = canReuseServer
@@ -533,10 +530,10 @@ async function main() {
           ...process.env,
           TEST_BASE_URL: requestedBaseUrl,
           TEST_API_URL: requestedBaseUrl,
-          DISABLE_RATE_LIMITING: 'true',
-          ALLOW_TEST_PRIVY_DID_AUTH: 'true',
-          PERP_SETTLEMENT_MODE: 'simulation',
-          NEXT_PUBLIC_PERP_SETTLEMENT_MODE: 'simulation',
+          DISABLE_RATE_LIMITING: "true",
+          ALLOW_TEST_PRIVY_DID_AUTH: "true",
+          PERP_SETTLEMENT_MODE: "simulation",
+          NEXT_PUBLIC_PERP_SETTLEMENT_MODE: "simulation",
         })
       : await runWithOwnedServer(filePath, serverHostname, requestedPortNumber);
 

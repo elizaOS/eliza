@@ -6,13 +6,13 @@
  * each user has a unique referral code for tracking referrals.
  */
 
-import { and, dbWrite, eq, ne, users } from '@feed/db';
-import { logger } from '@feed/shared';
-import { BadRequestError, ConflictError, NotFoundError } from '../errors';
+import { and, dbWrite, eq, ne, users } from "@feed/db";
+import { logger } from "@feed/shared";
+import { BadRequestError, ConflictError, NotFoundError } from "../errors";
 
 export async function isReferralCodeAvailableForUser(
   userId: string,
-  referralCode: string
+  referralCode: string,
 ): Promise<boolean> {
   const existingUserWithCode = await dbWrite
     .select({ id: users.id })
@@ -63,19 +63,19 @@ export async function getOrCreateReferralCode(userId: string): Promise<string> {
   // Username is required during signup, so it should always exist
   if (!user.username) {
     throw new BadRequestError(
-      `User ${userId} does not have a username. Username is required for referral codes.`
+      `User ${userId} does not have a username. Username is required for referral codes.`,
     );
   }
 
   // Check if username is already used as a referral code by another user
   const isReferralCodeAvailable = await isReferralCodeAvailableForUser(
     userId,
-    user.username
+    user.username,
   );
 
   if (!isReferralCodeAvailable) {
     throw new ConflictError(
-      `Username "${user.username}" is already used as a referral code by another user`
+      `Username "${user.username}" is already used as a referral code by another user`,
     );
   }
 
@@ -89,7 +89,7 @@ export async function getOrCreateReferralCode(userId: string): Promise<string> {
     logger.info(
       `Updated referral code to username for user ${userId}: ${user.username}`,
       { userId, code: user.username },
-      'ReferralService'
+      "ReferralService",
     );
   }
 

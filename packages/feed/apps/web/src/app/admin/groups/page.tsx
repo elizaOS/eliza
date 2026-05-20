@@ -9,9 +9,9 @@
  * @access Admin / Localhost Debug
  */
 
-'use client';
+"use client";
 
-import { cn, logger } from '@feed/shared';
+import { cn, logger } from "@feed/shared";
 import {
   Calendar,
   ChevronDown,
@@ -21,10 +21,10 @@ import {
   Search,
   User as UserIcon,
   Users,
-} from 'lucide-react';
-import { useCallback, useEffect, useState, useTransition } from 'react';
-import { z } from 'zod';
-import { AdminStandalonePage } from '@/components/admin/AdminStandalonePage';
+} from "lucide-react";
+import { useCallback, useEffect, useState, useTransition } from "react";
+import { z } from "zod";
+import { AdminStandalonePage } from "@/components/admin/AdminStandalonePage";
 
 /**
  * Participant schema for validation.
@@ -74,12 +74,12 @@ export default function AdminGroupsPage() {
   const [groups, setGroups] = useState<GroupChat[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState("");
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [sortBy, setSortBy] = useState<
-    'createdAt' | 'memberCount' | 'messageCount'
-  >('createdAt');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+    "createdAt" | "memberCount" | "messageCount"
+  >("createdAt");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [isRefreshing, startRefresh] = useTransition();
 
   const fetchGroups = useCallback(async () => {
@@ -88,21 +88,21 @@ export default function AdminGroupsPage() {
       setError(null);
 
       const response = await fetch(
-        `/api/admin/groups?sortBy=${sortBy}&sortOrder=${sortOrder}`
+        `/api/admin/groups?sortBy=${sortBy}&sortOrder=${sortOrder}`,
       ).catch((err: Error) => {
         logger.error(
-          'Failed to fetch groups',
+          "Failed to fetch groups",
           err instanceof Error ? err : { error: err },
-          'AdminGroupsPage'
+          "AdminGroupsPage",
         );
-        setError('Failed to fetch groups. Are you on localhost?');
+        setError("Failed to fetch groups. Are you on localhost?");
         setIsLoading(false);
         throw err;
       });
 
       if (!response.ok) {
         const errorText = await response.text();
-        logger.error('API error', { errorText }, 'AdminGroupsPage');
+        logger.error("API error", { errorText }, "AdminGroupsPage");
         setError(`API error: ${response.status} - ${errorText}`);
         setIsLoading(false);
         return;
@@ -112,11 +112,11 @@ export default function AdminGroupsPage() {
       const validation = z.array(GroupChatSchema).safeParse(data.data?.groups);
       if (!validation.success) {
         logger.error(
-          'Validation error',
+          "Validation error",
           { error: validation.error },
-          'AdminGroupsPage'
+          "AdminGroupsPage",
         );
-        setError('Invalid group data structure from API');
+        setError("Invalid group data structure from API");
         setIsLoading(false);
         return;
       }
@@ -147,43 +147,43 @@ export default function AdminGroupsPage() {
       group.creatorName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       group.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
       group.participants.some((p) =>
-        p.name.toLowerCase().includes(searchTerm.toLowerCase())
-      )
+        p.name.toLowerCase().includes(searchTerm.toLowerCase()),
+      ),
   );
 
   const getGroupTypeLabel = (type: string) => {
     switch (type) {
-      case 'npc-only':
-        return 'NPC Only';
-      case 'npc-mixed':
-        return 'NPC + Users';
-      case 'user':
-        return 'User Created';
+      case "npc-only":
+        return "NPC Only";
+      case "npc-mixed":
+        return "NPC + Users";
+      case "user":
+        return "User Created";
       default:
-        return 'Unknown';
+        return "Unknown";
     }
   };
 
   const getGroupTypeColor = (type: string) => {
     switch (type) {
-      case 'npc-only':
-        return 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20';
-      case 'npc-mixed':
-        return 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20';
-      case 'user':
-        return 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20';
+      case "npc-only":
+        return "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20";
+      case "npc-mixed":
+        return "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20";
+      case "user":
+        return "bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20";
       default:
-        return 'bg-muted text-muted-foreground border-border';
+        return "bg-muted text-muted-foreground border-border";
     }
   };
 
   // Stats summary
   const totalGroups = groups.length;
-  const npcOnlyGroups = groups.filter((g) => g.groupType === 'npc-only').length;
+  const npcOnlyGroups = groups.filter((g) => g.groupType === "npc-only").length;
   const npcMixedGroups = groups.filter(
-    (g) => g.groupType === 'npc-mixed'
+    (g) => g.groupType === "npc-mixed",
   ).length;
-  const userGroups = groups.filter((g) => g.groupType === 'user').length;
+  const userGroups = groups.filter((g) => g.groupType === "user").length;
   const totalParticipants = groups.reduce((sum, g) => sum + g.memberCount, 0);
   const totalMessages = groups.reduce((sum, g) => sum + g.messageCount, 0);
 
@@ -205,16 +205,16 @@ export default function AdminGroupsPage() {
             onClick={fetchGroups}
             disabled={isLoading || isRefreshing}
             className={cn(
-              'flex items-center gap-2 rounded-lg px-4 py-2',
-              'bg-primary text-primary-foreground',
-              'transition-colors hover:bg-primary/90',
-              'disabled:cursor-not-allowed disabled:opacity-50'
+              "flex items-center gap-2 rounded-lg px-4 py-2",
+              "bg-primary text-primary-foreground",
+              "transition-colors hover:bg-primary/90",
+              "disabled:cursor-not-allowed disabled:opacity-50",
             )}
           >
             <RefreshCw
               className={cn(
-                'h-4 w-4',
-                (isLoading || isRefreshing) && 'animate-spin'
+                "h-4 w-4",
+                (isLoading || isRefreshing) && "animate-spin",
               )}
             />
             Refresh
@@ -272,9 +272,9 @@ export default function AdminGroupsPage() {
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className={cn(
-              'w-full rounded-lg border border-border py-2 pr-4 pl-10',
-              'bg-background text-foreground',
-              'focus:border-primary focus:outline-none'
+              "w-full rounded-lg border border-border py-2 pr-4 pl-10",
+              "bg-background text-foreground",
+              "focus:border-primary focus:outline-none",
             )}
           />
         </div>
@@ -283,9 +283,9 @@ export default function AdminGroupsPage() {
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
             className={cn(
-              'rounded-lg border border-border px-4 py-2',
-              'bg-background text-foreground',
-              'focus:border-primary focus:outline-none'
+              "rounded-lg border border-border px-4 py-2",
+              "bg-background text-foreground",
+              "focus:border-primary focus:outline-none",
             )}
           >
             <option value="createdAt">Created Date</option>
@@ -293,13 +293,13 @@ export default function AdminGroupsPage() {
             <option value="messageCount">Message Count</option>
           </select>
           <button
-            onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+            onClick={() => setSortOrder(sortOrder === "asc" ? "desc" : "asc")}
             className={cn(
-              'rounded-lg border border-border px-4 py-2',
-              'bg-background transition-colors hover:bg-muted'
+              "rounded-lg border border-border px-4 py-2",
+              "bg-background transition-colors hover:bg-muted",
             )}
           >
-            {sortOrder === 'asc' ? '↑ Asc' : '↓ Desc'}
+            {sortOrder === "asc" ? "↑ Asc" : "↓ Desc"}
           </button>
         </div>
       </div>
@@ -327,8 +327,8 @@ export default function AdminGroupsPage() {
             <p className="font-medium">No group chats found</p>
             <p className="mt-1 text-sm">
               {searchTerm
-                ? 'Try adjusting your search'
-                : 'Group chats will appear here when created'}
+                ? "Try adjusting your search"
+                : "Group chats will appear here when created"}
             </p>
           </div>
         ) : (
@@ -354,12 +354,12 @@ export default function AdminGroupsPage() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <h3 className="truncate font-semibold">
-                          {group.name || 'Unnamed Group'}
+                          {group.name || "Unnamed Group"}
                         </h3>
                         <span
                           className={cn(
-                            'shrink-0 rounded border px-2 py-0.5 font-medium text-xs',
-                            getGroupTypeColor(group.groupType)
+                            "shrink-0 rounded border px-2 py-0.5 font-medium text-xs",
+                            getGroupTypeColor(group.groupType),
                           )}
                         >
                           {getGroupTypeLabel(group.groupType)}
@@ -420,7 +420,7 @@ export default function AdminGroupsPage() {
                                 </div>
                                 <span className="text-muted-foreground text-xs">
                                   {new Date(
-                                    participant.joinedAt
+                                    participant.joinedAt,
                                   ).toLocaleDateString()}
                                 </span>
                               </div>
@@ -457,7 +457,7 @@ export default function AdminGroupsPage() {
                                     </div>
                                     <span className="text-muted-foreground text-xs">
                                       {new Date(
-                                        message.createdAt
+                                        message.createdAt,
                                       ).toLocaleString()}
                                     </span>
                                   </div>

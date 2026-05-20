@@ -1,20 +1,21 @@
-'use client';
+"use client";
 
-import { Reply } from 'lucide-react';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Reply } from "lucide-react";
+import type React from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuTrigger,
-} from '@/components/ui/context-menu';
+} from "@/components/ui/context-menu";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import type { Message } from './types';
+} from "@/components/ui/dropdown-menu";
+import type { Message } from "./types";
 
 const LONG_PRESS_THRESHOLD_MS = 500;
 
@@ -117,7 +118,7 @@ function MobileLongPressMenu({
         e.preventDefault();
       }
     },
-    [clearTimer]
+    [clearTimer],
   );
 
   const handleTouchMove = useCallback(() => {

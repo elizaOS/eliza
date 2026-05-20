@@ -1,4 +1,4 @@
-import { definePrompt } from '../define-prompt';
+import { definePrompt } from "../define-prompt";
 
 /**
  * Prompt for ranking questions by dramatic potential and entertainment value.
@@ -10,10 +10,10 @@ import { definePrompt } from '../define-prompt';
  * Returns XML with ranked questions (1 = best, N = worst).
  */
 export const questionRankings = definePrompt({
-  id: 'question-rankings',
-  version: '3.0.0',
-  category: 'game',
-  description: 'Ranks questions with narrative context',
+  id: "question-rankings",
+  version: "3.0.0",
+  category: "game",
+  description: "Ranks questions with narrative context",
   temperature: 0.5,
   maxTokens: 4000,
   template: `{{realityGrounding}}

@@ -1,28 +1,28 @@
-'use client';
+"use client";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
-import { ArrowLeft, MessageCircle } from 'lucide-react';
-import nextDynamic from 'next/dynamic';
-import { useRouter } from 'next/navigation';
-import { use, useEffect, useState } from 'react';
-import { FeedCommentSection } from '@/components/feed/FeedCommentSection';
-import { InteractionBar } from '@/components/interactions';
-import { PostCard } from '@/components/posts/PostCard';
-import { PageContainer } from '@/components/shared/PageContainer';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { useInteractionStore } from '@/stores/interactionStore';
-import { apiUrl } from '@/utils/api-url';
+import { ArrowLeft, MessageCircle } from "lucide-react";
+import nextDynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
+import { use, useEffect, useState } from "react";
+import { FeedCommentSection } from "@/components/feed/FeedCommentSection";
+import { InteractionBar } from "@/components/interactions";
+import { PostCard } from "@/components/posts/PostCard";
+import { PageContainer } from "@/components/shared/PageContainer";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { useInteractionStore } from "@/stores/interactionStore";
+import { apiUrl } from "@/utils/api-url";
 
 const WidgetSidebar = nextDynamic(
   () =>
-    import('@/components/shared/WidgetSidebar').then((m) => ({
+    import("@/components/shared/WidgetSidebar").then((m) => ({
       default: m.WidgetSidebar,
     })),
   {
     ssr: false,
     loading: () => <div className="hidden w-96 flex-none xl:block" />,
-  }
+  },
 );
 
 interface PostPageProps {
@@ -41,10 +41,10 @@ export default function PostPage({ params }: PostPageProps) {
 
   // Back: go to previous page (e.g. quote post, profile); fallback to feed when no history (direct link / new tab)
   const handleBack = () => {
-    if (typeof window !== 'undefined' && window.history.length > 1) {
+    if (typeof window !== "undefined" && window.history.length > 1) {
       router.back();
     } else {
-      router.push('/feed');
+      router.push("/feed");
     }
   };
 
@@ -98,14 +98,14 @@ export default function PostPage({ params }: PostPageProps) {
       const postData = result.data || result;
 
       // If this is an article-type post, redirect to /article/[id]
-      if (postData.type === 'article' && postData.fullContent) {
+      if (postData.type === "article" && postData.fullContent) {
         router.replace(`/article/${postId}`);
         return;
       }
 
       setPost({
         id: postData.id,
-        type: postData.type || 'post',
+        type: postData.type || "post",
         content: postData.content,
         fullContent: postData.fullContent || null,
         articleTitle: postData.articleTitle || null,
@@ -243,10 +243,10 @@ export default function PostPage({ params }: PostPageProps) {
               <div className="text-center">
                 <h1 className="mb-2 font-bold text-2xl">Post Not Found</h1>
                 <p className="mb-4 text-muted-foreground">
-                  {error || 'The post you are looking for does not exist.'}
+                  {error || "The post you are looking for does not exist."}
                 </p>
                 <button
-                  onClick={() => router.push('/feed')}
+                  onClick={() => router.push("/feed")}
                   className="rounded-md bg-primary px-4 py-2 text-primary-foreground transition-colors hover:bg-primary/90"
                 >
                   Back to Feed
@@ -260,10 +260,10 @@ export default function PostPage({ params }: PostPageProps) {
             <div className="px-4 text-center">
               <h1 className="mb-2 font-bold text-2xl">Post Not Found</h1>
               <p className="mb-4 text-muted-foreground">
-                {error || 'The post you are looking for does not exist.'}
+                {error || "The post you are looking for does not exist."}
               </p>
               <button
-                onClick={() => router.push('/feed')}
+                onClick={() => router.push("/feed")}
                 className="rounded-md bg-primary px-4 py-2 text-primary-foreground transition-colors hover:bg-primary/90"
               >
                 Back to Feed
@@ -303,7 +303,7 @@ export default function PostPage({ params }: PostPageProps) {
             <div className="w-full lg:mx-auto lg:max-w-[700px]">
               {/* Post */}
               <div className="border-border border-b">
-                {post.type === 'article' &&
+                {post.type === "article" &&
                 post.fullContent &&
                 post.fullContent.length > 100 ? (
                   // Article detail view - Only show if has substantial full content (> 100 chars)
@@ -319,7 +319,7 @@ export default function PostPage({ params }: PostPageProps) {
 
                     {/* Article title */}
                     <h1 className="mb-4 font-bold text-3xl text-foreground leading-tight sm:text-4xl">
-                      {post.articleTitle || 'Untitled Article'}
+                      {post.articleTitle || "Untitled Article"}
                     </h1>
 
                     {/* Article metadata */}
@@ -335,17 +335,17 @@ export default function PostPage({ params }: PostPageProps) {
                       )}
                       <span>·</span>
                       <time>
-                        {new Date(post.timestamp).toLocaleDateString('en-US', {
-                          month: 'long',
-                          day: 'numeric',
-                          year: 'numeric',
+                        {new Date(post.timestamp).toLocaleDateString("en-US", {
+                          month: "long",
+                          day: "numeric",
+                          year: "numeric",
                         })}
                       </time>
                     </div>
 
                     {/* Full article content */}
                     <div className="prose prose-lg prose-invert mb-6 max-w-none">
-                      {post.fullContent.split('\n\n').map((paragraph, i) => (
+                      {post.fullContent.split("\n\n").map((paragraph, i) => (
                         <p
                           key={i}
                           className="mb-4 text-base text-foreground leading-relaxed sm:text-lg"
@@ -414,7 +414,7 @@ export default function PostPage({ params }: PostPageProps) {
           <div className="flex-1 overflow-y-auto">
             {/* Post */}
             <div className="border-border border-b">
-              {post.type === 'article' &&
+              {post.type === "article" &&
               post.fullContent &&
               post.fullContent.length > 100 ? (
                 // Article detail view - Only show if has substantial full content (> 100 chars)
@@ -430,7 +430,7 @@ export default function PostPage({ params }: PostPageProps) {
 
                   {/* Article title */}
                   <h1 className="mb-4 font-bold text-2xl text-foreground leading-tight sm:text-3xl">
-                    {post.articleTitle || 'Untitled Article'}
+                    {post.articleTitle || "Untitled Article"}
                   </h1>
 
                   {/* Article metadata */}
@@ -446,16 +446,16 @@ export default function PostPage({ params }: PostPageProps) {
                     )}
                     <span>·</span>
                     <time>
-                      {new Date(post.timestamp).toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
+                      {new Date(post.timestamp).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
                       })}
                     </time>
                   </div>
 
                   {/* Full article content */}
                   <div className="prose prose-invert mb-4 max-w-none">
-                    {post.fullContent.split('\n\n').map((paragraph, i) => (
+                    {post.fullContent.split("\n\n").map((paragraph, i) => (
                       <p
                         key={i}
                         className="mb-4 text-base text-foreground leading-relaxed"

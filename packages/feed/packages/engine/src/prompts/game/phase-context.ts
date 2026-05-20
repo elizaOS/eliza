@@ -1,4 +1,4 @@
-import { definePrompt } from '../define-prompt';
+import { definePrompt } from "../define-prompt";
 
 /**
  * Prompt providing phase-specific narrative instructions for content generation.
@@ -10,11 +10,11 @@ import { definePrompt } from '../define-prompt';
  * Returns phase context instructions.
  */
 export const phaseContext = definePrompt({
-  id: 'phase-context',
-  version: '2.0.0',
-  category: 'game',
+  id: "phase-context",
+  version: "2.0.0",
+  category: "game",
   description:
-    'Provides phase-specific narrative instructions for content generation',
+    "Provides phase-specific narrative instructions for content generation",
   temperature: 0,
   maxTokens: 0,
   template: `

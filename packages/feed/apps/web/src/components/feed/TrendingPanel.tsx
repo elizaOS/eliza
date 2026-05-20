@@ -1,15 +1,15 @@
-'use client';
+"use client";
 
-import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { useWidgetRefresh } from '@/contexts/WidgetRefreshContext';
-import { useSSEChannel } from '@/hooks/useSSE';
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { useWidgetRefresh } from "@/contexts/WidgetRefreshContext";
+import { useSSEChannel } from "@/hooks/useSSE";
 import {
   type TrendingItem,
   useWidgetCacheStore,
-} from '@/stores/widgetCacheStore';
-import { apiUrl } from '@/utils/api-url';
+} from "@/stores/widgetCacheStore";
+import { apiUrl } from "@/utils/api-url";
 
 /**
  * Trending panel component for displaying trending topics.
@@ -51,7 +51,7 @@ export function TrendingPanel() {
         }
       }
 
-      const response = await fetch(apiUrl('/api/feed/widgets/trending'));
+      const response = await fetch(apiUrl("/api/feed/widgets/trending"));
       const data = (await response.json()) as {
         success: boolean;
         trending?: TrendingItem[];
@@ -64,7 +64,7 @@ export function TrendingPanel() {
       }
       setLoading(false);
     },
-    [getTrending, cacheTrending]
+    [getTrending, cacheTrending],
   );
 
   // Update ref when fetchTrending changes
@@ -79,12 +79,12 @@ export function TrendingPanel() {
   // Register refresh function
   useEffect(() => {
     const refresh = () => fetchTrending(true);
-    registerRefresh('trending', refresh);
-    return () => unregisterRefresh('trending');
+    registerRefresh("trending", refresh);
+    return () => unregisterRefresh("trending");
   }, [registerRefresh, unregisterRefresh, fetchTrending]);
 
   // Real-time refresh on feed events
-  useSSEChannel('feed', () => {
+  useSSEChannel("feed", () => {
     void fetchTrending(true);
   });
 
@@ -92,7 +92,7 @@ export function TrendingPanel() {
     // If multiple tags, navigate to grouped view; otherwise single tag view
     if (item.tagSlugs.length > 1) {
       // Navigate to grouped trending view with multiple tag slugs
-      const tagSlugsParam = item.tagSlugs.join(',');
+      const tagSlugsParam = item.tagSlugs.join(",");
       router.push(`/trending/group?tags=${encodeURIComponent(tagSlugsParam)}`);
     } else {
       // Single tag - use existing route
@@ -126,10 +126,10 @@ export function TrendingPanel() {
                 <p className="font-semibold text-foreground text-sm leading-snug">
                   {item.category && (
                     <span className="text-muted-foreground">
-                      {item.category} ·{' '}
+                      {item.category} ·{" "}
                     </span>
                   )}
-                  {item.tags.join(' · ')}
+                  {item.tags.join(" · ")}
                 </p>
                 {/* Summary */}
                 {item.summary && (

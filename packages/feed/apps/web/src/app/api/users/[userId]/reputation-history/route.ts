@@ -17,23 +17,23 @@ import {
   requireUserByIdentifier,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { toISO, UserIdParamSchema } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/api";
+import { toISO, UserIdParamSchema } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 export const GET = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ userId: string }> }
+    context: { params: Promise<{ userId: string }> },
   ) => {
     const authUser = await authenticate(request);
     const { userId } = UserIdParamSchema.parse(await context.params);
 
     if (!authUser.dbUserId) {
       throw new AuthorizationError(
-        'User profile not found. Please complete onboarding first.',
-        'reputation-history',
-        'read'
+        "User profile not found. Please complete onboarding first.",
+        "reputation-history",
+        "read",
       );
     }
 
@@ -42,9 +42,9 @@ export const GET = withErrorHandling(
 
     if (authUser.dbUserId !== canonicalUserId) {
       throw new AuthorizationError(
-        'You can only view your own reputation history',
-        'reputation-history',
-        'read'
+        "You can only view your own reputation history",
+        "reputation-history",
+        "read",
       );
     }
 
@@ -57,5 +57,5 @@ export const GET = withErrorHandling(
         createdAt: toISO(transaction.createdAt),
       })),
     });
-  }
+  },
 );

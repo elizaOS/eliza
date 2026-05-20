@@ -8,15 +8,15 @@
  * Requires `teamChatId` to be set in state.values.
  */
 
-import { and, chatParticipants, db, eq, users } from '@feed/db';
 import type {
   IAgentRuntime,
   Memory,
   Provider,
   ProviderResult,
   State,
-} from '@elizaos/core';
-import { logger } from '../../../../shared/logger';
+} from "@elizaos/core";
+import { and, chatParticipants, db, eq, users } from "@feed/db";
+import { logger } from "../../../../shared/logger";
 
 /** Team member info */
 interface TeamMember {
@@ -33,13 +33,13 @@ interface TeamMember {
  * for LLM context with proper @username mentions.
  */
 export const teamMembersProvider: Provider = {
-  name: 'TEAM_MEMBERS',
-  description: 'List of team members in the Agents chat',
+  name: "TEAM_MEMBERS",
+  description: "List of team members in the Agents chat",
 
   get: async (
     runtime: IAgentRuntime,
     _message: Memory,
-    state: State
+    state: State,
   ): Promise<ProviderResult> => {
     const agentId = runtime.agentId;
     const teamChatId = state?.values?.teamChatId as string | undefined;
@@ -52,11 +52,11 @@ export const teamMembersProvider: Provider = {
           memberCount: 0,
         },
         values: {
-          teamMembers: '',
+          teamMembers: "",
           memberCount: 0,
           hasTeamMembers: false,
         },
-        text: '',
+        text: "",
       };
     }
 
@@ -74,8 +74,8 @@ export const teamMembersProvider: Provider = {
         .where(
           and(
             eq(chatParticipants.chatId, teamChatId),
-            eq(chatParticipants.isActive, true)
-          )
+            eq(chatParticipants.isActive, true),
+          ),
         );
 
       if (participants.length === 0) {
@@ -85,24 +85,24 @@ export const teamMembersProvider: Provider = {
             memberCount: 0,
           },
           values: {
-            teamMembers: 'No team members found.',
+            teamMembers: "No team members found.",
             memberCount: 0,
             hasTeamMembers: false,
           },
-          text: 'No team members found.',
+          text: "No team members found.",
         };
       }
 
       // Format members list
       const formattedMembers = participants
         .map((member) => {
-          const name = member.displayName || member.username || 'Unknown';
-          const handle = member.username ? `@${member.username}` : '';
-          const role = member.isAgent ? 'Agent' : 'Owner';
+          const name = member.displayName || member.username || "Unknown";
+          const handle = member.username ? `@${member.username}` : "";
+          const role = member.isAgent ? "Agent" : "Owner";
           const isSelf = member.id === agentId;
-          return `- **${name}** (${handle}) - ${role}${isSelf ? ' ← YOU' : ''}`;
+          return `- **${name}** (${handle}) - ${role}${isSelf ? " ← YOU" : ""}`;
         })
-        .join('\n');
+        .join("\n");
 
       // Create structured member list for values
       const memberList: TeamMember[] = participants.map((p) => ({
@@ -126,9 +126,9 @@ export const teamMembersProvider: Provider = {
       };
     } catch (error) {
       logger.error(
-        'Error fetching members',
+        "Error fetching members",
         error instanceof Error ? error : { error },
-        'TeamMembers'
+        "TeamMembers",
       );
       return {
         data: {
@@ -136,11 +136,11 @@ export const teamMembersProvider: Provider = {
           memberCount: 0,
         },
         values: {
-          teamMembers: 'Error retrieving team members.',
+          teamMembers: "Error retrieving team members.",
           memberCount: 0,
           hasTeamMembers: false,
         },
-        text: 'Error retrieving team members.',
+        text: "Error retrieving team members.",
       };
     }
   },

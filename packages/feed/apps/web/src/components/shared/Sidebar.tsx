@@ -1,11 +1,6 @@
-'use client';
+"use client";
 
-import {
-  cn,
-  extractErrorMessage,
-  getReferralUrl,
-  logger,
-} from '@feed/shared';
+import { cn, extractErrorMessage, getReferralUrl, logger } from "@feed/shared";
 import {
   Bell,
   Bot,
@@ -19,23 +14,23 @@ import {
   Trophy,
   User,
   Wallet,
-} from 'lucide-react';
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { LoginButton } from '@/components/auth/LoginButton';
-import { UserMenu } from '@/components/auth/UserMenu';
-import { GameFeedbackModal } from '@/components/feedback/GameFeedbackModal';
-import { Avatar } from '@/components/shared/Avatar';
-import { FeedIcon } from '@/components/shared/icons/FeedIcon';
-import { FeedFullLogo } from '@/components/shared/icons/FeedLogo';
-import { HouseIcon } from '@/components/shared/icons/HouseIcon';
-import { useEmbedMode } from '@/contexts/EmbedContext';
-import { useAuth } from '@/hooks/useAuth';
-import { usePostHog } from '@/hooks/usePostHog';
-import { useUnreadMessages } from '@/hooks/useUnreadMessages';
-import { useUnreadNotifications } from '@/hooks/useUnreadNotifications';
-import { getUserDisplayName } from '@/lib/user-display';
+} from "lucide-react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { LoginButton } from "@/components/auth/LoginButton";
+import { UserMenu } from "@/components/auth/UserMenu";
+import { GameFeedbackModal } from "@/components/feedback/GameFeedbackModal";
+import { Avatar } from "@/components/shared/Avatar";
+import { FeedIcon } from "@/components/shared/icons/FeedIcon";
+import { FeedFullLogo } from "@/components/shared/icons/FeedLogo";
+import { HouseIcon } from "@/components/shared/icons/HouseIcon";
+import { useEmbedMode } from "@/contexts/EmbedContext";
+import { useAuth } from "@/hooks/useAuth";
+import { usePostHog } from "@/hooks/usePostHog";
+import { useUnreadMessages } from "@/hooks/useUnreadMessages";
+import { useUnreadNotifications } from "@/hooks/useUnreadNotifications";
+import { getUserDisplayName } from "@/lib/user-display";
 
 /**
  * Main sidebar content component with navigation and user menu.
@@ -69,7 +64,7 @@ function SidebarContent() {
     if (!user?.id) return;
     try {
       const res = await fetch(
-        `/api/users/${encodeURIComponent(user.id)}/portfolio-breakdown`
+        `/api/users/${encodeURIComponent(user.id)}/portfolio-breakdown`,
       );
       if (res.ok) {
         const data = await res.json();
@@ -93,21 +88,21 @@ function SidebarContent() {
       void fetchPortfolio();
       void refresh().catch((error) => {
         logger.warn(
-          'Failed to refresh auth state after rewards update',
+          "Failed to refresh auth state after rewards update",
           { error: extractErrorMessage(error) },
-          'Sidebar'
+          "Sidebar",
         );
       });
     };
-    window.addEventListener('rewards-updated', handleRewardsUpdated);
+    window.addEventListener("rewards-updated", handleRewardsUpdated);
     return () => {
-      window.removeEventListener('rewards-updated', handleRewardsUpdated);
+      window.removeEventListener("rewards-updated", handleRewardsUpdated);
     };
   }, [fetchPortfolio, refresh]);
 
   // Hide sidebar when WAITLIST_MODE is enabled on home page, or in embed mode
-  const isWaitlistMode = process.env.NEXT_PUBLIC_WAITLIST_MODE === 'true';
-  const isHomePage = pathname === '/';
+  const isWaitlistMode = process.env.NEXT_PUBLIC_WAITLIST_MODE === "true";
+  const isHomePage = pathname === "/";
   const { isEmbedded } = useEmbedMode();
   const shouldHideSidebar = isEmbedded || (isWaitlistMode && isHomePage);
 
@@ -127,9 +122,9 @@ function SidebarContent() {
     };
 
     if (showMdMenu) {
-      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener("mousedown", handleClickOutside);
       return () =>
-        document.removeEventListener('mousedown', handleClickOutside);
+        document.removeEventListener("mousedown", handleClickOutside);
     }
     return undefined;
   }, [showMdMenu]);
@@ -146,12 +141,12 @@ function SidebarContent() {
       });
     };
     updateHeight();
-    window.addEventListener('scroll', updateHeight, { passive: true });
-    window.addEventListener('resize', updateHeight, { passive: true });
+    window.addEventListener("scroll", updateHeight, { passive: true });
+    window.addEventListener("resize", updateHeight, { passive: true });
     return () => {
       cancelAnimationFrame(rafId);
-      window.removeEventListener('scroll', updateHeight);
-      window.removeEventListener('resize', updateHeight);
+      window.removeEventListener("scroll", updateHeight);
+      window.removeEventListener("resize", updateHeight);
     };
   }, []);
 
@@ -171,70 +166,70 @@ function SidebarContent() {
 
   const navItems = [
     {
-      name: 'Home',
-      href: '/feed',
+      name: "Home",
+      href: "/feed",
       icon: HouseIcon,
-      active: pathname === '/feed' || pathname === '/',
+      active: pathname === "/feed" || pathname === "/",
     },
     {
-      name: 'Agents',
-      href: '/agents/team',
+      name: "Agents",
+      href: "/agents/team",
       icon: Bot,
-      active: pathname === '/agents' || pathname.startsWith('/agents/'),
+      active: pathname === "/agents" || pathname.startsWith("/agents/"),
       requiresAuth: true,
     },
     {
-      name: 'Markets',
-      href: '/markets',
+      name: "Markets",
+      href: "/markets",
       icon: TrendingUp,
       active:
-        pathname.startsWith('/markets') ||
-        pathname === '/markets' ||
-        pathname.startsWith('/markets/perps/') ||
-        pathname.startsWith('/markets/predictions/'),
+        pathname.startsWith("/markets") ||
+        pathname === "/markets" ||
+        pathname.startsWith("/markets/perps/") ||
+        pathname.startsWith("/markets/predictions/"),
     },
     {
-      name: 'Chats',
-      href: '/chats',
+      name: "Chats",
+      href: "/chats",
       icon: MessageCircle,
-      active: pathname === '/chats',
+      active: pathname === "/chats",
       requiresAuth: true,
     },
     {
-      name: 'Wallet',
-      href: '/wallet',
+      name: "Wallet",
+      href: "/wallet",
       icon: Wallet,
-      active: pathname === '/wallet',
+      active: pathname === "/wallet",
       requiresAuth: true,
     },
     {
-      name: 'Points',
-      href: '/leaderboard',
+      name: "Points",
+      href: "/leaderboard",
       icon: Trophy,
-      active: pathname === '/leaderboard' || pathname === '/rewards',
+      active: pathname === "/leaderboard" || pathname === "/rewards",
     },
     {
-      name: 'Notifications',
-      href: '/notifications',
+      name: "Notifications",
+      href: "/notifications",
       icon: Bell,
-      active: pathname === '/notifications',
+      active: pathname === "/notifications",
       requiresAuth: true,
     },
     {
-      name: 'Profile',
-      href: '/profile',
+      name: "Profile",
+      href: "/profile",
       icon: User,
-      active: pathname === '/profile' || pathname.startsWith('/u/'),
+      active: pathname === "/profile" || pathname.startsWith("/u/"),
       requiresAuth: true,
     },
     // Admin link (only shown for admins)
     ...(isAdmin
       ? [
           {
-            name: 'Admin',
-            href: '/admin',
+            name: "Admin",
+            href: "/admin",
             icon: Shield,
-            active: pathname === '/admin',
+            active: pathname === "/admin",
           },
         ]
       : []),
@@ -246,27 +241,27 @@ function SidebarContent() {
       <aside
         ref={asideRef}
         className={cn(
-          'sticky top-0 isolate z-40 hidden h-screen md:flex md:flex-col',
-          'bg-sidebar',
-          'transition-all duration-300',
-          'md:w-20',
-          'mx-2',
-          !collapsed && 'lg:w-48'
+          "sticky top-0 isolate z-40 hidden h-screen md:flex md:flex-col",
+          "bg-sidebar",
+          "transition-all duration-300",
+          "md:w-20",
+          "mx-2",
+          !collapsed && "lg:w-48",
         )}
       >
         {/* Header - Logo & Collapse Toggle */}
         <div
           className={cn(
-            'flex items-center justify-center p-6',
-            !collapsed && 'lg:justify-start lg:px-4'
+            "flex items-center justify-center p-6",
+            !collapsed && "lg:justify-start lg:px-4",
           )}
         >
           <Link href="/feed" aria-label="Feed home">
             {/* Icon-only logo for md (tablet) or collapsed */}
             <FeedIcon
               className={cn(
-                'h-8 w-8 text-sidebar-primary',
-                !collapsed && 'lg:hidden'
+                "h-8 w-8 text-sidebar-primary",
+                !collapsed && "lg:hidden",
               )}
             />
             {/* Full logo with text for lg+ (desktop) when expanded */}
@@ -298,13 +293,13 @@ function SidebarContent() {
             const navContent = (
               <>
                 {/* Icon with notification indicator */}
-                <div className={cn('relative', !collapsed && 'lg:mr-3')}>
+                <div className={cn("relative", !collapsed && "lg:mr-3")}>
                   <Icon
                     className={cn(
-                      'h-6 w-6 flex-shrink-0',
+                      "h-6 w-6 flex-shrink-0",
                       item.active
-                        ? 'text-sidebar-primary'
-                        : 'text-sidebar-foreground'
+                        ? "text-sidebar-primary"
+                        : "text-sidebar-foreground",
                     )}
                   />
                   {hasNotificationBadge && (
@@ -315,12 +310,12 @@ function SidebarContent() {
                 {/* Label - hidden on tablet (md), shown on desktop (lg+) */}
                 <span
                   className={cn(
-                    'hidden',
-                    !collapsed && 'lg:block',
-                    'text-lg transition-colors duration-300',
+                    "hidden",
+                    !collapsed && "lg:block",
+                    "text-lg transition-colors duration-300",
                     item.active
-                      ? 'font-semibold text-black dark:text-white'
-                      : 'text-sidebar-foreground group-hover:text-black dark:group-hover:text-white'
+                      ? "font-semibold text-black dark:text-white"
+                      : "text-sidebar-foreground group-hover:text-black dark:group-hover:text-white",
                   )}
                 >
                   {item.name}
@@ -329,11 +324,11 @@ function SidebarContent() {
             );
 
             const sharedClassName = cn(
-              'group pointer-events-auto relative z-10 flex items-center px-4 py-3',
-              'transition-colors duration-200',
-              'md:justify-center',
-              !collapsed && 'lg:justify-start',
-              'bg-transparent hover:bg-sidebar-accent'
+              "group pointer-events-auto relative z-10 flex items-center px-4 py-3",
+              "transition-colors duration-200",
+              "md:justify-center",
+              !collapsed && "lg:justify-start",
+              "bg-transparent hover:bg-sidebar-accent",
             );
 
             if (item.requiresAuth && !authenticated) {
@@ -342,10 +337,10 @@ function SidebarContent() {
                   key={item.name}
                   type="button"
                   onClick={login}
-                  className={cn(sharedClassName, 'w-full')}
+                  className={cn(sharedClassName, "w-full")}
                   title={item.name}
-                  {...(item.name === 'Agents'
-                    ? { 'data-tour': 'sidebar-agents' }
+                  {...(item.name === "Agents"
+                    ? { "data-tour": "sidebar-agents" }
                     : {})}
                 >
                   {navContent}
@@ -360,9 +355,9 @@ function SidebarContent() {
                 prefetch={true}
                 className={sharedClassName}
                 title={item.name}
-                onClick={() => trackNavigation(item.href, 'sidebar')}
-                {...(item.name === 'Agents'
-                  ? { 'data-tour': 'sidebar-agents' }
+                onClick={() => trackNavigation(item.href, "sidebar")}
+                {...(item.name === "Agents"
+                  ? { "data-tour": "sidebar-agents" }
                   : {})}
               >
                 {navContent}
@@ -372,7 +367,7 @@ function SidebarContent() {
         </nav>
 
         {/* Bottom Section - Authentication (Desktop lg+) */}
-        <div className={cn('hidden', !collapsed && 'lg:block')}>
+        <div className={cn("hidden", !collapsed && "lg:block")}>
           {!ready ? (
             // Skeleton loader while authentication is initializing
             <div className="flex animate-pulse items-center gap-3 p-3">
@@ -417,7 +412,7 @@ function SidebarContent() {
         {/* Bottom Section - User Icon (Tablet md) */}
         {authenticated && user && (
           <div
-            className={cn('relative md:block', !collapsed && 'lg:hidden')}
+            className={cn("relative md:block", !collapsed && "lg:hidden")}
             ref={mdMenuRef}
           >
             {/* User avatar button - styled like nav items */}
@@ -428,7 +423,7 @@ function SidebarContent() {
             >
               <Avatar
                 id={user.id}
-                name={getUserDisplayName(user, 'User')}
+                name={getUserDisplayName(user, "User")}
                 type="user"
                 size="sm"
                 src={user.profileImageUrl || undefined}
@@ -444,9 +439,9 @@ function SidebarContent() {
                   <button
                     onClick={copyReferralCode}
                     className="flex w-full items-center justify-center px-4 py-3 transition-colors duration-200 hover:bg-sidebar-accent"
-                    title={copiedReferral ? 'Copied!' : 'Copy Referral Link'}
+                    title={copiedReferral ? "Copied!" : "Copy Referral Link"}
                     aria-label={
-                      copiedReferral ? 'Copied!' : 'Copy Referral Link'
+                      copiedReferral ? "Copied!" : "Copy Referral Link"
                     }
                   >
                     {copiedReferral ? (

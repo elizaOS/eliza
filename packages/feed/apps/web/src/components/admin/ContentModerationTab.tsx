@@ -16,9 +16,9 @@
  *
  * @returns Content moderation tab element
  */
-'use client';
+"use client";
 
-import { cn, formatDateTime } from '@feed/shared';
+import { cn, formatDateTime } from "@feed/shared";
 import {
   AlertTriangle,
   Check,
@@ -27,18 +27,18 @@ import {
   Flag,
   MessageSquare,
   RefreshCw,
-} from 'lucide-react';
-import { useCallback, useEffect, useState, useTransition } from 'react';
-import { toast } from 'sonner';
-import { Avatar } from '@/components/shared/Avatar';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { apiUrl } from '@/utils/api-url';
+} from "lucide-react";
+import { useCallback, useEffect, useState, useTransition } from "react";
+import { toast } from "sonner";
+import { Avatar } from "@/components/shared/Avatar";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { apiUrl } from "@/utils/api-url";
 
-type ContentType = 'all' | 'posts' | 'comments';
+type ContentType = "all" | "posts" | "comments";
 
 interface ContentItem {
   id: string;
-  type: 'post' | 'comment';
+  type: "post" | "comment";
   content: string;
   createdAt: string;
   isHidden: boolean | null;
@@ -69,16 +69,16 @@ interface QueueData {
 export function ContentModerationTab() {
   const [data, setData] = useState<QueueData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [contentType, setContentType] = useState<ContentType>('all');
+  const [contentType, setContentType] = useState<ContentType>("all");
   const [isRefreshing, startRefresh] = useTransition();
   const [selectedItem, setSelectedItem] = useState<ContentItem | null>(null);
   const [showActionModal, setShowActionModal] = useState(false);
-  const [actionType, setActionType] = useState<'approve' | 'hide'>('approve');
-  const [actionReason, setActionReason] = useState('');
+  const [actionType, setActionType] = useState<"approve" | "hide">("approve");
+  const [actionReason, setActionReason] = useState("");
   const [isActioning, startActioning] = useTransition();
 
   const [error, setError] = useState<{
-    type: 'network' | 'auth' | 'data' | 'unknown';
+    type: "network" | "auth" | "data" | "unknown";
     message: string;
   } | null>(null);
 
@@ -88,32 +88,32 @@ export function ContentModerationTab() {
   const categorizeError = useCallback(
     (
       status: number,
-      message?: string
-    ): { type: 'network' | 'auth' | 'data' | 'unknown'; message: string } => {
+      message?: string,
+    ): { type: "network" | "auth" | "data" | "unknown"; message: string } => {
       if (status === 401 || status === 403) {
         return {
-          type: 'auth',
-          message: 'Authentication failed. Please log in again.',
+          type: "auth",
+          message: "Authentication failed. Please log in again.",
         };
       }
       if (status === 400 || status === 422) {
         return {
-          type: 'data',
-          message: message ?? 'Invalid request parameters.',
+          type: "data",
+          message: message ?? "Invalid request parameters.",
         };
       }
       if (status >= 500) {
         return {
-          type: 'network',
-          message: 'Server error. Please try again later.',
+          type: "network",
+          message: "Server error. Please try again later.",
         };
       }
       return {
-        type: 'unknown',
-        message: message ?? 'An unexpected error occurred.',
+        type: "unknown",
+        message: message ?? "An unexpected error occurred.",
       };
     },
-    []
+    [],
   );
 
   const fetchQueue = useCallback(
@@ -121,15 +121,15 @@ export function ContentModerationTab() {
       const fetchLogic = async () => {
         setError(null);
         const params = new URLSearchParams();
-        if (contentType !== 'all') params.set('type', contentType);
+        if (contentType !== "all") params.set("type", contentType);
 
         let response: Response;
         try {
           response = await fetch(apiUrl(`/api/admin/content-queue?${params}`));
         } catch {
           setError({
-            type: 'network',
-            message: 'Network error. Check your connection.',
+            type: "network",
+            message: "Network error. Check your connection.",
           });
           setLoading(false);
           return;
@@ -140,8 +140,8 @@ export function ContentModerationTab() {
           setError(
             categorizeError(
               response.status,
-              errorData.error ?? errorData.message
-            )
+              errorData.error ?? errorData.message,
+            ),
           );
           setLoading(false);
           return;
@@ -158,17 +158,17 @@ export function ContentModerationTab() {
         void fetchLogic();
       }
     },
-    [contentType, categorizeError]
+    [contentType, categorizeError],
   );
 
   useEffect(() => {
     fetchQueue();
   }, [fetchQueue]);
 
-  const handleAction = (item: ContentItem, action: 'approve' | 'hide') => {
+  const handleAction = (item: ContentItem, action: "approve" | "hide") => {
     setSelectedItem(item);
     setActionType(action);
-    setActionReason('');
+    setActionReason("");
     setShowActionModal(true);
   };
 
@@ -181,17 +181,17 @@ export function ContentModerationTab() {
         response = await fetch(
           apiUrl(`/api/admin/content-queue/${selectedItem.id}`),
           {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               action: actionType,
               contentType: selectedItem.type,
               reason: actionReason || undefined,
             }),
-          }
+          },
         );
       } catch {
-        toast.error('Network error. Check your connection.');
+        toast.error("Network error. Check your connection.");
         return;
       }
 
@@ -199,7 +199,7 @@ export function ContentModerationTab() {
         const errorData = await response.json().catch(() => ({}));
         const categorized = categorizeError(
           response.status,
-          errorData.error ?? errorData.message
+          errorData.error ?? errorData.message,
         );
         toast.error(categorized.message);
         return;
@@ -213,7 +213,7 @@ export function ContentModerationTab() {
 
   const truncateContent = (content: string, maxLength = 200) => {
     if (content.length <= maxLength) return content;
-    return content.slice(0, maxLength) + '...';
+    return `${content.slice(0, maxLength)}...`;
   };
 
   const ContentCard = ({ item }: { item: ContentItem }) => (
@@ -223,13 +223,13 @@ export function ContentModerationTab() {
         <div className="flex items-center gap-3">
           <Avatar
             src={item.authorProfileImage ?? undefined}
-            alt={item.authorDisplayName || item.authorUsername || 'User'}
+            alt={item.authorDisplayName || item.authorUsername || "User"}
             size="sm"
           />
           <div>
             <div className="flex items-center gap-2">
               <span className="font-medium">
-                {item.authorDisplayName || item.authorUsername || 'Anonymous'}
+                {item.authorDisplayName || item.authorUsername || "Anonymous"}
               </span>
               {item.authorIsActor && (
                 <span className="rounded bg-purple-500/20 px-1.5 py-0.5 text-purple-500 text-xs">
@@ -246,13 +246,13 @@ export function ContentModerationTab() {
         <div className="flex items-center gap-2">
           <span
             className={cn(
-              'rounded px-2 py-1 font-medium text-xs',
-              item.type === 'post'
-                ? 'bg-blue-500/20 text-blue-500'
-                : 'bg-green-500/20 text-green-500'
+              "rounded px-2 py-1 font-medium text-xs",
+              item.type === "post"
+                ? "bg-blue-500/20 text-blue-500"
+                : "bg-green-500/20 text-green-500",
             )}
           >
-            {item.type === 'post' ? 'Post' : 'Comment'}
+            {item.type === "post" ? "Post" : "Comment"}
           </span>
           <span className="flex items-center gap-1 rounded bg-red-500/20 px-2 py-1 font-medium text-red-500 text-xs">
             <Flag className="h-3 w-3" />
@@ -297,14 +297,14 @@ export function ContentModerationTab() {
       {/* Actions */}
       <div className="flex flex-col gap-2 sm:flex-row">
         <button
-          onClick={() => handleAction(item, 'approve')}
+          onClick={() => handleAction(item, "approve")}
           className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-green-500/20 px-2.5 py-2 font-medium text-green-500 text-xs transition-colors hover:bg-green-500/30 sm:gap-2 sm:px-3 sm:text-sm"
         >
           <Check className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
           Approve
         </button>
         <button
-          onClick={() => handleAction(item, 'hide')}
+          onClick={() => handleAction(item, "hide")}
           className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-yellow-500/20 px-2.5 py-2 font-medium text-xs text-yellow-500 transition-colors hover:bg-yellow-500/30 sm:gap-2 sm:px-3 sm:text-sm"
         >
           <EyeOff className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
@@ -337,10 +337,10 @@ export function ContentModerationTab() {
           <div className="mt-2 space-y-1">
             <p
               className={cn(
-                'text-sm',
-                error.type === 'auth' && 'text-yellow-500',
-                error.type === 'network' && 'text-red-500',
-                error.type === 'data' && 'text-orange-500'
+                "text-sm",
+                error.type === "auth" && "text-yellow-500",
+                error.type === "network" && "text-red-500",
+                error.type === "data" && "text-orange-500",
               )}
             >
               {error.message}
@@ -361,10 +361,10 @@ export function ContentModerationTab() {
   }
 
   const allItems = [
-    ...(contentType === 'comments' ? [] : data.posts),
-    ...(contentType === 'posts' ? [] : data.comments),
+    ...(contentType === "comments" ? [] : data.posts),
+    ...(contentType === "posts" ? [] : data.comments),
   ].sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
   );
 
   return (
@@ -384,7 +384,7 @@ export function ContentModerationTab() {
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           {/* Content Type Filter */}
           <div className="flex rounded-lg border border-border bg-card">
-            {(['all', 'posts', 'comments'] as const).map((t) => (
+            {(["all", "posts", "comments"] as const).map((t) => (
               <button
                 key={t}
                 onClick={() => {
@@ -392,10 +392,10 @@ export function ContentModerationTab() {
                   setLoading(true);
                 }}
                 className={cn(
-                  'px-2.5 py-1.5 font-medium text-xs transition-colors first:rounded-l-lg last:rounded-r-lg sm:px-4 sm:py-2 sm:text-sm',
+                  "px-2.5 py-1.5 font-medium text-xs transition-colors first:rounded-l-lg last:rounded-r-lg sm:px-4 sm:py-2 sm:text-sm",
                   contentType === t
-                    ? 'bg-primary text-primary-foreground'
-                    : 'text-muted-foreground hover:bg-muted'
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-muted",
                 )}
               >
                 {t.charAt(0).toUpperCase() + t.slice(1)}
@@ -410,8 +410,8 @@ export function ContentModerationTab() {
           >
             <RefreshCw
               className={cn(
-                'h-3.5 w-3.5 sm:h-4 sm:w-4',
-                isRefreshing && 'animate-spin'
+                "h-3.5 w-3.5 sm:h-4 sm:w-4",
+                isRefreshing && "animate-spin",
               )}
             />
             <span className="hidden sm:inline">Refresh</span>
@@ -476,13 +476,13 @@ export function ContentModerationTab() {
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-lg rounded-2xl border border-border bg-card p-6">
             <h3 className="mb-4 font-bold text-xl">
-              {actionType === 'approve' ? 'Approve Content' : 'Hide Content'}
+              {actionType === "approve" ? "Approve Content" : "Hide Content"}
             </h3>
 
             <p className="mb-4 text-muted-foreground">
-              {actionType === 'approve'
-                ? 'This will dismiss all reports for this content.'
-                : 'This will hide the content from public view (can be recovered if needed).'}
+              {actionType === "approve"
+                ? "This will dismiss all reports for this content."
+                : "This will hide the content from public view (can be recovered if needed)."}
             </p>
 
             <div className="mb-4 rounded-lg bg-muted/50 p-3">
@@ -491,7 +491,7 @@ export function ContentModerationTab() {
               </p>
             </div>
 
-            {actionType !== 'approve' && (
+            {actionType !== "approve" && (
               <div className="mb-4">
                 <label className="mb-2 block font-medium text-sm">
                   Reason (optional)
@@ -518,13 +518,13 @@ export function ContentModerationTab() {
                 onClick={executeAction}
                 disabled={isActioning}
                 className={cn(
-                  'flex-1 rounded-lg px-4 py-2 font-medium transition-colors disabled:opacity-50',
-                  actionType === 'approve'
-                    ? 'bg-green-500 text-white hover:bg-green-600'
-                    : 'bg-yellow-500 text-black hover:bg-yellow-600'
+                  "flex-1 rounded-lg px-4 py-2 font-medium transition-colors disabled:opacity-50",
+                  actionType === "approve"
+                    ? "bg-green-500 text-white hover:bg-green-600"
+                    : "bg-yellow-500 text-black hover:bg-yellow-600",
                 )}
               >
-                {isActioning ? 'Processing...' : 'Confirm'}
+                {isActioning ? "Processing..." : "Confirm"}
               </button>
             </div>
           </div>

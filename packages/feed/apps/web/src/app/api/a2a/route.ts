@@ -76,17 +76,17 @@ import {
   DefaultExecutionEventBusManager,
   DefaultRequestHandler,
   JsonRpcTransportHandler,
-} from '@a2a-js/sdk/server';
+} from "@a2a-js/sdk/server";
 import {
   FeedAgentExecutor,
   feedAgentCard,
   PersistentTaskStore,
-} from '@feed/a2a';
-import { withErrorHandling } from '@feed/api';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { checkApiKey } from '@/lib/api/check-api-key';
+} from "@feed/a2a";
+import { withErrorHandling } from "@feed/api";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { checkApiKey } from "@/lib/api/check-api-key";
 
 // Initialize A2A protocol components with Redis-backed persistence
 const taskStore = new PersistentTaskStore();
@@ -96,11 +96,11 @@ const requestHandler = new DefaultRequestHandler(
   feedAgentCard,
   taskStore,
   executor,
-  eventBusManager
+  eventBusManager,
 );
 const jsonRpcHandler = new JsonRpcTransportHandler(requestHandler);
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 /**
  * POST /api/a2a
@@ -117,7 +117,7 @@ export const dynamic = 'force-dynamic';
  * @throws {401} Invalid or missing API key
  */
 export const POST = withErrorHandling(async function POST(
-  request: NextRequest
+  request: NextRequest,
 ) {
   const { error, authResult } = await checkApiKey(request);
   if (error) return error;
@@ -128,15 +128,15 @@ export const POST = withErrorHandling(async function POST(
   } catch {
     return NextResponse.json(
       {
-        jsonrpc: '2.0',
-        error: { code: -32700, message: 'Parse error: Invalid JSON' },
+        jsonrpc: "2.0",
+        error: { code: -32700, message: "Parse error: Invalid JSON" },
         id: null,
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
-  logger.info('Official A2A request', {
+  logger.info("Official A2A request", {
     method: body.method,
     taskId: body.params?.message?.taskId,
     authMethod: authResult?.authMethod,
@@ -150,31 +150,31 @@ export const POST = withErrorHandling(async function POST(
   // NOTE: We do NOT enforce params.userId because many operations use it as
   // the TARGET (e.g., blockUser targets params.userId, actor is contextId).
   // The executor uses contextId as the actor for all write operations.
-  if (authResult?.authMethod === 'user-key') {
+  if (authResult?.authMethod === "user-key") {
     const authenticatedUserId = authResult.userId;
 
     // Validate userId is present and non-empty
-    if (!authenticatedUserId || typeof authenticatedUserId !== 'string') {
-      logger.error('User API key authenticated but userId is missing', {
+    if (!authenticatedUserId || typeof authenticatedUserId !== "string") {
+      logger.error("User API key authenticated but userId is missing", {
         authMethod: authResult.authMethod,
         hasUserId: !!authenticatedUserId,
       });
       return NextResponse.json(
         {
-          jsonrpc: '2.0',
+          jsonrpc: "2.0",
           error: {
             code: -32001,
-            message: 'Authentication error: Invalid user identity',
+            message: "Authentication error: Invalid user identity",
           },
           id: body.id ?? null,
         },
-        { status: 401 }
+        { status: 401 },
       );
     }
 
     // Type guard: ensure params is a plain object
     const isPlainObject = (val: unknown): val is Record<string, unknown> =>
-      typeof val === 'object' && val !== null && !Array.isArray(val);
+      typeof val === "object" && val !== null && !Array.isArray(val);
 
     // Ensure params exists and is a plain object
     if (!isPlainObject(body.params)) {
@@ -187,7 +187,7 @@ export const POST = withErrorHandling(async function POST(
         body.params.message.contextId &&
         body.params.message.contextId !== authenticatedUserId
       ) {
-        logger.warn('Overriding mismatched message contextId', {
+        logger.warn("Overriding mismatched message contextId", {
           providedContextId: body.params.message.contextId,
           authenticatedUserId,
         });
@@ -200,7 +200,7 @@ export const POST = withErrorHandling(async function POST(
       body.params.contextId &&
       body.params.contextId !== authenticatedUserId
     ) {
-      logger.warn('Overriding mismatched params contextId', {
+      logger.warn("Overriding mismatched params contextId", {
         providedContextId: body.params.contextId,
         authenticatedUserId,
       });
@@ -212,14 +212,14 @@ export const POST = withErrorHandling(async function POST(
   // These auth methods allow arbitrary contextId, which enables acting as any user.
   // This is intentional for admin/internal operations but should be monitored.
   if (
-    authResult?.authMethod === 'server-key' ||
-    authResult?.authMethod === 'localhost'
+    authResult?.authMethod === "server-key" ||
+    authResult?.authMethod === "localhost"
   ) {
     const providedContextId =
       body.params?.message?.contextId ?? body.params?.contextId;
     if (providedContextId !== undefined && providedContextId !== null) {
       // Log server-key operations with user context for audit trail
-      logger.info('Server/localhost A2A operation with user context', {
+      logger.info("Server/localhost A2A operation with user context", {
         authMethod: authResult.authMethod,
         contextId: providedContextId,
         method: body.method,
@@ -235,7 +235,7 @@ export const POST = withErrorHandling(async function POST(
 
   return NextResponse.json(response, {
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
     },
   });
 });
@@ -260,8 +260,8 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
 
   return NextResponse.json(feedAgentCard, {
     headers: {
-      'Content-Type': 'application/json',
-      'Cache-Control': 'public, max-age=3600',
+      "Content-Type": "application/json",
+      "Cache-Control": "public, max-age=3600",
     },
   });
 });

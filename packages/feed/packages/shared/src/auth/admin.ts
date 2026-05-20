@@ -70,7 +70,7 @@ export function isAdminEmail(email: string | null | undefined): boolean {
  */
 export function shouldAutoPromoteToAdmin(
   email: string | null | undefined,
-  emailVerified: boolean
+  emailVerified: boolean,
 ): boolean {
   // SECURITY: Require email verification to prevent unverified email attacks
   if (!emailVerified) return false;

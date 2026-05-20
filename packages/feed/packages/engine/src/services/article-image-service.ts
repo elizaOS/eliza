@@ -12,10 +12,10 @@
  * via ArticleGenerator's character mapping. No additional name sanitization needed here.
  */
 
-import { logger } from '@feed/shared';
-import { fal } from '@fal-ai/client';
-import { articleCover, getRandomTwist, renderPrompt } from '../prompts';
-import { formatError } from '../utils/error-utils';
+import { fal } from "@fal-ai/client";
+import { logger } from "@feed/shared";
+import { articleCover, getRandomTwist, renderPrompt } from "../prompts";
+import { formatError } from "../utils/error-utils";
 
 interface FalImage {
   url: string;
@@ -44,9 +44,9 @@ export function initFalClient(): boolean {
   const falKey = process.env.FAL_KEY;
   if (!falKey) {
     logger.warn(
-      'FAL_KEY not found - article image generation disabled',
+      "FAL_KEY not found - article image generation disabled",
       {},
-      'ArticleImageService'
+      "ArticleImageService",
     );
     return false;
   }
@@ -78,13 +78,13 @@ export function isImageGenerationAvailable(): boolean {
  * @returns URL of the generated image, or null if generation fails
  */
 export async function generateArticleImage(
-  params: ArticleImageParams
+  params: ArticleImageParams,
 ): Promise<string | null> {
   if (!isImageGenerationAvailable()) {
     logger.debug(
-      'Skipping article image generation - FAL_KEY not available',
+      "Skipping article image generation - FAL_KEY not available",
       { title: params.title },
-      'ArticleImageService'
+      "ArticleImageService",
     );
     return null;
   }
@@ -95,18 +95,18 @@ export async function generateArticleImage(
   const prompt = renderPrompt(articleCover, {
     title: params.title,
     summary: params.summary,
-    category: params.category || 'general',
+    category: params.category || "general",
     twist,
   });
 
   logger.debug(
-    'Generating satirical article cover image',
+    "Generating satirical article cover image",
     {
       title: params.title,
       category: params.category,
       twist,
     },
-    'ArticleImageService'
+    "ArticleImageService",
   );
 
   // EXCEPTION TO FAIL-FAST RULE: External API boundary
@@ -115,10 +115,10 @@ export async function generateArticleImage(
   // fal.ai can fail for: network issues, rate limits, API changes, timeouts.
   let result: FalResponse;
   try {
-    result = (await fal.subscribe('fal-ai/nano-banana-2', {
+    result = (await fal.subscribe("fal-ai/nano-banana-2", {
       input: {
         prompt,
-        image_size: 'landscape_16_9',
+        image_size: "landscape_16_9",
         num_inference_steps: 4,
         num_images: 1,
       },
@@ -126,21 +126,21 @@ export async function generateArticleImage(
     })) as FalResponse;
   } catch (error) {
     logger.warn(
-      'fal.ai image generation failed (non-critical, continuing)',
+      "fal.ai image generation failed (non-critical, continuing)",
       {
         title: params.title,
         error: formatError(error),
       },
-      'ArticleImageService'
+      "ArticleImageService",
     );
     return null;
   }
 
   if (!result.data.images || result.data.images.length === 0) {
     logger.error(
-      'No images returned from fal.ai',
+      "No images returned from fal.ai",
       { title: params.title },
-      'ArticleImageService'
+      "ArticleImageService",
     );
     return null;
   }
@@ -148,17 +148,17 @@ export async function generateArticleImage(
   const imageUrl = result.data.images[0]?.url;
   if (!imageUrl) {
     logger.error(
-      'Image URL missing in fal.ai response',
+      "Image URL missing in fal.ai response",
       { title: params.title },
-      'ArticleImageService'
+      "ArticleImageService",
     );
     return null;
   }
 
   logger.info(
-    'Generated article cover image',
+    "Generated article cover image",
     { title: params.title, imageUrl },
-    'ArticleImageService'
+    "ArticleImageService",
   );
 
   return imageUrl;
@@ -173,7 +173,7 @@ export async function generateArticleImage(
  */
 export async function generateArticleImageWithRetry(
   params: ArticleImageParams,
-  maxRetries = 2
+  maxRetries = 2,
 ): Promise<string | null> {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const imageUrl = await generateArticleImage(params);
@@ -185,19 +185,17 @@ export async function generateArticleImageWithRetry(
       logger.warn(
         `Article image generation attempt ${attempt + 1} failed, retrying...`,
         { title: params.title },
-        'ArticleImageService'
+        "ArticleImageService",
       );
       // Wait before retry (exponential backoff)
-      await new Promise((resolve) =>
-        setTimeout(resolve, 1000 * Math.pow(2, attempt))
-      );
+      await new Promise((resolve) => setTimeout(resolve, 1000 * 2 ** attempt));
     }
   }
 
   logger.error(
     `Failed to generate article image after ${maxRetries + 1} attempts`,
     { title: params.title },
-    'ArticleImageService'
+    "ArticleImageService",
   );
   return null;
 }

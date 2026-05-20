@@ -96,17 +96,17 @@ import {
   requireAdmin,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { Decimal, db } from '@feed/db';
-import { StaticDataRegistry } from '@feed/engine';
-import { generateSnowflakeId, logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { z } from 'zod';
+} from "@feed/api";
+import { Decimal, db } from "@feed/db";
+import { StaticDataRegistry } from "@feed/engine";
+import { generateSnowflakeId, logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { z } from "zod";
 
 const QuerySchema = z.object({
   limit: z.coerce.number().min(1).max(100).default(50),
   offset: z.coerce.number().min(0).default(0),
-  type: z.enum(['all', 'balance', 'npc', 'position']).default('all'),
+  type: z.enum(["all", "balance", "npc", "position"]).default("all"),
 });
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
@@ -116,23 +116,23 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   // Parse query parameters
   const { searchParams } = new URL(request.url);
   const params = QuerySchema.parse({
-    limit: searchParams.get('limit') || '50',
-    offset: searchParams.get('offset') || '0',
-    type: searchParams.get('type') || undefined,
+    limit: searchParams.get("limit") || "50",
+    offset: searchParams.get("offset") || "0",
+    type: searchParams.get("type") || undefined,
   });
 
   logger.info(
-    'Admin trading feed requested',
+    "Admin trading feed requested",
     { params },
-    'GET /api/admin/trades'
+    "GET /api/admin/trades",
   );
 
   // Get recent balance transactions (deposits, withdrawals, trades)
   const balanceTransactions = await db.balanceTransaction.findMany({
     take: params.limit,
     skip: params.offset,
-    orderBy: { createdAt: 'desc' },
-    where: params.type === 'balance' ? {} : undefined,
+    orderBy: { createdAt: "desc" },
+    where: params.type === "balance" ? {} : undefined,
   });
 
   // Fetch users for balance transactions
@@ -155,8 +155,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   const npcTrades = await db.npcTrade.findMany({
     take: params.limit,
     skip: params.offset,
-    orderBy: { executedAt: 'desc' },
-    where: params.type === 'npc' ? {} : undefined,
+    orderBy: { executedAt: "desc" },
+    where: params.type === "npc" ? {} : undefined,
   });
 
   const actorIds = [...new Set(npcTrades.map((trade) => trade.npcActorId))];
@@ -168,15 +168,15 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       .map((a) => [
         a.id,
         { id: a.id, name: a.name, profileImageUrl: a.profileImageUrl },
-      ])
+      ]),
   );
 
   // Get recent position changes
   const positions = await db.position.findMany({
     take: params.limit,
     skip: params.offset,
-    orderBy: { updatedAt: 'desc' },
-    where: params.type === 'position' ? {} : undefined,
+    orderBy: { updatedAt: "desc" },
+    where: params.type === "position" ? {} : undefined,
   });
 
   // Fetch users and markets for positions
@@ -211,7 +211,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   // Merge and sort by timestamp
   const allTrades = [
     ...balanceTransactions.map((tx) => ({
-      type: 'balance' as const,
+      type: "balance" as const,
       id: tx.id,
       timestamp: tx.createdAt,
       user: balanceUsersMap.get(tx.userId) || null,
@@ -225,7 +225,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     ...npcTrades.map((trade) => {
       const actor = actorsMap.get(trade.npcActorId);
       return {
-        type: 'npc' as const,
+        type: "npc" as const,
         id: trade.id,
         timestamp: trade.executedAt,
         user: actor
@@ -249,12 +249,12 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       };
     }),
     ...positions.map((pos) => ({
-      type: 'position' as const,
+      type: "position" as const,
       id: pos.id,
       timestamp: pos.updatedAt,
       user: positionUsersMap.get(pos.userId) || null,
       market: marketsMap.get(pos.marketId) || null,
-      side: pos.side ? 'YES' : 'NO',
+      side: pos.side ? "YES" : "NO",
       shares: pos.shares.toString(),
       avgPrice: pos.avgPrice.toString(),
       createdAt: pos.createdAt,
@@ -290,16 +290,16 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 });
 
 const CreateBalanceTradeSchema = z.object({
-  type: z.literal('balance'),
+  type: z.literal("balance"),
   userId: z.string().min(1),
   transactionType: z.enum([
-    'pred_buy',
-    'pred_sell',
-    'perp_open',
-    'perp_close',
-    'perp_liquidation',
-    'deposit',
-    'withdrawal',
+    "pred_buy",
+    "pred_sell",
+    "perp_open",
+    "perp_close",
+    "perp_liquidation",
+    "deposit",
+    "withdrawal",
   ]),
   amount: z.number(),
   description: z.string().optional(),
@@ -308,9 +308,9 @@ const CreateBalanceTradeSchema = z.object({
 });
 
 const CreateNPCTradeSchema = z.object({
-  type: z.literal('npc'),
+  type: z.literal("npc"),
   npcActorId: z.string().min(1),
-  marketType: z.enum(['prediction', 'perp']),
+  marketType: z.enum(["prediction", "perp"]),
   ticker: z.string().optional(),
   marketId: z.string().optional(),
   action: z.string().min(1),
@@ -323,7 +323,7 @@ const CreateNPCTradeSchema = z.object({
   postId: z.string().optional(),
 });
 
-const CreateTradeSchema = z.discriminatedUnion('type', [
+const CreateTradeSchema = z.discriminatedUnion("type", [
   CreateBalanceTradeSchema,
   CreateNPCTradeSchema,
 ]);
@@ -341,15 +341,15 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   const tradeData = CreateTradeSchema.parse(body);
 
   logger.info(
-    'Admin creating trade',
+    "Admin creating trade",
     {
       adminUserId: adminUser.userId,
       tradeType: tradeData.type,
     },
-    'POST /api/admin/trades'
+    "POST /api/admin/trades",
   );
 
-  if (tradeData.type === 'balance') {
+  if (tradeData.type === "balance") {
     // Verify user exists
     const user = await db.user.findUnique({
       where: { id: tradeData.userId },
@@ -357,7 +357,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     });
 
     if (!user) {
-      throw new NotFoundError('User', tradeData.userId);
+      throw new NotFoundError("User", tradeData.userId);
     }
 
     const currentBalance = Number(user.virtualBalance ?? 0);
@@ -398,18 +398,18 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     });
 
     logger.info(
-      'Balance trade created',
+      "Balance trade created",
       {
         transactionId: transaction.id,
         userId: tradeData.userId,
         amount: tradeData.amount,
       },
-      'POST /api/admin/trades'
+      "POST /api/admin/trades",
     );
 
     return successResponse({
       trade: {
-        type: 'balance' as const,
+        type: "balance" as const,
         id: transaction.id,
         timestamp: transaction.createdAt,
         userId: transaction.userId,
@@ -422,24 +422,24 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       },
     });
   }
-  if (tradeData.type === 'npc') {
+  if (tradeData.type === "npc") {
     const actor = StaticDataRegistry.getActor(tradeData.npcActorId);
 
     if (!actor) {
-      throw new NotFoundError('Actor', tradeData.npcActorId);
+      throw new NotFoundError("Actor", tradeData.npcActorId);
     }
 
     // Validate market-specific fields
-    if (tradeData.marketType === 'prediction' && !tradeData.marketId) {
+    if (tradeData.marketType === "prediction" && !tradeData.marketId) {
       throw new BusinessLogicError(
-        'marketId is required for prediction market trades',
-        'MISSING_MARKET_ID'
+        "marketId is required for prediction market trades",
+        "MISSING_MARKET_ID",
       );
     }
-    if (tradeData.marketType === 'perp' && !tradeData.ticker) {
+    if (tradeData.marketType === "perp" && !tradeData.ticker) {
       throw new BusinessLogicError(
-        'ticker is required for perpetual market trades',
-        'MISSING_TICKER'
+        "ticker is required for perpetual market trades",
+        "MISSING_TICKER",
       );
     }
 
@@ -463,18 +463,18 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     });
 
     logger.info(
-      'NPC trade created',
+      "NPC trade created",
       {
         tradeId: npcTrade.id,
         npcActorId: tradeData.npcActorId,
         marketType: tradeData.marketType,
       },
-      'POST /api/admin/trades'
+      "POST /api/admin/trades",
     );
 
     return successResponse({
       trade: {
-        type: 'npc' as const,
+        type: "npc" as const,
         id: npcTrade.id,
         timestamp: npcTrade.executedAt,
         npcActorId: npcTrade.npcActorId,
@@ -491,5 +491,5 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     });
   }
 
-  throw new BusinessLogicError('Invalid trade type', 'INVALID_TRADE_TYPE');
+  throw new BusinessLogicError("Invalid trade type", "INVALID_TRADE_TYPE");
 });

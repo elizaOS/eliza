@@ -8,15 +8,15 @@
  * Uses shared cached validation from @feed/api for efficiency.
  */
 
+import crypto from "node:crypto";
 import {
   clearApiKeyCache,
   getApiKeyCacheStats,
   invalidateCachedKey,
   invalidateCachedKeysForUser,
   validateUserApiKey,
-} from '@feed/api';
-import { logger } from '@feed/shared';
-import crypto from 'crypto';
+} from "@feed/api";
+import { logger } from "@feed/shared";
 
 /**
  * Timing-safe comparison for API keys to prevent timing attacks.
@@ -28,8 +28,8 @@ import crypto from 'crypto';
 function timingSafeEqual(a: string, b: string): boolean {
   // Hash both inputs to fixed-length 32-byte SHA-256 digests
   // This prevents length leakage and ensures constant-time comparison
-  const hashA = crypto.createHash('sha256').update(a).digest();
-  const hashB = crypto.createHash('sha256').update(b).digest();
+  const hashA = crypto.createHash("sha256").update(a).digest();
+  const hashB = crypto.createHash("sha256").update(b).digest();
   return crypto.timingSafeEqual(hashA, hashB);
 }
 
@@ -42,7 +42,7 @@ export {
   validateUserApiKey,
 };
 
-export const A2A_API_KEY_HEADER = 'x-feed-api-key';
+export const A2A_API_KEY_HEADER = "x-feed-api-key";
 
 // ============================================================================
 // Types
@@ -76,7 +76,7 @@ export interface AuthRequest {
 export interface AuthResult {
   authenticated: boolean;
   /** Authentication method used */
-  authMethod?: 'localhost' | 'server-key' | 'user-key';
+  authMethod?: "localhost" | "server-key" | "user-key";
   /** User ID if authenticated via per-user API key */
   userId?: string;
   error?: string;
@@ -94,9 +94,9 @@ export function isLocalHost(host: string | undefined | null): boolean {
   if (!host) return false;
   const lowerHost = host.toLowerCase();
   return (
-    lowerHost.startsWith('localhost') ||
-    lowerHost.startsWith('127.0.0.1') ||
-    lowerHost.startsWith('::1')
+    lowerHost.startsWith("localhost") ||
+    lowerHost.startsWith("127.0.0.1") ||
+    lowerHost.startsWith("::1")
   );
 }
 
@@ -113,14 +113,14 @@ export function isLocalHost(host: string | undefined | null): boolean {
  */
 export function validateApiKey(
   request: AuthRequest,
-  config: ApiKeyAuthConfig = {}
+  config: ApiKeyAuthConfig = {},
 ): AuthResult {
   const { serverApiKey, allowLocalhost = true } = config;
 
-  const host = request.host ?? request.headers.get('host');
+  const host = request.host ?? request.headers.get("host");
 
   if (allowLocalhost && isLocalHost(host)) {
-    return { authenticated: true, authMethod: 'localhost' };
+    return { authenticated: true, authMethod: "localhost" };
   }
 
   const providedKey = request.headers.get(A2A_API_KEY_HEADER);
@@ -131,20 +131,20 @@ export function validateApiKey(
     providedKey &&
     timingSafeEqual(providedKey, serverApiKey)
   ) {
-    return { authenticated: true, authMethod: 'server-key' };
+    return { authenticated: true, authMethod: "server-key" };
   }
 
   if (!providedKey) {
     return {
       authenticated: false,
-      error: 'Unauthorized: X-Feed-Api-Key header is required',
+      error: "Unauthorized: X-Feed-Api-Key header is required",
       statusCode: 401,
     };
   }
 
   return {
     authenticated: false,
-    error: 'Unauthorized: Invalid API key',
+    error: "Unauthorized: Invalid API key",
     statusCode: 401,
   };
 }
@@ -163,7 +163,7 @@ export function validateApiKey(
  */
 export async function validateApiKeyAsync(
   request: AuthRequest,
-  config: ApiKeyAuthConfig = {}
+  config: ApiKeyAuthConfig = {},
 ): Promise<AuthResult> {
   const {
     serverApiKey,
@@ -171,27 +171,27 @@ export async function validateApiKeyAsync(
     allowUserApiKeys = true,
   } = config;
 
-  const host = request.host ?? request.headers.get('host');
+  const host = request.host ?? request.headers.get("host");
 
   if (allowLocalhost && isLocalHost(host)) {
-    return { authenticated: true, authMethod: 'localhost' };
+    return { authenticated: true, authMethod: "localhost" };
   }
 
   const providedKey = request.headers.get(A2A_API_KEY_HEADER);
 
   if (!providedKey) {
-    logger.warn('No API key provided', { host }, 'A2AAuth');
+    logger.warn("No API key provided", { host }, "A2AAuth");
     return {
       authenticated: false,
-      error: 'Unauthorized: X-Feed-Api-Key header is required',
+      error: "Unauthorized: X-Feed-Api-Key header is required",
       statusCode: 401,
     };
   }
 
   // Check server API key first (fast path, timing-safe comparison)
   if (serverApiKey && timingSafeEqual(providedKey, serverApiKey)) {
-    logger.debug('Authenticated via server API key', {}, 'A2AAuth');
-    return { authenticated: true, authMethod: 'server-key' };
+    logger.debug("Authenticated via server API key", {}, "A2AAuth");
+    return { authenticated: true, authMethod: "server-key" };
   }
 
   // Check per-user API key (cached lookup from @feed/api)
@@ -199,32 +199,32 @@ export async function validateApiKeyAsync(
     const userKeyResult = await validateUserApiKey(providedKey);
     if (userKeyResult) {
       logger.debug(
-        'Authenticated via user API key',
+        "Authenticated via user API key",
         { userId: userKeyResult.userId },
-        'A2AAuth'
+        "A2AAuth",
       );
       return {
         authenticated: true,
-        authMethod: 'user-key',
+        authMethod: "user-key",
         userId: userKeyResult.userId,
       };
     }
   }
 
   logger.warn(
-    'Invalid A2A API key',
+    "Invalid A2A API key",
     {
       // Only log non-secret metadata - never log key prefix or content
       providedLength: providedKey.length,
       serverKeyConfigured: Boolean(serverApiKey),
       userKeysEnabled: allowUserApiKeys,
     },
-    'A2AAuth'
+    "A2AAuth",
   );
 
   return {
     authenticated: false,
-    error: 'Unauthorized: Invalid API key',
+    error: "Unauthorized: Invalid API key",
     statusCode: 401,
   };
 }

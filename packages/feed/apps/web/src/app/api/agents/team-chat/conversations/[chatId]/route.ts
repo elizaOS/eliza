@@ -5,26 +5,26 @@
  * @route DELETE /api/agents/team-chat/conversations/[chatId] - Delete conversation
  */
 
-import { teamChatService } from '@feed/agents';
-import { authenticateUser, withErrorHandling } from '@feed/api';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { z } from 'zod';
+import { teamChatService } from "@feed/agents";
+import { authenticateUser, withErrorHandling } from "@feed/api";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { z } from "zod";
 
 // =============================================================================
 // PUT: Switch to conversation or rename it
 // =============================================================================
 
 const updateConversationSchema = z.object({
-  action: z.enum(['switch', 'rename']),
+  action: z.enum(["switch", "rename"]),
   title: z.string().max(100).optional(), // Required for rename
 });
 
 export const PUT = withErrorHandling(
   async (
     req: NextRequest,
-    { params }: { params: Promise<{ chatId: string }> }
+    { params }: { params: Promise<{ chatId: string }> },
   ) => {
     const user = await authenticateUser(req);
     const { chatId } = await params;
@@ -34,31 +34,31 @@ export const PUT = withErrorHandling(
       body = await req.json();
     } catch {
       return NextResponse.json(
-        { success: false, error: 'Invalid JSON in request body' },
-        { status: 400 }
+        { success: false, error: "Invalid JSON in request body" },
+        { status: 400 },
       );
     }
 
     const parseResult = updateConversationSchema.safeParse(body);
     if (!parseResult.success) {
       return NextResponse.json(
-        { success: false, error: 'Invalid request body' },
-        { status: 400 }
+        { success: false, error: "Invalid request body" },
+        { status: 400 },
       );
     }
 
     const { action, title } = parseResult.data;
 
-    if (action === 'switch') {
+    if (action === "switch") {
       const teamChat = await teamChatService.switchConversation(
         user.id,
-        chatId
+        chatId,
       );
 
       logger.info(
         `Switched conversation`,
         { userId: user.id, chatId },
-        'TeamChatConversationsAPI'
+        "TeamChatConversationsAPI",
       );
 
       return NextResponse.json({
@@ -67,11 +67,11 @@ export const PUT = withErrorHandling(
       });
     }
 
-    if (action === 'rename') {
+    if (action === "rename") {
       if (!title) {
         return NextResponse.json(
-          { success: false, error: 'Title is required for rename action' },
-          { status: 400 }
+          { success: false, error: "Title is required for rename action" },
+          { status: 400 },
         );
       }
 
@@ -80,7 +80,7 @@ export const PUT = withErrorHandling(
       logger.info(
         `Renamed conversation`,
         { userId: user.id, chatId, title },
-        'TeamChatConversationsAPI'
+        "TeamChatConversationsAPI",
       );
 
       return NextResponse.json({
@@ -90,10 +90,10 @@ export const PUT = withErrorHandling(
     }
 
     return NextResponse.json(
-      { success: false, error: 'Invalid action' },
-      { status: 400 }
+      { success: false, error: "Invalid action" },
+      { status: 400 },
     );
-  }
+  },
 );
 
 // =============================================================================
@@ -103,25 +103,25 @@ export const PUT = withErrorHandling(
 export const DELETE = withErrorHandling(
   async (
     req: NextRequest,
-    { params }: { params: Promise<{ chatId: string }> }
+    { params }: { params: Promise<{ chatId: string }> },
   ) => {
     const user = await authenticateUser(req);
     const { chatId } = await params;
 
     const newActiveChatId = await teamChatService.deleteConversation(
       user.id,
-      chatId
+      chatId,
     );
 
     logger.info(
       `Deleted conversation`,
       { userId: user.id, chatId, newActiveChatId },
-      'TeamChatConversationsAPI'
+      "TeamChatConversationsAPI",
     );
 
     return NextResponse.json({
       success: true,
       newActiveChatId,
     });
-  }
+  },
 );

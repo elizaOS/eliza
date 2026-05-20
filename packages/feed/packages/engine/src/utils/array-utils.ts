@@ -48,7 +48,7 @@ export function first<T>(arr: readonly T[]): T | undefined {
  */
 export function firstOrThrow<T>(arr: readonly T[], message?: string): T {
   if (arr.length === 0) {
-    throw new Error(message ?? 'Expected non-empty array');
+    throw new Error(message ?? "Expected non-empty array");
   }
   return arr[0] as T;
 }
@@ -79,7 +79,7 @@ export function last<T>(arr: readonly T[]): T | undefined {
  */
 export function lastOrThrow<T>(arr: readonly T[], message?: string): T {
   if (arr.length === 0) {
-    throw new Error(message ?? 'Expected non-empty array');
+    throw new Error(message ?? "Expected non-empty array");
   }
   return arr[arr.length - 1] as T;
 }
@@ -102,10 +102,10 @@ export function lastOrThrow<T>(arr: readonly T[], message?: string): T {
  */
 export function assertNonEmpty<T>(
   arr: readonly T[],
-  context?: string
+  context?: string,
 ): asserts arr is readonly [T, ...T[]] {
   if (arr.length === 0) {
-    throw new Error(`Empty array${context ? `: ${context}` : ''}`);
+    throw new Error(`Empty array${context ? `: ${context}` : ""}`);
   }
 }
 
@@ -164,14 +164,14 @@ export function at<T>(arr: readonly T[], index: number): T | undefined {
 export function atOrThrow<T>(
   arr: readonly T[],
   index: number,
-  message?: string
+  message?: string,
 ): T {
   // Normalize negative indices
   const normalized = index < 0 ? arr.length + index : index;
   if (normalized < 0 || normalized >= arr.length) {
     throw new Error(
       message ??
-        `Index ${index} out of bounds for array of length ${arr.length}`
+        `Index ${index} out of bounds for array of length ${arr.length}`,
     );
   }
   return arr[normalized] as T;

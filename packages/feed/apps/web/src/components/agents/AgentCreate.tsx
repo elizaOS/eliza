@@ -5,29 +5,29 @@
  * Used in both the standalone create page and the Agents page.
  */
 
-'use client';
+"use client";
 
 import {
   cn,
   getAgentDefaultProfileImageUrl,
   parseAgentPresetProfileIndex,
   TOTAL_AGENT_DEFAULT_PROFILE_PICTURES,
-} from '@feed/shared';
-import { Check, Loader2, Wallet, X as XIcon } from 'lucide-react';
-import { useCallback, useState } from 'react';
-import { toast } from 'sonner';
+} from "@feed/shared";
+import { Check, Loader2, Wallet, X as XIcon } from "lucide-react";
+import { useCallback, useState } from "react";
+import { toast } from "sonner";
 import {
   AgentConfigForm,
   type AgentSettingsData,
   AgentSettingsStep,
   AgentSetupModal,
   ProfilePreviewCard,
-} from '@/components/agents/create/components';
-import { useAgentForm } from '@/components/agents/create/hooks';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { useAuth } from '@/hooks/useAuth';
-import { useWalletBalance } from '@/hooks/useWalletBalance';
-import { apiUrl } from '@/utils/api-url';
+} from "@/components/agents/create/components";
+import { useAgentForm } from "@/components/agents/create/hooks";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { useAuth } from "@/hooks/useAuth";
+import { useWalletBalance } from "@/hooks/useWalletBalance";
+import { apiUrl } from "@/utils/api-url";
 
 const TOTAL_BANNERS = 100;
 const DEFAULT_MAX_DEPOSIT = 10000;
@@ -44,7 +44,7 @@ interface AgentCreateResult {
   username?: string;
   displayName?: string | null;
   profileImageUrl?: string | null;
-  modelTier?: 'free' | 'pro';
+  modelTier?: "free" | "pro";
   virtualBalance?: number;
 }
 
@@ -80,7 +80,7 @@ export function AgentCreate({
 
   // Settings state for step 3
   const [settingsData, setSettingsData] = useState<AgentSettingsData>({
-    modelTier: 'pro',
+    modelTier: "pro",
     autonomousEnabled: true,
     autonomousPosting: true,
     autonomousCommenting: true,
@@ -104,29 +104,29 @@ export function AgentCreate({
   const handleProfileSave = useCallback(
     (data: typeof profileData) => {
       if (data.displayName !== profileData.displayName) {
-        updateProfileField('displayName', data.displayName);
+        updateProfileField("displayName", data.displayName);
       }
       if (data.username !== profileData.username) {
-        updateProfileField('username', data.username);
+        updateProfileField("username", data.username);
       }
       if (data.bio !== profileData.bio) {
-        updateProfileField('bio', data.bio);
+        updateProfileField("bio", data.bio);
       }
       if (data.profileImageUrl !== profileData.profileImageUrl) {
-        updateProfileField('profileImageUrl', data.profileImageUrl);
+        updateProfileField("profileImageUrl", data.profileImageUrl);
       }
       if (data.coverImageUrl !== profileData.coverImageUrl) {
-        updateProfileField('coverImageUrl', data.coverImageUrl);
+        updateProfileField("coverImageUrl", data.coverImageUrl);
       }
       setCurrentStep(Step.Prompts);
     },
-    [profileData, updateProfileField]
+    [profileData, updateProfileField],
   );
 
   // Handle continue from step 2 -> step 3
   const handleContinueToSettings = useCallback(() => {
     if (!agentData.system.trim()) {
-      toast.error('System prompt is required');
+      toast.error("System prompt is required");
       return;
     }
     setCurrentStep(Step.Settings);
@@ -135,24 +135,24 @@ export function AgentCreate({
   // User balance for max deposit
   const maxDeposit = Math.max(
     100,
-    Math.min(balance || DEFAULT_MAX_DEPOSIT, DEFAULT_MAX_DEPOSIT)
+    Math.min(balance || DEFAULT_MAX_DEPOSIT, DEFAULT_MAX_DEPOSIT),
   );
 
   // Cycle through pre-made images
   const cycleImage = useCallback(
-    (type: 'profile' | 'cover', direction: 'next' | 'prev') => {
-      const bannerBasePath = '/assets/user-banners/banner-';
+    (type: "profile" | "cover", direction: "next" | "prev") => {
+      const bannerBasePath = "/assets/user-banners/banner-";
       const totalImages =
-        type === 'profile'
+        type === "profile"
           ? TOTAL_AGENT_DEFAULT_PROFILE_PICTURES
           : TOTAL_BANNERS;
       const current =
-        type === 'profile'
+        type === "profile"
           ? profileData.profileImageUrl
           : profileData.coverImageUrl;
 
       let currentIndex = 1;
-      if (type === 'profile') {
+      if (type === "profile") {
         const parsed = parseAgentPresetProfileIndex(current);
         if (parsed !== undefined) currentIndex = parsed;
       } else if (current?.includes(bannerBasePath)) {
@@ -163,37 +163,41 @@ export function AgentCreate({
       }
 
       let nextIndex: number;
-      if (direction === 'next') {
+      if (direction === "next") {
         nextIndex = currentIndex >= totalImages ? 1 : currentIndex + 1;
       } else {
         nextIndex = currentIndex <= 1 ? totalImages : currentIndex - 1;
       }
 
       const newUrl =
-        type === 'profile'
+        type === "profile"
           ? getAgentDefaultProfileImageUrl(nextIndex)
           : `${bannerBasePath}${nextIndex}.jpg`;
       updateProfileField(
-        type === 'profile' ? 'profileImageUrl' : 'coverImageUrl',
-        newUrl
+        type === "profile" ? "profileImageUrl" : "coverImageUrl",
+        newUrl,
       );
     },
-    [profileData.profileImageUrl, profileData.coverImageUrl, updateProfileField]
+    [
+      profileData.profileImageUrl,
+      profileData.coverImageUrl,
+      updateProfileField,
+    ],
   );
 
   // Handle agent creation (step 3)
   const handleCreate = useCallback(async () => {
     // Validation
     if (!profileData.displayName.trim()) {
-      toast.error('Agent name is required');
+      toast.error("Agent name is required");
       return;
     }
     if (!profileData.username || profileData.username.length < 3) {
-      toast.error('Invalid username. Please set up your agent profile first.');
+      toast.error("Invalid username. Please set up your agent profile first.");
       return;
     }
     if (!agentData.system.trim()) {
-      toast.error('System prompt is required');
+      toast.error("System prompt is required");
       return;
     }
 
@@ -201,13 +205,13 @@ export function AgentCreate({
 
     const token = await getAccessToken();
     if (!token) {
-      toast.error('Please sign in to create an agent');
+      toast.error("Please sign in to create an agent");
       setIsCreating(false);
       return;
     }
 
     // Split personality by newlines for bio array
-    const bioArray = agentData.personality.split('\n').filter((b) => b.trim());
+    const bioArray = agentData.personality.split("\n").filter((b) => b.trim());
 
     // Append trading strategy to system prompt
     const systemPrompt = agentData.tradingStrategy.trim()
@@ -215,11 +219,11 @@ export function AgentCreate({
       : agentData.system;
 
     // Step 1: Create the agent
-    const response = await fetch(apiUrl('/api/agents'), {
-      method: 'POST',
+    const response = await fetch(apiUrl("/api/agents"), {
+      method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
         name: profileData.displayName,
@@ -244,7 +248,7 @@ export function AgentCreate({
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      toast.error(errorData.error || 'Failed to create agent');
+      toast.error(errorData.error || "Failed to create agent");
       setIsCreating(false);
       return;
     }
@@ -303,11 +307,11 @@ export function AgentCreate({
           <div className="hidden space-y-4 lg:col-span-1 lg:block">
             <ProfilePreviewCard
               profileData={profileData}
-              onCycleProfilePic={(direction: 'next' | 'prev') =>
-                cycleImage('profile', direction)
+              onCycleProfilePic={(direction: "next" | "prev") =>
+                cycleImage("profile", direction)
               }
-              onCycleBanner={(direction: 'next' | 'prev') =>
-                cycleImage('cover', direction)
+              onCycleBanner={(direction: "next" | "prev") =>
+                cycleImage("cover", direction)
               }
               isLoading={!isInitialized}
             />
@@ -391,8 +395,8 @@ export function AgentCreate({
           <button
             onClick={() => setCurrentStep(Step.Profile)}
             className={cn(
-              'flex-1 rounded-lg border border-border px-4 py-2.5 font-medium transition-colors sm:py-3',
-              'text-muted-foreground hover:bg-muted hover:text-foreground'
+              "flex-1 rounded-lg border border-border px-4 py-2.5 font-medium transition-colors sm:py-3",
+              "text-muted-foreground hover:bg-muted hover:text-foreground",
             )}
           >
             Back
@@ -401,9 +405,9 @@ export function AgentCreate({
             onClick={handleContinueToSettings}
             disabled={!isInitialized}
             className={cn(
-              'flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2.5 font-medium transition-all sm:py-3',
-              'bg-[#0066FF] text-primary-foreground hover:bg-[#2952d9]',
-              'disabled:cursor-not-allowed disabled:opacity-50'
+              "flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2.5 font-medium transition-all sm:py-3",
+              "bg-[#0066FF] text-primary-foreground hover:bg-[#2952d9]",
+              "disabled:cursor-not-allowed disabled:opacity-50",
             )}
           >
             Continue
@@ -415,9 +419,9 @@ export function AgentCreate({
             onClick={() => setCurrentStep(Step.Prompts)}
             disabled={isCreating}
             className={cn(
-              'flex-1 rounded-lg border border-border px-4 py-2.5 font-medium transition-colors sm:py-3',
-              'text-muted-foreground hover:bg-muted hover:text-foreground',
-              'disabled:cursor-not-allowed disabled:opacity-50'
+              "flex-1 rounded-lg border border-border px-4 py-2.5 font-medium transition-colors sm:py-3",
+              "text-muted-foreground hover:bg-muted hover:text-foreground",
+              "disabled:cursor-not-allowed disabled:opacity-50",
             )}
           >
             Back
@@ -426,9 +430,9 @@ export function AgentCreate({
             onClick={handleCreate}
             disabled={isCreating}
             className={cn(
-              'flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2.5 font-medium transition-all sm:py-3',
-              'bg-[#0066FF] text-primary-foreground hover:bg-[#2952d9]',
-              'disabled:cursor-not-allowed disabled:opacity-50'
+              "flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2.5 font-medium transition-all sm:py-3",
+              "bg-[#0066FF] text-primary-foreground hover:bg-[#2952d9]",
+              "disabled:cursor-not-allowed disabled:opacity-50",
             )}
           >
             {isCreating ? (
@@ -437,7 +441,7 @@ export function AgentCreate({
                 Creating…
               </>
             ) : (
-              'Create Agent'
+              "Create Agent"
             )}
           </button>
         </>
@@ -449,20 +453,20 @@ export function AgentCreate({
   const stepProgress = (
     <div className="mx-auto flex w-full max-w-xs items-center justify-center gap-3 py-0">
       {[
-        { s: Step.Profile, label: 'Profile' },
-        { s: Step.Prompts, label: 'Prompts' },
-        { s: Step.Settings, label: 'Settings' },
+        { s: Step.Profile, label: "Profile" },
+        { s: Step.Prompts, label: "Prompts" },
+        { s: Step.Settings, label: "Settings" },
       ].map(({ s, label }, i, arr) => (
         <div key={s} className="flex items-center gap-3">
           <div className="flex items-center gap-1.5">
             <div
               className={cn(
-                'flex h-6 w-6 items-center justify-center rounded-full font-medium text-xs transition-all',
+                "flex h-6 w-6 items-center justify-center rounded-full font-medium text-xs transition-all",
                 currentStep === s
-                  ? 'bg-[#0066FF] text-white'
+                  ? "bg-[#0066FF] text-white"
                   : currentStep > s
-                    ? 'bg-green-500 text-white'
-                    : 'bg-muted text-muted-foreground'
+                    ? "bg-green-500 text-white"
+                    : "bg-muted text-muted-foreground",
               )}
             >
               {currentStep > s ? (
@@ -478,8 +482,8 @@ export function AgentCreate({
           {i < arr.length - 1 && (
             <div
               className={cn(
-                'h-0.5 w-6 rounded-full transition-colors',
-                currentStep > s ? 'bg-green-500' : 'bg-muted'
+                "h-0.5 w-6 rounded-full transition-colors",
+                currentStep > s ? "bg-green-500" : "bg-muted",
               )}
             />
           )}
@@ -503,8 +507,8 @@ export function AgentCreate({
           <div className="flex items-center justify-between">
             <h2 id="agent-create-title" className="font-bold text-lg">
               {currentStep === Step.Prompts
-                ? 'Configure Prompts'
-                : 'Agent Settings'}
+                ? "Configure Prompts"
+                : "Agent Settings"}
             </h2>
             {onBack && (
               <button

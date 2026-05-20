@@ -1,18 +1,18 @@
-import { afterAll, expect, it, mock } from 'bun:test';
+import { afterAll, expect, it, mock } from "bun:test";
 
 const initMock = mock<(key: string, options?: Record<string, unknown>) => void>(
-  () => {}
+  () => {},
 );
 const infoMock = mock(() => {});
 const warnMock = mock(() => {});
 
-mock.module('posthog-js', () => ({
+mock.module("posthog-js", () => ({
   default: {
     init: initMock,
   },
 }));
 
-mock.module('@feed/shared', () => ({
+mock.module("@feed/shared", () => ({
   logger: {
     info: infoMock,
     warn: warnMock,
@@ -25,7 +25,7 @@ const originalPostHogHost = process.env.NEXT_PUBLIC_POSTHOG_HOST;
 const originalVercelEnv = process.env.NEXT_PUBLIC_VERCEL_ENV;
 
 afterAll(() => {
-  Object.defineProperty(globalThis, 'window', {
+  Object.defineProperty(globalThis, "window", {
     configurable: true,
     value: originalWindow,
   });
@@ -49,17 +49,17 @@ afterAll(() => {
   }
 });
 
-it('initializes PostHog without automatic exception capture', async () => {
-  process.env.NEXT_PUBLIC_POSTHOG_PROJECT_ID = 'phc_test_key';
-  process.env.NEXT_PUBLIC_POSTHOG_HOST = 'https://us.i.posthog.com';
-  process.env.NEXT_PUBLIC_VERCEL_ENV = 'production';
+it("initializes PostHog without automatic exception capture", async () => {
+  process.env.NEXT_PUBLIC_POSTHOG_PROJECT_ID = "phc_test_key";
+  process.env.NEXT_PUBLIC_POSTHOG_HOST = "https://us.i.posthog.com";
+  process.env.NEXT_PUBLIC_VERCEL_ENV = "production";
 
-  Object.defineProperty(globalThis, 'window', {
+  Object.defineProperty(globalThis, "window", {
     configurable: true,
-    value: { location: { origin: 'https://feed.market' } },
+    value: { location: { origin: "https://feed.market" } },
   });
 
-  const { initPostHog } = await import('./client');
+  const { initPostHog } = await import("./client");
 
   initPostHog();
 

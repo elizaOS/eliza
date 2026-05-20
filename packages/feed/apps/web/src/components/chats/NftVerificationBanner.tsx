@@ -1,12 +1,12 @@
-'use client';
+"use client";
 
-import { getCurrentChainId } from '@feed/shared';
+import { getCurrentChainId } from "@feed/shared";
 
-import { Check, ExternalLink, Loader2, Shield } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { useAuth } from '@/hooks/useAuth';
-import type { ChatDetails } from './types';
+import { Check, ExternalLink, Loader2, Shield } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { useAuth } from "@/hooks/useAuth";
+import type { ChatDetails } from "./types";
 
 interface NftVerificationBannerProps {
   chatDetails: ChatDetails;
@@ -43,7 +43,7 @@ export function NftVerificationBanner({
         ownsNft: false,
         tokenIds: [],
         nftRequired: true,
-        reason: 'Authentication required',
+        reason: "Authentication required",
         loading: false,
       });
       setChecking(false);
@@ -54,7 +54,7 @@ export function NftVerificationBanner({
       `/api/chats/${chatDetails.chat.id}/nft-verification`,
       {
         headers: { Authorization: `Bearer ${token}` },
-      }
+      },
     );
 
     const data = response.ok ? await response.json() : null;
@@ -96,10 +96,10 @@ export function NftVerificationBanner({
   };
 
   const EXPLORER_URLS: Record<number, string> = {
-    8453: 'https://basescan.org/token/',
-    84532: 'https://sepolia.basescan.org/token/',
-    1: 'https://etherscan.io/token/',
-    11155111: 'https://sepolia.etherscan.io/token/',
+    8453: "https://basescan.org/token/",
+    84532: "https://sepolia.basescan.org/token/",
+    1: "https://etherscan.io/token/",
+    11155111: "https://sepolia.etherscan.io/token/",
   };
 
   const explorerUrl = nftRequirement.contractAddress
@@ -127,7 +127,7 @@ export function NftVerificationBanner({
             <span>
               You own the required NFT
               {status.tokenIds.length > 0 &&
-                ` (Token${status.tokenIds.length > 1 ? 's' : ''}: ${status.tokenIds.join(', ')})`}
+                ` (Token${status.tokenIds.length > 1 ? "s" : ""}: ${status.tokenIds.join(", ")})`}
             </span>
           </div>
           {explorerUrl && (
@@ -152,13 +152,13 @@ export function NftVerificationBanner({
         <div className="flex-1 space-y-2">
           <div className="text-sm text-yellow-700 dark:text-yellow-300">
             <strong>NFT Required:</strong> This group requires holding an NFT
-            from{' '}
+            from{" "}
             <span className="font-mono text-xs">
               {nftRequirement.contractAddress.slice(0, 6)}...
               {nftRequirement.contractAddress.slice(-4)}
             </span>
             {nftRequirement.tokenId !== null &&
-              ` (Token #${nftRequirement.tokenId})`}{' '}
+              ` (Token #${nftRequirement.tokenId})`}{" "}
             on {nftRequirement.chainName}
           </div>
           {status.reason && (
@@ -193,7 +193,7 @@ export function NftVerificationBanner({
                   Checking...
                 </>
               ) : (
-                'Verify Again'
+                "Verify Again"
               )}
             </Button>
           </div>

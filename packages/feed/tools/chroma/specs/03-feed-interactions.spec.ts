@@ -6,24 +6,24 @@
  * and widget sidebar.
  */
 
-import { expect, test } from './fixtures';
+import { expect, test } from "./fixtures";
 import {
   clickTab,
   pageContainsText,
   scrollToLoadMore,
-} from './helpers/interaction-helpers';
+} from "./helpers/interaction-helpers";
 import {
   cooldownBetweenTests,
   isServerHealthy,
   navigateTo,
   waitForPageLoad,
-} from './helpers/page-helpers';
-import { loginWithWallet } from './helpers/privy-auth';
-import { ROUTES, SELECTORS, TIMEOUTS, VIEWPORTS } from './helpers/test-data';
+} from "./helpers/page-helpers";
+import { loginWithWallet } from "./helpers/privy-auth";
+import { ROUTES, SELECTORS, TIMEOUTS, VIEWPORTS } from "./helpers/test-data";
 
 test.setTimeout(TIMEOUTS.EXTRA_LONG);
 
-test.describe('Feed - Core Functionality', () => {
+test.describe("Feed - Core Functionality", () => {
   test.beforeEach(async ({ page }) => {
     if (!(await isServerHealthy())) {
       test.skip();
@@ -41,7 +41,7 @@ test.describe('Feed - Core Functionality', () => {
     await cooldownBetweenTests(page);
   });
 
-  test('feed shows posts or appropriate empty state', async ({ page }) => {
+  test("feed shows posts or appropriate empty state", async ({ page }) => {
     const posts = page.locator('article, [data-testid="post-card"]');
     const postCount = await posts.count().catch(() => 0);
 
@@ -49,12 +49,12 @@ test.describe('Feed - Core Functionality', () => {
       await expect(posts.first()).toBeVisible({ timeout: TIMEOUTS.MEDIUM });
     }
 
-    const pageContent = await page.locator('body').textContent();
+    const pageContent = await page.locator("body").textContent();
     expect(pageContent?.length).toBeGreaterThan(100);
   });
 });
 
-test.describe('Feed - Tab Switching', () => {
+test.describe("Feed - Tab Switching", () => {
   test.beforeEach(async ({ page }) => {
     if (!(await isServerHealthy())) {
       test.skip();
@@ -72,63 +72,63 @@ test.describe('Feed - Tab Switching', () => {
     await cooldownBetweenTests(page);
   });
 
-  test('switches to Latest tab and verifies feed content', async ({ page }) => {
-    const _switched = await clickTab(page, 'Latest');
-    const body = await page.locator('body').textContent();
+  test("switches to Latest tab and verifies feed content", async ({ page }) => {
+    const _switched = await clickTab(page, "Latest");
+    const body = await page.locator("body").textContent();
     expect(body?.length).toBeGreaterThan(100);
   });
 
-  test('switches to Stories tab and shows stories content', async ({
+  test("switches to Stories tab and shows stories content", async ({
     page,
   }) => {
-    const switched = await clickTab(page, 'Stories');
+    const switched = await clickTab(page, "Stories");
     if (switched) {
-      const body = await page.locator('body').textContent();
+      const body = await page.locator("body").textContent();
       expect(body?.length).toBeGreaterThan(100);
     }
   });
 
-  test('switches to ForYou tab and shows personalized content', async ({
+  test("switches to ForYou tab and shows personalized content", async ({
     page,
   }) => {
     const _switched =
-      (await clickTab(page, 'For You')) ||
-      (await clickTab(page, 'ForYou')) ||
-      (await clickTab(page, 'Recommended'));
+      (await clickTab(page, "For You")) ||
+      (await clickTab(page, "ForYou")) ||
+      (await clickTab(page, "Recommended"));
 
-    const body = await page.locator('body').textContent();
+    const body = await page.locator("body").textContent();
     expect(body?.length).toBeGreaterThan(100);
   });
 
-  test('switches to Following tab and shows followed users posts', async ({
+  test("switches to Following tab and shows followed users posts", async ({
     page,
   }) => {
-    const switched = await clickTab(page, 'Following');
+    const switched = await clickTab(page, "Following");
     if (switched) {
       const hasContent = await pageContainsText(
         page,
-        'follow',
-        'post',
-        'no posts',
-        'empty'
+        "follow",
+        "post",
+        "no posts",
+        "empty",
       );
-      const body = await page.locator('body').textContent();
+      const body = await page.locator("body").textContent();
       expect(hasContent || (body?.length ?? 0) > 100).toBe(true);
     }
   });
 
-  test('switches to Trades tab and shows trading activity', async ({
+  test("switches to Trades tab and shows trading activity", async ({
     page,
   }) => {
-    const switched = await clickTab(page, 'Trades');
+    const switched = await clickTab(page, "Trades");
     if (switched) {
-      const body = await page.locator('body').textContent();
+      const body = await page.locator("body").textContent();
       expect(body?.length).toBeGreaterThan(100);
     }
   });
 });
 
-test.describe('Feed - Post Composer', () => {
+test.describe("Feed - Post Composer", () => {
   test.beforeEach(async ({ page }) => {
     if (!(await isServerHealthy())) {
       test.skip();
@@ -146,10 +146,10 @@ test.describe('Feed - Post Composer', () => {
     await cooldownBetweenTests(page);
   });
 
-  test('opens inline post composer on click', async ({ page }) => {
+  test("opens inline post composer on click", async ({ page }) => {
     const createButton = page
       .locator(
-        'button[aria-label="Create Post"], button:has(svg.lucide-plus), button:has-text("Create"), button:has-text("New Post")'
+        'button[aria-label="Create Post"], button:has(svg.lucide-plus), button:has-text("Create"), button:has-text("New Post")',
       )
       .first();
 
@@ -161,7 +161,7 @@ test.describe('Feed - Post Composer', () => {
       await createButton.click({ force: true });
       await page.waitForTimeout(1000);
 
-      const textarea = page.locator('textarea').first();
+      const textarea = page.locator("textarea").first();
       const textareaVisible = await textarea
         .isVisible({ timeout: TIMEOUTS.SHORT })
         .catch(() => false);
@@ -169,17 +169,17 @@ test.describe('Feed - Post Composer', () => {
       if (textareaVisible) {
         expect(textareaVisible).toBe(true);
       }
-      await page.keyboard.press('Escape').catch(() => {});
+      await page.keyboard.press("Escape").catch(() => {});
     }
 
-    const body = await page.locator('body').textContent();
+    const body = await page.locator("body").textContent();
     expect(body?.length).toBeGreaterThan(100);
   });
 
-  test('disables submit when content is empty', async ({ page }) => {
+  test("disables submit when content is empty", async ({ page }) => {
     const createButton = page
       .locator(
-        'button[aria-label="Create Post"], button:has(svg.lucide-plus), button:has-text("Create")'
+        'button[aria-label="Create Post"], button:has(svg.lucide-plus), button:has-text("Create")',
       )
       .first();
 
@@ -202,17 +202,17 @@ test.describe('Feed - Post Composer', () => {
       ) {
         const isDisabled = await submitButton.isDisabled().catch(() => false);
         // Submit should be disabled for empty content
-        expect(typeof isDisabled).toBe('boolean');
+        expect(typeof isDisabled).toBe("boolean");
       }
 
-      await page.keyboard.press('Escape').catch(() => {});
+      await page.keyboard.press("Escape").catch(() => {});
     }
   });
 
-  test('enables submit when content is entered', async ({ page }) => {
+  test("enables submit when content is entered", async ({ page }) => {
     const createButton = page
       .locator(
-        'button[aria-label="Create Post"], button:has(svg.lucide-plus), button:has-text("Create")'
+        'button[aria-label="Create Post"], button:has(svg.lucide-plus), button:has-text("Create")',
       )
       .first();
 
@@ -224,7 +224,7 @@ test.describe('Feed - Post Composer', () => {
       await createButton.click({ force: true });
       await page.waitForTimeout(1000);
 
-      const textarea = page.locator('textarea').first();
+      const textarea = page.locator("textarea").first();
       if (
         await textarea.isVisible({ timeout: TIMEOUTS.SHORT }).catch(() => false)
       ) {
@@ -246,14 +246,14 @@ test.describe('Feed - Post Composer', () => {
         }
       }
 
-      await page.keyboard.press('Escape').catch(() => {});
+      await page.keyboard.press("Escape").catch(() => {});
     }
   });
 
-  test('can type content in post composer', async ({ page }) => {
+  test("can type content in post composer", async ({ page }) => {
     const createButton = page
       .locator(
-        'button[aria-label="Create Post"], button:has(svg.lucide-plus), button:has-text("Create")'
+        'button[aria-label="Create Post"], button:has(svg.lucide-plus), button:has-text("Create")',
       )
       .first();
 
@@ -265,27 +265,27 @@ test.describe('Feed - Post Composer', () => {
       await createButton.click({ force: true });
       await page.waitForTimeout(1000);
 
-      const textarea = page.locator('textarea').first();
+      const textarea = page.locator("textarea").first();
       if (
         await textarea.isVisible({ timeout: TIMEOUTS.SHORT }).catch(() => false)
       ) {
         const testContent = `E2E Test Post - ${Date.now()}`;
         await textarea.fill(testContent);
         const value = await textarea.inputValue();
-        expect(value).toContain('E2E Test Post');
+        expect(value).toContain("E2E Test Post");
       }
 
-      await page.keyboard.press('Escape').catch(() => {});
+      await page.keyboard.press("Escape").catch(() => {});
     }
 
-    const body = await page.locator('body').textContent();
+    const body = await page.locator("body").textContent();
     expect(body?.length).toBeGreaterThan(100);
   });
 
-  test('handles post with maximum length content', async ({ page }) => {
+  test("handles post with maximum length content", async ({ page }) => {
     const createButton = page
       .locator(
-        'button[aria-label="Create Post"], button:has(svg.lucide-plus), button:has-text("Create")'
+        'button[aria-label="Create Post"], button:has(svg.lucide-plus), button:has-text("Create")',
       )
       .first();
 
@@ -297,23 +297,23 @@ test.describe('Feed - Post Composer', () => {
       await createButton.click({ force: true });
       await page.waitForTimeout(1000);
 
-      const textarea = page.locator('textarea').first();
+      const textarea = page.locator("textarea").first();
       if (
         await textarea.isVisible({ timeout: TIMEOUTS.SHORT }).catch(() => false)
       ) {
-        const longContent = 'A'.repeat(1000);
+        const longContent = "A".repeat(1000);
         await textarea.fill(longContent);
         const value = await textarea.inputValue();
         // Should accept or truncate - either is acceptable
         expect(value.length).toBeGreaterThan(0);
       }
 
-      await page.keyboard.press('Escape').catch(() => {});
+      await page.keyboard.press("Escape").catch(() => {});
     }
   });
 });
 
-test.describe('Feed - Post Card Interactions', () => {
+test.describe("Feed - Post Card Interactions", () => {
   test.beforeEach(async ({ page }) => {
     if (!(await isServerHealthy())) {
       test.skip();
@@ -331,7 +331,7 @@ test.describe('Feed - Post Card Interactions', () => {
     await cooldownBetweenTests(page);
   });
 
-  test('toggles like state on click and updates count', async ({ page }) => {
+  test("toggles like state on click and updates count", async ({ page }) => {
     const posts = page.locator('article, [data-testid="post-card"]');
     const postCount = await posts.count().catch(() => 0);
 
@@ -353,11 +353,11 @@ test.describe('Feed - Post Card Interactions', () => {
       }
     }
 
-    const body = await page.locator('body').textContent();
+    const body = await page.locator("body").textContent();
     expect(body?.length).toBeGreaterThan(100);
   });
 
-  test('opens comment section when clicking comment button', async ({
+  test("opens comment section when clicking comment button", async ({
     page,
   }) => {
     const posts = page.locator('article, [data-testid="post-card"]');
@@ -380,10 +380,10 @@ test.describe('Feed - Post Card Interactions', () => {
         // Should navigate to post detail or open comment section
         const url = page.url();
         const hasCommentUI =
-          url.includes('/post/') ||
+          url.includes("/post/") ||
           (await page
             .locator(
-              'textarea[placeholder*="comment" i], textarea[placeholder*="reply" i]'
+              'textarea[placeholder*="comment" i], textarea[placeholder*="reply" i]',
             )
             .first()
             .isVisible({ timeout: TIMEOUTS.SHORT })
@@ -394,7 +394,7 @@ test.describe('Feed - Post Card Interactions', () => {
     }
   });
 
-  test('opens share dialog when clicking share button', async ({ page }) => {
+  test("opens share dialog when clicking share button", async ({ page }) => {
     const posts = page.locator('article, [data-testid="post-card"]');
     const postCount = await posts.count().catch(() => 0);
 
@@ -416,21 +416,21 @@ test.describe('Feed - Post Card Interactions', () => {
             .first()
             .isVisible({ timeout: TIMEOUTS.SHORT })
             .catch(() => false)) ||
-          (await pageContainsText(page, 'copy', 'share', 'link'));
+          (await pageContainsText(page, "copy", "share", "link"));
 
-        expect(typeof hasShareUI).toBe('boolean');
+        expect(typeof hasShareUI).toBe("boolean");
 
-        await page.keyboard.press('Escape').catch(() => {});
+        await page.keyboard.press("Escape").catch(() => {});
       }
     }
   });
 
-  test('clicking post navigates to detail page', async ({ page }) => {
+  test("clicking post navigates to detail page", async ({ page }) => {
     const posts = page.locator('article, [data-testid="post-card"]');
     const postCount = await posts.count().catch(() => 0);
 
     if (postCount > 0) {
-      const postContent = posts.first().locator('p, .post-content').first();
+      const postContent = posts.first().locator("p, .post-content").first();
 
       if (
         await postContent
@@ -443,19 +443,19 @@ test.describe('Feed - Post Card Interactions', () => {
         // Should navigate to post detail
         const url = page.url();
         const navigated =
-          url.includes('/post/') ||
-          url.includes('/article/') ||
-          url.includes('/comment/');
+          url.includes("/post/") ||
+          url.includes("/article/") ||
+          url.includes("/comment/");
         // May not navigate if clicking specific element
-        expect(typeof navigated).toBe('boolean');
+        expect(typeof navigated).toBe("boolean");
       }
     }
 
-    const body = await page.locator('body').textContent();
+    const body = await page.locator("body").textContent();
     expect(body?.length).toBeGreaterThan(100);
   });
 
-  test('clicking author navigates to profile', async ({ page }) => {
+  test("clicking author navigates to profile", async ({ page }) => {
     const posts = page.locator('article, [data-testid="post-card"]');
     const postCount = await posts.count().catch(() => 0);
 
@@ -474,29 +474,29 @@ test.describe('Feed - Post Card Interactions', () => {
         await page.waitForTimeout(2000);
 
         const url = page.url();
-        const navigated = url.includes('/profile/') || url.includes('/u/');
+        const navigated = url.includes("/profile/") || url.includes("/u/");
         expect(navigated).toBe(true);
       }
     }
   });
 
-  test('displays daily topic banner when present', async ({ page }) => {
+  test("displays daily topic banner when present", async ({ page }) => {
     // Daily topic may or may not be present
     const _hasDailyTopic = await pageContainsText(
       page,
-      'daily',
-      'topic',
-      'trending',
-      'discussion'
+      "daily",
+      "topic",
+      "trending",
+      "discussion",
     );
 
     // This is informational - test passes either way
-    const body = await page.locator('body').textContent();
+    const body = await page.locator("body").textContent();
     expect(body?.length).toBeGreaterThan(100);
   });
 });
 
-test.describe('Feed - Infinite Scroll', () => {
+test.describe("Feed - Infinite Scroll", () => {
   test.beforeEach(async ({ page }) => {
     if (!(await isServerHealthy())) {
       test.skip();
@@ -510,26 +510,26 @@ test.describe('Feed - Infinite Scroll', () => {
     await page.waitForTimeout(2000);
   });
 
-  test('scrolling to bottom loads more posts', async ({ page }) => {
+  test("scrolling to bottom loads more posts", async ({ page }) => {
     const { before, after } = await scrollToLoadMore(
       page,
-      'article, [data-testid="post-card"]'
+      'article, [data-testid="post-card"]',
     );
 
     // After scrolling, should have same or more posts
     expect(after).toBeGreaterThanOrEqual(before);
 
-    const body = await page.locator('body').textContent();
+    const body = await page.locator("body").textContent();
     expect(body?.length).toBeGreaterThan(100);
   });
 });
 
-test.describe('Feed - Widget Sidebar', () => {
+test.describe("Feed - Widget Sidebar", () => {
   test.afterEach(async ({ page }) => {
     await cooldownBetweenTests(page);
   });
 
-  test('displays widget sidebar on desktop viewport', async ({ page }) => {
+  test("displays widget sidebar on desktop viewport", async ({ page }) => {
     if (!(await isServerHealthy())) {
       test.skip();
       return;
@@ -550,11 +550,11 @@ test.describe('Feed - Widget Sidebar', () => {
       .catch(() => false);
 
     // Sidebar may or may not be present depending on page design
-    const body = await page.locator('body').textContent();
+    const body = await page.locator("body").textContent();
     expect(body?.length).toBeGreaterThan(100);
   });
 
-  test('hides widget sidebar on tablet viewport', async ({ page }) => {
+  test("hides widget sidebar on tablet viewport", async ({ page }) => {
     if (!(await isServerHealthy())) {
       test.skip();
       return;
@@ -574,7 +574,7 @@ test.describe('Feed - Widget Sidebar', () => {
       .catch(() => false);
 
     // On tablet, sidebar should be hidden or collapsed
-    const body = await page.locator('body').textContent();
+    const body = await page.locator("body").textContent();
     expect(body?.length).toBeGreaterThan(100);
   });
 });

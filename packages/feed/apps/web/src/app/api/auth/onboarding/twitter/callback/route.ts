@@ -44,12 +44,12 @@
  * ```
  */
 
-import { withErrorHandling } from '@feed/api';
-import { db } from '@feed/db';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { z } from 'zod';
+import { withErrorHandling } from "@feed/api";
+import { db } from "@feed/db";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { z } from "zod";
 
 const TwitterCallbackQuerySchema = z.object({
   code: z.string().optional(),
@@ -60,15 +60,15 @@ const TwitterCallbackQuerySchema = z.object({
 export const GET = withErrorHandling(async (request: NextRequest) => {
   const searchParams = request.nextUrl.searchParams;
   const parsed = TwitterCallbackQuerySchema.safeParse(
-    Object.fromEntries(searchParams)
+    Object.fromEntries(searchParams),
   );
 
   if (!parsed.success) {
     return NextResponse.redirect(
       new URL(
-        `/?error=${encodeURIComponent('Invalid parameters received from Twitter')}`,
-        request.url
-      )
+        `/?error=${encodeURIComponent("Invalid parameters received from Twitter")}`,
+        request.url,
+      ),
     );
   }
   const { code, state, error: oauthError } = parsed.data;
@@ -76,68 +76,68 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   // Handle OAuth error
   if (oauthError) {
     logger.error(
-      'Twitter onboarding OAuth error',
+      "Twitter onboarding OAuth error",
       { oauthError },
-      'TwitterOnboardingCallback'
+      "TwitterOnboardingCallback",
     );
     return NextResponse.redirect(
       new URL(
-        `/?error=${encodeURIComponent('Twitter authentication failed')}`,
-        request.url
-      )
+        `/?error=${encodeURIComponent("Twitter authentication failed")}`,
+        request.url,
+      ),
     );
   }
 
   if (!code || !state) {
     logger.warn(
-      'Twitter onboarding callback missing code or state',
+      "Twitter onboarding callback missing code or state",
       { hasCode: !!code, hasState: !!state },
-      'TwitterOnboardingCallback'
+      "TwitterOnboardingCallback",
     );
     return NextResponse.redirect(
-      new URL('/?error=missing_params', request.url)
+      new URL("/?error=missing_params", request.url),
     );
   }
 
   // Verify state format: "onboarding:userId:timestamp:random"
-  const stateParts = state.split(':');
+  const stateParts = state.split(":");
   if (stateParts.length < 3) {
     logger.warn(
-      'Twitter onboarding callback invalid state format',
+      "Twitter onboarding callback invalid state format",
       { state },
-      'TwitterOnboardingCallback'
+      "TwitterOnboardingCallback",
     );
-    return NextResponse.redirect(new URL('/?error=invalid_state', request.url));
+    return NextResponse.redirect(new URL("/?error=invalid_state", request.url));
   }
 
   const [prefix, userId, timestampStr] = stateParts;
 
-  if (prefix !== 'onboarding') {
+  if (prefix !== "onboarding") {
     logger.warn(
-      'Twitter onboarding callback wrong prefix',
-      { prefix, expected: 'onboarding' },
-      'TwitterOnboardingCallback'
+      "Twitter onboarding callback wrong prefix",
+      { prefix, expected: "onboarding" },
+      "TwitterOnboardingCallback",
     );
-    return NextResponse.redirect(new URL('/?error=invalid_state', request.url));
+    return NextResponse.redirect(new URL("/?error=invalid_state", request.url));
   }
 
   if (!userId || !timestampStr) {
     logger.warn(
-      'Twitter onboarding callback missing userId or timestamp',
+      "Twitter onboarding callback missing userId or timestamp",
       { state },
-      'TwitterOnboardingCallback'
+      "TwitterOnboardingCallback",
     );
-    return NextResponse.redirect(new URL('/?error=invalid_state', request.url));
+    return NextResponse.redirect(new URL("/?error=invalid_state", request.url));
   }
 
   const stateTimestamp = Number.parseInt(timestampStr, 10);
-  if (isNaN(stateTimestamp)) {
+  if (Number.isNaN(stateTimestamp)) {
     logger.warn(
-      'Twitter onboarding callback invalid timestamp',
+      "Twitter onboarding callback invalid timestamp",
       { timestampStr },
-      'TwitterOnboardingCallback'
+      "TwitterOnboardingCallback",
     );
-    return NextResponse.redirect(new URL('/?error=invalid_state', request.url));
+    return NextResponse.redirect(new URL("/?error=invalid_state", request.url));
   }
 
   const now = Date.now();
@@ -145,39 +145,39 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   // State expires after 10 minutes
   if (now - stateTimestamp > 10 * 60 * 1000) {
     logger.warn(
-      'Twitter onboarding callback state expired',
+      "Twitter onboarding callback state expired",
       { stateTimestamp, now, ageMs: now - stateTimestamp },
-      'TwitterOnboardingCallback'
+      "TwitterOnboardingCallback",
     );
-    return NextResponse.redirect(new URL('/?error=state_expired', request.url));
+    return NextResponse.redirect(new URL("/?error=state_expired", request.url));
   }
 
   // Exchange code for access token
-  const tokenResponse = await fetch('https://api.twitter.com/2/oauth2/token', {
-    method: 'POST',
+  const tokenResponse = await fetch("https://api.twitter.com/2/oauth2/token", {
+    method: "POST",
     headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
+      "Content-Type": "application/x-www-form-urlencoded",
       Authorization: `Basic ${Buffer.from(
-        `${process.env.TWITTER_CLIENT_ID}:${process.env.TWITTER_CLIENT_SECRET}`
-      ).toString('base64')}`,
+        `${process.env.TWITTER_CLIENT_ID}:${process.env.TWITTER_CLIENT_SECRET}`,
+      ).toString("base64")}`,
     },
     body: new URLSearchParams({
       code,
-      grant_type: 'authorization_code',
+      grant_type: "authorization_code",
       redirect_uri: `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/onboarding/twitter/callback`,
-      code_verifier: 'challenge',
+      code_verifier: "challenge",
     }),
   });
 
   if (!tokenResponse.ok) {
     const errorData = await tokenResponse.text();
     logger.error(
-      'Failed to exchange Twitter code for onboarding',
+      "Failed to exchange Twitter code for onboarding",
       { errorData },
-      'TwitterOnboardingCallback'
+      "TwitterOnboardingCallback",
     );
     return NextResponse.redirect(
-      new URL('/?error=token_exchange_failed', request.url)
+      new URL("/?error=token_exchange_failed", request.url),
     );
   }
 
@@ -186,22 +186,22 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
   // Get comprehensive user profile from Twitter
   const userResponse = await fetch(
-    'https://api.twitter.com/2/users/me?user.fields=username,name,description,profile_image_url',
+    "https://api.twitter.com/2/users/me?user.fields=username,name,description,profile_image_url",
     {
       headers: {
         Authorization: `Bearer ${accessToken}`,
       },
-    }
+    },
   );
 
   if (!userResponse.ok) {
     logger.error(
-      'Failed to get Twitter user info for onboarding',
+      "Failed to get Twitter user info for onboarding",
       {},
-      'TwitterOnboardingCallback'
+      "TwitterOnboardingCallback",
     );
     return NextResponse.redirect(
-      new URL('/?error=failed_to_get_user', request.url)
+      new URL("/?error=failed_to_get_user", request.url),
     );
   }
 
@@ -218,12 +218,12 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   // Validate required fields
   if (!userData.data?.id || !userData.data?.username) {
     logger.error(
-      'Invalid Twitter user data',
+      "Invalid Twitter user data",
       { userData },
-      'TwitterOnboardingCallback'
+      "TwitterOnboardingCallback",
     );
     return NextResponse.redirect(
-      new URL('/?error=invalid_twitter_data', request.url)
+      new URL("/?error=invalid_twitter_data", request.url),
     );
   }
 
@@ -239,37 +239,37 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
   if (existingUser) {
     logger.warn(
-      'Twitter account already linked',
+      "Twitter account already linked",
       { twitterId: twitterUser.id, existingUserId: existingUser.id },
-      'TwitterOnboardingCallback'
+      "TwitterOnboardingCallback",
     );
     return NextResponse.redirect(
-      new URL('/?error=twitter_already_linked', request.url)
+      new URL("/?error=twitter_already_linked", request.url),
     );
   }
 
   // Extract profile data with fallbacks
   const profileData = {
-    platform: 'twitter',
+    platform: "twitter",
     username: twitterUser.username,
     displayName: twitterUser.name || twitterUser.username,
-    bio: twitterUser.description || '',
+    bio: twitterUser.description || "",
     profileImageUrl: twitterUser.profile_image_url
-      ? twitterUser.profile_image_url.replace('_normal', '_400x400') // Get higher resolution
+      ? twitterUser.profile_image_url.replace("_normal", "_400x400") // Get higher resolution
       : null,
     twitterId: twitterUser.id,
     twitterUsername: twitterUser.username,
   };
 
   logger.info(
-    'Twitter profile imported for onboarding',
+    "Twitter profile imported for onboarding",
     { userId, twitterUsername: twitterUser.username },
-    'TwitterOnboardingCallback'
+    "TwitterOnboardingCallback",
   );
 
   // Encode profile data and redirect back to app with data
   const encodedData = encodeURIComponent(JSON.stringify(profileData));
   return NextResponse.redirect(
-    new URL(`/?social_import=twitter&data=${encodedData}`, request.url)
+    new URL(`/?social_import=twitter&data=${encodedData}`, request.url),
   );
 });

@@ -3,8 +3,8 @@
  * Works with any state store (DB or in-memory) via injectable context.
  */
 
-import { logger } from '@feed/shared';
-import type { GameClock, GameTime } from './GameClock';
+import { logger } from "@feed/shared";
+import type { GameClock, GameTime } from "./GameClock";
 
 /** Result of executing one game tick */
 export interface TickResult {
@@ -43,7 +43,7 @@ export interface GameStateStore {
   updateMarketPrice(
     marketId: string,
     yesPrice: number,
-    noPrice: number
+    noPrice: number,
   ): Promise<void>;
 
   // Content
@@ -64,7 +64,7 @@ export interface ActiveQuestion {
   id: string;
   questionNumber: number;
   text: string;
-  status: 'active' | 'resolved';
+  status: "active" | "resolved";
   outcome?: boolean;
   resolutionDate?: Date;
   scenarioId?: number;
@@ -89,7 +89,7 @@ export interface QuestionInput {
 export interface PostInput {
   authorId: string;
   content: string;
-  type: 'post' | 'article' | 'reply';
+  type: "post" | "article" | "reply";
   timestamp: Date;
 }
 
@@ -99,8 +99,8 @@ export interface EventInput {
   day: number;
   hour: number;
   actors: string[];
-  visibility: 'public' | 'leaked' | 'private';
-  pointsToward?: 'YES' | 'NO';
+  visibility: "public" | "leaked" | "private";
+  pointsToward?: "YES" | "NO";
   relatedQuestion?: number;
 }
 
@@ -124,13 +124,13 @@ export interface GameActor {
 export interface GameOrganization {
   id: string;
   name: string;
-  type: 'company' | 'media' | 'government';
+  type: "company" | "media" | "government";
 }
 
 export interface TradeInput {
   actorId: string;
   marketId: string;
-  side: 'YES' | 'NO';
+  side: "YES" | "NO";
   amount: number;
 }
 
@@ -144,7 +144,7 @@ export interface TradeResult {
 
 export interface Position {
   marketId: string;
-  side: 'YES' | 'NO';
+  side: "YES" | "NO";
   shares: number;
   avgPrice: number;
 }
@@ -156,11 +156,11 @@ export interface TickServices {
     generatePost(actor: GameActor, context: string): Promise<string>;
     generateArticle(
       org: GameOrganization,
-      topic: string
+      topic: string,
     ): Promise<ArticleInput>;
     generateTradingDecision(
       actor: GameActor,
-      markets: ActiveMarket[]
+      markets: ActiveMarket[],
     ): Promise<TradeInput | null>;
   };
   /** Market decision engine */
@@ -171,7 +171,7 @@ export interface TickServices {
   questionManager?: {
     generateQuestion(): Promise<QuestionInput>;
     generateResolutionProof(
-      question: ActiveQuestion
+      question: ActiveQuestion,
     ): Promise<{ description: string; proof?: string }>;
   };
 }
@@ -184,7 +184,7 @@ export class GameTick {
   constructor(
     private clock: GameClock,
     private store: GameStateStore,
-    private services: TickServices = {}
+    private services: TickServices = {},
   ) {}
 
   /** Execute one game tick */
@@ -196,7 +196,7 @@ export class GameTick {
     logger.info(
       `Executing tick ${time.tick}: Day ${time.day}, Hour ${time.hour}`,
       { timestamp: time.timestamp.toISOString() },
-      'GameTick'
+      "GameTick",
     );
 
     const result: TickResult = {
@@ -241,7 +241,7 @@ export class GameTick {
     logger.info(
       `Tick ${time.tick} complete in ${durationMs}ms`,
       result,
-      'GameTick'
+      "GameTick",
     );
 
     return result;
@@ -254,9 +254,9 @@ export class GameTick {
       if (question.outcome !== undefined) {
         await this.store.resolveQuestion(question.id, question.outcome);
         logger.info(
-          `Resolved Q${question.questionNumber}: ${question.outcome ? 'YES' : 'NO'}`,
+          `Resolved Q${question.questionNumber}: ${question.outcome ? "YES" : "NO"}`,
           {},
-          'GameTick'
+          "GameTick",
         );
       }
     }
@@ -289,7 +289,7 @@ export class GameTick {
   }
 
   private async generateContent(
-    _time: GameTime
+    _time: GameTime,
   ): Promise<{ posts: number; events: number; articles: number }> {
     // Content generation would be implemented by specific adapters
     // This is a placeholder for the core interface

@@ -61,37 +61,37 @@
  * ```
  */
 
-import { verifyCronAuth, withErrorHandling } from '@feed/api';
-import { getReputationBreakdown, NPCInvestmentManager } from '@feed/engine';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { z } from 'zod';
+import { verifyCronAuth, withErrorHandling } from "@feed/api";
+import { getReputationBreakdown, NPCInvestmentManager } from "@feed/engine";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { z } from "zod";
 
 const PositionSizeQuerySchema = z.object({
   npcUserId: z.string().min(1),
   poolId: z.string().min(1),
   strategy: z
-    .enum(['aggressive', 'conservative', 'balanced'])
-    .default('balanced'),
+    .enum(["aggressive", "conservative", "balanced"])
+    .default("balanced"),
 });
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
-  if (!verifyCronAuth(request, { jobName: 'NPCPositionSize' })) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!verifyCronAuth(request, { jobName: "NPCPositionSize" })) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const { searchParams } = new URL(request.url);
   const { npcUserId, poolId, strategy } = PositionSizeQuerySchema.parse({
-    npcUserId: searchParams.get('npcUserId') ?? undefined,
-    poolId: searchParams.get('poolId') ?? undefined,
-    strategy: searchParams.get('strategy') ?? undefined,
+    npcUserId: searchParams.get("npcUserId") ?? undefined,
+    poolId: searchParams.get("poolId") ?? undefined,
+    strategy: searchParams.get("strategy") ?? undefined,
   });
 
   const positionSize = await NPCInvestmentManager.getRecommendedPositionSize(
     poolId,
     npcUserId,
-    strategy
+    strategy,
   );
 
   const metrics = await NPCInvestmentManager.getPortfolioMetrics(poolId);
@@ -103,13 +103,13 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
   if (!reputation) {
     logger.debug(
-      'Could not check reputation for position size',
+      "Could not check reputation for position size",
       undefined,
-      'NPCPositionSize'
+      "NPCPositionSize",
     );
   }
 
-  logger.info('Position size calculated', {
+  logger.info("Position size calculated", {
     npcUserId,
     poolId,
     strategy,

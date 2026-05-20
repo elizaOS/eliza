@@ -87,7 +87,7 @@ export function lerp(a: number, b: number, t: number): number {
 export function roundTo(value: number, decimals = 2): number {
   if (decimals < 0 || !Number.isInteger(decimals)) {
     throw new RangeError(
-      `decimals must be a non-negative integer, got ${decimals}`
+      `decimals must be a non-negative integer, got ${decimals}`,
     );
   }
   const factor = 10 ** decimals;
@@ -134,7 +134,7 @@ export function normalize(
   fromMax: number,
   toMin = 0,
   toMax = 1,
-  shouldClamp = false
+  shouldClamp = false,
 ): number {
   if (fromMax === fromMin) return toMin;
   let ratio = (value - fromMin) / (fromMax - fromMin);
@@ -167,7 +167,7 @@ export function inRange(value: number, min: number, max: number): boolean {
 export function safeDivide(
   numerator: number,
   denominator: number,
-  fallback = 0
+  fallback = 0,
 ): number {
   return denominator === 0 ? fallback : numerator / denominator;
 }

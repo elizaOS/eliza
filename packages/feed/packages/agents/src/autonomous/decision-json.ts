@@ -1,6 +1,6 @@
 export function stripThinkBlocks(text: string): string {
-  const withoutBlocks = text.replace(/<think>[\s\S]*?<\/think>/gi, '');
-  return withoutBlocks.replace(/<\/?think>/gi, '').trim();
+  const withoutBlocks = text.replace(/<think>[\s\S]*?<\/think>/gi, "");
+  return withoutBlocks.replace(/<\/?think>/gi, "").trim();
 }
 
 function unwrapCodeFence(text: string): string {
@@ -28,7 +28,7 @@ export function extractFirstJsonObject(response: string): string | null {
     }
 
     if (start === -1) {
-      if (character === '{') {
+      if (character === "{") {
         start = index;
         depth = 1;
       }
@@ -38,7 +38,7 @@ export function extractFirstJsonObject(response: string): string | null {
     if (inString) {
       if (escaped) {
         escaped = false;
-      } else if (character === '\\') {
+      } else if (character === "\\") {
         escaped = true;
       } else if (character === '"') {
         inString = false;
@@ -51,12 +51,12 @@ export function extractFirstJsonObject(response: string): string | null {
       continue;
     }
 
-    if (character === '{') {
+    if (character === "{") {
       depth += 1;
       continue;
     }
 
-    if (character === '}') {
+    if (character === "}") {
       depth -= 1;
       if (depth === 0) {
         return cleaned.slice(start, index + 1);

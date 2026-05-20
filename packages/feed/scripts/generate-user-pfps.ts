@@ -1,147 +1,147 @@
-import { existsSync } from 'node:fs';
-import { mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { fal } from '@fal-ai/client';
+import { existsSync } from "node:fs";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { fal } from "@fal-ai/client";
 
 // ── Subjects (animals, mythical creatures, characters) ───────────────
 export const SUBJECTS = [
   // Animals — dignified and striking
-  'a cat',
-  'a wolf',
-  'a fox',
-  'an owl',
-  'a bear',
-  'a raven',
-  'a koi fish',
-  'a stag',
-  'a tiger',
-  'a hawk',
-  'a panther',
-  'a lion',
-  'a dolphin',
-  'a snow leopard',
-  'an eagle',
-  'a red panda',
+  "a cat",
+  "a wolf",
+  "a fox",
+  "an owl",
+  "a bear",
+  "a raven",
+  "a koi fish",
+  "a stag",
+  "a tiger",
+  "a hawk",
+  "a panther",
+  "a lion",
+  "a dolphin",
+  "a snow leopard",
+  "an eagle",
+  "a red panda",
   // Mythical
-  'a dragon',
-  'a phoenix',
-  'a griffin',
-  'a sphinx',
-  'a valkyrie',
-  'a celestial kirin',
-  'a sea serpent',
-  'a nine-tailed fox',
+  "a dragon",
+  "a phoenix",
+  "a griffin",
+  "a sphinx",
+  "a valkyrie",
+  "a celestial kirin",
+  "a sea serpent",
+  "a nine-tailed fox",
   // Characters & archetypes — polished versions
-  'a robot head',
-  'an astronaut helmet',
-  'a samurai helmet',
-  'a chess king piece',
-  'a knight in armor',
-  'a space explorer',
-  'a scholar with books',
-  'a captain at the helm',
+  "a robot head",
+  "an astronaut helmet",
+  "a samurai helmet",
+  "a chess king piece",
+  "a knight in armor",
+  "a space explorer",
+  "a scholar with books",
+  "a captain at the helm",
   // Symbols & objects — elegant
-  'a diamond',
-  'a crown',
-  'an hourglass',
-  'a crystal ball',
-  'a compass rose',
-  'a crescent moon',
-  'a lightning bolt',
-  'a glowing lantern',
-  'a golden coin',
-  'a key',
+  "a diamond",
+  "a crown",
+  "an hourglass",
+  "a crystal ball",
+  "a compass rose",
+  "a crescent moon",
+  "a lightning bolt",
+  "a glowing lantern",
+  "a golden coin",
+  "a key",
   // Abstract
-  'a fractal flower',
-  'a DNA helix',
-  'a geometric eye',
-  'a spiral galaxy',
-  'a lotus flower',
+  "a fractal flower",
+  "a DNA helix",
+  "a geometric eye",
+  "a spiral galaxy",
+  "a lotus flower",
 ];
 
 // ── Backgrounds ──────────────────────────────────────────────────────
 const BACKGROUNDS = [
   // Abstract & pattern
-  'a soft geometric gradient',
-  'concentric circles in muted tones',
-  'a mandala pattern',
-  'liquid marble in deep blue and gold',
-  'a topographic map in sepia',
-  'a clean studio gradient',
+  "a soft geometric gradient",
+  "concentric circles in muted tones",
+  "a mandala pattern",
+  "liquid marble in deep blue and gold",
+  "a topographic map in sepia",
+  "a clean studio gradient",
   // Color fields
-  'a deep midnight blue',
-  'a rich forest green',
-  'a warm amber and gold gradient',
-  'a dark charcoal with soft glow',
-  'a pastel watercolor wash',
-  'a muted earth tone palette',
-  'an iridescent sheen',
-  'a stark white minimalist backdrop',
-  'a deep navy with stars',
+  "a deep midnight blue",
+  "a rich forest green",
+  "a warm amber and gold gradient",
+  "a dark charcoal with soft glow",
+  "a pastel watercolor wash",
+  "a muted earth tone palette",
+  "an iridescent sheen",
+  "a stark white minimalist backdrop",
+  "a deep navy with stars",
   // Environments
-  'a dense jungle canopy',
-  'an underwater coral reef',
-  'a mountain range at dusk',
-  'a snowy mountain peak',
-  'a desert with dunes',
-  'outer space with nebulae',
-  'an ancient temple interior',
-  'a field of wildflowers',
-  'a serene lake at dawn',
-  'a bamboo forest in mist',
+  "a dense jungle canopy",
+  "an underwater coral reef",
+  "a mountain range at dusk",
+  "a snowy mountain peak",
+  "a desert with dunes",
+  "outer space with nebulae",
+  "an ancient temple interior",
+  "a field of wildflowers",
+  "a serene lake at dawn",
+  "a bamboo forest in mist",
 ];
 
 // ── Themes / moods — polished and appealing ──────────────────────────
 const THEMES = [
-  'elegant and regal',
-  'ethereal and dreamlike',
-  'serene and zen',
-  'bold and powerful',
-  'ancient and mystical',
-  'minimalist and clean',
-  'cosmic and celestial',
-  'warm and inviting',
-  'cool and focused',
-  'vibrant and energetic',
-  'mysterious and atmospheric',
-  'crisp and modern',
-  'rich and luxurious',
-  'playful and whimsical',
-  'sharp and cinematic',
-  'soft and peaceful',
-  'heroic and epic',
-  'enchanted fairy tale',
-  'lo-fi chill',
-  'sophisticated and refined',
+  "elegant and regal",
+  "ethereal and dreamlike",
+  "serene and zen",
+  "bold and powerful",
+  "ancient and mystical",
+  "minimalist and clean",
+  "cosmic and celestial",
+  "warm and inviting",
+  "cool and focused",
+  "vibrant and energetic",
+  "mysterious and atmospheric",
+  "crisp and modern",
+  "rich and luxurious",
+  "playful and whimsical",
+  "sharp and cinematic",
+  "soft and peaceful",
+  "heroic and epic",
+  "enchanted fairy tale",
+  "lo-fi chill",
+  "sophisticated and refined",
 ];
 
 // ── Art styles — polished, not meme-y ────────────────────────────────
 export const STYLES = [
-  '3D Pixar render',
-  'hand-drawn ink illustration',
-  'digital concept art',
-  'anime illustration',
-  'oil painting',
-  'watercolor painting',
-  'low poly 3D',
-  'comic book illustration',
-  'woodblock print',
-  'stained glass illustration',
-  'ukiyo-e Japanese art',
-  'art nouveau poster',
-  'claymation style',
-  'pencil graphite sketch',
-  'vector flat design',
-  'impressionist painting',
-  'cel-shaded cartoon',
-  'matte painting',
-  'studio photography',
-  'linocut print',
-  'bold graphic design',
-  'fantasy concept art',
-  'character design sheet',
-  'luminous digital painting',
-  'soft pastel illustration',
+  "3D Pixar render",
+  "hand-drawn ink illustration",
+  "digital concept art",
+  "anime illustration",
+  "oil painting",
+  "watercolor painting",
+  "low poly 3D",
+  "comic book illustration",
+  "woodblock print",
+  "stained glass illustration",
+  "ukiyo-e Japanese art",
+  "art nouveau poster",
+  "claymation style",
+  "pencil graphite sketch",
+  "vector flat design",
+  "impressionist painting",
+  "cel-shaded cartoon",
+  "matte painting",
+  "studio photography",
+  "linocut print",
+  "bold graphic design",
+  "fantasy concept art",
+  "character design sheet",
+  "luminous digital painting",
+  "soft pastel illustration",
 ];
 
 // ── Prompt builder ───────────────────────────────────────────────────
@@ -158,7 +158,7 @@ export function buildPrompt(
   subject: string,
   background: string,
   theme: string,
-  style: string
+  style: string,
 ): string {
   return `A polished profile picture avatar: ${subject}, ${theme} mood, rendered in ${style} style. Background: ${background}. Centered composition, close-up portrait framing, square crop. High quality, clean edges, no text, no watermarks, no logos.`;
 }
@@ -228,31 +228,34 @@ function generateSpecs(): PfpSpec[] {
 // ── Main ─────────────────────────────────────────────────────────────
 const CONCURRENCY = 20;
 const TIMEOUT_MS = 120_000;
-const OUTPUT_DIR = join(import.meta.dir, '..', 'output', 'user-pfps');
+const OUTPUT_DIR = join(import.meta.dir, "..", "output", "user-pfps");
 
 function withTimeout<T>(
   promise: Promise<T>,
   ms: number,
-  label: string
+  label: string,
 ): Promise<T> {
   return Promise.race([
     promise,
     new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(`Timeout after ${ms}ms: ${label}`)), ms)
+      setTimeout(
+        () => reject(new Error(`Timeout after ${ms}ms: ${label}`)),
+        ms,
+      ),
     ),
   ]);
 }
 
 function slugify(s: string): string {
   return s
-    .replace(/^an?\s+/i, '')
-    .replace(/[^a-z0-9]+/gi, '-')
-    .replace(/^-|-$/g, '')
+    .replace(/^an?\s+/i, "")
+    .replace(/[^a-z0-9]+/gi, "-")
+    .replace(/^-|-$/g, "")
     .toLowerCase();
 }
 
 async function generateImage(spec: PfpSpec): Promise<void> {
-  const filename = `${String(spec.index).padStart(3, '0')}_${slugify(spec.subject)}_${slugify(spec.style)}.png`;
+  const filename = `${String(spec.index).padStart(3, "0")}_${slugify(spec.subject)}_${slugify(spec.style)}.png`;
   const outPath = join(OUTPUT_DIR, filename);
 
   if (existsSync(outPath)) {
@@ -261,23 +264,23 @@ async function generateImage(spec: PfpSpec): Promise<void> {
   }
 
   console.log(
-    `[${spec.index + 1}/150] ${spec.subject} / ${spec.style} / ${spec.theme}`
+    `[${spec.index + 1}/150] ${spec.subject} / ${spec.style} / ${spec.theme}`,
   );
 
   try {
     const result = await withTimeout(
-      fal.subscribe('fal-ai/nano-banana-2', {
+      fal.subscribe("fal-ai/nano-banana-2", {
         input: {
           prompt: spec.prompt,
           num_images: 1,
-          resolution: '1K',
-          aspect_ratio: '1:1',
-          output_format: 'png',
+          resolution: "1K",
+          aspect_ratio: "1:1",
+          output_format: "png",
           limit_generations: true,
         },
         logs: true,
         onQueueUpdate: (update) => {
-          if (update.status === 'IN_PROGRESS') {
+          if (update.status === "IN_PROGRESS") {
             update.logs
               ?.map((log) => log.message)
               .forEach((m) => console.log(`  [queue] ${m}`));
@@ -285,7 +288,7 @@ async function generateImage(spec: PfpSpec): Promise<void> {
         },
       }),
       TIMEOUT_MS,
-      filename
+      filename,
     );
 
     const images = (result.data as Record<string, unknown>)?.images as
@@ -303,7 +306,7 @@ async function generateImage(spec: PfpSpec): Promise<void> {
     console.log(`  ✓ Saved ${filename}`);
   } catch (err: unknown) {
     console.error(
-      `  ✗ Failed ${filename}: ${err instanceof Error ? err.message : String(err)}`
+      `  ✗ Failed ${filename}: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
 }
@@ -311,11 +314,11 @@ async function generateImage(spec: PfpSpec): Promise<void> {
 async function main() {
   const specs = generateSpecs();
 
-  if (process.argv.includes('--dry-run')) {
-    console.log('=== DRY RUN: 150 User PFP Specs ===\n');
+  if (process.argv.includes("--dry-run")) {
+    console.log("=== DRY RUN: 150 User PFP Specs ===\n");
     for (const spec of specs) {
       console.log(
-        `${String(spec.index + 1).padStart(3, ' ')}. ${spec.subject} | ${spec.style} | ${spec.theme} | ${spec.background}`
+        `${String(spec.index + 1).padStart(3, " ")}. ${spec.subject} | ${spec.style} | ${spec.theme} | ${spec.background}`,
       );
     }
 
@@ -327,9 +330,9 @@ async function main() {
     };
 
     for (const [label, key] of [
-      ['Style', 'style'],
-      ['Theme', 'theme'],
-      ['Subject', 'subject'],
+      ["Style", "style"],
+      ["Theme", "theme"],
+      ["Subject", "subject"],
     ] as const) {
       console.log(`\n--- ${label} distribution ---`);
       for (const [val, count] of dist(key)) {
@@ -342,26 +345,26 @@ async function main() {
   await mkdir(OUTPUT_DIR, { recursive: true });
   console.log(`Output directory: ${OUTPUT_DIR}`);
   console.log(
-    `Generating 150 user profile pictures (concurrency: ${CONCURRENCY})...\n`
+    `Generating 150 user profile pictures (concurrency: ${CONCURRENCY})...\n`,
   );
 
   for (let i = 0; i < specs.length; i += CONCURRENCY) {
     const batch = specs.slice(i, i + CONCURRENCY);
     console.log(
-      `\n── Batch ${Math.floor(i / CONCURRENCY) + 1}/${Math.ceil(specs.length / CONCURRENCY)} ──`
+      `\n── Batch ${Math.floor(i / CONCURRENCY) + 1}/${Math.ceil(specs.length / CONCURRENCY)} ──`,
     );
     await Promise.all(batch.map(generateImage));
   }
 
   const generated = specs.filter((s) => {
-    const fn = `${String(s.index).padStart(3, '0')}_${slugify(s.subject)}_${slugify(s.style)}.png`;
+    const fn = `${String(s.index).padStart(3, "0")}_${slugify(s.subject)}_${slugify(s.style)}.png`;
     return existsSync(join(OUTPUT_DIR, fn));
   }).length;
 
   console.log(`\n✓ Done! ${generated}/150 user PFPs generated.`);
   if (generated < 150) {
     console.log(
-      '  Re-run the script to retry failed ones (skip-existing is on).'
+      "  Re-run the script to retry failed ones (skip-existing is on).",
     );
   }
 }

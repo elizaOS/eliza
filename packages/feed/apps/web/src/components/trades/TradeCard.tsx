@@ -1,22 +1,22 @@
-'use client';
+"use client";
 
-import { cn, getActorProfileUrl, getUserProfileUrl } from '@feed/shared';
+import { cn, getActorProfileUrl, getUserProfileUrl } from "@feed/shared";
 import {
   ArrowDownRight,
   ArrowUpRight,
   TrendingDown,
   TrendingUp,
-} from 'lucide-react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { Avatar } from '@/components/shared/Avatar';
-import { formatCurrencyCompact } from '@/lib/format';
-import { getUserDisplayName } from '@/lib/user-display';
+} from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { Avatar } from "@/components/shared/Avatar";
+import { formatCurrencyCompact } from "@/lib/format";
+import { getUserDisplayName } from "@/lib/user-display";
 
 /**
  * Trade type discriminator for trade card display.
  */
-type TradeType = 'balance' | 'npc' | 'position' | 'perp';
+type TradeType = "balance" | "npc" | "position" | "perp";
 
 /**
  * Base trade structure shared across all trade types.
@@ -38,7 +38,7 @@ interface BaseTrade {
  * Balance transaction trade structure.
  */
 interface BalanceTrade extends BaseTrade {
-  type: 'balance';
+  type: "balance";
   amount: string;
   balanceBefore: string;
   balanceAfter: string;
@@ -57,7 +57,7 @@ interface BalanceTrade extends BaseTrade {
  * NPC trade structure for automated trading.
  */
 interface NPCTrade extends BaseTrade {
-  type: 'npc';
+  type: "npc";
   marketType: string;
   ticker: string | null;
   marketId: string | null;
@@ -74,7 +74,7 @@ interface NPCTrade extends BaseTrade {
  * Prediction position trade structure.
  */
 interface PositionTrade extends BaseTrade {
-  type: 'position';
+  type: "position";
   market: {
     id: string;
     question: string;
@@ -91,14 +91,14 @@ interface PositionTrade extends BaseTrade {
  * Perpetual position trade structure.
  */
 interface PerpTrade extends BaseTrade {
-  type: 'perp';
+  type: "perp";
   ticker: string;
   organization: {
     id: string;
     name: string;
     ticker: string;
   } | null;
-  side: 'long' | 'short';
+  side: "long" | "short";
   entryPrice: string;
   currentPrice: string;
   size: string;
@@ -158,7 +158,7 @@ export function TradeCard({ trade }: TradeCardProps) {
     if (days > 0) return `${days}d ago`;
     if (hours > 0) return `${hours}h ago`;
     if (minutes > 0) return `${minutes}m ago`;
-    return 'Just now';
+    return "Just now";
   };
 
   const formatCurrency = formatCurrencyCompact;
@@ -168,27 +168,27 @@ export function TradeCard({ trade }: TradeCardProps) {
   const handleAssetClick = (e: React.MouseEvent) => {
     e.stopPropagation();
 
-    if (trade.type === 'balance' && trade.market) {
+    if (trade.type === "balance" && trade.market) {
       router.push(
-        `/markets?filter=prediction&marketKind=prediction&marketId=${encodeURIComponent(trade.market.id)}`
+        `/markets?filter=prediction&marketKind=prediction&marketId=${encodeURIComponent(trade.market.id)}`,
       );
-    } else if (trade.type === 'npc') {
-      if (trade.marketType === 'perp' && trade.ticker) {
+    } else if (trade.type === "npc") {
+      if (trade.marketType === "perp" && trade.ticker) {
         router.push(
-          `/markets?filter=perp&marketKind=perp&marketId=${encodeURIComponent(trade.ticker)}`
+          `/markets?filter=perp&marketKind=perp&marketId=${encodeURIComponent(trade.ticker)}`,
         );
-      } else if (trade.marketType === 'prediction' && trade.marketId) {
+      } else if (trade.marketType === "prediction" && trade.marketId) {
         router.push(
-          `/markets?filter=prediction&marketKind=prediction&marketId=${encodeURIComponent(trade.marketId)}`
+          `/markets?filter=prediction&marketKind=prediction&marketId=${encodeURIComponent(trade.marketId)}`,
         );
       }
-    } else if (trade.type === 'position' && trade.market) {
+    } else if (trade.type === "position" && trade.market) {
       router.push(
-        `/markets?filter=prediction&marketKind=prediction&marketId=${encodeURIComponent(trade.market.id)}`
+        `/markets?filter=prediction&marketKind=prediction&marketId=${encodeURIComponent(trade.market.id)}`,
       );
-    } else if (trade.type === 'perp') {
+    } else if (trade.type === "perp") {
       router.push(
-        `/markets?filter=perp&marketKind=perp&marketId=${encodeURIComponent(trade.ticker)}`
+        `/markets?filter=perp&marketKind=perp&marketId=${encodeURIComponent(trade.ticker)}`,
       );
     }
   };
@@ -204,8 +204,8 @@ export function TradeCard({ trade }: TradeCardProps) {
         <Link href={profileUrl} className="shrink-0">
           <Avatar
             id={trade.user.id}
-            name={getUserDisplayName(trade.user, 'User')}
-            type={trade.user.isActor ? 'actor' : undefined}
+            name={getUserDisplayName(trade.user, "User")}
+            type={trade.user.isActor ? "actor" : undefined}
             size="sm"
             src={trade.user.profileImageUrl || undefined}
           />
@@ -213,7 +213,7 @@ export function TradeCard({ trade }: TradeCardProps) {
         {/* Trade Content */}
         <div className="min-w-0 flex-1">
           {/* Trade Details */}
-          {trade.type === 'balance' && (
+          {trade.type === "balance" && (
             <BalanceTradeContent
               trade={trade}
               onAssetClick={handleAssetClick}
@@ -221,7 +221,7 @@ export function TradeCard({ trade }: TradeCardProps) {
               timestamp={timestamp}
             />
           )}
-          {trade.type === 'npc' && (
+          {trade.type === "npc" && (
             <NPCTradeContent
               trade={trade}
               onAssetClick={handleAssetClick}
@@ -229,7 +229,7 @@ export function TradeCard({ trade }: TradeCardProps) {
               timestamp={timestamp}
             />
           )}
-          {trade.type === 'position' && (
+          {trade.type === "position" && (
             <PositionTradeContent
               trade={trade}
               onAssetClick={handleAssetClick}
@@ -237,7 +237,7 @@ export function TradeCard({ trade }: TradeCardProps) {
               timestamp={timestamp}
             />
           )}
-          {trade.type === 'perp' && (
+          {trade.type === "perp" && (
             <PerpTradeContent
               trade={trade}
               onAssetClick={handleAssetClick}
@@ -264,7 +264,7 @@ function BalanceTradeContent({
 }) {
   const amount = Number.parseFloat(trade.amount);
   const isPositive = amount >= 0;
-  const actionText = trade.transactionType.replace('_', ' ').toUpperCase();
+  const actionText = trade.transactionType.replace("_", " ").toUpperCase();
 
   return (
     <div className="space-y-1">
@@ -278,11 +278,11 @@ function BalanceTradeContent({
           <span className="text-muted-foreground text-sm">{actionText}</span>
           <span
             className={cn(
-              'font-semibold text-base',
-              isPositive ? 'text-green-600' : 'text-red-600'
+              "font-semibold text-base",
+              isPositive ? "text-green-600" : "text-red-600",
             )}
           >
-            {isPositive ? '+' : ''}
+            {isPositive ? "+" : ""}
             {formatCurrency(amount)}
           </span>
         </div>
@@ -319,7 +319,7 @@ function NPCTradeContent({
   formatCurrency: (value: string | number) => string;
   timestamp: string;
 }) {
-  const isLong = trade.side === 'long' || trade.side === 'YES';
+  const isLong = trade.side === "long" || trade.side === "YES";
   const action = trade.action.toUpperCase();
 
   return (
@@ -328,10 +328,10 @@ function NPCTradeContent({
         <div className="flex flex-wrap items-center gap-2">
           <span
             className={cn(
-              'rounded px-2 py-1 font-medium text-xs',
+              "rounded px-2 py-1 font-medium text-xs",
               isLong
-                ? 'bg-green-500/20 text-green-500'
-                : 'bg-red-500/20 text-red-500'
+                ? "bg-green-500/20 text-green-500"
+                : "bg-red-500/20 text-red-500",
             )}
           >
             {action}
@@ -347,8 +347,8 @@ function NPCTradeContent({
           {trade.side && (
             <span
               className={cn(
-                'font-medium text-xs',
-                isLong ? 'text-green-600' : 'text-red-600'
+                "font-medium text-xs",
+                isLong ? "text-green-600" : "text-red-600",
               )}
             >
               {trade.side}
@@ -391,7 +391,7 @@ function PositionTradeContent({
   formatCurrency: (value: string | number) => string;
   timestamp: string;
 }) {
-  const isYes = trade.side === 'YES';
+  const isYes = trade.side === "YES";
 
   return (
     <div className="space-y-1">
@@ -399,10 +399,10 @@ function PositionTradeContent({
         <div className="flex items-center gap-2">
           <span
             className={cn(
-              'rounded px-2 py-1 font-medium text-xs',
+              "rounded px-2 py-1 font-medium text-xs",
               isYes
-                ? 'bg-green-500/20 text-green-500'
-                : 'bg-red-500/20 text-red-500'
+                ? "bg-green-500/20 text-green-500"
+                : "bg-red-500/20 text-red-500",
             )}
           >
             {trade.side}
@@ -440,7 +440,7 @@ function PerpTradeContent({
   formatCurrency: (value: string | number) => string;
   timestamp: string;
 }) {
-  const isLong = trade.side === 'long';
+  const isLong = trade.side === "long";
   const pnl = Number.parseFloat(trade.unrealizedPnL);
   const isPnLPositive = pnl >= 0;
   const isClosed = trade.closedAt !== null;
@@ -456,10 +456,10 @@ function PerpTradeContent({
           )}
           <span
             className={cn(
-              'rounded px-2 py-1 font-medium text-xs',
+              "rounded px-2 py-1 font-medium text-xs",
               isLong
-                ? 'bg-green-500/20 text-green-500'
-                : 'bg-red-500/20 text-red-500'
+                ? "bg-green-500/20 text-green-500"
+                : "bg-red-500/20 text-red-500",
             )}
           >
             {trade.side.toUpperCase()}
@@ -492,11 +492,11 @@ function PerpTradeContent({
           <span className="text-muted-foreground">PnL:</span>
           <span
             className={cn(
-              'font-semibold',
-              isPnLPositive ? 'text-green-600' : 'text-red-600'
+              "font-semibold",
+              isPnLPositive ? "text-green-600" : "text-red-600",
             )}
           >
-            {isPnLPositive ? '+' : ''}
+            {isPnLPositive ? "+" : ""}
             {formatCurrency(pnl)}
           </span>
         </div>

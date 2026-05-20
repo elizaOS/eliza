@@ -1,20 +1,20 @@
 export const X_ACCOUNT_ALREADY_LINKED_MESSAGE =
-  'This X account is already linked to another user';
+  "This X account is already linked to another user";
 
 export const PRIVY_LOGIN_ERROR_MESSAGES = {
-  DEFAULT: 'Failed to log in. Please try again.',
+  DEFAULT: "Failed to log in. Please try again.",
   METAMASK:
-    'Failed to connect to MetaMask. Please try again or choose a different login method.',
+    "Failed to connect to MetaMask. Please try again or choose a different login method.",
 } as const;
 
 export function getPrivyErrorMessage(error: unknown): string | null {
-  if (typeof error === 'string') return error;
+  if (typeof error === "string") return error;
 
   if (
-    typeof error === 'object' &&
+    typeof error === "object" &&
     error !== null &&
-    'message' in error &&
-    typeof error.message === 'string'
+    "message" in error &&
+    typeof error.message === "string"
   ) {
     return error.message;
   }
@@ -26,21 +26,21 @@ export function getPrivyErrorMessage(error: unknown): string | null {
  * Returns true when the Privy auth flow was cancelled by the user.
  */
 export function isPrivyAuthFlowCancellationError(error: unknown): boolean {
-  if (error === 'exited_auth_flow' || error === 'exited_link_flow') return true;
-  if (error === 'Authentication cancelled') return true;
+  if (error === "exited_auth_flow" || error === "exited_link_flow") return true;
+  if (error === "Authentication cancelled") return true;
 
   if (
-    typeof error === 'object' &&
+    typeof error === "object" &&
     error !== null &&
-    'code' in error &&
-    (error.code === 'exited_auth_flow' || error.code === 'exited_link_flow')
+    "code" in error &&
+    (error.code === "exited_auth_flow" || error.code === "exited_link_flow")
   ) {
     return true;
   }
 
   const message = getPrivyErrorMessage(error);
-  if (message === 'Authentication cancelled') return true;
-  if (message === 'Proposal expired') return true;
+  if (message === "Authentication cancelled") return true;
+  if (message === "Proposal expired") return true;
 
   return false;
 }
@@ -59,7 +59,7 @@ export function getPrivyLoginErrorMessage(error: unknown): string {
   const message = getPrivyErrorMessage(error)?.toLowerCase();
   if (!message) return PRIVY_LOGIN_ERROR_MESSAGES.DEFAULT;
 
-  if (message.includes('failed to connect to metamask')) {
+  if (message.includes("failed to connect to metamask")) {
     return PRIVY_LOGIN_ERROR_MESSAGES.METAMASK;
   }
 
@@ -71,13 +71,13 @@ export function getPrivyLoginErrorMessage(error: unknown): string {
  * present (e.g. email already linked).
  */
 export function isPrivyAlreadyLinkedError(error: unknown): boolean {
-  if (error === 'cannot_link_more_of_type') return true;
+  if (error === "cannot_link_more_of_type") return true;
 
-  if (typeof error === 'object' && error !== null) {
+  if (typeof error === "object" && error !== null) {
     const e = error as { code?: string; privyErrorCode?: string };
     if (
-      e.code === 'cannot_link_more_of_type' ||
-      e.privyErrorCode === 'cannot_link_more_of_type'
+      e.code === "cannot_link_more_of_type" ||
+      e.privyErrorCode === "cannot_link_more_of_type"
     ) {
       return true;
     }
@@ -96,5 +96,5 @@ export function isPrivyTwitterLinkConflictError(error: unknown): boolean {
 
   return message
     .toLowerCase()
-    .includes('already has an account of type twitter linked');
+    .includes("already has an account of type twitter linked");
 }

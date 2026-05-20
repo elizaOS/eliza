@@ -1,4 +1,4 @@
-import type { NarrativeStory } from '@feed/shared';
+import type { NarrativeStory } from "@feed/shared";
 
 /**
  * Cursor encoding for score-ranked feeds (For You, Stories).
@@ -24,7 +24,7 @@ interface FeedCursor {
  */
 export function encodeCursor(score: number, storyKey: string): string {
   const cursor: FeedCursor = { s: score, k: storyKey };
-  return Buffer.from(JSON.stringify(cursor)).toString('base64url');
+  return Buffer.from(JSON.stringify(cursor)).toString("base64url");
 }
 
 /**
@@ -33,9 +33,9 @@ export function encodeCursor(score: number, storyKey: string): string {
  */
 export function decodeCursor(encoded: string): FeedCursor | null {
   try {
-    const json = Buffer.from(encoded, 'base64url').toString('utf-8');
+    const json = Buffer.from(encoded, "base64url").toString("utf-8");
     const parsed = JSON.parse(json) as Record<string, unknown>;
-    if (typeof parsed.s !== 'number' || typeof parsed.k !== 'string') {
+    if (typeof parsed.s !== "number" || typeof parsed.k !== "string") {
       return null;
     }
     return { s: parsed.s, k: parsed.k };
@@ -56,7 +56,7 @@ export function decodeCursor(encoded: string): FeedCursor | null {
  */
 export function findCursorIndex(
   stories: NarrativeStory[],
-  cursor: FeedCursor
+  cursor: FeedCursor,
 ): number {
   let lo = 0;
   let hi = stories.length;
@@ -84,7 +84,7 @@ export function findCursorIndex(
 
 export function compareFeedStories(
   left: NarrativeStory,
-  right: NarrativeStory
+  right: NarrativeStory,
 ): number {
   const leftScore = left.finalRankScore ?? left.storyScore;
   const rightScore = right.finalRankScore ?? right.storyScore;

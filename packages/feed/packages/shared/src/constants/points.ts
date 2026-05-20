@@ -74,35 +74,35 @@ export const DAILY_LOGIN = {
  * Used in balance transactions and points service to track point movements.
  */
 export type PointsReason =
-  | 'initial_signup'
-  | 'profile_completion'
-  | 'farcaster_link'
-  | 'farcaster_follow'
-  | 'twitter_link'
-  | 'twitter_follow'
-  | 'discord_link'
-  | 'discord_join'
-  | 'telegram_link'
-  | 'wallet_connect'
-  | 'share_action'
-  | 'share_to_twitter'
-  | 'referral_signup'
-  | 'referral_bonus'
-  | 'referral_qualified'
-  | 'private_group_create'
-  | 'private_channel_create'
-  | 'admin_award'
-  | 'admin_deduction'
-  | 'purchase'
-  | 'purchase_refund' // Points deducted due to Stripe refund
-  | 'purchase_dispute' // Points deducted due to chargeback/dispute
-  | 'purchase_dispute_won' // Points re-credited after winning dispute
-  | 'transfer_sent'
-  | 'transfer_received'
-  | 'report_reward' // Reward for successful reporting of CSAM/scammer
-  | 'trading_pnl' // Points from trading profit/loss
-  | 'daily_login' // Points from daily login streak reward
-  | 'onchain_registration' // Points deducted for on-chain ERC-8004 registration
-  | 'email_submit' // Points for providing email address
-  | 'achievement_unlock' // Points from unlocking an achievement
-  | 'challenge_complete'; // Points from completing a challenge (individual or all-bonus)
+  | "initial_signup"
+  | "profile_completion"
+  | "farcaster_link"
+  | "farcaster_follow"
+  | "twitter_link"
+  | "twitter_follow"
+  | "discord_link"
+  | "discord_join"
+  | "telegram_link"
+  | "wallet_connect"
+  | "share_action"
+  | "share_to_twitter"
+  | "referral_signup"
+  | "referral_bonus"
+  | "referral_qualified"
+  | "private_group_create"
+  | "private_channel_create"
+  | "admin_award"
+  | "admin_deduction"
+  | "purchase"
+  | "purchase_refund" // Points deducted due to Stripe refund
+  | "purchase_dispute" // Points deducted due to chargeback/dispute
+  | "purchase_dispute_won" // Points re-credited after winning dispute
+  | "transfer_sent"
+  | "transfer_received"
+  | "report_reward" // Reward for successful reporting of CSAM/scammer
+  | "trading_pnl" // Points from trading profit/loss
+  | "daily_login" // Points from daily login streak reward
+  | "onchain_registration" // Points deducted for on-chain ERC-8004 registration
+  | "email_submit" // Points for providing email address
+  | "achievement_unlock" // Points from unlocking an achievement
+  | "challenge_complete"; // Points from completing a challenge (individual or all-bonus)

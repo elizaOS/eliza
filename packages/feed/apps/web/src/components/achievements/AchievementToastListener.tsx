@@ -1,10 +1,10 @@
-'use client';
+"use client";
 
-import { useCallback } from 'react';
-import { toast } from 'sonner';
-import { useAuth } from '@/hooks/useAuth';
-import { useSSEChannel } from '@/hooks/useSSE';
-import { useAuthStore } from '@/stores/authStore';
+import { useCallback } from "react";
+import { toast } from "sonner";
+import { useAuth } from "@/hooks/useAuth";
+import { useSSEChannel } from "@/hooks/useSSE";
+import { useAuthStore } from "@/stores/authStore";
 
 export function AchievementToastListener() {
   const { authenticated } = useAuth();
@@ -13,7 +13,7 @@ export function AchievementToastListener() {
   const handleNotification = useCallback((data: Record<string, unknown>) => {
     const type = data.type as string;
 
-    if (type === 'achievement_unlocked') {
+    if (type === "achievement_unlocked") {
       const name = data.name as string;
       const tier = data.tier as string;
       const points = data.pointsReward as number;
@@ -21,24 +21,24 @@ export function AchievementToastListener() {
         description: `${tier.charAt(0).toUpperCase() + tier.slice(1)} tier — +${points} points`,
         duration: 5000,
       });
-    } else if (type === 'challenge_completed') {
+    } else if (type === "challenge_completed") {
       const name = data.name as string;
       const points = data.pointsReward as number;
       toast.success(`Challenge Complete: ${name}`, {
         description: `+${points} points`,
         duration: 4000,
       });
-    } else if (type === 'challenge_bonus') {
+    } else if (type === "challenge_bonus") {
       const pool = data.pool as string;
       const bonus = data.bonus as number;
       toast.success(
-        pool === 'daily'
-          ? 'All Daily Challenges Complete!'
-          : 'All Weekly Challenges Complete!',
+        pool === "daily"
+          ? "All Daily Challenges Complete!"
+          : "All Weekly Challenges Complete!",
         {
           description: `+${bonus} bonus points`,
           duration: 5000,
-        }
+        },
       );
     }
   }, []);

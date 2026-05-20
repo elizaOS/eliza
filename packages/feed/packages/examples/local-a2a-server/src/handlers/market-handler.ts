@@ -3,8 +3,8 @@
  * Handles prediction market operations
  */
 
-import type { Database } from 'bun:sqlite';
-import { randomUUID } from 'crypto';
+import type { Database } from "bun:sqlite";
+import { randomUUID } from "node:crypto";
 
 interface Market {
   id: string;
@@ -23,7 +23,7 @@ interface Market {
 interface Position {
   id: string;
   marketId: string;
-  outcome: 'YES' | 'NO';
+  outcome: "YES" | "NO";
   shares: number;
   avgPrice: number;
 }
@@ -31,8 +31,8 @@ interface Position {
 interface Trade {
   id: string;
   marketId: string;
-  outcome: 'YES' | 'NO';
-  type: 'BUY' | 'SELL';
+  outcome: "YES" | "NO";
+  type: "BUY" | "SELL";
   shares: number;
   price: number;
   totalCost: number;
@@ -52,14 +52,14 @@ export class MarketHandler {
     const limit = (params.limit as number) || 20;
     const status = params.status as string | undefined;
 
-    let query = 'SELECT * FROM prediction_markets WHERE 1=1';
+    let query = "SELECT * FROM prediction_markets WHERE 1=1";
     const queryParams: (string | number)[] = [];
 
     if (status) {
-      query += ' AND status = ?';
+      query += " AND status = ?";
       queryParams.push(status);
     }
-    query += ' ORDER BY total_volume DESC LIMIT ?';
+    query += " ORDER BY total_volume DESC LIMIT ?";
     queryParams.push(limit);
 
     const results = this.db.query(query).all(...queryParams) as Record<
@@ -74,29 +74,29 @@ export class MarketHandler {
       predictions,
       perps: [
         {
-          id: 'perp-btc-usd',
-          question: 'BTC-USD Perpetual',
-          description: 'Bitcoin perpetual futures',
+          id: "perp-btc-usd",
+          question: "BTC-USD Perpetual",
+          description: "Bitcoin perpetual futures",
           yesPrice: 97500,
           noPrice: 0,
           totalVolume: 50000000,
           yesShares: 0,
           noShares: 0,
-          resolutionDate: '',
-          status: 'open',
+          resolutionDate: "",
+          status: "open",
           createdAt: new Date().toISOString(),
         },
         {
-          id: 'perp-eth-usd',
-          question: 'ETH-USD Perpetual',
-          description: 'Ethereum perpetual futures',
+          id: "perp-eth-usd",
+          question: "ETH-USD Perpetual",
+          description: "Ethereum perpetual futures",
           yesPrice: 3500,
           noPrice: 0,
           totalVolume: 25000000,
           yesShares: 0,
           noShares: 0,
-          resolutionDate: '',
-          status: 'open',
+          resolutionDate: "",
+          status: "open",
           createdAt: new Date().toISOString(),
         },
       ],
@@ -108,7 +108,7 @@ export class MarketHandler {
    */
   getMarketData(marketId: string): Market {
     const row = this.db
-      .query('SELECT * FROM prediction_markets WHERE id = ?')
+      .query("SELECT * FROM prediction_markets WHERE id = ?")
       .get(marketId) as Record<string, unknown> | null;
 
     if (!row) {
@@ -122,16 +122,16 @@ export class MarketHandler {
    * Get prices for multiple markets
    */
   getMarketPrices(
-    marketIds: string[]
+    marketIds: string[],
   ): Record<string, { yes: number; no: number }> {
     if (!marketIds || marketIds.length === 0) {
       return {};
     }
 
-    const placeholders = marketIds.map(() => '?').join(',');
+    const placeholders = marketIds.map(() => "?").join(",");
     const results = this.db
       .query(
-        `SELECT id, yes_price, no_price FROM prediction_markets WHERE id IN (${placeholders})`
+        `SELECT id, yes_price, no_price FROM prediction_markets WHERE id IN (${placeholders})`,
       )
       .all(...marketIds) as Record<string, unknown>[];
 
@@ -152,18 +152,18 @@ export class MarketHandler {
   buyShares(
     userId: string,
     marketId: string,
-    outcome: 'YES' | 'NO',
-    amount: number
+    outcome: "YES" | "NO",
+    amount: number,
   ): Trade {
     // Get market
     const market = this.getMarketData(marketId);
 
-    if (market.status !== 'open') {
-      throw new Error('Market is not open for trading');
+    if (market.status !== "open") {
+      throw new Error("Market is not open for trading");
     }
 
     // Calculate shares (simple CPMM)
-    const price = outcome === 'YES' ? market.yesPrice : market.noPrice;
+    const price = outcome === "YES" ? market.yesPrice : market.noPrice;
     const shares = amount / price;
 
     // Deduct balance from user
@@ -182,21 +182,21 @@ export class MarketHandler {
       tradeId,
       userId,
       marketId,
-      'BUY',
+      "BUY",
       outcome,
       shares,
       price,
-      amount
+      amount,
     );
 
     // Update market volume and prices
-    this.updateMarketAfterTrade(marketId, outcome, 'BUY', shares, amount);
+    this.updateMarketAfterTrade(marketId, outcome, "BUY", shares, amount);
 
     return {
       id: tradeId,
       marketId,
       outcome,
-      type: 'BUY',
+      type: "BUY",
       shares,
       price,
       totalCost: amount,
@@ -210,36 +210,36 @@ export class MarketHandler {
   sellShares(
     userId: string,
     marketId: string,
-    outcome: 'YES' | 'NO',
-    sharesToSell: number
+    outcome: "YES" | "NO",
+    sharesToSell: number,
   ): Trade {
     // Get market
     const market = this.getMarketData(marketId);
 
-    if (market.status !== 'open') {
-      throw new Error('Market is not open for trading');
+    if (market.status !== "open") {
+      throw new Error("Market is not open for trading");
     }
 
     // Get user position
     const position = this.getPosition(userId, marketId, outcome);
     if (!position || position.shares < sharesToSell) {
-      throw new Error('Insufficient shares to sell');
+      throw new Error("Insufficient shares to sell");
     }
 
     // Calculate payout
-    const price = outcome === 'YES' ? market.yesPrice : market.noPrice;
+    const price = outcome === "YES" ? market.yesPrice : market.noPrice;
     const payout = sharesToSell * price;
 
     // Update position
     const newShares = position.shares - sharesToSell;
     if (newShares > 0) {
       this.db.run(
-        'UPDATE positions SET shares = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+        "UPDATE positions SET shares = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
         newShares,
-        position.id
+        position.id,
       );
     } else {
-      this.db.run('DELETE FROM positions WHERE id = ?', position.id);
+      this.db.run("DELETE FROM positions WHERE id = ?", position.id);
     }
 
     // Credit balance to user
@@ -255,27 +255,27 @@ export class MarketHandler {
       tradeId,
       userId,
       marketId,
-      'SELL',
+      "SELL",
       outcome,
       sharesToSell,
       price,
-      payout
+      payout,
     );
 
     // Update market
     this.updateMarketAfterTrade(
       marketId,
       outcome,
-      'SELL',
+      "SELL",
       sharesToSell,
-      payout
+      payout,
     );
 
     return {
       id: tradeId,
       marketId,
       outcome,
-      type: 'SELL',
+      type: "SELL",
       shares: sharesToSell,
       price,
       totalCost: payout,
@@ -286,7 +286,7 @@ export class MarketHandler {
   private getPosition(
     userId: string,
     marketId: string,
-    outcome: string
+    outcome: string,
   ): Position | null {
     const row = this.db
       .query(`
@@ -300,7 +300,7 @@ export class MarketHandler {
     return {
       id: row.id as string,
       marketId: row.market_id as string,
-      outcome: row.outcome as 'YES' | 'NO',
+      outcome: row.outcome as "YES" | "NO",
       shares: row.shares as number,
       avgPrice: row.avg_price as number,
     };
@@ -311,7 +311,7 @@ export class MarketHandler {
     marketId: string,
     outcome: string,
     newShares: number,
-    price: number
+    price: number,
   ): string {
     const existing = this.getPosition(userId, marketId, outcome);
 
@@ -322,10 +322,10 @@ export class MarketHandler {
       const newAvgPrice = totalCost / totalShares;
 
       this.db.run(
-        'UPDATE positions SET shares = ?, avg_price = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+        "UPDATE positions SET shares = ?, avg_price = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
         totalShares,
         newAvgPrice,
-        existing.id
+        existing.id,
       );
 
       return existing.id;
@@ -342,7 +342,7 @@ export class MarketHandler {
       marketId,
       outcome,
       newShares,
-      price
+      price,
     );
 
     return positionId;
@@ -350,7 +350,7 @@ export class MarketHandler {
 
   private deductUserBalance(userId: string, amount: number): void {
     const row = this.db
-      .query('SELECT virtual_balance FROM users WHERE id = ?')
+      .query("SELECT virtual_balance FROM users WHERE id = ?")
       .get(userId) as { virtual_balance: number } | null;
 
     if (!row) {
@@ -362,19 +362,19 @@ export class MarketHandler {
 
     const balance = row.virtual_balance;
     if (balance < amount) {
-      throw new Error('Insufficient balance');
+      throw new Error("Insufficient balance");
     }
 
     this.db.run(
-      'UPDATE users SET virtual_balance = virtual_balance - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      "UPDATE users SET virtual_balance = virtual_balance - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
       amount,
-      userId
+      userId,
     );
   }
 
   private ensureUserExists(userId: string): void {
     const existing = this.db
-      .query('SELECT id FROM users WHERE id = ?')
+      .query("SELECT id FROM users WHERE id = ?")
       .get(userId);
     if (existing) return;
 
@@ -387,35 +387,35 @@ export class MarketHandler {
       ) VALUES (?, ?, ?, ?, ?, ?, ?)
     `,
       userId,
-      `0x${userId.slice(-40).padStart(40, '0')}`,
+      `0x${userId.slice(-40).padStart(40, "0")}`,
       `Agent ${userId.slice(-8)}`,
       username,
-      'Autonomous agent',
+      "Autonomous agent",
       1000,
-      100
+      100,
     );
   }
 
   private creditUserBalance(userId: string, amount: number): void {
     this.db.run(
-      'UPDATE users SET virtual_balance = virtual_balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      "UPDATE users SET virtual_balance = virtual_balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
       amount,
-      userId
+      userId,
     );
   }
 
   private updateMarketAfterTrade(
     marketId: string,
     outcome: string,
-    type: 'BUY' | 'SELL',
+    type: "BUY" | "SELL",
     shares: number,
-    volume: number
+    volume: number,
   ): void {
     // Update total volume
     this.db.run(
-      'UPDATE prediction_markets SET total_volume = total_volume + ? WHERE id = ?',
+      "UPDATE prediction_markets SET total_volume = total_volume + ? WHERE id = ?",
       volume,
-      marketId
+      marketId,
     );
 
     // Update shares and prices (simplified CPMM)
@@ -423,37 +423,37 @@ export class MarketHandler {
     const yesShares = market.yesShares;
     const noShares = market.noShares;
 
-    const shareChange = type === 'BUY' ? shares : -shares;
+    const shareChange = type === "BUY" ? shares : -shares;
 
-    if (outcome === 'YES') {
+    if (outcome === "YES") {
       const newYesShares = Math.max(0.01, yesShares + shareChange);
       const newYesPrice = Math.min(
         0.99,
-        Math.max(0.01, noShares / (noShares + newYesShares))
+        Math.max(0.01, noShares / (noShares + newYesShares)),
       );
       const newNoPrice = 1 - newYesPrice;
 
       this.db.run(
-        'UPDATE prediction_markets SET yes_shares = ?, yes_price = ?, no_price = ? WHERE id = ?',
+        "UPDATE prediction_markets SET yes_shares = ?, yes_price = ?, no_price = ? WHERE id = ?",
         newYesShares,
         newYesPrice,
         newNoPrice,
-        marketId
+        marketId,
       );
     } else {
       const newNoShares = Math.max(0.01, noShares + shareChange);
       const newNoPrice = Math.min(
         0.99,
-        Math.max(0.01, yesShares / (yesShares + newNoShares))
+        Math.max(0.01, yesShares / (yesShares + newNoShares)),
       );
       const newYesPrice = 1 - newNoPrice;
 
       this.db.run(
-        'UPDATE prediction_markets SET no_shares = ?, yes_price = ?, no_price = ? WHERE id = ?',
+        "UPDATE prediction_markets SET no_shares = ?, yes_price = ?, no_price = ? WHERE id = ?",
         newNoShares,
         newYesPrice,
         newNoPrice,
-        marketId
+        marketId,
       );
     }
   }
@@ -468,11 +468,11 @@ export class MarketHandler {
   } {
     const marketRow = this.db
       .query(
-        'SELECT COUNT(*) as count, COALESCE(SUM(total_volume), 0) as volume FROM prediction_markets'
+        "SELECT COUNT(*) as count, COALESCE(SUM(total_volume), 0) as volume FROM prediction_markets",
       )
       .get() as { count: number; volume: number };
     const tradeRow = this.db
-      .query('SELECT COUNT(*) as count FROM trades')
+      .query("SELECT COUNT(*) as count FROM trades")
       .get() as { count: number };
 
     return {
@@ -486,13 +486,13 @@ export class MarketHandler {
     return {
       id: row.id as string,
       question: row.question as string,
-      description: (row.description as string) || '',
+      description: (row.description as string) || "",
       yesPrice: row.yes_price as number,
       noPrice: row.no_price as number,
       totalVolume: row.total_volume as number,
       yesShares: (row.yes_shares as number) || 0,
       noShares: (row.no_shares as number) || 0,
-      resolutionDate: (row.resolution_date as string) || '',
+      resolutionDate: (row.resolution_date as string) || "",
       status: row.status as string,
       createdAt: row.created_at as string,
     };

@@ -1,4 +1,4 @@
-import type { StaticOrganization } from './static-data-registry';
+import type { StaticOrganization } from "./static-data-registry";
 
 export interface MarketSimulationProfile {
   baseVolatility: number;
@@ -25,7 +25,7 @@ export interface GlobalMarketSimulationState {
 }
 
 const TYPE_PRESETS: Record<
-  StaticOrganization['type'],
+  StaticOrganization["type"],
   MarketSimulationProfile
 > = {
   company: {
@@ -119,7 +119,7 @@ export function getDefaultGlobalMarketSimulationState(): GlobalMarketSimulationS
 
 export function evolveGlobalMarketSimulationState(
   state: GlobalMarketSimulationState,
-  rng: () => number = Math.random
+  rng: () => number = Math.random,
 ): GlobalMarketSimulationState {
   const regimeShift = rng() < 0.03;
   const driftShock = sampleShock(rng) * 0.0015;
@@ -130,17 +130,17 @@ export function evolveGlobalMarketSimulationState(
     marketDrift: clamp(
       state.marketDrift * (regimeShift ? 0.35 : 0.82) + driftShock,
       -0.01,
-      0.01
+      0.01,
     ),
     riskSentiment: clamp(
       state.riskSentiment * (regimeShift ? 0.4 : 0.88) + sentimentShock,
       -1,
-      1
+      1,
     ),
     volatilityLevel: clamp(
       state.volatilityLevel * (regimeShift ? 0.7 : 0.9) + volatilityShock,
       0.65,
-      1.85
+      1.85,
     ),
   };
 }
@@ -150,11 +150,11 @@ export function buildMarketSimulationProfile(input: {
   ticker: string;
   organization?: Pick<
     StaticOrganization,
-    'type' | 'name' | 'description'
+    "type" | "name" | "description"
   > | null;
 }): MarketSimulationProfile {
   const preset =
-    TYPE_PRESETS[input.organization?.type ?? 'company'] ?? TYPE_PRESETS.company;
+    TYPE_PRESETS[input.organization?.type ?? "company"] ?? TYPE_PRESETS.company;
   const seedBase = `${input.organizationId}:${input.ticker}`;
   const volJitter = 0.85 + stableUnit(`${seedBase}:vol`) * 0.4;
   const jumpJitter = 0.8 + stableUnit(`${seedBase}:jump`) * 0.5;
@@ -173,7 +173,7 @@ export function buildMarketSimulationProfile(input: {
     liquiditySensitivity: clamp(
       preset.liquiditySensitivity * liquidityJitter,
       0.55,
-      1.5
+      1.5,
     ),
     idiosyncraticVolatility: preset.idiosyncraticVolatility * volJitter,
   };
@@ -181,7 +181,7 @@ export function buildMarketSimulationProfile(input: {
 
 export function createInitialMarketSimulationState(
   currentPrice: number,
-  profile: MarketSimulationProfile
+  profile: MarketSimulationProfile,
 ): MarketSimulationState {
   return {
     recentVolatility: profile.baseVolatility,
@@ -224,7 +224,7 @@ export function generateProfileDrivenMarketMove(params: {
   const gapToLatent = clamp(
     (nextLatentPrice - currentPrice) / Math.max(currentPrice, 1),
     -profile.maxTickMove,
-    profile.maxTickMove
+    profile.maxTickMove,
   );
 
   let move =
@@ -238,7 +238,7 @@ export function generateProfileDrivenMarketMove(params: {
   const jumpChance = clamp(
     profile.jumpChance * globalState.volatilityLevel * (1 + liquidityDamping),
     0,
-    0.2
+    0.2,
   );
   if (rng() < jumpChance) {
     const jumpDirection =
@@ -266,7 +266,7 @@ export function generateProfileDrivenMarketMove(params: {
       recentVolatility: clamp(
         state.recentVolatility * 0.78 + Math.abs(clampedMove) * 0.22,
         profile.baseVolatility * 0.75,
-        profile.maxTickMove
+        profile.maxTickMove,
       ),
       momentum: clampedMove,
       lastMove: clampedMove,

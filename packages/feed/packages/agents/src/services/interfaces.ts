@@ -13,8 +13,8 @@ import type {
   AgentRegistration,
   AgentStatus,
   TrustLevel,
-} from '../types/agent-registry';
-import type { JsonValue } from '../types/common';
+} from "../types/agent-registry";
+import type { JsonValue } from "../types/common";
 
 /**
  * Agent Registry Service Interface
@@ -41,7 +41,7 @@ export interface IAgentRegistry {
    */
   updateAgentStatus(
     agentId: string,
-    status: AgentStatus
+    status: AgentStatus,
   ): Promise<AgentRegistration>;
 
   /**
@@ -97,7 +97,7 @@ export interface ICharacterMappingService {
       name: string;
       systemPrompt: string;
       traits: string[];
-    }
+    },
   ): Promise<void>;
 }
 
@@ -127,7 +127,7 @@ export interface ITrajectoryRecorder {
       success: boolean;
       totalReward: number;
       metadata?: Record<string, JsonValue>;
-    }
+    },
   ): Promise<void>;
 }
 
@@ -140,7 +140,7 @@ export interface IPredictionPricing {
    */
   calculatePrice(params: {
     marketId: string;
-    side: 'YES' | 'NO';
+    side: "YES" | "NO";
     shares: number;
   }): Promise<{
     price: number;
@@ -250,7 +250,7 @@ export function getServiceContainer(): IServiceContainer {
  * Get a specific service with type safety
  */
 export function getService<K extends keyof IServiceContainer>(
-  key: K
+  key: K,
 ): IServiceContainer[K] {
   return getFeedAgentsGlobal().__feed_agents_services__?.[key];
 }

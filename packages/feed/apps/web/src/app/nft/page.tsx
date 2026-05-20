@@ -1,19 +1,19 @@
-'use client';
+"use client";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
-import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
-import { toast } from 'sonner';
-import { NftGrid, RevealModal } from '@/components/nft';
-import { PageContainer } from '@/components/shared/PageContainer';
-import { useAuth } from '@/hooks/useAuth';
-import { useNftMint } from '@/hooks/useNftMint';
-import type { NftGalleryResponse, NftSummary } from '@/types/nft';
-import { apiFetch } from '@/utils/api-fetch';
-import { apiUrl } from '@/utils/api-url';
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
+import { NftGrid, RevealModal } from "@/components/nft";
+import { PageContainer } from "@/components/shared/PageContainer";
+import { useAuth } from "@/hooks/useAuth";
+import { useNftMint } from "@/hooks/useNftMint";
+import type { NftGalleryResponse, NftSummary } from "@/types/nft";
+import { apiFetch } from "@/utils/api-fetch";
+import { apiUrl } from "@/utils/api-url";
 
-type ViewTab = 'all' | 'mine';
+type ViewTab = "all" | "mine";
 
 export default function NftGalleryPage() {
   const { authenticated, user } = useAuth();
@@ -35,9 +35,9 @@ export default function NftGalleryPage() {
   const [error, setError] = useState<string | null>(null);
 
   // Tabs & filters
-  const [viewTab, setViewTab] = useState<ViewTab>('all');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [viewTab, setViewTab] = useState<ViewTab>("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
 
   // Stats
   const [totalNfts, setTotalNfts] = useState(0);
@@ -45,7 +45,7 @@ export default function NftGalleryPage() {
 
   // Modals
   const [showEligibilityModal, setShowEligibilityModal] = useState(false);
-  const showRevealModal = flowState === 'revealing';
+  const showRevealModal = flowState === "revealing";
   const [ensuringChatAccess, setEnsuringChatAccess] = useState(false);
 
   // Debounce search
@@ -62,21 +62,21 @@ export default function NftGalleryPage() {
     setError(null);
 
     const params = new URLSearchParams({
-      limit: '100',
-      sort: 'tokenId',
-      order: 'asc',
+      limit: "100",
+      sort: "tokenId",
+      order: "asc",
     });
 
     if (debouncedSearch.trim()) {
-      params.set('search', debouncedSearch.trim());
+      params.set("search", debouncedSearch.trim());
     }
 
     const response = await fetch(
-      apiUrl(`/api/nft/collection?${params.toString()}`)
+      apiUrl(`/api/nft/collection?${params.toString()}`),
     );
 
     if (!response.ok) {
-      setError('Failed to load NFT collection');
+      setError("Failed to load NFT collection");
       setLoading(false);
       return;
     }
@@ -100,7 +100,7 @@ export default function NftGalleryPage() {
     return false;
   };
 
-  const displayedNfts = viewTab === 'mine' ? nfts.filter(isMyNft) : nfts;
+  const displayedNfts = viewTab === "mine" ? nfts.filter(isMyNft) : nfts;
   const myNftCount = nfts.filter(isMyNft).length;
 
   // Handle claim button click
@@ -123,30 +123,30 @@ export default function NftGalleryPage() {
 
     setEnsuringChatAccess(true);
     try {
-      const response = await apiFetch('/api/nft/chat/ensure', {
-        method: 'POST',
+      const response = await apiFetch("/api/nft/chat/ensure", {
+        method: "POST",
       });
 
       if (!response.ok) {
         const json = (await response.json().catch(() => null)) as {
           error?: string;
         } | null;
-        toast.error(json?.error ?? 'Failed to unlock chat access');
+        toast.error(json?.error ?? "Failed to unlock chat access");
         return;
       }
 
-      router.push('/chats');
+      router.push("/chats");
     } catch {
-      toast.error('Failed to unlock chat access');
+      toast.error("Failed to unlock chat access");
     } finally {
       setEnsuringChatAccess(false);
     }
   };
 
   const mintStepState = {
-    preparing: flowState === 'preparing',
-    minting: flowState === 'minting',
-    confirming: flowState === 'confirming',
+    preparing: flowState === "preparing",
+    minting: flowState === "minting",
+    confirming: flowState === "confirming",
   };
 
   const mintStepIndex = mintStepState.confirming
@@ -156,10 +156,10 @@ export default function NftGalleryPage() {
       : 0;
 
   const mintStatusMessage = mintStepState.preparing
-    ? 'Preparing your claim...'
+    ? "Preparing your claim..."
     : mintStepState.minting
-      ? 'Submitting transaction to Ethereum...'
-      : 'Waiting for network confirmation...';
+      ? "Submitting transaction to Ethereum..."
+      : "Waiting for network confirmation...";
 
   return (
     <PageContainer noPadding className="flex h-full flex-col pt-14 md:pt-0">
@@ -182,7 +182,7 @@ export default function NftGalleryPage() {
                 disabled={isMinting || isCheckingEligibility}
                 className="rounded-full bg-[#0066FF] px-5 py-2.5 font-semibold text-sm text-white shadow-md transition-all hover:scale-105 hover:bg-[#2952d9] hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
               >
-                {isCheckingEligibility ? 'Checking...' : 'Claim'}
+                {isCheckingEligibility ? "Checking..." : "Claim"}
               </button>
             )}
 
@@ -195,8 +195,8 @@ export default function NftGalleryPage() {
                   className="rounded-lg border border-[#0066FF]/30 bg-[#0066FF]/10 px-4 py-2 text-[#0066FF] text-sm transition-colors hover:bg-[#0066FF]/20 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {ensuringChatAccess
-                    ? 'Opening chat...'
-                    : 'Open FD Alpha Chat →'}
+                    ? "Opening chat..."
+                    : "Open FD Alpha Chat →"}
                 </button>
                 {eligibility?.mintedNft ? (
                   <a
@@ -213,17 +213,17 @@ export default function NftGalleryPage() {
           {/* Stats row */}
           <div className="flex items-center gap-6 text-sm">
             <span className="text-muted-foreground">
-              <span className="font-medium text-foreground">{totalNfts}</span>{' '}
+              <span className="font-medium text-foreground">{totalNfts}</span>{" "}
               Total
             </span>
             <span className="text-muted-foreground">
-              <span className="font-medium text-green-600">{claimedCount}</span>{' '}
+              <span className="font-medium text-green-600">{claimedCount}</span>{" "}
               Claimed
             </span>
             <span className="text-muted-foreground">
               <span className="font-medium text-foreground">
                 {totalNfts - claimedCount}
-              </span>{' '}
+              </span>{" "}
               Available
             </span>
           </div>
@@ -236,11 +236,11 @@ export default function NftGalleryPage() {
           {/* Tabs */}
           <div className="flex gap-1">
             <button
-              onClick={() => setViewTab('all')}
+              onClick={() => setViewTab("all")}
               className={`rounded-md px-4 py-2 font-medium text-sm transition-colors ${
-                viewTab === 'all'
-                  ? 'bg-[#0066FF] text-white'
-                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                viewTab === "all"
+                  ? "bg-[#0066FF] text-white"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
               }`}
             >
               <span className="sm:hidden">All</span>
@@ -248,11 +248,11 @@ export default function NftGalleryPage() {
             </button>
             {authenticated && (
               <button
-                onClick={() => setViewTab('mine')}
+                onClick={() => setViewTab("mine")}
                 className={`rounded-md px-4 py-2 font-medium text-sm transition-colors ${
-                  viewTab === 'mine'
-                    ? 'bg-[#0066FF] text-white'
-                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                  viewTab === "mine"
+                    ? "bg-[#0066FF] text-white"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
                 }`}
               >
                 <span className="sm:hidden">
@@ -276,7 +276,7 @@ export default function NftGalleryPage() {
             />
             {searchQuery && (
               <button
-                onClick={() => setSearchQuery('')}
+                onClick={() => setSearchQuery("")}
                 className="absolute top-1/2 right-3 -translate-y-1/2 text-muted-foreground hover:text-foreground"
               >
                 ×
@@ -331,10 +331,10 @@ export default function NftGalleryPage() {
                   You&apos;re Eligible!
                 </h3>
                 <p className="mb-2 text-muted-foreground">
-                  You ranked{' '}
+                  You ranked{" "}
                   <span className="font-bold text-[#0066FF]">
                     #{eligibility.snapshotRank}
-                  </span>{' '}
+                  </span>{" "}
                   on the leaderboard
                 </p>
                 <p className="mb-6 text-muted-foreground text-sm">
@@ -352,7 +352,7 @@ export default function NftGalleryPage() {
                     disabled={isMinting}
                     className="flex-1 rounded-full bg-[#0066FF] py-2.5 font-semibold text-sm text-white shadow-md transition-all hover:scale-105 hover:bg-[#2952d9] hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
                   >
-                    {isMinting ? 'Claiming...' : 'Claim My NFT'}
+                    {isMinting ? "Claiming..." : "Claim My NFT"}
                   </button>
                 </div>
               </div>
@@ -439,7 +439,7 @@ export default function NftGalleryPage() {
             </p>
 
             <div className="mb-4 grid grid-cols-3 gap-2 text-center">
-              {['Prepare', 'Submit', 'Confirm'].map((label, index) => {
+              {["Prepare", "Submit", "Confirm"].map((label, index) => {
                 const isActive = index === mintStepIndex;
                 const isComplete = index < mintStepIndex;
 
@@ -448,15 +448,15 @@ export default function NftGalleryPage() {
                     <div
                       className={`h-1.5 rounded-full transition-colors ${
                         isComplete || isActive
-                          ? 'bg-[#0066FF]'
-                          : 'bg-muted-foreground/20'
+                          ? "bg-[#0066FF]"
+                          : "bg-muted-foreground/20"
                       }`}
                     />
                     <p
                       className={`font-medium text-xs ${
                         isComplete || isActive
-                          ? 'text-foreground'
-                          : 'text-muted-foreground'
+                          ? "text-foreground"
+                          : "text-muted-foreground"
                       }`}
                     >
                       {label}

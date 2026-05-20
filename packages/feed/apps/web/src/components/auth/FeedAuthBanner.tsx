@@ -1,25 +1,25 @@
-'use client';
+"use client";
 
-import { cn } from '@feed/shared';
-import { usePathname, useSearchParams } from 'next/navigation';
-import { Suspense } from 'react';
-import { useEmbedMode } from '@/contexts/EmbedContext';
-import { useAuth } from '@/hooks/useAuth';
+import { cn } from "@feed/shared";
+import { usePathname, useSearchParams } from "next/navigation";
+import { Suspense } from "react";
+import { useEmbedMode } from "@/contexts/EmbedContext";
+import { useAuth } from "@/hooks/useAuth";
 
 function hasDesktopRightRail(pathname: string | null): boolean {
   if (!pathname) return false;
 
   return (
-    pathname === '/' ||
-    pathname === '/feed' ||
-    pathname === '/notifications' ||
-    pathname === '/wallet' ||
-    pathname === '/leaderboard' ||
-    pathname.startsWith('/trending/') ||
-    pathname.startsWith('/article/') ||
-    pathname.startsWith('/post/') ||
-    pathname.startsWith('/comment/') ||
-    pathname.startsWith('/u/')
+    pathname === "/" ||
+    pathname === "/feed" ||
+    pathname === "/notifications" ||
+    pathname === "/wallet" ||
+    pathname === "/leaderboard" ||
+    pathname.startsWith("/trending/") ||
+    pathname.startsWith("/article/") ||
+    pathname.startsWith("/post/") ||
+    pathname.startsWith("/comment/") ||
+    pathname.startsWith("/u/")
   );
 }
 
@@ -39,11 +39,11 @@ function FeedAuthBannerContent() {
   const searchParams = useSearchParams();
 
   // Check if dev mode is enabled via URL parameter (for staging testing)
-  const isDevMode = searchParams.get('dev') === 'true';
+  const isDevMode = searchParams.get("dev") === "true";
 
   // Hide when WAITLIST_MODE is enabled on home page (unless ?dev=true)
-  const isWaitlistMode = process.env.NEXT_PUBLIC_WAITLIST_MODE === 'true';
-  const isHomePage = pathname === '/';
+  const isWaitlistMode = process.env.NEXT_PUBLIC_WAITLIST_MODE === "true";
+  const isHomePage = pathname === "/";
   const { isEmbedded } = useEmbedMode();
   const shouldHide = isEmbedded || (isWaitlistMode && isHomePage && !isDevMode);
   const rightRailDesktop = hasDesktopRightRail(pathname);
@@ -66,15 +66,15 @@ function FeedAuthBannerContent() {
   return (
     <div
       className={cn(
-        'fixed right-0 bottom-0 left-0 z-50',
-        'bg-background text-foreground',
-        'border-border border-t-2'
+        "fixed right-0 bottom-0 left-0 z-50",
+        "bg-background text-foreground",
+        "border-border border-t-2",
       )}
     >
       <div
         className={cn(
-          'mark mx-auto max-w-7xl px-4 py-4 md:pl-20 lg:pl-64',
-          rightRailDesktop && 'xl:pr-96'
+          "mark mx-auto max-w-7xl px-4 py-4 md:pl-20 lg:pl-64",
+          rightRailDesktop && "xl:pr-96",
         )}
       >
         <div className="flex items-center justify-between gap-4">
@@ -86,11 +86,11 @@ function FeedAuthBannerContent() {
             <button
               onClick={login}
               className={cn(
-                'px-6 py-2 font-bold',
-                'bg-background text-foreground',
-                'hover:bg-background/90 hover:text-foreground',
-                'transition-colors',
-                'bg-primary text-primary-foreground'
+                "px-6 py-2 font-bold",
+                "bg-background text-foreground",
+                "hover:bg-background/90 hover:text-foreground",
+                "transition-colors",
+                "bg-primary text-primary-foreground",
               )}
             >
               Log in

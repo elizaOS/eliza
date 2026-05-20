@@ -20,22 +20,22 @@ import {
   successResponse,
   verifyCronAuth,
   withErrorHandling,
-} from '@feed/api';
-import { autoWhitelistCurrentTopN } from '@feed/api/services/whitelist-service';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@feed/api";
+import { autoWhitelistCurrentTopN } from "@feed/api/services/whitelist-service";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 export const maxDuration = 60;
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const startTime = new Date();
-  requireCronAuth(request, { jobName: 'WhitelistTopNCron' });
+  requireCronAuth(request, { jobName: "WhitelistTopNCron" });
 
   const result = await autoWhitelistCurrentTopN();
 
-  recordCronExecution('whitelist-topn', startTime, {
+  recordCronExecution("whitelist-topn", startTime, {
     success: true,
     ...result,
   });
@@ -50,18 +50,18 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 export const GET = withErrorHandling(async (request: NextRequest) => {
   if (
     !verifyCronAuth(request, {
-      jobName: 'WhitelistTopNCron',
+      jobName: "WhitelistTopNCron",
       allowVercelCronUserAgent: true,
     })
   ) {
     logger.warn(
-      'Unauthorized GET request to cron endpoint',
+      "Unauthorized GET request to cron endpoint",
       undefined,
-      'WhitelistTopNCron'
+      "WhitelistTopNCron",
     );
     return NextResponse.json(
-      { error: 'Unauthorized cron request' },
-      { status: 401 }
+      { error: "Unauthorized cron request" },
+      { status: 401 },
     );
   }
 

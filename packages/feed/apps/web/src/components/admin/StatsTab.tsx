@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { cn } from '@feed/shared';
+import { cn } from "@feed/shared";
 import {
   Activity,
   Award,
@@ -12,13 +12,13 @@ import {
   UserCheck,
   Users,
   Zap,
-} from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
-import { z } from 'zod';
-import { Avatar } from '@/components/shared/Avatar';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { formatCurrencyCompact } from '@/lib/format';
-import { apiUrl } from '@/utils/api-url';
+} from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { z } from "zod";
+import { Avatar } from "@/components/shared/Avatar";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { formatCurrencyCompact } from "@/lib/format";
+import { apiUrl } from "@/utils/api-url";
 
 /**
  * User stats schema for validation.
@@ -82,12 +82,12 @@ const SystemStatsSchema = z.object({
       UserStatsSchema.extend({
         virtualBalance: z.string(),
         lifetimePnL: z.string(),
-      })
+      }),
     ),
     byReputation: z.array(
       UserStatsSchema.extend({
         reputationPoints: z.number(),
-      })
+      }),
     ),
   }),
   recentSignups: z.array(
@@ -96,7 +96,7 @@ const SystemStatsSchema = z.object({
       createdAt: z.string(),
       hasFarcaster: z.boolean(),
       hasTwitter: z.boolean(),
-    })
+    }),
   ),
 });
 type SystemStats = z.infer<typeof SystemStatsSchema>;
@@ -141,7 +141,7 @@ const TokenStatsSchema = z.object({
       totalOutputTokens: z.number(),
       totalTokens: z.number(),
       avgTokensPerCall: z.number(),
-    })
+    }),
   ),
   byModel: z.array(
     z.object({
@@ -152,7 +152,7 @@ const TokenStatsSchema = z.object({
       totalOutputTokens: z.number(),
       totalTokens: z.number(),
       avgTokensPerCall: z.number(),
-    })
+    }),
   ),
   recentTicks: z.array(
     z.object({
@@ -161,7 +161,7 @@ const TokenStatsSchema = z.object({
       tickCompletedAt: z.string(),
       totalCalls: z.number(),
       totalTokens: z.number(),
-    })
+    }),
   ),
 });
 type TokenStats = z.infer<typeof TokenStatsSchema>;
@@ -195,12 +195,12 @@ export function StatsTab() {
   const [error, setError] = useState<string | null>(null);
 
   const fetchStats = useCallback(async () => {
-    const response = await fetch(apiUrl('/api/admin/stats'));
-    if (!response.ok) throw new Error('Failed to fetch stats');
+    const response = await fetch(apiUrl("/api/admin/stats"));
+    if (!response.ok) throw new Error("Failed to fetch stats");
     const data = await response.json();
     const validation = SystemStatsSchema.safeParse(data);
     if (!validation.success) {
-      throw new Error('Invalid system stats data structure');
+      throw new Error("Invalid system stats data structure");
     }
     setStats(validation.data);
     setError(null);
@@ -208,7 +208,7 @@ export function StatsTab() {
   }, []);
 
   const fetchFeeStats = useCallback(async () => {
-    const response = await fetch(apiUrl('/api/admin/fees'));
+    const response = await fetch(apiUrl("/api/admin/fees"));
     if (!response.ok) return; // Fail silently for fees
     const data = await response.json();
     const validation = FeeStatsSchema.safeParse(data.platformStats);
@@ -219,7 +219,7 @@ export function StatsTab() {
 
   const fetchTokenStats = useCallback(async () => {
     const response = await fetch(
-      apiUrl('/api/stats/tokens?period=day&limit=50')
+      apiUrl("/api/stats/tokens?period=day&limit=50"),
     );
     if (!response.ok) return; // Fail silently for token stats
     const data = await response.json();
@@ -232,7 +232,7 @@ export function StatsTab() {
   useEffect(() => {
     const loadData = async () => {
       await fetchStats().catch((err) => {
-        setError(err instanceof Error ? err.message : 'Failed to load stats');
+        setError(err instanceof Error ? err.message : "Failed to load stats");
         setLoading(false);
       });
       fetchFeeStats(); // This one fails silently
@@ -258,25 +258,25 @@ export function StatsTab() {
     icon: Icon,
     label,
     value,
-    color = 'primary',
+    color = "primary",
   }: {
     icon: React.ComponentType<{ className?: string }>;
     label: string;
     value: string | number;
-    color?: 'primary' | 'green' | 'blue' | 'orange' | 'red' | 'purple';
+    color?: "primary" | "green" | "blue" | "orange" | "red" | "purple";
   }) => {
     const colorClasses = {
-      primary: 'text-primary',
-      green: 'text-green-500',
-      blue: 'text-blue-500',
-      orange: 'text-orange-500',
-      red: 'text-red-500',
-      purple: 'text-purple-500',
+      primary: "text-primary",
+      green: "text-green-500",
+      blue: "text-blue-500",
+      orange: "text-orange-500",
+      red: "text-red-500",
+      purple: "text-purple-500",
     };
 
     return (
       <div className="flex items-center gap-3">
-        <Icon className={cn('h-4 w-4 flex-shrink-0', colorClasses[color])} />
+        <Icon className={cn("h-4 w-4 flex-shrink-0", colorClasses[color])} />
         <div className="min-w-0 flex-1">
           <div className="text-muted-foreground text-sm">{label}</div>
           <div className="font-bold text-xl">{value}</div>
@@ -299,7 +299,7 @@ export function StatsTab() {
   if (error || !stats) {
     return (
       <div className="p-8 text-center text-red-500">
-        {error || 'Failed to load statistics'}
+        {error || "Failed to load statistics"}
       </div>
     );
   }
@@ -377,8 +377,8 @@ export function StatsTab() {
               value={formatCurrency(stats.financial.totalLifetimePnL)}
               color={
                 parseFloat(stats.financial.totalLifetimePnL) >= 0
-                  ? 'green'
-                  : 'red'
+                  ? "green"
+                  : "red"
               }
             />
           </div>
@@ -719,12 +719,12 @@ export function StatsTab() {
                 </div>
                 <Avatar
                   src={user.profileImageUrl ?? undefined}
-                  alt={user.displayName || user.username || 'User'}
+                  alt={user.displayName || user.username || "User"}
                   size="sm"
                 />
                 <div className="min-w-0 flex-1">
                   <div className="truncate font-medium text-sm">
-                    {user.displayName || user.username || 'Anonymous'}
+                    {user.displayName || user.username || "Anonymous"}
                   </div>
                   {user.username && user.displayName !== user.username && (
                     <div className="truncate text-muted-foreground text-xs">
@@ -738,10 +738,10 @@ export function StatsTab() {
                   </div>
                   <div
                     className={cn(
-                      'text-xs',
+                      "text-xs",
                       parseFloat(user.lifetimePnL) >= 0
-                        ? 'text-green-600'
-                        : 'text-red-600'
+                        ? "text-green-600"
+                        : "text-red-600",
                     )}
                   >
                     P&L: {formatCurrency(user.lifetimePnL)}
@@ -765,12 +765,12 @@ export function StatsTab() {
               >
                 <Avatar
                   src={user.profileImageUrl ?? undefined}
-                  alt={user.displayName || user.username || 'User'}
+                  alt={user.displayName || user.username || "User"}
                   size="sm"
                 />
                 <div className="min-w-0 flex-1">
                   <div className="truncate font-medium text-sm">
-                    {user.displayName || user.username || 'Anonymous'}
+                    {user.displayName || user.username || "Anonymous"}
                   </div>
                   <div className="text-muted-foreground text-xs">
                     {new Date(user.createdAt).toLocaleDateString()}

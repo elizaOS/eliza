@@ -5,7 +5,7 @@
  * Used to measure costs, optimize prompts, and provide transparency on AI usage.
  */
 
-export type LLMProviderName = 'elizacloud' | 'groq' | 'claude' | 'openai';
+export type LLMProviderName = "elizacloud" | "groq" | "claude" | "openai";
 
 /**
  * Token usage for a single LLM call
@@ -170,13 +170,13 @@ export interface TokenStatsSummary {
  */
 export interface TokenUsageCollector {
   /** Record a completed LLM call */
-  recordCall(usage: Omit<LLMCallTokenUsage, 'callId' | 'timestamp'>): void;
+  recordCall(usage: Omit<LLMCallTokenUsage, "callId" | "timestamp">): void;
   /** Get all recorded calls */
   getCalls(): LLMCallTokenUsage[];
   /** Get aggregated statistics */
   getStats(): Omit<
     TickTokenStats,
-    'tickId' | 'tickStartedAt' | 'tickCompletedAt' | 'tickDurationMs'
+    "tickId" | "tickStartedAt" | "tickCompletedAt" | "tickDurationMs"
   >;
   /** Reset the collector for a new tick */
   reset(): void;
@@ -191,20 +191,20 @@ export const TOKEN_COST_PER_MILLION: Record<
   { input: number; output: number }
 > = {
   // Groq (very cheap)
-  'openai/gpt-oss-120b': { input: 0.3, output: 0.3 },
-  'llama-3.3-70b-versatile': { input: 0.59, output: 0.79 },
-  'llama-3.1-8b-instant': { input: 0.05, output: 0.08 },
-  'moonshotai/kimi-k2-instruct-0905': { input: 0.3, output: 0.3 },
+  "openai/gpt-oss-120b": { input: 0.3, output: 0.3 },
+  "llama-3.3-70b-versatile": { input: 0.59, output: 0.79 },
+  "llama-3.1-8b-instant": { input: 0.05, output: 0.08 },
+  "moonshotai/kimi-k2-instruct-0905": { input: 0.3, output: 0.3 },
 
   // OpenAI
-  'gpt-5.1': { input: 2.5, output: 10.0 },
-  'gpt-5-nano': { input: 0.15, output: 0.6 },
-  'gpt-5.1-turbo': { input: 0.5, output: 1.5 },
+  "gpt-5.1": { input: 2.5, output: 10.0 },
+  "gpt-5-nano": { input: 0.15, output: 0.6 },
+  "gpt-5.1-turbo": { input: 0.5, output: 1.5 },
 
   // Anthropic/Claude
-  'claude-sonnet-4-5': { input: 3.0, output: 15.0 },
-  'claude-haiku-4-5': { input: 0.25, output: 1.25 },
-  'claude-opus-4-1': { input: 15.0, output: 75.0 },
+  "claude-sonnet-4-5": { input: 3.0, output: 15.0 },
+  "claude-haiku-4-5": { input: 0.25, output: 1.25 },
+  "claude-opus-4-1": { input: 15.0, output: 75.0 },
 
   // Default fallback
   default: { input: 1.0, output: 3.0 },
@@ -216,7 +216,7 @@ export const TOKEN_COST_PER_MILLION: Record<
 export function calculateEstimatedCost(
   model: string,
   inputTokens: number,
-  outputTokens: number
+  outputTokens: number,
 ): { inputCostUSD: number; outputCostUSD: number; totalCostUSD: number } {
   const defaultCosts = { input: 1.0, output: 3.0 };
   const costs =

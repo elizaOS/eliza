@@ -19,25 +19,25 @@ import {
   validateDateRange,
   validateEnum,
   withErrorHandling,
-} from '@feed/api';
-import { db } from '@feed/db';
-import { logger, toISO } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/api";
+import { db } from "@feed/db";
+import { logger, toISO } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 /** Valid heatmap types */
-const VALID_TYPES = ['hourly', 'calendar'] as const;
+const VALID_TYPES = ["hourly", "calendar"] as const;
 type HeatmapType = (typeof VALID_TYPES)[number];
 
 /** Valid activity types to filter */
-const VALID_ACTIVITIES = ['all', 'trades', 'posts', 'messages'] as const;
+const VALID_ACTIVITIES = ["all", "trades", "posts", "messages"] as const;
 type ActivityType = (typeof VALID_ACTIVITIES)[number];
 
 function validateType(value: string | null): HeatmapType {
-  return validateEnum(value, VALID_TYPES, 'hourly');
+  return validateEnum(value, VALID_TYPES, "hourly");
 }
 
 function validateActivity(value: string | null): ActivityType {
-  return validateEnum(value, VALID_ACTIVITIES, 'all');
+  return validateEnum(value, VALID_ACTIVITIES, "all");
 }
 
 interface HourlyDataPoint {
@@ -52,34 +52,34 @@ interface CalendarDataPoint {
 }
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
-  const admin = await requirePermission(request, 'view_stats');
+  const admin = await requirePermission(request, "view_stats");
 
   const rateLimitResult = applyRateLimit(
     admin.userId,
-    RATE_LIMIT_CONFIGS.ADMIN_STATS
+    RATE_LIMIT_CONFIGS.ADMIN_STATS,
   );
   if (!rateLimitResult.allowed) {
     return rateLimitError(rateLimitResult.retryAfter);
   }
 
   const { searchParams } = new URL(request.url);
-  const type = validateType(searchParams.get('type'));
-  const activityType = validateActivity(searchParams.get('activityType'));
-  const startDate = parseDateParam(searchParams.get('startDate'));
-  const endDate = parseDateParam(searchParams.get('endDate'));
+  const type = validateType(searchParams.get("type"));
+  const activityType = validateActivity(searchParams.get("activityType"));
+  const startDate = parseDateParam(searchParams.get("startDate"));
+  const endDate = parseDateParam(searchParams.get("endDate"));
 
   const dateRangeError = validateDateRange(startDate, endDate);
   if (dateRangeError) {
     return successResponse(
       { error: dateRangeError, maxDays: MAX_DATE_RANGE_DAYS },
-      400
+      400,
     );
   }
 
   logger.info(
-    'Heatmap data requested',
+    "Heatmap data requested",
     { type, activityType, startDate, endDate },
-    'GET /api/admin/stats/heatmap'
+    "GET /api/admin/stats/heatmap",
   );
 
   const now = new Date();
@@ -88,11 +88,11 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   const queryStart = (startDate ?? defaultStart).toISOString();
   const queryEnd = (endDate ?? now).toISOString();
 
-  if (type === 'hourly') {
+  if (type === "hourly") {
     // Hourly heatmap: aggregate by day of week (0-6) and hour (0-23)
     let hourlyData: HourlyDataPoint[];
 
-    if (activityType === 'trades') {
+    if (activityType === "trades") {
       hourlyData = await db.$queryRaw<HourlyDataPoint>`
         SELECT 
           EXTRACT(DOW FROM bt."createdAt")::text as day_of_week,
@@ -109,7 +109,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         GROUP BY EXTRACT(DOW FROM bt."createdAt"), EXTRACT(HOUR FROM bt."createdAt")
         ORDER BY day_of_week, hour
       `;
-    } else if (activityType === 'posts') {
+    } else if (activityType === "posts") {
       hourlyData = await db.$queryRaw<HourlyDataPoint>`
         SELECT 
           EXTRACT(DOW FROM p."createdAt")::text as day_of_week,
@@ -126,7 +126,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         GROUP BY EXTRACT(DOW FROM p."createdAt"), EXTRACT(HOUR FROM p."createdAt")
         ORDER BY day_of_week, hour
       `;
-    } else if (activityType === 'messages') {
+    } else if (activityType === "messages") {
       hourlyData = await db.$queryRaw<HourlyDataPoint>`
         SELECT 
           EXTRACT(DOW FROM m."createdAt")::text as day_of_week,
@@ -209,7 +209,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
     // Build 7x24 grid, filling zeros for missing slots
     const counts = new Map(
-      hourlyData.map((r) => [`${r.day_of_week}-${r.hour}`, Number(r.count)])
+      hourlyData.map((r) => [`${r.day_of_week}-${r.hour}`, Number(r.count)]),
     );
     const maxCount = Math.max(0, ...counts.values());
 
@@ -228,7 +228,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     const totalActivities = data.reduce((sum, d) => sum + d.count, 0);
 
     return successResponse({
-      type: 'hourly',
+      type: "hourly",
       activityType,
       data,
       metadata: {
@@ -243,7 +243,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   // Calendar heatmap: daily activity counts
   let calendarData: CalendarDataPoint[];
 
-  if (activityType === 'trades') {
+  if (activityType === "trades") {
     calendarData = await db.$queryRaw<CalendarDataPoint>`
       SELECT 
         DATE(bt."createdAt") as date,
@@ -259,7 +259,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       GROUP BY DATE(bt."createdAt")
       ORDER BY date
     `;
-  } else if (activityType === 'posts') {
+  } else if (activityType === "posts") {
     calendarData = await db.$queryRaw<CalendarDataPoint>`
       SELECT 
         DATE(p."createdAt") as date,
@@ -275,7 +275,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       GROUP BY DATE(p."createdAt")
       ORDER BY date
     `;
-  } else if (activityType === 'messages') {
+  } else if (activityType === "messages") {
     calendarData = await db.$queryRaw<CalendarDataPoint>`
       SELECT 
         DATE(m."createdAt") as date,
@@ -361,7 +361,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     const count = Number(row.count);
     const date =
       row.date instanceof Date
-        ? (toISO(row.date).split('T')[0] ?? '')
+        ? (toISO(row.date).split("T")[0] ?? "")
         : String(row.date);
     return { date, count, intensity: maxCount > 0 ? count / maxCount : 0 };
   });
@@ -369,7 +369,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   const totalActivities = data.reduce((sum, d) => sum + d.count, 0);
 
   return successResponse({
-    type: 'calendar',
+    type: "calendar",
     activityType,
     data,
     metadata: {

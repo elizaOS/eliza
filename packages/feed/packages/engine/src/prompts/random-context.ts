@@ -20,10 +20,10 @@ import {
   markets,
   posts,
   worldEvents,
-} from '@feed/db';
-import { logger } from '@feed/shared';
-import { StaticDataRegistry } from '../services/static-data-registry';
-import { sampleRandom, shuffleArray } from '../utils/randomization';
+} from "@feed/db";
+import { logger } from "@feed/shared";
+import { StaticDataRegistry } from "../services/static-data-registry";
+import { sampleRandom, shuffleArray } from "../utils/randomization";
 
 export interface RandomMarketContext {
   gainers?: Array<{ name: string; price: number; change: number }>;
@@ -37,16 +37,16 @@ export interface RandomMarketContext {
  * Get top market gainers (stocks with biggest price increases)
  */
 async function getMarketGainers(
-  limit = 3
+  limit = 3,
 ): Promise<Array<{ name: string; price: number; change: number }>> {
   try {
     // Get static org data and dynamic prices
     const staticOrgs = StaticDataRegistry.getAllOrganizations().filter(
-      (o) => o.type === 'company'
+      (o) => o.type === "company",
     );
     const orgStates = await getDbInstance().getAllOrganizationStates();
     const priceMap = new Map(
-      orgStates.map((s): [string, number | null] => [s.id, s.currentPrice])
+      orgStates.map((s): [string, number | null] => [s.id, s.currentPrice]),
     );
 
     const withChanges = staticOrgs
@@ -66,7 +66,7 @@ async function getMarketGainers(
 
     return withChanges;
   } catch (error) {
-    logger.error('Error fetching market gainers', { error }, 'random-context');
+    logger.error("Error fetching market gainers", { error }, "random-context");
     return [];
   }
 }
@@ -75,16 +75,16 @@ async function getMarketGainers(
  * Get top market losers (stocks with biggest price decreases)
  */
 async function getMarketLosers(
-  limit = 3
+  limit = 3,
 ): Promise<Array<{ name: string; price: number; change: number }>> {
   try {
     // Get static org data and dynamic prices (reuse data from gainers)
     const staticOrgs = StaticDataRegistry.getAllOrganizations().filter(
-      (o) => o.type === 'company'
+      (o) => o.type === "company",
     );
     const orgStates = await getDbInstance().getAllOrganizationStates();
     const priceMap = new Map(
-      orgStates.map((s): [string, number | null] => [s.id, s.currentPrice])
+      orgStates.map((s): [string, number | null] => [s.id, s.currentPrice]),
     );
 
     const withChanges = staticOrgs
@@ -104,7 +104,7 @@ async function getMarketLosers(
 
     return withChanges;
   } catch (error) {
-    logger.error('Error fetching market losers', { error }, 'random-context');
+    logger.error("Error fetching market losers", { error }, "random-context");
     return [];
   }
 }
@@ -113,7 +113,7 @@ async function getMarketLosers(
  * Get random active prediction questions
  */
 async function getActiveQuestions(
-  limit = 3
+  limit = 3,
 ): Promise<Array<{ question: string; yesPrice: number }>> {
   try {
     const now = new Date();
@@ -137,9 +137,9 @@ async function getActiveQuestions(
     return sampleRandom(formatted, limit);
   } catch (error) {
     logger.error(
-      'Error fetching active questions',
+      "Error fetching active questions",
       { error },
-      'random-context'
+      "random-context",
     );
     return [];
   }
@@ -149,7 +149,7 @@ async function getActiveQuestions(
  * Get trending posts (high engagement)
  */
 async function getTrendingPosts(
-  limit = 3
+  limit = 3,
 ): Promise<Array<{ author: string; content: string; likes: number }>> {
   try {
     const now = new Date();
@@ -163,16 +163,16 @@ async function getTrendingPosts(
       .limit(20); // Get more, then sample
 
     const formatted = postsResult.map((p) => ({
-      author: 'Unknown', // Author info would need a join with User table
+      author: "Unknown", // Author info would need a join with User table
       content:
-        p.content.length > 150 ? p.content.slice(0, 150) + '...' : p.content,
+        p.content.length > 150 ? `${p.content.slice(0, 150)}...` : p.content,
       likes: 0, // Like count would need aggregation from Reaction table
     }));
 
     // Randomly sample from top posts
     return sampleRandom(formatted, limit);
   } catch (error) {
-    logger.error('Error fetching trending posts', { error }, 'random-context');
+    logger.error("Error fetching trending posts", { error }, "random-context");
     return [];
   }
 }
@@ -181,7 +181,7 @@ async function getTrendingPosts(
  * Get recent world events
  */
 async function getRecentEvents(
-  limit = 2
+  limit = 2,
 ): Promise<Array<{ title: string; description: string }>> {
   try {
     const now = new Date();
@@ -196,13 +196,13 @@ async function getRecentEvents(
       title: e.eventType, // Use eventType as title since there's no title field
       description:
         e.description.length > 100
-          ? e.description.slice(0, 100) + '...'
+          ? `${e.description.slice(0, 100)}...`
           : e.description,
     }));
 
     return sampleRandom(formatted, limit);
   } catch (error) {
-    logger.error('Error fetching recent events', { error }, 'random-context');
+    logger.error("Error fetching recent events", { error }, "random-context");
     return [];
   }
 }
@@ -252,37 +252,37 @@ export function formatRandomContext(context: RandomMarketContext): string {
 
   if (context.gainers && context.gainers.length > 0) {
     parts.push(
-      `Top Gainers: ${context.gainers.map((g) => `${g.name} (+${g.change.toFixed(1)}%)`).join(', ')}`
+      `Top Gainers: ${context.gainers.map((g) => `${g.name} (+${g.change.toFixed(1)}%)`).join(", ")}`,
     );
   }
 
   if (context.losers && context.losers.length > 0) {
     parts.push(
-      `Top Losers: ${context.losers.map((l) => `${l.name} (${l.change.toFixed(1)}%)`).join(', ')}`
+      `Top Losers: ${context.losers.map((l) => `${l.name} (${l.change.toFixed(1)}%)`).join(", ")}`,
     );
   }
 
   if (context.activeQuestions && context.activeQuestions.length > 0) {
     parts.push(
-      `Active Questions:\n${context.activeQuestions.map((q) => `- ${q.question} (${q.yesPrice}% Yes)`).join('\n')}`
+      `Active Questions:\n${context.activeQuestions.map((q) => `- ${q.question} (${q.yesPrice}% Yes)`).join("\n")}`,
     );
   }
 
   if (context.trendingPosts && context.trendingPosts.length > 0) {
     parts.push(
-      `Trending Posts:\n${context.trendingPosts.map((p) => `- @${p.author}: "${p.content}" (${p.likes} likes)`).join('\n')}`
+      `Trending Posts:\n${context.trendingPosts.map((p) => `- @${p.author}: "${p.content}" (${p.likes} likes)`).join("\n")}`,
     );
   }
 
   if (context.recentEvents && context.recentEvents.length > 0) {
     parts.push(
-      `Recent Events:\n${context.recentEvents.map((e) => `- ${e.title}: ${e.description}`).join('\n')}`
+      `Recent Events:\n${context.recentEvents.map((e) => `- ${e.title}: ${e.description}`).join("\n")}`,
     );
   }
 
   return parts.length > 0
-    ? `\n\nCurrent Context (for awareness, you don't need to respond to this):\n${parts.join('\n\n')}`
-    : '';
+    ? `\n\nCurrent Context (for awareness, you don't need to respond to this):\n${parts.join("\n\n")}`
+    : "";
 }
 
 /**
@@ -293,4 +293,4 @@ export function shuffleActors<T>(actors: T[]): T[] {
 }
 
 // Import and for queries
-import { and } from 'drizzle-orm';
+import { and } from "drizzle-orm";

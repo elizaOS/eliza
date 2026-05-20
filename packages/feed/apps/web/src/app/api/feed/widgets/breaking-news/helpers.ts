@@ -6,29 +6,29 @@ export interface BreakingNewsWorldEvent {
 }
 
 const NEWSWORTHY_WORLD_EVENT_PATTERNS = [
-  'announcement',
-  'development',
-  'scandal',
-  'deal',
-  'meeting',
-  'earnings',
-  'news:published',
-  'leak',
-  'revelation',
-  'conflict',
-  'merger',
-  'acquisition',
-  'lawsuit',
-  'investigation',
-  'probe',
-  'breach',
-  'hack',
-  'sanction',
-  'exclusive',
-  'resignation',
-  'launch',
-  'upgrade',
-  'partnership',
+  "announcement",
+  "development",
+  "scandal",
+  "deal",
+  "meeting",
+  "earnings",
+  "news:published",
+  "leak",
+  "revelation",
+  "conflict",
+  "merger",
+  "acquisition",
+  "lawsuit",
+  "investigation",
+  "probe",
+  "breach",
+  "hack",
+  "sanction",
+  "exclusive",
+  "resignation",
+  "launch",
+  "upgrade",
+  "partnership",
 ] as const;
 
 export function isBreakingNewsEvent(event: BreakingNewsWorldEvent): boolean {
@@ -36,8 +36,8 @@ export function isBreakingNewsEvent(event: BreakingNewsWorldEvent): boolean {
     return true;
   }
 
-  const pointsToward = event.pointsToward?.trim() ?? '';
-  if (pointsToward !== '') {
+  const pointsToward = event.pointsToward?.trim() ?? "";
+  if (pointsToward !== "") {
     return true;
   }
 
@@ -46,13 +46,13 @@ export function isBreakingNewsEvent(event: BreakingNewsWorldEvent): boolean {
     .toLowerCase();
 
   return NEWSWORTHY_WORLD_EVENT_PATTERNS.some((pattern) =>
-    haystack.includes(pattern)
+    haystack.includes(pattern),
   );
 }
 
 export function selectSignificantWorldEvents<T extends BreakingNewsWorldEvent>(
   events: readonly T[],
-  limit: number
+  limit: number,
 ): T[] {
   return events.filter(isBreakingNewsEvent).slice(0, limit);
 }

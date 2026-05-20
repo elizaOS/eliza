@@ -4,29 +4,29 @@
  * Defines the interface for post and content data access.
  */
 
-import type { PaginatedResult, PaginationOptions, PostRecord } from '../types';
+import type { PaginatedResult, PaginationOptions, PostRecord } from "../types";
 
 export interface PostPort {
   // Post Operations
   getPost(id: string): Promise<PostRecord | null>;
   getRecentPosts(
-    options?: PaginationOptions
+    options?: PaginationOptions,
   ): Promise<PaginatedResult<PostRecord>>;
   getPostsByAuthor(
     authorId: string,
-    options?: PaginationOptions
+    options?: PaginationOptions,
   ): Promise<PaginatedResult<PostRecord>>;
   getPostsByType(
     type: string,
-    options?: PaginationOptions
+    options?: PaginationOptions,
   ): Promise<PaginatedResult<PostRecord>>;
 
   // Create Operations
   createPost(
-    post: Omit<PostRecord, 'likeCount' | 'commentCount' | 'repostCount'>
+    post: Omit<PostRecord, "likeCount" | "commentCount" | "repostCount">,
   ): Promise<PostRecord>;
   createManyPosts(
-    posts: Omit<PostRecord, 'likeCount' | 'commentCount' | 'repostCount'>[]
+    posts: Omit<PostRecord, "likeCount" | "commentCount" | "repostCount">[],
   ): Promise<{ count: number }>;
 
   // Update Operations
@@ -42,7 +42,7 @@ export interface PostPort {
   // Comments
   getPostComments(
     postId: string,
-    options?: PaginationOptions
+    options?: PaginationOptions,
   ): Promise<PaginatedResult<PostRecord>>;
 
   // Statistics

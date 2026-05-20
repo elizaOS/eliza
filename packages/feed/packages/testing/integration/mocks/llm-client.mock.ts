@@ -4,35 +4,35 @@
  * Avoids hitting real APIs during tests which causes timeouts and flakes.
  * Mocks @feed/engine and overrides only FeedLLMClient.
  */
-import { mock } from 'bun:test';
+import { mock } from "bun:test";
 
-mock.module('@feed/engine', async () => {
-  const actualEngine = await import('@feed/engine');
+mock.module("@feed/engine", async () => {
+  const actualEngine = await import("@feed/engine");
 
   const createMockClient = () => ({
-    getStats: () => ({ provider: 'mock', model: 'mock-model' }),
-    getProvider: () => 'mock',
+    getStats: () => ({ provider: "mock", model: "mock-model" }),
+    getProvider: () => "mock",
     generateJSON: async (
       _prompt: string,
       schema: { properties?: Record<string, unknown> } | undefined,
-      _options?: Record<string, unknown>
+      _options?: Record<string, unknown>,
     ) => {
       // Handle schema-based detection
       if (schema?.properties) {
         if (schema.properties.question) {
           return {
-            question: 'Will testing succeed?',
-            resolutionCriteria: 'If tests pass',
+            question: "Will testing succeed?",
+            resolutionCriteria: "If tests pass",
           };
         }
         if (schema.properties.npcId) {
           // Market decision mock
           return [
             {
-              npcId: 'test-npc',
-              npcName: 'Test NPC',
-              reasoning: 'Mock reasoning',
-              action: 'hold',
+              npcId: "test-npc",
+              npcName: "Test NPC",
+              reasoning: "Mock reasoning",
+              action: "hold",
               confidence: 0.5,
             },
           ];
@@ -40,16 +40,16 @@ mock.module('@feed/engine', async () => {
         if (schema.properties.title) {
           // Article mock
           return {
-            title: 'Mock Article',
-            summary: 'This is a mock article summary.',
+            title: "Mock Article",
+            summary: "This is a mock article summary.",
             article:
-              'This is a mock article body.\n\nSecond paragraph.\n\nThird paragraph.\n\nFourth paragraph.',
+              "This is a mock article body.\n\nSecond paragraph.\n\nThird paragraph.\n\nFourth paragraph.",
           };
         }
         if (schema.properties.post) {
           // Post mock
           return {
-            post: 'This is a mock post content.',
+            post: "This is a mock post content.",
           };
         }
       }
@@ -57,18 +57,18 @@ mock.module('@feed/engine', async () => {
       // Handle no-schema cases by checking prompt content
       // Check scenario generation first because "MAIN ACTORS:" contains "ACTORS:"
       const isScenarioGeneration =
-        _prompt.includes('Create 3 dramatic, satirical scenarios') ||
-        (_prompt.includes('MAIN ACTORS:') && _prompt.includes('<scenarios>'));
+        _prompt.includes("Create 3 dramatic, satirical scenarios") ||
+        (_prompt.includes("MAIN ACTORS:") && _prompt.includes("<scenarios>"));
 
       if (isScenarioGeneration) {
         return {
           scenarios: [
             {
               id: 1,
-              title: 'Test Scenario: Mock Testing',
-              description: 'A test scenario for mock testing.',
-              mainActors: ['actor-1', 'actor-2', 'actor-3'],
-              theme: 'testing',
+              title: "Test Scenario: Mock Testing",
+              description: "A test scenario for mock testing.",
+              mainActors: ["actor-1", "actor-2", "actor-3"],
+              theme: "testing",
               involvedOrganizations: [],
             },
           ],
@@ -77,9 +77,9 @@ mock.module('@feed/engine', async () => {
 
       // Question generation
       const isQuestionGeneration =
-        _prompt.includes('prediction market questions') ||
-        _prompt.includes('COMPANIES:') ||
-        (_prompt.includes('ACTORS:') && !_prompt.includes('MAIN ACTORS:'));
+        _prompt.includes("prediction market questions") ||
+        _prompt.includes("COMPANIES:") ||
+        (_prompt.includes("ACTORS:") && !_prompt.includes("MAIN ACTORS:"));
 
       if (isQuestionGeneration) {
         // Return format matches what XML parser produces (root element unwrapped)
@@ -88,14 +88,14 @@ mock.module('@feed/engine', async () => {
             {
               id: 1,
               scenario: 1,
-              text: 'Will testing succeed?',
-              resolutionCriteria: 'If tests complete',
+              text: "Will testing succeed?",
+              resolutionCriteria: "If tests complete",
               daysUntilResolution: 3,
-              expectedOutcome: 'yes',
+              expectedOutcome: "yes",
               dramaPotential: 7,
               uncertainty: 5,
               satiricalValue: 6,
-              observableOutcome: 'Tests pass successfully',
+              observableOutcome: "Tests pass successfully",
             },
           ],
         };
@@ -103,7 +103,7 @@ mock.module('@feed/engine', async () => {
 
       return {};
     },
-    complete: async () => 'Mock completion response',
+    complete: async () => "Mock completion response",
   });
 
   return {

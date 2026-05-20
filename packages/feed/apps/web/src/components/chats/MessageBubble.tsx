@@ -1,18 +1,18 @@
-'use client';
+"use client";
 
-import { ALLOWED_REACTION_EMOJIS, cn, type MessageTag } from '@feed/shared';
-import { ChevronRight, Plus, Settings } from 'lucide-react';
-import Link from 'next/link';
-import { Response } from '@/components/chat/Response';
-import { Avatar } from '@/components/shared/Avatar';
+import { ALLOWED_REACTION_EMOJIS, cn, type MessageTag } from "@feed/shared";
+import { ChevronRight, Plus, Settings } from "lucide-react";
+import Link from "next/link";
+import { Response } from "@/components/chat/Response";
+import { Avatar } from "@/components/shared/Avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import type { ChatParticipant, Message } from './types';
-import { getProfilePath } from './types';
+} from "@/components/ui/dropdown-menu";
+import type { ChatParticipant, Message } from "./types";
+import { getProfilePath } from "./types";
 
 /**
  * Extracts the displayable content from a message, stripping `<think>...</think>` reasoning blocks.
@@ -27,9 +27,9 @@ import { getProfilePath } from './types';
  */
 function getDisplayContent(content: string): string {
   // Remove paired <think>...</think> blocks
-  const withoutBlocks = content.replace(/<think>[\s\S]*?<\/think>/gi, '');
+  const withoutBlocks = content.replace(/<think>[\s\S]*?<\/think>/gi, "");
   // Also strip orphan tags (unclosed/unmatched)
-  return withoutBlocks.replace(/<\/?think>/gi, '').trim();
+  return withoutBlocks.replace(/<\/?think>/gi, "").trim();
 }
 
 interface MessageBubbleProps {
@@ -40,14 +40,14 @@ interface MessageBubbleProps {
   validMentions?: string[];
   /** Whether this message is showing "Thinking..." placeholder state */
   isThinking?: boolean;
-  density?: 'default' | 'compact';
+  density?: "default" | "compact";
   /** Callback when a tag is clicked - opens sidebar with tag data */
   onTagClick?: (tag: MessageTag, messageId: string) => void;
   /** Toggle a reaction emoji on this message (current user). */
   onToggleReaction?: (
     messageId: string,
     emoji: string,
-    currentlyReactedByMe: boolean
+    currentlyReactedByMe: boolean,
   ) => void;
   /** Compact action row: merge reactions + tags into one row; hides "add reaction" control on own messages */
   compactActions?: boolean;
@@ -61,15 +61,15 @@ export function MessageBubble({
   isCurrentUser,
   validMentions,
   isThinking,
-  density = 'default',
+  density = "default",
   onTagClick,
   onToggleReaction,
   compactActions = false,
   onViewSettings,
 }: MessageBubbleProps) {
   const msgDate = new Date(message.createdAt);
-  const senderName = sender?.displayName || 'Unknown';
-  const compact = density === 'compact';
+  const senderName = sender?.displayName || "Unknown";
+  const compact = density === "compact";
 
   // --- Derived values for reactions + tags rendering ---
   const reactions = message.reactions ?? [];
@@ -88,11 +88,11 @@ export function MessageBubble({
       onClick={() => onToggleReaction?.(message.id, r.emoji, r.reactedByMe)}
       disabled={!onToggleReaction}
       className={cn(
-        'inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs transition-colors',
-        onToggleReaction ? 'hover:bg-muted' : 'cursor-default',
+        "inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs transition-colors",
+        onToggleReaction ? "hover:bg-muted" : "cursor-default",
         r.reactedByMe
-          ? 'border-primary/30 bg-primary/10 text-primary'
-          : 'border-border bg-background text-foreground'
+          ? "border-primary/30 bg-primary/10 text-primary"
+          : "border-border bg-background text-foreground",
       )}
       aria-label={`React ${r.emoji}`}
     >
@@ -114,7 +114,7 @@ export function MessageBubble({
           <span>React</span>
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align={isCurrentUser ? 'end' : 'start'}>
+      <DropdownMenuContent align={isCurrentUser ? "end" : "start"}>
         {ALLOWED_REACTION_EMOJIS.map((emoji) => {
           const existing = reactions.find((r) => r.emoji === emoji);
           const reacted = existing?.reactedByMe ?? false;
@@ -126,7 +126,7 @@ export function MessageBubble({
               <span className="mr-2" aria-hidden="true">
                 {emoji}
               </span>
-              <span>{reacted ? 'Remove' : 'React'}</span>
+              <span>{reacted ? "Remove" : "React"}</span>
             </DropdownMenuItem>
           );
         })}
@@ -137,9 +137,9 @@ export function MessageBubble({
   return (
     <div
       className={cn(
-        'flex',
-        compact ? 'gap-2' : 'gap-3',
-        isCurrentUser ? 'justify-end' : 'items-start'
+        "flex",
+        compact ? "gap-2" : "gap-3",
+        isCurrentUser ? "justify-end" : "items-start",
       )}
     >
       {!isCurrentUser && sender && (
@@ -151,7 +151,7 @@ export function MessageBubble({
             id={sender.id}
             name={senderName}
             type="user"
-            size={compact ? 'sm' : 'md'}
+            size={compact ? "sm" : "md"}
             imageUrl={sender.profileImageUrl}
           />
         </Link>
@@ -161,23 +161,23 @@ export function MessageBubble({
           id={message.senderId}
           name={senderName}
           type="user"
-          size={compact ? 'sm' : 'md'}
+          size={compact ? "sm" : "md"}
         />
       )}
       <div
         className={cn(
-          'flex min-w-0 flex-col',
-          isCurrentUser ? 'items-end' : 'items-start'
+          "flex min-w-0 flex-col",
+          isCurrentUser ? "items-end" : "items-start",
         )}
-        style={{ maxWidth: 'min(80%, 48rem)' }}
+        style={{ maxWidth: "min(80%, 48rem)" }}
       >
         <div className="mb-1 flex flex-wrap items-center gap-2">
           {!isCurrentUser && sender && (
             <Link
               href={getProfilePath(sender)}
               className={cn(
-                'font-bold text-foreground transition-colors hover:text-primary',
-                compact ? 'text-sm md:text-xs' : 'text-sm'
+                "font-bold text-foreground transition-colors hover:text-primary",
+                compact ? "text-sm md:text-xs" : "text-sm",
               )}
             >
               {senderName}
@@ -186,8 +186,8 @@ export function MessageBubble({
           {!isCurrentUser && !sender && (
             <span
               className={cn(
-                'font-bold text-foreground',
-                compact ? 'text-sm md:text-xs' : 'text-sm'
+                "font-bold text-foreground",
+                compact ? "text-sm md:text-xs" : "text-sm",
               )}
             >
               {senderName}
@@ -195,14 +195,14 @@ export function MessageBubble({
           )}
           {!isCurrentUser && <span className="text-muted-foreground">·</span>}
           <span className="text-muted-foreground text-xs">
-            {msgDate.toLocaleDateString('en-US', {
-              month: 'short',
-              day: 'numeric',
-            })}{' '}
-            at{' '}
-            {msgDate.toLocaleTimeString('en-US', {
-              hour: '2-digit',
-              minute: '2-digit',
+            {msgDate.toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+            })}{" "}
+            at{" "}
+            {msgDate.toLocaleTimeString("en-US", {
+              hour: "2-digit",
+              minute: "2-digit",
             })}
           </span>
           {onViewSettings && (
@@ -220,12 +220,12 @@ export function MessageBubble({
         {message.replyToMessage && !isThinking && (
           <div
             className={cn(
-              'mb-1 max-w-full rounded-lg border-primary/40 border-l-2 bg-muted/40',
-              compact ? 'px-2 py-1 text-xs' : 'px-2.5 py-1.5 text-xs'
+              "mb-1 max-w-full rounded-lg border-primary/40 border-l-2 bg-muted/40",
+              compact ? "px-2 py-1 text-xs" : "px-2.5 py-1.5 text-xs",
             )}
           >
             <p className="font-medium text-primary/80">
-              {message.replyToMessage.senderName || 'Unknown'}
+              {message.replyToMessage.senderName || "Unknown"}
             </p>
             <p className="truncate text-muted-foreground">
               {message.replyToMessage.content.length > 100
@@ -236,11 +236,11 @@ export function MessageBubble({
         )}
         <div
           className={cn(
-            'message-bubble max-w-full overflow-x-auto break-words rounded-2xl',
-            compact ? 'px-3 py-2 text-sm md:text-xs' : 'px-4 py-3 text-sm',
+            "message-bubble max-w-full overflow-x-auto break-words rounded-2xl",
+            compact ? "px-3 py-2 text-sm md:text-xs" : "px-4 py-3 text-sm",
             isCurrentUser
-              ? 'rounded-tr-sm bg-primary/20'
-              : 'rounded-tl-sm bg-sidebar-accent/50'
+              ? "rounded-tr-sm bg-primary/20"
+              : "rounded-tl-sm bg-sidebar-accent/50",
           )}
         >
           {isThinking ? (
@@ -252,17 +252,17 @@ export function MessageBubble({
               <span className="sr-only">Agent is thinking</span>
               <span
                 className="inline-block h-2 w-2 animate-bounce rounded-full bg-current"
-                style={{ animationDelay: '0ms' }}
+                style={{ animationDelay: "0ms" }}
                 aria-hidden="true"
               />
               <span
                 className="inline-block h-2 w-2 animate-bounce rounded-full bg-current"
-                style={{ animationDelay: '150ms' }}
+                style={{ animationDelay: "150ms" }}
                 aria-hidden="true"
               />
               <span
                 className="inline-block h-2 w-2 animate-bounce rounded-full bg-current"
-                style={{ animationDelay: '300ms' }}
+                style={{ animationDelay: "300ms" }}
                 aria-hidden="true"
               />
             </div>

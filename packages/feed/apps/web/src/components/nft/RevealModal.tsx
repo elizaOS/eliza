@@ -1,17 +1,17 @@
-'use client';
+"use client";
 
-import Image from 'next/image';
-import Link from 'next/link';
-import { useEffect, useState } from 'react';
-import type { MintConfirmResponse } from '@/types/nft';
+import Image from "next/image";
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import type { MintConfirmResponse } from "@/types/nft";
 
 const REVEAL_DELAY_MS = 2000;
 const CONFETTI_DURATION_MS = 3000;
-const CONFETTI_COLORS = ['#0066FF', '#22c55e', '#eab308', '#ef4444'];
+const CONFETTI_COLORS = ["#0066FF", "#22c55e", "#eab308", "#ef4444"];
 
 interface RevealModalProps {
   isOpen: boolean;
-  nft: MintConfirmResponse['nft'] | null;
+  nft: MintConfirmResponse["nft"] | null;
   onClose: () => void;
 }
 
@@ -32,7 +32,7 @@ export function RevealModal({ isOpen, nft, onClose }: RevealModalProps) {
 
     const confettiTimer = setTimeout(
       () => setShowConfetti(false),
-      REVEAL_DELAY_MS + CONFETTI_DURATION_MS
+      REVEAL_DELAY_MS + CONFETTI_DURATION_MS,
     );
 
     return () => {
@@ -65,7 +65,7 @@ export function RevealModal({ isOpen, nft, onClose }: RevealModalProps) {
                   backgroundColor: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
                   width: size,
                   height: size,
-                  borderRadius: i % 2 === 0 ? '50%' : 0,
+                  borderRadius: i % 2 === 0 ? "50%" : 0,
                 }}
               />
             );
@@ -77,19 +77,19 @@ export function RevealModal({ isOpen, nft, onClose }: RevealModalProps) {
         {/* Card with flip animation */}
         <div
           className="relative mx-auto aspect-square w-full"
-          style={{ perspective: '1000px' }}
+          style={{ perspective: "1000px" }}
         >
           <div
             className="relative h-full w-full transition-transform duration-1000"
             style={{
-              transformStyle: 'preserve-3d',
-              transform: isRevealing ? 'rotateY(0deg)' : 'rotateY(180deg)',
+              transformStyle: "preserve-3d",
+              transform: isRevealing ? "rotateY(0deg)" : "rotateY(180deg)",
             }}
           >
             {/* Back of card (mystery) */}
             <div
               className="absolute inset-0 flex items-center justify-center rounded-xl border border-[#0066FF]/50 bg-gradient-to-br from-[#0066FF]/10 to-[#0066FF]/5"
-              style={{ backfaceVisibility: 'hidden' }}
+              style={{ backfaceVisibility: "hidden" }}
             >
               <div className="text-center">
                 <div className="mb-4 text-7xl">❓</div>
@@ -103,12 +103,12 @@ export function RevealModal({ isOpen, nft, onClose }: RevealModalProps) {
             <div
               className="absolute inset-0 overflow-hidden rounded-xl border border-green-500/50 bg-card"
               style={{
-                backfaceVisibility: 'hidden',
-                transform: 'rotateY(180deg)',
+                backfaceVisibility: "hidden",
+                transform: "rotateY(180deg)",
               }}
             >
               <Image
-                src={nft.imageUrl || nft.thumbnailUrl || ''}
+                src={nft.imageUrl || nft.thumbnailUrl || ""}
                 alt={nft.name}
                 fill
                 className="object-cover"

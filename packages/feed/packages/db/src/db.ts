@@ -5,12 +5,12 @@
  * other modules can import `db`/`Database` without importing `src/index.ts`.
  */
 
-import { sql } from 'drizzle-orm';
-import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
-import { drizzle } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
-import { createDrizzleClient, type DrizzleClient } from './client';
-import { createJsonClient } from './json-client';
+import { sql } from "drizzle-orm";
+import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
+import { createDrizzleClient, type DrizzleClient } from "./client";
+import { createJsonClient } from "./json-client";
 import {
   clearJsonStorage,
   exportJsonState,
@@ -19,16 +19,16 @@ import {
   initJsonStorage,
   loadJsonSnapshot,
   saveJsonSnapshot,
-} from './json-storage';
-import { logger } from './logger';
-import * as schema from './schema';
+} from "./json-storage";
+import { logger } from "./logger";
+import * as schema from "./schema";
 
 // ============================================================================
 // Types
 // ============================================================================
 
 export type Database = PostgresJsDatabase<typeof schema>;
-export type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
+export type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
 // ============================================================================
 // Connection Management
@@ -56,7 +56,7 @@ if (globalForDb.readReplicaDbVersion === undefined) {
   globalForDb.readReplicaDbVersion = 0;
 }
 
-const isBuildTime = process.env.NEXT_PHASE === 'phase-production-build';
+const isBuildTime = process.env.NEXT_PHASE === "phase-production-build";
 
 // ============================================================================
 // Shared Utilities
@@ -64,9 +64,9 @@ const isBuildTime = process.env.NEXT_PHASE === 'phase-production-build';
 
 function isTestEnvironment(): boolean {
   return (
-    process.env.NODE_ENV === 'test' ||
-    process.env.BUN_ENV === 'test' ||
-    (typeof process !== 'undefined' && process.argv?.join(' ').includes('test'))
+    process.env.NODE_ENV === "test" ||
+    process.env.BUN_ENV === "test" ||
+    (typeof process !== "undefined" && process.argv?.join(" ").includes("test"))
   );
 }
 
@@ -75,7 +75,7 @@ const DATABASE_POOL_MAX_CAP = 500;
 
 function parsePositiveIntEnv(key: string): number | undefined {
   const raw = process.env[key];
-  if (raw === undefined || raw === '') return undefined;
+  if (raw === undefined || raw === "") return undefined;
   const n = Number.parseInt(raw, 10);
   if (!Number.isFinite(n) || n <= 0) {
     logger.warn(`Invalid ${key} value: "${raw}", using default`);
@@ -89,7 +89,7 @@ function parsePositiveIntEnv(key: string): number | undefined {
 // ============================================================================
 
 function getConnectionUrl(): string {
-  return process.env.DATABASE_URL || 'postgresql://localhost:5432/feed';
+  return process.env.DATABASE_URL || "postgresql://localhost:5432/feed";
 }
 
 function getReadReplicaUrl(): string | undefined {
@@ -107,50 +107,50 @@ function getReadReplicaUrl(): string | undefined {
 
 function getPostgresClientConfig(
   url: string,
-  role: 'primary' | 'replica'
+  role: "primary" | "replica",
 ): postgres.Options<{}> {
   const isTest = isTestEnvironment();
-  const isProd = process.env.NODE_ENV === 'production';
+  const isProd = process.env.NODE_ENV === "production";
 
   // Determine if this is a local database connection
-  const isLocalhost = url.includes('localhost') || url.includes('127.0.0.1');
+  const isLocalhost = url.includes("localhost") || url.includes("127.0.0.1");
 
   // Check if SSL is already specified in the URL (sslmode=require or ssl=true)
   const hasExplicitSSL =
-    url.includes('sslmode=require') || url.includes('ssl=true');
+    url.includes("sslmode=require") || url.includes("ssl=true");
 
   // Check for cloud database providers that require SSL (Neon, Supabase, etc.)
   const isCloudProvider =
-    url.includes('neon.tech') ||
-    url.includes('supabase.co') ||
-    url.includes('pooler.supabase') ||
-    url.includes('db.bit.io') ||
-    url.includes('.postgres.database.azure.com') ||
-    url.includes('.rds.amazonaws.com');
+    url.includes("neon.tech") ||
+    url.includes("supabase.co") ||
+    url.includes("pooler.supabase") ||
+    url.includes("db.bit.io") ||
+    url.includes(".postgres.database.azure.com") ||
+    url.includes(".rds.amazonaws.com");
 
   // SSL is required for:
   // - URL explicitly specifies sslmode=require
   // - Production with non-localhost connections
   // - Any cloud database provider (even in development)
-  const sslMode: 'require' | false =
+  const sslMode: "require" | false =
     hasExplicitSSL || (!isLocalhost && (isProd || isCloudProvider))
-      ? 'require'
+      ? "require"
       : false;
 
   // Node serves many concurrent requests in one process; without a bounded pool we'd get
   // one connection per in-flight query and exhaust Neon/Postgres limits. Pool caps connections
   // and queues work. Defaults stay small so (instances × pool max) stays within Neon caps.
   const isPooler =
-    url.includes('pooler') ||
-    url.includes('pgbouncer') ||
-    url.includes('?pgbouncer=true') ||
-    url.includes('?pgbouncer=1') ||
-    url.includes('-pooler.') ||
-    url.includes('pooler.supabase') ||
-    url.includes('transaction-pooler');
+    url.includes("pooler") ||
+    url.includes("pgbouncer") ||
+    url.includes("?pgbouncer=true") ||
+    url.includes("?pgbouncer=1") ||
+    url.includes("-pooler.") ||
+    url.includes("pooler.supabase") ||
+    url.includes("transaction-pooler");
 
   const envKey =
-    role === 'primary' ? 'DATABASE_POOL_MAX' : 'DATABASE_READ_REPLICA_POOL_MAX';
+    role === "primary" ? "DATABASE_POOL_MAX" : "DATABASE_READ_REPLICA_POOL_MAX";
   const envMax = parsePositiveIntEnv(envKey);
 
   // Pool size lookup table for clarity (avoids nested ternaries)
@@ -169,22 +169,22 @@ function getPostgresClientConfig(
   if (envMax !== undefined) {
     poolMax = envMax;
   } else {
-    const connectionType = isPooler ? 'pooler' : 'direct';
-    const env = isProd ? 'prod' : isTest ? 'test' : 'dev';
+    const connectionType = isPooler ? "pooler" : "direct";
+    const env = isProd ? "prod" : isTest ? "test" : "dev";
     poolMax = POOL_DEFAULTS[connectionType][role][env];
   }
 
   // Connection params
   const applicationName =
-    role === 'replica' && process.env.DATABASE_READ_REPLICA_APPLICATION_NAME
+    role === "replica" && process.env.DATABASE_READ_REPLICA_APPLICATION_NAME
       ? process.env.DATABASE_READ_REPLICA_APPLICATION_NAME
-      : (process.env.DATABASE_APPLICATION_NAME ?? 'feed');
+      : (process.env.DATABASE_APPLICATION_NAME ?? "feed");
 
   const applyGuardrails =
     !isTest &&
-    (process.env.NODE_ENV === 'production' ||
-      ['true', '1', 'yes'].includes(
-        process.env.DATABASE_SESSION_GUARDRAILS?.toLowerCase() ?? ''
+    (process.env.NODE_ENV === "production" ||
+      ["true", "1", "yes"].includes(
+        process.env.DATABASE_SESSION_GUARDRAILS?.toLowerCase() ?? "",
       ));
 
   const connectionParams: Partial<postgres.ConnectionParameters> = {
@@ -193,10 +193,10 @@ function getPostgresClientConfig(
 
   if (applyGuardrails) {
     const statementMs =
-      parsePositiveIntEnv('DATABASE_STATEMENT_TIMEOUT_MS') ?? 60_000;
-    const lockMs = parsePositiveIntEnv('DATABASE_LOCK_TIMEOUT_MS') ?? 10_000;
+      parsePositiveIntEnv("DATABASE_STATEMENT_TIMEOUT_MS") ?? 60_000;
+    const lockMs = parsePositiveIntEnv("DATABASE_LOCK_TIMEOUT_MS") ?? 10_000;
     const idleInTxMs =
-      parsePositiveIntEnv('DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS') ?? 60_000;
+      parsePositiveIntEnv("DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS") ?? 60_000;
     if (statementMs > 0) connectionParams.statement_timeout = statementMs;
     if (lockMs > 0) connectionParams.lock_timeout = lockMs;
     if (idleInTxMs > 0)
@@ -211,7 +211,7 @@ function getPostgresClientConfig(
     sslMode,
     isPooler,
     poolMax,
-    urlHost: url.split('@')[1]?.split('/')[0] || 'unknown',
+    urlHost: url.split("@")[1]?.split("/")[0] || "unknown",
   });
 
   return {
@@ -232,7 +232,7 @@ function getPostgresClientConfig(
 
 function createPostgresClient(): ReturnType<typeof postgres> {
   const url = getConnectionUrl();
-  return postgres(url, getPostgresClientConfig(url, 'primary'));
+  return postgres(url, getPostgresClientConfig(url, "primary"));
 }
 
 function getPostgresClient(): ReturnType<typeof postgres> | null {
@@ -242,15 +242,15 @@ function getPostgresClient(): ReturnType<typeof postgres> | null {
 
   if (!globalForDb.postgresClient) {
     const url = getConnectionUrl();
-    if (!url || url === 'postgresql://localhost:5432/feed') {
+    if (!url || url === "postgresql://localhost:5432/feed") {
       if (isTestEnvironment()) {
-        throw new Error('DATABASE_URL is required in test environment');
+        throw new Error("DATABASE_URL is required in test environment");
       }
       return null;
     }
 
     globalForDb.postgresClient = createPostgresClient();
-    logger.info('[Drizzle] Database connection created');
+    logger.info("[Drizzle] Database connection created");
   }
 
   return globalForDb.postgresClient;
@@ -263,7 +263,7 @@ function getDrizzleInstance(): Database | null {
 
     globalForDb.drizzleDb = drizzle(client, {
       schema,
-      logger: process.env.DB_LOG_QUERIES === 'true',
+      logger: process.env.DB_LOG_QUERIES === "true",
     });
   }
 
@@ -279,7 +279,7 @@ function getDrizzleInstance(): Database | null {
  * Uses separate connection pool for read-heavy operations
  */
 function createReadReplicaClient(url: string): ReturnType<typeof postgres> {
-  return postgres(url, getPostgresClientConfig(url, 'replica'));
+  return postgres(url, getPostgresClientConfig(url, "replica"));
 }
 
 /**
@@ -300,10 +300,10 @@ function getReadReplicaDrizzle(): Database | null {
 
     globalForDb.readReplicaDrizzle = drizzle(globalForDb.readReplicaClient, {
       schema,
-      logger: process.env.DB_LOG_QUERIES === 'true',
+      logger: process.env.DB_LOG_QUERIES === "true",
     });
 
-    logger.info('[Drizzle] Read replica connection created');
+    logger.info("[Drizzle] Read replica connection created");
   }
 
   return globalForDb.readReplicaDrizzle;
@@ -340,7 +340,7 @@ function createLazyPrimaryClientProxy(): DrizzleClient {
   const handler: ProxyHandler<DrizzleClient> = {
     get(_target, prop: string | symbol) {
       // In JSON/memory mode, use the JSON client
-      if (currentStorageMode !== 'postgres' && jsonClient) {
+      if (currentStorageMode !== "postgres" && jsonClient) {
         return jsonClient[prop as keyof DrizzleClient];
       }
 
@@ -376,19 +376,19 @@ function createLazyPropertyProxy(prop: string | symbol): unknown {
           return () => Promise.resolve(null);
         }
         throw new Error(
-          'Database not initialized. Check DATABASE_URL or use initializeJsonMode().'
+          "Database not initialized. Check DATABASE_URL or use initializeJsonMode().",
         );
       }
 
       const value = client[prop as keyof DrizzleClient];
-      if (value && typeof value === 'object') {
+      if (value && typeof value === "object") {
         const methodValue = (value as Record<PropertyKey, unknown>)[method];
-        if (typeof methodValue === 'function') {
+        if (typeof methodValue === "function") {
           return methodValue.bind(value);
         }
         return methodValue;
       }
-      if (typeof value === 'function') {
+      if (typeof value === "function") {
         return value.bind(client);
       }
       return value;
@@ -455,7 +455,7 @@ const defaultRetryConfig: RetryConfig = isTestEnvironment()
 
 async function withRetryInternal<T>(
   operation: () => Promise<T>,
-  config: RetryConfig = defaultRetryConfig
+  config: RetryConfig = defaultRetryConfig,
 ): Promise<T> {
   let lastError: Error | undefined;
   let delay = config.initialDelayMs;
@@ -470,26 +470,26 @@ async function withRetryInternal<T>(
       // Match specific error patterns to avoid retrying non-retryable errors
       const errorMsg = lastError.message.toLowerCase();
       const isRetryable =
-        (errorMsg.includes('connection') &&
-          (errorMsg.includes('closed') ||
-            errorMsg.includes('terminated') ||
-            errorMsg.includes('refused') ||
-            errorMsg.includes('reset'))) ||
-        (errorMsg.includes('timeout') &&
-          (errorMsg.includes('connection') || errorMsg.includes('query'))) ||
-        errorMsg.includes('deadlock') ||
-        errorMsg.includes('econnrefused') ||
-        errorMsg.includes('econnreset') ||
-        errorMsg.includes('etimedout') ||
+        (errorMsg.includes("connection") &&
+          (errorMsg.includes("closed") ||
+            errorMsg.includes("terminated") ||
+            errorMsg.includes("refused") ||
+            errorMsg.includes("reset"))) ||
+        (errorMsg.includes("timeout") &&
+          (errorMsg.includes("connection") || errorMsg.includes("query"))) ||
+        errorMsg.includes("deadlock") ||
+        errorMsg.includes("econnrefused") ||
+        errorMsg.includes("econnreset") ||
+        errorMsg.includes("etimedout") ||
         // SSL connection errors common with Neon's pooler (excludes certificate validation errors)
-        (errorMsg.includes('ssl') &&
-          (errorMsg.includes('connection') ||
-            errorMsg.includes('handshake') ||
-            errorMsg.includes('reset') ||
-            errorMsg.includes('closed'))) ||
+        (errorMsg.includes("ssl") &&
+          (errorMsg.includes("connection") ||
+            errorMsg.includes("handshake") ||
+            errorMsg.includes("reset") ||
+            errorMsg.includes("closed"))) ||
         // Connection limit errors
-        errorMsg.includes('too many connections') ||
-        errorMsg.includes('connection limit');
+        errorMsg.includes("too many connections") ||
+        errorMsg.includes("connection limit");
 
       if (!isRetryable || attempt === config.maxRetries) {
         throw lastError;
@@ -512,10 +512,10 @@ async function withRetryInternal<T>(
 // Storage Mode Management
 // ============================================================================
 
-export type StorageMode = 'postgres' | 'json' | 'memory';
+export type StorageMode = "postgres" | "json" | "memory";
 
 // Global storage mode
-let currentStorageMode: StorageMode = 'postgres';
+let currentStorageMode: StorageMode = "postgres";
 let jsonClient: DrizzleClient | null = null;
 
 /**
@@ -527,12 +527,12 @@ let jsonClient: DrizzleClient | null = null;
  */
 export async function initializeJsonMode(
   basePath: string,
-  options: { autoSave?: boolean } = {}
+  options: { autoSave?: boolean } = {},
 ): Promise<void> {
   await initJsonStorage(basePath, options);
-  currentStorageMode = 'json';
+  currentStorageMode = "json";
   jsonClient = createJsonClient();
-  logger.info('[DB] Initialized JSON storage mode', { basePath });
+  logger.info("[DB] Initialized JSON storage mode", { basePath });
 }
 
 /**
@@ -540,20 +540,20 @@ export async function initializeJsonMode(
  * Useful for testing.
  */
 export async function initializeMemoryMode(): Promise<void> {
-  await initJsonStorage('/tmp/feed-memory', { autoSave: false });
-  currentStorageMode = 'memory';
+  await initJsonStorage("/tmp/feed-memory", { autoSave: false });
+  currentStorageMode = "memory";
   jsonClient = createJsonClient();
-  logger.info('[DB] Initialized memory storage mode');
+  logger.info("[DB] Initialized memory storage mode");
 }
 
 /**
  * Reset to PostgreSQL mode.
  */
 export function resetToPostgresMode(): void {
-  currentStorageMode = 'postgres';
+  currentStorageMode = "postgres";
   jsonClient = null;
   clearJsonStorage();
-  logger.info('[DB] Reset to PostgreSQL mode');
+  logger.info("[DB] Reset to PostgreSQL mode");
 }
 
 /** Get current storage mode */
@@ -563,7 +563,7 @@ export function getStorageMode(): StorageMode {
 
 /** Check if using JSON/memory mode */
 export function isSimulationMode(): boolean {
-  return currentStorageMode === 'json' || currentStorageMode === 'memory';
+  return currentStorageMode === "json" || currentStorageMode === "memory";
 }
 
 // Re-export JSON storage utilities
@@ -593,16 +593,16 @@ export {
  * ```
  */
 export async function executeRaw<T = unknown>(
-  query: ReturnType<typeof sql>
+  query: ReturnType<typeof sql>,
 ): Promise<T> {
-  if (currentStorageMode !== 'postgres') {
-    throw new Error('executeRaw is only supported in PostgreSQL mode');
+  if (currentStorageMode !== "postgres") {
+    throw new Error("executeRaw is only supported in PostgreSQL mode");
   }
 
   const drizzleInstance = getDrizzleInstance();
   if (!drizzleInstance) {
     throw new Error(
-      'Database not initialized. Check DATABASE_URL or use initializeJsonMode().'
+      "Database not initialized. Check DATABASE_URL or use initializeJsonMode().",
     );
   }
 
@@ -620,27 +620,27 @@ export async function executeRaw<T = unknown>(
  * Read-only methods that can safely use read replica
  */
 const READ_METHODS = new Set([
-  'select',
-  'selectDistinct',
-  'selectDistinctOn',
-  'query',
-  'findUnique',
-  'findFirst',
-  'findMany',
-  'count',
-  'aggregate',
-  '$queryRaw',
+  "select",
+  "selectDistinct",
+  "selectDistinctOn",
+  "query",
+  "findUnique",
+  "findFirst",
+  "findMany",
+  "count",
+  "aggregate",
+  "$queryRaw",
 ]);
 
 /**
  * Read-only methods on table repositories (e.g. db.user.findMany)
  */
 const TABLE_READ_METHODS = new Set([
-  'findUnique',
-  'findFirst',
-  'findMany',
-  'count',
-  'aggregate',
+  "findUnique",
+  "findFirst",
+  "findMany",
+  "count",
+  "aggregate",
 ]);
 
 /**
@@ -649,18 +649,18 @@ const TABLE_READ_METHODS = new Set([
  * for proper routing (writes always go to primary, reads can use replica).
  */
 const WRITE_METHODS = new Set([
-  'insert',
-  'update',
-  'delete',
-  'execute',
-  'transaction',
-  '$transaction',
-  '$executeRaw',
-  'create',
-  'createMany',
-  'updateMany',
-  'deleteMany',
-  'upsert',
+  "insert",
+  "update",
+  "delete",
+  "execute",
+  "transaction",
+  "$transaction",
+  "$executeRaw",
+  "create",
+  "createMany",
+  "updateMany",
+  "deleteMany",
+  "upsert",
 ]);
 
 /**
@@ -690,7 +690,7 @@ function createModeAwareDbProxy(): DrizzleClient {
         cachedPrimaryVersion = getPrimaryDbVersion();
       }
 
-      if (currentStorageMode !== 'postgres' && jsonClient) {
+      if (currentStorageMode !== "postgres" && jsonClient) {
         return jsonClient[prop as keyof DrizzleClient];
       }
 
@@ -698,7 +698,7 @@ function createModeAwareDbProxy(): DrizzleClient {
       const isReadMethod = READ_METHODS.has(propStr);
       const isWriteMethod = WRITE_METHODS.has(propStr);
       const isClientControlMethod =
-        typeof prop !== 'symbol' && propStr.startsWith('$');
+        typeof prop !== "symbol" && propStr.startsWith("$");
 
       if (isReadMethod) {
         const replicaClient = getReadReplicaDbClient();
@@ -714,11 +714,11 @@ function createModeAwareDbProxy(): DrizzleClient {
                 get() {
                   return () => Promise.resolve(null);
                 },
-              }
+              },
             );
           }
           throw new Error(
-            'Database not initialized. Check DATABASE_URL or use initializeJsonMode().'
+            "Database not initialized. Check DATABASE_URL or use initializeJsonMode().",
           );
         }
         return primaryClient[prop as keyof DrizzleClient];
@@ -746,11 +746,11 @@ function createModeAwareDbProxy(): DrizzleClient {
               const replicaClient = getReadReplicaDbClient();
               if (replicaClient) {
                 const tableRepo = replicaClient[prop as keyof DrizzleClient];
-                if (tableRepo && typeof tableRepo === 'object') {
+                if (tableRepo && typeof tableRepo === "object") {
                   const replicaMethod = (
                     tableRepo as Record<PropertyKey, unknown>
                   )[method];
-                  if (typeof replicaMethod === 'function') {
+                  if (typeof replicaMethod === "function") {
                     const bound = replicaMethod.bind(tableRepo);
                     if (boundMethodCache.size >= BOUND_METHOD_CACHE_MAX) {
                       const firstKey = boundMethodCache.keys().next().value;
@@ -765,11 +765,11 @@ function createModeAwareDbProxy(): DrizzleClient {
               }
               const lazyClient = createLazyPrimaryClientProxy();
               const tableRepo = lazyClient[prop as keyof DrizzleClient];
-              if (tableRepo && typeof tableRepo === 'object') {
+              if (tableRepo && typeof tableRepo === "object") {
                 const primaryMethod = (
                   tableRepo as Record<PropertyKey, unknown>
                 )[method];
-                if (typeof primaryMethod === 'function') {
+                if (typeof primaryMethod === "function") {
                   const bound = primaryMethod.bind(tableRepo);
                   if (boundMethodCache.size >= BOUND_METHOD_CACHE_MAX) {
                     const firstKey = boundMethodCache.keys().next().value;
@@ -789,16 +789,16 @@ function createModeAwareDbProxy(): DrizzleClient {
                 return () => Promise.resolve(null);
               }
               throw new Error(
-                'Database not initialized. Check DATABASE_URL or use initializeJsonMode().'
+                "Database not initialized. Check DATABASE_URL or use initializeJsonMode().",
               );
             }
 
             const tableRepo = client[prop as keyof DrizzleClient];
-            if (tableRepo && typeof tableRepo === 'object') {
+            if (tableRepo && typeof tableRepo === "object") {
               const methodValue = (tableRepo as Record<PropertyKey, unknown>)[
                 method
               ];
-              if (typeof methodValue === 'function') {
+              if (typeof methodValue === "function") {
                 return methodValue.bind(tableRepo);
               }
               return methodValue;
@@ -828,11 +828,11 @@ function createModeAwareDbProxy(): DrizzleClient {
               get() {
                 return () => Promise.resolve(null);
               },
-            }
+            },
           );
         }
         throw new Error(
-          'Database not initialized. Check DATABASE_URL or use initializeJsonMode().'
+          "Database not initialized. Check DATABASE_URL or use initializeJsonMode().",
         );
       }
 
@@ -859,7 +859,7 @@ function createPrimaryDbProxy(): DrizzleClient {
     get(_target, prop: string | symbol) {
       // In JSON/memory mode, use the JSON client
       // WHY: Tests use JSON mode, so we must handle it to avoid breaking tests.
-      if (currentStorageMode !== 'postgres' && jsonClient) {
+      if (currentStorageMode !== "postgres" && jsonClient) {
         return jsonClient[prop as keyof DrizzleClient];
       }
 
@@ -875,11 +875,11 @@ function createPrimaryDbProxy(): DrizzleClient {
               get() {
                 return () => Promise.resolve(null);
               },
-            }
+            },
           );
         }
         throw new Error(
-          'Database not initialized. Check DATABASE_URL or use initializeJsonMode().'
+          "Database not initialized. Check DATABASE_URL or use initializeJsonMode().",
         );
       }
       return client[prop as keyof DrizzleClient];
@@ -904,7 +904,7 @@ function createReplicaDbProxy(): DrizzleClient {
   const handler: ProxyHandler<DrizzleClient> = {
     get(_target, prop: string | symbol) {
       // In JSON/memory mode, use the JSON client
-      if (currentStorageMode !== 'postgres' && jsonClient) {
+      if (currentStorageMode !== "postgres" && jsonClient) {
         return jsonClient[prop as keyof DrizzleClient];
       }
 
@@ -912,7 +912,7 @@ function createReplicaDbProxy(): DrizzleClient {
       const isReadMethod = READ_METHODS.has(propStr);
       const isWriteMethod = WRITE_METHODS.has(propStr);
       const isClientControlMethod =
-        typeof prop !== 'symbol' && propStr.startsWith('$');
+        typeof prop !== "symbol" && propStr.startsWith("$");
 
       if (
         getReadReplicaUrl() &&
@@ -924,17 +924,17 @@ function createReplicaDbProxy(): DrizzleClient {
           get(_tableTarget, method: string | symbol) {
             const tableRepo =
               getReadReplicaDbClient()?.[prop as keyof DrizzleClient];
-            if (tableRepo && typeof tableRepo === 'object') {
+            if (tableRepo && typeof tableRepo === "object") {
               const methodValue = (tableRepo as Record<PropertyKey, unknown>)[
                 method
               ];
-              if (typeof methodValue === 'function') {
+              if (typeof methodValue === "function") {
                 return methodValue.bind(tableRepo);
               }
               return methodValue;
             }
             throw new Error(
-              'Database not initialized. Check DATABASE_URL or use initializeJsonMode().'
+              "Database not initialized. Check DATABASE_URL or use initializeJsonMode().",
             );
           },
         }) as unknown as DrizzleClient[keyof DrizzleClient];
@@ -958,11 +958,11 @@ function createReplicaDbProxy(): DrizzleClient {
               get() {
                 return () => Promise.resolve(null);
               },
-            }
+            },
           );
         }
         throw new Error(
-          'Database not initialized. Check DATABASE_URL or use initializeJsonMode().'
+          "Database not initialized. Check DATABASE_URL or use initializeJsonMode().",
         );
       }
       return client[prop as keyof DrizzleClient];
@@ -1077,20 +1077,20 @@ export const dbWrite: DrizzleClient = createPrimaryDbProxy();
 
 /** Raw Drizzle instance for advanced queries (PostgreSQL only) */
 export function getRawDrizzle(): Database {
-  if (currentStorageMode !== 'postgres') {
-    throw new Error('getRawDrizzle() is only available in PostgreSQL mode');
+  if (currentStorageMode !== "postgres") {
+    throw new Error("getRawDrizzle() is only available in PostgreSQL mode");
   }
   const instance = getDrizzleInstance();
-  if (!instance) throw new Error('Database not initialized');
+  if (!instance) throw new Error("Database not initialized");
   return instance;
 }
 
 /** Execute within a transaction */
 export async function withTransaction<T>(
-  fn: (tx: Transaction) => Promise<T>
+  fn: (tx: Transaction) => Promise<T>,
 ): Promise<T> {
   const instance = getDrizzleInstance();
-  if (!instance) throw new Error('Database not initialized');
+  if (!instance) throw new Error("Database not initialized");
   return withRetryInternal(() => instance.transaction(fn));
 }
 
@@ -1108,11 +1108,11 @@ export type UserIdOrUser = string | { userId: string };
  */
 export async function asUser<T>(
   userIdOrUser: UserIdOrUser,
-  operation: (database: DrizzleClient) => Promise<T>
+  operation: (database: DrizzleClient) => Promise<T>,
 ): Promise<T> {
   // Extract userId from string or object
   const userId =
-    typeof userIdOrUser === 'string' ? userIdOrUser : userIdOrUser.userId;
+    typeof userIdOrUser === "string" ? userIdOrUser : userIdOrUser.userId;
 
   const uuidRegex =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -1128,18 +1128,18 @@ export async function asUser<T>(
   }
 
   const instance = getDrizzleInstance();
-  if (!instance) throw new Error('Database not initialized');
+  if (!instance) throw new Error("Database not initialized");
 
   return withRetryInternal(() =>
     instance.transaction(async (tx) => {
       await tx.execute(
-        sql`SELECT set_config('app.current_user_id', ${userId}, true)`
+        sql`SELECT set_config('app.current_user_id', ${userId}, true)`,
       );
       // Create a client wrapper for the transaction
       // Transaction type from Drizzle is compatible with Database
       const txClient = createDrizzleClient(tx);
       return operation(txClient);
-    })
+    }),
   );
 }
 
@@ -1148,20 +1148,20 @@ export async function asUser<T>(
  */
 export async function asSystem<T>(
   operation: (database: DrizzleClient) => Promise<T>,
-  operationName?: string
+  operationName?: string,
 ): Promise<T> {
   const startTime = Date.now();
   if (operationName) {
-    logger.debug('[Drizzle] System operation', { operation: operationName });
+    logger.debug("[Drizzle] System operation", { operation: operationName });
   }
 
   const instance = getDrizzleInstance();
-  if (!instance) throw new Error('Database not initialized');
+  if (!instance) throw new Error("Database not initialized");
 
   const result = await withRetryInternal(() =>
     instance.transaction(async (tx) => {
       await tx.execute(
-        sql`SELECT set_config('app.current_user_id', 'system', true)`
+        sql`SELECT set_config('app.current_user_id', 'system', true)`,
       );
       // Type assertion is safe: the transaction `tx` from Drizzle implements
       // the same query/execute interface used by createDrizzleClient. The
@@ -1169,11 +1169,11 @@ export async function asSystem<T>(
       // insert, update, delete, execute) that both types support.
       const txClient = createDrizzleClient(tx as Database);
       return operation(txClient);
-    })
+    }),
   );
 
   if (operationName) {
-    logger.debug('[Drizzle] System operation completed', {
+    logger.debug("[Drizzle] System operation completed", {
       operation: operationName,
       duration: `${Date.now() - startTime}ms`,
     });
@@ -1186,10 +1186,10 @@ export async function asSystem<T>(
  * Execute as public (unauthenticated)
  */
 export async function asPublic<T>(
-  operation: (database: DrizzleClient) => Promise<T>
+  operation: (database: DrizzleClient) => Promise<T>,
 ): Promise<T> {
   const instance = getDrizzleInstance();
-  if (!instance) throw new Error('Database not initialized');
+  if (!instance) throw new Error("Database not initialized");
 
   return withRetryInternal(() =>
     instance.transaction(async (tx) => {
@@ -1197,7 +1197,7 @@ export async function asPublic<T>(
       // Transaction type is compatible with Database for our use case
       const txClient = createDrizzleClient(tx as Database);
       return operation(txClient);
-    })
+    }),
   );
 }
 
@@ -1231,11 +1231,11 @@ export async function checkDatabaseHealth(): Promise<boolean> {
  * ```
  */
 export async function onReadReplica<T>(
-  operation: (database: Database) => Promise<T>
+  operation: (database: Database) => Promise<T>,
 ): Promise<T> {
   const replica = getReadReplicaDrizzle();
   if (!replica) {
-    throw new Error('Database not initialized');
+    throw new Error("Database not initialized");
   }
 
   return withRetryInternal(() => operation(replica));
@@ -1255,11 +1255,11 @@ export async function onReadReplica<T>(
  * ```
  */
 export async function onReadReplicaClient<T>(
-  operation: (database: DrizzleClient) => Promise<T>
+  operation: (database: DrizzleClient) => Promise<T>,
 ): Promise<T> {
   const replicaClient = getReadReplicaDbClient();
   if (!replicaClient) {
-    throw new Error('Database not initialized');
+    throw new Error("Database not initialized");
   }
 
   return withRetryInternal(() => operation(replicaClient));
@@ -1278,7 +1278,7 @@ export async function closeDatabase(): Promise<void> {
   if (globalForDb.readReplicaClient) {
     await globalForDb.readReplicaClient.end();
     globalForDb.readReplicaClient = undefined;
-    logger.info('[Drizzle] Read replica connection closed');
+    logger.info("[Drizzle] Read replica connection closed");
   }
 
   if (globalForDb.readReplicaDrizzle || globalForDb.readReplicaDb) {
@@ -1294,7 +1294,7 @@ export async function closeDatabase(): Promise<void> {
     globalForDb.drizzleDb = undefined;
     globalForDb.db = undefined;
     bumpPrimaryDbVersion();
-    logger.info('[Drizzle] Database connections closed');
+    logger.info("[Drizzle] Database connections closed");
   }
 }
 

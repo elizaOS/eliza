@@ -1,12 +1,12 @@
-'use client';
+"use client";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
-import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
-import { AchievementsTab } from '@/components/rewards/v2/achievements-tab';
-import { PageContainer } from '@/components/shared/PageContainer';
-import { useAuth } from '@/hooks/useAuth';
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
+import { AchievementsTab } from "@/components/rewards/v2/achievements-tab";
+import { PageContainer } from "@/components/shared/PageContainer";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function AchievementsPage() {
   const router = useRouter();
@@ -14,7 +14,7 @@ export default function AchievementsPage() {
 
   useEffect(() => {
     if (!ready || authenticated) return;
-    router.push('/feed');
+    router.push("/feed");
     const timer = setTimeout(() => login(), 500);
     return () => clearTimeout(timer);
   }, [ready, authenticated, router, login]);

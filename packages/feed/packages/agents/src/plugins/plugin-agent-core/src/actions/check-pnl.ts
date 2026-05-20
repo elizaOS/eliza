@@ -4,6 +4,14 @@
  * Returns the agent's balance, P&L, open positions (with IDs), and recent trades.
  */
 
+import type {
+  Action,
+  ActionResult,
+  HandlerCallback,
+  IAgentRuntime,
+  Memory,
+  State,
+} from "@elizaos/core";
 import {
   agentTrades,
   and,
@@ -15,18 +23,10 @@ import {
   perpPositions,
   positions,
   users,
-} from '@feed/db';
-import { calculatePortfolioBreakdown, WalletService } from '@feed/engine';
-import type { MessageTag } from '@feed/shared';
-import type {
-  Action,
-  ActionResult,
-  HandlerCallback,
-  IAgentRuntime,
-  Memory,
-  State,
-} from '@elizaos/core';
-import { logger } from '../../../../shared/logger';
+} from "@feed/db";
+import { calculatePortfolioBreakdown, WalletService } from "@feed/engine";
+import type { MessageTag } from "@feed/shared";
+import { logger } from "../../../../shared/logger";
 
 /** Extended ActionResult with optional tag for UI */
 interface ActionResultWithTag extends ActionResult {
@@ -34,41 +34,41 @@ interface ActionResultWithTag extends ActionResult {
 }
 
 export const checkPnlAction: Action = {
-  name: 'CHECK_PNL',
+  name: "CHECK_PNL",
   description:
-    'Check YOUR balance, P&L, open positions (with position IDs), and recent trades. These are YOUR assets. Use position IDs with SELL_PREDICTION or CLOSE_PERP.',
+    "Check YOUR balance, P&L, open positions (with position IDs), and recent trades. These are YOUR assets. Use position IDs with SELL_PREDICTION or CLOSE_PERP.",
 
-  parameters: [] as Action['parameters'],
+  parameters: [] as Action["parameters"],
 
   examples: [
     [
       {
-        name: 'user',
+        name: "user",
         content: { text: "What's your P&L?" },
       },
       {
-        name: 'assistant',
-        content: { text: 'Let me check my trading performance...' },
+        name: "assistant",
+        content: { text: "Let me check my trading performance..." },
       },
     ],
     [
       {
-        name: 'user',
-        content: { text: 'Show me your positions' },
+        name: "user",
+        content: { text: "Show me your positions" },
       },
       {
-        name: 'assistant',
-        content: { text: 'Let me pull up my current positions...' },
+        name: "assistant",
+        content: { text: "Let me pull up my current positions..." },
       },
     ],
     [
       {
-        name: 'user',
-        content: { text: 'How are you doing on trades?' },
+        name: "user",
+        content: { text: "How are you doing on trades?" },
       },
       {
-        name: 'assistant',
-        content: { text: 'Checking my trading stats...' },
+        name: "assistant",
+        content: { text: "Checking my trading stats..." },
       },
     ],
   ],
@@ -76,7 +76,7 @@ export const checkPnlAction: Action = {
   validate: async (
     _runtime: IAgentRuntime,
     _message: Memory,
-    _state?: State
+    _state?: State,
   ): Promise<boolean> => true,
 
   handler: async (
@@ -84,7 +84,7 @@ export const checkPnlAction: Action = {
     _message: Memory,
     _state?: State,
     _options?: Record<string, unknown>,
-    _callback?: HandlerCallback
+    _callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const agentId = runtime.agentId;
 
@@ -130,7 +130,7 @@ export const checkPnlAction: Action = {
         .from(positions)
         .leftJoin(markets, eq(positions.marketId, markets.id))
         .where(
-          and(eq(positions.userId, agentId), eq(positions.status, 'active'))
+          and(eq(positions.userId, agentId), eq(positions.status, "active")),
         );
 
       // Get active perp positions
@@ -138,7 +138,10 @@ export const checkPnlAction: Action = {
         .select()
         .from(perpPositions)
         .where(
-          and(eq(perpPositions.userId, agentId), isNull(perpPositions.closedAt))
+          and(
+            eq(perpPositions.userId, agentId),
+            isNull(perpPositions.closedAt),
+          ),
         );
 
       // Get recent trades with market details for predictions
@@ -166,17 +169,17 @@ export const checkPnlAction: Action = {
       logger.info(
         `[CHECK_PNL] Retrieved P&L for agent`,
         { positions: totalPositions, trades: recentTrades.length },
-        'CheckPnL'
+        "CheckPnL",
       );
 
       // Format data for tag
       const formattedPredictionPositions = predictionPositions.map((p) => ({
         id: p.id,
         marketId: p.marketId,
-        side: p.side ? 'YES' : 'NO',
+        side: p.side ? "YES" : "NO",
         shares: Number(p.shares),
         avgPrice: Number(p.avgPrice),
-        question: p.question?.substring(0, 80) || 'Unknown',
+        question: p.question?.substring(0, 80) || "Unknown",
       }));
 
       const formattedPerpPositions = perpPositionsList.map((p) => ({
@@ -189,19 +192,19 @@ export const checkPnlAction: Action = {
       }));
 
       const formattedRecentTrades = recentTrades.map((t) => {
-        const isPrediction = t.marketType === 'prediction';
+        const isPrediction = t.marketType === "prediction";
         // For predictions, use marketId; for perps, use ticker
-        const marketId = isPrediction ? t.marketId || '' : t.ticker || '';
+        const marketId = isPrediction ? t.marketId || "" : t.ticker || "";
         // For predictions, use truncated question; for perps, use ticker
         const displayName = isPrediction
           ? t.marketQuestion?.substring(0, 50) || `Market ${t.marketId}`
-          : t.ticker || 'Unknown';
+          : t.ticker || "Unknown";
 
         return {
           action: t.action,
-          marketType: (t.marketType === 'prediction'
-            ? 'prediction'
-            : 'perpetual') as 'prediction' | 'perpetual',
+          marketType: (t.marketType === "prediction"
+            ? "prediction"
+            : "perpetual") as "prediction" | "perpetual",
           marketId,
           displayName,
           amount: Number(t.amount),
@@ -211,7 +214,7 @@ export const checkPnlAction: Action = {
 
       return {
         success: true,
-        text: `Retrieved P&L: ${balance.toFixed(2)} balance, ${totalPnL >= 0 ? '+' : ''}${totalPnL.toFixed(2)} total P&L, ${totalPositions} open positions.`,
+        text: `Retrieved P&L: ${balance.toFixed(2)} balance, ${totalPnL >= 0 ? "+" : ""}${totalPnL.toFixed(2)} total P&L, ${totalPositions} open positions.`,
         data: {
           balance,
           lifetimePnL,
@@ -246,9 +249,9 @@ export const checkPnlAction: Action = {
         },
         // Tag for sidebar display
         tag: {
-          type: 'agent-pnl',
-          label: 'Portfolio',
-          icon: 'Wallet',
+          type: "agent-pnl",
+          label: "Portfolio",
+          icon: "Wallet",
           data: {
             agentName: agent?.displayName || undefined,
             balance,
@@ -264,8 +267,8 @@ export const checkPnlAction: Action = {
         },
       } as ActionResultWithTag;
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      logger.error('[CHECK_PNL] Error:', errorMsg);
+      const errorMsg = error instanceof Error ? error.message : "Unknown error";
+      logger.error("[CHECK_PNL] Error:", errorMsg);
 
       return {
         success: false,

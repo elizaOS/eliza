@@ -42,11 +42,11 @@
  * ```
  */
 
-import { requireAdmin, withErrorHandling } from '@feed/api';
-import { db } from '@feed/db';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+import { requireAdmin, withErrorHandling } from "@feed/api";
+import { db } from "@feed/db";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 export const POST = withErrorHandling(async function POST(req: NextRequest) {
   await requireAdmin(req);
@@ -56,20 +56,20 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
   // Find all pending escrows that have expired
   const expiredEscrows = await db.moderationEscrow.updateMany({
     where: {
-      status: 'pending',
+      status: "pending",
       expiresAt: {
         lt: now,
       },
     },
     data: {
-      status: 'expired',
+      status: "expired",
     },
   });
 
   logger.info(
     `Expired ${expiredEscrows.count} escrow payments`,
     { count: expiredEscrows.count },
-    'ModerationEscrow'
+    "ModerationEscrow",
   );
 
   return NextResponse.json({

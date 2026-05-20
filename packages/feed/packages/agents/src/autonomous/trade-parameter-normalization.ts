@@ -1,73 +1,73 @@
-import type { AgentTickContext } from './templates/multi-step-decision';
+import type { AgentTickContext } from "./templates/multi-step-decision";
 
 type TradeParameters = Record<string, unknown>;
 
-const PREDICTION_SIDES = new Set(['buy_yes', 'buy_no', 'sell_yes', 'sell_no']);
-const PERP_SIDES = new Set(['open_long', 'open_short', 'close_position']);
+const PREDICTION_SIDES = new Set(["buy_yes", "buy_no", "sell_yes", "sell_no"]);
+const PERP_SIDES = new Set(["open_long", "open_short", "close_position"]);
 const PREDICTION_MARKET_TYPE_ALIASES = new Set([
-  'prediction',
-  'predictions',
-  'predict',
-  'perception',
-  'market',
-  'binary',
-  'option',
-  'options',
+  "prediction",
+  "predictions",
+  "predict",
+  "perception",
+  "market",
+  "binary",
+  "option",
+  "options",
 ]);
 const PERP_MARKET_TYPE_ALIASES = new Set([
-  'perp',
-  'perps',
-  'perpetual',
-  'perpetuals',
-  'futures',
-  'future',
+  "perp",
+  "perps",
+  "perpetual",
+  "perpetuals",
+  "futures",
+  "future",
 ]);
 const NOOP_SIDES = new Set([
-  '',
-  'none',
-  'null',
-  'n/a',
-  'na',
-  'hold',
-  'wait',
-  'skip',
-  'finish',
+  "",
+  "none",
+  "null",
+  "n/a",
+  "na",
+  "hold",
+  "wait",
+  "skip",
+  "finish",
 ]);
 
 function toNormalizedToken(value: string): string {
   return value
     .trim()
     .toLowerCase()
-    .replace(/[\s-]+/g, '_');
+    .replace(/[\s-]+/g, "_");
 }
 
 function coerceIdLikeValue(value: unknown): string {
-  if (typeof value === 'string') {
+  if (typeof value === "string") {
     return value.trim();
   }
-  if (typeof value === 'number' && Number.isFinite(value)) {
+  if (typeof value === "number" && Number.isFinite(value)) {
     return String(Math.trunc(value));
   }
-  if (typeof value === 'bigint') {
+  if (typeof value === "bigint") {
     return value.toString();
   }
 
-  return '';
+  return "";
 }
 
 function normalizeMarketType(
-  rawMarketType: unknown
-): 'prediction' | 'perp' | undefined {
-  if (typeof rawMarketType !== 'string') {
+  rawMarketType: unknown,
+): "prediction" | "perp" | undefined {
+  if (typeof rawMarketType !== "string") {
     return undefined;
   }
 
   const normalized = toNormalizedToken(rawMarketType);
   if (PREDICTION_MARKET_TYPE_ALIASES.has(normalized)) {
-    return 'prediction';
+    return "prediction";
   }
   if (PERP_MARKET_TYPE_ALIASES.has(normalized)) {
-    return 'perp';
+    return "perp";
   }
 
   return undefined;
@@ -96,7 +96,7 @@ function sharedPrefixLength(left: string, right: string): number {
 
 function resolvePredictionMarketId(
   rawMarketId: string,
-  context: AgentTickContext
+  context: AgentTickContext,
 ): string | undefined {
   const trimmed = rawMarketId.trim();
   if (!trimmed) {
@@ -104,7 +104,7 @@ function resolvePredictionMarketId(
   }
 
   const directId = context.predictionMarkets.find(
-    (market) => market.id === trimmed
+    (market) => market.id === trimmed,
   );
   if (directId) {
     return directId.id;
@@ -113,7 +113,7 @@ function resolvePredictionMarketId(
   const numericPrefix = trimmed.match(/^(\d+)/)?.[1];
   if (numericPrefix) {
     const prefixed = context.predictionMarkets.find(
-      (market) => market.id === numericPrefix
+      (market) => market.id === numericPrefix,
     );
     if (prefixed) {
       return prefixed.id;
@@ -131,7 +131,7 @@ function resolvePredictionMarketId(
     })),
   ].filter(
     (candidate, index, collection) =>
-      collection.findIndex((entry) => entry.id === candidate.id) === index
+      collection.findIndex((entry) => entry.id === candidate.id) === index,
   );
 
   const numericCandidate = parseNumericIdentifier(numericPrefix ?? trimmed);
@@ -194,7 +194,7 @@ function resolvePredictionMarketId(
 
 function resolvePerpTicker(
   rawMarketId: string,
-  context: AgentTickContext
+  context: AgentTickContext,
 ): string | undefined {
   const trimmed = rawMarketId.trim();
   if (!trimmed) {
@@ -203,7 +203,7 @@ function resolvePerpTicker(
 
   const normalized = trimmed.toUpperCase();
   const leadingToken = normalized
-    .split(':', 1)[0]
+    .split(":", 1)[0]
     ?.trim()
     .split(/\s+/, 1)[0]
     ?.trim();
@@ -230,8 +230,8 @@ function normalizeTradeSide(
   rawSide: string,
   predictionMarketId: string | undefined,
   perpTicker: string | undefined,
-  explicitMarketType: 'prediction' | 'perp' | undefined,
-  context: AgentTickContext
+  explicitMarketType: "prediction" | "perp" | undefined,
+  context: AgentTickContext,
 ): string | undefined {
   const normalized = toNormalizedToken(rawSide);
   if (NOOP_SIDES.has(normalized)) {
@@ -243,26 +243,26 @@ function normalizeTradeSide(
   }
 
   if (
-    normalized === 'sell' ||
-    normalized === 'close' ||
-    normalized === 'exit' ||
-    normalized === 'take_profit' ||
-    normalized === 'stop_loss'
+    normalized === "sell" ||
+    normalized === "close" ||
+    normalized === "exit" ||
+    normalized === "take_profit" ||
+    normalized === "stop_loss"
   ) {
-    if (explicitMarketType === 'perp' || perpTicker) {
-      return 'close_position';
+    if (explicitMarketType === "perp" || perpTicker) {
+      return "close_position";
     }
 
     if (predictionMarketId) {
       const heldPosition = context.agentPositions.predictions.find(
-        (position) => position.marketId === predictionMarketId
+        (position) => position.marketId === predictionMarketId,
       );
       const side = heldPosition?.side?.trim().toUpperCase();
-      if (side === 'YES') {
-        return 'sell_yes';
+      if (side === "YES") {
+        return "sell_yes";
       }
-      if (side === 'NO') {
-        return 'sell_no';
+      if (side === "NO") {
+        return "sell_no";
       }
     }
 
@@ -270,48 +270,48 @@ function normalizeTradeSide(
   }
 
   if (
-    normalized === 'buy' ||
-    normalized === 'yes' ||
-    normalized === 'buy_yes' ||
-    normalized === 'bullish'
+    normalized === "buy" ||
+    normalized === "yes" ||
+    normalized === "buy_yes" ||
+    normalized === "bullish"
   ) {
-    return explicitMarketType === 'perp' || perpTicker
-      ? 'open_long'
-      : 'buy_yes';
+    return explicitMarketType === "perp" || perpTicker
+      ? "open_long"
+      : "buy_yes";
   }
 
   if (
-    normalized === 'no' ||
-    normalized === 'buy_no' ||
-    normalized === 'bearish'
+    normalized === "no" ||
+    normalized === "buy_no" ||
+    normalized === "bearish"
   ) {
-    return explicitMarketType === 'perp' || perpTicker
-      ? 'open_short'
-      : 'buy_no';
+    return explicitMarketType === "perp" || perpTicker
+      ? "open_short"
+      : "buy_no";
   }
 
   if (
-    normalized === 'long' ||
-    normalized === 'open' ||
-    normalized === 'open_long'
+    normalized === "long" ||
+    normalized === "open" ||
+    normalized === "open_long"
   ) {
-    return explicitMarketType === 'prediction' && !perpTicker
-      ? 'buy_yes'
-      : 'open_long';
+    return explicitMarketType === "prediction" && !perpTicker
+      ? "buy_yes"
+      : "open_long";
   }
 
-  if (normalized === 'short' || normalized === 'open_short') {
-    return explicitMarketType === 'prediction' && !perpTicker
-      ? 'buy_no'
-      : 'open_short';
+  if (normalized === "short" || normalized === "open_short") {
+    return explicitMarketType === "prediction" && !perpTicker
+      ? "buy_no"
+      : "open_short";
   }
 
-  if (normalized === 'sell_yes' || normalized === 'close_yes') {
-    return 'sell_yes';
+  if (normalized === "sell_yes" || normalized === "close_yes") {
+    return "sell_yes";
   }
 
-  if (normalized === 'sell_no' || normalized === 'close_no') {
-    return 'sell_no';
+  if (normalized === "sell_no" || normalized === "close_no") {
+    return "sell_no";
   }
 
   return undefined;
@@ -320,21 +320,21 @@ function normalizeTradeSide(
 function reconcilePredictionSellSide(
   side: string | undefined,
   predictionMarketId: string | undefined,
-  context: AgentTickContext
+  context: AgentTickContext,
 ): string | undefined {
-  if (!predictionMarketId || (side !== 'sell_yes' && side !== 'sell_no')) {
+  if (!predictionMarketId || (side !== "sell_yes" && side !== "sell_no")) {
     return side;
   }
 
   const heldPosition = context.agentPositions.predictions.find(
-    (position) => position.marketId === predictionMarketId
+    (position) => position.marketId === predictionMarketId,
   );
   const heldSide = heldPosition?.side?.trim().toUpperCase();
-  if (heldSide === 'YES') {
-    return 'sell_yes';
+  if (heldSide === "YES") {
+    return "sell_yes";
   }
-  if (heldSide === 'NO') {
-    return 'sell_no';
+  if (heldSide === "NO") {
+    return "sell_no";
   }
 
   return side;
@@ -342,16 +342,16 @@ function reconcilePredictionSellSide(
 
 export function normalizeTradeDecisionParameters(
   parameters: TradeParameters,
-  context: AgentTickContext
+  context: AgentTickContext,
 ): TradeParameters {
   const rawMarketId = coerceIdLikeValue(parameters.marketId);
-  const rawSide = typeof parameters.side === 'string' ? parameters.side : '';
+  const rawSide = typeof parameters.side === "string" ? parameters.side : "";
   const nextParameters: TradeParameters = { ...parameters };
 
   const explicitMarketType = normalizeMarketType(parameters.marketType);
   if (explicitMarketType) {
     nextParameters.marketType = explicitMarketType;
-  } else if ('marketType' in nextParameters) {
+  } else if ("marketType" in nextParameters) {
     delete nextParameters.marketType;
   }
 
@@ -367,44 +367,44 @@ export function normalizeTradeDecisionParameters(
       predictionMarketId,
       perpTicker,
       explicitMarketType,
-      context
+      context,
     ),
     predictionMarketId,
-    context
+    context,
   );
   if (normalizedSide) {
     nextParameters.side = normalizedSide;
-  } else if ('side' in nextParameters) {
+  } else if ("side" in nextParameters) {
     delete nextParameters.side;
   }
 
   const marketType =
     explicitMarketType ??
     (normalizedSide && PREDICTION_SIDES.has(normalizedSide)
-      ? 'prediction'
+      ? "prediction"
       : normalizedSide && PERP_SIDES.has(normalizedSide)
-        ? 'perp'
+        ? "perp"
         : undefined);
 
-  if (marketType === 'prediction') {
-    nextParameters.marketType = 'prediction';
+  if (marketType === "prediction") {
+    nextParameters.marketType = "prediction";
     if (predictionMarketId) {
       nextParameters.marketId = predictionMarketId;
       return nextParameters;
     }
 
     if (perpTicker) {
-      nextParameters.marketType = 'perp';
+      nextParameters.marketType = "perp";
       nextParameters.marketId = perpTicker;
-      if (normalizedSide === 'buy_yes') {
-        nextParameters.side = 'open_long';
-      } else if (normalizedSide === 'buy_no') {
-        nextParameters.side = 'open_short';
+      if (normalizedSide === "buy_yes") {
+        nextParameters.side = "open_long";
+      } else if (normalizedSide === "buy_no") {
+        nextParameters.side = "open_short";
       } else if (
-        normalizedSide === 'sell_yes' ||
-        normalizedSide === 'sell_no'
+        normalizedSide === "sell_yes" ||
+        normalizedSide === "sell_no"
       ) {
-        nextParameters.side = 'close_position';
+        nextParameters.side = "close_position";
       }
       return nextParameters;
     }
@@ -412,8 +412,8 @@ export function normalizeTradeDecisionParameters(
     return nextParameters;
   }
 
-  if (marketType === 'perp') {
-    nextParameters.marketType = 'perp';
+  if (marketType === "perp") {
+    nextParameters.marketType = "perp";
     if (perpTicker) {
       nextParameters.marketId = perpTicker;
       return nextParameters;
@@ -424,7 +424,7 @@ export function normalizeTradeDecisionParameters(
       normalizedSide &&
       !PERP_SIDES.has(normalizedSide)
     ) {
-      nextParameters.marketType = 'prediction';
+      nextParameters.marketType = "prediction";
       nextParameters.marketId = predictionMarketId;
       return nextParameters;
     }
@@ -433,13 +433,13 @@ export function normalizeTradeDecisionParameters(
   }
 
   if (predictionMarketId) {
-    nextParameters.marketType = 'prediction';
+    nextParameters.marketType = "prediction";
     nextParameters.marketId = predictionMarketId;
     return nextParameters;
   }
 
   if (perpTicker) {
-    nextParameters.marketType = 'perp';
+    nextParameters.marketType = "perp";
     nextParameters.marketId = perpTicker;
   }
 

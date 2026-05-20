@@ -1,13 +1,13 @@
-'use client';
+"use client";
 
-import { cn } from '@feed/shared';
-import { X } from 'lucide-react';
-import type { ReplyToMessage } from './types';
+import { cn } from "@feed/shared";
+import { X } from "lucide-react";
+import type { ReplyToMessage } from "./types";
 
 interface ReplyPreviewProps {
   replyToMessage: ReplyToMessage;
   onDismiss: () => void;
-  density?: 'default' | 'compact';
+  density?: "default" | "compact";
 }
 
 /**
@@ -18,9 +18,9 @@ interface ReplyPreviewProps {
 export function ReplyPreview({
   replyToMessage,
   onDismiss,
-  density = 'default',
+  density = "default",
 }: ReplyPreviewProps) {
-  const compact = density === 'compact';
+  const compact = density === "compact";
   const truncatedContent =
     replyToMessage.content.length > 120
       ? `${replyToMessage.content.slice(0, 120)}...`
@@ -29,13 +29,13 @@ export function ReplyPreview({
   return (
     <div
       className={cn(
-        'flex items-start gap-2 rounded-md border-primary/50 border-l-2 bg-muted/50',
-        compact ? 'mb-2 px-2.5 py-1.5' : 'mb-2 px-3 py-2'
+        "flex items-start gap-2 rounded-md border-primary/50 border-l-2 bg-muted/50",
+        compact ? "mb-2 px-2.5 py-1.5" : "mb-2 px-3 py-2",
       )}
     >
       <div className="min-w-0 flex-1">
         <p className="font-medium text-primary text-xs">
-          Replying to {replyToMessage.senderName || 'Unknown'}
+          Replying to {replyToMessage.senderName || "Unknown"}
         </p>
         <p className="truncate text-muted-foreground text-xs">
           {truncatedContent}

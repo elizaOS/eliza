@@ -31,7 +31,7 @@
  * ```
  */
 
-import type { ActorConnection, ActorRelationship } from './types/shared';
+import type { ActorConnection, ActorRelationship } from "./types/shared";
 
 /**
  * Emotional state description
@@ -91,35 +91,35 @@ export function moodToEmotion(mood: number): EmotionalState {
   // Determine intensity based on absolute value
   const absValue = Math.abs(clampedMood);
   let intensity: string;
-  if (absValue < 0.3) intensity = 'slightly';
-  else if (absValue < 0.6) intensity = 'moderately';
-  else intensity = 'extremely';
+  if (absValue < 0.3) intensity = "slightly";
+  else if (absValue < 0.6) intensity = "moderately";
+  else intensity = "extremely";
 
   // Determine emotion based on value and sign
   let emotion: string;
   let description: string;
 
   if (clampedMood >= 0.7) {
-    emotion = 'euphoric';
-    description = 'overjoyed, excited, optimistic';
+    emotion = "euphoric";
+    description = "overjoyed, excited, optimistic";
   } else if (clampedMood >= 0.4) {
-    emotion = 'happy';
-    description = 'pleased, content, positive';
+    emotion = "happy";
+    description = "pleased, content, positive";
   } else if (clampedMood >= 0.1) {
-    emotion = 'content';
-    description = 'satisfied, calm, neutral-positive';
+    emotion = "content";
+    description = "satisfied, calm, neutral-positive";
   } else if (clampedMood >= -0.1) {
-    emotion = 'neutral';
-    description = 'balanced, indifferent, stable';
+    emotion = "neutral";
+    description = "balanced, indifferent, stable";
   } else if (clampedMood >= -0.4) {
-    emotion = 'annoyed';
-    description = 'irritated, bothered, slightly negative';
+    emotion = "annoyed";
+    description = "irritated, bothered, slightly negative";
   } else if (clampedMood >= -0.7) {
-    emotion = 'upset';
-    description = 'frustrated, disappointed, negative';
+    emotion = "upset";
+    description = "frustrated, disappointed, negative";
   } else {
-    emotion = 'furious';
-    description = 'enraged, deeply negative, volatile';
+    emotion = "furious";
+    description = "enraged, deeply negative, volatile";
   }
 
   return {
@@ -170,19 +170,19 @@ export function getRelationshipModifier(relationship: string): {
     string,
     { modifier: string; sentimentBonus: number }
   > = {
-    ally: { modifier: 'supportive and positive', sentimentBonus: 0.3 },
-    friend: { modifier: 'friendly and warm', sentimentBonus: 0.4 },
-    advisor: { modifier: 'helpful and constructive', sentimentBonus: 0.2 },
-    source: { modifier: 'informative but cautious', sentimentBonus: 0.1 },
-    neutral: { modifier: 'balanced and objective', sentimentBonus: 0 },
-    critic: { modifier: 'skeptical and questioning', sentimentBonus: -0.2 },
-    rival: { modifier: 'competitive and challenging', sentimentBonus: -0.3 },
-    enemy: { modifier: 'hostile and antagonistic', sentimentBonus: -0.5 },
-    hates: { modifier: 'deeply negative and dismissive', sentimentBonus: -0.6 },
+    ally: { modifier: "supportive and positive", sentimentBonus: 0.3 },
+    friend: { modifier: "friendly and warm", sentimentBonus: 0.4 },
+    advisor: { modifier: "helpful and constructive", sentimentBonus: 0.2 },
+    source: { modifier: "informative but cautious", sentimentBonus: 0.1 },
+    neutral: { modifier: "balanced and objective", sentimentBonus: 0 },
+    critic: { modifier: "skeptical and questioning", sentimentBonus: -0.2 },
+    rival: { modifier: "competitive and challenging", sentimentBonus: -0.3 },
+    enemy: { modifier: "hostile and antagonistic", sentimentBonus: -0.5 },
+    hates: { modifier: "deeply negative and dismissive", sentimentBonus: -0.6 },
   };
 
   return (
-    relationshipMap[relationship.toLowerCase()] || relationshipMap['neutral']!
+    relationshipMap[relationship.toLowerCase()] || relationshipMap.neutral!
   );
 }
 
@@ -213,11 +213,11 @@ export function getRelationshipModifier(relationship: string): {
  * // => "things going wrong, unlucky streak"
  * ```
  */
-export function luckToDescription(luck: 'low' | 'medium' | 'high'): string {
+export function luckToDescription(luck: "low" | "medium" | "high"): string {
   const luckMap = {
-    low: 'things going wrong, unlucky streak',
-    medium: 'normal circumstances, balanced luck',
-    high: 'things going well, lucky streak',
+    low: "things going wrong, unlucky streak",
+    medium: "normal circumstances, balanced luck",
+    high: "things going well, lucky streak",
   };
 
   return luckMap[luck];
@@ -272,10 +272,10 @@ export function luckToDescription(luck: 'low' | 'medium' | 'high'): string {
  */
 export function generateActorContext(
   mood: number,
-  luck: 'low' | 'medium' | 'high',
+  luck: "low" | "medium" | "high",
   targetActorId?: string,
   relationships?: ActorRelationship[] | ActorConnection[],
-  actorId?: string
+  actorId?: string,
 ): string {
   const emotional = moodToEmotion(mood);
   const luckDesc = luckToDescription(luck);
@@ -291,28 +291,28 @@ Current luck: ${luckDesc}`;
       return context;
     }
 
-    const isNewFormat = 'actor1Id' in firstItem;
+    const isNewFormat = "actor1Id" in firstItem;
 
     if (isNewFormat) {
       // ActorRelationship format
       const relationship = (relationships as ActorRelationship[]).find(
         (r) =>
           (r.actor1Id === actorId && r.actor2Id === targetActorId) ||
-          (r.actor2Id === actorId && r.actor1Id === targetActorId)
+          (r.actor2Id === actorId && r.actor1Id === targetActorId),
       );
 
       if (relationship) {
         const relMod = getRelationshipModifier(relationship.relationshipType);
         context += `
 Relationship with ${targetActorId}: ${relationship.relationshipType} - be ${relMod.modifier}
-Context: ${relationship.history || 'No additional context'}`;
+Context: ${relationship.history || "No additional context"}`;
       }
     } else {
       // ActorConnection format
       const relationship = (relationships as ActorConnection[]).find(
         (r) =>
           (r.actor1 === actorId && r.actor2 === targetActorId) ||
-          (r.actor2 === actorId && r.actor1 === targetActorId)
+          (r.actor2 === actorId && r.actor1 === targetActorId),
       );
 
       if (relationship) {

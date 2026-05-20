@@ -5,8 +5,8 @@
  * and eliminate use of 'any' types.
  */
 
-import type { Database, JsonValue } from '@feed/db';
-import type { Page, Route } from '@playwright/test';
+import type { Database, JsonValue } from "@feed/db";
+import type { Page, Route } from "@playwright/test";
 
 /**
  * Experience record from queryExperiences
@@ -169,10 +169,10 @@ export interface ErrorWithMessage {
  */
 export function isErrorWithMessage(error: unknown): error is ErrorWithMessage {
   return (
-    typeof error === 'object' &&
+    typeof error === "object" &&
     error !== null &&
-    'message' in error &&
-    typeof (error as ErrorWithMessage).message === 'string'
+    "message" in error &&
+    typeof (error as ErrorWithMessage).message === "string"
   );
 }
 
@@ -297,7 +297,7 @@ export interface TrajectoryQueryArgs {
     status?: string;
     trajectoryId?: string | { in: string[] };
   };
-  orderBy?: { createdAt?: 'asc' | 'desc' };
+  orderBy?: { createdAt?: "asc" | "desc" };
   take?: number;
   skip?: number;
 }
@@ -329,7 +329,7 @@ export type TestDatabase = Database & {
       where: { trajectoryId: { in: string[] } };
     }) => Promise<{ count: number }>;
     groupBy: (
-      args: TrajectoryQueryArgs & { by: string[] }
+      args: TrajectoryQueryArgs & { by: string[] },
     ) => Promise<Array<{ agentId: string; _count: number }>>;
   };
   llmCallLog?: {

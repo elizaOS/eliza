@@ -3,7 +3,7 @@
  * Shared date parsing and extraction utilities for the game engine.
  */
 
-import { logger } from '@feed/shared';
+import { logger } from "@feed/shared";
 
 /**
  * Extract day number from timestamp string.
@@ -35,9 +35,9 @@ export function extractDayFromEvent(event: {
   if (event.day) return event.day;
   if (event.timestamp) {
     return extractDayFromTimestamp(
-      typeof event.timestamp === 'string'
+      typeof event.timestamp === "string"
         ? event.timestamp
-        : event.timestamp.toISOString()
+        : event.timestamp.toISOString(),
     );
   }
   return 0;
@@ -53,9 +53,9 @@ export function extractDayFromPost(post: {
   if (post.day) return post.day;
   if (post.createdAt) {
     return extractDayFromTimestamp(
-      typeof post.createdAt === 'string'
+      typeof post.createdAt === "string"
         ? post.createdAt
-        : post.createdAt.toISOString()
+        : post.createdAt.toISOString(),
     );
   }
   return 0;
@@ -74,7 +74,7 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
  */
 export function getGameDayNumber(startedAt: Date, timestamp: Date): number {
   const daysElapsed = Math.floor(
-    (timestamp.getTime() - startedAt.getTime()) / MS_PER_DAY
+    (timestamp.getTime() - startedAt.getTime()) / MS_PER_DAY,
   );
   // Clamp to minimum of 1 to handle timestamps before startedAt
   const result = Math.max(daysElapsed + 1, 1); // 1-indexed: Day 1 is first day
@@ -82,14 +82,14 @@ export function getGameDayNumber(startedAt: Date, timestamp: Date): number {
   // Log diagnostic warning when timestamp is before startedAt (clock drift or test data issue)
   if (timestamp.getTime() < startedAt.getTime()) {
     logger.warn(
-      'getGameDayNumber: timestamp is before startedAt, clamping to day 1',
+      "getGameDayNumber: timestamp is before startedAt, clamping to day 1",
       {
         startedAt: startedAt.toISOString(),
         timestamp: timestamp.toISOString(),
         daysElapsed,
         result,
       },
-      'DateUtils'
+      "DateUtils",
     );
   }
 
@@ -120,8 +120,8 @@ export function toSafeDayNumber(dayNumber: number): number | undefined {
  * ```
  */
 export function toDateString(date: Date | string): string {
-  const d = typeof date === 'string' ? new Date(date) : date;
-  return d.toISOString().split('T')[0] ?? '';
+  const d = typeof date === "string" ? new Date(date) : date;
+  return d.toISOString().split("T")[0] ?? "";
 }
 
 /**

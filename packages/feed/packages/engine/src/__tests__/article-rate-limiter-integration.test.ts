@@ -5,8 +5,8 @@
  * and handles race conditions properly.
  */
 
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
-import { createArticleRateLimiter } from '../services/article-rate-limiter';
+import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { createArticleRateLimiter } from "../services/article-rate-limiter";
 
 // Track article count for simulating database state
 let mockArticleCount = 0;
@@ -18,29 +18,29 @@ const mockDb = {
   where: mock(() => Promise.resolve([{ count: mockArticleCount }])),
 };
 
-mock.module('@feed/db', () => ({
+mock.module("@feed/db", () => ({
   db: mockDb,
   and: (...args: unknown[]) => args,
   eq: (a: unknown, b: unknown) => [a, b],
   gte: (a: unknown, b: unknown) => [a, b],
   isNull: (a: unknown) => [a],
-  posts: { type: 'type', timestamp: 'timestamp', deletedAt: 'deletedAt' },
-  sql: (strings: TemplateStringsArray) => strings.join(''),
+  posts: { type: "type", timestamp: "timestamp", deletedAt: "deletedAt" },
+  sql: (strings: TemplateStringsArray) => strings.join(""),
 }));
 
-describe('Rate Limiting Across Multiple Sources', () => {
+describe("Rate Limiting Across Multiple Sources", () => {
   beforeEach(() => {
     mockArticleCount = 0;
     mockDb.select.mockClear();
     mockDb.from.mockClear();
     mockDb.where.mockClear();
     mockDb.where.mockImplementation(() =>
-      Promise.resolve([{ count: mockArticleCount }])
+      Promise.resolve([{ count: mockArticleCount }]),
     );
   });
 
-  describe('Sequential Source Access', () => {
-    test('should block second source when first exhausts limit', async () => {
+  describe("Sequential Source Access", () => {
+    test("should block second source when first exhausts limit", async () => {
       const limiter = createArticleRateLimiter({ maxArticlesPerHour: 2 });
 
       // First source checks - allowed
@@ -65,7 +65,7 @@ describe('Rate Limiting Across Multiple Sources', () => {
       expect(check3.remaining).toBe(0);
     });
 
-    test('should track articles from article-tick, organization-tick, and arc events', async () => {
+    test("should track articles from article-tick, organization-tick, and arc events", async () => {
       const limiter = createArticleRateLimiter({ maxArticlesPerHour: 3 });
 
       // Simulate article-tick creating 1 article
@@ -89,8 +89,8 @@ describe('Rate Limiting Across Multiple Sources', () => {
     });
   });
 
-  describe('Multiple Limiter Instances', () => {
-    test('all instances should see same database state', async () => {
+  describe("Multiple Limiter Instances", () => {
+    test("all instances should see same database state", async () => {
       const limiter1 = createArticleRateLimiter({ maxArticlesPerHour: 2 });
       const limiter2 = createArticleRateLimiter({ maxArticlesPerHour: 2 });
 
@@ -105,16 +105,16 @@ describe('Rate Limiting Across Multiple Sources', () => {
   });
 });
 
-describe('Race Condition Scenarios', () => {
+describe("Race Condition Scenarios", () => {
   beforeEach(() => {
     mockArticleCount = 0;
     mockDb.where.mockImplementation(() =>
-      Promise.resolve([{ count: mockArticleCount }])
+      Promise.resolve([{ count: mockArticleCount }]),
     );
   });
 
-  describe('Concurrent Rate Limit Checks', () => {
-    test('should demonstrate TOCTOU vulnerability with parallel checks', async () => {
+  describe("Concurrent Rate Limit Checks", () => {
+    test("should demonstrate TOCTOU vulnerability with parallel checks", async () => {
       const limiter = createArticleRateLimiter({ maxArticlesPerHour: 2 });
       mockArticleCount = 1; // One slot remaining
 
@@ -137,7 +137,7 @@ describe('Race Condition Scenarios', () => {
       // rather than checking once and creating in parallel.
     });
 
-    test('sequential checks should respect updated state', async () => {
+    test("sequential checks should respect updated state", async () => {
       const limiter = createArticleRateLimiter({ maxArticlesPerHour: 2 });
       mockArticleCount = 1;
 
@@ -154,15 +154,15 @@ describe('Race Condition Scenarios', () => {
     });
   });
 
-  describe('Per-Article Rate Check Pattern (Recommended)', () => {
-    test('should properly gate each article in sequential generation', async () => {
+  describe("Per-Article Rate Check Pattern (Recommended)", () => {
+    test("should properly gate each article in sequential generation", async () => {
       const limiter = createArticleRateLimiter({ maxArticlesPerHour: 2 });
       mockArticleCount = 0;
 
       const orgsToPublish = [
-        { id: 'org-1', name: 'Org 1' },
-        { id: 'org-2', name: 'Org 2' },
-        { id: 'org-3', name: 'Org 3' },
+        { id: "org-1", name: "Org 1" },
+        { id: "org-2", name: "Org 2" },
+        { id: "org-3", name: "Org 3" },
       ];
 
       let articlesCreated = 0;
@@ -185,13 +185,13 @@ describe('Race Condition Scenarios', () => {
       expect(mockArticleCount).toBe(2);
     });
 
-    test('should stop immediately when rate limit is reached', async () => {
+    test("should stop immediately when rate limit is reached", async () => {
       const limiter = createArticleRateLimiter({ maxArticlesPerHour: 1 });
       mockArticleCount = 1; // Already at limit
 
       const orgsToPublish = [
-        { id: 'org-1', name: 'Org 1' },
-        { id: 'org-2', name: 'Org 2' },
+        { id: "org-1", name: "Org 1" },
+        { id: "org-2", name: "Org 2" },
       ];
 
       let articlesCreated = 0;
@@ -210,8 +210,8 @@ describe('Race Condition Scenarios', () => {
     });
   });
 
-  describe('Parallel Generation Anti-Pattern (Fixed)', () => {
-    test('demonstrates why parallel generation without per-article checks is problematic', async () => {
+  describe("Parallel Generation Anti-Pattern (Fixed)", () => {
+    test("demonstrates why parallel generation without per-article checks is problematic", async () => {
       const limiter = createArticleRateLimiter({ maxArticlesPerHour: 2 });
       mockArticleCount = 1; // Only 1 slot remaining
 
@@ -233,15 +233,15 @@ describe('Race Condition Scenarios', () => {
   });
 });
 
-describe('Rate Limit Recovery', () => {
+describe("Rate Limit Recovery", () => {
   beforeEach(() => {
     mockArticleCount = 0;
     mockDb.where.mockImplementation(() =>
-      Promise.resolve([{ count: mockArticleCount }])
+      Promise.resolve([{ count: mockArticleCount }]),
     );
   });
 
-  test('should allow generation after window expires (simulated)', async () => {
+  test("should allow generation after window expires (simulated)", async () => {
     const limiter = createArticleRateLimiter({ maxArticlesPerHour: 2 });
 
     // At limit
@@ -256,7 +256,7 @@ describe('Rate Limit Recovery', () => {
     expect(allowed.remaining).toBe(2);
   });
 
-  test('should correctly report partial recovery', async () => {
+  test("should correctly report partial recovery", async () => {
     const limiter = createArticleRateLimiter({ maxArticlesPerHour: 3 });
 
     // At limit
@@ -272,15 +272,15 @@ describe('Rate Limit Recovery', () => {
   });
 });
 
-describe('Edge Cases', () => {
+describe("Edge Cases", () => {
   beforeEach(() => {
     mockArticleCount = 0;
     mockDb.where.mockImplementation(() =>
-      Promise.resolve([{ count: mockArticleCount }])
+      Promise.resolve([{ count: mockArticleCount }]),
     );
   });
 
-  test('should handle limit of 1', async () => {
+  test("should handle limit of 1", async () => {
     const limiter = createArticleRateLimiter({ maxArticlesPerHour: 1 });
 
     const first = await limiter.canGenerateArticle();
@@ -293,7 +293,7 @@ describe('Edge Cases', () => {
     expect(second.remaining).toBe(0);
   });
 
-  test('should handle very high limits', async () => {
+  test("should handle very high limits", async () => {
     const limiter = createArticleRateLimiter({ maxArticlesPerHour: 100 });
 
     mockArticleCount = 50;
@@ -302,7 +302,7 @@ describe('Edge Cases', () => {
     expect(check.remaining).toBe(50);
   });
 
-  test('should clamp remaining to 0 when over limit', async () => {
+  test("should clamp remaining to 0 when over limit", async () => {
     const limiter = createArticleRateLimiter({ maxArticlesPerHour: 2 });
 
     // More articles than limit (shouldn't happen but handle gracefully)

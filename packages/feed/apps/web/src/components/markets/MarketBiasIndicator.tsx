@@ -25,12 +25,12 @@
  * />
  * ```
  */
-'use client';
+"use client";
 
-import { cn } from '@feed/shared';
-import { Activity, Clock, TrendingDown, TrendingUp } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { apiUrl } from '@/utils/api-url';
+import { cn } from "@feed/shared";
+import { Activity, Clock, TrendingDown, TrendingUp } from "lucide-react";
+import { useEffect, useState } from "react";
+import { apiUrl } from "@/utils/api-url";
 
 /**
  * Bias adjustment structure for market bias indicator.
@@ -38,7 +38,7 @@ import { apiUrl } from '@/utils/api-url';
 interface BiasAdjustment {
   entityId: string;
   entityName: string;
-  direction: 'up' | 'down';
+  direction: "up" | "down";
   strength: number;
   priceAdjustment: number;
   sentimentAdjustment: number;
@@ -61,7 +61,7 @@ interface MarketBiasIndicatorProps {
 }
 
 export function MarketBiasIndicator({
-  className = '',
+  className = "",
   maxDisplay = 10,
 }: MarketBiasIndicatorProps) {
   const [data, setData] = useState<BiasData | null>(null);
@@ -70,7 +70,7 @@ export function MarketBiasIndicator({
   useEffect(() => {
     const fetchBiases = async () => {
       setLoading(true);
-      const response = await fetch(apiUrl('/api/markets/bias/active'));
+      const response = await fetch(apiUrl("/api/markets/bias/active"));
       const result = await response.json();
 
       if (result.success) {
@@ -88,7 +88,7 @@ export function MarketBiasIndicator({
 
   if (loading) {
     return (
-      <div className={cn('rounded-lg bg-sidebar p-4', className)}>
+      <div className={cn("rounded-lg bg-sidebar p-4", className)}>
         <div className="text-muted-foreground text-sm">
           Loading market biases...
         </div>
@@ -98,7 +98,7 @@ export function MarketBiasIndicator({
 
   if (!data || data.biases.length === 0) {
     return (
-      <div className={cn('rounded-lg bg-sidebar p-4', className)}>
+      <div className={cn("rounded-lg bg-sidebar p-4", className)}>
         <div className="flex items-center gap-2">
           <Activity className="h-4 w-4 text-muted-foreground" />
           <span className="text-muted-foreground text-sm">
@@ -112,13 +112,13 @@ export function MarketBiasIndicator({
   const displayBiases = data.biases.slice(0, maxDisplay);
 
   const getTimeRemaining = (expiresAt: string | null) => {
-    if (!expiresAt) return 'Permanent';
+    if (!expiresAt) return "Permanent";
 
     const now = new Date();
     const expiry = new Date(expiresAt);
     const diff = expiry.getTime() - now.getTime();
 
-    if (diff <= 0) return 'Expired';
+    if (diff <= 0) return "Expired";
 
     const hours = Math.floor(diff / (1000 * 60 * 60));
     const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
@@ -128,7 +128,7 @@ export function MarketBiasIndicator({
   };
 
   return (
-    <div className={cn('space-y-4 rounded-lg bg-sidebar p-4', className)}>
+    <div className={cn("space-y-4 rounded-lg bg-sidebar p-4", className)}>
       {/* Header */}
       <div className="flex items-center justify-between">
         <h3 className="flex items-center gap-2 font-bold text-foreground text-lg">
@@ -148,7 +148,7 @@ export function MarketBiasIndicator({
             <div className="flex items-center justify-between">
               {/* Entity Info */}
               <div className="flex flex-1 items-center gap-2">
-                {bias.direction === 'up' ? (
+                {bias.direction === "up" ? (
                   <TrendingUp className="h-5 w-5 shrink-0 text-green-500" />
                 ) : (
                   <TrendingDown className="h-5 w-5 shrink-0 text-red-500" />
@@ -173,8 +173,8 @@ export function MarketBiasIndicator({
                   <div className="h-2 w-20 rounded-full bg-muted/30">
                     <div
                       className={cn(
-                        'h-2 rounded-full',
-                        bias.direction === 'up' ? 'bg-green-500' : 'bg-red-500'
+                        "h-2 rounded-full",
+                        bias.direction === "up" ? "bg-green-500" : "bg-red-500",
                       )}
                       style={{ width: `${bias.strength * 100}%` }}
                     />
@@ -188,11 +188,11 @@ export function MarketBiasIndicator({
                     style={{
                       color:
                         bias.priceAdjustment >= 0
-                          ? 'rgb(34, 197, 94)'
-                          : 'rgb(239, 68, 68)',
+                          ? "rgb(34, 197, 94)"
+                          : "rgb(239, 68, 68)",
                     }}
                   >
-                    {bias.priceAdjustment >= 0 ? '+' : ''}
+                    {bias.priceAdjustment >= 0 ? "+" : ""}
                     {(bias.priceAdjustment * 100).toFixed(1)}%
                   </div>
                   <div className="text-muted-foreground text-xs">Price</div>
@@ -205,11 +205,11 @@ export function MarketBiasIndicator({
                     style={{
                       color:
                         bias.sentimentAdjustment >= 0
-                          ? 'rgb(34, 197, 94)'
-                          : 'rgb(239, 68, 68)',
+                          ? "rgb(34, 197, 94)"
+                          : "rgb(239, 68, 68)",
                     }}
                   >
-                    {bias.sentimentAdjustment >= 0 ? '+' : ''}
+                    {bias.sentimentAdjustment >= 0 ? "+" : ""}
                     {(bias.sentimentAdjustment * 100).toFixed(1)}%
                   </div>
                   <div className="text-muted-foreground text-xs">Sentiment</div>

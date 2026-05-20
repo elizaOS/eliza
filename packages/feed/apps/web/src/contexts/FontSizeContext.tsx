@@ -6,16 +6,16 @@
  * preset sizes (small/medium/large) and custom numeric values.
  */
 
-'use client';
+"use client";
 
-import type { ReactNode } from 'react';
-import { createContext, useContext, useEffect, useState } from 'react';
-import { readStorageJson, writeStorageItem } from '@/utils/browser-storage';
+import type { ReactNode } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
+import { readStorageJson, writeStorageItem } from "@/utils/browser-storage";
 
 /**
  * Font size preset options or custom numeric value.
  */
-type FontSize = 'small' | 'medium' | 'large' | number;
+type FontSize = "small" | "medium" | "large" | number;
 
 /**
  * Font size context interface.
@@ -33,7 +33,7 @@ interface FontSizeContextType {
 }
 
 const FontSizeContext = createContext<FontSizeContextType | undefined>(
-  undefined
+  undefined,
 );
 
 /**
@@ -46,7 +46,7 @@ const FONT_SIZE_PRESETS = {
   large: 1.125, // 18px base
 };
 
-const STORAGE_KEY = 'feed-font-size';
+const STORAGE_KEY = "feed-font-size";
 
 /**
  * Font size context provider component.
@@ -56,17 +56,17 @@ const STORAGE_KEY = 'feed-font-size';
  */
 export function FontSizeProvider({ children }: { children: ReactNode }) {
   const [fontSize, setFontSizeState] = useState(1); // Default to medium (100%)
-  const [fontSizePreset, setFontSizePresetState] = useState<FontSize>('medium');
+  const [fontSizePreset, setFontSizePresetState] = useState<FontSize>("medium");
 
   // Load from localStorage on mount
   useEffect(() => {
     const stored = readStorageJson<{
       fontSize?: number;
       preset?: FontSize;
-    }>('localStorage', STORAGE_KEY);
+    }>("localStorage", STORAGE_KEY);
     if (stored) {
       setFontSizeState(stored.fontSize ?? 1);
-      setFontSizePresetState(stored.preset ?? 'medium');
+      setFontSizePresetState(stored.preset ?? "medium");
     }
   }, []);
 
@@ -75,27 +75,27 @@ export function FontSizeProvider({ children }: { children: ReactNode }) {
     // Determine preset or custom
     const preset =
       (Object.entries(FONT_SIZE_PRESETS).find(
-        ([, value]) => value === size
+        ([, value]) => value === size,
       )?.[0] as FontSize) || size;
     setFontSizePresetState(preset);
     writeStorageItem(
-      'localStorage',
+      "localStorage",
       STORAGE_KEY,
-      JSON.stringify({ fontSize: size, preset })
+      JSON.stringify({ fontSize: size, preset }),
     );
   };
 
   const setFontSizePreset = (preset: FontSize) => {
-    if (typeof preset === 'string' && preset in FONT_SIZE_PRESETS) {
+    if (typeof preset === "string" && preset in FONT_SIZE_PRESETS) {
       const size = FONT_SIZE_PRESETS[preset];
       setFontSizeState(size);
       setFontSizePresetState(preset);
       writeStorageItem(
-        'localStorage',
+        "localStorage",
         STORAGE_KEY,
-        JSON.stringify({ fontSize: size, preset })
+        JSON.stringify({ fontSize: size, preset }),
       );
-    } else if (typeof preset === 'number') {
+    } else if (typeof preset === "number") {
       setFontSize(preset);
     }
   };
@@ -124,7 +124,7 @@ export function FontSizeProvider({ children }: { children: ReactNode }) {
 export function useFontSize() {
   const context = useContext(FontSizeContext);
   if (context === undefined) {
-    throw new Error('useFontSize must be used within a FontSizeProvider');
+    throw new Error("useFontSize must be used within a FontSizeProvider");
   }
   return context;
 }

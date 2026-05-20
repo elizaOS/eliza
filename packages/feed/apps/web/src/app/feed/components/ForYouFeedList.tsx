@@ -1,22 +1,22 @@
-'use client';
+"use client";
 
 import type {
   FeedEventAction,
   FeedSurface,
   NarrativeStory,
-} from '@feed/shared';
-import { Loader2 } from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useFeedEventTracker } from '@/app/feed/hooks';
+} from "@feed/shared";
+import { Loader2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useFeedEventTracker } from "@/app/feed/hooks";
 import {
   toArticleCardData,
   toPostCardData,
-} from '@/app/feed/utils/postMappers';
-import { ArticleCard } from '@/components/articles/ArticleCard';
-import { PostCard } from '@/components/posts/PostCard';
-import { NewMarketCard } from './NewMarketCard';
-import { ResolvedMarketFeedCard } from './ResolvedMarketFeedCard';
+} from "@/app/feed/utils/postMappers";
+import { ArticleCard } from "@/components/articles/ArticleCard";
+import { PostCard } from "@/components/posts/PostCard";
+import { NewMarketCard } from "./NewMarketCard";
+import { ResolvedMarketFeedCard } from "./ResolvedMarketFeedCard";
 
 const PAGE_SIZE = 20;
 const VISIBLE_DWELL_MS = 2000;
@@ -53,7 +53,7 @@ export function ForYouFeedList({
   const impressionSentRef = useRef(new Set<string>());
   const visibleSentRef = useRef(new Set<string>());
   const dwellTimersRef = useRef(
-    new Map<string, ReturnType<typeof setTimeout>>()
+    new Map<string, ReturnType<typeof setTimeout>>(),
   );
 
   useEffect(() => {
@@ -94,7 +94,7 @@ export function ForYouFeedList({
       (entries) => {
         if (entries[0]?.isIntersecting) handleSentinel();
       },
-      { rootMargin: '200px' }
+      { rootMargin: "200px" },
     );
     observer.observe(el);
     return () => observer.disconnect();
@@ -108,7 +108,7 @@ export function ForYouFeedList({
       story: NarrativeStory,
       index: number,
       actionType: FeedEventAction,
-      dwellMs?: number
+      dwellMs?: number,
     ) => ({
       actionType,
       surface,
@@ -118,10 +118,10 @@ export function ForYouFeedList({
       itemType:
         story.itemType ??
         (story.isNewMarket
-          ? 'market'
-          : story.posts[0]?.type === 'article'
-            ? 'article'
-            : 'post'),
+          ? "market"
+          : story.posts[0]?.type === "article"
+            ? "article"
+            : "post"),
       clusterId:
         story.clusterId ??
         story.rootMarketId ??
@@ -133,7 +133,7 @@ export function ForYouFeedList({
       feedPosition: index,
       dwellMs,
     }),
-    [surface]
+    [surface],
   );
 
   const trackStoryEvent = useCallback(
@@ -141,11 +141,11 @@ export function ForYouFeedList({
       story: NarrativeStory,
       index: number,
       actionType: FeedEventAction,
-      dwellMs?: number
+      dwellMs?: number,
     ) => {
       trackEvent(buildEventPayload(story, index, actionType, dwellMs));
     },
-    [buildEventPayload, trackEvent]
+    [buildEventPayload, trackEvent],
   );
 
   const setItemRef = useCallback(
@@ -156,7 +156,7 @@ export function ForYouFeedList({
       }
       itemRefs.current.delete(storyKey);
     },
-    []
+    [],
   );
 
   useEffect(() => {
@@ -171,10 +171,10 @@ export function ForYouFeedList({
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
-          const storyKey = entry.target.getAttribute('data-story-key');
+          const storyKey = entry.target.getAttribute("data-story-key");
           if (!storyKey) continue;
           const storyIndex = visibleItems.findIndex(
-            (item) => item.storyKey === storyKey
+            (item) => item.storyKey === storyKey,
           );
           if (storyIndex === -1) continue;
           const story = visibleItems[storyIndex];
@@ -183,7 +183,7 @@ export function ForYouFeedList({
           if (entry.isIntersecting) {
             if (!impressionSentRef.current.has(storyKey)) {
               impressionSentRef.current.add(storyKey);
-              trackStoryEvent(story, storyIndex, 'impression');
+              trackStoryEvent(story, storyIndex, "impression");
             }
 
             if (
@@ -196,8 +196,8 @@ export function ForYouFeedList({
                 trackStoryEvent(
                   story,
                   storyIndex,
-                  'visible_2s',
-                  VISIBLE_DWELL_MS
+                  "visible_2s",
+                  VISIBLE_DWELL_MS,
                 );
               }, VISIBLE_DWELL_MS);
               dwellTimersRef.current.set(storyKey, timer);
@@ -211,7 +211,7 @@ export function ForYouFeedList({
           }
         }
       },
-      { rootMargin: '0px 0px 150px 0px', threshold: 0.6 }
+      { rootMargin: "0px 0px 150px 0px", threshold: 0.6 },
     );
 
     for (const story of visibleItems) {
@@ -244,7 +244,7 @@ export function ForYouFeedList({
                 <ResolvedMarketFeedCard
                   story={story}
                   onOpenMarket={() =>
-                    trackStoryEvent(story, index, 'open_market')
+                    trackStoryEvent(story, index, "open_market")
                   }
                 />
               </div>
@@ -260,16 +260,16 @@ export function ForYouFeedList({
               <NewMarketCard
                 story={story}
                 onOpenMarket={() =>
-                  trackStoryEvent(story, index, 'open_market')
+                  trackStoryEvent(story, index, "open_market")
                 }
                 onTradeComplete={() =>
-                  trackStoryEvent(story, index, 'trade_after_view')
+                  trackStoryEvent(story, index, "trade_after_view")
                 }
                 onLikeChange={(isLiked) => {
-                  if (isLiked) trackStoryEvent(story, index, 'like');
+                  if (isLiked) trackStoryEvent(story, index, "like");
                 }}
                 onShareChange={(isShared) => {
-                  if (isShared) trackStoryEvent(story, index, 'share');
+                  if (isShared) trackStoryEvent(story, index, "share");
                 }}
               />
             </div>
@@ -285,12 +285,12 @@ export function ForYouFeedList({
             ref={(node) => setItemRef(story.storyKey, node)}
             data-story-key={story.storyKey}
           >
-            {leadPost.type === 'article' ? (
+            {leadPost.type === "article" ? (
               <ArticleCard
                 post={toArticleCardData(leadPost)}
                 density="default"
                 onClick={() => {
-                  trackStoryEvent(story, index, 'open_article');
+                  trackStoryEvent(story, index, "open_article");
                   router.push(`/article/${leadPost.id}`);
                 }}
               />
@@ -299,15 +299,15 @@ export function ForYouFeedList({
                 post={toPostCardData(leadPost)}
                 density="default"
                 showCommentInputBar={false}
-                onOpen={() => trackStoryEvent(story, index, 'open_post')}
+                onOpen={() => trackStoryEvent(story, index, "open_post")}
                 onLikeChange={(isLiked) => {
-                  if (isLiked) trackStoryEvent(story, index, 'like');
+                  if (isLiked) trackStoryEvent(story, index, "like");
                 }}
                 onShareChange={(isShared) => {
-                  if (isShared) trackStoryEvent(story, index, 'share');
+                  if (isShared) trackStoryEvent(story, index, "share");
                 }}
                 onCommentClick={() => {
-                  trackStoryEvent(story, index, 'open_post');
+                  trackStoryEvent(story, index, "open_post");
                   router.push(`/post/${leadPost.id}`);
                 }}
               />
@@ -318,16 +318,16 @@ export function ForYouFeedList({
                 story={story}
                 embedded
                 onOpenMarket={() =>
-                  trackStoryEvent(story, index, 'open_market')
+                  trackStoryEvent(story, index, "open_market")
                 }
                 onTradeComplete={() =>
-                  trackStoryEvent(story, index, 'trade_after_view')
+                  trackStoryEvent(story, index, "trade_after_view")
                 }
                 onLikeChange={(isLiked) => {
-                  if (isLiked) trackStoryEvent(story, index, 'like');
+                  if (isLiked) trackStoryEvent(story, index, "like");
                 }}
                 onShareChange={(isShared) => {
-                  if (isShared) trackStoryEvent(story, index, 'share');
+                  if (isShared) trackStoryEvent(story, index, "share");
                 }}
               />
             )}

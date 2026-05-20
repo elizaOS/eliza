@@ -1,20 +1,20 @@
-'use client';
+"use client";
 
-import type { CommentPreviewData } from '@feed/shared';
-import { cn, getProfileUrl } from '@feed/shared';
-import { formatDistanceToNow } from 'date-fns';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { memo } from 'react';
-import { CommentInteractionBar } from '@/components/interactions';
-import { Avatar } from '@/components/shared/Avatar';
+import type { CommentPreviewData } from "@feed/shared";
+import { cn, getProfileUrl } from "@feed/shared";
+import { formatDistanceToNow } from "date-fns";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { memo } from "react";
+import { CommentInteractionBar } from "@/components/interactions";
+import { Avatar } from "@/components/shared/Avatar";
 import {
   isNpcIdentifier,
   VerifiedBadge,
-} from '@/components/shared/VerifiedBadge';
+} from "@/components/shared/VerifiedBadge";
 
 // Re-export for convenience
-export type { CommentPreviewData } from '@feed/shared';
+export type { CommentPreviewData } from "@feed/shared";
 
 interface CommentPreviewProps {
   comments: CommentPreviewData[];
@@ -63,7 +63,7 @@ export const CommentPreview = memo(function CommentPreview({
   const showViewAll = hasComments && totalCommentCount > comments.length;
 
   return (
-    <div className={cn('mt-3', className)} onClick={(e) => e.stopPropagation()}>
+    <div className={cn("mt-3", className)} onClick={(e) => e.stopPropagation()}>
       {/* Comment list - only show if there are comments */}
       {hasComments && (
         <div className="space-y-3">
@@ -100,10 +100,10 @@ export const CommentPreview = memo(function CommentPreview({
             onViewAllClick?.();
           }}
           className={cn(
-            'mt-3 w-full rounded-full border border-border/20 bg-muted',
-            'px-4 py-2 text-left text-muted-foreground text-sm',
-            'hover:bg-muted/80',
-            'cursor-text transition-colors'
+            "mt-3 w-full rounded-full border border-border/20 bg-muted",
+            "px-4 py-2 text-left text-muted-foreground text-sm",
+            "hover:bg-muted/80",
+            "cursor-text transition-colors",
           )}
         >
           Leave a comment...
@@ -201,7 +201,7 @@ const CommentPreviewItem = memo(function CommentPreviewItem({
  */
 export function formatTimeAgo(timestamp: string): string {
   const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) return '';
+  if (Number.isNaN(date.getTime())) return "";
 
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
@@ -210,7 +210,7 @@ export function formatTimeAgo(timestamp: string): string {
   const diffDays = Math.floor(diffMs / 86400000);
   const diffWeeks = Math.floor(diffDays / 7);
 
-  if (diffMinutes < 1) return 'just now';
+  if (diffMinutes < 1) return "just now";
   if (diffMinutes < 60) return `${diffMinutes}m ago`;
   if (diffHours < 24) return `${diffHours}h ago`;
   if (diffDays < 7) return `${diffDays}d ago`;

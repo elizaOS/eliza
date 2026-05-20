@@ -78,14 +78,14 @@ import {
   requireCronAuth,
   requireUserByIdentifier,
   withErrorHandling,
-} from '@feed/api';
+} from "@feed/api";
 import {
   generateGameCompletionFeedback,
   generateTradeCompletionFeedback,
-} from '@feed/engine';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { z } from 'zod';
+} from "@feed/engine";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { z } from "zod";
 
 const GameMetricsSchema = z.object({
   won: z.boolean(),
@@ -108,26 +108,26 @@ const TradeMetricsSchema = z.object({
 });
 
 const GameFeedbackRequestSchema = z.object({
-  type: z.literal('game'),
+  type: z.literal("game"),
   agentId: z.string().min(1),
   gameId: z.string().min(1),
   metrics: GameMetricsSchema,
 });
 
 const TradeFeedbackRequestSchema = z.object({
-  type: z.literal('trade'),
+  type: z.literal("trade"),
   agentId: z.string().min(1),
   tradeId: z.string().min(1),
   metrics: TradeMetricsSchema,
 });
 
-const AutoGenerateFeedbackRequestSchema = z.discriminatedUnion('type', [
+const AutoGenerateFeedbackRequestSchema = z.discriminatedUnion("type", [
   GameFeedbackRequestSchema,
   TradeFeedbackRequestSchema,
 ]);
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
-  requireCronAuth(request, { jobName: 'AutoGenerateFeedback' });
+  requireCronAuth(request, { jobName: "AutoGenerateFeedback" });
 
   const json = await request.json();
   const parsed = AutoGenerateFeedbackRequestSchema.parse(json);
@@ -136,46 +136,46 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   const agent = await requireUserByIdentifier(body.agentId);
 
-  if (body.type === 'game') {
+  if (body.type === "game") {
     const feedback = await generateGameCompletionFeedback(
       agent.id,
       body.gameId,
-      body.metrics
+      body.metrics,
     );
 
     if (!feedback) {
-      throw new InternalServerError('Failed to create game feedback');
+      throw new InternalServerError("Failed to create game feedback");
     }
 
     return NextResponse.json(
       {
         success: true,
         feedbackId: feedback.id,
-        type: 'game',
+        type: "game",
         score: feedback.score,
-        message: 'Game feedback generated successfully',
+        message: "Game feedback generated successfully",
       },
-      { status: 201 }
+      { status: 201 },
     );
   }
   const feedback = await generateTradeCompletionFeedback(
     agent.id,
     body.tradeId,
-    body.metrics
+    body.metrics,
   );
 
   if (!feedback) {
-    throw new InternalServerError('Failed to create trade feedback');
+    throw new InternalServerError("Failed to create trade feedback");
   }
 
   return NextResponse.json(
     {
       success: true,
       feedbackId: feedback.id,
-      type: 'trade',
+      type: "trade",
       score: feedback.score,
-      message: 'Trade feedback generated successfully',
+      message: "Trade feedback generated successfully",
     },
-    { status: 201 }
+    { status: 201 },
   );
 });

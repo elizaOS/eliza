@@ -1,7 +1,7 @@
-import type { PortfolioBreakdownSnapshot } from '@/hooks/usePortfolioPnL';
-import { formatCurrencyDisplay } from '@/lib/format';
-import { getUserDisplayName, getUserHandle } from '@/lib/user-display';
-import type { User } from '@/stores/authStore';
+import type { PortfolioBreakdownSnapshot } from "@/hooks/usePortfolioPnL";
+import { formatCurrencyDisplay } from "@/lib/format";
+import { getUserDisplayName, getUserHandle } from "@/lib/user-display";
+import type { User } from "@/stores/authStore";
 
 /**
  * Portfolio PnL share card component for generating shareable images.
@@ -39,8 +39,8 @@ export function PortfolioPnLShareCard({
   user,
   className,
 }: PortfolioPnLShareCardProps) {
-  const displayName = getUserDisplayName(user, 'Feed Trader');
-  const handle = getUserHandle(user, 'anon');
+  const displayName = getUserDisplayName(user, "Feed Trader");
+  const handle = getUserHandle(user, "anon");
 
   return (
     <div
@@ -50,47 +50,47 @@ export function PortfolioPnLShareCard({
         height: 630,
         borderRadius: 32,
         background:
-          'radial-gradient(circle at top left, rgba(0, 102, 255, 0.85), rgba(10, 10, 30, 0.95)), linear-gradient(135deg, rgba(25, 15, 60, 0.9), rgba(0, 102, 255, 0.35))',
-        color: '#F8FAFC',
-        padding: '48px 64px',
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'space-between',
-        fontFamily: 'Inter, sans-serif',
-        position: 'relative',
-        overflow: 'hidden',
+          "radial-gradient(circle at top left, rgba(0, 102, 255, 0.85), rgba(10, 10, 30, 0.95)), linear-gradient(135deg, rgba(25, 15, 60, 0.9), rgba(0, 102, 255, 0.35))",
+        color: "#F8FAFC",
+        padding: "48px 64px",
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "space-between",
+        fontFamily: "Inter, sans-serif",
+        position: "relative",
+        overflow: "hidden",
       }}
     >
       <div
         style={{
-          position: 'absolute',
-          top: '-15%',
-          right: '-10%',
-          width: '480px',
-          height: '480px',
-          borderRadius: '50%',
+          position: "absolute",
+          top: "-15%",
+          right: "-10%",
+          width: "480px",
+          height: "480px",
+          borderRadius: "50%",
           background:
-            'radial-gradient(circle, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0) 70%)',
+            "radial-gradient(circle, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0) 70%)",
         }}
       />
 
       <header
         style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
           zIndex: 1,
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "20px" }}>
           <div
             style={{
               width: 64,
               height: 64,
-              borderRadius: '50%',
-              overflow: 'hidden',
-              border: '3px solid rgba(255,255,255,0.25)',
-              position: 'relative',
+              borderRadius: "50%",
+              overflow: "hidden",
+              border: "3px solid rgba(255,255,255,0.25)",
+              position: "relative",
             }}
           >
             {user.profileImageUrl ? (
@@ -98,20 +98,20 @@ export function PortfolioPnLShareCard({
                 src={user.profileImageUrl}
                 alt={displayName}
                 style={{
-                  width: '100%',
-                  height: '100%',
-                  objectFit: 'cover',
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
                 }}
               />
             ) : (
               <div
                 style={{
-                  width: '100%',
-                  height: '100%',
-                  background: 'linear-gradient(135deg, #0F1729, #172554)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
+                  width: "100%",
+                  height: "100%",
+                  background: "linear-gradient(135deg, #0F1729, #172554)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
                   fontSize: 24,
                   fontWeight: 700,
                 }}
@@ -125,7 +125,7 @@ export function PortfolioPnLShareCard({
               style={{
                 fontSize: 22,
                 fontWeight: 600,
-                letterSpacing: '0.02em',
+                letterSpacing: "0.02em",
               }}
             >
               {displayName}
@@ -133,7 +133,7 @@ export function PortfolioPnLShareCard({
             <p
               style={{
                 fontSize: 18,
-                color: 'rgba(226, 232, 255, 0.7)',
+                color: "rgba(226, 232, 255, 0.7)",
                 marginTop: 2,
               }}
             >
@@ -144,9 +144,9 @@ export function PortfolioPnLShareCard({
 
         <div
           style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
           }}
         >
           <svg
@@ -192,18 +192,18 @@ export function PortfolioPnLShareCard({
       <main
         style={{
           zIndex: 1,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          textAlign: 'center',
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          textAlign: "center",
         }}
       >
         <p
           style={{
             fontSize: 20,
-            textTransform: 'uppercase',
-            letterSpacing: '0.25em',
-            color: 'rgba(226, 232, 255, 0.65)',
+            textTransform: "uppercase",
+            letterSpacing: "0.25em",
+            color: "rgba(226, 232, 255, 0.65)",
             fontWeight: 500,
           }}
         >
@@ -215,28 +215,28 @@ export function PortfolioPnLShareCard({
             fontSize: 120,
             fontWeight: 700,
             lineHeight: 1,
-            color: data.totalPnL >= 0 ? '#34D399' : '#F87171',
+            color: data.totalPnL >= 0 ? "#34D399" : "#F87171",
           }}
         >
-          {data.totalPnL >= 0 ? '+' : ''}
+          {data.totalPnL >= 0 ? "+" : ""}
           {formatCurrencyDisplay(data.totalPnL)}
         </p>
       </main>
 
       <footer
         style={{
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
           zIndex: 1,
         }}
       >
         <p
           style={{
             fontSize: 18,
-            color: 'rgba(226, 232, 255, 0.6)',
-            letterSpacing: '0.08em',
-            textTransform: 'uppercase',
+            color: "rgba(226, 232, 255, 0.6)",
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
           }}
         >
           Trade the narrative. Share the upside.

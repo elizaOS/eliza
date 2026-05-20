@@ -16,23 +16,23 @@
  *         {npc-name}.json
  */
 
-import * as fs from 'node:fs';
-import * as path from 'node:path';
-import { logger } from '@feed/shared';
-import type { TickTrace } from './types';
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { logger } from "@feed/shared";
+import type { TickTrace } from "./types";
 
-const TRACE_DIR = path.resolve(process.cwd(), 'runs', 'dag-traces');
+const TRACE_DIR = path.resolve(process.cwd(), "runs", "dag-traces");
 const MAX_TRACES = Number(process.env.FEED_DAG_TRACE_KEEP || 100);
 
 export async function writeTickTrace(trace: TickTrace): Promise<string> {
-  const dirName = `tick-${trace.timestamp.replace(/[:.]/g, '-')}-${trace.tickNumber}`;
+  const dirName = `tick-${trace.timestamp.replace(/[:.]/g, "-")}-${trace.tickNumber}`;
   const traceDir = path.join(TRACE_DIR, dirName);
 
   try {
     // Create directories
-    fs.mkdirSync(path.join(traceDir, 'nodes'), { recursive: true });
-    fs.mkdirSync(path.join(traceDir, 'llm-calls'), { recursive: true });
-    fs.mkdirSync(path.join(traceDir, 'npc-trajectories'), { recursive: true });
+    fs.mkdirSync(path.join(traceDir, "nodes"), { recursive: true });
+    fs.mkdirSync(path.join(traceDir, "llm-calls"), { recursive: true });
+    fs.mkdirSync(path.join(traceDir, "npc-trajectories"), { recursive: true });
 
     // Write tick summary (no inline LLM prompt text - just references)
     const summary = {
@@ -66,39 +66,39 @@ export async function writeTickTrace(trace: TickTrace): Promise<string> {
       gameTickResult: trace.gameTickResult,
     };
     fs.writeFileSync(
-      path.join(traceDir, 'tick-summary.json'),
-      JSON.stringify(summary, null, 2)
+      path.join(traceDir, "tick-summary.json"),
+      JSON.stringify(summary, null, 2),
     );
 
     // Write individual node files with full data
     for (let i = 0; i < trace.nodes.length; i++) {
       const node = trace.nodes[i]!;
-      const filename = `${String(i + 1).padStart(2, '0')}-${node.nodeId}.json`;
+      const filename = `${String(i + 1).padStart(2, "0")}-${node.nodeId}.json`;
       fs.writeFileSync(
-        path.join(traceDir, 'nodes', filename),
-        JSON.stringify(node, null, 2)
+        path.join(traceDir, "nodes", filename),
+        JSON.stringify(node, null, 2),
       );
     }
 
     // Write individual LLM call files with full prompt/response text
     for (const call of trace.llmCalls) {
       fs.writeFileSync(
-        path.join(traceDir, 'llm-calls', `${call.callId}.json`),
-        JSON.stringify(call, null, 2)
+        path.join(traceDir, "llm-calls", `${call.callId}.json`),
+        JSON.stringify(call, null, 2),
       );
     }
 
     // Write NPC trajectory files
     for (const npc of trace.npcTrajectories) {
-      const safeName = npc.npcName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      const safeName = npc.npcName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
       fs.writeFileSync(
-        path.join(traceDir, 'npc-trajectories', `${safeName}.json`),
-        JSON.stringify(npc, null, 2)
+        path.join(traceDir, "npc-trajectories", `${safeName}.json`),
+        JSON.stringify(npc, null, 2),
       );
     }
 
     // Update latest symlink
-    const latestLink = path.join(TRACE_DIR, 'latest');
+    const latestLink = path.join(TRACE_DIR, "latest");
     try {
       if (fs.existsSync(latestLink)) fs.unlinkSync(latestLink);
       fs.symlinkSync(dirName, latestLink);
@@ -117,15 +117,15 @@ export async function writeTickTrace(trace: TickTrace): Promise<string> {
         llmCalls: trace.llmCalls.length,
         npcTrajectories: trace.npcTrajectories.length,
       },
-      'DagTrace'
+      "DagTrace",
     );
 
     return traceDir;
   } catch (err) {
     logger.error(
-      'Failed to write DAG trace',
+      "Failed to write DAG trace",
       err instanceof Error ? err : new Error(String(err)),
-      'DagTrace'
+      "DagTrace",
     );
     return traceDir;
   }
@@ -139,42 +139,42 @@ export async function writeTickTrace(trace: TickTrace): Promise<string> {
 function summarizeData(data: Record<string, unknown>): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(data)) {
-    if (typeof value === 'string' && value.length > 200) {
-      result[key] = value.slice(0, 200) + `... [${value.length} chars]`;
+    if (typeof value === "string" && value.length > 200) {
+      result[key] = `${value.slice(0, 200)}... [${value.length} chars]`;
     } else if (Array.isArray(value)) {
       result[key] = {
         _summary: true,
-        type: 'array',
+        type: "array",
         length: value.length,
         preview: value.slice(0, 3).map((item) =>
-          typeof item === 'object' && item !== null
+          typeof item === "object" && item !== null
             ? Object.fromEntries(
                 Object.entries(item)
                   .slice(0, 5)
                   .map(([k, v]) => [
                     k,
-                    typeof v === 'string' && v.length > 100
-                      ? v.slice(0, 100) + '...'
+                    typeof v === "string" && v.length > 100
+                      ? `${v.slice(0, 100)}...`
                       : v,
-                  ])
+                  ]),
               )
-            : item
+            : item,
         ),
       };
-    } else if (typeof value === 'object' && value !== null) {
+    } else if (typeof value === "object" && value !== null) {
       const entries = Object.entries(value);
       result[key] = {
         _summary: true,
-        type: 'object',
+        type: "object",
         keys: entries.map(([k]) => k),
         preview: Object.fromEntries(
           entries.slice(0, 5).map(([k, v]) => {
-            if (typeof v === 'string' && v.length > 100)
-              return [k, v.slice(0, 100) + '...'];
-            if (typeof v === 'object' && v !== null)
-              return [k, Array.isArray(v) ? `[${v.length} items]` : '{...}'];
+            if (typeof v === "string" && v.length > 100)
+              return [k, `${v.slice(0, 100)}...`];
+            if (typeof v === "object" && v !== null)
+              return [k, Array.isArray(v) ? `[${v.length} items]` : "{...}"];
             return [k, v];
-          })
+          }),
         ),
       };
     } else {
@@ -192,8 +192,8 @@ async function cleanupOldTraces(): Promise<void> {
       .readdirSync(TRACE_DIR)
       .filter(
         (e) =>
-          e.startsWith('tick-') &&
-          fs.statSync(path.join(TRACE_DIR, e)).isDirectory()
+          e.startsWith("tick-") &&
+          fs.statSync(path.join(TRACE_DIR, e)).isDirectory(),
       )
       .sort()
       .reverse();

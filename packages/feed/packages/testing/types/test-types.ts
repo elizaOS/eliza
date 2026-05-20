@@ -4,7 +4,7 @@
  * Production-ready types to replace all 'any' and 'unknown' usage
  */
 
-import type { TrainedModel, TrainingBatch, Trajectory } from '@feed/db';
+import type { TrainedModel, TrainingBatch, Trajectory } from "@feed/db";
 
 // ============================================================================
 // Actors Data Types
@@ -20,7 +20,7 @@ export type MockDbTrajectory = {
   count: () => Promise<number>;
   groupBy: () => Promise<Array<{ scenarioId: string; _count: number }>>;
   findMany: () => Promise<
-    Array<Pick<Trajectory, 'trajectoryId' | 'stepsJson'>>
+    Array<Pick<Trajectory, "trajectoryId" | "stepsJson">>
   >;
   updateMany: () => Promise<{ count: number }>;
 };
@@ -79,7 +79,7 @@ export interface PostHogConfig {
 export interface PostHogInstance {
   capture: (
     event: string,
-    properties?: Record<string, string | number | boolean | null | undefined>
+    properties?: Record<string, string | number | boolean | null | undefined>,
   ) => void;
   config?: PostHogConfig;
 }
@@ -178,7 +178,7 @@ export interface ActorsIndexFile {
  */
 export interface AgentTickResultItem {
   agentId: string;
-  status: 'success' | 'skipped' | 'error';
+  status: "success" | "skipped" | "error";
   reason?: string;
   actionsExecuted?: number;
   error?: string;
@@ -301,7 +301,7 @@ export interface ViemContractCallArgs {
  * JSON Schema property definition for mock LLM clients
  */
 export interface MockJsonSchemaProperty {
-  type?: 'string' | 'number' | 'boolean' | 'object' | 'array';
+  type?: "string" | "number" | "boolean" | "object" | "array";
   description?: string;
   items?: MockJsonSchemaProperty;
   properties?: Record<string, MockJsonSchemaProperty>;
@@ -354,7 +354,7 @@ export interface MockModelMethods {
  * Uses a forward reference for the client type
  */
 export type MockTransactionFn = (
-  client: Record<string, unknown>
+  client: Record<string, unknown>,
 ) => Promise<unknown>;
 
 /**

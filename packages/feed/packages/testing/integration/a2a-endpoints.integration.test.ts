@@ -1,6 +1,6 @@
-import { beforeAll, describe, expect, it } from 'bun:test';
-import { AgentType } from '@feed/agents';
-import { OASFDomainCategories, OASFSkillCategories } from '@feed/shared';
+import { beforeAll, describe, expect, it } from "bun:test";
+import { AgentType } from "@feed/agents";
+import { OASFDomainCategories, OASFSkillCategories } from "@feed/shared";
 
 type DiscoveredAgent = {
   agentId: string;
@@ -22,12 +22,12 @@ const baseUrl =
   process.env.TEST_API_URL ||
   process.env.TEST_BASE_URL ||
   process.env.NEXT_PUBLIC_BASE_URL ||
-  'http://localhost:3000';
+  "http://localhost:3000";
 
 let discoverSnapshot: DiscoverResponse;
 let sampleAgent: DiscoveredAgent;
 
-async function discoverAgents(query: string = ''): Promise<DiscoverResponse> {
+async function discoverAgents(query: string = ""): Promise<DiscoverResponse> {
   const response = await fetch(`${baseUrl}/api/agents/discover${query}`);
   expect(response.status).toBe(200);
   return (await response.json()) as DiscoverResponse;
@@ -41,14 +41,14 @@ function expectAgentMatchesDomain(agent: DiscoveredAgent, domain: string) {
   expect(agent.capabilities.domains ?? []).toContain(domain);
 }
 
-describe('A2A Endpoints Integration Tests', () => {
+describe("A2A Endpoints Integration Tests", () => {
   beforeAll(async () => {
     const health = await fetch(`${baseUrl}/api/health`, {
       signal: AbortSignal.timeout(3000),
     });
     expect(health.ok).toBe(true);
 
-    discoverSnapshot = await discoverAgents('?limit=50');
+    discoverSnapshot = await discoverAgents("?limit=50");
     expect(Array.isArray(discoverSnapshot.agents)).toBe(true);
     expect(discoverSnapshot.total).toBeGreaterThan(0);
 
@@ -56,27 +56,27 @@ describe('A2A Endpoints Integration Tests', () => {
     expect(sampleAgent.agentId).toBeTruthy();
   });
 
-  describe('GET /api/agents/[agentId]/card', () => {
-    it('returns agent card for an existing agent', async () => {
+  describe("GET /api/agents/[agentId]/card", () => {
+    it("returns agent card for an existing agent", async () => {
       const response = await fetch(
-        `${baseUrl}/api/agents/${sampleAgent.agentId}/card`
+        `${baseUrl}/api/agents/${sampleAgent.agentId}/card`,
       );
 
       expect(response.status).toBe(200);
 
       const agentCard = await response.json();
 
-      expect(agentCard).toHaveProperty('version', '1.0');
-      expect(agentCard).toHaveProperty('agentId', sampleAgent.agentId);
-      expect(agentCard).toHaveProperty('name');
-      expect(agentCard).toHaveProperty('description');
-      expect(agentCard).toHaveProperty('endpoints');
-      expect(agentCard).toHaveProperty('capabilities');
+      expect(agentCard).toHaveProperty("version", "1.0");
+      expect(agentCard).toHaveProperty("agentId", sampleAgent.agentId);
+      expect(agentCard).toHaveProperty("name");
+      expect(agentCard).toHaveProperty("description");
+      expect(agentCard).toHaveProperty("endpoints");
+      expect(agentCard).toHaveProperty("capabilities");
     });
 
-    it('includes OASF skills in the agent card', async () => {
+    it("includes OASF skills in the agent card", async () => {
       const response = await fetch(
-        `${baseUrl}/api/agents/${sampleAgent.agentId}/card`
+        `${baseUrl}/api/agents/${sampleAgent.agentId}/card`,
       );
 
       expect(response.status).toBe(200);
@@ -86,9 +86,9 @@ describe('A2A Endpoints Integration Tests', () => {
       expect(Array.isArray(agentCard.capabilities.skills)).toBe(true);
     });
 
-    it('includes OASF domains in the agent card', async () => {
+    it("includes OASF domains in the agent card", async () => {
       const response = await fetch(
-        `${baseUrl}/api/agents/${sampleAgent.agentId}/card`
+        `${baseUrl}/api/agents/${sampleAgent.agentId}/card`,
       );
 
       expect(response.status).toBe(200);
@@ -98,44 +98,44 @@ describe('A2A Endpoints Integration Tests', () => {
       expect(Array.isArray(agentCard.capabilities.domains)).toBe(true);
     });
 
-    it('includes A2A endpoints in the agent card', async () => {
+    it("includes A2A endpoints in the agent card", async () => {
       const response = await fetch(
-        `${baseUrl}/api/agents/${sampleAgent.agentId}/card`
+        `${baseUrl}/api/agents/${sampleAgent.agentId}/card`,
       );
 
       expect(response.status).toBe(200);
 
       const agentCard = await response.json();
 
-      expect(agentCard.endpoints).toHaveProperty('a2a');
-      expect(agentCard.endpoints).toHaveProperty('mcp');
-      expect(agentCard.endpoints).toHaveProperty('rpc');
+      expect(agentCard.endpoints).toHaveProperty("a2a");
+      expect(agentCard.endpoints).toHaveProperty("mcp");
+      expect(agentCard.endpoints).toHaveProperty("rpc");
     });
 
-    it('returns 404 for a non-existent agent', async () => {
+    it("returns 404 for a non-existent agent", async () => {
       const response = await fetch(
-        `${baseUrl}/api/agents/non-existent-agent/card`
+        `${baseUrl}/api/agents/non-existent-agent/card`,
       );
 
       expect(response.status).toBe(404);
       expect(await response.json()).toEqual({
-        error: 'Agent not found',
-        agentId: 'non-existent-agent',
+        error: "Agent not found",
+        agentId: "non-existent-agent",
       });
     });
   });
 
-  describe('GET /api/agents/discover', () => {
-    it('discovers active agents', async () => {
+  describe("GET /api/agents/discover", () => {
+    it("discovers active agents", async () => {
       const result = await discoverAgents();
 
       expect(Array.isArray(result.agents)).toBe(true);
       expect(result.total).toBeGreaterThan(0);
     });
 
-    it('filters agents by OASF skills', async () => {
+    it("filters agents by OASF skills", async () => {
       const result = await discoverAgents(
-        `?skills=${encodeURIComponent(OASFSkillCategories.TRADING)}`
+        `?skills=${encodeURIComponent(OASFSkillCategories.TRADING)}`,
       );
 
       for (const agent of result.agents) {
@@ -143,9 +143,9 @@ describe('A2A Endpoints Integration Tests', () => {
       }
     });
 
-    it('filters agents by OASF domains', async () => {
+    it("filters agents by OASF domains", async () => {
       const result = await discoverAgents(
-        `?domains=${encodeURIComponent(OASFDomainCategories.FINANCE)}`
+        `?domains=${encodeURIComponent(OASFDomainCategories.FINANCE)}`,
       );
 
       for (const agent of result.agents) {
@@ -156,17 +156,17 @@ describe('A2A Endpoints Integration Tests', () => {
     it('supports "any" match mode for skills', async () => {
       const trading = encodeURIComponent(OASFSkillCategories.TRADING);
       const retrieval = encodeURIComponent(
-        OASFSkillCategories.INFORMATION_RETRIEVAL
+        OASFSkillCategories.INFORMATION_RETRIEVAL,
       );
       const result = await discoverAgents(
-        `?skills=${trading},${retrieval}&matchMode=any`
+        `?skills=${trading},${retrieval}&matchMode=any`,
       );
 
       for (const agent of result.agents) {
         const skills = agent.capabilities.skills ?? [];
         expect(
           skills.includes(OASFSkillCategories.TRADING) ||
-            skills.includes(OASFSkillCategories.INFORMATION_RETRIEVAL)
+            skills.includes(OASFSkillCategories.INFORMATION_RETRIEVAL),
         ).toBe(true);
       }
     });
@@ -175,7 +175,7 @@ describe('A2A Endpoints Integration Tests', () => {
       const analysis = encodeURIComponent(OASFSkillCategories.DATA_ANALYSIS);
       const prediction = encodeURIComponent(OASFSkillCategories.PREDICTION);
       const result = await discoverAgents(
-        `?skills=${analysis},${prediction}&matchMode=all`
+        `?skills=${analysis},${prediction}&matchMode=all`,
       );
 
       for (const agent of result.agents) {
@@ -184,17 +184,17 @@ describe('A2A Endpoints Integration Tests', () => {
       }
     });
 
-    it('filters by agent type', async () => {
-      const result = await discoverAgents('?types=NPC');
+    it("filters by agent type", async () => {
+      const result = await discoverAgents("?types=NPC");
 
       for (const agent of result.agents) {
         expect(agent.type).toBe(AgentType.NPC);
       }
     });
 
-    it('supports pagination', async () => {
-      const page1 = await discoverAgents('?limit=1&offset=0');
-      const page2 = await discoverAgents('?limit=1&offset=1');
+    it("supports pagination", async () => {
+      const page1 = await discoverAgents("?limit=1&offset=0");
+      const page2 = await discoverAgents("?limit=1&offset=1");
 
       expect(page1.agents.length).toBeLessThanOrEqual(1);
       expect(page2.agents.length).toBeLessThanOrEqual(1);
@@ -204,22 +204,22 @@ describe('A2A Endpoints Integration Tests', () => {
       }
     });
 
-    it('supports search by name or description', async () => {
+    it("supports search by name or description", async () => {
       const searchToken =
         sampleAgent.name.split(/\s+/).find(Boolean) ?? sampleAgent.name;
       const result = await discoverAgents(
-        `?search=${encodeURIComponent(searchToken)}`
+        `?search=${encodeURIComponent(searchToken)}`,
       );
 
       expect(Array.isArray(result.agents)).toBe(true);
       expect(
-        result.agents.some((agent) => agent.agentId === sampleAgent.agentId)
+        result.agents.some((agent) => agent.agentId === sampleAgent.agentId),
       ).toBe(true);
     });
 
-    it('combines multiple filters', async () => {
+    it("combines multiple filters", async () => {
       const result = await discoverAgents(
-        `?types=NPC&skills=${encodeURIComponent(OASFSkillCategories.TRADING)}&domains=${encodeURIComponent(OASFDomainCategories.FINANCE)}`
+        `?types=NPC&skills=${encodeURIComponent(OASFSkillCategories.TRADING)}&domains=${encodeURIComponent(OASFDomainCategories.FINANCE)}`,
       );
 
       for (const agent of result.agents) {
@@ -230,25 +230,25 @@ describe('A2A Endpoints Integration Tests', () => {
     });
   });
 
-  describe('Agent0 SDK Compatibility', () => {
-    it('returns an agent card compatible with Agent0 SDK expectations', async () => {
+  describe("Agent0 SDK Compatibility", () => {
+    it("returns an agent card compatible with Agent0 SDK expectations", async () => {
       const response = await fetch(
-        `${baseUrl}/api/agents/${sampleAgent.agentId}/card`
+        `${baseUrl}/api/agents/${sampleAgent.agentId}/card`,
       );
 
       expect(response.status).toBe(200);
 
       const agentCard = await response.json();
 
-      expect(agentCard.version).toBe('1.0');
-      expect(agentCard).toHaveProperty('agentId');
-      expect(agentCard).toHaveProperty('endpoints');
-      expect(agentCard.capabilities).toHaveProperty('skills');
-      expect(agentCard.capabilities).toHaveProperty('domains');
+      expect(agentCard.version).toBe("1.0");
+      expect(agentCard).toHaveProperty("agentId");
+      expect(agentCard).toHaveProperty("endpoints");
+      expect(agentCard.capabilities).toHaveProperty("skills");
+      expect(agentCard.capabilities).toHaveProperty("domains");
       expect(Array.isArray(agentCard.capabilities.skills)).toBe(true);
       expect(Array.isArray(agentCard.capabilities.domains)).toBe(true);
-      expect(agentCard.endpoints).toHaveProperty('a2a');
-      expect(agentCard.endpoints).toHaveProperty('mcp');
+      expect(agentCard.endpoints).toHaveProperty("a2a");
+      expect(agentCard.endpoints).toHaveProperty("mcp");
     });
   });
 });

@@ -19,10 +19,10 @@
  * ```
  */
 
-import { useCallback, useEffect, useRef } from 'react';
-import { create } from 'zustand';
-import { useShallow } from 'zustand/react/shallow';
-import { apiUrl } from '@/utils/api-url';
+import { useCallback, useEffect, useRef } from "react";
+import { create } from "zustand";
+import { useShallow } from "zustand/react/shallow";
+import { apiUrl } from "@/utils/api-url";
 
 interface WalletBalanceState {
   // Data
@@ -97,7 +97,7 @@ export const useWalletBalanceStore = create<WalletBalanceState>((set, get) => ({
 
       try {
         const response = await fetch(
-          apiUrl(`/api/users/${encodeURIComponent(requestedUserId)}/balance`)
+          apiUrl(`/api/users/${encodeURIComponent(requestedUserId)}/balance`),
         );
 
         if (!response.ok) {
@@ -122,7 +122,7 @@ export const useWalletBalanceStore = create<WalletBalanceState>((set, get) => ({
         // Only set error if user hasn't changed
         if (get().userId === requestedUserId) {
           const errorMessage =
-            err instanceof Error ? err.message : 'Failed to fetch balance';
+            err instanceof Error ? err.message : "Failed to fetch balance";
           set({ error: errorMessage });
         }
       } finally {
@@ -184,7 +184,7 @@ const balanceSelector = (state: WalletBalanceState) => ({
  */
 export function useWalletBalance(userId?: string | null) {
   const { balance, lifetimePnL, loading, error } = useWalletBalanceStore(
-    useShallow(balanceSelector)
+    useShallow(balanceSelector),
   );
   const fetchBalance = useWalletBalanceStore((state) => state.fetchBalance);
   const setUserId = useWalletBalanceStore((state) => state.setUserId);
@@ -216,7 +216,7 @@ export function useWalletBalance(userId?: string | null) {
  */
 export function useWalletBalancePolling(
   userId?: string | null,
-  intervalMs = 15000
+  intervalMs = 15000,
 ) {
   const fetchBalance = useWalletBalanceStore((state) => state.fetchBalance);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);

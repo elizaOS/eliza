@@ -1,13 +1,13 @@
-'use client';
+"use client";
 
-import { getProfileUrl } from '@feed/shared';
-import { formatDistanceToNow } from 'date-fns';
-import { Heart, MessageCircle, Share2, TrendingUp } from 'lucide-react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { apiUrl } from '@/utils/api-url';
+import { getProfileUrl } from "@feed/shared";
+import { formatDistanceToNow } from "date-fns";
+import { Heart, MessageCircle, Share2, TrendingUp } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { apiUrl } from "@/utils/api-url";
 
 /**
  * Trending post structure for trending posts panel.
@@ -48,7 +48,7 @@ export function TrendingPostsPanel() {
 
   useEffect(() => {
     const fetchTrendingPosts = async () => {
-      const response = await fetch(apiUrl('/api/feed/widgets/trending-posts'));
+      const response = await fetch(apiUrl("/api/feed/widgets/trending-posts"));
       const data = await response.json();
       if (data.success) {
         setPosts(data.posts || []);
@@ -69,7 +69,7 @@ export function TrendingPostsPanel() {
 
   const truncateContent = (content: string, maxLength = 100) => {
     if (content.length <= maxLength) return content;
-    return content.slice(0, maxLength) + '...';
+    return `${content.slice(0, maxLength)}...`;
   };
 
   return (

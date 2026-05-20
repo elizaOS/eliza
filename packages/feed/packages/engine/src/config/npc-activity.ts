@@ -33,8 +33,8 @@
  * ```
  */
 
-import { logger } from '@feed/shared';
-import { clamp01 } from '../utils/math-utils';
+import { logger } from "@feed/shared";
+import { clamp01 } from "../utils/math-utils";
 
 // =============================================================================
 // HELPER FUNCTIONS
@@ -46,7 +46,7 @@ import { clamp01 } from '../utils/math-utils';
  */
 function envNumber(key: string, defaultValue: number): number {
   const value = process.env[key];
-  if (value === undefined || value === '') {
+  if (value === undefined || value === "") {
     return defaultValue;
   }
   const parsed = Number(value);
@@ -63,7 +63,7 @@ function envPositiveNumber(key: string, defaultValue: number): number {
     logger.warn(
       `${key}=${value} must be positive (> 0), using default ${defaultValue}`,
       { key, value, defaultValue },
-      'npc-activity'
+      "npc-activity",
     );
     return defaultValue;
   }
@@ -81,7 +81,7 @@ function envNonNegativeNumber(key: string, defaultValue: number): number {
     logger.warn(
       `${key}=${value} must be non-negative (>= 0), using default ${defaultValue}`,
       { key, value, defaultValue },
-      'npc-activity'
+      "npc-activity",
     );
     return defaultValue;
   }
@@ -98,7 +98,7 @@ function envProbability(key: string, defaultValue: number): number {
     logger.warn(
       `${key}=${value} is outside valid probability range (0-1), clamping to bounds`,
       { key, value },
-      'npc-activity'
+      "npc-activity",
     );
   }
   return clamp01(value);
@@ -115,7 +115,7 @@ function envScore(key: string, defaultValue: number): number {
     logger.warn(
       `${key}=${value} is outside valid score range (0-1), clamping to bounds`,
       { key, value },
-      'npc-activity'
+      "npc-activity",
     );
   }
   return clamp01(value);
@@ -129,22 +129,22 @@ function envScore(key: string, defaultValue: number): number {
  */
 function envBoolean(key: string, defaultValue: boolean): boolean {
   const value = process.env[key];
-  if (value === undefined || value === '') {
+  if (value === undefined || value === "") {
     return defaultValue;
   }
 
   const normalized = value.trim().toLowerCase();
-  if (normalized === 'true' || normalized === '1' || normalized === 'yes') {
+  if (normalized === "true" || normalized === "1" || normalized === "yes") {
     return true;
   }
-  if (normalized === 'false' || normalized === '0' || normalized === 'no') {
+  if (normalized === "false" || normalized === "0" || normalized === "no") {
     return false;
   }
 
   logger.warn(
     `${key}="${value}" is not a valid boolean, using default ${defaultValue}`,
     { key, value, defaultValue },
-    'npc-activity'
+    "npc-activity",
   );
   return defaultValue;
 }
@@ -167,7 +167,7 @@ export const NPC_POSTING_CONFIG = {
    * @default 0.25 (25% base - NPCs should post to keep feed alive)
    * @env NPC_POST_PROBABILITY
    */
-  baseProbability: envProbability('NPC_POST_PROBABILITY', 0.25),
+  baseProbability: envProbability("NPC_POST_PROBABILITY", 0.25),
 
   /**
    * Maximum posts per day per NPC to prevent spam.
@@ -177,7 +177,7 @@ export const NPC_POSTING_CONFIG = {
    * @default 3 (balanced - encourages diversity across NPCs)
    * @env NPC_MAX_POSTS_PER_DAY
    */
-  maxPostsPerDay: envPositiveNumber('NPC_MAX_POSTS_PER_DAY', 3),
+  maxPostsPerDay: envPositiveNumber("NPC_MAX_POSTS_PER_DAY", 3),
 
   /**
    * Minimum hours between posts for the same NPC.
@@ -188,7 +188,7 @@ export const NPC_POSTING_CONFIG = {
    * @default 3 (balanced pacing for diverse feed)
    * @env NPC_MIN_HOURS_BETWEEN_POSTS
    */
-  minHoursBetweenPosts: envNonNegativeNumber('NPC_MIN_HOURS_BETWEEN_POSTS', 3),
+  minHoursBetweenPosts: envNonNegativeNumber("NPC_MIN_HOURS_BETWEEN_POSTS", 3),
 
   /**
    * Boost multiplier when actor was mentioned by a player.
@@ -197,7 +197,7 @@ export const NPC_POSTING_CONFIG = {
    * @default 1.3 (modest boost)
    * @env NPC_MENTION_BOOST
    */
-  mentionBoost: envNumber('NPC_MENTION_BOOST', 1.3),
+  mentionBoost: envNumber("NPC_MENTION_BOOST", 1.3),
 
   /**
    * Boost multiplier when actor is affiliated with an active event.
@@ -205,7 +205,7 @@ export const NPC_POSTING_CONFIG = {
    * @default 1.2 (modest boost)
    * @env NPC_AFFILIATION_BOOST
    */
-  affiliationBoost: envNumber('NPC_AFFILIATION_BOOST', 1.2),
+  affiliationBoost: envNumber("NPC_AFFILIATION_BOOST", 1.2),
 } as const;
 
 // =============================================================================
@@ -225,7 +225,7 @@ export const NPC_TRADING_CONFIG = {
    * @default 0.6 (60% chance to consider trading per tick)
    * @env NPC_TRADE_PROBABILITY
    */
-  baseProbability: envProbability('NPC_TRADE_PROBABILITY', 0.6),
+  baseProbability: envProbability("NPC_TRADE_PROBABILITY", 0.6),
 
   /**
    * Maximum trades per day per NPC to prevent excessive trading.
@@ -234,7 +234,7 @@ export const NPC_TRADING_CONFIG = {
    * @default 20
    * @env NPC_MAX_TRADES_PER_DAY
    */
-  maxTradesPerDay: envPositiveNumber('NPC_MAX_TRADES_PER_DAY', 20),
+  maxTradesPerDay: envPositiveNumber("NPC_MAX_TRADES_PER_DAY", 20),
 
   /**
    * Minimum minutes between trades for the same NPC.
@@ -245,8 +245,8 @@ export const NPC_TRADING_CONFIG = {
    * @env NPC_MIN_MINUTES_BETWEEN_TRADES
    */
   minMinutesBetweenTrades: envNonNegativeNumber(
-    'NPC_MIN_MINUTES_BETWEEN_TRADES',
-    5
+    "NPC_MIN_MINUTES_BETWEEN_TRADES",
+    5,
   ),
 } as const;
 
@@ -267,7 +267,7 @@ export const NPC_ENGAGEMENT_CONFIG = {
    * @default 0.12 (doubled from original)
    * @env NPC_LIKE_PROBABILITY
    */
-  baseLikeProbability: envProbability('NPC_LIKE_PROBABILITY', 0.12),
+  baseLikeProbability: envProbability("NPC_LIKE_PROBABILITY", 0.12),
 
   /**
    * Base probability for an NPC to share/repost (0.0 - 1.0).
@@ -275,7 +275,7 @@ export const NPC_ENGAGEMENT_CONFIG = {
    * @default 0.03 (doubled from original)
    * @env NPC_SHARE_PROBABILITY
    */
-  baseShareProbability: envProbability('NPC_SHARE_PROBABILITY', 0.03),
+  baseShareProbability: envProbability("NPC_SHARE_PROBABILITY", 0.03),
 
   /**
    * Base probability for an NPC to comment (0.0 - 1.0).
@@ -283,7 +283,7 @@ export const NPC_ENGAGEMENT_CONFIG = {
    * @default 0.04 (increased - comments are valuable engagement)
    * @env NPC_COMMENT_PROBABILITY
    */
-  baseCommentProbability: envProbability('NPC_COMMENT_PROBABILITY', 0.04),
+  baseCommentProbability: envProbability("NPC_COMMENT_PROBABILITY", 0.04),
 
   /**
    * Boost multiplier when NPC shares an org affiliation with post author.
@@ -291,7 +291,7 @@ export const NPC_ENGAGEMENT_CONFIG = {
    * @default 2.0 (increased for more org-based engagement)
    * @env NPC_ENGAGEMENT_AFFILIATION_BOOST
    */
-  affiliationBoost: envNumber('NPC_ENGAGEMENT_AFFILIATION_BOOST', 2.0),
+  affiliationBoost: envNumber("NPC_ENGAGEMENT_AFFILIATION_BOOST", 2.0),
 
   /**
    * Boost multiplier for article-type posts (higher quality content).
@@ -299,7 +299,7 @@ export const NPC_ENGAGEMENT_CONFIG = {
    * @default 1.8 (increased - encourage engagement with quality content)
    * @env NPC_ENGAGEMENT_ARTICLE_BOOST
    */
-  articleBoost: envNumber('NPC_ENGAGEMENT_ARTICLE_BOOST', 1.8),
+  articleBoost: envNumber("NPC_ENGAGEMENT_ARTICLE_BOOST", 1.8),
 
   /**
    * Maximum likes across all NPCs per tick.
@@ -307,7 +307,7 @@ export const NPC_ENGAGEMENT_CONFIG = {
    * @default 20 (increased for more engagement)
    * @env NPC_MAX_LIKES_PER_TICK
    */
-  maxLikesPerTick: envPositiveNumber('NPC_MAX_LIKES_PER_TICK', 20),
+  maxLikesPerTick: envPositiveNumber("NPC_MAX_LIKES_PER_TICK", 20),
 
   /**
    * Maximum shares across all NPCs per tick.
@@ -315,7 +315,7 @@ export const NPC_ENGAGEMENT_CONFIG = {
    * @default 8 (doubled for more reposting)
    * @env NPC_MAX_SHARES_PER_TICK
    */
-  maxSharesPerTick: envPositiveNumber('NPC_MAX_SHARES_PER_TICK', 8),
+  maxSharesPerTick: envPositiveNumber("NPC_MAX_SHARES_PER_TICK", 8),
 
   /**
    * Maximum total comments (including replies-to-comments) across all NPCs per tick.
@@ -323,7 +323,7 @@ export const NPC_ENGAGEMENT_CONFIG = {
    * @default 18 (increased for deeper threads + more conversation)
    * @env NPC_MAX_COMMENTS_PER_TICK
    */
-  maxCommentsPerTick: envPositiveNumber('NPC_MAX_COMMENTS_PER_TICK', 18),
+  maxCommentsPerTick: envPositiveNumber("NPC_MAX_COMMENTS_PER_TICK", 18),
 
   /**
    * Maximum comment replies (nested comments) per tick.
@@ -335,8 +335,8 @@ export const NPC_ENGAGEMENT_CONFIG = {
    * @env NPC_MAX_COMMENT_REPLIES_PER_TICK
    */
   maxCommentRepliesPerTick: envNonNegativeNumber(
-    'NPC_MAX_COMMENT_REPLIES_PER_TICK',
-    8
+    "NPC_MAX_COMMENT_REPLIES_PER_TICK",
+    8,
   ),
 
   /**
@@ -345,7 +345,7 @@ export const NPC_ENGAGEMENT_CONFIG = {
    * @default 3 (allows up to 4 total levels including the root)
    * @env NPC_MAX_COMMENT_THREAD_DEPTH
    */
-  maxCommentThreadDepth: envPositiveNumber('NPC_MAX_COMMENT_THREAD_DEPTH', 3),
+  maxCommentThreadDepth: envPositiveNumber("NPC_MAX_COMMENT_THREAD_DEPTH", 3),
 
   /**
    * Base probability that the post author replies to a comment on their post.
@@ -355,8 +355,8 @@ export const NPC_ENGAGEMENT_CONFIG = {
    * @env NPC_COMMENT_AUTHOR_REPLY_PROBABILITY
    */
   commentAuthorReplyProbability: envProbability(
-    'NPC_COMMENT_AUTHOR_REPLY_PROBABILITY',
-    0.35
+    "NPC_COMMENT_AUTHOR_REPLY_PROBABILITY",
+    0.35,
   ),
 
   /**
@@ -367,8 +367,8 @@ export const NPC_ENGAGEMENT_CONFIG = {
    * @env NPC_COMMENT_THREAD_CONTINUE_PROBABILITY
    */
   commentThreadContinueProbability: envProbability(
-    'NPC_COMMENT_THREAD_CONTINUE_PROBABILITY',
-    0.45
+    "NPC_COMMENT_THREAD_CONTINUE_PROBABILITY",
+    0.45,
   ),
 
   /**
@@ -378,8 +378,8 @@ export const NPC_ENGAGEMENT_CONFIG = {
    * @env NPC_QUOTE_CLAPBACK_PROBABILITY
    */
   quoteClapbackProbability: envProbability(
-    'NPC_QUOTE_CLAPBACK_PROBABILITY',
-    0.6
+    "NPC_QUOTE_CLAPBACK_PROBABILITY",
+    0.6,
   ),
 
   /**
@@ -390,8 +390,8 @@ export const NPC_ENGAGEMENT_CONFIG = {
    * @env NPC_DISCOURSE_QUOTE_PROBABILITY
    */
   discourseQuoteProbability: envProbability(
-    'NPC_DISCOURSE_QUOTE_PROBABILITY',
-    0.3
+    "NPC_DISCOURSE_QUOTE_PROBABILITY",
+    0.3,
   ),
 
   /**
@@ -400,7 +400,7 @@ export const NPC_ENGAGEMENT_CONFIG = {
    * @default 20 (increased for broader engagement)
    * @env NPC_ENGAGEMENT_ACTORS_TO_SAMPLE
    */
-  actorsToSample: envPositiveNumber('NPC_ENGAGEMENT_ACTORS_TO_SAMPLE', 20),
+  actorsToSample: envPositiveNumber("NPC_ENGAGEMENT_ACTORS_TO_SAMPLE", 20),
 
   /**
    * Number of recent posts to consider for engagement.
@@ -408,7 +408,7 @@ export const NPC_ENGAGEMENT_CONFIG = {
    * @default 40 (increased for more engagement opportunities)
    * @env NPC_ENGAGEMENT_POSTS_TO_CONSIDER
    */
-  postsToConsider: envPositiveNumber('NPC_ENGAGEMENT_POSTS_TO_CONSIDER', 40),
+  postsToConsider: envPositiveNumber("NPC_ENGAGEMENT_POSTS_TO_CONSIDER", 40),
 } as const;
 
 // =============================================================================
@@ -431,8 +431,8 @@ export const NPC_DIVERSITY_CONFIG = {
    * @env NPC_MAX_CONSECUTIVE_SAME_ACTION
    */
   maxConsecutiveSameAction: envPositiveNumber(
-    'NPC_MAX_CONSECUTIVE_SAME_ACTION',
-    1
+    "NPC_MAX_CONSECUTIVE_SAME_ACTION",
+    1,
   ),
 
   /**
@@ -444,8 +444,8 @@ export const NPC_DIVERSITY_CONFIG = {
    * @env NPC_TIMESTAMP_STAGGER_MS
    */
   timestampStaggerMs: envNonNegativeNumber(
-    'NPC_TIMESTAMP_STAGGER_MS',
-    5 * 60 * 1000
+    "NPC_TIMESTAMP_STAGGER_MS",
+    5 * 60 * 1000,
   ),
 
   /**
@@ -456,7 +456,7 @@ export const NPC_DIVERSITY_CONFIG = {
    * @default 5
    * @env NPC_MAX_RECENT_ACTIONS
    */
-  maxRecentActions: envPositiveNumber('NPC_MAX_RECENT_ACTIONS', 5),
+  maxRecentActions: envPositiveNumber("NPC_MAX_RECENT_ACTIONS", 5),
 } as const;
 
 // =============================================================================
@@ -475,7 +475,7 @@ export const NPC_SOCIAL_ACTIONS_CONFIG = {
    * @default 0.08 (increased for more player engagement)
    * @env NPC_GROUP_INVITE_PROBABILITY
    */
-  baseInviteProbability: envProbability('NPC_GROUP_INVITE_PROBABILITY', 0.08),
+  baseInviteProbability: envProbability("NPC_GROUP_INVITE_PROBABILITY", 0.08),
 
   /**
    * Base probability for an NPC to send a direct message.
@@ -483,7 +483,7 @@ export const NPC_SOCIAL_ACTIONS_CONFIG = {
    * @default 0.05 (increased for more player engagement)
    * @env NPC_DM_PROBABILITY
    */
-  baseDmProbability: envProbability('NPC_DM_PROBABILITY', 0.05),
+  baseDmProbability: envProbability("NPC_DM_PROBABILITY", 0.05),
 
   /**
    * Minimum number of prior interactions needed before social action.
@@ -493,8 +493,8 @@ export const NPC_SOCIAL_ACTIONS_CONFIG = {
    * @env NPC_MIN_INTERACTIONS_FOR_ACTION
    */
   minInteractionsForAction: envPositiveNumber(
-    'NPC_MIN_INTERACTIONS_FOR_ACTION',
-    1
+    "NPC_MIN_INTERACTIONS_FOR_ACTION",
+    1,
   ),
 
   /**
@@ -504,7 +504,7 @@ export const NPC_SOCIAL_ACTIONS_CONFIG = {
    * @default 0.5 (lowered - be more inclusive)
    * @env NPC_MIN_INTERACTION_QUALITY
    */
-  minInteractionQuality: envScore('NPC_MIN_INTERACTION_QUALITY', 0.5),
+  minInteractionQuality: envScore("NPC_MIN_INTERACTION_QUALITY", 0.5),
 } as const;
 
 // =============================================================================
@@ -523,7 +523,7 @@ export const NPC_GROUP_DYNAMICS_CONFIG = {
    * @default 0.06 (modest increase)
    * @env NPC_FORM_GROUP_PROBABILITY
    */
-  formGroupProbability: envProbability('NPC_FORM_GROUP_PROBABILITY', 0.06),
+  formGroupProbability: envProbability("NPC_FORM_GROUP_PROBABILITY", 0.06),
 
   /**
    * Probability for an eligible NPC to join an existing group.
@@ -531,7 +531,7 @@ export const NPC_GROUP_DYNAMICS_CONFIG = {
    * @default 0.12 (increased for more group activity)
    * @env NPC_JOIN_GROUP_PROBABILITY
    */
-  joinGroupProbability: envProbability('NPC_JOIN_GROUP_PROBABILITY', 0.12),
+  joinGroupProbability: envProbability("NPC_JOIN_GROUP_PROBABILITY", 0.12),
 
   /**
    * Probability for an NPC to leave a group per membership per tick.
@@ -539,7 +539,7 @@ export const NPC_GROUP_DYNAMICS_CONFIG = {
    * @default 0.02 (unchanged - churn should be low)
    * @env NPC_LEAVE_GROUP_PROBABILITY
    */
-  leaveGroupProbability: envProbability('NPC_LEAVE_GROUP_PROBABILITY', 0.02),
+  leaveGroupProbability: envProbability("NPC_LEAVE_GROUP_PROBABILITY", 0.02),
 
   /**
    * Probability for an NPC to invite a user to their group.
@@ -547,7 +547,7 @@ export const NPC_GROUP_DYNAMICS_CONFIG = {
    * @default 0.10 (increased to bring players into groups)
    * @env NPC_USER_INVITE_PROBABILITY
    */
-  inviteUserProbability: envProbability('NPC_USER_INVITE_PROBABILITY', 0.1),
+  inviteUserProbability: envProbability("NPC_USER_INVITE_PROBABILITY", 0.1),
 
   /**
    * Probability to check for kicks each tick.
@@ -555,7 +555,7 @@ export const NPC_GROUP_DYNAMICS_CONFIG = {
    * @default 0.15 (unchanged)
    * @env NPC_KICK_CHECK_PROBABILITY
    */
-  kickCheckProbability: envProbability('NPC_KICK_CHECK_PROBABILITY', 0.15),
+  kickCheckProbability: envProbability("NPC_KICK_CHECK_PROBABILITY", 0.15),
 
   /**
    * Minimum group size before NPCs start leaving.
@@ -563,7 +563,7 @@ export const NPC_GROUP_DYNAMICS_CONFIG = {
    * @default 3
    * @env NPC_MIN_GROUP_SIZE
    */
-  minGroupSize: envPositiveNumber('NPC_MIN_GROUP_SIZE', 3),
+  minGroupSize: envPositiveNumber("NPC_MIN_GROUP_SIZE", 3),
 
   /**
    * Maximum group size before NPCs stop joining.
@@ -571,7 +571,7 @@ export const NPC_GROUP_DYNAMICS_CONFIG = {
    * @default 12
    * @env NPC_MAX_GROUP_SIZE
    */
-  maxGroupSize: envPositiveNumber('NPC_MAX_GROUP_SIZE', 12),
+  maxGroupSize: envPositiveNumber("NPC_MAX_GROUP_SIZE", 12),
 
   /**
    * Ideal group size (influences join/leave decisions).
@@ -579,7 +579,7 @@ export const NPC_GROUP_DYNAMICS_CONFIG = {
    * @default 7
    * @env NPC_IDEAL_GROUP_SIZE
    */
-  idealGroupSize: envPositiveNumber('NPC_IDEAL_GROUP_SIZE', 7),
+  idealGroupSize: envPositiveNumber("NPC_IDEAL_GROUP_SIZE", 7),
 
   /**
    * When enabled, users with **zero** active group memberships will be auto-joined
@@ -592,8 +592,8 @@ export const NPC_GROUP_DYNAMICS_CONFIG = {
    * @env NPC_AUTO_JOIN_EMPTY_USERS_TO_NPC_GROUP_CHAT
    */
   autoJoinEmptyUsersToNpcGroupChat: envBoolean(
-    'NPC_AUTO_JOIN_EMPTY_USERS_TO_NPC_GROUP_CHAT',
-    process.env.NODE_ENV === 'development'
+    "NPC_AUTO_JOIN_EMPTY_USERS_TO_NPC_GROUP_CHAT",
+    process.env.NODE_ENV === "development",
   ),
 
   /**
@@ -604,8 +604,8 @@ export const NPC_GROUP_DYNAMICS_CONFIG = {
    * @env NPC_AUTO_JOIN_EMPTY_USERS_BATCH_SIZE
    */
   autoJoinEmptyUsersBatchSize: envPositiveNumber(
-    'NPC_AUTO_JOIN_EMPTY_USERS_BATCH_SIZE',
-    25
+    "NPC_AUTO_JOIN_EMPTY_USERS_BATCH_SIZE",
+    25,
   ),
 } as const;
 
@@ -616,7 +616,7 @@ if (
   NPC_GROUP_DYNAMICS_CONFIG.maxGroupSize
 ) {
   throw new Error(
-    `Invalid group size configuration: minGroupSize (${NPC_GROUP_DYNAMICS_CONFIG.minGroupSize}) > maxGroupSize (${NPC_GROUP_DYNAMICS_CONFIG.maxGroupSize}). This will cause undefined behavior in group dynamics.`
+    `Invalid group size configuration: minGroupSize (${NPC_GROUP_DYNAMICS_CONFIG.minGroupSize}) > maxGroupSize (${NPC_GROUP_DYNAMICS_CONFIG.maxGroupSize}). This will cause undefined behavior in group dynamics.`,
   );
 }
 
@@ -629,7 +629,7 @@ if (
     NPC_GROUP_DYNAMICS_CONFIG.maxGroupSize
 ) {
   throw new Error(
-    `Invalid group size configuration: idealGroupSize (${NPC_GROUP_DYNAMICS_CONFIG.idealGroupSize}) must be within [minGroupSize (${NPC_GROUP_DYNAMICS_CONFIG.minGroupSize}), maxGroupSize (${NPC_GROUP_DYNAMICS_CONFIG.maxGroupSize})]. This will cause undefined behavior in group dynamics.`
+    `Invalid group size configuration: idealGroupSize (${NPC_GROUP_DYNAMICS_CONFIG.idealGroupSize}) must be within [minGroupSize (${NPC_GROUP_DYNAMICS_CONFIG.minGroupSize}), maxGroupSize (${NPC_GROUP_DYNAMICS_CONFIG.maxGroupSize})]. This will cause undefined behavior in group dynamics.`,
   );
 }
 
@@ -649,7 +649,7 @@ export const NPC_CONTENT_PACING_CONFIG = {
    * @default 1.0
    * @env NPC_PEAK_HOURS_MULTIPLIER
    */
-  peakHoursMultiplier: envNumber('NPC_PEAK_HOURS_MULTIPLIER', 1.0),
+  peakHoursMultiplier: envNumber("NPC_PEAK_HOURS_MULTIPLIER", 1.0),
 
   /**
    * Activity multiplier during off-peak hours (9pm-9am).
@@ -657,7 +657,7 @@ export const NPC_CONTENT_PACING_CONFIG = {
    * @default 0.4 (increased - some global audience is awake)
    * @env NPC_OFF_PEAK_MULTIPLIER
    */
-  offPeakMultiplier: envNumber('NPC_OFF_PEAK_MULTIPLIER', 0.4),
+  offPeakMultiplier: envNumber("NPC_OFF_PEAK_MULTIPLIER", 0.4),
 
   /**
    * Maximum posts any single actor can make in 24 hours.
@@ -666,8 +666,8 @@ export const NPC_CONTENT_PACING_CONFIG = {
    * @env NPC_CONTENT_MAX_POSTS_PER_ACTOR_PER_DAY
    */
   maxPostsPerActorPerDay: envNumber(
-    'NPC_CONTENT_MAX_POSTS_PER_ACTOR_PER_DAY',
-    5
+    "NPC_CONTENT_MAX_POSTS_PER_ACTOR_PER_DAY",
+    5,
   ),
 
   /**
@@ -676,7 +676,7 @@ export const NPC_CONTENT_PACING_CONFIG = {
    * @default 30 (reasonable pacing)
    * @env NPC_MIN_MINUTES_BETWEEN_POSTS
    */
-  minMinutesBetweenPosts: envNumber('NPC_MIN_MINUTES_BETWEEN_POSTS', 30),
+  minMinutesBetweenPosts: envNumber("NPC_MIN_MINUTES_BETWEEN_POSTS", 30),
 
   /**
    * Maximum posts to generate across all actors in a single tick.
@@ -684,7 +684,7 @@ export const NPC_CONTENT_PACING_CONFIG = {
    * @default 4 (good amount of NPC activity)
    * @env NPC_MAX_POSTS_PER_TICK
    */
-  maxPostsPerTick: envNumber('NPC_MAX_POSTS_PER_TICK', 4),
+  maxPostsPerTick: envNumber("NPC_MAX_POSTS_PER_TICK", 4),
 
   /**
    * Target number of posts per hour across all actors.
@@ -692,7 +692,7 @@ export const NPC_CONTENT_PACING_CONFIG = {
    * @default 12 (keeps the feed active)
    * @env NPC_TARGET_POSTS_PER_HOUR
    */
-  targetPostsPerHour: envNumber('NPC_TARGET_POSTS_PER_HOUR', 12),
+  targetPostsPerHour: envNumber("NPC_TARGET_POSTS_PER_HOUR", 12),
 
   /**
    * Start hour for peak activity (0-23).
@@ -700,7 +700,7 @@ export const NPC_CONTENT_PACING_CONFIG = {
    * @default 9
    * @env NPC_PEAK_HOUR_START
    */
-  peakHourStart: envNumber('NPC_PEAK_HOUR_START', 9),
+  peakHourStart: envNumber("NPC_PEAK_HOUR_START", 9),
 
   /**
    * End hour for peak activity (0-23).
@@ -708,7 +708,7 @@ export const NPC_CONTENT_PACING_CONFIG = {
    * @default 21
    * @env NPC_PEAK_HOUR_END
    */
-  peakHourEnd: envNumber('NPC_PEAK_HOUR_END', 21),
+  peakHourEnd: envNumber("NPC_PEAK_HOUR_END", 21),
 } as const;
 
 // =============================================================================
@@ -729,8 +729,8 @@ export const NPC_FOLLOWING_CONFIG = {
    * @env NPC_PROACTIVE_FOLLOW_PROBABILITY
    */
   proactiveFollowProbability: envProbability(
-    'NPC_PROACTIVE_FOLLOW_PROBABILITY',
-    0.03
+    "NPC_PROACTIVE_FOLLOW_PROBABILITY",
+    0.03,
   ),
 
   /**
@@ -739,7 +739,7 @@ export const NPC_FOLLOWING_CONFIG = {
    * @default 3
    * @env NPC_MIN_POSTS_TO_FOLLOW
    */
-  minPostsToFollow: envNumber('NPC_MIN_POSTS_TO_FOLLOW', 3),
+  minPostsToFollow: envNumber("NPC_MIN_POSTS_TO_FOLLOW", 3),
 
   /**
    * Minimum engagement score for a player to be follow-worthy.
@@ -748,7 +748,7 @@ export const NPC_FOLLOWING_CONFIG = {
    * @default 5 (accumulated engagement points)
    * @env NPC_MIN_ENGAGEMENT_TO_FOLLOW
    */
-  minEngagementToFollow: envNumber('NPC_MIN_ENGAGEMENT_TO_FOLLOW', 5),
+  minEngagementToFollow: envNumber("NPC_MIN_ENGAGEMENT_TO_FOLLOW", 5),
 
   /**
    * Maximum NPCs that can follow a player per tick.
@@ -758,8 +758,8 @@ export const NPC_FOLLOWING_CONFIG = {
    * @env NPC_MAX_FOLLOWS_PER_PLAYER_PER_TICK
    */
   maxFollowsPerPlayerPerTick: envNumber(
-    'NPC_MAX_FOLLOWS_PER_PLAYER_PER_TICK',
-    2
+    "NPC_MAX_FOLLOWS_PER_PLAYER_PER_TICK",
+    2,
   ),
 
   /**
@@ -768,7 +768,7 @@ export const NPC_FOLLOWING_CONFIG = {
    * @default 5
    * @env NPC_MAX_FOLLOWS_PER_TICK
    */
-  maxFollowsPerTick: envNumber('NPC_MAX_FOLLOWS_PER_TICK', 5),
+  maxFollowsPerTick: envNumber("NPC_MAX_FOLLOWS_PER_TICK", 5),
 
   /**
    * Probability to check for unfollows each tick.
@@ -777,8 +777,8 @@ export const NPC_FOLLOWING_CONFIG = {
    * @env NPC_UNFOLLOW_CHECK_PROBABILITY
    */
   unfollowCheckProbability: envProbability(
-    'NPC_UNFOLLOW_CHECK_PROBABILITY',
-    0.05
+    "NPC_UNFOLLOW_CHECK_PROBABILITY",
+    0.05,
   ),
 
   /**
@@ -787,7 +787,7 @@ export const NPC_FOLLOWING_CONFIG = {
    * @default 7
    * @env NPC_DAYS_BEFORE_UNFOLLOW
    */
-  daysBeforeUnfollow: envNumber('NPC_DAYS_BEFORE_UNFOLLOW', 7),
+  daysBeforeUnfollow: envNumber("NPC_DAYS_BEFORE_UNFOLLOW", 7),
 
   /**
    * Time window in days for engagement queries.
@@ -796,7 +796,7 @@ export const NPC_FOLLOWING_CONFIG = {
    * @default 14 (2 weeks)
    * @env NPC_ENGAGEMENT_WINDOW_DAYS
    */
-  engagementWindowDays: envNumber('NPC_ENGAGEMENT_WINDOW_DAYS', 14),
+  engagementWindowDays: envNumber("NPC_ENGAGEMENT_WINDOW_DAYS", 14),
 
   /**
    * Maximum NPC candidates to evaluate per player per tick.
@@ -806,8 +806,8 @@ export const NPC_FOLLOWING_CONFIG = {
    * @env NPC_MAX_NPC_CANDIDATES_PER_PLAYER_PER_TICK
    */
   maxNpcCandidatesPerPlayerPerTick: envNumber(
-    'NPC_MAX_NPC_CANDIDATES_PER_PLAYER_PER_TICK',
-    10
+    "NPC_MAX_NPC_CANDIDATES_PER_PLAYER_PER_TICK",
+    10,
   ),
 
   /**
@@ -818,8 +818,8 @@ export const NPC_FOLLOWING_CONFIG = {
    * @env NPC_TOTAL_MAX_NPC_CANDIDATES_PER_TICK
    */
   totalMaxNpcCandidatesPerTick: envNumber(
-    'NPC_TOTAL_MAX_NPC_CANDIDATES_PER_TICK',
-    50
+    "NPC_TOTAL_MAX_NPC_CANDIDATES_PER_TICK",
+    50,
   ),
 
   /**
@@ -829,7 +829,7 @@ export const NPC_FOLLOWING_CONFIG = {
    * @default 50
    * @env NPC_UNFOLLOW_CHECK_BATCH_SIZE
    */
-  unfollowCheckBatchSize: envNumber('NPC_UNFOLLOW_CHECK_BATCH_SIZE', 50),
+  unfollowCheckBatchSize: envNumber("NPC_UNFOLLOW_CHECK_BATCH_SIZE", 50),
 
   /**
    * Maximum active players to consider for proactive following per tick.
@@ -839,8 +839,8 @@ export const NPC_FOLLOWING_CONFIG = {
    * @env NPC_MAX_ACTIVE_PLAYERS_TO_CONSIDER
    */
   maxActivePlayersToConsider: envNumber(
-    'NPC_MAX_ACTIVE_PLAYERS_TO_CONSIDER',
-    50
+    "NPC_MAX_ACTIVE_PLAYERS_TO_CONSIDER",
+    50,
   ),
 
   /**
@@ -850,7 +850,7 @@ export const NPC_FOLLOWING_CONFIG = {
    * @default 0.4
    * @env NPC_MIN_QUALITY_TO_RETAIN_FOLLOW
    */
-  minQualityToRetainFollow: envScore('NPC_MIN_QUALITY_TO_RETAIN_FOLLOW', 0.4),
+  minQualityToRetainFollow: envScore("NPC_MIN_QUALITY_TO_RETAIN_FOLLOW", 0.4),
 
   /**
    * Maximum hours of inactivity before NPC unfollows.
@@ -860,8 +860,8 @@ export const NPC_FOLLOWING_CONFIG = {
    * @env NPC_MAX_INACTIVE_HOURS_BEFORE_UNFOLLOW
    */
   maxInactiveHoursBeforeUnfollow: envNumber(
-    'NPC_MAX_INACTIVE_HOURS_BEFORE_UNFOLLOW',
-    24
+    "NPC_MAX_INACTIVE_HOURS_BEFORE_UNFOLLOW",
+    24,
   ),
 } as const;
 
@@ -883,7 +883,7 @@ export const NPC_TICK_CONFIG = {
    * @default 12 (increased for better diversity across NPCs)
    * @env NPC_TICK_BATCH_SIZE
    */
-  batchSize: envPositiveNumber('NPC_TICK_BATCH_SIZE', 12),
+  batchSize: envPositiveNumber("NPC_TICK_BATCH_SIZE", 12),
 
   /**
    * Maximum consecutive errors before aborting tick (circuit breaker).
@@ -891,7 +891,7 @@ export const NPC_TICK_CONFIG = {
    * @default 5
    * @env NPC_TICK_MAX_ERRORS
    */
-  maxConsecutiveErrors: envPositiveNumber('NPC_TICK_MAX_ERRORS', 5),
+  maxConsecutiveErrors: envPositiveNumber("NPC_TICK_MAX_ERRORS", 5),
 
   /**
    * Maximum number of NPC discourse replies to generate per tick.
@@ -900,7 +900,7 @@ export const NPC_TICK_CONFIG = {
    * @default 6
    * @env NPC_MAX_DISCOURSE_REPLIES
    */
-  maxDiscourseReplies: envPositiveNumber('NPC_MAX_DISCOURSE_REPLIES', 6),
+  maxDiscourseReplies: envPositiveNumber("NPC_MAX_DISCOURSE_REPLIES", 6),
 } as const;
 
 // =============================================================================
@@ -950,29 +950,29 @@ export const NPC_ACTIVITY_PRESETS = {
    */
   default: {
     // Active posting - NPCs keep the feed alive
-    NPC_POST_PROBABILITY: '0.25',
-    NPC_MAX_POSTS_PER_DAY: '4',
-    NPC_MIN_HOURS_BETWEEN_POSTS: '2',
-    NPC_TICK_BATCH_SIZE: '5',
-    NPC_TARGET_POSTS_PER_HOUR: '12',
-    NPC_MAX_POSTS_PER_TICK: '4',
-    NPC_CONTENT_MAX_POSTS_PER_ACTOR_PER_DAY: '5',
-    NPC_MIN_MINUTES_BETWEEN_POSTS: '30',
+    NPC_POST_PROBABILITY: "0.25",
+    NPC_MAX_POSTS_PER_DAY: "4",
+    NPC_MIN_HOURS_BETWEEN_POSTS: "2",
+    NPC_TICK_BATCH_SIZE: "5",
+    NPC_TARGET_POSTS_PER_HOUR: "12",
+    NPC_MAX_POSTS_PER_TICK: "4",
+    NPC_CONTENT_MAX_POSTS_PER_ACTOR_PER_DAY: "5",
+    NPC_MIN_MINUTES_BETWEEN_POSTS: "30",
     // Good engagement
-    NPC_LIKE_PROBABILITY: '0.12',
-    NPC_SHARE_PROBABILITY: '0.03',
-    NPC_COMMENT_PROBABILITY: '0.02',
-    NPC_MAX_LIKES_PER_TICK: '20',
-    NPC_MAX_SHARES_PER_TICK: '8',
-    NPC_MAX_COMMENTS_PER_TICK: '6',
+    NPC_LIKE_PROBABILITY: "0.12",
+    NPC_SHARE_PROBABILITY: "0.03",
+    NPC_COMMENT_PROBABILITY: "0.02",
+    NPC_MAX_LIKES_PER_TICK: "20",
+    NPC_MAX_SHARES_PER_TICK: "8",
+    NPC_MAX_COMMENTS_PER_TICK: "6",
     // Social actions
-    NPC_GROUP_INVITE_PROBABILITY: '0.08',
-    NPC_DM_PROBABILITY: '0.05',
-    NPC_MIN_INTERACTIONS_FOR_ACTION: '1',
+    NPC_GROUP_INVITE_PROBABILITY: "0.08",
+    NPC_DM_PROBABILITY: "0.05",
+    NPC_MIN_INTERACTIONS_FOR_ACTION: "1",
     // Trading - balanced defaults
-    NPC_TRADE_PROBABILITY: '0.6',
-    NPC_MAX_TRADES_PER_DAY: '20',
-    NPC_MIN_MINUTES_BETWEEN_TRADES: '5',
+    NPC_TRADE_PROBABILITY: "0.6",
+    NPC_MAX_TRADES_PER_DAY: "20",
+    NPC_MIN_MINUTES_BETWEEN_TRADES: "5",
   },
 
   /**
@@ -981,32 +981,32 @@ export const NPC_ACTIVITY_PRESETS = {
    */
   engagement: {
     // Very low posting
-    NPC_POST_PROBABILITY: '0.08',
-    NPC_MAX_POSTS_PER_DAY: '1',
-    NPC_MIN_HOURS_BETWEEN_POSTS: '4',
-    NPC_TICK_BATCH_SIZE: '4',
-    NPC_TARGET_POSTS_PER_HOUR: '4',
-    NPC_MAX_POSTS_PER_TICK: '2',
+    NPC_POST_PROBABILITY: "0.08",
+    NPC_MAX_POSTS_PER_DAY: "1",
+    NPC_MIN_HOURS_BETWEEN_POSTS: "4",
+    NPC_TICK_BATCH_SIZE: "4",
+    NPC_TARGET_POSTS_PER_HOUR: "4",
+    NPC_MAX_POSTS_PER_TICK: "2",
     // Very high engagement
-    NPC_LIKE_PROBABILITY: '0.18',
-    NPC_SHARE_PROBABILITY: '0.05',
-    NPC_COMMENT_PROBABILITY: '0.035',
-    NPC_MAX_LIKES_PER_TICK: '30',
-    NPC_MAX_SHARES_PER_TICK: '12',
-    NPC_MAX_COMMENTS_PER_TICK: '10',
-    NPC_ENGAGEMENT_ACTORS_TO_SAMPLE: '30',
-    NPC_ENGAGEMENT_POSTS_TO_CONSIDER: '50',
+    NPC_LIKE_PROBABILITY: "0.18",
+    NPC_SHARE_PROBABILITY: "0.05",
+    NPC_COMMENT_PROBABILITY: "0.035",
+    NPC_MAX_LIKES_PER_TICK: "30",
+    NPC_MAX_SHARES_PER_TICK: "12",
+    NPC_MAX_COMMENTS_PER_TICK: "10",
+    NPC_ENGAGEMENT_ACTORS_TO_SAMPLE: "30",
+    NPC_ENGAGEMENT_POSTS_TO_CONSIDER: "50",
     // High social activity
-    NPC_GROUP_INVITE_PROBABILITY: '0.12',
-    NPC_DM_PROBABILITY: '0.08',
-    NPC_MIN_INTERACTIONS_FOR_ACTION: '1',
-    NPC_MIN_INTERACTION_QUALITY: '0.4',
-    NPC_JOIN_GROUP_PROBABILITY: '0.15',
-    NPC_USER_INVITE_PROBABILITY: '0.12',
+    NPC_GROUP_INVITE_PROBABILITY: "0.12",
+    NPC_DM_PROBABILITY: "0.08",
+    NPC_MIN_INTERACTIONS_FOR_ACTION: "1",
+    NPC_MIN_INTERACTION_QUALITY: "0.4",
+    NPC_JOIN_GROUP_PROBABILITY: "0.15",
+    NPC_USER_INVITE_PROBABILITY: "0.12",
     // High trading - engagement-heavy NPCs play the game more
-    NPC_TRADE_PROBABILITY: '0.8',
-    NPC_MAX_TRADES_PER_DAY: '30',
-    NPC_MIN_MINUTES_BETWEEN_TRADES: '3',
+    NPC_TRADE_PROBABILITY: "0.8",
+    NPC_MAX_TRADES_PER_DAY: "30",
+    NPC_MIN_MINUTES_BETWEEN_TRADES: "3",
   },
 
   /**
@@ -1014,30 +1014,30 @@ export const NPC_ACTIVITY_PRESETS = {
    * More posting AND more engagement.
    */
   active: {
-    NPC_POST_PROBABILITY: '0.25',
-    NPC_MAX_POSTS_PER_DAY: '4',
-    NPC_MIN_HOURS_BETWEEN_POSTS: '2',
-    NPC_TICK_BATCH_SIZE: '6',
-    NPC_LIKE_PROBABILITY: '0.15',
-    NPC_SHARE_PROBABILITY: '0.04',
-    NPC_COMMENT_PROBABILITY: '0.025',
-    NPC_MAX_LIKES_PER_TICK: '25',
-    NPC_MAX_SHARES_PER_TICK: '10',
-    NPC_MAX_COMMENTS_PER_TICK: '8',
-    NPC_ENGAGEMENT_ACTORS_TO_SAMPLE: '25',
-    NPC_ENGAGEMENT_POSTS_TO_CONSIDER: '50',
-    NPC_GROUP_INVITE_PROBABILITY: '0.10',
-    NPC_DM_PROBABILITY: '0.07',
-    NPC_MIN_INTERACTIONS_FOR_ACTION: '1',
-    NPC_MIN_INTERACTION_QUALITY: '0.4',
-    NPC_FORM_GROUP_PROBABILITY: '0.08',
-    NPC_JOIN_GROUP_PROBABILITY: '0.15',
-    NPC_USER_INVITE_PROBABILITY: '0.12',
-    NPC_TARGET_POSTS_PER_HOUR: '15',
+    NPC_POST_PROBABILITY: "0.25",
+    NPC_MAX_POSTS_PER_DAY: "4",
+    NPC_MIN_HOURS_BETWEEN_POSTS: "2",
+    NPC_TICK_BATCH_SIZE: "6",
+    NPC_LIKE_PROBABILITY: "0.15",
+    NPC_SHARE_PROBABILITY: "0.04",
+    NPC_COMMENT_PROBABILITY: "0.025",
+    NPC_MAX_LIKES_PER_TICK: "25",
+    NPC_MAX_SHARES_PER_TICK: "10",
+    NPC_MAX_COMMENTS_PER_TICK: "8",
+    NPC_ENGAGEMENT_ACTORS_TO_SAMPLE: "25",
+    NPC_ENGAGEMENT_POSTS_TO_CONSIDER: "50",
+    NPC_GROUP_INVITE_PROBABILITY: "0.10",
+    NPC_DM_PROBABILITY: "0.07",
+    NPC_MIN_INTERACTIONS_FOR_ACTION: "1",
+    NPC_MIN_INTERACTION_QUALITY: "0.4",
+    NPC_FORM_GROUP_PROBABILITY: "0.08",
+    NPC_JOIN_GROUP_PROBABILITY: "0.15",
+    NPC_USER_INVITE_PROBABILITY: "0.12",
+    NPC_TARGET_POSTS_PER_HOUR: "15",
     // Higher trading activity
-    NPC_TRADE_PROBABILITY: '0.75',
-    NPC_MAX_TRADES_PER_DAY: '25',
-    NPC_MIN_MINUTES_BETWEEN_TRADES: '3',
+    NPC_TRADE_PROBABILITY: "0.75",
+    NPC_MAX_TRADES_PER_DAY: "25",
+    NPC_MIN_MINUTES_BETWEEN_TRADES: "3",
   },
 
   /**
@@ -1045,35 +1045,35 @@ export const NPC_ACTIVITY_PRESETS = {
    * Good for testing player-centric features.
    */
   quiet: {
-    NPC_POST_PROBABILITY: '0.05',
-    NPC_MAX_POSTS_PER_DAY: '1',
-    NPC_TICK_BATCH_SIZE: '2',
-    NPC_LIKE_PROBABILITY: '0.04',
-    NPC_SHARE_PROBABILITY: '0.01',
-    NPC_COMMENT_PROBABILITY: '0.005',
-    NPC_TARGET_POSTS_PER_HOUR: '3',
+    NPC_POST_PROBABILITY: "0.05",
+    NPC_MAX_POSTS_PER_DAY: "1",
+    NPC_TICK_BATCH_SIZE: "2",
+    NPC_LIKE_PROBABILITY: "0.04",
+    NPC_SHARE_PROBABILITY: "0.01",
+    NPC_COMMENT_PROBABILITY: "0.005",
+    NPC_TARGET_POSTS_PER_HOUR: "3",
     // Low trading - reduced NPC market activity
-    NPC_TRADE_PROBABILITY: '0.2',
-    NPC_MAX_TRADES_PER_DAY: '5',
-    NPC_MIN_MINUTES_BETWEEN_TRADES: '15',
+    NPC_TRADE_PROBABILITY: "0.2",
+    NPC_MAX_TRADES_PER_DAY: "5",
+    NPC_MIN_MINUTES_BETWEEN_TRADES: "15",
   },
 
   /**
    * Test preset - very high activity for automated testing.
    */
   test: {
-    NPC_POST_PROBABILITY: '0.8',
-    NPC_MAX_POSTS_PER_DAY: '20',
-    NPC_MIN_HOURS_BETWEEN_POSTS: '0',
-    NPC_TICK_BATCH_SIZE: '15',
-    NPC_LIKE_PROBABILITY: '0.5',
-    NPC_SHARE_PROBABILITY: '0.2',
-    NPC_COMMENT_PROBABILITY: '0.1',
-    NPC_TARGET_POSTS_PER_HOUR: '60',
+    NPC_POST_PROBABILITY: "0.8",
+    NPC_MAX_POSTS_PER_DAY: "20",
+    NPC_MIN_HOURS_BETWEEN_POSTS: "0",
+    NPC_TICK_BATCH_SIZE: "15",
+    NPC_LIKE_PROBABILITY: "0.5",
+    NPC_SHARE_PROBABILITY: "0.2",
+    NPC_COMMENT_PROBABILITY: "0.1",
+    NPC_TARGET_POSTS_PER_HOUR: "60",
     // Very high trading for automated testing
-    NPC_TRADE_PROBABILITY: '0.9',
-    NPC_MAX_TRADES_PER_DAY: '50',
-    NPC_MIN_MINUTES_BETWEEN_TRADES: '0',
+    NPC_TRADE_PROBABILITY: "0.9",
+    NPC_MAX_TRADES_PER_DAY: "50",
+    NPC_MIN_MINUTES_BETWEEN_TRADES: "0",
   },
 } as const;
 
@@ -1090,12 +1090,9 @@ export type NPCActivityPresetName = keyof typeof NPC_ACTIVITY_PRESETS;
  * @returns Object with environment variable key-value pairs (frozen copy)
  */
 export function getPreset(
-  presetName: NPCActivityPresetName
+  presetName: NPCActivityPresetName,
 ): Record<string, string> {
-  const preset = Object.prototype.hasOwnProperty.call(
-    NPC_ACTIVITY_PRESETS,
-    presetName
-  )
+  const preset = Object.hasOwn(NPC_ACTIVITY_PRESETS, presetName)
     ? NPC_ACTIVITY_PRESETS[presetName as keyof typeof NPC_ACTIVITY_PRESETS]
     : undefined;
 
@@ -1103,7 +1100,7 @@ export function getPreset(
     logger.warn(
       `Unknown preset "${presetName}", falling back to "default"`,
       { presetName },
-      'npc-activity'
+      "npc-activity",
     );
     return Object.freeze({ ...NPC_ACTIVITY_PRESETS.default });
   }
@@ -1115,53 +1112,53 @@ export function getPreset(
  * Useful for debugging and verifying environment variable overrides.
  */
 export function logCurrentConfig(): void {
-  logger.info('NPC Activity Configuration - Header', {}, 'npc-activity');
+  logger.info("NPC Activity Configuration - Header", {}, "npc-activity");
   logger.info(
-    'NPC Activity Configuration - Posting',
+    "NPC Activity Configuration - Posting",
     NPC_POSTING_CONFIG,
-    'npc-activity'
+    "npc-activity",
   );
   logger.info(
-    'NPC Activity Configuration - Trading',
+    "NPC Activity Configuration - Trading",
     NPC_TRADING_CONFIG,
-    'npc-activity'
+    "npc-activity",
   );
   logger.info(
-    'NPC Activity Configuration - Engagement',
+    "NPC Activity Configuration - Engagement",
     NPC_ENGAGEMENT_CONFIG,
-    'npc-activity'
+    "npc-activity",
   );
   logger.info(
-    'NPC Activity Configuration - Diversity',
+    "NPC Activity Configuration - Diversity",
     NPC_DIVERSITY_CONFIG,
-    'npc-activity'
+    "npc-activity",
   );
   logger.info(
-    'NPC Activity Configuration - Social Actions',
+    "NPC Activity Configuration - Social Actions",
     NPC_SOCIAL_ACTIONS_CONFIG,
-    'npc-activity'
+    "npc-activity",
   );
   logger.info(
-    'NPC Activity Configuration - Group Dynamics',
+    "NPC Activity Configuration - Group Dynamics",
     NPC_GROUP_DYNAMICS_CONFIG,
-    'npc-activity'
+    "npc-activity",
   );
   logger.info(
-    'NPC Activity Configuration - Content Pacing',
+    "NPC Activity Configuration - Content Pacing",
     NPC_CONTENT_PACING_CONFIG,
-    'npc-activity'
+    "npc-activity",
   );
   logger.info(
-    'NPC Activity Configuration - Following',
+    "NPC Activity Configuration - Following",
     NPC_FOLLOWING_CONFIG,
-    'npc-activity'
+    "npc-activity",
   );
   logger.info(
-    'NPC Activity Configuration - Tick Processing',
+    "NPC Activity Configuration - Tick Processing",
     NPC_TICK_CONFIG,
-    'npc-activity'
+    "npc-activity",
   );
-  logger.info('NPC Activity Configuration - Footer', {}, 'npc-activity');
+  logger.info("NPC Activity Configuration - Footer", {}, "npc-activity");
 }
 
 // =============================================================================

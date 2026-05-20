@@ -9,7 +9,7 @@ export interface TickerNewsItem {
   summary: string;
   url?: string;
   timestamp: string;
-  type: 'news';
+  type: "news";
 }
 
 export interface TickerPredictionItem {
@@ -17,7 +17,7 @@ export interface TickerPredictionItem {
   question: string;
   yesPercent: number;
   status: string;
-  type: 'prediction';
+  type: "prediction";
 }
 
 export interface TickerPerpItem {
@@ -25,7 +25,7 @@ export interface TickerPerpItem {
   price: number;
   /** 24h % change, or null when no 24h reference price (show as "—") */
   changePercent24h: number | null;
-  type: 'perp';
+  type: "perp";
 }
 
 export interface TickerResponse {

@@ -14,10 +14,10 @@ import {
   getCurrentChainId,
   getCurrentRpcUrl,
   PUBLIC_CONFIG,
-} from '@feed/shared';
-import type { Address } from 'viem';
-import baseSepoliaDeployment from '../../deployments/base-sepolia';
-import localDeployment from '../../deployments/local';
+} from "@feed/shared";
+import type { Address } from "viem";
+import baseSepoliaDeployment from "../../deployments/base-sepolia";
+import localDeployment from "../../deployments/local";
 
 /**
  * Deployed contract addresses for the current network.
@@ -71,7 +71,7 @@ export function getContractAddresses(): DeployedContracts {
       identityRegistry: localDeployment.contracts.identityRegistry as Address,
       reputationSystem: localDeployment.contracts.reputationSystem as Address,
       chainId: 31337,
-      network: 'localnet',
+      network: "localnet",
     };
   }
 
@@ -91,7 +91,7 @@ export function getContractAddresses(): DeployedContracts {
       reputationSystem: baseSepoliaDeployment.contracts
         .reputationSystem as Address,
       chainId: 84532,
-      network: 'base-sepolia',
+      network: "base-sepolia",
     };
   }
 
@@ -99,30 +99,30 @@ export function getContractAddresses(): DeployedContracts {
     // Ethereum Mainnet - identity & reputation contracts deployed, others not applicable
     const ethContracts = PUBLIC_CONFIG.networks.ethereum.contracts;
     return {
-      diamond: '0x0000000000000000000000000000000000000000' as Address,
-      feedOracle: '0x0000000000000000000000000000000000000000' as Address,
+      diamond: "0x0000000000000000000000000000000000000000" as Address,
+      feedOracle: "0x0000000000000000000000000000000000000000" as Address,
       predictionMarketFacet:
-        '0x0000000000000000000000000000000000000000' as Address,
+        "0x0000000000000000000000000000000000000000" as Address,
       identityRegistry: ethContracts.identityRegistry as Address,
       reputationSystem: ethContracts.reputationSystem as Address,
       chainId: 1,
-      network: 'ethereum',
+      network: "ethereum",
     };
   }
 
   if (chainId === 8453) {
     throw new Error(
-      'Base mainnet contracts are not yet deployed. Use localnet or base-sepolia.'
+      "Base mainnet contracts are not yet deployed. Use localnet or base-sepolia.",
     );
   }
 
   // Default to localnet for unknown chains (development only)
   if (
-    process.env.NODE_ENV === 'production' ||
-    process.env.DEPLOYMENT_ENV === 'mainnet'
+    process.env.NODE_ENV === "production" ||
+    process.env.DEPLOYMENT_ENV === "mainnet"
   ) {
     throw new Error(
-      `Unsupported chain ID ${chainId} in production. Supported: 1 (Ethereum), 84532 (Base Sepolia), 31337 (local).`
+      `Unsupported chain ID ${chainId} in production. Supported: 1 (Ethereum), 84532 (Base Sepolia), 31337 (local).`,
     );
   }
 
@@ -134,7 +134,7 @@ export function getContractAddresses(): DeployedContracts {
     identityRegistry: localDeployment.contracts.identityRegistry as Address,
     reputationSystem: localDeployment.contracts.reputationSystem as Address,
     chainId: 31337,
-    network: 'localnet',
+    network: "localnet",
   };
 }
 

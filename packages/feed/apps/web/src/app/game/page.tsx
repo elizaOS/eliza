@@ -1,10 +1,10 @@
-'use client';
+"use client";
 
-import { cn } from '@feed/shared';
-import { Activity } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
-import { PageContainer } from '@/components/shared/PageContainer';
-import { apiUrl } from '@/utils/api-url';
+import { cn } from "@feed/shared";
+import { Activity } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { PageContainer } from "@/components/shared/PageContainer";
+import { apiUrl } from "@/utils/api-url";
 
 interface GameStats {
   totalPosts: number;
@@ -29,9 +29,9 @@ export default function GamePage() {
 
   const loadGameData = useCallback(async () => {
     setRefreshing(true);
-    const response = await fetch(apiUrl('/api/stats'));
+    const response = await fetch(apiUrl("/api/stats"));
     if (!response.ok) {
-      setError('Failed to load game data');
+      setError("Failed to load game data");
       setLoading(false);
       setRefreshing(false);
       return;
@@ -68,7 +68,7 @@ export default function GamePage() {
       <PageContainer className="flex flex-col items-center justify-center gap-4">
         <div className="text-destructive text-lg">⚠️ {error}</div>
         <p className="max-w-md text-center text-muted-foreground text-sm">
-          The game tick may not be running. Start with:{' '}
+          The game tick may not be running. Start with:{" "}
           <code className="rounded bg-muted px-2 py-1">bun run dev</code>
         </p>
       </PageContainer>
@@ -88,8 +88,8 @@ export default function GamePage() {
         {/* Engine Status Card */}
         <div
           className={cn(
-            'rounded-2xl border border-border bg-card p-6',
-            'shadow-md'
+            "rounded-2xl border border-border bg-card p-6",
+            "shadow-md",
           )}
         >
           <div className="mb-4 flex items-center justify-between">
@@ -97,21 +97,21 @@ export default function GamePage() {
             <div className="flex items-center gap-2">
               <Activity
                 className={cn(
-                  'h-4 w-4',
+                  "h-4 w-4",
                   engineStatus?.isRunning
-                    ? 'animate-pulse text-green-500'
-                    : 'text-muted-foreground'
+                    ? "animate-pulse text-green-500"
+                    : "text-muted-foreground",
                 )}
               />
               <span
                 className={cn(
-                  'font-medium text-sm',
+                  "font-medium text-sm",
                   engineStatus?.isRunning
-                    ? 'text-green-500'
-                    : 'text-muted-foreground'
+                    ? "text-green-500"
+                    : "text-muted-foreground",
                 )}
               >
-                {engineStatus?.isRunning ? 'Running' : 'Stopped'}
+                {engineStatus?.isRunning ? "Running" : "Stopped"}
               </span>
             </div>
           </div>
@@ -122,11 +122,11 @@ export default function GamePage() {
               <div className="mb-1 text-muted-foreground text-xs">
                 Current Game Date
               </div>
-              <div className="font-bold text-2xl" style={{ color: '#0066FF' }}>
-                {currentDate.toLocaleDateString('en-US', {
-                  month: 'short',
-                  day: 'numeric',
-                  year: 'numeric',
+              <div className="font-bold text-2xl" style={{ color: "#0066FF" }}>
+                {currentDate.toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
                 })}
               </div>
               <div className="mt-1 text-muted-foreground text-sm">
@@ -140,10 +140,10 @@ export default function GamePage() {
                   Last Tick
                 </div>
                 <div className="text-sm">
-                  {lastTick.toLocaleTimeString('en-US', {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    second: '2-digit',
+                  {lastTick.toLocaleTimeString("en-US", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit",
                   })}
                 </div>
               </div>
@@ -154,8 +154,8 @@ export default function GamePage() {
         {/* Game Stats Card */}
         <div
           className={cn(
-            'rounded-2xl border border-border bg-card p-6',
-            'shadow-md'
+            "rounded-2xl border border-border bg-card p-6",
+            "shadow-md",
           )}
         >
           <h3 className="mb-4 font-semibold text-sm">Game Statistics</h3>
@@ -164,24 +164,24 @@ export default function GamePage() {
               <div className="mb-1 text-muted-foreground text-xs">
                 Total Posts
               </div>
-              <div className="font-bold text-2xl" style={{ color: '#0066FF' }}>
-                {stats?.totalPosts?.toLocaleString() || '0'}
+              <div className="font-bold text-2xl" style={{ color: "#0066FF" }}>
+                {stats?.totalPosts?.toLocaleString() || "0"}
               </div>
             </div>
             <div>
               <div className="mb-1 text-muted-foreground text-xs">
                 Active Questions
               </div>
-              <div className="font-bold text-2xl" style={{ color: '#0066FF' }}>
-                {stats?.activeQuestions || '0'}
+              <div className="font-bold text-2xl" style={{ color: "#0066FF" }}>
+                {stats?.activeQuestions || "0"}
               </div>
             </div>
             <div>
               <div className="mb-1 text-muted-foreground text-xs">
                 Companies
               </div>
-              <div className="font-bold text-2xl" style={{ color: '#0066FF' }}>
-                {stats?.totalCompanies || '0'}
+              <div className="font-bold text-2xl" style={{ color: "#0066FF" }}>
+                {stats?.totalCompanies || "0"}
               </div>
             </div>
           </div>
@@ -193,22 +193,22 @@ export default function GamePage() {
             onClick={loadGameData}
             disabled={refreshing}
             className={cn(
-              'rounded-lg px-6 py-3 font-semibold',
-              'bg-primary text-primary-foreground',
-              'hover:bg-primary/90',
-              'disabled:cursor-not-allowed disabled:opacity-50',
-              'transition-all duration-300'
+              "rounded-lg px-6 py-3 font-semibold",
+              "bg-primary text-primary-foreground",
+              "hover:bg-primary/90",
+              "disabled:cursor-not-allowed disabled:opacity-50",
+              "transition-all duration-300",
             )}
           >
-            {refreshing ? 'Refreshing...' : 'Refresh Stats'}
+            {refreshing ? "Refreshing..." : "Refresh Stats"}
           </button>
         </div>
 
         {/* Info Card */}
         <div
           className={cn(
-            'rounded-2xl border border-border bg-card p-6',
-            'shadow-md'
+            "rounded-2xl border border-border bg-card p-6",
+            "shadow-md",
           )}
         >
           <h3 className="mb-3 font-semibold text-sm">About Continuous Mode</h3>
@@ -218,13 +218,13 @@ export default function GamePage() {
               posts per minute and updating markets automatically.
             </p>
             <p>
-              Posts appear in the{' '}
+              Posts appear in the{" "}
               <span className="font-medium text-foreground">Home</span> feed as
-              they&apos;re generated. Prediction markets update in the{' '}
+              they&apos;re generated. Prediction markets update in the{" "}
               <span className="font-medium text-foreground">Markets</span> tab.
             </p>
             <p className="mt-4 rounded-lg bg-muted p-3 text-xs">
-              <span className="font-medium">Start development:</span>{' '}
+              <span className="font-medium">Start development:</span>{" "}
               <code>bun run dev</code>
             </p>
           </div>

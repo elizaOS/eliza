@@ -31,24 +31,24 @@ import {
   expect,
   setDefaultTimeout,
   test,
-} from 'bun:test';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+} from "bun:test";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   GameGenerator,
   type GameResult,
   GameSimulator,
   type GeneratedGame,
-} from '@feed/engine';
-import { logger } from '@feed/shared';
-import { resolveLiveLlmTestConfig } from './helpers/live-runtime';
+} from "@feed/engine";
+import { logger } from "@feed/shared";
+import { resolveLiveLlmTestConfig } from "./helpers/live-runtime";
 
 // Set timeout to 15 minutes for LLM-based generation
 setDefaultTimeout(900000);
 
 // Output directory setup
-const OUTPUT_DIR = join(process.cwd(), '.output');
-const TIMESTAMP = new Date().toISOString().replace(/[:.]/g, '-');
+const OUTPUT_DIR = join(process.cwd(), ".output");
+const TIMESTAMP = new Date().toISOString().replace(/[:.]/g, "-");
 
 // Test results accumulator
 interface TestResults {
@@ -90,13 +90,13 @@ const testResults: TestResults = {
 // Load environment variables
 const loadEnvFile = (filePath: string) => {
   if (!existsSync(filePath)) return;
-  const envContent = readFileSync(filePath, 'utf-8');
-  for (const line of envContent.split('\n')) {
+  const envContent = readFileSync(filePath, "utf-8");
+  for (const line of envContent.split("\n")) {
     const trimmed = line.trim();
-    if (trimmed && !trimmed.startsWith('#')) {
-      const [key, ...valueParts] = trimmed.split('=');
+    if (trimmed && !trimmed.startsWith("#")) {
+      const [key, ...valueParts] = trimmed.split("=");
       if (key && valueParts.length > 0) {
-        const value = valueParts.join('=').replace(/^["']|["']$/g, '');
+        const value = valueParts.join("=").replace(/^["']|["']$/g, "");
         if (!process.env[key]) {
           process.env[key] = value;
         }
@@ -105,9 +105,9 @@ const loadEnvFile = (filePath: string) => {
   }
 };
 
-loadEnvFile('.env');
-loadEnvFile('.env.test');
-loadEnvFile('.env.local');
+loadEnvFile(".env");
+loadEnvFile(".env.test");
+loadEnvFile(".env.local");
 
 const liveLlmTestConfig = resolveLiveLlmTestConfig();
 
@@ -123,7 +123,7 @@ function writeOutput(filename: string, data: unknown) {
   const filepath = join(OUTPUT_DIR, `${filename}-${TIMESTAMP}.json`);
   writeFileSync(filepath, JSON.stringify(data, null, 2));
   testResults.outputFiles.push(filepath);
-  logger.info(`Output written to ${filepath}`, undefined, 'EngineTest');
+  logger.info(`Output written to ${filepath}`, undefined, "EngineTest");
   return filepath;
 }
 
@@ -173,7 +173,7 @@ const SWAP_PATTERNS = {
 };
 
 function detectSwaps(
-  content: string
+  content: string,
 ): { hasSwap: boolean; matches: string[]; category: string }[] {
   const results: { hasSwap: boolean; matches: string[]; category: string }[] =
     [];
@@ -211,33 +211,33 @@ function validateActorData(actor: {
   const issues: string[] = [];
 
   if (!actor.id || actor.id.length === 0) {
-    issues.push('Missing or empty id');
+    issues.push("Missing or empty id");
   }
   if (!actor.name || actor.name.length === 0) {
-    issues.push('Missing or empty name');
+    issues.push("Missing or empty name");
   }
   if (!actor.description || actor.description.length < 10) {
-    issues.push('Missing or too short description');
+    issues.push("Missing or too short description");
   }
   if (!actor.tier) {
-    issues.push('Missing tier');
+    issues.push("Missing tier");
   }
   if (!actor.role) {
-    issues.push('Missing role');
+    issues.push("Missing role");
   }
 
   // Check for swaps in actor data
   const nameSwaps = detectSwaps(actor.name);
   if (nameSwaps.length > 0) {
     issues.push(
-      `Swap detected in name: ${nameSwaps.map((s) => s.matches.join(', ')).join('; ')}`
+      `Swap detected in name: ${nameSwaps.map((s) => s.matches.join(", ")).join("; ")}`,
     );
   }
 
-  const descSwaps = detectSwaps(actor.description || '');
+  const descSwaps = detectSwaps(actor.description || "");
   if (descSwaps.length > 0) {
     issues.push(
-      `Swap detected in description: ${descSwaps.map((s) => s.matches.join(', ')).join('; ')}`
+      `Swap detected in description: ${descSwaps.map((s) => s.matches.join(", ")).join("; ")}`,
     );
   }
 
@@ -256,12 +256,12 @@ function validateFeedPost(post: {
 }): { valid: boolean; issues: string[] } {
   const issues: string[] = [];
 
-  if (!post.id) issues.push('Missing id');
-  if (!post.content || post.content.length === 0) issues.push('Empty content');
-  if (!post.author) issues.push('Missing author');
-  if (!post.authorName) issues.push('Missing authorName');
-  if (!post.timestamp) issues.push('Missing timestamp');
-  if (typeof post.day !== 'number') issues.push('Invalid day');
+  if (!post.id) issues.push("Missing id");
+  if (!post.content || post.content.length === 0) issues.push("Empty content");
+  if (!post.author) issues.push("Missing author");
+  if (!post.authorName) issues.push("Missing authorName");
+  if (!post.timestamp) issues.push("Missing timestamp");
+  if (typeof post.day !== "number") issues.push("Invalid day");
 
   // Content length validation
   if (post.content && post.content.length > 500) {
@@ -269,10 +269,10 @@ function validateFeedPost(post: {
   }
 
   // Check for swaps
-  const contentSwaps = detectSwaps(post.content || '');
+  const contentSwaps = detectSwaps(post.content || "");
   if (contentSwaps.length > 0) {
     issues.push(
-      `Swap detected in content: ${contentSwaps.map((s) => s.matches.join(', ')).join('; ')}`
+      `Swap detected in content: ${contentSwaps.map((s) => s.matches.join(", ")).join("; ")}`,
     );
   }
 
@@ -309,14 +309,14 @@ function validateEvent(event: {
 }): { valid: boolean; issues: string[] } {
   const issues: string[] = [];
 
-  if (!event.id) issues.push('Missing id');
-  if (typeof event.day !== 'number') issues.push('Invalid day');
-  if (!event.type) issues.push('Missing type');
+  if (!event.id) issues.push("Missing id");
+  if (typeof event.day !== "number") issues.push("Invalid day");
+  if (!event.type) issues.push("Missing type");
   if (!event.description || event.description.length === 0) {
-    issues.push('Empty description');
+    issues.push("Empty description");
   }
-  if (!Array.isArray(event.actors)) issues.push('actors is not an array');
-  if (!event.visibility) issues.push('Missing visibility');
+  if (!Array.isArray(event.actors)) issues.push("actors is not an array");
+  if (!event.visibility) issues.push("Missing visibility");
 
   // Description length validation
   if (event.description && event.description.length > 300) {
@@ -324,24 +324,24 @@ function validateEvent(event: {
   }
 
   // Check for swaps
-  const descSwaps = detectSwaps(event.description || '');
+  const descSwaps = detectSwaps(event.description || "");
   if (descSwaps.length > 0) {
     issues.push(
-      `Swap detected in description: ${descSwaps.map((s) => s.matches.join(', ')).join('; ')}`
+      `Swap detected in description: ${descSwaps.map((s) => s.matches.join(", ")).join("; ")}`,
     );
   }
 
   return { valid: issues.length === 0, issues };
 }
 
-describe('Engine Generation Output Tests', () => {
+describe("Engine Generation Output Tests", () => {
   let game: GeneratedGame | null = null;
   let simulatorResult: GameResult | null = null;
 
   function requireGeneratedGame(): GeneratedGame {
     if (!game) {
       throw new Error(
-        'LLM-generated game is unavailable because the prerequisite generation test did not complete successfully'
+        "LLM-generated game is unavailable because the prerequisite generation test did not complete successfully",
       );
     }
 
@@ -352,35 +352,35 @@ describe('Engine Generation Output Tests', () => {
     ensureOutputDir();
     if (liveLlmTestConfig.requested && !liveLlmTestConfig.enabled) {
       throw new Error(
-        liveLlmTestConfig.skipReason ?? 'Live LLM test setup failed'
+        liveLlmTestConfig.skipReason ?? "Live LLM test setup failed",
       );
     }
     logger.info(
       `Starting engine generation tests. Output dir: ${OUTPUT_DIR}`,
       undefined,
-      'EngineTest'
+      "EngineTest",
     );
     logger.info(
       `Live LLM tests enabled: ${liveLlmTestConfig.enabled}`,
       liveLlmTestConfig.skipReason
         ? { skipReason: liveLlmTestConfig.skipReason }
         : undefined,
-      'EngineTest'
+      "EngineTest",
     );
   });
 
   afterAll(() => {
     // Write final test summary
-    writeOutput('test-summary', testResults);
+    writeOutput("test-summary", testResults);
     logger.info(
       `Tests complete. ${testResults.testsPassed}/${testResults.testsRun} passed`,
       undefined,
-      'EngineTest'
+      "EngineTest",
     );
   });
 
-  describe('GameSimulator (No LLM)', () => {
-    test('runs complete simulation without LLM', async () => {
+  describe("GameSimulator (No LLM)", () => {
+    test("runs complete simulation without LLM", async () => {
       testResults.testsRun++;
 
       const simulator = new GameSimulator({
@@ -399,7 +399,7 @@ describe('Engine Generation Output Tests', () => {
       expect(simulatorResult.events.length).toBeGreaterThan(0);
 
       // Write output
-      writeOutput('simulator-result', {
+      writeOutput("simulator-result", {
         id: simulatorResult.id,
         question: simulatorResult.question,
         outcome: simulatorResult.outcome,
@@ -417,27 +417,27 @@ describe('Engine Generation Output Tests', () => {
       testResults.testsPassed++;
     });
 
-    test('simulator agents have valid data', async () => {
+    test("simulator agents have valid data", async () => {
       testResults.testsRun++;
 
       expect(simulatorResult).toBeDefined();
 
       const agentValidation = {
-        totalAgents: simulatorResult!.agents.length,
+        totalAgents: simulatorResult?.agents.length,
         validAgents: 0,
         invalidAgents: 0,
         issues: [] as { agentId: string; issues: string[] }[],
       };
 
-      for (const agent of simulatorResult!.agents) {
+      for (const agent of simulatorResult?.agents) {
         const issues: string[] = [];
 
-        if (!agent.id) issues.push('Missing id');
-        if (!agent.name) issues.push('Missing name');
-        if (typeof agent.balance !== 'number') issues.push('Invalid balance');
-        if (typeof agent.isInsider !== 'boolean')
-          issues.push('Invalid isInsider');
-        if (!agent.strategy) issues.push('Missing strategy');
+        if (!agent.id) issues.push("Missing id");
+        if (!agent.name) issues.push("Missing name");
+        if (typeof agent.balance !== "number") issues.push("Invalid balance");
+        if (typeof agent.isInsider !== "boolean")
+          issues.push("Invalid isInsider");
+        if (!agent.strategy) issues.push("Missing strategy");
 
         if (issues.length > 0) {
           agentValidation.invalidAgents++;
@@ -447,20 +447,20 @@ describe('Engine Generation Output Tests', () => {
         }
       }
 
-      writeOutput('simulator-agents-validation', agentValidation);
+      writeOutput("simulator-agents-validation", agentValidation);
 
       expect(agentValidation.invalidAgents).toBe(0);
       testResults.testsPassed++;
     });
   });
 
-  describe('GameGenerator (With LLM)', () => {
+  describe("GameGenerator (With LLM)", () => {
     test.skipIf(!liveLlmTestConfig.enabled)(
-      'generates complete game with valid actors',
+      "generates complete game with valid actors",
       async () => {
         testResults.testsRun++;
 
-        logger.info('Generating complete game...', undefined, 'EngineTest');
+        logger.info("Generating complete game...", undefined, "EngineTest");
         const generator = new GameGenerator();
         game = await generator.generateCompleteGame();
 
@@ -471,14 +471,14 @@ describe('Engine Generation Output Tests', () => {
         expect(game.resolution).toBeDefined();
 
         // Write full game output
-        writeOutput('game-generation', game);
+        writeOutput("game-generation", game);
 
         testResults.testsPassed++;
-      }
+      },
     );
 
     test.skipIf(!liveLlmTestConfig.enabled)(
-      'validates all actors have no swaps',
+      "validates all actors have no swaps",
       async () => {
         testResults.testsRun++;
         const game = requireGeneratedGame();
@@ -512,13 +512,13 @@ describe('Engine Generation Output Tests', () => {
               actorName: actor.name,
               issues: result.issues,
             });
-            if (result.issues.some((i) => i.includes('Swap detected'))) {
+            if (result.issues.some((i) => i.includes("Swap detected"))) {
               actorValidation.swapsDetected++;
             }
           }
         }
 
-        writeOutput('actors-validation', actorValidation);
+        writeOutput("actors-validation", actorValidation);
 
         testResults.validationResults.actorsValid =
           actorValidation.invalidActors === 0;
@@ -527,11 +527,11 @@ describe('Engine Generation Output Tests', () => {
 
         expect(actorValidation.swapsDetected).toBe(0);
         testResults.testsPassed++;
-      }
+      },
     );
 
     test.skipIf(!liveLlmTestConfig.enabled)(
-      'validates NPC personas are assigned',
+      "validates NPC personas are assigned",
       async () => {
         testResults.testsRun++;
         const game = requireGeneratedGame();
@@ -574,7 +574,7 @@ describe('Engine Generation Output Tests', () => {
 
             // Validate persona fields
             if (
-              typeof actor.persona.reliability !== 'number' ||
+              typeof actor.persona.reliability !== "number" ||
               actor.persona.reliability < 0 ||
               actor.persona.reliability > 1
             ) {
@@ -593,7 +593,7 @@ describe('Engine Generation Output Tests', () => {
             totalReliability / personaValidation.actorsWithPersona;
         }
 
-        writeOutput('npc-personas-validation', personaValidation);
+        writeOutput("npc-personas-validation", personaValidation);
 
         testResults.validationResults.npcPersonasValid =
           personaValidation.actorsWithPersona > 0 &&
@@ -602,11 +602,11 @@ describe('Engine Generation Output Tests', () => {
         // At least some actors should have personas
         expect(personaValidation.actorsWithPersona).toBeGreaterThan(0);
         testResults.testsPassed++;
-      }
+      },
     );
 
     test.skipIf(!liveLlmTestConfig.enabled)(
-      'validates all feed posts have no swaps',
+      "validates all feed posts have no swaps",
       async () => {
         testResults.testsRun++;
         const game = requireGeneratedGame();
@@ -644,7 +644,7 @@ describe('Engine Generation Output Tests', () => {
               day: postDay,
               issues: result.issues,
             });
-            if (result.issues.some((i) => i.includes('Swap detected'))) {
+            if (result.issues.some((i) => i.includes("Swap detected"))) {
               postValidation.swapsDetected++;
             }
           }
@@ -652,15 +652,15 @@ describe('Engine Generation Output Tests', () => {
 
         // Sample posts for review (first 5 from each phase)
         const phases = [
-          { name: 'early', days: [1, 2, 3, 4, 5] },
-          { name: 'middle', days: [11, 12, 13, 14, 15] },
-          { name: 'late', days: [21, 22, 23, 24, 25] },
-          { name: 'resolution', days: [26, 27, 28, 29, 30] },
+          { name: "early", days: [1, 2, 3, 4, 5] },
+          { name: "middle", days: [11, 12, 13, 14, 15] },
+          { name: "late", days: [21, 22, 23, 24, 25] },
+          { name: "resolution", days: [26, 27, 28, 29, 30] },
         ];
 
         for (const phase of phases) {
           const phasePosts = allPosts.filter((p) =>
-            phase.days.includes(p.day ?? 0)
+            phase.days.includes(p.day ?? 0),
           );
           const samples = phasePosts.slice(0, 5);
           for (const post of samples) {
@@ -678,18 +678,18 @@ describe('Engine Generation Output Tests', () => {
           }
         }
 
-        writeOutput('feed-posts-validation', postValidation);
+        writeOutput("feed-posts-validation", postValidation);
 
         testResults.validationResults.feedPostsValid =
           postValidation.swapsDetected === 0;
 
         expect(postValidation.swapsDetected).toBe(0);
         testResults.testsPassed++;
-      }
+      },
     );
 
     test.skipIf(!liveLlmTestConfig.enabled)(
-      'validates all events have no swaps',
+      "validates all events have no swaps",
       async () => {
         testResults.testsRun++;
         const game = requireGeneratedGame();
@@ -726,7 +726,7 @@ describe('Engine Generation Output Tests', () => {
               day: event.day,
               issues: result.issues,
             });
-            if (result.issues.some((i) => i.includes('Swap detected'))) {
+            if (result.issues.some((i) => i.includes("Swap detected"))) {
               eventValidation.swapsDetected++;
             }
           }
@@ -747,18 +747,18 @@ describe('Engine Generation Output Tests', () => {
           }
         }
 
-        writeOutput('events-validation', eventValidation);
+        writeOutput("events-validation", eventValidation);
 
         testResults.validationResults.eventsValid =
           eventValidation.swapsDetected === 0;
 
         expect(eventValidation.swapsDetected).toBe(0);
         testResults.testsPassed++;
-      }
+      },
     );
 
     test.skipIf(!liveLlmTestConfig.enabled)(
-      'validates group messages have no swaps',
+      "validates group messages have no swaps",
       async () => {
         testResults.testsRun++;
         const game = requireGeneratedGame();
@@ -785,16 +785,16 @@ describe('Engine Generation Output Tests', () => {
               groupMessageValidation.totalMessages++;
 
               const issues: string[] = [];
-              if (!msg.from) issues.push('Missing from');
+              if (!msg.from) issues.push("Missing from");
               if (!msg.message || msg.message.length === 0) {
-                issues.push('Empty message');
+                issues.push("Empty message");
               }
 
               // Check for swaps
-              const swaps = detectSwaps(msg.message || '');
+              const swaps = detectSwaps(msg.message || "");
               if (swaps.length > 0) {
                 issues.push(
-                  `Swap detected: ${swaps.map((s) => s.matches.join(', ')).join('; ')}`
+                  `Swap detected: ${swaps.map((s) => s.matches.join(", ")).join("; ")}`,
                 );
                 groupMessageValidation.swapsDetected++;
               }
@@ -819,7 +819,7 @@ describe('Engine Generation Output Tests', () => {
           const dayData = game.timeline.find((d) => d.day === dayNum);
           if (dayData) {
             for (const [groupId, messages] of Object.entries(
-              dayData.groupChats
+              dayData.groupChats,
             )) {
               const samples = messages.slice(0, 2);
               for (const msg of samples) {
@@ -828,25 +828,25 @@ describe('Engine Generation Output Tests', () => {
                   groupId,
                   from: msg.from,
                   message: msg.message,
-                  valid: detectSwaps(msg.message || '').length === 0,
+                  valid: detectSwaps(msg.message || "").length === 0,
                 });
               }
             }
           }
         }
 
-        writeOutput('group-messages-validation', groupMessageValidation);
+        writeOutput("group-messages-validation", groupMessageValidation);
 
         testResults.validationResults.groupMessagesValid =
           groupMessageValidation.swapsDetected === 0;
 
         expect(groupMessageValidation.swapsDetected).toBe(0);
         testResults.testsPassed++;
-      }
+      },
     );
 
     test.skipIf(!liveLlmTestConfig.enabled)(
-      'validates questions have arc plans',
+      "validates questions have arc plans",
       async () => {
         testResults.testsRun++;
         const game = requireGeneratedGame();
@@ -873,32 +873,32 @@ describe('Engine Generation Output Tests', () => {
 
           if (!question.metadata?.arcPlan) {
             questionValidation.questionsWithoutArcPlan++;
-            issues.push('Missing arc plan');
+            issues.push("Missing arc plan");
           } else {
             questionValidation.questionsWithArcPlan++;
 
             const arcPlan = question.metadata.arcPlan;
 
             // Validate arc plan structure
-            if (typeof arcPlan.uncertaintyPeakDay !== 'number') {
-              issues.push('Invalid uncertaintyPeakDay');
+            if (typeof arcPlan.uncertaintyPeakDay !== "number") {
+              issues.push("Invalid uncertaintyPeakDay");
             }
-            if (typeof arcPlan.clarityOnsetDay !== 'number') {
-              issues.push('Invalid clarityOnsetDay');
+            if (typeof arcPlan.clarityOnsetDay !== "number") {
+              issues.push("Invalid clarityOnsetDay");
             }
-            if (typeof arcPlan.verificationDay !== 'number') {
-              issues.push('Invalid verificationDay');
+            if (typeof arcPlan.verificationDay !== "number") {
+              issues.push("Invalid verificationDay");
             }
 
             // Validate day ordering
             if (arcPlan.clarityOnsetDay <= arcPlan.uncertaintyPeakDay) {
               issues.push(
-                `clarityOnsetDay (${arcPlan.clarityOnsetDay}) should be after uncertaintyPeakDay (${arcPlan.uncertaintyPeakDay})`
+                `clarityOnsetDay (${arcPlan.clarityOnsetDay}) should be after uncertaintyPeakDay (${arcPlan.uncertaintyPeakDay})`,
               );
             }
             if (arcPlan.verificationDay <= arcPlan.clarityOnsetDay) {
               issues.push(
-                `verificationDay (${arcPlan.verificationDay}) should be after clarityOnsetDay (${arcPlan.clarityOnsetDay})`
+                `verificationDay (${arcPlan.verificationDay}) should be after clarityOnsetDay (${arcPlan.clarityOnsetDay})`,
               );
             }
 
@@ -922,15 +922,15 @@ describe('Engine Generation Output Tests', () => {
           }
         }
 
-        writeOutput('questions-validation', questionValidation);
+        writeOutput("questions-validation", questionValidation);
 
         expect(questionValidation.questionsWithArcPlan).toBeGreaterThan(0);
         testResults.testsPassed++;
-      }
+      },
     );
 
     test.skipIf(!liveLlmTestConfig.enabled)(
-      'validates organizations are properly structured',
+      "validates organizations are properly structured",
       async () => {
         testResults.testsRun++;
         const game = requireGeneratedGame();
@@ -946,10 +946,10 @@ describe('Engine Generation Output Tests', () => {
         for (const org of game.setup.organizations) {
           const issues: string[] = [];
 
-          if (!org.id) issues.push('Missing id');
-          if (!org.name) issues.push('Missing name');
-          if (!org.type) issues.push('Missing type');
-          if (!org.description) issues.push('Missing description');
+          if (!org.id) issues.push("Missing id");
+          if (!org.name) issues.push("Missing name");
+          if (!org.type) issues.push("Missing type");
+          if (!org.description) issues.push("Missing description");
 
           // Count by type
           if (org.type) {
@@ -958,10 +958,10 @@ describe('Engine Generation Output Tests', () => {
           }
 
           // Check for swaps
-          const nameSwaps = detectSwaps(org.name || '');
+          const nameSwaps = detectSwaps(org.name || "");
           if (nameSwaps.length > 0) {
             issues.push(
-              `Swap detected in name: ${nameSwaps.map((s) => s.matches.join(', ')).join('; ')}`
+              `Swap detected in name: ${nameSwaps.map((s) => s.matches.join(", ")).join("; ")}`,
             );
           }
 
@@ -973,15 +973,15 @@ describe('Engine Generation Output Tests', () => {
           }
         }
 
-        writeOutput('organizations-validation', orgValidation);
+        writeOutput("organizations-validation", orgValidation);
 
         expect(orgValidation.invalidOrganizations).toBe(0);
         testResults.testsPassed++;
-      }
+      },
     );
 
     test.skipIf(!liveLlmTestConfig.enabled)(
-      'validates timeline progression',
+      "validates timeline progression",
       async () => {
         testResults.testsRun++;
         const game = requireGeneratedGame();
@@ -1019,7 +1019,7 @@ describe('Engine Generation Output Tests', () => {
         for (const day of game.timeline) {
           const groupMessageCount = Object.values(day.groupChats).reduce(
             (sum, msgs) => sum + msgs.length,
-            0
+            0,
           );
 
           timelineValidation.dayStats.push({
@@ -1030,17 +1030,17 @@ describe('Engine Generation Output Tests', () => {
           });
         }
 
-        writeOutput('timeline-validation', timelineValidation);
+        writeOutput("timeline-validation", timelineValidation);
 
         expect(timelineValidation.totalDays).toBe(30);
         expect(timelineValidation.missingDays.length).toBe(0);
         expect(timelineValidation.duplicateDays.length).toBe(0);
         testResults.testsPassed++;
-      }
+      },
     );
 
     test.skipIf(!liveLlmTestConfig.enabled)(
-      'validates resolution has all questions resolved',
+      "validates resolution has all questions resolved",
       async () => {
         testResults.testsRun++;
         const game = requireGeneratedGame();
@@ -1061,33 +1061,33 @@ describe('Engine Generation Output Tests', () => {
         };
 
         const resolvedIds = new Set(
-          game.resolution.outcomes.map((o) => o.questionId)
+          game.resolution.outcomes.map((o) => o.questionId),
         );
         for (const question of game.setup.questions) {
           if (!resolvedIds.has(question.id)) {
             resolutionValidation.issues.push(
-              `Question ${question.id} not resolved`
+              `Question ${question.id} not resolved`,
             );
           }
         }
 
         const narrativeSwaps = detectSwaps(
-          game.resolution.finalNarrative || ''
+          game.resolution.finalNarrative || "",
         );
         if (narrativeSwaps.length > 0) {
           resolutionValidation.issues.push(
-            `Swap detected in final narrative: ${narrativeSwaps.map((s) => s.matches.join(', ')).join('; ')}`
+            `Swap detected in final narrative: ${narrativeSwaps.map((s) => s.matches.join(", ")).join("; ")}`,
           );
         }
 
-        writeOutput('resolution-validation', resolutionValidation);
+        writeOutput("resolution-validation", resolutionValidation);
 
         expect(resolutionValidation.resolvedQuestions).toBe(
-          resolutionValidation.totalQuestions
+          resolutionValidation.totalQuestions,
         );
         expect(resolutionValidation.issues.length).toBe(0);
         testResults.testsPassed++;
-      }
+      },
     );
   });
 });

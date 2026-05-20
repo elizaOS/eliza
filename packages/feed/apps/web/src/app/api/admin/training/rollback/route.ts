@@ -57,8 +57,8 @@ import {
   requireAdmin,
   ServiceUnavailableError,
   withErrorHandling,
-} from '@feed/api';
-import type { NextRequest } from 'next/server';
+} from "@feed/api";
+import type { NextRequest } from "next/server";
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
   await requireAdmin(request);
@@ -67,10 +67,10 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   const { targetVersion } = body;
 
   if (!targetVersion) {
-    throw new BadRequestError('Target version required');
+    throw new BadRequestError("Target version required");
   }
 
   throw new ServiceUnavailableError(
-    `Trained model rollback is disabled. Requested rollback target ${targetVersion}, but agent runtime model selection is not wired to deployed model records yet.`
+    `Trained model rollback is disabled. Requested rollback target ${targetVersion}, but agent runtime model selection is not wired to deployed model records yet.`,
   );
 });

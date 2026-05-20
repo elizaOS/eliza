@@ -1,14 +1,14 @@
-'use client';
+"use client";
 
-import { cn, formatCurrency } from '@feed/shared';
-import { ExternalLink, RefreshCw } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
-import { BuyPointsModal } from '@/components/points/BuyPointsModal';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { useAuth } from '@/hooks/useAuth';
-import { useWalletBalance } from '@/hooks/useWalletBalance';
-import { getExplorerName, getExplorerTxUrl } from '@/lib/chain';
-import { useAuthStore } from '@/stores/authStore';
+import { cn, formatCurrency } from "@feed/shared";
+import { ExternalLink, RefreshCw } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { BuyPointsModal } from "@/components/points/BuyPointsModal";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { useAuth } from "@/hooks/useAuth";
+import { useWalletBalance } from "@/hooks/useWalletBalance";
+import { getExplorerName, getExplorerTxUrl } from "@/lib/chain";
+import { useAuthStore } from "@/stores/authStore";
 
 /** Number of transactions to show in collapsed view */
 const COLLAPSED_COUNT = 5;
@@ -52,16 +52,16 @@ function parseFundingMetadata(description: string | null): FundingMetadata {
     const parsed = JSON.parse(description) as Record<string, unknown>;
     return {
       amountUSD:
-        typeof parsed.amountUSD === 'number' ||
-        typeof parsed.amountUSD === 'string'
+        typeof parsed.amountUSD === "number" ||
+        typeof parsed.amountUSD === "string"
           ? parsed.amountUSD
           : null,
       paymentProvider:
-        typeof parsed.paymentProvider === 'string'
+        typeof parsed.paymentProvider === "string"
           ? parsed.paymentProvider
           : null,
       paymentTxHash:
-        typeof parsed.paymentTxHash === 'string' ? parsed.paymentTxHash : null,
+        typeof parsed.paymentTxHash === "string" ? parsed.paymentTxHash : null,
     };
   } catch {
     return {
@@ -76,22 +76,22 @@ function parseFundingMetadata(description: string | null): FundingMetadata {
  * Get human-readable funding label.
  */
 function getFundingLabel(tx: FundingTransaction): string {
-  if (tx.description && !tx.description.startsWith('{')) {
+  if (tx.description && !tx.description.startsWith("{")) {
     return tx.description;
   }
 
   const labels: Record<string, string> = {
-    deposit: 'Balance Deposit',
-    stripe_purchase: 'Card Funding',
-    crypto_purchase: 'Crypto Funding',
-    stripe_refund: 'Refund',
-    stripe_dispute: 'Dispute Deduction',
-    stripe_dispute_won: 'Dispute Reversal',
+    deposit: "Balance Deposit",
+    stripe_purchase: "Card Funding",
+    crypto_purchase: "Crypto Funding",
+    stripe_refund: "Refund",
+    stripe_dispute: "Dispute Deduction",
+    stripe_dispute_won: "Dispute Reversal",
   };
 
   return (
     labels[tx.type] ||
-    tx.type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+    tx.type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
   );
 }
 
@@ -99,9 +99,9 @@ function getFundingLabel(tx: FundingTransaction): string {
  * Format payment provider display.
  */
 function getPaymentProviderLabel(provider: string | null): string {
-  if (!provider) return '';
-  if (provider === 'stripe') return 'Card';
-  if (provider === 'crypto') return 'Crypto';
+  if (!provider) return "";
+  if (provider === "stripe") return "Card";
+  if (provider === "crypto") return "Crypto";
   return provider;
 }
 
@@ -110,11 +110,11 @@ function getPaymentProviderLabel(provider: string | null): string {
  */
 function FundingTransactionRow({ tx }: { tx: FundingTransaction }) {
   const isPurchase =
-    tx.type === 'stripe_purchase' || tx.type === 'crypto_purchase';
+    tx.type === "stripe_purchase" || tx.type === "crypto_purchase";
   const isPositive = tx.amount > 0;
   // Pre-compute explorer URL to avoid duplicate function calls
   const explorerUrl =
-    tx.metadata.paymentTxHash && tx.metadata.paymentProvider === 'crypto'
+    tx.metadata.paymentTxHash && tx.metadata.paymentProvider === "crypto"
       ? getExplorerTxUrl(tx.metadata.paymentTxHash)
       : null;
 
@@ -130,12 +130,12 @@ function FundingTransactionRow({ tx }: { tx: FundingTransaction }) {
           )}
         </div>
         <div className="mt-1 text-muted-foreground text-sm">
-          {new Date(tx.createdAt).toLocaleString('en-US', {
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
+          {new Date(tx.createdAt).toLocaleString("en-US", {
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
           })}
         </div>
         {isPurchase && tx.metadata.amountUSD !== null && (
@@ -158,11 +158,11 @@ function FundingTransactionRow({ tx }: { tx: FundingTransaction }) {
       <div className="shrink-0 text-right">
         <div
           className={cn(
-            'font-semibold text-lg',
-            isPositive ? 'text-green-500' : 'text-red-500'
+            "font-semibold text-lg",
+            isPositive ? "text-green-500" : "text-red-500",
           )}
         >
-          {isPositive ? '+' : ''}
+          {isPositive ? "+" : ""}
           {tx.amount.toLocaleString()}
         </div>
         <div className="text-muted-foreground text-xs">
@@ -229,11 +229,11 @@ function TransactionSection({
           {/* Transaction list container */}
           <div
             className={cn(
-              'space-y-3 transition-all duration-300 ease-in-out',
-              expanded && hasMore && 'overflow-y-auto pr-1'
+              "space-y-3 transition-all duration-300 ease-in-out",
+              expanded && hasMore && "overflow-y-auto pr-1",
             )}
             style={{
-              maxHeight: expanded && hasMore ? EXPANDED_MAX_HEIGHT : 'none',
+              maxHeight: expanded && hasMore ? EXPANDED_MAX_HEIGHT : "none",
             }}
           >
             {visibleTransactions.map((tx) => (
@@ -248,7 +248,7 @@ function TransactionSection({
               className="mt-4 flex w-full items-center justify-center rounded-lg border border-border py-2.5 text-muted-foreground text-sm transition-colors hover:bg-muted hover:text-foreground"
             >
               {expanded
-                ? 'Show less'
+                ? "Show less"
                 : `Show all ${transactions.length} transactions`}
             </button>
           )}
@@ -294,12 +294,12 @@ export function BillingTab() {
         `/api/users/trading-balance/funding?userId=${encodeURIComponent(user.id)}`,
         {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
-        }
+        },
       );
 
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
-        setError(data.error || 'Failed to load transaction history');
+        setError(data.error || "Failed to load transaction history");
         return;
       }
 
@@ -325,14 +325,14 @@ export function BillingTab() {
             createdAt: transaction.createdAt,
             relatedId: transaction.relatedId,
             metadata: parseFundingMetadata(transaction.description),
-          })
-        )
+          }),
+        ),
       );
     } catch (err) {
       setError(
         err instanceof Error
           ? err.message
-          : 'Failed to load transaction history'
+          : "Failed to load transaction history",
       );
     } finally {
       setLoading(false);
@@ -418,14 +418,14 @@ export function BillingTab() {
               className="absolute top-4 right-4 z-10 rounded p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               title="Refresh"
             >
-              <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
+              <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
             </button>
             <TransactionSection
               title="Funding History"
               transactions={transactions}
               emptyMessage="No funding events yet"
               emptyAction={{
-                label: 'Add your first funds',
+                label: "Add your first funds",
                 onClick: () => setBuyFundsOpen(true),
               }}
               description="Spendable balance funding events, refunds, disputes, and dispute reversals."

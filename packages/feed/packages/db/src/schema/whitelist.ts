@@ -1,6 +1,6 @@
-import { relations } from 'drizzle-orm';
-import { index, integer, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
-import { users } from './users';
+import { relations } from "drizzle-orm";
+import { index, integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { users } from "./users";
 
 /**
  * Whitelist - Stores individually whitelisted users who bypass NFT gating.
@@ -13,28 +13,28 @@ import { users } from './users';
  * Soft-revoke via `revokedAt` preserves audit trail.
  */
 export const whitelist = pgTable(
-  'Whitelist',
+  "Whitelist",
   {
-    id: text('id').primaryKey(),
-    userId: text('userId')
+    id: text("id").primaryKey(),
+    userId: text("userId")
       .notNull()
       .unique()
-      .references(() => users.id, { onDelete: 'cascade' }),
-    source: text('source')
+      .references(() => users.id, { onDelete: "cascade" }),
+    source: text("source")
       .notNull()
-      .$type<'snapshot_first_100' | 'admin_manual' | 'leaderboard'>(),
-    reason: text('reason'),
-    grantedBy: text('grantedBy').references(() => users.id, {
-      onDelete: 'set null',
+      .$type<"snapshot_first_100" | "admin_manual" | "leaderboard">(),
+    reason: text("reason"),
+    grantedBy: text("grantedBy").references(() => users.id, {
+      onDelete: "set null",
     }),
-    grantedAt: timestamp('grantedAt', { mode: 'date' }).notNull().defaultNow(),
-    revokedAt: timestamp('revokedAt', { mode: 'date' }),
+    grantedAt: timestamp("grantedAt", { mode: "date" }).notNull().defaultNow(),
+    revokedAt: timestamp("revokedAt", { mode: "date" }),
   },
   (table) => [
-    index('Whitelist_userId_idx').on(table.userId),
-    index('Whitelist_source_idx').on(table.source),
-    index('Whitelist_revokedAt_idx').on(table.revokedAt),
-  ]
+    index("Whitelist_userId_idx").on(table.userId),
+    index("Whitelist_source_idx").on(table.source),
+    index("Whitelist_revokedAt_idx").on(table.revokedAt),
+  ],
 );
 
 export type WhitelistRow = typeof whitelist.$inferSelect;
@@ -46,13 +46,13 @@ export type NewWhitelistRow = typeof whitelist.$inferInsert;
  * Stores global settings such as the leaderboard rank threshold.
  * Uses a singleton pattern (id is always 'default').
  */
-export const whitelistConfig = pgTable('WhitelistConfig', {
-  id: text('id').primaryKey(), // always 'default'
-  leaderboardRankThreshold: integer('leaderboardRankThreshold'), // null = disabled
-  leaderboardCategory: text('leaderboardCategory').notNull().default('all'),
-  updatedAt: timestamp('updatedAt', { mode: 'date' }).notNull().defaultNow(),
-  updatedBy: text('updatedBy').references(() => users.id, {
-    onDelete: 'set null',
+export const whitelistConfig = pgTable("WhitelistConfig", {
+  id: text("id").primaryKey(), // always 'default'
+  leaderboardRankThreshold: integer("leaderboardRankThreshold"), // null = disabled
+  leaderboardCategory: text("leaderboardCategory").notNull().default("all"),
+  updatedAt: timestamp("updatedAt", { mode: "date" }).notNull().defaultNow(),
+  updatedBy: text("updatedBy").references(() => users.id, {
+    onDelete: "set null",
   }),
 });
 
@@ -68,7 +68,7 @@ export const whitelistRelations = relations(whitelist, ({ one }) => ({
   granter: one(users, {
     fields: [whitelist.grantedBy],
     references: [users.id],
-    relationName: 'Whitelist_grantedByToUser',
+    relationName: "Whitelist_grantedByToUser",
   }),
 }));
 
@@ -79,5 +79,5 @@ export const whitelistConfigRelations = relations(
       fields: [whitelistConfig.updatedBy],
       references: [users.id],
     }),
-  })
+  }),
 );

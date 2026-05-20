@@ -106,8 +106,8 @@ import {
   RATE_LIMIT_CONFIGS,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { requireNftChatAccess } from '@feed/api/services/nft-chat-gating-service';
+} from "@feed/api";
+import { requireNftChatAccess } from "@feed/api/services/nft-chat-gating-service";
 import {
   and,
   asUser,
@@ -118,21 +118,21 @@ import {
   hasBlocked,
   messages,
   users,
-} from '@feed/db';
+} from "@feed/db";
 import {
   GroupChatService,
   MessageQualityChecker,
   type SweepDecision,
-} from '@feed/engine';
+} from "@feed/engine";
 import {
   ChatMessageCreateSchema,
   generateSnowflakeId,
   logger,
   toISO,
-} from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { trackServerEvent } from '@/lib/posthog/server';
-import { getOtherDmParticipantId } from '../../_lib/dm-chat-id';
+} from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { trackServerEvent } from "@/lib/posthog/server";
+import { getOtherDmParticipantId } from "../../_lib/dm-chat-id";
 
 /**
  * POST /api/chats/[id]/message
@@ -146,14 +146,14 @@ import { getOtherDmParticipantId } from '../../_lib/dm-chat-id';
 export const POST = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ id: string }> }
+    context: { params: Promise<{ id: string }> },
   ) => {
     // 1. Authenticate user
     const user = await authenticate(request);
     const { id: chatId } = await context.params;
 
     if (!chatId) {
-      throw new BusinessLogicError('Chat ID is required', 'CHAT_ID_REQUIRED');
+      throw new BusinessLogicError("Chat ID is required", "CHAT_ID_REQUIRED");
     }
 
     // 2. Validate request body
@@ -165,7 +165,7 @@ export const POST = withErrorHandling(
       user.userId,
       content,
       RATE_LIMIT_CONFIGS.SEND_MESSAGE,
-      DUPLICATE_DETECTION_CONFIGS.MESSAGE
+      DUPLICATE_DETECTION_CONFIGS.MESSAGE,
     );
     if (rateLimitError) {
       return rateLimitError;
@@ -188,13 +188,13 @@ export const POST = withErrorHandling(
     let chatParticipantsList = chatData?.participants || [];
 
     // If chat doesn't exist and it's a DM format, create it automatically
-    if (!chat && chatId.startsWith('dm-')) {
+    if (!chat && chatId.startsWith("dm-")) {
       const otherUserId = getOtherDmParticipantId(chatId, user.userId);
 
       if (!otherUserId) {
         throw new BusinessLogicError(
-          'Invalid DM chat participants',
-          'INVALID_DM_PARTICIPANTS'
+          "Invalid DM chat participants",
+          "INVALID_DM_PARTICIPANTS",
         );
       }
 
@@ -208,15 +208,15 @@ export const POST = withErrorHandling(
 
         if (!otherUser) {
           throw new BusinessLogicError(
-            'Other user not found',
-            'USER_NOT_FOUND'
+            "Other user not found",
+            "USER_NOT_FOUND",
           );
         }
 
         if (otherUser.isActor) {
           throw new BusinessLogicError(
-            'Cannot DM actors/NPCs',
-            'CANNOT_DM_ACTOR'
+            "Cannot DM actors/NPCs",
+            "CANNOT_DM_ACTOR",
           );
         }
 
@@ -266,8 +266,8 @@ export const POST = withErrorHandling(
       // Update chat and participants from reloaded data
       if (
         chatDataResult &&
-        typeof chatDataResult === 'object' &&
-        'chat' in chatDataResult &&
+        typeof chatDataResult === "object" &&
+        "chat" in chatDataResult &&
         chatDataResult.chat
       ) {
         chat = chatDataResult.chat;
@@ -276,11 +276,11 @@ export const POST = withErrorHandling(
     }
 
     if (!chat) {
-      throw new BusinessLogicError('Chat not found', 'CHAT_NOT_FOUND');
+      throw new BusinessLogicError("Chat not found", "CHAT_NOT_FOUND");
     }
 
     // Determine chat type
-    const isGameChat = chat.isGroup && chat.gameId === 'continuous';
+    const isGameChat = chat.isGroup && chat.gameId === "continuous";
     const isDMChat = !chat.isGroup;
     const isGroupChat = chat.isGroup && !isGameChat;
 
@@ -292,15 +292,15 @@ export const POST = withErrorHandling(
         isMember = chatParticipantsList.some((p) => p.userId === user.userId);
         if (!isMember) {
           throw new AuthorizationError(
-            'You are not a participant in this DM',
-            'chat',
-            'write'
+            "You are not a participant in this DM",
+            "chat",
+            "write",
           );
         }
 
         // Check if the other participant is an NPC or has blocked the user
         const otherParticipant = chatParticipantsList.find(
-          (p) => p.userId !== user.userId
+          (p) => p.userId !== user.userId,
         );
         if (otherParticipant) {
           const [otherUser, isBlocked, hasBlockedMe] = await Promise.all([
@@ -316,15 +316,15 @@ export const POST = withErrorHandling(
 
           if (otherUser?.isActor) {
             throw new BusinessLogicError(
-              'Cannot send direct messages to NPC actors. Use group chats to interact with NPCs.',
-              'CANNOT_DM_ACTOR'
+              "Cannot send direct messages to NPC actors. Use group chats to interact with NPCs.",
+              "CANNOT_DM_ACTOR",
             );
           }
 
           if (isBlocked || hasBlockedMe) {
             throw new BusinessLogicError(
-              'Cannot send messages to this user',
-              'BLOCKED_USER'
+              "Cannot send messages to this user",
+              "BLOCKED_USER",
             );
           }
         }
@@ -334,9 +334,9 @@ export const POST = withErrorHandling(
         isMember = await GroupChatService.isInChat(user.userId, chatId);
         if (!isMember) {
           throw new AuthorizationError(
-            'You are not a member of this group chat',
-            'chat',
-            'write'
+            "You are not a member of this group chat",
+            "chat",
+            "write",
           );
         }
 
@@ -354,7 +354,7 @@ export const POST = withErrorHandling(
             userData?.walletAddress ?? null,
             chat.requiredNftContractAddress,
             chat.requiredNftTokenId ?? null,
-            chat.requiredNftChainId ?? undefined
+            chat.requiredNftChainId ?? undefined,
           );
 
           if (!verification.canAccess) {
@@ -367,14 +367,14 @@ export const POST = withErrorHandling(
                   .set({
                     isActive: false,
                     kickedAt: new Date(),
-                    kickReason: 'Lost NFT access',
+                    kickReason: "Lost NFT access",
                   })
                   .where(
                     and(
                       eq(groupMembers.groupId, chat.groupId),
                       eq(groupMembers.userId, user.userId),
-                      eq(groupMembers.isActive, true)
-                    )
+                      eq(groupMembers.isActive, true),
+                    ),
                   );
               }
 
@@ -383,8 +383,8 @@ export const POST = withErrorHandling(
                 .where(
                   and(
                     eq(chatParticipants.chatId, chatId),
-                    eq(chatParticipants.userId, user.userId)
-                  )
+                    eq(chatParticipants.userId, user.userId),
+                  ),
                 );
             });
 
@@ -393,21 +393,21 @@ export const POST = withErrorHandling(
               await NFTVerificationService.invalidateOwnershipCache(
                 userData.walletAddress,
                 chat.requiredNftContractAddress,
-                chat.requiredNftChainId ?? undefined
+                chat.requiredNftChainId ?? undefined,
               ).catch((error) => {
                 logger.warn(
-                  'Failed to invalidate NFT cache after removal',
+                  "Failed to invalidate NFT cache after removal",
                   { error, chatId, userId: user.userId },
-                  'POST /api/chats/[id]/message'
+                  "POST /api/chats/[id]/message",
                 );
               });
             }
 
             throw new AuthorizationError(
               verification.reason ||
-                'You must own the required NFT to send messages in this chat. You have been removed from this chat.',
-              'chat',
-              'write'
+                "You must own the required NFT to send messages in this chat. You have been removed from this chat.",
+              "chat",
+              "write",
             );
           }
         }
@@ -420,25 +420,25 @@ export const POST = withErrorHandling(
     if (isGroupChat) {
       sweepDecision = await GroupChatService.calculateKickChance(
         user.userId,
-        chatId
+        chatId,
       );
       // Note: We don't actually kick here, just calculate stats for response
       // Actual kicks happen via sweep background job
     }
 
     // 6. Check message quality
-    const contextType = isDMChat ? 'dm' : 'groupchat';
+    const contextType = isDMChat ? "dm" : "groupchat";
     const qualityResult = await MessageQualityChecker.checkQuality(
       content,
       user.userId,
       contextType,
-      isGameChat ? '' : chatId
+      isGameChat ? "" : chatId,
     );
 
     if (!qualityResult.passed) {
       throw new BusinessLogicError(
-        qualityResult.errors.join('; '),
-        'QUALITY_CHECK_FAILED'
+        qualityResult.errors.join("; "),
+        "QUALITY_CHECK_FAILED",
       );
     }
 
@@ -466,15 +466,15 @@ export const POST = withErrorHandling(
         .where(
           and(
             eq(messages.id, effectiveReplyToMessageId),
-            eq(messages.chatId, chatId)
-          )
+            eq(messages.chatId, chatId),
+          ),
         )
         .limit(1);
 
       if (!replyMsg) {
         throw new BusinessLogicError(
-          'Invalid reply target message',
-          'INVALID_REPLY_TARGET'
+          "Invalid reply target message",
+          "INVALID_REPLY_TARGET",
         );
       }
 
@@ -518,7 +518,7 @@ export const POST = withErrorHandling(
           await GroupChatService.updateQualityScore(
             user.userId,
             chatId,
-            qualityResult.score
+            qualityResult.score,
           );
 
           // 9. Get updated membership stats
@@ -550,7 +550,7 @@ export const POST = withErrorHandling(
       content: message.content,
       chatId: message.chatId,
       senderId: message.senderId,
-      type: message.type ?? 'user',
+      type: message.type ?? "user",
       createdAt: toISO(message.createdAt),
       isGameChat,
       isDMChat,
@@ -563,14 +563,14 @@ export const POST = withErrorHandling(
       if (isDMChat) {
         // For DMs, notify the other participant
         const otherParticipant = chatParticipantsList.find(
-          (p) => p.userId !== user.userId
+          (p) => p.userId !== user.userId,
         );
         if (otherParticipant) {
           await notifyDMMessage(
             otherParticipant.userId,
             user.userId,
             chatId,
-            content.trim()
+            content.trim(),
           );
         }
       } else if (isGroupChat) {
@@ -589,36 +589,36 @@ export const POST = withErrorHandling(
           recipientUserIds,
           user.userId,
           chatId,
-          chatInfo?.name || 'Group Chat',
-          content.trim()
+          chatInfo?.name || "Group Chat",
+          content.trim(),
         );
       }
     }
 
     // 13. Return success with feedback
     logger.info(
-      'Message sent successfully',
+      "Message sent successfully",
       {
         chatId,
         userId: user.userId,
-        chatType: isDMChat ? 'dm' : isGameChat ? 'game' : 'group',
+        chatType: isDMChat ? "dm" : isGameChat ? "game" : "group",
         qualityScore: qualityResult.score,
       },
-      'POST /api/chats/[id]/message'
+      "POST /api/chats/[id]/message",
     );
 
     // Track message sent event
-    trackServerEvent(user.userId, 'message_sent', {
+    trackServerEvent(user.userId, "message_sent", {
       chatId,
       messageLength: content.length,
-      chatType: isDMChat ? 'dm' : isGameChat ? 'game' : 'group',
+      chatType: isDMChat ? "dm" : isGameChat ? "game" : "group",
       qualityScore: qualityResult.score,
     }).catch((error) => {
-      logger.warn('Failed to track message_sent event', { error });
+      logger.warn("Failed to track message_sent event", { error });
     });
 
     if (isGroupChat) {
-      void checkProgress(user.userId, { type: 'group_message_sent' });
+      void checkProgress(user.userId, { type: "group_message_sent" });
     }
 
     return successResponse(
@@ -641,13 +641,13 @@ export const POST = withErrorHandling(
               qualityScore: membership?.qualityScore || 0,
               lastMessageAt: membership?.lastMessageAt,
               messagesLast24h: sweepDecision?.stats.messagesLast24h || 0,
-              status: 'active',
+              status: "active",
             }
           : undefined,
         warnings: qualityResult.warnings,
-        chatType: isDMChat ? 'dm' : isGameChat ? 'game' : 'group',
+        chatType: isDMChat ? "dm" : isGameChat ? "game" : "group",
       },
-      201
+      201,
     );
-  }
+  },
 );

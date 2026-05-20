@@ -51,11 +51,11 @@
  * ```
  */
 
-import { authenticate, successResponse, withErrorHandling } from '@feed/api';
-import { asUser } from '@feed/db';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { z } from 'zod';
+import { authenticate, successResponse, withErrorHandling } from "@feed/api";
+import { asUser } from "@feed/db";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { z } from "zod";
 
 const FavoritesPaginationSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -71,8 +71,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
   const { searchParams } = new URL(request.url);
   const { page, limit } = FavoritesPaginationSchema.parse({
-    page: searchParams.get('page') ?? undefined,
-    limit: searchParams.get('limit') ?? undefined,
+    page: searchParams.get("page") ?? undefined,
+    limit: searchParams.get("limit") ?? undefined,
   });
   const offset = (page - 1) * limit;
 
@@ -90,7 +90,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
             userId: user.userId,
           },
           orderBy: {
-            createdAt: 'desc',
+            createdAt: "desc",
           },
           skip: offset,
           take: limit,
@@ -119,7 +119,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         },
       });
       const userMap = new Map(
-        targetUsers.map((targetUser) => [targetUser.id, targetUser])
+        targetUsers.map((targetUser) => [targetUser.id, targetUser]),
       );
 
       const profiles = await Promise.all(
@@ -148,22 +148,22 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
             favoritedAt: favorite.createdAt,
             isFavorited: true,
           };
-        })
+        }),
       );
 
       return {
         profiles: profiles.filter(
-          (profile): profile is NonNullable<typeof profile> => profile !== null
+          (profile): profile is NonNullable<typeof profile> => profile !== null,
         ),
         total: totalFavorites,
       };
-    }
+    },
   );
 
   const totalPages = total === 0 ? 0 : Math.ceil(total / limit);
 
   logger.info(
-    'Favorited profiles fetched successfully',
+    "Favorited profiles fetched successfully",
     {
       userId: user.userId,
       count: favoritedProfiles.length,
@@ -171,7 +171,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       page,
       limit,
     },
-    'GET /api/profiles/favorites'
+    "GET /api/profiles/favorites",
   );
 
   return successResponse({

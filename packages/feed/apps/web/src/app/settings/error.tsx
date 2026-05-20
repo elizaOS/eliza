@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import * as Sentry from '@sentry/nextjs';
-import { AlertTriangle } from 'lucide-react';
-import { useEffect } from 'react';
-import { posthog } from '@/lib/posthog';
+import * as Sentry from "@sentry/nextjs";
+import { AlertTriangle } from "lucide-react";
+import { useEffect } from "react";
+import { posthog } from "@/lib/posthog";
 
 export default function SettingsError({
   error,
@@ -13,20 +13,20 @@ export default function SettingsError({
 }) {
   useEffect(() => {
     Sentry.withScope((scope) => {
-      scope.setTag('errorBoundary', 'settings');
-      scope.setTag('page', 'settings');
+      scope.setTag("errorBoundary", "settings");
+      scope.setTag("page", "settings");
       if (error.digest) {
-        scope.setTag('errorDigest', error.digest);
+        scope.setTag("errorDigest", error.digest);
       }
       Sentry.captureException(error);
     });
 
     if (posthog) {
-      posthog.capture('$exception', {
-        $exception_type: error.name || 'Error',
+      posthog.capture("$exception", {
+        $exception_type: error.name || "Error",
         $exception_message: error.message,
         $exception_stack: error.stack,
-        errorBoundary: 'settings',
+        errorBoundary: "settings",
         digest: error.digest,
       });
     }
@@ -54,7 +54,7 @@ export default function SettingsError({
             Reload page
           </button>
           <button
-            onClick={() => (window.location.href = '/')}
+            onClick={() => (window.location.href = "/")}
             className="rounded-md bg-secondary px-6 py-2 text-secondary-foreground transition-colors hover:bg-secondary/90"
           >
             Go home

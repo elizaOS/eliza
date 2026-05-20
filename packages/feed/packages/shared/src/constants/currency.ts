@@ -12,15 +12,15 @@
  * Default: `$` (ASCII dollar sign). Override if you need a distinct glyph.
  */
 export const FEED_POINTS_SYMBOL =
-  process.env.NEXT_PUBLIC_CURRENCY_SYMBOL || '$';
+  process.env.NEXT_PUBLIC_CURRENCY_SYMBOL || "$";
 
 /**
  * Abbreviated text representation for Feed points
  * Used in labels, form fields, and contexts where the symbol may not render properly
  */
-export const FEED_POINTS_ABBREV = 'PTS';
+export const FEED_POINTS_ABBREV = "PTS";
 
 /**
  * Full name for the currency
  */
-export const FEED_POINTS_NAME = 'Feed Points';
+export const FEED_POINTS_NAME = "Feed Points";

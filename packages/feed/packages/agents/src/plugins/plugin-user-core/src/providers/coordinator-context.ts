@@ -14,7 +14,7 @@ import type {
   Provider,
   ProviderResult,
   State,
-} from '@elizaos/core';
+} from "@elizaos/core";
 
 /** TeamMember shape matches what's provided by team-members provider */
 interface TeamMemberData {
@@ -116,13 +116,13 @@ Stay neutral on market analysis — describe what's happening, don't recommend a
  * string and reads teamMemberCount from state (populated by TEAM_MEMBERS).
  */
 export const coordinatorContextProvider: Provider = {
-  name: 'COORDINATOR_CONTEXT',
-  description: 'Context about coordinator role and team chat usage',
+  name: "COORDINATOR_CONTEXT",
+  description: "Context about coordinator role and team chat usage",
 
   get: async (
     _runtime: IAgentRuntime,
     _message: Memory,
-    state: State
+    state: State,
   ): Promise<ProviderResult> => {
     const teamMembers = state?.data?.teamMembers as
       | TeamMemberData[]

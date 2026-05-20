@@ -1,9 +1,9 @@
-import { logger } from '@feed/shared';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { logger } from "@feed/shared";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-import { usePredictionMarketStream } from '@/hooks/usePredictionMarketStream';
-import type { MarketTimeRange } from '@/types/markets';
-import { apiUrl } from '@/utils/api-url';
+import { usePredictionMarketStream } from "@/hooks/usePredictionMarketStream";
+import type { MarketTimeRange } from "@/types/markets";
+import { apiUrl } from "@/utils/api-url";
 
 /**
  * Represents a single point in prediction market price history.
@@ -46,8 +46,8 @@ interface UsePredictionHistoryOptions {
 }
 
 const getSeedSignature = (seed?: SeedSnapshot) =>
-  [seed?.yesShares ?? '', seed?.noShares ?? '', seed?.liquidity ?? ''].join(
-    ':'
+  [seed?.yesShares ?? "", seed?.noShares ?? "", seed?.liquidity ?? ""].join(
+    ":",
   );
 
 /**
@@ -79,7 +79,7 @@ const getSeedSignature = (seed?: SeedSnapshot) =>
  */
 export function usePredictionHistory(
   marketId: string | null,
-  options?: UsePredictionHistoryOptions
+  options?: UsePredictionHistoryOptions,
 ) {
   const limit = options?.limit ?? 100;
   const range = options?.range;
@@ -135,7 +135,7 @@ export function usePredictionHistory(
         noPrice: number;
         liquidity?: number;
         timestamp: string;
-      }>
+      }>,
     ): PredictionHistoryPoint[] => {
       let prevLiquidity: number | null = null;
       return points.map((point) => {
@@ -154,7 +154,7 @@ export function usePredictionHistory(
         };
       });
     },
-    []
+    [],
   );
 
   /**
@@ -202,12 +202,12 @@ export function usePredictionHistory(
     try {
       const params = new URLSearchParams({ limit: String(limit) });
       if (range) {
-        params.set('range', range);
+        params.set("range", range);
       }
       const response = await fetch(
         apiUrl(
-          `/api/markets/predictions/${encodeURIComponent(marketId)}/history?${params.toString()}`
-        )
+          `/api/markets/predictions/${encodeURIComponent(marketId)}/history?${params.toString()}`,
+        ),
       );
 
       let data: unknown = null;
@@ -232,26 +232,26 @@ export function usePredictionHistory(
               noPrice: number;
               liquidity?: number;
               timestamp: string;
-            }>
-          )
+            }>,
+          ),
         );
       } else {
         if (!response.ok) {
           setError(
-            typeof record.error === 'string'
+            typeof record.error === "string"
               ? record.error
-              : `Failed to fetch history: ${response.status}`
+              : `Failed to fetch history: ${response.status}`,
           );
         }
         setHistory(fallbackFromSeed());
       }
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : 'Failed to fetch history';
+        err instanceof Error ? err.message : "Failed to fetch history";
       logger.error(
-        'Failed to fetch prediction history',
+        "Failed to fetch prediction history",
         { marketId, error: err },
-        'usePredictionHistory'
+        "usePredictionHistory",
       );
       setError(message);
       setHistory(fallbackFromSeed());
@@ -274,7 +274,7 @@ export function usePredictionHistory(
       yesPrice: number,
       noPrice: number,
       liquidity: number | undefined,
-      timestamp: number
+      timestamp: number,
     ) => {
       setHistory((prev) => {
         const lastPoint = prev.length > 0 ? prev[prev.length - 1] : null;
@@ -284,7 +284,7 @@ export function usePredictionHistory(
         const lastLiquidity = lastPoint?.liquidity ?? normalizedLiquidity;
         const volume = Math.max(
           0,
-          Math.abs(normalizedLiquidity - lastLiquidity)
+          Math.abs(normalizedLiquidity - lastLiquidity),
         );
         const point: PredictionHistoryPoint = {
           time: timestamp,
@@ -300,14 +300,14 @@ export function usePredictionHistory(
         return next;
       });
     },
-    [limit]
+    [limit],
   );
 
   // Subscribe to real-time updates via SSE
   usePredictionMarketStream(marketId, {
     onTrade: (event) => {
       const timestamp = new Date(
-        event.trade.timestamp ?? new Date().toISOString()
+        event.trade.timestamp ?? new Date().toISOString(),
       ).getTime();
       appendPoint(event.yesPrice, event.noPrice, event.liquidity, timestamp);
     },

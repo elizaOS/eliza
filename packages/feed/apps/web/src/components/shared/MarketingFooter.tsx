@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import Image from 'next/image';
-import { EXTERNAL_LINKS } from '@/lib/constants';
+import Image from "next/image";
+import { EXTERNAL_LINKS } from "@/lib/constants";
 
 type MarketingFooterProps = {
   className?: string;
@@ -12,7 +12,7 @@ export function MarketingFooter({ className }: MarketingFooterProps) {
 
   return (
     <footer
-      className={`relative z-10 mt-auto overflow-hidden border-primary/20 border-t py-6 sm:py-12 md:py-16 ${className ?? ''}`}
+      className={`relative z-10 mt-auto overflow-hidden border-primary/20 border-t py-6 sm:py-12 md:py-16 ${className ?? ""}`}
     >
       <div className="absolute inset-0 z-0">
         <Image

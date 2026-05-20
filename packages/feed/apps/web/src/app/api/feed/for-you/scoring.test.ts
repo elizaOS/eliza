@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'bun:test';
-import type { NarrativePost, NarrativeStory } from '@feed/shared';
+import { describe, expect, it } from "bun:test";
+import type { NarrativePost, NarrativeStory } from "@feed/shared";
 import {
   calculateConversationDepthScore,
   calculateForYouScore,
@@ -7,11 +7,11 @@ import {
   calculateVelocityScore,
   diversifyForYouStories,
   spreadNewMarkets,
-} from './scoring';
+} from "./scoring";
 
 function makeStory(
   storyKey: string,
-  overrides: Partial<NarrativeStory> = {}
+  overrides: Partial<NarrativeStory> = {},
 ): NarrativeStory {
   return {
     storyKey,
@@ -29,7 +29,7 @@ function makeStory(
         articleTitle: null,
         category: null,
         imageUrl: null,
-        type: 'post',
+        type: "post",
         timestamp: new Date().toISOString(),
         authorId: `${storyKey}-author`,
         authorName: storyKey,
@@ -50,20 +50,20 @@ function makeStory(
 
 function makeAnchorPost(
   id: string,
-  overrides: Partial<NarrativePost> = {}
+  overrides: Partial<NarrativePost> = {},
 ): NarrativePost {
   return {
     id,
-    content: 'NEW MARKET: Will BTC reach $100k?',
+    content: "NEW MARKET: Will BTC reach $100k?",
     fullContent: null,
     articleTitle: null,
     category: null,
     imageUrl: null,
-    type: 'post',
+    type: "post",
     timestamp: new Date().toISOString(),
-    authorId: 'npc-org-1',
-    authorName: 'AIxios',
-    authorUsername: 'aixios',
+    authorId: "npc-org-1",
+    authorName: "AIxios",
+    authorUsername: "aixios",
     authorProfileImageUrl: null,
     likeCount: 5,
     commentCount: 2,
@@ -71,31 +71,31 @@ function makeAnchorPost(
     isLiked: false,
     isShared: false,
     relatedQuestion: 42,
-    authorType: 'news',
+    authorType: "news",
     ...overrides,
   };
 }
 
-describe('isNewMarket story invariants', () => {
+describe("isNewMarket story invariants", () => {
   // diversifyForYouStories ranks by `finalRankScore ?? storyScore`.
   // MARKET_WINDOW_PENALTY (0.5) is subtracted from a new-market story's
   // finalRankScore when another new-market story appeared in the previous
   // MARKET_WINDOW_SIZE positions. narrative.finalRankScore (8.8) must exceed
   // market2's penalised score (9 - 0.5 = 8.5) for the penalty to flip ordering.
-  it('diversifyForYouStories separates consecutive new-market stories', () => {
-    const market1 = makeStory('market:1', {
+  it("diversifyForYouStories separates consecutive new-market stories", () => {
+    const market1 = makeStory("market:1", {
       isNewMarket: true,
       finalRankScore: 10,
-      posts: [makeAnchorPost('anchor-1')],
-      anchorPostId: 'anchor-1',
+      posts: [makeAnchorPost("anchor-1")],
+      anchorPostId: "anchor-1",
     });
-    const market2 = makeStory('market:2', {
+    const market2 = makeStory("market:2", {
       isNewMarket: true,
       finalRankScore: 9,
-      posts: [makeAnchorPost('anchor-2')],
-      anchorPostId: 'anchor-2',
+      posts: [makeAnchorPost("anchor-2")],
+      anchorPostId: "anchor-2",
     });
-    const narrative = makeStory('story:1', {
+    const narrative = makeStory("story:1", {
       isNewMarket: false,
       finalRankScore: 8.8,
     });
@@ -108,16 +108,16 @@ describe('isNewMarket story invariants', () => {
       .filter((i) => i !== -1);
     expect(marketIndices.length).toBe(2);
     expect((marketIndices[1] ?? 0) - (marketIndices[0] ?? 0)).toBeGreaterThan(
-      1
+      1,
     );
   });
 
-  it('diversifyForYouStories preserves anchor post data on new-market stories', () => {
-    const anchorPost = makeAnchorPost('anchor-1', { likeCount: 7 });
-    const market = makeStory('market:42', {
+  it("diversifyForYouStories preserves anchor post data on new-market stories", () => {
+    const anchorPost = makeAnchorPost("anchor-1", { likeCount: 7 });
+    const market = makeStory("market:42", {
       isNewMarket: true,
       finalRankScore: 5,
-      anchorPostId: 'anchor-1',
+      anchorPostId: "anchor-1",
       posts: [anchorPost],
     });
 
@@ -128,33 +128,33 @@ describe('isNewMarket story invariants', () => {
   });
 });
 
-describe('for-you scoring helpers', () => {
-  it('rewards fresher items with higher freshness scores', () => {
+describe("for-you scoring helpers", () => {
+  it("rewards fresher items with higher freshness scores", () => {
     const now = calculateFreshnessScore(new Date());
     const yesterday = calculateFreshnessScore(
-      new Date(Date.now() - 24 * 60 * 60 * 1000)
+      new Date(Date.now() - 24 * 60 * 60 * 1000),
     );
 
     expect(now).toBeGreaterThan(yesterday);
   });
 
-  it('rewards engagement velocity for recent engaged content', () => {
+  it("rewards engagement velocity for recent engaged content", () => {
     const recent = calculateVelocityScore(30, new Date());
     const stale = calculateVelocityScore(
       30,
-      new Date(Date.now() - 24 * 60 * 60 * 1000)
+      new Date(Date.now() - 24 * 60 * 60 * 1000),
     );
 
     expect(recent).toBeGreaterThan(stale);
   });
 
-  it('rewards deeper conversation threads', () => {
+  it("rewards deeper conversation threads", () => {
     expect(calculateConversationDepthScore(12, 4)).toBeGreaterThan(
-      calculateConversationDepthScore(1, 1)
+      calculateConversationDepthScore(1, 1),
     );
   });
 
-  it('weights topic and market relevance in the final score', () => {
+  it("weights topic and market relevance in the final score", () => {
     const highIntent = calculateForYouScore({
       baseScore: 2,
       topicMatchScore: 1.75,
@@ -181,98 +181,98 @@ describe('for-you scoring helpers', () => {
     expect(highIntent).toBeGreaterThan(lowIntent);
   });
 
-  it('spreadNewMarkets returns empty array unchanged', () => {
+  it("spreadNewMarkets returns empty array unchanged", () => {
     expect(spreadNewMarkets([])).toEqual([]);
   });
 
-  it('spreadNewMarkets leaves a feed with no adjacent markets unchanged', () => {
+  it("spreadNewMarkets leaves a feed with no adjacent markets unchanged", () => {
     const input = [
-      makeStory('p1'),
-      makeStory('m1', { isNewMarket: true }),
-      makeStory('p2'),
-      makeStory('m2', { isNewMarket: true }),
+      makeStory("p1"),
+      makeStory("m1", { isNewMarket: true }),
+      makeStory("p2"),
+      makeStory("m2", { isNewMarket: true }),
     ];
     const result = spreadNewMarkets(input);
-    expect(result.map((s) => s.storyKey)).toEqual(['p1', 'm1', 'p2', 'm2']);
+    expect(result.map((s) => s.storyKey)).toEqual(["p1", "m1", "p2", "m2"]);
   });
 
-  it('spreadNewMarkets separates two back-to-back markets', () => {
+  it("spreadNewMarkets separates two back-to-back markets", () => {
     const input = [
-      makeStory('m1', { isNewMarket: true }),
-      makeStory('m2', { isNewMarket: true }),
-      makeStory('p1'),
-      makeStory('p2'),
+      makeStory("m1", { isNewMarket: true }),
+      makeStory("m2", { isNewMarket: true }),
+      makeStory("p1"),
+      makeStory("p2"),
     ];
     const result = spreadNewMarkets(input);
-    expect(result.map((s) => s.storyKey)).toEqual(['m1', 'p1', 'm2', 'p2']);
+    expect(result.map((s) => s.storyKey)).toEqual(["m1", "p1", "m2", "p2"]);
     expect(result[0]?.isNewMarket).toBe(true);
     expect(result[1]?.isNewMarket).toBeFalsy();
     expect(result[2]?.isNewMarket).toBe(true);
   });
 
-  it('spreadNewMarkets handles three consecutive markets with available posts', () => {
+  it("spreadNewMarkets handles three consecutive markets with available posts", () => {
     const input = [
-      makeStory('m1', { isNewMarket: true }),
-      makeStory('m2', { isNewMarket: true }),
-      makeStory('m3', { isNewMarket: true }),
-      makeStory('p1'),
-      makeStory('p2'),
-      makeStory('p3'),
+      makeStory("m1", { isNewMarket: true }),
+      makeStory("m2", { isNewMarket: true }),
+      makeStory("m3", { isNewMarket: true }),
+      makeStory("p1"),
+      makeStory("p2"),
+      makeStory("p3"),
     ];
     const result = spreadNewMarkets(input);
     for (let i = 0; i < result.length - 1; i++) {
       expect(!!(result[i]?.isNewMarket && result[i + 1]?.isNewMarket)).toBe(
-        false
+        false,
       );
     }
     expect(result).toHaveLength(6);
   });
 
-  it('spreadNewMarkets leaves all-market feed unchanged when no posts exist', () => {
+  it("spreadNewMarkets leaves all-market feed unchanged when no posts exist", () => {
     const input = [
-      makeStory('m1', { isNewMarket: true }),
-      makeStory('m2', { isNewMarket: true }),
-      makeStory('m3', { isNewMarket: true }),
+      makeStory("m1", { isNewMarket: true }),
+      makeStory("m2", { isNewMarket: true }),
+      makeStory("m3", { isNewMarket: true }),
     ];
     expect(spreadNewMarkets(input).map((s) => s.storyKey)).toEqual([
-      'm1',
-      'm2',
-      'm3',
+      "m1",
+      "m2",
+      "m3",
     ]);
   });
 
-  it('spreadNewMarkets does not mutate the original array', () => {
+  it("spreadNewMarkets does not mutate the original array", () => {
     const input = [
-      makeStory('m1', { isNewMarket: true }),
-      makeStory('m2', { isNewMarket: true }),
-      makeStory('p1'),
+      makeStory("m1", { isNewMarket: true }),
+      makeStory("m2", { isNewMarket: true }),
+      makeStory("p1"),
     ];
     const inputKeys = input.map((s) => s.storyKey);
     spreadNewMarkets(input);
     expect(input.map((s) => s.storyKey)).toEqual(inputKeys);
   });
 
-  it('diversifies repeated authors and clusters', () => {
+  it("diversifies repeated authors and clusters", () => {
     const stories = [
-      makeStory('a1', {
+      makeStory("a1", {
         finalRankScore: 9,
-        primaryAuthorId: 'same-author',
-        clusterId: 'cluster-a',
+        primaryAuthorId: "same-author",
+        clusterId: "cluster-a",
       }),
-      makeStory('a2', {
+      makeStory("a2", {
         finalRankScore: 8.5,
-        primaryAuthorId: 'same-author',
-        clusterId: 'cluster-a',
+        primaryAuthorId: "same-author",
+        clusterId: "cluster-a",
       }),
-      makeStory('b1', {
+      makeStory("b1", {
         finalRankScore: 8,
-        primaryAuthorId: 'other-author',
-        clusterId: 'cluster-b',
+        primaryAuthorId: "other-author",
+        clusterId: "cluster-b",
       }),
     ];
 
     const diversified = diversifyForYouStories(stories);
-    expect(diversified[0]?.storyKey).toBe('a1');
-    expect(diversified[1]?.storyKey).toBe('b1');
+    expect(diversified[0]?.storyKey).toBe("a1");
+    expect(diversified[1]?.storyKey).toBe("b1");
   });
 });

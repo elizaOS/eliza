@@ -7,12 +7,12 @@
  * repost payloads before they reach the client renderer.
  */
 
-import type { FeedPost, NarrativePost } from '@feed/shared';
+import type { FeedPost, NarrativePost } from "@feed/shared";
 
 type FeedLikePost = FeedPost | NarrativePost;
 
 function hasText(value: string | null | undefined): value is string {
-  return typeof value === 'string' && value.length > 0;
+  return typeof value === "string" && value.length > 0;
 }
 
 function normalizeOriginalPost(post: FeedLikePost) {
@@ -52,7 +52,7 @@ function normalizeOriginalPost(post: FeedLikePost) {
   }
 
   if (
-    'originalContent' in post &&
+    "originalContent" in post &&
     (hasText(post.originalContent) ||
       hasText(post.originalAuthorId) ||
       hasText(post.originalAuthorName))
@@ -61,9 +61,9 @@ function normalizeOriginalPost(post: FeedLikePost) {
       originalPostId: rawOriginalPostId,
       originalPost: {
         id: rawOriginalPostId,
-        content: post.originalContent ?? '',
-        authorId: post.originalAuthorId ?? '',
-        authorName: post.originalAuthorName ?? post.originalAuthorId ?? '',
+        content: post.originalContent ?? "",
+        authorId: post.originalAuthorId ?? "",
+        authorName: post.originalAuthorName ?? post.originalAuthorId ?? "",
         authorUsername: post.originalAuthorUsername ?? null,
         authorProfileImageUrl: post.originalAuthorProfileImageUrl ?? null,
         timestamp: post.timestamp,

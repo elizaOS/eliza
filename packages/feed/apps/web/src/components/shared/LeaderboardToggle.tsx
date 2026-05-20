@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import type { LeaderboardMetric, LeaderboardScope } from '@feed/shared';
-import { cn } from '@feed/shared';
+import type { LeaderboardMetric, LeaderboardScope } from "@feed/shared";
+import { cn } from "@feed/shared";
 
 interface LeaderboardToggleProps {
   activeMetric: LeaderboardMetric;
@@ -20,16 +20,16 @@ export function LeaderboardToggle({
     label: string;
     value: LeaderboardMetric;
   }> = [
-    { label: 'Reputation', value: 'reputation' },
-    { label: 'Trading Return', value: 'trading' },
+    { label: "Reputation", value: "reputation" },
+    { label: "Trading Return", value: "trading" },
   ];
 
   const scopeOptions: Array<{
     label: string;
     value: LeaderboardScope;
   }> = [
-    { label: 'Per Wallet', value: 'wallet' },
-    { label: 'Team', value: 'team' },
+    { label: "Per Wallet", value: "wallet" },
+    { label: "Team", value: "team" },
   ];
 
   const renderOption = <T extends string>({
@@ -47,10 +47,10 @@ export function LeaderboardToggle({
           key={option.value}
           onClick={() => onChange(option.value)}
           className={cn(
-            'relative flex-1 py-3 font-semibold transition-all hover:bg-muted/20',
+            "relative flex-1 py-3 font-semibold transition-all hover:bg-muted/20",
             activeValue === option.value
-              ? 'text-foreground'
-              : 'text-muted-foreground'
+              ? "text-foreground"
+              : "text-muted-foreground",
           )}
         >
           {option.label}

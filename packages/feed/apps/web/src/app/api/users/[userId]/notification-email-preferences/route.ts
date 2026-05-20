@@ -13,11 +13,11 @@ import {
   requireUserByIdentifier,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { db, eq, users } from '@feed/db';
-import { logger, UserIdParamSchema } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { z } from 'zod';
+} from "@feed/api";
+import { db, eq, users } from "@feed/db";
+import { logger, UserIdParamSchema } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { z } from "zod";
 
 const UpdateNotificationEmailPreferencesSchema = z
   .object({
@@ -35,8 +35,8 @@ const UpdateNotificationEmailPreferencesSchema = z
       data.weeklySummary !== undefined ||
       data.monthlySummary !== undefined,
     {
-      message: 'At least one preference must be provided',
-    }
+      message: "At least one preference must be provided",
+    },
   );
 
 // Phase 2: Privy email lookup removed. Email comes from Feed's users.email
@@ -53,7 +53,7 @@ async function getVerifiedEmailFromDb(userId: string): Promise<string | null> {
 export const GET = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ userId: string }> }
+    context: { params: Promise<{ userId: string }> },
   ) => {
     const authUser = await authenticate(request);
     const params = await context.params;
@@ -63,9 +63,9 @@ export const GET = withErrorHandling(
 
     if (authUser.userId !== canonicalUserId) {
       throw new AuthorizationError(
-        'You can only access your own notification email preferences',
-        'notification-email-preferences',
-        'read'
+        "You can only access your own notification email preferences",
+        "notification-email-preferences",
+        "read",
       );
     }
 
@@ -95,13 +95,13 @@ export const GET = withErrorHandling(
       email: userRecord?.email ?? null,
       emailVerified: userRecord?.emailVerified ?? false,
     });
-  }
+  },
 );
 
 export const POST = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ userId: string }> }
+    context: { params: Promise<{ userId: string }> },
   ) => {
     const authUser = await authenticate(request);
     const params = await context.params;
@@ -111,9 +111,9 @@ export const POST = withErrorHandling(
 
     if (authUser.userId !== canonicalUserId) {
       throw new AuthorizationError(
-        'You can only update your own notification email preferences',
-        'notification-email-preferences',
-        'update'
+        "You can only update your own notification email preferences",
+        "notification-email-preferences",
+        "update",
       );
     }
 
@@ -130,7 +130,7 @@ export const POST = withErrorHandling(
       .limit(1);
 
     if (!existingUser) {
-      throw new BadRequestError('User not found');
+      throw new BadRequestError("User not found");
     }
 
     const isEnablingEmailNotifications =
@@ -151,7 +151,7 @@ export const POST = withErrorHandling(
 
       if (!verifiedEmail) {
         throw new BadRequestError(
-          'No verified email was found on your account. Please link and verify an email address first.'
+          "No verified email was found on your account. Please link and verify an email address first.",
         );
       }
 
@@ -228,7 +228,7 @@ export const POST = withErrorHandling(
       });
 
     logger.info(
-      'Updated notification email preferences',
+      "Updated notification email preferences",
       {
         userId: canonicalUserId,
         enabled: updatedUser?.enabled,
@@ -237,7 +237,7 @@ export const POST = withErrorHandling(
         weeklySummary: updatedUser?.weeklySummary,
         monthlySummary: updatedUser?.monthlySummary,
       },
-      'POST /api/users/[userId]/notification-email-preferences'
+      "POST /api/users/[userId]/notification-email-preferences",
     );
 
     return successResponse({
@@ -252,5 +252,5 @@ export const POST = withErrorHandling(
       email: updatedUser?.email ?? effectiveEmail ?? null,
       emailVerified: updatedUser?.emailVerified ?? effectiveEmailVerified,
     });
-  }
+  },
 );

@@ -18,23 +18,23 @@ import {
   perpPositions,
   poolPositions,
   pools,
-} from '@feed/db';
-import { logger } from '@feed/shared';
-import { desc, eq, inArray, or } from 'drizzle-orm';
-import { getReputationBreakdown } from '../reputation';
-import { StaticDataRegistry } from '../services/static-data-registry';
-import { TradeExecutionService } from '../services/trade-execution-service';
+} from "@feed/db";
+import { logger } from "@feed/shared";
+import { desc, eq, inArray, or } from "drizzle-orm";
+import { getReputationBreakdown } from "../reputation";
+import { StaticDataRegistry } from "../services/static-data-registry";
+import { TradeExecutionService } from "../services/trade-execution-service";
 import type {
   TradingDecision,
   TradingExecutionResult,
-} from '../types/market-decisions';
-import { formatError } from '../utils/error-utils';
-import { getPositionExposure } from './portfolio-metrics';
+} from "../types/market-decisions";
+import { formatError } from "../utils/error-utils";
+import { getPositionExposure } from "./portfolio-metrics";
 
 export interface PortfolioPosition {
   id: string;
   poolId: string;
-  marketType: 'perp' | 'prediction';
+  marketType: "perp" | "prediction";
   ticker?: string;
   marketId?: string;
   side: string;
@@ -56,9 +56,9 @@ export interface PortfolioMetrics {
 }
 
 export interface RebalanceAction {
-  type: 'open' | 'close' | 'resize' | 'profit_take';
+  type: "open" | "close" | "resize" | "profit_take";
   positionId?: string;
-  marketType: 'perp' | 'prediction';
+  marketType: "perp" | "prediction";
   ticker?: string;
   marketId?: string;
   side: string;
@@ -91,7 +91,7 @@ export class NPCInvestmentManager {
       .where(eq(poolPositions.poolId, poolId));
 
     const availableBalance = Number.parseFloat(
-      actorBalance.tradingBalance?.toString() ?? '0'
+      actorBalance.tradingBalance?.toString() ?? "0",
     );
 
     // Get perp positions once and split into open/closed in memory.
@@ -112,10 +112,10 @@ export class NPCInvestmentManager {
       .where(eq(perpPositions.userId, poolId));
 
     const openPerpPositions = perpPositionsResult.filter(
-      (p) => p.closedAt === null
+      (p) => p.closedAt === null,
     );
     const closedPerpPositions = perpPositionsResult.filter(
-      (p) => p.closedAt !== null
+      (p) => p.closedAt !== null,
     );
 
     const perpPositionIds = new Set([
@@ -126,13 +126,13 @@ export class NPCInvestmentManager {
     // poolPositions may contain legacy perps; avoid double counting when perps
     // already exist in perpPositions.
     const shouldIncludePoolPosition = (position: (typeof positionResults)[0]) =>
-      position.marketType !== 'perp' || !perpPositionIds.has(position.id);
+      position.marketType !== "perp" || !perpPositionIds.has(position.id);
 
     const openPositions = positionResults.filter(
-      (p) => p.closedAt === null && shouldIncludePoolPosition(p)
+      (p) => p.closedAt === null && shouldIncludePoolPosition(p),
     );
     const closedPositions = positionResults.filter(
-      (p) => p.closedAt !== null && shouldIncludePoolPosition(p)
+      (p) => p.closedAt !== null && shouldIncludePoolPosition(p),
     );
 
     // Map database PoolPosition to PortfolioPosition interface
@@ -140,9 +140,9 @@ export class NPCInvestmentManager {
       id: p.id,
       poolId: p.poolId,
       marketType:
-        p.marketType === 'perp' || p.marketType === 'prediction'
+        p.marketType === "perp" || p.marketType === "prediction"
           ? p.marketType
-          : 'prediction',
+          : "prediction",
       ticker: p.ticker ?? undefined,
       marketId: p.marketId ?? undefined,
       side: p.side,
@@ -157,7 +157,7 @@ export class NPCInvestmentManager {
       (p) => ({
         id: p.id,
         poolId,
-        marketType: 'perp',
+        marketType: "perp",
         ticker: p.ticker ?? undefined,
         side: p.side,
         size: Number(p.size),
@@ -165,12 +165,12 @@ export class NPCInvestmentManager {
         currentPrice: Number(p.currentPrice),
         unrealizedPnL: Number(p.unrealizedPnL),
         leverage: p.leverage ?? undefined,
-      })
+      }),
     );
 
     // Calculate total invested capital (pool positions only)
     const poolInvested = positions.reduce((sum, pos) => {
-      if (pos.marketType === 'perp') {
+      if (pos.marketType === "perp") {
         return sum + getPositionExposure(pos.size, pos.leverage);
       }
       return sum + getPositionExposure(pos.size);
@@ -184,23 +184,23 @@ export class NPCInvestmentManager {
 
     // Calculate unrealized PnL from open positions
     const poolUnrealizedPnL = positions.reduce((sum, pos) => {
-      return sum + Number.parseFloat(pos.unrealizedPnL?.toString() || '0');
+      return sum + Number.parseFloat(pos.unrealizedPnL?.toString() || "0");
     }, 0);
 
     const perpUnrealizedPnL = openPerpPositions.reduce((sum, pos) => {
-      return sum + Number.parseFloat(pos.unrealizedPnL?.toString() || '0');
+      return sum + Number.parseFloat(pos.unrealizedPnL?.toString() || "0");
     }, 0);
 
     const unrealizedPnL = poolUnrealizedPnL + perpUnrealizedPnL;
 
     // Calculate realized PnL from closed pool positions
     const realizedPnLFromPool = closedPositions.reduce((sum, pos) => {
-      return sum + Number.parseFloat(pos.realizedPnL?.toString() || '0');
+      return sum + Number.parseFloat(pos.realizedPnL?.toString() || "0");
     }, 0);
 
     // Calculate realized PnL from closed perp positions
     const realizedPnLFromPerp = closedPerpPositions.reduce((sum, pos) => {
-      return sum + Number.parseFloat(pos.realizedPnL?.toString() || '0');
+      return sum + Number.parseFloat(pos.realizedPnL?.toString() || "0");
     }, 0);
 
     // Total realized PnL
@@ -217,7 +217,7 @@ export class NPCInvestmentManager {
     // Calculate risk score based on leverage and concentration
     const riskScore = NPCInvestmentManager.calculateRiskScore(
       allOpenPositions,
-      totalValue
+      totalValue,
     );
 
     return {
@@ -236,7 +236,7 @@ export class NPCInvestmentManager {
    */
   private static calculateRiskScore(
     positions: PortfolioPosition[],
-    totalValue: number
+    totalValue: number,
   ): number {
     if (positions.length === 0 || totalValue === 0) return 0;
 
@@ -253,15 +253,15 @@ export class NPCInvestmentManager {
     // Factor 2: Concentration risk (30% weight)
     const largestPosition = Math.max(
       ...positions.map((pos) =>
-        Math.abs(Number.parseFloat(pos.unrealizedPnL?.toString() || '0'))
-      )
+        Math.abs(Number.parseFloat(pos.unrealizedPnL?.toString() || "0")),
+      ),
     );
     const concentrationRisk = Math.min(1, largestPosition / totalValue);
     riskScore += concentrationRisk * 0.3;
 
     // Factor 3: Drawdown risk (30% weight)
     const totalUnrealizedPnL = positions.reduce((sum, pos) => {
-      return sum + Number.parseFloat(pos.unrealizedPnL?.toString() || '0');
+      return sum + Number.parseFloat(pos.unrealizedPnL?.toString() || "0");
     }, 0);
     const drawdownRisk =
       totalUnrealizedPnL < 0
@@ -278,7 +278,7 @@ export class NPCInvestmentManager {
   static async monitorPortfolio(
     poolId: string,
     npcUserId: string,
-    strategy: 'aggressive' | 'conservative' | 'balanced'
+    strategy: "aggressive" | "conservative" | "balanced",
   ): Promise<RebalanceAction[]> {
     const metrics = await NPCInvestmentManager.getPortfolioMetrics(poolId);
     const actions: RebalanceAction[] = [];
@@ -297,13 +297,13 @@ export class NPCInvestmentManager {
       logger.warn(
         `Portfolio risk too high for ${strategy} strategy: ${metrics.riskScore.toFixed(2)} > ${maxRisk}`,
         { poolId, npcUserId },
-        'NPCInvestmentManager'
+        "NPCInvestmentManager",
       );
 
       // Generate de-risking actions
       const deRiskActions = await NPCInvestmentManager.generateDeRiskingActions(
         poolId,
-        metrics
+        metrics,
       );
       actions.push(...deRiskActions);
     }
@@ -319,7 +319,7 @@ export class NPCInvestmentManager {
       logger.info(
         `Portfolio underutilized: ${metrics.utilization.toFixed(1)}% < ${targetUtilization[strategy]}%`,
         { poolId, npcUserId },
-        'NPCInvestmentManager'
+        "NPCInvestmentManager",
       );
       // Could trigger new investment allocations here
     }
@@ -331,12 +331,12 @@ export class NPCInvestmentManager {
       logger.warn(
         `Found ${lossyPositions.length} positions with large drawdowns`,
         { poolId, npcUserId },
-        'NPCInvestmentManager'
+        "NPCInvestmentManager",
       );
 
       for (const position of lossyPositions) {
         actions.push({
-          type: 'close',
+          type: "close",
           positionId: position.id,
           marketType: position.marketType,
           ticker: position.ticker,
@@ -355,12 +355,12 @@ export class NPCInvestmentManager {
       logger.info(
         `Found ${profitablePositions.length} positions with large profits`,
         { poolId, npcUserId },
-        'NPCInvestmentManager'
+        "NPCInvestmentManager",
       );
 
       for (const position of profitablePositions) {
         actions.push({
-          type: 'profit_take',
+          type: "profit_take",
           positionId: position.id,
           marketType: position.marketType,
           ticker: position.ticker,
@@ -377,7 +377,7 @@ export class NPCInvestmentManager {
       await NPCInvestmentManager.generateOpportunisticRebalanceActions(
         poolId,
         metrics,
-        strategy
+        strategy,
       );
     actions.push(...opportunisticActions);
 
@@ -389,7 +389,7 @@ export class NPCInvestmentManager {
    * Invests ~80% of available balance across aligned companies
    */
   static async executeBaselineInvestments(
-    timestamp: Date = new Date()
+    timestamp: Date = new Date(),
   ): Promise<TradingExecutionResult | null> {
     const baselineDecisions =
       await NPCInvestmentManager.buildBaselineDecisions();
@@ -401,7 +401,7 @@ export class NPCInvestmentManager {
     logger.info(
       `Executing ${baselineDecisions.length} baseline NPC trades`,
       { timestamp: timestamp.toISOString() },
-      'NPCInvestmentManager'
+      "NPCInvestmentManager",
     );
 
     const tradeExecutionService = new TradeExecutionService();
@@ -409,12 +409,12 @@ export class NPCInvestmentManager {
       await tradeExecutionService.executeDecisionBatch(baselineDecisions);
 
     logger.info(
-      'Baseline NPC investments completed',
+      "Baseline NPC investments completed",
       {
         trades: result.successfulTrades,
         pools: new Set(baselineDecisions.map((d) => d.npcId)).size,
       },
-      'NPCInvestmentManager'
+      "NPCInvestmentManager",
     );
 
     return result;
@@ -452,13 +452,13 @@ export class NPCInvestmentManager {
       .where(
         and(
           inArray(poolPositions.poolId, actorIds),
-          isNull(poolPositions.closedAt)
-        )
+          isNull(poolPositions.closedAt),
+        ),
       );
     const actorIdsWithOpenPredictionPositions = new Set(
       openPredictionPositions
         .map((p) => p.poolId)
-        .filter((id): id is string => Boolean(id))
+        .filter((id): id is string => Boolean(id)),
     );
 
     // Get existing OPEN perp positions for these actors (userId = actorId for NPCs)
@@ -472,8 +472,8 @@ export class NPCInvestmentManager {
       .where(
         and(
           inArray(perpPositions.userId, actorIds),
-          isNull(perpPositions.closedAt) // Only open positions
-        )
+          isNull(perpPositions.closedAt), // Only open positions
+        ),
       );
 
     // Build set of "actorId:orgId" combinations that already have positions.
@@ -481,28 +481,28 @@ export class NPCInvestmentManager {
     const existingPerpPositionKeys = new Set(
       existingPerpPositions.map(
         (p: { userId: string; organizationId: string }) =>
-          `${p.userId}:${p.organizationId.toLowerCase()}`
-      )
+          `${p.userId}:${p.organizationId.toLowerCase()}`,
+      ),
     );
     const actorIdsWithOpenPerpPositions = new Set(
-      existingPerpPositions.map((p) => p.userId)
+      existingPerpPositions.map((p) => p.userId),
     );
 
     // Get organizations from static registry with dynamic prices
-    const staticOrgs = StaticDataRegistry.getOrganizationsByType('company');
+    const staticOrgs = StaticDataRegistry.getOrganizationsByType("company");
     const orgStateResults = await db
       .select()
       .from(organizationState)
       .where(
         inArray(
           organizationState.id,
-          staticOrgs.map((o) => o.id)
-        )
+          staticOrgs.map((o) => o.id),
+        ),
       );
     const priceMap = new Map(
       orgStateResults.map(
-        (s) => [s.id, s.currentPrice] as [string, number | null]
-      )
+        (s) => [s.id, s.currentPrice] as [string, number | null],
+      ),
     );
     const organizationsResult = staticOrgs.map((o) => ({
       id: o.id,
@@ -522,8 +522,8 @@ export class NPCInvestmentManager {
       .where(
         or(
           inArray(actorRelationships.actor1Id, actorIds),
-          inArray(actorRelationships.actor2Id, actorIds)
-        )
+          inArray(actorRelationships.actor2Id, actorIds),
+        ),
       );
 
     const actorIdSet = new Set(actorIds);
@@ -544,11 +544,11 @@ export class NPCInvestmentManager {
 
     const actorMap = new Map(actorsResult.map((actor) => [actor.id, actor]));
     const organizationMap = new Map(
-      organizationsResult.map((org) => [org.id, org])
+      organizationsResult.map((org) => [org.id, org]),
     );
     // Use organization ID directly as ticker for reliable lookups
     const organizationTickerMap = new Map(
-      organizationsResult.map((org) => [org.id, org.id])
+      organizationsResult.map((org) => [org.id, org.id]),
     );
 
     const relationshipsByActor = new Map<
@@ -586,8 +586,8 @@ export class NPCInvestmentManager {
     const balanceByActorId = new Map(
       npcStates.map((npc) => [
         npc.id,
-        Number.parseFloat(npc.tradingBalance?.toString() ?? '0'),
-      ])
+        Number.parseFloat(npc.tradingBalance?.toString() ?? "0"),
+      ]),
     );
 
     for (const actorId of actorIds) {
@@ -672,12 +672,12 @@ export class NPCInvestmentManager {
         baselineDecisions.push({
           npcId: actor.id,
           npcName: actor.name,
-          action: 'open_long',
-          marketType: 'perp',
+          action: "open_long",
+          marketType: "perp",
           ticker,
           amount: allocation,
           confidence: 0.9,
-          reasoning: 'Baseline allocation to aligned organizations',
+          reasoning: "Baseline allocation to aligned organizations",
         });
       });
     }
@@ -690,7 +690,7 @@ export class NPCInvestmentManager {
    */
   private static async generateDeRiskingActions(
     poolId: string,
-    metrics: PortfolioMetrics
+    metrics: PortfolioMetrics,
   ): Promise<RebalanceAction[]> {
     const actions: RebalanceAction[] = [];
 
@@ -713,14 +713,14 @@ export class NPCInvestmentManager {
 
     // Filter for open positions with leverage > 1
     const leveragedPositions = positionsResult.filter(
-      (p) => p.closedAt === null && (p.leverage ?? 0) > 1
+      (p) => p.closedAt === null && (p.leverage ?? 0) > 1,
     );
 
     for (const position of leveragedPositions) {
       actions.push({
-        type: 'close',
+        type: "close",
         positionId: position.id,
-        marketType: position.marketType as 'perp' | 'prediction',
+        marketType: position.marketType as "perp" | "prediction",
         ticker: position.ticker || undefined,
         marketId: position.marketId || undefined,
         side: position.side,
@@ -737,7 +737,7 @@ export class NPCInvestmentManager {
    */
   private static async findPositionsWithLargeDrawdowns(
     poolId: string,
-    threshold: number // e.g., 0.2 = 20% loss
+    threshold: number, // e.g., 0.2 = 20% loss
   ): Promise<PortfolioPosition[]> {
     const positionsResult = await db
       .select()
@@ -751,9 +751,9 @@ export class NPCInvestmentManager {
 
     for (const position of openPositions) {
       const unrealizedPnL = Number.parseFloat(
-        position.unrealizedPnL?.toString() || '0'
+        position.unrealizedPnL?.toString() || "0",
       );
-      const size = Number.parseFloat(position.size?.toString() || '0');
+      const size = Number.parseFloat(position.size?.toString() || "0");
 
       if (size > 0) {
         const lossPercentage = unrealizedPnL / size;
@@ -764,10 +764,10 @@ export class NPCInvestmentManager {
             id: position.id,
             poolId: position.poolId,
             marketType:
-              position.marketType === 'perp' ||
-              position.marketType === 'prediction'
+              position.marketType === "perp" ||
+              position.marketType === "prediction"
                 ? position.marketType
-                : 'prediction',
+                : "prediction",
             ticker: position.ticker ?? undefined,
             marketId: position.marketId ?? undefined,
             side: position.side,
@@ -790,23 +790,23 @@ export class NPCInvestmentManager {
    */
   private static async findPositionsWithLargeProfits(
     poolId: string,
-    threshold: number // e.g., 0.25 = 25% profit
+    threshold: number, // e.g., 0.25 = 25% profit
   ): Promise<PortfolioPosition[]> {
     // Query only open positions (closedAt IS NULL) directly in SQL for efficiency
     const openPositions = await db
       .select()
       .from(poolPositions)
       .where(
-        and(eq(poolPositions.poolId, poolId), isNull(poolPositions.closedAt))
+        and(eq(poolPositions.poolId, poolId), isNull(poolPositions.closedAt)),
       );
 
     const profitablePositions: PortfolioPosition[] = [];
 
     for (const position of openPositions) {
       const unrealizedPnL = Number.parseFloat(
-        position.unrealizedPnL?.toString() || '0'
+        position.unrealizedPnL?.toString() || "0",
       );
-      const size = Number.parseFloat(position.size?.toString() || '0');
+      const size = Number.parseFloat(position.size?.toString() || "0");
 
       if (size > 0) {
         const profitPercentage = unrealizedPnL / size;
@@ -817,10 +817,10 @@ export class NPCInvestmentManager {
             id: position.id,
             poolId: position.poolId,
             marketType:
-              position.marketType === 'perp' ||
-              position.marketType === 'prediction'
+              position.marketType === "perp" ||
+              position.marketType === "prediction"
                 ? position.marketType
-                : 'prediction',
+                : "prediction",
             ticker: position.ticker ?? undefined,
             marketId: position.marketId ?? undefined,
             side: position.side,
@@ -846,7 +846,7 @@ export class NPCInvestmentManager {
   private static async generateOpportunisticRebalanceActions(
     poolId: string,
     metrics: PortfolioMetrics,
-    strategy: 'aggressive' | 'conservative' | 'balanced'
+    strategy: "aggressive" | "conservative" | "balanced",
   ): Promise<RebalanceAction[]> {
     const actions: RebalanceAction[] = [];
 
@@ -868,7 +868,7 @@ export class NPCInvestmentManager {
       .select()
       .from(poolPositions)
       .where(
-        and(eq(poolPositions.poolId, poolId), isNull(poolPositions.closedAt))
+        and(eq(poolPositions.poolId, poolId), isNull(poolPositions.closedAt)),
       );
 
     // Check for positions that have grown too large (need partial profit-taking)
@@ -898,7 +898,7 @@ export class NPCInvestmentManager {
             currentAllocation: currentAllocation * 100,
             maxAllocation: maxAllocation * 100,
           },
-          'NPCInvestmentManager'
+          "NPCInvestmentManager",
         );
         // TODO: Implement resize action when partial position closing is supported
       }
@@ -914,7 +914,7 @@ export class NPCInvestmentManager {
       logger.info(
         `Idle cash detected: ${metrics.utilization.toFixed(1)}% utilization, $${metrics.availableBalance.toFixed(2)} available`,
         { poolId, strategy, targetUtilization: targetUtil },
-        'NPCInvestmentManager'
+        "NPCInvestmentManager",
       );
     }
 
@@ -927,17 +927,17 @@ export class NPCInvestmentManager {
   static async executeRebalanceAction(
     npcUserId: string,
     poolId: string,
-    action: RebalanceAction
+    action: RebalanceAction,
   ): Promise<void> {
     logger.info(
       `Executing rebalance: ${action.type} for ${action.ticker || action.marketId}`,
       { npcUserId, poolId, action },
-      'NPCInvestmentManager'
+      "NPCInvestmentManager",
     );
 
     // Handle close and profit_take actions via TradeExecutionService
     if (
-      (action.type === 'close' || action.type === 'profit_take') &&
+      (action.type === "close" || action.type === "profit_take") &&
       action.positionId
     ) {
       const tradeService = new TradeExecutionService();
@@ -945,10 +945,10 @@ export class NPCInvestmentManager {
 
       const decision: TradingDecision = {
         npcId: npcUserId,
-        npcName: actor?.name || 'Unknown',
+        npcName: actor?.name || "Unknown",
         // TradeExecutionService supports closing both perp and prediction positions via `close_position`
         // when a `positionId` is provided.
-        action: 'close_position',
+        action: "close_position",
         marketType: action.marketType,
         ticker: action.ticker,
         marketId: action.marketId,
@@ -971,7 +971,7 @@ export class NPCInvestmentManager {
             amount: result.amount,
             size: result.size,
           },
-          'NPCInvestmentManager'
+          "NPCInvestmentManager",
         );
       } catch (error) {
         logger.error(
@@ -981,17 +981,17 @@ export class NPCInvestmentManager {
             action,
             error: formatError(error),
           },
-          'NPCInvestmentManager'
+          "NPCInvestmentManager",
         );
         throw error;
       }
-    } else if (action.type === 'resize' && action.positionId) {
+    } else if (action.type === "resize" && action.positionId) {
       // Resize is more complex - for now, log it. Full implementation would require
       // partial position closing which is not supported by all market types.
       logger.info(
         `Resize action requested (not yet implemented): ${action.positionId} -> ${action.targetSize}`,
         { npcUserId, action },
-        'NPCInvestmentManager'
+        "NPCInvestmentManager",
       );
 
       // For prediction markets, we could close and re-open with new size
@@ -1027,7 +1027,7 @@ export class NPCInvestmentManager {
     logger.info(
       `Monitoring ${activePools.length} active NPC portfolios`,
       undefined,
-      'NPCInvestmentManager'
+      "NPCInvestmentManager",
     );
 
     for (const pool of activePools) {
@@ -1036,13 +1036,13 @@ export class NPCInvestmentManager {
 
       // Determine strategy from actor personality
       const strategy = NPCInvestmentManager.determineStrategyFromPersonality(
-        actor.personality
+        actor.personality,
       );
 
       const actions = await NPCInvestmentManager.monitorPortfolio(
         pool.id,
         actor.id,
-        strategy
+        strategy,
       );
 
       // Execute rebalance actions
@@ -1050,7 +1050,7 @@ export class NPCInvestmentManager {
         await NPCInvestmentManager.executeRebalanceAction(
           actor.id,
           pool.id,
-          action
+          action,
         );
       }
     }
@@ -1060,24 +1060,24 @@ export class NPCInvestmentManager {
    * Determine investment strategy from actor personality
    */
   private static determineStrategyFromPersonality(
-    personality: string | null
-  ): 'aggressive' | 'conservative' | 'balanced' {
-    if (!personality) return 'balanced';
+    personality: string | null,
+  ): "aggressive" | "conservative" | "balanced" {
+    if (!personality) return "balanced";
 
     const personalityLower = personality.toLowerCase();
 
-    const aggressiveKeywords = ['erratic', 'disaster', 'memecoin', 'degen'];
-    const conservativeKeywords = ['vampire', 'yacht', 'philosopher'];
+    const aggressiveKeywords = ["erratic", "disaster", "memecoin", "degen"];
+    const conservativeKeywords = ["vampire", "yacht", "philosopher"];
 
     if (aggressiveKeywords.some((kw) => personalityLower.includes(kw))) {
-      return 'aggressive';
+      return "aggressive";
     }
 
     if (conservativeKeywords.some((kw) => personalityLower.includes(kw))) {
-      return 'conservative';
+      return "conservative";
     }
 
-    return 'balanced';
+    return "balanced";
   }
 
   /**
@@ -1094,7 +1094,7 @@ export class NPCInvestmentManager {
    */
   static async calculateReputationAdjustedAllocation(
     npcUserId: string,
-    baseAmount: number
+    baseAmount: number,
   ): Promise<number> {
     // Get NPC's reputation breakdown
     const reputation = await getReputationBreakdown(npcUserId);
@@ -1103,7 +1103,7 @@ export class NPCInvestmentManager {
       logger.warn(
         `No reputation data for NPC ${npcUserId}, using base allocation`,
         { npcUserId, baseAmount },
-        'NPCInvestmentManager'
+        "NPCInvestmentManager",
       );
       return baseAmount;
     }
@@ -1136,7 +1136,7 @@ export class NPCInvestmentManager {
         adjustedAmount,
         trustLevel: reputation.trustLevel,
       },
-      'NPCInvestmentManager'
+      "NPCInvestmentManager",
     );
 
     return adjustedAmount;
@@ -1156,7 +1156,7 @@ export class NPCInvestmentManager {
   static async getRecommendedPositionSize(
     poolId: string,
     npcUserId: string,
-    strategy: 'aggressive' | 'conservative' | 'balanced'
+    strategy: "aggressive" | "conservative" | "balanced",
   ): Promise<number> {
     // Get current portfolio metrics
     const metrics = await NPCInvestmentManager.getPortfolioMetrics(poolId);
@@ -1208,7 +1208,7 @@ export class NPCInvestmentManager {
         reputationScore: reputation?.reputationScore,
         positionSize,
       },
-      'NPCInvestmentManager'
+      "NPCInvestmentManager",
     );
 
     return positionSize;

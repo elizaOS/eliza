@@ -1,4 +1,4 @@
-import { StaticDataRegistry } from '@feed/engine';
+import { StaticDataRegistry } from "@feed/engine";
 
 export interface ResolvedPerpMarket {
   ticker: string;
@@ -10,7 +10,7 @@ const normalize = (value: string) =>
   value
     .toLowerCase()
     .trim()
-    .replace(/[^a-z0-9]/g, '');
+    .replace(/[^a-z0-9]/g, "");
 
 /**
  * Resolve a user-provided perp identifier (ticker/name/id) to a canonical ticker.
@@ -18,7 +18,7 @@ const normalize = (value: string) =>
  * original names, and common handles.
  */
 export function resolvePerpTicker(
-  identifier?: string | null
+  identifier?: string | null,
 ): ResolvedPerpMarket | null {
   if (!identifier) return null;
 
@@ -28,7 +28,7 @@ export function resolvePerpTicker(
   }
 
   const allOrgs = StaticDataRegistry.getAllOrganizations().filter(
-    (org) => org.ticker && org.type === 'company'
+    (org) => org.ticker && org.type === "company",
   );
 
   const lower = trimmed.toLowerCase();
@@ -40,11 +40,11 @@ export function resolvePerpTicker(
     (org) => org.name.toLowerCase() === lower,
     (org) => org.originalName?.toLowerCase() === lower,
     (org) => org.originalHandle?.toLowerCase() === lower,
-    (org) => normalize(org.ticker ?? '') === normalized,
+    (org) => normalize(org.ticker ?? "") === normalized,
     (org) => normalize(org.id) === normalized,
     (org) => normalize(org.name) === normalized,
-    (org) => normalize(org.originalName ?? '') === normalized,
-    (org) => normalize(org.originalHandle ?? '') === normalized,
+    (org) => normalize(org.originalName ?? "") === normalized,
+    (org) => normalize(org.originalHandle ?? "") === normalized,
   ];
 
   for (const matcher of matchers) {

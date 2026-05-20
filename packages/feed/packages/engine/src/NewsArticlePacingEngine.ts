@@ -29,27 +29,27 @@
  * ```
  */
 
-import { logger } from '@feed/shared';
-import { shuffleArray } from './utils/randomization';
+import { logger } from "@feed/shared";
+import { shuffleArray } from "./utils/randomization";
 
 /**
  * Article generation stage in question lifecycle
  */
-export type ArticleStage = 'breaking' | 'commentary' | 'resolution';
+export type ArticleStage = "breaking" | "commentary" | "resolution";
 
 /**
  * Arc event status - determines when an org can report again
  */
 export type ArcEventStatus =
-  | 'created' // Arc event just created (breaking news)
-  | 'updated' // Significant new information added
-  | 'resolved'; // Arc event concluded/resolved
+  | "created" // Arc event just created (breaking news)
+  | "updated" // Significant new information added
+  | "resolved"; // Arc event concluded/resolved
 
 /** Valid arc event statuses for type guard validation */
 const VALID_ARC_EVENT_STATUSES: readonly ArcEventStatus[] = [
-  'created',
-  'updated',
-  'resolved',
+  "created",
+  "updated",
+  "resolved",
 ] as const;
 
 /**
@@ -57,7 +57,7 @@ const VALID_ARC_EVENT_STATUSES: readonly ArcEventStatus[] = [
  */
 export function isValidArcEventStatus(value: unknown): value is ArcEventStatus {
   return (
-    typeof value === 'string' &&
+    typeof value === "string" &&
     VALID_ARC_EVENT_STATUSES.includes(value as ArcEventStatus)
   );
 }
@@ -127,7 +127,7 @@ export class NewsArticlePacingEngine {
   shouldGenerateArticle(
     questionId: number,
     orgId: string,
-    stage: ArticleStage
+    stage: ArticleStage,
   ): boolean {
     // Validate inputs
     if (!questionId || questionId <= 0) {
@@ -136,7 +136,7 @@ export class NewsArticlePacingEngine {
     if (!orgId || orgId.trim().length === 0) {
       throw new Error(`Invalid orgId: ${orgId}`);
     }
-    if (!stage || !['breaking', 'commentary', 'resolution'].includes(stage)) {
+    if (!stage || !["breaking", "commentary", "resolution"].includes(stage)) {
       throw new Error(`Invalid stage: ${stage}`);
     }
 
@@ -145,7 +145,7 @@ export class NewsArticlePacingEngine {
       logger.debug(
         `${orgId} already published ${stage} article for Q${questionId}`,
         undefined,
-        'NewsArticlePacingEngine'
+        "NewsArticlePacingEngine",
       );
       return false;
     }
@@ -166,15 +166,15 @@ export class NewsArticlePacingEngine {
 
     // Apply stage-specific limits
     switch (stage) {
-      case 'breaking':
+      case "breaking":
         // Only first 1-2 orgs break the story (race to publish)
         return currentCount < 2;
 
-      case 'commentary':
+      case "commentary":
         // 2-3 orgs provide mid-question analysis
         return currentCount < 3;
 
-      case 'resolution':
+      case "resolution":
         // All orgs can cover final outcome (major news)
         return true; // No limit for resolution coverage
 
@@ -197,7 +197,7 @@ export class NewsArticlePacingEngine {
     orgId: string,
     stage: ArticleStage,
     articleId: string,
-    tick: number
+    tick: number,
   ): void {
     // Validate all inputs
     if (!questionId || questionId <= 0) {
@@ -206,7 +206,7 @@ export class NewsArticlePacingEngine {
     if (!orgId || orgId.trim().length === 0) {
       throw new Error(`Invalid orgId for recordArticle: ${orgId}`);
     }
-    if (!stage || !['breaking', 'commentary', 'resolution'].includes(stage)) {
+    if (!stage || !["breaking", "commentary", "resolution"].includes(stage)) {
       throw new Error(`Invalid stage for recordArticle: ${stage}`);
     }
     if (!articleId || articleId.trim().length === 0) {
@@ -236,7 +236,7 @@ export class NewsArticlePacingEngine {
       stageMap.set(stage, new Set());
     }
 
-    stageMap.get(stage)!.add(orgId);
+    stageMap.get(stage)?.add(orgId);
 
     logger.debug(
       `Recorded ${stage} article for Q${questionId} by ${orgId}`,
@@ -244,7 +244,7 @@ export class NewsArticlePacingEngine {
         articleId,
         tick,
       },
-      'NewsArticlePacingEngine'
+      "NewsArticlePacingEngine",
     );
   }
 
@@ -254,11 +254,11 @@ export class NewsArticlePacingEngine {
   private hasPublished(
     questionId: number,
     orgId: string,
-    stage: ArticleStage
+    stage: ArticleStage,
   ): boolean {
     return this.articleRecords.some(
       (r) =>
-        r.questionId === questionId && r.orgId === orgId && r.stage === stage
+        r.questionId === questionId && r.orgId === orgId && r.stage === stage,
     );
   }
 
@@ -280,9 +280,9 @@ export class NewsArticlePacingEngine {
     const articles = this.getArticlesForQuestion(questionId);
 
     return {
-      breaking: articles.filter((a) => a.stage === 'breaking').length,
-      commentary: articles.filter((a) => a.stage === 'commentary').length,
-      resolution: articles.filter((a) => a.stage === 'resolution').length,
+      breaking: articles.filter((a) => a.stage === "breaking").length,
+      commentary: articles.filter((a) => a.stage === "commentary").length,
+      resolution: articles.filter((a) => a.stage === "resolution").length,
     };
   }
 
@@ -297,18 +297,18 @@ export class NewsArticlePacingEngine {
   selectOrgsForStage<T extends { id: string; name: string }>(
     availableOrgs: T[],
     questionId: number,
-    stage: ArticleStage
+    stage: ArticleStage,
   ): T[] {
     // Validate inputs
     if (!availableOrgs || availableOrgs.length === 0) {
-      throw new Error('availableOrgs cannot be empty');
+      throw new Error("availableOrgs cannot be empty");
     }
     if (!questionId || questionId <= 0) {
       throw new Error(
-        `Invalid questionId for selectOrgsForStage: ${questionId}`
+        `Invalid questionId for selectOrgsForStage: ${questionId}`,
       );
     }
-    if (!stage || !['breaking', 'commentary', 'resolution'].includes(stage)) {
+    if (!stage || !["breaking", "commentary", "resolution"].includes(stage)) {
       throw new Error(`Invalid stage for selectOrgsForStage: ${stage}`);
     }
 
@@ -324,14 +324,14 @@ export class NewsArticlePacingEngine {
 
     // Filter to orgs that haven't published yet
     const eligibleOrgs = availableOrgs.filter((org) =>
-      this.shouldGenerateArticle(questionId, org.id, stage)
+      this.shouldGenerateArticle(questionId, org.id, stage),
     );
 
     if (eligibleOrgs.length === 0) {
       logger.info(
         `No eligible orgs for Q${questionId} ${stage} stage - all have published`,
         undefined,
-        'NewsArticlePacingEngine'
+        "NewsArticlePacingEngine",
       );
       return [];
     }
@@ -339,13 +339,13 @@ export class NewsArticlePacingEngine {
     // Select random subset based on stage
     let count: number;
     switch (stage) {
-      case 'breaking':
+      case "breaking":
         count = 1 + Math.floor(Math.random() * 2); // 1-2 orgs
         break;
-      case 'commentary':
+      case "commentary":
         count = 2 + Math.floor(Math.random() * 2); // 2-3 orgs
         break;
-      case 'resolution':
+      case "resolution":
         count = Math.min(5, eligibleOrgs.length); // Up to 5 orgs
         break;
       default:
@@ -362,7 +362,7 @@ export class NewsArticlePacingEngine {
    */
   clearQuestion(questionId: number): void {
     this.articleRecords = this.articleRecords.filter(
-      (r) => r.questionId !== questionId
+      (r) => r.questionId !== questionId,
     );
 
     // Clear stage counts
@@ -377,7 +377,7 @@ export class NewsArticlePacingEngine {
     logger.info(
       `Cleared article records for Q${questionId}`,
       undefined,
-      'NewsArticlePacingEngine'
+      "NewsArticlePacingEngine",
     );
   }
 
@@ -393,11 +393,11 @@ export class NewsArticlePacingEngine {
    */
   getArticleCountByStage(): Record<ArticleStage, number> {
     return {
-      breaking: this.articleRecords.filter((r) => r.stage === 'breaking')
+      breaking: this.articleRecords.filter((r) => r.stage === "breaking")
         .length,
-      commentary: this.articleRecords.filter((r) => r.stage === 'commentary')
+      commentary: this.articleRecords.filter((r) => r.stage === "commentary")
         .length,
-      resolution: this.articleRecords.filter((r) => r.stage === 'resolution')
+      resolution: this.articleRecords.filter((r) => r.stage === "resolution")
         .length,
     };
   }
@@ -419,7 +419,7 @@ export class NewsArticlePacingEngine {
   shouldGenerateArcEventArticle(
     arcEventId: string,
     orgId: string,
-    currentStatus: ArcEventStatus
+    currentStatus: ArcEventStatus,
   ): boolean {
     // Validate inputs (consistent with shouldGenerateArticle)
     if (!arcEventId || arcEventId.trim().length === 0) {
@@ -452,7 +452,7 @@ export class NewsArticlePacingEngine {
       logger.debug(
         `${orgId} already reported ${currentStatus} for arc event ${arcEventId}`,
         undefined,
-        'NewsArticlePacingEngine'
+        "NewsArticlePacingEngine",
       );
       return false;
     }
@@ -461,7 +461,7 @@ export class NewsArticlePacingEngine {
     logger.debug(
       `${orgId} can report on arc event ${arcEventId}: status changed from ${orgCoverage.lastReportedStatus} to ${currentStatus}`,
       undefined,
-      'NewsArticlePacingEngine'
+      "NewsArticlePacingEngine",
     );
     return true;
   }
@@ -478,12 +478,12 @@ export class NewsArticlePacingEngine {
     arcEventId: string,
     orgId: string,
     status: ArcEventStatus,
-    articleId: string
+    articleId: string,
   ): void {
     // Validate inputs (consistent with other methods)
     if (!arcEventId || arcEventId.trim().length === 0) {
       throw new Error(
-        `Invalid arcEventId for recordArcEventCoverage: ${arcEventId}`
+        `Invalid arcEventId for recordArcEventCoverage: ${arcEventId}`,
       );
     }
     if (!orgId || orgId.trim().length === 0) {
@@ -494,7 +494,7 @@ export class NewsArticlePacingEngine {
     }
     if (!articleId || articleId.trim().length === 0) {
       throw new Error(
-        `Invalid articleId for recordArcEventCoverage: ${articleId}`
+        `Invalid articleId for recordArcEventCoverage: ${articleId}`,
       );
     }
 
@@ -517,7 +517,7 @@ export class NewsArticlePacingEngine {
     logger.info(
       `Recorded arc event coverage: ${orgId} reported ${status} for event ${arcEventId}`,
       { articleId },
-      'NewsArticlePacingEngine'
+      "NewsArticlePacingEngine",
     );
   }
 
@@ -534,21 +534,21 @@ export class NewsArticlePacingEngine {
     arcEventId: string,
     currentStatus: ArcEventStatus,
     availableOrgs: T[],
-    maxOrgs: number = 2
+    maxOrgs: number = 2,
   ): T[] {
     // Validate inputs (consistent with selectOrgsForStage)
     if (!arcEventId || arcEventId.trim().length === 0) {
       throw new Error(
-        `Invalid arcEventId for selectOrgsForArcEvent: ${arcEventId}`
+        `Invalid arcEventId for selectOrgsForArcEvent: ${arcEventId}`,
       );
     }
     if (!isValidArcEventStatus(currentStatus)) {
       throw new Error(
-        `Invalid currentStatus for selectOrgsForArcEvent: ${currentStatus}`
+        `Invalid currentStatus for selectOrgsForArcEvent: ${currentStatus}`,
       );
     }
     if (!availableOrgs || availableOrgs.length === 0) {
-      throw new Error('availableOrgs cannot be empty');
+      throw new Error("availableOrgs cannot be empty");
     }
     if (maxOrgs <= 0) {
       throw new Error(`Invalid maxOrgs: ${maxOrgs}`);
@@ -566,7 +566,7 @@ export class NewsArticlePacingEngine {
 
     // Filter to orgs that haven't reported this status yet
     const eligibleOrgs = availableOrgs.filter((org) =>
-      this.shouldGenerateArcEventArticle(arcEventId, org.id, currentStatus)
+      this.shouldGenerateArcEventArticle(arcEventId, org.id, currentStatus),
     );
 
     if (eligibleOrgs.length === 0) {
@@ -586,7 +586,7 @@ export class NewsArticlePacingEngine {
     logger.info(
       `Cleared arc event coverage for ${arcEventId}`,
       undefined,
-      'NewsArticlePacingEngine'
+      "NewsArticlePacingEngine",
     );
   }
 
@@ -619,16 +619,16 @@ export class NewsArticlePacingEngine {
    */
   hasEventBeenCoveredForStatus(
     eventId: string,
-    status: ArcEventStatus
+    status: ArcEventStatus,
   ): boolean {
     if (!eventId || eventId.trim().length === 0) {
       throw new Error(
-        `Invalid eventId for hasEventBeenCoveredForStatus: ${eventId}`
+        `Invalid eventId for hasEventBeenCoveredForStatus: ${eventId}`,
       );
     }
     if (!isValidArcEventStatus(status)) {
       throw new Error(
-        `Invalid status for hasEventBeenCoveredForStatus: ${status}`
+        `Invalid status for hasEventBeenCoveredForStatus: ${status}`,
       );
     }
 

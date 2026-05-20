@@ -12,8 +12,8 @@ import {
   type UserAgentConfig,
   userAgentConfigs,
   users,
-} from '@feed/db';
-import { generateSnowflakeId } from './snowflake';
+} from "@feed/db";
+import { generateSnowflakeId } from "./snowflake";
 
 /** User with agent configuration attached */
 export type UserWithAgentConfig = User & {
@@ -24,7 +24,7 @@ export type UserWithAgentConfig = User & {
  * Get agent config for a user
  */
 async function fetchAgentConfig(
-  userId: string
+  userId: string,
 ): Promise<UserAgentConfig | null> {
   const result = await db
     .select()
@@ -35,7 +35,7 @@ async function fetchAgentConfig(
 }
 
 export async function getAgentConfig(
-  userId: string
+  userId: string,
 ): Promise<UserAgentConfig | null> {
   const existing = await fetchAgentConfig(userId);
   if (existing) return existing;
@@ -56,7 +56,7 @@ export async function getAgentConfig(
       userId,
       // Explicit true ensures agents trade by default regardless of DB migration state
       autonomousTrading: true,
-      status: 'idle',
+      status: "idle",
       createdAt: now,
       updatedAt: now,
     })
@@ -72,7 +72,7 @@ export async function getAgentConfig(
  * Get user with their agent config
  */
 export async function getUserWithAgentConfig(
-  userId: string
+  userId: string,
 ): Promise<UserWithAgentConfig | null> {
   const userResult = await db
     .select()
@@ -91,12 +91,12 @@ export async function getUserWithAgentConfig(
  * Get multiple users with their agent configs
  */
 export async function getUsersWithAgentConfigs(
-  userIds: string[]
+  userIds: string[],
 ): Promise<UserWithAgentConfig[]> {
   if (userIds.length === 0) return [];
 
   const results = await Promise.all(
-    userIds.map((id) => getUserWithAgentConfig(id))
+    userIds.map((id) => getUserWithAgentConfig(id)),
   );
 
   return results.filter((r): r is UserWithAgentConfig => r !== null);
@@ -107,7 +107,7 @@ export async function getUsersWithAgentConfigs(
  */
 export async function upsertAgentConfig(
   userId: string,
-  config: Partial<Omit<UserAgentConfig, 'id' | 'userId' | 'createdAt'>>
+  config: Partial<Omit<UserAgentConfig, "id" | "userId" | "createdAt">>,
 ): Promise<UserAgentConfig> {
   const existing = await getAgentConfig(userId);
 
@@ -148,7 +148,7 @@ export async function upsertAgentConfig(
  * Defaults to true to match database schema (autonomousTrading defaults to true)
  */
 export function isAutonomousTradingEnabled(
-  config: UserAgentConfig | null
+  config: UserAgentConfig | null,
 ): boolean {
   // Note: Database schema defaults autonomousTrading to true for new agents
   // When config is null (no config exists), we default to false (agent not set up)
@@ -161,7 +161,7 @@ export function isAutonomousTradingEnabled(
  * Helper to check if autonomous posting is enabled
  */
 export function isAutonomousPostingEnabled(
-  config: UserAgentConfig | null
+  config: UserAgentConfig | null,
 ): boolean {
   return config?.autonomousPosting ?? false;
 }
@@ -170,7 +170,7 @@ export function isAutonomousPostingEnabled(
  * Helper to check if autonomous commenting is enabled
  */
 export function isAutonomousCommentingEnabled(
-  config: UserAgentConfig | null
+  config: UserAgentConfig | null,
 ): boolean {
   return config?.autonomousCommenting ?? false;
 }
@@ -179,7 +179,7 @@ export function isAutonomousCommentingEnabled(
  * Helper to check if autonomous DMs are enabled
  */
 export function isAutonomousDMsEnabled(
-  config: UserAgentConfig | null
+  config: UserAgentConfig | null,
 ): boolean {
   return config?.autonomousDMs ?? false;
 }
@@ -188,7 +188,7 @@ export function isAutonomousDMsEnabled(
  * Helper to check if autonomous group chats are enabled
  */
 export function isAutonomousGroupChatsEnabled(
-  config: UserAgentConfig | null
+  config: UserAgentConfig | null,
 ): boolean {
   return config?.autonomousGroupChats ?? false;
 }
@@ -197,7 +197,7 @@ export function isAutonomousGroupChatsEnabled(
  * Helper to check if autonomous transfers are enabled
  */
 export function isAutonomousTransfersEnabled(
-  config: UserAgentConfig | null
+  config: UserAgentConfig | null,
 ): boolean {
   return config?.autonomousTransfers ?? false;
 }
@@ -221,7 +221,7 @@ export function getAutonomousFeatures(config: UserAgentConfig | null) {
  * Check if any autonomous feature is enabled
  */
 export function hasAnyAutonomousFeature(
-  config: UserAgentConfig | null
+  config: UserAgentConfig | null,
 ): boolean {
   const features = getAutonomousFeatures(config);
   return (
@@ -238,21 +238,21 @@ export function hasAnyAutonomousFeature(
  * Helper to get model tier from config
  */
 export function getModelTier(config: UserAgentConfig | null): string {
-  return config?.modelTier ?? 'free';
+  return config?.modelTier ?? "free";
 }
 
 export function getAlignment(
-  config: UserAgentConfig | null
-): 'good' | 'neutral' | 'evil' {
+  config: UserAgentConfig | null,
+): "good" | "neutral" | "evil" {
   const val = config?.alignment;
-  if (val === 'good' || val === 'evil') return val;
-  return 'neutral';
+  if (val === "good" || val === "evil") return val;
+  return "neutral";
 }
 
 export function getTeam(
-  config: UserAgentConfig | null
-): 'red' | 'blue' | 'gray' {
+  config: UserAgentConfig | null,
+): "red" | "blue" | "gray" {
   const val = config?.team;
-  if (val === 'red' || val === 'blue') return val;
-  return 'gray';
+  if (val === "red" || val === "blue") return val;
+  return "gray";
 }

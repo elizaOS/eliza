@@ -6,21 +6,21 @@
  * @access Public (no auth required for participation)
  */
 
-import { withErrorHandling } from '@feed/api';
-import { db } from '@feed/db';
-import { scambenchSessions } from '@feed/db/schema';
-import { randomUUID } from 'crypto';
-import { avg, count, desc } from 'drizzle-orm';
-import { NextRequest, NextResponse } from 'next/server';
+import { randomUUID } from "node:crypto";
+import { withErrorHandling } from "@feed/api";
+import { db } from "@feed/db";
+import { scambenchSessions } from "@feed/db/schema";
+import { avg, count, desc } from "drizzle-orm";
+import { type NextRequest, NextResponse } from "next/server";
 
 export const POST = withErrorHandling(async function POST(
-  request: NextRequest
+  request: NextRequest,
 ) {
   try {
     const body = await request.json();
 
     const {
-      participantId = 'anonymous',
+      participantId = "anonymous",
       scenarioCount,
       overallAccuracy,
       attackAccuracy,
@@ -32,20 +32,20 @@ export const POST = withErrorHandling(async function POST(
 
     if (!responses || !Array.isArray(responses) || responses.length === 0) {
       return NextResponse.json(
-        { error: 'No responses provided' },
-        { status: 400 }
+        { error: "No responses provided" },
+        { status: 400 },
       );
     }
 
     // Detect source from headers
-    const mturkAssignmentId = request.headers.get('x-mturk-assignment-id');
-    const mturkHitId = request.headers.get('x-mturk-hit-id');
-    const mturkWorkerId = request.headers.get('x-mturk-worker-id');
-    const source = mturkAssignmentId ? 'mturk' : 'web';
+    const mturkAssignmentId = request.headers.get("x-mturk-assignment-id");
+    const mturkHitId = request.headers.get("x-mturk-hit-id");
+    const mturkWorkerId = request.headers.get("x-mturk-worker-id");
+    const source = mturkAssignmentId ? "mturk" : "web";
 
     const totalDurationMs = responses.reduce(
       (sum: number, r: { totalTimeMs?: number }) => sum + (r.totalTimeMs || 0),
-      0
+      0,
     );
 
     const session = await db
@@ -65,7 +65,7 @@ export const POST = withErrorHandling(async function POST(
         avgResponseTimeMs: avgResponseTimeMs || 0,
         totalDurationMs,
         responses,
-        userAgent: request.headers.get('user-agent'),
+        userAgent: request.headers.get("user-agent"),
       })
       .returning({ id: scambenchSessions.id });
 
@@ -75,8 +75,8 @@ export const POST = withErrorHandling(async function POST(
     });
   } catch (_error) {
     return NextResponse.json(
-      { error: 'Failed to save results' },
-      { status: 500 }
+      { error: "Failed to save results" },
+      { status: 500 },
     );
   }
 });
@@ -132,29 +132,29 @@ export const GET = withErrorHandling(async function GET() {
       topScores,
       modelBaselines: [
         {
-          name: 'Qwen3.5-4B + SFT (ours)',
-          params: '4B',
+          name: "Qwen3.5-4B + SFT (ours)",
+          params: "4B",
           overall: 71.0,
           attack: 74.8,
           legit: 67.2,
         },
         {
-          name: 'Qwen3 32B',
-          params: '32B',
+          name: "Qwen3 32B",
+          params: "32B",
           overall: 70.9,
           attack: 64.0,
           legit: 77.8,
         },
         {
-          name: 'Llama 3.1 8B',
-          params: '8B',
+          name: "Llama 3.1 8B",
+          params: "8B",
           overall: 64.6,
           attack: 49.2,
           legit: 80.0,
         },
         {
-          name: 'GPT-OSS 120B',
-          params: '120B',
+          name: "GPT-OSS 120B",
+          params: "120B",
           overall: 52.4,
           attack: 27.3,
           legit: 77.5,
@@ -163,8 +163,8 @@ export const GET = withErrorHandling(async function GET() {
     });
   } catch (_error) {
     return NextResponse.json(
-      { error: 'Failed to fetch leaderboard' },
-      { status: 500 }
+      { error: "Failed to fetch leaderboard" },
+      { status: 500 },
     );
   }
 });

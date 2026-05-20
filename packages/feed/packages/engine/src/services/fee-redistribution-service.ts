@@ -9,9 +9,9 @@
  * @module engine/services/fee-redistribution-service
  */
 
-import { actorState, Decimal, db, eq, gameConfigs } from '@feed/db';
-import { logger } from '@feed/shared';
-import { StaticDataRegistry } from './static-data-registry';
+import { actorState, Decimal, db, eq, gameConfigs } from "@feed/db";
+import { logger } from "@feed/shared";
+import { StaticDataRegistry } from "./static-data-registry";
 
 /**
  * Configuration for the stability fund system
@@ -56,7 +56,7 @@ export const STABILITY_FUND_CONFIG = {
   /**
    * GameConfig key for storing fund balance
    */
-  FUND_BALANCE_KEY: 'stability_fund_balance',
+  FUND_BALANCE_KEY: "stability_fund_balance",
 } as const;
 
 /**
@@ -140,9 +140,9 @@ export class FeeRedistributionService {
       });
 
     logger.debug(
-      'Added to stability fund',
+      "Added to stability fund",
       { amount, newBalance },
-      'FeeRedistributionService'
+      "FeeRedistributionService",
     );
   }
 
@@ -245,12 +245,12 @@ export class FeeRedistributionService {
 
     if (availableForDistribution <= 0) {
       logger.info(
-        'Stability fund below reserve threshold, skipping redistribution',
+        "Stability fund below reserve threshold, skipping redistribution",
         {
           fundBalance: fundBalanceBefore,
           reserve: STABILITY_FUND_CONFIG.MIN_FUND_RESERVE,
         },
-        'FeeRedistributionService'
+        "FeeRedistributionService",
       );
       return {
         npcsToppedUp: 0,
@@ -267,9 +267,9 @@ export class FeeRedistributionService {
 
     if (eligibleNPCs.length === 0) {
       logger.debug(
-        'No NPCs below threshold, skipping redistribution',
+        "No NPCs below threshold, skipping redistribution",
         { fundBalance: fundBalanceBefore },
-        'FeeRedistributionService'
+        "FeeRedistributionService",
       );
       return {
         npcsToppedUp: 0,
@@ -283,16 +283,16 @@ export class FeeRedistributionService {
     // Calculate how much we can distribute
     const maxToDistribute = Math.min(
       availableForDistribution,
-      STABILITY_FUND_CONFIG.MAX_REDISTRIBUTION_PER_TICK
+      STABILITY_FUND_CONFIG.MAX_REDISTRIBUTION_PER_TICK,
     );
 
     // Top up NPCs (limited by MAX_NPCS_PER_TICK)
     const npcsToProcess = eligibleNPCs.slice(
       0,
-      STABILITY_FUND_CONFIG.MAX_NPCS_PER_TICK
+      STABILITY_FUND_CONFIG.MAX_NPCS_PER_TICK,
     );
     let totalDistributed = 0;
-    const details: RedistributionResult['details'] = [];
+    const details: RedistributionResult["details"] = [];
 
     for (const npc of npcsToProcess) {
       // Check if we've hit our distribution limit
@@ -301,7 +301,7 @@ export class FeeRedistributionService {
       // Calculate how much to give this NPC (capped by remaining budget)
       const amountToGive = Math.min(
         npc.amountNeeded,
-        maxToDistribute - totalDistributed
+        maxToDistribute - totalDistributed,
       );
 
       if (amountToGive <= 0) continue;
@@ -333,7 +333,7 @@ export class FeeRedistributionService {
           balanceAfter: newBalance,
           amount: amountToGive,
         },
-        'FeeRedistributionService'
+        "FeeRedistributionService",
       );
     }
 
@@ -348,7 +348,7 @@ export class FeeRedistributionService {
       .where(eq(gameConfigs.key, STABILITY_FUND_CONFIG.FUND_BALANCE_KEY));
 
     logger.info(
-      'Redistribution completed',
+      "Redistribution completed",
       {
         npcsToppedUp: details.length,
         totalDistributed,
@@ -356,7 +356,7 @@ export class FeeRedistributionService {
         fundBalanceAfter,
         eligibleNPCsRemaining: eligibleNPCs.length - details.length,
       },
-      'FeeRedistributionService'
+      "FeeRedistributionService",
     );
 
     return {
@@ -389,13 +389,13 @@ export class FeeRedistributionService {
 
     const totalBalance = allStates.reduce(
       (sum, s) => sum + Number(s.tradingBalance),
-      0
+      0,
     );
     const averageBalance =
       allStates.length > 0 ? totalBalance / allStates.length : 0;
     const totalDeficit = eligibleNPCs.reduce(
       (sum, n) => sum + n.amountNeeded,
-      0
+      0,
     );
 
     return {

@@ -12,7 +12,7 @@ export interface GameTime {
 }
 
 export interface GameClockConfig {
-  mode: 'realtime' | 'simulated';
+  mode: "realtime" | "simulated";
   /** For simulated mode: starting timestamp */
   startTime?: Date;
   /** For simulated mode: how many real-world ms per simulated minute */
@@ -22,13 +22,13 @@ export interface GameClockConfig {
 }
 
 export class GameClock {
-  private mode: 'realtime' | 'simulated';
+  private mode: "realtime" | "simulated";
   private startTime: Date;
   private gameStartDate: Date;
   private currentTick = 0;
   private simulatedTime: Date;
 
-  constructor(config: GameClockConfig = { mode: 'realtime' }) {
+  constructor(config: GameClockConfig = { mode: "realtime" }) {
     this.mode = config.mode;
     this.startTime = config.startTime ?? new Date();
     // tickRateMs from config is stored for potential future use but currently unused
@@ -41,7 +41,7 @@ export class GameClock {
   /** Get current game time */
   now(): GameTime {
     const timestamp =
-      this.mode === 'realtime' ? new Date() : this.simulatedTime;
+      this.mode === "realtime" ? new Date() : this.simulatedTime;
     return this.timestampToGameTime(timestamp);
   }
 
@@ -49,10 +49,10 @@ export class GameClock {
   tick(): GameTime {
     this.currentTick++;
 
-    if (this.mode === 'simulated') {
+    if (this.mode === "simulated") {
       // Each tick = 1 hour in game time
       this.simulatedTime = new Date(
-        this.simulatedTime.getTime() + 60 * 60 * 1000
+        this.simulatedTime.getTime() + 60 * 60 * 1000,
       );
     }
 
@@ -76,19 +76,19 @@ export class GameClock {
 
   /** Set simulated time to specific point */
   setTime(timestamp: Date): void {
-    if (this.mode !== 'simulated') {
-      throw new Error('Cannot set time in realtime mode');
+    if (this.mode !== "simulated") {
+      throw new Error("Cannot set time in realtime mode");
     }
     this.simulatedTime = timestamp;
   }
 
   /** Fast-forward by N hours (simulated mode only) */
   advanceHours(hours: number): GameTime {
-    if (this.mode !== 'simulated') {
-      throw new Error('Cannot advance time in realtime mode');
+    if (this.mode !== "simulated") {
+      throw new Error("Cannot advance time in realtime mode");
     }
     this.simulatedTime = new Date(
-      this.simulatedTime.getTime() + hours * 60 * 60 * 1000
+      this.simulatedTime.getTime() + hours * 60 * 60 * 1000,
     );
     this.currentTick += hours;
     return this.now();
@@ -106,13 +106,13 @@ export class GameClock {
 
   /** Check if clock is in simulated mode */
   isSimulated(): boolean {
-    return this.mode === 'simulated';
+    return this.mode === "simulated";
   }
 
   /** Create a realtime clock */
   static realtime(gameStartDate?: Date): GameClock {
     return new GameClock({
-      mode: 'realtime',
+      mode: "realtime",
       gameStartDate: gameStartDate ?? new Date(),
     });
   }
@@ -120,7 +120,7 @@ export class GameClock {
   /** Create a simulated clock for testing/training */
   static simulated(startTime?: Date, gameStartDate?: Date): GameClock {
     return new GameClock({
-      mode: 'simulated',
+      mode: "simulated",
       startTime: startTime ?? new Date(),
       gameStartDate: gameStartDate ?? startTime ?? new Date(),
     });

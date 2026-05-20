@@ -1,11 +1,11 @@
-import { buildCapitalBaseContributionSql, db, sql } from '@feed/db';
-import { toISO } from '@feed/shared';
+import { buildCapitalBaseContributionSql, db, sql } from "@feed/db";
+import { toISO } from "@feed/shared";
 
 export const TRADING_RETURN_CAPITAL_FLOOR = 1000;
 
 function buildCapitalContributionExpression(
   transactionAlias: string,
-  scope: 'wallet' | 'team'
+  scope: "wallet" | "team",
 ): string {
   return buildCapitalBaseContributionSql(transactionAlias, scope);
 }
@@ -54,12 +54,12 @@ export interface TeamTradingPerformanceRow {
 export class TradingPerformanceService {
   static calculateTradingReturnMetrics(
     lifetimePnL: number,
-    capitalBase: number
+    capitalBase: number,
   ): TradingReturnMetrics {
     const normalizedCapitalBase = Math.max(capitalBase, 0);
     const effectiveCapitalBase = Math.max(
       normalizedCapitalBase,
-      TRADING_RETURN_CAPITAL_FLOOR
+      TRADING_RETURN_CAPITAL_FLOOR,
     );
 
     return {
@@ -74,7 +74,7 @@ export class TradingPerformanceService {
       SELECT
         bt."userId" AS "userId",
         GREATEST(
-          COALESCE(SUM(${buildCapitalContributionExpression('bt', 'wallet')}), 0),
+          COALESCE(SUM(${buildCapitalContributionExpression("bt", "wallet")}), 0),
           0
         )::numeric AS "capitalBase"
       FROM "BalanceTransaction" bt
@@ -87,7 +87,7 @@ export class TradingPerformanceService {
       SELECT
         COALESCE(u."managedBy", u."id") AS "teamId",
         GREATEST(
-          COALESCE(SUM(${buildCapitalContributionExpression('bt', 'team')}), 0),
+          COALESCE(SUM(${buildCapitalContributionExpression("bt", "team")}), 0),
           0
         )::numeric AS "teamCapitalBase"
       FROM "BalanceTransaction" bt
@@ -111,10 +111,10 @@ export class TradingPerformanceService {
 
   static async getWalletLeaderboardRows(
     limit: number,
-    offset: number
+    offset: number,
   ): Promise<WalletTradingPerformanceRow[]> {
     const result = await db.execute(sql`
-      WITH wallet_capital AS (${this.walletCapitalCte()})
+      WITH wallet_capital AS (${TradingPerformanceService.walletCapitalCte()})
       SELECT
         u."id",
         u."username",
@@ -150,10 +150,10 @@ export class TradingPerformanceService {
   }
 
   static async getWalletEntry(
-    userId: string
+    userId: string,
   ): Promise<WalletTradingPerformanceRow | null> {
     const result = await db.execute(sql`
-      WITH wallet_capital AS (${this.walletCapitalCte()})
+      WITH wallet_capital AS (${TradingPerformanceService.walletCapitalCte()})
       SELECT
         u."id",
         u."username",
@@ -195,7 +195,7 @@ export class TradingPerformanceService {
   }): Promise<number> {
     const createdAtISO = toISO(entry.createdAt);
     const result = await db.execute(sql`
-      WITH wallet_capital AS (${this.walletCapitalCte()}),
+      WITH wallet_capital AS (${TradingPerformanceService.walletCapitalCte()}),
       wallet_rows AS (
         SELECT
           u."id",
@@ -233,11 +233,11 @@ export class TradingPerformanceService {
 
   static async getTeamLeaderboardRows(
     limit: number,
-    offset: number
+    offset: number,
   ): Promise<TeamTradingPerformanceRow[]> {
     const result = await db.execute(sql`
-      WITH team_capital AS (${this.teamCapitalCte()}),
-      team_agents AS (${this.teamAgentsCte()})
+      WITH team_capital AS (${TradingPerformanceService.teamCapitalCte()}),
+      team_agents AS (${TradingPerformanceService.teamAgentsCte()})
       SELECT
         u."id",
         u."username",
@@ -279,11 +279,11 @@ export class TradingPerformanceService {
   }
 
   static async getTeamEntry(
-    teamOwnerId: string
+    teamOwnerId: string,
   ): Promise<TeamTradingPerformanceRow | null> {
     const result = await db.execute(sql`
-      WITH team_capital AS (${this.teamCapitalCte()}),
-      team_agents AS (${this.teamAgentsCte()})
+      WITH team_capital AS (${TradingPerformanceService.teamCapitalCte()}),
+      team_agents AS (${TradingPerformanceService.teamAgentsCte()})
       SELECT
         u."id",
         u."username",
@@ -331,8 +331,8 @@ export class TradingPerformanceService {
   }): Promise<number> {
     const createdAtISO = toISO(entry.createdAt);
     const result = await db.execute(sql`
-      WITH team_capital AS (${this.teamCapitalCte()}),
-      team_agents AS (${this.teamAgentsCte()}),
+      WITH team_capital AS (${TradingPerformanceService.teamCapitalCte()}),
+      team_agents AS (${TradingPerformanceService.teamAgentsCte()}),
       team_rows AS (
         SELECT
           u."id",

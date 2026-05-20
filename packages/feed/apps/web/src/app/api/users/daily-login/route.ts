@@ -11,10 +11,10 @@ import {
   DailyLoginService,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { toISOOrNull } from '@feed/shared';
+} from "@feed/api";
+import { toISOOrNull } from "@feed/shared";
 
-import type { NextRequest } from 'next/server';
+import type { NextRequest } from "next/server";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   const { dbUserId } = await authenticateWithDbUser(request);
@@ -28,6 +28,6 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const { dbUserId } = await authenticateWithDbUser(request);
   const result = await DailyLoginService.claimDailyReward(dbUserId);
-  void checkProgress(dbUserId, { type: 'daily_login', streak: result.streak });
+  void checkProgress(dbUserId, { type: "daily_login", streak: result.streak });
   return successResponse(result);
 });

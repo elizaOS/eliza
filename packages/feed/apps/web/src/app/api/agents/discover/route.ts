@@ -96,33 +96,33 @@
  * @see {@link /lib/utils/oasf-skill-mapper} OASF skill taxonomy
  */
 
-import type { AgentDiscoveryFilter } from '@feed/agents';
+import type { AgentDiscoveryFilter } from "@feed/agents";
 import {
   AgentStatus,
   AgentType,
   agentRegistry,
   npcBootstrapService,
-} from '@feed/agents';
-import { withErrorHandling } from '@feed/api';
-import { getBaseUrl, logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@feed/agents";
+import { withErrorHandling } from "@feed/api";
+import { getBaseUrl, logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 export const GET = withErrorHandling(async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
 
   // Parse query parameters
-  const typesParam = searchParams.get('types');
-  const skillsParam = searchParams.get('skills');
-  const domainsParam = searchParams.get('domains');
-  const matchMode = (searchParams.get('matchMode') as 'any' | 'all') || 'all';
-  const search = searchParams.get('search') || undefined;
-  const includeExternalParam = searchParams.get('includeExternal');
-  const includeExternal = includeExternalParam === 'true';
-  const limit = Number.parseInt(searchParams.get('limit') || '50');
-  const offset = Number.parseInt(searchParams.get('offset') || '0');
+  const typesParam = searchParams.get("types");
+  const skillsParam = searchParams.get("skills");
+  const domainsParam = searchParams.get("domains");
+  const matchMode = (searchParams.get("matchMode") as "any" | "all") || "all";
+  const search = searchParams.get("search") || undefined;
+  const includeExternalParam = searchParams.get("includeExternal");
+  const includeExternal = includeExternalParam === "true";
+  const limit = Number.parseInt(searchParams.get("limit") || "50", 10);
+  const offset = Number.parseInt(searchParams.get("offset") || "0", 10);
   const shouldBootstrapLocalRegistry =
     !includeExternal &&
     !typesParam &&
@@ -136,9 +136,9 @@ export const GET = withErrorHandling(async function GET(req: NextRequest) {
     // Parse types (comma-separated string to enum array)
     types: typesParam
       ? (typesParam
-          .split(',')
+          .split(",")
           .filter((t) =>
-            Object.values(AgentType).includes(t as AgentType)
+            Object.values(AgentType).includes(t as AgentType),
           ) as AgentType[])
       : undefined,
 
@@ -148,7 +148,7 @@ export const GET = withErrorHandling(async function GET(req: NextRequest) {
     // Parse OASF skills (comma-separated)
     requiredSkills: skillsParam
       ? skillsParam
-          .split(',')
+          .split(",")
           .map((s) => s.trim())
           .filter(Boolean)
       : undefined,
@@ -156,7 +156,7 @@ export const GET = withErrorHandling(async function GET(req: NextRequest) {
     // Parse OASF domains (comma-separated)
     requiredDomains: domainsParam
       ? domainsParam
-          .split(',')
+          .split(",")
           .map((d) => d.trim())
           .filter(Boolean)
       : undefined,
@@ -168,17 +168,17 @@ export const GET = withErrorHandling(async function GET(req: NextRequest) {
   };
 
   logger.info(
-    'Agent discovery request',
+    "Agent discovery request",
     {
       filter: {
         ...filter,
-        types: filter.types?.join(','),
-        requiredSkills: filter.requiredSkills?.join(','),
-        requiredDomains: filter.requiredDomains?.join(','),
+        types: filter.types?.join(","),
+        requiredSkills: filter.requiredSkills?.join(","),
+        requiredDomains: filter.requiredDomains?.join(","),
       },
       includeExternal,
     },
-    'AgentDiscovery'
+    "AgentDiscovery",
   );
 
   void includeExternal; // External agent discovery (Agent0) removed in Phase 1.
@@ -193,7 +193,7 @@ export const GET = withErrorHandling(async function GET(req: NextRequest) {
   }
 
   const agentCards = agents.map((agent) => ({
-    version: '1.0' as const,
+    version: "1.0" as const,
     agentId: agent.agentId,
     name: agent.name,
     description: agent.systemPrompt,
@@ -223,7 +223,7 @@ export const GET = withErrorHandling(async function GET(req: NextRequest) {
       skillsCount: filter.requiredSkills?.length || 0,
       domainsCount: filter.requiredDomains?.length || 0,
     },
-    'AgentDiscovery'
+    "AgentDiscovery",
   );
 
   return NextResponse.json(
@@ -237,6 +237,6 @@ export const GET = withErrorHandling(async function GET(req: NextRequest) {
         matchMode: filter.matchMode,
       },
     },
-    { status: 200 }
+    { status: 200 },
   );
 });

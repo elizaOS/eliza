@@ -88,7 +88,7 @@ import {
   RATE_LIMIT_CONFIGS,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
+} from "@feed/api";
 import {
   and,
   asc,
@@ -101,14 +101,14 @@ import {
   posts,
   reactions,
   users,
-} from '@feed/db';
+} from "@feed/db";
 import {
   CreateCommentSchema,
   generateSnowflakeId,
   logger,
   PostIdParamSchema,
-} from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 /**
  * Build threaded comment structure recursively
@@ -149,19 +149,19 @@ interface CommentWithUser {
 
 function buildCommentTree(
   commentsData: CommentWithUser[],
-  parentId: string | null = null
+  parentId: string | null = null,
 ): CommentTreeItem[] {
   // Helper to find parent comment author name
   const findParentAuthorName = (
-    parentCommentId: string | null
+    parentCommentId: string | null,
   ): string | undefined => {
     if (!parentCommentId) return undefined;
     const parentComment = commentsData.find((c) => c.id === parentCommentId);
-    if (parentComment && parentComment.user) {
+    if (parentComment?.user) {
       return (
         parentComment.user.displayName ||
         parentComment.user.username ||
-        'Anonymous'
+        "Anonymous"
       );
     }
     return undefined;
@@ -176,7 +176,7 @@ function buildCommentTree(
       updatedAt: comment.updatedAt,
       userId: comment.user?.id || comment.authorId,
       userName:
-        comment.user?.displayName || comment.user?.username || 'Anonymous',
+        comment.user?.displayName || comment.user?.username || "Anonymous",
       userUsername: comment.user?.username || null,
       userAvatar: comment.user?.profileImageUrl || null,
       parentCommentId: comment.parentCommentId,
@@ -194,7 +194,7 @@ function buildCommentTree(
 export const GET = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ id: string }> }
+    context: { params: Promise<{ id: string }> },
   ) => {
     const { error, user, rateLimitInfo } = await publicRateLimit(request);
     if (error) return error;
@@ -203,7 +203,7 @@ export const GET = withErrorHandling(
 
     // Validate post ID
     if (!postId) {
-      throw new BusinessLogicError('Post ID is required', 'POST_ID_REQUIRED');
+      throw new BusinessLogicError("Post ID is required", "POST_ID_REQUIRED");
     }
 
     const canonicalUserId = user ? getCanonicalUserId(user) : undefined;
@@ -217,16 +217,16 @@ export const GET = withErrorHandling(
       .limit(1);
 
     if (!post) {
-      throw new NotFoundError('Post', postId);
+      throw new NotFoundError("Post", postId);
     }
 
     if (post.deletedAt) {
-      throw new NotFoundError('Post (deleted)', postId);
+      throw new NotFoundError("Post (deleted)", postId);
     }
 
     // Don't allow access to future posts
     if (post.timestamp > now) {
-      throw new NotFoundError('Post', postId);
+      throw new NotFoundError("Post", postId);
     }
 
     // Get all comments for the post (including nested replies)
@@ -269,14 +269,14 @@ export const GET = withErrorHandling(
             .where(
               and(
                 inArray(reactions.commentId, commentIds),
-                eq(reactions.type, 'like')
-              )
+                eq(reactions.type, "like"),
+              ),
             )
             .groupBy(reactions.commentId)
         : [];
 
     const likeCountMap = new Map(
-      likeCounts.map((l) => [l.commentId, Number(l.count)])
+      likeCounts.map((l) => [l.commentId, Number(l.count)]),
     );
 
     // Get user's likes if authenticated
@@ -289,8 +289,8 @@ export const GET = withErrorHandling(
           and(
             inArray(reactions.commentId, commentIds),
             eq(reactions.userId, canonicalUserId),
-            eq(reactions.type, 'like')
-          )
+            eq(reactions.type, "like"),
+          ),
         );
       userLikesResult.forEach((l) => {
         if (l.commentId) userLikes.add(l.commentId);
@@ -309,7 +309,7 @@ export const GET = withErrorHandling(
         user: userMap.get(comment.authorId) || null,
         likeCount: likeCountMap.get(comment.id) ?? 0,
         isLiked: userLikes.has(comment.id),
-      })
+      }),
     );
 
     // Build threaded structure
@@ -319,9 +319,9 @@ export const GET = withErrorHandling(
     const totalComments = commentsResult.length;
 
     logger.info(
-      'Comments fetched successfully',
+      "Comments fetched successfully",
       { postId, total: totalComments },
-      'GET /api/posts/[id]/comments'
+      "GET /api/posts/[id]/comments",
     );
 
     const res = successResponse({
@@ -332,7 +332,7 @@ export const GET = withErrorHandling(
     });
     if (rateLimitInfo) addPublicReadHeaders(res, rateLimitInfo);
     return res;
-  }
+  },
 );
 
 /**
@@ -342,7 +342,7 @@ export const GET = withErrorHandling(
 export const POST = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ id: string }> }
+    context: { params: Promise<{ id: string }> },
   ) => {
     // Authenticate user
     const user = await authenticate(request);
@@ -355,8 +355,8 @@ export const POST = withErrorHandling(
 
     if (content.length > 5000) {
       throw new BusinessLogicError(
-        'Comment is too long (max 5000 characters)',
-        'COMMENT_TOO_LONG'
+        "Comment is too long (max 5000 characters)",
+        "COMMENT_TOO_LONG",
       );
     }
 
@@ -365,7 +365,7 @@ export const POST = withErrorHandling(
       user.userId,
       content,
       RATE_LIMIT_CONFIGS.CREATE_COMMENT,
-      DUPLICATE_DETECTION_CONFIGS.COMMENT
+      DUPLICATE_DETECTION_CONFIGS.COMMENT,
     );
     if (rateLimitError) {
       return rateLimitError;
@@ -373,7 +373,7 @@ export const POST = withErrorHandling(
 
     const displayName = user.walletAddress
       ? `${user.walletAddress.slice(0, 6)}...${user.walletAddress.slice(-4)}`
-      : 'Anonymous';
+      : "Anonymous";
 
     const { user: dbUser } = await ensureUserForAuth(user, { displayName });
     const canonicalUserId = dbUser.id;
@@ -392,53 +392,53 @@ export const POST = withErrorHandling(
       // Format 2: post-{timestamp}-{random} (e.g., post-1762099655817-0.7781412938928327)
       // Format 3: post-{timestamp}-{actorId}-{random} (e.g., post-1762099655817-kash-patrol-abc123)
 
-      let gameId = 'feed'; // default game
-      let authorId = 'system'; // default author for game-generated posts
+      let gameId = "feed"; // default game
+      let authorId = "system"; // default author for game-generated posts
       let timestamp = new Date();
 
       // Check Format 1: Has ISO timestamp at the end
       const isoTimestampMatch = postId.match(
-        /(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z)$/
+        /(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z)$/,
       );
 
-      if (isoTimestampMatch && isoTimestampMatch[1]) {
+      if (isoTimestampMatch?.[1]) {
         // Format 1: gameId-gameTimestamp-authorId-isoTimestamp
         const timestampStr = isoTimestampMatch[1];
         timestamp = new Date(timestampStr);
 
         // Extract gameId (first part before first hyphen)
-        const firstHyphenIndex = postId.indexOf('-');
+        const firstHyphenIndex = postId.indexOf("-");
         if (firstHyphenIndex !== -1) {
           gameId = postId.substring(0, firstHyphenIndex);
 
           // Extract authorId (everything between second hyphen and the ISO timestamp)
           const withoutGameId = postId.substring(firstHyphenIndex + 1);
-          const secondHyphenIndex = withoutGameId.indexOf('-');
+          const secondHyphenIndex = withoutGameId.indexOf("-");
           if (secondHyphenIndex !== -1) {
             const afterGameTimestamp = withoutGameId.substring(
-              secondHyphenIndex + 1
+              secondHyphenIndex + 1,
             );
             authorId = afterGameTimestamp.substring(
               0,
-              afterGameTimestamp.lastIndexOf('-' + timestampStr)
+              afterGameTimestamp.lastIndexOf(`-${timestampStr}`),
             );
           }
         }
-      } else if (postId.startsWith('post-')) {
+      } else if (postId.startsWith("post-")) {
         // Format 2 or 3: GameEngine format
-        const parts = postId.split('-');
+        const parts = postId.split("-");
 
         if (parts.length >= 3 && parts[1]) {
           // Try to extract timestamp from second part
           const timestampPart = parts[1];
           const timestampNum = Number.parseInt(timestampPart, 10);
 
-          if (!isNaN(timestampNum) && timestampNum > 1000000000000) {
+          if (!Number.isNaN(timestampNum) && timestampNum > 1000000000000) {
             // Valid timestamp (milliseconds since epoch)
             timestamp = new Date(timestampNum);
 
             // Check if third part looks like an actor ID (not a decimal)
-            if (parts.length >= 4 && parts[2] && !parts[2].includes('.')) {
+            if (parts.length >= 4 && parts[2] && !parts[2].includes(".")) {
               // Format 3: post-{timestamp}-{actorId}-{random}
               authorId = parts[2];
             }
@@ -449,8 +449,8 @@ export const POST = withErrorHandling(
       } else {
         // Unknown format, reject
         throw new BusinessLogicError(
-          'Invalid post ID format',
-          'INVALID_POST_ID_FORMAT'
+          "Invalid post ID format",
+          "INVALID_POST_ID_FORMAT",
         );
       }
 
@@ -465,15 +465,15 @@ export const POST = withErrorHandling(
         // Check if the existing post is deleted
         if (existingPost.deletedAt) {
           throw new BusinessLogicError(
-            'Cannot comment on deleted post',
-            'POST_DELETED'
+            "Cannot comment on deleted post",
+            "POST_DELETED",
           );
         }
       } else {
         // Create the post
         await db.insert(posts).values({
           id: postId,
-          content: '[Game-generated post]',
+          content: "[Game-generated post]",
           authorId,
           gameId,
           timestamp,
@@ -482,8 +482,8 @@ export const POST = withErrorHandling(
     } else if (post.deletedAt) {
       // Post exists but is deleted - cannot comment
       throw new BusinessLogicError(
-        'Cannot comment on deleted post',
-        'POST_DELETED'
+        "Cannot comment on deleted post",
+        "POST_DELETED",
       );
     }
 
@@ -496,13 +496,13 @@ export const POST = withErrorHandling(
         .limit(1);
 
       if (!parentComment) {
-        throw new NotFoundError('Parent comment', parentCommentId);
+        throw new NotFoundError("Parent comment", parentCommentId);
       }
 
       if (parentComment.postId !== postId) {
         throw new BusinessLogicError(
-          'Parent comment does not belong to this post',
-          'PARENT_COMMENT_MISMATCH'
+          "Parent comment does not belong to this post",
+          "PARENT_COMMENT_MISMATCH",
         );
       }
     }
@@ -523,8 +523,8 @@ export const POST = withErrorHandling(
 
       if (isBlocked || hasBlockedMe) {
         throw new BusinessLogicError(
-          'Cannot comment on this post',
-          'BLOCKED_USER'
+          "Cannot comment on this post",
+          "BLOCKED_USER",
         );
       }
     }
@@ -548,8 +548,8 @@ export const POST = withErrorHandling(
 
     if (!newComment) {
       throw new BusinessLogicError(
-        'Failed to create comment',
-        'COMMENT_CREATION_FAILED'
+        "Failed to create comment",
+        "COMMENT_CREATION_FAILED",
       );
     }
 
@@ -581,16 +581,12 @@ export const POST = withErrorHandling(
           canonicalUserId,
           postId,
           parentCommentId,
-          newComment.id
+          newComment.id,
         );
       }
     } else {
       // Comment on post - notify the post author only if they're a User (not an Actor)
-      if (
-        postRecord &&
-        postRecord.authorId &&
-        postRecord.authorId !== canonicalUserId
-      ) {
+      if (postRecord?.authorId && postRecord.authorId !== canonicalUserId) {
         // Check if the authorId references a User (not an Actor)
         const [postAuthorUser] = await db
           .select({ id: users.id })
@@ -603,7 +599,7 @@ export const POST = withErrorHandling(
             postRecord.authorId,
             canonicalUserId,
             postId,
-            newComment.id
+            newComment.id,
           );
         }
       }
@@ -622,30 +618,30 @@ export const POST = withErrorHandling(
 
     await Promise.all(
       mentionedUsers.map((mentionedUser) =>
-        notifyMention(mentionedUser.id, canonicalUserId, postId, newComment.id)
-      )
+        notifyMention(mentionedUser.id, canonicalUserId, postId, newComment.id),
+      ),
     );
 
     logger.info(
-      'Sent mention notifications from comment',
+      "Sent mention notifications from comment",
       {
         postId,
         commentId: newComment.id,
         mentionCount: mentionedUsers.length,
         mentionedUsernames: mentionedUsers.map((u) => u.username),
       },
-      'POST /api/posts/[id]/comments'
+      "POST /api/posts/[id]/comments",
     );
 
     logger.info(
-      'Comment created successfully',
+      "Comment created successfully",
       {
         postId,
         userId: canonicalUserId,
         commentId: newComment.id,
         parentCommentId,
       },
-      'POST /api/posts/[id]/comments'
+      "POST /api/posts/[id]/comments",
     );
 
     return successResponse(
@@ -661,7 +657,7 @@ export const POST = withErrorHandling(
         likeCount: 0,
         replyCount: 0,
       },
-      201
+      201,
     );
-  }
+  },
 );

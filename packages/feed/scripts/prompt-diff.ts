@@ -15,30 +15,30 @@
  * The --old flag also accepts git refs:  git:HEAD~1:packages/engine/src/prompts/trading/npc-market-decisions.ts
  */
 
-import * as fs from 'node:fs';
-import * as os from 'node:os';
-import * as path from 'node:path';
-import { parseArgs } from 'node:util';
-import { structuredPatch } from 'diff';
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { parseArgs } from "node:util";
+import { structuredPatch } from "diff";
 
 // ── ANSI helpers ──────────────────────────────────────────────────────────
-const RED = '\x1b[31m';
-const GREEN = '\x1b[32m';
-const YELLOW = '\x1b[33m';
-const CYAN = '\x1b[36m';
-const DIM = '\x1b[2m';
-const BOLD = '\x1b[1m';
-const RESET = '\x1b[0m';
+const RED = "\x1b[31m";
+const GREEN = "\x1b[32m";
+const YELLOW = "\x1b[33m";
+const CYAN = "\x1b[36m";
+const DIM = "\x1b[2m";
+const BOLD = "\x1b[1m";
+const RESET = "\x1b[0m";
 
 // ── CLI arg parsing ───────────────────────────────────────────────────────
 const { values } = parseArgs({
   options: {
-    old: { type: 'string' },
-    new: { type: 'string' },
-    context: { type: 'string' },
-    vars: { type: 'string' },
-    'section-only': { type: 'boolean', default: false },
-    full: { type: 'boolean', default: false },
+    old: { type: "string" },
+    new: { type: "string" },
+    context: { type: "string" },
+    vars: { type: "string" },
+    "section-only": { type: "boolean", default: false },
+    full: { type: "boolean", default: false },
   },
   strict: true,
 });
@@ -46,7 +46,7 @@ const { values } = parseArgs({
 if (!values.old) {
   console.error(
     `${RED}Error: --old <path|git:ref:path> is required${RESET}\n` +
-      'Usage: bun scripts/prompt-diff.ts --old <path> [--new <path>] [--context <json>] [--vars k=v,...] [--section-only] [--full]'
+      "Usage: bun scripts/prompt-diff.ts --old <path> [--new <path>] [--context <json>] [--vars k=v,...] [--section-only] [--full]",
   );
   process.exit(1);
 }
@@ -84,13 +84,13 @@ function deltaStr(d: number): string {
 
 /** Split rendered prompt into sections by common delimiters (=== / ## / ---). */
 function splitSections(text: string): Section[] {
-  const lines = text.split('\n');
+  const lines = text.split("\n");
   const sections: Section[] = [];
-  let currentHeading = '(preamble)';
+  let currentHeading = "(preamble)";
   let currentLines: string[] = [];
 
   const flush = () => {
-    const body = currentLines.join('\n');
+    const body = currentLines.join("\n");
     sections.push({
       heading: currentHeading,
       body,
@@ -119,11 +119,11 @@ function splitSections(text: string): Section[] {
  */
 function renderTemplate(
   template: string,
-  vars: Record<string, string>
+  vars: Record<string, string>,
 ): string {
   let rendered = template;
   for (const [key, value] of Object.entries(vars)) {
-    rendered = rendered.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value);
+    rendered = rendered.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), value);
   }
   return rendered;
 }
@@ -131,16 +131,16 @@ function renderTemplate(
 /** Parse a git: specifier and return file content via `git show`. */
 async function loadFromGit(spec: string): Promise<string> {
   // spec format: git:<ref>:<path>
-  const firstColon = spec.indexOf(':');
-  const secondColon = spec.indexOf(':', firstColon + 1);
+  const firstColon = spec.indexOf(":");
+  const secondColon = spec.indexOf(":", firstColon + 1);
   if (secondColon === -1) {
     throw new Error(`Invalid git spec "${spec}". Expected git:<ref>:<path>`);
   }
   const ref = spec.slice(firstColon + 1, secondColon);
   const filePath = spec.slice(secondColon + 1);
-  const proc = Bun.spawn(['git', 'show', `${ref}:${filePath}`], {
-    stdout: 'pipe',
-    stderr: 'pipe',
+  const proc = Bun.spawn(["git", "show", `${ref}:${filePath}`], {
+    stdout: "pipe",
+    stderr: "pipe",
   });
   const exitCode = await proc.exited;
   if (exitCode !== 0) {
@@ -160,7 +160,7 @@ async function importPromptModule(filePath: string): Promise<PromptMeta> {
   // Find the first export that looks like a PromptDefinition
   for (const exp of Object.values(mod)) {
     const v = exp as Record<string, unknown>;
-    if (v && typeof v === 'object' && 'template' in v && 'id' in v) {
+    if (v && typeof v === "object" && "template" in v && "id" in v) {
       return {
         id: v.id as string,
         version: v.version as string,
@@ -177,15 +177,15 @@ async function importPromptModule(filePath: string): Promise<PromptMeta> {
 /** Load a prompt from a git ref by writing to a temp file. */
 async function loadPromptFromGit(spec: string): Promise<PromptMeta> {
   const content = await loadFromGit(spec);
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'prompt-diff-'));
-  const tmpFile = path.join(tmpDir, 'prompt.ts');
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "prompt-diff-"));
+  const tmpFile = path.join(tmpDir, "prompt.ts");
 
   // Rewrite relative imports to absolute paths based on the original file location.
   // The git spec tells us where the file lived in the repo, so we resolve
   // each relative import from that directory.
-  const repoRoot = path.resolve(import.meta.dir, '..');
-  const firstColon = spec.indexOf(':');
-  const secondColon = spec.indexOf(':', firstColon + 1);
+  const repoRoot = path.resolve(import.meta.dir, "..");
+  const firstColon = spec.indexOf(":");
+  const secondColon = spec.indexOf(":", firstColon + 1);
   const originalPath = spec.slice(secondColon + 1);
   const originalDir = path.join(repoRoot, path.dirname(originalPath));
 
@@ -194,7 +194,7 @@ async function loadPromptFromGit(spec: string): Promise<PromptMeta> {
     (_match, relImport: string) => {
       const resolved = path.resolve(originalDir, relImport);
       return `from '${resolved}'`;
-    }
+    },
   );
 
   fs.writeFileSync(tmpFile, rewritten);
@@ -208,7 +208,7 @@ async function loadPromptFromGit(spec: string): Promise<PromptMeta> {
 }
 
 async function loadPrompt(ref: string): Promise<PromptMeta> {
-  if (ref.startsWith('git:')) {
+  if (ref.startsWith("git:")) {
     return loadPromptFromGit(ref);
   }
   return importPromptModule(ref);
@@ -219,15 +219,15 @@ async function main() {
   // 1. Load context variables
   const contextVars: Record<string, string> = {};
   if (values.context) {
-    const raw = fs.readFileSync(path.resolve(values.context), 'utf-8');
+    const raw = fs.readFileSync(path.resolve(values.context), "utf-8");
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     for (const [k, v] of Object.entries(parsed)) {
-      contextVars[k] = String(v ?? '');
+      contextVars[k] = String(v ?? "");
     }
   }
   if (values.vars) {
-    for (const pair of values.vars.split(',')) {
-      const eq = pair.indexOf('=');
+    for (const pair of values.vars.split(",")) {
+      const eq = pair.indexOf("=");
       if (eq === -1) continue;
       contextVars[pair.slice(0, eq)] = pair.slice(eq + 1);
     }
@@ -241,7 +241,7 @@ async function main() {
 
   if (oldPrompt === newPrompt && !values.new) {
     console.log(
-      `${YELLOW}Hint: --old and --new resolve to the same file. Use git: refs to compare versions.${RESET}`
+      `${YELLOW}Hint: --old and --new resolve to the same file. Use git: refs to compare versions.${RESET}`,
     );
   }
 
@@ -270,18 +270,18 @@ async function main() {
 
   // Metadata
   console.log(`\n${BOLD}Metadata:${RESET}`);
-  const tempOld = oldPrompt.temperature ?? 'default';
-  const tempNew = newPrompt.temperature ?? 'default';
+  const tempOld = oldPrompt.temperature ?? "default";
+  const tempNew = newPrompt.temperature ?? "default";
   const tempChanged = tempOld !== tempNew;
   console.log(
-    `  Temperature: ${tempOld} → ${tempNew}${tempChanged ? ` ${YELLOW}<- CHANGED${RESET}` : ` ${DIM}(unchanged)${RESET}`}`
+    `  Temperature: ${tempOld} → ${tempNew}${tempChanged ? ` ${YELLOW}<- CHANGED${RESET}` : ` ${DIM}(unchanged)${RESET}`}`,
   );
 
-  const tokOld = oldPrompt.maxTokens ?? 'default';
-  const tokNew = newPrompt.maxTokens ?? 'default';
+  const tokOld = oldPrompt.maxTokens ?? "default";
+  const tokNew = newPrompt.maxTokens ?? "default";
   const tokChanged = tokOld !== tokNew;
   console.log(
-    `  Max Tokens:  ${tokOld} → ${tokNew}${tokChanged ? ` ${YELLOW}<- CHANGED${RESET}` : ` ${DIM}(unchanged)${RESET}`}`
+    `  Max Tokens:  ${tokOld} → ${tokNew}${tokChanged ? ` ${YELLOW}<- CHANGED${RESET}` : ` ${DIM}(unchanged)${RESET}`}`,
   );
 
   // Section token comparison
@@ -289,9 +289,9 @@ async function main() {
   const colW = 30;
   const numW = 8;
   console.log(
-    `  ${'Section'.padEnd(colW)} ${'Old'.padStart(numW)} ${'New'.padStart(numW)} ${'Delta'.padStart(numW + 6)}`
+    `  ${"Section".padEnd(colW)} ${"Old".padStart(numW)} ${"New".padStart(numW)} ${"Delta".padStart(numW + 6)}`,
   );
-  console.log(`  ${'─'.repeat(colW + numW * 2 + numW + 8)}`);
+  console.log(`  ${"─".repeat(colW + numW * 2 + numW + 8)}`);
 
   let totalOld = 0;
   let totalNew = 0;
@@ -305,7 +305,7 @@ async function main() {
     totalNew += nTok;
     const d = nTok - oTok;
 
-    let suffix = '';
+    let suffix = "";
     if (!os) suffix = `  ${GREEN}<- ADDED${RESET}`;
     else if (!ns) suffix = `  ${RED}<- REMOVED${RESET}`;
     else if (d !== 0) suffix = `  ${YELLOW}<- CHANGED${RESET}`;
@@ -314,18 +314,18 @@ async function main() {
     const label =
       heading.length > colW - 2 ? `${heading.slice(0, colW - 5)}...` : heading;
     console.log(
-      `  ${label.padEnd(colW)} ${fmt(oTok).padStart(numW)} ${fmt(nTok).padStart(numW)} ${deltaStr(d).padStart(numW + 6 + 10)}${suffix}`
+      `  ${label.padEnd(colW)} ${fmt(oTok).padStart(numW)} ${fmt(nTok).padStart(numW)} ${deltaStr(d).padStart(numW + 6 + 10)}${suffix}`,
     );
   }
 
-  console.log(`  ${'─'.repeat(colW + numW * 2 + numW + 8)}`);
+  console.log(`  ${"─".repeat(colW + numW * 2 + numW + 8)}`);
   const totalDelta = totalNew - totalOld;
   console.log(
-    `  ${'TOTAL'.padEnd(colW)} ${fmt(totalOld).padStart(numW)} ${fmt(totalNew).padStart(numW)} ${deltaStr(totalDelta).padStart(numW + 6 + 10)}`
+    `  ${"TOTAL".padEnd(colW)} ${fmt(totalOld).padStart(numW)} ${fmt(totalNew).padStart(numW)} ${deltaStr(totalDelta).padStart(numW + 6 + 10)}`,
   );
 
   // Text diff
-  if (!values['section-only']) {
+  if (!values["section-only"]) {
     console.log(`\n${BOLD}Text Diff:${RESET}`);
 
     const patch = structuredPatch(
@@ -333,9 +333,9 @@ async function main() {
       newPrompt.label,
       oldRendered,
       newRendered,
-      '',
-      '',
-      { context: 3 }
+      "",
+      "",
+      { context: 3 },
     );
 
     if (patch.hunks.length === 0) {
@@ -351,7 +351,7 @@ async function main() {
           break;
         }
         console.log(
-          `  ${CYAN}@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@${RESET}`
+          `  ${CYAN}@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@${RESET}`,
         );
         lineCount++;
 
@@ -360,9 +360,9 @@ async function main() {
             truncated = true;
             break;
           }
-          if (line.startsWith('+')) {
+          if (line.startsWith("+")) {
             console.log(`  ${GREEN}${line}${RESET}`);
-          } else if (line.startsWith('-')) {
+          } else if (line.startsWith("-")) {
             console.log(`  ${RED}${line}${RESET}`);
           } else {
             console.log(`  ${DIM}${line}${RESET}`);
@@ -373,13 +373,13 @@ async function main() {
 
       if (truncated) {
         console.log(
-          `\n  ${YELLOW}... truncated at ${limit} lines. Use --full to see all.${RESET}`
+          `\n  ${YELLOW}... truncated at ${limit} lines. Use --full to see all.${RESET}`,
         );
       }
     }
   }
 
-  console.log('');
+  console.log("");
 }
 
 main().catch((err: Error) => {

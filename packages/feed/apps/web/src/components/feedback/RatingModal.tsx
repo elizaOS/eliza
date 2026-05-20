@@ -27,13 +27,13 @@
  * />
  * ```
  */
-'use client';
+"use client";
 
-import { cn } from '@feed/shared';
-import { Star, Target, Trophy, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { ReputationBadge } from '../reputation/ReputationBadge';
-import { FeedbackForm } from './FeedbackForm';
+import { cn } from "@feed/shared";
+import { Star, Target, Trophy, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ReputationBadge } from "../reputation/ReputationBadge";
+import { FeedbackForm } from "./FeedbackForm";
 
 interface RatingModalProps {
   isOpen: boolean;
@@ -42,7 +42,7 @@ interface RatingModalProps {
   toUserName?: string;
   toUserReputation?: number;
   context?: {
-    type: 'game' | 'trade' | 'social' | 'general';
+    type: "game" | "trade" | "social" | "general";
     gameId?: string;
     tradeId?: string;
     positionId?: string;
@@ -82,31 +82,31 @@ export function RatingModal({
   };
 
   const getCategoryFromType = (
-    type?: string
+    type?: string,
   ):
-    | 'game_performance'
-    | 'trade_execution'
-    | 'social_interaction'
-    | 'general' => {
+    | "game_performance"
+    | "trade_execution"
+    | "social_interaction"
+    | "general" => {
     switch (type) {
-      case 'game':
-        return 'game_performance';
-      case 'trade':
-        return 'trade_execution';
-      case 'social':
-        return 'social_interaction';
+      case "game":
+        return "game_performance";
+      case "trade":
+        return "trade_execution";
+      case "social":
+        return "social_interaction";
       default:
-        return 'general';
+        return "general";
     }
   };
 
   const getContextIcon = () => {
     switch (context?.type) {
-      case 'game':
+      case "game":
         return Trophy;
-      case 'trade':
+      case "trade":
         return Target;
-      case 'social':
+      case "social":
         return Star;
       default:
         return Star;
@@ -115,14 +115,14 @@ export function RatingModal({
 
   const getContextTitle = (): string => {
     switch (context?.type) {
-      case 'game':
-        return 'Rate Game Performance';
-      case 'trade':
-        return 'Rate Trading Experience';
-      case 'social':
-        return 'Rate Interaction';
+      case "game":
+        return "Rate Game Performance";
+      case "trade":
+        return "Rate Trading Experience";
+      case "social":
+        return "Rate Interaction";
       default:
-        return 'Submit Feedback';
+        return "Submit Feedback";
     }
   };
 
@@ -185,7 +185,7 @@ export function RatingModal({
               <div className="flex items-center gap-3 rounded-lg bg-muted/30 p-4">
                 <div className="flex-1">
                   <div className="font-semibold text-foreground">
-                    {toUserName || 'Unknown User'}
+                    {toUserName || "Unknown User"}
                   </div>
                   {toUserReputation !== undefined && (
                     <div className="mt-1">
@@ -205,9 +205,9 @@ export function RatingModal({
                 toUserName={toUserName}
                 category={getCategoryFromType(context?.type)}
                 interactionType={
-                  context?.type === 'game' || context?.type === 'trade'
-                    ? 'game_to_agent'
-                    : 'user_to_agent'
+                  context?.type === "game" || context?.type === "trade"
+                    ? "game_to_agent"
+                    : "user_to_agent"
                 }
                 gameId={context?.gameId}
                 tradeId={context?.tradeId}
@@ -231,10 +231,10 @@ interface QuickRatingButtonProps {
   userId: string;
   userName?: string;
   userReputation?: number;
-  context?: RatingModalProps['context'];
+  context?: RatingModalProps["context"];
   onSuccess?: () => void;
   className?: string;
-  variant?: 'default' | 'compact' | 'icon';
+  variant?: "default" | "compact" | "icon";
 }
 
 export function QuickRatingButton({
@@ -243,22 +243,22 @@ export function QuickRatingButton({
   userReputation,
   context,
   onSuccess,
-  className = '',
-  variant = 'default',
+  className = "",
+  variant = "default",
 }: QuickRatingButtonProps) {
   const [isOpen, setIsOpen] = useState(false);
 
   const handleOpen = () => setIsOpen(true);
   const handleClose = () => setIsOpen(false);
 
-  if (variant === 'icon') {
+  if (variant === "icon") {
     return (
       <>
         <button
           onClick={handleOpen}
           className={cn(
-            'rounded-lg p-2 transition-colors hover:bg-muted',
-            className
+            "rounded-lg p-2 transition-colors hover:bg-muted",
+            className,
           )}
           aria-label="Rate this user"
         >
@@ -277,15 +277,15 @@ export function QuickRatingButton({
     );
   }
 
-  if (variant === 'compact') {
+  if (variant === "compact") {
     return (
       <>
         <button
           onClick={handleOpen}
           className={cn(
-            'flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm transition-colors',
-            'bg-muted text-foreground hover:bg-muted/70',
-            className
+            "flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm transition-colors",
+            "bg-muted text-foreground hover:bg-muted/70",
+            className,
           )}
         >
           <Star className="h-3 w-3" />
@@ -309,9 +309,9 @@ export function QuickRatingButton({
       <button
         onClick={handleOpen}
         className={cn(
-          'flex items-center gap-2 rounded-lg px-4 py-3 font-semibold transition-colors',
-          'bg-[#1c9cf0] text-primary-foreground hover:bg-[#1c9cf0]/90',
-          className
+          "flex items-center gap-2 rounded-lg px-4 py-3 font-semibold transition-colors",
+          "bg-[#1c9cf0] text-primary-foreground hover:bg-[#1c9cf0]/90",
+          className,
         )}
       >
         <Star className="h-4 w-4" />

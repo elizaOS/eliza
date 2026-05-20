@@ -6,8 +6,8 @@ const ONBOARDING_USERNAME_MIN_LENGTH = 3;
  */
 export function sanitizeOnboardingUsername(username: string): string {
   return username
-    .replace(/^@/, '')
-    .replace(/[^a-zA-Z0-9_]/g, '_')
+    .replace(/^@/, "")
+    .replace(/[^a-zA-Z0-9_]/g, "_")
     .toLowerCase()
     .slice(0, 20);
 }

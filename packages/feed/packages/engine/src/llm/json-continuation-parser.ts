@@ -5,8 +5,8 @@
  * multiple LLM calls due to token limits.
  */
 
-import { logger } from '@feed/shared';
-import type { JsonValue } from '../types/common';
+import { logger } from "@feed/shared";
+import type { JsonValue } from "../types/common";
 
 export interface ParsedContent {
   content: string;
@@ -21,19 +21,19 @@ export function cleanMarkdownCodeBlocks(content: string): string {
   let cleaned = content.trim();
 
   // Remove markdown code fences
-  if (cleaned.startsWith('```')) {
-    const lines = cleaned.split('\n');
+  if (cleaned.startsWith("```")) {
+    const lines = cleaned.split("\n");
     const jsonStartIndex = lines.findIndex(
-      (line) => line.trim().startsWith('{') || line.trim().startsWith('[')
+      (line) => line.trim().startsWith("{") || line.trim().startsWith("["),
     );
     if (jsonStartIndex !== -1) {
-      cleaned = lines.slice(jsonStartIndex).join('\n');
+      cleaned = lines.slice(jsonStartIndex).join("\n");
     }
-    cleaned = cleaned.replace(/```\s*$/g, '').trim();
+    cleaned = cleaned.replace(/```\s*$/g, "").trim();
   }
 
   // Remove any remaining code fence markers
-  cleaned = cleaned.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+  cleaned = cleaned.replace(/```json\n?/g, "").replace(/```\n?/g, "");
 
   return cleaned.trim();
 }
@@ -43,7 +43,7 @@ export function cleanMarkdownCodeBlocks(content: string): string {
  */
 export function extractJsonFromText(content: string): string {
   // If it already starts with JSON, return as-is
-  if (content.startsWith('{') || content.startsWith('[')) {
+  if (content.startsWith("{") || content.startsWith("[")) {
     return content;
   }
 
@@ -69,12 +69,12 @@ export function extractJsonArrays(content: string): string[] {
   for (let i = 0; i < content.length; i++) {
     const char = content[i];
 
-    if (char === '[') {
+    if (char === "[") {
       if (depth === 0) {
         startIndex = i;
       }
       depth++;
-    } else if (char === ']') {
+    } else if (char === "]") {
       depth--;
       if (depth === 0 && startIndex !== -1) {
         // Found a complete array
@@ -105,7 +105,7 @@ export function attemptJsonRepair(jsonStr: string): string | null {
       continue;
     }
 
-    if (char === '\\') {
+    if (char === "\\") {
       escapeNext = true;
       continue;
     }
@@ -117,10 +117,10 @@ export function attemptJsonRepair(jsonStr: string): string | null {
 
     if (inString) continue;
 
-    if (char === '[') arrayDepth++;
-    if (char === ']') arrayDepth--;
-    if (char === '{') objectDepth++;
-    if (char === '}') objectDepth--;
+    if (char === "[") arrayDepth++;
+    if (char === "]") arrayDepth--;
+    if (char === "{") objectDepth++;
+    if (char === "}") objectDepth--;
   }
 
   // If we're in a string, close it
@@ -129,17 +129,17 @@ export function attemptJsonRepair(jsonStr: string): string | null {
   }
 
   // Remove any trailing commas before closing
-  repaired = repaired.replace(/,\s*$/, '');
+  repaired = repaired.replace(/,\s*$/, "");
 
   // Close any open objects
   while (objectDepth > 0) {
-    repaired += '}';
+    repaired += "}";
     objectDepth--;
   }
 
   // Close any open arrays
   while (arrayDepth > 0) {
-    repaired += ']';
+    repaired += "]";
     arrayDepth--;
   }
 
@@ -157,7 +157,7 @@ export function attemptJsonRepair(jsonStr: string): string | null {
  */
 export function mergeJsonArrays(
   arrayStrings: string[],
-  options: { repairTruncated?: boolean } = {}
+  options: { repairTruncated?: boolean } = {},
 ): JsonValue[] {
   const allItems: JsonValue[] = [];
   const { repairTruncated = false } = options;
@@ -183,12 +183,12 @@ export function mergeJsonArrays(
       }
     } catch (error) {
       logger.warn(
-        'Failed to parse JSON fragment',
+        "Failed to parse JSON fragment",
         {
           error,
           fragment: jsonStr.substring(0, 100),
         },
-        'JsonContinuationParser'
+        "JsonContinuationParser",
       );
       // Skip invalid fragments
     }
@@ -220,11 +220,11 @@ export function parseContinuationContent(content: string): JsonValue | null {
 
   if (arrays.length > 0) {
     logger.info(
-      'Found multiple JSON arrays in continuation',
+      "Found multiple JSON arrays in continuation",
       {
         count: arrays.length,
       },
-      'JsonContinuationParser'
+      "JsonContinuationParser",
     );
 
     // Try without repair first
@@ -237,11 +237,11 @@ export function parseContinuationContent(content: string): JsonValue | null {
     const mergedWithRepair = mergeJsonArrays(arrays, { repairTruncated: true });
     if (mergedWithRepair.length > 0) {
       logger.info(
-        'Successfully repaired truncated JSON',
+        "Successfully repaired truncated JSON",
         {
           items: mergedWithRepair.length,
         },
-        'JsonContinuationParser'
+        "JsonContinuationParser",
       );
       return mergedWithRepair;
     }

@@ -11,13 +11,13 @@
  * Strategy: mock DB and auth; exercise real route handler code.
  */
 
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
-import type { NextRequest } from 'next/server';
+import { beforeEach, describe, expect, mock, test } from "bun:test";
+import type { NextRequest } from "next/server";
 
 // ─── Mock Setup ──────────────────────────────────────────────────────────────
 
-const MANAGER_USER_ID = 'manager-001';
-const AGENT_USER_ID = 'agent-001';
+const MANAGER_USER_ID = "manager-001";
+const AGENT_USER_ID = "agent-001";
 
 const mockAuthenticateUser = mock(async () => ({
   id: MANAGER_USER_ID,
@@ -40,7 +40,7 @@ function resetDbMocks() {
   usersQueryResult = [
     { id: AGENT_USER_ID, isAgent: true, managedBy: MANAGER_USER_ID },
   ];
-  configQueryResult = [{ id: 'cfg-1', priceAlerts: [] }];
+  configQueryResult = [{ id: "cfg-1", priceAlerts: [] }];
   mockDbUpdateWhere.mockClear();
   mockDbUpdateSet.mockClear();
   mockDbUpdate.mockClear();
@@ -58,17 +58,17 @@ const mockDbSelectWhere = mock(() => ({ limit: mockDbSelectLimit }));
 const mockDbSelectFrom = mock(() => ({ where: mockDbSelectWhere }));
 const mockDbSelect = mock(() => ({ from: mockDbSelectFrom }));
 
-const _actualFeedApi = await import('@feed/api');
-mock.module('@feed/api', () => ({
+const _actualFeedApi = await import("@feed/api");
+mock.module("@feed/api", () => ({
   ..._actualFeedApi,
   authenticateUser: mockAuthenticateUser,
   withErrorHandling: (
-    handler: (req: NextRequest, ctx: unknown) => Promise<unknown>
+    handler: (req: NextRequest, ctx: unknown) => Promise<unknown>,
   ) => handler,
 }));
 
-const _actualDb = await import('@feed/db');
-mock.module('@feed/db', () => ({
+const _actualDb = await import("@feed/db");
+mock.module("@feed/db", () => ({
   ..._actualDb,
   db: {
     get select() {
@@ -78,23 +78,23 @@ mock.module('@feed/db', () => ({
       return mockDbUpdate;
     },
   },
-  eq: (a: unknown, b: unknown) => ({ op: 'eq', a, b }),
+  eq: (a: unknown, b: unknown) => ({ op: "eq", a, b }),
   userAgentConfigs: {
-    id: 'userAgentConfigs.id',
-    userId: 'userAgentConfigs.userId',
-    priceAlerts: 'userAgentConfigs.priceAlerts',
+    id: "userAgentConfigs.id",
+    userId: "userAgentConfigs.userId",
+    priceAlerts: "userAgentConfigs.priceAlerts",
   },
   users: {
-    id: 'users.id',
-    isAgent: 'users.isAgent',
-    managedBy: 'users.managedBy',
+    id: "users.id",
+    isAgent: "users.isAgent",
+    managedBy: "users.managedBy",
   },
 }));
 
-const _actualShared = await import('@feed/shared');
-mock.module('@feed/shared', () => ({
+const _actualShared = await import("@feed/shared");
+mock.module("@feed/shared", () => ({
   ..._actualShared,
-  generateSnowflakeId: mock(async () => 'snowflake-alert-api'),
+  generateSnowflakeId: mock(async () => "snowflake-alert-api"),
   logger: {
     debug: () => {},
     info: () => {},
@@ -106,7 +106,7 @@ mock.module('@feed/shared', () => ({
 // ─── Import after mocks ──────────────────────────────────────────────────────
 
 const { GET, POST, DELETE } = await import(
-  '@/app/api/agents/[agentId]/alerts/route'
+  "@/app/api/agents/[agentId]/alerts/route"
 );
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -114,10 +114,10 @@ const { GET, POST, DELETE } = await import(
 function makeRequest(
   method: string,
   body?: Record<string, unknown>,
-  searchParams?: Record<string, string>
+  searchParams?: Record<string, string>,
 ): NextRequest {
   const url = new URL(
-    `http://localhost:3000/api/agents/${AGENT_USER_ID}/alerts`
+    `http://localhost:3000/api/agents/${AGENT_USER_ID}/alerts`,
   );
   if (searchParams) {
     for (const [k, v] of Object.entries(searchParams)) {
@@ -127,7 +127,7 @@ function makeRequest(
   return {
     method,
     url: url.toString(),
-    headers: new Headers({ Authorization: 'Bearer test-token' }),
+    headers: new Headers({ Authorization: "Bearer test-token" }),
     json: async () => body ?? {},
   } as unknown as NextRequest;
 }
@@ -138,21 +138,21 @@ const routeContext = {
 
 function makeAlert(overrides: Record<string, unknown> = {}) {
   return {
-    id: 'alert-001',
-    tokenSymbol: 'OPENAGI',
-    condition: 'below',
+    id: "alert-001",
+    tokenSymbol: "OPENAGI",
+    condition: "below",
     threshold: 1.0,
-    deliveryChannel: 'team_chat',
+    deliveryChannel: "team_chat",
     enabled: true,
     cooldownMinutes: 15,
-    createdAt: '2025-01-01T00:00:00.000Z',
+    createdAt: "2025-01-01T00:00:00.000Z",
     ...overrides,
   };
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
-describe('Price Alerts API', () => {
+describe("Price Alerts API", () => {
   beforeEach(() => {
     resetDbMocks();
     mockAuthenticateUser.mockClear();
@@ -164,59 +164,59 @@ describe('Price Alerts API', () => {
 
   // ─── Authorization ───────────────────────────────────────────────────
 
-  describe('authorization', () => {
-    test('returns 404 when agent not found', async () => {
+  describe("authorization", () => {
+    test("returns 404 when agent not found", async () => {
       usersQueryResult = []; // No agent
 
-      const req = makeRequest('GET');
+      const req = makeRequest("GET");
       const res = await GET(req, routeContext);
       const body = await res.json();
 
       expect(res.status).toBe(404);
-      expect(body.error).toContain('Agent not found');
+      expect(body.error).toContain("Agent not found");
     });
 
-    test('returns 404 when user is not an agent', async () => {
+    test("returns 404 when user is not an agent", async () => {
       usersQueryResult = [
         { id: AGENT_USER_ID, isAgent: false, managedBy: MANAGER_USER_ID },
       ];
 
-      const req = makeRequest('GET');
+      const req = makeRequest("GET");
       const res = await GET(req, routeContext);
 
       expect(res.status).toBe(404);
     });
 
-    test('returns 403 when caller is not the agent manager', async () => {
+    test("returns 403 when caller is not the agent manager", async () => {
       usersQueryResult = [
-        { id: AGENT_USER_ID, isAgent: true, managedBy: 'other-owner' },
+        { id: AGENT_USER_ID, isAgent: true, managedBy: "other-owner" },
       ];
 
-      const req = makeRequest('GET');
+      const req = makeRequest("GET");
       const res = await GET(req, routeContext);
 
       expect(res.status).toBe(403);
     });
 
-    test('returns 404 when agent config not found', async () => {
+    test("returns 404 when agent config not found", async () => {
       configQueryResult = []; // No config
 
-      const req = makeRequest('GET');
+      const req = makeRequest("GET");
       const res = await GET(req, routeContext);
 
       expect(res.status).toBe(404);
       const body = await res.json();
-      expect(body.error).toContain('configuration not found');
+      expect(body.error).toContain("configuration not found");
     });
   });
 
   // ─── GET ─────────────────────────────────────────────────────────────
 
-  describe('GET /alerts', () => {
-    test('returns empty alerts array', async () => {
-      configQueryResult = [{ id: 'cfg-1', priceAlerts: [] }];
+  describe("GET /alerts", () => {
+    test("returns empty alerts array", async () => {
+      configQueryResult = [{ id: "cfg-1", priceAlerts: [] }];
 
-      const req = makeRequest('GET');
+      const req = makeRequest("GET");
       const res = await GET(req, routeContext);
       const body = await res.json();
 
@@ -225,14 +225,14 @@ describe('Price Alerts API', () => {
       expect(body.alerts).toEqual([]);
     });
 
-    test('returns populated alerts array', async () => {
+    test("returns populated alerts array", async () => {
       const alerts = [
         makeAlert(),
-        makeAlert({ id: 'a2', tokenSymbol: 'TSLAI' }),
+        makeAlert({ id: "a2", tokenSymbol: "TSLAI" }),
       ];
-      configQueryResult = [{ id: 'cfg-1', priceAlerts: alerts }];
+      configQueryResult = [{ id: "cfg-1", priceAlerts: alerts }];
 
-      const req = makeRequest('GET');
+      const req = makeRequest("GET");
       const res = await GET(req, routeContext);
       const body = await res.json();
 
@@ -240,10 +240,10 @@ describe('Price Alerts API', () => {
       expect(body.alerts).toHaveLength(2);
     });
 
-    test('returns null priceAlerts as empty array', async () => {
-      configQueryResult = [{ id: 'cfg-1', priceAlerts: null }];
+    test("returns null priceAlerts as empty array", async () => {
+      configQueryResult = [{ id: "cfg-1", priceAlerts: null }];
 
-      const req = makeRequest('GET');
+      const req = makeRequest("GET");
       const res = await GET(req, routeContext);
       const body = await res.json();
 
@@ -254,10 +254,10 @@ describe('Price Alerts API', () => {
 
   // ─── POST ────────────────────────────────────────────────────────────
 
-  describe('POST /alerts', () => {
-    test('returns 400 when tokenSymbol is missing', async () => {
-      const req = makeRequest('POST', {
-        condition: 'below',
+  describe("POST /alerts", () => {
+    test("returns 400 when tokenSymbol is missing", async () => {
+      const req = makeRequest("POST", {
+        condition: "below",
         threshold: 1.0,
       });
       const res = await POST(req, routeContext);
@@ -265,10 +265,10 @@ describe('Price Alerts API', () => {
       expect(res.status).toBe(400);
     });
 
-    test('returns 400 when condition is invalid', async () => {
-      const req = makeRequest('POST', {
-        tokenSymbol: 'OPENAGI',
-        condition: 'around',
+    test("returns 400 when condition is invalid", async () => {
+      const req = makeRequest("POST", {
+        tokenSymbol: "OPENAGI",
+        condition: "around",
         threshold: 1.0,
       });
       const res = await POST(req, routeContext);
@@ -276,10 +276,10 @@ describe('Price Alerts API', () => {
       expect(res.status).toBe(400);
     });
 
-    test('returns 400 when threshold is negative', async () => {
-      const req = makeRequest('POST', {
-        tokenSymbol: 'OPENAGI',
-        condition: 'below',
+    test("returns 400 when threshold is negative", async () => {
+      const req = makeRequest("POST", {
+        tokenSymbol: "OPENAGI",
+        condition: "below",
         threshold: -5,
       });
       const res = await POST(req, routeContext);
@@ -287,10 +287,10 @@ describe('Price Alerts API', () => {
       expect(res.status).toBe(400);
     });
 
-    test('returns 400 when threshold is zero', async () => {
-      const req = makeRequest('POST', {
-        tokenSymbol: 'OPENAGI',
-        condition: 'below',
+    test("returns 400 when threshold is zero", async () => {
+      const req = makeRequest("POST", {
+        tokenSymbol: "OPENAGI",
+        condition: "below",
         threshold: 0,
       });
       const res = await POST(req, routeContext);
@@ -298,35 +298,35 @@ describe('Price Alerts API', () => {
       expect(res.status).toBe(400);
     });
 
-    test('returns 400 when threshold is not a number', async () => {
-      const req = makeRequest('POST', {
-        tokenSymbol: 'OPENAGI',
-        condition: 'below',
-        threshold: 'one dollar',
+    test("returns 400 when threshold is not a number", async () => {
+      const req = makeRequest("POST", {
+        tokenSymbol: "OPENAGI",
+        condition: "below",
+        threshold: "one dollar",
       });
       const res = await POST(req, routeContext);
 
       expect(res.status).toBe(400);
     });
 
-    test('returns 400 when deliveryChannel=group but no deliveryChatId', async () => {
-      const req = makeRequest('POST', {
-        tokenSymbol: 'OPENAGI',
-        condition: 'below',
+    test("returns 400 when deliveryChannel=group but no deliveryChatId", async () => {
+      const req = makeRequest("POST", {
+        tokenSymbol: "OPENAGI",
+        condition: "below",
         threshold: 1.0,
-        deliveryChannel: 'group',
+        deliveryChannel: "group",
       });
       const res = await POST(req, routeContext);
 
       expect(res.status).toBe(400);
       const body = await res.json();
-      expect(body.error).toContain('deliveryChatId');
+      expect(body.error).toContain("deliveryChatId");
     });
 
-    test('returns 400 when tokenSymbol is empty string', async () => {
-      const req = makeRequest('POST', {
-        tokenSymbol: '   ',
-        condition: 'below',
+    test("returns 400 when tokenSymbol is empty string", async () => {
+      const req = makeRequest("POST", {
+        tokenSymbol: "   ",
+        condition: "below",
         threshold: 1.0,
       });
       const res = await POST(req, routeContext);
@@ -334,12 +334,12 @@ describe('Price Alerts API', () => {
       expect(res.status).toBe(400);
     });
 
-    test('creates new alert with 201 status', async () => {
-      configQueryResult = [{ id: 'cfg-1', priceAlerts: [] }];
+    test("creates new alert with 201 status", async () => {
+      configQueryResult = [{ id: "cfg-1", priceAlerts: [] }];
 
-      const req = makeRequest('POST', {
-        tokenSymbol: 'openagi', // lowercase
-        condition: 'below',
+      const req = makeRequest("POST", {
+        tokenSymbol: "openagi", // lowercase
+        condition: "below",
         threshold: 1.0,
       });
       const res = await POST(req, routeContext);
@@ -347,24 +347,24 @@ describe('Price Alerts API', () => {
 
       expect(res.status).toBe(201);
       expect(body.success).toBe(true);
-      expect(body.alert.tokenSymbol).toBe('OPENAGI'); // Uppercased
-      expect(body.alert.deliveryChannel).toBe('team_chat'); // Default
+      expect(body.alert.tokenSymbol).toBe("OPENAGI"); // Uppercased
+      expect(body.alert.deliveryChannel).toBe("team_chat"); // Default
       expect(body.alert.cooldownMinutes).toBe(15); // Default
       expect(body.updated).toBe(false);
     });
 
-    test('updates existing alert with 200 status', async () => {
+    test("updates existing alert with 200 status", async () => {
       const existing = makeAlert({
-        tokenSymbol: 'OPENAGI',
-        condition: 'below',
+        tokenSymbol: "OPENAGI",
+        condition: "below",
         threshold: 0.5,
-        lastTriggeredAt: '2025-01-01T00:00:00.000Z',
+        lastTriggeredAt: "2025-01-01T00:00:00.000Z",
       });
-      configQueryResult = [{ id: 'cfg-1', priceAlerts: [existing] }];
+      configQueryResult = [{ id: "cfg-1", priceAlerts: [existing] }];
 
-      const req = makeRequest('POST', {
-        tokenSymbol: 'OPENAGI',
-        condition: 'below',
+      const req = makeRequest("POST", {
+        tokenSymbol: "OPENAGI",
+        condition: "below",
         threshold: 0.8, // Updated threshold
       });
       const res = await POST(req, routeContext);
@@ -376,43 +376,43 @@ describe('Price Alerts API', () => {
       expect(body.alert.lastTriggeredAt).toBeUndefined(); // Reset on update
     });
 
-    test('creates alert with custom delivery and cooldown', async () => {
-      configQueryResult = [{ id: 'cfg-1', priceAlerts: [] }];
+    test("creates alert with custom delivery and cooldown", async () => {
+      configQueryResult = [{ id: "cfg-1", priceAlerts: [] }];
 
-      const req = makeRequest('POST', {
-        tokenSymbol: 'TSLAI',
-        condition: 'above',
+      const req = makeRequest("POST", {
+        tokenSymbol: "TSLAI",
+        condition: "above",
         threshold: 2.0,
-        deliveryChannel: 'group',
-        deliveryChatId: 'group-999',
+        deliveryChannel: "group",
+        deliveryChatId: "group-999",
         cooldownMinutes: 30,
       });
       const res = await POST(req, routeContext);
       const body = await res.json();
 
       expect(res.status).toBe(201);
-      expect(body.alert.deliveryChannel).toBe('group');
-      expect(body.alert.deliveryChatId).toBe('group-999');
+      expect(body.alert.deliveryChannel).toBe("group");
+      expect(body.alert.deliveryChatId).toBe("group-999");
       expect(body.alert.cooldownMinutes).toBe(30);
     });
 
-    test('does not duplicate when same token+condition exists', async () => {
+    test("does not duplicate when same token+condition exists", async () => {
       const existing = makeAlert({
-        tokenSymbol: 'OPENAGI',
-        condition: 'below',
+        tokenSymbol: "OPENAGI",
+        condition: "below",
         threshold: 0.5,
       });
-      configQueryResult = [{ id: 'cfg-1', priceAlerts: [existing] }];
+      configQueryResult = [{ id: "cfg-1", priceAlerts: [existing] }];
 
-      const req = makeRequest('POST', {
-        tokenSymbol: 'OPENAGI',
-        condition: 'below',
+      const req = makeRequest("POST", {
+        tokenSymbol: "OPENAGI",
+        condition: "below",
         threshold: 1.0,
       });
       await POST(req, routeContext);
 
       // Verify only 1 alert in the update (not 2)
-      const setArg = mockDbUpdateSet.mock.calls[0]![0] as Record<
+      const setArg = mockDbUpdateSet.mock.calls[0]?.[0] as Record<
         string,
         unknown
       >;
@@ -423,46 +423,46 @@ describe('Price Alerts API', () => {
 
   // ─── DELETE ──────────────────────────────────────────────────────────
 
-  describe('DELETE /alerts', () => {
-    test('returns 400 when no identifier provided', async () => {
-      const req = makeRequest('DELETE');
+  describe("DELETE /alerts", () => {
+    test("returns 400 when no identifier provided", async () => {
+      const req = makeRequest("DELETE");
       const res = await DELETE(req, routeContext);
 
       expect(res.status).toBe(400);
     });
 
-    test('deletes by alertId', async () => {
+    test("deletes by alertId", async () => {
       const alerts = [
-        makeAlert({ id: 'a1' }),
-        makeAlert({ id: 'a2', tokenSymbol: 'TSLAI' }),
+        makeAlert({ id: "a1" }),
+        makeAlert({ id: "a2", tokenSymbol: "TSLAI" }),
       ];
-      configQueryResult = [{ id: 'cfg-1', priceAlerts: alerts }];
+      configQueryResult = [{ id: "cfg-1", priceAlerts: alerts }];
 
-      const req = makeRequest('DELETE', undefined, { alertId: 'a1' });
+      const req = makeRequest("DELETE", undefined, { alertId: "a1" });
       const res = await DELETE(req, routeContext);
       const body = await res.json();
 
       expect(res.status).toBe(200);
       expect(body.success).toBe(true);
-      expect(body.removed.id).toBe('a1');
+      expect(body.removed.id).toBe("a1");
 
       // Verify a2 remains
-      const setArg = mockDbUpdateSet.mock.calls[0]![0] as Record<
+      const setArg = mockDbUpdateSet.mock.calls[0]?.[0] as Record<
         string,
         unknown
       >;
       const remaining = setArg.priceAlerts as Array<Record<string, unknown>>;
       expect(remaining).toHaveLength(1);
-      expect(remaining[0]!.id).toBe('a2');
+      expect(remaining[0]?.id).toBe("a2");
     });
 
-    test('deletes by tokenSymbol', async () => {
+    test("deletes by tokenSymbol", async () => {
       configQueryResult = [
-        { id: 'cfg-1', priceAlerts: [makeAlert({ tokenSymbol: 'OPENAGI' })] },
+        { id: "cfg-1", priceAlerts: [makeAlert({ tokenSymbol: "OPENAGI" })] },
       ];
 
-      const req = makeRequest('DELETE', undefined, {
-        tokenSymbol: 'OPENAGI',
+      const req = makeRequest("DELETE", undefined, {
+        tokenSymbol: "OPENAGI",
       });
       const res = await DELETE(req, routeContext);
       const body = await res.json();
@@ -470,63 +470,63 @@ describe('Price Alerts API', () => {
       expect(body.success).toBe(true);
     });
 
-    test('deletes by tokenSymbol + condition', async () => {
+    test("deletes by tokenSymbol + condition", async () => {
       const alerts = [
-        makeAlert({ id: 'a1', tokenSymbol: 'OPENAGI', condition: 'below' }),
-        makeAlert({ id: 'a2', tokenSymbol: 'OPENAGI', condition: 'above' }),
+        makeAlert({ id: "a1", tokenSymbol: "OPENAGI", condition: "below" }),
+        makeAlert({ id: "a2", tokenSymbol: "OPENAGI", condition: "above" }),
       ];
-      configQueryResult = [{ id: 'cfg-1', priceAlerts: alerts }];
+      configQueryResult = [{ id: "cfg-1", priceAlerts: alerts }];
 
-      const req = makeRequest('DELETE', undefined, {
-        tokenSymbol: 'OPENAGI',
-        condition: 'above',
+      const req = makeRequest("DELETE", undefined, {
+        tokenSymbol: "OPENAGI",
+        condition: "above",
       });
       const res = await DELETE(req, routeContext);
       const body = await res.json();
 
-      expect(body.removed.id).toBe('a2');
-      const setArg = mockDbUpdateSet.mock.calls[0]![0] as Record<
+      expect(body.removed.id).toBe("a2");
+      const setArg = mockDbUpdateSet.mock.calls[0]?.[0] as Record<
         string,
         unknown
       >;
       const remaining = setArg.priceAlerts as Array<Record<string, unknown>>;
       expect(remaining).toHaveLength(1);
-      expect(remaining[0]!.condition).toBe('below');
+      expect(remaining[0]?.condition).toBe("below");
     });
 
-    test('returns 404 when alert not found by alertId', async () => {
+    test("returns 404 when alert not found by alertId", async () => {
       configQueryResult = [
-        { id: 'cfg-1', priceAlerts: [makeAlert({ id: 'a1' })] },
+        { id: "cfg-1", priceAlerts: [makeAlert({ id: "a1" })] },
       ];
 
-      const req = makeRequest('DELETE', undefined, {
-        alertId: 'nonexistent',
+      const req = makeRequest("DELETE", undefined, {
+        alertId: "nonexistent",
       });
       const res = await DELETE(req, routeContext);
 
       expect(res.status).toBe(404);
     });
 
-    test('returns 404 when alert not found by tokenSymbol', async () => {
+    test("returns 404 when alert not found by tokenSymbol", async () => {
       configQueryResult = [
-        { id: 'cfg-1', priceAlerts: [makeAlert({ tokenSymbol: 'OPENAGI' })] },
+        { id: "cfg-1", priceAlerts: [makeAlert({ tokenSymbol: "OPENAGI" })] },
       ];
 
-      const req = makeRequest('DELETE', undefined, {
-        tokenSymbol: 'NONEXISTENT',
+      const req = makeRequest("DELETE", undefined, {
+        tokenSymbol: "NONEXISTENT",
       });
       const res = await DELETE(req, routeContext);
 
       expect(res.status).toBe(404);
     });
 
-    test('tokenSymbol matching is case-insensitive', async () => {
+    test("tokenSymbol matching is case-insensitive", async () => {
       configQueryResult = [
-        { id: 'cfg-1', priceAlerts: [makeAlert({ tokenSymbol: 'OPENAGI' })] },
+        { id: "cfg-1", priceAlerts: [makeAlert({ tokenSymbol: "OPENAGI" })] },
       ];
 
-      const req = makeRequest('DELETE', undefined, {
-        tokenSymbol: 'openagi',
+      const req = makeRequest("DELETE", undefined, {
+        tokenSymbol: "openagi",
       });
       const res = await DELETE(req, routeContext);
       const body = await res.json();

@@ -4,10 +4,10 @@
  * Uses @a2a-js/sdk client for A2A communication
  */
 
-import type { AgentCard, Message, Task } from '@a2a-js/sdk';
-import { A2AClient } from '@a2a-js/sdk/client';
-import type { IAgentRuntime } from '@elizaos/core';
-import { logger } from '../../shared/logger';
+import type { AgentCard, Message, Task } from "@a2a-js/sdk";
+import { A2AClient } from "@a2a-js/sdk/client";
+import type { IAgentRuntime } from "@elizaos/core";
+import { logger } from "../../shared/logger";
 
 export interface FeedA2ARuntime extends IAgentRuntime {
   feedA2AClient?: A2AClient;
@@ -19,18 +19,18 @@ export interface FeedA2ARuntime extends IAgentRuntime {
  */
 export async function initializeA2AClient(
   endpoint?: string,
-  apiKey?: string
+  apiKey?: string,
 ): Promise<A2AClient> {
   const feedEndpoint =
     endpoint ||
     process.env.FEED_A2A_ENDPOINT ||
-    process.env.NEXT_PUBLIC_APP_URL + '/.well-known/agent-card.json' ||
-    'http://localhost:3000/.well-known/agent-card.json';
+    `${process.env.NEXT_PUBLIC_APP_URL}/.well-known/agent-card.json` ||
+    "http://localhost:3000/.well-known/agent-card.json";
 
   // Get API key from parameter or environment
   const effectiveApiKey = apiKey || process.env.FEED_A2A_API_KEY;
 
-  logger.info('Initializing A2A client for Feed', {
+  logger.info("Initializing A2A client for Feed", {
     endpoint: feedEndpoint,
     hasApiKey: !!effectiveApiKey,
   });
@@ -38,13 +38,13 @@ export async function initializeA2AClient(
   // Create custom fetch that includes API key header for authentication
   const authenticatedFetch = async (
     url: string | URL | Request,
-    init?: RequestInit
+    init?: RequestInit,
   ): Promise<Response> => {
     const headers = new Headers(init?.headers);
 
     // Add API key for A2A authentication
     if (effectiveApiKey) {
-      headers.set('x-feed-api-key', effectiveApiKey);
+      headers.set("x-feed-api-key", effectiveApiKey);
     }
 
     return fetch(url, { ...init, headers });
@@ -58,14 +58,14 @@ export async function initializeA2AClient(
   // Validate Feed capabilities
   const card = await client.getAgentCard();
 
-  if (card.protocolVersion !== '0.3.0') {
-    logger.warn('Feed using non-standard A2A protocol version', {
-      expected: '0.3.0',
+  if (card.protocolVersion !== "0.3.0") {
+    logger.warn("Feed using non-standard A2A protocol version", {
+      expected: "0.3.0",
       actual: card.protocolVersion,
     });
   }
 
-  logger.info('A2A client initialized successfully', {
+  logger.info("A2A client initialized successfully", {
     name: card.name,
     skills: card.skills.length,
     transport: card.preferredTransport,
@@ -86,21 +86,21 @@ export async function initializeA2AClient(
 export async function executeFeedSkill(
   client: A2AClient,
   skillId: string,
-  message: string
+  message: string,
 ): Promise<Task | Message> {
-  logger.info('Executing Feed skill via A2A', {
+  logger.info("Executing Feed skill via A2A", {
     skillId,
     messageLength: message.length,
   });
 
   const response = await client.sendMessage({
     message: {
-      kind: 'message',
+      kind: "message",
       messageId: crypto.randomUUID(),
-      role: 'user',
+      role: "user",
       parts: [
         {
-          kind: 'text',
+          kind: "text",
           text: message,
           metadata: {
             skillId, // Hint which skill to use
@@ -113,30 +113,30 @@ export async function executeFeedSkill(
   // Handle SendMessageResponse - extract Task or Message from result
   // Type guard to check if response is Task or Message
   function isTaskOrMessage(obj: object): obj is Task | Message {
-    return 'kind' in obj && (obj.kind === 'task' || obj.kind === 'message');
+    return "kind" in obj && (obj.kind === "task" || obj.kind === "message");
   }
 
   let result: Task | Message;
   if (
-    'result' in response &&
+    "result" in response &&
     response.result !== null &&
-    typeof response.result === 'object' &&
+    typeof response.result === "object" &&
     isTaskOrMessage(response.result)
   ) {
     result = response.result;
   } else if (
-    typeof response === 'object' &&
+    typeof response === "object" &&
     response !== null &&
     isTaskOrMessage(response)
   ) {
     result = response;
   } else {
-    throw new Error('Unexpected response format from sendMessage');
+    throw new Error("Unexpected response format from sendMessage");
   }
 
-  logger.info('Skill execution response received', {
+  logger.info("Skill execution response received", {
     skillId,
-    responseType: 'kind' in result ? result.kind : 'unknown',
+    responseType: "kind" in result ? result.kind : "unknown",
   });
 
   return result;
@@ -144,7 +144,7 @@ export async function executeFeedSkill(
 
 // Type guard to check if response is Task
 function isTask(obj: object): obj is Task {
-  return 'kind' in obj && obj.kind === 'task';
+  return "kind" in obj && obj.kind === "task";
 }
 
 // Type guard for GetTaskResponse result containing task
@@ -153,7 +153,7 @@ interface GetTaskResult {
 }
 
 function hasTaskResult(obj: object): obj is GetTaskResult {
-  return 'task' in obj;
+  return "task" in obj;
 }
 
 /**
@@ -169,9 +169,9 @@ export async function waitForTaskCompletion(
   client: A2AClient,
   taskId: string,
   maxAttempts: number = 30,
-  intervalMs: number = 1000
+  intervalMs: number = 1000,
 ): Promise<Task> {
-  logger.info('Waiting for task completion', { taskId, maxAttempts });
+  logger.info("Waiting for task completion", { taskId, maxAttempts });
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const response = await client.getTask({ id: taskId });
@@ -179,26 +179,26 @@ export async function waitForTaskCompletion(
     // Extract task from response
     let task: Task;
     if (
-      'result' in response &&
+      "result" in response &&
       response.result &&
-      typeof response.result === 'object' &&
+      typeof response.result === "object" &&
       hasTaskResult(response.result)
     ) {
       task = response.result.task;
     } else if (isTask(response)) {
       task = response;
     } else {
-      throw new Error('Invalid task response format');
+      throw new Error("Invalid task response format");
     }
 
-    const terminalStates = ['completed', 'failed', 'canceled', 'rejected'];
+    const terminalStates = ["completed", "failed", "canceled", "rejected"];
 
     if (
       task.status &&
-      'state' in task.status &&
+      "state" in task.status &&
       terminalStates.includes(task.status.state as string)
     ) {
-      logger.info('Task reached terminal state', {
+      logger.info("Task reached terminal state", {
         taskId,
         state: task.status.state,
         attempts: attempt + 1,
@@ -210,15 +210,15 @@ export async function waitForTaskCompletion(
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
   }
 
-  logger.warn('Task did not complete within timeout', { taskId, maxAttempts });
+  logger.warn("Task did not complete within timeout", { taskId, maxAttempts });
 
   // Return last known state
   const response = await client.getTask({ id: taskId });
 
   if (
-    'result' in response &&
+    "result" in response &&
     response.result &&
-    typeof response.result === 'object' &&
+    typeof response.result === "object" &&
     hasTaskResult(response.result)
   ) {
     return response.result.task;
@@ -229,7 +229,7 @@ export async function waitForTaskCompletion(
     return response;
   }
 
-  throw new Error('Invalid task response format from getTask');
+  throw new Error("Invalid task response format from getTask");
 }
 
 /**
@@ -240,24 +240,24 @@ export async function waitForTaskCompletion(
 export async function executeAndWait(
   client: A2AClient,
   skillId: string,
-  message: string
+  message: string,
 ): Promise<Task> {
   const response = await executeFeedSkill(client, skillId, message);
 
-  if ('kind' in response && response.kind === 'task') {
+  if ("kind" in response && response.kind === "task") {
     const task = response as Task;
     return await waitForTaskCompletion(client, task.id);
   }
 
   // If direct message response, wrap it
-  throw new Error('Expected task response, got direct message');
+  throw new Error("Expected task response, got direct message");
 }
 
 /**
  * Get available Feed skills from AgentCard
  */
 export async function getFeedSkills(
-  client: A2AClient
+  client: A2AClient,
 ): Promise<
   Array<{ id: string; name: string; description: string; examples: string[] }>
 > {

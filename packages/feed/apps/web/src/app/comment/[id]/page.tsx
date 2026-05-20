@@ -1,41 +1,41 @@
-'use client';
+"use client";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
-import type { CommentData } from '@feed/shared';
-import { cn, getProfileUrl } from '@feed/shared';
-import { ArrowLeft, MessageCircle, Repeat2 } from 'lucide-react';
-import nextDynamic from 'next/dynamic';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { use, useCallback, useEffect, useRef, useState } from 'react';
-import { CommentInput } from '@/components/interactions/CommentInput';
-import { InteractionBar } from '@/components/interactions/InteractionBar';
-import { LikeButton } from '@/components/interactions/LikeButton';
-import { ModerationMenu } from '@/components/moderation/ModerationMenu';
-import { formatTimeAgo } from '@/components/posts/CommentPreview';
-import { Avatar } from '@/components/shared/Avatar';
-import { EmptyState } from '@/components/shared/EmptyState';
-import { PageContainer } from '@/components/shared/PageContainer';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { TaggedText } from '@/components/shared/TaggedText';
+import type { CommentData } from "@feed/shared";
+import { cn, getProfileUrl } from "@feed/shared";
+import { ArrowLeft, MessageCircle, Repeat2 } from "lucide-react";
+import nextDynamic from "next/dynamic";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { use, useCallback, useEffect, useRef, useState } from "react";
+import { CommentInput } from "@/components/interactions/CommentInput";
+import { InteractionBar } from "@/components/interactions/InteractionBar";
+import { LikeButton } from "@/components/interactions/LikeButton";
+import { ModerationMenu } from "@/components/moderation/ModerationMenu";
+import { formatTimeAgo } from "@/components/posts/CommentPreview";
+import { Avatar } from "@/components/shared/Avatar";
+import { EmptyState } from "@/components/shared/EmptyState";
+import { PageContainer } from "@/components/shared/PageContainer";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { TaggedText } from "@/components/shared/TaggedText";
 import {
   isNpcIdentifier,
   VerifiedBadge,
-} from '@/components/shared/VerifiedBadge';
-import { useAuth } from '@/hooks/useAuth';
-import { MAX_REPLY_COUNT } from '@/lib/constants';
-import { apiUrl } from '@/utils/api-url';
+} from "@/components/shared/VerifiedBadge";
+import { useAuth } from "@/hooks/useAuth";
+import { MAX_REPLY_COUNT } from "@/lib/constants";
+import { apiUrl } from "@/utils/api-url";
 
 const WidgetSidebar = nextDynamic(
   () =>
-    import('@/components/shared/WidgetSidebar').then((m) => ({
+    import("@/components/shared/WidgetSidebar").then((m) => ({
       default: m.WidgetSidebar,
     })),
   {
     ssr: false,
     loading: () => <div className="hidden w-96 flex-none xl:block" />,
-  }
+  },
 );
 
 interface CommentPageProps {
@@ -406,13 +406,13 @@ function ReplyCard({
               <TaggedText
                 text={reply.content}
                 onTagClick={(tag) => {
-                  if (tag.startsWith('@')) {
+                  if (tag.startsWith("@")) {
                     const username = tag.slice(1);
                     router.push(`/profile/${username}`);
-                  } else if (tag.startsWith('$')) {
+                  } else if (tag.startsWith("$")) {
                     const symbol = tag.slice(1);
                     router.push(
-                      `/markets?search=${encodeURIComponent(symbol)}`
+                      `/markets?search=${encodeURIComponent(symbol)}`,
                     );
                   }
                 }}
@@ -430,10 +430,10 @@ function ReplyCard({
               type="button"
               onClick={() => setIsReplying(!isReplying)}
               className={cn(
-                'flex items-center gap-1',
-                'bg-transparent transition-all duration-200 hover:opacity-70',
-                'cursor-pointer text-muted-foreground text-xs',
-                isReplying && 'text-[#0066FF]'
+                "flex items-center gap-1",
+                "bg-transparent transition-all duration-200 hover:opacity-70",
+                "cursor-pointer text-muted-foreground text-xs",
+                isReplying && "text-[#0066FF]",
               )}
             >
               <MessageCircle size={18} />
@@ -513,7 +513,7 @@ export default function CommentPage({ params }: CommentPageProps) {
     const response = await fetch(apiUrl(`/api/comments/${commentId}`));
 
     if (!response.ok) {
-      setError('Comment not found');
+      setError("Comment not found");
       setIsLoading(false);
       return;
     }
@@ -542,7 +542,7 @@ export default function CommentPage({ params }: CommentPageProps) {
     ) {
       // Small delay to ensure DOM is rendered
       setTimeout(() => {
-        mainCommentRef.current?.scrollIntoView({ behavior: 'instant' });
+        mainCommentRef.current?.scrollIntoView({ behavior: "instant" });
       }, 50);
     }
   }, [isLoading, comment, parentChain.length]);
@@ -614,10 +614,10 @@ export default function CommentPage({ params }: CommentPageProps) {
               <div className="text-center">
                 <h1 className="mb-2 font-bold text-2xl">Comment Not Found</h1>
                 <p className="mb-4 text-muted-foreground">
-                  {error || 'The comment you are looking for does not exist.'}
+                  {error || "The comment you are looking for does not exist."}
                 </p>
                 <button
-                  onClick={() => router.push('/feed')}
+                  onClick={() => router.push("/feed")}
                   className="rounded-md bg-primary px-4 py-2 text-primary-foreground transition-colors hover:bg-primary/90"
                 >
                   Go to Feed
@@ -631,10 +631,10 @@ export default function CommentPage({ params }: CommentPageProps) {
             <div className="px-4 text-center">
               <h1 className="mb-2 font-bold text-2xl">Comment Not Found</h1>
               <p className="mb-4 text-muted-foreground">
-                {error || 'The comment you are looking for does not exist.'}
+                {error || "The comment you are looking for does not exist."}
               </p>
               <button
-                onClick={() => router.push('/feed')}
+                onClick={() => router.push("/feed")}
                 className="rounded-md bg-primary px-4 py-2 text-primary-foreground transition-colors hover:bg-primary/90"
               >
                 Go to Feed
@@ -648,14 +648,14 @@ export default function CommentPage({ params }: CommentPageProps) {
 
   // Back: go to previous page when there's history; else fallback to thread hierarchy (parent comment > post > feed) for direct links / new tab
   const backButtonHandler = () => {
-    if (typeof window !== 'undefined' && window.history.length > 1) {
+    if (typeof window !== "undefined" && window.history.length > 1) {
       router.back();
     } else if (parentChain.length > 0) {
       router.push(`/comment/${parentChain[parentChain.length - 1]?.id}`);
     } else if (post) {
       router.push(`/post/${post.id}`);
     } else {
-      router.push('/feed');
+      router.push("/feed");
     }
   };
 
@@ -740,13 +740,13 @@ export default function CommentPage({ params }: CommentPageProps) {
                 <TaggedText
                   text={comment.content}
                   onTagClick={(tag) => {
-                    if (tag.startsWith('@')) {
+                    if (tag.startsWith("@")) {
                       const username = tag.slice(1);
                       router.push(`/profile/${username}`);
-                    } else if (tag.startsWith('$')) {
+                    } else if (tag.startsWith("$")) {
                       const symbol = tag.slice(1);
                       router.push(
-                        `/markets?search=${encodeURIComponent(symbol)}`
+                        `/markets?search=${encodeURIComponent(symbol)}`,
                       );
                     }
                   }}
@@ -764,10 +764,10 @@ export default function CommentPage({ params }: CommentPageProps) {
                 type="button"
                 onClick={() => setIsReplying(!isReplying)}
                 className={cn(
-                  'flex items-center gap-1',
-                  'bg-transparent transition-all duration-200 hover:opacity-70',
-                  'cursor-pointer text-muted-foreground text-xs',
-                  isReplying && 'text-[#0066FF]'
+                  "flex items-center gap-1",
+                  "bg-transparent transition-all duration-200 hover:opacity-70",
+                  "cursor-pointer text-muted-foreground text-xs",
+                  isReplying && "text-[#0066FF]",
                 )}
               >
                 <MessageCircle size={18} />
@@ -837,7 +837,7 @@ export default function CommentPage({ params }: CommentPageProps) {
               <ReplyCard
                 key={reply.id}
                 reply={reply}
-                postId={post?.id || ''}
+                postId={post?.id || ""}
                 onReplySubmit={loadComment}
               />
             ))}

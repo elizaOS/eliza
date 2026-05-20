@@ -14,13 +14,13 @@ import {
   describe,
   expect,
   test,
-} from 'bun:test';
-import { actorState, db, eq, perpPositions, poolPositions } from '@feed/db';
-import { NPCInvestmentManager } from '@feed/engine';
-import { generateSnowflakeId } from '@feed/shared';
+} from "bun:test";
+import { actorState, db, eq, perpPositions, poolPositions } from "@feed/db";
+import { NPCInvestmentManager } from "@feed/engine";
+import { generateSnowflakeId } from "@feed/shared";
 
-describe('NPCInvestmentManager - Realized PnL Calculation', () => {
-  const TEST_ACTOR_ID = 'test-actor-pnl-' + Date.now();
+describe("NPCInvestmentManager - Realized PnL Calculation", () => {
+  const TEST_ACTOR_ID = `test-actor-pnl-${Date.now()}`;
   const INITIAL_BALANCE = 10000;
 
   beforeAll(async () => {
@@ -63,7 +63,7 @@ describe('NPCInvestmentManager - Realized PnL Calculation', () => {
     await db.delete(actorState).where(eq(actorState.id, TEST_ACTOR_ID));
   });
 
-  test('should return 0 realized PnL when no positions exist', async () => {
+  test("should return 0 realized PnL when no positions exist", async () => {
     const metrics =
       await NPCInvestmentManager.getPortfolioMetrics(TEST_ACTOR_ID);
 
@@ -72,7 +72,7 @@ describe('NPCInvestmentManager - Realized PnL Calculation', () => {
     expect(metrics.positionCount).toBe(0);
   });
 
-  test('should calculate realized PnL from closed pool positions', async () => {
+  test("should calculate realized PnL from closed pool positions", async () => {
     const pos1Id = await generateSnowflakeId();
     const pos2Id = await generateSnowflakeId();
 
@@ -81,9 +81,9 @@ describe('NPCInvestmentManager - Realized PnL Calculation', () => {
       {
         id: pos1Id,
         poolId: TEST_ACTOR_ID,
-        marketType: 'prediction',
-        marketId: 'test-market-1',
-        side: 'YES',
+        marketType: "prediction",
+        marketId: "test-market-1",
+        side: "YES",
         entryPrice: 50,
         currentPrice: 60,
         size: 100,
@@ -96,9 +96,9 @@ describe('NPCInvestmentManager - Realized PnL Calculation', () => {
       {
         id: pos2Id,
         poolId: TEST_ACTOR_ID,
-        marketType: 'prediction',
-        marketId: 'test-market-2',
-        side: 'NO',
+        marketType: "prediction",
+        marketId: "test-market-2",
+        side: "NO",
         entryPrice: 40,
         currentPrice: 30,
         size: 200,
@@ -124,7 +124,7 @@ describe('NPCInvestmentManager - Realized PnL Calculation', () => {
       .where(eq(poolPositions.poolId, TEST_ACTOR_ID));
   });
 
-  test('should calculate realized PnL from closed perp positions', async () => {
+  test("should calculate realized PnL from closed perp positions", async () => {
     const perpPos1Id = await generateSnowflakeId();
     const perpPos2Id = await generateSnowflakeId();
 
@@ -133,9 +133,9 @@ describe('NPCInvestmentManager - Realized PnL Calculation', () => {
       {
         id: perpPos1Id,
         userId: TEST_ACTOR_ID,
-        organizationId: 'org-1',
-        ticker: 'ACME',
-        side: 'long',
+        organizationId: "org-1",
+        ticker: "ACME",
+        side: "long",
         entryPrice: 100,
         currentPrice: 110,
         size: 500,
@@ -151,9 +151,9 @@ describe('NPCInvestmentManager - Realized PnL Calculation', () => {
       {
         id: perpPos2Id,
         userId: TEST_ACTOR_ID,
-        organizationId: 'org-2',
-        ticker: 'BETA',
-        side: 'short',
+        organizationId: "org-2",
+        ticker: "BETA",
+        side: "short",
         entryPrice: 200,
         currentPrice: 190,
         size: 300,
@@ -182,16 +182,16 @@ describe('NPCInvestmentManager - Realized PnL Calculation', () => {
       .where(eq(perpPositions.userId, TEST_ACTOR_ID));
   });
 
-  test('should sum realized PnL from closed pool and perp positions', async () => {
+  test("should sum realized PnL from closed pool and perp positions", async () => {
     const poolPosId = await generateSnowflakeId();
     const perpPosId = await generateSnowflakeId();
 
     await db.insert(poolPositions).values({
       id: poolPosId,
       poolId: TEST_ACTOR_ID,
-      marketType: 'prediction',
-      marketId: 'test-market-3b',
-      side: 'YES',
+      marketType: "prediction",
+      marketId: "test-market-3b",
+      side: "YES",
       entryPrice: 50,
       currentPrice: 55,
       size: 120,
@@ -205,9 +205,9 @@ describe('NPCInvestmentManager - Realized PnL Calculation', () => {
     await db.insert(perpPositions).values({
       id: perpPosId,
       userId: TEST_ACTOR_ID,
-      organizationId: 'org-2b',
-      ticker: 'OMEGA',
-      side: 'short',
+      organizationId: "org-2b",
+      ticker: "OMEGA",
+      side: "short",
       entryPrice: 200,
       currentPrice: 190,
       size: 300,
@@ -236,7 +236,7 @@ describe('NPCInvestmentManager - Realized PnL Calculation', () => {
       .where(eq(perpPositions.userId, TEST_ACTOR_ID));
   });
 
-  test('should calculate both realized and unrealized PnL correctly', async () => {
+  test("should calculate both realized and unrealized PnL correctly", async () => {
     const openPosId = await generateSnowflakeId();
     const closedPosId = await generateSnowflakeId();
     const openPerpId = await generateSnowflakeId();
@@ -247,9 +247,9 @@ describe('NPCInvestmentManager - Realized PnL Calculation', () => {
       {
         id: openPosId,
         poolId: TEST_ACTOR_ID,
-        marketType: 'prediction',
-        marketId: 'test-market-3',
-        side: 'YES',
+        marketType: "prediction",
+        marketId: "test-market-3",
+        side: "YES",
         entryPrice: 50,
         currentPrice: 55,
         size: 100,
@@ -262,9 +262,9 @@ describe('NPCInvestmentManager - Realized PnL Calculation', () => {
       {
         id: closedPosId,
         poolId: TEST_ACTOR_ID,
-        marketType: 'prediction',
-        marketId: 'test-market-4',
-        side: 'NO',
+        marketType: "prediction",
+        marketId: "test-market-4",
+        side: "NO",
         entryPrice: 60,
         currentPrice: 50,
         size: 200,
@@ -280,9 +280,9 @@ describe('NPCInvestmentManager - Realized PnL Calculation', () => {
       {
         id: openPerpId,
         userId: TEST_ACTOR_ID,
-        organizationId: 'org-3',
-        ticker: 'GAMMA',
-        side: 'long',
+        organizationId: "org-3",
+        ticker: "GAMMA",
+        side: "long",
         entryPrice: 100,
         currentPrice: 95,
         size: 300,
@@ -298,9 +298,9 @@ describe('NPCInvestmentManager - Realized PnL Calculation', () => {
       {
         id: closedPerpId,
         userId: TEST_ACTOR_ID,
-        organizationId: 'org-4',
-        ticker: 'DELTA',
-        side: 'short',
+        organizationId: "org-4",
+        ticker: "DELTA",
+        side: "short",
         entryPrice: 150,
         currentPrice: 140,
         size: 400,
@@ -344,16 +344,16 @@ describe('NPCInvestmentManager - Realized PnL Calculation', () => {
       .where(eq(perpPositions.userId, TEST_ACTOR_ID));
   });
 
-  test('should handle null realizedPnL gracefully', async () => {
+  test("should handle null realizedPnL gracefully", async () => {
     const posId = await generateSnowflakeId();
 
     // Create a closed position with null realizedPnL (shouldn't happen, but defensive)
     await db.insert(poolPositions).values({
       id: posId,
       poolId: TEST_ACTOR_ID,
-      marketType: 'prediction',
-      marketId: 'test-market-5',
-      side: 'YES',
+      marketType: "prediction",
+      marketId: "test-market-5",
+      side: "YES",
       entryPrice: 50,
       currentPrice: 50,
       size: 100,
@@ -376,15 +376,15 @@ describe('NPCInvestmentManager - Realized PnL Calculation', () => {
       .where(eq(poolPositions.poolId, TEST_ACTOR_ID));
   });
 
-  test('should dedupe legacy pool perp rows when perp positions exist', async () => {
+  test("should dedupe legacy pool perp rows when perp positions exist", async () => {
     const sharedId = await generateSnowflakeId();
 
     await db.insert(poolPositions).values({
       id: sharedId,
       poolId: TEST_ACTOR_ID,
-      marketType: 'perp',
-      ticker: 'ACME',
-      side: 'long',
+      marketType: "perp",
+      ticker: "ACME",
+      side: "long",
       entryPrice: 100,
       currentPrice: 120,
       size: 400,
@@ -400,9 +400,9 @@ describe('NPCInvestmentManager - Realized PnL Calculation', () => {
     await db.insert(perpPositions).values({
       id: sharedId,
       userId: TEST_ACTOR_ID,
-      organizationId: 'org-dedupe',
-      ticker: 'ACME',
-      side: 'long',
+      organizationId: "org-dedupe",
+      ticker: "ACME",
+      side: "long",
       entryPrice: 100,
       currentPrice: 120,
       size: 400,

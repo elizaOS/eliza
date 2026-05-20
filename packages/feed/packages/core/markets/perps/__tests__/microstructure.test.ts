@@ -1,18 +1,18 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it } from "bun:test";
 import {
   evolveSyntheticPerpQuoteState,
   getSyntheticPerpExecutionPrice,
   getSyntheticPerpQuoteState,
-} from '../microstructure';
-import type { PerpMarketRecord } from '../types';
+} from "../microstructure";
+import type { PerpMarketRecord } from "../types";
 
 function createMarket(
-  overrides: Partial<PerpMarketRecord> = {}
+  overrides: Partial<PerpMarketRecord> = {},
 ): PerpMarketRecord {
   return {
-    ticker: 'OPENAGI',
-    organizationId: 'openagi',
-    name: 'OpenAGI',
+    ticker: "OPENAGI",
+    organizationId: "openagi",
+    name: "OpenAGI",
     currentPrice: 100,
     price24hAgo: 98,
     change24h: 2,
@@ -22,7 +22,7 @@ function createMarket(
     volume24h: 50_000,
     openInterest: 20_000,
     fundingRate: {
-      ticker: 'OPENAGI',
+      ticker: "OPENAGI",
       rate: 0.01,
       nextFundingTime: new Date().toISOString(),
       predictedRate: 0.01,
@@ -35,17 +35,17 @@ function createMarket(
   };
 }
 
-describe('getSyntheticPerpExecutionPrice', () => {
-  it('executes buys above sells around the mid price', () => {
+describe("getSyntheticPerpExecutionPrice", () => {
+  it("executes buys above sells around the mid price", () => {
     const market = createMarket();
     const buy = getSyntheticPerpExecutionPrice({
       market,
-      side: 'buy',
+      side: "buy",
       size: 1_000,
     });
     const sell = getSyntheticPerpExecutionPrice({
       market,
-      side: 'sell',
+      side: "sell",
       size: 1_000,
     });
 
@@ -54,16 +54,16 @@ describe('getSyntheticPerpExecutionPrice', () => {
     expect(buy.askPrice).toBeGreaterThan(buy.bidPrice);
   });
 
-  it('penalizes large trades more than small trades', () => {
+  it("penalizes large trades more than small trades", () => {
     const market = createMarket();
     const small = getSyntheticPerpExecutionPrice({
       market,
-      side: 'buy',
+      side: "buy",
       size: 500,
     });
     const large = getSyntheticPerpExecutionPrice({
       market,
-      side: 'buy',
+      side: "buy",
       size: 10_000,
     });
 
@@ -71,30 +71,30 @@ describe('getSyntheticPerpExecutionPrice', () => {
     expect(large.impactBps).toBeGreaterThan(small.impactBps);
   });
 
-  it('widens slippage for thinner markets', () => {
+  it("widens slippage for thinner markets", () => {
     const liquid = getSyntheticPerpExecutionPrice({
       market: createMarket({ openInterest: 200_000, volume24h: 500_000 }),
-      side: 'buy',
+      side: "buy",
       size: 2_000,
     });
     const thin = getSyntheticPerpExecutionPrice({
       market: createMarket({ openInterest: 500, volume24h: 2_000 }),
-      side: 'buy',
+      side: "buy",
       size: 2_000,
     });
 
     expect(thin.executionPrice - thin.midPrice).toBeGreaterThan(
-      liquid.executionPrice - liquid.midPrice
+      liquid.executionPrice - liquid.midPrice,
     );
     expect(thin.askDepth).toBeLessThan(liquid.askDepth);
   });
 
-  it('caps quote depth for pathological OI and volume inputs', () => {
+  it("caps quote depth for pathological OI and volume inputs", () => {
     const quote = getSyntheticPerpQuoteState(
       createMarket({
         openInterest: 1e18,
         volume24h: 1e18,
-      })
+      }),
     );
 
     expect(quote.bidDepth).toBeLessThanOrEqual(580_000);
@@ -103,7 +103,7 @@ describe('getSyntheticPerpExecutionPrice', () => {
     expect(quote.askDepth).toBeGreaterThan(0);
   });
 
-  it('exposes a stable quote state with bid below ask', () => {
+  it("exposes a stable quote state with bid below ask", () => {
     const quote = getSyntheticPerpQuoteState(createMarket());
 
     expect(quote.bidPrice).toBeLessThan(quote.askPrice);
@@ -112,14 +112,14 @@ describe('getSyntheticPerpExecutionPrice', () => {
     expect(quote.askDepth).toBeGreaterThan(0);
   });
 
-  it('falls back to a safe positive reference price when market inputs are invalid', () => {
+  it("falls back to a safe positive reference price when market inputs are invalid", () => {
     const quote = getSyntheticPerpExecutionPrice({
       market: createMarket({
         currentPrice: Number.NaN,
         markPrice: Number.NaN,
         indexPrice: Number.NEGATIVE_INFINITY,
       }),
-      side: 'buy',
+      side: "buy",
       size: 100,
     });
 
@@ -128,7 +128,7 @@ describe('getSyntheticPerpExecutionPrice', () => {
     expect(quote.executionPrice).toBeGreaterThan(0);
   });
 
-  it('partially relaxes stressed quotes back toward target liquidity over time', () => {
+  it("partially relaxes stressed quotes back toward target liquidity over time", () => {
     const market = createMarket();
     const stressed = {
       ...getSyntheticPerpQuoteState(market),

@@ -1,6 +1,6 @@
-import { NextResponse } from 'next/server';
+import { NextResponse } from "next/server";
 
-export const runtime = 'nodejs';
+export const runtime = "nodejs";
 
 const apiDocsHtml = `<!doctype html>
 <html lang="en">
@@ -119,8 +119,8 @@ const apiDocsHtml = `<!doctype html>
 export function GET() {
   return new NextResponse(apiDocsHtml, {
     headers: {
-      'content-type': 'text/html; charset=utf-8',
-      'cache-control': 'public, max-age=300',
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "public, max-age=300",
     },
   });
 }

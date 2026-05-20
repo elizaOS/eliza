@@ -1,33 +1,33 @@
-import type { Memory, ServiceTypeRegistry, UUID } from '@elizaos/core';
+import type { Memory, ServiceTypeRegistry, UUID } from "@elizaos/core";
 
 // Extend the core service types with experience service
-declare module '@elizaos/core' {
+declare module "@elizaos/core" {
   interface ServiceTypeRegistry {
-    EXPERIENCE: 'EXPERIENCE';
+    EXPERIENCE: "EXPERIENCE";
   }
 }
 
 // Export service type constant
 export const ExperienceServiceType = {
-  EXPERIENCE: 'EXPERIENCE' as const,
+  EXPERIENCE: "EXPERIENCE" as const,
 } satisfies Partial<ServiceTypeRegistry>;
 
 export enum ExperienceType {
-  SUCCESS = 'success', // Agent accomplished something
-  FAILURE = 'failure', // Agent failed at something
-  DISCOVERY = 'discovery', // Agent discovered new information
-  CORRECTION = 'correction', // Agent corrected a mistake
-  LEARNING = 'learning', // Agent learned something new
-  HYPOTHESIS = 'hypothesis', // Agent formed a hypothesis
-  VALIDATION = 'validation', // Agent validated a hypothesis
-  WARNING = 'warning', // Agent encountered a warning/limitation
+  SUCCESS = "success", // Agent accomplished something
+  FAILURE = "failure", // Agent failed at something
+  DISCOVERY = "discovery", // Agent discovered new information
+  CORRECTION = "correction", // Agent corrected a mistake
+  LEARNING = "learning", // Agent learned something new
+  HYPOTHESIS = "hypothesis", // Agent formed a hypothesis
+  VALIDATION = "validation", // Agent validated a hypothesis
+  WARNING = "warning", // Agent encountered a warning/limitation
 }
 
 export enum OutcomeType {
-  POSITIVE = 'positive',
-  NEGATIVE = 'negative',
-  NEUTRAL = 'neutral',
-  MIXED = 'mixed',
+  POSITIVE = "positive",
+  NEGATIVE = "negative",
+  NEUTRAL = "neutral",
+  MIXED = "mixed",
 }
 
 export interface Experience {
@@ -95,7 +95,7 @@ export interface ExperienceAnalysis {
 
 export interface ExperienceEvent {
   experienceId: UUID;
-  eventType: 'created' | 'accessed' | 'updated' | 'superseded';
+  eventType: "created" | "accessed" | "updated" | "superseded";
   timestamp: number;
   metadata?: Record<string, unknown>;
 }

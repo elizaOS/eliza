@@ -5,14 +5,14 @@
  * Allows coordinator to know who the user's agents are and help with @mentions.
  */
 
-import { and, chatParticipants, db, eq, users } from '@feed/db';
 import type {
   IAgentRuntime,
   Memory,
   Provider,
   ProviderResult,
   State,
-} from '@elizaos/core';
+} from "@elizaos/core";
+import { and, chatParticipants, db, eq, users } from "@feed/db";
 
 /** Team member info */
 interface TeamMember {
@@ -29,13 +29,13 @@ interface TeamMember {
  * for LLM context with proper @username mentions.
  */
 export const coordinatorTeamMembersProvider: Provider = {
-  name: 'TEAM_MEMBERS',
-  description: 'List of team members in the Agents chat',
+  name: "TEAM_MEMBERS",
+  description: "List of team members in the Agents chat",
 
   get: async (
     _runtime: IAgentRuntime,
     _message: Memory,
-    state: State
+    state: State,
   ): Promise<ProviderResult> => {
     const teamChatId = state?.values?.teamChatId as string | undefined;
 
@@ -47,12 +47,12 @@ export const coordinatorTeamMembersProvider: Provider = {
           agentCount: 0,
         },
         values: {
-          teamMembers: '',
+          teamMembers: "",
           memberCount: 0,
           agentCount: 0,
           hasTeamMembers: false,
         },
-        text: '',
+        text: "",
       };
     }
 
@@ -70,8 +70,8 @@ export const coordinatorTeamMembersProvider: Provider = {
       .where(
         and(
           eq(chatParticipants.chatId, teamChatId),
-          eq(chatParticipants.isActive, true)
-        )
+          eq(chatParticipants.isActive, true),
+        ),
       );
 
     if (participants.length === 0) {
@@ -82,12 +82,12 @@ export const coordinatorTeamMembersProvider: Provider = {
           agentCount: 0,
         },
         values: {
-          teamMembers: 'No team members found.',
+          teamMembers: "No team members found.",
           memberCount: 0,
           agentCount: 0,
           hasTeamMembers: false,
         },
-        text: 'No team members found.',
+        text: "No team members found.",
       };
     }
 
@@ -96,12 +96,12 @@ export const coordinatorTeamMembersProvider: Provider = {
     const agents = participants.filter((p) => p.isAgent);
 
     // Format members list with helpful context for coordinator
-    let formattedMembers = '## Team Members\n\n';
+    let formattedMembers = "## Team Members\n\n";
 
     if (owner) {
-      const ownerName = owner.displayName || owner.username || 'User';
+      const ownerName = owner.displayName || owner.username || "User";
       // Only include handle when username exists to avoid invalid @unknown mentions
-      const ownerHandle = owner.username ? ` (@${owner.username})` : '';
+      const ownerHandle = owner.username ? ` (@${owner.username})` : "";
       formattedMembers += `**Owner:** ${ownerName}${ownerHandle}\n\n`;
     }
 
@@ -109,16 +109,16 @@ export const coordinatorTeamMembersProvider: Provider = {
       formattedMembers += `**Agents (${agents.length}):**\n`;
       formattedMembers += agents
         .map((agent) => {
-          const name = agent.displayName || agent.username || 'Unknown';
+          const name = agent.displayName || agent.username || "Unknown";
           // Only include handle portion when username exists
-          const handleSuffix = agent.username ? ` (@${agent.username})` : '';
+          const handleSuffix = agent.username ? ` (@${agent.username})` : "";
           // Include agent ID so the LLM can use it in DISPATCH_TO_AGENT parameters
           return `- ${name}${handleSuffix} [id: ${agent.id}] - Available for tasks`;
         })
-        .join('\n');
+        .join("\n");
     } else {
       formattedMembers +=
-        '**Agents:** No agents created yet. Suggest user create agents at /agents page.';
+        "**Agents:** No agents created yet. Suggest user create agents at /agents page.";
     }
 
     // Create structured member list

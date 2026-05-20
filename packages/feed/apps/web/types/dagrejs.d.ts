@@ -1,4 +1,4 @@
-declare module '@dagrejs/dagre' {
+declare module "@dagrejs/dagre" {
   interface GraphOptions {
     directed?: boolean;
     multigraph?: boolean;

@@ -37,13 +37,13 @@ import {
   mock,
   setDefaultTimeout,
   test,
-} from 'bun:test';
-import { logger } from '@feed/shared';
-import { existsSync, readFileSync } from 'fs';
-import { resolveLiveLlmTestConfig } from '../../../../testing/integration/helpers/live-runtime';
+} from "bun:test";
+import { existsSync, readFileSync } from "node:fs";
+import { logger } from "@feed/shared";
+import { resolveLiveLlmTestConfig } from "../../../../testing/integration/helpers/live-runtime";
 // import { GameGenerator } from '@/engine/GameGenerator'; // Removed static import
-import type { FeedPost, GeneratedGame, WorldEvent } from '../../types/shared';
-import { formatError } from '../../utils/error-utils';
+import type { FeedPost, GeneratedGame, WorldEvent } from "../../types/shared";
+import { formatError } from "../../utils/error-utils";
 
 // Set timeout to 10 minutes for LLM-based generation
 setDefaultTimeout(600000);
@@ -51,25 +51,25 @@ setDefaultTimeout(600000);
 // Mock world-context to avoid DB calls BEFORE importing GameGenerator
 const mockWorldContext = {
   generateWorldContext: async () => ({
-    worldActors: 'Test Actor 1, Test Actor 2',
-    currentMarkets: 'Active Markets: None currently active',
-    activePredictions: 'Active Questions: None currently active',
-    recentTrades: 'Recent Trades: No recent activity',
+    worldActors: "Test Actor 1, Test Actor 2",
+    currentMarkets: "Active Markets: None currently active",
+    activePredictions: "Active Questions: None currently active",
+    recentTrades: "Recent Trades: No recent activity",
     currentDateTime: new Date().toISOString(),
     currentDate: new Date().toDateString(),
     currentTime: new Date().toTimeString(),
-    currentYear: '2025',
-    currentMonth: 'October',
-    currentDay: '15',
-    realityGrounding: 'Reality grounding context',
-    worldFacts: 'World facts context',
+    currentYear: "2025",
+    currentMonth: "October",
+    currentDay: "15",
+    realityGrounding: "Reality grounding context",
+    worldFacts: "World facts context",
   }),
-  generateCurrentMarkets: async () => 'Active Markets: None currently active',
+  generateCurrentMarkets: async () => "Active Markets: None currently active",
   generateActivePredictions: async () =>
-    'Active Questions: None currently active',
-  generateRecentTrades: async () => 'Recent Trades: No recent activity',
-  generateWorldActors: () => 'Test Actor 1, Test Actor 2',
-  getParodyActorNames: () => ['Test Actor 1', 'Test Actor 2'],
+    "Active Questions: None currently active",
+  generateRecentTrades: async () => "Recent Trades: No recent activity",
+  generateWorldActors: () => "Test Actor 1, Test Actor 2",
+  getParodyActorNames: () => ["Test Actor 1", "Test Actor 2"],
   getForbiddenRealNames: () => [],
   validateNoRealNames: () => [],
   validateGeneratedContent: () => ({ errors: [], isValid: true }),
@@ -77,28 +77,28 @@ const mockWorldContext = {
     dateISO: new Date().toISOString(),
     dateFull: new Date().toDateString(),
     time: new Date().toTimeString(),
-    year: '2025',
-    month: 'October',
-    day: '15',
+    year: "2025",
+    month: "October",
+    day: "15",
   }),
-  getRealityGrounding: async () => 'Reality grounding context',
-  getMinimalRealityGrounding: async () => 'Minimal reality grounding',
-  getFullRealityGrounding: async () => 'Full reality grounding',
+  getRealityGrounding: async () => "Reality grounding context",
+  getMinimalRealityGrounding: async () => "Minimal reality grounding",
+  getFullRealityGrounding: async () => "Full reality grounding",
   checkRealityGrounding: () => ({ score: 1, feedback: [] }),
 };
 
-mock.module('@feed/engine', () => mockWorldContext);
+mock.module("@feed/engine", () => mockWorldContext);
 
 // Load environment variables from .env files
 const loadEnvFile = (filePath: string) => {
   if (!existsSync(filePath)) return;
-  const envContent = readFileSync(filePath, 'utf-8');
-  for (const line of envContent.split('\n')) {
+  const envContent = readFileSync(filePath, "utf-8");
+  for (const line of envContent.split("\n")) {
     const trimmed = line.trim();
-    if (trimmed && !trimmed.startsWith('#')) {
-      const [key, ...valueParts] = trimmed.split('=');
+    if (trimmed && !trimmed.startsWith("#")) {
+      const [key, ...valueParts] = trimmed.split("=");
       if (key && valueParts.length > 0) {
-        const value = valueParts.join('=').replace(/^["']|["']$/g, '');
+        const value = valueParts.join("=").replace(/^["']|["']$/g, "");
         if (!process.env[key]) {
           process.env[key] = value;
         }
@@ -107,13 +107,13 @@ const loadEnvFile = (filePath: string) => {
   }
 };
 
-loadEnvFile('.env.test');
-loadEnvFile('.env.local');
+loadEnvFile(".env.test");
+loadEnvFile(".env.local");
 
 const hasLLMKey = !!(
-  (process.env.GROQ_API_KEY?.trim() ?? '') !== '' ||
-  (process.env.ANTHROPIC_API_KEY?.trim() ?? '') !== '' ||
-  (process.env.OPENAI_API_KEY?.trim() ?? '') !== ''
+  (process.env.GROQ_API_KEY?.trim() ?? "") !== "" ||
+  (process.env.ANTHROPIC_API_KEY?.trim() ?? "") !== "" ||
+  (process.env.OPENAI_API_KEY?.trim() ?? "") !== ""
 );
 const liveLlmConfig = resolveLiveLlmTestConfig();
 
@@ -121,21 +121,21 @@ const liveLlmConfig = resolveLiveLlmTestConfig();
 function calculateCertainty(
   events: WorldEvent[],
   questionId: number | string,
-  actualOutcome: boolean
+  actualOutcome: boolean,
 ): number {
   const relevantEvents = events.filter(
     (e) =>
       e.relatedQuestion === questionId &&
       e.pointsToward !== null &&
-      e.pointsToward !== undefined
+      e.pointsToward !== undefined,
   );
 
   if (relevantEvents.length === 0) return 0.5; // No info = 50/50
 
   const correctSignals = relevantEvents.filter(
     (e) =>
-      (e.pointsToward === 'YES') === actualOutcome ||
-      (e.pointsToward === 'NO') === !actualOutcome
+      (e.pointsToward === "YES") === actualOutcome ||
+      (e.pointsToward === "NO") === !actualOutcome,
   ).length;
 
   return correctSignals / relevantEvents.length;
@@ -143,18 +143,18 @@ function calculateCertainty(
 
 function calculateCertaintyFromPosts(
   posts: FeedPost[],
-  actualOutcome: boolean
+  actualOutcome: boolean,
 ): number {
   const relevantPosts = posts.filter(
-    (p) => p.pointsToward !== null && p.pointsToward !== undefined
+    (p) => p.pointsToward !== null && p.pointsToward !== undefined,
   );
 
   if (relevantPosts.length === 0) return 0.5;
 
   const correctPosts = posts.filter(
     (p) =>
-      (p.pointsToward === 'YES' || p.pointsToward === true) === actualOutcome ||
-      (p.pointsToward === 'NO' || p.pointsToward === false) === !actualOutcome
+      (p.pointsToward === "YES" || p.pointsToward === true) === actualOutcome ||
+      (p.pointsToward === "NO" || p.pointsToward === false) === !actualOutcome,
   );
 
   return correctPosts.length / relevantPosts.length;
@@ -162,56 +162,56 @@ function calculateCertaintyFromPosts(
 
 // Always run LLM tests - fail if no API key rather than skip
 describe.skipIf(!liveLlmConfig.enabled)(
-  'Game Learnability Integration Tests',
+  "Game Learnability Integration Tests",
   () => {
     // Shared game instance - generated once before all tests
     let game: GeneratedGame | null = null;
     let skipped = false;
-    let skipReason = '';
+    let skipReason = "";
 
     beforeAll(async () => {
       if (!hasLLMKey) {
-        console.log('⏭️  Skipping all tests - No LLM API key available');
+        console.log("⏭️  Skipping all tests - No LLM API key available");
         skipped = true;
-        skipReason = 'No LLM API key';
+        skipReason = "No LLM API key";
         return;
       }
 
       try {
         logger.info(
-          'Generating shared game for learnability tests...',
+          "Generating shared game for learnability tests...",
           undefined,
-          'LearnabilityTest'
+          "LearnabilityTest",
         );
-        const { GameGenerator } = await import('../../GameGenerator');
+        const { GameGenerator } = await import("../../GameGenerator");
         const generator = new GameGenerator();
         game = await generator.generateCompleteGame();
         logger.info(
-          'Game generated successfully',
+          "Game generated successfully",
           undefined,
-          'LearnabilityTest'
+          "LearnabilityTest",
         );
       } catch (error) {
         const errorMessage = formatError(error);
         console.log(
-          '⏭️  Game generation failed - tests will skip:',
-          errorMessage.substring(0, 100)
+          "⏭️  Game generation failed - tests will skip:",
+          errorMessage.substring(0, 100),
         );
         skipped = true;
         skipReason = `Generation failed: ${errorMessage.substring(0, 100)}`;
       }
     });
 
-    test('CRITICAL: information gradient exists (early unclear, late clear)', async () => {
+    test("CRITICAL: information gradient exists (early unclear, late clear)", async () => {
       if (skipped || !game) {
-        console.log(`⏭️  Skipping - ${skipReason || 'No game generated'}`);
+        console.log(`⏭️  Skipping - ${skipReason || "No game generated"}`);
         return;
       }
 
       logger.info(
-        'Testing information gradient...',
+        "Testing information gradient...",
         undefined,
-        'LearnabilityTest'
+        "LearnabilityTest",
       );
 
       let allGradientsPass = true;
@@ -221,33 +221,33 @@ describe.skipIf(!liveLlmConfig.enabled)(
 
         const earlyEvents = allEvents.filter((e) => e.day <= 10);
         const middleEvents = allEvents.filter(
-          (e) => e.day >= 11 && e.day <= 20
+          (e) => e.day >= 11 && e.day <= 20,
         );
         const lateEvents = allEvents.filter((e) => e.day >= 21);
 
         const earlyCertainty = calculateCertainty(
           earlyEvents,
           question.id,
-          question.outcome
+          question.outcome,
         );
         const middleCertainty = calculateCertainty(
           [...earlyEvents, ...middleEvents],
           question.id,
-          question.outcome
+          question.outcome,
         );
         const lateCertainty = calculateCertainty(
           [...earlyEvents, ...middleEvents, ...lateEvents],
           question.id,
-          question.outcome
+          question.outcome,
         );
 
         const gradient = lateCertainty - earlyCertainty;
         const hasGradient = gradient > 0.2;
 
         logger.info(
-          `Question ${question.id}: ${(earlyCertainty * 100).toFixed(0)}% → ${(middleCertainty * 100).toFixed(0)}% → ${(lateCertainty * 100).toFixed(0)}% (gradient: ${(gradient * 100).toFixed(0)}%) ${hasGradient ? '✅' : '❌'}`,
+          `Question ${question.id}: ${(earlyCertainty * 100).toFixed(0)}% → ${(middleCertainty * 100).toFixed(0)}% → ${(lateCertainty * 100).toFixed(0)}% (gradient: ${(gradient * 100).toFixed(0)}%) ${hasGradient ? "✅" : "❌"}`,
           undefined,
-          'LearnabilityTest'
+          "LearnabilityTest",
         );
 
         expect(lateCertainty).toBeGreaterThan(earlyCertainty + 0.15);
@@ -265,20 +265,20 @@ describe.skipIf(!liveLlmConfig.enabled)(
       expect(allGradientsPass).toBe(true);
       logger.info(
         allGradientsPass
-          ? '✅ PASS: All questions have information gradient'
-          : '❌ FAIL: Some questions lack gradient',
+          ? "✅ PASS: All questions have information gradient"
+          : "❌ FAIL: Some questions lack gradient",
         undefined,
-        'LearnabilityTest'
+        "LearnabilityTest",
       );
     });
 
-    test('NPCs with high reliability are consistently accurate', async () => {
+    test("NPCs with high reliability are consistently accurate", async () => {
       if (skipped || !game) {
-        console.log(`⏭️  Skipping - ${skipReason || 'No game generated'}`);
+        console.log(`⏭️  Skipping - ${skipReason || "No game generated"}`);
         return;
       }
 
-      logger.info('Testing NPC consistency...', undefined, 'LearnabilityTest');
+      logger.info("Testing NPC consistency...", undefined, "LearnabilityTest");
 
       const allActors = [
         ...game.setup.mainActors,
@@ -286,13 +286,13 @@ describe.skipIf(!liveLlmConfig.enabled)(
       ];
 
       const highReliabilityNPCs = allActors.filter(
-        (a) => a.persona && a.persona.reliability > 0.7
+        (a) => a.persona && a.persona.reliability > 0.7,
       );
 
       logger.info(
         `Found ${highReliabilityNPCs.length} high reliability NPCs`,
         undefined,
-        'LearnabilityTest'
+        "LearnabilityTest",
       );
       expect(highReliabilityNPCs.length).toBeGreaterThan(0);
 
@@ -303,19 +303,19 @@ describe.skipIf(!liveLlmConfig.enabled)(
             (post) =>
               post.author === npc.id &&
               post.pointsToward !== null &&
-              post.relatedQuestion !== null
+              post.relatedQuestion !== null,
           );
 
         if (posts.length === 0) continue;
 
         const accuratePosts = posts.filter((post) => {
           const question = game.setup.questions.find(
-            (q) => q.id === post.relatedQuestion
+            (q) => q.id === post.relatedQuestion,
           );
           if (!question) return false;
 
           const postPointsToYes =
-            post.pointsToward === 'YES' || post.pointsToward === true;
+            post.pointsToward === "YES" || post.pointsToward === true;
           return postPointsToYes === question.outcome;
         });
 
@@ -324,23 +324,23 @@ describe.skipIf(!liveLlmConfig.enabled)(
         logger.info(
           `${npc.name} (reliability ${npc.persona?.reliability.toFixed(2)}): ${(accuracy * 100).toFixed(0)}% accurate (${accuratePosts.length}/${posts.length} posts)`,
           undefined,
-          'LearnabilityTest'
+          "LearnabilityTest",
         );
 
         expect(accuracy).toBeGreaterThan(0.55);
       }
     });
 
-    test('simple betting strategy beats random guessing', async () => {
+    test("simple betting strategy beats random guessing", async () => {
       if (skipped || !game) {
-        console.log(`⏭️  Skipping - ${skipReason || 'No game generated'}`);
+        console.log(`⏭️  Skipping - ${skipReason || "No game generated"}`);
         return;
       }
 
       logger.info(
-        'Testing learnability with simple strategy...',
+        "Testing learnability with simple strategy...",
         undefined,
-        'LearnabilityTest'
+        "LearnabilityTest",
       );
 
       // Use the shared game for strategy testing instead of generating 3 new games
@@ -356,7 +356,7 @@ describe.skipIf(!liveLlmConfig.enabled)(
             (post) =>
               post.relatedQuestion === question.id &&
               post.clueStrength > 0.7 &&
-              post.pointsToward !== null
+              post.pointsToward !== null,
           );
 
         if (strongClues.length === 0) {
@@ -365,10 +365,10 @@ describe.skipIf(!liveLlmConfig.enabled)(
         }
 
         const yesVotes = strongClues.filter(
-          (p) => p.pointsToward === 'YES' || p.pointsToward === true
+          (p) => p.pointsToward === "YES" || p.pointsToward === true,
         ).length;
         const noVotes = strongClues.filter(
-          (p) => p.pointsToward === 'NO' || p.pointsToward === false
+          (p) => p.pointsToward === "NO" || p.pointsToward === false,
         ).length;
 
         const prediction = yesVotes > noVotes;
@@ -378,57 +378,57 @@ describe.skipIf(!liveLlmConfig.enabled)(
         }
 
         logger.info(
-          `Q${question.id}: ${strongClues.length} strong clues → ${prediction ? 'YES' : 'NO'} (actual: ${question.outcome ? 'YES' : 'NO'}) ${prediction === question.outcome ? '✅' : '❌'}`,
+          `Q${question.id}: ${strongClues.length} strong clues → ${prediction ? "YES" : "NO"} (actual: ${question.outcome ? "YES" : "NO"}) ${prediction === question.outcome ? "✅" : "❌"}`,
           undefined,
-          'LearnabilityTest'
+          "LearnabilityTest",
         );
       }
 
       if (totalPredictions === 0) {
         logger.info(
-          '⚠️ No questions with strong clues found - skipping accuracy check',
+          "⚠️ No questions with strong clues found - skipping accuracy check",
           undefined,
-          'LearnabilityTest'
+          "LearnabilityTest",
         );
         return;
       }
 
       const accuracy = correctPredictions / totalPredictions;
 
-      logger.info('─'.repeat(50), undefined, 'LearnabilityTest');
+      logger.info("─".repeat(50), undefined, "LearnabilityTest");
       logger.info(
         `SIMPLE STRATEGY RESULTS: ${correctPredictions}/${totalPredictions} = ${(accuracy * 100).toFixed(0)}%`,
         undefined,
-        'LearnabilityTest'
+        "LearnabilityTest",
       );
       logger.info(
-        'Target: 50%+ (better than random guessing)',
+        "Target: 50%+ (better than random guessing)",
         undefined,
-        'LearnabilityTest'
+        "LearnabilityTest",
       );
       logger.info(
         accuracy >= 0.5
-          ? '✅ PASS: Game is learnable'
-          : '❌ FAIL: Game not learnable',
+          ? "✅ PASS: Game is learnable"
+          : "❌ FAIL: Game not learnable",
         undefined,
-        'LearnabilityTest'
+        "LearnabilityTest",
       );
-      logger.info('─'.repeat(50), undefined, 'LearnabilityTest');
+      logger.info("─".repeat(50), undefined, "LearnabilityTest");
 
       // Relaxed threshold - just needs to beat random (50%)
       expect(accuracy).toBeGreaterThanOrEqual(0.5);
     });
 
-    test('group chat information provides measurable advantage', async () => {
+    test("group chat information provides measurable advantage", async () => {
       if (skipped || !game) {
-        console.log(`⏭️  Skipping - ${skipReason || 'No game generated'}`);
+        console.log(`⏭️  Skipping - ${skipReason || "No game generated"}`);
         return;
       }
 
       logger.info(
-        'Testing group chat advantage...',
+        "Testing group chat advantage...",
         undefined,
-        'LearnabilityTest'
+        "LearnabilityTest",
       );
 
       for (const question of game.setup.questions) {
@@ -436,12 +436,13 @@ describe.skipIf(!liveLlmConfig.enabled)(
           .flatMap((day) => day.feedPosts)
           .filter(
             (post) =>
-              post.relatedQuestion === question.id && post.pointsToward !== null
+              post.relatedQuestion === question.id &&
+              post.pointsToward !== null,
           );
 
         const publicCertainty = calculateCertaintyFromPosts(
           publicPosts,
-          question.outcome
+          question.outcome,
         );
 
         const groupChatHints = game.timeline
@@ -449,11 +450,11 @@ describe.skipIf(!liveLlmConfig.enabled)(
           .filter((msg) => {
             const questionKeywords = question.text
               .toLowerCase()
-              .split(' ')
+              .split(" ")
               .filter((w) => w.length > 4);
             const messageLower = msg.message.toLowerCase();
             return questionKeywords.some((keyword) =>
-              messageLower.includes(keyword)
+              messageLower.includes(keyword),
             );
           });
 
@@ -462,7 +463,7 @@ describe.skipIf(!liveLlmConfig.enabled)(
         logger.info(
           `Q${question.id}: Public ${(publicCertainty * 100).toFixed(0)}%, Group chats +${(groupChatValue * 100).toFixed(0)}% (${groupChatHints.length} hints)`,
           undefined,
-          'LearnabilityTest'
+          "LearnabilityTest",
         );
 
         if (groupChatHints.length > 0) {
@@ -471,16 +472,16 @@ describe.skipIf(!liveLlmConfig.enabled)(
       }
     });
 
-    test('questions have resolution verification events', async () => {
+    test("questions have resolution verification events", async () => {
       if (skipped || !game) {
-        console.log(`⏭️  Skipping - ${skipReason || 'No game generated'}`);
+        console.log(`⏭️  Skipping - ${skipReason || "No game generated"}`);
         return;
       }
 
       logger.info(
-        'Testing resolution verification...',
+        "Testing resolution verification...",
         undefined,
-        'LearnabilityTest'
+        "LearnabilityTest",
       );
 
       for (const question of game.setup.questions) {
@@ -489,24 +490,24 @@ describe.skipIf(!liveLlmConfig.enabled)(
         const verificationEvents = allEvents.filter(
           (e) =>
             e.relatedQuestion === question.id &&
-            e.pointsToward === (question.outcome ? 'YES' : 'NO') &&
-            e.day >= 25
+            e.pointsToward === (question.outcome ? "YES" : "NO") &&
+            e.day >= 25,
         );
 
         logger.info(
           `Q${question.id}: ${verificationEvents.length} verification events (day 25+)`,
           undefined,
-          'LearnabilityTest'
+          "LearnabilityTest",
         );
 
         expect(verificationEvents.length).toBeGreaterThan(0);
 
         const definitiveEvents = verificationEvents.filter(
-          (e) => e.type === 'revelation' || e.type === 'announcement'
+          (e) => e.type === "revelation" || e.type === "announcement",
         );
 
         expect(definitiveEvents.length).toBeGreaterThan(0);
       }
     });
-  }
+  },
 );

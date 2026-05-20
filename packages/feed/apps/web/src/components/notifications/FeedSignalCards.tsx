@@ -1,29 +1,29 @@
-'use client';
+"use client";
 
-import { FEED_POINTS_SYMBOL, cn } from '@feed/shared';
-import { ChevronRight } from 'lucide-react';
-import Link from 'next/link';
+import { cn, FEED_POINTS_SYMBOL } from "@feed/shared";
+import { ChevronRight } from "lucide-react";
+import Link from "next/link";
 
 /* ─── Shared ─────────────────────────────────────────────── */
 
 interface SignalCardShellProps {
-  accent: 'amber' | 'green' | 'red';
+  accent: "amber" | "green" | "red";
   href: string;
   children: React.ReactNode;
 }
 
 const accentMap = {
   amber: {
-    hover: 'hover:bg-muted/30',
-    label: 'text-amber-500',
+    hover: "hover:bg-muted/30",
+    label: "text-amber-500",
   },
   green: {
-    hover: 'hover:bg-green-500/5',
-    label: 'text-green-500',
+    hover: "hover:bg-green-500/5",
+    label: "text-green-500",
   },
   red: {
-    hover: 'hover:bg-red-500/5',
-    label: 'text-red-500',
+    hover: "hover:bg-red-500/5",
+    label: "text-red-500",
   },
 };
 
@@ -35,8 +35,8 @@ function SignalCardShell({ accent, href, children }: SignalCardShellProps) {
     <Link
       href={href}
       className={cn(
-        'group flex items-center justify-between gap-3 border-border border-b px-4 py-3 transition-colors',
-        a.hover
+        "group flex items-center justify-between gap-3 border-border border-b px-4 py-3 transition-colors",
+        a.hover,
       )}
     >
       <div className="min-w-0 flex-1">{children}</div>
@@ -52,14 +52,14 @@ export interface MarketClosingSoonProps {
   marketId: string;
   marketName: string;
   closesAt: string;
-  positionSide: 'YES' | 'NO' | 'long' | 'short';
+  positionSide: "YES" | "NO" | "long" | "short";
   currentPrice: number;
   entryPrice: number;
 }
 
 function formatTimeLeft(isoDate: string): string {
   const ms = new Date(isoDate).getTime() - Date.now();
-  if (ms <= 0) return 'Closing now';
+  if (ms <= 0) return "Closing now";
   const totalMinutes = Math.floor(ms / (1000 * 60));
   if (totalMinutes < 60) return `${totalMinutes}m left`;
   const hours = Math.floor(totalMinutes / 60);
@@ -92,10 +92,10 @@ export function MarketClosingSoonCard({
       <div className="mt-1.5 flex items-center gap-2">
         <span
           className={cn(
-            'rounded px-1.5 py-0.5 font-medium text-xs',
-            positionSide === 'YES' || positionSide === 'long'
-              ? 'bg-green-500/10 text-green-500'
-              : 'bg-red-500/10 text-red-500'
+            "rounded px-1.5 py-0.5 font-medium text-xs",
+            positionSide === "YES" || positionSide === "long"
+              ? "bg-green-500/10 text-green-500"
+              : "bg-red-500/10 text-red-500",
           )}
         >
           {positionSide}
@@ -105,7 +105,7 @@ export function MarketClosingSoonCard({
           {entryPrice.toFixed(2)}
         </span>
         <span className="font-medium text-foreground text-xs">
-          {isPositive ? '+' : ''}
+          {isPositive ? "+" : ""}
           {pnlPercent.toFixed(1)}%
         </span>
         <span className="font-medium text-amber-500 text-xs">{timeLeft}</span>
@@ -141,7 +141,7 @@ export function TopGainerCard({
       </p>
       <div className="mt-1.5 flex items-center gap-2">
         <span className="font-bold text-green-500 text-sm">
-          +{pointsGained.toLocaleString('en-US')} pts
+          +{pointsGained.toLocaleString("en-US")} pts
         </span>
         <span className="font-medium text-green-500 text-xs">
           +{gainPercent.toFixed(1)}%
@@ -183,7 +183,7 @@ export function TopLoserCard({
       </p>
       <div className="mt-1.5 flex items-center gap-2">
         <span className="font-bold text-red-500 text-sm">
-          {pointsLost.toLocaleString('en-US')} pts
+          {pointsLost.toLocaleString("en-US")} pts
         </span>
         <span className="font-medium text-red-500 text-xs">
           {lossPercent.toFixed(1)}%

@@ -1,19 +1,19 @@
-'use client';
+"use client";
 
-import { cn } from '@feed/shared';
-import { Calendar, ChevronDown, Filter, X } from 'lucide-react';
-import { useCallback, useState } from 'react';
+import { cn } from "@feed/shared";
+import { Calendar, ChevronDown, Filter, X } from "lucide-react";
+import { useCallback, useState } from "react";
 
 /**
  * Date range presets
  */
 const DATE_PRESETS = [
-  { label: 'Today', days: 0 },
-  { label: 'Yesterday', days: 1 },
-  { label: 'Last 7 days', days: 7 },
-  { label: 'Last 30 days', days: 30 },
-  { label: 'Last 90 days', days: 90 },
-  { label: 'Custom', days: -1 },
+  { label: "Today", days: 0 },
+  { label: "Yesterday", days: 1 },
+  { label: "Last 7 days", days: 7 },
+  { label: "Last 30 days", days: 30 },
+  { label: "Last 90 days", days: 90 },
+  { label: "Custom", days: -1 },
 ] as const;
 
 export interface FilterConfig {
@@ -67,7 +67,7 @@ export function FilterPanel({
         dateRange: { startDate, endDate, preset: preset.label },
       });
     },
-    [filters, onFilterChange]
+    [filters, onFilterChange],
   );
 
   const handleEntityChange = useCallback(
@@ -77,7 +77,7 @@ export function FilterPanel({
         entityType: value,
       });
     },
-    [filters, onFilterChange]
+    [filters, onFilterChange],
   );
 
   const handleCustomFilterChange = useCallback(
@@ -90,7 +90,7 @@ export function FilterPanel({
         },
       });
     },
-    [filters, onFilterChange]
+    [filters, onFilterChange],
   );
 
   const handleClearFilters = useCallback(() => {
@@ -98,49 +98,49 @@ export function FilterPanel({
       dateRange: {
         startDate: null,
         endDate: null,
-        preset: 'All time',
+        preset: "All time",
       },
-      entityType: 'all',
+      entityType: "all",
       customFilters: {},
     });
   }, [onFilterChange]);
 
   const handleCustomDateChange = useCallback(
-    (type: 'start' | 'end', value: string) => {
+    (type: "start" | "end", value: string) => {
       const date = value ? new Date(value) : null;
       onFilterChange({
         ...filters,
         dateRange: {
           ...filters.dateRange,
           startDate:
-            type === 'start' ? date : filters.dateRange?.startDate || null,
-          endDate: type === 'end' ? date : filters.dateRange?.endDate || null,
-          preset: 'Custom',
+            type === "start" ? date : filters.dateRange?.startDate || null,
+          endDate: type === "end" ? date : filters.dateRange?.endDate || null,
+          preset: "Custom",
         },
       });
     },
-    [filters, onFilterChange]
+    [filters, onFilterChange],
   );
 
   const activeFiltersCount =
-    (filters.dateRange?.preset && filters.dateRange.preset !== 'All time'
+    (filters.dateRange?.preset && filters.dateRange.preset !== "All time"
       ? 1
       : 0) +
-    (filters.entityType && filters.entityType !== 'all' ? 1 : 0) +
-    Object.values(filters.customFilters || {}).filter((v) => v && v !== 'all')
+    (filters.entityType && filters.entityType !== "all" ? 1 : 0) +
+    Object.values(filters.customFilters || {}).filter((v) => v && v !== "all")
       .length;
 
   return (
-    <div className={cn('space-y-3', className)}>
+    <div className={cn("space-y-3", className)}>
       {/* Filter Toggle and Active Chips */}
       <div className="flex flex-wrap items-center gap-2">
         <button
           onClick={() => setShowFilters(!showFilters)}
           className={cn(
-            'flex items-center gap-2 rounded-lg border px-3 py-2 font-medium text-sm transition-colors',
+            "flex items-center gap-2 rounded-lg border px-3 py-2 font-medium text-sm transition-colors",
             showFilters
-              ? 'border-primary bg-primary/10 text-primary'
-              : 'border-border bg-card text-muted-foreground hover:border-primary/50'
+              ? "border-primary bg-primary/10 text-primary"
+              : "border-border bg-card text-muted-foreground hover:border-primary/50",
           )}
         >
           <Filter className="h-4 w-4" />
@@ -152,15 +152,15 @@ export function FilterPanel({
           )}
           <ChevronDown
             className={cn(
-              'h-4 w-4 transition-transform',
-              showFilters && 'rotate-180'
+              "h-4 w-4 transition-transform",
+              showFilters && "rotate-180",
             )}
           />
         </button>
 
         {/* Active Filter Chips */}
         {filters.dateRange?.preset &&
-          filters.dateRange.preset !== 'All time' && (
+          filters.dateRange.preset !== "All time" && (
             <FilterChip
               label={filters.dateRange.preset}
               onRemove={() =>
@@ -169,23 +169,23 @@ export function FilterPanel({
                   dateRange: {
                     startDate: null,
                     endDate: null,
-                    preset: 'All time',
+                    preset: "All time",
                   },
                 })
               }
             />
           )}
-        {filters.entityType && filters.entityType !== 'all' && (
+        {filters.entityType && filters.entityType !== "all" && (
           <FilterChip
             label={
               entityOptions?.find((o) => o.value === filters.entityType)
                 ?.label || filters.entityType
             }
-            onRemove={() => onFilterChange({ ...filters, entityType: 'all' })}
+            onRemove={() => onFilterChange({ ...filters, entityType: "all" })}
           />
         )}
         {Object.entries(filters.customFilters || {}).map(([key, value]) => {
-          if (!value || value === 'all') return null;
+          if (!value || value === "all") return null;
           const option = customFilterOptions?.find((o) => o.key === key);
           const label =
             option?.options.find((o) => o.value === value)?.label || value;
@@ -196,7 +196,7 @@ export function FilterPanel({
               onRemove={() =>
                 onFilterChange({
                   ...filters,
-                  customFilters: { ...filters.customFilters, [key]: 'all' },
+                  customFilters: { ...filters.customFilters, [key]: "all" },
                 })
               }
             />
@@ -229,10 +229,10 @@ export function FilterPanel({
                     key={preset.label}
                     onClick={() => handlePresetClick(preset)}
                     className={cn(
-                      'rounded px-2 py-1 text-xs transition-colors',
+                      "rounded px-2 py-1 text-xs transition-colors",
                       filters.dateRange?.preset === preset.label
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted text-muted-foreground hover:bg-muted/80",
                     )}
                   >
                     {preset.label}
@@ -241,7 +241,7 @@ export function FilterPanel({
               </div>
 
               {/* Custom Date Inputs */}
-              {filters.dateRange?.preset === 'Custom' && (
+              {filters.dateRange?.preset === "Custom" && (
                 <div className="mt-2 flex gap-2">
                   <input
                     type="date"
@@ -249,11 +249,11 @@ export function FilterPanel({
                       filters.dateRange.startDate
                         ? filters.dateRange.startDate
                             .toISOString()
-                            .split('T')[0]
-                        : ''
+                            .split("T")[0]
+                        : ""
                     }
                     onChange={(e) =>
-                      handleCustomDateChange('start', e.target.value)
+                      handleCustomDateChange("start", e.target.value)
                     }
                     className="rounded border border-border bg-background px-2 py-1 text-sm"
                   />
@@ -262,11 +262,11 @@ export function FilterPanel({
                     type="date"
                     value={
                       filters.dateRange.endDate
-                        ? filters.dateRange.endDate.toISOString().split('T')[0]
-                        : ''
+                        ? filters.dateRange.endDate.toISOString().split("T")[0]
+                        : ""
                     }
                     onChange={(e) =>
-                      handleCustomDateChange('end', e.target.value)
+                      handleCustomDateChange("end", e.target.value)
                     }
                     className="rounded border border-border bg-background px-2 py-1 text-sm"
                   />
@@ -281,7 +281,7 @@ export function FilterPanel({
                   Entity Type
                 </label>
                 <select
-                  value={filters.entityType || 'all'}
+                  value={filters.entityType || "all"}
                   onChange={(e) => handleEntityChange(e.target.value)}
                   className="w-full rounded border border-border bg-background px-3 py-2 text-sm"
                 >
@@ -302,7 +302,7 @@ export function FilterPanel({
                   {filterOption.label}
                 </label>
                 <select
-                  value={filters.customFilters?.[filterOption.key] || 'all'}
+                  value={filters.customFilters?.[filterOption.key] || "all"}
                   onChange={(e) =>
                     handleCustomFilterChange(filterOption.key, e.target.value)
                   }

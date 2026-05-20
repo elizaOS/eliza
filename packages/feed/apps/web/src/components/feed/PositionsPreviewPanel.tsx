@@ -1,54 +1,54 @@
-'use client';
+"use client";
 
-import type { PerpPositionFromAPI, PredictionPosition } from '@feed/shared';
-import { FEED_POINTS_SYMBOL, cn, logger, toNumber } from '@feed/shared';
-import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
-import { PositionDetailModal } from '@/components/profile/PositionDetailModal';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { useWidgetRefresh } from '@/contexts/WidgetRefreshContext';
-import { useAuth } from '@/hooks/useAuth';
-import { getWalletTabHref } from '@/lib/wallet-tabs';
-import { useWidgetCacheStore } from '@/stores/widgetCacheStore';
+import type { PerpPositionFromAPI, PredictionPosition } from "@feed/shared";
+import { cn, FEED_POINTS_SYMBOL, logger, toNumber } from "@feed/shared";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
+import { PositionDetailModal } from "@/components/profile/PositionDetailModal";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { useWidgetRefresh } from "@/contexts/WidgetRefreshContext";
+import { useAuth } from "@/hooks/useAuth";
+import { getWalletTabHref } from "@/lib/wallet-tabs";
+import { useWidgetCacheStore } from "@/stores/widgetCacheStore";
 
 const PREVIEW_COUNT = 3;
 
 const formatPoints = (points: number) =>
-  points.toLocaleString('en-US', { maximumFractionDigits: 0 });
+  points.toLocaleString("en-US", { maximumFractionDigits: 0 });
 
 const formatPercent = (value: number) =>
-  `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`;
+  `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`;
 
 const formatPrice = (price: number) =>
   `${FEED_POINTS_SYMBOL}${price.toFixed(2)}`;
 
 /** Unified position item for sorting by timestamp */
 interface PositionItem {
-  type: 'perp' | 'prediction';
+  type: "perp" | "prediction";
   data: PerpPositionFromAPI | PredictionPosition;
   openedAt: string; // ISO timestamp for sorting
 }
 
 function buildSortedPositions(
   perps: PerpPositionFromAPI[],
-  predictions: PredictionPosition[]
+  predictions: PredictionPosition[],
 ): PositionItem[] {
   const items: PositionItem[] = [
     ...perps.map((p) => ({
-      type: 'perp' as const,
+      type: "perp" as const,
       data: p,
       openedAt: p.openedAt,
     })),
     ...predictions
       .filter((p) => !p.resolved)
       .map((p) => ({
-        type: 'prediction' as const,
+        type: "prediction" as const,
         data: p,
         openedAt: p.createdAt ?? new Date(0).toISOString(),
       })),
   ];
   items.sort(
-    (a, b) => new Date(b.openedAt).getTime() - new Date(a.openedAt).getTime()
+    (a, b) => new Date(b.openedAt).getTime() - new Date(a.openedAt).getTime(),
   );
   return items;
 }
@@ -65,8 +65,8 @@ export function PositionsPreviewPanel() {
 
   // Modal state
   const [modalOpen, setModalOpen] = useState(false);
-  const [modalType, setModalType] = useState<'prediction' | 'perp'>(
-    'prediction'
+  const [modalType, setModalType] = useState<"prediction" | "perp">(
+    "prediction",
   );
   const [selectedPosition, setSelectedPosition] = useState<
     PredictionPosition | PerpPositionFromAPI | null
@@ -116,13 +116,13 @@ export function PositionsPreviewPanel() {
 
       try {
         const response = await fetch(
-          `/api/markets/positions/${encodeURIComponent(userId)}`
+          `/api/markets/positions/${encodeURIComponent(userId)}`,
         );
         if (!response.ok) {
           logger.error(
-            'Failed to fetch positions for preview',
+            "Failed to fetch positions for preview",
             { status: response.status },
-            'PositionsPreviewPanel'
+            "PositionsPreviewPanel",
           );
           setLoading(false);
           return;
@@ -134,7 +134,7 @@ export function PositionsPreviewPanel() {
         ).map((p: Record<string, unknown>) => ({
           id: p.id as string,
           ticker: p.ticker as string,
-          side: p.side as 'long' | 'short',
+          side: p.side as "long" | "short",
           entryPrice: toNumber(p.entryPrice),
           currentPrice: toNumber(p.currentPrice),
           size: toNumber(p.size),
@@ -152,7 +152,7 @@ export function PositionsPreviewPanel() {
           id: p.id as string,
           marketId: p.marketId as string,
           question: p.question as string,
-          side: p.side as 'YES' | 'NO',
+          side: p.side as "YES" | "NO",
           shares: toNumber(p.shares),
           avgPrice: toNumber(p.avgPrice),
           currentPrice: toNumber(p.currentPrice),
@@ -174,15 +174,15 @@ export function PositionsPreviewPanel() {
         });
       } catch (err) {
         logger.error(
-          'Error fetching positions preview',
+          "Error fetching positions preview",
           err instanceof Error ? err : { error: err },
-          'PositionsPreviewPanel'
+          "PositionsPreviewPanel",
         );
       } finally {
         setLoading(false);
       }
     },
-    [userId, getPositionsPreview, setPositionsPreview]
+    [userId, getPositionsPreview, setPositionsPreview],
   );
 
   useEffect(() => {
@@ -199,8 +199,8 @@ export function PositionsPreviewPanel() {
   // Register with WidgetRefreshContext for pull-to-refresh
   useEffect(() => {
     const refresh = () => fetchPositions(true);
-    registerRefresh('positions-preview', refresh);
-    return () => unregisterRefresh('positions-preview');
+    registerRefresh("positions-preview", refresh);
+    return () => unregisterRefresh("positions-preview");
   }, [registerRefresh, unregisterRefresh, fetchPositions]);
 
   const sortedPositions = buildSortedPositions(perps, predictions);
@@ -230,7 +230,7 @@ export function PositionsPreviewPanel() {
             onClick={() => setExpanded(!expanded)}
             className="flex items-center gap-1 text-muted-foreground text-xs transition-colors hover:text-foreground"
           >
-            {expanded ? 'Show less' : 'See more'}
+            {expanded ? "Show less" : "See more"}
           </button>
         )}
       </div>
@@ -245,7 +245,7 @@ export function PositionsPreviewPanel() {
         <>
           <div className="space-y-1">
             {displayPositions.map((item) => {
-              if (item.type === 'perp') {
+              if (item.type === "perp") {
                 const perp = item.data as PerpPositionFromAPI;
                 return (
                   <button
@@ -259,26 +259,26 @@ export function PositionsPreviewPanel() {
                       </span>
                       <span
                         className={cn(
-                          'text-xs',
-                          perp.side === 'long'
-                            ? 'text-green-500'
-                            : 'text-red-500'
+                          "text-xs",
+                          perp.side === "long"
+                            ? "text-green-500"
+                            : "text-red-500",
                         )}
                       >
-                        {perp.side === 'long' ? 'Long' : 'Short'}
+                        {perp.side === "long" ? "Long" : "Short"}
                       </span>
                     </div>
                     <div className="mt-0.5 flex items-center justify-between">
                       <span className="text-muted-foreground text-xs">
-                        {formatPoints(perp.size)} pts @{' '}
+                        {formatPoints(perp.size)} pts @{" "}
                         {formatPrice(perp.entryPrice)}
                       </span>
                       <span
                         className={cn(
-                          'font-medium text-xs',
+                          "font-medium text-xs",
                           perp.unrealizedPnL >= 0
-                            ? 'text-green-500'
-                            : 'text-red-500'
+                            ? "text-green-500"
+                            : "text-red-500",
                         )}
                       >
                         {formatPoints(perp.unrealizedPnL)} pts (
@@ -305,13 +305,13 @@ export function PositionsPreviewPanel() {
                   </div>
                   <div className="mt-0.5 flex items-center justify-between">
                     <span className="text-muted-foreground text-xs">
-                      {pred.shares} shares {pred.side} @{' '}
+                      {pred.shares} shares {pred.side} @{" "}
                       {formatPrice(pred.avgPrice)}
                     </span>
                     <span
                       className={cn(
-                        'font-medium text-xs',
-                        pnlPct >= 0 ? 'text-green-500' : 'text-red-500'
+                        "font-medium text-xs",
+                        pnlPct >= 0 ? "text-green-500" : "text-red-500",
                       )}
                     >
                       {formatPercent(pnlPct)}
@@ -323,7 +323,7 @@ export function PositionsPreviewPanel() {
           </div>
 
           <button
-            onClick={() => router.push(getWalletTabHref('positions'))}
+            onClick={() => router.push(getWalletTabHref("positions"))}
             className="mt-3 flex w-full items-center justify-center gap-1 rounded-lg border border-border px-3 py-2 font-medium text-foreground text-sm transition-colors hover:bg-muted/50"
           >
             View Positions

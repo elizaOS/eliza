@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import CommentPage from '@web/app/comment/[id]/page';
-import { useParams } from 'next/navigation';
+import CommentPage from "@web/app/comment/[id]/page";
+import { useParams } from "next/navigation";
 
 export function PageContent() {
   const params = useParams<{ id: string }>();

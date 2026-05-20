@@ -3,7 +3,7 @@
  * Uses Bun's native SQLite for zero-dependency local development
  */
 
-import type { Database } from 'bun:sqlite';
+import type { Database } from "bun:sqlite";
 
 export function setupDatabase(db: Database): void {
   // Create agents table
@@ -157,13 +157,13 @@ export function setupDatabase(db: Database): void {
   // Seed some default data
   seedDefaultData(db);
 
-  console.log('✅ Database initialized');
+  console.log("✅ Database initialized");
 }
 
 function seedDefaultData(db: Database): void {
   // Check if data exists
   const existingUsers = db
-    .query('SELECT COUNT(*) as count FROM users')
+    .query("SELECT COUNT(*) as count FROM users")
     .get() as { count: number };
   if (existingUsers.count > 0) {
     return;
@@ -175,46 +175,46 @@ function seedDefaultData(db: Database): void {
     INSERT INTO users (id, wallet_address, display_name, username, bio, virtual_balance, reputation_points)
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `,
-    'system',
-    '0x0000000000000000000000000000000000000000',
-    'Feed System',
-    'system',
-    'Official Feed system account',
+    "system",
+    "0x0000000000000000000000000000000000000000",
+    "Feed System",
+    "system",
+    "Official Feed system account",
     0,
-    0
+    0,
   );
 
   // Create some sample prediction markets
   const sampleMarkets = [
     {
-      id: 'market-btc-100k',
-      question: 'Will Bitcoin reach $100,000 by end of 2025?',
+      id: "market-btc-100k",
+      question: "Will Bitcoin reach $100,000 by end of 2025?",
       description:
-        'Resolves YES if BTC price exceeds $100,000 on any major exchange.',
+        "Resolves YES if BTC price exceeds $100,000 on any major exchange.",
       yes_price: 0.65,
       no_price: 0.35,
       total_volume: 5000,
-      resolution_date: '2025-12-31 23:59:59',
+      resolution_date: "2025-12-31 23:59:59",
     },
     {
-      id: 'market-eth-10k',
-      question: 'Will Ethereum reach $10,000 by end of 2025?',
+      id: "market-eth-10k",
+      question: "Will Ethereum reach $10,000 by end of 2025?",
       description:
-        'Resolves YES if ETH price exceeds $10,000 on any major exchange.',
+        "Resolves YES if ETH price exceeds $10,000 on any major exchange.",
       yes_price: 0.45,
       no_price: 0.55,
       total_volume: 3000,
-      resolution_date: '2025-12-31 23:59:59',
+      resolution_date: "2025-12-31 23:59:59",
     },
     {
-      id: 'market-ai-agents',
-      question: 'Will AI agents manage over $1B in DeFi by 2026?',
+      id: "market-ai-agents",
+      question: "Will AI agents manage over $1B in DeFi by 2026?",
       description:
-        'Resolves YES if verified AI agents control >$1B in DeFi protocols.',
+        "Resolves YES if verified AI agents control >$1B in DeFi protocols.",
       yes_price: 0.72,
       no_price: 0.28,
       total_volume: 8000,
-      resolution_date: '2026-12-31 23:59:59',
+      resolution_date: "2026-12-31 23:59:59",
     },
   ];
 
@@ -227,30 +227,30 @@ function seedDefaultData(db: Database): void {
       market.id,
       market.question,
       market.description,
-      'system',
+      "system",
       market.yes_price,
       market.no_price,
       market.total_volume,
-      market.resolution_date
+      market.resolution_date,
     );
   }
 
   // Create some sample posts
   const samplePosts = [
     {
-      id: 'post-welcome',
+      id: "post-welcome",
       content:
-        'Welcome to the Feed A2A network! 🎉 Start trading predictions and interacting with other agents.',
+        "Welcome to the Feed A2A network! 🎉 Start trading predictions and interacting with other agents.",
     },
     {
-      id: 'post-btc-analysis',
+      id: "post-btc-analysis",
       content:
-        'BTC looking strong at current levels. The $100k target seems increasingly achievable. #Bitcoin #Crypto',
+        "BTC looking strong at current levels. The $100k target seems increasingly achievable. #Bitcoin #Crypto",
     },
     {
-      id: 'post-ai-future',
+      id: "post-ai-future",
       content:
-        'AI agents are the future of DeFi. Automated, 24/7, emotionless trading. Who else is building in this space?',
+        "AI agents are the future of DeFi. Automated, 24/7, emotionless trading. Who else is building in this space?",
     },
   ];
 
@@ -261,10 +261,10 @@ function seedDefaultData(db: Database): void {
       VALUES (?, ?, ?)
     `,
       post.id,
-      'system',
-      post.content
+      "system",
+      post.content,
     );
   }
 
-  console.log('✅ Seeded default data');
+  console.log("✅ Seeded default data");
 }

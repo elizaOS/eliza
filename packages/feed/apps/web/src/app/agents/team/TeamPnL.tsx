@@ -1,23 +1,23 @@
-'use client';
+"use client";
 
-import { cn, formatCompactCurrency } from '@feed/shared';
-import { Loader2, TrendingDown, TrendingUp, Users } from 'lucide-react';
-import { useMemo } from 'react';
+import { cn, formatCompactCurrency } from "@feed/shared";
+import { Loader2, TrendingDown, TrendingUp, Users } from "lucide-react";
+import { useMemo } from "react";
 import type {
   TeamScope,
   TeamTradingSummary,
-} from '@/lib/agents/team-trading-summary';
-import { ScopeToggle } from './_components/ScopeToggle';
+} from "@/lib/agents/team-trading-summary";
+import { ScopeToggle } from "./_components/ScopeToggle";
 
 function pnlChip(value: number) {
   const positive = value >= 0;
   return (
     <div
       className={cn(
-        'flex items-center gap-1 rounded-full px-2 py-0.5 font-medium text-xs',
+        "flex items-center gap-1 rounded-full px-2 py-0.5 font-medium text-xs",
         positive
-          ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-          : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+          ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+          : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
       )}
     >
       {positive ? (
@@ -25,7 +25,7 @@ function pnlChip(value: number) {
       ) : (
         <TrendingDown className="h-3 w-3" />
       )}
-      {value >= 0 ? '+' : ''}
+      {value >= 0 ? "+" : ""}
       {formatCompactCurrency(value)}
     </div>
   );
@@ -44,13 +44,13 @@ export function TeamPnL({
   error: string | null;
   scope: TeamScope;
   onScopeChange: (scope: TeamScope) => void;
-  onSelectMember?: (id: string, type: 'user' | 'agent') => void;
+  onSelectMember?: (id: string, type: "user" | "agent") => void;
 }) {
   // Hooks must be called unconditionally (Rules of Hooks)
   const members = useMemo(() => {
     if (!summary) return [];
-    return scope === 'agents_only'
-      ? summary.members.filter((m) => m.entityType === 'agent')
+    return scope === "agents_only"
+      ? summary.members.filter((m) => m.entityType === "agent")
       : summary.members;
   }, [summary, scope]);
 
@@ -64,7 +64,7 @@ export function TeamPnL({
         openPositions: 0,
       };
     const src =
-      scope === 'agents_only' ? summary.agentsOnlyTotals : summary.totals;
+      scope === "agents_only" ? summary.agentsOnlyTotals : summary.totals;
     return {
       lifetimePnL: src.lifetimePnL,
       unrealizedPnL: src.unrealizedPnL,
@@ -120,11 +120,11 @@ export function TeamPnL({
           <span className="text-muted-foreground">Lifetime P&L</span>
           <span
             className={cn(
-              'font-medium',
-              totals.lifetimePnL >= 0 ? 'text-green-600' : 'text-red-600'
+              "font-medium",
+              totals.lifetimePnL >= 0 ? "text-green-600" : "text-red-600",
             )}
           >
-            {totals.lifetimePnL >= 0 ? '+' : ''}
+            {totals.lifetimePnL >= 0 ? "+" : ""}
             {formatCompactCurrency(totals.lifetimePnL)}
           </span>
         </div>
@@ -132,11 +132,11 @@ export function TeamPnL({
           <span className="text-muted-foreground">Unrealized P&L</span>
           <span
             className={cn(
-              'font-medium',
-              totals.unrealizedPnL >= 0 ? 'text-green-600' : 'text-red-600'
+              "font-medium",
+              totals.unrealizedPnL >= 0 ? "text-green-600" : "text-red-600",
             )}
           >
-            {totals.unrealizedPnL >= 0 ? '+' : ''}
+            {totals.unrealizedPnL >= 0 ? "+" : ""}
             {formatCompactCurrency(totals.unrealizedPnL)}
           </span>
         </div>
@@ -148,8 +148,8 @@ export function TeamPnL({
         </div>
         <div className="pt-1 text-[11px] text-muted-foreground">
           {currentPositive
-            ? 'Team is currently profitable.'
-            : 'Team is currently down.'}
+            ? "Team is currently profitable."
+            : "Team is currently down."}
         </div>
       </div>
 
@@ -161,8 +161,8 @@ export function TeamPnL({
 
         <div className="space-y-1">
           {members.map((m) => {
-            const label = m.entityType === 'owner' ? 'Owner' : 'Agent';
-            const name = m.name || (m.entityType === 'owner' ? 'You' : 'Agent');
+            const label = m.entityType === "owner" ? "Owner" : "Agent";
+            const name = m.name || (m.entityType === "owner" ? "You" : "Agent");
 
             return (
               <button
@@ -172,12 +172,12 @@ export function TeamPnL({
                   if (!onSelectMember) return;
                   onSelectMember(
                     m.id,
-                    m.entityType === 'owner' ? 'user' : 'agent'
+                    m.entityType === "owner" ? "user" : "agent",
                   );
                 }}
                 className={cn(
-                  'flex w-full items-start justify-between gap-3 rounded-md px-2 py-2 text-left transition-colors',
-                  onSelectMember ? 'hover:bg-muted/40' : 'cursor-default'
+                  "flex w-full items-start justify-between gap-3 rounded-md px-2 py-2 text-left transition-colors",
+                  onSelectMember ? "hover:bg-muted/40" : "cursor-default",
                 )}
               >
                 <div className="min-w-0">
@@ -194,21 +194,21 @@ export function TeamPnL({
                   )}
                   <div className="mt-1 text-[11px] text-muted-foreground">
                     {m.openPositions} open position
-                    {m.openPositions === 1 ? '' : 's'}
+                    {m.openPositions === 1 ? "" : "s"}
                   </div>
                 </div>
 
                 <div className="shrink-0 text-right">
                   <div className="font-medium text-sm">
-                    {m.currentPnL >= 0 ? '+' : ''}
+                    {m.currentPnL >= 0 ? "+" : ""}
                     {formatCompactCurrency(m.currentPnL)}
                   </div>
                   <div className="text-[10px] text-muted-foreground">
-                    L: {m.lifetimePnL >= 0 ? '+' : ''}
+                    L: {m.lifetimePnL >= 0 ? "+" : ""}
                     {formatCompactCurrency(m.lifetimePnL)}
                   </div>
                   <div className="text-[10px] text-muted-foreground">
-                    U: {m.unrealizedPnL >= 0 ? '+' : ''}
+                    U: {m.unrealizedPnL >= 0 ? "+" : ""}
                     {formatCompactCurrency(m.unrealizedPnL)}
                   </div>
                 </div>

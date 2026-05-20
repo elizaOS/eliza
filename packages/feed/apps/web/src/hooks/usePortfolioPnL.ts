@@ -1,17 +1,17 @@
-'use client';
+"use client";
 
-import type { PortfolioBreakdownSnapshot } from '@feed/engine/client';
-import { useMemo } from 'react';
-import { useAuth } from '@/hooks/useAuth';
+import type { PortfolioBreakdownSnapshot } from "@feed/engine/client";
+import { useMemo } from "react";
+import { useAuth } from "@/hooks/useAuth";
 import {
   fetchPortfolioBreakdownSnapshot,
   isAbortError,
   usePortfolioBreakdown,
   usePortfolioBreakdownPolling,
-} from '@/stores/portfolioBreakdownStore';
+} from "@/stores/portfolioBreakdownStore";
 
 // Re-export for components that import from this hook
-export type { PortfolioBreakdownSnapshot } from '@feed/engine/client';
+export type { PortfolioBreakdownSnapshot } from "@feed/engine/client";
 export { fetchPortfolioBreakdownSnapshot, isAbortError };
 
 /**
@@ -51,7 +51,7 @@ interface UsePortfolioPnLPollingOptions extends UsePortfolioPnLOptions {
  * - Total P/L
  */
 export function usePortfolioPnL(
-  options: UsePortfolioPnLOptions = {}
+  options: UsePortfolioPnLOptions = {},
 ): UsePortfolioPnLResult {
   const { user, authenticated } = useAuth();
   const targetUserId =
@@ -69,7 +69,7 @@ export function usePortfolioPnL(
 }
 
 export function usePortfolioPnLPolling(
-  options: UsePortfolioPnLPollingOptions = {}
+  options: UsePortfolioPnLPollingOptions = {},
 ) {
   const { user, authenticated } = useAuth();
   const targetUserId =

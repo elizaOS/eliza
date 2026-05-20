@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-type Tab = 'overview' | 'achievements' | 'challenges';
+type Tab = "overview" | "achievements" | "challenges";
 
 interface TabNavigationProps {
   activeTab: Tab;
@@ -9,9 +9,9 @@ interface TabNavigationProps {
 
 export function TabNavigation({ activeTab, onTabChange }: TabNavigationProps) {
   const tabs: { id: Tab; label: string }[] = [
-    { id: 'overview', label: 'Overview' },
-    { id: 'challenges', label: 'Challenges' },
-    { id: 'achievements', label: 'Achievements' },
+    { id: "overview", label: "Overview" },
+    { id: "challenges", label: "Challenges" },
+    { id: "achievements", label: "Achievements" },
   ];
 
   return (
@@ -22,8 +22,8 @@ export function TabNavigation({ activeTab, onTabChange }: TabNavigationProps) {
           onClick={() => onTabChange(tab.id)}
           className={`relative flex-1 py-3 text-center font-medium text-sm transition-colors ${
             activeTab === tab.id
-              ? 'text-foreground'
-              : 'text-muted-foreground hover:text-foreground'
+              ? "text-foreground"
+              : "text-muted-foreground hover:text-foreground"
           }`}
         >
           {tab.label}

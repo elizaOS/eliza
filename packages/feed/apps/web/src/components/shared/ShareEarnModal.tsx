@@ -16,13 +16,13 @@
  * ```
  */
 
-import { logger, POINTS } from '@feed/shared';
-import { Check, Lock, Twitter, X as XIcon } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
-import { useAuth } from '@/hooks/useAuth';
-import { getAuthToken } from '@/lib/auth';
-import { apiUrl } from '@/utils/api-url';
-import { ShareVerificationModal } from './ShareVerificationModal';
+import { logger, POINTS } from "@feed/shared";
+import { Check, Lock, Twitter, X as XIcon } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
+import { getAuthToken } from "@/lib/auth";
+import { apiUrl } from "@/utils/api-url";
+import { ShareVerificationModal } from "./ShareVerificationModal";
 
 // Farcaster icon component
 function FarcasterIcon({ className }: { className?: string }) {
@@ -38,7 +38,7 @@ function FarcasterIcon({ className }: { className?: string }) {
 interface ShareEarnModalProps {
   isOpen: boolean;
   onClose: () => void;
-  contentType: 'post' | 'profile' | 'market' | 'referral' | 'leaderboard';
+  contentType: "post" | "profile" | "market" | "referral" | "leaderboard";
   contentId?: string;
   url?: string;
   text?: string;
@@ -85,16 +85,16 @@ export function ShareEarnModal({
   const [showVerification, setShowVerification] = useState(false);
   const [pendingVerification, setPendingVerification] = useState<{
     shareId: string;
-    platform: 'twitter' | 'farcaster';
+    platform: "twitter" | "farcaster";
   } | null>(null);
   const [checkingExistingShares, setCheckingExistingShares] = useState(false);
 
   const shareUrl =
-    url || (typeof window !== 'undefined' ? window.location.origin : '');
-  const shareText = text || 'Check this out!';
+    url || (typeof window !== "undefined" ? window.location.origin : "");
+  const shareText = text || "Check this out!";
 
   const checkConfiguration = useCallback(async () => {
-    const response = await fetch(apiUrl('/api/auth/credentials/status'));
+    const response = await fetch(apiUrl("/api/auth/credentials/status"));
     if (response.ok) {
       const data = (await response.json()) as {
         twitter?: boolean;
@@ -103,9 +103,9 @@ export function ShareEarnModal({
       setIsTwitterConfigured(data.twitter || false);
     } else {
       logger.warn(
-        'Failed to check credentials status',
+        "Failed to check credentials status",
         { status: response.status },
-        'ShareEarnModal'
+        "ShareEarnModal",
       );
       // Default to true to not block users if check fails
       setIsTwitterConfigured(true);
@@ -127,7 +127,7 @@ export function ShareEarnModal({
         headers: {
           Authorization: `Bearer ${token}`,
         },
-      }
+      },
     );
 
     if (response.ok) {
@@ -136,10 +136,10 @@ export function ShareEarnModal({
 
       // Update state for each platform that has been verified and earned
       const twitterShare = shares.find(
-        (s: { platform: string }) => s.platform === 'twitter'
+        (s: { platform: string }) => s.platform === "twitter",
       );
       const farcasterShare = shares.find(
-        (s: { platform: string }) => s.platform === 'farcaster'
+        (s: { platform: string }) => s.platform === "farcaster",
       );
 
       setShareStatus((prev) => ({
@@ -154,7 +154,7 @@ export function ShareEarnModal({
       logger.info(
         `Found ${shares.length} existing verified shares for ${contentType}`,
         { contentType, twitter: !!twitterShare, farcaster: !!farcasterShare },
-        'ShareEarnModal'
+        "ShareEarnModal",
       );
     }
     setCheckingExistingShares(false);
@@ -171,30 +171,30 @@ export function ShareEarnModal({
   }, [isOpen, authenticated, user, checkConfiguration, checkExistingShares]);
 
   const trackShare = async (
-    platform: 'twitter' | 'farcaster'
+    platform: "twitter" | "farcaster",
   ): Promise<{ success: boolean; shareId?: string }> => {
     if (!authenticated || !user) {
       logger.warn(
-        'User not authenticated, cannot track share',
+        "User not authenticated, cannot track share",
         undefined,
-        'ShareEarnModal'
+        "ShareEarnModal",
       );
       return { success: false };
     }
 
     const token = getAuthToken();
     if (!token) {
-      logger.warn('No access token available', undefined, 'ShareEarnModal');
+      logger.warn("No access token available", undefined, "ShareEarnModal");
       return { success: false };
     }
 
     const response = await fetch(
       `/api/users/${encodeURIComponent(user.id)}/share`,
       {
-        method: 'POST',
+        method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           platform,
@@ -202,7 +202,7 @@ export function ShareEarnModal({
           contentId,
           url: shareUrl,
         }),
-      }
+      },
     );
 
     if (response.ok) {
@@ -212,7 +212,7 @@ export function ShareEarnModal({
       logger.info(
         `Share action created for ${platform}, verification required`,
         { platform, shareId },
-        'ShareEarnModal'
+        "ShareEarnModal",
       );
 
       return { success: true, shareId };
@@ -230,7 +230,7 @@ export function ShareEarnModal({
       const twitterUrl = textContainsUrl
         ? `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}`
         : `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`;
-      window.open(twitterUrl, '_blank', 'width=550,height=420');
+      window.open(twitterUrl, "_blank", "width=550,height=420");
       return;
     }
 
@@ -244,9 +244,9 @@ export function ShareEarnModal({
     const twitterUrl = textContainsUrl
       ? `https://x.com/intent/tweet?text=${encodeURIComponent(shareText)}`
       : `https://x.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`;
-    window.open(twitterUrl, '_blank', 'width=550,height=420');
+    window.open(twitterUrl, "_blank", "width=550,height=420");
 
-    const result = await trackShare('twitter');
+    const result = await trackShare("twitter");
 
     // Don't mark as shared yet - only after verification
     setShareStatus((prev) => ({
@@ -259,7 +259,7 @@ export function ShareEarnModal({
       setTimeout(() => {
         setPendingVerification({
           shareId: result.shareId!,
-          platform: 'twitter',
+          platform: "twitter",
         });
         setShowVerification(true);
       }, 3000); // 3 second delay
@@ -274,7 +274,7 @@ export function ShareEarnModal({
       const castText = `${shareText}\n\n${shareUrl}`;
       // Farcaster compose URL - uses official protocol endpoint (farcaster.xyz)
       const farcasterComposeUrl = `https://farcaster.xyz/~/compose?text=${encodeURIComponent(castText)}`;
-      window.open(farcasterComposeUrl, '_blank', 'width=550,height=600');
+      window.open(farcasterComposeUrl, "_blank", "width=550,height=600");
       return;
     }
 
@@ -286,9 +286,9 @@ export function ShareEarnModal({
     const castText = `${shareText}\n\n${shareUrl}`;
     // Farcaster compose URL - uses official protocol endpoint (farcaster.xyz)
     const farcasterComposeUrl = `https://farcaster.xyz/~/compose?text=${encodeURIComponent(castText)}`;
-    window.open(farcasterComposeUrl, '_blank', 'width=550,height=600');
+    window.open(farcasterComposeUrl, "_blank", "width=550,height=600");
 
-    const result = await trackShare('farcaster');
+    const result = await trackShare("farcaster");
 
     // Don't mark as shared yet - only after verification
     setShareStatus((prev) => ({
@@ -301,7 +301,7 @@ export function ShareEarnModal({
       setTimeout(() => {
         setPendingVerification({
           shareId: result.shareId!,
-          platform: 'farcaster',
+          platform: "farcaster",
         });
         setShowVerification(true);
       }, 3000); // 3 second delay
@@ -359,27 +359,27 @@ export function ShareEarnModal({
                   disabled={!isTwitterConfigured || shareStatus.twitter.loading}
                   className={`flex w-full items-center gap-4 rounded-lg border p-4 transition-all ${
                     !isTwitterConfigured
-                      ? 'cursor-not-allowed border-border bg-muted/50 opacity-60'
+                      ? "cursor-not-allowed border-border bg-muted/50 opacity-60"
                       : shareStatus.twitter.earned
-                        ? 'cursor-pointer border-green-500/30 bg-green-500/10 hover:bg-green-500/20'
+                        ? "cursor-pointer border-green-500/30 bg-green-500/10 hover:bg-green-500/20"
                         : shareStatus.twitter.loading
-                          ? 'cursor-wait border-border bg-card'
-                          : 'cursor-pointer border-border bg-card hover:bg-muted'
+                          ? "cursor-wait border-border bg-card"
+                          : "cursor-pointer border-border bg-card hover:bg-muted"
                   }`}
                 >
                   <Twitter
                     className={`h-6 w-6 ${
                       !isTwitterConfigured
-                        ? 'text-muted-foreground'
+                        ? "text-muted-foreground"
                         : shareStatus.twitter.earned
-                          ? 'text-blue-400'
-                          : 'text-muted-foreground'
+                          ? "text-blue-400"
+                          : "text-muted-foreground"
                     }`}
                   />
                   <div className="flex-1 text-left">
                     <div className="flex items-center gap-2">
                       <h3
-                        className={`font-semibold text-sm ${!isTwitterConfigured ? 'text-muted-foreground' : ''}`}
+                        className={`font-semibold text-sm ${!isTwitterConfigured ? "text-muted-foreground" : ""}`}
                       >
                         Share to X
                       </h3>
@@ -391,12 +391,12 @@ export function ShareEarnModal({
                     </div>
                     <p className="text-muted-foreground text-xs">
                       {!isTwitterConfigured
-                        ? 'Twitter integration coming soon'
+                        ? "Twitter integration coming soon"
                         : shareStatus.twitter.loading
-                          ? 'Processing...'
+                          ? "Processing..."
                           : shareStatus.twitter.earned
                             ? `Earned +${POINTS.SHARE_TO_TWITTER} points`
-                            : 'Share your profile'}
+                            : "Share your profile"}
                     </p>
                   </div>
                   {!isTwitterConfigured ? (
@@ -417,14 +417,14 @@ export function ShareEarnModal({
                   disabled={shareStatus.farcaster.loading}
                   className={`flex w-full items-center gap-4 rounded-lg border p-4 transition-all ${
                     shareStatus.farcaster.earned
-                      ? 'cursor-pointer border-green-500/30 bg-green-500/10 hover:bg-green-500/20'
+                      ? "cursor-pointer border-green-500/30 bg-green-500/10 hover:bg-green-500/20"
                       : shareStatus.farcaster.loading
-                        ? 'cursor-wait border-border bg-card'
-                        : 'cursor-pointer border-border bg-card hover:bg-muted'
+                        ? "cursor-wait border-border bg-card"
+                        : "cursor-pointer border-border bg-card hover:bg-muted"
                   }`}
                 >
                   <FarcasterIcon
-                    className={`h-6 w-6 ${shareStatus.farcaster.earned ? 'text-purple-400' : 'text-muted-foreground'}`}
+                    className={`h-6 w-6 ${shareStatus.farcaster.earned ? "text-purple-400" : "text-muted-foreground"}`}
                   />
                   <div className="flex-1 text-left">
                     <h3 className="font-semibold text-sm">
@@ -432,10 +432,10 @@ export function ShareEarnModal({
                     </h3>
                     <p className="text-muted-foreground text-xs">
                       {shareStatus.farcaster.loading
-                        ? 'Processing...'
+                        ? "Processing..."
                         : shareStatus.farcaster.earned
                           ? `Earned +${POINTS.SHARE_ACTION} points`
-                          : 'Share your profile'}
+                          : "Share your profile"}
                     </p>
                   </div>
                   {shareStatus.farcaster.earned && (
@@ -473,12 +473,12 @@ export function ShareEarnModal({
           userId={user.id}
           onSuccess={(_reputationAwarded) => {
             // Update the share status to show reputation was earned.
-            if (pendingVerification.platform === 'twitter') {
+            if (pendingVerification.platform === "twitter") {
               setShareStatus((prev) => ({
                 ...prev,
                 twitter: { ...prev.twitter, earned: true },
               }));
-            } else if (pendingVerification.platform === 'farcaster') {
+            } else if (pendingVerification.platform === "farcaster") {
               setShareStatus((prev) => ({
                 ...prev,
                 farcaster: { ...prev.farcaster, earned: true },

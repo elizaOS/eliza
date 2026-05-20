@@ -1,4 +1,4 @@
-import { definePrompt } from '../define-prompt';
+import { definePrompt } from "../define-prompt";
 
 /**
  * Prompt for generating actor profile pictures based on physical description.
@@ -10,10 +10,10 @@ import { definePrompt } from '../define-prompt';
  * Returns image generation prompt for actor portrait.
  */
 export const actorPortrait = definePrompt({
-  id: 'actor-portrait',
-  version: '4.0.0',
-  category: 'image',
-  description: 'Generates actor profile pictures based on pfpDescription',
+  id: "actor-portrait",
+  version: "4.0.0",
+  category: "image",
+  description: "Generates actor profile pictures based on pfpDescription",
   template: `
 Create a profile picture portrait for {{realName}}.
 This is a satirical parody character named "{{actorName}}", but the physical identity must be unmistakably {{realName}}.
@@ -61,10 +61,10 @@ STYLE: Editorial cartoon meets cyborg portrait. Exaggerated features. Bold, reco
  * Returns image generation prompt for actor banner.
  */
 export const actorBanner = definePrompt({
-  id: 'actor-banner',
-  version: '1.0.0',
-  category: 'image',
-  description: 'Generates actor profile banners',
+  id: "actor-banner",
+  version: "1.0.0",
+  category: "image",
+  description: "Generates actor profile banners",
   template: `
 Create a profile banner (landscape/wide format) for {{realName}}.
 This is a satirical parody character named "{{actorName}}", but the person depicted must be unmistakably {{realName}}.

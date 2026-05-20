@@ -125,7 +125,7 @@ ${CONTENT_REQUIREMENTS}`;
  * @param actorVariableName - The template variable containing actor info (e.g., 'actorsList')
  */
 export function characterVoiceGuidance(
-  actorVariableName = 'actorsList'
+  actorVariableName = "actorsList",
 ): string {
   return `
 === CRITICAL: UNIQUE VOICES FOR EACH CHARACTER ===
@@ -198,10 +198,10 @@ export function getTimeOfDayEnergy(hour: number): string {
     return "ENERGY: 3am unhinged — say the weird thing, trust the weird thing, it's probably correct. Filters are off. Philosophers and freaks post now.";
   }
   if (hour >= 6 && hour < 10) {
-    return 'ENERGY: Morning professional — announcements, declarations, fresh-start energy. Brief and pointed.';
+    return "ENERGY: Morning professional — announcements, declarations, fresh-start energy. Brief and pointed.";
   }
   if (hour >= 10 && hour < 15) {
-    return 'ENERGY: Hot take hour — strong opinions, brief dunks, zero hedging. Say the thing. No waffling.';
+    return "ENERGY: Hot take hour — strong opinions, brief dunks, zero hedging. Say the thing. No waffling.";
   }
   if (hour >= 15 && hour < 20) {
     return "ENERGY: Afternoon chaos — commentary on the day's disasters, calling people out, challenging weak arguments. Spicy.";
@@ -575,13 +575,13 @@ export function buildStandardPromptSections(
     includeValueRanges?: boolean;
     includeVoiceGuidance?: boolean;
     actorVariableName?: string;
-  } = {}
+  } = {},
 ): string {
   const {
     includeWorldContext = true,
     includeValueRanges = true,
     includeVoiceGuidance = false,
-    actorVariableName = 'actorsList',
+    actorVariableName = "actorsList",
   } = options;
 
   const sections: string[] = [];
@@ -600,5 +600,5 @@ export function buildStandardPromptSections(
     sections.push(VALUE_RANGES);
   }
 
-  return sections.join('\n\n');
+  return sections.join("\n\n");
 }

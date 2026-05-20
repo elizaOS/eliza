@@ -14,29 +14,29 @@
  *   --interval=N  Seconds between ticks (default: 60, only with --loop)
  */
 
-import { closeDatabase } from '@feed/db';
-import { executeGameTick } from '@feed/engine';
-import { logger } from '@feed/shared';
+import { closeDatabase } from "@feed/db";
+import { executeGameTick } from "@feed/engine";
+import { logger } from "@feed/shared";
 
 async function runTick(): Promise<void> {
   logger.info(
-    '════════════════════════════════════════════════════════════',
+    "════════════════════════════════════════════════════════════",
     undefined,
-    'RunGameTick'
+    "RunGameTick",
   );
-  logger.info('Executing game tick...', undefined, 'RunGameTick');
+  logger.info("Executing game tick...", undefined, "RunGameTick");
 
   const startTime = Date.now();
   const result = await executeGameTick();
   const duration = Date.now() - startTime;
 
   logger.info(
-    '════════════════════════════════════════════════════════════',
+    "════════════════════════════════════════════════════════════",
     undefined,
-    'RunGameTick'
+    "RunGameTick",
   );
   logger.info(
-    'Tick completed',
+    "Tick completed",
     {
       duration: `${duration}ms`,
       postsCreated: result.postsCreated,
@@ -46,36 +46,36 @@ async function runTick(): Promise<void> {
       questionsResolved: result.questionsResolved,
       questionsCreated: result.questionsCreated,
     },
-    'RunGameTick'
+    "RunGameTick",
   );
   logger.info(
-    '════════════════════════════════════════════════════════════',
+    "════════════════════════════════════════════════════════════",
     undefined,
-    'RunGameTick'
+    "RunGameTick",
   );
 }
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
-  const loopMode = args.includes('--loop');
-  const intervalArg = args.find((a) => a.startsWith('--interval='));
+  const loopMode = args.includes("--loop");
+  const intervalArg = args.find((a) => a.startsWith("--interval="));
   const intervalSeconds = intervalArg
-    ? parseInt(intervalArg.split('=')[1], 10)
+    ? parseInt(intervalArg.split("=")[1], 10)
     : 60;
 
   if (!process.env.DATABASE_URL) {
     logger.error(
-      'DATABASE_URL environment variable is required',
+      "DATABASE_URL environment variable is required",
       undefined,
-      'RunGameTick'
+      "RunGameTick",
     );
     process.exit(1);
   }
 
   logger.info(
-    `Game Tick Runner ${loopMode ? `(loop mode, ${intervalSeconds}s interval)` : '(single tick)'}`,
+    `Game Tick Runner ${loopMode ? `(loop mode, ${intervalSeconds}s interval)` : "(single tick)"}`,
     undefined,
-    'RunGameTick'
+    "RunGameTick",
   );
 
   if (loopMode) {
@@ -88,26 +88,26 @@ async function main(): Promise<void> {
       logger.info(
         `Stopping after ${tickCount} ticks...`,
         undefined,
-        'RunGameTick'
+        "RunGameTick",
       );
     };
 
-    process.on('SIGINT', cleanup);
-    process.on('SIGTERM', cleanup);
+    process.on("SIGINT", cleanup);
+    process.on("SIGTERM", cleanup);
 
     while (running) {
       tickCount++;
-      logger.info(`Tick #${tickCount}`, undefined, 'RunGameTick');
+      logger.info(`Tick #${tickCount}`, undefined, "RunGameTick");
       await runTick();
 
       if (running) {
         logger.info(
           `Waiting ${intervalSeconds}s until next tick...`,
           undefined,
-          'RunGameTick'
+          "RunGameTick",
         );
         await new Promise((resolve) =>
-          setTimeout(resolve, intervalSeconds * 1000)
+          setTimeout(resolve, intervalSeconds * 1000),
         );
       }
     }
@@ -121,6 +121,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((error) => {
-  logger.error('Failed to run game tick', { error }, 'RunGameTick');
+  logger.error("Failed to run game tick", { error }, "RunGameTick");
   process.exit(1);
 });

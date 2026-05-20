@@ -9,9 +9,6 @@
  * - Resolution outcome (if resolved)
  */
 
-import { PredictionPricing } from '@feed/core/markets/prediction/client';
-import { db, desc, eq, gte, markets } from '@feed/db';
-import type { MessageTag } from '@feed/shared';
 import type {
   Action,
   ActionResult,
@@ -19,15 +16,18 @@ import type {
   IAgentRuntime,
   Memory,
   State,
-} from '@elizaos/core';
-import { logger } from '../../../../shared/logger';
+} from "@elizaos/core";
+import { PredictionPricing } from "@feed/core/markets/prediction/client";
+import { db, desc, eq, gte, markets } from "@feed/db";
+import type { MessageTag } from "@feed/shared";
+import { logger } from "../../../../shared/logger";
 
 /** Extended ActionResult with optional tag for UI */
 interface ActionResultWithTag extends ActionResult {
   tag?: MessageTag;
 }
 
-type StatusFilter = 'active' | 'resolved' | 'all';
+type StatusFilter = "active" | "resolved" | "all";
 
 function getDaysUntil(date: Date | null): number | null {
   if (!date) return null;
@@ -37,57 +37,57 @@ function getDaysUntil(date: Date | null): number | null {
 }
 
 export const checkPredictionsAction: Action = {
-  name: 'CHECK_PREDICTIONS',
+  name: "CHECK_PREDICTIONS",
   description:
-    'Check prediction markets - questions, YES/NO odds, resolution dates. Use marketId param for specific market details.',
+    "Check prediction markets - questions, YES/NO odds, resolution dates. Use marketId param for specific market details.",
   parameters: {
     marketId: {
-      type: 'string',
+      type: "string",
       description:
-        'Optional market ID to get specific prediction details. If omitted, returns a list of predictions.',
+        "Optional market ID to get specific prediction details. If omitted, returns a list of predictions.",
       required: false,
     },
     status: {
-      type: 'string',
+      type: "string",
       description:
         'Filter by status: "active", "resolved", or "all" (default: "active"). Only used when marketId is not provided.',
       required: false,
     },
     limit: {
-      type: 'number',
+      type: "number",
       description:
-        'Number of predictions to show (default: 10, max: 20). Only used when marketId is not provided.',
+        "Number of predictions to show (default: 10, max: 20). Only used when marketId is not provided.",
       required: false,
     },
-  } as unknown as Action['parameters'],
+  } as unknown as Action["parameters"],
   examples: [
     [
       {
-        name: 'user',
-        content: { text: 'What predictions are active?' },
+        name: "user",
+        content: { text: "What predictions are active?" },
       },
       {
-        name: 'coordinator',
+        name: "coordinator",
         content: { text: "I'll check the active prediction markets." },
       },
     ],
     [
       {
-        name: 'user',
-        content: { text: 'Show me market #123' },
+        name: "user",
+        content: { text: "Show me market #123" },
       },
       {
-        name: 'coordinator',
+        name: "coordinator",
         content: { text: "I'll get the details for that prediction market." },
       },
     ],
     [
       {
-        name: 'user',
-        content: { text: 'What can I bet on?' },
+        name: "user",
+        content: { text: "What can I bet on?" },
       },
       {
-        name: 'coordinator',
+        name: "coordinator",
         content: { text: "I'll show you the available prediction markets." },
       },
     ],
@@ -96,7 +96,7 @@ export const checkPredictionsAction: Action = {
   validate: async (
     _runtime: IAgentRuntime,
     _message: Memory,
-    _state?: State
+    _state?: State,
   ): Promise<boolean> => {
     return true;
   },
@@ -106,20 +106,20 @@ export const checkPredictionsAction: Action = {
     _message: Memory,
     state?: State,
     _options?: Record<string, unknown>,
-    _callback?: HandlerCallback
+    _callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const actionParams = state?.data?.actionParams as
       | { marketId?: string; status?: string; limit?: number }
       | undefined;
     const marketId = actionParams?.marketId;
     // Validate status against allowed StatusFilter values
-    const validStatusFilters: StatusFilter[] = ['active', 'resolved', 'all'];
+    const validStatusFilters: StatusFilter[] = ["active", "resolved", "all"];
     const rawStatus = actionParams?.status;
     const statusFilter: StatusFilter = validStatusFilters.includes(
-      rawStatus as StatusFilter
+      rawStatus as StatusFilter,
     )
       ? (rawStatus as StatusFilter)
-      : 'active';
+      : "active";
     const limit = Math.min(Math.max(actionParams?.limit ?? 10, 1), 20);
 
     // Fail-fast: let errors from db queries, PredictionPricing, getDaysUntil propagate
@@ -137,7 +137,7 @@ export const checkPredictionsAction: Action = {
         return {
           success: false,
           text: `Prediction market #${marketId} not found.`,
-          error: 'Market not found',
+          error: "Market not found",
         };
       }
 
@@ -147,12 +147,12 @@ export const checkPredictionsAction: Action = {
       const yesPrice = PredictionPricing.getCurrentPrice(
         yesShares,
         noShares,
-        'yes'
+        "yes",
       );
       const noPrice = PredictionPricing.getCurrentPrice(
         yesShares,
         noShares,
-        'no'
+        "no",
       );
       const yesPercent = Math.round(yesPrice * 100);
       const noPercent = Math.round(noPrice * 100);
@@ -161,9 +161,9 @@ export const checkPredictionsAction: Action = {
       // Convert boolean resolution to string for UI display
       const resolutionStr =
         prediction.resolution === true
-          ? 'YES'
+          ? "YES"
           : prediction.resolution === false
-            ? 'NO'
+            ? "NO"
             : undefined;
 
       const predictionData = {
@@ -174,7 +174,7 @@ export const checkPredictionsAction: Action = {
         resolved: prediction.resolved,
         resolution: resolutionStr,
         daysUntil,
-        endDate: prediction.endDate?.toISOString().split('T')[0] ?? 'TBD',
+        endDate: prediction.endDate?.toISOString().split("T")[0] ?? "TBD",
         yesShares,
         noShares,
       };
@@ -182,12 +182,12 @@ export const checkPredictionsAction: Action = {
       logger.info(
         `[CHECK_PREDICTIONS] Retrieved single market: #${marketId}`,
         { marketId, question: prediction.question.substring(0, 40) },
-        'CheckPredictions'
+        "CheckPredictions",
       );
 
       return {
         success: true,
-        text: `"${prediction.question}" - ${yesPercent}% YES / ${noPercent}% NO${prediction.resolved ? ` (Resolved: ${resolutionStr})` : ''}`,
+        text: `"${prediction.question}" - ${yesPercent}% YES / ${noPercent}% NO${prediction.resolved ? ` (Resolved: ${resolutionStr})` : ""}`,
         data: { prediction: predictionData },
         values: {
           id: prediction.id,
@@ -199,9 +199,9 @@ export const checkPredictionsAction: Action = {
         },
         // Tag for specific market - opens detailed view
         tag: {
-          type: 'predictions',
-          label: 'Prediction',
-          icon: 'Target',
+          type: "predictions",
+          label: "Prediction",
+          icon: "Target",
           entityId: String(prediction.id),
           data: { prediction: predictionData },
         },
@@ -215,12 +215,12 @@ export const checkPredictionsAction: Action = {
     // Build query based on status filter
     let query = db.select().from(markets);
 
-    if (statusFilter === 'active') {
+    if (statusFilter === "active") {
       query = query.where(eq(markets.resolved, false)) as typeof query;
       // Also filter for markets that haven't ended
       const now = new Date();
       query = query.where(gte(markets.endDate, now)) as typeof query;
-    } else if (statusFilter === 'resolved') {
+    } else if (statusFilter === "resolved") {
       query = query.where(eq(markets.resolved, true)) as typeof query;
     }
     // 'all' - no filter
@@ -230,7 +230,7 @@ export const checkPredictionsAction: Action = {
       .limit(limit);
 
     if (predictions.length === 0) {
-      const statusText = statusFilter === 'all' ? '' : ` ${statusFilter}`;
+      const statusText = statusFilter === "all" ? "" : ` ${statusFilter}`;
       return {
         success: true,
         text: `No${statusText} predictions found.`,
@@ -247,12 +247,12 @@ export const checkPredictionsAction: Action = {
       const yesPrice = PredictionPricing.getCurrentPrice(
         yesShares,
         noShares,
-        'yes'
+        "yes",
       );
       const noPrice = PredictionPricing.getCurrentPrice(
         yesShares,
         noShares,
-        'no'
+        "no",
       );
       const yesPercent = Math.round(yesPrice * 100);
       const noPercent = Math.round(noPrice * 100);
@@ -261,9 +261,9 @@ export const checkPredictionsAction: Action = {
       // Convert boolean resolution to string for UI display
       const resolutionStr =
         p.resolution === true
-          ? 'YES'
+          ? "YES"
           : p.resolution === false
-            ? 'NO'
+            ? "NO"
             : undefined;
 
       return {
@@ -275,14 +275,14 @@ export const checkPredictionsAction: Action = {
         resolved: p.resolved,
         resolution: resolutionStr,
         daysUntil,
-        endDate: p.endDate?.toISOString().split('T')[0] ?? 'TBD',
+        endDate: p.endDate?.toISOString().split("T")[0] ?? "TBD",
       };
     });
 
     logger.info(
       `[CHECK_PREDICTIONS] Retrieved ${predictions.length} ${statusFilter} predictions`,
       undefined,
-      'CheckPredictions'
+      "CheckPredictions",
     );
 
     return {
@@ -299,7 +299,7 @@ export const checkPredictionsAction: Action = {
           id: p.id,
           question:
             p.question.length > 80
-              ? p.question.substring(0, 80) + '...'
+              ? `${p.question.substring(0, 80)}...`
               : p.question,
           yesPercent: p.yesPercent,
           resolved: p.resolved,
@@ -308,9 +308,9 @@ export const checkPredictionsAction: Action = {
       },
       // Tag for list view
       tag: {
-        type: 'predictions',
-        label: 'Predictions',
-        icon: 'Target',
+        type: "predictions",
+        label: "Predictions",
+        icon: "Target",
         data: {
           predictions: formattedPredictions,
           status: statusFilter,

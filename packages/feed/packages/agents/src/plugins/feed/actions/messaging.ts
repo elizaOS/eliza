@@ -16,14 +16,14 @@ import type {
   IAgentRuntime,
   Memory,
   State,
-} from '@elizaos/core';
-import { executeDirectMessage } from '../../../autonomous/DirectExecutors';
+} from "@elizaos/core";
+import { executeDirectMessage } from "../../../autonomous/DirectExecutors";
 import {
   resolveGroupChatByName,
   resolveUserByUsername,
-} from '../../../autonomous/utils/context-gatherers';
-import { logger } from '../../../shared/logger';
-import type { FeedRuntime } from '../types';
+} from "../../../autonomous/utils/context-gatherers";
+import { logger } from "../../../shared/logger";
+import type { FeedRuntime } from "../types";
 
 // =============================================================================
 // Parsing helpers
@@ -42,7 +42,7 @@ function parseChatId(text: string): string | null {
   // Reject if "chat" is preceded by a capitalized word (part of a name like "General Chat")
   const prefix = text.substring(
     Math.max(0, (match.index ?? 0) - 20),
-    match.index ?? 0
+    match.index ?? 0,
   );
   if (/[A-Z][a-zA-Z]*\s*$/.test(prefix)) return null;
   return match[1];
@@ -63,7 +63,7 @@ function parseGroupName(text: string): string | null {
   // Pattern 2: Unquoted group name — "to <Name>: <message>"
   // Captures one or more capitalized words before a colon
   const unquoted = text.match(
-    /(?:to|group|channel|in)\s+((?:[A-Z][a-zA-Z]*\s*){1,5}):/i
+    /(?:to|group|channel|in)\s+((?:[A-Z][a-zA-Z]*\s*){1,5}):/i,
   );
   if (unquoted?.[1]?.trim()) return unquoted[1].trim();
 
@@ -94,14 +94,14 @@ function parseMessageContent(text: string): string {
 
   // Pattern 3: Content after "message" or "saying" keyword
   const keywordMatch = text.match(
-    /(?:message|saying|with text)\s+["']?(.+?)["']?\s*$/i
+    /(?:message|saying|with text)\s+["']?(.+?)["']?\s*$/i,
   );
   if (keywordMatch?.[1]) return keywordMatch[1];
 
   // Fallback: return everything after the first recognizable target
   const afterTarget = text.replace(
     /^.*?(?:chat[:\s-]+\S+|["'][^"']+["']|@\w+)\s*/i,
-    ''
+    "",
   );
   return afterTarget.trim() || text;
 }
@@ -121,55 +121,55 @@ function parseMessageContent(text: string): string {
  * 4. A2A client fallback for pre-parsed chatId
  */
 export const sendMessageAction: Action = {
-  name: 'SEND_MESSAGE',
+  name: "SEND_MESSAGE",
   description:
-    'Send a message in a chat by chat ID, group name, or recipient @username',
-  similes: ['send message', 'message', 'dm', 'send dm', 'chat', 'alert'],
+    "Send a message in a chat by chat ID, group name, or recipient @username",
+  similes: ["send message", "message", "dm", "send dm", "chat", "alert"],
   examples: [
     [
       {
-        name: '{{user1}}',
+        name: "{{user1}}",
         content: { text: 'Send message to chat chat-123: "Hello there!"' },
       },
       {
-        name: '{{agent}}',
-        content: { text: 'Sending message...', action: 'SEND_MESSAGE' },
+        name: "{{agent}}",
+        content: { text: "Sending message...", action: "SEND_MESSAGE" },
       },
     ],
     [
       {
-        name: '{{user1}}',
+        name: "{{user1}}",
         content: {
           text: "Send message to 'ScanMachine Price Alerts': OPENAGI dropped below 22.5",
         },
       },
       {
-        name: '{{agent}}',
+        name: "{{agent}}",
         content: {
-          text: 'Sending to group...',
-          action: 'SEND_MESSAGE',
+          text: "Sending to group...",
+          action: "SEND_MESSAGE",
         },
       },
     ],
     [
       {
-        name: '{{user1}}',
-        content: { text: 'DM @alice: Hey, check out TSLAI!' },
+        name: "{{user1}}",
+        content: { text: "DM @alice: Hey, check out TSLAI!" },
       },
       {
-        name: '{{agent}}',
-        content: { text: 'Sending DM...', action: 'SEND_MESSAGE' },
+        name: "{{agent}}",
+        content: { text: "Sending DM...", action: "SEND_MESSAGE" },
       },
     ],
   ],
 
   validate: async (_runtime: IAgentRuntime, message: Memory) => {
-    const content = message.content.text?.toLowerCase() || '';
+    const content = message.content.text?.toLowerCase() || "";
     return (
-      (content.includes('send') &&
-        (content.includes('message') || content.includes('dm'))) ||
-      (content.includes('dm') && content.includes('@')) ||
-      (content.includes('alert') && content.includes('send'))
+      (content.includes("send") &&
+        (content.includes("message") || content.includes("dm"))) ||
+      (content.includes("dm") && content.includes("@")) ||
+      (content.includes("alert") && content.includes("send"))
     );
   },
 
@@ -178,17 +178,17 @@ export const sendMessageAction: Action = {
     _message: Memory,
     _state?: State,
     _options?: unknown,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<void> => {
     const feedRuntime = runtime as FeedRuntime;
-    const content = _message.content.text || '';
+    const content = _message.content.text || "";
     const agentUserId = feedRuntime.a2aClient?.agentId;
     const messageBody = parseMessageContent(content);
 
     if (!messageBody || messageBody.length < 2) {
       callback?.({
-        text: 'Could not parse message content. Please include the message you want to send.',
-        action: 'SEND_MESSAGE',
+        text: "Could not parse message content. Please include the message you want to send.",
+        action: "SEND_MESSAGE",
       });
       return;
     }
@@ -199,7 +199,7 @@ export const sendMessageAction: Action = {
       logger.info(
         `[SEND_MESSAGE] Resolved via chatId: ${chatId}`,
         undefined,
-        'MessagingAction'
+        "MessagingAction",
       );
 
       if (agentUserId) {
@@ -213,7 +213,7 @@ export const sendMessageAction: Action = {
           text: result.success
             ? `Message sent to chat ${chatId}. Message ID: ${result.messageId}`
             : `Failed to send message: ${result.error}`,
-          action: 'SEND_MESSAGE',
+          action: "SEND_MESSAGE",
         });
         return;
       }
@@ -222,15 +222,15 @@ export const sendMessageAction: Action = {
       if (feedRuntime.a2aClient?.isConnected()) {
         const result = (await feedRuntime.a2aClient.sendMessage(
           chatId,
-          messageBody
+          messageBody,
         )) as { success?: boolean; messageId?: string; message?: string };
 
         callback?.({
           text:
             result.success === false
-              ? `Failed to send message: ${result.message || 'Unknown error'}`
-              : `Message sent! ID: ${result.messageId || 'unknown'}`,
-          action: 'SEND_MESSAGE',
+              ? `Failed to send message: ${result.message || "Unknown error"}`
+              : `Message sent! ID: ${result.messageId || "unknown"}`,
+          action: "SEND_MESSAGE",
         });
         return;
       }
@@ -242,13 +242,13 @@ export const sendMessageAction: Action = {
       if (groupName) {
         const resolvedChatId = await resolveGroupChatByName(
           agentUserId,
-          groupName
+          groupName,
         );
         if (resolvedChatId) {
           logger.info(
             `[SEND_MESSAGE] Resolved group "${groupName}" to chat ${resolvedChatId}`,
             undefined,
-            'MessagingAction'
+            "MessagingAction",
           );
 
           const result = await executeDirectMessage({
@@ -261,7 +261,7 @@ export const sendMessageAction: Action = {
             text: result.success
               ? `Message sent to "${groupName}". Message ID: ${result.messageId}`
               : `Failed to send to "${groupName}": ${result.error}`,
-            action: 'SEND_MESSAGE',
+            action: "SEND_MESSAGE",
           });
           return;
         }
@@ -269,7 +269,7 @@ export const sendMessageAction: Action = {
         // Group not found — report clearly
         callback?.({
           text: `Could not find a group chat named "${groupName}" that you are a member of.`,
-          action: 'SEND_MESSAGE',
+          action: "SEND_MESSAGE",
         });
         return;
       }
@@ -284,7 +284,7 @@ export const sendMessageAction: Action = {
           logger.info(
             `[SEND_MESSAGE] Resolved @${username} to user ${recipientId}`,
             undefined,
-            'MessagingAction'
+            "MessagingAction",
           );
 
           const result = await executeDirectMessage({
@@ -297,14 +297,14 @@ export const sendMessageAction: Action = {
             text: result.success
               ? `DM sent to @${username}. Message ID: ${result.messageId}`
               : `Failed to DM @${username}: ${result.error}`,
-            action: 'SEND_MESSAGE',
+            action: "SEND_MESSAGE",
           });
           return;
         }
 
         callback?.({
           text: `Could not find user @${username}.`,
-          action: 'SEND_MESSAGE',
+          action: "SEND_MESSAGE",
         });
         return;
       }
@@ -313,9 +313,9 @@ export const sendMessageAction: Action = {
     // No resolution strategy matched
     callback?.({
       text: "Could not determine where to send the message. Specify a chat ID (chat 12345: ...), group name (to 'My Group': ...), or recipient (@username: ...).",
-      action: 'SEND_MESSAGE',
+      action: "SEND_MESSAGE",
     });
-  }) as unknown as Action['handler'],
+  }) as unknown as Action["handler"],
 };
 
 // =============================================================================
@@ -327,27 +327,27 @@ export const sendMessageAction: Action = {
  * Allows agent to create a new group chat
  */
 export const createGroupAction: Action = {
-  name: 'CREATE_GROUP',
-  description: 'Create a new group chat',
-  similes: ['create group', 'new group', 'start group chat'],
+  name: "CREATE_GROUP",
+  description: "Create a new group chat",
+  similes: ["create group", "new group", "start group chat"],
   examples: [
     [
       {
-        name: '{{user1}}',
+        name: "{{user1}}",
         content: {
           text: 'Create group "Market Analysts" with members user1, user2',
         },
       },
       {
-        name: '{{agent}}',
-        content: { text: 'Creating group chat...', action: 'CREATE_GROUP' },
+        name: "{{agent}}",
+        content: { text: "Creating group chat...", action: "CREATE_GROUP" },
       },
     ],
   ],
 
   validate: async (_runtime: IAgentRuntime, message: Memory) => {
-    const content = message.content.text?.toLowerCase() || '';
-    return content.includes('create') && content.includes('group');
+    const content = message.content.text?.toLowerCase() || "";
+    return content.includes("create") && content.includes("group");
   },
 
   handler: (async (
@@ -355,19 +355,19 @@ export const createGroupAction: Action = {
     message: Memory,
     _state?: State,
     _options?: unknown,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<void> => {
     const feedRuntime = runtime as FeedRuntime;
 
     if (!feedRuntime.a2aClient?.isConnected()) {
       callback?.({
-        text: 'A2A client not connected. Cannot create group.',
-        action: 'CREATE_GROUP',
+        text: "A2A client not connected. Cannot create group.",
+        action: "CREATE_GROUP",
       });
       return;
     }
 
-    const content = message.content.text || '';
+    const content = message.content.text || "";
     const nameMatch =
       content.match(/(?:group|named?)\s+["'](.+?)["']/) ||
       content.match(/group\s+([A-Za-z0-9\s]+)(?:\s+with)?/);
@@ -375,13 +375,13 @@ export const createGroupAction: Action = {
 
     if (!nameMatch) {
       callback?.({
-        text: 'Could not parse group name. Please specify a name for the group.',
-        action: 'CREATE_GROUP',
+        text: "Could not parse group name. Please specify a name for the group.",
+        action: "CREATE_GROUP",
       });
       return;
     }
 
-    const groupName = nameMatch[1]?.trim() || 'Unnamed Group';
+    const groupName = nameMatch[1]?.trim() || "Unnamed Group";
     const memberIds: string[] = [];
     if (membersMatch) {
       const memberStr = membersMatch[1];
@@ -393,21 +393,21 @@ export const createGroupAction: Action = {
 
     const result = (await feedRuntime.a2aClient.createGroup(
       groupName,
-      memberIds
+      memberIds,
     )) as { success?: boolean; chatId?: string; message?: string };
 
     if (callback) {
       if (result.success === false) {
         callback({
-          text: `Failed to create group: ${result.message || 'Unknown error'}`,
-          action: 'CREATE_GROUP',
+          text: `Failed to create group: ${result.message || "Unknown error"}`,
+          action: "CREATE_GROUP",
         });
       } else {
         callback({
-          text: `Successfully created group "${groupName}"! Chat ID: ${result.chatId || 'unknown'}`,
-          action: 'CREATE_GROUP',
+          text: `Successfully created group "${groupName}"! Chat ID: ${result.chatId || "unknown"}`,
+          action: "CREATE_GROUP",
         });
       }
     }
-  }) as unknown as Action['handler'],
+  }) as unknown as Action["handler"],
 };

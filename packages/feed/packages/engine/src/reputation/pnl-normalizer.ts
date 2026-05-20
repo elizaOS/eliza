@@ -5,7 +5,7 @@
  * Uses sigmoid function to map unbounded ROI to bounded reputation score.
  */
 
-import { clamp, clamp01 } from '../utils/math-utils';
+import { clamp, clamp01 } from "../utils/math-utils";
 
 /**
  * Interface for decimal-like values that can be converted to numbers.
@@ -34,11 +34,11 @@ interface DecimalLike {
  */
 export function normalizePnL(
   pnl: number | DecimalLike,
-  totalInvested: number | DecimalLike
+  totalInvested: number | DecimalLike,
 ): number {
-  const pnlNum = typeof pnl === 'number' ? pnl : pnl.toNumber();
+  const pnlNum = typeof pnl === "number" ? pnl : pnl.toNumber();
   const investedNum =
-    typeof totalInvested === 'number'
+    typeof totalInvested === "number"
       ? totalInvested
       : totalInvested.toNumber();
 
@@ -89,7 +89,7 @@ export function denormalizePnL(normalized: number): number {
  */
 export function calculateWinRate(
   profitableTrades: number,
-  totalTrades: number
+  totalTrades: number,
 ): number {
   if (totalTrades === 0) {
     return 0;
@@ -105,7 +105,7 @@ export function calculateWinRate(
  * @returns Average ROI as decimal
  */
 export function calculateAverageROI(
-  trades: Array<{ pnl: number; invested: number }>
+  trades: Array<{ pnl: number; invested: number }>,
 ): number {
   if (trades.length === 0) {
     return 0;
@@ -133,7 +133,7 @@ export function calculateAverageROI(
  */
 export function calculateSharpeRatio(
   returns: number[],
-  riskFreeRate = 0.02
+  riskFreeRate = 0.02,
 ): number | null {
   if (returns.length < 2) {
     return null; // Need at least 2 returns for meaningful calculation
@@ -163,11 +163,11 @@ export function calculateSharpeRatio(
  * @returns Trust level string
  */
 export function getTrustLevel(reputationScore: number): string {
-  if (reputationScore < 20) return 'UNRATED';
-  if (reputationScore < 40) return 'LOW';
-  if (reputationScore < 60) return 'MEDIUM';
-  if (reputationScore < 80) return 'HIGH';
-  return 'EXCELLENT';
+  if (reputationScore < 20) return "UNRATED";
+  if (reputationScore < 40) return "LOW";
+  if (reputationScore < 60) return "MEDIUM";
+  if (reputationScore < 80) return "HIGH";
+  return "EXCELLENT";
 }
 
 /**

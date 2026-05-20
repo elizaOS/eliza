@@ -5,4 +5,4 @@
 export {
   getShuffledExamplesText,
   npcMarketDecisions,
-} from './npc-market-decisions';
+} from "./npc-market-decisions";

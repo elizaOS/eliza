@@ -52,24 +52,24 @@
  * ```
  */
 
-import { validateUserApiKey, withErrorHandling } from '@feed/api';
-import { db, eq, users } from '@feed/db';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+import { validateUserApiKey, withErrorHandling } from "@feed/api";
+import { db, eq, users } from "@feed/db";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 export const GET = withErrorHandling(async function GET(request: NextRequest) {
-  const apiKey = request.headers.get('x-feed-api-key');
+  const apiKey = request.headers.get("x-feed-api-key");
 
   // Headers for auth responses - prevent caching of sensitive identity data
-  const noCacheHeaders = { 'Cache-Control': 'no-store' };
+  const noCacheHeaders = { "Cache-Control": "no-store" };
 
   if (!apiKey) {
     return NextResponse.json(
-      { error: 'X-Feed-Api-Key header is required' },
-      { status: 401, headers: noCacheHeaders }
+      { error: "X-Feed-Api-Key header is required" },
+      { status: 401, headers: noCacheHeaders },
     );
   }
 
@@ -78,8 +78,8 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
 
   if (!result) {
     return NextResponse.json(
-      { error: 'Invalid or expired API key' },
-      { status: 401, headers: noCacheHeaders }
+      { error: "Invalid or expired API key" },
+      { status: 401, headers: noCacheHeaders },
     );
   }
 
@@ -95,20 +95,20 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
 
   if (!user) {
     logger.warn(
-      'API key valid but user not found',
+      "API key valid but user not found",
       { userId: result.userId },
-      'whoami'
+      "whoami",
     );
     return NextResponse.json(
-      { error: 'User not found' },
-      { status: 404, headers: noCacheHeaders }
+      { error: "User not found" },
+      { status: 404, headers: noCacheHeaders },
     );
   }
 
-  logger.debug('Whoami request', { userId: user.id }, 'whoami');
+  logger.debug("Whoami request", { userId: user.id }, "whoami");
 
   return NextResponse.json(
     { userId: user.id, username: user.username },
-    { headers: noCacheHeaders }
+    { headers: noCacheHeaders },
   );
 });

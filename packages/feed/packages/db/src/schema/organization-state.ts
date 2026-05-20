@@ -1,4 +1,4 @@
-import { sql } from 'drizzle-orm';
+import { sql } from "drizzle-orm";
 import {
   check,
   doublePrecision,
@@ -8,7 +8,7 @@ import {
   pgTable,
   text,
   timestamp,
-} from 'drizzle-orm/pg-core';
+} from "drizzle-orm/pg-core";
 
 /**
  * Price modifier applied from narrative events.
@@ -57,31 +57,31 @@ export interface StockFundamentals {
  * This table stores only fields that change during gameplay.
  */
 export const organizationState = pgTable(
-  'OrganizationState',
+  "OrganizationState",
   {
-    id: text('id').primaryKey(),
-    currentPrice: doublePrecision('currentPrice'),
+    id: text("id").primaryKey(),
+    currentPrice: doublePrecision("currentPrice"),
 
     // Fundamentals for narrative-driven pricing
     // Default basePrice to 100.0 to ensure it's never NULL for downstream calculations
-    basePrice: doublePrecision('basePrice').notNull().default(100.0),
-    sentiment: integer('sentiment').notNull().default(0), // -100 to +100
-    activeModifiers: jsonb('activeModifiers')
+    basePrice: doublePrecision("basePrice").notNull().default(100.0),
+    sentiment: integer("sentiment").notNull().default(0), // -100 to +100
+    activeModifiers: jsonb("activeModifiers")
       .$type<PriceModifier[]>()
       .default(sql`'[]'::jsonb`),
 
-    createdAt: timestamp('createdAt', { mode: 'date' }).notNull().defaultNow(),
-    updatedAt: timestamp('updatedAt', { mode: 'date' }).notNull(),
+    createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt", { mode: "date" }).notNull(),
   },
   (table) => [
-    index('OrganizationState_currentPrice_idx').on(table.currentPrice),
-    index('OrganizationState_sentiment_idx').on(table.sentiment),
+    index("OrganizationState_currentPrice_idx").on(table.currentPrice),
+    index("OrganizationState_sentiment_idx").on(table.sentiment),
     // Enforce sentiment bounds at database level (-100 to +100)
     check(
-      'sentiment_range',
-      sql`${table.sentiment} >= -100 AND ${table.sentiment} <= 100`
+      "sentiment_range",
+      sql`${table.sentiment} >= -100 AND ${table.sentiment} <= 100`,
     ),
-  ]
+  ],
 );
 
 // Type exports

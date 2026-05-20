@@ -27,9 +27,9 @@
  * ```
  */
 
-'use client';
+"use client";
 
-import { logger } from '@feed/shared';
+import { logger } from "@feed/shared";
 import {
   AlertCircle,
   Cpu,
@@ -37,18 +37,18 @@ import {
   Loader2,
   PlayCircle,
   TrendingUp,
-} from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+} from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from '@/components/ui/card';
-import { apiUrl } from '@/utils/api-url';
+} from "@/components/ui/card";
+import { apiUrl } from "@/utils/api-url";
 
 /**
  * Training job information
@@ -129,13 +129,13 @@ export default function TrainingDashboard() {
   const [training, setTraining] = useState(false);
 
   const loadStatus = useCallback(async () => {
-    const res = await fetch(apiUrl('/api/admin/training/status'));
+    const res = await fetch(apiUrl("/api/admin/training/status"));
 
     if (!res.ok) {
       logger.error(
-        'Failed to load training status',
+        "Failed to load training status",
         undefined,
-        'TrainingAdmin'
+        "TrainingAdmin",
       );
       setLoading(false);
       return;
@@ -155,16 +155,16 @@ export default function TrainingDashboard() {
   async function triggerTraining() {
     setTraining(true);
 
-    const res = await fetch(apiUrl('/api/admin/training/trigger'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    const res = await fetch(apiUrl("/api/admin/training/trigger"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ force: false }),
     });
 
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({}));
       setTraining(false);
-      alert(`Error: ${errorData.error || 'Failed to trigger training'}`);
+      alert(`Error: ${errorData.error || "Failed to trigger training"}`);
       return;
     }
 
@@ -174,7 +174,7 @@ export default function TrainingDashboard() {
       alert(`Training started! Job ID: ${result.jobId}`);
       await loadStatus();
     } else {
-      alert(`Failed to start training: ${result.error || 'Unknown error'}`);
+      alert(`Failed to start training: ${result.error || "Unknown error"}`);
     }
     setTraining(false);
   }
@@ -270,7 +270,7 @@ export default function TrainingDashboard() {
           </CardHeader>
           <CardContent>
             <div className="font-bold text-2xl">
-              {automation.models.latest || 'None'}
+              {automation.models.latest || "None"}
             </div>
             <p className="text-muted-foreground text-xs">
               {automation.models.deployed} deployed
@@ -288,7 +288,7 @@ export default function TrainingDashboard() {
               {(readiness.stats.dataQuality * 100).toFixed(0)}%
             </div>
             <p className="text-muted-foreground text-xs">
-              {readiness.ready ? '✅ Ready' : '⏳ Collecting'}
+              {readiness.ready ? "✅ Ready" : "⏳ Collecting"}
             </p>
           </CardContent>
         </Card>
@@ -299,7 +299,7 @@ export default function TrainingDashboard() {
         <CardHeader>
           <CardTitle>Training Readiness</CardTitle>
           <CardDescription>
-            {readiness.ready ? '✅ Ready to train!' : `⏳ ${readiness.reason}`}
+            {readiness.ready ? "✅ Ready to train!" : `⏳ ${readiness.reason}`}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -309,8 +309,8 @@ export default function TrainingDashboard() {
               <Badge
                 variant={
                   readiness.stats.totalTrajectories >= 100
-                    ? 'default'
-                    : 'secondary'
+                    ? "default"
+                    : "secondary"
                 }
               >
                 {readiness.stats.totalTrajectories} / 100
@@ -320,7 +320,7 @@ export default function TrainingDashboard() {
               <span>Scenario Groups:</span>
               <Badge
                 variant={
-                  readiness.stats.scenarioGroups >= 10 ? 'default' : 'secondary'
+                  readiness.stats.scenarioGroups >= 10 ? "default" : "secondary"
                 }
               >
                 {readiness.stats.scenarioGroups} / 10
@@ -330,7 +330,7 @@ export default function TrainingDashboard() {
               <span>Data Quality:</span>
               <Badge
                 variant={
-                  readiness.stats.dataQuality >= 0.95 ? 'default' : 'secondary'
+                  readiness.stats.dataQuality >= 0.95 ? "default" : "secondary"
                 }
               >
                 {(readiness.stats.dataQuality * 100).toFixed(1)}% / 95%
@@ -354,7 +354,7 @@ export default function TrainingDashboard() {
               <div className="h-2 w-full rounded-full bg-secondary">
                 <div
                   className="h-2 rounded-full bg-primary transition-all duration-500"
-                  style={{ width: '50%' }}
+                  style={{ width: "50%" }}
                 />
               </div>
               <p className="text-muted-foreground text-sm">ETA: ~30 minutes</p>
@@ -383,13 +383,13 @@ export default function TrainingDashboard() {
                 </div>
                 <Badge
                   variant={
-                    job.status === 'completed'
-                      ? 'default'
-                      : job.status === 'training'
-                        ? 'secondary'
-                        : job.status === 'failed'
-                          ? 'destructive'
-                          : 'outline'
+                    job.status === "completed"
+                      ? "default"
+                      : job.status === "training"
+                        ? "secondary"
+                        : job.status === "failed"
+                          ? "destructive"
+                          : "outline"
                   }
                 >
                   {job.status}
@@ -410,17 +410,17 @@ export default function TrainingDashboard() {
             <div className="flex justify-between">
               <span>Database:</span>
               <Badge
-                variant={automation.health.database ? 'default' : 'destructive'}
+                variant={automation.health.database ? "default" : "destructive"}
               >
-                {automation.health.database ? '✅ Healthy' : '❌ Error'}
+                {automation.health.database ? "✅ Healthy" : "❌ Error"}
               </Badge>
             </div>
             <div className="flex justify-between">
               <span>Storage:</span>
               <Badge
-                variant={automation.health.storage ? 'default' : 'destructive'}
+                variant={automation.health.storage ? "default" : "destructive"}
               >
-                {automation.health.storage ? '✅ Healthy' : '❌ Error'}
+                {automation.health.storage ? "✅ Healthy" : "❌ Error"}
               </Badge>
             </div>
           </div>

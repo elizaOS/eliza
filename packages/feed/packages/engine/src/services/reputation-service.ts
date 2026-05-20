@@ -9,8 +9,8 @@
  * propagation handled by the ReputationBridge in @feed/agents.
  */
 
-import { db, eq, inArray, positions, sql, users } from '@feed/db';
-import { logger } from '@feed/shared';
+import { db, eq, inArray, positions, sql, users } from "@feed/db";
+import { logger } from "@feed/shared";
 
 // =============================================================================
 // Reputation Sync Interface
@@ -37,7 +37,7 @@ export interface ReputationSyncServiceInterface {
 let reputationSyncService: ReputationSyncServiceInterface | null = null;
 
 export function setReputationSyncService(
-  service: ReputationSyncServiceInterface | null
+  service: ReputationSyncServiceInterface | null,
 ): void {
   reputationSyncService = service;
 }
@@ -47,7 +47,7 @@ export function getReputationSyncService(): ReputationSyncServiceInterface | nul
 }
 
 export async function syncReputationIfAvailable(
-  options?: ReputationSyncOptions
+  options?: ReputationSyncOptions,
 ): Promise<ReputationSyncResult | null> {
   if (!reputationSyncService) return null;
   return await reputationSyncService.batchSync(options);
@@ -68,7 +68,7 @@ interface ReputationUpdate {
 
 export class ReputationService {
   static async updateReputationForResolvedMarket(
-    resolution: MarketResolution
+    resolution: MarketResolution,
   ): Promise<ReputationUpdate[]> {
     const results: ReputationUpdate[] = [];
 
@@ -86,7 +86,7 @@ export class ReputationService {
       logger.info(
         `No positions found for market ${resolution.marketId}`,
         undefined,
-        'ReputationService'
+        "ReputationService",
       );
       return [];
     }
@@ -106,7 +106,7 @@ export class ReputationService {
     logger.info(
       `Updating reputation for ${positionsData.length} positions in market ${resolution.marketId}`,
       { count: positionsData.length, marketId: resolution.marketId },
-      'ReputationService'
+      "ReputationService",
     );
 
     for (const position of positionsData) {
@@ -116,7 +116,7 @@ export class ReputationService {
           userId: position.userId,
           tokenId: 0,
           change: 0,
-          error: 'User not found',
+          error: "User not found",
         });
         continue;
       }
@@ -143,7 +143,7 @@ export class ReputationService {
       logger.info(
         `Updated reputation for user ${position.userId}`,
         { tokenId, change, newReputation: updated?.reputationPoints },
-        'ReputationService'
+        "ReputationService",
       );
     }
 
@@ -169,7 +169,7 @@ export class ReputationService {
   }
 
   static async batchUpdateReputation(
-    resolutions: MarketResolution[]
+    resolutions: MarketResolution[],
   ): Promise<Record<string, ReputationUpdate[]>> {
     const allResults: Record<string, ReputationUpdate[]> = {};
 

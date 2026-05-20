@@ -2,7 +2,7 @@
  * Tick metrics accumulator.
  */
 
-import type { TickMetrics } from './types';
+import type { TickMetrics } from "./types";
 
 export class DefaultTickMetrics implements TickMetrics {
   private readonly data = new Map<string, number | string | boolean>();
@@ -20,11 +20,11 @@ export class DefaultTickMetrics implements TickMetrics {
     const current = this.data.get(key);
     if (current === undefined) {
       this.data.set(key, amount);
-    } else if (typeof current === 'number') {
+    } else if (typeof current === "number") {
       this.data.set(key, current + amount);
     } else {
       this._warnings.push(
-        `Cannot increment non-numeric metric "${key}" (current type: ${typeof current})`
+        `Cannot increment non-numeric metric "${key}" (current type: ${typeof current})`,
       );
     }
   }

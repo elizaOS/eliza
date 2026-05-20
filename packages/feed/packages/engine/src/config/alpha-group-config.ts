@@ -36,8 +36,8 @@
  * ```
  */
 
-import { logger } from '@feed/shared';
-import { clamp01 } from '../utils/math-utils';
+import { logger } from "@feed/shared";
+import { clamp01 } from "../utils/math-utils";
 
 // =============================================================================
 // HELPER FUNCTIONS
@@ -49,7 +49,7 @@ import { clamp01 } from '../utils/math-utils';
  */
 function envNumber(key: string, defaultValue: number): number {
   const value = process.env[key];
-  if (value === undefined || value === '') {
+  if (value === undefined || value === "") {
     return defaultValue;
   }
   const parsed = Number(value);
@@ -62,11 +62,11 @@ function envNumber(key: string, defaultValue: number): number {
  */
 function envBoolean(key: string, defaultValue: boolean): boolean {
   const value = process.env[key];
-  if (value === undefined || value === '') {
+  if (value === undefined || value === "") {
     return defaultValue;
   }
   const normalized = value.toLowerCase().trim();
-  return normalized === 'true' || normalized === '1' || normalized === 'yes';
+  return normalized === "true" || normalized === "1" || normalized === "yes";
 }
 
 /**
@@ -79,7 +79,7 @@ function envProbability(key: string, defaultValue: number): number {
     logger.warn(
       `${key}=${value} is outside valid probability range (0-1), clamping to bounds`,
       { key, value },
-      'alpha-group-config'
+      "alpha-group-config",
     );
   }
   return clamp01(value);
@@ -95,7 +95,7 @@ function envPositiveInt(key: string, defaultValue: number): number {
     logger.warn(
       `${key}=${value} must be a positive integer, using default ${defaultValue}`,
       { key, value, defaultValue },
-      'alpha-group-config'
+      "alpha-group-config",
     );
     return defaultValue;
   }
@@ -125,8 +125,8 @@ export const ALPHA_GROUP_CONFIG = {
    * @default 1.0
    */
   inviteProbabilityMultiplier: envNumber(
-    'ALPHA_INVITE_PROBABILITY_MULTIPLIER',
-    1.0
+    "ALPHA_INVITE_PROBABILITY_MULTIPLIER",
+    1.0,
   ),
 
   /**
@@ -136,7 +136,7 @@ export const ALPHA_GROUP_CONFIG = {
    * @env ALPHA_MAX_INVITES_PER_TICK
    * @default 15
    */
-  maxInvitesPerTick: envPositiveInt('ALPHA_MAX_INVITES_PER_TICK', 15),
+  maxInvitesPerTick: envPositiveInt("ALPHA_MAX_INVITES_PER_TICK", 15),
 
   /**
    * Top N users to consider per NPC per tick.
@@ -145,7 +145,7 @@ export const ALPHA_GROUP_CONFIG = {
    * @env ALPHA_TOP_USERS_TO_CONSIDER
    * @default 30
    */
-  topUsersToConsider: envPositiveInt('ALPHA_TOP_USERS_TO_CONSIDER', 30),
+  topUsersToConsider: envPositiveInt("ALPHA_TOP_USERS_TO_CONSIDER", 30),
 
   // ===========================================================================
   // ENGAGEMENT THRESHOLDS
@@ -158,7 +158,7 @@ export const ALPHA_GROUP_CONFIG = {
    * @env ALPHA_MIN_REPLIES
    * @default 1
    */
-  minReplies: envNumber('ALPHA_MIN_REPLIES', 1),
+  minReplies: envNumber("ALPHA_MIN_REPLIES", 1),
 
   /**
    * Minimum likes on NPC posts for eligibility.
@@ -166,7 +166,7 @@ export const ALPHA_GROUP_CONFIG = {
    * @env ALPHA_MIN_LIKES
    * @default 2
    */
-  minLikes: envNumber('ALPHA_MIN_LIKES', 2),
+  minLikes: envNumber("ALPHA_MIN_LIKES", 2),
 
   /**
    * Minimum total interactions (replies + likes + shares) for eligibility.
@@ -174,7 +174,7 @@ export const ALPHA_GROUP_CONFIG = {
    * @env ALPHA_MIN_TOTAL_INTERACTIONS
    * @default 5
    */
-  minTotalInteractions: envNumber('ALPHA_MIN_TOTAL_INTERACTIONS', 5),
+  minTotalInteractions: envNumber("ALPHA_MIN_TOTAL_INTERACTIONS", 5),
 
   /**
    * Minimum quality score for replies (0-1).
@@ -183,7 +183,7 @@ export const ALPHA_GROUP_CONFIG = {
    * @env ALPHA_MIN_QUALITY_SCORE
    * @default 0.5
    */
-  minQualityScore: envProbability('ALPHA_MIN_QUALITY_SCORE', 0.5),
+  minQualityScore: envProbability("ALPHA_MIN_QUALITY_SCORE", 0.5),
 
   /**
    * Maximum interactions per day before spam detection triggers.
@@ -192,7 +192,7 @@ export const ALPHA_GROUP_CONFIG = {
    * @env ALPHA_MAX_INTERACTIONS_PER_DAY
    * @default 50
    */
-  maxInteractionsPerDay: envPositiveInt('ALPHA_MAX_INTERACTIONS_PER_DAY', 50),
+  maxInteractionsPerDay: envPositiveInt("ALPHA_MAX_INTERACTIONS_PER_DAY", 50),
 
   // ===========================================================================
   // TRADING ACTIVITY
@@ -205,7 +205,7 @@ export const ALPHA_GROUP_CONFIG = {
    * @env ALPHA_TRADE_WEIGHT
    * @default 2.5
    */
-  tradeWeight: envNumber('ALPHA_TRADE_WEIGHT', 2.5),
+  tradeWeight: envNumber("ALPHA_TRADE_WEIGHT", 2.5),
 
   /**
    * Bonus multiplier for profitable trades.
@@ -214,7 +214,7 @@ export const ALPHA_GROUP_CONFIG = {
    * @env ALPHA_PROFITABLE_TRADE_BONUS
    * @default 1.5
    */
-  profitableTradeBonus: envNumber('ALPHA_PROFITABLE_TRADE_BONUS', 1.5),
+  profitableTradeBonus: envNumber("ALPHA_PROFITABLE_TRADE_BONUS", 1.5),
 
   /**
    * Enable trading activity in engagement calculation.
@@ -223,7 +223,7 @@ export const ALPHA_GROUP_CONFIG = {
    * @env ALPHA_INCLUDE_TRADING
    * @default true
    */
-  includeTradingActivity: envBoolean('ALPHA_INCLUDE_TRADING', true),
+  includeTradingActivity: envBoolean("ALPHA_INCLUDE_TRADING", true),
 
   // ===========================================================================
   // FAST TRACK
@@ -236,7 +236,7 @@ export const ALPHA_GROUP_CONFIG = {
    * @env ALPHA_FAST_TRACK_ENABLED
    * @default true
    */
-  fastTrackEnabled: envBoolean('ALPHA_FAST_TRACK_ENABLED', true),
+  fastTrackEnabled: envBoolean("ALPHA_FAST_TRACK_ENABLED", true),
 
   /**
    * Minimum profitable trades for fast-track eligibility.
@@ -244,7 +244,7 @@ export const ALPHA_GROUP_CONFIG = {
    * @env ALPHA_FAST_TRACK_MIN_TRADES
    * @default 10
    */
-  fastTrackMinTrades: envPositiveInt('ALPHA_FAST_TRACK_MIN_TRADES', 10),
+  fastTrackMinTrades: envPositiveInt("ALPHA_FAST_TRACK_MIN_TRADES", 10),
 
   /**
    * Minimum cumulative P&L (in points) for fast-track eligibility.
@@ -252,7 +252,7 @@ export const ALPHA_GROUP_CONFIG = {
    * @env ALPHA_FAST_TRACK_MIN_PNL
    * @default 5000
    */
-  fastTrackMinPnL: envNumber('ALPHA_FAST_TRACK_MIN_PNL', 5000),
+  fastTrackMinPnL: envNumber("ALPHA_FAST_TRACK_MIN_PNL", 5000),
 
   /**
    * Minimum win rate (0-1) for fast-track eligibility.
@@ -260,7 +260,7 @@ export const ALPHA_GROUP_CONFIG = {
    * @env ALPHA_FAST_TRACK_MIN_WIN_RATE
    * @default 0.55
    */
-  fastTrackMinWinRate: envProbability('ALPHA_FAST_TRACK_MIN_WIN_RATE', 0.55),
+  fastTrackMinWinRate: envProbability("ALPHA_FAST_TRACK_MIN_WIN_RATE", 0.55),
 
   /**
    * Tier to fast-track users to (2 = Community tier).
@@ -269,7 +269,7 @@ export const ALPHA_GROUP_CONFIG = {
    * @env ALPHA_FAST_TRACK_TARGET_TIER
    * @default 2
    */
-  fastTrackTargetTier: envNumber('ALPHA_FAST_TRACK_TARGET_TIER', 2) as 2 | 3,
+  fastTrackTargetTier: envNumber("ALPHA_FAST_TRACK_TARGET_TIER", 2) as 2 | 3,
 
   // ===========================================================================
   // INVITE DECAY
@@ -282,7 +282,7 @@ export const ALPHA_GROUP_CONFIG = {
    * @env ALPHA_INVITE_DECAY_ENABLED
    * @default true
    */
-  inviteDecayEnabled: envBoolean('ALPHA_INVITE_DECAY_ENABLED', true),
+  inviteDecayEnabled: envBoolean("ALPHA_INVITE_DECAY_ENABLED", true),
 
   /**
    * Base cooldown hours after first decline.
@@ -291,7 +291,7 @@ export const ALPHA_GROUP_CONFIG = {
    * @env ALPHA_INVITE_DECAY_BASE_HOURS
    * @default 24
    */
-  inviteDecayBaseHours: envPositiveInt('ALPHA_INVITE_DECAY_BASE_HOURS', 24),
+  inviteDecayBaseHours: envPositiveInt("ALPHA_INVITE_DECAY_BASE_HOURS", 24),
 
   /**
    * Maximum cooldown hours (cap for exponential backoff).
@@ -299,7 +299,7 @@ export const ALPHA_GROUP_CONFIG = {
    * @env ALPHA_INVITE_DECAY_MAX_HOURS
    * @default 168 (7 days)
    */
-  inviteDecayMaxHours: envPositiveInt('ALPHA_INVITE_DECAY_MAX_HOURS', 168),
+  inviteDecayMaxHours: envPositiveInt("ALPHA_INVITE_DECAY_MAX_HOURS", 168),
 
   /**
    * Maximum declines before user is temporarily excluded.
@@ -307,7 +307,7 @@ export const ALPHA_GROUP_CONFIG = {
    * @env ALPHA_INVITE_DECAY_MAX_DECLINES
    * @default 5
    */
-  inviteDecayMaxDeclines: envPositiveInt('ALPHA_INVITE_DECAY_MAX_DECLINES', 5),
+  inviteDecayMaxDeclines: envPositiveInt("ALPHA_INVITE_DECAY_MAX_DECLINES", 5),
 
   /**
    * Days of inactivity after which decline count resets.
@@ -315,7 +315,7 @@ export const ALPHA_GROUP_CONFIG = {
    * @env ALPHA_INVITE_DECAY_RESET_DAYS
    * @default 30
    */
-  inviteDecayResetDays: envPositiveInt('ALPHA_INVITE_DECAY_RESET_DAYS', 30),
+  inviteDecayResetDays: envPositiveInt("ALPHA_INVITE_DECAY_RESET_DAYS", 30),
 
   // ===========================================================================
   // COOLDOWNS
@@ -327,7 +327,7 @@ export const ALPHA_GROUP_CONFIG = {
    * @env ALPHA_INVITE_COOLDOWN_HOURS
    * @default 2
    */
-  inviteCooldownHours: envPositiveInt('ALPHA_INVITE_COOLDOWN_HOURS', 2),
+  inviteCooldownHours: envPositiveInt("ALPHA_INVITE_COOLDOWN_HOURS", 2),
 
   // ===========================================================================
   // THROTTLING & RATE LIMITS
@@ -341,8 +341,8 @@ export const ALPHA_GROUP_CONFIG = {
    * @default 2
    */
   maxInvitesPerUserPerWeek: envPositiveInt(
-    'ALPHA_MAX_INVITES_PER_USER_PER_WEEK',
-    2
+    "ALPHA_MAX_INVITES_PER_USER_PER_WEEK",
+    2,
   ),
 
   /**
@@ -352,7 +352,7 @@ export const ALPHA_GROUP_CONFIG = {
    * @env ALPHA_REQUIRE_RECENT_ACTIVITY
    * @default true
    */
-  requireRecentActivity: envBoolean('ALPHA_REQUIRE_RECENT_ACTIVITY', true),
+  requireRecentActivity: envBoolean("ALPHA_REQUIRE_RECENT_ACTIVITY", true),
 
   /**
    * Number of days to look back for "recent" activity.
@@ -361,7 +361,7 @@ export const ALPHA_GROUP_CONFIG = {
    * @env ALPHA_RECENT_ACTIVITY_DAYS
    * @default 30
    */
-  recentActivityDays: envPositiveInt('ALPHA_RECENT_ACTIVITY_DAYS', 30),
+  recentActivityDays: envPositiveInt("ALPHA_RECENT_ACTIVITY_DAYS", 30),
 
   /**
    * Reduced invite probability for tiered system (0.001 = 0.1% per eligible user per tick).
@@ -371,8 +371,8 @@ export const ALPHA_GROUP_CONFIG = {
    * @default 0.001
    */
   tieredInviteProbability: envProbability(
-    'ALPHA_TIERED_INVITE_PROBABILITY',
-    0.001
+    "ALPHA_TIERED_INVITE_PROBABILITY",
+    0.001,
   ),
 
   /**
@@ -382,7 +382,7 @@ export const ALPHA_GROUP_CONFIG = {
    * @env ALPHA_INVITE_USER_CHANCE
    * @default 0.02
    */
-  inviteUserChance: envProbability('ALPHA_INVITE_USER_CHANCE', 0.02),
+  inviteUserChance: envProbability("ALPHA_INVITE_USER_CHANCE", 0.02),
 
   // ===========================================================================
   // FEATURE FLAGS
@@ -396,8 +396,8 @@ export const ALPHA_GROUP_CONFIG = {
    * @default true
    */
   perNpcCustomizationEnabled: envBoolean(
-    'ALPHA_PER_NPC_CUSTOMIZATION_ENABLED',
-    true
+    "ALPHA_PER_NPC_CUSTOMIZATION_ENABLED",
+    true,
   ),
 
   /**
@@ -407,7 +407,7 @@ export const ALPHA_GROUP_CONFIG = {
    * @env ALPHA_GRANDFATHERING_ENABLED
    * @default true
    */
-  grandfatheringEnabled: envBoolean('ALPHA_GRANDFATHERING_ENABLED', true),
+  grandfatheringEnabled: envBoolean("ALPHA_GRANDFATHERING_ENABLED", true),
 
   // ===========================================================================
   // SCORING WEIGHTS (for engagement calculation)
@@ -419,7 +419,7 @@ export const ALPHA_GROUP_CONFIG = {
    * @env ALPHA_REPLY_WEIGHT
    * @default 3.0
    */
-  replyWeight: envNumber('ALPHA_REPLY_WEIGHT', 3.0),
+  replyWeight: envNumber("ALPHA_REPLY_WEIGHT", 3.0),
 
   /**
    * Weight for like interactions in engagement score.
@@ -427,7 +427,7 @@ export const ALPHA_GROUP_CONFIG = {
    * @env ALPHA_LIKE_WEIGHT
    * @default 1.0
    */
-  likeWeight: envNumber('ALPHA_LIKE_WEIGHT', 1.0),
+  likeWeight: envNumber("ALPHA_LIKE_WEIGHT", 1.0),
 
   /**
    * Weight for share interactions in engagement score.
@@ -435,7 +435,7 @@ export const ALPHA_GROUP_CONFIG = {
    * @env ALPHA_SHARE_WEIGHT
    * @default 2.0
    */
-  shareWeight: envNumber('ALPHA_SHARE_WEIGHT', 2.0),
+  shareWeight: envNumber("ALPHA_SHARE_WEIGHT", 2.0),
 
   /**
    * Maximum expected social score (for normalization).
@@ -444,7 +444,7 @@ export const ALPHA_GROUP_CONFIG = {
    * @env ALPHA_MAX_EXPECTED_SOCIAL_SCORE
    * @default 100
    */
-  maxExpectedSocialScore: envNumber('ALPHA_MAX_EXPECTED_SOCIAL_SCORE', 100),
+  maxExpectedSocialScore: envNumber("ALPHA_MAX_EXPECTED_SOCIAL_SCORE", 100),
 
   /**
    * Maximum expected trading score (for normalization).
@@ -453,7 +453,7 @@ export const ALPHA_GROUP_CONFIG = {
    * @env ALPHA_MAX_EXPECTED_TRADING_SCORE
    * @default 50
    */
-  maxExpectedTradingScore: envNumber('ALPHA_MAX_EXPECTED_TRADING_SCORE', 50),
+  maxExpectedTradingScore: envNumber("ALPHA_MAX_EXPECTED_TRADING_SCORE", 50),
 
   /**
    * Quality score multiplier for high-quality replies (> 0.8).
@@ -461,7 +461,7 @@ export const ALPHA_GROUP_CONFIG = {
    * @env ALPHA_QUALITY_MULTIPLIER
    * @default 1.2
    */
-  qualityMultiplier: envNumber('ALPHA_QUALITY_MULTIPLIER', 1.2),
+  qualityMultiplier: envNumber("ALPHA_QUALITY_MULTIPLIER", 1.2),
 
   /**
    * Quality score threshold for applying the multiplier.
@@ -469,7 +469,7 @@ export const ALPHA_GROUP_CONFIG = {
    * @env ALPHA_QUALITY_THRESHOLD
    * @default 0.8
    */
-  qualityThreshold: envProbability('ALPHA_QUALITY_THRESHOLD', 0.8),
+  qualityThreshold: envProbability("ALPHA_QUALITY_THRESHOLD", 0.8),
 
   // ===========================================================================
   // DEFAULT FOCUS WEIGHTS (when NPC has no tierOverrides)
@@ -481,7 +481,7 @@ export const ALPHA_GROUP_CONFIG = {
    * @env ALPHA_DEFAULT_SOCIAL_WEIGHT
    * @default 0.5
    */
-  defaultSocialWeight: envProbability('ALPHA_DEFAULT_SOCIAL_WEIGHT', 0.5),
+  defaultSocialWeight: envProbability("ALPHA_DEFAULT_SOCIAL_WEIGHT", 0.5),
 
   /**
    * Default trading weight when NPC has no focus weight overrides.
@@ -489,7 +489,7 @@ export const ALPHA_GROUP_CONFIG = {
    * @env ALPHA_DEFAULT_TRADING_WEIGHT
    * @default 0.5
    */
-  defaultTradingWeight: envProbability('ALPHA_DEFAULT_TRADING_WEIGHT', 0.5),
+  defaultTradingWeight: envProbability("ALPHA_DEFAULT_TRADING_WEIGHT", 0.5),
 } as const;
 
 /**
@@ -521,7 +521,7 @@ export const DOMAIN_FOCUS_WEIGHTS: Record<
   // Tech-focused domains (balanced with slight social lean)
   tech: { social: 0.6, trading: 0.4 },
   ai: { social: 0.55, trading: 0.45 },
-  'venture-capital': { social: 0.5, trading: 0.5 },
+  "venture-capital": { social: 0.5, trading: 0.5 },
   startups: { social: 0.55, trading: 0.45 },
 };
 
@@ -569,8 +569,8 @@ export function getFocusWeightsForDomains(domains: string[] | undefined): {
 export function calculateNextEligibleDate(declineCount: number): Date {
   const exponent = Math.max(0, declineCount - 1);
   const cooldownHours = Math.min(
-    ALPHA_GROUP_CONFIG.inviteDecayBaseHours * Math.pow(2, exponent),
-    ALPHA_GROUP_CONFIG.inviteDecayMaxHours
+    ALPHA_GROUP_CONFIG.inviteDecayBaseHours * 2 ** exponent,
+    ALPHA_GROUP_CONFIG.inviteDecayMaxHours,
   );
   return new Date(Date.now() + cooldownHours * 60 * 60 * 1000);
 }
@@ -591,9 +591,9 @@ export function shouldResetDeclineCount(lastDeclinedAt: Date | null): boolean {
 }
 
 // Log configuration on startup (only in development)
-if (process.env.NODE_ENV === 'development') {
+if (process.env.NODE_ENV === "development") {
   logger.debug(
-    'Alpha Group Config loaded',
+    "Alpha Group Config loaded",
     {
       inviteProbabilityMultiplier:
         ALPHA_GROUP_CONFIG.inviteProbabilityMultiplier,
@@ -606,6 +606,6 @@ if (process.env.NODE_ENV === 'development') {
       inviteDecayEnabled: ALPHA_GROUP_CONFIG.inviteDecayEnabled,
       perNpcCustomizationEnabled: ALPHA_GROUP_CONFIG.perNpcCustomizationEnabled,
     },
-    'alpha-group-config'
+    "alpha-group-config",
   );
 }

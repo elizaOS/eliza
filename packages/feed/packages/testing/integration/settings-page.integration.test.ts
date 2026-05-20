@@ -18,15 +18,15 @@
  * Tests will skip cleanly if auth is not set up.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { type APIRequestContext, request } from '@playwright/test';
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { type APIRequestContext, request } from "@playwright/test";
 import {
   cleanupPlaywrightAPI,
   getAPIBaseURL,
   getAuthUnavailableReason,
   initPlaywrightAPI,
   isAuthAvailable,
-} from './helpers/playwright-api';
+} from "./helpers/playwright-api";
 
 const API_URL = getAPIBaseURL();
 
@@ -38,11 +38,11 @@ let testUserId: string;
 const authAvailable = isAuthAvailable();
 if (!authAvailable) {
   console.log(
-    `ℹ️  Settings Page Tests: Skipping - ${getAuthUnavailableReason()}`
+    `ℹ️  Settings Page Tests: Skipping - ${getAuthUnavailableReason()}`,
   );
 }
 
-describe('Settings Page Integration Tests', () => {
+describe("Settings Page Integration Tests", () => {
   // Check if server is running and auth is available
   let serverAvailable = false;
   let authInitialized = false;
@@ -64,7 +64,7 @@ describe('Settings Page Integration Tests', () => {
     }
 
     if (!serverAvailable) {
-      console.log('ℹ️  Settings Page Tests: Skipping - Server not available');
+      console.log("ℹ️  Settings Page Tests: Skipping - Server not available");
       return;
     }
 
@@ -76,11 +76,11 @@ describe('Settings Page Integration Tests', () => {
       testUserId = userId;
       authInitialized = true;
       console.log(
-        `✅ Settings Page Tests: Authenticated as user: ${testUserId}`
+        `✅ Settings Page Tests: Authenticated as user: ${testUserId}`,
       );
     } catch (error) {
       console.log(
-        `ℹ️  Settings Page Tests: Skipping - Auth initialization failed: ${error instanceof Error ? error.message : String(error)}`
+        `ℹ️  Settings Page Tests: Skipping - Auth initialization failed: ${error instanceof Error ? error.message : String(error)}`,
       );
       return;
     }
@@ -94,8 +94,8 @@ describe('Settings Page Integration Tests', () => {
   const canRunTests = () =>
     authAvailable && serverAvailable && authInitialized && apiRequest;
 
-  describe('Profile Tab', () => {
-    test('should update display name', async () => {
+  describe("Profile Tab", () => {
+    test("should update display name", async () => {
       if (!canRunTests()) {
         return; // Skip silently - reason already logged in beforeAll
       }
@@ -108,7 +108,7 @@ describe('Settings Page Integration Tests', () => {
           data: {
             displayName: newDisplayName,
           },
-        }
+        },
       );
 
       expect(response.ok()).toBe(true);
@@ -117,7 +117,7 @@ describe('Settings Page Integration Tests', () => {
       expect(data.user.displayName).toBe(newDisplayName);
     });
 
-    test('should update bio', async () => {
+    test("should update bio", async () => {
       if (!canRunTests()) {
         return;
       }
@@ -130,7 +130,7 @@ describe('Settings Page Integration Tests', () => {
           data: {
             bio: newBio,
           },
-        }
+        },
       );
 
       expect(response.ok()).toBe(true);
@@ -139,7 +139,7 @@ describe('Settings Page Integration Tests', () => {
       expect(data.user.bio).toBe(newBio);
     });
 
-    test('should enforce username change rate limit (24 hours)', async () => {
+    test("should enforce username change rate limit (24 hours)", async () => {
       if (!canRunTests()) {
         return;
       }
@@ -153,7 +153,7 @@ describe('Settings Page Integration Tests', () => {
           data: {
             username: newUsername,
           },
-        }
+        },
       );
 
       if (firstResponse.ok()) {
@@ -164,7 +164,7 @@ describe('Settings Page Integration Tests', () => {
             data: {
               username: `testuser${Date.now() + 1}`,
             },
-          }
+          },
         );
 
         expect(secondResponse.ok()).toBe(false);
@@ -173,7 +173,7 @@ describe('Settings Page Integration Tests', () => {
       }
     });
 
-    test('should reject duplicate usernames', async () => {
+    test("should reject duplicate usernames", async () => {
       if (!canRunTests()) {
         return;
       }
@@ -183,9 +183,9 @@ describe('Settings Page Integration Tests', () => {
         `${API_URL}/users/${testUserId}/update-profile`,
         {
           data: {
-            username: 'admin', // Likely taken
+            username: "admin", // Likely taken
           },
-        }
+        },
       );
 
       // Should either fail or succeed (if somehow available)
@@ -194,7 +194,7 @@ describe('Settings Page Integration Tests', () => {
       expect(data).toBeTruthy();
     });
 
-    test('should require on-chain registration for profile updates', async () => {
+    test("should require on-chain registration for profile updates", async () => {
       if (!canRunTests()) {
         return;
       }
@@ -209,9 +209,9 @@ describe('Settings Page Integration Tests', () => {
           `${API_URL}/users/${testUserId}/update-profile`,
           {
             data: {
-              displayName: 'Should Fail',
+              displayName: "Should Fail",
             },
-          }
+          },
         );
 
         expect(updateResponse.ok()).toBe(false);
@@ -222,8 +222,8 @@ describe('Settings Page Integration Tests', () => {
   // Theme Tab and Security Tab tests require browser testing
   // These are tested in synpress/playwright e2e tests
 
-  describe('Privacy Tab', () => {
-    test('should export user data (GDPR compliance)', async () => {
+  describe("Privacy Tab", () => {
+    test("should export user data (GDPR compliance)", async () => {
       if (!canRunTests()) {
         return;
       }
@@ -231,8 +231,8 @@ describe('Settings Page Integration Tests', () => {
       const response = await apiRequest.get(`${API_URL}/users/export-data`);
 
       expect(response.ok()).toBe(true);
-      const contentType = response.headers()['content-type'];
-      expect(contentType).toContain('application/json');
+      const contentType = response.headers()["content-type"];
+      expect(contentType).toContain("application/json");
 
       const data = await response.json();
       expect(data.export_info).toBeTruthy();
@@ -240,7 +240,7 @@ describe('Settings Page Integration Tests', () => {
       expect(data.export_info.user_id).toBe(testUserId);
     });
 
-    test('should include all user data in export', async () => {
+    test("should include all user data in export", async () => {
       if (!canRunTests()) {
         return;
       }
@@ -260,7 +260,7 @@ describe('Settings Page Integration Tests', () => {
       expect(data.legal_consent).toBeTruthy();
     });
 
-    test('should require exact confirmation for account deletion', async () => {
+    test("should require exact confirmation for account deletion", async () => {
       if (!canRunTests()) {
         return;
       }
@@ -270,16 +270,16 @@ describe('Settings Page Integration Tests', () => {
         `${API_URL}/users/delete-account`,
         {
           data: {
-            confirmation: 'wrong confirmation',
-            reason: 'Testing',
+            confirmation: "wrong confirmation",
+            reason: "Testing",
           },
-        }
+        },
       );
 
       expect(response.ok()).toBe(false);
     });
 
-    test('should not allow account deletion without proper confirmation', async () => {
+    test("should not allow account deletion without proper confirmation", async () => {
       if (!canRunTests()) {
         return;
       }
@@ -289,9 +289,9 @@ describe('Settings Page Integration Tests', () => {
         `${API_URL}/users/delete-account`,
         {
           data: {
-            reason: 'Testing',
+            reason: "Testing",
           },
-        }
+        },
       );
 
       expect(response.ok()).toBe(false);
@@ -304,8 +304,8 @@ describe('Settings Page Integration Tests', () => {
   // Tab Navigation tests require browser testing
   // These are tested in synpress/playwright e2e tests
 
-  describe('Authentication Requirements', () => {
-    test('should require authentication for profile updates', async () => {
+  describe("Authentication Requirements", () => {
+    test("should require authentication for profile updates", async () => {
       // This test checks unauthenticated access - needs server + testUserId from auth init
       if (!canRunTests()) {
         return;
@@ -319,9 +319,9 @@ describe('Settings Page Integration Tests', () => {
           `${API_URL}/users/${testUserId}/update-profile`,
           {
             data: {
-              displayName: 'Should Fail',
+              displayName: "Should Fail",
             },
-          }
+          },
         );
 
         expect(response.ok()).toBe(false);
@@ -331,7 +331,7 @@ describe('Settings Page Integration Tests', () => {
       }
     });
 
-    test('should require authentication for data export', async () => {
+    test("should require authentication for data export", async () => {
       // This test checks unauthenticated access - only needs server to be running
       if (!authAvailable || !serverAvailable) {
         return;
@@ -342,7 +342,7 @@ describe('Settings Page Integration Tests', () => {
 
       try {
         const response = await unauthenticatedRequest.get(
-          `${API_URL}/users/export-data`
+          `${API_URL}/users/export-data`,
         );
 
         expect(response.ok()).toBe(false);
@@ -352,7 +352,7 @@ describe('Settings Page Integration Tests', () => {
       }
     });
 
-    test('should require authentication for account deletion', async () => {
+    test("should require authentication for account deletion", async () => {
       // This test checks unauthenticated access - only needs server to be running
       if (!authAvailable || !serverAvailable) {
         return;
@@ -366,9 +366,9 @@ describe('Settings Page Integration Tests', () => {
           `${API_URL}/users/delete-account`,
           {
             data: {
-              confirmation: 'DELETE MY ACCOUNT',
+              confirmation: "DELETE MY ACCOUNT",
             },
-          }
+          },
         );
 
         expect(response.ok()).toBe(false);
@@ -378,21 +378,21 @@ describe('Settings Page Integration Tests', () => {
       }
     });
 
-    test('should prevent users from updating other users profiles', async () => {
+    test("should prevent users from updating other users profiles", async () => {
       if (!canRunTests()) {
         return;
       }
 
       // Try to update a different user's profile (use a different ID)
-      const otherUserId = 'different-user-id';
+      const otherUserId = "different-user-id";
 
       const response = await apiRequest.put(
         `${API_URL}/users/${otherUserId}/update-profile`,
         {
           data: {
-            displayName: 'Unauthorized Change',
+            displayName: "Unauthorized Change",
           },
-        }
+        },
       );
 
       expect(response.ok()).toBe(false);
@@ -400,14 +400,14 @@ describe('Settings Page Integration Tests', () => {
     });
   });
 
-  describe('Input Validation', () => {
-    test('should validate display name length', async () => {
+  describe("Input Validation", () => {
+    test("should validate display name length", async () => {
       if (!canRunTests()) {
         return;
       }
 
       // Try extremely long display name
-      const longName = 'a'.repeat(300);
+      const longName = "a".repeat(300);
 
       const response = await apiRequest.put(
         `${API_URL}/users/${testUserId}/update-profile`,
@@ -415,7 +415,7 @@ describe('Settings Page Integration Tests', () => {
           data: {
             displayName: longName,
           },
-        }
+        },
       );
 
       // Should either be rejected or truncated
@@ -427,13 +427,13 @@ describe('Settings Page Integration Tests', () => {
       }
     });
 
-    test('should validate username format', async () => {
+    test("should validate username format", async () => {
       if (!canRunTests()) {
         return;
       }
 
       // Try invalid username with special characters
-      const invalidUsername = 'user@#$%^&*()';
+      const invalidUsername = "user@#$%^&*()";
 
       const response = await apiRequest.put(
         `${API_URL}/users/${testUserId}/update-profile`,
@@ -441,7 +441,7 @@ describe('Settings Page Integration Tests', () => {
           data: {
             username: invalidUsername,
           },
-        }
+        },
       );
 
       // Should be rejected if validation is in place
@@ -450,13 +450,13 @@ describe('Settings Page Integration Tests', () => {
       }
     });
 
-    test('should validate bio length', async () => {
+    test("should validate bio length", async () => {
       if (!canRunTests()) {
         return;
       }
 
       // Try extremely long bio
-      const longBio = 'a'.repeat(2000);
+      const longBio = "a".repeat(2000);
 
       const response = await apiRequest.put(
         `${API_URL}/users/${testUserId}/update-profile`,
@@ -464,7 +464,7 @@ describe('Settings Page Integration Tests', () => {
           data: {
             bio: longBio,
           },
-        }
+        },
       );
 
       // Should either be rejected or truncated

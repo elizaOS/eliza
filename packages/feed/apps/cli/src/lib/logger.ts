@@ -109,8 +109,8 @@ export const logger = {
    * @param title - Header title to display
    */
   header: (title: string): void => {
-    console.log(`\n${'═'.repeat(60)}`);
+    console.log(`\n${"═".repeat(60)}`);
     console.log(`  ${title}`);
-    console.log(`${'═'.repeat(60)}\n`);
+    console.log(`${"═".repeat(60)}\n`);
   },
 };

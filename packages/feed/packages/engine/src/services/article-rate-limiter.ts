@@ -8,8 +8,8 @@
  * @module services/article-rate-limiter
  */
 
-import { and, db, eq, gte, isNull, posts, sql } from '@feed/db';
-import { logger } from '@feed/shared';
+import { and, db, eq, gte, isNull, posts, sql } from "@feed/db";
+import { logger } from "@feed/shared";
 
 /**
  * Configuration for article rate limiting
@@ -39,7 +39,7 @@ const DEFAULT_MAX_ARTICLES_PER_HOUR = 2;
 function parsePositiveIntEnvVar(
   envVarName: string,
   defaultValue: number,
-  logContext: string
+  logContext: string,
 ): number {
   const envValue = process.env[envVarName];
 
@@ -53,7 +53,7 @@ function parsePositiveIntEnvVar(
     logger.warn(
       `Invalid ${envVarName} value: "${envValue}" is not a number. Using default: ${defaultValue}`,
       { envValue, default: defaultValue },
-      logContext
+      logContext,
     );
     return defaultValue;
   }
@@ -62,7 +62,7 @@ function parsePositiveIntEnvVar(
     logger.warn(
       `Invalid ${envVarName} value: ${parsed} must be > 0. Using default: ${defaultValue}`,
       { envValue, parsed, default: defaultValue },
-      logContext
+      logContext,
     );
     return defaultValue;
   }
@@ -78,9 +78,9 @@ function parsePositiveIntEnvVar(
  */
 function parseMaxArticlesPerHour(): number {
   return parsePositiveIntEnvVar(
-    'ARTICLE_RATE_LIMIT_PER_HOUR',
+    "ARTICLE_RATE_LIMIT_PER_HOUR",
     DEFAULT_MAX_ARTICLES_PER_HOUR,
-    'ArticleRateLimiter'
+    "ArticleRateLimiter",
   );
 }
 
@@ -131,10 +131,10 @@ export class ArticleRateLimiterService {
       .from(posts)
       .where(
         and(
-          eq(posts.type, 'article'),
+          eq(posts.type, "article"),
           gte(posts.timestamp, windowStart),
-          isNull(posts.deletedAt)
-        )
+          isNull(posts.deletedAt),
+        ),
       );
 
     return result?.count ?? 0;
@@ -154,7 +154,7 @@ export class ArticleRateLimiterService {
     const currentCount = await this.getRecentArticleCount();
     const remaining = Math.max(
       0,
-      this.config.maxArticlesPerHour - currentCount
+      this.config.maxArticlesPerHour - currentCount,
     );
 
     const result = {
@@ -166,13 +166,13 @@ export class ArticleRateLimiterService {
 
     if (!result.allowed) {
       logger.debug(
-        'Article generation blocked by rate limit',
+        "Article generation blocked by rate limit",
         {
           currentCount,
           maxAllowed: this.config.maxArticlesPerHour,
           windowMinutes: Math.round(this.config.windowMs / 60000),
         },
-        'ArticleRateLimiter'
+        "ArticleRateLimiter",
       );
     }
 
@@ -204,7 +204,7 @@ export class ArticleRateLimiterService {
           maxAllowed,
           remaining,
         },
-        'ArticleRateLimiter'
+        "ArticleRateLimiter",
       );
     } else {
       logger.warn(
@@ -214,7 +214,7 @@ export class ArticleRateLimiterService {
           currentCount,
           maxAllowed,
         },
-        'ArticleRateLimiter'
+        "ArticleRateLimiter",
       );
     }
 
@@ -270,22 +270,22 @@ export const articleRateLimiter = new ArticleRateLimiterService();
  * ```
  */
 export function createArticleRateLimiter(
-  config: Partial<ArticleRateLimitConfig>
+  config: Partial<ArticleRateLimitConfig>,
 ): ArticleRateLimiterService {
   if (config.maxArticlesPerHour !== undefined) {
     if (Number.isNaN(config.maxArticlesPerHour)) {
-      throw new Error('maxArticlesPerHour cannot be NaN');
+      throw new Error("maxArticlesPerHour cannot be NaN");
     }
     if (config.maxArticlesPerHour <= 0) {
-      throw new Error('maxArticlesPerHour must be a positive number');
+      throw new Error("maxArticlesPerHour must be a positive number");
     }
   }
   if (config.windowMs !== undefined) {
     if (Number.isNaN(config.windowMs)) {
-      throw new Error('windowMs cannot be NaN');
+      throw new Error("windowMs cannot be NaN");
     }
     if (config.windowMs <= 0) {
-      throw new Error('windowMs must be a positive number');
+      throw new Error("windowMs must be a positive number");
     }
   }
   return new ArticleRateLimiterService(config);
@@ -310,9 +310,9 @@ const DEFAULT_BREAKING_RATE_LIMIT_PER_HOUR = DEFAULT_MAX_ARTICLES_PER_HOUR + 1;
  */
 function parseBreakingRateLimit(): number {
   return parsePositiveIntEnvVar(
-    'BREAKING_RATE_LIMIT_PER_HOUR',
+    "BREAKING_RATE_LIMIT_PER_HOUR",
     DEFAULT_BREAKING_RATE_LIMIT_PER_HOUR,
-    'ArticleRateLimiter'
+    "ArticleRateLimiter",
   );
 }
 
@@ -369,10 +369,10 @@ export class BreakingArticleRateLimiterService {
       .from(posts)
       .where(
         and(
-          eq(posts.type, 'article'),
+          eq(posts.type, "article"),
           gte(posts.timestamp, windowStart),
-          isNull(posts.deletedAt)
-        )
+          isNull(posts.deletedAt),
+        ),
       );
 
     const dbCount = result?.count ?? 0;
@@ -400,13 +400,13 @@ export class BreakingArticleRateLimiterService {
 
     if (!result.allowed) {
       logger.debug(
-        'Breaking article generation blocked by rate limit',
+        "Breaking article generation blocked by rate limit",
         {
           currentCount,
           maxAllowed: this.maxArticlesPerHour,
           windowMinutes: Math.round(this.windowMs / 60000),
         },
-        'BreakingArticleRateLimiter'
+        "BreakingArticleRateLimiter",
       );
     }
 
@@ -426,9 +426,9 @@ export class BreakingArticleRateLimiterService {
     const currentCount = await this.getRecentArticleCount();
     if (currentCount >= this.maxArticlesPerHour) {
       logger.debug(
-        'Breaking article slot reservation failed - rate limit reached',
+        "Breaking article slot reservation failed - rate limit reached",
         { currentCount, maxAllowed: this.maxArticlesPerHour },
-        'BreakingArticleRateLimiter'
+        "BreakingArticleRateLimiter",
       );
       return null;
     }
@@ -437,13 +437,13 @@ export class BreakingArticleRateLimiterService {
     this.reservations.set(reservationId, Date.now());
 
     logger.debug(
-      'Breaking article slot reserved',
+      "Breaking article slot reserved",
       {
         reservationId,
         currentCount: currentCount + 1,
         maxAllowed: this.maxArticlesPerHour,
       },
-      'BreakingArticleRateLimiter'
+      "BreakingArticleRateLimiter",
     );
 
     return reservationId;
@@ -461,10 +461,10 @@ export class BreakingArticleRateLimiterService {
 
     logger.debug(
       existed
-        ? 'Breaking article slot released'
-        : 'Breaking article slot release failed - reservation not found',
+        ? "Breaking article slot released"
+        : "Breaking article slot release failed - reservation not found",
       { reservationId },
-      'BreakingArticleRateLimiter'
+      "BreakingArticleRateLimiter",
     );
 
     return existed;

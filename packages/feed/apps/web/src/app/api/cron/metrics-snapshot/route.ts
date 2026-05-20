@@ -61,15 +61,15 @@ import {
   recordCronExecution,
   verifyCronAuth,
   withErrorHandling,
-} from '@feed/api';
-import { db, generateSnowflakeId, systemMetricsSnapshots } from '@feed/db';
-import { logger, toISO } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { snapshotAllUserPnlMetrics } from '@/lib/wallet/pnlHistory';
+} from "@feed/api";
+import { db, generateSnowflakeId, systemMetricsSnapshots } from "@feed/db";
+import { logger, toISO } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { snapshotAllUserPnlMetrics } from "@/lib/wallet/pnlHistory";
 
 export const maxDuration = 60;
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 /**
  * Truncate date to hour boundary for consistent timestamps
@@ -85,8 +85,8 @@ function getHourBoundary(date: Date = new Date()): Date {
       date.getUTCHours(),
       0,
       0,
-      0
-    )
+      0,
+    ),
   );
 }
 
@@ -95,16 +95,16 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
 });
 
 export const POST = withErrorHandling(async function POST(
-  request: NextRequest
+  request: NextRequest,
 ) {
   // Verify cron authorization
-  if (!verifyCronAuth(request, { jobName: 'MetricsSnapshot' })) {
+  if (!verifyCronAuth(request, { jobName: "MetricsSnapshot" })) {
     logger.warn(
-      'Unauthorized metrics-snapshot request',
+      "Unauthorized metrics-snapshot request",
       undefined,
-      'MetricsSnapshot'
+      "MetricsSnapshot",
     );
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const startTime = Date.now();
@@ -112,12 +112,12 @@ export const POST = withErrorHandling(async function POST(
   const environment: DeploymentEnvironment = getDeploymentEnvironment();
 
   logger.info(
-    'Metrics snapshot started',
+    "Metrics snapshot started",
     {
       timestamp: toISO(snapshotTimestamp),
       environment,
     },
-    'MetricsSnapshot'
+    "MetricsSnapshot",
   );
 
   try {
@@ -157,24 +157,24 @@ export const POST = withErrorHandling(async function POST(
     // If no rows returned, conflict occurred (snapshot already exists)
     if (insertResult.length === 0) {
       logger.info(
-        'Snapshot already exists, skipping',
+        "Snapshot already exists, skipping",
         {
           timestamp: toISO(snapshotTimestamp),
           environment,
         },
-        'MetricsSnapshot'
+        "MetricsSnapshot",
       );
 
-      recordCronExecution('metrics-snapshot', new Date(startTime), {
+      recordCronExecution("metrics-snapshot", new Date(startTime), {
         success: true,
         skipped: true,
-        reason: 'Snapshot already exists for this hour',
+        reason: "Snapshot already exists for this hour",
       });
 
       return NextResponse.json({
         success: true,
         skipped: true,
-        reason: 'Snapshot already exists',
+        reason: "Snapshot already exists",
         pnlSnapshotsCreated,
         timestamp: toISO(snapshotTimestamp),
         environment,
@@ -183,7 +183,7 @@ export const POST = withErrorHandling(async function POST(
     }
 
     // Snapshot created successfully
-    const insertedId = insertResult[0]!.id;
+    const insertedId = insertResult[0]?.id;
     const result = {
       success: true,
       snapshotId: insertedId,
@@ -208,26 +208,26 @@ export const POST = withErrorHandling(async function POST(
       },
     };
 
-    logger.info('Metrics snapshot completed', result, 'MetricsSnapshot');
+    logger.info("Metrics snapshot completed", result, "MetricsSnapshot");
 
-    recordCronExecution('metrics-snapshot', new Date(startTime), result);
+    recordCronExecution("metrics-snapshot", new Date(startTime), result);
 
     return NextResponse.json(result);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
 
     logger.error(
-      'Metrics snapshot failed',
+      "Metrics snapshot failed",
       {
         error: errorMessage,
         timestamp: toISO(snapshotTimestamp),
         environment,
         stack: error instanceof Error ? error.stack : undefined,
       },
-      'MetricsSnapshot'
+      "MetricsSnapshot",
     );
 
-    recordCronExecution('metrics-snapshot', new Date(startTime), {
+    recordCronExecution("metrics-snapshot", new Date(startTime), {
       success: false,
       error: errorMessage,
     });
@@ -241,7 +241,7 @@ export const POST = withErrorHandling(async function POST(
         environment,
         durationMs: Date.now() - startTime,
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 });
@@ -261,10 +261,10 @@ async function collectMetrics(snapshotTime: Date) {
   // NOT string concatenation. This is safe from SQL injection.
   const snapshotTimeStr = toISO(snapshotTime);
   const oneHourAgoStr = new Date(
-    snapshotTime.getTime() - 60 * 60 * 1000
+    snapshotTime.getTime() - 60 * 60 * 1000,
   ).toISOString();
   const oneDayAgoStr = new Date(
-    snapshotTime.getTime() - 24 * 60 * 60 * 1000
+    snapshotTime.getTime() - 24 * 60 * 60 * 1000,
   ).toISOString();
 
   // Run all queries in parallel for efficiency
@@ -387,16 +387,16 @@ async function collectMetrics(snapshotTime: Date) {
     totalUsers: Number(userRow?.total ?? 0),
     activeUsers: Number(activeRow?.active ?? 0),
     newSignups: Number(userRow?.newSignups ?? 0),
-    tradingVolume: tradingRow?.volume ?? '0',
+    tradingVolume: tradingRow?.volume ?? "0",
     activeMarkets: Number(tradingRow?.activeMarkets ?? 0),
     openPositions: Number(tradingRow?.openPositions ?? 0),
-    perpVolume: tradingRow?.perpVolume ?? '0',
+    perpVolume: tradingRow?.perpVolume ?? "0",
     activePerpPositions: Number(tradingRow?.activePerpPositions ?? 0),
     postsCreated: Number(socialRow?.posts ?? 0),
     commentsCreated: Number(socialRow?.comments ?? 0),
     reactionsCreated: Number(socialRow?.reactions ?? 0),
-    totalVirtualBalance: financialRow?.totalBalance ?? '0',
-    feesCollectedHourly: financialRow?.feesCollected ?? '0',
+    totalVirtualBalance: financialRow?.totalBalance ?? "0",
+    feesCollectedHourly: financialRow?.feesCollected ?? "0",
   };
 }
 
@@ -431,14 +431,14 @@ async function collectSystemHealth() {
     dbAvailabilityPercent = 0.0;
     dbPingMs = Date.now() - healthStart;
     logger.warn(
-      'Database health check failed',
+      "Database health check failed",
       {
         error:
           healthError instanceof Error
             ? healthError.message
             : String(healthError),
       },
-      'MetricsSnapshot'
+      "MetricsSnapshot",
     );
   }
 
@@ -453,7 +453,7 @@ async function collectSystemHealth() {
     cronJobsHealthy: cronStats.summary.healthyJobs,
     cronJobsUnhealthy: cronStats.summary.unhealthyJobs,
     extendedMetrics: {
-      metricSource: 'legacy-proxy',
+      metricSource: "legacy-proxy",
       cronAlerts: cronStats.alerts,
       avgCronDurationMs: cronStats.summary.avgDurationMs,
       totalCronExecutions: cronStats.summary.totalExecutions,

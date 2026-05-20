@@ -1,9 +1,9 @@
-import { PageContainer } from '@/components/shared/PageContainer';
+import { PageContainer } from "@/components/shared/PageContainer";
 import {
   LeaderboardSkeleton,
   Skeleton,
   WidgetPanelSkeleton,
-} from '@/components/shared/Skeleton';
+} from "@/components/shared/Skeleton";
 
 export default function LeaderboardLoading() {
   return (
@@ -15,14 +15,14 @@ export default function LeaderboardLoading() {
           {/* Sticky header with tab toggle */}
           <div className="sticky top-0 z-10 flex-shrink-0 bg-background shadow-sm">
             <div className="flex w-full items-center border-border border-b">
-              {['Reputation', 'Trading'].map((label) => (
+              {["Reputation", "Trading"].map((label) => (
                 <div key={label} className="flex-1 py-3.5 text-center">
                   <Skeleton className="mx-auto h-4 w-24" />
                 </div>
               ))}
             </div>
             <div className="flex w-full items-center border-border border-b">
-              {['Per Wallet', 'Team'].map((label) => (
+              {["Per Wallet", "Team"].map((label) => (
                 <div key={label} className="flex-1 py-3.5 text-center">
                   <Skeleton className="mx-auto h-4 w-20" />
                 </div>
@@ -53,14 +53,14 @@ export default function LeaderboardLoading() {
         {/* Sticky header with tab toggle */}
         <div className="sticky top-0 z-10 flex-shrink-0 bg-background shadow-sm">
           <div className="flex w-full items-center border-border border-b">
-            {['Reputation', 'Trading'].map((label) => (
+            {["Reputation", "Trading"].map((label) => (
               <div key={label} className="flex-1 py-3.5 text-center">
                 <Skeleton className="mx-auto h-4 w-24" />
               </div>
             ))}
           </div>
           <div className="flex w-full items-center border-border border-b">
-            {['Per Wallet', 'Team'].map((label) => (
+            {["Per Wallet", "Team"].map((label) => (
               <div key={label} className="flex-1 py-3.5 text-center">
                 <Skeleton className="mx-auto h-4 w-20" />
               </div>

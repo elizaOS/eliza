@@ -1,1 +1,1 @@
-export { GET } from '../feed/widgets/trending/route';
+export { GET } from "../feed/widgets/trending/route";

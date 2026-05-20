@@ -4,7 +4,7 @@
  * Defines the interface for question data access.
  */
 
-import type { QuestionRecord } from '../types';
+import type { QuestionRecord } from "../types";
 
 export interface QuestionPort {
   // Question Operations
@@ -18,15 +18,15 @@ export interface QuestionPort {
 
   // Create/Update Operations
   createQuestion(
-    question: Omit<QuestionRecord, 'id' | 'createdAt' | 'updatedAt'>
+    question: Omit<QuestionRecord, "id" | "createdAt" | "updatedAt">,
   ): Promise<QuestionRecord>;
   resolveQuestion(
     id: string,
-    resolvedOutcome: boolean
+    resolvedOutcome: boolean,
   ): Promise<QuestionRecord>;
   updateQuestion(
     id: string,
-    updates: Partial<QuestionRecord>
+    updates: Partial<QuestionRecord>,
   ): Promise<QuestionRecord>;
 
   // Statistics

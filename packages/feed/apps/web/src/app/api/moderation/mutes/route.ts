@@ -53,24 +53,24 @@
  * ```
  */
 
-import { authenticate, successResponse, withErrorHandling } from '@feed/api';
-import { db } from '@feed/db';
-import { GetMutesSchema } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+import { authenticate, successResponse, withErrorHandling } from "@feed/api";
+import { db } from "@feed/db";
+import { GetMutesSchema } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   const authUser = await authenticate(request);
 
   const { searchParams } = new URL(request.url);
   const { limit, offset } = GetMutesSchema.parse({
-    limit: searchParams.get('limit') || '20',
-    offset: searchParams.get('offset') || '0',
+    limit: searchParams.get("limit") || "20",
+    offset: searchParams.get("offset") || "0",
   });
 
   const [mutes, total] = await Promise.all([
     db.userMute.findMany({
       where: { muterId: authUser.userId },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
       take: limit,
       skip: offset,
       include: {

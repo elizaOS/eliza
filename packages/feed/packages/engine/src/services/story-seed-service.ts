@@ -27,14 +27,14 @@
  * ```
  */
 
-import { logger } from '@feed/shared';
-import type { FeedLLMClient } from '../llm/openai-client';
-import { StaticDataRegistry } from './static-data-registry';
+import { logger } from "@feed/shared";
+import type { FeedLLMClient } from "../llm/openai-client";
+import { StaticDataRegistry } from "./static-data-registry";
 import {
   type EditorialBeat,
   getTopicDiversityService,
   ORGANIZATION_BEATS,
-} from './topic-diversity-service';
+} from "./topic-diversity-service";
 
 /**
  * A story seed that can be developed into an article
@@ -50,12 +50,12 @@ export interface StorySeed {
   beat: EditorialBeat;
   /** Story type */
   type:
-    | 'beat'
-    | 'investigative'
-    | 'analysis'
-    | 'profile'
-    | 'breaking'
-    | 'opinion';
+    | "beat"
+    | "investigative"
+    | "analysis"
+    | "profile"
+    | "breaking"
+    | "opinion";
   /** Key actors/entities involved (game character IDs) */
   involvedActors: string[];
   /** Whether this could inspire a prediction market question */
@@ -71,150 +71,150 @@ export interface StorySeed {
  */
 const STORY_TEMPLATES: Array<{
   beat: EditorialBeat;
-  type: StorySeed['type'];
+  type: StorySeed["type"];
   templates: string[];
 }> = [
   // Tech/AI stories
   {
-    beat: 'ai',
-    type: 'analysis',
+    beat: "ai",
+    type: "analysis",
     templates: [
-      'The hidden costs of AI infrastructure that no one is talking about',
-      'Why the next AI breakthrough might come from an unexpected place',
-      'Inside the talent war reshaping AI research labs',
-      'The regulatory blind spots in current AI governance frameworks',
-      'How AI is quietly transforming industries beyond tech',
+      "The hidden costs of AI infrastructure that no one is talking about",
+      "Why the next AI breakthrough might come from an unexpected place",
+      "Inside the talent war reshaping AI research labs",
+      "The regulatory blind spots in current AI governance frameworks",
+      "How AI is quietly transforming industries beyond tech",
     ],
   },
   {
-    beat: 'ai',
-    type: 'investigative',
+    beat: "ai",
+    type: "investigative",
     templates: [
-      'Sources reveal internal tensions at major AI labs over safety protocols',
-      'The lobbying machine behind AI regulation (or lack thereof)',
-      'Exclusive: What AI companies are really doing with your data',
-      'The race to build AI chips and who is winning',
+      "Sources reveal internal tensions at major AI labs over safety protocols",
+      "The lobbying machine behind AI regulation (or lack thereof)",
+      "Exclusive: What AI companies are really doing with your data",
+      "The race to build AI chips and who is winning",
     ],
   },
   {
-    beat: 'tech',
-    type: 'analysis',
+    beat: "tech",
+    type: "analysis",
     templates: [
-      'The platform consolidation trend and what it means for startups',
-      'Why Big Tech antitrust cases keep failing',
-      'The death of the freemium model and what replaces it',
-      'Remote work is reshaping tech hubs in unexpected ways',
-      'The infrastructure bottleneck holding back innovation',
+      "The platform consolidation trend and what it means for startups",
+      "Why Big Tech antitrust cases keep failing",
+      "The death of the freemium model and what replaces it",
+      "Remote work is reshaping tech hubs in unexpected ways",
+      "The infrastructure bottleneck holding back innovation",
     ],
   },
   {
-    beat: 'tech',
-    type: 'opinion',
+    beat: "tech",
+    type: "opinion",
     templates: [
-      'We are thinking about tech monopolies all wrong',
-      'The case for (and against) breaking up Big Tech',
-      'Why founder-led companies outperform (or do they?)',
-      'The myth of the 10x engineer',
+      "We are thinking about tech monopolies all wrong",
+      "The case for (and against) breaking up Big Tech",
+      "Why founder-led companies outperform (or do they?)",
+      "The myth of the 10x engineer",
     ],
   },
 
   // Finance/Markets stories
   {
-    beat: 'finance',
-    type: 'analysis',
+    beat: "finance",
+    type: "analysis",
     templates: [
-      'The Fed signals that markets are misreading completely',
-      'Why institutional investors are quietly repositioning',
-      'The liquidity crisis no one is preparing for',
-      'Bond market vs equity market: who is right?',
-      'The real story behind recent market volatility',
+      "The Fed signals that markets are misreading completely",
+      "Why institutional investors are quietly repositioning",
+      "The liquidity crisis no one is preparing for",
+      "Bond market vs equity market: who is right?",
+      "The real story behind recent market volatility",
     ],
   },
   {
-    beat: 'markets',
-    type: 'investigative',
+    beat: "markets",
+    type: "investigative",
     templates: [
-      'Inside the trading strategies dominating this market',
-      'The arbitrage opportunities hiding in plain sight',
-      'How high-frequency traders are adapting to new regulations',
-      'The concentrated bets driving market moves',
+      "Inside the trading strategies dominating this market",
+      "The arbitrage opportunities hiding in plain sight",
+      "How high-frequency traders are adapting to new regulations",
+      "The concentrated bets driving market moves",
     ],
   },
   {
-    beat: 'finance',
-    type: 'opinion',
+    beat: "finance",
+    type: "opinion",
     templates: [
-      'Why traditional valuation metrics are becoming obsolete',
-      'The case for rethinking portfolio diversification',
-      'What the smart money is getting wrong',
-      'Is passive investing creating systemic risks?',
+      "Why traditional valuation metrics are becoming obsolete",
+      "The case for rethinking portfolio diversification",
+      "What the smart money is getting wrong",
+      "Is passive investing creating systemic risks?",
     ],
   },
 
   // Politics/Regulation stories
   {
-    beat: 'politics',
-    type: 'analysis',
+    beat: "politics",
+    type: "analysis",
     templates: [
-      'The policy battles that will define tech for a decade',
-      'Why both parties are getting tech regulation wrong',
-      'The lobbying dollars reshaping tech policy',
-      'International tech policy divergence and its consequences',
+      "The policy battles that will define tech for a decade",
+      "Why both parties are getting tech regulation wrong",
+      "The lobbying dollars reshaping tech policy",
+      "International tech policy divergence and its consequences",
     ],
   },
   {
-    beat: 'regulation',
-    type: 'investigative',
+    beat: "regulation",
+    type: "investigative",
     templates: [
-      'The revolving door between regulators and tech companies',
-      'How companies are preparing for potential breakups',
-      'The enforcement actions that could reshape industries',
-      'Inside the legal strategies of targeted tech giants',
+      "The revolving door between regulators and tech companies",
+      "How companies are preparing for potential breakups",
+      "The enforcement actions that could reshape industries",
+      "Inside the legal strategies of targeted tech giants",
     ],
   },
 
   // Business/Startups stories
   {
-    beat: 'startups',
-    type: 'analysis',
+    beat: "startups",
+    type: "analysis",
     templates: [
-      'The funding winter is changing what VCs want',
-      'Why profitability is the new growth',
-      'The startup categories attracting serious capital now',
-      'Bridge rounds and down rounds: the new normal',
-      'What YC acceptance rates tell us about the startup ecosystem',
+      "The funding winter is changing what VCs want",
+      "Why profitability is the new growth",
+      "The startup categories attracting serious capital now",
+      "Bridge rounds and down rounds: the new normal",
+      "What YC acceptance rates tell us about the startup ecosystem",
     ],
   },
   {
-    beat: 'business',
-    type: 'investigative',
+    beat: "business",
+    type: "investigative",
     templates: [
-      'The real unit economics of hyped startups',
-      'Why certain unicorns are struggling to exit',
-      'The talent exodus from Big Tech to startups (and back)',
-      'Corporate venture arms: strategic or just FOMO?',
+      "The real unit economics of hyped startups",
+      "Why certain unicorns are struggling to exit",
+      "The talent exodus from Big Tech to startups (and back)",
+      "Corporate venture arms: strategic or just FOMO?",
     ],
   },
 
   // Culture/Media stories
   {
-    beat: 'culture',
-    type: 'analysis',
+    beat: "culture",
+    type: "analysis",
     templates: [
-      'The creator economy is consolidating faster than expected',
-      'Why algorithm changes are reshaping online culture',
-      'The attention economy is hitting its limits',
-      'How streaming wars are changing content forever',
+      "The creator economy is consolidating faster than expected",
+      "Why algorithm changes are reshaping online culture",
+      "The attention economy is hitting its limits",
+      "How streaming wars are changing content forever",
     ],
   },
   {
-    beat: 'media',
-    type: 'opinion',
+    beat: "media",
+    type: "opinion",
     templates: [
-      'The future of journalism in an AI-saturated world',
-      'Why traditional media keeps missing the story',
-      'The fragmentation of truth and what it means',
-      'Social media as infrastructure: who should control it?',
+      "The future of journalism in an AI-saturated world",
+      "Why traditional media keeps missing the story",
+      "The fragmentation of truth and what it means",
+      "Social media as infrastructure: who should control it?",
     ],
   },
 ];
@@ -242,12 +242,12 @@ export class StorySeedService {
    */
   async generateBeatStory(
     orgId: string,
-    beat?: EditorialBeat
+    beat?: EditorialBeat,
   ): Promise<StorySeed> {
     // Use org's beats if no specific beat provided
-    const orgBeats = ORGANIZATION_BEATS[orgId] || ['tech', 'business'];
+    const orgBeats = ORGANIZATION_BEATS[orgId] || ["tech", "business"];
     const targetBeat =
-      beat || orgBeats[Math.floor(Math.random() * orgBeats.length)] || 'tech';
+      beat || orgBeats[Math.floor(Math.random() * orgBeats.length)] || "tech";
 
     // Check topic diversity - prefer underrepresented beats
     const diversityService = getTopicDiversityService();
@@ -284,12 +284,12 @@ export class StorySeedService {
    */
   private templateToSeed(
     templateSet: (typeof STORY_TEMPLATES)[number],
-    orgId: string
+    orgId: string,
   ): StorySeed {
     const headline =
       templateSet.templates[
         Math.floor(Math.random() * templateSet.templates.length)
-      ] || 'Breaking developments in the industry';
+      ] || "Breaking developments in the industry";
 
     // Find relevant actors for this beat
     const actors = StaticDataRegistry.getAllActors();
@@ -308,7 +308,7 @@ export class StorySeedService {
       beat: templateSet.beat,
       type: templateSet.type,
       involvedActors: relevantActors,
-      couldBecomeQuestion: templateSet.type === 'investigative',
+      couldBecomeQuestion: templateSet.type === "investigative",
       priority: Math.random() * 0.5 + 0.5, // 0.5-1.0
       suggestedAngle: this.getSuggestedAngle(templateSet.beat, orgId),
     };
@@ -321,46 +321,46 @@ export class StorySeedService {
     // Different outlets have different perspectives
     const orgAngles: Record<string, Record<EditorialBeat, string>> = {
       bloombairg: {
-        tech: 'Focus on market implications and institutional investor perspective',
-        finance: 'Terminal-first analysis with emphasis on data',
-        politics: 'How policy affects markets and wealth',
-        crypto: 'Institutional adoption angle',
-        ai: 'Enterprise AI and productivity gains',
-        culture: 'Business of entertainment and media',
-        business: 'Corporate strategy and M&A',
-        science: 'Commercial applications of research',
-        regulation: 'Compliance costs and market impact',
-        markets: 'Technical analysis and flow data',
-        startups: 'Unicorn valuations and exit potential',
-        media: 'Media companies as investments',
+        tech: "Focus on market implications and institutional investor perspective",
+        finance: "Terminal-first analysis with emphasis on data",
+        politics: "How policy affects markets and wealth",
+        crypto: "Institutional adoption angle",
+        ai: "Enterprise AI and productivity gains",
+        culture: "Business of entertainment and media",
+        business: "Corporate strategy and M&A",
+        science: "Commercial applications of research",
+        regulation: "Compliance costs and market impact",
+        markets: "Technical analysis and flow data",
+        startups: "Unicorn valuations and exit potential",
+        media: "Media companies as investments",
       },
       techcrainch: {
-        tech: 'Startup ecosystem and founder stories',
-        finance: 'VC funding and startup valuations',
-        politics: 'Impact on startup ecosystem',
-        crypto: 'Web3 startups and founder profiles',
-        ai: 'AI startup funding and product launches',
-        culture: 'Creator economy startups',
-        business: 'Startup growth strategies',
-        science: 'Deep tech startups',
-        regulation: 'Impact on startup formation',
-        markets: 'Startup liquidity events',
-        startups: 'Funding rounds and pivots',
-        media: 'Media tech startups',
+        tech: "Startup ecosystem and founder stories",
+        finance: "VC funding and startup valuations",
+        politics: "Impact on startup ecosystem",
+        crypto: "Web3 startups and founder profiles",
+        ai: "AI startup funding and product launches",
+        culture: "Creator economy startups",
+        business: "Startup growth strategies",
+        science: "Deep tech startups",
+        regulation: "Impact on startup formation",
+        markets: "Startup liquidity events",
+        startups: "Funding rounds and pivots",
+        media: "Media tech startups",
       },
       politaico: {
-        tech: 'Policy and lobbying angles',
-        finance: 'Political implications of economic data',
-        politics: 'Inside baseball and horse race coverage',
-        crypto: 'Regulatory battles and political money',
-        ai: 'AI policy and political positioning',
-        culture: 'Culture war angles',
-        business: 'Corporate political donations',
-        science: 'Research funding politics',
-        regulation: 'Regulatory process and key players',
-        markets: 'Economic policy impact',
-        startups: 'Political connections of founders',
-        media: 'Media power dynamics',
+        tech: "Policy and lobbying angles",
+        finance: "Political implications of economic data",
+        politics: "Inside baseball and horse race coverage",
+        crypto: "Regulatory battles and political money",
+        ai: "AI policy and political positioning",
+        culture: "Culture war angles",
+        business: "Corporate political donations",
+        science: "Research funding politics",
+        regulation: "Regulatory process and key players",
+        markets: "Economic policy impact",
+        startups: "Political connections of founders",
+        media: "Media power dynamics",
       },
     };
 
@@ -377,7 +377,7 @@ export class StorySeedService {
    */
   async generateDiverseStories(
     count: number,
-    excludeBeats: EditorialBeat[] = []
+    excludeBeats: EditorialBeat[] = [],
   ): Promise<StorySeed[]> {
     const seeds: StorySeed[] = [];
     const usedBeats = new Set<EditorialBeat>();
@@ -394,10 +394,10 @@ export class StorySeedService {
       if (usedBeats.has(suggestion.beat) && seeds.length > 3) continue;
 
       const template = STORY_TEMPLATES.find(
-        (t) => t.beat === suggestion.beat && !usedTypes.has(t.type)
+        (t) => t.beat === suggestion.beat && !usedTypes.has(t.type),
       );
       if (template) {
-        seeds.push(this.templateToSeed(template, 'generic'));
+        seeds.push(this.templateToSeed(template, "generic"));
         usedBeats.add(suggestion.beat);
         usedTypes.add(template.type);
       }
@@ -408,7 +408,7 @@ export class StorySeedService {
       const availableTemplates = STORY_TEMPLATES.filter(
         (t) =>
           !excludeBeats.includes(t.beat) &&
-          (!usedBeats.has(t.beat) || seeds.length > count / 2)
+          (!usedBeats.has(t.beat) || seeds.length > count / 2),
       );
 
       if (availableTemplates.length === 0) break;
@@ -417,7 +417,7 @@ export class StorySeedService {
         availableTemplates[
           Math.floor(Math.random() * availableTemplates.length)
         ]!;
-      seeds.push(this.templateToSeed(template, 'generic'));
+      seeds.push(this.templateToSeed(template, "generic"));
       usedBeats.add(template.beat);
       usedTypes.add(template.type);
     }
@@ -435,22 +435,22 @@ export class StorySeedService {
     const actor = StaticDataRegistry.getActor(actorId);
     if (!actor) {
       logger.warn(
-        'Actor not found for profile story',
+        "Actor not found for profile story",
         { actorId },
-        'StorySeedService'
+        "StorySeedService",
       );
       return null;
     }
 
     const domain = Array.isArray(actor.domain) ? actor.domain[0] : actor.domain;
-    const beat = this.domainToBeat(domain || 'tech');
+    const beat = this.domainToBeat(domain || "tech");
 
     return {
       id: `profile-${actorId}-${Date.now()}`,
-      headline: `Profile: ${actor.name} and their impact on ${domain || 'the industry'}`,
+      headline: `Profile: ${actor.name} and their impact on ${domain || "the industry"}`,
       description: `In-depth look at ${actor.name}'s trajectory and influence`,
       beat,
-      type: 'profile',
+      type: "profile",
       involvedActors: [actorId],
       couldBecomeQuestion: false,
       priority: 0.7,
@@ -463,15 +463,15 @@ export class StorySeedService {
    */
   private domainToBeat(domain: string): EditorialBeat {
     const domainLower = domain.toLowerCase();
-    if (domainLower.includes('crypto') || domainLower.includes('web3'))
-      return 'crypto';
-    if (domainLower.includes('ai') || domainLower.includes('ml')) return 'ai';
-    if (domainLower.includes('politic')) return 'politics';
-    if (domainLower.includes('financ') || domainLower.includes('invest'))
-      return 'finance';
-    if (domainLower.includes('media')) return 'media';
-    if (domainLower.includes('startup')) return 'startups';
-    return 'tech';
+    if (domainLower.includes("crypto") || domainLower.includes("web3"))
+      return "crypto";
+    if (domainLower.includes("ai") || domainLower.includes("ml")) return "ai";
+    if (domainLower.includes("politic")) return "politics";
+    if (domainLower.includes("financ") || domainLower.includes("invest"))
+      return "finance";
+    if (domainLower.includes("media")) return "media";
+    if (domainLower.includes("startup")) return "startups";
+    return "tech";
   }
 
   /**
@@ -482,24 +482,24 @@ export class StorySeedService {
   async generateBreakingStory(): Promise<StorySeed> {
     const breakingTemplates = [
       {
-        beat: 'tech' as EditorialBeat,
-        headline: 'Major tech company announces surprise leadership change',
+        beat: "tech" as EditorialBeat,
+        headline: "Major tech company announces surprise leadership change",
       },
       {
-        beat: 'finance' as EditorialBeat,
-        headline: 'Markets react to unexpected economic data release',
+        beat: "finance" as EditorialBeat,
+        headline: "Markets react to unexpected economic data release",
       },
       {
-        beat: 'regulation' as EditorialBeat,
-        headline: 'Regulators announce new enforcement action',
+        beat: "regulation" as EditorialBeat,
+        headline: "Regulators announce new enforcement action",
       },
       {
-        beat: 'ai' as EditorialBeat,
-        headline: 'AI lab unveils capability that raises new questions',
+        beat: "ai" as EditorialBeat,
+        headline: "AI lab unveils capability that raises new questions",
       },
       {
-        beat: 'politics' as EditorialBeat,
-        headline: 'Key policy vote approaches with uncertain outcome',
+        beat: "politics" as EditorialBeat,
+        headline: "Key policy vote approaches with uncertain outcome",
       },
     ];
 
@@ -509,13 +509,13 @@ export class StorySeedService {
     return {
       id: `breaking-${Date.now()}`,
       headline: template.headline,
-      description: 'Breaking news requiring immediate coverage',
+      description: "Breaking news requiring immediate coverage",
       beat: template.beat,
-      type: 'breaking',
+      type: "breaking",
       involvedActors: [],
       couldBecomeQuestion: true,
       priority: 1.0, // Breaking news is always high priority
-      suggestedAngle: 'Fast, factual reporting with expert reaction quotes',
+      suggestedAngle: "Fast, factual reporting with expert reaction quotes",
     };
   }
 }

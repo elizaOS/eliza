@@ -5,16 +5,16 @@ import {
   successResponse,
   verifyCronAuth,
   withErrorHandling,
-} from '@feed/api';
-import { logger, type NotificationDigestSettings } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/api";
+import { logger, type NotificationDigestSettings } from "@feed/shared";
+import type { NextRequest } from "next/server";
 import {
   deliverDigestForUser,
   isDigestDue,
   listDigestCandidates,
-} from '@/lib/services/notification-digest-service';
+} from "@/lib/services/notification-digest-service";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
 /**
@@ -28,9 +28,9 @@ export function shouldProcessUser(userId: string, isFanOut: boolean): boolean {
   }
   // Partition users by hashing their ID - production handles even, staging handles odd
   // This ensures deterministic, non-overlapping processing across environments
-  const isProduction = getDeploymentEnvironment() === 'production';
+  const isProduction = getDeploymentEnvironment() === "production";
   const hash = userId
-    .split('')
+    .split("")
     .reduce((acc, char) => acc + char.charCodeAt(0), 0);
   const isEvenHash = hash % 2 === 0;
   return isProduction ? isEvenHash : !isEvenHash;
@@ -39,30 +39,30 @@ export function shouldProcessUser(userId: string, isFanOut: boolean): boolean {
 const cronHandler = async (request: NextRequest) => {
   const startTime = new Date();
 
-  if (!verifyCronAuth(request, { jobName: 'NotificationsDigest' })) {
-    return successResponse({ error: 'Unauthorized' }, 401);
+  if (!verifyCronAuth(request, { jobName: "NotificationsDigest" })) {
+    return successResponse({ error: "Unauthorized" }, 401);
   }
 
-  const relay = await relayCronToStaging(request, 'notifications-digest');
+  const relay = await relayCronToStaging(request, "notifications-digest");
   const isRelayedDigestRequest =
-    request.headers.get('x-cron-relay') === 'notifications-digest';
+    request.headers.get("x-cron-relay") === "notifications-digest";
   const isFanOut = relay.forwarded || isRelayedDigestRequest;
 
   if (isFanOut) {
     // Note: Fan-out architecture — both environments execute after relay.
     // User partitioning via shouldProcessUser ensures no double-processing.
-    if (process.env.SHARED_DATABASE_WITH_STAGING === 'true') {
+    if (process.env.SHARED_DATABASE_WITH_STAGING === "true") {
       throw new Error(
-        'Fan-out cron cannot run when SHARED_DATABASE_WITH_STAGING=true — would process users twice'
+        "Fan-out cron cannot run when SHARED_DATABASE_WITH_STAGING=true — would process users twice",
       );
     }
   }
 
   if (relay.forwarded) {
     logger.info(
-      'Notifications digest cron relayed to staging (fan-out: also executing locally with user partitioning)',
+      "Notifications digest cron relayed to staging (fan-out: also executing locally with user partitioning)",
       { status: relay.status, error: relay.error },
-      'NotificationsDigestCron'
+      "NotificationsDigestCron",
     );
   }
 
@@ -116,14 +116,14 @@ const cronHandler = async (request: NextRequest) => {
     } catch (error) {
       failed += 1;
       logger.error(
-        'Digest delivery failed for candidate (continuing batch)',
+        "Digest delivery failed for candidate (continuing batch)",
         {
           userId: candidate.id,
           frequency: settings.frequency,
           deliveryChannel: settings.deliveryChannel,
           error: error instanceof Error ? error.message : String(error),
         },
-        'NotificationsDigestCron'
+        "NotificationsDigestCron",
       );
     }
   }
@@ -137,7 +137,7 @@ const cronHandler = async (request: NextRequest) => {
     ...(isFanOut && { skippedPartition }),
   };
 
-  recordCronExecution('notifications-digest', startTime, payload);
+  recordCronExecution("notifications-digest", startTime, payload);
   return successResponse(payload);
 };
 

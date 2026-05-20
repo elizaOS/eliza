@@ -1,9 +1,9 @@
-import { definePrompt } from '../define-prompt';
+import { definePrompt } from "../define-prompt";
 import {
   NPC_POST_QUALITY_RULES,
   PARODY_NAME_RULES,
   TWITTER_HUMOR_ARCHETYPES,
-} from '../shared-sections';
+} from "../shared-sections";
 
 /**
  * Prompt for generating organic, personality-driven posts with NO market context.
@@ -16,11 +16,11 @@ import {
  * Includes NPC_POST_QUALITY_RULES to enforce anti-slop standards and voice realism.
  */
 export const organicPost = definePrompt({
-  id: 'organic-post',
-  version: '3.0.0',
-  category: 'feed',
+  id: "organic-post",
+  version: "3.0.0",
+  category: "feed",
   description:
-    'Generates personality-driven post — no market data, pure character voice, humor unlocked',
+    "Generates personality-driven post — no market data, pure character voice, humor unlocked",
   temperature: 1.1,
   maxTokens: 8000,
   template: `You are {{characterName}}.

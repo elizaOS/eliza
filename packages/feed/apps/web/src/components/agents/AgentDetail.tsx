@@ -5,7 +5,7 @@
  * Used in both the standalone agent page and the Agents page.
  */
 
-'use client';
+"use client";
 
 import {
   Activity,
@@ -15,54 +15,54 @@ import {
   FileText,
   Settings,
   TrendingUp,
-} from 'lucide-react';
-import dynamic from 'next/dynamic';
-import Link from 'next/link';
-import { AgentPnLDisplay } from '@/components/agents/AgentPnLDisplay';
-import { Avatar } from '@/components/shared/Avatar';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+} from "lucide-react";
+import dynamic from "next/dynamic";
+import Link from "next/link";
+import { AgentPnLDisplay } from "@/components/agents/AgentPnLDisplay";
+import { Avatar } from "@/components/shared/Avatar";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 // Performance: Lazy load tab components - only one is visible at a time
 const AgentActivityFeed = dynamic(
   () =>
-    import('@/components/agents/AgentActivityFeed').then((m) => ({
+    import("@/components/agents/AgentActivityFeed").then((m) => ({
       default: m.AgentActivityFeed,
     })),
-  { ssr: false, loading: () => <TabLoadingSkeleton /> }
+  { ssr: false, loading: () => <TabLoadingSkeleton /> },
 );
 
 const AgentLogs = dynamic(
   () =>
-    import('@/components/agents/AgentLogs').then((m) => ({
+    import("@/components/agents/AgentLogs").then((m) => ({
       default: m.AgentLogs,
     })),
-  { ssr: false, loading: () => <TabLoadingSkeleton /> }
+  { ssr: false, loading: () => <TabLoadingSkeleton /> },
 );
 
 const AgentPerformance = dynamic(
   () =>
-    import('@/components/agents/AgentPerformance').then((m) => ({
+    import("@/components/agents/AgentPerformance").then((m) => ({
       default: m.AgentPerformance,
     })),
-  { ssr: false, loading: () => <TabLoadingSkeleton /> }
+  { ssr: false, loading: () => <TabLoadingSkeleton /> },
 );
 
 const AgentSettings = dynamic(
   () =>
-    import('@/components/agents/AgentSettings').then((m) => ({
+    import("@/components/agents/AgentSettings").then((m) => ({
       default: m.AgentSettings,
     })),
-  { ssr: false, loading: () => <TabLoadingSkeleton /> }
+  { ssr: false, loading: () => <TabLoadingSkeleton /> },
 );
 
 const AgentWallet = dynamic(
   () =>
-    import('@/components/agents/AgentWallet').then((m) => ({
+    import("@/components/agents/AgentWallet").then((m) => ({
       default: m.AgentWallet,
     })),
-  { ssr: false, loading: () => <TabLoadingSkeleton /> }
+  { ssr: false, loading: () => <TabLoadingSkeleton /> },
 );
 
 // Loading skeleton for tab content
@@ -94,7 +94,7 @@ export interface AgentDetailData {
   totalWithdrawn?: number;
   isActive: boolean;
   autonomousEnabled: boolean;
-  modelTier: 'free' | 'pro';
+  modelTier: "free" | "pro";
   status: string;
   errorMessage?: string;
   lifetimePnL: string;
@@ -110,11 +110,11 @@ export interface AgentDetailData {
 
 /** Available tab values for AgentDetail */
 export type AgentDetailTab =
-  | 'activity'
-  | 'performance'
-  | 'logs'
-  | 'settings'
-  | 'wallet';
+  | "activity"
+  | "performance"
+  | "logs"
+  | "settings"
+  | "wallet";
 
 interface AgentDetailProps {
   /** Agent data to display */
@@ -141,13 +141,13 @@ export function AgentDetail({
   agent,
   onUpdate,
   onBack,
-  backLabel = 'Back',
+  backLabel = "Back",
   compact = false,
-  defaultTab = 'activity',
+  defaultTab = "activity",
 }: AgentDetailProps) {
   const containerClass = compact
-    ? 'space-y-6'
-    : 'mx-auto max-w-7xl space-y-6 p-4';
+    ? "space-y-6"
+    : "mx-auto max-w-7xl space-y-6 p-4";
 
   return (
     <div className={containerClass}>
@@ -203,8 +203,8 @@ export function AgentDetail({
               <span
                 className={
                   agent.autonomousEnabled
-                    ? 'text-green-400'
-                    : 'text-foreground/80'
+                    ? "text-green-400"
+                    : "text-foreground/80"
                 }
               >
                 {agent.autonomousEnabled ? (
@@ -213,7 +213,7 @@ export function AgentDetail({
                     Autonomous Active
                   </>
                 ) : (
-                  'Autonomous Disabled'
+                  "Autonomous Disabled"
                 )}
               </span>
               <span className="text-foreground">•</span>
@@ -325,8 +325,8 @@ export function AgentDetailSkeleton({
   compact?: boolean;
 }) {
   const containerClass = compact
-    ? 'space-y-6'
-    : 'mx-auto max-w-7xl space-y-6 p-4';
+    ? "space-y-6"
+    : "mx-auto max-w-7xl space-y-6 p-4";
 
   return (
     <div className={containerClass}>
@@ -342,7 +342,7 @@ export function AgentDetailSkeleton({
 /** Empty state when agent not found */
 export function AgentDetailNotFound({
   onBack,
-  backLabel = 'Back to Agents',
+  backLabel = "Back to Agents",
 }: {
   onBack?: () => void;
   backLabel?: string;

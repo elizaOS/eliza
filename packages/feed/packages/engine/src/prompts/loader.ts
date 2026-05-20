@@ -6,9 +6,9 @@
  * serverless environments.
  */
 
-import type { JsonValue } from '../types/common';
-import { toDateString } from '../utils/date-utils';
-import type { PromptDefinition } from './define-prompt';
+import type { JsonValue } from "../types/common";
+import { toDateString } from "../utils/date-utils";
+import type { PromptDefinition } from "./define-prompt";
 
 /**
  * Render a prompt template with variable substitution.
@@ -48,154 +48,154 @@ export function renderPrompt(
      * Useful for optional contextual data like trendContext.
      */
     optionalVars?: string[];
-  } = {}
+  } = {},
 ): string {
   const {
     allowEmpty = false,
     optionalVars = [
       // Trading vars (New - PR #2)
-      'marketTable',
-      'npcsList',
-      'validNpcIds',
-      'validTickers',
-      'previousTrades',
-      'marketSignalAnalysis',
+      "marketTable",
+      "npcsList",
+      "validNpcIds",
+      "validTickers",
+      "previousTrades",
+      "marketSignalAnalysis",
 
       // Actor-specific context vars
-      'antiRepetitionContext',
-      'actorRules',
+      "antiRepetitionContext",
+      "actorRules",
 
       // Standard context vars
-      'trendContext',
-      'previousPostsContext',
-      'worldActors',
-      'currentMarkets',
-      'activePredictions',
-      'recentTrades',
-      'realityGrounding',
-      'worldFacts',
-      'worldEventExamples',
-      'currentDateTime',
-      'currentDate',
-      'currentTime',
-      'currentYear',
-      'currentMonth',
-      'currentDay',
-      'examples',
-      'contextInfo',
-      'relatedQuestionContext',
-      'atmosphereContext',
-      'emotionalContext',
+      "trendContext",
+      "previousPostsContext",
+      "worldActors",
+      "currentMarkets",
+      "activePredictions",
+      "recentTrades",
+      "realityGrounding",
+      "worldFacts",
+      "worldEventExamples",
+      "currentDateTime",
+      "currentDate",
+      "currentTime",
+      "currentYear",
+      "currentMonth",
+      "currentDay",
+      "examples",
+      "contextInfo",
+      "relatedQuestionContext",
+      "atmosphereContext",
+      "emotionalContext",
 
       // Character roster vars (optional until callers are updated)
-      'characterRoster',
-      'detailedCharacterProfiles',
-      'characterRelationships',
-      'organizationRoster',
-      'keyActorProfiles',
-      'expertProfile',
-      'expertRelationships',
-      'journalistProfile',
-      'participantProfiles',
-      'rumorTargetProfiles',
-      'originalAuthorProfile',
-      'involvedCharacterProfiles',
-      'affectedCharacterProfiles',
+      "characterRoster",
+      "detailedCharacterProfiles",
+      "characterRelationships",
+      "organizationRoster",
+      "keyActorProfiles",
+      "expertProfile",
+      "expertRelationships",
+      "journalistProfile",
+      "participantProfiles",
+      "rumorTargetProfiles",
+      "originalAuthorProfile",
+      "involvedCharacterProfiles",
+      "affectedCharacterProfiles",
 
       // Rich game context vars (optional)
-      'richGameContext',
-      'eventTimeline',
-      'resolvedQuestionsContext',
-      'activeQuestionsContext',
-      'ongoingNarrativesContext',
-      'feedActivityContext',
-      'worldFactsContext',
-      'phaseContext',
-      'phaseGuidance',
-      'daySummaries',
-      'previousDaySummaries',
-      'ongoingNarratives',
-      'previousGroupMessages',
-      'previousCoverage',
-      'previousRumors',
-      'participantHistory',
-      'expertPreviousStatements',
-      'relatedResolutions',
-      'threadHistory',
-      'previousRepliesContext',
-      'connectionContext',
-      'groupContext',
-      'relationshipContext',
+      "richGameContext",
+      "eventTimeline",
+      "resolvedQuestionsContext",
+      "activeQuestionsContext",
+      "ongoingNarrativesContext",
+      "feedActivityContext",
+      "worldFactsContext",
+      "phaseContext",
+      "phaseGuidance",
+      "daySummaries",
+      "previousDaySummaries",
+      "ongoingNarratives",
+      "previousGroupMessages",
+      "previousCoverage",
+      "previousRumors",
+      "participantHistory",
+      "expertPreviousStatements",
+      "relatedResolutions",
+      "threadHistory",
+      "previousRepliesContext",
+      "connectionContext",
+      "groupContext",
+      "relationshipContext",
 
       // News post vars (optional - may be empty when no source)
-      'sourceContext',
-      'outcomeFrame',
-      'orgBehaviorContext',
-      'relatedStories',
-      'relatedQuestions',
-      'connectedActors',
+      "sourceContext",
+      "outcomeFrame",
+      "orgBehaviorContext",
+      "relatedStories",
+      "relatedQuestions",
+      "connectedActors",
 
       // Article generation vars (optional - worldContext may not always be available)
-      'worldContext',
-      'previousArticles',
-      'connectedNarratives',
-      'editorialPosition',
-      'previousStances',
-      'recentContext',
+      "worldContext",
+      "previousArticles",
+      "connectedNarratives",
+      "editorialPosition",
+      "previousStances",
+      "recentContext",
 
       // Day transition vars (optional - enrichment context for day summaries)
-      'previousDay',
-      'yesterdayHighlights',
-      'yesterdayResolutions',
+      "previousDay",
+      "yesterdayHighlights",
+      "yesterdayResolutions",
 
       // Feed character context vars (optional - enrichment when available)
-      'characterEventHistory',
-      'characterEventRelation',
-      'involvedActors',
-      'relatedNarrative',
-      'relatedNarratives',
-      'similarPreviousEvents',
-      'previousReplies',
+      "characterEventHistory",
+      "characterEventRelation",
+      "involvedActors",
+      "relatedNarrative",
+      "relatedNarratives",
+      "similarPreviousEvents",
+      "previousReplies",
 
       // Organization context vars (optional - may not be available for all callers)
-      'companyNarrativePosition',
-      'previousStatements',
-      'agencyActions',
-      'organizationBehaviorContext',
+      "companyNarrativePosition",
+      "previousStatements",
+      "agencyActions",
+      "organizationBehaviorContext",
 
       // Analyst/stock context vars (optional - enrichment when available)
-      'analystTrackRecord',
-      'previousCalls',
-      'relatedEvents',
-      'eventCatalyst',
-      'connectedNarrative',
-      'recentMarketEvents',
-      'recentEventsContext',
+      "analystTrackRecord",
+      "previousCalls",
+      "relatedEvents",
+      "eventCatalyst",
+      "connectedNarrative",
+      "recentMarketEvents",
+      "recentEventsContext",
 
       // Scenario/trending vars (optional - enrichment context)
-      'previousScenarios',
-      'previousTrends',
+      "previousScenarios",
+      "previousTrends",
 
       // Phase context (optional - may not be set in all code paths)
-      'currentPhase',
+      "currentPhase",
 
       // Group chat vars (optional - singular group-message prompt may be called with minimal context)
-      'conversationHistory',
-      'mood',
-      'groupMembers',
-      'currentPositions',
-      'marketConditions',
-      'informationHint',
+      "conversationHistory",
+      "mood",
+      "groupMembers",
+      "currentPositions",
+      "marketConditions",
+      "informationHint",
 
       // Group messages batch (optional - voice reference built at call site)
-      'actorVoiceReference',
+      "actorVoiceReference",
 
       // Organic/ambient post context vars (optional - may not always have running bits)
-      'runningBitContext',
-      'domainContext',
-      'domainHints',
-      'timeEnergy',
-      'targetRecentActivity',
+      "runningBitContext",
+      "domainContext",
+      "domainHints",
+      "timeEnergy",
+      "targetRecentActivity",
     ],
   } = options;
 
@@ -204,41 +204,41 @@ export function renderPrompt(
   // Inject current date/time variables
   const now = new Date();
   const dateVariables: Record<string, string | number> = {
-    currentDateTime: now.toLocaleString('en-US'),
+    currentDateTime: now.toLocaleString("en-US"),
     currentDate: toDateString(now),
-    currentTime: now.toTimeString().split(' ')[0] || '',
+    currentTime: now.toTimeString().split(" ")[0] || "",
     currentYear: now.getFullYear(),
-    currentMonth: now.toLocaleString('en-US', { month: 'long' }),
+    currentMonth: now.toLocaleString("en-US", { month: "long" }),
     currentDay: now.getDate(),
   };
 
   const allVariables = { ...dateVariables, ...variables };
 
   for (const [key, value] of Object.entries(allVariables)) {
-    const stringValue = String(value ?? '');
+    const stringValue = String(value ?? "");
 
     // Validate non-optional variables are not empty
     if (!allowEmpty && !optionalVars.includes(key)) {
       if (value === undefined || value === null) {
         throw new Error(
-          `Required variable "${key}" is undefined/null in prompt "${prompt.id}"`
+          `Required variable "${key}" is undefined/null in prompt "${prompt.id}"`,
         );
       }
-      if (typeof value === 'string' && value.trim().length === 0) {
+      if (typeof value === "string" && value.trim().length === 0) {
         throw new Error(
-          `Required variable "${key}" is empty string in prompt "${prompt.id}"`
+          `Required variable "${key}" is empty string in prompt "${prompt.id}"`,
         );
       }
     }
 
-    const pattern = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
+    const pattern = new RegExp(`\\{\\{${key}\\}\\}`, "g");
     rendered = rendered.replace(pattern, stringValue);
   }
 
   // Replace any remaining unpopulated optional vars with empty string
   for (const optVar of optionalVars) {
-    const pattern = new RegExp(`\\{\\{${optVar}\\}\\}`, 'g');
-    rendered = rendered.replace(pattern, '');
+    const pattern = new RegExp(`\\{\\{${optVar}\\}\\}`, "g");
+    rendered = rendered.replace(pattern, "");
   }
 
   return rendered;
@@ -267,14 +267,14 @@ export function renderPrompt(
 export function getPromptParams(prompt: PromptDefinition): {
   temperature?: number;
   maxTokens?: number;
-  format?: 'xml' | 'json';
+  format?: "xml" | "json";
   promptType?: string;
   promptTemplate?: string;
 } {
   return {
     temperature: prompt.temperature,
     maxTokens: prompt.maxTokens,
-    format: 'xml', // All our prompts use XML
+    format: "xml", // All our prompts use XML
     promptType: prompt.id,
     promptTemplate: prompt.template,
   };

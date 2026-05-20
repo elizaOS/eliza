@@ -9,7 +9,7 @@
  * and app lifecycle events.
  */
 
-import { isNativePlatform } from './platform';
+import { isNativePlatform } from "./platform";
 
 interface DeepLinkOptions {
   navigate: (path: string) => void;
@@ -26,10 +26,10 @@ export async function initAppLifecycle({
 }: DeepLinkOptions): Promise<void> {
   if (!isNativePlatform()) return;
 
-  const { App } = await import('@capacitor/app');
+  const { App } = await import("@capacitor/app");
 
   // Handle Android back button
-  App.addListener('backButton', ({ canGoBack }) => {
+  App.addListener("backButton", ({ canGoBack }) => {
     if (canGoBack) {
       window.history.back();
     } else {
@@ -39,7 +39,7 @@ export async function initAppLifecycle({
   });
 
   // Handle app resume from background
-  App.addListener('appStateChange', ({ isActive }) => {
+  App.addListener("appStateChange", ({ isActive }) => {
     if (isActive) {
     }
   });

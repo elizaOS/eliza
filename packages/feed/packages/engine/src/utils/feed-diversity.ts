@@ -17,12 +17,12 @@
 /**
  * Action types tracked by the diversity system for social engagement.
  */
-export type EngagementActionType = 'like' | 'share' | 'comment';
+export type EngagementActionType = "like" | "share" | "comment";
 
 /**
  * Action types for discourse generation (quotes vs replies).
  */
-export type DiscourseActionType = 'quote' | 'reply';
+export type DiscourseActionType = "quote" | "reply";
 
 // =============================================================================
 // SHUFFLE WITH NO CONSECUTIVE
@@ -47,7 +47,7 @@ export type DiscourseActionType = 'quote' | 'reply';
  */
 export function shuffleWithNoConsecutive<T>(
   arr: T[],
-  random: () => number
+  random: () => number,
 ): T[] {
   if (arr.length <= 1) return [...arr];
 
@@ -128,7 +128,7 @@ export function shuffleWithNoConsecutive<T>(
 export function createDiscourseActionDeck(
   totalSlots: number,
   quoteRatio: number,
-  random: () => number
+  random: () => number,
 ): DiscourseActionType[] {
   if (totalSlots <= 0) return [];
 
@@ -139,8 +139,8 @@ export function createDiscourseActionDeck(
 
   // Build deck with exact ratios
   const deck: DiscourseActionType[] = [
-    ...Array(quoteCount).fill('quote' as const),
-    ...Array(replyCount).fill('reply' as const),
+    ...Array(quoteCount).fill("quote" as const),
+    ...Array(replyCount).fill("reply" as const),
   ];
 
   // Shuffle with hard constraint: no 2 same in a row (TikTok rule)

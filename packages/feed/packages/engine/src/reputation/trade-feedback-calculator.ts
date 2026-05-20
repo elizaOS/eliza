@@ -5,10 +5,10 @@
  * Analyzes entry timing, exit timing, hold duration, and risk management.
  */
 
-import { db } from '@feed/db';
-import { positions, questions, users } from '@feed/db/schema';
-import { eq } from 'drizzle-orm';
-import type { TradeMetrics } from './reputation-calculation-service';
+import { db } from "@feed/db";
+import { positions, questions, users } from "@feed/db/schema";
+import { eq } from "drizzle-orm";
+import type { TradeMetrics } from "./reputation-calculation-service";
 
 interface TradePosition {
   id: string;
@@ -35,7 +35,7 @@ interface TradePosition {
  */
 export function calculateEntryTimingScore(
   position: TradePosition,
-  marketResolutionDate: Date
+  marketResolutionDate: Date,
 ): number {
   const entryTime = position.createdAt.getTime();
   const resolutionTime = marketResolutionDate.getTime();
@@ -82,7 +82,7 @@ export function calculateEntryTimingScore(
  */
 export function calculateExitTimingScore(
   position: TradePosition,
-  marketResolutionDate: Date
+  marketResolutionDate: Date,
 ): number {
   if (!position.resolvedAt) {
     // Position held until resolution = perfect timing
@@ -125,7 +125,7 @@ export function calculateExitTimingScore(
  */
 export function calculateRiskScore(
   position: TradePosition,
-  userTotalBalance: number
+  userTotalBalance: number,
 ): number {
   const positionSize = Number(position.amount);
   const riskPercentage = positionSize / userTotalBalance;
@@ -160,7 +160,7 @@ export function calculateRiskScore(
  * @returns TradeMetrics or null if position not found
  */
 export async function calculateTradeMetrics(
-  positionId: string
+  positionId: string,
 ): Promise<TradeMetrics | null> {
   // Fetch position with related data using Drizzle
   const positionResult = await db
@@ -181,7 +181,7 @@ export async function calculateTradeMetrics(
     .limit(1);
 
   const position = positionResult[0];
-  if (!position || !position.questionId) {
+  if (!position?.questionId) {
     return null;
   }
 
@@ -220,11 +220,11 @@ export async function calculateTradeMetrics(
   // Calculate component scores
   const entryTimingScore = calculateEntryTimingScore(
     tradePosition,
-    marketResolutionDate
+    marketResolutionDate,
   );
   const exitTimingScore = calculateExitTimingScore(
     tradePosition,
-    marketResolutionDate
+    marketResolutionDate,
   );
 
   // User's total balance at trade time (approximate with current balance + PnL)
@@ -265,31 +265,31 @@ export async function calculateTradeMetrics(
  * @returns Feedback summary string
  */
 export function getTradeFeedbackSummary(metrics: TradeMetrics): string {
-  const profitLabel = metrics.profitable ? 'profitable' : 'unprofitable';
+  const profitLabel = metrics.profitable ? "profitable" : "unprofitable";
   const roiPercent = (metrics.roi * 100).toFixed(1);
 
   let summary = `Trade was ${profitLabel} with ${roiPercent}% ROI. `;
 
   // Timing feedback
   if (metrics.timingScore >= 0.8) {
-    summary += 'Excellent entry and exit timing. ';
+    summary += "Excellent entry and exit timing. ";
   } else if (metrics.timingScore >= 0.6) {
-    summary += 'Good timing overall. ';
+    summary += "Good timing overall. ";
   } else if (metrics.timingScore >= 0.4) {
-    summary += 'Timing could be improved. ';
+    summary += "Timing could be improved. ";
   } else {
-    summary += 'Poor timing on entry or exit. ';
+    summary += "Poor timing on entry or exit. ";
   }
 
   // Risk management feedback
   if (metrics.riskScore >= 0.8) {
-    summary += 'Strong risk management with appropriate position sizing.';
+    summary += "Strong risk management with appropriate position sizing.";
   } else if (metrics.riskScore >= 0.6) {
-    summary += 'Acceptable risk management.';
+    summary += "Acceptable risk management.";
   } else if (metrics.riskScore >= 0.4) {
-    summary += 'Risk management needs improvement - consider position sizing.';
+    summary += "Risk management needs improvement - consider position sizing.";
   } else {
-    summary += 'High risk taken - be more cautious with position sizes.';
+    summary += "High risk taken - be more cautious with position sizes.";
   }
 
   return summary;

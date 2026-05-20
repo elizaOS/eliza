@@ -27,7 +27,7 @@ export interface GroqModelConfig {
   /** Actual Groq model identifier for API calls */
   modelId: string;
   /** User-facing tier name */
-  tier: 'free' | 'pro';
+  tier: "free" | "pro";
   /** Short description for UI tooltips */
   description: string;
 }
@@ -41,17 +41,17 @@ export interface GroqModelConfig {
 export const GROQ_MODELS = {
   /** Free tier model - versatile with tool calling support */
   FREE: {
-    displayName: 'Llama 70B',
-    modelId: 'llama-3.3-70b-versatile',
-    tier: 'free',
-    description: 'Fast and capable with tool calling support',
+    displayName: "Llama 70B",
+    modelId: "llama-3.3-70b-versatile",
+    tier: "free",
+    description: "Fast and capable with tool calling support",
   },
   /** Pro tier model - more capable */
   PRO: {
-    displayName: 'Kimi K2',
-    modelId: 'moonshotai/kimi-k2-instruct',
-    tier: 'pro',
-    description: 'Advanced reasoning and complex tasks',
+    displayName: "Kimi K2",
+    modelId: "moonshotai/kimi-k2-instruct",
+    tier: "pro",
+    description: "Advanced reasoning and complex tasks",
   },
 } as const satisfies Record<string, GroqModelConfig>;
 
@@ -70,6 +70,6 @@ export type GroqModelTier = keyof typeof GROQ_MODELS;
  * console.log(config.displayName); // "Groq 8B" or "Groq 70B"
  * ```
  */
-export function getGroqModelByTier(tier: 'free' | 'pro'): GroqModelConfig {
-  return tier === 'pro' ? GROQ_MODELS.PRO : GROQ_MODELS.FREE;
+export function getGroqModelByTier(tier: "free" | "pro"): GroqModelConfig {
+  return tier === "pro" ? GROQ_MODELS.PRO : GROQ_MODELS.FREE;
 }

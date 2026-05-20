@@ -1,25 +1,25 @@
-'use client';
+"use client";
 
-import { cn } from '@feed/shared';
-import { BarChart2, Plus } from 'lucide-react';
-import { useMemo, useState } from 'react';
-import { PerpPriceChart } from '@/components/markets/PerpPriceChart';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { useMarketPrices } from '@/hooks/useMarketPrices';
-import { usePerpHistory } from '@/hooks/usePerpHistory';
-import { formatPrice, formatVolume } from '@/lib/market-formatters';
-import type { MarketTimeRange, PerpMarket } from '@/types/markets';
+import { cn } from "@feed/shared";
+import { BarChart2, Plus } from "lucide-react";
+import { useMemo, useState } from "react";
+import { PerpPriceChart } from "@/components/markets/PerpPriceChart";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { useMarketPrices } from "@/hooks/useMarketPrices";
+import { usePerpHistory } from "@/hooks/usePerpHistory";
+import { formatPrice, formatVolume } from "@/lib/market-formatters";
+import type { MarketTimeRange, PerpMarket } from "@/types/markets";
 
 interface PerpsMarketDetailPanelProps {
   market: PerpMarket | null;
 }
 
-const TERMINAL_TIMEFRAMES: MarketTimeRange[] = ['1H', '4H', '1D', '1W'];
+const TERMINAL_TIMEFRAMES: MarketTimeRange[] = ["1H", "4H", "1D", "1W"];
 
 export function PerpsMarketDetailPanel({
   market,
 }: PerpsMarketDetailPanelProps) {
-  const [timeRange, setTimeRange] = useState<MarketTimeRange>('1D');
+  const [timeRange, setTimeRange] = useState<MarketTimeRange>("1D");
 
   const trackedTicker = market?.ticker ?? null;
   const livePrices = useMarketPrices(trackedTicker ? [trackedTicker] : []);
@@ -38,22 +38,22 @@ export function PerpsMarketDetailPanel({
   const stats = useMemo(() => {
     if (!market) return null;
     return [
-      { label: '24h Vol', value: formatVolume(market.volume24h) },
-      { label: 'Open Interest', value: formatVolume(market.openInterest) },
+      { label: "24h Vol", value: formatVolume(market.volume24h) },
+      { label: "Open Interest", value: formatVolume(market.openInterest) },
       ...(market.bidPrice !== undefined
-        ? [{ label: 'Bid', value: formatPrice(market.bidPrice) }]
+        ? [{ label: "Bid", value: formatPrice(market.bidPrice) }]
         : []),
       ...(market.askPrice !== undefined
-        ? [{ label: 'Ask', value: formatPrice(market.askPrice) }]
+        ? [{ label: "Ask", value: formatPrice(market.askPrice) }]
         : []),
       ...(market.spreadBps !== undefined
-        ? [{ label: 'Spread', value: `${market.spreadBps.toFixed(0)} bps` }]
+        ? [{ label: "Spread", value: `${market.spreadBps.toFixed(0)} bps` }]
         : []),
       ...(market.askDepth !== undefined
-        ? [{ label: 'Ask Depth', value: formatVolume(market.askDepth) }]
+        ? [{ label: "Ask Depth", value: formatVolume(market.askDepth) }]
         : []),
       {
-        label: 'Funding',
+        label: "Funding",
         value: `${(market.fundingRate.rate * 100).toFixed(4)}%`,
       },
     ];
@@ -114,11 +114,11 @@ export function PerpsMarketDetailPanel({
             </div>
             <div
               className={cn(
-                'font-bold text-xs tabular-nums',
-                isPositive ? 'text-green-500' : 'text-red-500'
+                "font-bold text-xs tabular-nums",
+                isPositive ? "text-green-500" : "text-red-500",
               )}
             >
-              {isPositive ? '+' : ''}
+              {isPositive ? "+" : ""}
               {changePct.toFixed(2)}%
             </div>
           </div>
@@ -146,10 +146,10 @@ export function PerpsMarketDetailPanel({
                 type="button"
                 onClick={() => setTimeRange(t)}
                 className={cn(
-                  'rounded px-2 py-1 font-semibold transition-colors',
+                  "rounded px-2 py-1 font-semibold transition-colors",
                   timeRange === t
-                    ? 'bg-primary text-primary-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground",
                 )}
               >
                 {t}

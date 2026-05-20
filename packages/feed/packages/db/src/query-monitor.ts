@@ -5,7 +5,7 @@
  * Helps identify optimization opportunities under load.
  */
 
-import { logger } from './logger';
+import { logger } from "./logger";
 
 /**
  * Metrics for a single database query execution.
@@ -54,7 +54,7 @@ class QueryMonitor {
     if (metrics.duration >= this.SLOW_QUERY_THRESHOLD_MS) {
       this.recordSlowQuery(metrics);
 
-      logger.warn('Slow query detected', {
+      logger.warn("Slow query detected", {
         model: metrics.model,
         operation: metrics.operation,
         duration: `${metrics.duration}ms`,
@@ -132,7 +132,7 @@ class QueryMonitor {
   } {
     const cutoff = Date.now() - windowMs;
     const recentQueries = this.queryLog.filter(
-      (q) => q.timestamp.getTime() >= cutoff
+      (q) => q.timestamp.getTime() >= cutoff,
     );
 
     if (recentQueries.length === 0) {
@@ -149,7 +149,7 @@ class QueryMonitor {
       .map((q) => q.duration)
       .sort((a, b) => a - b);
     const slowCount = recentQueries.filter(
-      (q) => q.duration >= this.SLOW_QUERY_THRESHOLD_MS
+      (q) => q.duration >= this.SLOW_QUERY_THRESHOLD_MS,
     ).length;
 
     const p95Index = Math.floor(durations.length * 0.95);
@@ -173,12 +173,12 @@ class QueryMonitor {
     const cutoff = Date.now() - olderThanMs;
 
     this.queryLog = this.queryLog.filter(
-      (q) => q.timestamp.getTime() >= cutoff
+      (q) => q.timestamp.getTime() >= cutoff,
     );
 
     for (const [key, stats] of this.slowQueries.entries()) {
       stats.queries = stats.queries.filter(
-        (q) => q.timestamp.getTime() >= cutoff
+        (q) => q.timestamp.getTime() >= cutoff,
       );
 
       if (stats.queries.length === 0) {
@@ -203,14 +203,14 @@ class QueryMonitor {
    */
   private sanitizeQuery(query: string): string {
     if (query.length > 500) {
-      return query.substring(0, 500) + '...';
+      return `${query.substring(0, 500)}...`;
     }
 
     return query
-      .replace(/email\s*=\s*['"][^'"]+['"]/gi, 'email=***')
-      .replace(/password\s*=\s*['"][^'"]+['"]/gi, 'password=***')
-      .replace(/phone\s*=\s*['"][^'"]+['"]/gi, 'phone=***')
-      .replace(/token\s*=\s*['"][^'"]+['"]/gi, 'token=***');
+      .replace(/email\s*=\s*['"][^'"]+['"]/gi, "email=***")
+      .replace(/password\s*=\s*['"][^'"]+['"]/gi, "password=***")
+      .replace(/phone\s*=\s*['"][^'"]+['"]/gi, "phone=***")
+      .replace(/token\s*=\s*['"][^'"]+['"]/gi, "token=***");
   }
 
   /**
@@ -221,13 +221,13 @@ class QueryMonitor {
     const slowQueryStats = this.getSlowQueryStats();
     const slowQueryCount = Object.keys(slowQueryStats).length;
 
-    logger.info('Query performance summary', {
+    logger.info("Query performance summary", {
       totalQueries: stats.totalQueries,
       slowQueries: stats.slowQueries,
       slowQueryPercentage:
         stats.totalQueries > 0
           ? `${((stats.slowQueries / stats.totalQueries) * 100).toFixed(2)}%`
-          : '0%',
+          : "0%",
       avgDuration: `${stats.avgDuration.toFixed(2)}ms`,
       p95Duration: `${stats.p95Duration.toFixed(2)}ms`,
       p99Duration: `${stats.p99Duration.toFixed(2)}ms`,
@@ -239,7 +239,7 @@ class QueryMonitor {
         .sort((a, b) => b[1].avgDuration - a[1].avgDuration)
         .slice(0, 5);
 
-      logger.info('Top 5 slowest query types', {
+      logger.info("Top 5 slowest query types", {
         queries: sortedSlowQueries.map(([key, value]) => ({
           query: key,
           count: value.count,
@@ -261,15 +261,15 @@ export const queryMonitor = new QueryMonitor();
  */
 export type { QueryMetrics, SlowQueryStats };
 
-if (typeof setInterval !== 'undefined') {
+if (typeof setInterval !== "undefined") {
   setInterval(() => {
     queryMonitor.cleanup();
   }, 300000);
 }
 
 if (
-  process.env.NODE_ENV === 'development' &&
-  typeof setInterval !== 'undefined'
+  process.env.NODE_ENV === "development" &&
+  typeof setInterval !== "undefined"
 ) {
   setInterval(() => {
     queryMonitor.logSummary();

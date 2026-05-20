@@ -30,13 +30,13 @@
  * />
  * ```
  */
-'use client';
+"use client";
 
-import { AlertCircle, Flag, X } from 'lucide-react';
-import { useState, useTransition } from 'react';
-import { toast } from 'sonner';
-import { Avatar } from '@/components/shared/Avatar';
-import { apiUrl } from '@/utils/api-url';
+import { AlertCircle, Flag, X } from "lucide-react";
+import { useState, useTransition } from "react";
+import { toast } from "sonner";
+import { Avatar } from "@/components/shared/Avatar";
+import { apiUrl } from "@/utils/api-url";
 
 interface ReportModalProps {
   isOpen: boolean;
@@ -54,46 +54,46 @@ interface ReportModalProps {
  */
 const REPORT_CATEGORIES = [
   {
-    value: 'spam',
-    label: 'Spam or scam',
-    description: 'Unwanted commercial content or fraudulent activity',
+    value: "spam",
+    label: "Spam or scam",
+    description: "Unwanted commercial content or fraudulent activity",
   },
   {
-    value: 'harassment',
-    label: 'Harassment or bullying',
-    description: 'Targeting someone with abuse',
+    value: "harassment",
+    label: "Harassment or bullying",
+    description: "Targeting someone with abuse",
   },
   {
-    value: 'hate_speech',
-    label: 'Hate speech',
-    description: 'Promoting violence against people',
+    value: "hate_speech",
+    label: "Hate speech",
+    description: "Promoting violence against people",
   },
   {
-    value: 'violence',
-    label: 'Violence or threats',
-    description: 'Physical threats or graphic violence',
+    value: "violence",
+    label: "Violence or threats",
+    description: "Physical threats or graphic violence",
   },
   {
-    value: 'misinformation',
-    label: 'Misinformation',
-    description: 'False or misleading information',
+    value: "misinformation",
+    label: "Misinformation",
+    description: "False or misleading information",
   },
   {
-    value: 'inappropriate',
-    label: 'Inappropriate content',
-    description: 'NSFW or offensive content',
+    value: "inappropriate",
+    label: "Inappropriate content",
+    description: "NSFW or offensive content",
   },
   {
-    value: 'impersonation',
-    label: 'Impersonation',
-    description: 'Pretending to be someone else',
+    value: "impersonation",
+    label: "Impersonation",
+    description: "Pretending to be someone else",
   },
   {
-    value: 'self_harm',
-    label: 'Self-harm or suicide',
-    description: 'Content promoting self-harm',
+    value: "self_harm",
+    label: "Self-harm or suicide",
+    description: "Content promoting self-harm",
   },
-  { value: 'other', label: 'Other', description: 'Something else' },
+  { value: "other", label: "Other", description: "Something else" },
 ];
 
 export function ReportModal({
@@ -106,30 +106,30 @@ export function ReportModal({
   postId,
   onSuccess,
 }: ReportModalProps) {
-  const [category, setCategory] = useState('');
-  const [reason, setReason] = useState('');
-  const [evidence, setEvidence] = useState('');
+  const [category, setCategory] = useState("");
+  const [reason, setReason] = useState("");
+  const [evidence, setEvidence] = useState("");
   const [isReporting, startReporting] = useTransition();
 
-  const displayName = targetDisplayName || targetUsername || 'User';
+  const displayName = targetDisplayName || targetUsername || "User";
 
   const handleReport = () => {
     if (!category) {
-      toast.error('Please select a report category');
+      toast.error("Please select a report category");
       return;
     }
 
     if (reason.length < 10) {
-      toast.error('Please provide more details (at least 10 characters)');
+      toast.error("Please provide more details (at least 10 characters)");
       return;
     }
 
     startReporting(async () => {
-      const response = await fetch(apiUrl('/api/moderation/reports'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch(apiUrl("/api/moderation/reports"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          reportType: postId ? 'post' : 'user',
+          reportType: postId ? "post" : "user",
           reportedUserId: postId ? undefined : targetUserId,
           reportedPostId: postId,
           category,
@@ -140,14 +140,14 @@ export function ReportModal({
 
       if (!response.ok) {
         const error = await response.json();
-        toast.error(error.message || 'Failed to submit report');
+        toast.error(error.message || "Failed to submit report");
         return;
       }
 
       // Reset form
-      setCategory('');
-      setReason('');
-      setEvidence('');
+      setCategory("");
+      setReason("");
+      setEvidence("");
 
       onClose();
       onSuccess?.();
@@ -169,7 +169,7 @@ export function ReportModal({
         <div className="flex shrink-0 items-start justify-between border-border border-b p-6">
           <h2 className="flex items-center gap-2 font-bold text-xl">
             <Flag className="h-5 w-5 text-red-500" />
-            Report {postId ? 'Post' : 'User'}
+            Report {postId ? "Post" : "User"}
           </h2>
           <button
             onClick={onClose}
@@ -218,8 +218,8 @@ export function ReportModal({
                   key={cat.value}
                   className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors ${
                     category === cat.value
-                      ? 'border-primary bg-primary/5'
-                      : 'border-border hover:bg-muted/50'
+                      ? "border-primary bg-primary/5"
+                      : "border-border hover:bg-muted/50"
                   }`}
                 >
                   <input

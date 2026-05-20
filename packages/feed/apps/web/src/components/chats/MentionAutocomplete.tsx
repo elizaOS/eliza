@@ -1,15 +1,10 @@
-'use client';
+"use client";
 
-import { cn } from '@feed/shared';
-import { Bot } from 'lucide-react';
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
-import { Avatar } from '@/components/shared/Avatar';
+import { cn } from "@feed/shared";
+import { Bot } from "lucide-react";
+import type React from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Avatar } from "@/components/shared/Avatar";
 
 /** Agent that can be mentioned */
 export interface MentionableAgent {
@@ -65,9 +60,9 @@ export function MentionAutocomplete({
     };
 
     if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener("mousedown", handleClickOutside);
       return () =>
-        document.removeEventListener('mousedown', handleClickOutside);
+        document.removeEventListener("mousedown", handleClickOutside);
     }
     return undefined;
   }, [isOpen, onClose]);
@@ -95,6 +90,7 @@ export function MentionAutocomplete({
       aria-label="Mention suggestions"
       aria-activedescendant={activeDescendantId}
       className="absolute right-0 bottom-full left-0 z-50 mb-2 overflow-hidden rounded-lg border border-border bg-popover shadow-lg sm:right-auto sm:w-80"
+      tabIndex="0"
     >
       <div className="max-h-48 overflow-y-auto">
         {filteredAgents.map((agent, index) => (
@@ -107,20 +103,20 @@ export function MentionAutocomplete({
             onClick={() => onSelect(agent)}
             onMouseEnter={() => onIndexChange(index)}
             className={cn(
-              'flex w-full items-center gap-3 px-3 py-2 text-left transition-colors',
+              "flex w-full items-center gap-3 px-3 py-2 text-left transition-colors",
               index === selectedIndex
-                ? 'bg-accent text-accent-foreground'
-                : 'hover:bg-muted'
+                ? "bg-accent text-accent-foreground"
+                : "hover:bg-muted",
             )}
           >
             <Avatar
               src={agent.profileImageUrl ?? undefined}
-              name={agent.displayName || agent.username || 'Agent'}
+              name={agent.displayName || agent.username || "Agent"}
               size="sm"
             />
             <div className="min-w-0 flex-1">
               <p className="truncate font-medium text-foreground text-sm">
-                {agent.displayName || agent.username || 'Agent'}
+                {agent.displayName || agent.username || "Agent"}
               </p>
               {agent.username && (
                 <p className="truncate text-muted-foreground text-xs">
@@ -134,7 +130,7 @@ export function MentionAutocomplete({
       </div>
       <div className="border-border border-t bg-muted/50 px-3 py-1.5">
         <p className="text-muted-foreground text-xs">
-          <kbd className="rounded bg-muted px-1 font-mono">↑↓</kbd> to navigate,{' '}
+          <kbd className="rounded bg-muted px-1 font-mono">↑↓</kbd> to navigate,{" "}
           <kbd className="rounded bg-muted px-1 font-mono">Enter</kbd> to
           select, <kbd className="rounded bg-muted px-1 font-mono">Esc</kbd> to
           close
@@ -149,7 +145,7 @@ export function MentionAutocomplete({
  */
 export function useMentionAutocomplete(agents: MentionableAgent[]) {
   const [isOpen, setIsOpen] = useState(false);
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [mentionStartIndex, setMentionStartIndex] = useState(-1);
 
@@ -169,13 +165,13 @@ export function useMentionAutocomplete(agents: MentionableAgent[]) {
   const openAutocomplete = useCallback((startIndex: number) => {
     setIsOpen(true);
     setMentionStartIndex(startIndex);
-    setQuery('');
+    setQuery("");
     setSelectedIndex(0);
   }, []);
 
   const closeAutocomplete = useCallback(() => {
     setIsOpen(false);
-    setQuery('');
+    setQuery("");
     setMentionStartIndex(-1);
     setSelectedIndex(0);
   }, []);
@@ -190,29 +186,29 @@ export function useMentionAutocomplete(agents: MentionableAgent[]) {
       if (!isOpen) return false;
 
       switch (e.key) {
-        case 'ArrowDown':
+        case "ArrowDown":
           e.preventDefault();
           setSelectedIndex((prev) =>
-            prev < filteredAgents.length - 1 ? prev + 1 : 0
+            prev < filteredAgents.length - 1 ? prev + 1 : 0,
           );
           return true;
 
-        case 'ArrowUp':
+        case "ArrowUp":
           e.preventDefault();
           setSelectedIndex((prev) =>
-            prev > 0 ? prev - 1 : filteredAgents.length - 1
+            prev > 0 ? prev - 1 : filteredAgents.length - 1,
           );
           return true;
 
-        case 'Enter':
-        case 'Tab':
+        case "Enter":
+        case "Tab":
           if (filteredAgents.length > 0) {
             e.preventDefault();
             return true; // Signal that we should select
           }
           return false;
 
-        case 'Escape':
+        case "Escape":
           e.preventDefault();
           closeAutocomplete();
           return true;
@@ -221,7 +217,7 @@ export function useMentionAutocomplete(agents: MentionableAgent[]) {
           return false;
       }
     },
-    [isOpen, filteredAgents.length, closeAutocomplete]
+    [isOpen, filteredAgents.length, closeAutocomplete],
   );
 
   const getSelectedAgent = useCallback((): MentionableAgent | null => {

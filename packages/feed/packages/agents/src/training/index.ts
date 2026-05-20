@@ -9,28 +9,21 @@
  * @packageDocumentation
  */
 
-// Trajectory capture
-export { TrajectoryRecorder, trajectoryRecorder } from './TrajectoryRecorder';
-
-// Reward computation
-export {
-  computeDeterministicRewardJudgment,
-  upsertRewardJudgment,
-} from './reward-judgments';
-
+// Automation pipeline
+export type { AutomationConfig } from "./AutomationPipeline";
+export { AutomationPipeline, automationPipeline } from "./AutomationPipeline";
+export { logRLConfigOnStartup } from "./logRLConfig";
+export { MarketOutcomesTracker } from "./MarketOutcomesTracker";
+export type { DeploymentOptions, DeploymentResult } from "./ModelDeployer";
+export { ModelDeployer, modelDeployer } from "./ModelDeployer";
+// Model lifecycle
+export type { ModelArtifact } from "./ModelFetcher";
+export { getLatestRLModel } from "./ModelFetcher";
 // Reward backprop / market outcomes
 export {
   RewardBackpropagationService,
   rewardBackpropagationService,
-} from './RewardBackpropagationService';
-export { MarketOutcomesTracker } from './MarketOutcomesTracker';
-
-// Model lifecycle
-export type { ModelArtifact } from './ModelFetcher';
-export { getLatestRLModel } from './ModelFetcher';
-export type { DeploymentOptions, DeploymentResult } from './ModelDeployer';
-export { ModelDeployer, modelDeployer } from './ModelDeployer';
-
+} from "./RewardBackpropagationService";
 // RL model config
 export type {
   ArchetypeModelConfig,
@@ -39,7 +32,7 @@ export type {
   MultiModelConfig,
   QuantizationMode,
   RLModelConfig,
-} from './RLModelConfig';
+} from "./RLModelConfig";
 export {
   clearArchetypeModels,
   getAllArchetypeModels,
@@ -55,15 +48,16 @@ export {
   isRLModelAvailable,
   isTierAvailable,
   logRLModelConfig,
-} from './RLModelConfig';
-export { logRLConfigOnStartup } from './logRLConfig';
-
-// Automation pipeline
-export type { AutomationConfig } from './AutomationPipeline';
-export { AutomationPipeline, automationPipeline } from './AutomationPipeline';
-
+} from "./RLModelConfig";
+// Reward computation
+export {
+  computeDeterministicRewardJudgment,
+  upsertRewardJudgment,
+} from "./reward-judgments";
 // Trajectory data archival
-export { TrainingDataArchiver } from './storage/TrainingDataArchiver';
+export { TrainingDataArchiver } from "./storage/TrainingDataArchiver";
+// Trajectory capture
+export { TrajectoryRecorder, trajectoryRecorder } from "./TrajectoryRecorder";
 
 // Shared types
-export type { TrajectoryStep } from './types';
+export type { TrajectoryStep } from "./types";

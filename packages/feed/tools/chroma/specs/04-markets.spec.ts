@@ -5,7 +5,7 @@
  * search, filtering, chart periods, watchlist, and Buy Points modal.
  */
 
-import { expect, test } from './fixtures';
+import { expect, test } from "./fixtures";
 import {
   clickFirstVisible,
   clickTab,
@@ -13,19 +13,19 @@ import {
   fillAndVerify,
   openModal,
   pageContainsText,
-} from './helpers/interaction-helpers';
+} from "./helpers/interaction-helpers";
 import {
   cooldownBetweenTests,
   isServerHealthy,
   navigateTo,
   waitForPageLoad,
-} from './helpers/page-helpers';
-import { loginWithWallet } from './helpers/privy-auth';
-import { ROUTES, SELECTORS, TIMEOUTS, VIEWPORTS } from './helpers/test-data';
+} from "./helpers/page-helpers";
+import { loginWithWallet } from "./helpers/privy-auth";
+import { ROUTES, SELECTORS, TIMEOUTS, VIEWPORTS } from "./helpers/test-data";
 
 test.setTimeout(TIMEOUTS.EXTRA_LONG);
 
-test.describe('Markets Dashboard', () => {
+test.describe("Markets Dashboard", () => {
   test.beforeEach(async ({ page }) => {
     if (!(await isServerHealthy())) {
       test.skip();
@@ -43,25 +43,25 @@ test.describe('Markets Dashboard', () => {
     await cooldownBetweenTests(page);
   });
 
-  test('dashboard displays with Perps and Predictions tabs', async ({
+  test("dashboard displays with Perps and Predictions tabs", async ({
     page,
   }) => {
-    expect(page.url()).toContain('/markets');
+    expect(page.url()).toContain("/markets");
 
     const hasMarketsContent = await pageContainsText(
       page,
-      'perp',
-      'prediction',
-      'market',
-      'trade'
+      "perp",
+      "prediction",
+      "market",
+      "trade",
     );
     expect(hasMarketsContent).toBe(true);
   });
 
-  test('tabs navigate between Perps and Predictions', async ({ page }) => {
+  test("tabs navigate between Perps and Predictions", async ({ page }) => {
     const perpsTab = page
       .locator(
-        '[role="tab"]:has-text("Perps"), button:has-text("Perps"), a:has-text("Perps")'
+        '[role="tab"]:has-text("Perps"), button:has-text("Perps"), a:has-text("Perps")',
       )
       .first();
 
@@ -74,7 +74,7 @@ test.describe('Markets Dashboard', () => {
 
     const predictionsTab = page
       .locator(
-        '[role="tab"]:has-text("Predictions"), button:has-text("Predictions"), a:has-text("Predictions")'
+        '[role="tab"]:has-text("Predictions"), button:has-text("Predictions"), a:has-text("Predictions")',
       )
       .first();
 
@@ -87,38 +87,38 @@ test.describe('Markets Dashboard', () => {
       await page.waitForTimeout(1500);
     }
 
-    expect(page.url()).toContain('/markets');
+    expect(page.url()).toContain("/markets");
   });
 
-  test('switches to Favorites tab and shows starred markets', async ({
+  test("switches to Favorites tab and shows starred markets", async ({
     page,
   }) => {
-    const switched = await clickTab(page, 'Favorites');
+    const switched = await clickTab(page, "Favorites");
 
     if (switched) {
-      const body = await page.locator('body').textContent();
+      const body = await page.locator("body").textContent();
       expect(body?.length).toBeGreaterThan(50);
     }
   });
 
-  test('remembers selected tab on page reload', async ({ page }) => {
+  test("remembers selected tab on page reload", async ({ page }) => {
     // Click Predictions tab
-    await clickTab(page, 'Predictions');
+    await clickTab(page, "Predictions");
     await page.waitForTimeout(1000);
 
     // Reload
-    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.reload({ waitUntil: "domcontentloaded" });
     await waitForPageLoad(page);
     await page.waitForTimeout(2000);
 
     // Should still be on markets page
-    expect(page.url()).toContain('/markets');
-    const body = await page.locator('body').textContent();
+    expect(page.url()).toContain("/markets");
+    const body = await page.locator("body").textContent();
     expect(body?.length).toBeGreaterThan(100);
   });
 });
 
-test.describe('Markets - Search', () => {
+test.describe("Markets - Search", () => {
   test.beforeEach(async ({ page }) => {
     if (!(await isServerHealthy())) {
       test.skip();
@@ -136,51 +136,51 @@ test.describe('Markets - Search', () => {
     await cooldownBetweenTests(page);
   });
 
-  test('search filters market list', async ({ page }) => {
-    const value = await fillAndVerify(page, SELECTORS.SEARCH_INPUT, 'AAPL');
+  test("search filters market list", async ({ page }) => {
+    const value = await fillAndVerify(page, SELECTORS.SEARCH_INPUT, "AAPL");
 
     if (value) {
       await page.waitForTimeout(1500);
-      const body = await page.locator('body').textContent();
+      const body = await page.locator("body").textContent();
       expect(body?.length).toBeGreaterThan(50);
     }
   });
 
-  test('shows no results for nonexistent ticker', async ({ page }) => {
+  test("shows no results for nonexistent ticker", async ({ page }) => {
     const value = await fillAndVerify(
       page,
       SELECTORS.SEARCH_INPUT,
-      'ZZZZZNONEXISTENT'
+      "ZZZZZNONEXISTENT",
     );
 
     if (value) {
       await page.waitForTimeout(1500);
       // Should show empty state or no matches
-      const body = await page.locator('body').textContent();
+      const body = await page.locator("body").textContent();
       expect(body?.length).toBeGreaterThan(50);
     }
   });
 
-  test('clear search restores full market list', async ({ page }) => {
+  test("clear search restores full market list", async ({ page }) => {
     const searchInput = page.locator(SELECTORS.SEARCH_INPUT).first();
     if (
       await searchInput
         .isVisible({ timeout: TIMEOUTS.SHORT })
         .catch(() => false)
     ) {
-      await searchInput.fill('AAPL');
+      await searchInput.fill("AAPL");
       await page.waitForTimeout(1000);
 
       await searchInput.clear();
       await page.waitForTimeout(1000);
 
-      const body = await page.locator('body').textContent();
+      const body = await page.locator("body").textContent();
       expect(body?.length).toBeGreaterThan(100);
     }
   });
 });
 
-test.describe('Perps Markets', () => {
+test.describe("Perps Markets", () => {
   test.beforeEach(async ({ page }) => {
     if (!(await isServerHealthy())) {
       test.skip();
@@ -198,17 +198,17 @@ test.describe('Perps Markets', () => {
     await cooldownBetweenTests(page);
   });
 
-  test('displays perp market list with ticker symbols', async ({ page }) => {
+  test("displays perp market list with ticker symbols", async ({ page }) => {
     const marketCards = page.locator(
-      'button:has-text("$"), [data-testid="market-card"]'
+      'button:has-text("$"), [data-testid="market-card"]',
     );
     const _count = await marketCards.count().catch(() => 0);
 
-    const body = await page.locator('body').textContent();
+    const body = await page.locator("body").textContent();
     expect(body?.length).toBeGreaterThan(100);
   });
 
-  test('clicking market card navigates to trading page', async ({ page }) => {
+  test("clicking market card navigates to trading page", async ({ page }) => {
     const marketCard = page.locator('button:has-text("$")').first();
 
     if (
@@ -218,12 +218,12 @@ test.describe('Perps Markets', () => {
       await page.waitForTimeout(2000);
     }
 
-    const body = await page.locator('body').textContent();
+    const body = await page.locator("body").textContent();
     expect(body?.length).toBeGreaterThan(100);
   });
 });
 
-test.describe('Perp Trading Interface', () => {
+test.describe("Perp Trading Interface", () => {
   test.beforeEach(async ({ page }) => {
     if (!(await isServerHealthy())) {
       test.skip();
@@ -250,23 +250,23 @@ test.describe('Perp Trading Interface', () => {
     await cooldownBetweenTests(page);
   });
 
-  test('trading page shows Long/Short buttons and price', async ({ page }) => {
+  test("trading page shows Long/Short buttons and price", async ({ page }) => {
     const hasTradingContent = await pageContainsText(
       page,
-      'long',
-      'short',
-      'buy',
-      'sell',
-      'perp',
-      '$'
+      "long",
+      "short",
+      "buy",
+      "sell",
+      "perp",
+      "$",
     );
     expect(hasTradingContent).toBe(true);
   });
 
-  test('displays price chart with default time period', async ({ page }) => {
+  test("displays price chart with default time period", async ({ page }) => {
     const chart = page
       .locator(
-        'canvas, svg.recharts-surface, [data-testid*="chart"], .chart-container'
+        'canvas, svg.recharts-surface, [data-testid*="chart"], .chart-container',
       )
       .first();
     const hasChart = await chart
@@ -274,12 +274,12 @@ test.describe('Perp Trading Interface', () => {
       .catch(() => false);
 
     // Chart may be lazy loaded
-    const body = await page.locator('body').textContent();
+    const body = await page.locator("body").textContent();
     expect(hasChart || (body?.length ?? 0) > 100).toBe(true);
   });
 
-  test('switches chart time periods', async ({ page }) => {
-    const periods = ['1H', '1D', '1W', '1M'];
+  test("switches chart time periods", async ({ page }) => {
+    const periods = ["1H", "1D", "1W", "1M"];
 
     for (const period of periods) {
       const button = page.locator(`button:has-text("${period}")`).first();
@@ -291,11 +291,11 @@ test.describe('Perp Trading Interface', () => {
       }
     }
 
-    const body = await page.locator('body').textContent();
+    const body = await page.locator("body").textContent();
     expect(body?.length).toBeGreaterThan(100);
   });
 
-  test('toggles between Long and Short positions', async ({ page }) => {
+  test("toggles between Long and Short positions", async ({ page }) => {
     const longButton = page.locator(SELECTORS.LONG_BUTTON).first();
     const shortButton = page.locator(SELECTORS.SHORT_BUTTON).first();
 
@@ -315,28 +315,28 @@ test.describe('Perp Trading Interface', () => {
       await page.waitForTimeout(500);
     }
 
-    const body = await page.locator('body').textContent();
+    const body = await page.locator("body").textContent();
     expect(body?.length).toBeGreaterThan(100);
   });
 
-  test('accepts quantity input and validates minimum', async ({ page }) => {
+  test("accepts quantity input and validates minimum", async ({ page }) => {
     const quantityInput = page.locator(SELECTORS.QUANTITY_INPUT).first();
     if (
       await quantityInput
         .isVisible({ timeout: TIMEOUTS.SHORT })
         .catch(() => false)
     ) {
-      const value = await fillAndVerify(page, SELECTORS.QUANTITY_INPUT, '10');
+      const value = await fillAndVerify(page, SELECTORS.QUANTITY_INPUT, "10");
       expect(value).toBeTruthy();
 
       // Try zero - should show validation or disable submit
       await quantityInput.clear();
-      await quantityInput.fill('0');
+      await quantityInput.fill("0");
       await page.waitForTimeout(500);
     }
   });
 
-  test('shows order preview before submission', async ({ page }) => {
+  test("shows order preview before submission", async ({ page }) => {
     // Select Long
     await clickFirstVisible(page, [SELECTORS.LONG_BUTTON]);
     await page.waitForTimeout(300);
@@ -348,16 +348,16 @@ test.describe('Perp Trading Interface', () => {
         .isVisible({ timeout: TIMEOUTS.SHORT })
         .catch(() => false)
     ) {
-      await quantityInput.fill('10');
+      await quantityInput.fill("10");
       await page.waitForTimeout(1000);
 
       // Should show order summary/preview
-      const body = await page.locator('body').textContent();
+      const body = await page.locator("body").textContent();
       expect(body?.length).toBeGreaterThan(100);
     }
   });
 
-  test('toggles watchlist star on market', async ({ page }) => {
+  test("toggles watchlist star on market", async ({ page }) => {
     const starButton = page.locator(SELECTORS.WATCHLIST_STAR).first();
     if (
       await starButton.isVisible({ timeout: TIMEOUTS.SHORT }).catch(() => false)
@@ -370,11 +370,11 @@ test.describe('Perp Trading Interface', () => {
       await page.waitForTimeout(500);
     }
 
-    const body = await page.locator('body').textContent();
+    const body = await page.locator("body").textContent();
     expect(body?.length).toBeGreaterThan(100);
   });
 
-  test('displays Buy Points modal when clicking Buy Points', async ({
+  test("displays Buy Points modal when clicking Buy Points", async ({
     page,
   }) => {
     const modal = await openModal(page, SELECTORS.BUY_POINTS_BUTTON);
@@ -382,24 +382,24 @@ test.describe('Perp Trading Interface', () => {
     if (modal) {
       const modalText = await modal.textContent();
       const hasPaymentContent =
-        modalText?.toLowerCase().includes('buy') ||
-        modalText?.toLowerCase().includes('points') ||
-        modalText?.toLowerCase().includes('amount');
+        modalText?.toLowerCase().includes("buy") ||
+        modalText?.toLowerCase().includes("points") ||
+        modalText?.toLowerCase().includes("amount");
       expect(hasPaymentContent).toBe(true);
 
       await closeModal(page);
     } else {
       // Buy Points may not be available
-      const body = await page.locator('body').textContent();
+      const body = await page.locator("body").textContent();
       expect(body?.length).toBeGreaterThan(100);
     }
   });
 
-  test('closes Buy Points modal on Escape', async ({ page }) => {
+  test("closes Buy Points modal on Escape", async ({ page }) => {
     const modal = await openModal(page, SELECTORS.BUY_POINTS_BUTTON);
 
     if (modal) {
-      await page.keyboard.press('Escape');
+      await page.keyboard.press("Escape");
       await page.waitForTimeout(500);
 
       const stillVisible = await page
@@ -407,12 +407,12 @@ test.describe('Perp Trading Interface', () => {
         .first()
         .isVisible({ timeout: 1000 })
         .catch(() => false);
-      expect(typeof stillVisible).toBe('boolean');
+      expect(typeof stillVisible).toBe("boolean");
     }
   });
 });
 
-test.describe('Predictions Markets', () => {
+test.describe("Predictions Markets", () => {
   test.beforeEach(async ({ page }) => {
     if (!(await isServerHealthy())) {
       test.skip();
@@ -430,15 +430,15 @@ test.describe('Predictions Markets', () => {
     await cooldownBetweenTests(page);
   });
 
-  test('displays prediction markets with YES/NO options', async ({ page }) => {
+  test("displays prediction markets with YES/NO options", async ({ page }) => {
     const yesButtons = page.locator(SELECTORS.YES_BUTTON);
     const _count = await yesButtons.count().catch(() => 0);
 
-    const body = await page.locator('body').textContent();
+    const body = await page.locator("body").textContent();
     expect(body?.length).toBeGreaterThan(100);
   });
 
-  test('clicks YES on prediction and shows order entry', async ({ page }) => {
+  test("clicks YES on prediction and shows order entry", async ({ page }) => {
     const yesButton = page.locator(SELECTORS.YES_BUTTON).first();
     if (
       await yesButton.isVisible({ timeout: TIMEOUTS.SHORT }).catch(() => false)
@@ -447,12 +447,12 @@ test.describe('Predictions Markets', () => {
       await page.waitForTimeout(1500);
 
       // Should show order panel or navigate
-      const body = await page.locator('body').textContent();
+      const body = await page.locator("body").textContent();
       expect(body?.length).toBeGreaterThan(100);
     }
   });
 
-  test('clicks NO on prediction and shows order entry', async ({ page }) => {
+  test("clicks NO on prediction and shows order entry", async ({ page }) => {
     const noButton = page.locator(SELECTORS.NO_BUTTON).first();
     if (
       await noButton.isVisible({ timeout: TIMEOUTS.SHORT }).catch(() => false)
@@ -460,12 +460,12 @@ test.describe('Predictions Markets', () => {
       await noButton.click({ force: true });
       await page.waitForTimeout(1500);
 
-      const body = await page.locator('body').textContent();
+      const body = await page.locator("body").textContent();
       expect(body?.length).toBeGreaterThan(100);
     }
   });
 
-  test('enters bet amount in prediction order form', async ({ page }) => {
+  test("enters bet amount in prediction order form", async ({ page }) => {
     // First click YES to activate order form
     await clickFirstVisible(page, [SELECTORS.YES_BUTTON]);
     await page.waitForTimeout(1000);
@@ -476,12 +476,12 @@ test.describe('Predictions Markets', () => {
         .isVisible({ timeout: TIMEOUTS.SHORT })
         .catch(() => false)
     ) {
-      const value = await fillAndVerify(page, SELECTORS.QUANTITY_INPUT, '10');
+      const value = await fillAndVerify(page, SELECTORS.QUANTITY_INPUT, "10");
       expect(value).toBeTruthy();
     }
   });
 
-  test('shows prediction market detail when clicking card', async ({
+  test("shows prediction market detail when clicking card", async ({
     page,
   }) => {
     const predictionCard = page
@@ -504,11 +504,11 @@ test.describe('Predictions Markets', () => {
       await page.waitForTimeout(2000);
     }
 
-    const body = await page.locator('body').textContent();
+    const body = await page.locator("body").textContent();
     expect(body?.length).toBeGreaterThan(100);
   });
 
-  test('sorting buttons change market order', async ({ page }) => {
+  test("sorting buttons change market order", async ({ page }) => {
     const trendingButton = page.locator('button:has-text("Trending")').first();
     const volumeButton = page.locator('button:has-text("Volume")').first();
 
@@ -530,33 +530,33 @@ test.describe('Predictions Markets', () => {
       await page.waitForTimeout(1000);
     }
 
-    const body = await page.locator('body').textContent();
+    const body = await page.locator("body").textContent();
     expect(body?.length).toBeGreaterThan(100);
   });
 
-  test('search filters prediction markets', async ({ page }) => {
-    const value = await fillAndVerify(page, SELECTORS.SEARCH_INPUT, 'Will');
+  test("search filters prediction markets", async ({ page }) => {
+    const value = await fillAndVerify(page, SELECTORS.SEARCH_INPUT, "Will");
 
     if (value) {
       await page.waitForTimeout(1500);
     }
 
-    const body = await page.locator('body').textContent();
+    const body = await page.locator("body").textContent();
     expect(body?.length).toBeGreaterThan(50);
   });
 
-  test('displays resolution status on resolved markets', async ({ page }) => {
+  test("displays resolution status on resolved markets", async ({ page }) => {
     // Look for resolved market indicators
     const _hasResolvedContent = await pageContainsText(
       page,
-      'resolved',
-      'closed',
-      'settled',
-      'ended'
+      "resolved",
+      "closed",
+      "settled",
+      "ended",
     );
 
     // Resolved markets may or may not be visible in the default view
-    const body = await page.locator('body').textContent();
+    const body = await page.locator("body").textContent();
     expect(body?.length).toBeGreaterThan(100);
   });
 });

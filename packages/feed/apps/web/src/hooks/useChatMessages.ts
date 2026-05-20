@@ -1,19 +1,19 @@
-import { logger, type MessageMetadata } from '@feed/shared';
-import { useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { logger, type MessageMetadata } from "@feed/shared";
+import { useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type MessageReactionSummary,
   type MessageType,
   MessageTypeEnum,
   type ReplyToMessage,
-} from '@/components/chats/types';
-import { useAuth } from '@/hooks/useAuth';
-import { getPrivyAccessTokenSafely } from '@/lib/auth/privyAccessToken';
-import { setCachedMessages } from '@/lib/chat/message-store';
-import { CHAT_PAGE_SIZE } from '@/lib/constants';
-import { useAuthStore } from '@/stores/authStore';
-import { useSSEChannel } from './useSSE';
-import { applyReactionDelta } from './useToggleReaction';
+} from "@/components/chats/types";
+import { useAuth } from "@/hooks/useAuth";
+import { getPrivyAccessTokenSafely } from "@/lib/auth/privyAccessToken";
+import { setCachedMessages } from "@/lib/chat/message-store";
+import { CHAT_PAGE_SIZE } from "@/lib/constants";
+import { useAuthStore } from "@/stores/authStore";
+import { useSSEChannel } from "./useSSE";
+import { applyReactionDelta } from "./useToggleReaction";
 
 /**
  * Represents a chat message in the system.
@@ -62,7 +62,7 @@ function formatMessage(msg: RawApiMessage, chatId: string): ChatMessage {
     senderId: msg.senderId,
     type: msg.type,
     createdAt:
-      typeof msg.createdAt === 'string'
+      typeof msg.createdAt === "string"
         ? msg.createdAt
         : msg.createdAt.toISOString(),
     metadata: msg.metadata,
@@ -78,9 +78,9 @@ function formatMessage(msg: RawApiMessage, chatId: string): ChatMessage {
  */
 export enum OptimisticMessageIdPrefix {
   /** User message not yet confirmed by server */
-  Pending = 'pending-',
+  Pending = "pending-",
   /** Agent/coordinator response in progress (thinking placeholder) */
-  Thinking = 'thinking-',
+  Thinking = "thinking-",
 }
 
 /**
@@ -93,12 +93,12 @@ const OPTIMISTIC_MATCH_WINDOW_MS = 30000;
 /** Check if a message is an optimistic placeholder matching the incoming confirmed message */
 export function isMatchingOptimistic(
   pending: ChatMessage,
-  incoming: ChatMessage
+  incoming: ChatMessage,
 ): boolean {
   const inWindow =
     Math.abs(
       new Date(pending.createdAt).getTime() -
-        new Date(incoming.createdAt).getTime()
+        new Date(incoming.createdAt).getTime(),
     ) < OPTIMISTIC_MATCH_WINDOW_MS;
   if (pending.id.startsWith(OptimisticMessageIdPrefix.Pending)) {
     return (
@@ -120,7 +120,7 @@ export function isMatchingOptimistic(
  */
 export function replaceOptimisticMessage(
   messages: ChatMessage[],
-  confirmed: ChatMessage
+  confirmed: ChatMessage,
 ): ChatMessage[] {
   // Check if message with same ID already exists
   const existingIdx = messages.findIndex((msg) => msg.id === confirmed.id);
@@ -131,7 +131,7 @@ export function replaceOptimisticMessage(
     // and then SSE arrives with metadata
     if (confirmed.metadata && existingMsg && !existingMsg.metadata) {
       return messages.map((msg, idx) =>
-        idx === existingIdx ? { ...msg, metadata: confirmed.metadata } : msg
+        idx === existingIdx ? { ...msg, metadata: confirmed.metadata } : msg,
       );
     }
     return messages;
@@ -150,7 +150,7 @@ export function replaceOptimisticMessage(
             stableKey: pending.stableKey || pending.id,
             createdAt: pending.createdAt,
           }
-        : msg
+        : msg,
     );
   }
 
@@ -169,8 +169,8 @@ const POLLING_INTERVAL_MS = 15000;
  */
 export const chatMessagesQueryKey = (chatId: string, userId?: string | null) =>
   userId
-    ? (['chat-messages', userId, chatId] as const)
-    : (['chat-messages', chatId] as const);
+    ? (["chat-messages", userId, chatId] as const)
+    : (["chat-messages", chatId] as const);
 
 /**
  * Shape of the data stored in the React Query cache for a chat.
@@ -207,13 +207,13 @@ export function useChatMessages(chatId: string | null) {
     (delta: {
       messageId: string;
       emoji: string;
-      action: 'added' | 'removed';
+      action: "added" | "removed";
     }) => {
       const key = `${delta.messageId}:${delta.emoji}:${delta.action}`;
       pendingReactionDeltasRef.current.add(key);
       setTimeout(() => pendingReactionDeltasRef.current.delete(key), 5000);
     },
-    []
+    [],
   );
 
   const getSafeAccessToken = useCallback(
@@ -221,13 +221,13 @@ export function useChatMessages(chatId: string | null) {
       getPrivyAccessTokenSafely(getAccessToken, {
         onError: (error) => {
           logger.warn(
-            'Failed to retrieve chat access token',
+            "Failed to retrieve chat access token",
             { error: error.message },
-            'useChatMessages'
+            "useChatMessages",
           );
         },
       }),
-    [getAccessToken]
+    [getAccessToken],
   );
 
   const userId = user?.id ?? null;
@@ -236,23 +236,23 @@ export function useChatMessages(chatId: string | null) {
   const getCachedData = useCallback((): ChatMessagesData | undefined => {
     if (!chatId) return undefined;
     return queryClient.getQueryData<ChatMessagesData>(
-      chatMessagesQueryKey(chatId, userId)
+      chatMessagesQueryKey(chatId, userId),
     );
   }, [chatId, userId, queryClient]);
 
   const setCachedData = useCallback(
     (
       updater: (
-        old: ChatMessagesData | undefined
-      ) => ChatMessagesData | undefined
+        old: ChatMessagesData | undefined,
+      ) => ChatMessagesData | undefined,
     ) => {
       if (!chatId) return;
       queryClient.setQueryData<ChatMessagesData>(
         chatMessagesQueryKey(chatId, userId),
-        updater
+        updater,
       );
     },
-    [chatId, userId, queryClient]
+    [chatId, userId, queryClient],
   );
 
   // ── Initial message loading ─────────────────────────────────────────
@@ -265,7 +265,7 @@ export function useChatMessages(chatId: string | null) {
     async (targetChatId: string) => {
       // If React Query already has data for this chat, skip the fetch
       const existing = queryClient.getQueryData<ChatMessagesData>(
-        chatMessagesQueryKey(targetChatId, userId)
+        chatMessagesQueryKey(targetChatId, userId),
       );
       if (existing && existing.messages.length > 0) {
         hasLoadedRef.current.add(targetChatId);
@@ -281,23 +281,23 @@ export function useChatMessages(chatId: string | null) {
         const token = await getSafeAccessToken();
         if (!token) {
           logger.error(
-            'Failed to load messages - no auth token',
+            "Failed to load messages - no auth token",
             { chatId: targetChatId },
-            'useChatMessages'
+            "useChatMessages",
           );
           return;
         }
 
         const response = await fetch(
           `/api/chats/${targetChatId}?limit=${CHAT_PAGE_SIZE}`,
-          { headers: { Authorization: `Bearer ${token}` } }
+          { headers: { Authorization: `Bearer ${token}` } },
         );
 
         if (response.ok) {
           const data = await response.json();
           if (data.messages) {
             const formatted = (data.messages as RawApiMessage[]).map((msg) =>
-              formatMessage(msg, targetChatId)
+              formatMessage(msg, targetChatId),
             );
             queryClient.setQueryData<ChatMessagesData>(
               chatMessagesQueryKey(targetChatId, userId),
@@ -305,36 +305,36 @@ export function useChatMessages(chatId: string | null) {
                 messages: formatted,
                 hasMore: data.pagination?.hasMore ?? false,
                 nextCursor: data.pagination?.nextCursor ?? null,
-              }
+              },
             );
             hasLoadedRef.current.add(targetChatId);
             logger.debug(
               `Loaded ${formatted.length} messages`,
               { chatId: targetChatId, count: formatted.length },
-              'useChatMessages'
+              "useChatMessages",
             );
           }
         } else {
           logger.error(
-            'Failed to load messages',
+            "Failed to load messages",
             { chatId: targetChatId, status: response.status },
-            'useChatMessages'
+            "useChatMessages",
           );
         }
       } catch (error) {
         logger.error(
-          'Failed to load messages',
+          "Failed to load messages",
           {
             chatId: targetChatId,
             error: error instanceof Error ? error.message : String(error),
           },
-          'useChatMessages'
+          "useChatMessages",
         );
       } finally {
         setIsLoading(false);
       }
     },
-    [getSafeAccessToken, userId, queryClient]
+    [getSafeAccessToken, userId, queryClient],
   );
 
   // ── Load more (older messages via cursor pagination) ────────────────
@@ -353,23 +353,23 @@ export function useChatMessages(chatId: string | null) {
       const token = await getSafeAccessToken();
       if (!token) {
         logger.error(
-          'Failed to load more messages - no auth token',
+          "Failed to load more messages - no auth token",
           { chatId },
-          'useChatMessages'
+          "useChatMessages",
         );
         return;
       }
 
       const response = await fetch(
         `/api/chats/${chatId}?cursor=${currentData.nextCursor}&limit=${CHAT_PAGE_SIZE}`,
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: { Authorization: `Bearer ${token}` } },
       );
 
       if (response.ok) {
         const data = await response.json();
         if (data.messages?.length > 0) {
           const formatted = (data.messages as RawApiMessage[]).map((msg) =>
-            formatMessage(msg, chatId)
+            formatMessage(msg, chatId),
           );
           setCachedData((old) => {
             if (!old) return old;
@@ -382,19 +382,19 @@ export function useChatMessages(chatId: string | null) {
         }
       } else {
         logger.error(
-          'Failed to load more messages',
+          "Failed to load more messages",
           { chatId, status: response.status },
-          'useChatMessages'
+          "useChatMessages",
         );
       }
     } catch (error) {
       logger.warn(
-        'Loading more messages failed',
+        "Loading more messages failed",
         {
           chatId,
           error: error instanceof Error ? error.message : String(error),
         },
-        'useChatMessages'
+        "useChatMessages",
       );
     } finally {
       setIsLoadingMore(false);
@@ -404,14 +404,14 @@ export function useChatMessages(chatId: string | null) {
   // ── SSE handler ─────────────────────────────────────────────────────
   const handleChatUpdate = useCallback(
     (data: Record<string, unknown>) => {
-      if (data.type === 'new_message' && data.message) {
+      if (data.type === "new_message" && data.message) {
         const m = data.message as Record<string, unknown>;
         if (
-          typeof m.id !== 'string' ||
-          typeof m.content !== 'string' ||
-          typeof m.chatId !== 'string' ||
-          typeof m.senderId !== 'string' ||
-          typeof m.createdAt !== 'string' ||
+          typeof m.id !== "string" ||
+          typeof m.content !== "string" ||
+          typeof m.chatId !== "string" ||
+          typeof m.senderId !== "string" ||
+          typeof m.createdAt !== "string" ||
           m.chatId !== chatId
         ) {
           return;
@@ -428,13 +428,13 @@ export function useChatMessages(chatId: string | null) {
               : undefined,
           createdAt: m.createdAt,
           isGameChat:
-            typeof m.isGameChat === 'boolean' ? m.isGameChat : undefined,
+            typeof m.isGameChat === "boolean" ? m.isGameChat : undefined,
           metadata: m.metadata as MessageMetadata | null | undefined,
           reactions: Array.isArray(m.reactions)
             ? (m.reactions as MessageReactionSummary[])
             : undefined,
           replyToMessageId:
-            typeof m.replyToMessageId === 'string'
+            typeof m.replyToMessageId === "string"
               ? m.replyToMessageId
               : undefined,
           replyToMessage: m.replyToMessage as ReplyToMessage | null | undefined,
@@ -456,23 +456,23 @@ export function useChatMessages(chatId: string | null) {
         return;
       }
 
-      if (data.type === 'message_reaction' && data.reaction) {
+      if (data.type === "message_reaction" && data.reaction) {
         const r = data.reaction as Record<string, unknown>;
         if (
-          typeof r.messageId !== 'string' ||
-          typeof r.chatId !== 'string' ||
-          typeof r.emoji !== 'string' ||
-          typeof r.userId !== 'string' ||
-          typeof r.action !== 'string' ||
+          typeof r.messageId !== "string" ||
+          typeof r.chatId !== "string" ||
+          typeof r.emoji !== "string" ||
+          typeof r.userId !== "string" ||
+          typeof r.action !== "string" ||
           r.chatId !== chatId ||
-          (r.action !== 'added' && r.action !== 'removed')
+          (r.action !== "added" && r.action !== "removed")
         ) {
           return;
         }
 
         const isMine = !!user?.id && r.userId === user.id;
         const emoji = r.emoji;
-        const action = r.action as 'added' | 'removed';
+        const action = r.action as "added" | "removed";
 
         if (isMine) {
           const key = `${r.messageId}:${emoji}:${action}`;
@@ -491,13 +491,13 @@ export function useChatMessages(chatId: string | null) {
           return {
             ...old,
             messages: old.messages.map((m, i) =>
-              i === idx ? { ...m, reactions: next } : m
+              i === idx ? { ...m, reactions: next } : m,
             ),
           };
         });
       }
     },
-    [chatId, user?.id, setCachedData]
+    [chatId, user?.id, setCachedData],
   );
 
   // Subscribe to chat channel
@@ -524,7 +524,7 @@ export function useChatMessages(chatId: string | null) {
     async (targetChatId: string) => {
       try {
         const currentData = queryClient.getQueryData<ChatMessagesData>(
-          chatMessagesQueryKey(targetChatId, userId)
+          chatMessagesQueryKey(targetChatId, userId),
         );
         const lastMessage = currentData?.messages?.at(-1);
         if (!lastMessage) {
@@ -543,7 +543,7 @@ export function useChatMessages(chatId: string | null) {
         for (let page = 0; page < MAX_SYNC_PAGES; page++) {
           const response = await fetch(
             `/api/chats/${targetChatId}?after=${encodeURIComponent(afterTimestamp)}&limit=${CHAT_PAGE_SIZE}`,
-            { headers: { Authorization: `Bearer ${token}` } }
+            { headers: { Authorization: `Bearer ${token}` } },
           );
           if (!response.ok) return;
 
@@ -551,7 +551,7 @@ export function useChatMessages(chatId: string | null) {
           if (!data.messages || data.messages.length === 0) return;
 
           const newMessages = (data.messages as RawApiMessage[]).map((msg) =>
-            formatMessage(msg, targetChatId)
+            formatMessage(msg, targetChatId),
           );
 
           queryClient.setQueryData<ChatMessagesData>(
@@ -562,7 +562,7 @@ export function useChatMessages(chatId: string | null) {
               const deduped = newMessages.filter((m) => !existingIds.has(m.id));
               if (deduped.length === 0) return old;
               return { ...old, messages: [...old.messages, ...deduped] };
-            }
+            },
           );
 
           // If server says no more, we're caught up
@@ -575,16 +575,16 @@ export function useChatMessages(chatId: string | null) {
         }
       } catch (error) {
         logger.warn(
-          'Incremental chat sync failed',
+          "Incremental chat sync failed",
           {
             chatId: targetChatId,
             error: error instanceof Error ? error.message : String(error),
           },
-          'useChatMessages'
+          "useChatMessages",
         );
       }
     },
-    [queryClient, userId, getSafeAccessToken, loadMessages]
+    [queryClient, userId, getSafeAccessToken, loadMessages],
   );
 
   // ── Polling fallback — only when SSE is disconnected ────────────────
@@ -646,7 +646,7 @@ export function useChatMessages(chatId: string | null) {
     const confirmedMessages = cachedData.messages.filter(
       (m) =>
         !m.id.startsWith(OptimisticMessageIdPrefix.Pending) &&
-        !m.id.startsWith(OptimisticMessageIdPrefix.Thinking)
+        !m.id.startsWith(OptimisticMessageIdPrefix.Thinking),
     );
     if (confirmedMessages.length === lastPersistedCountRef.current) return;
 
@@ -688,7 +688,7 @@ export function useChatMessages(chatId: string | null) {
         };
       });
     },
-    [setCachedData]
+    [setCachedData],
   );
 
   const updateMessage = useCallback(
@@ -698,12 +698,12 @@ export function useChatMessages(chatId: string | null) {
         return {
           ...old,
           messages: old.messages.map((msg) =>
-            msg.id === messageId ? { ...msg, ...updates } : msg
+            msg.id === messageId ? { ...msg, ...updates } : msg,
           ),
         };
       });
     },
-    [setCachedData]
+    [setCachedData],
   );
 
   const removeMessage = useCallback(
@@ -716,7 +716,7 @@ export function useChatMessages(chatId: string | null) {
         };
       });
     },
-    [setCachedData]
+    [setCachedData],
   );
 
   const clearMessages = useCallback(() => {

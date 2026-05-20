@@ -5,16 +5,16 @@
  * Implementations can be PostgreSQL, JSON files, or in-memory.
  */
 
-import type { ActorPort, OrganizationPort } from './actors';
-import type { AgentPort } from './agents';
-import type { GamePort } from './game';
-import type { MarketPort } from './markets';
-import type { PostPort } from './posts';
-import type { QuestionPort } from './questions';
-import type { TradingPort } from './trading';
-import type { UserPort } from './users';
+import type { ActorPort, OrganizationPort } from "./actors";
+import type { AgentPort } from "./agents";
+import type { GamePort } from "./game";
+import type { MarketPort } from "./markets";
+import type { PostPort } from "./posts";
+import type { QuestionPort } from "./questions";
+import type { TradingPort } from "./trading";
+import type { UserPort } from "./users";
 
-export type StorageMode = 'postgres' | 'json' | 'memory';
+export type StorageMode = "postgres" | "json" | "memory";
 
 export interface StorageProviderConfig {
   mode: StorageMode;
@@ -58,7 +58,7 @@ export interface IStorageProvider {
 
   // Transaction support (optional, not all backends support this)
   withTransaction?<T>(
-    fn: (provider: IStorageProvider) => Promise<T>
+    fn: (provider: IStorageProvider) => Promise<T>,
   ): Promise<T>;
 
   // Snapshot support for JSON/memory modes
@@ -91,7 +91,7 @@ export function getStorageProvider(): IStorageProvider {
   const provider = globalThis.__feed_storage_provider__;
   if (!provider) {
     throw new Error(
-      'Storage provider not initialized. Call setStorageProvider() first, or use createStorageProvider().'
+      "Storage provider not initialized. Call setStorageProvider() first, or use createStorageProvider().",
     );
   }
   return provider;
@@ -117,14 +117,14 @@ export function clearStorageProvider(): void {
 export function getPort<
   K extends keyof Omit<
     IStorageProvider,
-    | 'mode'
-    | 'initialize'
-    | 'shutdown'
-    | 'isHealthy'
-    | 'withTransaction'
-    | 'saveSnapshot'
-    | 'loadSnapshot'
-    | 'exportToJson'
+    | "mode"
+    | "initialize"
+    | "shutdown"
+    | "isHealthy"
+    | "withTransaction"
+    | "saveSnapshot"
+    | "loadSnapshot"
+    | "exportToJson"
   >,
 >(key: K): IStorageProvider[K] {
   return getStorageProvider()[key];

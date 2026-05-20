@@ -2,22 +2,22 @@ import {
   authenticateWithDbUser,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
+} from "@feed/api";
 import {
   getNftCollectionIdFromEnv,
   getOwnedTokenIdsFromDbFallback,
   getOwnedTokenIdsFromIndexer,
   NftIndexerUnavailableError,
-} from '@feed/api/services/nft-indexer-service';
-import { db, inArray, nftCollection } from '@feed/db';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import type { NftHoldingsResponse } from '@/types/nft';
+} from "@feed/api/services/nft-indexer-service";
+import { db, inArray, nftCollection } from "@feed/db";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import type { NftHoldingsResponse } from "@/types/nft";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   const user = await authenticateWithDbUser(request);
 
-  const walletAddress = user.walletAddress?.trim() ?? '';
+  const walletAddress = user.walletAddress?.trim() ?? "";
   if (!walletAddress) {
     return successResponse({
       success: true,
@@ -39,13 +39,13 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   } catch (error) {
     if (
       error instanceof NftIndexerUnavailableError ||
-      (error instanceof Error && error.name === 'ValidationError')
+      (error instanceof Error && error.name === "ValidationError")
     ) {
       degraded = true;
       logger.warn(
-        'NFT indexer unavailable for holdings, falling back to DB ownership',
+        "NFT indexer unavailable for holdings, falling back to DB ownership",
         { userId: user.dbUserId },
-        'GET /api/nft/holdings'
+        "GET /api/nft/holdings",
       );
       tokenIds = await getOwnedTokenIdsFromDbFallback(user.dbUserId);
     } else {

@@ -50,7 +50,7 @@ class InMemoryDistributedLockProvider implements DistributedLockProvider {
 let provider: DistributedLockProvider = new InMemoryDistributedLockProvider();
 
 export function setDistributedLockProvider(
-  next: DistributedLockProvider
+  next: DistributedLockProvider,
 ): void {
   provider = next;
 }

@@ -9,14 +9,14 @@
  * Body: { trajectoryIds: string[], batchId?: string }
  */
 
-import { withErrorHandling } from '@feed/api';
-import { db, inArray, trajectories } from '@feed/db';
-import { type NextRequest, NextResponse } from 'next/server';
+import { withErrorHandling } from "@feed/api";
+import { db, inArray, trajectories } from "@feed/db";
+import { type NextRequest, NextResponse } from "next/server";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 export const POST = withErrorHandling(async function POST(
-  request: NextRequest
+  request: NextRequest,
 ) {
   try {
     const body = await request.json();
@@ -27,15 +27,15 @@ export const POST = withErrorHandling(async function POST(
 
     if (!Array.isArray(trajectoryIds) || trajectoryIds.length === 0) {
       return NextResponse.json(
-        { error: 'trajectoryIds must be a non-empty array' },
-        { status: 400 }
+        { error: "trajectoryIds must be a non-empty array" },
+        { status: 400 },
       );
     }
 
     if (trajectoryIds.length > 500) {
       return NextResponse.json(
-        { error: 'Maximum 500 trajectory IDs per request' },
-        { status: 400 }
+        { error: "Maximum 500 trajectory IDs per request" },
+        { status: 400 },
       );
     }
 
@@ -59,8 +59,8 @@ export const POST = withErrorHandling(async function POST(
     });
   } catch (_error) {
     return NextResponse.json(
-      { error: 'Failed to mark trajectories' },
-      { status: 500 }
+      { error: "Failed to mark trajectories" },
+      { status: 500 },
     );
   }
 });

@@ -11,24 +11,24 @@
  * Run with: bun test packages/testing/unit/leaderboard-cache.test.ts
  */
 
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
-import type { NextRequest } from 'next/server';
+import { beforeEach, describe, expect, mock, test } from "bun:test";
+import type { NextRequest } from "next/server";
 
 // ─── Mock state ──────────────────────────────────────────────────────────────
 
-const CACHED_GENERATED_AT = '2026-04-01T10:00:00.000Z';
+const CACHED_GENERATED_AT = "2026-04-01T10:00:00.000Z";
 
 const mockLeaderboardResult = {
   users: [
     {
-      id: 'user-1',
-      username: 'alpha',
-      displayName: 'Alpha',
+      id: "user-1",
+      username: "alpha",
+      displayName: "Alpha",
       profileImageUrl: null,
       reputationPoints: 100,
       balance: 100,
       lifetimePnL: 0,
-      createdAt: new Date('2026-03-10T00:00:00.000Z'),
+      createdAt: new Date("2026-03-10T00:00:00.000Z"),
       rank: 1,
     },
   ],
@@ -36,8 +36,8 @@ const mockLeaderboardResult = {
   page: 1,
   pageSize: 100,
   totalPages: 1,
-  leaderboardType: 'wallet' as const,
-  leaderboardMetric: 'reputation' as const,
+  leaderboardType: "wallet" as const,
+  leaderboardMetric: "reputation" as const,
 };
 
 let cacheStore: Record<string, unknown> = {};
@@ -55,7 +55,7 @@ const mockFindUserByIdentifier = mock(async () => null);
 const mockGetWalletLeaderboard = mock(async () => mockLeaderboardResult);
 const mockGetTeamLeaderboard = mock(async () => ({
   ...mockLeaderboardResult,
-  leaderboardType: 'team' as const,
+  leaderboardType: "team" as const,
 }));
 const mockGetTradingWalletLeaderboard = mock(async () => ({
   ...mockLeaderboardResult,
@@ -67,19 +67,19 @@ const mockGetTradingWalletLeaderboard = mock(async () => ({
       tradingReturn: 0.3,
     },
   ],
-  leaderboardMetric: 'trading' as const,
+  leaderboardMetric: "trading" as const,
 }));
 const mockGetTradingTeamLeaderboard = mock(async () => ({
   ...mockLeaderboardResult,
-  leaderboardType: 'team' as const,
-  leaderboardMetric: 'trading' as const,
+  leaderboardType: "team" as const,
+  leaderboardMetric: "trading" as const,
 }));
 const mockGetUserPosition = mock(async () => null);
 
 // ─── Module mocks ────────────────────────────────────────────────────────────
 
-const _actualFeedApi = await import('@feed/api');
-mock.module('@feed/api', () => ({
+const _actualFeedApi = await import("@feed/api");
+mock.module("@feed/api", () => ({
   ..._actualFeedApi,
   findUserByIdentifier: mockFindUserByIdentifier,
   optionalAuth: mockOptionalAuth,
@@ -98,11 +98,11 @@ mock.module('@feed/api', () => ({
   successResponse: (
     body: unknown,
     status = 200,
-    headers?: Record<string, string>
+    headers?: Record<string, string>,
   ) =>
     new Response(JSON.stringify(body), {
       status,
-      headers: { 'content-type': 'application/json', ...headers },
+      headers: { "content-type": "application/json", ...headers },
     }),
   withErrorHandling:
     (handler: (request: NextRequest) => Promise<Response>) =>
@@ -110,10 +110,10 @@ mock.module('@feed/api', () => ({
       handler(request),
 }));
 
-const _actualDb = await import('@feed/db');
-mock.module('@feed/db', () => ({
+const _actualDb = await import("@feed/db");
+mock.module("@feed/db", () => ({
   ..._actualDb,
-  and: (...conditions: unknown[]) => ({ op: 'and', conditions }),
+  and: (...conditions: unknown[]) => ({ op: "and", conditions }),
   db: {
     get select() {
       return mock(() => ({
@@ -121,29 +121,29 @@ mock.module('@feed/db', () => ({
       }));
     },
   },
-  eq: (left: unknown, right: unknown) => ({ op: 'eq', left, right }),
+  eq: (left: unknown, right: unknown) => ({ op: "eq", left, right }),
   follows: {
-    followerId: 'follows.followerId',
-    followingId: 'follows.followingId',
+    followerId: "follows.followerId",
+    followingId: "follows.followingId",
   },
   inArray: (column: unknown, values: unknown[]) => ({
-    op: 'inArray',
+    op: "inArray",
     column,
     values,
   }),
 }));
 
-const _actualShared = await import('@feed/shared');
-mock.module('@feed/shared', () => ({
+const _actualShared = await import("@feed/shared");
+mock.module("@feed/shared", () => ({
   ..._actualShared,
   LeaderboardQuerySchema: {
     safeParse: (input: Record<string, string>) => ({
       success: true,
       data: {
-        page: Number(input.page ?? '1'),
-        pageSize: Number(input.pageSize ?? '100'),
-        metric: input.metric ?? 'reputation',
-        type: input.type ?? 'wallet',
+        page: Number(input.page ?? "1"),
+        pageSize: Number(input.pageSize ?? "100"),
+        metric: input.metric ?? "reputation",
+        type: input.type ?? "wallet",
         userId: input.userId,
       },
     }),
@@ -157,14 +157,14 @@ mock.module('@feed/shared', () => ({
 }));
 
 const routeModuleUrl = new URL(
-  '../../../apps/web/src/app/api/leaderboard/route.ts',
-  import.meta.url
+  "../../../apps/web/src/app/api/leaderboard/route.ts",
+  import.meta.url,
 );
-routeModuleUrl.searchParams.set('test', 'packages-leaderboard-cache');
+routeModuleUrl.searchParams.set("test", "packages-leaderboard-cache");
 const { GET } = await import(routeModuleUrl.href);
 
 function makeRequest(searchParams: Record<string, string> = {}): NextRequest {
-  const url = new URL('http://localhost:3000/api/leaderboard');
+  const url = new URL("http://localhost:3000/api/leaderboard");
   for (const [key, value] of Object.entries(searchParams)) {
     url.searchParams.set(key, value);
   }
@@ -173,7 +173,7 @@ function makeRequest(searchParams: Record<string, string> = {}): NextRequest {
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
-describe('Leaderboard caching — generatedAt', () => {
+describe("Leaderboard caching — generatedAt", () => {
   beforeEach(() => {
     cacheStore = {};
     mockGetCache.mockClear();
@@ -188,23 +188,23 @@ describe('Leaderboard caching — generatedAt', () => {
     mockFindUserByIdentifier.mockClear();
   });
 
-  test('cache miss: response includes generatedAt ISO timestamp', async () => {
+  test("cache miss: response includes generatedAt ISO timestamp", async () => {
     const before = new Date().toISOString();
-    const response = await GET(makeRequest({ type: 'wallet' }));
+    const response = await GET(makeRequest({ type: "wallet" }));
     const after = new Date().toISOString();
 
     expect(response.status).toBe(200);
     const body = await response.json();
 
     expect(body.generatedAt).toBeDefined();
-    expect(typeof body.generatedAt).toBe('string');
+    expect(typeof body.generatedAt).toBe("string");
     // generatedAt should be between before and after
     expect(body.generatedAt >= before).toBe(true);
     expect(body.generatedAt <= after).toBe(true);
   });
 
-  test('cache miss: stores { data, generatedAt } wrapper in cache', async () => {
-    await GET(makeRequest({ type: 'wallet' }));
+  test("cache miss: stores { data, generatedAt } wrapper in cache", async () => {
+    await GET(makeRequest({ type: "wallet" }));
 
     expect(mockSetCache).toHaveBeenCalledTimes(1);
     const [, cachedValue] = mockSetCache.mock.calls[0] as [
@@ -213,24 +213,24 @@ describe('Leaderboard caching — generatedAt', () => {
     ];
 
     // Verify wrapper shape
-    expect(cachedValue).toHaveProperty('data');
-    expect(cachedValue).toHaveProperty('generatedAt');
-    expect(typeof cachedValue.generatedAt).toBe('string');
+    expect(cachedValue).toHaveProperty("data");
+    expect(cachedValue).toHaveProperty("generatedAt");
+    expect(typeof cachedValue.generatedAt).toBe("string");
 
     // Verify data is the actual leaderboard result (not the wrapper)
     const data = cachedValue.data as typeof mockLeaderboardResult;
     expect(data.users).toHaveLength(1);
-    expect(data.users[0]?.id).toBe('user-1');
+    expect(data.users[0]?.id).toBe("user-1");
   });
 
-  test('cache hit: returns the cached generatedAt, not current time', async () => {
+  test("cache hit: returns the cached generatedAt, not current time", async () => {
     // Pre-populate cache with a known generatedAt
-    cacheStore['reputation-wallet-1-100'] = {
+    cacheStore["reputation-wallet-1-100"] = {
       data: mockLeaderboardResult,
       generatedAt: CACHED_GENERATED_AT,
     };
 
-    const response = await GET(makeRequest({ type: 'wallet' }));
+    const response = await GET(makeRequest({ type: "wallet" }));
     const body = await response.json();
 
     // Should return the CACHED timestamp, proving it read from cache
@@ -239,63 +239,63 @@ describe('Leaderboard caching — generatedAt', () => {
     expect(mockGetWalletLeaderboard).not.toHaveBeenCalled();
   });
 
-  test('cache hit: does not re-write to cache', async () => {
-    cacheStore['reputation-wallet-1-100'] = {
+  test("cache hit: does not re-write to cache", async () => {
+    cacheStore["reputation-wallet-1-100"] = {
       data: mockLeaderboardResult,
       generatedAt: CACHED_GENERATED_AT,
     };
 
-    await GET(makeRequest({ type: 'wallet' }));
+    await GET(makeRequest({ type: "wallet" }));
 
     expect(mockSetCache).not.toHaveBeenCalled();
   });
 
-  test('cache miss: fetches from DB and populates cache', async () => {
-    const response = await GET(makeRequest({ type: 'wallet' }));
+  test("cache miss: fetches from DB and populates cache", async () => {
+    const response = await GET(makeRequest({ type: "wallet" }));
     const body = await response.json();
 
     expect(mockGetWalletLeaderboard).toHaveBeenCalledTimes(1);
     expect(body.leaderboard).toHaveLength(1);
-    expect(body.leaderboard[0].id).toBe('user-1');
+    expect(body.leaderboard[0].id).toBe("user-1");
     expect(mockSetCache).toHaveBeenCalledTimes(1);
   });
 
-  test('team leaderboard: also includes generatedAt', async () => {
-    const response = await GET(makeRequest({ type: 'team' }));
+  test("team leaderboard: also includes generatedAt", async () => {
+    const response = await GET(makeRequest({ type: "team" }));
     const body = await response.json();
 
     expect(body.generatedAt).toBeDefined();
     expect(mockGetTeamLeaderboard).toHaveBeenCalledTimes(1);
   });
 
-  test('trading metric uses a distinct cache key', async () => {
+  test("trading metric uses a distinct cache key", async () => {
     const response = await GET(
-      makeRequest({ metric: 'trading', type: 'wallet' })
+      makeRequest({ metric: "trading", type: "wallet" }),
     );
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.leaderboardMetric).toBe('trading');
+    expect(body.leaderboardMetric).toBe("trading");
     expect(mockGetTradingWalletLeaderboard).toHaveBeenCalledTimes(1);
-    expect(mockSetCache.mock.calls[0]?.[0]).toBe('trading-wallet-1-100');
+    expect(mockSetCache.mock.calls[0]?.[0]).toBe("trading-wallet-1-100");
     expect(body.leaderboard[0].tradingReturn).toBe(0.3);
   });
 
-  test('x-cache header reflects cache hit/miss', async () => {
+  test("x-cache header reflects cache hit/miss", async () => {
     // First request = miss
-    const missResponse = await GET(makeRequest({ type: 'wallet' }));
-    expect(missResponse.headers.get('x-cache')).toBe('leaderboard-miss');
+    const missResponse = await GET(makeRequest({ type: "wallet" }));
+    expect(missResponse.headers.get("x-cache")).toBe("leaderboard-miss");
 
     // Second request = hit (cache was populated)
-    const hitResponse = await GET(makeRequest({ type: 'wallet' }));
-    expect(hitResponse.headers.get('x-cache')).toBe('leaderboard-hit');
+    const hitResponse = await GET(makeRequest({ type: "wallet" }));
+    expect(hitResponse.headers.get("x-cache")).toBe("leaderboard-hit");
   });
 
-  test('public Cache-Control for anonymous requests', async () => {
-    const response = await GET(makeRequest({ type: 'wallet' }));
-    const cacheControl = response.headers.get('Cache-Control');
-    expect(cacheControl).toContain('public');
-    expect(cacheControl).toContain('s-maxage=');
-    expect(cacheControl).toContain('stale-while-revalidate=');
+  test("public Cache-Control for anonymous requests", async () => {
+    const response = await GET(makeRequest({ type: "wallet" }));
+    const cacheControl = response.headers.get("Cache-Control");
+    expect(cacheControl).toContain("public");
+    expect(cacheControl).toContain("s-maxage=");
+    expect(cacheControl).toContain("stale-while-revalidate=");
   });
 });

@@ -5,7 +5,7 @@
  * Pure functions with no external dependencies.
  */
 
-import type { MarketType } from '../types/market-decisions';
+import type { MarketType } from "../types/market-decisions";
 
 export interface TradeImpactInput {
   marketType: MarketType;
@@ -43,7 +43,7 @@ export interface AggregatedImpact {
  * ```
  */
 export function aggregateTradeImpacts(
-  trades: TradeImpactInput[]
+  trades: TradeImpactInput[],
 ): Map<string, AggregatedImpact> {
   const impacts = new Map<string, AggregatedImpact>();
 
@@ -61,14 +61,14 @@ export function aggregateTradeImpacts(
       netSentiment: 0,
     };
 
-    if (trade.marketType === 'perp') {
-      if (trade.side === 'long') {
+    if (trade.marketType === "perp") {
+      if (trade.side === "long") {
         impact.longVolume += trade.size;
       } else {
         impact.shortVolume += trade.size;
       }
     } else {
-      if (trade.side === 'YES') {
+      if (trade.side === "YES") {
         impact.yesVolume += trade.size;
       } else {
         impact.noVolume += trade.size;

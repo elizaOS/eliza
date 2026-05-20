@@ -21,35 +21,35 @@ import {
   describe,
   expect,
   test,
-} from 'bun:test';
-import { db, eq, inArray, pointsTransactions, users } from '@feed/db';
-import { generateSnowflakeId } from '@feed/shared';
-import { waitForEndpointAvailability } from './helpers';
+} from "bun:test";
+import { db, eq, inArray, pointsTransactions, users } from "@feed/db";
+import { generateSnowflakeId } from "@feed/shared";
+import { waitForEndpointAvailability } from "./helpers";
 
 const BASE_URL =
   process.env.TEST_API_URL ||
   process.env.TEST_BASE_URL ||
-  'http://localhost:3000';
+  "http://localhost:3000";
 
-const ENDPOINT = '/api/waitlist/bonus/email';
+const ENDPOINT = "/api/waitlist/bonus/email";
 
 let serverAvailable = false;
 let dbAvailable = false;
 const testUserIds: string[] = [];
 
 function devUserHeader(userId: string): Record<string, string> {
-  return { 'x-dev-user-id': userId };
+  return { "x-dev-user-id": userId };
 }
 
 async function post(
   userId: string,
   body: unknown,
-  extraHeaders: Record<string, string> = {}
+  extraHeaders: Record<string, string> = {},
 ) {
   return fetch(`${BASE_URL}${ENDPOINT}`, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
       ...devUserHeader(userId),
       ...extraHeaders,
     },
@@ -64,7 +64,7 @@ async function createTestUser(overrides: Record<string, unknown> = {}) {
     id: userId,
     privyId: `did:privy:test-${userId}`,
     username: `test-email-bonus-${userId}`,
-    displayName: 'Test Email Bonus User',
+    displayName: "Test Email Bonus User",
     reputationPoints: 100,
     bonusPoints: 0,
     isWaitlistActive: true,
@@ -80,18 +80,18 @@ beforeAll(async () => {
   serverAvailable = await waitForEndpointAvailability(
     `${BASE_URL}${ENDPOINT}`,
     {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: 'probe@example.com' }),
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "probe@example.com" }),
     },
     (response) => response.status !== 404 && response.status < 500,
     15,
-    15000
+    15000,
   );
 
   if (!serverAvailable) {
     console.warn(
-      `⚠️  Server not available at ${BASE_URL} — tests will be skipped`
+      `⚠️  Server not available at ${BASE_URL} — tests will be skipped`,
     );
   }
 
@@ -100,7 +100,7 @@ beforeAll(async () => {
     await db.select().from(users).limit(1);
     dbAvailable = true;
   } catch {
-    console.warn('⚠️  Database not available — tests will be skipped');
+    console.warn("⚠️  Database not available — tests will be skipped");
   }
 });
 
@@ -117,9 +117,9 @@ afterEach(() => {
   // Individual cleanup handled in afterAll to keep tests fast
 });
 
-describe('POST /api/waitlist/bonus/email', () => {
-  describe('success cases', () => {
-    test('awards 100 points and saves email on first submission', async () => {
+describe("POST /api/waitlist/bonus/email", () => {
+  describe("success cases", () => {
+    test("awards 100 points and saves email on first submission", async () => {
       if (!serverAvailable || !dbAvailable) return;
 
       const userId = await createTestUser();
@@ -150,7 +150,7 @@ describe('POST /api/waitlist/bonus/email', () => {
       expect(user?.reputationPoints).toBe(200); // 100 base + 100 bonus
     });
 
-    test('returns awarded=false and bonusAmount=0 on second submission', async () => {
+    test("returns awarded=false and bonusAmount=0 on second submission", async () => {
       if (!serverAvailable || !dbAvailable) return;
 
       const userId = await createTestUser();
@@ -179,7 +179,7 @@ describe('POST /api/waitlist/bonus/email', () => {
       expect(user?.bonusPoints).toBe(100);
     });
 
-    test('creates a points transaction with reason email_submit', async () => {
+    test("creates a points transaction with reason email_submit", async () => {
       if (!serverAvailable || !dbAvailable) return;
 
       const userId = await createTestUser({ reputationPoints: 50 });
@@ -194,24 +194,24 @@ describe('POST /api/waitlist/bonus/email', () => {
         .limit(1);
 
       expect(txn).toBeDefined();
-      expect(txn?.reason).toBe('email_submit');
+      expect(txn?.reason).toBe("email_submit");
       expect(txn?.amount).toBe(100);
       expect(txn?.pointsBefore).toBe(50);
       expect(txn?.pointsAfter).toBe(150);
     });
   });
 
-  describe('validation errors', () => {
-    test('returns 400 for invalid email format', async () => {
+  describe("validation errors", () => {
+    test("returns 400 for invalid email format", async () => {
       if (!serverAvailable || !dbAvailable) return;
 
       const userId = await createTestUser();
 
-      const res = await post(userId, { email: 'not-an-email' });
+      const res = await post(userId, { email: "not-an-email" });
       expect(res.status).toBe(400);
     });
 
-    test('returns 400 for missing email field', async () => {
+    test("returns 400 for missing email field", async () => {
       if (!serverAvailable || !dbAvailable) return;
 
       const userId = await createTestUser();
@@ -220,56 +220,56 @@ describe('POST /api/waitlist/bonus/email', () => {
       expect(res.status).toBe(400);
     });
 
-    test('returns 400 for empty email string', async () => {
+    test("returns 400 for empty email string", async () => {
       if (!serverAvailable || !dbAvailable) return;
 
       const userId = await createTestUser();
 
-      const res = await post(userId, { email: '' });
+      const res = await post(userId, { email: "" });
       expect(res.status).toBe(400);
     });
 
-    test('returns 400 for invalid JSON body', async () => {
+    test("returns 400 for invalid JSON body", async () => {
       if (!serverAvailable || !dbAvailable) return;
 
       const userId = await createTestUser();
 
       const res = await fetch(`${BASE_URL}${ENDPOINT}`, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
           ...devUserHeader(userId),
         },
-        body: 'not json {{',
+        body: "not json {{",
         signal: AbortSignal.timeout(15000),
       });
       expect(res.status).toBe(400);
     });
   });
 
-  describe('authentication', () => {
-    test('returns 401 when no auth token is provided', async () => {
+  describe("authentication", () => {
+    test("returns 401 when no auth token is provided", async () => {
       if (!serverAvailable) return;
 
       const res = await fetch(`${BASE_URL}${ENDPOINT}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: 'test@example.com' }),
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: "test@example.com" }),
         signal: AbortSignal.timeout(15000),
       });
       expect(res.status).toBe(401);
     });
 
-    test('returns 4xx/5xx for invalid bearer token', async () => {
+    test("returns 4xx/5xx for invalid bearer token", async () => {
       if (!serverAvailable) return;
 
       const res = await fetch(`${BASE_URL}${ENDPOINT}`, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
-          Authorization: 'Bearer invalid-token-xyz',
+          "Content-Type": "application/json",
+          Authorization: "Bearer invalid-token-xyz",
         },
-        body: JSON.stringify({ email: 'test@example.com' }),
+        body: JSON.stringify({ email: "test@example.com" }),
         signal: AbortSignal.timeout(15000),
       });
       // Dev: Privy not fully configured → 500; Prod: 401.

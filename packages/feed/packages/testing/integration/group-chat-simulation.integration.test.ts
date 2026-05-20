@@ -20,19 +20,19 @@ import {
   expect,
   setDefaultTimeout,
   test,
-} from 'bun:test';
+} from "bun:test";
 
 // Set default timeout to 30 seconds for integration tests
 setDefaultTimeout(30000);
 
-import { db } from '@feed/db';
+import { db } from "@feed/db";
 import {
   AlphaGroupInviteService,
   GroupChatService,
   NPCGroupDynamicsService,
   NPCInteractionTracker,
-} from '@feed/engine';
-import { generateSnowflakeId } from '@feed/shared';
+} from "@feed/engine";
+import { generateSnowflakeId } from "@feed/shared";
 
 // Test data cleanup tracking
 const testIds = {
@@ -76,7 +76,7 @@ async function createTestUser(options: {
 }
 
 async function createTestNPC(
-  name: string
+  name: string,
 ): Promise<{ id: string; name: string }> {
   const id = await generateSnowflakeId();
 
@@ -84,7 +84,7 @@ async function createTestNPC(
   await db.user.create({
     data: {
       id,
-      username: name.toLowerCase().replace(/\s+/g, '-'),
+      username: name.toLowerCase().replace(/\s+/g, "-"),
       displayName: name,
       isActor: true,
       isTest: true,
@@ -123,7 +123,7 @@ async function createNPCPost(npcId: string, content: string): Promise<string> {
 
 async function createFollow(
   followerId: string,
-  followingId: string
+  followingId: string,
 ): Promise<string> {
   const id = await generateSnowflakeId();
 
@@ -148,7 +148,7 @@ async function createLike(userId: string, postId: string): Promise<string> {
       id,
       userId,
       postId,
-      type: 'like',
+      type: "like",
       createdAt: new Date(),
     },
   });
@@ -176,7 +176,7 @@ async function createShare(userId: string, postId: string): Promise<string> {
 async function createComment(
   userId: string,
   npcPostId: string,
-  content: string
+  content: string,
 ): Promise<string> {
   const id = await generateSnowflakeId();
 
@@ -199,7 +199,7 @@ async function recordUserInteraction(
   npcId: string,
   postId: string,
   commentId: string,
-  qualityScore = 0.8
+  qualityScore = 0.8,
 ): Promise<string> {
   const id = await generateSnowflakeId();
 
@@ -224,7 +224,7 @@ async function createGroupMembership(options: {
   userId: string;
   addedBy?: string;
   joinedAt?: Date;
-  role?: 'owner' | 'admin' | 'member';
+  role?: "owner" | "admin" | "member";
 }): Promise<string> {
   const id = await generateSnowflakeId();
 
@@ -233,7 +233,7 @@ async function createGroupMembership(options: {
       id,
       groupId: options.groupId,
       userId: options.userId,
-      role: options.role || 'member',
+      role: options.role || "member",
       addedBy: options.addedBy,
       isActive: true,
       joinedAt: options.joinedAt || new Date(),
@@ -246,7 +246,7 @@ async function createGroupMembership(options: {
 
 async function createGroupChat(
   name: string,
-  npcOwnerId: string
+  npcOwnerId: string,
 ): Promise<{ chatId: string; groupId: string }> {
   const groupId = await generateSnowflakeId();
   const chatId = await generateSnowflakeId();
@@ -256,7 +256,7 @@ async function createGroupChat(
     data: {
       id: groupId,
       name,
-      type: 'npc',
+      type: "npc",
       ownerId: npcOwnerId,
       createdById: npcOwnerId,
       updatedAt: new Date(),
@@ -270,7 +270,7 @@ async function createGroupChat(
       name,
       isGroup: true,
       groupId,
-      gameId: 'realtime',
+      gameId: "realtime",
       updatedAt: new Date(),
     },
   });
@@ -369,7 +369,7 @@ async function cleanupTestData(): Promise<void> {
 
 // ============ SIMULATION TESTS ============
 
-describe('Group Chat Simulation - End to End Flow', () => {
+describe("Group Chat Simulation - End to End Flow", () => {
   // Increase timeout for integration tests that hit the database
   const _INTEGRATION_TIMEOUT = 30000;
 
@@ -381,7 +381,7 @@ describe('Group Chat Simulation - End to End Flow', () => {
     await cleanupTestData();
   });
 
-  describe('Engagement Score Calculation', () => {
+  describe("Engagement Score Calculation", () => {
     beforeEach(async () => {
       await cleanupTestData();
     });
@@ -390,9 +390,9 @@ describe('Group Chat Simulation - End to End Flow', () => {
       await cleanupTestData();
     });
 
-    test('should calculate engagement score from user interactions', async () => {
-      const npc = await createTestNPC('Alpha Trader');
-      const user = await createTestUser({ displayName: 'Engaged User' });
+    test("should calculate engagement score from user interactions", async () => {
+      const npc = await createTestNPC("Alpha Trader");
+      const user = await createTestUser({ displayName: "Engaged User" });
 
       // User follows NPC
       await createFollow(user.id, npc.id);
@@ -412,12 +412,12 @@ describe('Group Chat Simulation - End to End Flow', () => {
       const comment1 = await createComment(
         user.id,
         posts[0]!,
-        'Great analysis, thanks for sharing!'
+        "Great analysis, thanks for sharing!",
       );
       const comment2 = await createComment(
         user.id,
         posts[1]!,
-        'This matches my research perfectly'
+        "This matches my research perfectly",
       );
 
       // Record quality interactions
@@ -433,13 +433,13 @@ describe('Group Chat Simulation - End to End Flow', () => {
       expect(engagementData.engagementScore).toBeGreaterThan(0);
     });
 
-    test('should rank users by engagement level', async () => {
-      const npc = await createTestNPC('Market Maven');
+    test("should rank users by engagement level", async () => {
+      const npc = await createTestNPC("Market Maven");
 
       // Create users with different engagement levels
-      const highUser = await createTestUser({ displayName: 'High Engager' });
-      const medUser = await createTestUser({ displayName: 'Medium Engager' });
-      const lowUser = await createTestUser({ displayName: 'Low Engager' });
+      const highUser = await createTestUser({ displayName: "High Engager" });
+      const medUser = await createTestUser({ displayName: "Medium Engager" });
+      const lowUser = await createTestUser({ displayName: "Low Engager" });
 
       // Create posts for interactions
       const posts: string[] = [];
@@ -452,14 +452,14 @@ describe('Group Chat Simulation - End to End Flow', () => {
         const comment = await createComment(
           highUser.id,
           posts[i]!,
-          `High quality comment ${i}`
+          `High quality comment ${i}`,
         );
         await recordUserInteraction(
           highUser.id,
           npc.id,
           posts[i]!,
           comment,
-          0.9
+          0.9,
         );
       }
 
@@ -468,14 +468,14 @@ describe('Group Chat Simulation - End to End Flow', () => {
         const comment = await createComment(
           medUser.id,
           posts[i]!,
-          `Medium comment ${i}`
+          `Medium comment ${i}`,
         );
         await recordUserInteraction(
           medUser.id,
           npc.id,
           posts[i]!,
           comment,
-          0.75
+          0.75,
         );
       }
 
@@ -483,20 +483,20 @@ describe('Group Chat Simulation - End to End Flow', () => {
       const lowComment = await createComment(
         lowUser.id,
         posts[14]!,
-        'Interesting'
+        "Interesting",
       );
       await recordUserInteraction(
         lowUser.id,
         npc.id,
         posts[14]!,
         lowComment,
-        0.6
+        0.6,
       );
 
       // Get top engaged users
       const topUsers = await NPCInteractionTracker.getTopEngagedUsers(
         npc.id,
-        10
+        10,
       );
 
       // Should find all 3 users
@@ -514,16 +514,16 @@ describe('Group Chat Simulation - End to End Flow', () => {
       const lowUserScore = topUsers.find((u) => u.userId === lowUser.id);
 
       // Verify engagement scores are ranked correctly (highest has most interactions)
-      expect(highUserScore!.engagementScore).toBeGreaterThan(
-        medUserScore!.engagementScore
+      expect(highUserScore?.engagementScore).toBeGreaterThan(
+        medUserScore?.engagementScore,
       );
-      expect(medUserScore!.engagementScore).toBeGreaterThan(
-        lowUserScore!.engagementScore
+      expect(medUserScore?.engagementScore).toBeGreaterThan(
+        lowUserScore?.engagementScore,
       );
     });
   });
 
-  describe('Reply Guy Score Calculation', () => {
+  describe("Reply Guy Score Calculation", () => {
     beforeEach(async () => {
       await cleanupTestData();
     });
@@ -532,9 +532,9 @@ describe('Group Chat Simulation - End to End Flow', () => {
       await cleanupTestData();
     });
 
-    test('should give combined score for ideal engagement pattern', async () => {
-      const npc = await createTestNPC('Ideal Test NPC');
-      const user = await createTestUser({ displayName: 'Ideal Engager' });
+    test("should give combined score for ideal engagement pattern", async () => {
+      const npc = await createTestNPC("Ideal Test NPC");
+      const user = await createTestUser({ displayName: "Ideal Engager" });
 
       // Follow
       await createFollow(user.id, npc.id);
@@ -546,8 +546,8 @@ describe('Group Chat Simulation - End to End Flow', () => {
       }
 
       // Ideal engagement: 2 comments, 5 likes, 1 share
-      await createComment(user.id, posts[0]!, 'Great analysis');
-      await createComment(user.id, posts[1]!, 'Thanks for sharing');
+      await createComment(user.id, posts[0]!, "Great analysis");
+      await createComment(user.id, posts[1]!, "Thanks for sharing");
 
       for (const postId of posts) {
         await createLike(user.id, postId);
@@ -568,11 +568,11 @@ describe('Group Chat Simulation - End to End Flow', () => {
       expect(score).toBeGreaterThan(15);
     });
 
-    test('should penalize spam behavior', async () => {
-      const npc = await createTestNPC('Spam Test NPC');
-      const spammer = await createTestUser({ displayName: 'Spammy User' });
+    test("should penalize spam behavior", async () => {
+      const npc = await createTestNPC("Spam Test NPC");
+      const spammer = await createTestUser({ displayName: "Spammy User" });
 
-      const post = await createNPCPost(npc.id, 'Popular post');
+      const post = await createNPCPost(npc.id, "Popular post");
 
       // Excessive comments (15+)
       for (let i = 0; i < 15; i++) {
@@ -591,7 +591,7 @@ describe('Group Chat Simulation - End to End Flow', () => {
     });
   });
 
-  describe('Group Invite Service', () => {
+  describe("Group Invite Service", () => {
     beforeEach(async () => {
       await cleanupTestData();
     });
@@ -600,32 +600,32 @@ describe('Group Chat Simulation - End to End Flow', () => {
       await cleanupTestData();
     });
 
-    test('should track invite statistics', async () => {
+    test("should track invite statistics", async () => {
       const stats = await AlphaGroupInviteService.getInviteStats();
 
-      expect(stats).toHaveProperty('totalInvites');
-      expect(stats).toHaveProperty('activeGroups');
-      expect(stats).toHaveProperty('invitesLast24h');
-      expect(typeof stats.totalInvites).toBe('number');
-      expect(typeof stats.activeGroups).toBe('number');
-      expect(typeof stats.invitesLast24h).toBe('number');
+      expect(stats).toHaveProperty("totalInvites");
+      expect(stats).toHaveProperty("activeGroups");
+      expect(stats).toHaveProperty("invitesLast24h");
+      expect(typeof stats.totalInvites).toBe("number");
+      expect(typeof stats.activeGroups).toBe("number");
+      expect(typeof stats.invitesLast24h).toBe("number");
     });
 
-    test('should track and respect group membership limits', async () => {
+    test("should track and respect group membership limits", async () => {
       // Create 5 different NPCs - each NPC can admin one group per user
       const npcs: Array<{ id: string; name: string }> = [];
       for (let i = 0; i < 5; i++) {
         npcs.push(await createTestNPC(`Limit Test NPC ${i}`));
       }
-      const user = await createTestUser({ displayName: 'Group Collector' });
+      const user = await createTestUser({ displayName: "Group Collector" });
 
       // Create 5 groups, each with a different NPC admin
       for (let i = 0; i < 5; i++) {
-        const { groupId } = await createGroupChat(`Group ${i}`, npcs[i]!.id);
+        const { groupId } = await createGroupChat(`Group ${i}`, npcs[i]?.id);
         await createGroupMembership({
           groupId,
           userId: user.id,
-          addedBy: npcs[i]!.id,
+          addedBy: npcs[i]?.id,
         });
       }
 
@@ -638,34 +638,34 @@ describe('Group Chat Simulation - End to End Flow', () => {
     });
   });
 
-  describe('Kick Probability Mechanics', () => {
-    test('inactive users should have high kick probability', () => {
+  describe("Kick Probability Mechanics", () => {
+    test("inactive users should have high kick probability", () => {
       const result = NPCGroupDynamicsService.calculateKickProbability(
         0, // Never posted
         100, // Active group
         10, // 10 participants
-        7 // 7 day window
+        7, // 7 day window
       );
 
       expect(result.probability).toBe(0.9);
-      expect(result.category).toBe('inactive');
+      expect(result.category).toBe("inactive");
     });
 
-    test('ideal participation should have zero kick probability', () => {
+    test("ideal participation should have zero kick probability", () => {
       // Fair share = 100/10 = 10 messages
       // User with 10 messages is exactly fair share
       const result = NPCGroupDynamicsService.calculateKickProbability(
         10,
         100,
         10,
-        7
+        7,
       );
 
       expect(result.probability).toBe(0);
-      expect(result.category).toBe('safe');
+      expect(result.category).toBe("safe");
     });
 
-    test('over-posting should have increasing kick probability', () => {
+    test("over-posting should have increasing kick probability", () => {
       const results: Array<{
         messages: number;
         prob: number;
@@ -677,7 +677,7 @@ describe('Group Chat Simulation - End to End Flow', () => {
           msgCount,
           100,
           10,
-          7
+          7,
         );
         results.push({
           messages: msgCount,
@@ -689,25 +689,25 @@ describe('Group Chat Simulation - End to End Flow', () => {
       // Probability should increase as messages increase
       for (let i = 1; i < results.length; i++) {
         expect(results[i]?.prob).toBeGreaterThanOrEqual(
-          results[i - 1]?.prob ?? 0
+          results[i - 1]?.prob ?? 0,
         );
       }
     });
 
-    test('spam behavior should have near-certain kick probability', () => {
+    test("spam behavior should have near-certain kick probability", () => {
       const result = NPCGroupDynamicsService.calculateKickProbability(
         50, // Way too many messages
         100,
         10,
-        7
+        7,
       );
 
       expect(result.probability).toBeGreaterThanOrEqual(0.95);
-      expect(result.category).toBe('spam');
+      expect(result.category).toBe("spam");
     });
   });
 
-  describe('User vs Agent Parity', () => {
+  describe("User vs Agent Parity", () => {
     beforeEach(async () => {
       await cleanupTestData();
     });
@@ -716,50 +716,50 @@ describe('Group Chat Simulation - End to End Flow', () => {
       await cleanupTestData();
     });
 
-    test('agents should earn same engagement score as users for same behavior', async () => {
+    test("agents should earn same engagement score as users for same behavior", async () => {
       // Create a fresh NPC for this test
-      const npc = await createTestNPC('Parity Test NPC');
+      const npc = await createTestNPC("Parity Test NPC");
 
       // Create human and agent users
       const humanUser = await createTestUser({
         isAgent: false,
-        displayName: 'Human User',
+        displayName: "Human User",
       });
       const aiAgent = await createTestUser({
         isAgent: true,
-        displayName: 'AI Agent',
+        displayName: "AI Agent",
       });
 
       // Create separate posts for each user's engagement to avoid any cross-contamination
       const humanPost = await createNPCPost(
         npc.id,
-        'Post for human engagement'
+        "Post for human engagement",
       );
       const agentPost = await createNPCPost(
         npc.id,
-        'Post for agent engagement'
+        "Post for agent engagement",
       );
 
       // Human engagement
       await createFollow(humanUser.id, npc.id);
       await createLike(humanUser.id, humanPost);
-      await createComment(humanUser.id, humanPost, 'Human insight');
+      await createComment(humanUser.id, humanPost, "Human insight");
       await createShare(humanUser.id, humanPost);
 
       // Agent engagement (identical pattern on different post)
       await createFollow(aiAgent.id, npc.id);
       await createLike(aiAgent.id, agentPost);
-      await createComment(aiAgent.id, agentPost, 'Agent insight');
+      await createComment(aiAgent.id, agentPost, "Agent insight");
       await createShare(aiAgent.id, agentPost);
 
       // Calculate scores - both should have same pattern of engagement
       const humanScore = await NPCGroupDynamicsService.calculateReplyGuyScore(
         humanUser.id,
-        [npc.id]
+        [npc.id],
       );
       const agentScore = await NPCGroupDynamicsService.calculateReplyGuyScore(
         aiAgent.id,
-        [npc.id]
+        [npc.id],
       );
 
       // Scores should be identical since engagement pattern is the same
@@ -772,18 +772,18 @@ describe('Group Chat Simulation - End to End Flow', () => {
       expect(humanScore.score).toBe(agentScore.score);
     });
 
-    test('both users and agents can be members of NPC groups', async () => {
-      const npc = await createTestNPC('Inclusive NPC');
+    test("both users and agents can be members of NPC groups", async () => {
+      const npc = await createTestNPC("Inclusive NPC");
       const user = await createTestUser({
         isAgent: false,
-        displayName: 'Regular User',
+        displayName: "Regular User",
       });
       const agent = await createTestUser({
         isAgent: true,
-        displayName: 'AI Agent',
+        displayName: "AI Agent",
       });
 
-      const { groupId } = await createGroupChat('Mixed Group', npc.id);
+      const { groupId } = await createGroupChat("Mixed Group", npc.id);
 
       // Add both to group
       await createGroupMembership({
@@ -807,7 +807,7 @@ describe('Group Chat Simulation - End to End Flow', () => {
       expect(memberships.some((m) => m.userId === agent.id)).toBe(true);
     });
 
-    test('kick probability should be identical for users and agents', () => {
+    test("kick probability should be identical for users and agents", () => {
       const scenarios = [
         { messages: 0, total: 100, participants: 10 }, // Inactive
         { messages: 10, total: 100, participants: 10 }, // Ideal
@@ -820,13 +820,13 @@ describe('Group Chat Simulation - End to End Flow', () => {
           scenario.messages,
           scenario.total,
           scenario.participants,
-          7
+          7,
         );
         const agentProb = NPCGroupDynamicsService.calculateKickProbability(
           scenario.messages,
           scenario.total,
           scenario.participants,
-          7
+          7,
         );
 
         expect(userProb.probability).toBe(agentProb.probability);
@@ -835,7 +835,7 @@ describe('Group Chat Simulation - End to End Flow', () => {
     });
   });
 
-  describe('Group Chat Sweep Mechanics', () => {
+  describe("Group Chat Sweep Mechanics", () => {
     beforeEach(async () => {
       await cleanupTestData();
     });
@@ -844,16 +844,16 @@ describe('Group Chat Simulation - End to End Flow', () => {
       await cleanupTestData();
     });
 
-    test('should calculate kick chance based on user activity', async () => {
-      const npc = await createTestNPC('Sweep Test NPC');
+    test("should calculate kick chance based on user activity", async () => {
+      const npc = await createTestNPC("Sweep Test NPC");
       const inactiveUser = await createTestUser({
-        displayName: 'Inactive User',
+        displayName: "Inactive User",
       });
-      const activeUser = await createTestUser({ displayName: 'Active User' });
+      const activeUser = await createTestUser({ displayName: "Active User" });
 
       const { chatId, groupId } = await createGroupChat(
-        'Activity Test Group',
-        npc.id
+        "Activity Test Group",
+        npc.id,
       );
 
       // Add participant records
@@ -892,7 +892,7 @@ describe('Group Chat Simulation - End to End Flow', () => {
           id: inactiveMembershipId,
           groupId,
           userId: inactiveUser.id,
-          role: 'member',
+          role: "member",
           addedBy: npc.id,
           isActive: true,
           joinedAt: twoDaysAgo,
@@ -907,7 +907,7 @@ describe('Group Chat Simulation - End to End Flow', () => {
           id: activeMembershipId,
           groupId,
           userId: activeUser.id,
-          role: 'member',
+          role: "member",
           addedBy: npc.id,
           isActive: true,
           joinedAt: twoDaysAgo,
@@ -919,29 +919,29 @@ describe('Group Chat Simulation - End to End Flow', () => {
       await createMessage({
         chatId,
         senderId: activeUser.id,
-        content: 'Hello everyone!',
+        content: "Hello everyone!",
       });
       await createMessage({
         chatId,
         senderId: activeUser.id,
-        content: 'Great insights here',
+        content: "Great insights here",
       });
 
       // NPC posts
       await createMessage({
         chatId,
         senderId: npc.id,
-        content: 'Welcome to the group!',
+        content: "Welcome to the group!",
       });
 
       // Calculate kick chances
       const inactiveDecision = await GroupChatService.calculateKickChance(
         inactiveUser.id,
-        chatId
+        chatId,
       );
       const activeDecision = await GroupChatService.calculateKickChance(
         activeUser.id,
-        chatId
+        chatId,
       );
 
       // Verify the stats are collected correctly
@@ -951,41 +951,41 @@ describe('Group Chat Simulation - End to End Flow', () => {
       // Inactive user should have higher kick chance since they haven't posted
       // (after grace period of 24 hours has passed)
       expect(inactiveDecision.kickChance).toBeGreaterThan(
-        activeDecision.kickChance
+        activeDecision.kickChance,
       );
     });
   });
 
-  describe('Group Statistics', () => {
-    test('should return valid group statistics', async () => {
+  describe("Group Statistics", () => {
+    test("should return valid group statistics", async () => {
       const stats = await NPCGroupDynamicsService.getGroupStats();
 
-      expect(stats).toHaveProperty('totalGroups');
-      expect(stats).toHaveProperty('activeGroups');
-      expect(stats).toHaveProperty('avgGroupSize');
-      expect(typeof stats.totalGroups).toBe('number');
-      expect(typeof stats.activeGroups).toBe('number');
-      expect(typeof stats.avgGroupSize).toBe('number');
+      expect(stats).toHaveProperty("totalGroups");
+      expect(stats).toHaveProperty("activeGroups");
+      expect(stats).toHaveProperty("avgGroupSize");
+      expect(typeof stats.totalGroups).toBe("number");
+      expect(typeof stats.activeGroups).toBe("number");
+      expect(typeof stats.avgGroupSize).toBe("number");
       expect(stats.totalGroups).toBeGreaterThanOrEqual(0);
     });
   });
 
-  describe('Edge Cases', () => {
-    test('should handle brand new group with no messages', () => {
+  describe("Edge Cases", () => {
+    test("should handle brand new group with no messages", () => {
       const result = NPCGroupDynamicsService.calculateKickProbability(
         0, // No messages
         0, // Empty group
         5, // 5 participants
-        7
+        7,
       );
 
       // Still inactive since user hasn't contributed
-      expect(result.category).toBe('inactive');
+      expect(result.category).toBe("inactive");
       expect(result.probability).toBeGreaterThanOrEqual(0);
       expect(result.probability).toBeLessThanOrEqual(1);
     });
 
-    test('should never return probability outside 0-1 range', () => {
+    test("should never return probability outside 0-1 range", () => {
       const extremeCases = [
         { messages: 0, total: 0, participants: 1 },
         { messages: 1000, total: 10, participants: 5 },
@@ -998,7 +998,7 @@ describe('Group Chat Simulation - End to End Flow', () => {
           scenario.messages,
           scenario.total,
           scenario.participants,
-          7
+          7,
         );
 
         expect(result.probability).toBeGreaterThanOrEqual(0);
@@ -1007,7 +1007,7 @@ describe('Group Chat Simulation - End to End Flow', () => {
     });
   });
 
-  describe('Quality Score Management', () => {
+  describe("Quality Score Management", () => {
     beforeEach(async () => {
       await cleanupTestData();
     });
@@ -1016,13 +1016,13 @@ describe('Group Chat Simulation - End to End Flow', () => {
       await cleanupTestData();
     });
 
-    test('should update quality score when message is sent', async () => {
-      const npc = await createTestNPC('Quality Test NPC');
-      const user = await createTestUser({ displayName: 'Quality User' });
+    test("should update quality score when message is sent", async () => {
+      const npc = await createTestNPC("Quality Test NPC");
+      const user = await createTestUser({ displayName: "Quality User" });
 
       const { chatId, groupId } = await createGroupChat(
-        'Quality Test Group',
-        npc.id
+        "Quality Test Group",
+        npc.id,
       );
 
       // Create membership
@@ -1032,7 +1032,7 @@ describe('Group Chat Simulation - End to End Flow', () => {
           id: membershipId,
           groupId,
           userId: user.id,
-          role: 'member',
+          role: "member",
           addedBy: npc.id,
           isActive: true,
           qualityScore: 1.0, // Start at 1.0
@@ -1055,13 +1055,13 @@ describe('Group Chat Simulation - End to End Flow', () => {
       expect(membership?.qualityScore).toBeCloseTo(0.8, 1);
     });
 
-    test('should calculate running average quality score', async () => {
-      const npc = await createTestNPC('Avg Quality NPC');
-      const user = await createTestUser({ displayName: 'Avg Quality User' });
+    test("should calculate running average quality score", async () => {
+      const npc = await createTestNPC("Avg Quality NPC");
+      const user = await createTestUser({ displayName: "Avg Quality User" });
 
       const { chatId, groupId } = await createGroupChat(
-        'Avg Quality Group',
-        npc.id
+        "Avg Quality Group",
+        npc.id,
       );
 
       // Create membership with some existing messages
@@ -1071,7 +1071,7 @@ describe('Group Chat Simulation - End to End Flow', () => {
           id: membershipId,
           groupId,
           userId: user.id,
-          role: 'member',
+          role: "member",
           addedBy: npc.id,
           isActive: true,
           qualityScore: 0.8, // Existing average
@@ -1093,7 +1093,7 @@ describe('Group Chat Simulation - End to End Flow', () => {
     });
   });
 
-  describe('Group Chat Invite Criteria', () => {
+  describe("Group Chat Invite Criteria", () => {
     beforeEach(async () => {
       await cleanupTestData();
     });
@@ -1102,20 +1102,20 @@ describe('Group Chat Simulation - End to End Flow', () => {
       await cleanupTestData();
     });
 
-    test('should require minimum engagement score for invite eligibility', async () => {
-      const npc = await createTestNPC('Criteria Test NPC');
+    test("should require minimum engagement score for invite eligibility", async () => {
+      const npc = await createTestNPC("Criteria Test NPC");
       const lowEngagedUser = await createTestUser({
-        displayName: 'Low Engaged',
+        displayName: "Low Engaged",
       });
 
       // Create minimal engagement (below threshold)
-      const post = await createNPCPost(npc.id, 'Test post');
+      const post = await createNPCPost(npc.id, "Test post");
       await createLike(lowEngagedUser.id, post);
 
       // Calculate engagement - should be below MIN_ENGAGEMENT_SCORE (40)
       const engagement = await NPCInteractionTracker.calculateEngagementScore(
         lowEngagedUser.id,
-        npc.id
+        npc.id,
       );
 
       // Low engagement users shouldn't be eligible
@@ -1123,17 +1123,17 @@ describe('Group Chat Simulation - End to End Flow', () => {
       expect(engagement.isEligibleForInvite).toBe(false);
     });
 
-    test('should track invite eligibility reasons', async () => {
-      const npc = await createTestNPC('Reasons Test NPC');
-      const user = await createTestUser({ displayName: 'Reasons User' });
+    test("should track invite eligibility reasons", async () => {
+      const npc = await createTestNPC("Reasons Test NPC");
+      const user = await createTestUser({ displayName: "Reasons User" });
 
       // Create some engagement but not enough
-      const post = await createNPCPost(npc.id, 'Test content');
+      const post = await createNPCPost(npc.id, "Test content");
       await createLike(user.id, post);
 
       const engagement = await NPCInteractionTracker.calculateEngagementScore(
         user.id,
-        npc.id
+        npc.id,
       );
 
       // Should have reasons explaining why not eligible
@@ -1142,7 +1142,7 @@ describe('Group Chat Simulation - End to End Flow', () => {
     });
   });
 
-  describe('Database Constraints', () => {
+  describe("Database Constraints", () => {
     beforeEach(async () => {
       await cleanupTestData();
     });
@@ -1151,11 +1151,11 @@ describe('Group Chat Simulation - End to End Flow', () => {
       await cleanupTestData();
     });
 
-    test('should enforce unique membership per user per group', async () => {
-      const npc = await createTestNPC('Unique Constraint NPC');
-      const user = await createTestUser({ displayName: 'Unique User' });
+    test("should enforce unique membership per user per group", async () => {
+      const npc = await createTestNPC("Unique Constraint NPC");
+      const user = await createTestUser({ displayName: "Unique User" });
 
-      const { groupId } = await createGroupChat('Unique Test Group', npc.id);
+      const { groupId } = await createGroupChat("Unique Test Group", npc.id);
 
       // Create first membership
       const membershipId1 = await generateSnowflakeId();
@@ -1164,7 +1164,7 @@ describe('Group Chat Simulation - End to End Flow', () => {
           id: membershipId1,
           groupId,
           userId: user.id,
-          role: 'member',
+          role: "member",
           addedBy: npc.id,
           isActive: true,
         },
@@ -1180,7 +1180,7 @@ describe('Group Chat Simulation - End to End Flow', () => {
             id: membershipId2,
             groupId,
             userId: user.id, // Same user
-            role: 'member',
+            role: "member",
             addedBy: npc.id,
             isActive: true,
           },
@@ -1192,13 +1192,13 @@ describe('Group Chat Simulation - End to End Flow', () => {
       expect(duplicateError).toBe(true);
     });
 
-    test('should allow same user in different groups', async () => {
-      const npc1 = await createTestNPC('Multi Chat NPC 1');
-      const npc2 = await createTestNPC('Multi Chat NPC 2');
-      const user = await createTestUser({ displayName: 'Multi Chat User' });
+    test("should allow same user in different groups", async () => {
+      const npc1 = await createTestNPC("Multi Chat NPC 1");
+      const npc2 = await createTestNPC("Multi Chat NPC 2");
+      const user = await createTestUser({ displayName: "Multi Chat User" });
 
-      const { groupId: groupId1 } = await createGroupChat('Chat 1', npc1.id);
-      const { groupId: groupId2 } = await createGroupChat('Chat 2', npc2.id);
+      const { groupId: groupId1 } = await createGroupChat("Chat 1", npc1.id);
+      const { groupId: groupId2 } = await createGroupChat("Chat 2", npc2.id);
 
       // Add to first group
       await createGroupMembership({

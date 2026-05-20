@@ -1,14 +1,14 @@
-'use client';
+"use client";
 
-import { type ArticleItem, getTimeAgo, logger } from '@feed/shared';
-import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Skeleton } from '@/components/shared/Skeleton';
+import { type ArticleItem, getTimeAgo, logger } from "@feed/shared";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Skeleton } from "@/components/shared/Skeleton";
 // ArticleDetailModal removed - articles now use /post/[id] page
-import { useWidgetRefresh } from '@/contexts/WidgetRefreshContext';
-import { useSSEChannel } from '@/hooks/useSSE';
-import { useWidgetCacheStore } from '@/stores/widgetCacheStore';
-import { apiUrl } from '@/utils/api-url';
+import { useWidgetRefresh } from "@/contexts/WidgetRefreshContext";
+import { useSSEChannel } from "@/hooks/useSSE";
+import { useWidgetCacheStore } from "@/stores/widgetCacheStore";
+import { apiUrl } from "@/utils/api-url";
 
 /**
  * Latest news panel component for displaying recent articles.
@@ -54,35 +54,35 @@ export function LatestNewsPanel() {
       // Sort by published date (most recent first)
       const sorted = [...articles].sort(
         (a, b) =>
-          new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
+          new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime(),
       );
 
       for (const article of sorted) {
         // Extract significant words from title (3+ chars, excluding common words)
         const commonWords = new Set([
-          'the',
-          'and',
-          'for',
-          'are',
-          'but',
-          'not',
-          'you',
-          'all',
-          'can',
-          'her',
-          'was',
-          'one',
-          'our',
-          'out',
-          'day',
-          'has',
+          "the",
+          "and",
+          "for",
+          "are",
+          "but",
+          "not",
+          "you",
+          "all",
+          "can",
+          "her",
+          "was",
+          "one",
+          "our",
+          "out",
+          "day",
+          "has",
         ]);
         const titleWords = new Set(
           article.title
             .toLowerCase()
-            .replace(/[^a-z0-9\s]/g, '')
-            .split(' ')
-            .filter((w) => w.length > 3 && !commonWords.has(w))
+            .replace(/[^a-z0-9\s]/g, "")
+            .split(" ")
+            .filter((w) => w.length > 3 && !commonWords.has(w)),
         );
 
         const timestamp = new Date(article.publishedAt).getTime();
@@ -97,7 +97,7 @@ export function LatestNewsPanel() {
           if (isSameTimeWindow && article.category === seen.article.category) {
             // Calculate word overlap
             const intersection = new Set(
-              [...titleWords].filter((w) => seen.titleWords.has(w))
+              [...titleWords].filter((w) => seen.titleWords.has(w)),
             );
             const union = new Set([...titleWords, ...seen.titleWords]);
             const jaccardSimilarity = intersection.size / union.size;
@@ -106,14 +106,14 @@ export function LatestNewsPanel() {
             if (jaccardSimilarity >= 0.4) {
               isDuplicate = true;
               logger.debug(
-                'Duplicate article detected',
+                "Duplicate article detected",
                 {
                   kept: seen.article.title,
                   discarded: article.title,
                   similarity: jaccardSimilarity,
                   timeDiffMinutes: Math.round(timeDiff / 60000),
                 },
-                'LatestNewsPanel'
+                "LatestNewsPanel",
               );
               break;
             }
@@ -121,7 +121,7 @@ export function LatestNewsPanel() {
 
           // Rule 2: Very high title similarity (70%+) regardless of category = same event
           const intersection = new Set(
-            [...titleWords].filter((w) => seen.titleWords.has(w))
+            [...titleWords].filter((w) => seen.titleWords.has(w)),
           );
           const union = new Set([...titleWords, ...seen.titleWords]);
           const jaccardSimilarity = intersection.size / union.size;
@@ -129,13 +129,13 @@ export function LatestNewsPanel() {
           if (jaccardSimilarity >= 0.7) {
             isDuplicate = true;
             logger.debug(
-              'Duplicate article detected (high similarity)',
+              "Duplicate article detected (high similarity)",
               {
                 kept: seen.article.title,
                 discarded: article.title,
                 similarity: jaccardSimilarity,
               },
-              'LatestNewsPanel'
+              "LatestNewsPanel",
             );
             break;
           }
@@ -148,18 +148,18 @@ export function LatestNewsPanel() {
       }
 
       logger.debug(
-        'Deduplicated articles',
+        "Deduplicated articles",
         {
           before: articles.length,
           after: uniqueArticles.length,
           removed: articles.length - uniqueArticles.length,
         },
-        'LatestNewsPanel'
+        "LatestNewsPanel",
       );
 
       return uniqueArticles;
     },
-    []
+    [],
   );
 
   const fetchArticles = useCallback(
@@ -176,13 +176,13 @@ export function LatestNewsPanel() {
       }
 
       // Query posts API with type filter for articles - fetch more for deduplication
-      const response = await fetch(apiUrl('/api/posts?type=article&limit=15'));
+      const response = await fetch(apiUrl("/api/posts?type=article&limit=15"));
 
       if (!response.ok) {
         logger.error(
-          'Failed to fetch articles:',
+          "Failed to fetch articles:",
           { status: response.status },
-          'LatestNewsPanel'
+          "LatestNewsPanel",
         );
         setArticles([]);
         setLoading(false);
@@ -192,19 +192,19 @@ export function LatestNewsPanel() {
       const data = await response.json();
 
       logger.info(
-        'Articles API response:',
+        "Articles API response:",
         {
           hasPosts: !!data.posts,
           count: data.posts?.length || 0,
           firstPost: data.posts?.[0],
         },
-        'LatestNewsPanel'
+        "LatestNewsPanel",
       );
 
       if (data.posts && Array.isArray(data.posts) && data.posts.length > 0) {
         // Transform posts to ArticleItem format
         const articlesData: ArticleItem[] = data.posts
-          .filter((post: { type?: string }) => post.type === 'article') // Double-check type
+          .filter((post: { type?: string }) => post.type === "article") // Double-check type
           .map(
             (post: {
               id: string;
@@ -220,7 +220,7 @@ export function LatestNewsPanel() {
               content: string;
             }) => ({
               id: post.id,
-              title: post.articleTitle || 'Untitled Article',
+              title: post.articleTitle || "Untitled Article",
               summary: post.content,
               authorOrgName: post.authorName || post.authorId,
               byline: post.byline || undefined,
@@ -229,35 +229,35 @@ export function LatestNewsPanel() {
               publishedAt: post.timestamp,
               slant: post.slant || undefined,
               biasScore: post.biasScore !== null ? post.biasScore : undefined,
-            })
+            }),
           );
 
         // Deduplicate articles about the same event
         const uniqueArticles = deduplicateArticles(articlesData).slice(0, 5);
 
         logger.info(
-          'Articles processed:',
+          "Articles processed:",
           { count: uniqueArticles.length, articles: uniqueArticles },
-          'LatestNewsPanel'
+          "LatestNewsPanel",
         );
         setArticles(uniqueArticles);
         setLatestNews(uniqueArticles); // Cache the data
       } else {
         logger.warn(
-          'No articles in response',
+          "No articles in response",
           {
             hasData: !!data,
             hasPosts: !!data.posts,
             isArray: Array.isArray(data.posts),
             length: data.posts?.length,
           },
-          'LatestNewsPanel'
+          "LatestNewsPanel",
         );
         setArticles([]);
       }
       setLoading(false);
     },
-    [getLatestNews, setLatestNews, deduplicateArticles]
+    [getLatestNews, setLatestNews, deduplicateArticles],
   );
 
   // Update ref when fetchArticles changes
@@ -272,15 +272,15 @@ export function LatestNewsPanel() {
   // Register refresh function
   useEffect(() => {
     const refresh = () => fetchArticles(true);
-    registerRefresh('latest-news', refresh);
-    return () => unregisterRefresh('latest-news');
+    registerRefresh("latest-news", refresh);
+    return () => unregisterRefresh("latest-news");
   }, [registerRefresh, unregisterRefresh, fetchArticles]);
 
   // Real-time refresh on feed/breaking-news events
-  useSSEChannel('feed', () => {
+  useSSEChannel("feed", () => {
     void fetchArticles(true);
   });
-  useSSEChannel('breaking-news', () => {
+  useSSEChannel("breaking-news", () => {
     void fetchArticles(true);
   });
 

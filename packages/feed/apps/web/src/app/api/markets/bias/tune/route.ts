@@ -75,15 +75,15 @@
  * @see {@link /lib/feedback/bias-engine} Bias engine
  */
 
-import { requireAdmin, withErrorHandling } from '@feed/api';
-import { biasEngine } from '@feed/engine';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { z } from 'zod';
+import { requireAdmin, withErrorHandling } from "@feed/api";
+import { biasEngine } from "@feed/engine";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { z } from "zod";
 
 const TuneBiasSchema = z.object({
-  entityId: z.string().min(1, 'entityId is required'),
+  entityId: z.string().min(1, "entityId is required"),
   strength: z.number().min(0).max(1),
   decayRate: z.number().min(0).max(1).optional(),
 });

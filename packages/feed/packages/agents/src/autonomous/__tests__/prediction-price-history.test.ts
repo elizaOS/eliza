@@ -1,40 +1,40 @@
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 const actorState = {
-  id: 'id',
-  tradingBalance: 'tradingBalance',
+  id: "id",
+  tradingBalance: "tradingBalance",
 };
 
-const agentLogs = { table: 'AgentLog' };
-const agentTrades = { table: 'AgentTrade' };
-const markets = { table: 'Market', id: 'id', question: 'question' };
+const agentLogs = { table: "AgentLog" };
+const agentTrades = { table: "AgentTrade" };
+const markets = { table: "Market", id: "id", question: "question" };
 const positions = {
-  table: 'Position',
-  id: 'id',
-  userId: 'userId',
-  marketId: 'marketId',
-  side: 'side',
-  status: 'status',
-  shares: 'shares',
-  avgPrice: 'avgPrice',
-  createdAt: 'createdAt',
-  updatedAt: 'updatedAt',
+  table: "Position",
+  id: "id",
+  userId: "userId",
+  marketId: "marketId",
+  side: "side",
+  status: "status",
+  shares: "shares",
+  avgPrice: "avgPrice",
+  createdAt: "createdAt",
+  updatedAt: "updatedAt",
 };
-const predictionPriceHistories = { table: 'PredictionPriceHistory' };
+const predictionPriceHistories = { table: "PredictionPriceHistory" };
 const questions = {
-  table: 'Question',
-  id: 'id',
-  questionNumber: 'questionNumber',
+  table: "Question",
+  id: "id",
+  questionNumber: "questionNumber",
 };
-const users = { table: 'User', id: 'id', displayName: 'displayName' };
+const users = { table: "User", id: "id", displayName: "displayName" };
 
 const baseMarketRow = {
-  id: 'm1',
-  question: 'Will something happen?',
+  id: "m1",
+  question: "Will something happen?",
   description: null,
-  yesShares: '100',
-  noShares: '100',
-  liquidity: '10000',
+  yesShares: "100",
+  noShares: "100",
+  liquidity: "10000",
   endDate: new Date(Date.now() + 60 * 60 * 1000),
   resolved: false,
   resolution: null,
@@ -44,7 +44,7 @@ const baseMarketRow = {
 
 const marketRow = { ...baseMarketRow };
 
-const userRow = { displayName: 'Test Agent' };
+const userRow = { displayName: "Test Agent" };
 
 type PositionRow = {
   id: string;
@@ -64,13 +64,13 @@ type PositionRow = {
 };
 
 const basePositionRow: PositionRow = {
-  id: 'pos1',
-  userId: 'agent1',
+  id: "pos1",
+  userId: "agent1",
   marketId: marketRow.id,
   side: true,
   shares: 10,
   avgPrice: 0.5,
-  status: 'active',
+  status: "active",
   outcome: null,
   pnl: 0,
   resolvedAt: null,
@@ -163,35 +163,35 @@ const mockDb = {
   })),
 };
 
-mock.module('@feed/api', () => ({
+mock.module("@feed/api", () => ({
   broadcastAgentActivity: mock(async () => undefined),
   broadcastChatMessage: mock(async () => undefined),
   broadcastToChannel: mock(
     async (_channel: string, payload: Record<string, unknown>) => {
       broadcastedMarketsEvents.push(payload);
-    }
+    },
   ),
   cachedDb: {
     invalidateUserCache: mock(async () => undefined),
   },
 }));
 
-mock.module('@feed/core/markets/perps', () => ({
+mock.module("@feed/core/markets/perps", () => ({
   PerpDbAdapter: class {},
   PerpMarketService: class {},
 }));
 
-mock.module('@feed/engine', () => ({
+mock.module("@feed/engine", () => ({
   FEE_CONFIG: {
     TRADING_FEE_RATE: 0.001,
     PLATFORM_SHARE: 0.5,
     REFERRER_SHARE: 0.5,
     MIN_FEE_AMOUNT: 0.01,
     FEE_TYPES: {
-      pred_buy: 'pred_buy',
-      pred_sell: 'pred_sell',
-      perp_open: 'perp_open',
-      perp_close: 'perp_close',
+      pred_buy: "pred_buy",
+      pred_sell: "pred_sell",
+      perp_open: "perp_open",
+      perp_close: "perp_close",
     },
   },
   FeeService: {
@@ -201,7 +201,7 @@ mock.module('@feed/engine', () => ({
   PredictionPricing: {
     getCurrentPrice: mock(() => 0.5),
     calculateExpectedPayout: mock(
-      (shares: number, avgPrice: number) => shares * (1 + avgPrice)
+      (shares: number, avgPrice: number) => shares * (1 + avgPrice),
     ),
     calculateBuy: mock(() => ({
       shares: 10,
@@ -249,18 +249,18 @@ mock.module('@feed/engine', () => ({
   storeTagsForPost: mock(async () => undefined),
 }));
 
-mock.module('@feed/db', () => ({
+mock.module("@feed/db", () => ({
   actorState,
   agentLogs,
   agentTrades,
   aliasedTable: (table: unknown) => table,
   and: (...args: unknown[]) => args,
   asSystem: async (
-    operation: (database: typeof mockTxDb) => Promise<unknown>
+    operation: (database: typeof mockTxDb) => Promise<unknown>,
   ) => operation(mockTxDb),
   asUser: async (
     _user: { userId: string },
-    operation: (database: typeof mockTxDb) => Promise<unknown>
+    operation: (database: typeof mockTxDb) => Promise<unknown>,
   ) => operation(mockTxDb),
   chatParticipants: {},
   chats: {},
@@ -268,7 +268,7 @@ mock.module('@feed/db', () => ({
   db: mockDb,
   dmAcceptances: {},
   eq: (a: unknown, b: unknown) => ({ a, b }),
-  follows: { id: 'id', followerId: 'followerId', followingId: 'followingId' },
+  follows: { id: "id", followerId: "followerId", followingId: "followingId" },
   groupMembers: {},
   groups: {},
   gte: (a: unknown, b: unknown) => ({ a, b }),
@@ -288,15 +288,15 @@ mock.module('@feed/db', () => ({
   }),
   users,
   withTransaction: async (
-    operation: (database: typeof mockTxDb) => Promise<unknown>
+    operation: (database: typeof mockTxDb) => Promise<unknown>,
   ) => operation(mockTxDb),
   desc: (a: unknown) => a,
 }));
 
 // Import after mocks are set up
-import { executeDirectTrade } from '../DirectExecutors';
+import { executeDirectTrade } from "../DirectExecutors";
 
-describe('DirectExecutors prediction history pipeline', () => {
+describe("DirectExecutors prediction history pipeline", () => {
   beforeEach(() => {
     insertedPredictionHistory.length = 0;
     broadcastedMarketsEvents.length = 0;
@@ -305,14 +305,14 @@ describe('DirectExecutors prediction history pipeline', () => {
     walletGetBalance.mockImplementation(async () => ({ balance: 10000 }));
   });
 
-  test('records PredictionPriceHistory + broadcasts for agent prediction buys', async () => {
+  test("records PredictionPriceHistory + broadcasts for agent prediction buys", async () => {
     const result = await executeDirectTrade({
-      agentUserId: 'agent1',
-      marketType: 'prediction',
+      agentUserId: "agent1",
+      marketType: "prediction",
       marketId: marketRow.id,
-      side: 'buy_yes',
+      side: "buy_yes",
       amount: 10,
-      reasoning: 'test',
+      reasoning: "test",
     });
 
     expect(result.success).toBe(true);
@@ -320,86 +320,86 @@ describe('DirectExecutors prediction history pipeline', () => {
 
     const snapshot = insertedPredictionHistory[0]!;
     expect(snapshot.marketId).toBe(marketRow.id);
-    expect(snapshot.eventType).toBe('trade');
+    expect(snapshot.eventType).toBe("trade");
 
     expect(
-      broadcastedMarketsEvents.some((e) => e.type === 'prediction_trade')
+      broadcastedMarketsEvents.some((e) => e.type === "prediction_trade"),
     ).toBe(true);
   });
 
-  test('allows sell_yes exits with zero balance', async () => {
+  test("allows sell_yes exits with zero balance", async () => {
     positionRow = { ...basePositionRow, side: true };
     walletGetBalance.mockImplementationOnce(async () => ({ balance: 0 }));
 
     const result = await executeDirectTrade({
-      agentUserId: 'agent1',
-      marketType: 'prediction',
+      agentUserId: "agent1",
+      marketType: "prediction",
       marketId: marketRow.id,
-      side: 'sell_yes',
+      side: "sell_yes",
       amount: 0,
-      reasoning: 'exit',
+      reasoning: "exit",
     });
 
     expect(result.success).toBe(true);
   });
 
-  test('allows sell_no exits with zero balance', async () => {
+  test("allows sell_no exits with zero balance", async () => {
     positionRow = { ...basePositionRow, side: false };
     walletGetBalance.mockImplementationOnce(async () => ({ balance: 0 }));
 
     const result = await executeDirectTrade({
-      agentUserId: 'agent1',
-      marketType: 'prediction',
+      agentUserId: "agent1",
+      marketType: "prediction",
       marketId: marketRow.id,
-      side: 'sell_no',
+      side: "sell_no",
       amount: 0,
-      reasoning: 'exit',
+      reasoning: "exit",
     });
 
     expect(result.success).toBe(true);
   });
 
-  test('blocks entry trades with zero balance', async () => {
+  test("blocks entry trades with zero balance", async () => {
     walletGetBalance.mockImplementationOnce(async () => ({ balance: 0 }));
 
     const result = await executeDirectTrade({
-      agentUserId: 'agent1',
-      marketType: 'prediction',
+      agentUserId: "agent1",
+      marketType: "prediction",
       marketId: marketRow.id,
-      side: 'buy_yes',
+      side: "buy_yes",
       amount: 10,
-      reasoning: 'entry',
+      reasoning: "entry",
     });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('Insufficient balance');
+    expect(result.error).toContain("Insufficient balance");
   });
 
-  test('rejects non-finite trade amounts', async () => {
+  test("rejects non-finite trade amounts", async () => {
     const result = await executeDirectTrade({
-      agentUserId: 'agent1',
-      marketType: 'prediction',
+      agentUserId: "agent1",
+      marketType: "prediction",
       marketId: marketRow.id,
-      side: 'buy_yes',
+      side: "buy_yes",
       amount: Number.NaN,
-      reasoning: 'invalid',
+      reasoning: "invalid",
     });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('Invalid trade amount');
+    expect(result.error).toContain("Invalid trade amount");
   });
 
-  test('rejects invalid runtime trade sides instead of coercing them', async () => {
+  test("rejects invalid runtime trade sides instead of coercing them", async () => {
     const result = await executeDirectTrade({
-      agentUserId: 'agent1',
-      marketType: 'prediction',
+      agentUserId: "agent1",
+      marketType: "prediction",
       marketId: marketRow.id,
-      side: 'none' as never,
+      side: "none" as never,
       amount: 10,
-      reasoning: 'invalid-side',
+      reasoning: "invalid-side",
     });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('Invalid prediction trade side');
+    expect(result.error).toContain("Invalid prediction trade side");
   });
 });

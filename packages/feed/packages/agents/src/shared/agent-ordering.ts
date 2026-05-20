@@ -9,10 +9,10 @@
  * Strategies for ordering agent responses to untagged messages.
  */
 export type AgentOrderingStrategy =
-  | 'random'
-  | 'created_asc'
-  | 'created_desc'
-  | 'alphabetical';
+  | "random"
+  | "created_asc"
+  | "created_desc"
+  | "alphabetical";
 
 /**
  * Minimal agent info needed for ordering.
@@ -34,15 +34,15 @@ export interface OrderableAgent {
 export function orderAgentIds(
   agentIds: string[],
   teamAgents: OrderableAgent[],
-  strategy: AgentOrderingStrategy
+  strategy: AgentOrderingStrategy,
 ): string[] {
   const agentMap = new Map(teamAgents.map((a) => [a.id, a]));
 
   switch (strategy) {
-    case 'random':
+    case "random":
       return shuffleArray([...agentIds]);
 
-    case 'created_asc':
+    case "created_asc":
       return [...agentIds].sort((a, b) => {
         const agentA = agentMap.get(a);
         const agentB = agentMap.get(b);
@@ -51,7 +51,7 @@ export function orderAgentIds(
         return timeA - timeB;
       });
 
-    case 'created_desc':
+    case "created_desc":
       return [...agentIds].sort((a, b) => {
         const agentA = agentMap.get(a);
         const agentB = agentMap.get(b);
@@ -60,12 +60,12 @@ export function orderAgentIds(
         return timeB - timeA;
       });
 
-    case 'alphabetical':
+    case "alphabetical":
       return [...agentIds].sort((a, b) => {
         const agentA = agentMap.get(a);
         const agentB = agentMap.get(b);
-        const nameA = agentA?.displayName ?? '';
-        const nameB = agentB?.displayName ?? '';
+        const nameA = agentA?.displayName ?? "";
+        const nameB = agentB?.displayName ?? "";
         return nameA.localeCompare(nameB);
       });
 

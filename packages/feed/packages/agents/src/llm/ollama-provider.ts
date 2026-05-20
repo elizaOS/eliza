@@ -15,14 +15,14 @@
  * @packageDocumentation
  */
 
-import type { IAgentRuntime } from '@elizaos/core';
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   ensureTrajectoryStep,
   getTrajectoryContext,
   type RuntimeTrajectoryLogger,
-} from '../plugins/plugin-trajectory-logger/src/action-interceptor';
-import { logger } from '../shared/logger';
-import { buildReasoningTraceMetadata } from './reasoning-trace';
+} from "../plugins/plugin-trajectory-logger/src/action-interceptor";
+import { logger } from "../shared/logger";
+import { buildReasoningTraceMetadata } from "./reasoning-trace";
 
 /**
  * Ollama model metadata from API
@@ -54,29 +54,29 @@ interface OllamaListResponse {
  * Updated when new models are trained, benchmarked, and deployed
  */
 const ARCHETYPE_MODELS: Record<string, string> = {
-  trader: 'feed-trader:latest',
-  'social-butterfly': 'feed-social:latest',
-  scammer: 'feed-scammer:latest',
-  degen: 'feed-degen:latest',
-  'information-trader': 'feed-info-trader:latest',
-  researcher: 'feed-researcher:latest',
-  'goody-twoshoes': 'feed-goody:latest',
-  'ass-kisser': 'feed-asskisser:latest',
-  'perps-trader': 'feed-perps:latest',
-  'super-predictor': 'feed-predictor:latest',
-  infosec: 'feed-infosec:latest',
-  liar: 'feed-liar:latest',
+  trader: "feed-trader:latest",
+  "social-butterfly": "feed-social:latest",
+  scammer: "feed-scammer:latest",
+  degen: "feed-degen:latest",
+  "information-trader": "feed-info-trader:latest",
+  researcher: "feed-researcher:latest",
+  "goody-twoshoes": "feed-goody:latest",
+  "ass-kisser": "feed-asskisser:latest",
+  "perps-trader": "feed-perps:latest",
+  "super-predictor": "feed-predictor:latest",
+  infosec: "feed-infosec:latest",
+  liar: "feed-liar:latest",
 };
 
 // Default fallback model
-const DEFAULT_MODEL = 'qwen2.5:7b-instruct';
+const DEFAULT_MODEL = "qwen2.5:7b-instruct";
 
 function getConfiguredDefaultModel(): string | undefined {
   return process.env.OLLAMA_MODEL;
 }
 
 // Ollama configuration
-const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
+const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
 
 export interface OllamaCallParams {
   prompt: string;
@@ -87,7 +87,7 @@ export interface OllamaCallParams {
   maxTokens?: number;
   trajectoryLogger?: RuntimeTrajectoryLogger;
   trajectoryId?: string;
-  purpose?: 'action' | 'reasoning' | 'evaluation' | 'response' | 'other';
+  purpose?: "action" | "reasoning" | "evaluation" | "response" | "other";
   actionType?: string;
   runtime?: IAgentRuntime;
 }
@@ -97,7 +97,7 @@ export interface OllamaCallParams {
  */
 export async function isOllamaAvailable(): Promise<boolean> {
   const response = await fetch(`${OLLAMA_BASE_URL}/api/tags`, {
-    method: 'GET',
+    method: "GET",
     signal: AbortSignal.timeout(2000),
   });
   return response.ok;
@@ -108,7 +108,7 @@ export async function isOllamaAvailable(): Promise<boolean> {
  */
 export async function listOllamaModels(): Promise<OllamaModelInfo[]> {
   const response = await fetch(`${OLLAMA_BASE_URL}/api/tags`, {
-    method: 'GET',
+    method: "GET",
     signal: AbortSignal.timeout(5000),
   });
 
@@ -127,7 +127,7 @@ export async function isModelAvailable(modelName: string): Promise<boolean> {
   const models = await listOllamaModels();
   return models.some(
     (m) =>
-      m.name === modelName || m.name.startsWith(modelName.split(':')[0] ?? '')
+      m.name === modelName || m.name.startsWith(modelName.split(":")[0] ?? ""),
   );
 }
 
@@ -161,7 +161,7 @@ export async function getModelForArchetype(archetype: string): Promise<string> {
     return models[0].name;
   }
 
-  throw new Error('No Ollama models available');
+  throw new Error("No Ollama models available");
 }
 
 /**
@@ -204,17 +204,17 @@ export async function callOllama(params: OllamaCallParams): Promise<string> {
   const messages: Array<{ role: string; content: string }> = [];
 
   if (params.system) {
-    messages.push({ role: 'system', content: params.system });
+    messages.push({ role: "system", content: params.system });
   }
 
-  messages.push({ role: 'user', content: params.prompt });
+  messages.push({ role: "user", content: params.prompt });
 
   // Call Ollama chat API
   const timeoutMs = params.maxTokens && params.maxTokens < 500 ? 30000 : 120000;
 
   const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       model,
       messages,
@@ -239,7 +239,7 @@ export async function callOllama(params: OllamaCallParams): Promise<string> {
     eval_count?: number;
   };
 
-  const responseText = data.message?.content || data.response || '';
+  const responseText = data.message?.content || data.response || "";
   const latencyMs = Date.now() - startTime;
 
   // Log to trajectory if available (CRITICAL for RL training data collection)
@@ -259,12 +259,12 @@ export async function callOllama(params: OllamaCallParams): Promise<string> {
     const reasoningMetadata = buildReasoningTraceMetadata(responseText);
     trajectoryLogger.logLLMCall(stepId, {
       model,
-      systemPrompt: params.system || '',
+      systemPrompt: params.system || "",
       userPrompt: params.prompt,
       response: responseText,
       temperature: params.temperature ?? 0.7,
       maxTokens: params.maxTokens ?? 8192,
-      purpose: params.purpose || 'action',
+      purpose: params.purpose || "action",
       actionType: params.actionType,
       latencyMs,
       promptTokens: data.prompt_eval_count,
@@ -274,14 +274,14 @@ export async function callOllama(params: OllamaCallParams): Promise<string> {
   }
 
   logger.debug(
-    'Ollama call complete',
+    "Ollama call complete",
     {
       model,
       archetype: params.archetype,
       latencyMs,
       responseLength: responseText.length,
     },
-    'OllamaProvider'
+    "OllamaProvider",
   );
 
   return responseText;
@@ -294,13 +294,13 @@ export async function callOllama(params: OllamaCallParams): Promise<string> {
  */
 export function updateArchetypeModel(
   archetype: string,
-  modelName: string
+  modelName: string,
 ): void {
   ARCHETYPE_MODELS[archetype] = modelName;
   logger.info(
-    'Updated archetype model',
+    "Updated archetype model",
     { archetype, modelName },
-    'OllamaProvider'
+    "OllamaProvider",
   );
 }
 
@@ -323,7 +323,7 @@ export async function importModelToOllama(params: {
   baseModel?: string;
 }): Promise<boolean> {
   // Create Modelfile for Ollama
-  const modelfile = `FROM ${params.baseModel || 'qwen2.5:7b-instruct'}
+  const modelfile = `FROM ${params.baseModel || "qwen2.5:7b-instruct"}
 ADAPTER ${params.modelPath}
 PARAMETER temperature 0.7
 PARAMETER num_predict 8192
@@ -331,8 +331,8 @@ PARAMETER num_predict 8192
 
   // Create the model in Ollama
   const response = await fetch(`${OLLAMA_BASE_URL}/api/create`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       name: params.modelName,
       modelfile,
@@ -347,9 +347,9 @@ PARAMETER num_predict 8192
   }
 
   logger.info(
-    'Successfully imported model to Ollama',
+    "Successfully imported model to Ollama",
     { modelName: params.modelName },
-    'OllamaProvider'
+    "OllamaProvider",
   );
 
   return true;

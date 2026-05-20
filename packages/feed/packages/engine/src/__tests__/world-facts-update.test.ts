@@ -5,7 +5,7 @@
  * Tests actually call the production function with mocked dependencies.
  */
 
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 // Track mock behavior flags
 let lockAcquireReturnValue = true;
@@ -29,7 +29,7 @@ let insertedMarkers: Array<Record<string, unknown>> = [];
 // Create stable mock functions that can be reused
 const mockInsertValues = (data: Record<string, unknown>) => {
   if (markerInsertThrows) {
-    return Promise.reject(new Error('Marker insert failed'));
+    return Promise.reject(new Error("Marker insert failed"));
   }
   // Capture the inserted marker data
   insertedMarkers.push(data);
@@ -65,7 +65,7 @@ const mockDb = {
   })),
 };
 
-mock.module('@feed/db', () => ({
+mock.module("@feed/db", () => ({
   db: mockDb,
   and: (...args: unknown[]) => args,
   desc: (col: unknown) => col,
@@ -75,19 +75,19 @@ mock.module('@feed/db', () => ({
   isNull: (a: unknown) => [a],
   lte: (a: unknown, b: unknown) => [a, b],
   worldFacts: {
-    id: 'id',
-    category: 'category',
-    key: 'key',
-    label: 'label',
-    value: 'value',
-    source: 'source',
-    priority: 'priority',
-    isActive: 'isActive',
-    lastUpdated: 'lastUpdated',
-    updatedAt: 'updatedAt',
-    createdAt: 'createdAt',
+    id: "id",
+    category: "category",
+    key: "key",
+    label: "label",
+    value: "value",
+    source: "source",
+    priority: "priority",
+    isActive: "isActive",
+    lastUpdated: "lastUpdated",
+    updatedAt: "updatedAt",
+    createdAt: "createdAt",
   },
-  sql: (strings: TemplateStringsArray) => strings.join(''),
+  sql: (strings: TemplateStringsArray) => strings.join(""),
 }));
 
 // Mock logger with call tracking
@@ -98,8 +98,8 @@ const mockLogger = {
   error: mock(() => {}),
 };
 
-mock.module('@feed/shared', () => ({
-  generateSnowflakeId: mock(() => Promise.resolve('test-snowflake-id')),
+mock.module("@feed/shared", () => ({
+  generateSnowflakeId: mock(() => Promise.resolve("test-snowflake-id")),
   logger: mockLogger,
 }));
 
@@ -117,7 +117,7 @@ const mockDistributedLockService = {
   }),
 };
 
-mock.module('../services/distributed-lock-service', () => ({
+mock.module("../services/distributed-lock-service", () => ({
   DistributedLockService: mockDistributedLockService,
 }));
 
@@ -125,20 +125,20 @@ mock.module('../services/distributed-lock-service', () => ({
 const mockRssFeedService = {
   fetchAllFeeds: mock(async () => {
     if (rssFetchThrows) {
-      throw new Error('RSS fetch failed');
+      throw new Error("RSS fetch failed");
     }
     return { fetched: 5, stored: 3, errors: 0 };
   }),
   getUntransformedHeadlines: mock(async () => []),
   cleanupOldHeadlines: mock(async () => {
     if (cleanupThrows) {
-      throw new Error('Cleanup failed');
+      throw new Error("Cleanup failed");
     }
     return 10;
   }),
 };
 
-mock.module('../services/rss-feed-service', () => ({
+mock.module("../services/rss-feed-service", () => ({
   rssFeedService: mockRssFeedService,
 }));
 
@@ -146,26 +146,26 @@ mock.module('../services/rss-feed-service', () => ({
 const mockParodyGenerator = {
   processHeadlines: mock(async () => {
     if (parodyProcessThrows) {
-      throw new Error('Parody processing failed');
+      throw new Error("Parody processing failed");
     }
     return [];
   }),
 };
 
-mock.module('../services/parody-headline-generator', () => ({
+mock.module("../services/parody-headline-generator", () => ({
   createParodyHeadlineGenerator: mock(() => mockParodyGenerator),
 }));
 
-mock.module('../services/daily-topic-service', () => ({
+mock.module("../services/daily-topic-service", () => ({
   dailyTopicService: {
     ensureTopicForDate: mock(async () => ({
-      topicKey: 'openai',
-      topicLabel: 'OpenAI',
-      summary: 'OpenAI stays the single topic for the day',
-      date: new Date('2026-03-06T00:00:00.000Z'),
-      sourceType: 'auto',
+      topicKey: "openai",
+      topicLabel: "OpenAI",
+      summary: "OpenAI stays the single topic for the day",
+      date: new Date("2026-03-06T00:00:00.000Z"),
+      sourceType: "auto",
       sourceHeadlineIds: [],
-      selectionReason: 'Matched headlines',
+      selectionReason: "Matched headlines",
       isLocked: false,
     })),
   },
@@ -175,7 +175,7 @@ mock.module('../services/daily-topic-service', () => ({
 const mockWorldFactsGenerator = {
   generateNewWorldFacts: mock(async () => {
     if (generateFactsThrows) {
-      throw new Error('Facts generation failed');
+      throw new Error("Facts generation failed");
     }
     return {
       generated: 5,
@@ -185,13 +185,13 @@ const mockWorldFactsGenerator = {
   }),
 };
 
-mock.module('../services/world-facts-generator', () => ({
+mock.module("../services/world-facts-generator", () => ({
   createWorldFactsGenerator: mock(() => mockWorldFactsGenerator),
 }));
 
 // Import the function AFTER mocks are set up
 // Note: In Bun, mock.module is hoisted, so this import will use the mocked modules
-import { GENERATION_MARKER, updateWorldFactsIfNeeded } from '../game-tick';
+import { GENERATION_MARKER, updateWorldFactsIfNeeded } from "../game-tick";
 
 // Helper to reset all mocks and flags
 function resetMocks() {
@@ -218,8 +218,8 @@ function resetMocks() {
   mockWorldFactsGenerator.generateNewWorldFacts.mockClear?.();
 }
 
-describe('World Facts Update - Lock Renewal Interval Calculation', () => {
-  test('lock renewal interval is half of lock duration', () => {
+describe("World Facts Update - Lock Renewal Interval Calculation", () => {
+  test("lock renewal interval is half of lock duration", () => {
     // Default lock duration is 30 minutes = 1,800,000 ms
     // Half of that is 15 minutes = 900,000 ms
     // Minimum is 1 minute = 60,000 ms
@@ -230,13 +230,13 @@ describe('World Facts Update - Lock Renewal Interval Calculation', () => {
 
     const expectedRenewalInterval = Math.max(
       minRenewalMs,
-      Math.floor(lockDurationMs / 2)
+      Math.floor(lockDurationMs / 2),
     );
 
     expect(expectedRenewalInterval).toBe(15 * 60 * 1000); // 15 minutes
   });
 
-  test('lock renewal interval respects minimum of 1 minute', () => {
+  test("lock renewal interval respects minimum of 1 minute", () => {
     // If lock duration is 1 minute = 60,000 ms
     // Half of that is 30 seconds = 30,000 ms
     // But minimum is 1 minute = 60,000 ms
@@ -246,13 +246,13 @@ describe('World Facts Update - Lock Renewal Interval Calculation', () => {
 
     const expectedRenewalInterval = Math.max(
       minRenewalMs,
-      Math.floor(shortLockDurationMs / 2)
+      Math.floor(shortLockDurationMs / 2),
     );
 
     expect(expectedRenewalInterval).toBe(60 * 1000); // 1 minute minimum
   });
 
-  test('lock renewal interval is clamped for very short lock durations', () => {
+  test("lock renewal interval is clamped for very short lock durations", () => {
     // If lock duration is 30 seconds = 30,000 ms
     // Half of that is 15 seconds = 15,000 ms
     // But minimum is 1 minute = 60,000 ms
@@ -262,19 +262,19 @@ describe('World Facts Update - Lock Renewal Interval Calculation', () => {
 
     const expectedRenewalInterval = Math.max(
       minRenewalMs,
-      Math.floor(veryShortLockDurationMs / 2)
+      Math.floor(veryShortLockDurationMs / 2),
     );
 
     expect(expectedRenewalInterval).toBe(60 * 1000); // 1 minute minimum
   });
 });
 
-describe('World Facts Update - Check Before Lock Pattern', () => {
+describe("World Facts Update - Check Before Lock Pattern", () => {
   beforeEach(() => {
     resetMocks();
   });
 
-  test('should not acquire lock when update is not needed', async () => {
+  test("should not acquire lock when update is not needed", async () => {
     // Set lastAutoFactCreatedAt to recent time so shouldUpdate returns false
     lastAutoFactCreatedAt = new Date(); // Now - will make shouldUpdate return false
 
@@ -286,7 +286,7 @@ describe('World Facts Update - Check Before Lock Pattern', () => {
     expect(lockReleaseCalls.length).toBe(0);
   });
 
-  test('should acquire lock when update is needed', async () => {
+  test("should acquire lock when update is needed", async () => {
     // Set lastAutoFactCreatedAt to old time so shouldUpdate returns true
     lastAutoFactCreatedAt = new Date(Date.now() - 24 * 60 * 60 * 1000); // 24 hours ago
 
@@ -298,7 +298,7 @@ describe('World Facts Update - Check Before Lock Pattern', () => {
     expect(lockReleaseCalls.length).toBe(1);
   });
 
-  test('should return early when lock cannot be acquired', async () => {
+  test("should return early when lock cannot be acquired", async () => {
     // Set up: update needed but lock not available
     lastAutoFactCreatedAt = new Date(Date.now() - 24 * 60 * 60 * 1000); // 24 hours ago
     lockAcquireReturnValue = false;
@@ -312,14 +312,14 @@ describe('World Facts Update - Check Before Lock Pattern', () => {
   });
 });
 
-describe('World Facts Update - RSS/Parody Pipeline Error Handling', () => {
+describe("World Facts Update - RSS/Parody Pipeline Error Handling", () => {
   beforeEach(() => {
     resetMocks();
     // Set up: update is needed
     lastAutoFactCreatedAt = new Date(Date.now() - 24 * 60 * 60 * 1000); // 24 hours ago
   });
 
-  test('RSS fetch error should be caught, logged, and return updated:false', async () => {
+  test("RSS fetch error should be caught, logged, and return updated:false", async () => {
     rssFetchThrows = true;
 
     const result = await updateWorldFactsIfNeeded();
@@ -330,7 +330,7 @@ describe('World Facts Update - RSS/Parody Pipeline Error Handling', () => {
     expect(lockReleaseCalls.length).toBe(1);
   });
 
-  test('parody processing error should be caught, logged, and return updated:false', async () => {
+  test("parody processing error should be caught, logged, and return updated:false", async () => {
     parodyProcessThrows = true;
 
     const result = await updateWorldFactsIfNeeded();
@@ -340,7 +340,7 @@ describe('World Facts Update - RSS/Parody Pipeline Error Handling', () => {
     expect(lockReleaseCalls.length).toBe(1);
   });
 
-  test('cleanup error should be caught, logged, and return updated:false', async () => {
+  test("cleanup error should be caught, logged, and return updated:false", async () => {
     cleanupThrows = true;
 
     const result = await updateWorldFactsIfNeeded();
@@ -350,7 +350,7 @@ describe('World Facts Update - RSS/Parody Pipeline Error Handling', () => {
     expect(lockReleaseCalls.length).toBe(1);
   });
 
-  test('pipeline errors should not prevent lock release', async () => {
+  test("pipeline errors should not prevent lock release", async () => {
     rssFetchThrows = true;
 
     await updateWorldFactsIfNeeded();
@@ -361,7 +361,7 @@ describe('World Facts Update - RSS/Parody Pipeline Error Handling', () => {
   });
 });
 
-describe('World Facts Update - Generation Marker Error Handling', () => {
+describe("World Facts Update - Generation Marker Error Handling", () => {
   beforeEach(() => {
     resetMocks();
     // Set up: update is needed, generation succeeds
@@ -369,7 +369,7 @@ describe('World Facts Update - Generation Marker Error Handling', () => {
     generateFactsThrows = false; // Explicitly ensure generation succeeds
   });
 
-  test('marker insert error should be caught and logged', async () => {
+  test("marker insert error should be caught and logged", async () => {
     markerInsertThrows = true;
 
     const result = await updateWorldFactsIfNeeded();
@@ -379,7 +379,7 @@ describe('World Facts Update - Generation Marker Error Handling', () => {
     expect(mockLogger.error).toHaveBeenCalled();
   });
 
-  test('marker error should not affect return value', async () => {
+  test("marker error should not affect return value", async () => {
     markerInsertThrows = true;
 
     const result = await updateWorldFactsIfNeeded();
@@ -391,14 +391,14 @@ describe('World Facts Update - Generation Marker Error Handling', () => {
   });
 });
 
-describe('World Facts Update - Facts Generation Error Handling', () => {
+describe("World Facts Update - Facts Generation Error Handling", () => {
   beforeEach(() => {
     resetMocks();
     // Set up: update is needed
     lastAutoFactCreatedAt = new Date(Date.now() - 24 * 60 * 60 * 1000); // 24 hours ago
   });
 
-  test('facts generation error should be caught and logged', async () => {
+  test("facts generation error should be caught and logged", async () => {
     generateFactsThrows = true;
 
     const result = await updateWorldFactsIfNeeded();
@@ -408,7 +408,7 @@ describe('World Facts Update - Facts Generation Error Handling', () => {
     expect(mockLogger.error).toHaveBeenCalled();
   });
 
-  test('facts generation error uses default result values', async () => {
+  test("facts generation error uses default result values", async () => {
     generateFactsThrows = true;
 
     const result = await updateWorldFactsIfNeeded();
@@ -418,7 +418,7 @@ describe('World Facts Update - Facts Generation Error Handling', () => {
     expect(result.stats?.worldFactsArchived).toBe(0); // Default value
   });
 
-  test('facts generation error skips marker to allow immediate retry', async () => {
+  test("facts generation error skips marker to allow immediate retry", async () => {
     // Reset insertedMarkers and mocks to ensure clean state
     insertedMarkers = [];
     mockDb.insert.mockClear?.();
@@ -435,7 +435,7 @@ describe('World Facts Update - Facts Generation Error Handling', () => {
     expect(mockLogger.error).toHaveBeenCalled();
   });
 
-  test('successful generation inserts marker', async () => {
+  test("successful generation inserts marker", async () => {
     generateFactsThrows = false;
 
     const result = await updateWorldFactsIfNeeded();
@@ -446,14 +446,14 @@ describe('World Facts Update - Facts Generation Error Handling', () => {
   });
 });
 
-describe('World Facts Update - Lock Not Acquired Scenario', () => {
+describe("World Facts Update - Lock Not Acquired Scenario", () => {
   beforeEach(() => {
     resetMocks();
     lastAutoFactCreatedAt = new Date(Date.now() - 24 * 60 * 60 * 1000); // 24 hours ago
     lockAcquireReturnValue = false;
   });
 
-  test('should return early when lock cannot be acquired', async () => {
+  test("should return early when lock cannot be acquired", async () => {
     const result = await updateWorldFactsIfNeeded();
 
     expect(result.updated).toBe(false);
@@ -463,14 +463,14 @@ describe('World Facts Update - Lock Not Acquired Scenario', () => {
   });
 });
 
-describe('World Facts Update - Successful Run', () => {
+describe("World Facts Update - Successful Run", () => {
   beforeEach(() => {
     resetMocks();
     lastAutoFactCreatedAt = new Date(Date.now() - 24 * 60 * 60 * 1000); // 24 hours ago
     generateFactsThrows = false; // Explicitly ensure generation succeeds
   });
 
-  test('successful run returns complete stats', async () => {
+  test("successful run returns complete stats", async () => {
     const result = await updateWorldFactsIfNeeded();
 
     expect(result.updated).toBe(true);
@@ -484,7 +484,7 @@ describe('World Facts Update - Successful Run', () => {
     expect(result.stats?.worldFactsArchived).toBeGreaterThanOrEqual(0);
   });
 
-  test('successful run acquires and releases lock', async () => {
+  test("successful run acquires and releases lock", async () => {
     await updateWorldFactsIfNeeded();
 
     expect(lockAcquireCalls.length).toBe(1);
@@ -492,7 +492,7 @@ describe('World Facts Update - Successful Run', () => {
   });
 });
 
-describe('World Facts Update - Marker Persistence Integration', () => {
+describe("World Facts Update - Marker Persistence Integration", () => {
   /**
    * Note: Due to Bun test isolation, some mocks may not be applied correctly
    * when running alongside other tests. The marker insertion logic is verified
@@ -510,7 +510,7 @@ describe('World Facts Update - Marker Persistence Integration', () => {
     lastAutoFactCreatedAt = new Date(Date.now() - 24 * 60 * 60 * 1000); // 24 hours ago
   });
 
-  test('update function completes and returns stats', async () => {
+  test("update function completes and returns stats", async () => {
     const result = await updateWorldFactsIfNeeded();
 
     // Function should complete successfully
@@ -520,7 +520,7 @@ describe('World Facts Update - Marker Persistence Integration', () => {
     expect(result.stats?.worldFactsGenerated).toBeGreaterThanOrEqual(0);
   });
 
-  test('marker data structure is correct when captured', async () => {
+  test("marker data structure is correct when captured", async () => {
     // Reset insertedMarkers to ensure clean state
     insertedMarkers = [];
 
@@ -537,28 +537,28 @@ describe('World Facts Update - Marker Persistence Integration', () => {
       const actualMarker = insertedMarkers.find(
         (m) =>
           m.category === GENERATION_MARKER.CATEGORY &&
-          m.key === GENERATION_MARKER.KEY
+          m.key === GENERATION_MARKER.KEY,
       );
       expect(actualMarker).toBeDefined();
 
       // Assert the implementation output matches the imported constants (DRY)
-      expect(actualMarker!.category).toBe(GENERATION_MARKER.CATEGORY);
-      expect(actualMarker!.key).toBe(GENERATION_MARKER.KEY);
-      expect(actualMarker!.isActive).toBe(GENERATION_MARKER.IS_ACTIVE);
-      expect(actualMarker!.priority).toBe(GENERATION_MARKER.PRIORITY);
-      expect(actualMarker!.source).toBe(GENERATION_MARKER.SOURCE);
-      expect(actualMarker!.label).toBe(GENERATION_MARKER.LABEL);
+      expect(actualMarker?.category).toBe(GENERATION_MARKER.CATEGORY);
+      expect(actualMarker?.key).toBe(GENERATION_MARKER.KEY);
+      expect(actualMarker?.isActive).toBe(GENERATION_MARKER.IS_ACTIVE);
+      expect(actualMarker?.priority).toBe(GENERATION_MARKER.PRIORITY);
+      expect(actualMarker?.source).toBe(GENERATION_MARKER.SOURCE);
+      expect(actualMarker?.label).toBe(GENERATION_MARKER.LABEL);
 
       // For timestamps/IDs, use flexible matchers
-      expect(actualMarker!.id).toBe('test-snowflake-id'); // From mock
-      expect(actualMarker!.createdAt).toBeInstanceOf(Date);
-      expect(actualMarker!.updatedAt).toBeInstanceOf(Date);
-      expect(actualMarker!.lastUpdated).toBeInstanceOf(Date);
+      expect(actualMarker?.id).toBe("test-snowflake-id"); // From mock
+      expect(actualMarker?.createdAt).toBeInstanceOf(Date);
+      expect(actualMarker?.updatedAt).toBeInstanceOf(Date);
+      expect(actualMarker?.lastUpdated).toBeInstanceOf(Date);
 
       // Verify value format contains expected pattern
-      expect(typeof actualMarker!.value).toBe('string');
-      expect(actualMarker!.value as string).toContain('Generation run at');
-      expect(actualMarker!.value as string).toContain('facts created');
+      expect(typeof actualMarker?.value).toBe("string");
+      expect(actualMarker?.value as string).toContain("Generation run at");
+      expect(actualMarker?.value as string).toContain("facts created");
     } else {
       // FALLBACK FOR BUN TEST ISOLATION:
       // When Bun's test isolation prevents insertedMarkers from capturing actual
@@ -570,7 +570,7 @@ describe('World Facts Update - Marker Persistence Integration', () => {
       // the expected shape - this is explicitly NOT testing production code.
       const now = new Date();
       const testMarker = {
-        id: 'test-snowflake-id',
+        id: "test-snowflake-id",
         category: GENERATION_MARKER.CATEGORY,
         key: GENERATION_MARKER.KEY,
         label: GENERATION_MARKER.LABEL,
@@ -591,31 +591,31 @@ describe('World Facts Update - Marker Persistence Integration', () => {
       expect(actualMarker).toBeDefined();
 
       // Verify using imported constants (DRY - single source of truth)
-      expect(actualMarker!.category).toBe(GENERATION_MARKER.CATEGORY);
-      expect(actualMarker!.key).toBe(GENERATION_MARKER.KEY);
-      expect(actualMarker!.isActive).toBe(GENERATION_MARKER.IS_ACTIVE);
-      expect(actualMarker!.priority).toBe(GENERATION_MARKER.PRIORITY);
-      expect(actualMarker!.source).toBe(GENERATION_MARKER.SOURCE);
-      expect(actualMarker!.label).toBe(GENERATION_MARKER.LABEL);
-      expect(actualMarker!.value).toContain('Generation run at');
-      expect(actualMarker!.value).toContain('facts created');
+      expect(actualMarker?.category).toBe(GENERATION_MARKER.CATEGORY);
+      expect(actualMarker?.key).toBe(GENERATION_MARKER.KEY);
+      expect(actualMarker?.isActive).toBe(GENERATION_MARKER.IS_ACTIVE);
+      expect(actualMarker?.priority).toBe(GENERATION_MARKER.PRIORITY);
+      expect(actualMarker?.source).toBe(GENERATION_MARKER.SOURCE);
+      expect(actualMarker?.label).toBe(GENERATION_MARKER.LABEL);
+      expect(actualMarker?.value).toContain("Generation run at");
+      expect(actualMarker?.value).toContain("facts created");
     }
   });
 
-  test('insert mock captures data correctly', () => {
+  test("insert mock captures data correctly", () => {
     // Test the mock directly
-    const testData = { key: 'test-marker', value: 'test-value' };
+    const testData = { key: "test-marker", value: "test-value" };
     mockInsertValues(testData);
 
     expect(insertedMarkers.length).toBe(1);
     expect(insertedMarkers[0]).toEqual(testData);
   });
 
-  test('insert mock rejects when markerInsertThrows is true', async () => {
+  test("insert mock rejects when markerInsertThrows is true", async () => {
     markerInsertThrows = true;
 
-    await expect(mockInsertValues({ key: 'test' })).rejects.toThrow(
-      'Marker insert failed'
+    await expect(mockInsertValues({ key: "test" })).rejects.toThrow(
+      "Marker insert failed",
     );
   });
 });

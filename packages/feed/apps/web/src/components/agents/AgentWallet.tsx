@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { cn, formatCompactCurrency } from '@feed/shared';
+import { cn, formatCompactCurrency } from "@feed/shared";
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
@@ -8,11 +8,11 @@ import {
   Loader2,
   TrendingDown,
   TrendingUp,
-} from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
-import { toast } from 'sonner';
-import { useAuth } from '@/hooks/useAuth';
-import { apiUrl } from '@/utils/api-url';
+} from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
+import { useAuth } from "@/hooks/useAuth";
+import { apiUrl } from "@/utils/api-url";
 
 interface Transaction {
   id: string;
@@ -39,14 +39,14 @@ export function AgentWallet({ agent, onUpdate }: AgentWalletProps) {
 
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(false);
-  const [amount, setAmount] = useState('');
-  const [action, setAction] = useState<'deposit' | 'withdraw'>('deposit');
+  const [amount, setAmount] = useState("");
+  const [action, setAction] = useState<"deposit" | "withdraw">("deposit");
   const [processing, setProcessing] = useState(false);
 
   const [balanceInfo, setBalanceInfo] = useState({
     agentBalance: agent.virtualBalance ?? 0,
     userBalance: 0,
-    lifetimePnL: parseFloat(agent.lifetimePnL ?? '0'),
+    lifetimePnL: parseFloat(agent.lifetimePnL ?? "0"),
   });
 
   const fetchBalanceAndTransactions = useCallback(async () => {
@@ -79,19 +79,19 @@ export function AgentWallet({ agent, onUpdate }: AgentWalletProps) {
     const amountNum = parseFloat(amount);
 
     if (!amountNum || amountNum <= 0) {
-      toast.error('Please enter a valid amount');
+      toast.error("Please enter a valid amount");
       return;
     }
 
-    if (action === 'deposit' && amountNum > balanceInfo.userBalance) {
+    if (action === "deposit" && amountNum > balanceInfo.userBalance) {
       toast.error(
-        `Insufficient balance. You have ${balanceInfo.userBalance.toFixed(2)} pts`
+        `Insufficient balance. You have ${balanceInfo.userBalance.toFixed(2)} pts`,
       );
       return;
     }
-    if (action === 'withdraw' && amountNum > balanceInfo.agentBalance) {
+    if (action === "withdraw" && amountNum > balanceInfo.agentBalance) {
       toast.error(
-        `Insufficient agent balance. Agent has ${balanceInfo.agentBalance.toFixed(2)} pts`
+        `Insufficient agent balance. Agent has ${balanceInfo.agentBalance.toFixed(2)} pts`,
       );
       return;
     }
@@ -100,7 +100,7 @@ export function AgentWallet({ agent, onUpdate }: AgentWalletProps) {
     const token = await getAccessToken();
     if (!token) {
       setProcessing(false);
-      toast.error('Authentication required');
+      toast.error("Authentication required");
       return;
     }
 
@@ -108,29 +108,29 @@ export function AgentWallet({ agent, onUpdate }: AgentWalletProps) {
       const res = await fetch(
         apiUrl(`/api/agents/${agent.id}/trading-balance`),
         {
-          method: 'POST',
+          method: "POST",
           headers: {
             Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
+            "Content-Type": "application/json",
           },
           body: JSON.stringify({ action, amount: amountNum }),
-        }
+        },
       );
 
       if (!res.ok) {
         const error = await res.json();
-        throw new Error(error.error || 'Transaction failed');
+        throw new Error(error.error || "Transaction failed");
       }
 
       const data = await res.json();
       toast.success(data.message);
-      setAmount('');
+      setAmount("");
 
       await fetchBalanceAndTransactions();
       onUpdate();
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : 'Transaction failed'
+        error instanceof Error ? error.message : "Transaction failed",
       );
     } finally {
       setProcessing(false);
@@ -153,8 +153,8 @@ export function AgentWallet({ agent, onUpdate }: AgentWalletProps) {
           <span className="text-muted-foreground text-xs">Lifetime P&L</span>
           <span
             className={cn(
-              'flex items-center gap-1 font-semibold text-sm',
-              isProfitable ? 'text-green-600' : 'text-red-600'
+              "flex items-center gap-1 font-semibold text-sm",
+              isProfitable ? "text-green-600" : "text-red-600",
             )}
           >
             {isProfitable ? (
@@ -162,7 +162,7 @@ export function AgentWallet({ agent, onUpdate }: AgentWalletProps) {
             ) : (
               <TrendingDown className="h-3 w-3" />
             )}
-            {isProfitable ? '+' : ''}
+            {isProfitable ? "+" : ""}
             {formatCompactCurrency(balanceInfo.lifetimePnL)}
           </span>
         </div>
@@ -179,12 +179,12 @@ export function AgentWallet({ agent, onUpdate }: AgentWalletProps) {
         <div className="mb-2.5 grid grid-cols-2 gap-1.5">
           <button
             type="button"
-            onClick={() => setAction('deposit')}
+            onClick={() => setAction("deposit")}
             className={cn(
-              'flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 font-medium text-xs transition-colors',
-              action === 'deposit'
-                ? 'bg-[#0066FF] text-white'
-                : 'bg-muted text-foreground hover:bg-muted/80'
+              "flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 font-medium text-xs transition-colors",
+              action === "deposit"
+                ? "bg-[#0066FF] text-white"
+                : "bg-muted text-foreground hover:bg-muted/80",
             )}
           >
             <ArrowDownToLine className="h-3.5 w-3.5" />
@@ -192,12 +192,12 @@ export function AgentWallet({ agent, onUpdate }: AgentWalletProps) {
           </button>
           <button
             type="button"
-            onClick={() => setAction('withdraw')}
+            onClick={() => setAction("withdraw")}
             className={cn(
-              'flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 font-medium text-xs transition-colors',
-              action === 'withdraw'
-                ? 'bg-[#0066FF] text-white'
-                : 'bg-muted text-foreground hover:bg-muted/80'
+              "flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 font-medium text-xs transition-colors",
+              action === "withdraw"
+                ? "bg-[#0066FF] text-white"
+                : "bg-muted text-foreground hover:bg-muted/80",
             )}
           >
             <ArrowUpFromLine className="h-3.5 w-3.5" />
@@ -214,7 +214,7 @@ export function AgentWallet({ agent, onUpdate }: AgentWalletProps) {
             min={0.01}
             step={0.01}
             max={
-              action === 'deposit'
+              action === "deposit"
                 ? balanceInfo.userBalance
                 : balanceInfo.agentBalance
             }
@@ -228,16 +228,16 @@ export function AgentWallet({ agent, onUpdate }: AgentWalletProps) {
           >
             {processing ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : action === 'deposit' ? (
-              'Deposit'
+            ) : action === "deposit" ? (
+              "Deposit"
             ) : (
-              'Withdraw'
+              "Withdraw"
             )}
           </button>
         </div>
 
         <p className="mt-2 text-[10px] text-muted-foreground">
-          {action === 'deposit'
+          {action === "deposit"
             ? `Transfer from your balance to ${agent.name}`
             : `Transfer from ${agent.name} to your balance`}
         </p>
@@ -267,28 +267,28 @@ export function AgentWallet({ agent, onUpdate }: AgentWalletProps) {
               >
                 <div className="min-w-0 flex-1">
                   <div className="truncate font-medium text-xs capitalize">
-                    {tx.type.replace(/_/g, ' ')}
+                    {tx.type.replace(/_/g, " ")}
                   </div>
                   <div className="truncate text-[10px] text-muted-foreground">
                     {tx.description}
                   </div>
                   <div className="text-[10px] text-muted-foreground">
                     {new Date(tx.createdAt).toLocaleString(undefined, {
-                      month: 'short',
-                      day: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
+                      month: "short",
+                      day: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
                     })}
                   </div>
                 </div>
                 <div className="shrink-0 pl-2 text-right">
                   <div
                     className={cn(
-                      'font-semibold text-xs',
-                      tx.amount > 0 ? 'text-green-600' : 'text-red-600'
+                      "font-semibold text-xs",
+                      tx.amount > 0 ? "text-green-600" : "text-red-600",
                     )}
                   >
-                    {tx.amount > 0 ? '+' : ''}
+                    {tx.amount > 0 ? "+" : ""}
                     {formatCompactCurrency(Math.abs(tx.amount))}
                   </div>
                   <div className="text-[10px] text-muted-foreground">

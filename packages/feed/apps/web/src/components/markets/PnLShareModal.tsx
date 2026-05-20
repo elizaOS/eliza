@@ -1,22 +1,22 @@
-'use client';
+"use client";
 
 import {
   FEED_POINTS_SYMBOL,
   getReferralUrl,
   logger,
   trackExternalShare,
-} from '@feed/shared';
-import { Download, LogOut, Twitter, X } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { toast } from 'sonner';
-import { CategoryPnLShareCard } from '@/components/markets/CategoryPnLShareCard';
-import { PortfolioPnLShareCard } from '@/components/markets/PortfolioPnLShareCard';
-import { useAuth } from '@/hooks/useAuth';
-import type { PortfolioBreakdownSnapshot } from '@/hooks/usePortfolioPnL';
-import { useTwitterAuth } from '@/hooks/useTwitterAuth';
-import type { User } from '@/stores/authStore';
-import type { MarketCategory } from '@/types/markets';
-import { apiUrl } from '@/utils/api-url';
+} from "@feed/shared";
+import { Download, LogOut, Twitter, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
+import { CategoryPnLShareCard } from "@/components/markets/CategoryPnLShareCard";
+import { PortfolioPnLShareCard } from "@/components/markets/PortfolioPnLShareCard";
+import { useAuth } from "@/hooks/useAuth";
+import type { PortfolioBreakdownSnapshot } from "@/hooks/usePortfolioPnL";
+import { useTwitterAuth } from "@/hooks/useTwitterAuth";
+import type { User } from "@/stores/authStore";
+import type { MarketCategory } from "@/types/markets";
+import { apiUrl } from "@/utils/api-url";
 
 /**
  * Category PnL data structure for PnL share modal.
@@ -68,7 +68,7 @@ interface CategoryPnLData {
 interface PnLShareModalProps {
   isOpen: boolean;
   onClose: () => void;
-  type: 'portfolio' | 'category';
+  type: "portfolio" | "category";
   portfolioData?: PortfolioBreakdownSnapshot | null;
   categoryData?: CategoryPnLData | null;
   category?: MarketCategory;
@@ -100,8 +100,8 @@ function FarcasterIcon({ className }: { className?: string }) {
  * Category labels for display.
  */
 const categoryLabels: Record<MarketCategory, string> = {
-  perps: 'Perpetual Futures',
-  predictions: 'Prediction Markets',
+  perps: "Perpetual Futures",
+  predictions: "Prediction Markets",
 };
 
 export function PnLShareModal({
@@ -110,17 +110,17 @@ export function PnLShareModal({
   type,
   portfolioData,
   categoryData,
-  category = 'perps',
+  category = "perps",
   user,
 }: PnLShareModalProps) {
   const { getAccessToken } = useAuth();
   const [isDownloading, setIsDownloading] = useState(false);
-  const [sharing, setSharing] = useState<'twitter' | 'farcaster' | null>(null);
+  const [sharing, setSharing] = useState<"twitter" | "farcaster" | null>(null);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [isPostingToTwitter, setIsPostingToTwitter] = useState(false);
   const [showTwitterConfirm, setShowTwitterConfirm] = useState(false);
-  const [tweetText, setTweetText] = useState('');
+  const [tweetText, setTweetText] = useState("");
   const offscreenCardRef = useRef<HTMLDivElement>(null);
 
   // Twitter auth hook
@@ -132,18 +132,18 @@ export function PnLShareModal({
   } = useTwitterAuth();
 
   const shareUrl =
-    typeof window !== 'undefined'
+    typeof window !== "undefined"
       ? `${window.location.origin}/markets`
-      : 'https://feed.market';
+      : "https://feed.market";
 
   const canShare = Boolean(
-    user && (type === 'portfolio' ? portfolioData : categoryData)
+    user && (type === "portfolio" ? portfolioData : categoryData),
   );
 
-  const data = type === 'portfolio' ? portfolioData : categoryData;
+  const data = type === "portfolio" ? portfolioData : categoryData;
   const categoryLabel =
-    type === 'category' && category ? categoryLabels[category] : '';
-  const contentId = type === 'portfolio' ? 'portfolio-pnl' : `${category}-pnl`;
+    type === "category" && category ? categoryLabels[category] : "";
+  const contentId = type === "portfolio" ? "portfolio-pnl" : `${category}-pnl`;
 
   // Generate shareable link with referral code (waitlist format)
   const shareableLink = useMemo(() => {
@@ -155,14 +155,14 @@ export function PnLShareModal({
   const shareText = useMemo(() => {
     const link = shareableLink || shareUrl;
     const standardMessage =
-      'Join me in Feed, a real-time simulation where humans and AI agents battle across prediction markets, form alliances, and shape outcomes—together.';
+      "Join me in Feed, a real-time simulation where humans and AI agents battle across prediction markets, form alliances, and shape outcomes—together.";
 
-    if (type === 'portfolio' && portfolioData) {
-      const sign = portfolioData.totalPnL >= 0 ? '+' : '-';
+    if (type === "portfolio" && portfolioData) {
+      const sign = portfolioData.totalPnL >= 0 ? "+" : "-";
       return `My Feed P&L is ${sign}${FEED_POINTS_SYMBOL}${Math.abs(portfolioData.totalPnL).toFixed(2)}. Trading narratives, sharing the upside.\n\n${standardMessage}\n\n${link}`;
     }
-    if (type === 'category' && categoryData) {
-      const sign = categoryData.unrealizedPnL >= 0 ? '+' : '-';
+    if (type === "category" && categoryData) {
+      const sign = categoryData.unrealizedPnL >= 0 ? "+" : "-";
       return `My ${categoryLabel} P&L on Feed is ${sign}${FEED_POINTS_SYMBOL}${Math.abs(categoryData.unrealizedPnL).toFixed(2)}. Trading narratives, sharing the upside.\n\n${standardMessage}\n\n${link}`;
     }
     return `${standardMessage}\n\n${link}`;
@@ -191,11 +191,11 @@ export function PnLShareModal({
 
     const generatePreview = async () => {
       setIsGeneratingImage(true);
-      const htmlToImage = await import('html-to-image');
+      const htmlToImage = await import("html-to-image");
       const dataUrl = await htmlToImage.toPng(offscreenCardRef.current!, {
         pixelRatio: 2,
         cacheBust: true,
-        backgroundColor: '#050816',
+        backgroundColor: "#050816",
       });
       setPreviewImageUrl(dataUrl);
       setIsGeneratingImage(false);
@@ -213,31 +213,31 @@ export function PnLShareModal({
 
     setIsDownloading(true);
 
-    const link = document.createElement('a');
+    const link = document.createElement("a");
     link.href = previewImageUrl;
-    link.download = `feed-${type === 'portfolio' ? 'pnl' : `${category}-pnl`}-${Date.now()}.png`;
+    link.download = `feed-${type === "portfolio" ? "pnl" : `${category}-pnl`}-${Date.now()}.png`;
     link.click();
 
     void trackExternalShare({
-      platform: 'download',
-      contentType: 'market',
+      platform: "download",
+      contentType: "market",
       contentId,
       url: shareUrl,
       userId: user?.id,
     });
 
-    toast.success('P&L card downloaded');
+    toast.success("P&L card downloaded");
     setIsDownloading(false);
   };
 
-  const handleShare = async (platform: 'twitter' | 'farcaster') => {
+  const handleShare = async (platform: "twitter" | "farcaster") => {
     if (!canShare || !user || !data) return;
 
     setSharing(platform);
 
-    if (platform === 'twitter') {
+    if (platform === "twitter") {
       if (!authStatus?.connected) {
-        toast.info('Please connect your X account to share');
+        toast.info("Please connect your X account to share");
         connectTwitter(window.location.pathname);
         setSharing(null);
         return;
@@ -248,11 +248,11 @@ export function PnLShareModal({
     } else {
       // Farcaster compose URL - uses official protocol endpoint (farcaster.xyz)
       const farcasterComposeUrl = `https://farcaster.xyz/~/compose?text=${encodeURIComponent(shareText)}&embeds[]=${encodeURIComponent(shareableLink || shareUrl)}`;
-      window.open(farcasterComposeUrl, '_blank', 'width=550,height=600');
+      window.open(farcasterComposeUrl, "_blank", "width=550,height=600");
 
       await trackExternalShare({
         platform,
-        contentType: 'market',
+        contentType: "market",
         contentId,
         url: shareableLink || shareUrl,
         userId: user?.id,
@@ -269,58 +269,58 @@ export function PnLShareModal({
 
     const token = await getAccessToken();
     if (!token) {
-      toast.error('Authentication required. Please log in.');
+      toast.error("Authentication required. Please log in.");
       setIsPostingToTwitter(false);
       return;
     }
 
-    toast.info('Posting to X...');
+    toast.info("Posting to X...");
 
     try {
-      const tweetResponse = await fetch(apiUrl('/api/twitter/tweet'), {
-        method: 'POST',
+      const tweetResponse = await fetch(apiUrl("/api/twitter/tweet"), {
+        method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           text: tweetText,
-          contentType: 'market',
+          contentType: "market",
           contentId,
         }),
       });
 
       if (!tweetResponse.ok) {
         const errorData = (await tweetResponse.json()) as { error?: string };
-        toast.error(errorData.error ?? 'Failed to post tweet');
+        toast.error(errorData.error ?? "Failed to post tweet");
         return;
       }
 
       const tweetData = (await tweetResponse.json()) as { tweetUrl: string };
 
-      toast.success('Successfully shared to X!');
+      toast.success("Successfully shared to X!");
 
       await trackExternalShare({
-        platform: 'twitter',
-        contentType: 'market',
+        platform: "twitter",
+        contentType: "market",
         contentId,
         url: shareableLink,
         userId: user.id,
       });
 
       if (tweetData.tweetUrl) {
-        window.open(tweetData.tweetUrl, '_blank');
+        window.open(tweetData.tweetUrl, "_blank");
       }
 
       setShowTwitterConfirm(false);
       onClose();
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : 'Failed to post tweet';
+        err instanceof Error ? err.message : "Failed to post tweet";
       logger.error(
-        'Failed to post PnL to Twitter',
+        "Failed to post PnL to Twitter",
         { contentId, error: err },
-        'PnLShareModal'
+        "PnLShareModal",
       );
       toast.error(message);
     } finally {
@@ -330,26 +330,26 @@ export function PnLShareModal({
 
   const handleDisconnectTwitter = async () => {
     await disconnectTwitter();
-    toast.success('X account disconnected');
+    toast.success("X account disconnected");
   };
 
   const modalTitle =
-    type === 'portfolio' ? 'Share Your P&L' : `Share Your ${categoryLabel} P&L`;
+    type === "portfolio" ? "Share Your P&L" : `Share Your ${categoryLabel} P&L`;
 
   const modalSubtitle =
-    type === 'portfolio'
-      ? 'Show off your Feed performance card'
+    type === "portfolio"
+      ? "Show off your Feed performance card"
       : `Show off your Feed ${category} performance`;
 
   return (
     <>
       {/* Off-screen card for rendering to image */}
-      <div style={{ position: 'absolute', left: '-9999px', top: '-9999px' }}>
+      <div style={{ position: "absolute", left: "-9999px", top: "-9999px" }}>
         <div ref={offscreenCardRef}>
-          {canShare && type === 'portfolio' && portfolioData && (
+          {canShare && type === "portfolio" && portfolioData && (
             <PortfolioPnLShareCard data={portfolioData} user={user!} />
           )}
-          {canShare && type === 'category' && categoryData && (
+          {canShare && type === "category" && categoryData && (
             <CategoryPnLShareCard
               category={category}
               data={categoryData}
@@ -426,7 +426,7 @@ export function PnLShareModal({
                 <div className="flex items-center gap-2">
                   <Twitter className="h-4 w-4 text-sky-400" />
                   <span className="text-foreground text-sm">
-                    Connected as{' '}
+                    Connected as{" "}
                     <span className="font-semibold">
                       @{authStatus.screenName}
                     </span>
@@ -457,9 +457,9 @@ export function PnLShareModal({
 
               <button
                 type="button"
-                onClick={() => handleShare('twitter')}
+                onClick={() => handleShare("twitter")}
                 disabled={
-                  !canShare || sharing === 'twitter' || twitterAuthLoading
+                  !canShare || sharing === "twitter" || twitterAuthLoading
                 }
                 className="inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-sidebar-accent px-4 py-3 font-semibold text-foreground text-sm transition hover:border-border hover:bg-sidebar-accent/80 disabled:cursor-not-allowed disabled:opacity-60"
               >
@@ -469,8 +469,8 @@ export function PnLShareModal({
 
               <button
                 type="button"
-                onClick={() => handleShare('farcaster')}
-                disabled={!canShare || sharing === 'farcaster'}
+                onClick={() => handleShare("farcaster")}
+                disabled={!canShare || sharing === "farcaster"}
                 className="inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-sidebar-accent px-4 py-3 font-semibold text-foreground text-sm transition hover:border-border hover:bg-sidebar-accent/80 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <FarcasterIcon className="h-4 w-4 text-purple-400" />

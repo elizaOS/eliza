@@ -1,8 +1,8 @@
-import { PageContainer } from '@/components/shared/PageContainer';
+import { PageContainer } from "@/components/shared/PageContainer";
 import {
   NotificationItemSkeleton,
   Skeleton,
-} from '@/components/shared/Skeleton';
+} from "@/components/shared/Skeleton";
 
 export default function NotificationsLoading() {
   return (

@@ -25,10 +25,10 @@
  * `NitroRuntimeHooks`, and hookable's typed `HookKeys`.
  */
 
-export interface FeedConfig {}
+export type FeedConfig = {};
 
-export interface FeedServices {}
+export type FeedServices = {};
 
-export interface FeedSharedData {}
+export type FeedSharedData = {};
 
-export interface FeedHooks {}
+export type FeedHooks = {};

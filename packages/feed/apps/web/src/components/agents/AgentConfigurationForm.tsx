@@ -1,13 +1,13 @@
-'use client';
+"use client";
 
-import { cn, GROQ_MODELS } from '@feed/shared';
-import { Copy, ExternalLink, Info } from 'lucide-react';
-import { memo } from 'react';
-import { Switch } from '@/components/ui/switch';
-import { MODEL_TIER_POINTS_COST } from '@/lib/constants';
+import { cn, GROQ_MODELS } from "@feed/shared";
+import { Copy, ExternalLink, Info } from "lucide-react";
+import { memo } from "react";
+import { Switch } from "@/components/ui/switch";
+import { MODEL_TIER_POINTS_COST } from "@/lib/constants";
 
 export interface AgentConfigurationData {
-  modelTier: 'free' | 'pro';
+  modelTier: "free" | "pro";
   /**
    * Controls autonomous trading capability for the agent.
    *
@@ -49,7 +49,7 @@ export const AgentConfigurationForm = memo(function AgentConfigurationForm({
 }: AgentConfigurationFormProps) {
   const updateField = <K extends keyof AgentConfigurationData>(
     key: K,
-    value: AgentConfigurationData[K]
+    value: AgentConfigurationData[K],
   ) => {
     onChange({ ...data, [key]: value });
   };
@@ -62,12 +62,12 @@ export const AgentConfigurationForm = memo(function AgentConfigurationForm({
         <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
           <button
             type="button"
-            onClick={() => updateField('modelTier', 'free')}
+            onClick={() => updateField("modelTier", "free")}
             className={cn(
-              'flex flex-1 flex-col justify-start rounded-lg border p-3 text-left transition-colors',
-              data.modelTier === 'free'
-                ? 'border-[#0066FF] bg-[#0066FF]/10'
-                : 'border-border hover:border-[#0066FF]/50'
+              "flex flex-1 flex-col justify-start rounded-lg border p-3 text-left transition-colors",
+              data.modelTier === "free"
+                ? "border-[#0066FF] bg-[#0066FF]/10"
+                : "border-border hover:border-[#0066FF]/50",
             )}
           >
             <div className="font-medium text-sm">
@@ -79,12 +79,12 @@ export const AgentConfigurationForm = memo(function AgentConfigurationForm({
           </button>
           <button
             type="button"
-            onClick={() => updateField('modelTier', 'pro')}
+            onClick={() => updateField("modelTier", "pro")}
             className={cn(
-              'flex flex-1 flex-col justify-start rounded-lg border p-3 text-left transition-colors',
-              data.modelTier === 'pro'
-                ? 'border-[#0066FF] bg-[#0066FF]/10'
-                : 'border-border hover:border-[#0066FF]/50'
+              "flex flex-1 flex-col justify-start rounded-lg border p-3 text-left transition-colors",
+              data.modelTier === "pro"
+                ? "border-[#0066FF] bg-[#0066FF]/10"
+                : "border-border hover:border-[#0066FF]/50",
             )}
           >
             <div className="font-medium text-sm">
@@ -112,8 +112,8 @@ export const AgentConfigurationForm = memo(function AgentConfigurationForm({
           <Info className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
           <p>
             {data.autonomousEnabled
-              ? 'Trading enabled — agent will evaluate markets and execute trades. View in Activity tab.'
-              : 'Trading disabled — enable below to allow autonomous market evaluation and trades.'}
+              ? "Trading enabled — agent will evaluate markets and execute trades. View in Activity tab."
+              : "Trading disabled — enable below to allow autonomous market evaluation and trades."}
           </p>
         </div>
 
@@ -129,7 +129,7 @@ export const AgentConfigurationForm = memo(function AgentConfigurationForm({
             <Switch
               checked={data.autonomousEnabled}
               onCheckedChange={(checked) =>
-                updateField('autonomousEnabled', checked)
+                updateField("autonomousEnabled", checked)
               }
               className="shrink-0"
             />
@@ -145,7 +145,7 @@ export const AgentConfigurationForm = memo(function AgentConfigurationForm({
             <Switch
               checked={data.autonomousPosting}
               onCheckedChange={(checked) =>
-                updateField('autonomousPosting', checked)
+                updateField("autonomousPosting", checked)
               }
               className="shrink-0"
             />
@@ -161,7 +161,7 @@ export const AgentConfigurationForm = memo(function AgentConfigurationForm({
             <Switch
               checked={data.autonomousCommenting}
               onCheckedChange={(checked) =>
-                updateField('autonomousCommenting', checked)
+                updateField("autonomousCommenting", checked)
               }
               className="shrink-0"
             />
@@ -177,7 +177,7 @@ export const AgentConfigurationForm = memo(function AgentConfigurationForm({
             <Switch
               checked={data.autonomousDMs}
               onCheckedChange={(checked) =>
-                updateField('autonomousDMs', checked)
+                updateField("autonomousDMs", checked)
               }
               className="shrink-0"
             />
@@ -193,7 +193,7 @@ export const AgentConfigurationForm = memo(function AgentConfigurationForm({
             <Switch
               checked={data.autonomousGroupChats}
               onCheckedChange={(checked) =>
-                updateField('autonomousGroupChats', checked)
+                updateField("autonomousGroupChats", checked)
               }
               className="shrink-0"
             />
@@ -208,7 +208,7 @@ export const AgentConfigurationForm = memo(function AgentConfigurationForm({
             </div>
             <Switch
               checked={data.a2aEnabled}
-              onCheckedChange={(checked) => updateField('a2aEnabled', checked)}
+              onCheckedChange={(checked) => updateField("a2aEnabled", checked)}
               className="shrink-0"
             />
           </div>
@@ -220,14 +220,14 @@ export const AgentConfigurationForm = memo(function AgentConfigurationForm({
             <div className="mb-1 font-medium text-sm">A2A Server Link</div>
             <div className="flex items-center gap-2 rounded border border-border bg-background p-2">
               <code className="flex-1 overflow-x-auto break-all text-xs">
-                {typeof window !== 'undefined'
+                {typeof window !== "undefined"
                   ? `${window.location.origin}/api/agents/${agentId}/a2a`
                   : `/api/agents/${agentId}/a2a`}
               </code>
               <button
                 onClick={() => {
                   const url =
-                    typeof window !== 'undefined'
+                    typeof window !== "undefined"
                       ? `${window.location.origin}/api/agents/${agentId}/a2a`
                       : `/api/agents/${agentId}/a2a`;
                   navigator.clipboard.writeText(url);
@@ -239,7 +239,7 @@ export const AgentConfigurationForm = memo(function AgentConfigurationForm({
               </button>
               <a
                 href={
-                  typeof window !== 'undefined'
+                  typeof window !== "undefined"
                     ? `${window.location.origin}/api/agents/${agentId}/.well-known/agent-card`
                     : `/api/agents/${agentId}/.well-known/agent-card`
                 }

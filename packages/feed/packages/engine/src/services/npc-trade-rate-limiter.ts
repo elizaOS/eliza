@@ -52,12 +52,12 @@
  * @module engine/services/npc-trade-rate-limiter
  */
 
-import { logger } from '@feed/shared';
+import { logger } from "@feed/shared";
 import {
   getMaxTradesPerDay,
   getMinMinutesBetweenTrades,
-} from '../config/npc-activity';
-import { getTodayDateString } from '../utils/date-utils';
+} from "../config/npc-activity";
+import { getTodayDateString } from "../utils/date-utils";
 
 // =============================================================================
 // TYPES
@@ -134,7 +134,7 @@ class InMemoryNpcTradeRateLimitProvider implements NpcTradeRateLimitProvider {
 
   async canTrade(
     npcId: string,
-    config: NpcTradeRateLimitConfig
+    config: NpcTradeRateLimitConfig,
   ): Promise<boolean> {
     const now = Date.now();
 
@@ -236,7 +236,7 @@ class InMemoryNpcTradeRateLimitProvider implements NpcTradeRateLimitProvider {
       logger.debug(
         `Cleaned up ${cleaned} stale NPC trade rate limit entries`,
         { entriesRemaining: this.lastTradeTime.size },
-        'NpcTradeRateLimiter'
+        "NpcTradeRateLimiter",
       );
     }
 
@@ -270,7 +270,7 @@ let provider: NpcTradeRateLimitProvider =
  * @param next - The new provider to use
  */
 export function setNpcTradeRateLimitProvider(
-  next: NpcTradeRateLimitProvider
+  next: NpcTradeRateLimitProvider,
 ): void {
   provider = next;
 }

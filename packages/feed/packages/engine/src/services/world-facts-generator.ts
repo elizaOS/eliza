@@ -22,13 +22,13 @@ import {
   sql,
   worldEvents,
   worldFacts,
-} from '@feed/db';
-import { generateSnowflakeId, logger } from '@feed/shared';
-import { FeedLLMClient } from '../llm/openai-client';
-import { shuffleArray } from '../utils/randomization';
-import { validateCoherence } from './content-grounding-validator';
-import { ContentQualityGate } from './content-quality-gate';
-import { StaticDataRegistry } from './static-data-registry';
+} from "@feed/db";
+import { generateSnowflakeId, logger } from "@feed/shared";
+import { FeedLLMClient } from "../llm/openai-client";
+import { shuffleArray } from "../utils/randomization";
+import { validateCoherence } from "./content-grounding-validator";
+import { ContentQualityGate } from "./content-quality-gate";
+import { StaticDataRegistry } from "./static-data-registry";
 
 interface GeneratedFact {
   text: string;
@@ -66,7 +66,7 @@ export class WorldFactsGeneratorService {
 
   constructor(
     config: Partial<WorldFactsGenerationConfig> = {},
-    llm?: FeedLLMClient
+    llm?: FeedLLMClient,
   ) {
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.llm = llm ?? FeedLLMClient.forGameTick();
@@ -90,9 +90,9 @@ export class WorldFactsGeneratorService {
   }> {
     const startTime = Date.now();
     logger.info(
-      'Starting world facts generation',
+      "Starting world facts generation",
       undefined,
-      'WorldFactsGenerator'
+      "WorldFactsGenerator",
     );
 
     // Gather context from different sources
@@ -120,9 +120,9 @@ export class WorldFactsGeneratorService {
         storedCount++;
       } catch (error) {
         logger.warn(
-          'Failed to store world fact',
+          "Failed to store world fact",
           { fact: fact.text, error },
-          'WorldFactsGenerator'
+          "WorldFactsGenerator",
         );
       }
     }
@@ -132,7 +132,7 @@ export class WorldFactsGeneratorService {
 
     const duration = Date.now() - startTime;
     logger.info(
-      'World facts generation complete',
+      "World facts generation complete",
       {
         generated: storedCount,
         archived: archivedCount,
@@ -144,7 +144,7 @@ export class WorldFactsGeneratorService {
           actors: actorFacts.length,
         },
       },
-      'WorldFactsGenerator'
+      "WorldFactsGenerator",
     );
 
     return {
@@ -178,8 +178,8 @@ export class WorldFactsGeneratorService {
       .where(
         and(
           gte(worldEvents.timestamp, twoDaysAgo),
-          eq(worldEvents.visibility, 'public')
-        )
+          eq(worldEvents.visibility, "public"),
+        ),
       )
       .orderBy(desc(worldEvents.timestamp))
       .limit(10);
@@ -191,7 +191,7 @@ export class WorldFactsGeneratorService {
     // Use LLM to synthesize events into world facts
     const eventDescriptions = recentEvents
       .map((e) => `- ${e.description}`)
-      .join('\n');
+      .join("\n");
     const sourceContext = eventDescriptions;
 
     const prompt = `Based on these recent events in our satirical AI-powered world, generate 2-3 world facts that capture the current state of affairs. These facts should be reusable context for future content generation.
@@ -222,22 +222,22 @@ Return as XML:
         {
           properties: {
             facts: {
-              type: 'array',
-              items: { type: 'string' },
+              type: "array",
+              items: { type: "string" },
             },
           },
-          required: ['facts'],
+          required: ["facts"],
         },
         {
           temperature: 0.8,
           maxTokens: 500,
-          format: 'xml',
-          promptType: 'world_facts_from_events',
-        }
+          format: "xml",
+          promptType: "world_facts_from_events",
+        },
       );
 
       const facts =
-        'response' in response ? response.response.facts : response.facts;
+        "response" in response ? response.response.facts : response.facts;
       return Array.isArray(facts)
         ? facts
             .filter((f) => f && f.length > 10)
@@ -245,9 +245,9 @@ Return as XML:
         : [];
     } catch (error) {
       logger.error(
-        'Failed to generate facts from events',
+        "Failed to generate facts from events",
         { error },
-        'WorldFactsGenerator'
+        "WorldFactsGenerator",
       );
       return [];
     }
@@ -266,7 +266,7 @@ Return as XML:
         createdAt: questions.createdAt,
       })
       .from(questions)
-      .where(eq(questions.status, 'active'))
+      .where(eq(questions.status, "active"))
       .orderBy(desc(questions.createdAt))
       .limit(5);
 
@@ -274,7 +274,7 @@ Return as XML:
       return [];
     }
 
-    const questionList = activeQuestions.map((q) => `- "${q.text}"`).join('\n');
+    const questionList = activeQuestions.map((q) => `- "${q.text}"`).join("\n");
     const sourceContext = questionList;
 
     const prompt = `Based on these active prediction markets in our satirical AI world, generate 1-2 world facts about what people are betting on and the current mood/sentiment.
@@ -304,22 +304,22 @@ Return as XML:
         {
           properties: {
             facts: {
-              type: 'array',
-              items: { type: 'string' },
+              type: "array",
+              items: { type: "string" },
             },
           },
-          required: ['facts'],
+          required: ["facts"],
         },
         {
           temperature: 0.8,
           maxTokens: 400,
-          format: 'xml',
-          promptType: 'world_facts_from_markets',
-        }
+          format: "xml",
+          promptType: "world_facts_from_markets",
+        },
       );
 
       const facts =
-        'response' in response ? response.response.facts : response.facts;
+        "response" in response ? response.response.facts : response.facts;
       return Array.isArray(facts)
         ? facts
             .filter((f) => f && f.length > 10)
@@ -327,9 +327,9 @@ Return as XML:
         : [];
     } catch (error) {
       logger.error(
-        'Failed to generate facts from markets',
+        "Failed to generate facts from markets",
         { error },
-        'WorldFactsGenerator'
+        "WorldFactsGenerator",
       );
       return [];
     }
@@ -352,9 +352,9 @@ Return as XML:
       .from(questions)
       .where(
         and(
-          eq(questions.status, 'resolved'),
-          gte(questions.resolutionDate, sevenDaysAgo)
-        )
+          eq(questions.status, "resolved"),
+          gte(questions.resolutionDate, sevenDaysAgo),
+        ),
       )
       .orderBy(desc(questions.resolutionDate))
       .limit(5);
@@ -373,17 +373,17 @@ Return as XML:
       const coherence = validateCoherence(q.text);
       if (!coherence.grounded) {
         logger.warn(
-          'Skipping incoherent question text for world fact',
+          "Skipping incoherent question text for world fact",
           {
             questionId: q.id,
             text: q.text.substring(0, 80),
             reasons: coherence.reasons,
           },
-          'WorldFactsGenerator'
+          "WorldFactsGenerator",
         );
         continue;
       }
-      const outcomeText = q.outcome ? 'YES' : 'NO';
+      const outcomeText = q.outcome ? "YES" : "NO";
       facts.push({
         text: `The prediction market "${q.text}" resolved to ${outcomeText}, which has implications for related markets and discussions.`,
         sourceContext: q.text,
@@ -406,11 +406,11 @@ Return as XML:
     const mainActors = shuffleArray(
       StaticDataRegistry.getAllActors().filter(
         (a) =>
-          a.role === 'main' ||
-          a.tier === 'S_TIER' ||
-          a.tier === 'A_TIER' ||
-          a.tier === 'B_TIER'
-      )
+          a.role === "main" ||
+          a.tier === "S_TIER" ||
+          a.tier === "A_TIER" ||
+          a.tier === "B_TIER",
+      ),
     ).slice(0, 8);
 
     if (mainActors.length === 0) {
@@ -430,8 +430,8 @@ Return as XML:
         and(
           gte(posts.timestamp, twoDaysAgo),
           isNull(posts.deletedAt),
-          inArray(posts.authorId, actorIds)
-        )
+          inArray(posts.authorId, actorIds),
+        ),
       )
       .orderBy(desc(posts.timestamp))
       .limit(20);
@@ -443,7 +443,7 @@ Return as XML:
     const postSamples = actorPosts
       .slice(0, 5)
       .map((p) => `- ${p.content.substring(0, 100)}...`)
-      .join('\n');
+      .join("\n");
     const sourceContext = postSamples;
 
     const prompt = `Based on recent activity from key figures in our satirical AI world, generate 1-2 world facts about current topics of discussion or emerging narratives.
@@ -473,22 +473,22 @@ Return as XML:
         {
           properties: {
             facts: {
-              type: 'array',
-              items: { type: 'string' },
+              type: "array",
+              items: { type: "string" },
             },
           },
-          required: ['facts'],
+          required: ["facts"],
         },
         {
           temperature: 0.8,
           maxTokens: 400,
-          format: 'xml',
-          promptType: 'world_facts_from_actors',
-        }
+          format: "xml",
+          promptType: "world_facts_from_actors",
+        },
       );
 
       const facts =
-        'response' in response ? response.response.facts : response.facts;
+        "response" in response ? response.response.facts : response.facts;
       // Depth 2: actor posts are LLM-generated, so facts derived from them
       // are second-generation content and excluded from prompt context
       return Array.isArray(facts)
@@ -498,9 +498,9 @@ Return as XML:
         : [];
     } catch (error) {
       logger.error(
-        'Failed to generate facts from actors',
+        "Failed to generate facts from actors",
         { error },
-        'WorldFactsGenerator'
+        "WorldFactsGenerator",
       );
       return [];
     }
@@ -516,17 +516,17 @@ Return as XML:
     // Quality gate: validate before insert (with source context for grounding)
     const quality = await ContentQualityGate.validateWorldFact(
       value,
-      sourceContext
+      sourceContext,
     );
     if (!quality.passed) {
       logger.warn(
-        'World fact failed quality gate — skipping',
+        "World fact failed quality gate — skipping",
         {
           value: value.substring(0, 100),
           score: quality.score.toFixed(2),
           reasons: quality.reasons,
         },
-        'WorldFactsGenerator'
+        "WorldFactsGenerator",
       );
       return;
     }
@@ -536,15 +536,15 @@ Return as XML:
       .toLowerCase()
       .split(/\s+/)
       .slice(0, 5)
-      .join('_')
-      .replace(/[^a-z0-9_]/g, '')
+      .join("_")
+      .replace(/[^a-z0-9_]/g, "")
       .substring(0, 50);
 
     // Fallback if keyWords is empty (e.g., value has only non-alphanumerics)
     if (!keyWords) {
       // Use a short hash derived from the value for uniqueness
       const hash = value
-        .split('')
+        .split("")
         .reduce((acc, char) => ((acc << 5) - acc + char.charCodeAt(0)) | 0, 0);
       keyWords = `fact_${Math.abs(hash).toString(36)}`;
     }
@@ -554,11 +554,11 @@ Return as XML:
 
     await db.insert(worldFacts).values({
       id: await generateSnowflakeId(),
-      category: 'general',
+      category: "general",
       key,
       label,
       value,
-      source: 'auto-generated',
+      source: "auto-generated",
       priority: 0,
       qualityScore: quality.score,
       generationDepth: depth,
@@ -573,7 +573,7 @@ Return as XML:
    */
   private async archiveOldFacts(): Promise<number> {
     const cutoffDate = new Date(
-      Date.now() - this.config.maxFactAgeDays * 24 * 60 * 60 * 1000
+      Date.now() - this.config.maxFactAgeDays * 24 * 60 * 60 * 1000,
     );
 
     // First check how many active facts we have
@@ -587,9 +587,9 @@ Return as XML:
     // Only archive if we have more than the minimum
     if (activeCount <= this.config.minActiveFacts) {
       logger.debug(
-        'Skipping archive - below minimum active facts',
+        "Skipping archive - below minimum active facts",
         { activeCount, minRequired: this.config.minActiveFacts },
-        'WorldFactsGenerator'
+        "WorldFactsGenerator",
       );
       return 0;
     }
@@ -600,10 +600,10 @@ Return as XML:
       .set({ isActive: false })
       .where(
         and(
-          eq(worldFacts.source, 'auto-generated'),
+          eq(worldFacts.source, "auto-generated"),
           eq(worldFacts.isActive, true),
-          lte(worldFacts.createdAt, cutoffDate)
-        )
+          lte(worldFacts.createdAt, cutoffDate),
+        ),
       )
       .returning({ id: worldFacts.id });
 
@@ -632,8 +632,8 @@ Return as XML:
         .where(
           and(
             eq(worldFacts.isActive, true),
-            eq(worldFacts.source, 'auto-generated')
-          )
+            eq(worldFacts.source, "auto-generated"),
+          ),
         ),
       db
         .select({ createdAt: worldFacts.createdAt })
@@ -649,8 +649,8 @@ Return as XML:
       totalActive: total,
       autoGenerated: auto,
       manual: total - auto,
-      oldestFact: facts.length > 0 ? facts[facts.length - 1]!.createdAt : null,
-      newestFact: facts.length > 0 ? facts[0]!.createdAt : null,
+      oldestFact: facts.length > 0 ? facts[facts.length - 1]?.createdAt : null,
+      newestFact: facts.length > 0 ? facts[0]?.createdAt : null,
     };
   }
 }
@@ -663,7 +663,7 @@ export const worldFactsGenerator = new WorldFactsGeneratorService();
  */
 export function createWorldFactsGenerator(
   config?: Partial<WorldFactsGenerationConfig>,
-  llm?: FeedLLMClient
+  llm?: FeedLLMClient,
 ): WorldFactsGeneratorService {
   return new WorldFactsGeneratorService(config, llm);
 }

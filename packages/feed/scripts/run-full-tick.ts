@@ -14,41 +14,41 @@
  *   bun run tick:full -- --only markets-tick
  */
 
-import { parseArgs } from 'node:util';
-import { getRawDrizzle } from '@feed/db';
-import { markets, perpMarketSnapshots } from '@feed/db/schema';
-import { eq } from 'drizzle-orm';
+import { parseArgs } from "node:util";
+import { getRawDrizzle } from "@feed/db";
+import { markets, perpMarketSnapshots } from "@feed/db/schema";
+import { eq } from "drizzle-orm";
 
 // ---------------------------------------------------------------------------
 // CLI
 // ---------------------------------------------------------------------------
 const { values: args } = parseArgs({
   options: {
-    loop: { type: 'boolean', default: false },
-    interval: { type: 'string', default: '60' },
-    skip: { type: 'string', default: '' },
-    only: { type: 'string', default: '' },
-    host: { type: 'string', default: 'http://localhost:3000' },
+    loop: { type: "boolean", default: false },
+    interval: { type: "string", default: "60" },
+    skip: { type: "string", default: "" },
+    only: { type: "string", default: "" },
+    host: { type: "string", default: "http://localhost:3000" },
   },
   strict: false,
 });
 
 const loopMode = args.loop ?? false;
-const intervalSec = Math.max(5, Number.parseInt(args.interval ?? '60', 10));
-const skipSet = new Set((args.skip ?? '').split(',').filter(Boolean));
-const onlySet = new Set((args.only ?? '').split(',').filter(Boolean));
-const BASE = (args.host ?? 'http://localhost:3000').replace(/\/$/, '');
-const SECRET = process.env.CRON_SECRET ?? 'development';
+const intervalSec = Math.max(5, Number.parseInt(args.interval ?? "60", 10));
+const skipSet = new Set((args.skip ?? "").split(",").filter(Boolean));
+const onlySet = new Set((args.only ?? "").split(",").filter(Boolean));
+const BASE = (args.host ?? "http://localhost:3000").replace(/\/$/, "");
+const SECRET = process.env.CRON_SECRET ?? "development";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-const reset = '\x1b[0m';
-const bold = '\x1b[1m';
-const green = '\x1b[32m';
-const red = '\x1b[31m';
-const cyan = '\x1b[36m';
-const dim = '\x1b[2m';
+const reset = "\x1b[0m";
+const bold = "\x1b[1m";
+const green = "\x1b[32m";
+const red = "\x1b[31m";
+const cyan = "\x1b[36m";
+const dim = "\x1b[2m";
 
 function ts(): string {
   return new Date().toLocaleTimeString();
@@ -67,17 +67,17 @@ async function callCron(name: string): Promise<CronResult> {
   const t0 = Date.now();
   try {
     const res = await fetch(url, {
-      method: 'POST',
+      method: "POST",
       headers: {
         Authorization: `Bearer ${SECRET}`,
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       signal: AbortSignal.timeout(120_000),
     });
     const durationMs = Date.now() - t0;
-    const ct = res.headers.get('content-type') ?? '';
+    const ct = res.headers.get("content-type") ?? "";
     let data: Record<string, unknown> = {};
-    if (ct.includes('application/json')) {
+    if (ct.includes("application/json")) {
       data = (await res.json()) as Record<string, unknown>;
     } else {
       const text = await res.text();
@@ -104,7 +104,7 @@ function summarize(r: CronResult): string {
   const d = r.data;
   const parts: string[] = [];
 
-  if (r.name === 'game-tick') {
+  if (r.name === "game-tick") {
     if (d.skipped) return `skipped: ${d.reason}`;
     if (d.result) {
       const result = d.result as Record<string, unknown>;
@@ -113,21 +113,21 @@ function summarize(r: CronResult): string {
       if (result.marketsUpdated)
         parts.push(`marketsUpdated=${result.marketsUpdated}`);
     }
-  } else if (r.name === 'markets-tick') {
+  } else if (r.name === "markets-tick") {
     if (d.resolved != null) parts.push(`resolved=${d.resolved}`);
     if (d.created != null) parts.push(`created=${d.created}`);
     if (d.active != null) parts.push(`active=${d.active}`);
     if (d.skipped != null && d.skipped)
-      parts.push(`skipped: ${d.reason ?? ''}`);
-  } else if (r.name === 'npc-tick') {
+      parts.push(`skipped: ${d.reason ?? ""}`);
+  } else if (r.name === "npc-tick") {
     if (d.npcsProcessed != null) parts.push(`npcs=${d.npcsProcessed}`);
     if (d.postsCreated != null) parts.push(`posts=${d.postsCreated}`);
-  } else if (r.name === 'agent-tick') {
+  } else if (r.name === "agent-tick") {
     if (d.processed != null) parts.push(`agents=${d.processed}`);
     if (d.totalActions != null) parts.push(`actions=${d.totalActions}`);
   }
 
-  return parts.length > 0 ? parts.join('  ') : JSON.stringify(d).slice(0, 120);
+  return parts.length > 0 ? parts.join("  ") : JSON.stringify(d).slice(0, 120);
 }
 
 // ---------------------------------------------------------------------------
@@ -208,12 +208,12 @@ function printPerpDiff(before: PerpSnapshot[], after: PerpSnapshot[]): void {
 
   console.log(`  ${bold}Perp price changes:${reset}`);
   for (const c of changed.sort(
-    (a, b) => Math.abs(b.deltaPct) - Math.abs(a.deltaPct)
+    (a, b) => Math.abs(b.deltaPct) - Math.abs(a.deltaPct),
   )) {
-    const sign = c.delta >= 0 ? '+' : '';
+    const sign = c.delta >= 0 ? "+" : "";
     const color = c.delta >= 0 ? green : red;
     console.log(
-      `    ${c.ticker.padEnd(8)} ${color}${sign}${c.deltaPct.toFixed(2)}%${reset}`
+      `    ${c.ticker.padEnd(8)} ${color}${sign}${c.deltaPct.toFixed(2)}%${reset}`,
     );
   }
 }
@@ -234,12 +234,12 @@ function printPredDiff(before: PredSnapshot[], after: PredSnapshot[]): void {
 
   console.log(`  ${bold}Prediction odds changes:${reset}`);
   for (const c of changed.sort(
-    (a, b) => Math.abs(b.deltaOdds) - Math.abs(a.deltaOdds)
+    (a, b) => Math.abs(b.deltaOdds) - Math.abs(a.deltaOdds),
   )) {
-    const sign = c.deltaOdds >= 0 ? '+' : '';
+    const sign = c.deltaOdds >= 0 ? "+" : "";
     const color = c.deltaOdds >= 0 ? green : red;
     console.log(
-      `    "${c.question}"  ${color}${sign}${c.deltaOdds.toFixed(1)}ppt${reset}`
+      `    "${c.question}"  ${color}${sign}${c.deltaOdds.toFixed(1)}ppt${reset}`,
     );
   }
 }
@@ -248,10 +248,10 @@ function printPredDiff(before: PredSnapshot[], after: PredSnapshot[]): void {
 // Single tick run
 // ---------------------------------------------------------------------------
 const TICK_ORDER = [
-  'game-tick',
-  'markets-tick',
-  'npc-tick',
-  'agent-tick',
+  "game-tick",
+  "markets-tick",
+  "npc-tick",
+  "agent-tick",
 ] as const;
 
 async function runTick(runNum: number): Promise<void> {
@@ -271,7 +271,7 @@ async function runTick(runNum: number): Promise<void> {
     const dur = `${dim}${r.durationMs}ms${reset}`;
     const sum = summarize(r);
     console.log(
-      `  ${icon} ${bold}${name.padEnd(14)}${reset} ${r.status}  ${dur}  ${sum}`
+      `  ${icon} ${bold}${name.padEnd(14)}${reset} ${r.status}  ${dur}  ${sum}`,
     );
 
     if (!r.ok) {
@@ -281,7 +281,7 @@ async function runTick(runNum: number): Promise<void> {
 
   const perpAfter = await getPerpSnapshot();
   const predAfter = await getPredSnapshot();
-  console.log('');
+  console.log("");
   printPerpDiff(perpBefore, perpAfter);
   printPredDiff(predBefore, predAfter);
 }
@@ -291,11 +291,11 @@ async function runTick(runNum: number): Promise<void> {
 // ---------------------------------------------------------------------------
 async function main(): Promise<void> {
   console.log(`${bold}Feed Full Tick Runner${reset}  ${dim}${BASE}${reset}`);
-  const active = TICK_ORDER.filter(shouldRun).join(', ');
+  const active = TICK_ORDER.filter(shouldRun).join(", ");
   console.log(`${dim}Running: ${active}${reset}`);
   if (loopMode) {
     console.log(
-      `${dim}Loop mode: every ${intervalSec}s — Ctrl+C to stop${reset}`
+      `${dim}Loop mode: every ${intervalSec}s — Ctrl+C to stop${reset}`,
     );
   }
 
@@ -311,6 +311,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  console.error('tick:full error:', err);
+  console.error("tick:full error:", err);
   process.exit(1);
 });

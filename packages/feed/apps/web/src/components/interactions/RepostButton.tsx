@@ -1,14 +1,14 @@
-'use client';
+"use client";
 
-import type { FeedPost, RepostButtonProps } from '@feed/shared';
-import { cn } from '@feed/shared';
-import { Repeat2, X } from 'lucide-react';
-import { useState } from 'react';
-import { Avatar } from '@/components/shared/Avatar';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { useAuth } from '@/hooks/useAuth';
-import { useFeedStore } from '@/stores/feedStore';
-import { useInteractionStore } from '@/stores/interactionStore';
+import type { FeedPost, RepostButtonProps } from "@feed/shared";
+import { cn } from "@feed/shared";
+import { Repeat2, X } from "lucide-react";
+import { useState } from "react";
+import { Avatar } from "@/components/shared/Avatar";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { useAuth } from "@/hooks/useAuth";
+import { useFeedStore } from "@/stores/feedStore";
+import { useInteractionStore } from "@/stores/interactionStore";
 
 /**
  * Repost/share button component for sharing posts.
@@ -38,9 +38,9 @@ import { useInteractionStore } from '@/stores/interactionStore';
  * ```
  */
 const sizeClasses = {
-  sm: 'text-xs gap-1',
-  md: 'h-10 px-3 text-sm gap-1.5',
-  lg: 'h-12 px-4 text-base gap-2',
+  sm: "text-xs gap-1",
+  md: "h-10 px-3 text-sm gap-1.5",
+  lg: "h-12 px-4 text-base gap-2",
 };
 
 const iconSizes = {
@@ -50,26 +50,26 @@ const iconSizes = {
 };
 
 const skeletonSizes = {
-  sm: 'w-4 h-4',
-  md: 'w-5 h-5',
-  lg: 'w-5 h-5',
+  sm: "w-4 h-4",
+  md: "w-5 h-5",
+  lg: "w-5 h-5",
 };
 
 export function RepostButton({
   postId,
   shareCount,
   initialShared = false,
-  size = 'md',
+  size = "md",
   showCount = true,
   className,
   onShareChange,
   postData,
 }: RepostButtonProps) {
   // Ensure size is properly typed for index access
-  const sizeKey: 'sm' | 'md' | 'lg' = size;
+  const sizeKey: "sm" | "md" | "lg" = size;
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
-  const [quoteComment, setQuoteComment] = useState('');
+  const [quoteComment, setQuoteComment] = useState("");
 
   const { toggleShare, postInteractions, loadingStates } =
     useInteractionStore();
@@ -94,7 +94,7 @@ export function RepostButton({
     } else {
       // Show modal for new share
       setShowConfirmation(true);
-      setQuoteComment('');
+      setQuoteComment("");
     }
   };
 
@@ -114,7 +114,7 @@ export function RepostButton({
     onShareChange?.(willBeShared);
 
     // If this is a quote post and we got repost data back, add it optimistically to the feed
-    if (response && response.repostPost && isQuote) {
+    if (response?.repostPost && isQuote) {
       const repostData = response.repostPost;
       const optimisticPost: FeedPost = {
         id: repostData.id,
@@ -147,7 +147,7 @@ export function RepostButton({
     }
 
     // Reset state
-    setQuoteComment('');
+    setQuoteComment("");
   };
 
   // Format timestamp for display
@@ -159,11 +159,11 @@ export function RepostButton({
     const diffHours = Math.floor(diffMs / 3600000);
     const diffDays = Math.floor(diffMs / 86400000);
 
-    if (diffMinutes < 1) return 'Just now';
+    if (diffMinutes < 1) return "Just now";
     if (diffMinutes < 60) return `${diffMinutes}m`;
     if (diffHours < 24) return `${diffHours}h`;
     if (diffDays < 7) return `${diffDays}d`;
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   };
 
   return (
@@ -173,26 +173,26 @@ export function RepostButton({
         type="button"
         onClick={handleClick}
         disabled={isLoading}
-        aria-label={isShared ? 'Unrepost' : 'Repost'}
+        aria-label={isShared ? "Unrepost" : "Repost"}
         aria-pressed={isShared}
         className={cn(
-          'flex items-center transition-all duration-200',
-          'bg-transparent hover:opacity-70',
-          isShared ? 'text-green-600' : 'text-muted-foreground',
+          "flex items-center transition-all duration-200",
+          "bg-transparent hover:opacity-70",
+          isShared ? "text-green-600" : "text-muted-foreground",
           sizeClasses[sizeKey],
-          isAnimating && 'scale-110',
-          isLoading && 'cursor-wait opacity-50',
-          className
+          isAnimating && "scale-110",
+          isLoading && "cursor-wait opacity-50",
+          className,
         )}
       >
         {isLoading ? (
-          <Skeleton className={cn('rounded', skeletonSizes[sizeKey])} />
+          <Skeleton className={cn("rounded", skeletonSizes[sizeKey])} />
         ) : (
           <Repeat2
             size={iconSizes[sizeKey]}
             className={cn(
-              'transition-all duration-200',
-              isAnimating && 'rotate-180'
+              "transition-all duration-200",
+              isAnimating && "rotate-180",
             )}
           />
         )}
@@ -209,7 +209,7 @@ export function RepostButton({
             className="fixed inset-0 z-[110] bg-black/60 backdrop-blur-sm"
             onClick={() => {
               setShowConfirmation(false);
-              setQuoteComment('');
+              setQuoteComment("");
             }}
           />
 
@@ -222,26 +222,26 @@ export function RepostButton({
                   type="button"
                   onClick={() => {
                     setShowConfirmation(false);
-                    setQuoteComment('');
+                    setQuoteComment("");
                   }}
                   className="text-muted-foreground transition-colors hover:text-foreground"
                 >
                   <X size={20} />
                 </button>
                 <h2 className="font-semibold text-foreground text-lg">
-                  {quoteComment.trim() ? 'Quote' : 'Repost'}
+                  {quoteComment.trim() ? "Quote" : "Repost"}
                 </h2>
               </div>
               <button
                 type="button"
                 onClick={handleShare}
                 disabled={isLoading}
-                aria-label={quoteComment.trim() ? 'Post quote' : 'Post repost'}
+                aria-label={quoteComment.trim() ? "Post quote" : "Post repost"}
                 className={cn(
-                  'rounded-full px-4 py-1.5 font-semibold text-sm',
-                  'bg-green-600 text-primary-foreground',
-                  'transition-colors hover:bg-green-700',
-                  'disabled:cursor-not-allowed disabled:opacity-50'
+                  "rounded-full px-4 py-1.5 font-semibold text-sm",
+                  "bg-green-600 text-primary-foreground",
+                  "transition-colors hover:bg-green-700",
+                  "disabled:cursor-not-allowed disabled:opacity-50",
                 )}
               >
                 {isLoading ? (
@@ -249,7 +249,7 @@ export function RepostButton({
                     Posting...
                   </span>
                 ) : (
-                  'Post'
+                  "Post"
                 )}
               </button>
             </div>
@@ -261,7 +261,7 @@ export function RepostButton({
                 value={quoteComment}
                 onChange={(e) => {
                   setQuoteComment(e.target.value);
-                  e.target.style.height = 'auto';
+                  e.target.style.height = "auto";
                   e.target.style.height = `${e.target.scrollHeight}px`;
                 }}
                 placeholder="Add your thoughts (optional)"
@@ -270,13 +270,12 @@ export function RepostButton({
                 aria-label="Quote comment"
                 aria-describedby="char-count-mobile"
                 className={cn(
-                  'mb-1 w-full overflow-hidden rounded-xl py-3 pr-3',
-                  'border-0 bg-transparent',
-                  'text-foreground placeholder:text-muted-foreground',
-                  'resize-none focus:outline-none',
-                  'transition-colors'
+                  "mb-1 w-full overflow-hidden rounded-xl py-3 pr-3",
+                  "border-0 bg-transparent",
+                  "text-foreground placeholder:text-muted-foreground",
+                  "resize-none focus:outline-none",
+                  "transition-colors",
                 )}
-                autoFocus
               />
 
               {/* Character Count */}
@@ -284,12 +283,12 @@ export function RepostButton({
                 <span
                   id="char-count-mobile"
                   className={cn(
-                    'text-xs',
+                    "text-xs",
                     quoteComment.length === 0
-                      ? 'invisible'
+                      ? "invisible"
                       : quoteComment.length > 450
-                        ? 'text-red-400'
-                        : 'text-muted-foreground'
+                        ? "text-red-400"
+                        : "text-muted-foreground",
                   )}
                 >
                   {quoteComment.length || 0}/500
@@ -300,8 +299,8 @@ export function RepostButton({
               {postData && (
                 <div
                   className={cn(
-                    'mt-4 rounded-xl border border-border p-4',
-                    'bg-muted/30'
+                    "mt-4 rounded-xl border border-border p-4",
+                    "bg-muted/30",
                   )}
                 >
                   {/* Original Post Author */}
@@ -348,14 +347,14 @@ export function RepostButton({
                     type="button"
                     onClick={() => {
                       setShowConfirmation(false);
-                      setQuoteComment('');
+                      setQuoteComment("");
                     }}
                     className="text-muted-foreground transition-colors hover:text-foreground"
                   >
                     <X size={20} />
                   </button>
                   <h2 className="font-semibold text-foreground text-lg">
-                    {quoteComment.trim() ? 'Quote' : 'Repost'}
+                    {quoteComment.trim() ? "Quote" : "Repost"}
                   </h2>
                 </div>
                 <button
@@ -363,14 +362,14 @@ export function RepostButton({
                   onClick={handleShare}
                   disabled={isLoading}
                   aria-label={
-                    quoteComment.trim() ? 'Post quote' : 'Post repost'
+                    quoteComment.trim() ? "Post quote" : "Post repost"
                   }
                   className={cn(
-                    'rounded-full px-5 py-2 font-semibold text-sm',
-                    'bg-green-600 text-primary-foreground',
-                    'transition-colors hover:bg-green-700',
-                    'disabled:cursor-not-allowed disabled:opacity-50',
-                    'flex items-center gap-2'
+                    "rounded-full px-5 py-2 font-semibold text-sm",
+                    "bg-green-600 text-primary-foreground",
+                    "transition-colors hover:bg-green-700",
+                    "disabled:cursor-not-allowed disabled:opacity-50",
+                    "flex items-center gap-2",
                   )}
                 >
                   {isLoading ? (
@@ -383,7 +382,7 @@ export function RepostButton({
                       Posting...
                     </span>
                   ) : (
-                    'Post'
+                    "Post"
                   )}
                 </button>
               </div>
@@ -400,13 +399,12 @@ export function RepostButton({
                   aria-label="Quote comment"
                   aria-describedby="char-count-desktop"
                   className={cn(
-                    'mb-1 w-full rounded-xl py-4 pr-4',
-                    'border-0 bg-transparent',
-                    'text-base text-foreground placeholder:text-muted-foreground',
-                    'resize-none focus:outline-none',
-                    'transition-colors'
+                    "mb-1 w-full rounded-xl py-4 pr-4",
+                    "border-0 bg-transparent",
+                    "text-base text-foreground placeholder:text-muted-foreground",
+                    "resize-none focus:outline-none",
+                    "transition-colors",
                   )}
-                  autoFocus
                 />
 
                 {/* Character Count */}
@@ -414,12 +412,12 @@ export function RepostButton({
                   <span
                     id="char-count-desktop"
                     className={cn(
-                      'text-sm',
+                      "text-sm",
                       quoteComment.length === 0
-                        ? 'invisible'
+                        ? "invisible"
                         : quoteComment.length > 450
-                          ? 'text-red-400'
-                          : 'text-muted-foreground'
+                          ? "text-red-400"
+                          : "text-muted-foreground",
                     )}
                   >
                     {quoteComment.length || 0}/500
@@ -430,8 +428,8 @@ export function RepostButton({
                 {postData && (
                   <div
                     className={cn(
-                      'mt-4 rounded-xl border border-border p-5',
-                      'bg-muted/30'
+                      "mt-4 rounded-xl border border-border p-5",
+                      "bg-muted/30",
                     )}
                   >
                     {/* Original Post Author */}

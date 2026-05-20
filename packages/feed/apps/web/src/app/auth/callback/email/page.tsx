@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { useRouter } from 'next/navigation';
-import { useEffect, useRef } from 'react';
-import { useStewardAuthContext } from '@/components/providers/StewardAuthProvider';
+import { useRouter } from "next/navigation";
+import { useEffect, useRef } from "react";
+import { useStewardAuthContext } from "@/components/providers/StewardAuthProvider";
 
 /**
  * Email magic-link callback page.
@@ -23,21 +23,21 @@ export default function EmailCallbackPage() {
     processed.current = true;
 
     const params = new URLSearchParams(window.location.search);
-    const token = params.get('token');
-    const email = params.get('email');
+    const token = params.get("token");
+    const email = params.get("email");
 
     // Sanitize URL immediately
-    window.history.replaceState(null, '', window.location.pathname);
+    window.history.replaceState(null, "", window.location.pathname);
 
     if (!token || !email) {
-      router.replace('/?auth_error=missing_params');
+      router.replace("/?auth_error=missing_params");
       return;
     }
 
     stewardAuth
       .verifyEmailCallback(token, email)
       .then((result) => onLoginSuccess(result.token))
-      .then(() => router.replace('/'))
+      .then(() => router.replace("/"))
       .catch((err: Error) => {
         router.replace(`/?auth_error=${encodeURIComponent(err.message)}`);
       });

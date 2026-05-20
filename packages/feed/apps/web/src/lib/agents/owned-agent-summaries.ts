@@ -2,10 +2,10 @@ import {
   agentService,
   getAgentConfig,
   isAutonomousTradingEnabled,
-} from '@feed/agents';
-import { logger, toISO, toISOOrNull } from '@feed/shared';
+} from "@feed/agents";
+import { logger, toISO, toISOOrNull } from "@feed/shared";
 
-export type AgentModelTier = 'free' | 'pro';
+export type AgentModelTier = "free" | "pro";
 
 export interface OwnedAgentSummary {
   id: string;
@@ -37,12 +37,12 @@ export interface OwnedAgentSummary {
 }
 
 function normalizeModelTier(value: string | null | undefined): AgentModelTier {
-  return value === 'pro' ? 'pro' : 'free';
+  return value === "pro" ? "pro" : "free";
 }
 
 export async function listOwnedAgentSummaries(
   managerUserId: string,
-  filters?: { autonomousTrading?: boolean }
+  filters?: { autonomousTrading?: boolean },
 ): Promise<OwnedAgentSummary[]> {
   const agents = await agentService.listUserAgents(managerUserId, filters);
 
@@ -54,7 +54,7 @@ export async function listOwnedAgentSummaries(
       ]);
 
       const performance =
-        performanceResult.status === 'fulfilled'
+        performanceResult.status === "fulfilled"
           ? performanceResult.value
           : {
               totalTrades: 0,
@@ -62,11 +62,11 @@ export async function listOwnedAgentSummaries(
               winRate: 0,
             };
       const config =
-        configResult.status === 'fulfilled' ? configResult.value : null;
+        configResult.status === "fulfilled" ? configResult.value : null;
 
-      if (performanceResult.status === 'rejected') {
+      if (performanceResult.status === "rejected") {
         logger.warn(
-          'Failed to load agent performance for owned agent summary',
+          "Failed to load agent performance for owned agent summary",
           {
             agentId: agent.id,
             managerUserId,
@@ -75,13 +75,13 @@ export async function listOwnedAgentSummaries(
                 ? performanceResult.reason.message
                 : String(performanceResult.reason),
           },
-          'listOwnedAgentSummaries'
+          "listOwnedAgentSummaries",
         );
       }
 
-      if (configResult.status === 'rejected') {
+      if (configResult.status === "rejected") {
         logger.warn(
-          'Failed to load agent config for owned agent summary',
+          "Failed to load agent config for owned agent summary",
           {
             agentId: agent.id,
             managerUserId,
@@ -90,7 +90,7 @@ export async function listOwnedAgentSummaries(
                 ? configResult.reason.message
                 : String(configResult.reason),
           },
-          'listOwnedAgentSummaries'
+          "listOwnedAgentSummaries",
         );
       }
 
@@ -111,8 +111,8 @@ export async function listOwnedAgentSummaries(
         autonomousGroupChats: config?.autonomousGroupChats ?? false,
         a2aEnabled: config?.a2aEnabled ?? false,
         modelTier: normalizeModelTier(config?.modelTier),
-        status: config?.status ?? 'idle',
-        isActive: config?.status === 'active',
+        status: config?.status ?? "idle",
+        isActive: config?.status === "active",
         lifetimePnL: Number(agent.lifetimePnL ?? 0),
         totalTrades: performance.totalTrades ?? 0,
         profitableTrades: performance.profitableTrades ?? 0,
@@ -124,6 +124,6 @@ export async function listOwnedAgentSummaries(
         createdAt: toISO(agent.createdAt),
         updatedAt: toISO(agent.updatedAt),
       };
-    })
+    }),
   );
 }

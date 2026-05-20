@@ -1,4 +1,4 @@
-import type { ArcStateType } from '@feed/shared';
+import type { ArcStateType } from "@feed/shared";
 
 // Scoring weights
 const ENGAGEMENT_WEIGHT = 0.5;
@@ -14,7 +14,7 @@ const SHARE_WEIGHT = 3;
 export function calculateTotalEngagement(
   likes: number,
   comments: number,
-  shares: number
+  shares: number,
 ): number {
   return (
     likes * LIKE_WEIGHT + comments * COMMENT_WEIGHT + shares * SHARE_WEIGHT
@@ -35,7 +35,7 @@ export function calculateStoryScore(
   comments: number,
   shares: number,
   postCount: number,
-  newest: Date
+  newest: Date,
 ): number {
   return (
     calculateTotalEngagement(likes, comments, shares) * ENGAGEMENT_WEIGHT +
@@ -49,25 +49,25 @@ export function calculateStoryScore(
  * Uses the ArcState table's currentState field from the narrative engine.
  */
 export function calculateArcStateMultiplier(
-  arcState: ArcStateType | null
+  arcState: ArcStateType | null,
 ): number {
   switch (arcState) {
-    case 'crisis':
+    case "crisis":
       return 1.4;
-    case 'revelation':
+    case "revelation":
       return 1.3;
-    case 'climax':
+    case "climax":
       return 1.35;
-    case 'escalation':
+    case "escalation":
       return 1.15;
-    case 'active':
-    case 'live':
+    case "active":
+    case "live":
       return 1.1;
-    case 'tension':
+    case "tension":
       return 1.05;
-    case 'resolving':
+    case "resolving":
       return 0.9;
-    case 'resolution':
+    case "resolution":
       return 0.85;
     default:
       // 'setup', 'morning', 'midday', 'afternoon', 'evening', null

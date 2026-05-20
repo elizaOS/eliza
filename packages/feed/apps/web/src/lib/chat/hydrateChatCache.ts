@@ -10,19 +10,19 @@
  * data loads silently.
  */
 
-import type { QueryClient } from '@tanstack/react-query';
-import type { ChatMessagesData } from '@/hooks/useChatMessages';
-import { chatMessagesQueryKey } from '@/hooks/useChatMessages';
-import { getCachedChatIds, getCachedMessages } from './message-store';
+import type { QueryClient } from "@tanstack/react-query";
+import type { ChatMessagesData } from "@/hooks/useChatMessages";
+import { chatMessagesQueryKey } from "@/hooks/useChatMessages";
+import { getCachedChatIds, getCachedMessages } from "./message-store";
 
 const HYDRATION_CHAT_LIMIT = 10;
 
 export async function hydrateChatCacheFromIndexedDB(
   queryClient: QueryClient,
-  userId: string
+  userId: string,
 ): Promise<void> {
   // IndexedDB is only available in the browser — skip during SSR
-  if (typeof window === 'undefined') return;
+  if (typeof window === "undefined") return;
 
   const chatIds = await getCachedChatIds(userId, HYDRATION_CHAT_LIMIT);
   if (chatIds.length === 0) return;
@@ -46,8 +46,8 @@ export async function hydrateChatCacheFromIndexedDB(
       // just mark the data as needing a refresh when it's next accessed.
       queryClient.invalidateQueries({
         queryKey: chatMessagesQueryKey(chatId, userId),
-        refetchType: 'none',
+        refetchType: "none",
       });
-    })
+    }),
   );
 }

@@ -9,12 +9,12 @@
  *   (Run: cd ../local-a2a-server && bun run dev)
  */
 
-import { beforeAll, describe, expect, it } from 'bun:test';
-import { ethers } from 'ethers';
+import { beforeAll, describe, expect, it } from "bun:test";
+import { ethers } from "ethers";
 
-const A2A_URL = 'http://localhost:3001';
+const A2A_URL = "http://localhost:3001";
 const TEST_PRIVATE_KEY =
-  '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
+  "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
 
 // Helper to make A2A calls
 async function a2aCall<T>(
@@ -22,18 +22,18 @@ async function a2aCall<T>(
   params: Record<string, unknown> = {},
   agentId: string,
   address: string,
-  tokenId: number
+  tokenId: number,
 ): Promise<T> {
   const response = await fetch(`${A2A_URL}/api/a2a`, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
-      'x-agent-id': agentId,
-      'x-agent-address': address,
-      'x-agent-token-id': tokenId.toString(),
+      "Content-Type": "application/json",
+      "x-agent-id": agentId,
+      "x-agent-address": address,
+      "x-agent-token-id": tokenId.toString(),
     },
     body: JSON.stringify({
-      jsonrpc: '2.0',
+      jsonrpc: "2.0",
       method,
       params,
       id: Date.now(),
@@ -47,7 +47,7 @@ async function a2aCall<T>(
   return data.result as T;
 }
 
-describe('Local A2A Server E2E Tests', () => {
+describe("Local A2A Server E2E Tests", () => {
   let wallet: ethers.Wallet;
   let agentId: string;
   let address: string;
@@ -57,7 +57,7 @@ describe('Local A2A Server E2E Tests', () => {
     // Check if server is running
     try {
       const health = await fetch(`${A2A_URL}/health`);
-      if (!health.ok) throw new Error('Server not healthy');
+      if (!health.ok) throw new Error("Server not healthy");
     } catch {
       throw new Error(`
         Local A2A server not running!
@@ -74,16 +74,16 @@ describe('Local A2A Server E2E Tests', () => {
 
   // ==================== Health & Agent Card ====================
 
-  describe('Server Health', () => {
-    it('should return health status', async () => {
+  describe("Server Health", () => {
+    it("should return health status", async () => {
       const response = await fetch(`${A2A_URL}/health`);
       const health = await response.json();
 
-      expect(health.status).toBe('ok');
+      expect(health.status).toBe("ok");
       expect(health.chainId).toBeDefined();
     });
 
-    it('should return agent card', async () => {
+    it("should return agent card", async () => {
       const response = await fetch(`${A2A_URL}/.well-known/agent-card`);
       const card = await response.json();
 
@@ -95,45 +95,45 @@ describe('Local A2A Server E2E Tests', () => {
 
   // ==================== Agent Discovery ====================
 
-  describe('Agent Discovery', () => {
-    it('should register agent', async () => {
+  describe("Agent Discovery", () => {
+    it("should register agent", async () => {
       const result = await a2aCall<{ success: boolean; agent: { id: string } }>(
-        'register',
+        "register",
         {
           walletAddress: address,
           tokenId,
           chainId: 31337,
-          displayName: 'Test Agent',
-          description: 'E2E test agent',
+          displayName: "Test Agent",
+          description: "E2E test agent",
         },
         agentId,
         address,
-        tokenId
+        tokenId,
       );
 
       expect(result.success).toBe(true);
       expect(result.agent.id).toBe(agentId);
     });
 
-    it('should discover agents', async () => {
+    it("should discover agents", async () => {
       const result = await a2aCall<{ agents: Array<{ id: string }> }>(
-        'discover',
+        "discover",
         {},
         agentId,
         address,
-        tokenId
+        tokenId,
       );
 
       expect(result.agents).toBeInstanceOf(Array);
     });
 
-    it('should get agent info', async () => {
+    it("should get agent info", async () => {
       const result = await a2aCall<{ id: string; name: string }>(
-        'getInfo',
+        "getInfo",
         { agentId },
         agentId,
         address,
-        tokenId
+        tokenId,
       );
 
       expect(result.id).toBe(agentId);
@@ -143,51 +143,51 @@ describe('Local A2A Server E2E Tests', () => {
 
   // ==================== Portfolio ====================
 
-  describe('Portfolio', () => {
-    it('should get balance', async () => {
+  describe("Portfolio", () => {
+    it("should get balance", async () => {
       const result = await a2aCall<{ balance: number; currency: string }>(
-        'getBalance',
+        "getBalance",
         {},
         agentId,
         address,
-        tokenId
+        tokenId,
       );
 
       expect(result.balance).toBeGreaterThanOrEqual(0);
-      expect(result.currency).toBe('USD');
+      expect(result.currency).toBe("USD");
     });
 
-    it('should get positions', async () => {
+    it("should get positions", async () => {
       const result = await a2aCall<{ positions: unknown[] }>(
-        'getPositions',
+        "getPositions",
         {},
         agentId,
         address,
-        tokenId
+        tokenId,
       );
 
       expect(result.positions).toBeInstanceOf(Array);
     });
 
-    it('should get portfolio', async () => {
+    it("should get portfolio", async () => {
       const result = await a2aCall<{
         balance: number;
         positions: unknown[];
         pnl: number;
-      }>('getPortfolio', {}, agentId, address, tokenId);
+      }>("getPortfolio", {}, agentId, address, tokenId);
 
       expect(result.balance).toBeDefined();
       expect(result.positions).toBeInstanceOf(Array);
       expect(result.pnl).toBeDefined();
     });
 
-    it('should get wallet info', async () => {
+    it("should get wallet info", async () => {
       const result = await a2aCall<{ address: string; virtualBalance: number }>(
-        'getUserWallet',
+        "getUserWallet",
         {},
         agentId,
         address,
-        tokenId
+        tokenId,
       );
 
       expect(result.address).toBeDefined();
@@ -197,46 +197,46 @@ describe('Local A2A Server E2E Tests', () => {
 
   // ==================== Markets ====================
 
-  describe('Markets', () => {
-    it('should get markets', async () => {
+  describe("Markets", () => {
+    it("should get markets", async () => {
       const result = await a2aCall<{
         predictions: unknown[];
         perps: unknown[];
-      }>('getMarkets', {}, agentId, address, tokenId);
+      }>("getMarkets", {}, agentId, address, tokenId);
 
       expect(result.predictions).toBeInstanceOf(Array);
       expect(result.perps).toBeInstanceOf(Array);
     });
 
-    it('should get market data', async () => {
+    it("should get market data", async () => {
       const result = await a2aCall<{
         id: string;
         question: string;
         yesPrice: number;
       }>(
-        'getMarketData',
-        { marketId: 'market-btc-100k' },
+        "getMarketData",
+        { marketId: "market-btc-100k" },
         agentId,
         address,
-        tokenId
+        tokenId,
       );
 
-      expect(result.id).toBe('market-btc-100k');
+      expect(result.id).toBe("market-btc-100k");
       expect(result.question).toBeDefined();
       expect(result.yesPrice).toBeGreaterThan(0);
     });
 
-    it('should buy shares', async () => {
+    it("should buy shares", async () => {
       const result = await a2aCall<{
         id: string;
         shares: number;
         price: number;
       }>(
-        'buyShares',
-        { marketId: 'market-btc-100k', outcome: 'YES', amount: 10 },
+        "buyShares",
+        { marketId: "market-btc-100k", outcome: "YES", amount: 10 },
         agentId,
         address,
-        tokenId
+        tokenId,
       );
 
       expect(result.id).toBeDefined();
@@ -244,24 +244,24 @@ describe('Local A2A Server E2E Tests', () => {
       expect(result.price).toBeGreaterThan(0);
     });
 
-    it('should sell shares after buying', async () => {
+    it("should sell shares after buying", async () => {
       // Buy first
       const buyResult = await a2aCall<{ shares: number }>(
-        'buyShares',
-        { marketId: 'market-eth-10k', outcome: 'NO', amount: 20 },
+        "buyShares",
+        { marketId: "market-eth-10k", outcome: "NO", amount: 20 },
         agentId,
         address,
-        tokenId
+        tokenId,
       );
 
       // Then sell half
       const sellShares = buyResult.shares / 2;
       const sellResult = await a2aCall<{ id: string }>(
-        'sellShares',
-        { marketId: 'market-eth-10k', outcome: 'NO', shares: sellShares },
+        "sellShares",
+        { marketId: "market-eth-10k", outcome: "NO", shares: sellShares },
         agentId,
         address,
-        tokenId
+        tokenId,
       );
 
       expect(sellResult.id).toBeDefined();
@@ -270,65 +270,65 @@ describe('Local A2A Server E2E Tests', () => {
 
   // ==================== Social ====================
 
-  describe('Social', () => {
-    it('should get feed', async () => {
+  describe("Social", () => {
+    it("should get feed", async () => {
       const result = await a2aCall<{ posts: Array<{ id: string }> }>(
-        'getFeed',
+        "getFeed",
         { limit: 10 },
         agentId,
         address,
-        tokenId
+        tokenId,
       );
 
       expect(result.posts).toBeInstanceOf(Array);
     });
 
-    it('should create post', async () => {
+    it("should create post", async () => {
       const content = `Test post from E2E test ${Date.now()}`;
       const result = await a2aCall<{ id: string; content: string }>(
-        'createPost',
+        "createPost",
         { content },
         agentId,
         address,
-        tokenId
+        tokenId,
       );
 
       expect(result.id).toBeDefined();
       expect(result.content).toBe(content);
     });
 
-    it('should like post', async () => {
+    it("should like post", async () => {
       const result = await a2aCall<{ success: boolean; likesCount: number }>(
-        'likePost',
-        { postId: 'post-welcome' },
+        "likePost",
+        { postId: "post-welcome" },
         agentId,
         address,
-        tokenId
+        tokenId,
       );
 
       expect(result.success).toBe(true);
       expect(result.likesCount).toBeGreaterThanOrEqual(0);
     });
 
-    it('should comment on post', async () => {
+    it("should comment on post", async () => {
       const result = await a2aCall<{ id: string }>(
-        'commentPost',
-        { postId: 'post-welcome', content: 'Test comment' },
+        "commentPost",
+        { postId: "post-welcome", content: "Test comment" },
         agentId,
         address,
-        tokenId
+        tokenId,
       );
 
       expect(result.id).toBeDefined();
     });
 
-    it('should search users', async () => {
+    it("should search users", async () => {
       const result = await a2aCall<{ users: unknown[] }>(
-        'searchUsers',
-        { query: 'agent' },
+        "searchUsers",
+        { query: "agent" },
         agentId,
         address,
-        tokenId
+        tokenId,
       );
 
       expect(result.users).toBeInstanceOf(Array);
@@ -337,14 +337,14 @@ describe('Local A2A Server E2E Tests', () => {
 
   // ==================== Notifications ====================
 
-  describe('Notifications', () => {
-    it('should get notifications', async () => {
+  describe("Notifications", () => {
+    it("should get notifications", async () => {
       const result = await a2aCall<{ notifications: unknown[] }>(
-        'getNotifications',
+        "getNotifications",
         {},
         agentId,
         address,
-        tokenId
+        tokenId,
       );
 
       expect(result.notifications).toBeInstanceOf(Array);
@@ -353,24 +353,24 @@ describe('Local A2A Server E2E Tests', () => {
 
   // ==================== Stats ====================
 
-  describe('Stats', () => {
-    it('should get system stats', async () => {
+  describe("Stats", () => {
+    it("should get system stats", async () => {
       const result = await a2aCall<{
         totalAgents: number;
         totalMarkets: number;
-      }>('getStats', {}, agentId, address, tokenId);
+      }>("getStats", {}, agentId, address, tokenId);
 
       expect(result.totalAgents).toBeGreaterThanOrEqual(0);
       expect(result.totalMarkets).toBeGreaterThanOrEqual(0);
     });
 
-    it('should get leaderboard', async () => {
+    it("should get leaderboard", async () => {
       const result = await a2aCall<{ entries: unknown[] }>(
-        'getLeaderboard',
+        "getLeaderboard",
         { limit: 10 },
         agentId,
         address,
-        tokenId
+        tokenId,
       );
 
       expect(result.entries).toBeInstanceOf(Array);
@@ -379,31 +379,31 @@ describe('Local A2A Server E2E Tests', () => {
 
   // ==================== Payments ====================
 
-  describe('Payments', () => {
-    it('should create payment request', async () => {
+  describe("Payments", () => {
+    it("should create payment request", async () => {
       const result = await a2aCall<{ paymentId: string; status: string }>(
-        'paymentRequest',
-        { amount: 100, currency: 'ETH' },
+        "paymentRequest",
+        { amount: 100, currency: "ETH" },
         agentId,
         address,
-        tokenId
+        tokenId,
       );
 
       expect(result.paymentId).toBeDefined();
-      expect(result.status).toBe('pending');
+      expect(result.status).toBe("pending");
     });
 
-    it('should submit payment receipt', async () => {
+    it("should submit payment receipt", async () => {
       const result = await a2aCall<{ verified: boolean }>(
-        'paymentReceipt',
+        "paymentReceipt",
         {
-          paymentId: 'test-payment',
+          paymentId: "test-payment",
           amount: 100,
-          transactionHash: '0x1234...',
+          transactionHash: "0x1234...",
         },
         agentId,
         address,
-        tokenId
+        tokenId,
       );
 
       expect(result.verified).toBe(true);
@@ -412,38 +412,38 @@ describe('Local A2A Server E2E Tests', () => {
 });
 
 // Summary test
-describe('A2A Method Coverage', () => {
-  it('should track the local example server method inventory', () => {
+describe("A2A Method Coverage", () => {
+  it("should track the local example server method inventory", () => {
     const methods = [
       // Discovery
-      'register',
-      'discover',
-      'getInfo',
+      "register",
+      "discover",
+      "getInfo",
       // Portfolio
-      'getBalance',
-      'getPositions',
-      'getPortfolio',
-      'getUserWallet',
+      "getBalance",
+      "getPositions",
+      "getPortfolio",
+      "getUserWallet",
       // Markets
-      'getMarkets',
-      'getMarketData',
-      'buyShares',
-      'sellShares',
+      "getMarkets",
+      "getMarketData",
+      "buyShares",
+      "sellShares",
       // Social
-      'getFeed',
-      'createPost',
-      'likePost',
-      'commentPost',
-      'searchUsers',
+      "getFeed",
+      "createPost",
+      "likePost",
+      "commentPost",
+      "searchUsers",
       // Notifications
-      'getNotifications',
-      'markNotificationRead',
+      "getNotifications",
+      "markNotificationRead",
       // Stats
-      'getStats',
-      'getLeaderboard',
+      "getStats",
+      "getLeaderboard",
       // Payments
-      'paymentRequest',
-      'paymentReceipt',
+      "paymentRequest",
+      "paymentReceipt",
     ];
 
     expect(methods.length).toBeGreaterThanOrEqual(20);

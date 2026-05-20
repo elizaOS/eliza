@@ -29,8 +29,8 @@ import {
   relayCronToStaging,
   verifyCronAuth,
   withErrorHandling,
-} from '@feed/api';
-import { db, eq, games } from '@feed/db';
+} from "@feed/api";
+import { db, eq, games } from "@feed/db";
 import {
   type Article,
   ArticleGenerator,
@@ -45,10 +45,10 @@ import {
   type StaticOrganization,
   secureRandom,
   worldFactsService,
-} from '@feed/engine';
-import { generateSnowflakeId, logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@feed/engine";
+import { generateSnowflakeId, logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 /** Game state shape for cache */
 interface GameState {
@@ -59,7 +59,7 @@ interface GameState {
 }
 
 /** Valid values for Actor.initialLuck field */
-const VALID_INITIAL_LUCK = ['low', 'medium', 'high'] as const;
+const VALID_INITIAL_LUCK = ["low", "medium", "high"] as const;
 type InitialLuck = (typeof VALID_INITIAL_LUCK)[number];
 
 /**
@@ -68,7 +68,7 @@ type InitialLuck = (typeof VALID_INITIAL_LUCK)[number];
  */
 function isValidInitialLuck(value: unknown): value is InitialLuck {
   return (
-    typeof value === 'string' &&
+    typeof value === "string" &&
     VALID_INITIAL_LUCK.includes(value as InitialLuck)
   );
 }
@@ -91,7 +91,7 @@ function mapStaticActorsToActors(actorsList: StaticActor[]) {
     postExample: a.postExample, // Keep as string[] to match Actor interface
     role: a.role,
     // Validate initialLuck at runtime - use validated value or default to 'medium'
-    initialLuck: isValidInitialLuck(a.initialLuck) ? a.initialLuck : 'medium',
+    initialLuck: isValidInitialLuck(a.initialLuck) ? a.initialLuck : "medium",
     initialMood: a.initialMood,
   }));
 }
@@ -124,9 +124,9 @@ function createQuestionForArticle(id: string, text: string) {
     scenario: 1, // Default - article-tick articles don't have scenario context
     outcome: false,
     rank: 1, // Default - article-tick articles don't have ranking context
-    createdDate: new Date().toISOString().split('T')[0]!,
-    resolutionDate: '',
-    status: 'active' as const,
+    createdDate: new Date().toISOString().split("T")[0]!,
+    resolutionDate: "",
+    status: "active" as const,
   };
 }
 
@@ -135,13 +135,13 @@ function createQuestionForArticle(id: string, text: string) {
  * Distinguishes between success, skip (rate limit), and error for accurate metrics.
  */
 type ArticleGenerationResult =
-  | { status: 'success'; id: string }
-  | { status: 'skipped'; reason: string }
-  | { status: 'error'; error: string };
+  | { status: "success"; id: string }
+  | { status: "skipped"; reason: string }
+  | { status: "error"; error: string };
 
 // Vercel function configuration
 export const maxDuration = 300; // 5 minutes max
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 /**
  * Maximum articles to generate per tick.
@@ -166,26 +166,26 @@ const MAX_ARTICLES_PER_TICK = 1;
  */
 async function persistArticleFromGenerator(
   article: Article,
-  gameState: GameState
+  gameState: GameState,
 ) {
   // Validate required fields before calling persistence service
   if (!article.id?.trim()) {
-    throw new Error('Missing article id');
+    throw new Error("Missing article id");
   }
   if (!article.title?.trim()) {
-    throw new Error('Missing article title');
+    throw new Error("Missing article title");
   }
   if (!article.summary?.trim()) {
-    throw new Error('Missing article summary');
+    throw new Error("Missing article summary");
   }
   if (!article.content?.trim()) {
-    throw new Error('Missing article body');
+    throw new Error("Missing article body");
   }
   if (!article.authorOrgId) {
-    throw new Error('Missing authorOrgId');
+    throw new Error("Missing authorOrgId");
   }
   if (!gameState?.id) {
-    throw new Error('Missing gameState.id');
+    throw new Error("Missing gameState.id");
   }
 
   // Use the shared persistence service
@@ -206,7 +206,7 @@ async function persistArticleFromGenerator(
       relatedQuestion: article.relatedQuestion,
       timestamp: article.publishedAt,
     },
-    { checkRateLimit: true }
+    { checkRateLimit: true },
   );
 }
 
@@ -226,49 +226,49 @@ export const GET = withErrorHandling(async function GET(req: NextRequest) {
  */
 export const POST = withErrorHandling(async function POST(_req: NextRequest) {
   // Verify cron authorization
-  if (!verifyCronAuth(_req, { jobName: 'ArticleTick' })) {
+  if (!verifyCronAuth(_req, { jobName: "ArticleTick" })) {
     logger.warn(
-      'Unauthorized article-tick request attempt',
+      "Unauthorized article-tick request attempt",
       undefined,
-      'ArticleTick'
+      "ArticleTick",
     );
     return NextResponse.json(
-      { error: 'Unauthorized cron request' },
-      { status: 401 }
+      { error: "Unauthorized cron request" },
+      { status: 401 },
     );
   }
 
   const startTime = Date.now();
   const processId = `article-tick-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
-  logger.info('Article tick started', { processId }, 'ArticleTick');
+  logger.info("Article tick started", { processId }, "ArticleTick");
 
   // Relay to staging if configured (fan-out)
-  const relayResult = await relayCronToStaging(_req, 'article-tick');
+  const relayResult = await relayCronToStaging(_req, "article-tick");
   if (relayResult.forwarded) {
     logger.info(
-      'Cron execution relayed to staging (fan-out: continuing local execution)',
+      "Cron execution relayed to staging (fan-out: continuing local execution)",
       { status: relayResult.status, error: relayResult.error },
-      'ArticleTick'
+      "ArticleTick",
     );
   }
 
   // Acquire global lock to prevent overlapping cron invocations
   const globalLockAcquired = await DistributedLockService.acquireLock({
-    lockId: 'article-tick-global',
+    lockId: "article-tick-global",
     durationMs: 300 * 1000, // 5 minutes
-    operation: 'article-tick-global',
+    operation: "article-tick-global",
     processId,
   });
   if (!globalLockAcquired) {
     logger.info(
-      'Article tick skipped - previous tick still running',
+      "Article tick skipped - previous tick still running",
       { processId },
-      'ArticleTick'
+      "ArticleTick",
     );
     return NextResponse.json({
       success: true,
       skipped: true,
-      reason: 'Previous tick still running',
+      reason: "Previous tick still running",
       articlesCreated: 0,
     });
   }
@@ -276,23 +276,23 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
   try {
     // Check GAME_START environment variable
     const gameStartEnv = process.env.GAME_START?.toLowerCase();
-    if (gameStartEnv === 'false' || gameStartEnv === '0') {
+    if (gameStartEnv === "false" || gameStartEnv === "0") {
       logger.info(
-        'Game disabled via GAME_START env var - skipping article tick',
+        "Game disabled via GAME_START env var - skipping article tick",
         { GAME_START: process.env.GAME_START },
-        'ArticleTick'
+        "ArticleTick",
       );
       return NextResponse.json({
         success: true,
         skipped: true,
-        reason: 'Game disabled via GAME_START environment variable',
+        reason: "Game disabled via GAME_START environment variable",
         articlesCreated: 0,
       });
     }
 
     // Check Game status from database
     const gameState = await getCacheOrFetch<GameState | null>(
-      'continuous-game',
+      "continuous-game",
       async () => {
         const [game] = await db
           .select({
@@ -306,19 +306,19 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
           .limit(1);
         return game ?? null;
       },
-      { namespace: 'article-tick', ttl: 60 }
+      { namespace: "article-tick", ttl: 60 },
     );
 
     if (!gameState) {
       logger.info(
-        'Article tick skipped (No continuous game found)',
+        "Article tick skipped (No continuous game found)",
         {},
-        'ArticleTick'
+        "ArticleTick",
       );
       return NextResponse.json({
         success: true,
         skipped: true,
-        reason: 'No continuous game found',
+        reason: "No continuous game found",
         duration: Date.now() - startTime,
         articlesCreated: 0,
       });
@@ -326,14 +326,14 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
 
     if (!gameState.isRunning) {
       logger.info(
-        'Article tick paused (Game is not running)',
+        "Article tick paused (Game is not running)",
         { gameId: gameState.id },
-        'ArticleTick'
+        "ArticleTick",
       );
       return NextResponse.json({
         success: true,
         skipped: true,
-        reason: 'Game is paused',
+        reason: "Game is paused",
         gameId: gameState.id,
         duration: Date.now() - startTime,
         articlesCreated: 0,
@@ -346,14 +346,14 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
 
     if (!allowed) {
       logger.info(
-        'Article tick skipped - rate limit reached',
+        "Article tick skipped - rate limit reached",
         { currentCount, maxAllowed },
-        'ArticleTick'
+        "ArticleTick",
       );
       return NextResponse.json({
         success: true,
         skipped: true,
-        reason: 'Rate limit reached',
+        reason: "Rate limit reached",
         currentCount,
         maxAllowed,
         duration: Date.now() - startTime,
@@ -362,21 +362,21 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
     }
 
     logger.info(
-      'Article rate limit check passed',
+      "Article rate limit check passed",
       { currentCount, maxAllowed, remaining },
-      'ArticleTick'
+      "ArticleTick",
     );
 
     // Get news organizations from static registry
-    const newsOrgs = StaticDataRegistry.getOrganizationsByType('media');
+    const newsOrgs = StaticDataRegistry.getOrganizationsByType("media");
     const actorsList = StaticDataRegistry.getTopActors(50);
 
     if (newsOrgs.length === 0) {
-      logger.warn('No news organizations found', {}, 'ArticleTick');
+      logger.warn("No news organizations found", {}, "ArticleTick");
       return NextResponse.json({
         success: true,
         skipped: true,
-        reason: 'No news organizations available',
+        reason: "No news organizations available",
         articlesCreated: 0,
       });
     }
@@ -385,14 +385,14 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
     const activeEventsData = await getActiveEventsForPosting();
 
     // Get world facts context with graceful fallback if service fails
-    let worldFactsContext = '';
+    let worldFactsContext = "";
     try {
       worldFactsContext = await worldFactsService.generatePromptContext();
     } catch (error) {
       logger.warn(
-        'Failed to fetch world facts context - proceeding without',
+        "Failed to fetch world facts context - proceeding without",
         { error: error instanceof Error ? error.message : String(error) },
-        'ArticleTick'
+        "ArticleTick",
       );
     }
 
@@ -407,7 +407,7 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
     if (activeEventsData.activeEvents.length > 0 && articlesToGenerate > 0) {
       // Pick a random event to cover
       const eventIndex = Math.floor(
-        secureRandom() * activeEventsData.activeEvents.length
+        secureRandom() * activeEventsData.activeEvents.length,
       );
       const event = activeEventsData.activeEvents[eventIndex];
 
@@ -427,28 +427,28 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
             actorsList,
             worldFactsContext,
             gameState,
-            llmClient
+            llmClient,
           );
 
-          if (result.status === 'success') {
+          if (result.status === "success") {
             articlesCreated++;
             // Mark this event as covered for future duplicate detection (DB-backed)
             await markEventAsCovered(eventId, org.id, result.id);
             logger.info(
               `Article created by ${org.name}`,
               { eventId: event.questionId, articleId: result.id },
-              'ArticleTick'
+              "ArticleTick",
             );
-          } else if (result.status === 'error') {
+          } else if (result.status === "error") {
             // Count actual errors for accurate metrics
             errorCount++;
           }
           // 'skipped' status is not an error, just means rate limit hit
         } else {
           logger.debug(
-            'Event already covered - skipping',
+            "Event already covered - skipping",
             { eventId: event.questionId },
-            'ArticleTick'
+            "ArticleTick",
           );
         }
       }
@@ -464,17 +464,17 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
         actorsList,
         worldFactsContext,
         gameState,
-        llmClient
+        llmClient,
       );
 
-      if (result.status === 'success') {
+      if (result.status === "success") {
         articlesCreated++;
         logger.info(
           `Baseline article created by ${org.name}`,
           { articleId: result.id },
-          'ArticleTick'
+          "ArticleTick",
         );
-      } else if (result.status === 'error') {
+      } else if (result.status === "error") {
         // Count actual errors for accurate metrics
         errorCount++;
       }
@@ -487,10 +487,10 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
     logger.info(
       `Article tick completed in ${duration}ms`,
       { articlesCreated, errorCount, success },
-      'ArticleTick'
+      "ArticleTick",
     );
 
-    recordCronExecution('article-tick', new Date(startTime), {
+    recordCronExecution("article-tick", new Date(startTime), {
       success,
       articlesCreated,
       errorCount,
@@ -508,7 +508,7 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
       rateLimit: { currentCount, maxAllowed, remaining },
     });
   } finally {
-    await DistributedLockService.releaseLock('article-tick-global', processId);
+    await DistributedLockService.releaseLock("article-tick-global", processId);
   }
 });
 
@@ -522,17 +522,17 @@ async function generateEventArticle(
   actorsList: StaticActor[],
   worldFactsContext: string,
   gameState: GameState,
-  llmClient: FeedLLMClient
+  llmClient: FeedLLMClient,
 ): Promise<ArticleGenerationResult> {
   // P0: Pre-check rate limit BEFORE expensive LLM calls to avoid wasting resources
   const { allowed } = await articleRateLimiter.canGenerateArticle();
   if (!allowed) {
     logger.info(
-      'Event article skipped - rate limit reached before LLM call',
+      "Event article skipped - rate limit reached before LLM call",
       { eventId: event.questionId, orgId: org.id },
-      'ArticleTick'
+      "ArticleTick",
     );
-    return { status: 'skipped', reason: 'rate_limit' };
+    return { status: "skipped", reason: "rate_limit" };
   }
 
   // Create ArticleGenerator instance
@@ -545,7 +545,7 @@ async function generateEventArticle(
   // Create standardized question object using factory helper
   const question = createQuestionForArticle(
     event.questionId,
-    event.text || `Market activity for ${event.questionId}`
+    event.text || `Market activity for ${event.questionId}`,
   );
 
   try {
@@ -554,10 +554,10 @@ async function generateEventArticle(
     const article = await articleGen.generateArticleForQuestion(
       question,
       organization,
-      'breaking', // Event articles are breaking news
+      "breaking", // Event articles are breaking news
       actors,
       [], // Recent events (empty - world context provides this info)
-      worldFactsContext // World facts context for current game state
+      worldFactsContext, // World facts context for current game state
     );
 
     // Persist the article using shared persistence service (includes rate limit check)
@@ -566,29 +566,29 @@ async function generateEventArticle(
     // Handle persistence failures - distinguish rate limiting from actual errors
     if (!result.success) {
       if (result.rateLimited) {
-        return { status: 'skipped', reason: 'rate_limit_at_persist' };
+        return { status: "skipped", reason: "rate_limit_at_persist" };
       }
       // Actual persistence error (DB failure, validation, etc.)
       return {
-        status: 'error',
-        error: result.error || 'Unknown persistence error',
+        status: "error",
+        error: result.error || "Unknown persistence error",
       };
     }
 
     // With discriminated union, articleId is guaranteed present when success is true
-    return { status: 'success', id: result.articleId };
+    return { status: "success", id: result.articleId };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     logger.error(
-      'ArticleGenerator failed for event article',
+      "ArticleGenerator failed for event article",
       {
         eventId: event.questionId,
         orgId: org.id,
         error: errorMessage,
       },
-      'ArticleTick'
+      "ArticleTick",
     );
-    return { status: 'error', error: errorMessage };
+    return { status: "error", error: errorMessage };
   }
 }
 
@@ -601,27 +601,27 @@ async function generateBaselineArticle(
   actorsList: StaticActor[],
   worldFactsContext: string,
   gameState: GameState,
-  llmClient: FeedLLMClient
+  llmClient: FeedLLMClient,
 ): Promise<ArticleGenerationResult> {
   // Pick a random actor to focus on
   const actorIndex = Math.floor(
-    secureRandom() * Math.min(10, actorsList.length)
+    secureRandom() * Math.min(10, actorsList.length),
   );
   const actor = actorsList[actorIndex];
 
   const topic = actor
     ? `${actor.name} and recent developments`
-    : 'AI industry trends and market movements';
+    : "AI industry trends and market movements";
 
   // P0: Pre-check rate limit BEFORE expensive LLM calls to avoid wasting resources
   const { allowed } = await articleRateLimiter.canGenerateArticle();
   if (!allowed) {
     logger.info(
-      'Baseline article skipped - rate limit reached before LLM call',
+      "Baseline article skipped - rate limit reached before LLM call",
       { topic, orgId: org.id },
-      'ArticleTick'
+      "ArticleTick",
     );
-    return { status: 'skipped', reason: 'rate_limit' };
+    return { status: "skipped", reason: "rate_limit" };
   }
 
   // Create ArticleGenerator instance
@@ -644,10 +644,10 @@ async function generateBaselineArticle(
     const article = await articleGen.generateArticleForQuestion(
       question,
       organization,
-      'commentary', // Baseline articles are commentary/analysis
+      "commentary", // Baseline articles are commentary/analysis
       actors,
       [], // Recent events (empty - world context provides this info)
-      worldFactsContext // World facts context for current game state
+      worldFactsContext, // World facts context for current game state
     );
 
     // Persist the article using shared persistence service (includes rate limit check)
@@ -656,28 +656,28 @@ async function generateBaselineArticle(
     // Handle persistence failures - distinguish rate limiting from actual errors
     if (!result.success) {
       if (result.rateLimited) {
-        return { status: 'skipped', reason: 'rate_limit_at_persist' };
+        return { status: "skipped", reason: "rate_limit_at_persist" };
       }
       // Actual persistence error (DB failure, validation, etc.)
       return {
-        status: 'error',
-        error: result.error || 'Unknown persistence error',
+        status: "error",
+        error: result.error || "Unknown persistence error",
       };
     }
 
     // With discriminated union, articleId is guaranteed present when success is true
-    return { status: 'success', id: result.articleId };
+    return { status: "success", id: result.articleId };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     logger.error(
-      'ArticleGenerator failed for baseline article',
+      "ArticleGenerator failed for baseline article",
       {
         topic,
         orgId: org.id,
         error: errorMessage,
       },
-      'ArticleTick'
+      "ArticleTick",
     );
-    return { status: 'error', error: errorMessage };
+    return { status: "error", error: errorMessage };
   }
 }

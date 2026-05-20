@@ -1,9 +1,9 @@
-import { describe, expect, it } from 'vitest';
-import { StaticDataRegistry } from '../../services/static-data-registry';
+import { describe, expect, it } from "vitest";
+import { StaticDataRegistry } from "../../services/static-data-registry";
 import {
   formatActorFinanceGuardrails,
   isDegenSpeaker,
-} from '../../utils/shared-utils';
+} from "../../utils/shared-utils";
 
 function toGuardrailsActor(actorId: string): {
   name: string;
@@ -16,7 +16,7 @@ function toGuardrailsActor(actorId: string): {
   const actor = StaticDataRegistry.getActor(actorId);
   if (!actor) {
     throw new Error(
-      `Expected actor '${actorId}' to exist in StaticDataRegistry`
+      `Expected actor '${actorId}' to exist in StaticDataRegistry`,
     );
   }
   return {
@@ -29,38 +29,38 @@ function toGuardrailsActor(actorId: string): {
   };
 }
 
-describe('NPC finance/ticker guardrails', () => {
-  it('classifies degens vs non-degens reasonably', () => {
+describe("NPC finance/ticker guardrails", () => {
+  it("classifies degens vs non-degens reasonably", () => {
     // ben-horowaitz now matches degen keywords (funding, ape) in his post examples
-    expect(isDegenSpeaker(toGuardrailsActor('ben-horowaitz'))).toBe(true);
-    expect(isDegenSpeaker(toGuardrailsActor('ailon-musk'))).toBe(false);
+    expect(isDegenSpeaker(toGuardrailsActor("ben-horowaitz"))).toBe(true);
+    expect(isDegenSpeaker(toGuardrailsActor("ailon-musk"))).toBe(false);
 
-    expect(isDegenSpeaker(toGuardrailsActor('gainzy'))).toBe(true);
+    expect(isDegenSpeaker(toGuardrailsActor("gainzy"))).toBe(true);
     // Finance voice that naturally uses tickers should be allowed
-    expect(isDegenSpeaker(toGuardrailsActor('nancy-pelosai'))).toBe(true);
+    expect(isDegenSpeaker(toGuardrailsActor("nancy-pelosai"))).toBe(true);
   });
 
-  it('applies finance guardrails only to non-degens', () => {
+  it("applies finance guardrails only to non-degens", () => {
     // ben-horowaitz is now classified as degen, so no guardrails
     const benRules = formatActorFinanceGuardrails(
-      toGuardrailsActor('ben-horowaitz')
+      toGuardrailsActor("ben-horowaitz"),
     );
-    expect(benRules).toBe('');
+    expect(benRules).toBe("");
 
     // ailon-musk is non-degen, so guardrails should apply
     const elonRules = formatActorFinanceGuardrails(
-      toGuardrailsActor('ailon-musk')
+      toGuardrailsActor("ailon-musk"),
     );
-    expect(elonRules).toContain('DO NOT talk in tickers');
+    expect(elonRules).toContain("DO NOT talk in tickers");
 
     const degenRules = formatActorFinanceGuardrails(
-      toGuardrailsActor('gainzy')
+      toGuardrailsActor("gainzy"),
     );
-    expect(degenRules).toBe('');
+    expect(degenRules).toBe("");
 
     const nancyRules = formatActorFinanceGuardrails(
-      toGuardrailsActor('nancy-pelosai')
+      toGuardrailsActor("nancy-pelosai"),
     );
-    expect(nancyRules).toBe('');
+    expect(nancyRules).toBe("");
   });
 });

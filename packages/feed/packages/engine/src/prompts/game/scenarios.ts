@@ -1,8 +1,8 @@
-import { definePrompt } from '../define-prompt';
+import { definePrompt } from "../define-prompt";
 import {
   NARRATIVE_CONTINUITY_RULES,
   PARODY_NAME_RULES,
-} from '../shared-sections';
+} from "../shared-sections";
 
 /**
  * Prompt for generating 3 satirical scenarios for game setup.
@@ -15,10 +15,10 @@ import {
  * Returns XML with 3 scenario descriptions.
  */
 export const scenarios = definePrompt({
-  id: 'scenarios',
-  version: '4.0.0',
-  category: 'game',
-  description: 'Generates 3 satirical scenarios with full character context',
+  id: "scenarios",
+  version: "4.0.0",
+  category: "game",
+  description: "Generates 3 satirical scenarios with full character context",
   temperature: 0.8,
   maxTokens: 8000,
   template: `{{realityGrounding}}

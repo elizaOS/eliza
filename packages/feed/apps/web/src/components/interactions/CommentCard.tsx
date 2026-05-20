@@ -1,31 +1,31 @@
-'use client';
+"use client";
 
-import type { CommentCardProps, CommentData } from '@feed/shared';
-import { cn, getProfileUrl } from '@feed/shared';
+import type { CommentCardProps, CommentData } from "@feed/shared";
+import { cn, getProfileUrl } from "@feed/shared";
 import {
   Edit2,
   MessageCircle,
   MoreHorizontal,
   Repeat2,
   Trash2,
-} from 'lucide-react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useState } from 'react';
-import { createPortal } from 'react-dom';
-import { ModerationMenu } from '@/components/moderation/ModerationMenu';
-import { formatTimeAgo } from '@/components/posts/CommentPreview';
-import { Avatar } from '@/components/shared/Avatar';
-import { TaggedText } from '@/components/shared/TaggedText';
+} from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { createPortal } from "react-dom";
+import { ModerationMenu } from "@/components/moderation/ModerationMenu";
+import { formatTimeAgo } from "@/components/posts/CommentPreview";
+import { Avatar } from "@/components/shared/Avatar";
+import { TaggedText } from "@/components/shared/TaggedText";
 import {
   isNpcIdentifier,
   VerifiedBadge,
-} from '@/components/shared/VerifiedBadge';
-import { useAuth } from '@/hooks/useAuth';
-import { useMenuPosition } from '@/hooks/useMenuPosition';
-import { MAX_REPLY_COUNT } from '@/lib/constants';
-import { CommentInput } from './CommentInput';
-import { LikeButton } from './LikeButton';
+} from "@/components/shared/VerifiedBadge";
+import { useAuth } from "@/hooks/useAuth";
+import { useMenuPosition } from "@/hooks/useMenuPosition";
+import { MAX_REPLY_COUNT } from "@/lib/constants";
+import { CommentInput } from "./CommentInput";
+import { LikeButton } from "./LikeButton";
 
 // Menu dimensions for edit/delete dropdown
 const MENU_HEIGHT = 100;
@@ -136,7 +136,7 @@ export function CommentCard({
   };
 
   const handleDelete = () => {
-    if (onDelete && confirm('Are you sure you want to delete this comment?')) {
+    if (onDelete && confirm("Are you sure you want to delete this comment?")) {
       onDelete(comment.id);
     }
     setShowActions(false);
@@ -148,12 +148,12 @@ export function CommentCard({
   };
 
   const handleTaggedTextClick = (tag: string) => {
-    if (tag.startsWith('@')) {
+    if (tag.startsWith("@")) {
       const username = tag.slice(1);
-      router.push(getProfileUrl('', username));
+      router.push(getProfileUrl("", username));
       return;
     }
-    if (tag.startsWith('$')) {
+    if (tag.startsWith("$")) {
       const symbol = tag.slice(1);
       router.push(`/markets?search=${encodeURIComponent(symbol)}`);
     }
@@ -162,9 +162,9 @@ export function CommentCard({
   return (
     <div
       className={cn(
-        'border-border border-b px-4 py-4',
-        'cursor-pointer transition-all duration-200 hover:bg-muted/30',
-        className
+        "border-border border-b px-4 py-4",
+        "cursor-pointer transition-all duration-200 hover:bg-muted/30",
+        className,
       )}
       onClick={handleNavigateToThread}
     >
@@ -244,11 +244,11 @@ export function CommentCard({
                             className="fade-in slide-in-from-top-2 fixed z-50 min-w-[120px] animate-in rounded-md border border-border bg-popover py-1 shadow-lg duration-150"
                             style={{
                               top: menuPosition.openUpward
-                                ? 'auto'
+                                ? "auto"
                                 : menuPosition.top,
                               bottom: menuPosition.openUpward
                                 ? menuPosition.windowHeight - menuPosition.top
-                                : 'auto',
+                                : "auto",
                               left: menuPosition.left,
                             }}
                           >
@@ -270,7 +270,7 @@ export function CommentCard({
                             </button>
                           </div>
                         </>,
-                        document.body
+                        document.body,
                       )}
                   </div>
                 ) : user ? (
@@ -305,7 +305,6 @@ export function CommentCard({
               value={editContent}
               onChange={(e) => setEditContent(e.target.value)}
               className="min-h-[60px] w-full resize-none rounded-md border border-border bg-muted p-2 text-sm focus:border-border focus:outline-none"
-              autoFocus
             />
             <div className="mt-2 flex gap-2">
               <button
@@ -342,10 +341,10 @@ export function CommentCard({
             type="button"
             onClick={handleReply}
             className={cn(
-              'flex items-center gap-1',
-              'bg-transparent transition-all duration-200 hover:opacity-70',
-              'cursor-pointer text-muted-foreground text-xs',
-              isReplying && 'text-[#0066FF]'
+              "flex items-center gap-1",
+              "bg-transparent transition-all duration-200 hover:opacity-70",
+              "cursor-pointer text-muted-foreground text-xs",
+              isReplying && "text-[#0066FF]",
             )}
           >
             <MessageCircle size={18} />

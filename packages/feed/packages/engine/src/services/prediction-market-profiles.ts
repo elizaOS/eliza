@@ -1,7 +1,7 @@
 export interface PredictionMarketProfile {
-  horizonBucket: 'short' | 'medium' | 'long';
-  urgencyLevel: 'imminent' | 'near-term' | 'dated';
-  eventSensitivity: 'low' | 'medium' | 'high';
+  horizonBucket: "short" | "medium" | "long";
+  urgencyLevel: "imminent" | "near-term" | "dated";
+  eventSensitivity: "low" | "medium" | "high";
   initialLiquidity: number;
   initialYesProbability: number;
   signalSensitivity: number;
@@ -22,7 +22,7 @@ interface PredictionMarketProfilePreset {
 }
 
 const HORIZON_PRESETS: Record<
-  PredictionMarketProfile['horizonBucket'],
+  PredictionMarketProfile["horizonBucket"],
   PredictionMarketProfilePreset
 > = {
   short: {
@@ -61,83 +61,83 @@ function stableUnit(seed: string): number {
 
 function getUrgencyLevel(
   endDate: Date,
-  now: Date
-): PredictionMarketProfile['urgencyLevel'] {
+  now: Date,
+): PredictionMarketProfile["urgencyLevel"] {
   const daysToResolution = Math.max(
     0,
-    (endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+    (endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
   );
 
-  if (daysToResolution <= 1.5) return 'imminent';
-  if (daysToResolution <= 4) return 'near-term';
-  return 'dated';
+  if (daysToResolution <= 1.5) return "imminent";
+  if (daysToResolution <= 4) return "near-term";
+  return "dated";
 }
 
 export function getPredictionMarketLiquidityTier(
-  totalVolume: number
-): 'thin' | 'balanced' | 'deep' {
-  if (totalVolume >= 40_000) return 'deep';
-  if (totalVolume >= 15_000) return 'balanced';
-  return 'thin';
+  totalVolume: number,
+): "thin" | "balanced" | "deep" {
+  if (totalVolume >= 40_000) return "deep";
+  if (totalVolume >= 15_000) return "balanced";
+  return "thin";
 }
 
 function getEventSensitivity(input: {
-  horizonBucket: PredictionMarketProfile['horizonBucket'];
+  horizonBucket: PredictionMarketProfile["horizonBucket"];
   question: string;
-}): PredictionMarketProfile['eventSensitivity'] {
+}): PredictionMarketProfile["eventSensitivity"] {
   const text = input.question.toLowerCase();
   const eventDrivenKeywords = [
-    'announce',
-    'launch',
-    'release',
-    'ship',
-    'approve',
-    'vote',
-    'acquire',
-    'merger',
-    'earnings',
-    'publish',
-    'file',
-    'cut rates',
-    'partnership',
+    "announce",
+    "launch",
+    "release",
+    "ship",
+    "approve",
+    "vote",
+    "acquire",
+    "merger",
+    "earnings",
+    "publish",
+    "file",
+    "cut rates",
+    "partnership",
   ];
   const slowBurnKeywords = [
-    'maintain',
-    'remain',
-    'by month',
-    'by year',
-    'over the next',
+    "maintain",
+    "remain",
+    "by month",
+    "by year",
+    "over the next",
   ];
 
   if (
-    input.horizonBucket === 'short' ||
+    input.horizonBucket === "short" ||
     eventDrivenKeywords.some((keyword) => text.includes(keyword))
   ) {
-    return 'high';
+    return "high";
   }
 
   if (
-    input.horizonBucket === 'long' &&
+    input.horizonBucket === "long" &&
     slowBurnKeywords.some((keyword) => text.includes(keyword))
   ) {
-    return 'low';
+    return "low";
   }
 
-  return 'medium';
+  return "medium";
 }
 
 function getHorizonBucket(
   endDate: Date,
-  now: Date
-): PredictionMarketProfile['horizonBucket'] {
+  now: Date,
+): PredictionMarketProfile["horizonBucket"] {
   const daysToResolution = Math.max(
     0,
-    (endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+    (endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
   );
 
-  if (daysToResolution <= 2) return 'short';
-  if (daysToResolution <= 5) return 'medium';
-  return 'long';
+  if (daysToResolution <= 2) return "short";
+  if (daysToResolution <= 5) return "medium";
+  return "long";
 }
 
 export function buildPredictionMarketProfile(input: {
@@ -157,7 +157,7 @@ export function buildPredictionMarketProfile(input: {
   const reversionJitter = 0.92 + stableUnit(`${seedBase}:revert`) * 0.16;
 
   const initialLiquidity = Math.round(
-    preset.initialLiquidity * liquidityJitter
+    preset.initialLiquidity * liquidityJitter,
   );
 
   return {
@@ -172,17 +172,17 @@ export function buildPredictionMarketProfile(input: {
     signalSensitivity: clamp(
       preset.signalSensitivity * sensitivityJitter,
       0.7,
-      1.35
+      1.35,
     ),
     autoAmmNudgeMultiplier: clamp(
       preset.autoAmmNudgeMultiplier * nudgeJitter,
       0.75,
-      1.3
+      1.3,
     ),
     neutralReversionMultiplier: clamp(
       preset.neutralReversionMultiplier * reversionJitter,
       0.75,
-      1.35
+      1.35,
     ),
   };
 }

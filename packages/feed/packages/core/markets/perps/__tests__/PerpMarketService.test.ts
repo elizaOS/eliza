@@ -1,11 +1,11 @@
-import { beforeEach, describe, expect, it } from 'bun:test';
-import type { WalletPort } from '../../shared/common';
-import { PerpMarketService } from '../PerpMarketService';
+import { beforeEach, describe, expect, it } from "bun:test";
+import type { WalletPort } from "../../shared/common";
+import { PerpMarketService } from "../PerpMarketService";
 import type {
   PerpDbPort,
   PerpMarketRecord,
   PerpPositionRecord,
-} from '../types';
+} from "../types";
 
 const feeConfig = {
   tradingFeeRate: 0.001,
@@ -29,7 +29,7 @@ class InMemoryWallet implements WalletPort {
     reason: string;
   }): Promise<void> {
     const balance = this.balances.get(userId) ?? this.defaultBalance;
-    if (balance < amount) throw new Error('Insufficient funds');
+    if (balance < amount) throw new Error("Insufficient funds");
     this.balances.set(userId, balance - amount);
   }
 
@@ -110,10 +110,10 @@ class InMemoryPerpDb implements PerpDbPort {
 
   async getOpenPositionByUserAndTicker(
     userId: string,
-    ticker: string
+    ticker: string,
   ): Promise<PerpPositionRecord | null> {
     const pos = Array.from(this.positions.values()).find(
-      (p) => p.userId === userId && p.ticker === ticker && !p.closedAt
+      (p) => p.userId === userId && p.ticker === ticker && !p.closedAt,
     );
     return pos ? { ...pos } : null;
   }
@@ -130,7 +130,7 @@ class InMemoryPerpDb implements PerpDbPort {
   }
 
   async upsertPosition(
-    position: Omit<PerpPositionRecord, 'id'> & { id?: string }
+    position: Omit<PerpPositionRecord, "id"> & { id?: string },
   ): Promise<PerpPositionRecord> {
     const id = position.id ?? `pos-${this.idCounter++}`;
     const record: PerpPositionRecord = {
@@ -161,16 +161,16 @@ class InMemoryPerpDb implements PerpDbPort {
     updates: Partial<
       Pick<
         PerpPositionRecord,
-        | 'currentPrice'
-        | 'unrealizedPnL'
-        | 'unrealizedPnLPercent'
-        | 'fundingPaid'
-        | 'liquidationPrice'
-        | 'lastUpdated'
-        | 'size'
-        | 'entryPrice'
+        | "currentPrice"
+        | "unrealizedPnL"
+        | "unrealizedPnLPercent"
+        | "fundingPaid"
+        | "liquidationPrice"
+        | "lastUpdated"
+        | "size"
+        | "entryPrice"
       >
-    >
+    >,
   ): Promise<void> {
     const pos = this.positions.get(positionId);
     if (!pos || pos.closedAt) return;
@@ -186,13 +186,13 @@ class InMemoryPerpDb implements PerpDbPort {
     updates: Partial<
       Pick<
         PerpPositionRecord,
-        | 'currentPrice'
-        | 'closedAt'
-        | 'realizedPnL'
-        | 'unrealizedPnL'
-        | 'unrealizedPnLPercent'
+        | "currentPrice"
+        | "closedAt"
+        | "realizedPnL"
+        | "unrealizedPnL"
+        | "unrealizedPnLPercent"
       >
-    >
+    >,
   ): Promise<void> {
     const pos = this.positions.get(positionId);
     if (!pos || pos.closedAt) return;
@@ -211,27 +211,27 @@ class InMemoryPerpDb implements PerpDbPort {
     updates: Partial<
       Pick<
         PerpMarketRecord,
-        | 'currentPrice'
-        | 'change24h'
-        | 'changePercent24h'
-        | 'high24h'
-        | 'low24h'
-        | 'volume24h'
-        | 'openInterest'
-        | 'fundingRate'
-        | 'bidPrice'
-        | 'askPrice'
-        | 'spreadBps'
-        | 'bidDepth'
-        | 'askDepth'
-        | 'liquidityRegime'
-        | 'quoteUpdatedAt'
-        | 'markPrice'
-        | 'indexPrice'
-        | 'maxLeverage'
-        | 'minOrderSize'
+        | "currentPrice"
+        | "change24h"
+        | "changePercent24h"
+        | "high24h"
+        | "low24h"
+        | "volume24h"
+        | "openInterest"
+        | "fundingRate"
+        | "bidPrice"
+        | "askPrice"
+        | "spreadBps"
+        | "bidDepth"
+        | "askDepth"
+        | "liquidityRegime"
+        | "quoteUpdatedAt"
+        | "markPrice"
+        | "indexPrice"
+        | "maxLeverage"
+        | "minOrderSize"
       >
-    >
+    >,
   ): Promise<void> {
     const current = this.markets.get(ticker);
     if (!current) throw new Error(`Market not found: ${ticker}`);
@@ -242,14 +242,14 @@ class InMemoryPerpDb implements PerpDbPort {
   }
 }
 
-describe('PerpMarketService', () => {
+describe("PerpMarketService", () => {
   let db: InMemoryPerpDb;
   let wallet: InMemoryWallet;
   let service: PerpMarketService;
   const baseMarket: PerpMarketRecord = {
-    ticker: 'ABC',
-    organizationId: 'org-abc',
-    name: 'ABC Corp',
+    ticker: "ABC",
+    organizationId: "org-abc",
+    name: "ABC Corp",
     currentPrice: 100,
     change24h: 0,
     changePercent24h: 0,
@@ -258,7 +258,7 @@ describe('PerpMarketService', () => {
     volume24h: 0,
     openInterest: 0,
     fundingRate: {
-      ticker: 'ABC',
+      ticker: "ABC",
       rate: 0,
       nextFundingTime: new Date().toISOString(),
       predictedRate: 0,
@@ -279,17 +279,17 @@ describe('PerpMarketService', () => {
     });
   });
 
-  it('opens a position and updates snapshot/OI/volume/balance', async () => {
+  it("opens a position and updates snapshot/OI/volume/balance", async () => {
     const res = await service.openPosition({
-      userId: 'u1',
-      ticker: 'ABC',
-      side: 'long',
+      userId: "u1",
+      ticker: "ABC",
+      side: "long",
       size: 100,
       leverage: 10,
     });
 
     expect(res.positionId).toBeDefined();
-    const balance = await wallet.getBalance('u1');
+    const balance = await wallet.getBalance("u1");
     // margin 10 + fee 0.1 = 10.1 deducted from 10_000
     expect(balance.balance).toBeCloseTo(9989.9, 4);
 
@@ -300,20 +300,20 @@ describe('PerpMarketService', () => {
     expect(m.volume24h).toBeCloseTo(100, 4);
   });
 
-  it('closes a position with profit and updates OI/volume/balance', async () => {
+  it("closes a position with profit and updates OI/volume/balance", async () => {
     const open = await service.openPosition({
-      userId: 'u1',
-      ticker: 'ABC',
-      side: 'long',
+      userId: "u1",
+      ticker: "ABC",
+      side: "long",
       size: 100,
       leverage: 10,
     });
 
     // Bump market price to 120 to realize profit
-    await db.updateMarketStats('ABC', { currentPrice: 120 });
+    await db.updateMarketStats("ABC", { currentPrice: 120 });
 
     const close = await service.closePosition({
-      userId: 'u1',
+      userId: "u1",
       positionId: open.positionId,
     });
 
@@ -325,7 +325,7 @@ describe('PerpMarketService', () => {
     expect(m.openInterest).toBeCloseTo(0, 4);
     expect(m.volume24h).toBeCloseTo(200, 4); // open + close size
 
-    const balance = await wallet.getBalance('u1');
+    const balance = await wallet.getBalance("u1");
     const expectedBalance =
       10_000 -
       (open.marginPaid! + open.feePaid) +
@@ -335,27 +335,27 @@ describe('PerpMarketService', () => {
     // PnL should include fees:
     // - perp_open records -openFee
     // - perp_close records (netSettlement - marginPaid) which includes close fee
-    const pnls = wallet.getPnLs('u1');
+    const pnls = wallet.getPnLs("u1");
     const totalPnL = pnls.reduce((sum, p) => sum + p.pnl, 0);
     expect(totalPnL).toBeCloseTo(
       close.realizedPnL! - open.feePaid - close.feePaid,
-      4
+      4,
     );
   });
 
-  it('closes a SHORT position with profit when price drops (direction + fees)', async () => {
+  it("closes a SHORT position with profit when price drops (direction + fees)", async () => {
     const open = await service.openPosition({
-      userId: 'u1',
-      ticker: 'ABC',
-      side: 'short',
+      userId: "u1",
+      ticker: "ABC",
+      side: "short",
       size: 100,
       leverage: 10,
     });
 
-    await db.updateMarketStats('ABC', { currentPrice: 80 });
+    await db.updateMarketStats("ABC", { currentPrice: 80 });
 
     const close = await service.closePosition({
-      userId: 'u1',
+      userId: "u1",
       positionId: open.positionId,
     });
 
@@ -363,34 +363,34 @@ describe('PerpMarketService', () => {
       ((open.entryPrice - close.exitPrice!) / open.entryPrice) * 100;
     expect(close.realizedPnL).toBeCloseTo(expectedPnl, 4);
 
-    const balance = await wallet.getBalance('u1');
+    const balance = await wallet.getBalance("u1");
     const expectedBalance =
       10_000 -
       (open.marginPaid! + open.feePaid) +
       ((close.marginPaid ?? 0) + close.realizedPnL! - close.feePaid);
     expect(balance.balance).toBeCloseTo(expectedBalance, 4);
 
-    const pnls = wallet.getPnLs('u1');
+    const pnls = wallet.getPnLs("u1");
     const totalPnL = pnls.reduce((sum, p) => sum + p.pnl, 0);
     expect(totalPnL).toBeCloseTo(
       close.realizedPnL! - open.feePaid - close.feePaid,
-      4
+      4,
     );
   });
 
-  it('calculates realized PnL from notional size while leverage only affects margin', async () => {
+  it("calculates realized PnL from notional size while leverage only affects margin", async () => {
     const open = await service.openPosition({
-      userId: 'u1',
-      ticker: 'ABC',
-      side: 'long',
+      userId: "u1",
+      ticker: "ABC",
+      side: "long",
       size: 1000,
       leverage: 10,
     });
 
-    await db.updateMarketStats('ABC', { currentPrice: 110 });
+    await db.updateMarketStats("ABC", { currentPrice: 110 });
 
     const close = await service.closePosition({
-      userId: 'u1',
+      userId: "u1",
       positionId: open.positionId,
     });
 
@@ -401,17 +401,17 @@ describe('PerpMarketService', () => {
     expect(close.realizedPnL).toBeCloseTo(expectedPnl, 4);
   });
 
-  it('liquidates a position on price drop and records loss', async () => {
+  it("liquidates a position on price drop and records loss", async () => {
     const open = await service.openPosition({
-      userId: 'u1',
-      ticker: 'ABC',
-      side: 'long',
+      userId: "u1",
+      ticker: "ABC",
+      side: "long",
       size: 100,
       leverage: 10,
     });
 
     // Drop price below liquidation
-    await service.applyPriceUpdates({ 'org-abc': 80 });
+    await service.applyPriceUpdates({ "org-abc": 80 });
 
     const pos = await db.getPositionById(open.positionId);
     expect(pos?.closedAt).toBeDefined();
@@ -420,24 +420,24 @@ describe('PerpMarketService', () => {
     const m = markets[0]!;
     expect(m.openInterest).toBe(0);
 
-    const pnls = wallet.getPnLs('u1');
+    const pnls = wallet.getPnLs("u1");
     // Margin loss = size/leverage = 10
-    expect(pnls.find((p) => p.reason === 'perp_liquidation')?.pnl).toBeCloseTo(
+    expect(pnls.find((p) => p.reason === "perp_liquidation")?.pnl).toBeCloseTo(
       -10,
-      4
+      4,
     );
   });
 
-  it('updates unrealized PnL on price move without liquidation', async () => {
+  it("updates unrealized PnL on price move without liquidation", async () => {
     const open = await service.openPosition({
-      userId: 'u1',
-      ticker: 'ABC',
-      side: 'long',
+      userId: "u1",
+      ticker: "ABC",
+      side: "long",
       size: 100,
       leverage: 5,
     });
 
-    await service.applyPriceUpdates({ 'org-abc': 110 });
+    await service.applyPriceUpdates({ "org-abc": 110 });
     const pos = await db.getPositionById(open.positionId);
     const expectedPnl = ((110 - open.entryPrice) / open.entryPrice) * 100;
     const expectedPnlPercent = (expectedPnl / 100) * 100;
@@ -446,19 +446,19 @@ describe('PerpMarketService', () => {
     expect(pos?.closedAt).toBeNull();
   });
 
-  it('processes funding and updates fundingPaid and fundingRate', async () => {
+  it("processes funding and updates fundingPaid and fundingRate", async () => {
     // Open long 100 and short 50 to create imbalance
     await service.openPosition({
-      userId: 'u1',
-      ticker: 'ABC',
-      side: 'long',
+      userId: "u1",
+      ticker: "ABC",
+      side: "long",
       size: 100,
       leverage: 10,
     });
     await service.openPosition({
-      userId: 'u2',
-      ticker: 'ABC',
-      side: 'short',
+      userId: "u2",
+      ticker: "ABC",
+      side: "short",
       size: 50,
       leverage: 10,
     });
@@ -466,10 +466,10 @@ describe('PerpMarketService', () => {
     await service.processFundingAndLiquidations();
 
     const longPos = (await db.listOpenPositions()).find(
-      (p) => p.userId === 'u1'
+      (p) => p.userId === "u1",
     );
     const shortPos = (await db.listOpenPositions()).find(
-      (p) => p.userId === 'u2'
+      (p) => p.userId === "u2",
     );
 
     expect(longPos?.fundingPaid ?? 0).toBeGreaterThan(0);
@@ -479,18 +479,18 @@ describe('PerpMarketService', () => {
     expect(market.fundingRate.rate).not.toBe(0);
   });
 
-  it('partial close reduces position size and returns proportional margin', async () => {
+  it("partial close reduces position size and returns proportional margin", async () => {
     const open = await service.openPosition({
-      userId: 'u1',
-      ticker: 'ABC',
-      side: 'long',
+      userId: "u1",
+      ticker: "ABC",
+      side: "long",
       size: 100,
       leverage: 10,
     });
 
     // Close 50% of position
     const close = await service.closePosition({
-      userId: 'u1',
+      userId: "u1",
       positionId: open.positionId,
       percentage: 0.5,
     });
@@ -510,21 +510,21 @@ describe('PerpMarketService', () => {
     expect(m.openInterest).toBeCloseTo(50, 4); // remaining
   });
 
-  it('rejects partial close below the market minimum order size', async () => {
+  it("rejects partial close below the market minimum order size", async () => {
     const open = await service.openPosition({
-      userId: 'u1',
-      ticker: 'ABC',
-      side: 'long',
+      userId: "u1",
+      ticker: "ABC",
+      side: "long",
       size: 100,
       leverage: 10,
     });
 
     await expect(
       service.closePosition({
-        userId: 'u1',
+        userId: "u1",
         positionId: open.positionId,
         percentage: 0.05,
-      })
+      }),
     ).rejects.toThrow(/minimum order size/);
 
     const pos = await db.getPositionById(open.positionId);
@@ -532,60 +532,60 @@ describe('PerpMarketService', () => {
     expect(pos?.size).toBeCloseTo(100, 4);
   });
 
-  it('slippage protection rejects open if price deviation exceeds max', async () => {
+  it("slippage protection rejects open if price deviation exceeds max", async () => {
     // Set markPrice significantly different from spot
-    await db.updateMarketStats('ABC', { currentPrice: 100, markPrice: 110 });
+    await db.updateMarketStats("ABC", { currentPrice: 100, markPrice: 110 });
 
     // Try to open with tight slippage tolerance (5%)
     await expect(
       service.openPosition({
-        userId: 'u1',
-        ticker: 'ABC',
-        side: 'long',
+        userId: "u1",
+        ticker: "ABC",
+        side: "long",
         size: 100,
         leverage: 10,
         maxSlippage: 0.05, // 5% max
-      })
+      }),
     ).rejects.toThrow(/Slippage exceeded/);
   });
 
-  it('slippage protection rejects close if price moved beyond tolerance', async () => {
+  it("slippage protection rejects close if price moved beyond tolerance", async () => {
     const open = await service.openPosition({
-      userId: 'u1',
-      ticker: 'ABC',
-      side: 'long',
+      userId: "u1",
+      ticker: "ABC",
+      side: "long",
       size: 100,
       leverage: 10,
     });
 
     // Move price significantly
-    await db.updateMarketStats('ABC', { currentPrice: 120 });
+    await db.updateMarketStats("ABC", { currentPrice: 120 });
 
     // Try to close with tight slippage tolerance (10%)
     await expect(
       service.closePosition({
-        userId: 'u1',
+        userId: "u1",
         positionId: open.positionId,
         maxSlippage: 0.1, // 10% max - price moved 20%
-      })
+      }),
     ).rejects.toThrow(/Slippage exceeded/);
   });
 
-  it('allows close when slippage is within tolerance', async () => {
+  it("allows close when slippage is within tolerance", async () => {
     const open = await service.openPosition({
-      userId: 'u1',
-      ticker: 'ABC',
-      side: 'long',
+      userId: "u1",
+      ticker: "ABC",
+      side: "long",
       size: 100,
       leverage: 10,
     });
 
     // Move price slightly
-    await db.updateMarketStats('ABC', { currentPrice: 105 });
+    await db.updateMarketStats("ABC", { currentPrice: 105 });
 
     // Should succeed with 10% slippage tolerance
     const close = await service.closePosition({
-      userId: 'u1',
+      userId: "u1",
       positionId: open.positionId,
       maxSlippage: 0.1, // 10% max - price moved only 5%
     });
@@ -596,14 +596,14 @@ describe('PerpMarketService', () => {
     expect(close.realizedPnL).toBeCloseTo(expectedPnl, 4);
   });
 
-  it('refreshes quote state toward tighter spreads over time', async () => {
-    await db.updateMarketStats('ABC', {
+  it("refreshes quote state toward tighter spreads over time", async () => {
+    await db.updateMarketStats("ABC", {
       bidPrice: 90,
       askPrice: 110,
       spreadBps: 200,
       bidDepth: 100,
       askDepth: 100,
-      liquidityRegime: 'thin',
+      liquidityRegime: "thin",
       quoteUpdatedAt: new Date(Date.now() - 60_000),
     });
 
@@ -616,18 +616,18 @@ describe('PerpMarketService', () => {
     expect(market.askDepth ?? 0).toBeGreaterThan(100);
   });
 
-  it('uses the same execution engine for open preview and open execution', async () => {
+  it("uses the same execution engine for open preview and open execution", async () => {
     const preview = await service.previewOpenPosition({
-      ticker: 'ABC',
-      side: 'long',
+      ticker: "ABC",
+      side: "long",
       size: 250,
       leverage: 10,
     });
 
     const open = await service.openPosition({
-      userId: 'u1',
-      ticker: 'ABC',
-      side: 'long',
+      userId: "u1",
+      ticker: "ABC",
+      side: "long",
       size: 250,
       leverage: 10,
     });
@@ -639,55 +639,55 @@ describe('PerpMarketService', () => {
     expect(preview.liquidationPrice).toBeCloseTo(open.liquidationPrice, 8);
   });
 
-  it('previews flip rebalances with additional capital net of close settlement', async () => {
+  it("previews flip rebalances with additional capital net of close settlement", async () => {
     await service.openPosition({
-      userId: 'u1',
-      ticker: 'ABC',
-      side: 'short',
+      userId: "u1",
+      ticker: "ABC",
+      side: "short",
       size: 100,
       leverage: 10,
     });
 
-    await db.updateMarketStats('ABC', {
+    await db.updateMarketStats("ABC", {
       currentPrice: 130,
       bidPrice: 129,
       askPrice: 131,
     });
 
     const preview = await service.previewOrder({
-      userId: 'u1',
-      ticker: 'ABC',
-      side: 'long',
+      userId: "u1",
+      ticker: "ABC",
+      side: "long",
       size: 160,
       leverage: 5,
     });
 
     expect(preview.isRebalance).toBe(true);
-    expect(preview.rebalanceType).toBe('flip');
+    expect(preview.rebalanceType).toBe("flip");
     expect(preview.size).toBeCloseTo(60, 8);
     expect(preview.estimatedCloseSettlement).toBeDefined();
     expect(preview.totalRequired).toBeGreaterThanOrEqual(0);
   });
 
-  describe('position rebalancing', () => {
-    it('adds to position when opening same side (increases size, averages entry)', async () => {
+  describe("position rebalancing", () => {
+    it("adds to position when opening same side (increases size, averages entry)", async () => {
       // Open initial LONG position at $100
       const initial = await service.openPosition({
-        userId: 'u3',
-        ticker: 'ABC',
-        side: 'long',
+        userId: "u3",
+        ticker: "ABC",
+        side: "long",
         size: 100,
         leverage: 10,
       });
 
       // Move price to $120
-      await db.updateMarketStats('ABC', { currentPrice: 120 });
+      await db.updateMarketStats("ABC", { currentPrice: 120 });
 
       // Add to position (same side) at new price
       const result = await service.openPosition({
-        userId: 'u3',
-        ticker: 'ABC',
-        side: 'long',
+        userId: "u3",
+        ticker: "ABC",
+        side: "long",
         size: 100,
         leverage: 10,
       });
@@ -695,7 +695,7 @@ describe('PerpMarketService', () => {
       // Should rebalance existing position, not create new
       expect(result.positionId).toBe(initial.positionId);
       expect(result.isRebalance).toBe(true);
-      expect(result.rebalanceType).toBe('add');
+      expect(result.rebalanceType).toBe("add");
       expect(result.previousSize).toBe(100);
       expect(result.previousEntryPrice).toBeCloseTo(initial.entryPrice, 4);
 
@@ -712,27 +712,27 @@ describe('PerpMarketService', () => {
       expect(pos?.entryPrice).toBeCloseTo(result.entryPrice, 4);
     });
 
-    it('reduces position when opening opposite side with smaller size', async () => {
+    it("reduces position when opening opposite side with smaller size", async () => {
       // Open LONG position
       const initial = await service.openPosition({
-        userId: 'u3',
-        ticker: 'ABC',
-        side: 'long',
+        userId: "u3",
+        ticker: "ABC",
+        side: "long",
         size: 100,
         leverage: 10,
       });
 
       // Open opposite side (SHORT) with smaller size - should reduce
       const result = await service.openPosition({
-        userId: 'u3',
-        ticker: 'ABC',
-        side: 'short',
+        userId: "u3",
+        ticker: "ABC",
+        side: "short",
         size: 30,
         leverage: 10,
       });
 
       expect(result.isRebalance).toBe(true);
-      expect(result.rebalanceType).toBe('reduce');
+      expect(result.rebalanceType).toBe("reduce");
       expect(result.previousSize).toBe(100);
       expect(result.remainingSize).toBeCloseTo(70, 4);
 
@@ -742,27 +742,27 @@ describe('PerpMarketService', () => {
       expect(pos?.closedAt).toBeNull();
     });
 
-    it('closes position when opening opposite side with equal size', async () => {
+    it("closes position when opening opposite side with equal size", async () => {
       // Open LONG position
       const initial = await service.openPosition({
-        userId: 'u3',
-        ticker: 'ABC',
-        side: 'long',
+        userId: "u3",
+        ticker: "ABC",
+        side: "long",
         size: 100,
         leverage: 10,
       });
 
       // Open opposite side with exact same size - should close
       const result = await service.openPosition({
-        userId: 'u3',
-        ticker: 'ABC',
-        side: 'short',
+        userId: "u3",
+        ticker: "ABC",
+        side: "short",
         size: 100,
         leverage: 10,
       });
 
       expect(result.isRebalance).toBe(true);
-      expect(result.rebalanceType).toBe('close');
+      expect(result.rebalanceType).toBe("close");
       expect(result.fullyClosed).toBe(true);
 
       // Position should be closed
@@ -770,28 +770,28 @@ describe('PerpMarketService', () => {
       expect(pos?.closedAt).toBeDefined();
     });
 
-    it('flips position when opening opposite side with larger size', async () => {
+    it("flips position when opening opposite side with larger size", async () => {
       // Open LONG position of 100
       const initial = await service.openPosition({
-        userId: 'u3',
-        ticker: 'ABC',
-        side: 'long',
+        userId: "u3",
+        ticker: "ABC",
+        side: "long",
         size: 100,
         leverage: 10,
       });
 
       // Open SHORT with larger size - should flip
       const result = await service.openPosition({
-        userId: 'u3',
-        ticker: 'ABC',
-        side: 'short',
+        userId: "u3",
+        ticker: "ABC",
+        side: "short",
         size: 150,
         leverage: 10,
       });
 
       expect(result.isRebalance).toBe(true);
-      expect(result.rebalanceType).toBe('flip');
-      expect(result.side).toBe('short');
+      expect(result.rebalanceType).toBe("flip");
+      expect(result.side).toBe("short");
       // New position size should be 150 - 100 = 50
       expect(result.size).toBe(50);
 
@@ -800,27 +800,27 @@ describe('PerpMarketService', () => {
       expect(oldPos?.closedAt).toBeDefined();
 
       // New position should exist
-      const positions = await db.getOpenPositionsByUser('u3');
+      const positions = await db.getOpenPositionsByUser("u3");
       expect(positions.length).toBe(1);
-      expect(positions[0]?.side).toBe('short');
+      expect(positions[0]?.side).toBe("short");
       expect(positions[0]?.size).toBe(50);
     });
 
-    it('uses existing leverage when adding to position', async () => {
+    it("uses existing leverage when adding to position", async () => {
       // Open with 10x leverage
       await service.openPosition({
-        userId: 'u3',
-        ticker: 'ABC',
-        side: 'long',
+        userId: "u3",
+        ticker: "ABC",
+        side: "long",
         size: 100,
         leverage: 10,
       });
 
       // Try to add with 5x leverage - should use existing 10x
       const result = await service.openPosition({
-        userId: 'u3',
-        ticker: 'ABC',
-        side: 'long',
+        userId: "u3",
+        ticker: "ABC",
+        side: "long",
         size: 100,
         leverage: 5, // This should be ignored
       });
@@ -828,27 +828,27 @@ describe('PerpMarketService', () => {
       expect(result.leverage).toBe(10); // Uses existing leverage
     });
 
-    it('charges fees only on added size, not total position', async () => {
+    it("charges fees only on added size, not total position", async () => {
       await service.openPosition({
-        userId: 'u3',
-        ticker: 'ABC',
-        side: 'long',
+        userId: "u3",
+        ticker: "ABC",
+        side: "long",
         size: 100,
         leverage: 10,
       });
 
-      const balanceAfterFirst = (await wallet.getBalance('u3')).balance;
+      const balanceAfterFirst = (await wallet.getBalance("u3")).balance;
 
       // Add more to position
       const result = await service.openPosition({
-        userId: 'u3',
-        ticker: 'ABC',
-        side: 'long',
+        userId: "u3",
+        ticker: "ABC",
+        side: "long",
         size: 100,
         leverage: 10,
       });
 
-      const balanceAfterSecond = (await wallet.getBalance('u3')).balance;
+      const balanceAfterSecond = (await wallet.getBalance("u3")).balance;
 
       // Fee should be 0.1% of 100 (added size) = 0.1
       // Margin should be 100/10 = 10
@@ -858,20 +858,20 @@ describe('PerpMarketService', () => {
     });
   });
 
-  it('allows different users to open positions on same ticker', async () => {
+  it("allows different users to open positions on same ticker", async () => {
     await service.openPosition({
-      userId: 'u4',
-      ticker: 'ABC',
-      side: 'long',
+      userId: "u4",
+      ticker: "ABC",
+      side: "long",
       size: 100,
       leverage: 10,
     });
 
     // Different user should be able to open position
     const pos2 = await service.openPosition({
-      userId: 'u5',
-      ticker: 'ABC',
-      side: 'short',
+      userId: "u5",
+      ticker: "ABC",
+      side: "short",
       size: 50,
       leverage: 5,
     });
@@ -879,15 +879,15 @@ describe('PerpMarketService', () => {
     expect(pos2.positionId).toBeDefined();
   });
 
-  it('rejects trading on top of an invalid persisted open position', async () => {
+  it("rejects trading on top of an invalid persisted open position", async () => {
     const now = new Date();
 
     await db.upsertPosition({
-      id: 'pos-corrupt',
-      userId: 'u-corrupt',
-      ticker: 'ABC',
-      organizationId: 'org-abc',
-      side: 'long',
+      id: "pos-corrupt",
+      userId: "u-corrupt",
+      ticker: "ABC",
+      organizationId: "org-abc",
+      side: "long",
       entryPrice: 100,
       currentPrice: 100,
       size: 2_000_000,
@@ -904,12 +904,12 @@ describe('PerpMarketService', () => {
 
     await expect(
       service.openPosition({
-        userId: 'u-corrupt',
-        ticker: 'ABC',
-        side: 'long',
+        userId: "u-corrupt",
+        ticker: "ABC",
+        side: "long",
         size: 100,
         leverage: 1,
-      })
+      }),
     ).rejects.toThrow(/Invalid persisted perp position state detected/);
   });
 });

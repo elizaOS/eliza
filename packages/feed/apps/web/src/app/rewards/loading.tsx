@@ -1,5 +1,5 @@
-import { PageContainer } from '@/components/shared/PageContainer';
-import { Skeleton, StatsCardSkeleton } from '@/components/shared/Skeleton';
+import { PageContainer } from "@/components/shared/PageContainer";
+import { Skeleton, StatsCardSkeleton } from "@/components/shared/Skeleton";
 
 export default function RewardsLoading() {
   return (

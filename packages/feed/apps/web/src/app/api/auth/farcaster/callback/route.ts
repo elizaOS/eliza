@@ -97,13 +97,13 @@
  * @see {@link https://docs.neynar.com} Neynar API documentation
  */
 
-import { ReputationService, withErrorHandling } from '@feed/api';
-import { db } from '@feed/db';
-import { logger } from '@feed/shared';
-import { createAppClient, viemConnector } from '@farcaster/auth-client';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { z } from 'zod';
+import { createAppClient, viemConnector } from "@farcaster/auth-client";
+import { ReputationService, withErrorHandling } from "@feed/api";
+import { db } from "@feed/db";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { z } from "zod";
 
 const FarcasterCallbackBodySchema = z.object({
   message: z.string(),
@@ -121,8 +121,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   if (!parsed.success) {
     return NextResponse.json(
-      { error: 'Invalid request payload', details: parsed.error.flatten() },
-      { status: 400 }
+      { error: "Invalid request payload", details: parsed.error.flatten() },
+      { status: 400 },
     );
   }
   const { message, signature, fid, username, displayName, pfpUrl, state } =
@@ -130,23 +130,23 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   // Verify state format and get user ID
   // State format: userId|timestamp|random (using pipe because userId may contain colons like did:privy:xxx)
-  const stateParts = state.split('|');
+  const stateParts = state.split("|");
 
   // Format: [userId, timestamp, random]
   if (stateParts.length < 2 || !stateParts[0] || !stateParts[1]) {
     return NextResponse.json(
-      { error: 'Invalid state format' },
-      { status: 400 }
+      { error: "Invalid state format" },
+      { status: 400 },
     );
   }
   const userId = stateParts[0];
   const timestampStr = stateParts[1];
 
   const stateTimestamp = Number.parseInt(timestampStr, 10);
-  if (isNaN(stateTimestamp)) {
+  if (Number.isNaN(stateTimestamp)) {
     return NextResponse.json(
-      { error: 'Invalid state timestamp' },
-      { status: 400 }
+      { error: "Invalid state timestamp" },
+      { status: 400 },
     );
   }
 
@@ -154,7 +154,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   // State expires after 10 minutes
   if (now - stateTimestamp > 10 * 60 * 1000) {
-    return NextResponse.json({ error: 'State expired' }, { status: 400 });
+    return NextResponse.json({ error: "State expired" }, { status: 400 });
   }
 
   // Verify Farcaster signature and SIWF message content
@@ -162,13 +162,13 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     message,
     signature,
     fid,
-    request.nextUrl.origin
+    request.nextUrl.origin,
   );
 
   if (!verificationResult.valid) {
     return NextResponse.json(
-      { error: verificationResult.error || 'Invalid signature' },
-      { status: 401 }
+      { error: verificationResult.error || "Invalid signature" },
+      { status: 401 },
     );
   }
 
@@ -179,7 +179,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   });
 
   if (!user) {
-    return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
 
   // Check if Farcaster account is already linked to another user
@@ -192,8 +192,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   if (existingLink) {
     return NextResponse.json(
-      { error: 'Farcaster account already linked to another user' },
-      { status: 409 }
+      { error: "Farcaster account already linked to another user" },
+      { status: 409 },
     );
   }
 
@@ -213,7 +213,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // Award points if this is the first time linking Farcaster
   const pointsResult = await ReputationService.awardFarcasterLink(
     userId,
-    username
+    username,
   );
 
   // Check if this qualifies a referral (award bonus to referrer)
@@ -223,20 +223,20 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       logger.warn(
         `Failed to check and qualify referral for user ${userId}`,
         { userId, error },
-        'FarcasterCallback'
+        "FarcasterCallback",
       );
     });
   }
 
   logger.info(
-    'Farcaster account linked successfully',
+    "Farcaster account linked successfully",
     {
       userId,
       farcasterUsername: username,
       fid: fid,
       reputationAwarded: pointsResult.reputationAwarded,
     },
-    'FarcasterCallback'
+    "FarcasterCallback",
   );
 
   return NextResponse.json({
@@ -273,22 +273,22 @@ function parseSiwfMessage(message: string): {
 
   // Extract fields from structured format
   const expirationMatch = message.match(/Expiration Time:\s*([^\n]+)/i);
-  if (expirationMatch && expirationMatch[1]) {
+  if (expirationMatch?.[1]) {
     result.expirationTime = expirationMatch[1].trim();
   }
 
   const issuedAtMatch = message.match(/Issued At:\s*([^\n]+)/i);
-  if (issuedAtMatch && issuedAtMatch[1]) {
+  if (issuedAtMatch?.[1]) {
     result.issuedAt = issuedAtMatch[1].trim();
   }
 
   const nonceMatch = message.match(/Nonce:\s*([^\n]+)/i);
-  if (nonceMatch && nonceMatch[1]) {
+  if (nonceMatch?.[1]) {
     result.nonce = nonceMatch[1].trim();
   }
 
   const uriMatch = message.match(/URI:\s*([^\n]+)/i);
-  if (uriMatch && uriMatch[1]) {
+  if (uriMatch?.[1]) {
     result.uri = uriMatch[1].trim();
   }
 
@@ -303,7 +303,7 @@ async function verifyFarcasterSignature(
   message: string,
   signature: string,
   fid: number,
-  requestOrigin?: string
+  requestOrigin?: string,
 ): Promise<{ valid: boolean; error?: string }> {
   // Parse SIWF message to extract domain and nonce
   const siwfFields = parseSiwfMessage(message);
@@ -317,11 +317,11 @@ async function verifyFarcasterSignature(
 
   if (!appDomain) {
     logger.error(
-      'No domain available for SIWF verification',
+      "No domain available for SIWF verification",
       { fid },
-      'verifyFarcasterSignature'
+      "verifyFarcasterSignature",
     );
-    return { valid: false, error: 'Configuration error: no domain available' };
+    return { valid: false, error: "Configuration error: no domain available" };
   }
 
   // Log domain info for debugging
@@ -331,13 +331,13 @@ async function verifyFarcasterSignature(
     siwfFields.domain !== `www.${appDomain}`
   ) {
     logger.warn(
-      'SIWF domain in message differs from app domain',
+      "SIWF domain in message differs from app domain",
       {
         messageDomain: siwfFields.domain,
         appDomain,
         fid,
       },
-      'verifyFarcasterSignature'
+      "verifyFarcasterSignature",
     );
   }
 
@@ -351,42 +351,42 @@ async function verifyFarcasterSignature(
     message,
     signature: signature as `0x${string}`,
     domain: siwfFields.domain || appDomain,
-    nonce: siwfFields.nonce || '',
+    nonce: siwfFields.nonce || "",
   });
 
   if (!verifyResult.success) {
     logger.error(
-      'SIWF signature verification failed',
+      "SIWF signature verification failed",
       {
         fid,
         providedFid: fid,
         verifiedFid: verifyResult.fid,
       },
-      'verifyFarcasterSignature'
+      "verifyFarcasterSignature",
     );
-    return { valid: false, error: 'Signature verification failed' };
+    return { valid: false, error: "Signature verification failed" };
   }
 
   // Verify the FID matches (convert both to string for comparison)
   if (verifyResult.fid.toString() !== fid.toString()) {
     logger.error(
-      'SIWF FID mismatch',
+      "SIWF FID mismatch",
       {
         providedFid: fid,
         verifiedFid: verifyResult.fid.toString(),
       },
-      'verifyFarcasterSignature'
+      "verifyFarcasterSignature",
     );
-    return { valid: false, error: 'FID mismatch' };
+    return { valid: false, error: "FID mismatch" };
   }
 
   logger.info(
-    'SIWF signature verified successfully',
+    "SIWF signature verified successfully",
     {
       fid,
       domain: siwfFields.domain,
     },
-    'verifyFarcasterSignature'
+    "verifyFarcasterSignature",
   );
 
   return { valid: true };

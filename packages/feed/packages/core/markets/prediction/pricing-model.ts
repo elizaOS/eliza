@@ -14,7 +14,7 @@ export interface PredictionPricingModel {
   getCurrentPrice(
     yesShares: number,
     noShares: number,
-    side: 'yes' | 'no'
+    side: "yes" | "no",
   ): number;
 
   /**
@@ -23,8 +23,8 @@ export interface PredictionPricingModel {
   calculateBuy(
     currentYesShares: number,
     currentNoShares: number,
-    side: 'yes' | 'no',
-    amount: number
+    side: "yes" | "no",
+    amount: number,
   ): {
     sharesBought: number;
     avgPrice: number;
@@ -39,8 +39,8 @@ export interface PredictionPricingModel {
   calculateSell(
     currentYesShares: number,
     currentNoShares: number,
-    side: 'yes' | 'no',
-    shares: number
+    side: "yes" | "no",
+    shares: number,
   ): {
     proceeds: number;
     avgPrice: number;

@@ -55,26 +55,26 @@
  * ```
  */
 
-import { X402Manager } from '@feed/a2a';
-import { requireAdmin, withErrorHandling } from '@feed/api';
-import { db } from '@feed/db';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { z } from 'zod';
+import { X402Manager } from "@feed/a2a";
+import { requireAdmin, withErrorHandling } from "@feed/api";
+import { db } from "@feed/db";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { z } from "zod";
 
 // Initialize x402 manager
 const x402Manager = new X402Manager({
-  rpcUrl: process.env.NEXT_PUBLIC_RPC_URL || 'https://sepolia.base.org',
+  rpcUrl: process.env.NEXT_PUBLIC_RPC_URL || "https://sepolia.base.org",
   paymentTimeout: 15 * 60 * 1000, // 15 minutes
 });
 
 const VerifyEscrowPaymentSchema = z.object({
-  escrowId: z.string().min(1, 'Escrow ID is required'),
-  txHash: z.string().min(1, 'Transaction hash is required'),
-  fromAddress: z.string().min(1, 'From address is required'),
-  toAddress: z.string().min(1, 'To address is required'),
-  amount: z.string().min(1, 'Amount is required'),
+  escrowId: z.string().min(1, "Escrow ID is required"),
+  txHash: z.string().min(1, "Transaction hash is required"),
+  fromAddress: z.string().min(1, "From address is required"),
+  toAddress: z.string().min(1, "To address is required"),
+  amount: z.string().min(1, "Amount is required"),
 });
 
 export const POST = withErrorHandling(async function POST(req: NextRequest) {
@@ -87,9 +87,9 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
   if (!validation.success) {
     return NextResponse.json(
       {
-        error: validation.error.issues[0]?.message || 'Invalid request data',
+        error: validation.error.issues[0]?.message || "Invalid request data",
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -119,8 +119,8 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
 
   if (!escrow) {
     return NextResponse.json(
-      { error: 'Escrow payment not found' },
-      { status: 404 }
+      { error: "Escrow payment not found" },
+      { status: 404 },
     );
   }
 
@@ -129,25 +129,25 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
     // Auto-expire if expired
     await db.moderationEscrow.update({
       where: { id: escrowId },
-      data: { status: 'expired' },
+      data: { status: "expired" },
     });
     return NextResponse.json(
-      { error: 'Escrow payment has expired' },
-      { status: 400 }
+      { error: "Escrow payment has expired" },
+      { status: 400 },
     );
   }
 
-  if (escrow.status !== 'pending') {
+  if (escrow.status !== "pending") {
     return NextResponse.json(
       { error: `Escrow payment is already ${escrow.status}` },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
   if (!escrow.paymentRequestId) {
     return NextResponse.json(
-      { error: 'Escrow payment request ID not found' },
-      { status: 400 }
+      { error: "Escrow payment request ID not found" },
+      { status: 400 },
     );
   }
 
@@ -179,8 +179,8 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
     fromAddress.toLowerCase() !== expectedFromAddress.toLowerCase()
   ) {
     return NextResponse.json(
-      { error: 'Transaction sender does not match admin wallet address' },
-      { status: 400 }
+      { error: "Transaction sender does not match admin wallet address" },
+      { status: 400 },
     );
   }
 
@@ -191,14 +191,14 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
       where: { id: escrowId },
     });
 
-    if (!currentEscrow || currentEscrow.status !== 'pending') {
+    if (!currentEscrow || currentEscrow.status !== "pending") {
       throw new Error(
-        `Escrow is already ${currentEscrow?.status || 'not found'}`
+        `Escrow is already ${currentEscrow?.status || "not found"}`,
       );
     }
 
     if (!currentEscrow.paymentRequestId) {
-      throw new Error('Escrow payment request ID not found');
+      throw new Error("Escrow payment request ID not found");
     }
 
     // Verify payment via X402
@@ -213,14 +213,14 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
     });
 
     if (!x402Result.verified) {
-      throw new Error(x402Result.error || 'Payment verification failed');
+      throw new Error(x402Result.error || "Payment verification failed");
     }
 
     // Update escrow status atomically
     const updatedEscrow = await tx.moderationEscrow.update({
       where: { id: escrowId },
       data: {
-        status: 'paid',
+        status: "paid",
         paymentTxHash: txHash,
       },
     });
@@ -237,7 +237,7 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
       txHash,
       adminId,
     },
-    'ModerationEscrow'
+    "ModerationEscrow",
   );
 
   return NextResponse.json({

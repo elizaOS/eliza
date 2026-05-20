@@ -2,13 +2,13 @@
  * Chat-related validation schemas
  */
 
-import { z } from 'zod';
+import { z } from "zod";
 import {
   createTrimmedStringSchema,
   PaginationSchema,
   SnowflakeIdSchema,
   UserIdSchema,
-} from './common';
+} from "./common";
 
 /**
  * Chat message content schema
@@ -28,18 +28,18 @@ export const ChatMessageCreateSchema = z.object({
  * Used by both the API (server-side validation) and the UI (picker).
  */
 export const ALLOWED_REACTION_EMOJIS = [
-  '👍',
-  '❤️',
-  '😂',
-  '🔥',
-  '😮',
-  '😢',
-  '🙏',
+  "👍",
+  "❤️",
+  "😂",
+  "🔥",
+  "😮",
+  "😢",
+  "🙏",
 ] as const;
 
 /** Set for O(1) membership checks on the server. */
 export const ALLOWED_REACTION_EMOJI_SET = new Set<string>(
-  ALLOWED_REACTION_EMOJIS
+  ALLOWED_REACTION_EMOJIS,
 );
 
 /**
@@ -64,14 +64,14 @@ export const ChatCreateSchema = z
     participantIds: z.array(SnowflakeIdSchema).optional(),
     requiredNftContractAddress: z
       .string()
-      .regex(/^0x[a-fA-F0-9]{40}$/, 'Invalid contract address format')
+      .regex(/^0x[a-fA-F0-9]{40}$/, "Invalid contract address format")
       .optional(),
     requiredNftTokenId: z.number().int().min(0).nullable().optional(),
     requiredNftChainId: z.number().int().positive().optional(),
   })
   .refine((data) => !data.isGroup || data.name !== undefined, {
-    message: 'Group name is required for group chats',
-    path: ['name'],
+    message: "Group name is required for group chats",
+    path: ["name"],
   })
   .refine(
     (data) =>
@@ -79,9 +79,9 @@ export const ChatCreateSchema = z
       data.requiredNftTokenId === undefined ||
       (data.requiredNftTokenId !== null && data.requiredNftContractAddress),
     {
-      message: 'Contract address is required when specifying a token ID',
-      path: ['requiredNftContractAddress'],
-    }
+      message: "Contract address is required when specifying a token ID",
+      path: ["requiredNftContractAddress"],
+    },
   );
 
 /**
@@ -102,8 +102,8 @@ export const ChatIdParamSchema = z.object({
  * Chat query parameters schema
  */
 export const ChatQuerySchema = z.object({
-  all: z.enum(['true', 'false']).optional(),
-  debug: z.enum(['true', 'false']).optional(),
+  all: z.enum(["true", "false"]).optional(),
+  debug: z.enum(["true", "false"]).optional(),
 });
 
 /**

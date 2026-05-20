@@ -65,20 +65,20 @@ import {
   requireAdmin,
   ServiceUnavailableError,
   withErrorHandling,
-} from '@feed/api';
-import type { NextRequest } from 'next/server';
+} from "@feed/api";
+import type { NextRequest } from "next/server";
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
   await requireAdmin(request);
 
   const body = await request.json();
-  const { modelVersion, strategy = 'gradual', rolloutPercentage = 10 } = body;
+  const { modelVersion, strategy = "gradual", rolloutPercentage = 10 } = body;
 
   if (!modelVersion) {
-    throw new BadRequestError('Model version required');
+    throw new BadRequestError("Model version required");
   }
 
   throw new ServiceUnavailableError(
-    `Trained model deployment is disabled. Requested ${strategy} rollout (${rolloutPercentage}%) for ${modelVersion}, but agent runtime model selection is not wired to deployed model records yet.`
+    `Trained model deployment is disabled. Requested ${strategy} rollout (${rolloutPercentage}%) for ${modelVersion}, but agent runtime model selection is not wired to deployed model records yet.`,
   );
 });

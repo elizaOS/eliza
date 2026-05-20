@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 
-import { mkdir, writeFile } from 'node:fs/promises';
-import path from 'node:path';
-import { parseArgs } from 'node:util';
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { parseArgs } from "node:util";
 import {
   and,
   db,
@@ -14,15 +14,15 @@ import {
   trajectories,
   userAgentConfigs,
   users,
-} from '@feed/db';
-import { config as loadDotenv } from 'dotenv';
+} from "@feed/db";
+import { config as loadDotenv } from "dotenv";
 import {
-  type FeedCharacterSheet,
   buildCanonicalSimulationRoster,
-} from '../packages/agents/src/character-roster/local-roster';
+  type FeedCharacterSheet,
+} from "../packages/agents/src/character-roster/local-roster";
 
-loadDotenv({ path: path.resolve(process.cwd(), '.env') });
-loadDotenv({ path: path.resolve(process.cwd(), '.env.local') });
+loadDotenv({ path: path.resolve(process.cwd(), ".env") });
+loadDotenv({ path: path.resolve(process.cwd(), ".env.local") });
 
 interface ExportOptions {
   lookbackHours: number;
@@ -48,14 +48,14 @@ function parseExportOptions(): ExportOptions {
   const { values } = parseArgs({
     args: Bun.argv.slice(2),
     options: {
-      'lookback-hours': { type: 'string', default: '24' },
-      output: { type: 'string', default: 'training-data/local-character-sim' },
+      "lookback-hours": { type: "string", default: "24" },
+      output: { type: "string", default: "training-data/local-character-sim" },
     },
     strict: true,
     allowPositionals: false,
   });
 
-  const lookbackHours = parseInt(values['lookback-hours'], 10);
+  const lookbackHours = parseInt(values["lookback-hours"], 10);
 
   return {
     lookbackHours:
@@ -69,20 +69,20 @@ async function ensureDirectory(targetPath: string): Promise<void> {
 }
 
 async function writeJsonFile(targetPath: string, value: object): Promise<void> {
-  await writeFile(targetPath, JSON.stringify(value, null, 2) + '\n', 'utf-8');
+  await writeFile(targetPath, `${JSON.stringify(value, null, 2)}\n`, "utf-8");
 }
 
 async function writeJsonLines(
   targetPath: string,
-  lines: object[]
+  lines: object[],
 ): Promise<void> {
-  const content = lines.map((line) => JSON.stringify(line)).join('\n');
-  await writeFile(targetPath, `${content}${content ? '\n' : ''}`, 'utf-8');
+  const content = lines.map((line) => JSON.stringify(line)).join("\n");
+  await writeFile(targetPath, `${content}${content ? "\n" : ""}`, "utf-8");
 }
 
 async function getCharacterAgents(
   roster: FeedCharacterSheet[],
-  cutoff: Date
+  cutoff: Date,
 ): Promise<CharacterAgentRecord[]> {
   const usernames = roster.map((sheet) => sheet.username);
   const userRows = await db
@@ -108,10 +108,10 @@ async function getCharacterAgents(
             and(
               inArray(
                 trajectories.agentId,
-                userRows.map((row) => row.userId)
+                userRows.map((row) => row.userId),
               ),
-              gte(trajectories.createdAt, cutoff)
-            )
+              gte(trajectories.createdAt, cutoff),
+            ),
           )
       : [];
 
@@ -178,8 +178,8 @@ async function getCharacterAgents(
 async function main(): Promise<void> {
   const options = parseExportOptions();
   const roster = buildCanonicalSimulationRoster();
-  const characterSheetsDir = path.join(options.outputDir, 'character-sheets');
-  const exportStamp = new Date().toISOString().replaceAll(':', '-');
+  const characterSheetsDir = path.join(options.outputDir, "character-sheets");
+  const exportStamp = new Date().toISOString().replaceAll(":", "-");
   const exportDir = path.join(options.outputDir, exportStamp);
   const cutoff = new Date(Date.now() - options.lookbackHours * 60 * 60 * 1000);
   const characterAgents = await getCharacterAgents(roster, cutoff);
@@ -190,14 +190,14 @@ async function main(): Promise<void> {
   for (const sheet of roster) {
     await writeJsonFile(
       path.join(characterSheetsDir, `${sheet.id}.json`),
-      sheet
+      sheet,
     );
   }
 
   const agentIds = characterAgents.map((record) => record.userId);
 
   if (agentIds.length === 0) {
-    throw new Error('No canonical roster agents found in the current database');
+    throw new Error("No canonical roster agents found in the current database");
   }
 
   const trajectoryRows = await db
@@ -206,8 +206,8 @@ async function main(): Promise<void> {
     .where(
       and(
         inArray(trajectories.agentId, agentIds),
-        gte(trajectories.createdAt, cutoff)
-      )
+        gte(trajectories.createdAt, cutoff),
+      ),
     )
     .orderBy(desc(trajectories.createdAt));
 
@@ -257,7 +257,7 @@ async function main(): Promise<void> {
     .from(userAgentConfigs)
     .where(inArray(userAgentConfigs.userId, agentIds));
 
-  await writeJsonFile(path.join(exportDir, 'manifest.json'), {
+  await writeJsonFile(path.join(exportDir, "manifest.json"), {
     exportedAt: new Date().toISOString(),
     lookbackHours: options.lookbackHours,
     canonicalCharacterCount: roster.length,
@@ -267,25 +267,25 @@ async function main(): Promise<void> {
     rewardJudgmentCount: rewardRows.length,
   });
 
-  await writeJsonFile(path.join(exportDir, 'character-agents.json'), {
+  await writeJsonFile(path.join(exportDir, "character-agents.json"), {
     characterAgents,
   });
 
-  await writeJsonFile(path.join(exportDir, 'agent-configs.json'), {
+  await writeJsonFile(path.join(exportDir, "agent-configs.json"), {
     agentConfigs: configRows,
   });
 
   await writeJsonLines(
-    path.join(exportDir, 'trajectories.jsonl'),
-    trajectoryRows
+    path.join(exportDir, "trajectories.jsonl"),
+    trajectoryRows,
   );
   await writeJsonLines(
-    path.join(exportDir, 'llm-call-logs.jsonl'),
-    llmCallRows
+    path.join(exportDir, "llm-call-logs.jsonl"),
+    llmCallRows,
   );
   await writeJsonLines(
-    path.join(exportDir, 'reward-judgments.jsonl'),
-    rewardRows
+    path.join(exportDir, "reward-judgments.jsonl"),
+    rewardRows,
   );
 
   console.log(`Export complete: ${exportDir}`);

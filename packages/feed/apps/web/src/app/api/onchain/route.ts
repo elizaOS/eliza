@@ -1,6 +1,6 @@
-import { withErrorHandling } from '@feed/api';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+import { withErrorHandling } from "@feed/api";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 type OnchainDisabledResponse = {
   error: string;
@@ -9,13 +9,13 @@ type OnchainDisabledResponse = {
 
 export const POST = withErrorHandling(
   async (
-    _request: NextRequest
+    _request: NextRequest,
   ): Promise<NextResponse<OnchainDisabledResponse>> =>
     NextResponse.json(
       {
-        error: 'On-chain actions are no longer supported in this deployment.',
+        error: "On-chain actions are no longer supported in this deployment.",
         success: false,
       },
-      { status: 410 }
-    )
+      { status: 410 },
+    ),
 );

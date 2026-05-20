@@ -64,15 +64,15 @@ import {
   RATE_LIMIT_CONFIGS,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
+} from "@feed/api";
 import {
   convertBalanceToStrings,
   logger,
   UserIdParamSchema,
-} from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { sanitizeForJson } from '@/lib/json/sanitize';
+} from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { sanitizeForJson } from "@/lib/json/sanitize";
 
 /**
  * GET Handler for User Balance
@@ -106,7 +106,7 @@ import { sanitizeForJson } from '@/lib/json/sanitize';
 export const GET = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ userId: string }> }
+    context: { params: Promise<{ userId: string }> },
   ) => {
     // IP-based rate limiting for public endpoint (prevents enumeration attacks)
     // Uses Redis-backed rate limiting for serverless compatibility
@@ -121,7 +121,7 @@ export const GET = withErrorHandling(
       ? RATE_LIMIT_CONFIGS.PUBLIC_BALANCE_FETCH
       : RATE_LIMIT_CONFIGS.PUBLIC_BALANCE_FETCH_ANONYMOUS;
 
-    const rateLimitKey = clientIp ? `ip:${clientIp}` : 'ip:anonymous';
+    const rateLimitKey = clientIp ? `ip:${clientIp}` : "ip:anonymous";
     const rateLimit = await checkRateLimitAsync(rateLimitKey, rateLimitConfig);
 
     if (!rateLimit.allowed) {
@@ -129,15 +129,15 @@ export const GET = withErrorHandling(
       const retryAfterSeconds = rateLimit.retryAfter || 60;
       return NextResponse.json(
         {
-          error: 'Too many requests',
+          error: "Too many requests",
           retryAfter: retryAfterSeconds,
         },
         {
           status: 429,
           headers: {
-            'Retry-After': String(retryAfterSeconds),
+            "Retry-After": String(retryAfterSeconds),
           },
-        }
+        },
       );
     }
 
@@ -149,8 +149,8 @@ export const GET = withErrorHandling(
 
     if (!balanceData) {
       throw new BusinessLogicError(
-        'User balance not found',
-        'BALANCE_NOT_FOUND'
+        "User balance not found",
+        "BALANCE_NOT_FOUND",
       );
     }
 
@@ -164,9 +164,9 @@ export const GET = withErrorHandling(
     });
 
     logger.info(
-      'Balance fetched successfully (cached)',
+      "Balance fetched successfully (cached)",
       { userId: canonicalUserId, balance: balanceInfo.virtualBalance },
-      'GET /api/users/[userId]/balance'
+      "GET /api/users/[userId]/balance",
     );
 
     return successResponse(
@@ -175,7 +175,7 @@ export const GET = withErrorHandling(
         totalDeposited: balanceInfo.totalDeposited,
         totalWithdrawn: balanceInfo.totalWithdrawn,
         lifetimePnL: balanceInfo.lifetimePnL,
-      })
+      }),
     );
-  }
+  },
 );

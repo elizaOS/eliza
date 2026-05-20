@@ -33,10 +33,10 @@ import {
   messages,
   userInteractions,
   users,
-} from '@feed/db';
-import type { GroupChat } from '@feed/shared';
-import { generateSnowflakeId } from '@feed/shared';
-import { notifyGroupChatInvite } from './group-chat-invite-notifier';
+} from "@feed/db";
+import type { GroupChat } from "@feed/shared";
+import { generateSnowflakeId } from "@feed/shared";
+import { notifyGroupChatInvite } from "./group-chat-invite-notifier";
 
 /**
  * Generate a deterministic group ID from a chat ID.
@@ -50,7 +50,7 @@ function deterministicGroupId(chatId: string): string {
     hash = hash & hash;
   }
   const absHash = Math.abs(hash);
-  return `grp_${chatId}_${absHash.toString().padStart(10, '0')}`;
+  return `grp_${chatId}_${absHash.toString().padStart(10, "0")}`;
 }
 
 // =============================================================================
@@ -60,7 +60,7 @@ function deterministicGroupId(chatId: string): string {
 /**
  * Group chat data (without messages for list views)
  */
-type GroupChatData = Omit<GroupChat, 'messages'> & {
+type GroupChatData = Omit<GroupChat, "messages"> & {
   messageCount?: number;
 };
 
@@ -128,7 +128,7 @@ export class GroupChatService {
 
   private static calculateInviteProbability(
     baseProb: number,
-    isOwned: boolean
+    isOwned: boolean,
   ): number {
     const weight = GroupChatService.calculateChatTypeWeight(isOwned);
     return Math.min(baseProb * weight, GroupChatService.MAX_INVITE_PROBABILITY);
@@ -139,23 +139,23 @@ export class GroupChatService {
    */
   static async calculateInviteChance(
     userId: string,
-    npcId: string
+    npcId: string,
   ): Promise<InviteChance> {
     // Must be followed first
     const [followStatus] = await db
       .select()
       .from(followStatuses)
       .where(
-        and(eq(followStatuses.userId, userId), eq(followStatuses.npcId, npcId))
+        and(eq(followStatuses.userId, userId), eq(followStatuses.npcId, npcId)),
       )
       .limit(1);
 
-    if (!followStatus || !followStatus.isActive) {
+    if (!followStatus?.isActive) {
       return {
         willInvite: false,
         probability: 0,
         isOwned: false,
-        reasons: ['Must be followed by NPC first'],
+        reasons: ["Must be followed by NPC first"],
       };
     }
 
@@ -188,9 +188,9 @@ export class GroupChatService {
         and(
           eq(groupMembers.userId, userId),
           eq(groups.ownerId, npcId),
-          eq(groups.type, 'npc'),
-          eq(groupMembers.isActive, true)
-        )
+          eq(groups.type, "npc"),
+          eq(groupMembers.isActive, true),
+        ),
       )
       .limit(1);
 
@@ -199,7 +199,7 @@ export class GroupChatService {
         willInvite: false,
         probability: 0,
         isOwned: false,
-        reasons: ['Already in a group chat with this NPC'],
+        reasons: ["Already in a group chat with this NPC"],
       };
     }
 
@@ -211,8 +211,8 @@ export class GroupChatService {
         and(
           eq(userInteractions.userId, userId),
           eq(userInteractions.npcId, npcId),
-          gte(userInteractions.timestamp, followStatus.followedAt)
-        )
+          gte(userInteractions.timestamp, followStatus.followedAt),
+        ),
       );
 
     if (
@@ -256,7 +256,7 @@ export class GroupChatService {
     const engagementFactor = Math.min(
       interactionsSinceFollow.length /
         GroupChatService.MIN_REPLIES_SINCE_FOLLOW,
-      1.5
+      1.5,
     );
 
     const baseProbability =
@@ -267,7 +267,7 @@ export class GroupChatService {
 
     const probability = GroupChatService.calculateInviteProbability(
       baseProbability,
-      isOwned
+      isOwned,
     );
 
     const willInvite = Math.random() < probability;
@@ -281,7 +281,7 @@ export class GroupChatService {
       reasons: [
         `High quality: ${(avgQuality * 100).toFixed(0)}%`,
         `${interactionsSinceFollow.length} quality replies since follow`,
-        `${isOwned ? 'Invited to owned chat' : 'Invited to member chat'}`,
+        `${isOwned ? "Invited to owned chat" : "Invited to member chat"}`,
       ],
     };
   }
@@ -300,7 +300,7 @@ export class GroupChatService {
     userId: string,
     npcId: string,
     chatId: string,
-    chatName: string
+    chatName: string,
   ): Promise<void> {
     // Use deterministic groupId to prevent race conditions
     const groupId = deterministicGroupId(chatId);
@@ -316,17 +316,17 @@ export class GroupChatService {
       .where(
         and(
           eq(groupInvites.groupId, groupId),
-          eq(groupInvites.invitedUserId, userId)
-        )
+          eq(groupInvites.invitedUserId, userId),
+        ),
       )
       .limit(1);
 
     // Early return if already pending or accepted
     if (existingInvite) {
-      if (existingInvite.status === 'pending') {
+      if (existingInvite.status === "pending") {
         return;
       }
-      if (existingInvite.status === 'accepted') {
+      if (existingInvite.status === "accepted") {
         return;
       }
     }
@@ -341,7 +341,7 @@ export class GroupChatService {
         .values({
           id: groupId,
           name: chatName,
-          type: 'npc',
+          type: "npc",
           ownerId: npcId,
           createdById: npcId,
           createdAt: now,
@@ -356,7 +356,7 @@ export class GroupChatService {
           id: chatId,
           name: chatName,
           isGroup: true,
-          gameId: 'realtime',
+          gameId: "realtime",
           groupId,
           createdAt: now,
           updatedAt: now,
@@ -376,7 +376,7 @@ export class GroupChatService {
         await tx
           .update(groupInvites)
           .set({
-            status: 'pending',
+            status: "pending",
             invitedBy: npcId,
             invitedAt: now,
             respondedAt: null,
@@ -391,7 +391,7 @@ export class GroupChatService {
           groupId,
           invitedUserId: userId,
           invitedBy: npcId,
-          status: 'pending',
+          status: "pending",
           message: `Join our group chat "${chatName}"!`,
         });
       }
@@ -403,8 +403,8 @@ export class GroupChatService {
         .where(
           and(
             eq(userInteractions.userId, userId),
-            eq(userInteractions.npcId, npcId)
-          )
+            eq(userInteractions.npcId, npcId),
+          ),
         );
     });
 
@@ -431,7 +431,7 @@ export class GroupChatService {
       .innerJoin(groups, eq(groupMembers.groupId, groups.id))
       .innerJoin(chats, eq(chats.groupId, groups.id))
       .where(
-        and(eq(groupMembers.userId, userId), eq(groupMembers.isActive, true))
+        and(eq(groupMembers.userId, userId), eq(groupMembers.isActive, true)),
       )
       .orderBy(groupMembers.joinedAt);
 
@@ -440,7 +440,7 @@ export class GroupChatService {
       name: m.groupName,
       admin: m.ownerId,
       members: [userId],
-      theme: 'default',
+      theme: "default",
       messageCount: 0,
     }));
   }
@@ -464,8 +464,8 @@ export class GroupChatService {
         and(
           eq(chats.id, chatId),
           eq(groupMembers.userId, userId),
-          eq(groupMembers.isActive, true)
-        )
+          eq(groupMembers.isActive, true),
+        ),
       )
       .limit(1);
 
@@ -491,8 +491,8 @@ export class GroupChatService {
           and(
             eq(chats.id, chatId),
             eq(groupMembers.userId, userRecord.managedBy),
-            eq(groupMembers.isActive, true)
-          )
+            eq(groupMembers.isActive, true),
+          ),
         )
         .limit(1);
 
@@ -512,7 +512,7 @@ export class GroupChatService {
    */
   static async calculateKickChance(
     userId: string,
-    chatId: string
+    chatId: string,
   ): Promise<SweepDecision> {
     // Find chat to get its groupId
     const [chat] = await db
@@ -528,10 +528,10 @@ export class GroupChatService {
       totalMessages: 0,
     };
 
-    if (!chat || !chat.groupId) {
+    if (!chat?.groupId) {
       return {
         kickChance: 0,
-        reason: 'Group not found',
+        reason: "Group not found",
         stats: baseStats,
       };
     }
@@ -542,15 +542,15 @@ export class GroupChatService {
       .where(
         and(
           eq(groupMembers.groupId, chat.groupId),
-          eq(groupMembers.userId, userId)
-        )
+          eq(groupMembers.userId, userId),
+        ),
       )
       .limit(1);
 
-    if (!membership || !membership.isActive) {
+    if (!membership?.isActive) {
       return {
         kickChance: 0,
-        reason: 'Not an active member',
+        reason: "Not an active member",
         stats: baseStats,
       };
     }
@@ -583,7 +583,7 @@ export class GroupChatService {
     if (!lastMessage) {
       return {
         kickChance: 0,
-        reason: 'No messages found',
+        reason: "No messages found",
         stats: baseStats,
       };
     }
@@ -592,7 +592,7 @@ export class GroupChatService {
       (Date.now() - lastMessage.createdAt.getTime()) / (1000 * 60);
 
     let inactivityMultiplier = 1;
-    let reason = '';
+    let reason = "";
 
     if (
       ticksSinceLastMessage > GroupChatService.INACTIVITY_GRACE_PERIOD_TICKS
@@ -609,7 +609,7 @@ export class GroupChatService {
     let overactivityMultiplier = 1;
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const messagesLast24h = allMessages.filter(
-      (m) => m.createdAt >= oneDayAgo
+      (m) => m.createdAt >= oneDayAgo,
     ).length;
 
     if (messagesLast24h > GroupChatService.ACTIVITY_HARD_CAP) {
@@ -629,11 +629,11 @@ export class GroupChatService {
 
     const finalMultiplier = Math.max(
       inactivityMultiplier,
-      overactivityMultiplier
+      overactivityMultiplier,
     );
     const kickChance = Math.min(
       1,
-      GroupChatService.BASE_KICK_PROBABILITY * finalMultiplier
+      GroupChatService.BASE_KICK_PROBABILITY * finalMultiplier,
     );
 
     return {
@@ -658,7 +658,7 @@ export class GroupChatService {
   static async removeFromChat(
     userId: string,
     chatId: string,
-    reason: string
+    reason: string,
   ): Promise<void> {
     // Find chat to get its groupId
     const [chat] = await db
@@ -667,7 +667,7 @@ export class GroupChatService {
       .where(eq(chats.id, chatId))
       .limit(1);
 
-    if (!chat || !chat.groupId) return;
+    if (!chat?.groupId) return;
 
     await db
       .update(groupMembers)
@@ -680,8 +680,8 @@ export class GroupChatService {
         and(
           eq(groupMembers.groupId, chat.groupId),
           eq(groupMembers.userId, userId),
-          eq(groupMembers.isActive, true)
-        )
+          eq(groupMembers.isActive, true),
+        ),
       );
   }
 
@@ -701,7 +701,7 @@ export class GroupChatService {
       .where(eq(chats.id, chatId))
       .limit(1);
 
-    if (!chat || !chat.groupId) {
+    if (!chat?.groupId) {
       return { checked: 0, removed: 0, reasons: {} };
     }
 
@@ -711,8 +711,8 @@ export class GroupChatService {
       .where(
         and(
           eq(groupMembers.groupId, chat.groupId),
-          eq(groupMembers.isActive, true)
-        )
+          eq(groupMembers.isActive, true),
+        ),
       );
 
     let removed = 0;
@@ -721,18 +721,18 @@ export class GroupChatService {
     for (const membership of memberships) {
       const decision = await GroupChatService.calculateKickChance(
         membership.userId,
-        chatId
+        chatId,
       );
 
       if (Math.random() < decision.kickChance && decision.reason) {
         await GroupChatService.removeFromChat(
           membership.userId,
           chatId,
-          decision.reason
+          decision.reason,
         );
         removed++;
 
-        const genericReason = decision.reason.split(':')[0] || 'Unknown';
+        const genericReason = decision.reason.split(":")[0] || "Unknown";
         reasons[genericReason] = (reasons[genericReason] || 0) + 1;
       }
     }
@@ -775,7 +775,7 @@ export class GroupChatService {
   static async updateQualityScore(
     userId: string,
     chatId: string,
-    newMessageQuality: number
+    newMessageQuality: number,
   ): Promise<void> {
     // Find chat to get its groupId
     const [chat] = await db
@@ -784,7 +784,7 @@ export class GroupChatService {
       .where(eq(chats.id, chatId))
       .limit(1);
 
-    if (!chat || !chat.groupId) return;
+    if (!chat?.groupId) return;
 
     const [membership] = await db
       .select()
@@ -792,8 +792,8 @@ export class GroupChatService {
       .where(
         and(
           eq(groupMembers.groupId, chat.groupId),
-          eq(groupMembers.userId, userId)
-        )
+          eq(groupMembers.userId, userId),
+        ),
       )
       .limit(1);
 
@@ -814,8 +814,8 @@ export class GroupChatService {
       .where(
         and(
           eq(groupMembers.groupId, chat.groupId),
-          eq(groupMembers.userId, userId)
-        )
+          eq(groupMembers.userId, userId),
+        ),
       );
   }
 }

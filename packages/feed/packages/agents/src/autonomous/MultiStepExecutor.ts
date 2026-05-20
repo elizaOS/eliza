@@ -8,6 +8,7 @@
  * This eliminates double LLM calls and makes execution faster.
  */
 
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   actorState,
   agentLogs,
@@ -20,21 +21,20 @@ import {
   npcTrades,
   questions,
   users,
-} from '@feed/db';
+} from "@feed/db";
 import {
   generateWorldContext,
   StaticDataRegistry,
   WalletService,
-} from '@feed/engine';
-import type { JsonValue } from '@feed/shared';
-import type { IAgentRuntime } from '@elizaos/core';
-import { callAgentLLM } from '../llm/agent-llm';
-import { getNpcGameContext } from '../plugins/feed/providers/npc-game-context';
-import { ensureTrajectoryStep } from '../plugins/plugin-trajectory-logger/src/action-interceptor';
-import { agentService } from '../services/AgentService';
-import { getAgentConfig, getAutonomousFeatures } from '../shared/agent-config';
-import { logger } from '../shared/logger';
-import { normalizeDecisionAction } from './action-normalization';
+} from "@feed/engine";
+import type { JsonValue } from "@feed/shared";
+import { callAgentLLM } from "../llm/agent-llm";
+import { getNpcGameContext } from "../plugins/feed/providers/npc-game-context";
+import { ensureTrajectoryStep } from "../plugins/plugin-trajectory-logger/src/action-interceptor";
+import { agentService } from "../services/AgentService";
+import { getAgentConfig, getAutonomousFeatures } from "../shared/agent-config";
+import { logger } from "../shared/logger";
+import { normalizeDecisionAction } from "./action-normalization";
 import {
   executeDirectComment,
   executeDirectCreateGroup,
@@ -49,14 +49,14 @@ import {
   executeDirectSendMoney,
   executeDirectTrade,
   executeDirectUnfollow,
-} from './DirectExecutors';
-import { extractFirstJsonObject } from './decision-json';
+} from "./DirectExecutors";
+import { extractFirstJsonObject } from "./decision-json";
 import {
   executeDirectRequestPayment,
   executeDirectShareInformation,
-} from './intel-payment-executors';
-import { normalizeSocialDecisionParameters } from './social-parameter-normalization';
-import { topicDiversityService } from './TopicDiversityService';
+} from "./intel-payment-executors";
+import { normalizeSocialDecisionParameters } from "./social-parameter-normalization";
+import { topicDiversityService } from "./TopicDiversityService";
 import {
   Actions,
   type ActionTraceResult,
@@ -66,9 +66,9 @@ import {
   getRequiredFeature,
   type MultiStepDecision,
   type WorldEventContext,
-} from './templates/multi-step-decision';
-import { trackAgentTradeExecuted } from './track-agent-trade';
-import { normalizeTradeDecisionParameters } from './trade-parameter-normalization';
+} from "./templates/multi-step-decision";
+import { trackAgentTradeExecuted } from "./track-agent-trade";
+import { normalizeTradeDecisionParameters } from "./trade-parameter-normalization";
 
 // Import utilities
 import {
@@ -88,7 +88,7 @@ import {
   getRecentPosts,
   getRelationships,
   getWorldEventsContext,
-} from './utils';
+} from "./utils";
 
 // =============================================================================
 // Helpers
@@ -102,16 +102,16 @@ import {
  */
 function buildEventSignals(events: WorldEventContext[]): string {
   const signals = events.filter((e) => e.relatedQuestion != null);
-  if (signals.length === 0) return '';
+  if (signals.length === 0) return "";
 
   return signals
     .map((e) => {
       const direction = e.pointsToward
         ? ` (signals toward ${e.pointsToward})`
-        : '';
+        : "";
       return `- "${e.description.slice(0, 80)}" → may affect Market Q#${e.relatedQuestion}${direction}`;
     })
-    .join('\n');
+    .join("\n");
 }
 
 // =============================================================================
@@ -145,32 +145,32 @@ export class MultiStepExecutor {
   }
 
   private coerceParameterText(value: unknown): string {
-    if (typeof value === 'string') {
+    if (typeof value === "string") {
       return value.trim();
     }
-    if (typeof value === 'number' && Number.isFinite(value)) {
+    if (typeof value === "number" && Number.isFinite(value)) {
       return String(Math.trunc(value));
     }
-    if (typeof value === 'bigint') {
+    if (typeof value === "bigint") {
       return value.toString();
     }
 
-    return '';
+    return "";
   }
 
   private buildFallbackDecision(
     context: AgentTickContext,
     enabledFeatures: string[],
-    agentUserId: string
+    agentUserId: string,
   ): MultiStepDecision | null {
     const fallbackReply =
-      'Watching this closely. I am keeping risk tight and will adjust if the signal changes.';
+      "Watching this closely. I am keeping risk tight and will adjust if the signal changes.";
     const fallbackComment =
-      'Watching this closely. The catalyst matters more than the hype.';
+      "Watching this closely. The catalyst matters more than the hype.";
     const fallbackDm =
-      'Saw your signal. I am watching this closely and keeping risk tight.';
+      "Saw your signal. I am watching this closely and keeping risk tight.";
     const fallbackGroupMessage =
-      'Watching this setup closely and managing risk.';
+      "Watching this setup closely and managing risk.";
 
     if (
       enabledFeatures.includes(Features.COMMENTING) &&
@@ -184,7 +184,7 @@ export class MultiStepExecutor {
         action: Actions.REPLY_COMMENT,
         isFinish: false,
         thought:
-          'Parser fallback selected the first pending comment reply to avoid wasting the tick.',
+          "Parser fallback selected the first pending comment reply to avoid wasting the tick.",
         parameters: {
           commentId: target.id,
           postId: target.postId,
@@ -196,14 +196,14 @@ export class MultiStepExecutor {
     if (enabledFeatures.includes(Features.COMMENTING)) {
       const targetPost =
         context.recentPosts.find(
-          (post) => post.authorId !== agentUserId && !post.agentComment
+          (post) => post.authorId !== agentUserId && !post.agentComment,
         ) ?? context.recentPosts.find((post) => post.authorId !== agentUserId);
       if (targetPost) {
         return {
           action: Actions.COMMENT,
           isFinish: false,
           thought:
-            'Parser fallback selected a fresh recent post to avoid wasting the tick.',
+            "Parser fallback selected a fresh recent post to avoid wasting the tick.",
           parameters: {
             postId: targetPost.id,
             content: fallbackComment,
@@ -215,14 +215,14 @@ export class MultiStepExecutor {
     if (enabledFeatures.includes(Features.ENGAGING)) {
       const likeTarget =
         context.recentPosts.find(
-          (post) => post.authorId !== agentUserId && !post.agentLiked
+          (post) => post.authorId !== agentUserId && !post.agentLiked,
         ) ?? context.recentPosts.find((post) => post.authorId !== agentUserId);
       if (likeTarget) {
         return {
           action: Actions.LIKE,
           isFinish: false,
           thought:
-            'Parser fallback selected a simple engagement action to avoid wasting the tick.',
+            "Parser fallback selected a simple engagement action to avoid wasting the tick.",
           parameters: {
             postId: likeTarget.id,
           },
@@ -232,14 +232,14 @@ export class MultiStepExecutor {
 
     if (enabledFeatures.includes(Features.DMS)) {
       const recipient = context.recentPosts.find(
-        (post) => post.authorId !== agentUserId
+        (post) => post.authorId !== agentUserId,
       )?.authorId;
       if (recipient) {
         return {
           action: Actions.DM,
           isFinish: false,
           thought:
-            'Parser fallback selected a direct message to avoid wasting the tick.',
+            "Parser fallback selected a direct message to avoid wasting the tick.",
           parameters: {
             recipientId: recipient,
             content: fallbackDm,
@@ -260,7 +260,7 @@ export class MultiStepExecutor {
         action: Actions.GROUP_MESSAGE,
         isFinish: false,
         thought:
-          'Parser fallback selected an available group chat to avoid wasting the tick.',
+          "Parser fallback selected an available group chat to avoid wasting the tick.",
         parameters: {
           chatId: targetGroupChat.id,
           content: fallbackGroupMessage,
@@ -284,7 +284,7 @@ export class MultiStepExecutor {
   async execute(
     agentUserId: string,
     runtime: IAgentRuntime,
-    isNpc = false
+    isNpc = false,
   ): Promise<MultiStepExecutorResult> {
     const startTime = Date.now();
     const trace: ActionTraceResult[] = [];
@@ -292,7 +292,7 @@ export class MultiStepExecutor {
     logger.info(
       `[MultiStep] Starting multi-step execution for agent ${agentUserId}`,
       undefined,
-      'MultiStepExecutor'
+      "MultiStepExecutor",
     );
 
     // Get agent info (for USER_CONTROLLED agents)
@@ -305,7 +305,7 @@ export class MultiStepExecutor {
         .limit(1);
 
       if (!userAgent) {
-        throw new Error('Agent not found');
+        throw new Error("Agent not found");
       }
       agent = userAgent;
     }
@@ -313,7 +313,7 @@ export class MultiStepExecutor {
     // Get agent config (may be null for NPCs)
     const config = await getAgentConfig(agentUserId);
     const baseSystemPrompt =
-      config?.systemPrompt ?? 'You are an autonomous trading agent on Feed.';
+      config?.systemPrompt ?? "You are an autonomous trading agent on Feed.";
 
     // Determine enabled features - NPCs use per-character autonomy flags if available
     // For USER_CONTROLLED agents: trading defaults to true, others default to false
@@ -323,8 +323,7 @@ export class MultiStepExecutor {
       const autonomy = (runtime.character as unknown as Record<string, unknown>)
         ?.feed
         ? (
-            (runtime.character as unknown as Record<string, unknown>)
-              .feed as {
+            (runtime.character as unknown as Record<string, unknown>).feed as {
               autonomy?: {
                 trading: boolean;
                 posting: boolean;
@@ -352,7 +351,7 @@ export class MultiStepExecutor {
           Features.COMMENTING,
           Features.ENGAGING,
           Features.DMS,
-          Features.GROUP_CHATS
+          Features.GROUP_CHATS,
         );
       }
     } else {
@@ -379,52 +378,52 @@ export class MultiStepExecutor {
     ];
     const featuresToMaybeDisable = enabledFeatures.filter(
       (f) =>
-        socialFeatures.includes(f) && Math.random() < ENTROPY_DISABLE_CHANCE
+        socialFeatures.includes(f) && Math.random() < ENTROPY_DISABLE_CHANCE,
     );
     // Ensure at least one social feature remains if agent had any
     const enabledSocialFeatures = enabledFeatures.filter((f) =>
-      socialFeatures.includes(f)
+      socialFeatures.includes(f),
     );
     if (featuresToMaybeDisable.length > 0 && enabledSocialFeatures.length > 0) {
       // If all social features were selected for disabling, keep one random one
       if (featuresToMaybeDisable.length >= enabledSocialFeatures.length) {
         const keepIndex = Math.floor(
-          Math.random() * featuresToMaybeDisable.length
+          Math.random() * featuresToMaybeDisable.length,
         );
         featuresToMaybeDisable.splice(keepIndex, 1);
       }
       if (featuresToMaybeDisable.length > 0) {
         enabledFeatures = enabledFeatures.filter(
-          (f) => !featuresToMaybeDisable.includes(f)
+          (f) => !featuresToMaybeDisable.includes(f),
         );
         logger.debug(
-          `[Entropy] Temporarily disabled features for tick: ${featuresToMaybeDisable.join(', ')}`,
+          `[Entropy] Temporarily disabled features for tick: ${featuresToMaybeDisable.join(", ")}`,
           { agentUserId },
-          'MultiStepExecutor'
+          "MultiStepExecutor",
         );
       }
     }
 
     const balanceGuidance =
-      'Trading guidance: If your balance is low or $0 but you have open positions, you can still sell/close positions to free balance. Do not assume trading is impossible; check your open positions and consider trimming or closing to unlock funds before switching to social-only actions.';
+      "Trading guidance: If your balance is low or $0 but you have open positions, you can still sell/close positions to free balance. Do not assume trading is impossible; check your open positions and consider trimming or closing to unlock funds before switching to social-only actions.";
     const systemPrompt = enabledFeatures.includes(Features.TRADING)
       ? `${baseSystemPrompt}\n\n${balanceGuidance}`
       : baseSystemPrompt;
 
     // Get NPC game context ONCE before loop (arc awareness, world events)
     // Graceful degradation: if context fetch fails, continue without it
-    let npcGameContext = '';
+    let npcGameContext = "";
     if (isNpc) {
       try {
         npcGameContext = await getNpcGameContext(agentUserId);
       } catch (error) {
         logger.warn(
-          'Failed to get NPC game context, continuing without it',
+          "Failed to get NPC game context, continuing without it",
           {
             agentUserId,
             error: error instanceof Error ? error.message : String(error),
           },
-          'MultiStepExecutor'
+          "MultiStepExecutor",
         );
       }
     }
@@ -441,13 +440,13 @@ export class MultiStepExecutor {
       logger.info(
         `[MultiStep] Iteration ${iteration}/${effectiveMaxIterations}`,
         { agentUserId, actionsCompleted: trace.length },
-        'MultiStepExecutor'
+        "MultiStepExecutor",
       );
 
       // Compute per-iteration effectiveFeatures based on current trace
       // This enforces one-POST-per-tick: if we've already posted, remove 'posting'
       const hasPostedThisTick = trace.some(
-        (r) => r.actionType === Actions.POST && r.success
+        (r) => r.actionType === Actions.POST && r.success,
       );
       const effectiveFeatures = hasPostedThisTick
         ? enabledFeatures.filter((f) => f !== Features.POSTING)
@@ -459,7 +458,7 @@ export class MultiStepExecutor {
         agentUserId,
         effectiveFeatures,
         isNpc,
-        contextRefreshSummary
+        contextRefreshSummary,
       );
       iterationTimings.gatherContext = Date.now() - contextStartTime;
 
@@ -500,7 +499,7 @@ export class MultiStepExecutor {
         decision: MultiStepDecision;
         rawResponse: string;
       } | null = null;
-      let normalizedAction = '';
+      let normalizedAction = "";
       let normalizedParameters: Record<string, unknown> = {};
       let validationFeedback: string | undefined;
 
@@ -513,7 +512,7 @@ export class MultiStepExecutor {
           {
             requireConcreteAction: trace.length === 0 && actionability.hasAny,
             feedback: validationFeedback,
-          }
+          },
         );
 
         if (!candidateDecision) {
@@ -522,19 +521,19 @@ export class MultiStepExecutor {
         }
 
         normalizedAction = normalizeDecisionAction(
-          candidateDecision.decision.action
+          candidateDecision.decision.action,
         );
         normalizedParameters =
           normalizedAction === Actions.TRADE
             ? normalizeTradeDecisionParameters(
                 candidateDecision.decision.parameters,
-                context
+                context,
               )
             : normalizeSocialDecisionParameters(
                 normalizedAction,
                 candidateDecision.decision.parameters,
                 context,
-                agentUserId
+                agentUserId,
               );
 
         if (normalizedParameters !== candidateDecision.decision.parameters) {
@@ -547,7 +546,7 @@ export class MultiStepExecutor {
         const validationError = this.getDecisionValidationError(
           normalizedAction,
           normalizedParameters,
-          context
+          context,
         );
         if (
           validationError &&
@@ -558,11 +557,11 @@ export class MultiStepExecutor {
             logger.warn(
               `[MultiStep] Rejected invalid decision after normalization`,
               {
-                action: normalizedAction || '(empty)',
+                action: normalizedAction || "(empty)",
                 parameters: normalizedParameters,
                 validationError,
               },
-              'MultiStepExecutor'
+              "MultiStepExecutor",
             );
             validationFeedback = validationError;
             continue;
@@ -571,18 +570,18 @@ export class MultiStepExecutor {
           logger.warn(
             `[MultiStep] Exhausted retries for invalid decision, finishing iteration`,
             {
-              action: normalizedAction || '(empty)',
+              action: normalizedAction || "(empty)",
               parameters: normalizedParameters,
               validationError,
             },
-            'MultiStepExecutor'
+            "MultiStepExecutor",
           );
           const fallbackDecision =
             trace.length === 0 && actionability.hasAny
               ? this.buildFallbackDecision(
                   context,
                   effectiveFeatures,
-                  agentUserId
+                  agentUserId,
                 )
               : null;
           if (fallbackDecision) {
@@ -592,7 +591,7 @@ export class MultiStepExecutor {
                 fallbackAction: fallbackDecision.action,
                 fallbackParameters: fallbackDecision.parameters,
               },
-              'MultiStepExecutor'
+              "MultiStepExecutor",
             );
             candidateDecision.decision = fallbackDecision;
             normalizedAction = fallbackDecision.action;
@@ -618,7 +617,7 @@ export class MultiStepExecutor {
             ? this.buildFallbackDecision(
                 context,
                 effectiveFeatures,
-                agentUserId
+                agentUserId,
               )
             : null;
         if (fallbackDecision) {
@@ -628,11 +627,11 @@ export class MultiStepExecutor {
               fallbackAction: fallbackDecision.action,
               fallbackParameters: fallbackDecision.parameters,
             },
-            'MultiStepExecutor'
+            "MultiStepExecutor",
           );
           decisionResult = {
             decision: fallbackDecision,
-            rawResponse: '__deterministic_fallback__',
+            rawResponse: "__deterministic_fallback__",
           };
           normalizedAction = fallbackDecision.action;
           normalizedParameters = fallbackDecision.parameters;
@@ -644,7 +643,7 @@ export class MultiStepExecutor {
         logger.warn(
           `[MultiStep] Failed to parse decision at iteration ${iteration}, finishing`,
           { iterationTimings },
-          'MultiStepExecutor'
+          "MultiStepExecutor",
         );
         break;
       }
@@ -656,13 +655,13 @@ export class MultiStepExecutor {
       }
 
       logger.info(
-        `[MultiStep] Decision: ${decision.action || 'FINISH'}`,
+        `[MultiStep] Decision: ${decision.action || "FINISH"}`,
         {
           thought: decision.thought.substring(0, 100),
           isFinish: decision.isFinish,
           llmTimeMs: iterationTimings.llmDecision,
         },
-        'MultiStepExecutor'
+        "MultiStepExecutor",
       );
 
       // Check if we should finish
@@ -676,13 +675,13 @@ export class MultiStepExecutor {
           logger.warn(
             `[MultiStep] Finished without actions despite actionable context`,
             { agentUserId, actionability, iterationTimings },
-            'MultiStepExecutor'
+            "MultiStepExecutor",
           );
         }
         logger.info(
           `[MultiStep] Agent decided to finish at iteration ${iteration}`,
           { thought: decision.thought, iterationTimings },
-          'MultiStepExecutor'
+          "MultiStepExecutor",
         );
         break;
       }
@@ -697,7 +696,7 @@ export class MultiStepExecutor {
         runtime,
         isNpc,
         { prompt, completion: rawResponse, thought: decision.thought },
-        agent?.managedBy ?? agentUserId
+        agent?.managedBy ?? agentUserId,
       );
       await this.recordTrajectoryStep(runtime, decision, actionResult);
       iterationTimings.actionExecution = Date.now() - actionStartTime;
@@ -706,7 +705,7 @@ export class MultiStepExecutor {
       trace.push(actionResult);
 
       // Log iteration timing summary - warn if iteration took more than 30s
-      const iterLogLevel = iterationTimings.total > 30000 ? 'warn' : 'info';
+      const iterLogLevel = iterationTimings.total > 30000 ? "warn" : "info";
       logger[iterLogLevel](
         `[MultiStep] Iteration ${iteration} completed in ${iterationTimings.total}ms`,
         {
@@ -715,7 +714,7 @@ export class MultiStepExecutor {
           actionSuccess: actionResult.success,
           timings: iterationTimings,
         },
-        'MultiStepExecutor'
+        "MultiStepExecutor",
       );
 
       // Small delay between iterations (reduced since no double LLM calls)
@@ -733,7 +732,7 @@ export class MultiStepExecutor {
         comments: result.actionsExecuted.comments,
         messages: result.actionsExecuted.messages,
       },
-      'MultiStepExecutor'
+      "MultiStepExecutor",
     );
 
     return result;
@@ -747,7 +746,7 @@ export class MultiStepExecutor {
     agentUserId: string,
     enabledFeatures: string[],
     isNpc: boolean,
-    contextRefreshSummary?: string
+    contextRefreshSummary?: string,
   ): Promise<AgentTickContext> {
     const contextStartTime = Date.now();
     const timings: Record<string, number> = {};
@@ -767,7 +766,7 @@ export class MultiStepExecutor {
 
       if (!actor) {
         throw new Error(
-          `NPC ${agentUserId} has no actorState record. Run NPC bootstrap to create it.`
+          `NPC ${agentUserId} has no actorState record. Run NPC bootstrap to create it.`,
         );
       }
 
@@ -797,7 +796,7 @@ export class MultiStepExecutor {
 
         if (creatorUser) {
           creator = {
-            name: creatorUser.displayName || creatorUser.username || 'Unknown',
+            name: creatorUser.displayName || creatorUser.username || "Unknown",
             username: creatorUser.username || undefined,
           };
         }
@@ -840,79 +839,79 @@ export class MultiStepExecutor {
       agentMemoryResult,
     ] = await Promise.all([
       canTrade
-        ? this.timedOperation('predictionMarkets', () => getPredictionMarkets())
+        ? this.timedOperation("predictionMarkets", () => getPredictionMarkets())
         : Promise.resolve({ data: [], duration: 0 }),
       canTrade
-        ? this.timedOperation('perpMarkets', () => getPerpMarkets())
+        ? this.timedOperation("perpMarkets", () => getPerpMarkets())
         : Promise.resolve({ data: [], duration: 0 }),
-      this.timedOperation('agentPositions', () =>
-        getAgentPositions(agentUserId)
+      this.timedOperation("agentPositions", () =>
+        getAgentPositions(agentUserId),
       ),
       // Feed is needed for commenting, engaging (like/repost/follow), and DMs
-      this.timedOperation('recentPosts', () => getRecentPosts(agentUserId)),
+      this.timedOperation("recentPosts", () => getRecentPosts(agentUserId)),
       canComment
-        ? this.timedOperation('pendingCommentReplies', () =>
-            gatherPendingCommentReplies(agentUserId)
+        ? this.timedOperation("pendingCommentReplies", () =>
+            gatherPendingCommentReplies(agentUserId),
           )
         : Promise.resolve({ data: [], duration: 0 }),
       canRespondDMs || canGroupChat
-        ? this.timedOperation('pendingChatMessages', () =>
-            gatherPendingChatMessages(agentUserId)
+        ? this.timedOperation("pendingChatMessages", () =>
+            gatherPendingChatMessages(agentUserId),
           )
         : Promise.resolve({ data: [], duration: 0 }),
       canGroupChat
-        ? this.timedOperation('agentGroupChats', () =>
-            getAgentGroupChats(agentUserId)
+        ? this.timedOperation("agentGroupChats", () =>
+            getAgentGroupChats(agentUserId),
           )
         : Promise.resolve({ data: [], duration: 0 }),
       canPost
-        ? this.timedOperation('agentOwnPosts', () =>
-            getAgentOwnPosts(agentUserId)
+        ? this.timedOperation("agentOwnPosts", () =>
+            getAgentOwnPosts(agentUserId),
           )
         : Promise.resolve({ data: [], duration: 0 }),
       // Fetch group chat intel (summaries + facts) for trading context
-      this.timedOperation('groupChatIntel', () =>
-        getGroupChatIntel(agentUserId)
+      this.timedOperation("groupChatIntel", () =>
+        getGroupChatIntel(agentUserId),
       ),
       // Engine-grade context: market trends with volatility
       canTrade
-        ? this.timedOperation('marketTrends', () => getMarketTrends())
+        ? this.timedOperation("marketTrends", () => getMarketTrends())
         : Promise.resolve({ data: [], duration: 0 }),
       // Relationships (friends/enemies) for NPCs
       isNpc
-        ? this.timedOperation('relationships', () =>
-            getRelationships(agentUserId)
+        ? this.timedOperation("relationships", () =>
+            getRelationships(agentUserId),
           )
         : Promise.resolve({ data: [], duration: 0 }),
       // World events for narrative awareness (all agent types)
       // NPCs get all events + signal direction; user agents get public events only
-      this.timedOperation('worldEvents', () =>
-        getWorldEventsContext(agentUserId, isNpc)
+      this.timedOperation("worldEvents", () =>
+        getWorldEventsContext(agentUserId, isNpc),
       ),
       // Mood/state for NPCs
       isNpc
-        ? this.timedOperation('moodState', () => getMoodState(agentUserId))
+        ? this.timedOperation("moodState", () => getMoodState(agentUserId))
         : Promise.resolve({ data: null, duration: 0 }),
       // Trade history for user-controlled agents (NPCs get this via NPC trading pipeline)
       !isNpc
-        ? this.timedOperation('agentTradeHistory', () =>
-            getAgentTradeHistory(agentUserId)
+        ? this.timedOperation("agentTradeHistory", () =>
+            getAgentTradeHistory(agentUserId),
           )
         : Promise.resolve({ data: [], duration: 0 }),
       // Resolved questions — NPC insider knowledge (outcomes of resolved markets)
       isNpc
-        ? this.timedOperation('resolvedQuestions', () =>
+        ? this.timedOperation("resolvedQuestions", () =>
             db
               .select()
               .from(questions)
-              .where(eq(questions.status, 'resolved'))
+              .where(eq(questions.status, "resolved"))
               .orderBy(desc(questions.resolutionDate))
-              .limit(10)
+              .limit(10),
           )
         : Promise.resolve({ data: [], duration: 0 }),
       // Recent NPC trades — NPC insider knowledge (what other NPCs are doing)
       isNpc
-        ? this.timedOperation('recentNpcTrades', () => {
+        ? this.timedOperation("recentNpcTrades", () => {
             const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
             return db
               .select()
@@ -924,14 +923,14 @@ export class MultiStepExecutor {
         : Promise.resolve({ data: [], duration: 0 }),
       // Social graph for user-controlled agents (NPCs use actorRelationships)
       !isNpc
-        ? this.timedOperation('socialGraph', () =>
-            getAgentSocialGraph(agentUserId)
+        ? this.timedOperation("socialGraph", () =>
+            getAgentSocialGraph(agentUserId),
           )
         : Promise.resolve({ data: [], duration: 0 }),
       // Memory for user-controlled agents (NPCs have NpcMemoryService)
       !isNpc
-        ? this.timedOperation('agentMemory', () =>
-            getAgentMemory(agentUserId, ['trade'])
+        ? this.timedOperation("agentMemory", () =>
+            getAgentMemory(agentUserId, ["trade"]),
           )
         : Promise.resolve({ data: [], duration: 0 }),
     ]);
@@ -979,7 +978,7 @@ export class MultiStepExecutor {
 
     // Filter chat messages based on DMs vs group chats feature
     const pendingChatMessages = pendingChatMessagesRaw.filter((m) =>
-      m.isGroupChat ? canGroupChat : canRespondDMs
+      m.isGroupChat ? canGroupChat : canRespondDMs,
     );
 
     // Get topic diversity guidance for this agent
@@ -990,7 +989,7 @@ export class MultiStepExecutor {
     timings.total = Date.now() - contextStartTime;
 
     // Log timing summary - warn if total exceeds 5 seconds
-    const logLevel = timings.total > 5000 ? 'warn' : 'debug';
+    const logLevel = timings.total > 5000 ? "warn" : "debug";
     logger[logLevel](
       `[MultiStep] Context gathered in ${timings.total}ms`,
       {
@@ -1011,7 +1010,7 @@ export class MultiStepExecutor {
           hasContextRefreshSummary: Boolean(contextRefreshSummary),
         },
       },
-      'MultiStepExecutor'
+      "MultiStepExecutor",
     );
 
     // Fetch world context for reality grounding (parody names, world state)
@@ -1020,7 +1019,7 @@ export class MultiStepExecutor {
       includeMarkets: false,
       includePredictions: false,
       includeTrades: false,
-      realityGroundingLevel: 'concise',
+      realityGroundingLevel: "concise",
       maxActors: 30,
     });
 
@@ -1033,8 +1032,8 @@ export class MultiStepExecutor {
     // price movements — not by directly observing ground truth or NPC behavior.
     const resolvedQuestionsText = resolvedQsRows
       .filter((q) => q.resolvedOutcome != null)
-      .map((q) => `- "${q.text}" → ${q.resolvedOutcome ? 'YES' : 'NO'}`)
-      .join('\n');
+      .map((q) => `- "${q.text}" → ${q.resolvedOutcome ? "YES" : "NO"}`)
+      .join("\n");
 
     const recentTradesText = recentNpcTradesRows
       .map((t) => {
@@ -1043,7 +1042,7 @@ export class MultiStepExecutor {
           StaticDataRegistry.getActor(t.npcActorId)?.name ?? t.npcActorId;
         return `- ${name}: ${t.action} ${symbol} $${t.amount.toFixed(0)}`;
       })
-      .join('\n');
+      .join("\n");
 
     return {
       balance,
@@ -1075,7 +1074,7 @@ export class MultiStepExecutor {
         recentTrades: recentTradesText,
         // Event-market connections are insider knowledge (relatedQuestion mapping).
         // Only NPCs get to see which events affect which markets directly.
-        eventSignals: isNpc ? buildEventSignals(worldEventsData) : '',
+        eventSignals: isNpc ? buildEventSignals(worldEventsData) : "",
       },
       agentTradeHistory:
         agentTradeHistory.length > 0 ? agentTradeHistory : undefined,
@@ -1094,7 +1093,7 @@ export class MultiStepExecutor {
    */
   private async timedOperation<T>(
     _name: string,
-    operation: () => Promise<T>
+    operation: () => Promise<T>,
   ): Promise<{ data: T; duration: number }> {
     const start = Date.now();
     const data = await operation();
@@ -1102,7 +1101,7 @@ export class MultiStepExecutor {
   }
 
   private async getLatestContextRefreshSummary(
-    agentUserId: string
+    agentUserId: string,
   ): Promise<string | undefined> {
     const recentSystemLogs = await db
       .select({
@@ -1113,21 +1112,21 @@ export class MultiStepExecutor {
       .where(
         and(
           eq(agentLogs.agentUserId, agentUserId),
-          eq(agentLogs.type, 'system')
-        )
+          eq(agentLogs.type, "system"),
+        ),
       )
       .orderBy(desc(agentLogs.createdAt))
       .limit(10);
 
     for (const log of recentSystemLogs) {
       const metadata =
-        log.metadata && typeof log.metadata === 'object' ? log.metadata : null;
+        log.metadata && typeof log.metadata === "object" ? log.metadata : null;
       const event =
-        metadata && 'event' in metadata ? metadata.event : undefined;
+        metadata && "event" in metadata ? metadata.event : undefined;
       const summary =
-        metadata && 'summary' in metadata ? metadata.summary : undefined;
+        metadata && "summary" in metadata ? metadata.summary : undefined;
 
-      if (event !== 'context_refresh' || typeof summary !== 'string') {
+      if (event !== "context_refresh" || typeof summary !== "string") {
         continue;
       }
 
@@ -1189,20 +1188,20 @@ export class MultiStepExecutor {
     runtime: IAgentRuntime,
     _iteration: number,
     systemPrompt?: string,
-    options?: { requireConcreteAction?: boolean; feedback?: string }
+    options?: { requireConcreteAction?: boolean; feedback?: string },
   ): Promise<{ decision: MultiStepDecision; rawResponse: string } | null> {
     const maxRetries = 3;
 
     const system = systemPrompt
       ? `${systemPrompt}\n\nIMPORTANT: Output valid JSON only. No markdown, no explanations, and no <think> tags. The first character of your reply must be "{" and the last character must be "}".`
       : 'You are a decision-making agent. Output valid JSON only. No markdown, no explanations, and no <think> tags. The first character of your reply must be "{" and the last character must be "}".';
-    let retryFeedback = '';
+    let retryFeedback = "";
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       const promptSegments = [prompt];
       if (options?.requireConcreteAction) {
         promptSegments.push(
-          'CRITICAL: You MUST choose exactly one concrete non-FINISH, non-WAIT action in valid JSON. Do not return FINISH, WAIT, or an empty action on this turn.'
+          "CRITICAL: You MUST choose exactly one concrete non-FINISH, non-WAIT action in valid JSON. Do not return FINISH, WAIT, or an empty action on this turn.",
         );
       }
       if (options?.feedback) {
@@ -1211,7 +1210,7 @@ export class MultiStepExecutor {
       if (retryFeedback) {
         promptSegments.push(retryFeedback);
       }
-      const promptWithConstraints = promptSegments.join('\n\n');
+      const promptWithConstraints = promptSegments.join("\n\n");
       const response = await callAgentLLM({
         prompt: promptWithConstraints,
         system,
@@ -1224,18 +1223,18 @@ export class MultiStepExecutor {
                   ?.settings as { temperature?: number } | undefined
               )?.temperature ?? 0.7),
         maxTokens: 1000,
-        actionType: 'multi_step_decision',
-        purpose: 'action',
+        actionType: "multi_step_decision",
+        purpose: "action",
       });
 
       const jsonText = extractFirstJsonObject(response);
       if (!jsonText) {
         retryFeedback =
-          'Your previous response was invalid because it did not contain a parseable JSON object. Return exactly one JSON object only. Do not include <think> tags, prose, or code fences.';
+          "Your previous response was invalid because it did not contain a parseable JSON object. Return exactly one JSON object only. Do not include <think> tags, prose, or code fences.";
         logger.warn(
           `[MultiStep] No JSON found in response (attempt ${attempt})`,
           { responsePreview: response.substring(0, 200) },
-          'MultiStepExecutor'
+          "MultiStepExecutor",
         );
         continue;
       }
@@ -1244,18 +1243,18 @@ export class MultiStepExecutor {
         const parsed = JSON.parse(jsonText) as MultiStepDecision;
         const rawIsFinish = parsed.isFinish;
         parsed.isFinish =
-          typeof rawIsFinish === 'boolean' ? rawIsFinish : false;
+          typeof rawIsFinish === "boolean" ? rawIsFinish : false;
         if (!parsed.action) {
-          parsed.action = '';
+          parsed.action = "";
         }
         if (!parsed.parameters) {
           parsed.parameters = {};
         }
         if (!parsed.thought) {
-          parsed.thought = '';
+          parsed.thought = "";
         }
         if (
-          typeof parsed.parameters !== 'object' ||
+          typeof parsed.parameters !== "object" ||
           parsed.parameters === null ||
           Array.isArray(parsed.parameters)
         ) {
@@ -1264,11 +1263,10 @@ export class MultiStepExecutor {
 
         const normalizedAction = normalizeDecisionAction(parsed.action);
         parsed.action = normalizedAction;
-        parsed.isFinish =
+        parsed.isFinish = !!(
           normalizedAction === Actions.FINISH ||
           normalizedAction === Actions.WAIT
-            ? true
-            : false;
+        );
 
         if (
           options?.requireConcreteAction &&
@@ -1280,24 +1278,24 @@ export class MultiStepExecutor {
           logger.warn(
             `[MultiStep] Rejected non-concrete decision (attempt ${attempt})`,
             {
-              action: normalizedAction || '(empty)',
+              action: normalizedAction || "(empty)",
               isFinish: parsed.isFinish,
             },
-            'MultiStepExecutor'
+            "MultiStepExecutor",
           );
           retryFeedback =
-            'Your previous JSON chose FINISH, WAIT, or an empty action when a real action was required. Return one concrete action with valid parameters from the provided IDs.';
+            "Your previous JSON chose FINISH, WAIT, or an empty action when a real action was required. Return one concrete action with valid parameters from the provided IDs.";
           continue;
         }
 
         return { decision: parsed, rawResponse: response };
       } catch {
         retryFeedback =
-          'Your previous response contained malformed JSON. Return a single valid JSON object with double-quoted keys and strings only.';
+          "Your previous response contained malformed JSON. Return a single valid JSON object with double-quoted keys and strings only.";
         logger.warn(
           `[MultiStep] Failed to parse JSON (attempt ${attempt})`,
           { json: jsonText.substring(0, 200) },
-          'MultiStepExecutor'
+          "MultiStepExecutor",
         );
       }
     }
@@ -1308,13 +1306,13 @@ export class MultiStepExecutor {
   private getDecisionValidationError(
     action: string,
     parameters: Record<string, unknown>,
-    context: AgentTickContext
+    context: AgentTickContext,
   ): string | undefined {
     const content =
-      typeof parameters.content === 'string' ? parameters.content.trim() : '';
+      typeof parameters.content === "string" ? parameters.content.trim() : "";
     const marketId = this.coerceParameterText(parameters.marketId);
     const side =
-      typeof parameters.side === 'string' ? parameters.side.trim() : '';
+      typeof parameters.side === "string" ? parameters.side.trim() : "";
     const postId = this.coerceParameterText(parameters.postId);
     const commentId = this.coerceParameterText(parameters.commentId);
     const chatId = this.coerceParameterText(parameters.chatId);
@@ -1324,21 +1322,21 @@ export class MultiStepExecutor {
     switch (action) {
       case Actions.TRADE: {
         if (!marketId || !side) {
-          return 'Your TRADE was invalid because it did not include a valid marketId and side from the provided markets or positions. Choose a valid trade or a different action.';
+          return "Your TRADE was invalid because it did not include a valid marketId and side from the provided markets or positions. Choose a valid trade or a different action.";
         }
 
         if (
-          parameters.marketType !== 'prediction' &&
-          parameters.marketType !== 'perp'
+          parameters.marketType !== "prediction" &&
+          parameters.marketType !== "perp"
         ) {
           return 'Your TRADE was invalid because marketType must be exactly "prediction" or "perp". Choose a valid market from the provided context and return the corrected trade.';
         }
 
-        if (parameters.marketType === 'prediction') {
+        if (parameters.marketType === "prediction") {
           const knownPredictionMarketIds = new Set([
             ...context.predictionMarkets.map((market) => market.id),
             ...context.agentPositions.predictions.map(
-              (position) => position.marketId
+              (position) => position.marketId,
             ),
           ]);
           if (!knownPredictionMarketIds.has(marketId)) {
@@ -1346,7 +1344,7 @@ export class MultiStepExecutor {
           }
         }
 
-        if (parameters.marketType === 'perp') {
+        if (parameters.marketType === "perp") {
           const knownPerpTickers = new Set([
             ...context.perpMarkets.map((market) => market.ticker),
             ...context.agentPositions.perps.map((position) => position.ticker),
@@ -1357,22 +1355,22 @@ export class MultiStepExecutor {
         }
 
         if (
-          parameters.marketType === 'prediction' &&
-          side.startsWith('sell_')
+          parameters.marketType === "prediction" &&
+          side.startsWith("sell_")
         ) {
-          const expectedSide = side === 'sell_yes' ? 'YES' : 'NO';
+          const expectedSide = side === "sell_yes" ? "YES" : "NO";
           const heldPrediction = context.agentPositions.predictions.find(
             (position) =>
-              position.marketId === marketId && position.side === expectedSide
+              position.marketId === marketId && position.side === expectedSide,
           );
           if (!heldPrediction) {
             return `Your TRADE tried to sell ${expectedSide} on prediction market ${marketId}, but you do not hold a ${expectedSide} position on that market. Choose a market and side you actually hold to sell, or use buy_yes/buy_no instead.`;
           }
         }
 
-        if (parameters.marketType === 'perp' && side === 'close_position') {
+        if (parameters.marketType === "perp" && side === "close_position") {
           const heldPerp = context.agentPositions.perps.find(
-            (position) => position.ticker === marketId
+            (position) => position.ticker === marketId,
           );
           if (!heldPerp) {
             return `Your TRADE tried to close perp ${marketId}, but you do not currently hold that perp. Choose an open perp position or use open_long/open_short instead.`;
@@ -1385,15 +1383,15 @@ export class MultiStepExecutor {
       case Actions.COMMENT:
         if (!postId || !content) {
           return context.recentPosts.length > 0
-            ? 'Your COMMENT was invalid because it requires both a valid postId from Recent Posts and non-empty content. Choose a valid comment target or a different action.'
-            : 'Your COMMENT was invalid because there are no recent posts available to comment on right now. Choose a different valid action.';
+            ? "Your COMMENT was invalid because it requires both a valid postId from Recent Posts and non-empty content. Choose a valid comment target or a different action."
+            : "Your COMMENT was invalid because there are no recent posts available to comment on right now. Choose a different valid action.";
         }
         if (commentId) {
-          return 'Your COMMENT was invalid because replies must use REPLY_COMMENT, not COMMENT. Choose REPLY_COMMENT with a valid pending comment target or use COMMENT without commentId.';
+          return "Your COMMENT was invalid because replies must use REPLY_COMMENT, not COMMENT. Choose REPLY_COMMENT with a valid pending comment target or use COMMENT without commentId.";
         }
         {
           const targetPost = context.recentPosts.find(
-            (post) => post.id === postId
+            (post) => post.id === postId,
           );
           if (targetPost?.agentComment) {
             return `Your COMMENT targeted post ${postId}, but you already made a top-level comment there. Choose a different post or use REPLY_COMMENT if there is a pending reply target.`;
@@ -1404,12 +1402,12 @@ export class MultiStepExecutor {
       case Actions.REPLY_COMMENT:
         if (!commentId || !postId || !content) {
           return context.pendingCommentReplies.length > 0
-            ? 'Your REPLY_COMMENT was invalid because it requires commentId, postId, and content from Pending Comment Replies. Choose a valid reply target or a different action.'
-            : 'Your REPLY_COMMENT was invalid because there are no pending comment replies available right now. Choose a different valid action.';
+            ? "Your REPLY_COMMENT was invalid because it requires commentId, postId, and content from Pending Comment Replies. Choose a valid reply target or a different action."
+            : "Your REPLY_COMMENT was invalid because there are no pending comment replies available right now. Choose a different valid action.";
         }
         if (
           !context.pendingCommentReplies.some(
-            (reply) => reply.id === commentId && reply.postId === postId
+            (reply) => reply.id === commentId && reply.postId === postId,
           )
         ) {
           return `Your REPLY_COMMENT targeted comment ${commentId} on post ${postId}, but that pending reply target is not currently available. Choose an exact commentId/postId pair from Pending Comment Replies.`;
@@ -1424,7 +1422,7 @@ export class MultiStepExecutor {
         }
         {
           const targetPost = context.recentPosts.find(
-            (post) => post.id === postId
+            (post) => post.id === postId,
           );
           if (targetPost?.agentLiked) {
             return `Your LIKE targeted post ${postId}, but you already liked that post. Choose a different post.`;
@@ -1440,7 +1438,7 @@ export class MultiStepExecutor {
         }
         {
           const targetPost = context.recentPosts.find(
-            (post) => post.id === postId
+            (post) => post.id === postId,
           );
           if (targetPost?.agentReposted) {
             return `Your REPOST targeted post ${postId}, but you already reposted that post. Choose a different post.`;
@@ -1457,31 +1455,31 @@ export class MultiStepExecutor {
 
       case Actions.DM:
         if (!recipientId || !content) {
-          return 'Your DM was invalid because it requires a valid recipientId and message content. Choose a valid DM target or a different action.';
+          return "Your DM was invalid because it requires a valid recipientId and message content. Choose a valid DM target or a different action.";
         }
         return undefined;
 
       case Actions.REPLY_CHAT:
         if (!chatId || !content) {
           return context.pendingChatMessages.length > 0
-            ? 'Your REPLY_CHAT was invalid because it requires a valid chatId from Pending Chat Messages and message content. Choose a valid chat target or a different action.'
-            : 'Your REPLY_CHAT was invalid because there are no pending chat messages available right now. Choose a different valid action.';
+            ? "Your REPLY_CHAT was invalid because it requires a valid chatId from Pending Chat Messages and message content. Choose a valid chat target or a different action."
+            : "Your REPLY_CHAT was invalid because there are no pending chat messages available right now. Choose a different valid action.";
         }
         return undefined;
 
       case Actions.GROUP_MESSAGE:
         if (!chatId || !content) {
           return (context.groupChats?.length ?? 0) > 0
-            ? 'Your GROUP_MESSAGE was invalid because it requires a valid chatId from Your Group Chats and message content. Choose a valid group chat or a different action.'
-            : 'Your GROUP_MESSAGE was invalid because you have no available group chats right now. Choose a different valid action.';
+            ? "Your GROUP_MESSAGE was invalid because it requires a valid chatId from Your Group Chats and message content. Choose a valid group chat or a different action."
+            : "Your GROUP_MESSAGE was invalid because you have no available group chats right now. Choose a different valid action.";
         }
         return undefined;
 
       case Actions.CREATE_GROUP: {
         const groupName =
-          typeof parameters.name === 'string' ? parameters.name.trim() : '';
+          typeof parameters.name === "string" ? parameters.name.trim() : "";
         if (!groupName || groupName.length < 2) {
-          return 'Your CREATE_GROUP was invalid because it requires a name of at least 2 characters.';
+          return "Your CREATE_GROUP was invalid because it requires a name of at least 2 characters.";
         }
         return undefined;
       }
@@ -1489,7 +1487,7 @@ export class MultiStepExecutor {
       case Actions.INVITE_TO_GROUP: {
         const groupId2 = this.coerceParameterText(parameters.groupId);
         if (!groupId2 || !userId) {
-          return 'Your INVITE_TO_GROUP was invalid because it requires both a groupId and userId.';
+          return "Your INVITE_TO_GROUP was invalid because it requires both a groupId and userId.";
         }
         return undefined;
       }
@@ -1497,7 +1495,7 @@ export class MultiStepExecutor {
       case Actions.KICK_FROM_GROUP: {
         const groupId3 = this.coerceParameterText(parameters.groupId);
         if (!groupId3 || !userId) {
-          return 'Your KICK_FROM_GROUP was invalid because it requires both a groupId and userId.';
+          return "Your KICK_FROM_GROUP was invalid because it requires both a groupId and userId.";
         }
         return undefined;
       }
@@ -1505,7 +1503,7 @@ export class MultiStepExecutor {
       case Actions.LEAVE_GROUP: {
         const groupId4 = this.coerceParameterText(parameters.groupId);
         if (!groupId4) {
-          return 'Your LEAVE_GROUP was invalid because it requires a groupId.';
+          return "Your LEAVE_GROUP was invalid because it requires a groupId.";
         }
         return undefined;
       }
@@ -1513,7 +1511,7 @@ export class MultiStepExecutor {
       case Actions.SEND_MONEY: {
         const sendAmount = Number(parameters.amount);
         if (!recipientId || !Number.isFinite(sendAmount) || sendAmount <= 0) {
-          return 'Your SEND_MONEY was invalid because it requires a valid recipientId and a positive amount. Choose a valid recipient from the visible social context.';
+          return "Your SEND_MONEY was invalid because it requires a valid recipientId and a positive amount. Choose a valid recipient from the visible social context.";
         }
         return undefined;
       }
@@ -1534,7 +1532,7 @@ export class MultiStepExecutor {
     _runtime: IAgentRuntime,
     _isNpc: boolean,
     logContext?: { prompt: string; completion: string; thought: string },
-    ownerId: string = agentUserId
+    ownerId: string = agentUserId,
   ): Promise<ActionTraceResult> {
     const normalizedAction = normalizeDecisionAction(action);
 
@@ -1542,14 +1540,14 @@ export class MultiStepExecutor {
       logger.info(
         `[MultiStep] Normalized action "${action}" -> "${normalizedAction}"`,
         undefined,
-        'MultiStepExecutor'
+        "MultiStepExecutor",
       );
     }
 
     logger.info(
       `[MultiStep] Executing action: ${normalizedAction}`,
       { parameters, enabledFeatures },
-      'MultiStepExecutor'
+      "MultiStepExecutor",
     );
 
     // Enforce enabled features
@@ -1558,7 +1556,7 @@ export class MultiStepExecutor {
       logger.warn(
         `[MultiStep] Action ${normalizedAction} blocked - ${requiredFeature} not enabled`,
         { agentUserId, enabledFeatures },
-        'MultiStepExecutor'
+        "MultiStepExecutor",
       );
       return {
         actionType: normalizedAction,
@@ -1601,7 +1599,7 @@ export class MultiStepExecutor {
           agentUserId,
           parameters,
           enabledFeatures,
-          logContext
+          logContext,
         );
 
       case Actions.DM:
@@ -1633,14 +1631,14 @@ export class MultiStepExecutor {
 
       case Actions.WAIT:
       case Actions.FINISH:
-      case '':
+      case "":
         return {
           actionType: normalizedAction || Actions.WAIT,
           success: true,
           summary:
             normalizedAction === Actions.FINISH
-              ? 'Agent decided to finish'
-              : 'Agent decided to wait',
+              ? "Agent decided to finish"
+              : "Agent decided to wait",
           parameters,
           timestamp: Date.now(),
         };
@@ -1649,7 +1647,7 @@ export class MultiStepExecutor {
         logger.warn(
           `[MultiStep] Unknown action: ${normalizedAction}`,
           undefined,
-          'MultiStepExecutor'
+          "MultiStepExecutor",
         );
         return {
           actionType: normalizedAction,
@@ -1665,7 +1663,7 @@ export class MultiStepExecutor {
   private async recordTrajectoryStep(
     runtime: IAgentRuntime,
     decision: MultiStepDecision,
-    actionResult: ActionTraceResult
+    actionResult: ActionTraceResult,
   ): Promise<void> {
     const activeStep = await ensureTrajectoryStep(runtime);
     if (!activeStep) {
@@ -1698,7 +1696,7 @@ export class MultiStepExecutor {
           const agentTeam = (runtime as { _agentTeam?: string })._agentTeam;
           const sameTeam = agentTeam === identity.team;
           // setCounterpartyContext may not exist on all logger implementations
-          if ('setCounterpartyContext' in activeStep.logger) {
+          if ("setCounterpartyContext" in activeStep.logger) {
             (
               activeStep.logger as unknown as {
                 setCounterpartyContext: (...args: unknown[]) => void;
@@ -1709,18 +1707,18 @@ export class MultiStepExecutor {
               {
                 counterpartyId,
                 counterpartyAlignment: identity.alignment as
-                  | 'good'
-                  | 'neutral'
-                  | 'evil',
-                counterpartyTeam: identity.team as 'red' | 'blue' | 'gray',
-                senderRole: sameTeam ? 'team' : 'none',
+                  | "good"
+                  | "neutral"
+                  | "evil",
+                counterpartyTeam: identity.team as "red" | "blue" | "gray",
+                senderRole: sameTeam ? "team" : "none",
                 interactionIntent:
-                  identity.team === 'red'
-                    ? 'attack'
-                    : identity.team === 'blue'
-                      ? 'legitimate'
-                      : 'neutral',
-              }
+                  identity.team === "red"
+                    ? "attack"
+                    : identity.team === "blue"
+                      ? "legitimate"
+                      : "neutral",
+              },
             );
           }
         }
@@ -1742,16 +1740,16 @@ export class MultiStepExecutor {
       },
       {
         reward: actionResult.success ? 0.1 : -0.1,
-      }
+      },
     );
   }
 
   private toJsonRecord(
     value:
-      | ActionTraceResult['parameters']
+      | ActionTraceResult["parameters"]
       | Record<string, JsonValue>
       | Record<string, string | number | boolean | null | undefined>
-      | undefined
+      | undefined,
   ): Record<string, JsonValue> {
     if (!value) {
       return {};
@@ -1761,15 +1759,15 @@ export class MultiStepExecutor {
       Object.entries(value).map(([key, entryValue]) => [
         key,
         entryValue ?? null,
-      ])
+      ]),
     ) as Record<string, JsonValue>;
   }
 
   private getParameterReasoning(
-    parameters: MultiStepDecision['parameters']
+    parameters: MultiStepDecision["parameters"],
   ): string | undefined {
     const reasoning = parameters.reasoning;
-    return typeof reasoning === 'string' ? reasoning : undefined;
+    return typeof reasoning === "string" ? reasoning : undefined;
   }
 
   // ===========================================================================
@@ -1779,14 +1777,14 @@ export class MultiStepExecutor {
   private async executeTrade(
     agentUserId: string,
     parameters: Record<string, unknown>,
-    ownerId: string = agentUserId
+    ownerId: string = agentUserId,
   ): Promise<ActionTraceResult> {
-    const marketType = parameters.marketType as 'prediction' | 'perp';
+    const marketType = parameters.marketType as "prediction" | "perp";
     const marketId = parameters.marketId as string;
     const side = parameters.side as string;
-    const isSell = typeof side === 'string' && side.startsWith('sell_');
+    const isSell = typeof side === "string" && side.startsWith("sell_");
     const amount =
-      isSell && (parameters.amount === 0 || parameters.amount === '0')
+      isSell && (parameters.amount === 0 || parameters.amount === "0")
         ? 0
         : Number(parameters.amount || 100);
     const reasoning = parameters.reasoning as string | undefined;
@@ -1795,8 +1793,8 @@ export class MultiStepExecutor {
       return {
         actionType: Actions.TRADE,
         success: false,
-        summary: 'Missing required parameters (marketId, side)',
-        error: 'Invalid parameters',
+        summary: "Missing required parameters (marketId, side)",
+        error: "Invalid parameters",
         parameters,
         timestamp: Date.now(),
       };
@@ -1806,16 +1804,16 @@ export class MultiStepExecutor {
     try {
       tradeResult = await executeDirectTrade({
         agentUserId,
-        marketType: marketType || 'prediction',
+        marketType: marketType || "prediction",
         marketId,
         side: side as
-          | 'buy_yes'
-          | 'buy_no'
-          | 'sell_yes'
-          | 'sell_no'
-          | 'open_long'
-          | 'open_short'
-          | 'close_position',
+          | "buy_yes"
+          | "buy_no"
+          | "sell_yes"
+          | "sell_no"
+          | "open_long"
+          | "open_short"
+          | "close_position",
         amount,
         reasoning,
       });
@@ -1824,7 +1822,7 @@ export class MultiStepExecutor {
       logger.warn(
         `[MultiStep] Trade execution failed: ${message}`,
         { agentUserId, marketType, marketId, side, amount },
-        'MultiStepExecutor'
+        "MultiStepExecutor",
       );
       return {
         actionType: Actions.TRADE,
@@ -1839,7 +1837,7 @@ export class MultiStepExecutor {
     if (tradeResult.success) {
       trackAgentTradeExecuted(agentUserId, {
         agent_id: agentUserId,
-        market_type: marketType || 'prediction',
+        market_type: marketType || "prediction",
         action: side,
         market_id: tradeResult.marketId,
         ticker: tradeResult.ticker,
@@ -1871,7 +1869,7 @@ export class MultiStepExecutor {
   private async executePost(
     agentUserId: string,
     parameters: Record<string, unknown>,
-    logContext?: { prompt: string; completion: string; thought: string }
+    logContext?: { prompt: string; completion: string; thought: string },
   ): Promise<ActionTraceResult> {
     // Post rate limiting removed — all agents can post freely
 
@@ -1881,8 +1879,8 @@ export class MultiStepExecutor {
       return {
         actionType: Actions.POST,
         success: false,
-        summary: 'Missing content parameter',
-        error: 'No content provided',
+        summary: "Missing content parameter",
+        error: "No content provided",
         parameters,
         timestamp: Date.now(),
       };
@@ -1892,9 +1890,9 @@ export class MultiStepExecutor {
 
     if (postResult.success && logContext) {
       await agentService.createLog(agentUserId, {
-        type: 'post',
-        level: 'info',
-        message: `Created post: ${content.substring(0, 100)}${content.length > 100 ? '...' : ''}`,
+        type: "post",
+        level: "info",
+        message: `Created post: ${content.substring(0, 100)}${content.length > 100 ? "..." : ""}`,
         prompt: logContext.prompt,
         completion: logContext.completion,
         thinking: logContext.thought,
@@ -1924,7 +1922,7 @@ export class MultiStepExecutor {
   private async executeComment(
     agentUserId: string,
     parameters: Record<string, unknown>,
-    logContext?: { prompt: string; completion: string; thought: string }
+    logContext?: { prompt: string; completion: string; thought: string },
   ): Promise<ActionTraceResult> {
     const postId = parameters.postId as string;
     const content = parameters.content as string;
@@ -1934,8 +1932,8 @@ export class MultiStepExecutor {
       return {
         actionType: Actions.COMMENT,
         success: false,
-        summary: 'Missing required parameters (postId, content)',
-        error: 'Invalid parameters',
+        summary: "Missing required parameters (postId, content)",
+        error: "Invalid parameters",
         parameters,
         timestamp: Date.now(),
       };
@@ -1950,9 +1948,9 @@ export class MultiStepExecutor {
 
     if (commentResult.success && logContext) {
       await agentService.createLog(agentUserId, {
-        type: 'comment',
-        level: 'info',
-        message: `Created comment on post ${postId}${parentCommentId ? ` (reply to ${parentCommentId})` : ''}: ${content.substring(0, 100)}${content.length > 100 ? '...' : ''}`,
+        type: "comment",
+        level: "info",
+        message: `Created comment on post ${postId}${parentCommentId ? ` (reply to ${parentCommentId})` : ""}: ${content.substring(0, 100)}${content.length > 100 ? "..." : ""}`,
         prompt: logContext.prompt,
         completion: logContext.completion,
         thinking: logContext.thought,
@@ -1983,7 +1981,7 @@ export class MultiStepExecutor {
 
   private async executeLike(
     agentUserId: string,
-    parameters: Record<string, unknown>
+    parameters: Record<string, unknown>,
   ): Promise<ActionTraceResult> {
     const postId = parameters.postId as string;
 
@@ -1991,8 +1989,8 @@ export class MultiStepExecutor {
       return {
         actionType: Actions.LIKE,
         success: false,
-        summary: 'Missing required parameter (postId)',
-        error: 'Invalid parameters',
+        summary: "Missing required parameter (postId)",
+        error: "Invalid parameters",
         parameters,
         timestamp: Date.now(),
       };
@@ -2001,8 +1999,8 @@ export class MultiStepExecutor {
     const likeResult = await executeDirectLike({ agentUserId, postId });
 
     await agentService.createLog(agentUserId, {
-      type: 'like',
-      level: likeResult.success ? 'info' : 'warn',
+      type: "like",
+      level: likeResult.success ? "info" : "warn",
       message: likeResult.success
         ? `Liked post ${postId}`
         : `Like failed: ${likeResult.error}`,
@@ -2032,7 +2030,7 @@ export class MultiStepExecutor {
 
   private async executeRepost(
     agentUserId: string,
-    parameters: Record<string, unknown>
+    parameters: Record<string, unknown>,
   ): Promise<ActionTraceResult> {
     const postId = parameters.postId as string;
     const comment = parameters.comment as string | undefined;
@@ -2041,8 +2039,8 @@ export class MultiStepExecutor {
       return {
         actionType: Actions.REPOST,
         success: false,
-        summary: 'Missing required parameter (postId)',
-        error: 'Invalid parameters',
+        summary: "Missing required parameter (postId)",
+        error: "Invalid parameters",
         parameters,
         timestamp: Date.now(),
       };
@@ -2055,10 +2053,10 @@ export class MultiStepExecutor {
     });
 
     await agentService.createLog(agentUserId, {
-      type: 'repost',
-      level: repostResult.success ? 'info' : 'warn',
+      type: "repost",
+      level: repostResult.success ? "info" : "warn",
       message: repostResult.success
-        ? `Reposted ${postId}${comment ? ' with comment' : ''}`
+        ? `Reposted ${postId}${comment ? " with comment" : ""}`
         : `Repost failed: ${repostResult.error}`,
       metadata: {
         postId,
@@ -2074,7 +2072,7 @@ export class MultiStepExecutor {
       actionType: Actions.REPOST,
       success: repostResult.success,
       summary: repostResult.success
-        ? `Reposted ${postId}${comment ? ' with comment' : ''}`
+        ? `Reposted ${postId}${comment ? " with comment" : ""}`
         : `Repost failed: ${repostResult.error}`,
       result: {
         success: repostResult.success,
@@ -2089,7 +2087,7 @@ export class MultiStepExecutor {
 
   private async executeFollow(
     agentUserId: string,
-    parameters: Record<string, unknown>
+    parameters: Record<string, unknown>,
   ): Promise<ActionTraceResult> {
     const targetUserId = (parameters.userId ||
       parameters.targetUserId) as string;
@@ -2098,8 +2096,8 @@ export class MultiStepExecutor {
       return {
         actionType: Actions.FOLLOW,
         success: false,
-        summary: 'Missing required parameter (userId)',
-        error: 'Invalid parameters',
+        summary: "Missing required parameter (userId)",
+        error: "Invalid parameters",
         parameters,
         timestamp: Date.now(),
       };
@@ -2111,8 +2109,8 @@ export class MultiStepExecutor {
     });
 
     await agentService.createLog(agentUserId, {
-      type: 'follow',
-      level: followResult.success ? 'info' : 'warn',
+      type: "follow",
+      level: followResult.success ? "info" : "warn",
       message: followResult.success
         ? followResult.followed
           ? `Now following ${targetUserId}`
@@ -2148,7 +2146,7 @@ export class MultiStepExecutor {
 
   private async executeUnfollow(
     agentUserId: string,
-    parameters: Record<string, unknown>
+    parameters: Record<string, unknown>,
   ): Promise<ActionTraceResult> {
     const targetUserId = (parameters.userId ||
       parameters.targetUserId) as string;
@@ -2157,8 +2155,8 @@ export class MultiStepExecutor {
       return {
         actionType: Actions.UNFOLLOW,
         success: false,
-        summary: 'Missing required parameter (userId)',
-        error: 'Invalid parameters',
+        summary: "Missing required parameter (userId)",
+        error: "Invalid parameters",
         parameters,
         timestamp: Date.now(),
       };
@@ -2170,8 +2168,8 @@ export class MultiStepExecutor {
     });
 
     await agentService.createLog(agentUserId, {
-      type: 'follow',
-      level: unfollowResult.success ? 'info' : 'warn',
+      type: "follow",
+      level: unfollowResult.success ? "info" : "warn",
       message: unfollowResult.success
         ? unfollowResult.unfollowed
           ? `Unfollowed ${targetUserId}`
@@ -2207,7 +2205,7 @@ export class MultiStepExecutor {
 
   private async executeSendMoney(
     agentUserId: string,
-    parameters: Record<string, unknown>
+    parameters: Record<string, unknown>,
   ): Promise<ActionTraceResult> {
     const recipientId = this.coerceParameterText(parameters.recipientId);
     const amount = Number(parameters.amount);
@@ -2217,8 +2215,8 @@ export class MultiStepExecutor {
       return {
         actionType: Actions.SEND_MONEY,
         success: false,
-        summary: 'Missing or invalid parameters (recipientId, amount)',
-        error: 'Invalid parameters',
+        summary: "Missing or invalid parameters (recipientId, amount)",
+        error: "Invalid parameters",
         parameters,
         timestamp: Date.now(),
       };
@@ -2232,8 +2230,8 @@ export class MultiStepExecutor {
     });
 
     await agentService.createLog(agentUserId, {
-      type: 'transfer',
-      level: sendResult.success ? 'info' : 'warn',
+      type: "transfer",
+      level: sendResult.success ? "info" : "warn",
       message: sendResult.success
         ? `Sent $${amount} to ${recipientId}`
         : `Send money failed: ${sendResult.error}`,
@@ -2266,15 +2264,15 @@ export class MultiStepExecutor {
 
   private async executeShareInformation(
     agentUserId: string,
-    parameters: Record<string, unknown>
+    parameters: Record<string, unknown>,
   ): Promise<ActionTraceResult> {
     const recipientId = this.coerceParameterText(parameters.recipientId);
     const rawKeywords = parameters.keywords;
     const keywords: string[] = Array.isArray(rawKeywords)
       ? rawKeywords.map(String).filter(Boolean)
-      : typeof rawKeywords === 'string'
+      : typeof rawKeywords === "string"
         ? rawKeywords
-            .split(',')
+            .split(",")
             .map((k) => k.trim())
             .filter(Boolean)
         : [];
@@ -2285,8 +2283,8 @@ export class MultiStepExecutor {
       return {
         actionType: Actions.SHARE_INFORMATION,
         success: false,
-        summary: 'Missing parameters (recipientId, keywords[])',
-        error: 'Invalid parameters',
+        summary: "Missing parameters (recipientId, keywords[])",
+        error: "Invalid parameters",
         parameters,
         timestamp: Date.now(),
       };
@@ -2310,7 +2308,7 @@ export class MultiStepExecutor {
         matchCount: result.matchCount,
         sharedWithRecipient: result.sharedWithRecipient,
         messageId: result.messageId,
-        keywords: keywords.join(','),
+        keywords: keywords.join(","),
       },
       parameters,
       timestamp: Date.now(),
@@ -2319,7 +2317,7 @@ export class MultiStepExecutor {
 
   private async executeRequestPayment(
     agentUserId: string,
-    parameters: Record<string, unknown>
+    parameters: Record<string, unknown>,
   ): Promise<ActionTraceResult> {
     const recipientId = this.coerceParameterText(parameters.recipientId);
     const amount = Number(parameters.amount);
@@ -2330,8 +2328,8 @@ export class MultiStepExecutor {
       return {
         actionType: Actions.REQUEST_PAYMENT,
         success: false,
-        summary: 'Missing parameters (recipientId, amount, reason)',
-        error: 'Invalid parameters',
+        summary: "Missing parameters (recipientId, amount, reason)",
+        error: "Invalid parameters",
         parameters,
         timestamp: Date.now(),
       };
@@ -2365,7 +2363,7 @@ export class MultiStepExecutor {
   private async executeReplyComment(
     agentUserId: string,
     parameters: Record<string, unknown>,
-    logContext?: { prompt: string; completion: string; thought: string }
+    logContext?: { prompt: string; completion: string; thought: string },
   ): Promise<ActionTraceResult> {
     const commentId = parameters.commentId as string;
     const postId = parameters.postId as string;
@@ -2375,8 +2373,8 @@ export class MultiStepExecutor {
       return {
         actionType: Actions.REPLY_COMMENT,
         success: false,
-        summary: 'Missing required parameters (commentId, postId, content)',
-        error: 'Invalid parameters',
+        summary: "Missing required parameters (commentId, postId, content)",
+        error: "Invalid parameters",
         parameters,
         timestamp: Date.now(),
       };
@@ -2391,10 +2389,10 @@ export class MultiStepExecutor {
 
     if (logContext) {
       await agentService.createLog(agentUserId, {
-        type: 'comment',
-        level: commentResult.success ? 'info' : 'warn',
+        type: "comment",
+        level: commentResult.success ? "info" : "warn",
         message: commentResult.success
-          ? `Replied to comment ${commentId}: ${content.substring(0, 100)}${content.length > 100 ? '...' : ''}`
+          ? `Replied to comment ${commentId}: ${content.substring(0, 100)}${content.length > 100 ? "..." : ""}`
           : `Reply failed: ${commentResult.error}`,
         prompt: logContext.prompt,
         completion: logContext.completion,
@@ -2429,7 +2427,7 @@ export class MultiStepExecutor {
     agentUserId: string,
     parameters: Record<string, unknown>,
     enabledFeatures: string[],
-    logContext?: { prompt: string; completion: string; thought: string }
+    logContext?: { prompt: string; completion: string; thought: string },
   ): Promise<ActionTraceResult> {
     const chatId = parameters.chatId as string;
     const content = parameters.content as string;
@@ -2438,8 +2436,8 @@ export class MultiStepExecutor {
       return {
         actionType: Actions.REPLY_CHAT,
         success: false,
-        summary: 'Missing required parameters (chatId, content)',
-        error: 'Invalid parameters',
+        summary: "Missing required parameters (chatId, content)",
+        error: "Invalid parameters",
         parameters,
         timestamp: Date.now(),
       };
@@ -2456,8 +2454,8 @@ export class MultiStepExecutor {
       return {
         actionType: Actions.REPLY_CHAT,
         success: false,
-        summary: 'Chat not found',
-        error: 'Invalid chatId',
+        summary: "Chat not found",
+        error: "Invalid chatId",
         parameters,
         timestamp: Date.now(),
       };
@@ -2484,10 +2482,10 @@ export class MultiStepExecutor {
 
     if (logContext) {
       await agentService.createLog(agentUserId, {
-        type: 'chat',
-        level: messageResult.success ? 'info' : 'warn',
+        type: "chat",
+        level: messageResult.success ? "info" : "warn",
         message: messageResult.success
-          ? `Replied in chat ${chatId}: ${content.substring(0, 100)}${content.length > 100 ? '...' : ''}`
+          ? `Replied in chat ${chatId}: ${content.substring(0, 100)}${content.length > 100 ? "..." : ""}`
           : `Chat reply failed: ${messageResult.error}`,
         prompt: logContext.prompt,
         completion: logContext.completion,
@@ -2520,7 +2518,7 @@ export class MultiStepExecutor {
   private async executeDM(
     agentUserId: string,
     parameters: Record<string, unknown>,
-    logContext?: { prompt: string; completion: string; thought: string }
+    logContext?: { prompt: string; completion: string; thought: string },
   ): Promise<ActionTraceResult> {
     const recipientId = parameters.recipientId as string;
     const content = parameters.content as string;
@@ -2529,8 +2527,8 @@ export class MultiStepExecutor {
       return {
         actionType: Actions.DM,
         success: false,
-        summary: 'Missing required parameters (recipientId, content)',
-        error: 'Invalid parameters',
+        summary: "Missing required parameters (recipientId, content)",
+        error: "Invalid parameters",
         parameters,
         timestamp: Date.now(),
       };
@@ -2540,8 +2538,8 @@ export class MultiStepExecutor {
       return {
         actionType: Actions.DM,
         success: false,
-        summary: 'Cannot DM yourself',
-        error: 'Cannot DM yourself',
+        summary: "Cannot DM yourself",
+        error: "Cannot DM yourself",
         parameters,
         timestamp: Date.now(),
       };
@@ -2555,10 +2553,10 @@ export class MultiStepExecutor {
 
     if (logContext) {
       await agentService.createLog(agentUserId, {
-        type: 'dm',
-        level: messageResult.success ? 'info' : 'warn',
+        type: "dm",
+        level: messageResult.success ? "info" : "warn",
         message: messageResult.success
-          ? `Sent DM to ${recipientId}: ${content.substring(0, 100)}${content.length > 100 ? '...' : ''}`
+          ? `Sent DM to ${recipientId}: ${content.substring(0, 100)}${content.length > 100 ? "..." : ""}`
           : `Failed to send DM to ${recipientId}: ${messageResult.error}`,
         prompt: logContext.prompt,
         completion: logContext.completion,
@@ -2591,7 +2589,7 @@ export class MultiStepExecutor {
   private async executeGroupMessage(
     agentUserId: string,
     parameters: Record<string, unknown>,
-    logContext?: { prompt: string; completion: string; thought: string }
+    logContext?: { prompt: string; completion: string; thought: string },
   ): Promise<ActionTraceResult> {
     const chatId = parameters.chatId as string;
     const content = parameters.content as string;
@@ -2600,8 +2598,8 @@ export class MultiStepExecutor {
       return {
         actionType: Actions.GROUP_MESSAGE,
         success: false,
-        summary: 'Missing required parameters (chatId, content)',
-        error: 'Invalid parameters',
+        summary: "Missing required parameters (chatId, content)",
+        error: "Invalid parameters",
         parameters,
         timestamp: Date.now(),
       };
@@ -2618,8 +2616,8 @@ export class MultiStepExecutor {
       return {
         actionType: Actions.GROUP_MESSAGE,
         success: false,
-        summary: 'Chat not found',
-        error: 'Invalid chatId',
+        summary: "Chat not found",
+        error: "Invalid chatId",
         parameters,
         timestamp: Date.now(),
       };
@@ -2630,8 +2628,8 @@ export class MultiStepExecutor {
         actionType: Actions.GROUP_MESSAGE,
         success: false,
         summary:
-          'Cannot use GROUP_MESSAGE on a DM chat - use DM or REPLY_CHAT instead',
-        error: 'Chat is not a group chat',
+          "Cannot use GROUP_MESSAGE on a DM chat - use DM or REPLY_CHAT instead",
+        error: "Chat is not a group chat",
         parameters,
         timestamp: Date.now(),
       };
@@ -2644,10 +2642,10 @@ export class MultiStepExecutor {
     });
 
     await agentService.createLog(agentUserId, {
-      type: 'chat',
-      level: groupMessageResult.success ? 'info' : 'warn',
+      type: "chat",
+      level: groupMessageResult.success ? "info" : "warn",
       message: groupMessageResult.success
-        ? `Sent group message to chat ${chatId}: ${content.substring(0, 100)}${content.length > 100 ? '...' : ''}`
+        ? `Sent group message to chat ${chatId}: ${content.substring(0, 100)}${content.length > 100 ? "..." : ""}`
         : `Failed to send group message: ${groupMessageResult.error}`,
       prompt: logContext?.prompt ?? undefined,
       completion: logContext?.completion ?? undefined,
@@ -2679,18 +2677,18 @@ export class MultiStepExecutor {
   private async executeCreateGroup(
     agentUserId: string,
     parameters: Record<string, unknown>,
-    logContext?: { prompt: string; completion: string; thought: string }
+    logContext?: { prompt: string; completion: string; thought: string },
   ): Promise<ActionTraceResult> {
     const name =
-      typeof parameters.name === 'string' ? parameters.name.trim() : '';
+      typeof parameters.name === "string" ? parameters.name.trim() : "";
     const description =
-      typeof parameters.description === 'string'
+      typeof parameters.description === "string"
         ? parameters.description.trim()
         : undefined;
     const memberIdsRaw =
-      typeof parameters.memberIds === 'string'
+      typeof parameters.memberIds === "string"
         ? parameters.memberIds
-            .split(',')
+            .split(",")
             .map((id: string) => id.trim())
             .filter(Boolean)
         : [];
@@ -2699,8 +2697,8 @@ export class MultiStepExecutor {
       return {
         actionType: Actions.CREATE_GROUP,
         success: false,
-        summary: 'Missing required parameter: name',
-        error: 'Invalid parameters',
+        summary: "Missing required parameter: name",
+        error: "Invalid parameters",
         parameters,
         timestamp: Date.now(),
       };
@@ -2714,8 +2712,8 @@ export class MultiStepExecutor {
     });
 
     await agentService.createLog(agentUserId, {
-      type: 'chat',
-      level: result.success ? 'info' : 'warn',
+      type: "chat",
+      level: result.success ? "info" : "warn",
       message: result.success
         ? `Created group "${name}" (${result.groupId})`
         : `Failed to create group: ${result.error}`,
@@ -2749,7 +2747,7 @@ export class MultiStepExecutor {
   private async executeInviteToGroup(
     agentUserId: string,
     parameters: Record<string, unknown>,
-    logContext?: { prompt: string; completion: string; thought: string }
+    logContext?: { prompt: string; completion: string; thought: string },
   ): Promise<ActionTraceResult> {
     const groupId = this.coerceParameterText(parameters.groupId);
     const userId = this.coerceParameterText(parameters.userId);
@@ -2758,8 +2756,8 @@ export class MultiStepExecutor {
       return {
         actionType: Actions.INVITE_TO_GROUP,
         success: false,
-        summary: 'Missing required parameters (groupId, userId)',
-        error: 'Invalid parameters',
+        summary: "Missing required parameters (groupId, userId)",
+        error: "Invalid parameters",
         parameters,
         timestamp: Date.now(),
       };
@@ -2772,10 +2770,10 @@ export class MultiStepExecutor {
     });
 
     await agentService.createLog(agentUserId, {
-      type: 'chat',
-      level: result.success ? 'info' : 'warn',
+      type: "chat",
+      level: result.success ? "info" : "warn",
       message: result.success
-        ? `Invited ${userId} to group ${groupId}${result.alreadyMember ? ' (already member)' : ''}`
+        ? `Invited ${userId} to group ${groupId}${result.alreadyMember ? " (already member)" : ""}`
         : `Failed to invite to group: ${result.error}`,
       prompt: logContext?.prompt ?? undefined,
       completion: logContext?.completion ?? undefined,
@@ -2792,7 +2790,7 @@ export class MultiStepExecutor {
       actionType: Actions.INVITE_TO_GROUP,
       success: result.success,
       summary: result.success
-        ? `Invited user to group${result.alreadyMember ? ' (already member)' : ''}`
+        ? `Invited user to group${result.alreadyMember ? " (already member)" : ""}`
         : `Invite failed: ${result.error}`,
       result: {
         success: result.success,
@@ -2807,12 +2805,12 @@ export class MultiStepExecutor {
   private async executeKickFromGroup(
     agentUserId: string,
     parameters: Record<string, unknown>,
-    logContext?: { prompt: string; completion: string; thought: string }
+    logContext?: { prompt: string; completion: string; thought: string },
   ): Promise<ActionTraceResult> {
     const groupId = this.coerceParameterText(parameters.groupId);
     const userId = this.coerceParameterText(parameters.userId);
     const reason =
-      typeof parameters.reason === 'string'
+      typeof parameters.reason === "string"
         ? parameters.reason.trim()
         : undefined;
 
@@ -2820,8 +2818,8 @@ export class MultiStepExecutor {
       return {
         actionType: Actions.KICK_FROM_GROUP,
         success: false,
-        summary: 'Missing required parameters (groupId, userId)',
-        error: 'Invalid parameters',
+        summary: "Missing required parameters (groupId, userId)",
+        error: "Invalid parameters",
         parameters,
         timestamp: Date.now(),
       };
@@ -2835,8 +2833,8 @@ export class MultiStepExecutor {
     });
 
     await agentService.createLog(agentUserId, {
-      type: 'chat',
-      level: result.success ? 'info' : 'warn',
+      type: "chat",
+      level: result.success ? "info" : "warn",
       message: result.success
         ? `Kicked ${userId} from group ${groupId}`
         : `Failed to kick from group: ${result.error}`,
@@ -2869,7 +2867,7 @@ export class MultiStepExecutor {
   private async executeLeaveGroup(
     agentUserId: string,
     parameters: Record<string, unknown>,
-    logContext?: { prompt: string; completion: string; thought: string }
+    logContext?: { prompt: string; completion: string; thought: string },
   ): Promise<ActionTraceResult> {
     const groupId = this.coerceParameterText(parameters.groupId);
 
@@ -2877,8 +2875,8 @@ export class MultiStepExecutor {
       return {
         actionType: Actions.LEAVE_GROUP,
         success: false,
-        summary: 'Missing required parameter: groupId',
-        error: 'Invalid parameters',
+        summary: "Missing required parameter: groupId",
+        error: "Invalid parameters",
         parameters,
         timestamp: Date.now(),
       };
@@ -2890,8 +2888,8 @@ export class MultiStepExecutor {
     });
 
     await agentService.createLog(agentUserId, {
-      type: 'chat',
-      level: result.success ? 'info' : 'warn',
+      type: "chat",
+      level: result.success ? "info" : "warn",
       message: result.success
         ? `Left group ${groupId}`
         : `Failed to leave group: ${result.error}`,
@@ -2923,7 +2921,7 @@ export class MultiStepExecutor {
 
   private aggregateResults(
     trace: ActionTraceResult[],
-    startTime: number
+    startTime: number,
   ): MultiStepExecutorResult {
     const counts = {
       trades: 0,
@@ -2969,7 +2967,7 @@ export class MultiStepExecutor {
     }
 
     const hasMeaningfulAttempt = trace.some(
-      (r) => r.actionType !== Actions.WAIT && r.actionType !== Actions.FINISH
+      (r) => r.actionType !== Actions.WAIT && r.actionType !== Actions.FINISH,
     );
 
     return {

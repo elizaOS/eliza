@@ -36,9 +36,9 @@
  * ```
  */
 
-import { execFileSync, spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { execFileSync, spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+import { join, resolve } from "node:path";
 import type {
   ActionType,
   AgentConfig,
@@ -46,11 +46,11 @@ import type {
   AgentDecision,
   ArchetypeConfig,
   TrainableAgent,
-} from '../types';
+} from "../types";
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
-export type OpenClawMode = 'cli' | 'gateway';
+export type OpenClawMode = "cli" | "gateway";
 
 export interface OpenClawAdapterConfig {
   /**
@@ -74,22 +74,22 @@ export interface OpenClawAdapterConfig {
 // ─── Path resolution ──────────────────────────────────────────────────────────
 
 function detectWorkspaceRoot(): string {
-  const __dir = new URL(import.meta.url).pathname.replace(/\/[^/]+$/, '');
+  const __dir = new URL(import.meta.url).pathname.replace(/\/[^/]+$/, "");
   let current = resolve(__dir);
   for (let i = 0; i < 10; i++) {
-    if (existsSync(join(current, 'feed', 'package.json'))) return current;
-    current = join(current, '..');
+    if (existsSync(join(current, "feed", "package.json"))) return current;
+    current = join(current, "..");
   }
-  return join(__dir, '../../../../../../..');
+  return join(__dir, "../../../../../../..");
 }
 
 function findOpenClawBin(workspaceRoot: string): string {
   const candidates = [
     // Local build from bootstrap
-    join(workspaceRoot, 'external-sources', 'openclaw', 'openclaw.mjs'),
-    join(workspaceRoot, 'external-sources', 'openclaw', 'dist', 'index.js'),
+    join(workspaceRoot, "external-sources", "openclaw", "openclaw.mjs"),
+    join(workspaceRoot, "external-sources", "openclaw", "dist", "index.js"),
     // Global install
-    'openclaw',
+    "openclaw",
   ];
 
   // Check file-based paths first
@@ -99,8 +99,8 @@ function findOpenClawBin(workspaceRoot: string): string {
 
   // Check if globally installed
   try {
-    execFileSync('openclaw', ['--version'], { timeout: 5000, stdio: 'ignore' });
-    return 'openclaw';
+    execFileSync("openclaw", ["--version"], { timeout: 5000, stdio: "ignore" });
+    return "openclaw";
   } catch {
     // not in PATH
   }
@@ -108,7 +108,7 @@ function findOpenClawBin(workspaceRoot: string): string {
   throw new Error(
     `OpenClaw binary not found. Install globally with 'npm install -g openclaw@latest' ` +
       `or run 'bun run agent-frameworks:bootstrap'.\n` +
-      `Searched: ${candidates.join(', ')}`
+      `Searched: ${candidates.join(", ")}`,
   );
 }
 
@@ -123,23 +123,23 @@ Actions: BUY_YES, BUY_NO, SELL_SHARES, CREATE_POST, LIKE_POST, COMMENT_POST, VIE
 
 function buildOpenClawPrompt(context: AgentContext): string {
   const { balance, positions, markets, posts, tick, archetype } = context;
-  const arch = archetype ? `Archetype: ${archetype.name}. ` : '';
+  const arch = archetype ? `Archetype: ${archetype.name}. ` : "";
   const mkts = markets
     .slice(0, 5)
     .map(
-      (m) => `[${m.id.slice(-8)}] ${m.question} YES=$${m.yesPrice.toFixed(3)}`
+      (m) => `[${m.id.slice(-8)}] ${m.question} YES=$${m.yesPrice.toFixed(3)}`,
     )
-    .join('; ');
+    .join("; ");
   const feed = posts
     .slice(0, 3)
     .map((p) => `${p.authorName}: "${p.content.slice(0, 80)}"`)
-    .join(' | ');
+    .join(" | ");
 
   return (
     `${arch}Tick ${tick}. Balance: $${balance.toFixed(2)}. ` +
-    `Positions: ${positions.length === 0 ? 'none' : positions.map((p) => `${p.outcome}@${p.marketId.slice(-8)}`).join(', ')}. ` +
-    `Markets: ${mkts || 'none'}. ` +
-    `Feed: ${feed || 'empty'}. ` +
+    `Positions: ${positions.length === 0 ? "none" : positions.map((p) => `${p.outcome}@${p.marketId.slice(-8)}`).join(", ")}. ` +
+    `Markets: ${mkts || "none"}. ` +
+    `Feed: ${feed || "empty"}. ` +
     `${OPENCLAW_SYSTEM}`
   );
 }
@@ -147,51 +147,51 @@ function buildOpenClawPrompt(context: AgentContext): string {
 // ─── Response parsing ─────────────────────────────────────────────────────────
 
 const VALID_ACTIONS: Set<ActionType> = new Set([
-  'BUY_YES',
-  'BUY_NO',
-  'SELL_SHARES',
-  'CREATE_POST',
-  'LIKE_POST',
-  'COMMENT_POST',
-  'VIEW_FEED',
-  'VIEW_MARKET_DATA',
-  'DISCOVER_AGENTS',
-  'SEARCH_USERS',
-  'CHECK_LEADERBOARD',
-  'CHECK_NOTIFICATIONS',
-  'HOLD',
+  "BUY_YES",
+  "BUY_NO",
+  "SELL_SHARES",
+  "CREATE_POST",
+  "LIKE_POST",
+  "COMMENT_POST",
+  "VIEW_FEED",
+  "VIEW_MARKET_DATA",
+  "DISCOVER_AGENTS",
+  "SEARCH_USERS",
+  "CHECK_LEADERBOARD",
+  "CHECK_NOTIFICATIONS",
+  "HOLD",
 ]);
 
 function parseOpenClawResponse(raw: string): AgentDecision {
-  const start = raw.indexOf('{');
-  const end = raw.lastIndexOf('}');
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
   if (start === -1 || end === -1) {
     // Keyword fallback
     if (/\bbuy.*yes\b/i.test(raw))
-      return { action: 'BUY_YES', params: {}, reasoning: raw.slice(0, 100) };
+      return { action: "BUY_YES", params: {}, reasoning: raw.slice(0, 100) };
     if (/\bbuy.*no\b/i.test(raw))
-      return { action: 'BUY_NO', params: {}, reasoning: raw.slice(0, 100) };
+      return { action: "BUY_NO", params: {}, reasoning: raw.slice(0, 100) };
     if (/\bsell\b/i.test(raw))
       return {
-        action: 'SELL_SHARES',
+        action: "SELL_SHARES",
         params: {},
         reasoning: raw.slice(0, 100),
       };
     if (/\bpost\b/i.test(raw))
       return {
-        action: 'CREATE_POST',
+        action: "CREATE_POST",
         params: { content: raw.slice(0, 200) },
-        reasoning: 'auto',
+        reasoning: "auto",
       };
     return {
-      action: 'HOLD',
+      action: "HOLD",
       params: {},
       reasoning: `No JSON found: ${raw.slice(0, 80)}`,
     };
   }
 
   const json = JSON.parse(raw.slice(start, end + 1)) as Record<string, unknown>;
-  const action = String(json.action ?? 'HOLD') as ActionType;
+  const action = String(json.action ?? "HOLD") as ActionType;
   const params: Record<string, unknown> = {};
   if (json.marketId) params.marketId = json.marketId;
   if (json.outcome) params.outcome = json.outcome;
@@ -199,32 +199,32 @@ function parseOpenClawResponse(raw: string): AgentDecision {
   if (json.content) params.content = json.content;
 
   return {
-    action: VALID_ACTIONS.has(action) ? action : 'HOLD',
+    action: VALID_ACTIONS.has(action) ? action : "HOLD",
     params,
-    reasoning: String(json.reasoning ?? 'OpenClaw decision'),
+    reasoning: String(json.reasoning ?? "OpenClaw decision"),
   };
 }
 
 // ─── OpenClawAdapter ──────────────────────────────────────────────────────────
 
 export class OpenClawAdapter implements TrainableAgent {
-  readonly id = 'openclaw-adapter';
-  readonly name = 'OpenClaw Agent';
-  readonly language = 'typescript' as const;
+  readonly id = "openclaw-adapter";
+  readonly name = "OpenClaw Agent";
+  readonly language = "typescript" as const;
 
   private cfg: Required<OpenClawAdapterConfig>;
-  private binPath = '';
+  private binPath = "";
   private archetype: ArchetypeConfig | undefined;
   private failCount = 0;
   private readonly maxFail = 3;
 
   constructor(config: OpenClawAdapterConfig = {}) {
     this.cfg = {
-      mode: 'cli',
-      model: 'gpt-4o',
-      gatewayUrl: 'http://localhost:18789',
-      openClawBin: '',
-      workspaceRoot: '',
+      mode: "cli",
+      model: "gpt-4o",
+      gatewayUrl: "http://localhost:18789",
+      openClawBin: "",
+      workspaceRoot: "",
       timeoutMs: 30_000,
       ...config,
     };
@@ -238,15 +238,15 @@ export class OpenClawAdapter implements TrainableAgent {
 
     console.log(
       `  [OpenClawAdapter] Initialized: mode=${this.cfg.mode}, ` +
-        (this.cfg.mode === 'cli'
+        (this.cfg.mode === "cli"
           ? `bin=${this.binPath}`
-          : `gateway=${this.cfg.gatewayUrl}`)
+          : `gateway=${this.cfg.gatewayUrl}`),
     );
   }
 
   async decide(context: AgentContext): Promise<AgentDecision> {
     if (this.failCount >= this.maxFail) {
-      return { action: 'HOLD', params: {}, reasoning: 'OpenClaw unavailable' };
+      return { action: "HOLD", params: {}, reasoning: "OpenClaw unavailable" };
     }
 
     const ctx = this.archetype
@@ -256,7 +256,7 @@ export class OpenClawAdapter implements TrainableAgent {
 
     try {
       const raw =
-        this.cfg.mode === 'cli'
+        this.cfg.mode === "cli"
           ? await this.callCLI(prompt)
           : await this.callGateway(prompt);
 
@@ -266,10 +266,10 @@ export class OpenClawAdapter implements TrainableAgent {
       this.failCount++;
       const msg = err instanceof Error ? err.message : String(err);
       console.warn(
-        `  [OpenClawAdapter] decide failed (${this.failCount}/${this.maxFail}): ${msg}`
+        `  [OpenClawAdapter] decide failed (${this.failCount}/${this.maxFail}): ${msg}`,
       );
       return {
-        action: 'HOLD',
+        action: "HOLD",
         params: {},
         reasoning: `OpenClaw error: ${msg}`,
       };
@@ -286,17 +286,17 @@ export class OpenClawAdapter implements TrainableAgent {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(
         () => reject(new Error(`OpenClaw CLI timed out`)),
-        this.cfg.timeoutMs
+        this.cfg.timeoutMs,
       );
 
-      let stdout = '';
-      let stderr = '';
+      let stdout = "";
+      let stderr = "";
 
       // Determine how to invoke the binary
       const isScript =
-        this.binPath.endsWith('.mjs') || this.binPath.endsWith('.js');
+        this.binPath.endsWith(".mjs") || this.binPath.endsWith(".js");
       const [cmd, ...cmdArgs] = isScript
-        ? ['node', this.binPath]
+        ? ["node", this.binPath]
         : [this.binPath];
 
       // OpenClaw CLI: `openclaw agent --message <prompt> [--model <model>]`
@@ -304,37 +304,37 @@ export class OpenClawAdapter implements TrainableAgent {
       // in the public CLI. The response parser handles natural language output.
       const args = [
         ...cmdArgs,
-        'agent',
-        '--message',
+        "agent",
+        "--message",
         prompt,
-        '--model',
+        "--model",
         this.cfg.model,
       ];
 
       const proc = spawn(cmd, args, {
         env: { ...process.env },
-        stdio: ['ignore', 'pipe', 'pipe'],
+        stdio: ["ignore", "pipe", "pipe"],
       });
 
-      proc.stdout.on('data', (d: Buffer) => {
+      proc.stdout.on("data", (d: Buffer) => {
         stdout += d.toString();
       });
-      proc.stderr.on('data', (d: Buffer) => {
+      proc.stderr.on("data", (d: Buffer) => {
         stderr += d.toString();
       });
 
-      proc.on('close', (code: number) => {
+      proc.on("close", (code: number) => {
         clearTimeout(timer);
         if (code !== 0 && !stdout.trim()) {
           reject(
-            new Error(`OpenClaw CLI exited ${code}: ${stderr.slice(0, 200)}`)
+            new Error(`OpenClaw CLI exited ${code}: ${stderr.slice(0, 200)}`),
           );
           return;
         }
         resolve(stdout.trim() || stderr.trim());
       });
 
-      proc.on('error', (err: Error) => {
+      proc.on("error", (err: Error) => {
         clearTimeout(timer);
         reject(err);
       });
@@ -345,16 +345,16 @@ export class OpenClawAdapter implements TrainableAgent {
 
   private async callGateway(prompt: string): Promise<string> {
     const resp = await fetch(`${this.cfg.gatewayUrl}/api/message`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message: prompt }),
       signal: AbortSignal.timeout(this.cfg.timeoutMs),
     });
 
     if (!resp.ok) {
-      const body = await resp.text().catch(() => '');
+      const body = await resp.text().catch(() => "");
       throw new Error(
-        `OpenClaw gateway error ${resp.status}: ${body.slice(0, 200)}`
+        `OpenClaw gateway error ${resp.status}: ${body.slice(0, 200)}`,
       );
     }
 
@@ -369,7 +369,7 @@ export class OpenClawAdapter implements TrainableAgent {
 
 /** Create an OpenClawAdapter with sensible defaults. */
 export function createOpenClawAdapter(
-  config: OpenClawAdapterConfig = {}
+  config: OpenClawAdapterConfig = {},
 ): OpenClawAdapter {
   return new OpenClawAdapter(config);
 }

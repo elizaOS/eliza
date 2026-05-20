@@ -15,10 +15,10 @@ import {
   getClientIp,
   RATE_LIMIT_CONFIGS,
   withErrorHandling,
-} from '@feed/api';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@feed/api";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 /** IPFS CID for the NFT images collection (required) */
 const IPFS_IMAGES_CID = process.env.NFT_IPFS_IMAGES_CID;
@@ -34,9 +34,9 @@ const IPFS_GATEWAYS = IPFS_IMAGES_CID
 
 if (!IPFS_IMAGES_CID) {
   logger.warn(
-    'NFT_IPFS_IMAGES_CID not set — image proxy will return 502 for all requests',
+    "NFT_IPFS_IMAGES_CID not set — image proxy will return 502 for all requests",
     undefined,
-    'NFT Image Proxy'
+    "NFT Image Proxy",
   );
 }
 
@@ -109,7 +109,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 function addToCache(
   tokenId: number,
   buffer: ArrayBuffer,
-  contentType: string
+  contentType: string,
 ): boolean {
   const byteLength = buffer.byteLength;
 
@@ -117,7 +117,7 @@ function addToCache(
     logger.debug(
       `Skipping cache for token ${tokenId}: entry too large (${byteLength} bytes > ${MAX_ENTRY_BYTES})`,
       { tokenId, byteLength },
-      'NFT Image Proxy'
+      "NFT Image Proxy",
     );
     return false;
   }
@@ -156,7 +156,7 @@ const FETCH_TIMEOUT_MS = 15 * 1000; // 15 seconds (IPFS can be slower than GitHu
 async function fetchWithTimeout(
   url: string,
   options: RequestInit = {},
-  timeoutMs: number = FETCH_TIMEOUT_MS
+  timeoutMs: number = FETCH_TIMEOUT_MS,
 ): Promise<Response> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -177,35 +177,35 @@ async function fetchWithTimeout(
  * Tries each gateway in order until one succeeds.
  */
 async function fetchFromIpfs(
-  tokenId: number
+  tokenId: number,
 ): Promise<{ buffer: ArrayBuffer; contentType: string } | null> {
   for (const gateway of IPFS_GATEWAYS) {
     const url = `${gateway}/${tokenId}.png`;
     try {
       const response = await fetchWithTimeout(url, {
-        headers: { 'User-Agent': 'Feed-NFT-Proxy/1.0' },
+        headers: { "User-Agent": "Feed-NFT-Proxy/1.0" },
       });
 
       if (response.ok) {
         const buffer = await response.arrayBuffer();
-        const contentType = response.headers.get('content-type') || 'image/png';
+        const contentType = response.headers.get("content-type") || "image/png";
         return { buffer, contentType };
       }
 
       logger.debug(
         `IPFS gateway returned ${response.status} for token ${tokenId}`,
         { gateway, status: response.status },
-        'NFT Image Proxy'
+        "NFT Image Proxy",
       );
     } catch (error) {
-      const isTimeout = error instanceof Error && error.name === 'AbortError';
+      const isTimeout = error instanceof Error && error.name === "AbortError";
       logger.debug(
-        `IPFS gateway ${isTimeout ? 'timed out' : 'failed'} for token ${tokenId}`,
+        `IPFS gateway ${isTimeout ? "timed out" : "failed"} for token ${tokenId}`,
         {
           gateway,
           error: error instanceof Error ? error.message : String(error),
         },
-        'NFT Image Proxy'
+        "NFT Image Proxy",
       );
     }
   }
@@ -213,8 +213,8 @@ async function fetchFromIpfs(
   return null;
 }
 
-export const dynamic = 'force-dynamic';
-export const runtime = 'nodejs';
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 /**
  * GET /api/nft/image/[tokenId]
@@ -222,7 +222,7 @@ export const runtime = 'nodejs';
  */
 export const GET = withErrorHandling(async function GET(
   request: NextRequest,
-  context: { params: Promise<{ tokenId: string }> }
+  context: { params: Promise<{ tokenId: string }> },
 ) {
   const clientIp = getClientIp(request.headers);
 
@@ -232,11 +232,11 @@ export const GET = withErrorHandling(async function GET(
 
   if (
     !tokenIdStr ||
-    isNaN(tokenId) ||
+    Number.isNaN(tokenId) ||
     tokenId < 1 ||
     tokenId > COLLECTION_SIZE
   ) {
-    return NextResponse.json({ error: 'Invalid token ID' }, { status: 400 });
+    return NextResponse.json({ error: "Invalid token ID" }, { status: 400 });
   }
 
   // Check in-memory cache first (doesn't count against rate limit)
@@ -245,11 +245,11 @@ export const GET = withErrorHandling(async function GET(
     return new NextResponse(cached.buffer, {
       status: 200,
       headers: {
-        'Content-Type': cached.contentType,
-        'Cache-Control': 'public, max-age=31536000, immutable',
-        'CDN-Cache-Control': 'public, max-age=31536000',
-        'Vercel-CDN-Cache-Control': 'public, max-age=31536000',
-        'X-Cache': 'HIT',
+        "Content-Type": cached.contentType,
+        "Cache-Control": "public, max-age=31536000, immutable",
+        "CDN-Cache-Control": "public, max-age=31536000",
+        "Vercel-CDN-Cache-Control": "public, max-age=31536000",
+        "X-Cache": "HIT",
       },
     });
   }
@@ -258,7 +258,7 @@ export const GET = withErrorHandling(async function GET(
   const rateLimitConfig = clientIp
     ? RATE_LIMIT_CONFIGS.PUBLIC_NFT_IMAGE
     : RATE_LIMIT_CONFIGS.PUBLIC_NFT_IMAGE_ANONYMOUS;
-  const rateLimitKey = clientIp ? `ip:${clientIp}` : 'ip:anonymous';
+  const rateLimitKey = clientIp ? `ip:${clientIp}` : "ip:anonymous";
   const rateLimit = await checkRateLimitAsync(rateLimitKey, rateLimitConfig);
 
   if (!rateLimit.allowed) {
@@ -266,16 +266,16 @@ export const GET = withErrorHandling(async function GET(
     logger.warn(
       `Rate limit exceeded for NFT image request`,
       { ip: clientIp?.slice(0, 8), tokenId, retryAfter: retryAfterSeconds },
-      'GET /api/nft/image/[tokenId]'
+      "GET /api/nft/image/[tokenId]",
     );
     return NextResponse.json(
-      { error: 'Too many requests', retryAfter: retryAfterSeconds },
+      { error: "Too many requests", retryAfter: retryAfterSeconds },
       {
         status: 429,
         headers: {
-          'Retry-After': String(retryAfterSeconds),
+          "Retry-After": String(retryAfterSeconds),
         },
-      }
+      },
     );
   }
 
@@ -286,9 +286,9 @@ export const GET = withErrorHandling(async function GET(
       logger.warn(
         `All IPFS gateways failed for NFT image #${tokenId}`,
         { tokenId },
-        'GET /api/nft/image/[tokenId]'
+        "GET /api/nft/image/[tokenId]",
       );
-      return NextResponse.json({ error: 'Image not found' }, { status: 502 });
+      return NextResponse.json({ error: "Image not found" }, { status: 502 });
     }
 
     // Store in cache (with FIFO eviction based on insertion time)
@@ -298,21 +298,21 @@ export const GET = withErrorHandling(async function GET(
     return new NextResponse(result.buffer, {
       status: 200,
       headers: {
-        'Content-Type': result.contentType,
-        'Cache-Control': 'public, max-age=31536000, immutable',
-        'CDN-Cache-Control': 'public, max-age=31536000',
-        'Vercel-CDN-Cache-Control': 'public, max-age=31536000',
-        'X-Cache': 'MISS',
+        "Content-Type": result.contentType,
+        "Cache-Control": "public, max-age=31536000, immutable",
+        "CDN-Cache-Control": "public, max-age=31536000",
+        "Vercel-CDN-Cache-Control": "public, max-age=31536000",
+        "X-Cache": "MISS",
       },
     });
   } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') {
+    if (error instanceof Error && error.name === "AbortError") {
       logger.warn(
         `Timeout fetching NFT image #${tokenId}`,
         { tokenId },
-        'GET /api/nft/image/[tokenId]'
+        "GET /api/nft/image/[tokenId]",
       );
-      return NextResponse.json({ error: 'Gateway timeout' }, { status: 504 });
+      return NextResponse.json({ error: "Gateway timeout" }, { status: 504 });
     }
 
     logger.error(
@@ -322,12 +322,12 @@ export const GET = withErrorHandling(async function GET(
         error: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined,
       },
-      'GET /api/nft/image/[tokenId]'
+      "GET /api/nft/image/[tokenId]",
     );
 
     return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
+      { error: "Internal server error" },
+      { status: 500 },
     );
   }
 });

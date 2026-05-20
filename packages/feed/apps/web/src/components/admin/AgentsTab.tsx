@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { FEED_POINTS_SYMBOL, cn, logger } from '@feed/shared';
+import { cn, FEED_POINTS_SYMBOL, logger } from "@feed/shared";
 import {
   Activity,
   AlertCircle,
@@ -15,11 +15,11 @@ import {
   Star,
   User,
   Zap,
-} from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
-import { toast } from 'sonner';
-import { getAuthToken } from '@/lib/auth';
-import { apiUrl } from '@/utils/api-url';
+} from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
+import { getAuthToken } from "@/lib/auth";
+import { apiUrl } from "@/utils/api-url";
 
 /**
  * Running agent structure for agents tab.
@@ -32,11 +32,11 @@ interface RunningAgent {
   profileImageUrl: string | null;
   creatorId: string;
   creatorName: string | null;
-  modelTier: 'free' | 'pro' | 'external';
+  modelTier: "free" | "pro" | "external";
   balance: number;
 
   // External agent specific
-  type?: 'EXTERNAL';
+  type?: "EXTERNAL";
   protocol?: string;
   endpoint?: string | null;
   isHealthy?: boolean;
@@ -110,25 +110,25 @@ export function AgentsTab() {
   const [agents, setAgents] = useState<RunningAgent[]>([]);
   const [stats, setStats] = useState<AgentStats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState<
-    'all' | 'running' | 'paused' | 'error'
-  >('all');
+    "all" | "running" | "paused" | "error"
+  >("all");
   const [sortBy, setSortBy] = useState<
-    'reputation' | 'pnl' | 'trades' | 'winRate' | 'name'
-  >('reputation');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+    "reputation" | "pnl" | "trades" | "winRate" | "name"
+  >("reputation");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
   const fetchData = useCallback(async () => {
     const token = getAuthToken();
     if (!token) {
-      logger.error('Not authenticated', undefined, 'AgentsTab');
-      toast.error('Failed to load agents');
+      logger.error("Not authenticated", undefined, "AgentsTab");
+      toast.error("Failed to load agents");
       setLoading(false);
       return;
     }
 
-    const response = await fetch(apiUrl('/api/admin/agents'), {
+    const response = await fetch(apiUrl("/api/admin/agents"), {
       headers: {
         Authorization: `Bearer ${token}`,
       },
@@ -136,11 +136,11 @@ export function AgentsTab() {
 
     if (!response.ok) {
       logger.error(
-        'Failed to fetch agents',
+        "Failed to fetch agents",
         { status: response.status },
-        'AgentsTab'
+        "AgentsTab",
       );
-      toast.error('Failed to load agents');
+      toast.error("Failed to load agents");
       setLoading(false);
       return;
     }
@@ -161,24 +161,24 @@ export function AgentsTab() {
   const handleToggleAgent = async (agentId: string, enable: boolean) => {
     const token = getAuthToken();
     if (!token) {
-      toast.error('Not authenticated');
+      toast.error("Not authenticated");
       return;
     }
 
     const response = await fetch(
       apiUrl(`/api/admin/agents/${agentId}/toggle`),
       {
-        method: 'POST',
+        method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({ enabled: enable }),
-      }
+      },
     );
 
     if (!response.ok) {
-      toast.error('Failed to toggle agent');
+      toast.error("Failed to toggle agent");
       return;
     }
 
@@ -188,7 +188,7 @@ export function AgentsTab() {
   const handlePauseAll = async () => {
     if (
       !confirm(
-        '⚠️ EMERGENCY: Pause ALL autonomous agents? This will stop all autonomous trading, posting, and messaging immediately.'
+        "⚠️ EMERGENCY: Pause ALL autonomous agents? This will stop all autonomous trading, posting, and messaging immediately.",
       )
     ) {
       return;
@@ -196,19 +196,19 @@ export function AgentsTab() {
 
     const token = getAuthToken();
     if (!token) {
-      toast.error('Not authenticated');
+      toast.error("Not authenticated");
       return;
     }
 
-    const response = await fetch(apiUrl('/api/admin/agents/pause-all'), {
-      method: 'POST',
+    const response = await fetch(apiUrl("/api/admin/agents/pause-all"), {
+      method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
       },
     });
 
     if (!response.ok) {
-      toast.error('Failed to pause all agents');
+      toast.error("Failed to pause all agents");
       return;
     }
 
@@ -219,7 +219,7 @@ export function AgentsTab() {
   const handleResumeAll = async () => {
     if (
       !confirm(
-        'Resume ALL autonomous agents? They will start trading, posting, and messaging again.'
+        "Resume ALL autonomous agents? They will start trading, posting, and messaging again.",
       )
     ) {
       return;
@@ -227,19 +227,19 @@ export function AgentsTab() {
 
     const token = getAuthToken();
     if (!token) {
-      toast.error('Not authenticated');
+      toast.error("Not authenticated");
       return;
     }
 
-    const response = await fetch(apiUrl('/api/admin/agents/resume-all'), {
-      method: 'POST',
+    const response = await fetch(apiUrl("/api/admin/agents/resume-all"), {
+      method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
       },
     });
 
     if (!response.ok) {
-      toast.error('Failed to resume all agents');
+      toast.error("Failed to resume all agents");
       return;
     }
 
@@ -249,43 +249,43 @@ export function AgentsTab() {
 
   const filteredAgents = agents
     .filter((a) => {
-      if (filterStatus === 'running')
-        return a.autonomousEnabled && a.agentStatus === 'running';
-      if (filterStatus === 'paused')
-        return !a.autonomousEnabled || a.agentStatus === 'paused';
-      if (filterStatus === 'error')
-        return a.agentStatus === 'error' || a.recentErrorsCount > 0;
+      if (filterStatus === "running")
+        return a.autonomousEnabled && a.agentStatus === "running";
+      if (filterStatus === "paused")
+        return !a.autonomousEnabled || a.agentStatus === "paused";
+      if (filterStatus === "error")
+        return a.agentStatus === "error" || a.recentErrorsCount > 0;
       return true;
     })
     .filter(
       (a) =>
-        searchQuery === '' ||
+        searchQuery === "" ||
         a.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         a.displayName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        a.creatorName?.toLowerCase().includes(searchQuery.toLowerCase())
+        a.creatorName?.toLowerCase().includes(searchQuery.toLowerCase()),
     )
     .sort((a, b) => {
       let aValue: number | string;
       let bValue: number | string;
 
       switch (sortBy) {
-        case 'reputation':
+        case "reputation":
           aValue = a.reputationScore;
           bValue = b.reputationScore;
           break;
-        case 'pnl':
+        case "pnl":
           aValue = a.lifetimePnL;
           bValue = b.lifetimePnL;
           break;
-        case 'trades':
+        case "trades":
           aValue = a.totalTrades;
           bValue = b.totalTrades;
           break;
-        case 'winRate':
+        case "winRate":
           aValue = a.winRate;
           bValue = b.winRate;
           break;
-        case 'name':
+        case "name":
           aValue = a.displayName.toLowerCase();
           bValue = b.displayName.toLowerCase();
           break;
@@ -293,44 +293,44 @@ export function AgentsTab() {
           return 0;
       }
 
-      if (typeof aValue === 'string' && typeof bValue === 'string') {
-        return sortOrder === 'asc'
+      if (typeof aValue === "string" && typeof bValue === "string") {
+        return sortOrder === "asc"
           ? aValue.localeCompare(bValue)
           : bValue.localeCompare(aValue);
       }
 
-      return sortOrder === 'asc'
+      return sortOrder === "asc"
         ? (aValue as number) - (bValue as number)
         : (bValue as number) - (aValue as number);
     });
 
   const getStatusColor = (agent: RunningAgent) => {
-    if (agent.agentStatus === 'error' || agent.recentErrorsCount > 0)
-      return 'text-red-500';
-    if (agent.autonomousEnabled && agent.agentStatus === 'running')
-      return 'text-green-500';
-    return 'text-yellow-500';
+    if (agent.agentStatus === "error" || agent.recentErrorsCount > 0)
+      return "text-red-500";
+    if (agent.autonomousEnabled && agent.agentStatus === "running")
+      return "text-green-500";
+    return "text-yellow-500";
   };
 
   const getStatusIcon = (agent: RunningAgent) => {
-    if (agent.agentStatus === 'error' || agent.recentErrorsCount > 0)
+    if (agent.agentStatus === "error" || agent.recentErrorsCount > 0)
       return <AlertCircle className="h-4 w-4" />;
-    if (agent.autonomousEnabled && agent.agentStatus === 'running')
+    if (agent.autonomousEnabled && agent.agentStatus === "running")
       return <CheckCircle className="h-4 w-4" />;
     return <Pause className="h-4 w-4" />;
   };
 
   const getStatusText = (agent: RunningAgent) => {
-    if (agent.agentStatus === 'error') return 'Error';
+    if (agent.agentStatus === "error") return "Error";
     if (agent.recentErrorsCount > 0) return `${agent.recentErrorsCount} errors`;
-    if (agent.autonomousEnabled && agent.agentStatus === 'running')
-      return 'Running';
-    if (agent.autonomousEnabled) return 'Enabled';
-    return 'Paused';
+    if (agent.autonomousEnabled && agent.agentStatus === "running")
+      return "Running";
+    if (agent.autonomousEnabled) return "Enabled";
+    return "Paused";
   };
 
   const getRunDuration = (agent: RunningAgent) => {
-    if (!agent.lastTickAt) return 'Never run';
+    if (!agent.lastTickAt) return "Never run";
     const now = new Date();
     const lastTick = new Date(agent.lastTickAt);
     const diffMs = now.getTime() - lastTick.getTime();
@@ -341,7 +341,7 @@ export function AgentsTab() {
     if (diffDays > 0) return `${diffDays}d ago`;
     if (diffHours > 0) return `${diffHours}h ago`;
     if (diffMins > 0) return `${diffMins}m ago`;
-    return 'Just now';
+    return "Just now";
   };
 
   if (loading) {
@@ -385,7 +385,7 @@ export function AgentsTab() {
             disabled={loading}
             className="rounded-lg p-2 transition-colors hover:bg-accent"
           >
-            <RefreshCw className={cn('h-5 w-5', loading && 'animate-spin')} />
+            <RefreshCw className={cn("h-5 w-5", loading && "animate-spin")} />
           </button>
         </div>
       </div>
@@ -468,15 +468,15 @@ export function AgentsTab() {
             className="flex-1 rounded-lg border border-border bg-muted px-4 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
           />
           <div className="flex gap-2">
-            {(['all', 'running', 'paused', 'error'] as const).map((status) => (
+            {(["all", "running", "paused", "error"] as const).map((status) => (
               <button
                 key={status}
                 onClick={() => setFilterStatus(status)}
                 className={cn(
-                  'rounded-lg px-4 py-2 font-medium text-sm transition-all',
+                  "rounded-lg px-4 py-2 font-medium text-sm transition-all",
                   filterStatus === status
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-muted hover:bg-muted/80'
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted hover:bg-muted/80",
                 )}
               >
                 {status.charAt(0).toUpperCase() + status.slice(1)}
@@ -489,35 +489,35 @@ export function AgentsTab() {
         <div className="flex items-center gap-2">
           <span className="text-muted-foreground text-sm">Sort by:</span>
           <div className="flex gap-2">
-            {(['reputation', 'pnl', 'trades', 'winRate', 'name'] as const).map(
+            {(["reputation", "pnl", "trades", "winRate", "name"] as const).map(
               (sort) => (
                 <button
                   key={sort}
                   onClick={() => {
                     if (sortBy === sort) {
-                      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+                      setSortOrder(sortOrder === "asc" ? "desc" : "asc");
                     } else {
                       setSortBy(sort);
-                      setSortOrder(sort === 'name' ? 'asc' : 'desc');
+                      setSortOrder(sort === "name" ? "asc" : "desc");
                     }
                   }}
                   className={cn(
-                    'flex items-center gap-1 rounded-lg px-3 py-1.5 font-medium text-sm transition-all',
+                    "flex items-center gap-1 rounded-lg px-3 py-1.5 font-medium text-sm transition-all",
                     sortBy === sort
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-muted hover:bg-muted/80'
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted hover:bg-muted/80",
                   )}
                 >
-                  {sort === 'reputation' && <Star className="h-3 w-3" />}
+                  {sort === "reputation" && <Star className="h-3 w-3" />}
                   {sort.charAt(0).toUpperCase() + sort.slice(1)}
                   {sortBy === sort &&
-                    (sortOrder === 'asc' ? (
+                    (sortOrder === "asc" ? (
                       <ArrowUp className="h-3 w-3" />
                     ) : (
                       <ArrowDown className="h-3 w-3" />
                     ))}
                 </button>
-              )
+              ),
             )}
           </div>
         </div>
@@ -550,13 +550,13 @@ export function AgentsTab() {
                         {agent.displayName}
                       </h3>
                       <p className="line-clamp-1 text-muted-foreground text-sm">
-                        {agent.description || 'No description'}
+                        {agent.description || "No description"}
                       </p>
                     </div>
                     <div
                       className={cn(
-                        'flex items-center gap-2 rounded-full px-3 py-1 font-medium text-sm',
-                        getStatusColor(agent)
+                        "flex items-center gap-2 rounded-full px-3 py-1 font-medium text-sm",
+                        getStatusColor(agent),
                       )}
                     >
                       {getStatusIcon(agent)}
@@ -566,7 +566,7 @@ export function AgentsTab() {
 
                   {/* Capabilities */}
                   <div className="mb-3 flex flex-wrap gap-2">
-                    {agent.type === 'EXTERNAL' ? (
+                    {agent.type === "EXTERNAL" ? (
                       <>
                         <span className="flex items-center gap-1 rounded bg-purple-500/20 px-2 py-1 text-purple-400 text-xs">
                           <Zap className="h-3 w-3" />
@@ -580,10 +580,10 @@ export function AgentsTab() {
                         {agent.isHealthy !== undefined && (
                           <span
                             className={cn(
-                              'flex items-center gap-1 rounded px-2 py-1 text-xs',
+                              "flex items-center gap-1 rounded px-2 py-1 text-xs",
                               agent.isHealthy
-                                ? 'bg-green-500/20 text-green-400'
-                                : 'bg-red-500/20 text-red-400'
+                                ? "bg-green-500/20 text-green-400"
+                                : "bg-red-500/20 text-red-400",
                             )}
                           >
                             {agent.isHealthy ? (
@@ -591,7 +591,7 @@ export function AgentsTab() {
                             ) : (
                               <AlertCircle className="h-3 w-3" />
                             )}
-                            {agent.isHealthy ? 'Healthy' : 'Unhealthy'}
+                            {agent.isHealthy ? "Healthy" : "Unhealthy"}
                           </span>
                         )}
                       </>
@@ -635,14 +635,14 @@ export function AgentsTab() {
                       </div>
                       <div
                         className={cn(
-                          'font-mono font-semibold text-xs',
+                          "font-mono font-semibold text-xs",
                           agent.reputationScore >= 80
-                            ? 'text-green-500'
+                            ? "text-green-500"
                             : agent.reputationScore >= 60
-                              ? 'text-yellow-500'
+                              ? "text-yellow-500"
                               : agent.reputationScore >= 40
-                                ? 'text-orange-500'
-                                : 'text-red-500'
+                                ? "text-orange-500"
+                                : "text-red-500",
                         )}
                       >
                         {Math.round(agent.reputationScore)}/100
@@ -675,13 +675,13 @@ export function AgentsTab() {
                       </div>
                       <div
                         className={cn(
-                          'font-mono text-xs',
+                          "font-mono text-xs",
                           agent.lifetimePnL >= 0
-                            ? 'text-green-500'
-                            : 'text-red-500'
+                            ? "text-green-500"
+                            : "text-red-500",
                         )}
                       >
-                        {agent.lifetimePnL >= 0 ? '+' : ''}
+                        {agent.lifetimePnL >= 0 ? "+" : ""}
                         {FEED_POINTS_SYMBOL}
                         {agent.lifetimePnL.toFixed(2)}
                       </div>
@@ -708,7 +708,7 @@ export function AgentsTab() {
                   <div className="mt-3 flex items-center gap-6 border-border border-t pt-3 text-muted-foreground text-xs">
                     <div className="flex items-center gap-1">
                       <User className="h-3 w-3" />
-                      <span>{agent.creatorName || 'System'}</span>
+                      <span>{agent.creatorName || "System"}</span>
                     </div>
                     <div className="flex items-center gap-1">
                       <Clock className="h-3 w-3" />
@@ -746,12 +746,12 @@ export function AgentsTab() {
                       handleToggleAgent(agent.id, !agent.autonomousEnabled);
                     }}
                     className={cn(
-                      'rounded-lg p-2 transition-colors',
+                      "rounded-lg p-2 transition-colors",
                       agent.autonomousEnabled
-                        ? 'bg-yellow-500/20 text-yellow-500 hover:bg-yellow-500/30'
-                        : 'bg-green-500/20 text-green-500 hover:bg-green-500/30'
+                        ? "bg-yellow-500/20 text-yellow-500 hover:bg-yellow-500/30"
+                        : "bg-green-500/20 text-green-500 hover:bg-green-500/30",
                     )}
-                    title={agent.autonomousEnabled ? 'Pause' : 'Resume'}
+                    title={agent.autonomousEnabled ? "Pause" : "Resume"}
                   >
                     {agent.autonomousEnabled ? (
                       <Pause className="h-4 w-4" />

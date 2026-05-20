@@ -26,14 +26,15 @@
  * Override with --ticks-per-hour=N.
  */
 
-import { mkdirSync, writeFileSync } from 'node:fs';
-import path from 'node:path';
-import { parseArgs } from 'node:util';
+import { mkdirSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import { parseArgs } from "node:util";
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   agentRuntimeManager,
   autonomousCoordinator,
   createTestAgent,
-} from '@feed/agents';
+} from "@feed/agents";
 import {
   db,
   desc,
@@ -45,30 +46,29 @@ import {
   trajectories,
   users,
   worldEvents,
-} from '@feed/db';
-import { executeGameTick } from '@feed/engine';
-import { sleep } from '@feed/shared';
-import type { IAgentRuntime } from '@elizaos/core';
-import { config as loadDotenv } from 'dotenv';
+} from "@feed/db";
+import { executeGameTick } from "@feed/engine";
+import { sleep } from "@feed/shared";
+import { config as loadDotenv } from "dotenv";
 import {
-  type FeedCharacterSheet,
   buildCanonicalSimulationRoster,
   type CharacterMessageExampleTurn,
+  type FeedCharacterSheet,
   writeLocalCharacterSheets,
-} from '../packages/agents/src/character-roster/local-roster';
-import { upsertAgentConfig } from '../packages/agents/src/shared/agent-config';
+} from "../packages/agents/src/character-roster/local-roster";
+import { upsertAgentConfig } from "../packages/agents/src/shared/agent-config";
 import {
   getLLMCallCallback,
   type LLMCallInput,
   setLLMCallCallback,
-} from '../packages/engine/src/dag-trace';
+} from "../packages/engine/src/dag-trace";
 
-loadDotenv({ path: path.resolve(process.cwd(), '.env') });
-loadDotenv({ path: path.resolve(process.cwd(), '.env.local') });
+loadDotenv({ path: path.resolve(process.cwd(), ".env") });
+loadDotenv({ path: path.resolve(process.cwd(), ".env.local") });
 
 // Force trajectory recording and enable posting
-process.env.RECORD_AGENT_TRAJECTORIES = 'true';
-process.env.FEED_ENABLE_PLAYER_POSTING = '1';
+process.env.RECORD_AGENT_TRAJECTORIES = "true";
+process.env.FEED_ENABLE_PLAYER_POSTING = "1";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -115,7 +115,7 @@ interface CycleSummary {
   llmCallsInCycle: number;
 }
 
-type RuntimeCharacter = IAgentRuntime['character'] & {
+type RuntimeCharacter = IAgentRuntime["character"] & {
   username?: string;
   lore?: string[];
   topics?: string[];
@@ -137,48 +137,48 @@ function parseOptions(): SimOptions {
   const { values } = parseArgs({
     args: Bun.argv.slice(2),
     options: {
-      hours: { type: 'string', default: '1' },
-      ticks: { type: 'string', default: '0' },
-      'ticks-per-hour': { type: 'string', default: '20' },
-      parallel: { type: 'string', default: '5' },
-      delay: { type: 'string', default: '500' },
-      fast: { type: 'boolean', default: false },
-      'world-tick-every': { type: 'string', default: '3' },
-      output: { type: 'string', default: '' },
+      hours: { type: "string", default: "1" },
+      ticks: { type: "string", default: "0" },
+      "ticks-per-hour": { type: "string", default: "20" },
+      parallel: { type: "string", default: "5" },
+      delay: { type: "string", default: "500" },
+      fast: { type: "boolean", default: false },
+      "world-tick-every": { type: "string", default: "3" },
+      output: { type: "string", default: "" },
     },
     strict: true,
     allowPositionals: false,
   });
 
-  const hours = Math.max(0, parseFloat(values.hours ?? '1'));
+  const hours = Math.max(0, parseFloat(values.hours ?? "1"));
   const ticksPerHour = Math.max(
     1,
-    parseInt(values['ticks-per-hour'] ?? '20', 10)
+    parseInt(values["ticks-per-hour"] ?? "20", 10),
   );
-  const explicitTicks = parseInt(values.ticks ?? '0', 10);
+  const explicitTicks = parseInt(values.ticks ?? "0", 10);
   const ticks =
     explicitTicks > 0
       ? explicitTicks
       : Math.max(1, Math.round(hours * ticksPerHour));
 
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const defaultDir = path.resolve(
     process.cwd(),
-    'runs',
-    'simulation-data',
-    stamp
+    "runs",
+    "simulation-data",
+    stamp,
   );
 
   return {
     hours,
     ticks,
     ticksPerHour,
-    parallel: Math.max(1, parseInt(values.parallel ?? '5', 10)),
-    delayMs: Math.max(0, parseInt(values.delay ?? '500', 10)),
+    parallel: Math.max(1, parseInt(values.parallel ?? "5", 10)),
+    delayMs: Math.max(0, parseInt(values.delay ?? "500", 10)),
     fast: values.fast ?? false,
     worldTickEvery: Math.max(
       1,
-      parseInt(values['world-tick-every'] ?? '3', 10)
+      parseInt(values["world-tick-every"] ?? "3", 10),
     ),
     outputDir: values.output
       ? path.resolve(process.cwd(), values.output)
@@ -195,29 +195,29 @@ function ensureDir(dir: string): void {
 }
 
 function writeJson(filePath: string, data: unknown): void {
-  writeFileSync(filePath, JSON.stringify(data, null, 2) + '\n', 'utf-8');
+  writeFileSync(filePath, `${JSON.stringify(data, null, 2)}\n`, "utf-8");
 }
 
 function appendJsonl(filePath: string, record: unknown): void {
-  writeFileSync(filePath, JSON.stringify(record) + '\n', { flag: 'a' });
+  writeFileSync(filePath, `${JSON.stringify(record)}\n`, { flag: "a" });
 }
 
 // ---------------------------------------------------------------------------
 // Character / agent setup (mirrors run-local-character-simulation.ts)
 // ---------------------------------------------------------------------------
 
-function inferModelTier(sheet: FeedCharacterSheet): 'free' | 'pro' {
-  return sheet.settings.groq.large.startsWith('llama-') ? 'free' : 'pro';
+function inferModelTier(sheet: FeedCharacterSheet): "free" | "pro" {
+  return sheet.settings.groq.large.startsWith("llama-") ? "free" : "pro";
 }
 
 function buildAgentPersonalitySummary(sheet: FeedCharacterSheet): string {
   return [
     `${sheet.feed.alignment} ${sheet.feed.team} posture`,
     sheet.feed.socialStyle,
-    `scam:${sheet.feed.scamProfile.replaceAll('_', ' ')}`,
+    `scam:${sheet.feed.scamProfile.replaceAll("_", " ")}`,
     `caution:${sheet.feed.caution}`,
     `deception:${sheet.feed.deception}`,
-  ].join(' | ');
+  ].join(" | ");
 }
 
 function buildConfigStyle(sheet: FeedCharacterSheet) {
@@ -240,7 +240,7 @@ function buildConfigStyle(sheet: FeedCharacterSheet) {
 }
 
 async function ensureCharacterAgent(
-  sheet: FeedCharacterSheet
+  sheet: FeedCharacterSheet,
 ): Promise<{ agentId: string; username: string }> {
   const result = await createTestAgent(sheet.id, {
     username: sheet.username,
@@ -258,7 +258,7 @@ async function ensureCharacterAgent(
     .update(users)
     .set({
       displayName: sheet.name,
-      bio: sheet.bio.join('\n'),
+      bio: sheet.bio.join("\n"),
       updatedAt: new Date(),
     })
     .where(eq(users.id, result.agentId));
@@ -285,25 +285,25 @@ async function ensureCharacterAgent(
     ],
     planningHorizon: sheet.feed.autonomy.groups
       ? sheet.feed.autonomy.dms
-        ? 'campaign'
-        : sheet.feed.team === 'gray'
-          ? 'swing'
-          : 'campaign'
-      : 'single',
+        ? "campaign"
+        : sheet.feed.team === "gray"
+          ? "swing"
+          : "campaign"
+      : "single",
     riskTolerance:
-      sheet.feed.caution === 'paranoid'
-        ? 'low'
-        : sheet.feed.caution === 'reckless'
-          ? 'high'
+      sheet.feed.caution === "paranoid"
+        ? "low"
+        : sheet.feed.caution === "reckless"
+          ? "high"
           : sheet.settings.temperature > 0.75
-            ? 'high'
+            ? "high"
             : sheet.settings.temperature < 0.6
-              ? 'low'
-              : 'medium',
+              ? "low"
+              : "medium",
     maxActionsPerTick:
-      sheet.feed.caution === 'paranoid'
+      sheet.feed.caution === "paranoid"
         ? 2
-        : sheet.feed.caution === 'careful'
+        : sheet.feed.caution === "careful"
           ? 3
           : 5,
     modelTier: inferModelTier(sheet),
@@ -321,7 +321,7 @@ async function ensureCharacterAgent(
 
 function applySheetToRuntime(
   runtime: IAgentRuntime,
-  sheet: FeedCharacterSheet
+  sheet: FeedCharacterSheet,
 ): void {
   const rc = runtime.character as RuntimeCharacter;
   rc.name = sheet.name;
@@ -360,33 +360,33 @@ async function main(): Promise<void> {
   const opts = parseOptions();
   const runStartedAt = new Date();
 
-  console.log('='.repeat(72));
-  console.log('  FEED SIMULATION DATA GENERATOR');
-  console.log('='.repeat(72));
+  console.log("=".repeat(72));
+  console.log("  FEED SIMULATION DATA GENERATOR");
+  console.log("=".repeat(72));
   console.log(`  Hours requested : ${opts.hours}`);
   console.log(`  Total cycles    : ${opts.ticks}`);
   console.log(`  Ticks per hour  : ${opts.ticksPerHour}`);
   console.log(`  Parallelism     : ${opts.parallel}`);
   console.log(`  Delay (ms)      : ${opts.delayMs}`);
   console.log(
-    `  Fast mode       : ${opts.fast ? 'YES (no world ticks)' : 'no'}`
+    `  Fast mode       : ${opts.fast ? "YES (no world ticks)" : "no"}`,
   );
   console.log(
-    `  World tick every: ${opts.fast ? 'N/A' : `${opts.worldTickEvery} cycles`}`
+    `  World tick every: ${opts.fast ? "N/A" : `${opts.worldTickEvery} cycles`}`,
   );
   console.log(`  Output dir      : ${opts.outputDir}`);
-  console.log('='.repeat(72));
-  console.log('');
+  console.log("=".repeat(72));
+  console.log("");
 
   // Create output directories
   const dirs = {
     root: opts.outputDir,
-    actors: path.join(opts.outputDir, 'actors'),
-    worldTicks: path.join(opts.outputDir, 'world-ticks'),
-    agentTicks: path.join(opts.outputDir, 'agent-ticks'),
-    llmCalls: path.join(opts.outputDir, 'llm-calls'),
-    narratives: path.join(opts.outputDir, 'narratives'),
-    trajectories: path.join(opts.outputDir, 'trajectories'),
+    actors: path.join(opts.outputDir, "actors"),
+    worldTicks: path.join(opts.outputDir, "world-ticks"),
+    agentTicks: path.join(opts.outputDir, "agent-ticks"),
+    llmCalls: path.join(opts.outputDir, "llm-calls"),
+    narratives: path.join(opts.outputDir, "narratives"),
+    trajectories: path.join(opts.outputDir, "trajectories"),
   };
   for (const dir of Object.values(dirs)) {
     ensureDir(dir);
@@ -394,12 +394,12 @@ async function main(): Promise<void> {
 
   // Initialize JSONL files (empty)
   const jsonlFiles = {
-    llmCallsAll: path.join(dirs.root, 'llm-calls-all.jsonl'),
-    posts: path.join(dirs.narratives, 'posts.jsonl'),
-    events: path.join(dirs.narratives, 'events.jsonl'),
-    trades: path.join(dirs.narratives, 'trades.jsonl'),
-    agentActions: path.join(dirs.narratives, 'agent-actions.jsonl'),
-    trajectoriesAll: path.join(dirs.root, 'trajectories-all.jsonl'),
+    llmCallsAll: path.join(dirs.root, "llm-calls-all.jsonl"),
+    posts: path.join(dirs.narratives, "posts.jsonl"),
+    events: path.join(dirs.narratives, "events.jsonl"),
+    trades: path.join(dirs.narratives, "trades.jsonl"),
+    agentActions: path.join(dirs.narratives, "agent-actions.jsonl"),
+    trajectoriesAll: path.join(dirs.root, "trajectories-all.jsonl"),
   };
 
   // -----------------------------------------------------------------------
@@ -419,19 +419,19 @@ async function main(): Promise<void> {
     const captured = {
       ...call,
       capturedAt: new Date().toISOString(),
-      source: 'engine',
+      source: "engine",
       sequenceNumber: llmCallSequence,
       cycleNumber: currentCycle,
     };
 
     engineTokens += call.totalTokens || 0;
-    const pt = call.promptType || 'unknown';
+    const pt = call.promptType || "unknown";
     enginePromptTypes[pt] = (enginePromptTypes[pt] || 0) + 1;
-    const mdl = call.model || 'unknown';
+    const mdl = call.model || "unknown";
     engineModels[mdl] = (engineModels[mdl] || 0) + 1;
 
     // Write individual LLM call file
-    const callFileName = `${String(llmCallSequence).padStart(6, '0')}-${call.promptType || 'unknown'}.json`;
+    const callFileName = `${String(llmCallSequence).padStart(6, "0")}-${call.promptType || "unknown"}.json`;
     writeJson(path.join(dirs.llmCalls, callFileName), captured);
 
     // Append to master JSONL
@@ -444,12 +444,12 @@ async function main(): Promise<void> {
   // -----------------------------------------------------------------------
   // Build character roster and create agents
   // -----------------------------------------------------------------------
-  console.log('Loading character roster...');
+  console.log("Loading character roster...");
   const roster = buildCanonicalSimulationRoster();
   await writeLocalCharacterSheets();
 
   console.log(`Characters: ${roster.length} canonical agents`);
-  console.log('');
+  console.log("");
 
   // Write all actor/character sheets
   for (const sheet of roster) {
@@ -483,14 +483,14 @@ async function main(): Promise<void> {
       idByCharacterId.set(sheet.id, agent.agentId);
       usernameByAgentId.set(agent.agentId, agent.username);
       console.log(
-        `  Ready: ${sheet.name} (@${sheet.username}) -> ${agent.agentId}`
+        `  Ready: ${sheet.name} (@${sheet.username}) -> ${agent.agentId}`,
       );
     } catch (err) {
       console.error(`  FAILED to create agent for ${sheet.name}: ${err}`);
     }
   }
 
-  console.log('');
+  console.log("");
 
   // -----------------------------------------------------------------------
   // Run simulation cycles
@@ -517,7 +517,7 @@ async function main(): Promise<void> {
     };
 
     if (!runWorldTick) {
-      console.log('  World: skipped');
+      console.log("  World: skipped");
     }
 
     try {
@@ -534,20 +534,20 @@ async function main(): Promise<void> {
       writeJson(
         path.join(
           dirs.worldTicks,
-          `cycle-${String(cycle).padStart(4, '0')}.json`
+          `cycle-${String(cycle).padStart(4, "0")}.json`,
         ),
         {
           cycle,
           timestamp: new Date().toISOString(),
           durationMs: Date.now() - worldStart,
           result: tickResult,
-        }
+        },
       );
 
       console.log(
         `  World: posts=${worldResult.postsCreated} events=${worldResult.eventsCreated} ` +
           `markets=${worldResult.marketsUpdated} questions=${worldResult.questionsCreated} ` +
-          `(${Date.now() - worldStart}ms)`
+          `(${Date.now() - worldStart}ms)`,
       );
     } catch (err) {
       if (err !== null) {
@@ -555,9 +555,9 @@ async function main(): Promise<void> {
         writeJson(
           path.join(
             dirs.worldTicks,
-            `cycle-${String(cycle).padStart(4, '0')}.json`
+            `cycle-${String(cycle).padStart(4, "0")}.json`,
           ),
-          { cycle, error: String(err), timestamp: new Date().toISOString() }
+          { cycle, error: String(err), timestamp: new Date().toISOString() },
         );
       }
     }
@@ -570,7 +570,7 @@ async function main(): Promise<void> {
 
     const roundDir = path.join(
       dirs.agentTicks,
-      `round-${String(cycle).padStart(4, '0')}`
+      `round-${String(cycle).padStart(4, "0")}`,
     );
     ensureDir(roundDir);
 
@@ -586,7 +586,7 @@ async function main(): Promise<void> {
           const agentId = idByCharacterId.get(sheet.id);
           if (!agentId) {
             return {
-              agentId: '',
+              agentId: "",
               username: sheet.username,
               characterId: sheet.id,
               success: false,
@@ -603,7 +603,7 @@ async function main(): Promise<void> {
             const result = await autonomousCoordinator.executeAutonomousTick(
               agentId,
               runtime,
-              true // capture trajectory
+              true, // capture trajectory
             );
 
             const tickResult: AgentTickResult = {
@@ -643,7 +643,7 @@ async function main(): Promise<void> {
             });
             return tickResult;
           }
-        })
+        }),
       );
 
       agentResults.push(...batchResults);
@@ -655,13 +655,13 @@ async function main(): Promise<void> {
 
     const agentSuccessful = agentResults.filter((r) => r.success).length;
     const agentWithTrajectory = agentResults.filter(
-      (r) => r.trajectoryId
+      (r) => r.trajectoryId,
     ).length;
     const agentDurationMs = Date.now() - agentStart;
 
     console.log(
       `  Agents: ${agentSuccessful}/${agentResults.length} ok, ` +
-        `${agentWithTrajectory} trajectories (${agentDurationMs}ms)`
+        `${agentWithTrajectory} trajectories (${agentDurationMs}ms)`,
     );
 
     allTrajectoryIds.push(...cycleTrajectoryIds);
@@ -684,13 +684,13 @@ async function main(): Promise<void> {
     cycleSummaries.push(summary);
 
     console.log(`  LLM calls this cycle: ${llmCallsInCycle}`);
-    console.log('');
+    console.log("");
   }
 
   // -----------------------------------------------------------------------
   // Export trajectories from DB
   // -----------------------------------------------------------------------
-  console.log('Exporting trajectory data from database...');
+  console.log("Exporting trajectory data from database...");
 
   if (allTrajectoryIds.length > 0) {
     try {
@@ -704,7 +704,7 @@ async function main(): Promise<void> {
         const username = usernameByAgentId.get(row.agentId) ?? row.agentId;
         writeJson(
           path.join(dirs.trajectories, `${username}-${row.trajectoryId}.json`),
-          row
+          row,
         );
         appendJsonl(jsonlFiles.trajectoriesAll, row);
       }
@@ -718,7 +718,7 @@ async function main(): Promise<void> {
         .orderBy(desc(llmCallLogs.createdAt));
 
       if (dbLlmCalls.length > 0) {
-        const dbLlmCallsFile = path.join(dirs.root, 'db-llm-call-logs.jsonl');
+        const dbLlmCallsFile = path.join(dirs.root, "db-llm-call-logs.jsonl");
         for (const row of dbLlmCalls) {
           appendJsonl(dbLlmCallsFile, row);
         }
@@ -732,7 +732,7 @@ async function main(): Promise<void> {
   // -----------------------------------------------------------------------
   // Extract narratives from trajectories + DB
   // -----------------------------------------------------------------------
-  console.log('Extracting narratives...');
+  console.log("Extracting narratives...");
 
   let narrativePosts = 0;
   let narrativeTrades = 0;
@@ -773,7 +773,7 @@ async function main(): Promise<void> {
               timestamp: step.timestamp,
             });
 
-            if (action.actionType === 'TRADE' && action.success) {
+            if (action.actionType === "TRADE" && action.success) {
               narrativeTrades++;
               appendJsonl(jsonlFiles.trades, {
                 agentId: row.agentId,
@@ -787,7 +787,7 @@ async function main(): Promise<void> {
               });
             }
 
-            if (action.actionType === 'POST' && action.success) {
+            if (action.actionType === "POST" && action.success) {
               narrativePosts++;
               appendJsonl(jsonlFiles.posts, {
                 agentId: row.agentId,
@@ -800,12 +800,12 @@ async function main(): Promise<void> {
           }
         } catch (parseErr) {
           console.warn(
-            `  Skipped malformed stepsJson for trajectory ${row.trajectoryId}: ${parseErr}`
+            `  Skipped malformed stepsJson for trajectory ${row.trajectoryId}: ${parseErr}`,
           );
         }
       }
       console.log(
-        `  Actions: ${narrativeActions}, Trades: ${narrativeTrades}, Posts: ${narrativePosts}`
+        `  Actions: ${narrativeActions}, Trades: ${narrativeTrades}, Posts: ${narrativePosts}`,
       );
     } catch (err) {
       console.error(`  Failed to extract narratives: ${err}`);
@@ -857,7 +857,7 @@ async function main(): Promise<void> {
   let agentLlmTotalTokens = 0;
   if (allTrajectoryIds.length > 0) {
     try {
-      const agentLlmDir = path.join(dirs.llmCalls, 'agent');
+      const agentLlmDir = path.join(dirs.llmCalls, "agent");
       ensureDir(agentLlmDir);
       const dbCalls = await db
         .select()
@@ -867,8 +867,8 @@ async function main(): Promise<void> {
 
       for (const call of dbCalls) {
         dbAgentLlmCallCount++;
-        const model = call.model ?? 'unknown';
-        const purpose = call.purpose ?? call.actionType ?? 'unknown';
+        const model = call.model ?? "unknown";
+        const purpose = call.purpose ?? call.actionType ?? "unknown";
         agentLlmModels[model] = (agentLlmModels[model] || 0) + 1;
         agentLlmPurposes[purpose] = (agentLlmPurposes[purpose] || 0) + 1;
         agentLlmTotalTokens +=
@@ -876,14 +876,14 @@ async function main(): Promise<void> {
         writeJson(
           path.join(
             agentLlmDir,
-            `${String(dbAgentLlmCallCount).padStart(6, '0')}-${purpose}.json`
+            `${String(dbAgentLlmCallCount).padStart(6, "0")}-${purpose}.json`,
           ),
-          call
+          call,
         );
       }
       if (dbAgentLlmCallCount > 0) {
         console.log(
-          `  Agent LLM calls written as individual files: ${dbAgentLlmCallCount}`
+          `  Agent LLM calls written as individual files: ${dbAgentLlmCallCount}`,
         );
       }
     } catch (err) {
@@ -904,16 +904,16 @@ async function main(): Promise<void> {
 
   const totalSuccessful = cycleSummaries.reduce(
     (s, c) => s + c.agentRound.successful,
-    0
+    0,
   );
   const totalFailed = cycleSummaries.reduce(
     (s, c) => s + c.agentRound.failed,
-    0
+    0,
   );
   const totalTrajectories = allTrajectoryIds.length;
 
   const manifest = {
-    version: '1.0.0',
+    version: "1.0.0",
     generatedAt: runCompletedAt.toISOString(),
     startedAt: runStartedAt.toISOString(),
     totalDurationMs,
@@ -944,72 +944,72 @@ async function main(): Promise<void> {
         posts: narrativePosts,
       },
       engineLlmByPromptType: Object.fromEntries(
-        Object.entries(enginePromptTypes).sort(([, a], [, b]) => b - a)
+        Object.entries(enginePromptTypes).sort(([, a], [, b]) => b - a),
       ),
       agentLlmByPurpose: Object.fromEntries(
-        Object.entries(agentLlmPurposes).sort(([, a], [, b]) => b - a)
+        Object.entries(agentLlmPurposes).sort(([, a], [, b]) => b - a),
       ),
       llmCallsByModel: Object.fromEntries(
         Object.entries({
           ...engineModels,
           ...Object.fromEntries(
-            Object.entries(agentLlmModels).map(([k, v]) => [`${k} (agent)`, v])
+            Object.entries(agentLlmModels).map(([k, v]) => [`${k} (agent)`, v]),
           ),
-        }).sort(([, a], [, b]) => b - a)
+        }).sort(([, a], [, b]) => b - a),
       ),
     },
     outputStructure: {
-      'actors/': 'Character sheets and config for each agent',
-      'world-ticks/': 'World tick results per cycle (posts, events, markets)',
-      'agent-ticks/':
-        'Per-agent tick results per cycle (trajectory IDs, success/fail)',
-      'llm-calls/':
-        'Individual JSON file for EVERY engine LLM call (full prompt + response)',
-      'llm-calls/agent/':
-        'Individual JSON file for EVERY agent LLM call (from trajectory DB)',
-      'llm-calls-all.jsonl':
-        'All LLM calls in JSONL (one per line, for grep/analysis)',
-      'trajectories/': 'Full trajectory records exported from DB',
-      'trajectories-all.jsonl': 'All trajectories in JSONL',
-      'narratives/': 'Posts, events, trades, agent actions',
-      'db-llm-call-logs.jsonl':
-        'LLM call logs from DB (linked to trajectories)',
-      'cycles.json': 'Per-cycle summary with timing and counts',
-      'manifest.json': 'This file - run metadata and aggregate stats',
+      "actors/": "Character sheets and config for each agent",
+      "world-ticks/": "World tick results per cycle (posts, events, markets)",
+      "agent-ticks/":
+        "Per-agent tick results per cycle (trajectory IDs, success/fail)",
+      "llm-calls/":
+        "Individual JSON file for EVERY engine LLM call (full prompt + response)",
+      "llm-calls/agent/":
+        "Individual JSON file for EVERY agent LLM call (from trajectory DB)",
+      "llm-calls-all.jsonl":
+        "All LLM calls in JSONL (one per line, for grep/analysis)",
+      "trajectories/": "Full trajectory records exported from DB",
+      "trajectories-all.jsonl": "All trajectories in JSONL",
+      "narratives/": "Posts, events, trades, agent actions",
+      "db-llm-call-logs.jsonl":
+        "LLM call logs from DB (linked to trajectories)",
+      "cycles.json": "Per-cycle summary with timing and counts",
+      "manifest.json": "This file - run metadata and aggregate stats",
     },
   };
 
-  writeJson(path.join(dirs.root, 'manifest.json'), manifest);
-  writeJson(path.join(dirs.root, 'cycles.json'), cycleSummaries);
+  writeJson(path.join(dirs.root, "manifest.json"), manifest);
+  writeJson(path.join(dirs.root, "cycles.json"), cycleSummaries);
 
   // -----------------------------------------------------------------------
   // Final report
   // -----------------------------------------------------------------------
-  console.log('='.repeat(72));
-  console.log('  SIMULATION COMPLETE');
-  console.log('='.repeat(72));
+  console.log("=".repeat(72));
+  console.log("  SIMULATION COMPLETE");
+  console.log("=".repeat(72));
   console.log(`  Duration         : ${manifest.totalDurationHuman}`);
   console.log(`  Cycles completed : ${cycleSummaries.length}`);
   console.log(`  Characters       : ${roster.length}`);
   console.log(
-    `  Agent ticks      : ${totalSuccessful} ok / ${totalFailed} failed`
+    `  Agent ticks      : ${totalSuccessful} ok / ${totalFailed} failed`,
   );
   console.log(`  Trajectories     : ${totalTrajectories}`);
   console.log(`  LLM calls total  : ${llmCallSequence + dbAgentLlmCallCount}`);
   console.log(`    Engine (world) : ${llmCallSequence}`);
   console.log(`    Agent (DB)     : ${dbAgentLlmCallCount}`);
   console.log(
-    `  Total tokens     : ${manifest.stats.totalTokens.toLocaleString()}`
+    `  Total tokens     : ${manifest.stats.totalTokens.toLocaleString()}`,
   );
   console.log(
-    `  Actions          : ${narrativeActions} (${narrativeTrades} trades, ${narrativePosts} posts)`
+    `  Actions          : ${narrativeActions} (${narrativeTrades} trades, ${narrativePosts} posts)`,
   );
-  console.log('');
+  console.log("");
   console.log(`  Output: ${opts.outputDir}`);
-  console.log('='.repeat(72));
+  console.log("=".repeat(72));
 }
 
 main().catch((err) => {
-  console.error('Simulation failed:', err);
+  console.error("Simulation failed:", err);
   process.exit(1);
 });

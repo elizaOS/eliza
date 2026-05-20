@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { cn, formatDate } from '@feed/shared';
+import { cn, formatDate } from "@feed/shared";
 import {
   AlertTriangle,
   RefreshCw,
@@ -9,11 +9,11 @@ import {
   UserMinus,
   UserPlus,
   X,
-} from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
-import { Avatar } from '@/components/shared/Avatar';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { apiUrl } from '@/utils/api-url';
+} from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Avatar } from "@/components/shared/Avatar";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { apiUrl } from "@/utils/api-url";
 
 /**
  * Admin user structure for admin management tab.
@@ -68,15 +68,15 @@ export function AdminManagementTab() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showRemoveModal, setShowRemoveModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const [availableUsers, setAvailableUsers] = useState<AvailableUser[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [processing, setProcessing] = useState(false);
 
   const fetchAdmins = useCallback(async (showRefreshing = false) => {
     if (showRefreshing) setRefreshing(true);
-    const response = await fetch(apiUrl('/api/admin/admins'));
-    if (!response.ok) throw new Error('Failed to fetch admins');
+    const response = await fetch(apiUrl("/api/admin/admins"));
+    if (!response.ok) throw new Error("Failed to fetch admins");
     const data = await response.json();
     setAdmins(data.admins || []);
     setLoading(false);
@@ -96,8 +96,8 @@ export function AdminManagementTab() {
     setLoadingUsers(true);
     const params = new URLSearchParams({
       search: query,
-      limit: '10',
-      filter: 'users', // Only real users, not actors
+      limit: "10",
+      filter: "users", // Only real users, not actors
     });
     const response = await fetch(apiUrl(`/api/admin/users?${params}`));
     if (!response.ok) {
@@ -110,7 +110,7 @@ export function AdminManagementTab() {
     // Filter out users who are already admins
     const adminIds = new Set(admins.map((a) => a.id));
     const nonAdminUsers = (data.users || []).filter(
-      (u: AvailableUser) => !adminIds.has(u.id) && !u.isActor
+      (u: AvailableUser) => !adminIds.has(u.id) && !u.isActor,
     );
 
     setAvailableUsers(nonAdminUsers);
@@ -120,19 +120,19 @@ export function AdminManagementTab() {
   const handleAddAdmin = async (userId: string) => {
     setProcessing(true);
     const response = await fetch(apiUrl(`/api/admin/admins/${userId}`), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'promote' }),
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "promote" }),
     });
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.message || 'Failed to add admin');
+      throw new Error(error.message || "Failed to add admin");
     }
 
     await response.json();
     setShowAddModal(false);
-    setSearchQuery('');
+    setSearchQuery("");
     setAvailableUsers([]);
     fetchAdmins(true);
     setProcessing(false);
@@ -145,15 +145,15 @@ export function AdminManagementTab() {
     const response = await fetch(
       apiUrl(`/api/admin/admins/${selectedUser.id}`),
       {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'demote' }),
-      }
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "demote" }),
+      },
     );
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.message || 'Failed to remove admin');
+      throw new Error(error.message || "Failed to remove admin");
     }
 
     await response.json();
@@ -164,7 +164,7 @@ export function AdminManagementTab() {
   };
 
   const AdminRow = ({ admin }: { admin: AdminUser }) => {
-    const displayName = admin.displayName || admin.username || 'Anonymous';
+    const displayName = admin.displayName || admin.username || "Anonymous";
 
     return (
       <div className="rounded-2xl border border-border bg-card p-4 transition-colors hover:border-primary/50">
@@ -257,7 +257,7 @@ export function AdminManagementTab() {
             Admin Management
           </h2>
           <p className="mt-1 text-muted-foreground text-sm">
-            {admins.length} {admins.length === 1 ? 'admin' : 'admins'} with full
+            {admins.length} {admins.length === 1 ? "admin" : "admins"} with full
             system access
           </p>
         </div>
@@ -269,7 +269,7 @@ export function AdminManagementTab() {
             className="flex items-center gap-2 rounded bg-muted px-3 py-2 font-medium text-sm transition-colors hover:bg-muted/80 disabled:opacity-50"
           >
             <RefreshCw
-              className={cn('h-4 w-4', refreshing && 'animate-spin')}
+              className={cn("h-4 w-4", refreshing && "animate-spin")}
             />
             Refresh
           </button>
@@ -307,7 +307,7 @@ export function AdminManagementTab() {
               <button
                 onClick={() => {
                   setShowAddModal(false);
-                  setSearchQuery('');
+                  setSearchQuery("");
                   setAvailableUsers([]);
                 }}
                 className="text-muted-foreground transition-colors hover:text-foreground"
@@ -333,7 +333,6 @@ export function AdminManagementTab() {
                   searchUsers(e.target.value);
                 }}
                 className="w-full rounded-lg border border-border bg-background py-2 pr-4 pl-10 focus:border-primary focus:outline-none"
-                autoFocus
               />
             </div>
 
@@ -360,13 +359,13 @@ export function AdminManagementTab() {
                   >
                     <Avatar
                       src={user.profileImageUrl || undefined}
-                      alt={user.displayName || user.username || 'User'}
+                      alt={user.displayName || user.username || "User"}
                       size="sm"
                     />
 
                     <div className="min-w-0 flex-1">
                       <div className="truncate font-medium">
-                        {user.displayName || user.username || 'Anonymous'}
+                        {user.displayName || user.username || "Anonymous"}
                       </div>
                       {user.username && user.displayName !== user.username && (
                         <div className="text-muted-foreground text-xs">
@@ -380,7 +379,7 @@ export function AdminManagementTab() {
                       disabled={processing}
                       className="rounded bg-primary px-3 py-1.5 font-medium text-primary-foreground text-sm transition-colors hover:bg-primary/90 disabled:opacity-50"
                     >
-                      {processing ? 'Adding...' : 'Add'}
+                      {processing ? "Adding..." : "Add"}
                     </button>
                   </div>
                 ))}
@@ -399,11 +398,11 @@ export function AdminManagementTab() {
             </div>
 
             <p className="mb-4 text-muted-foreground">
-              Are you sure you want to remove admin privileges from{' '}
+              Are you sure you want to remove admin privileges from{" "}
               <strong className="text-foreground">
                 {selectedUser.displayName ||
                   selectedUser.username ||
-                  'this user'}
+                  "this user"}
               </strong>
               ?
             </p>
@@ -432,7 +431,7 @@ export function AdminManagementTab() {
                 className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-red-500 px-4 py-2 text-primary-foreground transition-colors hover:bg-red-600 disabled:opacity-50"
               >
                 {processing ? (
-                  'Removing...'
+                  "Removing..."
                 ) : (
                   <>
                     <UserMinus className="h-4 w-4" />

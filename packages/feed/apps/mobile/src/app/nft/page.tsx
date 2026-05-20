@@ -1,1 +1,1 @@
-export { default } from '@web/app/nft/page';
+export { default } from "@web/app/nft/page";

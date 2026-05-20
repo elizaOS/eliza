@@ -10,9 +10,9 @@
 
 // Re-export from A2A SDK integration
 export {
-  FeedA2AClient,
   disconnectAgentA2AClient,
   enhanceRuntimeWithFeed,
+  FeedA2AClient,
   hasActiveA2AConnection,
   initializeAgentA2AClient,
-} from './integration-a2a-sdk';
+} from "./integration-a2a-sdk";

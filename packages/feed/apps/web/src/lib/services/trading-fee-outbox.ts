@@ -5,7 +5,7 @@
  * so a crash after charging cannot leave a stale row that would double-charge on retry.
  */
 
-import type { TradingFeeOutboxPort } from '@feed/core/markets/shared';
+import type { TradingFeeOutboxPort } from "@feed/core/markets/shared";
 import {
   db,
   dbWrite,
@@ -13,10 +13,10 @@ import {
   type Transaction,
   tradingFeeOutbox,
   withTransaction,
-} from '@feed/db';
-import { FeeService, type FeeType, isValidFeeType } from '@feed/engine';
-import { generateSnowflakeId, logger } from '@feed/shared';
-import { asc } from 'drizzle-orm';
+} from "@feed/db";
+import { FeeService, type FeeType, isValidFeeType } from "@feed/engine";
+import { generateSnowflakeId, logger } from "@feed/shared";
+import { asc } from "drizzle-orm";
 
 const DRAIN_BATCH_SIZE = 50;
 
@@ -66,13 +66,13 @@ export async function drainTradingFeeOutboxBatch(): Promise<{
     if (!isValidFeeType(row.tradeType)) {
       failed += 1;
       logger.error(
-        'Invalid tradeType in outbox — skipping row',
+        "Invalid tradeType in outbox — skipping row",
         {
           outboxId: row.id,
           userId: row.userId,
           tradeType: row.tradeType,
         },
-        'TradingFeeOutbox'
+        "TradingFeeOutbox",
       );
       continue;
     }
@@ -85,7 +85,7 @@ export async function drainTradingFeeOutboxBatch(): Promise<{
           Number(row.tradeAmount),
           row.tradeId ?? undefined,
           row.marketId ?? undefined,
-          tx
+          tx,
         );
         await tx
           .delete(tradingFeeOutbox)
@@ -95,14 +95,14 @@ export async function drainTradingFeeOutboxBatch(): Promise<{
     } catch (error) {
       failed += 1;
       logger.error(
-        'Trading fee outbox row failed (will retry on next drain)',
+        "Trading fee outbox row failed (will retry on next drain)",
         {
           outboxId: row.id,
           userId: row.userId,
           tradeType: row.tradeType,
           error: error instanceof Error ? error.message : String(error),
         },
-        'TradingFeeOutbox'
+        "TradingFeeOutbox",
       );
     }
   }

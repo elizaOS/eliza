@@ -72,13 +72,13 @@ import {
   authenticate,
   requireUserByIdentifier,
   withErrorHandling,
-} from '@feed/api';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@feed/api";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 export const POST = withErrorHandling(async function POST(
-  request: NextRequest
+  request: NextRequest,
 ) {
   const authUser = await authenticate(request);
   const user = await requireUserByIdentifier(authUser.userId, {
@@ -92,9 +92,9 @@ export const POST = withErrorHandling(async function POST(
     return NextResponse.json(
       {
         error:
-          'Twitter account not connected. Please connect your X account first.',
+          "Twitter account not connected. Please connect your X account first.",
       },
-      { status: 401 }
+      { status: 401 },
     );
   }
 
@@ -102,32 +102,32 @@ export const POST = withErrorHandling(async function POST(
   const body = await request.json();
   const { text, contentType, contentId } = body as {
     text: string;
-    contentType?: 'market' | 'profile' | 'referral';
+    contentType?: "market" | "profile" | "referral";
     contentId?: string;
   };
 
-  if (!text || !text.trim()) {
-    return NextResponse.json({ error: 'Missing tweet text' }, { status: 400 });
+  if (!text?.trim()) {
+    return NextResponse.json({ error: "Missing tweet text" }, { status: 400 });
   }
 
   logger.info(
-    'Posting tweet via OAuth 2.0',
+    "Posting tweet via OAuth 2.0",
     {
       userId: user.id,
       textLength: text.length,
     },
-    'TwitterPost'
+    "TwitterPost",
   );
 
   // Create tweet payload
   const tweetPayload = { text };
 
   // Post the tweet using OAuth 2.0 Bearer token
-  const tweetResponse = await fetch('https://api.twitter.com/2/posts', {
-    method: 'POST',
+  const tweetResponse = await fetch("https://api.twitter.com/2/posts", {
+    method: "POST",
     headers: {
       Authorization: `Bearer ${user.twitterAccessToken}`,
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
     },
     body: JSON.stringify(tweetPayload),
   });
@@ -135,13 +135,13 @@ export const POST = withErrorHandling(async function POST(
   if (!tweetResponse.ok) {
     const errorText = await tweetResponse.text();
     logger.error(
-      'Tweet creation failed',
+      "Tweet creation failed",
       { error: errorText, status: tweetResponse.status },
-      'TwitterPost'
+      "TwitterPost",
     );
     return NextResponse.json(
-      { error: 'Failed to post tweet', details: errorText },
-      { status: tweetResponse.status }
+      { error: "Failed to post tweet", details: errorText },
+      { status: tweetResponse.status },
     );
   }
 
@@ -150,38 +150,38 @@ export const POST = withErrorHandling(async function POST(
   };
 
   logger.info(
-    'Tweet posted successfully via OAuth 2.0',
+    "Tweet posted successfully via OAuth 2.0",
     { userId: user.id, tweetId: responseData.data?.id },
-    'TwitterPost'
+    "TwitterPost",
   );
 
   // Track the share if contentType provided
   if (contentType && responseData.data?.id) {
-    const token = request.headers.get('authorization')!.replace('Bearer ', '');
+    const token = request.headers.get("authorization")?.replace("Bearer ", "");
     const tweetUrl = `https://x.com/${user.twitterUsername}/status/${responseData.data.id}`;
 
     const shareResponse = await fetch(
       `${process.env.NEXT_PUBLIC_APP_URL}/api/users/${user.id}/share`,
       {
-        method: 'POST',
+        method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          platform: 'twitter',
+          platform: "twitter",
           contentType,
           contentId,
           url: tweetUrl,
         }),
-      }
+      },
     );
 
     if (!shareResponse.ok) {
       logger.warn(
-        'Failed to track share',
+        "Failed to track share",
         { status: shareResponse.status },
-        'TwitterPost'
+        "TwitterPost",
       );
     }
   }
@@ -189,6 +189,6 @@ export const POST = withErrorHandling(async function POST(
   return NextResponse.json({
     success: true,
     tweet: responseData,
-    tweetUrl: `https://x.com/${user.twitterUsername || 'i'}/status/${responseData.data?.id}`,
+    tweetUrl: `https://x.com/${user.twitterUsername || "i"}/status/${responseData.data?.id}`,
   });
 });

@@ -6,12 +6,12 @@
  * @access Admin
  */
 
-import { requireAdmin, successResponse, withErrorHandling } from '@feed/api';
+import { requireAdmin, successResponse, withErrorHandling } from "@feed/api";
 import {
   getWhitelistConfig,
   updateWhitelistConfig,
-} from '@feed/api/services/whitelist-service';
-import { type NextRequest, NextResponse } from 'next/server';
+} from "@feed/api/services/whitelist-service";
+import { type NextRequest, NextResponse } from "next/server";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   await requireAdmin(request);
@@ -26,7 +26,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         }
       : {
           leaderboardRankThreshold: 100,
-          leaderboardCategory: 'all',
+          leaderboardCategory: "all",
           updatedAt: null,
           updatedBy: null,
         },
@@ -43,30 +43,30 @@ export const PUT = withErrorHandling(async (request: NextRequest) => {
   };
 
   if (
-    typeof leaderboardRankThreshold !== 'number' ||
+    typeof leaderboardRankThreshold !== "number" ||
     leaderboardRankThreshold < 1 ||
     !Number.isInteger(leaderboardRankThreshold)
   ) {
     return NextResponse.json(
       {
-        error: 'leaderboardRankThreshold must be a positive integer',
+        error: "leaderboardRankThreshold must be a positive integer",
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
-  const VALID_CATEGORIES = ['all', 'trading', 'social', 'reputation'] as const;
+  const VALID_CATEGORIES = ["all", "trading", "social", "reputation"] as const;
   if (
     leaderboardCategory !== undefined &&
     !VALID_CATEGORIES.includes(
-      leaderboardCategory as (typeof VALID_CATEGORIES)[number]
+      leaderboardCategory as (typeof VALID_CATEGORIES)[number],
     )
   ) {
     return NextResponse.json(
       {
-        error: `leaderboardCategory must be one of: ${VALID_CATEGORIES.join(', ')}`,
+        error: `leaderboardCategory must be one of: ${VALID_CATEGORIES.join(", ")}`,
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 

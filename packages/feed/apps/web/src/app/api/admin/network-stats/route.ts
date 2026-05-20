@@ -44,10 +44,10 @@
  * ```
  */
 
-import { requireAdmin, successResponse, withErrorHandling } from '@feed/api';
-import { queryMonitor } from '@feed/db';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+import { requireAdmin, successResponse, withErrorHandling } from "@feed/api";
+import { queryMonitor } from "@feed/db";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 /**
  * GET /api/admin/network-stats
@@ -84,12 +84,12 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   const uptime = process.uptime();
 
   logger.info(
-    'Network stats requested',
+    "Network stats requested",
     {
       totalQueries,
       slowQueryRate: `${slowQueryRate.toFixed(2)}%`,
     },
-    'GET /api/admin/network-stats'
+    "GET /api/admin/network-stats",
   );
 
   return successResponse({
@@ -135,12 +135,12 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     health: {
       database:
         slowQueryRate < 5
-          ? 'healthy'
+          ? "healthy"
           : slowQueryRate < 15
-            ? 'warning'
-            : 'critical',
+            ? "warning"
+            : "critical",
       memory:
-        memUsage.heapUsed / memUsage.heapTotal < 0.9 ? 'healthy' : 'warning',
+        memUsage.heapUsed / memUsage.heapTotal < 0.9 ? "healthy" : "warning",
       overall: determineOverallHealth(slowQueryRate, memUsage),
     },
   });
@@ -161,7 +161,7 @@ function formatUptime(seconds: number): string {
   if (minutes > 0) parts.push(`${minutes}m`);
   if (secs > 0 || parts.length === 0) parts.push(`${secs}s`);
 
-  return parts.join(' ');
+  return parts.join(" ");
 }
 
 /**
@@ -169,17 +169,17 @@ function formatUptime(seconds: number): string {
  */
 function determineOverallHealth(
   slowQueryRate: number,
-  memUsage: NodeJS.MemoryUsage
-): 'healthy' | 'warning' | 'critical' {
+  memUsage: NodeJS.MemoryUsage,
+): "healthy" | "warning" | "critical" {
   const memoryUsagePercent = (memUsage.heapUsed / memUsage.heapTotal) * 100;
 
   if (slowQueryRate > 15 || memoryUsagePercent > 95) {
-    return 'critical';
+    return "critical";
   }
 
   if (slowQueryRate > 5 || memoryUsagePercent > 85) {
-    return 'warning';
+    return "warning";
   }
 
-  return 'healthy';
+  return "healthy";
 }

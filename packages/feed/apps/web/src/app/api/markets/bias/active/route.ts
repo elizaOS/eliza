@@ -63,10 +63,10 @@
  * @see {@link /lib/feedback/bias-engine} Bias engine
  */
 
-import { withErrorHandling } from '@feed/api';
-import { biasEngine } from '@feed/engine';
-import { toISO } from '@feed/shared';
-import { NextResponse } from 'next/server';
+import { withErrorHandling } from "@feed/api";
+import { biasEngine } from "@feed/engine";
+import { toISO } from "@feed/shared";
+import { NextResponse } from "next/server";
 
 export const GET = withErrorHandling(async function GET() {
   // Get all active biases from the singleton engine

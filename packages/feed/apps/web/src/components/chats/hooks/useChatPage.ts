@@ -1,23 +1,23 @@
-'use client';
+"use client";
 
-import { logger } from '@feed/shared';
-import { useQueryClient } from '@tanstack/react-query';
-import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useAuth } from '@/hooks/useAuth';
-import { useChatMessages } from '@/hooks/useChatMessages';
-import { useToggleReaction } from '@/hooks/useToggleReaction';
-import { useAuthStore } from '@/stores/authStore';
+import { logger } from "@feed/shared";
+import { useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
+import { useChatMessages } from "@/hooks/useChatMessages";
+import { useToggleReaction } from "@/hooks/useToggleReaction";
+import { useAuthStore } from "@/stores/authStore";
 import type {
   Chat,
   ChatDetails,
   ChatFilter,
   Message,
   ReplyToMessage,
-} from '../types';
+} from "../types";
 
 const chatListQueryKey = (userId: string | null) =>
-  userId ? (['chat-list', userId] as const) : (['chat-list'] as const);
+  userId ? (["chat-list", userId] as const) : (["chat-list"] as const);
 const CHAT_LIST_STALE_TIME = 30_000; // 30s — chat list changes when new messages arrive
 const CHAT_LIST_GC_TIME = 10 * 60_000; // 10 min
 
@@ -28,8 +28,8 @@ export function useChatPage() {
   const queryClient = useQueryClient();
 
   // UI state
-  const [activeFilter, setActiveFilter] = useState<ChatFilter>('all');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [activeFilter, setActiveFilter] = useState<ChatFilter>("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
 
   // Data state
@@ -42,14 +42,14 @@ export function useChatPage() {
   const [sending, setSending] = useState(false);
 
   // Message input state
-  const [messageInput, setMessageInput] = useState('');
+  const [messageInput, setMessageInput] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
   const [sendWarning, setSendWarning] = useState<string | null>(null);
   const [sendSuccess, setSendSuccess] = useState(false);
 
   // Reply state
   const [replyToMessage, setReplyToMessage] = useState<ReplyToMessage | null>(
-    null
+    null,
   );
 
   // Leave chat state
@@ -87,9 +87,9 @@ export function useChatPage() {
 
   // Debug mode
   const isDebugMode =
-    typeof window !== 'undefined' &&
-    (window.location.hostname === 'localhost' ||
-      window.location.hostname === '127.0.0.1');
+    typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1");
 
   // SSE for real-time messages
   const {
@@ -114,10 +114,10 @@ export function useChatPage() {
   const fetchChatList = useCallback(
     async (token: string | null): Promise<Chat[]> => {
       const [personalResponse, gameResponse] = await Promise.all([
-        fetch('/api/chats', {
+        fetch("/api/chats", {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         }),
-        isDebugMode ? fetch('/api/chats?all=true') : Promise.resolve(null),
+        isDebugMode ? fetch("/api/chats?all=true") : Promise.resolve(null),
       ]);
 
       if (!personalResponse.ok) return [];
@@ -149,7 +149,7 @@ export function useChatPage() {
         return true;
       });
     },
-    [isDebugMode, user?.id]
+    [isDebugMode, user?.id],
   );
 
   // Load chats — uses React Query for caching so revisiting the chat page is instant
@@ -235,14 +235,14 @@ export function useChatPage() {
       });
       setLoadingChat(false);
     },
-    [getAccessToken, isDebugMode]
+    [getAccessToken, isDebugMode],
   );
 
   // Handle reply to message — resolves sender name from participants
   const handleReplyToMessage = useCallback(
     (msg: Message) => {
       const sender = chatDetails?.participants.find(
-        (p) => p.id === msg.senderId
+        (p) => p.id === msg.senderId,
       );
       setReplyToMessage({
         id: msg.id,
@@ -251,7 +251,7 @@ export function useChatPage() {
         senderName: sender?.displayName,
       });
     },
-    [chatDetails?.participants]
+    [chatDetails?.participants],
   );
 
   const clearReplyToMessage = useCallback(() => {
@@ -269,15 +269,15 @@ export function useChatPage() {
 
     const token = await getAccessToken();
     if (!token) {
-      setSendError('Authentication required. Please log in again.');
+      setSendError("Authentication required. Please log in again.");
       setSending(false);
       return;
     }
 
     const response = await fetch(`/api/chats/${selectedChatId}/message`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
@@ -285,7 +285,7 @@ export function useChatPage() {
         ...(replyToMessage ? { replyToMessageId: replyToMessage.id } : {}),
       }),
     }).catch((error: Error) => {
-      setSendError('Failed to send message. Please try again.');
+      setSendError("Failed to send message. Please try again.");
       setSending(false);
       throw error;
     });
@@ -295,7 +295,7 @@ export function useChatPage() {
     if (!response.ok) {
       const message =
         (data && (data.error || data.message)) ||
-        'Failed to send message. Please try again.';
+        "Failed to send message. Please try again.";
       setSendError(message);
       setSending(false);
       return;
@@ -303,7 +303,7 @@ export function useChatPage() {
 
     const warnings = Array.isArray(data?.warnings) ? data.warnings : [];
     if (warnings.length > 0) {
-      setSendWarning(warnings.join('. '));
+      setSendWarning(warnings.join(". "));
       setTimeout(() => setSendWarning(null), 5000);
     }
 
@@ -317,13 +317,13 @@ export function useChatPage() {
         chatId: data.message.chatId,
         senderId: data.message.senderId,
         createdAt:
-          typeof data.message.createdAt === 'string'
+          typeof data.message.createdAt === "string"
             ? data.message.createdAt
             : new Date(data.message.createdAt).toISOString(),
       });
     }
 
-    setMessageInput('');
+    setMessageInput("");
     setReplyToMessage(null);
     void loadChats();
     setSending(false);
@@ -345,7 +345,7 @@ export function useChatPage() {
 
     const accessToken = await getAccessToken();
     if (!accessToken) {
-      setLeaveChatError('Authentication failed. Please try again.');
+      setLeaveChatError("Authentication failed. Please try again.");
       setIsLeavingChat(false);
       return;
     }
@@ -353,9 +353,9 @@ export function useChatPage() {
     const response = await fetch(
       `/api/chats/${selectedChatId}/participants/me`,
       {
-        method: 'DELETE',
+        method: "DELETE",
         headers: { Authorization: `Bearer ${accessToken}` },
-      }
+      },
     ).catch((error: Error) => {
       setLeaveChatError(error.message);
       setIsLeavingChat(false);
@@ -364,7 +364,7 @@ export function useChatPage() {
 
     if (!response.ok) {
       const errorData = await response.json();
-      setLeaveChatError(errorData.message || 'Failed to leave chat');
+      setLeaveChatError(errorData.message || "Failed to leave chat");
       setIsLeavingChat(false);
       return;
     }
@@ -384,7 +384,7 @@ export function useChatPage() {
       setSelectedChatId(chatId);
       await loadChatDetails(chatId);
     },
-    [loadChats, loadChatDetails]
+    [loadChats, loadChatDetails],
   );
 
   const handleGroupUpdated = useCallback(async () => {
@@ -401,7 +401,7 @@ export function useChatPage() {
     const response = await fetch(`/api/chats/${chatDetails.chat.id}/group`, {
       headers: { Authorization: `Bearer ${token}` },
     }).catch((error: Error) => {
-      logger.error('Error fetching group ID', error, 'useChatPage');
+      logger.error("Error fetching group ID", error, "useChatPage");
       throw error;
     });
 
@@ -427,7 +427,7 @@ export function useChatPage() {
         headers: { Authorization: `Bearer ${token}` },
       }).catch(() => {
         setLoadingChat(false);
-        throw new Error('Failed to load user info');
+        throw new Error("Failed to load user info");
       });
 
       if (!response.ok) {
@@ -449,15 +449,15 @@ export function useChatPage() {
         messages: [],
         participants: [
           {
-            id: user!.id,
-            displayName: user!.displayName || user!.username || 'You',
-            username: user!.username,
-            profileImageUrl: user!.profileImageUrl,
+            id: user?.id,
+            displayName: user?.displayName || user?.username || "You",
+            username: user?.username,
+            profileImageUrl: user?.profileImageUrl,
           },
           {
             id: targetUser.id,
             displayName:
-              targetUser.displayName || targetUser.username || 'User',
+              targetUser.displayName || targetUser.username || "User",
             username: targetUser.username,
             profileImageUrl: targetUser.profileImageUrl,
           },
@@ -466,7 +466,7 @@ export function useChatPage() {
 
       const newChat: Chat = {
         id: chatId,
-        name: targetUser.displayName || targetUser.username || 'User',
+        name: targetUser.displayName || targetUser.username || "User",
         isGroup: false,
         lastMessage: null,
         updatedAt: new Date().toISOString(),
@@ -487,11 +487,11 @@ export function useChatPage() {
 
       setLoadingChat(false);
     },
-    [getAccessToken, user]
+    [getAccessToken, user],
   );
 
   // Scroll to newest messages
-  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
     const container = chatContainerRef.current;
     if (container) {
       container.scrollTo({ top: container.scrollHeight, behavior });
@@ -504,15 +504,15 @@ export function useChatPage() {
 
   // Filter chats
   const filteredByType =
-    activeFilter === 'all'
+    activeFilter === "all"
       ? allChats
-      : activeFilter === 'dms'
+      : activeFilter === "dms"
         ? allChats.filter((c) => !c.isGroup)
         : allChats.filter((c) => c.isGroup);
 
   const filteredChats = searchQuery
     ? filteredByType.filter((chat) =>
-        chat.name.toLowerCase().includes(searchQuery.toLowerCase())
+        chat.name.toLowerCase().includes(searchQuery.toLowerCase()),
       )
     : filteredByType;
 
@@ -527,7 +527,7 @@ export function useChatPage() {
   // once the next tick auto-joins them into an NPC group chat.
   useEffect(() => {
     // Only in local dev (production builds should not poll)
-    if (process.env.NODE_ENV !== 'development') {
+    if (process.env.NODE_ENV !== "development") {
       return;
     }
     if (!ready || !authenticated) {
@@ -593,7 +593,7 @@ export function useChatPage() {
 
     // For new messages (not initial load), scroll smoothly if at bottom
     if (!wasEmpty && isNewMessage && isAtBottom) {
-      scrollToBottom('smooth');
+      scrollToBottom("smooth");
     }
   }, [chatDetails?.messages, isAtBottom, scrollToBottom, loadingChat]);
 
@@ -619,7 +619,7 @@ export function useChatPage() {
     const startTime = Date.now();
 
     const scrollToEnd = () => {
-      endMarker.scrollIntoView({ behavior: 'auto', block: 'end' });
+      endMarker.scrollIntoView({ behavior: "auto", block: "end" });
     };
 
     const finish = () => {
@@ -698,7 +698,7 @@ export function useChatPage() {
           loadMore();
         }
       },
-      { root: container, rootMargin: '0px 0px 0px 0px', threshold: 0.1 }
+      { root: container, rootMargin: "0px 0px 0px 0px", threshold: 0.1 },
     );
 
     observer.observe(sentinel);
@@ -730,28 +730,28 @@ export function useChatPage() {
       setIsAtBottom(atBottom);
     };
 
-    container.addEventListener('scroll', handleScroll, { passive: true });
+    container.addEventListener("scroll", handleScroll, { passive: true });
     handleScroll();
-    return () => container.removeEventListener('scroll', handleScroll);
+    return () => container.removeEventListener("scroll", handleScroll);
   }, []);
 
   // Check for chat ID in URL
   useEffect(() => {
-    if (typeof window !== 'undefined') {
+    if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
-      const chatParam = params.get('chat');
-      const newDMParam = params.get('newDM');
+      const chatParam = params.get("chat");
+      const newDMParam = params.get("newDM");
 
       if (chatParam && chatParam !== selectedChatId) {
         setSelectedChatId(chatParam);
 
         // If this is a new DM, store it as pending until user is available
-        if (newDMParam && chatParam.startsWith('dm-')) {
+        if (newDMParam && chatParam.startsWith("dm-")) {
           setPendingDM({ chatId: chatParam, targetUserId: newDMParam });
         }
 
         // Clean up URL using Next.js router to keep router state in sync
-        router.replace('/chats');
+        router.replace("/chats");
       }
     }
   }, [selectedChatId, router]);

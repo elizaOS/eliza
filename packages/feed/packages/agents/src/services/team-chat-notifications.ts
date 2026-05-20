@@ -1,6 +1,6 @@
-import { createNotification } from '@feed/api';
-import { and, chatParticipants, chats, db, eq, users } from '@feed/db';
-import { logger } from '@feed/shared';
+import { createNotification } from "@feed/api";
+import { and, chatParticipants, chats, db, eq, users } from "@feed/db";
+import { logger } from "@feed/shared";
 
 interface NotifyTeamChatMessageParams {
   chatId: string;
@@ -39,8 +39,8 @@ export async function notifyTeamChatMessage({
         .where(
           and(
             eq(chatParticipants.chatId, chatId),
-            eq(chatParticipants.isActive, true)
-          )
+            eq(chatParticipants.isActive, true),
+          ),
         ),
       db
         .select({ name: chats.name })
@@ -59,37 +59,37 @@ export async function notifyTeamChatMessage({
     }
 
     const sender = senderRows[0];
-    const senderName = sender?.displayName || sender?.username || 'Someone';
+    const senderName = sender?.displayName || sender?.username || "Someone";
     const preview =
       messagePreview.length > 50
         ? `${messagePreview.substring(0, 50)}...`
         : messagePreview;
-    const chatName = chatRows[0]?.name || 'Agents';
+    const chatName = chatRows[0]?.name || "Agents";
     const message = `${senderName} in "${chatName}": ${preview}`;
 
     await Promise.all(
       recipientUserIds.map((userId) =>
         createNotification({
           userId,
-          type: 'system',
+          type: "system",
           actorId: senderId,
           chatId,
-          title: 'New Group Message',
+          title: "New Group Message",
           message,
           dedupeKey: `team-chat-message:${messageId}:${userId}`,
-        })
-      )
+        }),
+      ),
     );
   } catch (error) {
     logger.warn(
-      'Failed to notify team chat message',
+      "Failed to notify team chat message",
       {
         chatId,
         messageId,
         senderId,
         error: error instanceof Error ? error.message : String(error),
       },
-      'TeamChatNotifications'
+      "TeamChatNotifications",
     );
   }
 }

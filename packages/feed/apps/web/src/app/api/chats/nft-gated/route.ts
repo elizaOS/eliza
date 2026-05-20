@@ -14,7 +14,7 @@ import {
   NFTVerificationService,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
+} from "@feed/api";
 import {
   and,
   asc,
@@ -26,10 +26,10 @@ import {
   inArray,
   sql,
   users,
-} from '@feed/db';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { z } from 'zod';
+} from "@feed/db";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { z } from "zod";
 
 // Pagination constants
 const DEFAULT_LIMIT = 20;
@@ -39,12 +39,12 @@ const MAX_LIMIT = 50;
 // Uses preprocess to handle empty strings gracefully (treat as undefined)
 const PaginationSchema = z.object({
   limit: z.preprocess(
-    (val) => (val === '' || val === null ? undefined : val),
-    z.coerce.number().int().positive().max(MAX_LIMIT).default(DEFAULT_LIMIT)
+    (val) => (val === "" || val === null ? undefined : val),
+    z.coerce.number().int().positive().max(MAX_LIMIT).default(DEFAULT_LIMIT),
   ),
   offset: z.preprocess(
-    (val) => (val === '' || val === null ? undefined : val),
-    z.coerce.number().int().nonnegative().default(0)
+    (val) => (val === "" || val === null ? undefined : val),
+    z.coerce.number().int().nonnegative().default(0),
   ),
 });
 
@@ -58,8 +58,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   // Parse and validate pagination parameters using Zod
   const { searchParams } = new URL(request.url);
   const { limit, offset } = PaginationSchema.parse({
-    limit: searchParams.get('limit') ?? undefined,
-    offset: searchParams.get('offset') ?? undefined,
+    limit: searchParams.get("limit") ?? undefined,
+    offset: searchParams.get("offset") ?? undefined,
   });
 
   // Get user's wallet address
@@ -116,9 +116,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         eq(chatParticipants.isActive, true),
         inArray(
           chatParticipants.chatId,
-          nftGatedChats.map((c) => c.id)
-        )
-      )
+          nftGatedChats.map((c) => c.id),
+        ),
+      ),
     );
   const memberOfSet = new Set(userMemberships.map((m) => m.chatId));
 
@@ -136,8 +136,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       .where(
         and(
           inArray(chatParticipants.chatId, chatIds),
-          eq(chatParticipants.isActive, true)
-        )
+          eq(chatParticipants.isActive, true),
+        ),
       )
       .groupBy(chatParticipants.chatId);
 
@@ -180,7 +180,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
               userData.walletAddress,
               chat.requiredNftContractAddress,
               chat.requiredNftTokenId ?? null,
-              chat.requiredNftChainId ?? undefined
+              chat.requiredNftChainId ?? undefined,
             );
             hasAccess = verification.canAccess;
 
@@ -189,19 +189,19 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
               tokenIds = await NFTVerificationService.getUserTokenIds(
                 userData.walletAddress,
                 chat.requiredNftContractAddress,
-                chat.requiredNftChainId ?? undefined
+                chat.requiredNftChainId ?? undefined,
               ).catch(() => []);
             } else if (hasAccess && chat.requiredNftTokenId !== null) {
               tokenIds = [chat.requiredNftTokenId];
             }
           } catch (error) {
             logger.warn(
-              'Error checking NFT access for chat',
+              "Error checking NFT access for chat",
               {
                 chatId: chat.id,
                 error: error instanceof Error ? error.message : String(error),
               },
-              'GET /api/chats/nft-gated'
+              "GET /api/chats/nft-gated",
             );
           }
         }
@@ -221,7 +221,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
           ownedTokenIds: tokenIds,
           createdAt: chat.createdAt,
         };
-      })
+      }),
     );
 
     chatResults.push(...batchResults);

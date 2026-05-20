@@ -97,7 +97,7 @@ import {
   RATE_LIMIT_CONFIGS,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
+} from "@feed/api";
 import {
   and,
   db,
@@ -106,15 +106,11 @@ import {
   userActorFollows,
   users,
   withTransaction,
-} from '@feed/db';
-import { StaticDataRegistry } from '@feed/engine';
-import {
-  generateSnowflakeId,
-  logger,
-  UserIdParamSchema,
-} from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { trackServerEvent } from '@/lib/posthog/server';
+} from "@feed/db";
+import { StaticDataRegistry } from "@feed/engine";
+import { generateSnowflakeId, logger, UserIdParamSchema } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { trackServerEvent } from "@/lib/posthog/server";
 
 /**
  * POST /api/users/[userId]/follow
@@ -133,7 +129,7 @@ import { trackServerEvent } from '@/lib/posthog/server';
 export const POST = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ userId: string }> }
+    context: { params: Promise<{ userId: string }> },
   ) => {
     // Authenticate user
     const user = await authenticate(request);
@@ -142,7 +138,7 @@ export const POST = withErrorHandling(
     const rateLimitError = checkRateLimitAndDuplicates(
       user.userId,
       null,
-      RATE_LIMIT_CONFIGS.FOLLOW_USER
+      RATE_LIMIT_CONFIGS.FOLLOW_USER,
     );
     if (rateLimitError) {
       return rateLimitError;
@@ -158,7 +154,7 @@ export const POST = withErrorHandling(
 
     // Prevent self-following
     if (targetUser && user.userId === targetId) {
-      throw new BusinessLogicError('Cannot follow yourself', 'SELF_FOLLOW');
+      throw new BusinessLogicError("Cannot follow yourself", "SELF_FOLLOW");
     }
 
     // Check if target exists (could be a user or actor)
@@ -169,10 +165,10 @@ export const POST = withErrorHandling(
     // If neither user nor actor found, return error
     // Also error if targetUser has isActor flag but no Actor record exists
     if (!targetUser && !targetActor) {
-      throw new NotFoundError('User or actor', targetId);
+      throw new NotFoundError("User or actor", targetId);
     }
     if (targetUser?.isActor && !targetActor) {
-      throw new NotFoundError('Actor', targetId);
+      throw new NotFoundError("Actor", targetId);
     }
 
     // If targetUser has isActor flag, treat as actor (not regular user)
@@ -187,16 +183,16 @@ export const POST = withErrorHandling(
           .where(
             and(
               eq(follows.followerId, user.userId),
-              eq(follows.followingId, targetId)
-            )
+              eq(follows.followingId, targetId),
+            ),
           )
           .limit(1)
-          .for('update');
+          .for("update");
 
         if (existingFollow) {
           throw new BusinessLogicError(
-            'Already following this user',
-            'ALREADY_FOLLOWING'
+            "Already following this user",
+            "ALREADY_FOLLOWING",
           );
         }
 
@@ -211,7 +207,7 @@ export const POST = withErrorHandling(
           .returning();
 
         if (!createdFollow) {
-          throw new InternalServerError('Failed to create follow record');
+          throw new InternalServerError("Failed to create follow record");
         }
 
         return createdFollow;
@@ -238,31 +234,31 @@ export const POST = withErrorHandling(
         cachedDb.invalidateUserCache(user.userId), // Invalidate follower's cache
         cachedDb.invalidateUserCache(targetId), // Invalidate target's cache
       ]).catch((error) => {
-        logger.warn('Failed to invalidate user cache after follow', { error });
+        logger.warn("Failed to invalidate user cache after follow", { error });
       });
 
       logger.info(
-        'User followed successfully',
+        "User followed successfully",
         { userId: user.userId, targetId },
-        'POST /api/users/[userId]/follow'
+        "POST /api/users/[userId]/follow",
       );
 
       // Track user followed event
-      trackServerEvent(user.userId, 'user_followed', {
+      trackServerEvent(user.userId, "user_followed", {
         targetUserId: targetId,
-        targetType: 'user',
+        targetType: "user",
         ...(targetUserDetails?.username && {
           targetUsername: targetUserDetails.username,
         }),
       }).catch((error) => {
-        logger.warn('Failed to track user_followed event', { error });
+        logger.warn("Failed to track user_followed event", { error });
       });
 
       if (!newFollow) {
-        throw new InternalServerError('Failed to create follow record');
+        throw new InternalServerError("Failed to create follow record");
       }
 
-      void checkProgress(user.userId, { type: 'follow_created' });
+      void checkProgress(user.userId, { type: "follow_created" });
 
       return successResponse(
         {
@@ -270,7 +266,7 @@ export const POST = withErrorHandling(
           following: targetUserDetails,
           createdAt: newFollow.createdAt,
         },
-        201
+        201,
       );
     }
     // Target is an actor (NPC) or user with isActor=true - use UserActorFollow model
@@ -280,15 +276,15 @@ export const POST = withErrorHandling(
       .where(
         and(
           eq(userActorFollows.userId, user.userId),
-          eq(userActorFollows.actorId, targetId)
-        )
+          eq(userActorFollows.actorId, targetId),
+        ),
       )
       .limit(1);
 
     if (existingUserActorFollow) {
       throw new BusinessLogicError(
-        'Already following this actor',
-        'ALREADY_FOLLOWING'
+        "Already following this actor",
+        "ALREADY_FOLLOWING",
       );
     }
 
@@ -312,29 +308,29 @@ export const POST = withErrorHandling(
 
     // Invalidate cache for the user to update following count
     await cachedDb.invalidateUserCache(user.userId).catch((error) => {
-      logger.warn('Failed to invalidate user cache after actor follow', {
+      logger.warn("Failed to invalidate user cache after actor follow", {
         error,
       });
     });
 
     logger.info(
-      'Actor followed successfully',
+      "Actor followed successfully",
       { userId: user.userId, npcId: targetId },
-      'POST /api/users/[userId]/follow'
+      "POST /api/users/[userId]/follow",
     );
 
     // Track actor followed event
-    trackServerEvent(user.userId, 'user_followed', {
+    trackServerEvent(user.userId, "user_followed", {
       targetUserId: targetId,
-      targetType: 'actor',
+      targetType: "actor",
       ...(actorDetails?.name && { actorName: actorDetails.name }),
       ...(actorDetails?.tier && { actorTier: actorDetails.tier }),
     }).catch((error) => {
-      logger.warn('Failed to track user_followed event', { error });
+      logger.warn("Failed to track user_followed event", { error });
     });
 
     if (!createdFollow) {
-      throw new InternalServerError('Failed to fetch created follow record');
+      throw new InternalServerError("Failed to fetch created follow record");
     }
 
     return successResponse(
@@ -343,9 +339,9 @@ export const POST = withErrorHandling(
         actor: actorDetails,
         createdAt: createdFollow.createdAt,
       },
-      201
+      201,
     );
-  }
+  },
 );
 
 /**
@@ -355,7 +351,7 @@ export const POST = withErrorHandling(
 export const DELETE = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ userId: string }> }
+    context: { params: Promise<{ userId: string }> },
   ) => {
     // Authenticate user
     const user = await authenticate(request);
@@ -364,7 +360,7 @@ export const DELETE = withErrorHandling(
     const rateLimitError = checkRateLimitAndDuplicates(
       user.userId,
       null,
-      RATE_LIMIT_CONFIGS.UNFOLLOW_USER
+      RATE_LIMIT_CONFIGS.UNFOLLOW_USER,
     );
     if (rateLimitError) {
       return rateLimitError;
@@ -387,15 +383,15 @@ export const DELETE = withErrorHandling(
         .where(
           and(
             eq(follows.followerId, user.userId),
-            eq(follows.followingId, targetId)
-          )
+            eq(follows.followingId, targetId),
+          ),
         )
         .limit(1);
 
       if (!follow) {
         throw new NotFoundError(
-          'Follow relationship',
-          `${user.userId}-${targetId}`
+          "Follow relationship",
+          `${user.userId}-${targetId}`,
         );
       }
 
@@ -407,27 +403,27 @@ export const DELETE = withErrorHandling(
         cachedDb.invalidateUserCache(user.userId), // Invalidate unfollower's cache
         cachedDb.invalidateUserCache(targetId), // Invalidate target's cache
       ]).catch((error) => {
-        logger.warn('Failed to invalidate user cache after unfollow', {
+        logger.warn("Failed to invalidate user cache after unfollow", {
           error,
         });
       });
 
       logger.info(
-        'User unfollowed successfully',
+        "User unfollowed successfully",
         { userId: user.userId, targetId },
-        'DELETE /api/users/[userId]/follow'
+        "DELETE /api/users/[userId]/follow",
       );
 
       // Track user unfollowed event
-      trackServerEvent(user.userId, 'user_unfollowed', {
+      trackServerEvent(user.userId, "user_unfollowed", {
         targetUserId: targetId,
-        targetType: 'user',
+        targetType: "user",
       }).catch((error) => {
-        logger.warn('Failed to track user_unfollowed event', { error });
+        logger.warn("Failed to track user_unfollowed event", { error });
       });
 
       return successResponse({
-        message: 'Unfollowed successfully',
+        message: "Unfollowed successfully",
       });
     }
     // Target is an actor (NPC) - use UserActorFollow model
@@ -437,13 +433,13 @@ export const DELETE = withErrorHandling(
       .where(
         and(
           eq(userActorFollows.userId, user.userId),
-          eq(userActorFollows.actorId, targetId)
-        )
+          eq(userActorFollows.actorId, targetId),
+        ),
       )
       .limit(1);
 
     if (!existingUserActorFollow) {
-      throw new NotFoundError('Follow status', `${user.userId}-${targetId}`);
+      throw new NotFoundError("Follow status", `${user.userId}-${targetId}`);
     }
 
     await db
@@ -452,29 +448,29 @@ export const DELETE = withErrorHandling(
 
     // Invalidate cache for the user to update following count
     await cachedDb.invalidateUserCache(user.userId).catch((error) => {
-      logger.warn('Failed to invalidate user cache after actor unfollow', {
+      logger.warn("Failed to invalidate user cache after actor unfollow", {
         error,
       });
     });
 
     logger.info(
-      'Actor unfollowed successfully',
+      "Actor unfollowed successfully",
       { userId: user.userId, npcId: targetId },
-      'DELETE /api/users/[userId]/follow'
+      "DELETE /api/users/[userId]/follow",
     );
 
     // Track actor unfollowed event
-    trackServerEvent(user.userId, 'user_unfollowed', {
+    trackServerEvent(user.userId, "user_unfollowed", {
       targetUserId: targetId,
-      targetType: 'actor',
+      targetType: "actor",
     }).catch((error) => {
-      logger.warn('Failed to track user_unfollowed event', { error });
+      logger.warn("Failed to track user_unfollowed event", { error });
     });
 
     return successResponse({
-      message: 'Unfollowed successfully',
+      message: "Unfollowed successfully",
     });
-  }
+  },
 );
 
 /**
@@ -484,7 +480,7 @@ export const DELETE = withErrorHandling(
 export const GET = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ userId: string }> }
+    context: { params: Promise<{ userId: string }> },
   ) => {
     // Optional authentication - if not authenticated, return false
     const authUser = await authenticate(request).catch(() => null);
@@ -511,15 +507,15 @@ export const GET = withErrorHandling(
         .where(
           and(
             eq(follows.followerId, authUser.userId),
-            eq(follows.followingId, targetId)
-          )
+            eq(follows.followingId, targetId),
+          ),
         )
         .limit(1);
 
       logger.info(
-        'Follow status checked',
+        "Follow status checked",
         { userId: authUser.userId, targetId, isFollowing: !!follow },
-        'GET /api/users/[userId]/follow'
+        "GET /api/users/[userId]/follow",
       );
 
       return successResponse({
@@ -536,16 +532,16 @@ export const GET = withErrorHandling(
         .where(
           and(
             eq(userActorFollows.userId, authUser.userId),
-            eq(userActorFollows.actorId, targetId)
-          )
+            eq(userActorFollows.actorId, targetId),
+          ),
         )
         .limit(1);
 
       const isFollowing = !!userActorFollow;
       logger.info(
-        'Actor follow status checked',
+        "Actor follow status checked",
         { userId: authUser.userId, npcId: targetId, isFollowing },
-        'GET /api/users/[userId]/follow'
+        "GET /api/users/[userId]/follow",
       );
 
       return successResponse({
@@ -555,13 +551,13 @@ export const GET = withErrorHandling(
     // Neither user nor actor found - return false for isFollowing
     // This prevents errors when checking follow status for non-existent profiles
     logger.info(
-      'Follow status checked for non-existent target',
+      "Follow status checked for non-existent target",
       { userId: authUser.userId, targetId },
-      'GET /api/users/[userId]/follow'
+      "GET /api/users/[userId]/follow",
     );
 
     return successResponse({
       isFollowing: false,
     });
-  }
+  },
 );

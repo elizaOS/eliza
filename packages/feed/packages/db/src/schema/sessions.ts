@@ -8,7 +8,7 @@
  * @module sessions
  */
 
-import { relations } from 'drizzle-orm';
+import { relations } from "drizzle-orm";
 import {
   index,
   integer,
@@ -16,8 +16,8 @@ import {
   text,
   timestamp,
   unique,
-} from 'drizzle-orm/pg-core';
-import { users } from './users';
+} from "drizzle-orm/pg-core";
+import { users } from "./users";
 
 /**
  * UserSession - Tracks individual user sessions
@@ -33,53 +33,53 @@ import { users } from './users';
  * 4. endedAt is set by cleanup job or next session creation
  */
 export const userSessions = pgTable(
-  'UserSession',
+  "UserSession",
   {
-    id: text('id').primaryKey(),
+    id: text("id").primaryKey(),
 
     // User who owns this session
-    userId: text('userId').notNull(),
+    userId: text("userId").notNull(),
 
     // Client-generated UUID to handle concurrent tabs
     // Stored in sessionStorage, unique per browser tab
-    sessionId: text('sessionId').notNull(),
+    sessionId: text("sessionId").notNull(),
 
     // Session timing
-    startedAt: timestamp('startedAt', { mode: 'date' }).notNull(),
-    lastActiveAt: timestamp('lastActiveAt', { mode: 'date' }).notNull(),
-    endedAt: timestamp('endedAt', { mode: 'date' }), // NULL = ongoing session
+    startedAt: timestamp("startedAt", { mode: "date" }).notNull(),
+    lastActiveAt: timestamp("lastActiveAt", { mode: "date" }).notNull(),
+    endedAt: timestamp("endedAt", { mode: "date" }), // NULL = ongoing session
 
     // Optional device information (hashed/anonymized)
-    deviceType: text('deviceType'), // 'desktop', 'mobile', 'tablet'
-    userAgent: text('userAgent'),
-    ipHash: text('ipHash'), // SHA-256 hash for privacy
+    deviceType: text("deviceType"), // 'desktop', 'mobile', 'tablet'
+    userAgent: text("userAgent"),
+    ipHash: text("ipHash"), // SHA-256 hash for privacy
 
     // Activity counters
-    pageCount: integer('pageCount').notNull().default(0),
-    heartbeatCount: integer('heartbeatCount').notNull().default(1),
+    pageCount: integer("pageCount").notNull().default(0),
+    heartbeatCount: integer("heartbeatCount").notNull().default(1),
 
     // Timestamps
-    createdAt: timestamp('createdAt', { mode: 'date' }).notNull().defaultNow(),
+    createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
   },
   (table) => [
     // Find sessions by user
-    index('UserSession_userId_startedAt_idx').on(table.userId, table.startedAt),
+    index("UserSession_userId_startedAt_idx").on(table.userId, table.startedAt),
 
     // Find active sessions (endedAt is null)
-    index('UserSession_userId_endedAt_idx').on(table.userId, table.endedAt),
+    index("UserSession_userId_endedAt_idx").on(table.userId, table.endedAt),
 
     // Find sessions by time range
-    index('UserSession_startedAt_idx').on(table.startedAt),
+    index("UserSession_startedAt_idx").on(table.startedAt),
 
     // Find sessions to close (lastActiveAt older than threshold)
-    index('UserSession_lastActiveAt_idx').on(table.lastActiveAt),
+    index("UserSession_lastActiveAt_idx").on(table.lastActiveAt),
 
     // Index for looking up active sessions by sessionId (for heartbeat updates)
     // Note: sessionId is client-generated UUID stored in sessionStorage per browser tab.
     // Same sessionId can have multiple sessions (one active, many ended) as sessions
     // expire and restart. We look up by sessionId + endedAt IS NULL in the handler.
-    index('UserSession_sessionId_idx').on(table.sessionId),
-  ]
+    index("UserSession_sessionId_idx").on(table.sessionId),
+  ],
 );
 
 // Relations
@@ -102,42 +102,42 @@ export type NewUserSession = typeof userSessions.$inferInsert;
  * scanning large activity tables.
  */
 export const userActivityLogs = pgTable(
-  'UserActivityLog',
+  "UserActivityLog",
   {
-    id: text('id').primaryKey(),
+    id: text("id").primaryKey(),
 
-    userId: text('userId').notNull(),
+    userId: text("userId").notNull(),
 
     // Activity type: trade, post, comment, message, reaction, login, session
-    activityType: text('activityType').notNull(),
+    activityType: text("activityType").notNull(),
 
     // Truncated to day for efficient cohort queries
-    activityDate: timestamp('activityDate', { mode: 'date' }).notNull(),
+    activityDate: timestamp("activityDate", { mode: "date" }).notNull(),
 
-    createdAt: timestamp('createdAt', { mode: 'date' }).notNull().defaultNow(),
+    createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
   },
   (table) => [
     // Unique: one row per user per activity type per day
-    unique('UserActivityLog_userId_activityDate_activityType_idx').on(
+    unique("UserActivityLog_userId_activityDate_activityType_idx").on(
       table.userId,
       table.activityDate,
-      table.activityType
+      table.activityType,
     ),
 
     // Find all activity on a date (for cohort calculations)
-    index('UserActivityLog_activityDate_idx').on(table.activityDate),
+    index("UserActivityLog_activityDate_idx").on(table.activityDate),
 
     // Find user's activity history
-    index('UserActivityLog_userId_activityDate_idx').on(
+    index("UserActivityLog_userId_activityDate_idx").on(
       table.userId,
-      table.activityDate
+      table.activityDate,
     ),
     // Lifetime counts by activity type (no activityDate in predicate)
-    index('UserActivityLog_userId_activityType_idx').on(
+    index("UserActivityLog_userId_activityType_idx").on(
       table.userId,
-      table.activityType
+      table.activityType,
     ),
-  ]
+  ],
 );
 
 // Relations
@@ -148,7 +148,7 @@ export const userActivityLogsRelations = relations(
       fields: [userActivityLogs.userId],
       references: [users.id],
     }),
-  })
+  }),
 );
 
 // Type exports
@@ -162,56 +162,56 @@ export type NewUserActivityLog = typeof userActivityLogs.$inferInsert;
  * BalanceTransaction which only logs successful trades.
  */
 export const tradeAttempts = pgTable(
-  'TradeAttempt',
+  "TradeAttempt",
   {
-    id: text('id').primaryKey(),
+    id: text("id").primaryKey(),
 
-    userId: text('userId').notNull(),
+    userId: text("userId").notNull(),
 
     // Trade type from FEE_CONFIG.FEE_TYPES
-    tradeType: text('tradeType').notNull(), // 'pred_buy', 'pred_sell', 'perp_open', 'perp_close'
+    tradeType: text("tradeType").notNull(), // 'pred_buy', 'pred_sell', 'perp_open', 'perp_close'
 
     // Context
-    marketId: text('marketId'), // For prediction markets
-    ticker: text('ticker'), // For perpetuals
+    marketId: text("marketId"), // For prediction markets
+    ticker: text("ticker"), // For perpetuals
 
     // Amount attempted
-    amount: text('amount').notNull(), // Stored as text for precision
+    amount: text("amount").notNull(), // Stored as text for precision
 
     // Outcome
-    outcome: text('outcome').notNull(), // 'success', 'failed', 'rejected'
-    failureReason: text('failureReason'), // Human-readable error message
-    failureCode: text('failureCode'), // Machine-readable code for categorization
+    outcome: text("outcome").notNull(), // 'success', 'failed', 'rejected'
+    failureReason: text("failureReason"), // Human-readable error message
+    failureCode: text("failureCode"), // Machine-readable code for categorization
 
     // Performance
-    durationMs: integer('durationMs'), // Time from attempt start to completion
-    requestId: text('requestId'), // Correlation ID for debugging
+    durationMs: integer("durationMs"), // Time from attempt start to completion
+    requestId: text("requestId"), // Correlation ID for debugging
 
-    createdAt: timestamp('createdAt', { mode: 'date' }).notNull().defaultNow(),
+    createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
   },
   (table) => [
     // Find attempts by user
-    index('TradeAttempt_userId_createdAt_idx').on(
+    index("TradeAttempt_userId_createdAt_idx").on(
       table.userId,
-      table.createdAt
+      table.createdAt,
     ),
 
     // Calculate success rate by outcome
-    index('TradeAttempt_outcome_createdAt_idx').on(
+    index("TradeAttempt_outcome_createdAt_idx").on(
       table.outcome,
-      table.createdAt
+      table.createdAt,
     ),
 
     // Time range queries
-    index('TradeAttempt_createdAt_idx').on(table.createdAt),
+    index("TradeAttempt_createdAt_idx").on(table.createdAt),
 
     // Success rate by trade type
-    index('TradeAttempt_tradeType_outcome_createdAt_idx').on(
+    index("TradeAttempt_tradeType_outcome_createdAt_idx").on(
       table.tradeType,
       table.outcome,
-      table.createdAt
+      table.createdAt,
     ),
-  ]
+  ],
 );
 
 // Relations
@@ -228,15 +228,15 @@ export type NewTradeAttempt = typeof tradeAttempts.$inferInsert;
 
 // Failure codes for categorization
 export const TRADE_FAILURE_CODES = {
-  INSUFFICIENT_BALANCE: 'INSUFFICIENT_BALANCE',
-  MARKET_CLOSED: 'MARKET_CLOSED',
-  MARKET_RESOLVED: 'MARKET_RESOLVED',
-  PRICE_SLIPPAGE: 'PRICE_SLIPPAGE',
-  POSITION_LIMIT: 'POSITION_LIMIT',
-  RATE_LIMITED: 'RATE_LIMITED',
-  VALIDATION_ERROR: 'VALIDATION_ERROR',
-  NETWORK_ERROR: 'NETWORK_ERROR',
-  UNKNOWN: 'UNKNOWN',
+  INSUFFICIENT_BALANCE: "INSUFFICIENT_BALANCE",
+  MARKET_CLOSED: "MARKET_CLOSED",
+  MARKET_RESOLVED: "MARKET_RESOLVED",
+  PRICE_SLIPPAGE: "PRICE_SLIPPAGE",
+  POSITION_LIMIT: "POSITION_LIMIT",
+  RATE_LIMITED: "RATE_LIMITED",
+  VALIDATION_ERROR: "VALIDATION_ERROR",
+  NETWORK_ERROR: "NETWORK_ERROR",
+  UNKNOWN: "UNKNOWN",
 } as const;
 
 export type TradeFailureCode =

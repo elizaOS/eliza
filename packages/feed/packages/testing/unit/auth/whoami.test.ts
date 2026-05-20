@@ -13,29 +13,29 @@ import {
   expect,
   it,
   mock,
-} from 'bun:test';
-import { NextRequest } from 'next/server';
+} from "bun:test";
+import { NextRequest } from "next/server";
 
-const _actualApi = await import('@feed/api');
-const _actualDb = await import('@feed/db');
-const _actualShared = await import('@feed/shared');
+const _actualApi = await import("@feed/api");
+const _actualDb = await import("@feed/db");
+const _actualShared = await import("@feed/shared");
 
 // Mock user data (minimal: only id and username)
 const mockUsers = new Map([
-  ['user-123', { id: 'user-123', username: 'testuser' }],
-  ['user-456', { id: 'user-456', username: 'anotheruser' }],
+  ["user-123", { id: "user-123", username: "testuser" }],
+  ["user-456", { id: "user-456", username: "anotheruser" }],
 ]);
 
 // Mock validateUserApiKey
 const mockValidateUserApiKey = mock(async (apiKey: string) => {
-  if (apiKey === 'bab_live_valid123') {
-    return { userId: 'user-123' };
+  if (apiKey === "bab_live_valid123") {
+    return { userId: "user-123" };
   }
-  if (apiKey === 'bab_live_valid456') {
-    return { userId: 'user-456' };
+  if (apiKey === "bab_live_valid456") {
+    return { userId: "user-456" };
   }
-  if (apiKey === 'bab_live_deleted_user') {
-    return { userId: 'user-deleted' }; // User doesn't exist in DB
+  if (apiKey === "bab_live_deleted_user") {
+    return { userId: "user-deleted" }; // User doesn't exist in DB
   }
   // Invalid/expired/revoked keys return null
   return null;
@@ -50,28 +50,28 @@ let GET: (request: NextRequest) => Promise<Response>;
 const createMockRequest = (apiKey: string | null): NextRequest => {
   const headers = new Headers();
   if (apiKey) {
-    headers.set('x-feed-api-key', apiKey);
+    headers.set("x-feed-api-key", apiKey);
   }
-  return new NextRequest('http://localhost/api/auth/whoami', { headers });
+  return new NextRequest("http://localhost/api/auth/whoami", { headers });
 };
 
-describe('/api/auth/whoami endpoint', () => {
+describe("/api/auth/whoami endpoint", () => {
   beforeAll(async () => {
-    mock.module('@feed/api', () => ({
+    mock.module("@feed/api", () => ({
       ..._actualApi,
       validateUserApiKey: mockValidateUserApiKey,
       withErrorHandling: (handler: (req: unknown) => Promise<unknown>) =>
         handler,
     }));
 
-    mock.module('@feed/db', () => ({
+    mock.module("@feed/db", () => ({
       ..._actualDb,
       db: {
         select: (_fields: { id: unknown; username: unknown }) => ({
           from: () => ({
             where: (_condition: unknown) => ({
               limit: () => {
-                const user = mockUsers.get(lastQueriedUserId || '');
+                const user = mockUsers.get(lastQueriedUserId || "");
                 return Promise.resolve(user ? [user] : []);
               },
             }),
@@ -83,12 +83,12 @@ describe('/api/auth/whoami endpoint', () => {
         return { field, value };
       },
       users: {
-        id: 'users.id',
-        username: 'users.username',
+        id: "users.id",
+        username: "users.username",
       },
     }));
 
-    mock.module('@feed/shared', () => ({
+    mock.module("@feed/shared", () => ({
       ..._actualShared,
       logger: {
         debug: () => {},
@@ -99,7 +99,7 @@ describe('/api/auth/whoami endpoint', () => {
     }));
 
     ({ GET } = await import(
-      '../../../../apps/web/src/app/api/auth/whoami/route'
+      "../../../../apps/web/src/app/api/auth/whoami/route"
     ));
   });
 
@@ -113,67 +113,67 @@ describe('/api/auth/whoami endpoint', () => {
     mock.restore();
   });
 
-  describe('Valid API key scenarios', () => {
-    it('should return correct user info for valid API key', async () => {
-      const request = createMockRequest('bab_live_valid123');
+  describe("Valid API key scenarios", () => {
+    it("should return correct user info for valid API key", async () => {
+      const request = createMockRequest("bab_live_valid123");
       const response = await GET(request);
       const body = await response.json();
 
-      expect(mockValidateUserApiKey).toHaveBeenCalledWith('bab_live_valid123');
+      expect(mockValidateUserApiKey).toHaveBeenCalledWith("bab_live_valid123");
       expect(response.status).toBe(200);
-      expect(response.headers.get('Cache-Control')).toBe('no-store');
-      expect(body).toEqual({ userId: 'user-123', username: 'testuser' });
+      expect(response.headers.get("Cache-Control")).toBe("no-store");
+      expect(body).toEqual({ userId: "user-123", username: "testuser" });
     });
 
-    it('should return correct user info for different valid API key', async () => {
-      const request = createMockRequest('bab_live_valid456');
+    it("should return correct user info for different valid API key", async () => {
+      const request = createMockRequest("bab_live_valid456");
       const response = await GET(request);
       const body = await response.json();
 
-      expect(mockValidateUserApiKey).toHaveBeenCalledWith('bab_live_valid456');
+      expect(mockValidateUserApiKey).toHaveBeenCalledWith("bab_live_valid456");
       expect(response.status).toBe(200);
-      expect(response.headers.get('Cache-Control')).toBe('no-store');
-      expect(body).toEqual({ userId: 'user-456', username: 'anotheruser' });
+      expect(response.headers.get("Cache-Control")).toBe("no-store");
+      expect(body).toEqual({ userId: "user-456", username: "anotheruser" });
     });
   });
 
-  describe('Invalid API key scenarios', () => {
-    it('should return 401 for invalid API key', async () => {
-      const request = createMockRequest('bab_live_invalid_key');
+  describe("Invalid API key scenarios", () => {
+    it("should return 401 for invalid API key", async () => {
+      const request = createMockRequest("bab_live_invalid_key");
       const response = await GET(request);
       const body = await response.json();
 
       expect(mockValidateUserApiKey).toHaveBeenCalledWith(
-        'bab_live_invalid_key'
+        "bab_live_invalid_key",
       );
       expect(response.status).toBe(401);
-      expect(response.headers.get('Cache-Control')).toBe('no-store');
-      expect(body).toEqual({ error: 'Invalid or expired API key' });
+      expect(response.headers.get("Cache-Control")).toBe("no-store");
+      expect(body).toEqual({ error: "Invalid or expired API key" });
     });
 
-    it('should return 401 for expired API key', async () => {
-      const request = createMockRequest('bab_live_expired_key_xyz');
+    it("should return 401 for expired API key", async () => {
+      const request = createMockRequest("bab_live_expired_key_xyz");
       const response = await GET(request);
       const body = await response.json();
 
       expect(response.status).toBe(401);
-      expect(response.headers.get('Cache-Control')).toBe('no-store');
-      expect(body).toEqual({ error: 'Invalid or expired API key' });
+      expect(response.headers.get("Cache-Control")).toBe("no-store");
+      expect(body).toEqual({ error: "Invalid or expired API key" });
     });
 
-    it('should return 401 for revoked API key', async () => {
-      const request = createMockRequest('bab_live_revoked_key_abc');
+    it("should return 401 for revoked API key", async () => {
+      const request = createMockRequest("bab_live_revoked_key_abc");
       const response = await GET(request);
       const body = await response.json();
 
       expect(response.status).toBe(401);
-      expect(response.headers.get('Cache-Control')).toBe('no-store');
-      expect(body).toEqual({ error: 'Invalid or expired API key' });
+      expect(response.headers.get("Cache-Control")).toBe("no-store");
+      expect(body).toEqual({ error: "Invalid or expired API key" });
     });
   });
 
-  describe('Missing API key scenarios', () => {
-    it('should return 401 when API key header is missing', async () => {
+  describe("Missing API key scenarios", () => {
+    it("should return 401 when API key header is missing", async () => {
       const request = createMockRequest(null);
       const response = await GET(request);
       const body = await response.json();
@@ -181,63 +181,63 @@ describe('/api/auth/whoami endpoint', () => {
       // Should not even call validateUserApiKey
       expect(mockValidateUserApiKey).not.toHaveBeenCalled();
       expect(response.status).toBe(401);
-      expect(response.headers.get('Cache-Control')).toBe('no-store');
-      expect(body).toEqual({ error: 'X-Feed-Api-Key header is required' });
+      expect(response.headers.get("Cache-Control")).toBe("no-store");
+      expect(body).toEqual({ error: "X-Feed-Api-Key header is required" });
     });
 
-    it('should return 401 when API key header is empty string', async () => {
-      const request = createMockRequest('');
+    it("should return 401 when API key header is empty string", async () => {
+      const request = createMockRequest("");
       const response = await GET(request);
       const body = await response.json();
 
       // Empty string is falsy, should not call validateUserApiKey
       expect(mockValidateUserApiKey).not.toHaveBeenCalled();
       expect(response.status).toBe(401);
-      expect(response.headers.get('Cache-Control')).toBe('no-store');
-      expect(body).toEqual({ error: 'X-Feed-Api-Key header is required' });
+      expect(response.headers.get("Cache-Control")).toBe("no-store");
+      expect(body).toEqual({ error: "X-Feed-Api-Key header is required" });
     });
   });
 
-  describe('User not found scenarios', () => {
-    it('should return 404 when API key is valid but user does not exist', async () => {
-      const request = createMockRequest('bab_live_deleted_user');
+  describe("User not found scenarios", () => {
+    it("should return 404 when API key is valid but user does not exist", async () => {
+      const request = createMockRequest("bab_live_deleted_user");
       const response = await GET(request);
       const body = await response.json();
 
       // API key validation passes
       expect(mockValidateUserApiKey).toHaveBeenCalledWith(
-        'bab_live_deleted_user'
+        "bab_live_deleted_user",
       );
       // But user lookup fails
       expect(response.status).toBe(404);
-      expect(response.headers.get('Cache-Control')).toBe('no-store');
-      expect(body).toEqual({ error: 'User not found' });
+      expect(response.headers.get("Cache-Control")).toBe("no-store");
+      expect(body).toEqual({ error: "User not found" });
     });
   });
 
-  describe('Security considerations', () => {
-    it('should only expose userId and username (minimal data)', async () => {
-      const request = createMockRequest('bab_live_valid123');
+  describe("Security considerations", () => {
+    it("should only expose userId and username (minimal data)", async () => {
+      const request = createMockRequest("bab_live_valid123");
       const response = await GET(request);
       const responseBody = await response.json();
 
       // Should only contain these two fields (minimal for contextId use case)
       expect(Object.keys(responseBody as object)).toEqual([
-        'userId',
-        'username',
+        "userId",
+        "username",
       ]);
 
       // Should not contain PII or sensitive fields
-      expect(responseBody).not.toHaveProperty('displayName');
-      expect(responseBody).not.toHaveProperty('email');
-      expect(responseBody).not.toHaveProperty('walletAddress');
-      expect(responseBody).not.toHaveProperty('apiKeys');
-      expect(responseBody).not.toHaveProperty('password');
-      expect(responseBody).not.toHaveProperty('bio');
+      expect(responseBody).not.toHaveProperty("displayName");
+      expect(responseBody).not.toHaveProperty("email");
+      expect(responseBody).not.toHaveProperty("walletAddress");
+      expect(responseBody).not.toHaveProperty("apiKeys");
+      expect(responseBody).not.toHaveProperty("password");
+      expect(responseBody).not.toHaveProperty("bio");
     });
 
-    it('should validate API key before any database queries', async () => {
-      const request = createMockRequest('bab_live_invalid_key');
+    it("should validate API key before any database queries", async () => {
+      const request = createMockRequest("bab_live_invalid_key");
       await GET(request);
 
       // Should call validateUserApiKey first
@@ -246,16 +246,16 @@ describe('/api/auth/whoami endpoint', () => {
       expect(lastQueriedUserId).toBeNull();
     });
 
-    it('should set Cache-Control: no-store header on all responses', async () => {
+    it("should set Cache-Control: no-store header on all responses", async () => {
       // Test success response
-      const successRequest = createMockRequest('bab_live_valid123');
+      const successRequest = createMockRequest("bab_live_valid123");
       const successResponse = await GET(successRequest);
-      expect(successResponse.headers.get('Cache-Control')).toBe('no-store');
+      expect(successResponse.headers.get("Cache-Control")).toBe("no-store");
 
       // Test error response
-      const errorRequest = createMockRequest('bab_live_invalid');
+      const errorRequest = createMockRequest("bab_live_invalid");
       const errorResponse = await GET(errorRequest);
-      expect(errorResponse.headers.get('Cache-Control')).toBe('no-store');
+      expect(errorResponse.headers.get("Cache-Control")).toBe("no-store");
     });
   });
 });

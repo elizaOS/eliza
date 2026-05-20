@@ -1,12 +1,8 @@
-'use client';
+"use client";
 
-import {
-  FEED_POINTS_SYMBOL,
-  cn,
-  formatCompactCurrency,
-} from '@feed/shared';
-import { Award, DollarSign, RefreshCw, TrendingUp, Users } from 'lucide-react';
-import { useCallback, useEffect, useState, useTransition } from 'react';
+import { cn, FEED_POINTS_SYMBOL, formatCompactCurrency } from "@feed/shared";
+import { Award, DollarSign, RefreshCw, TrendingUp, Users } from "lucide-react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 import {
   CartesianGrid,
   Line,
@@ -15,11 +11,11 @@ import {
   Tooltip,
   XAxis,
   YAxis,
-} from 'recharts';
-import { z } from 'zod';
-import { Avatar } from '@/components/shared/Avatar';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { apiUrl } from '@/utils/api-url';
+} from "recharts";
+import { z } from "zod";
+import { Avatar } from "@/components/shared/Avatar";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { apiUrl } from "@/utils/api-url";
 
 /**
  * Fee statistics schema for validation.
@@ -40,7 +36,7 @@ const FeeStatsSchema = z.object({
       platformFees: z.number(),
       referrerFees: z.number(),
       tradeCount: z.number(),
-    })
+    }),
   ),
   topFeePayers: z.array(
     z.object({
@@ -51,7 +47,7 @@ const FeeStatsSchema = z.object({
       isNPC: z.boolean(),
       totalFees: z.number(),
       tradeCount: z.number(),
-    })
+    }),
   ),
   topReferralEarners: z.array(
     z.object({
@@ -61,7 +57,7 @@ const FeeStatsSchema = z.object({
       profileImageUrl: z.string().nullable(),
       totalEarned: z.number(),
       referralCount: z.number(),
-    })
+    }),
   ),
   recentFees: z.array(
     z.object({
@@ -76,14 +72,14 @@ const FeeStatsSchema = z.object({
       platformFee: z.number(),
       referrerFee: z.number(),
       createdAt: z.string(),
-    })
+    }),
   ),
   feeTrend: z.array(
     z.object({
       date: z.string(),
       totalFees: z.number(),
       tradeCount: z.number(),
-    })
+    }),
   ),
 });
 type FeeStats = z.infer<typeof FeeStatsSchema>;
@@ -115,7 +111,7 @@ export function FeesTab() {
 
   const fetchStats = useCallback(() => {
     startRefresh(async () => {
-      const response = await fetch(apiUrl('/api/admin/fees'));
+      const response = await fetch(apiUrl("/api/admin/fees"));
       if (!response.ok) {
         throw new Error(`Failed to fetch fee statistics: ${response.status}`);
       }
@@ -142,14 +138,14 @@ export function FeesTab() {
 
   const formatTradeType = (type: string) => {
     const typeMap: Record<string, string> = {
-      pred_buy: 'Prediction Buy',
-      pred_sell: 'Prediction Sell',
-      perp_open: 'Perp Open',
-      perp_close: 'Perp Close',
-      npc_pred_buy: 'NPC Prediction Buy',
-      npc_pred_sell: 'NPC Prediction Sell',
-      npc_perp_open: 'NPC Perp Open',
-      npc_perp_close: 'NPC Perp Close',
+      pred_buy: "Prediction Buy",
+      pred_sell: "Prediction Sell",
+      perp_open: "Perp Open",
+      perp_close: "Perp Close",
+      npc_pred_buy: "NPC Prediction Buy",
+      npc_pred_sell: "NPC Prediction Sell",
+      npc_perp_open: "NPC Perp Open",
+      npc_perp_close: "NPC Perp Close",
     };
     return typeMap[type] || type;
   };
@@ -159,26 +155,26 @@ export function FeesTab() {
     label,
     value,
     subtitle,
-    color = 'primary',
+    color = "primary",
   }: {
     icon: React.ComponentType<{ className?: string }>;
     label: string;
     value: string | number;
     subtitle?: string;
-    color?: 'primary' | 'green' | 'blue' | 'orange' | 'purple';
+    color?: "primary" | "green" | "blue" | "orange" | "purple";
   }) => {
     const colorClasses = {
-      primary: 'text-primary',
-      green: 'text-green-500',
-      blue: 'text-blue-500',
-      orange: 'text-orange-500',
-      purple: 'text-purple-500',
+      primary: "text-primary",
+      green: "text-green-500",
+      blue: "text-blue-500",
+      orange: "text-orange-500",
+      purple: "text-purple-500",
     };
 
     return (
       <div className="rounded-lg border border-border bg-card p-4">
         <div className="mb-2 flex items-center gap-3">
-          <Icon className={cn('h-5 w-5', colorClasses[color])} />
+          <Icon className={cn("h-5 w-5", colorClasses[color])} />
           <span className="text-muted-foreground text-sm">{label}</span>
         </div>
         <div className="font-bold text-2xl">{value}</div>
@@ -202,7 +198,7 @@ export function FeesTab() {
   if (error || !stats) {
     return (
       <div className="p-8 text-center text-red-500">
-        {error || 'Failed to load fee statistics'}
+        {error || "Failed to load fee statistics"}
       </div>
     );
   }
@@ -223,7 +219,7 @@ export function FeesTab() {
           className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
         >
           <RefreshCw
-            className={cn('h-4 w-4', isRefreshing && 'animate-spin')}
+            className={cn("h-4 w-4", isRefreshing && "animate-spin")}
           />
           Refresh
         </button>
@@ -259,7 +255,7 @@ export function FeesTab() {
             stats.platformStats.totalTrades > 0
               ? stats.platformStats.totalFeesCollected /
                   stats.platformStats.totalTrades
-              : 0
+              : 0,
           )}
           subtitle="0.1% fee rate"
           color="purple"
@@ -277,9 +273,9 @@ export function FeesTab() {
               stroke="#888"
               fontSize={12}
               tickFormatter={(date) =>
-                new Date(date).toLocaleDateString('en-US', {
-                  month: 'short',
-                  day: 'numeric',
+                new Date(date).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
                 })
               }
             />
@@ -290,8 +286,8 @@ export function FeesTab() {
             />
             <Tooltip
               contentStyle={{
-                backgroundColor: '#1a1a1a',
-                border: '1px solid #333',
+                backgroundColor: "#1a1a1a",
+                border: "1px solid #333",
               }}
               labelFormatter={(date) => new Date(date).toLocaleDateString()}
               formatter={(value) => {
@@ -300,7 +296,7 @@ export function FeesTab() {
                   : Number(value ?? 0);
                 return [
                   `${FEED_POINTS_SYMBOL}${numericValue.toFixed(2)}`,
-                  'Fees',
+                  "Fees",
                 ];
               }}
             />
@@ -309,7 +305,7 @@ export function FeesTab() {
               dataKey="totalFees"
               stroke="#22c55e"
               strokeWidth={2}
-              dot={{ fill: '#22c55e', r: 4 }}
+              dot={{ fill: "#22c55e", r: 4 }}
             />
           </LineChart>
         </ResponsiveContainer>
@@ -453,7 +449,7 @@ export function FeesTab() {
                   )}
                 </div>
                 <div className="text-muted-foreground text-xs">
-                  {formatTradeType(fee.tradeType)} •{' '}
+                  {formatTradeType(fee.tradeType)} •{" "}
                   {new Date(fee.createdAt).toLocaleString()}
                 </div>
               </div>

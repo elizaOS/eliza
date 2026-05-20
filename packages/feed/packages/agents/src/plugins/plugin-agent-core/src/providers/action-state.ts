@@ -16,7 +16,7 @@ import type {
   Provider,
   ProviderResult,
   State,
-} from '@elizaos/core';
+} from "@elizaos/core";
 
 /**
  * Extended action result with tracking metadata
@@ -34,12 +34,12 @@ type ActionTraceResult = ActionResult & {
  */
 function formatActionResults(results: ActionTraceResult[]): string {
   if (results.length === 0) {
-    return 'No actions taken yet in this request.';
+    return "No actions taken yet in this request.";
   }
 
   return results
     .map((result, index) => {
-      const status = result.success ? '✓ Success' : '✗ Failed';
+      const status = result.success ? "✓ Success" : "✗ Failed";
       let output = `${index + 1}. **${result.actionType}** - ${status}`;
 
       // Show text (brief status)
@@ -56,13 +56,13 @@ function formatActionResults(results: ActionTraceResult[]): string {
       if (result.values && Object.keys(result.values).length > 0) {
         const valuesStr = Object.entries(result.values)
           .map(([key, value]) => `   - ${key}: ${JSON.stringify(value)}`)
-          .join('\n');
+          .join("\n");
         output += `\n   Values:\n${valuesStr}`;
       }
 
       return output;
     })
-    .join('\n\n');
+    .join("\n\n");
 }
 
 /**
@@ -72,13 +72,13 @@ function formatActionResults(results: ActionTraceResult[]): string {
  * Used by the LLM to make informed decisions about next steps.
  */
 export const actionStateProvider: Provider = {
-  name: 'ACTION_STATE',
-  description: 'Previous action results from the current execution',
+  name: "ACTION_STATE",
+  description: "Previous action results from the current execution",
 
   get: async (
     _runtime: IAgentRuntime,
     _message: Memory,
-    state: State
+    state: State,
   ): Promise<ProviderResult> => {
     // Get action results from state (populated during multi-step execution)
     const actionResults = (state.data?.actionResults ||
@@ -105,7 +105,7 @@ export const actionStateProvider: Provider = {
       text:
         actionResults.length > 0
           ? `# Actions Taken This Request\n\n${formattedResults}`
-          : 'No actions taken yet.',
+          : "No actions taken yet.",
     };
   },
 };

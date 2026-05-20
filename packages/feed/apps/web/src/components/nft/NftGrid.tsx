@@ -1,10 +1,10 @@
-'use client';
+"use client";
 
-import type { NftSummary } from '@/types/nft';
-import { NftCard } from './NftCard';
+import type { NftSummary } from "@/types/nft";
+import { NftCard } from "./NftCard";
 
 const GRID_CLASS =
-  'grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5';
+  "grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5";
 const SKELETON_COUNT = 15;
 
 interface NftGridProps {

@@ -9,13 +9,13 @@
  * - Message routing throughput
  */
 
-import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import {
   CommunicationHub,
   ExternalAgentAdapter,
   getEventBus,
-} from '@feed/agents';
-import type { AgentCapabilities } from '@feed/shared';
+} from "@feed/agents";
+import type { AgentCapabilities } from "@feed/shared";
 
 // Performance thresholds
 const PERF_THRESHOLDS = {
@@ -28,7 +28,7 @@ const PERF_THRESHOLDS = {
 
 // Helper to measure execution time
 async function measureTime<T>(
-  fn: () => Promise<T>
+  fn: () => Promise<T>,
 ): Promise<{ result: T; duration: number }> {
   const start = performance.now();
   const result = await fn();
@@ -43,17 +43,17 @@ function generateTestAgent(index: number) {
     name: `Performance Test Agent ${index}`,
     description: `Agent ${index} for performance testing`,
     endpoint: `https://perf-agent-${index}.example.com/a2a`,
-    protocol: 'a2a' as const,
+    protocol: "a2a" as const,
     capabilities: {
-      actions: ['text-generation', 'analysis'],
-      version: '1.0.0',
+      actions: ["text-generation", "analysis"],
+      version: "1.0.0",
       skills: [`skill-${index}`],
       domains: [`domain-${index}`],
     } as AgentCapabilities,
   };
 }
 
-describe('Concurrent Agent Performance Tests', () => {
+describe("Concurrent Agent Performance Tests", () => {
   let adapter: ExternalAgentAdapter;
   let hub: CommunicationHub;
 
@@ -69,23 +69,23 @@ describe('Concurrent Agent Performance Tests', () => {
     hub.clearHistory();
   });
 
-  describe('Registration Performance', () => {
-    it('should handle 10 concurrent registrations within threshold', async () => {
+  describe("Registration Performance", () => {
+    it("should handle 10 concurrent registrations within threshold", async () => {
       const agentCount = 10;
       const agents = Array.from({ length: agentCount }, (_, i) =>
-        generateTestAgent(i)
+        generateTestAgent(i),
       );
 
       const { duration } = await measureTime(async () => {
         const registrations = agents.map(async (agent) => {
           // Simulate registration via API
           const response = await fetch(
-            'http://localhost:3000/api/agents/external/register',
+            "http://localhost:3000/api/agents/external/register",
             {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
               body: JSON.stringify(agent),
-            }
+            },
           );
           return response.json();
         });
@@ -96,29 +96,29 @@ describe('Concurrent Agent Performance Tests', () => {
       const avgTimePerAgent = duration / agentCount;
 
       console.log(
-        `Registered ${agentCount} agents in ${duration.toFixed(2)}ms`
+        `Registered ${agentCount} agents in ${duration.toFixed(2)}ms`,
       );
       console.log(`Average time per agent: ${avgTimePerAgent.toFixed(2)}ms`);
 
       expect(avgTimePerAgent).toBeLessThan(PERF_THRESHOLDS.maxRegistrationTime);
     });
 
-    it('should handle 50 concurrent registrations without errors', async () => {
+    it("should handle 50 concurrent registrations without errors", async () => {
       const agentCount = 50;
       const agents = Array.from({ length: agentCount }, (_, i) =>
-        generateTestAgent(100 + i)
+        generateTestAgent(100 + i),
       );
 
       const { result, duration } = await measureTime(async () => {
         const registrations = agents.map(async (agent) => {
           try {
             const response = await fetch(
-              'http://localhost:3000/api/agents/external/register',
+              "http://localhost:3000/api/agents/external/register",
               {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(agent),
-              }
+              },
             );
             const data = await response.json();
             return { success: data.success, status: response.status };
@@ -133,37 +133,37 @@ describe('Concurrent Agent Performance Tests', () => {
       const successCount = result.filter((r) => r.success).length;
 
       console.log(
-        `Registered ${successCount}/${agentCount} agents in ${duration.toFixed(2)}ms`
+        `Registered ${successCount}/${agentCount} agents in ${duration.toFixed(2)}ms`,
       );
 
       expect(successCount).toBeGreaterThanOrEqual(agentCount * 0.95); // 95% success rate
     });
   });
 
-  describe('Message Delivery Performance', () => {
-    it('should handle 100 concurrent messages within threshold', async () => {
+  describe("Message Delivery Performance", () => {
+    it("should handle 100 concurrent messages within threshold", async () => {
       const messageCount = 100;
 
       // Create mock connection for testing
       const mockConnection = {
-        id: 'perf-conn-1',
-        externalId: 'perf-agent-1',
-        endpoint: 'https://perf-agent.example.com/a2a',
-        protocol: 'a2a' as const,
+        id: "perf-conn-1",
+        externalId: "perf-agent-1",
+        endpoint: "https://perf-agent.example.com/a2a",
+        protocol: "a2a" as const,
         isHealthy: true,
       };
 
-      adapter['connections'].set('perf-agent-1', mockConnection);
+      adapter.connections.set("perf-agent-1", mockConnection);
 
       const { duration } = await measureTime(async () => {
         const messages = Array.from({ length: messageCount }, (_, i) =>
           hub.sendMessage(
-            'sender-agent',
-            'perf-agent-1',
-            'test-message',
+            "sender-agent",
+            "perf-agent-1",
+            "test-message",
             { index: i, content: `Test message ${i}` },
-            { priority: 'normal' }
-          )
+            { priority: "normal" },
+          ),
         );
 
         return Promise.all(messages);
@@ -174,17 +174,17 @@ describe('Concurrent Agent Performance Tests', () => {
 
       console.log(`Sent ${messageCount} messages in ${duration.toFixed(2)}ms`);
       console.log(
-        `Average time per message: ${avgTimePerMessage.toFixed(2)}ms`
+        `Average time per message: ${avgTimePerMessage.toFixed(2)}ms`,
       );
       console.log(`Throughput: ${throughput.toFixed(2)} messages/second`);
 
       expect(avgTimePerMessage).toBeLessThan(
-        PERF_THRESHOLDS.maxMessageDeliveryTime
+        PERF_THRESHOLDS.maxMessageDeliveryTime,
       );
       expect(throughput).toBeGreaterThan(PERF_THRESHOLDS.minThroughput);
     });
 
-    it('should maintain low latency under sustained load', async () => {
+    it("should maintain low latency under sustained load", async () => {
       const duration = 5000; // 5 seconds
       const messageInterval = 50; // Send message every 50ms
       const expectedMessages = duration / messageInterval;
@@ -200,10 +200,10 @@ describe('Concurrent Agent Performance Tests', () => {
 
         try {
           const response = await hub.sendMessage(
-            'load-test-sender',
-            'load-test-receiver',
-            'load-test',
-            { timestamp: Date.now(), index: sentMessages }
+            "load-test-sender",
+            "load-test-receiver",
+            "load-test",
+            { timestamp: Date.now(), index: sentMessages },
           );
 
           const messageEnd = performance.now();
@@ -228,7 +228,7 @@ describe('Concurrent Agent Performance Tests', () => {
       const minLatency = Math.min(...latencies);
       const successRate = (successCount / sentMessages) * 100;
 
-      console.log('Sustained load test results:');
+      console.log("Sustained load test results:");
       console.log(`  Sent: ${sentMessages} messages`);
       console.log(`  Success rate: ${successRate.toFixed(2)}%`);
       console.log(`  Avg latency: ${avgLatency.toFixed(2)}ms`);
@@ -241,8 +241,8 @@ describe('Concurrent Agent Performance Tests', () => {
     });
   });
 
-  describe('Discovery Performance', () => {
-    it('should handle concurrent discovery queries', async () => {
+  describe("Discovery Performance", () => {
+    it("should handle concurrent discovery queries", async () => {
       const queryCount = 20;
 
       const { duration } = await measureTime(async () => {
@@ -250,12 +250,12 @@ describe('Concurrent Agent Performance Tests', () => {
           fetch(
             `http://localhost:3000/api/agents/external/discover?limit=10&offset=${i * 10}`,
             {
-              method: 'GET',
+              method: "GET",
               headers: {
-                Authorization: 'Bearer test-api-key',
+                Authorization: "Bearer test-api-key",
               },
-            }
-          ).then((r) => r.json())
+            },
+          ).then((r) => r.json()),
         );
 
         return Promise.all(queries);
@@ -264,7 +264,7 @@ describe('Concurrent Agent Performance Tests', () => {
       const avgTimePerQuery = duration / queryCount;
 
       console.log(
-        `Executed ${queryCount} discovery queries in ${duration.toFixed(2)}ms`
+        `Executed ${queryCount} discovery queries in ${duration.toFixed(2)}ms`,
       );
       console.log(`Average time per query: ${avgTimePerQuery.toFixed(2)}ms`);
 
@@ -272,14 +272,14 @@ describe('Concurrent Agent Performance Tests', () => {
     });
   });
 
-  describe('Trust Calculation Performance', () => {
-    it('should calculate trust scores efficiently', async () => {
+  describe("Trust Calculation Performance", () => {
+    it("should calculate trust scores efficiently", async () => {
       const connectionCount = 100;
       const connections = Array.from({ length: connectionCount }, (_, i) => ({
         id: `conn-${i}`,
         externalId: `agent-${i}`,
         endpoint: `https://agent-${i}.example.com`,
-        protocol: 'a2a' as const,
+        protocol: "a2a" as const,
         isHealthy: i % 2 === 0, // 50% healthy
         lastConnected: i % 4 === 0 ? new Date() : undefined,
       }));
@@ -291,32 +291,32 @@ describe('Concurrent Agent Performance Tests', () => {
       const avgTimePerCalculation = duration / connectionCount;
 
       console.log(
-        `Calculated ${connectionCount} trust scores in ${duration.toFixed(2)}ms`
+        `Calculated ${connectionCount} trust scores in ${duration.toFixed(2)}ms`,
       );
       console.log(
-        `Average time per calculation: ${avgTimePerCalculation.toFixed(2)}ms`
+        `Average time per calculation: ${avgTimePerCalculation.toFixed(2)}ms`,
       );
 
       expect(avgTimePerCalculation).toBeLessThan(
-        PERF_THRESHOLDS.maxTrustCalculationTime
+        PERF_THRESHOLDS.maxTrustCalculationTime,
       );
     });
   });
 
-  describe('Message Routing Performance', () => {
-    it('should route messages efficiently across protocols', async () => {
+  describe("Message Routing Performance", () => {
+    it("should route messages efficiently across protocols", async () => {
       const messageCount = 50;
 
       // Create mock connections for different protocols
-      const protocols: Array<'a2a' | 'mcp' | 'agent0' | 'custom'> = [
-        'a2a',
-        'mcp',
-        'agent0',
-        'custom',
+      const protocols: Array<"a2a" | "mcp" | "agent0" | "custom"> = [
+        "a2a",
+        "mcp",
+        "agent0",
+        "custom",
       ];
 
       protocols.forEach((protocol) => {
-        adapter['connections'].set(`${protocol}-agent`, {
+        adapter.connections.set(`${protocol}-agent`, {
           id: `conn-${protocol}`,
           externalId: `${protocol}-agent`,
           endpoint: `https://${protocol}-agent.example.com`,
@@ -331,12 +331,12 @@ describe('Concurrent Agent Performance Tests', () => {
           (_, messageIndex) => {
             const protocol = protocols[messageIndex % protocols.length];
             return hub.sendMessage(
-              'routing-test-sender',
+              "routing-test-sender",
               `${protocol}-agent`,
-              'routing-test',
-              `Test message ${messageIndex} for ${protocol}`
+              "routing-test",
+              `Test message ${messageIndex} for ${protocol}`,
             );
-          }
+          },
         );
 
         return Promise.all(messages);
@@ -345,28 +345,28 @@ describe('Concurrent Agent Performance Tests', () => {
       const avgTimePerMessage = duration / messageCount;
 
       console.log(
-        `Routed ${messageCount} messages across protocols in ${duration.toFixed(2)}ms`
+        `Routed ${messageCount} messages across protocols in ${duration.toFixed(2)}ms`,
       );
       console.log(`Average routing time: ${avgTimePerMessage.toFixed(2)}ms`);
 
       expect(avgTimePerMessage).toBeLessThan(
-        PERF_THRESHOLDS.maxMessageDeliveryTime
+        PERF_THRESHOLDS.maxMessageDeliveryTime,
       );
     });
   });
 
-  describe('Memory and Resource Usage', () => {
-    it('should handle large message history without memory leaks', async () => {
+  describe("Memory and Resource Usage", () => {
+    it("should handle large message history without memory leaks", async () => {
       const messageCount = 1000;
       const initialMemory = process.memoryUsage().heapUsed;
 
       // Send many messages to build up history
       for (let i = 0; i < messageCount; i++) {
         await hub.sendMessage(
-          'memory-test-sender',
-          'memory-test-receiver',
-          'memory-test',
-          { index: i, data: 'x'.repeat(100) } // 100 bytes per message
+          "memory-test-sender",
+          "memory-test-receiver",
+          "memory-test",
+          { index: i, data: "x".repeat(100) }, // 100 bytes per message
         );
       }
 
@@ -377,7 +377,7 @@ describe('Concurrent Agent Performance Tests', () => {
 
       console.log(`Message history size: ${history.length}`);
       console.log(
-        `Memory increase: ${(memoryIncrease / 1024 / 1024).toFixed(2)} MB`
+        `Memory increase: ${(memoryIncrease / 1024 / 1024).toFixed(2)} MB`,
       );
       console.log(`Bytes per message: ${bytesPerMessage.toFixed(2)}`);
 
@@ -390,7 +390,7 @@ describe('Concurrent Agent Performance Tests', () => {
       const clearedMemory = process.memoryUsage().heapUsed;
 
       console.log(
-        `Memory after cleanup: ${(clearedMemory / 1024 / 1024).toFixed(2)} MB`
+        `Memory after cleanup: ${(clearedMemory / 1024 / 1024).toFixed(2)} MB`,
       );
     });
   });

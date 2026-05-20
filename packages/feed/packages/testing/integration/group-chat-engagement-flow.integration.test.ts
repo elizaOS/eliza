@@ -18,13 +18,10 @@ import {
   describe,
   expect,
   test,
-} from 'bun:test';
-import { db } from '@feed/db';
-import {
-  NPCGroupDynamicsService,
-  NPCInteractionTracker,
-} from '@feed/engine';
-import { generateSnowflakeId } from '@feed/shared';
+} from "bun:test";
+import { db } from "@feed/db";
+import { NPCGroupDynamicsService, NPCInteractionTracker } from "@feed/engine";
+import { generateSnowflakeId } from "@feed/shared";
 
 // Test data cleanup tracking
 const testIds = {
@@ -67,7 +64,7 @@ async function createTestUser(options: {
 }
 
 async function createTestNPC(
-  name: string
+  name: string,
 ): Promise<{ id: string; name: string }> {
   const id = await generateSnowflakeId();
 
@@ -75,7 +72,7 @@ async function createTestNPC(
   await db.user.create({
     data: {
       id,
-      username: name.toLowerCase().replace(/\s+/g, '-'),
+      username: name.toLowerCase().replace(/\s+/g, "-"),
       displayName: name,
       isActor: true,
       isTest: true,
@@ -114,7 +111,7 @@ async function createNPCPost(npcId: string, content: string): Promise<string> {
 
 async function createFollow(
   followerId: string,
-  followingId: string
+  followingId: string,
 ): Promise<string> {
   const id = await generateSnowflakeId();
 
@@ -139,7 +136,7 @@ async function createLike(userId: string, postId: string): Promise<string> {
       id,
       userId,
       postId,
-      type: 'like',
+      type: "like",
       createdAt: new Date(),
     },
   });
@@ -167,7 +164,7 @@ async function createShare(userId: string, postId: string): Promise<string> {
 async function createComment(
   userId: string,
   npcPostId: string,
-  content: string
+  content: string,
 ): Promise<string> {
   const id = await generateSnowflakeId();
 
@@ -190,7 +187,7 @@ async function recordUserInteraction(
   npcId: string,
   postId: string,
   commentId: string,
-  qualityScore = 0.8
+  qualityScore = 0.8,
 ): Promise<string> {
   const id = await generateSnowflakeId();
 
@@ -212,7 +209,7 @@ async function recordUserInteraction(
 
 async function createGroupChat(
   name: string,
-  npcOwnerId: string
+  npcOwnerId: string,
 ): Promise<{ chatId: string; groupId: string }> {
   const groupId = await generateSnowflakeId();
   const chatId = await generateSnowflakeId();
@@ -222,7 +219,7 @@ async function createGroupChat(
     data: {
       id: groupId,
       name,
-      type: 'npc',
+      type: "npc",
       ownerId: npcOwnerId,
       createdById: npcOwnerId,
       updatedAt: new Date(),
@@ -236,7 +233,7 @@ async function createGroupChat(
       name,
       isGroup: true,
       groupId,
-      gameId: 'realtime',
+      gameId: "realtime",
       updatedAt: new Date(),
     },
   });
@@ -313,7 +310,7 @@ async function cleanupTestData(): Promise<void> {
   });
 }
 
-describe('Reply Guy Score Calculation', () => {
+describe("Reply Guy Score Calculation", () => {
   beforeEach(async () => {
     await cleanupTestData();
   });
@@ -322,9 +319,9 @@ describe('Reply Guy Score Calculation', () => {
     await cleanupTestData();
   });
 
-  test('should calculate score based on follows', async () => {
-    const npc = await createTestNPC('Score Test NPC');
-    const user = await createTestUser({ displayName: 'Following User' });
+  test("should calculate score based on follows", async () => {
+    const npc = await createTestNPC("Score Test NPC");
+    const user = await createTestUser({ displayName: "Following User" });
 
     // User follows NPC
     await createFollow(user.id, npc.id);
@@ -337,17 +334,17 @@ describe('Reply Guy Score Calculation', () => {
     expect(score).toBeGreaterThan(0);
   });
 
-  test('should calculate score based on comments on NPC posts', async () => {
-    const npc = await createTestNPC('Comment Test NPC');
-    const user = await createTestUser({ displayName: 'Commenting User' });
+  test("should calculate score based on comments on NPC posts", async () => {
+    const npc = await createTestNPC("Comment Test NPC");
+    const user = await createTestUser({ displayName: "Commenting User" });
 
     // NPC creates posts
-    const post1 = await createNPCPost(npc.id, 'NPC post 1');
-    const post2 = await createNPCPost(npc.id, 'NPC post 2');
+    const post1 = await createNPCPost(npc.id, "NPC post 1");
+    const post2 = await createNPCPost(npc.id, "NPC post 2");
 
     // User comments on NPC posts
-    await createComment(user.id, post1, 'Great insight!');
-    await createComment(user.id, post2, 'Interesting perspective');
+    await createComment(user.id, post1, "Great insight!");
+    await createComment(user.id, post2, "Interesting perspective");
 
     // Calculate score
     const { score, breakdown } =
@@ -358,9 +355,9 @@ describe('Reply Guy Score Calculation', () => {
     expect(score).toBeGreaterThan(0);
   });
 
-  test('should calculate score based on likes on NPC posts', async () => {
-    const npc = await createTestNPC('Like Test NPC');
-    const user = await createTestUser({ displayName: 'Liking User' });
+  test("should calculate score based on likes on NPC posts", async () => {
+    const npc = await createTestNPC("Like Test NPC");
+    const user = await createTestUser({ displayName: "Liking User" });
 
     // NPC creates posts
     const posts: string[] = [];
@@ -382,12 +379,12 @@ describe('Reply Guy Score Calculation', () => {
     expect(score).toBeGreaterThan(0);
   });
 
-  test('should calculate score based on shares of NPC posts', async () => {
-    const npc = await createTestNPC('Share Test NPC');
-    const user = await createTestUser({ displayName: 'Sharing User' });
+  test("should calculate score based on shares of NPC posts", async () => {
+    const npc = await createTestNPC("Share Test NPC");
+    const user = await createTestUser({ displayName: "Sharing User" });
 
     // NPC creates posts
-    const post = await createNPCPost(npc.id, 'Shareable content');
+    const post = await createNPCPost(npc.id, "Shareable content");
 
     // User shares NPC post
     await createShare(user.id, post);
@@ -401,12 +398,12 @@ describe('Reply Guy Score Calculation', () => {
     expect(score).toBeGreaterThan(0);
   });
 
-  test('should penalize spammy behavior (too many comments)', async () => {
-    const npc = await createTestNPC('Spam Test NPC');
-    const user = await createTestUser({ displayName: 'Spammy User' });
+  test("should penalize spammy behavior (too many comments)", async () => {
+    const npc = await createTestNPC("Spam Test NPC");
+    const user = await createTestUser({ displayName: "Spammy User" });
 
     // NPC creates post
-    const post = await createNPCPost(npc.id, 'Popular post');
+    const post = await createNPCPost(npc.id, "Popular post");
 
     // User spams 15 comments
     for (let i = 0; i < 15; i++) {
@@ -426,9 +423,9 @@ describe('Reply Guy Score Calculation', () => {
     expect(score).toBeLessThan(breakdown.comments); // Score less than raw comments due to penalties
   });
 
-  test('should give combined score for ideal engagement', async () => {
-    const npc = await createTestNPC('Ideal Engagement NPC');
-    const user = await createTestUser({ displayName: 'Ideal User' });
+  test("should give combined score for ideal engagement", async () => {
+    const npc = await createTestNPC("Ideal Engagement NPC");
+    const user = await createTestUser({ displayName: "Ideal User" });
 
     // Follow
     await createFollow(user.id, npc.id);
@@ -440,8 +437,8 @@ describe('Reply Guy Score Calculation', () => {
     }
 
     // Ideal engagement: 2 comments, 5 likes, 1 share
-    await createComment(user.id, posts[0]!, 'Great analysis');
-    await createComment(user.id, posts[1]!, 'Thanks for sharing');
+    await createComment(user.id, posts[0]!, "Great analysis");
+    await createComment(user.id, posts[1]!, "Thanks for sharing");
 
     for (const postId of posts) {
       await createLike(user.id, postId);
@@ -469,7 +466,7 @@ describe('Reply Guy Score Calculation', () => {
   });
 });
 
-describe('Engagement Tracker Integration', () => {
+describe("Engagement Tracker Integration", () => {
   beforeEach(async () => {
     await cleanupTestData();
   });
@@ -478,20 +475,20 @@ describe('Engagement Tracker Integration', () => {
     await cleanupTestData();
   });
 
-  test('should track user engagement score with NPC', async () => {
-    const npc = await createTestNPC('Tracker Test NPC');
-    const user = await createTestUser({ displayName: 'Engaged User' });
+  test("should track user engagement score with NPC", async () => {
+    const npc = await createTestNPC("Tracker Test NPC");
+    const user = await createTestUser({ displayName: "Engaged User" });
 
     // Create NPC posts and user engages
-    const post1 = await createNPCPost(npc.id, 'Interesting post 1');
-    const post2 = await createNPCPost(npc.id, 'Interesting post 2');
-    const post3 = await createNPCPost(npc.id, 'Interesting post 3');
+    const post1 = await createNPCPost(npc.id, "Interesting post 1");
+    const post2 = await createNPCPost(npc.id, "Interesting post 2");
+    const post3 = await createNPCPost(npc.id, "Interesting post 3");
     await createLike(user.id, post1);
 
     // User creates comments on NPC posts
-    const comment1 = await createComment(user.id, post1, 'Great insight');
-    const comment2 = await createComment(user.id, post2, 'Thanks for sharing');
-    const comment3 = await createComment(user.id, post3, 'Very helpful');
+    const comment1 = await createComment(user.id, post1, "Great insight");
+    const comment2 = await createComment(user.id, post2, "Thanks for sharing");
+    const comment3 = await createComment(user.id, post3, "Very helpful");
 
     // Record quality interactions (requires postId and commentId)
     await recordUserInteraction(user.id, npc.id, post1, comment1, 0.85);
@@ -507,11 +504,11 @@ describe('Engagement Tracker Integration', () => {
     expect(engagementScore.engagementScore).toBeGreaterThan(0);
   });
 
-  test('should identify top engaged users', async () => {
-    const npc = await createTestNPC('Top Users NPC');
-    const user1 = await createTestUser({ displayName: 'Top User' });
-    const user2 = await createTestUser({ displayName: 'Medium User' });
-    const user3 = await createTestUser({ displayName: 'Low User' });
+  test("should identify top engaged users", async () => {
+    const npc = await createTestNPC("Top Users NPC");
+    const user1 = await createTestUser({ displayName: "Top User" });
+    const user2 = await createTestUser({ displayName: "Medium User" });
+    const user3 = await createTestUser({ displayName: "Low User" });
 
     // Create NPC posts for interactions
     const posts: string[] = [];
@@ -525,7 +522,7 @@ describe('Engagement Tracker Integration', () => {
       const comment = await createComment(
         user1.id,
         posts[i]!,
-        `User1 comment ${i}`
+        `User1 comment ${i}`,
       );
       await recordUserInteraction(user1.id, npc.id, posts[i]!, comment, 0.9);
     }
@@ -535,26 +532,26 @@ describe('Engagement Tracker Integration', () => {
       const comment = await createComment(
         user2.id,
         posts[i]!,
-        `User2 comment ${i}`
+        `User2 comment ${i}`,
       );
       await recordUserInteraction(user2.id, npc.id, posts[i]!, comment, 0.75);
     }
 
     // User 3: Low engagement (1 comment)
-    const comment3 = await createComment(user3.id, posts[15]!, 'User3 comment');
+    const comment3 = await createComment(user3.id, posts[15]!, "User3 comment");
     await recordUserInteraction(user3.id, npc.id, posts[15]!, comment3, 0.6);
 
     // Get top engaged users
     const topUsers = await NPCInteractionTracker.getTopEngagedUsers(npc.id, 10);
 
     expect(topUsers.length).toBe(3);
-    expect(topUsers[0]!.userId).toBe(user1.id);
-    expect(topUsers[1]!.userId).toBe(user2.id);
-    expect(topUsers[2]!.userId).toBe(user3.id);
+    expect(topUsers[0]?.userId).toBe(user1.id);
+    expect(topUsers[1]?.userId).toBe(user2.id);
+    expect(topUsers[2]?.userId).toBe(user3.id);
   });
 });
 
-describe('Full Engagement → Invite Flow', () => {
+describe("Full Engagement → Invite Flow", () => {
   beforeAll(async () => {
     await cleanupTestData();
   });
@@ -563,13 +560,13 @@ describe('Full Engagement → Invite Flow', () => {
     await cleanupTestData();
   });
 
-  test('should invite user with high engagement score', async () => {
+  test("should invite user with high engagement score", async () => {
     // Setup: Create NPCs and a group chat
-    const npc1 = await createTestNPC('Alpha Leader');
-    const npc2 = await createTestNPC('Group Member NPC');
+    const npc1 = await createTestNPC("Alpha Leader");
+    const npc2 = await createTestNPC("Group Member NPC");
     const { chatId: groupChatId } = await createGroupChat(
       `${npc1.name}'s Circle`,
-      npc1.id
+      npc1.id,
     );
 
     // Add second NPC to group
@@ -585,7 +582,7 @@ describe('Full Engagement → Invite Flow', () => {
     testIds.participantIds.push(participant2Id);
 
     // Create engaged user
-    const engagedUser = await createTestUser({ displayName: 'Super Engaged' });
+    const engagedUser = await createTestUser({ displayName: "Super Engaged" });
 
     // User builds engagement on the feed
     // 1. Follow NPCs
@@ -601,9 +598,9 @@ describe('Full Engagement → Invite Flow', () => {
 
     // 3. User engages with content (ideal amounts)
     // Comments: 2-3 per NPC (ideal)
-    await createComment(engagedUser.id, posts[0]!, 'Great analysis!');
-    await createComment(engagedUser.id, posts[2]!, 'Really helpful');
-    await createComment(engagedUser.id, posts[1]!, 'Thanks for sharing');
+    await createComment(engagedUser.id, posts[0]!, "Great analysis!");
+    await createComment(engagedUser.id, posts[2]!, "Really helpful");
+    await createComment(engagedUser.id, posts[1]!, "Thanks for sharing");
 
     // Likes: 5-8 per NPC (ideal)
     for (let i = 0; i < 8; i++) {
@@ -629,15 +626,15 @@ describe('Full Engagement → Invite Flow', () => {
     expect(breakdown.reposts).toBeGreaterThan(0);
     expect(breakdown.penalties).toBe(0);
 
-    console.log('Engagement Score:', { score, breakdown });
+    console.log("Engagement Score:", { score, breakdown });
   });
 
-  test('should NOT invite user with spam behavior', async () => {
-    const npc = await createTestNPC('Anti-Spam NPC');
-    const spammer = await createTestUser({ displayName: 'Spammer User' });
+  test("should NOT invite user with spam behavior", async () => {
+    const npc = await createTestNPC("Anti-Spam NPC");
+    const spammer = await createTestUser({ displayName: "Spammer User" });
 
     // Spammer creates excessive engagement
-    const post = await createNPCPost(npc.id, 'Target post');
+    const post = await createNPCPost(npc.id, "Target post");
 
     // Excessive comments (20+)
     for (let i = 0; i < 25; i++) {
@@ -658,7 +655,7 @@ describe('Full Engagement → Invite Flow', () => {
         npc.id,
       ]);
 
-    console.log('Spammer Score:', { score, breakdown });
+    console.log("Spammer Score:", { score, breakdown });
 
     // Penalties should significantly reduce or make score negative
     expect(breakdown.penalties).toBeLessThan(0);
@@ -667,7 +664,7 @@ describe('Full Engagement → Invite Flow', () => {
   });
 });
 
-describe('Users vs Agents Engagement Parity', () => {
+describe("Users vs Agents Engagement Parity", () => {
   beforeEach(async () => {
     await cleanupTestData();
   });
@@ -676,40 +673,40 @@ describe('Users vs Agents Engagement Parity', () => {
     await cleanupTestData();
   });
 
-  test('agents should earn same engagement score as users for same behavior', async () => {
-    const npc = await createTestNPC('Parity Test NPC');
+  test("agents should earn same engagement score as users for same behavior", async () => {
+    const npc = await createTestNPC("Parity Test NPC");
     const humanUser = await createTestUser({
       isAgent: false,
-      displayName: 'Human',
+      displayName: "Human",
     });
     const aiAgent = await createTestUser({
       isAgent: true,
-      displayName: 'AI Agent',
+      displayName: "AI Agent",
     });
 
     // Both do the exact same engagement
-    const post = await createNPCPost(npc.id, 'Test post');
+    const post = await createNPCPost(npc.id, "Test post");
 
     // Human engagement
     await createFollow(humanUser.id, npc.id);
     await createLike(humanUser.id, post);
-    await createComment(humanUser.id, post, 'Human comment');
+    await createComment(humanUser.id, post, "Human comment");
     await createShare(humanUser.id, post);
 
     // Agent engagement (identical)
     await createFollow(aiAgent.id, npc.id);
     await createLike(aiAgent.id, post);
-    await createComment(aiAgent.id, post, 'Agent comment');
+    await createComment(aiAgent.id, post, "Agent comment");
     await createShare(aiAgent.id, post);
 
     // Calculate scores
     const humanScore = await NPCGroupDynamicsService.calculateReplyGuyScore(
       humanUser.id,
-      [npc.id]
+      [npc.id],
     );
     const agentScore = await NPCGroupDynamicsService.calculateReplyGuyScore(
       aiAgent.id,
-      [npc.id]
+      [npc.id],
     );
 
     // Scores should be identical
@@ -721,16 +718,16 @@ describe('Users vs Agents Engagement Parity', () => {
   });
 });
 
-describe('Group Dynamics Stats', () => {
-  test('should return valid group statistics', async () => {
+describe("Group Dynamics Stats", () => {
+  test("should return valid group statistics", async () => {
     const stats = await NPCGroupDynamicsService.getGroupStats();
 
-    expect(stats).toHaveProperty('totalGroups');
-    expect(stats).toHaveProperty('activeGroups');
-    expect(stats).toHaveProperty('avgGroupSize');
-    expect(typeof stats.totalGroups).toBe('number');
-    expect(typeof stats.activeGroups).toBe('number');
-    expect(typeof stats.avgGroupSize).toBe('number');
+    expect(stats).toHaveProperty("totalGroups");
+    expect(stats).toHaveProperty("activeGroups");
+    expect(stats).toHaveProperty("avgGroupSize");
+    expect(typeof stats.totalGroups).toBe("number");
+    expect(typeof stats.activeGroups).toBe("number");
+    expect(typeof stats.avgGroupSize).toBe("number");
     expect(stats.totalGroups).toBeGreaterThanOrEqual(0);
   });
 });

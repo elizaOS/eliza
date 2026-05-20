@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from "react";
 
 interface MenuPosition {
   top: number;
@@ -26,7 +26,7 @@ interface UseMenuPositionOptions {
  */
 export function useMenuPosition(
   isOpen: boolean,
-  options: UseMenuPositionOptions
+  options: UseMenuPositionOptions,
 ) {
   const { menuHeight, menuWidth, padding = 8 } = options;
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -71,12 +71,12 @@ export function useMenuPosition(
     if (!isOpen) return;
 
     // Listen on window and any scrollable parent (capture phase)
-    window.addEventListener('scroll', updatePosition, true);
-    window.addEventListener('resize', updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    window.addEventListener("resize", updatePosition);
 
     return () => {
-      window.removeEventListener('scroll', updatePosition, true);
-      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+      window.removeEventListener("resize", updatePosition);
     };
   }, [isOpen, updatePosition]);
 

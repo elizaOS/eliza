@@ -6,7 +6,7 @@
  * client to allow different caching strategies.
  */
 
-import { logger } from '@feed/shared';
+import { logger } from "@feed/shared";
 
 /**
  * Cache invalidation client interface
@@ -41,7 +41,7 @@ let cacheClient: CacheInvalidationClient | null = null;
  * ```
  */
 export function setCacheInvalidationClient(
-  client: CacheInvalidationClient
+  client: CacheInvalidationClient,
 ): void {
   cacheClient = client;
 }
@@ -53,7 +53,7 @@ export function setCacheInvalidationClient(
  * @returns {Promise<void>}
  */
 export async function invalidatePredictionTradesCache(
-  marketId: string
+  marketId: string,
 ): Promise<void> {
   if (cacheClient) {
     // Support versioned keys (e.g. `prediction-trades:v2:<marketId>:...`).
@@ -64,22 +64,22 @@ export async function invalidatePredictionTradesCache(
       logger.debug(
         `Deleted ${deletedCount} cache keys for market ${marketId}`,
         undefined,
-        'TradeCache'
+        "TradeCache",
       );
     }
   } else {
     // If no cache client, cache is in-memory and will expire naturally
     logger.debug(
-      'No cache client available, cache will expire naturally',
+      "No cache client available, cache will expire naturally",
       { marketId },
-      'TradeCache'
+      "TradeCache",
     );
   }
 
   logger.info(
     `Invalidated prediction trades cache for market ${marketId}`,
     undefined,
-    'TradeCache'
+    "TradeCache",
   );
 }
 
@@ -99,21 +99,21 @@ export async function invalidatePerpTradesCache(ticker: string): Promise<void> {
       logger.debug(
         `Deleted ${deletedCount} cache keys for ticker ${ticker}`,
         undefined,
-        'TradeCache'
+        "TradeCache",
       );
     }
   } else {
     logger.debug(
-      'No cache client available, cache will expire naturally',
+      "No cache client available, cache will expire naturally",
       { ticker },
-      'TradeCache'
+      "TradeCache",
     );
   }
 
   logger.info(
     `Invalidated perp trades cache for ticker ${ticker}`,
     undefined,
-    'TradeCache'
+    "TradeCache",
   );
 }
 
@@ -125,7 +125,7 @@ export async function invalidatePerpTradesCache(ticker: string): Promise<void> {
  * @returns {Promise<void>}
  */
 export async function invalidateAfterPredictionTrade(
-  marketId: string
+  marketId: string,
 ): Promise<void> {
   await invalidatePredictionTradesCache(marketId);
 }

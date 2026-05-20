@@ -6,13 +6,13 @@
 import {
   formatCompactCurrency,
   formatCurrency as formatCurrencyShared,
-} from '@feed/shared';
+} from "@feed/shared";
 
 export type CurrencyInput = string | number | null | undefined;
 
 function toNumber(value: CurrencyInput): number {
   if (value == null) return 0;
-  const num = typeof value === 'string' ? parseFloat(value) : value;
+  const num = typeof value === "string" ? parseFloat(value) : value;
   return Number.isFinite(num) ? num : 0;
 }
 

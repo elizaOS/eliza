@@ -4,10 +4,10 @@
  * Advanced manual control for trajectory logging
  */
 
-import { logger } from '../../../shared/logger';
-import type { JsonValue } from '../../../types/common';
-import type { TrajectoryLoggerService } from './TrajectoryLoggerService';
-import type { EnvironmentState } from './types';
+import { logger } from "../../../shared/logger";
+import type { JsonValue } from "../../../types/common";
+import type { TrajectoryLoggerService } from "./TrajectoryLoggerService";
+import type { EnvironmentState } from "./types";
 
 /**
  * Trajectory metadata structure
@@ -52,7 +52,7 @@ export function startAutonomousTick(
     episodeId?: string;
     batchId?: string;
     metadata?: TrajectoryMetadata;
-  }
+  },
 ): string {
   const trajectoryId = trajectoryLogger.startTrajectory(context.agentId, {
     scenarioId: context.scenarioId,
@@ -73,12 +73,12 @@ export function startAutonomousTick(
   trajectoryLogger.startStep(trajectoryId, envState);
 
   logger.info(
-    'Started autonomous tick trajectory',
+    "Started autonomous tick trajectory",
     {
       trajectoryId,
       agentId: context.agentId,
     },
-    'TrajectoryIntegration'
+    "TrajectoryIntegration",
   );
 
   return trajectoryId;
@@ -90,18 +90,18 @@ export function startAutonomousTick(
 export async function endAutonomousTick(
   trajectoryLogger: TrajectoryLoggerService,
   trajectoryId: string,
-  status: 'completed' | 'terminated' | 'error' | 'timeout' = 'completed',
-  finalMetrics?: FinalMetrics
+  status: "completed" | "terminated" | "error" | "timeout" = "completed",
+  finalMetrics?: FinalMetrics,
 ): Promise<void> {
   await trajectoryLogger.endTrajectory(trajectoryId, status, finalMetrics);
 
   logger.info(
-    'Ended autonomous tick trajectory',
+    "Ended autonomous tick trajectory",
     {
       trajectoryId,
       status,
     },
-    'TrajectoryIntegration'
+    "TrajectoryIntegration",
   );
 }
 
@@ -118,7 +118,7 @@ export async function loggedLLMCall(
     userPrompt: string;
     temperature?: number;
     maxTokens?: number;
-    purpose?: 'action' | 'reasoning' | 'evaluation' | 'response' | 'other';
+    purpose?: "action" | "reasoning" | "evaluation" | "response" | "other";
     actionType?: string;
   },
   llmCallFn: () => Promise<{
@@ -126,11 +126,11 @@ export async function loggedLLMCall(
     reasoning?: string;
     tokens?: { prompt?: number; completion?: number };
     latencyMs?: number;
-  }>
+  }>,
 ): Promise<string> {
   const stepId = trajectoryLogger.getCurrentStepId(trajectoryId);
   if (!stepId) {
-    logger.warn('No active step for LLM call', { trajectoryId });
+    logger.warn("No active step for LLM call", { trajectoryId });
     // Execute anyway without logging
     const result = await llmCallFn();
     return result.text;
@@ -150,7 +150,7 @@ export async function loggedLLMCall(
     reasoning: result.reasoning,
     temperature: options.temperature || 0.7,
     maxTokens: options.maxTokens || 8192,
-    purpose: options.purpose || 'action',
+    purpose: options.purpose || "action",
     actionType: options.actionType,
     promptTokens: result.tokens?.prompt,
     completionTokens: result.tokens?.completion,
@@ -171,7 +171,7 @@ export function logProviderAccess(
     data: ProviderAccessData;
     purpose: string;
     query?: ProviderAccessData;
-  }
+  },
 ): void {
   trajectoryLogger.logProviderAccessByTrajectoryId(trajectoryId, access);
 }
@@ -202,7 +202,7 @@ export function withTrajectoryLogging<
   context: {
     actionType?: string;
     purpose?: string;
-  } = {}
+  } = {},
 ): AsyncFunction<TArgs, TResult> {
   return async (...args: TArgs): Promise<TResult> => {
     const stepId = trajectoryLogger.getCurrentStepId(trajectoryId);
@@ -220,17 +220,17 @@ export function withTrajectoryLogging<
       trajectoryId,
       stepId,
       {
-        actionType: context.actionType || 'function_call',
-        actionName: fn.name || 'anonymous',
+        actionType: context.actionType || "function_call",
+        actionName: fn.name || "anonymous",
         parameters: { args: args as JsonValue[] },
         success,
         result: (success && result !== undefined
           ? { result: result as JsonValue }
-          : { error: error || 'Unknown error' }) as Record<string, JsonValue>,
+          : { error: error || "Unknown error" }) as Record<string, JsonValue>,
       },
       {
         reward: success ? 0.05 : -0.05,
-      }
+      },
     );
     return result;
   };

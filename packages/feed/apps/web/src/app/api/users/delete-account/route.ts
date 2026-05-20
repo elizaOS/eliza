@@ -77,7 +77,7 @@
  * @see GDPR Article 17 - Right to erasure
  */
 
-import { authenticate, successResponse, withErrorHandling } from '@feed/api';
+import { authenticate, successResponse, withErrorHandling } from "@feed/api";
 import {
   db,
   eq,
@@ -94,13 +94,13 @@ import {
   userInteractions,
   users,
   withTransaction,
-} from '@feed/db';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { z } from 'zod';
+} from "@feed/db";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { z } from "zod";
 
 const DeleteAccountSchema = z.object({
-  confirmation: z.literal('DELETE MY ACCOUNT'),
+  confirmation: z.literal("DELETE MY ACCOUNT"),
   reason: z.string().optional(),
 });
 
@@ -112,9 +112,9 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   const { reason } = DeleteAccountSchema.parse(body);
 
   logger.info(
-    'User requested account deletion',
-    { userId, reason: reason || 'No reason provided' },
-    'POST /api/users/delete-account'
+    "User requested account deletion",
+    { userId, reason: reason || "No reason provided" },
+    "POST /api/users/delete-account",
   );
 
   // Verify user exists
@@ -130,14 +130,14 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     .limit(1);
 
   if (!user) {
-    return successResponse({ error: 'User not found' }, 404);
+    return successResponse({ error: "User not found" }, 404);
   }
 
   // Important notice about blockchain data
   const blockchainNotice = user.nftTokenId
     ? {
         blockchain_data_notice:
-          'Your on-chain data (wallet address, NFT token ID, transaction history) is permanently recorded on the blockchain and cannot be deleted. It will remain publicly visible.',
+          "Your on-chain data (wallet address, NFT token ID, transaction history) is permanently recorded on the blockchain and cannot be deleted. It will remain publicly visible.",
         wallet_address: user.walletAddress,
         nft_token_id: user.nftTokenId,
       }
@@ -190,8 +190,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       .where(
         or(
           eq(groupInvites.invitedUserId, userId),
-          eq(groupInvites.invitedBy, userId)
-        )
+          eq(groupInvites.invitedBy, userId),
+        ),
       );
 
     // Delete follow status
@@ -207,15 +207,15 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     await tx.delete(users).where(eq(users.id, userId));
 
     logger.info(
-      'User account deleted successfully',
+      "User account deleted successfully",
       { userId, username: user.username },
-      'POST /api/users/delete-account'
+      "POST /api/users/delete-account",
     );
   });
 
   return successResponse({
     success: true,
-    message: 'Your account has been permanently deleted.',
+    message: "Your account has been permanently deleted.",
     deleted_data: {
       user_id: userId,
       username: user.username,
@@ -223,10 +223,10 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     },
     ...(blockchainNotice ? { blockchain_notice: blockchainNotice } : {}),
     important_notes: [
-      'Your account and personal data have been deleted from our servers.',
-      'Some anonymized data may be retained for analytics and AI training.',
-      'Blockchain data (if any) remains permanently on the blockchain and cannot be deleted.',
-      'If you registered via email, you may need to contact our authentication provider (Privy) to delete your auth account separately.',
+      "Your account and personal data have been deleted from our servers.",
+      "Some anonymized data may be retained for analytics and AI training.",
+      "Blockchain data (if any) remains permanently on the blockchain and cannot be deleted.",
+      "If you registered via email, you may need to contact our authentication provider (Privy) to delete your auth account separately.",
     ],
   });
 });

@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { AlertCircle } from 'lucide-react';
-import Link from 'next/link';
-import type { Message } from './types';
+import { AlertCircle } from "lucide-react";
+import Link from "next/link";
+import type { Message } from "./types";
 
 interface SystemMessageProps {
   message: Message;
@@ -39,9 +39,9 @@ export function SystemMessage({ message }: SystemMessageProps) {
         <span>{message.content}</span>
         <span className="opacity-60">·</span>
         <span className="opacity-60">
-          {msgDate.toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
+          {msgDate.toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
           })}
         </span>
       </div>

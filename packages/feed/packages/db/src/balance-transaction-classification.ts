@@ -3,38 +3,38 @@ import {
   AGENT_TRANSFER_OUT_TRANSACTION_TYPE,
   PEER_TRANSFER_IN_TRANSACTION_TYPE,
   PEER_TRANSFER_OUT_TRANSACTION_TYPE,
-} from '@feed/shared';
-import type { BalanceTransaction } from './model-types';
+} from "@feed/shared";
+import type { BalanceTransaction } from "./model-types";
 
 export const WELCOME_BONUS_BALANCE_DESCRIPTION =
-  'Welcome bonus - initial signup';
+  "Welcome bonus - initial signup";
 export const DAILY_LOGIN_REWARD_BALANCE_DESCRIPTION_PREFIX =
-  'Daily login reward';
+  "Daily login reward";
 export const AGENT_EVM_REGISTRATION_REFUND_BALANCE_DESCRIPTION =
-  'Refund - agent EVM registration failed';
+  "Refund - agent EVM registration failed";
 export const AGENT_SOLANA_REGISTRATION_REFUND_BALANCE_DESCRIPTION =
-  'Refund - agent Solana registration failed';
+  "Refund - agent Solana registration failed";
 
-export type CapitalBaseScope = 'wallet' | 'team';
-export type CapitalBaseEffect = 'credit' | 'debit' | 'none';
+export type CapitalBaseScope = "wallet" | "team";
+export type CapitalBaseEffect = "credit" | "debit" | "none";
 export type BalanceTransactionCapitalKind =
-  | 'external_funding'
-  | 'capital_reversal'
-  | 'capital_restoration'
-  | 'internal_transfer'
-  | 'non_capital_activity'
-  | 'unknown';
+  | "external_funding"
+  | "capital_reversal"
+  | "capital_restoration"
+  | "internal_transfer"
+  | "non_capital_activity"
+  | "unknown";
 export type DepositClassificationReason =
-  | 'default_wallet_funding'
-  | 'daily_login_reward'
-  | 'agent_registration_refund';
+  | "default_wallet_funding"
+  | "daily_login_reward"
+  | "agent_registration_refund";
 export type CapitalAmountStrategy =
-  | 'absolute_amount'
-  | 'balance_units_requested';
+  | "absolute_amount"
+  | "balance_units_requested";
 
 type ClassifiedBalanceTransactionInput = Pick<
   BalanceTransaction,
-  'type' | 'amount' | 'description'
+  "type" | "amount" | "description"
 >;
 
 interface BaseCapitalClassification {
@@ -58,200 +58,200 @@ export interface BalanceTransactionCapitalClassification
 
 type FixedTransactionTypeRule = Omit<
   BaseCapitalClassification,
-  'depositReason' | 'descriptionDriven'
+  "depositReason" | "descriptionDriven"
 >;
 
 type DepositDescriptionRule = {
-  reason: Exclude<DepositClassificationReason, 'default_wallet_funding'>;
+  reason: Exclude<DepositClassificationReason, "default_wallet_funding">;
   matches: (description: string | null) => boolean;
   matchesSql: (transactionAlias: string) => string;
   classification: Omit<
     BaseCapitalClassification,
-    'depositReason' | 'descriptionDriven'
+    "depositReason" | "descriptionDriven"
   >;
 };
 
 const FIXED_TRANSACTION_TYPE_RULES: Record<string, FixedTransactionTypeRule> = {
   crypto_purchase: {
-    capitalKind: 'external_funding',
-    walletCapitalBaseEffect: 'credit',
-    teamCapitalBaseEffect: 'credit',
+    capitalKind: "external_funding",
+    walletCapitalBaseEffect: "credit",
+    teamCapitalBaseEffect: "credit",
     isExternalCapitalInflow: true,
     isInternalTransfer: false,
     isReversal: false,
     isCapitalRestoration: false,
     isCapitalNeutralActivity: false,
-    amountStrategy: 'absolute_amount',
+    amountStrategy: "absolute_amount",
   },
   stripe_purchase: {
-    capitalKind: 'external_funding',
-    walletCapitalBaseEffect: 'credit',
-    teamCapitalBaseEffect: 'credit',
+    capitalKind: "external_funding",
+    walletCapitalBaseEffect: "credit",
+    teamCapitalBaseEffect: "credit",
     isExternalCapitalInflow: true,
     isInternalTransfer: false,
     isReversal: false,
     isCapitalRestoration: false,
     isCapitalNeutralActivity: false,
-    amountStrategy: 'absolute_amount',
+    amountStrategy: "absolute_amount",
   },
   stripe_refund: {
-    capitalKind: 'capital_reversal',
-    walletCapitalBaseEffect: 'debit',
-    teamCapitalBaseEffect: 'debit',
+    capitalKind: "capital_reversal",
+    walletCapitalBaseEffect: "debit",
+    teamCapitalBaseEffect: "debit",
     isExternalCapitalInflow: false,
     isInternalTransfer: false,
     isReversal: true,
     isCapitalRestoration: false,
     isCapitalNeutralActivity: false,
-    amountStrategy: 'balance_units_requested',
+    amountStrategy: "balance_units_requested",
   },
   stripe_dispute: {
-    capitalKind: 'capital_reversal',
-    walletCapitalBaseEffect: 'debit',
-    teamCapitalBaseEffect: 'debit',
+    capitalKind: "capital_reversal",
+    walletCapitalBaseEffect: "debit",
+    teamCapitalBaseEffect: "debit",
     isExternalCapitalInflow: false,
     isInternalTransfer: false,
     isReversal: true,
     isCapitalRestoration: false,
     isCapitalNeutralActivity: false,
-    amountStrategy: 'balance_units_requested',
+    amountStrategy: "balance_units_requested",
   },
   stripe_dispute_won: {
-    capitalKind: 'capital_restoration',
-    walletCapitalBaseEffect: 'credit',
-    teamCapitalBaseEffect: 'credit',
+    capitalKind: "capital_restoration",
+    walletCapitalBaseEffect: "credit",
+    teamCapitalBaseEffect: "credit",
     isExternalCapitalInflow: false,
     isInternalTransfer: false,
     isReversal: false,
     isCapitalRestoration: true,
     isCapitalNeutralActivity: false,
-    amountStrategy: 'absolute_amount',
+    amountStrategy: "absolute_amount",
   },
   owner_deposit: {
-    capitalKind: 'internal_transfer',
-    walletCapitalBaseEffect: 'credit',
-    teamCapitalBaseEffect: 'none',
+    capitalKind: "internal_transfer",
+    walletCapitalBaseEffect: "credit",
+    teamCapitalBaseEffect: "none",
     isExternalCapitalInflow: false,
     isInternalTransfer: true,
     isReversal: false,
     isCapitalRestoration: false,
     isCapitalNeutralActivity: false,
-    amountStrategy: 'absolute_amount',
+    amountStrategy: "absolute_amount",
   },
   owner_withdraw: {
-    capitalKind: 'internal_transfer',
-    walletCapitalBaseEffect: 'debit',
-    teamCapitalBaseEffect: 'none',
+    capitalKind: "internal_transfer",
+    walletCapitalBaseEffect: "debit",
+    teamCapitalBaseEffect: "none",
     isExternalCapitalInflow: false,
     isInternalTransfer: true,
     isReversal: false,
     isCapitalRestoration: false,
     isCapitalNeutralActivity: false,
-    amountStrategy: 'absolute_amount',
+    amountStrategy: "absolute_amount",
   },
   agent_deposit: {
-    capitalKind: 'internal_transfer',
-    walletCapitalBaseEffect: 'none',
-    teamCapitalBaseEffect: 'none',
+    capitalKind: "internal_transfer",
+    walletCapitalBaseEffect: "none",
+    teamCapitalBaseEffect: "none",
     isExternalCapitalInflow: false,
     isInternalTransfer: true,
     isReversal: false,
     isCapitalRestoration: false,
     isCapitalNeutralActivity: false,
-    amountStrategy: 'absolute_amount',
+    amountStrategy: "absolute_amount",
   },
   agent_withdraw: {
-    capitalKind: 'internal_transfer',
-    walletCapitalBaseEffect: 'none',
-    teamCapitalBaseEffect: 'none',
+    capitalKind: "internal_transfer",
+    walletCapitalBaseEffect: "none",
+    teamCapitalBaseEffect: "none",
     isExternalCapitalInflow: false,
     isInternalTransfer: true,
     isReversal: false,
     isCapitalRestoration: false,
     isCapitalNeutralActivity: false,
-    amountStrategy: 'absolute_amount',
+    amountStrategy: "absolute_amount",
   },
   agent_balance_return: {
-    capitalKind: 'internal_transfer',
-    walletCapitalBaseEffect: 'none',
-    teamCapitalBaseEffect: 'none',
+    capitalKind: "internal_transfer",
+    walletCapitalBaseEffect: "none",
+    teamCapitalBaseEffect: "none",
     isExternalCapitalInflow: false,
     isInternalTransfer: true,
     isReversal: false,
     isCapitalRestoration: false,
     isCapitalNeutralActivity: false,
-    amountStrategy: 'absolute_amount',
+    amountStrategy: "absolute_amount",
   },
   [AGENT_TRANSFER_IN_TRANSACTION_TYPE]: {
-    capitalKind: 'internal_transfer',
-    walletCapitalBaseEffect: 'none',
-    teamCapitalBaseEffect: 'none',
+    capitalKind: "internal_transfer",
+    walletCapitalBaseEffect: "none",
+    teamCapitalBaseEffect: "none",
     isExternalCapitalInflow: false,
     isInternalTransfer: true,
     isReversal: false,
     isCapitalRestoration: false,
     isCapitalNeutralActivity: false,
-    amountStrategy: 'absolute_amount',
+    amountStrategy: "absolute_amount",
   },
   [AGENT_TRANSFER_OUT_TRANSACTION_TYPE]: {
-    capitalKind: 'internal_transfer',
-    walletCapitalBaseEffect: 'none',
-    teamCapitalBaseEffect: 'none',
+    capitalKind: "internal_transfer",
+    walletCapitalBaseEffect: "none",
+    teamCapitalBaseEffect: "none",
     isExternalCapitalInflow: false,
     isInternalTransfer: true,
     isReversal: false,
     isCapitalRestoration: false,
     isCapitalNeutralActivity: false,
-    amountStrategy: 'absolute_amount',
+    amountStrategy: "absolute_amount",
   },
   [PEER_TRANSFER_IN_TRANSACTION_TYPE]: {
-    capitalKind: 'internal_transfer',
-    walletCapitalBaseEffect: 'credit',
-    teamCapitalBaseEffect: 'credit',
+    capitalKind: "internal_transfer",
+    walletCapitalBaseEffect: "credit",
+    teamCapitalBaseEffect: "credit",
     isExternalCapitalInflow: false,
     isInternalTransfer: true,
     isReversal: false,
     isCapitalRestoration: false,
     isCapitalNeutralActivity: false,
-    amountStrategy: 'absolute_amount',
+    amountStrategy: "absolute_amount",
   },
   [PEER_TRANSFER_OUT_TRANSACTION_TYPE]: {
-    capitalKind: 'internal_transfer',
-    walletCapitalBaseEffect: 'none',
-    teamCapitalBaseEffect: 'none',
+    capitalKind: "internal_transfer",
+    walletCapitalBaseEffect: "none",
+    teamCapitalBaseEffect: "none",
     isExternalCapitalInflow: false,
     isInternalTransfer: true,
     isReversal: false,
     isCapitalRestoration: false,
     isCapitalNeutralActivity: false,
-    amountStrategy: 'absolute_amount',
+    amountStrategy: "absolute_amount",
   },
 };
 
 const DEPOSIT_DESCRIPTION_RULES: DepositDescriptionRule[] = [
   {
-    reason: 'daily_login_reward',
+    reason: "daily_login_reward",
     matches: (description) =>
-      typeof description === 'string' &&
+      typeof description === "string" &&
       description.startsWith(DAILY_LOGIN_REWARD_BALANCE_DESCRIPTION_PREFIX),
     matchesSql: (transactionAlias) =>
       `${transactionAlias}."description" LIKE '${escapeSqlLiteral(
-        `${DAILY_LOGIN_REWARD_BALANCE_DESCRIPTION_PREFIX}%`
+        `${DAILY_LOGIN_REWARD_BALANCE_DESCRIPTION_PREFIX}%`,
       )}'`,
     classification: {
-      capitalKind: 'non_capital_activity',
-      walletCapitalBaseEffect: 'none',
-      teamCapitalBaseEffect: 'none',
+      capitalKind: "non_capital_activity",
+      walletCapitalBaseEffect: "none",
+      teamCapitalBaseEffect: "none",
       isExternalCapitalInflow: false,
       isInternalTransfer: false,
       isReversal: false,
       isCapitalRestoration: false,
       isCapitalNeutralActivity: true,
-      amountStrategy: 'absolute_amount',
+      amountStrategy: "absolute_amount",
     },
   },
   {
-    reason: 'agent_registration_refund',
+    reason: "agent_registration_refund",
     matches: (description) =>
       description === AGENT_EVM_REGISTRATION_REFUND_BALANCE_DESCRIPTION ||
       description === AGENT_SOLANA_REGISTRATION_REFUND_BALANCE_DESCRIPTION,
@@ -261,45 +261,45 @@ const DEPOSIT_DESCRIPTION_RULES: DepositDescriptionRule[] = [
         AGENT_SOLANA_REGISTRATION_REFUND_BALANCE_DESCRIPTION,
       ]
         .map(quoteSqlLiteral)
-        .join(', ')})`,
+        .join(", ")})`,
     classification: {
-      capitalKind: 'non_capital_activity',
-      walletCapitalBaseEffect: 'none',
-      teamCapitalBaseEffect: 'none',
+      capitalKind: "non_capital_activity",
+      walletCapitalBaseEffect: "none",
+      teamCapitalBaseEffect: "none",
       isExternalCapitalInflow: false,
       isInternalTransfer: false,
       isReversal: false,
       isCapitalRestoration: false,
       isCapitalNeutralActivity: true,
-      amountStrategy: 'absolute_amount',
+      amountStrategy: "absolute_amount",
     },
   },
 ];
 
 const DEFAULT_DEPOSIT_CLASSIFICATION: BaseCapitalClassification = {
-  capitalKind: 'external_funding',
-  walletCapitalBaseEffect: 'credit',
-  teamCapitalBaseEffect: 'credit',
+  capitalKind: "external_funding",
+  walletCapitalBaseEffect: "credit",
+  teamCapitalBaseEffect: "credit",
   isExternalCapitalInflow: true,
   isInternalTransfer: false,
   isReversal: false,
   isCapitalRestoration: false,
   isCapitalNeutralActivity: false,
-  amountStrategy: 'absolute_amount',
-  depositReason: 'default_wallet_funding',
+  amountStrategy: "absolute_amount",
+  depositReason: "default_wallet_funding",
   descriptionDriven: true,
 };
 
 const UNKNOWN_TRANSACTION_CLASSIFICATION: BaseCapitalClassification = {
-  capitalKind: 'unknown',
-  walletCapitalBaseEffect: 'none',
-  teamCapitalBaseEffect: 'none',
+  capitalKind: "unknown",
+  walletCapitalBaseEffect: "none",
+  teamCapitalBaseEffect: "none",
   isExternalCapitalInflow: false,
   isInternalTransfer: false,
   isReversal: false,
   isCapitalRestoration: false,
   isCapitalNeutralActivity: false,
-  amountStrategy: 'absolute_amount',
+  amountStrategy: "absolute_amount",
   depositReason: null,
   descriptionDriven: false,
 };
@@ -315,26 +315,26 @@ function escapeSqlLiteral(value: string): string {
 function buildScopedTypes(effect: CapitalBaseEffect, scope: CapitalBaseScope) {
   return Object.entries(FIXED_TRANSACTION_TYPE_RULES)
     .filter(([, rule]) =>
-      scope === 'wallet'
+      scope === "wallet"
         ? rule.walletCapitalBaseEffect === effect
-        : rule.teamCapitalBaseEffect === effect
+        : rule.teamCapitalBaseEffect === effect,
     )
     .map(([type]) => type);
 }
 
 export function buildDailyLoginRewardBalanceDescription(
   streak: number,
-  milestoneBonus: number
+  milestoneBonus: number,
 ): string {
-  return `${DAILY_LOGIN_REWARD_BALANCE_DESCRIPTION_PREFIX} (Day ${streak})${milestoneBonus ? ` + ${streak}-day milestone` : ''}`;
+  return `${DAILY_LOGIN_REWARD_BALANCE_DESCRIPTION_PREFIX} (Day ${streak})${milestoneBonus ? ` + ${streak}-day milestone` : ""}`;
 }
 
 export function classifyBalanceTransaction(
-  transaction: ClassifiedBalanceTransactionInput
+  transaction: ClassifiedBalanceTransactionInput,
 ): BalanceTransactionCapitalClassification {
-  if (transaction.type === 'deposit') {
+  if (transaction.type === "deposit") {
     const matchedRule = DEPOSIT_DESCRIPTION_RULES.find((rule) =>
-      rule.matches(transaction.description)
+      rule.matches(transaction.description),
     );
 
     if (matchedRule) {
@@ -369,16 +369,16 @@ export function classifyBalanceTransaction(
 }
 
 export function extractCapitalBaseAmount(
-  transaction: ClassifiedBalanceTransactionInput
+  transaction: ClassifiedBalanceTransactionInput,
 ): number {
-  if (transaction.type === 'deposit' && Number(transaction.amount ?? 0) <= 0) {
+  if (transaction.type === "deposit" && Number(transaction.amount ?? 0) <= 0) {
     return 0;
   }
 
   const classification = classifyBalanceTransaction(transaction);
   const fallbackAmount = Math.abs(Number(transaction.amount ?? 0));
 
-  if (classification.amountStrategy !== 'balance_units_requested') {
+  if (classification.amountStrategy !== "balance_units_requested") {
     return fallbackAmount;
   }
 
@@ -388,32 +388,32 @@ export function extractCapitalBaseAmount(
 
 export function getCapitalBaseContributionAmount(
   transaction: ClassifiedBalanceTransactionInput,
-  scope: CapitalBaseScope
+  scope: CapitalBaseScope,
 ): number {
   const classification = classifyBalanceTransaction(transaction);
   const effect =
-    scope === 'wallet'
+    scope === "wallet"
       ? classification.walletCapitalBaseEffect
       : classification.teamCapitalBaseEffect;
 
-  if (effect === 'none') {
+  if (effect === "none") {
     return 0;
   }
 
   const amount = extractCapitalBaseAmount(transaction);
-  return effect === 'credit' ? amount : -amount;
+  return effect === "credit" ? amount : -amount;
 }
 
 export function buildCapitalBaseContributionSql(
   transactionAlias: string,
-  scope: CapitalBaseScope
+  scope: CapitalBaseScope,
 ): string {
-  const positiveTypes = buildScopedTypes('credit', scope);
-  const negativeTypes = buildScopedTypes('debit', scope);
+  const positiveTypes = buildScopedTypes("credit", scope);
+  const negativeTypes = buildScopedTypes("debit", scope);
   const reversalAmountExpression = buildReversalAmountSql(transactionAlias);
   const depositContributionCondition = buildDepositContributionSql(
     transactionAlias,
-    scope
+    scope,
   );
 
   const cases: string[] = [];
@@ -422,7 +422,7 @@ export function buildCapitalBaseContributionSql(
     cases.push(`
       WHEN ${transactionAlias}."type" IN (${positiveTypes
         .map(quoteSqlLiteral)
-        .join(', ')})
+        .join(", ")})
         THEN ABS(${transactionAlias}."amount"::numeric)
     `);
   }
@@ -431,7 +431,7 @@ export function buildCapitalBaseContributionSql(
     cases.push(`
       WHEN ${transactionAlias}."type" IN (${negativeTypes
         .map(quoteSqlLiteral)
-        .join(', ')})
+        .join(", ")})
         THEN -(${reversalAmountExpression})
     `);
   }
@@ -445,7 +445,7 @@ export function buildCapitalBaseContributionSql(
 
   return `
     CASE
-      ${cases.join('\n')}
+      ${cases.join("\n")}
       ELSE 0::numeric
     END
   `;
@@ -453,27 +453,27 @@ export function buildCapitalBaseContributionSql(
 
 function buildDepositContributionSql(
   transactionAlias: string,
-  scope: CapitalBaseScope
+  scope: CapitalBaseScope,
 ): string | null {
-  if (scope === 'team') {
-    if (DEFAULT_DEPOSIT_CLASSIFICATION.teamCapitalBaseEffect !== 'credit') {
+  if (scope === "team") {
+    if (DEFAULT_DEPOSIT_CLASSIFICATION.teamCapitalBaseEffect !== "credit") {
       return null;
     }
   } else if (
-    DEFAULT_DEPOSIT_CLASSIFICATION.walletCapitalBaseEffect !== 'credit'
+    DEFAULT_DEPOSIT_CLASSIFICATION.walletCapitalBaseEffect !== "credit"
   ) {
     return null;
   }
 
   const exclusionClauses = DEPOSIT_DESCRIPTION_RULES.filter(
     (rule) =>
-      (scope === 'wallet'
+      (scope === "wallet"
         ? rule.classification.walletCapitalBaseEffect
-        : rule.classification.teamCapitalBaseEffect) === 'none'
+        : rule.classification.teamCapitalBaseEffect) === "none",
   ).map((rule) => `NOT (${rule.matchesSql(transactionAlias)})`);
 
   const exclusionCondition =
-    exclusionClauses.length > 0 ? exclusionClauses.join(' AND ') : 'TRUE';
+    exclusionClauses.length > 0 ? exclusionClauses.join(" AND ") : "TRUE";
 
   return `
     ${transactionAlias}."type" = 'deposit'
@@ -503,9 +503,9 @@ function buildReversalAmountSql(transactionAlias: string): string {
 }
 
 function extractRequestedBalanceUnits(
-  description: string | null
+  description: string | null,
 ): number | null {
-  if (!description || !description.startsWith('{')) {
+  if (!description?.startsWith("{")) {
     return null;
   }
 
@@ -515,11 +515,11 @@ function extractRequestedBalanceUnits(
     };
     const requested = parsed.balanceUnitsRequested;
 
-    if (typeof requested === 'number' && Number.isFinite(requested)) {
+    if (typeof requested === "number" && Number.isFinite(requested)) {
       return Math.abs(requested);
     }
 
-    if (typeof requested === 'string') {
+    if (typeof requested === "string") {
       const numericValue = Number(requested);
       if (Number.isFinite(numericValue)) {
         return Math.abs(numericValue);

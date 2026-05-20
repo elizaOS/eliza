@@ -17,16 +17,16 @@
  * Run with: npx playwright test perp-market-trading.e2e.test.ts
  */
 
-import { expect, test } from '@playwright/test';
+import { expect, test } from "@playwright/test";
 import {
   type BrowserDevAuthSession,
   installPlaywrightDevAuth,
-} from './dev-auth';
+} from "./dev-auth";
 
 const BASE_URL =
   process.env.PLAYWRIGHT_BASE_URL ||
   process.env.TEST_BASE_URL ||
-  'http://127.0.0.1:3400';
+  "http://127.0.0.1:3400";
 
 let serverAvailable = false;
 let isOnchainMode = false;
@@ -35,11 +35,11 @@ let authHeaders: Record<string, string> = {};
 
 async function apiGet<T>(path: string): Promise<T> {
   const response = await fetch(`${BASE_URL}${path}`, {
-    headers: { ...authHeaders, accept: 'application/json' },
+    headers: { ...authHeaders, accept: "application/json" },
   });
   if (!response.ok) {
     throw new Error(
-      `GET ${path} failed: ${response.status} ${await response.text()}`
+      `GET ${path} failed: ${response.status} ${await response.text()}`,
     );
   }
   return (await response.json()) as T;
@@ -47,14 +47,14 @@ async function apiGet<T>(path: string): Promise<T> {
 
 async function apiPost<T>(
   path: string,
-  body: unknown
+  body: unknown,
 ): Promise<{ data: T; status: number }> {
   const response = await fetch(`${BASE_URL}${path}`, {
-    method: 'POST',
+    method: "POST",
     headers: {
       ...authHeaders,
-      'content-type': 'application/json',
-      accept: 'application/json',
+      "content-type": "application/json",
+      accept: "application/json",
     },
     body: JSON.stringify(body),
   });
@@ -127,7 +127,7 @@ type PerpCloseResponse = {
   newBalance: number;
 };
 
-test.describe('Perpetual Market Trading (Simulation)', () => {
+test.describe("Perpetual Market Trading (Simulation)", () => {
   test.beforeAll(async ({ browser }) => {
     // Check server availability
     try {
@@ -149,7 +149,7 @@ test.describe('Perpetual Market Trading (Simulation)', () => {
     _authSession = await installPlaywrightDevAuth(page, BASE_URL);
 
     const cookies = await context.cookies();
-    const cookieHeader = cookies.map((c) => `${c.name}=${c.value}`).join('; ');
+    const cookieHeader = cookies.map((c) => `${c.name}=${c.value}`).join("; ");
     authHeaders = { cookie: cookieHeader };
 
     await page.close();
@@ -161,7 +161,7 @@ test.describe('Perpetual Market Trading (Simulation)', () => {
     // a position (simulation mode never returns 500 for valid requests).
     try {
       const marketsRes = await fetch(`${BASE_URL}/api/markets/perps`, {
-        headers: { ...authHeaders, accept: 'application/json' },
+        headers: { ...authHeaders, accept: "application/json" },
       });
       if (marketsRes.ok) {
         const marketsData = (await marketsRes.json()) as {
@@ -170,15 +170,15 @@ test.describe('Perpetual Market Trading (Simulation)', () => {
         const firstTicker = marketsData.markets?.[0]?.ticker;
         if (firstTicker) {
           const probeRes = await fetch(`${BASE_URL}/api/markets/perps/open`, {
-            method: 'POST',
+            method: "POST",
             headers: {
               ...authHeaders,
-              'content-type': 'application/json',
-              accept: 'application/json',
+              "content-type": "application/json",
+              accept: "application/json",
             },
             body: JSON.stringify({
               ticker: firstTicker,
-              side: 'long',
+              side: "long",
               size: 1,
               leverage: 1,
             }),
@@ -194,11 +194,11 @@ test.describe('Perpetual Market Trading (Simulation)', () => {
     }
   });
 
-  test('should list perp markets with price data', async () => {
-    test.skip(!serverAvailable, 'Server not available');
+  test("should list perp markets with price data", async () => {
+    test.skip(!serverAvailable, "Server not available");
 
     const data = await apiGet<{ markets: PerpMarket[]; count: number }>(
-      '/api/markets/perps'
+      "/api/markets/perps",
     );
 
     expect(data.markets).toBeDefined();
@@ -207,22 +207,22 @@ test.describe('Perpetual Market Trading (Simulation)', () => {
     const firstMarket = data.markets[0];
     if (firstMarket) {
       expect(firstMarket.ticker).toBeDefined();
-      expect(typeof firstMarket.currentPrice).toBe('number');
+      expect(typeof firstMarket.currentPrice).toBe("number");
       expect(firstMarket.currentPrice).toBeGreaterThan(0);
-      expect(typeof firstMarket.maxLeverage).toBe('number');
+      expect(typeof firstMarket.maxLeverage).toBe("number");
       expect(firstMarket.maxLeverage).toBeGreaterThanOrEqual(1);
     }
   });
 
-  test('should open a long position', async () => {
-    test.skip(!serverAvailable, 'Server not available');
+  test("should open a long position", async () => {
+    test.skip(!serverAvailable, "Server not available");
     test.skip(
       isOnchainMode,
-      'Server is in on-chain settlement mode - requires EVM wallet'
+      "Server is in on-chain settlement mode - requires EVM wallet",
     );
 
     const { markets } = await apiGet<{ markets: PerpMarket[] }>(
-      '/api/markets/perps'
+      "/api/markets/perps",
     );
 
     const market = markets[0];
@@ -230,18 +230,18 @@ test.describe('Perpetual Market Trading (Simulation)', () => {
     const tradeSize = Math.max(market.minOrderSize || 10, 10);
 
     const { data, status } = await apiPost<PerpOpenResponse>(
-      '/api/markets/perps/open',
+      "/api/markets/perps/open",
       {
         ticker: market.ticker,
-        side: 'long',
+        side: "long",
         size: tradeSize,
         leverage: 2,
-      }
+      },
     );
     if (isOnchainError(status, data)) {
       test.skip(
         true,
-        'Server is in on-chain settlement mode - requires EVM wallet'
+        "Server is in on-chain settlement mode - requires EVM wallet",
       );
       return;
     }
@@ -249,24 +249,24 @@ test.describe('Perpetual Market Trading (Simulation)', () => {
     expect(status).toBe(201);
     expect(data.position).toBeDefined();
     expect(data.position.ticker).toBe(market.ticker);
-    expect(data.position.side).toBe('long');
+    expect(data.position.side).toBe("long");
     expect(data.position.entryPrice).toBeGreaterThan(0);
     expect(data.position.size).toBeGreaterThan(0);
     expect(data.position.leverage).toBe(2);
     expect(data.marginPaid).toBeGreaterThan(0);
     expect(data.fee.amount).toBeGreaterThanOrEqual(0);
-    expect(typeof data.newBalance).toBe('number');
+    expect(typeof data.newBalance).toBe("number");
   });
 
-  test('should open a short position', async () => {
-    test.skip(!serverAvailable, 'Server not available');
+  test("should open a short position", async () => {
+    test.skip(!serverAvailable, "Server not available");
     test.skip(
       isOnchainMode,
-      'Server is in on-chain settlement mode - requires EVM wallet'
+      "Server is in on-chain settlement mode - requires EVM wallet",
     );
 
     const { markets } = await apiGet<{ markets: PerpMarket[] }>(
-      '/api/markets/perps'
+      "/api/markets/perps",
     );
 
     // Use a different market to avoid position consolidation
@@ -275,37 +275,37 @@ test.describe('Perpetual Market Trading (Simulation)', () => {
     const tradeSize = Math.max(market.minOrderSize || 10, 10);
 
     const { data, status } = await apiPost<PerpOpenResponse>(
-      '/api/markets/perps/open',
+      "/api/markets/perps/open",
       {
         ticker: market.ticker,
-        side: 'short',
+        side: "short",
         size: tradeSize,
         leverage: 3,
-      }
+      },
     );
     if (isOnchainError(status, data)) {
       test.skip(
         true,
-        'Server is in on-chain settlement mode - requires EVM wallet'
+        "Server is in on-chain settlement mode - requires EVM wallet",
       );
       return;
     }
 
     expect(status).toBe(201);
-    expect(data.position.side).toBe('short');
+    expect(data.position.side).toBe("short");
     expect(data.position.leverage).toBe(3);
   });
 
-  test('should close a position and realize P&L', async () => {
-    test.skip(!serverAvailable, 'Server not available');
+  test("should close a position and realize P&L", async () => {
+    test.skip(!serverAvailable, "Server not available");
     test.skip(
       isOnchainMode,
-      'Server is in on-chain settlement mode - requires EVM wallet'
+      "Server is in on-chain settlement mode - requires EVM wallet",
     );
 
     // First open a position
     const { markets } = await apiGet<{ markets: PerpMarket[] }>(
-      '/api/markets/perps'
+      "/api/markets/perps",
     );
 
     // Use the last market to avoid conflicts with earlier tests
@@ -314,16 +314,16 @@ test.describe('Perpetual Market Trading (Simulation)', () => {
     const tradeSize = Math.max(market.minOrderSize || 10, 10);
 
     const { data: openResult, status: openStatus } =
-      await apiPost<PerpOpenResponse>('/api/markets/perps/open', {
+      await apiPost<PerpOpenResponse>("/api/markets/perps/open", {
         ticker: market.ticker,
-        side: 'long',
+        side: "long",
         size: tradeSize,
         leverage: 2,
       });
     if (isOnchainError(openStatus, openResult)) {
       test.skip(
         true,
-        'Server is in on-chain settlement mode - requires EVM wallet'
+        "Server is in on-chain settlement mode - requires EVM wallet",
       );
       return;
     }
@@ -336,40 +336,40 @@ test.describe('Perpetual Market Trading (Simulation)', () => {
     const { data: closeResult, status: closeStatus } =
       await apiPost<PerpCloseResponse>(
         `/api/markets/perps/position/${positionId}/close`,
-        {}
+        {},
       );
 
     expect(closeStatus).toBe(200);
     expect(closeResult.position).toBeDefined();
     expect(closeResult.position.id).toBe(positionId);
-    expect(typeof closeResult.position.realizedPnL).toBe('number');
-    expect(typeof closeResult.position.exitPrice).toBe('number');
+    expect(typeof closeResult.position.realizedPnL).toBe("number");
+    expect(typeof closeResult.position.exitPrice).toBe("number");
     expect(closeResult.position.exitPrice).toBeGreaterThan(0);
     expect(closeResult.wasLiquidated).toBe(false);
-    expect(typeof closeResult.newBalance).toBe('number');
-    expect(typeof closeResult.marginReturned).toBe('number');
+    expect(typeof closeResult.newBalance).toBe("number");
+    expect(typeof closeResult.marginReturned).toBe("number");
     expect(closeResult.marginReturned).toBeGreaterThan(0);
   });
 
-  test('should reject invalid leverage', async () => {
-    test.skip(!serverAvailable, 'Server not available');
+  test("should reject invalid leverage", async () => {
+    test.skip(!serverAvailable, "Server not available");
 
     const { markets } = await apiGet<{ markets: PerpMarket[] }>(
-      '/api/markets/perps'
+      "/api/markets/perps",
     );
 
     const market = markets[0];
     skipUnless(market);
 
     const response = await fetch(`${BASE_URL}/api/markets/perps/open`, {
-      method: 'POST',
+      method: "POST",
       headers: {
         ...authHeaders,
-        'content-type': 'application/json',
+        "content-type": "application/json",
       },
       body: JSON.stringify({
         ticker: market.ticker,
-        side: 'long',
+        side: "long",
         size: 10,
         leverage: 200, // exceeds max
       }),
@@ -378,18 +378,18 @@ test.describe('Perpetual Market Trading (Simulation)', () => {
     expect(response.status).toBeGreaterThanOrEqual(400);
   });
 
-  test('should reject invalid ticker', async () => {
-    test.skip(!serverAvailable, 'Server not available');
+  test("should reject invalid ticker", async () => {
+    test.skip(!serverAvailable, "Server not available");
 
     const response = await fetch(`${BASE_URL}/api/markets/perps/open`, {
-      method: 'POST',
+      method: "POST",
       headers: {
         ...authHeaders,
-        'content-type': 'application/json',
+        "content-type": "application/json",
       },
       body: JSON.stringify({
-        ticker: 'NONEXISTENT_TICKER',
-        side: 'long',
+        ticker: "NONEXISTENT_TICKER",
+        side: "long",
         size: 10,
         leverage: 2,
       }),

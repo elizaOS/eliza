@@ -30,6 +30,7 @@
       "!packages/training/reports",
       "!packages/training/config/**/*.schema.json",
       "!packages/training/scripts/publish/templates",
+      "!packages/feed",
       "!packages/feed/apps/web/public",
       "!packages/feed/apps/web/.next",
       "!packages/feed/apps/mobile/public",

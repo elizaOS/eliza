@@ -18,25 +18,25 @@ import {
   CACHE_KEYS,
   invalidateCache,
   invalidateCachePattern,
-} from './cache-service';
+} from "./cache-service";
 
 /** Drop cached perp snapshot after trades or price-impact writes. */
 export async function invalidateMarketsApiPerpsSnapshot(): Promise<void> {
-  await invalidateCachePattern('*', {
+  await invalidateCachePattern("*", {
     namespace: CACHE_KEYS.MARKETS_API_PERPS,
   });
 }
 
 /** Drop cached prediction market list after any trade, resolve, or cancel. */
 export async function invalidateMarketsApiPredictionsList(): Promise<void> {
-  await invalidateCachePattern('*', {
+  await invalidateCachePattern("*", {
     namespace: CACHE_KEYS.MARKETS_API_PREDICTIONS_LIST,
   });
 }
 
 /** Drop cached positions for one user (their list view embeds positions). */
 export async function invalidateMarketsApiPredictionsPositionsForUser(
-  userId: string
+  userId: string,
 ): Promise<void> {
   await invalidateCache(userId, {
     namespace: CACHE_KEYS.MARKETS_API_PREDICTIONS_POSITIONS,
@@ -45,7 +45,7 @@ export async function invalidateMarketsApiPredictionsPositionsForUser(
 
 /** After a prediction trade: list changes globally; this user's positions change. */
 export async function invalidateMarketsApiPredictionsAfterUserTrade(
-  userId: string
+  userId: string,
 ): Promise<void> {
   await Promise.all([
     invalidateMarketsApiPredictionsList(),
@@ -57,7 +57,7 @@ export async function invalidateMarketsApiPredictionsAfterUserTrade(
 export async function invalidateMarketsApiPredictionsListAndAllPositions(): Promise<void> {
   await Promise.all([
     invalidateMarketsApiPredictionsList(),
-    invalidateCachePattern('*', {
+    invalidateCachePattern("*", {
       namespace: CACHE_KEYS.MARKETS_API_PREDICTIONS_POSITIONS,
     }),
   ]);

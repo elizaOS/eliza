@@ -7,20 +7,20 @@
  * Note: Client-side Sentry is initialized via instrumentation-client.ts
  */
 
-import * as Sentry from '@sentry/nextjs';
+import * as Sentry from "@sentry/nextjs";
 
 const sentryDisabled =
-  process.env.DISABLE_SENTRY === 'true' ||
-  process.env.NEXT_PUBLIC_DISABLE_SENTRY === 'true';
+  process.env.DISABLE_SENTRY === "true" ||
+  process.env.NEXT_PUBLIC_DISABLE_SENTRY === "true";
 
 export async function register() {
   // Skip instrumentation during build phase
-  if (process.env.NEXT_PHASE === 'phase-production-build') {
+  if (process.env.NEXT_PHASE === "phase-production-build") {
     return;
   }
 
   // Only initialize services in Node.js runtime (not Edge Runtime)
-  if (process.env.NEXT_RUNTIME === 'nodejs') {
+  if (process.env.NEXT_RUNTIME === "nodejs") {
     // Dynamically import Node.js-only modules to avoid Edge Runtime errors
     // Import from main package entry point
     const {
@@ -30,14 +30,14 @@ export async function register() {
       ReputationService,
       createNotification,
       logDevCredentials,
-    } = await import('@feed/api');
+    } = await import("@feed/api");
     const { createSentryApiRouteCapture } = await import(
-      './src/lib/sentry/api-route-capture'
+      "./src/lib/sentry/api-route-capture"
     );
 
     // Route-level captureError options still override this default.
     setDefaultErrorCapture(
-      sentryDisabled ? undefined : createSentryApiRouteCapture()
+      sentryDisabled ? undefined : createSentryApiRouteCapture(),
     );
 
     // Log development credentials at startup (only in dev mode)
@@ -47,7 +47,7 @@ export async function register() {
     // Initialize agent service container with required services
     // Uses globalThis to persist across module instances
     const { setServiceContainer, agentRegistry, npcBootstrapService } =
-      await import('@feed/agents');
+      await import("@feed/agents");
     setServiceContainer({
       agentRegistry,
     });
@@ -67,7 +67,7 @@ export async function register() {
           userId,
           amount,
           reason as never,
-          metadata as Parameters<typeof ReputationService.awardReputation>[3]
+          metadata as Parameters<typeof ReputationService.awardReputation>[3],
         );
       },
     });
@@ -77,7 +77,7 @@ export async function register() {
         // Cast params to match CreateNotificationParams type
         // setNotificationService interface uses string for type, but createNotification expects NotificationType
         return await createNotification(
-          params as Parameters<typeof createNotification>[0]
+          params as Parameters<typeof createNotification>[0],
         );
       },
     });
@@ -94,24 +94,24 @@ export async function register() {
       __lastUsedFlusherStarted?: boolean;
     };
     if (!g.__lastUsedFlusherStarted) {
-      const { startLastUsedFlusher } = await import('@feed/api');
+      const { startLastUsedFlusher } = await import("@feed/api");
       startLastUsedFlusher();
       g.__lastUsedFlusherStarted = true;
     }
   }
 
-  if (sentryDisabled && process.env.NODE_ENV === 'development') {
-    console.info('[Sentry] Disabled via DISABLE_SENTRY flag');
+  if (sentryDisabled && process.env.NODE_ENV === "development") {
+    console.info("[Sentry] Disabled via DISABLE_SENTRY flag");
   }
 
   // Initialize Sentry for server-side (Node.js runtime)
-  if (!sentryDisabled && process.env.NEXT_RUNTIME === 'nodejs') {
-    await import('./sentry.server.config');
+  if (!sentryDisabled && process.env.NEXT_RUNTIME === "nodejs") {
+    await import("./sentry.server.config");
   }
 
   // Initialize Sentry for Edge Runtime (middleware, edge route handlers)
-  if (!sentryDisabled && process.env.NEXT_RUNTIME === 'edge') {
-    await import('./sentry.edge.config');
+  if (!sentryDisabled && process.env.NEXT_RUNTIME === "edge") {
+    await import("./sentry.edge.config");
   }
 }
 

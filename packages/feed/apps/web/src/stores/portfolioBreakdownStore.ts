@@ -1,10 +1,7 @@
-import {
-  type PortfolioBreakdownSnapshot,
-  toNumber,
-} from '@feed/engine/client';
-import { useCallback, useEffect, useRef } from 'react';
-import { create } from 'zustand';
-import { useShallow } from 'zustand/react/shallow';
+import { type PortfolioBreakdownSnapshot, toNumber } from "@feed/engine/client";
+import { useCallback, useEffect, useRef } from "react";
+import { create } from "zustand";
+import { useShallow } from "zustand/react/shallow";
 
 interface PortfolioBreakdownState {
   data: PortfolioBreakdownSnapshot | null;
@@ -25,10 +22,10 @@ interface PortfolioBreakdownState {
 const CACHE_TTL = 5000;
 
 export function isAbortError(error: unknown): boolean {
-  if (error instanceof DOMException && error.name === 'AbortError') {
+  if (error instanceof DOMException && error.name === "AbortError") {
     return true;
   }
-  if (error instanceof Error && error.name === 'AbortError') {
+  if (error instanceof Error && error.name === "AbortError") {
     return true;
   }
   return false;
@@ -36,23 +33,23 @@ export function isAbortError(error: unknown): boolean {
 
 export async function fetchPortfolioBreakdownSnapshot(
   userId: string,
-  signal: AbortSignal
+  signal: AbortSignal,
 ): Promise<PortfolioBreakdownSnapshot> {
   let breakdownRes: Response;
   try {
     breakdownRes = await fetch(
       `/api/users/${encodeURIComponent(userId)}/portfolio-breakdown`,
-      { signal }
+      { signal },
     );
   } catch (error) {
     if (signal.aborted || isAbortError(error)) {
       throw error;
     }
-    throw new Error('Failed to fetch portfolio breakdown');
+    throw new Error("Failed to fetch portfolio breakdown");
   }
 
   if (!breakdownRes.ok) {
-    throw new Error('Failed to fetch portfolio breakdown');
+    throw new Error("Failed to fetch portfolio breakdown");
   }
 
   let breakdownJson: Record<string, unknown>;
@@ -62,7 +59,7 @@ export async function fetchPortfolioBreakdownSnapshot(
     if (signal.aborted || isAbortError(error)) {
       throw error;
     }
-    throw new Error('Failed to parse portfolio breakdown');
+    throw new Error("Failed to parse portfolio breakdown");
   }
 
   return {
@@ -79,11 +76,11 @@ export async function fetchPortfolioBreakdownSnapshot(
       ? breakdownJson.members
           .filter(
             (member): member is Record<string, unknown> =>
-              typeof member === 'object' && member !== null
+              typeof member === "object" && member !== null,
           )
           .map((member) => ({
-            id: String(member.id ?? ''),
-            name: String(member.name ?? 'Agent'),
+            id: String(member.id ?? ""),
+            name: String(member.name ?? "Agent"),
             wallet: toNumber(member.wallet),
             isAgent: Boolean(member.isAgent),
           }))
@@ -141,7 +138,7 @@ export const usePortfolioBreakdownStore = create<PortfolioBreakdownState>(
         try {
           const nextData = await fetchPortfolioBreakdownSnapshot(
             requestedUserId,
-            abortController.signal
+            abortController.signal,
           );
 
           if (get().userId !== requestedUserId) {
@@ -159,7 +156,7 @@ export const usePortfolioBreakdownStore = create<PortfolioBreakdownState>(
               error:
                 error instanceof Error
                   ? error.message
-                  : 'Failed to fetch portfolio breakdown',
+                  : "Failed to fetch portfolio breakdown",
             });
           }
         } finally {
@@ -251,7 +248,7 @@ export const usePortfolioBreakdownStore = create<PortfolioBreakdownState>(
         }
       };
     },
-  })
+  }),
 );
 
 const portfolioBreakdownSelector = (state: PortfolioBreakdownState) => ({
@@ -263,10 +260,10 @@ const portfolioBreakdownSelector = (state: PortfolioBreakdownState) => ({
 
 export function usePortfolioBreakdown(userId?: string | null) {
   const data = usePortfolioBreakdownStore(
-    useShallow(portfolioBreakdownSelector)
+    useShallow(portfolioBreakdownSelector),
   );
   const fetchPortfolioBreakdown = usePortfolioBreakdownStore(
-    (state) => state.fetchPortfolioBreakdown
+    (state) => state.fetchPortfolioBreakdown,
   );
   const setUserId = usePortfolioBreakdownStore((state) => state.setUserId);
 
@@ -289,7 +286,7 @@ export function usePortfolioBreakdown(userId?: string | null) {
 
 export function usePortfolioBreakdownPolling(
   userId?: string | null,
-  intervalMs = 15000
+  intervalMs = 15000,
 ) {
   const subscribe = usePortfolioBreakdownStore((state) => state.subscribe);
   const intervalRef = useRef(intervalMs);

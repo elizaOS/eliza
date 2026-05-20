@@ -8,75 +8,75 @@
  * because the db module has many exports that tests need to control individually.
  */
 
-import { afterEach, beforeEach, mock } from 'bun:test';
+import { afterEach, beforeEach, mock } from "bun:test";
 
 // Set test environment
-void Reflect.set(process.env, 'NODE_ENV', 'test');
-void Reflect.set(process.env, 'BUN_ENV', 'test');
-void Reflect.set(process.env, 'NEXT_PUBLIC_CURRENCY_SYMBOL', '$');
+void Reflect.set(process.env, "NODE_ENV", "test");
+void Reflect.set(process.env, "BUN_ENV", "test");
+void Reflect.set(process.env, "NEXT_PUBLIC_CURRENCY_SYMBOL", "$");
 
 // Prevent file-local React module mocks from leaking across test files.
 // React 19's react-dom performs a strict `react.version` check at runtime.
-const actualReact = await import('react');
+const actualReact = await import("react");
 
 // Prevent file-local module mocks from leaking across test files.
 // Many tests mock modules with incomplete stubs (missing logger, POINTS,
 // DAILY_LOGIN, zod re-exports, etc.), which breaks unrelated tests that import
 // the real module. Restoring after each test ensures a clean slate.
-const actualShared = await import('@feed/shared');
-const actualDb = await import('@feed/db');
-const actualZod = await import('zod');
+const actualShared = await import("@feed/shared");
+const actualDb = await import("@feed/db");
+const actualZod = await import("zod");
 
 // These modules are also frequently mocked incompletely across test files.
 // We use try/catch because they may have side effects on import, but capturing
 // them here ensures we can restore them if they were mocked by a previous test.
 let actualApi: Record<string, unknown> | null = null;
 try {
-  actualApi = await import('@feed/api');
+  actualApi = await import("@feed/api");
 } catch {
   // @feed/api may fail to import in some environments; skip restoration
 }
 
 let actualEngine: Record<string, unknown> | null = null;
 try {
-  actualEngine = await import('@feed/engine');
+  actualEngine = await import("@feed/engine");
 } catch {
   // @feed/engine may fail to import in some environments; skip restoration
 }
 
 let actualNextServer: Record<string, unknown> | null = null;
 try {
-  actualNextServer = await import('next/server');
+  actualNextServer = await import("next/server");
 } catch {
   // next/server may fail to import; skip restoration
 }
 
 function _restoreAllModules() {
-  mock.module('react', () => ({
+  mock.module("react", () => ({
     ...actualReact,
     default: actualReact.default ?? actualReact,
   }));
-  mock.module('@feed/shared', () => ({
+  mock.module("@feed/shared", () => ({
     ...actualShared,
   }));
-  mock.module('@feed/db', () => ({
+  mock.module("@feed/db", () => ({
     ...actualDb,
   }));
-  mock.module('zod', () => ({
+  mock.module("zod", () => ({
     ...actualZod,
   }));
   if (actualApi) {
-    mock.module('@feed/api', () => ({
+    mock.module("@feed/api", () => ({
       ...actualApi,
     }));
   }
   if (actualEngine) {
-    mock.module('@feed/engine', () => ({
+    mock.module("@feed/engine", () => ({
       ...actualEngine,
     }));
   }
   if (actualNextServer) {
-    mock.module('next/server', () => ({
+    mock.module("next/server", () => ({
       ...actualNextServer,
     }));
   }
@@ -87,18 +87,18 @@ function _restoreAllModules() {
 // with test-specific behavior (mock DB selects, mock auth, etc.) that must
 // survive between tests. Only restore them in afterEach (after test completes).
 function restoreSafeModules() {
-  mock.module('react', () => ({
+  mock.module("react", () => ({
     ...actualReact,
     default: actualReact.default ?? actualReact,
   }));
-  mock.module('@feed/shared', () => ({
+  mock.module("@feed/shared", () => ({
     ...actualShared,
   }));
-  mock.module('zod', () => ({
+  mock.module("zod", () => ({
     ...actualZod,
   }));
   if (actualNextServer) {
-    mock.module('next/server', () => ({
+    mock.module("next/server", () => ({
       ...actualNextServer,
     }));
   }
@@ -113,23 +113,22 @@ beforeEach(restoreSafeModules);
 afterEach(restoreSafeModules);
 
 // Mock server-only so tests can import Next.js route handlers that use it
-mock.module('server-only', () => ({}));
+mock.module("server-only", () => ({}));
 
 // Respect any CI/runner-provided DB connection string; otherwise default to local test DB.
 process.env.DATABASE_URL ??=
-  'postgresql://postgres:postgres@localhost:5432/test_db';
+  "postgresql://postgres:postgres@localhost:5432/test_db";
 process.env.DIRECT_DATABASE_URL ??= process.env.DATABASE_URL;
-process.env.REDIS_URL ??= 'redis://localhost:6379';
+process.env.REDIS_URL ??= "redis://localhost:6379";
 
 // Mock API keys to prevent initialization errors, but don’t override real keys if set.
-process.env.GROQ_API_KEY ??= 'mock-groq-api-key-for-testing';
-process.env.OPENAI_API_KEY ??= 'mock-openai-api-key-for-testing';
+process.env.GROQ_API_KEY ??= "mock-groq-api-key-for-testing";
+process.env.OPENAI_API_KEY ??= "mock-openai-api-key-for-testing";
 
 // Mock Redis/ioredis
-mock.module('ioredis', () => {
+mock.module("ioredis", () => {
   return {
     default: class MockRedis {
-      constructor() {}
       on() {
         return this;
       }
@@ -149,16 +148,16 @@ mock.module('ioredis', () => {
         return Promise.resolve();
       }
       quit() {
-        return Promise.resolve('OK');
+        return Promise.resolve("OK");
       }
       get() {
         return Promise.resolve(null);
       }
       set() {
-        return Promise.resolve('OK');
+        return Promise.resolve("OK");
       }
       setex() {
-        return Promise.resolve('OK');
+        return Promise.resolve("OK");
       }
       del() {
         return Promise.resolve(1);
@@ -176,7 +175,7 @@ mock.module('ioredis', () => {
         return Promise.resolve([]);
       }
       flushall() {
-        return Promise.resolve('OK');
+        return Promise.resolve("OK");
       }
       hget() {
         return Promise.resolve(null);
@@ -218,19 +217,19 @@ mock.module('ioredis', () => {
         const pipeline = {
           commands: [] as unknown[],
           get(key: string) {
-            this.commands.push(['get', key]);
+            this.commands.push(["get", key]);
             return this;
           },
           set(key: string, value: unknown) {
-            this.commands.push(['set', key, value]);
+            this.commands.push(["set", key, value]);
             return this;
           },
           del(key: string) {
-            this.commands.push(['del', key]);
+            this.commands.push(["del", key]);
             return this;
           },
           exec() {
-            return Promise.resolve(this.commands.map(() => [null, 'OK']));
+            return Promise.resolve(this.commands.map(() => [null, "OK"]));
           },
         };
         return pipeline;
@@ -253,14 +252,14 @@ mock.module('ioredis', () => {
 // This is critical for modules like user-rate-limiter.ts that capture `logger`
 // at module evaluation time via static `import { logger } from '@feed/shared'`.
 try {
-  await import('../../api/src/rate-limiting/user-rate-limiter');
+  await import("../../api/src/rate-limiting/user-rate-limiter");
 } catch {
   // May fail if dependencies aren't available; that's OK
 }
 try {
-  await import('../../api/src/rate-limiting/middleware');
+  await import("../../api/src/rate-limiting/middleware");
 } catch {
   // May fail if dependencies aren't available
 }
 
-console.log('Unit test environment initialized (Redis mocked, DB not mocked)');
+console.log("Unit test environment initialized (Redis mocked, DB not mocked)");

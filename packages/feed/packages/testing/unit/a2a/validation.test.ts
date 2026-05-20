@@ -4,7 +4,7 @@
  * Tests for Zod validation schemas used in A2A protocol
  */
 
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it } from "bun:test";
 import {
   BuySharesParamsSchema,
   CreatePostParamsSchema,
@@ -13,16 +13,16 @@ import {
   OpenPositionParamsSchema,
   PaymentRequestParamsSchema,
   SearchUsersParamsSchema,
-} from '@feed/a2a';
+} from "@feed/a2a";
 
-describe('A2A Validation Schemas', () => {
-  describe('DiscoverParamsSchema', () => {
-    it('should accept valid discover params', () => {
+describe("A2A Validation Schemas", () => {
+  describe("DiscoverParamsSchema", () => {
+    it("should accept valid discover params", () => {
       const result = DiscoverParamsSchema.safeParse({
         filters: {
-          strategies: ['trading', 'analysis'],
+          strategies: ["trading", "analysis"],
           minReputation: 100,
-          markets: ['prediction'],
+          markets: ["prediction"],
         },
         limit: 10,
       });
@@ -30,15 +30,15 @@ describe('A2A Validation Schemas', () => {
       expect(result.success).toBe(true);
     });
 
-    it('should accept empty params', () => {
+    it("should accept empty params", () => {
       const result = DiscoverParamsSchema.safeParse({});
       expect(result.success).toBe(true);
     });
 
-    it('should accept partial filters', () => {
+    it("should accept partial filters", () => {
       const result = DiscoverParamsSchema.safeParse({
         filters: {
-          strategies: ['trading'],
+          strategies: ["trading"],
         },
       });
 
@@ -46,86 +46,86 @@ describe('A2A Validation Schemas', () => {
     });
   });
 
-  describe('PaymentRequestParamsSchema', () => {
-    it('should accept valid payment request', () => {
+  describe("PaymentRequestParamsSchema", () => {
+    it("should accept valid payment request", () => {
       const result = PaymentRequestParamsSchema.safeParse({
-        to: '0x1234567890abcdef',
-        amount: '1000000000000000000',
-        service: 'market_analysis',
+        to: "0x1234567890abcdef",
+        amount: "1000000000000000000",
+        service: "market_analysis",
       });
 
       expect(result.success).toBe(true);
     });
 
-    it('should accept payment with metadata', () => {
+    it("should accept payment with metadata", () => {
       const result = PaymentRequestParamsSchema.safeParse({
-        to: '0x1234567890abcdef',
-        amount: '1000000000000000000',
-        service: 'market_analysis',
+        to: "0x1234567890abcdef",
+        amount: "1000000000000000000",
+        service: "market_analysis",
         metadata: {
-          requestId: '123',
-          marketId: 'market-001',
+          requestId: "123",
+          marketId: "market-001",
         },
-        from: '0xabcdef1234567890',
+        from: "0xabcdef1234567890",
       });
 
       expect(result.success).toBe(true);
     });
 
-    it('should reject missing required fields', () => {
+    it("should reject missing required fields", () => {
       const result = PaymentRequestParamsSchema.safeParse({
-        to: '0x1234567890abcdef',
+        to: "0x1234567890abcdef",
       });
 
       expect(result.success).toBe(false);
     });
   });
 
-  describe('BuySharesParamsSchema', () => {
-    it('should accept valid buy shares params', () => {
+  describe("BuySharesParamsSchema", () => {
+    it("should accept valid buy shares params", () => {
       const result = BuySharesParamsSchema.safeParse({
-        marketId: 'market-001',
-        outcome: 'YES',
+        marketId: "market-001",
+        outcome: "YES",
         amount: 100,
       });
 
       expect(result.success).toBe(true);
     });
 
-    it('should accept NO outcome', () => {
+    it("should accept NO outcome", () => {
       const result = BuySharesParamsSchema.safeParse({
-        marketId: 'market-001',
-        outcome: 'NO',
+        marketId: "market-001",
+        outcome: "NO",
         amount: 50,
       });
 
       expect(result.success).toBe(true);
     });
 
-    it('should reject invalid outcome', () => {
+    it("should reject invalid outcome", () => {
       const result = BuySharesParamsSchema.safeParse({
-        marketId: 'market-001',
-        outcome: 'MAYBE',
+        marketId: "market-001",
+        outcome: "MAYBE",
         amount: 100,
       });
 
       expect(result.success).toBe(false);
     });
 
-    it('should reject non-positive amount', () => {
+    it("should reject non-positive amount", () => {
       const result = BuySharesParamsSchema.safeParse({
-        marketId: 'market-001',
-        outcome: 'YES',
+        marketId: "market-001",
+        outcome: "YES",
         amount: 0,
       });
 
       expect(result.success).toBe(false);
     });
 
-    it('should reject negative amount', () => {
+    it("should reject negative amount", () => {
       const result = BuySharesParamsSchema.safeParse({
-        marketId: 'market-001',
-        outcome: 'YES',
+        marketId: "market-001",
+        outcome: "YES",
         amount: -10,
       });
 
@@ -133,11 +133,11 @@ describe('A2A Validation Schemas', () => {
     });
   });
 
-  describe('OpenPositionParamsSchema', () => {
-    it('should accept valid long position', () => {
+  describe("OpenPositionParamsSchema", () => {
+    it("should accept valid long position", () => {
       const result = OpenPositionParamsSchema.safeParse({
-        ticker: 'BTC',
-        side: 'LONG',
+        ticker: "BTC",
+        side: "LONG",
         amount: 1000,
         leverage: 10,
       });
@@ -145,10 +145,10 @@ describe('A2A Validation Schemas', () => {
       expect(result.success).toBe(true);
     });
 
-    it('should accept valid short position', () => {
+    it("should accept valid short position", () => {
       const result = OpenPositionParamsSchema.safeParse({
-        ticker: 'ETH',
-        side: 'SHORT',
+        ticker: "ETH",
+        side: "SHORT",
         amount: 500,
         leverage: 5,
       });
@@ -156,10 +156,10 @@ describe('A2A Validation Schemas', () => {
       expect(result.success).toBe(true);
     });
 
-    it('should reject leverage below 1', () => {
+    it("should reject leverage below 1", () => {
       const result = OpenPositionParamsSchema.safeParse({
-        ticker: 'BTC',
-        side: 'LONG',
+        ticker: "BTC",
+        side: "LONG",
         amount: 1000,
         leverage: 0,
       });
@@ -167,10 +167,10 @@ describe('A2A Validation Schemas', () => {
       expect(result.success).toBe(false);
     });
 
-    it('should reject leverage above 100', () => {
+    it("should reject leverage above 100", () => {
       const result = OpenPositionParamsSchema.safeParse({
-        ticker: 'BTC',
-        side: 'LONG',
+        ticker: "BTC",
+        side: "LONG",
         amount: 1000,
         leverage: 101,
       });
@@ -179,54 +179,54 @@ describe('A2A Validation Schemas', () => {
     });
   });
 
-  describe('CreatePostParamsSchema', () => {
-    it('should accept valid post', () => {
+  describe("CreatePostParamsSchema", () => {
+    it("should accept valid post", () => {
       const result = CreatePostParamsSchema.safeParse({
-        content: 'This is a test post',
+        content: "This is a test post",
       });
 
       expect(result.success).toBe(true);
     });
 
-    it('should accept post with type', () => {
+    it("should accept post with type", () => {
       const result = CreatePostParamsSchema.safeParse({
-        content: 'This is an article',
-        type: 'article',
+        content: "This is an article",
+        type: "article",
       });
 
       expect(result.success).toBe(true);
     });
 
-    it('should reject empty content', () => {
+    it("should reject empty content", () => {
       const result = CreatePostParamsSchema.safeParse({
-        content: '',
+        content: "",
       });
 
       expect(result.success).toBe(false);
     });
 
-    it('should reject content exceeding max length', () => {
+    it("should reject content exceeding max length", () => {
       const result = CreatePostParamsSchema.safeParse({
-        content: 'a'.repeat(5001),
+        content: "a".repeat(5001),
       });
 
       expect(result.success).toBe(false);
     });
 
-    it('should default type to post', () => {
+    it("should default type to post", () => {
       const result = CreatePostParamsSchema.safeParse({
-        content: 'Test post',
+        content: "Test post",
       });
 
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data.type).toBe('post');
+        expect(result.data.type).toBe("post");
       }
     });
   });
 
-  describe('GetFeedParamsSchema', () => {
-    it('should accept empty params with defaults', () => {
+  describe("GetFeedParamsSchema", () => {
+    it("should accept empty params with defaults", () => {
       const result = GetFeedParamsSchema.safeParse({});
 
       expect(result.success).toBe(true);
@@ -236,7 +236,7 @@ describe('A2A Validation Schemas', () => {
       }
     });
 
-    it('should accept custom pagination', () => {
+    it("should accept custom pagination", () => {
       const result = GetFeedParamsSchema.safeParse({
         limit: 50,
         offset: 100,
@@ -245,7 +245,7 @@ describe('A2A Validation Schemas', () => {
       expect(result.success).toBe(true);
     });
 
-    it('should accept following filter', () => {
+    it("should accept following filter", () => {
       const result = GetFeedParamsSchema.safeParse({
         following: true,
       });
@@ -253,44 +253,44 @@ describe('A2A Validation Schemas', () => {
       expect(result.success).toBe(true);
     });
 
-    it('should accept type filter', () => {
+    it("should accept type filter", () => {
       const result = GetFeedParamsSchema.safeParse({
-        type: 'article',
+        type: "article",
       });
 
       expect(result.success).toBe(true);
     });
   });
 
-  describe('SearchUsersParamsSchema', () => {
-    it('should accept valid search query', () => {
+  describe("SearchUsersParamsSchema", () => {
+    it("should accept valid search query", () => {
       const result = SearchUsersParamsSchema.safeParse({
-        query: 'trader',
+        query: "trader",
       });
 
       expect(result.success).toBe(true);
     });
 
-    it('should accept search with limit', () => {
+    it("should accept search with limit", () => {
       const result = SearchUsersParamsSchema.safeParse({
-        query: 'analyst',
+        query: "analyst",
         limit: 10,
       });
 
       expect(result.success).toBe(true);
     });
 
-    it('should reject empty query', () => {
+    it("should reject empty query", () => {
       const result = SearchUsersParamsSchema.safeParse({
-        query: '',
+        query: "",
       });
 
       expect(result.success).toBe(false);
     });
 
-    it('should use default limit', () => {
+    it("should use default limit", () => {
       const result = SearchUsersParamsSchema.safeParse({
-        query: 'test',
+        query: "test",
       });
 
       expect(result.success).toBe(true);

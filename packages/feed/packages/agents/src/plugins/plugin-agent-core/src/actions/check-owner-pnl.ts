@@ -5,6 +5,14 @@
  * This shows the owner's trading performance, not the agent's.
  */
 
+import type {
+  Action,
+  ActionResult,
+  HandlerCallback,
+  IAgentRuntime,
+  Memory,
+  State,
+} from "@elizaos/core";
 import {
   and,
   db,
@@ -14,18 +22,10 @@ import {
   perpPositions,
   positions,
   users,
-} from '@feed/db';
-import { calculatePortfolioBreakdown, WalletService } from '@feed/engine';
-import type { MessageTag } from '@feed/shared';
-import type {
-  Action,
-  ActionResult,
-  HandlerCallback,
-  IAgentRuntime,
-  Memory,
-  State,
-} from '@elizaos/core';
-import { logger } from '../../../../shared/logger';
+} from "@feed/db";
+import { calculatePortfolioBreakdown, WalletService } from "@feed/engine";
+import type { MessageTag } from "@feed/shared";
+import { logger } from "../../../../shared/logger";
 
 /** Extended ActionResult with optional tag for UI */
 interface ActionResultWithTag extends ActionResult {
@@ -33,50 +33,50 @@ interface ActionResultWithTag extends ActionResult {
 }
 
 export const checkOwnerPnlAction: Action = {
-  name: 'CHECK_OWNER_PNL',
+  name: "CHECK_OWNER_PNL",
   description:
     "Check your OWNER's balance, P&L, and open positions. This shows your owner's trading performance, not yours. Useful for understanding their strategy or coordinating trades.",
 
-  parameters: [] as Action['parameters'],
+  parameters: [] as Action["parameters"],
 
   examples: [
     [
       {
-        name: 'user',
+        name: "user",
         content: { text: "What's my P&L?" },
       },
       {
-        name: 'assistant',
-        content: { text: 'Let me check your trading performance...' },
+        name: "assistant",
+        content: { text: "Let me check your trading performance..." },
       },
     ],
     [
       {
-        name: 'user',
-        content: { text: 'Show me my positions' },
+        name: "user",
+        content: { text: "Show me my positions" },
       },
       {
-        name: 'assistant',
+        name: "assistant",
         content: { text: "I'll pull up your current positions..." },
       },
     ],
     [
       {
-        name: 'user',
-        content: { text: 'How am I doing on trades?' },
+        name: "user",
+        content: { text: "How am I doing on trades?" },
       },
       {
-        name: 'assistant',
-        content: { text: 'Let me check your trading stats...' },
+        name: "assistant",
+        content: { text: "Let me check your trading stats..." },
       },
     ],
     [
       {
-        name: 'user',
+        name: "user",
         content: { text: "What's your owner's balance?" },
       },
       {
-        name: 'assistant',
+        name: "assistant",
         content: { text: "I'll check my owner's balance..." },
       },
     ],
@@ -85,7 +85,7 @@ export const checkOwnerPnlAction: Action = {
   validate: async (
     _runtime: IAgentRuntime,
     _message: Memory,
-    _state?: State
+    _state?: State,
   ): Promise<boolean> => {
     // Always valid - handler checks for ownerId and returns helpful error if missing
     // Note: ownerId is added to state AFTER composeState/validate runs
@@ -97,15 +97,15 @@ export const checkOwnerPnlAction: Action = {
     _message: Memory,
     state?: State,
     _options?: Record<string, unknown>,
-    _callback?: HandlerCallback
+    _callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const ownerId = state?.values?.ownerId as string | undefined;
 
     if (!ownerId) {
       return {
         success: false,
-        text: 'Owner ID not available in this context.',
-        error: 'No owner ID provided',
+        text: "Owner ID not available in this context.",
+        error: "No owner ID provided",
       };
     }
 
@@ -124,12 +124,12 @@ export const checkOwnerPnlAction: Action = {
       if (!owner) {
         return {
           success: false,
-          text: 'Owner not found.',
-          error: 'Owner not found',
+          text: "Owner not found.",
+          error: "Owner not found",
         };
       }
 
-      const ownerName = owner.displayName || owner.username || 'Owner';
+      const ownerName = owner.displayName || owner.username || "Owner";
 
       // Get portfolio breakdown for accurate P&L (same as profile page)
       const portfolio = await calculatePortfolioBreakdown(ownerId);
@@ -162,7 +162,7 @@ export const checkOwnerPnlAction: Action = {
         .from(positions)
         .leftJoin(markets, eq(positions.marketId, markets.id))
         .where(
-          and(eq(positions.userId, ownerId), eq(positions.status, 'active'))
+          and(eq(positions.userId, ownerId), eq(positions.status, "active")),
         );
 
       // Get active perp positions
@@ -170,7 +170,10 @@ export const checkOwnerPnlAction: Action = {
         .select()
         .from(perpPositions)
         .where(
-          and(eq(perpPositions.userId, ownerId), isNull(perpPositions.closedAt))
+          and(
+            eq(perpPositions.userId, ownerId),
+            isNull(perpPositions.closedAt),
+          ),
         );
 
       const totalPositions =
@@ -179,17 +182,17 @@ export const checkOwnerPnlAction: Action = {
       logger.info(
         `[CHECK_OWNER_PNL] Retrieved P&L for owner ${ownerName}`,
         { positions: totalPositions, ownerId },
-        'CheckOwnerPnL'
+        "CheckOwnerPnL",
       );
 
       // Format data for tag
       const formattedPredictionPositions = predictionPositions.map((p) => ({
         id: p.id,
         marketId: p.marketId,
-        side: p.side ? 'YES' : 'NO',
+        side: p.side ? "YES" : "NO",
         shares: Number(p.shares),
         avgPrice: Number(p.avgPrice),
-        question: p.question?.substring(0, 80) || 'Unknown',
+        question: p.question?.substring(0, 80) || "Unknown",
       }));
 
       const formattedPerpPositions = perpPositionsList.map((p) => ({
@@ -203,7 +206,7 @@ export const checkOwnerPnlAction: Action = {
 
       return {
         success: true,
-        text: `Retrieved ${ownerName}'s P&L: ${balance.toFixed(2)} balance, ${totalPnL >= 0 ? '+' : ''}${totalPnL.toFixed(2)} total P&L, ${totalPositions} open positions.`,
+        text: `Retrieved ${ownerName}'s P&L: ${balance.toFixed(2)} balance, ${totalPnL >= 0 ? "+" : ""}${totalPnL.toFixed(2)} total P&L, ${totalPositions} open positions.`,
         data: {
           ownerName,
           ownerId,
@@ -239,9 +242,9 @@ export const checkOwnerPnlAction: Action = {
         },
         // Tag for sidebar display
         tag: {
-          type: 'owner-pnl',
-          label: 'My Portfolio',
-          icon: 'PiggyBank',
+          type: "owner-pnl",
+          label: "My Portfolio",
+          icon: "PiggyBank",
           data: {
             ownerName,
             balance,
@@ -256,8 +259,8 @@ export const checkOwnerPnlAction: Action = {
         },
       } as ActionResultWithTag;
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      logger.error('[CHECK_OWNER_PNL] Error:', errorMsg);
+      const errorMsg = error instanceof Error ? error.message : "Unknown error";
+      logger.error("[CHECK_OWNER_PNL] Error:", errorMsg);
 
       return {
         success: false,

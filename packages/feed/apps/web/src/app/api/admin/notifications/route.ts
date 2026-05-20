@@ -78,26 +78,26 @@ import {
   requireAdmin,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { db } from '@feed/db';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { z } from 'zod';
+} from "@feed/api";
+import { db } from "@feed/db";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { z } from "zod";
 
 const CreateNotificationSchema = z.object({
   userId: z.string().optional(), // If not provided, send to all users
   message: z.string().min(1).max(500),
   type: z
     .enum([
-      'system',
-      'comment',
-      'reaction',
-      'follow',
-      'mention',
-      'reply',
-      'share',
+      "system",
+      "comment",
+      "reaction",
+      "follow",
+      "mention",
+      "reply",
+      "share",
     ])
-    .default('system'),
+    .default("system"),
   postId: z.string().optional(),
   commentId: z.string().optional(),
   link: z.string().optional(), // Optional custom link
@@ -114,14 +114,14 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     CreateNotificationSchema.parse(body);
 
   logger.info(
-    'Admin creating notification',
+    "Admin creating notification",
     {
       adminUserId: adminUser.userId,
       targetUserId: userId,
       sendToAll,
       type,
     },
-    'POST /api/admin/notifications'
+    "POST /api/admin/notifications",
   );
 
   if (sendToAll) {
@@ -146,30 +146,30 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
             userId: user.id,
             type,
             message,
-            title: 'Notification',
+            title: "Notification",
             postId,
             commentId,
           }).catch((error) => {
             logger.warn(
-              'Failed to send notification to user',
+              "Failed to send notification to user",
               {
                 error,
                 userId: user.id,
               },
-              'POST /api/admin/notifications'
+              "POST /api/admin/notifications",
             );
-          })
-        )
+          }),
+        ),
       );
     }
 
     logger.info(
-      'Admin notification sent to all users',
+      "Admin notification sent to all users",
       {
         adminUserId: adminUser.userId,
         userCount: users.length,
       },
-      'POST /api/admin/notifications'
+      "POST /api/admin/notifications",
     );
 
     return successResponse({
@@ -191,13 +191,13 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     });
 
     if (!targetUser) {
-      throw new NotFoundError('User', userId);
+      throw new NotFoundError("User", userId);
     }
 
     if (targetUser.isActor) {
       return successResponse({
         success: false,
-        message: 'Cannot send notifications to game actors/NPCs',
+        message: "Cannot send notifications to game actors/NPCs",
       });
     }
 
@@ -205,19 +205,19 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       userId: targetUser.id,
       type,
       message,
-      title: 'Notification',
+      title: "Notification",
       postId,
       commentId,
     });
 
     logger.info(
-      'Admin notification sent to user',
+      "Admin notification sent to user",
       {
         adminUserId: adminUser.userId,
         targetUserId: userId,
         targetUsername: targetUser.username,
       },
-      'POST /api/admin/notifications'
+      "POST /api/admin/notifications",
     );
 
     return successResponse({
@@ -232,6 +232,6 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   }
   return successResponse({
     success: false,
-    message: 'Please provide a userId or set sendToAll to true',
+    message: "Please provide a userId or set sendToAll to true",
   });
 });

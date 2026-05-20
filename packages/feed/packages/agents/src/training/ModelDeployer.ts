@@ -14,13 +14,13 @@
  * from the trainedModels table. Deploy/rollback update that table.
  */
 
-import { db, eq, trainedModels } from '@feed/db';
-import { logger } from '@feed/shared';
+import { db, eq, trainedModels } from "@feed/db";
+import { logger } from "@feed/shared";
 
 export interface DeploymentOptions {
   modelVersion: string;
   modelId: string;
-  strategy: 'immediate' | 'gradual' | 'test';
+  strategy: "immediate" | "gradual" | "test";
   rolloutPercentage?: number;
   testAgentIds?: string[];
   benchmarkScore?: number;
@@ -45,8 +45,8 @@ export class ModelDeployer {
     const deploymentId = `deploy-${Date.now()}`;
 
     // Quality gate: block deployment if benchmark didn't pass (unless test strategy)
-    if (options.strategy !== 'test' && options.benchmarkPassed === false) {
-      logger.warn('Blocking deployment — benchmark quality gate failed', {
+    if (options.strategy !== "test" && options.benchmarkPassed === false) {
+      logger.warn("Blocking deployment — benchmark quality gate failed", {
         version: options.modelVersion,
         modelId: options.modelId,
         benchmarkScore: options.benchmarkScore,
@@ -63,7 +63,7 @@ export class ModelDeployer {
     const result = await db
       .update(trainedModels)
       .set({
-        status: 'deployed',
+        status: "deployed",
         deployedAt: new Date(),
       })
       .where(eq(trainedModels.modelId, options.modelId))
@@ -78,7 +78,7 @@ export class ModelDeployer {
       };
     }
 
-    logger.info('Model deployed', {
+    logger.info("Model deployed", {
       deploymentId,
       version: options.modelVersion,
       modelId: options.modelId,
@@ -98,11 +98,11 @@ export class ModelDeployer {
    */
   async rollback(
     currentVersion: string,
-    targetVersion: string
+    targetVersion: string,
   ): Promise<DeploymentResult> {
     const deploymentId = `rollback-${Date.now()}`;
 
-    logger.info('Rolling back model', {
+    logger.info("Rolling back model", {
       from: currentVersion,
       to: targetVersion,
     });
@@ -110,14 +110,14 @@ export class ModelDeployer {
     // Mark current as rolled back
     await db
       .update(trainedModels)
-      .set({ status: 'rolled_back' })
+      .set({ status: "rolled_back" })
       .where(eq(trainedModels.version, currentVersion));
 
     // Re-deploy target version
     const targetResult = await db
       .update(trainedModels)
       .set({
-        status: 'deployed',
+        status: "deployed",
         deployedAt: new Date(),
       })
       .where(eq(trainedModels.version, targetVersion))
@@ -150,7 +150,7 @@ export class ModelDeployer {
   } | null> {
     // Deployment is synchronous (DB update), so status is always 'completed'
     return {
-      status: 'completed',
+      status: "completed",
       agentsUpdated: 1,
       agentsFailed: 0,
       performance: {},

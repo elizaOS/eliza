@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, mock } from 'bun:test';
-import type { NextRequest } from 'next/server';
+import { beforeEach, describe, expect, it, mock } from "bun:test";
+import type { NextRequest } from "next/server";
 
 const mockBuildStoriesFeed = mock();
 const mockEnrichStoriesForUser = mock();
@@ -17,45 +17,45 @@ const mockGetCacheOrFetch = mock(
       cachedResult = (await fetchFn()) as typeof cachedResult;
     }
     return cachedResult as T;
-  }
+  },
 );
 
-mock.module('@feed/api', () => ({
+mock.module("@feed/api", () => ({
   addPublicReadHeaders: (
     response: Response,
-    rateLimitInfo: { limit: number }
+    rateLimitInfo: { limit: number },
   ) => {
-    response.headers.set('Cache-Control', 'public, max-age=30');
-    response.headers.set('X-RateLimit-Limit', String(rateLimitInfo.limit));
+    response.headers.set("Cache-Control", "public, max-age=30");
+    response.headers.set("X-RateLimit-Limit", String(rateLimitInfo.limit));
   },
   getCacheOrFetch: mockGetCacheOrFetch,
   publicRateLimit: mockPublicRateLimit,
   successResponse: (data: unknown) =>
     new Response(JSON.stringify(data), {
-      headers: { 'Content-Type': 'application/json' },
+      headers: { "Content-Type": "application/json" },
     }),
   withErrorHandling: (handler: (request: NextRequest) => Promise<Response>) =>
     handler,
 }));
 
-mock.module('./pipeline', () => ({
+mock.module("./pipeline", () => ({
   buildStoriesFeed: mockBuildStoriesFeed,
   enrichStoriesForUser: mockEnrichStoriesForUser,
 }));
 
-const { GET } = await import('./route');
+const { GET } = await import("./route");
 
 /** Encode a cursor the same way the route does (base64url JSON). */
 function encodeCursor(score: number, storyKey: string): string {
   return Buffer.from(JSON.stringify({ s: score, k: storyKey })).toString(
-    'base64url'
+    "base64url",
   );
 }
 
 const makeRequest = (params: Record<string, string> = {}): NextRequest => {
   const searchParams = new URLSearchParams(params);
   return {
-    url: 'https://feed.market/api/feed/stories',
+    url: "https://feed.market/api/feed/stories",
     headers: { get: () => null },
     nextUrl: { searchParams },
   } as unknown as NextRequest;
@@ -81,19 +81,19 @@ function makePipelineResult() {
   return {
     stories: [
       {
-        storyKey: 'story-1',
-        storyTitle: 'Test Story',
+        storyKey: "story-1",
+        storyTitle: "Test Story",
         storyScore: 1,
         postCount: 2,
         posts: [
-          { id: 'post-1', isLiked: false, isShared: false, likeCount: 5 },
-          { id: 'post-2', isLiked: false, isShared: false, likeCount: 3 },
+          { id: "post-1", isLiked: false, isShared: false, likeCount: 5 },
+          { id: "post-2", isLiked: false, isShared: false, likeCount: 3 },
         ],
       },
     ],
-    postIds: ['post-1', 'post-2'],
-    topic: { title: 'Test Topic' },
-    generatedAt: '2026-03-19T12:00:00.000Z',
+    postIds: ["post-1", "post-2"],
+    topic: { title: "Test Topic" },
+    generatedAt: "2026-03-19T12:00:00.000Z",
   };
 }
 
@@ -110,13 +110,13 @@ beforeEach(() => {
         cachedResult = (await fetchFn()) as typeof cachedResult;
       }
       return cachedResult as T;
-    }
+    },
   );
 });
 
-describe('GET /api/feed/stories', () => {
-  it('does not mutate the cached stories object during per-user enrichment', async () => {
-    mockPublicRateLimit.mockResolvedValue(makeAuthRateLimit('user-A'));
+describe("GET /api/feed/stories", () => {
+  it("does not mutate the cached stories object during per-user enrichment", async () => {
+    mockPublicRateLimit.mockResolvedValue(makeAuthRateLimit("user-A"));
     mockBuildStoriesFeed.mockResolvedValue(makePipelineResult());
 
     // enrichStoriesForUser mutates the stories array it receives in-place
@@ -124,7 +124,7 @@ describe('GET /api/feed/stories', () => {
       (
         stories: Array<{
           posts: Array<{ isLiked: boolean; isShared: boolean }>;
-        }>
+        }>,
       ) => {
         for (const story of stories) {
           for (const post of story.posts) {
@@ -132,7 +132,7 @@ describe('GET /api/feed/stories', () => {
             post.isShared = true;
           }
         }
-      }
+      },
     );
 
     // First request: user-A triggers enrichment, which mutates isLiked/isShared
@@ -141,7 +141,7 @@ describe('GET /api/feed/stories', () => {
     // The cached object must still have the original false values —
     // structuredClone should have prevented in-place mutation.
     expect(cachedResult).not.toBeNull();
-    for (const story of cachedResult!.stories as Array<{
+    for (const story of cachedResult?.stories as Array<{
       posts: Array<{ isLiked: boolean; isShared: boolean }>;
     }>) {
       for (const post of story.posts) {
@@ -151,24 +151,24 @@ describe('GET /api/feed/stories', () => {
     }
   });
 
-  it('returns per-user enriched state without cross-user bleed', async () => {
+  it("returns per-user enriched state without cross-user bleed", async () => {
     mockBuildStoriesFeed.mockResolvedValue(makePipelineResult());
 
     // Simulate user-A who liked post-1 only
-    mockPublicRateLimit.mockResolvedValue(makeAuthRateLimit('user-A'));
+    mockPublicRateLimit.mockResolvedValue(makeAuthRateLimit("user-A"));
     mockEnrichStoriesForUser.mockImplementation(
       (
         stories: Array<{
           posts: Array<{ id: string; isLiked: boolean; isShared: boolean }>;
-        }>
+        }>,
       ) => {
         for (const story of stories) {
           for (const post of story.posts) {
-            post.isLiked = post.id === 'post-1';
+            post.isLiked = post.id === "post-1";
             post.isShared = false;
           }
         }
-      }
+      },
     );
 
     const responseA = await GET(makeRequest());
@@ -177,20 +177,20 @@ describe('GET /api/feed/stories', () => {
     expect(payloadA.stories[0].posts[1].isLiked).toBe(false);
 
     // Simulate user-B who liked post-2 only
-    mockPublicRateLimit.mockResolvedValue(makeAuthRateLimit('user-B'));
+    mockPublicRateLimit.mockResolvedValue(makeAuthRateLimit("user-B"));
     mockEnrichStoriesForUser.mockImplementation(
       (
         stories: Array<{
           posts: Array<{ id: string; isLiked: boolean; isShared: boolean }>;
-        }>
+        }>,
       ) => {
         for (const story of stories) {
           for (const post of story.posts) {
-            post.isLiked = post.id === 'post-2';
+            post.isLiked = post.id === "post-2";
             post.isShared = false;
           }
         }
-      }
+      },
     );
 
     const responseB = await GET(makeRequest());
@@ -200,7 +200,7 @@ describe('GET /api/feed/stories', () => {
     expect(payloadB.stories[0].posts[1].isLiked).toBe(true);
   });
 
-  it('skips enrichment for anonymous users', async () => {
+  it("skips enrichment for anonymous users", async () => {
     mockPublicRateLimit.mockResolvedValue(makeAnonRateLimit());
     mockBuildStoriesFeed.mockResolvedValue(makePipelineResult());
 
@@ -211,7 +211,7 @@ describe('GET /api/feed/stories', () => {
     expect(payload.stories[0].posts[0].isLiked).toBe(false);
   });
 
-  it('paginates the cloned stories array correctly with cursor', async () => {
+  it("paginates the cloned stories array correctly with cursor", async () => {
     mockPublicRateLimit.mockResolvedValue(makeAnonRateLimit());
     // 25-item dataset ranked by descending score
     const manyStories = Array.from({ length: 25 }, (_, i) => ({
@@ -222,13 +222,13 @@ describe('GET /api/feed/stories', () => {
     mockBuildStoriesFeed.mockResolvedValue({
       stories: manyStories,
       postIds: [],
-      topic: { title: 'Test' },
-      generatedAt: '2026-03-19T12:00:00.000Z',
+      topic: { title: "Test" },
+      generatedAt: "2026-03-19T12:00:00.000Z",
     });
 
     // Cursor after story-19 (score=6)
-    const cursor = encodeCursor(6, 'story-19');
-    const response = await GET(makeRequest({ cursor, limit: '20' }));
+    const cursor = encodeCursor(6, "story-19");
+    const response = await GET(makeRequest({ cursor, limit: "20" }));
     const payload = await response.json();
 
     expect(payload.stories).toHaveLength(5);

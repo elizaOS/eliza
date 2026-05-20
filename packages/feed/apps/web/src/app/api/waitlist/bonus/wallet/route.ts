@@ -66,13 +66,13 @@ import {
   successResponse,
   WaitlistService,
   withErrorHandling,
-} from '@feed/api';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { z } from 'zod';
+} from "@feed/api";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { z } from "zod";
 
 const WalletBonusSchema = z.object({
-  walletAddress: z.string().min(1, 'Wallet address is required'),
+  walletAddress: z.string().min(1, "Wallet address is required"),
 });
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
@@ -83,9 +83,9 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   const { walletAddress } = WalletBonusSchema.parse(body);
 
   logger.info(
-    'Wallet bonus request',
+    "Wallet bonus request",
     { userId, walletAddress },
-    'POST /api/waitlist/bonus/wallet'
+    "POST /api/waitlist/bonus/wallet",
   );
 
   const awarded = await WaitlistService.awardWalletBonus(userId, walletAddress);
@@ -94,7 +94,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     awarded,
     bonusAmount: awarded ? 25 : 0,
     message: awarded
-      ? 'Wallet bonus awarded'
-      : 'Wallet bonus already awarded or user not found',
+      ? "Wallet bonus awarded"
+      : "Wallet bonus already awarded or user not found",
   });
 });

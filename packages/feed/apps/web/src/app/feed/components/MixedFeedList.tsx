@@ -1,17 +1,17 @@
-'use client';
+"use client";
 
-import type { FeedPost } from '@feed/shared';
-import { useRouter } from 'next/navigation';
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { NewMarketEntry } from '@/app/api/feed/new-markets/route';
-import type { NarrativeStory } from '@/app/feed/types/narrative';
-import { mergeChronologically } from '@/app/feed/utils/feedAlgorithms';
-import { toFeedPostCardData } from '@/app/feed/utils/postMappers';
-import { ArticleCard } from '@/components/articles/ArticleCard';
-import { PostCard } from '@/components/posts/PostCard';
-import { InviteFriendsBanner } from '@/components/shared/InviteFriendsBanner';
-import { useAuthStore } from '@/stores/authStore';
-import { NewMarketCard } from './NewMarketCard';
+import type { FeedPost } from "@feed/shared";
+import { useRouter } from "next/navigation";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { NewMarketEntry } from "@/app/api/feed/new-markets/route";
+import type { NarrativeStory } from "@/app/feed/types/narrative";
+import { mergeChronologically } from "@/app/feed/utils/feedAlgorithms";
+import { toFeedPostCardData } from "@/app/feed/utils/postMappers";
+import { ArticleCard } from "@/components/articles/ArticleCard";
+import { PostCard } from "@/components/posts/PostCard";
+import { InviteFriendsBanner } from "@/components/shared/InviteFriendsBanner";
+import { useAuthStore } from "@/stores/authStore";
+import { NewMarketCard } from "./NewMarketCard";
 
 function marketToNarrativeStory(m: NewMarketEntry): NarrativeStory {
   return {
@@ -41,7 +41,7 @@ interface MixedFeedListProps {
   hasMore: boolean;
   loadingMore: boolean;
   onLoadMore: () => void;
-  density?: 'default' | 'compact';
+  density?: "default" | "compact";
 }
 
 /**
@@ -58,7 +58,7 @@ export const MixedFeedList = memo(function MixedFeedList({
   hasMore,
   loadingMore,
   onLoadMore,
-  density = 'default',
+  density = "default",
 }: MixedFeedListProps) {
   const router = useRouter();
   const { user } = useAuthStore();
@@ -70,10 +70,10 @@ export const MixedFeedList = memo(function MixedFeedList({
     const referralCount = user.referralCount ?? 0;
     const dismissKey = `banner_dismiss_time_${user.id}`;
     const lastDismiss =
-      typeof window !== 'undefined' ? localStorage.getItem(dismissKey) : null;
+      typeof window !== "undefined" ? localStorage.getItem(dismissKey) : null;
     if (lastDismiss) {
       const daysSinceDismiss =
-        (Date.now() - Number.parseInt(lastDismiss)) / 86400000;
+        (Date.now() - Number.parseInt(lastDismiss, 10)) / 86400000;
       if (daysSinceDismiss < 7) return 999999;
     }
     if (referralCount === 0) return Math.floor(Math.random() * 21) + 30;
@@ -95,7 +95,7 @@ export const MixedFeedList = memo(function MixedFeedList({
         const entry = entries[0];
         if (entry?.isIntersecting && hasMore && !loadingMore) onLoadMore();
       },
-      { rootMargin: '200px' }
+      { rootMargin: "200px" },
     );
     observer.observe(target);
     return () => observer.disconnect();
@@ -103,7 +103,7 @@ export const MixedFeedList = memo(function MixedFeedList({
 
   const items = useMemo(
     () => mergeChronologically(posts, newMarkets),
-    [posts, newMarkets]
+    [posts, newMarkets],
   );
 
   // Track banner position relative to post items only
@@ -112,7 +112,7 @@ export const MixedFeedList = memo(function MixedFeedList({
   return (
     <div className="w-full space-y-0">
       {items.map((item) => {
-        if (item.type === 'market') {
+        if (item.type === "market") {
           return (
             <NewMarketCard
               key={`market-${item.market.questionNumber}`}
@@ -124,10 +124,10 @@ export const MixedFeedList = memo(function MixedFeedList({
         const post = item.post;
         const i = postIndex++;
         const authorId =
-          ('authorId' in post ? post.authorId : post.author) || '';
+          ("authorId" in post ? post.authorId : post.author) || "";
         const authorName =
           actorNames.get(authorId) ||
-          ('authorName' in post ? post.authorName : '') ||
+          ("authorName" in post ? post.authorName : "") ||
           authorId;
 
         const showBannerAfterThisPost =
@@ -137,7 +137,7 @@ export const MixedFeedList = memo(function MixedFeedList({
 
         return (
           <div key={`post-wrapper-${post.id}-${i}`}>
-            {postData.type === 'article' ? (
+            {postData.type === "article" ? (
               <ArticleCard post={postData} density={density} />
             ) : (
               <PostCard

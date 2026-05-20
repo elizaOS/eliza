@@ -1,10 +1,10 @@
-import { describe, expect, mock, test } from 'bun:test';
+import { describe, expect, mock, test } from "bun:test";
 
 const mockPost = {
-  id: 'post-1',
-  authorId: 'user-1',
-  content: '',
-  originalPostId: 'post-0',
+  id: "post-1",
+  authorId: "user-1",
+  content: "",
+  originalPostId: "post-0",
 };
 
 const mockDb = {
@@ -18,7 +18,7 @@ const mockDb = {
   transaction: mock(async () => undefined),
 };
 
-mock.module('@feed/db', () => ({
+mock.module("@feed/db", () => ({
   actorState: {},
   aliasedTable: mock(() => ({})),
   and: (...args: unknown[]) => args,
@@ -30,7 +30,7 @@ mock.module('@feed/db', () => ({
   db: mockDb,
   dmAcceptances: {},
   eq: (a: unknown, b: unknown) => ({ a, b }),
-  follows: { id: 'id', followerId: 'followerId', followingId: 'followingId' },
+  follows: { id: "id", followerId: "followerId", followingId: "followingId" },
   groupMembers: {},
   groups: {},
   gte: (...args: unknown[]) => args,
@@ -38,18 +38,18 @@ mock.module('@feed/db', () => ({
   messages: {},
   perpPositions: {},
   posts: {
-    id: 'id',
-    authorId: 'authorId',
-    content: 'content',
-    originalPostId: 'originalPostId',
+    id: "id",
+    authorId: "authorId",
+    content: "content",
+    originalPostId: "originalPostId",
   },
   reactions: {},
-  shares: { id: 'id', postId: 'postId', userId: 'userId' },
+  shares: { id: "id", postId: "postId", userId: "userId" },
   sql: {},
-  users: { id: 'id' },
+  users: { id: "id" },
 }));
 
-mock.module('@feed/api', () => ({
+mock.module("@feed/api", () => ({
   broadcastAgentActivity: mock(async () => undefined),
   broadcastChatMessage: mock(async () => undefined),
   broadcastToChannel: mock(async () => undefined),
@@ -59,17 +59,17 @@ mock.module('@feed/api', () => ({
   notifyGroupChatMessage: async () => undefined,
 }));
 
-mock.module('@feed/core/markets/perps', () => ({
+mock.module("@feed/core/markets/perps", () => ({
   PerpDbAdapter: class {},
   PerpMarketService: class {},
 }));
 
-mock.module('@feed/core/markets/prediction', () => ({
+mock.module("@feed/core/markets/prediction", () => ({
   PredictionDbAdapter: class {},
   PredictionMarketService: class {},
 }));
 
-mock.module('@feed/engine', () => ({
+mock.module("@feed/engine", () => ({
   FEE_CONFIG: {
     TRADING_FEE_RATE: 0,
     PLATFORM_SHARE: 0,
@@ -87,7 +87,7 @@ mock.module('@feed/engine', () => ({
   WalletService: class {},
 }));
 
-mock.module('../../shared/logger', () => ({
+mock.module("../../shared/logger", () => ({
   logger: {
     info: mock(() => undefined),
     warn: mock(() => undefined),
@@ -96,30 +96,30 @@ mock.module('../../shared/logger', () => ({
   },
 }));
 
-mock.module('../../shared/snowflake', () => ({
-  generateSnowflakeId: mock(async () => 'snowflake-id'),
+mock.module("../../shared/snowflake", () => ({
+  generateSnowflakeId: mock(async () => "snowflake-id"),
 }));
 
-mock.module('../../services/AgentPnLService', () => ({
+mock.module("../../services/AgentPnLService", () => ({
   agentPnLService: { recordTrade: mock(async () => undefined) },
 }));
 
-mock.module('../TopicDiversityService', () => ({
+mock.module("../TopicDiversityService", () => ({
   topicDiversityService: { trackPostTopics: mock(async () => undefined) },
 }));
 
-mock.module('../utils/resolvePerpTicker', () => ({
+mock.module("../utils/resolvePerpTicker", () => ({
   resolvePerpTicker: mock(() => null),
 }));
 
-const { executeDirectRepost } = await import('../DirectExecutors');
+const { executeDirectRepost } = await import("../DirectExecutors");
 
-describe('executeDirectRepost', () => {
-  test('reposts the original when given a repost', async () => {
+describe("executeDirectRepost", () => {
+  test("reposts the original when given a repost", async () => {
     const originalPost = {
-      id: 'post-0',
-      authorId: 'user-9',
-      content: 'Original content',
+      id: "post-0",
+      authorId: "user-9",
+      content: "Original content",
       originalPostId: null,
     };
     let selectCallCount = 0;
@@ -145,12 +145,12 @@ describe('executeDirectRepost', () => {
           })),
         });
         return undefined;
-      }
+      },
     ) as typeof mockDb.transaction;
 
     const result = await executeDirectRepost({
-      agentUserId: 'user-2',
-      postId: 'post-1',
+      agentUserId: "user-2",
+      postId: "post-1",
       comment: undefined,
     });
 
@@ -159,12 +159,12 @@ describe('executeDirectRepost', () => {
     expect(sharedPostId).toBe(originalPost.id);
   });
 
-  test('allows reposting an original post', async () => {
+  test("allows reposting an original post", async () => {
     // Create a mock for an original post (no originalPostId)
     const originalPost = {
-      id: 'post-original',
-      authorId: 'user-1',
-      content: 'Original content',
+      id: "post-original",
+      authorId: "user-1",
+      content: "Original content",
       originalPostId: null,
     };
 
@@ -194,8 +194,8 @@ describe('executeDirectRepost', () => {
 
     try {
       const result = await executeDirectRepost({
-        agentUserId: 'user-2',
-        postId: 'post-original',
+        agentUserId: "user-2",
+        postId: "post-original",
         comment: undefined,
       });
 
@@ -208,12 +208,12 @@ describe('executeDirectRepost', () => {
     }
   });
 
-  test('does not redirect quote reposts', async () => {
+  test("does not redirect quote reposts", async () => {
     const quotePost = {
-      id: 'post-quote',
-      authorId: 'user-3',
-      content: 'My take on this',
-      originalPostId: 'post-0',
+      id: "post-quote",
+      authorId: "user-3",
+      content: "My take on this",
+      originalPostId: "post-0",
     };
 
     mockDb.select = mock(() => ({
@@ -235,12 +235,12 @@ describe('executeDirectRepost', () => {
           })),
         });
         return undefined;
-      }
+      },
     ) as typeof mockDb.transaction;
 
     const result = await executeDirectRepost({
-      agentUserId: 'user-2',
-      postId: 'post-quote',
+      agentUserId: "user-2",
+      postId: "post-quote",
       comment: undefined,
     });
 

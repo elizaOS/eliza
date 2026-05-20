@@ -1,10 +1,10 @@
-'use client';
+"use client";
 
-import type { PostTagData } from '@feed/shared';
-import { cn } from '@feed/shared';
-import { MessageCircle, Repeat2 } from 'lucide-react';
-import Link from 'next/link';
-import { PanelViewMoreLink } from './PanelViewMoreLink';
+import type { PostTagData } from "@feed/shared";
+import { cn } from "@feed/shared";
+import { MessageCircle, Repeat2 } from "lucide-react";
+import Link from "next/link";
+import { PanelViewMoreLink } from "./PanelViewMoreLink";
 
 interface PostPanelProps {
   data: PostTagData;
@@ -13,38 +13,38 @@ interface PostPanelProps {
 /** Generate a consistent color based on a string (author name) */
 function getAvatarColor(name: string): string {
   const colors = [
-    'bg-red-500',
-    'bg-orange-500',
-    'bg-amber-500',
-    'bg-yellow-500',
-    'bg-lime-500',
-    'bg-green-500',
-    'bg-emerald-500',
-    'bg-teal-500',
-    'bg-cyan-500',
-    'bg-sky-500',
-    'bg-blue-500',
-    'bg-indigo-500',
-    'bg-violet-500',
-    'bg-purple-500',
-    'bg-fuchsia-500',
-    'bg-pink-500',
-    'bg-rose-500',
+    "bg-red-500",
+    "bg-orange-500",
+    "bg-amber-500",
+    "bg-yellow-500",
+    "bg-lime-500",
+    "bg-green-500",
+    "bg-emerald-500",
+    "bg-teal-500",
+    "bg-cyan-500",
+    "bg-sky-500",
+    "bg-blue-500",
+    "bg-indigo-500",
+    "bg-violet-500",
+    "bg-purple-500",
+    "bg-fuchsia-500",
+    "bg-pink-500",
+    "bg-rose-500",
   ];
   let hash = 0;
   for (let i = 0; i < name.length; i++) {
     hash = name.charCodeAt(i) + ((hash << 5) - hash);
   }
-  return colors[Math.abs(hash) % colors.length] ?? 'bg-primary';
+  return colors[Math.abs(hash) % colors.length] ?? "bg-primary";
 }
 
 /** Get initial(s) from author name */
 function getInitials(name: string): string {
   const parts = name.split(/[\s_-]+/).filter(Boolean);
   if (parts.length >= 2) {
-    return `${parts[0]?.[0] ?? ''}${parts[1]?.[0] ?? ''}`.toUpperCase();
+    return `${parts[0]?.[0] ?? ""}${parts[1]?.[0] ?? ""}`.toUpperCase();
   }
-  return (name.slice(0, 2) || '??').toUpperCase();
+  return (name.slice(0, 2) || "??").toUpperCase();
 }
 
 /** Format ISO date string to relative or absolute */
@@ -56,7 +56,7 @@ function formatDate(dateString: string): string {
   const diffHours = Math.floor(diffMs / 3600000);
   const diffDays = Math.floor(diffMs / 86400000);
 
-  if (diffMins < 1) return 'just now';
+  if (diffMins < 1) return "just now";
   if (diffMins < 60) return `${diffMins}m ago`;
   if (diffHours < 24) return `${diffHours}h ago`;
   if (diffDays < 7) return `${diffDays}d ago`;
@@ -86,8 +86,8 @@ export function PostPanel({ data }: PostPanelProps) {
             ) : (
               <div
                 className={cn(
-                  'flex h-10 w-10 items-center justify-center rounded-full font-medium text-sm text-white',
-                  getAvatarColor(post.author)
+                  "flex h-10 w-10 items-center justify-center rounded-full font-medium text-sm text-white",
+                  getAvatarColor(post.author),
                 )}
               >
                 {getInitials(post.author)}

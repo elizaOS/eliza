@@ -1,4 +1,4 @@
-import * as Sentry from '@sentry/nextjs';
+import * as Sentry from "@sentry/nextjs";
 
 const SENSITIVE_KEY_PATTERN =
   /(token|secret|password|authorization|cookie|jwt|api[-_]?key|signature|session|credential|wallet|private[-_]?key)/i;
@@ -12,24 +12,24 @@ function sanitizeValue(value: unknown, depth = 0): unknown {
     if (Array.isArray(value)) {
       return `[array:${value.length}]`;
     }
-    if (typeof value === 'object') {
-      return '[object]';
+    if (typeof value === "object") {
+      return "[object]";
     }
   }
 
-  if (typeof value === 'string') {
+  if (typeof value === "string") {
     return `[string:${value.length}]`;
   }
 
-  if (typeof value === 'number' || typeof value === 'boolean') {
+  if (typeof value === "number" || typeof value === "boolean") {
     return value;
   }
 
-  if (typeof value === 'bigint') {
+  if (typeof value === "bigint") {
     return value.toString();
   }
 
-  if (typeof value === 'function' || typeof value === 'symbol') {
+  if (typeof value === "function" || typeof value === "symbol") {
     return `[${typeof value}]`;
   }
 
@@ -43,7 +43,7 @@ function sanitizeValue(value: unknown, depth = 0): unknown {
 
   for (const [key, entryValue] of entries) {
     if (SENSITIVE_KEY_PATTERN.test(key)) {
-      out[key] = '[REDACTED]';
+      out[key] = "[REDACTED]";
       continue;
     }
     out[key] = sanitizeValue(entryValue, depth + 1);
@@ -70,29 +70,29 @@ function sanitizeActionArgs(args: unknown[]): Record<string, unknown> {
  */
 export function wrapServerActionWithSentry<T extends unknown[], R>(
   actionName: string,
-  action: (...args: T) => Promise<R>
+  action: (...args: T) => Promise<R>,
 ): (...args: T) => Promise<R> {
   return async (...args: T): Promise<R> => {
     return Sentry.startSpan(
       {
-        op: 'server.action',
+        op: "server.action",
         name: `server-action.${actionName}`,
         attributes: {
-          'feed.surface': 'server-action',
-          'feed.action': actionName,
+          "feed.surface": "server-action",
+          "feed.action": actionName,
         },
       },
       async () => {
         try {
           return await action(...args);
         } catch (error) {
-          Sentry.setTag('runtime', 'nodejs');
-          Sentry.setTag('surface', 'server-action');
-          Sentry.setTag('action', actionName);
-          Sentry.setContext('serverAction', sanitizeActionArgs(args));
+          Sentry.setTag("runtime", "nodejs");
+          Sentry.setTag("surface", "server-action");
+          Sentry.setTag("action", actionName);
+          Sentry.setContext("serverAction", sanitizeActionArgs(args));
           throw error;
         }
-      }
+      },
     );
   };
 }

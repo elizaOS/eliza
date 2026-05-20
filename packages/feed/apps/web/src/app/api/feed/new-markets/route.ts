@@ -12,7 +12,7 @@ import {
   publicRateLimit,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
+} from "@feed/api";
 import {
   and,
   arcStates,
@@ -24,11 +24,11 @@ import {
   markets,
   questions,
   sql,
-} from '@feed/db';
-import type { ArcStateType } from '@feed/shared';
-import { toISO } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { dedupeQuestionMarketRows } from '../questionMarketRows';
+} from "@feed/db";
+import type { ArcStateType } from "@feed/shared";
+import { toISO } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { dedupeQuestionMarketRows } from "../questionMarketRows";
 
 const NEW_MARKET_WINDOW_MS = 24 * 60 * 60 * 1000;
 
@@ -54,11 +54,11 @@ export interface NewMarketsResponse {
 export const GET = withErrorHandling(async (request: NextRequest) => {
   const { error: rateLimitErr, rateLimitInfo } = await publicRateLimit(
     request,
-    'read'
+    "read",
   );
   if (rateLimitErr) return rateLimitErr;
 
-  const cacheKey = 'feed:new-markets:v2';
+  const cacheKey = "feed:new-markets:v2";
 
   const result = await getCacheOrFetch<NewMarketEntry[]>(
     cacheKey,
@@ -88,18 +88,18 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         // and is tracked as a follow-up schema migration.
         .leftJoin(
           markets,
-          sql`lower(trim(${markets.question})) = lower(trim(${questions.text}))`
+          sql`lower(trim(${markets.question})) = lower(trim(${questions.text}))`,
         )
         .where(
           and(
-            eq(questions.status, 'active'),
+            eq(questions.status, "active"),
             gte(questions.createdAt, cutoff),
             // Only markets resolving within 30 days
             lt(
               questions.resolutionDate,
-              new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
-            )
-          )
+              new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000),
+            ),
+          ),
         )
         .orderBy(desc(questions.createdAt), desc(markets.createdAt));
 
@@ -118,7 +118,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
           noShares: Number(r.noShares ?? 0),
         }));
     },
-    { namespace: 'feed', ttl: 60 } // shorter TTL since odds can change
+    { namespace: "feed", ttl: 60 }, // shorter TTL since odds can change
   );
 
   const response = successResponse({
@@ -128,8 +128,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
   if (rateLimitInfo) {
     response.headers.set(
-      'Cache-Control',
-      'public, s-maxage=30, stale-while-revalidate=60'
+      "Cache-Control",
+      "public, s-maxage=30, stale-while-revalidate=60",
     );
   }
   return response;

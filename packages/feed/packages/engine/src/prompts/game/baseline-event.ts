@@ -1,5 +1,5 @@
-import { definePrompt } from '../define-prompt';
-import { ANTI_REPETITION_RULES, PARODY_NAME_RULES } from '../shared-sections';
+import { definePrompt } from "../define-prompt";
+import { ANTI_REPETITION_RULES, PARODY_NAME_RULES } from "../shared-sections";
 
 /**
  * Prompt for generating normal, mundane baseline events for genesis game.
@@ -11,10 +11,10 @@ import { ANTI_REPETITION_RULES, PARODY_NAME_RULES } from '../shared-sections';
  * Returns XML with baseline event description.
  */
 export const baselineEvent = definePrompt({
-  id: 'baseline-event',
-  version: '3.0.0',
-  category: 'game',
-  description: 'Generates baseline events with narrative context',
+  id: "baseline-event",
+  version: "3.0.0",
+  category: "game",
+  description: "Generates baseline events with narrative context",
   temperature: 0.7,
   maxTokens: 5000,
   template: `{{realityGrounding}}

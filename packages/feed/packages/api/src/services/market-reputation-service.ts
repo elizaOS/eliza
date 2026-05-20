@@ -9,8 +9,8 @@
  * propagation handled by the ReputationBridge in @feed/agents.
  */
 
-import { db, eq, inArray, positions, sql, users } from '@feed/db';
-import { logger } from '@feed/shared';
+import { db, eq, inArray, positions, sql, users } from "@feed/db";
+import { logger } from "@feed/shared";
 
 interface MarketResolution {
   marketId: string;
@@ -27,7 +27,7 @@ interface ReputationUpdate {
 
 export class MarketReputationService {
   static async updateReputationForResolvedMarket(
-    resolution: MarketResolution
+    resolution: MarketResolution,
   ): Promise<ReputationUpdate[]> {
     const results: ReputationUpdate[] = [];
 
@@ -45,7 +45,7 @@ export class MarketReputationService {
       logger.info(
         `No positions found for market ${resolution.marketId}`,
         undefined,
-        'MarketReputationService'
+        "MarketReputationService",
       );
       return [];
     }
@@ -65,7 +65,7 @@ export class MarketReputationService {
     logger.info(
       `Updating reputation for ${positionsData.length} positions in market ${resolution.marketId}`,
       { count: positionsData.length, marketId: resolution.marketId },
-      'MarketReputationService'
+      "MarketReputationService",
     );
 
     for (const position of positionsData) {
@@ -75,7 +75,7 @@ export class MarketReputationService {
           userId: position.userId,
           tokenId: 0,
           change: 0,
-          error: 'User not found',
+          error: "User not found",
         });
         continue;
       }
@@ -102,7 +102,7 @@ export class MarketReputationService {
       logger.info(
         `Updated reputation for user ${position.userId}`,
         { tokenId, change, newReputation: updated?.reputationPoints },
-        'MarketReputationService'
+        "MarketReputationService",
       );
     }
 
@@ -128,14 +128,14 @@ export class MarketReputationService {
   }
 
   static async batchUpdateReputation(
-    resolutions: MarketResolution[]
+    resolutions: MarketResolution[],
   ): Promise<Record<string, ReputationUpdate[]>> {
     const allResults: Record<string, ReputationUpdate[]> = {};
 
     for (const resolution of resolutions) {
       const results =
         await MarketReputationService.updateReputationForResolvedMarket(
-          resolution
+          resolution,
         );
       allResults[resolution.marketId] = results;
     }

@@ -17,16 +17,16 @@
  * ```
  */
 
-import { logger } from '@feed/shared';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useAuth } from '@/hooks/useAuth';
+import { logger } from "@feed/shared";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
 import {
   type Channel,
   type ConnectionState,
   type SSECallback,
   SSEManager,
   type SSEMessage,
-} from '@/lib/sse';
+} from "@/lib/sse";
 
 // Re-export types for backwards compatibility
 export type {
@@ -35,9 +35,9 @@ export type {
   SSECallback,
   SSEMessage,
   StaticChannel,
-} from '@/lib/sse';
+} from "@/lib/sse";
 
-import { apiUrl } from '@/utils/api-url';
+import { apiUrl } from "@/utils/api-url";
 
 /**
  * Options for configuring the SSE hook.
@@ -97,10 +97,10 @@ let cachedRealtimeToken: {
 } | null = null;
 
 const channelsKeyFromList = (channels: Channel[]) =>
-  channels.slice().sort().join(',');
+  channels.slice().sort().join(",");
 
 const includesChatChannel = (channels: Channel[]) =>
-  channels.some((ch) => typeof ch === 'string' && ch.startsWith('chat:'));
+  channels.some((ch) => typeof ch === "string" && ch.startsWith("chat:"));
 
 const shouldUseCachedToken = (channels: Channel[]) => {
   if (!cachedRealtimeToken) return false;
@@ -113,18 +113,18 @@ const shouldUseCachedToken = (channels: Channel[]) => {
 type GetAccessTokenFn = () => Promise<string | null>;
 
 const fetchRealtimeToken = async (
-  channels: Channel[]
+  channels: Channel[],
 ): Promise<string | null> => {
   const tokenFn = getAccessTokenRef as GetAccessTokenFn | null;
   if (!tokenFn) return null;
   const accessToken = await tokenFn();
   if (!accessToken) return null;
 
-  const res = await fetch(apiUrl('/api/realtime/token'), {
-    method: 'POST',
+  const res = await fetch(apiUrl("/api/realtime/token"), {
+    method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
     },
     body: JSON.stringify({
       channels,
@@ -134,9 +134,9 @@ const fetchRealtimeToken = async (
 
   if (!res.ok) {
     logger.debug(
-      'Realtime token request failed',
+      "Realtime token request failed",
       { status: res.status },
-      'useSSE'
+      "useSSE",
     );
     return null;
   }
@@ -146,7 +146,7 @@ const fetchRealtimeToken = async (
   };
   if (!json?.token) return null;
   const expiresAt =
-    typeof json.expiresAt === 'number'
+    typeof json.expiresAt === "number"
       ? json.expiresAt
       : Date.now() + 14 * 60 * 1000; // default ~14min
   cachedRealtimeToken = {
@@ -162,7 +162,7 @@ const fetchRealtimeToken = async (
  * This fetches a specialized token for SSE connections, not the Privy access token.
  */
 const getRealtimeToken = async (
-  channels: Channel[]
+  channels: Channel[],
 ): Promise<string | null> => {
   if (shouldUseCachedToken(channels)) {
     return cachedRealtimeToken?.token ?? null;
@@ -172,7 +172,7 @@ const getRealtimeToken = async (
 };
 
 const hasBrowserEnv = () =>
-  typeof window !== 'undefined' && typeof EventSource !== 'undefined';
+  typeof window !== "undefined" && typeof EventSource !== "undefined";
 
 const notifyConnectionStatus = (connected: boolean, error: string | null) => {
   connectionListeners.forEach((listener) => {
@@ -252,9 +252,9 @@ async function ensureConnection(forceReconnect = false) {
   // Prevent duplicate connection attempts
   if (connecting) {
     logger.debug(
-      'SSE connection already in progress, skipping',
+      "SSE connection already in progress, skipping",
       undefined,
-      'useSSE'
+      "useSSE",
     );
     return;
   }
@@ -263,9 +263,9 @@ async function ensureConnection(forceReconnect = false) {
   // (unless this is a manual reconnect call which resets the counter)
   if (!forceReconnect && reconnectAttempts >= maxReconnectAttemptsRef) {
     logger.debug(
-      'SSE connection skipped - max reconnection attempts already reached',
+      "SSE connection skipped - max reconnection attempts already reached",
       undefined,
-      'useSSE'
+      "useSSE",
     );
     return;
   }
@@ -274,9 +274,9 @@ async function ensureConnection(forceReconnect = false) {
   // This prevents racing between subscribe() calls and the backoff timer
   if (!forceReconnect && reconnectTimeout) {
     logger.debug(
-      'SSE connection skipped - reconnect already scheduled',
+      "SSE connection skipped - reconnect already scheduled",
       undefined,
-      'useSSE'
+      "useSSE",
     );
     return;
   }
@@ -287,7 +287,7 @@ async function ensureConnection(forceReconnect = false) {
     globalEventSource &&
     globalEventSource.readyState === EventSource.OPEN
   ) {
-    logger.debug('SSE already connected, skipping', undefined, 'useSSE');
+    logger.debug("SSE already connected, skipping", undefined, "useSSE");
     return;
   }
 
@@ -300,7 +300,7 @@ async function ensureConnection(forceReconnect = false) {
 
   if (!token) {
     connecting = false;
-    notifyConnectionStatus(false, 'Missing realtime token for SSE');
+    notifyConnectionStatus(false, "Missing realtime token for SSE");
     scheduleTokenRetry();
     return;
   }
@@ -316,16 +316,16 @@ async function ensureConnection(forceReconnect = false) {
   const cursorParam =
     Object.keys(cursorPayload).length > 0
       ? `&cursor=${encodeURIComponent(JSON.stringify(cursorPayload))}`
-      : '';
+      : "";
 
-  const url = `${apiUrl('/api/sse/events')}?channels=${encodeURIComponent(
-    channelsList.join(',')
+  const url = `${apiUrl("/api/sse/events")}?channels=${encodeURIComponent(
+    channelsList.join(","),
   )}&token=${encodeURIComponent(token)}${cursorParam}`;
 
   logger.debug(
-    'Connecting to SSE endpoint...',
-    { channels: channelsList.join(',') },
-    'useSSE'
+    "Connecting to SSE endpoint...",
+    { channels: channelsList.join(",") },
+    "useSSE",
   );
 
   const eventSource = new EventSource(url);
@@ -339,32 +339,32 @@ async function ensureConnection(forceReconnect = false) {
     connectedChannels = new Set(requestedChannels);
     reconnectAttempts = 0;
     notifyConnectionStatus(true, null);
-    logger.info('SSE connected', { channels: channelsList }, 'useSSE');
+    logger.info("SSE connected", { channels: channelsList }, "useSSE");
   };
 
   // Handle the 'connected' event from server
-  eventSource.addEventListener('connected', (event) => {
+  eventSource.addEventListener("connected", (event) => {
     const data = JSON.parse(event.data);
     if (Array.isArray(data.channels)) {
       connectedChannels = new Set(data.channels);
       const missing = Array.from(requestedChannels).filter(
-        (ch) => !connectedChannels.has(ch)
+        (ch) => !connectedChannels.has(ch),
       );
       if (missing.length > 0) {
         logger.warn(
-          'SSE connected without some requested channels',
+          "SSE connected without some requested channels",
           {
             requested: Array.from(requestedChannels),
             granted: data.channels,
           },
-          'useSSE'
+          "useSSE",
         );
       }
     }
     logger.debug(
-      'SSE connected event received',
+      "SSE connected event received",
       { clientId: data.clientId, channels: data.channels },
-      'useSSE'
+      "useSSE",
     );
     // Connection is confirmed, update state
     connecting = false;
@@ -372,18 +372,18 @@ async function ensureConnection(forceReconnect = false) {
     notifyConnectionStatus(true, null);
   });
 
-  eventSource.addEventListener('message', (event) => {
+  eventSource.addEventListener("message", (event) => {
     let message: SSEMessage;
     try {
       message = JSON.parse(event.data);
     } catch (error) {
       logger.error(
-        'Failed to parse SSE message',
+        "Failed to parse SSE message",
         {
           error: error instanceof Error ? error.message : String(error),
           dataPreview: event.data?.substring(0, 100),
         },
-        'useSSE'
+        "useSSE",
       );
       return; // Skip malformed messages
     }
@@ -419,11 +419,11 @@ async function ensureConnection(forceReconnect = false) {
     eventSource.onerror = null;
     eventSource.close();
 
-    notifyConnectionStatus(false, 'SSE connection error');
+    notifyConnectionStatus(false, "SSE connection error");
     logger.warn(
-      'SSE connection lost, scheduling reconnect',
+      "SSE connection lost, scheduling reconnect",
       { reconnectAttempts, maxAttempts: maxReconnectAttemptsRef },
-      'useSSE'
+      "useSSE",
     );
 
     if (!autoReconnectRef) {
@@ -433,12 +433,12 @@ async function ensureConnection(forceReconnect = false) {
     if (reconnectAttempts >= maxReconnectAttemptsRef) {
       notifyConnectionStatus(
         false,
-        'Unable to connect to real-time updates. Please refresh the page.'
+        "Unable to connect to real-time updates. Please refresh the page.",
       );
       logger.error(
-        'SSE: Max reconnection attempts reached',
+        "SSE: Max reconnection attempts reached",
         undefined,
-        'useSSE'
+        "useSSE",
       );
       return;
     }
@@ -457,7 +457,7 @@ async function ensureConnection(forceReconnect = false) {
     logger.debug(
       `SSE reconnect scheduled in ${Math.round(delay)}ms`,
       { attempt: reconnectAttempts, delay: Math.round(delay) },
-      'useSSE'
+      "useSSE",
     );
     reconnectTimeout = setTimeout(() => {
       reconnectTimeout = null;
@@ -509,7 +509,7 @@ export function useSSE(options: SSEHookOptions = {}): SSEHookReturn {
 
   // Connection state - initialized to match SSR
   const [connectionState, setConnectionState] =
-    useState<ConnectionState>('disconnected');
+    useState<ConnectionState>("disconnected");
   const [error, setError] = useState<string | null>(null);
   const [isOnline, setIsOnline] = useState(true);
 
@@ -520,7 +520,7 @@ export function useSSE(options: SSEHookOptions = {}): SSEHookReturn {
   >(new Map());
   // Track initial channel unsubscribe functions
   const initialChannelUnsubscribesRef = useRef<Map<Channel, () => void>>(
-    new Map()
+    new Map(),
   );
 
   // Get manager instance (singleton) - config only applies on first call
@@ -551,7 +551,7 @@ export function useSSE(options: SSEHookOptions = {}): SSEHookReturn {
       (state, connectionError) => {
         setConnectionState(state);
         setError(connectionError);
-      }
+      },
     );
 
     return unsubscribe;
@@ -559,19 +559,19 @@ export function useSSE(options: SSEHookOptions = {}): SSEHookReturn {
 
   // Listen for online/offline state
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined") return;
 
     setIsOnline(navigator.onLine);
 
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
 
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
 
     return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
     };
   }, []);
 
@@ -605,7 +605,7 @@ export function useSSE(options: SSEHookOptions = {}): SSEHookReturn {
         managerUnsubscribe();
       };
     },
-    [manager]
+    [manager],
   );
 
   // Unsubscribe all callbacks for a channel from THIS hook instance only
@@ -632,13 +632,13 @@ export function useSSE(options: SSEHookOptions = {}): SSEHookReturn {
   // This prevents re-subscriptions when array reference changes but contents are the same.
   // Channel names do not include commas, so the join/split is safe here.
   const initialChannelsKey = useMemo(
-    () => initialChannels.filter(Boolean).slice().sort().join(','),
-    [initialChannels]
+    () => initialChannels.filter(Boolean).slice().sort().join(","),
+    [initialChannels],
   );
 
   const stableInitialChannels = useMemo(() => {
     if (!initialChannelsKey) return [] as Channel[];
-    return initialChannelsKey.split(',') as Channel[];
+    return initialChannelsKey.split(",") as Channel[];
   }, [initialChannelsKey]);
 
   useEffect(() => {
@@ -676,7 +676,7 @@ export function useSSE(options: SSEHookOptions = {}): SSEHookReturn {
   }, []);
 
   return {
-    isConnected: connectionState === 'connected',
+    isConnected: connectionState === "connected",
     error,
     connectionState,
     isOnline,
@@ -707,7 +707,7 @@ export function useSSE(options: SSEHookOptions = {}): SSEHookReturn {
  */
 export function useSSEChannel(
   channel: Channel | null,
-  onMessage: (data: Record<string, unknown>) => void
+  onMessage: (data: Record<string, unknown>) => void,
 ) {
   const { isConnected, connectionState, isOnline, subscribe } = useSSE();
 

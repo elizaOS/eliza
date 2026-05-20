@@ -15,12 +15,12 @@
  *    - Perp market simulation (independent of prediction outcomes)
  */
 
-import { describe, expect, test } from 'bun:test';
-import { existsSync, readFileSync } from 'fs';
-import { join } from 'path';
+import { describe, expect, test } from "bun:test";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 
 // Get the src directory path
-const srcDir = join(__dirname, '../../');
+const srcDir = join(__dirname, "../../");
 
 /**
  * Read a file and return its contents
@@ -30,7 +30,7 @@ function readSourceFile(relativePath: string): string {
   if (!existsSync(fullPath)) {
     throw new Error(`Source file not found: ${fullPath}`);
   }
-  return readFileSync(fullPath, 'utf-8');
+  return readFileSync(fullPath, "utf-8");
 }
 
 /**
@@ -40,56 +40,56 @@ function readSourceFile(relativePath: string): string {
 function findUsages(
   pattern: RegExp,
   content: string,
-  contextLines = 3
+  contextLines = 3,
 ): string[] {
   const matches: string[] = [];
-  const lines = content.split('\n');
+  const lines = content.split("\n");
   for (let i = 0; i < lines.length; i++) {
-    if (pattern.test(lines[i] ?? '')) {
+    if (pattern.test(lines[i] ?? "")) {
       // Include context from surrounding lines to handle multiline expressions
       const startLine = Math.max(0, i - contextLines);
       const endLine = Math.min(lines.length - 1, i + contextLines);
       const contextText = lines
         .slice(startLine, endLine + 1)
         .map((l) => l.trim())
-        .join(' ');
+        .join(" ");
       matches.push(`Line ${i + 1}: ${contextText}`);
     }
   }
   return matches;
 }
 
-describe('Randomness Boundaries', () => {
-  describe('Cryptographic Randomness for Game-Critical Operations', () => {
-    test('entropy.ts uses crypto.randomBytes', () => {
-      const entropy = readSourceFile('utils/entropy.ts');
+describe("Randomness Boundaries", () => {
+  describe("Cryptographic Randomness for Game-Critical Operations", () => {
+    test("entropy.ts uses crypto.randomBytes", () => {
+      const entropy = readSourceFile("utils/entropy.ts");
 
       // Must import from crypto
       expect(entropy).toContain("from 'crypto'");
 
       // Must use randomBytes for secure random
-      expect(entropy).toContain('randomBytes');
+      expect(entropy).toContain("randomBytes");
 
       // Should NOT use Math.random for its core functions (excluding comments)
       // First, remove multi-line comment blocks (/* ... */)
-      const withoutBlockComments = entropy.replace(/\/\*[\s\S]*?\*\//g, '');
+      const withoutBlockComments = entropy.replace(/\/\*[\s\S]*?\*\//g, "");
 
       // Filter out lines that are single-line comments (start with // or *)
       const codeLines = withoutBlockComments
-        .split('\n')
+        .split("\n")
         .filter(
           (line) =>
-            !line.trim().startsWith('//') && !line.trim().startsWith('*')
+            !line.trim().startsWith("//") && !line.trim().startsWith("*"),
         );
-      const codeContent = codeLines.join('\n');
+      const codeContent = codeLines.join("\n");
       const mathRandomUsages = findUsages(/Math\.random\(\)/, codeContent);
       expect(mathRandomUsages.length).toBe(0);
     });
   });
 
-  describe('Math.random() Usage Boundaries', () => {
-    test('game-tick.ts Math.random() is only for non-critical operations', () => {
-      const gameTick = readSourceFile('game-tick.ts');
+  describe("Math.random() Usage Boundaries", () => {
+    test("game-tick.ts Math.random() is only for non-critical operations", () => {
+      const gameTick = readSourceFile("game-tick.ts");
       const mathRandomUsages = findUsages(/Math\.random\(\)/, gameTick);
 
       // Document each usage for audit trail
@@ -106,16 +106,16 @@ describe('Randomness Boundaries', () => {
         // - Perp market simulation (not prediction outcomes)
         // - Direction/magnitude for price movements
         const isAcceptable =
-          usage.includes('score') ||
-          usage.includes('sort') ||
-          usage.includes('Jitter') ||
-          usage.includes('jitter') ||
-          usage.includes('volatility') ||
-          usage.includes('momentum') ||
-          usage.includes('fatTail') ||
-          usage.includes('move') ||
-          usage.includes('direction') ||
-          usage.includes('Direction');
+          usage.includes("score") ||
+          usage.includes("sort") ||
+          usage.includes("Jitter") ||
+          usage.includes("jitter") ||
+          usage.includes("volatility") ||
+          usage.includes("momentum") ||
+          usage.includes("fatTail") ||
+          usage.includes("move") ||
+          usage.includes("direction") ||
+          usage.includes("Direction");
 
         if (!isAcceptable) {
           console.warn(`Potentially unsafe Math.random() usage: ${usage}`);
@@ -125,16 +125,16 @@ describe('Randomness Boundaries', () => {
       // Collect unsafe usages and fail if any exist
       const unsafeUsages = mathRandomUsages.filter((usage) => {
         return !(
-          usage.includes('score') ||
-          usage.includes('sort') ||
-          usage.includes('Jitter') ||
-          usage.includes('jitter') ||
-          usage.includes('volatility') ||
-          usage.includes('momentum') ||
-          usage.includes('fatTail') ||
-          usage.includes('move') ||
-          usage.includes('direction') ||
-          usage.includes('Direction')
+          usage.includes("score") ||
+          usage.includes("sort") ||
+          usage.includes("Jitter") ||
+          usage.includes("jitter") ||
+          usage.includes("volatility") ||
+          usage.includes("momentum") ||
+          usage.includes("fatTail") ||
+          usage.includes("move") ||
+          usage.includes("direction") ||
+          usage.includes("Direction")
         );
       });
 
@@ -144,8 +144,8 @@ describe('Randomness Boundaries', () => {
       expect(mathRandomUsages.length).toBeGreaterThan(0);
     });
 
-    test('QuestionManager does NOT use Math.random for outcomes', () => {
-      const questionManager = readSourceFile('QuestionManager.ts');
+    test("QuestionManager does NOT use Math.random for outcomes", () => {
+      const questionManager = readSourceFile("QuestionManager.ts");
 
       // Math.random should not appear in outcome-related code
       const outcomePatterns = [
@@ -161,27 +161,27 @@ describe('Randomness Boundaries', () => {
     });
   });
 
-  describe('Randomization Utility Separation', () => {
-    test('randomization.ts is separate from entropy.ts', () => {
-      const randomization = readSourceFile('utils/randomization.ts');
-      const entropy = readSourceFile('utils/entropy.ts');
+  describe("Randomization Utility Separation", () => {
+    test("randomization.ts is separate from entropy.ts", () => {
+      const randomization = readSourceFile("utils/randomization.ts");
+      const entropy = readSourceFile("utils/entropy.ts");
 
       // randomization.ts uses Math.random (acceptable for content variety)
-      expect(randomization).toContain('Math.random');
+      expect(randomization).toContain("Math.random");
 
       // entropy.ts uses crypto.randomBytes (required for security)
-      expect(entropy).toContain('randomBytes');
+      expect(entropy).toContain("randomBytes");
 
       // They should be separate modules
       expect(randomization).not.toBe(entropy);
     });
 
-    test('entropy.ts exports secure random functions', () => {
-      const entropy = readSourceFile('utils/entropy.ts');
+    test("entropy.ts exports secure random functions", () => {
+      const entropy = readSourceFile("utils/entropy.ts");
 
       // Should export secure random functions
-      expect(entropy).toContain('export');
-      expect(entropy).toContain('secureRandom');
+      expect(entropy).toContain("export");
+      expect(entropy).toContain("secureRandom");
     });
   });
 });

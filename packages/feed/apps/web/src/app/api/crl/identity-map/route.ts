@@ -7,11 +7,11 @@
  * Used by the Nebius CRL trainer to understand ground-truth labels.
  */
 
-import { withErrorHandling } from '@feed/api';
-import { db, eq, userAgentConfigs, users } from '@feed/db';
-import { NextResponse } from 'next/server';
+import { withErrorHandling } from "@feed/api";
+import { db, eq, userAgentConfigs, users } from "@feed/db";
+import { NextResponse } from "next/server";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 export const GET = withErrorHandling(async function GET() {
   try {
@@ -34,8 +34,8 @@ export const GET = withErrorHandling(async function GET() {
 
     for (const config of configs) {
       identityMap[config.userId] = {
-        team: config.team || 'gray',
-        alignment: config.alignment || 'neutral',
+        team: config.team || "gray",
+        alignment: config.alignment || "neutral",
         name: config.displayName || config.username || config.userId,
       };
     }
@@ -43,18 +43,18 @@ export const GET = withErrorHandling(async function GET() {
     return NextResponse.json({
       identityMap,
       counts: {
-        red: Object.values(identityMap).filter((a) => a.team === 'red').length,
-        blue: Object.values(identityMap).filter((a) => a.team === 'blue')
+        red: Object.values(identityMap).filter((a) => a.team === "red").length,
+        blue: Object.values(identityMap).filter((a) => a.team === "blue")
           .length,
-        gray: Object.values(identityMap).filter((a) => a.team === 'gray')
+        gray: Object.values(identityMap).filter((a) => a.team === "gray")
           .length,
         total: Object.keys(identityMap).length,
       },
     });
   } catch (_error) {
     return NextResponse.json(
-      { error: 'Failed to fetch identity map' },
-      { status: 500 }
+      { error: "Failed to fetch identity map" },
+      { status: 500 },
     );
   }
 });

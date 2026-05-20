@@ -8,8 +8,8 @@ import {
   type Memory,
   type State,
   type UUID,
-} from '@elizaos/core';
-import { v4 as uuidv4 } from 'uuid';
+} from "@elizaos/core";
+import { v4 as uuidv4 } from "uuid";
 
 interface AutonomyService {
   getAutonomousRoomId?: () => string | undefined;
@@ -20,38 +20,38 @@ interface AutonomyService {
  * Only available in autonomous room to prevent misuse
  */
 export const sendToAdminAction: Action = {
-  name: 'SEND_TO_ADMIN',
+  name: "SEND_TO_ADMIN",
   description:
-    'Send a message directly to the admin user from autonomous context',
+    "Send a message directly to the admin user from autonomous context",
 
   examples: [
     [
       {
-        name: 'Agent',
+        name: "Agent",
         content: {
-          text: 'I need to update the admin about my progress on the task.',
-          action: 'SEND_TO_ADMIN',
+          text: "I need to update the admin about my progress on the task.",
+          action: "SEND_TO_ADMIN",
         },
       },
       {
-        name: 'Agent',
+        name: "Agent",
         content: {
-          text: 'Message sent to admin successfully.',
+          text: "Message sent to admin successfully.",
         },
       },
     ],
     [
       {
-        name: 'Agent',
+        name: "Agent",
         content: {
-          text: 'I should let the admin know I completed the analysis.',
-          action: 'SEND_TO_ADMIN',
+          text: "I should let the admin know I completed the analysis.",
+          action: "SEND_TO_ADMIN",
         },
       },
       {
-        name: 'Agent',
+        name: "Agent",
         content: {
-          text: 'Admin has been notified of the analysis completion.',
+          text: "Admin has been notified of the analysis completion.",
         },
       },
     ],
@@ -59,10 +59,10 @@ export const sendToAdminAction: Action = {
 
   validate: async (
     runtime: IAgentRuntime,
-    message: Memory
+    message: Memory,
   ): Promise<boolean> => {
     // Only allow this action in autonomous context
-    const autonomyService = runtime.getService('autonomy');
+    const autonomyService = runtime.getService("autonomy");
     if (!autonomyService) {
       return false; // Service not available
     }
@@ -75,25 +75,25 @@ export const sendToAdminAction: Action = {
     }
 
     // Check if admin is configured
-    const adminUserId = runtime.getSetting('ADMIN_USER_ID') as string;
+    const adminUserId = runtime.getSetting("ADMIN_USER_ID") as string;
     if (!adminUserId) {
       return false; // No admin configured
     }
 
     // Check if message contains intention to communicate with admin
-    const text = message.content.text?.toLowerCase() || '';
+    const text = message.content.text?.toLowerCase() || "";
     const adminKeywords = [
-      'admin',
-      'user',
-      'tell',
-      'notify',
-      'inform',
-      'update',
-      'message',
-      'send',
-      'communicate',
-      'report',
-      'alert',
+      "admin",
+      "user",
+      "tell",
+      "notify",
+      "inform",
+      "update",
+      "message",
+      "send",
+      "communicate",
+      "report",
+      "alert",
     ];
 
     return adminKeywords.some((keyword) => text.includes(keyword));
@@ -104,18 +104,18 @@ export const sendToAdminAction: Action = {
     message: Memory,
     _state?: State,
     _options?: HandlerOptions,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     void _state; // State is currently unused but preserved for future compatibility
     void _options; // Options currently unused but retained for API parity
 
     // Double-check we're in autonomous context
-    const autonomyService = runtime.getService('autonomy');
+    const autonomyService = runtime.getService("autonomy");
     if (!autonomyService) {
       return {
         success: false,
-        text: 'Autonomy service not available',
-        data: { error: 'Service unavailable' },
+        text: "Autonomy service not available",
+        data: { error: "Service unavailable" },
       };
     }
 
@@ -125,18 +125,18 @@ export const sendToAdminAction: Action = {
     if (!autonomousRoomId || message.roomId !== autonomousRoomId) {
       return {
         success: false,
-        text: 'Send to admin only available in autonomous context',
-        data: { error: 'Invalid context' },
+        text: "Send to admin only available in autonomous context",
+        data: { error: "Invalid context" },
       };
     }
 
     // Get admin user ID and find their room
-    const adminUserId = runtime.getSetting('ADMIN_USER_ID') as string;
+    const adminUserId = runtime.getSetting("ADMIN_USER_ID") as string;
     if (!adminUserId) {
       return {
         success: false,
-        text: 'No admin user configured. Set ADMIN_USER_ID in settings.',
-        data: { error: 'No admin configured' },
+        text: "No admin user configured. Set ADMIN_USER_ID in settings.",
+        data: { error: "No admin configured" },
       };
     }
 
@@ -148,7 +148,7 @@ export const sendToAdminAction: Action = {
     const adminMessages = await runtime.getMemories({
       roomId: runtime.agentId, // Use agent's default room as fallback
       count: 10,
-      tableName: 'memories',
+      tableName: "memories",
     });
 
     let targetRoomId: UUID;
@@ -162,24 +162,24 @@ export const sendToAdminAction: Action = {
     }
 
     // Extract message content - determine what to send based on the autonomous thought
-    const autonomousThought = message.content.text || '';
+    const autonomousThought = message.content.text || "";
 
     // Generate appropriate message to admin
     let messageToAdmin: string;
     if (
-      autonomousThought.includes('completed') ||
-      autonomousThought.includes('finished')
+      autonomousThought.includes("completed") ||
+      autonomousThought.includes("finished")
     ) {
       messageToAdmin = `I've completed a task and wanted to update you. My thoughts: ${autonomousThought}`;
     } else if (
-      autonomousThought.includes('problem') ||
-      autonomousThought.includes('issue') ||
-      autonomousThought.includes('error')
+      autonomousThought.includes("problem") ||
+      autonomousThought.includes("issue") ||
+      autonomousThought.includes("error")
     ) {
       messageToAdmin = `I encountered something that might need your attention: ${autonomousThought}`;
     } else if (
-      autonomousThought.includes('question') ||
-      autonomousThought.includes('unsure')
+      autonomousThought.includes("question") ||
+      autonomousThought.includes("unsure")
     ) {
       messageToAdmin = `I have a question and would appreciate your guidance: ${autonomousThought}`;
     } else {
@@ -193,9 +193,9 @@ export const sendToAdminAction: Action = {
       roomId: targetRoomId,
       content: {
         text: messageToAdmin,
-        source: 'autonomy-to-admin',
+        source: "autonomy-to-admin",
         metadata: {
-          type: 'autonomous-to-admin-message',
+          type: "autonomous-to-admin-message",
           originalThought: autonomousThought,
           timestamp: Date.now(),
         },
@@ -204,7 +204,7 @@ export const sendToAdminAction: Action = {
     };
 
     // Store the message in memory
-    await runtime.createMemory(adminMessage, 'memories');
+    await runtime.createMemory(adminMessage, "memories");
 
     const successMessage = `Message sent to admin in room ${targetRoomId.slice(0, 8)}...`;
 

@@ -12,44 +12,44 @@ import type {
   TaskArtifactUpdateEvent,
   TaskStatusUpdateEvent,
   TextPart,
-} from '@a2a-js/sdk';
+} from "@a2a-js/sdk";
 import type {
   AgentExecutor,
   ExecutionEventBus,
   RequestContext,
-} from '@a2a-js/sdk/server';
-import { checkRateLimitAsync, RATE_LIMIT_CONFIGS } from '@feed/api';
-import { PerpDbAdapter, PerpMarketService } from '@feed/core/markets/perps';
+} from "@a2a-js/sdk/server";
+import { checkRateLimitAsync, RATE_LIMIT_CONFIGS } from "@feed/api";
+import { PerpDbAdapter, PerpMarketService } from "@feed/core/markets/perps";
 import {
   PredictionDbAdapter,
   PredictionMarketService,
-} from '@feed/core/markets/prediction';
-import type { WalletPort } from '@feed/core/markets/shared';
-import { db, getRawDrizzle } from '@feed/db';
-import { perpMarketSnapshots } from '@feed/db/schema';
-import { createPerpPriceImpactPort, WalletService } from '@feed/engine';
-import type { JsonValue } from '@feed/shared';
+} from "@feed/core/markets/prediction";
+import type { WalletPort } from "@feed/core/markets/shared";
+import { db, getRawDrizzle } from "@feed/db";
+import { perpMarketSnapshots } from "@feed/db/schema";
+import { createPerpPriceImpactPort, WalletService } from "@feed/engine";
+import type { JsonValue } from "@feed/shared";
 import {
   ContentValidator,
   checkUserInput,
   generateSnowflakeId,
   getAPIBaseUrl,
   logger,
-} from '@feed/shared';
-import { v4 as uuidv4 } from 'uuid';
+} from "@feed/shared";
+import { v4 as uuidv4 } from "uuid";
 import {
   handleAppealBanWithEscrow,
   handleCreateEscrowPayment,
   handleListEscrowPayments,
   handleRefundEscrowPayment,
   handleVerifyEscrowPayment,
-} from '../handlers/escrow-handlers';
-import { X402Manager } from '../payments/x402-manager';
-import type { JsonRpcRequest } from '../types/a2a';
+} from "../handlers/escrow-handlers";
+import { X402Manager } from "../payments/x402-manager";
+import type { JsonRpcRequest } from "../types/a2a";
 import {
   type OffsetPaginationParams,
   OffsetPaginationSchema,
-} from '../validation';
+} from "../validation";
 
 /**
  * Default timeout for external API fetch operations (in milliseconds)
@@ -272,13 +272,13 @@ export class FeedAgentExecutor implements AgentExecutor {
    */
   private async checkRateLimit(
     userId: string,
-    config: (typeof RATE_LIMIT_CONFIGS)[keyof typeof RATE_LIMIT_CONFIGS]
+    config: (typeof RATE_LIMIT_CONFIGS)[keyof typeof RATE_LIMIT_CONFIGS],
   ): Promise<void> {
     const result = await checkRateLimitAsync(userId, config);
     if (!result.allowed) {
       throw new Error(
         `Rate limit exceeded for ${config.actionType}. ` +
-          `Retry after ${result.retryAfter ?? 60}s. Remaining: ${result.remaining ?? 0}`
+          `Retry after ${result.retryAfter ?? 60}s. Remaining: ${result.remaining ?? 0}`,
       );
     }
   }
@@ -319,13 +319,13 @@ export class FeedAgentExecutor implements AgentExecutor {
    */
   private validatePaginationParams(
     offset: unknown,
-    limit: unknown
+    limit: unknown,
   ): OffsetPaginationParams {
     const result = OffsetPaginationSchema.safeParse({ offset, limit });
 
     if (!result.success) {
       throw new Error(
-        `Pagination error: ${result.error.issues[0]?.message ?? 'Invalid params'}`
+        `Pagination error: ${result.error.issues[0]?.message ?? "Invalid params"}`,
       );
     }
 
@@ -344,7 +344,7 @@ export class FeedAgentExecutor implements AgentExecutor {
   public static async executeDirectly(
     operation: string,
     params: Record<string, JsonValue>,
-    agentUserId: string
+    agentUserId: string,
   ): Promise<JsonValue> {
     const executor = new FeedAgentExecutor();
     const command: FeedCommand = { operation, params };
@@ -355,16 +355,16 @@ export class FeedAgentExecutor implements AgentExecutor {
       taskId,
       contextId: agentUserId,
       userMessage: {
-        kind: 'message',
+        kind: "message",
         messageId: `direct-msg-${Date.now()}`,
-        role: 'user',
-        parts: [{ kind: 'text', text: `Direct call: ${operation}` }],
+        role: "user",
+        parts: [{ kind: "text", text: `Direct call: ${operation}` }],
       },
       task: {
-        kind: 'task',
+        kind: "task",
         id: taskId,
         contextId: agentUserId,
-        status: { state: 'working', timestamp: new Date().toISOString() },
+        status: { state: "working", timestamp: new Date().toISOString() },
         artifacts: [],
       },
     };
@@ -376,26 +376,26 @@ export class FeedAgentExecutor implements AgentExecutor {
 
   async execute(
     requestContext: RequestContext,
-    eventBus: ExecutionEventBus
+    eventBus: ExecutionEventBus,
   ): Promise<void> {
     const { taskId, contextId, userMessage, task } = requestContext;
 
     // Extract message text
     const textParts = userMessage.parts.filter(
-      (p): p is TextPart => p.kind === 'text'
+      (p): p is TextPart => p.kind === "text",
     );
-    const messageText = textParts.map((p) => p.text).join(' ');
+    const messageText = textParts.map((p) => p.text).join(" ");
 
-    logger.info('Feed processing A2A message', { taskId, messageText });
+    logger.info("Feed processing A2A message", { taskId, messageText });
 
     // Create initial task if needed
     if (!task) {
       const initialTask: Task = {
-        kind: 'task',
+        kind: "task",
         id: taskId,
         contextId: contextId || uuidv4(),
         status: {
-          state: 'submitted',
+          state: "submitted",
           timestamp: new Date().toISOString(),
         },
         history: [userMessage],
@@ -405,11 +405,11 @@ export class FeedAgentExecutor implements AgentExecutor {
 
     // Update to working state
     const workingUpdate: TaskStatusUpdateEvent = {
-      kind: 'status-update',
+      kind: "status-update",
       taskId,
       contextId: contextId || uuidv4(),
       status: {
-        state: 'working',
+        state: "working",
         timestamp: new Date().toISOString(),
       },
       final: false,
@@ -421,15 +421,15 @@ export class FeedAgentExecutor implements AgentExecutor {
 
     // Create artifact with result
     const artifactUpdate: TaskArtifactUpdateEvent = {
-      kind: 'artifact-update',
+      kind: "artifact-update",
       taskId,
       contextId: contextId || uuidv4(),
       artifact: {
         artifactId: uuidv4(),
-        name: 'result.json',
+        name: "result.json",
         parts: [
           {
-            kind: 'data',
+            kind: "data",
             data: (result ?? {}) as { [k: string]: JsonValue },
           },
         ],
@@ -439,11 +439,11 @@ export class FeedAgentExecutor implements AgentExecutor {
 
     // Mark completed
     const completedUpdate: TaskStatusUpdateEvent = {
-      kind: 'status-update',
+      kind: "status-update",
       taskId,
       contextId: contextId || uuidv4(),
       status: {
-        state: 'completed',
+        state: "completed",
         timestamp: new Date().toISOString(),
       },
       final: true,
@@ -454,166 +454,166 @@ export class FeedAgentExecutor implements AgentExecutor {
 
   private async executeOperation(
     command: FeedCommand,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<ExecutorOperationResult> {
     switch (command.operation) {
       // Portfolio operations
-      case 'portfolio.get_balance':
+      case "portfolio.get_balance":
         return this.getBalance(command.params, context);
-      case 'portfolio.get_positions':
+      case "portfolio.get_positions":
         return this.getPositions(command.params, context);
-      case 'portfolio.get_user_wallet':
+      case "portfolio.get_user_wallet":
         return this.getUserWallet(command.params, context);
-      case 'social.create_post':
+      case "social.create_post":
         return this.createPost(command.params, context);
-      case 'social.get_feed':
+      case "social.get_feed":
         return this.getFeed(command.params);
-      case 'social.get_post':
+      case "social.get_post":
         return this.getPost(command.params);
-      case 'social.like_post':
+      case "social.like_post":
         return this.likePost(command.params, context);
-      case 'social.unlike_post':
+      case "social.unlike_post":
         return this.unlikePost(command.params, context);
-      case 'social.delete_post':
+      case "social.delete_post":
         return this.deletePost(command.params, context);
-      case 'social.share_post':
+      case "social.share_post":
         return this.sharePost(command.params, context);
-      case 'social.get_comments':
+      case "social.get_comments":
         return this.getComments(command.params);
-      case 'social.create_comment':
+      case "social.create_comment":
         return this.createComment(command.params, context);
-      case 'social.delete_comment':
+      case "social.delete_comment":
         return this.deleteComment(command.params, context);
-      case 'social.like_comment':
+      case "social.like_comment":
         return this.likeComment(command.params, context);
-      case 'markets.list_prediction':
+      case "markets.list_prediction":
         return this.listPredictionMarkets(command.params);
-      case 'markets.list_perpetuals':
+      case "markets.list_perpetuals":
         return this.listPerpetualMarkets(command.params);
-      case 'markets.buy_shares':
+      case "markets.buy_shares":
         return this.buyShares(command.params, context);
-      case 'markets.sell_shares':
+      case "markets.sell_shares":
         return this.sellShares(command.params, context);
-      case 'markets.open_position':
+      case "markets.open_position":
         return this.openPosition(command.params, context);
-      case 'markets.close_position':
+      case "markets.close_position":
         return this.closePosition(command.params, context);
-      case 'markets.get_trades':
+      case "markets.get_trades":
         return this.getTrades(command.params);
-      case 'markets.get_trade_history':
+      case "markets.get_trade_history":
         return this.getTradeHistory(command.params, context);
-      case 'users.search':
+      case "users.search":
         return this.searchUsers(command.params);
-      case 'users.get_profile':
+      case "users.get_profile":
         return this.getUserProfile(command.params);
-      case 'users.update_profile':
+      case "users.update_profile":
         return this.updateProfile(command.params, context);
-      case 'users.follow':
+      case "users.follow":
         return this.followUser(command.params, context);
-      case 'users.unfollow':
+      case "users.unfollow":
         return this.unfollowUser(command.params, context);
-      case 'users.get_followers':
+      case "users.get_followers":
         return this.getFollowers(command.params, context);
-      case 'users.get_following':
+      case "users.get_following":
         return this.getFollowing(command.params, context);
-      case 'stats.system':
+      case "stats.system":
         return this.getSystemStats();
-      case 'stats.leaderboard':
+      case "stats.leaderboard":
         return this.getLeaderboard(command.params);
-      case 'stats.trending_tags':
+      case "stats.trending_tags":
         return this.getTrendingTags(command.params);
-      case 'stats.posts_by_tag':
+      case "stats.posts_by_tag":
         return this.getPostsByTag(command.params);
-      case 'stats.get_organizations':
+      case "stats.get_organizations":
         return this.getOrganizations(command.params);
       // Messaging operations
-      case 'messaging.get_chats':
+      case "messaging.get_chats":
         return this.getChatsHandler(command.params, context);
-      case 'messaging.get_chat_messages':
+      case "messaging.get_chat_messages":
         return this.getChatMessages(command.params, context);
-      case 'messaging.send_message':
+      case "messaging.send_message":
         return this.sendMessage(command.params, context);
-      case 'messaging.create_group':
+      case "messaging.create_group":
         return this.createGroup(command.params, context);
-      case 'messaging.leave_chat':
+      case "messaging.leave_chat":
         return this.leaveChat(command.params, context);
-      case 'messaging.get_unread_count':
+      case "messaging.get_unread_count":
         return this.getUnreadCountHandler(command.params, context);
-      case 'messaging.get_notifications':
+      case "messaging.get_notifications":
         return this.getNotificationsHandler(command.params, context);
-      case 'notifications.mark_read':
+      case "notifications.mark_read":
         return this.markNotificationsRead(command.params, context);
-      case 'notifications.get_group_invites':
+      case "notifications.get_group_invites":
         return this.getGroupInvites(command.params, context);
-      case 'notifications.accept_invite':
+      case "notifications.accept_invite":
         return this.acceptGroupInvite(command.params, context);
-      case 'notifications.decline_invite':
+      case "notifications.decline_invite":
         return this.declineGroupInvite(command.params, context);
-      case 'moderation.create_escrow_payment':
+      case "moderation.create_escrow_payment":
         return this.createEscrowPayment(command.params, context);
-      case 'moderation.verify_escrow_payment':
+      case "moderation.verify_escrow_payment":
         return this.verifyEscrowPayment(command.params, context);
-      case 'moderation.refund_escrow_payment':
+      case "moderation.refund_escrow_payment":
         return this.refundEscrowPayment(command.params, context);
-      case 'moderation.list_escrow_payments':
+      case "moderation.list_escrow_payments":
         return this.listEscrowPayments(command.params, context);
-      case 'moderation.appeal_ban_with_escrow':
+      case "moderation.appeal_ban_with_escrow":
         return this.appealBanWithEscrow(command.params, context);
       // Basic moderation operations
-      case 'moderation.block_user':
+      case "moderation.block_user":
         return this.blockUser(command.params, context);
-      case 'moderation.unblock_user':
+      case "moderation.unblock_user":
         return this.unblockUser(command.params, context);
-      case 'moderation.mute_user':
+      case "moderation.mute_user":
         return this.muteUser(command.params, context);
-      case 'moderation.unmute_user':
+      case "moderation.unmute_user":
         return this.unmuteUser(command.params, context);
-      case 'moderation.report_user':
+      case "moderation.report_user":
         return this.reportUser(command.params, context);
-      case 'moderation.report_post':
+      case "moderation.report_post":
         return this.reportPost(command.params, context);
-      case 'moderation.get_blocks':
+      case "moderation.get_blocks":
         return this.getBlocks(command.params, context);
-      case 'moderation.get_mutes':
+      case "moderation.get_mutes":
         return this.getMutes(command.params, context);
-      case 'moderation.check_block_status':
+      case "moderation.check_block_status":
         return this.checkBlockStatus(command.params, context);
-      case 'moderation.check_mute_status':
+      case "moderation.check_mute_status":
         return this.checkMuteStatus(command.params, context);
       // Stats operations
-      case 'stats.get_user_stats':
+      case "stats.get_user_stats":
         return this.getUserStats(command.params, context);
-      case 'stats.get_referral_code':
+      case "stats.get_referral_code":
         return this.getReferralCode(command.params, context);
-      case 'stats.get_referrals':
+      case "stats.get_referrals":
         return this.getReferrals(command.params, context);
-      case 'stats.get_referral_stats':
+      case "stats.get_referral_stats":
         return this.getReferralStats(command.params, context);
-      case 'stats.get_reputation':
+      case "stats.get_reputation":
         return this.getReputation(command.params, context);
-      case 'stats.get_reputation_breakdown':
+      case "stats.get_reputation_breakdown":
         return this.getReputationBreakdown(command.params, context);
       // Favorites operations
-      case 'favorites.add':
+      case "favorites.add":
         return this.favoriteProfile(command.params, context);
-      case 'favorites.remove':
+      case "favorites.remove":
         return this.unfavoriteProfile(command.params, context);
-      case 'favorites.list':
+      case "favorites.list":
         return this.getFavorites(command.params, context);
-      case 'favorites.posts':
+      case "favorites.posts":
         return this.getFavoritePosts(command.params, context);
       // Markets - additional operations
-      case 'markets.get_market_data':
+      case "markets.get_market_data":
         return this.getMarketData(command.params);
-      case 'markets.get_market_prices':
+      case "markets.get_market_prices":
         return this.getMarketPrices(command.params);
       // Payments (x402)
-      case 'payments.request':
+      case "payments.request":
         return this.paymentRequest(command.params, context);
-      case 'payments.receipt':
+      case "payments.receipt":
         return this.paymentReceipt(command.params, context);
       // Moderation - appeal without escrow
-      case 'moderation.appeal_ban':
+      case "moderation.appeal_ban":
         return this.appealBan(command.params, context);
       default:
         throw new Error(`Unsupported operation: ${command.operation}`);
@@ -622,14 +622,14 @@ export class FeedAgentExecutor implements AgentExecutor {
 
   private parseCommand(message: Message): FeedCommand {
     const dataPart = message.parts.find(
-      (part): part is DataPart => part.kind === 'data'
+      (part): part is DataPart => part.kind === "data",
     );
 
-    if (dataPart && dataPart.data && typeof dataPart.data === 'object') {
+    if (dataPart?.data && typeof dataPart.data === "object") {
       const data = dataPart.data as Record<string, JsonValue>;
       const operation = data.operation;
       const params = data.params;
-      if (typeof operation !== 'string') {
+      if (typeof operation !== "string") {
         throw new Error('Data part must include an "operation" string');
       }
       return {
@@ -639,14 +639,14 @@ export class FeedAgentExecutor implements AgentExecutor {
     }
 
     const textPayload = message.parts
-      .filter((part): part is TextPart => part.kind === 'text')
+      .filter((part): part is TextPart => part.kind === "text")
       .map((part) => part.text)
-      .join(' ')
+      .join(" ")
       .trim();
 
     if (textPayload.length > 0) {
       const parsed = JSON.parse(textPayload);
-      if (typeof parsed.operation === 'string') {
+      if (typeof parsed.operation === "string") {
         return {
           operation: parsed.operation,
           params: this.ensureRecord(parsed.params),
@@ -655,12 +655,12 @@ export class FeedAgentExecutor implements AgentExecutor {
     }
 
     throw new Error(
-      'Structured command required. Provide a data part with { "operation": "...", "params": {...} }'
+      'Structured command required. Provide a data part with { "operation": "...", "params": {...} }',
     );
   }
 
   private ensureRecord(value: unknown): Record<string, JsonValue> {
-    if (value && typeof value === 'object' && !Array.isArray(value)) {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
       return value as Record<string, JsonValue>;
     }
     return {};
@@ -668,10 +668,10 @@ export class FeedAgentExecutor implements AgentExecutor {
 
   private async createPost(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ) {
     // Validate and sanitize content (checks type, length, profanity, injection)
-    const content = this.validateUserContent(params.content, 'Post content');
+    const content = this.validateUserContent(params.content, "Post content");
 
     const post = await db.post.create({
       data: {
@@ -688,7 +688,7 @@ export class FeedAgentExecutor implements AgentExecutor {
     const limit = this.parsePositiveInt(params.limit, 20, 100);
     const posts = await db.post.findMany({
       take: limit,
-      orderBy: { timestamp: 'desc' },
+      orderBy: { timestamp: "desc" },
       select: {
         id: true,
         content: true,
@@ -708,11 +708,11 @@ export class FeedAgentExecutor implements AgentExecutor {
 
   private async likePost(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<SuccessResponse> {
-    const postId = typeof params.postId === 'string' ? params.postId : '';
+    const postId = typeof params.postId === "string" ? params.postId : "";
     if (!postId) {
-      throw new Error('postId is required');
+      throw new Error("postId is required");
     }
 
     // Check if post exists
@@ -721,14 +721,14 @@ export class FeedAgentExecutor implements AgentExecutor {
     });
 
     if (!post) {
-      throw new Error('Post not found');
+      throw new Error("Post not found");
     }
 
     // Prefer request context identity when present (prevents params-based impersonation),
     // then fall back to explicit params, then taskId.
     const userIdFromContext = context.contextId;
     const userIdFromParams =
-      typeof params.userId === 'string' ? params.userId.trim() : '';
+      typeof params.userId === "string" ? params.userId.trim() : "";
     const userId = userIdFromContext || userIdFromParams || context.taskId;
 
     // Check if already liked
@@ -736,12 +736,12 @@ export class FeedAgentExecutor implements AgentExecutor {
       where: {
         postId,
         userId,
-        type: 'like',
+        type: "like",
       },
     });
 
     if (existingLike) {
-      return { success: true, message: 'Already liked' };
+      return { success: true, message: "Already liked" };
     }
 
     // Create the like
@@ -750,18 +750,18 @@ export class FeedAgentExecutor implements AgentExecutor {
         id: await generateSnowflakeId(),
         postId,
         userId,
-        type: 'like',
+        type: "like",
       },
     });
 
-    return { success: true, message: 'Post liked' };
+    return { success: true, message: "Post liked" };
   }
 
   private async getPost(
-    params: Record<string, JsonValue>
+    params: Record<string, JsonValue>,
   ): Promise<ExecutorOperationResult> {
-    const postId = String(params.postId ?? '');
-    if (!postId) throw new Error('postId is required');
+    const postId = String(params.postId ?? "");
+    if (!postId) throw new Error("postId is required");
 
     const post = await db.post.findFirst({
       where: { id: postId, deletedAt: null },
@@ -775,12 +775,12 @@ export class FeedAgentExecutor implements AgentExecutor {
     });
 
     if (!post) {
-      throw new Error('Post not found');
+      throw new Error("Post not found");
     }
 
     // Get like count
     const likeCount = await db.reaction.count({
-      where: { postId, type: 'like' },
+      where: { postId, type: "like" },
     });
 
     // Get comment count
@@ -802,10 +802,10 @@ export class FeedAgentExecutor implements AgentExecutor {
 
   private async unlikePost(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<SuccessResponse> {
-    const postId = String(params.postId ?? '');
-    if (!postId) throw new Error('postId is required');
+    const postId = String(params.postId ?? "");
+    if (!postId) throw new Error("postId is required");
 
     const userId = context.contextId || context.taskId;
 
@@ -813,22 +813,22 @@ export class FeedAgentExecutor implements AgentExecutor {
       where: {
         postId,
         userId,
-        type: 'like',
+        type: "like",
       },
     });
 
     return {
       success: true,
-      message: deleted.count > 0 ? 'Post unliked' : 'Was not liked',
+      message: deleted.count > 0 ? "Post unliked" : "Was not liked",
     };
   }
 
   private async deletePost(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<SuccessResponse> {
-    const postId = String(params.postId ?? '');
-    if (!postId) throw new Error('postId is required');
+    const postId = String(params.postId ?? "");
+    if (!postId) throw new Error("postId is required");
 
     const userId = context.contextId || context.taskId;
 
@@ -838,11 +838,11 @@ export class FeedAgentExecutor implements AgentExecutor {
     });
 
     if (!post) {
-      throw new Error('Post not found');
+      throw new Error("Post not found");
     }
 
     if (post.authorId !== userId) {
-      throw new Error('Unauthorized: You can only delete your own posts');
+      throw new Error("Unauthorized: You can only delete your own posts");
     }
 
     // Soft delete
@@ -851,15 +851,15 @@ export class FeedAgentExecutor implements AgentExecutor {
       data: { deletedAt: new Date() },
     });
 
-    return { success: true, message: 'Post deleted' };
+    return { success: true, message: "Post deleted" };
   }
 
   private async sharePost(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<ExecutorOperationResult> {
-    const postId = String(params.postId ?? '');
-    if (!postId) throw new Error('postId is required');
+    const postId = String(params.postId ?? "");
+    if (!postId) throw new Error("postId is required");
 
     const userId = context.contextId || context.taskId;
 
@@ -869,7 +869,7 @@ export class FeedAgentExecutor implements AgentExecutor {
     });
 
     if (!post) {
-      throw new Error('Post not found');
+      throw new Error("Post not found");
     }
 
     // Create share
@@ -884,21 +884,21 @@ export class FeedAgentExecutor implements AgentExecutor {
     return {
       success: true,
       shareId: share.id,
-      message: 'Post shared',
+      message: "Post shared",
     };
   }
 
   private async getComments(
-    params: Record<string, JsonValue>
+    params: Record<string, JsonValue>,
   ): Promise<ExecutorOperationResult> {
-    const postId = String(params.postId ?? '');
-    if (!postId) throw new Error('postId is required');
+    const postId = String(params.postId ?? "");
+    if (!postId) throw new Error("postId is required");
 
     const limit = this.parsePositiveInt(params.limit, 50, 100);
 
     const comments = await db.comment.findMany({
       where: { postId, deletedAt: null },
-      orderBy: { createdAt: 'asc' },
+      orderBy: { createdAt: "asc" },
       take: limit,
       select: {
         id: true,
@@ -914,8 +914,8 @@ export class FeedAgentExecutor implements AgentExecutor {
 
     if (commentIds.length > 0) {
       const likeCounts = (await db.reaction.groupBy({
-        by: ['commentId'],
-        where: { commentId: { in: commentIds }, type: 'like' },
+        by: ["commentId"],
+        where: { commentId: { in: commentIds }, type: "like" },
         _count: { id: true },
       })) as Array<{ commentId: string; _count: { id: number } }>;
 
@@ -937,13 +937,13 @@ export class FeedAgentExecutor implements AgentExecutor {
 
   private async createComment(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<ExecutorOperationResult> {
-    const postId = String(params.postId ?? '');
+    const postId = String(params.postId ?? "");
     // Validate and sanitize content (checks type, length, profanity, injection)
-    const content = this.validateUserContent(params.content, 'Comment');
+    const content = this.validateUserContent(params.content, "Comment");
 
-    if (!postId) throw new Error('postId is required');
+    if (!postId) throw new Error("postId is required");
 
     const userId = context.contextId || context.taskId;
 
@@ -953,7 +953,7 @@ export class FeedAgentExecutor implements AgentExecutor {
     });
 
     if (!post) {
-      throw new Error('Post not found');
+      throw new Error("Post not found");
     }
 
     const commentId = await generateSnowflakeId();
@@ -981,10 +981,10 @@ export class FeedAgentExecutor implements AgentExecutor {
 
   private async deleteComment(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<SuccessResponse> {
-    const commentId = String(params.commentId ?? '');
-    if (!commentId) throw new Error('commentId is required');
+    const commentId = String(params.commentId ?? "");
+    if (!commentId) throw new Error("commentId is required");
 
     const userId = context.contextId || context.taskId;
 
@@ -994,11 +994,11 @@ export class FeedAgentExecutor implements AgentExecutor {
     });
 
     if (!comment) {
-      throw new Error('Comment not found');
+      throw new Error("Comment not found");
     }
 
     if (comment.authorId !== userId) {
-      throw new Error('Unauthorized: You can only delete your own comments');
+      throw new Error("Unauthorized: You can only delete your own comments");
     }
 
     // Soft delete
@@ -1007,15 +1007,15 @@ export class FeedAgentExecutor implements AgentExecutor {
       data: { deletedAt: new Date() },
     });
 
-    return { success: true, message: 'Comment deleted' };
+    return { success: true, message: "Comment deleted" };
   }
 
   private async likeComment(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<SuccessResponse> {
-    const commentId = String(params.commentId ?? '');
-    if (!commentId) throw new Error('commentId is required');
+    const commentId = String(params.commentId ?? "");
+    if (!commentId) throw new Error("commentId is required");
 
     const userId = context.contextId || context.taskId;
 
@@ -1025,7 +1025,7 @@ export class FeedAgentExecutor implements AgentExecutor {
     });
 
     if (!comment) {
-      throw new Error('Comment not found');
+      throw new Error("Comment not found");
     }
 
     // Check if already liked
@@ -1033,12 +1033,12 @@ export class FeedAgentExecutor implements AgentExecutor {
       where: {
         commentId,
         userId,
-        type: 'like',
+        type: "like",
       },
     });
 
     if (existingLike) {
-      return { success: true, message: 'Already liked' };
+      return { success: true, message: "Already liked" };
     }
 
     // Create the like
@@ -1047,11 +1047,11 @@ export class FeedAgentExecutor implements AgentExecutor {
         id: await generateSnowflakeId(),
         commentId,
         userId,
-        type: 'like',
+        type: "like",
       },
     });
 
-    return { success: true, message: 'Comment liked' };
+    return { success: true, message: "Comment liked" };
   }
 
   private async listPredictionMarkets(params: Record<string, JsonValue>) {
@@ -1059,7 +1059,7 @@ export class FeedAgentExecutor implements AgentExecutor {
     const markets = await db.market.findMany({
       take: limit,
       where: { resolved: false },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
     });
     return {
       markets: markets.map((m) => ({
@@ -1106,11 +1106,11 @@ export class FeedAgentExecutor implements AgentExecutor {
       const message = error instanceof Error ? error.message : String(error);
       if (
         message.includes(
-          'getRawDrizzle() is only available in PostgreSQL mode'
+          "getRawDrizzle() is only available in PostgreSQL mode",
         ) ||
-        message.includes('Database not initialized')
+        message.includes("Database not initialized")
       ) {
-        logger.debug('Perpetual markets unavailable, returning empty', {
+        logger.debug("Perpetual markets unavailable, returning empty", {
           message,
         });
         return { perpetuals: [] };
@@ -1121,14 +1121,14 @@ export class FeedAgentExecutor implements AgentExecutor {
     return {
       perpetuals: snapshots.map((s) => ({
         name: s.name || s.ticker,
-        type: 'perpetual',
+        type: "perpetual",
         ticker: s.ticker,
         currentPrice: Number(s.currentPrice) || 0,
         priceChange24h: Number(s.change24h) || 0,
         volume24h: Number(s.volume24h) || 0,
         openInterest: Number(s.openInterest) || 0,
         fundingRate:
-          typeof s.fundingRate === 'object' && s.fundingRate !== null
+          typeof s.fundingRate === "object" && s.fundingRate !== null
             ? (s.fundingRate as { rate?: number }).rate || 0
             : 0,
       })),
@@ -1137,9 +1137,9 @@ export class FeedAgentExecutor implements AgentExecutor {
 
   private async getUserProfile(params: Record<string, JsonValue>) {
     const userId =
-      typeof params.userId === 'string' ? params.userId.trim() : '';
+      typeof params.userId === "string" ? params.userId.trim() : "";
     if (!userId) {
-      throw new Error('userId is required');
+      throw new Error("userId is required");
     }
 
     const user = await db.user.findUnique({
@@ -1158,7 +1158,7 @@ export class FeedAgentExecutor implements AgentExecutor {
     });
 
     if (!user) {
-      logger.debug('User not found for getUserProfile, returning defaults', {
+      logger.debug("User not found for getUserProfile, returning defaults", {
         userId,
       });
       return {
@@ -1189,27 +1189,27 @@ export class FeedAgentExecutor implements AgentExecutor {
 
   private async updateProfile(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<ExecutorOperationResult> {
     const userId = context.contextId || context.taskId;
 
     const updateData: Record<string, string | null> = {};
 
-    if (typeof params.displayName === 'string') {
+    if (typeof params.displayName === "string") {
       updateData.displayName = params.displayName.trim() || null;
     }
-    if (typeof params.bio === 'string') {
+    if (typeof params.bio === "string") {
       updateData.bio = params.bio.trim() || null;
     }
-    if (typeof params.username === 'string') {
+    if (typeof params.username === "string") {
       updateData.username = params.username.trim() || null;
     }
-    if (typeof params.profileImageUrl === 'string') {
+    if (typeof params.profileImageUrl === "string") {
       updateData.profileImageUrl = params.profileImageUrl.trim() || null;
     }
 
     if (Object.keys(updateData).length === 0) {
-      throw new Error('At least one field to update is required');
+      throw new Error("At least one field to update is required");
     }
 
     await db.user.update({
@@ -1245,13 +1245,13 @@ export class FeedAgentExecutor implements AgentExecutor {
 
   private async followUser(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<SuccessResponse> {
     const followerId = context.contextId || context.taskId;
-    const followingId = String(params.userId ?? '');
+    const followingId = String(params.userId ?? "");
 
-    if (!followingId) throw new Error('userId is required');
-    if (followerId === followingId) throw new Error('Cannot follow yourself');
+    if (!followingId) throw new Error("userId is required");
+    if (followerId === followingId) throw new Error("Cannot follow yourself");
 
     // Check if already following
     const existingFollow = await db.follow.findFirst({
@@ -1259,7 +1259,7 @@ export class FeedAgentExecutor implements AgentExecutor {
     });
 
     if (existingFollow) {
-      return { success: true, message: 'Already following' };
+      return { success: true, message: "Already following" };
     }
 
     await db.follow.create({
@@ -1270,17 +1270,17 @@ export class FeedAgentExecutor implements AgentExecutor {
       },
     });
 
-    return { success: true, message: 'Now following user' };
+    return { success: true, message: "Now following user" };
   }
 
   private async unfollowUser(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<SuccessResponse> {
     const followerId = context.contextId || context.taskId;
-    const followingId = String(params.userId ?? '');
+    const followingId = String(params.userId ?? "");
 
-    if (!followingId) throw new Error('userId is required');
+    if (!followingId) throw new Error("userId is required");
 
     const deleted = await db.follow.deleteMany({
       where: { followerId, followingId },
@@ -1288,19 +1288,19 @@ export class FeedAgentExecutor implements AgentExecutor {
 
     return {
       success: true,
-      message: deleted.count > 0 ? 'Unfollowed user' : 'Was not following',
+      message: deleted.count > 0 ? "Unfollowed user" : "Was not following",
     };
   }
 
   private async getFollowers(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<ExecutorOperationResult> {
     const userId =
-      String(params.userId ?? '') || context.contextId || context.taskId;
+      String(params.userId ?? "") || context.contextId || context.taskId;
     const { offset, limit } = this.validatePaginationParams(
       params.offset,
-      params.limit
+      params.limit,
     );
 
     // Get total count before pagination
@@ -1316,7 +1316,7 @@ export class FeedAgentExecutor implements AgentExecutor {
       where: { followingId: userId },
       skip: offset,
       take: limit,
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
       select: { followerId: true },
     });
 
@@ -1349,13 +1349,13 @@ export class FeedAgentExecutor implements AgentExecutor {
 
   private async getFollowing(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<ExecutorOperationResult> {
     const userId =
-      String(params.userId ?? '') || context.contextId || context.taskId;
+      String(params.userId ?? "") || context.contextId || context.taskId;
     const { offset, limit } = this.validatePaginationParams(
       params.offset,
-      params.limit
+      params.limit,
     );
 
     // Get total count before pagination
@@ -1371,7 +1371,7 @@ export class FeedAgentExecutor implements AgentExecutor {
       where: { followerId: userId },
       skip: offset,
       take: limit,
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
       select: { followingId: true },
     });
 
@@ -1407,7 +1407,7 @@ export class FeedAgentExecutor implements AgentExecutor {
     // Get organization states
     const orgStates = await db.organizationState.findMany({
       take: limit,
-      orderBy: { currentPrice: 'desc' },
+      orderBy: { currentPrice: "desc" },
       select: {
         id: true,
         currentPrice: true,
@@ -1440,20 +1440,20 @@ export class FeedAgentExecutor implements AgentExecutor {
           userId,
           amount,
           reason,
-          description ?? '',
-          relatedId
+          description ?? "",
+          relatedId,
         ),
       credit: ({ userId, amount, reason, description, relatedId }) =>
         WalletService.credit(
           userId,
           amount,
           reason,
-          description ?? '',
-          relatedId
+          description ?? "",
+          relatedId,
         ),
       recordPnL: ({ userId, pnl, reason, relatedId }) =>
         WalletService.recordPnL(userId, pnl, reason, relatedId).then(
-          () => undefined
+          () => undefined,
         ),
       getBalance: (userId: string) => WalletService.getBalance(userId),
     };
@@ -1498,23 +1498,23 @@ export class FeedAgentExecutor implements AgentExecutor {
 
   private async buyShares(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<ExecutorOperationResult> {
     const userId = context.contextId || context.taskId;
 
     // Rate limit check for trading operations
     await this.checkRateLimit(userId, RATE_LIMIT_CONFIGS.BUY_PREDICTION);
 
-    const marketId = String(params.marketId ?? '');
-    const outcome = String(params.outcome ?? '').toUpperCase();
+    const marketId = String(params.marketId ?? "");
+    const outcome = String(params.outcome ?? "").toUpperCase();
     const amount = Number(params.amount ?? 0);
 
-    if (!marketId) throw new Error('marketId is required');
-    if (!['YES', 'NO'].includes(outcome))
-      throw new Error('outcome must be YES or NO');
-    if (amount <= 0) throw new Error('amount must be positive');
+    if (!marketId) throw new Error("marketId is required");
+    if (!["YES", "NO"].includes(outcome))
+      throw new Error("outcome must be YES or NO");
+    if (amount <= 0) throw new Error("amount must be positive");
 
-    const side = outcome === 'YES' ? 'yes' : 'no';
+    const side = outcome === "YES" ? "yes" : "no";
     const service = this.buildPredictionService();
     const result = await service.buy({
       userId,
@@ -1546,27 +1546,27 @@ export class FeedAgentExecutor implements AgentExecutor {
 
   private async sellShares(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<ExecutorOperationResult> {
     const userId = context.contextId || context.taskId;
 
     // Rate limit check for trading operations
     await this.checkRateLimit(userId, RATE_LIMIT_CONFIGS.SELL_PREDICTION);
 
-    const positionId = String(params.positionId ?? '');
+    const positionId = String(params.positionId ?? "");
     const shares = Number(params.shares ?? 0);
 
-    if (!positionId) throw new Error('positionId is required');
-    if (shares <= 0) throw new Error('shares must be positive');
+    if (!positionId) throw new Error("positionId is required");
+    if (shares <= 0) throw new Error("shares must be positive");
 
     const position = await db.position.findUnique({
       where: { id: positionId },
     });
     if (!position || position.userId !== userId) {
-      throw new Error('Position not found or access denied');
+      throw new Error("Position not found or access denied");
     }
     if (!position.marketId) {
-      throw new Error('Position has no associated market');
+      throw new Error("Position has no associated market");
     }
 
     const service = this.buildPredictionService();
@@ -1599,26 +1599,26 @@ export class FeedAgentExecutor implements AgentExecutor {
 
   private async openPosition(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<ExecutorOperationResult> {
     const userId = context.contextId || context.taskId;
 
     // Rate limit check for trading operations
     await this.checkRateLimit(userId, RATE_LIMIT_CONFIGS.OPEN_POSITION);
 
-    const ticker = String(params.ticker ?? '');
-    const sideParam = String(params.side ?? '').toLowerCase();
+    const ticker = String(params.ticker ?? "");
+    const sideParam = String(params.side ?? "").toLowerCase();
     const amount = Number(params.amount ?? 0);
     const leverage = Number(params.leverage ?? 1);
 
-    if (!ticker) throw new Error('ticker is required');
-    if (!['long', 'short'].includes(sideParam))
-      throw new Error('side must be long or short');
-    if (amount <= 0) throw new Error('amount must be positive');
+    if (!ticker) throw new Error("ticker is required");
+    if (!["long", "short"].includes(sideParam))
+      throw new Error("side must be long or short");
+    if (amount <= 0) throw new Error("amount must be positive");
     if (leverage < 1 || leverage > 100)
-      throw new Error('leverage must be between 1 and 100');
+      throw new Error("leverage must be between 1 and 100");
 
-    const side = sideParam as 'long' | 'short';
+    const side = sideParam as "long" | "short";
     const service = this.buildPerpService();
     const result = await service.openPosition({
       userId,
@@ -1633,7 +1633,7 @@ export class FeedAgentExecutor implements AgentExecutor {
       position: {
         positionId: result.positionId,
         ticker: result.ticker,
-        side: result.side === 'long' ? 'LONG' : 'SHORT',
+        side: result.side === "long" ? "LONG" : "SHORT",
         size: result.size,
         leverage: result.leverage,
         entryPrice: result.entryPrice ?? 0,
@@ -1649,16 +1649,16 @@ export class FeedAgentExecutor implements AgentExecutor {
 
   private async closePosition(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<ExecutorOperationResult> {
     const userId = context.contextId || context.taskId;
 
     // Rate limit check for trading operations
     await this.checkRateLimit(userId, RATE_LIMIT_CONFIGS.CLOSE_POSITION);
 
-    const positionId = String(params.positionId ?? '');
+    const positionId = String(params.positionId ?? "");
 
-    if (!positionId) throw new Error('positionId is required');
+    if (!positionId) throw new Error("positionId is required");
 
     const service = this.buildPerpService();
     const result = await service.closePosition({
@@ -1671,7 +1671,7 @@ export class FeedAgentExecutor implements AgentExecutor {
       position: {
         positionId,
         ticker: result.ticker,
-        side: result.side === 'long' ? 'LONG' : 'SHORT',
+        side: result.side === "long" ? "LONG" : "SHORT",
         size: result.size,
         entryPrice: result.entryPrice ?? 0,
         exitPrice: result.exitPrice ?? 0,
@@ -1687,20 +1687,20 @@ export class FeedAgentExecutor implements AgentExecutor {
   }
 
   private async getTrades(
-    params: Record<string, JsonValue>
+    params: Record<string, JsonValue>,
   ): Promise<ExecutorOperationResult> {
     const marketId = params.marketId ? String(params.marketId) : undefined;
     const limit = this.parsePositiveInt(params.limit, 20, 100);
 
     const apiBaseUrl = getAPIBaseUrl();
     const url = new URL(`${apiBaseUrl}/trades`);
-    if (marketId) url.searchParams.set('marketId', marketId);
-    url.searchParams.set('limit', limit.toString());
+    if (marketId) url.searchParams.set("marketId", marketId);
+    url.searchParams.set("limit", limit.toString());
 
     const controller = new AbortController();
     const timer = setTimeout(
       () => controller.abort(),
-      DEFAULT_FETCH_TIMEOUT_MS
+      DEFAULT_FETCH_TIMEOUT_MS,
     );
 
     let response: Response;
@@ -1709,9 +1709,9 @@ export class FeedAgentExecutor implements AgentExecutor {
       clearTimeout(timer);
     } catch (error) {
       clearTimeout(timer);
-      if (error instanceof Error && error.name === 'AbortError') {
+      if (error instanceof Error && error.name === "AbortError") {
         throw new Error(
-          `Request to fetch trades timed out after ${DEFAULT_FETCH_TIMEOUT_MS}ms`
+          `Request to fetch trades timed out after ${DEFAULT_FETCH_TIMEOUT_MS}ms`,
         );
       }
       throw error;
@@ -1738,7 +1738,7 @@ export class FeedAgentExecutor implements AgentExecutor {
         id: trade.id,
         marketId: trade.marketId,
         userId: trade.userId,
-        side: trade.side ? 'YES' : 'NO',
+        side: trade.side ? "YES" : "NO",
         shares: trade.shares,
         price: trade.price,
         timestamp:
@@ -1751,7 +1751,7 @@ export class FeedAgentExecutor implements AgentExecutor {
 
   private async getTradeHistory(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<ExecutorOperationResult> {
     const userId = context.contextId || context.taskId;
     const limit = this.parsePositiveInt(params.limit, 20, 100);
@@ -1759,7 +1759,7 @@ export class FeedAgentExecutor implements AgentExecutor {
     // Query positions which contain the actual side (YES/NO), shares, and price
     const positions = await db.position.findMany({
       where: { userId },
-      orderBy: { updatedAt: 'desc' },
+      orderBy: { updatedAt: "desc" },
       take: limit,
       select: {
         id: true,
@@ -1775,7 +1775,7 @@ export class FeedAgentExecutor implements AgentExecutor {
       trades: positions.map((pos) => ({
         id: pos.id,
         marketId: pos.marketId,
-        side: pos.side ? 'YES' : 'NO',
+        side: pos.side ? "YES" : "NO",
         shares: Number(pos.shares) || 0,
         avgPrice: Number(pos.avgPrice) || 0,
         timestamp: pos.createdAt?.toISOString(),
@@ -1785,7 +1785,7 @@ export class FeedAgentExecutor implements AgentExecutor {
 
   private async getChatsHandler(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<ExecutorOperationResult> {
     const userId = context.contextId || context.taskId;
     const limit = this.parsePositiveInt(params.limit, 20, 50);
@@ -1794,7 +1794,7 @@ export class FeedAgentExecutor implements AgentExecutor {
     const chatParticipants = await db.chatParticipant.findMany({
       where: { userId, isActive: true },
       take: limit,
-      orderBy: { joinedAt: 'desc' },
+      orderBy: { joinedAt: "desc" },
       select: {
         chatId: true,
         updatedAt: true,
@@ -1829,16 +1829,16 @@ export class FeedAgentExecutor implements AgentExecutor {
 
   private async getChatMessages(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<ExecutorOperationResult> {
     const userId = context.contextId || context.taskId;
-    const chatId = String(params.chatId ?? '');
+    const chatId = String(params.chatId ?? "");
     const { offset, limit } = this.validatePaginationParams(
       params.offset,
-      params.limit
+      params.limit,
     );
 
-    if (!chatId) throw new Error('chatId is required');
+    if (!chatId) throw new Error("chatId is required");
 
     // Verify user is a participant
     const participant = await db.chatParticipant.findFirst({
@@ -1846,12 +1846,12 @@ export class FeedAgentExecutor implements AgentExecutor {
     });
 
     if (!participant) {
-      throw new Error('Chat not found or access denied');
+      throw new Error("Chat not found or access denied");
     }
 
     const messages = await db.message.findMany({
       where: { chatId },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
       take: limit,
       skip: offset,
       select: {
@@ -1874,14 +1874,14 @@ export class FeedAgentExecutor implements AgentExecutor {
 
   private async sendMessage(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<ExecutorOperationResult> {
     const userId = context.contextId || context.taskId;
-    const chatId = String(params.chatId ?? '');
+    const chatId = String(params.chatId ?? "");
     // Validate and sanitize content (checks type, length, profanity, injection)
-    const content = this.validateUserContent(params.content, 'Message');
+    const content = this.validateUserContent(params.content, "Message");
 
-    if (!chatId) throw new Error('chatId is required');
+    if (!chatId) throw new Error("chatId is required");
 
     // Verify user is a participant
     const participant = await db.chatParticipant.findFirst({
@@ -1889,7 +1889,7 @@ export class FeedAgentExecutor implements AgentExecutor {
     });
 
     if (!participant) {
-      throw new Error('Chat not found or access denied');
+      throw new Error("Chat not found or access denied");
     }
 
     const message = await db.message.create({
@@ -1904,20 +1904,20 @@ export class FeedAgentExecutor implements AgentExecutor {
     // Fire-and-forget SSE broadcast — the message is already persisted to DB above,
     // so a broadcast failure only affects real-time delivery (clients will pick it up
     // on next poll/reconnect). We log the failure but don't block the response.
-    const { broadcastChatMessage } = await import('@feed/api');
+    const { broadcastChatMessage } = await import("@feed/api");
     broadcastChatMessage(chatId, {
       id: message.id,
       content: message.content,
       chatId,
       senderId: message.senderId,
-      type: 'user',
+      type: "user",
       createdAt: message.createdAt?.toISOString() ?? new Date().toISOString(),
       isGameChat: false,
       isDMChat: false,
     }).catch((err: Error) => {
       logger.warn(
         `[A2AExecutor] SSE broadcast failed (message ${message.id} persisted, will be visible on refresh): ${err.message}`,
-        { chatId, messageId: message.id }
+        { chatId, messageId: message.id },
       );
     });
 
@@ -1935,16 +1935,16 @@ export class FeedAgentExecutor implements AgentExecutor {
 
   private async createGroup(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<ExecutorOperationResult> {
     const userId = context.contextId || context.taskId;
-    const name = String(params.name ?? '').trim();
-    const description = String(params.description ?? '').trim();
+    const name = String(params.name ?? "").trim();
+    const description = String(params.description ?? "").trim();
     const memberIds = Array.isArray(params.memberIds)
       ? params.memberIds.map((id) => String(id))
       : [];
 
-    if (!name) throw new Error('name is required');
+    if (!name) throw new Error("name is required");
 
     // Generate all IDs before transaction
     const groupId = await generateSnowflakeId();
@@ -1957,8 +1957,8 @@ export class FeedAgentExecutor implements AgentExecutor {
         memberId,
         chatParticipantId: await generateSnowflakeId(),
         groupMemberId: await generateSnowflakeId(),
-        role: memberId === userId ? 'admin' : 'member',
-      }))
+        role: memberId === userId ? "admin" : "member",
+      })),
     );
 
     // Perform all operations atomically in a transaction
@@ -1971,7 +1971,7 @@ export class FeedAgentExecutor implements AgentExecutor {
           description: description || null,
           ownerId: userId,
           createdById: userId,
-          type: 'user',
+          type: "user",
           updatedAt: new Date(),
         },
       });
@@ -2009,20 +2009,20 @@ export class FeedAgentExecutor implements AgentExecutor {
     });
 
     // Broadcast a system message so members see the new group in real-time
-    const { broadcastChatMessage } = await import('@feed/api');
+    const { broadcastChatMessage } = await import("@feed/api");
     broadcastChatMessage(chatId, {
       id: await generateSnowflakeId(),
       content: `Group "${name}" created`,
       chatId,
       senderId: userId,
-      type: 'system',
+      type: "system",
       createdAt: new Date().toISOString(),
       isGameChat: false,
       isDMChat: false,
     }).catch((err: Error) => {
       logger.warn(
         `[A2AExecutor] Failed to broadcast group creation: ${err.message}`,
-        { chatId, groupId }
+        { chatId, groupId },
       );
     });
 
@@ -2039,12 +2039,12 @@ export class FeedAgentExecutor implements AgentExecutor {
 
   private async leaveChat(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<SuccessResponse> {
     const userId = context.contextId || context.taskId;
-    const chatId = String(params.chatId ?? '');
+    const chatId = String(params.chatId ?? "");
 
-    if (!chatId) throw new Error('chatId is required');
+    if (!chatId) throw new Error("chatId is required");
 
     // Update participant to mark as inactive
     const updated = await db.chatParticipant.updateMany({
@@ -2053,15 +2053,15 @@ export class FeedAgentExecutor implements AgentExecutor {
     });
 
     if (updated.count === 0) {
-      throw new Error('Chat not found or already left');
+      throw new Error("Chat not found or already left");
     }
 
-    return { success: true, message: 'Left chat' };
+    return { success: true, message: "Left chat" };
   }
 
   private async getUnreadCountHandler(
     _params: Record<string, JsonValue>,
-    _context: RequestContext
+    _context: RequestContext,
   ) {
     // Return 0 unread count as default
     return { unreadCount: 0 };
@@ -2069,14 +2069,14 @@ export class FeedAgentExecutor implements AgentExecutor {
 
   private async getNotificationsHandler(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<ExecutorOperationResult> {
     const userId = context.contextId || context.taskId;
     const limit = this.parsePositiveInt(params.limit, 20, 100);
 
     const notifications = await db.notification.findMany({
       where: { userId },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
       take: limit,
       select: {
         id: true,
@@ -2102,7 +2102,7 @@ export class FeedAgentExecutor implements AgentExecutor {
 
   private async markNotificationsRead(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<SuccessResponse> {
     const userId = context.contextId || context.taskId;
     const notificationIds = Array.isArray(params.notificationIds)
@@ -2110,7 +2110,7 @@ export class FeedAgentExecutor implements AgentExecutor {
       : [];
 
     if (notificationIds.length === 0) {
-      throw new Error('notificationIds array is required');
+      throw new Error("notificationIds array is required");
     }
 
     await db.notification.updateMany({
@@ -2121,18 +2121,18 @@ export class FeedAgentExecutor implements AgentExecutor {
       data: { read: true },
     });
 
-    return { success: true, message: 'Notifications marked as read' };
+    return { success: true, message: "Notifications marked as read" };
   }
 
   private async getGroupInvites(
     _params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<ExecutorOperationResult> {
     const userId = context.contextId || context.taskId;
 
     const invites = await db.groupInvite.findMany({
-      where: { invitedUserId: userId, status: 'pending' },
-      orderBy: { invitedAt: 'desc' },
+      where: { invitedUserId: userId, status: "pending" },
+      orderBy: { invitedAt: "desc" },
       select: {
         id: true,
         groupId: true,
@@ -2159,9 +2159,9 @@ export class FeedAgentExecutor implements AgentExecutor {
         groupId: i.groupId,
         group: groupMap.get(i.groupId)
           ? {
-              id: groupMap.get(i.groupId)!.id,
-              name: groupMap.get(i.groupId)!.name,
-              description: groupMap.get(i.groupId)!.description,
+              id: groupMap.get(i.groupId)?.id,
+              name: groupMap.get(i.groupId)?.name,
+              description: groupMap.get(i.groupId)?.description,
             }
           : null,
         invitedBy: i.invitedBy,
@@ -2172,20 +2172,20 @@ export class FeedAgentExecutor implements AgentExecutor {
 
   private async acceptGroupInvite(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<SuccessResponse> {
     const userId = context.contextId || context.taskId;
-    const inviteId = String(params.inviteId ?? '');
+    const inviteId = String(params.inviteId ?? "");
 
-    if (!inviteId) throw new Error('inviteId is required');
+    if (!inviteId) throw new Error("inviteId is required");
 
     // Find and validate invite
     const invite = await db.groupInvite.findFirst({
-      where: { id: inviteId, invitedUserId: userId, status: 'pending' },
+      where: { id: inviteId, invitedUserId: userId, status: "pending" },
     });
 
     if (!invite) {
-      throw new Error('Invite not found or already processed');
+      throw new Error("Invite not found or already processed");
     }
 
     // Generate IDs before transaction to ensure they're ready
@@ -2197,7 +2197,7 @@ export class FeedAgentExecutor implements AgentExecutor {
       // Update invite status
       await tx.groupInvite.update({
         where: { id: inviteId },
-        data: { status: 'accepted', respondedAt: new Date() },
+        data: { status: "accepted", respondedAt: new Date() },
       });
 
       // Add user to group
@@ -2206,7 +2206,7 @@ export class FeedAgentExecutor implements AgentExecutor {
           id: groupMemberId,
           groupId: invite.groupId,
           userId,
-          role: 'member',
+          role: "member",
         },
       });
 
@@ -2227,48 +2227,48 @@ export class FeedAgentExecutor implements AgentExecutor {
       }
     });
 
-    return { success: true, message: 'Group invite accepted' };
+    return { success: true, message: "Group invite accepted" };
   }
 
   private async declineGroupInvite(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<SuccessResponse> {
     const userId = context.contextId || context.taskId;
-    const inviteId = String(params.inviteId ?? '');
+    const inviteId = String(params.inviteId ?? "");
 
-    if (!inviteId) throw new Error('inviteId is required');
+    if (!inviteId) throw new Error("inviteId is required");
 
     // Find and validate invite
     const invite = await db.groupInvite.findFirst({
-      where: { id: inviteId, invitedUserId: userId, status: 'pending' },
+      where: { id: inviteId, invitedUserId: userId, status: "pending" },
     });
 
     if (!invite) {
-      throw new Error('Invite not found or already processed');
+      throw new Error("Invite not found or already processed");
     }
 
     // Update invite status
     await db.groupInvite.update({
       where: { id: inviteId },
-      data: { status: 'declined', respondedAt: new Date() },
+      data: { status: "declined", respondedAt: new Date() },
     });
 
-    return { success: true, message: 'Group invite declined' };
+    return { success: true, message: "Group invite declined" };
   }
 
   private async searchUsers(params: Record<string, JsonValue>) {
-    const query = typeof params.query === 'string' ? params.query.trim() : '';
+    const query = typeof params.query === "string" ? params.query.trim() : "";
     if (!query) {
-      throw new Error('query is required');
+      throw new Error("query is required");
     }
 
     const limit = this.parsePositiveInt(params.limit, 20, 50);
     const users = await db.user.findMany({
       where: {
         OR: [
-          { username: { contains: query, mode: 'insensitive' } },
-          { displayName: { contains: query, mode: 'insensitive' } },
+          { username: { contains: query, mode: "insensitive" } },
+          { displayName: { contains: query, mode: "insensitive" } },
         ],
       },
       take: limit,
@@ -2295,7 +2295,7 @@ export class FeedAgentExecutor implements AgentExecutor {
     const limit = this.parsePositiveInt(params.limit, 10, 50);
     const users = await db.user.findMany({
       take: limit,
-      orderBy: { reputationPoints: 'desc' },
+      orderBy: { reputationPoints: "desc" },
       select: {
         id: true,
         username: true,
@@ -2307,14 +2307,14 @@ export class FeedAgentExecutor implements AgentExecutor {
   }
 
   private async getTrendingTags(
-    params: Record<string, JsonValue>
+    params: Record<string, JsonValue>,
   ): Promise<TrendingTagsResponse> {
     const limit = this.parsePositiveInt(params.limit, 10, 50);
 
     // Get trending tags with their tag info via query
     const trendingTagsList = await db.trendingTag.findMany({
       take: limit,
-      orderBy: { score: 'desc' },
+      orderBy: { score: "desc" },
     });
 
     // Get tag IDs
@@ -2335,9 +2335,9 @@ export class FeedAgentExecutor implements AgentExecutor {
       tags: trendingTagsList.map((tt) => {
         const tag = tagMap.get(tt.tagId);
         return {
-          name: tag?.name ?? '',
-          displayName: tag?.displayName ?? tag?.name ?? '',
-          category: tag?.category ?? 'general',
+          name: tag?.name ?? "",
+          displayName: tag?.displayName ?? tag?.name ?? "",
+          category: tag?.category ?? "general",
           postCount: tt.postCount,
         };
       }),
@@ -2345,16 +2345,16 @@ export class FeedAgentExecutor implements AgentExecutor {
   }
 
   private async getPostsByTag(
-    params: Record<string, JsonValue>
+    params: Record<string, JsonValue>,
   ): Promise<PostsByTagResponse> {
-    const tagName = typeof params.tag === 'string' ? params.tag.trim() : '';
+    const tagName = typeof params.tag === "string" ? params.tag.trim() : "";
     if (!tagName) {
-      throw new Error('tag is required');
+      throw new Error("tag is required");
     }
 
     const { offset, limit } = this.validatePaginationParams(
       params.offset,
-      params.limit
+      params.limit,
     );
 
     // Find the tag by name
@@ -2369,7 +2369,7 @@ export class FeedAgentExecutor implements AgentExecutor {
     // Find posts with this tag via PostTag join table
     const postTagEntries = await db.postTag.findMany({
       where: { tagId: tag.id },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
       take: limit,
       skip: offset,
     });
@@ -2385,9 +2385,9 @@ export class FeedAgentExecutor implements AgentExecutor {
       where: {
         id: { in: postIds },
         deletedAt: null,
-        type: 'post',
+        type: "post",
       },
-      orderBy: { timestamp: 'desc' },
+      orderBy: { timestamp: "desc" },
     });
 
     return {
@@ -2403,12 +2403,12 @@ export class FeedAgentExecutor implements AgentExecutor {
   private parsePositiveInt(
     value: unknown,
     fallback: number,
-    max: number
+    max: number,
   ): number {
     const parsed =
-      typeof value === 'number'
+      typeof value === "number"
         ? value
-        : typeof value === 'string'
+        : typeof value === "string"
           ? Number.parseInt(value, 10)
           : Number.NaN;
     if (!Number.isFinite(parsed) || parsed <= 0) {
@@ -2420,13 +2420,13 @@ export class FeedAgentExecutor implements AgentExecutor {
   // Portfolio operations
   private async getBalance(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<ExecutorOperationResult> {
     // Prefer contextId when present (prevents params-based impersonation),
     // then fall back to explicit params, then taskId.
     const userIdFromContext = context.contextId;
     const userIdFromParams =
-      typeof params.userId === 'string' ? params.userId.trim() : '';
+      typeof params.userId === "string" ? params.userId.trim() : "";
     const userId = userIdFromContext || userIdFromParams || context.taskId;
 
     const user = await db.user.findUnique({
@@ -2443,7 +2443,7 @@ export class FeedAgentExecutor implements AgentExecutor {
 
     // Return default values if user not found (graceful degradation for onboarding)
     if (!user) {
-      logger.debug('User not found for getBalance, returning defaults', {
+      logger.debug("User not found for getBalance, returning defaults", {
         userId,
       });
       return {
@@ -2466,11 +2466,11 @@ export class FeedAgentExecutor implements AgentExecutor {
 
   private async getPositions(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<ExecutorOperationResult> {
     const userIdFromContext = context.contextId;
     const userIdFromParams =
-      typeof params.userId === 'string' ? params.userId.trim() : '';
+      typeof params.userId === "string" ? params.userId.trim() : "";
     const userId = userIdFromContext || userIdFromParams || context.taskId;
 
     // Check if user exists first (for graceful handling)
@@ -2481,7 +2481,7 @@ export class FeedAgentExecutor implements AgentExecutor {
 
     // Return empty positions if user not found (graceful degradation for onboarding)
     if (!userExists) {
-      logger.debug('User not found for getPositions, returning empty', {
+      logger.debug("User not found for getPositions, returning empty", {
         userId,
       });
       return {
@@ -2495,8 +2495,8 @@ export class FeedAgentExecutor implements AgentExecutor {
     const marketPositionsRaw = await db.position.findMany({
       where: {
         userId,
-        shares: { gt: '0' },
-        status: 'active',
+        shares: { gt: "0" },
+        status: "active",
       },
     });
 
@@ -2520,7 +2520,7 @@ export class FeedAgentExecutor implements AgentExecutor {
 
     const marketPositions = marketPositionsRaw.map((p) => {
       const market = marketMap.get(p.marketId);
-      const side: 'YES' | 'NO' = p.outcome === true ? 'YES' : 'NO';
+      const side: "YES" | "NO" = p.outcome === true ? "YES" : "NO";
 
       // CPMM price: yesPrice = noShares / total, noPrice = yesShares / total
       const yesShares = Number(market?.yesShares ?? 0);
@@ -2528,7 +2528,7 @@ export class FeedAgentExecutor implements AgentExecutor {
       const totalShares = yesShares + noShares;
       const currentPrice =
         totalShares > 0
-          ? side === 'YES'
+          ? side === "YES"
             ? noShares / totalShares
             : yesShares / totalShares
           : 0.5;
@@ -2540,7 +2540,7 @@ export class FeedAgentExecutor implements AgentExecutor {
       return {
         id: p.id,
         marketId: String(p.marketId),
-        question: market?.question || 'Unknown',
+        question: market?.question || "Unknown",
         side,
         shares,
         avgPrice,
@@ -2560,7 +2560,7 @@ export class FeedAgentExecutor implements AgentExecutor {
       ...new Set(
         perpPositionsRaw
           .map((position) => position.organizationId)
-          .filter(Boolean)
+          .filter(Boolean),
       ),
     ];
     const orgStates =
@@ -2571,18 +2571,18 @@ export class FeedAgentExecutor implements AgentExecutor {
           })
         : [];
     const orgStateMap = new Map(
-      orgStates.map((orgState) => [orgState.id, orgState])
+      orgStates.map((orgState) => [orgState.id, orgState]),
     );
 
     const perpPositions = perpPositionsRaw.map((position) => {
       const orgState = orgStateMap.get(position.organizationId);
       const currentPrice = Number(
-        orgState?.currentPrice ?? position.entryPrice
+        orgState?.currentPrice ?? position.entryPrice,
       );
       return {
         id: position.id,
         ticker: position.ticker,
-        side: position.side as 'long' | 'short',
+        side: position.side as "long" | "short",
         size: Number(position.size),
         entryPrice: Number(position.entryPrice),
         currentPrice,
@@ -2593,11 +2593,11 @@ export class FeedAgentExecutor implements AgentExecutor {
 
     const marketPnL = marketPositions.reduce(
       (sum, p) => sum + p.unrealizedPnL,
-      0
+      0,
     );
     const perpPnL = perpPositions.reduce(
       (sum: number, position) => sum + position.unrealizedPnL,
-      0
+      0,
     );
 
     return {
@@ -2609,13 +2609,13 @@ export class FeedAgentExecutor implements AgentExecutor {
 
   private async getUserWallet(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<ExecutorOperationResult> {
     // Prefer contextId when present (prevents params-based impersonation),
     // then fall back to explicit params, then taskId.
     const userIdFromContext = context.contextId;
     const userIdFromParams =
-      typeof params.userId === 'string' ? params.userId.trim() : '';
+      typeof params.userId === "string" ? params.userId.trim() : "";
     const userId = userIdFromContext || userIdFromParams || context.taskId;
 
     const [balance, positions] = await Promise.all([
@@ -2630,14 +2630,14 @@ export class FeedAgentExecutor implements AgentExecutor {
   }
 
   async cancelTask(taskId: string, eventBus: ExecutionEventBus): Promise<void> {
-    logger.info('Task cancellation', { taskId });
+    logger.info("Task cancellation", { taskId });
 
     const cancelUpdate: TaskStatusUpdateEvent = {
-      kind: 'status-update',
+      kind: "status-update",
       taskId,
-      contextId: '',
+      contextId: "",
       status: {
-        state: 'canceled',
+        state: "canceled",
         timestamp: new Date().toISOString(),
       },
       final: true,
@@ -2649,20 +2649,20 @@ export class FeedAgentExecutor implements AgentExecutor {
   // Escrow operations
   private async createEscrowPayment(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<ExecutorOperationResult> {
     const agentId = context.contextId || context.taskId;
     const requestParams: Record<string, JsonValue> = {
-      recipientId: String(params.recipientId ?? ''),
+      recipientId: String(params.recipientId ?? ""),
       amountUSD: Number(params.amountUSD ?? 0),
-      recipientWalletAddress: String(params.recipientWalletAddress ?? ''),
+      recipientWalletAddress: String(params.recipientWalletAddress ?? ""),
     };
     if (params.reason) {
       requestParams.reason = String(params.reason);
     }
     const request: JsonRpcRequest = {
-      jsonrpc: '2.0',
-      method: 'a2a.createEscrowPayment',
+      jsonrpc: "2.0",
+      method: "a2a.createEscrowPayment",
       params: requestParams,
       id: 1,
     };
@@ -2675,18 +2675,18 @@ export class FeedAgentExecutor implements AgentExecutor {
 
   private async verifyEscrowPayment(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<ExecutorOperationResult> {
     const agentId = context.contextId || context.taskId;
     const request = {
-      jsonrpc: '2.0' as const,
-      method: 'a2a.verifyEscrowPayment',
+      jsonrpc: "2.0" as const,
+      method: "a2a.verifyEscrowPayment",
       params: {
-        escrowId: String(params.escrowId || ''),
-        txHash: String(params.txHash || ''),
-        fromAddress: String(params.fromAddress || ''),
-        toAddress: String(params.toAddress || ''),
-        amount: String(params.amount || ''),
+        escrowId: String(params.escrowId || ""),
+        txHash: String(params.txHash || ""),
+        fromAddress: String(params.fromAddress || ""),
+        toAddress: String(params.toAddress || ""),
+        amount: String(params.amount || ""),
       },
       id: 1,
     };
@@ -2699,19 +2699,19 @@ export class FeedAgentExecutor implements AgentExecutor {
 
   private async refundEscrowPayment(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<ExecutorOperationResult> {
     const agentId = context.contextId || context.taskId;
     const requestParams: Record<string, JsonValue> = {
-      escrowId: String(params.escrowId ?? ''),
-      refundTxHash: String(params.refundTxHash ?? ''),
+      escrowId: String(params.escrowId ?? ""),
+      refundTxHash: String(params.refundTxHash ?? ""),
     };
     if (params.reason) {
       requestParams.reason = String(params.reason);
     }
     const request: JsonRpcRequest = {
-      jsonrpc: '2.0',
-      method: 'a2a.refundEscrowPayment',
+      jsonrpc: "2.0",
+      method: "a2a.refundEscrowPayment",
       params: requestParams,
       id: 1,
     };
@@ -2724,7 +2724,7 @@ export class FeedAgentExecutor implements AgentExecutor {
 
   private async listEscrowPayments(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<ExecutorOperationResult> {
     const agentId = context.contextId || context.taskId;
     const requestParams: Record<string, JsonValue> = {};
@@ -2735,8 +2735,8 @@ export class FeedAgentExecutor implements AgentExecutor {
     if (params.limit) requestParams.limit = Number(params.limit);
     if (params.offset) requestParams.offset = Number(params.offset);
     const request: JsonRpcRequest = {
-      jsonrpc: '2.0',
-      method: 'a2a.listEscrowPayments',
+      jsonrpc: "2.0",
+      method: "a2a.listEscrowPayments",
       params: requestParams,
       id: 1,
     };
@@ -2749,15 +2749,15 @@ export class FeedAgentExecutor implements AgentExecutor {
 
   private async appealBanWithEscrow(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<ExecutorOperationResult> {
     const agentId = context.contextId || context.taskId;
     const request = {
-      jsonrpc: '2.0' as const,
-      method: 'a2a.appealBanWithEscrow',
+      jsonrpc: "2.0" as const,
+      method: "a2a.appealBanWithEscrow",
       params: {
-        reason: String(params.reason || ''),
-        escrowPaymentTxHash: String(params.escrowPaymentTxHash || ''),
+        reason: String(params.reason || ""),
+        escrowPaymentTxHash: String(params.escrowPaymentTxHash || ""),
       },
       id: 1,
     };
@@ -2772,10 +2772,10 @@ export class FeedAgentExecutor implements AgentExecutor {
 
   private async blockUser(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<ExecutorOperationResult> {
     const agentId = context.contextId || context.taskId;
-    const targetUserId = String(params.userId ?? '');
+    const targetUserId = String(params.userId ?? "");
     const reason = params.reason ? String(params.reason) : null;
 
     // Check if target user exists
@@ -2797,7 +2797,7 @@ export class FeedAgentExecutor implements AgentExecutor {
     });
 
     if (existingBlock) {
-      return { success: false, message: 'User is already blocked' };
+      return { success: false, message: "User is already blocked" };
     }
 
     // Use transaction to ensure block creation and follow deletions are atomic
@@ -2831,15 +2831,15 @@ export class FeedAgentExecutor implements AgentExecutor {
       return newBlock;
     });
 
-    return { success: true, message: 'User blocked successfully', block };
+    return { success: true, message: "User blocked successfully", block };
   }
 
   private async unblockUser(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<ExecutorOperationResult> {
     const agentId = context.contextId || context.taskId;
-    const targetUserId = String(params.userId ?? '');
+    const targetUserId = String(params.userId ?? "");
 
     const deleted = await db.userBlock.deleteMany({
       where: {
@@ -2849,18 +2849,18 @@ export class FeedAgentExecutor implements AgentExecutor {
     });
 
     if (deleted.count === 0) {
-      return { success: false, message: 'User is not blocked' };
+      return { success: false, message: "User is not blocked" };
     }
 
-    return { success: true, message: 'User unblocked successfully' };
+    return { success: true, message: "User unblocked successfully" };
   }
 
   private async muteUser(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<ExecutorOperationResult> {
     const agentId = context.contextId || context.taskId;
-    const targetUserId = String(params.userId ?? '');
+    const targetUserId = String(params.userId ?? "");
     const reason = params.reason ? String(params.reason) : null;
 
     // Check if target user exists
@@ -2882,7 +2882,7 @@ export class FeedAgentExecutor implements AgentExecutor {
     });
 
     if (existingMute) {
-      return { success: false, message: 'User is already muted' };
+      return { success: false, message: "User is already muted" };
     }
 
     // Create mute
@@ -2895,15 +2895,15 @@ export class FeedAgentExecutor implements AgentExecutor {
       },
     });
 
-    return { success: true, message: 'User muted successfully', mute };
+    return { success: true, message: "User muted successfully", mute };
   }
 
   private async unmuteUser(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<ExecutorOperationResult> {
     const agentId = context.contextId || context.taskId;
-    const targetUserId = String(params.userId ?? '');
+    const targetUserId = String(params.userId ?? "");
 
     const deleted = await db.userMute.deleteMany({
       where: {
@@ -2913,20 +2913,20 @@ export class FeedAgentExecutor implements AgentExecutor {
     });
 
     if (deleted.count === 0) {
-      return { success: false, message: 'User is not muted' };
+      return { success: false, message: "User is not muted" };
     }
 
-    return { success: true, message: 'User unmuted successfully' };
+    return { success: true, message: "User unmuted successfully" };
   }
 
   private async reportUser(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<ExecutorOperationResult> {
     const agentId = context.contextId || context.taskId;
-    const targetUserId = String(params.userId ?? '');
-    const category = String(params.category ?? 'other');
-    const reason = String(params.reason ?? '');
+    const targetUserId = String(params.userId ?? "");
+    const category = String(params.category ?? "other");
+    const reason = String(params.reason ?? "");
     const evidence = params.evidence ? String(params.evidence) : null;
 
     // Check if target user exists
@@ -2940,11 +2940,11 @@ export class FeedAgentExecutor implements AgentExecutor {
     }
 
     // Determine priority based on category
-    let priority = 'normal';
-    if (['hate_speech', 'violence', 'self_harm'].includes(category)) {
-      priority = 'high';
-    } else if (category === 'spam') {
-      priority = 'low';
+    let priority = "normal";
+    if (["hate_speech", "violence", "self_harm"].includes(category)) {
+      priority = "high";
+    } else if (category === "spam") {
+      priority = "low";
     }
 
     // Create report
@@ -2953,27 +2953,27 @@ export class FeedAgentExecutor implements AgentExecutor {
         id: await generateSnowflakeId(),
         reporterId: agentId,
         reportedUserId: targetUserId,
-        reportType: 'user',
+        reportType: "user",
         category,
         reason,
         evidence: evidence || null,
         priority,
-        status: 'pending',
+        status: "pending",
         updatedAt: new Date(),
       },
     });
 
-    return { success: true, message: 'Report submitted successfully', report };
+    return { success: true, message: "Report submitted successfully", report };
   }
 
   private async reportPost(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<ExecutorOperationResult> {
     const agentId = context.contextId || context.taskId;
-    const postId = String(params.postId ?? '');
-    const category = String(params.category ?? 'other');
-    const reason = String(params.reason ?? '');
+    const postId = String(params.postId ?? "");
+    const category = String(params.category ?? "other");
+    const reason = String(params.reason ?? "");
     const evidence = params.evidence ? String(params.evidence) : null;
 
     // Check if post exists
@@ -2987,11 +2987,11 @@ export class FeedAgentExecutor implements AgentExecutor {
     }
 
     // Determine priority based on category
-    let priority = 'normal';
-    if (['hate_speech', 'violence', 'self_harm'].includes(category)) {
-      priority = 'high';
-    } else if (category === 'spam') {
-      priority = 'low';
+    let priority = "normal";
+    if (["hate_speech", "violence", "self_harm"].includes(category)) {
+      priority = "high";
+    } else if (category === "spam") {
+      priority = "low";
     }
 
     // Create report
@@ -3000,34 +3000,34 @@ export class FeedAgentExecutor implements AgentExecutor {
         id: await generateSnowflakeId(),
         reporterId: agentId,
         reportedPostId: postId,
-        reportType: 'post',
+        reportType: "post",
         category,
         reason,
         evidence: evidence || null,
         priority,
-        status: 'pending',
+        status: "pending",
         updatedAt: new Date(),
       },
     });
 
-    return { success: true, message: 'Report submitted successfully', report };
+    return { success: true, message: "Report submitted successfully", report };
   }
 
   private async getBlocks(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<ExecutorOperationResult> {
     const agentId = context.contextId || context.taskId;
     const { offset, limit } = this.validatePaginationParams(
       params.offset,
-      params.limit
+      params.limit,
     );
 
     // Fetch blocks without include (Drizzle custom client has issues with include)
     const [blocksRaw, total] = await Promise.all([
       db.userBlock.findMany({
         where: { blockerId: agentId },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
         take: limit,
         skip: offset,
       }),
@@ -3059,10 +3059,10 @@ export class FeedAgentExecutor implements AgentExecutor {
       createdAt: b.createdAt?.toISOString(),
       blocked: userMap.get(b.blockedId)
         ? {
-            id: userMap.get(b.blockedId)!.id,
-            username: userMap.get(b.blockedId)!.username,
-            displayName: userMap.get(b.blockedId)!.displayName,
-            profileImageUrl: userMap.get(b.blockedId)!.profileImageUrl,
+            id: userMap.get(b.blockedId)?.id,
+            username: userMap.get(b.blockedId)?.username,
+            displayName: userMap.get(b.blockedId)?.displayName,
+            profileImageUrl: userMap.get(b.blockedId)?.profileImageUrl,
           }
         : null,
     }));
@@ -3079,19 +3079,19 @@ export class FeedAgentExecutor implements AgentExecutor {
 
   private async getMutes(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<ExecutorOperationResult> {
     const agentId = context.contextId || context.taskId;
     const { offset, limit } = this.validatePaginationParams(
       params.offset,
-      params.limit
+      params.limit,
     );
 
     // Fetch mutes without include (Drizzle custom client has issues with include)
     const [mutesRaw, total] = await Promise.all([
       db.userMute.findMany({
         where: { muterId: agentId },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
         take: limit,
         skip: offset,
       }),
@@ -3123,10 +3123,10 @@ export class FeedAgentExecutor implements AgentExecutor {
       createdAt: m.createdAt?.toISOString(),
       muted: userMap.get(m.mutedId)
         ? {
-            id: userMap.get(m.mutedId)!.id,
-            username: userMap.get(m.mutedId)!.username,
-            displayName: userMap.get(m.mutedId)!.displayName,
-            profileImageUrl: userMap.get(m.mutedId)!.profileImageUrl,
+            id: userMap.get(m.mutedId)?.id,
+            username: userMap.get(m.mutedId)?.username,
+            displayName: userMap.get(m.mutedId)?.displayName,
+            profileImageUrl: userMap.get(m.mutedId)?.profileImageUrl,
           }
         : null,
     }));
@@ -3143,10 +3143,10 @@ export class FeedAgentExecutor implements AgentExecutor {
 
   private async checkBlockStatus(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<ExecutorOperationResult> {
     const agentId = context.contextId || context.taskId;
-    const targetUserId = String(params.userId ?? '');
+    const targetUserId = String(params.userId ?? "");
 
     const block = await db.userBlock.findFirst({
       where: {
@@ -3168,10 +3168,10 @@ export class FeedAgentExecutor implements AgentExecutor {
 
   private async checkMuteStatus(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<ExecutorOperationResult> {
     const agentId = context.contextId || context.taskId;
-    const targetUserId = String(params.userId ?? '');
+    const targetUserId = String(params.userId ?? "");
 
     const mute = await db.userMute.findFirst({
       where: {
@@ -3195,10 +3195,10 @@ export class FeedAgentExecutor implements AgentExecutor {
 
   private async getUserStats(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<ExecutorOperationResult> {
     const userId =
-      String(params.userId ?? '') || context.contextId || context.taskId;
+      String(params.userId ?? "") || context.contextId || context.taskId;
 
     const user = await db.user.findUnique({
       where: { id: userId },
@@ -3216,7 +3216,7 @@ export class FeedAgentExecutor implements AgentExecutor {
     });
 
     if (!user) {
-      throw new Error('User not found');
+      throw new Error("User not found");
     }
 
     // Get position and trade counts
@@ -3246,7 +3246,7 @@ export class FeedAgentExecutor implements AgentExecutor {
 
   private async getReferralCode(
     _params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<ExecutorOperationResult> {
     const userId = context.contextId || context.taskId;
 
@@ -3256,7 +3256,7 @@ export class FeedAgentExecutor implements AgentExecutor {
     });
 
     if (!user) {
-      throw new Error('User not found');
+      throw new Error("User not found");
     }
 
     return {
@@ -3266,19 +3266,19 @@ export class FeedAgentExecutor implements AgentExecutor {
 
   private async getReferrals(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<ExecutorOperationResult> {
     const userId = context.contextId || context.taskId;
     const { offset, limit } = this.validatePaginationParams(
       params.offset,
-      params.limit
+      params.limit,
     );
 
     const referrals = await db.user.findMany({
       where: { referredBy: userId },
       skip: offset,
       take: limit,
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
       select: {
         id: true,
         username: true,
@@ -3299,7 +3299,7 @@ export class FeedAgentExecutor implements AgentExecutor {
 
   private async getReferralStats(
     _params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<ExecutorOperationResult> {
     const userId = context.contextId || context.taskId;
 
@@ -3319,10 +3319,10 @@ export class FeedAgentExecutor implements AgentExecutor {
 
   private async getReputation(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<ExecutorOperationResult> {
     const userId =
-      String(params.userId ?? '') || context.contextId || context.taskId;
+      String(params.userId ?? "") || context.contextId || context.taskId;
 
     const user = await db.user.findUnique({
       where: { id: userId },
@@ -3330,7 +3330,7 @@ export class FeedAgentExecutor implements AgentExecutor {
     });
 
     if (!user) {
-      throw new Error('User not found');
+      throw new Error("User not found");
     }
 
     return {
@@ -3340,10 +3340,10 @@ export class FeedAgentExecutor implements AgentExecutor {
 
   private async getReputationBreakdown(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<ExecutorOperationResult> {
     const userId =
-      String(params.userId ?? '') || context.contextId || context.taskId;
+      String(params.userId ?? "") || context.contextId || context.taskId;
 
     const user = await db.user.findUnique({
       where: { id: userId },
@@ -3362,7 +3362,7 @@ export class FeedAgentExecutor implements AgentExecutor {
     });
 
     if (!user) {
-      throw new Error('User not found');
+      throw new Error("User not found");
     }
 
     return {
@@ -3385,13 +3385,13 @@ export class FeedAgentExecutor implements AgentExecutor {
 
   private async favoriteProfile(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<SuccessResponse> {
     const userId = context.contextId || context.taskId;
-    const profileId = String(params.userId ?? params.profileId ?? '');
+    const profileId = String(params.userId ?? params.profileId ?? "");
 
-    if (!profileId) throw new Error('profileId or userId is required');
-    if (userId === profileId) throw new Error('Cannot favorite yourself');
+    if (!profileId) throw new Error("profileId or userId is required");
+    if (userId === profileId) throw new Error("Cannot favorite yourself");
 
     // Check if already favorited
     const existing = await db.favorite.findFirst({
@@ -3399,7 +3399,7 @@ export class FeedAgentExecutor implements AgentExecutor {
     });
 
     if (existing) {
-      return { success: true, message: 'Already favorited' };
+      return { success: true, message: "Already favorited" };
     }
 
     await db.favorite.create({
@@ -3410,17 +3410,17 @@ export class FeedAgentExecutor implements AgentExecutor {
       },
     });
 
-    return { success: true, message: 'Profile favorited' };
+    return { success: true, message: "Profile favorited" };
   }
 
   private async unfavoriteProfile(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<SuccessResponse> {
     const userId = context.contextId || context.taskId;
-    const profileId = String(params.userId ?? params.profileId ?? '');
+    const profileId = String(params.userId ?? params.profileId ?? "");
 
-    if (!profileId) throw new Error('profileId or userId is required');
+    if (!profileId) throw new Error("profileId or userId is required");
 
     const deleted = await db.favorite.deleteMany({
       where: { userId, targetUserId: profileId },
@@ -3428,13 +3428,13 @@ export class FeedAgentExecutor implements AgentExecutor {
 
     return {
       success: true,
-      message: deleted.count > 0 ? 'Profile unfavorited' : 'Was not favorited',
+      message: deleted.count > 0 ? "Profile unfavorited" : "Was not favorited",
     };
   }
 
   private async getFavorites(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<ExecutorOperationResult> {
     const userId = context.contextId || context.taskId;
     const limit = this.parsePositiveInt(params.limit, 20, 100);
@@ -3442,7 +3442,7 @@ export class FeedAgentExecutor implements AgentExecutor {
     const favorites = await db.favorite.findMany({
       where: { userId },
       take: limit,
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
       select: { targetUserId: true, createdAt: true },
     });
 
@@ -3482,7 +3482,7 @@ export class FeedAgentExecutor implements AgentExecutor {
 
   private async getFavoritePosts(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<ExecutorOperationResult> {
     const userId = context.contextId || context.taskId;
     const limit = this.parsePositiveInt(params.limit, 20, 100);
@@ -3504,10 +3504,10 @@ export class FeedAgentExecutor implements AgentExecutor {
       where: {
         authorId: { in: favoritedUserIds },
         deletedAt: null,
-        type: 'post',
+        type: "post",
       },
       take: limit,
-      orderBy: { timestamp: 'desc' },
+      orderBy: { timestamp: "desc" },
       select: {
         id: true,
         content: true,
@@ -3530,22 +3530,22 @@ export class FeedAgentExecutor implements AgentExecutor {
    * Get detailed market data for a specific prediction market
    */
   private async getMarketData(
-    params: Record<string, JsonValue>
+    params: Record<string, JsonValue>,
   ): Promise<ExecutorOperationResult> {
-    const marketId = String(params.marketId ?? '');
-    if (!marketId) throw new Error('marketId is required');
+    const marketId = String(params.marketId ?? "");
+    if (!marketId) throw new Error("marketId is required");
 
     const baseUrl = getAPIBaseUrl();
     const controller = new AbortController();
     const timer = setTimeout(
       () => controller.abort(),
-      DEFAULT_FETCH_TIMEOUT_MS
+      DEFAULT_FETCH_TIMEOUT_MS,
     );
 
     try {
       const response = await fetch(
         `${baseUrl}/api/markets/predictions/${encodeURIComponent(marketId)}`,
-        { signal: controller.signal }
+        { signal: controller.signal },
       );
       clearTimeout(timer);
 
@@ -3557,9 +3557,9 @@ export class FeedAgentExecutor implements AgentExecutor {
       return { market: data };
     } catch (error) {
       clearTimeout(timer);
-      if (error instanceof Error && error.name === 'AbortError') {
+      if (error instanceof Error && error.name === "AbortError") {
         throw new Error(
-          `Request to get market data timed out after ${DEFAULT_FETCH_TIMEOUT_MS}ms`
+          `Request to get market data timed out after ${DEFAULT_FETCH_TIMEOUT_MS}ms`,
         );
       }
       throw error;
@@ -3570,10 +3570,10 @@ export class FeedAgentExecutor implements AgentExecutor {
    * Get real-time market prices
    */
   private async getMarketPrices(
-    params: Record<string, JsonValue>
+    params: Record<string, JsonValue>,
   ): Promise<ExecutorOperationResult> {
-    const marketId = String(params.marketId ?? '');
-    if (!marketId) throw new Error('marketId is required');
+    const marketId = String(params.marketId ?? "");
+    if (!marketId) throw new Error("marketId is required");
 
     // Try prediction market first
     const predictionService = this.buildPredictionService();
@@ -3587,7 +3587,7 @@ export class FeedAgentExecutor implements AgentExecutor {
       // CPMM formula: yesPrice = noShares/total, noPrice = yesShares/total
       return {
         marketId,
-        type: 'prediction',
+        type: "prediction",
         prices: {
           yes: total > 0 ? noShares / total : 0.5,
           no: total > 0 ? yesShares / total : 0.5,
@@ -3609,13 +3609,13 @@ export class FeedAgentExecutor implements AgentExecutor {
         .limit(100);
 
       const perp = perps.find(
-        (p) => p.ticker.toUpperCase() === marketId.toUpperCase()
+        (p) => p.ticker.toUpperCase() === marketId.toUpperCase(),
       );
 
       if (perp) {
         return {
           marketId: perp.ticker,
-          type: 'perpetual',
+          type: "perpetual",
           prices: {
             current: perp.currentPrice,
             change24h: perp.change24h ?? 0,
@@ -3625,9 +3625,9 @@ export class FeedAgentExecutor implements AgentExecutor {
       }
     } catch (error) {
       logger.error(
-        'Failed to query perpMarketSnapshots for marketId',
+        "Failed to query perpMarketSnapshots for marketId",
         { error, marketId },
-        'A2A'
+        "A2A",
       );
       throw error;
     }
@@ -3640,7 +3640,7 @@ export class FeedAgentExecutor implements AgentExecutor {
    */
   private getX402Manager(): X402Manager {
     const rpcUrl =
-      process.env.NEXT_PUBLIC_RPC_URL || 'https://sepolia.base.org';
+      process.env.NEXT_PUBLIC_RPC_URL || "https://sepolia.base.org";
     return new X402Manager({ rpcUrl });
   }
 
@@ -3652,21 +3652,21 @@ export class FeedAgentExecutor implements AgentExecutor {
    */
   private async paymentRequest(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<ExecutorOperationResult> {
-    const to = String(params.to ?? '');
-    const amount = String(params.amount ?? '');
-    const service = String(params.service ?? '');
+    const to = String(params.to ?? "");
+    const amount = String(params.amount ?? "");
+    const service = String(params.service ?? "");
 
-    if (!to) throw new Error('to address is required');
-    if (!amount) throw new Error('amount is required (in wei)');
-    if (!service) throw new Error('service identifier is required');
+    if (!to) throw new Error("to address is required");
+    if (!amount) throw new Error("amount is required (in wei)");
+    if (!service) throw new Error("service identifier is required");
 
     // Validate amount is a valid number
     try {
       BigInt(amount);
     } catch {
-      throw new Error('amount must be a valid integer in wei');
+      throw new Error("amount must be a valid integer in wei");
     }
 
     const userId = context.contextId || context.taskId;
@@ -3682,13 +3682,13 @@ export class FeedAgentExecutor implements AgentExecutor {
       to,
       amount,
       service,
-      metadata
+      metadata,
     );
 
     logger.info(
-      'Payment request created',
+      "Payment request created",
       { requestId: paymentRequest.requestId, userId, service, amount },
-      'A2A'
+      "A2A",
     );
 
     return {
@@ -3701,7 +3701,7 @@ export class FeedAgentExecutor implements AgentExecutor {
         service: paymentRequest.service,
         metadata: paymentRequest.metadata ?? {},
         expiresAt: new Date(paymentRequest.expiresAt).toISOString(),
-        status: 'pending',
+        status: "pending",
       },
     };
   }
@@ -3714,17 +3714,17 @@ export class FeedAgentExecutor implements AgentExecutor {
    */
   private async paymentReceipt(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<ExecutorOperationResult> {
-    const requestId = String(params.requestId ?? '');
-    const txHash = String(params.txHash ?? '');
+    const requestId = String(params.requestId ?? "");
+    const txHash = String(params.txHash ?? "");
 
-    if (!requestId) throw new Error('requestId is required');
-    if (!txHash) throw new Error('txHash is required');
+    if (!requestId) throw new Error("requestId is required");
+    if (!txHash) throw new Error("txHash is required");
 
     // Validate txHash format (should be 0x prefixed hex)
     if (!/^0x[a-fA-F0-9]{64}$/.test(txHash)) {
-      throw new Error('txHash must be a valid 66-character hex string (0x...)');
+      throw new Error("txHash must be a valid 66-character hex string (0x...)");
     }
 
     const x402 = this.getX402Manager();
@@ -3732,15 +3732,15 @@ export class FeedAgentExecutor implements AgentExecutor {
     // Get the pending payment request first
     const pendingRequest = await x402.getPaymentRequest(requestId);
     if (!pendingRequest) {
-      logger.warn('Payment request not found', { requestId, txHash }, 'A2A');
+      logger.warn("Payment request not found", { requestId, txHash }, "A2A");
       return {
         success: false,
-        error: 'Payment request not found or expired',
+        error: "Payment request not found or expired",
         receipt: {
           requestId,
           txHash,
-          status: 'failed',
-          error: 'Payment request not found or expired',
+          status: "failed",
+          error: "Payment request not found or expired",
         },
       };
     }
@@ -3758,26 +3758,26 @@ export class FeedAgentExecutor implements AgentExecutor {
 
     if (!result.verified) {
       logger.warn(
-        'Payment verification failed',
+        "Payment verification failed",
         { requestId, txHash, error: result.error },
-        'A2A'
+        "A2A",
       );
       return {
         success: false,
-        error: result.error ?? 'Payment verification failed',
+        error: result.error ?? "Payment verification failed",
         receipt: {
           requestId,
           txHash,
-          status: 'failed',
-          error: result.error ?? 'Payment verification failed',
+          status: "failed",
+          error: result.error ?? "Payment verification failed",
         },
       };
     }
 
     logger.info(
-      'Payment verified successfully',
+      "Payment verified successfully",
       { requestId, txHash, contextId: context.contextId },
-      'A2A'
+      "A2A",
     );
 
     return {
@@ -3785,7 +3785,7 @@ export class FeedAgentExecutor implements AgentExecutor {
       receipt: {
         requestId,
         txHash,
-        status: 'verified',
+        status: "verified",
         verifiedAt: new Date().toISOString(),
       },
     };
@@ -3799,15 +3799,15 @@ export class FeedAgentExecutor implements AgentExecutor {
    */
   private async appealBan(
     params: Record<string, JsonValue>,
-    context: RequestContext
+    context: RequestContext,
   ): Promise<ExecutorOperationResult> {
-    const reason = String(params.reason ?? '');
+    const reason = String(params.reason ?? "");
 
     if (!reason || reason.length < 10) {
-      throw new Error('Appeal reason must be at least 10 characters');
+      throw new Error("Appeal reason must be at least 10 characters");
     }
     if (reason.length > 2000) {
-      throw new Error('Appeal reason must be at most 2000 characters');
+      throw new Error("Appeal reason must be at most 2000 characters");
     }
 
     const userId = context.contextId || context.taskId;
@@ -3825,24 +3825,24 @@ export class FeedAgentExecutor implements AgentExecutor {
     });
 
     if (!user) {
-      throw new Error('User not found');
+      throw new Error("User not found");
     }
 
     if (!user.isBanned) {
-      throw new Error('User is not banned');
+      throw new Error("User is not banned");
     }
 
     // Check if already used free appeal (matches MCP logic)
     if ((user.appealCount ?? 0) >= 1 && !user.appealStaked) {
       throw new Error(
-        'You have already used your free appeal. Use moderation.appeal_ban_with_escrow to stake $10 for a second review.'
+        "You have already used your free appeal. Use moderation.appeal_ban_with_escrow to stake $10 for a second review.",
       );
     }
 
     // Check if already in human review
-    if (user.appealStaked && user.appealStatus === 'human_review') {
+    if (user.appealStaked && user.appealStatus === "human_review") {
       throw new Error(
-        'Your appeal is already in human review. Please wait for a decision.'
+        "Your appeal is already in human review. Please wait for a decision.",
       );
     }
 
@@ -3851,24 +3851,24 @@ export class FeedAgentExecutor implements AgentExecutor {
       where: { id: userId },
       data: {
         appealCount: (user.appealCount ?? 0) + 1,
-        appealStatus: 'strict_review',
+        appealStatus: "strict_review",
         appealSubmittedAt: new Date(),
       },
     });
 
     logger.info(
-      'Ban appeal submitted for strict review',
+      "Ban appeal submitted for strict review",
       { userId, reason: reason.slice(0, 100) },
-      'A2A'
+      "A2A",
     );
 
     return {
       success: true,
       message:
-        'Appeal submitted for strict review. Please note: full AI evaluation is only available via the web interface.',
+        "Appeal submitted for strict review. Please note: full AI evaluation is only available via the web interface.",
       appeal: {
         userId,
-        status: 'strict_review',
+        status: "strict_review",
         appealCount: (user.appealCount ?? 0) + 1,
         submittedAt: new Date().toISOString(),
       },

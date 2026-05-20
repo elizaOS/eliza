@@ -12,12 +12,12 @@
  *   trainingQualityMonitor.flushSummary(); // end of tick
  */
 
-import { logger } from '@feed/shared';
-import { StaticDataRegistry } from './static-data-registry';
+import { logger } from "@feed/shared";
+import { StaticDataRegistry } from "./static-data-registry";
 
 interface QualityAlert {
   metric: string;
-  severity: 'warning' | 'critical';
+  severity: "warning" | "critical";
   message: string;
   value?: number;
 }
@@ -35,16 +35,16 @@ function getRealNames(): string[] {
     }
   }
   realNames.push(
-    'OpenAI',
-    'Tesla',
-    'Google',
-    'Microsoft',
-    'Amazon',
-    'Apple',
-    'NVIDIA',
-    'BlackRock',
-    'Bitcoin',
-    'Ethereum'
+    "OpenAI",
+    "Tesla",
+    "Google",
+    "Microsoft",
+    "Amazon",
+    "Apple",
+    "NVIDIA",
+    "BlackRock",
+    "Bitcoin",
+    "Ethereum",
   );
   return realNames;
 }
@@ -68,8 +68,8 @@ class TrainingQualityMonitor {
     for (const name of getRealNames()) {
       if (post.content.includes(name)) {
         this.tickAlerts.push({
-          metric: 'real_name_leak',
-          severity: 'critical',
+          metric: "real_name_leak",
+          severity: "critical",
           message: `Post by ${post.authorId} contains real name "${name}"`,
         });
         break;
@@ -77,10 +77,10 @@ class TrainingQualityMonitor {
     }
 
     // Hashtag leakage
-    if (post.content.includes('#')) {
+    if (post.content.includes("#")) {
       this.tickAlerts.push({
-        metric: 'hashtag_leak',
-        severity: 'critical',
+        metric: "hashtag_leak",
+        severity: "critical",
         message: `Post by ${post.authorId} contains hashtag`,
       });
     }
@@ -88,8 +88,8 @@ class TrainingQualityMonitor {
     // Emoji leakage
     if (emojiRegex.test(post.content)) {
       this.tickAlerts.push({
-        metric: 'emoji_leak',
-        severity: 'warning',
+        metric: "emoji_leak",
+        severity: "warning",
         message: `Post by ${post.authorId} contains emoji`,
       });
     }
@@ -97,21 +97,21 @@ class TrainingQualityMonitor {
     // Game mechanic leakage
     const lower = post.content.toLowerCase();
     const mechanicTerms = [
-      'predetermined',
-      'scripted',
-      'arc plan',
-      'game tick',
-      'simulation',
-      'cluestrength',
-      'pointstoward',
-      'insider status',
-      'npc',
+      "predetermined",
+      "scripted",
+      "arc plan",
+      "game tick",
+      "simulation",
+      "cluestrength",
+      "pointstoward",
+      "insider status",
+      "npc",
     ];
     for (const term of mechanicTerms) {
       if (lower.includes(term)) {
         this.tickAlerts.push({
-          metric: 'mechanic_leak',
-          severity: 'critical',
+          metric: "mechanic_leak",
+          severity: "critical",
           message: `Post by ${post.authorId} exposes game mechanic: "${term}"`,
         });
         break;
@@ -121,8 +121,8 @@ class TrainingQualityMonitor {
     // Ceiling hit detection
     if (post.content.length >= 195) {
       this.tickAlerts.push({
-        metric: 'ceiling_hit',
-        severity: 'warning',
+        metric: "ceiling_hit",
+        severity: "warning",
         message: `Post by ${post.authorId} at ${post.content.length} chars (near/at ceiling)`,
       });
     }
@@ -132,20 +132,20 @@ class TrainingQualityMonitor {
    * Check a batch of trades for training quality issues.
    */
   checkTradeQuality(
-    trades: Array<{ action: string; npcActorId: string }>
+    trades: Array<{ action: string; npcActorId: string }>,
   ): void {
     this.tradesChecked += trades.length;
 
     // Check YES/long bias within this batch
     const longCount = trades.filter(
-      (t) => t.action === 'buy_yes' || t.action === 'open_long'
+      (t) => t.action === "buy_yes" || t.action === "open_long",
     ).length;
     const longRate = trades.length > 0 ? longCount / trades.length : 0;
 
     if (longRate > 0.85 && trades.length >= 5) {
       this.tickAlerts.push({
-        metric: 'trade_bias',
-        severity: 'warning',
+        metric: "trade_bias",
+        severity: "warning",
         message: `${(longRate * 100).toFixed(0)}% of ${trades.length} trades are YES/long`,
         value: longRate,
       });
@@ -160,22 +160,22 @@ class TrainingQualityMonitor {
     if (this.tickAlerts.length === 0) {
       if (this.postsChecked > 0 || this.tradesChecked > 0) {
         logger.debug(
-          'Training quality check passed',
+          "Training quality check passed",
           {
             postsChecked: this.postsChecked,
             tradesChecked: this.tradesChecked,
           },
-          'TrainingQuality'
+          "TrainingQuality",
         );
       }
     } else {
       const criticals = this.tickAlerts.filter(
-        (a) => a.severity === 'critical'
+        (a) => a.severity === "critical",
       );
-      const warnings = this.tickAlerts.filter((a) => a.severity === 'warning');
+      const warnings = this.tickAlerts.filter((a) => a.severity === "warning");
 
       logger.warn(
-        'Training quality issues detected',
+        "Training quality issues detected",
         {
           postsChecked: this.postsChecked,
           tradesChecked: this.tradesChecked,
@@ -183,7 +183,7 @@ class TrainingQualityMonitor {
           warnings: warnings.length,
           alerts: this.tickAlerts.map((a) => a.message),
         },
-        'TrainingQuality'
+        "TrainingQuality",
       );
     }
 

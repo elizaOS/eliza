@@ -39,9 +39,9 @@ import {
   sql,
   users,
   worldEvents,
-} from '@feed/db';
-import { StaticDataRegistry } from '@feed/engine';
-import { logger } from '../../shared/logger';
+} from "@feed/db";
+import { StaticDataRegistry } from "@feed/engine";
+import { logger } from "../../shared/logger";
 import type {
   AgentMemoryEntry,
   AgentOwnPostContext,
@@ -57,9 +57,9 @@ import type {
   PredictionPositionContext,
   RelationshipContext,
   WorldEventContext,
-} from '../templates/multi-step-decision';
-import { getPredictionMarketPrices } from './prediction-pricing';
-import { formatTimeHeld, getTimeAgo } from './time-helpers';
+} from "../templates/multi-step-decision";
+import { getPredictionMarketPrices } from "./prediction-pricing";
+import { formatTimeHeld, getTimeAgo } from "./time-helpers";
 
 // =============================================================================
 // Market Context
@@ -83,7 +83,7 @@ export async function getPredictionMarkets(): Promise<
     const noShares = Number(m.noShares || 1);
     const { yesPrice, noPrice } = getPredictionMarketPrices(
       yesShares,
-      noShares
+      noShares,
     );
 
     return {
@@ -92,7 +92,7 @@ export async function getPredictionMarkets(): Promise<
       yesPrice,
       noPrice,
       volume: yesShares + noShares,
-      endDate: m.endDate?.toISOString().split('T')[0] ?? 'Unknown',
+      endDate: m.endDate?.toISOString().split("T")[0] ?? "Unknown",
     };
   });
 }
@@ -106,7 +106,7 @@ export async function getPerpMarkets(): Promise<PerpMarketContext[]> {
 
   for (const state of orgStates.slice(0, 8)) {
     const staticOrg = StaticDataRegistry.getOrganization(state.id);
-    if (!staticOrg || staticOrg.type !== 'company' || !staticOrg.ticker)
+    if (!staticOrg || staticOrg.type !== "company" || !staticOrg.ticker)
       continue;
 
     const currentPrice = state.currentPrice ?? staticOrg.initialPrice ?? 100;
@@ -149,7 +149,7 @@ export async function getAgentPositions(agentUserId: string): Promise<{
     })
     .from(positions)
     .where(
-      and(eq(positions.userId, agentUserId), eq(positions.status, 'active'))
+      and(eq(positions.userId, agentUserId), eq(positions.status, "active")),
     )
     .limit(10);
 
@@ -176,7 +176,7 @@ export async function getAgentPositions(agentUserId: string): Promise<{
       const noShares = Number(m.noShares || 1);
       const { yesPrice, noPrice } = getPredictionMarketPrices(
         yesShares,
-        noShares
+        noShares,
       );
       marketData.set(m.id, {
         question: m.question,
@@ -209,8 +209,8 @@ export async function getAgentPositions(agentUserId: string): Promise<{
 
       return {
         marketId: p.marketId as string,
-        question: market?.question ?? 'Unknown',
-        side: isYes ? 'YES' : 'NO',
+        question: market?.question ?? "Unknown",
+        side: isYes ? "YES" : "NO",
         shares: Number(p.shares || 0),
         avgPrice,
         currentPrice,
@@ -234,7 +234,10 @@ export async function getAgentPositions(agentUserId: string): Promise<{
     })
     .from(perpPositions)
     .where(
-      and(eq(perpPositions.userId, agentUserId), isNull(perpPositions.closedAt))
+      and(
+        eq(perpPositions.userId, agentUserId),
+        isNull(perpPositions.closedAt),
+      ),
     )
     .limit(10);
 
@@ -247,7 +250,7 @@ export async function getAgentPositions(agentUserId: string): Promise<{
     let pnlPercent = Number(p.unrealizedPnLPercent || 0);
     if (pnlPercent === 0 && entryPrice > 0) {
       const priceChange = currentPrice - entryPrice;
-      const isLong = p.side === 'long';
+      const isLong = p.side === "long";
       pnlPercent = (priceChange / entryPrice) * 100 * (isLong ? 1 : -1);
     }
 
@@ -276,7 +279,7 @@ export async function getAgentPositions(agentUserId: string): Promise<{
  * Excludes team chats (Agents) - agents shouldn't auto-respond there
  */
 export async function getAgentGroupChats(
-  agentUserId: string
+  agentUserId: string,
 ): Promise<
   { id: string; groupId: string | null; name: string; memberCount: number }[]
 > {
@@ -285,7 +288,7 @@ export async function getAgentGroupChats(
     const teamGroups = await db
       .select({ id: groups.id })
       .from(groups)
-      .where(eq(groups.type, 'team'));
+      .where(eq(groups.type, "team"));
     const teamGroupIds = new Set(teamGroups.map((g) => g.id));
 
     // Use DB-side aggregate count instead of loading all participant rows
@@ -294,7 +297,7 @@ export async function getAgentGroupChats(
       .select({ chatId: chatParticipants.chatId })
       .from(chatParticipants)
       .where(eq(chatParticipants.userId, agentUserId))
-      .as('agent_participation');
+      .as("agent_participation");
 
     const groupChatsWithCount = await rawDb
       .select({
@@ -312,23 +315,23 @@ export async function getAgentGroupChats(
 
     // Filter out team chats
     const filteredChats = groupChatsWithCount.filter(
-      (chat) => !chat.groupId || !teamGroupIds.has(chat.groupId)
+      (chat) => !chat.groupId || !teamGroupIds.has(chat.groupId),
     );
 
     return filteredChats.slice(0, 5).map((chat) => ({
       id: chat.id,
       groupId: chat.groupId,
-      name: chat.name ?? 'Group Chat',
+      name: chat.name ?? "Group Chat",
       memberCount: chat.memberCount,
     }));
   } catch (error) {
     logger.warn(
-      'Failed to fetch agent group chats',
+      "Failed to fetch agent group chats",
       {
         agentUserId,
         error: error instanceof Error ? error.message : String(error),
       },
-      'ContextGatherers'
+      "ContextGatherers",
     );
     return [];
   }
@@ -341,10 +344,10 @@ export async function getAgentGroupChats(
  */
 export async function resolveGroupChatByName(
   agentUserId: string,
-  groupName: string
+  groupName: string,
 ): Promise<string | null> {
   // Sanitize input to prevent ilike pattern injection
-  const sanitized = groupName.replace(/[%_\\]/g, '').trim();
+  const sanitized = groupName.replace(/[%_\\]/g, "").trim();
   if (sanitized.length < 2) return null;
 
   const results = await db
@@ -356,8 +359,8 @@ export async function resolveGroupChatByName(
       and(
         eq(chatParticipants.userId, agentUserId),
         eq(chats.isGroup, true),
-        ilike(groups.name, `%${sanitized}%`)
-      )
+        ilike(groups.name, `%${sanitized}%`),
+      ),
     )
     .limit(1);
 
@@ -369,9 +372,9 @@ export async function resolveGroupChatByName(
  * Returns the userId or null if not found.
  */
 export async function resolveUserByUsername(
-  username: string
+  username: string,
 ): Promise<string | null> {
-  const clean = username.replace(/^@/, '').trim().toLowerCase();
+  const clean = username.replace(/^@/, "").trim().toLowerCase();
   if (!clean) return null;
 
   const [user] = await db
@@ -387,7 +390,7 @@ export async function resolveUserByUsername(
  * Get agent's own recent posts for self-awareness
  */
 export async function getAgentOwnPosts(
-  agentUserId: string
+  agentUserId: string,
 ): Promise<AgentOwnPostContext[]> {
   try {
     const recentOwnPosts = await db
@@ -415,7 +418,7 @@ export async function getAgentOwnPosts(
         })
         .from(reactions)
         .where(
-          and(inArray(reactions.postId, postIds), eq(reactions.type, 'like'))
+          and(inArray(reactions.postId, postIds), eq(reactions.type, "like")),
         )
         .groupBy(reactions.postId),
       db
@@ -425,7 +428,7 @@ export async function getAgentOwnPosts(
         })
         .from(comments)
         .where(
-          and(inArray(comments.postId, postIds), isNull(comments.deletedAt))
+          and(inArray(comments.postId, postIds), isNull(comments.deletedAt)),
         )
         .groupBy(comments.postId),
     ]);
@@ -447,12 +450,12 @@ export async function getAgentOwnPosts(
     }));
   } catch (error) {
     logger.warn(
-      'Failed to fetch agent own posts',
+      "Failed to fetch agent own posts",
       {
         agentUserId,
         error: error instanceof Error ? error.message : String(error),
       },
-      'ContextGatherers'
+      "ContextGatherers",
     );
     return [];
   }
@@ -462,7 +465,7 @@ export async function getAgentOwnPosts(
  * Get recent posts to potentially engage with
  */
 export async function getRecentPosts(
-  agentUserId: string
+  agentUserId: string,
 ): Promise<PostContext[]> {
   const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const now = new Date();
@@ -480,8 +483,8 @@ export async function getRecentPosts(
         ne(posts.authorId, agentUserId),
         isNull(posts.deletedAt),
         gte(posts.timestamp, oneDayAgo),
-        lte(posts.timestamp, now)
-      )
+        lte(posts.timestamp, now),
+      ),
     )
     .orderBy(desc(posts.createdAt))
     .limit(20);
@@ -500,7 +503,6 @@ export async function getRecentPosts(
     const org = StaticDataRegistry.getOrganization(authorId);
     if (org) {
       authorNames.set(authorId, org.name);
-      continue;
     }
   }
 
@@ -516,7 +518,7 @@ export async function getRecentPosts(
       .from(users)
       .where(inArray(users.id, missingIds));
     for (const u of dbUsers) {
-      authorNames.set(u.id, u.displayName || u.username || 'User');
+      authorNames.set(u.id, u.displayName || u.username || "User");
     }
   }
 
@@ -542,8 +544,8 @@ export async function getRecentPosts(
           inArray(comments.postId, postIds),
           eq(comments.authorId, agentUserId),
           isNull(comments.parentCommentId),
-          isNull(comments.deletedAt)
-        )
+          isNull(comments.deletedAt),
+        ),
       );
 
     for (const comment of existingComments) {
@@ -567,14 +569,14 @@ export async function getRecentPosts(
           and(
             inArray(reactions.postId, postIds),
             eq(reactions.userId, agentUserId),
-            eq(reactions.type, 'like')
-          )
+            eq(reactions.type, "like"),
+          ),
         ),
       db
         .select({ postId: shares.postId })
         .from(shares)
         .where(
-          and(inArray(shares.postId, postIds), eq(shares.userId, agentUserId))
+          and(inArray(shares.postId, postIds), eq(shares.userId, agentUserId)),
         ),
       db
         .select({
@@ -583,7 +585,7 @@ export async function getRecentPosts(
         })
         .from(reactions)
         .where(
-          and(inArray(reactions.postId, postIds), eq(reactions.type, 'like'))
+          and(inArray(reactions.postId, postIds), eq(reactions.type, "like")),
         )
         .groupBy(reactions.postId),
       db
@@ -601,7 +603,7 @@ export async function getRecentPosts(
         })
         .from(comments)
         .where(
-          and(inArray(comments.postId, postIds), isNull(comments.deletedAt))
+          and(inArray(comments.postId, postIds), isNull(comments.deletedAt)),
         )
         .groupBy(comments.postId),
     ]);
@@ -630,7 +632,7 @@ export async function getRecentPosts(
   return recentPostsRaw.map((p) => ({
     id: p.id,
     authorId: p.authorId,
-    authorName: authorNames.get(p.authorId) || 'User',
+    authorName: authorNames.get(p.authorId) || "User",
     content: p.content,
     commentCount: postCommentCounts.get(p.id) ?? 0,
     likeCount: postLikeCounts.get(p.id) ?? 0,
@@ -688,17 +690,17 @@ export async function getMarketTrends(): Promise<MarketTrendContext[]> {
         volatility24h: Math.round(volatility * 100) / 100,
         direction:
           s.changePercent24h > 1
-            ? 'up'
+            ? "up"
             : s.changePercent24h < -1
-              ? 'down'
-              : 'flat',
+              ? "down"
+              : "flat",
       };
     });
   } catch (error) {
     logger.warn(
-      'Failed to fetch market trends',
+      "Failed to fetch market trends",
       { error: error instanceof Error ? error.message : String(error) },
-      'ContextGatherers'
+      "ContextGatherers",
     );
     return [];
   }
@@ -713,7 +715,7 @@ export async function getMarketTrends(): Promise<MarketTrendContext[]> {
  * Replicates the relationship context from MarketContextService.
  */
 export async function getRelationships(
-  agentUserId: string
+  agentUserId: string,
 ): Promise<RelationshipContext[]> {
   try {
     const relationships = await db
@@ -729,8 +731,8 @@ export async function getRelationships(
       .where(
         or(
           eq(actorRelationships.actor1Id, agentUserId),
-          eq(actorRelationships.actor2Id, agentUserId)
-        )
+          eq(actorRelationships.actor2Id, agentUserId),
+        ),
       )
       .limit(10);
 
@@ -749,12 +751,12 @@ export async function getRelationships(
     });
   } catch (error) {
     logger.warn(
-      'Failed to fetch relationships',
+      "Failed to fetch relationships",
       {
         agentUserId,
         error: error instanceof Error ? error.message : String(error),
       },
-      'ContextGatherers'
+      "ContextGatherers",
     );
     return [];
   }
@@ -776,7 +778,7 @@ export async function getRelationships(
  */
 export async function getWorldEventsContext(
   agentUserId?: string,
-  isNpc = false
+  isNpc = false,
 ): Promise<WorldEventContext[]> {
   try {
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -785,7 +787,7 @@ export async function getWorldEventsContext(
     // User agents only see public events; NPCs see everything
     const visibilityFilter = isNpc
       ? undefined
-      : eq(worldEvents.visibility, 'public');
+      : eq(worldEvents.visibility, "public");
 
     const events = await db
       .select({
@@ -801,8 +803,8 @@ export async function getWorldEventsContext(
         and(
           gte(worldEvents.timestamp, oneDayAgo),
           lte(worldEvents.timestamp, now),
-          visibilityFilter
-        )
+          visibilityFilter,
+        ),
       )
       .orderBy(desc(worldEvents.timestamp))
       .limit(10);
@@ -822,9 +824,9 @@ export async function getWorldEventsContext(
     }));
   } catch (error) {
     logger.warn(
-      'Failed to fetch world events',
+      "Failed to fetch world events",
       { error: error instanceof Error ? error.message : String(error) },
-      'ContextGatherers'
+      "ContextGatherers",
     );
     return [];
   }
@@ -838,7 +840,7 @@ export async function getWorldEventsContext(
  * Get NPC mood and activity state for context.
  */
 export async function getMoodState(
-  agentUserId: string
+  agentUserId: string,
 ): Promise<MoodStateContext | null> {
   try {
     const [state] = await db
@@ -855,7 +857,7 @@ export async function getMoodState(
 
     const moodValue = Number(state.currentMood ?? 0);
     const moodLabel =
-      moodValue > 0.3 ? 'bullish' : moodValue < -0.3 ? 'bearish' : 'neutral';
+      moodValue > 0.3 ? "bullish" : moodValue < -0.3 ? "bearish" : "neutral";
 
     return {
       mood: moodLabel,
@@ -865,12 +867,12 @@ export async function getMoodState(
     };
   } catch (error) {
     logger.warn(
-      'Failed to fetch mood state',
+      "Failed to fetch mood state",
       {
         agentUserId,
         error: error instanceof Error ? error.message : String(error),
       },
-      'ContextGatherers'
+      "ContextGatherers",
     );
     return null;
   }
@@ -886,10 +888,10 @@ export async function getMoodState(
  * refreshed on cadence (every 10 messages) or staleness (30+ mins).
  */
 export async function getGroupChatIntel(
-  agentUserId: string
+  agentUserId: string,
 ): Promise<GroupChatIntel[]> {
   try {
-    const { sharedChatContextService } = await import('@feed/engine');
+    const { sharedChatContextService } = await import("@feed/engine");
     const contexts =
       await sharedChatContextService.getRelevantGroupContextForUser(
         agentUserId,
@@ -899,11 +901,11 @@ export async function getGroupChatIntel(
           factLimit: 5,
           staleAfterMinutes: 30,
           refreshThreshold: 10,
-        }
+        },
       );
 
     return contexts.map((ctx) => ({
-      chatName: ctx.chatName || 'Group Chat',
+      chatName: ctx.chatName || "Group Chat",
       summary: ctx.summary,
       keyFacts: ctx.facts,
       recentMessages: ctx.recentMessages.map((m) => ({
@@ -913,12 +915,12 @@ export async function getGroupChatIntel(
     }));
   } catch (error) {
     logger.warn(
-      'Failed to fetch group chat intel',
+      "Failed to fetch group chat intel",
       {
         agentUserId,
         error: error instanceof Error ? error.message : String(error),
       },
-      'ContextGatherers'
+      "ContextGatherers",
     );
     return [];
   }
@@ -937,7 +939,7 @@ export async function getGroupChatIntel(
  */
 export async function getAgentTradeHistory(
   agentUserId: string,
-  limit = 10
+  limit = 10,
 ): Promise<AgentTradeHistoryEntry[]> {
   try {
     const rows = await db
@@ -970,12 +972,12 @@ export async function getAgentTradeHistory(
     }));
   } catch (error) {
     logger.warn(
-      'Failed to fetch agent trade history',
+      "Failed to fetch agent trade history",
       {
         agentUserId,
         error: error instanceof Error ? error.message : String(error),
       },
-      'ContextGatherers'
+      "ContextGatherers",
     );
     return [];
   }
@@ -994,25 +996,25 @@ export async function getAgentTradeHistory(
  * Comment_authorId_createdAt_idx, Reaction_userId_createdAt_idx
  */
 export async function getAgentSocialGraph(
-  agentUserId: string
+  agentUserId: string,
 ): Promise<AgentSocialConnection[]> {
   try {
     return await getAgentSocialGraphInner(agentUserId);
   } catch (error) {
     logger.warn(
-      'Failed to fetch agent social graph',
+      "Failed to fetch agent social graph",
       {
         agentUserId,
         error: error instanceof Error ? error.message : String(error),
       },
-      'ContextGatherers'
+      "ContextGatherers",
     );
     return [];
   }
 }
 
 async function getAgentSocialGraphInner(
-  agentUserId: string
+  agentUserId: string,
 ): Promise<AgentSocialConnection[]> {
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
@@ -1046,8 +1048,8 @@ async function getAgentSocialGraphInner(
         and(
           eq(comments.authorId, agentUserId),
           ne(posts.authorId, agentUserId),
-          gte(comments.createdAt, sevenDaysAgo)
-        )
+          gte(comments.createdAt, sevenDaysAgo),
+        ),
       )
       .groupBy(posts.authorId)
       .orderBy(desc(count()))
@@ -1064,8 +1066,8 @@ async function getAgentSocialGraphInner(
         and(
           eq(reactions.userId, agentUserId),
           ne(posts.authorId, agentUserId),
-          gte(reactions.createdAt, sevenDaysAgo)
-        )
+          gte(reactions.createdAt, sevenDaysAgo),
+        ),
       )
       .groupBy(posts.authorId)
       .orderBy(desc(count()))
@@ -1079,13 +1081,15 @@ async function getAgentSocialGraphInner(
   for (const row of commentInteractions) {
     interactionMap.set(
       row.targetUserId,
-      (interactionMap.get(row.targetUserId) || 0) + Number(row.interactionCount)
+      (interactionMap.get(row.targetUserId) || 0) +
+        Number(row.interactionCount),
     );
   }
   for (const row of reactionInteractions) {
     interactionMap.set(
       row.targetUserId,
-      (interactionMap.get(row.targetUserId) || 0) + Number(row.interactionCount)
+      (interactionMap.get(row.targetUserId) || 0) +
+        Number(row.interactionCount),
     );
   }
 
@@ -1094,12 +1098,12 @@ async function getAgentSocialGraphInner(
   for (const id of followingIds) {
     connectionMap.set(id, {
       userId: id,
-      displayName: '',
+      displayName: "",
       username: null,
       isFollowing: true,
       isFollowedBy: followerIds.has(id),
       interactionCount: interactionMap.get(id) || 0,
-      source: interactionMap.has(id) ? 'both' : 'follow',
+      source: interactionMap.has(id) ? "both" : "follow",
     });
   }
 
@@ -1107,12 +1111,12 @@ async function getAgentSocialGraphInner(
     if (!connectionMap.has(userId)) {
       connectionMap.set(userId, {
         userId,
-        displayName: '',
+        displayName: "",
         username: null,
         isFollowing: false,
         isFollowedBy: followerIds.has(userId),
         interactionCount: cnt,
-        source: 'interaction',
+        source: "interaction",
       });
     }
   }
@@ -1136,7 +1140,7 @@ async function getAgentSocialGraphInner(
         displayName: u.displayName || u.username || u.id.slice(0, 8),
         username: u.username,
       },
-    ])
+    ]),
   );
 
   const connections = [...connectionMap.values()].map((c) => ({
@@ -1171,9 +1175,9 @@ async function getAgentSocialGraphInner(
  */
 export async function getAgentMemory(
   agentUserId: string,
-  excludeTypes: string[] = []
+  excludeTypes: string[] = [],
 ): Promise<AgentMemoryEntry[]> {
-  const allTypes = ['trade', 'post', 'comment', 'chat', 'dm'];
+  const allTypes = ["trade", "post", "comment", "chat", "dm"];
   const types = allTypes.filter((t) => !excludeTypes.includes(t));
   if (types.length === 0) return [];
 
@@ -1189,8 +1193,8 @@ export async function getAgentMemory(
       and(
         eq(agentLogsTable.agentUserId, agentUserId),
         inArray(agentLogsTable.type, types),
-        eq(agentLogsTable.level, 'info')
-      )
+        eq(agentLogsTable.level, "info"),
+      ),
     )
     .orderBy(desc(agentLogsTable.createdAt))
     .limit(12);

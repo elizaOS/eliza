@@ -14,11 +14,10 @@ import {
   llmCallLogs,
   rewardJudgments,
   trajectories,
-} from '@feed/db'; // keep this at db not engine to avoid circular dep
-import type { JsonValue } from '@feed/shared';
-import { logger } from '@feed/shared';
-import { generateSnowflakeId } from '@feed/shared';
-import { computeDeterministicRewardJudgment } from './reward-judgments';
+} from "@feed/db"; // keep this at db not engine to avoid circular dep
+import type { JsonValue } from "@feed/shared";
+import { generateSnowflakeId, logger } from "@feed/shared";
+import { computeDeterministicRewardJudgment } from "./reward-judgments";
 import type {
   Action,
   EnvironmentState,
@@ -26,8 +25,8 @@ import type {
   ProviderAccess,
   TrajectoryStep,
   TrustState,
-} from './types';
-import { getCurrentWindowId } from './window-utils';
+} from "./types";
+import { getCurrentWindowId } from "./window-utils";
 
 export type {
   Action,
@@ -38,8 +37,8 @@ export type {
   TrustState,
 };
 
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from "node:fs";
+import * as path from "node:path";
 
 /**
  * Active trajectory being recorded.
@@ -103,7 +102,7 @@ export interface EndTrajectoryOptions {
   /** Content pack ID */
   packId?: string;
   /** Ground-truth scenario intent (attack = scam attempt, legitimate = normal interaction) */
-  scenarioIntent?: 'attack' | 'legitimate';
+  scenarioIntent?: "attack" | "legitimate";
   /** Classification of the agent's decision (e.g., 'refuse', 'block', 'comply', 'engage') */
   agentDecisionClass?: string;
   /** NPC role (insider, affiliated, observer) */
@@ -145,15 +144,15 @@ export interface EndTrajectoryOptions {
     /** Per-interaction ground-truth labels derived from counterparty identity */
     interactionLabels?: Array<{
       counterpartyId: string;
-      counterpartyTeam: 'red' | 'blue' | 'gray';
-      counterpartyAlignment: 'good' | 'neutral' | 'evil';
+      counterpartyTeam: "red" | "blue" | "gray";
+      counterpartyAlignment: "good" | "neutral" | "evil";
       channel:
-        | 'dm'
-        | 'group-chat'
-        | 'payment'
-        | 'trade'
-        | 'support-ticket'
-        | 'email';
+        | "dm"
+        | "group-chat"
+        | "payment"
+        | "trade"
+        | "support-ticket"
+        | "email";
       amountTransferred?: number;
       messageCount: number;
       wasScam: boolean;
@@ -192,7 +191,7 @@ export class TrajectoryRecorder {
       metadata: { ...(options.metadata || {}) },
     });
 
-    logger.info('Started trajectory recording', {
+    logger.info("Started trajectory recording", {
       trajectoryId,
       agentId: options.agentId,
       archetype: options.archetype,
@@ -214,7 +213,7 @@ export class TrajectoryRecorder {
   startStep(
     trajectoryId: string,
     environmentState: EnvironmentState,
-    trustState?: TrustState
+    trustState?: TrustState,
   ): string {
     const traj = this.activeTrajectories.get(trajectoryId);
     if (!traj) {
@@ -248,7 +247,7 @@ export class TrajectoryRecorder {
       data: Record<string, JsonValue>;
       purpose: string;
       query?: Record<string, JsonValue>;
-    }
+    },
   ): void {
     const trajectoryId = this.resolveTrajectoryId(trajectoryIdOrStepId);
     const traj = this.activeTrajectories.get(trajectoryId);
@@ -289,13 +288,13 @@ export class TrajectoryRecorder {
     trajectoryId: string,
     stepId: string,
     action: Action,
-    rewardInfo?: { reward?: number }
+    rewardInfo?: { reward?: number },
   ): void;
   completeStep(
     trajectoryId: string,
     actionOrStepId: Action | string,
     actionOrReward?: Action | number,
-    maybeRewardInfo?: { reward?: number }
+    maybeRewardInfo?: { reward?: number },
   ): void {
     const traj = this.activeTrajectories.get(trajectoryId);
     if (!traj?.currentStep) {
@@ -305,15 +304,15 @@ export class TrajectoryRecorder {
     let action: Action;
     let reward = 0;
 
-    if (typeof actionOrStepId === 'string') {
+    if (typeof actionOrStepId === "string") {
       const expectedStepId = this.activeStepIds.get(trajectoryId);
       if (expectedStepId && expectedStepId !== actionOrStepId) {
         throw new Error(
-          `Step mismatch for trajectory ${trajectoryId}: expected ${expectedStepId}, got ${actionOrStepId}`
+          `Step mismatch for trajectory ${trajectoryId}: expected ${expectedStepId}, got ${actionOrStepId}`,
         );
       }
 
-      if (typeof actionOrReward === 'number' || actionOrReward === undefined) {
+      if (typeof actionOrReward === "number" || actionOrReward === undefined) {
         throw new Error(`Action missing for trajectory: ${trajectoryId}`);
       }
 
@@ -322,7 +321,7 @@ export class TrajectoryRecorder {
     } else {
       action = actionOrStepId;
       reward =
-        typeof actionOrReward === 'number'
+        typeof actionOrReward === "number"
           ? actionOrReward
           : (maybeRewardInfo?.reward ?? 0);
     }
@@ -359,7 +358,7 @@ export class TrajectoryRecorder {
    */
   async endTrajectory(
     trajectoryId: string,
-    options: EndTrajectoryOptions = {}
+    options: EndTrajectoryOptions = {},
   ): Promise<void> {
     const traj = this.activeTrajectories.get(trajectoryId);
     if (!traj) {
@@ -374,16 +373,16 @@ export class TrajectoryRecorder {
     // Calculate metrics
     const tradesExecuted = traj.steps.filter(
       (s) =>
-        s.action.actionType.includes('BUY') ||
-        s.action.actionType.includes('SELL')
+        s.action.actionType.includes("BUY") ||
+        s.action.actionType.includes("SELL"),
     ).length;
 
     const postsCreated = traj.steps.filter((s) =>
-      s.action.actionType.includes('POST')
+      s.action.actionType.includes("POST"),
     ).length;
 
     const errorCount = traj.steps.filter((s) => !s.action.success).length;
-    const finalStatus = errorCount > 0 ? 'completed_with_errors' : 'completed';
+    const finalStatus = errorCount > 0 ? "completed_with_errors" : "completed";
     const deterministicRewardJudgment = computeDeterministicRewardJudgment({
       steps: traj.steps,
       totalReward,
@@ -393,7 +392,7 @@ export class TrajectoryRecorder {
       scenarioProfile: options.scenarioProfile,
       scenarioIntent:
         options.scenarioIntent ??
-        (traj.metadata?.scenarioIntent as 'attack' | 'legitimate' | undefined),
+        (traj.metadata?.scenarioIntent as "attack" | "legitimate" | undefined),
       agentDecisionClass:
         options.agentDecisionClass ??
         (traj.metadata?.agentDecisionClass as string | undefined),
@@ -464,8 +463,8 @@ export class TrajectoryRecorder {
       | number
       | undefined;
     const hadActiveThesis =
-      typeof lastEnv?.workingMemoryActiveThesis === 'string' &&
-      lastEnv.workingMemoryActiveThesis !== '';
+      typeof lastEnv?.workingMemoryActiveThesis === "string" &&
+      lastEnv.workingMemoryActiveThesis !== "";
 
     // 1. Prepare the standard data object (Used for both JSON and DB)
     const trajectoryData = {
@@ -558,8 +557,8 @@ export class TrajectoryRecorder {
     if (isSimulationMode()) {
       const basePath = getJsonStoragePath();
       const outputDir = basePath
-        ? path.join(basePath, 'trajectories')
-        : './training-data-output/trajectories';
+        ? path.join(basePath, "trajectories")
+        : "./training-data-output/trajectories";
       if (!fs.existsSync(outputDir)) {
         fs.mkdirSync(outputDir, { recursive: true });
       }
@@ -572,7 +571,7 @@ export class TrajectoryRecorder {
             stepNumber: step.stepNumber,
             callIndex: idx,
             ...call,
-          }))
+          })),
         ),
       };
 
@@ -580,9 +579,9 @@ export class TrajectoryRecorder {
       fs.writeFileSync(filePath, JSON.stringify(fullData, null, 2));
 
       logger.info(
-        'Saved trajectory to JSON (Simulation Mode)',
+        "Saved trajectory to JSON (Simulation Mode)",
         { trajectoryId, path: filePath },
-        'TrajectoryRecorder'
+        "TrajectoryRecorder",
       );
 
       this.activeStepIds.delete(trajectoryId);
@@ -600,20 +599,20 @@ export class TrajectoryRecorder {
         judgeVersion: deterministicRewardJudgment.judgeVersion,
         overallScore: deterministicRewardJudgment.overallScore,
         componentScoresJson: JSON.stringify(
-          deterministicRewardJudgment.componentScores || {}
+          deterministicRewardJudgment.componentScores || {},
         ),
         rank: deterministicRewardJudgment.rank ?? null,
         normalizedScore: deterministicRewardJudgment.normalizedScore ?? null,
         groupId: deterministicRewardJudgment.groupId ?? null,
         reasoning: deterministicRewardJudgment.reasoning,
         strengthsJson: JSON.stringify(
-          deterministicRewardJudgment.strengths || []
+          deterministicRewardJudgment.strengths || [],
         ),
         weaknessesJson: JSON.stringify(
-          deterministicRewardJudgment.weaknesses || []
+          deterministicRewardJudgment.weaknesses || [],
         ),
         criteriaJson: JSON.stringify(
-          deterministicRewardJudgment.criteria || {}
+          deterministicRewardJudgment.criteria || {},
         ),
         judgedAt: deterministicRewardJudgment.judgedAt,
       })
@@ -624,20 +623,20 @@ export class TrajectoryRecorder {
           judgeVersion: deterministicRewardJudgment.judgeVersion,
           overallScore: deterministicRewardJudgment.overallScore,
           componentScoresJson: JSON.stringify(
-            deterministicRewardJudgment.componentScores || {}
+            deterministicRewardJudgment.componentScores || {},
           ),
           rank: deterministicRewardJudgment.rank ?? null,
           normalizedScore: deterministicRewardJudgment.normalizedScore ?? null,
           groupId: deterministicRewardJudgment.groupId ?? null,
           reasoning: deterministicRewardJudgment.reasoning,
           strengthsJson: JSON.stringify(
-            deterministicRewardJudgment.strengths || []
+            deterministicRewardJudgment.strengths || [],
           ),
           weaknessesJson: JSON.stringify(
-            deterministicRewardJudgment.weaknesses || []
+            deterministicRewardJudgment.weaknesses || [],
           ),
           criteriaJson: JSON.stringify(
-            deterministicRewardJudgment.criteria || {}
+            deterministicRewardJudgment.criteria || {},
           ),
           judgedAt: deterministicRewardJudgment.judgedAt,
         },
@@ -661,8 +660,8 @@ export class TrajectoryRecorder {
           systemPrompt: llmCall.systemPrompt,
           userPrompt: llmCall.userPrompt,
           messagesJson: JSON.stringify([
-            { role: 'system', content: llmCall.systemPrompt },
-            { role: 'user', content: llmCall.userPrompt },
+            { role: "system", content: llmCall.systemPrompt },
+            { role: "user", content: llmCall.userPrompt },
           ]),
           response: llmCall.response,
           reasoning: llmCall.reasoning,
@@ -681,7 +680,7 @@ export class TrajectoryRecorder {
       }
     }
 
-    logger.info('Trajectory saved to database', {
+    logger.info("Trajectory saved to database", {
       trajectoryId,
       archetype: traj.archetype,
       steps: traj.steps.length,

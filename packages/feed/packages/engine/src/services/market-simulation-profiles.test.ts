@@ -1,46 +1,46 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it } from "bun:test";
 import {
   buildMarketSimulationProfile,
   createInitialMarketSimulationState,
   evolveGlobalMarketSimulationState,
   generateProfileDrivenMarketMove,
   getDefaultGlobalMarketSimulationState,
-} from './market-simulation-profiles';
+} from "./market-simulation-profiles";
 
-describe('market-simulation-profiles', () => {
-  it('builds deterministic profiles for the same market', () => {
+describe("market-simulation-profiles", () => {
+  it("builds deterministic profiles for the same market", () => {
     const input = {
-      organizationId: 'openagi',
-      ticker: 'OPENAGI',
+      organizationId: "openagi",
+      ticker: "OPENAGI",
       organization: {
-        type: 'company' as const,
-        name: 'OpenAGI',
-        description: 'AI research company',
+        type: "company" as const,
+        name: "OpenAGI",
+        description: "AI research company",
       },
     };
 
     expect(buildMarketSimulationProfile(input)).toEqual(
-      buildMarketSimulationProfile(input)
+      buildMarketSimulationProfile(input),
     );
   });
 
-  it('gives different organization types different baseline behavior', () => {
+  it("gives different organization types different baseline behavior", () => {
     const company = buildMarketSimulationProfile({
-      organizationId: 'openagi',
-      ticker: 'OPENAGI',
+      organizationId: "openagi",
+      ticker: "OPENAGI",
       organization: {
-        type: 'company',
-        name: 'OpenAGI',
-        description: 'AI company',
+        type: "company",
+        name: "OpenAGI",
+        description: "AI company",
       },
     });
     const media = buildMarketSimulationProfile({
-      organizationId: 'ainbc',
-      ticker: 'AINBC',
+      organizationId: "ainbc",
+      ticker: "AINBC",
       organization: {
-        type: 'media',
-        name: 'AINBC',
-        description: 'Media outlet',
+        type: "media",
+        name: "AINBC",
+        description: "Media outlet",
       },
     });
 
@@ -48,14 +48,14 @@ describe('market-simulation-profiles', () => {
     expect(media.jumpChance).toBeGreaterThan(company.jumpChance);
   });
 
-  it('keeps simulated moves inside the profile max tick move', () => {
+  it("keeps simulated moves inside the profile max tick move", () => {
     const profile = buildMarketSimulationProfile({
-      organizationId: 'openagi',
-      ticker: 'OPENAGI',
+      organizationId: "openagi",
+      ticker: "OPENAGI",
       organization: {
-        type: 'company',
-        name: 'OpenAGI',
-        description: 'AI company',
+        type: "company",
+        name: "OpenAGI",
+        description: "AI company",
       },
     });
     const state = createInitialMarketSimulationState(100, profile);
@@ -75,19 +75,19 @@ describe('market-simulation-profiles', () => {
     expect(Math.abs(move)).toBeLessThanOrEqual(profile.maxTickMove);
   });
 
-  it('dampens noise when open interest is deeper', () => {
+  it("dampens noise when open interest is deeper", () => {
     const profile = buildMarketSimulationProfile({
-      organizationId: 'openagi',
-      ticker: 'OPENAGI',
+      organizationId: "openagi",
+      ticker: "OPENAGI",
       organization: {
-        type: 'company',
-        name: 'OpenAGI',
-        description: 'AI company',
+        type: "company",
+        name: "OpenAGI",
+        description: "AI company",
       },
     });
     const globalState = evolveGlobalMarketSimulationState(
       getDefaultGlobalMarketSimulationState(),
-      () => 0.5
+      () => 0.5,
     );
     const sequence = [0.99, 0.98, 0.97, 0.96, 0.4, 0.99, 0.98, 0.97];
 
@@ -118,14 +118,14 @@ describe('market-simulation-profiles', () => {
     expect(Math.abs(lowOiMove)).toBeGreaterThan(Math.abs(highOiMove));
   });
 
-  it('uses latent price carried from prior ticks', () => {
+  it("uses latent price carried from prior ticks", () => {
     const profile = buildMarketSimulationProfile({
-      organizationId: 'openagi',
-      ticker: 'OPENAGI',
+      organizationId: "openagi",
+      ticker: "OPENAGI",
       organization: {
-        type: 'company',
-        name: 'OpenAGI',
-        description: 'AI company',
+        type: "company",
+        name: "OpenAGI",
+        description: "AI company",
       },
     });
     const globalState = getDefaultGlobalMarketSimulationState();
@@ -161,7 +161,7 @@ describe('market-simulation-profiles', () => {
 
     expect(lowLatentMove.move).not.toBe(highLatentMove.move);
     expect(lowLatentMove.nextState.latentPrice).toBeLessThan(
-      highLatentMove.nextState.latentPrice
+      highLatentMove.nextState.latentPrice,
     );
   });
 });

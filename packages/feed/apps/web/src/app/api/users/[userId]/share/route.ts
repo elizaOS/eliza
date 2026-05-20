@@ -107,19 +107,15 @@ import {
   requireUserByIdentifier,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { and, db, desc, eq, shareActions } from '@feed/db';
-import {
-  generateSnowflakeId,
-  logger,
-  UserIdParamSchema,
-} from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { z } from 'zod';
+} from "@feed/api";
+import { and, db, desc, eq, shareActions } from "@feed/db";
+import { generateSnowflakeId, logger, UserIdParamSchema } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { z } from "zod";
 
 const ShareRequestSchema = z.object({
-  platform: z.enum(['twitter', 'farcaster', 'link', 'telegram', 'discord']),
-  contentType: z.enum(['post', 'profile', 'market', 'referral', 'leaderboard']),
+  platform: z.enum(["twitter", "farcaster", "link", "telegram", "discord"]),
+  contentType: z.enum(["post", "profile", "market", "referral", "leaderboard"]),
   contentId: z.string().optional(), // Allow any string (user IDs can be Privy DIDs or Snowflake IDs)
   url: z.string().url().optional(),
 });
@@ -131,7 +127,7 @@ const ShareRequestSchema = z.object({
 export const GET = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ userId: string }> }
+    context: { params: Promise<{ userId: string }> },
   ) => {
     // Authenticate user
     const authUser = await authenticate(request);
@@ -143,15 +139,15 @@ export const GET = withErrorHandling(
     // Verify user is accessing their own shares
     if (authUser.userId !== canonicalUserId) {
       throw new AuthorizationError(
-        'You can only access your own shares',
-        'share-action',
-        'read'
+        "You can only access your own shares",
+        "share-action",
+        "read",
       );
     }
 
     // Get contentType filter from query params
     const { searchParams } = new URL(request.url);
-    const contentType = searchParams.get('contentType');
+    const contentType = searchParams.get("contentType");
 
     // Query for verified and earned shares
     const whereConditions = [
@@ -180,14 +176,14 @@ export const GET = withErrorHandling(
     logger.info(
       `Retrieved ${sharesData.length} verified shares for user ${canonicalUserId}`,
       { userId: canonicalUserId, contentType, count: sharesData.length },
-      'GET /api/users/[userId]/share'
+      "GET /api/users/[userId]/share",
     );
 
     return successResponse({
       shares: sharesData,
       count: sharesData.length,
     });
-  }
+  },
 );
 
 /**
@@ -197,7 +193,7 @@ export const GET = withErrorHandling(
 export const POST = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ userId: string }> }
+    context: { params: Promise<{ userId: string }> },
   ) => {
     // Authenticate user
     const authUser = await authenticate(request);
@@ -209,9 +205,9 @@ export const POST = withErrorHandling(
     // Verify user is sharing their own content
     if (authUser.userId !== canonicalUserId) {
       throw new AuthorizationError(
-        'You can only track your own shares',
-        'share-action',
-        'create'
+        "You can only track your own shares",
+        "share-action",
+        "create",
       );
     }
 
@@ -245,7 +241,7 @@ export const POST = withErrorHandling(
         contentId,
         shareId: shareAction?.id,
       },
-      'POST /api/users/[userId]/share'
+      "POST /api/users/[userId]/share",
     );
 
     return successResponse({
@@ -256,7 +252,7 @@ export const POST = withErrorHandling(
         alreadyAwarded: false,
       },
       message:
-        'Share action created. Please verify your post to earn reputation.',
+        "Share action created. Please verify your post to earn reputation.",
     });
-  }
+  },
 );

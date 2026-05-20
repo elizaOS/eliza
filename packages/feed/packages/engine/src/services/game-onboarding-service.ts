@@ -13,23 +13,23 @@ import {
   type GameOnboardingState,
   type GameOnboardingStep,
   gameOnboarding,
-} from '@feed/db';
+} from "@feed/db";
 import {
   generateSnowflakeId,
   getNextOnboardingStep,
   logger,
   ONBOARDING_STEP_ORDER,
   ONBOARDING_STEP_POINTS,
-} from '@feed/shared';
-import { formatError } from '../utils/error-utils';
-import { EarnedPointsService } from './earned-points-service';
+} from "@feed/shared";
+import { formatError } from "../utils/error-utils";
+import { EarnedPointsService } from "./earned-points-service";
 
 /**
  * Type guard to validate that a value is a valid GameOnboardingState.
  * Checks for required properties and their types.
  */
 function isGameOnboardingState(value: unknown): value is GameOnboardingState {
-  if (value === null || typeof value !== 'object') {
+  if (value === null || typeof value !== "object") {
     return false;
   }
 
@@ -38,9 +38,9 @@ function isGameOnboardingState(value: unknown): value is GameOnboardingState {
   // Check top-level structure
   if (
     !Array.isArray(obj.completedSteps) ||
-    typeof obj.currentStep !== 'string' ||
-    (obj.startedAt !== null && typeof obj.startedAt !== 'string') ||
-    (obj.completedAt !== null && typeof obj.completedAt !== 'string') ||
+    typeof obj.currentStep !== "string" ||
+    (obj.startedAt !== null && typeof obj.startedAt !== "string") ||
+    (obj.completedAt !== null && typeof obj.completedAt !== "string") ||
     !Array.isArray(obj.rewards)
   ) {
     return false;
@@ -48,7 +48,7 @@ function isGameOnboardingState(value: unknown): value is GameOnboardingState {
 
   // Validate completedSteps elements are strings
   for (const step of obj.completedSteps) {
-    if (typeof step !== 'string') {
+    if (typeof step !== "string") {
       return false;
     }
   }
@@ -57,9 +57,9 @@ function isGameOnboardingState(value: unknown): value is GameOnboardingState {
   for (const reward of obj.rewards) {
     if (
       reward === null ||
-      typeof reward !== 'object' ||
-      typeof (reward as Record<string, unknown>).step !== 'string' ||
-      typeof (reward as Record<string, unknown>).points !== 'number'
+      typeof reward !== "object" ||
+      typeof (reward as Record<string, unknown>).step !== "string" ||
+      typeof (reward as Record<string, unknown>).points !== "number"
     ) {
       return false;
     }
@@ -73,7 +73,7 @@ function isGameOnboardingState(value: unknown): value is GameOnboardingState {
  */
 function getValidatedState(
   rawState: unknown,
-  userId: string
+  userId: string,
 ): GameOnboardingState {
   if (isGameOnboardingState(rawState)) {
     return rawState;
@@ -81,15 +81,15 @@ function getValidatedState(
 
   // Log warning for malformed state
   logger.warn(
-    'Malformed or null onboarding state, using defaults',
+    "Malformed or null onboarding state, using defaults",
     { userId, rawState: typeof rawState },
-    'GameOnboarding'
+    "GameOnboarding",
   );
 
   // Return safe default state
   return {
     completedSteps: [],
-    currentStep: 'welcome',
+    currentStep: "welcome",
     startedAt: null,
     completedAt: null,
     rewards: [],
@@ -101,13 +101,13 @@ function getValidatedState(
  * Uses INSERT ... ON CONFLICT DO NOTHING then SELECT for atomic, race-free creation.
  */
 export async function getOrCreateOnboarding(
-  userId: string
+  userId: string,
 ): Promise<GameOnboardingRow> {
   const id = await generateSnowflakeId();
   const now = new Date();
   const initialState: GameOnboardingState = {
     completedSteps: [],
-    currentStep: 'welcome',
+    currentStep: "welcome",
     startedAt: now.toISOString(),
     completedAt: null,
     rewards: [],
@@ -120,7 +120,7 @@ export async function getOrCreateOnboarding(
     .values({
       id,
       userId,
-      currentStep: 'welcome',
+      currentStep: "welcome",
       state: initialState,
       isComplete: false,
       createdAt: now,
@@ -149,7 +149,7 @@ export async function getOrCreateOnboarding(
     logger.info(
       `Created game onboarding for user ${userId}`,
       { userId, onboardingId: row.id },
-      'GameOnboarding'
+      "GameOnboarding",
     );
   }
 
@@ -166,7 +166,7 @@ const MAX_OPTIMISTIC_LOCK_RETRIES = 3;
 export async function completeOnboardingStep(
   userId: string,
   step: GameOnboardingStep,
-  retryCount = 0
+  retryCount = 0,
 ): Promise<{
   success: boolean;
   reputationAwarded: number;
@@ -194,7 +194,7 @@ export async function completeOnboardingStep(
   state.currentStep = getNextOnboardingStep(step);
   state.rewards.push({ step, points });
 
-  const isComplete = state.currentStep === 'complete';
+  const isComplete = state.currentStep === "complete";
   if (isComplete) {
     state.completedAt = new Date().toISOString();
   }
@@ -213,8 +213,8 @@ export async function completeOnboardingStep(
     .where(
       and(
         eq(gameOnboarding.userId, userId),
-        eq(gameOnboarding.updatedAt, onboarding.updatedAt)
-      )
+        eq(gameOnboarding.updatedAt, onboarding.updatedAt),
+      ),
     )
     .returning();
 
@@ -224,7 +224,7 @@ export async function completeOnboardingStep(
       logger.warn(
         `Optimistic lock retry limit reached for onboarding step completion`,
         { userId, step, retryCount },
-        'GameOnboarding'
+        "GameOnboarding",
       );
       // Return the original persisted value, not the mutated state
       return {
@@ -238,14 +238,14 @@ export async function completeOnboardingStep(
     // Exponential backoff with jitter to avoid thundering herd
     const baseDelayMs = 50;
     const maxDelayMs = 1000;
-    const exponentialDelay = baseDelayMs * Math.pow(2, retryCount);
+    const exponentialDelay = baseDelayMs * 2 ** retryCount;
     const jitter = Math.random() * exponentialDelay * 0.3; // Up to 30% jitter
     const delay = Math.min(exponentialDelay + jitter, maxDelayMs);
 
     logger.debug(
       `Optimistic lock conflict, retrying onboarding step completion`,
       { userId, step, retryCount: retryCount + 1, delayMs: Math.round(delay) },
-      'GameOnboarding'
+      "GameOnboarding",
     );
 
     await new Promise((resolve) => setTimeout(resolve, delay));
@@ -255,7 +255,7 @@ export async function completeOnboardingStep(
   logger.info(
     `User ${userId} completed onboarding step ${step}`,
     { userId, step, points, nextStep: state.currentStep, isComplete },
-    'GameOnboarding'
+    "GameOnboarding",
   );
 
   // Award bonus points to user balance with retry on transient failures
@@ -269,7 +269,7 @@ export async function completeOnboardingStep(
         await EarnedPointsService.awardBonusPoints(
           userId,
           points,
-          `onboarding_${step}`
+          `onboarding_${step}`,
         );
         lastError = null;
         break; // Success - exit retry loop
@@ -278,8 +278,7 @@ export async function completeOnboardingStep(
         const isLastAttempt = attempt >= maxPointsRetries - 1;
         if (!isLastAttempt) {
           // Exponential backoff with jitter
-          const delay =
-            baseDelayMs * Math.pow(2, attempt) * (0.5 + Math.random());
+          const delay = baseDelayMs * 2 ** attempt * (0.5 + Math.random());
           logger.debug(
             `Retrying bonus points award after failure`,
             {
@@ -289,7 +288,7 @@ export async function completeOnboardingStep(
               attempt: attempt + 1,
               delayMs: Math.round(delay),
             },
-            'GameOnboarding'
+            "GameOnboarding",
           );
           await new Promise((resolve) => setTimeout(resolve, delay));
         }
@@ -311,7 +310,7 @@ export async function completeOnboardingStep(
           failedAt: new Date().toISOString(),
           retriesAttempted: maxPointsRetries,
         },
-        'GameOnboarding'
+        "GameOnboarding",
       );
     }
   }
@@ -380,7 +379,7 @@ export async function skipOnboarding(userId: string): Promise<void> {
   logger.info(
     `User ${userId} skipped onboarding`,
     { userId, onboardingId: onboarding.id },
-    'GameOnboarding'
+    "GameOnboarding",
   );
 }
 

@@ -9,37 +9,37 @@ import type {
   IAgentRuntime,
   Memory,
   State,
-} from '@elizaos/core';
+} from "@elizaos/core";
 // import { logger } from '../../../shared/logger' // Commented out - not needed
-import type { FeedRuntime } from '../types';
+import type { FeedRuntime } from "../types";
 
 /**
  * Action: Create Post
  * Allows agent to create a post on the social feed
  */
 export const createPostAction: Action = {
-  name: 'CREATE_POST',
-  description: 'Create a post on the Feed social feed',
-  similes: ['post', 'share thought', 'publish', 'create post', 'write post'],
+  name: "CREATE_POST",
+  description: "Create a post on the Feed social feed",
+  similes: ["post", "share thought", "publish", "create post", "write post"],
   examples: [
     [
       {
-        name: '{{user1}}',
-        content: { text: 'Post about market analysis' },
+        name: "{{user1}}",
+        content: { text: "Post about market analysis" },
       },
       {
-        name: '{{agent}}',
-        content: { text: 'Creating post...', action: 'CREATE_POST' },
+        name: "{{agent}}",
+        content: { text: "Creating post...", action: "CREATE_POST" },
       },
     ],
   ],
 
   validate: async (_runtime: IAgentRuntime, message: Memory) => {
-    const content = message.content.text?.toLowerCase() || '';
+    const content = message.content.text?.toLowerCase() || "";
     return (
-      content.includes('post') ||
-      content.includes('share') ||
-      content.includes('publish')
+      content.includes("post") ||
+      content.includes("share") ||
+      content.includes("publish")
     );
   },
 
@@ -48,29 +48,29 @@ export const createPostAction: Action = {
     message: Memory,
     _state?: State,
     _options?: unknown,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<void> => {
     const feedRuntime = runtime as FeedRuntime;
 
     if (!feedRuntime.a2aClient?.isConnected()) {
       if (callback) {
         callback({
-          text: 'A2A client not connected. Cannot create post.',
-          action: 'CREATE_POST',
+          text: "A2A client not connected. Cannot create post.",
+          action: "CREATE_POST",
         });
       }
       return;
     }
 
     // Extract post content
-    const content = message.content.text || '';
-    const postContent = content.replace(/^(post|share|publish)\s+/i, '').trim();
+    const content = message.content.text || "";
+    const postContent = content.replace(/^(post|share|publish)\s+/i, "").trim();
 
     if (!postContent) {
       if (callback) {
         callback({
-          text: 'No content provided for post.',
-          action: 'CREATE_POST',
+          text: "No content provided for post.",
+          action: "CREATE_POST",
         });
       }
       return;
@@ -78,23 +78,23 @@ export const createPostAction: Action = {
 
     const result = (await feedRuntime.a2aClient.createPost(
       postContent,
-      'post'
+      "post",
     )) as { success?: boolean; postId?: string; message?: string };
 
     if (callback) {
       if (result.success === false) {
         callback({
-          text: `Failed to create post: ${result.message || 'Unknown error'}`,
-          action: 'CREATE_POST',
+          text: `Failed to create post: ${result.message || "Unknown error"}`,
+          action: "CREATE_POST",
         });
       } else {
         callback({
-          text: `Successfully created post! Post ID: ${result.postId || 'unknown'}`,
-          action: 'CREATE_POST',
+          text: `Successfully created post! Post ID: ${result.postId || "unknown"}`,
+          action: "CREATE_POST",
         });
       }
     }
-  }) as unknown as Action['handler'],
+  }) as unknown as Action["handler"],
 };
 
 /**
@@ -102,25 +102,25 @@ export const createPostAction: Action = {
  * Allows agent to comment on a post
  */
 export const commentAction: Action = {
-  name: 'COMMENT_ON_POST',
-  description: 'Comment on a post',
-  similes: ['comment', 'reply', 'respond to post'],
+  name: "COMMENT_ON_POST",
+  description: "Comment on a post",
+  similes: ["comment", "reply", "respond to post"],
   examples: [
     [
       {
-        name: '{{user1}}',
+        name: "{{user1}}",
         content: { text: 'Comment on post post-123 with "Great analysis!"' },
       },
       {
-        name: '{{agent}}',
-        content: { text: 'Commenting on post...', action: 'COMMENT_ON_POST' },
+        name: "{{agent}}",
+        content: { text: "Commenting on post...", action: "COMMENT_ON_POST" },
       },
     ],
   ],
 
   validate: async (_runtime: IAgentRuntime, message: Memory) => {
-    const content = message.content.text?.toLowerCase() || '';
-    return content.includes('comment') || content.includes('reply');
+    const content = message.content.text?.toLowerCase() || "";
+    return content.includes("comment") || content.includes("reply");
   },
 
   handler: (async (
@@ -128,22 +128,22 @@ export const commentAction: Action = {
     message: Memory,
     _state?: State,
     _options?: unknown,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<void> => {
     const feedRuntime = runtime as FeedRuntime;
 
     if (!feedRuntime.a2aClient?.isConnected()) {
       if (callback) {
         callback({
-          text: 'A2A client not connected. Cannot comment.',
-          action: 'COMMENT_ON_POST',
+          text: "A2A client not connected. Cannot comment.",
+          action: "COMMENT_ON_POST",
         });
       }
       return;
     }
 
     // Parse message
-    const content = message.content.text || '';
+    const content = message.content.text || "";
     const postIdMatch = content.match(/post[:\s-]+([a-zA-Z0-9-]+)/);
     const commentMatch =
       content.match(/(?:with|:)\s*["'](.+?)["']/) ||
@@ -152,8 +152,8 @@ export const commentAction: Action = {
     if (!postIdMatch || !commentMatch) {
       if (callback) {
         callback({
-          text: 'Could not parse comment parameters. Please specify post ID and comment text.',
-          action: 'COMMENT_ON_POST',
+          text: "Could not parse comment parameters. Please specify post ID and comment text.",
+          action: "COMMENT_ON_POST",
         });
       }
       return;
@@ -164,23 +164,23 @@ export const commentAction: Action = {
 
     const result = (await feedRuntime.a2aClient.createComment(
       postId,
-      commentContent
+      commentContent,
     )) as { success?: boolean; commentId?: string; message?: string };
 
     if (callback) {
       if (result.success === false) {
         callback({
-          text: `Failed to create comment: ${result.message || 'Unknown error'}`,
-          action: 'COMMENT_ON_POST',
+          text: `Failed to create comment: ${result.message || "Unknown error"}`,
+          action: "COMMENT_ON_POST",
         });
       } else {
         callback({
-          text: `Successfully commented on post! Comment ID: ${result.commentId || 'unknown'}`,
-          action: 'COMMENT_ON_POST',
+          text: `Successfully commented on post! Comment ID: ${result.commentId || "unknown"}`,
+          action: "COMMENT_ON_POST",
         });
       }
     }
-  }) as unknown as Action['handler'],
+  }) as unknown as Action["handler"],
 };
 
 /**
@@ -188,25 +188,25 @@ export const commentAction: Action = {
  * Allows agent to like a post
  */
 export const likePostAction: Action = {
-  name: 'LIKE_POST',
-  description: 'Like a post on the feed',
-  similes: ['like', 'upvote', 'react to post'],
+  name: "LIKE_POST",
+  description: "Like a post on the feed",
+  similes: ["like", "upvote", "react to post"],
   examples: [
     [
       {
-        name: '{{user1}}',
-        content: { text: 'Like post post-123' },
+        name: "{{user1}}",
+        content: { text: "Like post post-123" },
       },
       {
-        name: '{{agent}}',
-        content: { text: 'Liking post...', action: 'LIKE_POST' },
+        name: "{{agent}}",
+        content: { text: "Liking post...", action: "LIKE_POST" },
       },
     ],
   ],
 
   validate: async (_runtime: IAgentRuntime, message: Memory) => {
-    const content = message.content.text?.toLowerCase() || '';
-    return content.includes('like') || content.includes('upvote');
+    const content = message.content.text?.toLowerCase() || "";
+    return content.includes("like") || content.includes("upvote");
   },
 
   handler: (async (
@@ -214,29 +214,29 @@ export const likePostAction: Action = {
     message: Memory,
     _state?: State,
     _options?: unknown,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<void> => {
     const feedRuntime = runtime as FeedRuntime;
 
     if (!feedRuntime.a2aClient?.isConnected()) {
       if (callback) {
         callback({
-          text: 'A2A client not connected. Cannot like post.',
-          action: 'LIKE_POST',
+          text: "A2A client not connected. Cannot like post.",
+          action: "LIKE_POST",
         });
       }
       return;
     }
 
     // Parse message
-    const content = message.content.text || '';
+    const content = message.content.text || "";
     const postIdMatch = content.match(/post[:\s-]+([a-zA-Z0-9-]+)/);
 
     if (!postIdMatch) {
       if (callback) {
         callback({
-          text: 'Could not parse post ID. Please specify which post to like.',
-          action: 'LIKE_POST',
+          text: "Could not parse post ID. Please specify which post to like.",
+          action: "LIKE_POST",
         });
       }
       return;
@@ -253,15 +253,15 @@ export const likePostAction: Action = {
     if (callback) {
       if (result.success === false) {
         callback({
-          text: `Failed to like post: ${result.message || 'Unknown error'}`,
-          action: 'LIKE_POST',
+          text: `Failed to like post: ${result.message || "Unknown error"}`,
+          action: "LIKE_POST",
         });
       } else {
         callback({
-          text: `Successfully liked post ${postId}!${result.likeCount !== undefined ? ` Total likes: ${result.likeCount}` : ''}`,
-          action: 'LIKE_POST',
+          text: `Successfully liked post ${postId}!${result.likeCount !== undefined ? ` Total likes: ${result.likeCount}` : ""}`,
+          action: "LIKE_POST",
         });
       }
     }
-  }) as unknown as Action['handler'],
+  }) as unknown as Action["handler"],
 };

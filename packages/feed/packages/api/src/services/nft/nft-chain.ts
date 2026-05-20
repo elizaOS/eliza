@@ -1,4 +1,4 @@
-import { CHAIN_ID, ValidationError } from '@feed/shared';
+import { CHAIN_ID, ValidationError } from "@feed/shared";
 
 function parsePositiveInt(value: string): number | null {
   const parsed = Number.parseInt(value, 10);
@@ -22,22 +22,22 @@ export function getNftChainId(): number {
   const legacyParsed = parsePositiveInt(legacyRaw);
   if (!legacyParsed) {
     throw new ValidationError(
-      'NFT_CHAIN_ID is invalid',
-      ['NFT_CHAIN_ID'],
-      [{ field: 'NFT_CHAIN_ID', message: 'Must be a positive integer' }]
+      "NFT_CHAIN_ID is invalid",
+      ["NFT_CHAIN_ID"],
+      [{ field: "NFT_CHAIN_ID", message: "Must be a positive integer" }],
     );
   }
 
   if (legacyParsed !== CHAIN_ID) {
     throw new ValidationError(
-      'NFT_CHAIN_ID must match NEXT_PUBLIC_CHAIN_ID/CHAIN_ID',
-      ['NFT_CHAIN_ID', 'NEXT_PUBLIC_CHAIN_ID', 'CHAIN_ID'],
+      "NFT_CHAIN_ID must match NEXT_PUBLIC_CHAIN_ID/CHAIN_ID",
+      ["NFT_CHAIN_ID", "NEXT_PUBLIC_CHAIN_ID", "CHAIN_ID"],
       [
         {
-          field: 'NFT_CHAIN_ID',
+          field: "NFT_CHAIN_ID",
           message: `Expected ${CHAIN_ID} but got ${legacyParsed}`,
         },
-      ]
+      ],
     );
   }
 

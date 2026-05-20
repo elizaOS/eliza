@@ -5,19 +5,19 @@
  * and trading input validation.
  */
 
-import { expect, test } from './fixtures';
+import { expect, test } from "./fixtures";
 import {
   cooldownBetweenTests,
   isServerHealthy,
   navigateTo,
   waitForPageLoad,
-} from './helpers/page-helpers';
-import { loginWithWallet } from './helpers/privy-auth';
-import { ROUTES, SELECTORS, TIMEOUTS, VIEWPORTS } from './helpers/test-data';
+} from "./helpers/page-helpers";
+import { loginWithWallet } from "./helpers/privy-auth";
+import { ROUTES, SELECTORS, TIMEOUTS, VIEWPORTS } from "./helpers/test-data";
 
 test.setTimeout(TIMEOUTS.EXTRA_LONG);
 
-test.describe('Security', () => {
+test.describe("Security", () => {
   test.beforeEach(async ({ page }) => {
     if (!(await isServerHealthy())) {
       test.skip();
@@ -33,12 +33,12 @@ test.describe('Security', () => {
     await cooldownBetweenTests(page);
   });
 
-  test('XSS script tags do not execute in form inputs', async ({ page }) => {
+  test("XSS script tags do not execute in form inputs", async ({ page }) => {
     await navigateTo(page, ROUTES.SETTINGS);
     await waitForPageLoad(page);
 
     const textInputs = page.locator(
-      'textarea, input[type="text"], input:not([type])'
+      'textarea, input[type="text"], input:not([type])',
     );
     const count = await textInputs.count();
 
@@ -52,7 +52,7 @@ test.describe('Security', () => {
       if (await input.isVisible({ timeout: 1000 }).catch(() => false)) {
         await input.clear().catch(() => {});
         await input
-          .fill('<script>window.xssTriggered=true</script>')
+          .fill("<script>window.xssTriggered=true</script>")
           .catch(() => {});
         break;
       }
@@ -68,7 +68,7 @@ test.describe('Security', () => {
     expect(xssTriggered).toBe(false);
   });
 
-  test('SQL injection does not expose database errors', async ({ page }) => {
+  test("SQL injection does not expose database errors", async ({ page }) => {
     await navigateTo(page, ROUTES.MARKETS);
     await waitForPageLoad(page);
 
@@ -88,15 +88,15 @@ test.describe('Security', () => {
     await searchInput.fill("'; DROP TABLE users; --");
     await page.waitForTimeout(1000);
 
-    const content = await page.locator('body').textContent();
-    expect(content?.toLowerCase()).not.toContain('syntax error');
-    expect(content?.toLowerCase()).not.toContain('postgresql');
-    expect(content?.toLowerCase()).not.toContain('mysql');
+    const content = await page.locator("body").textContent();
+    expect(content?.toLowerCase()).not.toContain("syntax error");
+    expect(content?.toLowerCase()).not.toContain("postgresql");
+    expect(content?.toLowerCase()).not.toContain("mysql");
   });
 
-  test('API errors do not expose stack traces', async ({ page }) => {
+  test("API errors do not expose stack traces", async ({ page }) => {
     const response = await page.request
-      .get('/api/nonexistent-endpoint-xyz')
+      .get("/api/nonexistent-endpoint-xyz")
       .catch(() => null);
 
     if (!response) {
@@ -107,11 +107,11 @@ test.describe('Security', () => {
     const text = await response.text();
     expect(text).not.toMatch(/at\s+\w+\s+\(/i);
     expect(text).not.toMatch(/Error:\s+/i);
-    expect(text.toLowerCase()).not.toContain('internal server error');
+    expect(text.toLowerCase()).not.toContain("internal server error");
   });
 });
 
-test.describe('Input Validation', () => {
+test.describe("Input Validation", () => {
   test.beforeEach(async ({ page }) => {
     if (!(await isServerHealthy())) {
       test.skip();
@@ -127,13 +127,13 @@ test.describe('Input Validation', () => {
     await cooldownBetweenTests(page);
   });
 
-  test('empty post submission is prevented', async ({ page }) => {
+  test("empty post submission is prevented", async ({ page }) => {
     await navigateTo(page, ROUTES.FEED);
     await waitForPageLoad(page);
 
     const createButton = page
       .locator(
-        'button[aria-label*="Create" i], button:has-text("Post"), button:has-text("Create")'
+        'button[aria-label*="Create" i], button:has-text("Post"), button:has-text("Create")',
       )
       .first();
 
@@ -159,13 +159,13 @@ test.describe('Input Validation', () => {
         .catch(() => false)
     ) {
       const isDisabled = await submitButton.isDisabled().catch(() => false);
-      expect(typeof isDisabled).toBe('boolean');
+      expect(typeof isDisabled).toBe("boolean");
     }
 
-    await page.keyboard.press('Escape');
+    await page.keyboard.press("Escape");
   });
 
-  test('unicode and emoji characters are preserved in inputs', async ({
+  test("unicode and emoji characters are preserved in inputs", async ({
     page,
   }) => {
     await navigateTo(page, ROUTES.SETTINGS);
@@ -184,7 +184,7 @@ test.describe('Input Validation', () => {
       return;
     }
 
-    const unicodeTest = '日本語テスト 🎉 émojis';
+    const unicodeTest = "日本語テスト 🎉 émojis";
     await textInput.clear().catch(() => {});
     await textInput.fill(unicodeTest);
 
@@ -192,7 +192,7 @@ test.describe('Input Validation', () => {
     expect(value.length).toBeGreaterThan(0);
   });
 
-  test('excessively long input is handled gracefully', async ({ page }) => {
+  test("excessively long input is handled gracefully", async ({ page }) => {
     await navigateTo(page, ROUTES.SETTINGS);
     await waitForPageLoad(page);
 
@@ -209,16 +209,16 @@ test.describe('Input Validation', () => {
       return;
     }
 
-    const longString = 'A'.repeat(5000);
+    const longString = "A".repeat(5000);
     await textInput.clear().catch(() => {});
     await textInput.fill(longString);
 
     const value = await textInput.inputValue();
-    expect(typeof value).toBe('string');
+    expect(typeof value).toBe("string");
   });
 });
 
-test.describe('Rate Limiting', () => {
+test.describe("Rate Limiting", () => {
   test.beforeEach(async ({ page }) => {
     if (!(await isServerHealthy())) {
       test.skip();
@@ -234,7 +234,7 @@ test.describe('Rate Limiting', () => {
     await cooldownBetweenTests(page);
   });
 
-  test('handles rapid repeated actions gracefully', async ({ page }) => {
+  test("handles rapid repeated actions gracefully", async ({ page }) => {
     await navigateTo(page, ROUTES.FEED);
     await waitForPageLoad(page);
 
@@ -257,12 +257,12 @@ test.describe('Rate Limiting', () => {
     }
 
     // Page should not crash
-    const body = await page.locator('body').textContent();
+    const body = await page.locator("body").textContent();
     expect(body?.length).toBeGreaterThan(100);
   });
 });
 
-test.describe('Markets Input Validation', () => {
+test.describe("Markets Input Validation", () => {
   test.beforeEach(async ({ page }) => {
     if (!(await isServerHealthy())) {
       test.skip();
@@ -289,57 +289,59 @@ test.describe('Markets Input Validation', () => {
     await cooldownBetweenTests(page);
   });
 
-  test('rejects negative numbers in quantity input', async ({ page }) => {
+  test("rejects negative numbers in quantity input", async ({ page }) => {
     const quantityInput = page.locator(SELECTORS.QUANTITY_INPUT).first();
     if (
       await quantityInput
         .isVisible({ timeout: TIMEOUTS.SHORT })
         .catch(() => false)
     ) {
-      await quantityInput.fill('-1');
+      await quantityInput.fill("-1");
       await page.waitForTimeout(500);
 
       const _value = await quantityInput.inputValue();
       // Input should reject, clear, or show validation
-      const body = await page.locator('body').textContent();
+      const body = await page.locator("body").textContent();
       expect(body?.length).toBeGreaterThan(100);
     }
   });
 
-  test('rejects non-numeric input in quantity field', async ({ page }) => {
+  test("rejects non-numeric input in quantity field", async ({ page }) => {
     const quantityInput = page.locator(SELECTORS.QUANTITY_INPUT).first();
     if (
       await quantityInput
         .isVisible({ timeout: TIMEOUTS.SHORT })
         .catch(() => false)
     ) {
-      await quantityInput.fill('abc');
+      await quantityInput.fill("abc");
       await page.waitForTimeout(500);
 
       const value = await quantityInput.inputValue();
       // Should reject non-numeric input
-      expect(value === '' || value === '0' || !isNaN(Number(value))).toBe(true);
+      expect(
+        value === "" || value === "0" || !Number.isNaN(Number(value)),
+      ).toBe(true);
     }
   });
 
-  test('handles decimal precision in trading inputs', async ({ page }) => {
+  test("handles decimal precision in trading inputs", async ({ page }) => {
     const quantityInput = page.locator(SELECTORS.QUANTITY_INPUT).first();
     if (
       await quantityInput
         .isVisible({ timeout: TIMEOUTS.SHORT })
         .catch(() => false)
     ) {
-      await quantityInput.fill('0.001');
+      await quantityInput.fill("0.001");
       await page.waitForTimeout(500);
 
       const value = await quantityInput.inputValue();
       // Should accept or round decimal input
-      expect(typeof value).toBe('string');
+      expect(typeof value).toBe("string");
     }
   });
 });
 
-test.describe('Profile Input Validation', () => {
+test.describe("Profile Input Validation", () => {
   test.beforeEach(async ({ page }) => {
     if (!(await isServerHealthy())) {
       test.skip();
@@ -349,7 +351,7 @@ test.describe('Profile Input Validation', () => {
     await navigateTo(page, ROUTES.HOME);
     await loginWithWallet(page);
     await page.goto(
-      `${process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:3000'}/settings?tab=profile`
+      `${process.env.PLAYWRIGHT_BASE_URL || "http://localhost:3000"}/settings?tab=profile`,
     );
     await waitForPageLoad(page);
     await page.waitForTimeout(2000);
@@ -359,10 +361,10 @@ test.describe('Profile Input Validation', () => {
     await cooldownBetweenTests(page);
   });
 
-  test('rejects username with spaces', async ({ page }) => {
+  test("rejects username with spaces", async ({ page }) => {
     const usernameInput = page
       .locator(
-        'input[name="username"], input#username, input[placeholder*="username" i]'
+        'input[name="username"], input#username, input[placeholder*="username" i]',
       )
       .first();
 
@@ -372,19 +374,19 @@ test.describe('Profile Input Validation', () => {
         .catch(() => false)
     ) {
       await usernameInput.clear().catch(() => {});
-      await usernameInput.fill('test user');
+      await usernameInput.fill("test user");
       await page.waitForTimeout(500);
 
       // Should show validation error or reject spaces
-      const body = await page.locator('body').textContent();
+      const body = await page.locator("body").textContent();
       expect(body?.length).toBeGreaterThan(50);
     }
   });
 
-  test('enforces minimum username length', async ({ page }) => {
+  test("enforces minimum username length", async ({ page }) => {
     const usernameInput = page
       .locator(
-        'input[name="username"], input#username, input[placeholder*="username" i]'
+        'input[name="username"], input#username, input[placeholder*="username" i]',
       )
       .first();
 
@@ -394,36 +396,36 @@ test.describe('Profile Input Validation', () => {
         .catch(() => false)
     ) {
       await usernameInput.clear().catch(() => {});
-      await usernameInput.fill('a');
+      await usernameInput.fill("a");
       await page.waitForTimeout(500);
 
       // Should show validation error for too short
-      const body = await page.locator('body').textContent();
+      const body = await page.locator("body").textContent();
       expect(body?.length).toBeGreaterThan(50);
     }
   });
 });
 
-test.describe('Error Pages', () => {
-  test('404 page shows for invalid routes', async ({ page }) => {
+test.describe("Error Pages", () => {
+  test("404 page shows for invalid routes", async ({ page }) => {
     if (!(await isServerHealthy())) {
       test.skip();
       return;
     }
 
-    await navigateTo(page, '/definitely-not-a-page-xyz-123');
+    await navigateTo(page, "/definitely-not-a-page-xyz-123");
     await waitForPageLoad(page);
 
-    const content = await page.locator('body').textContent();
+    const content = await page.locator("body").textContent();
     expect(content).toBeTruthy();
 
     const shows404 =
-      content?.includes('404') ||
-      content?.toLowerCase().includes('not found') ||
-      content?.toLowerCase().includes('error');
+      content?.includes("404") ||
+      content?.toLowerCase().includes("not found") ||
+      content?.toLowerCase().includes("error");
 
     const url = page.url();
-    const redirectedHome = url.endsWith('/') || url.endsWith('/feed');
+    const redirectedHome = url.endsWith("/") || url.endsWith("/feed");
 
     expect(shows404 || redirectedHome).toBe(true);
   });

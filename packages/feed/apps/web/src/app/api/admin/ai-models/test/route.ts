@@ -57,11 +57,11 @@ import {
   logAdminModify,
   requireAdmin,
   withErrorHandling,
-} from '@feed/api';
-import { FeedLLMClient } from '@feed/engine';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@feed/api";
+import { FeedLLMClient } from "@feed/engine";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 /**
  * POST /api/admin/ai-models/test
@@ -78,21 +78,21 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
   logAdminModify({
     adminId: admin.userId,
     ipAddress: getClientIp(req.headers) ?? undefined,
-    resourceType: 'ai_models',
+    resourceType: "ai_models",
     metadata: {
-      action: 'test_model',
+      action: "test_model",
       provider: stats.provider,
       model: stats.model,
     },
   });
 
   logger.info(
-    'Testing AI model',
+    "Testing AI model",
     {
       provider: stats.provider,
       model: stats.model,
     },
-    'AIModelsTest'
+    "AIModelsTest",
   );
 
   // Simple test prompt
@@ -114,35 +114,35 @@ Return your response as XML in this exact format:
     testPrompt,
     {
       properties: {
-        message: { type: 'string' },
-        status: { type: 'string' },
+        message: { type: "string" },
+        status: { type: "string" },
       },
-      required: ['message', 'status'],
+      required: ["message", "status"],
     },
     {
       temperature: 0.7,
       maxTokens: 100,
-      promptType: 'admin_test_ai_model',
-    }
+      promptType: "admin_test_ai_model",
+    },
   );
 
   // Handle XML structure
   const response =
-    'response' in rawResponse && rawResponse.response
+    "response" in rawResponse && rawResponse.response
       ? rawResponse.response
       : (rawResponse as { message: string; status: string });
 
   const latency = Date.now() - startTime;
 
   logger.info(
-    'AI model test successful',
+    "AI model test successful",
     {
       provider: stats.provider,
       model: stats.model,
       latency,
       response,
     },
-    'AIModelsTest'
+    "AIModelsTest",
   );
 
   return NextResponse.json({

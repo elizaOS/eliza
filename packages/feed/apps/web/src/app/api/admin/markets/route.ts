@@ -9,8 +9,8 @@
  * for admin oversight and management.
  */
 
-import { requireAdmin, successResponse, withErrorHandling } from '@feed/api';
-import { PredictionPricing } from '@feed/core/markets/prediction/pricing';
+import { requireAdmin, successResponse, withErrorHandling } from "@feed/api";
+import { PredictionPricing } from "@feed/core/markets/prediction/pricing";
 import {
   and,
   count,
@@ -22,23 +22,26 @@ import {
   markets,
   positions,
   sql,
-} from '@feed/db';
-import { logger, toISO } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/db";
+import { logger, toISO } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   await requireAdmin(request);
 
   const { searchParams } = new URL(request.url);
-  const status = searchParams.get('status') || 'all'; // 'all', 'active', 'resolved', 'expired'
+  const status = searchParams.get("status") || "all"; // 'all', 'active', 'resolved', 'expired'
   // Clamp limit to prevent heavy queries (min 1, max 200, default 50)
-  const rawLimit = parseInt(searchParams.get('limit') || '50', 10);
-  const limit = Math.min(Math.max(isNaN(rawLimit) ? 50 : rawLimit, 1), 200);
+  const rawLimit = parseInt(searchParams.get("limit") || "50", 10);
+  const limit = Math.min(
+    Math.max(Number.isNaN(rawLimit) ? 50 : rawLimit, 1),
+    200,
+  );
 
   logger.info(
-    'Admin markets overview requested',
+    "Admin markets overview requested",
     { status, limit },
-    'GET /api/admin/markets'
+    "GET /api/admin/markets",
   );
 
   const now = new Date();
@@ -67,12 +70,12 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     .from(positions);
 
   // Build filter for markets list
-  let statusFilter = undefined;
-  if (status === 'active') {
+  let statusFilter;
+  if (status === "active") {
     statusFilter = and(eq(markets.resolved, false), gte(markets.endDate, now));
-  } else if (status === 'expired') {
+  } else if (status === "expired") {
     statusFilter = and(eq(markets.resolved, false), lte(markets.endDate, now));
-  } else if (status === 'resolved') {
+  } else if (status === "resolved") {
     statusFilter = eq(markets.resolved, true);
   }
 
@@ -109,12 +112,12 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     const yesPrice = PredictionPricing.getCurrentPrice(
       yesShares,
       noShares,
-      'yes'
+      "yes",
     );
     const noPrice = PredictionPricing.getCurrentPrice(
       yesShares,
       noShares,
-      'no'
+      "no",
     );
 
     return {
@@ -122,10 +125,10 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       yesPrice: Math.round(yesPrice * 100),
       noPrice: Math.round(noPrice * 100),
       status: market.resolved
-        ? 'resolved'
+        ? "resolved"
         : new Date(market.endDate) <= now
-          ? 'expired'
-          : 'active',
+          ? "expired"
+          : "active",
     };
   });
 

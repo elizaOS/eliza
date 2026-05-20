@@ -72,23 +72,23 @@ import {
   requireAdmin,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import type { JsonValue } from '@feed/db';
-import { db } from '@feed/db';
-import { WalletService } from '@feed/engine';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { z } from 'zod';
+} from "@feed/api";
+import type { JsonValue } from "@feed/db";
+import { db } from "@feed/db";
+import { WalletService } from "@feed/engine";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { z } from "zod";
 
 const HumanReviewActionSchema = z.object({
-  action: z.enum(['approve', 'deny']),
+  action: z.enum(["approve", "deny"]),
   reasoning: z.string().min(10).max(2000),
 });
 
 export const POST = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ userId: string }> }
+    context: { params: Promise<{ userId: string }> },
   ) => {
     const adminUser = await requireAdmin(request);
     const { userId } = await context.params;
@@ -108,14 +108,14 @@ export const POST = withErrorHandling(
       },
     });
 
-    if (!user || user.appealStatus !== 'human_review') {
+    if (!user || user.appealStatus !== "human_review") {
       return successResponse(
-        { success: false, error: 'Appeal not in human review' },
-        400
+        { success: false, error: "Appeal not in human review" },
+        400,
       );
     }
 
-    if (action === 'approve') {
+    if (action === "approve") {
       // Mark as false positive and restore account
       const falsePositiveHistory =
         (user.falsePositiveHistory as Array<Record<string, unknown>> | null) ||
@@ -124,7 +124,7 @@ export const POST = withErrorHandling(
         date: new Date().toISOString(),
         reason: reasoning,
         reviewedBy: adminUser.userId,
-        type: 'human_review',
+        type: "human_review",
       });
 
       await db.user.update({
@@ -136,7 +136,7 @@ export const POST = withErrorHandling(
           bannedAt: null,
           bannedBy: null,
           bannedReason: null,
-          appealStatus: 'approved',
+          appealStatus: "approved",
           appealReviewedAt: new Date(),
           falsePositiveHistory: falsePositiveHistory as JsonValue,
         },
@@ -149,31 +149,31 @@ export const POST = withErrorHandling(
 
       await createNotification({
         userId,
-        type: 'system',
-        title: 'Appeal Approved - Account Restored',
+        type: "system",
+        title: "Appeal Approved - Account Restored",
         message: `A moderator reviewed your appeal and restored your account. ${reasoning}`,
       });
 
       logger.info(
-        'Human review approved',
+        "Human review approved",
         {
           userId,
           adminUserId: adminUser.userId,
           reasoning,
         },
-        'HumanReview'
+        "HumanReview",
       );
 
       return successResponse({
         success: true,
-        message: 'Appeal approved - account restored',
+        message: "Appeal approved - account restored",
       });
     }
     // Deny - permanent ban
     await db.user.update({
       where: { id: userId },
       data: {
-        appealStatus: 'denied',
+        appealStatus: "denied",
         appealReviewedAt: new Date(),
         // Keep banned, scammer, CSAM flags
       },
@@ -181,26 +181,26 @@ export const POST = withErrorHandling(
 
     await createNotification({
       userId,
-      type: 'system',
-      title: 'Appeal Denied - Permanent Ban',
+      type: "system",
+      title: "Appeal Denied - Permanent Ban",
       message: `After human review, your appeal was denied. ${reasoning}`,
     });
 
     logger.info(
-      'Human review denied',
+      "Human review denied",
       {
         userId,
         adminUserId: adminUser.userId,
         reasoning,
       },
-      'HumanReview'
+      "HumanReview",
     );
 
     return successResponse({
       success: true,
-      message: 'Appeal denied - permanent ban confirmed',
+      message: "Appeal denied - permanent ban confirmed",
     });
-  }
+  },
 );
 
 /**
@@ -208,14 +208,14 @@ export const POST = withErrorHandling(
  */
 async function refundAppealStake(
   userId: string,
-  stakeAmount: number
+  stakeAmount: number,
 ): Promise<void> {
   await WalletService.credit(
     userId,
     stakeAmount,
-    'appeal_stake_refund',
-    'Appeal stake refund - account restored via human review',
-    undefined
+    "appeal_stake_refund",
+    "Appeal stake refund - account restored via human review",
+    undefined,
   );
 
   // Clear stake flags
@@ -229,11 +229,11 @@ async function refundAppealStake(
   });
 
   logger.info(
-    'Appeal stake refunded',
+    "Appeal stake refunded",
     {
       userId,
       stakeAmount,
     },
-    'HumanReview'
+    "HumanReview",
   );
 }

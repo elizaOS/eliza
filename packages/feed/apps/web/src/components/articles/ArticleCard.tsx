@@ -1,12 +1,12 @@
-'use client';
+"use client";
 
-import { cn } from '@feed/shared';
-import Image from 'next/image';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { memo } from 'react';
-import { z } from 'zod';
-import { Avatar } from '@/components/shared/Avatar';
+import { cn } from "@feed/shared";
+import Image from "next/image";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { memo } from "react";
+import { z } from "zod";
+import { Avatar } from "@/components/shared/Avatar";
 
 const _ArticleCardPostSchema = z.object({
   id: z.string(),
@@ -28,18 +28,18 @@ const _ArticleCardPostSchema = z.object({
 export type ArticleCardProps = {
   post: z.infer<typeof _ArticleCardPostSchema>;
   className?: string;
-  density?: 'default' | 'compact';
+  density?: "default" | "compact";
   onClick?: () => void;
 };
 
 export const ArticleCard = memo(function ArticleCard({
   post,
   className,
-  density = 'default',
+  density = "default",
   onClick,
 }: ArticleCardProps) {
   const router = useRouter();
-  const compact = density === 'compact';
+  const compact = density === "compact";
   const publishedDate = new Date(post.timestamp);
   const now = new Date();
   const diffMs = now.getTime() - publishedDate.getTime();
@@ -48,18 +48,18 @@ export const ArticleCard = memo(function ArticleCard({
 
   let timeAgo: string;
   if (diffMinutes < 1) {
-    timeAgo = 'Just now';
+    timeAgo = "Just now";
   } else if (diffMinutes < 60) {
     timeAgo = `${diffMinutes}m ago`;
   } else if (diffHours < 24) {
     timeAgo = `${diffHours}h ago`;
   } else {
-    timeAgo = publishedDate.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
+    timeAgo = publishedDate.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
       year:
         publishedDate.getFullYear() !== now.getFullYear()
-          ? 'numeric'
+          ? "numeric"
           : undefined,
     });
   }
@@ -75,11 +75,11 @@ export const ArticleCard = memo(function ArticleCard({
   return (
     <article
       className={cn(
-        compact ? 'px-3 py-3' : 'px-4 py-4',
-        'cursor-pointer transition-all duration-200 hover:bg-muted/30',
-        'w-full overflow-hidden',
-        'border-border border-b',
-        className
+        compact ? "px-3 py-3" : "px-4 py-4",
+        "cursor-pointer transition-all duration-200 hover:bg-muted/30",
+        "w-full overflow-hidden",
+        "border-border border-b",
+        className,
       )}
       onClick={handleClick}
     >
@@ -105,8 +105,8 @@ export const ArticleCard = memo(function ArticleCard({
           {/* Author row: Name · @handle · Category | timeAgo right-aligned */}
           <div
             className={cn(
-              'flex items-start justify-between gap-3 leading-none sm:items-center sm:pt-0.5',
-              compact ? 'mb-1' : ''
+              "flex items-start justify-between gap-3 leading-none sm:items-center sm:pt-0.5",
+              compact ? "mb-1" : "",
             )}
           >
             <div className="flex min-w-0 flex-1 items-center gap-1.5">
@@ -148,7 +148,7 @@ export const ArticleCard = memo(function ArticleCard({
             <div className="relative mb-3 aspect-video w-full overflow-hidden rounded-lg">
               <Image
                 src={post.imageUrl}
-                alt={post.articleTitle || 'Article image'}
+                alt={post.articleTitle || "Article image"}
                 fill
                 className="object-cover"
                 sizes="(max-width: 768px) 100vw, 600px"
@@ -159,20 +159,20 @@ export const ArticleCard = memo(function ArticleCard({
           {/* Article Title */}
           <h2
             className={cn(
-              'line-clamp-2 font-bold text-foreground leading-tight',
-              compact ? 'mb-1 text-lg md:text-base' : 'mb-1.5 text-lg'
+              "line-clamp-2 font-bold text-foreground leading-tight",
+              compact ? "mb-1 text-lg md:text-base" : "mb-1.5 text-lg",
             )}
           >
-            {post.articleTitle || 'Untitled Article'}
+            {post.articleTitle || "Untitled Article"}
           </h2>
 
           {/* Summary */}
           <p
             className={cn(
-              'line-clamp-2 text-muted-foreground',
+              "line-clamp-2 text-muted-foreground",
               compact
-                ? 'mb-2 text-sm leading-snug md:text-xs'
-                : 'mb-3 text-sm leading-relaxed'
+                ? "mb-2 text-sm leading-snug md:text-xs"
+                : "mb-3 text-sm leading-relaxed",
             )}
           >
             {post.content}
@@ -187,8 +187,8 @@ export const ArticleCard = memo(function ArticleCard({
             )}
             <span
               className={cn(
-                'text-[#0066FF]',
-                compact ? 'text-sm md:text-xs' : 'text-sm'
+                "text-[#0066FF]",
+                compact ? "text-sm md:text-xs" : "text-sm",
               )}
             >
               Read Full Article →

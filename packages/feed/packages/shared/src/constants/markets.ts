@@ -78,7 +78,7 @@ export type BondingCurveConfig = {
  */
 export function getInitialReserves(
   initialPrice: number,
-  config: PerpMarketConfig = PERP_MARKET_CONFIG
+  config: PerpMarketConfig = PERP_MARKET_CONFIG,
 ): { baseReserve: number; quoteReserve: number; k: number } {
   const baseReserve = config.INITIAL_BASE_RESERVE;
   const quoteReserve = baseReserve * initialPrice;
@@ -89,7 +89,7 @@ export function getInitialReserves(
  * Legacy effective-supply helper kept for older tests.
  */
 export function getEffectiveSupply(
-  config: PerpMarketConfig = PERP_MARKET_CONFIG
+  config: PerpMarketConfig = PERP_MARKET_CONFIG,
 ): number {
   return config.SYNTHETIC_SUPPLY / config.LIQUIDITY_FACTOR;
 }
@@ -100,7 +100,7 @@ export function getEffectiveSupply(
 export function calculateBondingCurvePrice(
   basePrice: number,
   netHoldings: number,
-  bondingConfig: BondingCurveConfig = BONDING_CURVE_CONFIG
+  bondingConfig: BondingCurveConfig = BONDING_CURVE_CONFIG,
 ): number {
   const { EXPONENT, RESERVE_DEPTH } = bondingConfig;
   const ratio = netHoldings / RESERVE_DEPTH;
@@ -108,7 +108,7 @@ export function calculateBondingCurvePrice(
 
   let multiplier: number;
   if (base >= 0) {
-    multiplier = Math.pow(base, EXPONENT);
+    multiplier = base ** EXPONENT;
   } else {
     multiplier = 1 / (1 + Math.abs(base) * EXPONENT);
   }
@@ -126,11 +126,11 @@ export function calculateBondingCurvePrice(
 export function getReservesFromHoldings(
   initialPrice: number,
   netHoldings: number,
-  config: PerpMarketConfig = PERP_MARKET_CONFIG
+  config: PerpMarketConfig = PERP_MARKET_CONFIG,
 ): { baseReserve: number; quoteReserve: number; spotPrice: number } {
   const { quoteReserve: initQuote, k } = getInitialReserves(
     initialPrice,
-    config
+    config,
   );
   const currentQuote = Math.max(initQuote + netHoldings, 1);
   const currentBase = k / currentQuote;
@@ -150,12 +150,12 @@ export function calculatePriceFromHoldings(
   currentPrice: number,
   netHoldings: number,
   config: PerpMarketConfig = PERP_MARKET_CONFIG,
-  _bondingConfig: BondingCurveConfig = BONDING_CURVE_CONFIG
+  _bondingConfig: BondingCurveConfig = BONDING_CURVE_CONFIG,
 ): number {
   const rawPrice = getReservesFromHoldings(
     initialPrice,
     netHoldings,
-    config
+    config,
   ).spotPrice;
 
   const maxChange = currentPrice * config.MAX_CHANGE_PER_TRADE;
@@ -175,7 +175,7 @@ export function calculatePriceFromHoldings(
 export function calculateRawPriceFromHoldings(
   initialPrice: number,
   netHoldings: number,
-  config: PerpMarketConfig = PERP_MARKET_CONFIG
+  config: PerpMarketConfig = PERP_MARKET_CONFIG,
 ): number {
   return getReservesFromHoldings(initialPrice, netHoldings, config).spotPrice;
 }
@@ -192,7 +192,7 @@ export function calculateTradeImpact(
   initialPrice: number,
   netHoldingsBefore: number,
   tradeSize: number,
-  config: PerpMarketConfig = PERP_MARKET_CONFIG
+  config: PerpMarketConfig = PERP_MARKET_CONFIG,
 ): {
   avgFillPrice: number;
   newSpotPrice: number;

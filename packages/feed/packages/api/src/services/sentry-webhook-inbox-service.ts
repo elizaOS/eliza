@@ -1,11 +1,11 @@
-import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import {
   db,
   generateSnowflakeId,
   type JsonValue,
   sentryWebhookInboxes,
-} from '@feed/db';
-import { logger } from '@feed/shared';
+} from "@feed/db";
+import { logger } from "@feed/shared";
 
 const DEFAULT_MAX_TIMESTAMP_SKEW_SECONDS = 300;
 const HMAC_SHA256_HEX_LENGTH = 64;
@@ -31,13 +31,13 @@ export interface IngestSentryWebhookInput {
 }
 
 type IngestSentryWebhookErrorCode =
-  | 'MISSING_SIGNATURE'
-  | 'MISSING_TIMESTAMP'
-  | 'INVALID_SIGNATURE'
-  | 'INVALID_TIMESTAMP'
-  | 'STALE_TIMESTAMP'
-  | 'INVALID_JSON'
-  | 'INVALID_PAYLOAD_SHAPE';
+  | "MISSING_SIGNATURE"
+  | "MISSING_TIMESTAMP"
+  | "INVALID_SIGNATURE"
+  | "INVALID_TIMESTAMP"
+  | "STALE_TIMESTAMP"
+  | "INVALID_JSON"
+  | "INVALID_PAYLOAD_SHAPE";
 
 export interface IngestSentryWebhookFailure {
   ok: false;
@@ -74,12 +74,12 @@ function trimToNull(value: string | null | undefined): string | null {
 function normalizeSignature(signature: string): string {
   const trimmed = signature.trim();
 
-  if (trimmed.startsWith('sha256=')) {
-    return trimmed.slice('sha256='.length);
+  if (trimmed.startsWith("sha256=")) {
+    return trimmed.slice("sha256=".length);
   }
 
-  if (trimmed.startsWith('v0=')) {
-    return trimmed.slice('v0='.length);
+  if (trimmed.startsWith("v0=")) {
+    return trimmed.slice("v0=".length);
   }
 
   return trimmed;
@@ -90,8 +90,8 @@ function isValidHexDigest(value: string): boolean {
 }
 
 function areHexDigestsEqual(leftHex: string, rightHex: string): boolean {
-  const leftBuffer = Buffer.from(leftHex, 'hex');
-  const rightBuffer = Buffer.from(rightHex, 'hex');
+  const leftBuffer = Buffer.from(leftHex, "hex");
+  const rightBuffer = Buffer.from(rightHex, "hex");
 
   if (leftBuffer.length !== rightBuffer.length) {
     return false;
@@ -103,18 +103,18 @@ function areHexDigestsEqual(leftHex: string, rightHex: string): boolean {
 function computeTimestampPrefixedSentrySignature(
   secret: string,
   timestamp: string,
-  rawBody: string
+  rawBody: string,
 ): string {
-  return createHmac('sha256', secret)
+  return createHmac("sha256", secret)
     .update(`${timestamp}.${rawBody}`)
-    .digest('hex');
+    .digest("hex");
 }
 
 function computeBodyOnlySentrySignature(
   secret: string,
-  rawBody: string
+  rawBody: string,
 ): string {
-  return createHmac('sha256', secret).update(rawBody).digest('hex');
+  return createHmac("sha256", secret).update(rawBody).digest("hex");
 }
 
 function isSupportedSentrySignature(params: {
@@ -126,7 +126,7 @@ function isSupportedSentrySignature(params: {
   const timestampPrefixedSignature = computeTimestampPrefixedSentrySignature(
     params.secret,
     params.timestamp,
-    params.rawBody
+    params.rawBody,
   );
   if (
     areHexDigestsEqual(timestampPrefixedSignature, params.providedSignature)
@@ -136,7 +136,7 @@ function isSupportedSentrySignature(params: {
 
   const bodyOnlySignature = computeBodyOnlySentrySignature(
     params.secret,
-    params.rawBody
+    params.rawBody,
   );
   return areHexDigestsEqual(bodyOnlySignature, params.providedSignature);
 }
@@ -144,9 +144,9 @@ function isSupportedSentrySignature(params: {
 function isJsonValue(value: unknown): value is JsonValue {
   if (
     value === null ||
-    typeof value === 'string' ||
-    typeof value === 'number' ||
-    typeof value === 'boolean'
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
   ) {
     return true;
   }
@@ -155,7 +155,7 @@ function isJsonValue(value: unknown): value is JsonValue {
     return value.every((item) => isJsonValue(item));
   }
 
-  if (typeof value === 'object') {
+  if (typeof value === "object") {
     return Object.values(value).every((item) => isJsonValue(item));
   }
 
@@ -163,12 +163,12 @@ function isJsonValue(value: unknown): value is JsonValue {
 }
 
 function isJsonObject(value: JsonValue): value is JsonObject {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function readPath(
   source: JsonObject,
-  path: readonly string[]
+  path: readonly string[],
 ): JsonValue | undefined {
   let current: JsonValue = source;
 
@@ -177,7 +177,7 @@ function readPath(
       return undefined;
     }
     const next: JsonValue | undefined = current[segment];
-    if (typeof next === 'undefined') {
+    if (typeof next === "undefined") {
       return undefined;
     }
     current = next;
@@ -187,11 +187,11 @@ function readPath(
 }
 
 function toOptionalString(value: JsonValue | undefined): string | null {
-  if (typeof value === 'string') {
+  if (typeof value === "string") {
     return trimToNull(value);
   }
 
-  if (typeof value === 'number') {
+  if (typeof value === "number") {
     return String(value);
   }
 
@@ -200,7 +200,7 @@ function toOptionalString(value: JsonValue | undefined): string | null {
 
 function getFirstString(
   source: JsonObject,
-  candidatePaths: readonly (readonly string[])[]
+  candidatePaths: readonly (readonly string[])[],
 ): string | null {
   for (const path of candidatePaths) {
     const value = toOptionalString(readPath(source, path));
@@ -215,15 +215,15 @@ function getFirstString(
 function parseWebhookTimestamp(
   rawTimestamp: string,
   now: Date,
-  maxSkewSeconds: number
+  maxSkewSeconds: number,
 ): { ok: true; timestampSeconds: number } | IngestSentryWebhookFailure {
   const timestampSeconds = Number.parseInt(rawTimestamp, 10);
   if (!Number.isInteger(timestampSeconds) || timestampSeconds <= 0) {
     return {
       ok: false,
       httpStatus: 401,
-      code: 'INVALID_TIMESTAMP',
-      message: 'Invalid sentry-hook-timestamp header.',
+      code: "INVALID_TIMESTAMP",
+      message: "Invalid sentry-hook-timestamp header.",
     };
   }
 
@@ -232,8 +232,8 @@ function parseWebhookTimestamp(
     return {
       ok: false,
       httpStatus: 401,
-      code: 'STALE_TIMESTAMP',
-      message: 'Sentry webhook timestamp outside allowed window.',
+      code: "STALE_TIMESTAMP",
+      message: "Sentry webhook timestamp outside allowed window.",
     };
   }
 
@@ -249,9 +249,9 @@ function buildDedupeKey(params: {
   eventId: string | null;
   bodyHash: string;
 }): string {
-  const actionPart = params.action ?? 'unknown-action';
-  const projectPart = params.projectSlug ?? 'unknown-project';
-  const issuePart = params.issueId ?? params.issueShortId ?? 'unknown-issue';
+  const actionPart = params.action ?? "unknown-action";
+  const projectPart = params.projectSlug ?? "unknown-project";
+  const issuePart = params.issueId ?? params.issueShortId ?? "unknown-issue";
 
   if (params.eventId) {
     return `sentry:${params.resource}:${actionPart}:${projectPart}:event:${params.eventId}`;
@@ -282,7 +282,7 @@ function buildRoutingKey(params: {
     parts.push(`action:${params.action}`);
   }
 
-  return parts.length > 0 ? parts.join('|') : null;
+  return parts.length > 0 ? parts.join("|") : null;
 }
 
 function toMetadata(params: {
@@ -301,21 +301,21 @@ function toMetadata(params: {
     ingestion: {
       bodyHash: params.bodyHash,
       receivedAt: params.receivedAt.toISOString(),
-      signatureAlgorithm: 'hmac-sha256',
+      signatureAlgorithm: "hmac-sha256",
     },
   };
 }
 
 export async function ingestSentryWebhook(
-  input: IngestSentryWebhookInput
+  input: IngestSentryWebhookInput,
 ): Promise<IngestSentryWebhookResult> {
   const signatureHeader = trimToNull(input.headers.signature);
   if (!signatureHeader) {
     return {
       ok: false,
       httpStatus: 401,
-      code: 'MISSING_SIGNATURE',
-      message: 'Missing sentry-hook-signature header.',
+      code: "MISSING_SIGNATURE",
+      message: "Missing sentry-hook-signature header.",
     };
   }
 
@@ -324,8 +324,8 @@ export async function ingestSentryWebhook(
     return {
       ok: false,
       httpStatus: 401,
-      code: 'MISSING_TIMESTAMP',
-      message: 'Missing sentry-hook-timestamp header.',
+      code: "MISSING_TIMESTAMP",
+      message: "Missing sentry-hook-timestamp header.",
     };
   }
 
@@ -335,7 +335,7 @@ export async function ingestSentryWebhook(
   const parsedTimestamp = parseWebhookTimestamp(
     timestampHeader,
     now,
-    maxSkewSeconds
+    maxSkewSeconds,
   );
   if (!parsedTimestamp.ok) {
     return parsedTimestamp;
@@ -346,8 +346,8 @@ export async function ingestSentryWebhook(
     return {
       ok: false,
       httpStatus: 401,
-      code: 'INVALID_SIGNATURE',
-      message: 'Invalid sentry-hook-signature format.',
+      code: "INVALID_SIGNATURE",
+      message: "Invalid sentry-hook-signature format.",
     };
   }
 
@@ -362,8 +362,8 @@ export async function ingestSentryWebhook(
     return {
       ok: false,
       httpStatus: 401,
-      code: 'INVALID_SIGNATURE',
-      message: 'Sentry webhook signature mismatch.',
+      code: "INVALID_SIGNATURE",
+      message: "Sentry webhook signature mismatch.",
     };
   }
 
@@ -374,8 +374,8 @@ export async function ingestSentryWebhook(
     return {
       ok: false,
       httpStatus: 400,
-      code: 'INVALID_JSON',
-      message: 'Webhook payload is not valid JSON.',
+      code: "INVALID_JSON",
+      message: "Webhook payload is not valid JSON.",
     };
   }
 
@@ -383,8 +383,8 @@ export async function ingestSentryWebhook(
     return {
       ok: false,
       httpStatus: 400,
-      code: 'INVALID_PAYLOAD_SHAPE',
-      message: 'Webhook payload is not JSON-serializable.',
+      code: "INVALID_PAYLOAD_SHAPE",
+      message: "Webhook payload is not JSON-serializable.",
     };
   }
 
@@ -393,77 +393,77 @@ export async function ingestSentryWebhook(
     return {
       ok: false,
       httpStatus: 400,
-      code: 'INVALID_PAYLOAD_SHAPE',
-      message: 'Webhook payload must be a JSON object.',
+      code: "INVALID_PAYLOAD_SHAPE",
+      message: "Webhook payload must be a JSON object.",
     };
   }
 
   const action =
-    getFirstString(payload, [['action'], ['data', 'action']]) ??
+    getFirstString(payload, [["action"], ["data", "action"]]) ??
     trimToNull(input.headers.event);
   const resource =
     trimToNull(input.headers.resource) ??
-    getFirstString(payload, [['resource'], ['data', 'resource']]) ??
-    'issue';
+    getFirstString(payload, [["resource"], ["data", "resource"]]) ??
+    "issue";
   const projectSlug = getFirstString(payload, [
-    ['data', 'project', 'slug'],
-    ['project', 'slug'],
-    ['project', 'name'],
-    ['project'],
-    ['project_slug'],
+    ["data", "project", "slug"],
+    ["project", "slug"],
+    ["project", "name"],
+    ["project"],
+    ["project_slug"],
   ]);
   const organizationSlug = getFirstString(payload, [
-    ['data', 'organization', 'slug'],
-    ['organization', 'slug'],
-    ['organization'],
-    ['organization_slug'],
+    ["data", "organization", "slug"],
+    ["organization", "slug"],
+    ["organization"],
+    ["organization_slug"],
   ]);
   const issueId = getFirstString(payload, [
-    ['data', 'issue', 'id'],
-    ['issue', 'id'],
-    ['data', 'group', 'id'],
-    ['group', 'id'],
-    ['group_id'],
+    ["data", "issue", "id"],
+    ["issue", "id"],
+    ["data", "group", "id"],
+    ["group", "id"],
+    ["group_id"],
   ]);
   const issueShortId = getFirstString(payload, [
-    ['data', 'issue', 'shortId'],
-    ['issue', 'shortId'],
-    ['data', 'group', 'shortId'],
-    ['group', 'shortId'],
-    ['shortId'],
+    ["data", "issue", "shortId"],
+    ["issue", "shortId"],
+    ["data", "group", "shortId"],
+    ["group", "shortId"],
+    ["shortId"],
   ]);
   const issueTitle = getFirstString(payload, [
-    ['data', 'issue', 'title'],
-    ['issue', 'title'],
-    ['data', 'group', 'title'],
-    ['group', 'title'],
-    ['title'],
+    ["data", "issue", "title"],
+    ["issue", "title"],
+    ["data", "group", "title"],
+    ["group", "title"],
+    ["title"],
   ]);
   const issueUrl = getFirstString(payload, [
-    ['data', 'issue', 'permalink'],
-    ['data', 'issue', 'url'],
-    ['issue', 'permalink'],
-    ['issue', 'url'],
-    ['url'],
+    ["data", "issue", "permalink"],
+    ["data", "issue", "url"],
+    ["issue", "permalink"],
+    ["issue", "url"],
+    ["url"],
   ]);
   const eventId = getFirstString(payload, [
-    ['data', 'event', 'id'],
-    ['event', 'id'],
-    ['data', 'event_id'],
-    ['event_id'],
+    ["data", "event", "id"],
+    ["event", "id"],
+    ["data", "event_id"],
+    ["event_id"],
   ]);
   const level = getFirstString(payload, [
-    ['data', 'event', 'level'],
-    ['event', 'level'],
-    ['level'],
+    ["data", "event", "level"],
+    ["event", "level"],
+    ["level"],
   ]);
   const culprit = getFirstString(payload, [
-    ['data', 'event', 'culprit'],
-    ['event', 'culprit'],
-    ['culprit'],
+    ["data", "event", "culprit"],
+    ["event", "culprit"],
+    ["culprit"],
   ]);
 
-  const bodyHash = createHash('sha256').update(input.rawBody).digest('hex');
+  const bodyHash = createHash("sha256").update(input.rawBody).digest("hex");
   const dedupeKey = buildDedupeKey({
     resource,
     action,
@@ -516,7 +516,7 @@ export async function ingestSentryWebhook(
   const insertedId = insertResult[0]?.id;
   if (!insertedId) {
     logger.info(
-      'Ignored duplicate Sentry webhook event',
+      "Ignored duplicate Sentry webhook event",
       {
         dedupeKey,
         resource,
@@ -525,7 +525,7 @@ export async function ingestSentryWebhook(
         issueId,
         eventId,
       },
-      'SentryWebhookInbox'
+      "SentryWebhookInbox",
     );
 
     return {
@@ -541,7 +541,7 @@ export async function ingestSentryWebhook(
   }
 
   logger.info(
-    'Enqueued Sentry webhook event',
+    "Enqueued Sentry webhook event",
     {
       inboxId: insertedId,
       dedupeKey,
@@ -551,7 +551,7 @@ export async function ingestSentryWebhook(
       issueId,
       eventId,
     },
-    'SentryWebhookInbox'
+    "SentryWebhookInbox",
   );
 
   return {

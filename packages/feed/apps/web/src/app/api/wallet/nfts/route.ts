@@ -16,19 +16,19 @@ import {
   RATE_LIMIT_CONFIGS,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
+} from "@feed/api";
 import {
   getNftCollectionIdFromEnv,
   getOwnedTokenIdsFromIndexer,
   NftIndexerUnavailableError,
-} from '@feed/api/services/nft-indexer-service';
-import { db, eq, inArray, nftCollection, nftOwnership } from '@feed/db';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { isAddress } from 'viem';
+} from "@feed/api/services/nft-indexer-service";
+import { db, eq, inArray, nftCollection, nftOwnership } from "@feed/db";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { isAddress } from "viem";
 
-import { walletOptionsResponse } from '../_cors';
+import { walletOptionsResponse } from "../_cors";
 
 // OPTIONS wrapped for consistency: same error/Sentry path as GET/POST; overhead negligible.
 export const OPTIONS = withErrorHandling(async () => walletOptionsResponse());
@@ -38,21 +38,21 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
   const rateLimit = await checkRateLimitAsync(
     user.id,
-    RATE_LIMIT_CONFIGS.WALLET_READ
+    RATE_LIMIT_CONFIGS.WALLET_READ,
   );
   if (!rateLimit.allowed) {
     const retryAfterSeconds = rateLimit.retryAfter || 60;
     return NextResponse.json(
-      { error: 'Too many requests', retryAfter: retryAfterSeconds },
-      { status: 429, headers: { 'Retry-After': String(retryAfterSeconds) } }
+      { error: "Too many requests", retryAfter: retryAfterSeconds },
+      { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } },
     );
   }
 
-  const address = request.nextUrl.searchParams.get('address');
+  const address = request.nextUrl.searchParams.get("address");
   if (!address || !isAddress(address)) {
     return NextResponse.json(
-      { error: 'Invalid or missing address parameter' },
-      { status: 400 }
+      { error: "Invalid or missing address parameter" },
+      { status: 400 },
     );
   }
 
@@ -75,13 +75,13 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   } catch (error) {
     if (
       error instanceof NftIndexerUnavailableError ||
-      (error instanceof Error && error.name === 'ValidationError')
+      (error instanceof Error && error.name === "ValidationError")
     ) {
       degraded = true;
       logger.warn(
-        'NFT indexer unavailable for wallet portfolio, falling back to DB',
+        "NFT indexer unavailable for wallet portfolio, falling back to DB",
         { address: walletAddress },
-        'GET /api/wallet/nfts'
+        "GET /api/wallet/nfts",
       );
 
       // DB fallback: query nftOwnership by address
@@ -115,7 +115,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
   const items = rows.map((row) => ({
     contractAddress: row.contractAddress,
-    collectionName: 'ProtoMonkeys',
+    collectionName: "ProtoMonkeys",
     tokenId: row.tokenId,
     name: row.name,
     imageUrl: row.imageUrl,
@@ -149,14 +149,14 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   const collections = Array.from(collectionMap.values());
 
   logger.debug(
-    'Wallet NFT portfolio fetched',
+    "Wallet NFT portfolio fetched",
     {
       address: walletAddress,
       totalCount: items.length,
       collections: collections.length,
       degraded,
     },
-    'GET /api/wallet/nfts'
+    "GET /api/wallet/nfts",
   );
 
   return successResponse({

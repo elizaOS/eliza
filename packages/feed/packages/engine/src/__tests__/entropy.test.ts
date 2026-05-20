@@ -4,7 +4,7 @@
  * Tests for secure randomization, weighted selection, cooldowns, and sentiment signals.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from "bun:test";
 import {
   biasedRandomCount,
   type EventCooldownState,
@@ -17,10 +17,10 @@ import {
   shouldFireEvent,
   urgencyWeight,
   weightedPick,
-} from '../utils/entropy';
+} from "../utils/entropy";
 
-describe('Entropy - Core Random', () => {
-  test('secureRandom returns values in [0, 1)', () => {
+describe("Entropy - Core Random", () => {
+  test("secureRandom returns values in [0, 1)", () => {
     for (let i = 0; i < 100; i++) {
       const val = secureRandom();
       expect(val).toBeGreaterThanOrEqual(0);
@@ -28,7 +28,7 @@ describe('Entropy - Core Random', () => {
     }
   });
 
-  test('secureRandomInt returns values in [min, max]', () => {
+  test("secureRandomInt returns values in [min, max]", () => {
     for (let i = 0; i < 100; i++) {
       const val = secureRandomInt(5, 10);
       expect(val).toBeGreaterThanOrEqual(5);
@@ -37,21 +37,21 @@ describe('Entropy - Core Random', () => {
     }
   });
 
-  test('secureShuffle returns array of same length', () => {
+  test("secureShuffle returns array of same length", () => {
     const arr = [1, 2, 3, 4, 5];
     const shuffled = secureShuffle(arr);
     expect(shuffled.length).toBe(arr.length);
     expect(shuffled.sort()).toEqual(arr.sort());
   });
 
-  test('secureShuffle does not mutate original', () => {
+  test("secureShuffle does not mutate original", () => {
     const arr = [1, 2, 3, 4, 5];
     const original = [...arr];
     secureShuffle(arr);
     expect(arr).toEqual(original);
   });
 
-  test('securePickN returns correct count', () => {
+  test("securePickN returns correct count", () => {
     const arr = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
     const picked = securePickN(arr, 3);
     expect(picked.length).toBe(3);
@@ -59,14 +59,14 @@ describe('Entropy - Core Random', () => {
     picked.forEach((item) => expect(arr).toContain(item));
   });
 
-  test('securePickN with count > length returns all items shuffled', () => {
+  test("securePickN with count > length returns all items shuffled", () => {
     const arr = [1, 2, 3];
     const picked = securePickN(arr, 10);
     expect(picked.length).toBe(3);
     expect(picked.sort()).toEqual(arr.sort());
   });
 
-  test('biasedRandomCount returns values in range', () => {
+  test("biasedRandomCount returns values in range", () => {
     for (let i = 0; i < 100; i++) {
       const val = biasedRandomCount(5, 15);
       expect(val).toBeGreaterThanOrEqual(5);
@@ -76,20 +76,20 @@ describe('Entropy - Core Random', () => {
   });
 });
 
-describe('Entropy - Weighted Selection', () => {
-  test('weightedPick throws on empty array', () => {
-    expect(() => weightedPick([], () => 1)).toThrow('Empty array');
+describe("Entropy - Weighted Selection", () => {
+  test("weightedPick throws on empty array", () => {
+    expect(() => weightedPick([], () => 1)).toThrow("Empty array");
   });
 
-  test('weightedPick returns only item for single-element array', () => {
+  test("weightedPick returns only item for single-element array", () => {
     const result = weightedPick([42], () => 1);
     expect(result).toBe(42);
   });
 
-  test('weightedPick respects weights', () => {
+  test("weightedPick respects weights", () => {
     const items = [
-      { id: 'heavy', weight: 100 },
-      { id: 'light', weight: 1 },
+      { id: "heavy", weight: 100 },
+      { id: "light", weight: 1 },
     ];
 
     const counts: Record<string, number> = { heavy: 0, light: 0 };
@@ -102,14 +102,14 @@ describe('Entropy - Weighted Selection', () => {
     expect(counts.heavy).toBeGreaterThan(counts.light * 10);
   });
 
-  test('weightedPick handles zero/negative weights gracefully', () => {
+  test("weightedPick handles zero/negative weights gracefully", () => {
     const items = [1, 2, 3];
     // Should not throw, falls back to uniform
     const result = weightedPick(items, () => 0);
     expect(items).toContain(result);
   });
 
-  test('urgencyWeight returns higher weight for closer resolution', () => {
+  test("urgencyWeight returns higher weight for closer resolution", () => {
     const soon = { resolutionDate: new Date(Date.now() + 30 * 60 * 1000) }; // 30 min
     const later = {
       resolutionDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
@@ -119,15 +119,15 @@ describe('Entropy - Weighted Selection', () => {
     expect(weightFn(soon)).toBeGreaterThan(weightFn(later));
   });
 
-  test('urgencyWeight handles null resolutionDate', () => {
+  test("urgencyWeight handles null resolutionDate", () => {
     const noDate = { resolutionDate: null };
     const weightFn = urgencyWeight(5);
     expect(weightFn(noDate)).toBe(1); // Base weight only
   });
 });
 
-describe('Entropy - Event Cooldowns', () => {
-  test('shouldFireEvent respects minCooldown', () => {
+describe("Entropy - Event Cooldowns", () => {
+  test("shouldFireEvent respects minCooldown", () => {
     const state: EventCooldownState = {
       lastOccurrence: 100,
       minCooldown: 10,
@@ -145,7 +145,7 @@ describe('Entropy - Event Cooldowns', () => {
     expect(state.lastOccurrence).toBe(115); // Updated
   });
 
-  test('shouldFireEvent probability increases with decay', () => {
+  test("shouldFireEvent probability increases with decay", () => {
     let fires = 0;
     for (let i = 0; i < 100; i++) {
       const state: EventCooldownState = {
@@ -162,7 +162,7 @@ describe('Entropy - Event Cooldowns', () => {
     expect(fires).toBe(100);
   });
 
-  test('shouldFireEvent respects maxProbability', () => {
+  test("shouldFireEvent respects maxProbability", () => {
     const state: EventCooldownState = {
       lastOccurrence: 0,
       minCooldown: 1,
@@ -183,8 +183,8 @@ describe('Entropy - Event Cooldowns', () => {
   });
 });
 
-describe('Entropy - Sentiment Signals', () => {
-  test('generateSentimentSignal returns values in [-1, 1]', () => {
+describe("Entropy - Sentiment Signals", () => {
+  test("generateSentimentSignal returns values in [-1, 1]", () => {
     for (let i = 0; i < 100; i++) {
       const val = generateSentimentSignal(true, 0.8, 0.5);
       expect(val).toBeGreaterThanOrEqual(-1);
@@ -192,7 +192,7 @@ describe('Entropy - Sentiment Signals', () => {
     }
   });
 
-  test('positive signal trends positive', () => {
+  test("positive signal trends positive", () => {
     let sum = 0;
     for (let i = 0; i < 100; i++) {
       sum += generateSentimentSignal(true, 0.7, 0.2);
@@ -200,7 +200,7 @@ describe('Entropy - Sentiment Signals', () => {
     expect(sum / 100).toBeGreaterThan(0.3); // Average should be positive
   });
 
-  test('negative signal trends negative', () => {
+  test("negative signal trends negative", () => {
     let sum = 0;
     for (let i = 0; i < 100; i++) {
       sum += generateSentimentSignal(false, 0.7, 0.2);
@@ -208,7 +208,7 @@ describe('Entropy - Sentiment Signals', () => {
     expect(sum / 100).toBeLessThan(-0.3); // Average should be negative
   });
 
-  test('noise adds variance', () => {
+  test("noise adds variance", () => {
     const signals: number[] = [];
     for (let i = 0; i < 100; i++) {
       signals.push(generateSentimentSignal(true, 0.5, 0.3));
@@ -219,8 +219,8 @@ describe('Entropy - Sentiment Signals', () => {
   });
 });
 
-describe('Entropy - SeededRandom', () => {
-  test('same seed produces same sequence', () => {
+describe("Entropy - SeededRandom", () => {
+  test("same seed produces same sequence", () => {
     const rng1 = new SeededRandom(12345);
     const rng2 = new SeededRandom(12345);
 
@@ -229,7 +229,7 @@ describe('Entropy - SeededRandom', () => {
     }
   });
 
-  test('different seeds produce different sequences', () => {
+  test("different seeds produce different sequences", () => {
     const rng1 = new SeededRandom(12345);
     const rng2 = new SeededRandom(54321);
 
@@ -240,14 +240,14 @@ describe('Entropy - SeededRandom', () => {
     expect(same).toBeLessThan(3); // Very unlikely to match
   });
 
-  test('string seed works', () => {
-    const rng1 = new SeededRandom('test-seed');
-    const rng2 = new SeededRandom('test-seed');
+  test("string seed works", () => {
+    const rng1 = new SeededRandom("test-seed");
+    const rng2 = new SeededRandom("test-seed");
 
     expect(rng1.next()).toBe(rng2.next());
   });
 
-  test('nextInt returns integers in range', () => {
+  test("nextInt returns integers in range", () => {
     const rng = new SeededRandom(42);
     for (let i = 0; i < 100; i++) {
       const val = rng.nextInt(10, 20);
@@ -257,7 +257,7 @@ describe('Entropy - SeededRandom', () => {
     }
   });
 
-  test('nextFloat returns floats in range', () => {
+  test("nextFloat returns floats in range", () => {
     const rng = new SeededRandom(42);
     for (let i = 0; i < 100; i++) {
       const val = rng.nextFloat(1.5, 3.5);
@@ -266,15 +266,15 @@ describe('Entropy - SeededRandom', () => {
     }
   });
 
-  test('pick returns item from array', () => {
+  test("pick returns item from array", () => {
     const rng = new SeededRandom(42);
-    const arr = ['a', 'b', 'c', 'd'];
+    const arr = ["a", "b", "c", "d"];
     for (let i = 0; i < 20; i++) {
       expect(arr).toContain(rng.pick(arr));
     }
   });
 
-  test('shuffle returns all items', () => {
+  test("shuffle returns all items", () => {
     const rng = new SeededRandom(42);
     const arr = [1, 2, 3, 4, 5];
     const shuffled = rng.shuffle(arr);
@@ -282,7 +282,7 @@ describe('Entropy - SeededRandom', () => {
     expect(shuffled.sort()).toEqual(arr.sort());
   });
 
-  test('shuffle is deterministic with same seed', () => {
+  test("shuffle is deterministic with same seed", () => {
     const arr = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
     const rng1 = new SeededRandom(999);
     const rng2 = new SeededRandom(999);

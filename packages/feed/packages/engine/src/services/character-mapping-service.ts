@@ -5,12 +5,12 @@
  * Uses StaticDataRegistry for mappings (no database calls).
  */
 
-import { logger } from '@feed/shared';
+import { logger } from "@feed/shared";
 import {
   type CharacterMapping,
   type OrganizationMapping,
   StaticDataRegistry,
-} from './static-data-registry';
+} from "./static-data-registry";
 
 export interface TextReplacementResult {
   transformedText: string;
@@ -52,14 +52,14 @@ export class CharacterMappingService {
     logger.info(
       `Loaded ${this.characterMappingsCache.length} character and ${this.organizationMappingsCache.length} organization mappings`,
       undefined,
-      'CharacterMappingService'
+      "CharacterMappingService",
     );
   }
 
   /** Build word-to-word mapping from real name to parody name */
   private buildWordMapping(
     realName: string,
-    parodyName: string
+    parodyName: string,
   ): Map<string, string> {
     const realWords = realName.split(/\s+/);
     const parodyWords = parodyName.split(/\s+/);
@@ -98,14 +98,14 @@ export class CharacterMappingService {
   }
 
   private generateUsername(name: string): string {
-    return name.toLowerCase().replace(/\s+/g, '');
+    return name.toLowerCase().replace(/\s+/g, "");
   }
 
   /** Get replacement for search term - full name or word-to-word mapped alias */
   private getReplacementForTerm(
     searchName: string,
     realName: string,
-    parodyName: string
+    parodyName: string,
   ): string {
     // If searching for the full name, return full parody name
     if (searchName.toLowerCase() === realName.toLowerCase()) {
@@ -128,7 +128,7 @@ export class CharacterMappingService {
         const mapped = wordMap.get(word.toLowerCase());
         return mapped || word; // Keep original if no mapping
       });
-      return mappedWords.join(' ');
+      return mappedWords.join(" ");
     }
 
     return parodyName;
@@ -153,7 +153,7 @@ export class CharacterMappingService {
 
       const usernameRegex = new RegExp(
         `@${escapeRegex(realUsername)}\\b`,
-        'gi'
+        "gi",
       );
 
       if (usernameRegex.test(transformedText)) {
@@ -161,7 +161,7 @@ export class CharacterMappingService {
           const matchedUsername = match.slice(1);
           const casedReplacement = this.preserveCase(
             matchedUsername,
-            parodyUsername
+            parodyUsername,
           );
           characterMappingsResult[`@${realUsername}`] = `@${casedReplacement}`;
           replacementCount++;
@@ -178,7 +178,7 @@ export class CharacterMappingService {
         const replacement = this.getReplacementForTerm(
           searchName,
           mapping.realName,
-          mapping.parodyName
+          mapping.parodyName,
         );
 
         if (transformedText.toLowerCase().includes(replacement.toLowerCase())) {
@@ -187,7 +187,7 @@ export class CharacterMappingService {
 
         const regex = new RegExp(
           `(?:^|\\s|[^a-zA-Z@])${escapeRegex(searchName)}(?:$|\\s|[^a-zA-Z])`,
-          'gi'
+          "gi",
         );
 
         const matches = transformedText.match(regex);
@@ -196,23 +196,23 @@ export class CharacterMappingService {
             const matchLower = match.toLowerCase();
             const searchLower = searchName.toLowerCase();
 
-            const leadingChar = !matchLower.startsWith(searchLower[0] ?? '')
+            const leadingChar = !matchLower.startsWith(searchLower[0] ?? "")
               ? match[0]
-              : '';
+              : "";
             const trailingChar = !matchLower.endsWith(
-              searchLower[searchLower.length - 1] ?? ''
+              searchLower[searchLower.length - 1] ?? "",
             )
               ? match[match.length - 1]
-              : '';
+              : "";
 
             const actualMatch = match.slice(
               leadingChar ? 1 : 0,
-              trailingChar ? -1 : undefined
+              trailingChar ? -1 : undefined,
             );
 
             const casedReplacement = this.preserveCase(
               actualMatch,
-              replacement
+              replacement,
             );
 
             characterMappingsResult[searchName] = casedReplacement;
@@ -232,7 +232,7 @@ export class CharacterMappingService {
         const replacement = this.getReplacementForTerm(
           searchName,
           mapping.realName,
-          mapping.parodyName
+          mapping.parodyName,
         );
 
         if (transformedText.toLowerCase().includes(replacement.toLowerCase())) {
@@ -241,7 +241,7 @@ export class CharacterMappingService {
 
         const regex = new RegExp(
           `(?:^|\\s|[^a-zA-Z@])${escapeRegex(searchName)}(?:$|\\s|[^a-zA-Z])`,
-          'gi'
+          "gi",
         );
 
         const matches = transformedText.match(regex);
@@ -250,23 +250,23 @@ export class CharacterMappingService {
             const matchLower = match.toLowerCase();
             const searchLower = searchName.toLowerCase();
 
-            const leadingChar = !matchLower.startsWith(searchLower[0] ?? '')
+            const leadingChar = !matchLower.startsWith(searchLower[0] ?? "")
               ? match[0]
-              : '';
+              : "";
             const trailingChar = !matchLower.endsWith(
-              searchLower[searchLower.length - 1] ?? ''
+              searchLower[searchLower.length - 1] ?? "",
             )
               ? match[match.length - 1]
-              : '';
+              : "";
 
             const actualMatch = match.slice(
               leadingChar ? 1 : 0,
-              trailingChar ? -1 : undefined
+              trailingChar ? -1 : undefined,
             );
 
             const casedReplacement = this.preserveCase(
               actualMatch,
-              replacement
+              replacement,
             );
 
             organizationMappingsResult[searchName] = casedReplacement;
@@ -295,7 +295,7 @@ export class CharacterMappingService {
       const searchNames = [mapping.realName, ...mapping.aliases];
 
       for (const searchName of searchNames) {
-        const regex = new RegExp(`\\b${escapeRegex(searchName)}\\b`, 'i');
+        const regex = new RegExp(`\\b${escapeRegex(searchName)}\\b`, "i");
 
         if (regex.test(text)) {
           foundNames.push(searchName);
@@ -307,7 +307,7 @@ export class CharacterMappingService {
       const searchNames = [mapping.realName, ...mapping.aliases];
 
       for (const searchName of searchNames) {
-        const regex = new RegExp(`\\b${escapeRegex(searchName)}\\b`, 'i');
+        const regex = new RegExp(`\\b${escapeRegex(searchName)}\\b`, "i");
 
         if (regex.test(text)) {
           foundNames.push(searchName);
@@ -335,7 +335,7 @@ export class CharacterMappingService {
 }
 
 function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 // Singleton instance

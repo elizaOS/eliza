@@ -40,23 +40,23 @@
  * ```
  */
 
-import { withErrorHandling } from '@feed/api';
-import { db } from '@feed/db';
-import { calculatePortfolioBreakdown } from '@feed/engine';
-import { ImageResponse } from 'next/og';
-import type { NextRequest } from 'next/server';
+import { withErrorHandling } from "@feed/api";
+import { db } from "@feed/db";
+import { calculatePortfolioBreakdown } from "@feed/engine";
+import { ImageResponse } from "next/og";
+import type { NextRequest } from "next/server";
 
 // Use Node.js runtime for full database support
-export const runtime = 'nodejs';
+export const runtime = "nodejs";
 
 // Disable static generation for this route - it requires database access
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 // Cache for 1 hour, revalidate in background
 export const revalidate = 3600;
 
 export const GET = withErrorHandling(async function GET(
   _request: NextRequest,
-  context: { params: Promise<{ userId: string }> }
+  context: { params: Promise<{ userId: string }> },
 ) {
   const { userId } = await context.params;
 
@@ -72,35 +72,35 @@ export const GET = withErrorHandling(async function GET(
     calculatePortfolioBreakdown(userId),
   ]);
 
-  const displayName = user?.displayName || user?.username || 'Feed User';
+  const displayName = user?.displayName || user?.username || "Feed User";
   const totalPnL = pnlData?.totalPnL || 0;
   const totalAssets = pnlData?.totalAssets || 0;
   const availableBalance = pnlData?.available || 0;
-  const pnlSign = totalPnL >= 0 ? '+' : '';
-  const pnlColor = totalPnL >= 0 ? '#10B981' : '#EF4444';
+  const pnlSign = totalPnL >= 0 ? "+" : "";
+  const pnlColor = totalPnL >= 0 ? "#10B981" : "#EF4444";
 
   return new ImageResponse(
     <div
       style={{
-        height: '100%',
-        width: '100%',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'linear-gradient(135deg, #0B1C3D 0%, #1a2942 100%)',
-        fontFamily: 'Inter, sans-serif',
+        height: "100%",
+        width: "100%",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "linear-gradient(135deg, #0B1C3D 0%, #1a2942 100%)",
+        fontFamily: "Inter, sans-serif",
       }}
     >
       <div
         style={{
-          position: 'absolute',
+          position: "absolute",
           top: 40,
           left: 40,
           fontSize: 32,
-          fontWeight: 'bold',
-          color: 'white',
-          display: 'flex',
+          fontWeight: "bold",
+          color: "white",
+          display: "flex",
         }}
       >
         Feed
@@ -108,9 +108,9 @@ export const GET = withErrorHandling(async function GET(
 
       <div
         style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
           marginBottom: 60,
         }}
       >
@@ -121,8 +121,8 @@ export const GET = withErrorHandling(async function GET(
             style={{
               width: 120,
               height: 120,
-              borderRadius: '50%',
-              border: '4px solid rgba(255, 255, 255, 0.1)',
+              borderRadius: "50%",
+              border: "4px solid rgba(255, 255, 255, 0.1)",
               marginBottom: 20,
             }}
           />
@@ -130,10 +130,10 @@ export const GET = withErrorHandling(async function GET(
         <div
           style={{
             fontSize: 36,
-            fontWeight: 'bold',
-            color: 'white',
+            fontWeight: "bold",
+            color: "white",
             marginBottom: 8,
-            display: 'flex',
+            display: "flex",
           }}
         >
           {displayName}
@@ -142,8 +142,8 @@ export const GET = withErrorHandling(async function GET(
           <div
             style={{
               fontSize: 24,
-              color: 'rgba(255, 255, 255, 0.6)',
-              display: 'flex',
+              color: "rgba(255, 255, 255, 0.6)",
+              display: "flex",
             }}
           >
             @{user.username}
@@ -153,30 +153,30 @@ export const GET = withErrorHandling(async function GET(
 
       <div
         style={{
-          display: 'flex',
-          flexDirection: 'column',
+          display: "flex",
+          flexDirection: "column",
           gap: 32,
-          width: '80%',
+          width: "80%",
           maxWidth: 800,
         }}
       >
         <div
           style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
             padding: 40,
             borderRadius: 20,
-            background: 'rgba(255, 255, 255, 0.05)',
-            border: '2px solid rgba(255, 255, 255, 0.1)',
+            background: "rgba(255, 255, 255, 0.05)",
+            border: "2px solid rgba(255, 255, 255, 0.1)",
           }}
         >
           <div
             style={{
               fontSize: 24,
-              color: 'rgba(255, 255, 255, 0.7)',
+              color: "rgba(255, 255, 255, 0.7)",
               marginBottom: 12,
-              display: 'flex',
+              display: "flex",
             }}
           >
             Total P&L
@@ -184,9 +184,9 @@ export const GET = withErrorHandling(async function GET(
           <div
             style={{
               fontSize: 72,
-              fontWeight: 'bold',
+              fontWeight: "bold",
               color: pnlColor,
-              display: 'flex',
+              display: "flex",
             }}
           >
             {pnlSign}${Math.abs(totalPnL).toFixed(2)}
@@ -195,29 +195,29 @@ export const GET = withErrorHandling(async function GET(
 
         <div
           style={{
-            display: 'flex',
+            display: "flex",
             gap: 24,
-            width: '100%',
+            width: "100%",
           }}
         >
           <div
             style={{
               flex: 1,
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
               padding: 30,
               borderRadius: 16,
-              background: 'rgba(255, 255, 255, 0.05)',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
+              background: "rgba(255, 255, 255, 0.05)",
+              border: "1px solid rgba(255, 255, 255, 0.1)",
             }}
           >
             <div
               style={{
                 fontSize: 18,
-                color: 'rgba(255, 255, 255, 0.6)',
+                color: "rgba(255, 255, 255, 0.6)",
                 marginBottom: 8,
-                display: 'flex',
+                display: "flex",
               }}
             >
               Total Assets
@@ -225,9 +225,9 @@ export const GET = withErrorHandling(async function GET(
             <div
               style={{
                 fontSize: 36,
-                fontWeight: 'bold',
-                color: 'white',
-                display: 'flex',
+                fontWeight: "bold",
+                color: "white",
+                display: "flex",
               }}
             >
               ${totalAssets.toFixed(2)}
@@ -237,21 +237,21 @@ export const GET = withErrorHandling(async function GET(
           <div
             style={{
               flex: 1,
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
               padding: 30,
               borderRadius: 16,
-              background: 'rgba(255, 255, 255, 0.05)',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
+              background: "rgba(255, 255, 255, 0.05)",
+              border: "1px solid rgba(255, 255, 255, 0.1)",
             }}
           >
             <div
               style={{
                 fontSize: 18,
-                color: 'rgba(255, 255, 255, 0.6)',
+                color: "rgba(255, 255, 255, 0.6)",
                 marginBottom: 8,
-                display: 'flex',
+                display: "flex",
               }}
             >
               Trading Balance
@@ -259,9 +259,9 @@ export const GET = withErrorHandling(async function GET(
             <div
               style={{
                 fontSize: 36,
-                fontWeight: 'bold',
-                color: 'white',
-                display: 'flex',
+                fontWeight: "bold",
+                color: "white",
+                display: "flex",
               }}
             >
               ${availableBalance.toFixed(2)}
@@ -272,11 +272,11 @@ export const GET = withErrorHandling(async function GET(
 
       <div
         style={{
-          position: 'absolute',
+          position: "absolute",
           bottom: 40,
-          display: 'flex',
+          display: "flex",
           fontSize: 20,
-          color: 'rgba(255, 255, 255, 0.5)',
+          color: "rgba(255, 255, 255, 0.5)",
         }}
       >
         Trading narratives, sharing the upside
@@ -285,6 +285,6 @@ export const GET = withErrorHandling(async function GET(
     {
       width: 1200,
       height: 630,
-    }
+    },
   );
 });

@@ -57,17 +57,17 @@
  * @see {@link /lib/services/points-service} Points service
  */
 
-import { ReputationService, withErrorHandling } from '@feed/api';
-import { db } from '@feed/db';
-import { getWaitlistBaseUrl, logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { z } from 'zod';
+import { ReputationService, withErrorHandling } from "@feed/api";
+import { db } from "@feed/db";
+import { getWaitlistBaseUrl, logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { z } from "zod";
 
 // Configurable redirect destination after OAuth completion.
 // Treat empty string as "unset" to avoid redirecting to `/?success=...`.
 const OAUTH_REDIRECT_PATH =
-  process.env.OAUTH_REDIRECT_PATH?.trim() || '/rewards';
+  process.env.OAUTH_REDIRECT_PATH?.trim() || "/rewards";
 
 const TwitterCallbackQuerySchema = z.object({
   code: z.string().optional(),
@@ -78,7 +78,7 @@ const TwitterCallbackQuerySchema = z.object({
 export const GET = withErrorHandling(async (request: NextRequest) => {
   const searchParams = request.nextUrl.searchParams;
   const parsed = TwitterCallbackQuerySchema.safeParse(
-    Object.fromEntries(searchParams)
+    Object.fromEntries(searchParams),
   );
 
   // Use the waitlist URL as base for all redirects
@@ -87,9 +87,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   if (!parsed.success) {
     return NextResponse.redirect(
       new URL(
-        `${OAUTH_REDIRECT_PATH}?error=${encodeURIComponent('Invalid parameters received from Twitter')}`,
-        baseUrl
-      )
+        `${OAUTH_REDIRECT_PATH}?error=${encodeURIComponent("Invalid parameters received from Twitter")}`,
+        baseUrl,
+      ),
     );
   }
 
@@ -97,61 +97,61 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
   // Handle OAuth error
   if (oauthError) {
-    logger.error('Twitter OAuth error', { oauthError }, 'TwitterCallback');
+    logger.error("Twitter OAuth error", { oauthError }, "TwitterCallback");
     return NextResponse.redirect(
       new URL(
-        `${OAUTH_REDIRECT_PATH}?error=${encodeURIComponent('Twitter authentication failed')}`,
-        baseUrl
-      )
+        `${OAUTH_REDIRECT_PATH}?error=${encodeURIComponent("Twitter authentication failed")}`,
+        baseUrl,
+      ),
     );
   }
 
   if (!code || !state) {
     logger.warn(
-      'Twitter callback missing code or state',
+      "Twitter callback missing code or state",
       { hasCode: !!code, hasState: !!state },
-      'TwitterCallback'
+      "TwitterCallback",
     );
     return NextResponse.redirect(
-      new URL(`${OAUTH_REDIRECT_PATH}?error=missing_params`, baseUrl)
+      new URL(`${OAUTH_REDIRECT_PATH}?error=missing_params`, baseUrl),
     );
   }
 
   // Verify state and get user ID from it
   // State format: "userId|timestamp|random" (using | to avoid conflicts with Privy DIDs)
-  const stateParts = state.split('|');
+  const stateParts = state.split("|");
   if (stateParts.length < 2) {
     logger.warn(
-      'Twitter callback invalid state format',
+      "Twitter callback invalid state format",
       { state },
-      'TwitterCallback'
+      "TwitterCallback",
     );
     return NextResponse.redirect(
-      new URL(`${OAUTH_REDIRECT_PATH}?error=invalid_state`, baseUrl)
+      new URL(`${OAUTH_REDIRECT_PATH}?error=invalid_state`, baseUrl),
     );
   }
 
   const [userId, timestampStr] = stateParts;
   if (!userId || !timestampStr) {
     logger.warn(
-      'Twitter callback missing userId or timestamp in state',
+      "Twitter callback missing userId or timestamp in state",
       { state },
-      'TwitterCallback'
+      "TwitterCallback",
     );
     return NextResponse.redirect(
-      new URL(`${OAUTH_REDIRECT_PATH}?error=invalid_state`, baseUrl)
+      new URL(`${OAUTH_REDIRECT_PATH}?error=invalid_state`, baseUrl),
     );
   }
 
   const stateTimestamp = Number.parseInt(timestampStr, 10);
-  if (isNaN(stateTimestamp)) {
+  if (Number.isNaN(stateTimestamp)) {
     logger.warn(
-      'Twitter callback invalid timestamp in state',
+      "Twitter callback invalid timestamp in state",
       { state, timestampStr },
-      'TwitterCallback'
+      "TwitterCallback",
     );
     return NextResponse.redirect(
-      new URL(`${OAUTH_REDIRECT_PATH}?error=invalid_state`, baseUrl)
+      new URL(`${OAUTH_REDIRECT_PATH}?error=invalid_state`, baseUrl),
     );
   }
 
@@ -160,12 +160,12 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   // State expires after 10 minutes
   if (now - stateTimestamp > 10 * 60 * 1000) {
     logger.warn(
-      'Twitter callback state expired',
+      "Twitter callback state expired",
       { stateTimestamp, now, ageMs: now - stateTimestamp },
-      'TwitterCallback'
+      "TwitterCallback",
     );
     return NextResponse.redirect(
-      new URL(`${OAUTH_REDIRECT_PATH}?error=state_expired`, baseUrl)
+      new URL(`${OAUTH_REDIRECT_PATH}?error=state_expired`, baseUrl),
     );
   }
 
@@ -173,40 +173,40 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   const oauthState = await db.oAuthState.findFirst({
     where: {
       state,
-      returnPath: 'twitter', // Provider stored in returnPath
+      returnPath: "twitter", // Provider stored in returnPath
       userId,
       expiresAt: { gte: new Date() },
     },
   });
 
-  if (!oauthState || !oauthState.codeVerifier) {
+  if (!oauthState?.codeVerifier) {
     logger.warn(
-      'Twitter callback missing or expired PKCE state',
+      "Twitter callback missing or expired PKCE state",
       {
         state,
         userId,
         found: !!oauthState,
       },
-      'TwitterCallback'
+      "TwitterCallback",
     );
 
     return NextResponse.redirect(
-      new URL(`${OAUTH_REDIRECT_PATH}?error=invalid_state`, baseUrl)
+      new URL(`${OAUTH_REDIRECT_PATH}?error=invalid_state`, baseUrl),
     );
   }
 
   // Exchange code for access token with PKCE verifier
-  const tokenResponse = await fetch('https://api.twitter.com/2/oauth2/token', {
-    method: 'POST',
+  const tokenResponse = await fetch("https://api.twitter.com/2/oauth2/token", {
+    method: "POST",
     headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
+      "Content-Type": "application/x-www-form-urlencoded",
       Authorization: `Basic ${Buffer.from(
-        `${process.env.TWITTER_CLIENT_ID}:${process.env.TWITTER_CLIENT_SECRET}`
-      ).toString('base64')}`,
+        `${process.env.TWITTER_CLIENT_ID}:${process.env.TWITTER_CLIENT_SECRET}`,
+      ).toString("base64")}`,
     },
     body: new URLSearchParams({
       code,
-      grant_type: 'authorization_code',
+      grant_type: "authorization_code",
       redirect_uri: `${getWaitlistBaseUrl()}/api/auth/twitter/callback`,
       code_verifier: oauthState.codeVerifier,
     }),
@@ -219,21 +219,21 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     })
     .catch((error) => {
       logger.warn(
-        'Failed to delete OAuth state',
+        "Failed to delete OAuth state",
         { error, stateId: oauthState.id },
-        'TwitterCallback'
+        "TwitterCallback",
       );
     });
 
   if (!tokenResponse.ok) {
     const errorData = await tokenResponse.text();
     logger.error(
-      'Failed to exchange Twitter code',
+      "Failed to exchange Twitter code",
       { errorData },
-      'TwitterCallback'
+      "TwitterCallback",
     );
     return NextResponse.redirect(
-      new URL(`${OAUTH_REDIRECT_PATH}?error=token_exchange_failed`, baseUrl)
+      new URL(`${OAUTH_REDIRECT_PATH}?error=token_exchange_failed`, baseUrl),
     );
   }
 
@@ -242,18 +242,18 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
   // Get user info from Twitter - fetch comprehensive profile data
   const userResponse = await fetch(
-    'https://api.twitter.com/2/users/me?user.fields=username,name,profile_image_url,description',
+    "https://api.twitter.com/2/users/me?user.fields=username,name,profile_image_url,description",
     {
       headers: {
         Authorization: `Bearer ${accessToken}`,
       },
-    }
+    },
   );
 
   if (!userResponse.ok) {
-    logger.error('Failed to get Twitter user info', {}, 'TwitterCallback');
+    logger.error("Failed to get Twitter user info", {}, "TwitterCallback");
     return NextResponse.redirect(
-      new URL(`${OAUTH_REDIRECT_PATH}?error=failed_to_get_user`, baseUrl)
+      new URL(`${OAUTH_REDIRECT_PATH}?error=failed_to_get_user`, baseUrl),
     );
   }
 
@@ -269,12 +269,12 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
   if (!userData.data?.id || !userData.data?.username) {
     logger.error(
-      'Invalid Twitter user data received',
+      "Invalid Twitter user data received",
       { userData },
-      'TwitterCallback'
+      "TwitterCallback",
     );
     return NextResponse.redirect(
-      new URL(`${OAUTH_REDIRECT_PATH}?error=invalid_twitter_data`, baseUrl)
+      new URL(`${OAUTH_REDIRECT_PATH}?error=invalid_twitter_data`, baseUrl),
     );
   }
 
@@ -292,7 +292,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
   if (existingLink) {
     return NextResponse.redirect(
-      new URL(`${OAUTH_REDIRECT_PATH}?error=twitter_already_linked`, baseUrl)
+      new URL(`${OAUTH_REDIRECT_PATH}?error=twitter_already_linked`, baseUrl),
     );
   }
 
@@ -314,7 +314,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   // Award points if this is the first time linking Twitter
   const pointsResult = await ReputationService.awardTwitterLink(
     userId,
-    twitterUsername
+    twitterUsername,
   );
 
   // Check if this qualifies a referral (award bonus to referrer)
@@ -324,26 +324,26 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       logger.warn(
         `Failed to check and qualify referral for user ${userId}`,
         { userId, error },
-        'TwitterCallback'
+        "TwitterCallback",
       );
     });
   }
 
   logger.info(
-    'Twitter account linked successfully',
+    "Twitter account linked successfully",
     {
       userId,
       twitterUsername,
       reputationAwarded: pointsResult.reputationAwarded,
     },
-    'TwitterCallback'
+    "TwitterCallback",
   );
 
   // Redirect back to configured destination with success
   return NextResponse.redirect(
     new URL(
       `${OAUTH_REDIRECT_PATH}?success=twitter_linked&reputation=${pointsResult.reputationAwarded}`,
-      baseUrl
-    )
+      baseUrl,
+    ),
   );
 });

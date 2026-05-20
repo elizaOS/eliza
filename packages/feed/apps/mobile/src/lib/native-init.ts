@@ -9,12 +9,12 @@
  * - App lifecycle listeners
  */
 
-import { initAppLifecycle } from './deep-links';
-import { isNativePlatform } from './platform';
-import { setStatusBarStyle } from './status-bar';
+import { initAppLifecycle } from "./deep-links";
+import { isNativePlatform } from "./platform";
+import { setStatusBarStyle } from "./status-bar";
 
 interface NativeInitOptions {
-  theme: 'dark' | 'light';
+  theme: "dark" | "light";
   navigate: (path: string) => void;
 }
 
@@ -35,22 +35,22 @@ export async function initNativeFeatures({
   await initAppLifecycle({ navigate });
 
   // Keyboard plugin — resize body when keyboard opens
-  const { Keyboard } = await import('@capacitor/keyboard');
-  Keyboard.addListener('keyboardWillShow', (info) => {
+  const { Keyboard } = await import("@capacitor/keyboard");
+  Keyboard.addListener("keyboardWillShow", (info) => {
     document.body.style.setProperty(
-      '--keyboard-height',
-      `${info.keyboardHeight}px`
+      "--keyboard-height",
+      `${info.keyboardHeight}px`,
     );
   });
-  Keyboard.addListener('keyboardWillHide', () => {
-    document.body.style.setProperty('--keyboard-height', '0px');
+  Keyboard.addListener("keyboardWillHide", () => {
+    document.body.style.setProperty("--keyboard-height", "0px");
   });
 }
 
 /**
  * Update status bar when theme changes.
  */
-export async function updateTheme(theme: 'dark' | 'light'): Promise<void> {
+export async function updateTheme(theme: "dark" | "light"): Promise<void> {
   if (!isNativePlatform()) return;
   await setStatusBarStyle(theme);
 }

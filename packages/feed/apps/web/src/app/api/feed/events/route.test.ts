@@ -1,40 +1,40 @@
-import { beforeEach, describe, expect, it, mock } from 'bun:test';
-import type { NextRequest } from 'next/server';
+import { beforeEach, describe, expect, it, mock } from "bun:test";
+import type { NextRequest } from "next/server";
 
 const insertMock = mock(() => ({
   values: mock(() => Promise.resolve()),
 }));
-const generateSnowflakeIdMock = mock(() => Promise.resolve('evt-1'));
+const generateSnowflakeIdMock = mock(() => Promise.resolve("evt-1"));
 const checkRateLimitAsyncMock = mock(() =>
-  Promise.resolve({ allowed: true, retryAfter: 0 })
+  Promise.resolve({ allowed: true, retryAfter: 0 }),
 );
 
-mock.module('@feed/api', () => ({
+mock.module("@feed/api", () => ({
   addPublicReadHeaders: () => {},
   checkRateLimitAsync: checkRateLimitAsyncMock,
   rateLimitError: (retryAfter: number) =>
     new Response(
       JSON.stringify({
         success: false,
-        error: 'Rate limit exceeded',
+        error: "Rate limit exceeded",
         retryAfter,
       }),
       {
         status: 429,
         headers: {
-          'Content-Type': 'application/json',
-          'Retry-After': String(retryAfter),
+          "Content-Type": "application/json",
+          "Retry-After": String(retryAfter),
         },
-      }
+      },
     ),
   authenticate: () =>
     Promise.resolve({
-      userId: 'privy-user-1',
-      walletAddress: '0x1234567890abcdef',
+      userId: "privy-user-1",
+      walletAddress: "0x1234567890abcdef",
     }),
   ensureUserForAuth: () =>
     Promise.resolve({
-      user: { id: 'user-1' },
+      user: { id: "user-1" },
     }),
   publicRateLimit: () =>
     Promise.resolve({
@@ -46,29 +46,29 @@ mock.module('@feed/api', () => ({
     FEED_EVENT_BATCH: {
       maxRequests: 120,
       windowMs: 60000,
-      actionType: 'feed_event_batch',
+      actionType: "feed_event_batch",
     },
   },
   successResponse: (data: unknown) =>
     new Response(JSON.stringify(data), {
-      headers: { 'Content-Type': 'application/json' },
+      headers: { "Content-Type": "application/json" },
     }),
   withErrorHandling: (handler: (request: NextRequest) => Promise<Response>) =>
     handler,
 }));
 
-mock.module('@feed/db', () => ({
+mock.module("@feed/db", () => ({
   db: {
     insert: insertMock,
   },
-  feedEvents: { _table: 'FeedEvent' },
+  feedEvents: { _table: "FeedEvent" },
 }));
 
-mock.module('@feed/shared', () => ({
+mock.module("@feed/shared", () => ({
   generateSnowflakeId: generateSnowflakeIdMock,
 }));
 
-const { POST } = await import('./route');
+const { POST } = await import("./route");
 
 beforeEach(() => {
   insertMock.mockClear();
@@ -76,30 +76,30 @@ beforeEach(() => {
   checkRateLimitAsyncMock.mockClear();
 });
 
-describe('POST /api/feed/events', () => {
-  it('accepts and stores a batch of feed events', async () => {
+describe("POST /api/feed/events", () => {
+  it("accepts and stores a batch of feed events", async () => {
     const request = {
       json: () =>
         Promise.resolve({
           events: [
             {
-              actionType: 'impression',
-              surface: 'for_you',
-              itemId: 'post-1',
-              itemType: 'post',
-              clusterId: 'cluster-1',
-              topicKey: 'openai',
-              authorId: 'author-1',
+              actionType: "impression",
+              surface: "for_you",
+              itemId: "post-1",
+              itemType: "post",
+              clusterId: "cluster-1",
+              topicKey: "openai",
+              authorId: "author-1",
               feedPosition: 0,
             },
             {
-              actionType: 'trade_after_view',
-              surface: 'for_you',
-              itemId: 'market-1',
-              itemType: 'market',
-              clusterId: 'market-1',
-              marketId: 'market-1',
-              topicKey: 'openai',
+              actionType: "trade_after_view",
+              surface: "for_you",
+              itemId: "market-1",
+              itemType: "market",
+              clusterId: "market-1",
+              marketId: "market-1",
+              topicKey: "openai",
               feedPosition: 1,
               dwellMs: 2500,
             },
@@ -116,7 +116,7 @@ describe('POST /api/feed/events', () => {
     expect(payload.accepted).toBe(2);
   });
 
-  it('returns 429 when the user exceeds the feed event batch limit', async () => {
+  it("returns 429 when the user exceeds the feed event batch limit", async () => {
     checkRateLimitAsyncMock.mockResolvedValueOnce({
       allowed: false,
       retryAfter: 30,
@@ -127,10 +127,10 @@ describe('POST /api/feed/events', () => {
         Promise.resolve({
           events: [
             {
-              actionType: 'impression',
-              surface: 'for_you',
-              itemId: 'post-1',
-              itemType: 'post',
+              actionType: "impression",
+              surface: "for_you",
+              itemId: "post-1",
+              itemType: "post",
             },
           ],
         }),
@@ -142,7 +142,7 @@ describe('POST /api/feed/events', () => {
     expect(response.status).toBe(429);
     expect(insertMock).not.toHaveBeenCalled();
     expect(payload.success).toBe(false);
-    expect(payload.error).toBe('Rate limit exceeded');
+    expect(payload.error).toBe("Rate limit exceeded");
     expect(payload.retryAfter).toBe(30);
   });
 });

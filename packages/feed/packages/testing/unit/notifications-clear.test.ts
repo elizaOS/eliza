@@ -5,8 +5,8 @@
  * guard for the notification clearing endpoint.
  */
 
-import { describe, expect, it } from 'bun:test';
-import { z } from 'zod';
+import { describe, expect, it } from "bun:test";
+import { z } from "zod";
 
 // Replicate the schema from notifications/route.ts for isolated testing
 const ClearNotificationsSchema = z
@@ -17,73 +17,73 @@ const ClearNotificationsSchema = z
   .refine(
     (value) => value.clearAll === true || value.notificationIds !== undefined,
     {
-      message: 'Provide notificationIds or clearAll=true',
-    }
+      message: "Provide notificationIds or clearAll=true",
+    },
   );
 
-describe('ClearNotificationsSchema', () => {
-  describe('valid inputs', () => {
-    it('accepts clearAll=true', () => {
+describe("ClearNotificationsSchema", () => {
+  describe("valid inputs", () => {
+    it("accepts clearAll=true", () => {
       const result = ClearNotificationsSchema.parse({ clearAll: true });
       expect(result.clearAll).toBe(true);
     });
 
-    it('accepts notificationIds with entries', () => {
+    it("accepts notificationIds with entries", () => {
       const result = ClearNotificationsSchema.parse({
-        notificationIds: ['id-1', 'id-2'],
+        notificationIds: ["id-1", "id-2"],
       });
-      expect(result.notificationIds).toEqual(['id-1', 'id-2']);
+      expect(result.notificationIds).toEqual(["id-1", "id-2"]);
     });
 
-    it('accepts both clearAll and notificationIds', () => {
+    it("accepts both clearAll and notificationIds", () => {
       const result = ClearNotificationsSchema.parse({
         clearAll: true,
-        notificationIds: ['id-1'],
+        notificationIds: ["id-1"],
       });
       expect(result.clearAll).toBe(true);
-      expect(result.notificationIds).toEqual(['id-1']);
+      expect(result.notificationIds).toEqual(["id-1"]);
     });
 
-    it('accepts a single notification ID', () => {
+    it("accepts a single notification ID", () => {
       const result = ClearNotificationsSchema.parse({
-        notificationIds: ['single-id'],
+        notificationIds: ["single-id"],
       });
       expect(result.notificationIds).toHaveLength(1);
     });
   });
 
-  describe('invalid inputs', () => {
-    it('rejects empty object (no clearAll or notificationIds)', () => {
+  describe("invalid inputs", () => {
+    it("rejects empty object (no clearAll or notificationIds)", () => {
       expect(() => ClearNotificationsSchema.parse({})).toThrow();
     });
 
-    it('rejects clearAll=false without notificationIds', () => {
+    it("rejects clearAll=false without notificationIds", () => {
       expect(() =>
-        ClearNotificationsSchema.parse({ clearAll: false })
+        ClearNotificationsSchema.parse({ clearAll: false }),
       ).toThrow();
     });
 
-    it('rejects empty notificationIds array', () => {
+    it("rejects empty notificationIds array", () => {
       expect(() =>
-        ClearNotificationsSchema.parse({ notificationIds: [] })
+        ClearNotificationsSchema.parse({ notificationIds: [] }),
       ).toThrow();
     });
 
-    it('rejects notificationIds with empty strings', () => {
+    it("rejects notificationIds with empty strings", () => {
       expect(() =>
-        ClearNotificationsSchema.parse({ notificationIds: [''] })
+        ClearNotificationsSchema.parse({ notificationIds: [""] }),
       ).toThrow();
     });
 
-    it('rejects non-string notificationIds', () => {
+    it("rejects non-string notificationIds", () => {
       expect(() =>
-        ClearNotificationsSchema.parse({ notificationIds: [123] })
+        ClearNotificationsSchema.parse({ notificationIds: [123] }),
       ).toThrow();
     });
   });
 });
 
-describe('JSON parse guard', () => {
+describe("JSON parse guard", () => {
   // Replicate the parse logic from the DELETE handler
   function parseBody(rawBody: string): { parsed: unknown } | { error: string } {
     if (rawBody.trim().length === 0) {
@@ -92,32 +92,32 @@ describe('JSON parse guard', () => {
     try {
       return { parsed: JSON.parse(rawBody) };
     } catch {
-      return { error: 'Invalid JSON body' };
+      return { error: "Invalid JSON body" };
     }
   }
 
-  it('returns empty object for empty body', () => {
-    const result = parseBody('');
+  it("returns empty object for empty body", () => {
+    const result = parseBody("");
     expect(result).toEqual({ parsed: {} });
   });
 
-  it('returns empty object for whitespace-only body', () => {
-    const result = parseBody('   ');
+  it("returns empty object for whitespace-only body", () => {
+    const result = parseBody("   ");
     expect(result).toEqual({ parsed: {} });
   });
 
-  it('parses valid JSON', () => {
+  it("parses valid JSON", () => {
     const result = parseBody('{"clearAll": true}');
     expect(result).toEqual({ parsed: { clearAll: true } });
   });
 
-  it('returns error for malformed JSON', () => {
-    const result = parseBody('{not valid json}');
-    expect(result).toEqual({ error: 'Invalid JSON body' });
+  it("returns error for malformed JSON", () => {
+    const result = parseBody("{not valid json}");
+    expect(result).toEqual({ error: "Invalid JSON body" });
   });
 
-  it('returns error for truncated JSON', () => {
+  it("returns error for truncated JSON", () => {
     const result = parseBody('{"clearAll":');
-    expect(result).toEqual({ error: 'Invalid JSON body' });
+    expect(result).toEqual({ error: "Invalid JSON body" });
   });
 });

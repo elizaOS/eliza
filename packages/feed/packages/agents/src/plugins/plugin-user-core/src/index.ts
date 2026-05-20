@@ -13,7 +13,7 @@
  * @packageDocumentation
  */
 
-import type { Plugin } from '@elizaos/core';
+import type { Plugin } from "@elizaos/core";
 import {
   checkFeedPostsAction,
   checkPerpsAction,
@@ -24,7 +24,7 @@ import {
   dispatchToAgentAction,
   dispatchToAgentsAction,
   relayToAgentAction,
-} from './actions';
+} from "./actions";
 import {
   coordinatorActionStateProvider,
   coordinatorActionsProvider,
@@ -33,7 +33,7 @@ import {
   coordinatorDispatchHistoryProvider,
   coordinatorRecentMessagesProvider,
   coordinatorTeamMembersProvider,
-} from './providers';
+} from "./providers";
 
 /**
  * User Core Plugin
@@ -49,9 +49,9 @@ import {
  * - Coordinator-specific providers for actions, messages, team members, and context
  */
 export const userCorePlugin: Plugin = {
-  name: 'user-core',
+  name: "user-core",
   description:
-    'Core capabilities for user coordinator with orchestration dispatch and read-only informational actions',
+    "Core capabilities for user coordinator with orchestration dispatch and read-only informational actions",
 
   actions: [
     // Orchestration — listed first so the LLM sees it as the primary action for execution requests
@@ -94,7 +94,7 @@ export {
   dispatchToAgentAction,
   dispatchToAgentsAction,
   relayToAgentAction,
-} from './actions';
+} from "./actions";
 export {
   coordinatorActionStateProvider,
   coordinatorActionsProvider,
@@ -103,7 +103,7 @@ export {
   coordinatorDispatchHistoryProvider,
   coordinatorRecentMessagesProvider,
   coordinatorTeamMembersProvider,
-} from './providers';
-export * from './types';
+} from "./providers";
+export * from "./types";
 
 export default userCorePlugin;

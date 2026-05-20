@@ -1,13 +1,13 @@
-'use client';
+"use client";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
-import { IDENTITY_REGISTRY_BASE_SEPOLIA } from '@feed/shared';
-import { Award, Medal, Target, Trophy } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { PageContainer } from '@/components/shared/PageContainer';
-import { useAuth } from '@/hooks/useAuth';
-import { apiUrl } from '@/utils/api-url';
+import { IDENTITY_REGISTRY_BASE_SEPOLIA } from "@feed/shared";
+import { Award, Medal, Target, Trophy } from "lucide-react";
+import { useEffect, useState } from "react";
+import { PageContainer } from "@/components/shared/PageContainer";
+import { useAuth } from "@/hooks/useAuth";
+import { apiUrl } from "@/utils/api-url";
 
 interface ReputationStats {
   currentReputation: number;
@@ -28,7 +28,7 @@ const emptyStats: ReputationStats = {
   averageGameScore: 0,
   averageFeedbackScore: 0,
   totalFeedbackReceived: 0,
-  trustLevel: 'UNRATED',
+  trustLevel: "UNRATED",
 };
 
 export default function ReputationPage() {
@@ -45,7 +45,7 @@ export default function ReputationPage() {
     const fetchReputation = async () => {
       setLoading(true);
       const response = await fetch(
-        apiUrl(`/api/reputation/${encodeURIComponent(user.id)}`)
+        apiUrl(`/api/reputation/${encodeURIComponent(user.id)}`),
       );
       if (!response.ok) {
         setStats(emptyStats);
@@ -67,7 +67,7 @@ export default function ReputationPage() {
         averageGameScore: data.performance?.averageGameScore ?? 0,
         averageFeedbackScore: data.averageFeedbackScore ?? 0,
         totalFeedbackReceived: data.totalFeedbackReceived ?? 0,
-        trustLevel: data.trustLevel ?? 'UNRATED',
+        trustLevel: data.trustLevel ?? "UNRATED",
       });
       setLoading(false);
     };
@@ -224,15 +224,15 @@ export default function ReputationPage() {
           </h2>
           <div className="space-y-3 text-muted-foreground text-sm">
             <p>
-              📈 <strong className="text-foreground">Performance (40%):</strong>{' '}
+              📈 <strong className="text-foreground">Performance (40%):</strong>{" "}
               normalized PnL & win rate.
             </p>
             <p>
-              🗳️ <strong className="text-foreground">Feedback (40%):</strong>{' '}
+              🗳️ <strong className="text-foreground">Feedback (40%):</strong>{" "}
               game / user / agent ratings.
             </p>
             <p>
-              ♻️ <strong className="text-foreground">Activity (20%):</strong>{' '}
+              ♻️ <strong className="text-foreground">Activity (20%):</strong>{" "}
               linear bonus on games played (capped at 50).
             </p>
             <p>

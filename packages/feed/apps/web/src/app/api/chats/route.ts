@@ -171,12 +171,12 @@ import {
   ReputationService,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
+} from "@feed/api";
 import {
   canAccessNftChatGate,
   getNftChatGatingConfig,
   reconcileNftChatMembershipForUser,
-} from '@feed/api/services/nft-chat-gating-service';
+} from "@feed/api/services/nft-chat-gating-service";
 // Import from new Drizzle client
 import {
   and,
@@ -192,7 +192,7 @@ import {
   inArray,
   messages,
   users,
-} from '@feed/db';
+} from "@feed/db";
 import {
   ChatCreateSchema,
   ChatQuerySchema,
@@ -200,22 +200,22 @@ import {
   getChainName,
   getCurrentChainId,
   logger,
-} from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 /**
  * GET /api/chats
  * Get all chats for the authenticated user
  */
 export const GET = withErrorHandling(async (request: NextRequest) => {
-  logger.info('GET /api/chats - Request received', undefined, 'ChatsRoute');
+  logger.info("GET /api/chats - Request received", undefined, "ChatsRoute");
 
   // Validate query parameters
   const { searchParams } = new URL(request.url);
   const query: Record<string, string> = {};
 
-  const all = searchParams.get('all');
-  const debug = searchParams.get('debug');
+  const all = searchParams.get("all");
+  const debug = searchParams.get("debug");
 
   if (all) query.all = all;
   if (debug) query.debug = debug;
@@ -225,7 +225,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       ? ChatQuerySchema.parse(query)
       : { all: undefined, debug: undefined };
 
-  const getAllChats = validatedQuery.all === 'true';
+  const getAllChats = validatedQuery.all === "true";
 
   if (getAllChats) {
     // Return all game chats (no auth required for read-only game data)
@@ -234,7 +234,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       const chatList = await dbClient
         .select()
         .from(chats)
-        .where(and(eq(chats.isGroup, true), eq(chats.gameId, 'continuous')))
+        .where(and(eq(chats.isGroup, true), eq(chats.gameId, "continuous")))
         .orderBy(chats.createdAt);
 
       // Get message counts and latest messages for each chat
@@ -251,7 +251,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         .groupBy(messages.chatId);
 
       const countMap = new Map(
-        messageCountResults.map((mc) => [mc.chatId, mc.count])
+        messageCountResults.map((mc) => [mc.chatId, mc.count]),
       );
 
       // Get latest messages - need to do this per-chat since we need latest per chat
@@ -264,11 +264,11 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
             .orderBy(desc(messages.createdAt))
             .limit(1);
           return { chatId, messages: msgs };
-        })
+        }),
       );
 
       const messagesMap = new Map(
-        latestMessages.map(({ chatId, messages: msgs }) => [chatId, msgs])
+        latestMessages.map(({ chatId, messages: msgs }) => [chatId, msgs]),
       );
 
       return chatList.map((chat) => ({
@@ -279,9 +279,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     });
 
     logger.info(
-      'All game chats fetched',
+      "All game chats fetched",
       { count: gameChats.length },
-      'GET /api/chats'
+      "GET /api/chats",
     );
 
     return successResponse({
@@ -320,9 +320,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       });
     } catch (error) {
       logger.warn(
-        'NFT chat reconciliation failed',
+        "NFT chat reconciliation failed",
         { error, userId: user.userId, dbUserId: user.dbUserId },
-        'GET /api/chats'
+        "GET /api/chats",
       );
     }
   }
@@ -334,14 +334,14 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     (await canAccessNftChatGate(user.dbUserId ?? user.userId, gatedChatId));
 
   logger.info(
-    'Fetching chats for user',
+    "Fetching chats for user",
     {
       userId: user.userId,
       privyId: user.privyId,
       dbUserId: user.dbUserId,
       fullUser: user,
     },
-    'GET /api/chats'
+    "GET /api/chats",
   );
 
   // Get user's chats with proper RLS context
@@ -352,7 +352,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     const teamGroups = await dbClient
       .select({ id: groups.id })
       .from(groups)
-      .where(and(eq(groups.type, 'team'), eq(groups.ownerId, user.userId)));
+      .where(and(eq(groups.type, "team"), eq(groups.ownerId, user.userId)));
     const teamGroupIds = new Set(teamGroups.map((g) => g.id));
 
     // Get user's group memberships
@@ -362,8 +362,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       .where(
         and(
           eq(groupMembers.userId, user.userId),
-          eq(groupMembers.isActive, true)
-        )
+          eq(groupMembers.isActive, true),
+        ),
       )
       .orderBy(desc(groupMembers.lastMessageAt));
 
@@ -396,7 +396,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     const filteredGroupChats =
       teamGroupIds.size > 0
         ? groupChatsWithGroupId.filter(
-            (c) => !c.groupId || !teamGroupIds.has(c.groupId)
+            (c) => !c.groupId || !teamGroupIds.has(c.groupId),
           )
         : groupChatsWithGroupId;
     const filteredGroupChatsForAccess =
@@ -406,11 +406,11 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     const groupChatIds = filteredGroupChatsForAccess.map((c) => c.id);
     // Map groupId -> chatId for lookup
     const groupIdToChatId = new Map(
-      filteredGroupChatsForAccess.map((c) => [c.groupId, c.id])
+      filteredGroupChatsForAccess.map((c) => [c.groupId, c.id]),
     );
     // Map chatId -> chat details
     const chatDetailsMap = new Map(
-      filteredGroupChatsForAccess.map((c) => [c.id, c])
+      filteredGroupChatsForAccess.map((c) => [c.id, c]),
     );
 
     // Get last messages for group chats
@@ -423,10 +423,10 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
           .orderBy(desc(messages.createdAt))
           .limit(1);
         return { chatId, messages: msgs };
-      })
+      }),
     );
     const groupMessagesMap = new Map(
-      groupChatMessages.map(({ chatId, messages }) => [chatId, messages])
+      groupChatMessages.map(({ chatId, messages }) => [chatId, messages]),
     );
 
     // Get DM chats the user participates in
@@ -436,12 +436,12 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       .where(eq(chatParticipants.userId, user.userId));
 
     logger.info(
-      'Found DM participants',
+      "Found DM participants",
       {
         userId: user.userId,
         count: dmParticipantsList.length,
       },
-      'GET /api/chats'
+      "GET /api/chats",
     );
 
     const dmChatIds = dmParticipantsList.map((p) => p.chatId);
@@ -465,7 +465,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
             .orderBy(desc(messages.createdAt))
             .limit(1);
           return { chatId, messages: msgs };
-        })
+        }),
       ),
     ]);
 
@@ -474,12 +474,12 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       if (!participantsByChatId.has(p.chatId)) {
         participantsByChatId.set(p.chatId, []);
       }
-      participantsByChatId.get(p.chatId)!.push(p);
+      participantsByChatId.get(p.chatId)?.push(p);
     });
 
     const messagesByChatId = new Map<
       string,
-      (typeof allMessages)[number]['messages']
+      (typeof allMessages)[number]["messages"]
     >();
     allMessages.forEach(({ chatId, messages }) => {
       messagesByChatId.set(chatId, messages);
@@ -511,7 +511,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
           };
         } = {
           id: chatId,
-          name: chat.name || 'Unnamed Group',
+          name: chat.name || "Unnamed Group",
           isGroup: true,
           lastMessage,
           messageCount: membership.messageCount,
@@ -540,9 +540,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         const chatParticipantsList = participantsByChatId.get(chat.id) || [];
         // Find the other participant (not the current user)
         const otherParticipant = chatParticipantsList.find(
-          (p) => p.userId !== user.userId
+          (p) => p.userId !== user.userId,
         );
-        let chatName = chat.name || 'Direct Message';
+        let chatName = chat.name || "Direct Message";
         let otherUserDetails = null;
 
         if (otherParticipant) {
@@ -563,7 +563,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
             .limit(1);
 
           if (otherUser && !otherUser.isActor) {
-            chatName = otherUser.displayName || otherUser.username || 'Unknown';
+            chatName = otherUser.displayName || otherUser.username || "Unknown";
             otherUserDetails = {
               id: otherUser.id,
               displayName: otherUser.displayName,
@@ -602,20 +602,20 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
           updatedAt: chat.updatedAt,
           otherUser: otherUserDetails,
         };
-      })
+      }),
     ).then((chatsList) => chatsList.filter((c) => c !== null));
 
     return { groupChats: formattedGroupChats, directChats: directChatsList };
   });
 
   logger.info(
-    'User chats fetched successfully',
+    "User chats fetched successfully",
     {
       userId: user.userId,
       groupChats: groupChats.length,
       directChats: directChats.length,
     },
-    'GET /api/chats'
+    "GET /api/chats",
   );
 
   return successResponse({
@@ -664,7 +664,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       .returning();
 
     if (!newChat) {
-      throw new Error('Failed to create chat');
+      throw new Error("Failed to create chat");
     }
 
     // Add creator as participant
@@ -689,33 +689,33 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   });
 
   if (!chat) {
-    throw new Error('Failed to create chat');
+    throw new Error("Failed to create chat");
   }
 
   // Award points for creating a private channel (group chat created directly, not through Group)
   if (isGroup && !chat.groupId) {
     await ReputationService.awardPrivateChannelCreate(
       user.userId,
-      chat.id
+      chat.id,
     ).catch((error: unknown) => {
       // Log error but don't fail chat creation if points award fails
       logger.error(
-        'Failed to award points for private channel creation',
+        "Failed to award points for private channel creation",
         { error, userId: user.userId, chatId: chat.id },
-        'POST /api/chats'
+        "POST /api/chats",
       );
     });
   }
 
   logger.info(
-    'Chat created successfully',
+    "Chat created successfully",
     {
       chatId: chat.id,
       userId: user.userId,
       isGroup,
       participantCount: (participantIds?.length || 0) + 1,
     },
-    'POST /api/chats'
+    "POST /api/chats",
   );
 
   return successResponse({ chat }, 201);

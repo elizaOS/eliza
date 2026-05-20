@@ -5,14 +5,14 @@
  * All functions are fire-and-forget — haptics are non-critical.
  */
 
-import { isNativePlatform } from './platform';
+import { isNativePlatform } from "./platform";
 
-let hapticsModule: typeof import('@capacitor/haptics') | null = null;
+let hapticsModule: typeof import("@capacitor/haptics") | null = null;
 
 async function getHaptics() {
   if (!isNativePlatform()) return null;
   if (!hapticsModule) {
-    hapticsModule = await import('@capacitor/haptics');
+    hapticsModule = await import("@capacitor/haptics");
   }
   return hapticsModule;
 }

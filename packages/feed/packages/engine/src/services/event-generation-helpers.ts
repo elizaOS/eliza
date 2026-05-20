@@ -9,31 +9,31 @@ import {
   type Question,
   sql,
   worldEvents,
-} from '@feed/db';
-import { arcEventCoverage } from '@feed/db/schema';
-import { generateSnowflakeId, logger } from '@feed/shared';
-import { ArticleGenerator } from '../ArticleGenerator';
-import type { FeedLLMClient } from '../llm/openai-client';
-import type { ArcEventStatus } from '../NewsArticlePacingEngine';
-import { toDateString, toSafeDayNumber } from '../utils/date-utils';
-import { secureRandom, weightedPick } from '../utils/entropy';
-import { formatError } from '../utils/error-utils';
-import { worldFactsService } from '../world-facts-service';
-import { persistArticle } from './article-persistence';
+} from "@feed/db";
+import { arcEventCoverage } from "@feed/db/schema";
+import { generateSnowflakeId, logger } from "@feed/shared";
+import { ArticleGenerator } from "../ArticleGenerator";
+import type { FeedLLMClient } from "../llm/openai-client";
+import type { ArcEventStatus } from "../NewsArticlePacingEngine";
+import { toDateString, toSafeDayNumber } from "../utils/date-utils";
+import { secureRandom, weightedPick } from "../utils/entropy";
+import { formatError } from "../utils/error-utils";
+import { worldFactsService } from "../world-facts-service";
+import { persistArticle } from "./article-persistence";
 import {
   articleRateLimiter,
   breakingArticleRateLimiter,
-} from './article-rate-limiter';
+} from "./article-rate-limiter";
 import {
   getArcPlan,
   getPhaseForDay,
   getSignalDirection,
-} from './narrative-state-service';
-import { StaticDataRegistry } from './static-data-registry';
+} from "./narrative-state-service";
+import { StaticDataRegistry } from "./static-data-registry";
 
 // Minimal question type for event generation (only fields actually used)
 // outcome is optional - only used for arc plan signal direction, and the code handles missing outcome
-type QuestionForEvent = Pick<Question, 'id' | 'text' | 'questionNumber'> & {
+type QuestionForEvent = Pick<Question, "id" | "text" | "questionNumber"> & {
   outcome?: boolean | null;
 };
 
@@ -43,31 +43,31 @@ type QuestionForEvent = Pick<Question, 'id' | 'text' | 'questionNumber'> & {
 type EventTypeConfig = {
   type: string;
   weight: number;
-  visibility: 'public' | 'leaked' | 'private';
+  visibility: "public" | "leaked" | "private";
   requiresActors: boolean;
 };
 
 const EVENT_TYPES: EventTypeConfig[] = [
   {
-    type: 'announcement',
+    type: "announcement",
     weight: 25,
-    visibility: 'public',
+    visibility: "public",
     requiresActors: false,
   },
-  { type: 'leak', weight: 15, visibility: 'leaked', requiresActors: false },
-  { type: 'meeting', weight: 12, visibility: 'public', requiresActors: true },
+  { type: "leak", weight: 15, visibility: "leaked", requiresActors: false },
+  { type: "meeting", weight: 12, visibility: "public", requiresActors: true },
   {
-    type: 'development',
+    type: "development",
     weight: 20,
-    visibility: 'public',
+    visibility: "public",
     requiresActors: false,
   },
-  { type: 'rumor', weight: 10, visibility: 'public', requiresActors: false },
-  { type: 'scandal', weight: 8, visibility: 'public', requiresActors: true },
+  { type: "rumor", weight: 10, visibility: "public", requiresActors: false },
+  { type: "scandal", weight: 8, visibility: "public", requiresActors: true },
   {
-    type: 'revelation',
+    type: "revelation",
     weight: 10,
-    visibility: 'public',
+    visibility: "public",
     requiresActors: false,
   },
 ];
@@ -77,7 +77,7 @@ const EVENT_TYPES: EventTypeConfig[] = [
  * These high-impact events trigger immediate article generation
  * with their own rate limit separate from regular scheduled articles.
  */
-const BREAKING_EVENT_TYPES = ['scandal', 'leak', 'revelation'] as const;
+const BREAKING_EVENT_TYPES = ["scandal", "leak", "revelation"] as const;
 
 /**
  * Rolling window of recently-generated event types.
@@ -97,7 +97,7 @@ const MAX_EVENT_TYPE_HISTORY = 6;
 function selectEventType(): EventTypeConfig {
   const adjustedTypes = EVENT_TYPES.map((et) => {
     const recentCount = recentEventTypes.filter((t) => t === et.type).length;
-    const penalty = Math.pow(0.3, recentCount);
+    const penalty = 0.3 ** recentCount;
     return { ...et, adjustedWeight: et.weight * penalty };
   });
 
@@ -118,11 +118,11 @@ function selectEventType(): EventTypeConfig {
 function sanitizeTopic(topic: string): string {
   // Remove common template variables that may have leaked through
   return topic
-    .replace(/\{resolutionDate\}/gi, 'the resolution date')
-    .replace(/\{resolution_date\}/gi, 'the resolution date')
-    .replace(/\{date\}/gi, 'the scheduled date')
-    .replace(/\{[a-zA-Z_]+\}/g, '') // Remove any other template variables
-    .replace(/\s+/g, ' ') // Normalize whitespace
+    .replace(/\{resolutionDate\}/gi, "the resolution date")
+    .replace(/\{resolution_date\}/gi, "the resolution date")
+    .replace(/\{date\}/gi, "the scheduled date")
+    .replace(/\{[a-zA-Z_]+\}/g, "") // Remove any other template variables
+    .replace(/\s+/g, " ") // Normalize whitespace
     .trim();
 }
 
@@ -133,7 +133,7 @@ function sanitizeTopic(topic: string): string {
 function generateDescription(
   _template: string,
   topic: string,
-  actors: string[]
+  actors: string[],
 ): string {
   const cleanTopic = sanitizeTopic(topic);
 
@@ -146,7 +146,7 @@ function generateDescription(
       .filter(Boolean);
 
     if (actorNames.length > 0) {
-      return `${actorNames.join(' and ')}: ${cleanTopic}`;
+      return `${actorNames.join(" and ")}: ${cleanTopic}`;
     }
   }
 
@@ -264,7 +264,7 @@ export async function generateEvents(
   questions: QuestionForEvent[],
   timestamp: Date,
   currentDay?: number,
-  llmClient?: FeedLLMClient
+  llmClient?: FeedLLMClient,
 ): Promise<number> {
   if (questions.length === 0) return 0;
 
@@ -274,13 +274,13 @@ export async function generateEvents(
   for (let i = 0; i < eventsToGenerate; i++) {
     const question = questions[i];
 
-    if (!question || !question.text) {
+    if (!question?.text) {
       continue;
     }
 
     // Validate integer fields to prevent overflow
     const questionNum =
-      typeof question.questionNumber === 'number' &&
+      typeof question.questionNumber === "number" &&
       Number.isFinite(question.questionNumber) &&
       question.questionNumber >= 0 &&
       question.questionNumber <= 2147483647
@@ -288,11 +288,11 @@ export async function generateEvents(
         : undefined;
 
     const safeDayNumber =
-      typeof currentDay === 'number' ? toSafeDayNumber(currentDay) : undefined;
+      typeof currentDay === "number" ? toSafeDayNumber(currentDay) : undefined;
 
     // Get arc plan for signal direction
-    let pointsToward: 'YES' | 'NO' | null = null;
-    let phase: 'early' | 'middle' | 'late' | 'climax' | undefined;
+    let pointsToward: "YES" | "NO" | null = null;
+    let phase: "early" | "middle" | "late" | "climax" | undefined;
 
     if (currentDay !== undefined) {
       const arcPlan = await getArcPlan(question.id);
@@ -301,11 +301,11 @@ export async function generateEvents(
         // Events don't have an actor, so pass empty string
         // Use question.outcome if available, default to true
         const outcome = question.outcome ?? true;
-        const signal = getSignalDirection(arcPlan, phase, '', outcome);
-        pointsToward = signal.direction === 'NEUTRAL' ? null : signal.direction;
+        const signal = getSignalDirection(arcPlan, phase, "", outcome);
+        pointsToward = signal.direction === "NEUTRAL" ? null : signal.direction;
 
         logger.debug(
-          'Event signal direction determined',
+          "Event signal direction determined",
           {
             questionId: question.id,
             currentDay,
@@ -313,7 +313,7 @@ export async function generateEvents(
             pointsToward,
             outcome,
           },
-          'EventGeneration'
+          "EventGeneration",
         );
       }
     }
@@ -323,25 +323,25 @@ export async function generateEvents(
 
     // Extract concise topic — strip "Will X" prefix and date/resolution clauses
     let topic = question.text
-      .replace(/^Will\s+/i, '')
-      .replace(/\s+by\s+\d{4}[-/]\d{2}[-/]\d{2}.*$/i, '')
-      .replace(/\s+before\s+(the\s+)?(close|end)\s+of\s+\d{4}.*$/i, '')
-      .replace(/\?+$/, '')
+      .replace(/^Will\s+/i, "")
+      .replace(/\s+by\s+\d{4}[-/]\d{2}[-/]\d{2}.*$/i, "")
+      .replace(/\s+before\s+(the\s+)?(close|end)\s+of\s+\d{4}.*$/i, "")
+      .replace(/\?+$/, "")
       .trim();
-    if (topic.length > 80) topic = topic.slice(0, 77) + '...';
+    if (topic.length > 80) topic = `${topic.slice(0, 77)}...`;
 
     // Select actors if required by event type
     const actors = eventConfig.requiresActors ? selectRelevantActors(2) : [];
 
     // Description is just the topic with optional actor context — no templates
-    const description = generateDescription('', topic, actors);
+    const description = generateDescription("", topic, actors);
 
     // Adjust visibility based on phase (late game has more leaks/revelations)
     let visibility = eventConfig.visibility;
-    if (phase === 'late' || phase === 'climax') {
+    if (phase === "late" || phase === "climax") {
       // In late game, even leaks become public knowledge faster
-      if (visibility === 'leaked' && secureRandom() < 0.3) {
-        visibility = 'public';
+      if (visibility === "leaked" && secureRandom() < 0.3) {
+        visibility = "public";
       }
     }
 
@@ -354,7 +354,7 @@ export async function generateEvents(
       actors,
       relatedQuestion: questionNum,
       visibility,
-      gameId: 'continuous',
+      gameId: "continuous",
       dayNumber: safeDayNumber,
       timestamp: timestamp,
       pointsToward,
@@ -362,14 +362,14 @@ export async function generateEvents(
     eventsCreated++;
 
     logger.debug(
-      'Generated diverse event',
+      "Generated diverse event",
       {
         eventType: eventConfig.type,
         visibility,
         hasActors: actors.length > 0,
         questionId: question.id,
       },
-      'EventGeneration'
+      "EventGeneration",
     );
 
     // Trigger breaking article for high-impact events (scandals, leaks, revelations)
@@ -382,31 +382,31 @@ export async function generateEvents(
           question,
           llmClient,
           timestamp,
-          safeDayNumber
+          safeDayNumber,
         );
         if (breakingArticles > 0) {
           logger.info(
-            'Breaking article generated from world event',
+            "Breaking article generated from world event",
             {
               eventId,
               eventType: eventConfig.type,
               articlesCreated: breakingArticles,
             },
-            'EventGeneration'
+            "EventGeneration",
           );
         }
       } catch (error) {
         // Log the error but don't rethrow - the world event was already inserted,
         // so we don't want article generation failures to abort the surrounding loop
         logger.error(
-          'Failed to generate breaking article from world event',
+          "Failed to generate breaking article from world event",
           {
             eventId,
             eventType: eventConfig.type,
             safeDayNumber,
             error: formatError(error),
           },
-          'EventGeneration'
+          "EventGeneration",
         );
       }
     }
@@ -418,7 +418,7 @@ export async function generateEvents(
 const ARC_PULSE_LOOKBACK_MS = 24 * 60 * 60 * 1000; // 24h
 const ARC_PULSE_MAX_EVENTS_PER_TICK = 2;
 const ARC_PULSE_INTERVAL_MS_BY_PHASE: Record<
-  'early' | 'middle' | 'late' | 'climax',
+  "early" | "middle" | "late" | "climax",
   number
 > = {
   early: 6 * 60 * 60 * 1000, // 6h
@@ -441,18 +441,18 @@ const ARC_PULSE_INTERVAL_MS_BY_PHASE: Record<
 export async function generateArcPulseEventsIfNeeded(
   questions: QuestionForEvent[],
   timestamp: Date,
-  currentDay?: number
+  currentDay?: number,
 ): Promise<number> {
   if (questions.length === 0) return 0;
 
   const questionNumbers = questions
     .map((q) =>
-      typeof q.questionNumber === 'number' &&
+      typeof q.questionNumber === "number" &&
       Number.isFinite(q.questionNumber) &&
       q.questionNumber >= 0 &&
       q.questionNumber <= 2147483647
         ? q.questionNumber
-        : null
+        : null,
     )
     .filter((n): n is number => n !== null);
 
@@ -468,15 +468,15 @@ export async function generateArcPulseEventsIfNeeded(
     .where(
       and(
         inArray(worldEvents.relatedQuestion, questionNumbers),
-        gte(worldEvents.timestamp, lookbackDate)
-      )
+        gte(worldEvents.timestamp, lookbackDate),
+      ),
     )
     .orderBy(desc(worldEvents.timestamp));
 
   const lastEventByQuestion = new Map<number, Date>();
   for (const row of recent) {
     const q = row.relatedQuestion;
-    if (typeof q !== 'number') continue;
+    if (typeof q !== "number") continue;
     if (!lastEventByQuestion.has(q)) {
       lastEventByQuestion.set(q, row.timestamp);
     }
@@ -488,7 +488,7 @@ export async function generateArcPulseEventsIfNeeded(
     if (created >= ARC_PULSE_MAX_EVENTS_PER_TICK) break;
 
     const questionNum =
-      typeof question.questionNumber === 'number' &&
+      typeof question.questionNumber === "number" &&
       Number.isFinite(question.questionNumber) &&
       question.questionNumber >= 0 &&
       question.questionNumber <= 2147483647
@@ -553,7 +553,7 @@ export async function generateArticlesForArcEvent(
   llmClient: FeedLLMClient,
   timestamp: Date,
   dayNumber?: number,
-  options?: { skipRateLimit?: boolean }
+  options?: { skipRateLimit?: boolean },
 ): Promise<number> {
   const { skipRateLimit = false } = options ?? {};
 
@@ -565,14 +565,14 @@ export async function generateArticlesForArcEvent(
 
     if (!rateLimitResult.allowed) {
       logger.info(
-        'Skipping arc event article generation - hourly rate limit reached',
+        "Skipping arc event article generation - hourly rate limit reached",
         {
           arcEventId,
           eventStatus,
           currentCount: rateLimitResult.currentCount,
           maxAllowed: rateLimitResult.maxAllowed,
         },
-        'EventGeneration'
+        "EventGeneration",
       );
       return 0;
     }
@@ -580,12 +580,12 @@ export async function generateArticlesForArcEvent(
   }
 
   // Get news organizations that haven't reported on this event status
-  const newsOrgs = StaticDataRegistry.getOrganizationsByType('media');
+  const newsOrgs = StaticDataRegistry.getOrganizationsByType("media");
   if (newsOrgs.length === 0) {
     logger.warn(
-      'No news organizations available for arc event articles',
+      "No news organizations available for arc event articles",
       { arcEventId },
-      'EventGeneration'
+      "EventGeneration",
     );
     return 0;
   }
@@ -597,14 +597,14 @@ export async function generateArticlesForArcEvent(
     arcEventId,
     eventStatus,
     newsOrgs,
-    maxOrgsAllowed
+    maxOrgsAllowed,
   );
 
   if (orgsToPublish.length === 0) {
     logger.debug(
-      'All orgs have already covered this arc event status',
+      "All orgs have already covered this arc event status",
       { arcEventId, eventStatus },
-      'EventGeneration'
+      "EventGeneration",
     );
     return 0;
   }
@@ -613,17 +613,17 @@ export async function generateArticlesForArcEvent(
   const actorsList = StaticDataRegistry.getTopActors(20);
 
   // Get world facts context for article generation with graceful fallback
-  let worldFactsContext = '';
+  let worldFactsContext = "";
   try {
     worldFactsContext = await worldFactsService.generatePromptContext();
   } catch (error) {
     logger.warn(
-      'Failed to fetch world facts context for arc event articles - proceeding without',
+      "Failed to fetch world facts context for arc event articles - proceeding without",
       {
         arcEventId,
         error: formatError(error),
       },
-      'EventGeneration'
+      "EventGeneration",
     );
   }
 
@@ -634,8 +634,8 @@ export async function generateArticlesForArcEvent(
   // Parallel generation could cause race conditions where multiple articles pass
   // the initial check but exceed the limit when all complete.
   const results: Array<
-    | { status: 'fulfilled'; value: number }
-    | { status: 'rejected'; reason: unknown }
+    | { status: "fulfilled"; value: number }
+    | { status: "rejected"; reason: unknown }
   > = [];
 
   for (const orgData of orgsToPublish) {
@@ -646,9 +646,9 @@ export async function generateArticlesForArcEvent(
         await articleRateLimiter.canGenerateArticle();
       if (!stillAllowed) {
         logger.info(
-          'Rate limit reached during arc event article generation - stopping',
+          "Rate limit reached during arc event article generation - stopping",
           { arcEventId, eventStatus, articlesGenerated: results.length },
-          'EventGeneration'
+          "EventGeneration",
         );
         break;
       }
@@ -656,9 +656,9 @@ export async function generateArticlesForArcEvent(
 
     const org = {
       id: orgData.id,
-      name: orgData.name || 'Unknown Organization',
-      description: orgData.description || '',
-      type: (orgData.type as 'company' | 'media' | 'government') || 'media',
+      name: orgData.name || "Unknown Organization",
+      description: orgData.description || "",
+      type: (orgData.type as "company" | "media" | "government") || "media",
       canBeInvolved: orgData.canBeInvolved,
       initialPrice: orgData.initialPrice ?? undefined,
       currentPrice: orgData.initialPrice ?? undefined,
@@ -666,11 +666,11 @@ export async function generateArticlesForArcEvent(
 
     // Determine article stage based on event status
     const stage =
-      eventStatus === 'created'
-        ? 'breaking'
-        : eventStatus === 'resolved'
-          ? 'resolution'
-          : 'commentary';
+      eventStatus === "created"
+        ? "breaking"
+        : eventStatus === "resolved"
+          ? "resolution"
+          : "commentary";
 
     try {
       const article = await articleGen.generateArticleForQuestion(
@@ -681,27 +681,27 @@ export async function generateArticlesForArcEvent(
           outcome: question.outcome ?? false,
           rank: 1,
           createdDate: toDateString(new Date()),
-          resolutionDate: '',
-          status: 'active',
+          resolutionDate: "",
+          status: "active",
         },
         org,
         stage,
         actorsList.map((a) => ({
           id: a.id,
           name: a.name,
-          description: a.description || '',
-          domain: Array.isArray(a.domain) ? a.domain : [a.domain || 'tech'],
+          description: a.description || "",
+          domain: Array.isArray(a.domain) ? a.domain : [a.domain || "tech"],
           personality: a.personality || undefined,
           tier: a.tier ?? undefined,
           affiliations: a.affiliations || [],
           postStyle: a.postStyle || undefined,
-          postExample: a.postExample || '',
-          role: a.role as 'main' | 'supporting' | 'extra' | undefined,
-          initialLuck: (a.initialLuck as 'low' | 'medium' | 'high') || 'medium',
+          postExample: a.postExample || "",
+          role: a.role as "main" | "supporting" | "extra" | undefined,
+          initialLuck: (a.initialLuck as "low" | "medium" | "high") || "medium",
           initialMood: a.initialMood || 0,
         })),
         [], // Events are included in context via question
-        worldFactsContext // World facts context for current game state
+        worldFactsContext, // World facts context for current game state
       );
 
       // Note: ArticleGenerator already applies character mapping internally,
@@ -712,11 +712,11 @@ export async function generateArticlesForArcEvent(
       // Skip rate limit check in persistence if we're bypassing it (breaking articles have their own limiter)
       const persistResult = await persistArticle(
         {
-          title: article.title || 'Untitled',
-          summary: article.summary || '',
-          content: article.content || '',
+          title: article.title || "Untitled",
+          summary: article.summary || "",
+          content: article.content || "",
           authorOrgId: article.authorOrgId,
-          gameId: 'continuous',
+          gameId: "continuous",
           dayNumber: dayNumber,
           byline: article.byline,
           biasScore: article.biasScore,
@@ -726,26 +726,26 @@ export async function generateArticlesForArcEvent(
           timestamp: articleTimestamp,
           relatedQuestion: article.relatedQuestion,
         },
-        { checkRateLimit: !skipRateLimit }
+        { checkRateLimit: !skipRateLimit },
       );
 
       if (!persistResult.success) {
         if (persistResult.rateLimited) {
           logger.info(
-            'Rate limit reached during arc event article persistence',
+            "Rate limit reached during arc event article persistence",
             { arcEventId, eventStatus, orgId: org.id },
-            'EventGeneration'
+            "EventGeneration",
           );
           results.push({
-            status: 'rejected',
-            reason: new Error('Rate limit exceeded during persistence'),
+            status: "rejected",
+            reason: new Error("Rate limit exceeded during persistence"),
           });
           break; // Exit loop immediately - no point trying more orgs if rate limited
         }
         // Other persistence error
         results.push({
-          status: 'rejected',
-          reason: new Error(persistResult.error || 'Unknown persistence error'),
+          status: "rejected",
+          reason: new Error(persistResult.error || "Unknown persistence error"),
         });
         continue;
       }
@@ -753,8 +753,8 @@ export async function generateArticlesForArcEvent(
       // Defensive guard: verify articleId exists after successful persistence
       if (!persistResult.articleId) {
         results.push({
-          status: 'rejected',
-          reason: new Error('Missing articleId after successful persistence'),
+          status: "rejected",
+          reason: new Error("Missing articleId after successful persistence"),
         });
         continue;
       }
@@ -766,26 +766,26 @@ export async function generateArticlesForArcEvent(
         arcEventId,
         org.id,
         eventStatus,
-        articleId
+        articleId,
       );
 
       logger.info(
-        'Generated arc event article',
+        "Generated arc event article",
         {
           arcEventId,
           eventStatus,
           org: org.name,
           articleId,
-          title: (article.title || 'Untitled').slice(0, 50),
+          title: (article.title || "Untitled").slice(0, 50),
         },
-        'EventGeneration'
+        "EventGeneration",
       );
 
-      results.push({ status: 'fulfilled', value: 1 });
+      results.push({ status: "fulfilled", value: 1 });
     } catch (error) {
-      results.push({ status: 'rejected', reason: error });
+      results.push({ status: "rejected", reason: error });
       logger.warn(
-        'Failed to generate arc event article',
+        "Failed to generate arc event article",
         {
           arcEventId,
           eventStatus,
@@ -793,13 +793,13 @@ export async function generateArticlesForArcEvent(
           orgName: org.name,
           error: formatError(error),
         },
-        'EventGeneration'
+        "EventGeneration",
       );
     }
   }
 
   const articlesCreated = results.reduce((sum, result) => {
-    if (result.status === 'fulfilled') {
+    if (result.status === "fulfilled") {
       return sum + result.value;
     }
     return sum;
@@ -808,14 +808,14 @@ export async function generateArticlesForArcEvent(
   // Use results.length for attempted count (reflects actual attempts, not orgsToPublish.length)
   // This is accurate when the loop exits early due to rate limiting
   logger.info(
-    'Arc event articles generated',
+    "Arc event articles generated",
     {
       arcEventId,
       eventStatus,
       articlesCreated,
       attempted: results.length,
     },
-    'EventGeneration'
+    "EventGeneration",
   );
 
   return articlesCreated;
@@ -842,12 +842,12 @@ export async function maybeGenerateBreakingArticle(
   question: QuestionForEvent,
   llmClient: FeedLLMClient,
   timestamp: Date,
-  dayNumber?: number
+  dayNumber?: number,
 ): Promise<number> {
   // Only breaking-worthy events trigger articles
   if (
     !BREAKING_EVENT_TYPES.includes(
-      eventType as (typeof BREAKING_EVENT_TYPES)[number]
+      eventType as (typeof BREAKING_EVENT_TYPES)[number],
     )
   ) {
     return 0;
@@ -860,17 +860,17 @@ export async function maybeGenerateBreakingArticle(
     const { currentCount, maxAllowed } =
       await breakingArticleRateLimiter.canGenerateArticle();
     logger.debug(
-      'Breaking article skipped - rate limit reached',
+      "Breaking article skipped - rate limit reached",
       { eventId, eventType, currentCount, maxAllowed },
-      'EventGeneration'
+      "EventGeneration",
     );
     return 0;
   }
 
   logger.info(
-    'Triggering breaking article for world event',
+    "Triggering breaking article for world event",
     { eventId, eventType, questionId: question.id, reservationId },
-    'EventGeneration'
+    "EventGeneration",
   );
 
   try {
@@ -879,12 +879,12 @@ export async function maybeGenerateBreakingArticle(
     // Pass skipRateLimit=true since we've already reserved a slot
     const articlesCreated = await generateArticlesForArcEvent(
       eventId,
-      'created', // Breaking articles are always fresh coverage
+      "created", // Breaking articles are always fresh coverage
       question,
       llmClient,
       timestamp,
       dayNumber,
-      { skipRateLimit: true }
+      { skipRateLimit: true },
     );
 
     // If we created more than 1 article, record the additional ones
@@ -918,7 +918,7 @@ async function dbSelectOrgsForArcEvent<T extends { id: string; name: string }>(
   arcEventId: string,
   currentStatus: ArcEventStatus,
   availableOrgs: T[],
-  maxOrgs = 2
+  maxOrgs = 2,
 ): Promise<T[]> {
   if (!arcEventId || availableOrgs.length === 0 || maxOrgs <= 0) return [];
 
@@ -929,8 +929,8 @@ async function dbSelectOrgsForArcEvent<T extends { id: string; name: string }>(
     .where(
       and(
         eq(arcEventCoverage.eventId, arcEventId),
-        eq(arcEventCoverage.status, currentStatus)
-      )
+        eq(arcEventCoverage.status, currentStatus),
+      ),
     );
 
   const coveredOrgIds = new Set(covered.map((r) => r.orgId));
@@ -949,7 +949,7 @@ async function dbRecordArcEventCoverage(
   eventId: string,
   orgId: string,
   status: ArcEventStatus,
-  articleId: string
+  articleId: string,
 ): Promise<void> {
   const rawDb = getRawDrizzle();
   await rawDb
@@ -992,7 +992,7 @@ export async function getArcEventCoverageStats(): Promise<{
  */
 export async function hasEventBeenCovered(
   eventId: string,
-  status: ArcEventStatus = 'created'
+  status: ArcEventStatus = "created",
 ): Promise<boolean> {
   const rawDb = getRawDrizzle();
   const result = await rawDb
@@ -1001,8 +1001,8 @@ export async function hasEventBeenCovered(
     .where(
       and(
         eq(arcEventCoverage.eventId, eventId),
-        eq(arcEventCoverage.status, status)
-      )
+        eq(arcEventCoverage.status, status),
+      ),
     );
   return (result[0]?.cnt ?? 0) > 0;
 }
@@ -1020,7 +1020,7 @@ export async function markEventAsCovered(
   eventId: string,
   orgId: string,
   articleId: string,
-  status: ArcEventStatus = 'created'
+  status: ArcEventStatus = "created",
 ): Promise<void> {
   await dbRecordArcEventCoverage(eventId, orgId, status, articleId);
 }

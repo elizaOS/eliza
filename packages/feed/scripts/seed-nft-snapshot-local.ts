@@ -13,21 +13,21 @@
  *   bun run scripts/seed-nft-snapshot-local.ts
  */
 
-import { closeDatabase, count, db, nftSnapshot, users } from '@feed/db';
-import { nanoid } from 'nanoid';
+import { closeDatabase, count, db, nftSnapshot, users } from "@feed/db";
+import { nanoid } from "nanoid";
 
 export async function runLocalNftSnapshotSeed(options?: {
   closeAfter?: boolean;
 }): Promise<void> {
   const closeAfter = options?.closeAfter ?? true;
 
-  console.log('[SeedNFTSnapshot] Creating local development NFT snapshots...');
+  console.log("[SeedNFTSnapshot] Creating local development NFT snapshots...");
 
   // Check if snapshots already exist
   const [existingCount] = await db.select({ count: count() }).from(nftSnapshot);
   if ((existingCount?.count ?? 0) > 0) {
     console.log(
-      `[SeedNFTSnapshot] ✅ Snapshots already exist (${existingCount?.count} entries)`
+      `[SeedNFTSnapshot] ✅ Snapshots already exist (${existingCount?.count} entries)`,
     );
     if (closeAfter) {
       await closeDatabase();
@@ -47,7 +47,7 @@ export async function runLocalNftSnapshotSeed(options?: {
 
   if (allUsers.length === 0) {
     console.log(
-      '[SeedNFTSnapshot] No users found in database. Run db:seed first.'
+      "[SeedNFTSnapshot] No users found in database. Run db:seed first.",
     );
     if (closeAfter) {
       await closeDatabase();
@@ -56,7 +56,7 @@ export async function runLocalNftSnapshotSeed(options?: {
   }
 
   console.log(
-    `[SeedNFTSnapshot] Creating snapshots for ${allUsers.length} users...`
+    `[SeedNFTSnapshot] Creating snapshots for ${allUsers.length} users...`,
   );
 
   const snapshotTime = new Date();
@@ -81,17 +81,17 @@ export async function runLocalNftSnapshotSeed(options?: {
     } catch (error) {
       // Skip if duplicate
       const message = error instanceof Error ? error.message : String(error);
-      if (!message.includes('duplicate') && !message.includes('unique')) {
+      if (!message.includes("duplicate") && !message.includes("unique")) {
         console.warn(
           `[SeedNFTSnapshot] Failed to create snapshot for user ${user.id}:`,
-          message
+          message,
         );
       }
     }
   }
 
   console.log(`[SeedNFTSnapshot] ✅ Created ${created} snapshot entries`);
-  console.log('[SeedNFTSnapshot] All users are now eligible to mint NFTs!');
+  console.log("[SeedNFTSnapshot] All users are now eligible to mint NFTs!");
 
   if (closeAfter) {
     await closeDatabase();
@@ -104,7 +104,7 @@ async function main(): Promise<void> {
 
 if (import.meta.main) {
   main().catch((error) => {
-    console.error('[SeedNFTSnapshot] Failed:', error);
+    console.error("[SeedNFTSnapshot] Failed:", error);
     process.exit(1);
   });
 }

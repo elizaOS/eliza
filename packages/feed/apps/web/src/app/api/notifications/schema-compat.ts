@@ -1,7 +1,7 @@
-const MISSING_NOTIFICATION_SCHEMA_ERROR_CODES = new Set(['42P01', '42703']);
+const MISSING_NOTIFICATION_SCHEMA_ERROR_CODES = new Set(["42P01", "42703"]);
 
 export function getMissingNotificationSchemaErrorCode(
-  error: unknown
+  error: unknown,
 ): string | null {
   const causeCode = (error as { cause?: { code?: string } } | null)?.cause
     ?.code;

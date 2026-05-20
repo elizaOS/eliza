@@ -7,22 +7,22 @@
  *
  * @module ActivityHeatmap
  */
-'use client';
+"use client";
 
-import { cn, formatNumber } from '@feed/shared';
-import { Calendar, Clock, RefreshCw } from 'lucide-react';
+import { cn, formatNumber } from "@feed/shared";
+import { Calendar, Clock, RefreshCw } from "lucide-react";
 import {
   useCallback,
   useEffect,
   useMemo,
   useState,
   useTransition,
-} from 'react';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { apiUrl } from '@/utils/api-url';
+} from "react";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { apiUrl } from "@/utils/api-url";
 
-type HeatmapType = 'hourly' | 'calendar';
-type ActivityType = 'all' | 'trades' | 'posts' | 'messages';
+type HeatmapType = "hourly" | "calendar";
+type ActivityType = "all" | "trades" | "posts" | "messages";
 
 interface HourlyDataPoint {
   dayOfWeek: number;
@@ -50,47 +50,47 @@ interface HeatmapData {
   };
 }
 
-const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const HOUR_LABELS = [
-  '12a',
-  '',
-  '',
-  '3a',
-  '',
-  '',
-  '6a',
-  '',
-  '',
-  '9a',
-  '',
-  '',
-  '12p',
-  '',
-  '',
-  '3p',
-  '',
-  '',
-  '6p',
-  '',
-  '',
-  '9p',
-  '',
-  '',
+  "12a",
+  "",
+  "",
+  "3a",
+  "",
+  "",
+  "6a",
+  "",
+  "",
+  "9a",
+  "",
+  "",
+  "12p",
+  "",
+  "",
+  "3p",
+  "",
+  "",
+  "6p",
+  "",
+  "",
+  "9p",
+  "",
+  "",
 ];
 
 const ACTIVITY_OPTIONS: { value: ActivityType; label: string }[] = [
-  { value: 'all', label: 'All Activity' },
-  { value: 'trades', label: 'Trades' },
-  { value: 'posts', label: 'Posts' },
-  { value: 'messages', label: 'Messages' },
+  { value: "all", label: "All Activity" },
+  { value: "trades", label: "Trades" },
+  { value: "posts", label: "Posts" },
+  { value: "messages", label: "Messages" },
 ];
 
 const INTENSITY_COLORS = [
-  'bg-muted/30', // 0
-  'bg-green-900/50', // 0-25%
-  'bg-green-700/70', // 25-50%
-  'bg-green-500/80', // 50-75%
-  'bg-green-400', // 75-100%
+  "bg-muted/30", // 0
+  "bg-green-900/50", // 0-25%
+  "bg-green-700/70", // 25-50%
+  "bg-green-500/80", // 50-75%
+  "bg-green-400", // 75-100%
 ] as const;
 
 function getIntensityColor(intensity: number): string {
@@ -107,7 +107,7 @@ function IntensityLegend() {
       <span className="text-muted-foreground text-xs">Less</span>
       <div className="flex gap-0.5">
         {INTENSITY_COLORS.map((color, i) => (
-          <div key={i} className={cn('h-3 w-3 rounded-sm', color)} />
+          <div key={i} className={cn("h-3 w-3 rounded-sm", color)} />
         ))}
       </div>
       <span className="text-muted-foreground text-xs">More</span>
@@ -119,8 +119,8 @@ export function ActivityHeatmap() {
   const [data, setData] = useState<HeatmapData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [heatmapType, setHeatmapType] = useState<HeatmapType>('hourly');
-  const [activityType, setActivityType] = useState<ActivityType>('all');
+  const [heatmapType, setHeatmapType] = useState<HeatmapType>("hourly");
+  const [activityType, setActivityType] = useState<ActivityType>("all");
   const [isRefreshing, startRefresh] = useTransition();
 
   const fetchData = useCallback(
@@ -129,12 +129,12 @@ export function ActivityHeatmap() {
         setError(null);
         const response = await fetch(
           apiUrl(
-            `/api/admin/stats/heatmap?type=${heatmapType}&activityType=${activityType}`
-          )
+            `/api/admin/stats/heatmap?type=${heatmapType}&activityType=${activityType}`,
+          ),
         );
         if (!response.ok) {
           setData(null);
-          setError('Failed to load heatmap data');
+          setError("Failed to load heatmap data");
           setLoading(false);
           return;
         }
@@ -148,12 +148,12 @@ export function ActivityHeatmap() {
       } else {
         void fetchLogic().catch(() => {
           setData(null);
-          setError('Failed to load heatmap data');
+          setError("Failed to load heatmap data");
           setLoading(false);
         });
       }
     },
-    [heatmapType, activityType]
+    [heatmapType, activityType],
   );
 
   useEffect(() => {
@@ -174,7 +174,7 @@ export function ActivityHeatmap() {
       <div className="rounded-xl border border-border bg-card p-6">
         <div className="py-12 text-center text-muted-foreground">
           <Clock className="mx-auto mb-3 h-12 w-12 opacity-50" />
-          <p>{error ?? 'Failed to load heatmap data'}</p>
+          <p>{error ?? "Failed to load heatmap data"}</p>
           <button
             onClick={() => {
               setLoading(true);
@@ -190,7 +190,7 @@ export function ActivityHeatmap() {
     );
   }
 
-  const isHourly = data.type === 'hourly';
+  const isHourly = data.type === "hourly";
   const hourlyData = isHourly ? (data.data as HourlyDataPoint[]) : [];
   const calendarData = !isHourly ? (data.data as CalendarDataPoint[]) : [];
 
@@ -217,14 +217,14 @@ export function ActivityHeatmap() {
           <div className="flex rounded-lg border border-border bg-background">
             <button
               onClick={() => {
-                setHeatmapType('hourly');
+                setHeatmapType("hourly");
                 setLoading(true);
               }}
               className={cn(
-                'flex items-center gap-1.5 rounded-l-lg px-3 py-1.5 font-medium text-xs transition-colors',
-                heatmapType === 'hourly'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:bg-muted'
+                "flex items-center gap-1.5 rounded-l-lg px-3 py-1.5 font-medium text-xs transition-colors",
+                heatmapType === "hourly"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-muted",
               )}
             >
               <Clock className="h-3.5 w-3.5" />
@@ -232,14 +232,14 @@ export function ActivityHeatmap() {
             </button>
             <button
               onClick={() => {
-                setHeatmapType('calendar');
+                setHeatmapType("calendar");
                 setLoading(true);
               }}
               className={cn(
-                'flex items-center gap-1.5 rounded-r-lg px-3 py-1.5 font-medium text-xs transition-colors',
-                heatmapType === 'calendar'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:bg-muted'
+                "flex items-center gap-1.5 rounded-r-lg px-3 py-1.5 font-medium text-xs transition-colors",
+                heatmapType === "calendar"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-muted",
               )}
             >
               <Calendar className="h-3.5 w-3.5" />
@@ -270,7 +270,7 @@ export function ActivityHeatmap() {
             className="rounded-lg bg-muted p-1.5 transition-colors hover:bg-muted/80 disabled:opacity-50"
           >
             <RefreshCw
-              className={cn('h-4 w-4', isRefreshing && 'animate-spin')}
+              className={cn("h-4 w-4", isRefreshing && "animate-spin")}
             />
           </button>
         </div>
@@ -308,8 +308,8 @@ export function ActivityHeatmap() {
                     <div
                       key={hourIndex}
                       className={cn(
-                        'aspect-square flex-1 rounded-sm transition-colors',
-                        getIntensityColor(intensity)
+                        "aspect-square flex-1 rounded-sm transition-colors",
+                        getIntensityColor(intensity),
                       )}
                       title={`${dayName} ${hourIndex}:00 - ${count.toLocaleString()} activities`}
                     />
@@ -336,8 +336,8 @@ export function ActivityHeatmap() {
                 <div
                   key={point.date}
                   className={cn(
-                    'h-3 w-3 rounded-sm transition-colors',
-                    getIntensityColor(point.intensity)
+                    "h-3 w-3 rounded-sm transition-colors",
+                    getIntensityColor(point.intensity),
                   )}
                   title={`${point.date}: ${point.count.toLocaleString()} activities`}
                 />
@@ -358,18 +358,18 @@ export function ActivityHeatmap() {
       {/* Stats Footer */}
       <div className="mt-4 flex items-center justify-between border-border border-t pt-4 text-sm">
         <div className="text-muted-foreground">
-          Total:{' '}
+          Total:{" "}
           <span className="font-medium text-foreground">
             {formatNumber(data.metadata.totalActivities)}
-          </span>{' '}
+          </span>{" "}
           activities
         </div>
         <div className="text-muted-foreground">
-          Peak:{' '}
+          Peak:{" "}
           <span className="font-medium text-foreground">
             {formatNumber(data.metadata.maxCount)}
-          </span>{' '}
-          / {isHourly ? 'hour' : 'day'}
+          </span>{" "}
+          / {isHourly ? "hour" : "day"}
         </div>
       </div>
     </div>

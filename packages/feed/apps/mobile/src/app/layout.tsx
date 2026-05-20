@@ -1,18 +1,18 @@
-'use client';
+"use client";
 
-import './globals.css';
+import "./globals.css";
 
-import { useRouter } from 'next/navigation';
-import { Suspense, useCallback, useEffect, useState } from 'react';
-import { Toaster } from 'sonner';
-import { FeedAuthBanner } from '@/components/auth/FeedAuthBanner';
-import { GlobalLoginModal } from '@/components/auth/GlobalLoginModal';
-import { Providers } from '@/components/providers/Providers';
-import { BottomNav } from '@/components/shared/BottomNav';
-import { MobileHeader } from '@/components/shared/MobileHeader';
-import { Sidebar } from '@/components/shared/Sidebar';
-import { AppUrlListener } from '@/mobile/components/AppUrlListener';
-import { initNativeFeatures, updateTheme } from '@/mobile/lib/native-init';
+import { useRouter } from "next/navigation";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { Toaster } from "sonner";
+import { FeedAuthBanner } from "@/components/auth/FeedAuthBanner";
+import { GlobalLoginModal } from "@/components/auth/GlobalLoginModal";
+import { Providers } from "@/components/providers/Providers";
+import { BottomNav } from "@/components/shared/BottomNav";
+import { MobileHeader } from "@/components/shared/MobileHeader";
+import { Sidebar } from "@/components/shared/Sidebar";
+import { AppUrlListener } from "@/mobile/components/AppUrlListener";
+import { initNativeFeatures, updateTheme } from "@/mobile/lib/native-init";
 
 /**
  * Mobile root layout — client-only version.
@@ -41,10 +41,10 @@ export default function MobileRootLayout({
     if (!mounted) return;
     // Detect theme from the document (next-themes sets data-theme attribute)
     const theme =
-      document.documentElement.classList.contains('dark') ||
-      document.documentElement.getAttribute('data-theme') === 'dark'
-        ? 'dark'
-        : 'light';
+      document.documentElement.classList.contains("dark") ||
+      document.documentElement.getAttribute("data-theme") === "dark"
+        ? "dark"
+        : "light";
     initNativeFeatures({ theme, navigate });
   }, [mounted, navigate]);
 
@@ -53,13 +53,13 @@ export default function MobileRootLayout({
     if (!mounted) return;
     const observer = new MutationObserver(() => {
       const isDark =
-        document.documentElement.classList.contains('dark') ||
-        document.documentElement.getAttribute('data-theme') === 'dark';
-      updateTheme(isDark ? 'dark' : 'light');
+        document.documentElement.classList.contains("dark") ||
+        document.documentElement.getAttribute("data-theme") === "dark";
+      updateTheme(isDark ? "dark" : "light");
     });
     observer.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ['class', 'data-theme'],
+      attributeFilter: ["class", "data-theme"],
     });
     return () => observer.disconnect();
   }, [mounted]);

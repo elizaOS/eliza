@@ -89,7 +89,7 @@
  * @see {@link /lib/api/admin-middleware} Admin middleware
  */
 
-import { requireAdmin, successResponse, withErrorHandling } from '@feed/api';
+import { requireAdmin, successResponse, withErrorHandling } from "@feed/api";
 import {
   and,
   asc,
@@ -110,31 +110,31 @@ import {
   userMutes,
   users,
   whitelist,
-} from '@feed/db';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { z } from 'zod';
+} from "@feed/db";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { z } from "zod";
 
 const QuerySchema = z.object({
   limit: z.coerce.number().min(1).max(100).default(50),
   offset: z.coerce.number().min(0).default(0),
   search: z.string().optional(),
-  filter: z.enum(['all', 'actors', 'users', 'banned', 'admins']).default('all'),
+  filter: z.enum(["all", "actors", "users", "banned", "admins"]).default("all"),
   sortBy: z
     .enum([
-      'created',
-      'balance',
-      'reputation',
-      'username',
-      'reports_received',
-      'blocks_received',
-      'mutes_received',
-      'report_ratio',
-      'block_ratio',
-      'bad_user_score',
+      "created",
+      "balance",
+      "reputation",
+      "username",
+      "reports_received",
+      "blocks_received",
+      "mutes_received",
+      "report_ratio",
+      "block_ratio",
+      "bad_user_score",
     ])
-    .default('created'),
-  sortOrder: z.enum(['asc', 'desc']).default('desc'),
+    .default("created"),
+  sortOrder: z.enum(["asc", "desc"]).default("desc"),
 });
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
@@ -144,26 +144,26 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   // Parse query parameters
   const { searchParams } = new URL(request.url);
   const params = QuerySchema.parse({
-    limit: searchParams.get('limit') || '50',
-    offset: searchParams.get('offset') || '0',
-    search: searchParams.get('search') || undefined,
-    filter: searchParams.get('filter') || 'all',
-    sortBy: searchParams.get('sortBy') || 'created',
-    sortOrder: searchParams.get('sortOrder') || 'desc',
+    limit: searchParams.get("limit") || "50",
+    offset: searchParams.get("offset") || "0",
+    search: searchParams.get("search") || undefined,
+    filter: searchParams.get("filter") || "all",
+    sortBy: searchParams.get("sortBy") || "created",
+    sortOrder: searchParams.get("sortOrder") || "desc",
   });
 
-  logger.info('Admin users list requested', { params }, 'GET /api/admin/users');
+  logger.info("Admin users list requested", { params }, "GET /api/admin/users");
 
   // Build where conditions
   const conditions: SQL[] = [];
 
-  if (params.filter === 'actors') {
+  if (params.filter === "actors") {
     conditions.push(eq(users.isActor, true));
-  } else if (params.filter === 'users') {
+  } else if (params.filter === "users") {
     conditions.push(eq(users.isActor, false));
-  } else if (params.filter === 'banned') {
+  } else if (params.filter === "banned") {
     conditions.push(eq(users.isBanned, true));
-  } else if (params.filter === 'admins') {
+  } else if (params.filter === "admins") {
     conditions.push(eq(users.isAdmin, true));
   }
 
@@ -171,9 +171,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     // Escape special LIKE/ILIKE characters to prevent pattern injection
     // Using backslash as escape character, which is specified in raw SQL
     const escapedSearch = params.search
-      .replace(/\\/g, '\\\\') // Escape backslashes first
-      .replace(/%/g, '\\%') // Escape percent
-      .replace(/_/g, '\\_'); // Escape underscore
+      .replace(/\\/g, "\\\\") // Escape backslashes first
+      .replace(/%/g, "\\%") // Escape percent
+      .replace(/_/g, "\\_"); // Escape underscore
 
     // Use raw SQL with ESCAPE clause to properly handle escaped wildcards
     const searchPattern = `%${escapedSearch}%`;
@@ -188,16 +188,16 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
   // Determine sort order
-  const sortFn = params.sortOrder === 'asc' ? asc : desc;
+  const sortFn = params.sortOrder === "asc" ? asc : desc;
   let orderByClause: SQL | undefined;
 
-  if (params.sortBy === 'created') {
+  if (params.sortBy === "created") {
     orderByClause = sortFn(users.createdAt);
-  } else if (params.sortBy === 'balance') {
+  } else if (params.sortBy === "balance") {
     orderByClause = sortFn(users.virtualBalance);
-  } else if (params.sortBy === 'reputation') {
+  } else if (params.sortBy === "reputation") {
     orderByClause = sortFn(users.reputationPoints);
-  } else if (params.sortBy === 'username') {
+  } else if (params.sortBy === "username") {
     orderByClause = sortFn(users.username);
   }
 
@@ -320,8 +320,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
             .where(
               and(
                 inArray(whitelist.userId, userIds),
-                isNull(whitelist.revokedAt)
-              )
+                isNull(whitelist.revokedAt),
+              ),
             )
             .catch(() => [] as { userId: string }[]),
         ])
@@ -329,31 +329,31 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
   // Build lookup maps
   const commentCountMap = new Map(
-    commentCounts.filter((c) => c.userId).map((c) => [c.userId!, c.count])
+    commentCounts.filter((c) => c.userId).map((c) => [c.userId!, c.count]),
   );
   const reactionCountMap = new Map(
-    reactionCounts.filter((r) => r.userId).map((r) => [r.userId!, r.count])
+    reactionCounts.filter((r) => r.userId).map((r) => [r.userId!, r.count]),
   );
   const positionCountMap = new Map(
-    positionCounts.filter((p) => p.userId).map((p) => [p.userId!, p.count])
+    positionCounts.filter((p) => p.userId).map((p) => [p.userId!, p.count]),
   );
   const followerCountMap = new Map(
-    followerCounts.filter((f) => f.userId).map((f) => [f.userId!, f.count])
+    followerCounts.filter((f) => f.userId).map((f) => [f.userId!, f.count]),
   );
   const followingCountMap = new Map(
-    followingCounts.filter((f) => f.userId).map((f) => [f.userId!, f.count])
+    followingCounts.filter((f) => f.userId).map((f) => [f.userId!, f.count]),
   );
   const reportsReceivedMap = new Map(
-    reportsReceived.filter((r) => r.userId).map((r) => [r.userId!, r.count])
+    reportsReceived.filter((r) => r.userId).map((r) => [r.userId!, r.count]),
   );
   const blocksReceivedMap = new Map(
-    blocksReceived.filter((b) => b.userId).map((b) => [b.userId!, b.count])
+    blocksReceived.filter((b) => b.userId).map((b) => [b.userId!, b.count]),
   );
   const mutesReceivedMap = new Map(
-    mutesReceived.filter((m) => m.userId).map((m) => [m.userId!, m.count])
+    mutesReceived.filter((m) => m.userId).map((m) => [m.userId!, m.count]),
   );
   const reportsSentMap = new Map(
-    reportsSent.filter((r) => r.userId).map((r) => [r.userId!, r.count])
+    reportsSent.filter((r) => r.userId).map((r) => [r.userId!, r.count]),
   );
   const whitelistedSet = new Set(whitelistedUsers.map((w) => w.userId));
 
@@ -419,36 +419,36 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   // - Pre-computing badUserScore in a scheduled job
   // - Adding materialized views for moderation metrics
   // - Caching results with TTL for repeated queries
-  if (params.sortBy === 'reports_received') {
+  if (params.sortBy === "reports_received") {
     usersWithMetrics.sort((a, b) => {
       const diff =
         b._moderation.reportsReceived - a._moderation.reportsReceived;
-      return params.sortOrder === 'asc' ? -diff : diff;
+      return params.sortOrder === "asc" ? -diff : diff;
     });
-  } else if (params.sortBy === 'blocks_received') {
+  } else if (params.sortBy === "blocks_received") {
     usersWithMetrics.sort((a, b) => {
       const diff = b._moderation.blocksReceived - a._moderation.blocksReceived;
-      return params.sortOrder === 'asc' ? -diff : diff;
+      return params.sortOrder === "asc" ? -diff : diff;
     });
-  } else if (params.sortBy === 'mutes_received') {
+  } else if (params.sortBy === "mutes_received") {
     usersWithMetrics.sort((a, b) => {
       const diff = b._moderation.mutesReceived - a._moderation.mutesReceived;
-      return params.sortOrder === 'asc' ? -diff : diff;
+      return params.sortOrder === "asc" ? -diff : diff;
     });
-  } else if (params.sortBy === 'report_ratio') {
+  } else if (params.sortBy === "report_ratio") {
     usersWithMetrics.sort((a, b) => {
       const diff = b._moderation.reportRatio - a._moderation.reportRatio;
-      return params.sortOrder === 'asc' ? -diff : diff;
+      return params.sortOrder === "asc" ? -diff : diff;
     });
-  } else if (params.sortBy === 'block_ratio') {
+  } else if (params.sortBy === "block_ratio") {
     usersWithMetrics.sort((a, b) => {
       const diff = b._moderation.blockRatio - a._moderation.blockRatio;
-      return params.sortOrder === 'asc' ? -diff : diff;
+      return params.sortOrder === "asc" ? -diff : diff;
     });
-  } else if (params.sortBy === 'bad_user_score') {
+  } else if (params.sortBy === "bad_user_score") {
     usersWithMetrics.sort((a, b) => {
       const diff = b._moderation.badUserScore - a._moderation.badUserScore;
-      return params.sortOrder === 'asc' ? -diff : diff;
+      return params.sortOrder === "asc" ? -diff : diff;
     });
   }
 

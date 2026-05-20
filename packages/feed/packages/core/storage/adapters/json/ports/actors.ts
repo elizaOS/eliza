@@ -2,21 +2,21 @@
  * JSON Actor Adapter
  */
 
-import type { ActorPort, OrganizationPort } from '../../../ports/actors';
+import type { ActorPort, OrganizationPort } from "../../../ports/actors";
 import type {
   ActorRecord,
   ActorStateRecord,
   OrganizationRecord,
   OrganizationStateRecord,
-} from '../../../types';
-import type { JsonIdGenerator } from '../id-generator';
-import type { JsonStorageState } from '../types';
+} from "../../../types";
+import type { JsonIdGenerator } from "../id-generator";
+import type { JsonStorageState } from "../types";
 
 export class JsonActorAdapter implements ActorPort {
   constructor(
     private state: JsonStorageState,
     _idGen: JsonIdGenerator,
-    private onChange: () => void
+    private onChange: () => void,
   ) {}
 
   async getActor(id: string): Promise<ActorRecord | null> {
@@ -41,7 +41,7 @@ export class JsonActorAdapter implements ActorPort {
   }
 
   async upsertActorState(
-    state: Partial<ActorStateRecord> & { id: string }
+    state: Partial<ActorStateRecord> & { id: string },
   ): Promise<ActorStateRecord> {
     const existing = this.state.actorStates[state.id];
     const now = new Date();
@@ -49,7 +49,7 @@ export class JsonActorAdapter implements ActorPort {
     const updated: ActorStateRecord = {
       id: state.id,
       tradingBalance:
-        state.tradingBalance ?? existing?.tradingBalance ?? '10000',
+        state.tradingBalance ?? existing?.tradingBalance ?? "10000",
       reputationPoints:
         state.reputationPoints ?? existing?.reputationPoints ?? 10000,
       hasPool: state.hasPool ?? existing?.hasPool ?? false,
@@ -84,7 +84,7 @@ export class JsonOrganizationAdapter implements OrganizationPort {
   constructor(
     private state: JsonStorageState,
     _idGen: JsonIdGenerator,
-    private onChange: () => void
+    private onChange: () => void,
   ) {}
 
   async getOrganization(id: string): Promise<OrganizationRecord | null> {
@@ -97,23 +97,23 @@ export class JsonOrganizationAdapter implements OrganizationPort {
 
   async getOrganizationsByType(type: string): Promise<OrganizationRecord[]> {
     return Object.values(this.state.organizations).filter(
-      (o) => o.type === type
+      (o) => o.type === type,
     );
   }
 
   async getOrganizationByTicker(
-    ticker: string
+    ticker: string,
   ): Promise<OrganizationRecord | null> {
     const upperTicker = ticker.toUpperCase();
     return (
       Object.values(this.state.organizations).find(
-        (o) => o.ticker?.toUpperCase() === upperTicker
+        (o) => o.ticker?.toUpperCase() === upperTicker,
       ) ?? null
     );
   }
 
   async getOrganizationState(
-    id: string
+    id: string,
   ): Promise<OrganizationStateRecord | null> {
     return this.state.organizationStates[id] ?? null;
   }
@@ -124,7 +124,7 @@ export class JsonOrganizationAdapter implements OrganizationPort {
 
   async upsertOrganizationState(
     id: string,
-    currentPrice: number | null
+    currentPrice: number | null,
   ): Promise<OrganizationStateRecord> {
     const now = new Date();
     const state: OrganizationStateRecord = {

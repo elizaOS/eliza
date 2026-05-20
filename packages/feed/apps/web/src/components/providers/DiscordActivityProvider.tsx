@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { logger } from '@feed/shared';
-import { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { logger } from "@feed/shared";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 
 /**
  * Consolidated Discord Activity Provider.
@@ -35,7 +35,7 @@ interface DiscordActivityContextType {
 }
 
 const DiscordActivityContext = createContext<DiscordActivityContextType | null>(
-  null
+  null,
 );
 
 /**
@@ -50,7 +50,7 @@ export function useDiscordActivity() {
   const context = useContext(DiscordActivityContext);
   if (!context)
     throw new Error(
-      'useDiscordActivity must be used within DiscordActivityProvider'
+      "useDiscordActivity must be used within DiscordActivityProvider",
     );
   return context;
 }
@@ -80,7 +80,7 @@ export function DiscordActivityProvider({
   // ── Detect & Initialize ──────────────────────────────────────────────────
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined") return;
     if (hasInitialized.current) return;
     hasInitialized.current = true;
 
@@ -89,9 +89,9 @@ export function DiscordActivityProvider({
     // Early exit — if no client ID is configured, skip entirely.
     if (!clientId) {
       logger.debug(
-        'Discord Activity not configured (NEXT_PUBLIC_DISCORD_ACTIVITY_CLIENT_ID missing)',
+        "Discord Activity not configured (NEXT_PUBLIC_DISCORD_ACTIVITY_CLIENT_ID missing)",
         {},
-        'DiscordActivity'
+        "DiscordActivity",
       );
       setIsLoading(false);
       return;
@@ -102,14 +102,14 @@ export function DiscordActivityProvider({
     // avoid unnecessary dynamic imports for non-Discord iframes.
     const url = new URL(window.location.href);
     const isDiscordHostname =
-      window.location.hostname.endsWith('.discordsays.com');
+      window.location.hostname.endsWith(".discordsays.com");
     const hasDiscordParams =
-      url.searchParams.has('frame_id') && url.searchParams.has('instance_id');
+      url.searchParams.has("frame_id") && url.searchParams.has("instance_id");
     const isLikelyDiscord =
       isDiscordHostname || (window.self !== window.top && hasDiscordParams);
 
     if (!isLikelyDiscord) {
-      logger.debug('Not in Discord Activity context', {}, 'DiscordActivity');
+      logger.debug("Not in Discord Activity context", {}, "DiscordActivity");
       setIsLoading(false);
       return;
     }
@@ -118,7 +118,7 @@ export function DiscordActivityProvider({
       try {
         // Dynamic import to avoid loading the SDK in non-Discord contexts.
         const { DiscordSDK, patchUrlMappings } = await import(
-          '@discord/embedded-app-sdk'
+          "@discord/embedded-app-sdk"
         );
 
         const discordSdk = new DiscordSDK(clientId);
@@ -127,9 +127,9 @@ export function DiscordActivityProvider({
         await discordSdk.ready();
 
         logger.info(
-          'Discord Activity SDK ready',
+          "Discord Activity SDK ready",
           { instanceId: discordSdk.instanceId },
-          'DiscordActivity'
+          "DiscordActivity",
         );
 
         // Step 2: Patch URL mappings for the Discord proxy.
@@ -143,21 +143,21 @@ export function DiscordActivityProvider({
         // Example mappings (configure in Developer Portal):
         //   /api  → feed.market
         //   /blob → *.public.blob.vercel-storage.com
-        if (process.env.NODE_ENV === 'production') {
+        if (process.env.NODE_ENV === "production") {
           const proxyTarget =
-            process.env.NEXT_PUBLIC_APP_URL?.replace(/^https?:\/\//, '') ||
-            'feed.market';
-          patchUrlMappings([{ prefix: '/api', target: proxyTarget }]);
+            process.env.NEXT_PUBLIC_APP_URL?.replace(/^https?:\/\//, "") ||
+            "feed.market";
+          patchUrlMappings([{ prefix: "/api", target: proxyTarget }]);
         }
 
         // Step 3: Fetch a server-signed state token for CSRF protection.
         // The server generates an HMAC-SHA256 signed nonce with a TTL, so the
         // token exchange endpoint can verify the state was issued by us and
         // hasn't expired.
-        const stateRes = await fetch('/.proxy/api/auth/discord/activity/state');
+        const stateRes = await fetch("/.proxy/api/auth/discord/activity/state");
         if (!stateRes.ok) {
           throw new Error(
-            `Failed to obtain OAuth state token (status ${stateRes.status})`
+            `Failed to obtain OAuth state token (status ${stateRes.status})`,
           );
         }
         const { state: oauthState } = (await stateRes.json()) as {
@@ -167,23 +167,23 @@ export function DiscordActivityProvider({
         // Authorize — opens the OAuth permission modal inside Discord.
         const { code } = await discordSdk.commands.authorize({
           client_id: clientId,
-          response_type: 'code',
+          response_type: "code",
           state: oauthState,
-          prompt: 'none',
-          scope: ['identify'],
+          prompt: "none",
+          scope: ["identify"],
         });
 
         // Step 4: Exchange the code for an access token on our server.
         // Include the signed state for server-side CSRF validation.
-        const tokenRes = await fetch('/.proxy/api/auth/discord/activity', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+        const tokenRes = await fetch("/.proxy/api/auth/discord/activity", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ code, state: oauthState }),
         });
 
         if (!tokenRes.ok) {
           throw new Error(
-            `Token exchange failed with status ${tokenRes.status}`
+            `Token exchange failed with status ${tokenRes.status}`,
           );
         }
 
@@ -194,7 +194,7 @@ export function DiscordActivityProvider({
         // Step 5: Authenticate with Discord using the access token.
         const auth = await discordSdk.commands.authenticate({ access_token });
 
-        if (!auth) throw new Error('Discord authentication returned null');
+        if (!auth) throw new Error("Discord authentication returned null");
 
         setAccessToken(access_token);
         setIsActivity(true);
@@ -213,33 +213,33 @@ export function DiscordActivityProvider({
         }
 
         logger.info(
-          'Discord Activity authenticated',
+          "Discord Activity authenticated",
           {
             userId: auth.user?.id,
             username: auth.user?.username,
           },
-          'DiscordActivity'
+          "DiscordActivity",
         );
       } catch (err) {
         // If the SDK throws because we're not actually in a Discord Activity,
         // treat it as a non-Activity context (not an error to surface).
         const message = err instanceof Error ? err.message : String(err);
         const isNotAnActivity =
-          message.includes('not running in Discord') ||
-          message.includes('READY') ||
-          message.includes('postMessage');
+          message.includes("not running in Discord") ||
+          message.includes("READY") ||
+          message.includes("postMessage");
 
         if (isNotAnActivity) {
           logger.debug(
-            'Not in Discord Activity context (SDK detection)',
+            "Not in Discord Activity context (SDK detection)",
             { reason: message },
-            'DiscordActivity'
+            "DiscordActivity",
           );
         } else {
           logger.error(
-            'Discord Activity initialization failed',
+            "Discord Activity initialization failed",
             { error: message },
-            'DiscordActivity'
+            "DiscordActivity",
           );
           setError(message);
         }

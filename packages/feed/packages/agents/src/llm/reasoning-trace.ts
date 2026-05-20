@@ -18,7 +18,7 @@ export function extractReasoningTrace(response: string): string | undefined {
     return undefined;
   }
 
-  const normalized = fragments.join('\n\n').replace(/\s+/g, ' ').trim();
+  const normalized = fragments.join("\n\n").replace(/\s+/g, " ").trim();
   return normalized || undefined;
 }
 
@@ -26,13 +26,13 @@ export function buildReasoningTraceMetadata(response: string): {
   rawReasoningTrace?: string;
   reasoningAvailable: boolean;
   reasoningSource: string;
-  traceVisibility: 'public' | 'private';
+  traceVisibility: "public" | "private";
 } {
   const rawReasoningTrace = extractReasoningTrace(response);
   return {
     rawReasoningTrace,
     reasoningAvailable: Boolean(rawReasoningTrace),
-    reasoningSource: rawReasoningTrace ? 'captured-trace' : 'none',
-    traceVisibility: 'public',
+    reasoningSource: rawReasoningTrace ? "captured-trace" : "none",
+    traceVisibility: "public",
   };
 }

@@ -1,14 +1,14 @@
-import { definePrompt } from '../define-prompt';
+import { definePrompt } from "../define-prompt";
 
 /**
  * Prompt for generating a reply to another actor's post.
  * Actor-first design: identity dominates, minimal shared rules.
  */
 export const replies = definePrompt({
-  id: 'replies',
-  version: '6.0.0',
-  category: 'feed',
-  description: 'Generates reply to post — actor identity first',
+  id: "replies",
+  version: "6.0.0",
+  category: "feed",
+  description: "Generates reply to post — actor identity first",
   temperature: 1,
   maxTokens: 8000,
   template: `You are {{characterName}}.

@@ -2,13 +2,13 @@ import {
   agentService,
   getAgentConfig,
   isAutonomousTradingEnabled,
-} from '@feed/agents';
-import { calculatePortfolioBreakdown } from '@feed/engine';
-import { toISO, toISOOrNull } from '@feed/shared';
-import { getUserPositionsSnapshot } from '@/lib/markets/user-positions';
+} from "@feed/agents";
+import { calculatePortfolioBreakdown } from "@feed/engine";
+import { toISO, toISOOrNull } from "@feed/shared";
+import { getUserPositionsSnapshot } from "@/lib/markets/user-positions";
 
-function normalizeModelTier(value: string | null | undefined): 'free' | 'pro' {
-  return value === 'pro' ? 'pro' : 'free';
+function normalizeModelTier(value: string | null | undefined): "free" | "pro" {
+  return value === "pro" ? "pro" : "free";
 }
 
 export async function getAgentSidebarSummary({
@@ -26,8 +26,8 @@ export async function getAgentSidebarSummary({
     calculatePortfolioBreakdown(agentId),
     getUserPositionsSnapshot({
       userId: agentId,
-      type: 'all',
-      status: 'all',
+      type: "all",
+      status: "all",
     }),
   ]);
 
@@ -54,7 +54,7 @@ export async function getAgentSidebarSummary({
         agent.totalDeposited == null ? null : Number(agent.totalDeposited),
       totalWithdrawn:
         agent.totalWithdrawn == null ? null : Number(agent.totalWithdrawn),
-      isActive: config?.status === 'active',
+      isActive: config?.status === "active",
       autonomousEnabled: tradingEnabled,
       autonomousTrading: tradingEnabled,
       autonomousPosting: config?.autonomousPosting ?? false,
@@ -63,7 +63,7 @@ export async function getAgentSidebarSummary({
       autonomousGroupChats: config?.autonomousGroupChats ?? false,
       a2aEnabled: config?.a2aEnabled ?? false,
       modelTier: normalizeModelTier(config?.modelTier),
-      status: config?.status ?? 'idle',
+      status: config?.status ?? "idle",
       errorMessage: config?.errorMessage ?? null,
       lifetimePnL: Number(agent.lifetimePnL ?? 0),
       totalTrades: performance.totalTrades,

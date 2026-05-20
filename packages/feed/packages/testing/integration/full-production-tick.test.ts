@@ -42,29 +42,29 @@ import {
   expect,
   setDefaultTimeout,
   test,
-} from 'bun:test';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { logger } from '@feed/shared';
-import { resolveLiveLlmTestConfig } from './helpers/live-runtime';
+} from "bun:test";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { logger } from "@feed/shared";
+import { resolveLiveLlmTestConfig } from "./helpers/live-runtime";
 
 // Set timeout to 10 minutes for real LLM calls
 setDefaultTimeout(600000);
 
 // Output directory setup
-const OUTPUT_DIR = join(process.cwd(), '.output');
-const TIMESTAMP = new Date().toISOString().replace(/[:.]/g, '-');
+const OUTPUT_DIR = join(process.cwd(), ".output");
+const TIMESTAMP = new Date().toISOString().replace(/[:.]/g, "-");
 
 // Load environment variables
 const loadEnvFile = (filePath: string) => {
   if (!existsSync(filePath)) return;
-  const envContent = readFileSync(filePath, 'utf-8');
-  for (const line of envContent.split('\n')) {
+  const envContent = readFileSync(filePath, "utf-8");
+  for (const line of envContent.split("\n")) {
     const trimmed = line.trim();
-    if (trimmed && !trimmed.startsWith('#')) {
-      const [key, ...valueParts] = trimmed.split('=');
+    if (trimmed && !trimmed.startsWith("#")) {
+      const [key, ...valueParts] = trimmed.split("=");
       if (key && valueParts.length > 0) {
-        const value = valueParts.join('=').replace(/^["']|["']$/g, '');
+        const value = valueParts.join("=").replace(/^["']|["']$/g, "");
         if (!process.env[key]) {
           process.env[key] = value;
         }
@@ -73,9 +73,9 @@ const loadEnvFile = (filePath: string) => {
   }
 };
 
-loadEnvFile('.env');
-loadEnvFile('.env.test');
-loadEnvFile('.env.local');
+loadEnvFile(".env");
+loadEnvFile(".env.test");
+loadEnvFile(".env.local");
 
 const liveLlmTestConfig = resolveLiveLlmTestConfig();
 
@@ -90,7 +90,7 @@ function writeOutput(filename: string, data: unknown) {
   ensureOutputDir();
   const filepath = join(OUTPUT_DIR, `${filename}-${TIMESTAMP}.json`);
   writeFileSync(filepath, JSON.stringify(data, null, 2));
-  logger.info(`Output written to ${filepath}`, undefined, 'FullTickTest');
+  logger.info(`Output written to ${filepath}`, undefined, "FullTickTest");
   return filepath;
 }
 
@@ -138,7 +138,7 @@ interface FullTickResults {
     tradeSamples: Array<{
       actorId: string;
       actorName: string;
-      marketType: 'perp' | 'prediction';
+      marketType: "perp" | "prediction";
       ticker: string;
       side: string;
       size: number;
@@ -233,7 +233,7 @@ function detectSwaps(content: string): string[] {
   return matches;
 }
 
-describe('Full Production Tick Integration Test', () => {
+describe("Full Production Tick Integration Test", () => {
   let results: FullTickResults;
   const startTime = Date.now();
 
@@ -241,20 +241,20 @@ describe('Full Production Tick Integration Test', () => {
     ensureOutputDir();
     if (liveLlmTestConfig.requested && !liveLlmTestConfig.enabled) {
       throw new Error(
-        liveLlmTestConfig.skipReason ?? 'Live LLM test setup failed'
+        liveLlmTestConfig.skipReason ?? "Live LLM test setup failed",
       );
     }
     logger.info(
       `Starting full production tick test. Output dir: ${OUTPUT_DIR}`,
       undefined,
-      'FullTickTest'
+      "FullTickTest",
     );
     logger.info(
       `Live LLM tests enabled: ${liveLlmTestConfig.enabled}`,
       liveLlmTestConfig.skipReason
         ? { skipReason: liveLlmTestConfig.skipReason }
         : undefined,
-      'FullTickTest'
+      "FullTickTest",
     );
 
     results = {
@@ -310,9 +310,9 @@ describe('Full Production Tick Integration Test', () => {
     };
   });
 
-  describe('1. Static Data Validation', () => {
-    test('actors exist and mostly have parody names', async () => {
-      const { StaticDataRegistry } = await import('@feed/engine');
+  describe("1. Static Data Validation", () => {
+    test("actors exist and mostly have parody names", async () => {
+      const { StaticDataRegistry } = await import("@feed/engine");
 
       const actors = StaticDataRegistry.getAllActors();
       expect(actors.length).toBeGreaterThan(0);
@@ -337,14 +337,14 @@ describe('Full Production Tick Integration Test', () => {
       logger.info(
         `${parodyCount}/${actors.length} actors (${parodyPercentage.toFixed(1)}%) have AI in name`,
         undefined,
-        'FullTickTest'
+        "FullTickTest",
       );
 
       if (nonParodyActors.length > 0 && nonParodyActors.length <= 10) {
         logger.info(
-          `Non-parody actors: ${nonParodyActors.join(', ')}`,
+          `Non-parody actors: ${nonParodyActors.join(", ")}`,
           undefined,
-          'FullTickTest'
+          "FullTickTest",
         );
       }
 
@@ -352,8 +352,8 @@ describe('Full Production Tick Integration Test', () => {
       expect(parodyPercentage).toBeGreaterThanOrEqual(80);
     });
 
-    test('organizations exist and mostly have parody names', async () => {
-      const { StaticDataRegistry } = await import('@feed/engine');
+    test("organizations exist and mostly have parody names", async () => {
+      const { StaticDataRegistry } = await import("@feed/engine");
 
       const orgs = StaticDataRegistry.getAllOrganizations();
       expect(orgs.length).toBeGreaterThan(0);
@@ -376,14 +376,14 @@ describe('Full Production Tick Integration Test', () => {
       logger.info(
         `${parodyCount}/${orgs.length} orgs (${parodyPercentage.toFixed(1)}%) have AI in name`,
         undefined,
-        'FullTickTest'
+        "FullTickTest",
       );
 
       if (nonParodyOrgs.length > 0 && nonParodyOrgs.length <= 10) {
         logger.info(
-          `Non-parody orgs: ${nonParodyOrgs.join(', ')}`,
+          `Non-parody orgs: ${nonParodyOrgs.join(", ")}`,
           undefined,
-          'FullTickTest'
+          "FullTickTest",
         );
       }
 
@@ -392,11 +392,11 @@ describe('Full Production Tick Integration Test', () => {
     });
   });
 
-  describe('2. Bootstrap System', () => {
-    test('bootstraps game data if needed', async () => {
+  describe("2. Bootstrap System", () => {
+    test("bootstraps game data if needed", async () => {
       // Get static data and DB to check bootstrap state
-      const { StaticDataRegistry } = await import('@feed/engine');
-      const { db, actorState } = await import('@feed/db');
+      const { StaticDataRegistry } = await import("@feed/engine");
+      const { db, actorState } = await import("@feed/db");
 
       // Check what's in the static data
       const staticActors = StaticDataRegistry.getAllActors();
@@ -410,7 +410,7 @@ describe('Full Production Tick Integration Test', () => {
       results.bootstrap.poolsCreated = 0; // Pools are created on demand
       results.bootstrap.gameInitialized = dbActorStates.length > 0;
 
-      writeOutput('full-tick-bootstrap', {
+      writeOutput("full-tick-bootstrap", {
         staticActors: staticActors.length,
         staticOrgs: staticOrgs.length,
         dbActorStates: dbActorStates.length,
@@ -423,22 +423,19 @@ describe('Full Production Tick Integration Test', () => {
     });
   });
 
-  describe('3. Lookahead Content Generation', () => {
+  describe("3. Lookahead Content Generation", () => {
     test.skipIf(!liveLlmTestConfig.enabled)(
-      'generates content ahead of current time',
+      "generates content ahead of current time",
       async () => {
-        const {
-          FeedLLMClient,
-          checkLookaheadStatus,
-          generateAheadIfNeeded,
-        } = await import('@feed/engine');
+        const { FeedLLMClient, checkLookaheadStatus, generateAheadIfNeeded } =
+          await import("@feed/engine");
 
         const llmClient = FeedLLMClient.forGameTick();
         const statusBefore = await checkLookaheadStatus();
         logger.info(
           `Lookahead status before: ${statusBefore.minutesAhead} minutes ahead`,
           undefined,
-          'FullTickTest'
+          "FullTickTest",
         );
 
         const genResult = await generateAheadIfNeeded(llmClient, 5);
@@ -447,13 +444,13 @@ describe('Full Production Tick Integration Test', () => {
           logger.info(
             `Generated ${genResult.windowsGenerated} content windows`,
             undefined,
-            'FullTickTest'
+            "FullTickTest",
           );
         }
 
         const statusAfter = await checkLookaheadStatus();
 
-        writeOutput('full-tick-lookahead', {
+        writeOutput("full-tick-lookahead", {
           before: statusBefore,
           after: statusAfter,
           generated: genResult.generated,
@@ -461,15 +458,15 @@ describe('Full Production Tick Integration Test', () => {
         });
 
         expect(true).toBe(true);
-      }
+      },
     );
   });
 
-  describe('4. Game Tick Execution', () => {
+  describe("4. Game Tick Execution", () => {
     test.skipIf(!liveLlmTestConfig.enabled)(
-      'executes full game tick',
+      "executes full game tick",
       async () => {
-        const { executeGameTick } = await import('@feed/engine');
+        const { executeGameTick } = await import("@feed/engine");
 
         const tickResult = await executeGameTick(true);
 
@@ -480,17 +477,17 @@ describe('Full Production Tick Integration Test', () => {
         results.questions.resolvedThisTick = tickResult.questionsResolved;
         results.markets.priceUpdates = tickResult.marketsUpdated;
 
-        writeOutput('full-tick-game-result', tickResult);
+        writeOutput("full-tick-game-result", tickResult);
 
         expect(tickResult).toBeDefined();
-      }
+      },
     );
   });
 
-  describe('5. Database State Validation', () => {
-    test('validates posts in database', async () => {
-      const { db, posts, desc } = await import('@feed/db');
-      const { StaticDataRegistry } = await import('@feed/engine');
+  describe("5. Database State Validation", () => {
+    test("validates posts in database", async () => {
+      const { db, posts, desc } = await import("@feed/db");
+      const { StaticDataRegistry } = await import("@feed/engine");
 
       // Get recent posts
       const recentPosts = await db
@@ -509,7 +506,7 @@ describe('Full Production Tick Integration Test', () => {
           results.validation.noSwapsDetected = false;
           results.validation.swapCount += swaps.length;
           results.validation.swapExamples.push(
-            ...swaps.slice(0, 3).map((s) => `${s} in post ${post.id}`)
+            ...swaps.slice(0, 3).map((s) => `${s} in post ${post.id}`),
           );
         }
 
@@ -523,13 +520,13 @@ describe('Full Production Tick Integration Test', () => {
         });
       }
 
-      writeOutput('full-tick-posts', results.content.postSamples);
+      writeOutput("full-tick-posts", results.content.postSamples);
 
       expect(recentPosts.length).toBeGreaterThanOrEqual(0);
     });
 
-    test('validates events in database', async () => {
-      const { db, worldEvents, desc } = await import('@feed/db');
+    test("validates events in database", async () => {
+      const { db, worldEvents, desc } = await import("@feed/db");
 
       const recentEvents = await db
         .select()
@@ -544,17 +541,17 @@ describe('Full Production Tick Integration Test', () => {
         actors: (e.actors as string[]) ?? [],
       }));
 
-      writeOutput('full-tick-events', results.content.eventSamples);
+      writeOutput("full-tick-events", results.content.eventSamples);
 
       expect(recentEvents.length).toBeGreaterThanOrEqual(0);
     });
 
-    test('validates questions in database', async () => {
-      const { db, questions } = await import('@feed/db');
+    test("validates questions in database", async () => {
+      const { db, questions } = await import("@feed/db");
 
       const allQuestions = await db.select().from(questions).limit(20);
 
-      const activeQuestions = allQuestions.filter((q) => q.status === 'active');
+      const activeQuestions = allQuestions.filter((q) => q.status === "active");
       results.questions.activeCount = activeQuestions.length;
 
       results.questions.questionSamples = allQuestions
@@ -566,36 +563,36 @@ describe('Full Production Tick Integration Test', () => {
           outcome: q.outcome,
         }));
 
-      writeOutput('full-tick-questions', results.questions);
+      writeOutput("full-tick-questions", results.questions);
 
       expect(allQuestions.length).toBeGreaterThanOrEqual(0);
     });
 
-    test('validates markets in database', async () => {
-      const { db, markets } = await import('@feed/db');
+    test("validates markets in database", async () => {
+      const { db, markets } = await import("@feed/db");
 
       const allMarkets = await db.select().from(markets).limit(20);
 
       results.markets.activeMarkets = allMarkets.filter(
-        (m) => !m.resolved
+        (m) => !m.resolved,
       ).length;
 
       results.markets.marketSamples = allMarkets.slice(0, 10).map((m) => ({
         id: m.id,
         ticker: m.question.substring(0, 50),
-        type: 'prediction',
+        type: "prediction",
         price: 0.5, // Price calculated from shares, not stored directly
         volume: Number(m.liquidity ?? 0),
       }));
 
-      writeOutput('full-tick-markets', results.markets);
+      writeOutput("full-tick-markets", results.markets);
 
       expect(allMarkets.length).toBeGreaterThanOrEqual(0);
     });
 
-    test('validates NPC trades in database', async () => {
-      const { db, npcTrades, desc } = await import('@feed/db');
-      const { StaticDataRegistry } = await import('@feed/engine');
+    test("validates NPC trades in database", async () => {
+      const { db, npcTrades, desc } = await import("@feed/db");
+      const { StaticDataRegistry } = await import("@feed/engine");
 
       const recentTrades = await db
         .select()
@@ -608,7 +605,7 @@ describe('Full Production Tick Integration Test', () => {
       for (const trade of recentTrades) {
         const actor = StaticDataRegistry.getActor(trade.npcActorId);
 
-        if (trade.marketType === 'prediction') {
+        if (trade.marketType === "prediction") {
           results.trading.predictionTrades++;
         } else {
           results.trading.perpTrades++;
@@ -621,25 +618,25 @@ describe('Full Production Tick Integration Test', () => {
             actorId: trade.npcActorId,
             actorName: actor?.name ?? trade.npcActorId,
             marketType:
-              trade.marketType === 'perp' || trade.marketType === 'prediction'
+              trade.marketType === "perp" || trade.marketType === "prediction"
                 ? trade.marketType
-                : 'prediction',
-            ticker: trade.ticker ?? trade.marketId ?? 'unknown',
-            side: trade.side ?? 'unknown',
+                : "prediction",
+            ticker: trade.ticker ?? trade.marketId ?? "unknown",
+            side: trade.side ?? "unknown",
             size: Number(trade.amount ?? 0),
             price: Number(trade.price ?? 0),
           });
         }
       }
 
-      writeOutput('full-tick-trades', results.trading);
+      writeOutput("full-tick-trades", results.trading);
 
       expect(recentTrades.length).toBeGreaterThanOrEqual(0);
     });
 
-    test('validates actor state in database', async () => {
-      const { db, actorState, desc } = await import('@feed/db');
-      const { StaticDataRegistry } = await import('@feed/engine');
+    test("validates actor state in database", async () => {
+      const { db, actorState, desc } = await import("@feed/db");
+      const { StaticDataRegistry } = await import("@feed/engine");
 
       const actorStates = await db
         .select()
@@ -648,11 +645,11 @@ describe('Full Production Tick Integration Test', () => {
         .limit(20);
 
       results.npcs.npcsWithPositions = actorStates.filter(
-        (a) => Number(a.tradingBalance) > 0
+        (a) => Number(a.tradingBalance) > 0,
       ).length;
       results.npcs.totalPositionValue = actorStates.reduce(
         (sum, a) => sum + Number(a.tradingBalance ?? 0),
-        0
+        0,
       );
 
       results.npcs.topPerformers = actorStates.slice(0, 5).map((a) => {
@@ -665,29 +662,29 @@ describe('Full Production Tick Integration Test', () => {
         };
       });
 
-      writeOutput('full-tick-npcs', results.npcs);
+      writeOutput("full-tick-npcs", results.npcs);
 
       expect(actorStates.length).toBeGreaterThanOrEqual(0);
     });
   });
 
-  describe('6. Content Quality Validation', () => {
-    test('no real names detected in generated content', () => {
+  describe("6. Content Quality Validation", () => {
+    test("no real names detected in generated content", () => {
       expect(results.validation.swapCount).toBe(0);
       if (results.validation.swapCount > 0) {
         logger.warn(
-          `Found ${results.validation.swapCount} swaps: ${results.validation.swapExamples.join(', ')}`,
+          `Found ${results.validation.swapCount} swaps: ${results.validation.swapExamples.join(", ")}`,
           undefined,
-          'FullTickTest'
+          "FullTickTest",
         );
       }
     });
 
-    test('most actors use parody names (>=80%)', () => {
+    test("most actors use parody names (>=80%)", () => {
       expect(results.validation.allActorsHaveParodyNames).toBe(true);
     });
 
-    test('most organizations use parody names (>=80%)', () => {
+    test("most organizations use parody names (>=80%)", () => {
       expect(results.validation.allOrgsHaveParodyNames).toBe(true);
     });
   });
@@ -696,17 +693,17 @@ describe('Full Production Tick Integration Test', () => {
     results.duration = Date.now() - startTime;
 
     // Write final summary
-    writeOutput('full-tick-summary', results);
+    writeOutput("full-tick-summary", results);
 
     logger.info(
       `Full tick test completed in ${results.duration}ms`,
       undefined,
-      'FullTickTest'
+      "FullTickTest",
     );
 
     // Log summary
-    console.log('\n📊 FULL TICK TEST SUMMARY');
-    console.log('========================');
+    console.log("\n📊 FULL TICK TEST SUMMARY");
+    console.log("========================");
     console.log(`Duration: ${results.duration}ms`);
     console.log(`\nBootstrap:`);
     console.log(`  - Actors created: ${results.bootstrap.actorsCreated}`);
@@ -732,7 +729,7 @@ describe('Full Production Tick Integration Test', () => {
     console.log(`  - With positions: ${results.npcs.npcsWithPositions}`);
     console.log(`\nValidation:`);
     console.log(
-      `  - No swaps: ${results.validation.noSwapsDetected ? '✅' : '❌'}`
+      `  - No swaps: ${results.validation.noSwapsDetected ? "✅" : "❌"}`,
     );
     console.log(`  - Swap count: ${results.validation.swapCount}`);
   });

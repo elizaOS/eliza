@@ -7,26 +7,26 @@
  * the AMM price organically.
  */
 
-import { type StructuredEventData } from '@feed/db';
-import { logger } from '@feed/shared';
+import type { StructuredEventData } from "@feed/db";
+import { logger } from "@feed/shared";
 
 /**
  * Log a structured event's intended market impacts for observability.
  * Does not modify any price state.
  */
 export async function applyEventToMarkets(
-  event: StructuredEventData
+  event: StructuredEventData,
 ): Promise<number> {
   for (const impact of event.marketImpacts) {
     logger.info(
-      'Narrative event market signal (not applied to price)',
+      "Narrative event market signal (not applied to price)",
       {
         arcId: event.arcId,
         ticker: impact.stockTicker,
         direction: impact.direction,
         magnitude: impact.magnitude,
       },
-      'EventMarketPipeline'
+      "EventMarketPipeline",
     );
   }
 

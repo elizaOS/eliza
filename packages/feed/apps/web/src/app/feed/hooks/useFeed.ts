@@ -1,8 +1,8 @@
-import type { NarrativeStory } from '@feed/shared';
-import { logger } from '@feed/shared';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useAuth } from '@/hooks/useAuth';
-import { useSSEChannel } from '@/hooks/useSSE';
+import type { NarrativeStory } from "@feed/shared";
+import { logger } from "@feed/shared";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
+import { useSSEChannel } from "@/hooks/useSSE";
 
 interface UseFeedOptions {
   enabled?: boolean;
@@ -37,7 +37,7 @@ const SSE_DEBOUNCE_MS = 2_000;
  */
 export function useFeed(
   config: UseFeedConfig,
-  options: UseFeedOptions = {}
+  options: UseFeedOptions = {},
 ): UseFeedResult {
   const { endpoint, requiresAuth, logContext, feedName } = config;
   const { enabled = true } = options;
@@ -107,7 +107,7 @@ export function useFeed(
           }
         }
       } catch (err) {
-        if (err instanceof Error && err.name === 'AbortError') return;
+        if (err instanceof Error && err.name === "AbortError") return;
         const msg = `Network error while fetching ${feedName} feed`;
         logger.error(msg, { error: err }, logContext);
         if (isInitial || storiesRef.current.length === 0) {
@@ -127,7 +127,7 @@ export function useFeed(
       feedName,
       logContext,
       requiresAuth,
-    ]
+    ],
   );
 
   const refresh = useCallback(async () => {
@@ -145,14 +145,14 @@ export function useFeed(
   }, [fetchStories]);
 
   useSSEChannel(
-    enabled ? 'feed' : null,
+    enabled ? "feed" : null,
     useCallback(() => {
       if (!isMountedRef.current) return;
       if (sseDebounceRef.current) clearTimeout(sseDebounceRef.current);
       sseDebounceRef.current = setTimeout(() => {
         if (isMountedRef.current) void refresh();
       }, SSE_DEBOUNCE_MS);
-    }, [refresh])
+    }, [refresh]),
   );
 
   // Initial fetch

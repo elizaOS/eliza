@@ -1,1 +1,1 @@
-export { DELETE, GET, POST } from '../../follow/route';
+export { DELETE, GET, POST } from "../../follow/route";

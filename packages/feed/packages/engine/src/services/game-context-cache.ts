@@ -27,8 +27,8 @@ import {
   inArray,
   questions as questionsSchema,
   worldEvents,
-} from '@feed/db';
-import { logger } from '@feed/shared';
+} from "@feed/db";
+import { logger } from "@feed/shared";
 
 /**
  * Game state from database
@@ -103,27 +103,29 @@ export class GameContextCache {
   private static async getOrFetch<T>(
     key: string,
     fetchFn: () => Promise<T>,
-    ttlMs: number
+    ttlMs: number,
   ): Promise<T> {
     const now = Date.now();
-    const entry = this.cache.get(key) as CacheEntry<T> | undefined;
+    const entry = GameContextCache.cache.get(key) as CacheEntry<T> | undefined;
 
     if (entry && entry.expiresAt > now) {
       logger.debug(
         `GameContextCache hit: ${key}`,
         undefined,
-        'GameContextCache'
+        "GameContextCache",
       );
       return entry.data;
     }
 
     // Check for in-flight request to prevent stampede
-    const existingRequest = this.inFlight.get(key) as Promise<T> | undefined;
+    const existingRequest = GameContextCache.inFlight.get(key) as
+      | Promise<T>
+      | undefined;
     if (existingRequest) {
       logger.debug(
         `GameContextCache awaiting in-flight: ${key}`,
         undefined,
-        'GameContextCache'
+        "GameContextCache",
       );
       return existingRequest;
     }
@@ -131,25 +133,25 @@ export class GameContextCache {
     logger.debug(
       `GameContextCache miss: ${key}`,
       undefined,
-      'GameContextCache'
+      "GameContextCache",
     );
 
     // Create and track the fetch promise
     const fetchPromise = (async (): Promise<T> => {
       const data = await fetchFn();
-      this.cache.set(key, {
+      GameContextCache.cache.set(key, {
         data,
         expiresAt: Date.now() + ttlMs,
       });
       return data;
     })();
 
-    this.inFlight.set(key, fetchPromise);
+    GameContextCache.inFlight.set(key, fetchPromise);
 
     try {
       return await fetchPromise;
     } finally {
-      this.inFlight.delete(key);
+      GameContextCache.inFlight.delete(key);
     }
   }
 
@@ -159,8 +161,8 @@ export class GameContextCache {
    * @returns GameState or null if no game exists
    */
   static async getGameState(): Promise<GameState | null> {
-    return this.getOrFetch(
-      'game-state',
+    return GameContextCache.getOrFetch(
+      "game-state",
       async () => {
         const [game] = await db
           .select({
@@ -176,7 +178,7 @@ export class GameContextCache {
 
         return game ?? null;
       },
-      CACHE_TTLS.GAME_STATE
+      CACHE_TTLS.GAME_STATE,
     );
   }
 
@@ -186,8 +188,8 @@ export class GameContextCache {
    * @returns Array of active questions
    */
   static async getActiveQuestions(): Promise<ActiveQuestion[]> {
-    return this.getOrFetch(
-      'active-questions',
+    return GameContextCache.getOrFetch(
+      "active-questions",
       async () => {
         const results = await db
           .select({
@@ -200,15 +202,15 @@ export class GameContextCache {
             rank: questionsSchema.rank,
           })
           .from(questionsSchema)
-          .where(inArray(questionsSchema.status, ['active', 'traded']))
+          .where(inArray(questionsSchema.status, ["active", "traded"]))
           .orderBy(
             asc(questionsSchema.questionNumber),
-            asc(questionsSchema.id)
+            asc(questionsSchema.id),
           );
 
         return results;
       },
-      CACHE_TTLS.ACTIVE_QUESTIONS
+      CACHE_TTLS.ACTIVE_QUESTIONS,
     );
   }
 
@@ -218,8 +220,8 @@ export class GameContextCache {
    * @returns Array of recent world events, ordered by timestamp descending (newest first)
    */
   static async getRecentWorldEvents(): Promise<RecentWorldEvent[]> {
-    return this.getOrFetch(
-      'recent-world-events',
+    return GameContextCache.getOrFetch(
+      "recent-world-events",
       async () => {
         const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
 
@@ -240,7 +242,7 @@ export class GameContextCache {
 
         return events;
       },
-      CACHE_TTLS.WORLD_EVENTS
+      CACHE_TTLS.WORLD_EVENTS,
     );
   }
 
@@ -250,11 +252,11 @@ export class GameContextCache {
    * @param key - Cache key to invalidate
    */
   static invalidate(key: string): void {
-    this.cache.delete(key);
+    GameContextCache.cache.delete(key);
     logger.debug(
       `GameContextCache invalidated: ${key}`,
       undefined,
-      'GameContextCache'
+      "GameContextCache",
     );
   }
 
@@ -262,8 +264,8 @@ export class GameContextCache {
    * Invalidate all cache entries
    */
   static invalidateAll(): void {
-    this.cache.clear();
-    logger.debug('GameContextCache cleared all', undefined, 'GameContextCache');
+    GameContextCache.cache.clear();
+    logger.debug("GameContextCache cleared all", undefined, "GameContextCache");
   }
 
   /**
@@ -271,8 +273,8 @@ export class GameContextCache {
    */
   static getStats(): { size: number; keys: string[] } {
     return {
-      size: this.cache.size,
-      keys: Array.from(this.cache.keys()),
+      size: GameContextCache.cache.size,
+      keys: Array.from(GameContextCache.cache.keys()),
     };
   }
 }

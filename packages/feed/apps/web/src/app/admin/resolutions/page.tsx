@@ -4,23 +4,23 @@
  * Lists low-confidence prediction question resolutions that require manual review.
  */
 
-'use client';
+"use client";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
-import { cn, formatDateTime } from '@feed/shared';
+import { cn, formatDateTime } from "@feed/shared";
 import {
   ExternalLink,
   Loader2,
   RefreshCw,
   Shield,
   ShieldAlert,
-} from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { toast } from 'sonner';
-import { AdminStandalonePage } from '@/components/admin/AdminStandalonePage';
-import { Skeleton } from '@/components/shared/Skeleton';
+} from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
+import { AdminStandalonePage } from "@/components/admin/AdminStandalonePage";
+import { Skeleton } from "@/components/shared/Skeleton";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,10 +30,10 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import { Button } from '@/components/ui/button';
-import { useAuth } from '@/hooks/useAuth';
-import { apiUrl } from '@/utils/api-url';
+} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
+import { useAuth } from "@/hooks/useAuth";
+import { apiUrl } from "@/utils/api-url";
 
 type PendingResolution = {
   id: string;
@@ -44,31 +44,31 @@ type PendingResolution = {
   resolutionProofUrl: string | null;
   resolutionDescription: string | null;
   resolutionConfidence: number | null;
-  resolutionReviewStatus: 'pending' | 'approved' | 'rejected' | null;
+  resolutionReviewStatus: "pending" | "approved" | "rejected" | null;
   requiresManualReview: boolean;
   updatedAt: string | null;
 };
 
 /** Runtime type guard for PendingResolution */
 function isPendingResolution(value: unknown): value is PendingResolution {
-  if (typeof value !== 'object' || value === null) return false;
+  if (typeof value !== "object" || value === null) return false;
   const obj = value as Record<string, unknown>;
   return (
-    typeof obj.id === 'string' &&
-    typeof obj.questionNumber === 'number' &&
-    typeof obj.text === 'string' &&
-    typeof obj.outcome === 'boolean' &&
-    typeof obj.requiresManualReview === 'boolean'
+    typeof obj.id === "string" &&
+    typeof obj.questionNumber === "number" &&
+    typeof obj.text === "string" &&
+    typeof obj.outcome === "boolean" &&
+    typeof obj.requiresManualReview === "boolean"
   );
 }
 
 /** Extract error message from API response with runtime validation */
 function extractErrorMessage(data: unknown, fallback: string): string {
-  if (typeof data !== 'object' || data === null) return fallback;
+  if (typeof data !== "object" || data === null) return fallback;
   const obj = data as Record<string, unknown>;
-  if (typeof obj.error !== 'object' || obj.error === null) return fallback;
+  if (typeof obj.error !== "object" || obj.error === null) return fallback;
   const err = obj.error as Record<string, unknown>;
-  return typeof err.message === 'string' ? err.message : fallback;
+  return typeof err.message === "string" ? err.message : fallback;
 }
 
 export default function AdminResolutionsPage() {
@@ -79,20 +79,20 @@ export default function AdminResolutionsPage() {
   const [submittingId, setSubmittingId] = useState<string | null>(null);
   const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
   const [rejectConfirm, setRejectConfirm] = useState<PendingResolution | null>(
-    null
+    null,
   );
 
   const checkAdminAccess = useCallback(async () => {
     if (!ready) return;
 
     if (!authenticated) {
-      router.push('/');
+      router.push("/");
       return;
     }
 
     // Check admin access by attempting to fetch the resolution queue
     try {
-      const res = await fetch(apiUrl('/api/admin/resolutions'));
+      const res = await fetch(apiUrl("/api/admin/resolutions"));
       if (!res.ok) {
         setIsAuthorized(false);
         setLoading(false);
@@ -113,16 +113,16 @@ export default function AdminResolutionsPage() {
     if (!isAuthorized) return;
     setLoading(true);
     try {
-      const res = await fetch(apiUrl('/api/admin/resolutions'));
+      const res = await fetch(apiUrl("/api/admin/resolutions"));
       let data: unknown;
       try {
         data = await res.json();
       } catch {
-        throw new Error('Invalid response from server');
+        throw new Error("Invalid response from server");
       }
       if (!res.ok) {
         throw new Error(
-          extractErrorMessage(data, 'Failed to load resolution queue')
+          extractErrorMessage(data, "Failed to load resolution queue"),
         );
       }
       const payload = data as { items?: unknown[] };
@@ -131,7 +131,7 @@ export default function AdminResolutionsPage() {
         : [];
       setItems(validItems);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to load queue');
+      toast.error(err instanceof Error ? err.message : "Failed to load queue");
       setItems([]);
     } finally {
       setLoading(false);
@@ -145,17 +145,17 @@ export default function AdminResolutionsPage() {
   }, [isAuthorized, fetchQueue]);
 
   const pendingCount = useMemo(
-    () => items.filter((i) => i.resolutionReviewStatus === 'pending').length,
-    [items]
+    () => items.filter((i) => i.resolutionReviewStatus === "pending").length,
+    [items],
   );
 
   const act = useCallback(
-    async (id: string, action: 'approve' | 'reject') => {
+    async (id: string, action: "approve" | "reject") => {
       setSubmittingId(id);
       try {
         const res = await fetch(apiUrl(`/api/admin/resolutions/${id}`), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action }),
         });
         let data: unknown;
@@ -165,16 +165,16 @@ export default function AdminResolutionsPage() {
           throw new Error(`Invalid response for ${action} on question ${id}`);
         }
         if (!res.ok) {
-          throw new Error(extractErrorMessage(data, 'Action failed'));
+          throw new Error(extractErrorMessage(data, "Action failed"));
         }
         await fetchQueue();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : 'Action failed');
+        toast.error(err instanceof Error ? err.message : "Action failed");
       } finally {
         setSubmittingId(null);
       }
     },
-    [fetchQueue]
+    [fetchQueue],
   );
 
   // Show loading skeleton while checking auth
@@ -218,12 +218,12 @@ export default function AdminResolutionsPage() {
             disabled={loading}
             title="Refresh queue"
           >
-            <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
+            <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
           </Button>
           <div
             className={cn(
-              'inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm',
-              pendingCount > 0 ? 'border-yellow-500/30 bg-yellow-500/10' : ''
+              "inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm",
+              pendingCount > 0 ? "border-yellow-500/30 bg-yellow-500/10" : "",
             )}
           >
             <ShieldAlert className="h-4 w-4" />
@@ -253,19 +253,19 @@ export default function AdminResolutionsPage() {
                       <span>•</span>
                       <span
                         className={cn(
-                          'rounded px-1.5 py-0.5 font-medium',
+                          "rounded px-1.5 py-0.5 font-medium",
                           q.outcome
-                            ? 'bg-green-500/10 text-green-600'
-                            : 'bg-red-500/10 text-red-600'
+                            ? "bg-green-500/10 text-green-600"
+                            : "bg-red-500/10 text-red-600",
                         )}
                       >
-                        {q.outcome ? 'YES' : 'NO'}
+                        {q.outcome ? "YES" : "NO"}
                       </span>
                       <span>•</span>
                       <span>
                         {q.resolutionDate
                           ? formatDateTime(q.resolutionDate)
-                          : 'n/a'}
+                          : "n/a"}
                       </span>
                       {q.resolutionConfidence !== null ? (
                         <>
@@ -309,7 +309,7 @@ export default function AdminResolutionsPage() {
                 <div className="flex items-center gap-2">
                   <Button
                     disabled={submittingId === q.id}
-                    onClick={() => act(q.id, 'approve')}
+                    onClick={() => act(q.id, "approve")}
                   >
                     {submittingId === q.id ? (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -355,7 +355,7 @@ export default function AdminResolutionsPage() {
               className="bg-red-600 hover:bg-red-700"
               onClick={() => {
                 if (rejectConfirm) {
-                  act(rejectConfirm.id, 'reject');
+                  act(rejectConfirm.id, "reject");
                   setRejectConfirm(null);
                 }
               }}

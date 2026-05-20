@@ -9,8 +9,8 @@ import {
   gte,
   parodyHeadlines,
   rssHeadlines,
-} from '@feed/db';
-import { logger } from '@feed/shared';
+} from "@feed/db";
+import { logger } from "@feed/shared";
 
 /**
  * Topics that should never be selected as the daily topic.
@@ -19,154 +19,154 @@ import { logger } from '@feed/shared';
  */
 const TOPIC_BLOCKLIST = new Set([
   // Core crypto terms
-  'bitcoin',
-  'btc',
-  'ethereum',
-  'eth',
-  'crypto',
-  'cryptocurrency',
-  'blockchain',
-  'defi',
-  'nft',
-  'nfts',
-  'stablecoin',
-  'stablecoins',
-  'solana',
-  'cardano',
-  'dogecoin',
-  'altcoin',
-  'altcoins',
-  'token',
-  'tokens',
-  'web3',
-  'mining',
-  'memecoin',
-  'memecoins',
+  "bitcoin",
+  "btc",
+  "ethereum",
+  "eth",
+  "crypto",
+  "cryptocurrency",
+  "blockchain",
+  "defi",
+  "nft",
+  "nfts",
+  "stablecoin",
+  "stablecoins",
+  "solana",
+  "cardano",
+  "dogecoin",
+  "altcoin",
+  "altcoins",
+  "token",
+  "tokens",
+  "web3",
+  "mining",
+  "memecoin",
+  "memecoins",
   // Additional crypto terms to prevent crypto topic dominance
-  'coinbase',
-  'binance',
-  'airdrop',
-  'hodl',
-  'whale',
-  'whales',
-  'ledger',
-  'wallet',
-  'wallets',
-  'polygon',
-  'avalanche',
-  'litecoin',
-  'ripple',
-  'tether',
-  'usdc',
-  'usdt',
-  'dydx',
-  'uniswap',
-  'aave',
-  'staking',
-  'validator',
-  'validators',
-  'layer2',
-  'rollup',
-  'rollups',
-  'zksync',
-  'arbitrum',
-  'optimism',
-  'bridge',
-  'crosschain',
+  "coinbase",
+  "binance",
+  "airdrop",
+  "hodl",
+  "whale",
+  "whales",
+  "ledger",
+  "wallet",
+  "wallets",
+  "polygon",
+  "avalanche",
+  "litecoin",
+  "ripple",
+  "tether",
+  "usdc",
+  "usdt",
+  "dydx",
+  "uniswap",
+  "aave",
+  "staking",
+  "validator",
+  "validators",
+  "layer2",
+  "rollup",
+  "rollups",
+  "zksync",
+  "arbitrum",
+  "optimism",
+  "bridge",
+  "crosschain",
 ]);
 
 const TOPIC_STOPWORDS = new Set([
   // common English stopwords
-  'about',
-  'after',
-  'amid',
-  'been',
-  'before',
-  'being',
-  'between',
-  'could',
-  'first',
-  'from',
-  'have',
-  'into',
-  'just',
-  'like',
-  'make',
-  'more',
-  'news',
-  'over',
-  'says',
-  'still',
-  'than',
-  'that',
-  'their',
-  'there',
-  'these',
-  'they',
-  'this',
-  'today',
-  'what',
-  'when',
-  'where',
-  'which',
-  'while',
-  'with',
-  'would',
-  'will',
-  'your',
+  "about",
+  "after",
+  "amid",
+  "been",
+  "before",
+  "being",
+  "between",
+  "could",
+  "first",
+  "from",
+  "have",
+  "into",
+  "just",
+  "like",
+  "make",
+  "more",
+  "news",
+  "over",
+  "says",
+  "still",
+  "than",
+  "that",
+  "their",
+  "there",
+  "these",
+  "they",
+  "this",
+  "today",
+  "what",
+  "when",
+  "where",
+  "which",
+  "while",
+  "with",
+  "would",
+  "will",
+  "your",
   // market/question template words
-  'stock',
-  'market',
-  'move',
-  'price',
-  'following',
-  'confirm',
-  'announce',
-  'next',
-  'hours',
-  'minutes',
-  'days',
-  'within',
-  'above',
-  'below',
-  'week',
-  'month',
-  'quarter',
-  'year',
-  'receive',
-  'does',
-  'hold',
-  'pass',
-  'score',
-  'play',
-  'game',
-  'team',
-  'company',
-  'beat',
-  'close',
-  'open',
-  'powered',
-  'based',
-  'driven',
-  'level',
-  'type',
-  'form',
-  'deep',
-  'dive',
-  'take',
-  'tech',
-  'bags',
+  "stock",
+  "market",
+  "move",
+  "price",
+  "following",
+  "confirm",
+  "announce",
+  "next",
+  "hours",
+  "minutes",
+  "days",
+  "within",
+  "above",
+  "below",
+  "week",
+  "month",
+  "quarter",
+  "year",
+  "receive",
+  "does",
+  "hold",
+  "pass",
+  "score",
+  "play",
+  "game",
+  "team",
+  "company",
+  "beat",
+  "close",
+  "open",
+  "powered",
+  "based",
+  "driven",
+  "level",
+  "type",
+  "form",
+  "deep",
+  "dive",
+  "take",
+  "tech",
+  "bags",
   // known nonsense words from LLM-generated parodies
-  'burp',
-  'dill',
-  'cumin',
-  'parsley',
-  'mustard',
-  'coriander',
-  'roast',
-  'spice',
-  'herb',
-  'sauce',
+  "burp",
+  "dill",
+  "cumin",
+  "parsley",
+  "mustard",
+  "coriander",
+  "roast",
+  "spice",
+  "herb",
+  "sauce",
 ]);
 
 export interface DailyTopicCandidate {
@@ -196,39 +196,41 @@ function titleCase(input: string): string {
     .split(/[\s_-]+/)
     .filter(Boolean)
     .map((part) => part[0]?.toUpperCase() + part.slice(1).toLowerCase())
-    .join(' ');
+    .join(" ");
 }
 
 export function normalizeTopicKey(input: string): string {
   return input
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
     .slice(0, 80);
 }
 
 export function normalizeTopicDate(date: Date): Date {
   return new Date(
-    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate())
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
   );
 }
 
 function extractTopicTokens(input: string): string[] {
   return input
     .toLowerCase()
-    .replace(/https?:\/\/\S+/g, ' ')
-    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/https?:\/\/\S+/g, " ")
+    .replace(/[^a-z0-9\s]/g, " ")
     .split(/\s+/)
     .filter(
       (token) =>
-        token.length >= 4 && !TOPIC_STOPWORDS.has(token) && !/^\d+$/.test(token)
+        token.length >= 4 &&
+        !TOPIC_STOPWORDS.has(token) &&
+        !/^\d+$/.test(token),
     );
 }
 
 function getDisplayLabel(topicKey: string, headlines: string[]): string {
   const regex = new RegExp(
-    `\\b${topicKey.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')}\\b`,
-    'i'
+    `\\b${topicKey.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&")}\\b`,
+    "i",
   );
   for (const headline of headlines) {
     const match = headline.match(regex);
@@ -255,23 +257,23 @@ function toContext(topic: DailyTopic): DailyTopicContext {
 }
 
 export function buildDailyTopicPromptContext(
-  topic: DailyTopicContext | null | undefined
+  topic: DailyTopicContext | null | undefined,
 ): string {
   if (!topic) {
-    return 'No daily topic is currently selected. Do not create new broad narratives.';
+    return "No daily topic is currently selected. Do not create new broad narratives.";
   }
 
   return [
     `Today's single topic is: ${topic.topicLabel}`,
     `Topic summary: ${topic.summary}`,
-    'Everything newly generated must stay inside this topic.',
-    'Do not introduce a second unrelated narrative.',
-  ].join('\n');
+    "Everything newly generated must stay inside this topic.",
+    "Do not introduce a second unrelated narrative.",
+  ].join("\n");
 }
 
 export function deriveTopicFromText(
   text: string,
-  date = new Date()
+  date = new Date(),
 ): DailyTopicContext {
   const tokens = extractTopicTokens(text);
 
@@ -282,7 +284,7 @@ export function deriveTopicFromText(
     freq.set(token, (freq.get(token) ?? 0) + 1);
   }
 
-  let bestToken = 'general';
+  let bestToken = "general";
   let bestCount = 0;
   for (const [token, count] of freq) {
     if (
@@ -294,22 +296,22 @@ export function deriveTopicFromText(
     }
   }
 
-  const topicKey = normalizeTopicKey(bestToken) || 'general';
+  const topicKey = normalizeTopicKey(bestToken) || "general";
   return {
     date: normalizeTopicDate(date),
     topicKey,
     topicLabel: titleCase(topicKey),
-    summary: text.trim().slice(0, 240) || 'Legacy market topic',
-    sourceType: 'fallback_previous_day',
+    summary: text.trim().slice(0, 240) || "Legacy market topic",
+    sourceType: "fallback_previous_day",
     sourceHeadlineIds: [],
-    selectionReason: 'Derived from existing parent market text',
+    selectionReason: "Derived from existing parent market text",
     isLocked: false,
   };
 }
 
 export function isTextOnTopic(
   text: string,
-  topic: DailyTopicContext | null | undefined
+  topic: DailyTopicContext | null | undefined,
 ): boolean {
   if (!topic) return true;
 
@@ -330,7 +332,7 @@ export function isTextOnTopic(
  */
 export function isTextOnAnyTopic(
   text: string,
-  topics: DailyTopicContext[]
+  topics: DailyTopicContext[],
 ): boolean {
   if (topics.length === 0) return true;
   return topics.some((topic) => isTextOnTopic(text, topic));
@@ -342,10 +344,10 @@ export function isTextOnAnyTopic(
  * rather than a single narrative.
  */
 export function buildMultiTopicPromptContext(
-  topics: DailyTopicContext[]
+  topics: DailyTopicContext[],
 ): string {
   if (topics.length === 0) {
-    return 'No daily topics are currently selected. Generate questions about any trending topic.';
+    return "No daily topics are currently selected. Generate questions about any trending topic.";
   }
 
   if (topics.length === 1) {
@@ -354,16 +356,16 @@ export function buildMultiTopicPromptContext(
 
   const topicList = topics
     .map((t, i) => `${i + 1}. **${t.topicLabel}**: ${t.summary}`)
-    .join('\n');
+    .join("\n");
 
   return [
     `Today's active topics (pick ONE per question):`,
     topicList,
-    '',
-    'Generate questions that spread across these topics.',
-    'Each question should clearly relate to ONE of the topics above.',
-    'Aim for variety — do not cluster all questions on a single topic.',
-  ].join('\n');
+    "",
+    "Generate questions that spread across these topics.",
+    "Each question should clearly relate to ONE of the topics above.",
+    "Aim for variety — do not cluster all questions on a single topic.",
+  ].join("\n");
 }
 
 export class DailyTopicService {
@@ -400,7 +402,7 @@ export class DailyTopicService {
 
   async listCandidates(
     date = new Date(),
-    limit = 8
+    limit = 8,
   ): Promise<DailyTopicCandidate[]> {
     const normalizedDate = normalizeTopicDate(date);
     const since = new Date(normalizedDate.getTime() - 24 * 60 * 60 * 1000);
@@ -414,7 +416,7 @@ export class DailyTopicService {
     for (const headline of headlines) {
       const tokens = [
         ...new Set(
-          extractTopicTokens(`${headline.title} ${headline.summary ?? ''}`)
+          extractTopicTokens(`${headline.title} ${headline.summary ?? ""}`),
         ),
       ].slice(0, 5);
       for (const token of tokens) {
@@ -424,12 +426,12 @@ export class DailyTopicService {
         const existing = candidateMap.get(topicKey);
         const next: DailyTopicCandidate = existing ?? {
           topicKey,
-          topicLabel: '',
+          topicLabel: "",
           summary: headline.title,
           score: 0,
           sourceHeadlineIds: [],
           headlines: [],
-          selectionReason: '',
+          selectionReason: "",
         };
         next.score += 3;
         if (!next.sourceHeadlineIds.includes(headline.id)) {
@@ -445,7 +447,7 @@ export class DailyTopicService {
     for (const parody of parodies) {
       const tokens = [
         ...new Set(
-          extractTopicTokens(`${parody.originalTitle} ${parody.parodyTitle}`)
+          extractTopicTokens(`${parody.originalTitle} ${parody.parodyTitle}`),
         ),
       ].slice(0, 4);
       for (const token of tokens) {
@@ -455,12 +457,12 @@ export class DailyTopicService {
         const existing = candidateMap.get(topicKey);
         const next: DailyTopicCandidate = existing ?? {
           topicKey,
-          topicLabel: '',
+          topicLabel: "",
           summary: parody.originalTitle,
           score: 0,
           sourceHeadlineIds: [],
           headlines: [],
-          selectionReason: '',
+          selectionReason: "",
         };
         next.score += 1;
         if (
@@ -531,7 +533,7 @@ export class DailyTopicService {
         topicKey: bestCandidate.topicKey,
         topicLabel: bestCandidate.topicLabel,
         summary: bestCandidate.summary,
-        sourceType: 'auto',
+        sourceType: "auto",
         sourceHeadlineIds: bestCandidate.sourceHeadlineIds,
         selectionReason: bestCandidate.selectionReason,
         isLocked: false,
@@ -540,24 +542,24 @@ export class DailyTopicService {
 
     const previousTopic = await db.dailyTopic.findFirst({
       where: { date: { lt: normalizedDate } },
-      orderBy: { date: 'desc' },
+      orderBy: { date: "desc" },
     });
 
     if (!previousTopic) {
       logger.warn(
-        'No daily topic candidates found and no previous topic available, using default topic',
+        "No daily topic candidates found and no previous topic available, using default topic",
         { date: normalizedDate.toISOString() },
-        'DailyTopicService'
+        "DailyTopicService",
       );
       return this.upsertTopic({
         date: normalizedDate,
-        topicKey: 'general',
-        topicLabel: 'General',
-        summary: 'General market-moving developments across the Feed world',
-        sourceType: 'fallback_default',
+        topicKey: "general",
+        topicLabel: "General",
+        summary: "General market-moving developments across the Feed world",
+        sourceType: "fallback_default",
         sourceHeadlineIds: [],
         selectionReason:
-          'Default topic used because no candidates or previous topics were available',
+          "Default topic used because no candidates or previous topics were available",
         isLocked: false,
       });
     }
@@ -567,7 +569,7 @@ export class DailyTopicService {
       topicKey: previousTopic.topicKey,
       topicLabel: previousTopic.topicLabel,
       summary: previousTopic.summary,
-      sourceType: 'fallback_previous_day',
+      sourceType: "fallback_previous_day",
       sourceHeadlineIds: previousTopic.sourceHeadlineIds ?? [],
       selectionReason: `Reused topic from ${previousTopic.date.toISOString().slice(0, 10)}`,
       isLocked: false,
@@ -581,7 +583,7 @@ export class DailyTopicService {
    */
   async getTopicCandidatesForDate(
     date: Date,
-    count = 3
+    count = 3,
   ): Promise<DailyTopicContext[]> {
     const normalizedDate = normalizeTopicDate(date);
 
@@ -602,11 +604,11 @@ export class DailyTopicService {
           topicKey: c.topicKey,
           topicLabel: c.topicLabel,
           summary: c.summary,
-          sourceType: 'auto',
+          sourceType: "auto",
           sourceHeadlineIds: c.sourceHeadlineIds,
           selectionReason: c.selectionReason,
           isLocked: false,
-        })
+        }),
       );
 
     return [primary, ...additional];
@@ -635,16 +637,16 @@ export class DailyTopicService {
     const normalizedDate = normalizeTopicDate(input.date ?? new Date());
     const topicLabel = input.topicLabel.trim();
     const summary = (input.summary?.trim() || topicLabel).slice(0, 500);
-    const topicKey = normalizeTopicKey(topicLabel) || 'manual-topic';
+    const topicKey = normalizeTopicKey(topicLabel) || "manual-topic";
 
     return this.upsertTopic({
       date: normalizedDate,
       topicKey,
       topicLabel,
       summary,
-      sourceType: 'manual_override',
+      sourceType: "manual_override",
       sourceHeadlineIds: [],
-      selectionReason: input.selectionReason ?? 'Manually overridden in admin',
+      selectionReason: input.selectionReason ?? "Manually overridden in admin",
       isLocked: true,
     });
   }
@@ -660,7 +662,7 @@ export class DailyTopicService {
   }
 
   private async upsertTopic(
-    input: Omit<DailyTopicContext, 'id'>
+    input: Omit<DailyTopicContext, "id">,
   ): Promise<DailyTopicContext> {
     const updatedAt = new Date();
     const [topic] = await db
@@ -694,12 +696,12 @@ export class DailyTopicService {
 
     if (!topic) {
       throw new Error(
-        `Failed to store daily topic for ${input.date.toISOString()}`
+        `Failed to store daily topic for ${input.date.toISOString()}`,
       );
     }
 
     logger.info(
-      'Stored daily topic',
+      "Stored daily topic",
       {
         date: input.date.toISOString(),
         topicKey: input.topicKey,
@@ -707,7 +709,7 @@ export class DailyTopicService {
         sourceType: input.sourceType,
         isLocked: input.isLocked,
       },
-      'DailyTopicService'
+      "DailyTopicService",
     );
 
     return toContext(topic);

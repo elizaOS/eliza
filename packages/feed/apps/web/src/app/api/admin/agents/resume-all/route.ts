@@ -15,19 +15,11 @@ import {
   logAdminModify,
   requireAdmin,
   withErrorHandling,
-} from '@feed/api';
-import {
-  db,
-  eq,
-  gte,
-  inArray,
-  sql,
-  userAgentConfigs,
-  users,
-} from '@feed/db';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@feed/api";
+import { db, eq, gte, inArray, sql, userAgentConfigs, users } from "@feed/db";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 export const POST = withErrorHandling(async (req: NextRequest) => {
   const admin = await requireAdmin(req);
@@ -36,8 +28,8 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
   logAdminModify({
     adminId: admin.userId,
     ipAddress: getClientIp(req.headers) ?? undefined,
-    resourceType: 'agents',
-    metadata: { action: 'resume_all' },
+    resourceType: "agents",
+    metadata: { action: "resume_all" },
   });
 
   // Find agents with sufficient virtualBalance (>= 1)
@@ -52,7 +44,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
   if (eligibleUserIds.length === 0) {
     return NextResponse.json({
       success: true,
-      message: 'No agents with sufficient balance found',
+      message: "No agents with sufficient balance found",
       data: { resumed: 0 },
     });
   }
@@ -64,7 +56,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
       autonomousTrading: true,
       autonomousPosting: true,
       autonomousCommenting: true,
-      status: 'running',
+      status: "running",
       updatedAt: new Date(),
     })
     .where(inArray(userAgentConfigs.userId, eligibleUserIds));
@@ -72,7 +64,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
   logger.info(
     `Resumed ${eligibleUserIds.length} autonomous agents with balance >= 1`,
     undefined,
-    'AdminAgentsAPI'
+    "AdminAgentsAPI",
   );
 
   return NextResponse.json({

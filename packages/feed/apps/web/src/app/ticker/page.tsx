@@ -1,11 +1,11 @@
-import type { Metadata } from 'next';
-import { TickerClient } from './TickerClient';
+import type { Metadata } from "next";
+import { TickerClient } from "./TickerClient";
 
 export const metadata: Metadata = {
-  title: 'Feed Ticker',
+  title: "Feed Ticker",
   description:
-    'Live ticker: news, prediction markets, and perps. Embed on your site or livestream.',
-  robots: 'noindex, nofollow',
+    "Live ticker: news, prediction markets, and perps. Embed on your site or livestream.",
+  robots: "noindex, nofollow",
 };
 
 /**

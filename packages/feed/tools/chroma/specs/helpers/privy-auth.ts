@@ -7,7 +7,7 @@
  * @module testing/chroma/helpers/privy-auth
  */
 
-import type { Page } from '@playwright/test';
+import type { Page } from "@playwright/test";
 
 /** Wallet methods provided by Chroma's wallets fixture */
 interface WalletMethods {
@@ -22,11 +22,11 @@ interface WalletMethods {
  * This wallet should be configured as admin in localnet
  */
 export const DEFAULT_ANVIL_WALLET = {
-  address: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
+  address: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
   privateKey:
-    '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80',
-  seedPhrase: 'test test test test test test test test test test test junk',
-  password: 'Tester@1234',
+    "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+  seedPhrase: "test test test test test test test test test test test junk",
+  password: "Tester@1234",
 } as const;
 
 /**
@@ -34,14 +34,14 @@ export const DEFAULT_ANVIL_WALLET = {
  */
 export async function waitForPrivyReady(
   page: Page,
-  timeout = 60000
+  timeout = 60000,
 ): Promise<void> {
   const startTime = Date.now();
 
   // Wait for page to have interactive elements
   for (let i = 0; i < 30; i++) {
     const buttonCount = await page
-      .locator('button')
+      .locator("button")
       .count()
       .catch(() => 0);
     if (buttonCount > 0) break;
@@ -58,7 +58,7 @@ export async function waitForPrivyReady(
 
   if (warningVisible) {
     throw new Error(
-      'Privy not configured: NEXT_PUBLIC_PRIVY_APP_ID not set during build.'
+      "Privy not configured: NEXT_PUBLIC_PRIVY_APP_ID not set during build.",
     );
   }
 
@@ -107,7 +107,7 @@ export async function isAuthenticated(page: Page): Promise<boolean> {
  */
 export async function loginWithWallet(
   page: Page,
-  wallets?: { metamask?: WalletMethods }
+  wallets?: { metamask?: WalletMethods },
 ): Promise<void> {
   // Import seed phrase into MetaMask if Chroma wallets provided
   if (wallets?.metamask?.importSeedPhrase) {
@@ -139,7 +139,7 @@ export async function loginWithWallet(
     // Click login button to open modal
     const loginButton = page
       .locator(
-        'button:has-text("Log in"), button:has-text("Connect Wallet"), button:has-text("Sign in")'
+        'button:has-text("Log in"), button:has-text("Connect Wallet"), button:has-text("Sign in")',
       )
       .first();
 
@@ -206,13 +206,13 @@ export async function loginWithWallet(
  */
 async function closePrivyModal(page: Page): Promise<void> {
   // First try Escape key (works for most modals)
-  await page.keyboard.press('Escape').catch(() => {});
+  await page.keyboard.press("Escape").catch(() => {});
   await page.waitForTimeout(300);
 
   // Then try clicking close button if still visible
   const closeButton = page
     .locator(
-      'button[aria-label*="close" i], button:has-text("×"), svg.lucide-x'
+      'button[aria-label*="close" i], button:has-text("×"), svg.lucide-x',
     )
     .first();
   if (await closeButton.isVisible({ timeout: 500 }).catch(() => false)) {
@@ -239,7 +239,7 @@ export async function logout(page: Page): Promise<void> {
 
   const logoutButton = page
     .locator(
-      'button:has-text("Logout"), button:has-text("Log out"), button:has-text("Sign out")'
+      'button:has-text("Logout"), button:has-text("Log out"), button:has-text("Sign out")',
     )
     .first();
 
@@ -256,7 +256,7 @@ export interface PrivyTestAccount {
 }
 
 export function getPrivyTestAccount(): PrivyTestAccount {
-  return { email: 'test@example.com' };
+  return { email: "test@example.com" };
 }
 
 export function hasPrivyTestCredentials(): boolean {
@@ -279,7 +279,7 @@ export function getWalletConfig() {
  */
 export async function loginWithPrivyEmail(
   page: Page,
-  _account: PrivyTestAccount
+  _account: PrivyTestAccount,
 ): Promise<void> {
   return loginWithWallet(page);
 }

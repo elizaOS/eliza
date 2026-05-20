@@ -1,11 +1,11 @@
-import { createHash } from 'node:crypto';
-import { db, eq, users } from '@feed/db';
-import { generateSnowflakeId } from '@feed/shared';
+import { createHash } from "node:crypto";
+import { db, eq, users } from "@feed/db";
+import { generateSnowflakeId } from "@feed/shared";
 
-const PLAYWRIGHT_DEV_USERNAME = 'synpress-dev-trader';
-const PLAYWRIGHT_DEV_DISPLAY_NAME = 'Synpress Dev Trader';
-const _DEV_ADMIN_USER_ID = 'dev-admin-local';
-const DEFAULT_WALLET_ADDRESS = '0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266';
+const PLAYWRIGHT_DEV_USERNAME = "synpress-dev-trader";
+const PLAYWRIGHT_DEV_DISPLAY_NAME = "Synpress Dev Trader";
+const _DEV_ADMIN_USER_ID = "dev-admin-local";
+const DEFAULT_WALLET_ADDRESS = "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266";
 
 type BrowserDevAuthSession = {
   userId: string;
@@ -20,9 +20,9 @@ function createPlaywrightTestPrivyToken(userId: string): string {
 }
 
 function deriveSecret(seed: string, purpose: string): string {
-  const hash = createHash('sha256')
+  const hash = createHash("sha256")
     .update(`feed-dev:${seed}:${purpose}`)
-    .digest('hex');
+    .digest("hex");
   return `dev_${purpose}_${hash.substring(0, 32)}`;
 }
 
@@ -44,7 +44,7 @@ async function ensureSynpressDevUser(): Promise<BrowserDevAuthSession> {
   const userValues = {
     username: PLAYWRIGHT_DEV_USERNAME,
     displayName,
-    bio: 'Local Synpress trading account',
+    bio: "Local Synpress trading account",
     walletAddress: DEFAULT_WALLET_ADDRESS,
     isAdmin: true,
     profileComplete: true,
@@ -69,11 +69,11 @@ async function ensureSynpressDevUser(): Promise<BrowserDevAuthSession> {
     });
   }
 
-  const hostname = process.env.HOSTNAME || 'localhost';
+  const hostname = process.env.HOSTNAME || "localhost";
   return {
     userId,
     accessToken: createPlaywrightTestPrivyToken(userId),
-    adminToken: deriveSecret(hostname, 'admin'),
+    adminToken: deriveSecret(hostname, "admin"),
     displayName,
     walletAddress: DEFAULT_WALLET_ADDRESS,
   };

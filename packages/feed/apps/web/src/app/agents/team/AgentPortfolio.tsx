@@ -1,22 +1,22 @@
-'use client';
+"use client";
 
-import { formatCompactCurrency } from '@feed/shared';
-import { Loader2, Sparkles, Wallet } from 'lucide-react';
-import { useCallback, useState } from 'react';
-import { AgentWallet as SharedAgentWallet } from '@/components/agents/AgentWallet';
-import { BuyPointsModal } from '@/components/points/BuyPointsModal';
-import { useWalletBalance } from '@/hooks/useWalletBalance';
+import { formatCompactCurrency } from "@feed/shared";
+import { Loader2, Sparkles, Wallet } from "lucide-react";
+import { useCallback, useState } from "react";
+import { AgentWallet as SharedAgentWallet } from "@/components/agents/AgentWallet";
+import { BuyPointsModal } from "@/components/points/BuyPointsModal";
+import { useWalletBalance } from "@/hooks/useWalletBalance";
 
 type AgentPortfolioProps =
   | {
-      entityType: 'agent';
+      entityType: "agent";
       agentId: string;
       entityName: string;
       onUpdate?: () => void;
       userId?: never;
     }
   | {
-      entityType: 'user';
+      entityType: "user";
       userId: string;
       entityName: string;
       onUpdate?: () => void;
@@ -32,7 +32,7 @@ type AgentPortfolioProps =
 export function AgentPortfolio(props: AgentPortfolioProps) {
   const { entityType, entityName } = props;
 
-  if (entityType === 'user') {
+  if (entityType === "user") {
     return (
       <UserWallet
         userId={props.userId}

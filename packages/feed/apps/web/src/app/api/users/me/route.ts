@@ -136,12 +136,12 @@ import {
   InternalServerError,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { db, eq, or, sql, users } from '@feed/db';
-import { logger, toISO, toISOOrNull } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { getOptionalProfileStats } from '@/lib/users/profile-stats';
-import { POST as updateProfilePOST } from '../[userId]/update-profile/route';
+} from "@feed/api";
+import { db, eq, or, sql, users } from "@feed/db";
+import { logger, toISO, toISOOrNull } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { getOptionalProfileStats } from "@/lib/users/profile-stats";
+import { POST as updateProfilePOST } from "../[userId]/update-profile/route";
 
 const userSelectFields = {
   id: users.id,
@@ -243,7 +243,7 @@ type UserSelectResult = {
 
 function buildUserResponse(
   dbUser: UserSelectResult,
-  stats: Awaited<ReturnType<typeof getOptionalProfileStats>>
+  stats: Awaited<ReturnType<typeof getOptionalProfileStats>>,
 ) {
   return {
     id: dbUser.id,
@@ -295,7 +295,7 @@ function buildUserResponse(
 
 async function updateReferrerForIncompleteUser(
   dbUser: UserSelectResult,
-  referralCode: string
+  referralCode: string,
 ): Promise<UserSelectResult> {
   const normalizedCode = referralCode.trim();
 
@@ -325,12 +325,12 @@ async function updateReferrerForIncompleteUser(
       .returning(userSelectFields);
 
     if (!updatedUser) {
-      throw new InternalServerError('Failed to update user record');
+      throw new InternalServerError("Failed to update user record");
     }
 
     if (previousReferrer && previousReferrer !== referrer.id) {
       logger.info(
-        'Updated user with NEW referrer (latest referral wins)',
+        "Updated user with NEW referrer (latest referral wins)",
         {
           userId: updatedUser.id,
           previousReferrer,
@@ -338,18 +338,18 @@ async function updateReferrerForIncompleteUser(
           referrerUsername: referrer.username,
           referralCode,
         },
-        'GET /api/users/me'
+        "GET /api/users/me",
       );
     } else if (!previousReferrer) {
       logger.info(
-        'Updated existing user with referrer',
+        "Updated existing user with referrer",
         {
           userId: updatedUser.id,
           referrerId: referrer.id,
           referrerUsername: referrer.username,
           referralCode,
         },
-        'GET /api/users/me'
+        "GET /api/users/me",
       );
     }
 
@@ -358,9 +358,9 @@ async function updateReferrerForIncompleteUser(
 
   if (referrer?.id === dbUser.id) {
     logger.warn(
-      'Self-referral attempt blocked for existing user',
+      "Self-referral attempt blocked for existing user",
       { userId: dbUser.id, referralCode },
-      'GET /api/users/me'
+      "GET /api/users/me",
     );
   }
 
@@ -374,12 +374,12 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
   // Extract referralCode from query params (passed from frontend)
   const { searchParams } = new URL(request.url);
-  const referralCode = searchParams.get('ref') || null;
+  const referralCode = searchParams.get("ref") || null;
 
   logger.info(
-    'Fetching user profile',
+    "Fetching user profile",
     { privyId, dbUserId: authUser.dbUserId, hasReferralCode: !!referralCode },
-    'GET /api/users/me'
+    "GET /api/users/me",
   );
 
   // Phase 2: Look up by primary key (fastest, works for both Steward and legacy Privy users).
@@ -416,9 +416,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     const telegramUsername: string | null = null;
 
     logger.info(
-      'Creating minimal user for new Steward user',
+      "Creating minimal user for new Steward user",
       { privyId, email },
-      'GET /api/users/me'
+      "GET /api/users/me",
     );
 
     // Check if Farcaster or Twitter account is already linked to an existing user
@@ -443,20 +443,20 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       // Skip auto-linking to prevent linking the wrong account
       if (existingUsersWithSocial.length > 1) {
         logger.warn(
-          'Multiple users found with conflicting social accounts - skipping auto-link',
+          "Multiple users found with conflicting social accounts - skipping auto-link",
           {
             newPrivyId: privyId,
             farcasterFid,
             twitterId,
             foundUserIds: existingUsersWithSocial.map((u) => u.id),
           },
-          'GET /api/users/me'
+          "GET /api/users/me",
         );
 
         // Return error to prevent insert failure due to unique constraint violation
         throw new ConflictError(
-          'Your social accounts are linked to different existing users. Please contact support.',
-          'User.socialAccounts'
+          "Your social accounts are linked to different existing users. Please contact support.",
+          "User.socialAccounts",
         );
       } else if (existingUsersWithSocial.length === 1) {
         const existingUserWithSocial = existingUsersWithSocial[0]!;
@@ -468,15 +468,15 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
         const linkedAccount =
           matchedByFarcaster && matchedByTwitter
-            ? 'Farcaster+Twitter'
+            ? "Farcaster+Twitter"
             : matchedByFarcaster
-              ? 'Farcaster'
+              ? "Farcaster"
               : matchedByTwitter
-                ? 'Twitter'
-                : 'Unknown';
+                ? "Twitter"
+                : "Unknown";
 
         logger.info(
-          'Found existing user by social account - auto-linking new Privy session',
+          "Found existing user by social account - auto-linking new Privy session",
           {
             newPrivyId: privyId,
             oldPrivyId: existingUserWithSocial.privyId,
@@ -486,7 +486,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
             farcasterFid,
             twitterId,
           },
-          'GET /api/users/me'
+          "GET /api/users/me",
         );
 
         // Check if the new privyId is already linked to a different user
@@ -501,13 +501,13 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
           existingUserWithPrivyId.id !== existingUserWithSocial.id
         ) {
           logger.warn(
-            'New privyId already linked to a different user - skipping auto-link to prevent account conflict',
+            "New privyId already linked to a different user - skipping auto-link to prevent account conflict",
             {
               newPrivyId: privyId,
               existingPrivyUserId: existingUserWithPrivyId.id,
               socialMatchUserId: existingUserWithSocial.id,
             },
-            'GET /api/users/me'
+            "GET /api/users/me",
           );
           // Skip auto-linking, let normal flow continue
         } else {
@@ -534,17 +534,17 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
               },
               {
                 privyId: oldPrivyId,
-              }
+              },
             );
 
             logger.info(
-              'Successfully linked new Privy session to existing user',
+              "Successfully linked new Privy session to existing user",
               {
                 userId: updatedUser.id,
                 username: updatedUser.username,
                 newPrivyId: privyId,
               },
-              'GET /api/users/me'
+              "GET /api/users/me",
             );
           }
         }
@@ -558,38 +558,38 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       if (referralCode && !linkedUser.profileComplete) {
         linkedUser = await updateReferrerForIncompleteUser(
           linkedUser,
-          referralCode
+          referralCode,
         );
       } else if (referralCode && linkedUser.profileComplete) {
         logger.warn(
-          'Referral change blocked - profile already complete',
+          "Referral change blocked - profile already complete",
           {
             userId: linkedUser.id,
             referralCode,
             existingReferrer: linkedUser.referredBy,
           },
-          'GET /api/users/me'
+          "GET /api/users/me",
         );
       }
 
       // Get cached profile stats for the linked user
       const stats = await getOptionalProfileStats(
         linkedUser.id,
-        'GET /api/users/me'
+        "GET /api/users/me",
       );
 
       const responseUser = buildUserResponse(linkedUser, stats);
 
       const needsOnboarding = !linkedUser.profileComplete;
       logger.info(
-        'Returning linked existing user profile',
+        "Returning linked existing user profile",
         {
           userId: linkedUser.id,
           username: linkedUser.username,
           profileComplete: linkedUser.profileComplete,
           needsOnboarding,
         },
-        'GET /api/users/me'
+        "GET /api/users/me",
       );
 
       return successResponse({
@@ -615,20 +615,20 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         resolvedReferrerId = referrerByUsername.id;
 
         logger.info(
-          'Found valid referrer by username for new user',
+          "Found valid referrer by username for new user",
           {
             referrerId: referrerByUsername.id,
             referrerUsername: referrerByUsername.username,
             referredUserId: canonicalUserId,
             referralCode: normalizedCode,
           },
-          'GET /api/users/me'
+          "GET /api/users/me",
         );
       } else if (referrerByUsername?.id === canonicalUserId) {
         logger.warn(
-          'Self-referral attempt blocked (username lookup)',
+          "Self-referral attempt blocked (username lookup)",
           { userId: canonicalUserId, referralCode: normalizedCode },
-          'GET /api/users/me'
+          "GET /api/users/me",
         );
       } else {
         // If not found by username, try by referralCode
@@ -642,33 +642,33 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
           resolvedReferrerId = referrerByCode.id;
 
           logger.info(
-            'Found valid referrer by referralCode for new user',
+            "Found valid referrer by referralCode for new user",
             {
               referrerId: referrerByCode.id,
               referrerUsername: referrerByCode.username,
               referredUserId: canonicalUserId,
               referralCode: normalizedCode,
             },
-            'GET /api/users/me'
+            "GET /api/users/me",
           );
         } else if (referrerByCode?.id === canonicalUserId) {
           logger.warn(
-            'Self-referral attempt blocked (referralCode lookup)',
+            "Self-referral attempt blocked (referralCode lookup)",
             { userId: canonicalUserId, referralCode: normalizedCode },
-            'GET /api/users/me'
+            "GET /api/users/me",
           );
         } else {
           logger.warn(
-            'Invalid referral code provided (not found by username or referralCode)',
+            "Invalid referral code provided (not found by username or referralCode)",
             { referralCode: normalizedCode, userId: canonicalUserId },
-            'GET /api/users/me'
+            "GET /api/users/me",
           );
         }
       }
     }
 
     logger.info(
-      'Creating minimal user record on first authentication',
+      "Creating minimal user record on first authentication",
       {
         privyId,
         userId: canonicalUserId,
@@ -678,7 +678,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         farcasterUsername,
         twitterUsername,
       },
-      'GET /api/users/me'
+      "GET /api/users/me",
     );
 
     // Phase 2: Admin check uses the email from auth session (Steward verifies email ownership)
@@ -689,9 +689,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
     if (shouldBeAdmin) {
       logger.info(
-        'Auto-promoting user to admin based on verified email domain',
-        { privyId, emailDomain: adminEmail?.split('@')[1] ?? null },
-        'GET /api/users/me'
+        "Auto-promoting user to admin based on verified email domain",
+        { privyId, emailDomain: adminEmail?.split("@")[1] ?? null },
+        "GET /api/users/me",
       );
     }
 
@@ -730,7 +730,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         .limit(1);
 
       if (!concurrentUser) {
-        throw new InternalServerError('Failed to create or find user record');
+        throw new InternalServerError("Failed to create or find user record");
       }
 
       dbUser = concurrentUser;
@@ -738,14 +738,14 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       dbUser = newUser;
 
       logger.info(
-        'Minimal user record created',
+        "Minimal user record created",
         {
           userId: dbUser.id,
           privyId,
           referredBy: dbUser.referredBy,
           email: dbUser.email,
         },
-        'GET /api/users/me'
+        "GET /api/users/me",
       );
 
       // Invalidate identifier caches for the new user (clears negative cache)
@@ -759,18 +759,18 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     // User exists BUT profile not complete - update referredBy with latest referral code (latest wins!)
     // ⚠️ IMPORTANT: Only allow referral changes BEFORE profile completion to prevent gaming
     dbUser = await updateReferrerForIncompleteUser(dbUser, referralCode);
-  } else if (referralCode && dbUser && dbUser.profileComplete) {
+  } else if (referralCode && dbUser?.profileComplete) {
     // User has completed profile - don't allow referral changes anymore
     logger.warn(
-      'Referral change blocked - profile already complete',
+      "Referral change blocked - profile already complete",
       { userId: dbUser.id, referralCode, existingReferrer: dbUser.referredBy },
-      'GET /api/users/me'
+      "GET /api/users/me",
     );
   }
 
   // At this point dbUser should always be defined (either fetched or created)
   if (!dbUser) {
-    throw new InternalServerError('Failed to create or find user record');
+    throw new InternalServerError("Failed to create or find user record");
   }
 
   // Phase 2: Privy identity sync removed. Social identities are synced at login time.
@@ -778,15 +778,11 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
   if (needsAdminPromotionCheck) {
     const adminDomain = process.env.ADMIN_EMAIL_DOMAIN?.trim();
-    if (
-      adminDomain &&
-      dbUser.email &&
-      dbUser.email.endsWith(`@${adminDomain}`)
-    ) {
+    if (adminDomain && dbUser.email?.endsWith(`@${adminDomain}`)) {
       logger.info(
-        'Auto-promoting existing user to admin based on verified email domain',
+        "Auto-promoting existing user to admin based on verified email domain",
         { userId: dbUser.id, emailDomain: adminDomain },
-        'GET /api/users/me'
+        "GET /api/users/me",
       );
       const [updatedUser] = await db
         .update(users)
@@ -798,20 +794,20 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   }
 
   // Get cached profile stats
-  const stats = await getOptionalProfileStats(dbUser.id, 'GET /api/users/me');
+  const stats = await getOptionalProfileStats(dbUser.id, "GET /api/users/me");
 
   const responseUser = buildUserResponse(dbUser, stats);
 
   const needsOnboarding = !dbUser.profileComplete;
   logger.info(
-    'Authenticated user profile fetched',
+    "Authenticated user profile fetched",
     {
       userId: dbUser.id,
       username: dbUser.username,
       profileComplete: dbUser.profileComplete,
       needsOnboarding,
     },
-    'GET /api/users/me'
+    "GET /api/users/me",
   );
 
   return successResponse({
@@ -828,7 +824,7 @@ const updateCurrentUserProfile = withErrorHandling(
     return updateProfilePOST(request, {
       params: Promise.resolve({ userId: authUser.dbUserId }),
     });
-  }
+  },
 );
 
 export const POST = withErrorHandling(async (request: NextRequest) => {

@@ -11,15 +11,15 @@
  * 4. Market limits (floor, ceiling, max change) working correctly
  */
 
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it } from "bun:test";
 import {
   BONDING_CURVE_CONFIG,
   calculateBondingCurvePrice,
   calculatePriceFromHoldings,
   PERP_MARKET_CONFIG,
-} from '@feed/shared';
-import { STABILITY_FUND_CONFIG } from '../../services/fee-redistribution-service';
-import { MarketMomentumService } from '../../services/market-momentum-service';
+} from "@feed/shared";
+import { STABILITY_FUND_CONFIG } from "../../services/fee-redistribution-service";
+import { MarketMomentumService } from "../../services/market-momentum-service";
 
 /**
  * Simulates a market with price tracking over multiple trades
@@ -31,7 +31,7 @@ class MarketSimulator {
   private priceHistory: number[] = [];
   private tradeHistory: Array<{
     tick: number;
-    action: 'buy' | 'sell';
+    action: "buy" | "sell";
     amount: number;
     priceImpact: number;
     newPrice: number;
@@ -46,8 +46,8 @@ class MarketSimulator {
   /**
    * Execute a trade and update price
    */
-  trade(action: 'buy' | 'sell', amount: number, tick: number): number {
-    const holdingsChange = action === 'buy' ? amount : -amount;
+  trade(action: "buy" | "sell", amount: number, tick: number): number {
+    const holdingsChange = action === "buy" ? amount : -amount;
     this.netHoldings += holdingsChange;
 
     const previousPrice = this.currentPrice;
@@ -56,7 +56,7 @@ class MarketSimulator {
       this.currentPrice,
       this.netHoldings,
       PERP_MARKET_CONFIG,
-      BONDING_CURVE_CONFIG
+      BONDING_CURVE_CONFIG,
     );
 
     const priceImpact =
@@ -155,7 +155,7 @@ class NPCEconomySimulator {
   executeTrade(
     npcId: string,
     tradeAmount: number,
-    isWinningTrade: boolean
+    isWinningTrade: boolean,
   ): {
     newBalance: number;
     feePaid: number;
@@ -209,7 +209,7 @@ class NPCEconomySimulator {
     let npcsToppedUp = 0;
     const maxDistribution = Math.min(
       availableForDistribution,
-      STABILITY_FUND_CONFIG.MAX_REDISTRIBUTION_PER_TICK
+      STABILITY_FUND_CONFIG.MAX_REDISTRIBUTION_PER_TICK,
     );
 
     // Find NPCs below threshold and top them up
@@ -225,7 +225,7 @@ class NPCEconomySimulator {
       if (balance < threshold) {
         const amountNeeded = Math.min(
           target - balance,
-          maxDistribution - totalDistributed
+          maxDistribution - totalDistributed,
         );
         this.balances.set(npc.id, balance + amountNeeded);
         totalDistributed += amountNeeded;
@@ -255,34 +255,34 @@ class NPCEconomySimulator {
   }
 }
 
-describe('Market Volatility Simulation', () => {
-  describe('Scenario 1: Normal Trading Day', () => {
-    it('should show realistic price movements from NPC trades', () => {
+describe("Market Volatility Simulation", () => {
+  describe("Scenario 1: Normal Trading Day", () => {
+    it("should show realistic price movements from NPC trades", () => {
       const market = new MarketSimulator(100);
 
       // Simulate 20 NPC trades over a "day"
       // Mix of buys and sells with varying sizes
       const trades = [
-        { action: 'buy' as const, amount: 5000 },
-        { action: 'buy' as const, amount: 10000 },
-        { action: 'sell' as const, amount: 3000 },
-        { action: 'buy' as const, amount: 15000 },
-        { action: 'sell' as const, amount: 8000 },
-        { action: 'buy' as const, amount: 20000 },
-        { action: 'sell' as const, amount: 12000 },
-        { action: 'buy' as const, amount: 5000 },
-        { action: 'sell' as const, amount: 25000 },
-        { action: 'buy' as const, amount: 10000 },
-        { action: 'sell' as const, amount: 5000 },
-        { action: 'buy' as const, amount: 8000 },
-        { action: 'sell' as const, amount: 15000 },
-        { action: 'buy' as const, amount: 12000 },
-        { action: 'sell' as const, amount: 10000 },
-        { action: 'buy' as const, amount: 5000 },
-        { action: 'sell' as const, amount: 8000 },
-        { action: 'buy' as const, amount: 15000 },
-        { action: 'sell' as const, amount: 5000 },
-        { action: 'buy' as const, amount: 10000 },
+        { action: "buy" as const, amount: 5000 },
+        { action: "buy" as const, amount: 10000 },
+        { action: "sell" as const, amount: 3000 },
+        { action: "buy" as const, amount: 15000 },
+        { action: "sell" as const, amount: 8000 },
+        { action: "buy" as const, amount: 20000 },
+        { action: "sell" as const, amount: 12000 },
+        { action: "buy" as const, amount: 5000 },
+        { action: "sell" as const, amount: 25000 },
+        { action: "buy" as const, amount: 10000 },
+        { action: "sell" as const, amount: 5000 },
+        { action: "buy" as const, amount: 8000 },
+        { action: "sell" as const, amount: 15000 },
+        { action: "buy" as const, amount: 12000 },
+        { action: "sell" as const, amount: 10000 },
+        { action: "buy" as const, amount: 5000 },
+        { action: "sell" as const, amount: 8000 },
+        { action: "buy" as const, amount: 15000 },
+        { action: "sell" as const, amount: 5000 },
+        { action: "buy" as const, amount: 10000 },
       ];
 
       trades.forEach((trade, i) => {
@@ -292,17 +292,17 @@ describe('Market Volatility Simulation', () => {
       const history = market.getTradeHistory();
 
       // Log simulation results
-      console.log('\n=== NORMAL TRADING DAY SIMULATION ===');
+      console.log("\n=== NORMAL TRADING DAY SIMULATION ===");
       console.log(`Initial Price: $${100}`);
       console.log(`Final Price: $${market.getPrice().toFixed(2)}`);
       console.log(`Total Change: ${market.getTotalPriceChange().toFixed(2)}%`);
       console.log(`Max Drawdown: ${market.getMaxDrawdown().toFixed(2)}%`);
       console.log(`Max Gain: ${market.getMaxGain().toFixed(2)}%`);
       console.log(`Net Holdings: $${market.getNetHoldings()}`);
-      console.log('\nSample trades:');
+      console.log("\nSample trades:");
       history.slice(0, 5).forEach((t) => {
         console.log(
-          `  Tick ${t.tick}: ${t.action.toUpperCase()} $${t.amount} → Price $${t.newPrice.toFixed(2)} (${t.priceImpact >= 0 ? '+' : ''}${t.priceImpact.toFixed(2)}%)`
+          `  Tick ${t.tick}: ${t.action.toUpperCase()} $${t.amount} → Price $${t.newPrice.toFixed(2)} (${t.priceImpact >= 0 ? "+" : ""}${t.priceImpact.toFixed(2)}%)`,
         );
       });
 
@@ -313,25 +313,25 @@ describe('Market Volatility Simulation', () => {
 
       // With bonding curve, trades should have noticeable impact
       const significantMoves = history.filter(
-        (t) => Math.abs(t.priceImpact) > 1
+        (t) => Math.abs(t.priceImpact) > 1,
       );
       expect(significantMoves.length).toBeGreaterThan(0);
     });
   });
 
-  describe('Scenario 2: Panic Sell Cascade', () => {
-    it('should allow dramatic crash but respect floor', () => {
+  describe("Scenario 2: Panic Sell Cascade", () => {
+    it("should allow dramatic crash but respect floor", () => {
       const market = new MarketSimulator(100);
 
-      console.log('\n=== PANIC SELL CASCADE SIMULATION ===');
-      console.log('Simulating all NPCs panic selling...\n');
+      console.log("\n=== PANIC SELL CASCADE SIMULATION ===");
+      console.log("Simulating all NPCs panic selling...\n");
 
       // Simulate panic: 10 large consecutive sells
       for (let i = 0; i < 10; i++) {
         const sellAmount = 30000 + i * 5000; // Increasing panic
-        market.trade('sell', sellAmount, i);
+        market.trade("sell", sellAmount, i);
         console.log(
-          `Tick ${i}: PANIC SELL $${sellAmount} → $${market.getPrice().toFixed(2)} (${market.getTotalPriceChange().toFixed(1)}%)`
+          `Tick ${i}: PANIC SELL $${sellAmount} → $${market.getPrice().toFixed(2)} (${market.getTotalPriceChange().toFixed(1)}%)`,
         );
       }
 
@@ -346,19 +346,19 @@ describe('Market Volatility Simulation', () => {
     });
   });
 
-  describe('Scenario 3: FOMO Pump', () => {
-    it('should allow dramatic pump but respect ceiling', () => {
+  describe("Scenario 3: FOMO Pump", () => {
+    it("should allow dramatic pump but respect ceiling", () => {
       const market = new MarketSimulator(100);
 
-      console.log('\n=== FOMO PUMP SIMULATION ===');
-      console.log('Simulating all NPCs FOMO buying...\n');
+      console.log("\n=== FOMO PUMP SIMULATION ===");
+      console.log("Simulating all NPCs FOMO buying...\n");
 
       // Simulate FOMO: 10 large consecutive buys
       for (let i = 0; i < 10; i++) {
         const buyAmount = 40000 + i * 10000; // Increasing FOMO
-        market.trade('buy', buyAmount, i);
+        market.trade("buy", buyAmount, i);
         console.log(
-          `Tick ${i}: FOMO BUY $${buyAmount} → $${market.getPrice().toFixed(2)} (+${market.getTotalPriceChange().toFixed(1)}%)`
+          `Tick ${i}: FOMO BUY $${buyAmount} → $${market.getPrice().toFixed(2)} (+${market.getTotalPriceChange().toFixed(1)}%)`,
         );
       }
 
@@ -373,16 +373,16 @@ describe('Market Volatility Simulation', () => {
     });
   });
 
-  describe('Scenario 4: Max Position Size Impact', () => {
-    it('should show meaningful impact from max NPC trade ($50k)', () => {
+  describe("Scenario 4: Max Position Size Impact", () => {
+    it("should show meaningful impact from max NPC trade ($50k)", () => {
       const market = new MarketSimulator(100);
 
       // Single max NPC trade
-      market.trade('buy', 50000, 0);
+      market.trade("buy", 50000, 0);
 
       const impact = market.getTotalPriceChange();
 
-      console.log('\n=== MAX NPC TRADE IMPACT ===');
+      console.log("\n=== MAX NPC TRADE IMPACT ===");
       console.log(`Trade Size: $50,000 (max NPC position)`);
       console.log(`Price Impact: +${impact.toFixed(2)}%`);
       console.log(`New Price: $${market.getPrice().toFixed(2)}`);
@@ -394,32 +394,32 @@ describe('Market Volatility Simulation', () => {
     });
   });
 
-  describe('Scenario 5: Fee Redistribution Economy', () => {
-    it('should prevent NPCs from going bankrupt', () => {
+  describe("Scenario 5: Fee Redistribution Economy", () => {
+    it("should prevent NPCs from going bankrupt", () => {
       const cTierThreshold =
         5000 * STABILITY_FUND_CONFIG.TOP_UP_THRESHOLD_RATIO;
       const cTierTarget = 5000 * STABILITY_FUND_CONFIG.TOP_UP_TARGET_RATIO;
       const npcs = [
-        { id: 'npc-1', tier: 'S_TIER', balance: 100000 },
-        { id: 'npc-2', tier: 'A_TIER', balance: 50000 },
-        { id: 'npc-3', tier: 'B_TIER', balance: 15000 },
-        { id: 'npc-4', tier: 'C_TIER', balance: cTierThreshold - 100 },
-        { id: 'npc-5', tier: 'C_TIER', balance: cTierThreshold - 700 },
+        { id: "npc-1", tier: "S_TIER", balance: 100000 },
+        { id: "npc-2", tier: "A_TIER", balance: 50000 },
+        { id: "npc-3", tier: "B_TIER", balance: 15000 },
+        { id: "npc-4", tier: "C_TIER", balance: cTierThreshold - 100 },
+        { id: "npc-5", tier: "C_TIER", balance: cTierThreshold - 700 },
       ];
 
       const economy = new NPCEconomySimulator(npcs);
 
-      console.log('\n=== FEE REDISTRIBUTION SIMULATION ===');
-      console.log('Initial balances:');
+      console.log("\n=== FEE REDISTRIBUTION SIMULATION ===");
+      console.log("Initial balances:");
       npcs.forEach((npc) => {
         console.log(`  ${npc.id} (${npc.tier}): $${npc.balance}`);
       });
 
       // Simulate 100 trades generating fees
-      console.log('\nSimulating 100 trades...');
+      console.log("\nSimulating 100 trades...");
       let totalFees = 0;
       for (let i = 0; i < 100; i++) {
-        const npcId = npcs[i % 3]!.id;
+        const npcId = npcs[i % 3]?.id;
         const isWin = i % 2 === 0;
         const result = economy.executeTrade(npcId, 10000, isWin);
         totalFees += result.feePaid;
@@ -427,37 +427,37 @@ describe('Market Volatility Simulation', () => {
 
       console.log(`Total fees collected: $${totalFees.toFixed(2)}`);
       console.log(
-        `Stability fund before redistribution: $${economy.getStabilityFund().toFixed(2)}`
+        `Stability fund before redistribution: $${economy.getStabilityFund().toFixed(2)}`,
       );
 
       // Add more to stability fund to simulate accumulation
       // (In real game, this would accumulate over many ticks)
       const additionalFunds = 20000;
-      economy['stabilityFund'] += additionalFunds;
+      economy.stabilityFund += additionalFunds;
 
       console.log(
-        `Stability fund after accumulation: $${economy.getStabilityFund().toFixed(2)}`
+        `Stability fund after accumulation: $${economy.getStabilityFund().toFixed(2)}`,
       );
 
       // Run redistribution
       const result = economy.runRedistribution(npcs);
 
-      console.log('\nRedistribution results:');
+      console.log("\nRedistribution results:");
       console.log(`  NPCs topped up: ${result.npcsToppedUp}`);
       console.log(
-        `  Total distributed: $${result.totalDistributed.toFixed(2)}`
+        `  Total distributed: $${result.totalDistributed.toFixed(2)}`,
       );
       console.log(`  Fund remaining: $${result.fundAfter.toFixed(2)}`);
 
-      console.log('\nFinal balances:');
+      console.log("\nFinal balances:");
       npcs.forEach((npc) => {
         const balance = economy.getBalance(npc.id);
         console.log(`  ${npc.id} (${npc.tier}): $${balance.toFixed(2)}`);
       });
 
       // NPC-4 and NPC-5 should have been topped up
-      expect(economy.getBalance('npc-4')).toBe(cTierTarget);
-      expect(economy.getBalance('npc-5')).toBe(cTierTarget);
+      expect(economy.getBalance("npc-4")).toBe(cTierTarget);
+      expect(economy.getBalance("npc-5")).toBe(cTierTarget);
 
       // No NPC should be at zero
       npcs.forEach((npc) => {
@@ -466,66 +466,66 @@ describe('Market Volatility Simulation', () => {
     });
   });
 
-  describe('Scenario 6: Momentum-Based Trading', () => {
-    it('should show how herd vs contrarian NPCs trade differently', () => {
-      console.log('\n=== MOMENTUM-BASED TRADING SIMULATION ===');
+  describe("Scenario 6: Momentum-Based Trading", () => {
+    it("should show how herd vs contrarian NPCs trade differently", () => {
+      console.log("\n=== MOMENTUM-BASED TRADING SIMULATION ===");
 
       // Simulate a market in panic (-15% change)
       const panicMomentum = {
-        ticker: 'NVDAI',
-        organizationId: 'nvidai',
+        ticker: "NVDAI",
+        organizationId: "nvidai",
         priceChange1h: -0.15,
         priceChangePercent: -15,
         currentPrice: 85,
         previousPrice: 100,
-        signal: 'panic' as const,
+        signal: "panic" as const,
         strength: 0.5,
       };
 
-      console.log('\nMarket conditions: NVDAI -15% (PANIC)\n');
+      console.log("\nMarket conditions: NVDAI -15% (PANIC)\n");
 
       // Test different NPC types
       const npcTypes: Array<{
         name: string;
-        type: 'herd' | 'contrarian' | 'balanced';
+        type: "herd" | "contrarian" | "balanced";
       }> = [
-        { name: 'FOMO Frank (herd)', type: 'herd' },
-        { name: 'Value Victor (contrarian)', type: 'contrarian' },
-        { name: 'Normal Nancy (balanced)', type: 'balanced' },
+        { name: "FOMO Frank (herd)", type: "herd" },
+        { name: "Value Victor (contrarian)", type: "contrarian" },
+        { name: "Normal Nancy (balanced)", type: "balanced" },
       ];
 
       npcTypes.forEach((npc) => {
         const buyMultiplier = MarketMomentumService.getTradingMultiplier(
           panicMomentum,
           npc.type,
-          'buy'
+          "buy",
         );
         const sellMultiplier = MarketMomentumService.getTradingMultiplier(
           panicMomentum,
           npc.type,
-          'sell'
+          "sell",
         );
 
         console.log(`${npc.name}:`);
         console.log(
-          `  BUY multiplier: ${buyMultiplier.multiplier.toFixed(2)}x (${buyMultiplier.reason})`
+          `  BUY multiplier: ${buyMultiplier.multiplier.toFixed(2)}x (${buyMultiplier.reason})`,
         );
         console.log(
-          `  SELL multiplier: ${sellMultiplier.multiplier.toFixed(2)}x (${sellMultiplier.reason})`
+          `  SELL multiplier: ${sellMultiplier.multiplier.toFixed(2)}x (${sellMultiplier.reason})`,
         );
-        console.log('');
+        console.log("");
       });
 
       // Verify expected behaviors
       const herdSell = MarketMomentumService.getTradingMultiplier(
         panicMomentum,
-        'herd',
-        'sell'
+        "herd",
+        "sell",
       );
       const contrarianBuy = MarketMomentumService.getTradingMultiplier(
         panicMomentum,
-        'contrarian',
-        'buy'
+        "contrarian",
+        "buy",
       );
 
       // Herd should panic sell more
@@ -535,12 +535,12 @@ describe('Market Volatility Simulation', () => {
     });
   });
 
-  describe('Scenario 7: Full Day Simulation', () => {
-    it('should show a realistic day of market activity', () => {
+  describe("Scenario 7: Full Day Simulation", () => {
+    it("should show a realistic day of market activity", () => {
       const market = new MarketSimulator(100);
 
-      console.log('\n=== FULL DAY MARKET SIMULATION ===');
-      console.log('60 ticks (1 per minute for an hour)\n');
+      console.log("\n=== FULL DAY MARKET SIMULATION ===");
+      console.log("60 ticks (1 per minute for an hour)\n");
 
       // Generate realistic trading pattern
       // Morning: gradual buying
@@ -549,10 +549,10 @@ describe('Market Volatility Simulation', () => {
       // Evening: recovery
 
       const phases = [
-        { name: 'Morning (buying)', bias: 0.7, ticks: 15 },
-        { name: 'Midday (volatile)', bias: 0.5, ticks: 15 },
-        { name: 'Afternoon (selling)', bias: 0.3, ticks: 15 },
-        { name: 'Evening (recovery)', bias: 0.6, ticks: 15 },
+        { name: "Morning (buying)", bias: 0.7, ticks: 15 },
+        { name: "Midday (volatile)", bias: 0.5, ticks: 15 },
+        { name: "Afternoon (selling)", bias: 0.3, ticks: 15 },
+        { name: "Evening (recovery)", bias: 0.6, ticks: 15 },
       ];
 
       let tickCount = 0;
@@ -569,7 +569,7 @@ describe('Market Volatility Simulation', () => {
         for (let i = 0; i < phase.ticks; i++) {
           const isBuy = Math.random() < phase.bias;
           const amount = 5000 + Math.random() * 25000; // $5k-$30k trades
-          market.trade(isBuy ? 'buy' : 'sell', amount, tickCount++);
+          market.trade(isBuy ? "buy" : "sell", amount, tickCount++);
         }
 
         const endPrice = market.getPrice();
@@ -584,17 +584,17 @@ describe('Market Volatility Simulation', () => {
       }
 
       // Print results
-      console.log('Phase Results:');
-      console.log('─'.repeat(60));
+      console.log("Phase Results:");
+      console.log("─".repeat(60));
       phaseResults.forEach((r) => {
-        const arrow = r.change >= 0 ? '↑' : '↓';
+        const arrow = r.change >= 0 ? "↑" : "↓";
         console.log(
-          `${r.phase.padEnd(25)} $${r.startPrice.toFixed(2)} → $${r.endPrice.toFixed(2)} (${arrow}${Math.abs(r.change).toFixed(1)}%)`
+          `${r.phase.padEnd(25)} $${r.startPrice.toFixed(2)} → $${r.endPrice.toFixed(2)} (${arrow}${Math.abs(r.change).toFixed(1)}%)`,
         );
       });
-      console.log('─'.repeat(60));
+      console.log("─".repeat(60));
       console.log(
-        `TOTAL: $100.00 → $${market.getPrice().toFixed(2)} (${market.getTotalPriceChange() >= 0 ? '+' : ''}${market.getTotalPriceChange().toFixed(1)}%)`
+        `TOTAL: $100.00 → $${market.getPrice().toFixed(2)} (${market.getTotalPriceChange() >= 0 ? "+" : ""}${market.getTotalPriceChange().toFixed(1)}%)`,
       );
       console.log(`Max Drawdown: ${market.getMaxDrawdown().toFixed(1)}%`);
       console.log(`Max Gain: ${market.getMaxGain().toFixed(1)}%`);
@@ -606,9 +606,9 @@ describe('Market Volatility Simulation', () => {
     });
   });
 
-  describe('Bonding Curve Math Verification', () => {
-    it('should verify quadratic formula produces expected results', () => {
-      console.log('\n=== BONDING CURVE MATH VERIFICATION ===\n');
+  describe("Bonding Curve Math Verification", () => {
+    it("should verify quadratic formula produces expected results", () => {
+      console.log("\n=== BONDING CURVE MATH VERIFICATION ===\n");
 
       const testCases = [
         { holdings: 0, expected: 100 },
@@ -624,7 +624,7 @@ describe('Market Volatility Simulation', () => {
           USE_BONDING_CURVE: true,
         });
         console.log(
-          `Holdings: $${tc.holdings.toLocaleString().padStart(10)} → Price: $${price.toFixed(2).padStart(8)} (expected: $${tc.expected})`
+          `Holdings: $${tc.holdings.toLocaleString().padStart(10)} → Price: $${price.toFixed(2).padStart(8)} (expected: $${tc.expected})`,
         );
         expect(price).toBeCloseTo(tc.expected, 0);
       });

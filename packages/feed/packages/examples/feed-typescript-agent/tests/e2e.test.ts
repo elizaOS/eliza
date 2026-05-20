@@ -10,21 +10,21 @@
  * - Agent0 testnet access (Sepolia)
  */
 
-import { describe, expect, it } from 'bun:test';
-import type { A2APerpPosition } from '@feed/a2a';
-import { db, eq, users } from '@feed/db';
-import dotenv from 'dotenv';
-import { FeedA2AClient } from '../src/a2a-client';
-import { executeAction } from '../src/actions';
+import { describe, expect, it } from "bun:test";
+import type { A2APerpPosition } from "@feed/a2a";
+import { db, eq, users } from "@feed/db";
+import dotenv from "dotenv";
+import { FeedA2AClient } from "../src/a2a-client";
+import { executeAction } from "../src/actions";
 import {
   AgentDecisionMaker,
   type FeedPost,
   type PerpMarket,
   type PredictionMarket,
-} from '../src/decision';
-import { AgentMemory } from '../src/memory';
+} from "../src/decision";
+import { AgentMemory } from "../src/memory";
 
-dotenv.config({ path: '.env.local' });
+dotenv.config({ path: ".env.local" });
 
 interface AgentIdentity {
   tokenId: number;
@@ -32,21 +32,21 @@ interface AgentIdentity {
   agentId: string;
 }
 
-describe('E2E - Autonomous Agent Live Tests', () => {
+describe("E2E - Autonomous Agent Live Tests", () => {
   // Shared state across tests
   let agentIdentity: AgentIdentity;
   let a2aClient: FeedA2AClient;
   let decisionMaker: AgentDecisionMaker;
   let memory: AgentMemory;
 
-  it('Phase 1: should have valid agent identity', async () => {
-    console.log('\n🔍 Setting up E2E test environment...');
+  it("Phase 1: should have valid agent identity", async () => {
+    console.log("\n🔍 Setting up E2E test environment...");
 
     // Use a synthetic identity for tests (no Agent0 registration needed)
     agentIdentity = {
       tokenId: 888888,
-      address: '0x8888888888888888888888888888888888888888',
-      agentId: 'agent-888888-0x888888',
+      address: "0x8888888888888888888888888888888888888888",
+      agentId: "agent-888888-0x888888",
     };
 
     // Create test user in database if needed using Drizzle
@@ -59,15 +59,15 @@ describe('E2E - Autonomous Agent Live Tests', () => {
       await db.insert(users).values({
         id: agentIdentity.agentId,
         walletAddress: agentIdentity.address,
-        displayName: 'E2E Test Agent',
-        username: 'e2e_test_agent',
-        email: 'e2e@test.local',
-        bio: 'E2E test user',
-        virtualBalance: '1000',
+        displayName: "E2E Test Agent",
+        username: "e2e_test_agent",
+        email: "e2e@test.local",
+        bio: "E2E test user",
+        virtualBalance: "1000",
         reputationPoints: 500,
         updatedAt: new Date(),
       });
-      console.log('✅ Created E2E test user in database');
+      console.log("✅ Created E2E test user in database");
     }
 
     expect(agentIdentity).toBeDefined();
@@ -77,14 +77,14 @@ describe('E2E - Autonomous Agent Live Tests', () => {
     console.log(`✅ Agent Identity: ${agentIdentity.agentId}`);
   });
 
-  it('Phase 2: should connect to Feed A2A', async () => {
-    console.log('Initializing A2A client...');
+  it("Phase 2: should connect to Feed A2A", async () => {
+    console.log("Initializing A2A client...");
     a2aClient = new FeedA2AClient({
-      baseUrl: 'http://localhost:3000',
+      baseUrl: "http://localhost:3000",
       address: agentIdentity.address,
       tokenId: agentIdentity.tokenId,
       privateKey: process.env.AGENT0_PRIVATE_KEY!,
-      apiKey: process.env.FEED_A2A_API_KEY || '',
+      apiKey: process.env.FEED_A2A_API_KEY || "",
     });
 
     await a2aClient.connect();
@@ -93,7 +93,7 @@ describe('E2E - Autonomous Agent Live Tests', () => {
     console.log(`✅ Connected as: ${a2aClient.agentId}`);
   }, 15000);
 
-  it('Phase 3: should get portfolio data', async () => {
+  it("Phase 3: should get portfolio data", async () => {
     const portfolio = await a2aClient.getPortfolio();
 
     expect(portfolio).toBeDefined();
@@ -106,7 +106,7 @@ describe('E2E - Autonomous Agent Live Tests', () => {
     console.log(`   P&L: $${portfolio.pnl}`);
   });
 
-  it('Phase 3: should get available markets', async () => {
+  it("Phase 3: should get available markets", async () => {
     const markets = await a2aClient.getMarkets();
 
     expect(markets).toBeDefined();
@@ -117,7 +117,7 @@ describe('E2E - Autonomous Agent Live Tests', () => {
     console.log(`   Perp markets: ${markets.perps.length}`);
   });
 
-  it('Phase 3: should get feed posts', async () => {
+  it("Phase 3: should get feed posts", async () => {
     const feed = await a2aClient.getFeed({ limit: 10 });
 
     expect(feed).toBeDefined();
@@ -126,17 +126,17 @@ describe('E2E - Autonomous Agent Live Tests', () => {
     console.log(`   Feed posts: ${feed.posts.length}`);
   });
 
-  it('Phase 3: should get balance', async () => {
+  it("Phase 3: should get balance", async () => {
     const balance = await a2aClient.getBalance();
 
     expect(balance).toBeDefined();
-    console.log('   Balance response:', balance);
+    console.log("   Balance response:", balance);
   });
 
-  it('Phase 4: should initialize decision maker', () => {
-    console.log('Initializing decision maker...');
+  it("Phase 4: should initialize decision maker", () => {
+    console.log("Initializing decision maker...");
     decisionMaker = new AgentDecisionMaker({
-      strategy: 'balanced',
+      strategy: "balanced",
       groqApiKey: process.env.GROQ_API_KEY,
       anthropicApiKey: process.env.ANTHROPIC_API_KEY,
       openaiApiKey: process.env.OPENAI_API_KEY,
@@ -151,7 +151,7 @@ describe('E2E - Autonomous Agent Live Tests', () => {
     console.log(`   LLM Provider: ${provider}`);
   });
 
-  it('Phase 4: should make a decision based on context', async () => {
+  it("Phase 4: should make a decision based on context", async () => {
     const portfolio = await a2aClient.getPortfolio();
     const markets = await a2aClient.getMarkets();
     const feed = await a2aClient.getFeed({ limit: 10 });
@@ -160,7 +160,7 @@ describe('E2E - Autonomous Agent Live Tests', () => {
       portfolio: {
         balance: portfolio.balance,
         positions: portfolio.positions.filter(
-          (p): p is A2APerpPosition => 'ticker' in p
+          (p): p is A2APerpPosition => "ticker" in p,
         ),
         pnl: portfolio.pnl,
       },
@@ -177,15 +177,15 @@ describe('E2E - Autonomous Agent Live Tests', () => {
     expect(decision).toBeDefined();
     expect(decision.action).toBeDefined();
     expect([
-      'BUY_YES',
-      'BUY_NO',
-      'SELL',
-      'OPEN_LONG',
-      'OPEN_SHORT',
-      'CLOSE_POSITION',
-      'CREATE_POST',
-      'CREATE_COMMENT',
-      'HOLD',
+      "BUY_YES",
+      "BUY_NO",
+      "SELL",
+      "OPEN_LONG",
+      "OPEN_SHORT",
+      "CLOSE_POSITION",
+      "CREATE_POST",
+      "CREATE_COMMENT",
+      "HOLD",
     ]).toContain(decision.action);
 
     console.log(`   Decision: ${decision.action}`);
@@ -194,9 +194,9 @@ describe('E2E - Autonomous Agent Live Tests', () => {
     }
   }, 15000);
 
-  it('Phase 5: should store and retrieve actions from memory', () => {
+  it("Phase 5: should store and retrieve actions from memory", () => {
     memory.add({
-      action: 'TEST_ACTION',
+      action: "TEST_ACTION",
       params: { test: true },
       result: { success: true },
       timestamp: Date.now(),
@@ -204,7 +204,7 @@ describe('E2E - Autonomous Agent Live Tests', () => {
 
     const recent = memory.getRecent(1);
     expect(recent.length).toBe(1);
-    expect(recent[0]?.action).toBe('TEST_ACTION');
+    expect(recent[0]?.action).toBe("TEST_ACTION");
 
     const summary = memory.getSummary();
     expect(summary).toBeDefined();
@@ -212,33 +212,33 @@ describe('E2E - Autonomous Agent Live Tests', () => {
     console.log(`   Memory: ${summary}`);
   });
 
-  it('Phase 6: should handle HOLD action', async () => {
+  it("Phase 6: should handle HOLD action", async () => {
     const decision = {
-      action: 'HOLD' as const,
-      reasoning: 'Test - no action',
+      action: "HOLD" as const,
+      reasoning: "Test - no action",
     };
 
     const result = await executeAction(a2aClient, decision);
 
     expect(result.success).toBe(true);
-    expect(result.message).toContain('Holding');
+    expect(result.message).toContain("Holding");
   });
 
-  it('Phase 6: should attempt to create a test post', async () => {
+  it("Phase 6: should attempt to create a test post", async () => {
     const decision = {
-      action: 'CREATE_POST' as const,
+      action: "CREATE_POST" as const,
       params: {
         content: `🤖 E2E Test Post - ${new Date().toISOString()}`,
       },
-      reasoning: 'E2E test post',
+      reasoning: "E2E test post",
     };
 
     const result = await executeAction(a2aClient, decision);
 
     console.log(
-      '   Post result:',
-      result.success ? '✅' : '❌',
-      result.message
+      "   Post result:",
+      result.success ? "✅" : "❌",
+      result.message,
     );
 
     if (result.success) {
@@ -252,25 +252,25 @@ describe('E2E - Autonomous Agent Live Tests', () => {
     }
   }, 10000);
 
-  it('Phase 7: should get user profile', async () => {
+  it("Phase 7: should get user profile", async () => {
     const profile = await a2aClient.getUserProfile(a2aClient.agentId!);
     expect(profile).toBeDefined();
-    console.log('   Profile:', profile);
+    console.log("   Profile:", profile);
   });
 
-  it('Phase 7: should get system stats', async () => {
+  it("Phase 7: should get system stats", async () => {
     const stats = await a2aClient.getSystemStats();
     expect(stats).toBeDefined();
-    console.log('   System stats:', stats);
+    console.log("   System stats:", stats);
   });
 
-  it('Phase 7: should get leaderboard', async () => {
+  it("Phase 7: should get leaderboard", async () => {
     const leaderboard = await a2aClient.getLeaderboard({
-      pointsType: 'all',
+      pointsType: "all",
       limit: 10,
     });
     expect(leaderboard).toBeDefined();
-    console.log('   Leaderboard:', leaderboard);
+    console.log("   Leaderboard:", leaderboard);
   });
 
   // TODO: discoverAgents method not yet implemented
@@ -280,8 +280,8 @@ describe('E2E - Autonomous Agent Live Tests', () => {
   //   console.log('   Discovered agents:', agents);
   // });
 
-  it('Phase 8: should complete one full autonomous tick', async () => {
-    console.log('\n🔄 Simulating full autonomous tick...');
+  it("Phase 8: should complete one full autonomous tick", async () => {
+    console.log("\n🔄 Simulating full autonomous tick...");
 
     // 1. Gather context
     const portfolio = await a2aClient.getPortfolio();
@@ -290,10 +290,10 @@ describe('E2E - Autonomous Agent Live Tests', () => {
     const recentMemory = memory.getRecent(5);
 
     console.log(
-      `   ✓ Portfolio: $${portfolio.balance}, ${portfolio.positions.length} positions`
+      `   ✓ Portfolio: $${portfolio.balance}, ${portfolio.positions.length} positions`,
     );
     console.log(
-      `   ✓ Markets: ${markets.predictions.length + markets.perps.length} available`
+      `   ✓ Markets: ${markets.predictions.length + markets.perps.length} available`,
     );
     console.log(`   ✓ Feed: ${feed.posts.length} posts`);
     console.log(`   ✓ Memory: ${recentMemory.length} recent actions`);
@@ -303,7 +303,7 @@ describe('E2E - Autonomous Agent Live Tests', () => {
       portfolio: {
         balance: portfolio.balance,
         positions: portfolio.positions.filter(
-          (p): p is A2APerpPosition => 'ticker' in p
+          (p): p is A2APerpPosition => "ticker" in p,
         ),
         pnl: portfolio.pnl,
       },
@@ -320,9 +320,9 @@ describe('E2E - Autonomous Agent Live Tests', () => {
     console.log(`   ✓ Decision: ${decision.action}`);
 
     // 3. Execute (safe actions only)
-    if (decision.action === 'HOLD' || decision.action === 'CREATE_POST') {
+    if (decision.action === "HOLD" || decision.action === "CREATE_POST") {
       const result = await executeAction(a2aClient, decision);
-      console.log(`   ✓ Execution: ${result.success ? '✅' : '❌'}`);
+      console.log(`   ✓ Execution: ${result.success ? "✅" : "❌"}`);
 
       if (result.success) {
         memory.add({
@@ -336,7 +336,7 @@ describe('E2E - Autonomous Agent Live Tests', () => {
       console.log(`   ⏭️  Skipping execution of ${decision.action} in test`);
     }
 
-    console.log('✅ Full tick completed\n');
+    console.log("✅ Full tick completed\n");
 
     expect(decision).toBeDefined();
     expect(decision.action).toBeDefined();

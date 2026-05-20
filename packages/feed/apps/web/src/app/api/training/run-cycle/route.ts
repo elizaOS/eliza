@@ -59,24 +59,24 @@
  * ```
  */
 
-import { withErrorHandling } from '@feed/api';
-import { logger } from '@feed/shared';
-import { NextResponse } from 'next/server';
+import { withErrorHandling } from "@feed/api";
+import { logger } from "@feed/shared";
+import { NextResponse } from "next/server";
 
 export const POST = withErrorHandling(async function POST() {
-  logger.info('Training cycle endpoint called (currently disabled)');
+  logger.info("Training cycle endpoint called (currently disabled)");
 
   return NextResponse.json({
     success: false,
-    message: 'Manual training cycles are currently disabled',
-    hint: 'Training is handled by separate Eliza agent processes',
+    message: "Manual training cycles are currently disabled",
+    hint: "Training is handled by separate Eliza agent processes",
   });
 });
 
 export const GET = withErrorHandling(async function GET() {
   return NextResponse.json({
     enabled: false,
-    message: 'Training automation is currently disabled',
-    hint: 'Training is handled by separate Eliza agent processes',
+    message: "Training automation is currently disabled",
+    hint: "Training is handled by separate Eliza agent processes",
   });
 });

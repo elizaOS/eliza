@@ -7,28 +7,18 @@
  * @module services/world-facts-service
  */
 
-import type { WorldFact } from '@feed/db';
-import {
-  and,
-  db,
-  desc,
-  eq,
-  gte,
-  isNull,
-  lte,
-  or,
-  worldFacts,
-} from '@feed/db';
-import { generateSnowflakeId, logger } from '@feed/shared';
+import type { WorldFact } from "@feed/db";
+import { and, db, desc, eq, gte, isNull, lte, or, worldFacts } from "@feed/db";
+import { generateSnowflakeId, logger } from "@feed/shared";
 import {
   buildDailyTopicPromptContext,
   dailyTopicService,
-} from './services/daily-topic-service';
+} from "./services/daily-topic-service";
 import {
   createParodyHeadlineGenerator,
   MIN_QUALITY_SCORE,
-} from './services/parody-headline-generator';
-import { isSimulationMode } from './storage-bridge';
+} from "./services/parody-headline-generator";
+import { isSimulationMode } from "./storage-bridge";
 
 export interface WorldFactsContext {
   crypto: string;
@@ -64,13 +54,13 @@ export class WorldFactsService {
     if (isSimulationMode()) {
       return [
         {
-          id: 'sim-fact-1',
-          category: 'general',
-          key: 'market_state',
-          label: 'Market State',
+          id: "sim-fact-1",
+          category: "general",
+          key: "market_state",
+          label: "Market State",
           value:
-            'The crypto market is experiencing high volatility due to regulatory rumors.',
-          source: 'simulation',
+            "The crypto market is experiencing high volatility due to regulatory rumors.",
+          source: "simulation",
           priority: 1,
           isActive: true,
           qualityScore: null,
@@ -80,12 +70,12 @@ export class WorldFactsService {
           updatedAt: new Date(),
         },
         {
-          id: 'sim-fact-2',
-          category: 'politics',
-          key: 'election_season',
-          label: 'Election Season',
-          value: 'Tensions are rising as the election approaches.',
-          source: 'simulation',
+          id: "sim-fact-2",
+          category: "politics",
+          key: "election_season",
+          label: "Election Season",
+          value: "Tensions are rising as the election approaches.",
+          source: "simulation",
           priority: 1,
           isActive: true,
           qualityScore: null,
@@ -106,11 +96,11 @@ export class WorldFactsService {
           // Pre-migration records (null) are presumed OK; reject only scored failures
           or(
             isNull(worldFacts.qualityScore),
-            gte(worldFacts.qualityScore, MIN_QUALITY_SCORE)
+            gte(worldFacts.qualityScore, MIN_QUALITY_SCORE),
           ),
           // Exclude depth >= 2 (derived from LLM output) to prevent recursive amplification
-          lte(worldFacts.generationDepth, 1)
-        )
+          lte(worldFacts.generationDepth, 1),
+        ),
       )
       .orderBy(desc(worldFacts.createdAt))
       .limit(100);
@@ -145,10 +135,10 @@ export class WorldFactsService {
           eq(worldFacts.isActive, true),
           or(
             isNull(worldFacts.qualityScore),
-            gte(worldFacts.qualityScore, MIN_QUALITY_SCORE)
+            gte(worldFacts.qualityScore, MIN_QUALITY_SCORE),
           ),
-          lte(worldFacts.generationDepth, 1)
-        )
+          lte(worldFacts.generationDepth, 1),
+        ),
       )
       .orderBy(desc(worldFacts.createdAt))
       .limit(limit);
@@ -164,18 +154,18 @@ export class WorldFactsService {
     logger.info(
       `Adding dynamic world fact: ${value}`,
       undefined,
-      'WorldFactsService'
+      "WorldFactsService",
     );
 
     const [fact] = await db
       .insert(worldFacts)
       .values({
         id: await generateSnowflakeId(),
-        category: 'general',
+        category: "general",
         key,
         label,
         value,
-        source: 'dynamic',
+        source: "dynamic",
         priority: 0,
         lastUpdated: new Date(),
         updatedAt: new Date(),
@@ -190,7 +180,7 @@ export class WorldFactsService {
    */
   private async getFact(
     category: string,
-    key: string
+    key: string,
   ): Promise<WorldFact | null> {
     const [fact] = await db
       .select()
@@ -204,14 +194,14 @@ export class WorldFactsService {
    * Generate a key from a value string (for database lookup)
    */
   private generateKey(value: string): string {
-    let keyPart = (value.split(':')[0] ?? '').trim();
+    let keyPart = (value.split(":")[0] ?? "").trim();
     if (keyPart.length > 50) {
-      keyPart = (keyPart.split('.')[0] ?? '').trim();
+      keyPart = (keyPart.split(".")[0] ?? "").trim();
     }
     return keyPart
       .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '_')
-      .replace(/^_+|_+$/g, '')
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "")
       .substring(0, 50);
   }
 
@@ -219,11 +209,11 @@ export class WorldFactsService {
    * Generate a label from a value string
    */
   private generateLabel(value: string): string {
-    const beforeColon = (value.split(':')[0] ?? '').trim();
+    const beforeColon = (value.split(":")[0] ?? "").trim();
     if (beforeColon.length <= 60 && beforeColon.length > 0) {
       return beforeColon;
     }
-    const firstSentence = (value.split('.')[0] ?? '').trim();
+    const firstSentence = (value.split(".")[0] ?? "").trim();
     if (firstSentence.length <= 60) {
       return firstSentence;
     }
@@ -234,7 +224,7 @@ export class WorldFactsService {
    * Update or create a world fact by value (simple string)
    */
   async setFactByValue(value: string): Promise<WorldFact> {
-    const defaultCategory = 'general';
+    const defaultCategory = "general";
     const key = this.generateKey(value);
     const label = this.generateLabel(value);
 
@@ -246,7 +236,7 @@ export class WorldFactsService {
         .set({
           label,
           value,
-          source: 'default',
+          source: "default",
           priority: 0,
           lastUpdated: new Date(),
           updatedAt: new Date(),
@@ -264,7 +254,7 @@ export class WorldFactsService {
         key,
         label,
         value,
-        source: 'default',
+        source: "default",
         priority: 0,
         lastUpdated: new Date(),
         updatedAt: new Date(),
@@ -283,7 +273,7 @@ export class WorldFactsService {
       .where(eq(worldFacts.id, id))
       .limit(1);
     if (!existing) {
-      throw new Error('Fact not found');
+      throw new Error("Fact not found");
     }
 
     const label = this.generateLabel(value);
@@ -306,13 +296,13 @@ export class WorldFactsService {
    * This is injected into LLM prompts for events, questions, etc.
    */
   async generateWorldContext(
-    includeHeadlines = true
+    includeHeadlines = true,
   ): Promise<WorldFactsContext> {
     const facts = await this.getAllFacts();
     const dailyTopic = await dailyTopicService.getCurrentTopic();
 
     // Format all facts (already randomized) - just use the value directly
-    const formattedFacts = facts.map((f) => `- ${f.value}`).join('\n');
+    const formattedFacts = facts.map((f) => `- ${f.value}`).join("\n");
 
     // Get recent headlines if requested
     let headlinesContext;
@@ -345,11 +335,11 @@ export class WorldFactsService {
 === WORLD CONTEXT (Current Reality) ===
 Date/Time: ${context.timestamp}
 
-${context.dailyTopic ? `${context.dailyTopic}\n` : ''}
+${context.dailyTopic ? `${context.dailyTopic}\n` : ""}
 
 ${context.general}
 
-${context.headlines ? `\n${context.headlines}\n` : ''}
+${context.headlines ? `\n${context.headlines}\n` : ""}
 =========================================
 
 This context reflects the current state of the world. Use these facts to make your content feel grounded in current reality (within our satirical universe).
@@ -372,7 +362,7 @@ This context reflects the current state of the world. Use these facts to make yo
       .from(worldFacts)
       .where(eq(worldFacts.id, id))
       .limit(1);
-    if (!fact) throw new Error('Fact not found');
+    if (!fact) throw new Error("Fact not found");
 
     const [updated] = await db
       .update(worldFacts)
@@ -393,7 +383,7 @@ This context reflects the current state of the world. Use these facts to make yo
     logger.info(
       `Bulk updated ${values.length} world facts`,
       { count: values.length },
-      'WorldFactsService'
+      "WorldFactsService",
     );
   }
 }

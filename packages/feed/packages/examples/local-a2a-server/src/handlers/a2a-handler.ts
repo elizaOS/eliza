@@ -3,10 +3,10 @@
  * Routes A2A methods to appropriate handlers
  */
 
-import type { AgentRegistry } from '../services/agent-registry';
-import type { MarketHandler } from './market-handler';
-import type { PortfolioHandler } from './portfolio-handler';
-import type { SocialHandler } from './social-handler';
+import type { AgentRegistry } from "../services/agent-registry";
+import type { MarketHandler } from "./market-handler";
+import type { PortfolioHandler } from "./portfolio-handler";
+import type { SocialHandler } from "./social-handler";
 
 interface AgentContext {
   agentId?: string;
@@ -31,7 +31,7 @@ export class A2AHandler {
     private agentRegistry: AgentRegistry,
     private marketHandler: MarketHandler,
     private socialHandler: SocialHandler,
-    private portfolioHandler: PortfolioHandler
+    private portfolioHandler: PortfolioHandler,
   ) {}
 
   /**
@@ -40,153 +40,153 @@ export class A2AHandler {
   async handleMethod(
     method: string,
     params: Record<string, unknown>,
-    context: AgentContext
+    context: AgentContext,
   ): Promise<unknown> {
     // Auto-register agent if they have address and tokenId
     if (context.address && context.tokenId) {
       await this.agentRegistry.getOrCreateAgent(
         context.address,
-        context.tokenId
+        context.tokenId,
       );
     }
 
     switch (method) {
       // ==================== Agent Discovery ====================
-      case 'a2a.discover':
-      case 'discover':
+      case "a2a.discover":
+      case "discover":
         return this.discover(params);
 
-      case 'a2a.getInfo':
-      case 'getInfo':
+      case "a2a.getInfo":
+      case "getInfo":
         return this.getAgentInfo(params.agentId as string);
 
-      case 'a2a.register':
-      case 'register':
+      case "a2a.register":
+      case "register":
         return this.registerAgent(params, context);
 
       // ==================== Portfolio ====================
-      case 'a2a.getBalance':
-      case 'getBalance':
+      case "a2a.getBalance":
+      case "getBalance":
         return this.portfolioHandler.getBalance(
-          context.agentId || context.address!
+          context.agentId || context.address!,
         );
 
-      case 'a2a.getPositions':
-      case 'getPositions':
+      case "a2a.getPositions":
+      case "getPositions":
         return this.portfolioHandler.getPositions(
-          context.agentId || context.address!
+          context.agentId || context.address!,
         );
 
-      case 'a2a.getPortfolio':
-      case 'getPortfolio':
+      case "a2a.getPortfolio":
+      case "getPortfolio":
         return this.portfolioHandler.getPortfolio(
-          context.agentId || context.address!
+          context.agentId || context.address!,
         );
 
-      case 'a2a.getUserWallet':
-      case 'getUserWallet':
+      case "a2a.getUserWallet":
+      case "getUserWallet":
         return this.portfolioHandler.getWalletInfo(
-          context.agentId || context.address!
+          context.agentId || context.address!,
         );
 
       // ==================== Markets ====================
-      case 'a2a.getMarkets':
-      case 'getMarkets':
+      case "a2a.getMarkets":
+      case "getMarkets":
         return this.marketHandler.getMarkets(params);
 
-      case 'a2a.getMarketData':
-      case 'getMarketData':
+      case "a2a.getMarketData":
+      case "getMarketData":
         return this.marketHandler.getMarketData(params.marketId as string);
 
-      case 'a2a.getMarketPrices':
-      case 'getMarketPrices':
+      case "a2a.getMarketPrices":
+      case "getMarketPrices":
         return this.marketHandler.getMarketPrices(params.marketIds as string[]);
 
-      case 'a2a.buyShares':
-      case 'buyShares':
+      case "a2a.buyShares":
+      case "buyShares":
         return this.marketHandler.buyShares(
           context.agentId || context.address!,
           params.marketId as string,
-          params.outcome as 'YES' | 'NO',
-          params.amount as number
+          params.outcome as "YES" | "NO",
+          params.amount as number,
         );
 
-      case 'a2a.sellShares':
-      case 'sellShares':
+      case "a2a.sellShares":
+      case "sellShares":
         return this.marketHandler.sellShares(
           context.agentId || context.address!,
           params.marketId as string,
-          params.outcome as 'YES' | 'NO',
-          params.shares as number
+          params.outcome as "YES" | "NO",
+          params.shares as number,
         );
 
       // ==================== Social ====================
-      case 'a2a.getFeed':
-      case 'getFeed':
+      case "a2a.getFeed":
+      case "getFeed":
         return this.socialHandler.getFeed(params);
 
-      case 'a2a.createPost':
-      case 'createPost':
+      case "a2a.createPost":
+      case "createPost":
         return this.socialHandler.createPost(
           context.agentId || context.address!,
           params.content as string,
-          params.mediaUrls as string[] | undefined
+          params.mediaUrls as string[] | undefined,
         );
 
-      case 'a2a.getPost':
-      case 'getPost':
+      case "a2a.getPost":
+      case "getPost":
         return this.socialHandler.getPost(params.postId as string);
 
-      case 'a2a.likePost':
-      case 'likePost':
+      case "a2a.likePost":
+      case "likePost":
         return this.socialHandler.likePost(
           context.agentId || context.address!,
-          params.postId as string
+          params.postId as string,
         );
 
-      case 'a2a.commentPost':
-      case 'commentPost':
+      case "a2a.commentPost":
+      case "commentPost":
         return this.socialHandler.commentPost(
           context.agentId || context.address!,
           params.postId as string,
-          params.content as string
+          params.content as string,
         );
 
-      case 'a2a.searchUsers':
-      case 'searchUsers':
+      case "a2a.searchUsers":
+      case "searchUsers":
         return this.socialHandler.searchUsers(params.query as string);
 
       // ==================== Notifications ====================
-      case 'a2a.getNotifications':
-      case 'getNotifications':
+      case "a2a.getNotifications":
+      case "getNotifications":
         return this.socialHandler.getNotifications(
           context.agentId || context.address!,
-          params
+          params,
         );
 
-      case 'a2a.markNotificationRead':
-      case 'markNotificationRead':
+      case "a2a.markNotificationRead":
+      case "markNotificationRead":
         return this.socialHandler.markNotificationRead(
           context.agentId || context.address!,
-          params.notificationId as string
+          params.notificationId as string,
         );
 
       // ==================== Stats ====================
-      case 'a2a.getStats':
-      case 'getStats':
+      case "a2a.getStats":
+      case "getStats":
         return this.getSystemStats();
 
-      case 'a2a.getLeaderboard':
-      case 'getLeaderboard':
+      case "a2a.getLeaderboard":
+      case "getLeaderboard":
         return this.portfolioHandler.getLeaderboard(params);
 
       // ==================== Payments (x402) ====================
-      case 'a2a.paymentRequest':
-      case 'paymentRequest':
+      case "a2a.paymentRequest":
+      case "paymentRequest":
         return this.createPaymentRequest(params, context);
 
-      case 'a2a.paymentReceipt':
-      case 'paymentReceipt':
+      case "a2a.paymentReceipt":
+      case "paymentReceipt":
         return this.submitPaymentReceipt(params, context);
 
       default:
@@ -232,7 +232,7 @@ export class A2AHandler {
 
   private async registerAgent(
     params: Record<string, unknown>,
-    context: AgentContext
+    context: AgentContext,
   ): Promise<unknown> {
     const agent = await this.agentRegistry.registerAgent({
       walletAddress: (params.walletAddress as string) || context.address!,
@@ -272,22 +272,22 @@ export class A2AHandler {
 
   private async createPaymentRequest(
     params: Record<string, unknown>,
-    context: AgentContext
+    context: AgentContext,
   ): Promise<unknown> {
     // x402 payment request
     return {
       paymentId: `pay-${Date.now()}`,
       amount: params.amount,
-      currency: params.currency || 'ETH',
+      currency: params.currency || "ETH",
       recipient: context.address,
       expiresAt: new Date(Date.now() + 3600000).toISOString(),
-      status: 'pending',
+      status: "pending",
     };
   }
 
   private async submitPaymentReceipt(
     params: Record<string, unknown>,
-    context: AgentContext
+    _context: AgentContext,
   ): Promise<unknown> {
     // x402 payment receipt verification
     return {

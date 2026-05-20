@@ -1,28 +1,28 @@
-import { beforeEach, describe, expect, it, mock } from 'bun:test';
+import { beforeEach, describe, expect, it, mock } from "bun:test";
 
 const mockSendWhitelistWelcomeEmailsToUsers = mock(() => Promise.resolve());
 
 const whitelistTable = {
-  id: 'id',
-  userId: 'userId',
-  source: 'source',
-  reason: 'reason',
-  grantedBy: 'grantedBy',
-  grantedAt: 'grantedAt',
-  revokedAt: 'revokedAt',
+  id: "id",
+  userId: "userId",
+  source: "source",
+  reason: "reason",
+  grantedBy: "grantedBy",
+  grantedAt: "grantedAt",
+  revokedAt: "revokedAt",
 };
 const whitelistConfigTable = {
-  id: 'id',
-  leaderboardRankThreshold: 'leaderboardRankThreshold',
+  id: "id",
+  leaderboardRankThreshold: "leaderboardRankThreshold",
 };
-const nftSnapshotTable = { userId: 'userId' };
+const nftSnapshotTable = { userId: "userId" };
 const usersTable = {
-  id: 'id',
-  reputationPoints: 'reputationPoints',
-  invitePoints: 'invitePoints',
-  createdAt: 'createdAt',
-  isActor: 'isActor',
-  isAgent: 'isAgent',
+  id: "id",
+  reputationPoints: "reputationPoints",
+  invitePoints: "invitePoints",
+  createdAt: "createdAt",
+  isActor: "isActor",
+  isAgent: "isAgent",
 };
 
 let mockWhitelistConfigRow: { leaderboardRankThreshold: number | null } | null =
@@ -34,14 +34,14 @@ let mockSnapshotRows: Array<{ userId: string }> = [];
 let mockExistingRows: Array<{ userId: string; revokedAt: Date | null }> = [];
 let mockInsertedRows: Array<{ userId: string }> = [];
 
-const mockDbSelect = mock((fields?: unknown) => ({
+const mockDbSelect = mock((_fields?: unknown) => ({
   from: (table: unknown) => {
     if (table === whitelistConfigTable) {
       return {
         where: () => ({
           limit: () =>
             Promise.resolve(
-              mockWhitelistConfigRow ? [mockWhitelistConfigRow] : []
+              mockWhitelistConfigRow ? [mockWhitelistConfigRow] : [],
             ),
         }),
       };
@@ -87,7 +87,7 @@ const mockDbInsert = mock(() => ({
   }),
 }));
 
-mock.module('@feed/db', () => ({
+mock.module("@feed/db", () => ({
   db: {
     select: mockDbSelect,
     insert: mockDbInsert,
@@ -111,13 +111,13 @@ mock.module('@feed/db', () => ({
   nftSnapshot: nftSnapshotTable,
 }));
 
-mock.module('@feed/engine', () => ({
+mock.module("@feed/engine", () => ({
   UserAlphaGroupAssignmentService: {
     assignDefaultGroups: mock(() => Promise.resolve()),
   },
 }));
 
-mock.module('@feed/shared', () => ({
+mock.module("@feed/shared", () => ({
   logger: {
     info: mock(),
     warn: mock(),
@@ -126,43 +126,43 @@ mock.module('@feed/shared', () => ({
   },
 }));
 
-mock.module('nanoid', () => ({
-  nanoid: mock(() => 'mock-id'),
+mock.module("nanoid", () => ({
+  nanoid: mock(() => "mock-id"),
 }));
 
-mock.module('../services/points-service', () => ({
+mock.module("../services/points-service", () => ({
   PointsService: {},
 }));
 
-mock.module('../services/whitelist-email-service', () => ({
+mock.module("../services/whitelist-email-service", () => ({
   sendWhitelistWelcomeEmailToUser: mock(() => Promise.resolve()),
   sendWhitelistWelcomeEmailsToUsers: mockSendWhitelistWelcomeEmailsToUsers,
 }));
 
 const { autoWhitelistCurrentTopN, normalizeWhitelistLeaderboardThreshold } =
-  await import('../services/whitelist-service');
+  await import("../services/whitelist-service");
 
-describe('autoWhitelistCurrentTopN', () => {
+describe("autoWhitelistCurrentTopN", () => {
   beforeEach(() => {
     mockDbSelect.mockClear();
     mockDbInsert.mockClear();
     mockSendWhitelistWelcomeEmailsToUsers.mockClear();
 
     mockWhitelistConfigRow = { leaderboardRankThreshold: 100 };
-    mockTopUsers = [{ id: 'user-1' }, { id: 'user-2' }];
+    mockTopUsers = [{ id: "user-1" }, { id: "user-2" }];
     mockSnapshotRows = [];
     mockExistingRows = [];
-    mockInsertedRows = [{ userId: 'user-1' }, { userId: 'user-2' }];
+    mockInsertedRows = [{ userId: "user-1" }, { userId: "user-2" }];
   });
 
-  it('does not send whitelist welcome emails for users inserted by leaderboard cron', async () => {
+  it("does not send whitelist welcome emails for users inserted by leaderboard cron", async () => {
     const result = await autoWhitelistCurrentTopN();
 
     expect(result.inserted).toBe(2);
     expect(mockSendWhitelistWelcomeEmailsToUsers).toHaveBeenCalledTimes(0);
   });
 
-  it('does not send whitelist welcome emails when leaderboard is empty', async () => {
+  it("does not send whitelist welcome emails when leaderboard is empty", async () => {
     mockTopUsers = [];
 
     const result = await autoWhitelistCurrentTopN();
@@ -172,7 +172,7 @@ describe('autoWhitelistCurrentTopN', () => {
     expect(mockSendWhitelistWelcomeEmailsToUsers).toHaveBeenCalledTimes(0);
   });
 
-  it('caps the effective whitelist threshold at 25,000', async () => {
+  it("caps the effective whitelist threshold at 25,000", async () => {
     mockWhitelistConfigRow = { leaderboardRankThreshold: 99_999 };
     mockTopUsers = [];
 
@@ -182,15 +182,15 @@ describe('autoWhitelistCurrentTopN', () => {
   });
 });
 
-describe('normalizeWhitelistLeaderboardThreshold', () => {
-  it('falls back to the default threshold for invalid values', () => {
+describe("normalizeWhitelistLeaderboardThreshold", () => {
+  it("falls back to the default threshold for invalid values", () => {
     expect(normalizeWhitelistLeaderboardThreshold(null)).toBe(100);
     expect(normalizeWhitelistLeaderboardThreshold(undefined)).toBe(100);
     expect(normalizeWhitelistLeaderboardThreshold(0)).toBe(100);
     expect(normalizeWhitelistLeaderboardThreshold(-5)).toBe(100);
   });
 
-  it('truncates and caps the threshold at 25,000', () => {
+  it("truncates and caps the threshold at 25,000", () => {
     expect(normalizeWhitelistLeaderboardThreshold(25_000.9)).toBe(25_000);
     expect(normalizeWhitelistLeaderboardThreshold(40_000)).toBe(25_000);
   });

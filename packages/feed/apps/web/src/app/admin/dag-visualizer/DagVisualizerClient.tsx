@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import {
   Background,
@@ -9,28 +9,28 @@ import {
   ReactFlow,
   useEdgesState,
   useNodesState,
-} from '@xyflow/react';
-import '@xyflow/react/dist/style.css';
-import dagre from '@dagrejs/dagre';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { DagNode } from './DagNode';
-import { NodeDetailPanel } from './NodeDetailPanel';
-import { TickSelector } from './TickSelector';
-import { TickTimeline } from './TickTimeline';
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
+import dagre from "@dagrejs/dagre";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { DagNode } from "./DagNode";
+import { NodeDetailPanel } from "./NodeDetailPanel";
+import { TickSelector } from "./TickSelector";
+import { TickTimeline } from "./TickTimeline";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
 const PHASE_COLORS: Record<string, string> = {
-  Bootstrap: '#3b82f6',
-  Questions: '#06b6d4',
-  Events: '#f97316',
-  Markets: '#22c55e',
-  Rebalancing: '#eab308',
-  ContentMaintenance: '#6b7280',
-  Social: '#a855f7',
-  Finalize: '#ef4444',
+  Bootstrap: "#3b82f6",
+  Questions: "#06b6d4",
+  Events: "#f97316",
+  Markets: "#22c55e",
+  Rebalancing: "#eab308",
+  ContentMaintenance: "#6b7280",
+  Social: "#a855f7",
+  Finalize: "#ef4444",
 };
 
 const NODE_WIDTH = 200;
@@ -60,7 +60,7 @@ interface TraceNodeData {
   startMs: number;
   endMs: number;
   durationMs: number;
-  status: 'success' | 'error' | 'skipped';
+  status: "success" | "error" | "skipped";
   inputs: Record<string, unknown>;
   outputs: Record<string, unknown>;
   error?: string;
@@ -111,14 +111,14 @@ interface TraceData {
 // ---------------------------------------------------------------------------
 
 function layoutDag(
-  dagNodes: TraceData['dag']['nodes'],
-  dagEdges: TraceData['dag']['edges'],
-  traceNodes: TraceData['nodes'],
-  activeNodeIds?: Set<string>
+  dagNodes: TraceData["dag"]["nodes"],
+  dagEdges: TraceData["dag"]["edges"],
+  traceNodes: TraceData["nodes"],
+  activeNodeIds?: Set<string>,
 ): { nodes: Node[]; edges: Edge[] } {
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
-  g.setGraph({ rankdir: 'TB', nodesep: 40, ranksep: 80 });
+  g.setGraph({ rankdir: "TB", nodesep: 40, ranksep: 80 });
 
   const traceMap = new Map(traceNodes.map((n) => [n.nodeId, n]));
   const validNodeIds = new Set(dagNodes.map((n) => n.id));
@@ -141,8 +141,8 @@ function layoutDag(
 
   const completedNodes = new Set(
     traceNodes
-      .filter((n) => n.status === 'success' || n.status === 'error')
-      .map((n) => n.nodeId)
+      .filter((n) => n.status === "success" || n.status === "error")
+      .map((n) => n.nodeId),
   );
 
   const flowNodes: Node[] = dagNodes.map((dn) => {
@@ -153,7 +153,7 @@ function layoutDag(
 
     return {
       id: dn.id,
-      type: 'dagNode',
+      type: "dagNode",
       position: {
         x: (pos?.x ?? 0) - NODE_WIDTH / 2,
         y: (pos?.y ?? 0) - NODE_HEIGHT / 2,
@@ -161,12 +161,12 @@ function layoutDag(
       data: {
         label: dn.name,
         phase: dn.phase,
-        phaseColor: PHASE_COLORS[dn.phase] ?? '#6b7280',
+        phaseColor: PHASE_COLORS[dn.phase] ?? "#6b7280",
         description: dn.description,
-        status: trace?.status ?? 'skipped',
+        status: trace?.status ?? "skipped",
         durationMs: trace?.durationMs ?? 0,
         llmCallCount: trace?.llmCallIds?.length ?? 0,
-        hasError: trace?.status === 'error',
+        hasError: trace?.status === "error",
         isActive,
         isCompleted,
       },
@@ -178,7 +178,7 @@ function layoutDag(
       (e) =>
         validNodeIds.has(e.source) &&
         validNodeIds.has(e.target) &&
-        e.source !== e.target
+        e.source !== e.target,
     )
     .map((e, i) => {
       // Animate edges that connect completed -> active nodes
@@ -195,12 +195,12 @@ function layoutDag(
         label: e.label || undefined,
         animated: isFlowing,
         style: {
-          stroke: isFlowing ? '#4ade80' : bothCompleted ? '#3b82f6' : '#334155',
+          stroke: isFlowing ? "#4ade80" : bothCompleted ? "#3b82f6" : "#334155",
           strokeWidth: isFlowing ? 2.5 : bothCompleted ? 2 : 1.5,
         },
         labelStyle: {
           fontSize: 10,
-          fill: isFlowing ? '#4ade80' : '#64748b',
+          fill: isFlowing ? "#4ade80" : "#64748b",
         },
       };
     });
@@ -221,7 +221,7 @@ export function DagVisualizerClient() {
   const [liveMode, setLiveMode] = useState(true);
   const [sseConnected, setSseConnected] = useState(false);
   const [tickRunning, setTickRunning] = useState(false);
-  const [tickStatus, setTickStatus] = useState('');
+  const [tickStatus, setTickStatus] = useState("");
 
   const lastKnownTraceRef = useRef<string | null>(null);
   const userSelectedRef = useRef(false);
@@ -241,14 +241,14 @@ export function DagVisualizerClient() {
       return;
     }
 
-    const es = new EventSource('/api/admin/dag-traces/live');
+    const es = new EventSource("/api/admin/dag-traces/live");
     sseRef.current = es;
 
-    es.addEventListener('connected', () => {
+    es.addEventListener("connected", () => {
       setSseConnected(true);
     });
 
-    es.addEventListener('new-trace', (ev) => {
+    es.addEventListener("new-trace", (ev) => {
       try {
         const data = JSON.parse(ev.data);
         // Add to traces list at the top
@@ -280,7 +280,7 @@ export function DagVisualizerClient() {
             const layout = layoutDag(
               data.dag.nodes,
               data.dag.edges,
-              data.nodes
+              data.nodes,
             );
             setNodes(layout.nodes);
             setEdges(layout.edges);
@@ -291,7 +291,7 @@ export function DagVisualizerClient() {
       }
     });
 
-    es.addEventListener('heartbeat', () => {
+    es.addEventListener("heartbeat", () => {
       setSseConnected(true);
     });
 
@@ -310,14 +310,14 @@ export function DagVisualizerClient() {
   // Fetch trace list (initial + fallback polling when SSE not available)
   // -----------------------------------------------------------------------
   const fetchTraceList = useCallback(() => {
-    fetch('/api/admin/dag-traces')
+    fetch("/api/admin/dag-traces")
       .then((r) => r.json())
       .then((data) => {
         const list: TraceSummary[] = data.data?.traces ?? data.traces ?? [];
         setTraces(list);
 
         if (list.length > 0) {
-          const newest = list[0]!.dirName;
+          const newest = list[0]?.dirName;
           if (
             liveMode &&
             !userSelectedRef.current &&
@@ -359,7 +359,7 @@ export function DagVisualizerClient() {
           const layout = layoutDag(
             trace.dag.nodes,
             trace.dag.edges,
-            trace.nodes
+            trace.nodes,
           );
           setNodes(layout.nodes);
           setEdges(layout.edges);
@@ -375,17 +375,17 @@ export function DagVisualizerClient() {
   const triggerTick = useCallback(async () => {
     if (tickRunning) return;
     setTickRunning(true);
-    setTickStatus('Executing game tick...');
+    setTickStatus("Executing game tick...");
     userSelectedRef.current = false; // auto-follow the new trace
 
     try {
-      const res = await fetch('/api/admin/dag-traces/trigger-tick', {
-        method: 'POST',
+      const res = await fetch("/api/admin/dag-traces/trigger-tick", {
+        method: "POST",
       });
       const data = await res.json();
       if (data.data?.success || data.success) {
         setTickStatus(
-          `Tick complete (${data.data?.durationMs ?? data.durationMs}ms)`
+          `Tick complete (${data.data?.durationMs ?? data.durationMs}ms)`,
         );
         // Refresh trace list
         fetchTraceList();
@@ -394,11 +394,11 @@ export function DagVisualizerClient() {
       }
     } catch (err) {
       setTickStatus(
-        `Error: ${err instanceof Error ? err.message : String(err)}`
+        `Error: ${err instanceof Error ? err.message : String(err)}`,
       );
     } finally {
       setTickRunning(false);
-      setTimeout(() => setTickStatus(''), 8000);
+      setTimeout(() => setTickStatus(""), 8000);
     }
   }, [tickRunning, fetchTraceList]);
 
@@ -415,7 +415,7 @@ export function DagVisualizerClient() {
       if (!prev) {
         userSelectedRef.current = false;
         if (traces.length > 0) {
-          setSelectedTrace(traces[0]!.dirName);
+          setSelectedTrace(traces[0]?.dirName);
         }
       }
       return !prev;
@@ -431,7 +431,7 @@ export function DagVisualizerClient() {
     if (!selectedNode || !traceData?.llmCallsFull) return [];
     const callIds = new Set(selectedNode.llmCallIds);
     return traceData.llmCallsFull.filter((c) =>
-      callIds.has(c.callId as string)
+      callIds.has(c.callId as string),
     );
   }, [selectedNode, traceData]);
 
@@ -445,10 +445,10 @@ export function DagVisualizerClient() {
   return (
     <div
       style={{
-        display: 'flex',
-        flexDirection: 'column',
-        height: '100vh',
-        background: '#0f172a',
+        display: "flex",
+        flexDirection: "column",
+        height: "100vh",
+        background: "#0f172a",
       }}
     >
       {/* Global animations */}
@@ -462,17 +462,17 @@ export function DagVisualizerClient() {
       {/* Header */}
       <div
         style={{
-          padding: '10px 20px',
-          borderBottom: '1px solid #1e293b',
-          display: 'flex',
-          alignItems: 'center',
+          padding: "10px 20px",
+          borderBottom: "1px solid #1e293b",
+          display: "flex",
+          alignItems: "center",
           gap: 12,
-          background: '#0f172a',
+          background: "#0f172a",
         }}
       >
         <h1
           style={{
-            color: '#f1f5f9',
+            color: "#f1f5f9",
             fontSize: 18,
             fontWeight: 700,
             margin: 0,
@@ -491,16 +491,16 @@ export function DagVisualizerClient() {
         <button
           onClick={handleToggleLive}
           style={{
-            background: liveMode ? '#16a34a22' : '#1e293b',
-            border: `1px solid ${liveMode ? '#16a34a' : '#334155'}`,
+            background: liveMode ? "#16a34a22" : "#1e293b",
+            border: `1px solid ${liveMode ? "#16a34a" : "#334155"}`,
             borderRadius: 6,
-            color: liveMode ? '#4ade80' : '#94a3b8',
-            padding: '4px 12px',
-            cursor: 'pointer',
+            color: liveMode ? "#4ade80" : "#94a3b8",
+            padding: "4px 12px",
+            cursor: "pointer",
             fontSize: 12,
             fontWeight: 600,
-            display: 'flex',
-            alignItems: 'center',
+            display: "flex",
+            alignItems: "center",
             gap: 6,
           }}
         >
@@ -508,17 +508,17 @@ export function DagVisualizerClient() {
             style={{
               width: 8,
               height: 8,
-              borderRadius: '50%',
+              borderRadius: "50%",
               background: liveMode
                 ? sseConnected
-                  ? '#4ade80'
-                  : '#eab308'
-                : '#475569',
-              display: 'inline-block',
-              animation: liveMode ? 'pulse 2s infinite' : 'none',
+                  ? "#4ade80"
+                  : "#eab308"
+                : "#475569",
+              display: "inline-block",
+              animation: liveMode ? "pulse 2s infinite" : "none",
             }}
           />
-          {liveMode ? (sseConnected ? 'LIVE' : 'CONNECTING') : 'PAUSED'}
+          {liveMode ? (sseConnected ? "LIVE" : "CONNECTING") : "PAUSED"}
         </button>
 
         {/* Trigger tick */}
@@ -526,16 +526,16 @@ export function DagVisualizerClient() {
           onClick={triggerTick}
           disabled={tickRunning}
           style={{
-            background: tickRunning ? '#1e293b' : '#7c3aed22',
-            border: `1px solid ${tickRunning ? '#334155' : '#7c3aed'}`,
+            background: tickRunning ? "#1e293b" : "#7c3aed22",
+            border: `1px solid ${tickRunning ? "#334155" : "#7c3aed"}`,
             borderRadius: 6,
-            color: tickRunning ? '#94a3b8' : '#c4b5fd',
-            padding: '4px 14px',
-            cursor: tickRunning ? 'not-allowed' : 'pointer',
+            color: tickRunning ? "#94a3b8" : "#c4b5fd",
+            padding: "4px 14px",
+            cursor: tickRunning ? "not-allowed" : "pointer",
             fontSize: 12,
             fontWeight: 600,
-            display: 'flex',
-            alignItems: 'center',
+            display: "flex",
+            alignItems: "center",
             gap: 6,
           }}
         >
@@ -544,31 +544,31 @@ export function DagVisualizerClient() {
               style={{
                 width: 12,
                 height: 12,
-                border: '2px solid #7c3aed',
-                borderTopColor: 'transparent',
-                borderRadius: '50%',
-                display: 'inline-block',
-                animation: 'spin 0.8s linear infinite',
+                border: "2px solid #7c3aed",
+                borderTopColor: "transparent",
+                borderRadius: "50%",
+                display: "inline-block",
+                animation: "spin 0.8s linear infinite",
               }}
             />
           ) : (
-            '\u25B6'
+            "\u25B6"
           )}
-          {tickRunning ? 'Running...' : 'Run Tick'}
+          {tickRunning ? "Running..." : "Run Tick"}
         </button>
 
         {tickStatus && (
-          <span style={{ color: '#94a3b8', fontSize: 12 }}>{tickStatus}</span>
+          <span style={{ color: "#94a3b8", fontSize: 12 }}>{tickStatus}</span>
         )}
 
         {/* Stats */}
         {traceData && (
           <div
             style={{
-              color: '#94a3b8',
+              color: "#94a3b8",
               fontSize: 12,
-              marginLeft: 'auto',
-              display: 'flex',
+              marginLeft: "auto",
+              display: "flex",
               gap: 14,
             }}
           >
@@ -590,7 +590,7 @@ export function DagVisualizerClient() {
 
       {/* Timeline bar */}
       {traceData && (
-        <div style={{ borderBottom: '1px solid #1e293b', padding: '6px 20px' }}>
+        <div style={{ borderBottom: "1px solid #1e293b", padding: "6px 20px" }}>
           <TickTimeline
             nodes={traceData.nodes}
             onNodeClick={setSelectedNodeId}
@@ -599,15 +599,15 @@ export function DagVisualizerClient() {
       )}
 
       {/* Main content */}
-      <div style={{ flex: 1, display: 'flex', position: 'relative' }}>
+      <div style={{ flex: 1, display: "flex", position: "relative" }}>
         {loading ? (
           <div
             style={{
               flex: 1,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#94a3b8',
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "#94a3b8",
               gap: 8,
             }}
           >
@@ -615,11 +615,11 @@ export function DagVisualizerClient() {
               style={{
                 width: 16,
                 height: 16,
-                border: '2px solid #3b82f6',
-                borderTopColor: 'transparent',
-                borderRadius: '50%',
-                display: 'inline-block',
-                animation: 'spin 0.8s linear infinite',
+                border: "2px solid #3b82f6",
+                borderTopColor: "transparent",
+                borderRadius: "50%",
+                display: "inline-block",
+                animation: "spin 0.8s linear infinite",
               }}
             />
             Loading trace data...
@@ -628,18 +628,18 @@ export function DagVisualizerClient() {
           <div
             style={{
               flex: 1,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#94a3b8',
-              flexDirection: 'column',
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "#94a3b8",
+              flexDirection: "column",
               gap: 16,
             }}
           >
-            <div style={{ fontSize: 18, color: '#e2e8f0' }}>
+            <div style={{ fontSize: 18, color: "#e2e8f0" }}>
               No trace data yet
             </div>
-            <div style={{ fontSize: 13, color: '#64748b' }}>
+            <div style={{ fontSize: 13, color: "#64748b" }}>
               Click <strong>Run Tick</strong> to execute a game tick with full
               tracing, or enable FEED_DAG_TRACE=true
             </div>
@@ -647,17 +647,17 @@ export function DagVisualizerClient() {
               onClick={triggerTick}
               disabled={tickRunning}
               style={{
-                background: '#7c3aed',
-                border: 'none',
+                background: "#7c3aed",
+                border: "none",
                 borderRadius: 8,
-                color: '#fff',
-                padding: '10px 24px',
-                cursor: 'pointer',
+                color: "#fff",
+                padding: "10px 24px",
+                cursor: "pointer",
                 fontSize: 14,
                 fontWeight: 600,
               }}
             >
-              {tickRunning ? 'Running...' : 'Run Game Tick'}
+              {tickRunning ? "Running..." : "Run Game Tick"}
             </button>
           </div>
         ) : (
@@ -678,12 +678,12 @@ export function DagVisualizerClient() {
               >
                 <Background color="#1e293b" gap={20} />
                 <Controls
-                  style={{ background: '#1e293b', borderColor: '#334155' }}
+                  style={{ background: "#1e293b", borderColor: "#334155" }}
                 />
                 <MiniMap
-                  style={{ background: '#1e293b' }}
+                  style={{ background: "#1e293b" }}
                   nodeColor={(n: Node) =>
-                    (n.data as Record<string, string>).phaseColor ?? '#6b7280'
+                    (n.data as Record<string, string>).phaseColor ?? "#6b7280"
                   }
                   maskColor="rgba(0,0,0,0.6)"
                 />

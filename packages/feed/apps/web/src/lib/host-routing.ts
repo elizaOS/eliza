@@ -1,6 +1,6 @@
 const LEGACY_CANONICAL_HOSTS: Record<string, string> = {
-  'feed.social': 'feed.market',
-  'www.feed.social': 'feed.market',
+  "feed.social": "feed.market",
+  "www.feed.social": "feed.market",
 };
 
 function normalizeHostname(hostname: string): string {
@@ -9,14 +9,14 @@ function normalizeHostname(hostname: string): string {
 
 export function isAssetRequest(pathname: string): boolean {
   return (
-    pathname.startsWith('/_next') ||
-    pathname.startsWith('/assets') ||
-    pathname.startsWith('/static') ||
-    pathname.startsWith('/images') ||
-    pathname.startsWith('/fonts') ||
-    pathname.startsWith('/.well-known') ||
-    pathname.startsWith('/_vercel') ||
-    pathname.startsWith('/monitoring') ||
+    pathname.startsWith("/_next") ||
+    pathname.startsWith("/assets") ||
+    pathname.startsWith("/static") ||
+    pathname.startsWith("/images") ||
+    pathname.startsWith("/fonts") ||
+    pathname.startsWith("/.well-known") ||
+    pathname.startsWith("/_vercel") ||
+    pathname.startsWith("/monitoring") ||
     /\.[^/]+$/.test(pathname)
   );
 }
@@ -27,7 +27,7 @@ export function isLegacyCanonicalHostname(hostname: string): boolean {
 
 export function getLegacyCanonicalOrigin(
   hostname: string,
-  protocol: string
+  protocol: string,
 ): string | null {
   const target = LEGACY_CANONICAL_HOSTS[normalizeHostname(hostname)];
   if (!target) return null;

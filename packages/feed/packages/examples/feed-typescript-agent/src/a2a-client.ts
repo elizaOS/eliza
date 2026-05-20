@@ -6,8 +6,8 @@
  * This example client only wraps the subset of Feed skills implemented here.
  */
 
-import type { AgentCard, DataPart, Message, Task, TextPart } from '@a2a-js/sdk';
-import { A2AClient } from '@a2a-js/sdk/client';
+import type { DataPart, Message, Task, TextPart } from "@a2a-js/sdk";
+import { A2AClient } from "@a2a-js/sdk/client";
 import type {
   A2AChat,
   A2AFeedPost,
@@ -21,7 +21,7 @@ import type {
   A2ATrendingTag,
   A2AUserSearchResult,
   JsonValue,
-} from '@feed/a2a';
+} from "@feed/a2a";
 
 /**
  * A2A command with operation and params
@@ -44,29 +44,29 @@ interface TaskResultEnvelope {
 
 function hasErrorResponse(value: object): value is JsonRpcErrorShape {
   return (
-    'error' in value &&
-    typeof value.error === 'object' &&
+    "error" in value &&
+    typeof value.error === "object" &&
     value.error !== null &&
-    'code' in value.error &&
-    'message' in value.error
+    "code" in value.error &&
+    "message" in value.error
   );
 }
 
 function hasResult(value: object): value is { result: object } {
   return (
-    'result' in value &&
-    typeof value.result === 'object' &&
+    "result" in value &&
+    typeof value.result === "object" &&
     value.result !== null
   );
 }
 
 function isTask(value: object): value is Task {
-  return 'kind' in value && value.kind === 'task';
+  return "kind" in value && value.kind === "task";
 }
 
 function hasTaskResult(value: object): value is TaskResultEnvelope {
   return (
-    'task' in value && typeof value.task === 'object' && value.task !== null
+    "task" in value && typeof value.task === "object" && value.task !== null
   );
 }
 
@@ -93,7 +93,6 @@ export class FeedA2AClient {
   private client?: A2AClient;
   private clientPromise?: Promise<A2AClient>;
   private config: FeedA2AClientConfig;
-  private agentCard: AgentCard | null = null;
   public agentId: string | null = null;
 
   constructor(config: FeedA2AClientConfig) {
@@ -116,25 +115,25 @@ export class FeedA2AClient {
       type A2AClientOptions = {
         fetchImpl?: (
           url: string | URL | Request,
-          init?: RequestInit
+          init?: RequestInit,
         ) => Promise<Response>;
       };
       const options: A2AClientOptions = {
         fetchImpl: async (url: string | URL | Request, init?: RequestInit) => {
           // Add authentication headers
           const headers = new Headers(init?.headers);
-          headers.set('x-agent-id', this.agentId!);
-          headers.set('x-agent-address', this.config.address);
-          headers.set('x-agent-token-id', this.config.tokenId.toString());
+          headers.set("x-agent-id", this.agentId!);
+          headers.set("x-agent-address", this.config.address);
+          headers.set("x-agent-token-id", this.config.tokenId.toString());
           if (this.config.apiKey) {
-            headers.set('x-feed-api-key', this.config.apiKey);
+            headers.set("x-feed-api-key", this.config.apiKey);
           }
           return fetch(url, { ...init, headers });
         },
       };
       this.clientPromise = A2AClient.fromCardUrl(
         agentCardUrl,
-        options as Parameters<typeof A2AClient.fromCardUrl>[1]
+        options as Parameters<typeof A2AClient.fromCardUrl>[1],
       );
     }
 
@@ -153,7 +152,7 @@ export class FeedA2AClient {
     // The agent card will be fetched when needed through other methods
 
     // Verify connection by sending a test message
-    await this.sendMessage('ping', { operation: 'stats.system', params: {} });
+    await this.sendMessage("ping", { operation: "stats.system", params: {} });
   }
 
   /**
@@ -165,11 +164,11 @@ export class FeedA2AClient {
    */
   async sendMessage(
     text: string,
-    command: A2ACommand
+    command: A2ACommand,
   ): Promise<Task | Message> {
-    if (!command || typeof command.operation !== 'string') {
+    if (!command || typeof command.operation !== "string") {
       throw new Error(
-        'A2A command must include an operation string (e.g., "social.create_post", "markets.buy_shares")'
+        'A2A command must include an operation string (e.g., "social.create_post", "markets.buy_shares")',
       );
     }
 
@@ -179,20 +178,20 @@ export class FeedA2AClient {
     };
     const parts: Array<TextPart | DataPart> = [
       {
-        kind: 'text',
+        kind: "text",
         text,
       },
     ];
 
     parts.push({
-      kind: 'data',
+      kind: "data",
       data: structuredCommand,
     });
 
     const message: Message = {
-      kind: 'message',
+      kind: "message",
       messageId: `msg-${Date.now()}-${Math.random()}`,
-      role: 'user',
+      role: "user",
       parts,
       contextId: this.agentId || undefined,
     };
@@ -201,64 +200,64 @@ export class FeedA2AClient {
     const response = await client.sendMessage({ message });
 
     if (
-      typeof response === 'object' &&
+      typeof response === "object" &&
       response !== null &&
       hasErrorResponse(response)
     ) {
       throw new Error(
-        `A2A Error [${response.error.code}]: ${response.error.message}`
+        `A2A Error [${response.error.code}]: ${response.error.message}`,
       );
     }
 
     if (
-      typeof response === 'object' &&
+      typeof response === "object" &&
       response !== null &&
       hasResult(response)
     ) {
       const result = response.result;
 
-      if ('task' in result && result.task) {
+      if ("task" in result && result.task) {
         return result.task as Task;
       }
-      if ('message' in result && result.message) {
+      if ("message" in result && result.message) {
         return result.message as Message;
       }
       if (
-        'status' in result &&
-        'id' in result &&
-        typeof result.id === 'string'
+        "status" in result &&
+        "id" in result &&
+        typeof result.id === "string"
       ) {
         return result as Task;
       }
       if (
-        ('kind' in result && result.kind === 'message') ||
-        ('parts' in result && Array.isArray(result.parts))
+        ("kind" in result && result.kind === "message") ||
+        ("parts" in result && Array.isArray(result.parts))
       ) {
         return result as Message;
       }
       if (
-        'task' in result &&
+        "task" in result &&
         result.task &&
-        typeof result.task === 'object' &&
-        'id' in result.task
+        typeof result.task === "object" &&
+        "id" in result.task
       ) {
         return result.task as Task;
       }
       if (
-        'message' in result &&
+        "message" in result &&
         result.message &&
-        typeof result.message === 'object' &&
-        'parts' in result.message
+        typeof result.message === "object" &&
+        "parts" in result.message
       ) {
         return result.message as Message;
       }
     }
 
-    if (typeof response === 'object' && response !== null && isTask(response)) {
+    if (typeof response === "object" && response !== null && isTask(response)) {
       return response;
     }
 
-    throw new Error('Unexpected response format');
+    throw new Error("Unexpected response format");
   }
 
   // normalizeCommand removed - now using operation/params format directly
@@ -273,17 +272,17 @@ export class FeedA2AClient {
     const response = await client.getTask({ id: taskId });
 
     if (
-      typeof response === 'object' &&
+      typeof response === "object" &&
       response !== null &&
       hasErrorResponse(response)
     ) {
       throw new Error(
-        `A2A Error [${response.error.code}]: ${response.error.message}`
+        `A2A Error [${response.error.code}]: ${response.error.message}`,
       );
     }
 
     if (
-      typeof response === 'object' &&
+      typeof response === "object" &&
       response !== null &&
       hasResult(response)
     ) {
@@ -293,7 +292,7 @@ export class FeedA2AClient {
       }
     }
 
-    if (typeof response === 'object' && response !== null && isTask(response)) {
+    if (typeof response === "object" && response !== null && isTask(response)) {
       return response;
     }
 
@@ -311,9 +310,9 @@ export class FeedA2AClient {
       const task = await this.getTask(taskId);
 
       if (
-        task.status.state === 'completed' ||
-        task.status.state === 'failed' ||
-        task.status.state === 'canceled'
+        task.status.state === "completed" ||
+        task.status.state === "failed" ||
+        task.status.state === "canceled"
       ) {
         return task;
       }
@@ -329,7 +328,7 @@ export class FeedA2AClient {
    */
   private isArrayOf<T>(
     value: unknown,
-    itemGuard: (item: unknown) => item is T
+    itemGuard: (item: unknown) => item is T,
   ): value is T[] {
     return Array.isArray(value) && value.every(itemGuard);
   }
@@ -339,13 +338,13 @@ export class FeedA2AClient {
    */
   private isA2APredictionMarket(value: unknown): value is A2APredictionMarket {
     return (
-      typeof value === 'object' &&
+      typeof value === "object" &&
       value !== null &&
       !Array.isArray(value) &&
-      'id' in value &&
-      'question' in value &&
-      typeof (value as Record<string, JsonValue>).id === 'string' &&
-      typeof (value as Record<string, JsonValue>).question === 'string'
+      "id" in value &&
+      "question" in value &&
+      typeof (value as Record<string, JsonValue>).id === "string" &&
+      typeof (value as Record<string, JsonValue>).question === "string"
     );
   }
 
@@ -354,13 +353,13 @@ export class FeedA2AClient {
    */
   private isA2APerpetualMarket(value: unknown): value is A2APerpetualMarket {
     return (
-      typeof value === 'object' &&
+      typeof value === "object" &&
       value !== null &&
       !Array.isArray(value) &&
-      'ticker' in value &&
-      'currentPrice' in value &&
-      typeof (value as Record<string, JsonValue>).ticker === 'string' &&
-      typeof (value as Record<string, JsonValue>).currentPrice === 'number'
+      "ticker" in value &&
+      "currentPrice" in value &&
+      typeof (value as Record<string, JsonValue>).ticker === "string" &&
+      typeof (value as Record<string, JsonValue>).currentPrice === "number"
     );
   }
 
@@ -369,13 +368,13 @@ export class FeedA2AClient {
    */
   private isA2AFeedPost(value: unknown): value is A2AFeedPost {
     return (
-      typeof value === 'object' &&
+      typeof value === "object" &&
       value !== null &&
       !Array.isArray(value) &&
-      'id' in value &&
-      'content' in value &&
-      typeof (value as Record<string, JsonValue>).id === 'string' &&
-      typeof (value as Record<string, JsonValue>).content === 'string'
+      "id" in value &&
+      "content" in value &&
+      typeof (value as Record<string, JsonValue>).id === "string" &&
+      typeof (value as Record<string, JsonValue>).content === "string"
     );
   }
 
@@ -384,11 +383,11 @@ export class FeedA2AClient {
    */
   private isA2AChat(value: unknown): value is A2AChat {
     return (
-      typeof value === 'object' &&
+      typeof value === "object" &&
       value !== null &&
       !Array.isArray(value) &&
-      'id' in value &&
-      typeof (value as Record<string, JsonValue>).id === 'string'
+      "id" in value &&
+      typeof (value as Record<string, JsonValue>).id === "string"
     );
   }
 
@@ -397,11 +396,11 @@ export class FeedA2AClient {
    */
   private isA2ANotification(value: unknown): value is A2ANotification {
     return (
-      typeof value === 'object' &&
+      typeof value === "object" &&
       value !== null &&
       !Array.isArray(value) &&
-      'id' in value &&
-      typeof (value as Record<string, JsonValue>).id === 'string'
+      "id" in value &&
+      typeof (value as Record<string, JsonValue>).id === "string"
     );
   }
 
@@ -410,11 +409,11 @@ export class FeedA2AClient {
    */
   private isA2ALeaderboardEntry(value: unknown): value is A2ALeaderboardEntry {
     return (
-      typeof value === 'object' &&
+      typeof value === "object" &&
       value !== null &&
       !Array.isArray(value) &&
-      'userId' in value &&
-      typeof (value as Record<string, JsonValue>).userId === 'string'
+      "userId" in value &&
+      typeof (value as Record<string, JsonValue>).userId === "string"
     );
   }
 
@@ -423,11 +422,11 @@ export class FeedA2AClient {
    */
   private isA2ATrendingTag(value: unknown): value is A2ATrendingTag {
     return (
-      typeof value === 'object' &&
+      typeof value === "object" &&
       value !== null &&
       !Array.isArray(value) &&
-      'tag' in value &&
-      typeof (value as Record<string, JsonValue>).tag === 'string'
+      "tag" in value &&
+      typeof (value as Record<string, JsonValue>).tag === "string"
     );
   }
 
@@ -436,11 +435,11 @@ export class FeedA2AClient {
    */
   private isA2AOrganization(value: unknown): value is A2AOrganization {
     return (
-      typeof value === 'object' &&
+      typeof value === "object" &&
       value !== null &&
       !Array.isArray(value) &&
-      'id' in value &&
-      typeof (value as Record<string, JsonValue>).id === 'string'
+      "id" in value &&
+      typeof (value as Record<string, JsonValue>).id === "string"
     );
   }
 
@@ -449,11 +448,11 @@ export class FeedA2AClient {
    */
   private isA2AUserSearchResult(value: unknown): value is A2AUserSearchResult {
     return (
-      typeof value === 'object' &&
+      typeof value === "object" &&
       value !== null &&
       !Array.isArray(value) &&
-      'id' in value &&
-      typeof (value as Record<string, JsonValue>).id === 'string'
+      "id" in value &&
+      typeof (value as Record<string, JsonValue>).id === "string"
     );
   }
 
@@ -462,13 +461,13 @@ export class FeedA2AClient {
    */
   private isA2AMarketPosition(value: unknown): value is A2AMarketPosition {
     return (
-      typeof value === 'object' &&
+      typeof value === "object" &&
       value !== null &&
       !Array.isArray(value) &&
-      'id' in value &&
-      'marketId' in value &&
-      typeof (value as Record<string, JsonValue>).id === 'string' &&
-      typeof (value as Record<string, JsonValue>).marketId === 'string'
+      "id" in value &&
+      "marketId" in value &&
+      typeof (value as Record<string, JsonValue>).id === "string" &&
+      typeof (value as Record<string, JsonValue>).marketId === "string"
     );
   }
 
@@ -477,13 +476,13 @@ export class FeedA2AClient {
    */
   private isA2APerpPosition(value: unknown): value is A2APerpPosition {
     return (
-      typeof value === 'object' &&
+      typeof value === "object" &&
       value !== null &&
       !Array.isArray(value) &&
-      'id' in value &&
-      'ticker' in value &&
-      typeof (value as Record<string, JsonValue>).id === 'string' &&
-      typeof (value as Record<string, JsonValue>).ticker === 'string'
+      "id" in value &&
+      "ticker" in value &&
+      typeof (value as Record<string, JsonValue>).id === "string" &&
+      typeof (value as Record<string, JsonValue>).ticker === "string"
     );
   }
 
@@ -491,9 +490,9 @@ export class FeedA2AClient {
    * Extract result from task artifacts or messages
    */
   private extractResult(
-    taskOrMessage: Task | Message
+    taskOrMessage: Task | Message,
   ): Record<string, JsonValue> {
-    if (taskOrMessage.kind === 'task') {
+    if (taskOrMessage.kind === "task") {
       // It's a Task
       const task = taskOrMessage as Task;
       if (task.artifacts && task.artifacts.length > 0) {
@@ -501,7 +500,7 @@ export class FeedA2AClient {
         const artifact = task.artifacts[0];
         if (artifact.parts) {
           for (const part of artifact.parts) {
-            if (part.kind === 'data') {
+            if (part.kind === "data") {
               const dataPart = part as DataPart;
               return dataPart.data as Record<string, JsonValue>;
             }
@@ -513,7 +512,7 @@ export class FeedA2AClient {
         const lastMessage = task.history[task.history.length - 1];
         if (lastMessage.parts) {
           for (const part of lastMessage.parts) {
-            if (part.kind === 'data') {
+            if (part.kind === "data") {
               const dataPart = part as DataPart;
               return dataPart.data as Record<string, JsonValue>;
             }
@@ -523,7 +522,7 @@ export class FeedA2AClient {
       // Check status message
       if (task.status?.message?.parts) {
         for (const part of task.status.message.parts) {
-          if (part.kind === 'data') {
+          if (part.kind === "data") {
             const dataPart = part as DataPart;
             return dataPart.data as Record<string, JsonValue>;
           }
@@ -535,7 +534,7 @@ export class FeedA2AClient {
     const message = taskOrMessage as Message;
     if (message.parts) {
       for (const part of message.parts) {
-        if (part.kind === 'data') {
+        if (part.kind === "data") {
           const dataPart = part as DataPart;
           return dataPart.data as Record<string, JsonValue>;
         }
@@ -552,12 +551,12 @@ export class FeedA2AClient {
    * The executor currently only supports: social.create_post, social.get_feed, markets.list_prediction, users.search, stats.system, stats.leaderboard
    */
   async buyShares(
-    marketId: string,
-    outcome: 'YES' | 'NO',
-    amount: number
+    _marketId: string,
+    _outcome: "YES" | "NO",
+    _amount: number,
   ): Promise<Record<string, JsonValue>> {
     throw new Error(
-      'markets.buy_shares operation not yet supported by executor. Only basic operations are available.'
+      "markets.buy_shares operation not yet supported by executor. Only basic operations are available.",
     );
   }
 
@@ -566,25 +565,25 @@ export class FeedA2AClient {
    */
   async sellShares(
     positionId: string,
-    shares: number
+    shares: number,
   ): Promise<Record<string, JsonValue>> {
     const response = await this.sendMessage(
       `Sell ${shares} shares from position ${positionId}`,
       {
-        operation: 'markets.sell_shares',
+        operation: "markets.sell_shares",
         params: {
           positionId,
           shares,
         },
-      }
+      },
     );
 
-    if (response.kind === 'task') {
+    if (response.kind === "task") {
       const task = response as Task;
       if (
-        task.status.state !== 'completed' &&
-        task.status.state !== 'failed' &&
-        task.status.state !== 'canceled'
+        task.status.state !== "completed" &&
+        task.status.state !== "failed" &&
+        task.status.state !== "canceled"
       ) {
         const completedTask = await this.waitForTask(task.id);
         return this.extractResult(completedTask);
@@ -600,29 +599,29 @@ export class FeedA2AClient {
    */
   async openPosition(
     ticker: string,
-    side: 'LONG' | 'SHORT',
+    side: "LONG" | "SHORT",
     amount: number,
-    leverage: number
+    leverage: number,
   ): Promise<Record<string, JsonValue>> {
     const response = await this.sendMessage(
       `Open ${side} position on ${ticker} with $${amount} at ${leverage}x leverage`,
       {
-        operation: 'markets.open_perp_position',
+        operation: "markets.open_perp_position",
         params: {
           ticker,
           side,
           amount,
           leverage,
         },
-      }
+      },
     );
 
-    if (response.kind === 'task') {
+    if (response.kind === "task") {
       const task = response as Task;
       if (
-        task.status.state !== 'completed' &&
-        task.status.state !== 'failed' &&
-        task.status.state !== 'canceled'
+        task.status.state !== "completed" &&
+        task.status.state !== "failed" &&
+        task.status.state !== "canceled"
       ) {
         const completedTask = await this.waitForTask(task.id);
         return this.extractResult(completedTask);
@@ -638,18 +637,18 @@ export class FeedA2AClient {
    */
   async closePosition(positionId: string): Promise<Record<string, JsonValue>> {
     const response = await this.sendMessage(`Close position ${positionId}`, {
-      operation: 'markets.close_perp_position',
+      operation: "markets.close_perp_position",
       params: {
         positionId,
       },
     });
 
-    if (response.kind === 'task') {
+    if (response.kind === "task") {
       const task = response as Task;
       if (
-        task.status.state !== 'completed' &&
-        task.status.state !== 'failed' &&
-        task.status.state !== 'canceled'
+        task.status.state !== "completed" &&
+        task.status.state !== "failed" &&
+        task.status.state !== "canceled"
       ) {
         const completedTask = await this.waitForTask(task.id);
         return this.extractResult(completedTask);
@@ -666,17 +665,17 @@ export class FeedA2AClient {
    */
   async getPredictions(params?: {
     userId?: string;
-    status?: 'active' | 'resolved';
+    status?: "active" | "resolved";
   }): Promise<{ predictions: A2APredictionMarket[] }> {
     const response = await this.sendMessage(
-      'What prediction markets are available?',
+      "What prediction markets are available?",
       {
-        operation: 'markets.list_prediction',
+        operation: "markets.list_prediction",
         params: params || {},
-      }
+      },
     );
 
-    if ('status' in response) {
+    if ("status" in response) {
       const task = await this.waitForTask(response.id);
       const result = this.extractResult(task);
       return {
@@ -703,14 +702,14 @@ export class FeedA2AClient {
    */
   async getPerpetuals(): Promise<{ perpetuals: A2APerpetualMarket[] }> {
     const response = await this.sendMessage(
-      'What perpetual futures markets are available?',
+      "What perpetual futures markets are available?",
       {
-        operation: 'markets.list_perpetuals',
+        operation: "markets.list_perpetuals",
         params: {},
-      }
+      },
     );
 
-    if ('status' in response) {
+    if ("status" in response) {
       const task = await this.waitForTask(response.id);
       const result = this.extractResult(task);
       return {
@@ -740,7 +739,7 @@ export class FeedA2AClient {
     perps: A2APerpetualMarket[];
   }> {
     const [predictions, perps] = await Promise.all([
-      this.getPredictions({ status: 'active' }),
+      this.getPredictions({ status: "active" }),
       this.getPerpetuals(),
     ]);
     return {
@@ -753,21 +752,21 @@ export class FeedA2AClient {
    * Get balance (query skill)
    */
   async getBalance(): Promise<{ balance: number }> {
-    const response = await this.sendMessage('What is my current balance?', {
-      operation: 'portfolio.get_balance',
+    const response = await this.sendMessage("What is my current balance?", {
+      operation: "portfolio.get_balance",
       params: {},
     });
 
-    if ('status' in response) {
+    if ("status" in response) {
       const task = await this.waitForTask(response.id);
       const result = this.extractResult(task);
       return {
-        balance: typeof result.balance === 'number' ? result.balance : 0,
+        balance: typeof result.balance === "number" ? result.balance : 0,
       };
     }
 
     const result = this.extractResult(response);
-    return { balance: typeof result.balance === 'number' ? result.balance : 0 };
+    return { balance: typeof result.balance === "number" ? result.balance : 0 };
   }
 
   /**
@@ -781,14 +780,14 @@ export class FeedA2AClient {
     const response = await this.sendMessage(
       userId
         ? `What are user ${userId}'s positions?`
-        : 'What are my current positions?',
+        : "What are my current positions?",
       {
-        operation: 'portfolio.get_positions',
+        operation: "portfolio.get_positions",
         params: userId ? { userId } : {},
-      }
+      },
     );
 
-    if ('status' in response) {
+    if ("status" in response) {
       const task = await this.waitForTask(response.id);
       const result = this.extractResult(task);
       return {
@@ -802,7 +801,7 @@ export class FeedA2AClient {
           this.isArrayOf(result.perpPositions, this.isA2APerpPosition)
             ? result.perpPositions
             : [],
-        totalPnL: typeof result.totalPnL === 'number' ? result.totalPnL : 0,
+        totalPnL: typeof result.totalPnL === "number" ? result.totalPnL : 0,
       };
     }
 
@@ -818,7 +817,7 @@ export class FeedA2AClient {
         this.isArrayOf(result.perpPositions, this.isA2APerpPosition)
           ? result.perpPositions
           : [],
-      totalPnL: typeof result.totalPnL === 'number' ? result.totalPnL : 0,
+      totalPnL: typeof result.totalPnL === "number" ? result.totalPnL : 0,
     };
   }
 
@@ -853,17 +852,17 @@ export class FeedA2AClient {
     limit?: number;
     offset?: number;
     following?: boolean;
-    type?: 'post' | 'article';
+    type?: "post" | "article";
   }): Promise<{ posts: A2AFeedPost[] }> {
     const response = await this.sendMessage(
-      'Show me recent posts from the feed',
+      "Show me recent posts from the feed",
       {
-        operation: 'social.get_feed',
+        operation: "social.get_feed",
         params: params || {},
-      }
+      },
     );
 
-    if ('status' in response) {
+    if ("status" in response) {
       const task = await this.waitForTask(response.id);
       const result = this.extractResult(task);
       return {
@@ -891,22 +890,22 @@ export class FeedA2AClient {
    */
   async createPost(
     content: string,
-    type: 'post' | 'article' = 'post'
+    type: "post" | "article" = "post",
   ): Promise<Record<string, JsonValue>> {
     const response = await this.sendMessage(`Post: ${content}`, {
-      operation: 'social.create_post',
+      operation: "social.create_post",
       params: {
         content,
         type,
       },
     });
 
-    if (response.kind === 'task') {
+    if (response.kind === "task") {
       const task = response as Task;
       if (
-        task.status.state !== 'completed' &&
-        task.status.state !== 'failed' &&
-        task.status.state !== 'canceled'
+        task.status.state !== "completed" &&
+        task.status.state !== "failed" &&
+        task.status.state !== "canceled"
       ) {
         const completedTask = await this.waitForTask(task.id);
         return this.extractResult(completedTask);
@@ -922,25 +921,25 @@ export class FeedA2AClient {
    */
   async createComment(
     postId: string,
-    content: string
+    content: string,
   ): Promise<Record<string, JsonValue>> {
     const response = await this.sendMessage(
       `Comment on post ${postId}: ${content}`,
       {
-        operation: 'social.create_comment',
+        operation: "social.create_comment",
         params: {
           postId,
           content,
         },
-      }
+      },
     );
 
-    if (response.kind === 'task') {
+    if (response.kind === "task") {
       const task = response as Task;
       if (
-        task.status.state !== 'completed' &&
-        task.status.state !== 'failed' &&
-        task.status.state !== 'canceled'
+        task.status.state !== "completed" &&
+        task.status.state !== "failed" &&
+        task.status.state !== "canceled"
       ) {
         const completedTask = await this.waitForTask(task.id);
         return this.extractResult(completedTask);
@@ -956,18 +955,18 @@ export class FeedA2AClient {
    */
   async likePost(postId: string): Promise<Record<string, JsonValue>> {
     const response = await this.sendMessage(`Like post ${postId}`, {
-      operation: 'social.like_post',
+      operation: "social.like_post",
       params: {
         postId,
       },
     });
 
-    if (response.kind === 'task') {
+    if (response.kind === "task") {
       const task = response as Task;
       if (
-        task.status.state !== 'completed' &&
-        task.status.state !== 'failed' &&
-        task.status.state !== 'canceled'
+        task.status.state !== "completed" &&
+        task.status.state !== "failed" &&
+        task.status.state !== "canceled"
       ) {
         const completedTask = await this.waitForTask(task.id);
         return this.extractResult(completedTask);
@@ -983,25 +982,25 @@ export class FeedA2AClient {
    */
   async sendMessageToChat(
     chatId: string,
-    content: string
+    content: string,
   ): Promise<Record<string, JsonValue>> {
     const response = await this.sendMessage(
       `Send message to chat ${chatId}: ${content}`,
       {
-        operation: 'chats.send_message',
+        operation: "chats.send_message",
         params: {
           chatId,
           content,
         },
-      }
+      },
     );
 
-    if (response.kind === 'task') {
+    if (response.kind === "task") {
       const task = response as Task;
       if (
-        task.status.state !== 'completed' &&
-        task.status.state !== 'failed' &&
-        task.status.state !== 'canceled'
+        task.status.state !== "completed" &&
+        task.status.state !== "failed" &&
+        task.status.state !== "canceled"
       ) {
         const completedTask = await this.waitForTask(task.id);
         return this.extractResult(completedTask);
@@ -1016,14 +1015,14 @@ export class FeedA2AClient {
    * Get chats (query skill)
    */
   async getChats(
-    filter?: 'all' | 'dms' | 'groups'
+    filter?: "all" | "dms" | "groups",
   ): Promise<{ chats: A2AChat[] }> {
-    const response = await this.sendMessage('What are my chats?', {
-      operation: 'chats.get_chats',
+    const response = await this.sendMessage("What are my chats?", {
+      operation: "chats.get_chats",
       params: { filter: filter as JsonValue },
     });
 
-    if ('status' in response) {
+    if ("status" in response) {
       const task = await this.waitForTask(response.id);
       const result = this.extractResult(task);
       return {
@@ -1049,14 +1048,14 @@ export class FeedA2AClient {
    * Get notifications (query skill)
    */
   async getNotifications(
-    limit?: number
+    limit?: number,
   ): Promise<{ notifications: A2ANotification[] }> {
-    const response = await this.sendMessage('What are my notifications?', {
-      operation: 'notifications.get_notifications',
+    const response = await this.sendMessage("What are my notifications?", {
+      operation: "notifications.get_notifications",
       params: { limit: limit as JsonValue },
     });
 
-    if ('status' in response) {
+    if ("status" in response) {
       const task = await this.waitForTask(response.id);
       const result = this.extractResult(task);
       return {
@@ -1085,16 +1084,16 @@ export class FeedA2AClient {
   async getLeaderboard(params?: {
     page?: number;
     pageSize?: number;
-    pointsType?: 'all' | 'earned' | 'referral';
+    pointsType?: "all" | "earned" | "referral";
     minPoints?: number;
     limit?: number;
   }): Promise<{ leaderboard: A2ALeaderboardEntry[] }> {
-    const response = await this.sendMessage('Show me the leaderboard', {
-      operation: 'stats.leaderboard',
+    const response = await this.sendMessage("Show me the leaderboard", {
+      operation: "stats.leaderboard",
       params: params || {},
     });
 
-    if ('status' in response) {
+    if ("status" in response) {
       const task = await this.waitForTask(response.id);
       const result = this.extractResult(task);
       return {
@@ -1123,19 +1122,19 @@ export class FeedA2AClient {
     const response = await this.sendMessage(
       `Show me user ${userId}'s profile`,
       {
-        operation: 'users.get_user_profile',
+        operation: "users.get_user_profile",
         params: {
           userId,
         },
-      }
+      },
     );
 
-    if (response.kind === 'task') {
+    if (response.kind === "task") {
       const task = response as Task;
       if (
-        task.status.state !== 'completed' &&
-        task.status.state !== 'failed' &&
-        task.status.state !== 'canceled'
+        task.status.state !== "completed" &&
+        task.status.state !== "failed" &&
+        task.status.state !== "canceled"
       ) {
         const completedTask = await this.waitForTask(task.id);
         return this.extractResult(completedTask);
@@ -1151,17 +1150,17 @@ export class FeedA2AClient {
    * SUPPORTED: Uses stats.system operation
    */
   async getSystemStats(): Promise<Record<string, JsonValue>> {
-    const response = await this.sendMessage('What are the system statistics?', {
-      operation: 'stats.system',
+    const response = await this.sendMessage("What are the system statistics?", {
+      operation: "stats.system",
       params: {},
     });
 
-    if (response.kind === 'task') {
+    if (response.kind === "task") {
       const task = response as Task;
       if (
-        task.status.state !== 'completed' &&
-        task.status.state !== 'failed' &&
-        task.status.state !== 'canceled'
+        task.status.state !== "completed" &&
+        task.status.state !== "failed" &&
+        task.status.state !== "canceled"
       ) {
         const completedTask = await this.waitForTask(task.id);
         return this.extractResult(completedTask);
@@ -1179,19 +1178,19 @@ export class FeedA2AClient {
     const response = await this.sendMessage(
       userId
         ? `What is user ${userId}'s reputation?`
-        : 'What is my reputation?',
+        : "What is my reputation?",
       {
-        operation: 'stats.get_reputation',
+        operation: "stats.get_reputation",
         params: userId ? { userId } : {},
-      }
+      },
     );
 
-    if (response.kind === 'task') {
+    if (response.kind === "task") {
       const task = response as Task;
       if (
-        task.status.state !== 'completed' &&
-        task.status.state !== 'failed' &&
-        task.status.state !== 'canceled'
+        task.status.state !== "completed" &&
+        task.status.state !== "failed" &&
+        task.status.state !== "canceled"
       ) {
         const completedTask = await this.waitForTask(task.id);
         return this.extractResult(completedTask);
@@ -1206,12 +1205,12 @@ export class FeedA2AClient {
    * Get trending tags (query skill)
    */
   async getTrendingTags(limit?: number): Promise<{ tags: A2ATrendingTag[] }> {
-    const response = await this.sendMessage('What topics are trending?', {
-      operation: 'stats.get_trending_tags',
+    const response = await this.sendMessage("What topics are trending?", {
+      operation: "stats.get_trending_tags",
       params: { limit: limit as JsonValue },
     });
 
-    if ('status' in response) {
+    if ("status" in response) {
       const task = await this.waitForTask(response.id);
       const result = this.extractResult(task);
       return {
@@ -1237,17 +1236,17 @@ export class FeedA2AClient {
    * Get organizations (query skill)
    */
   async getOrganizations(
-    limit?: number
+    limit?: number,
   ): Promise<{ organizations: A2AOrganization[] }> {
     const response = await this.sendMessage(
-      'What organizations/perpetual markets are available?',
+      "What organizations/perpetual markets are available?",
       {
-        operation: 'markets.get_organizations',
+        operation: "markets.get_organizations",
         params: { limit: limit as JsonValue },
-      }
+      },
     );
 
-    if ('status' in response) {
+    if ("status" in response) {
       const task = await this.waitForTask(response.id);
       const result = this.extractResult(task);
       return {
@@ -1275,17 +1274,17 @@ export class FeedA2AClient {
    */
   async searchUsers(
     query: string,
-    limit?: number
+    limit?: number,
   ): Promise<{ users: A2AUserSearchResult[] }> {
     const response = await this.sendMessage(`Search for users: ${query}`, {
-      operation: 'users.search',
+      operation: "users.search",
       params: {
         query,
         limit: limit as JsonValue,
       },
     });
 
-    if ('status' in response) {
+    if ("status" in response) {
       const task = await this.waitForTask(response.id);
       const result = this.extractResult(task);
       return {
@@ -1312,18 +1311,18 @@ export class FeedA2AClient {
    */
   async followUser(userId: string): Promise<Record<string, JsonValue>> {
     const response = await this.sendMessage(`Follow user ${userId}`, {
-      operation: 'users.follow_user',
+      operation: "users.follow_user",
       params: {
         userId,
       },
     });
 
-    if (response.kind === 'task') {
+    if (response.kind === "task") {
       const task = response as Task;
       if (
-        task.status.state !== 'completed' &&
-        task.status.state !== 'failed' &&
-        task.status.state !== 'canceled'
+        task.status.state !== "completed" &&
+        task.status.state !== "failed" &&
+        task.status.state !== "canceled"
       ) {
         const completedTask = await this.waitForTask(task.id);
         return this.extractResult(completedTask);
@@ -1339,18 +1338,18 @@ export class FeedA2AClient {
    */
   async unfollowUser(userId: string): Promise<Record<string, JsonValue>> {
     const response = await this.sendMessage(`Unfollow user ${userId}`, {
-      operation: 'users.unfollow_user',
+      operation: "users.unfollow_user",
       params: {
         userId,
       },
     });
 
-    if (response.kind === 'task') {
+    if (response.kind === "task") {
       const task = response as Task;
       if (
-        task.status.state !== 'completed' &&
-        task.status.state !== 'failed' &&
-        task.status.state !== 'canceled'
+        task.status.state !== "completed" &&
+        task.status.state !== "failed" &&
+        task.status.state !== "canceled"
       ) {
         const completedTask = await this.waitForTask(task.id);
         return this.extractResult(completedTask);
@@ -1371,7 +1370,7 @@ export class FeedA2AClient {
     reason?: string;
   }): Promise<Record<string, JsonValue>> {
     const response = await this.sendMessage(`Block user ${params.userId}`, {
-      operation: 'moderation.block_user',
+      operation: "moderation.block_user",
       params,
     });
 
@@ -1385,7 +1384,7 @@ export class FeedA2AClient {
     userId: string;
   }): Promise<Record<string, JsonValue>> {
     const response = await this.sendMessage(`Unblock user ${params.userId}`, {
-      operation: 'moderation.unblock_user',
+      operation: "moderation.unblock_user",
       params,
     });
 
@@ -1400,7 +1399,7 @@ export class FeedA2AClient {
     reason?: string;
   }): Promise<Record<string, JsonValue>> {
     const response = await this.sendMessage(`Mute user ${params.userId}`, {
-      operation: 'moderation.mute_user',
+      operation: "moderation.mute_user",
       params,
     });
 
@@ -1414,7 +1413,7 @@ export class FeedA2AClient {
     userId: string;
   }): Promise<Record<string, JsonValue>> {
     const response = await this.sendMessage(`Unmute user ${params.userId}`, {
-      operation: 'moderation.unmute_user',
+      operation: "moderation.unmute_user",
       params,
     });
 
@@ -1433,9 +1432,9 @@ export class FeedA2AClient {
     const response = await this.sendMessage(
       `Report user ${params.userId} for ${params.category}`,
       {
-        operation: 'moderation.report_user',
+        operation: "moderation.report_user",
         params,
-      }
+      },
     );
 
     return this.extractResult(response);
@@ -1453,9 +1452,9 @@ export class FeedA2AClient {
     const response = await this.sendMessage(
       `Report post ${params.postId} for ${params.category}`,
       {
-        operation: 'moderation.report_post',
+        operation: "moderation.report_post",
         params,
-      }
+      },
     );
 
     return this.extractResult(response);
@@ -1468,8 +1467,8 @@ export class FeedA2AClient {
     limit?: number;
     offset?: number;
   }): Promise<Record<string, JsonValue>> {
-    const response = await this.sendMessage('Get my blocked users list', {
-      operation: 'moderation.get_blocks',
+    const response = await this.sendMessage("Get my blocked users list", {
+      operation: "moderation.get_blocks",
       params: params || {},
     });
 
@@ -1483,8 +1482,8 @@ export class FeedA2AClient {
     limit?: number;
     offset?: number;
   }): Promise<Record<string, JsonValue>> {
-    const response = await this.sendMessage('Get my muted users list', {
-      operation: 'moderation.get_mutes',
+    const response = await this.sendMessage("Get my muted users list", {
+      operation: "moderation.get_mutes",
       params: params || {},
     });
 
@@ -1500,9 +1499,9 @@ export class FeedA2AClient {
     const response = await this.sendMessage(
       `Check if user ${params.userId} is blocked`,
       {
-        operation: 'moderation.check_block_status',
+        operation: "moderation.check_block_status",
         params,
-      }
+      },
     );
 
     return this.extractResult(response);
@@ -1517,9 +1516,9 @@ export class FeedA2AClient {
     const response = await this.sendMessage(
       `Check if user ${params.userId} is muted`,
       {
-        operation: 'moderation.check_mute_status',
+        operation: "moderation.check_mute_status",
         params,
-      }
+      },
     );
 
     return this.extractResult(response);

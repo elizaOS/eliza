@@ -15,16 +15,16 @@
  * by ensuring the state was issued by this server and has not expired.
  */
 
-import { withErrorHandling } from '@feed/api';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { z } from 'zod';
-import { verifySignedState } from './state/state-utils';
+import { withErrorHandling } from "@feed/api";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { verifySignedState } from "./state/state-utils";
 
 const RequestSchema = z.object({
   code: z.string().min(1),
-  state: z.string().min(1, 'OAuth state parameter is required'),
+  state: z.string().min(1, "OAuth state parameter is required"),
 });
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
@@ -38,13 +38,13 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   if (!clientId || !clientSecret) {
     logger.error(
-      'Discord Activity token exchange failed: missing credentials',
+      "Discord Activity token exchange failed: missing credentials",
       {},
-      'DiscordActivity'
+      "DiscordActivity",
     );
     return NextResponse.json(
-      { error: 'Discord Activity not configured' },
-      { status: 500 }
+      { error: "Discord Activity not configured" },
+      { status: 500 },
     );
   }
 
@@ -52,14 +52,14 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
   const parsed = RequestSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
-      { error: 'Missing or invalid request parameters' },
-      { status: 400 }
+      { error: "Missing or invalid request parameters" },
+      { status: 400 },
     );
   }
 
@@ -71,36 +71,36 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   const stateVerification = verifySignedState(state, clientSecret);
   if (!stateVerification.valid) {
     logger.warn(
-      'Discord Activity token exchange rejected: invalid state',
+      "Discord Activity token exchange rejected: invalid state",
       { reason: stateVerification.reason },
-      'DiscordActivity'
+      "DiscordActivity",
     );
     return NextResponse.json(
-      { error: 'Invalid or expired OAuth state parameter' },
-      { status: 403 }
+      { error: "Invalid or expired OAuth state parameter" },
+      { status: 403 },
     );
   }
 
   logger.debug(
-    'Discord Activity token exchange request validated',
+    "Discord Activity token exchange request validated",
     {},
-    'DiscordActivity'
+    "DiscordActivity",
   );
 
   const tokenResponse = await fetch(
-    'https://discord.com/api/v10/oauth2/token',
+    "https://discord.com/api/v10/oauth2/token",
     {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
+        "Content-Type": "application/x-www-form-urlencoded",
       },
       body: new URLSearchParams({
         client_id: clientId,
         client_secret: clientSecret,
-        grant_type: 'authorization_code',
+        grant_type: "authorization_code",
         code,
       }),
-    }
+    },
   );
 
   if (!tokenResponse.ok) {
@@ -109,13 +109,13 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     // debugging but do not return it to the client.
     const errorText = await tokenResponse.text();
     logger.error(
-      'Discord Activity token exchange failed',
+      "Discord Activity token exchange failed",
       { status: tokenResponse.status, error: errorText },
-      'DiscordActivity'
+      "DiscordActivity",
     );
     return NextResponse.json(
-      { error: 'Token exchange failed' },
-      { status: tokenResponse.status }
+      { error: "Token exchange failed" },
+      { status: tokenResponse.status },
     );
   }
 
@@ -127,9 +127,9 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   };
 
   logger.info(
-    'Discord Activity token exchange successful',
+    "Discord Activity token exchange successful",
     { scope: tokenData.scope },
-    'DiscordActivity'
+    "DiscordActivity",
   );
 
   return NextResponse.json({ access_token: tokenData.access_token });

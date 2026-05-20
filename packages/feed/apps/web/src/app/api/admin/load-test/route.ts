@@ -79,15 +79,15 @@ import {
   requireAdmin,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { logger } from '@feed/shared';
-import type { LoadTestResult } from '@feed/testing';
-import { LoadTestSimulator, TEST_SCENARIOS } from '@feed/testing';
-import type { NextRequest } from 'next/server';
-import { z } from 'zod';
+} from "@feed/api";
+import { logger } from "@feed/shared";
+import type { LoadTestResult } from "@feed/testing";
+import { LoadTestSimulator, TEST_SCENARIOS } from "@feed/testing";
+import type { NextRequest } from "next/server";
+import { z } from "zod";
 
 const LoadTestRequestSchema = z.object({
-  scenario: z.enum(['LIGHT', 'NORMAL', 'HEAVY', 'STRESS']),
+  scenario: z.enum(["LIGHT", "NORMAL", "HEAVY", "STRESS"]),
   baseUrl: z.string().url().optional(),
 });
 
@@ -110,7 +110,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   // Check if test is already running
   if (activeTest) {
-    return errorResponse('Load test already running', 'LOAD_TEST_RUNNING', 409);
+    return errorResponse("Load test already running", "LOAD_TEST_RUNNING", 409);
   }
 
   // Parse request body
@@ -123,16 +123,16 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     baseUrl ||
     (process.env.VERCEL_URL
       ? `https://${process.env.VERCEL_URL}`
-      : 'http://localhost:3000');
+      : "http://localhost:3000");
 
   logger.info(
-    'Starting load test',
+    "Starting load test",
     {
       scenario,
       baseUrl: testBaseUrl,
       config,
     },
-    'POST /api/admin/load-test'
+    "POST /api/admin/load-test",
   );
 
   // Start test
@@ -153,22 +153,22 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       activeTest = null;
 
       logger.info(
-        'Load test completed',
+        "Load test completed",
         {
           scenario,
           totalRequests: result.totalRequests,
           successRate: result.throughput.successRate,
         },
-        'LoadTest'
+        "LoadTest",
       );
     })
     .catch((error: Error) => {
-      logger.error('Load test failed', { error: error.message }, 'LoadTest');
+      logger.error("Load test failed", { error: error.message }, "LoadTest");
       activeTest = null;
     });
 
   return successResponse({
-    message: 'Load test started',
+    message: "Load test started",
     scenario,
     config: {
       concurrentUsers: config.concurrentUsers,
@@ -190,7 +190,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     const runningTime = Date.now() - activeTest.startTime.getTime();
 
     return successResponse({
-      status: 'running',
+      status: "running",
       scenario: activeTest.scenario,
       startTime: activeTest.startTime,
       runningTimeMs: runningTime,
@@ -199,7 +199,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   }
 
   return successResponse({
-    status: 'idle',
+    status: "idle",
     lastResult: lastTestResult
       ? {
           endTime: lastTestResult.endTime,

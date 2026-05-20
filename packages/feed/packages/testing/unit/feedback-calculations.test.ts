@@ -2,17 +2,17 @@
  * Unit tests for feedback calculation functions
  */
 
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it } from "bun:test";
 import {
   calculateGameScore,
   calculateTradeScore,
   type GameMetrics,
   type TradeMetrics,
-} from '@feed/engine';
+} from "@feed/engine";
 
-describe('Feedback Calculations', () => {
-  describe('calculateTradeScore', () => {
-    it('should calculate high score for profitable trade with good timing', () => {
+describe("Feedback Calculations", () => {
+  describe("calculateTradeScore", () => {
+    it("should calculate high score for profitable trade with good timing", () => {
       const metrics: TradeMetrics = {
         profitable: true,
         roi: 0.5, // 50% ROI
@@ -26,7 +26,7 @@ describe('Feedback Calculations', () => {
       expect(score).toBeLessThanOrEqual(100);
     });
 
-    it('should calculate low score for unprofitable trade', () => {
+    it("should calculate low score for unprofitable trade", () => {
       const metrics: TradeMetrics = {
         profitable: false,
         roi: -0.3, // -30% ROI
@@ -40,7 +40,7 @@ describe('Feedback Calculations', () => {
       expect(score).toBeGreaterThanOrEqual(0);
     });
 
-    it('should handle edge case: perfect trade', () => {
+    it("should handle edge case: perfect trade", () => {
       const metrics: TradeMetrics = {
         profitable: true,
         roi: 1.0, // 100% ROI (max)
@@ -53,7 +53,7 @@ describe('Feedback Calculations', () => {
       expect(score).toBe(100);
     });
 
-    it('should handle edge case: worst trade', () => {
+    it("should handle edge case: worst trade", () => {
       const metrics: TradeMetrics = {
         profitable: false,
         roi: -0.5, // -50% ROI (min)
@@ -67,7 +67,7 @@ describe('Feedback Calculations', () => {
       expect(score).toBeLessThan(20);
     });
 
-    it('should normalize ROI correctly', () => {
+    it("should normalize ROI correctly", () => {
       const metrics1: TradeMetrics = {
         profitable: true,
         roi: 0.0, // Break even
@@ -91,8 +91,8 @@ describe('Feedback Calculations', () => {
     });
   });
 
-  describe('calculateGameScore', () => {
-    it('should calculate high score for winning game with good decisions', () => {
+  describe("calculateGameScore", () => {
+    it("should calculate high score for winning game with good decisions", () => {
       const metrics: GameMetrics = {
         won: true,
         pnl: 500,
@@ -109,7 +109,7 @@ describe('Feedback Calculations', () => {
       expect(score).toBeLessThanOrEqual(100);
     });
 
-    it('should calculate lower score for losing game', () => {
+    it("should calculate lower score for losing game", () => {
       const metrics: GameMetrics = {
         won: false,
         pnl: -200,
@@ -126,7 +126,7 @@ describe('Feedback Calculations', () => {
       expect(score).toBeGreaterThanOrEqual(0);
     });
 
-    it('should reward perfect decision-making', () => {
+    it("should reward perfect decision-making", () => {
       const metrics: GameMetrics = {
         won: true,
         pnl: 300,
@@ -142,7 +142,7 @@ describe('Feedback Calculations', () => {
       expect(score).toBeGreaterThan(70);
     });
 
-    it('should handle zero decisions gracefully', () => {
+    it("should handle zero decisions gracefully", () => {
       const metrics: GameMetrics = {
         won: false,
         pnl: -100,

@@ -12,8 +12,8 @@ import type {
   TrainingBatch,
   Trajectory,
   WhereInput,
-} from '@feed/db';
-import type { JsonValue } from '@feed/shared';
+} from "@feed/db";
+import type { JsonValue } from "@feed/shared";
 
 // Re-export schema types for convenience
 export type { LlmCallLog, TrainedModel, TrainingBatch, Trajectory };
@@ -40,10 +40,10 @@ export interface TrajectoryStep {
   /** Counterparty context for interaction labeling (populated by adversarial eval) */
   counterpartyContext?: {
     counterpartyId?: string;
-    counterpartyAlignment?: 'good' | 'neutral' | 'evil';
-    counterpartyTeam?: 'red' | 'blue' | 'gray';
-    senderRole?: 'admin' | 'team' | 'none';
-    interactionIntent?: 'attack' | 'legitimate' | 'neutral';
+    counterpartyAlignment?: "good" | "neutral" | "evil";
+    counterpartyTeam?: "red" | "blue" | "gray";
+    senderRole?: "admin" | "team" | "none";
+    interactionIntent?: "attack" | "legitimate" | "neutral";
     isVerifiedAdmin?: boolean;
   };
 }
@@ -107,7 +107,7 @@ export interface TrustState {
 }
 
 export interface ScamAnalysis {
-  schemaVersion: 'scam-analysis-v1';
+  schemaVersion: "scam-analysis-v1";
   isScamSuspected: boolean;
   threatFamily: string;
   evidence: string[];
@@ -132,17 +132,17 @@ export interface InteractionLabel {
   /** ID of the counterparty agent or NPC */
   counterpartyId: string;
   /** Counterparty's team from character sheet */
-  counterpartyTeam: 'red' | 'blue' | 'gray';
+  counterpartyTeam: "red" | "blue" | "gray";
   /** Counterparty's alignment from character sheet */
-  counterpartyAlignment: 'good' | 'neutral' | 'evil';
+  counterpartyAlignment: "good" | "neutral" | "evil";
   /** Communication channel */
   channel:
-    | 'dm'
-    | 'group-chat'
-    | 'payment'
-    | 'trade'
-    | 'support-ticket'
-    | 'email';
+    | "dm"
+    | "group-chat"
+    | "payment"
+    | "trade"
+    | "support-ticket"
+    | "email";
   /** Amount transferred (positive = agent paid out, negative = agent received) */
   amountTransferred?: number;
   /** Number of messages exchanged in this interaction */
@@ -169,13 +169,13 @@ export interface LLMCall {
   completionTokens?: number;
   topP?: number;
   messages?: Array<{ role: string; content: string }>;
-  purpose: 'action' | 'reasoning' | 'evaluation' | 'response' | 'other';
+  purpose: "action" | "reasoning" | "evaluation" | "response" | "other";
   actionType?: string;
   metadata?: Record<string, JsonValue>;
   privateAnalysis?: ScamAnalysis;
   reasoningAvailable?: boolean;
   reasoningSource?: string;
-  traceVisibility?: 'private' | 'public';
+  traceVisibility?: "private" | "public";
   rawReasoningTrace?: string;
 }
 
@@ -190,7 +190,7 @@ export interface Action {
   privateAnalysis?: ScamAnalysis;
   reasoningAvailable?: boolean;
   reasoningSource?: string;
-  traceVisibility?: 'private' | 'public';
+  traceVisibility?: "private" | "public";
   // Correctness tracking (for RL training)
   correctness?: {
     // Prediction market correctness
@@ -202,7 +202,7 @@ export interface Action {
     perpCorrect?: boolean; // Was the perp trade correct?
     sentimentAtTrade?: number; // Sentiment at time of trade (-1 to 1)
     priceChange?: number; // Actual price change after trade
-    expectedDirection?: 'up' | 'down'; // Expected direction based on sentiment
+    expectedDirection?: "up" | "down"; // Expected direction based on sentiment
 
     // Sentiment analysis accuracy
     sentimentAccuracy?: number; // How accurate was sentiment reading (0-1)
@@ -231,7 +231,7 @@ export interface TrajectoryMetrics {
 
 export interface TrajectoryMetadata {
   isTrainingData: boolean;
-  privateAnalysisSchema?: 'scam-analysis-v1';
+  privateAnalysisSchema?: "scam-analysis-v1";
   gameKnowledge?: {
     trueProbabilities?: Record<string, number>;
     actualOutcomes?: Record<string, JsonValue>;

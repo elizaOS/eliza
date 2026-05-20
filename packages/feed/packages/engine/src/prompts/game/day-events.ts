@@ -1,9 +1,9 @@
-import { definePrompt } from '../define-prompt';
+import { definePrompt } from "../define-prompt";
 import {
   ANTI_REPETITION_RULES,
   EVENT_CONTINUITY_RULES,
   PARODY_NAME_RULES,
-} from '../shared-sections';
+} from "../shared-sections";
 
 /**
  * Prompt for generating day-by-day event descriptions with narrative context.
@@ -16,10 +16,10 @@ import {
  * Returns XML with day event descriptions.
  */
 export const dayEvents = definePrompt({
-  id: 'event-descriptions',
-  version: '4.0.0',
-  category: 'game',
-  description: 'Generates day events with full narrative and character context',
+  id: "event-descriptions",
+  version: "4.0.0",
+  category: "game",
+  description: "Generates day events with full narrative and character context",
   temperature: 0.9,
   maxTokens: 15000,
   template: `{{realityGrounding}}

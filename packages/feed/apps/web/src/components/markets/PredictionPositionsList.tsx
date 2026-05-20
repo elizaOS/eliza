@@ -1,15 +1,15 @@
-'use client';
+"use client";
 
-import type { UserPredictionPosition } from '@feed/shared';
-import { cn, formatCurrency, logger } from '@feed/shared';
-import { Bot, CheckCircle, XCircle } from 'lucide-react';
-import { useState } from 'react';
-import { toast } from 'sonner';
-import { usePredictionTrading } from '@/hooks/usePredictionTrading';
+import type { UserPredictionPosition } from "@feed/shared";
+import { cn, formatCurrency, logger } from "@feed/shared";
+import { Bot, CheckCircle, XCircle } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
+import { usePredictionTrading } from "@/hooks/usePredictionTrading";
 import {
   type SellPredictionDetails,
   TradeConfirmationDialog,
-} from './TradeConfirmationDialog';
+} from "./TradeConfirmationDialog";
 
 /**
  * Alias for UserPredictionPosition for local usage.
@@ -46,17 +46,17 @@ interface PredictionPositionsListProps {
   positions: PredictionPosition[];
   onPositionSold?: () => void;
   onPositionClick?: (marketId: string) => void;
-  density?: 'default' | 'compact';
+  density?: "default" | "compact";
 }
 
 export function PredictionPositionsList({
   positions,
   onPositionSold,
   onPositionClick,
-  density = 'default',
+  density = "default",
 }: PredictionPositionsListProps) {
   const { loading, sellPrediction } = usePredictionTrading();
-  const compact = density === 'compact';
+  const compact = density === "compact";
   const [submittingId, setSubmittingId] = useState<string | null>(null);
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [pendingSell, setPendingSell] = useState<{
@@ -70,7 +70,7 @@ export function PredictionPositionsList({
     position: PredictionPosition,
     expectedValue: number,
     unrealizedPnL: number,
-    unrealizedPnLPercent: number
+    unrealizedPnLPercent: number,
   ) => {
     setPendingSell({
       position,
@@ -96,22 +96,22 @@ export function PredictionPositionsList({
         positionId: position.id,
       });
 
-      const pnlSign = result.pnl >= 0 ? '+' : '-';
-      toast.success('Shares sold!', {
+      const pnlSign = result.pnl >= 0 ? "+" : "-";
+      toast.success("Shares sold!", {
         description: `Sold ${position.shares.toFixed(2)} ${position.side} shares for ${pnlSign}${formatCurrency(
           Math.abs(result.pnl),
-          { useThousandsSeparator: true }
+          { useThousandsSeparator: true },
         )} PnL`,
       });
 
       onPositionSold?.();
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : 'Failed to sell shares';
+        err instanceof Error ? err.message : "Failed to sell shares";
       logger.error(
-        'Failed to sell prediction shares',
+        "Failed to sell prediction shares",
         { marketId: position.marketId, positionId: position.id, error: err },
-        'PredictionPositionsList'
+        "PredictionPositionsList",
       );
       toast.error(message);
     } finally {
@@ -128,12 +128,12 @@ export function PredictionPositionsList({
     return (
       <div
         className={cn(
-          'text-center text-muted-foreground',
-          compact ? 'py-6' : 'py-8'
+          "text-center text-muted-foreground",
+          compact ? "py-6" : "py-8",
         )}
       >
         <p>No prediction positions</p>
-        <p className={cn(compact ? 'mt-1 text-xs' : 'mt-1 text-sm')}>
+        <p className={cn(compact ? "mt-1 text-xs" : "mt-1 text-sm")}>
           Buy YES or NO shares to start betting
         </p>
       </div>
@@ -141,7 +141,7 @@ export function PredictionPositionsList({
   }
 
   return (
-    <div className={cn(compact ? 'space-y-1.5' : 'space-y-2')}>
+    <div className={cn(compact ? "space-y-1.5" : "space-y-2")}>
       {positions.map((position) => {
         const currentValue =
           position.currentValue ?? position.shares * position.currentPrice;
@@ -157,9 +157,9 @@ export function PredictionPositionsList({
           <div
             key={position.id}
             className={cn(
-              'rounded bg-muted/40',
-              compact ? 'p-2' : 'p-2.5',
-              onPositionClick && 'cursor-pointer hover:bg-muted/60'
+              "rounded bg-muted/40",
+              compact ? "p-2" : "p-2.5",
+              onPositionClick && "cursor-pointer hover:bg-muted/60",
             )}
             onClick={() => onPositionClick?.(position.marketId.toString())}
           >
@@ -168,13 +168,13 @@ export function PredictionPositionsList({
               <div className="flex min-w-0 items-center gap-1.5">
                 <span
                   className={cn(
-                    'flex shrink-0 items-center gap-0.5 rounded px-1.5 py-0.5 font-bold text-[11px]',
-                    position.side === 'YES'
-                      ? 'bg-green-600/20 text-green-600'
-                      : 'bg-red-600/20 text-red-600'
+                    "flex shrink-0 items-center gap-0.5 rounded px-1.5 py-0.5 font-bold text-[11px]",
+                    position.side === "YES"
+                      ? "bg-green-600/20 text-green-600"
+                      : "bg-red-600/20 text-red-600",
                   )}
                 >
-                  {position.side === 'YES' ? (
+                  {position.side === "YES" ? (
                     <CheckCircle size={10} />
                   ) : (
                     <XCircle size={10} />
@@ -184,7 +184,7 @@ export function PredictionPositionsList({
                 {position.isAgentPosition && (
                   <span className="flex shrink-0 items-center gap-0.5 rounded bg-muted px-1 py-0.5 font-medium text-[11px] text-muted-foreground">
                     <Bot size={10} />
-                    {position.agentName || 'Agent'}
+                    {position.agentName || "Agent"}
                   </span>
                 )}
                 <span className="truncate font-medium text-foreground text-xs">
@@ -193,14 +193,14 @@ export function PredictionPositionsList({
               </div>
               <span
                 className={cn(
-                  'shrink-0 font-bold text-xs',
-                  unrealizedPnL >= 0 ? 'text-green-600' : 'text-red-600'
+                  "shrink-0 font-bold text-xs",
+                  unrealizedPnL >= 0 ? "text-green-600" : "text-red-600",
                 )}
               >
-                {unrealizedPnL >= 0 ? '+' : ''}
-                {formatPrice(unrealizedPnL)}{' '}
+                {unrealizedPnL >= 0 ? "+" : ""}
+                {formatPrice(unrealizedPnL)}{" "}
                 <span className="font-normal text-[11px]">
-                  ({unrealizedPnL >= 0 ? '+' : ''}
+                  ({unrealizedPnL >= 0 ? "+" : ""}
                   {pnlPercent.toFixed(2)}%)
                 </span>
               </span>
@@ -210,26 +210,26 @@ export function PredictionPositionsList({
             <div className="mt-1.5 flex items-center justify-between gap-2">
               <div className="flex flex-wrap items-center gap-x-2 text-muted-foreground text-xs">
                 <span>
-                  {position.shares.toFixed(2)}{' '}
+                  {position.shares.toFixed(2)}{" "}
                   <span className="font-medium text-foreground">shares</span>
                 </span>
                 <span className="text-muted-foreground/40">&middot;</span>
                 <span>
-                  Avg{' '}
+                  Avg{" "}
                   <span className="font-medium text-foreground">
                     {formatPrice(position.avgPrice)}
                   </span>
                 </span>
                 <span className="text-muted-foreground/40">&middot;</span>
                 <span>
-                  Now{' '}
+                  Now{" "}
                   <span className="font-medium text-foreground">
                     {formatPrice(position.currentPrice)}
                   </span>
                 </span>
                 <span className="text-muted-foreground/40">&middot;</span>
                 <span>
-                  Val{' '}
+                  Val{" "}
                   <span className="font-medium text-foreground">
                     {formatPrice(currentValue)}
                   </span>
@@ -243,29 +243,29 @@ export function PredictionPositionsList({
                       position,
                       currentValue,
                       unrealizedPnL,
-                      pnlPercent
+                      pnlPercent,
                     );
                   }}
                   disabled={isSubmitting || position.shares < 0.01}
                   className={cn(
-                    'shrink-0 cursor-pointer rounded-full bg-muted px-3 py-0.5 font-medium text-foreground text-xs transition-all hover:bg-muted/80 disabled:cursor-not-allowed disabled:opacity-50'
+                    "shrink-0 cursor-pointer rounded-full bg-muted px-3 py-0.5 font-medium text-foreground text-xs transition-all hover:bg-muted/80 disabled:cursor-not-allowed disabled:opacity-50",
                   )}
                 >
                   {isSubmitting
-                    ? 'Selling...'
+                    ? "Selling..."
                     : position.shares < 0.01
-                      ? 'Too Small'
-                      : 'Sell'}
+                      ? "Too Small"
+                      : "Sell"}
                 </button>
               ) : (
                 <span className="shrink-0 font-medium text-muted-foreground text-xs">
-                  Resolved:{' '}
+                  Resolved:{" "}
                   <span
                     className={
-                      position.resolution ? 'text-green-600' : 'text-red-600'
+                      position.resolution ? "text-green-600" : "text-red-600"
                     }
                   >
-                    {position.resolution ? 'YES' : 'NO'}
+                    {position.resolution ? "YES" : "NO"}
                   </span>
                 </span>
               )}
@@ -283,8 +283,8 @@ export function PredictionPositionsList({
         tradeDetails={
           pendingSell
             ? ({
-                type: 'sell-prediction',
-                mode: 'sell',
+                type: "sell-prediction",
+                mode: "sell",
                 question: pendingSell.position.question,
                 side: pendingSell.position.side,
                 shares: pendingSell.position.shares,

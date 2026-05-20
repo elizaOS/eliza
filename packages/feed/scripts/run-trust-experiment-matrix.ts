@@ -1,22 +1,22 @@
 #!/usr/bin/env bun
 
-import { mkdir, writeFile } from 'node:fs/promises';
-import path from 'node:path';
-import { parseArgs } from 'node:util';
-import { actors as staticActors } from '@feed/pack-default';
-import type { IAgentRuntime } from '@elizaos/core';
-import { config as loadDotenv } from 'dotenv';
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { parseArgs } from "node:util";
+import type { IAgentRuntime } from "@elizaos/core";
+import { actors as staticActors } from "@feed/pack-default";
+import { config as loadDotenv } from "dotenv";
 import {
   buildTrustExperimentAgents,
   buildTrustExperimentManifest,
   type TrustExperimentAgentSpec,
   type TrustExperimentModelSize,
   writeTrustExperimentCharacterSheets,
-} from '../packages/agents/src/character-roster/trust-experiment';
+} from "../packages/agents/src/character-roster/trust-experiment";
 
-const FEED_REPO_ROOT = path.resolve(import.meta.dir, '..');
-loadDotenv({ path: path.join(FEED_REPO_ROOT, '.env') });
-loadDotenv({ path: path.join(FEED_REPO_ROOT, '.env.local') });
+const FEED_REPO_ROOT = path.resolve(import.meta.dir, "..");
+loadDotenv({ path: path.join(FEED_REPO_ROOT, ".env") });
+loadDotenv({ path: path.join(FEED_REPO_ROOT, ".env.local") });
 
 interface Options {
   agentCount: number;
@@ -94,7 +94,7 @@ interface InitialGroupChatSeedingSummary {
   agents: InitialGroupChatSeedRecord[];
 }
 
-type RuntimeCharacter = IAgentRuntime['character'] & {
+type RuntimeCharacter = IAgentRuntime["character"] & {
   username?: string;
   lore?: string[];
   topics?: string[];
@@ -109,20 +109,20 @@ type RuntimeWithSettings = IAgentRuntime & {
 };
 
 interface RunDeps {
-  db: typeof import('@feed/db').db;
-  and: typeof import('@feed/db').and;
-  eq: typeof import('@feed/db').eq;
-  inArray: typeof import('@feed/db').inArray;
-  users: typeof import('@feed/db').users;
-  chats: typeof import('@feed/db').chats;
-  groups: typeof import('@feed/db').groups;
-  groupMembers: typeof import('@feed/db').groupMembers;
-  executeGameTick: typeof import('@feed/engine').executeGameTick;
-  autoJoinEmptyUsersToNpcGroupChats: typeof import('@feed/engine').autoJoinEmptyUsersToNpcGroupChats;
-  agentRuntimeManager: typeof import('@feed/agents').agentRuntimeManager;
-  autonomousCoordinator: typeof import('@feed/agents').autonomousCoordinator;
-  createTestAgent: typeof import('@feed/agents').createTestAgent;
-  upsertAgentConfig: typeof import('../packages/agents/src/shared/agent-config').upsertAgentConfig;
+  db: typeof import("@feed/db").db;
+  and: typeof import("@feed/db").and;
+  eq: typeof import("@feed/db").eq;
+  inArray: typeof import("@feed/db").inArray;
+  users: typeof import("@feed/db").users;
+  chats: typeof import("@feed/db").chats;
+  groups: typeof import("@feed/db").groups;
+  groupMembers: typeof import("@feed/db").groupMembers;
+  executeGameTick: typeof import("@feed/engine").executeGameTick;
+  autoJoinEmptyUsersToNpcGroupChats: typeof import("@feed/engine").autoJoinEmptyUsersToNpcGroupChats;
+  agentRuntimeManager: typeof import("@feed/agents").agentRuntimeManager;
+  autonomousCoordinator: typeof import("@feed/agents").autonomousCoordinator;
+  createTestAgent: typeof import("@feed/agents").createTestAgent;
+  upsertAgentConfig: typeof import("../packages/agents/src/shared/agent-config").upsertAgentConfig;
 }
 
 let runDepsPromise: Promise<RunDeps> | null = null;
@@ -136,10 +136,10 @@ async function getRunDeps(): Promise<RunDeps> {
         agents,
         sharedConfig,
       ] = await Promise.all([
-        import('@feed/db'),
-        import('@feed/engine'),
-        import('@feed/agents'),
-        import('../packages/agents/src/shared/agent-config'),
+        import("@feed/db"),
+        import("@feed/engine"),
+        import("@feed/agents"),
+        import("../packages/agents/src/shared/agent-config"),
       ]);
 
       return {
@@ -168,29 +168,29 @@ function parseOptions(): Options {
   const { values } = parseArgs({
     args: Bun.argv.slice(2),
     options: {
-      agents: { type: 'string', default: '100' },
-      npcs: { type: 'string', default: '150' },
-      archetypes: { type: 'string', default: '50' },
-      'model-sizes': {
-        type: 'string',
-        default: '0.5b,1.5b,3b,7b,14b,30b',
+      agents: { type: "string", default: "100" },
+      npcs: { type: "string", default: "150" },
+      archetypes: { type: "string", default: "50" },
+      "model-sizes": {
+        type: "string",
+        default: "0.5b,1.5b,3b,7b,14b,30b",
       },
-      'world-ticks': { type: 'string', default: '3' },
-      'agent-ticks': { type: 'string', default: '100' },
-      'initial-group-chats-min': { type: 'string', default: '0' },
-      'initial-group-chats-max': { type: 'string', default: '6' },
-      parallel: { type: 'string', default: '15' },
-      delay: { type: 'string', default: '100' },
+      "world-ticks": { type: "string", default: "3" },
+      "agent-ticks": { type: "string", default: "100" },
+      "initial-group-chats-min": { type: "string", default: "0" },
+      "initial-group-chats-max": { type: "string", default: "6" },
+      parallel: { type: "string", default: "15" },
+      delay: { type: "string", default: "100" },
       output: {
-        type: 'string',
-        default: 'training-data/trust-experiment-matrix',
+        type: "string",
+        default: "training-data/trust-experiment-matrix",
       },
-      run: { type: 'boolean', default: false },
-      'runtime-base-url': { type: 'string' },
-      'runtime-model': { type: 'string' },
-      'runtime-model-version': { type: 'string' },
-      seed: { type: 'string', default: '1337' },
-      'run-id': { type: 'string' },
+      run: { type: "boolean", default: false },
+      "runtime-base-url": { type: "string" },
+      "runtime-model": { type: "string" },
+      "runtime-model-version": { type: "string" },
+      seed: { type: "string", default: "1337" },
+      "run-id": { type: "string" },
     },
     strict: true,
     allowPositionals: false,
@@ -200,35 +200,35 @@ function parseOptions(): Options {
     agentCount: parsePositiveInt(values.agents, 100),
     npcTargetCount: parsePositiveInt(values.npcs, 150),
     archetypeCount: parsePositiveInt(values.archetypes, 30),
-    modelSizes: parseModelSizes(values['model-sizes'] as string),
-    worldTicks: parseNonNegativeInt(values['world-ticks'], 2),
-    agentTicks: parseNonNegativeInt(values['agent-ticks'], 1),
+    modelSizes: parseModelSizes(values["model-sizes"] as string),
+    worldTicks: parseNonNegativeInt(values["world-ticks"], 2),
+    agentTicks: parseNonNegativeInt(values["agent-ticks"], 1),
     initialGroupChatsMin: parseNonNegativeInt(
-      values['initial-group-chats-min'],
-      0
+      values["initial-group-chats-min"],
+      0,
     ),
     initialGroupChatsMax: parseNonNegativeInt(
-      values['initial-group-chats-max'],
-      6
+      values["initial-group-chats-max"],
+      6,
     ),
     parallel: parsePositiveInt(values.parallel, 8),
     delayMs: parseNonNegativeInt(values.delay, 350),
     outputDir: path.resolve(process.cwd(), values.output as string),
     run: values.run as boolean,
     runtimeBaseUrl: cleanOptionalString(
-      (values['runtime-base-url'] as string | undefined) ??
-        process.env.TRUST_EXPERIMENT_RUNTIME_BASE_URL
+      (values["runtime-base-url"] as string | undefined) ??
+        process.env.TRUST_EXPERIMENT_RUNTIME_BASE_URL,
     ),
     runtimeModel: cleanOptionalString(
-      (values['runtime-model'] as string | undefined) ??
-        process.env.TRUST_EXPERIMENT_RUNTIME_MODEL
+      (values["runtime-model"] as string | undefined) ??
+        process.env.TRUST_EXPERIMENT_RUNTIME_MODEL,
     ),
     runtimeModelVersion: cleanOptionalString(
-      (values['runtime-model-version'] as string | undefined) ??
-        process.env.TRUST_EXPERIMENT_RUNTIME_MODEL_VERSION
+      (values["runtime-model-version"] as string | undefined) ??
+        process.env.TRUST_EXPERIMENT_RUNTIME_MODEL_VERSION,
     ),
     seed: parseNonNegativeInt(values.seed as string | undefined, 1337),
-    runId: cleanOptionalString(values['run-id'] as string | undefined),
+    runId: cleanOptionalString(values["run-id"] as string | undefined),
   };
 }
 
@@ -238,30 +238,30 @@ function cleanOptionalString(value: string | undefined): string | undefined {
 }
 
 function parsePositiveInt(value: string | undefined, fallback: number): number {
-  const parsed = parseInt(value ?? '', 10);
+  const parsed = parseInt(value ?? "", 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function parseNonNegativeInt(
   value: string | undefined,
-  fallback: number
+  fallback: number,
 ): number {
-  const parsed = parseInt(value ?? '', 10);
+  const parsed = parseInt(value ?? "", 10);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
 function parseModelSizes(value: string): TrustExperimentModelSize[] {
   return value
-    .split(',')
+    .split(",")
     .map((item) => item.trim().toLowerCase())
     .filter(
       (item): item is TrustExperimentModelSize =>
-        item === '0.5b' ||
-        item === '1.5b' ||
-        item === '3b' ||
-        item === '7b' ||
-        item === '14b' ||
-        item === '30b'
+        item === "0.5b" ||
+        item === "1.5b" ||
+        item === "3b" ||
+        item === "7b" ||
+        item === "14b" ||
+        item === "30b",
     );
 }
 
@@ -278,7 +278,7 @@ function createSeededRandom(seed: number): () => number {
 function sampleInclusiveInt(
   rng: () => number,
   min: number,
-  max: number
+  max: number,
 ): number {
   if (max <= min) {
     return min;
@@ -310,14 +310,14 @@ function buildAgentPersonalitySummary(agent: TrustExperimentAgentSpec): string {
   return [
     `${agent.sheet.feed.alignment} ${agent.sheet.feed.team} posture`,
     agent.sheet.feed.socialStyle,
-    `scam:${agent.sheet.feed.scamProfile.replaceAll('_', ' ')}`,
+    `scam:${agent.sheet.feed.scamProfile.replaceAll("_", " ")}`,
     `model:${agent.modelProfile.id}`,
     `profile:${agent.modelProfile.trainingProfile}`,
-  ].join(' | ');
+  ].join(" | ");
 }
 
 async function ensureExperimentAgent(
-  agent: TrustExperimentAgentSpec
+  agent: TrustExperimentAgentSpec,
 ): Promise<{ agentId: string; username: string }> {
   const deps = await getRunDeps();
   const result = await deps.createTestAgent(agent.instanceId, {
@@ -336,7 +336,7 @@ async function ensureExperimentAgent(
     .update(deps.users)
     .set({
       displayName: agent.sheet.name,
-      bio: agent.sheet.bio.join('\n'),
+      bio: agent.sheet.bio.join("\n"),
       updatedAt: new Date(),
     })
     .where(deps.eq(deps.users.id, result.agentId));
@@ -361,15 +361,15 @@ async function ensureExperimentAgent(
       `model_size:${agent.modelProfile.id}`,
       `training_profile:${agent.modelProfile.trainingProfile}`,
     ],
-    planningHorizon: 'campaign',
+    planningHorizon: "campaign",
     riskTolerance:
-      agent.sheet.feed.caution === 'paranoid'
-        ? 'low'
-        : agent.sheet.feed.caution === 'reckless'
-          ? 'high'
-          : 'medium',
-    maxActionsPerTick: agent.sheet.feed.caution === 'paranoid' ? 2 : 5,
-    modelTier: agent.modelProfile.parameterCountB >= 14 ? 'pro' : 'free',
+      agent.sheet.feed.caution === "paranoid"
+        ? "low"
+        : agent.sheet.feed.caution === "reckless"
+          ? "high"
+          : "medium",
+    maxActionsPerTick: agent.sheet.feed.caution === "paranoid" ? 2 : 5,
+    modelTier: agent.modelProfile.parameterCountB >= 14 ? "pro" : "free",
     autonomousTrading: agent.sheet.feed.autonomy.trading,
     autonomousPosting: agent.sheet.feed.autonomy.posting,
     autonomousCommenting: agent.sheet.feed.autonomy.commenting,
@@ -388,7 +388,7 @@ async function ensureExperimentAgent(
 function applySheetToRuntime(
   runtime: IAgentRuntime,
   agent: TrustExperimentAgentSpec,
-  options: Options
+  options: Options,
 ): void {
   const runtimeModel =
     options.runtimeModel ?? agent.sheet.settings.groq.primary;
@@ -431,7 +431,7 @@ function applySheetToRuntime(
 
 function setTrustContext(
   runtime: IAgentRuntime,
-  agent: TrustExperimentAgentSpec
+  agent: TrustExperimentAgentSpec,
 ): void {
   const feed = agent.sheet.feed;
   // Set trust outcomes on runtime for trajectory recording.
@@ -450,17 +450,17 @@ function setTrustContext(
     // Ground-truth interaction labels (populated by coordinator from action trace)
     interactionLabels: [] as Array<{
       counterpartyId: string;
-      counterpartyTeam: 'red' | 'blue' | 'gray';
-      counterpartyAlignment: 'good' | 'neutral' | 'evil';
-      channel: 'dm' | 'group-chat' | 'payment' | 'trade';
+      counterpartyTeam: "red" | "blue" | "gray";
+      counterpartyAlignment: "good" | "neutral" | "evil";
+      channel: "dm" | "group-chat" | "payment" | "trade";
       amountTransferred?: number;
       messageCount: number;
       wasScam: boolean;
       wasLegitimate: boolean;
       wasRejected: boolean;
     }>,
-    interactedWithRedTeam: feed.team === 'red',
-    interactedWithBlueTeam: feed.team === 'blue',
+    interactedWithRedTeam: feed.team === "red",
+    interactedWithBlueTeam: feed.team === "blue",
     redTeamNpcIds: [] as string[],
     // Metadata for downstream filtering
     agentTeam: feed.team,
@@ -480,7 +480,7 @@ async function executeAgentTick(
     { team: string; alignment: string; instanceId: string }
   >,
   experimentContext?: ExperimentTrajectoryContext,
-  initialGroupChatSeedingByInstanceId?: Map<string, InitialGroupChatSeedRecord>
+  initialGroupChatSeedingByInstanceId?: Map<string, InitialGroupChatSeedRecord>,
 ): Promise<AgentTickSummary> {
   try {
     const deps = await getRunDeps();
@@ -490,10 +490,10 @@ async function executeAgentTick(
 
     if (experimentContext) {
       const initialGroupChatSeed = initialGroupChatSeedingByInstanceId?.get(
-        agent.instanceId
+        agent.instanceId,
       );
       const scenarioId = [
-        'trust-exp',
+        "trust-exp",
         agent.modelProfile.trainingProfile,
         agent.sheet.feed.scamProfile,
         agent.sheet.feed.team,
@@ -501,7 +501,7 @@ async function executeAgentTick(
       ]
         .map((part) => String(part).trim())
         .filter(Boolean)
-        .join(':')
+        .join(":")
         .slice(0, 96);
       (
         runtime as {
@@ -558,7 +558,7 @@ async function executeAgentTick(
     const result = await deps.autonomousCoordinator.executeAutonomousTick(
       agentId,
       runtime,
-      true
+      true,
     );
 
     return {
@@ -589,7 +589,7 @@ async function runAgentTickRound(
     { team: string; alignment: string; instanceId: string }
   >,
   experimentContext?: ExperimentTrajectoryContext,
-  initialGroupChatSeedingByInstanceId?: Map<string, InitialGroupChatSeedRecord>
+  initialGroupChatSeedingByInstanceId?: Map<string, InitialGroupChatSeedRecord>,
 ): Promise<AgentTickSummary[]> {
   const summaries: AgentTickSummary[] = [];
 
@@ -612,9 +612,9 @@ async function runAgentTickRound(
           options,
           agentIdentityMap,
           experimentContext,
-          initialGroupChatSeedingByInstanceId
+          initialGroupChatSeedingByInstanceId,
         );
-      })
+      }),
     );
 
     summaries.push(...batchResults);
@@ -627,7 +627,7 @@ async function runAgentTickRound(
 }
 
 async function readNpcGroupChatMemberships(
-  userIds: string[]
+  userIds: string[],
 ): Promise<Map<string, string[]>> {
   if (userIds.length === 0) {
     return new Map();
@@ -646,9 +646,9 @@ async function readNpcGroupChatMemberships(
       deps.and(
         deps.inArray(deps.groupMembers.userId, userIds),
         deps.eq(deps.groupMembers.isActive, true),
-        deps.eq(deps.groups.type, 'npc'),
-        deps.eq(deps.chats.isGroup, true)
-      )
+        deps.eq(deps.groups.type, "npc"),
+        deps.eq(deps.chats.isGroup, true),
+      ),
     );
 
   const memberships = new Map<string, string[]>();
@@ -669,7 +669,7 @@ async function seedInitialAgentGroupChats(
   agents: TrustExperimentAgentSpec[],
   idByInstanceId: Map<string, string>,
   registeredAgents: RegisteredAgentSummary[],
-  options: Options
+  options: Options,
 ): Promise<InitialGroupChatSeedingSummary> {
   const min = Math.max(0, options.initialGroupChatsMin);
   const max = Math.max(min, options.initialGroupChatsMax);
@@ -703,7 +703,7 @@ async function seedInitialAgentGroupChats(
   }
 
   const membershipsByAgentId = await readNpcGroupChatMemberships(
-    targets.map((target) => target.agentId)
+    targets.map((target) => target.agentId),
   );
 
   const agentsWithSeeding: InitialGroupChatSeedRecord[] = targets.map(
@@ -721,7 +721,7 @@ async function seedInitialAgentGroupChats(
       };
 
       const registered = registeredAgents.find(
-        (item) => item.instanceId === target.agent.instanceId
+        (item) => item.instanceId === target.agent.instanceId,
       );
       if (registered) {
         registered.initialGroupChatTarget = record.targetGroupChatCount;
@@ -730,22 +730,22 @@ async function seedInitialAgentGroupChats(
       }
 
       return record;
-    }
+    },
   );
 
   return {
     configuredRange: { min, max },
     targetedAgentCount: agentsWithSeeding.length,
     zeroTargetAgentCount: agentsWithSeeding.filter(
-      (item) => item.targetGroupChatCount === 0
+      (item) => item.targetGroupChatCount === 0,
     ).length,
     requestedAssignments: agentsWithSeeding.reduce(
       (sum, item) => sum + item.targetGroupChatCount,
-      0
+      0,
     ),
     assignedMembershipCount: agentsWithSeeding.reduce(
       (sum, item) => sum + item.assignedGroupChatCount,
-      0
+      0,
     ),
     agents: agentsWithSeeding,
   };
@@ -753,17 +753,17 @@ async function seedInitialAgentGroupChats(
 
 async function main(): Promise<void> {
   const options = parseOptions();
-  process.env.FEED_DISABLE_A2A ??= '1';
-  process.env.FEED_SUPPRESS_OPTIONAL_LLM_WARNINGS ??= '1';
-  if (process.env.FEED_SUPPRESS_OPTIONAL_LLM_WARNINGS === '1') {
+  process.env.FEED_DISABLE_A2A ??= "1";
+  process.env.FEED_SUPPRESS_OPTIONAL_LLM_WARNINGS ??= "1";
+  if (process.env.FEED_SUPPRESS_OPTIONAL_LLM_WARNINGS === "1") {
     delete process.env.OPENAI_API_KEY;
-    process.env.SECRET_SALT ??= 'feed-trust-experiment';
+    process.env.SECRET_SALT ??= "feed-trust-experiment";
   }
-  const timestamp = new Date().toISOString().replaceAll(':', '-');
+  const timestamp = new Date().toISOString().replaceAll(":", "-");
   const experimentRunId =
     options.runId ?? `trust-experiment-${timestamp.toLowerCase()}`;
   const outputDir = path.join(options.outputDir, timestamp);
-  const sheetsDir = path.join(outputDir, 'character-sheets');
+  const sheetsDir = path.join(outputDir, "character-sheets");
   const agents = buildTrustExperimentAgents({
     agentCount: options.agentCount,
     npcTargetCount: options.npcTargetCount,
@@ -780,8 +780,8 @@ async function main(): Promise<void> {
   await mkdir(outputDir, { recursive: true });
   await writeTrustExperimentCharacterSheets(sheetsDir, agents);
   await writeFile(
-    path.join(outputDir, 'manifest.json'),
-    JSON.stringify(
+    path.join(outputDir, "manifest.json"),
+    `${JSON.stringify(
       {
         ...manifest,
         experimentRunId,
@@ -805,12 +805,12 @@ async function main(): Promise<void> {
             : null,
       },
       null,
-      2
-    ) + '\n',
-    'utf-8'
+      2,
+    )}\n`,
+    "utf-8",
   );
 
-  console.log('Trust experiment matrix prepared');
+  console.log("Trust experiment matrix prepared");
   console.log(`Output directory: ${outputDir}`);
   console.log(`Agents: ${manifest.agentTargetCount}`);
   console.log(`Archetypes: ${manifest.archetypeCount}`);
@@ -827,12 +827,12 @@ async function main(): Promise<void> {
         baseUrl: options.runtimeBaseUrl ?? null,
         model: options.runtimeModel ?? null,
         modelVersion: options.runtimeModelVersion ?? null,
-      })}`
+      })}`,
     );
   }
 
   if (!options.run) {
-    console.log('Run skipped. Re-run with --run to execute the matrix.');
+    console.log("Run skipped. Re-run with --run to execute the matrix.");
     return;
   }
 
@@ -862,12 +862,12 @@ async function main(): Promise<void> {
       trainingProfile: agent.modelProfile.trainingProfile,
     });
     console.log(
-      `Ready: ${agent.sheet.name} (@${agent.sheet.username}) -> ${ensured.agentId}`
+      `Ready: ${agent.sheet.name} (@${agent.sheet.username}) -> ${ensured.agentId}`,
     );
   }
   await writeFile(
-    path.join(outputDir, 'registered-agents.json'),
-    JSON.stringify(
+    path.join(outputDir, "registered-agents.json"),
+    `${JSON.stringify(
       {
         generatedAt: new Date().toISOString(),
         experimentRunId,
@@ -875,9 +875,9 @@ async function main(): Promise<void> {
         agents: registeredAgents,
       },
       null,
-      2
-    ) + '\n',
-    'utf-8'
+      2,
+    )}\n`,
+    "utf-8",
   );
 
   const worldTickSummaries: Array<{
@@ -897,7 +897,7 @@ async function main(): Promise<void> {
       questionsCreated: result.questionsCreated,
     });
     console.log(
-      `World tick ${tick + 1}/${options.worldTicks}: posts=${result.postsCreated} events=${result.eventsCreated}`
+      `World tick ${tick + 1}/${options.worldTicks}: posts=${result.postsCreated} events=${result.eventsCreated}`,
     );
   }
 
@@ -905,14 +905,14 @@ async function main(): Promise<void> {
     agents,
     idByInstanceId,
     registeredAgents,
-    options
+    options,
   );
   const initialGroupChatSeedingByInstanceId = new Map(
-    initialGroupChatSeeding.agents.map((agent) => [agent.instanceId, agent])
+    initialGroupChatSeeding.agents.map((agent) => [agent.instanceId, agent]),
   );
   await writeFile(
-    path.join(outputDir, 'registered-agents.json'),
-    JSON.stringify(
+    path.join(outputDir, "registered-agents.json"),
+    `${JSON.stringify(
       {
         generatedAt: new Date().toISOString(),
         experimentRunId,
@@ -921,13 +921,13 @@ async function main(): Promise<void> {
         agents: registeredAgents,
       },
       null,
-      2
-    ) + '\n',
-    'utf-8'
+      2,
+    )}\n`,
+    "utf-8",
   );
   await writeFile(
-    path.join(outputDir, 'initial-group-chat-seeding.json'),
-    JSON.stringify(
+    path.join(outputDir, "initial-group-chat-seeding.json"),
+    `${JSON.stringify(
       {
         generatedAt: new Date().toISOString(),
         experimentRunId,
@@ -935,12 +935,12 @@ async function main(): Promise<void> {
         ...initialGroupChatSeeding,
       },
       null,
-      2
-    ) + '\n',
-    'utf-8'
+      2,
+    )}\n`,
+    "utf-8",
   );
   console.log(
-    `Initial group-chat seeding complete: assigned=${initialGroupChatSeeding.assignedMembershipCount} requested=${initialGroupChatSeeding.requestedAssignments} zeroTarget=${initialGroupChatSeeding.zeroTargetAgentCount}`
+    `Initial group-chat seeding complete: assigned=${initialGroupChatSeeding.assignedMembershipCount} requested=${initialGroupChatSeeding.requestedAssignments} zeroTarget=${initialGroupChatSeeding.zeroTargetAgentCount}`,
   );
 
   // Darwinian agent weighting (ATLAS-inspired)
@@ -968,7 +968,7 @@ async function main(): Promise<void> {
     });
 
     console.log(
-      `Agent round ${round + 1}/${options.agentTicks} running for ${activeAgents.length}/${weightedAgents.length} agents (filtered by weight)`
+      `Agent round ${round + 1}/${options.agentTicks} running for ${activeAgents.length}/${weightedAgents.length} agents (filtered by weight)`,
     );
     const roundSummaries = await runAgentTickRound(
       activeAgents,
@@ -983,7 +983,7 @@ async function main(): Promise<void> {
         totalRounds: options.agentTicks,
         seed: options.seed,
       },
-      initialGroupChatSeedingByInstanceId
+      initialGroupChatSeedingByInstanceId,
     );
     agentSummaries.push(...roundSummaries);
     const successCount = roundSummaries.filter((item) => item.success).length;
@@ -1005,12 +1005,12 @@ async function main(): Promise<void> {
       else if (i >= q3Cutoff) adjustment = 0.95; // bottom quartile
       agentWeights.set(
         instanceId,
-        Math.max(0.3, Math.min(2.5, currentWeight * adjustment))
+        Math.max(0.3, Math.min(2.5, currentWeight * adjustment)),
       );
     }
 
     console.log(
-      `Round ${round + 1} complete: success=${successCount} failed=${roundSummaries.length - successCount}`
+      `Round ${round + 1} complete: success=${successCount} failed=${roundSummaries.length - successCount}`,
     );
 
     // Checkpoint after each round so interrupted runs preserve completed data
@@ -1029,8 +1029,8 @@ async function main(): Promise<void> {
           : null,
     };
     await writeFile(
-      path.join(outputDir, 'checkpoint.json'),
-      JSON.stringify(
+      path.join(outputDir, "checkpoint.json"),
+      `${JSON.stringify(
         {
           generatedAt: new Date().toISOString(),
           experimentRunId,
@@ -1043,9 +1043,9 @@ async function main(): Promise<void> {
           initialGroupChatSeeding,
         },
         null,
-        2
-      ) + '\n',
-      'utf-8'
+        2,
+      )}\n`,
+      "utf-8",
     );
   }
 
@@ -1061,8 +1061,8 @@ async function main(): Promise<void> {
   };
 
   await writeFile(
-    path.join(outputDir, 'run-summary.json'),
-    JSON.stringify(
+    path.join(outputDir, "run-summary.json"),
+    `${JSON.stringify(
       {
         generatedAt: new Date().toISOString(),
         experimentRunId,
@@ -1090,13 +1090,13 @@ async function main(): Promise<void> {
         aggregate,
       },
       null,
-      2
-    ) + '\n',
-    'utf-8'
+      2,
+    )}\n`,
+    "utf-8",
   );
 
   console.log(
-    `Saved run summary to ${path.join(outputDir, 'run-summary.json')}`
+    `Saved run summary to ${path.join(outputDir, "run-summary.json")}`,
   );
 }
 

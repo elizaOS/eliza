@@ -46,16 +46,16 @@
  * ```
  */
 
-import { requireAdmin, successResponse, withErrorHandling } from '@feed/api';
-import { db } from '@feed/db';
-import { logger, toISO, toISOOrNull } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+import { requireAdmin, successResponse, withErrorHandling } from "@feed/api";
+import { db } from "@feed/db";
+import { logger, toISO, toISOOrNull } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   // Require admin authentication
   await requireAdmin(request);
 
-  logger.info('Admin game stats requested', {}, 'GET /api/admin/game-stats');
+  logger.info("Admin game stats requested", {}, "GET /api/admin/game-stats");
 
   // Get time windows for rate calculations
   const now = new Date();
@@ -122,10 +122,10 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
     // Total counts
     db.post.count({
-      where: { type: 'post', deletedAt: null },
+      where: { type: "post", deletedAt: null },
     }),
     db.post.count({
-      where: { type: 'article', deletedAt: null },
+      where: { type: "article", deletedAt: null },
     }),
     db.chat.count({
       where: { isGroup: true },
@@ -136,14 +136,14 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     // Last 24 hours
     db.post.count({
       where: {
-        type: 'post',
+        type: "post",
         deletedAt: null,
         createdAt: { gte: twentyFourHoursAgo },
       },
     }),
     db.post.count({
       where: {
-        type: 'article',
+        type: "article",
         deletedAt: null,
         createdAt: { gte: twentyFourHoursAgo },
       },
@@ -164,14 +164,14 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     // Last hour
     db.post.count({
       where: {
-        type: 'post',
+        type: "post",
         deletedAt: null,
         createdAt: { gte: oneHourAgo },
       },
     }),
     db.post.count({
       where: {
-        type: 'article',
+        type: "article",
         deletedAt: null,
         createdAt: { gte: oneHourAgo },
       },
@@ -192,14 +192,14 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     // Last 5 minutes
     db.post.count({
       where: {
-        type: 'post',
+        type: "post",
         deletedAt: null,
         createdAt: { gte: fiveMinutesAgo },
       },
     }),
     db.post.count({
       where: {
-        type: 'article',
+        type: "article",
         deletedAt: null,
         createdAt: { gte: fiveMinutesAgo },
       },
@@ -214,14 +214,14 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     // Last minute
     db.post.count({
       where: {
-        type: 'post',
+        type: "post",
         deletedAt: null,
         createdAt: { gte: oneMinuteAgo },
       },
     }),
     db.post.count({
       where: {
-        type: 'article',
+        type: "article",
         deletedAt: null,
         createdAt: { gte: oneMinuteAgo },
       },
@@ -249,7 +249,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
   if (!gameState) {
     return successResponse({
-      error: 'No game state found',
+      error: "No game state found",
       gameState: null,
       stats: null,
     });

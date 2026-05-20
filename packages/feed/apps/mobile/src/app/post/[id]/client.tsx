@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import PostPage from '@web/app/post/[id]/page';
-import { useParams } from 'next/navigation';
+import PostPage from "@web/app/post/[id]/page";
+import { useParams } from "next/navigation";
 
 export function PageContent() {
   const params = useParams<{ id: string }>();

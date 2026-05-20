@@ -1,4 +1,4 @@
-import type { SVGProps } from 'react';
+import type { SVGProps } from "react";
 
 interface FeedMarkProps extends SVGProps<SVGGElement> {
   /** Background circle fill color. Defaults to white. */
@@ -12,8 +12,8 @@ interface FeedMarkProps extends SVGProps<SVGGElement> {
  * Renders as a <g> element to be composed within parent SVGs.
  */
 export function FeedMark({
-  backgroundFill = 'white',
-  foregroundFill = 'currentColor',
+  backgroundFill = "white",
+  foregroundFill = "currentColor",
   ...props
 }: FeedMarkProps) {
   return (

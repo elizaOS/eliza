@@ -7,7 +7,7 @@
  * - Pending referrals are awarded points in FIFO order when slots open
  */
 
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it } from "bun:test";
 
 // Mock types that match the real implementation
 interface ReferralData {
@@ -39,9 +39,9 @@ const POINTS = {
 
 const UNQUALIFIED_LIMIT = 10;
 
-describe('Referral Points System', () => {
-  describe('awardReferralSignup Logic', () => {
-    it('should award points when under unqualified limit', () => {
+describe("Referral Points System", () => {
+  describe("awardReferralSignup Logic", () => {
+    it("should award points when under unqualified limit", () => {
       // Setup: 5 unqualified referrals with points awarded (under limit of 10)
       const unqualifiedCount = 5;
 
@@ -49,46 +49,46 @@ describe('Referral Points System', () => {
       expect(UNQUALIFIED_LIMIT - unqualifiedCount).toBe(5); // 5 slots available
     });
 
-    it('should NOT award points when at unqualified limit', () => {
+    it("should NOT award points when at unqualified limit", () => {
       // Setup: 10 unqualified referrals with points awarded (at limit)
       const unqualifiedCount = 10;
 
       expect(unqualifiedCount >= UNQUALIFIED_LIMIT).toBe(true);
     });
 
-    it('should track referral even when points are deferred', () => {
+    it("should track referral even when points are deferred", () => {
       // When at limit, referral should still be created with signupPointsAwarded = false
       const referralAtLimit: ReferralData = {
-        id: 'ref-123',
-        referrerId: 'user-1',
-        referredUserId: 'user-2',
-        status: 'completed',
+        id: "ref-123",
+        referrerId: "user-1",
+        referredUserId: "user-2",
+        status: "completed",
         signupPointsAwarded: false, // Points deferred due to limit
         qualifiedAt: null,
         completedAt: new Date(),
       };
 
       expect(referralAtLimit.signupPointsAwarded).toBe(false);
-      expect(referralAtLimit.status).toBe('completed');
+      expect(referralAtLimit.status).toBe("completed");
     });
 
-    it('should count only unqualified referrals with points awarded for limit', () => {
+    it("should count only unqualified referrals with points awarded for limit", () => {
       // These should count toward the limit
       const countTowardLimit: ReferralData[] = [
         {
-          id: '1',
-          referrerId: 'u1',
-          referredUserId: 'u2',
-          status: 'completed',
+          id: "1",
+          referrerId: "u1",
+          referredUserId: "u2",
+          status: "completed",
           signupPointsAwarded: true,
           qualifiedAt: null,
           completedAt: new Date(),
         },
         {
-          id: '2',
-          referrerId: 'u1',
-          referredUserId: 'u3',
-          status: 'completed',
+          id: "2",
+          referrerId: "u1",
+          referredUserId: "u3",
+          status: "completed",
           signupPointsAwarded: true,
           qualifiedAt: null,
           completedAt: new Date(),
@@ -99,30 +99,30 @@ describe('Referral Points System', () => {
       const doNotCountTowardLimit: ReferralData[] = [
         // Qualified referrals don't count (unlimited)
         {
-          id: '3',
-          referrerId: 'u1',
-          referredUserId: 'u4',
-          status: 'completed',
+          id: "3",
+          referrerId: "u1",
+          referredUserId: "u4",
+          status: "completed",
           signupPointsAwarded: true,
           qualifiedAt: new Date(),
           completedAt: new Date(),
         },
         // Referrals without points awarded don't count (pending in queue)
         {
-          id: '4',
-          referrerId: 'u1',
-          referredUserId: 'u5',
-          status: 'completed',
+          id: "4",
+          referrerId: "u1",
+          referredUserId: "u5",
+          status: "completed",
           signupPointsAwarded: false,
           qualifiedAt: null,
           completedAt: new Date(),
         },
         // Pending status doesn't count
         {
-          id: '5',
-          referrerId: 'u1',
+          id: "5",
+          referrerId: "u1",
           referredUserId: null,
-          status: 'pending',
+          status: "pending",
           signupPointsAwarded: false,
           qualifiedAt: null,
           completedAt: null,
@@ -132,16 +132,16 @@ describe('Referral Points System', () => {
       // Verify counting logic
       const limitCount = countTowardLimit.filter(
         (r) =>
-          r.status === 'completed' &&
+          r.status === "completed" &&
           r.qualifiedAt === null &&
-          r.signupPointsAwarded === true
+          r.signupPointsAwarded === true,
       ).length;
 
       const shouldNotCount = doNotCountTowardLimit.filter(
         (r) =>
-          r.status === 'completed' &&
+          r.status === "completed" &&
           r.qualifiedAt === null &&
-          r.signupPointsAwarded === true
+          r.signupPointsAwarded === true,
       ).length;
 
       expect(limitCount).toBe(2);
@@ -149,58 +149,58 @@ describe('Referral Points System', () => {
     });
   });
 
-  describe('awardPendingReferralSignupPoints Logic', () => {
-    it('should find oldest pending referral when slot opens', () => {
+  describe("awardPendingReferralSignupPoints Logic", () => {
+    it("should find oldest pending referral when slot opens", () => {
       // Pending referrals waiting for points (FIFO order)
       const pendingReferrals: ReferralData[] = [
         {
-          id: '1',
-          referrerId: 'u1',
-          referredUserId: 'u2',
-          status: 'completed',
+          id: "1",
+          referrerId: "u1",
+          referredUserId: "u2",
+          status: "completed",
           signupPointsAwarded: false,
           qualifiedAt: null,
-          completedAt: new Date('2024-01-01'),
+          completedAt: new Date("2024-01-01"),
         },
         {
-          id: '2',
-          referrerId: 'u1',
-          referredUserId: 'u3',
-          status: 'completed',
+          id: "2",
+          referrerId: "u1",
+          referredUserId: "u3",
+          status: "completed",
           signupPointsAwarded: false,
           qualifiedAt: null,
-          completedAt: new Date('2024-01-02'),
+          completedAt: new Date("2024-01-02"),
         },
         {
-          id: '3',
-          referrerId: 'u1',
-          referredUserId: 'u4',
-          status: 'completed',
+          id: "3",
+          referrerId: "u1",
+          referredUserId: "u4",
+          status: "completed",
           signupPointsAwarded: false,
           qualifiedAt: null,
-          completedAt: new Date('2024-01-03'),
+          completedAt: new Date("2024-01-03"),
         },
       ];
 
       // Sort by completedAt to get FIFO order
       const sortedByOldest = [...pendingReferrals].sort(
         (a, b) =>
-          (a.completedAt?.getTime() ?? 0) - (b.completedAt?.getTime() ?? 0)
+          (a.completedAt?.getTime() ?? 0) - (b.completedAt?.getTime() ?? 0),
       );
 
-      expect(sortedByOldest[0]?.id).toBe('1'); // Oldest first
-      expect(sortedByOldest[1]?.id).toBe('2');
-      expect(sortedByOldest[2]?.id).toBe('3');
+      expect(sortedByOldest[0]?.id).toBe("1"); // Oldest first
+      expect(sortedByOldest[1]?.id).toBe("2");
+      expect(sortedByOldest[2]?.id).toBe("3");
     });
 
-    it('should not award if still at unqualified limit', () => {
+    it("should not award if still at unqualified limit", () => {
       const unqualifiedCount = 10;
 
       // No slot available, should not process pending
       expect(unqualifiedCount >= UNQUALIFIED_LIMIT).toBe(true);
     });
 
-    it('should award when slot becomes available', () => {
+    it("should award when slot becomes available", () => {
       // One referral became qualified, so unqualified count drops
       const unqualifiedCountAfterQualification = 9;
 
@@ -208,12 +208,12 @@ describe('Referral Points System', () => {
       // Slot is now available for next pending referral
     });
 
-    it('should mark referral as signupPointsAwarded after awarding', () => {
+    it("should mark referral as signupPointsAwarded after awarding", () => {
       const referralBeforeAward: ReferralData = {
-        id: 'ref-123',
-        referrerId: 'user-1',
-        referredUserId: 'user-2',
-        status: 'completed',
+        id: "ref-123",
+        referrerId: "user-1",
+        referredUserId: "user-2",
+        status: "completed",
         signupPointsAwarded: false, // Before
         qualifiedAt: null,
         completedAt: new Date(),
@@ -230,15 +230,15 @@ describe('Referral Points System', () => {
     });
   });
 
-  describe('checkAndQualifyReferral Logic', () => {
-    it('should qualify referral when user links Farcaster', () => {
+  describe("checkAndQualifyReferral Logic", () => {
+    it("should qualify referral when user links Farcaster", () => {
       const userWithFarcaster: UserData = {
-        id: 'user-1',
+        id: "user-1",
         reputationPoints: 100,
         invitePoints: 0,
         referralCount: 0,
-        referredBy: 'referrer-1',
-        farcasterFid: '12345', // Linked Farcaster
+        referredBy: "referrer-1",
+        farcasterFid: "12345", // Linked Farcaster
         twitterId: null,
         walletAddress: null,
       };
@@ -250,15 +250,15 @@ describe('Referral Points System', () => {
       expect(isQualified).toBe(true);
     });
 
-    it('should qualify referral when user links Twitter', () => {
+    it("should qualify referral when user links Twitter", () => {
       const userWithTwitter: UserData = {
-        id: 'user-1',
+        id: "user-1",
         reputationPoints: 100,
         invitePoints: 0,
         referralCount: 0,
-        referredBy: 'referrer-1',
+        referredBy: "referrer-1",
         farcasterFid: null,
-        twitterId: '123456789', // Linked Twitter
+        twitterId: "123456789", // Linked Twitter
         walletAddress: null,
       };
 
@@ -269,16 +269,16 @@ describe('Referral Points System', () => {
       expect(isQualified).toBe(true);
     });
 
-    it('should qualify referral when user links wallet', () => {
+    it("should qualify referral when user links wallet", () => {
       const userWithWallet: UserData = {
-        id: 'user-1',
+        id: "user-1",
         reputationPoints: 100,
         invitePoints: 0,
         referralCount: 0,
-        referredBy: 'referrer-1',
+        referredBy: "referrer-1",
         farcasterFid: null,
         twitterId: null,
-        walletAddress: '0x1234567890abcdef', // Linked Wallet
+        walletAddress: "0x1234567890abcdef", // Linked Wallet
       };
 
       const isQualified =
@@ -288,13 +288,13 @@ describe('Referral Points System', () => {
       expect(isQualified).toBe(true);
     });
 
-    it('should NOT qualify referral without social account', () => {
+    it("should NOT qualify referral without social account", () => {
       const userWithoutSocial: UserData = {
-        id: 'user-1',
+        id: "user-1",
         reputationPoints: 100,
         invitePoints: 0,
         referralCount: 0,
-        referredBy: 'referrer-1',
+        referredBy: "referrer-1",
         farcasterFid: null,
         twitterId: null,
         walletAddress: null,
@@ -307,7 +307,7 @@ describe('Referral Points System', () => {
       expect(isQualified).toBe(false);
     });
 
-    it('should trigger pending rewards when referral becomes qualified', () => {
+    it("should trigger pending rewards when referral becomes qualified", () => {
       // When a referral becomes qualified, the unqualified count decreases by 1
       const unqualifiedCountBefore = 10;
       const unqualifiedCountAfter = 9; // One became qualified
@@ -320,12 +320,12 @@ describe('Referral Points System', () => {
       expect(slotOpened).toBe(true);
     });
 
-    it('should set qualifiedAt timestamp when qualified', () => {
+    it("should set qualifiedAt timestamp when qualified", () => {
       const referralBefore: ReferralData = {
-        id: 'ref-123',
-        referrerId: 'user-1',
-        referredUserId: 'user-2',
-        status: 'completed',
+        id: "ref-123",
+        referrerId: "user-1",
+        referredUserId: "user-2",
+        status: "completed",
         signupPointsAwarded: true,
         qualifiedAt: null, // Not yet qualified
         completedAt: new Date(),
@@ -342,44 +342,44 @@ describe('Referral Points System', () => {
     });
   });
 
-  describe('Unqualified Limit Counting', () => {
-    it('should correctly identify unqualified referrals with points', () => {
+  describe("Unqualified Limit Counting", () => {
+    it("should correctly identify unqualified referrals with points", () => {
       const referrals: ReferralData[] = [
         // Counts toward limit: completed, not qualified, points awarded
         {
-          id: '1',
-          referrerId: 'u1',
-          referredUserId: 'u2',
-          status: 'completed',
+          id: "1",
+          referrerId: "u1",
+          referredUserId: "u2",
+          status: "completed",
           signupPointsAwarded: true,
           qualifiedAt: null,
           completedAt: new Date(),
         },
         {
-          id: '2',
-          referrerId: 'u1',
-          referredUserId: 'u3',
-          status: 'completed',
+          id: "2",
+          referrerId: "u1",
+          referredUserId: "u3",
+          status: "completed",
           signupPointsAwarded: true,
           qualifiedAt: null,
           completedAt: new Date(),
         },
         // Does NOT count: qualified
         {
-          id: '3',
-          referrerId: 'u1',
-          referredUserId: 'u4',
-          status: 'completed',
+          id: "3",
+          referrerId: "u1",
+          referredUserId: "u4",
+          status: "completed",
           signupPointsAwarded: true,
           qualifiedAt: new Date(),
           completedAt: new Date(),
         },
         // Does NOT count: points not awarded (in queue)
         {
-          id: '4',
-          referrerId: 'u1',
-          referredUserId: 'u5',
-          status: 'completed',
+          id: "4",
+          referrerId: "u1",
+          referredUserId: "u5",
+          status: "completed",
           signupPointsAwarded: false,
           qualifiedAt: null,
           completedAt: new Date(),
@@ -388,41 +388,41 @@ describe('Referral Points System', () => {
 
       const unqualifiedWithPointsCount = referrals.filter(
         (r) =>
-          r.status === 'completed' &&
+          r.status === "completed" &&
           r.qualifiedAt === null &&
-          r.signupPointsAwarded === true
+          r.signupPointsAwarded === true,
       ).length;
 
       expect(unqualifiedWithPointsCount).toBe(2);
     });
 
-    it('should correctly identify pending referrals awaiting points', () => {
+    it("should correctly identify pending referrals awaiting points", () => {
       const referrals: ReferralData[] = [
         // Pending: completed, not qualified, points NOT awarded
         {
-          id: '1',
-          referrerId: 'u1',
-          referredUserId: 'u2',
-          status: 'completed',
+          id: "1",
+          referrerId: "u1",
+          referredUserId: "u2",
+          status: "completed",
           signupPointsAwarded: false,
           qualifiedAt: null,
           completedAt: new Date(),
         },
         {
-          id: '2',
-          referrerId: 'u1',
-          referredUserId: 'u3',
-          status: 'completed',
+          id: "2",
+          referrerId: "u1",
+          referredUserId: "u3",
+          status: "completed",
           signupPointsAwarded: false,
           qualifiedAt: null,
           completedAt: new Date(),
         },
         // Not pending: points already awarded
         {
-          id: '3',
-          referrerId: 'u1',
-          referredUserId: 'u4',
-          status: 'completed',
+          id: "3",
+          referrerId: "u1",
+          referredUserId: "u4",
+          status: "completed",
           signupPointsAwarded: true,
           qualifiedAt: null,
           completedAt: new Date(),
@@ -430,37 +430,37 @@ describe('Referral Points System', () => {
       ];
 
       const pendingCount = referrals.filter(
-        (r) => r.status === 'completed' && r.signupPointsAwarded === false
+        (r) => r.status === "completed" && r.signupPointsAwarded === false,
       ).length;
 
       expect(pendingCount).toBe(2);
     });
 
-    it('should correctly identify qualified referrals (unlimited)', () => {
+    it("should correctly identify qualified referrals (unlimited)", () => {
       const referrals: ReferralData[] = [
         {
-          id: '1',
-          referrerId: 'u1',
-          referredUserId: 'u2',
-          status: 'completed',
+          id: "1",
+          referrerId: "u1",
+          referredUserId: "u2",
+          status: "completed",
           signupPointsAwarded: true,
           qualifiedAt: new Date(),
           completedAt: new Date(),
         },
         {
-          id: '2',
-          referrerId: 'u1',
-          referredUserId: 'u3',
-          status: 'completed',
+          id: "2",
+          referrerId: "u1",
+          referredUserId: "u3",
+          status: "completed",
           signupPointsAwarded: true,
           qualifiedAt: new Date(),
           completedAt: new Date(),
         },
         {
-          id: '3',
-          referrerId: 'u1',
-          referredUserId: 'u4',
-          status: 'completed',
+          id: "3",
+          referrerId: "u1",
+          referredUserId: "u4",
+          status: "completed",
           signupPointsAwarded: true,
           qualifiedAt: null,
           completedAt: new Date(),
@@ -468,27 +468,27 @@ describe('Referral Points System', () => {
       ];
 
       const qualifiedCount = referrals.filter(
-        (r) => r.status === 'completed' && r.qualifiedAt !== null
+        (r) => r.status === "completed" && r.qualifiedAt !== null,
       ).length;
 
       expect(qualifiedCount).toBe(2);
     });
   });
 
-  describe('Edge Cases', () => {
-    it('should handle exactly 10 unqualified referrals at limit', () => {
+  describe("Edge Cases", () => {
+    it("should handle exactly 10 unqualified referrals at limit", () => {
       const unqualifiedCount = 10;
       expect(unqualifiedCount >= UNQUALIFIED_LIMIT).toBe(true);
       expect(unqualifiedCount === UNQUALIFIED_LIMIT).toBe(true);
     });
 
-    it('should handle 0 unqualified referrals', () => {
+    it("should handle 0 unqualified referrals", () => {
       const unqualifiedCount = 0;
       expect(unqualifiedCount < UNQUALIFIED_LIMIT).toBe(true);
       expect(UNQUALIFIED_LIMIT - unqualifiedCount).toBe(10); // All 10 slots available
     });
 
-    it('should handle multiple pending referrals becoming qualified', () => {
+    it("should handle multiple pending referrals becoming qualified", () => {
       // If 3 referrals become qualified simultaneously, 3 slots open
       const slotsOpened = 3;
       const pendingReferrals = 5;
@@ -498,7 +498,7 @@ describe('Referral Points System', () => {
       expect(pointsToAward).toBe(3);
     });
 
-    it('should handle no pending referrals when slot opens', () => {
+    it("should handle no pending referrals when slot opens", () => {
       const pendingReferrals = 0;
       const slotsAvailable = 5;
 
@@ -508,16 +508,16 @@ describe('Referral Points System', () => {
     });
   });
 
-  describe('Points Calculations', () => {
-    it('should award correct REFERRAL_SIGNUP points (100)', () => {
+  describe("Points Calculations", () => {
+    it("should award correct REFERRAL_SIGNUP points (100)", () => {
       expect(POINTS.REFERRAL_SIGNUP).toBe(100);
     });
 
-    it('should award correct REFERRAL_QUALIFIED bonus (100)', () => {
+    it("should award correct REFERRAL_QUALIFIED bonus (100)", () => {
       expect(POINTS.REFERRAL_QUALIFIED).toBe(100);
     });
 
-    it('should calculate total points for referrer with multiple referrals', () => {
+    it("should calculate total points for referrer with multiple referrals", () => {
       const unqualifiedReferrals = 5;
       const qualifiedReferrals = 3;
 

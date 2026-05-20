@@ -5,13 +5,13 @@
  * for persisting articles to the database.
  */
 
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
-import type { PersistArticleResult } from '../services/article-persistence';
+import { beforeEach, describe, expect, mock, test } from "bun:test";
+import type { PersistArticleResult } from "../services/article-persistence";
 
 // Track inserted articles for assertions
 let insertedArticles: unknown[] = [];
 let shouldInsertFail = false;
-let insertError = new Error('Database error');
+let insertError = new Error("Database error");
 
 // Mock the database module
 const mockInsertValues = mock((values: unknown) => {
@@ -48,32 +48,32 @@ const mockCanGenerateArticle = mock(() =>
     currentCount: rateLimitCurrentCount,
     maxAllowed: 2,
     remaining: rateLimitAllowed ? 2 - rateLimitCurrentCount : 0,
-  })
+  }),
 );
 
 // Mock snowflake ID generation
 let snowflakeIdCounter = 1000;
 const mockGenerateSnowflakeId = mock(() =>
-  Promise.resolve(`${snowflakeIdCounter++}`)
+  Promise.resolve(`${snowflakeIdCounter++}`),
 );
 
 // Mock image generation
 const mockGenerateArticleImageWithRetry = mock(() =>
-  Promise.resolve('https://example.com/image.jpg')
+  Promise.resolve("https://example.com/image.jpg"),
 );
 
 // Mock tag services
-const mockGenerateTagsFromPost = mock(() => Promise.resolve(['tag1', 'tag2']));
+const mockGenerateTagsFromPost = mock(() => Promise.resolve(["tag1", "tag2"]));
 const mockStoreTagsForPost = mock(() => Promise.resolve());
 
 // Set up all mocks before importing the module
-mock.module('@feed/db', () => ({
+mock.module("@feed/db", () => ({
   db: mockDb,
   eq: (a: unknown, b: unknown) => [a, b],
-  posts: { id: 'id' },
+  posts: { id: "id" },
 }));
 
-mock.module('@feed/shared', () => ({
+mock.module("@feed/shared", () => ({
   generateSnowflakeId: mockGenerateSnowflakeId,
   logger: {
     debug: () => {},
@@ -83,30 +83,30 @@ mock.module('@feed/shared', () => ({
   },
 }));
 
-mock.module('../services/article-rate-limiter', () => ({
+mock.module("../services/article-rate-limiter", () => ({
   articleRateLimiter: {
     canGenerateArticle: mockCanGenerateArticle,
   },
 }));
 
-mock.module('../services/article-image-service', () => ({
+mock.module("../services/article-image-service", () => ({
   generateArticleImageWithRetry: mockGenerateArticleImageWithRetry,
 }));
 
-mock.module('../services/tag-service', () => ({
+mock.module("../services/tag-service", () => ({
   generateTagsFromPost: mockGenerateTagsFromPost,
   storeTagsForPost: mockStoreTagsForPost,
 }));
 
 // Import after mocks are set up
-import { persistArticle } from '../services/article-persistence';
+import { persistArticle } from "../services/article-persistence";
 
-describe('persistArticle', () => {
+describe("persistArticle", () => {
   beforeEach(() => {
     // Reset state
     insertedArticles = [];
     shouldInsertFail = false;
-    insertError = new Error('Database error');
+    insertError = new Error("Database error");
     rateLimitAllowed = true;
     rateLimitCurrentCount = 0;
     snowflakeIdCounter = 1000;
@@ -121,20 +121,20 @@ describe('persistArticle', () => {
     mockStoreTagsForPost.mockClear();
   });
 
-  describe('successful persistence', () => {
-    test('persists article and returns success with articleId', async () => {
+  describe("successful persistence", () => {
+    test("persists article and returns success with articleId", async () => {
       const article = {
-        title: 'Test Article',
-        summary: 'Test summary',
-        content: 'Test content',
-        authorOrgId: 'org-123',
-        gameId: 'continuous',
+        title: "Test Article",
+        summary: "Test summary",
+        content: "Test content",
+        authorOrgId: "org-123",
+        gameId: "continuous",
       };
 
       const result = await persistArticle(article);
 
       expect(result.success).toBe(true);
-      expect(result.articleId).toBe('1000');
+      expect(result.articleId).toBe("1000");
       // Type narrowing should work with discriminated union
       if (result.success) {
         expect(result.articleId).toBeDefined();
@@ -143,35 +143,35 @@ describe('persistArticle', () => {
       }
     });
 
-    test('uses provided article ID instead of generating one', async () => {
+    test("uses provided article ID instead of generating one", async () => {
       const article = {
-        id: 'custom-id-123',
-        title: 'Test Article',
-        summary: 'Test summary',
-        content: 'Test content',
-        authorOrgId: 'org-123',
-        gameId: 'continuous',
+        id: "custom-id-123",
+        title: "Test Article",
+        summary: "Test summary",
+        content: "Test content",
+        authorOrgId: "org-123",
+        gameId: "continuous",
       };
 
       const result = await persistArticle(article);
 
       expect(result.success).toBe(true);
-      expect(result.articleId).toBe('custom-id-123');
+      expect(result.articleId).toBe("custom-id-123");
       expect(mockGenerateSnowflakeId).not.toHaveBeenCalled();
     });
 
-    test('inserts correct values into database', async () => {
+    test("inserts correct values into database", async () => {
       const article = {
-        title: 'Test Article',
-        summary: 'Test summary',
-        content: 'Test content',
-        authorOrgId: 'org-123',
-        gameId: 'continuous',
-        category: 'technology',
+        title: "Test Article",
+        summary: "Test summary",
+        content: "Test content",
+        authorOrgId: "org-123",
+        gameId: "continuous",
+        category: "technology",
         biasScore: 0.5,
-        sentiment: 'positive',
-        slant: 'neutral',
-        byline: 'Test Author',
+        sentiment: "positive",
+        slant: "neutral",
+        byline: "Test Author",
         dayNumber: 42,
       };
 
@@ -179,29 +179,29 @@ describe('persistArticle', () => {
 
       expect(insertedArticles.length).toBe(1);
       const inserted = insertedArticles[0] as Record<string, unknown>;
-      expect(inserted.type).toBe('article');
-      expect(inserted.articleTitle).toBe('Test Article');
-      expect(inserted.content).toBe('Test summary');
-      expect(inserted.fullContent).toBe('Test content');
-      expect(inserted.authorId).toBe('org-123');
-      expect(inserted.gameId).toBe('continuous');
-      expect(inserted.category).toBe('technology');
+      expect(inserted.type).toBe("article");
+      expect(inserted.articleTitle).toBe("Test Article");
+      expect(inserted.content).toBe("Test summary");
+      expect(inserted.fullContent).toBe("Test content");
+      expect(inserted.authorId).toBe("org-123");
+      expect(inserted.gameId).toBe("continuous");
+      expect(inserted.category).toBe("technology");
       expect(inserted.biasScore).toBe(0.5);
-      expect(inserted.sentiment).toBe('positive');
-      expect(inserted.slant).toBe('neutral');
-      expect(inserted.byline).toBe('Test Author');
+      expect(inserted.sentiment).toBe("positive");
+      expect(inserted.slant).toBe("neutral");
+      expect(inserted.byline).toBe("Test Author");
       expect(inserted.dayNumber).toBe(42);
     });
   });
 
-  describe('rate limiting', () => {
-    test('checks rate limit by default', async () => {
+  describe("rate limiting", () => {
+    test("checks rate limit by default", async () => {
       const article = {
-        title: 'Test Article',
-        summary: 'Test summary',
-        content: 'Test content',
-        authorOrgId: 'org-123',
-        gameId: 'continuous',
+        title: "Test Article",
+        summary: "Test summary",
+        content: "Test content",
+        authorOrgId: "org-123",
+        gameId: "continuous",
       };
 
       await persistArticle(article);
@@ -209,16 +209,16 @@ describe('persistArticle', () => {
       expect(mockCanGenerateArticle).toHaveBeenCalled();
     });
 
-    test('returns rate limited result when rate limit exceeded', async () => {
+    test("returns rate limited result when rate limit exceeded", async () => {
       rateLimitAllowed = false;
       rateLimitCurrentCount = 2;
 
       const article = {
-        title: 'Test Article',
-        summary: 'Test summary',
-        content: 'Test content',
-        authorOrgId: 'org-123',
-        gameId: 'continuous',
+        title: "Test Article",
+        summary: "Test summary",
+        content: "Test content",
+        authorOrgId: "org-123",
+        gameId: "continuous",
       };
 
       const result = await persistArticle(article);
@@ -231,15 +231,15 @@ describe('persistArticle', () => {
       expect(insertedArticles.length).toBe(0); // Should not insert
     });
 
-    test('skips rate limit check when checkRateLimit is false', async () => {
+    test("skips rate limit check when checkRateLimit is false", async () => {
       rateLimitAllowed = false; // Would block if checked
 
       const article = {
-        title: 'Test Article',
-        summary: 'Test summary',
-        content: 'Test content',
-        authorOrgId: 'org-123',
-        gameId: 'continuous',
+        title: "Test Article",
+        summary: "Test summary",
+        content: "Test content",
+        authorOrgId: "org-123",
+        gameId: "continuous",
       };
 
       const result = await persistArticle(article, { checkRateLimit: false });
@@ -250,76 +250,76 @@ describe('persistArticle', () => {
     });
   });
 
-  describe('error handling', () => {
-    test('returns error result when database insert fails', async () => {
+  describe("error handling", () => {
+    test("returns error result when database insert fails", async () => {
       shouldInsertFail = true;
-      insertError = new Error('Connection refused');
+      insertError = new Error("Connection refused");
 
       const article = {
-        title: 'Test Article',
-        summary: 'Test summary',
-        content: 'Test content',
-        authorOrgId: 'org-123',
-        gameId: 'continuous',
+        title: "Test Article",
+        summary: "Test summary",
+        content: "Test content",
+        authorOrgId: "org-123",
+        gameId: "continuous",
       };
 
       const result = await persistArticle(article);
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error).toBe('Connection refused');
+        expect(result.error).toBe("Connection refused");
         expect(result.articleId).toBeUndefined();
       }
     });
 
-    test('handles non-Error exceptions', async () => {
+    test("handles non-Error exceptions", async () => {
       shouldInsertFail = true;
-      insertError = 'String error' as unknown as Error;
+      insertError = "String error" as unknown as Error;
 
       const article = {
-        title: 'Test Article',
-        summary: 'Test summary',
-        content: 'Test content',
-        authorOrgId: 'org-123',
-        gameId: 'continuous',
+        title: "Test Article",
+        summary: "Test summary",
+        content: "Test content",
+        authorOrgId: "org-123",
+        gameId: "continuous",
       };
 
       const result = await persistArticle(article);
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error).toBe('String error');
+        expect(result.error).toBe("String error");
       }
     });
   });
 
-  describe('optional fields', () => {
-    test('handles missing optional fields with defaults', async () => {
+  describe("optional fields", () => {
+    test("handles missing optional fields with defaults", async () => {
       const article = {
-        title: 'Test Article',
-        summary: 'Test summary',
-        content: 'Test content',
-        authorOrgId: 'org-123',
-        gameId: 'continuous',
+        title: "Test Article",
+        summary: "Test summary",
+        content: "Test content",
+        authorOrgId: "org-123",
+        gameId: "continuous",
       };
 
       await persistArticle(article);
 
       const inserted = insertedArticles[0] as Record<string, unknown>;
-      expect(inserted.category).toBe('news'); // default category
+      expect(inserted.category).toBe("news"); // default category
       expect(inserted.byline).toBeUndefined();
       expect(inserted.biasScore).toBeUndefined();
       expect(inserted.sentiment).toBeUndefined();
       expect(inserted.slant).toBeUndefined();
     });
 
-    test('uses nullish coalescing for optional fields', async () => {
+    test("uses nullish coalescing for optional fields", async () => {
       const article = {
-        title: 'Test Article',
-        summary: 'Test summary',
-        content: 'Test content',
-        authorOrgId: 'org-123',
-        gameId: 'continuous',
+        title: "Test Article",
+        summary: "Test summary",
+        content: "Test content",
+        authorOrgId: "org-123",
+        gameId: "continuous",
         biasScore: 0, // falsy but valid
         dayNumber: 0, // falsy but valid
       };
@@ -332,14 +332,14 @@ describe('persistArticle', () => {
     });
   });
 
-  describe('image generation option', () => {
-    test('does not generate image when generateImage is false', async () => {
+  describe("image generation option", () => {
+    test("does not generate image when generateImage is false", async () => {
       const article = {
-        title: 'Test Article',
-        summary: 'Test summary',
-        content: 'Test content',
-        authorOrgId: 'org-123',
-        gameId: 'continuous',
+        title: "Test Article",
+        summary: "Test summary",
+        content: "Test content",
+        authorOrgId: "org-123",
+        gameId: "continuous",
       };
 
       await persistArticle(article, { generateImage: false });
@@ -347,14 +347,14 @@ describe('persistArticle', () => {
       expect(mockGenerateArticleImageWithRetry).not.toHaveBeenCalled();
     });
 
-    test('does not generate image when article already has imageUrl', async () => {
+    test("does not generate image when article already has imageUrl", async () => {
       const article = {
-        title: 'Test Article',
-        summary: 'Test summary',
-        content: 'Test content',
-        authorOrgId: 'org-123',
-        gameId: 'continuous',
-        imageUrl: 'https://existing.com/image.jpg',
+        title: "Test Article",
+        summary: "Test summary",
+        content: "Test content",
+        authorOrgId: "org-123",
+        gameId: "continuous",
+        imageUrl: "https://existing.com/image.jpg",
       };
 
       await persistArticle(article, { generateImage: true });
@@ -363,14 +363,14 @@ describe('persistArticle', () => {
     });
   });
 
-  describe('discriminated union type safety', () => {
-    test('success result has articleId and no error fields', async () => {
+  describe("discriminated union type safety", () => {
+    test("success result has articleId and no error fields", async () => {
       const article = {
-        title: 'Test Article',
-        summary: 'Test summary',
-        content: 'Test content',
-        authorOrgId: 'org-123',
-        gameId: 'continuous',
+        title: "Test Article",
+        summary: "Test summary",
+        content: "Test content",
+        authorOrgId: "org-123",
+        gameId: "continuous",
       };
 
       const result: PersistArticleResult = await persistArticle(article);
@@ -385,15 +385,15 @@ describe('persistArticle', () => {
       }
     });
 
-    test('failure result has no articleId', async () => {
+    test("failure result has no articleId", async () => {
       rateLimitAllowed = false;
 
       const article = {
-        title: 'Test Article',
-        summary: 'Test summary',
-        content: 'Test content',
-        authorOrgId: 'org-123',
-        gameId: 'continuous',
+        title: "Test Article",
+        summary: "Test summary",
+        content: "Test content",
+        authorOrgId: "org-123",
+        gameId: "continuous",
       };
 
       const result: PersistArticleResult = await persistArticle(article);

@@ -1,22 +1,22 @@
-'use client';
+"use client";
 
-import { logger } from '@feed/shared';
-import { useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useStewardAuthContext } from '@/components/providers/StewardAuthProvider';
-import { useLoginModal } from '@/hooks/useLoginModal';
+import { logger } from "@feed/shared";
+import { useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useStewardAuthContext } from "@/components/providers/StewardAuthProvider";
+import { useLoginModal } from "@/hooks/useLoginModal";
 import {
   clearBrowserDevAuthSession,
   getBrowserDevAuthSession,
-} from '@/lib/auth/dev-auth';
-import { clearUserChatCache } from '@/lib/chat/message-store';
-import { type User, useAuthStore } from '@/stores/authStore';
-import { apiFetch } from '@/utils/api-fetch';
+} from "@/lib/auth/dev-auth";
+import { clearUserChatCache } from "@/lib/chat/message-store";
+import { type User, useAuthStore } from "@/stores/authStore";
+import { apiFetch } from "@/utils/api-fetch";
 import {
   listStorageKeys,
   readStorageItem,
   removeStorageItem,
-} from '@/utils/browser-storage';
+} from "@/utils/browser-storage";
 
 /**
  * Return type for the useAuth hook.
@@ -33,7 +33,7 @@ interface UseAuthReturn {
   /** Whether the user needs to complete onboarding */
   needsOnboarding: boolean;
   /** Whether the server has been consulted for profile status this session */
-  profileFetchStatus: 'idle' | 'loading' | 'done' | 'error';
+  profileFetchStatus: "idle" | "loading" | "done" | "error";
   /** Function to open the login modal */
   login: () => void;
   /** Function to logout and clear all auth state */
@@ -75,7 +75,7 @@ export function useAuth(): UseAuthReturn {
   } = useAuthStore();
   const queryClient = useQueryClient();
   const [devAuthSession, setDevAuthSession] = useState(() =>
-    getBrowserDevAuthSession()
+    getBrowserDevAuthSession(),
   );
   const hasClearedAuthRef = useRef(false);
 
@@ -96,7 +96,7 @@ export function useAuth(): UseAuthReturn {
   // Keep window-level token in sync for apiFetch legacy compatibility
   useEffect(() => {
     const token = stewardAuth.getToken();
-    if (typeof window !== 'undefined') {
+    if (typeof window !== "undefined") {
       (
         window as Window & { __privyAccessToken?: string | null }
       ).__privyAccessToken = token;
@@ -107,7 +107,7 @@ export function useAuth(): UseAuthReturn {
       ).__privyGetAccessToken = getAccessToken;
     }
     return () => {
-      if (typeof window !== 'undefined') {
+      if (typeof window !== "undefined") {
         (
           window as Window & {
             __privyGetAccessToken?: () => Promise<string | null>;
@@ -120,14 +120,14 @@ export function useAuth(): UseAuthReturn {
   // ── Dev auth sync ─────────────────────────────────────────────────────────
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined") return;
     const sync = () => setDevAuthSession(getBrowserDevAuthSession());
     sync();
-    window.addEventListener('storage', sync);
-    window.addEventListener('focus', sync);
+    window.addEventListener("storage", sync);
+    window.addEventListener("focus", sync);
     return () => {
-      window.removeEventListener('storage', sync);
-      window.removeEventListener('focus', sync);
+      window.removeEventListener("storage", sync);
+      window.removeEventListener("focus", sync);
     };
   }, []);
 
@@ -137,9 +137,9 @@ export function useAuth(): UseAuthReturn {
     if (!devAuthSession) return;
     setIsLoadingProfile(true);
     setLoadedUserId(devAuthSession.userId);
-    const response = await fetch('/api/users/me', {
+    const response = await fetch("/api/users/me", {
       headers: { Authorization: `Bearer ${devAuthSession.accessToken}` },
-      credentials: 'include',
+      credentials: "include",
     });
     if (!response.ok) {
       setIsLoadingProfile(false);
@@ -157,7 +157,7 @@ export function useAuth(): UseAuthReturn {
         displayName:
           data.user.displayName?.trim() ||
           devAuthSession.displayName ||
-          'Dev User',
+          "Dev User",
         email: data.user.email ?? devAuthSession.email ?? undefined,
       });
     }
@@ -182,72 +182,72 @@ export function useAuth(): UseAuthReturn {
 
       const run = async () => {
         setIsLoadingProfile(true);
-        setProfileFetchStatus('loading');
+        setProfileFetchStatus("loading");
         setLoadedUserId(session.userId ?? session.address);
 
         const token = stewardAuth.getToken();
         if (!token) {
           if (retryCount >= 5) {
             logger.error(
-              'Steward token unavailable after max retries',
+              "Steward token unavailable after max retries",
               { retryCount },
-              'useAuth'
+              "useAuth",
             );
             setIsLoadingProfile(false);
             return;
           }
           setIsLoadingProfile(false);
-          if (typeof window !== 'undefined') {
+          if (typeof window !== "undefined") {
             if (globalTokenRetryTimeout)
               window.clearTimeout(globalTokenRetryTimeout);
             globalTokenRetryTimeout = window.setTimeout(
               () => void fetchCurrentUser(retryCount + 1),
-              200 * (retryCount + 1)
+              200 * (retryCount + 1),
             );
           }
           return;
         }
 
         const referralCode =
-          typeof window !== 'undefined'
-            ? readStorageItem('sessionStorage', 'referralCode')
+          typeof window !== "undefined"
+            ? readStorageItem("sessionStorage", "referralCode")
             : null;
         const url = referralCode
           ? `/api/users/me?ref=${encodeURIComponent(referralCode)}`
-          : '/api/users/me';
+          : "/api/users/me";
 
         let response: Response;
         try {
           response = await apiFetch(url);
         } catch (networkError) {
           logger.warn(
-            'Failed to reach /api/users/me — keeping persisted auth state',
+            "Failed to reach /api/users/me — keeping persisted auth state",
             {
               error:
                 networkError instanceof Error
                   ? networkError.message
                   : String(networkError),
             },
-            'useAuth'
+            "useAuth",
           );
-          setProfileFetchStatus('error');
+          setProfileFetchStatus("error");
           setIsLoadingProfile(false);
           return;
         }
 
         if (response.status === 401) {
-          setProfileFetchStatus('error');
+          setProfileFetchStatus("error");
           setIsLoadingProfile(false);
           return;
         }
 
         if (!response.ok) {
           logger.warn(
-            'Non-OK response from /api/users/me — keeping persisted auth state',
+            "Non-OK response from /api/users/me — keeping persisted auth state",
             { status: response.status },
-            'useAuth'
+            "useAuth",
           );
-          setProfileFetchStatus('error');
+          setProfileFetchStatus("error");
           setIsLoadingProfile(false);
           return;
         }
@@ -259,7 +259,7 @@ export function useAuth(): UseAuthReturn {
         };
 
         setNeedsOnboarding(data.needsOnboarding ?? false);
-        setProfileFetchStatus('done');
+        setProfileFetchStatus("done");
 
         if (data.user) {
           setUser(data.user);
@@ -269,7 +269,7 @@ export function useAuth(): UseAuthReturn {
           if (!currentUser) {
             setUser({
               id: session.userId ?? session.address,
-              displayName: session.email ?? 'Anonymous',
+              displayName: session.email ?? "Anonymous",
               email: session.email ?? undefined,
             });
           }
@@ -280,7 +280,7 @@ export function useAuth(): UseAuthReturn {
 
       const promise = run().finally(() => {
         globalFetchInFlight = null;
-        if (typeof window !== 'undefined' && globalTokenRetryTimeout) {
+        if (typeof window !== "undefined" && globalTokenRetryTimeout) {
           window.clearTimeout(globalTokenRetryTimeout);
           globalTokenRetryTimeout = null;
         }
@@ -297,7 +297,7 @@ export function useAuth(): UseAuthReturn {
       setLoadedUserId,
       setNeedsOnboarding,
       setUser,
-    ]
+    ],
   );
 
   // ── Auth state changes ────────────────────────────────────────────────────
@@ -315,11 +315,11 @@ export function useAuth(): UseAuthReturn {
       hasClearedAuthRef.current = true;
 
       // Clear stale Steward session keys from localStorage
-      if (typeof window !== 'undefined') {
-        const stewardKeys = listStorageKeys('localStorage').filter(
-          (key) => key.startsWith('steward:') || key.startsWith('stwd-')
+      if (typeof window !== "undefined") {
+        const stewardKeys = listStorageKeys("localStorage").filter(
+          (key) => key.startsWith("steward:") || key.startsWith("stwd-"),
         );
-        stewardKeys.forEach((key) => removeStorageItem('localStorage', key));
+        stewardKeys.forEach((key) => removeStorageItem("localStorage", key));
       }
       return;
     }
@@ -332,7 +332,7 @@ export function useAuth(): UseAuthReturn {
 
   useEffect(() => {
     return () => {
-      if (typeof window !== 'undefined' && globalTokenRetryTimeout) {
+      if (typeof window !== "undefined" && globalTokenRetryTimeout) {
         window.clearTimeout(globalTokenRetryTimeout);
         globalTokenRetryTimeout = null;
       }
@@ -363,11 +363,11 @@ export function useAuth(): UseAuthReturn {
       clearBrowserDevAuthSession();
       setDevAuthSession(null);
       clearAuth();
-      if (typeof window !== 'undefined') {
+      if (typeof window !== "undefined") {
         (
           window as Window & { __privyAccessToken?: string | null }
         ).__privyAccessToken = null;
-        localStorage.removeItem('feed-auth');
+        localStorage.removeItem("feed-auth");
       }
       globalFetchInFlight = null;
       if (globalTokenRetryTimeout !== null) {
@@ -381,20 +381,20 @@ export function useAuth(): UseAuthReturn {
     stewardAuth.signOut();
 
     // Clear the httpOnly cookie via the session API
-    await fetch('/api/auth/session', {
-      method: 'DELETE',
-      credentials: 'include',
+    await fetch("/api/auth/session", {
+      method: "DELETE",
+      credentials: "include",
     }).catch(() => {
       // Non-critical — cookie will expire naturally
     });
 
     clearAuth();
 
-    if (typeof window !== 'undefined') {
+    if (typeof window !== "undefined") {
       (
         window as Window & { __privyAccessToken?: string | null }
       ).__privyAccessToken = null;
-      removeStorageItem('localStorage', 'feed-auth');
+      removeStorageItem("localStorage", "feed-auth");
     }
 
     globalFetchInFlight = null;
@@ -404,9 +404,9 @@ export function useAuth(): UseAuthReturn {
     }
 
     logger.info(
-      'User logged out and all auth state cleared',
+      "User logged out and all auth state cleared",
       undefined,
-      'useAuth'
+      "useAuth",
     );
   };
 
@@ -416,7 +416,7 @@ export function useAuth(): UseAuthReturn {
     loadingProfile: isLoadingProfile,
     user,
     needsOnboarding,
-    profileFetchStatus: devAuthSession ? 'done' : profileFetchStatus,
+    profileFetchStatus: devAuthSession ? "done" : profileFetchStatus,
     login: handleLogin,
     logout: handleLogout,
     refresh,

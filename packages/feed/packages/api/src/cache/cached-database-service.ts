@@ -36,9 +36,9 @@ import {
   trendingTags,
   userActorFollows,
   users,
-} from '@feed/db';
-import { StaticDataRegistry } from '@feed/engine';
-import { logger, resolveUserIdentifierKind } from '@feed/shared';
+} from "@feed/db";
+import { StaticDataRegistry } from "@feed/engine";
+import { logger, resolveUserIdentifierKind } from "@feed/shared";
 import {
   CACHE_KEYS,
   DEFAULT_TTLS,
@@ -46,7 +46,7 @@ import {
   getCacheOrFetch,
   invalidateCache,
   invalidateCachePattern,
-} from './cache-service';
+} from "./cache-service";
 
 /**
  * Cached Database Service Class
@@ -69,9 +69,9 @@ class CachedDatabaseService {
    */
   async getRecentPosts(
     limit = 100,
-    cursorOrOffset?: string | number
+    cursorOrOffset?: string | number,
   ): Promise<Post[]> {
-    const isCursor = typeof cursorOrOffset === 'string';
+    const isCursor = typeof cursorOrOffset === "string";
     const cacheKey = isCursor
       ? `${limit}:cursor:${cursorOrOffset}`
       : `${limit}:offset:${cursorOrOffset || 0}`;
@@ -82,7 +82,7 @@ class CachedDatabaseService {
       {
         namespace: CACHE_KEYS.POSTS_LIST,
         ttl: DEFAULT_TTLS.POSTS_LIST,
-      }
+      },
     );
   }
 
@@ -92,9 +92,9 @@ class CachedDatabaseService {
   async getPostsByActor(
     authorId: string,
     limit = 100,
-    cursorOrOffset?: string | number
+    cursorOrOffset?: string | number,
   ): Promise<Post[]> {
-    const isCursor = typeof cursorOrOffset === 'string';
+    const isCursor = typeof cursorOrOffset === "string";
     const cacheKey = isCursor
       ? `${authorId}:${limit}:cursor:${cursorOrOffset}`
       : `${authorId}:${limit}:offset:${cursorOrOffset || 0}`;
@@ -105,7 +105,7 @@ class CachedDatabaseService {
       {
         namespace: CACHE_KEYS.POSTS_BY_ACTOR,
         ttl: DEFAULT_TTLS.POSTS_BY_ACTOR,
-      }
+      },
     );
   }
 
@@ -117,9 +117,9 @@ class CachedDatabaseService {
     userId: string,
     followedIds: string[],
     limit = 100,
-    cursorOrOffset?: string | number
+    cursorOrOffset?: string | number,
   ): Promise<Post[]> {
-    const isCursor = typeof cursorOrOffset === 'string';
+    const isCursor = typeof cursorOrOffset === "string";
     const cacheKey = isCursor
       ? `${userId}:${limit}:cursor:${cursorOrOffset}`
       : `${userId}:${limit}:offset:${cursorOrOffset || 0}`;
@@ -145,12 +145,12 @@ class CachedDatabaseService {
 
         // Remove test users from followedIds
         const nonTestFollowedIds = followedIds.filter(
-          (id) => !testAuthorIds.has(id)
+          (id) => !testAuthorIds.has(id),
         );
 
         const cursor = isCursor ? (cursorOrOffset as string) : undefined;
         const offset =
-          !isCursor && typeof cursorOrOffset === 'number' ? cursorOrOffset : 0;
+          !isCursor && typeof cursorOrOffset === "number" ? cursorOrOffset : 0;
 
         const now = new Date();
 
@@ -181,7 +181,7 @@ class CachedDatabaseService {
       {
         namespace: CACHE_KEYS.POSTS_FOLLOWING,
         ttl: DEFAULT_TTLS.POSTS_FOLLOWING,
-      }
+      },
     );
   }
 
@@ -204,7 +204,7 @@ class CachedDatabaseService {
       {
         namespace: CACHE_KEYS.USER,
         ttl: DEFAULT_TTLS.USER,
-      }
+      },
     );
   }
 
@@ -233,7 +233,7 @@ class CachedDatabaseService {
       {
         namespace: CACHE_KEYS.USER,
         ttl: DEFAULT_TTLS.USER,
-      }
+      },
     );
 
     // Return users in the same order as requested, filtering nulls
@@ -266,7 +266,7 @@ class CachedDatabaseService {
       {
         namespace: CACHE_KEYS.USER_BALANCE,
         ttl: DEFAULT_TTLS.USER_BALANCE,
-      }
+      },
     );
   }
 
@@ -357,9 +357,9 @@ class CachedDatabaseService {
         };
       },
       {
-        namespace: 'user:profile:stats',
+        namespace: "user:profile:stats",
         ttl: 60, // Cache for 1 minute
-      }
+      },
     );
   }
 
@@ -375,7 +375,7 @@ class CachedDatabaseService {
     const state = await getDbInstance().getActorState(actorId);
     return {
       ...staticActor,
-      tradingBalance: state?.tradingBalance ?? '10000',
+      tradingBalance: state?.tradingBalance ?? "10000",
       reputationPoints: state?.reputationPoints ?? 10000,
       hasPool: state?.hasPool ?? false,
     };
@@ -386,7 +386,7 @@ class CachedDatabaseService {
    */
   async getActorsByIds(actorIds: string[]) {
     const actorsResult = await Promise.all(
-      actorIds.map((id) => this.getActorById(id))
+      actorIds.map((id) => this.getActorById(id)),
     );
 
     return actorsResult.filter((a) => a !== null);
@@ -412,7 +412,7 @@ class CachedDatabaseService {
    * Get active markets with caching
    */
   async getActiveMarkets() {
-    const cacheKey = 'active';
+    const cacheKey = "active";
 
     return getCacheOrFetch(
       cacheKey,
@@ -427,7 +427,7 @@ class CachedDatabaseService {
       {
         namespace: CACHE_KEYS.MARKETS_LIST,
         ttl: DEFAULT_TTLS.MARKETS_LIST,
-      }
+      },
     );
   }
 
@@ -464,7 +464,7 @@ class CachedDatabaseService {
       {
         namespace: CACHE_KEYS.TRENDING_TAGS,
         ttl: DEFAULT_TTLS.TRENDING_TAGS,
-      }
+      },
     );
   }
 
@@ -472,10 +472,10 @@ class CachedDatabaseService {
    * Invalidate cache for posts
    */
   async invalidatePostsCache() {
-    logger.info('Invalidating posts cache', undefined, 'CachedDatabaseService');
+    logger.info("Invalidating posts cache", undefined, "CachedDatabaseService");
     await Promise.all([
-      invalidateCachePattern('*', { namespace: CACHE_KEYS.POSTS_LIST }),
-      invalidateCachePattern('*', { namespace: CACHE_KEYS.POSTS_FOLLOWING }),
+      invalidateCachePattern("*", { namespace: CACHE_KEYS.POSTS_LIST }),
+      invalidateCachePattern("*", { namespace: CACHE_KEYS.POSTS_FOLLOWING }),
     ]);
   }
 
@@ -484,9 +484,9 @@ class CachedDatabaseService {
    */
   async invalidateActorPostsCache(actorId: string) {
     logger.info(
-      'Invalidating actor posts cache',
+      "Invalidating actor posts cache",
       { actorId },
-      'CachedDatabaseService'
+      "CachedDatabaseService",
     );
     await invalidateCachePattern(`${actorId}:*`, {
       namespace: CACHE_KEYS.POSTS_BY_ACTOR,
@@ -497,15 +497,15 @@ class CachedDatabaseService {
    * Invalidate cache for user
    */
   async invalidateUserCache(userId: string) {
-    logger.info('Invalidating user cache', { userId }, 'CachedDatabaseService');
+    logger.info("Invalidating user cache", { userId }, "CachedDatabaseService");
     await Promise.all([
       invalidateCache(userId, { namespace: CACHE_KEYS.USER }),
       invalidateCache(userId, { namespace: CACHE_KEYS.USER_BALANCE }),
-      invalidateCache(userId, { namespace: 'user:profile:stats' }),
+      invalidateCache(userId, { namespace: "user:profile:stats" }),
       invalidateCachePattern(`${userId}:*`, {
         namespace: CACHE_KEYS.POSTS_FOLLOWING,
       }),
-      invalidateCachePattern('*', { namespace: 'user:follows' }), // Invalidate follows cache
+      invalidateCachePattern("*", { namespace: "user:follows" }), // Invalidate follows cache
     ]);
   }
 
@@ -555,7 +555,7 @@ class CachedDatabaseService {
    */
   async invalidateUserIdentifierCaches(
     user: { id: string; privyId?: string | null; username?: string | null },
-    oldValues?: { privyId?: string | null; username?: string | null }
+    oldValues?: { privyId?: string | null; username?: string | null },
   ) {
     // WHY unified namespace? Single namespace for all identifier caches reduces desync risk
     // If we used separate namespaces (user:id, user:privyId, user:username), we'd need to
@@ -570,7 +570,7 @@ class CachedDatabaseService {
     // Some users have their did:privy:… value stored as users.id rather than
     // users.privyId. Lookups for those users cache under privy:${user.id}, so
     // we must invalidate that key too — otherwise stale/negative entries persist.
-    if (resolveUserIdentifierKind(user.id) === 'privyId') {
+    if (resolveUserIdentifierKind(user.id) === "privyId") {
       await invalidateCache(`privy:${user.id}`, { namespace });
     }
 
@@ -612,18 +612,18 @@ class CachedDatabaseService {
    */
   async invalidateMarketsCache() {
     logger.info(
-      'Invalidating markets cache',
+      "Invalidating markets cache",
       undefined,
-      'CachedDatabaseService'
+      "CachedDatabaseService",
     );
-    await invalidateCachePattern('*', { namespace: CACHE_KEYS.MARKETS_LIST });
+    await invalidateCachePattern("*", { namespace: CACHE_KEYS.MARKETS_LIST });
   }
 
   /**
    * Invalidate all caches (use sparingly!)
    */
   async invalidateAllCaches() {
-    logger.warn('Invalidating all caches', undefined, 'CachedDatabaseService');
+    logger.warn("Invalidating all caches", undefined, "CachedDatabaseService");
     await Promise.all([
       this.invalidatePostsCache(),
       this.invalidateMarketsCache(),

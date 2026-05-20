@@ -5,7 +5,7 @@
  * fallback chain logic used in _resolution-audit.ts.
  */
 
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it } from "bun:test";
 
 // Replicate the resolvedAt fallback chain from _resolution-audit.ts
 function resolveResolvedAt(params: {
@@ -29,7 +29,7 @@ type ResolvedBy = {
   id: string;
   displayName: string | null;
   username: string | null;
-  kind: 'admin' | 'system';
+  kind: "admin" | "system";
 } | null;
 
 function resolveResolvedBy(
@@ -38,14 +38,14 @@ function resolveResolvedBy(
     id: string;
     displayName: string | null;
     username: string | null;
-  } | null
+  } | null,
 ): ResolvedBy {
-  if (reviewerId === 'system') {
+  if (reviewerId === "system") {
     return {
-      id: 'system',
-      displayName: 'Feed Resolution Engine',
+      id: "system",
+      displayName: "Feed Resolution Engine",
       username: null,
-      kind: 'system',
+      kind: "system",
     };
   }
   if (reviewerId && reviewerRecord) {
@@ -53,18 +53,18 @@ function resolveResolvedBy(
       id: reviewerRecord.id,
       displayName: reviewerRecord.displayName,
       username: reviewerRecord.username,
-      kind: 'admin',
+      kind: "admin",
     };
   }
   return null;
 }
 
-describe('Resolution Audit - resolvedAt fallback chain', () => {
-  const now = new Date('2026-01-15T12:00:00Z');
-  const earlier = new Date('2026-01-14T12:00:00Z');
-  const earliest = new Date('2026-01-13T12:00:00Z');
+describe("Resolution Audit - resolvedAt fallback chain", () => {
+  const now = new Date("2026-01-15T12:00:00Z");
+  const earlier = new Date("2026-01-14T12:00:00Z");
+  const earliest = new Date("2026-01-13T12:00:00Z");
 
-  it('prefers reviewedAt when available', () => {
+  it("prefers reviewedAt when available", () => {
     const result = resolveResolvedAt({
       reviewedAt: now,
       frameResolvedAt: earlier,
@@ -74,7 +74,7 @@ describe('Resolution Audit - resolvedAt fallback chain', () => {
     expect(result).toBe(now.toISOString());
   });
 
-  it('falls back to frameResolvedAt when reviewedAt is null', () => {
+  it("falls back to frameResolvedAt when reviewedAt is null", () => {
     const result = resolveResolvedAt({
       reviewedAt: null,
       frameResolvedAt: earlier,
@@ -84,7 +84,7 @@ describe('Resolution Audit - resolvedAt fallback chain', () => {
     expect(result).toBe(earlier.toISOString());
   });
 
-  it('falls back to marketUpdatedAt when market is resolved', () => {
+  it("falls back to marketUpdatedAt when market is resolved", () => {
     const result = resolveResolvedAt({
       reviewedAt: null,
       frameResolvedAt: null,
@@ -94,7 +94,7 @@ describe('Resolution Audit - resolvedAt fallback chain', () => {
     expect(result).toBe(earliest.toISOString());
   });
 
-  it('returns null when market is not resolved and no other dates', () => {
+  it("returns null when market is not resolved and no other dates", () => {
     const result = resolveResolvedAt({
       reviewedAt: null,
       frameResolvedAt: null,
@@ -104,7 +104,7 @@ describe('Resolution Audit - resolvedAt fallback chain', () => {
     expect(result).toBeNull();
   });
 
-  it('returns null when everything is null', () => {
+  it("returns null when everything is null", () => {
     const result = resolveResolvedAt({
       reviewedAt: null,
       frameResolvedAt: null,
@@ -114,7 +114,7 @@ describe('Resolution Audit - resolvedAt fallback chain', () => {
     expect(result).toBeNull();
   });
 
-  it('returns null when market resolved but updatedAt is null', () => {
+  it("returns null when market resolved but updatedAt is null", () => {
     const result = resolveResolvedAt({
       reviewedAt: null,
       frameResolvedAt: null,
@@ -125,76 +125,76 @@ describe('Resolution Audit - resolvedAt fallback chain', () => {
   });
 });
 
-describe('Resolution Audit - resolvedBy logic', () => {
+describe("Resolution Audit - resolvedBy logic", () => {
   it('returns system resolver for "system" reviewerId', () => {
-    const result = resolveResolvedBy('system', null);
+    const result = resolveResolvedBy("system", null);
     expect(result).toEqual({
-      id: 'system',
-      displayName: 'Feed Resolution Engine',
+      id: "system",
+      displayName: "Feed Resolution Engine",
       username: null,
-      kind: 'system',
+      kind: "system",
     });
   });
 
   it('ignores reviewer record when reviewerId is "system"', () => {
-    const result = resolveResolvedBy('system', {
-      id: 'admin-1',
-      displayName: 'Admin',
-      username: 'admin',
+    const result = resolveResolvedBy("system", {
+      id: "admin-1",
+      displayName: "Admin",
+      username: "admin",
     });
-    expect(result?.kind).toBe('system');
-    expect(result?.id).toBe('system');
+    expect(result?.kind).toBe("system");
+    expect(result?.id).toBe("system");
   });
 
-  it('returns admin resolver when reviewerId and record exist', () => {
-    const result = resolveResolvedBy('admin-1', {
-      id: 'admin-1',
-      displayName: 'Alice Admin',
-      username: 'alice',
+  it("returns admin resolver when reviewerId and record exist", () => {
+    const result = resolveResolvedBy("admin-1", {
+      id: "admin-1",
+      displayName: "Alice Admin",
+      username: "alice",
     });
     expect(result).toEqual({
-      id: 'admin-1',
-      displayName: 'Alice Admin',
-      username: 'alice',
-      kind: 'admin',
+      id: "admin-1",
+      displayName: "Alice Admin",
+      username: "alice",
+      kind: "admin",
     });
   });
 
-  it('returns null when reviewerId is set but no record found', () => {
-    const result = resolveResolvedBy('deleted-admin', null);
+  it("returns null when reviewerId is set but no record found", () => {
+    const result = resolveResolvedBy("deleted-admin", null);
     expect(result).toBeNull();
   });
 
-  it('returns null when reviewerId is null', () => {
+  it("returns null when reviewerId is null", () => {
     const result = resolveResolvedBy(null, null);
     expect(result).toBeNull();
   });
 });
 
-describe('Resolution Audit - response shape', () => {
-  it('produces complete audit object for resolved market', () => {
+describe("Resolution Audit - response shape", () => {
+  it("produces complete audit object for resolved market", () => {
     const audit = {
       resolution: true,
-      resolvedAt: new Date('2026-01-15T12:00:00Z').toISOString(),
-      reviewStatus: 'approved',
+      resolvedAt: new Date("2026-01-15T12:00:00Z").toISOString(),
+      reviewStatus: "approved",
       confidence: 0.95,
-      description: 'Resolved as YES based on observed market evidence',
-      proofUrl: 'https://example.com/proof',
+      description: "Resolved as YES based on observed market evidence",
+      proofUrl: "https://example.com/proof",
       resolvedBy: {
-        id: 'admin-1',
-        displayName: 'Alice',
-        username: 'alice',
-        kind: 'admin' as const,
+        id: "admin-1",
+        displayName: "Alice",
+        username: "alice",
+        kind: "admin" as const,
       },
     };
 
     expect(audit.resolution).toBe(true);
     expect(audit.resolvedAt).toBeTruthy();
-    expect(audit.resolvedBy?.kind).toBe('admin');
+    expect(audit.resolvedBy?.kind).toBe("admin");
     expect(audit.confidence).toBeGreaterThan(0);
   });
 
-  it('produces minimal audit object for unreviewed market', () => {
+  it("produces minimal audit object for unreviewed market", () => {
     const audit = {
       resolution: null,
       resolvedAt: null,

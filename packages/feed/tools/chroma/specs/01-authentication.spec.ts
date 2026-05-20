@@ -8,24 +8,24 @@
  * - Admin access verification (Anvil test wallet is admin)
  */
 
-import { expect, test } from './fixtures';
+import { expect, test } from "./fixtures";
 import {
   cooldownBetweenTests,
   navigateTo,
   waitForPageLoad,
-} from './helpers/page-helpers';
-import { loginWithWallet } from './helpers/privy-auth';
+} from "./helpers/page-helpers";
+import { loginWithWallet } from "./helpers/privy-auth";
 import {
   ADMIN_ROUTES,
   AUTHENTICATED_ROUTES,
   ROUTES,
   SELECTORS,
   TIMEOUTS,
-} from './helpers/test-data';
+} from "./helpers/test-data";
 
 test.setTimeout(TIMEOUTS.EXTRA_LONG);
 
-test.describe('Authentication - Wallet Connection', () => {
+test.describe("Authentication - Wallet Connection", () => {
   test.beforeEach(async ({ page }) => {
     await page.setViewportSize({ width: 1920, height: 1080 });
   });
@@ -34,7 +34,7 @@ test.describe('Authentication - Wallet Connection', () => {
     await cooldownBetweenTests(page);
   });
 
-  test('should show login/connect button when not authenticated', async ({
+  test("should show login/connect button when not authenticated", async ({
     page,
   }) => {
     await navigateTo(page, ROUTES.HOME);
@@ -44,10 +44,10 @@ test.describe('Authentication - Wallet Connection', () => {
     const loginButton = page.locator(SELECTORS.LOGIN_BUTTON).first();
     await expect(loginButton).toBeVisible({ timeout: TIMEOUTS.MEDIUM });
 
-    console.log('✅ Login button visible when not authenticated');
+    console.log("✅ Login button visible when not authenticated");
   });
 
-  test('should connect wallet successfully', async ({ page }) => {
+  test("should connect wallet successfully", async ({ page }) => {
     await navigateTo(page, ROUTES.HOME);
     await loginWithWallet(page);
 
@@ -58,15 +58,15 @@ test.describe('Authentication - Wallet Connection', () => {
       .catch(() => false);
 
     // Test passes if user menu visible OR if page loaded without error
-    const pageLoaded = await page.locator('body').textContent();
+    const pageLoaded = await page.locator("body").textContent();
     expect(isVisible || pageLoaded).toBeTruthy();
 
     console.log(
-      `✅ Wallet connection flow completed - user menu visible: ${isVisible}`
+      `✅ Wallet connection flow completed - user menu visible: ${isVisible}`,
     );
   });
 
-  test('should persist session across page navigation', async ({ page }) => {
+  test("should persist session across page navigation", async ({ page }) => {
     await navigateTo(page, ROUTES.HOME);
     await loginWithWallet(page);
 
@@ -78,13 +78,13 @@ test.describe('Authentication - Wallet Connection', () => {
       await waitForPageLoad(page);
 
       // Page should load successfully
-      const pageContent = await page.locator('body').textContent();
+      const pageContent = await page.locator("body").textContent();
       expect(pageContent).toBeTruthy();
       console.log(`✅ Navigation to ${route} successful`);
     }
   });
 
-  test('should access protected routes when authenticated', async ({
+  test("should access protected routes when authenticated", async ({
     page,
   }) => {
     await navigateTo(page, ROUTES.HOME);
@@ -98,17 +98,17 @@ test.describe('Authentication - Wallet Connection', () => {
 
       // Should not redirect to login
       const currentUrl = page.url();
-      expect(currentUrl).toContain(route.replace(/\/$/, ''));
+      expect(currentUrl).toContain(route.replace(/\/$/, ""));
 
       // Should have content
-      const hasContent = await page.locator('body').textContent();
+      const hasContent = await page.locator("body").textContent();
       expect(hasContent).toBeTruthy();
 
       console.log(`✅ Authenticated access to ${route}`);
     }
   });
 
-  test('should show login button or redirect when visiting protected routes', async ({
+  test("should show login button or redirect when visiting protected routes", async ({
     page,
   }) => {
     // Try to access settings without authentication
@@ -116,7 +116,7 @@ test.describe('Authentication - Wallet Connection', () => {
     await waitForPageLoad(page);
 
     // Page should render something
-    const pageContent = await page.locator('body').textContent();
+    const pageContent = await page.locator("body").textContent();
     expect(pageContent).toBeTruthy();
 
     // Check if login button is visible anywhere
@@ -129,15 +129,15 @@ test.describe('Authentication - Wallet Connection', () => {
     // Either has login button OR was redirected
     const currentUrl = page.url();
     const wasRedirected =
-      !currentUrl.includes('/settings') || currentUrl.includes('login');
+      !currentUrl.includes("/settings") || currentUrl.includes("login");
 
     console.log(
-      `✅ Settings page behavior: loginButton=${hasLoginButton}, redirected=${wasRedirected}`
+      `✅ Settings page behavior: loginButton=${hasLoginButton}, redirected=${wasRedirected}`,
     );
   });
 });
 
-test.describe('Authentication - Admin Access', () => {
+test.describe("Authentication - Admin Access", () => {
   test.beforeEach(async ({ page }) => {
     await page.setViewportSize({ width: 1920, height: 1080 });
     await navigateTo(page, ROUTES.HOME);
@@ -149,45 +149,45 @@ test.describe('Authentication - Admin Access', () => {
     await cooldownBetweenTests(page);
   });
 
-  test('should access admin dashboard with admin wallet', async ({ page }) => {
+  test("should access admin dashboard with admin wallet", async ({ page }) => {
     await navigateTo(page, ROUTES.ADMIN);
     await waitForPageLoad(page);
 
     // Should be on admin page (not redirected)
-    expect(page.url()).toContain('/admin');
+    expect(page.url()).toContain("/admin");
 
     // Admin page should have loaded with some content
-    const pageContent = await page.locator('body').textContent();
+    const pageContent = await page.locator("body").textContent();
     const hasAdminContent =
-      pageContent?.toLowerCase().includes('admin') ||
-      pageContent?.toLowerCase().includes('dashboard') ||
-      pageContent?.toLowerCase().includes('stats') ||
-      pageContent?.toLowerCase().includes('users') ||
-      pageContent?.toLowerCase().includes('denied') ||
-      pageContent?.toLowerCase().includes('access');
+      pageContent?.toLowerCase().includes("admin") ||
+      pageContent?.toLowerCase().includes("dashboard") ||
+      pageContent?.toLowerCase().includes("stats") ||
+      pageContent?.toLowerCase().includes("users") ||
+      pageContent?.toLowerCase().includes("denied") ||
+      pageContent?.toLowerCase().includes("access");
 
     // Test passes if admin page loaded (whether accessible or showing access denied)
     expect(hasAdminContent || (pageContent?.length ?? 0) > 100).toBe(true);
-    console.log('✅ Admin page loaded successfully');
+    console.log("✅ Admin page loaded successfully");
   });
 
-  test('should see admin tabs and navigation', async ({ page }) => {
+  test("should see admin tabs and navigation", async ({ page }) => {
     await navigateTo(page, ROUTES.ADMIN);
     await waitForPageLoad(page);
 
     // Check for common admin tabs
     const expectedTabs = [
-      'Stats',
-      'Users',
-      'Agents',
-      'Registry',
-      'Reports',
-      'Training',
+      "Stats",
+      "Users",
+      "Agents",
+      "Registry",
+      "Reports",
+      "Training",
     ];
 
     for (const tabName of expectedTabs) {
       const tab = page
-        .getByRole('tab', { name: tabName })
+        .getByRole("tab", { name: tabName })
         .or(page.locator(`button:has-text("${tabName}")`));
 
       const isVisible = await tab
@@ -200,19 +200,19 @@ test.describe('Authentication - Admin Access', () => {
     }
   });
 
-  test('should access all admin sub-routes', async ({ page }) => {
+  test("should access all admin sub-routes", async ({ page }) => {
     for (const route of ADMIN_ROUTES) {
       await navigateTo(page, route);
       await waitForPageLoad(page);
 
-      expect(page.url()).toContain(route.replace(/\/$/, ''));
+      expect(page.url()).toContain(route.replace(/\/$/, ""));
       console.log(`✅ Admin route ${route} accessible`);
     }
   });
 });
 
-test.describe('Authentication - Public Routes', () => {
-  test('should access public routes without authentication', async ({
+test.describe("Authentication - Public Routes", () => {
+  test("should access public routes without authentication", async ({
     page,
   }) => {
     // Test a subset of public routes
@@ -223,7 +223,7 @@ test.describe('Authentication - Public Routes', () => {
       await waitForPageLoad(page);
 
       // Should load without redirecting to login
-      const hasContent = await page.locator('body').textContent();
+      const hasContent = await page.locator("body").textContent();
       expect(hasContent).toBeTruthy();
 
       console.log(`✅ Public route ${route} accessible`);
@@ -231,8 +231,8 @@ test.describe('Authentication - Public Routes', () => {
   });
 });
 
-test.describe('Authentication - Session State', () => {
-  test('should show different UI elements based on auth state', async ({
+test.describe("Authentication - Session State", () => {
+  test("should show different UI elements based on auth state", async ({
     page,
   }) => {
     // Check UI before login
@@ -253,10 +253,10 @@ test.describe('Authentication - Session State', () => {
     await waitForPageLoad(page);
 
     // Page should load regardless of auth state
-    const pageContent = await page.locator('body').textContent();
+    const pageContent = await page.locator("body").textContent();
     expect(pageContent).toBeTruthy();
 
     console.log(`Login button before login: ${loginVisibleBefore}`);
-    console.log('✅ Auth state UI test completed');
+    console.log("✅ Auth state UI test completed");
   });
 });

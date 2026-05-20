@@ -5,13 +5,13 @@
  * (gamesPlayed, gamesWon, averageFeedbackScore, reputationScore, intel stats).
  */
 
-import { afterAll, beforeAll, describe, expect, mock, test } from 'bun:test';
-import { db } from '@feed/db';
-import { generateSnowflakeId } from '@feed/shared';
-import { NextRequest } from 'next/server';
+import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
+import { db } from "@feed/db";
+import { generateSnowflakeId } from "@feed/shared";
+import { NextRequest } from "next/server";
 
 // Mock agent0 sync to prevent race conditions in tests
-mock.module('@feed/agents/agent0/reputation/agent0-reputation-sync', () => ({
+mock.module("@feed/agents/agent0/reputation/agent0-reputation-sync", () => ({
   submitFeedbackToAgent0: async () => {
     return { submitted: true };
   },
@@ -22,10 +22,10 @@ mock.module('@feed/agents/agent0/reputation/agent0-reputation-sync', () => ({
 
 // Dynamic import to ensure mock is used
 const { POST: submitGameFeedback } = await import(
-  '@/app/api/feedback/game-to-agent/route'
+  "@/app/api/feedback/game-to-agent/route"
 );
 
-describe('game feedback updates reputation metrics', () => {
+describe("game feedback updates reputation metrics", () => {
   let agentId: string;
 
   beforeAll(async () => {
@@ -34,7 +34,7 @@ describe('game feedback updates reputation metrics', () => {
       data: {
         id: agentId,
         username: `agent-rep-${Date.now()}`,
-        displayName: 'Reputation Test Agent',
+        displayName: "Reputation Test Agent",
         isAgent: true,
         updatedAt: new Date(),
       },
@@ -47,22 +47,22 @@ describe('game feedback updates reputation metrics', () => {
     await db.user.delete({ where: { id: agentId } });
   });
 
-  test('POST /api/feedback/game-to-agent increments metrics and reputation', async () => {
+  test("POST /api/feedback/game-to-agent increments metrics and reputation", async () => {
     const payload = {
       agentId,
       gameId: `game-${Date.now()}`,
       score: 85,
       won: true,
-      metadata: { source: 'integration-test' },
+      metadata: { source: "integration-test" },
     };
 
     const request = new NextRequest(
-      'http://localhost/api/feedback/game-to-agent',
+      "http://localhost/api/feedback/game-to-agent",
       {
-        method: 'POST',
+        method: "POST",
         body: JSON.stringify(payload),
-        headers: new Headers({ 'Content-Type': 'application/json' }),
-      }
+        headers: new Headers({ "Content-Type": "application/json" }),
+      },
     );
 
     const response = await submitGameFeedback(request);

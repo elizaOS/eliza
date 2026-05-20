@@ -1,7 +1,7 @@
-import type { PackManifest } from '@feed/shared';
-import { actors } from './actors-index';
-import { correlations } from './correlations';
-import { organizations } from './organizations-index';
+import type { PackManifest } from "@feed/shared";
+import { actors } from "./actors-index";
+import { correlations } from "./correlations";
+import { organizations } from "./organizations-index";
 
 /**
  * The 30 Under 30: House of Cards pack manifest.
@@ -10,14 +10,14 @@ import { organizations } from './organizations-index';
  * companies slowly collapse, their lies unravel, and their feuds escalate.
  */
 export const manifest: PackManifest = {
-  id: 'corporate-30-under-30',
-  name: '30 Under 30: House of Cards',
+  id: "corporate-30-under-30",
+  name: "30 Under 30: House of Cards",
   description:
     "Silicon Valley's most promising young founders are all secretly terrible people. Fake metrics, Ponzi schemes, SEC investigations, and unhinged Twitter beefs.",
-  version: '1.0.0',
-  tone: 'satirical',
+  version: "1.0.0",
+  tone: "satirical",
   premise:
-    '30 fictional tech founders compete in prediction markets while their companies slowly collapse, their lies unravel, and their feuds escalate.',
+    "30 fictional tech founders compete in prediction markets while their companies slowly collapse, their lies unravel, and their feuds escalate.",
 
   actorIds: actors.map((actor) => actor.id),
 
@@ -25,53 +25,53 @@ export const manifest: PackManifest = {
 
   rivalries: [
     // Fund managers with opposing philosophies
-    ['chad-sterling', 'axel-frost'],
+    ["chad-sterling", "axel-frost"],
     // Competing AI founders
-    ['priya-kapoor', 'sienna-blake'],
+    ["priya-kapoor", "sienna-blake"],
     // Cybersecurity rivals
-    ['viktor-koval', 'colt-baker'],
+    ["viktor-koval", "colt-baker"],
     // Ethics vs profit in sustainability
-    ['iris-chen', 'zara-okonkwo'],
+    ["iris-chen", "zara-okonkwo"],
     // Philosophy bros
-    ['jasper-thorne', 'destiny-washington'],
+    ["jasper-thorne", "destiny-washington"],
     // Competing biotech/health founders
-    ['serena-wright', 'luna-reyes'],
+    ["serena-wright", "luna-reyes"],
     // Data/media manipulation rivals
-    ['talia-morgan', 'marco-deluca'],
+    ["talia-morgan", "marco-deluca"],
     // Finance world feuds
-    ['kai-zhang', 'dante-russo'],
+    ["kai-zhang", "dante-russo"],
     // Robotics vs logistics (automation debate)
-    ['mika-tanaka', 'wolf-henderson'],
+    ["mika-tanaka", "wolf-henderson"],
     // Crypto delusionals
-    ['brock-whitfield', 'rio-vasquez'],
+    ["brock-whitfield", "rio-vasquez"],
     // Clean energy vs mining
-    ['nova-sinclair', 'zara-okonkwo'],
+    ["nova-sinclair", "zara-okonkwo"],
     // Growth hacker vs ethical AI
-    ['juno-park', 'iris-chen'],
+    ["juno-park", "iris-chen"],
   ],
 
   orgPriorities: {
     major: [
-      'sterling-ventures',
-      'neuraspark',
-      'aphelion-capital',
-      'sakura-robotics',
-      'dragonpay',
-      'stellar-commerce',
-      'catalyst-bio',
-      'meridian-systems',
-      'prism-analytics',
-      'polar-capital',
+      "sterling-ventures",
+      "neuraspark",
+      "aphelion-capital",
+      "sakura-robotics",
+      "dragonpay",
+      "stellar-commerce",
+      "catalyst-bio",
+      "meridian-systems",
+      "prism-analytics",
+      "polar-capital",
     ],
     secondary: [
-      'aether-energy',
-      'lumen-ai',
-      'kibali-mining-tech',
-      'atlas-logistics',
-      'harmonyos',
-      'nimbus-cloud',
+      "aether-energy",
+      "lumen-ai",
+      "kibali-mining-tech",
+      "atlas-logistics",
+      "harmonyos",
+      "nimbus-cloud",
     ],
-    media: ['olympus-media'],
+    media: ["olympus-media"],
   },
 
   correlations,

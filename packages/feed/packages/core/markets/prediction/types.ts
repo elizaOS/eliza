@@ -5,16 +5,16 @@ import type {
   FeeConfig,
   FeeProcessor,
   WalletPort,
-} from '../shared/common';
+} from "../shared/common";
 
-export type PredictionSide = 'yes' | 'no';
+export type PredictionSide = "yes" | "no";
 
 // Domain records (DB-facing)
 export interface QuestionRecord {
   id: string;
   questionNumber?: number;
   text: string;
-  status: 'active' | 'resolved' | 'cancelled';
+  status: "active" | "resolved" | "cancelled";
   resolutionDate: Date;
   resolvedOutcome?: boolean | null;
   createdDate?: Date;
@@ -34,7 +34,7 @@ export interface PredictionMarketRecord {
   resolution?: boolean | null;
   resolutionProofUrl?: string | null;
   resolutionDescription?: string | null;
-  status?: 'active' | 'resolved' | 'cancelled';
+  status?: "active" | "resolved" | "cancelled";
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -46,7 +46,7 @@ export interface PredictionPositionRecord {
   side: PredictionSide;
   shares: number;
   avgPrice: number;
-  status?: 'active' | 'closed' | 'resolved' | 'cancelled' | 'voided';
+  status?: "active" | "closed" | "resolved" | "cancelled" | "voided";
   outcome?: boolean | null;
   pnl?: number;
   resolvedAt?: Date | null;
@@ -61,8 +61,8 @@ export interface PredictionPriceSnapshotRecord {
   yesShares: number;
   noShares: number;
   liquidity: number;
-  eventType: 'trade' | 'resolution';
-  source: 'user_trade' | 'npc_trade' | 'system';
+  eventType: "trade" | "resolution";
+  source: "user_trade" | "npc_trade" | "system";
   createdAt?: Date;
 }
 
@@ -86,30 +86,30 @@ export interface PredictionDbPort {
       gameId?: string | null;
       dayNumber?: number | null;
       initialYesProbability?: number;
-    }
+    },
   ): Promise<PredictionMarketRecord>;
   updateMarketState(
     marketId: string,
     updates: Partial<
       Pick<
         PredictionMarketRecord,
-        | 'yesShares'
-        | 'noShares'
-        | 'liquidity'
-        | 'resolved'
-        | 'resolution'
-        | 'resolutionProofUrl'
-        | 'resolutionDescription'
+        | "yesShares"
+        | "noShares"
+        | "liquidity"
+        | "resolved"
+        | "resolution"
+        | "resolutionProofUrl"
+        | "resolutionDescription"
       >
-    >
+    >,
   ): Promise<PredictionMarketRecord>;
   getPosition(
     userId: string,
     marketId: string,
-    side: PredictionSide
+    side: PredictionSide,
   ): Promise<PredictionPositionRecord | null>;
   upsertPosition(
-    position: Omit<PredictionPositionRecord, 'id'> & { id?: string }
+    position: Omit<PredictionPositionRecord, "id"> & { id?: string },
   ): Promise<PredictionPositionRecord>;
   deletePosition(positionId: string): Promise<void>;
   listPositionsForMarket(marketId: string): Promise<PredictionPositionRecord[]>;
@@ -190,6 +190,6 @@ export interface PredictionServiceDeps {
   clock?: ClockPort;
   fees: FeeConfig;
   feeProcessor?: FeeProcessor;
-  tradeSource?: PredictionPriceSnapshotRecord['source'];
-  tradeActorType?: 'user' | 'npc';
+  tradeSource?: PredictionPriceSnapshotRecord["source"];
+  tradeActorType?: "user" | "npc";
 }

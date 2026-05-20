@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { BookOpen } from 'lucide-react';
-import type { StoriesTopic } from '../hooks/useStoriesFeed';
+import { BookOpen } from "lucide-react";
+import type { StoriesTopic } from "../hooks/useStoriesFeed";
 
 interface DailyTopicBannerProps {
   topic: StoriesTopic;

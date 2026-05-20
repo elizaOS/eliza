@@ -1,15 +1,16 @@
-'use client';
+"use client";
 
-import { MessageCircle } from 'lucide-react';
-import React, { useMemo } from 'react';
-import { Separator } from '@/components/shared/Separator';
-import { ChatViewHeader } from './ChatViewHeader';
-import { FeedbackMessages } from './FeedbackMessages';
-import type { MentionableAgent } from './MentionAutocomplete';
-import { MessageInput } from './MessageInput';
-import { MessageList } from './MessageList';
-import { NftVerificationBanner } from './NftVerificationBanner';
-import type { ChatDetails, Message, ReplyToMessage } from './types';
+import { MessageCircle } from "lucide-react";
+import type React from "react";
+import { useMemo } from "react";
+import { Separator } from "@/components/shared/Separator";
+import { ChatViewHeader } from "./ChatViewHeader";
+import { FeedbackMessages } from "./FeedbackMessages";
+import type { MentionableAgent } from "./MentionAutocomplete";
+import { MessageInput } from "./MessageInput";
+import { MessageList } from "./MessageList";
+import { NftVerificationBanner } from "./NftVerificationBanner";
+import type { ChatDetails, Message, ReplyToMessage } from "./types";
 
 interface ChatViewProps {
   chatDetails: ChatDetails | null;
@@ -35,7 +36,7 @@ interface ChatViewProps {
   onToggleReaction?: (
     messageId: string,
     emoji: string,
-    currentlyReactedByMe: boolean
+    currentlyReactedByMe: boolean,
   ) => void;
   /** Message being replied to */
   replyToMessage?: ReplyToMessage | null;

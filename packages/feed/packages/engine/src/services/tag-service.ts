@@ -21,10 +21,10 @@ import {
   tags,
   trendingTags,
   withTransaction,
-} from '@feed/db';
-import { generateSnowflakeId, logger } from '@feed/shared';
-import OpenAI from 'openai';
-import { isPromptLoggingEnabled, logPrompt } from '../utils/prompt-logger';
+} from "@feed/db";
+import { generateSnowflakeId, logger } from "@feed/shared";
+import OpenAI from "openai";
+import { isPromptLoggingEnabled, logPrompt } from "../utils/prompt-logger";
 
 // =============================================================================
 // Types
@@ -86,12 +86,10 @@ type OpenAIClient = OpenAI;
 
 const apiKey = process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY;
 const baseURL = process.env.GROQ_API_KEY
-  ? process.env.GROQ_BASE_URL || 'https://api.groq.com/openai/v1'
-  : 'https://api.openai.com/v1';
-const suppressOptionalLlmWarnings = ['1', 'true', 'yes'].includes(
-  (process.env.FEED_SUPPRESS_OPTIONAL_LLM_WARNINGS || '')
-    .trim()
-    .toLowerCase()
+  ? process.env.GROQ_BASE_URL || "https://api.groq.com/openai/v1"
+  : "https://api.openai.com/v1";
+const suppressOptionalLlmWarnings = ["1", "true", "yes"].includes(
+  (process.env.FEED_SUPPRESS_OPTIONAL_LLM_WARNINGS || "").trim().toLowerCase(),
 );
 
 let openaiClient: OpenAIClient | null = null;
@@ -124,16 +122,16 @@ async function getOpenAIClient(): Promise<OpenAIClient | null> {
  * Generate 1-3 organic tags from post content using LLM
  */
 export async function generateTagsFromPost(
-  content: string
+  content: string,
 ): Promise<GeneratedTag[]> {
   const openai = await getOpenAIClient();
 
   if (!openai) {
     if (!suppressOptionalLlmWarnings) {
       logger.warn(
-        'Tag generation skipped - no GROQ_API_KEY or OPENAI_API_KEY configured',
+        "Tag generation skipped - no GROQ_API_KEY or OPENAI_API_KEY configured",
         undefined,
-        'TagService'
+        "TagService",
       );
     }
     return [];
@@ -188,19 +186,19 @@ Return ONLY valid XML:
 If no good tags, return: <response><tags></tags></response>`;
 
   const model = process.env.GROQ_API_KEY
-    ? 'llama-3.1-8b-instant'
-    : 'gpt-5-nano';
+    ? "llama-3.1-8b-instant"
+    : "gpt-5-nano";
 
   const response = await openai.chat.completions.create({
     model,
     messages: [
       {
-        role: 'system',
+        role: "system",
         content:
-          'You are an XML-only assistant for tag extraction. You must respond ONLY with valid XML. No JSON, no explanations, no markdown.',
+          "You are an XML-only assistant for tag extraction. You must respond ONLY with valid XML. No JSON, no explanations, no markdown.",
       },
       {
-        role: 'user',
+        role: "user",
         content: prompt,
       },
     ],
@@ -212,11 +210,11 @@ If no good tags, return: <response><tags></tags></response>`;
 
   if (isPromptLoggingEnabled()) {
     await logPrompt({
-      promptType: 'tag_generation',
+      promptType: "tag_generation",
       input: `System: You are an XML-only assistant for tag extraction. You must respond ONLY with valid XML. No JSON, no explanations, no markdown.\n\nUser: ${prompt}`,
-      output: contentText || '',
+      output: contentText || "",
       metadata: {
-        provider: process.env.GROQ_API_KEY ? 'groq' : 'openai',
+        provider: process.env.GROQ_API_KEY ? "groq" : "openai",
         model,
         temperature: 0.3,
         maxTokens: 500,
@@ -226,16 +224,16 @@ If no good tags, return: <response><tags></tags></response>`;
 
   if (!contentText) {
     logger.warn(
-      'No content in tag generation response',
+      "No content in tag generation response",
       { content },
-      'TagService'
+      "TagService",
     );
     return [];
   }
 
   const xmlContent = contentText
-    .replace(/```xml\n?/g, '')
-    .replace(/```\n?/g, '')
+    .replace(/```xml\n?/g, "")
+    .replace(/```\n?/g, "")
     .trim();
 
   const parsedTags: Array<{ displayName: string; category?: string }> = [];
@@ -247,23 +245,23 @@ If no good tags, return: <response><tags></tags></response>`;
     if (!tagContent) continue;
 
     const displayNameMatch = tagContent.match(
-      /<displayName>(.*?)<\/displayName>/
+      /<displayName>(.*?)<\/displayName>/,
     );
     const categoryMatch = tagContent.match(/<category>(.*?)<\/category>/);
 
-    if (displayNameMatch && displayNameMatch[1]) {
+    if (displayNameMatch?.[1]) {
       const displayName = displayNameMatch[1].trim();
       const genericTags = [
-        'ai',
-        'tech',
-        'news',
-        'breaking',
-        'market',
-        'update',
-        'latest',
+        "ai",
+        "tech",
+        "news",
+        "breaking",
+        "market",
+        "update",
+        "latest",
       ];
       if (genericTags.includes(displayName.toLowerCase())) {
-        logger.debug('Skipping generic tag', { displayName }, 'TagService');
+        logger.debug("Skipping generic tag", { displayName }, "TagService");
         continue;
       }
 
@@ -276,24 +274,24 @@ If no good tags, return: <response><tags></tags></response>`;
 
   if (parsedTags.length === 0) {
     logger.debug(
-      'No specific tags extracted from post',
+      "No specific tags extracted from post",
       {
         xmlPreview: xmlContent.substring(0, 200),
         contentPreview: content.substring(0, 100),
       },
-      'TagService'
+      "TagService",
     );
   }
 
   const generatedTags: GeneratedTag[] = parsedTags
-    .filter((tag) => tag.displayName && typeof tag.displayName === 'string')
+    .filter((tag) => tag.displayName && typeof tag.displayName === "string")
     .map((tag) => {
       const displayName = tag.displayName.trim();
       const name = displayName
         .toLowerCase()
-        .replace(/[^\w\s-]/g, '')
-        .replace(/\s+/g, '-')
-        .replace(/-+/g, '-')
+        .replace(/[^\w\s-]/g, "")
+        .replace(/\s+/g, "-")
+        .replace(/-+/g, "-")
         .trim();
 
       return {
@@ -305,13 +303,13 @@ If no good tags, return: <response><tags></tags></response>`;
     .filter((tag) => tag.name.length > 0 && tag.displayName.length <= 50);
 
   logger.debug(
-    'Generated tags from post',
+    "Generated tags from post",
     {
       content: content.slice(0, 100),
       tagsCount: generatedTags.length,
       tags: generatedTags,
     },
-    'TagService'
+    "TagService",
   );
 
   return generatedTags;
@@ -321,7 +319,7 @@ If no good tags, return: <response><tags></tags></response>`;
  * Generate tags in batch for multiple posts
  */
 export async function generateTagsForPosts(
-  posts: Array<{ id: string; content: string }>
+  posts: Array<{ id: string; content: string }>,
 ): Promise<Map<string, GeneratedTag[]>> {
   const results = new Map<string, GeneratedTag[]>();
 
@@ -357,7 +355,7 @@ export async function generateTagsForPosts(
  */
 export async function storeTagsForPost(
   postId: string,
-  generatedTags: GeneratedTag[]
+  generatedTags: GeneratedTag[],
 ): Promise<void> {
   if (generatedTags.length === 0) {
     return;
@@ -375,7 +373,7 @@ export async function storeTagsForPost(
 
   if (tagsToCreate.length > 0) {
     const tagIds = await Promise.all(
-      tagsToCreate.map(() => generateSnowflakeId())
+      tagsToCreate.map(() => generateSnowflakeId()),
     );
 
     for (let index = 0; index < tagsToCreate.length; index++) {
@@ -404,20 +402,20 @@ export async function storeTagsForPost(
       .where(
         inArray(
           tags.name,
-          tagsToCreate.map((t) => t.name)
-        )
+          tagsToCreate.map((t) => t.name),
+        ),
       );
 
     createdTags.forEach((t) => existingTagMap.set(t.name, t));
     logger.debug(
-      'Created/fetched new tags',
+      "Created/fetched new tags",
       { count: createdTags.length },
-      'TagService'
+      "TagService",
     );
   }
 
   const postTagIds = await Promise.all(
-    generatedTags.map(() => generateSnowflakeId())
+    generatedTags.map(() => generateSnowflakeId()),
   );
 
   for (let idx = 0; idx < generatedTags.length; idx++) {
@@ -443,9 +441,9 @@ export async function storeTagsForPost(
   }
 
   logger.debug(
-    'Stored tags for post',
+    "Stored tags for post",
     { postId, tagCount: generatedTags.length },
-    'TagService'
+    "TagService",
   );
 }
 
@@ -467,7 +465,7 @@ export async function getTagsForPost(postId: string) {
  */
 export async function getPostsByTag(
   tagName: string,
-  options: { limit?: number; offset?: number } = {}
+  options: { limit?: number; offset?: number } = {},
 ) {
   const { limit = 20, offset = 0 } = options;
 
@@ -511,7 +509,7 @@ export async function getPostsByTag(
  */
 export async function getTagStatistics(
   windowStart: Date,
-  windowEnd: Date
+  windowEnd: Date,
 ): Promise<
   Array<{
     tagId: string;
@@ -531,7 +529,7 @@ export async function getTagStatistics(
     where: (pt, { and: andOp, gte: whereGte, lte: whereLte }) =>
       andOp(
         whereGte(pt.createdAt, windowStart),
-        whereLte(pt.createdAt, windowEnd)
+        whereLte(pt.createdAt, windowEnd),
       ),
     with: {
       tag: true,
@@ -608,10 +606,10 @@ export async function storeTrendingTags(
     relatedContext?: string;
   }>,
   windowStart: Date,
-  windowEnd: Date
+  windowEnd: Date,
 ): Promise<void> {
   const trendingTagIds = await Promise.all(
-    tagsList.map(() => generateSnowflakeId())
+    tagsList.map(() => generateSnowflakeId()),
   );
 
   await withTransaction(async (tx) => {
@@ -636,9 +634,9 @@ export async function storeTrendingTags(
   });
 
   logger.info(
-    'Stored trending tags',
+    "Stored trending tags",
     { count: tagsList.length, windowStart, windowEnd },
-    'TagService'
+    "TagService",
   );
 }
 
@@ -646,7 +644,7 @@ export async function storeTrendingTags(
  * Get current trending tags (most recent calculation)
  */
 export async function getCurrentTrendingTags(
-  limit = 10
+  limit = 10,
 ): Promise<TrendingTagWithTag[]> {
   const [latestCalculation] = await db
     .select({ calculatedAt: trendingTags.calculatedAt })
@@ -673,7 +671,7 @@ export async function getCurrentTrendingTags(
  */
 export async function getRelatedTags(
   tagId: string,
-  limit = 3
+  limit = 3,
 ): Promise<string[]> {
   const postsWithTagResult = await db
     .select({ postId: postTags.postId })

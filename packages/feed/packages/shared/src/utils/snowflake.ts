@@ -105,7 +105,7 @@ class SnowflakeGenerator {
 
     // Timestamp should never go backwards
     if (timestamp < this.lastTimestamp) {
-      throw new Error('Clock moved backwards. Refusing to generate ID.');
+      throw new Error("Clock moved backwards. Refusing to generate ID.");
     }
 
     this.lastTimestamp = timestamp;
@@ -138,7 +138,7 @@ class SnowflakeGenerator {
     workerId: number;
     sequence: number;
   } {
-    const idBigInt = typeof id === 'string' ? BigInt(id.trim()) : id;
+    const idBigInt = typeof id === "string" ? BigInt(id.trim()) : id;
 
     const timestamp = (idBigInt >> TIMESTAMP_SHIFT) + EPOCH;
     const workerId = (idBigInt >> WORKER_SHIFT) & MAX_WORKER_ID;
@@ -156,7 +156,7 @@ class SnowflakeGenerator {
    */
   static isValid(id: string): boolean {
     const s = id.trim();
-    if (s === '') return false;
+    if (s === "") return false;
     try {
       const idBigInt = BigInt(s);
       if (idBigInt < 0n || idBigInt >= 1n << 63n) {

@@ -1,5 +1,5 @@
-import { definePrompt } from '../define-prompt';
-import { PARODY_NAME_RULES } from '../shared-sections';
+import { definePrompt } from "../define-prompt";
+import { PARODY_NAME_RULES } from "../shared-sections";
 
 /**
  * Prompt for generating announcement posts for significant stock price movements.
@@ -11,10 +11,10 @@ import { PARODY_NAME_RULES } from '../shared-sections';
  * Returns XML with price announcement post.
  */
 export const priceAnnouncement = definePrompt({
-  id: 'price-announcement',
-  version: '3.0.0',
-  category: 'game',
-  description: 'Price announcements with narrative context',
+  id: "price-announcement",
+  version: "3.0.0",
+  category: "game",
+  description: "Price announcements with narrative context",
   temperature: 0.7,
   maxTokens: 500,
   template: `{{realityGrounding}}

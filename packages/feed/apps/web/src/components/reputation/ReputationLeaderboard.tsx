@@ -25,12 +25,12 @@
  * />
  * ```
  */
-'use client';
+"use client";
 
-import { cn } from '@feed/shared';
-import { Target, TrendingUp, Trophy } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { apiUrl } from '@/utils/api-url';
+import { cn } from "@feed/shared";
+import { Target, TrendingUp, Trophy } from "lucide-react";
+import { useEffect, useState } from "react";
+import { apiUrl } from "@/utils/api-url";
 
 /**
  * Leaderboard entry structure for reputation leaderboard.
@@ -75,7 +75,7 @@ interface ReputationLeaderboardProps {
 export function ReputationLeaderboard({
   limit = 50,
   minGames = 5,
-  className = '',
+  className = "",
 }: ReputationLeaderboardProps) {
   const [data, setData] = useState<LeaderboardData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -85,8 +85,8 @@ export function ReputationLeaderboard({
       setLoading(true);
       const response = await fetch(
         apiUrl(
-          `/api/reputation/leaderboard?limit=${limit}&minGames=${minGames}`
-        )
+          `/api/reputation/leaderboard?limit=${limit}&minGames=${minGames}`,
+        ),
       );
       const result = await response.json();
 
@@ -101,7 +101,7 @@ export function ReputationLeaderboard({
 
   if (loading) {
     return (
-      <div className={cn('rounded-2xl bg-sidebar p-4', className)}>
+      <div className={cn("rounded-2xl bg-sidebar p-4", className)}>
         <div className="text-muted-foreground text-sm">
           Loading leaderboard...
         </div>
@@ -111,7 +111,7 @@ export function ReputationLeaderboard({
 
   if (!data || data.leaderboard.length === 0) {
     return (
-      <div className={cn('rounded-2xl bg-sidebar p-4', className)}>
+      <div className={cn("rounded-2xl bg-sidebar p-4", className)}>
         <div className="text-muted-foreground text-sm">
           No leaderboard data available
         </div>
@@ -121,26 +121,26 @@ export function ReputationLeaderboard({
 
   const getTrustLevelColor = (trustLevel: string) => {
     switch (trustLevel.toLowerCase()) {
-      case 'elite':
-        return 'text-purple-500';
-      case 'veteran':
-        return 'text-blue-500';
-      case 'trusted':
-        return 'text-green-500';
+      case "elite":
+        return "text-purple-500";
+      case "veteran":
+        return "text-blue-500";
+      case "trusted":
+        return "text-green-500";
       default:
-        return 'text-gray-500';
+        return "text-gray-500";
     }
   };
 
   const getRankMedalColor = (rank: number) => {
-    if (rank === 1) return 'text-yellow-500';
-    if (rank === 2) return 'text-gray-400';
-    if (rank === 3) return 'text-orange-600';
-    return 'text-muted-foreground';
+    if (rank === 1) return "text-yellow-500";
+    if (rank === 2) return "text-gray-400";
+    if (rank === 3) return "text-orange-600";
+    return "text-muted-foreground";
   };
 
   return (
-    <div className={cn('space-y-4 rounded-2xl bg-sidebar p-4', className)}>
+    <div className={cn("space-y-4 rounded-2xl bg-sidebar p-4", className)}>
       {/* Header */}
       <div className="flex items-center justify-between">
         <h3 className="flex items-center gap-2 font-bold text-foreground text-lg">
@@ -158,15 +158,15 @@ export function ReputationLeaderboard({
           <div
             key={entry.userId}
             className={cn(
-              'flex items-center gap-3 rounded-lg bg-muted/30 p-3 transition-colors hover:bg-muted/50',
-              entry.rank <= 3 && 'border border-border/50'
+              "flex items-center gap-3 rounded-lg bg-muted/30 p-3 transition-colors hover:bg-muted/50",
+              entry.rank <= 3 && "border border-border/50",
             )}
           >
             {/* Rank */}
             <div className="w-8 shrink-0 text-center">
               {entry.rank <= 3 ? (
                 <Trophy
-                  className={cn('h-6 w-6', getRankMedalColor(entry.rank))}
+                  className={cn("h-6 w-6", getRankMedalColor(entry.rank))}
                 />
               ) : (
                 <span className="font-bold text-muted-foreground text-sm">
@@ -202,8 +202,8 @@ export function ReputationLeaderboard({
                 </div>
                 <div
                   className={cn(
-                    'font-medium text-xs capitalize',
-                    getTrustLevelColor(entry.trustLevel)
+                    "font-medium text-xs capitalize",
+                    getTrustLevelColor(entry.trustLevel),
                   )}
                 >
                   {entry.trustLevel}
@@ -249,7 +249,7 @@ export function ReputationLeaderboard({
       {/* Footer */}
       {data.leaderboard.length === data.metadata.limit && (
         <div className="border-border border-t pt-2 text-center text-muted-foreground text-xs">
-          Showing top {data.metadata.limit} agents. Minimum{' '}
+          Showing top {data.metadata.limit} agents. Minimum{" "}
           {data.metadata.minGames} games required.
         </div>
       )}

@@ -12,30 +12,30 @@
  *   bun run report:markets:health -- --watch --interval=30
  */
 
-import { parseArgs } from 'node:util';
-import { getRawDrizzle } from '@feed/db';
+import { parseArgs } from "node:util";
+import { getRawDrizzle } from "@feed/db";
 import {
   markets,
   perpMarketSnapshots,
   predictionPriceHistories,
-} from '@feed/db/schema';
-import { and, desc, eq, gte } from 'drizzle-orm';
+} from "@feed/db/schema";
+import { and, desc, eq, gte } from "drizzle-orm";
 
 // ---------------------------------------------------------------------------
 // CLI
 // ---------------------------------------------------------------------------
 const { values: args } = parseArgs({
   options: {
-    json: { type: 'boolean', default: false },
-    watch: { type: 'boolean', default: false },
-    interval: { type: 'string', default: '30' },
+    json: { type: "boolean", default: false },
+    watch: { type: "boolean", default: false },
+    interval: { type: "string", default: "30" },
   },
   strict: false,
 });
 
 const outputJson = args.json ?? false;
 const watchMode = args.watch ?? false;
-const intervalSec = Math.max(5, Number.parseInt(args.interval ?? '30', 10));
+const intervalSec = Math.max(5, Number.parseInt(args.interval ?? "30", 10));
 
 // ---------------------------------------------------------------------------
 // Thresholds (named so they're easy to tune)
@@ -53,13 +53,13 @@ const PERP_STALE_QUOTE_MIN = 30; // minutes since quoteUpdatedAt → STALE_QUOTE
 // ---------------------------------------------------------------------------
 // Color helpers
 // ---------------------------------------------------------------------------
-const reset = '\x1b[0m';
-const bold = '\x1b[1m';
-const red = '\x1b[31m';
-const yellow = '\x1b[33m';
-const green = '\x1b[32m';
-const cyan = '\x1b[36m';
-const dim = '\x1b[2m';
+const reset = "\x1b[0m";
+const bold = "\x1b[1m";
+const red = "\x1b[31m";
+const yellow = "\x1b[33m";
+const green = "\x1b[32m";
+const cyan = "\x1b[36m";
+const dim = "\x1b[2m";
 
 const OK = `${green}[OK]  ${reset}`;
 const WARN = `${yellow}[WARN]${reset}`;
@@ -68,7 +68,7 @@ function pct(n: number): string {
   return `${(n * 100).toFixed(1)}%`;
 }
 function usd(n: number): string {
-  return `$${n.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+  return `$${n.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
 }
 function price(n: number): string {
   return `$${n.toFixed(2)}`;
@@ -79,7 +79,7 @@ function price(n: number): string {
 // ---------------------------------------------------------------------------
 interface PredictionFlag {
   label: string;
-  type: 'EXTREME' | 'THIN' | 'VOLATILE' | 'EXPIRED_ACTIVE';
+  type: "EXTREME" | "THIN" | "VOLATILE" | "EXPIRED_ACTIVE";
 }
 
 interface PredictionMarketHealth {
@@ -97,11 +97,11 @@ interface PredictionMarketHealth {
 interface PerpFlag {
   label: string;
   type:
-    | 'STALE_INDEX'
-    | 'HIGH_FUNDING'
-    | 'STALE_QUOTE'
-    | 'PRICE_EXTREME'
-    | 'INVALID_PRICE';
+    | "STALE_INDEX"
+    | "HIGH_FUNDING"
+    | "STALE_QUOTE"
+    | "PRICE_EXTREME"
+    | "INVALID_PRICE";
 }
 
 interface PerpMarketHealth {
@@ -139,7 +139,7 @@ async function analyzeMarkets(): Promise<HealthReport> {
   const db = getRawDrizzle();
   const now = new Date();
   const historyFrom = new Date(
-    now.getTime() - PRED_HISTORY_WINDOW_MIN * 60_000
+    now.getTime() - PRED_HISTORY_WINDOW_MIN * 60_000,
   );
 
   // --- Prediction markets ---
@@ -162,19 +162,19 @@ async function analyzeMarkets(): Promise<HealthReport> {
 
     if (yesOdds < PRED_EXTREME_LOW || yesOdds > PRED_EXTREME_HIGH) {
       flags.push({
-        type: 'EXTREME',
+        type: "EXTREME",
         label: `YES odds ${pct(yesOdds)} (outside ${pct(PRED_EXTREME_LOW)}–${pct(PRED_EXTREME_HIGH)})`,
       });
     }
     if (liquidity < PRED_THIN_LIQUIDITY) {
       flags.push({
-        type: 'THIN',
+        type: "THIN",
         label: `liquidity ${usd(liquidity)} (< ${usd(PRED_THIN_LIQUIDITY)} threshold)`,
       });
     }
     if (market.endDate < now) {
       flags.push({
-        type: 'EXPIRED_ACTIVE',
+        type: "EXPIRED_ACTIVE",
         label: `endDate ${market.endDate.toISOString()} is in the past (unresolved)`,
       });
     }
@@ -189,8 +189,8 @@ async function analyzeMarkets(): Promise<HealthReport> {
       .where(
         and(
           eq(predictionPriceHistories.marketId, market.id),
-          gte(predictionPriceHistories.createdAt, historyFrom)
-        )
+          gte(predictionPriceHistories.createdAt, historyFrom),
+        ),
       )
       .orderBy(desc(predictionPriceHistories.createdAt))
       .limit(50);
@@ -203,7 +203,7 @@ async function analyzeMarkets(): Promise<HealthReport> {
       swingPct = (maxP - minP) * 100;
       if (swingPct > PRED_SWING_WARN_PCT) {
         flags.push({
-          type: 'VOLATILE',
+          type: "VOLATILE",
           label: `${swingPct.toFixed(1)}ppt swing in last ${PRED_HISTORY_WINDOW_MIN}min (> ${PRED_SWING_WARN_PCT}ppt threshold)`,
         });
       }
@@ -230,13 +230,13 @@ async function analyzeMarkets(): Promise<HealthReport> {
   for (const snap of perpSnapshots) {
     const flags: PerpFlag[] = [];
     const fundingRateAnnual =
-      typeof snap.fundingRate === 'object' && snap.fundingRate !== null
+      typeof snap.fundingRate === "object" && snap.fundingRate !== null
         ? ((snap.fundingRate as { rate?: number }).rate ?? 0)
         : 0;
 
     if (!Number.isFinite(snap.currentPrice) || snap.currentPrice <= 0) {
       flags.push({
-        type: 'INVALID_PRICE',
+        type: "INVALID_PRICE",
         label: `currentPrice invalid: ${snap.currentPrice}`,
       });
     }
@@ -250,7 +250,7 @@ async function analyzeMarkets(): Promise<HealthReport> {
         Math.abs(snap.currentPrice - snap.indexPrice) / snap.indexPrice;
       if (drift > PERP_STALE_INDEX_PCT) {
         flags.push({
-          type: 'STALE_INDEX',
+          type: "STALE_INDEX",
           label: `indexPrice ${price(snap.indexPrice)} vs currentPrice ${price(snap.currentPrice)} (${pct(drift)} drift)`,
         });
       }
@@ -258,7 +258,7 @@ async function analyzeMarkets(): Promise<HealthReport> {
 
     if (Math.abs(fundingRateAnnual) > PERP_HIGH_FUNDING_APR) {
       flags.push({
-        type: 'HIGH_FUNDING',
+        type: "HIGH_FUNDING",
         label: `annual funding rate ${pct(fundingRateAnnual)} (> ${pct(PERP_HIGH_FUNDING_APR)} threshold)`,
       });
     }
@@ -267,7 +267,7 @@ async function analyzeMarkets(): Promise<HealthReport> {
       const ageMins = (now.getTime() - snap.quoteUpdatedAt.getTime()) / 60_000;
       if (ageMins > PERP_STALE_QUOTE_MIN) {
         flags.push({
-          type: 'STALE_QUOTE',
+          type: "STALE_QUOTE",
           label: `quote last updated ${ageMins.toFixed(0)}min ago (> ${PERP_STALE_QUOTE_MIN}min)`,
         });
       }
@@ -287,7 +287,7 @@ async function analyzeMarkets(): Promise<HealthReport> {
   }
 
   const predWarnings = predictionResults.filter(
-    (m) => m.flags.length > 0
+    (m) => m.flags.length > 0,
   ).length;
   const perpWarnings = perpResults.filter((m) => m.flags.length > 0).length;
 
@@ -314,7 +314,7 @@ async function analyzeMarkets(): Promise<HealthReport> {
 function renderText(report: HealthReport): void {
   console.clear();
   console.log(
-    `\n${bold}${cyan}Market Health Report${reset}  ${dim}${report.generatedAt}${reset}\n`
+    `\n${bold}${cyan}Market Health Report${reset}  ${dim}${report.generatedAt}${reset}\n`,
   );
 
   // --- Predictions ---
@@ -331,15 +331,15 @@ function renderText(report: HealthReport): void {
         m.question.length > 55 ? `${m.question.slice(0, 52)}...` : m.question;
       const oddsStr = `YES ${pct(m.yesOdds)}`;
       const swingStr =
-        m.swingPct != null ? `  swing ${m.swingPct.toFixed(1)}ppt` : '';
+        m.swingPct != null ? `  swing ${m.swingPct.toFixed(1)}ppt` : "";
       console.log(
-        `${prefix} "${question}"  ${oddsStr}  liq ${usd(m.liquidity)}${swingStr}`
+        `${prefix} "${question}"  ${oddsStr}  liq ${usd(m.liquidity)}${swingStr}`,
       );
       for (const f of m.flags) {
         const icon =
-          f.type === 'VOLATILE'
+          f.type === "VOLATILE"
             ? yellow
-            : f.type === 'EXPIRED_ACTIVE'
+            : f.type === "EXPIRED_ACTIVE"
               ? red
               : yellow;
         console.log(`       ${icon}↳ ${f.type}: ${f.label}${reset}`);
@@ -361,20 +361,20 @@ function renderText(report: HealthReport): void {
   } else {
     // Sort: warnings first
     const sorted = [...perps.markets].sort(
-      (a, b) => b.flags.length - a.flags.length
+      (a, b) => b.flags.length - a.flags.length,
     );
     for (const m of sorted) {
       const hasFlags = m.flags.length > 0;
       const prefix = hasFlags ? WARN : OK;
       const spread =
-        m.spreadBps != null ? `  spread ${m.spreadBps.toFixed(0)}bps` : '';
+        m.spreadBps != null ? `  spread ${m.spreadBps.toFixed(0)}bps` : "";
       const funding = `  funding ${pct(m.fundingRateAnnual)}/yr`;
       const oi = `  OI ${usd(m.openInterest)}`;
       console.log(
-        `${prefix} ${m.ticker.padEnd(8)} cur ${price(m.currentPrice)}  idx ${m.indexPrice != null ? price(m.indexPrice) : 'n/a'}  mrk ${m.markPrice != null ? price(m.markPrice) : 'n/a'}${spread}${funding}${oi}`
+        `${prefix} ${m.ticker.padEnd(8)} cur ${price(m.currentPrice)}  idx ${m.indexPrice != null ? price(m.indexPrice) : "n/a"}  mrk ${m.markPrice != null ? price(m.markPrice) : "n/a"}${spread}${funding}${oi}`,
       );
       for (const f of m.flags) {
-        const icon = f.type === 'INVALID_PRICE' ? red : yellow;
+        const icon = f.type === "INVALID_PRICE" ? red : yellow;
         console.log(`           ${icon}↳ ${f.type}: ${f.label}${reset}`);
       }
     }
@@ -385,7 +385,7 @@ function renderText(report: HealthReport): void {
     console.log(`\n  ${summary}`);
   }
 
-  console.log('');
+  console.log("");
 }
 
 // ---------------------------------------------------------------------------
@@ -394,7 +394,7 @@ function renderText(report: HealthReport): void {
 async function main(): Promise<void> {
   if (watchMode) {
     console.log(
-      `${dim}Watching market health every ${intervalSec}s — Ctrl+C to stop${reset}`
+      `${dim}Watching market health every ${intervalSec}s — Ctrl+C to stop${reset}`,
     );
     while (true) {
       const report = await analyzeMarkets();
@@ -417,6 +417,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  console.error('market-health error:', err);
+  console.error("market-health error:", err);
   process.exit(1);
 });

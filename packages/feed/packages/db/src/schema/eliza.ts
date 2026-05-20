@@ -8,8 +8,8 @@
  *
  * Pattern borrowed from eliza-cloud-v2/db/schemas/eliza.ts.
  */
-// @ts-ignore — @elizaos/plugin-sql types may not resolve depending on package version
-import plugin from '@elizaos/plugin-sql';
+// @ts-expect-error — @elizaos/plugin-sql types may not resolve depending on package version
+import plugin from "@elizaos/plugin-sql";
 
 const pluginSchema = (plugin as { schema: Record<string, object> }).schema;
 

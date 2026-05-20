@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { cn } from '@feed/shared';
+import { cn } from "@feed/shared";
 import {
   Edit,
   Globe,
@@ -10,10 +10,10 @@ import {
   Sparkles,
   X,
   Zap,
-} from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { apiUrl } from '@/utils/api-url';
+} from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { apiUrl } from "@/utils/api-url";
 
 /**
  * World fact structure for world facts section.
@@ -50,10 +50,10 @@ interface WorldFactsData {
     topicLabel: string;
     summary: string;
     sourceType:
-      | 'auto'
-      | 'manual_override'
-      | 'fallback_previous_day'
-      | 'fallback_default';
+      | "auto"
+      | "manual_override"
+      | "fallback_previous_day"
+      | "fallback_default";
     isLocked: boolean;
   } | null;
   dailyTopicCandidates?: Array<{
@@ -90,15 +90,15 @@ export function WorldFactsSection() {
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [editingFact, setEditingFact] = useState<string | null>(null);
-  const [editValue, setEditValue] = useState<string>('');
-  const [newFactValue, setNewFactValue] = useState<string>('');
-  const [topicLabel, setTopicLabel] = useState('');
-  const [topicSummary, setTopicSummary] = useState('');
+  const [editValue, setEditValue] = useState<string>("");
+  const [newFactValue, setNewFactValue] = useState<string>("");
+  const [topicLabel, setTopicLabel] = useState("");
+  const [topicSummary, setTopicSummary] = useState("");
 
   const fetchData = useCallback(async () => {
-    const response = await fetch(apiUrl('/api/admin/world-facts'));
+    const response = await fetch(apiUrl("/api/admin/world-facts"));
     if (!response.ok) {
-      setError('Failed to fetch world facts');
+      setError("Failed to fetch world facts");
       setLoading(false);
       return;
     }
@@ -120,12 +120,12 @@ export function WorldFactsSection() {
 
   const handleAction = async (
     action: string,
-    actionData?: Record<string, unknown>
+    actionData?: Record<string, unknown>,
   ) => {
     setActionLoading(true);
-    const response = await fetch(apiUrl('/api/admin/world-facts'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    const response = await fetch(apiUrl("/api/admin/world-facts"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action, data: actionData }),
     });
 
@@ -145,23 +145,23 @@ export function WorldFactsSection() {
   };
 
   const saveEdit = async (fact: WorldFact) => {
-    await handleAction('update_fact', {
+    await handleAction("update_fact", {
       id: fact.id,
       value: editValue,
     });
     setEditingFact(null);
-    setEditValue('');
+    setEditValue("");
   };
 
-  const [newFactCategory, setNewFactCategory] = useState<'general'>('general');
+  const [newFactCategory, setNewFactCategory] = useState<"general">("general");
 
   const addFact = async () => {
     if (!newFactValue.trim()) return;
-    await handleAction('add_fact', {
+    await handleAction("add_fact", {
       value: newFactValue.trim(),
       category: newFactCategory,
     });
-    setNewFactValue('');
+    setNewFactValue("");
   };
 
   if (loading) {
@@ -176,7 +176,7 @@ export function WorldFactsSection() {
   if (error || !data) {
     return (
       <div className="p-8 text-center text-red-500">
-        {error || 'Failed to load world facts'}
+        {error || "Failed to load world facts"}
       </div>
     );
   }
@@ -203,7 +203,7 @@ export function WorldFactsSection() {
               className="rounded-lg bg-blue-500/20 px-4 py-2 text-blue-500 transition-colors hover:bg-blue-500/30 disabled:opacity-50"
             >
               <RefreshCw
-                className={cn('h-4 w-4', actionLoading && 'animate-spin')}
+                className={cn("h-4 w-4", actionLoading && "animate-spin")}
               />
             </button>
           </div>
@@ -217,20 +217,20 @@ export function WorldFactsSection() {
               </h4>
               <p className="text-sm">
                 {data.dailyTopic
-                  ? `${data.dailyTopic.topicLabel} (${data.dailyTopic.sourceType}${data.dailyTopic.isLocked ? ', locked' : ''})`
-                  : 'No topic selected yet'}
+                  ? `${data.dailyTopic.topicLabel} (${data.dailyTopic.sourceType}${data.dailyTopic.isLocked ? ", locked" : ""})`
+                  : "No topic selected yet"}
               </p>
             </div>
             <div className="flex gap-2">
               <button
-                onClick={() => handleAction('recompute_daily_topic')}
+                onClick={() => handleAction("recompute_daily_topic")}
                 disabled={actionLoading}
                 className="rounded-lg bg-cyan-500/20 px-3 py-2 text-cyan-500 transition-colors hover:bg-cyan-500/30 disabled:opacity-50"
               >
                 Recompute
               </button>
               <button
-                onClick={() => handleAction('clear_daily_topic_override')}
+                onClick={() => handleAction("clear_daily_topic_override")}
                 disabled={actionLoading}
                 className="rounded-lg bg-amber-500/20 px-3 py-2 text-amber-500 transition-colors hover:bg-amber-500/30 disabled:opacity-50"
               >
@@ -254,7 +254,7 @@ export function WorldFactsSection() {
             />
             <button
               onClick={() =>
-                handleAction('set_daily_topic_override', {
+                handleAction("set_daily_topic_override", {
                   topicLabel: topicLabel.trim(),
                   summary: topicSummary.trim(),
                 })
@@ -287,7 +287,7 @@ export function WorldFactsSection() {
         {/* Action Buttons */}
         <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
           <button
-            onClick={() => handleAction('fetch_rss')}
+            onClick={() => handleAction("fetch_rss")}
             disabled={actionLoading}
             className="flex items-center justify-center gap-2 rounded-lg bg-orange-500/20 px-4 py-3 text-orange-500 transition-colors hover:bg-orange-500/30 disabled:opacity-50"
           >
@@ -296,7 +296,7 @@ export function WorldFactsSection() {
           </button>
 
           <button
-            onClick={() => handleAction('generate_parodies')}
+            onClick={() => handleAction("generate_parodies")}
             disabled={actionLoading}
             className="flex items-center justify-center gap-2 rounded-lg bg-purple-500/20 px-4 py-3 text-purple-500 transition-colors hover:bg-purple-500/30 disabled:opacity-50"
           >
@@ -305,7 +305,7 @@ export function WorldFactsSection() {
           </button>
 
           <button
-            onClick={() => handleAction('generate_world_facts')}
+            onClick={() => handleAction("generate_world_facts")}
             disabled={actionLoading}
             className="flex items-center justify-center gap-2 rounded-lg bg-cyan-500/20 px-4 py-3 text-cyan-500 transition-colors hover:bg-cyan-500/30 disabled:opacity-50"
           >
@@ -314,7 +314,7 @@ export function WorldFactsSection() {
           </button>
 
           <button
-            onClick={() => handleAction('refresh_mappings')}
+            onClick={() => handleAction("refresh_mappings")}
             disabled={actionLoading}
             className="flex items-center justify-center gap-2 rounded-lg bg-green-500/20 px-4 py-3 text-green-500 transition-colors hover:bg-green-500/30 disabled:opacity-50"
           >
@@ -340,7 +340,7 @@ export function WorldFactsSection() {
               <select
                 value={newFactCategory}
                 onChange={(e) =>
-                  setNewFactCategory(e.target.value as 'general')
+                  setNewFactCategory(e.target.value as "general")
                 }
                 className="rounded-lg border border-border bg-background px-3 py-2 text-sm"
               >
@@ -353,7 +353,7 @@ export function WorldFactsSection() {
                 className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm"
                 rows={2}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                     e.preventDefault();
                     addFact();
                   }
@@ -372,7 +372,7 @@ export function WorldFactsSection() {
           {/* Facts List */}
           <div className="space-y-2">
             {data.facts
-              .filter((f) => f.category === 'general' || !f.category)
+              .filter((f) => f.category === "general" || !f.category)
               .map((fact) => (
                 <div
                   key={fact.id}
@@ -392,7 +392,7 @@ export function WorldFactsSection() {
                       </div>
                     )}
                     <div className="mt-1 text-muted-foreground text-xs">
-                      Last updated:{' '}
+                      Last updated:{" "}
                       {new Date(fact.lastUpdated).toLocaleString()}
                     </div>
                   </div>
@@ -410,7 +410,7 @@ export function WorldFactsSection() {
                         <button
                           onClick={() => {
                             setEditingFact(null);
-                            setEditValue('');
+                            setEditValue("");
                           }}
                           className="rounded-lg bg-red-500/20 p-2 text-red-500 transition-colors hover:bg-red-500/30"
                         >
@@ -427,7 +427,7 @@ export function WorldFactsSection() {
                         </button>
                         <button
                           onClick={() =>
-                            handleAction('delete_fact', { id: fact.id })
+                            handleAction("delete_fact", { id: fact.id })
                           }
                           disabled={actionLoading}
                           className="rounded-lg bg-red-500/20 p-2 text-red-500 transition-colors hover:bg-red-500/30 disabled:opacity-50"
@@ -453,10 +453,10 @@ export function WorldFactsSection() {
           <div className="rounded-lg border border-border bg-card p-4">
             <pre className="max-h-96 overflow-y-auto whitespace-pre-wrap font-mono text-muted-foreground text-sm">
               {data.realityGroundingContent ||
-                'No reality grounding content found.'}
+                "No reality grounding content found."}
             </pre>
             <p className="mt-2 text-muted-foreground text-xs">
-              This content is loaded from{' '}
+              This content is loaded from{" "}
               <code>src/data/reality-grounding.ts</code> and injected into
               prompts.
             </p>

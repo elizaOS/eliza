@@ -12,4 +12,4 @@ export {
   isOpenPerpPositionStateValid,
   MAX_PERP_USER_EXPOSURE,
   shouldLiquidate,
-} from './utils';
+} from "./utils";

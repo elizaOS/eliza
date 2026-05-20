@@ -1,1 +1,1 @@
-export { GET } from '@/app/api/auth/twitter/callback/route';
+export { GET } from "@/app/api/auth/twitter/callback/route";

@@ -39,7 +39,7 @@ export interface PoolMetrics {
 }
 
 export function getEffectiveLeverage(
-  leverage: number | null | undefined
+  leverage: number | null | undefined,
 ): number {
   return Number.isFinite(leverage) && Number(leverage) > 0
     ? Number(leverage)
@@ -48,7 +48,7 @@ export function getEffectiveLeverage(
 
 export function getPositionExposure(
   size: number | null | undefined,
-  leverage?: number | null
+  leverage?: number | null,
 ): number {
   const numericSize = Number(size ?? 0);
   if (!Number.isFinite(numericSize)) return 0;
@@ -64,13 +64,13 @@ export function buildFallbackMetricsByPool<TPool extends { id: string }>(
   activePools: TPool[],
   balances: Array<{ id: string; tradingBalance: string | null }>,
   positionRows: FallbackPositionRow[],
-  perpRows: FallbackPerpRow[]
+  perpRows: FallbackPerpRow[],
 ): Map<string, PoolMetrics> {
   const balanceByPoolId = new Map(
     balances.map(({ id, tradingBalance }) => [
       id,
-      Number.parseFloat(tradingBalance ?? '0'),
-    ])
+      Number.parseFloat(tradingBalance ?? "0"),
+    ]),
   );
 
   const perpIdsByPool = new Map<string, Set<string>>();
@@ -108,7 +108,7 @@ export function buildFallbackMetricsByPool<TPool extends { id: string }>(
 
   for (const position of positionRows) {
     if (
-      position.marketType === 'perp' &&
+      position.marketType === "perp" &&
       perpIdsByPool.get(position.poolId)?.has(position.id)
     ) {
       continue;
@@ -119,7 +119,7 @@ export function buildFallbackMetricsByPool<TPool extends { id: string }>(
 
     if (isOpen) {
       metrics.totalInvested +=
-        position.marketType === 'perp'
+        position.marketType === "perp"
           ? getPositionExposure(position.size, position.leverage)
           : getPositionExposure(position.size);
       metrics.unrealizedPnL += Number(position.unrealizedPnL ?? 0);
@@ -166,6 +166,6 @@ export function buildFallbackMetricsByPool<TPool extends { id: string }>(
           totalValue,
         },
       ];
-    })
+    }),
   );
 }

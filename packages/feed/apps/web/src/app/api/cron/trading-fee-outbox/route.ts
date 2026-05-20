@@ -3,26 +3,26 @@ import {
   requireCronAuth,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { drainTradingFeeOutboxBatch } from '@/lib/services/trading-fee-outbox';
+} from "@feed/api";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { drainTradingFeeOutboxBatch } from "@/lib/services/trading-fee-outbox";
 
-export const dynamic = 'force-dynamic';
-export const runtime = 'nodejs';
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 export const maxDuration = 120;
 
 const handler = async (request: NextRequest) => {
   const startTime = new Date();
 
-  requireCronAuth(request, { jobName: 'trading-fee-outbox' });
+  requireCronAuth(request, { jobName: "trading-fee-outbox" });
 
   const result = await drainTradingFeeOutboxBatch();
 
   logger.info(
-    'Trading fee outbox drain completed',
+    "Trading fee outbox drain completed",
     result,
-    'TradingFeeOutboxCron'
+    "TradingFeeOutboxCron",
   );
 
   const payload = {
@@ -30,7 +30,7 @@ const handler = async (request: NextRequest) => {
     ...result,
     timestamp: Date.now(),
   };
-  recordCronExecution('trading-fee-outbox', startTime, payload);
+  recordCronExecution("trading-fee-outbox", startTime, payload);
   return successResponse(payload);
 };
 

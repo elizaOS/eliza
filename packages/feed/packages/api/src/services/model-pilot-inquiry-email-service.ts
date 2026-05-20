@@ -4,15 +4,15 @@ import {
   type ModelPilotOutput,
   type ModelPilotReviewLevel,
   type ModelPilotScenario,
-} from '@feed/shared';
-import { escapeHtml } from '../utils/html';
+} from "@feed/shared";
+import { escapeHtml } from "../utils/html";
 import {
   normalizeEmail,
   resolveSendGridConfig,
   sendViaSendGrid,
-} from './email-utils';
+} from "./email-utils";
 
-const DEFAULT_NOTIFY_EMAIL = 'feed@elizalabs.ai';
+const DEFAULT_NOTIFY_EMAIL = "feed@elizalabs.ai";
 
 export interface ModelPilotInquiryPayload {
   senderEmail: string;
@@ -42,36 +42,36 @@ function buildPlainTextSummary(payload: ModelPilotInquiryPayload): string {
   });
 
   const lines = [
-    'Model pilot inquiry',
-    '',
+    "Model pilot inquiry",
+    "",
     `Contact: ${payload.senderEmail}`,
-    `Model provider: ${payload.modelProvider || '(not provided)'}`,
-    `Model name: ${payload.modelName || '(not provided)'}`,
-    `API endpoint: ${payload.apiEndpoint || '(not provided)'}`,
-    `Tool use: ${payload.toolUse ? 'yes' : 'no'}`,
-    `Memory: ${payload.memory ? 'yes' : 'no'}`,
-    '',
-    `Deliverables: ${payload.deliverables.join(', ') || '(none)'}`,
-    `Scenarios: ${payload.scenarios.join(', ') || '(none)'}`,
-    `Outputs: ${payload.outputs.join(', ') || '(none)'}`,
-    '',
+    `Model provider: ${payload.modelProvider || "(not provided)"}`,
+    `Model name: ${payload.modelName || "(not provided)"}`,
+    `API endpoint: ${payload.apiEndpoint || "(not provided)"}`,
+    `Tool use: ${payload.toolUse ? "yes" : "no"}`,
+    `Memory: ${payload.memory ? "yes" : "no"}`,
+    "",
+    `Deliverables: ${payload.deliverables.join(", ") || "(none)"}`,
+    `Scenarios: ${payload.scenarios.join(", ") || "(none)"}`,
+    `Outputs: ${payload.outputs.join(", ") || "(none)"}`,
+    "",
     `Concurrent agents: ${payload.concurrentAgents}`,
     `Scenario runs: ${payload.scenarioRuns}`,
     `Human review: ${payload.humanReview}`,
-    `Private deployment: ${payload.privateDeployment ? 'yes' : 'no'}`,
-    `Data exclusivity: ${payload.dataExclusivity ? 'yes' : 'no'}`,
-    '',
+    `Private deployment: ${payload.privateDeployment ? "yes" : "no"}`,
+    `Data exclusivity: ${payload.dataExclusivity ? "yes" : "no"}`,
+    "",
     `Estimated range (indicative): ${estimate}`,
-    '',
-    'This request was submitted through the Feed model pilot form.',
+    "",
+    "This request was submitted through the Feed model pilot form.",
   ];
 
-  return lines.join('\n');
+  return lines.join("\n");
 }
 
 function buildHtmlSummary(payload: ModelPilotInquiryPayload): string {
   const text = buildPlainTextSummary(payload);
-  const escaped = escapeHtml(text).replace(/\n/g, '<br/>');
+  const escaped = escapeHtml(text).replace(/\n/g, "<br/>");
   return `
     <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;">
       <h1 style="font-size:18px;margin:0 0 16px;">Model pilot inquiry</h1>
@@ -94,25 +94,25 @@ function getNotifyEmail(): string {
  * to each other).
  */
 export async function sendModelPilotInquiryEmails(
-  payload: ModelPilotInquiryPayload
+  payload: ModelPilotInquiryPayload,
 ): Promise<{ sent: boolean; reason?: string }> {
   const logContext = { notifyEmail: getNotifyEmail() };
-  const config = resolveSendGridConfig('ModelPilotInquiry', logContext);
+  const config = resolveSendGridConfig("ModelPilotInquiry", logContext);
   if (!config) {
-    return { sent: false, reason: 'provider_not_configured' };
+    return { sent: false, reason: "provider_not_configured" };
   }
 
   const notifyTo = getNotifyEmail();
   const sender = normalizeEmail(payload.senderEmail);
   if (!sender) {
-    return { sent: false, reason: 'invalid_sender_email' };
+    return { sent: false, reason: "invalid_sender_email" };
   }
 
   const text = buildPlainTextSummary(payload);
   const html = buildHtmlSummary(payload);
 
   const internalSubject = `[Feed] Model pilot inquiry from ${sender}`;
-  const senderSubject = 'We received your Feed model pilot request';
+  const senderSubject = "We received your Feed model pilot request";
 
   return sendViaSendGrid(
     config.apiKey,
@@ -124,11 +124,11 @@ export async function sendModelPilotInquiryEmails(
         { to: [{ email: sender }], subject: senderSubject },
       ],
       content: [
-        { type: 'text/plain', value: text },
-        { type: 'text/html', value: html },
+        { type: "text/plain", value: text },
+        { type: "text/html", value: html },
       ],
     },
-    'ModelPilotInquiry',
-    logContext
+    "ModelPilotInquiry",
+    logContext,
   );
 }

@@ -14,8 +14,8 @@
  * Falls back gracefully if Redis is not configured.
  */
 
-import { logger } from '@feed/shared';
-import type IORedis from 'ioredis';
+import { logger } from "@feed/shared";
+import type IORedis from "ioredis";
 
 // Type for ioredis instance
 export type RedisInstance = IORedis;
@@ -30,10 +30,10 @@ declare global {
   var __redisInitialized: boolean | undefined;
 }
 
-const isBuildTime = process.env.NEXT_PHASE === 'phase-production-build';
-const isTestEnv = process.env.NODE_ENV === 'test';
-const isDev = process.env.NODE_ENV === 'development';
-const isRedisDisabled = process.env.FEED_DISABLE_REDIS === '1';
+const isBuildTime = process.env.NEXT_PHASE === "phase-production-build";
+const isTestEnv = process.env.NODE_ENV === "test";
+const isDev = process.env.NODE_ENV === "development";
+const isRedisDisabled = process.env.FEED_DISABLE_REDIS === "1";
 
 // Use globalThis to persist across hot reloads in development
 // This prevents multiple Redis connections from being created
@@ -47,7 +47,7 @@ let initializationPromise: Promise<void> | null = isDev
 let isClosing = false;
 
 // Default Redis URL for local development (Docker Compose uses port 6380)
-const DEFAULT_DEV_REDIS_URL = 'redis://localhost:6380';
+const DEFAULT_DEV_REDIS_URL = "redis://localhost:6380";
 
 // Sync state to globalThis in dev
 function syncGlobalState() {
@@ -73,9 +73,9 @@ async function initializeRedis(): Promise<void> {
 
   if (isRedisDisabled) {
     logger.info(
-      'Redis explicitly disabled via FEED_DISABLE_REDIS=1',
+      "Redis explicitly disabled via FEED_DISABLE_REDIS=1",
       undefined,
-      'Redis'
+      "Redis",
     );
     return;
   }
@@ -85,14 +85,14 @@ async function initializeRedis(): Promise<void> {
     process.env.REDIS_URL || (isDev ? DEFAULT_DEV_REDIS_URL : undefined);
   if (!redisUrl) {
     logger.info(
-      'Redis not configured - caching will use in-memory fallback',
+      "Redis not configured - caching will use in-memory fallback",
       undefined,
-      'Redis'
+      "Redis",
     );
     logger.info(
-      'Set REDIS_URL to connect (e.g., redis://localhost:6379)',
+      "Set REDIS_URL to connect (e.g., redis://localhost:6379)",
       undefined,
-      'Redis'
+      "Redis",
     );
     return;
   }
@@ -101,22 +101,22 @@ async function initializeRedis(): Promise<void> {
     logger.info(
       `Using default Redis URL for development: ${DEFAULT_DEV_REDIS_URL}`,
       undefined,
-      'Redis'
+      "Redis",
     );
   }
 
   // Check if we're in a Node.js environment (not edge runtime)
-  if (typeof process === 'undefined' || typeof process.cwd !== 'function') {
+  if (typeof process === "undefined" || typeof process.cwd !== "function") {
     logger.warn(
-      'Redis not available in edge runtime - use in-memory fallback or serverless Redis',
+      "Redis not available in edge runtime - use in-memory fallback or serverless Redis",
       undefined,
-      'Redis'
+      "Redis",
     );
     return;
   }
 
   // Dynamic import to prevent bundling in edge runtime
-  const IORedisModule = await import('ioredis');
+  const IORedisModule = await import("ioredis");
   const IORedisClass = IORedisModule.default;
 
   redisClient = new IORedisClass(redisUrl, {
@@ -134,22 +134,22 @@ async function initializeRedis(): Promise<void> {
     enableReadyCheck: true,
   });
 
-  redisClient.on('error', (error: Error) => {
-    logger.warn('Redis client error', { error: error.message }, 'Redis');
+  redisClient.on("error", (error: Error) => {
+    logger.warn("Redis client error", { error: error.message }, "Redis");
   });
 
   try {
     await redisClient.connect();
     syncGlobalState();
-    logger.info('Redis client connected', undefined, 'Redis');
+    logger.info("Redis client connected", undefined, "Redis");
   } catch (error) {
     logger.warn(
-      'Redis unavailable; continuing with in-memory fallback',
+      "Redis unavailable; continuing with in-memory fallback",
       {
         redisUrl,
         error: error instanceof Error ? error.message : String(error),
       },
-      'Redis'
+      "Redis",
     );
     try {
       redisClient.disconnect(false);
@@ -165,19 +165,19 @@ async function initializeRedis(): Promise<void> {
 if (isBuildTime || isTestEnv) {
   logger.info(
     isTestEnv
-      ? 'Test environment detected - skipping Redis initialization'
-      : 'Build time detected - skipping Redis initialization',
+      ? "Test environment detected - skipping Redis initialization"
+      : "Build time detected - skipping Redis initialization",
     undefined,
-    'Redis'
+    "Redis",
   );
 } else if (!initializationPromise) {
   // Always attempt initialization - store the promise so callers can await it
   // Only create a new promise if one doesn't already exist (from globalThis)
   initializationPromise = initializeRedis().catch((error: unknown) => {
     logger.warn(
-      'Redis initialization failed; continuing without Redis',
+      "Redis initialization failed; continuing without Redis",
       { error: error instanceof Error ? error.message : String(error) },
-      'Redis'
+      "Redis",
     );
     redisClient = null;
     syncGlobalState();
@@ -248,52 +248,52 @@ export async function ensureRedisReady(): Promise<RedisInstance | null> {
 
   // Check connection status and reconnect if needed
   const status = client.status;
-  if (status === 'ready') {
+  if (status === "ready") {
     return client;
   }
 
-  if (status === 'connecting' || status === 'connect') {
+  if (status === "connecting" || status === "connect") {
     // Wait for connection to complete
     await new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => {
-        client.off('ready', onReady);
-        client.off('error', onError);
-        reject(new Error('Redis connection timeout'));
+        client.off("ready", onReady);
+        client.off("error", onError);
+        reject(new Error("Redis connection timeout"));
       }, 5000);
 
       const onReady = () => {
         clearTimeout(timeout);
-        client.off('error', onError);
+        client.off("error", onError);
         resolve();
       };
 
       const onError = (err: Error) => {
         clearTimeout(timeout);
-        client.off('ready', onReady);
+        client.off("ready", onReady);
         reject(err);
       };
 
-      client.once('ready', onReady);
-      client.once('error', onError);
+      client.once("ready", onReady);
+      client.once("error", onError);
     });
     return client;
   }
 
   // If disconnected/closed, try to reconnect
-  if (status === 'end' || status === 'close') {
+  if (status === "end" || status === "close") {
     logger.info(
-      'Redis client disconnected, attempting to reconnect',
+      "Redis client disconnected, attempting to reconnect",
       { status },
-      'Redis'
+      "Redis",
     );
     try {
       await client.connect();
       return client;
     } catch (err) {
       logger.error(
-        'Redis reconnection failed',
+        "Redis reconnection failed",
         { error: err instanceof Error ? err.message : String(err) },
-        'Redis'
+        "Redis",
       );
       return null;
     }
@@ -314,7 +314,7 @@ export async function ensureRedisReady(): Promise<RedisInstance | null> {
  */
 export async function safePublish(
   channel: string,
-  message: string
+  message: string,
 ): Promise<boolean> {
   const client = getRedisClient();
   if (!client) return false;
@@ -363,19 +363,19 @@ export async function closeRedis(): Promise<void> {
   const client = getRedisClient();
   if (client) {
     const status = client.status;
-    if (status === 'ready' || status === 'connect') {
+    if (status === "ready" || status === "connect") {
       await client.quit();
-      logger.info('Redis connection closed', undefined, 'Redis');
+      logger.info("Redis connection closed", undefined, "Redis");
     }
   }
 }
 
 // Cleanup on process exit (only if not build time)
-if (typeof process !== 'undefined' && !isBuildTime) {
-  process.on('SIGINT', () => {
+if (typeof process !== "undefined" && !isBuildTime) {
+  process.on("SIGINT", () => {
     void closeRedis();
   });
-  process.on('SIGTERM', () => {
+  process.on("SIGTERM", () => {
     void closeRedis();
   });
 }

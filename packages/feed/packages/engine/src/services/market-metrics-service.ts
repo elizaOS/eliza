@@ -22,11 +22,11 @@ import {
   predictionPriceHistories,
   sql,
   stockPrices,
-} from '@feed/db';
-import { logger } from '@feed/shared';
-import { first, last } from '../utils/array-utils';
-import { formatError } from '../utils/error-utils';
-import { StaticDataRegistry } from './static-data-registry';
+} from "@feed/db";
+import { logger } from "@feed/shared";
+import { first, last } from "../utils/array-utils";
+import { formatError } from "../utils/error-utils";
+import { StaticDataRegistry } from "./static-data-registry";
 
 /**
  * Metrics for a single prediction market
@@ -45,7 +45,7 @@ export interface PredictionMarketMetrics {
   /** Total liquidity in market */
   liquidity: number;
   /** Trading activity level (low/medium/high) */
-  activityLevel: 'low' | 'medium' | 'high';
+  activityLevel: "low" | "medium" | "high";
 }
 
 /**
@@ -65,7 +65,7 @@ export interface PerpMarketMetrics {
   /** Is trending (significant movement) */
   isTrending: boolean;
   /** Direction of trend */
-  trendDirection: 'up' | 'down' | 'neutral';
+  trendDirection: "up" | "down" | "neutral";
 }
 
 /**
@@ -109,14 +109,14 @@ export class MarketMetricsService {
    * @returns Market metrics context
    */
   static async gatherMetrics(
-    lookbackHours = 24
+    lookbackHours = 24,
   ): Promise<MarketMetricsContext> {
     const startTime = Date.now();
     const lookbackDate = new Date(Date.now() - lookbackHours * 60 * 60 * 1000);
 
     const [predictionMetrics, perpMetrics] = await Promise.all([
-      this.gatherPredictionMetrics(lookbackDate),
-      this.gatherPerpMetrics(lookbackDate),
+      MarketMetricsService.gatherPredictionMetrics(lookbackDate),
+      MarketMetricsService.gatherPerpMetrics(lookbackDate),
     ]);
 
     // Calculate aggregated metrics
@@ -136,7 +136,7 @@ export class MarketMetricsService {
       .filter((m) => m.isTrending)
       .sort(
         (a, b) =>
-          Math.abs(b.priceChangePercent) - Math.abs(a.priceChangePercent)
+          Math.abs(b.priceChangePercent) - Math.abs(a.priceChangePercent),
       )
       .slice(0, 5);
 
@@ -155,18 +155,18 @@ export class MarketMetricsService {
 
     const totalActivePositions = predictionMetrics.reduce(
       (sum, m) => sum + m.positionCount,
-      0
+      0,
     );
 
     const totalLiquidity = predictionMetrics.reduce(
       (sum, m) => sum + m.liquidity,
-      0
+      0,
     );
 
     // Market health: based on activity and liquidity
     const marketHealthScore = Math.min(
       1,
-      (totalActivePositions / 100 + totalLiquidity / 1_000_000) / 2
+      (totalActivePositions / 100 + totalLiquidity / 1_000_000) / 2,
     );
 
     const context: MarketMetricsContext = {
@@ -181,7 +181,7 @@ export class MarketMetricsService {
         totalLiquidity,
         marketHealthScore,
       },
-      promptContext: this.formatPromptContext({
+      promptContext: MarketMetricsService.formatPromptContext({
         volatilePredictions,
         activePredictions,
         trendingPerps,
@@ -192,7 +192,7 @@ export class MarketMetricsService {
     };
 
     logger.debug(
-      'Market metrics gathered',
+      "Market metrics gathered",
       {
         durationMs: Date.now() - startTime,
         predictionCount: predictionMetrics.length,
@@ -200,7 +200,7 @@ export class MarketMetricsService {
         volatileCount: volatilePredictions.length,
         trendingCount: trendingPerps.length,
       },
-      'MarketMetricsService'
+      "MarketMetricsService",
     );
 
     return context;
@@ -213,7 +213,7 @@ export class MarketMetricsService {
    * for position counts. Price history is filtered by date and limited.
    */
   private static async gatherPredictionMetrics(
-    lookbackDate: Date
+    lookbackDate: Date,
   ): Promise<PredictionMarketMetrics[]> {
     // Get active markets with position counts (capped at 50 for performance)
     const activeMarkets = await db
@@ -236,11 +236,11 @@ export class MarketMetricsService {
         count: sql<number>`count(*)::int`,
       })
       .from(positions)
-      .where(eq(positions.status, 'active'))
+      .where(eq(positions.status, "active"))
       .groupBy(positions.marketId);
 
     const positionCountMap = new Map(
-      positionCounts.map((p) => [p.marketId, p.count])
+      positionCounts.map((p) => [p.marketId, p.count]),
     );
 
     // Get price history for volatility calculation (limit to prevent unbounded growth)
@@ -277,20 +277,20 @@ export class MarketMetricsService {
 
       // Calculate volatility from price history
       const history = historyByMarket.get(market.id) || [];
-      const volatility = this.calculateVolatility(
-        history.map((h) => h.yesPrice)
+      const volatility = MarketMetricsService.calculateVolatility(
+        history.map((h) => h.yesPrice),
       );
 
       // Calculate 24h price change
-      const priceChange24h = this.calculatePriceChange(
+      const priceChange24h = MarketMetricsService.calculatePriceChange(
         history.map((h) => ({ yesPrice: h.yesPrice, timestamp: h.createdAt })),
-        currentProbability
+        currentProbability,
       );
 
       // Activity level based on position count
-      let activityLevel: 'low' | 'medium' | 'high' = 'low';
-      if (positionCount > 20) activityLevel = 'high';
-      else if (positionCount > 5) activityLevel = 'medium';
+      let activityLevel: "low" | "medium" | "high" = "low";
+      if (positionCount > 20) activityLevel = "high";
+      else if (positionCount > 5) activityLevel = "medium";
 
       return {
         marketId: market.id,
@@ -312,7 +312,7 @@ export class MarketMetricsService {
    * from in-memory StaticDataRegistry (no additional DB call).
    */
   private static async gatherPerpMetrics(
-    lookbackDate: Date
+    lookbackDate: Date,
   ): Promise<PerpMarketMetrics[]> {
     // Build org name lookup from static registry (in-memory, no DB call)
     const orgNameMap = new Map<string, string>();
@@ -373,29 +373,29 @@ export class MarketMetricsService {
         // Other errors (connection, permission, query issues) should propagate
         const errorMessage = formatError(error);
         const errorCode =
-          error && typeof error === 'object' && 'code' in error
+          error && typeof error === "object" && "code" in error
             ? (error as { code?: string }).code
             : undefined;
 
         // Prefer Postgres error code 42P01 for missing table detection
         // Fallback message check only for non-Postgres drivers (simplified pattern)
         const isMissingTableError =
-          errorCode === '42P01' ||
-          errorMessage.toLowerCase().includes('does not exist');
+          errorCode === "42P01" ||
+          errorMessage.toLowerCase().includes("does not exist");
 
         if (isMissingTableError) {
           // Table may not exist in all environments - continue without snapshot data
           logger.debug(
-            'PerpMarketSnapshot table not available, using stockPrices only',
+            "PerpMarketSnapshot table not available, using stockPrices only",
             { error: errorMessage },
-            'MarketMetrics'
+            "MarketMetrics",
           );
         } else {
           // Real DB error - log as error and rethrow
           logger.error(
-            'Failed to query PerpMarketSnapshot',
+            "Failed to query PerpMarketSnapshot",
             { error: errorMessage, errorCode },
-            'MarketMetrics'
+            "MarketMetrics",
           );
           throw error;
         }
@@ -437,18 +437,18 @@ export class MarketMetricsService {
           ? ((currentPrice - referencePrice) / referencePrice) * 100
           : 0;
 
-      const volatility = this.calculateVolatility(
-        prices.map((p) => Number(p.price))
+      const volatility = MarketMetricsService.calculateVolatility(
+        prices.map((p) => Number(p.price)),
       );
 
       // Trending if > 10% change
       const isTrending = Math.abs(priceChangePercent) > 10;
-      const trendDirection: 'up' | 'down' | 'neutral' =
+      const trendDirection: "up" | "down" | "neutral" =
         priceChangePercent > 5
-          ? 'up'
+          ? "up"
           : priceChangePercent < -5
-            ? 'down'
-            : 'neutral';
+            ? "down"
+            : "neutral";
 
       metrics.push({
         orgId,
@@ -472,7 +472,7 @@ export class MarketMetricsService {
     if (prices.length < 2) return 0;
 
     const mean = prices.reduce((sum, p) => sum + p, 0) / prices.length;
-    const squaredDiffs = prices.map((p) => Math.pow(p - mean, 2));
+    const squaredDiffs = prices.map((p) => (p - mean) ** 2);
     const variance =
       squaredDiffs.reduce((sum, d) => sum + d, 0) / squaredDiffs.length;
     const stdDev = Math.sqrt(variance);
@@ -486,7 +486,7 @@ export class MarketMetricsService {
    */
   private static calculatePriceChange(
     history: Array<{ yesPrice: number; timestamp: Date }>,
-    currentPrice: number
+    currentPrice: number,
   ): number {
     if (history.length === 0) return 0;
 
@@ -515,9 +515,9 @@ export class MarketMetricsService {
           .slice(0, 3)
           .map(
             (m) =>
-              `- "${m.question.substring(0, 50)}..." (volatility: ${(m.volatility * 100).toFixed(0)}%, prob: ${(m.currentProbability * 100).toFixed(0)}%)`
+              `- "${m.question.substring(0, 50)}..." (volatility: ${(m.volatility * 100).toFixed(0)}%, prob: ${(m.currentProbability * 100).toFixed(0)}%)`,
           )
-          .join('\n')}`
+          .join("\n")}`,
       );
     }
 
@@ -528,9 +528,9 @@ export class MarketMetricsService {
           .slice(0, 3)
           .map(
             (m) =>
-              `- "${m.question.substring(0, 50)}..." (${m.positionCount} positions, ${m.activityLevel} activity)`
+              `- "${m.question.substring(0, 50)}..." (${m.positionCount} positions, ${m.activityLevel} activity)`,
           )
-          .join('\n')}`
+          .join("\n")}`,
       );
     }
 
@@ -541,9 +541,9 @@ export class MarketMetricsService {
           .slice(0, 3)
           .map(
             (m) =>
-              `- ${m.orgName}: ${m.trendDirection === 'up' ? '📈' : '📉'} ${m.priceChangePercent > 0 ? '+' : ''}${m.priceChangePercent.toFixed(1)}%`
+              `- ${m.orgName}: ${m.trendDirection === "up" ? "📈" : "📉"} ${m.priceChangePercent > 0 ? "+" : ""}${m.priceChangePercent.toFixed(1)}%`,
           )
-          .join('\n')}`
+          .join("\n")}`,
       );
     }
 
@@ -554,16 +554,16 @@ export class MarketMetricsService {
           .slice(0, 3)
           .map(
             (m) =>
-              `- "${m.question.substring(0, 50)}..." (${(m.currentProbability * 100).toFixed(0)}% ${m.currentProbability > 0.5 ? 'YES' : 'NO'})`
+              `- "${m.question.substring(0, 50)}..." (${(m.currentProbability * 100).toFixed(0)}% ${m.currentProbability > 0.5 ? "YES" : "NO"})`,
           )
-          .join('\n')}`
+          .join("\n")}`,
       );
     }
 
     if (parts.length === 0) {
-      return 'MARKET METRICS: No significant market activity detected.';
+      return "MARKET METRICS: No significant market activity detected.";
     }
 
-    return `MARKET METRICS (use for context-aware question generation):\n${parts.join('\n\n')}`;
+    return `MARKET METRICS (use for context-aware question generation):\n${parts.join("\n\n")}`;
   }
 }

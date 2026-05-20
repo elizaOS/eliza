@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { useMemo } from 'react';
+import { useMemo } from "react";
 import {
   Area,
   AreaChart,
@@ -8,9 +8,9 @@ import {
   Tooltip,
   XAxis,
   YAxis,
-} from 'recharts';
-import { usePnlHistory } from '@/hooks/usePnlHistory';
-import type { PnlHistoryScope } from '@/lib/wallet/pnl-history-types';
+} from "recharts";
+import { usePnlHistory } from "@/hooks/usePnlHistory";
+import type { PnlHistoryScope } from "@/lib/wallet/pnl-history-types";
 
 interface PnLChartProps {
   entityId?: string | null;
@@ -23,12 +23,12 @@ interface PnLChartProps {
 function formatChartTime(time: number, timeframe: string): string {
   const date = new Date(time);
 
-  if (timeframe === '1H' || timeframe === '4H' || timeframe === '1D') {
-    return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+  if (timeframe === "1H" || timeframe === "4H" || timeframe === "1D") {
+    return `${date.getHours().toString().padStart(2, "0")}:${date.getMinutes().toString().padStart(2, "0")}`;
   }
 
-  if (timeframe === '1W') {
-    return `${date.getMonth() + 1}/${date.getDate()} ${date.getHours().toString().padStart(2, '0')}:00`;
+  if (timeframe === "1W") {
+    return `${date.getMonth() + 1}/${date.getDate()} ${date.getHours().toString().padStart(2, "0")}:00`;
   }
 
   return `${date.getMonth() + 1}/${date.getDate()}`;
@@ -36,7 +36,7 @@ function formatChartTime(time: number, timeframe: string): string {
 
 export function PnLChart({
   entityId,
-  metricLabel = 'Current P&L',
+  metricLabel = "Current P&L",
   scope,
   userId,
   timeframe,
@@ -74,7 +74,7 @@ export function PnLChart({
     chartData.length >= 2
       ? (chartData.at(-1)?.value ?? 0) >= (chartData[0]?.value ?? 0)
       : true;
-  const chartColor = isPnlPositive ? '#10b981' : '#f87171';
+  const chartColor = isPnlPositive ? "#10b981" : "#f87171";
 
   if (loading) {
     return (
@@ -113,13 +113,13 @@ export function PnLChart({
               dataKey="time"
               axisLine={false}
               tickLine={false}
-              tick={{ fill: '#9ca3af', fontSize: 12 }}
+              tick={{ fill: "#9ca3af", fontSize: 12 }}
             />
             <YAxis
               orientation="right"
               axisLine={false}
               tickLine={false}
-              tick={{ fill: '#9ca3af', fontSize: 11 }}
+              tick={{ fill: "#9ca3af", fontSize: 11 }}
               tickFormatter={(value) =>
                 `$${Math.round(value).toLocaleString()}`
               }

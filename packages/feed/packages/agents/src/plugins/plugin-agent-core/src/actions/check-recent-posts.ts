@@ -4,8 +4,6 @@
  * Returns recent posts for a user (self or another user by ID).
  */
 
-import { db, desc, eq, posts, users } from '@feed/db';
-import { getTimeAgo } from '@feed/shared';
 import type {
   Action,
   ActionResult,
@@ -13,46 +11,48 @@ import type {
   IAgentRuntime,
   Memory,
   State,
-} from '@elizaos/core';
-import { logger } from '../../../../shared/logger';
+} from "@elizaos/core";
+import { db, desc, eq, posts, users } from "@feed/db";
+import { getTimeAgo } from "@feed/shared";
+import { logger } from "../../../../shared/logger";
 
 export const checkRecentPostsAction: Action = {
-  name: 'CHECK_RECENT_POSTS',
+  name: "CHECK_RECENT_POSTS",
   description:
-    'Check recent posts for yourself or another user. Use LOOKUP_USER first to get a userId by username.',
+    "Check recent posts for yourself or another user. Use LOOKUP_USER first to get a userId by username.",
 
   parameters: {
     userId: {
-      type: 'string',
+      type: "string",
       description:
-        'User ID to check posts for. Use LOOKUP_USER to find ID by username. Omit to check your own posts.',
+        "User ID to check posts for. Use LOOKUP_USER to find ID by username. Omit to check your own posts.",
       required: false,
     },
     limit: {
-      type: 'number',
-      description: 'Number of posts to retrieve (default: 5, max: 20)',
+      type: "number",
+      description: "Number of posts to retrieve (default: 5, max: 20)",
       required: false,
     },
-  } as unknown as Action['parameters'],
+  } as unknown as Action["parameters"],
 
   examples: [
     [
       {
-        name: 'user',
-        content: { text: 'What have you posted recently?' },
+        name: "user",
+        content: { text: "What have you posted recently?" },
       },
       {
-        name: 'assistant',
-        content: { text: 'Let me check my recent posts...' },
+        name: "assistant",
+        content: { text: "Let me check my recent posts..." },
       },
     ],
     [
       {
-        name: 'user',
+        name: "user",
         content: { text: "Show me ThunderGrid's posts" },
       },
       {
-        name: 'assistant',
+        name: "assistant",
         content: { text: "I'll look up ThunderGrid and check their posts..." },
       },
     ],
@@ -61,7 +61,7 @@ export const checkRecentPostsAction: Action = {
   validate: async (
     _runtime: IAgentRuntime,
     _message: Memory,
-    _state?: State
+    _state?: State,
   ): Promise<boolean> => true,
 
   handler: async (
@@ -69,7 +69,7 @@ export const checkRecentPostsAction: Action = {
     _message: Memory,
     state?: State,
     _options?: Record<string, unknown>,
-    _callback?: HandlerCallback
+    _callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const actionParams = state?.data?.actionParams as
       | { userId?: string; limit?: number }
@@ -82,7 +82,7 @@ export const checkRecentPostsAction: Action = {
 
     try {
       // Get user info if checking someone else
-      let targetName = 'You';
+      let targetName = "You";
       if (!isSelf) {
         const [targetUser] = await db
           .select({
@@ -97,10 +97,10 @@ export const checkRecentPostsAction: Action = {
           return {
             success: false,
             text: `User not found. Call LOOKUP_USER first to get valid userId.`,
-            error: 'User not found',
+            error: "User not found",
           };
         }
-        targetName = targetUser.displayName || targetUser.username || 'User';
+        targetName = targetUser.displayName || targetUser.username || "User";
       }
 
       const recentPosts = await db
@@ -117,7 +117,7 @@ export const checkRecentPostsAction: Action = {
       if (recentPosts.length === 0) {
         return {
           success: true,
-          text: isSelf ? 'No posts yet.' : `${targetName} has no posts.`,
+          text: isSelf ? "No posts yet." : `${targetName} has no posts.`,
           data: { posts: [], count: 0, userId: targetUserId },
           values: { count: 0 },
         };
@@ -132,14 +132,14 @@ export const checkRecentPostsAction: Action = {
       }));
 
       logger.info(
-        `[CHECK_RECENT_POSTS] Retrieved ${recentPosts.length} posts for ${isSelf ? 'self' : targetUserId}`,
+        `[CHECK_RECENT_POSTS] Retrieved ${recentPosts.length} posts for ${isSelf ? "self" : targetUserId}`,
         undefined,
-        'CheckRecentPosts'
+        "CheckRecentPosts",
       );
 
       return {
         success: true,
-        text: `Retrieved ${recentPosts.length} posts${isSelf ? '' : ` from ${targetName}`}.`,
+        text: `Retrieved ${recentPosts.length} posts${isSelf ? "" : ` from ${targetName}`}.`,
         data: {
           posts: formattedPosts,
           count: recentPosts.length,
@@ -158,8 +158,8 @@ export const checkRecentPostsAction: Action = {
         },
       };
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      logger.error('[CHECK_RECENT_POSTS] Error:', errorMsg);
+      const errorMsg = error instanceof Error ? error.message : "Unknown error";
+      logger.error("[CHECK_RECENT_POSTS] Error:", errorMsg);
 
       return {
         success: false,

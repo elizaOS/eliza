@@ -24,20 +24,20 @@ import {
   type ScheduledEvent,
   type StructuredEventData,
   worldEvents,
-} from '@feed/db';
-import { escapeRegex, generateSnowflakeId, logger } from '@feed/shared';
-import type { FeedLLMClient } from '../llm/openai-client';
-import { toSafeDayNumber } from '../utils/date-utils';
-import { secureRandom } from '../utils/entropy';
-import { formatError } from '../utils/error-utils';
-import { generateArticlesForArcEvent } from './event-generation-helpers';
+} from "@feed/db";
+import { escapeRegex, generateSnowflakeId, logger } from "@feed/shared";
+import type { FeedLLMClient } from "../llm/openai-client";
+import { toSafeDayNumber } from "../utils/date-utils";
+import { secureRandom } from "../utils/entropy";
+import { formatError } from "../utils/error-utils";
+import { generateArticlesForArcEvent } from "./event-generation-helpers";
 import {
   parsePendingTransitionsSafe,
   parseScheduledEventsSafe,
-} from './jsonb-validators';
+} from "./jsonb-validators";
 
 // Re-export the FeedLLMClient type for callers
-export type { FeedLLMClient } from '../llm/openai-client';
+export type { FeedLLMClient } from "../llm/openai-client";
 
 /**
  * Day ranges for each arc state (for 30-day long-term arcs)
@@ -64,15 +64,15 @@ const EVENT_COOLDOWN_HOURS = 2;
 function extractTopicFromQuestion(questionText: string): string {
   // Strip "Will " prefix and trailing "?" / date clauses
   let topic = questionText
-    .replace(/^Will\s+/i, '')
-    .replace(/\s+by\s+\d{4}[-/]\d{2}[-/]\d{2}.*$/i, '')
-    .replace(/\s+before\s+(the\s+)?(close|end)\s+of\s+\d{4}.*$/i, '')
-    .replace(/\?+$/, '')
+    .replace(/^Will\s+/i, "")
+    .replace(/\s+by\s+\d{4}[-/]\d{2}[-/]\d{2}.*$/i, "")
+    .replace(/\s+before\s+(the\s+)?(close|end)\s+of\s+\d{4}.*$/i, "")
+    .replace(/\?+$/, "")
     .trim();
 
   // Cap length
   if (topic.length > 80) {
-    topic = topic.slice(0, 77) + '...';
+    topic = `${topic.slice(0, 77)}...`;
   }
 
   return topic;
@@ -88,20 +88,20 @@ async function prepareWorldEventData(
   questionText: string,
   timestamp: Date,
   dayNumber?: number,
-  questionNumber?: number | null
+  questionNumber?: number | null,
 ): Promise<{
   eventId: string;
   values: {
     id: string;
-    eventType: StructuredEventData['type'];
+    eventType: StructuredEventData["type"];
     description: string;
     actors: string[];
     relatedQuestion: number | undefined;
-    visibility: 'public' | 'leaked';
+    visibility: "public" | "leaked";
     gameId: string;
     dayNumber: number | undefined;
     timestamp: Date;
-    pointsToward: 'YES' | 'NO' | null;
+    pointsToward: "YES" | "NO" | null;
   };
 }> {
   // Description is just the concise topic — the eventType field provides context
@@ -109,7 +109,7 @@ async function prepareWorldEventData(
 
   const eventId = await generateSnowflakeId();
   const safeDayNumber =
-    typeof dayNumber === 'number' ? toSafeDayNumber(dayNumber) : undefined;
+    typeof dayNumber === "number" ? toSafeDayNumber(dayNumber) : undefined;
 
   return {
     eventId,
@@ -119,12 +119,12 @@ async function prepareWorldEventData(
       description,
       actors: structuredEvent.affectedActors,
       relatedQuestion: questionNumber ?? undefined,
-      visibility: structuredEvent.type === 'leak' ? 'leaked' : 'public',
-      gameId: 'continuous',
+      visibility: structuredEvent.type === "leak" ? "leaked" : "public",
+      gameId: "continuous",
       dayNumber: safeDayNumber,
       timestamp,
       pointsToward:
-        structuredEvent.signalDirection === 'NEUTRAL'
+        structuredEvent.signalDirection === "NEUTRAL"
           ? null
           : structuredEvent.signalDirection,
     },
@@ -152,7 +152,7 @@ export function getExpectedState(dayNumber: number): LongTermArcState {
   // Return 'resolution' for invalid day numbers (day < 1)
   // This handles edge cases like day 0 or negative days gracefully
   if (dayNumber < 1) {
-    return 'resolution';
+    return "resolution";
   }
 
   for (const [state, [start, end]] of Object.entries(STATE_DAY_RANGES)) {
@@ -161,7 +161,7 @@ export function getExpectedState(dayNumber: number): LongTermArcState {
     }
   }
   // After day 30, remain in resolution
-  return 'resolution';
+  return "resolution";
 }
 
 /**
@@ -169,7 +169,7 @@ export function getExpectedState(dayNumber: number): LongTermArcState {
  */
 export function evaluateStateTransition(
   arc: ArcState,
-  dayNumber: number
+  dayNumber: number,
 ): LongTermArcState | null {
   const expectedState = getExpectedState(dayNumber);
 
@@ -203,7 +203,7 @@ export function evaluateStateTransition(
 export async function transitionArcState(
   arcId: string,
   newState: LongTermArcState,
-  currentState?: ArcStateType
+  currentState?: ArcStateType,
 ): Promise<boolean> {
   const MAX_RETRIES = 3;
   const RETRY_BASE_DELAY_MS = 50;
@@ -224,7 +224,10 @@ export async function transitionArcState(
           pendingTransitions: [],
         })
         .where(
-          and(eq(arcStates.id, arcId), eq(arcStates.currentState, attemptState))
+          and(
+            eq(arcStates.id, arcId),
+            eq(arcStates.currentState, attemptState),
+          ),
         )
         .returning({ id: arcStates.id });
 
@@ -232,7 +235,7 @@ export async function transitionArcState(
         logger.info(
           `Arc ${arcId} transitioned to ${newState}`,
           { arcId, newState },
-          'NarrativeEventProcessor'
+          "NarrativeEventProcessor",
         );
         return true;
       }
@@ -241,7 +244,7 @@ export async function transitionArcState(
       logger.warn(
         `Optimistic lock conflict transitioning arc ${arcId} (attempt ${attempt + 1}/${MAX_RETRIES})`,
         { arcId, currentState: attemptState, newState },
-        'NarrativeEventProcessor'
+        "NarrativeEventProcessor",
       );
 
       if (attempt < MAX_RETRIES - 1) {
@@ -256,7 +259,7 @@ export async function transitionArcState(
           logger.warn(
             `Arc ${arcId} not found during retry`,
             { arcId },
-            'NarrativeEventProcessor'
+            "NarrativeEventProcessor",
           );
           return false;
         }
@@ -264,7 +267,7 @@ export async function transitionArcState(
         attemptState = arc.currentState;
 
         // Exponential backoff
-        const delay = RETRY_BASE_DELAY_MS * Math.pow(2, attempt);
+        const delay = RETRY_BASE_DELAY_MS * 2 ** attempt;
         await new Promise((resolve) => setTimeout(resolve, delay));
       }
     }
@@ -272,7 +275,7 @@ export async function transitionArcState(
     logger.warn(
       `Arc ${arcId} transition failed after ${MAX_RETRIES} attempts`,
       { arcId, currentState, newState },
-      'NarrativeEventProcessor'
+      "NarrativeEventProcessor",
     );
     return false;
   } else {
@@ -291,7 +294,7 @@ export async function transitionArcState(
     logger.info(
       `Arc ${arcId} transitioned to ${newState}`,
       { arcId, newState },
-      'NarrativeEventProcessor'
+      "NarrativeEventProcessor",
     );
     return true;
   }
@@ -306,7 +309,7 @@ export async function transitionArcState(
  */
 export function shouldGenerateEvent(
   arc: ArcState,
-  rand: () => number = secureRandom
+  rand: () => number = secureRandom,
 ): boolean {
   // Event generation probability based on state
   const probabilities: Record<LongTermArcState, number> = {
@@ -347,7 +350,7 @@ export function shouldGenerateEvent(
 export function getNextScheduledEvent(
   eventSchedule: ScheduledEvent[] | null | undefined,
   currentDay: number,
-  currentHour: number = new Date().getHours()
+  currentHour: number = new Date().getHours(),
 ): ScheduledEvent | null {
   if (!eventSchedule || eventSchedule.length === 0) {
     return null;
@@ -384,7 +387,7 @@ export function getNextScheduledEvent(
  */
 export async function markScheduledEventFired(
   questionId: string,
-  eventIndex: number
+  eventIndex: number,
 ): Promise<boolean> {
   // Get current arc plan
   const [arcPlan] = await db
@@ -396,11 +399,11 @@ export async function markScheduledEventFired(
     .where(eq(questionArcPlans.questionId, questionId))
     .limit(1);
 
-  if (!arcPlan || !arcPlan.eventSchedule) {
+  if (!arcPlan?.eventSchedule) {
     logger.warn(
-      'Cannot mark event fired: arc plan or schedule not found',
+      "Cannot mark event fired: arc plan or schedule not found",
       { questionId, eventIndex },
-      'NarrativeEventProcessor'
+      "NarrativeEventProcessor",
     );
     return false;
   }
@@ -410,9 +413,9 @@ export async function markScheduledEventFired(
   });
   if (eventIndex < 0 || eventIndex >= schedule.length) {
     logger.warn(
-      'Cannot mark event fired: invalid event index',
+      "Cannot mark event fired: invalid event index",
       { questionId, eventIndex, scheduleLength: schedule.length },
-      'NarrativeEventProcessor'
+      "NarrativeEventProcessor",
     );
     return false;
   }
@@ -420,9 +423,9 @@ export async function markScheduledEventFired(
   const eventAtIndex = schedule[eventIndex];
   if (!eventAtIndex) {
     logger.warn(
-      'Cannot mark event fired: event not found at index',
+      "Cannot mark event fired: event not found at index",
       { questionId, eventIndex },
-      'NarrativeEventProcessor'
+      "NarrativeEventProcessor",
     );
     return false;
   }
@@ -446,14 +449,14 @@ export async function markScheduledEventFired(
     .where(eq(questionArcPlans.id, arcPlan.id));
 
   logger.info(
-    'Marked scheduled event as fired',
+    "Marked scheduled event as fired",
     {
       questionId,
       eventIndex,
       eventType: eventAtIndex.eventType,
       signalDirection: eventAtIndex.signalDirection,
     },
-    'NarrativeEventProcessor'
+    "NarrativeEventProcessor",
   );
 
   return true;
@@ -469,23 +472,23 @@ export async function markScheduledEventFired(
 export async function generateStructuredEvent(
   arc: ArcState,
   arcPlan: { insiderActorIds: string[]; deceiverActorIds: string[] } | null,
-  scheduledEvent?: ScheduledEvent
+  scheduledEvent?: ScheduledEvent,
 ): Promise<StructuredEventData> {
   // If we have a scheduled event, use its type and signal direction
-  let eventType: StructuredEventData['type'];
-  let signalDirection: 'YES' | 'NO' | 'NEUTRAL';
+  let eventType: StructuredEventData["type"];
+  let signalDirection: "YES" | "NO" | "NEUTRAL";
 
   if (scheduledEvent) {
     // Map scheduled event type to structured event type
     const typeMapping: Record<
-      ScheduledEvent['eventType'],
-      StructuredEventData['type']
+      ScheduledEvent["eventType"],
+      StructuredEventData["type"]
     > = {
-      leak: 'leak',
-      rumor: 'rumor',
-      scandal: 'leak', // Scandals are reported as leaks
-      confirmation: 'confirmation',
-      red_herring: 'rumor', // Red herrings are disguised as rumors
+      leak: "leak",
+      rumor: "rumor",
+      scandal: "leak", // Scandals are reported as leaks
+      confirmation: "confirmation",
+      red_herring: "rumor", // Red herrings are disguised as rumors
     };
     eventType = typeMapping[scheduledEvent.eventType];
     signalDirection = scheduledEvent.signalDirection;
@@ -493,29 +496,29 @@ export async function generateStructuredEvent(
     // Fall back to state-based event type selection (legacy behavior)
     const stateEventTypes: Record<
       LongTermArcState,
-      StructuredEventData['type'][]
+      StructuredEventData["type"][]
     > = {
-      setup: ['rumor'],
-      tension: ['rumor', 'leak', 'denial'],
-      escalation: ['leak', 'denial', 'confirmation'],
-      crisis: ['denial', 'confirmation', 'reversal'],
-      revelation: ['confirmation', 'proof'],
-      resolution: ['proof'],
+      setup: ["rumor"],
+      tension: ["rumor", "leak", "denial"],
+      escalation: ["leak", "denial", "confirmation"],
+      crisis: ["denial", "confirmation", "reversal"],
+      revelation: ["confirmation", "proof"],
+      resolution: ["proof"],
     };
 
     const possibleTypes = stateEventTypes[
       arc.currentState as LongTermArcState
-    ] ?? ['rumor'];
+    ] ?? ["rumor"];
     eventType =
       possibleTypes[Math.floor(secureRandom() * possibleTypes.length)]!;
 
     // Signal direction based on event type and state
-    if (eventType === 'denial' || eventType === 'reversal') {
-      signalDirection = 'NO';
-    } else if (eventType === 'confirmation' || eventType === 'proof') {
-      signalDirection = 'YES';
+    if (eventType === "denial" || eventType === "reversal") {
+      signalDirection = "NO";
+    } else if (eventType === "confirmation" || eventType === "proof") {
+      signalDirection = "YES";
     } else {
-      signalDirection = secureRandom() > 0.5 ? 'YES' : 'NO';
+      signalDirection = secureRandom() > 0.5 ? "YES" : "NO";
     }
   }
 
@@ -533,7 +536,7 @@ export async function generateStructuredEvent(
   // Compute severity with proper bounds checking (1-5 range)
   const rawSeverity = Math.max(
     1,
-    Math.min(5, baseSeverity + Math.floor(secureRandom() * 2))
+    Math.min(5, baseSeverity + Math.floor(secureRandom() * 2)),
   );
   const severity = rawSeverity as 1 | 2 | 3 | 4 | 5;
 
@@ -553,20 +556,20 @@ export async function generateStructuredEvent(
   const marketImpacts: MarketImpact[] = affectedStocks.map((ticker) => ({
     stockTicker: ticker,
     direction:
-      signalDirection === 'YES'
-        ? 'up'
-        : signalDirection === 'NO'
-          ? 'down'
+      signalDirection === "YES"
+        ? "up"
+        : signalDirection === "NO"
+          ? "down"
           : secureRandom() > 0.5
-            ? 'up'
-            : 'down',
-    magnitude: severity <= 2 ? 'minor' : severity <= 4 ? 'moderate' : 'major',
+            ? "up"
+            : "down",
+    magnitude: severity <= 2 ? "minor" : severity <= 4 ? "moderate" : "major",
     duration:
-      eventType === 'rumor' || eventType === 'denial'
-        ? 'hours'
-        : eventType === 'proof'
-          ? 'days'
-          : 'hours',
+      eventType === "rumor" || eventType === "denial"
+        ? "hours"
+        : eventType === "proof"
+          ? "days"
+          : "hours",
   }));
 
   const event: StructuredEventData = {
@@ -593,27 +596,27 @@ export async function createWorldEventFromArcEvent(
   questionText: string,
   timestamp: Date,
   dayNumber?: number,
-  questionNumber?: number | null
+  questionNumber?: number | null,
 ): Promise<string> {
   const prepared = await prepareWorldEventData(
     structuredEvent,
     questionText,
     timestamp,
     dayNumber,
-    questionNumber
+    questionNumber,
   );
 
   await db.insert(worldEvents).values(prepared.values);
 
   logger.info(
-    'Created world event from arc event',
+    "Created world event from arc event",
     {
       eventId: prepared.eventId,
       arcId: structuredEvent.arcId,
       type: structuredEvent.type,
       severity: structuredEvent.severity,
     },
-    'NarrativeEventProcessor'
+    "NarrativeEventProcessor",
   );
 
   return prepared.eventId;
@@ -629,27 +632,27 @@ async function createWorldEventFromArcEventTx(
   questionText: string,
   timestamp: Date,
   dayNumber?: number,
-  questionNumber?: number | null
+  questionNumber?: number | null,
 ): Promise<string> {
   const prepared = await prepareWorldEventData(
     structuredEvent,
     questionText,
     timestamp,
     dayNumber,
-    questionNumber
+    questionNumber,
   );
 
   await tx.insert(worldEvents).values(prepared.values);
 
   logger.info(
-    'Created world event from arc event (tx)',
+    "Created world event from arc event (tx)",
     {
       eventId: prepared.eventId,
       arcId: structuredEvent.arcId,
       type: structuredEvent.type,
       severity: structuredEvent.severity,
     },
-    'NarrativeEventProcessor'
+    "NarrativeEventProcessor",
   );
 
   return prepared.eventId;
@@ -659,7 +662,7 @@ async function createWorldEventFromArcEventTx(
  * Get question text and number by ID for world event creation
  */
 async function getQuestionDetails(
-  questionId: string
+  questionId: string,
 ): Promise<{ text: string; questionNumber: number | null }> {
   const [question] = await db
     .select({ text: questions.text, questionNumber: questions.questionNumber })
@@ -670,18 +673,18 @@ async function getQuestionDetails(
   // Log a warning if question is not found for visibility
   if (!question) {
     logger.warn(
-      'Question not found for world event creation, using fallback values',
+      "Question not found for world event creation, using fallback values",
       {
         questionId,
-        fallbackText: 'Unknown question',
+        fallbackText: "Unknown question",
         fallbackQuestionNumber: null,
       },
-      'NarrativeEventProcessor'
+      "NarrativeEventProcessor",
     );
   }
 
   return {
-    text: question?.text ?? 'Unknown question',
+    text: question?.text ?? "Unknown question",
     questionNumber: question?.questionNumber ?? null,
   };
 }
@@ -691,11 +694,11 @@ async function getQuestionDetails(
  * Parses the question text for organization mentions and returns their tickers.
  */
 async function getAffectedStocksForQuestion(
-  questionId: string
+  questionId: string,
 ): Promise<string[]> {
   try {
     // Dynamic import to avoid circular dependencies
-    const { StaticDataRegistry } = await import('./static-data-registry');
+    const { StaticDataRegistry } = await import("./static-data-registry");
 
     // First, get the question text
     const [question] = await db
@@ -715,21 +718,21 @@ async function getAffectedStocksForQuestion(
 
     const mentionedOrgs = allOrgs.filter((org) => {
       // Check if org name is mentioned (word boundary match)
-      const namePattern = new RegExp(`\\b${escapeRegex(org.name)}\\b`, 'i');
+      const namePattern = new RegExp(`\\b${escapeRegex(org.name)}\\b`, "i");
       const nameMatch = namePattern.test(questionText);
 
       // Check if ticker is mentioned (e.g., "$PEAR" or "PEAR" with word boundary)
       const tickerMatch =
         org.ticker &&
-        new RegExp(`\\$?\\b${escapeRegex(org.ticker)}\\b`, 'i').test(
-          questionText
+        new RegExp(`\\$?\\b${escapeRegex(org.ticker)}\\b`, "i").test(
+          questionText,
         );
 
       // Check if original name is mentioned (word boundary match)
       const originalMatch =
         org.originalName &&
-        new RegExp(`\\b${escapeRegex(org.originalName)}\\b`, 'i').test(
-          questionText
+        new RegExp(`\\b${escapeRegex(org.originalName)}\\b`, "i").test(
+          questionText,
         );
 
       return nameMatch || tickerMatch || originalMatch;
@@ -776,13 +779,13 @@ async function getAffectedStocksForQuestion(
 
         if (affiliatedTickers.size > 0) {
           logger.debug(
-            'Found affected stocks from arc actors',
+            "Found affected stocks from arc actors",
             {
               questionId,
               tickers: Array.from(affiliatedTickers),
               actorCount: actorIds.length,
             },
-            'NarrativeEventProcessor'
+            "NarrativeEventProcessor",
           );
           return Array.from(affiliatedTickers);
         }
@@ -791,9 +794,9 @@ async function getAffectedStocksForQuestion(
       // Last resort: return empty array instead of random stocks
       // Random stocks would create misleading market effects
       logger.debug(
-        'No affected stocks found for question',
+        "No affected stocks found for question",
         { questionId },
-        'NarrativeEventProcessor'
+        "NarrativeEventProcessor",
       );
       return [];
     }
@@ -801,12 +804,12 @@ async function getAffectedStocksForQuestion(
     return tickers;
   } catch (error) {
     logger.warn(
-      'Failed to get affected stocks for question',
+      "Failed to get affected stocks for question",
       {
         questionId,
         error: formatError(error),
       },
-      'NarrativeEventProcessor'
+      "NarrativeEventProcessor",
     );
     return [];
   }
@@ -822,7 +825,7 @@ async function getAffectedStocksForQuestion(
 export async function processArcTick(
   arcId: string,
   dayNumber: number,
-  llmClient?: FeedLLMClient | null
+  llmClient?: FeedLLMClient | null,
 ): Promise<{
   transitioned: boolean;
   eventGenerated: boolean;
@@ -836,7 +839,7 @@ export async function processArcTick(
     .limit(1);
 
   if (!arc) {
-    logger.warn(`Arc ${arcId} not found`, { arcId }, 'NarrativeEventProcessor');
+    logger.warn(`Arc ${arcId} not found`, { arcId }, "NarrativeEventProcessor");
     return { transitioned: false, eventGenerated: false };
   }
 
@@ -863,7 +866,7 @@ export async function processArcTick(
       logger.error(
         `Arc ${arcId} not found after state transition`,
         { arcId },
-        'NarrativeEventProcessor'
+        "NarrativeEventProcessor",
       );
       return { transitioned, eventGenerated: false, newState };
     }
@@ -919,7 +922,7 @@ export async function processArcTick(
     const structuredEvent = await generateStructuredEvent(
       effectiveArc,
       normalizedArcPlan,
-      scheduledEvent ?? undefined
+      scheduledEvent ?? undefined,
     );
 
     // If this was from a scheduled event, find its index and mark it as fired
@@ -930,7 +933,7 @@ export async function processArcTick(
           e.baseDay === scheduledEvent.baseDay &&
           e.jitterHours === scheduledEvent.jitterHours &&
           e.eventType === scheduledEvent.eventType &&
-          !e.fired
+          !e.fired,
       );
     }
 
@@ -953,14 +956,14 @@ export async function processArcTick(
           .where(
             and(
               eq(arcStates.id, arcId),
-              eq(arcStates.updatedAt, effectiveArc.updatedAt)
-            )
+              eq(arcStates.updatedAt, effectiveArc.updatedAt),
+            ),
           )
           .returning({ id: arcStates.id });
 
         if (updateResult.length === 0) {
           // Optimistic lock conflict - throw to rollback transaction
-          throw new Error('OPTIMISTIC_LOCK_CONFLICT');
+          throw new Error("OPTIMISTIC_LOCK_CONFLICT");
         }
 
         // Create the world event within the same transaction
@@ -970,7 +973,7 @@ export async function processArcTick(
           questionDetails.text,
           now,
           dayNumber,
-          questionDetails.questionNumber
+          questionDetails.questionNumber,
         );
 
         return eventId;
@@ -978,12 +981,12 @@ export async function processArcTick(
     } catch (error) {
       if (
         error instanceof Error &&
-        error.message === 'OPTIMISTIC_LOCK_CONFLICT'
+        error.message === "OPTIMISTIC_LOCK_CONFLICT"
       ) {
         logger.warn(
           `Optimistic lock conflict for arc ${arcId}, skipping event generation`,
           { arcId },
-          'NarrativeEventProcessor'
+          "NarrativeEventProcessor",
         );
         return {
           transitioned,
@@ -1000,14 +1003,14 @@ export async function processArcTick(
         await markScheduledEventFired(arc.questionId, scheduledEventIndex);
       } catch (markError) {
         logger.warn(
-          'Failed to mark scheduled event as fired',
+          "Failed to mark scheduled event as fired",
           {
             arcId,
             questionId: arc.questionId,
             scheduledEventIndex,
             error: formatError(markError),
           },
-          'NarrativeEventProcessor'
+          "NarrativeEventProcessor",
         );
         // Non-critical - event was still generated successfully
       }
@@ -1019,7 +1022,7 @@ export async function processArcTick(
       logger.info(
         `Event has ${structuredEvent.marketImpacts.length} market signals (prices driven by NPC trading only)`,
         { arcId, impactCount: structuredEvent.marketImpacts.length },
-        'NarrativeEventProcessor'
+        "NarrativeEventProcessor",
       );
     }
 
@@ -1029,12 +1032,12 @@ export async function processArcTick(
       try {
         // Only generate articles if we have valid question details
         if (
-          questionDetails.text !== 'Unknown question' &&
+          questionDetails.text !== "Unknown question" &&
           questionDetails.questionNumber !== null
         ) {
           const articlesGenerated = await generateArticlesForArcEvent(
             worldEventId,
-            'created', // Arc events are 'created' status
+            "created", // Arc events are 'created' status
             {
               id: arc.questionId,
               text: questionDetails.text,
@@ -1042,26 +1045,26 @@ export async function processArcTick(
             },
             llmClient,
             now,
-            dayNumber
+            dayNumber,
           );
 
           if (articlesGenerated > 0) {
             logger.info(
               `Generated ${articlesGenerated} articles for arc event`,
               { arcId, worldEventId, severity: structuredEvent.severity },
-              'NarrativeEventProcessor'
+              "NarrativeEventProcessor",
             );
           }
         }
       } catch (articleError) {
         logger.warn(
-          'Failed to generate articles for arc event',
+          "Failed to generate articles for arc event",
           {
             arcId,
             worldEventId,
             error: formatError(articleError),
           },
-          'NarrativeEventProcessor'
+          "NarrativeEventProcessor",
         );
       }
     }
@@ -1076,7 +1079,7 @@ export async function processArcTick(
         severity: structuredEvent.severity,
         signalDirection: structuredEvent.signalDirection,
       },
-      'NarrativeEventProcessor'
+      "NarrativeEventProcessor",
     );
   }
 
@@ -1103,7 +1106,7 @@ export async function createArcState(questionId: string): Promise<string> {
     logger.debug(
       `Arc state already exists for question ${questionId}`,
       { arcId: existing.id, questionId },
-      'NarrativeEventProcessor'
+      "NarrativeEventProcessor",
     );
     return existing.id;
   }
@@ -1115,7 +1118,7 @@ export async function createArcState(questionId: string): Promise<string> {
     await db.insert(arcStates).values({
       id,
       questionId,
-      currentState: 'setup',
+      currentState: "setup",
       stateEnteredAt: now,
       eventsGenerated: 0,
       pendingTransitions: [],
@@ -1126,7 +1129,7 @@ export async function createArcState(questionId: string): Promise<string> {
     logger.info(
       `Created arc state for question ${questionId}`,
       { arcId: id, questionId },
-      'NarrativeEventProcessor'
+      "NarrativeEventProcessor",
     );
 
     return id;
@@ -1134,8 +1137,8 @@ export async function createArcState(questionId: string): Promise<string> {
     // Handle unique constraint violation (race condition)
     // Check for Postgres error code 23505 (unique_violation) or fallback to message check
     const isUniqueViolation =
-      (error as { code?: string }).code === '23505' ||
-      (error instanceof Error && error.message.includes('unique constraint'));
+      (error as { code?: string }).code === "23505" ||
+      (error instanceof Error && error.message.includes("unique constraint"));
 
     if (isUniqueViolation) {
       const [racedExisting] = await db
@@ -1148,7 +1151,7 @@ export async function createArcState(questionId: string): Promise<string> {
         logger.debug(
           `Arc state created by another process for question ${questionId}`,
           { arcId: racedExisting.id, questionId },
-          'NarrativeEventProcessor'
+          "NarrativeEventProcessor",
         );
         return racedExisting.id;
       }
@@ -1168,7 +1171,7 @@ export class NarrativeEventProcessorService {
   async processArcTick(
     arcId: string,
     dayNumber: number,
-    llmClient?: FeedLLMClient | null
+    llmClient?: FeedLLMClient | null,
   ): Promise<{
     transitioned: boolean;
     eventGenerated: boolean;

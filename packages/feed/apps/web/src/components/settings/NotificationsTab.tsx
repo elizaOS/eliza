@@ -1,27 +1,27 @@
-'use client';
+"use client";
 
 import {
   cn,
   DEFAULT_NOTIFICATION_DIGEST_SETTINGS,
   type NotificationDigestSettings,
-} from '@feed/shared';
-import { useEffect, useState } from 'react';
-import { Switch } from '@/components/ui/switch';
-import { useAuth } from '@/hooks/useAuth';
+} from "@feed/shared";
+import { useEffect, useState } from "react";
+import { Switch } from "@/components/ui/switch";
+import { useAuth } from "@/hooks/useAuth";
 
-type DigestFrequency = NotificationDigestSettings['frequency'];
-type DeliveryChannel = NotificationDigestSettings['deliveryChannel'];
+type DigestFrequency = NotificationDigestSettings["frequency"];
+type DeliveryChannel = NotificationDigestSettings["deliveryChannel"];
 
 const frequencyOptions: { value: DigestFrequency; label: string }[] = [
-  { value: 'hourly', label: 'Hourly' },
-  { value: 'daily', label: 'Daily' },
-  { value: 'weekly', label: 'Weekly' },
+  { value: "hourly", label: "Hourly" },
+  { value: "daily", label: "Daily" },
+  { value: "weekly", label: "Weekly" },
 ];
 
 const channelOptions: { value: DeliveryChannel; label: string }[] = [
-  { value: 'in-app', label: 'In-app' },
-  { value: 'email', label: 'Email' },
-  { value: 'both', label: 'Both' },
+  { value: "in-app", label: "In-app" },
+  { value: "email", label: "Email" },
+  { value: "both", label: "Both" },
 ];
 
 /**
@@ -34,7 +34,7 @@ const channelOptions: { value: DeliveryChannel; label: string }[] = [
 export function NotificationsTab() {
   const { authenticated, getAccessToken } = useAuth();
   const [settings, setSettings] = useState<NotificationDigestSettings>(
-    DEFAULT_NOTIFICATION_DIGEST_SETTINGS
+    DEFAULT_NOTIFICATION_DIGEST_SETTINGS,
   );
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -60,7 +60,7 @@ export function NotificationsTab() {
         return;
       }
 
-      const response = await fetch('/api/notifications/digest-settings', {
+      const response = await fetch("/api/notifications/digest-settings", {
         headers: { Authorization: `Bearer ${token}` },
       });
       const payload = (await response.json().catch(() => ({}))) as {
@@ -72,7 +72,7 @@ export function NotificationsTab() {
           setSettings(payload.settings);
           setError(null);
         } else {
-          setError('Unable to load digest settings.');
+          setError("Unable to load digest settings.");
         }
         setIsLoading(false);
       }
@@ -95,15 +95,15 @@ export function NotificationsTab() {
     if (!token) {
       setSettings(previousSettings);
       setIsSaving(false);
-      setError('Unable to save digest settings.');
+      setError("Unable to save digest settings.");
       return;
     }
 
-    const response = await fetch('/api/notifications/digest-settings', {
-      method: 'PUT',
+    const response = await fetch("/api/notifications/digest-settings", {
+      method: "PUT",
       headers: {
         Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       body: JSON.stringify(nextSettings),
     });
@@ -117,7 +117,7 @@ export function NotificationsTab() {
       setError(null);
     } else {
       setSettings(previousSettings);
-      setError('Unable to save digest settings.');
+      setError("Unable to save digest settings.");
     }
 
     setIsSaving(false);
@@ -148,11 +148,11 @@ export function NotificationsTab() {
       {(isSaving || error) && (
         <p
           className={cn(
-            'text-sm',
-            error ? 'text-destructive' : 'text-muted-foreground'
+            "text-sm",
+            error ? "text-destructive" : "text-muted-foreground",
           )}
         >
-          {error ?? 'Saving...'}
+          {error ?? "Saving..."}
         </p>
       )}
 
@@ -170,10 +170,10 @@ export function NotificationsTab() {
                     void saveSettings({ ...settings, frequency: opt.value })
                   }
                   className={cn(
-                    'rounded-lg border px-4 py-2 font-medium text-sm transition-colors',
+                    "rounded-lg border px-4 py-2 font-medium text-sm transition-colors",
                     settings.frequency === opt.value
-                      ? 'border-primary bg-primary/10 text-primary'
-                      : 'border-border text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border text-muted-foreground hover:bg-muted/50 hover:text-foreground",
                   )}
                 >
                   {opt.label}
@@ -197,10 +197,10 @@ export function NotificationsTab() {
                     })
                   }
                   className={cn(
-                    'rounded-lg border px-4 py-2 font-medium text-sm transition-colors',
+                    "rounded-lg border px-4 py-2 font-medium text-sm transition-colors",
                     settings.deliveryChannel === opt.value
-                      ? 'border-primary bg-primary/10 text-primary'
-                      : 'border-border text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border text-muted-foreground hover:bg-muted/50 hover:text-foreground",
                   )}
                 >
                   {opt.label}

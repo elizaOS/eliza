@@ -10,54 +10,54 @@ import type {
   Provider,
   ProviderResult,
   State,
-} from '@elizaos/core';
-import { logger } from '../../../shared/logger';
-import type { JsonValue } from '../../../types/common';
-import type { EntityMention } from '../../../types/entities';
+} from "@elizaos/core";
+import { logger } from "../../../shared/logger";
+import type { JsonValue } from "../../../types/common";
+import type { EntityMention } from "../../../types/entities";
 import {
   isActorEntity,
   isCompanyEntity,
   isUserEntity,
-} from '../../../types/entities';
-import type { FeedRuntime } from '../types';
+} from "../../../types/entities";
+import type { FeedRuntime } from "../types";
 
 /**
  * Provider: Entity Mentions
  * Detects mentions of stocks, companies, and users in messages and provides their context
  */
 export const entityMentionsProvider: Provider = {
-  name: 'FEED_ENTITY_MENTIONS',
+  name: "FEED_ENTITY_MENTIONS",
   description:
-    'Detects and provides context for mentioned users, companies, and stocks in messages',
+    "Detects and provides context for mentioned users, companies, and stocks in messages",
 
   get: async (
     runtime: IAgentRuntime,
     message: Memory,
-    _state: State
+    _state: State,
   ): Promise<ProviderResult> => {
     const feedRuntime = runtime as FeedRuntime;
 
     // A2A is REQUIRED
     if (!feedRuntime.a2aClient?.isConnected()) {
       logger.error(
-        'A2A client not connected - entity mentions provider requires A2A protocol',
+        "A2A client not connected - entity mentions provider requires A2A protocol",
         undefined,
-        runtime.agentId
+        runtime.agentId,
       );
-      return { text: '' }; // Return empty - don't break the flow, just skip entity enrichment
+      return { text: "" }; // Return empty - don't break the flow, just skip entity enrichment
     }
 
-    const messageText = message.content.text || '';
+    const messageText = message.content.text || "";
 
     if (!messageText || messageText.length < 3) {
-      return { text: '' };
+      return { text: "" };
     }
 
     // Find potential entity mentions using regex and look up via A2A
     const entities = await findEntityMentions(messageText, feedRuntime);
 
     if (entities.length === 0) {
-      return { text: '' };
+      return { text: "" };
     }
 
     // Build context for each entity
@@ -69,52 +69,52 @@ export const entityMentionsProvider: Provider = {
     }> = [];
 
     for (const entity of entities) {
-      if (entity.type === 'company' && isCompanyEntity(entity.data)) {
+      if (entity.type === "company" && isCompanyEntity(entity.data)) {
         const company = entity.data;
 
         const context = `📈 ${company.ticker || company.name}:
 • Name: ${company.name}
 • Type: Company
-• Current Price: $${parseFloat(company.currentPrice?.toString() || '0').toFixed(2)}
-• Price Change: ${company.priceChangePercentage ? (company.priceChangePercentage >= 0 ? '+' : '') + company.priceChangePercentage.toFixed(2) + '%' : 'N/A'}
-• Volume (24h): $${parseFloat(company.volume24h?.toString() || '0').toFixed(2)}${company.bio ? `\n• About: ${company.bio.substring(0, 150)}...` : ''}`;
+• Current Price: $${parseFloat(company.currentPrice?.toString() || "0").toFixed(2)}
+• Price Change: ${company.priceChangePercentage ? `${(company.priceChangePercentage >= 0 ? "+" : "") + company.priceChangePercentage.toFixed(2)}%` : "N/A"}
+• Volume (24h): $${parseFloat(company.volume24h?.toString() || "0").toFixed(2)}${company.bio ? `\n• About: ${company.bio.substring(0, 150)}...` : ""}`;
 
         entityContexts.push(context);
         entityData.push({
-          type: 'company',
+          type: "company",
           id: company.id,
           name: company.name,
           ticker: company.ticker ?? null,
-          currentPrice: parseFloat(company.currentPrice?.toString() || '0'),
+          currentPrice: parseFloat(company.currentPrice?.toString() || "0"),
           priceChangePercentage: company.priceChangePercentage ?? null,
-          volume24h: parseFloat(company.volume24h?.toString() || '0'),
+          volume24h: parseFloat(company.volume24h?.toString() || "0"),
         });
-      } else if (entity.type === 'user' && isUserEntity(entity.data)) {
+      } else if (entity.type === "user" && isUserEntity(entity.data)) {
         const user = entity.data;
 
         const context = `👤 ${user.displayName || user.username}:
 • Username: @${user.username}
-• Type: ${user.isAgent ? 'AI Agent' : 'User'}${user.reputationPoints ? `\n• Points: ${user.reputationPoints}` : ''}${user.bio ? `\n• Bio: ${user.bio.substring(0, 150)}...` : ''}`;
+• Type: ${user.isAgent ? "AI Agent" : "User"}${user.reputationPoints ? `\n• Points: ${user.reputationPoints}` : ""}${user.bio ? `\n• Bio: ${user.bio.substring(0, 150)}...` : ""}`;
 
         entityContexts.push(context);
         entityData.push({
-          type: 'user',
+          type: "user",
           id: user.id,
           username: user.username,
           displayName: user.displayName ?? null,
           isAgent: user.isAgent ?? false,
           reputationPoints: user.reputationPoints ?? null,
         });
-      } else if (entity.type === 'actor' && isActorEntity(entity.data)) {
+      } else if (entity.type === "actor" && isActorEntity(entity.data)) {
         const actor = entity.data;
 
         const context = `🎭 ${actor.name}:
 • Type: Actor/Character
-• Category: ${actor.category || 'N/A'}${actor.bio ? `\n• Bio: ${actor.bio.substring(0, 150)}...` : ''}`;
+• Category: ${actor.category || "N/A"}${actor.bio ? `\n• Bio: ${actor.bio.substring(0, 150)}...` : ""}`;
 
         entityContexts.push(context);
         entityData.push({
-          type: 'actor',
+          type: "actor",
           id: actor.id,
           name: actor.name,
           category: actor.category ?? null,
@@ -123,11 +123,11 @@ export const entityMentionsProvider: Provider = {
     }
 
     if (entityContexts.length === 0) {
-      return { text: '' };
+      return { text: "" };
     }
 
     return {
-      text: `[MENTIONED ENTITIES]\n${entityContexts.join('\n\n')}\n[/MENTIONED ENTITIES]`,
+      text: `[MENTIONED ENTITIES]\n${entityContexts.join("\n\n")}\n[/MENTIONED ENTITIES]`,
       data: {
         entities: entityData,
         count: entityData.length,
@@ -141,7 +141,7 @@ export const entityMentionsProvider: Provider = {
  */
 async function findEntityMentions(
   text: string,
-  runtime: FeedRuntime
+  runtime: FeedRuntime,
 ): Promise<EntityMention[]> {
   const results: EntityMention[] = [];
 
@@ -180,11 +180,11 @@ async function findEntityMentions(
 
       // Find exact username match
       const matchedUser = users.find(
-        (u) => u.username?.toLowerCase() === username
+        (u) => u.username?.toLowerCase() === username,
       );
       if (matchedUser) {
         results.push({
-          type: 'user' as const,
+          type: "user" as const,
           data: {
             id: matchedUser.id,
             username: matchedUser.username,
@@ -227,27 +227,27 @@ async function findEntityMentions(
         tickers.some(
           (t) =>
             org.ticker?.toUpperCase() === t.toUpperCase() ||
-            org.name.toUpperCase().includes(t.toUpperCase())
-        )
+            org.name.toUpperCase().includes(t.toUpperCase()),
+        ),
       );
       results.push(
-        ...matchedOrgs.map((c) => ({ type: 'company' as const, data: c }))
+        ...matchedOrgs.map((c) => ({ type: "company" as const, data: c })),
       );
     }
 
     // Match names
     const allNames = [
-      ...quotedNames.map((n) => n.replace(/"/g, '')),
+      ...quotedNames.map((n) => n.replace(/"/g, "")),
       ...capitalizedNames,
     ];
     if (allNames.length > 0) {
       const matchedOrgs = organizations.filter((org) =>
         allNames.some((name) =>
-          org.name.toLowerCase().includes(name.toLowerCase())
-        )
+          org.name.toLowerCase().includes(name.toLowerCase()),
+        ),
       );
       results.push(
-        ...matchedOrgs.map((c) => ({ type: 'company' as const, data: c }))
+        ...matchedOrgs.map((c) => ({ type: "company" as const, data: c })),
       );
     }
   }

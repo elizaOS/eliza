@@ -1,7 +1,7 @@
-import { formatCurrencyDisplay } from '@/lib/format';
-import { getUserDisplayName, getUserHandle } from '@/lib/user-display';
-import type { User } from '@/stores/authStore';
-import type { MarketCategory } from '@/types/markets';
+import { formatCurrencyDisplay } from "@/lib/format";
+import { getUserDisplayName, getUserHandle } from "@/lib/user-display";
+import type { User } from "@/stores/authStore";
+import type { MarketCategory } from "@/types/markets";
 
 /**
  * Category PnL data structure for category PnL share card.
@@ -55,22 +55,22 @@ interface CategoryPnLShareCardProps {
  */
 const categoryConfig = {
   perps: {
-    title: 'Perpetual Futures',
-    emoji: '📈',
+    title: "Perpetual Futures",
+    emoji: "📈",
     gradient:
-      'radial-gradient(circle at top left, rgba(16, 185, 129, 0.85), rgba(10, 10, 30, 0.95)), linear-gradient(135deg, rgba(16, 185, 129, 0.3), rgba(0, 102, 255, 0.35))',
+      "radial-gradient(circle at top left, rgba(16, 185, 129, 0.85), rgba(10, 10, 30, 0.95)), linear-gradient(135deg, rgba(16, 185, 129, 0.3), rgba(0, 102, 255, 0.35))",
   },
   predictions: {
-    title: 'Prediction Markets',
-    emoji: '🔮',
+    title: "Prediction Markets",
+    emoji: "🔮",
     gradient:
-      'radial-gradient(circle at top left, rgba(168, 85, 247, 0.85), rgba(10, 10, 30, 0.95)), linear-gradient(135deg, rgba(168, 85, 247, 0.3), rgba(0, 102, 255, 0.35))',
+      "radial-gradient(circle at top left, rgba(168, 85, 247, 0.85), rgba(10, 10, 30, 0.95)), linear-gradient(135deg, rgba(168, 85, 247, 0.3), rgba(0, 102, 255, 0.35))",
   },
   pools: {
-    title: 'Trading Pools',
-    emoji: '💰',
+    title: "Trading Pools",
+    emoji: "💰",
     gradient:
-      'radial-gradient(circle at top left, rgba(249, 115, 22, 0.85), rgba(10, 10, 30, 0.95)), linear-gradient(135deg, rgba(249, 115, 22, 0.3), rgba(0, 102, 255, 0.35))',
+      "radial-gradient(circle at top left, rgba(249, 115, 22, 0.85), rgba(10, 10, 30, 0.95)), linear-gradient(135deg, rgba(249, 115, 22, 0.3), rgba(0, 102, 255, 0.35))",
   },
 };
 
@@ -81,8 +81,8 @@ export function CategoryPnLShareCard({
   className,
 }: CategoryPnLShareCardProps) {
   const config = categoryConfig[category];
-  const displayName = getUserDisplayName(user, 'Feed Trader');
-  const handle = getUserHandle(user, 'anon');
+  const displayName = getUserDisplayName(user, "Feed Trader");
+  const handle = getUserHandle(user, "anon");
 
   return (
     <div
@@ -92,46 +92,46 @@ export function CategoryPnLShareCard({
         height: 630,
         borderRadius: 32,
         background: config.gradient,
-        color: '#F8FAFC',
-        padding: '48px 64px',
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'space-between',
-        fontFamily: 'Inter, sans-serif',
-        position: 'relative',
-        overflow: 'hidden',
+        color: "#F8FAFC",
+        padding: "48px 64px",
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "space-between",
+        fontFamily: "Inter, sans-serif",
+        position: "relative",
+        overflow: "hidden",
       }}
     >
       <div
         style={{
-          position: 'absolute',
-          top: '-15%',
-          right: '-10%',
-          width: '480px',
-          height: '480px',
-          borderRadius: '50%',
+          position: "absolute",
+          top: "-15%",
+          right: "-10%",
+          width: "480px",
+          height: "480px",
+          borderRadius: "50%",
           background:
-            'radial-gradient(circle, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0) 70%)',
+            "radial-gradient(circle, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0) 70%)",
         }}
       />
 
       <header
         style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
           zIndex: 1,
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "20px" }}>
           <div
             style={{
               width: 64,
               height: 64,
-              borderRadius: '50%',
-              overflow: 'hidden',
-              border: '3px solid rgba(255,255,255,0.25)',
-              position: 'relative',
+              borderRadius: "50%",
+              overflow: "hidden",
+              border: "3px solid rgba(255,255,255,0.25)",
+              position: "relative",
             }}
           >
             {user.profileImageUrl ? (
@@ -139,20 +139,20 @@ export function CategoryPnLShareCard({
                 src={user.profileImageUrl}
                 alt={displayName}
                 style={{
-                  width: '100%',
-                  height: '100%',
-                  objectFit: 'cover',
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
                 }}
               />
             ) : (
               <div
                 style={{
-                  width: '100%',
-                  height: '100%',
-                  background: 'linear-gradient(135deg, #0F1729, #172554)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
+                  width: "100%",
+                  height: "100%",
+                  background: "linear-gradient(135deg, #0F1729, #172554)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
                   fontSize: 24,
                   fontWeight: 700,
                 }}
@@ -166,7 +166,7 @@ export function CategoryPnLShareCard({
               style={{
                 fontSize: 22,
                 fontWeight: 600,
-                letterSpacing: '0.02em',
+                letterSpacing: "0.02em",
               }}
             >
               {displayName}
@@ -174,7 +174,7 @@ export function CategoryPnLShareCard({
             <p
               style={{
                 fontSize: 18,
-                color: 'rgba(226, 232, 255, 0.7)',
+                color: "rgba(226, 232, 255, 0.7)",
                 marginTop: 2,
               }}
             >
@@ -185,9 +185,9 @@ export function CategoryPnLShareCard({
 
         <div
           style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
           }}
         >
           <svg
@@ -233,27 +233,27 @@ export function CategoryPnLShareCard({
       <main
         style={{
           zIndex: 1,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          textAlign: 'center',
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          textAlign: "center",
         }}
       >
         <div
           style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px',
-            marginBottom: '8px',
+            display: "flex",
+            alignItems: "center",
+            gap: "12px",
+            marginBottom: "8px",
           }}
         >
           <span style={{ fontSize: 40 }}>{config.emoji}</span>
           <p
             style={{
               fontSize: 20,
-              textTransform: 'uppercase',
-              letterSpacing: '0.25em',
-              color: 'rgba(226, 232, 255, 0.65)',
+              textTransform: "uppercase",
+              letterSpacing: "0.25em",
+              color: "rgba(226, 232, 255, 0.65)",
               fontWeight: 500,
             }}
           >
@@ -266,20 +266,20 @@ export function CategoryPnLShareCard({
             fontSize: 120,
             fontWeight: 700,
             lineHeight: 1,
-            color: data.unrealizedPnL >= 0 ? '#34D399' : '#F87171',
+            color: data.unrealizedPnL >= 0 ? "#34D399" : "#F87171",
           }}
         >
-          {data.unrealizedPnL >= 0 ? '+' : ''}
+          {data.unrealizedPnL >= 0 ? "+" : ""}
           {formatCurrencyDisplay(data.unrealizedPnL)}
         </p>
 
         <div
           style={{
             marginTop: 32,
-            display: 'flex',
+            display: "flex",
             gap: 48,
-            justifyContent: 'center',
-            alignItems: 'center',
+            justifyContent: "center",
+            alignItems: "center",
           }}
         >
           <MiniStat
@@ -297,18 +297,18 @@ export function CategoryPnLShareCard({
 
       <footer
         style={{
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
           zIndex: 1,
         }}
       >
         <p
           style={{
             fontSize: 18,
-            color: 'rgba(226, 232, 255, 0.6)',
-            letterSpacing: '0.08em',
-            textTransform: 'uppercase',
+            color: "rgba(226, 232, 255, 0.6)",
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
           }}
         >
           Trade the narrative. Share the upside.
@@ -327,9 +327,9 @@ function MiniStat({ title, value }: MiniStatProps) {
   return (
     <div
       style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
         gap: 8,
       }}
     >
@@ -337,9 +337,9 @@ function MiniStat({ title, value }: MiniStatProps) {
         style={{
           fontSize: 16,
           fontWeight: 500,
-          color: 'rgba(226, 232, 255, 0.6)',
-          textTransform: 'uppercase',
-          letterSpacing: '0.1em',
+          color: "rgba(226, 232, 255, 0.6)",
+          textTransform: "uppercase",
+          letterSpacing: "0.1em",
         }}
       >
         {title}
@@ -348,7 +348,7 @@ function MiniStat({ title, value }: MiniStatProps) {
         style={{
           fontSize: 28,
           fontWeight: 700,
-          color: '#F8FAFC',
+          color: "#F8FAFC",
         }}
       >
         {value}

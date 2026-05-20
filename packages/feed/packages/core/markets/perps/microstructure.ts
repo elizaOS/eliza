@@ -1,7 +1,7 @@
-import { clamp } from '@feed/shared';
-import type { PerpMarketRecord } from './types';
+import { clamp } from "@feed/shared";
+import type { PerpMarketRecord } from "./types";
 
-export type SyntheticQuoteSide = 'buy' | 'sell';
+export type SyntheticQuoteSide = "buy" | "sell";
 
 export interface SyntheticPerpQuoteState {
   midPrice: number;
@@ -10,7 +10,7 @@ export interface SyntheticPerpQuoteState {
   spreadBps: number;
   bidDepth: number;
   askDepth: number;
-  liquidityRegime: 'thin' | 'balanced' | 'deep';
+  liquidityRegime: "thin" | "balanced" | "deep";
 }
 
 export interface SyntheticPerpExecution {
@@ -29,7 +29,7 @@ function getFinitePositivePrice(
   ...candidates: Array<number | undefined>
 ): number | undefined {
   return candidates.find(
-    (candidate) => Number.isFinite(candidate) && (candidate ?? 0) > 0
+    (candidate) => Number.isFinite(candidate) && (candidate ?? 0) > 0,
   );
 }
 
@@ -51,32 +51,32 @@ function getBaseDepth(market: PerpMarketRecord): number {
   // effectively impossible to move.
   const openInterestContribution = Math.min(
     Math.max(market.openInterest, 0) * 0.08,
-    250_000
+    250_000,
   );
   const volumeContribution = Math.min(
     Math.max(market.volume24h, 0) * 0.02,
-    150_000
+    150_000,
   );
   const baseDepth = 500 + openInterestContribution + volumeContribution;
   return Math.max(minOrderSize * 10, baseDepth);
 }
 
 function getLiquidityRegime(
-  openInterest: number
-): 'thin' | 'balanced' | 'deep' {
-  if (openInterest >= 100_000) return 'deep';
-  if (openInterest >= 10_000) return 'balanced';
-  return 'thin';
+  openInterest: number,
+): "thin" | "balanced" | "deep" {
+  if (openInterest >= 100_000) return "deep";
+  if (openInterest >= 10_000) return "balanced";
+  return "thin";
 }
 
 function getTargetQuoteState(
-  market: PerpMarketRecord
+  market: PerpMarketRecord,
 ): SyntheticPerpQuoteState {
   const midPrice = getFinitePositivePrice(
     market.currentPrice,
     market.markPrice,
     market.indexPrice,
-    100
+    100,
   )!;
 
   const indexReference =
@@ -91,34 +91,34 @@ function getTargetQuoteState(
   const premiumBps = clamp(
     Math.abs(safeRatio(markReference - indexReference, indexReference)) * 10000,
     0,
-    180
+    180,
   );
   const liquidityBps = clamp(
     45 / Math.sqrt(1 + market.openInterest / 25_000),
     8,
-    45
+    45,
   );
 
   const spreadBps = clamp(
     12 + volatilityBps + premiumBps * 0.35 + liquidityBps,
     8,
-    160
+    160,
   );
   const halfSpread = (midPrice * spreadBps) / 20_000;
 
   const imbalanceSignal = clamp(
     safeRatio(markReference - indexReference, indexReference),
     -0.35,
-    0.35
+    0.35,
   );
   const baseDepth = getBaseDepth(market);
   const bidDepth = Math.max(
     market.minOrderSize ?? 10,
-    baseDepth * (1 + imbalanceSignal * 0.45)
+    baseDepth * (1 + imbalanceSignal * 0.45),
   );
   const askDepth = Math.max(
     market.minOrderSize ?? 10,
-    baseDepth * (1 - imbalanceSignal * 0.45)
+    baseDepth * (1 - imbalanceSignal * 0.45),
   );
 
   return {
@@ -133,7 +133,7 @@ function getTargetQuoteState(
 }
 
 export function getSyntheticPerpQuoteState(
-  market: PerpMarketRecord
+  market: PerpMarketRecord,
 ): SyntheticPerpQuoteState {
   if (
     Number.isFinite(market.bidPrice) &&
@@ -151,7 +151,7 @@ export function getSyntheticPerpQuoteState(
         market.currentPrice,
         market.markPrice,
         market.indexPrice,
-        ((market.bidPrice ?? 0) + (market.askPrice ?? 0)) / 2
+        ((market.bidPrice ?? 0) + (market.askPrice ?? 0)) / 2,
       )!,
       bidPrice: market.bidPrice!,
       askPrice: market.askPrice!,
@@ -183,7 +183,7 @@ export function evolveSyntheticPerpQuoteState(params: {
     Math.abs(target.midPrice - previous.midPrice) /
       Math.max(previous.midPrice, 1),
     0,
-    0.08
+    0.08,
   );
   const stressSpread = target.spreadBps * (1 + shockFraction * 8);
   const stressBidDepth = target.bidDepth / (1 + shockFraction * 6);
@@ -192,15 +192,15 @@ export function evolveSyntheticPerpQuoteState(params: {
   const spreadBps = clamp(
     previous.spreadBps + (stressSpread - previous.spreadBps) * recovery,
     8,
-    220
+    220,
   );
   const bidDepth = Math.max(
     params.market.minOrderSize ?? 10,
-    previous.bidDepth + (stressBidDepth - previous.bidDepth) * recovery
+    previous.bidDepth + (stressBidDepth - previous.bidDepth) * recovery,
   );
   const askDepth = Math.max(
     params.market.minOrderSize ?? 10,
-    previous.askDepth + (stressAskDepth - previous.askDepth) * recovery
+    previous.askDepth + (stressAskDepth - previous.askDepth) * recovery,
   );
   const halfSpread = (target.midPrice * spreadBps) / 20_000;
 
@@ -225,23 +225,23 @@ export function getSyntheticPerpExecutionPrice(params: {
   const { midPrice, bidPrice, askPrice, spreadBps, bidDepth, askDepth } =
     quoteState;
 
-  const sideDepth = side === 'buy' ? askDepth : bidDepth;
+  const sideDepth = side === "buy" ? askDepth : bidDepth;
   const depthRatio = clamp(size / Math.max(sideDepth, 1), 0, 8);
   const impactBps = clamp(
     6 + spreadBps * 0.12 + depthRatio ** 1.2 * 180,
     0,
-    320
+    320,
   );
   const impactPrice = (midPrice * impactBps) / 10_000;
 
   const executionPrice =
-    side === 'buy'
+    side === "buy"
       ? askPrice + impactPrice
       : Math.max(0.0001, bidPrice - impactPrice);
 
   const midShiftBps = clamp(impactBps * 0.35, 0, 140);
   const nextMidPrice =
-    side === 'buy'
+    side === "buy"
       ? midPrice * (1 + midShiftBps / 10_000)
       : midPrice * (1 - midShiftBps / 10_000);
 

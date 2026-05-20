@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { logger } from '@feed/shared';
+import { logger } from "@feed/shared";
 import {
   Calendar,
   FileText,
@@ -12,11 +12,11 @@ import {
   Users,
   Wallet,
   X,
-} from 'lucide-react';
-import Image from 'next/image';
-import { useEffect, useState } from 'react';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { apiUrl } from '@/utils/api-url';
+} from "lucide-react";
+import Image from "next/image";
+import { useEffect, useState } from "react";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { apiUrl } from "@/utils/api-url";
 
 interface UserProfile {
   id: string;
@@ -71,12 +71,12 @@ export function PlayerStatsModal({
       const response = await fetch(apiUrl(`/api/users/${userId}/profile`));
 
       if (!response.ok) {
-        const errorMessage = 'Failed to fetch profile';
+        const errorMessage = "Failed to fetch profile";
         setError(errorMessage);
         logger.error(
-          'Failed to fetch user profile',
+          "Failed to fetch user profile",
           { userId, status: response.status },
-          'PlayerStatsModal'
+          "PlayerStatsModal",
         );
         setLoading(false);
         return;
@@ -85,12 +85,12 @@ export function PlayerStatsModal({
       const data = await response.json();
 
       if (!data.user) {
-        const errorMessage = 'User not found';
+        const errorMessage = "User not found";
         setError(errorMessage);
         logger.error(
-          'User not found in profile response',
+          "User not found in profile response",
           { userId },
-          'PlayerStatsModal'
+          "PlayerStatsModal",
         );
         setLoading(false);
         return;
@@ -162,7 +162,7 @@ export function PlayerStatsModal({
                     {profile.profileImageUrl ? (
                       <Image
                         src={profile.profileImageUrl}
-                        alt={profile.displayName || profile.username || 'User'}
+                        alt={profile.displayName || profile.username || "User"}
                         fill
                         className="object-cover"
                       />
@@ -176,7 +176,7 @@ export function PlayerStatsModal({
                   {/* Name and Username */}
                   <div className="min-w-0 flex-1">
                     <h3 className="truncate font-bold text-base sm:text-lg">
-                      {profile.displayName || profile.username || 'Anonymous'}
+                      {profile.displayName || profile.username || "Anonymous"}
                     </h3>
                     {profile.username && (
                       <p className="mt-0.5 text-muted-foreground text-xs sm:text-sm">
@@ -224,16 +224,16 @@ export function PlayerStatsModal({
                 <div className="rounded-lg border border-border bg-background/50 p-2.5 sm:p-3">
                   <div className="mb-1.5 flex items-center gap-1.5">
                     <TrendingUp
-                      className={`h-3.5 w-3.5 shrink-0 ${profile.lifetimePnL >= 0 ? 'text-green-500' : 'text-red-500'}`}
+                      className={`h-3.5 w-3.5 shrink-0 ${profile.lifetimePnL >= 0 ? "text-green-500" : "text-red-500"}`}
                     />
                     <span className="truncate text-muted-foreground text-xs">
                       Lifetime PnL
                     </span>
                   </div>
                   <p
-                    className={`break-words font-bold text-lg sm:text-xl ${profile.lifetimePnL >= 0 ? 'text-green-500' : 'text-red-500'}`}
+                    className={`break-words font-bold text-lg sm:text-xl ${profile.lifetimePnL >= 0 ? "text-green-500" : "text-red-500"}`}
                   >
-                    ${profile.lifetimePnL >= 0 ? '+' : ''}
+                    ${profile.lifetimePnL >= 0 ? "+" : ""}
                     {profile.lifetimePnL.toLocaleString()}
                   </p>
                 </div>
@@ -336,11 +336,11 @@ export function PlayerStatsModal({
                 <div className="flex items-start gap-2 text-muted-foreground text-xs">
                   <Calendar className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                   <span className="break-words">
-                    Joined{' '}
-                    {new Date(profile.createdAt).toLocaleDateString('en-US', {
-                      month: 'long',
-                      year: 'numeric',
-                      day: 'numeric',
+                    Joined{" "}
+                    {new Date(profile.createdAt).toLocaleDateString("en-US", {
+                      month: "long",
+                      year: "numeric",
+                      day: "numeric",
                     })}
                   </span>
                 </div>

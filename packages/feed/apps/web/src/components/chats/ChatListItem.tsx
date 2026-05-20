@@ -1,10 +1,10 @@
-'use client';
+"use client";
 
-import { cn } from '@feed/shared';
-import { Shield, Users } from 'lucide-react';
-import React from 'react';
-import { Avatar } from '@/components/shared/Avatar';
-import type { Chat } from './types';
+import { cn } from "@feed/shared";
+import { Shield, Users } from "lucide-react";
+import type React from "react";
+import { Avatar } from "@/components/shared/Avatar";
+import type { Chat } from "./types";
 
 interface ChatListItemProps {
   chat: Chat;
@@ -18,7 +18,7 @@ export function ChatListItem({
   onSelect,
 }: ChatListItemProps) {
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' || e.key === ' ') {
+    if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       onSelect(chat.id);
     }
@@ -31,8 +31,8 @@ export function ChatListItem({
       onClick={() => onSelect(chat.id)}
       onKeyDown={handleKeyDown}
       className={cn(
-        'cursor-pointer px-4 py-3 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-inset',
-        isSelected ? 'bg-sidebar-accent/50' : 'hover:bg-sidebar-accent/30'
+        "cursor-pointer px-4 py-3 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-inset",
+        isSelected ? "bg-sidebar-accent/50" : "hover:bg-sidebar-accent/30",
       )}
     >
       <div className="flex items-center gap-3">
@@ -42,9 +42,9 @@ export function ChatListItem({
           </div>
         ) : (
           <Avatar
-            id={chat.otherUser?.id || ''}
+            id={chat.otherUser?.id || ""}
             name={
-              chat.otherUser?.displayName || chat.otherUser?.username || 'User'
+              chat.otherUser?.displayName || chat.otherUser?.username || "User"
             }
             type="user"
             size="md"
@@ -59,14 +59,14 @@ export function ChatListItem({
             {chat.nftRequirement && (
               <div
                 className="shrink-0"
-                title={`NFT Required: ${chat.nftRequirement.tokenId !== null && chat.nftRequirement.tokenId !== undefined ? `Token #${chat.nftRequirement.tokenId}` : 'Any token'} from ${chat.nftRequirement.contractAddress.slice(0, 6)}...${chat.nftRequirement.contractAddress.slice(-4)} on ${chat.nftRequirement.chainName}`}
+                title={`NFT Required: ${chat.nftRequirement.tokenId !== null && chat.nftRequirement.tokenId !== undefined ? `Token #${chat.nftRequirement.tokenId}` : "Any token"} from ${chat.nftRequirement.contractAddress.slice(0, 6)}...${chat.nftRequirement.contractAddress.slice(-4)} on ${chat.nftRequirement.chainName}`}
               >
                 <Shield className="h-3.5 w-3.5 text-primary" />
               </div>
             )}
           </div>
           <div className="truncate text-muted-foreground text-xs">
-            {chat.lastMessage?.content || 'No messages yet'}
+            {chat.lastMessage?.content || "No messages yet"}
           </div>
         </div>
       </div>

@@ -3,15 +3,15 @@
  * All interfaces for the system engine, contexts, and runtime.
  */
 
-import type { DrizzleClient } from '@feed/db';
-import type { PromptDefinition } from '@feed/engine/prompts/define-prompt';
-import type { Logger } from '@feed/shared';
+import type { DrizzleClient } from "@feed/db";
+import type { PromptDefinition } from "@feed/engine/prompts/define-prompt";
+import type { Logger } from "@feed/shared";
 import type {
   FeedConfig,
   FeedHooks,
   FeedServices,
   FeedSharedData,
-} from './augments';
+} from "./augments";
 
 // ---------------------------------------------------------------------------
 // Utility: check if an interface has been augmented (has at least one key)
@@ -54,7 +54,7 @@ export interface SystemTickResult {
 interface TypedServiceContainer {
   register<K extends keyof FeedServices>(
     token: K,
-    instance: FeedServices[K]
+    instance: FeedServices[K],
   ): void;
   register<T>(token: string, instance: T): void;
 
@@ -99,15 +99,10 @@ export interface TickMetrics {
 
 /** Typed overloads when FeedSharedData has been augmented. */
 interface TypedTickSharedData {
-  get<K extends keyof FeedSharedData>(
-    key: K
-  ): FeedSharedData[K] | undefined;
+  get<K extends keyof FeedSharedData>(key: K): FeedSharedData[K] | undefined;
   get<T>(key: string): T | undefined;
 
-  set<K extends keyof FeedSharedData>(
-    key: K,
-    value: FeedSharedData[K]
-  ): void;
+  set<K extends keyof FeedSharedData>(key: K, value: FeedSharedData[K]): void;
   set(key: string, value: unknown): void;
 
   has(key: string): boolean;
@@ -160,7 +155,7 @@ export interface RuntimeHookable {
   hook<T extends keyof RuntimeHooks>(name: T, fn: RuntimeHooks[T]): () => void;
   hookOnce<T extends keyof RuntimeHooks>(
     name: T,
-    fn: RuntimeHooks[T]
+    fn: RuntimeHooks[T],
   ): () => void;
 }
 
@@ -215,30 +210,30 @@ export interface FeedSystem {
 
 export type RuntimeHooks = {
   /** Called after the engine has booted and all systems are registered. */
-  'engine:boot': (ctx: EngineContext) => void | Promise<void>;
+  "engine:boot": (ctx: EngineContext) => void | Promise<void>;
   /** Called before the engine shuts down. */
-  'engine:shutdown': () => void | Promise<void>;
+  "engine:shutdown": () => void | Promise<void>;
 
   /** Called at the start of each tick, before any systems run. */
-  'tick:before': (ctx: TickContext) => void | Promise<void>;
+  "tick:before": (ctx: TickContext) => void | Promise<void>;
   /** Called after all systems have run for a tick. */
-  'tick:after': (
+  "tick:after": (
     ctx: TickContext,
-    metrics: Record<string, number | string | boolean>
+    metrics: Record<string, number | string | boolean>,
   ) => void | Promise<void>;
 
   /** Called before a specific system's onTick runs. */
-  'system:before': (systemId: string, ctx: TickContext) => void | Promise<void>;
+  "system:before": (systemId: string, ctx: TickContext) => void | Promise<void>;
   /** Called after a specific system's onTick completes. */
-  'system:after': (
+  "system:after": (
     systemId: string,
     ctx: TickContext,
-    result: SystemTickResult
+    result: SystemTickResult,
   ) => void | Promise<void>;
   /** Called when a system throws during onTick. */
-  'system:error': (
+  "system:error": (
     systemId: string,
     error: Error,
-    ctx: TickContext
+    ctx: TickContext,
   ) => void | Promise<void>;
 } & (IsEmpty<FeedHooks> extends true ? Record<string, never> : FeedHooks);

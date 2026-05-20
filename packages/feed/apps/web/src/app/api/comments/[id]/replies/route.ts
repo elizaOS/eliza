@@ -88,15 +88,15 @@ import {
   NotFoundError,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { asUser, comments, eq, posts, users } from '@feed/db';
+} from "@feed/api";
+import { asUser, comments, eq, posts, users } from "@feed/db";
 import {
   CreateCommentSchema,
   generateSnowflakeId,
   IdParamSchema,
   logger,
-} from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 /**
  * POST /api/comments/[id]/replies
@@ -111,7 +111,7 @@ import type { NextRequest } from 'next/server';
 export const POST = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ id: string }> }
+    context: { params: Promise<{ id: string }> },
   ) => {
     // Authenticate user
     const user = await authenticate(request);
@@ -132,17 +132,17 @@ export const POST = withErrorHandling(
         .limit(1);
 
       if (!parentComment) {
-        throw new NotFoundError('Parent comment', parentCommentId);
+        throw new NotFoundError("Parent comment", parentCommentId);
       }
 
       // Auto-create post if it doesn't exist (for consistency)
       // PostId format: gameId-authorId-timestamp
       const postId = parentComment.postId;
-      const postParts = postId.split('-');
+      const postParts = postId.split("-");
       if (postParts.length >= 3) {
         const gameId = postParts[0];
         const authorId = postParts[1];
-        const timestampStr = postParts.slice(2).join('-');
+        const timestampStr = postParts.slice(2).join("-");
 
         if (gameId && authorId) {
           // Ensure post exists (insert if not exists pattern)
@@ -155,7 +155,7 @@ export const POST = withErrorHandling(
           if (!existingPost) {
             await dbClient.insert(posts).values({
               id: postId,
-              content: '[Game-generated post]',
+              content: "[Game-generated post]",
               authorId,
               gameId,
               timestamp: new Date(timestampStr),
@@ -197,9 +197,9 @@ export const POST = withErrorHandling(
     });
 
     logger.info(
-      'Reply created successfully',
+      "Reply created successfully",
       { parentCommentId, userId: user.userId, replyId: reply.id },
-      'POST /api/comments/[id]/replies'
+      "POST /api/comments/[id]/replies",
     );
 
     // New replies have 0 likes and 0 replies
@@ -216,7 +216,7 @@ export const POST = withErrorHandling(
         likeCount: 0,
         replyCount: 0,
       },
-      201
+      201,
     );
-  }
+  },
 );

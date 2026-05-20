@@ -1,11 +1,11 @@
-import { cn } from '@feed/shared';
-import { ArrowDownRight, ArrowUpRight, RefreshCcw, Share2 } from 'lucide-react';
-import { formatCurrencyDisplay } from '@/lib/format';
+import { cn } from "@feed/shared";
+import { ArrowDownRight, ArrowUpRight, RefreshCcw, Share2 } from "lucide-react";
+import { formatCurrencyDisplay } from "@/lib/format";
 
 /**
  * Market category type for category PnL card.
  */
-type MarketCategory = 'perps' | 'predictions';
+type MarketCategory = "perps" | "predictions";
 
 /**
  * Category PnL data structure for category PnL card.
@@ -74,11 +74,11 @@ interface CategoryPnLCardProps {
  * @returns Formatted relative time string
  */
 function formatRelativeTime(timestamp: number | null) {
-  if (!timestamp) return '';
+  if (!timestamp) return "";
   const diffMs = Date.now() - timestamp;
-  if (diffMs < 0) return '';
+  if (diffMs < 0) return "";
   const diffMinutes = Math.round(diffMs / (1000 * 60));
-  if (diffMinutes <= 1) return 'Updated just now';
+  if (diffMinutes <= 1) return "Updated just now";
   if (diffMinutes < 60) return `Updated ${diffMinutes}m ago`;
   const diffHours = Math.round(diffMinutes / 60);
   if (diffHours < 24) return `Updated ${diffHours}h ago`;
@@ -91,19 +91,19 @@ function formatRelativeTime(timestamp: number | null) {
  */
 const categoryConfig = {
   perps: {
-    title: 'Perpetual Futures P&L',
-    color: 'from-green-500/10 via-emerald-500/10 to-green-500/5',
-    border: 'border-green-500/20',
+    title: "Perpetual Futures P&L",
+    color: "from-green-500/10 via-emerald-500/10 to-green-500/5",
+    border: "border-green-500/20",
   },
   predictions: {
-    title: 'Prediction Markets P&L',
-    color: 'from-purple-500/10 via-violet-500/10 to-purple-500/5',
-    border: 'border-purple-500/20',
+    title: "Prediction Markets P&L",
+    color: "from-purple-500/10 via-violet-500/10 to-purple-500/5",
+    border: "border-purple-500/20",
   },
   pools: {
-    title: 'Trading Pools P&L',
-    color: 'from-orange-500/10 via-amber-500/10 to-orange-500/5',
-    border: 'border-orange-500/20',
+    title: "Trading Pools P&L",
+    color: "from-orange-500/10 via-amber-500/10 to-orange-500/5",
+    border: "border-orange-500/20",
   },
 };
 
@@ -123,9 +123,9 @@ export function CategoryPnLCard({
   return (
     <section
       className={cn(
-        'rounded-2xl border bg-gradient-to-br px-4 py-3 shadow-sm sm:px-5 sm:py-4',
+        "rounded-2xl border bg-gradient-to-br px-4 py-3 shadow-sm sm:px-5 sm:py-4",
         config.border,
-        config.color
+        config.color,
       )}
     >
       <div className="flex items-center justify-between gap-3">
@@ -146,7 +146,7 @@ export function CategoryPnLCard({
             className="flex items-center justify-center rounded-lg border border-white/10 bg-white/10 p-2 text-foreground backdrop-blur transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-60"
             aria-label={`Refresh ${category} P&L`}
           >
-            <RefreshCcw className={cn('h-4 w-4', loading && 'animate-spin')} />
+            <RefreshCcw className={cn("h-4 w-4", loading && "animate-spin")} />
           </button>
           <button
             type="button"
@@ -180,10 +180,10 @@ export function CategoryPnLCard({
             <div className="mt-6 flex items-center gap-3">
               <div
                 className={cn(
-                  'inline-flex items-center gap-3 rounded-full px-3 py-2 font-semibold text-sm',
+                  "inline-flex items-center gap-3 rounded-full px-3 py-2 font-semibold text-sm",
                   pnlIsPositive
-                    ? 'bg-emerald-500/20 text-emerald-400'
-                    : 'bg-red-500/20 text-red-400'
+                    ? "bg-emerald-500/20 text-emerald-400"
+                    : "bg-red-500/20 text-red-400",
                 )}
               >
                 {pnlIsPositive ? (
@@ -191,10 +191,10 @@ export function CategoryPnLCard({
                 ) : (
                   <ArrowDownRight className="h-4 w-4" />
                 )}
-                {pnlIsPositive ? 'Profit' : 'Loss'}
+                {pnlIsPositive ? "Profit" : "Loss"}
               </div>
               <p className="font-bold text-4xl text-foreground sm:text-5xl">
-                {pnlIsPositive ? '+' : ''}
+                {pnlIsPositive ? "+" : ""}
                 {formatCurrencyDisplay(pnl)}
               </p>
             </div>

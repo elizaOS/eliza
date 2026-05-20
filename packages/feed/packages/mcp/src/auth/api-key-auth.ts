@@ -18,4 +18,4 @@ export {
   invalidateCachedKey,
   invalidateCachedKeysForUser,
   validateUserApiKey,
-} from '@feed/api';
+} from "@feed/api";

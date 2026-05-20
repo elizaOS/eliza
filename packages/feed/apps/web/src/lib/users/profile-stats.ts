@@ -1,5 +1,5 @@
-import { cachedDb } from '@feed/api';
-import { logger } from '@feed/shared';
+import { cachedDb } from "@feed/api";
+import { logger } from "@feed/shared";
 
 export type ProfileStats = {
   positions: number;
@@ -21,15 +21,15 @@ const EMPTY_PROFILE_STATS: ProfileStats = {
 
 export async function getOptionalProfileStats(
   userId: string,
-  context: string
+  context: string,
 ): Promise<ProfileStats> {
   try {
     const stats = await cachedDb.getUserProfileStats(userId);
     if (!stats) {
       logger.warn(
-        'Profile stats unavailable; returning zero fallback',
+        "Profile stats unavailable; returning zero fallback",
         { userId },
-        context
+        context,
       );
       return EMPTY_PROFILE_STATS;
     }
@@ -37,12 +37,12 @@ export async function getOptionalProfileStats(
     return stats;
   } catch (error) {
     logger.error(
-      'Failed to fetch profile stats; returning zero fallback',
+      "Failed to fetch profile stats; returning zero fallback",
       {
         userId,
         error: error instanceof Error ? error.message : String(error),
       },
-      context
+      context,
     );
     return EMPTY_PROFILE_STATS;
   }

@@ -8,7 +8,7 @@
  * Uses atomic SQL operations to prevent race conditions that could
  * lead to negative balances.
  */
-import type { WalletPort } from '@feed/core/markets/shared';
+import type { WalletPort } from "@feed/core/markets/shared";
 import {
   actorState,
   and,
@@ -17,8 +17,8 @@ import {
   gte,
   sql,
   type Transaction,
-} from '@feed/db';
-import { logger } from '@feed/shared';
+} from "@feed/db";
+import { logger } from "@feed/shared";
 
 type DbClient = typeof defaultDb | Transaction;
 
@@ -31,7 +31,7 @@ type DbClient = typeof defaultDb | Transaction;
  */
 export function createNpcWalletAdapter(
   actorId: string,
-  dbClient?: DbClient
+  dbClient?: DbClient,
 ): WalletPort {
   const db = dbClient ?? defaultDb;
 
@@ -49,8 +49,8 @@ export function createNpcWalletAdapter(
         .where(
           and(
             eq(actorState.id, actorId),
-            gte(sql<number>`${actorState.tradingBalance}::numeric`, amount)
-          )
+            gte(sql<number>`${actorState.tradingBalance}::numeric`, amount),
+          ),
         )
         .returning({ id: actorState.id });
 
@@ -69,7 +69,7 @@ export function createNpcWalletAdapter(
 
         const currentBalance = Number(actor.tradingBalance);
         throw new Error(
-          `Insufficient trading balance: ${currentBalance.toFixed(2)} < ${amount.toFixed(2)} (${reason})`
+          `Insufficient trading balance: ${currentBalance.toFixed(2)} < ${amount.toFixed(2)} (${reason})`,
         );
       }
     },
@@ -96,9 +96,9 @@ export function createNpcWalletAdapter(
       // Log PnL for debugging but don't modify balance here
       // (credit/debit already handles the balance changes)
       logger.debug(
-        'NPC PnL recorded',
+        "NPC PnL recorded",
         { actorId, pnl: pnl.toFixed(2), reason },
-        'NpcWalletAdapter'
+        "NpcWalletAdapter",
       );
     },
 

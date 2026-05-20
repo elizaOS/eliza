@@ -6,9 +6,9 @@
  * Provides high-level functions for broadcasting to channels and chat rooms.
  */
 
-import { logger, type MessageMetadata } from '@feed/shared';
-import { publishEvent, type RealtimeChannel } from '../realtime';
-import type { JsonValue } from '../types';
+import { logger, type MessageMetadata } from "@feed/shared";
+import { publishEvent, type RealtimeChannel } from "../realtime";
+import type { JsonValue } from "../types";
 
 export type Channel = RealtimeChannel;
 
@@ -54,11 +54,11 @@ export function getEventBroadcaster(): NoopBroadcaster {
  */
 export async function broadcastToChannel(
   channel: Channel,
-  data: Record<string, JsonValue>
+  data: Record<string, JsonValue>,
 ): Promise<void> {
   const message: BroadcastMessage = {
     channel,
-    type: (data.type as string) || 'update',
+    type: (data.type as string) || "update",
     data,
     timestamp: Date.now(),
   };
@@ -93,16 +93,16 @@ export async function broadcastChatMessage(
       senderId: string;
       senderName?: string;
     } | null;
-  }
+  },
 ): Promise<void> {
   logger.info(
-    'Broadcasting chat message',
+    "Broadcasting chat message",
     { chatId, messageId: message.id },
-    'Realtime'
+    "Realtime",
   );
   // Cast to JsonValue for type compatibility - metadata may contain complex nested types
   await broadcastToChannel(`chat:${chatId}`, {
-    type: 'new_message',
+    type: "new_message",
     message: message as unknown as JsonValue,
   });
 }
@@ -117,11 +117,11 @@ export async function broadcastChatMessageReaction(
     chatId: string;
     emoji: string;
     userId: string;
-    action: 'added' | 'removed';
-  }
+    action: "added" | "removed";
+  },
 ): Promise<void> {
   await broadcastToChannel(`chat:${chatId}`, {
-    type: 'message_reaction',
+    type: "message_reaction",
     reaction: reaction as unknown as JsonValue,
   });
 }
@@ -135,12 +135,12 @@ export async function broadcastChatMessageReaction(
  */
 export interface TradeActivityData {
   tradeId: string;
-  marketType: 'prediction' | 'perp';
+  marketType: "prediction" | "perp";
   marketId: string | null;
   ticker: string | null;
   marketQuestion?: string;
-  action: 'open' | 'close';
-  side: 'long' | 'short' | 'yes' | 'no' | null;
+  action: "open" | "close";
+  side: "long" | "short" | "yes" | "no" | null;
   amount: number;
   price: number;
   pnl: number | null;
@@ -179,7 +179,7 @@ export interface MessageActivityData {
  * Unified agent activity event structure.
  */
 export interface AgentActivityEvent {
-  type: 'trade' | 'post' | 'comment' | 'message';
+  type: "trade" | "post" | "comment" | "message";
   agentId: string;
   agentName: string;
   timestamp: number;
@@ -204,8 +204,8 @@ export interface AgentActivityEvent {
 export async function broadcastAgentActivity(
   agentId: string,
   agentName: string,
-  activityType: AgentActivityEvent['type'],
-  data: AgentActivityEvent['data']
+  activityType: AgentActivityEvent["type"],
+  data: AgentActivityEvent["data"],
 ): Promise<void> {
   const activity: AgentActivityEvent = {
     type: activityType,
@@ -216,9 +216,9 @@ export async function broadcastAgentActivity(
   };
 
   logger.info(
-    'Broadcasting agent activity',
+    "Broadcasting agent activity",
     { agentId, type: activityType },
-    'Realtime'
+    "Realtime",
   );
 
   // Cast to Record<string, JsonValue> for type compatibility with broadcastToChannel
@@ -234,15 +234,15 @@ export async function broadcastAgentActivity(
  */
 export async function broadcastChatTitleUpdate(
   chatId: string,
-  newTitle: string
+  newTitle: string,
 ): Promise<void> {
   logger.info(
-    'Broadcasting chat title update',
+    "Broadcasting chat title update",
     { chatId, newTitle },
-    'Realtime'
+    "Realtime",
   );
   await broadcastToChannel(`chat:${chatId}`, {
-    type: 'title_updated',
+    type: "title_updated",
     chatId,
     title: newTitle,
     timestamp: Date.now(),
@@ -256,10 +256,10 @@ export async function broadcastTypingIndicator(
   chatId: string,
   userId: string,
   displayName: string,
-  isTyping: boolean
+  isTyping: boolean,
 ): Promise<void> {
   await broadcastToChannel(`chat:${chatId}`, {
-    type: 'typing_indicator',
+    type: "typing_indicator",
     userId,
     displayName,
     isTyping,
@@ -285,10 +285,10 @@ export async function broadcastThinkingIndicator(
   agentId: string,
   agentName: string,
   isThinking: boolean,
-  thinkingLabel?: string
+  thinkingLabel?: string,
 ): Promise<void> {
   await broadcastToChannel(`chat:${chatId}`, {
-    type: 'thinking_indicator',
+    type: "thinking_indicator",
     agentId,
     agentName,
     isThinking,

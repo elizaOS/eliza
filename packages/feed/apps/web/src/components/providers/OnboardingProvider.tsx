@@ -1,33 +1,33 @@
-'use client';
+"use client";
 
-import type { OnboardingProfilePayload } from '@feed/shared';
+import type { OnboardingProfilePayload } from "@feed/shared";
 import {
   isValidOnboardingUsername,
   logger,
   POINTS,
   sanitizeOnboardingUsername,
-} from '@feed/shared';
+} from "@feed/shared";
 // Phase 2: Privy replaced by Steward — no more usePrivy or useIdentityToken
-import { usePathname, useRouter } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ImportedProfileData } from '@/components/onboarding/UserOnboardingFlow';
-import { UserSignupOnboardingContextProvider } from '@/components/onboarding/user-signup-onboarding-context';
-import { useAuth } from '@/hooks/useAuth';
-import { useSignupTracking } from '@/hooks/usePostHog';
+import { usePathname, useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ImportedProfileData } from "@/components/onboarding/UserOnboardingFlow";
+import { UserSignupOnboardingContextProvider } from "@/components/onboarding/user-signup-onboarding-context";
+import { useAuth } from "@/hooks/useAuth";
+import { useSignupTracking } from "@/hooks/usePostHog";
 import {
   hasCompletedGameGuide,
   markGameGuideCompletedLocal,
-} from '@/lib/game-guide-completion';
-import { useAuthStore } from '@/stores/authStore';
-import { apiFetch } from '@/utils/api-fetch';
+} from "@/lib/game-guide-completion";
+import { useAuthStore } from "@/stores/authStore";
+import { apiFetch } from "@/utils/api-fetch";
 
-import { clearReferralCode, getReferralCode } from './ReferralCaptureProvider';
+import { clearReferralCode, getReferralCode } from "./ReferralCaptureProvider";
 
 function getSafeReturnTo(): string {
-  if (typeof window === 'undefined') return '/feed';
-  const raw = new URLSearchParams(window.location.search).get('returnTo');
-  if (!raw || !raw.startsWith('/') || raw.startsWith('//')) {
-    return '/feed';
+  if (typeof window === "undefined") return "/feed";
+  const raw = new URLSearchParams(window.location.search).get("returnTo");
+  if (!raw?.startsWith("/") || raw.startsWith("//")) {
+    return "/feed";
   }
   return raw;
 }
@@ -81,16 +81,16 @@ export function OnboardingProvider({
 
   const [replayGuide, setReplayGuide] = useState(false);
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined") return;
     setReplayGuide(
-      pathname === '/onboarding' &&
-        new URLSearchParams(window.location.search).get('replayGuide') === '1'
+      pathname === "/onboarding" &&
+        new URLSearchParams(window.location.search).get("replayGuide") === "1",
     );
   }, [pathname]);
 
   const guideDone = useMemo(
     () => hasCompletedGameGuide(user?.id, user?.gameGuideCompletedAt),
-    [user?.id, user?.gameGuideCompletedAt]
+    [user?.id, user?.gameGuideCompletedAt],
   );
 
   useEffect(() => {
@@ -106,7 +106,7 @@ export function OnboardingProvider({
     }
 
     // Shorter delay in dev avoids a sluggish redirect while Turbopack compiles.
-    const delay = process.env.NODE_ENV === 'development' ? 0 : 1000;
+    const delay = process.env.NODE_ENV === "development" ? 0 : 1000;
     const timer = setTimeout(() => {
       setIsReadyToShow(true);
       setHasInitialized(true);
@@ -120,7 +120,7 @@ export function OnboardingProvider({
       needsOnboarding &&
       authenticated &&
       !loadingProfile &&
-      profileFetchStatus === 'done'
+      profileFetchStatus === "done"
     ) {
       setIsReadyToShow(true);
       setHasInitialized(true);
@@ -128,12 +128,12 @@ export function OnboardingProvider({
   }, [needsOnboarding, authenticated, loadingProfile, profileFetchStatus]);
 
   const shouldShowOnboarding = useMemo(() => {
-    if (typeof window !== 'undefined') {
+    if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
-      const isDevMode = params.get('dev') === 'true';
-      const isProduction = window.location.hostname === 'feed.market';
-      const isHomePage = window.location.pathname === '/';
-      const isWaitlistFlow = params.get('waitlist') === 'true';
+      const isDevMode = params.get("dev") === "true";
+      const isProduction = window.location.hostname === "feed.market";
+      const isHomePage = window.location.pathname === "/";
+      const isWaitlistFlow = params.get("waitlist") === "true";
 
       if (isProduction && isHomePage && !isDevMode && !isWaitlistFlow) {
         return false;
@@ -148,7 +148,7 @@ export function OnboardingProvider({
       return false;
     }
 
-    if (profileFetchStatus !== 'done') {
+    if (profileFetchStatus !== "done") {
       return false;
     }
 
@@ -181,32 +181,32 @@ export function OnboardingProvider({
   ]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined") return;
     if (!shouldShowOnboarding) return;
-    if (pathname === '/onboarding' || pathname.startsWith('/onboarding/')) {
+    if (pathname === "/onboarding" || pathname.startsWith("/onboarding/")) {
       return;
     }
 
     const currentParams = new URLSearchParams(window.location.search);
     const next = new URLSearchParams();
     const returnPath = `${pathname}${window.location.search}`;
-    if (returnPath && returnPath !== '/onboarding') {
-      next.set('returnTo', returnPath);
+    if (returnPath && returnPath !== "/onboarding") {
+      next.set("returnTo", returnPath);
     }
-    if (currentParams.get('waitlist') === 'true') {
-      next.set('waitlist', 'true');
+    if (currentParams.get("waitlist") === "true") {
+      next.set("waitlist", "true");
     }
-    if (currentParams.get('dev') === 'true') {
-      next.set('dev', 'true');
+    if (currentParams.get("dev") === "true") {
+      next.set("dev", "true");
     }
     const q = next.toString();
-    router.replace(`/onboarding${q ? `?${q}` : ''}`);
+    router.replace(`/onboarding${q ? `?${q}` : ""}`);
   }, [shouldShowOnboarding, pathname, router]);
 
-  const phase = useMemo<'profile' | 'guide'>(() => {
-    if (replayGuide) return 'guide';
-    if (needsOnboarding) return 'profile';
-    return 'guide';
+  const phase = useMemo<"profile" | "guide">(() => {
+    if (replayGuide) return "guide";
+    if (needsOnboarding) return "profile";
+    return "guide";
   }, [replayGuide, needsOnboarding]);
 
   const handleProfileSubmit = useCallback(
@@ -218,9 +218,9 @@ export function OnboardingProvider({
       const referralCode = getReferralCode();
 
       try {
-        const response = await apiFetch('/api/users/signup', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+        const response = await apiFetch("/api/users/signup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             ...payload,
             referralCode: referralCode ?? undefined,
@@ -280,8 +280,8 @@ export function OnboardingProvider({
 
         clearReferralCode();
         setSubmittedProfile(payload);
-        trackOnboardingStep('profile', true);
-        trackSignupCompleted(data.user?.id ?? '', {
+        trackOnboardingStep("profile", true);
+        trackSignupCompleted(data.user?.id ?? "", {
           hasReferrer: Boolean(referralCode),
           hasFarcaster: data.user?.hasFarcaster ?? false,
           hasTwitter: data.user?.hasTwitter ?? false,
@@ -299,7 +299,7 @@ export function OnboardingProvider({
       trackSignupStarted,
       trackSignupCompleted,
       trackOnboardingStep,
-    ]
+    ],
   );
 
   useEffect(() => {
@@ -327,24 +327,24 @@ export function OnboardingProvider({
         setSocialAutoSubmitAttempted(true);
         socialAutoSubmitRef.current = true;
         logger.info(
-          'Social login user - auto-submitting profile',
+          "Social login user - auto-submitting profile",
           {
             platform: importedProfileData.platform,
             username: importedProfileData.username,
           },
-          'OnboardingProvider'
+          "OnboardingProvider",
         );
         const sanitizedUsername = sanitizeOnboardingUsername(
-          importedProfileData.username
+          importedProfileData.username,
         );
         if (!isValidOnboardingUsername(sanitizedUsername)) {
           logger.warn(
-            'Social username not valid after sanitization, falling back to manual onboarding',
+            "Social username not valid after sanitization, falling back to manual onboarding",
             {
               raw: importedProfileData.username,
               sanitized: sanitizedUsername,
             },
-            'OnboardingProvider'
+            "OnboardingProvider",
           );
           socialAutoSubmitRef.current = false;
           return;
@@ -352,18 +352,18 @@ export function OnboardingProvider({
         const autoProfile: OnboardingProfilePayload = {
           username: sanitizedUsername,
           displayName: importedProfileData.displayName,
-          bio: '',
+          bio: "",
           profileImageUrl: importedProfileData.profileImageUrl ?? undefined,
           coverImageUrl: undefined,
           importedFrom: importedProfileData.platform,
           twitterId: importedProfileData.twitterId ?? null,
           twitterUsername:
-            importedProfileData.platform === 'twitter'
+            importedProfileData.platform === "twitter"
               ? importedProfileData.username
               : null,
           farcasterFid: importedProfileData.farcasterFid ?? null,
           farcasterUsername:
-            importedProfileData.platform === 'farcaster'
+            importedProfileData.platform === "farcaster"
               ? importedProfileData.username
               : null,
           tosAccepted: true,
@@ -371,12 +371,12 @@ export function OnboardingProvider({
         };
         handleProfileSubmit(autoProfile).catch((submitError: Error) => {
           logger.error(
-            'Social login auto-submit failed',
+            "Social login auto-submit failed",
             {
               error: submitError.message,
               platform: importedProfileData.platform,
             },
-            'OnboardingProvider'
+            "OnboardingProvider",
           );
           setError(submitError.message);
           socialAutoSubmitRef.current = false;
@@ -404,7 +404,7 @@ export function OnboardingProvider({
 
     if (user.hasFarcaster && user.farcasterUsername) {
       const profileData: ImportedProfileData = {
-        platform: 'farcaster',
+        platform: "farcaster",
         username: user.farcasterUsername,
         displayName: user.displayName || user.farcasterUsername,
         bio: user.bio || undefined,
@@ -413,12 +413,12 @@ export function OnboardingProvider({
       };
 
       logger.info(
-        'Auto-imported Farcaster profile from Feed user record',
+        "Auto-imported Farcaster profile from Feed user record",
         {
           username: profileData.username,
           expectedPoints: POINTS.FARCASTER_LINK,
         },
-        'OnboardingProvider'
+        "OnboardingProvider",
       );
 
       setImportedProfileData(profileData);
@@ -428,7 +428,7 @@ export function OnboardingProvider({
 
     if (user.hasTwitter && user.twitterUsername) {
       const profileData: ImportedProfileData = {
-        platform: 'twitter',
+        platform: "twitter",
         username: user.twitterUsername,
         displayName: user.displayName || user.twitterUsername,
         bio: undefined,
@@ -437,9 +437,9 @@ export function OnboardingProvider({
       };
 
       logger.info(
-        'Auto-imported Twitter profile from Feed user record',
+        "Auto-imported Twitter profile from Feed user record",
         { username: profileData.username, expectedPoints: POINTS.TWITTER_LINK },
-        'OnboardingProvider'
+        "OnboardingProvider",
       );
 
       setImportedProfileData(profileData);
@@ -454,55 +454,55 @@ export function OnboardingProvider({
   ]);
 
   useEffect(() => {
-    if (typeof window === 'undefined' || !authenticated) return;
+    if (typeof window === "undefined" || !authenticated) return;
 
     const params = new URLSearchParams(window.location.search);
-    const socialImport = params.get('social_import');
-    const dataParam = params.get('data');
+    const socialImport = params.get("social_import");
+    const dataParam = params.get("data");
 
     if (socialImport && dataParam) {
       try {
         const parsed = JSON.parse(decodeURIComponent(dataParam)) as unknown;
 
         if (
-          typeof parsed !== 'object' ||
+          typeof parsed !== "object" ||
           parsed === null ||
-          !('platform' in parsed) ||
-          !('username' in parsed) ||
-          !('displayName' in parsed) ||
-          (parsed.platform !== 'twitter' && parsed.platform !== 'farcaster') ||
-          typeof parsed.username !== 'string' ||
-          typeof parsed.displayName !== 'string'
+          !("platform" in parsed) ||
+          !("username" in parsed) ||
+          !("displayName" in parsed) ||
+          (parsed.platform !== "twitter" && parsed.platform !== "farcaster") ||
+          typeof parsed.username !== "string" ||
+          typeof parsed.displayName !== "string"
         ) {
           logger.warn(
-            'Invalid social profile data structure from URL',
+            "Invalid social profile data structure from URL",
             { socialImport },
-            'OnboardingProvider'
+            "OnboardingProvider",
           );
           return;
         }
 
         const profileData = parsed as ImportedProfileData;
         logger.info(
-          'Social profile data received from URL',
+          "Social profile data received from URL",
           { platform: socialImport },
-          'OnboardingProvider'
+          "OnboardingProvider",
         );
 
         setImportedProfileData(profileData);
         setHasProgressedPastSocialImport(true);
       } catch (parseError) {
         logger.warn(
-          'Failed to parse social profile data from URL',
+          "Failed to parse social profile data from URL",
           { error: parseError },
-          'OnboardingProvider'
+          "OnboardingProvider",
         );
       }
 
       const newUrl = new URL(window.location.href);
-      newUrl.searchParams.delete('social_import');
-      newUrl.searchParams.delete('data');
-      window.history.replaceState({}, '', newUrl.toString());
+      newUrl.searchParams.delete("social_import");
+      newUrl.searchParams.delete("data");
+      window.history.replaceState({}, "", newUrl.toString());
     }
   }, [authenticated]);
 
@@ -522,8 +522,8 @@ export function OnboardingProvider({
       markGameGuideCompletedLocal(uid);
 
       try {
-        const res = await apiFetch('/api/users/me/game-guide', {
-          method: 'POST',
+        const res = await apiFetch("/api/users/me/game-guide", {
+          method: "POST",
         });
         if (res.ok) {
           const { gameGuideCompletedAt } = (await res.json()) as {
@@ -534,35 +534,35 @@ export function OnboardingProvider({
             setUser({ ...fresh, gameGuideCompletedAt });
           }
           logger.info(
-            'Unified onboarding: game guide marked complete',
+            "Unified onboarding: game guide marked complete",
             { userId: uid },
-            'OnboardingProvider'
+            "OnboardingProvider",
           );
         } else {
           logger.error(
-            'Game guide API failed (localStorage backup saved)',
+            "Game guide API failed (localStorage backup saved)",
             { status: res.status, userId: uid },
-            'OnboardingProvider'
+            "OnboardingProvider",
           );
         }
       } catch (err) {
         logger.error(
-          'Game guide API error',
+          "Game guide API error",
           {
             error: err instanceof Error ? err.message : String(err),
             userId: uid,
           },
-          'OnboardingProvider'
+          "OnboardingProvider",
         );
       } finally {
         setGuideSubmitting(false);
         guideCompleteInFlight.current = false;
       }
 
-      trackOnboardingStep('guide', true);
+      trackOnboardingStep("guide", true);
       router.replace(dest);
     },
-    [user?.id, router, setUser, trackOnboardingStep]
+    [user?.id, router, setUser, trackOnboardingStep],
   );
 
   const onLogout = useCallback(async () => {
@@ -599,7 +599,7 @@ export function OnboardingProvider({
       onLogout,
       user,
       importedProfileData,
-    ]
+    ],
   );
 
   return (

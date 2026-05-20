@@ -28,11 +28,11 @@
  * ```
  */
 
-'use client';
+"use client";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
-import { cn, logger } from '@feed/shared';
+import { cn, logger } from "@feed/shared";
 import {
   Activity,
   BarChart,
@@ -57,67 +57,67 @@ import {
   Sparkles,
   TrendingUp,
   Users,
-} from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { AdminManagementTab } from '@/components/admin/AdminManagementTab';
-import { AgentsTab } from '@/components/admin/AgentsTab';
-import { AIModelsTab } from '@/components/admin/AIModelsTab';
-import { AlphaGroupsTab } from '@/components/admin/AlphaGroupsTab';
-import { AnalyticsTab } from '@/components/admin/AnalyticsTab';
-import { AuditLogsTab } from '@/components/admin/AuditLogsTab';
-import { ContentModerationTab } from '@/components/admin/ContentModerationTab';
-import { EscrowManagementTab } from '@/components/admin/EscrowManagementTab';
-import { FeedbackTab } from '@/components/admin/FeedbackTab';
-import { FeesTab } from '@/components/admin/FeesTab';
-import { GameControlTab } from '@/components/admin/GameControlTab';
-import { GroupsTab } from '@/components/admin/GroupsTab';
-import { GrowthMetricsTab } from '@/components/admin/GrowthMetricsTab';
-import { HumanReviewTab } from '@/components/admin/HumanReviewTab';
-import { MarketOversightTab } from '@/components/admin/MarketOversightTab';
-import { NotificationsTab } from '@/components/admin/NotificationsTab';
-import { RegistryTab } from '@/components/admin/RegistryTab';
-import { ReportsTab } from '@/components/admin/ReportsTab';
-import { StatsTab } from '@/components/admin/StatsTab';
-import { SystemHealthTab } from '@/components/admin/SystemHealthTab';
-import { TradingFeedTab } from '@/components/admin/TradingFeedTab';
-import { TrainingDataTab } from '@/components/admin/TrainingDataTab';
-import { UserManagementTab } from '@/components/admin/UserManagementTab';
-import { WhitelistTab } from '@/components/admin/WhitelistTab';
-import { PageContainer } from '@/components/shared/PageContainer';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { useAuth } from '@/hooks/useAuth';
-import { useOnClickOutside } from '@/hooks/useOnClickOutside';
-import { apiUrl } from '@/utils/api-url';
+} from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AdminManagementTab } from "@/components/admin/AdminManagementTab";
+import { AgentsTab } from "@/components/admin/AgentsTab";
+import { AIModelsTab } from "@/components/admin/AIModelsTab";
+import { AlphaGroupsTab } from "@/components/admin/AlphaGroupsTab";
+import { AnalyticsTab } from "@/components/admin/AnalyticsTab";
+import { AuditLogsTab } from "@/components/admin/AuditLogsTab";
+import { ContentModerationTab } from "@/components/admin/ContentModerationTab";
+import { EscrowManagementTab } from "@/components/admin/EscrowManagementTab";
+import { FeedbackTab } from "@/components/admin/FeedbackTab";
+import { FeesTab } from "@/components/admin/FeesTab";
+import { GameControlTab } from "@/components/admin/GameControlTab";
+import { GroupsTab } from "@/components/admin/GroupsTab";
+import { GrowthMetricsTab } from "@/components/admin/GrowthMetricsTab";
+import { HumanReviewTab } from "@/components/admin/HumanReviewTab";
+import { MarketOversightTab } from "@/components/admin/MarketOversightTab";
+import { NotificationsTab } from "@/components/admin/NotificationsTab";
+import { RegistryTab } from "@/components/admin/RegistryTab";
+import { ReportsTab } from "@/components/admin/ReportsTab";
+import { StatsTab } from "@/components/admin/StatsTab";
+import { SystemHealthTab } from "@/components/admin/SystemHealthTab";
+import { TradingFeedTab } from "@/components/admin/TradingFeedTab";
+import { TrainingDataTab } from "@/components/admin/TrainingDataTab";
+import { UserManagementTab } from "@/components/admin/UserManagementTab";
+import { WhitelistTab } from "@/components/admin/WhitelistTab";
+import { PageContainer } from "@/components/shared/PageContainer";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { useAuth } from "@/hooks/useAuth";
+import { useOnClickOutside } from "@/hooks/useOnClickOutside";
+import { apiUrl } from "@/utils/api-url";
 
 /**
  * Available admin dashboard tabs
  */
 type Tab =
-  | 'stats'
-  | 'analytics'
-  | 'growth'
-  | 'system-health'
-  | 'game-control'
-  | 'fees'
-  | 'trades'
-  | 'markets'
-  | 'users'
-  | 'content-moderation'
-  | 'registry'
-  | 'groups'
-  | 'notifications'
-  | 'admins'
-  | 'reports'
-  | 'feedback'
-  | 'human-review'
-  | 'ai-models'
-  | 'training-data'
-  | 'agents'
-  | 'escrow'
-  | 'audit-logs'
-  | 'alpha-groups'
-  | 'whitelist';
+  | "stats"
+  | "analytics"
+  | "growth"
+  | "system-health"
+  | "game-control"
+  | "fees"
+  | "trades"
+  | "markets"
+  | "users"
+  | "content-moderation"
+  | "registry"
+  | "groups"
+  | "notifications"
+  | "admins"
+  | "reports"
+  | "feedback"
+  | "human-review"
+  | "ai-models"
+  | "training-data"
+  | "agents"
+  | "escrow"
+  | "audit-logs"
+  | "alpha-groups"
+  | "whitelist";
 
 /**
  * Admin Dashboard Component
@@ -129,7 +129,7 @@ type Tab =
 export default function AdminDashboard() {
   const router = useRouter();
   const { authenticated, ready } = useAuth();
-  const [activeTab, setActiveTab] = useState<Tab>('stats');
+  const [activeTab, setActiveTab] = useState<Tab>("stats");
   const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -149,12 +149,12 @@ export default function AdminDashboard() {
     if (!authenticated) {
       // Don't redirect on localhost - let them see the login prompt
       const isLocalhost =
-        typeof window !== 'undefined' &&
-        (window.location.hostname === 'localhost' ||
-          window.location.hostname === '127.0.0.1');
+        typeof window !== "undefined" &&
+        (window.location.hostname === "localhost" ||
+          window.location.hostname === "127.0.0.1");
 
       if (!isLocalhost) {
-        router.push('/');
+        router.push("/");
         return;
       }
 
@@ -164,17 +164,17 @@ export default function AdminDashboard() {
     }
 
     // Check if user is admin by trying to fetch admin stats
-    const response = await fetch(apiUrl('/api/admin/stats')).catch(
+    const response = await fetch(apiUrl("/api/admin/stats")).catch(
       (error: Error) => {
         logger.error(
-          'Admin access check failed',
+          "Admin access check failed",
           error instanceof Error ? error : { error },
-          'AdminPage'
+          "AdminPage",
         );
         setIsAuthorized(false);
         setLoading(false);
         throw error;
-      }
+      },
     );
 
     if (!response.ok) {
@@ -221,77 +221,77 @@ export default function AdminDashboard() {
   // Navigation items organized by category
   const navCategories = [
     {
-      name: 'Overview',
+      name: "Overview",
       items: [
-        { id: 'stats' as const, label: 'Dashboard', icon: BarChart },
-        { id: 'analytics' as const, label: 'Analytics', icon: LineChart },
-        { id: 'growth' as const, label: 'Growth Metrics', icon: TrendingUp },
-        { id: 'system-health' as const, label: 'System Health', icon: Server },
+        { id: "stats" as const, label: "Dashboard", icon: BarChart },
+        { id: "analytics" as const, label: "Analytics", icon: LineChart },
+        { id: "growth" as const, label: "Growth Metrics", icon: TrendingUp },
+        { id: "system-health" as const, label: "System Health", icon: Server },
       ],
     },
     {
-      name: 'Game & Markets',
+      name: "Game & Markets",
       items: [
-        { id: 'game-control' as const, label: 'Game Control', icon: Gamepad2 },
-        { id: 'markets' as const, label: 'Markets', icon: TrendingUp },
-        { id: 'fees' as const, label: 'Fees', icon: DollarSign },
-        { id: 'trades' as const, label: 'Trades', icon: Activity },
-        { id: 'escrow' as const, label: 'Escrow', icon: DollarSign },
+        { id: "game-control" as const, label: "Game Control", icon: Gamepad2 },
+        { id: "markets" as const, label: "Markets", icon: TrendingUp },
+        { id: "fees" as const, label: "Fees", icon: DollarSign },
+        { id: "trades" as const, label: "Trades", icon: Activity },
+        { id: "escrow" as const, label: "Escrow", icon: DollarSign },
       ],
     },
     {
-      name: 'Users & Moderation',
+      name: "Users & Moderation",
       items: [
-        { id: 'users' as const, label: 'Users', icon: Users },
-        { id: 'admins' as const, label: 'Admin Management', icon: ShieldCheck },
+        { id: "users" as const, label: "Users", icon: Users },
+        { id: "admins" as const, label: "Admin Management", icon: ShieldCheck },
         {
-          id: 'content-moderation' as const,
-          label: 'Content Moderation',
+          id: "content-moderation" as const,
+          label: "Content Moderation",
           icon: Eye,
         },
-        { id: 'reports' as const, label: 'Reports', icon: Flag },
+        { id: "reports" as const, label: "Reports", icon: Flag },
         {
-          id: 'feedback' as const,
-          label: 'Game Feedback',
+          id: "feedback" as const,
+          label: "Game Feedback",
           icon: MessageCircle,
         },
-        { id: 'human-review' as const, label: 'Human Review', icon: Scale },
+        { id: "human-review" as const, label: "Human Review", icon: Scale },
       ],
     },
     {
-      name: 'Platform',
+      name: "Platform",
       items: [
-        { id: 'registry' as const, label: 'Registry', icon: Layers },
-        { id: 'groups' as const, label: 'Groups', icon: MessageSquare },
-        { id: 'alpha-groups' as const, label: 'Alpha Groups', icon: Crown },
-        { id: 'notifications' as const, label: 'Notifications', icon: Bell },
-        { id: 'whitelist' as const, label: 'Whitelist', icon: Shield },
+        { id: "registry" as const, label: "Registry", icon: Layers },
+        { id: "groups" as const, label: "Groups", icon: MessageSquare },
+        { id: "alpha-groups" as const, label: "Alpha Groups", icon: Crown },
+        { id: "notifications" as const, label: "Notifications", icon: Bell },
+        { id: "whitelist" as const, label: "Whitelist", icon: Shield },
       ],
     },
     {
-      name: 'AI & Agents',
+      name: "AI & Agents",
       items: [
-        { id: 'agents' as const, label: 'Agents', icon: Bot },
-        { id: 'ai-models' as const, label: 'AI Models', icon: Sparkles },
+        { id: "agents" as const, label: "Agents", icon: Bot },
+        { id: "ai-models" as const, label: "AI Models", icon: Sparkles },
         {
-          id: 'training-data' as const,
-          label: 'Training Data',
+          id: "training-data" as const,
+          label: "Training Data",
           icon: Database,
         },
       ],
     },
     {
-      name: 'Audit',
+      name: "Audit",
       items: [
-        { id: 'audit-logs' as const, label: 'Audit Logs', icon: ScrollText },
+        { id: "audit-logs" as const, label: "Audit Logs", icon: ScrollText },
       ],
     },
   ];
 
   // Default tab for fallback (should never be needed since activeTab is always a valid Tab)
   const defaultTab = {
-    id: 'stats' as const,
-    label: 'Dashboard',
+    id: "stats" as const,
+    label: "Dashboard",
     icon: BarChart,
   };
 
@@ -330,9 +330,9 @@ export default function AdminDashboard() {
             data-testid="admin-nav-dropdown"
             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
             className={cn(
-              'flex w-full items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3 font-medium transition-all sm:w-auto sm:min-w-[220px]',
-              'hover:border-primary/50 hover:bg-card/80',
-              isDropdownOpen && 'border-primary ring-2 ring-primary/20'
+              "flex w-full items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3 font-medium transition-all sm:w-auto sm:min-w-[220px]",
+              "hover:border-primary/50 hover:bg-card/80",
+              isDropdownOpen && "border-primary ring-2 ring-primary/20",
             )}
           >
             <div className="flex items-center gap-2">
@@ -341,8 +341,8 @@ export default function AdminDashboard() {
             </div>
             <ChevronDown
               className={cn(
-                'h-4 w-4 text-muted-foreground transition-transform',
-                isDropdownOpen && 'rotate-180'
+                "h-4 w-4 text-muted-foreground transition-transform",
+                isDropdownOpen && "rotate-180",
               )}
             />
           </button>
@@ -350,10 +350,10 @@ export default function AdminDashboard() {
           {/* Dropdown Menu */}
           <div
             className={cn(
-              'absolute z-50 mt-2 max-h-[70vh] w-full min-w-[280px] overflow-y-auto rounded-xl border border-border bg-card shadow-xl sm:w-auto',
+              "absolute z-50 mt-2 max-h-[70vh] w-full min-w-[280px] overflow-y-auto rounded-xl border border-border bg-card shadow-xl sm:w-auto",
               isDropdownOpen
-                ? 'pointer-events-auto right-0 opacity-100'
-                : 'pointer-events-none right-0 opacity-0'
+                ? "pointer-events-auto right-0 opacity-100"
+                : "pointer-events-none right-0 opacity-0",
             )}
           >
             {navCategories.map((category, categoryIndex) => (
@@ -377,16 +377,16 @@ export default function AdminDashboard() {
                           setIsDropdownOpen(false);
                         }}
                         className={cn(
-                          'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors',
+                          "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors",
                           isActive
-                            ? 'bg-primary/10 font-medium text-primary'
-                            : 'text-foreground hover:bg-muted'
+                            ? "bg-primary/10 font-medium text-primary"
+                            : "text-foreground hover:bg-muted",
                         )}
                       >
                         <Icon
                           className={cn(
-                            'h-4 w-4',
-                            isActive ? 'text-primary' : 'text-muted-foreground'
+                            "h-4 w-4",
+                            isActive ? "text-primary" : "text-muted-foreground",
                           )}
                         />
                         {item.label}
@@ -402,30 +402,30 @@ export default function AdminDashboard() {
 
       {/* Tab Content */}
       <div className="flex-1 overflow-auto">
-        {activeTab === 'stats' && <StatsTab />}
-        {activeTab === 'analytics' && <AnalyticsTab />}
-        {activeTab === 'growth' && <GrowthMetricsTab />}
-        {activeTab === 'system-health' && <SystemHealthTab />}
-        {activeTab === 'game-control' && <GameControlTab />}
-        {activeTab === 'markets' && <MarketOversightTab />}
-        {activeTab === 'fees' && <FeesTab />}
-        {activeTab === 'trades' && <TradingFeedTab />}
-        {activeTab === 'users' && <UserManagementTab />}
-        {activeTab === 'content-moderation' && <ContentModerationTab />}
-        {activeTab === 'reports' && <ReportsTab />}
-        {activeTab === 'feedback' && <FeedbackTab />}
-        {activeTab === 'human-review' && <HumanReviewTab />}
-        {activeTab === 'admins' && <AdminManagementTab />}
-        {activeTab === 'registry' && <RegistryTab />}
-        {activeTab === 'groups' && <GroupsTab />}
-        {activeTab === 'agents' && <AgentsTab />}
-        {activeTab === 'ai-models' && <AIModelsTab />}
-        {activeTab === 'training-data' && <TrainingDataTab />}
-        {activeTab === 'notifications' && <NotificationsTab />}
-        {activeTab === 'escrow' && <EscrowManagementTab />}
-        {activeTab === 'audit-logs' && <AuditLogsTab />}
-        {activeTab === 'alpha-groups' && <AlphaGroupsTab />}
-        {activeTab === 'whitelist' && <WhitelistTab />}
+        {activeTab === "stats" && <StatsTab />}
+        {activeTab === "analytics" && <AnalyticsTab />}
+        {activeTab === "growth" && <GrowthMetricsTab />}
+        {activeTab === "system-health" && <SystemHealthTab />}
+        {activeTab === "game-control" && <GameControlTab />}
+        {activeTab === "markets" && <MarketOversightTab />}
+        {activeTab === "fees" && <FeesTab />}
+        {activeTab === "trades" && <TradingFeedTab />}
+        {activeTab === "users" && <UserManagementTab />}
+        {activeTab === "content-moderation" && <ContentModerationTab />}
+        {activeTab === "reports" && <ReportsTab />}
+        {activeTab === "feedback" && <FeedbackTab />}
+        {activeTab === "human-review" && <HumanReviewTab />}
+        {activeTab === "admins" && <AdminManagementTab />}
+        {activeTab === "registry" && <RegistryTab />}
+        {activeTab === "groups" && <GroupsTab />}
+        {activeTab === "agents" && <AgentsTab />}
+        {activeTab === "ai-models" && <AIModelsTab />}
+        {activeTab === "training-data" && <TrainingDataTab />}
+        {activeTab === "notifications" && <NotificationsTab />}
+        {activeTab === "escrow" && <EscrowManagementTab />}
+        {activeTab === "audit-logs" && <AuditLogsTab />}
+        {activeTab === "alpha-groups" && <AlphaGroupsTab />}
+        {activeTab === "whitelist" && <WhitelistTab />}
       </div>
     </PageContainer>
   );

@@ -11,12 +11,12 @@ import type {
   InteractionError,
   PendingInteraction,
   PostInteraction,
-} from '@feed/shared';
-import { retryIfRetryable } from '@feed/shared';
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-import { getAuthToken } from '@/lib/auth';
-import { apiUrl } from '@/utils/api-url';
+} from "@feed/shared";
+import { retryIfRetryable } from "@feed/shared";
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
+import { getAuthToken } from "@/lib/auth";
+import { apiUrl } from "@/utils/api-url";
 
 interface RepostPost {
   id: string;
@@ -61,7 +61,7 @@ interface InteractionStoreActions {
   addComment: (
     postId: string,
     content: string,
-    parentId?: string
+    parentId?: string,
   ) => Promise<CommentData | null>;
   editComment: (commentId: string, content: string) => Promise<void>;
   deleteComment: (commentId: string, postId?: string) => Promise<void>;
@@ -70,8 +70,8 @@ interface InteractionStoreActions {
   // Share actions
   toggleShare: (
     postId: string,
-    comment?: string
-  ) => Promise<{ repostPost?: RepostPost } | void>;
+    comment?: string,
+  ) => Promise<{ repostPost?: RepostPost } | undefined>;
 
   // Favorite actions
   toggleFavorite: (profileId: string) => Promise<void>;
@@ -102,12 +102,12 @@ async function apiCall<T>(url: string, options: RequestInit = {}): Promise<T> {
       const token = getAuthToken();
 
       const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
         ...(options.headers as Record<string, string>),
       };
 
       if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
+        headers.Authorization = `Bearer ${token}`;
       }
 
       const response = await fetch(apiUrl(url), {
@@ -120,7 +120,7 @@ async function apiCall<T>(url: string, options: RequestInit = {}): Promise<T> {
     {
       maxAttempts: 3,
       initialDelayMs: 1000,
-    }
+    },
   );
 }
 
@@ -162,13 +162,13 @@ export const useInteractionStore = create<InteractionStore>()(
         set((state) => ({
           postInteractions: new Map(state.postInteractions).set(
             postId,
-            optimisticInteraction
+            optimisticInteraction,
           ),
         }));
 
         setLoading(postId, true);
 
-        const method = wasLiked ? 'DELETE' : 'POST';
+        const method = wasLiked ? "DELETE" : "POST";
         const response = await apiCall<{
           data: { likeCount: number; isLiked: boolean };
         }>(`/api/posts/${postId}/like`, { method });
@@ -208,13 +208,13 @@ export const useInteractionStore = create<InteractionStore>()(
         set((state) => ({
           commentInteractions: new Map(state.commentInteractions).set(
             commentId,
-            optimisticInteraction
+            optimisticInteraction,
           ),
         }));
 
         setLoading(commentId, true);
 
-        const method = wasLiked ? 'DELETE' : 'POST';
+        const method = wasLiked ? "DELETE" : "POST";
         const response = await apiCall<{
           data: { likeCount: number; isLiked: boolean };
         }>(`/api/comments/${commentId}/like`, { method });
@@ -226,7 +226,7 @@ export const useInteractionStore = create<InteractionStore>()(
               ...currentInteraction,
               likeCount: response.data.likeCount,
               isLiked: response.data.isLiked,
-            }
+            },
           ),
         }));
 
@@ -237,19 +237,19 @@ export const useInteractionStore = create<InteractionStore>()(
       addComment: async (
         postId: string,
         content: string,
-        parentId?: string
+        parentId?: string,
       ) => {
         const { setLoading, postInteractions } = get();
-        const loadingKey = `comment-${postId}-${parentId || 'root'}`;
+        const loadingKey = `comment-${postId}-${parentId || "root"}`;
 
         setLoading(loadingKey, true);
 
         const response = await apiCall<CommentData>(
           `/api/posts/${postId}/comments`,
           {
-            method: 'POST',
+            method: "POST",
             body: JSON.stringify({ content, parentCommentId: parentId }),
-          }
+          },
         );
 
         if (!parentId) {
@@ -275,7 +275,7 @@ export const useInteractionStore = create<InteractionStore>()(
         setLoading(loadingKey, true);
 
         await apiCall(`/api/comments/${commentId}`, {
-          method: 'PATCH',
+          method: "PATCH",
           body: JSON.stringify({ content }),
         });
 
@@ -289,7 +289,7 @@ export const useInteractionStore = create<InteractionStore>()(
         setLoading(loadingKey, true);
 
         await apiCall(`/api/comments/${commentId}`, {
-          method: 'DELETE',
+          method: "DELETE",
         });
 
         if (postId) {
@@ -324,14 +324,14 @@ export const useInteractionStore = create<InteractionStore>()(
           }
 
           setError(loadingKey, {
-            code: 'UNKNOWN',
-            message: 'Unable to load comments right now.',
+            code: "UNKNOWN",
+            message: "Unable to load comments right now.",
           });
           return [];
         } catch {
           setError(loadingKey, {
-            code: 'NETWORK_ERROR',
-            message: 'Unable to load comments right now.',
+            code: "NETWORK_ERROR",
+            message: "Unable to load comments right now.",
           });
           return [];
         } finally {
@@ -365,13 +365,13 @@ export const useInteractionStore = create<InteractionStore>()(
         set((state) => ({
           postInteractions: new Map(state.postInteractions).set(
             postId,
-            optimisticInteraction
+            optimisticInteraction,
           ),
         }));
 
         setLoading(`share-${postId}`, true);
 
-        const method = wasShared ? 'DELETE' : 'POST';
+        const method = wasShared ? "DELETE" : "POST";
         const body = comment ? JSON.stringify({ comment }) : JSON.stringify({});
         const response = await apiCall<{
           data: {
@@ -381,7 +381,7 @@ export const useInteractionStore = create<InteractionStore>()(
           };
         }>(`/api/posts/${postId}/share`, {
           method,
-          ...(method === 'POST' && { body }),
+          ...(method === "POST" && { body }),
         });
 
         set((state) => ({
@@ -413,7 +413,7 @@ export const useInteractionStore = create<InteractionStore>()(
         set({ favoritedProfiles: newFavorites });
         setLoading(`favorite-${profileId}`, true);
 
-        const method = wasFavorited ? 'DELETE' : 'POST';
+        const method = wasFavorited ? "DELETE" : "POST";
         const encodedProfileId = encodeURIComponent(profileId);
         await apiCall(`/api/users/${encodedProfileId}/follow`, { method });
 
@@ -423,16 +423,16 @@ export const useInteractionStore = create<InteractionStore>()(
       loadFavorites: async () => {
         const { setLoading } = get();
 
-        setLoading('favorites', true);
+        setLoading("favorites", true);
 
         const response = await apiCall<{
           data: { profiles: FavoriteProfile[] };
-        }>('/api/profiles/favorites');
+        }>("/api/profiles/favorites");
 
         const favoriteIds = new Set(response.data.profiles.map((p) => p.id));
         set({ favoritedProfiles: favoriteIds });
 
-        setLoading('favorites', false);
+        setLoading("favorites", false);
         return response.data.profiles;
       },
 
@@ -487,7 +487,7 @@ export const useInteractionStore = create<InteractionStore>()(
       },
     }),
     {
-      name: 'feed-interactions',
+      name: "feed-interactions",
       // Custom serialization for Maps and Sets
       partialize: (state: InteractionStore): PersistedInteractionState => ({
         postInteractions: Array.from(state.postInteractions.entries()),
@@ -512,6 +512,6 @@ export const useInteractionStore = create<InteractionStore>()(
           favoritedProfiles: new Set(persisted?.favoritedProfiles || []),
         };
       },
-    }
-  )
+    },
+  ),
 );

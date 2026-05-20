@@ -1,7 +1,7 @@
-import type { PerpPosition } from '@feed/shared';
-import type { TradeSide } from '@/types/markets';
+import type { PerpPosition } from "@feed/shared";
+import type { TradeSide } from "@/types/markets";
 
-export type PerpRebalanceType = 'add' | 'reduce' | 'close' | 'flip';
+export type PerpRebalanceType = "add" | "reduce" | "close" | "flip";
 
 export interface PerpRebalanceInfo {
   type: PerpRebalanceType;
@@ -9,7 +9,7 @@ export interface PerpRebalanceInfo {
 }
 
 export function getPerpRebalanceInfo(params: {
-  existingPosition: Pick<PerpPosition, 'side' | 'size'> | null;
+  existingPosition: Pick<PerpPosition, "side" | "size"> | null;
   nextSide: TradeSide;
   requestedSize: number;
 }): PerpRebalanceInfo | null {
@@ -20,36 +20,36 @@ export function getPerpRebalanceInfo(params: {
 
   if (existingPosition.side === nextSide) {
     return {
-      type: 'add',
+      type: "add",
       newSize: existingPosition.size + requestedSize,
     };
   }
 
   if (requestedSize < existingPosition.size) {
     return {
-      type: 'reduce',
+      type: "reduce",
       newSize: existingPosition.size - requestedSize,
     };
   }
 
   if (Math.abs(requestedSize - existingPosition.size) < 0.01) {
     return {
-      type: 'close',
+      type: "close",
       newSize: 0,
     };
   }
 
   return {
-    type: 'flip',
+    type: "flip",
     newSize: requestedSize - existingPosition.size,
   };
 }
 
 export function shouldApplyPerpBalanceGate(
-  rebalanceInfo: PerpRebalanceInfo | null
+  rebalanceInfo: PerpRebalanceInfo | null,
 ): boolean {
   if (!rebalanceInfo) return true;
   // Both 'add' and 'flip' may require additional capital.
   // Only 'reduce' and 'close' are guaranteed not to need new funds.
-  return rebalanceInfo.type === 'add' || rebalanceInfo.type === 'flip';
+  return rebalanceInfo.type === "add" || rebalanceInfo.type === "flip";
 }

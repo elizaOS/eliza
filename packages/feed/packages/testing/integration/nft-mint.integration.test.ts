@@ -21,7 +21,7 @@ import {
   describe,
   expect,
   test,
-} from 'bun:test';
+} from "bun:test";
 import {
   db,
   eq,
@@ -31,14 +31,14 @@ import {
   nftOwnership,
   nftSnapshot,
   users,
-} from '@feed/db';
-import { generateSnowflakeId } from '@feed/shared';
-import { nanoid } from 'nanoid';
+} from "@feed/db";
+import { generateSnowflakeId } from "@feed/shared";
+import { nanoid } from "nanoid";
 
 const BASE_URL =
   process.env.TEST_API_URL ||
   process.env.PLAYWRIGHT_BASE_URL ||
-  'http://localhost:3000';
+  "http://localhost:3000";
 
 let serverAvailable = false;
 let databaseAvailable = false;
@@ -48,10 +48,10 @@ function assertInfrastructure(options: {
   database?: boolean;
 }): void {
   if (options.server && !serverAvailable) {
-    throw new Error('NFT mint integration test requires the web server');
+    throw new Error("NFT mint integration test requires the web server");
   }
   if (options.database && !databaseAvailable) {
-    throw new Error('NFT mint integration test requires DATABASE_URL');
+    throw new Error("NFT mint integration test requires DATABASE_URL");
   }
 }
 const testUserIds: string[] = [];
@@ -61,22 +61,22 @@ const testOwnershipIds: string[] = [];
 const testClaimIds: string[] = [];
 
 // Test wallet addresses
-const TEST_ELIGIBLE_WALLET = '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266'; // Anvil Account #0
+const TEST_ELIGIBLE_WALLET = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"; // Anvil Account #0
 const TEST_COLLECTION_TOKEN_IDS = Array.from(
   { length: 100 },
-  (_, index) => index + 1
+  (_, index) => index + 1,
 );
 
 interface EligibilityResponse {
   eligible: boolean;
-  status: 'not_authenticated' | 'not_eligible' | 'eligible' | 'already_minted';
+  status: "not_authenticated" | "not_eligible" | "eligible" | "already_minted";
   snapshotRank?: number;
   hasMinted: boolean;
   reason?: string;
 }
 
 function createUniqueWalletAddress(userId: string): string {
-  return `0x${BigInt(userId).toString(16).padStart(40, '0').slice(-40)}`;
+  return `0x${BigInt(userId).toString(16).padStart(40, "0").slice(-40)}`;
 }
 
 async function checkServerHealth(): Promise<boolean> {
@@ -91,7 +91,7 @@ async function checkServerHealth(): Promise<boolean> {
 }
 
 async function createTestUser(
-  walletAddress?: string
+  walletAddress?: string,
 ): Promise<{ id: string; walletAddress: string }> {
   const userId = await generateSnowflakeId();
   const privyId = `did:privy:test-${userId}`;
@@ -118,7 +118,7 @@ async function createSnapshotEntry(
   userId: string,
   walletAddress: string,
   rank: number,
-  points: number
+  points: number,
 ): Promise<string> {
   const id = nanoid();
 
@@ -141,7 +141,7 @@ async function createTestNftCollection(): Promise<void> {
     process.env.NEXT_PUBLIC_CHAIN_ID ||
     process.env.CHAIN_ID ||
     process.env.NFT_CHAIN_ID ||
-    '31337';
+    "31337";
   const chainId = parseInt(envChainId, 10);
 
   // Create 100 test NFTs
@@ -156,7 +156,7 @@ async function createTestNftCollection(): Promise<void> {
       thumbnailUrl: `https://picsum.photos/seed/${tokenId}/256/256`,
       contractAddress:
         process.env.NFT_CONTRACT_ADDRESS ??
-        '0x0000000000000000000000000000000000000000',
+        "0x0000000000000000000000000000000000000000",
       chainId,
       updatedAt: new Date(),
     });
@@ -188,14 +188,14 @@ function getAuthToken(userId: string): string {
 async function authenticatedFetch(
   path: string,
   userId: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
 ): Promise<Response> {
   const headers: HeadersInit = {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
     ...options.headers,
   };
 
-  headers['Authorization'] = `Bearer ${getAuthToken(userId)}`;
+  headers.Authorization = `Bearer ${getAuthToken(userId)}`;
 
   return fetch(`${BASE_URL}${path}`, {
     ...options,
@@ -204,7 +204,7 @@ async function authenticatedFetch(
 }
 
 async function parseEligibilityResponse(
-  response: Response
+  response: Response,
 ): Promise<EligibilityResponse> {
   const payload = (await response.json()) as {
     success: boolean;
@@ -214,12 +214,12 @@ async function parseEligibilityResponse(
   return payload.data;
 }
 
-describe('NFT Mint Service - Integration Tests', () => {
+describe("NFT Mint Service - Integration Tests", () => {
   beforeAll(async () => {
     serverAvailable = await checkServerHealth();
     if (!serverAvailable) {
       console.warn(
-        '⚠️  Server not available - some tests will be skipped. Start with: bun run dev'
+        "⚠️  Server not available - some tests will be skipped. Start with: bun run dev",
       );
     }
 
@@ -228,7 +228,7 @@ describe('NFT Mint Service - Integration Tests', () => {
       databaseAvailable = true;
     } catch {
       databaseAvailable = false;
-      console.warn('⚠️  Database not available. Set DATABASE_URL.');
+      console.warn("⚠️  Database not available. Set DATABASE_URL.");
     }
 
     if (databaseAvailable) {
@@ -271,45 +271,45 @@ describe('NFT Mint Service - Integration Tests', () => {
     }
   });
 
-  describe('Eligibility Endpoint', () => {
-    test('should return eligible=true for user in snapshot', async () => {
+  describe("Eligibility Endpoint", () => {
+    test("should return eligible=true for user in snapshot", async () => {
       assertInfrastructure({ server: true, database: true });
 
       const user = await createTestUser();
       await createSnapshotEntry(user.id, user.walletAddress, 5, 10000);
 
       const response = await authenticatedFetch(
-        '/api/nft/eligibility',
-        user.id
+        "/api/nft/eligibility",
+        user.id,
       );
       expect(response.status).toBe(200);
 
       const data = await parseEligibilityResponse(response);
       expect(data.eligible).toBe(true);
-      expect(data.status).toBe('eligible');
+      expect(data.status).toBe("eligible");
       expect(data.snapshotRank).toBe(5);
       expect(data.hasMinted).toBe(false);
     });
 
-    test('should return eligible=false for user not in snapshot', async () => {
+    test("should return eligible=false for user not in snapshot", async () => {
       assertInfrastructure({ server: true, database: true });
 
       const user = await createTestUser();
       // No snapshot entry created
 
       const response = await authenticatedFetch(
-        '/api/nft/eligibility',
-        user.id
+        "/api/nft/eligibility",
+        user.id,
       );
       expect(response.status).toBe(200);
 
       const data = await parseEligibilityResponse(response);
       expect(data.eligible).toBe(false);
-      expect(data.status).toBe('not_eligible');
-      expect(data.reason).toBe('not_in_top_100');
+      expect(data.status).toBe("not_eligible");
+      expect(data.reason).toBe("not_in_top_100");
     });
 
-    test('should return already_minted status when user has minted', async () => {
+    test("should return already_minted status when user has minted", async () => {
       assertInfrastructure({ server: true, database: true });
 
       const user = await createTestUser();
@@ -317,7 +317,7 @@ describe('NFT Mint Service - Integration Tests', () => {
         user.id,
         user.walletAddress,
         1,
-        50000
+        50000,
       );
 
       // Mark as already minted
@@ -327,64 +327,64 @@ describe('NFT Mint Service - Integration Tests', () => {
           hasMinted: true,
           mintedTokenId: 42,
           mintedAt: new Date(),
-          mintTxHash: '0x' + '1'.repeat(64),
+          mintTxHash: `0x${"1".repeat(64)}`,
         })
         .where(eq(nftSnapshot.id, snapshotId));
 
       const response = await authenticatedFetch(
-        '/api/nft/eligibility',
-        user.id
+        "/api/nft/eligibility",
+        user.id,
       );
       expect(response.status).toBe(200);
 
       const data = await parseEligibilityResponse(response);
       expect(data.eligible).toBe(true);
-      expect(data.status).toBe('already_minted');
+      expect(data.status).toBe("already_minted");
       expect(data.hasMinted).toBe(true);
     });
   });
 
-  describe('Mint Prepare Endpoint', () => {
-    test('should require authentication', async () => {
+  describe("Mint Prepare Endpoint", () => {
+    test("should require authentication", async () => {
       assertInfrastructure({ server: true });
 
       const response = await fetch(`${BASE_URL}/api/nft/mint/prepare`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
       });
 
       expect(response.status).toBe(401);
     });
 
-    test('should return 403 for ineligible user', async () => {
+    test("should return 403 for ineligible user", async () => {
       assertInfrastructure({ server: true, database: true });
 
       const user = await createTestUser();
 
       const response = await authenticatedFetch(
-        '/api/nft/mint/prepare',
+        "/api/nft/mint/prepare",
         user.id,
         {
-          method: 'POST',
-        }
+          method: "POST",
+        },
       );
 
       // Should fail because user not in snapshot
       expect([400, 403]).toContain(response.status);
     });
 
-    test('should return signature and encoded data for eligible user', async () => {
+    test("should return signature and encoded data for eligible user", async () => {
       assertInfrastructure({ server: true, database: true });
 
       const user = await createTestUser();
       await createSnapshotEntry(user.id, user.walletAddress, 10, 8000);
 
       const response = await authenticatedFetch(
-        '/api/nft/mint/prepare',
+        "/api/nft/mint/prepare",
         user.id,
         {
-          method: 'POST',
-        }
+          method: "POST",
+        },
       );
 
       // In local integration runs this is expected to fail unless the NFT
@@ -392,12 +392,12 @@ describe('NFT Mint Service - Integration Tests', () => {
       // server process.
       if (response.status === 400) {
         const error = await response.json();
-        expect(typeof error.error).toBe('string');
+        expect(typeof error.error).toBe("string");
         expect([
-          'Embedded wallet not ready',
-          'NFT contract not configured',
-          'NFT chain not configured',
-          'NFT signer not configured',
+          "Embedded wallet not ready",
+          "NFT contract not configured",
+          "NFT chain not configured",
+          "NFT signer not configured",
         ]).toContain(error.error);
         return;
       }
@@ -412,7 +412,7 @@ describe('NFT Mint Service - Integration Tests', () => {
       expect(data.encodedData).toMatch(/^0x[a-fA-F0-9]+$/);
     });
 
-    test('should return 403 for user who already minted', async () => {
+    test("should return 403 for user who already minted", async () => {
       assertInfrastructure({ server: true, database: true });
 
       const user = await createTestUser();
@@ -420,7 +420,7 @@ describe('NFT Mint Service - Integration Tests', () => {
         user.id,
         user.walletAddress,
         3,
-        20000
+        20000,
       );
 
       // Mark as already minted
@@ -434,28 +434,28 @@ describe('NFT Mint Service - Integration Tests', () => {
         .where(eq(nftSnapshot.id, snapshotId));
 
       const response = await authenticatedFetch(
-        '/api/nft/mint/prepare',
+        "/api/nft/mint/prepare",
         user.id,
         {
-          method: 'POST',
-        }
+          method: "POST",
+        },
       );
 
       expect([400, 403]).toContain(response.status);
       const error = await response.json();
-      expect(error.error).toContain('minted');
+      expect(error.error).toContain("minted");
     });
   });
 
-  describe('Mint Confirm Endpoint', () => {
-    test('should require authentication', async () => {
+  describe("Mint Confirm Endpoint", () => {
+    test("should require authentication", async () => {
       assertInfrastructure({ server: true });
 
       const response = await fetch(`${BASE_URL}/api/nft/mint/confirm`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          txHash: '0x' + '1'.repeat(64),
+          txHash: `0x${"1".repeat(64)}`,
           walletAddress: TEST_ELIGIBLE_WALLET,
         }),
       });
@@ -463,99 +463,99 @@ describe('NFT Mint Service - Integration Tests', () => {
       expect(response.status).toBe(401);
     });
 
-    test('should reject invalid transaction hash', async () => {
+    test("should reject invalid transaction hash", async () => {
       assertInfrastructure({ server: true, database: true });
 
       const user = await createTestUser();
 
       const response = await authenticatedFetch(
-        '/api/nft/mint/confirm',
+        "/api/nft/mint/confirm",
         user.id,
         {
-          method: 'POST',
+          method: "POST",
           body: JSON.stringify({
-            txHash: 'invalid-hash',
+            txHash: "invalid-hash",
             walletAddress: user.walletAddress,
           }),
-        }
+        },
       );
 
       expect(response.status).toBe(400);
       const error = await response.json();
-      expect(error.error).toContain('hash');
+      expect(error.error).toContain("hash");
     });
 
-    test('should reject invalid wallet address', async () => {
+    test("should reject invalid wallet address", async () => {
       assertInfrastructure({ server: true, database: true });
 
       const user = await createTestUser();
 
       const response = await authenticatedFetch(
-        '/api/nft/mint/confirm',
+        "/api/nft/mint/confirm",
         user.id,
         {
-          method: 'POST',
+          method: "POST",
           body: JSON.stringify({
-            txHash: '0x' + '1'.repeat(64),
-            walletAddress: 'invalid-address',
+            txHash: `0x${"1".repeat(64)}`,
+            walletAddress: "invalid-address",
           }),
-        }
+        },
       );
 
       expect(response.status).toBe(400);
       const error = await response.json();
-      expect(error.error).toContain('address');
+      expect(error.error).toContain("address");
     });
   });
 
-  describe('Metadata Endpoint', () => {
-    test('should return metadata for valid token ID', async () => {
+  describe("Metadata Endpoint", () => {
+    test("should return metadata for valid token ID", async () => {
       assertInfrastructure({ server: true, database: true });
 
       const response = await fetch(`${BASE_URL}/api/nft/metadata/1`);
 
       expect(response.status).toBe(200);
       const data = await response.json();
-      expect(data.name).toBe('ProtoMonkey #1');
+      expect(data.name).toBe("ProtoMonkey #1");
       expect(data.image).toBeDefined();
-      expect(data.external_url).toBe('https://feed.market/nft/1');
+      expect(data.external_url).toBe("https://feed.market/nft/1");
     });
 
-    test('should return 400 for invalid token ID (0)', async () => {
+    test("should return 400 for invalid token ID (0)", async () => {
       assertInfrastructure({ server: true });
 
       const response = await fetch(`${BASE_URL}/api/nft/metadata/0`);
       expect(response.status).toBe(400);
     });
 
-    test('should return 400 for invalid token ID (101)', async () => {
+    test("should return 400 for invalid token ID (101)", async () => {
       assertInfrastructure({ server: true });
 
       const response = await fetch(`${BASE_URL}/api/nft/metadata/101`);
       expect(response.status).toBe(400);
     });
 
-    test('should return 400 for non-numeric token ID', async () => {
+    test("should return 400 for non-numeric token ID", async () => {
       assertInfrastructure({ server: true });
 
       const response = await fetch(`${BASE_URL}/api/nft/metadata/abc`);
       expect(response.status).toBe(400);
     });
 
-    test('should include cache headers', async () => {
+    test("should include cache headers", async () => {
       assertInfrastructure({ server: true, database: true });
 
       const response = await fetch(`${BASE_URL}/api/nft/metadata/50`);
 
       expect(response.status).toBe(200);
-      const cacheControl = response.headers.get('Cache-Control');
-      expect(cacheControl).toContain('public');
-      expect(cacheControl).toContain('max-age');
+      const cacheControl = response.headers.get("Cache-Control");
+      expect(cacheControl).toContain("public");
+      expect(cacheControl).toContain("max-age");
     });
   });
 
-  describe('Database State Consistency', () => {
-    test('should maintain snapshot and collection consistency', async () => {
+  describe("Database State Consistency", () => {
+    test("should maintain snapshot and collection consistency", async () => {
       assertInfrastructure({ database: true });
 
       // Create user with snapshot
@@ -564,7 +564,7 @@ describe('NFT Mint Service - Integration Tests', () => {
         user.id,
         user.walletAddress,
         1,
-        100000
+        100000,
       );
 
       // Verify snapshot exists
@@ -576,7 +576,7 @@ describe('NFT Mint Service - Integration Tests', () => {
 
       expect(snapshot).toBeDefined();
       if (!snapshot) {
-        throw new Error('Expected snapshot to exist');
+        throw new Error("Expected snapshot to exist");
       }
       expect(snapshot.userId).toBe(user.id);
       expect(snapshot.hasMinted).toBe(false);
@@ -591,7 +591,7 @@ describe('NFT Mint Service - Integration Tests', () => {
       expect(tokenIds[99]).toBe(100);
     });
 
-    test('should not allow duplicate claims for same token', async () => {
+    test("should not allow duplicate claims for same token", async () => {
       assertInfrastructure({ database: true });
 
       const user1 = await createTestUser();
@@ -604,7 +604,7 @@ describe('NFT Mint Service - Integration Tests', () => {
         claimerUserId: user1.id,
         claimerAddress: user1.walletAddress,
         claimedAt: new Date(),
-        txHash: '0x' + '1'.repeat(64),
+        txHash: `0x${"1".repeat(64)}`,
         snapshotRank: 1,
         snapshotPoints: 50000,
       });
@@ -616,10 +616,10 @@ describe('NFT Mint Service - Integration Tests', () => {
         await db.insert(nftClaims).values({
           id: duplicateClaimId,
           tokenId: 42, // Same token ID
-          claimerUserId: 'another-user',
-          claimerAddress: createUniqueWalletAddress('1'),
+          claimerUserId: "another-user",
+          claimerAddress: createUniqueWalletAddress("1"),
           claimedAt: new Date(),
-          txHash: '0x' + '2'.repeat(64),
+          txHash: `0x${"2".repeat(64)}`,
           snapshotRank: 2,
           snapshotPoints: 40000,
         });
@@ -631,7 +631,7 @@ describe('NFT Mint Service - Integration Tests', () => {
       }
     });
 
-    test('should update ownership correctly', async () => {
+    test("should update ownership correctly", async () => {
       assertInfrastructure({ database: true });
 
       const user = await createTestUser();
@@ -644,7 +644,7 @@ describe('NFT Mint Service - Integration Tests', () => {
         ownerAddress: user.walletAddress,
         userId: user.id,
         acquiredAt: new Date(),
-        txHash: '0x' + 'a'.repeat(64),
+        txHash: `0x${"a".repeat(64)}`,
         updatedAt: new Date(),
       });
       testOwnershipIds.push(ownershipId);
@@ -658,15 +658,15 @@ describe('NFT Mint Service - Integration Tests', () => {
 
       expect(ownership).toBeDefined();
       if (!ownership) {
-        throw new Error('Expected ownership record to exist');
+        throw new Error("Expected ownership record to exist");
       }
       expect(ownership.ownerAddress).toBe(user.walletAddress);
       expect(ownership.userId).toBe(user.id);
     });
   });
 
-  describe('Token ID Range Validation', () => {
-    test('should accept all valid token IDs (1-100)', async () => {
+  describe("Token ID Range Validation", () => {
+    test("should accept all valid token IDs (1-100)", async () => {
       assertInfrastructure({ database: true });
 
       const validIds = [1, 50, 100];
@@ -686,7 +686,7 @@ describe('NFT Mint Service - Integration Tests', () => {
       }
     });
 
-    test('should not have any token IDs outside 1-100', async () => {
+    test("should not have any token IDs outside 1-100", async () => {
       assertInfrastructure({ database: true });
 
       const collection = await db.select().from(nftCollection);

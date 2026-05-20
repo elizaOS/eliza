@@ -1,15 +1,15 @@
-'use client';
+"use client";
 
-import { logger } from '@feed/shared';
+import { logger } from "@feed/shared";
 
-import { useEffect, useRef } from 'react';
-import type { OutcomeNotification } from '@/components/notifications/OutcomeNotificationPopup';
-import { useOutcomeNotification } from '@/components/providers/OutcomeNotificationProvider';
-import { useAuth } from '@/hooks/useAuth';
+import { useEffect, useRef } from "react";
+import type { OutcomeNotification } from "@/components/notifications/OutcomeNotificationPopup";
+import { useOutcomeNotification } from "@/components/providers/OutcomeNotificationProvider";
+import { useAuth } from "@/hooks/useAuth";
 import {
   isMarketResolvedData,
   type MarketResolvedData,
-} from '@/types/notifications';
+} from "@/types/notifications";
 
 interface QueuedNotification {
   id: string;
@@ -60,8 +60,8 @@ export function useQueuedOutcomes(): void {
       let body: NotificationsApiResponse;
       try {
         const res = await fetch(
-          '/api/notifications?type=market_resolved&unreadOnly=true&limit=20',
-          { headers: { Authorization: `Bearer ${accessToken}` } }
+          "/api/notifications?type=market_resolved&unreadOnly=true&limit=20",
+          { headers: { Authorization: `Bearer ${accessToken}` } },
         );
         if (!res.ok) {
           // Server error — reset so the next mount can retry
@@ -71,9 +71,9 @@ export function useQueuedOutcomes(): void {
         body = (await res.json()) as NotificationsApiResponse;
       } catch (err) {
         logger.warn(
-          'Failed to fetch queued outcome notifications',
+          "Failed to fetch queued outcome notifications",
           { error: err },
-          'useQueuedOutcomes'
+          "useQueuedOutcomes",
         );
         // Network failure — reset so the next mount can retry
         deliveredRef.current = false;
@@ -82,12 +82,12 @@ export function useQueuedOutcomes(): void {
 
       const resolved = body.notifications.filter(
         (n): n is QueuedNotification & { data: MarketResolvedData } =>
-          n.type === 'market_resolved' && isMarketResolvedData(n.data)
+          n.type === "market_resolved" && isMarketResolvedData(n.data),
       );
 
       if (resolved.length === 0) return;
 
-      const outcomes: Omit<OutcomeNotification, 'id'>[] = resolved.map((n) => ({
+      const outcomes: Omit<OutcomeNotification, "id">[] = resolved.map((n) => ({
         marketId: n.data.marketId,
         marketName: n.data.marketName,
         outcome: n.data.outcome,
@@ -103,20 +103,20 @@ export function useQueuedOutcomes(): void {
       }
 
       // Mark as read — fire-and-forget, failure is non-critical
-      void fetch('/api/notifications', {
-        method: 'PATCH',
+      void fetch("/api/notifications", {
+        method: "PATCH",
         headers: {
           Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           notificationIds: resolved.map((n) => n.id),
         }),
       }).catch((err) => {
         logger.warn(
-          'Failed to mark outcome notifications as read',
+          "Failed to mark outcome notifications as read",
           { error: err },
-          'useQueuedOutcomes'
+          "useQueuedOutcomes",
         );
       });
     };

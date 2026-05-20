@@ -95,17 +95,17 @@ import {
   requireCronAuth,
   requireUserByIdentifier,
   withErrorHandling,
-} from '@feed/api';
-import type { JsonValue } from '@feed/db';
-import { db } from '@feed/db';
-import { generateSnowflakeId, logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { z } from 'zod';
+} from "@feed/api";
+import type { JsonValue } from "@feed/db";
+import { db } from "@feed/db";
+import { generateSnowflakeId, logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { z } from "zod";
 
 const AgentToUserFeedbackSchema = z.object({
-  agentId: z.string().min(1, 'agentId is required'),
-  toUserId: z.string().min(1, 'toUserId is required'),
+  agentId: z.string().min(1, "agentId is required"),
+  toUserId: z.string().min(1, "toUserId is required"),
   score: z.number().min(0).max(100),
   rating: z.number().int().min(1).max(5).optional(),
   comment: z.string().max(5000).optional(),
@@ -115,13 +115,13 @@ const AgentToUserFeedbackSchema = z.object({
 });
 
 const AgentToUserFeedbackQuerySchema = z.object({
-  userId: z.string().min(1, 'userId is required'),
+  userId: z.string().min(1, "userId is required"),
   limit: z.number().int().min(1).max(100).default(20),
   offset: z.number().int().min(0).default(0),
 });
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
-  requireCronAuth(request, { jobName: 'AgentFeedback' });
+  requireCronAuth(request, { jobName: "AgentFeedback" });
 
   const json = await request.json();
   const parsed = AgentToUserFeedbackSchema.parse(json);
@@ -141,14 +141,14 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       rating: body.rating,
       comment: body.comment,
       category: body.category,
-      interactionType: body.interactionType ?? 'agent_to_user',
+      interactionType: body.interactionType ?? "agent_to_user",
       metadata: body.metadata as JsonValue | undefined,
       createdAt: now,
       updatedAt: now,
     },
   });
 
-  logger.info('Agent-to-user feedback created', {
+  logger.info("Agent-to-user feedback created", {
     feedbackId: feedback.id,
     fromAgentId: fromAgent.id,
     toUserId: toUser.id,
@@ -169,7 +169,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         createdAt: feedback.createdAt,
       },
     },
-    { status: 201 }
+    { status: 201 },
   );
 });
 
@@ -178,9 +178,9 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
  */
 export const GET = withErrorHandling(async (request: NextRequest) => {
   const { searchParams } = new URL(request.url);
-  const userIdParam = searchParams.get('userId')!;
-  const limitParam = searchParams.get('limit');
-  const offsetParam = searchParams.get('offset');
+  const userIdParam = searchParams.get("userId")!;
+  const limitParam = searchParams.get("limit");
+  const offsetParam = searchParams.get("offset");
 
   const queryParse = AgentToUserFeedbackQuerySchema.parse({
     userId: userIdParam,
@@ -196,7 +196,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     where: {
       toUserId: user.id,
       interactionType: {
-        in: ['agent_to_user', 'game', 'trade', 'chat'],
+        in: ["agent_to_user", "game", "trade", "chat"],
       },
     },
     include: {
@@ -211,7 +211,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       },
     },
     orderBy: {
-      createdAt: 'desc',
+      createdAt: "desc",
     },
     take: limit,
     skip: offset,
@@ -221,7 +221,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     where: {
       toUserId: user.id,
       interactionType: {
-        in: ['agent_to_user', 'game', 'trade', 'chat'],
+        in: ["agent_to_user", "game", "trade", "chat"],
       },
     },
   });

@@ -1,4 +1,4 @@
-import type { Address } from 'viem';
+import type { Address } from "viem";
 
 export type PrivyWalletLite = {
   id?: string | null;
@@ -16,14 +16,14 @@ export type PrivyUserWalletsLite = {
   linked_accounts?: PrivyWalletLite[] | null;
 };
 
-type SupportedEmbeddedChain = 'ethereum' | 'solana';
+type SupportedEmbeddedChain = "ethereum" | "solana";
 
 function matchesEmbeddedChain(
   wallet: PrivyWalletLite,
-  chain: SupportedEmbeddedChain
+  chain: SupportedEmbeddedChain,
 ): boolean {
   const walletChain = wallet.chainType ?? wallet.chain_type ?? null;
-  if (!walletChain) return chain === 'ethereum';
+  if (!walletChain) return chain === "ethereum";
   return walletChain === chain;
 }
 
@@ -31,7 +31,7 @@ function isPrivyEmbeddedClientMarker(value: string | null): boolean {
   if (!value) return false;
   // Privy has used multiple embedded wallet client identifiers over time.
   // Accept any "privy*" marker (e.g. "privy", "privy-v2") to be forward-compatible.
-  return value === 'privy' || value.startsWith('privy');
+  return value === "privy" || value.startsWith("privy");
 }
 
 function isPrivyEmbeddedWallet(wallet: PrivyWalletLite): boolean {
@@ -46,14 +46,14 @@ function isPrivyEmbeddedWallet(wallet: PrivyWalletLite): boolean {
 }
 
 export function pickEmbeddedEvmWallet(
-  user: PrivyUserWalletsLite
+  user: PrivyUserWalletsLite,
 ): { walletId: string; address: Address } | null {
   const wallets = listEmbeddedEvmWallets(user);
   return wallets.length > 0 ? wallets[0]! : null;
 }
 
 export function pickEmbeddedSolanaWallet(
-  user: PrivyUserWalletsLite
+  user: PrivyUserWalletsLite,
 ): { walletId: string; address: string } | null {
   const wallets = listEmbeddedSolanaWallets(user);
   return wallets.length > 0 ? wallets[0]! : null;
@@ -61,30 +61,30 @@ export function pickEmbeddedSolanaWallet(
 
 function listEmbeddedWallets(
   user: PrivyUserWalletsLite,
-  chain: SupportedEmbeddedChain
+  chain: SupportedEmbeddedChain,
 ): Array<{ walletId: string; address: string }> {
   const candidates: Array<{
     wallet: PrivyWalletLite;
-    source: 'primary' | 'linked';
+    source: "primary" | "linked";
   }> = [];
-  if (user.wallet) candidates.push({ wallet: user.wallet, source: 'primary' });
+  if (user.wallet) candidates.push({ wallet: user.wallet, source: "primary" });
   for (const acc of user.linkedAccounts ?? []) {
-    if (acc?.type === 'wallet')
-      candidates.push({ wallet: acc, source: 'linked' });
+    if (acc?.type === "wallet")
+      candidates.push({ wallet: acc, source: "linked" });
   }
   for (const acc of user.linked_accounts ?? []) {
-    if (acc?.type === 'wallet')
-      candidates.push({ wallet: acc, source: 'linked' });
+    if (acc?.type === "wallet")
+      candidates.push({ wallet: acc, source: "linked" });
   }
 
   const wallets: Array<{ walletId: string; address: string }> = [];
   const seen = new Set<string>();
 
   for (const { wallet, source } of candidates) {
-    if (!wallet?.id || typeof wallet.id !== 'string') continue;
-    if (!wallet.address || typeof wallet.address !== 'string') continue;
+    if (!wallet?.id || typeof wallet.id !== "string") continue;
+    if (!wallet.address || typeof wallet.address !== "string") continue;
     if (!matchesEmbeddedChain(wallet, chain)) continue;
-    if (source === 'linked') {
+    if (source === "linked") {
       // For linked accounts, only accept explicit 'privy' client markers.
       if (
         !isPrivyEmbeddedClientMarker(wallet.walletClientType ?? null) &&
@@ -99,7 +99,7 @@ function listEmbeddedWallets(
     wallets.push({
       walletId: wallet.id,
       address:
-        chain === 'ethereum' ? wallet.address.toLowerCase() : wallet.address,
+        chain === "ethereum" ? wallet.address.toLowerCase() : wallet.address,
     });
   }
 
@@ -107,16 +107,16 @@ function listEmbeddedWallets(
 }
 
 export function listEmbeddedEvmWallets(
-  user: PrivyUserWalletsLite
+  user: PrivyUserWalletsLite,
 ): Array<{ walletId: string; address: Address }> {
-  return listEmbeddedWallets(user, 'ethereum').map((wallet) => ({
+  return listEmbeddedWallets(user, "ethereum").map((wallet) => ({
     walletId: wallet.walletId,
     address: wallet.address as Address,
   }));
 }
 
 export function listEmbeddedSolanaWallets(
-  user: PrivyUserWalletsLite
+  user: PrivyUserWalletsLite,
 ): Array<{ walletId: string; address: string }> {
-  return listEmbeddedWallets(user, 'solana');
+  return listEmbeddedWallets(user, "solana");
 }

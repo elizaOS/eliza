@@ -5,20 +5,20 @@
  * unit tests can import the real implementation rather than maintaining copies.
  */
 
-import type { FeedPost, NarrativePost, NarrativeStory } from '@feed/shared';
-import type { NewMarketEntry } from '@/app/api/feed/new-markets/route';
+import type { FeedPost, NarrativePost, NarrativeStory } from "@feed/shared";
+import type { NewMarketEntry } from "@/app/api/feed/new-markets/route";
 
 // ─── flattenStories ───────────────────────────────────────────────────────────
 
 export type FlatItem =
   | {
-      type: 'post';
+      type: "post";
       post: NarrativePost;
       key: string;
       marketId: string | null;
       story?: NarrativeStory;
     }
-  | { type: 'market'; story: NarrativeStory; key: string };
+  | { type: "market"; story: NarrativeStory; key: string };
 
 /**
  * How many consecutive posts to show from a story before rotating to the next.
@@ -55,7 +55,7 @@ export function flattenStories(stories: NarrativeStory[]): FlatItem[] {
   if (postStories.length === 0) {
     // No posts at all — just emit the market cards in score order
     for (const m of pendingMarkets) {
-      items.push({ type: 'market', story: m, key: m.storyKey });
+      items.push({ type: "market", story: m, key: m.storyKey });
     }
     return items;
   }
@@ -84,7 +84,7 @@ export function flattenStories(stories: NarrativeStory[]): FlatItem[] {
       while (took < burst && q.posts.length > 0) {
         const post = q.posts.shift()!;
         items.push({
-          type: 'post',
+          type: "post",
           post,
           key: `${q.story.storyKey}:${post.id}`,
           marketId: q.story.marketId ?? null,
@@ -100,14 +100,14 @@ export function flattenStories(stories: NarrativeStory[]): FlatItem[] {
     // them all before the first post.
     if (marketIdx < pendingMarkets.length) {
       const m = pendingMarkets[marketIdx++]!;
-      items.push({ type: 'market', story: m, key: m.storyKey });
+      items.push({ type: "market", story: m, key: m.storyKey });
     }
   }
 
   // Append any market cards that didn't fit within the post rotations
   while (marketIdx < pendingMarkets.length) {
     const m = pendingMarkets[marketIdx++]!;
-    items.push({ type: 'market', story: m, key: m.storyKey });
+    items.push({ type: "market", story: m, key: m.storyKey });
   }
 
   return items;
@@ -127,7 +127,7 @@ export function flattenStories(stories: NarrativeStory[]): FlatItem[] {
  * Author deduplication prevents two consecutive posts from the same author
  * within the actor or news buckets.
  */
-export const SLOT_PATTERN = ['actor', 'actor', 'news', 'market'] as const;
+export const SLOT_PATTERN = ["actor", "actor", "news", "market"] as const;
 type SlotType = (typeof SLOT_PATTERN)[number];
 
 /**
@@ -146,11 +146,11 @@ export function applySlotPattern(items: FlatItem[]): FlatItem[] {
   };
 
   for (const item of items) {
-    if (item.type === 'market') {
+    if (item.type === "market") {
       buckets.market.push(item);
     } else if (
-      item.post.authorType === 'news' ||
-      item.post.type === 'article'
+      item.post.authorType === "news" ||
+      item.post.type === "article"
     ) {
       buckets.news.push(item);
     } else {
@@ -186,15 +186,15 @@ export function applySlotPattern(items: FlatItem[]): FlatItem[] {
     if (
       bucket.length > 1 &&
       lastAuthorId !== null &&
-      bucket[0]!.type === 'post' &&
-      bucket[0]!.post.authorId === lastAuthorId
+      bucket[0]?.type === "post" &&
+      bucket[0]?.post.authorId === lastAuthorId
     ) {
       bucket.push(bucket.shift()!);
     }
 
     const item = bucket.shift()!;
     result.push(item);
-    lastAuthorId = item.type === 'post' ? item.post.authorId : null;
+    lastAuthorId = item.type === "post" ? item.post.authorId : null;
   }
 
   return result;
@@ -203,8 +203,8 @@ export function applySlotPattern(items: FlatItem[]): FlatItem[] {
 // ─── mergeChronologically ─────────────────────────────────────────────────────
 
 export type MixedItem =
-  | { type: 'post'; post: FeedPost }
-  | { type: 'market'; market: NewMarketEntry };
+  | { type: "post"; post: FeedPost }
+  | { type: "market"; market: NewMarketEntry };
 
 /**
  * Merge a post list and a market list into a single newest-first stream.
@@ -216,19 +216,19 @@ export type MixedItem =
  */
 export function mergeChronologically(
   posts: FeedPost[],
-  markets: NewMarketEntry[]
+  markets: NewMarketEntry[],
 ): MixedItem[] {
   const all: MixedItem[] = [
-    ...posts.map((p) => ({ type: 'post' as const, post: p })),
-    ...markets.map((m) => ({ type: 'market' as const, market: m })),
+    ...posts.map((p) => ({ type: "post" as const, post: p })),
+    ...markets.map((m) => ({ type: "market" as const, market: m })),
   ];
   return all.sort((a, b) => {
     const ta =
-      a.type === 'post'
+      a.type === "post"
         ? new Date(a.post.timestamp).getTime()
         : new Date(a.market.createdAt).getTime();
     const tb =
-      b.type === 'post'
+      b.type === "post"
         ? new Date(b.post.timestamp).getTime()
         : new Date(b.market.createdAt).getTime();
     return tb - ta;

@@ -72,7 +72,7 @@ import {
   notifyGroupChatInvite,
   requireAdmin,
   withErrorHandling,
-} from '@feed/api';
+} from "@feed/api";
 import {
   asSystem,
   chatParticipants,
@@ -81,10 +81,10 @@ import {
   groupMembers,
   groups,
   sql,
-} from '@feed/db';
-import { StaticDataRegistry } from '@feed/engine';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@feed/db";
+import { StaticDataRegistry } from "@feed/engine";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 /**
  * Generate a deterministic group ID from a chat ID.
@@ -103,7 +103,7 @@ function deterministicGroupId(chatId: string): string {
   // Combine with a fixed prefix to ensure uniqueness and snowflake-like format
   // Use absolute value and pad to ensure consistent length
   const absHash = Math.abs(hash);
-  return `grp_${chatId}_${absHash.toString().padStart(10, '0')}`;
+  return `grp_${chatId}_${absHash.toString().padStart(10, "0")}`;
 }
 
 /**
@@ -121,15 +121,15 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   logAdminModify({
     adminId: admin.userId,
     ipAddress: getClientIp(request.headers) ?? undefined,
-    resourceType: 'group_invite',
-    metadata: { action: 'send_group_invite', npcId, userId, chatId },
+    resourceType: "group_invite",
+    metadata: { action: "send_group_invite", npcId, userId, chatId },
   });
 
   // Validate inputs
   if (!npcId || !userId) {
     return NextResponse.json(
-      { error: 'npcId and userId are required' },
-      { status: 400 }
+      { error: "npcId and userId are required" },
+      { status: 400 },
     );
   }
 
@@ -145,7 +145,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       });
 
   if (!npc) {
-    return NextResponse.json({ error: 'NPC not found' }, { status: 404 });
+    return NextResponse.json({ error: "NPC not found" }, { status: 404 });
   }
 
   // Verify user exists
@@ -157,7 +157,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   });
 
   if (!targetUser) {
-    return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
 
   // Check if user is already a member
@@ -181,8 +181,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   if (existingMembership) {
     return NextResponse.json(
-      { error: 'User is already a member of this group' },
-      { status: 400 }
+      { error: "User is already a member of this group" },
+      { status: 400 },
     );
   }
 
@@ -200,26 +200,26 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     const npcGroups = await db.group.count({
       where: {
         id: { in: groupIds },
-        type: 'npc',
+        type: "npc",
       },
     });
     return npcGroups;
   });
 
-  const { GROUP_CONFIG } = await import('@feed/shared');
+  const { GROUP_CONFIG } = await import("@feed/shared");
   if (npcGroupCount >= GROUP_CONFIG.MAX_ACTIVE_USER_GROUPS) {
     return NextResponse.json(
       {
         error: `User is already in ${GROUP_CONFIG.MAX_ACTIVE_USER_GROUPS} NPC groups. They must leave a group first.`,
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
   // Generate chat ID and name if not provided
   const finalChatId = chatId || `${npcId}-owned-chat`;
   const npcName =
-    'name' in npc ? npc.name : npc.displayName || npc.username || 'Unknown';
+    "name" in npc ? npc.name : npc.displayName || npc.username || "Unknown";
   const finalChatName = chatName || `${npcName}'s Inner Circle`;
 
   // Use deterministic groupId to prevent race conditions when creating groups
@@ -239,7 +239,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         .values({
           id: deterministicGrpId,
           name: finalChatName,
-          type: 'npc',
+          type: "npc",
           ownerId: npcId,
           createdById: npcId,
           createdAt: now,
@@ -254,7 +254,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
           id: finalChatId,
           name: finalChatName,
           isGroup: true,
-          gameId: 'realtime',
+          gameId: "realtime",
           groupId: deterministicGrpId,
           createdAt: now,
           updatedAt: now,
@@ -294,7 +294,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
           id: memberId,
           groupId: deterministicGrpId,
           userId,
-          role: 'member',
+          role: "member",
           addedBy: npcId,
           joinedAt: now,
           isActive: true,
@@ -305,7 +305,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
           target: [groupMembers.groupId, groupMembers.userId],
           set: {
             isActive: true,
-            role: 'member',
+            role: "member",
             addedBy: npcId,
             joinedAt: now,
             kickedAt: sql`NULL`,

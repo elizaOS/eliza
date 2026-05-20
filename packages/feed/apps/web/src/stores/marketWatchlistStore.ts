@@ -1,13 +1,13 @@
-'use client';
+"use client";
 
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
 
-export type MarketKind = 'perp' | 'prediction';
+export type MarketKind = "perp" | "prediction";
 
 export type MarketKey =
-  | { kind: 'perp'; id: string }
-  | { kind: 'prediction'; id: string };
+  | { kind: "perp"; id: string }
+  | { kind: "prediction"; id: string };
 
 interface MarketWatchlistState {
   favorites: string[];
@@ -19,8 +19,8 @@ interface MarketWatchlistState {
 
 function serializeKey(key: MarketKey): string {
   const id = key.id.trim();
-  if (!id) return '';
-  return `${key.kind}:${key.kind === 'perp' ? id.toUpperCase() : id}`;
+  if (!id) return "";
+  return `${key.kind}:${key.kind === "perp" ? id.toUpperCase() : id}`;
 }
 
 export const useMarketWatchlistStore = create<MarketWatchlistState>()(
@@ -45,7 +45,7 @@ export const useMarketWatchlistStore = create<MarketWatchlistState>()(
       clear: () => set({ favorites: [], favoritesSet: new Set<string>() }),
     }),
     {
-      name: 'markets.watchlist.v2',
+      name: "markets.watchlist.v2",
       version: 2,
       partialize: (state) => ({ favorites: state.favorites }),
       onRehydrateStorage: () => (state) => {
@@ -55,6 +55,6 @@ export const useMarketWatchlistStore = create<MarketWatchlistState>()(
           favoritesSet: new Set(state.favorites ?? []),
         });
       },
-    }
-  )
+    },
+  ),
 );

@@ -18,12 +18,12 @@
  *   bun run docs:generate
  */
 
-import { mkdir, readdir } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { mkdir, readdir } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
 
 const scriptsDir = dirname(new URL(import.meta.url).pathname);
-const rootDir = resolve(scriptsDir, '../..');
-const vendorsRoot = join(rootDir, 'docs/vendors');
+const rootDir = resolve(scriptsDir, "../..");
+const vendorsRoot = join(rootDir, "docs/vendors");
 
 async function ensureDir(path: string) {
   await mkdir(path, { recursive: true });
@@ -34,27 +34,27 @@ async function main() {
 
   const entries = await readdir(scriptsDir);
   const pullScripts = entries.filter(
-    (name) => name.startsWith('pull_') && name.endsWith('_docs.ts')
+    (name) => name.startsWith("pull_") && name.endsWith("_docs.ts"),
   );
 
   if (pullScripts.length > 0) {
-    console.log('Found vendor doc scripts:', pullScripts.join(', '));
+    console.log("Found vendor doc scripts:", pullScripts.join(", "));
 
     const processes: Array<ReturnType<typeof Bun.spawn>> = [];
 
     for (const scriptName of pullScripts) {
-      const vendor = scriptName.slice('pull_'.length, -'_docs.ts'.length);
+      const vendor = scriptName.slice("pull_".length, -"_docs.ts".length);
       const scriptPath = join(scriptsDir, scriptName);
       const outputDir = join(vendorsRoot, vendor);
 
       console.log(
-        `→ Running ${scriptName} for vendor "${vendor}" → ${outputDir}`
+        `→ Running ${scriptName} for vendor "${vendor}" → ${outputDir}`,
       );
 
-      const proc = Bun.spawn(['bun', scriptPath, '--output', outputDir], {
+      const proc = Bun.spawn(["bun", scriptPath, "--output", outputDir], {
         cwd: rootDir,
-        stdout: 'inherit',
-        stderr: 'inherit',
+        stdout: "inherit",
+        stderr: "inherit",
       });
 
       processes.push(proc);
@@ -65,46 +65,46 @@ async function main() {
 
     if (failures.length > 0) {
       console.error(
-        `Some vendor docs scripts failed (codes: ${failures.join(', ')}).`
+        `Some vendor docs scripts failed (codes: ${failures.join(", ")}).`,
       );
       process.exit(1);
     }
 
-    console.log('All vendor docs pulled successfully.');
+    console.log("All vendor docs pulled successfully.");
   } else {
-    console.log('No pull_*_docs.ts scripts found in scripts/docs/');
+    console.log("No pull_*_docs.ts scripts found in scripts/docs/");
   }
 
   // Run skills generator so A2A/MCP docs stay in sync with code (see script WHY in generate-skills-md.ts).
   // Markdown and package write to different files, so run in parallel.
-  console.log('');
+  console.log("");
   console.log(
-    '→ Running skills generator (docs/skills.md + skills/feed/) in parallel...'
+    "→ Running skills generator (docs/skills.md + skills/feed/) in parallel...",
   );
-  const skillsScript = join(rootDir, 'scripts/generate-skills-md.ts');
-  const skillsMd = Bun.spawn(['bun', 'run', skillsScript], {
+  const skillsScript = join(rootDir, "scripts/generate-skills-md.ts");
+  const skillsMd = Bun.spawn(["bun", "run", skillsScript], {
     cwd: rootDir,
-    stdout: 'inherit',
-    stderr: 'inherit',
+    stdout: "inherit",
+    stderr: "inherit",
   });
-  const skillsPkg = Bun.spawn(['bun', 'run', skillsScript, '--package'], {
+  const skillsPkg = Bun.spawn(["bun", "run", skillsScript, "--package"], {
     cwd: rootDir,
-    stdout: 'inherit',
-    stderr: 'inherit',
+    stdout: "inherit",
+    stderr: "inherit",
   });
   const [codeMd, codePkg] = await Promise.all([
     skillsMd.exited,
     skillsPkg.exited,
   ]);
   if (codeMd !== 0) {
-    console.error('Skills generator (markdown) failed.');
+    console.error("Skills generator (markdown) failed.");
     process.exit(1);
   }
   if (codePkg !== 0) {
-    console.error('Skills generator (package) failed.');
+    console.error("Skills generator (package) failed.");
     process.exit(1);
   }
-  console.log('Skills generated successfully.');
+  console.log("Skills generated successfully.");
 }
 
 main().catch((err) => {

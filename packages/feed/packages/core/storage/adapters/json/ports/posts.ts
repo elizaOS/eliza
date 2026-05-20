@@ -2,20 +2,20 @@
  * JSON Post Adapter
  */
 
-import type { PostPort } from '../../../ports/posts';
+import type { PostPort } from "../../../ports/posts";
 import type {
   PaginatedResult,
   PaginationOptions,
   PostRecord,
-} from '../../../types';
-import type { JsonIdGenerator } from '../id-generator';
-import type { JsonStorageState } from '../types';
+} from "../../../types";
+import type { JsonIdGenerator } from "../id-generator";
+import type { JsonStorageState } from "../types";
 
 export class JsonPostAdapter implements PostPort {
   constructor(
     private state: JsonStorageState,
     _idGen: JsonIdGenerator,
-    private onChange: () => void
+    private onChange: () => void,
   ) {}
 
   async getPost(id: string): Promise<PostRecord | null> {
@@ -23,7 +23,7 @@ export class JsonPostAdapter implements PostPort {
   }
 
   async getRecentPosts(
-    options?: PaginationOptions
+    options?: PaginationOptions,
   ): Promise<PaginatedResult<PostRecord>> {
     const limit = options?.limit ?? 100;
     const offset = options?.offset ?? 0;
@@ -47,7 +47,7 @@ export class JsonPostAdapter implements PostPort {
 
   async getPostsByAuthor(
     authorId: string,
-    options?: PaginationOptions
+    options?: PaginationOptions,
   ): Promise<PaginatedResult<PostRecord>> {
     const limit = options?.limit ?? 100;
     const offset = options?.offset ?? 0;
@@ -68,7 +68,7 @@ export class JsonPostAdapter implements PostPort {
 
   async getPostsByType(
     type: string,
-    options?: PaginationOptions
+    options?: PaginationOptions,
   ): Promise<PaginatedResult<PostRecord>> {
     const limit = options?.limit ?? 100;
     const offset = options?.offset ?? 0;
@@ -88,7 +88,7 @@ export class JsonPostAdapter implements PostPort {
   }
 
   async createPost(
-    post: Omit<PostRecord, 'likeCount' | 'commentCount' | 'repostCount'>
+    post: Omit<PostRecord, "likeCount" | "commentCount" | "repostCount">,
   ): Promise<PostRecord> {
     const record: PostRecord = {
       ...post,
@@ -102,7 +102,7 @@ export class JsonPostAdapter implements PostPort {
   }
 
   async createManyPosts(
-    posts: Omit<PostRecord, 'likeCount' | 'commentCount' | 'repostCount'>[]
+    posts: Omit<PostRecord, "likeCount" | "commentCount" | "repostCount">[],
   ): Promise<{ count: number }> {
     for (const post of posts) {
       const record: PostRecord = {
@@ -119,7 +119,7 @@ export class JsonPostAdapter implements PostPort {
 
   async updatePost(
     id: string,
-    updates: Partial<PostRecord>
+    updates: Partial<PostRecord>,
   ): Promise<PostRecord> {
     const existing = this.state.posts[id];
     if (!existing) {
@@ -177,7 +177,7 @@ export class JsonPostAdapter implements PostPort {
 
   async getPostComments(
     postId: string,
-    options?: PaginationOptions
+    options?: PaginationOptions,
   ): Promise<PaginatedResult<PostRecord>> {
     const limit = options?.limit ?? 50;
     const offset = options?.offset ?? 0;

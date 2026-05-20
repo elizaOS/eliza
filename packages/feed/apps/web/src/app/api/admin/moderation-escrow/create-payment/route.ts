@@ -68,18 +68,18 @@
  * ```
  */
 
-import { X402Manager } from '@feed/a2a';
-import { requireAdmin, withErrorHandling } from '@feed/api';
-import { db } from '@feed/db';
-import { generateSnowflakeId, logger, toISO } from '@feed/shared';
-import { parseEther } from 'ethers';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { z } from 'zod';
+import { X402Manager } from "@feed/a2a";
+import { requireAdmin, withErrorHandling } from "@feed/api";
+import { db } from "@feed/db";
+import { generateSnowflakeId, logger, toISO } from "@feed/shared";
+import { parseEther } from "ethers";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { z } from "zod";
 
 // Initialize x402 manager
 const x402Manager = new X402Manager({
-  rpcUrl: process.env.NEXT_PUBLIC_RPC_URL || 'https://sepolia.base.org',
+  rpcUrl: process.env.NEXT_PUBLIC_RPC_URL || "https://sepolia.base.org",
   paymentTimeout: 15 * 60 * 1000, // 15 minutes
 });
 
@@ -88,24 +88,24 @@ const x402Manager = new X402Manager({
 const PAYMENT_RECEIVER =
   process.env.MODERATION_ESCROW_RECEIVER ||
   process.env.NEXT_PUBLIC_TREASURY_ADDRESS ||
-  '0x0000000000000000000000000000000000000000';
+  "0x0000000000000000000000000000000000000000";
 
 // Validate treasury address is configured (warn if zero address)
-if (PAYMENT_RECEIVER === '0x0000000000000000000000000000000000000000') {
+if (PAYMENT_RECEIVER === "0x0000000000000000000000000000000000000000") {
   logger.warn(
-    'MODERATION_ESCROW_RECEIVER or NEXT_PUBLIC_TREASURY_ADDRESS not configured - using zero address',
+    "MODERATION_ESCROW_RECEIVER or NEXT_PUBLIC_TREASURY_ADDRESS not configured - using zero address",
     {},
-    'ModerationEscrow'
+    "ModerationEscrow",
   );
 }
 
 const CreateEscrowPaymentSchema = z.object({
-  recipientId: z.string().min(1, 'Recipient ID is required'),
-  amountUSD: z.number().positive('Amount must be positive'),
+  recipientId: z.string().min(1, "Recipient ID is required"),
+  amountUSD: z.number().positive("Amount must be positive"),
   reason: z.string().optional(),
   recipientWalletAddress: z
     .string()
-    .min(1, 'Recipient wallet address is required'),
+    .min(1, "Recipient wallet address is required"),
 });
 
 export const POST = withErrorHandling(async function POST(req: NextRequest) {
@@ -118,9 +118,9 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
   if (!validation.success) {
     return NextResponse.json(
       {
-        error: validation.error.issues[0]?.message || 'Invalid request data',
+        error: validation.error.issues[0]?.message || "Invalid request data",
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -141,15 +141,15 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
 
   if (!recipient) {
     return NextResponse.json(
-      { error: 'Recipient user not found' },
-      { status: 404 }
+      { error: "Recipient user not found" },
+      { status: 404 },
     );
   }
 
   if (recipient.isActor) {
     return NextResponse.json(
-      { error: 'Cannot send escrow payment to NPCs/actors' },
-      { status: 400 }
+      { error: "Cannot send escrow payment to NPCs/actors" },
+      { status: 400 },
     );
   }
 
@@ -164,15 +164,15 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
         error:
           "Recipient wallet address does not match user's registered wallet address",
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
   // Prevent self-payment
   if (recipientId === adminId) {
     return NextResponse.json(
-      { error: 'Cannot create escrow payment to yourself' },
-      { status: 400 }
+      { error: "Cannot create escrow payment to yourself" },
+      { status: 400 },
     );
   }
 
@@ -186,9 +186,9 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         error:
-          'Admin must have a connected wallet address to create escrow payments',
+          "Admin must have a connected wallet address to create escrow payments",
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -202,7 +202,7 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
         gte: new Date(Date.now() - 5 * 60 * 1000), // Last 5 minutes
       },
       status: {
-        in: ['pending', 'paid'],
+        in: ["pending", "paid"],
       },
     },
   });
@@ -211,9 +211,9 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         error:
-          'A similar escrow payment was created recently. Please wait before creating another.',
+          "A similar escrow payment was created recently. Please wait before creating another.",
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -224,14 +224,14 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
     adminWalletAddress, // Admin sends the payment
     PAYMENT_RECEIVER, // To treasury/escrow account
     amountInWei,
-    'moderation_escrow',
+    "moderation_escrow",
     {
       adminId,
       recipientId,
       recipientWalletAddress, // Store recipient address for refunds
       amountUSD,
       reason: reason || null,
-    }
+    },
   );
 
   // Create escrow record in database
@@ -243,7 +243,7 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
       adminId,
       amountUSD: amountUSD.toString(),
       amountWei: amountInWei,
-      status: 'pending',
+      status: "pending",
       reason: reason || null,
       paymentRequestId: paymentRequest.requestId,
       expiresAt,
@@ -264,7 +264,7 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
       escrowId: escrow.id,
       paymentRequestId: paymentRequest.requestId,
     },
-    'ModerationEscrow'
+    "ModerationEscrow",
   );
 
   return NextResponse.json({

@@ -25,7 +25,7 @@
  * ```
  */
 
-import { InMemoryStateStore, type SimulationConfig } from '@feed/engine';
+import { InMemoryStateStore, type SimulationConfig } from "@feed/engine";
 import type {
   A2AClientInterface,
   AgentInfo,
@@ -37,7 +37,7 @@ import type {
   SystemStats,
   Trade,
   UserInfo,
-} from './types';
+} from "./types";
 
 // Re-export types for convenience
 export type { SimulationConfig };
@@ -74,7 +74,7 @@ export class SimulationAdapter implements A2AClientInterface {
 
   async getBalance(): Promise<{ balance: number; currency: string }> {
     const user = this.store.getOrCreateUser(this.userId);
-    return { balance: user.balance, currency: 'USD' };
+    return { balance: user.balance, currency: "USD" };
   }
 
   async getPositions(): Promise<{ positions: Position[] }> {
@@ -86,7 +86,7 @@ export class SimulationAdapter implements A2AClientInterface {
     for (const pos of user.predictionPositions) {
       const market = state.predictionMarkets.find((m) => m.id === pos.marketId);
       const currentPrice = market
-        ? pos.outcome === 'YES'
+        ? pos.outcome === "YES"
           ? market.yesPrice
           : market.noPrice
         : pos.avgPrice;
@@ -129,7 +129,7 @@ export class SimulationAdapter implements A2AClientInterface {
         description: m.description,
         yesPrice: m.yesPrice,
         noPrice: m.noPrice,
-        status: 'active',
+        status: "active",
       }));
 
     const perps: Market[] = state.perpMarkets.map((m) => ({
@@ -138,7 +138,7 @@ export class SimulationAdapter implements A2AClientInterface {
       description: `Price: $${m.price.toFixed(2)} | 24h: ${m.priceChange24h.toFixed(2)}%`,
       yesPrice: m.price,
       noPrice: 0,
-      status: 'active',
+      status: "active",
     }));
 
     return { predictions, perps };
@@ -155,7 +155,7 @@ export class SimulationAdapter implements A2AClientInterface {
         description: predMarket.description,
         yesPrice: predMarket.yesPrice,
         noPrice: predMarket.noPrice,
-        status: predMarket.resolved ? 'resolved' : 'active',
+        status: predMarket.resolved ? "resolved" : "active",
       };
     }
 
@@ -166,7 +166,7 @@ export class SimulationAdapter implements A2AClientInterface {
         question: perpMarket.name,
         yesPrice: perpMarket.price,
         noPrice: 0,
-        status: 'active',
+        status: "active",
       };
     }
 
@@ -175,18 +175,18 @@ export class SimulationAdapter implements A2AClientInterface {
 
   async buyShares(
     marketId: string,
-    outcome: 'YES' | 'NO',
-    amount: number
+    outcome: "YES" | "NO",
+    amount: number,
   ): Promise<Trade> {
     const result = this.store.buyPredictionShares(
       this.userId,
       marketId,
       outcome,
-      amount
+      amount,
     );
 
     if (!result.success) {
-      throw new Error(result.error ?? 'Failed to buy shares');
+      throw new Error(result.error ?? "Failed to buy shares");
     }
 
     return {
@@ -201,18 +201,18 @@ export class SimulationAdapter implements A2AClientInterface {
 
   async sellShares(
     marketId: string,
-    outcome: 'YES' | 'NO',
-    shares: number
+    outcome: "YES" | "NO",
+    shares: number,
   ): Promise<Trade> {
     const result = this.store.sellPredictionShares(
       this.userId,
       marketId,
       outcome,
-      shares
+      shares,
     );
 
     if (!result.success) {
-      throw new Error(result.error ?? 'Failed to sell shares');
+      throw new Error(result.error ?? "Failed to sell shares");
     }
 
     return {
@@ -259,7 +259,7 @@ export class SimulationAdapter implements A2AClientInterface {
   }
 
   async likePost(
-    postId: string
+    postId: string,
   ): Promise<{ success: boolean; likesCount: number }> {
     const posts = this.store.getPosts();
     const post = posts.find((p) => p.id === postId);
@@ -285,7 +285,7 @@ export class SimulationAdapter implements A2AClientInterface {
       agents: state.agents.map((a) => ({
         id: a.id,
         name: a.name,
-        walletAddress: `0x${a.id.slice(-40).padStart(40, '0')}`,
+        walletAddress: `0x${a.id.slice(-40).padStart(40, "0")}`,
       })),
     };
   }
@@ -294,7 +294,7 @@ export class SimulationAdapter implements A2AClientInterface {
     const state = this.store.getState();
 
     const matching = state.agents.filter((a) =>
-      a.name.toLowerCase().includes(query.toLowerCase())
+      a.name.toLowerCase().includes(query.toLowerCase()),
     );
 
     return {
@@ -312,7 +312,7 @@ export class SimulationAdapter implements A2AClientInterface {
 
     const totalVolume = state.predictionMarkets.reduce(
       (sum, m) => sum + m.totalVolume,
-      0
+      0,
     );
 
     return {
@@ -380,24 +380,24 @@ export class SimulationAdapter implements A2AClientInterface {
 
   async openPerpPosition(
     ticker: string,
-    side: 'LONG' | 'SHORT',
+    side: "LONG" | "SHORT",
     size: number,
-    leverage: number
+    leverage: number,
   ): Promise<{ positionId: string; entryPrice: number }> {
     const result = this.store.openPerpPosition(
       this.userId,
       ticker,
       side,
       size,
-      leverage
+      leverage,
     );
 
     if (!result.success) {
-      throw new Error(result.error ?? 'Failed to open position');
+      throw new Error(result.error ?? "Failed to open position");
     }
 
     return {
-      positionId: result.positionId ?? '',
+      positionId: result.positionId ?? "",
       entryPrice: result.price ?? 0,
     };
   }
@@ -406,7 +406,7 @@ export class SimulationAdapter implements A2AClientInterface {
     const result = this.store.closePerpPosition(this.userId, positionId);
 
     if (!result.success) {
-      throw new Error(result.error ?? 'Failed to close position');
+      throw new Error(result.error ?? "Failed to close position");
     }
 
     return { pnl: result.totalCost ?? 0 };

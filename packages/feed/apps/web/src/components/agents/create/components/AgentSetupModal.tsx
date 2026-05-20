@@ -1,11 +1,11 @@
-'use client';
+"use client";
 
 import {
   cn,
   getAgentDefaultProfileImageUrl,
   parseAgentPresetProfileIndex,
   TOTAL_AGENT_DEFAULT_PROFILE_PICTURES,
-} from '@feed/shared';
+} from "@feed/shared";
 import {
   AlertCircle,
   Check,
@@ -14,12 +14,12 @@ import {
   Loader2,
   Upload,
   X as XIcon,
-} from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { toast } from 'sonner';
-import { uploadImage, validateImageFile } from '@/utils/upload-image';
-import type { ProfileFormData } from '../hooks/useAgentForm';
-import { useAgentUsernameCheck } from '../hooks/useAgentUsernameCheck';
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
+import { uploadImage, validateImageFile } from "@/utils/upload-image";
+import type { ProfileFormData } from "../hooks/useAgentForm";
+import { useAgentUsernameCheck } from "../hooks/useAgentUsernameCheck";
 
 const TOTAL_BANNERS = 100;
 const MAX_BIO_LENGTH = 160;
@@ -67,10 +67,10 @@ export function AgentSetupModal({
   const { usernameStatus, usernameSuggestion, isCheckingUsername, retryCheck } =
     useAgentUsernameCheck(localData.username);
   const [uploadedProfileFile, setUploadedProfileFile] = useState<File | null>(
-    null
+    null,
   );
   const [uploadedBannerFile, setUploadedBannerFile] = useState<File | null>(
-    null
+    null,
   );
   const [isUploading, setIsUploading] = useState(false);
   const [profilePictureIndex, setProfilePictureIndex] = useState(() => {
@@ -84,14 +84,14 @@ export function AgentSetupModal({
   const [uploadedProfileImage, setUploadedProfileImage] = useState<
     string | null
   >(
-    profileData.profileImageUrl?.startsWith('/assets/')
+    profileData.profileImageUrl?.startsWith("/assets/")
       ? null
-      : profileData.profileImageUrl || null
+      : profileData.profileImageUrl || null,
   );
   const [uploadedBanner, setUploadedBanner] = useState<string | null>(
-    profileData.coverImageUrl?.startsWith('/assets/')
+    profileData.coverImageUrl?.startsWith("/assets/")
       ? null
-      : profileData.coverImageUrl || null
+      : profileData.coverImageUrl || null,
   );
 
   const profileInputRef = useRef<HTMLInputElement>(null);
@@ -110,11 +110,11 @@ export function AgentSetupModal({
   }, [uploadedBanner, bannerIndex]);
 
   // Cycle profile picture
-  const cycleProfilePicture = useCallback((direction: 'next' | 'prev') => {
+  const cycleProfilePicture = useCallback((direction: "next" | "prev") => {
     setUploadedProfileImage(null);
     setUploadedProfileFile(null);
     setProfilePictureIndex((prev) => {
-      if (direction === 'next') {
+      if (direction === "next") {
         return prev >= TOTAL_AGENT_DEFAULT_PROFILE_PICTURES ? 1 : prev + 1;
       }
       return prev <= 1 ? TOTAL_AGENT_DEFAULT_PROFILE_PICTURES : prev - 1;
@@ -122,11 +122,11 @@ export function AgentSetupModal({
   }, []);
 
   // Cycle banner
-  const cycleBanner = useCallback((direction: 'next' | 'prev') => {
+  const cycleBanner = useCallback((direction: "next" | "prev") => {
     setUploadedBanner(null);
     setUploadedBannerFile(null);
     setBannerIndex((prev) => {
-      if (direction === 'next') {
+      if (direction === "next") {
         return prev >= TOTAL_BANNERS ? 1 : prev + 1;
       }
       return prev <= 1 ? TOTAL_BANNERS : prev - 1;
@@ -149,7 +149,7 @@ export function AgentSetupModal({
       };
       reader.readAsDataURL(file);
     },
-    []
+    [],
   );
 
   const handleBannerUpload = useCallback(
@@ -168,24 +168,24 @@ export function AgentSetupModal({
       };
       reader.readAsDataURL(file);
     },
-    []
+    [],
   );
 
   const handleContinue = async () => {
     if (!localData.username.trim()) {
-      toast.error('Username is required');
+      toast.error("Username is required");
       return;
     }
     if (localData.username.length < 3) {
-      toast.error('Username must be at least 3 characters');
+      toast.error("Username must be at least 3 characters");
       return;
     }
-    if (usernameStatus !== 'available') {
-      toast.error('Please choose an available username');
+    if (usernameStatus !== "available") {
+      toast.error("Please choose an available username");
       return;
     }
     if (!localData.displayName.trim()) {
-      toast.error('Display name is required');
+      toast.error("Display name is required");
       return;
     }
 
@@ -196,18 +196,18 @@ export function AgentSetupModal({
 
       if (uploadedProfileFile) {
         try {
-          profileImageUrl = await uploadImage(uploadedProfileFile, 'profile');
+          profileImageUrl = await uploadImage(uploadedProfileFile, "profile");
         } catch {
-          toast.error('Failed to upload profile image');
+          toast.error("Failed to upload profile image");
           return;
         }
       }
 
       if (uploadedBannerFile) {
         try {
-          coverImageUrl = await uploadImage(uploadedBannerFile, 'cover');
+          coverImageUrl = await uploadImage(uploadedBannerFile, "cover");
         } catch {
-          toast.error('Failed to upload cover image');
+          toast.error("Failed to upload cover image");
           return;
         }
       }
@@ -232,7 +232,7 @@ export function AgentSetupModal({
     !localData.displayName.trim() ||
     !localData.username.trim() ||
     localData.username.length < 3 ||
-    usernameStatus !== 'available' ||
+    usernameStatus !== "available" ||
     isCheckingUsername ||
     isUploading;
 
@@ -242,17 +242,17 @@ export function AgentSetupModal({
   useEffect(() => {
     if (!isOpen || hideCloseButton) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === "Escape") onClose();
     };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, hideCloseButton, onClose]);
 
   // Focus first focusable element on open
   useEffect(() => {
     if (!isOpen || !dialogRef.current) return;
     const firstFocusable = dialogRef.current.querySelector<HTMLElement>(
-      'input, button:not([disabled]), textarea, select, [tabindex]:not([tabindex="-1"])'
+      'input, button:not([disabled]), textarea, select, [tabindex]:not([tabindex="-1"])',
     );
     firstFocusable?.focus();
   }, [isOpen]);
@@ -304,7 +304,7 @@ export function AgentSetupModal({
               <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/40 opacity-100 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100">
                 <button
                   type="button"
-                  onClick={() => cycleBanner('prev')}
+                  onClick={() => cycleBanner("prev")}
                   aria-label="Previous banner"
                   className="rounded-full bg-background/90 p-1.5 hover:bg-background sm:p-2"
                 >
@@ -325,7 +325,7 @@ export function AgentSetupModal({
                 </label>
                 <button
                   type="button"
-                  onClick={() => cycleBanner('next')}
+                  onClick={() => cycleBanner("next")}
                   aria-label="Next banner"
                   className="rounded-full bg-background/90 p-1.5 hover:bg-background sm:p-2"
                 >
@@ -345,7 +345,7 @@ export function AgentSetupModal({
                 <div className="absolute inset-0 flex items-center justify-center gap-1 bg-black/40 opacity-100 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100">
                   <button
                     type="button"
-                    onClick={() => cycleProfilePicture('prev')}
+                    onClick={() => cycleProfilePicture("prev")}
                     aria-label="Previous avatar"
                     className="rounded-full bg-background/90 p-1 hover:bg-background sm:p-1.5"
                   >
@@ -366,7 +366,7 @@ export function AgentSetupModal({
                   </label>
                   <button
                     type="button"
-                    onClick={() => cycleProfilePicture('next')}
+                    onClick={() => cycleProfilePicture("next")}
                     aria-label="Next avatar"
                     className="rounded-full bg-background/90 p-1 hover:bg-background sm:p-1.5"
                   >
@@ -396,11 +396,11 @@ export function AgentSetupModal({
               </label>
               <div
                 className={cn(
-                  'flex items-center rounded-lg border bg-muted focus-within:ring-2 focus-within:ring-[#0066FF]',
-                  usernameStatus === 'taken' && 'border-red-500',
-                  usernameStatus === 'error' && 'border-yellow-500',
-                  usernameStatus === 'available' && 'border-green-500',
-                  !usernameStatus && 'border-border'
+                  "flex items-center rounded-lg border bg-muted focus-within:ring-2 focus-within:ring-[#0066FF]",
+                  usernameStatus === "taken" && "border-red-500",
+                  usernameStatus === "error" && "border-yellow-500",
+                  usernameStatus === "available" && "border-green-500",
+                  !usernameStatus && "border-border",
                 )}
               >
                 <span className="px-4 text-muted-foreground">@</span>
@@ -413,14 +413,14 @@ export function AgentSetupModal({
                       ...prev,
                       username: e.target.value
                         .toLowerCase()
-                        .replace(/[^a-z0-9_]/g, ''),
+                        .replace(/[^a-z0-9_]/g, ""),
                     }))
                   }
                   maxLength={20}
                   className="w-full bg-transparent py-3 pr-10 focus:outline-none"
                   placeholder="agent_username"
                   aria-invalid={
-                    usernameStatus === 'taken' || usernameStatus === 'error'
+                    usernameStatus === "taken" || usernameStatus === "error"
                   }
                   aria-describedby="username-status username-help"
                 />
@@ -429,21 +429,21 @@ export function AgentSetupModal({
                   {isCheckingUsername && (
                     <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                   )}
-                  {!isCheckingUsername && usernameStatus === 'available' && (
+                  {!isCheckingUsername && usernameStatus === "available" && (
                     <Check className="h-4 w-4 text-green-500" />
                   )}
-                  {!isCheckingUsername && usernameStatus === 'taken' && (
+                  {!isCheckingUsername && usernameStatus === "taken" && (
                     <XIcon className="h-4 w-4 text-red-500" />
                   )}
-                  {!isCheckingUsername && usernameStatus === 'error' && (
+                  {!isCheckingUsername && usernameStatus === "error" && (
                     <AlertCircle className="h-4 w-4 text-yellow-500" />
                   )}
                 </div>
               </div>
               {/* Suggestion */}
-              {usernameStatus === 'taken' && usernameSuggestion && (
+              {usernameStatus === "taken" && usernameSuggestion && (
                 <p className="mt-1.5 text-muted-foreground text-xs">
-                  Username taken. Try:{' '}
+                  Username taken. Try:{" "}
                   <button
                     type="button"
                     onClick={handleUseSuggestion}
@@ -454,9 +454,9 @@ export function AgentSetupModal({
                 </p>
               )}
               {/* Error with retry */}
-              {usernameStatus === 'error' && (
+              {usernameStatus === "error" && (
                 <p className="mt-1.5 text-xs text-yellow-600">
-                  Failed to check username.{' '}
+                  Failed to check username.{" "}
                   <button
                     type="button"
                     onClick={retryCheck}
@@ -498,8 +498,8 @@ export function AgentSetupModal({
                   }))
                 }
                 className={cn(
-                  'w-full rounded-lg border border-border bg-muted px-4 py-3',
-                  'focus:outline-none focus:ring-2 focus:ring-[#0066FF]'
+                  "w-full rounded-lg border border-border bg-muted px-4 py-3",
+                  "focus:outline-none focus:ring-2 focus:ring-[#0066FF]",
                 )}
                 placeholder="My Awesome Agent"
               />
@@ -517,7 +517,7 @@ export function AgentSetupModal({
               </div>
               <textarea
                 id="edit-bio"
-                value={localData.bio ?? ''}
+                value={localData.bio ?? ""}
                 onChange={(e) =>
                   setLocalData((prev) => ({ ...prev, bio: e.target.value }))
                 }
@@ -525,8 +525,8 @@ export function AgentSetupModal({
                 rows={3}
                 aria-describedby="bio-help"
                 className={cn(
-                  'w-full resize-none rounded-lg border border-border bg-muted px-4 py-3',
-                  'focus:outline-none focus:ring-2 focus:ring-[#0066FF]'
+                  "w-full resize-none rounded-lg border border-border bg-muted px-4 py-3",
+                  "focus:outline-none focus:ring-2 focus:ring-[#0066FF]",
                 )}
                 placeholder="A short description of your agent..."
               />
@@ -543,9 +543,9 @@ export function AgentSetupModal({
             onClick={handleContinue}
             disabled={isContinueDisabled}
             className={cn(
-              'flex w-full items-center justify-center gap-2 rounded-xl px-4 py-4 font-semibold transition-all',
-              'bg-[#0066FF] text-primary-foreground hover:bg-[#0055DD] hover:shadow-lg active:scale-[0.98]',
-              'disabled:cursor-not-allowed disabled:opacity-50'
+              "flex w-full items-center justify-center gap-2 rounded-xl px-4 py-4 font-semibold transition-all",
+              "bg-[#0066FF] text-primary-foreground hover:bg-[#0055DD] hover:shadow-lg active:scale-[0.98]",
+              "disabled:cursor-not-allowed disabled:opacity-50",
             )}
           >
             {isUploading ? (
@@ -554,7 +554,7 @@ export function AgentSetupModal({
                 Uploading…
               </>
             ) : (
-              'Continue'
+              "Continue"
             )}
           </button>
         </div>

@@ -15,9 +15,9 @@
  *   bun run scripts/find-duplicates.ts -- --verbose
  */
 
-import * as fs from 'node:fs';
-import * as path from 'node:path';
-import { parseArgs } from 'node:util';
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { parseArgs } from "node:util";
 
 // ---------------------------------------------------------------------------
 // CLI args
@@ -25,16 +25,16 @@ import { parseArgs } from 'node:util';
 
 const { values: args } = parseArgs({
   options: {
-    out: { type: 'string', default: 'dedup-review-queue.json' },
-    'min-score': { type: 'string', default: '0.3' },
-    kind: { type: 'string', default: 'function,class,interface,type' },
-    verbose: { type: 'boolean', default: false },
-    help: { type: 'boolean', default: false },
+    out: { type: "string", default: "dedup-review-queue.json" },
+    "min-score": { type: "string", default: "0.3" },
+    kind: { type: "string", default: "function,class,interface,type" },
+    verbose: { type: "boolean", default: false },
+    help: { type: "boolean", default: false },
   },
   strict: false,
 });
 
-if (args['help']) {
+if (args.help) {
   console.log(`
 find-duplicates.ts — Identify duplicate symbols across the codebase
 
@@ -48,16 +48,16 @@ Options:
   process.exit(0);
 }
 
-const OUT_FILE = args['out'] as string;
-const MIN_SCORE = parseFloat(args['min-score'] as string);
-const KINDS = new Set((args['kind'] as string).split(',').map((s) => s.trim()));
-const VERBOSE = args['verbose'] as boolean;
+const OUT_FILE = args.out as string;
+const MIN_SCORE = parseFloat(args["min-score"] as string);
+const KINDS = new Set((args.kind as string).split(",").map((s) => s.trim()));
+const VERBOSE = args.verbose as boolean;
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-type SymbolKind = 'function' | 'class' | 'interface' | 'type';
+type SymbolKind = "function" | "class" | "interface" | "type";
 
 interface SymbolEntry {
   kind: SymbolKind;
@@ -104,16 +104,16 @@ interface ReviewQueue {
 // ---------------------------------------------------------------------------
 
 const SKIP_DIRS = new Set([
-  'node_modules',
-  '.next',
-  'dist',
-  '.turbo',
-  'coverage',
-  'build',
-  '__generated__',
-  'training-data',
-  'runs',
-  '.git',
+  "node_modules",
+  ".next",
+  "dist",
+  ".turbo",
+  "coverage",
+  "build",
+  "__generated__",
+  "training-data",
+  "runs",
+  ".git",
 ]);
 
 function* walkTs(dir: string): Generator<string> {
@@ -126,7 +126,7 @@ function* walkTs(dir: string): Generator<string> {
     } else if (
       entry.isFile() &&
       /\.(ts|tsx)$/.test(entry.name) &&
-      !entry.name.endsWith('.d.ts')
+      !entry.name.endsWith(".d.ts")
     ) {
       yield full;
     }
@@ -140,8 +140,8 @@ function* walkTs(dir: string): Generator<string> {
 /** Normalize whitespace, strip comments inline */
 function normalize(s: string): string {
   return s
-    .replace(/\/\*.*?\*\//g, '')
-    .replace(/\s+/g, ' ')
+    .replace(/\/\*.*?\*\//g, "")
+    .replace(/\s+/g, " ")
     .trim();
 }
 
@@ -150,7 +150,7 @@ function _stripModifiers(s: string): string {
   return s
     .replace(
       /^\s*(export\s+)?(default\s+)?(declare\s+)?(abstract\s+)?(async\s+)?/,
-      ''
+      "",
     )
     .trim();
 }
@@ -166,53 +166,53 @@ const PATTERNS: Array<{
   };
 }> = [
   {
-    kind: 'function',
+    kind: "function",
     // function foo<T>(a: A, b: B): ReturnType {
     re: /^(?:export\s+)?(?:default\s+)?(?:declare\s+)?(?:async\s+)?function\s+(\w+)\s*(?:<[^>]*>)?\s*\(([^)]*)\)\s*(?::\s*([^{;]+))?/,
     extract: (m) => ({
       name: m[1]!,
-      params: normalize(m[2] ?? ''),
-      returnType: normalize(m[3] ?? ''),
+      params: normalize(m[2] ?? ""),
+      returnType: normalize(m[3] ?? ""),
     }),
   },
   {
-    kind: 'function',
+    kind: "function",
     // export const foo = async (a: A): B =>
     // export const foo: (a: A) => B = (a) =>
     re: /^(?:export\s+)?(?:const|let)\s+(\w+)\s*(?::[^=]+)?\s*=\s*(?:async\s+)?(?:function\s*)?\(([^)]*)\)\s*(?::\s*([^=>{;]+))?\s*(?:=>|{)/,
     extract: (m) => ({
       name: m[1]!,
-      params: normalize(m[2] ?? ''),
-      returnType: normalize(m[3] ?? ''),
+      params: normalize(m[2] ?? ""),
+      returnType: normalize(m[3] ?? ""),
     }),
   },
   {
-    kind: 'class',
+    kind: "class",
     re: /^(?:export\s+)?(?:abstract\s+)?class\s+(\w+)/,
-    extract: (m) => ({ name: m[1]!, params: '', returnType: '' }),
+    extract: (m) => ({ name: m[1]!, params: "", returnType: "" }),
   },
   {
-    kind: 'interface',
+    kind: "interface",
     re: /^(?:export\s+)?interface\s+(\w+)/,
-    extract: (m) => ({ name: m[1]!, params: '', returnType: '' }),
+    extract: (m) => ({ name: m[1]!, params: "", returnType: "" }),
   },
   {
-    kind: 'type',
+    kind: "type",
     re: /^(?:export\s+)?type\s+(\w+)\s*(?:<[^>]*>)?\s*=/,
-    extract: (m) => ({ name: m[1]!, params: '', returnType: '' }),
+    extract: (m) => ({ name: m[1]!, params: "", returnType: "" }),
   },
 ];
 
 function parseFile(filePath: string, root: string): SymbolEntry[] {
   let src: string;
   try {
-    src = fs.readFileSync(filePath, 'utf8');
+    src = fs.readFileSync(filePath, "utf8");
   } catch {
     return [];
   }
 
   const relPath = path.relative(root, filePath);
-  const lines = src.split('\n');
+  const lines = src.split("\n");
   const results: SymbolEntry[] = [];
 
   for (let i = 0; i < lines.length; i++) {
@@ -222,9 +222,9 @@ function parseFile(filePath: string, root: string): SymbolEntry[] {
     // skip comments and blank lines
     if (
       !line ||
-      line.startsWith('//') ||
-      line.startsWith('*') ||
-      line.startsWith('/*')
+      line.startsWith("//") ||
+      line.startsWith("*") ||
+      line.startsWith("/*")
     )
       continue;
 
@@ -235,7 +235,7 @@ function parseFile(filePath: string, root: string): SymbolEntry[] {
       if (!KINDS.has(kind)) continue;
 
       // Concatenate 2 lines to catch signatures split across lines
-      const sample = normalize(raw + ' ' + (lines[i + 1] ?? ''));
+      const sample = normalize(`${raw} ${lines[i + 1] ?? ""}`);
       const m = sample.match(re);
       if (!m) continue;
 
@@ -246,7 +246,7 @@ function parseFile(filePath: string, root: string): SymbolEntry[] {
       // Skip test-only helpers
       if (
         /^(it|test|describe|expect|beforeEach|afterEach|beforeAll|afterAll)$/.test(
-          name
+          name,
         )
       )
         continue;
@@ -275,10 +275,10 @@ function buildSignature(
   kind: SymbolKind,
   name: string,
   params: string,
-  returnType: string
+  returnType: string,
 ): string {
-  if (kind === 'function') {
-    return `${name}(${params})${returnType ? `: ${returnType}` : ''}`;
+  if (kind === "function") {
+    return `${name}(${params})${returnType ? `: ${returnType}` : ""}`;
   }
   return `${kind} ${name}`;
 }
@@ -301,27 +301,27 @@ function tokenSimilarity(a: string, b: string): number {
 
 function scorePair(
   a: SymbolEntry,
-  b: SymbolEntry
+  b: SymbolEntry,
 ): { score: number; reason: string } {
-  if (a.kind !== b.kind) return { score: 0, reason: 'different kinds' };
+  if (a.kind !== b.kind) return { score: 0, reason: "different kinds" };
 
-  if (a.kind === 'function') {
+  if (a.kind === "function") {
     const paramSim = tokenSimilarity(a.params, b.params);
     const retSim = tokenSimilarity(a.returnType, b.returnType);
 
     // Exact signature match
     if (a.signature === b.signature) {
-      return { score: 1.0, reason: 'identical signatures' };
+      return { score: 1.0, reason: "identical signatures" };
     }
     // Same params, same return
     if (paramSim > 0.85 && retSim > 0.85) {
-      return { score: 0.9, reason: 'nearly identical params and return type' };
+      return { score: 0.9, reason: "nearly identical params and return type" };
     }
     // Same params only
     if (paramSim > 0.7) {
       return {
         score: 0.6 + 0.3 * retSim,
-        reason: `similar params (${pct(paramSim)}), return type ${retSim > 0.5 ? 'similar' : 'differs'}`,
+        reason: `similar params (${pct(paramSim)}), return type ${retSim > 0.5 ? "similar" : "differs"}`,
       };
     }
     // Same return only
@@ -333,7 +333,7 @@ function scorePair(
     }
     // Both empty (signature-less function match)
     if (!a.params && !b.params && !a.returnType && !b.returnType) {
-      return { score: 0.5, reason: 'same name, no signature info extracted' };
+      return { score: 0.5, reason: "same name, no signature info extracted" };
     }
     const avg = (paramSim + retSim) / 2;
     return {
@@ -354,9 +354,9 @@ function pct(n: number): string {
 // Main
 // ---------------------------------------------------------------------------
 
-const ROOT = '/Users/shawwalters/feed-workspace/feed';
+const ROOT = "/Users/shawwalters/feed-workspace/feed";
 
-console.log('Scanning TypeScript files...');
+console.log("Scanning TypeScript files...");
 const files = [...walkTs(ROOT)];
 console.log(`  Found ${files.length} files`);
 
@@ -372,7 +372,7 @@ const byKey = new Map<string, SymbolEntry[]>();
 for (const sym of allSymbols) {
   const key = `${sym.kind}:${sym.name}`;
   if (!byKey.has(key)) byKey.set(key, []);
-  byKey.get(key)!.push(sym);
+  byKey.get(key)?.push(sym);
 }
 
 // Only keep groups with 2+ entries
@@ -383,13 +383,13 @@ for (const [, entries] of byKey) {
   // Deduplicate: remove entries from same file+line (can match multiple patterns)
   const unique = entries.filter(
     (e, i, arr) =>
-      arr.findIndex((x) => x.file === e.file && x.line === e.line) === i
+      arr.findIndex((x) => x.file === e.file && x.line === e.line) === i,
   );
   if (unique.length < 2) continue;
 
   // Score: take the best pairwise score across all pairs
   let bestScore = 0;
-  let bestReason = '';
+  let bestReason = "";
   for (let i = 0; i < unique.length; i++) {
     for (let j = i + 1; j < unique.length; j++) {
       const { score, reason } = scorePair(unique[i]!, unique[j]!);
@@ -403,8 +403,8 @@ for (const [, entries] of byKey) {
   if (bestScore < MIN_SCORE) continue;
 
   groups.push({
-    name: unique[0]!.name,
-    kind: unique[0]!.kind,
+    name: unique[0]?.name,
+    kind: unique[0]?.kind,
     score: Math.round(bestScore * 100) / 100,
     reason: bestReason,
     entries: unique.map((e) => ({
@@ -453,7 +453,7 @@ console.log(`    Low  (0.3–0.49, same name only):  ${low.length}`);
 
 if (VERBOSE || high.length <= 20) {
   console.log(
-    `\n  Top ${Math.min(20, high.length)} high-confidence duplicates:`
+    `\n  Top ${Math.min(20, high.length)} high-confidence duplicates:`,
   );
   for (const g of high.slice(0, 20)) {
     console.log(`\n  [${g.score}] ${g.kind} ${g.name} — ${g.reason}`);

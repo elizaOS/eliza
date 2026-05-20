@@ -10,7 +10,7 @@
  * Run with: bun test integration/nft-gated-chats.integration.test.ts --preload ./integration/preload.ts
  */
 
-import { afterEach, beforeAll, describe, expect, test } from 'bun:test';
+import { afterEach, beforeAll, describe, expect, test } from "bun:test";
 import {
   chatParticipants,
   chats,
@@ -20,13 +20,13 @@ import {
   groups,
   inArray,
   users,
-} from '@feed/db';
-import { generateSnowflakeId, getCurrentChainId } from '@feed/shared';
+} from "@feed/db";
+import { generateSnowflakeId, getCurrentChainId } from "@feed/shared";
 
 const BASE_URL =
   process.env.TEST_API_URL ||
   process.env.PLAYWRIGHT_BASE_URL ||
-  'http://localhost:3000';
+  "http://localhost:3000";
 
 let serverAvailable = false;
 let databaseAvailable = false;
@@ -36,9 +36,9 @@ const testGroupIds: string[] = [];
 
 // Test NFT contract address (using a known testnet contract or mock)
 // For real tests, this should be a deployed ERC721 contract on the testnet
-const TEST_NFT_CONTRACT = '0x1234567890123456789012345678901234567890';
-const TEST_WALLET_WITH_NFT = '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd';
-const TEST_WALLET_WITHOUT_NFT = '0x9876543210987654321098765432109876543210';
+const TEST_NFT_CONTRACT = "0x1234567890123456789012345678901234567890";
+const TEST_WALLET_WITH_NFT = "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd";
+const TEST_WALLET_WITHOUT_NFT = "0x9876543210987654321098765432109876543210";
 
 async function checkServerHealth(): Promise<boolean> {
   const response = await fetch(`${BASE_URL}/api/health`, {
@@ -48,12 +48,12 @@ async function checkServerHealth(): Promise<boolean> {
 }
 
 async function createTestUser(
-  walletAddress?: string
+  walletAddress?: string,
 ): Promise<{ id: string; walletAddress: string | null }> {
   const userId = await generateSnowflakeId();
   const userWallet =
     walletAddress ||
-    `0x${Math.random().toString(16).slice(2).padStart(40, '0')}`;
+    `0x${Math.random().toString(16).slice(2).padStart(40, "0")}`;
 
   await db.insert(users).values({
     id: userId,
@@ -89,10 +89,10 @@ async function getAuthToken(userId?: string): Promise<string | null> {
 
   // Try to load from test tokens file if available
   try {
-    const { readFileSync } = await import('fs');
-    const { join } = await import('path');
-    const tokenFile = join(process.cwd(), '.playwright', 'test-tokens.json');
-    const tokens = JSON.parse(readFileSync(tokenFile, 'utf-8'));
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const tokenFile = join(process.cwd(), ".playwright", "test-tokens.json");
+    const tokens = JSON.parse(readFileSync(tokenFile, "utf-8"));
     return tokens.TEST_ACCESS_TOKEN || null;
   } catch {
     // No token file - tests will verify auth requirements
@@ -113,7 +113,7 @@ function trackCreatedGroup(payload: {
   const chatId = payload.group?.chatId;
 
   if (!groupId || !chatId) {
-    throw new Error('Expected /api/groups to return group.id and group.chatId');
+    throw new Error("Expected /api/groups to return group.id and group.chatId");
   }
 
   testGroupIds.push(groupId);
@@ -124,10 +124,10 @@ function trackCreatedGroup(payload: {
 
 async function authenticatedFetch(
   path: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
 ): Promise<Response> {
   const headers: HeadersInit = {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
     ...options.headers,
   };
 
@@ -147,12 +147,12 @@ async function expectAuthRequired(response: Response): Promise<void> {
   expect(data.error).toBeDefined();
 }
 
-describe('NFT-Gated Group Chats - Integration Tests', () => {
+describe("NFT-Gated Group Chats - Integration Tests", () => {
   beforeAll(async () => {
     serverAvailable = await checkServerHealth().catch(() => false);
     if (!serverAvailable) {
       console.warn(
-        '⚠️  Server not available - NFT gating tests will be skipped. Start server with: bun run dev'
+        "⚠️  Server not available - NFT gating tests will be skipped. Start server with: bun run dev",
       );
     }
 
@@ -163,7 +163,7 @@ describe('NFT-Gated Group Chats - Integration Tests', () => {
     } catch {
       databaseAvailable = false;
       console.warn(
-        '⚠️  Database not available - NFT gating tests will be skipped. Set DATABASE_URL environment variable.'
+        "⚠️  Database not available - NFT gating tests will be skipped. Set DATABASE_URL environment variable.",
       );
     }
   });
@@ -192,17 +192,17 @@ describe('NFT-Gated Group Chats - Integration Tests', () => {
     }
   });
 
-  describe('Chat Creation with NFT Gating', () => {
-    test('should require authentication to create NFT-gated chat', async () => {
+  describe("Chat Creation with NFT Gating", () => {
+    test("should require authentication to create NFT-gated chat", async () => {
       if (!serverAvailable || !databaseAvailable) {
-        console.log('Skipping test: server or database not available');
+        console.log("Skipping test: server or database not available");
         return;
       }
 
-      const response = await authenticatedFetch('/api/groups', {
-        method: 'POST',
+      const response = await authenticatedFetch("/api/groups", {
+        method: "POST",
         body: JSON.stringify({
-          name: 'NFT Gated Test Group',
+          name: "NFT Gated Test Group",
           memberIds: [],
           nftGated: true,
           requiredNftContractAddress: TEST_NFT_CONTRACT,
@@ -213,22 +213,22 @@ describe('NFT-Gated Group Chats - Integration Tests', () => {
       await expectAuthRequired(response);
     });
 
-    test('should create NFT-gated group chat with token-specific requirement', async () => {
+    test("should create NFT-gated group chat with token-specific requirement", async () => {
       if (!serverAvailable || !databaseAvailable) {
-        console.log('Skipping test: server or database not available');
+        console.log("Skipping test: server or database not available");
         return;
       }
 
       const user = await createTestUser(TEST_WALLET_WITH_NFT);
       const token = await getAuthToken(user.id);
 
-      const response = await authenticatedFetch('/api/groups', {
-        method: 'POST',
+      const response = await authenticatedFetch("/api/groups", {
+        method: "POST",
         headers: {
           ...authHeaders(token),
         },
         body: JSON.stringify({
-          name: 'Token-Specific NFT Group',
+          name: "Token-Specific NFT Group",
           memberIds: [user.id],
           nftGated: true,
           requiredNftContractAddress: TEST_NFT_CONTRACT,
@@ -248,25 +248,25 @@ describe('NFT-Gated Group Chats - Integration Tests', () => {
       expect(createdGroup.chatId).toBeDefined();
     });
 
-    test('should reject creation with invalid contract address format', async () => {
+    test("should reject creation with invalid contract address format", async () => {
       if (!serverAvailable || !databaseAvailable) {
-        console.log('Skipping test: server or database not available');
+        console.log("Skipping test: server or database not available");
         return;
       }
 
       const user = await createTestUser();
       const token = await getAuthToken(user.id);
 
-      const response = await authenticatedFetch('/api/groups', {
-        method: 'POST',
+      const response = await authenticatedFetch("/api/groups", {
+        method: "POST",
         headers: {
           ...authHeaders(token),
         },
         body: JSON.stringify({
-          name: 'Invalid NFT Group',
+          name: "Invalid NFT Group",
           memberIds: [user.id],
           nftGated: true,
-          requiredNftContractAddress: 'invalid-address',
+          requiredNftContractAddress: "invalid-address",
           requiredNftChainId: getCurrentChainId(),
         }),
       });
@@ -279,22 +279,22 @@ describe('NFT-Gated Group Chats - Integration Tests', () => {
       expect(response.status).toBe(400);
     });
 
-    test('should treat group as non-gated when contract address is omitted', async () => {
+    test("should treat group as non-gated when contract address is omitted", async () => {
       if (!serverAvailable || !databaseAvailable) {
-        console.log('Skipping test: server or database not available');
+        console.log("Skipping test: server or database not available");
         return;
       }
 
       const user = await createTestUser();
       const token = await getAuthToken(user.id);
 
-      const response = await authenticatedFetch('/api/groups', {
-        method: 'POST',
+      const response = await authenticatedFetch("/api/groups", {
+        method: "POST",
         headers: {
           ...authHeaders(token),
         },
         body: JSON.stringify({
-          name: 'Missing Contract Group',
+          name: "Missing Contract Group",
           memberIds: [user.id],
           requiredNftChainId: getCurrentChainId(),
         }),
@@ -312,11 +312,11 @@ describe('NFT-Gated Group Chats - Integration Tests', () => {
       const verifyResponse = await authenticatedFetch(
         `/api/chats/${chatId}/nft-verification`,
         {
-          method: 'GET',
+          method: "GET",
           headers: {
             ...authHeaders(token),
           },
-        }
+        },
       );
 
       expect(verifyResponse.status).toBe(200);
@@ -324,22 +324,22 @@ describe('NFT-Gated Group Chats - Integration Tests', () => {
       expect(verifyData.nftRequired).toBe(false);
     });
 
-    test('should allow token ID 0', async () => {
+    test("should allow token ID 0", async () => {
       if (!serverAvailable || !databaseAvailable) {
-        console.log('Skipping test: server or database not available');
+        console.log("Skipping test: server or database not available");
         return;
       }
 
       const user = await createTestUser(TEST_WALLET_WITH_NFT);
       const token = await getAuthToken(user.id);
 
-      const response = await authenticatedFetch('/api/groups', {
-        method: 'POST',
+      const response = await authenticatedFetch("/api/groups", {
+        method: "POST",
         headers: {
           ...authHeaders(token),
         },
         body: JSON.stringify({
-          name: 'Token Zero Group',
+          name: "Token Zero Group",
           memberIds: [user.id],
           nftGated: true,
           requiredNftContractAddress: TEST_NFT_CONTRACT,
@@ -360,10 +360,10 @@ describe('NFT-Gated Group Chats - Integration Tests', () => {
     });
   });
 
-  describe('NFT Verification Endpoint', () => {
-    test('should surface contract validation errors for undeployed NFT-gated chats', async () => {
+  describe("NFT Verification Endpoint", () => {
+    test("should surface contract validation errors for undeployed NFT-gated chats", async () => {
       if (!serverAvailable || !databaseAvailable) {
-        console.log('Skipping test: server or database not available');
+        console.log("Skipping test: server or database not available");
         return;
       }
 
@@ -371,13 +371,13 @@ describe('NFT-Gated Group Chats - Integration Tests', () => {
       const token = await getAuthToken(user.id);
 
       // Create NFT-gated chat
-      const createResponse = await authenticatedFetch('/api/groups', {
-        method: 'POST',
+      const createResponse = await authenticatedFetch("/api/groups", {
+        method: "POST",
         headers: {
           ...authHeaders(token),
         },
         body: JSON.stringify({
-          name: 'Verification Test Group',
+          name: "Verification Test Group",
           memberIds: [user.id],
           nftGated: true,
           requiredNftContractAddress: TEST_NFT_CONTRACT,
@@ -397,22 +397,22 @@ describe('NFT-Gated Group Chats - Integration Tests', () => {
       const verifyResponse = await authenticatedFetch(
         `/api/chats/${chatId}/nft-verification`,
         {
-          method: 'GET',
+          method: "GET",
           headers: {
             ...authHeaders(token),
           },
-        }
+        },
       );
 
       expect(verifyResponse.status).toBe(400);
       const verifyData = await verifyResponse.json();
-      expect(verifyData.error).toContain('No contract');
+      expect(verifyData.error).toContain("No contract");
       expect(verifyData.error).toContain(TEST_NFT_CONTRACT);
     });
 
-    test('should return isNftGated=false for non-gated chat', async () => {
+    test("should return isNftGated=false for non-gated chat", async () => {
       if (!serverAvailable || !databaseAvailable) {
-        console.log('Skipping test: server or database not available');
+        console.log("Skipping test: server or database not available");
         return;
       }
 
@@ -420,13 +420,13 @@ describe('NFT-Gated Group Chats - Integration Tests', () => {
       const token = await getAuthToken(user.id);
 
       // Create regular group chat
-      const createResponse = await authenticatedFetch('/api/groups', {
-        method: 'POST',
+      const createResponse = await authenticatedFetch("/api/groups", {
+        method: "POST",
         headers: {
           ...authHeaders(token),
         },
         body: JSON.stringify({
-          name: 'Regular Group',
+          name: "Regular Group",
           memberIds: [user.id],
         }),
       });
@@ -443,11 +443,11 @@ describe('NFT-Gated Group Chats - Integration Tests', () => {
       const verifyResponse = await authenticatedFetch(
         `/api/chats/${chatId}/nft-verification`,
         {
-          method: 'GET',
+          method: "GET",
           headers: {
             ...authHeaders(token),
           },
-        }
+        },
       );
 
       expect(verifyResponse.status).toBe(200);
@@ -456,9 +456,9 @@ describe('NFT-Gated Group Chats - Integration Tests', () => {
       expect(verifyData.ownsNft).toBe(true);
     });
 
-    test('should return ownsNft=false when user lacks wallet address', async () => {
+    test("should return ownsNft=false when user lacks wallet address", async () => {
       if (!serverAvailable || !databaseAvailable) {
-        console.log('Skipping test: server or database not available');
+        console.log("Skipping test: server or database not available");
         return;
       }
 
@@ -472,13 +472,13 @@ describe('NFT-Gated Group Chats - Integration Tests', () => {
       const token = await getAuthToken(user.id);
 
       // Create NFT-gated chat
-      const createResponse = await authenticatedFetch('/api/groups', {
-        method: 'POST',
+      const createResponse = await authenticatedFetch("/api/groups", {
+        method: "POST",
         headers: {
           ...authHeaders(token),
         },
         body: JSON.stringify({
-          name: 'No Wallet Test Group',
+          name: "No Wallet Test Group",
           memberIds: [user.id],
           nftGated: true,
           requiredNftContractAddress: TEST_NFT_CONTRACT,
@@ -498,25 +498,25 @@ describe('NFT-Gated Group Chats - Integration Tests', () => {
       const verifyResponse = await authenticatedFetch(
         `/api/chats/${chatId}/nft-verification`,
         {
-          method: 'GET',
+          method: "GET",
           headers: {
             ...authHeaders(token),
           },
-        }
+        },
       );
 
       expect(verifyResponse.status).toBe(200);
       const verifyData = await verifyResponse.json();
       expect(verifyData.ownsNft).toBe(false);
       expect(verifyData.nftRequired).toBe(true);
-      expect(verifyData.reason).toContain('Wallet address required');
+      expect(verifyData.reason).toContain("Wallet address required");
     });
   });
 
-  describe('Access Control Enforcement', () => {
-    test('should prevent adding user without NFT to NFT-gated chat', async () => {
+  describe("Access Control Enforcement", () => {
+    test("should prevent adding user without NFT to NFT-gated chat", async () => {
       if (!serverAvailable || !databaseAvailable) {
-        console.log('Skipping test: server or database not available');
+        console.log("Skipping test: server or database not available");
         return;
       }
 
@@ -525,13 +525,13 @@ describe('NFT-Gated Group Chats - Integration Tests', () => {
       const ownerToken = await getAuthToken(owner.id);
 
       // Create NFT-gated chat
-      const createResponse = await authenticatedFetch('/api/groups', {
-        method: 'POST',
+      const createResponse = await authenticatedFetch("/api/groups", {
+        method: "POST",
         headers: {
           ...authHeaders(ownerToken),
         },
         body: JSON.stringify({
-          name: 'Access Control Test',
+          name: "Access Control Test",
           memberIds: [owner.id],
           nftGated: true,
           requiredNftContractAddress: TEST_NFT_CONTRACT,
@@ -551,26 +551,26 @@ describe('NFT-Gated Group Chats - Integration Tests', () => {
       const addResponse = await authenticatedFetch(
         `/api/chats/${chatId}/participants`,
         {
-          method: 'POST',
+          method: "POST",
           headers: {
             ...authHeaders(ownerToken),
           },
           body: JSON.stringify({
             userIds: [nonOwner.id],
           }),
-        }
+        },
       );
 
       // Should fail with NFT requirement error
       expect(addResponse.status).toBe(400);
       const errorData = await addResponse.json();
       expect(errorData.error).toBeDefined();
-      expect(errorData.error).toContain('NFT');
+      expect(errorData.error).toContain("NFT");
     });
 
-    test('should prevent sending message without NFT', async () => {
+    test("should prevent sending message without NFT", async () => {
       if (!serverAvailable || !databaseAvailable) {
-        console.log('Skipping test: server or database not available');
+        console.log("Skipping test: server or database not available");
         return;
       }
 
@@ -580,13 +580,13 @@ describe('NFT-Gated Group Chats - Integration Tests', () => {
       const nonOwnerToken = await getAuthToken(nonOwner.id);
 
       // Create NFT-gated chat and add owner
-      const createResponse = await authenticatedFetch('/api/groups', {
-        method: 'POST',
+      const createResponse = await authenticatedFetch("/api/groups", {
+        method: "POST",
         headers: {
           ...authHeaders(ownerToken),
         },
         body: JSON.stringify({
-          name: 'Message Control Test',
+          name: "Message Control Test",
           memberIds: [owner.id],
           nftGated: true,
           requiredNftContractAddress: TEST_NFT_CONTRACT,
@@ -610,7 +610,7 @@ describe('NFT-Gated Group Chats - Integration Tests', () => {
         id: memberId,
         groupId,
         userId: nonOwner.id,
-        role: 'member',
+        role: "member",
         addedBy: owner.id,
         joinedAt: new Date(),
         isActive: true,
@@ -626,14 +626,14 @@ describe('NFT-Gated Group Chats - Integration Tests', () => {
       const messageResponse = await authenticatedFetch(
         `/api/chats/${chatId}/message`,
         {
-          method: 'POST',
+          method: "POST",
           headers: {
             ...authHeaders(nonOwnerToken),
           },
           body: JSON.stringify({
-            content: 'Test message',
+            content: "Test message",
           }),
-        }
+        },
       );
 
       // Should fail with authorization error
@@ -643,10 +643,10 @@ describe('NFT-Gated Group Chats - Integration Tests', () => {
     });
   });
 
-  describe('Chat List and Details', () => {
-    test('should include NFT requirement in chat list response', async () => {
+  describe("Chat List and Details", () => {
+    test("should include NFT requirement in chat list response", async () => {
       if (!serverAvailable || !databaseAvailable) {
-        console.log('Skipping test: server or database not available');
+        console.log("Skipping test: server or database not available");
         return;
       }
 
@@ -654,13 +654,13 @@ describe('NFT-Gated Group Chats - Integration Tests', () => {
       const token = await getAuthToken(user.id);
 
       // Create NFT-gated chat
-      const createResponse = await authenticatedFetch('/api/groups', {
-        method: 'POST',
+      const createResponse = await authenticatedFetch("/api/groups", {
+        method: "POST",
         headers: {
           ...authHeaders(token),
         },
         body: JSON.stringify({
-          name: 'List Test Group',
+          name: "List Test Group",
           memberIds: [user.id],
           nftGated: true,
           requiredNftContractAddress: TEST_NFT_CONTRACT,
@@ -677,8 +677,8 @@ describe('NFT-Gated Group Chats - Integration Tests', () => {
       const { chatId } = trackCreatedGroup(createData);
 
       // Get chat list
-      const listResponse = await authenticatedFetch('/api/chats', {
-        method: 'GET',
+      const listResponse = await authenticatedFetch("/api/chats", {
+        method: "GET",
         headers: {
           ...authHeaders(token),
         },
@@ -687,15 +687,15 @@ describe('NFT-Gated Group Chats - Integration Tests', () => {
       expect(listResponse.status).toBe(200);
       const listData = await listResponse.json();
       const chat = listData.groupChats?.find(
-        (c: { id: string }) => c.id === chatId
+        (c: { id: string }) => c.id === chatId,
       );
       expect(chat).toBeDefined();
       expect(chat.nftRequirement).toBeDefined();
     });
 
-    test('should include NFT requirement in chat details response', async () => {
+    test("should include NFT requirement in chat details response", async () => {
       if (!serverAvailable || !databaseAvailable) {
-        console.log('Skipping test: server or database not available');
+        console.log("Skipping test: server or database not available");
         return;
       }
 
@@ -703,13 +703,13 @@ describe('NFT-Gated Group Chats - Integration Tests', () => {
       const token = await getAuthToken(user.id);
 
       // Create NFT-gated chat
-      const createResponse = await authenticatedFetch('/api/groups', {
-        method: 'POST',
+      const createResponse = await authenticatedFetch("/api/groups", {
+        method: "POST",
         headers: {
           ...authHeaders(token),
         },
         body: JSON.stringify({
-          name: 'Details Test Group',
+          name: "Details Test Group",
           memberIds: [user.id],
           nftGated: true,
           requiredNftContractAddress: TEST_NFT_CONTRACT,
@@ -728,7 +728,7 @@ describe('NFT-Gated Group Chats - Integration Tests', () => {
 
       // Get chat details
       const detailsResponse = await authenticatedFetch(`/api/chats/${chatId}`, {
-        method: 'GET',
+        method: "GET",
         headers: {
           ...authHeaders(token),
         },
@@ -737,16 +737,16 @@ describe('NFT-Gated Group Chats - Integration Tests', () => {
       expect(detailsResponse.status).toBe(200);
       const detailsData = await detailsResponse.json();
       expect(detailsData.chat.nftRequirement.contractAddress).toBe(
-        TEST_NFT_CONTRACT
+        TEST_NFT_CONTRACT,
       );
       expect(detailsData.chat.nftRequirement.tokenId).toBe(42);
     });
   });
 
-  describe('Edge Cases and Error Handling', () => {
-    test('should handle missing chat ID in verification endpoint', async () => {
+  describe("Edge Cases and Error Handling", () => {
+    test("should handle missing chat ID in verification endpoint", async () => {
       if (!serverAvailable || !databaseAvailable) {
-        console.log('Skipping test: server or database not available');
+        console.log("Skipping test: server or database not available");
         return;
       }
 
@@ -754,13 +754,13 @@ describe('NFT-Gated Group Chats - Integration Tests', () => {
       const token = await getAuthToken(user.id);
 
       const response = await authenticatedFetch(
-        '/api/chats/invalid-id/nft-verification',
+        "/api/chats/invalid-id/nft-verification",
         {
-          method: 'GET',
+          method: "GET",
           headers: {
             ...authHeaders(token),
           },
-        }
+        },
       );
 
       if (!token) {
@@ -771,9 +771,9 @@ describe('NFT-Gated Group Chats - Integration Tests', () => {
       expect(response.status).toBe(404);
     });
 
-    test('should handle concurrent verification requests', async () => {
+    test("should handle concurrent verification requests", async () => {
       if (!serverAvailable || !databaseAvailable) {
-        console.log('Skipping test: server or database not available');
+        console.log("Skipping test: server or database not available");
         return;
       }
 
@@ -781,13 +781,13 @@ describe('NFT-Gated Group Chats - Integration Tests', () => {
       const token = await getAuthToken(user.id);
 
       // Create NFT-gated chat
-      const createResponse = await authenticatedFetch('/api/groups', {
-        method: 'POST',
+      const createResponse = await authenticatedFetch("/api/groups", {
+        method: "POST",
         headers: {
           ...authHeaders(token),
         },
         body: JSON.stringify({
-          name: 'Concurrent Test Group',
+          name: "Concurrent Test Group",
           memberIds: [user.id],
           nftGated: true,
           requiredNftContractAddress: TEST_NFT_CONTRACT,
@@ -806,11 +806,11 @@ describe('NFT-Gated Group Chats - Integration Tests', () => {
       // Make concurrent verification requests
       const requests = Array.from({ length: 5 }, () =>
         authenticatedFetch(`/api/chats/${chatId}/nft-verification`, {
-          method: 'GET',
+          method: "GET",
           headers: {
             ...authHeaders(token),
           },
-        })
+        }),
       );
 
       const responses = await Promise.all(requests);
@@ -822,27 +822,27 @@ describe('NFT-Gated Group Chats - Integration Tests', () => {
       const results = await Promise.all(responses.map((r) => r.json()));
       const firstResult = results[0];
       results.forEach((result) => {
-        expect(result.error).toContain('No contract');
+        expect(result.error).toContain("No contract");
         expect(result.error).toBe(firstResult.error);
       });
     });
 
-    test('should handle invalid chain ID gracefully', async () => {
+    test("should handle invalid chain ID gracefully", async () => {
       if (!serverAvailable || !databaseAvailable) {
-        console.log('Skipping test: server or database not available');
+        console.log("Skipping test: server or database not available");
         return;
       }
 
       const user = await createTestUser();
       const token = await getAuthToken(user.id);
 
-      const response = await authenticatedFetch('/api/groups', {
-        method: 'POST',
+      const response = await authenticatedFetch("/api/groups", {
+        method: "POST",
         headers: {
           ...authHeaders(token),
         },
         body: JSON.stringify({
-          name: 'Invalid Chain Group',
+          name: "Invalid Chain Group",
           memberIds: [user.id],
           nftGated: true,
           requiredNftContractAddress: TEST_NFT_CONTRACT,

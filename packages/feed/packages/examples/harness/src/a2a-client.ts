@@ -4,7 +4,7 @@
  * Connects to local A2A server and provides all required methods.
  */
 
-import { ethers } from 'ethers';
+import { ethers } from "ethers";
 import type {
   A2AClientInterface,
   AgentInfo,
@@ -16,7 +16,7 @@ import type {
   SystemStats,
   Trade,
   UserInfo,
-} from './types';
+} from "./types";
 
 export interface A2AClientConfig {
   baseUrl: string;
@@ -49,18 +49,18 @@ export class HarnessA2AClient implements A2AClientInterface {
 
   private async call<T>(
     method: string,
-    params: Record<string, unknown> = {}
+    params: Record<string, unknown> = {},
   ): Promise<T> {
     const response = await fetch(`${this.baseUrl}/api/a2a`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
-        'x-agent-id': this.agentId,
-        'x-agent-address': this.address,
-        'x-agent-token-id': this.tokenId.toString(),
+        "Content-Type": "application/json",
+        "x-agent-id": this.agentId,
+        "x-agent-address": this.address,
+        "x-agent-token-id": this.tokenId.toString(),
       },
       body: JSON.stringify({
-        jsonrpc: '2.0',
+        jsonrpc: "2.0",
         method,
         params,
         id: this.messageId++,
@@ -83,9 +83,9 @@ export class HarnessA2AClient implements A2AClientInterface {
 
   async register(
     displayName: string,
-    description: string
+    description: string,
   ): Promise<{ success: boolean; agent: { id: string } }> {
-    return this.call('register', {
+    return this.call("register", {
       walletAddress: this.address,
       tokenId: this.tokenId,
       chainId: 31337,
@@ -97,11 +97,11 @@ export class HarnessA2AClient implements A2AClientInterface {
   // ===== Portfolio =====
 
   async getBalance(): Promise<{ balance: number; currency: string }> {
-    return this.call('getBalance', {});
+    return this.call("getBalance", {});
   }
 
   async getPositions(): Promise<{ positions: Position[] }> {
-    return this.call('getPositions', {});
+    return this.call("getPositions", {});
   }
 
   async getPortfolio(): Promise<{
@@ -109,86 +109,86 @@ export class HarnessA2AClient implements A2AClientInterface {
     positions: Position[];
     pnl: number;
   }> {
-    return this.call('getPortfolio', {});
+    return this.call("getPortfolio", {});
   }
 
   // ===== Markets =====
 
   async getMarkets(): Promise<{ predictions: Market[]; perps: Market[] }> {
-    return this.call('getMarkets', {});
+    return this.call("getMarkets", {});
   }
 
   async getMarketData(marketId: string): Promise<Market> {
-    return this.call('getMarketData', { marketId });
+    return this.call("getMarketData", { marketId });
   }
 
   async buyShares(
     marketId: string,
-    outcome: 'YES' | 'NO',
-    amount: number
+    outcome: "YES" | "NO",
+    amount: number,
   ): Promise<Trade> {
-    return this.call('buyShares', { marketId, outcome, amount });
+    return this.call("buyShares", { marketId, outcome, amount });
   }
 
   async sellShares(
     marketId: string,
-    outcome: 'YES' | 'NO',
-    shares: number
+    outcome: "YES" | "NO",
+    shares: number,
   ): Promise<Trade> {
-    return this.call('sellShares', { marketId, outcome, shares });
+    return this.call("sellShares", { marketId, outcome, shares });
   }
 
   // ===== Social =====
 
   async getFeed(limit: number = 20): Promise<{ posts: Post[] }> {
-    return this.call('getFeed', { limit });
+    return this.call("getFeed", { limit });
   }
 
   async createPost(content: string): Promise<Post> {
-    return this.call('createPost', { content });
+    return this.call("createPost", { content });
   }
 
   async likePost(
-    postId: string
+    postId: string,
   ): Promise<{ success: boolean; likesCount: number }> {
-    return this.call('likePost', { postId });
+    return this.call("likePost", { postId });
   }
 
   async commentPost(postId: string, content: string): Promise<{ id: string }> {
-    return this.call('commentPost', { postId, content });
+    return this.call("commentPost", { postId, content });
   }
 
   // ===== Discovery =====
 
   async discover(): Promise<{ agents: AgentInfo[] }> {
-    return this.call('discover', {});
+    return this.call("discover", {});
   }
 
   async searchUsers(query: string): Promise<{ users: UserInfo[] }> {
-    return this.call('searchUsers', { query });
+    return this.call("searchUsers", { query });
   }
 
   // ===== Stats =====
 
   async getStats(): Promise<SystemStats> {
-    return this.call('getStats', {});
+    return this.call("getStats", {});
   }
 
   async getLeaderboard(
-    limit: number = 10
+    limit: number = 10,
   ): Promise<{ entries: LeaderboardEntry[] }> {
-    return this.call('getLeaderboard', { limit });
+    return this.call("getLeaderboard", { limit });
   }
 
   // ===== Notifications =====
 
   async getNotifications(): Promise<{ notifications: Notification[] }> {
-    return this.call('getNotifications', {});
+    return this.call("getNotifications", {});
   }
 
   async markNotificationRead(
-    notificationId: string
+    notificationId: string,
   ): Promise<{ success: boolean }> {
-    return this.call('markNotificationRead', { notificationId });
+    return this.call("markNotificationRead", { notificationId });
   }
 }

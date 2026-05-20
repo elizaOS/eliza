@@ -1,18 +1,18 @@
-'use client';
+"use client";
 
-import { useCallback, useEffect, useState } from 'react';
-import { useAuth } from '@/hooks/useAuth';
-import { useSSEChannel } from '@/hooks/useSSE';
-import { useAuthStore } from '@/stores/authStore';
-import { AchievementCard } from './achievement-card';
-import { useAnimatedCount } from './use-animated-count';
+import { useCallback, useEffect, useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
+import { useSSEChannel } from "@/hooks/useSSE";
+import { useAuthStore } from "@/stores/authStore";
+import { AchievementCard } from "./achievement-card";
+import { useAnimatedCount } from "./use-animated-count";
 
 export interface AchievementFromApi {
   id: string;
   name: string;
   description: string;
   category: string;
-  tier: 'bronze' | 'silver' | 'gold';
+  tier: "bronze" | "silver" | "gold";
   pointsReward: number;
   threshold: number;
   progress: number;
@@ -20,28 +20,28 @@ export interface AchievementFromApi {
   unlockedAt: string | null;
 }
 
-export function mapTier(tier: string): 'Bronze' | 'Silver' | 'Gold' {
-  if (tier === 'silver') return 'Silver';
-  if (tier === 'gold') return 'Gold';
-  return 'Bronze';
+export function mapTier(tier: string): "Bronze" | "Silver" | "Gold" {
+  if (tier === "silver") return "Silver";
+  if (tier === "gold") return "Gold";
+  return "Bronze";
 }
 
 export function mapStatus(
-  a: AchievementFromApi
-): 'completed' | 'in-progress' | 'locked' {
-  if (a.unlocked) return 'completed';
-  if (a.progress > 0) return 'in-progress';
-  return 'locked';
+  a: AchievementFromApi,
+): "completed" | "in-progress" | "locked" {
+  if (a.unlocked) return "completed";
+  if (a.progress > 0) return "in-progress";
+  return "locked";
 }
 
-type TierFilter = 'All' | 'Bronze' | 'Silver' | 'Gold';
+type TierFilter = "All" | "Bronze" | "Silver" | "Gold";
 
 export function AchievementsTab() {
   const { authenticated, getAccessToken } = useAuth();
   const { user } = useAuthStore();
   const [achievements, setAchievements] = useState<AchievementFromApi[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<TierFilter>('All');
+  const [filter, setFilter] = useState<TierFilter>("All");
 
   const fetchAchievements = useCallback(async () => {
     if (!authenticated) {
@@ -53,7 +53,7 @@ export function AchievementsTab() {
       setLoading(false);
       return;
     }
-    const res = await fetch('/api/achievements', {
+    const res = await fetch("/api/achievements", {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (res.ok) {
@@ -70,31 +70,31 @@ export function AchievementsTab() {
   const handleSSE = useCallback(
     (data: Record<string, unknown>) => {
       const type = data.type as string;
-      if (type === 'achievement_unlocked') {
+      if (type === "achievement_unlocked") {
         fetchAchievements();
       }
     },
-    [fetchAchievements]
+    [fetchAchievements],
   );
 
   const channel =
     authenticated && user?.id ? (`notifications:${user.id}` as const) : null;
   useSSEChannel(channel, handleSSE);
 
-  const filters: TierFilter[] = ['All', 'Gold', 'Silver', 'Bronze'];
+  const filters: TierFilter[] = ["All", "Gold", "Silver", "Bronze"];
 
   const filteredAchievements =
-    filter === 'All'
+    filter === "All"
       ? achievements
       : achievements.filter((a) => mapTier(a.tier) === filter);
 
   const completed = filteredAchievements.filter(
-    (a) => mapStatus(a) === 'completed'
+    (a) => mapStatus(a) === "completed",
   );
   const inProgress = filteredAchievements.filter(
-    (a) => mapStatus(a) === 'in-progress'
+    (a) => mapStatus(a) === "in-progress",
   );
-  const locked = filteredAchievements.filter((a) => mapStatus(a) === 'locked');
+  const locked = filteredAchievements.filter((a) => mapStatus(a) === "locked");
 
   const unlockedCount = achievements.filter((a) => a.unlocked).length;
   const totalCount = achievements.length;
@@ -151,9 +151,9 @@ export function AchievementsTab() {
 
         <p className="mt-2 text-muted-foreground text-xs">
           {unlockedCount === totalCount
-            ? 'All achievements unlocked — legendary! 🏆'
+            ? "All achievements unlocked — legendary! 🏆"
             : unlockedCount === 0
-              ? 'Start playing to unlock achievements'
+              ? "Start playing to unlock achievements"
               : `${totalCount - unlockedCount} more to discover — keep exploring!`}
         </p>
       </div>
@@ -166,8 +166,8 @@ export function AchievementsTab() {
             onClick={() => setFilter(f)}
             className={`rounded-full px-3.5 py-1.5 font-medium text-xs transition-all ${
               filter === f
-                ? 'bg-amber-500 text-white'
-                : 'bg-muted text-muted-foreground hover:text-foreground'
+                ? "bg-amber-500 text-white"
+                : "bg-muted text-muted-foreground hover:text-foreground"
             }`}
           >
             {f}
@@ -189,7 +189,7 @@ export function AchievementsTab() {
                   className="animate-fadeIn"
                   style={{
                     animationDelay: `${i * 40}ms`,
-                    animationFillMode: 'backwards',
+                    animationFillMode: "backwards",
                   }}
                 >
                   <AchievementCard
@@ -218,7 +218,7 @@ export function AchievementsTab() {
                   className="animate-fadeIn"
                   style={{
                     animationDelay: `${(completed.length + i) * 40}ms`,
-                    animationFillMode: 'backwards',
+                    animationFillMode: "backwards",
                   }}
                 >
                   <AchievementCard
@@ -251,7 +251,7 @@ export function AchievementsTab() {
                   className="animate-fadeIn"
                   style={{
                     animationDelay: `${(completed.length + inProgress.length + i) * 40}ms`,
-                    animationFillMode: 'backwards',
+                    animationFillMode: "backwards",
                   }}
                 >
                   <AchievementCard

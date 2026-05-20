@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { cn, type FeedbackType } from '@feed/shared';
+import { cn, type FeedbackType } from "@feed/shared";
 
 export type { FeedbackType };
 
@@ -12,22 +12,22 @@ interface FeedbackTypeConfig {
 
 const FEEDBACK_TYPES: FeedbackTypeConfig[] = [
   {
-    type: 'bug',
-    title: 'Report a Bug',
+    type: "bug",
+    title: "Report a Bug",
     description:
-      'Help us fix issues by describing what happened and how to reproduce it.',
+      "Help us fix issues by describing what happened and how to reproduce it.",
   },
   {
-    type: 'feature_request',
-    title: 'Feature Request',
+    type: "feature_request",
+    title: "Feature Request",
     description:
-      'Tell us what you would like to see or change. How strongly do you feel about this?',
+      "Tell us what you would like to see or change. How strongly do you feel about this?",
   },
   {
-    type: 'performance',
-    title: 'Performance Issue',
+    type: "performance",
+    title: "Performance Issue",
     description:
-      'Report performance issues like lag, crashes, or graphical glitches.',
+      "Report performance issues like lag, crashes, or graphical glitches.",
   },
 ];
 
@@ -48,9 +48,9 @@ export function FeedbackTypeSelector({ onSelect }: FeedbackTypeSelectorProps) {
             key={type}
             onClick={() => onSelect(type)}
             className={cn(
-              'flex flex-col gap-2 rounded-lg border border-border bg-card p-4',
-              'transition-all hover:border-[#1c9cf0] hover:bg-muted/50',
-              'text-left'
+              "flex flex-col gap-2 rounded-lg border border-border bg-card p-4",
+              "transition-all hover:border-[#1c9cf0] hover:bg-muted/50",
+              "text-left",
             )}
           >
             <div className="font-semibold text-foreground text-sm">{title}</div>

@@ -32,25 +32,25 @@
  * ```
  */
 
-import { and, db, desc, eq, gte, isNull, posts } from '@feed/db';
-import { logger } from '@feed/shared';
+import { and, db, desc, eq, gte, isNull, posts } from "@feed/db";
+import { logger } from "@feed/shared";
 
 /**
  * Editorial beat categories that news outlets can specialize in
  */
 export type EditorialBeat =
-  | 'tech'
-  | 'finance'
-  | 'politics'
-  | 'crypto'
-  | 'ai'
-  | 'culture'
-  | 'business'
-  | 'science'
-  | 'regulation'
-  | 'markets'
-  | 'startups'
-  | 'media';
+  | "tech"
+  | "finance"
+  | "politics"
+  | "crypto"
+  | "ai"
+  | "culture"
+  | "business"
+  | "science"
+  | "regulation"
+  | "markets"
+  | "startups"
+  | "media";
 
 /**
  * Topic coverage record for saturation tracking
@@ -135,37 +135,37 @@ const DEFAULT_CONFIG: DiversityConfig = {
  */
 export const ORGANIZATION_BEATS: Record<string, EditorialBeat[]> = {
   // Tech-focused
-  techcrainch: ['startups', 'tech', 'ai'],
-  waired: ['tech', 'culture', 'science'],
-  'the-vairge': ['tech', 'culture', 'media'],
-  'the-informaition': ['tech', 'business', 'startups'],
+  techcrainch: ["startups", "tech", "ai"],
+  waired: ["tech", "culture", "science"],
+  "the-vairge": ["tech", "culture", "media"],
+  "the-informaition": ["tech", "business", "startups"],
 
   // Finance-focused
-  bloombairg: ['finance', 'markets', 'business'],
-  'wall-street-journai': ['finance', 'business', 'politics'],
-  'financial-taimes': ['finance', 'markets', 'regulation'],
-  forbesai: ['business', 'finance', 'startups'],
+  bloombairg: ["finance", "markets", "business"],
+  "wall-street-journai": ["finance", "business", "politics"],
+  "financial-taimes": ["finance", "markets", "regulation"],
+  forbesai: ["business", "finance", "startups"],
 
   // Politics-focused
-  politaico: ['politics', 'regulation', 'media'],
-  'the-atlaintic': ['politics', 'culture', 'media'],
-  'new-republic': ['politics', 'culture'],
-  'the-intaircept': ['politics', 'regulation', 'tech'],
+  politaico: ["politics", "regulation", "media"],
+  "the-atlaintic": ["politics", "culture", "media"],
+  "new-republic": ["politics", "culture"],
+  "the-intaircept": ["politics", "regulation", "tech"],
 
   // Opinion/Commentary
-  'the-daily-wire': ['politics', 'culture', 'media'],
-  braitbart: ['politics', 'culture'],
-  ainfowars: ['politics', 'media'],
-  'piraite-wires': ['tech', 'politics', 'culture'],
+  "the-daily-wire": ["politics", "culture", "media"],
+  braitbart: ["politics", "culture"],
+  ainfowars: ["politics", "media"],
+  "piraite-wires": ["tech", "politics", "culture"],
 
   // General news
-  aixios: ['politics', 'tech', 'business'],
-  ainbc: ['politics', 'media', 'culture'],
-  'faix-news': ['politics', 'media'],
-  'aimerica-first': ['politics', 'culture'],
+  aixios: ["politics", "tech", "business"],
+  ainbc: ["politics", "media", "culture"],
+  "faix-news": ["politics", "media"],
+  "aimerica-first": ["politics", "culture"],
 
   // Crypto/Finance specialty
-  'the-economaist': ['finance', 'politics', 'regulation'],
+  "the-economaist": ["finance", "politics", "regulation"],
 };
 
 /**
@@ -180,101 +180,101 @@ export const STORY_SEEDS: Array<{
   // Tech stories
   {
     template:
-      'New developments in {technology} raise questions about {concern}',
-    beat: 'tech',
-    variables: ['quantum computing', 'privacy', 'data security', 'AI ethics'],
+      "New developments in {technology} raise questions about {concern}",
+    beat: "tech",
+    variables: ["quantum computing", "privacy", "data security", "AI ethics"],
   },
   {
-    template: '{company} announces major restructuring amid {trend}',
-    beat: 'business',
+    template: "{company} announces major restructuring amid {trend}",
+    beat: "business",
     variables: [
-      'layoffs',
-      'AI pivot',
-      'market pressure',
-      'regulatory scrutiny',
+      "layoffs",
+      "AI pivot",
+      "market pressure",
+      "regulatory scrutiny",
     ],
   },
   {
-    template: 'Industry insiders debate the future of {sector}',
-    beat: 'tech',
+    template: "Industry insiders debate the future of {sector}",
+    beat: "tech",
     variables: [
-      'social media',
-      'streaming',
-      'cloud computing',
-      'autonomous vehicles',
+      "social media",
+      "streaming",
+      "cloud computing",
+      "autonomous vehicles",
     ],
   },
 
   // Finance stories
   {
-    template: '{market} shows signs of {trend} as investors {action}',
-    beat: 'markets',
-    variables: ['volatility', 'recovery', 'caution', 'optimism'],
+    template: "{market} shows signs of {trend} as investors {action}",
+    beat: "markets",
+    variables: ["volatility", "recovery", "caution", "optimism"],
   },
   {
-    template: 'Analysis: What {indicator} means for {asset_class}',
-    beat: 'finance',
-    variables: ['Fed policy', 'inflation data', 'employment numbers', 'GDP'],
+    template: "Analysis: What {indicator} means for {asset_class}",
+    beat: "finance",
+    variables: ["Fed policy", "inflation data", "employment numbers", "GDP"],
   },
   {
-    template: 'Institutional investors {sentiment} on {sector} outlook',
-    beat: 'finance',
-    variables: ['bullish', 'bearish', 'cautious', 'divided'],
+    template: "Institutional investors {sentiment} on {sector} outlook",
+    beat: "finance",
+    variables: ["bullish", "bearish", "cautious", "divided"],
   },
 
   // Politics stories
   {
-    template: '{official} faces scrutiny over {issue}',
-    beat: 'politics',
+    template: "{official} faces scrutiny over {issue}",
+    beat: "politics",
     variables: [
-      'policy stance',
-      'past statements',
-      'campaign donors',
-      'voting record',
+      "policy stance",
+      "past statements",
+      "campaign donors",
+      "voting record",
     ],
   },
   {
-    template: 'New {regulation_type} proposals could reshape {industry}',
-    beat: 'regulation',
-    variables: ['antitrust', 'privacy', 'AI', 'crypto'],
+    template: "New {regulation_type} proposals could reshape {industry}",
+    beat: "regulation",
+    variables: ["antitrust", "privacy", "AI", "crypto"],
   },
   {
-    template: 'Inside the battle over {policy_area} reform',
-    beat: 'politics',
+    template: "Inside the battle over {policy_area} reform",
+    beat: "politics",
     variables: [
-      'tech regulation',
-      'financial oversight',
-      'immigration',
-      'healthcare',
+      "tech regulation",
+      "financial oversight",
+      "immigration",
+      "healthcare",
     ],
   },
 
   // AI stories
   {
-    template: '{ai_development} raises new questions about {concern}',
-    beat: 'ai',
-    variables: ['job displacement', 'copyright', 'safety', 'regulation'],
+    template: "{ai_development} raises new questions about {concern}",
+    beat: "ai",
+    variables: ["job displacement", "copyright", "safety", "regulation"],
   },
   {
-    template: 'Researchers {finding} about {ai_capability}',
-    beat: 'ai',
-    variables: ['warn', 'celebrate', 'debate'],
+    template: "Researchers {finding} about {ai_capability}",
+    beat: "ai",
+    variables: ["warn", "celebrate", "debate"],
   },
 
   // Culture/Media stories
   {
-    template: 'The rise of {trend} is reshaping {industry}',
-    beat: 'culture',
-    variables: ['creator economy', 'streaming', 'podcasts', 'newsletters'],
+    template: "The rise of {trend} is reshaping {industry}",
+    beat: "culture",
+    variables: ["creator economy", "streaming", "podcasts", "newsletters"],
   },
   {
-    template: 'Why {phenomenon} matters for the future of {domain}',
-    beat: 'media',
+    template: "Why {phenomenon} matters for the future of {domain}",
+    beat: "media",
     variables: [
-      'news consumption',
-      'social media',
-      'advertising',
-      'content creation',
+      "news consumption",
+      "social media",
+      "advertising",
+      "content creation",
     ],
   },
 ];
@@ -308,8 +308,8 @@ export class TopicDiversityService {
     const normalized = [...new Set(keywords.map((k) => k.toLowerCase().trim()))]
       .filter((k) => k.length > 2)
       .sort()
-      .join('-');
-    return normalized || 'generic-event';
+      .join("-");
+    return normalized || "generic-event";
   }
 
   /**
@@ -338,7 +338,7 @@ export class TopicDiversityService {
       logger.debug(
         `Cleaned up ${removed} expired events`,
         { remaining: this.eventCache.size },
-        'TopicDiversityService'
+        "TopicDiversityService",
       );
     }
 
@@ -385,7 +385,7 @@ export class TopicDiversityService {
         postCount: this.eventCache.get(eventId)?.postCount,
         keywords: eventKeywords.slice(0, 5),
       },
-      'TopicDiversityService'
+      "TopicDiversityService",
     );
 
     return eventId;
@@ -406,7 +406,7 @@ export class TopicDiversityService {
       logger.debug(
         `Event coverage rolled back: ${eventId}`,
         { newPostCount: existing.postCount },
-        'TopicDiversityService'
+        "TopicDiversityService",
       );
 
       // Remove entry entirely if no posts remain
@@ -436,7 +436,7 @@ export class TopicDiversityService {
       logger.debug(
         `Event saturated, skipping: ${eventId}`,
         { postCount: coverage.postCount, max: this.config.maxPostsPerEvent },
-        'TopicDiversityService'
+        "TopicDiversityService",
       );
       return true;
     }
@@ -453,7 +453,7 @@ export class TopicDiversityService {
       logger.debug(
         `Event recently covered, skipping: ${eventId}`,
         { lastCovered: coverage.lastCoveredAt.toISOString() },
-        'TopicDiversityService'
+        "TopicDiversityService",
       );
       return true;
     }
@@ -508,7 +508,7 @@ export class TopicDiversityService {
     }
 
     const windowStart = new Date(
-      now.getTime() - this.config.windowHours * 60 * 60 * 1000
+      now.getTime() - this.config.windowHours * 60 * 60 * 1000,
     );
 
     // Get recent articles and extract topics from titles/content
@@ -521,10 +521,10 @@ export class TopicDiversityService {
       .from(posts)
       .where(
         and(
-          eq(posts.type, 'article'),
+          eq(posts.type, "article"),
           gte(posts.timestamp, windowStart),
-          isNull(posts.deletedAt)
-        )
+          isNull(posts.deletedAt),
+        ),
       )
       .orderBy(desc(posts.timestamp));
 
@@ -532,7 +532,7 @@ export class TopicDiversityService {
     this.topicCache.clear();
     for (const article of recentArticles) {
       const topics = this.extractTopics(
-        `${article.articleTitle || ''} ${article.content || ''}`
+        `${article.articleTitle || ""} ${article.content || ""}`,
       );
       for (const topic of topics) {
         const existing = this.topicCache.get(topic.toLowerCase());
@@ -554,9 +554,9 @@ export class TopicDiversityService {
 
     this.lastCacheRefresh = now;
     logger.debug(
-      'Topic diversity cache refreshed',
+      "Topic diversity cache refreshed",
       { topicCount: this.topicCache.size, articleCount: recentArticles.length },
-      'TopicDiversityService'
+      "TopicDiversityService",
     );
   }
 
@@ -570,39 +570,39 @@ export class TopicDiversityService {
     // Key topic indicators
     const topicPatterns = [
       // Tech/AI
-      { pattern: /\b(ai|artificial intelligence)\b/i, topic: 'ai' },
-      { pattern: /\b(machine learning|ml)\b/i, topic: 'machine-learning' },
-      { pattern: /\b(gpt|chatgpt|llm)\b/i, topic: 'llms' },
-      { pattern: /\b(openai|anthropic|google ai)\b/i, topic: 'ai-companies' },
+      { pattern: /\b(ai|artificial intelligence)\b/i, topic: "ai" },
+      { pattern: /\b(machine learning|ml)\b/i, topic: "machine-learning" },
+      { pattern: /\b(gpt|chatgpt|llm)\b/i, topic: "llms" },
+      { pattern: /\b(openai|anthropic|google ai)\b/i, topic: "ai-companies" },
 
       // Crypto
-      { pattern: /\b(bitcoin|btc)\b/i, topic: 'bitcoin' },
-      { pattern: /\b(ethereum|eth)\b/i, topic: 'ethereum' },
-      { pattern: /\b(crypto|cryptocurrency)\b/i, topic: 'crypto' },
-      { pattern: /\b(defi|decentralized finance)\b/i, topic: 'defi' },
-      { pattern: /\b(nft|nfts)\b/i, topic: 'nfts' },
-      { pattern: /\b(stablecoin)\b/i, topic: 'stablecoins' },
+      { pattern: /\b(bitcoin|btc)\b/i, topic: "bitcoin" },
+      { pattern: /\b(ethereum|eth)\b/i, topic: "ethereum" },
+      { pattern: /\b(crypto|cryptocurrency)\b/i, topic: "crypto" },
+      { pattern: /\b(defi|decentralized finance)\b/i, topic: "defi" },
+      { pattern: /\b(nft|nfts)\b/i, topic: "nfts" },
+      { pattern: /\b(stablecoin)\b/i, topic: "stablecoins" },
 
       // Finance
-      { pattern: /\b(fed|federal reserve)\b/i, topic: 'federal-reserve' },
-      { pattern: /\b(interest rate)\b/i, topic: 'interest-rates' },
-      { pattern: /\b(inflation)\b/i, topic: 'inflation' },
-      { pattern: /\b(stock market|s&p|nasdaq)\b/i, topic: 'stock-market' },
-      { pattern: /\b(recession)\b/i, topic: 'recession' },
+      { pattern: /\b(fed|federal reserve)\b/i, topic: "federal-reserve" },
+      { pattern: /\b(interest rate)\b/i, topic: "interest-rates" },
+      { pattern: /\b(inflation)\b/i, topic: "inflation" },
+      { pattern: /\b(stock market|s&p|nasdaq)\b/i, topic: "stock-market" },
+      { pattern: /\b(recession)\b/i, topic: "recession" },
 
       // Politics
-      { pattern: /\b(election|vote|voting)\b/i, topic: 'elections' },
-      { pattern: /\b(congress|senate|house)\b/i, topic: 'congress' },
-      { pattern: /\b(regulation|regulatory)\b/i, topic: 'regulation' },
-      { pattern: /\b(antitrust)\b/i, topic: 'antitrust' },
+      { pattern: /\b(election|vote|voting)\b/i, topic: "elections" },
+      { pattern: /\b(congress|senate|house)\b/i, topic: "congress" },
+      { pattern: /\b(regulation|regulatory)\b/i, topic: "regulation" },
+      { pattern: /\b(antitrust)\b/i, topic: "antitrust" },
 
       // Tech companies
-      { pattern: /\b(tesla|spacex)\b/i, topic: 'tesla-spacex' },
-      { pattern: /\b(apple)\b/i, topic: 'apple' },
-      { pattern: /\b(meta|facebook)\b/i, topic: 'meta' },
-      { pattern: /\b(google|alphabet)\b/i, topic: 'google' },
-      { pattern: /\b(microsoft)\b/i, topic: 'microsoft' },
-      { pattern: /\b(amazon)\b/i, topic: 'amazon' },
+      { pattern: /\b(tesla|spacex)\b/i, topic: "tesla-spacex" },
+      { pattern: /\b(apple)\b/i, topic: "apple" },
+      { pattern: /\b(meta|facebook)\b/i, topic: "meta" },
+      { pattern: /\b(google|alphabet)\b/i, topic: "google" },
+      { pattern: /\b(microsoft)\b/i, topic: "microsoft" },
+      { pattern: /\b(amazon)\b/i, topic: "amazon" },
     ];
 
     for (const { pattern, topic } of topicPatterns) {
@@ -621,47 +621,47 @@ export class TopicDiversityService {
     const topicLower = topic.toLowerCase();
 
     if (
-      ['ai', 'machine-learning', 'llms', 'ai-companies'].includes(topicLower)
+      ["ai", "machine-learning", "llms", "ai-companies"].includes(topicLower)
     ) {
-      return 'ai';
+      return "ai";
     }
     if (
-      ['bitcoin', 'ethereum', 'crypto', 'defi', 'nfts', 'stablecoins'].includes(
-        topicLower
+      ["bitcoin", "ethereum", "crypto", "defi", "nfts", "stablecoins"].includes(
+        topicLower,
       )
     ) {
-      return 'crypto';
+      return "crypto";
     }
     if (
       [
-        'federal-reserve',
-        'interest-rates',
-        'inflation',
-        'stock-market',
-        'recession',
+        "federal-reserve",
+        "interest-rates",
+        "inflation",
+        "stock-market",
+        "recession",
       ].includes(topicLower)
     ) {
-      return 'finance';
+      return "finance";
     }
     if (
-      ['elections', 'congress', 'regulation', 'antitrust'].includes(topicLower)
+      ["elections", "congress", "regulation", "antitrust"].includes(topicLower)
     ) {
-      return 'politics';
+      return "politics";
     }
     if (
       [
-        'tesla-spacex',
-        'apple',
-        'meta',
-        'google',
-        'microsoft',
-        'amazon',
+        "tesla-spacex",
+        "apple",
+        "meta",
+        "google",
+        "microsoft",
+        "amazon",
       ].includes(topicLower)
     ) {
-      return 'tech';
+      return "tech";
     }
 
-    return 'tech'; // Default
+    return "tech"; // Default
   }
 
   /**
@@ -681,7 +681,7 @@ export class TopicDiversityService {
     let maxPenalty = 0;
     const totalArticles = Array.from(this.topicCache.values()).reduce(
       (sum, t) => sum + t.articleCount,
-      0
+      0,
     );
 
     for (const topic of topics) {
@@ -734,7 +734,7 @@ export class TopicDiversityService {
    */
   async suggestDiverseTopics(
     count: number,
-    excludeBeats: EditorialBeat[] = []
+    excludeBeats: EditorialBeat[] = [],
   ): Promise<DiverseTopicSuggestion[]> {
     await this.refreshCache();
 
@@ -753,15 +753,15 @@ export class TopicDiversityService {
 
       // Check if this beat is underrepresented
       const beatCoverage = Array.from(this.topicCache.values()).filter(
-        (t) => t.beat === seed.beat
+        (t) => t.beat === seed.beat,
       );
       const beatArticleCount = beatCoverage.reduce(
         (sum, t) => sum + t.articleCount,
-        0
+        0,
       );
       const totalArticles = Array.from(this.topicCache.values()).reduce(
         (sum, t) => sum + t.articleCount,
-        0
+        0,
       );
 
       const beatRatio =
@@ -772,7 +772,7 @@ export class TopicDiversityService {
       const variable =
         seed.variables[Math.floor(Math.random() * seed.variables.length)];
       const topic = seed.template
-        .replace(/{[^}]+}/g, variable || 'developments')
+        .replace(/{[^}]+}/g, variable || "developments")
         .trim();
 
       suggestions.push({
@@ -820,7 +820,7 @@ export class TopicDiversityService {
    * Get editorial beats for an organization
    */
   getOrganizationBeats(orgId: string): EditorialBeat[] {
-    return ORGANIZATION_BEATS[orgId] || ['tech', 'business']; // Default beats
+    return ORGANIZATION_BEATS[orgId] || ["tech", "business"]; // Default beats
   }
 
   /**
@@ -845,7 +845,7 @@ export class TopicDiversityService {
 
     const totalArticles = Array.from(this.topicCache.values()).reduce(
       (sum, t) => sum + t.articleCount,
-      0
+      0,
     );
 
     const topTopics = Array.from(this.topicCache.values())

@@ -1,1 +1,1 @@
-export { default } from '@web/app/settings/loading';
+export { default } from "@web/app/settings/loading";

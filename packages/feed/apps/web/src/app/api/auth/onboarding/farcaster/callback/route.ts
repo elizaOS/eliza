@@ -67,12 +67,12 @@
  * ```
  */
 
-import { withErrorHandling } from '@feed/api';
-import { db } from '@feed/db';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { z } from 'zod';
+import { withErrorHandling } from "@feed/api";
+import { db } from "@feed/db";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { z } from "zod";
 
 const FarcasterOnboardingCallbackBodySchema = z.object({
   message: z.string(),
@@ -91,43 +91,43 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   if (!parsed.success) {
     return NextResponse.json(
-      { error: 'Invalid request payload', details: parsed.error.flatten() },
-      { status: 400 }
+      { error: "Invalid request payload", details: parsed.error.flatten() },
+      { status: 400 },
     );
   }
   const { message, signature, fid, username, displayName, pfpUrl, bio, state } =
     parsed.data;
 
   // Verify state format: "onboarding:userId:timestamp:random"
-  const stateParts = state.split(':');
+  const stateParts = state.split(":");
   if (stateParts.length < 3) {
     return NextResponse.json(
-      { error: 'Invalid state format' },
-      { status: 400 }
+      { error: "Invalid state format" },
+      { status: 400 },
     );
   }
 
   const [prefix, userId, timestampStr] = stateParts;
 
-  if (prefix !== 'onboarding') {
+  if (prefix !== "onboarding") {
     return NextResponse.json(
-      { error: 'Invalid state format' },
-      { status: 400 }
+      { error: "Invalid state format" },
+      { status: 400 },
     );
   }
 
   if (!userId || !timestampStr) {
     return NextResponse.json(
-      { error: 'Invalid state format' },
-      { status: 400 }
+      { error: "Invalid state format" },
+      { status: 400 },
     );
   }
 
   const stateTimestamp = Number.parseInt(timestampStr, 10);
-  if (isNaN(stateTimestamp)) {
+  if (Number.isNaN(stateTimestamp)) {
     return NextResponse.json(
-      { error: 'Invalid state timestamp' },
-      { status: 400 }
+      { error: "Invalid state timestamp" },
+      { status: 400 },
     );
   }
 
@@ -135,7 +135,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   // State expires after 10 minutes
   if (now - stateTimestamp > 10 * 60 * 1000) {
-    return NextResponse.json({ error: 'State expired' }, { status: 400 });
+    return NextResponse.json({ error: "State expired" }, { status: 400 });
   }
 
   // Verify Farcaster signature
@@ -143,13 +143,13 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   if (!isValid) {
     logger.warn(
-      'Invalid Farcaster signature',
+      "Invalid Farcaster signature",
       { fid: fid, username: username },
-      'FarcasterOnboardingCallback'
+      "FarcasterOnboardingCallback",
     );
     return NextResponse.json(
-      { error: 'Invalid Farcaster signature. Please try again.' },
-      { status: 401 }
+      { error: "Invalid Farcaster signature. Please try again." },
+      { status: 401 },
     );
   }
 
@@ -163,31 +163,31 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   if (existingUser) {
     logger.warn(
-      'Farcaster account already linked',
+      "Farcaster account already linked",
       { fid: fid, existingUserId: existingUser.id },
-      'FarcasterOnboardingCallback'
+      "FarcasterOnboardingCallback",
     );
     return NextResponse.json(
-      { error: 'This Farcaster account is already linked to another user' },
-      { status: 409 }
+      { error: "This Farcaster account is already linked to another user" },
+      { status: 409 },
     );
   }
 
   // Prepare profile data for import with fallbacks
   const profileData = {
-    platform: 'farcaster' as const,
+    platform: "farcaster" as const,
     username: username,
     displayName: displayName || username,
-    bio: bio || '',
+    bio: bio || "",
     profileImageUrl: pfpUrl || null,
     farcasterFid: fid.toString(),
     farcasterUsername: username,
   };
 
   logger.info(
-    'Farcaster profile imported for onboarding',
+    "Farcaster profile imported for onboarding",
     { userId, farcasterUsername: username, fid: fid },
-    'FarcasterOnboardingCallback'
+    "FarcasterOnboardingCallback",
   );
 
   return NextResponse.json({
@@ -202,14 +202,14 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 async function verifyFarcasterSignature(
   message: string,
   signature: string,
-  fid: number
+  fid: number,
 ): Promise<boolean> {
   const response = await fetch(
-    'https://api.neynar.com/v2/farcaster/verification',
+    "https://api.neynar.com/v2/farcaster/verification",
     {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
         api_key: process.env.NEYNAR_API_KEY!,
       },
       body: JSON.stringify({
@@ -217,18 +217,18 @@ async function verifyFarcasterSignature(
         signature,
         fid,
       }),
-    }
+    },
   );
 
   const errorText = await response.text();
   logger.error(
-    'Neynar verification failed',
+    "Neynar verification failed",
     {
       status: response.status,
       error: errorText,
       fid,
     },
-    'verifyFarcasterSignature'
+    "verifyFarcasterSignature",
   );
 
   const data = (await response.json()) as { valid: boolean };

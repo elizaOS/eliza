@@ -12,8 +12,8 @@ import type {
   Provider,
   ProviderResult,
   State,
-} from '@elizaos/core';
-import { logger } from '../../../../shared/logger';
+} from "@elizaos/core";
+import { logger } from "../../../../shared/logger";
 
 /**
  * Action parameter definition
@@ -35,16 +35,16 @@ function formatActionsWithParams(actions: Action[]): string {
       // Check if action has parameters defined
       if (action.parameters !== undefined) {
         const paramEntries = Object.entries(
-          action.parameters as unknown as Record<string, ActionParameter>
+          action.parameters as unknown as Record<string, ActionParameter>,
         );
 
         if (paramEntries.length === 0) {
           formatted +=
-            '\n\n**Parameters:** None (can be called directly without parameters)';
+            "\n\n**Parameters:** None (can be called directly without parameters)";
         } else {
-          formatted += '\n\n**Parameters:**';
+          formatted += "\n\n**Parameters:**";
           for (const [paramName, paramDef] of paramEntries) {
-            const required = paramDef.required ? '(required)' : '(optional)';
+            const required = paramDef.required ? "(required)" : "(optional)";
             formatted += `\n- \`${paramName}\` ${required}: ${paramDef.type} - ${paramDef.description}`;
           }
         }
@@ -52,7 +52,7 @@ function formatActionsWithParams(actions: Action[]): string {
 
       return formatted;
     })
-    .join('\n\n---\n\n');
+    .join("\n\n---\n\n");
 }
 
 /**
@@ -61,7 +61,7 @@ function formatActionsWithParams(actions: Action[]): string {
 function formatActionsWithoutParams(actions: Action[]): string {
   return actions
     .map((action) => `## ${action.name}\n${action.description}`)
-    .join('\n\n---\n\n');
+    .join("\n\n---\n\n");
 }
 
 /**
@@ -70,13 +70,13 @@ function formatActionsWithoutParams(actions: Action[]): string {
  * Provides list of available actions that validate for the current message context.
  */
 export const actionsProvider: Provider = {
-  name: 'ACTIONS',
-  description: 'Available actions the agent can execute',
+  name: "ACTIONS",
+  description: "Available actions the agent can execute",
 
   get: async (
     runtime: IAgentRuntime,
     message: Memory,
-    state: State
+    state: State,
   ): Promise<ProviderResult> => {
     // Get actions that validate for this message
     const actionPromises = runtime.actions.map(async (action: Action) => {
@@ -87,12 +87,12 @@ export const actionsProvider: Provider = {
         }
       } catch (e) {
         logger.error(
-          'Validate error',
+          "Validate error",
           {
             actionName: action.name,
             error: e instanceof Error ? e : { error: e },
           },
-          'AgentActions'
+          "AgentActions",
         );
       }
       return null;
@@ -104,20 +104,20 @@ export const actionsProvider: Provider = {
     // Format action names
     const actionNames =
       actionsData.length > 0
-        ? `Available actions: ${actionsData.map((a) => a.name).join(', ')}`
-        : 'No actions available';
+        ? `Available actions: ${actionsData.map((a) => a.name).join(", ")}`
+        : "No actions available";
 
     // Actions with full parameter schemas
     const actionsWithParams =
       actionsData.length > 0
         ? `# Available Actions\n\n${formatActionsWithParams(actionsData)}`
-        : '';
+        : "";
 
     // Actions with only descriptions (no parameters)
     const actionsWithDescriptions =
       actionsData.length > 0
         ? `# Available Actions\n\n${formatActionsWithoutParams(actionsData)}`
-        : '';
+        : "";
 
     return {
       data: {
@@ -129,7 +129,7 @@ export const actionsProvider: Provider = {
         actionsWithDescriptions,
         actionCount: actionsData.length,
       },
-      text: actionsWithParams || 'No actions available.',
+      text: actionsWithParams || "No actions available.",
     };
   },
 };

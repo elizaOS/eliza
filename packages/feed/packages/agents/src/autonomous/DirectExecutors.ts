@@ -16,12 +16,12 @@ import {
   type MessageActivityData,
   notifyGroupChatMessage,
   type PostActivityData,
-} from '@feed/api';
-import { PerpDbAdapter, PerpMarketService } from '@feed/core/markets/perps';
+} from "@feed/api";
+import { PerpDbAdapter, PerpMarketService } from "@feed/core/markets/perps";
 import {
   PredictionDbAdapter,
   PredictionMarketService,
-} from '@feed/core/markets/prediction';
+} from "@feed/core/markets/prediction";
 import {
   actorState,
   aliasedTable,
@@ -49,7 +49,7 @@ import {
   sql,
   users,
   withTransaction,
-} from '@feed/db';
+} from "@feed/db";
 import {
   createPerpPriceImpactPort,
   FEE_CONFIG,
@@ -61,17 +61,17 @@ import {
   StaticDataRegistry,
   storeTagsForPost,
   WalletService,
-} from '@feed/engine';
+} from "@feed/engine";
 import {
   AGENT_TRANSFER_IN_TRANSACTION_TYPE,
   AGENT_TRANSFER_OUT_TRANSACTION_TYPE,
   isPureRepost,
-} from '@feed/shared';
-import { agentPnLService } from '../services/AgentPnLService';
-import { logger } from '../shared/logger';
-import { generateSnowflakeId } from '../shared/snowflake';
-import { topicDiversityService } from './TopicDiversityService';
-import { resolvePerpTicker } from './utils/resolvePerpTicker';
+} from "@feed/shared";
+import { agentPnLService } from "../services/AgentPnLService";
+import { logger } from "../shared/logger";
+import { generateSnowflakeId } from "../shared/snowflake";
+import { topicDiversityService } from "./TopicDiversityService";
+import { resolvePerpTicker } from "./utils/resolvePerpTicker";
 
 /**
  * Helper to get agent display name for broadcasting.
@@ -96,7 +96,7 @@ async function getAgentDisplayName(agentUserId: string): Promise<string> {
     .where(eq(users.id, agentUserId))
     .limit(1);
 
-  return agent?.displayName ?? 'Agent';
+  return agent?.displayName ?? "Agent";
 }
 
 const SHARE_LIKE_MAX_INTEGER = 10;
@@ -104,12 +104,12 @@ const SHARE_LIKE_RATIO_THRESHOLD = 0.01;
 // Minimum shares threshold - positions with fewer shares are considered closed
 const MIN_SHARES_THRESHOLD = 0.01;
 const PREDICTION_TRADE_SIDES = new Set([
-  'buy_yes',
-  'buy_no',
-  'sell_yes',
-  'sell_no',
+  "buy_yes",
+  "buy_no",
+  "sell_yes",
+  "sell_no",
 ]);
-const PERP_TRADE_SIDES = new Set(['open_long', 'open_short', 'close_position']);
+const PERP_TRADE_SIDES = new Set(["open_long", "open_short", "close_position"]);
 
 // =============================================================================
 // Wallet Adapter Helper
@@ -142,8 +142,8 @@ function createPerpWalletAdapter(isNpc: boolean) {
           .where(
             and(
               eq(actorState.id, uid),
-              gte(sql<number>`${actorState.tradingBalance}::numeric`, amt)
-            )
+              gte(sql<number>`${actorState.tradingBalance}::numeric`, amt),
+            ),
           )
           .returning({ id: actorState.id });
 
@@ -206,7 +206,7 @@ function createPerpWalletAdapter(isNpc: boolean) {
       reason: string;
       description?: string;
       relatedId?: string;
-    }) => WalletService.debit(uid, amt, reason, description ?? '', relatedId),
+    }) => WalletService.debit(uid, amt, reason, description ?? "", relatedId),
     credit: ({
       userId: uid,
       amount: amt,
@@ -219,7 +219,7 @@ function createPerpWalletAdapter(isNpc: boolean) {
       reason: string;
       description?: string;
       relatedId?: string;
-    }) => WalletService.credit(uid, amt, reason, description ?? '', relatedId),
+    }) => WalletService.credit(uid, amt, reason, description ?? "", relatedId),
     recordPnL: async ({
       userId: uid,
       pnl,
@@ -257,11 +257,11 @@ interface DeferredPnLRecord {
 function createPredictionWalletAdapter(
   isNpc: boolean,
   txDb?: Parameters<Parameters<typeof asUser>[1]>[0],
-  deferredPnL?: DeferredPnLRecord[]
+  deferredPnL?: DeferredPnLRecord[],
 ) {
   if (isNpc) {
     if (!txDb) {
-      throw new Error('Transaction context required for NPC prediction wallet');
+      throw new Error("Transaction context required for NPC prediction wallet");
     }
     return {
       debit: async ({
@@ -283,14 +283,14 @@ function createPredictionWalletAdapter(
           .where(
             and(
               eq(actorState.id, uid),
-              gte(sql<number>`${actorState.tradingBalance}::numeric`, amt)
-            )
+              gte(sql<number>`${actorState.tradingBalance}::numeric`, amt),
+            ),
           )
           .returning({ id: actorState.id });
 
         if (result.length === 0) {
           throw new Error(
-            `Insufficient NPC balance for prediction trade: $${amt}`
+            `Insufficient NPC balance for prediction trade: $${amt}`,
           );
         }
       },
@@ -350,7 +350,7 @@ function createPredictionWalletAdapter(
       description?: string;
       relatedId?: string;
     }) =>
-      WalletService.debit(uid, amt, reason, description ?? '', relatedId, txDb),
+      WalletService.debit(uid, amt, reason, description ?? "", relatedId, txDb),
     credit: ({
       userId: uid,
       amount: amt,
@@ -368,9 +368,9 @@ function createPredictionWalletAdapter(
         uid,
         amt,
         reason,
-        description ?? '',
+        description ?? "",
         relatedId,
-        txDb
+        txDb,
       ),
     recordPnL: async ({
       userId: uid,
@@ -402,16 +402,16 @@ function createPredictionWalletAdapter(
 
 export interface DirectTradeParams {
   agentUserId: string;
-  marketType: 'prediction' | 'perp';
+  marketType: "prediction" | "perp";
   marketId: string; // Market ID for prediction, ticker/name/id for perp
   side:
-    | 'buy_yes'
-    | 'buy_no'
-    | 'sell_yes'
-    | 'sell_no'
-    | 'open_long'
-    | 'open_short'
-    | 'close_position';
+    | "buy_yes"
+    | "buy_no"
+    | "sell_yes"
+    | "sell_no"
+    | "open_long"
+    | "open_short"
+    | "close_position";
   amount: number;
   reasoning?: string;
   /**
@@ -578,17 +578,17 @@ export interface DirectLeaveGroupResult {
  * can close positions even when balance is $0.
  */
 export async function executeDirectTrade(
-  params: DirectTradeParams
+  params: DirectTradeParams,
 ): Promise<DirectTradeResult> {
   const { agentUserId, marketType, reasoning } = params;
   const marketId = params.marketId.trim();
   const side = params.side
     .trim()
     .toLowerCase()
-    .replace(/[\s-]+/g, '_');
+    .replace(/[\s-]+/g, "_");
   let { amount } = params;
 
-  if (marketType !== 'prediction' && marketType !== 'perp') {
+  if (marketType !== "prediction" && marketType !== "perp") {
     return {
       success: false,
       error: `Invalid market type: ${marketType}`,
@@ -598,12 +598,12 @@ export async function executeDirectTrade(
   if (!marketId) {
     return {
       success: false,
-      error: 'Missing trade market identifier.',
+      error: "Missing trade market identifier.",
     };
   }
 
   const validSides =
-    marketType === 'prediction' ? PREDICTION_TRADE_SIDES : PERP_TRADE_SIDES;
+    marketType === "prediction" ? PREDICTION_TRADE_SIDES : PERP_TRADE_SIDES;
   if (!validSides.has(side)) {
     return {
       success: false,
@@ -614,7 +614,7 @@ export async function executeDirectTrade(
   if (!Number.isFinite(amount)) {
     return {
       success: false,
-      error: 'Invalid trade amount. Must be a finite number.',
+      error: "Invalid trade amount. Must be a finite number.",
     };
   }
 
@@ -625,9 +625,9 @@ export async function executeDirectTrade(
   const isNpc = !!npcActor;
 
   const isExitTrade =
-    (marketType === 'prediction' &&
-      (side === 'sell_yes' || side === 'sell_no')) ||
-    (marketType === 'perp' && side === 'close_position');
+    (marketType === "prediction" &&
+      (side === "sell_yes" || side === "sell_no")) ||
+    (marketType === "perp" && side === "close_position");
 
   // Get current balance
   let balance = 0;
@@ -653,12 +653,12 @@ export async function executeDirectTrade(
     if (looksLikeShareCount) {
       logger.warn(
         `[DirectExecutor] Trade amount $${amount.toFixed(
-          2
+          2,
         )} looks like a share count relative to $${balance.toFixed(
-          2
+          2,
         )} balance. Expected Feed Points.`,
         { agentUserId, marketType, side, balance },
-        'DirectExecutors'
+        "DirectExecutors",
       );
     }
 
@@ -667,7 +667,7 @@ export async function executeDirectTrade(
       logger.warn(
         `[DirectExecutor] Trade capped to balance: $${amount} -> $${balance}`,
         { agentUserId, isNpc },
-        'DirectExecutors'
+        "DirectExecutors",
       );
       amount = balance;
     }
@@ -682,7 +682,7 @@ export async function executeDirectTrade(
   } else if (amount < 0) {
     return {
       success: false,
-      error: 'Amount must be 0 or greater for exit trades',
+      error: "Amount must be 0 or greater for exit trades",
     };
   }
 
@@ -692,16 +692,16 @@ export async function executeDirectTrade(
   logger.info(
     `[DirectExecutor] Executing ${marketType} trade: ${side} $${amount} on ${marketId}`,
     { agentUserId, isNpc, balance },
-    'DirectExecutors'
+    "DirectExecutors",
   );
 
-  if (marketType === 'prediction') {
+  if (marketType === "prediction") {
     // Handle sell (close prediction position)
-    if (side === 'sell_yes' || side === 'sell_no') {
+    if (side === "sell_yes" || side === "sell_no") {
       return executePredictionSell({
         agentUserId,
         marketId,
-        side: side as 'sell_yes' | 'sell_no',
+        side: side as "sell_yes" | "sell_no",
         amount,
         reasoning,
         isNpc,
@@ -712,7 +712,7 @@ export async function executeDirectTrade(
     return executePredictionTrade({
       agentUserId,
       marketId,
-      side: side as 'buy_yes' | 'buy_no',
+      side: side as "buy_yes" | "buy_no",
       amount,
       reasoning,
       isNpc,
@@ -729,7 +729,7 @@ export async function executeDirectTrade(
   }
 
   // Handle close_position
-  if (side === 'close_position') {
+  if (side === "close_position") {
     return executeClosePerpPosition({
       agentUserId,
       ticker: perpTicker,
@@ -742,7 +742,7 @@ export async function executeDirectTrade(
   return executePerpTrade({
     agentUserId,
     ticker: perpTicker,
-    side: side as 'open_long' | 'open_short',
+    side: side as "open_long" | "open_short",
     amount,
     reasoning,
     isNpc,
@@ -753,7 +753,7 @@ export async function executeDirectTrade(
 async function executePredictionTrade(params: {
   agentUserId: string;
   marketId: string;
-  side: 'buy_yes' | 'buy_no';
+  side: "buy_yes" | "buy_no";
   amount: number;
   reasoning?: string;
   isNpc: boolean;
@@ -769,11 +769,11 @@ async function executePredictionTrade(params: {
     agentManagedBy,
   } = params;
 
-  const isBuyYes = side === 'buy_yes';
-  const sideLabel = isBuyYes ? 'yes' : 'no';
+  const isBuyYes = side === "buy_yes";
+  const sideLabel = isBuyYes ? "yes" : "no";
 
   const tradeOperation = async (
-    txDb: Parameters<Parameters<typeof asUser>[1]>[0]
+    txDb: Parameters<Parameters<typeof asUser>[1]>[0],
   ) => {
     const service = new PredictionMarketService({
       db: new PredictionDbAdapter(txDb),
@@ -789,8 +789,8 @@ async function executePredictionTrade(params: {
         referrerShare: FEE_CONFIG.REFERRER_SHARE,
         minFeeAmount: FEE_CONFIG.MIN_FEE_AMOUNT,
       },
-      tradeSource: isNpc ? 'npc_trade' : 'user_trade',
-      tradeActorType: isNpc ? 'npc' : 'user',
+      tradeSource: isNpc ? "npc_trade" : "user_trade",
+      tradeActorType: isNpc ? "npc" : "user",
       feeProcessor: isNpc
         ? undefined
         : {
@@ -807,7 +807,7 @@ async function executePredictionTrade(params: {
                 amount,
                 positionId,
                 relatedId,
-                txDb // Pass the existing transaction to avoid nested transaction deadlocks
+                txDb, // Pass the existing transaction to avoid nested transaction deadlocks
               ),
           },
     });
@@ -821,16 +821,16 @@ async function executePredictionTrade(params: {
   };
 
   const result = isNpc
-    ? await asSystem(tradeOperation, 'npc_prediction_trade')
+    ? await asSystem(tradeOperation, "npc_prediction_trade")
     : await asUser({ userId: agentUserId }, tradeOperation);
 
   // Record in AgentTrade
   await agentPnLService.recordTrade({
     agentId: agentUserId,
     userId: agentManagedBy,
-    marketType: 'prediction',
+    marketType: "prediction",
     marketId,
-    action: 'open',
+    action: "open",
     side: sideLabel,
     amount,
     price: result.avgPrice,
@@ -840,15 +840,15 @@ async function executePredictionTrade(params: {
   const sharesRounded = Math.round(result.shares * 100) / 100;
 
   logger.info(
-    `[DirectExecutor] Prediction trade executed: ${isBuyYes ? 'YES' : 'NO'} on market ${marketId}`,
+    `[DirectExecutor] Prediction trade executed: ${isBuyYes ? "YES" : "NO"} on market ${marketId}`,
     { shares: sharesRounded },
-    'DirectExecutors'
+    "DirectExecutors",
   );
 
   return {
     success: true,
     marketId,
-    side: isBuyYes ? 'YES' : 'NO',
+    side: isBuyYes ? "YES" : "NO",
     shares: sharesRounded,
   };
 }
@@ -859,7 +859,7 @@ async function executePredictionTrade(params: {
 async function executePredictionSell(params: {
   agentUserId: string;
   marketId: string;
-  side: 'sell_yes' | 'sell_no';
+  side: "sell_yes" | "sell_no";
   amount: number; // Amount in dollars to sell, or 0 for full position
   reasoning?: string;
   isNpc: boolean;
@@ -875,14 +875,14 @@ async function executePredictionSell(params: {
     agentManagedBy,
   } = params;
 
-  const isSellYes = side === 'sell_yes';
-  const sideLabel = isSellYes ? 'yes' : 'no';
+  const isSellYes = side === "sell_yes";
+  const sideLabel = isSellYes ? "yes" : "no";
 
   // Collect PnL records to process after transaction completes (avoids nested transaction deadlocks)
   const deferredPnL: DeferredPnLRecord[] = [];
 
   const sellOperation = async (
-    txDb: Parameters<Parameters<typeof asUser>[1]>[0]
+    txDb: Parameters<Parameters<typeof asUser>[1]>[0],
   ) => {
     const adapter = new PredictionDbAdapter(txDb);
     const service = new PredictionMarketService({
@@ -899,8 +899,8 @@ async function executePredictionSell(params: {
         referrerShare: FEE_CONFIG.REFERRER_SHARE,
         minFeeAmount: FEE_CONFIG.MIN_FEE_AMOUNT,
       },
-      tradeSource: isNpc ? 'npc_trade' : 'user_trade',
-      tradeActorType: isNpc ? 'npc' : 'user',
+      tradeSource: isNpc ? "npc_trade" : "user_trade",
+      tradeActorType: isNpc ? "npc" : "user",
       feeProcessor: isNpc
         ? undefined
         : {
@@ -917,7 +917,7 @@ async function executePredictionSell(params: {
                 amount,
                 positionId,
                 relatedId,
-                txDb // Pass the existing transaction to avoid nested transaction deadlocks
+                txDb, // Pass the existing transaction to avoid nested transaction deadlocks
               ),
           },
     });
@@ -930,11 +930,11 @@ async function executePredictionSell(params: {
     const position = await adapter.getPosition(
       agentUserId,
       marketId,
-      sideLabel
+      sideLabel,
     );
     if (
       !position ||
-      position.status === 'closed' ||
+      position.status === "closed" ||
       position.shares <= MIN_SHARES_THRESHOLD
     ) {
       throw new Error(`No open position found for market ${marketId}`);
@@ -943,7 +943,7 @@ async function executePredictionSell(params: {
     const currentPrice = PredictionPricing.getCurrentPrice(
       market.yesShares,
       market.noShares,
-      sideLabel
+      sideLabel,
     );
     const safePrice = currentPrice > 0 ? currentPrice : 1e-9;
 
@@ -954,7 +954,7 @@ async function executePredictionSell(params: {
         : position.shares;
 
     if (sharesToSell <= MIN_SHARES_THRESHOLD) {
-      throw new Error('Amount too small to sell any shares');
+      throw new Error("Amount too small to sell any shares");
     }
 
     const sellResult = await service.sell({
@@ -968,7 +968,7 @@ async function executePredictionSell(params: {
   };
 
   const { sellResult, sharesToSell } = isNpc
-    ? await asSystem(sellOperation, 'npc_prediction_sell')
+    ? await asSystem(sellOperation, "npc_prediction_sell")
     : await asUser({ userId: agentUserId }, sellOperation);
 
   // Process deferred PnL records AFTER transaction completes (avoids nested transaction deadlocks)
@@ -978,7 +978,7 @@ async function executePredictionSell(params: {
       pnlRecord.userId,
       pnlRecord.pnl,
       pnlRecord.reason,
-      pnlRecord.relatedId
+      pnlRecord.relatedId,
     );
   }
 
@@ -986,9 +986,9 @@ async function executePredictionSell(params: {
   await agentPnLService.recordTrade({
     agentId: agentUserId,
     userId: agentManagedBy,
-    marketType: 'prediction',
+    marketType: "prediction",
     marketId,
-    action: 'close',
+    action: "close",
     side: sideLabel,
     amount: sellResult.netProceeds ?? 0,
     price: sellResult.avgPrice,
@@ -997,15 +997,15 @@ async function executePredictionSell(params: {
   });
 
   logger.info(
-    `[DirectExecutor] Prediction sell executed: ${isSellYes ? 'YES' : 'NO'} on market ${marketId}`,
+    `[DirectExecutor] Prediction sell executed: ${isSellYes ? "YES" : "NO"} on market ${marketId}`,
     { sharesSold: sharesToSell, remaining: sellResult.remainingShares },
-    'DirectExecutors'
+    "DirectExecutors",
   );
 
   return {
     success: true,
     marketId,
-    side: `sold_${isSellYes ? 'YES' : 'NO'}`,
+    side: `sold_${isSellYes ? "YES" : "NO"}`,
     shares: sharesToSell,
   };
 }
@@ -1013,7 +1013,7 @@ async function executePredictionSell(params: {
 async function executePerpTrade(params: {
   agentUserId: string;
   ticker: string;
-  side: 'open_long' | 'open_short';
+  side: "open_long" | "open_short";
   amount: number;
   reasoning?: string;
   isNpc: boolean;
@@ -1029,7 +1029,7 @@ async function executePerpTrade(params: {
     agentManagedBy,
   } = params;
 
-  const perpSide = side === 'open_long' ? 'long' : 'short';
+  const perpSide = side === "open_long" ? "long" : "short";
 
   // Get org for price (search through all orgs by ticker)
   const allOrgs = StaticDataRegistry.getAllOrganizations();
@@ -1062,7 +1062,7 @@ async function executePerpTrade(params: {
 
   // Execute with appropriate context
   if (isNpc) {
-    await asSystem(perpTradeOperation, 'npc_perp_trade');
+    await asSystem(perpTradeOperation, "npc_perp_trade");
   } else {
     await asUser({ userId: agentUserId }, perpTradeOperation);
   }
@@ -1071,9 +1071,9 @@ async function executePerpTrade(params: {
   await agentPnLService.recordTrade({
     agentId: agentUserId,
     userId: agentManagedBy,
-    marketType: 'perp',
+    marketType: "perp",
     ticker,
-    action: 'open',
+    action: "open",
     side: perpSide,
     amount,
     price: currentPrice,
@@ -1083,7 +1083,7 @@ async function executePerpTrade(params: {
   logger.info(
     `[DirectExecutor] Perp trade executed: ${perpSide} $${amount} on ${ticker}`,
     undefined,
-    'DirectExecutors'
+    "DirectExecutors",
   );
 
   return {
@@ -1113,8 +1113,8 @@ async function executeClosePerpPosition(params: {
       and(
         eq(perpPositions.userId, agentUserId),
         eq(perpPositions.ticker, ticker),
-        isNull(perpPositions.closedAt)
-      )
+        isNull(perpPositions.closedAt),
+      ),
     )
     .limit(1);
 
@@ -1151,7 +1151,7 @@ async function executeClosePerpPosition(params: {
 
   // Execute with appropriate context and capture the result
   const closeResult = isNpc
-    ? await asSystem(closeOperation, 'npc_perp_close')
+    ? await asSystem(closeOperation, "npc_perp_close")
     : await asUser({ userId: agentUserId }, closeOperation);
 
   // Use the realized P&L from the service (computed with actual exit price)
@@ -1163,7 +1163,7 @@ async function executeClosePerpPosition(params: {
     closeResult.size == null
   ) {
     throw new Error(
-      `[DirectExecutor] closePosition did not return expected fields: realizedPnL=${closeResult.realizedPnL}, exitPrice=${closeResult.exitPrice}, size=${closeResult.size}`
+      `[DirectExecutor] closePosition did not return expected fields: realizedPnL=${closeResult.realizedPnL}, exitPrice=${closeResult.exitPrice}, size=${closeResult.size}`,
     );
   }
   const { realizedPnL, size, exitPrice } = closeResult;
@@ -1172,10 +1172,10 @@ async function executeClosePerpPosition(params: {
   await agentPnLService.recordTrade({
     agentId: agentUserId,
     userId: agentManagedBy,
-    marketType: 'perp',
+    marketType: "perp",
     ticker,
-    action: 'close',
-    side: existingPosition.side as 'long' | 'short',
+    action: "close",
+    side: existingPosition.side as "long" | "short",
     amount: size,
     price: exitPrice,
     pnl: realizedPnL,
@@ -1183,9 +1183,9 @@ async function executeClosePerpPosition(params: {
   });
 
   logger.info(
-    `[DirectExecutor] Perp position closed: ${existingPosition.side} $${size} on ${ticker} (P&L: ${realizedPnL >= 0 ? '+' : ''}$${realizedPnL.toFixed(2)})`,
+    `[DirectExecutor] Perp position closed: ${existingPosition.side} $${size} on ${ticker} (P&L: ${realizedPnL >= 0 ? "+" : ""}$${realizedPnL.toFixed(2)})`,
     undefined,
-    'DirectExecutors'
+    "DirectExecutors",
   );
 
   return {
@@ -1204,12 +1204,12 @@ async function executeClosePerpPosition(params: {
  * Validates content for diversity before creating.
  */
 export async function executeDirectPost(
-  params: DirectPostParams
+  params: DirectPostParams,
 ): Promise<DirectPostResult> {
   const { agentUserId, content } = params;
 
   if (!content || content.trim().length < 5) {
-    return { success: false, error: 'Content too short' };
+    return { success: false, error: "Content too short" };
   }
 
   const cleanContent = content.trim();
@@ -1217,7 +1217,7 @@ export async function executeDirectPost(
   // DIVERSITY CHECK: Validate content before creating post (per-agent, in-process)
   const diversityIssues = topicDiversityService.validateContent(
     agentUserId,
-    cleanContent
+    cleanContent,
   );
 
   if (diversityIssues.length > 0) {
@@ -1228,7 +1228,7 @@ export async function executeDirectPost(
         issues: diversityIssues,
         contentPreview: cleanContent.substring(0, 100),
       },
-      'DirectExecutors'
+      "DirectExecutors",
     );
 
     return {
@@ -1259,8 +1259,8 @@ export async function executeDirectPost(
             gte(posts.timestamp, crossNpcWindow),
             isNull(posts.deletedAt),
             isNull(posts.commentOnPostId),
-            inArray(posts.authorId, allNpcIds)
-          )
+            inArray(posts.authorId, allNpcIds),
+          ),
         )
         .orderBy(desc(posts.timestamp))
         .limit(20);
@@ -1268,17 +1268,17 @@ export async function executeDirectPost(
       for (const recent of recentNpcPosts) {
         const sim = topicDiversityService.calculateSimilarity(
           cleanContent,
-          recent.content
+          recent.content,
         );
         if (sim >= 0.5) {
           logger.warn(
             `[DirectExecutor] Post rejected — cross-NPC similarity ${(sim * 100).toFixed(0)}%`,
             { agentUserId, contentPreview: cleanContent.substring(0, 80) },
-            'DirectExecutors'
+            "DirectExecutors",
           );
           return {
             success: false,
-            error: 'Content too similar to a recent post by another NPC',
+            error: "Content too similar to a recent post by another NPC",
           };
         }
       }
@@ -1291,9 +1291,9 @@ export async function executeDirectPost(
   const isNpc = !!npcActor;
 
   logger.info(
-    `[DirectExecutor] Creating post for ${isNpc ? 'NPC' : 'user'} ${agentUserId}`,
+    `[DirectExecutor] Creating post for ${isNpc ? "NPC" : "user"} ${agentUserId}`,
     { contentPreview: cleanContent.substring(0, 50) },
-    'DirectExecutors'
+    "DirectExecutors",
   );
 
   // Create the post
@@ -1320,7 +1320,7 @@ export async function executeDirectPost(
   logger.info(
     `[DirectExecutor] Post created: ${postId}`,
     { tags: tags.length },
-    'DirectExecutors'
+    "DirectExecutors",
   );
 
   // Broadcast activity for real-time UI updates (only for non-NPCs)
@@ -1331,14 +1331,14 @@ export async function executeDirectPost(
       contentPreview: cleanContent.substring(0, 200),
     };
 
-    broadcastAgentActivity(agentUserId, agentName, 'post', activityData).catch(
+    broadcastAgentActivity(agentUserId, agentName, "post", activityData).catch(
       (error: Error) => {
         logger.warn(
           `Failed to broadcast post activity: ${error.message}`,
           { agentUserId, postId },
-          'DirectExecutors'
+          "DirectExecutors",
         );
-      }
+      },
     );
   }
 
@@ -1359,12 +1359,12 @@ export async function executeDirectPost(
  * - Making multiple replies to the same parent comment
  */
 export async function executeDirectComment(
-  params: DirectCommentParams
+  params: DirectCommentParams,
 ): Promise<DirectCommentResult> {
   const { agentUserId, postId, content, parentCommentId } = params;
 
   if (!content || content.trim().length < 3) {
-    return { success: false, error: 'Content too short' };
+    return { success: false, error: "Content too short" };
   }
 
   const cleanContent = content.trim();
@@ -1390,8 +1390,8 @@ export async function executeDirectComment(
         and(
           eq(comments.postId, postId),
           eq(comments.authorId, agentUserId),
-          eq(comments.parentCommentId, parentCommentId)
-        )
+          eq(comments.parentCommentId, parentCommentId),
+        ),
       )
       .limit(1);
 
@@ -1399,7 +1399,7 @@ export async function executeDirectComment(
       logger.info(
         `[DirectExecutor] Agent already replied to comment ${parentCommentId} - skipping duplicate`,
         { agentUserId, postId, existingReplyId: existingReply.id },
-        'DirectExecutors'
+        "DirectExecutors",
       );
       return {
         success: false,
@@ -1429,8 +1429,8 @@ export async function executeDirectComment(
         and(
           eq(comments.postId, postId),
           eq(comments.authorId, agentUserId),
-          isNull(comments.parentCommentId)
-        )
+          isNull(comments.parentCommentId),
+        ),
       )
       .limit(1);
 
@@ -1438,7 +1438,7 @@ export async function executeDirectComment(
       logger.info(
         `[DirectExecutor] Agent already made top-level comment on post ${postId} - skipping duplicate`,
         { agentUserId, existingCommentId: existingComment.id },
-        'DirectExecutors'
+        "DirectExecutors",
       );
       return {
         success: false,
@@ -1450,7 +1450,7 @@ export async function executeDirectComment(
   logger.info(
     `[DirectExecutor] Creating comment on post ${postId}`,
     { parentCommentId, contentPreview: cleanContent.substring(0, 50) },
-    'DirectExecutors'
+    "DirectExecutors",
   );
 
   const commentId = await generateSnowflakeId();
@@ -1469,7 +1469,7 @@ export async function executeDirectComment(
   logger.info(
     `[DirectExecutor] Comment created: ${commentId}`,
     undefined,
-    'DirectExecutors'
+    "DirectExecutors",
   );
 
   // Broadcast activity for real-time UI updates (only for non-NPCs)
@@ -1486,13 +1486,13 @@ export async function executeDirectComment(
     broadcastAgentActivity(
       agentUserId,
       agentName,
-      'comment',
-      activityData
+      "comment",
+      activityData,
     ).catch((error: Error) => {
       logger.warn(
         `Failed to broadcast comment activity: ${error.message}`,
         { agentUserId, commentId },
-        'DirectExecutors'
+        "DirectExecutors",
       );
     });
   }
@@ -1514,22 +1514,22 @@ export async function executeDirectComment(
  */
 function stripThinkTags(text: string): string {
   // Remove paired <think>...</think> blocks
-  const withoutBlocks = text.replace(/<think>[\s\S]*?<\/think>/gi, '');
+  const withoutBlocks = text.replace(/<think>[\s\S]*?<\/think>/gi, "");
   // Also strip orphan tags (unclosed/unmatched)
-  return withoutBlocks.replace(/<\/?think>/gi, '').trim();
+  return withoutBlocks.replace(/<\/?think>/gi, "").trim();
 }
 
 export async function executeDirectMessage(
-  params: DirectMessageParams
+  params: DirectMessageParams,
 ): Promise<DirectMessageResult> {
   const { agentUserId, chatId: providedChatId, recipientId, content } = params;
 
   // Strip think tags and clean content
-  const cleanContent = stripThinkTags(content?.trim() ?? '');
+  const cleanContent = stripThinkTags(content?.trim() ?? "");
   if (cleanContent.length < 3) {
     return {
       success: false,
-      error: 'Content too short or only contained thinking',
+      error: "Content too short or only contained thinking",
     };
   }
   let chatId = providedChatId;
@@ -1547,7 +1547,7 @@ export async function executeDirectMessage(
     if (agent?.managedBy === recipientId) {
       return {
         success: false,
-        error: 'Agent-owner DMs are not allowed - use Agents chat instead',
+        error: "Agent-owner DMs are not allowed - use Agents chat instead",
       };
     }
 
@@ -1573,7 +1573,7 @@ export async function executeDirectMessage(
 
     // Find existing DM chat using a single query with self-join
     // Join chatParticipants (for agent) -> chats -> chatParticipants alias (for recipient)
-    const recipientParticipants = aliasedTable(chatParticipants, 'cp2');
+    const recipientParticipants = aliasedTable(chatParticipants, "cp2");
 
     const existingChat = await db
       .select({ chatId: chatParticipants.chatId })
@@ -1581,14 +1581,14 @@ export async function executeDirectMessage(
       .innerJoin(chats, eq(chatParticipants.chatId, chats.id))
       .innerJoin(
         recipientParticipants,
-        eq(chatParticipants.chatId, recipientParticipants.chatId)
+        eq(chatParticipants.chatId, recipientParticipants.chatId),
       )
       .where(
         and(
           eq(chatParticipants.userId, agentUserId),
           eq(chats.isGroup, false),
-          eq(recipientParticipants.userId, recipientId)
-        )
+          eq(recipientParticipants.userId, recipientId),
+        ),
       )
       .limit(1);
 
@@ -1635,7 +1635,7 @@ export async function executeDirectMessage(
             chatId: chatId!,
             userId: recipientId, // The recipient
             otherUserId: agentUserId, // The agent initiating
-            status: 'accepted', // Auto-accepted for agent-initiated DMs
+            status: "accepted", // Auto-accepted for agent-initiated DMs
             createdAt: now,
             acceptedAt: now, // Mark as accepted immediately
           });
@@ -1644,20 +1644,20 @@ export async function executeDirectMessage(
         logger.info(
           `[DirectExecutor] Created new DM chat ${chatId} between ${agentUserId} and ${recipientId}`,
           undefined,
-          'DirectExecutors'
+          "DirectExecutors",
         );
       } catch (error) {
         // Handle race condition - if chat was created by another process, try to find it
-        if (error instanceof Error && error.message.includes('duplicate key')) {
+        if (error instanceof Error && error.message.includes("duplicate key")) {
           logger.warn(
             `[DirectExecutor] Race condition detected, retrying chat lookup`,
             { agentUserId, recipientId },
-            'DirectExecutors'
+            "DirectExecutors",
           );
           // Retry with the same optimized single query
           const retryRecipientParticipants = aliasedTable(
             chatParticipants,
-            'cp2_retry'
+            "cp2_retry",
           );
 
           const retryMatch = await db
@@ -1666,14 +1666,14 @@ export async function executeDirectMessage(
             .innerJoin(chats, eq(chatParticipants.chatId, chats.id))
             .innerJoin(
               retryRecipientParticipants,
-              eq(chatParticipants.chatId, retryRecipientParticipants.chatId)
+              eq(chatParticipants.chatId, retryRecipientParticipants.chatId),
             )
             .where(
               and(
                 eq(chatParticipants.userId, agentUserId),
                 eq(chats.isGroup, false),
-                eq(retryRecipientParticipants.userId, recipientId)
-              )
+                eq(retryRecipientParticipants.userId, recipientId),
+              ),
             )
             .limit(1);
 
@@ -1692,7 +1692,7 @@ export async function executeDirectMessage(
   if (!chatId) {
     return {
       success: false,
-      error: 'Chat ID required or could not be resolved',
+      error: "Chat ID required or could not be resolved",
     };
   }
 
@@ -1712,7 +1712,7 @@ export async function executeDirectMessage(
   logger.info(
     `[DirectExecutor] Creating message in chat ${chatId}`,
     { contentPreview: cleanContent.substring(0, 50) },
-    'DirectExecutors'
+    "DirectExecutors",
   );
 
   const messageId = await generateSnowflakeId();
@@ -1729,7 +1729,7 @@ export async function executeDirectMessage(
   logger.info(
     `[DirectExecutor] Message created: ${messageId}`,
     undefined,
-    'DirectExecutors'
+    "DirectExecutors",
   );
 
   // Broadcast to chat channel for real-time message updates
@@ -1739,7 +1739,7 @@ export async function executeDirectMessage(
     content: cleanContent,
     chatId,
     senderId: agentUserId,
-    type: 'user',
+    type: "user",
     createdAt: now.toISOString(),
     isGameChat: false,
     isDMChat: Boolean(recipientId),
@@ -1747,7 +1747,7 @@ export async function executeDirectMessage(
     logger.warn(
       `Failed to broadcast chat message: ${error.message}`,
       { chatId, messageId },
-      'DirectExecutors'
+      "DirectExecutors",
     );
   });
 
@@ -1765,13 +1765,13 @@ export async function executeDirectMessage(
     broadcastAgentActivity(
       agentUserId,
       agentName,
-      'message',
-      activityData
+      "message",
+      activityData,
     ).catch((error: Error) => {
       logger.warn(
         `Failed to broadcast message activity: ${error.message}`,
         { agentUserId, messageId },
-        'DirectExecutors'
+        "DirectExecutors",
       );
     });
   }
@@ -1798,13 +1798,13 @@ export async function executeDirectMessage(
         recipientIds,
         agentUserId,
         chatId,
-        chatRecord?.name ?? 'Group Chat',
-        cleanContent.substring(0, 50)
+        chatRecord?.name ?? "Group Chat",
+        cleanContent.substring(0, 50),
       ).catch((error: Error) => {
         logger.warn(
           `Failed to notify group chat message: ${error.message}`,
           { chatId, messageId },
-          'DirectExecutors'
+          "DirectExecutors",
         );
       });
     }
@@ -1825,17 +1825,17 @@ export async function executeDirectMessage(
  * This action is restricted to real users/agents (not static NPC actors).
  */
 export async function executeDirectFollow(
-  params: DirectFollowParams
+  params: DirectFollowParams,
 ): Promise<DirectFollowResult> {
   const { agentUserId, targetUserId } = params;
   const cleanTargetUserId = targetUserId?.trim();
 
   if (!cleanTargetUserId) {
-    return { success: false, error: 'Target user ID is required' };
+    return { success: false, error: "Target user ID is required" };
   }
 
   if (cleanTargetUserId === agentUserId) {
-    return { success: false, error: 'Cannot follow yourself' };
+    return { success: false, error: "Cannot follow yourself" };
   }
 
   const [targetUser] = await db
@@ -1852,14 +1852,14 @@ export async function executeDirectFollow(
     return {
       success: false,
       error:
-        'FOLLOW supports users/agents only. NPC actors are not supported here',
+        "FOLLOW supports users/agents only. NPC actors are not supported here",
     };
   }
 
   logger.info(
     `[DirectExecutor] Following user ${cleanTargetUserId}`,
     { agentUserId },
-    'DirectExecutors'
+    "DirectExecutors",
   );
 
   const followId = await generateSnowflakeId();
@@ -1880,7 +1880,7 @@ export async function executeDirectFollow(
       cachedDb.invalidateUserCache(agentUserId),
       cachedDb.invalidateUserCache(cleanTargetUserId),
     ]).catch((error: unknown) => {
-      logger.warn('Failed to invalidate user cache after direct follow', {
+      logger.warn("Failed to invalidate user cache after direct follow", {
         error,
       });
     });
@@ -1899,17 +1899,17 @@ export async function executeDirectFollow(
  * Returns success even if there was no active follow relationship (idempotent).
  */
 export async function executeDirectUnfollow(
-  params: DirectFollowParams
+  params: DirectFollowParams,
 ): Promise<DirectFollowResult> {
   const { agentUserId, targetUserId } = params;
   const cleanTargetUserId = targetUserId?.trim();
 
   if (!cleanTargetUserId) {
-    return { success: false, error: 'Target user ID is required' };
+    return { success: false, error: "Target user ID is required" };
   }
 
   if (cleanTargetUserId === agentUserId) {
-    return { success: false, error: 'Cannot unfollow yourself' };
+    return { success: false, error: "Cannot unfollow yourself" };
   }
 
   const [targetUser] = await db
@@ -1926,14 +1926,14 @@ export async function executeDirectUnfollow(
     return {
       success: false,
       error:
-        'UNFOLLOW supports users/agents only. NPC actors are not supported here',
+        "UNFOLLOW supports users/agents only. NPC actors are not supported here",
     };
   }
 
   logger.info(
     `[DirectExecutor] Unfollowing user ${cleanTargetUserId}`,
     { agentUserId },
-    'DirectExecutors'
+    "DirectExecutors",
   );
 
   const deletedRows = await db
@@ -1941,8 +1941,8 @@ export async function executeDirectUnfollow(
     .where(
       and(
         eq(follows.followerId, agentUserId),
-        eq(follows.followingId, cleanTargetUserId)
-      )
+        eq(follows.followingId, cleanTargetUserId),
+      ),
     )
     .returning({ id: follows.id });
 
@@ -1953,7 +1953,7 @@ export async function executeDirectUnfollow(
       cachedDb.invalidateUserCache(agentUserId),
       cachedDb.invalidateUserCache(cleanTargetUserId),
     ]).catch((error: unknown) => {
-      logger.warn('Failed to invalidate user cache after direct unfollow', {
+      logger.warn("Failed to invalidate user cache after direct unfollow", {
         error,
       });
     });
@@ -1976,7 +1976,7 @@ export async function executeDirectUnfollow(
  * Includes deduplication to prevent double-liking.
  */
 export async function executeDirectLike(
-  params: DirectLikeParams
+  params: DirectLikeParams,
 ): Promise<DirectLikeResult> {
   const { agentUserId, postId } = params;
 
@@ -1994,7 +1994,7 @@ export async function executeDirectLike(
   logger.info(
     `[DirectExecutor] Liking post ${postId}`,
     { agentUserId },
-    'DirectExecutors'
+    "DirectExecutors",
   );
 
   const reactionId = await generateSnowflakeId();
@@ -2008,7 +2008,7 @@ export async function executeDirectLike(
       id: reactionId,
       postId,
       userId: agentUserId,
-      type: 'like',
+      type: "like",
       createdAt: new Date(),
     })
     .onConflictDoNothing()
@@ -2017,9 +2017,9 @@ export async function executeDirectLike(
   // Determine if a new row was created or it already existed
   const alreadyLiked = insertResult.length === 0;
   logger.info(
-    `[DirectExecutor] Post ${alreadyLiked ? 'already liked' : 'liked'}: ${postId}`,
+    `[DirectExecutor] Post ${alreadyLiked ? "already liked" : "liked"}: ${postId}`,
     { agentUserId, alreadyLiked },
-    'DirectExecutors'
+    "DirectExecutors",
   );
 
   return {
@@ -2037,7 +2037,7 @@ export async function executeDirectLike(
  * Creates a share record and optionally a quote post.
  */
 export async function executeDirectRepost(
-  params: DirectRepostParams
+  params: DirectRepostParams,
 ): Promise<DirectRepostResult> {
   const { agentUserId, postId, comment } = params;
 
@@ -2075,7 +2075,7 @@ export async function executeDirectRepost(
     if (!resolvedPost) {
       return {
         success: false,
-        error: 'Original post no longer exists',
+        error: "Original post no longer exists",
       };
     }
 
@@ -2085,7 +2085,7 @@ export async function executeDirectRepost(
 
   // Don't let agents repost their own content
   if (targetPost.authorId === agentUserId) {
-    return { success: false, error: 'Cannot repost own content' };
+    return { success: false, error: "Cannot repost own content" };
   }
 
   // Note: We rely on the transaction's unique constraint handling to detect duplicates.
@@ -2094,7 +2094,7 @@ export async function executeDirectRepost(
   logger.info(
     `[DirectExecutor] Reposting post ${targetPostId}`,
     { agentUserId, hasComment: !!comment, requestedPostId: postId },
-    'DirectExecutors'
+    "DirectExecutors",
   );
 
   const now = new Date();
@@ -2119,10 +2119,10 @@ export async function executeDirectRepost(
       if (hasQuote && quotePostId) {
         await tx.insert(posts).values({
           id: quotePostId,
-          content: comment!.trim(),
+          content: comment?.trim(),
           authorId: agentUserId,
           originalPostId: targetPostId,
-          type: 'repost',
+          type: "repost",
           timestamp: now,
           createdAt: now,
         });
@@ -2130,9 +2130,9 @@ export async function executeDirectRepost(
     });
 
     logger.info(
-      `[DirectExecutor] Post reposted: ${targetPostId} -> share ${shareId}${quotePostId ? ` with quote ${quotePostId}` : ''}`,
+      `[DirectExecutor] Post reposted: ${targetPostId} -> share ${shareId}${quotePostId ? ` with quote ${quotePostId}` : ""}`,
       undefined,
-      'DirectExecutors'
+      "DirectExecutors",
     );
 
     return {
@@ -2145,22 +2145,22 @@ export async function executeDirectRepost(
     // Check error code for PostgreSQL (23505) or Prisma (P2002)
     const errorCode = (error as { code?: string }).code;
     const isUniqueConstraint =
-      errorCode === '23505' ||
-      errorCode === 'P2002' ||
-      (error as Error).message?.includes('unique constraint');
+      errorCode === "23505" ||
+      errorCode === "P2002" ||
+      (error as Error).message?.includes("unique constraint");
 
     if (isUniqueConstraint) {
       const [share] = await db
         .select({ id: shares.id })
         .from(shares)
         .where(
-          and(eq(shares.postId, targetPostId), eq(shares.userId, agentUserId))
+          and(eq(shares.postId, targetPostId), eq(shares.userId, agentUserId)),
         )
         .limit(1);
 
       if (!share?.id) {
         throw new Error(
-          'Share not found after unique constraint violation - concurrent repost race condition'
+          "Share not found after unique constraint violation - concurrent repost race condition",
         );
       }
 
@@ -2178,7 +2178,7 @@ export async function executeDirectRepost(
  * Create a new agent-owned group chat with optional initial members.
  */
 export async function executeDirectCreateGroup(
-  params: DirectCreateGroupParams
+  params: DirectCreateGroupParams,
 ): Promise<DirectCreateGroupResult> {
   const { agentUserId, name, description, memberIds } = params;
 
@@ -2186,14 +2186,14 @@ export async function executeDirectCreateGroup(
   if (!cleanName || cleanName.length < 2) {
     return {
       success: false,
-      error: 'Group name must be at least 2 characters',
+      error: "Group name must be at least 2 characters",
     };
   }
 
   if (cleanName.length > 100) {
     return {
       success: false,
-      error: 'Group name must be 100 characters or less',
+      error: "Group name must be 100 characters or less",
     };
   }
 
@@ -2225,7 +2225,7 @@ export async function executeDirectCreateGroup(
       id: groupId,
       name: cleanName,
       description: description?.trim() || null,
-      type: 'agent',
+      type: "agent",
       ownerId: agentUserId,
       createdById: agentUserId,
       createdAt: now,
@@ -2247,7 +2247,7 @@ export async function executeDirectCreateGroup(
       id: await generateSnowflakeId(),
       groupId,
       userId: agentUserId,
-      role: 'owner',
+      role: "owner",
       joinedAt: now,
       isActive: true,
     });
@@ -2267,7 +2267,7 @@ export async function executeDirectCreateGroup(
         id: await generateSnowflakeId(),
         groupId,
         userId: memberId,
-        role: 'member',
+        role: "member",
         joinedAt: now,
         addedBy: agentUserId,
         isActive: true,
@@ -2286,7 +2286,7 @@ export async function executeDirectCreateGroup(
   logger.info(
     `[DirectExecutor] Created group "${cleanName}" with ${validMemberIds.length} initial members`,
     { agentUserId, groupId, chatId },
-    'DirectExecutors'
+    "DirectExecutors",
   );
 
   return { success: true, groupId, chatId };
@@ -2301,7 +2301,7 @@ export async function executeDirectCreateGroup(
  * Adds them directly (no acceptance flow for agent-initiated invites).
  */
 export async function executeDirectInviteToGroup(
-  params: DirectInviteToGroupParams
+  params: DirectInviteToGroupParams,
 ): Promise<DirectInviteToGroupResult> {
   const { agentUserId, groupId, targetUserId } = params;
 
@@ -2309,13 +2309,13 @@ export async function executeDirectInviteToGroup(
   const cleanTargetId = targetUserId?.trim();
 
   if (!cleanGroupId) {
-    return { success: false, error: 'Group ID is required' };
+    return { success: false, error: "Group ID is required" };
   }
   if (!cleanTargetId) {
-    return { success: false, error: 'Target user ID is required' };
+    return { success: false, error: "Target user ID is required" };
   }
   if (cleanTargetId === agentUserId) {
-    return { success: false, error: 'Cannot invite yourself' };
+    return { success: false, error: "Cannot invite yourself" };
   }
 
   // Verify group exists and agent has permission (owner or admin)
@@ -2326,19 +2326,19 @@ export async function executeDirectInviteToGroup(
       and(
         eq(groupMembers.groupId, cleanGroupId),
         eq(groupMembers.userId, agentUserId),
-        eq(groupMembers.isActive, true)
-      )
+        eq(groupMembers.isActive, true),
+      ),
     )
     .limit(1);
 
   if (!membership) {
-    return { success: false, error: 'You are not a member of this group' };
+    return { success: false, error: "You are not a member of this group" };
   }
 
-  if (membership.role !== 'owner' && membership.role !== 'admin') {
+  if (membership.role !== "owner" && membership.role !== "admin") {
     return {
       success: false,
-      error: 'Only group owners and admins can invite members',
+      error: "Only group owners and admins can invite members",
     };
   }
 
@@ -2360,8 +2360,8 @@ export async function executeDirectInviteToGroup(
     .where(
       and(
         eq(groupMembers.groupId, cleanGroupId),
-        eq(groupMembers.userId, cleanTargetId)
-      )
+        eq(groupMembers.userId, cleanTargetId),
+      ),
     )
     .limit(1);
 
@@ -2377,7 +2377,7 @@ export async function executeDirectInviteToGroup(
     .limit(1);
 
   if (!chat) {
-    return { success: false, error: 'Group chat not found' };
+    return { success: false, error: "Group chat not found" };
   }
 
   const now = new Date();
@@ -2388,7 +2388,7 @@ export async function executeDirectInviteToGroup(
       .update(groupMembers)
       .set({
         isActive: true,
-        role: 'member',
+        role: "member",
         joinedAt: now,
         addedBy: agentUserId,
         kickedAt: null,
@@ -2397,15 +2397,15 @@ export async function executeDirectInviteToGroup(
       .where(
         and(
           eq(groupMembers.groupId, cleanGroupId),
-          eq(groupMembers.userId, cleanTargetId)
-        )
+          eq(groupMembers.userId, cleanTargetId),
+        ),
       );
   } else {
     await db.insert(groupMembers).values({
       id: await generateSnowflakeId(),
       groupId: cleanGroupId,
       userId: cleanTargetId,
-      role: 'member',
+      role: "member",
       joinedAt: now,
       addedBy: agentUserId,
       isActive: true,
@@ -2433,7 +2433,7 @@ export async function executeDirectInviteToGroup(
   logger.info(
     `[DirectExecutor] Invited ${cleanTargetId} to group ${cleanGroupId}`,
     { agentUserId },
-    'DirectExecutors'
+    "DirectExecutors",
   );
 
   return { success: true, alreadyMember: false };
@@ -2448,7 +2448,7 @@ export async function executeDirectInviteToGroup(
  * Cannot kick the group owner.
  */
 export async function executeDirectKickFromGroup(
-  params: DirectKickFromGroupParams
+  params: DirectKickFromGroupParams,
 ): Promise<DirectKickFromGroupResult> {
   const { agentUserId, groupId, targetUserId, reason } = params;
 
@@ -2456,15 +2456,15 @@ export async function executeDirectKickFromGroup(
   const cleanTargetId = targetUserId?.trim();
 
   if (!cleanGroupId) {
-    return { success: false, error: 'Group ID is required' };
+    return { success: false, error: "Group ID is required" };
   }
   if (!cleanTargetId) {
-    return { success: false, error: 'Target user ID is required' };
+    return { success: false, error: "Target user ID is required" };
   }
   if (cleanTargetId === agentUserId) {
     return {
       success: false,
-      error: 'Cannot kick yourself - use LEAVE_GROUP instead',
+      error: "Cannot kick yourself - use LEAVE_GROUP instead",
     };
   }
 
@@ -2476,19 +2476,19 @@ export async function executeDirectKickFromGroup(
       and(
         eq(groupMembers.groupId, cleanGroupId),
         eq(groupMembers.userId, agentUserId),
-        eq(groupMembers.isActive, true)
-      )
+        eq(groupMembers.isActive, true),
+      ),
     )
     .limit(1);
 
   if (!agentMembership) {
-    return { success: false, error: 'You are not a member of this group' };
+    return { success: false, error: "You are not a member of this group" };
   }
 
-  if (agentMembership.role !== 'owner' && agentMembership.role !== 'admin') {
+  if (agentMembership.role !== "owner" && agentMembership.role !== "admin") {
     return {
       success: false,
-      error: 'Only group owners and admins can kick members',
+      error: "Only group owners and admins can kick members",
     };
   }
 
@@ -2499,29 +2499,29 @@ export async function executeDirectKickFromGroup(
     .where(
       and(
         eq(groupMembers.groupId, cleanGroupId),
-        eq(groupMembers.userId, cleanTargetId)
-      )
+        eq(groupMembers.userId, cleanTargetId),
+      ),
     )
     .limit(1);
 
-  if (!targetMembership || !targetMembership.isActive) {
+  if (!targetMembership?.isActive) {
     return {
       success: false,
-      error: 'User is not an active member of this group',
+      error: "User is not an active member of this group",
     };
   }
 
-  if (targetMembership.role === 'owner') {
-    return { success: false, error: 'Cannot kick the group owner' };
+  if (targetMembership.role === "owner") {
+    return { success: false, error: "Cannot kick the group owner" };
   }
 
   // Admins cannot kick other admins (only owners can)
-  if (targetMembership.role === 'admin' && agentMembership.role !== 'owner') {
-    return { success: false, error: 'Only the group owner can kick admins' };
+  if (targetMembership.role === "admin" && agentMembership.role !== "owner") {
+    return { success: false, error: "Only the group owner can kick admins" };
   }
 
   const now = new Date();
-  const kickReason = reason?.trim() || 'Removed by agent';
+  const kickReason = reason?.trim() || "Removed by agent";
 
   await db
     .update(groupMembers)
@@ -2534,8 +2534,8 @@ export async function executeDirectKickFromGroup(
       and(
         eq(groupMembers.groupId, cleanGroupId),
         eq(groupMembers.userId, cleanTargetId),
-        eq(groupMembers.isActive, true)
-      )
+        eq(groupMembers.isActive, true),
+      ),
     );
 
   // Deactivate chat participant
@@ -2552,15 +2552,15 @@ export async function executeDirectKickFromGroup(
       .where(
         and(
           eq(chatParticipants.chatId, chat.id),
-          eq(chatParticipants.userId, cleanTargetId)
-        )
+          eq(chatParticipants.userId, cleanTargetId),
+        ),
       );
   }
 
   logger.info(
     `[DirectExecutor] Kicked ${cleanTargetId} from group ${cleanGroupId}: ${kickReason}`,
     { agentUserId },
-    'DirectExecutors'
+    "DirectExecutors",
   );
 
   return { success: true };
@@ -2574,13 +2574,13 @@ export async function executeDirectKickFromGroup(
  * Leave a group chat. Owners cannot leave (must transfer ownership or delete).
  */
 export async function executeDirectLeaveGroup(
-  params: DirectLeaveGroupParams
+  params: DirectLeaveGroupParams,
 ): Promise<DirectLeaveGroupResult> {
   const { agentUserId, groupId } = params;
 
   const cleanGroupId = groupId?.trim();
   if (!cleanGroupId) {
-    return { success: false, error: 'Group ID is required' };
+    return { success: false, error: "Group ID is required" };
   }
 
   // Verify membership
@@ -2590,22 +2590,22 @@ export async function executeDirectLeaveGroup(
     .where(
       and(
         eq(groupMembers.groupId, cleanGroupId),
-        eq(groupMembers.userId, agentUserId)
-      )
+        eq(groupMembers.userId, agentUserId),
+      ),
     )
     .limit(1);
 
-  if (!membership || !membership.isActive) {
+  if (!membership?.isActive) {
     return {
       success: false,
-      error: 'You are not an active member of this group',
+      error: "You are not an active member of this group",
     };
   }
 
-  if (membership.role === 'owner') {
+  if (membership.role === "owner") {
     return {
       success: false,
-      error: 'Group owners cannot leave - transfer ownership first',
+      error: "Group owners cannot leave - transfer ownership first",
     };
   }
 
@@ -2613,15 +2613,15 @@ export async function executeDirectLeaveGroup(
     .update(groupMembers)
     .set({
       isActive: false,
-      kickReason: 'Left voluntarily',
+      kickReason: "Left voluntarily",
       kickedAt: new Date(),
     })
     .where(
       and(
         eq(groupMembers.groupId, cleanGroupId),
         eq(groupMembers.userId, agentUserId),
-        eq(groupMembers.isActive, true)
-      )
+        eq(groupMembers.isActive, true),
+      ),
     );
 
   // Deactivate chat participant
@@ -2638,15 +2638,15 @@ export async function executeDirectLeaveGroup(
       .where(
         and(
           eq(chatParticipants.chatId, chat.id),
-          eq(chatParticipants.userId, agentUserId)
-        )
+          eq(chatParticipants.userId, agentUserId),
+        ),
       );
   }
 
   logger.info(
     `[DirectExecutor] Agent left group ${cleanGroupId}`,
     { agentUserId },
-    'DirectExecutors'
+    "DirectExecutors",
   );
 
   return { success: true };
@@ -2657,21 +2657,21 @@ export async function executeDirectLeaveGroup(
  * Uses WalletService.debit + credit in sequence (each creates its own transaction).
  */
 export async function executeDirectSendMoney(
-  params: DirectSendMoneyParams
+  params: DirectSendMoneyParams,
 ): Promise<DirectSendMoneyResult> {
   const { agentUserId, recipientId, amount, reason } = params;
   const cleanRecipientId = recipientId?.trim();
 
   if (!cleanRecipientId) {
-    return { success: false, error: 'Recipient ID is required' };
+    return { success: false, error: "Recipient ID is required" };
   }
 
   if (cleanRecipientId === agentUserId) {
-    return { success: false, error: 'Cannot send money to yourself' };
+    return { success: false, error: "Cannot send money to yourself" };
   }
 
   if (!Number.isFinite(amount) || amount <= 0) {
-    return { success: false, error: 'Amount must be a positive number' };
+    return { success: false, error: "Amount must be a positive number" };
   }
 
   // Verify recipient exists
@@ -2702,7 +2702,7 @@ export async function executeDirectSendMoney(
       const balance = balanceInfo.balance;
 
       if (balance <= 0) {
-        throw new Error('Insufficient balance');
+        throw new Error("Insufficient balance");
       }
 
       // Cap transfer at 50% of balance to prevent agents from draining funds
@@ -2712,7 +2712,7 @@ export async function executeDirectSendMoney(
         logger.warn(
           `[DirectExecutor] Transfer capped to ${MAX_TRANSFER_RATIO * 100}% of balance: $${amount} -> $${maxTransfer}`,
           { agentUserId, recipientId: cleanRecipientId },
-          'DirectExecutors'
+          "DirectExecutors",
         );
         effectiveAmount = Math.floor(maxTransfer * 100) / 100;
       }
@@ -2723,16 +2723,16 @@ export async function executeDirectSendMoney(
         AGENT_TRANSFER_OUT_TRANSACTION_TYPE,
         desc,
         transactionId,
-        tx
+        tx,
       );
 
       await WalletService.credit(
         cleanRecipientId,
         effectiveAmount,
         AGENT_TRANSFER_IN_TRANSACTION_TYPE,
-        `Transfer from ${agentUserId}${reason ? `: ${reason}` : ''}`,
+        `Transfer from ${agentUserId}${reason ? `: ${reason}` : ""}`,
         transactionId,
-        tx
+        tx,
       );
 
       return effectiveAmount;
@@ -2748,7 +2748,7 @@ export async function executeDirectSendMoney(
         amount: transferredAmount,
         transactionId,
       },
-      'DirectExecutors'
+      "DirectExecutors",
     );
 
     return {
@@ -2766,7 +2766,7 @@ export async function executeDirectSendMoney(
         amount,
         error: errorMsg,
       },
-      'DirectExecutors'
+      "DirectExecutors",
     );
     return { success: false, error: errorMsg };
   }
@@ -2794,7 +2794,7 @@ export async function executeDirectShareInformation(params: {
   void params;
   return {
     success: false,
-    error: 'Not yet implemented',
+    error: "Not yet implemented",
     matchCount: 0,
     sharedWithRecipient: false,
     messageId: null,
@@ -2814,5 +2814,5 @@ export async function executeDirectRequestPayment(params: {
   requestId: string | null;
 }> {
   void params;
-  return { success: false, error: 'Not yet implemented', requestId: null };
+  return { success: false, error: "Not yet implemented", requestId: null };
 }

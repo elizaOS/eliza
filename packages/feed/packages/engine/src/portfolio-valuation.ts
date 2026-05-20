@@ -1,5 +1,5 @@
-import { isOpenPerpPositionStateValid } from '@feed/core/markets/perps/client';
-import { toNumber } from '@feed/shared';
+import { isOpenPerpPositionStateValid } from "@feed/core/markets/perps/client";
+import { toNumber } from "@feed/shared";
 
 export { toNumber };
 

@@ -1,18 +1,18 @@
-'use client';
+"use client";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
-import { useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
-import { toast } from 'sonner';
-import { AchievementsTab } from '@/components/rewards/v2/achievements-tab';
-import { ChallengesTab } from '@/components/rewards/v2/challenges-tab';
-import { OverviewTab } from '@/components/rewards/v2/overview-tab';
-import { TabNavigation } from '@/components/rewards/v2/tab-navigation';
-import { PageContainer } from '@/components/shared/PageContainer';
-import { useAuth } from '@/hooks/useAuth';
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import { AchievementsTab } from "@/components/rewards/v2/achievements-tab";
+import { ChallengesTab } from "@/components/rewards/v2/challenges-tab";
+import { OverviewTab } from "@/components/rewards/v2/overview-tab";
+import { TabNavigation } from "@/components/rewards/v2/tab-navigation";
+import { PageContainer } from "@/components/shared/PageContainer";
+import { useAuth } from "@/hooks/useAuth";
 
-type Tab = 'overview' | 'achievements' | 'challenges';
+type Tab = "overview" | "achievements" | "challenges";
 
 export default function RewardsPage() {
   const router = useRouter();
@@ -21,7 +21,7 @@ export default function RewardsPage() {
   // Auth required — redirect to feed and show login
   useEffect(() => {
     if (!ready || authenticated) return;
-    router.push('/feed');
+    router.push("/feed");
     const timer = setTimeout(() => login(), 500);
     return () => clearTimeout(timer);
   }, [ready, authenticated, router, login]);
@@ -30,47 +30,47 @@ export default function RewardsPage() {
 
   // Handle OAuth callback from Twitter/Discord linking
   useEffect(() => {
-    const success = searchParams.get('success');
-    const reputation = searchParams.get('reputation');
-    const errorParam = searchParams.get('error');
+    const success = searchParams.get("success");
+    const reputation = searchParams.get("reputation");
+    const errorParam = searchParams.get("error");
 
-    if (success === 'twitter_linked' && reputation) {
+    if (success === "twitter_linked" && reputation) {
       toast.success(`X account linked! +${reputation} reputation awarded`);
-      window.dispatchEvent(new CustomEvent('rewards-updated'));
+      window.dispatchEvent(new CustomEvent("rewards-updated"));
       refresh();
-      window.history.replaceState({}, '', '/rewards');
-    } else if (success === 'discord_linked' && reputation) {
+      window.history.replaceState({}, "", "/rewards");
+    } else if (success === "discord_linked" && reputation) {
       toast.success(
-        `Discord account linked! +${reputation} reputation awarded`
+        `Discord account linked! +${reputation} reputation awarded`,
       );
-      window.dispatchEvent(new CustomEvent('rewards-updated'));
+      window.dispatchEvent(new CustomEvent("rewards-updated"));
       refresh();
-      window.history.replaceState({}, '', '/rewards');
+      window.history.replaceState({}, "", "/rewards");
     } else if (errorParam) {
       const errorMessages: Record<string, string> = {
         twitter_already_linked:
-          'This X account is already linked to another user',
+          "This X account is already linked to another user",
         discord_already_linked:
-          'This Discord account is already linked to another user',
-        token_exchange_failed: 'Failed to authenticate. Please try again.',
-        invalid_state: 'Session expired. Please try again.',
-        state_expired: 'Session expired. Please try again.',
+          "This Discord account is already linked to another user",
+        token_exchange_failed: "Failed to authenticate. Please try again.",
+        invalid_state: "Session expired. Please try again.",
+        state_expired: "Session expired. Please try again.",
       };
       toast.error(
-        errorMessages[errorParam] || 'An error occurred. Please try again.'
+        errorMessages[errorParam] || "An error occurred. Please try again.",
       );
-      window.history.replaceState({}, '', '/rewards');
+      window.history.replaceState({}, "", "/rewards");
     }
   }, [searchParams, refresh]);
 
-  const [activeTab, setActiveTab] = useState<Tab>('overview');
+  const [activeTab, setActiveTab] = useState<Tab>("overview");
 
   const handleViewAchievements = () => {
-    setActiveTab('achievements');
+    setActiveTab("achievements");
   };
 
   const handleViewChallenges = () => {
-    setActiveTab('challenges');
+    setActiveTab("challenges");
   };
 
   return (
@@ -84,14 +84,14 @@ export default function RewardsPage() {
         </div>
 
         <div className="p-4 pb-[calc(1rem+var(--bottom-nav-height))] md:pb-4">
-          {activeTab === 'overview' && (
+          {activeTab === "overview" && (
             <OverviewTab
               onViewAchievements={handleViewAchievements}
               onViewChallenges={handleViewChallenges}
             />
           )}
-          {activeTab === 'achievements' && <AchievementsTab />}
-          {activeTab === 'challenges' && <ChallengesTab />}
+          {activeTab === "achievements" && <AchievementsTab />}
+          {activeTab === "challenges" && <ChallengesTab />}
         </div>
       </div>
     </PageContainer>

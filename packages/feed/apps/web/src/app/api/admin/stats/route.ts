@@ -67,11 +67,11 @@ import {
   requireAdmin,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { db } from '@feed/db';
-import { StaticDataRegistry } from '@feed/engine';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/api";
+import { db } from "@feed/db";
+import { StaticDataRegistry } from "@feed/engine";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   // Require admin authentication
@@ -80,13 +80,13 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   // Apply rate limiting to prevent abuse of expensive stats queries
   const rateLimitResult = applyRateLimit(
     admin.userId,
-    RATE_LIMIT_CONFIGS.ADMIN_STATS
+    RATE_LIMIT_CONFIGS.ADMIN_STATS,
   );
   if (!rateLimitResult.allowed) {
     return rateLimitError(rateLimitResult.retryAfter);
   }
 
-  logger.info('Admin stats requested', {}, 'GET /api/admin/stats');
+  logger.info("Admin stats requested", {}, "GET /api/admin/stats");
 
   // Get current date for time-based queries
   const now = new Date();
@@ -190,7 +190,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   // Get top users by balance
   const topUsersByBalance = await db.user.findMany({
     where: { isActor: false },
-    orderBy: { virtualBalance: 'desc' },
+    orderBy: { virtualBalance: "desc" },
     take: 10,
     select: {
       id: true,
@@ -205,7 +205,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   // Get top users by reputation
   const topUsersByReputation = await db.user.findMany({
     where: { isActor: false },
-    orderBy: { reputationPoints: 'desc' },
+    orderBy: { reputationPoints: "desc" },
     take: 10,
     select: {
       id: true,
@@ -219,7 +219,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   // Get recent signups
   const recentSignups = await db.user.findMany({
     where: { isActor: false },
-    orderBy: { createdAt: 'desc' },
+    orderBy: { createdAt: "desc" },
     take: 10,
     select: {
       id: true,
@@ -264,10 +264,10 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     },
     financial: {
       totalVirtualBalance:
-        totalVirtualBalance._sum?.virtualBalance?.toString() || '0',
-      totalDeposited: totalDeposited._sum?.totalDeposited?.toString() || '0',
-      totalWithdrawn: totalWithdrawn._sum?.totalWithdrawn?.toString() || '0',
-      totalLifetimePnL: totalLifetimePnL._sum?.lifetimePnL?.toString() || '0',
+        totalVirtualBalance._sum?.virtualBalance?.toString() || "0",
+      totalDeposited: totalDeposited._sum?.totalDeposited?.toString() || "0",
+      totalWithdrawn: totalWithdrawn._sum?.totalWithdrawn?.toString() || "0",
+      totalLifetimePnL: totalLifetimePnL._sum?.lifetimePnL?.toString() || "0",
     },
     pools: {
       total: totalPools,

@@ -4,8 +4,8 @@
  * Validation schemas for each tool's arguments
  */
 
-import { JsonValueSchema } from '@feed/shared';
-import { z } from 'zod';
+import { JsonValueSchema } from "@feed/shared";
+import { z } from "zod";
 import type {
   AcceptGroupInviteArgs,
   AppealBanArgs,
@@ -86,15 +86,15 @@ import type {
   UnmuteUserArgs,
   UpdateProfileArgs,
   VerifyEscrowPaymentArgs,
-} from '../types/mcp';
+} from "../types/mcp";
 
 const GetMarketsArgsSchema = z.object({
-  type: z.enum(['prediction', 'perpetuals', 'all']).optional(),
+  type: z.enum(["prediction", "perpetuals", "all"]).optional(),
 }) satisfies z.ZodType<GetMarketsArgs>;
 
 const PlaceBetArgsSchema = z.object({
   marketId: z.string().min(1),
-  side: z.enum(['YES', 'NO']),
+  side: z.enum(["YES", "NO"]),
   amount: z.number().positive(),
 }) satisfies z.ZodType<PlaceBetArgs>;
 
@@ -153,7 +153,7 @@ export function validateQueryFeedArgs(args: unknown): QueryFeedArgs {
 // Market Operations - Validation Schemas
 const BuySharesArgsSchema = z.object({
   marketId: z.string().min(1),
-  outcome: z.enum(['YES', 'NO']),
+  outcome: z.enum(["YES", "NO"]),
   amount: z.number().positive(),
 }) satisfies z.ZodType<BuySharesArgs>;
 
@@ -164,7 +164,7 @@ const SellSharesArgsSchema = z.object({
 
 const OpenPositionArgsSchema = z.object({
   ticker: z.string().min(1),
-  side: z.enum(['LONG', 'SHORT']),
+  side: z.enum(["LONG", "SHORT"]),
   amount: z.number().positive(),
   leverage: z.number().min(1).max(100),
 }) satisfies z.ZodType<OpenPositionArgs>;
@@ -174,7 +174,7 @@ const GetMarketPricesArgsSchema = z.object({
 }) satisfies z.ZodType<GetMarketPricesArgs>;
 
 const GetPerpetualsArgsSchema = z.object(
-  {}
+  {},
 ) satisfies z.ZodType<GetPerpetualsArgs>;
 
 const GetTradesArgsSchema = z.object({
@@ -194,7 +194,7 @@ const GetPostArgsSchema = z.object({
 
 const CreatePostArgsSchema = z.object({
   content: z.string().min(1).max(5000),
-  type: z.enum(['post', 'article']).optional().default('post'),
+  type: z.enum(["post", "article"]).optional().default("post"),
   mediaUrl: z.string().url().optional(),
 }) satisfies z.ZodType<CreatePostArgs>;
 
@@ -289,7 +289,7 @@ const GetUserStatsArgsSchema = z.object({
 
 // Chats & Messaging - Validation Schemas
 const GetChatsArgsSchema = z.object({
-  filter: z.enum(['all', 'dms', 'groups']).optional(),
+  filter: z.enum(["all", "dms", "groups"]).optional(),
 }) satisfies z.ZodType<GetChatsArgs>;
 
 const GetChatMessagesArgsSchema = z.object({
@@ -314,7 +314,7 @@ const LeaveChatArgsSchema = z.object({
 }) satisfies z.ZodType<LeaveChatArgs>;
 
 const GetUnreadCountArgsSchema = z.object(
-  {}
+  {},
 ) satisfies z.ZodType<GetUnreadCountArgs>;
 
 // Notifications - Validation Schemas
@@ -327,11 +327,11 @@ const MarkNotificationsReadArgsSchema = z.object({
 }) satisfies z.ZodType<MarkNotificationsReadArgs>;
 
 const GetPortfolioArgsSchema = z.object(
-  {}
+  {},
 ) satisfies z.ZodType<GetPortfolioArgs>;
 
 const GetGroupInvitesArgsSchema = z.object(
-  {}
+  {},
 ) satisfies z.ZodType<GetGroupInvitesArgs>;
 
 const AcceptGroupInviteArgsSchema = z.object({
@@ -346,13 +346,13 @@ const DeclineGroupInviteArgsSchema = z.object({
 const GetLeaderboardArgsSchema = z.object({
   page: z.number().int().positive().optional().default(1),
   pageSize: z.number().int().positive().optional().default(100),
-  type: z.enum(['wallet', 'team']).optional().default('wallet'),
-  pointsType: z.enum(['all', 'earned', 'referral']).optional(),
+  type: z.enum(["wallet", "team"]).optional().default("wallet"),
+  pointsType: z.enum(["all", "earned", "referral"]).optional(),
   minPoints: z.number().nonnegative().optional().default(0),
 }) satisfies z.ZodType<GetLeaderboardArgs>;
 
 const GetSystemStatsArgsSchema = z.object(
-  {}
+  {},
 ) satisfies z.ZodType<GetSystemStatsArgs>;
 
 const ResolveMarketArgsSchema = z.object({
@@ -363,15 +363,15 @@ const ResolveMarketArgsSchema = z.object({
 
 // Referrals & Rewards - Validation Schemas
 const GetReferralCodeArgsSchema = z.object(
-  {}
+  {},
 ) satisfies z.ZodType<GetReferralCodeArgs>;
 
 const GetReferralsArgsSchema = z.object(
-  {}
+  {},
 ) satisfies z.ZodType<GetReferralsArgs>;
 
 const GetReferralStatsArgsSchema = z.object(
-  {}
+  {},
 ) satisfies z.ZodType<GetReferralStatsArgs>;
 
 // Reputation - Validation Schemas
@@ -471,7 +471,7 @@ const RefundEscrowPaymentArgsSchema = z.object({
 const ListEscrowPaymentsArgsSchema = z.object({
   recipientId: z.string().optional(),
   adminId: z.string().optional(),
-  status: z.enum(['pending', 'paid', 'refunded', 'expired']).optional(),
+  status: z.enum(["pending", "paid", "refunded", "expired"]).optional(),
   limit: z.number().int().positive().max(100).optional().default(50),
   offset: z.number().int().nonnegative().optional().default(0),
 }) satisfies z.ZodType<ListEscrowPaymentsArgs>;
@@ -519,7 +519,7 @@ export function validateOpenPositionArgs(args: unknown): OpenPositionArgs {
 }
 
 export function validateGetMarketPricesArgs(
-  args: unknown
+  args: unknown,
 ): GetMarketPricesArgs {
   return GetMarketPricesArgsSchema.parse(args);
 }
@@ -533,7 +533,7 @@ export function validateGetTradesArgs(args: unknown): GetTradesArgs {
 }
 
 export function validateGetTradeHistoryArgs(
-  args: unknown
+  args: unknown,
 ): GetTradeHistoryArgs {
   return GetTradeHistoryArgsSchema.parse(args);
 }
@@ -630,7 +630,7 @@ export function validateGetChatsArgs(args: unknown): GetChatsArgs {
 }
 
 export function validateGetChatMessagesArgs(
-  args: unknown
+  args: unknown,
 ): GetChatMessagesArgs {
   return GetChatMessagesArgsSchema.parse(args);
 }
@@ -653,13 +653,13 @@ export function validateGetUnreadCountArgs(args: unknown): GetUnreadCountArgs {
 
 // Validation Functions - Notifications
 export function validateGetNotificationsArgs(
-  args: unknown
+  args: unknown,
 ): GetNotificationsArgs {
   return GetNotificationsArgsSchema.parse(args);
 }
 
 export function validateMarkNotificationsReadArgs(
-  args: unknown
+  args: unknown,
 ): MarkNotificationsReadArgs {
   return MarkNotificationsReadArgsSchema.parse(args);
 }
@@ -669,19 +669,19 @@ export function validateGetPortfolioArgs(args: unknown): GetPortfolioArgs {
 }
 
 export function validateGetGroupInvitesArgs(
-  args: unknown
+  args: unknown,
 ): GetGroupInvitesArgs {
   return GetGroupInvitesArgsSchema.parse(args);
 }
 
 export function validateAcceptGroupInviteArgs(
-  args: unknown
+  args: unknown,
 ): AcceptGroupInviteArgs {
   return AcceptGroupInviteArgsSchema.parse(args);
 }
 
 export function validateDeclineGroupInviteArgs(
-  args: unknown
+  args: unknown,
 ): DeclineGroupInviteArgs {
   return DeclineGroupInviteArgsSchema.parse(args);
 }
@@ -701,7 +701,7 @@ export function validateResolveMarketArgs(args: unknown): ResolveMarketArgs {
 
 // Validation Functions - Referrals & Rewards
 export function validateGetReferralCodeArgs(
-  args: unknown
+  args: unknown,
 ): GetReferralCodeArgs {
   return GetReferralCodeArgsSchema.parse(args);
 }
@@ -711,7 +711,7 @@ export function validateGetReferralsArgs(args: unknown): GetReferralsArgs {
 }
 
 export function validateGetReferralStatsArgs(
-  args: unknown
+  args: unknown,
 ): GetReferralStatsArgs {
   return GetReferralStatsArgsSchema.parse(args);
 }
@@ -722,21 +722,21 @@ export function validateGetReputationArgs(args: unknown): GetReputationArgs {
 }
 
 export function validateGetReputationBreakdownArgs(
-  args: unknown
+  args: unknown,
 ): GetReputationBreakdownArgs {
   return GetReputationBreakdownArgsSchema.parse(args);
 }
 
 // Validation Functions - Trending & Discovery
 export function validateGetTrendingTagsArgs(
-  args: unknown
+  args: unknown,
 ): GetTrendingTagsArgs {
   return GetTrendingTagsArgsSchema.parse(args);
 }
 
 // Validation Functions - Organizations
 export function validateGetOrganizationsArgs(
-  args: unknown
+  args: unknown,
 ): GetOrganizationsArgs {
   return GetOrganizationsArgsSchema.parse(args);
 }
@@ -784,38 +784,38 @@ export function validateGetMutesArgs(args: unknown): GetMutesArgs {
 }
 
 export function validateCheckBlockStatusArgs(
-  args: unknown
+  args: unknown,
 ): CheckBlockStatusArgs {
   return CheckBlockStatusArgsSchema.parse(args);
 }
 
 export function validateCheckMuteStatusArgs(
-  args: unknown
+  args: unknown,
 ): CheckMuteStatusArgs {
   return CheckMuteStatusArgsSchema.parse(args);
 }
 
 // Validation Functions - Moderation Escrow
 export function validateCreateEscrowPaymentArgs(
-  args: unknown
+  args: unknown,
 ): CreateEscrowPaymentArgs {
   return CreateEscrowPaymentArgsSchema.parse(args);
 }
 
 export function validateVerifyEscrowPaymentArgs(
-  args: unknown
+  args: unknown,
 ): VerifyEscrowPaymentArgs {
   return VerifyEscrowPaymentArgsSchema.parse(args);
 }
 
 export function validateRefundEscrowPaymentArgs(
-  args: unknown
+  args: unknown,
 ): RefundEscrowPaymentArgs {
   return RefundEscrowPaymentArgsSchema.parse(args);
 }
 
 export function validateListEscrowPaymentsArgs(
-  args: unknown
+  args: unknown,
 ): ListEscrowPaymentsArgs {
   return ListEscrowPaymentsArgsSchema.parse(args);
 }
@@ -826,20 +826,20 @@ export function validateAppealBanArgs(args: unknown): AppealBanArgs {
 }
 
 export function validateAppealBanWithEscrowArgs(
-  args: unknown
+  args: unknown,
 ): AppealBanWithEscrowArgs {
   return AppealBanWithEscrowArgsSchema.parse(args);
 }
 
 // Validation Functions - Favorites
 export function validateFavoriteProfileArgs(
-  args: unknown
+  args: unknown,
 ): FavoriteProfileArgs {
   return FavoriteProfileArgsSchema.parse(args);
 }
 
 export function validateUnfavoriteProfileArgs(
-  args: unknown
+  args: unknown,
 ): UnfavoriteProfileArgs {
   return UnfavoriteProfileArgsSchema.parse(args);
 }
@@ -849,7 +849,7 @@ export function validateGetFavoritesArgs(args: unknown): GetFavoritesArgs {
 }
 
 export function validateGetFavoritePostsArgs(
-  args: unknown
+  args: unknown,
 ): GetFavoritePostsArgs {
   return GetFavoritePostsArgsSchema.parse(args);
 }

@@ -1,4 +1,4 @@
-import * as crypto from 'node:crypto';
+import * as crypto from "node:crypto";
 
-export * from 'node:crypto';
+export * from "node:crypto";
 export default crypto;

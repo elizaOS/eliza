@@ -5,7 +5,7 @@
  * Used for detecting self-referrals and preventing gaming of the referral system.
  */
 
-import { createHash } from 'crypto';
+import { createHash } from "node:crypto";
 
 /**
  * Hash an IP address using SHA-256 for privacy
@@ -14,7 +14,7 @@ import { createHash } from 'crypto';
  * @returns Hashed IP address (hex string)
  */
 export function hashIpAddress(ip: string): string {
-  return createHash('sha256').update(ip).digest('hex');
+  return createHash("sha256").update(ip).digest("hex");
 }
 
 /**
@@ -30,7 +30,7 @@ export function getClientIp(
   headers:
     | Headers
     | Map<string, string>
-    | Record<string, string | string[] | undefined>
+    | Record<string, string | string[] | undefined>,
 ): string | null {
   // Helper to get header value
   const getHeader = (name: string): string | null => {
@@ -48,23 +48,23 @@ export function getClientIp(
   };
 
   // Check X-Forwarded-For header (most common proxy header)
-  const forwardedFor = getHeader('x-forwarded-for');
+  const forwardedFor = getHeader("x-forwarded-for");
   if (forwardedFor) {
     // X-Forwarded-For can contain multiple IPs, take the first one (original client)
-    const firstIp = forwardedFor.split(',')[0]?.trim();
+    const firstIp = forwardedFor.split(",")[0]?.trim();
     if (firstIp) return firstIp;
   }
 
   // Check X-Real-IP header (nginx proxy)
-  const realIp = getHeader('x-real-ip');
+  const realIp = getHeader("x-real-ip");
   if (realIp) return realIp.trim();
 
   // Check CF-Connecting-IP header (Cloudflare)
-  const cfIp = getHeader('cf-connecting-ip');
+  const cfIp = getHeader("cf-connecting-ip");
   if (cfIp) return cfIp.trim();
 
   // Fallback: try to get from headers
-  const remoteAddress = getHeader('remote-addr');
+  const remoteAddress = getHeader("remote-addr");
   if (remoteAddress) return remoteAddress.trim();
 
   return null;
@@ -82,7 +82,7 @@ export function getHashedClientIp(
   headers:
     | Headers
     | Map<string, string>
-    | Record<string, string | string[] | undefined>
+    | Record<string, string | string[] | undefined>,
 ): string | null {
   const ip = getClientIp(headers);
   if (!ip) return null;

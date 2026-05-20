@@ -23,7 +23,7 @@ import {
   setCache,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
+} from "@feed/api";
 import {
   and,
   arcStates,
@@ -45,22 +45,18 @@ import {
   shares,
   sql,
   users,
-} from '@feed/db';
-import { StaticDataRegistry } from '@feed/engine';
-import type {
-  ArcStateType,
-  NarrativePost,
-  NarrativeStory,
-} from '@feed/shared';
-import { logger, toISO } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { compareFeedStories } from '../feed-cursor';
-import { dedupeQuestionMarketRows } from '../questionMarketRows';
+} from "@feed/db";
+import { StaticDataRegistry } from "@feed/engine";
+import type { ArcStateType, NarrativePost, NarrativeStory } from "@feed/shared";
+import { logger, toISO } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { compareFeedStories } from "../feed-cursor";
+import { dedupeQuestionMarketRows } from "../questionMarketRows";
 import {
   calculateArcStateMultiplier,
   calculateResolutionBoost,
   calculateStoryScore,
-} from './scoring';
+} from "./scoring";
 
 // Query limits
 const MAX_CANDIDATE_POSTS = 500;
@@ -78,7 +74,7 @@ const MAX_STANDALONE_POSTS = 20;
 // Prevents spam of zero-engagement posts from drowning active stories.
 const MIN_STANDALONE_SCORE = 0.05;
 
-const GENERAL_STORY_KEY = '__general__';
+const GENERAL_STORY_KEY = "__general__";
 
 interface NarrativeFeedResponse {
   success: true;
@@ -89,33 +85,33 @@ interface NarrativeFeedResponse {
 function toISOStringStrict(
   date: Date | string | null | undefined,
   fieldName: string,
-  postId: string
+  postId: string,
 ): string {
   if (date === null || date === undefined) {
     logger.warn(
       `Null/undefined ${fieldName} for post ${postId}`,
       { postId },
-      'NarrativeFeedAPI'
+      "NarrativeFeedAPI",
     );
     return new Date().toISOString();
   }
   if (date instanceof Date) {
-    if (isNaN(date.getTime())) {
+    if (Number.isNaN(date.getTime())) {
       logger.warn(
         `Invalid Date for ${fieldName} on post ${postId}`,
         { postId },
-        'NarrativeFeedAPI'
+        "NarrativeFeedAPI",
       );
       return new Date().toISOString();
     }
     return toISO(date);
   }
   const parsed = new Date(date);
-  if (!isNaN(parsed.getTime())) return toISO(parsed);
+  if (!Number.isNaN(parsed.getTime())) return toISO(parsed);
   logger.warn(
     `Unparseable ${fieldName} "${date}" for post ${postId}`,
     { postId },
-    'NarrativeFeedAPI'
+    "NarrativeFeedAPI",
   );
   return new Date().toISOString();
 }
@@ -140,10 +136,10 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     error: rateLimitErr,
     user,
     rateLimitInfo,
-  } = await publicRateLimit(request, 'read');
+  } = await publicRateLimit(request, "read");
   if (rateLimitErr) return rateLimitErr;
 
-  const cacheKey = 'feed:narrative:v1';
+  const cacheKey = "feed:narrative:v1";
 
   const result = await getCacheOrFetch<CachedResult>(
     cacheKey,
@@ -173,8 +169,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
             gte(posts.timestamp, cutoff),
             lte(posts.timestamp, now),
             isNull(posts.commentOnPostId),
-            isNull(posts.parentCommentId)
-          )
+            isNull(posts.parentCommentId),
+          ),
         )
         .orderBy(desc(posts.timestamp))
         .limit(MAX_CANDIDATE_POSTS);
@@ -189,7 +185,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       // pattern in apps/web/src/app/api/posts/route.ts to avoid N separate round-trips.
       const postIdsArray = sql`ARRAY[${sql.join(
         postIds.map((id) => sql`${id}`),
-        sql`, `
+        sql`, `,
       )}]::text[]`;
 
       const engagementRows = await db.execute(sql`
@@ -236,11 +232,11 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         ? (engagementRows as Record<string, unknown>[])
         : [];
       for (const row of engagementResultRows) {
-        const postId = String(row['post_id'] ?? '');
+        const postId = String(row.post_id ?? "");
         if (!postId) continue;
-        reactionMap.set(postId, Number(row['like_count'] ?? 0));
-        commentMap.set(postId, Number(row['comment_count'] ?? 0));
-        shareMap.set(postId, Number(row['share_count'] ?? 0));
+        reactionMap.set(postId, Number(row.like_count ?? 0));
+        commentMap.set(postId, Number(row.comment_count ?? 0));
+        shareMap.set(postId, Number(row.share_count ?? 0));
       }
 
       const authorIds = [...new Set(recentPosts.map((p) => p.authorId))];
@@ -262,7 +258,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         ...new Set(
           recentPosts
             .filter((p) => p.originalPostId)
-            .map((p) => p.originalPostId as string)
+            .map((p) => p.originalPostId as string),
         ),
       ];
       const originalPostMap = new Map<
@@ -303,7 +299,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
                 .where(inArray(users.id, originalAuthorIds))
             : [];
         const originalUserMap = new Map(
-          originalAuthorUsers.map((u) => [u.id, u])
+          originalAuthorUsers.map((u) => [u.id, u]),
         );
         for (const r of originalRows) {
           const u = originalUserMap.get(r.authorId);
@@ -325,7 +321,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         ...new Set(
           recentPosts
             .map((p) => p.relatedQuestion)
-            .filter((q): q is number => q !== null && q !== undefined)
+            .filter((q): q is number => q !== null && q !== undefined),
         ),
       ];
       interface QuestionMeta {
@@ -350,10 +346,10 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         rows.forEach((q) =>
           questionMetaMap.set(q.questionNumber, {
             title: q.text,
-            status: q.status ?? 'active',
+            status: q.status ?? "active",
             arcState: (q.arcState as ArcStateType | null) ?? null,
             resolutionDate: q.resolutionDate,
-          })
+          }),
         );
       }
 
@@ -366,8 +362,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         const shareCount = shareMap.get(post.id) ?? 0;
         const timestamp = toISOStringStrict(
           post.timestamp,
-          'timestamp',
-          post.id
+          "timestamp",
+          post.id,
         );
 
         const authorUser = userMap.get(post.authorId);
@@ -383,11 +379,11 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         let authorProfileImageUrl: string | null = null;
 
         // Derive author type for slot-pattern classification in the frontend.
-        const authorType: 'actor' | 'news' | 'user' = actorRecord
-          ? 'actor'
+        const authorType: "actor" | "news" | "user" = actorRecord
+          ? "actor"
           : orgRecord
-            ? 'news'
-            : 'user';
+            ? "news"
+            : "user";
 
         // Filter NPC org "NEW MARKET:" announcements — these are system-generated
         // posts that duplicate the NewMarketCard component. The card is the
@@ -395,7 +391,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         // post ID below so the card's InteractionBar can anchor to it.
         if (
           orgRecord &&
-          post.content.trimStart().toUpperCase().startsWith('NEW MARKET:')
+          post.content.trimStart().toUpperCase().startsWith("NEW MARKET:")
         ) {
           continue;
         }
@@ -419,15 +415,15 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
         // Build repost metadata the same way the main feed does so PostCard
         // can render repost cards with the original post's content.
-        const isRepost = post.type === 'repost';
-        const isQuote = isRepost && post.content !== '';
+        const isRepost = post.type === "repost";
+        const isQuote = isRepost && post.content !== "";
         const originalPostData = post.originalPostId
           ? (originalPostMap.get(post.originalPostId) ?? null)
           : null;
-        let originalPost: NarrativePost['originalPost'] = null;
+        let originalPost: NarrativePost["originalPost"] = null;
         if (originalPostData) {
           const origActor = StaticDataRegistry.getActor(
-            originalPostData.authorId
+            originalPostData.authorId,
           );
           const origOrg = origActor
             ? null
@@ -455,8 +451,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
               null,
             timestamp: toISOStringStrict(
               originalPostData.timestamp,
-              'timestamp',
-              originalPostData.id
+              "timestamp",
+              originalPostData.id,
             ),
           };
         }
@@ -508,18 +504,18 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         // Sort posts newest first within each story
         storyPosts.sort(
           (a, b) =>
-            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
         );
 
-        const newestTimestamp = new Date(storyPosts[0]!.timestamp);
+        const newestTimestamp = new Date(storyPosts[0]?.timestamp);
         const totalLikes = storyPosts.reduce((acc, p) => acc + p.likeCount, 0);
         const totalComments = storyPosts.reduce(
           (acc, p) => acc + p.commentCount,
-          0
+          0,
         );
         const totalShares = storyPosts.reduce(
           (acc, p) => acc + p.shareCount,
-          0
+          0,
         );
         const questionNumber =
           storyKey === GENERAL_STORY_KEY ? null : parseInt(storyKey, 10);
@@ -527,11 +523,11 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
           questionNumber !== null ? questionMetaMap.get(questionNumber) : null;
         const storyTitle =
           meta?.title ??
-          (questionNumber !== null ? `Story #${questionNumber}` : 'General');
+          (questionNumber !== null ? `Story #${questionNumber}` : "General");
         const arcState = meta?.arcState ?? null;
 
         // Skip resolved questions — no remaining tension
-        if (meta?.status === 'resolved') continue;
+        if (meta?.status === "resolved") continue;
         // Skip questions whose deadline has passed even if status hasn't updated yet
         if (meta?.resolutionDate && meta.resolutionDate <= now) continue;
 
@@ -540,7 +536,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
           totalComments,
           totalShares,
           storyPosts.length,
-          newestTimestamp
+          newestTimestamp,
         );
         const resolutionBoost = meta?.resolutionDate
           ? calculateResolutionBoost(meta.resolutionDate)
@@ -572,7 +568,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
             post.commentCount,
             post.shareCount,
             1,
-            new Date(post.timestamp)
+            new Date(post.timestamp),
           ),
         }))
         .sort((a, b) => b.score - a.score)
@@ -584,7 +580,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         const rawTitle =
           post.articleTitle ??
           (post.content.length > 80
-            ? post.content.slice(0, 80).replace(/\s+\S*$/, '') + '…'
+            ? `${post.content.slice(0, 80).replace(/\s+\S*$/, "")}…`
             : post.content);
 
         stories.push({
@@ -615,7 +611,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
           .from(questions)
           .innerJoin(
             markets,
-            sql`lower(trim(${markets.question})) = lower(trim(${questions.text}))`
+            sql`lower(trim(${markets.question})) = lower(trim(${questions.text}))`,
           )
           .where(inArray(questions.questionNumber, storyQuestionNumbers))
           .orderBy(desc(markets.createdAt));
@@ -623,7 +619,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
           dedupeQuestionMarketRows(marketRows).map((r) => [
             r.questionNumber,
             r.marketId,
-          ])
+          ]),
         );
         for (const story of stories) {
           if (!story.isNewMarket && story.questionNumber !== null) {
@@ -643,7 +639,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       const existingQuestionNumbers = new Set(
         stories
           .map((s) => s.questionNumber)
-          .filter((n): n is number => n !== null)
+          .filter((n): n is number => n !== null),
       );
 
       // Join markets on question text to get the market UUID (for deep-linking
@@ -667,15 +663,15 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         // and is tracked as a follow-up schema migration.
         .leftJoin(
           markets,
-          sql`lower(trim(${markets.question})) = lower(trim(${questions.text}))`
+          sql`lower(trim(${markets.question})) = lower(trim(${questions.text}))`,
         )
         .where(
           and(
-            eq(questions.status, 'active'),
+            eq(questions.status, "active"),
             gte(questions.createdAt, newMarketCutoff),
             lt(
               questions.resolutionDate,
-              new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
+              new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000),
             ), // resolves within 30 days
             // inArray requires a non-empty array. When no stories exist yet,
             // use [-1] as a sentinel (no valid questionNumber is ever -1) so
@@ -685,10 +681,10 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
                 questions.questionNumber,
                 existingQuestionNumbers.size > 0
                   ? [...existingQuestionNumbers]
-                  : [-1]
-              )
-            )
-          )
+                  : [-1],
+              ),
+            ),
+          ),
         )
         .orderBy(desc(questions.createdAt), desc(markets.createdAt));
 
@@ -696,7 +692,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       // later unique questions from the final feed payload.
       const newMarketQuestions = dedupeQuestionMarketRows(newMarketRows).slice(
         0,
-        5
+        5,
       );
 
       for (const q of newMarketQuestions) {
@@ -705,7 +701,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
           (now.getTime() - q.createdAt.getTime()) / (1000 * 60 * 60);
         const recencyScore = Math.exp((-Math.LN2 * hoursSinceOpen) / 6); // 6h half-life
         const arcMultiplier = calculateArcStateMultiplier(
-          (q.arcState as ArcStateType | null) ?? null
+          (q.arcState as ArcStateType | null) ?? null,
         );
 
         stories.push({
@@ -741,7 +737,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     },
     // 120s TTL — cache invalidation on new post creation (posts/route.ts) keeps
     // this fresh in practice; TTL is a safety net, not the freshness mechanism.
-    { namespace: 'feed', ttl: 120 }
+    { namespace: "feed", ttl: 120 },
   );
 
   // Per-user enrichment — isLiked, isShared, hasUserPosition.
@@ -761,7 +757,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       const enrichCacheKey = narrativeEnrichmentKey(userId);
       const cachedEnrichment = await getCache<UserEnrichmentCache>(
         enrichCacheKey,
-        { namespace: 'feed' }
+        { namespace: "feed" },
       );
 
       let enrichment: UserEnrichmentCache;
@@ -779,8 +775,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
                   and(
                     inArray(reactions.postId, result.postIds),
                     eq(reactions.userId, userId),
-                    eq(reactions.type, 'like')
-                  )
+                    eq(reactions.type, "like"),
+                  ),
                 )
             : Promise.resolve([]),
           result.postIds.length > 0
@@ -790,8 +786,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
                 .where(
                   and(
                     inArray(shares.postId, result.postIds),
-                    eq(shares.userId, userId)
-                  )
+                    eq(shares.userId, userId),
+                  ),
                 )
             : Promise.resolve([]),
           questionNumbersInResult.length > 0
@@ -801,10 +797,10 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
                 .where(
                   and(
                     eq(positions.userId, userId),
-                    eq(positions.status, 'active'),
+                    eq(positions.status, "active"),
                     isNotNull(positions.questionId),
-                    inArray(positions.questionId, questionNumbersInResult)
-                  )
+                    inArray(positions.questionId, questionNumbersInResult),
+                  ),
                 )
             : Promise.resolve([]),
         ]);
@@ -826,13 +822,13 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         // cache regenerates before this TTL expires, new posts will show
         // isLiked: false until the enrichment key expires (max 30s).
         setCache(enrichCacheKey, enrichment, {
-          namespace: 'feed',
+          namespace: "feed",
           ttl: USER_ENRICHMENT_TTL_S,
         }).catch((err) => {
           logger.error(
-            'Failed to write enrichment cache',
+            "Failed to write enrichment cache",
             { error: err, userId, key: enrichCacheKey },
-            'NarrativeFeedAPI'
+            "NarrativeFeedAPI",
           );
         });
       }
@@ -867,9 +863,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       // Redis unavailable or DB enrichment query failed — degrade to the
       // un-personalized base feed rather than returning HTTP 500.
       logger.error(
-        'Enrichment failed — serving un-personalized feed',
+        "Enrichment failed — serving un-personalized feed",
         { error: err, userId },
-        'NarrativeFeedAPI'
+        "NarrativeFeedAPI",
       );
     }
   }
@@ -883,13 +879,13 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   if (rateLimitInfo) {
     if (user?.userId) {
       // Personalized response — must not be shared by CDN across users
-      response.headers.set('Cache-Control', 'private, no-store');
-      response.headers.set('X-RateLimit-Limit', rateLimitInfo.limit.toString());
+      response.headers.set("Cache-Control", "private, no-store");
+      response.headers.set("X-RateLimit-Limit", rateLimitInfo.limit.toString());
       response.headers.set(
-        'X-RateLimit-Remaining',
-        rateLimitInfo.remaining.toString()
+        "X-RateLimit-Remaining",
+        rateLimitInfo.remaining.toString(),
       );
-      response.headers.set('X-RateLimit-Reset', toISO(rateLimitInfo.resetAt));
+      response.headers.set("X-RateLimit-Reset", toISO(rateLimitInfo.resetAt));
     } else {
       addPublicReadHeaders(response, rateLimitInfo);
     }

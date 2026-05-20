@@ -1,14 +1,14 @@
-'use client';
+"use client";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
-import { Loader2 } from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
-import { UserOnboardingFlow } from '@/components/onboarding/UserOnboardingFlow';
-import { useUserSignupOnboarding } from '@/components/onboarding/user-signup-onboarding-context';
-import { PageContainer } from '@/components/shared/PageContainer';
-import { useAuth } from '@/hooks/useAuth';
+import { Loader2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
+import { UserOnboardingFlow } from "@/components/onboarding/UserOnboardingFlow";
+import { useUserSignupOnboarding } from "@/components/onboarding/user-signup-onboarding-context";
+import { PageContainer } from "@/components/shared/PageContainer";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -18,20 +18,20 @@ export default function OnboardingPage() {
 
   useEffect(() => {
     if (!ready || authenticated) return;
-    router.push('/feed');
+    router.push("/feed");
     const timer = setTimeout(() => login(), 500);
     return () => clearTimeout(timer);
   }, [ready, authenticated, router, login]);
 
   useEffect(() => {
     if (!ready || !authenticated || loadingProfile) return;
-    if (profileFetchStatus !== 'done') return;
+    if (profileFetchStatus !== "done") return;
     if (!flow) return;
     // Wait for the provider to finish initialising — avoids a one-tick race where
     // loadingProfile is already false but isReadyToShow hasn't been set yet.
     if (!flow.isOnboardingResolved) return;
     if (flow.shouldShowOnboarding) return;
-    router.replace('/feed');
+    router.replace("/feed");
   }, [ready, authenticated, loadingProfile, profileFetchStatus, flow, router]);
 
   if (!ready || !authenticated) {
@@ -40,7 +40,7 @@ export default function OnboardingPage() {
 
   // Show loading shell while profile is still resolving.
   // Once flow is ready and shouldShowOnboarding is true, skip straight to the flow.
-  const stillResolving = loadingProfile || profileFetchStatus !== 'done';
+  const stillResolving = loadingProfile || profileFetchStatus !== "done";
 
   if (stillResolving) {
     return (

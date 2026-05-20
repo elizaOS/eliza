@@ -14,20 +14,20 @@
  * Covers all market durations (long-term, weekly, daily, intraday, flash).
  */
 export type ArcStateType =
-  | 'setup'
-  | 'tension'
-  | 'escalation'
-  | 'crisis'
-  | 'revelation'
-  | 'resolution'
-  | 'resolving'
-  | 'active'
-  | 'climax'
-  | 'live'
-  | 'morning'
-  | 'midday'
-  | 'afternoon'
-  | 'evening';
+  | "setup"
+  | "tension"
+  | "escalation"
+  | "crisis"
+  | "revelation"
+  | "resolution"
+  | "resolving"
+  | "active"
+  | "climax"
+  | "live"
+  | "morning"
+  | "midday"
+  | "afternoon"
+  | "evening";
 
 /**
  * A single post within a narrative story group.
@@ -59,7 +59,7 @@ export interface NarrativePost {
    * - 'news': news/media org NPC (e.g. AIxios, ForbesAI, WAIred)
    * - 'user': real platform user
    */
-  authorType?: 'actor' | 'news' | 'user';
+  authorType?: "actor" | "news" | "user";
   // Repost fields — mirrors the shape PostCard expects
   isRepost?: boolean;
   isQuote?: boolean;
@@ -100,7 +100,7 @@ export interface NarrativeStory {
   primaryAuthorId?: string | null;
   topicKey?: string | null;
   topicLabel?: string | null;
-  itemType?: 'post' | 'article' | 'market';
+  itemType?: "post" | "article" | "market";
   isCarryover?: boolean;
   /** True when this entry is a newly-opened market (< 24h), not a post group */
   isNewMarket?: boolean;
@@ -125,31 +125,31 @@ export interface NarrativeStory {
 }
 
 export type FeedSurface =
-  | 'for_you'
-  | 'following'
-  | 'trades'
-  | 'latest'
-  | 'hot'
-  | 'stories';
+  | "for_you"
+  | "following"
+  | "trades"
+  | "latest"
+  | "hot"
+  | "stories";
 
 export type FeedEventAction =
-  | 'impression'
-  | 'visible_2s'
-  | 'open_post'
-  | 'open_article'
-  | 'open_market'
-  | 'like'
-  | 'share'
-  | 'comment'
-  | 'follow'
-  | 'hide'
-  | 'trade_after_view';
+  | "impression"
+  | "visible_2s"
+  | "open_post"
+  | "open_article"
+  | "open_market"
+  | "like"
+  | "share"
+  | "comment"
+  | "follow"
+  | "hide"
+  | "trade_after_view";
 
 export interface FeedEventPayload {
   actionType: FeedEventAction;
   surface: FeedSurface;
   itemId: string;
-  itemType: 'post' | 'article' | 'market';
+  itemType: "post" | "article" | "market";
   clusterId?: string | null;
   marketId?: string | null;
   topicKey?: string | null;

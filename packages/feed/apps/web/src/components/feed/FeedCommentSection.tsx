@@ -1,24 +1,24 @@
-'use client';
+"use client";
 
-import type { CommentData, CommentWithReplies } from '@feed/shared';
-import { cn, getProfileUrl } from '@feed/shared';
-import { MessageCircle, X } from 'lucide-react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CommentCard } from '@/components/interactions/CommentCard';
-import { CommentInput } from '@/components/interactions/CommentInput';
-import { Avatar } from '@/components/shared/Avatar';
-import { EmptyState } from '@/components/shared/EmptyState';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { TaggedText } from '@/components/shared/TaggedText';
+import type { CommentData, CommentWithReplies } from "@feed/shared";
+import { cn, getProfileUrl } from "@feed/shared";
+import { MessageCircle, X } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { CommentCard } from "@/components/interactions/CommentCard";
+import { CommentInput } from "@/components/interactions/CommentInput";
+import { Avatar } from "@/components/shared/Avatar";
+import { EmptyState } from "@/components/shared/EmptyState";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { TaggedText } from "@/components/shared/TaggedText";
 import {
   isNpcIdentifier,
   VerifiedBadge,
-} from '@/components/shared/VerifiedBadge';
-import { useAuth } from '@/hooks/useAuth';
-import { useInteractionStore } from '@/stores/interactionStore';
-import { apiUrl } from '@/utils/api-url';
+} from "@/components/shared/VerifiedBadge";
+import { useAuth } from "@/hooks/useAuth";
+import { useInteractionStore } from "@/stores/interactionStore";
+import { apiUrl } from "@/utils/api-url";
 
 type PostPreviewData = {
   id: string;
@@ -38,11 +38,11 @@ function PostPreview({ post }: { post: PostPreviewData }) {
 
   // Defensive check for invalid timestamps
   const isValidDate =
-    !isNaN(postDate.getTime()) && isFinite(postDate.getTime());
+    !Number.isNaN(postDate.getTime()) && Number.isFinite(postDate.getTime());
 
   let timeAgo: string;
   if (!isValidDate) {
-    timeAgo = 'Unknown time';
+    timeAgo = "Unknown time";
   } else {
     // Clamp to 0 to handle future timestamps deterministically (treat as "Just now")
     const diffMs = Math.max(0, now.getTime() - postDate.getTime());
@@ -51,17 +51,17 @@ function PostPreview({ post }: { post: PostPreviewData }) {
 
     timeAgo =
       diffMinutes < 1
-        ? 'Just now'
+        ? "Just now"
         : diffMinutes < 60
           ? `${diffMinutes}m ago`
           : diffHours < 24
             ? `${diffHours}h ago`
-            : postDate.toLocaleDateString('en-US', {
-                month: 'short',
-                day: 'numeric',
+            : postDate.toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
                 year:
                   postDate.getFullYear() !== now.getFullYear()
-                    ? 'numeric'
+                    ? "numeric"
                     : undefined,
               });
   }
@@ -69,12 +69,12 @@ function PostPreview({ post }: { post: PostPreviewData }) {
   const authorIsNPC = isNpcIdentifier(post.authorId);
 
   const handleTaggedTextClick = (tag: string) => {
-    if (tag.startsWith('@')) {
+    if (tag.startsWith("@")) {
       const username = tag.slice(1);
-      router.push(getProfileUrl('', username));
+      router.push(getProfileUrl("", username));
       return;
     }
-    if (tag.startsWith('$')) {
+    if (tag.startsWith("$")) {
       const symbol = tag.slice(1);
       router.push(`/markets?search=${encodeURIComponent(symbol)}`);
     }
@@ -122,7 +122,7 @@ function PostPreview({ post }: { post: PostPreviewData }) {
 
             <time
               className="shrink-0 text-foreground/50 text-sm"
-              title={isValidDate ? postDate.toLocaleString() : 'Unknown time'}
+              title={isValidDate ? postDate.toLocaleString() : "Unknown time"}
             >
               {timeAgo}
             </time>
@@ -131,7 +131,7 @@ function PostPreview({ post }: { post: PostPreviewData }) {
 
         <div className="whitespace-pre-wrap break-words text-foreground/90 leading-relaxed">
           <TaggedText
-            text={post.content || ''}
+            text={post.content || ""}
             onTagClick={handleTaggedTextClick}
           />
         </div>
@@ -211,8 +211,8 @@ export function FeedCommentSection({
   } | null>(postData || null);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingPost, setIsLoadingPost] = useState(false);
-  const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'popular'>(
-    'newest'
+  const [sortBy, setSortBy] = useState<"newest" | "oldest" | "popular">(
+    "newest",
   );
 
   const { loadComments, editComment, deleteComment } = useInteractionStore();
@@ -222,17 +222,17 @@ export function FeedCommentSection({
     if (!onClose) return; // Only for modal mode
 
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === "Escape") {
         onClose();
       }
     };
 
-    document.addEventListener('keydown', handleEscape);
-    document.body.style.overflow = 'hidden';
+    document.addEventListener("keydown", handleEscape);
+    document.body.style.overflow = "hidden";
 
     return () => {
-      document.removeEventListener('keydown', handleEscape);
-      document.body.style.overflow = '';
+      document.removeEventListener("keydown", handleEscape);
+      document.body.style.overflow = "";
     };
   }, [onClose]);
 
@@ -298,7 +298,7 @@ export function FeedCommentSection({
   // Helper functions
   const removeCommentById = (
     commentList: CommentWithReplies[],
-    commentId: string
+    commentId: string,
   ): CommentWithReplies[] => {
     return commentList
       .filter((comment) => comment.id !== commentId)
@@ -311,7 +311,7 @@ export function FeedCommentSection({
   const addReplyToComment = (
     commentList: CommentWithReplies[],
     parentCommentId: string,
-    newReply: CommentWithReplies
+    newReply: CommentWithReplies,
   ): CommentWithReplies[] => {
     return commentList.map((comment) => {
       if (comment.id === parentCommentId) {
@@ -326,7 +326,7 @@ export function FeedCommentSection({
           replies: addReplyToComment(
             comment.replies,
             parentCommentId,
-            newReply
+            newReply,
           ),
         };
       }
@@ -336,7 +336,7 @@ export function FeedCommentSection({
 
   const findParentAuthorName = (
     commentList: CommentWithReplies[],
-    parentCommentId: string
+    parentCommentId: string,
   ): string | undefined => {
     for (const comment of commentList) {
       if (comment.id === parentCommentId) {
@@ -363,7 +363,7 @@ export function FeedCommentSection({
 
   const handleReplySubmit = async (
     replyComment: CommentData,
-    parentCommentId: string
+    parentCommentId: string,
   ) => {
     if (!postId) return;
 
@@ -384,7 +384,7 @@ export function FeedCommentSection({
       userName:
         replyComment.author?.displayName ||
         replyComment.author?.username ||
-        'Unknown',
+        "Unknown",
       userUsername: replyComment.author?.username || null,
       userAvatar: replyComment.author?.profileImageUrl || undefined,
       parentCommentId: replyComment.parentCommentId,
@@ -395,7 +395,7 @@ export function FeedCommentSection({
     };
 
     setComments((prev) =>
-      addReplyToComment(prev, parentCommentId, optimisticReply)
+      addReplyToComment(prev, parentCommentId, optimisticReply),
     );
     // Brief delay to allow the optimistic update to render before
     // fetching server data, preventing visual jank from rapid state changes
@@ -421,7 +421,7 @@ export function FeedCommentSection({
       userName:
         commentData.author?.displayName ||
         commentData.author?.username ||
-        'Unknown',
+        "Unknown",
       userUsername: commentData.author?.username || null,
       userAvatar: commentData.author?.profileImageUrl || undefined,
       parentCommentId: undefined,
@@ -455,15 +455,15 @@ export function FeedCommentSection({
 
       // For non-user comments (or both are user comments), apply the selected sort
       switch (sortBy) {
-        case 'newest':
+        case "newest":
           return (
             new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
           );
-        case 'oldest':
+        case "oldest":
           return (
             new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
           );
-        case 'popular':
+        case "popular":
           return b.likeCount - a.likeCount;
         default:
           return 0;
@@ -508,9 +508,9 @@ export function FeedCommentSection({
         <div className="pointer-events-none fixed inset-0 z-50 flex items-start justify-center px-4 pt-[10vh]">
           <div
             className={cn(
-              'pointer-events-auto relative w-full max-w-[700px] rounded-2xl bg-background shadow-2xl',
-              'fade-in-0 zoom-in-95 animate-in duration-200',
-              'flex max-h-[85vh] flex-col'
+              "pointer-events-auto relative w-full max-w-[700px] rounded-2xl bg-background shadow-2xl",
+              "fade-in-0 zoom-in-95 animate-in duration-200",
+              "flex max-h-[85vh] flex-col",
             )}
             onClick={(e) => e.stopPropagation()}
           >
@@ -564,16 +564,16 @@ export function FeedCommentSection({
             <div className="flex shrink-0 items-center gap-2 bg-background px-4 py-2">
               <span className="text-muted-foreground text-xs">Sort:</span>
               <div className="flex gap-1">
-                {(['newest', 'oldest', 'popular'] as const).map((option) => (
+                {(["newest", "oldest", "popular"] as const).map((option) => (
                   <button
                     key={option}
                     type="button"
                     onClick={() => setSortBy(option)}
                     className={cn(
-                      'rounded px-2 py-0.5 text-xs capitalize transition-colors',
+                      "rounded px-2 py-0.5 text-xs capitalize transition-colors",
                       sortBy === option
-                        ? 'bg-[#0066FF] text-primary-foreground'
-                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                        ? "bg-[#0066FF] text-primary-foreground"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground",
                     )}
                   >
                     {option}
@@ -604,14 +604,14 @@ export function FeedCommentSection({
                   <CommentCard
                     key={comment.id}
                     comment={comment}
-                    postId={postId || ''}
+                    postId={postId || ""}
                     onEdit={handleEdit}
                     onDelete={handleDelete}
                     onReplySubmit={(replyComment: CommentData) => {
                       if (replyComment.parentCommentId) {
                         handleReplySubmit(
                           replyComment,
-                          replyComment.parentCommentId
+                          replyComment.parentCommentId,
                         );
                       }
                     }}

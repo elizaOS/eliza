@@ -79,10 +79,10 @@
  * @see {@link /lib/validation/schemas} Validation schemas
  */
 
-import { optionalAuth, successResponse, withErrorHandling } from '@feed/api';
-import { asPublic, asUser } from '@feed/db';
-import { logger, TrendingPostsQuerySchema, toISO } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+import { optionalAuth, successResponse, withErrorHandling } from "@feed/api";
+import { asPublic, asUser } from "@feed/db";
+import { logger, TrendingPostsQuerySchema, toISO } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 interface TrendingPost {
   id: string;
@@ -106,7 +106,7 @@ function calculateTrendingScore(
   likeCount: number,
   commentCount: number,
   shareCount: number,
-  timestamp: Date
+  timestamp: Date,
 ): number {
   const now = Date.now();
   const postTime = new Date(timestamp).getTime();
@@ -125,9 +125,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   // Validate query parameters
   const { searchParams } = new URL(request.url);
   const queryParams = {
-    limit: searchParams.get('limit') || '10',
-    timeframe: searchParams.get('timeframe') || '24h',
-    minInteractions: searchParams.get('minInteractions') || '5',
+    limit: searchParams.get("limit") || "10",
+    timeframe: searchParams.get("timeframe") || "24h",
+    minInteractions: searchParams.get("minInteractions") || "5",
   };
   TrendingPostsQuerySchema.parse(queryParams);
   // Get recent posts from last 24 hours
@@ -139,7 +139,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
   // Get posts, interactions, and users with RLS
   const { posts, allReactions, allComments, allShares, users } =
-    authUser && authUser.userId
+    authUser?.userId
       ? await asUser(authUser, async (db) => {
           const postsList = await db.post.findMany({
             where: {
@@ -150,7 +150,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
               deletedAt: null, // Filter out deleted posts
             },
             orderBy: {
-              timestamp: 'desc',
+              timestamp: "desc",
             },
             take: 100, // Get more posts to calculate trending from
           });
@@ -169,17 +169,17 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
           const postIds = postsList.map((p) => p.id);
           const [reactions, comments, shares] = await Promise.all([
             db.reaction.groupBy({
-              by: ['postId'],
-              where: { postId: { in: postIds }, type: 'like' },
+              by: ["postId"],
+              where: { postId: { in: postIds }, type: "like" },
               _count: { postId: true },
             }),
             db.comment.groupBy({
-              by: ['postId'],
+              by: ["postId"],
               where: { postId: { in: postIds } },
               _count: { postId: true },
             }),
             db.share.groupBy({
-              by: ['postId'],
+              by: ["postId"],
               where: { postId: { in: postIds } },
               _count: { postId: true },
             }),
@@ -210,7 +210,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
               deletedAt: null, // Filter out deleted posts
             },
             orderBy: {
-              timestamp: 'desc',
+              timestamp: "desc",
             },
             take: 100, // Get more posts to calculate trending from
           });
@@ -229,17 +229,17 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
           const postIds = postsList.map((p) => p.id);
           const [reactions, comments, shares] = await Promise.all([
             db.reaction.groupBy({
-              by: ['postId'],
-              where: { postId: { in: postIds }, type: 'like' },
+              by: ["postId"],
+              where: { postId: { in: postIds }, type: "like" },
               _count: { postId: true },
             }),
             db.comment.groupBy({
-              by: ['postId'],
+              by: ["postId"],
               where: { postId: { in: postIds } },
               _count: { postId: true },
             }),
             db.share.groupBy({
-              by: ['postId'],
+              by: ["postId"],
               where: { postId: { in: postIds } },
               _count: { postId: true },
             }),
@@ -271,41 +271,41 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   const reactionMap = new Map(
     allReactions.map((r) => {
       const count =
-        typeof r._count === 'object' &&
+        typeof r._count === "object" &&
         r._count !== null &&
-        'postId' in r._count
+        "postId" in r._count
           ? Number((r._count as { postId: number }).postId)
-          : typeof r._count === 'number'
+          : typeof r._count === "number"
             ? r._count
             : 0;
       return [r.postId, count];
-    })
+    }),
   );
   const commentMap = new Map(
     allComments.map((c) => {
       const count =
-        typeof c._count === 'object' &&
+        typeof c._count === "object" &&
         c._count !== null &&
-        'postId' in c._count
+        "postId" in c._count
           ? Number((c._count as { postId: number }).postId)
-          : typeof c._count === 'number'
+          : typeof c._count === "number"
             ? c._count
             : 0;
       return [c.postId, count];
-    })
+    }),
   );
   const shareMap = new Map(
     allShares.map((s) => {
       const count =
-        typeof s._count === 'object' &&
+        typeof s._count === "object" &&
         s._count !== null &&
-        'postId' in s._count
+        "postId" in s._count
           ? Number((s._count as { postId: number }).postId)
-          : typeof s._count === 'number'
+          : typeof s._count === "number"
             ? s._count
             : 0;
       return [s.postId, count];
-    })
+    }),
   );
   const userMap = new Map(users.map((u) => [u.id, u]));
 
@@ -320,7 +320,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         likeCount,
         commentCount,
         shareCount,
-        post.timestamp
+        post.timestamp,
       );
 
       const user = userMap.get(post.authorId);
@@ -343,9 +343,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     .slice(0, 5); // Top 5 trending posts
 
   logger.info(
-    'Trending posts fetched successfully',
+    "Trending posts fetched successfully",
     { count: trendingPosts.length },
-    'GET /api/feed/widgets/trending-posts'
+    "GET /api/feed/widgets/trending-posts",
   );
 
   return successResponse({

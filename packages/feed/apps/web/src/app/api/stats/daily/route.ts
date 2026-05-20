@@ -3,9 +3,9 @@ import {
   publicRateLimit,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { gameService } from '@feed/engine';
-import type { NextRequest } from 'next/server';
+} from "@feed/api";
+import { gameService } from "@feed/engine";
+import type { NextRequest } from "next/server";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   const { error, rateLimitInfo } = await publicRateLimit(request);

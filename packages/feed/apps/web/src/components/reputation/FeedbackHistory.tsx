@@ -28,20 +28,20 @@
  * />
  * ```
  */
-'use client';
+"use client";
 
-import { getProfileUrl } from '@feed/shared';
-import { formatDistanceToNow } from 'date-fns';
+import { getProfileUrl } from "@feed/shared";
+import { formatDistanceToNow } from "date-fns";
 import {
   AlertCircle,
   MessageSquare,
   Star,
   TrendingDown,
   TrendingUp,
-} from 'lucide-react';
-import Link from 'next/link';
-import { useEffect, useState } from 'react';
-import { apiUrl } from '@/utils/api-url';
+} from "lucide-react";
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import { apiUrl } from "@/utils/api-url";
 
 /**
  * Feedback item structure for feedback history.
@@ -75,7 +75,7 @@ export function FeedbackHistory({
   userId,
   limit = 10,
   showAutoFeedback = true,
-  className = '',
+  className = "",
 }: FeedbackHistoryProps) {
   const [feedbackItems, setFeedbackItems] = useState<FeedbackItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -89,7 +89,9 @@ export function FeedbackHistory({
         includeAuto: showAutoFeedback.toString(),
       });
       const response = await fetch(
-        apiUrl(`/api/feedback/received/${encodeURIComponent(userId)}?${params}`)
+        apiUrl(
+          `/api/feedback/received/${encodeURIComponent(userId)}?${params}`,
+        ),
       );
       const data = await response.json();
 
@@ -113,11 +115,11 @@ export function FeedbackHistory({
 
   const getCategoryIcon = (category: string | null) => {
     switch (category) {
-      case 'game_performance':
+      case "game_performance":
         return <TrendingUp className="h-3 w-3 text-green-500" />;
-      case 'trade_execution':
+      case "trade_execution":
         return <TrendingUp className="h-3 w-3 text-blue-500" />;
-      case 'social_interaction':
+      case "social_interaction":
         return <MessageSquare className="h-3 w-3 text-purple-500" />;
       default:
         return <Star className="h-3 w-3 text-gray-500" />;
@@ -126,20 +128,20 @@ export function FeedbackHistory({
 
   const getCategoryLabel = (category: string | null): string => {
     switch (category) {
-      case 'game_performance':
-        return 'Game';
-      case 'trade_execution':
-        return 'Trade';
-      case 'social_interaction':
-        return 'Social';
+      case "game_performance":
+        return "Game";
+      case "trade_execution":
+        return "Trade";
+      case "social_interaction":
+        return "Social";
       default:
-        return 'General';
+        return "General";
     }
   };
 
   const truncateComment = (comment: string, maxLength = 100): string => {
     if (comment.length <= maxLength) return comment;
-    return comment.slice(0, maxLength) + '...';
+    return `${comment.slice(0, maxLength)}...`;
   };
 
   return (
@@ -193,8 +195,8 @@ export function FeedbackHistory({
                     ) : feedback.fromUserName ? (
                       <Link
                         href={getProfileUrl(
-                          feedback.fromUserId || '',
-                          feedback.fromUsername
+                          feedback.fromUserId || "",
+                          feedback.fromUsername,
                         )}
                         className="font-semibold text-foreground text-sm hover:underline"
                       >
@@ -226,12 +228,12 @@ export function FeedbackHistory({
                       key={star}
                       className={`h-4 w-4 ${
                         star <= Math.floor(starRating)
-                          ? 'text-yellow-500'
+                          ? "text-yellow-500"
                           : star <= starRating
-                            ? 'text-yellow-500/50'
-                            : 'text-gray-600'
+                            ? "text-yellow-500/50"
+                            : "text-gray-600"
                       }`}
-                      fill={star <= starRating ? 'currentColor' : 'none'}
+                      fill={star <= starRating ? "currentColor" : "none"}
                     />
                   ))}
                   <span className="ml-1 text-muted-foreground text-sm">
@@ -266,7 +268,7 @@ interface FeedbackSummaryCardProps {
 
 export function FeedbackSummaryCard({
   userId,
-  className = '',
+  className = "",
 }: FeedbackSummaryCardProps) {
   const [stats, setStats] = useState({
     averageScore: 0,
@@ -278,7 +280,7 @@ export function FeedbackSummaryCard({
   useEffect(() => {
     const fetchStats = async () => {
       const response = await fetch(
-        apiUrl(`/api/feedback/stats/${encodeURIComponent(userId)}`)
+        apiUrl(`/api/feedback/stats/${encodeURIComponent(userId)}`),
       );
       const data = await response.json();
 
@@ -311,13 +313,13 @@ export function FeedbackSummaryCard({
             <span className="text-muted-foreground text-sm">/5</span>
           </div>
           <div className="text-muted-foreground text-xs">
-            {stats.totalFeedback} review{stats.totalFeedback !== 1 ? 's' : ''}
+            {stats.totalFeedback} review{stats.totalFeedback !== 1 ? "s" : ""}
           </div>
         </div>
         {stats.recentTrend !== 0 && (
           <div
             className={`flex items-center gap-1 font-medium text-xs ${
-              stats.recentTrend > 0 ? 'text-green-500' : 'text-red-500'
+              stats.recentTrend > 0 ? "text-green-500" : "text-red-500"
             }`}
           >
             {stats.recentTrend > 0 ? (

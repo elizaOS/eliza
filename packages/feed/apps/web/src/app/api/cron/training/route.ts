@@ -49,13 +49,13 @@
  * @see {@link /lib/training/AutomationPipeline} Automation pipeline
  */
 
-import { withCronAuth, withErrorHandling } from '@feed/api';
-import { logger } from '@feed/shared';
-import { automationPipeline } from '@feed/training';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+import { withCronAuth, withErrorHandling } from "@feed/api";
+import { logger } from "@feed/shared";
+import { automationPipeline } from "@feed/training";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 export const maxDuration = 60; // 1 minute
 
 /**
@@ -63,9 +63,9 @@ export const maxDuration = 60; // 1 minute
  */
 async function handler(_request: NextRequest) {
   logger.info(
-    'Checking training system status',
+    "Checking training system status",
     undefined,
-    'TrainingStatusCron'
+    "TrainingStatusCron",
   );
 
   // 1. Check if ready to train
@@ -77,35 +77,35 @@ async function handler(_request: NextRequest) {
   // 3. Log readiness status
   if (readiness.ready) {
     logger.info(
-      '✅ System ready for training',
+      "✅ System ready for training",
       {
         trajectories: readiness.stats.totalTrajectories,
         scenarioGroups: readiness.stats.scenarioGroups,
         dataQuality: readiness.stats.dataQuality,
       },
-      'TrainingStatusCron'
+      "TrainingStatusCron",
     );
   } else {
     logger.info(
-      '⏳ System not ready for training',
+      "⏳ System not ready for training",
       {
         reason: readiness.reason,
         stats: readiness.stats,
       },
-      'TrainingStatusCron'
+      "TrainingStatusCron",
     );
   }
 
   // 4. Log recent activity
   logger.info(
-    'Training system metrics',
+    "Training system metrics",
     {
       dataCollection: status.dataCollection,
       latestModel: status.models.latest,
       deployedModels: status.models.deployed,
       lastTraining: status.training.lastCompleted,
     },
-    'TrainingStatusCron'
+    "TrainingStatusCron",
   );
 
   return NextResponse.json({
@@ -114,11 +114,11 @@ async function handler(_request: NextRequest) {
     readiness,
     status,
     message: readiness.ready
-      ? '✅ Ready for training - will run via GitHub Actions at 2 AM UTC'
+      ? "✅ Ready for training - will run via GitHub Actions at 2 AM UTC"
       : `⏳ Not ready: ${readiness.reason}`,
   });
 }
 
 export const GET = withErrorHandling(
-  withCronAuth('TrainingStatusCron', handler)
+  withCronAuth("TrainingStatusCron", handler),
 );

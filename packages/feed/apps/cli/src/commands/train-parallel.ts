@@ -5,14 +5,14 @@
  * This is the proper way to generate training data at scale.
  */
 
-import { closeDatabase, db, eq, users } from '@feed/db';
+import { closeDatabase, db, eq, users } from "@feed/db";
 import {
   ArchetypeConfigService,
   createParallelGenerator,
   type ParallelGenerationConfig,
-} from '@feed/training';
-import { getFlag, getOption, parseArgs, wantsHelp } from '../lib/args.js';
-import { logger } from '../lib/logger.js';
+} from "@feed/training";
+import { getFlag, getOption, type parseArgs, wantsHelp } from "../lib/args.js";
+import { logger } from "../lib/logger.js";
 
 function printHelp(): void {
   console.log(`
@@ -37,7 +37,7 @@ OPTIONS:
 AVAILABLE ARCHETYPES:
 ${ArchetypeConfigService.getAvailableArchetypes()
   .map((a) => `  - ${a}`)
-  .join('\n')}
+  .join("\n")}
 
 EXAMPLES:
   feed train parallel --archetypes trader,degen --num-agents 3 --ticks 20
@@ -54,7 +54,7 @@ NOTES:
 }
 
 export async function runParallelGeneration(
-  parsed: ReturnType<typeof parseArgs>
+  parsed: ReturnType<typeof parseArgs>,
 ): Promise<void> {
   if (wantsHelp(parsed)) {
     printHelp();
@@ -62,39 +62,39 @@ export async function runParallelGeneration(
   }
 
   // Parse options
-  const archetypesArg = getOption(parsed, 'archetypes', 'a') || 'trader';
+  const archetypesArg = getOption(parsed, "archetypes", "a") || "trader";
   const archetypes =
-    archetypesArg === 'all'
+    archetypesArg === "all"
       ? ArchetypeConfigService.getAvailableArchetypes()
-      : archetypesArg.split(',').map((a) => a.trim());
+      : archetypesArg.split(",").map((a) => a.trim());
 
-  const numAgents = parseInt(getOption(parsed, 'num-agents', 'n') || '2', 10);
-  const ticks = parseInt(getOption(parsed, 'ticks', 't') || '10', 10);
-  const parallel = parseInt(getOption(parsed, 'parallel', 'p') || '5', 10);
-  const cleanup = getFlag(parsed, 'cleanup');
-  const dryRun = getFlag(parsed, 'dry-run');
-  const providedManagerId = getOption(parsed, 'manager-id');
+  const numAgents = parseInt(getOption(parsed, "num-agents", "n") || "2", 10);
+  const ticks = parseInt(getOption(parsed, "ticks", "t") || "10", 10);
+  const parallel = parseInt(getOption(parsed, "parallel", "p") || "5", 10);
+  const cleanup = getFlag(parsed, "cleanup");
+  const dryRun = getFlag(parsed, "dry-run");
+  const providedManagerId = getOption(parsed, "manager-id");
 
-  logger.header('Parallel Training Data Generation');
+  logger.header("Parallel Training Data Generation");
 
   console.log();
-  console.log('Configuration:');
-  console.log(`  Archetypes: ${archetypes.join(', ')}`);
+  console.log("Configuration:");
+  console.log(`  Archetypes: ${archetypes.join(", ")}`);
   console.log(`  Agents per archetype: ${numAgents}`);
   console.log(`  Ticks per agent: ${ticks}`);
   console.log(`  Parallel execution: ${parallel} agents at once`);
   console.log(`  Total agents: ${archetypes.length * numAgents}`);
   console.log(
-    `  Expected trajectories: ~${archetypes.length * numAgents * ticks}`
+    `  Expected trajectories: ~${archetypes.length * numAgents * ticks}`,
   );
-  console.log(`  Cleanup after: ${cleanup ? 'Yes' : 'No'}`);
+  console.log(`  Cleanup after: ${cleanup ? "Yes" : "No"}`);
   console.log();
 
   if (dryRun) {
-    console.log('[DRY RUN] Would generate:');
+    console.log("[DRY RUN] Would generate:");
     console.log(`  ${archetypes.length * numAgents} agents`);
     console.log(
-      `  Running in ${Math.ceil((archetypes.length * numAgents) / parallel)} parallel batches`
+      `  Running in ${Math.ceil((archetypes.length * numAgents) / parallel)} parallel batches`,
     );
     console.log(`  ~${archetypes.length * numAgents * ticks} trajectories`);
     console.log();
@@ -125,7 +125,7 @@ export async function runParallelGeneration(
       const anyUser = await db.select().from(users).limit(1);
 
       if (!anyUser[0]) {
-        logger.fail('No users found. Please create a user first.');
+        logger.fail("No users found. Please create a user first.");
         await closeDatabase();
         process.exit(1);
       }
@@ -145,19 +145,19 @@ export async function runParallelGeneration(
   };
 
   // Create and run generator
-  logger.step('Initializing parallel generator...');
+  logger.step("Initializing parallel generator...");
   const generator = await createParallelGenerator(config);
 
-  logger.step('Starting parallel generation...');
-  console.log('Agents will run in parallel batches. Press Ctrl+C to cancel.');
+  logger.step("Starting parallel generation...");
+  console.log("Agents will run in parallel batches. Press Ctrl+C to cancel.");
   console.log();
 
   const result = await generator.generate();
 
   // Display results
-  logger.header('Generation Complete');
+  logger.header("Generation Complete");
   console.log();
-  console.log('Results:');
+  console.log("Results:");
   console.log(`  Agents created: ${result.agentsCreated.length}`);
   console.log(`  Trajectories generated: ${result.trajectoryIds.length}`);
   console.log(`  Total ticks executed: ${result.totalTicks}`);
@@ -166,7 +166,7 @@ export async function runParallelGeneration(
   if (result.errors.length > 0) {
     console.log(`  Errors: ${result.errors.length}`);
     console.log();
-    console.log('Errors:');
+    console.log("Errors:");
     result.errors.slice(0, 5).forEach((err) => console.log(`  - ${err}`));
     if (result.errors.length > 5) {
       console.log(`  ... and ${result.errors.length - 5} more`);
@@ -176,7 +176,7 @@ export async function runParallelGeneration(
 
   // Display archetype stats
   if (Object.keys(result.archetypeStats).length > 0) {
-    console.log('By Archetype:');
+    console.log("By Archetype:");
     for (const [archetype, stats] of Object.entries(result.archetypeStats)) {
       console.log(`  ${archetype}:`);
       console.log(`    Agents: ${stats.agents}`);
@@ -188,12 +188,12 @@ export async function runParallelGeneration(
 
   // Cleanup if requested
   if (cleanup) {
-    logger.step('Cleaning up created agents...');
+    logger.step("Cleaning up created agents...");
     await generator.cleanup();
-    console.log('Agents cleaned up successfully.');
+    console.log("Agents cleaned up successfully.");
     console.log();
   } else {
-    console.log('Created agents:');
+    console.log("Created agents:");
     result.agentsCreated.slice(0, 5).forEach((id) => console.log(`  - ${id}`));
     if (result.agentsCreated.length > 5) {
       console.log(`  ... and ${result.agentsCreated.length - 5} more`);
@@ -201,12 +201,12 @@ export async function runParallelGeneration(
     console.log();
   }
 
-  console.log('Trajectories saved to database.');
+  console.log("Trajectories saved to database.");
   console.log();
-  console.log('Next steps:');
-  console.log('  1. Score trajectories: feed train score');
-  console.log('  2. Export for training: feed train export');
-  console.log('  3. Train model: feed train pipeline');
+  console.log("Next steps:");
+  console.log("  1. Score trajectories: feed train score");
+  console.log("  2. Export for training: feed train export");
+  console.log("  3. Train model: feed train pipeline");
 
   await closeDatabase();
 }

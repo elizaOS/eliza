@@ -16,11 +16,11 @@ import {
   requireAdmin,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { comments, db, eq, posts, reports, withTransaction } from '@feed/db';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { z } from 'zod';
+} from "@feed/api";
+import { comments, db, eq, posts, reports, withTransaction } from "@feed/db";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { z } from "zod";
 
 /**
  * Moderation action types:
@@ -32,8 +32,8 @@ import { z } from 'zod';
  * separate, more privileged action with additional safeguards.
  */
 const ModerateRequestSchema = z.object({
-  action: z.enum(['approve', 'hide']),
-  contentType: z.enum(['post', 'comment']),
+  action: z.enum(["approve", "hide"]),
+  contentType: z.enum(["post", "comment"]),
   reason: z.string().max(500).optional(), // Max 500 chars for reason
 });
 
@@ -42,11 +42,11 @@ const ModerateRequestSchema = z.object({
  * Takes the last IP in the chain which is the most reliable (added by our proxy)
  */
 function getClientIp(request: NextRequest): string | undefined {
-  const forwardedFor = request.headers.get('x-forwarded-for');
+  const forwardedFor = request.headers.get("x-forwarded-for");
   if (!forwardedFor) return undefined;
   // Take the last IP (most reliable - added by our reverse proxy)
   return forwardedFor
-    .split(',')
+    .split(",")
     .map((s) => s.trim())
     .pop();
 }
@@ -54,7 +54,7 @@ function getClientIp(request: NextRequest): string | undefined {
 export const POST = withErrorHandling(
   async (
     request: NextRequest,
-    { params }: { params: Promise<{ contentId: string }> }
+    { params }: { params: Promise<{ contentId: string }> },
   ) => {
     const admin = await requireAdmin(request);
 
@@ -62,7 +62,7 @@ export const POST = withErrorHandling(
     const rateLimitResponse = checkRateLimitAndDuplicates(
       admin.userId,
       null,
-      RATE_LIMIT_CONFIGS.ADMIN_ACTION
+      RATE_LIMIT_CONFIGS.ADMIN_ACTION,
     );
     if (rateLimitResponse) return rateLimitResponse;
 
@@ -72,19 +72,19 @@ export const POST = withErrorHandling(
     const parseResult = ModerateRequestSchema.safeParse(await request.json());
     if (!parseResult.success) {
       return successResponse(
-        { error: 'Invalid request', details: parseResult.error.flatten() },
-        400
+        { error: "Invalid request", details: parseResult.error.flatten() },
+        400,
       );
     }
     const { action, contentType, reason } = parseResult.data;
 
     logger.info(
-      'Content moderation action',
+      "Content moderation action",
       { contentId, action, contentType, adminId: admin.userId },
-      'POST /api/admin/content-queue/[contentId]'
+      "POST /api/admin/content-queue/[contentId]",
     );
 
-    if (contentType === 'post') {
+    if (contentType === "post") {
       // Handle post moderation
       const [existingPost] = await db
         .select({ id: posts.id, deletedAt: posts.deletedAt })
@@ -93,19 +93,19 @@ export const POST = withErrorHandling(
         .limit(1);
 
       if (!existingPost) {
-        return successResponse({ error: 'Post not found' }, 404);
+        return successResponse({ error: "Post not found" }, 404);
       }
 
       const clientIp = getClientIp(request);
-      const userAgent = request.headers.get('user-agent') ?? undefined;
+      const userAgent = request.headers.get("user-agent") ?? undefined;
 
-      if (action === 'approve') {
+      if (action === "approve") {
         // Mark reports as dismissed
         await db
           .update(reports)
           .set({
-            status: 'dismissed',
-            resolution: 'Content approved by admin',
+            status: "dismissed",
+            resolution: "Content approved by admin",
             resolvedBy: admin.userId,
             resolvedAt: new Date(),
             updatedAt: new Date(),
@@ -114,15 +114,15 @@ export const POST = withErrorHandling(
 
         await logAdminModify({
           adminId: admin.userId,
-          resourceType: 'post',
+          resourceType: "post",
           resourceId: contentId,
-          previousValue: { status: 'pending' },
-          newValue: { status: 'approved' },
+          previousValue: { status: "pending" },
+          newValue: { status: "approved" },
           ipAddress: clientIp,
           userAgent,
-          metadata: { action: 'approve' },
+          metadata: { action: "approve" },
         });
-      } else if (action === 'hide') {
+      } else if (action === "hide") {
         // Use transaction to ensure atomic update of content + reports
         await withTransaction(async (tx) => {
           // Soft delete by setting deletedAt (content can be recovered if needed)
@@ -135,8 +135,8 @@ export const POST = withErrorHandling(
           await tx
             .update(reports)
             .set({
-              status: 'resolved',
-              resolution: reason || 'Content hidden by admin',
+              status: "resolved",
+              resolution: reason || "Content hidden by admin",
               resolvedBy: admin.userId,
               resolvedAt: new Date(),
               updatedAt: new Date(),
@@ -146,7 +146,7 @@ export const POST = withErrorHandling(
 
         await logAdminModify({
           adminId: admin.userId,
-          resourceType: 'post',
+          resourceType: "post",
           resourceId: contentId,
           previousValue: { deletedAt: null },
           newValue: {
@@ -155,10 +155,10 @@ export const POST = withErrorHandling(
           },
           ipAddress: clientIp,
           userAgent,
-          metadata: { action: 'hide' },
+          metadata: { action: "hide" },
         });
       }
-    } else if (contentType === 'comment') {
+    } else if (contentType === "comment") {
       // Handle comment moderation
       const [existingComment] = await db
         .select({
@@ -171,19 +171,19 @@ export const POST = withErrorHandling(
         .limit(1);
 
       if (!existingComment) {
-        return successResponse({ error: 'Comment not found' }, 404);
+        return successResponse({ error: "Comment not found" }, 404);
       }
 
       const clientIp = getClientIp(request);
-      const userAgent = request.headers.get('user-agent') ?? undefined;
+      const userAgent = request.headers.get("user-agent") ?? undefined;
 
-      if (action === 'approve') {
+      if (action === "approve") {
         // Dismiss reports for this comment
         await db
           .update(reports)
           .set({
-            status: 'dismissed',
-            resolution: 'Comment approved by admin',
+            status: "dismissed",
+            resolution: "Comment approved by admin",
             resolvedBy: admin.userId,
             resolvedAt: new Date(),
             updatedAt: new Date(),
@@ -192,15 +192,15 @@ export const POST = withErrorHandling(
 
         await logAdminModify({
           adminId: admin.userId,
-          resourceType: 'comment',
+          resourceType: "comment",
           resourceId: contentId,
-          previousValue: { status: 'pending' },
-          newValue: { status: 'approved' },
+          previousValue: { status: "pending" },
+          newValue: { status: "approved" },
           ipAddress: clientIp,
           userAgent,
-          metadata: { action: 'approve' },
+          metadata: { action: "approve" },
         });
-      } else if (action === 'hide') {
+      } else if (action === "hide") {
         // Use transaction to ensure atomic update of content + reports
         await withTransaction(async (tx) => {
           // Soft delete by setting deletedAt (content can be recovered if needed)
@@ -216,8 +216,8 @@ export const POST = withErrorHandling(
           await tx
             .update(reports)
             .set({
-              status: 'resolved',
-              resolution: reason || 'Comment hidden by admin',
+              status: "resolved",
+              resolution: reason || "Comment hidden by admin",
               resolvedBy: admin.userId,
               resolvedAt: new Date(),
               updatedAt: new Date(),
@@ -227,7 +227,7 @@ export const POST = withErrorHandling(
 
         await logAdminModify({
           adminId: admin.userId,
-          resourceType: 'comment',
+          resourceType: "comment",
           resourceId: contentId,
           previousValue: { deletedAt: null },
           newValue: {
@@ -236,7 +236,7 @@ export const POST = withErrorHandling(
           },
           ipAddress: clientIp,
           userAgent,
-          metadata: { action: 'hide' },
+          metadata: { action: "hide" },
         });
       }
     }
@@ -247,5 +247,5 @@ export const POST = withErrorHandling(
       contentId,
       contentType,
     });
-  }
+  },
 );

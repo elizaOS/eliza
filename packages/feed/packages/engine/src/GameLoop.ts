@@ -1,20 +1,20 @@
-import { PerpDbAdapter, PerpMarketService } from '@feed/core/markets/perps';
-import type { WalletPort } from '@feed/core/markets/shared';
-import { logger } from '@feed/shared';
-import { FEE_CONFIG } from './config/fees';
-import { getSimulationPrice, getSimulationTickers } from './config/simulation';
-import type { FeedGenerator } from './FeedGenerator';
-import type { GameWorld, WorldEvent } from './GameWorld';
+import { PerpDbAdapter, PerpMarketService } from "@feed/core/markets/perps";
+import type { WalletPort } from "@feed/core/markets/shared";
+import { logger } from "@feed/shared";
+import { FEE_CONFIG } from "./config/fees";
+import { getSimulationPrice, getSimulationTickers } from "./config/simulation";
+import type { FeedGenerator } from "./FeedGenerator";
+import type { GameWorld, WorldEvent } from "./GameWorld";
 // NewsArticlePacingEngine removed - was reserved but never integrated
-import type { RelationshipEvolutionEngine } from './RelationshipEvolutionEngine';
-import { StaticDataRegistry } from './services/static-data-registry';
-import { TradeExecutionService } from './services/trade-execution-service';
-import { WalletService } from './services/wallet-service';
-import { isSimulationMode } from './storage-bridge';
-import type { TrendingTopicsEngine } from './TrendingTopicsEngine';
-import type { TradingDecision } from './types/market-decisions';
-import type { Actor, ActorTier, FeedPost } from './types/shared';
-import { formatError } from './utils/error-utils';
+import type { RelationshipEvolutionEngine } from "./RelationshipEvolutionEngine";
+import { StaticDataRegistry } from "./services/static-data-registry";
+import { TradeExecutionService } from "./services/trade-execution-service";
+import { WalletService } from "./services/wallet-service";
+import { isSimulationMode } from "./storage-bridge";
+import type { TrendingTopicsEngine } from "./TrendingTopicsEngine";
+import type { TradingDecision } from "./types/market-decisions";
+import type { Actor, ActorTier, FeedPost } from "./types/shared";
+import { formatError } from "./utils/error-utils";
 
 /**
  * Interface for market decision engines used by GameLoop.
@@ -73,7 +73,7 @@ export class GameLoop {
     private feed: FeedGenerator,
     private marketDecisions: MarketDecisionEnginePort,
     private relationships: RelationshipEvolutionEngine,
-    services?: GameLoopServices
+    services?: GameLoopServices,
   ) {
     this.injectedServices = services;
   }
@@ -105,13 +105,13 @@ export class GameLoop {
     marketOnly = false,
     options?: {
       priceOverrides?: Map<string, number>;
-      causalContext?: import('./GameWorld').CausalEventContext;
-    }
+      causalContext?: import("./GameWorld").CausalEventContext;
+    },
   ): Promise<SimulationTickResult> {
     logger.info(
       `Processing Tick: Day ${day}, Hour ${hour}`,
       { gameId, marketOnly },
-      'GameLoop'
+      "GameLoop",
     );
 
     // 1. Market Maintenance (Financial Layer)
@@ -143,13 +143,13 @@ export class GameLoop {
             failed: executionResult.failedTrades,
             holds: executionResult.holdDecisions,
           },
-          'GameLoop'
+          "GameLoop",
         );
       } catch (e) {
         logger.warn(
           `Trade execution batch failed: ${formatError(e)}`,
           undefined,
-          'GameLoop'
+          "GameLoop",
         );
       }
     }
@@ -163,23 +163,23 @@ export class GameLoop {
           params.userId,
           params.amount,
           params.reason,
-          params.description ?? '',
-          params.relatedId
+          params.description ?? "",
+          params.relatedId,
         ),
       credit: (params) =>
         WalletService.credit(
           params.userId,
           params.amount,
           params.reason,
-          params.description ?? '',
-          params.relatedId
+          params.description ?? "",
+          params.relatedId,
         ),
       recordPnL: async (params) => {
         await WalletService.recordPnL(
           params.userId,
           params.pnl,
           params.reason,
-          params.relatedId
+          params.relatedId,
         );
       },
       getBalance: (userId) => WalletService.getBalance(userId),
@@ -245,13 +245,13 @@ export class GameLoop {
         day,
         hour,
         { markets: marketState, significantMoves },
-        options?.causalContext
+        options?.causalContext,
       );
     } catch (e) {
       logger.warn(
         `Failed to generate world events: ${formatError(e)}`,
         { day, hour },
-        'GameLoop'
+        "GameLoop",
       );
     }
 
@@ -265,7 +265,7 @@ export class GameLoop {
       if (this.trendingTopics && this.recentPosts.length > 0) {
         await this.trendingTopics.updateTrends(
           this.recentPosts,
-          this.tickCount
+          this.tickCount,
         );
         this.feed.updateTrendContext();
       }
@@ -296,9 +296,9 @@ export class GameLoop {
               : undefined,
           role: actor.role || undefined,
           initialLuck: actor.initialLuck as
-            | 'low'
-            | 'medium'
-            | 'high'
+            | "low"
+            | "medium"
+            | "high"
             | undefined,
           initialMood: actor.initialMood || undefined,
         }));
@@ -308,7 +308,7 @@ export class GameLoop {
         // Accumulate posts for trending analysis (keep last 200)
         this.recentPosts = [...this.recentPosts, ...posts].slice(-200);
       } else {
-        logger.warn('No actors found for feed generation', {}, 'GameLoop');
+        logger.warn("No actors found for feed generation", {}, "GameLoop");
       }
     }
 
@@ -321,7 +321,7 @@ export class GameLoop {
         logger.warn(
           `Failed to analyze relationships: ${formatError(e)}`,
           undefined,
-          'GameLoop'
+          "GameLoop",
         );
       }
     }
@@ -344,9 +344,9 @@ export class GameLoop {
    */
   async simulateFullGame(
     gameId: string,
-    durationDays = 30
+    durationDays = 30,
   ): Promise<SimulationTickResult[]> {
-    logger.info(`Starting Simulation for ${gameId}...`, undefined, 'GameLoop');
+    logger.info(`Starting Simulation for ${gameId}...`, undefined, "GameLoop");
 
     const history: SimulationTickResult[] = [];
 

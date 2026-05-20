@@ -7,5 +7,5 @@
  * import { trackServerEvent } from '@/lib/posthog/server';
  */
 
-export type { PostHogClient } from './client';
-export { getPostHog, initPostHog, posthog } from './client';
+export type { PostHogClient } from "./client";
+export { getPostHog, initPostHog, posthog } from "./client";

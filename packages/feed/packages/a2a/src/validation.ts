@@ -7,8 +7,8 @@
  * @public
  */
 
-import { JsonValueSchema } from '@feed/shared';
-import { z } from 'zod';
+import { JsonValueSchema } from "@feed/shared";
+import { z } from "zod";
 
 // Pagination defaults and limits
 const DEFAULT_PAGINATION_LIMIT = 10;
@@ -75,14 +75,14 @@ export const PaymentReceiptParamsSchema = z.object({
  */
 export const GetPredictionsParamsSchema = z.object({
   userId: z.string().optional(),
-  status: z.enum(['active', 'resolved']).optional(),
+  status: z.enum(["active", "resolved"]).optional(),
 });
 
 export const GetPerpetualsParamsSchema = z.object({});
 
 export const BuySharesParamsSchema = z.object({
   marketId: z.string(),
-  outcome: z.enum(['YES', 'NO']),
+  outcome: z.enum(["YES", "NO"]),
   amount: z.number().positive(),
 });
 
@@ -93,7 +93,7 @@ export const SellSharesParamsSchema = z.object({
 
 export const OpenPositionParamsSchema = z.object({
   ticker: z.string(),
-  side: z.enum(['LONG', 'SHORT']),
+  side: z.enum(["LONG", "SHORT"]),
   amount: z.number().positive(),
   leverage: z.number().min(1).max(100),
 });
@@ -113,7 +113,7 @@ export const GetFeedParamsSchema = z.object({
   limit: z.number().optional().default(20),
   offset: z.number().optional().default(0),
   following: z.boolean().optional(),
-  type: z.enum(['post', 'article']).optional(),
+  type: z.enum(["post", "article"]).optional(),
 });
 
 export const GetPostParamsSchema = z.object({
@@ -122,7 +122,7 @@ export const GetPostParamsSchema = z.object({
 
 export const CreatePostParamsSchema = z.object({
   content: z.string().min(1).max(5000),
-  type: z.enum(['post', 'article']).optional().default('post'),
+  type: z.enum(["post", "article"]).optional().default("post"),
 });
 
 export const DeletePostParamsSchema = z.object({
@@ -216,7 +216,7 @@ export const GetTradeHistoryParamsSchema = z.object({
  * Parameters for retrieving chats
  */
 export const GetChatsParamsSchema = z.object({
-  filter: z.enum(['all', 'dms', 'groups']).optional(),
+  filter: z.enum(["all", "dms", "groups"]).optional(),
 });
 
 export const GetChatMessagesParamsSchema = z.object({
@@ -269,7 +269,7 @@ export const DeclineGroupInviteParamsSchema = z.object({
 export const GetLeaderboardParamsSchema = z.object({
   page: z.number().optional().default(1),
   pageSize: z.number().optional().default(100),
-  pointsType: z.enum(['all', 'earned', 'referral']).optional().default('all'),
+  pointsType: z.enum(["all", "earned", "referral"]).optional().default("all"),
   minPoints: z.number().optional().default(0),
 });
 

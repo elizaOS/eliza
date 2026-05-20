@@ -5,6 +5,14 @@
  * This shows the user's trading performance.
  */
 
+import type {
+  Action,
+  ActionResult,
+  HandlerCallback,
+  IAgentRuntime,
+  Memory,
+  State,
+} from "@elizaos/core";
 import {
   and,
   db,
@@ -14,18 +22,10 @@ import {
   perpPositions,
   positions,
   users,
-} from '@feed/db';
-import { calculatePortfolioBreakdown, WalletService } from '@feed/engine';
-import type { MessageTag } from '@feed/shared';
-import type {
-  Action,
-  ActionResult,
-  HandlerCallback,
-  IAgentRuntime,
-  Memory,
-  State,
-} from '@elizaos/core';
-import { logger } from '../../../../shared/logger';
+} from "@feed/db";
+import { calculatePortfolioBreakdown, WalletService } from "@feed/engine";
+import type { MessageTag } from "@feed/shared";
+import { logger } from "../../../../shared/logger";
 
 /** Extended ActionResult with optional tag for UI */
 interface ActionResultWithTag extends ActionResult {
@@ -33,50 +33,50 @@ interface ActionResultWithTag extends ActionResult {
 }
 
 export const checkUserPnlAction: Action = {
-  name: 'CHECK_USER_PNL',
+  name: "CHECK_USER_PNL",
   description:
     "Check the user's balance, P&L, and open positions. Use this to help users understand their current trading performance and portfolio.",
 
-  parameters: [] as Action['parameters'],
+  parameters: [] as Action["parameters"],
 
   examples: [
     [
       {
-        name: 'user',
+        name: "user",
         content: { text: "What's my P&L?" },
       },
       {
-        name: 'coordinator',
-        content: { text: 'Let me check your trading performance...' },
+        name: "coordinator",
+        content: { text: "Let me check your trading performance..." },
       },
     ],
     [
       {
-        name: 'user',
-        content: { text: 'Show me my positions' },
+        name: "user",
+        content: { text: "Show me my positions" },
       },
       {
-        name: 'coordinator',
+        name: "coordinator",
         content: { text: "I'll pull up your current positions..." },
       },
     ],
     [
       {
-        name: 'user',
-        content: { text: 'How am I doing on trades?' },
+        name: "user",
+        content: { text: "How am I doing on trades?" },
       },
       {
-        name: 'coordinator',
-        content: { text: 'Let me check your trading stats...' },
+        name: "coordinator",
+        content: { text: "Let me check your trading stats..." },
       },
     ],
     [
       {
-        name: 'user',
+        name: "user",
         content: { text: "What's my balance?" },
       },
       {
-        name: 'coordinator',
+        name: "coordinator",
         content: { text: "I'll check your balance..." },
       },
     ],
@@ -85,7 +85,7 @@ export const checkUserPnlAction: Action = {
   validate: async (
     _runtime: IAgentRuntime,
     _message: Memory,
-    _state?: State
+    _state?: State,
   ): Promise<boolean> => {
     return true;
   },
@@ -95,15 +95,15 @@ export const checkUserPnlAction: Action = {
     _message: Memory,
     state?: State,
     _options?: Record<string, unknown>,
-    _callback?: HandlerCallback
+    _callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const ownerId = state?.values?.ownerId as string | undefined;
 
     if (!ownerId) {
       return {
         success: false,
-        text: 'User ID not available in this context.',
-        error: 'No user ID provided',
+        text: "User ID not available in this context.",
+        error: "No user ID provided",
       };
     }
 
@@ -122,12 +122,12 @@ export const checkUserPnlAction: Action = {
     if (!user) {
       return {
         success: false,
-        text: 'User not found.',
-        error: 'User not found',
+        text: "User not found.",
+        error: "User not found",
       };
     }
 
-    const userName = user.displayName || user.username || 'User';
+    const userName = user.displayName || user.username || "User";
 
     // Get portfolio breakdown for accurate P&L (same as profile page)
     const portfolio = await calculatePortfolioBreakdown(ownerId);
@@ -158,7 +158,7 @@ export const checkUserPnlAction: Action = {
       .from(positions)
       .leftJoin(markets, eq(positions.marketId, markets.id))
       .where(
-        and(eq(positions.userId, ownerId), eq(positions.status, 'active'))
+        and(eq(positions.userId, ownerId), eq(positions.status, "active")),
       );
 
     // Get active perp positions
@@ -166,7 +166,7 @@ export const checkUserPnlAction: Action = {
       .select()
       .from(perpPositions)
       .where(
-        and(eq(perpPositions.userId, ownerId), isNull(perpPositions.closedAt))
+        and(eq(perpPositions.userId, ownerId), isNull(perpPositions.closedAt)),
       );
 
     const totalPositions =
@@ -175,17 +175,17 @@ export const checkUserPnlAction: Action = {
     logger.info(
       `[CHECK_USER_PNL] Retrieved P&L for user ${userName}`,
       { positions: totalPositions, ownerId },
-      'CheckUserPnL'
+      "CheckUserPnL",
     );
 
     // Format data for tag
     const formattedPredictionPositions = predictionPositions.map((p) => ({
       id: p.id,
       marketId: p.marketId,
-      side: p.side ? 'YES' : 'NO',
+      side: p.side ? "YES" : "NO",
       shares: Number(p.shares),
       avgPrice: Number(p.avgPrice),
-      question: p.question?.substring(0, 80) || 'Unknown',
+      question: p.question?.substring(0, 80) || "Unknown",
     }));
 
     const formattedPerpPositions = perpPositionsList.map((p) => ({
@@ -199,7 +199,7 @@ export const checkUserPnlAction: Action = {
 
     return {
       success: true,
-      text: `Retrieved ${userName}'s P&L: ${balance.toFixed(2)} balance, ${totalPnL >= 0 ? '+' : ''}${totalPnL.toFixed(2)} total P&L, ${totalPositions} open positions.`,
+      text: `Retrieved ${userName}'s P&L: ${balance.toFixed(2)} balance, ${totalPnL >= 0 ? "+" : ""}${totalPnL.toFixed(2)} total P&L, ${totalPositions} open positions.`,
       data: {
         userName,
         userId: ownerId,
@@ -235,9 +235,9 @@ export const checkUserPnlAction: Action = {
       },
       // Tag for sidebar display
       tag: {
-        type: 'owner-pnl',
-        label: 'My Portfolio',
-        icon: 'PiggyBank',
+        type: "owner-pnl",
+        label: "My Portfolio",
+        icon: "PiggyBank",
         data: {
           ownerName: userName,
           balance,

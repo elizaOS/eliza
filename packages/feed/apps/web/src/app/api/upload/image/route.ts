@@ -105,6 +105,8 @@
  * @see {@link /lib/validation/schemas} Upload validation
  */
 
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import {
   authenticate,
   checkRateLimitAndDuplicates,
@@ -112,29 +114,27 @@ import {
   RATE_LIMIT_CONFIGS,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { ImageUploadSchema, logger } from '@feed/shared';
-import { mkdir, writeFile } from 'fs/promises';
-import type { NextRequest } from 'next/server';
-import { join } from 'path';
-import { validateImageMagicBytes } from '@/lib/api/image-validation';
+} from "@feed/api";
+import { ImageUploadSchema, logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { validateImageMagicBytes } from "@/lib/api/image-validation";
 
 // Map MIME types to file extensions
 const MIME_TO_EXT: Record<string, string> = {
-  'image/jpeg': 'jpg',
-  'image/png': 'png',
-  'image/gif': 'gif',
-  'image/webp': 'webp',
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/gif": "gif",
+  "image/webp": "webp",
 };
 
 // Configuration - only allow local storage in development
 const USE_LOCAL_STORAGE =
-  process.env.USE_LOCAL_STORAGE === 'true' &&
-  process.env.NODE_ENV === 'development';
+  process.env.USE_LOCAL_STORAGE === "true" &&
+  process.env.NODE_ENV === "development";
 
 // Runtime configuration for Vercel
-export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 /**
  * POST /api/upload/image
@@ -148,7 +148,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   const rateLimitError = checkRateLimitAndDuplicates(
     authUser.userId,
     null,
-    RATE_LIMIT_CONFIGS.UPLOAD_IMAGE
+    RATE_LIMIT_CONFIGS.UPLOAD_IMAGE,
   );
   if (rateLimitError) {
     return rateLimitError;
@@ -156,8 +156,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   // Parse multipart form data
   const formData = await request.formData();
-  const file = formData.get('file') as File | null;
-  const imageType = formData.get('type') as string | null; // 'profile', 'cover', or 'post'
+  const file = formData.get("file") as File | null;
+  const imageType = formData.get("type") as string | null; // 'profile', 'cover', or 'post'
 
   // Validate using schema
   ImageUploadSchema.parse({
@@ -166,18 +166,18 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   });
 
   if (!file) {
-    throw new Error('No file provided');
+    throw new Error("No file provided");
   }
 
   // Determine folder based on image type
-  let folder: 'profiles' | 'covers' | 'posts' = 'posts';
-  if (imageType === 'profile') folder = 'profiles';
-  else if (imageType === 'cover') folder = 'covers';
+  let folder: "profiles" | "covers" | "posts" = "posts";
+  if (imageType === "profile") folder = "profiles";
+  else if (imageType === "cover") folder = "covers";
 
   // Generate unique filename with original extension
   const timestamp = Date.now();
   const randomString = Math.random().toString(36).substring(7);
-  const extension = MIME_TO_EXT[file.type] || 'jpg';
+  const extension = MIME_TO_EXT[file.type] || "jpg";
   const filename = `${authUser.userId}_${timestamp}_${randomString}.${extension}`;
 
   // Convert file to buffer
@@ -187,19 +187,19 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // Validate magic bytes match declared MIME type (prevents fake file uploads)
   if (!validateImageMagicBytes(buffer, file.type)) {
     throw new Error(
-      'File content does not match declared type. Ensure you are uploading a valid image.'
+      "File content does not match declared type. Ensure you are uploading a valid image.",
     );
   }
 
   if (USE_LOCAL_STORAGE) {
     // Check if we're in a Node.js environment with file system access
-    if (typeof process === 'undefined' || typeof process.cwd !== 'function') {
+    if (typeof process === "undefined" || typeof process.cwd !== "function") {
       throw new Error(
-        'Local storage requires Node.js environment with file system access. Not available in edge runtime.'
+        "Local storage requires Node.js environment with file system access. Not available in edge runtime.",
       );
     }
 
-    const uploadDir = join(process.cwd(), 'public', 'uploads', folder);
+    const uploadDir = join(process.cwd(), "public", "uploads", folder);
     await mkdir(uploadDir, { recursive: true });
 
     const filePath = join(uploadDir, filename);
@@ -208,15 +208,15 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     const url = `/uploads/${folder}/${filename}`;
 
     logger.info(
-      'Image uploaded successfully to local storage (dev only)',
+      "Image uploaded successfully to local storage (dev only)",
       {
         userId: authUser.userId,
         filename,
         path: filePath,
         size: buffer.length,
-        type: imageType || 'unknown',
+        type: imageType || "unknown",
       },
-      'POST /api/upload/image'
+      "POST /api/upload/image",
     );
 
     return successResponse({
@@ -239,16 +239,16 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   });
 
   logger.info(
-    'Image uploaded successfully to external storage',
+    "Image uploaded successfully to external storage",
     {
       userId: authUser.userId,
       filename,
       key: result.key,
       size: result.size,
       originalSize: file.size,
-      type: imageType || 'unknown',
+      type: imageType || "unknown",
     },
-    'POST /api/upload/image'
+    "POST /api/upload/image",
   );
 
   return successResponse({

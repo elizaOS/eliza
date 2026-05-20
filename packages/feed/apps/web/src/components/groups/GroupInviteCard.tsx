@@ -1,10 +1,10 @@
-'use client';
+"use client";
 
-import { Check, Loader2, Users, X } from 'lucide-react';
-import { useState } from 'react';
-import { toast } from 'sonner';
-import { useAuth } from '@/hooks/useAuth';
-import { apiUrl } from '@/utils/api-url';
+import { Check, Loader2, Users, X } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
+import { useAuth } from "@/hooks/useAuth";
+import { apiUrl } from "@/utils/api-url";
 
 /**
  * Group invite card component for displaying and responding to group invitations.
@@ -58,8 +58,8 @@ export function GroupInviteCard({
 }: GroupInviteCardProps) {
   const { getAccessToken } = useAuth();
   const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState<'pending' | 'accepted' | 'declined'>(
-    'pending'
+  const [status, setStatus] = useState<"pending" | "accepted" | "declined">(
+    "pending",
   );
 
   const handleAccept = async () => {
@@ -70,26 +70,26 @@ export function GroupInviteCard({
       const response = await fetch(
         apiUrl(`/api/groups/invites/${inviteId}/accept`),
         {
-          method: 'POST',
+          method: "POST",
           headers: {
             Authorization: `Bearer ${token}`,
           },
-        }
+        },
       );
 
       if (!response.ok) {
         const data = await response.json();
-        toast.error(data.error || 'Failed to accept invite');
+        toast.error(data.error || "Failed to accept invite");
         setLoading(false);
         return;
       }
 
       const data = await response.json();
-      setStatus('accepted');
+      setStatus("accepted");
       onAccepted?.(groupId, data.chatId);
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : 'Failed to accept invite'
+        err instanceof Error ? err.message : "Failed to accept invite",
       );
     } finally {
       setLoading(false);
@@ -104,32 +104,32 @@ export function GroupInviteCard({
       const response = await fetch(
         apiUrl(`/api/groups/invites/${inviteId}/decline`),
         {
-          method: 'POST',
+          method: "POST",
           headers: {
             Authorization: `Bearer ${token}`,
           },
-        }
+        },
       );
 
       if (!response.ok) {
         const data = await response.json();
-        toast.error(data.error || 'Failed to decline invite');
+        toast.error(data.error || "Failed to decline invite");
         setLoading(false);
         return;
       }
 
-      setStatus('declined');
+      setStatus("declined");
       onDeclined?.();
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : 'Failed to decline invite'
+        err instanceof Error ? err.message : "Failed to decline invite",
       );
     } finally {
       setLoading(false);
     }
   };
 
-  if (status === 'accepted') {
+  if (status === "accepted") {
     return (
       <div className="rounded-lg border border-green-500/20 bg-green-500/10 p-4 shadow-sm">
         <div className="flex items-center gap-3">
@@ -147,7 +147,7 @@ export function GroupInviteCard({
     );
   }
 
-  if (status === 'declined') {
+  if (status === "declined") {
     return (
       <div className="rounded-lg border border-muted bg-muted/50 p-4 shadow-sm">
         <div className="flex items-center gap-3">
@@ -183,9 +183,9 @@ export function GroupInviteCard({
               <span>{memberCount} members</span>
               <span>·</span>
               <span>
-                {new Date(invitedAt).toLocaleDateString('en-US', {
-                  month: 'short',
-                  day: 'numeric',
+                {new Date(invitedAt).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
                 })}
               </span>
             </div>

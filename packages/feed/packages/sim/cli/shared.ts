@@ -2,21 +2,21 @@
  * Shared utilities for CLI commands.
  */
 
-import consola from 'consola';
-import type { FeedRuntimeConfig } from '../core/config';
-import { FeedEngine } from '../core/engine';
-import { scanSystems } from '../core/scanner';
-import { type FeedSystem, TickPhase } from '../core/types';
+import consola from "consola";
+import type { FeedRuntimeConfig } from "../core/config";
+import { FeedEngine } from "../core/engine";
+import { scanSystems } from "../core/scanner";
+import { type FeedSystem, TickPhase } from "../core/types";
 
 export const phaseNames: Record<number, string> = {
-  [TickPhase.Bootstrap]: 'Bootstrap',
-  [TickPhase.Questions]: 'Questions',
-  [TickPhase.Events]: 'Events',
-  [TickPhase.Markets]: 'Markets',
-  [TickPhase.Rebalancing]: 'Rebalancing',
-  [TickPhase.ContentMaintenance]: 'Content Maintenance',
-  [TickPhase.Social]: 'Social',
-  [TickPhase.Finalize]: 'Finalize',
+  [TickPhase.Bootstrap]: "Bootstrap",
+  [TickPhase.Questions]: "Questions",
+  [TickPhase.Events]: "Events",
+  [TickPhase.Markets]: "Markets",
+  [TickPhase.Rebalancing]: "Rebalancing",
+  [TickPhase.ContentMaintenance]: "Content Maintenance",
+  [TickPhase.Social]: "Social",
+  [TickPhase.Finalize]: "Finalize",
 };
 
 export function phaseName(phase: number): string {
@@ -26,7 +26,7 @@ export function phaseName(phase: number): string {
 export async function buildEngine(
   config: FeedRuntimeConfig,
   rootDir: string,
-  includeLegacy: boolean
+  includeLegacy: boolean,
 ): Promise<FeedEngine> {
   const {
     systemsDir: _systemsDir,
@@ -42,18 +42,18 @@ export async function buildEngine(
 
   if (includeLegacy) {
     const { createLegacyGameTickSystem } = await import(
-      '../core/bridge/legacy-game-tick'
+      "../core/bridge/legacy-game-tick"
     );
     engine.use(
       createLegacyGameTickSystem({
         skip: config.migratedSubsystems,
-      })
+      }),
     );
   }
 
   const { systems } = await scanSystems(
-    config.systemsDir ?? './systems',
-    rootDir
+    config.systemsDir ?? "./systems",
+    rootDir,
   );
 
   const phaseOverrides = config.systemPhases ?? {};
@@ -62,9 +62,9 @@ export async function buildEngine(
   function applyPhaseOverride(sys: FeedSystem): FeedSystem {
     const override = phaseOverrides[sys.id];
     if (override === undefined) return sys;
-    if (typeof override !== 'number' || !validPhases.has(override)) {
+    if (typeof override !== "number" || !validPhases.has(override)) {
       consola.warn(
-        `Ignoring invalid phase override for "${sys.id}": ${String(override)}`
+        `Ignoring invalid phase override for "${sys.id}": ${String(override)}`,
       );
       return sys;
     }
@@ -80,9 +80,9 @@ export async function buildEngine(
         dependencies: sys.dependencies,
         skipDeadlineCheck: sys.skipDeadlineCheck,
         intervals: sys.intervals,
-        register: sys.register ? (ctx) => sys.register!(ctx) : undefined,
+        register: sys.register ? (ctx) => sys.register?.(ctx) : undefined,
         onTick: (ctx) => sys.onTick(ctx),
-        destroy: sys.destroy ? () => sys.destroy!() : undefined,
+        destroy: sys.destroy ? () => sys.destroy?.() : undefined,
       };
     }
   }
@@ -100,7 +100,7 @@ export async function buildEngine(
   consola.info(
     includeLegacy
       ? `Registered ${scanned} scanned system(s) + legacy bridge`
-      : `Registered ${scanned} system(s)`
+      : `Registered ${scanned} system(s)`,
   );
   await engine.boot();
   return engine;
@@ -116,5 +116,5 @@ export function parseInterval(value: string, label: string): number {
 }
 
 export function escapeMarkdown(text: string): string {
-  return text.replace(/([[\]|])/g, '\\$1');
+  return text.replace(/([[\]|])/g, "\\$1");
 }

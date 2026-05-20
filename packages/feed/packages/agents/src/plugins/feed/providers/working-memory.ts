@@ -16,10 +16,10 @@ import type {
   Provider,
   ProviderResult,
   State,
-} from '@elizaos/core';
-import { logger } from '../../../shared/logger';
+} from "@elizaos/core";
+import { logger } from "../../../shared/logger";
 
-const WORKING_MEMORY_CATEGORY = 'agent_working_memory';
+const WORKING_MEMORY_CATEGORY = "agent_working_memory";
 const MAX_CONTACTS = 10;
 const MAX_FACTS = 15;
 const MAX_TRADE_REASONING = 5;
@@ -62,7 +62,7 @@ export interface AgentWorkingMemoryState {
 type WorldFactsServiceShape = {
   getFactsByCategory: (
     category: string,
-    options?: { limit?: number }
+    options?: { limit?: number },
   ) => Promise<Array<{ id: string; key: string; value: string }>>;
   upsertFact: (params: {
     category: string;
@@ -79,14 +79,14 @@ let servicePromise: Promise<WorldFactsServiceShape> | null = null;
 async function getWorldFactsService(): Promise<WorldFactsServiceShape> {
   if (!servicePromise) {
     // Dynamic import to avoid circular dependencies
-    servicePromise = import('@feed/engine').then(() => {
+    servicePromise = import("@feed/engine").then(() => {
       return {
         getFactsByCategory: async (
           category: string,
-          options?: { limit?: number }
+          options?: { limit?: number },
         ) => {
           // Use raw DB query since worldFactsService may not expose getFactsByCategory
-          const { db, worldFacts, eq, desc } = await import('@feed/db');
+          const { db, worldFacts, eq, desc } = await import("@feed/db");
           const rows = await db
             .select({
               id: worldFacts.id,
@@ -100,7 +100,7 @@ async function getWorldFactsService(): Promise<WorldFactsServiceShape> {
           return rows.map((r) => ({
             id: r.id,
             key: r.key,
-            value: r.value ?? '',
+            value: r.value ?? "",
           }));
         },
         upsertFact: async (params: {
@@ -111,8 +111,8 @@ async function getWorldFactsService(): Promise<WorldFactsServiceShape> {
           source: string;
           priority: number;
         }) => {
-          const { db, worldFacts, eq, and } = await import('@feed/db');
-          const { generateSnowflakeId } = await import('@feed/shared');
+          const { db, worldFacts, eq, and } = await import("@feed/db");
+          const { generateSnowflakeId } = await import("@feed/shared");
 
           const [existing] = await db
             .select({ id: worldFacts.id })
@@ -120,8 +120,8 @@ async function getWorldFactsService(): Promise<WorldFactsServiceShape> {
             .where(
               and(
                 eq(worldFacts.category, params.category),
-                eq(worldFacts.key, params.key)
-              )
+                eq(worldFacts.key, params.key),
+              ),
             )
             .limit(1);
 
@@ -174,7 +174,7 @@ function createEmptyMemory(): AgentWorkingMemoryState {
 
 /** Load working memory for an agent */
 export async function loadWorkingMemory(
-  agentId: string
+  agentId: string,
 ): Promise<AgentWorkingMemoryState> {
   try {
     const svc = await getWorldFactsService();
@@ -190,7 +190,7 @@ export async function loadWorkingMemory(
 
     // Prune expired contacts
     const contacts = (parsed.recentContacts ?? []).filter(
-      (c) => now - new Date(c.lastInteraction).getTime() < CONTACT_EXPIRY_MS
+      (c) => now - new Date(c.lastInteraction).getTime() < CONTACT_EXPIRY_MS,
     );
 
     return {
@@ -199,18 +199,18 @@ export async function loadWorkingMemory(
       activeThesis: parsed.activeThesis ?? null,
       recentTradeReasoning: (parsed.recentTradeReasoning ?? []).slice(
         0,
-        MAX_TRADE_REASONING
+        MAX_TRADE_REASONING,
       ),
       lastUpdated: parsed.lastUpdated ?? new Date().toISOString(),
     };
   } catch (error) {
     logger.warn(
-      'Failed to load agent working memory',
+      "Failed to load agent working memory",
       {
         agentId,
         error: error instanceof Error ? error.message : String(error),
       },
-      'WorkingMemory'
+      "WorkingMemory",
     );
     return createEmptyMemory();
   }
@@ -219,7 +219,7 @@ export async function loadWorkingMemory(
 /** Save working memory for an agent */
 export async function saveWorkingMemory(
   agentId: string,
-  memory: AgentWorkingMemoryState
+  memory: AgentWorkingMemoryState,
 ): Promise<void> {
   try {
     const svc = await getWorldFactsService();
@@ -229,7 +229,7 @@ export async function saveWorkingMemory(
       gatheredFacts: memory.gatheredFacts.slice(0, MAX_FACTS),
       recentTradeReasoning: memory.recentTradeReasoning.slice(
         0,
-        MAX_TRADE_REASONING
+        MAX_TRADE_REASONING,
       ),
       lastUpdated: new Date().toISOString(),
     };
@@ -239,17 +239,17 @@ export async function saveWorkingMemory(
       key: getMemoryKey(agentId),
       label: `Working memory for agent ${agentId}`,
       value: JSON.stringify(updated),
-      source: 'agent-working-memory',
+      source: "agent-working-memory",
       priority: 50,
     });
   } catch (error) {
     logger.warn(
-      'Failed to save agent working memory',
+      "Failed to save agent working memory",
       {
         agentId,
         error: error instanceof Error ? error.message : String(error),
       },
-      'WorkingMemory'
+      "WorkingMemory",
     );
   }
 }
@@ -257,11 +257,11 @@ export async function saveWorkingMemory(
 /** Add a recent contact to working memory */
 export function addContact(
   memory: AgentWorkingMemoryState,
-  contact: Omit<RecentContact, 'lastInteraction'>
+  contact: Omit<RecentContact, "lastInteraction">,
 ): AgentWorkingMemoryState {
   const now = new Date().toISOString();
   const existing = memory.recentContacts.findIndex(
-    (c) => c.userId === contact.userId
+    (c) => c.userId === contact.userId,
   );
   const updated = [...memory.recentContacts];
 
@@ -280,7 +280,7 @@ export function addContact(
 /** Add a gathered fact to working memory */
 export function addFact(
   memory: AgentWorkingMemoryState,
-  fact: Omit<GatheredFact, 'timestamp' | 'usedInTrade'>
+  fact: Omit<GatheredFact, "timestamp" | "usedInTrade">,
 ): AgentWorkingMemoryState {
   return {
     ...memory,
@@ -294,7 +294,7 @@ export function addFact(
 /** Record trade reasoning */
 export function addTradeReasoning(
   memory: AgentWorkingMemoryState,
-  trade: Omit<TradeReasoning, 'timestamp'>
+  trade: Omit<TradeReasoning, "timestamp">,
 ): AgentWorkingMemoryState {
   return {
     ...memory,
@@ -310,7 +310,7 @@ function formatWorkingMemory(memory: AgentWorkingMemoryState): string {
   const parts: string[] = [];
 
   if (memory.recentContacts.length > 0) {
-    parts.push('## Recent Contacts');
+    parts.push("## Recent Contacts");
     for (const c of memory.recentContacts) {
       const ago = formatRelativeTime(c.lastInteraction);
       parts.push(`- **${c.name}** (${c.channel}, ${ago}): ${c.context}`);
@@ -318,10 +318,10 @@ function formatWorkingMemory(memory: AgentWorkingMemoryState): string {
   }
 
   if (memory.gatheredFacts.length > 0) {
-    parts.push('## Intel Gathered');
+    parts.push("## Intel Gathered");
     for (const f of memory.gatheredFacts) {
       parts.push(
-        `- ${f.fact} (from ${f.source}${f.usedInTrade ? ', used in trade' : ''})`
+        `- ${f.fact} (from ${f.source}${f.usedInTrade ? ", used in trade" : ""})`,
       );
     }
   }
@@ -331,19 +331,19 @@ function formatWorkingMemory(memory: AgentWorkingMemoryState): string {
   }
 
   if (memory.recentTradeReasoning.length > 0) {
-    parts.push('## Recent Trade Reasoning');
+    parts.push("## Recent Trade Reasoning");
     for (const t of memory.recentTradeReasoning) {
       parts.push(`- ${t.side} on ${t.marketId}: ${t.reasoning}`);
     }
   }
 
-  return parts.join('\n');
+  return parts.join("\n");
 }
 
 function formatRelativeTime(isoString: string): string {
   const diffMs = Date.now() - new Date(isoString).getTime();
   const diffMins = Math.floor(diffMs / 60000);
-  if (diffMins < 1) return 'just now';
+  if (diffMins < 1) return "just now";
   if (diffMins < 60) return `${diffMins}m ago`;
   const diffHours = Math.floor(diffMs / 3600000);
   if (diffHours < 24) return `${diffHours}h ago`;
@@ -355,14 +355,14 @@ function formatRelativeTime(isoString: string): string {
  * Injects persistent cross-tick memory into agent context.
  */
 export const workingMemoryProvider: Provider = {
-  name: 'AGENT_WORKING_MEMORY',
+  name: "AGENT_WORKING_MEMORY",
   description:
-    'Persistent cross-tick memory: recent contacts, gathered facts, active thesis, trade reasoning',
+    "Persistent cross-tick memory: recent contacts, gathered facts, active thesis, trade reasoning",
 
   get: async (
     runtime: IAgentRuntime,
     _message: Memory,
-    _state: State
+    _state: State,
   ): Promise<ProviderResult> => {
     try {
       const agentId = runtime.agentId as string;
@@ -378,7 +378,7 @@ export const workingMemoryProvider: Provider = {
         return {
           data: { memory },
           values: { hasWorkingMemory: false },
-          text: '',
+          text: "",
         };
       }
 
@@ -395,14 +395,14 @@ export const workingMemoryProvider: Provider = {
       };
     } catch (error) {
       logger.warn(
-        'Failed to get working memory',
+        "Failed to get working memory",
         error instanceof Error ? error.message : String(error),
-        'WorkingMemoryProvider'
+        "WorkingMemoryProvider",
       );
       return {
         data: {},
         values: { hasWorkingMemory: false },
-        text: '',
+        text: "",
       };
     }
   },

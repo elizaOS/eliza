@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import { cn } from '@feed/shared';
-import { useRouter } from 'next/navigation';
-import { type ComponentProps, memo, useCallback, useMemo } from 'react';
-import { Streamdown } from 'streamdown';
+import { cn } from "@feed/shared";
+import { useRouter } from "next/navigation";
+import { type ComponentProps, memo, useCallback, useMemo } from "react";
+import { Streamdown } from "streamdown";
 
 type ResponseProps = ComponentProps<typeof Streamdown> & {
   onTagClick?: (tag: string) => void;
@@ -27,7 +27,7 @@ type ResponseProps = ComponentProps<typeof Streamdown> & {
  * @param validMentions - Optional list of valid usernames (case-sensitive)
  */
 function preprocessTags(text: string, validMentions?: Set<string>): string {
-  if (!text || typeof text !== 'string') return text || '';
+  if (!text || typeof text !== "string") return text || "";
 
   // Match @mentions and $cashtags (excluding prices like $120k, $19.99)
   // @mentions: followed by word characters and hyphens
@@ -50,7 +50,7 @@ function preprocessTags(text: string, validMentions?: Set<string>): string {
         return `[${cashtag}](feed://cashtag/${symbol})`;
       }
       return match;
-    }
+    },
   );
 }
 
@@ -98,9 +98,9 @@ export const Response = memo(
         const target = e.target as HTMLElement;
 
         // Check if clicked element is a link with our special protocol
-        if (target.tagName === 'A') {
-          const href = target.getAttribute('href');
-          if (href?.startsWith('feed://')) {
+        if (target.tagName === "A") {
+          const href = target.getAttribute("href");
+          if (href?.startsWith("feed://")) {
             e.preventDefault();
             e.stopPropagation();
 
@@ -108,7 +108,7 @@ export const Response = memo(
             const type = url.host; // 'mention' or 'cashtag'
             const value = url.pathname.slice(1); // Remove leading /
 
-            if (type === 'mention') {
+            if (type === "mention") {
               const tag = `@${value}`;
               if (onTagClick) {
                 onTagClick(tag);
@@ -116,7 +116,7 @@ export const Response = memo(
                 // Default: navigate to profile
                 router.push(`/profile/${value}`);
               }
-            } else if (type === 'cashtag') {
+            } else if (type === "cashtag") {
               const tag = `$${value}`;
               if (onTagClick) {
                 onTagClick(tag);
@@ -128,12 +128,12 @@ export const Response = memo(
           }
         }
       },
-      [onTagClick, router]
+      [onTagClick, router],
     );
 
     // Pre-process children if it's a string
     const processedChildren =
-      typeof children === 'string'
+      typeof children === "string"
         ? preprocessTags(children, validMentionsSet)
         : children;
 
@@ -141,20 +141,20 @@ export const Response = memo(
       <div onClick={handleClick}>
         <Streamdown
           className={cn(
-            '[&>*:first-child]:mt-0 [&>*:last-child]:mb-0',
+            "[&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
             // Prose-like styling
-            '[&_p]:leading-relaxed',
-            '[&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-4',
-            '[&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-4',
-            '[&_li]:my-1',
+            "[&_p]:leading-relaxed",
+            "[&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-4",
+            "[&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-4",
+            "[&_li]:my-1",
             // Headers
-            '[&_h1]:mt-4 [&_h1]:mb-2 [&_h1]:font-bold [&_h1]:text-xl',
-            '[&_h2]:mt-3 [&_h2]:mb-2 [&_h2]:font-semibold [&_h2]:text-lg',
-            '[&_h3]:mt-2 [&_h3]:mb-1 [&_h3]:font-medium [&_h3]:text-base',
+            "[&_h1]:mt-4 [&_h1]:mb-2 [&_h1]:font-bold [&_h1]:text-xl",
+            "[&_h2]:mt-3 [&_h2]:mb-2 [&_h2]:font-semibold [&_h2]:text-lg",
+            "[&_h3]:mt-2 [&_h3]:mb-1 [&_h3]:font-medium [&_h3]:text-base",
             // Code
-            '[&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-sm',
-            '[&_pre]:my-2 [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-muted [&_pre]:p-3',
-            '[&_pre_code]:bg-transparent [&_pre_code]:p-0',
+            "[&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-sm",
+            "[&_pre]:my-2 [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-muted [&_pre]:p-3",
+            "[&_pre_code]:bg-transparent [&_pre_code]:p-0",
             // Tag links - styled like TaggedText
             '[&_a[href^="feed://"]]:cursor-pointer [&_a[href^="feed://"]]:font-medium',
             '[&_a[href^="feed://"]]:text-[#0066FF] hover:[&_a[href^="feed://"]]:text-[#2952d9]',
@@ -168,17 +168,17 @@ export const Response = memo(
             'focus-visible:[&_a:not([href^="feed://"])]:rounded-sm focus-visible:[&_a:not([href^="feed://"])]:outline-none focus-visible:[&_a:not([href^="feed://"])]:ring-1 focus-visible:[&_a:not([href^="feed://"])]:ring-blue-400/40',
             '[&_a:not([href^="feed://"])]:break-words',
             // Blockquote
-            '[&_blockquote]:my-2 [&_blockquote]:border-muted-foreground/30 [&_blockquote]:border-l-4 [&_blockquote]:pl-4 [&_blockquote]:italic',
+            "[&_blockquote]:my-2 [&_blockquote]:border-muted-foreground/30 [&_blockquote]:border-l-4 [&_blockquote]:pl-4 [&_blockquote]:italic",
             // Tables - contained with horizontal scroll
-            '[&_table]:my-2 [&_table]:w-full [&_table]:border-collapse [&_table]:text-sm',
-            '[&_th]:border [&_th]:border-border [&_th]:bg-muted/50 [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:font-semibold',
-            '[&_td]:border [&_td]:border-border [&_td]:px-3 [&_td]:py-2',
-            '[&_.table-wrapper]:max-w-full [&_.table-wrapper]:overflow-x-auto',
+            "[&_table]:my-2 [&_table]:w-full [&_table]:border-collapse [&_table]:text-sm",
+            "[&_th]:border [&_th]:border-border [&_th]:bg-muted/50 [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:font-semibold",
+            "[&_td]:border [&_td]:border-border [&_td]:px-3 [&_td]:py-2",
+            "[&_.table-wrapper]:max-w-full [&_.table-wrapper]:overflow-x-auto",
             // Strong/Bold
-            '[&_strong]:font-semibold',
+            "[&_strong]:font-semibold",
             // Horizontal rule
-            '[&_hr]:my-4 [&_hr]:border-border',
-            className
+            "[&_hr]:my-4 [&_hr]:border-border",
+            className,
           )}
           {...props}
         >
@@ -190,7 +190,7 @@ export const Response = memo(
   (prevProps, nextProps) =>
     prevProps.children === nextProps.children &&
     prevProps.onTagClick === nextProps.onTagClick &&
-    prevProps.validMentions === nextProps.validMentions
+    prevProps.validMentions === nextProps.validMentions,
 );
 
-Response.displayName = 'Response';
+Response.displayName = "Response";

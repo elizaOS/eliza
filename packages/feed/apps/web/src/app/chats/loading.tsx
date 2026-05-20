@@ -1,4 +1,4 @@
-import { ChatListSkeleton, Skeleton } from '@/components/shared/Skeleton';
+import { ChatListSkeleton, Skeleton } from "@/components/shared/Skeleton";
 
 export default function ChatsLoading() {
   return (
@@ -14,7 +14,7 @@ export default function ChatsLoading() {
             </div>
             {/* Filter tabs */}
             <div className="mb-4 flex items-center border-border border-b">
-              {['All', 'DMs', 'Groups'].map((label) => (
+              {["All", "DMs", "Groups"].map((label) => (
                 <div
                   key={label}
                   className="min-h-[44px] flex-1 py-3 text-center"

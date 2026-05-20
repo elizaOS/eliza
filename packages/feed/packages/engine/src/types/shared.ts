@@ -43,7 +43,7 @@ export type {
   SelectedActor,
   StockPrice,
   WorldEvent,
-} from '@feed/shared';
+} from "@feed/shared";
 
 // Re-export all constants from @feed/shared
 export {
@@ -57,7 +57,7 @@ export {
   ORG_TYPES,
   POST_TYPES,
   RELATIONSHIP_TYPES,
-} from '@feed/shared';
+} from "@feed/shared";
 
 // NOTE: WorldContext removed - use WorldFactsContext from world-facts-service.ts
 // or WorldContext from prompts/world-context.ts depending on use case

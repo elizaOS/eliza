@@ -12,8 +12,8 @@ import {
   formatTradingStrategyBias,
   getNpcTradingStrategy,
   TRADING_STRATEGIES,
-} from '../npc/trading-strategies';
-import type { NPCMarketContext, NPCPosition } from '../types/market-context';
+} from "../npc/trading-strategies";
+import type { NPCMarketContext, NPCPosition } from "../types/market-context";
 
 /**
  * Map a free-text personality description to a trading archetype label.
@@ -23,27 +23,27 @@ import type { NPCMarketContext, NPCPosition } from '../types/market-context';
 export function mapPersonalityToArchetype(personality: string): string {
   const p = personality.toLowerCase();
   if (
-    p.includes('risk') ||
-    p.includes('aggressive') ||
-    p.includes('degen') ||
-    p.includes('speculator')
+    p.includes("risk") ||
+    p.includes("aggressive") ||
+    p.includes("degen") ||
+    p.includes("speculator")
   ) {
-    return 'DEGEN_TRADER';
+    return "DEGEN_TRADER";
   }
   if (
-    p.includes('cautious') ||
-    p.includes('conservative') ||
-    p.includes('manager')
+    p.includes("cautious") ||
+    p.includes("conservative") ||
+    p.includes("manager")
   ) {
-    return 'RISK_MANAGER';
+    return "RISK_MANAGER";
   }
-  if (p.includes('analytical') || p.includes('quant') || p.includes('math')) {
-    return 'QUANT_TRADER';
+  if (p.includes("analytical") || p.includes("quant") || p.includes("math")) {
+    return "QUANT_TRADER";
   }
-  if (p.includes('insider') || p.includes('connected')) {
-    return 'INSIDER';
+  if (p.includes("insider") || p.includes("connected")) {
+    return "INSIDER";
   }
-  return 'SYSTEMATIC_TRADER';
+  return "SYSTEMATIC_TRADER";
 }
 
 /**
@@ -57,11 +57,11 @@ export function mapPersonalityToArchetype(personality: string): string {
  */
 export function calculatePortfolioExposure(
   balance: number,
-  positions: Pick<NPCPosition, 'size' | 'unrealizedPnL'>[]
+  positions: Pick<NPCPosition, "size" | "unrealizedPnL">[],
 ): number {
   const totalPositionValue = positions.reduce(
     (sum, p) => sum + p.size + p.unrealizedPnL,
-    0
+    0,
   );
   const totalEquity = balance + totalPositionValue;
 
@@ -78,67 +78,67 @@ export function calculatePortfolioExposure(
  */
 export function formatSingleNPCDashboard(
   ctx: NPCMarketContext,
-  index?: number
+  index?: number,
 ): string {
   const archetype = mapPersonalityToArchetype(ctx.personality);
   const strategyKey = getNpcTradingStrategy(ctx.npcId);
   const strategy = TRADING_STRATEGIES[strategyKey];
   const exposure = calculatePortfolioExposure(
     ctx.availableBalance,
-    ctx.currentPositions
+    ctx.currentPositions,
   );
 
   const totalPnL = ctx.currentPositions.reduce(
     (sum, p) => sum + p.unrealizedPnL,
-    0
+    0,
   );
-  const pnlSign = totalPnL >= 0 ? '+' : '';
+  const pnlSign = totalPnL >= 0 ? "+" : "";
 
   const allPositions = [...ctx.currentPositions]
     .sort((a, b) => Math.abs(b.unrealizedPnL) - Math.abs(a.unrealizedPnL))
     .map((p) => {
-      const symbol = p.marketType === 'perp' ? p.ticker : `Q${p.marketId}`;
-      const posSign = p.unrealizedPnL >= 0 ? '+' : '';
+      const symbol = p.marketType === "perp" ? p.ticker : `Q${p.marketId}`;
+      const posSign = p.unrealizedPnL >= 0 ? "+" : "";
       return `${symbol} ${p.side} ($${p.size.toFixed(0)}, PnL: ${posSign}$${p.unrealizedPnL.toFixed(0)}) [ID:${p.id}]`;
     })
-    .join(', ');
+    .join(", ");
 
   const relationships =
     ctx.relationships && ctx.relationships.length > 0
       ? ctx.relationships
           .filter((r) => Math.abs(r.sentiment) > 0.4)
           .slice(0, 6)
-          .map((r) => `${r.sentiment > 0 ? 'Ally' : 'Rival'}:${r.actorName}`)
-          .join(', ')
-      : 'None';
+          .map((r) => `${r.sentiment > 0 ? "Ally" : "Rival"}:${r.actorName}`)
+          .join(", ")
+      : "None";
 
   const privateIntel =
     ctx.groupChatMessages.length > 0
       ? ctx.groupChatMessages
           .slice(0, 5)
           .map((m) => `"${m.fromName}: ${m.message}"`)
-          .join(' | ')
-      : 'None';
+          .join(" | ")
+      : "None";
 
-  const prefix = index !== undefined ? `[${index}] ` : '';
+  const prefix = index !== undefined ? `[${index}] ` : "";
 
   // Character voice context for in-character trading reasoning
   const voiceHint =
-    'voice' in ctx && ctx.voice
+    "voice" in ctx && ctx.voice
       ? `Voice: ${String(ctx.voice).slice(0, 120)}`
-      : '';
+      : "";
   const domainsHint =
-    'domains' in ctx && ctx.domains
-      ? `Expertise: ${((ctx.domains as string[]) ?? []).join(', ')}`
-      : '';
+    "domains" in ctx && ctx.domains
+      ? `Expertise: ${((ctx.domains as string[]) ?? []).join(", ")}`
+      : "";
 
   return `${prefix}TRADER DASHBOARD
 ID: ${ctx.npcId} | Name: ${ctx.npcName}
 Archetype: ${archetype} | Strategy: ${strategy.label} (${strategyKey})
-${voiceHint ? voiceHint + '\n' : ''}${domainsHint ? domainsHint + '\n' : ''}Bias: ${formatTradingStrategyBias(strategy)} | Cash: $${ctx.availableBalance.toLocaleString()}
+${voiceHint ? `${voiceHint}\n` : ""}${domainsHint ? `${domainsHint}\n` : ""}Bias: ${formatTradingStrategyBias(strategy)} | Cash: $${ctx.availableBalance.toLocaleString()}
 Total PnL: ${pnlSign}$${totalPnL.toFixed(0)} | Exposure: ${exposure.toFixed(1)}%
 Network: ${relationships}
-Positions: ${allPositions || 'None'}
+Positions: ${allPositions || "None"}
 PRIVATE INTEL: ${privateIntel}`;
 }
 
@@ -150,7 +150,7 @@ PRIVATE INTEL: ${privateIntel}`;
 export function formatNPCsDashboardList(contexts: NPCMarketContext[]): string {
   return contexts
     .map((ctx, i) => formatSingleNPCDashboard(ctx, i + 1))
-    .join('\n----------------------------------------\n');
+    .join("\n----------------------------------------\n");
 }
 
 /**
@@ -164,24 +164,24 @@ export function formatMarketDataTable(ctx: NPCMarketContext): string {
   const predictions = ctx.predictionMarkets || [];
 
   if (perps.length === 0 && predictions.length === 0) {
-    return 'No Market Data Available';
+    return "No Market Data Available";
   }
 
   let table =
-    '| Ticker/ID | Type | Price | 24h Change | 24h Range | Context | Vol / MaxBet |\n|---|---|---|---|---|---|---|\n';
+    "| Ticker/ID | Type | Price | 24h Change | 24h Range | Context | Vol / MaxBet |\n|---|---|---|---|---|---|---|\n";
 
   for (const p of perps) {
-    const sign = p.changePercent24h >= 0 ? '+' : '';
+    const sign = p.changePercent24h >= 0 ? "+" : "";
     const range = `$${p.low24h.toFixed(2)}-$${p.high24h.toFixed(2)}`;
     table += `| ${p.ticker} | PERP | $${p.currentPrice.toFixed(2)} | ${sign}${p.changePercent24h.toFixed(2)}% | ${range} | spot | $${(p.volume24h / 1000).toFixed(1)}k / — |\n`;
   }
 
   for (const p of predictions) {
     const daysLeft = p.daysUntilResolution;
-    const safeText = p.text.replace(/\|/g, '/');
+    const safeText = p.text.replace(/\|/g, "/");
     const contextLabel = `${p.horizonBucket} / ${p.liquidityTier} / ${p.urgencyLevel} / ${p.eventSensitivity}`;
     const maxBetLabel =
-      p.maxSafeBet > 0 ? `$${(p.maxSafeBet / 1000).toFixed(1)}k` : 'thin';
+      p.maxSafeBet > 0 ? `$${(p.maxSafeBet / 1000).toFixed(1)}k` : "thin";
     table += `| ${p.id} | PRED | Yes: ${p.yesPrice.toFixed(0)}¢ / No: ${p.noPrice.toFixed(0)}¢ | ${daysLeft}d left | "${safeText}" | ${contextLabel} | $${(p.totalVolume / 1000).toFixed(1)}k / max ${maxBetLabel} |\n`;
   }
 

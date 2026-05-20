@@ -13,19 +13,19 @@
  * - Familiar ORM-style API for findUnique, findMany, create, update, delete
  */
 
-import * as schema from './schema';
+import * as schema from "./schema";
 
 // Re-export client types
-export type { DrizzleClient, JsonValue, SQLValue } from './client';
-export { TableRepository } from './client';
+export type { DrizzleClient, JsonValue, SQLValue } from "./client";
+export { TableRepository } from "./client";
 // Database runtime (connection management, `db`, JSON mode)
 // We use both "export *" and explicit import-then-export for the same symbols.
 // This dual approach is necessary because some runtimes (particularly Bun in CI)
 // don't reliably resolve symbols from barrel files with only "export *".
 // See: https://github.com/oven-sh/bun/issues/4552 (barrel file re-export issues)
-export * from './db';
+export * from "./db";
 // Re-export everything from schema
-export * from './schema';
+export * from "./schema";
 export { schema };
 
 // Import-then-export so runtimes (e.g. Bun in CI) resolve these reliably from the barrel
@@ -45,9 +45,9 @@ import {
   getJsonState,
   getJsonStoragePath,
   getStorageMode,
-} from './db';
+} from "./db";
 
-export * from './balance-transaction-classification';
+export * from "./balance-transaction-classification";
 /**
  * Re-export unique relation types from model-types.
  *
@@ -70,9 +70,9 @@ export type {
   TradingFeeWithUser,
   UserWithAgentRelations,
   UserWithMetrics,
-} from './model-types';
+} from "./model-types";
 // Re-export types
-export * from './types';
+export * from "./types";
 export {
   asPublic,
   asSystem,
@@ -95,8 +95,8 @@ export {
   isValidSnowflakeId,
   parseSnowflakeId,
   SnowflakeGenerator,
-} from '@feed/shared';
-export type { SQL } from 'drizzle-orm';
+} from "@feed/shared";
+export type { SQL } from "drizzle-orm";
 export {
   aliasedTable,
   and,
@@ -125,12 +125,12 @@ export {
   or,
   sql,
   sum,
-} from 'drizzle-orm';
+} from "drizzle-orm";
 
 // Re-export database service (import-then-export for reliable resolution in Bun/CI)
-import { DatabaseService, getDbInstance } from './database-service';
+import { DatabaseService, getDbInstance } from "./database-service";
 
-export type { FeedPost } from './database-service';
+export type { FeedPost } from "./database-service";
 // Re-export query helpers
 export {
   $connect,
@@ -139,16 +139,16 @@ export {
   $queryRaw,
   isRetryableError,
   withRetry,
-} from './helpers';
+} from "./helpers";
 // Re-export moderation filters
-export * from './moderation/filters';
+export * from "./moderation/filters";
 // Re-export query monitor
 export {
   type QueryMetrics,
   queryMonitor,
   type SlowQueryStats,
-} from './query-monitor';
-export type { DatabaseErrorType } from './types';
+} from "./query-monitor";
+export type { DatabaseErrorType } from "./types";
 // Re-export error utilities
-export { isUniqueConstraintError, toDatabaseErrorType } from './types';
+export { isUniqueConstraintError, toDatabaseErrorType } from "./types";
 export { DatabaseService, getDbInstance };

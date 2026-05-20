@@ -46,9 +46,9 @@ import {
   logAdminView,
   requireAdmin,
   withErrorHandling,
-} from '@feed/api';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@feed/api";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 /**
  * GET /api/admin/ai-models
@@ -61,8 +61,8 @@ export const GET = withErrorHandling(async (req: NextRequest) => {
   logAdminView({
     adminId: admin.userId,
     ipAddress: getClientIp(req.headers) ?? undefined,
-    resourceType: 'ai_models',
-    metadata: { action: 'view_config' },
+    resourceType: "ai_models",
+    metadata: { action: "view_config" },
   });
 
   // Check available providers
@@ -73,11 +73,11 @@ export const GET = withErrorHandling(async (req: NextRequest) => {
   };
 
   // Get active provider (based on priority: Groq > Claude > OpenAI)
-  let activeProvider: 'groq' | 'claude' | 'openai' = 'openai';
+  let activeProvider: "groq" | "claude" | "openai" = "openai";
   if (providers.groq) {
-    activeProvider = 'groq';
+    activeProvider = "groq";
   } else if (providers.claude) {
-    activeProvider = 'claude';
+    activeProvider = "claude";
   }
 
   return NextResponse.json({
@@ -87,16 +87,16 @@ export const GET = withErrorHandling(async (req: NextRequest) => {
       activeProvider,
       recommendedModels: [
         {
-          id: 'openai/gpt-oss-120b',
-          name: 'GPT OSS 120B (Groq)',
+          id: "openai/gpt-oss-120b",
+          name: "GPT OSS 120B (Groq)",
           description:
-            '⭐ Best for quality content: events, articles, posts, decisions',
+            "⭐ Best for quality content: events, articles, posts, decisions",
         },
         {
-          id: 'llama-3.1-8b-instant',
-          name: 'Llama 3.1 8B Instant (Groq)',
+          id: "llama-3.1-8b-instant",
+          name: "Llama 3.1 8B Instant (Groq)",
           description:
-            '🚀 Best for frequent operations: comments, DMs, tags, evaluations',
+            "🚀 Best for frequent operations: comments, DMs, tags, evaluations",
         },
       ],
     },

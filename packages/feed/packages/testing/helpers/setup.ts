@@ -5,7 +5,7 @@
  * Handles database initialization, database readiness checks, and test isolation.
  */
 
-import { db } from '@feed/db';
+import { db } from "@feed/db";
 
 /**
  * Check if database is available and properly configured
@@ -15,7 +15,7 @@ export async function ensureDatabaseReady(): Promise<boolean> {
   const databaseUrl = process.env.DATABASE_URL;
 
   if (!databaseUrl) {
-    throw new Error('DATABASE_URL not set');
+    throw new Error("DATABASE_URL not set");
   }
 
   // Simple connection test using db.$queryRaw
@@ -40,7 +40,7 @@ export async function setupTestEnvironment(options?: {
   // Ensure DATABASE_URL is available
   if (!process.env.DATABASE_URL) {
     console.warn(
-      '⚠️  DATABASE_URL not set - database-dependent tests will be skipped'
+      "⚠️  DATABASE_URL not set - database-dependent tests will be skipped",
     );
     return;
   }
@@ -50,7 +50,7 @@ export async function setupTestEnvironment(options?: {
 
   // Ensure database client is connected
   await db.$connect();
-  console.log('✅ Test environment ready');
+  console.log("✅ Test environment ready");
 }
 
 /**
@@ -66,7 +66,7 @@ export async function cleanupTestEnvironment() {
  */
 export function shouldSkipDatabaseTests(): boolean {
   const hasDatabase = !!process.env.DATABASE_URL;
-  const skipRequested = process.env.SKIP_DATABASE_TESTS === 'true';
+  const skipRequested = process.env.SKIP_DATABASE_TESTS === "true";
 
   return !hasDatabase || skipRequested;
 }
@@ -82,8 +82,8 @@ export async function cleanupStaleLocks(): Promise<number> {
       OR: [
         { expiresAt: { lt: new Date() } },
         // Also clean up any locks from previous test runs
-        { id: { contains: 'test' } },
-        { lockedBy: { contains: 'test' } },
+        { id: { contains: "test" } },
+        { lockedBy: { contains: "test" } },
       ],
     },
   });
@@ -93,7 +93,7 @@ export async function cleanupStaleLocks(): Promise<number> {
 /**
  * Generate a unique test ID to avoid conflicts between parallel tests
  */
-export function generateTestId(prefix = 'test'): string {
+export function generateTestId(prefix = "test"): string {
   const timestamp = Date.now();
   const random = Math.random().toString(36).substring(2, 10);
   return `${prefix}-${timestamp}-${random}`;
@@ -149,7 +149,7 @@ export async function createIsolatedTestContext(name: string): Promise<{
 export async function withTimeout<T>(
   operation: Promise<T>,
   timeoutMs: number,
-  operationName = 'operation'
+  operationName = "operation",
 ): Promise<T> {
   const timeoutPromise = new Promise<never>((_, reject) => {
     setTimeout(() => {

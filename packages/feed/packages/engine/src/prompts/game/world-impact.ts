@@ -1,4 +1,4 @@
-import { definePrompt } from '../define-prompt';
+import { definePrompt } from "../define-prompt";
 
 /**
  * Prompt for assessing if a resolved question/event changes the world state.
@@ -8,10 +8,10 @@ import { definePrompt } from '../define-prompt';
  * Includes full narrative context to avoid duplicate world facts.
  */
 export const worldImpactAssessment = definePrompt({
-  id: 'world-impact-assessment',
-  version: '3.0.0',
-  category: 'game',
-  description: 'Assess if a resolved question/event changes the world state',
+  id: "world-impact-assessment",
+  version: "3.0.0",
+  category: "game",
+  description: "Assess if a resolved question/event changes the world state",
   temperature: 0.3, // Low temperature for factual assessment
   maxTokens: 3000,
   template: `{{realityGrounding}}

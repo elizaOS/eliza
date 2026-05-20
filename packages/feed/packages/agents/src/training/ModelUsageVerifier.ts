@@ -5,6 +5,7 @@
  * Provides assertions and logging for model usage verification.
  */
 
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   and,
   count,
@@ -15,14 +16,13 @@ import {
   llmCallLogs,
   trajectories,
   users,
-} from '@feed/db';
-import type { IAgentRuntime } from '@elizaos/core';
-import { logger } from '@feed/shared';
+} from "@feed/db";
+import { logger } from "@feed/shared";
 
 export interface ModelUsageStats {
   agentId: string;
   modelUsed: string;
-  modelSource: 'groq' | 'claude' | 'openai' | 'unknown';
+  modelSource: "groq" | "claude" | "openai" | "unknown";
   inferenceCount: number;
 }
 
@@ -46,32 +46,32 @@ export class ModelUsageVerifier {
    */
   static async verifyAgentModelUsage(
     agentUserId: string,
-    runtime: IAgentRuntime
+    runtime: IAgentRuntime,
   ): Promise<ModelUsageStats> {
     const settings = runtime.character?.settings;
 
     // Check for different model providers
     const groqModel = String(
-      settings?.GROQ_LARGE_MODEL || settings?.GROQ_SMALL_MODEL || ''
+      settings?.GROQ_LARGE_MODEL || settings?.GROQ_SMALL_MODEL || "",
     );
-    const claudeModel = String(settings?.CLAUDE_MODEL || '');
-    const openaiModel = String(settings?.OPENAI_MODEL || '');
+    const claudeModel = String(settings?.CLAUDE_MODEL || "");
+    const openaiModel = String(settings?.OPENAI_MODEL || "");
 
     let modelUsed: string;
-    let modelSource: 'groq' | 'claude' | 'openai' | 'unknown';
+    let modelSource: "groq" | "claude" | "openai" | "unknown";
 
     if (claudeModel) {
       modelUsed = claudeModel;
-      modelSource = 'claude';
+      modelSource = "claude";
     } else if (openaiModel) {
       modelUsed = openaiModel;
-      modelSource = 'openai';
+      modelSource = "openai";
     } else if (groqModel) {
       modelUsed = groqModel;
-      modelSource = 'groq';
+      modelSource = "groq";
     } else {
-      modelUsed = 'unknown';
-      modelSource = 'unknown';
+      modelUsed = "unknown";
+      modelSource = "unknown";
     }
 
     // Count inferences from logs (using trajectoryId)
@@ -92,8 +92,8 @@ export class ModelUsageVerifier {
         .where(
           and(
             gte(llmCallLogs.createdAt, twentyFourHoursAgo),
-            inArray(llmCallLogs.trajectoryId, trajectoryIds)
-          )
+            inArray(llmCallLogs.trajectoryId, trajectoryIds),
+          ),
         );
       inferenceCount = inferenceCountResult[0]?.count || 0;
     }
@@ -111,7 +111,7 @@ export class ModelUsageVerifier {
    */
   static async verifyMultipleAgents(
     agentUserIds: string[],
-    runtimes: Map<string, IAgentRuntime>
+    runtimes: Map<string, IAgentRuntime>,
   ): Promise<VerificationResult> {
     const details: ModelUsageStats[] = [];
     const errors: string[] = [];
@@ -123,7 +123,10 @@ export class ModelUsageVerifier {
         continue;
       }
 
-      const stats = await this.verifyAgentModelUsage(agentId, runtime);
+      const stats = await ModelUsageVerifier.verifyAgentModelUsage(
+        agentId,
+        runtime,
+      );
       details.push(stats);
     }
 
@@ -140,25 +143,28 @@ export class ModelUsageVerifier {
    */
   static async assertModelUsage(
     agentUserId: string,
-    runtime: IAgentRuntime
+    runtime: IAgentRuntime,
   ): Promise<void> {
-    const stats = await this.verifyAgentModelUsage(agentUserId, runtime);
+    const stats = await ModelUsageVerifier.verifyAgentModelUsage(
+      agentUserId,
+      runtime,
+    );
 
-    if (stats.modelSource === 'unknown') {
+    if (stats.modelSource === "unknown") {
       throw new Error(
         `Agent ${agentUserId} has no configured model. ` +
-          `Using: ${stats.modelUsed}`
+          `Using: ${stats.modelUsed}`,
       );
     }
 
     logger.info(
-      'Model usage verified',
+      "Model usage verified",
       {
         agentId: agentUserId,
         model: stats.modelUsed,
         source: stats.modelSource,
       },
-      'ModelUsageVerifier'
+      "ModelUsageVerifier",
     );
   }
 

@@ -80,8 +80,8 @@ import {
   successResponse,
   validateDateRange,
   withErrorHandling,
-} from '@feed/api';
-import type { WhereInput } from '@feed/db';
+} from "@feed/api";
+import type { WhereInput } from "@feed/db";
 import {
   and,
   count,
@@ -95,10 +95,10 @@ import {
   sum,
   tradingFees,
   users,
-} from '@feed/db';
-import { FeeService, StaticDataRegistry } from '@feed/engine';
-import { toISO, toISOOrNull } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/db";
+import { FeeService, StaticDataRegistry } from "@feed/engine";
+import { toISO, toISOOrNull } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 // Infer the TradingFee type from the schema
 type TradingFee = typeof tradingFees.$inferSelect;
@@ -114,7 +114,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   // Apply rate limiting to prevent abuse of expensive stats queries
   const rateLimitResult = applyRateLimit(
     admin.userId,
-    RATE_LIMIT_CONFIGS.ADMIN_STATS
+    RATE_LIMIT_CONFIGS.ADMIN_STATS,
   );
   if (!rateLimitResult.allowed) {
     return rateLimitError(rateLimitResult.retryAfter);
@@ -122,34 +122,34 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
   // Parse query parameters
   const { searchParams } = new URL(request.url);
-  const startDateParam = searchParams.get('startDate');
-  const endDateParam = searchParams.get('endDate');
-  const limitParam = searchParams.get('limit');
+  const startDateParam = searchParams.get("startDate");
+  const endDateParam = searchParams.get("endDate");
+  const limitParam = searchParams.get("limit");
 
   const startDate = startDateParam ? new Date(startDateParam) : undefined;
   if (startDateParam && startDate && Number.isNaN(startDate.getTime())) {
     return errorResponse(
-      'Invalid startDate parameter. Expected an ISO 8601 date string.',
-      'INVALID_QUERY_PARAM',
+      "Invalid startDate parameter. Expected an ISO 8601 date string.",
+      "INVALID_QUERY_PARAM",
       400,
-      { startDate: startDateParam }
+      { startDate: startDateParam },
     );
   }
 
   const endDate = endDateParam ? new Date(endDateParam) : undefined;
   if (endDateParam && endDate && Number.isNaN(endDate.getTime())) {
     return errorResponse(
-      'Invalid endDate parameter. Expected an ISO 8601 date string.',
-      'INVALID_QUERY_PARAM',
+      "Invalid endDate parameter. Expected an ISO 8601 date string.",
+      "INVALID_QUERY_PARAM",
       400,
-      { endDate: endDateParam }
+      { endDate: endDateParam },
     );
   }
 
   // Validate date range to prevent heavy queries
   const dateRangeError = validateDateRange(startDate, endDate);
   if (dateRangeError) {
-    return errorResponse(dateRangeError, 'INVALID_DATE_RANGE', 400, {
+    return errorResponse(dateRangeError, "INVALID_DATE_RANGE", 400, {
       maxDays: MAX_DATE_RANGE_DAYS,
     });
   }
@@ -157,10 +157,10 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   const parsedLimit = limitParam ? Number.parseInt(limitParam, 10) : 10;
   if (limitParam && (Number.isNaN(parsedLimit) || parsedLimit <= 0)) {
     return errorResponse(
-      'Invalid limit parameter. Expected a positive integer.',
-      'INVALID_QUERY_PARAM',
+      "Invalid limit parameter. Expected a positive integer.",
+      "INVALID_QUERY_PARAM",
       400,
-      { limit: limitParam }
+      { limit: limitParam },
     );
   }
 
@@ -179,7 +179,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   // Get platform-wide fee statistics (user fees from TradingFee table)
   const platformStats = await FeeService.getPlatformFeeStats(
     startDate,
-    endDate
+    endDate,
   );
 
   // Get NPC fees from Pool.totalFeesCollected
@@ -244,8 +244,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       if (user) {
         return {
           userId: item.userId,
-          username: user.username || 'Unknown',
-          displayName: user.displayName || 'Unknown User',
+          username: user.username || "Unknown",
+          displayName: user.displayName || "Unknown User",
           profileImageUrl: user.profileImageUrl || null,
           isNPC: user.isActor,
           totalFees: Number(item.feeAmountSum || 0),
@@ -257,14 +257,14 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
       return {
         userId: item.userId,
-        username: actor?.name || 'Unknown NPC',
-        displayName: actor?.name || 'Unknown NPC',
+        username: actor?.name || "Unknown NPC",
+        displayName: actor?.name || "Unknown NPC",
         profileImageUrl: actor?.profileImageUrl || null,
         isNPC: true,
         totalFees: Number(item.feeAmountSum || 0),
         tradeCount: item._count,
       };
-    })
+    }),
   );
 
   // Get top referral fee earners
@@ -303,13 +303,13 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
       return {
         userId: item.referrerId!,
-        username: user?.username || 'Unknown',
-        displayName: user?.displayName || 'Unknown User',
+        username: user?.username || "Unknown",
+        displayName: user?.displayName || "Unknown User",
         profileImageUrl: user?.profileImageUrl || null,
         totalEarned: Number(item.referrerFeeSum || 0),
         referralCount: Number(item._count),
       };
-    })
+    }),
   );
 
   // Get recent fee transactions with user data via JOIN (no include to avoid relation issues)
@@ -336,9 +336,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       startDate || endDate
         ? and(
             startDate ? gte(tradingFees.createdAt, startDate) : undefined,
-            endDate ? lte(tradingFees.createdAt, endDate) : undefined
+            endDate ? lte(tradingFees.createdAt, endDate) : undefined,
           )
-        : undefined
+        : undefined,
     )
     .orderBy(desc(tradingFees.createdAt))
     .limit(limit);
@@ -367,8 +367,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     return {
       id: fee.id,
       userId: fee.userId,
-      username: username || 'Unknown',
-      displayName: displayName || 'Unknown',
+      username: username || "Unknown",
+      displayName: displayName || "Unknown",
       profileImageUrl: profileImageUrl || null,
       isNPC: isActor,
       tradeType: fee.tradeType,
@@ -399,14 +399,14 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       feeAmount: true,
     },
     orderBy: {
-      createdAt: 'asc',
+      createdAt: "asc",
     },
   });
 
   const trendMap = new Map<string, { totalFees: number; tradeCount: number }>();
 
   for (const record of dailyFeeRecords) {
-    const dayKey = toISOOrNull(record.createdAt)?.split('T')[0];
+    const dayKey = toISOOrNull(record.createdAt)?.split("T")[0];
     if (!dayKey) continue;
     const existing = trendMap.get(dayKey) ?? { totalFees: 0, tradeCount: 0 };
 

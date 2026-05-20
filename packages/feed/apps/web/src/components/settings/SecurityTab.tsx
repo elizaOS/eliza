@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { ExternalLink } from 'lucide-react';
-import { useAuth } from '@/hooks/useAuth';
-import { useAuthStore } from '@/stores/authStore';
+import { ExternalLink } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import { useAuthStore } from "@/stores/authStore";
 
 /**
  * Security tab for account security settings.
@@ -58,7 +58,7 @@ export function SecurityTab() {
           </a>
         </div>
         <p className="mt-3 text-muted-foreground text-xs">
-          For security concerns or to report vulnerabilities, contact{' '}
+          For security concerns or to report vulnerabilities, contact{" "}
           <a
             href="mailto:feed@elizalabs.ai"
             className="text-[#0066FF] hover:underline"

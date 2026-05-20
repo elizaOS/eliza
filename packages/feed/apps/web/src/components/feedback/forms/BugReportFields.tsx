@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { cn } from '@feed/shared';
-import { Image as ImageIcon, X } from 'lucide-react';
-import { toast } from 'sonner';
+import { cn } from "@feed/shared";
+import { Image as ImageIcon, X } from "lucide-react";
+import { toast } from "sonner";
 
 interface BugReportFieldsProps {
   stepsToReproduce: string;
@@ -21,19 +21,19 @@ export function BugReportFields({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!file.type.startsWith('image/')) {
-      toast.error('Please select an image file');
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please select an image file");
       return;
     }
 
     if (file.size > 10 * 1024 * 1024) {
-      toast.error('Image size must be less than 10MB');
+      toast.error("Image size must be less than 10MB");
       return;
     }
 
     const reader = new FileReader();
     reader.onerror = () => {
-      toast.error('Failed to read the image file');
+      toast.error("Failed to read the image file");
     };
     reader.onloadend = () => {
       onScreenshotChange(file, reader.result as string);
@@ -63,10 +63,10 @@ export function BugReportFields({
           maxLength={2000}
           rows={5}
           className={cn(
-            'w-full rounded-lg border border-border bg-muted px-3 py-2',
-            'text-foreground placeholder-muted-foreground',
-            'focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#1c9cf0]',
-            'resize-none transition-colors'
+            "w-full rounded-lg border border-border bg-muted px-3 py-2",
+            "text-foreground placeholder-muted-foreground",
+            "focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#1c9cf0]",
+            "resize-none transition-colors",
           )}
         />
         <div className="flex justify-between text-muted-foreground text-xs">
@@ -100,8 +100,8 @@ export function BugReportFields({
           <label
             htmlFor="screenshot"
             className={cn(
-              'flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-border border-dashed bg-muted/30 p-6',
-              'transition-colors hover:border-[#1c9cf0] hover:bg-muted/50'
+              "flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-border border-dashed bg-muted/30 p-6",
+              "transition-colors hover:border-[#1c9cf0] hover:bg-muted/50",
             )}
           >
             <ImageIcon className="h-8 w-8 text-muted-foreground" />

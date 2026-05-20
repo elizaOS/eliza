@@ -1,9 +1,9 @@
-import { createJSONStorage, type StateStorage } from 'zustand/middleware';
+import { createJSONStorage, type StateStorage } from "zustand/middleware";
 
-export type BrowserStorageType = 'localStorage' | 'sessionStorage';
+export type BrowserStorageType = "localStorage" | "sessionStorage";
 
 function getStorage(type: BrowserStorageType): Storage | null {
-  if (typeof window === 'undefined') return null;
+  if (typeof window === "undefined") return null;
 
   try {
     return window[type];
@@ -14,7 +14,7 @@ function getStorage(type: BrowserStorageType): Storage | null {
 
 export function readStorageItem(
   type: BrowserStorageType,
-  key: string
+  key: string,
 ): string | null {
   const storage = getStorage(type);
   if (!storage) return null;
@@ -28,7 +28,7 @@ export function readStorageItem(
 
 export function readStorageJson<T>(
   type: BrowserStorageType,
-  key: string
+  key: string,
 ): T | null {
   const stored = readStorageItem(type, key);
   if (!stored) return null;
@@ -43,7 +43,7 @@ export function readStorageJson<T>(
 export function writeStorageItem(
   type: BrowserStorageType,
   key: string,
-  value: string
+  value: string,
 ): boolean {
   const storage = getStorage(type);
   if (!storage) return false;
@@ -58,7 +58,7 @@ export function writeStorageItem(
 
 export function removeStorageItem(
   type: BrowserStorageType,
-  key: string
+  key: string,
 ): boolean {
   const storage = getStorage(type);
   if (!storage) return false;

@@ -53,19 +53,19 @@
  * ```
  */
 
-import { withErrorHandling } from '@feed/api';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+import { withErrorHandling } from "@feed/api";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 export const POST = withErrorHandling(async function POST(
-  request: NextRequest
+  request: NextRequest,
 ) {
   const body = await request.json();
 
-  logger.info('Frame action received', { body }, 'FrameAPI');
+  logger.info("Frame action received", { body }, "FrameAPI");
 
   const { untrustedData } = body;
 
@@ -73,22 +73,22 @@ export const POST = withErrorHandling(async function POST(
   const fid = untrustedData.fid;
 
   logger.info(
-    'Processing frame action',
+    "Processing frame action",
     {
       buttonIndex,
       fid,
       castId: untrustedData.castId,
     },
-    'FrameAPI'
+    "FrameAPI",
   );
 
   const frameResponse = {
-    version: 'next',
-    image: 'https://feed.market/assets/images/og-image.png',
+    version: "next",
+    image: "https://feed.market/assets/images/og-image.png",
     buttons: [
       {
-        label: 'Open Feed',
-        action: 'link',
+        label: "Open Feed",
+        action: "link",
         target: `https://feed.market?fid=${fid}&fc_frame=true`,
       },
     ],
@@ -119,8 +119,8 @@ export const GET = withErrorHandling(async function GET() {
 </html>`,
     {
       headers: {
-        'content-type': 'text/html',
+        "content-type": "text/html",
       },
-    }
+    },
   );
 });

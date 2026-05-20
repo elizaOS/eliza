@@ -10,7 +10,7 @@
  *   const users = await db.user.findMany({ where: { isActive: true } });
  */
 
-import type { Param } from 'drizzle-orm';
+import type { Param } from "drizzle-orm";
 import {
   and,
   asc,
@@ -31,22 +31,22 @@ import {
   or,
   type SQL,
   sql,
-} from 'drizzle-orm';
+} from "drizzle-orm";
 import {
   getTableConfig,
   type PgColumn,
   type PgTable,
   type SelectedFields,
-} from 'drizzle-orm/pg-core';
-import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
-import type { ExtractTablesWithRelations } from 'drizzle-orm/relations';
-import type postgres from 'postgres';
-import * as schema from './schema';
+} from "drizzle-orm/pg-core";
+import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
+import type { ExtractTablesWithRelations } from "drizzle-orm/relations";
+import type postgres from "postgres";
+import * as schema from "./schema";
 
 // Helper to find column by name from table config
 function findColumnByName(
   tableConfig: ReturnType<typeof getTableConfig>,
-  name: string
+  name: string,
 ): PgColumn | undefined {
   // columns is an array, so we need to find by name property
   return tableConfig.columns.find((col) => col.name === name);
@@ -66,7 +66,7 @@ function asDrizzleTable<T extends PgTable>(table: T): PgTable {
 export type DrizzleSchema = typeof schema;
 export type SchemaDatabase = PostgresJsDatabase<DrizzleSchema>;
 export type SchemaTables = ExtractTablesWithRelations<DrizzleSchema>;
-export type RelationalQueryAPI = SchemaDatabase['query'];
+export type RelationalQueryAPI = SchemaDatabase["query"];
 
 // JSON value type for nested structures
 // This matches the JSON specification: all valid JSON value types
@@ -118,21 +118,21 @@ function getRelationalQueryBuilder<
   TResult extends Record<string, SQLValue> = Record<string, SQLValue>,
 >(
   queryAPI: RelationalQueryAPI | undefined,
-  tableName: string
+  tableName: string,
 ): RelationalQueryMethods<TResult> | null {
   if (!queryAPI) return null;
   const queryTable = queryAPI[tableName as keyof RelationalQueryAPI];
   if (!queryTable) return null;
 
   // Type guard to ensure it has the methods we need
-  if ('findFirst' in queryTable || 'findMany' in queryTable) {
+  if ("findFirst" in queryTable || "findMany" in queryTable) {
     return {
       findFirst:
-        'findFirst' in queryTable
+        "findFirst" in queryTable
           ? queryTable.findFirst.bind(queryTable)
           : undefined,
       findMany:
-        'findMany' in queryTable
+        "findMany" in queryTable
           ? queryTable.findMany.bind(queryTable)
           : undefined,
     } as RelationalQueryMethods<TResult>;
@@ -158,7 +158,7 @@ type WhereValue<T> =
       contains?: string;
       startsWith?: string;
       endsWith?: string;
-      mode?: 'insensitive';
+      mode?: "insensitive";
     }
   | null
   | undefined;
@@ -179,12 +179,12 @@ type WhereInput<TTable> = {
 function createWhereInputById<
   T extends Record<string, DatabaseValue | JsonValue>,
 >(
-  id: string
+  id: string,
 ): { id: string } & Partial<
-  Record<Exclude<keyof T, 'id'>, WhereValue<T[Exclude<keyof T, 'id'>]>>
+  Record<Exclude<keyof T, "id">, WhereValue<T[Exclude<keyof T, "id">]>>
 > {
   return { id } as { id: string } & Partial<
-    Record<Exclude<keyof T, 'id'>, WhereValue<T[Exclude<keyof T, 'id'>]>>
+    Record<Exclude<keyof T, "id">, WhereValue<T[Exclude<keyof T, "id">]>>
   >;
 }
 
@@ -192,7 +192,7 @@ function createWhereInputById<
  * Order by input type for sorting query results.
  */
 type OrderByInput<TTable> = {
-  [K in keyof TTable]?: 'asc' | 'desc';
+  [K in keyof TTable]?: "asc" | "desc";
 };
 
 /**
@@ -206,7 +206,7 @@ type IncludeInput = Record<
       include?: IncludeInput;
       where?: Record<string, SQLValue | WhereValue<SQLValue>>;
       take?: number;
-      orderBy?: Record<string, 'asc' | 'desc'>;
+      orderBy?: Record<string, "asc" | "desc">;
     }
 >;
 
@@ -289,14 +289,14 @@ function buildWhereClause<
   const conditions: SQL[] = [];
 
   for (const [key, value] of Object.entries(where)) {
-    if (key === 'AND') {
+    if (key === "AND") {
       const andConditions = Array.isArray(value) ? value : [value];
       const andClauses = andConditions
         .map((w) =>
           buildWhereClause(
             table,
-            w as WhereInput<Record<string, DatabaseValue | JsonValue>>
-          )
+            w as WhereInput<Record<string, DatabaseValue | JsonValue>>,
+          ),
         )
         .filter((c): c is SQL => c !== undefined);
       if (andClauses.length > 0) {
@@ -305,7 +305,7 @@ function buildWhereClause<
       continue;
     }
 
-    if (key === 'OR') {
+    if (key === "OR") {
       const orConditions = value as WhereInput<
         Record<string, DatabaseValue | JsonValue>
       >[];
@@ -318,10 +318,10 @@ function buildWhereClause<
       continue;
     }
 
-    if (key === 'NOT') {
+    if (key === "NOT") {
       const notCondition = buildWhereClause(
         table,
-        value as WhereInput<Record<string, DatabaseValue | JsonValue>>
+        value as WhereInput<Record<string, DatabaseValue | JsonValue>>,
       );
       if (notCondition) {
         conditions.push(sql`NOT (${notCondition})`);
@@ -340,23 +340,23 @@ function buildWhereClause<
 
     if (value === undefined) continue;
 
-    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+    if (typeof value === "object" && value !== null && !Array.isArray(value)) {
       const ops = value as Record<string, DatabaseValue>;
 
-      if ('equals' in ops) {
+      if ("equals" in ops) {
         if (ops.equals === null) {
           conditions.push(isNull(column));
         } else {
           conditions.push(eq(column, ops.equals));
         }
       }
-      if ('not' in ops) {
+      if ("not" in ops) {
         if (ops.not === null) {
           conditions.push(isNotNull(column));
         } else if (
-          typeof ops.not === 'object' &&
+          typeof ops.not === "object" &&
           ops.not !== null &&
-          'equals' in ops.not
+          "equals" in ops.not
         ) {
           const notEqualsValue = (ops.not as { equals: DatabaseValue }).equals;
           conditions.push(ne(column, notEqualsValue));
@@ -364,35 +364,35 @@ function buildWhereClause<
           conditions.push(ne(column, ops.not));
         }
       }
-      if ('in' in ops && Array.isArray(ops.in)) {
+      if ("in" in ops && Array.isArray(ops.in)) {
         conditions.push(inArray(column, ops.in));
       }
-      if ('notIn' in ops && Array.isArray(ops.notIn)) {
+      if ("notIn" in ops && Array.isArray(ops.notIn)) {
         conditions.push(notInArray(column, ops.notIn));
       }
-      if ('lt' in ops) conditions.push(lt(column, ops.lt));
-      if ('lte' in ops) conditions.push(lte(column, ops.lte));
-      if ('gt' in ops) conditions.push(gt(column, ops.gt));
-      if ('gte' in ops) conditions.push(gte(column, ops.gte));
-      if ('contains' in ops) {
+      if ("lt" in ops) conditions.push(lt(column, ops.lt));
+      if ("lte" in ops) conditions.push(lte(column, ops.lte));
+      if ("gt" in ops) conditions.push(gt(column, ops.gt));
+      if ("gte" in ops) conditions.push(gte(column, ops.gte));
+      if ("contains" in ops) {
         const mode = (ops as { mode?: string }).mode;
-        if (mode === 'insensitive') {
+        if (mode === "insensitive") {
           conditions.push(ilike(column, `%${ops.contains}%`));
         } else {
           conditions.push(like(column, `%${ops.contains}%`));
         }
       }
-      if ('startsWith' in ops) {
+      if ("startsWith" in ops) {
         const mode = (ops as { mode?: string }).mode;
-        if (mode === 'insensitive') {
+        if (mode === "insensitive") {
           conditions.push(ilike(column, `${ops.startsWith}%`));
         } else {
           conditions.push(like(column, `${ops.startsWith}%`));
         }
       }
-      if ('endsWith' in ops) {
+      if ("endsWith" in ops) {
         const mode = (ops as { mode?: string }).mode;
-        if (mode === 'insensitive') {
+        if (mode === "insensitive") {
           conditions.push(ilike(column, `%${ops.endsWith}`));
         } else {
           conditions.push(like(column, `%${ops.endsWith}`));
@@ -416,7 +416,7 @@ function buildOrderBy<TTable extends PgTable>(
   orderBy:
     | OrderByInput<Record<string, DatabaseValue>>
     | OrderByInput<Record<string, DatabaseValue>>[]
-    | undefined
+    | undefined,
 ): SQL[] {
   if (!orderBy) return [];
 
@@ -428,7 +428,7 @@ function buildOrderBy<TTable extends PgTable>(
     for (const [key, direction] of Object.entries(order)) {
       const column = findColumnByName(tableConfig, key);
       if (column) {
-        result.push(direction === 'desc' ? desc(column) : asc(column));
+        result.push(direction === "desc" ? desc(column) : asc(column));
       }
     }
   }
@@ -445,7 +445,7 @@ function buildOrderBy<TTable extends PgTable>(
  */
 function buildSelectFields<TTable extends PgTable>(
   table: TTable,
-  select: SelectInput | undefined
+  select: SelectInput | undefined,
 ): Record<string, PgColumn> | undefined {
   if (!select) return undefined;
 
@@ -510,7 +510,7 @@ export class TableRepository<
   constructor(
     private readonly drizzle: SchemaDatabase,
     private readonly table: TTable,
-    private readonly tableName: string
+    private readonly tableName: string,
   ) {
     this.queryAPI = this.drizzle.query;
   }
@@ -522,22 +522,22 @@ export class TableRepository<
    * @returns Drizzle-compatible 'with' clause configuration
    */
   private buildWithClause(
-    include: IncludeInput
+    include: IncludeInput,
   ): Record<string, boolean | RelationalQueryConfig> {
     const withClause: Record<string, boolean | RelationalQueryConfig> = {};
     for (const [key, value] of Object.entries(include)) {
       if (value === true) {
         withClause[key] = true;
-      } else if (typeof value === 'object' && value !== null) {
+      } else if (typeof value === "object" && value !== null) {
         const nested: RelationalQueryConfig = {};
         if (value.take) nested.limit = value.take;
         if (value.orderBy) {
           const orders: SQL[] = [];
           for (const [oKey, oDir] of Object.entries(value.orderBy)) {
             orders.push(
-              oDir === 'desc'
+              oDir === "desc"
                 ? sql`${sql.identifier(oKey)} DESC`
-                : sql`${sql.identifier(oKey)} ASC`
+                : sql`${sql.identifier(oKey)} ASC`,
             );
           }
           if (orders.length > 0) nested.orderBy = orders;
@@ -547,7 +547,7 @@ export class TableRepository<
           nested.with = {
             ...nested.with,
             ...Object.fromEntries(
-              Object.entries(value.select).map(([k, v]) => [k, v === true])
+              Object.entries(value.select).map(([k, v]) => [k, v === true]),
             ),
           };
         }
@@ -568,7 +568,7 @@ export class TableRepository<
     // Use Drizzle's query API for relations if include is specified
     const relationalBuilder = getRelationalQueryBuilder(
       this.queryAPI,
-      this.tableName
+      this.tableName,
     );
     if (options.include && relationalBuilder?.findFirst) {
       const result = await relationalBuilder.findFirst({
@@ -612,7 +612,7 @@ export class TableRepository<
     // Use Drizzle's query API for relations if include is specified
     const relationalBuilder = getRelationalQueryBuilder(
       this.queryAPI,
-      this.tableName
+      this.tableName,
     );
     if (options.include && relationalBuilder?.findFirst) {
       const result = await relationalBuilder.findFirst({
@@ -659,7 +659,7 @@ export class TableRepository<
     // Use Drizzle's query API for relations if include is specified
     const relationalBuilder = getRelationalQueryBuilder(
       this.queryAPI,
-      this.tableName
+      this.tableName,
     );
     if (options.include && relationalBuilder?.findMany) {
       const results = await relationalBuilder.findMany({
@@ -696,7 +696,7 @@ export class TableRepository<
     const results = await this.drizzle
       .insert(this.table)
       .values(
-        options.data as TInsert & Record<string, DatabaseValue | JsonValue>
+        options.data as TInsert & Record<string, DatabaseValue | JsonValue>,
       )
       .returning();
 
@@ -706,10 +706,10 @@ export class TableRepository<
     if (options.include && created) {
       const createdObj = created as Record<string, DatabaseValue | JsonValue>;
       if (
-        typeof createdObj === 'object' &&
+        typeof createdObj === "object" &&
         createdObj !== null &&
-        'id' in createdObj &&
-        typeof createdObj.id === 'string'
+        "id" in createdObj &&
+        typeof createdObj.id === "string"
       ) {
         // Build proper where input - id is a key of TSelect
         // Helper function ensures type safety - result is compatible with WhereInput<TSelect>
@@ -738,7 +738,7 @@ export class TableRepository<
     const insertQuery = this.drizzle
       .insert(this.table)
       .values(
-        options.data as (TInsert & Record<string, DatabaseValue | JsonValue>)[]
+        options.data as (TInsert & Record<string, DatabaseValue | JsonValue>)[],
       );
 
     if (options.skipDuplicates) {
@@ -755,7 +755,7 @@ export class TableRepository<
    */
   async update(options: UpdateOptions<TSelect, TInsert>): Promise<TSelect> {
     const whereClause = buildWhereClause(this.table, options.where);
-    if (!whereClause) throw new Error('Update requires a where clause');
+    if (!whereClause) throw new Error("Update requires a where clause");
 
     // Handle increment/decrement operations
     const data = { ...options.data } as Record<
@@ -770,15 +770,15 @@ export class TableRepository<
       const column = findColumnByName(tableConfig, key);
       if (
         column &&
-        typeof value === 'object' &&
+        typeof value === "object" &&
         value !== null &&
         !(value instanceof Date)
       ) {
-        if ('increment' in value) {
+        if ("increment" in value) {
           // Convert increment to SQL expression
           setData[key] =
             sql`${column} + ${(value as { increment: number }).increment}`;
-        } else if ('decrement' in value) {
+        } else if ("decrement" in value) {
           // Convert decrement to SQL expression
           setData[key] =
             sql`${column} - ${(value as { decrement: number }).decrement}`;
@@ -795,7 +795,7 @@ export class TableRepository<
     const results = await this.drizzle
       .update(this.table)
       .set(
-        setData as Partial<TInsert & Record<string, DatabaseValue | JsonValue>>
+        setData as Partial<TInsert & Record<string, DatabaseValue | JsonValue>>,
       )
       .where(whereClause)
       .returning();
@@ -806,10 +806,10 @@ export class TableRepository<
     if (options.include && updated) {
       const updatedObj = updated as Record<string, DatabaseValue | JsonValue>;
       if (
-        typeof updatedObj === 'object' &&
+        typeof updatedObj === "object" &&
         updatedObj !== null &&
-        'id' in updatedObj &&
-        typeof updatedObj.id === 'string'
+        "id" in updatedObj &&
+        typeof updatedObj.id === "string"
       ) {
         // Build proper where input - id is a key of TSelect
         // Helper function ensures type safety - result is compatible with WhereInput<TSelect>
@@ -829,7 +829,7 @@ export class TableRepository<
    * Update multiple records
    */
   async updateMany(
-    options: UpdateOptions<TSelect, TInsert>
+    options: UpdateOptions<TSelect, TInsert>,
   ): Promise<{ count: number }> {
     const whereClause = buildWhereClause(this.table, options.where);
 
@@ -849,7 +849,7 @@ export class TableRepository<
    */
   async delete(options: DeleteOptions<TSelect>): Promise<TSelect> {
     const whereClause = buildWhereClause(this.table, options.where);
-    if (!whereClause) throw new Error('Delete requires a where clause');
+    if (!whereClause) throw new Error("Delete requires a where clause");
 
     // Use Drizzle's typed delete
     const results = await this.drizzle
@@ -864,7 +864,7 @@ export class TableRepository<
    * Delete multiple records
    */
   async deleteMany(
-    options: DeleteOptions<TSelect> = {} as DeleteOptions<TSelect>
+    options: DeleteOptions<TSelect> = {} as DeleteOptions<TSelect>,
   ): Promise<{ count: number }> {
     const whereClause = buildWhereClause(this.table, options.where);
 
@@ -924,7 +924,8 @@ export class TableRepository<
 
     const result = await query;
     return Number(
-      (result[0] as { count: number | string | bigint } | undefined)?.count ?? 0
+      (result[0] as { count: number | string | bigint } | undefined)?.count ??
+        0,
     );
   }
 
@@ -964,7 +965,7 @@ export class TableRepository<
       result._count = {
         _all: Number(
           (countResult[0] as { count: number | string | bigint } | undefined)
-            ?.count ?? 0
+            ?.count ?? 0,
         ),
       };
     }
@@ -1101,11 +1102,11 @@ export class TableRepository<
     let simpleCount = false;
 
     if (options._count) {
-      if (typeof options._count === 'boolean' && options._count) {
+      if (typeof options._count === "boolean" && options._count) {
         selectFields._countValue = drizzleCount();
-        countKey = '_all';
+        countKey = "_all";
         simpleCount = true;
-      } else if (typeof options._count === 'object') {
+      } else if (typeof options._count === "object") {
         const keys = Object.keys(options._count);
         if (keys.length > 0) {
           countKey = keys[0] ?? null;
@@ -1140,7 +1141,7 @@ export class TableRepository<
       (row) => {
         const transformed: Record<string, DatabaseValue | JsonValue> = {};
         for (const [key, value] of Object.entries(row)) {
-          if (key === '_countValue' && countKey) {
+          if (key === "_countValue" && countKey) {
             if (simpleCount) {
               transformed._count = Number(value);
             } else {
@@ -1151,7 +1152,7 @@ export class TableRepository<
           }
         }
         return transformed;
-      }
+      },
     );
   }
 }
@@ -1159,12 +1160,12 @@ export class TableRepository<
 /**
  * Type helper to infer the select type from a Drizzle table.
  */
-type InferSelect<T extends PgTable> = T['$inferSelect'];
+type InferSelect<T extends PgTable> = T["$inferSelect"];
 
 /**
  * Type helper to infer the insert type from a Drizzle table.
  */
-type InferInsert<T extends PgTable> = T['$inferInsert'];
+type InferInsert<T extends PgTable> = T["$inferInsert"];
 
 /**
  * Drizzle database client interface providing ORM-style API and direct Drizzle access.
@@ -1172,15 +1173,15 @@ type InferInsert<T extends PgTable> = T['$inferInsert'];
  */
 export interface DrizzleClient {
   /** Core Drizzle ORM query methods */
-  select: SchemaDatabase['select'];
-  selectDistinct: SchemaDatabase['selectDistinct'];
-  selectDistinctOn: SchemaDatabase['selectDistinctOn'];
-  insert: SchemaDatabase['insert'];
-  update: SchemaDatabase['update'];
-  delete: SchemaDatabase['delete'];
-  execute: SchemaDatabase['execute'];
-  transaction: SchemaDatabase['transaction'];
-  query: SchemaDatabase['query'];
+  select: SchemaDatabase["select"];
+  selectDistinct: SchemaDatabase["selectDistinct"];
+  selectDistinctOn: SchemaDatabase["selectDistinctOn"];
+  insert: SchemaDatabase["insert"];
+  update: SchemaDatabase["update"];
+  delete: SchemaDatabase["delete"];
+  execute: SchemaDatabase["execute"];
+  transaction: SchemaDatabase["transaction"];
+  query: SchemaDatabase["query"];
 
   /** Connection management methods */
   $connect: () => Promise<void>;
@@ -1666,7 +1667,7 @@ export function createDrizzleClient(drizzle: SchemaDatabase): DrizzleClient {
   };
 
   const $transaction = async <T>(
-    callback: (tx: DrizzleClient) => Promise<T>
+    callback: (tx: DrizzleClient) => Promise<T>,
   ): Promise<T> => {
     return drizzle.transaction(async (tx) => {
       const txClient = createDrizzleClient(tx as SchemaDatabase);
@@ -1712,279 +1713,279 @@ export function createDrizzleClient(drizzle: SchemaDatabase): DrizzleClient {
     $executeRaw,
 
     // Model repositories
-    user: new TableRepository(drizzle, schema.users, 'users'),
-    actorState: new TableRepository(drizzle, schema.actorState, 'actorState'),
+    user: new TableRepository(drizzle, schema.users, "users"),
+    actorState: new TableRepository(drizzle, schema.actorState, "actorState"),
     actorFollow: new TableRepository(
       drizzle,
       schema.actorFollows,
-      'actorFollows'
+      "actorFollows",
     ),
     actorRelationship: new TableRepository(
       drizzle,
       schema.actorRelationships,
-      'actorRelationships'
+      "actorRelationships",
     ),
-    post: new TableRepository(drizzle, schema.posts, 'posts'),
-    comment: new TableRepository(drizzle, schema.comments, 'comments'),
-    reaction: new TableRepository(drizzle, schema.reactions, 'reactions'),
-    share: new TableRepository(drizzle, schema.shares, 'shares'),
-    market: new TableRepository(drizzle, schema.markets, 'markets'),
-    position: new TableRepository(drizzle, schema.positions, 'positions'),
+    post: new TableRepository(drizzle, schema.posts, "posts"),
+    comment: new TableRepository(drizzle, schema.comments, "comments"),
+    reaction: new TableRepository(drizzle, schema.reactions, "reactions"),
+    share: new TableRepository(drizzle, schema.shares, "shares"),
+    market: new TableRepository(drizzle, schema.markets, "markets"),
+    position: new TableRepository(drizzle, schema.positions, "positions"),
     perpPosition: new TableRepository(
       drizzle,
       schema.perpPositions,
-      'perpPositions'
+      "perpPositions",
     ),
-    pool: new TableRepository(drizzle, schema.pools, 'pools'),
+    pool: new TableRepository(drizzle, schema.pools, "pools"),
     poolPosition: new TableRepository(
       drizzle,
       schema.poolPositions,
-      'poolPositions'
+      "poolPositions",
     ),
     poolDeposit: new TableRepository(
       drizzle,
       schema.poolDeposits,
-      'poolDeposits'
+      "poolDeposits",
     ),
     organizationState: new TableRepository(
       drizzle,
       schema.organizationState,
-      'organizationState'
+      "organizationState",
     ),
-    stockPrice: new TableRepository(drizzle, schema.stockPrices, 'stockPrices'),
-    question: new TableRepository(drizzle, schema.questions, 'questions'),
+    stockPrice: new TableRepository(drizzle, schema.stockPrices, "stockPrices"),
+    question: new TableRepository(drizzle, schema.questions, "questions"),
     predictionPriceHistory: new TableRepository(
       drizzle,
       schema.predictionPriceHistories,
-      'predictionPriceHistories'
+      "predictionPriceHistories",
     ),
-    chat: new TableRepository(drizzle, schema.chats, 'chats'),
+    chat: new TableRepository(drizzle, schema.chats, "chats"),
     chatParticipant: new TableRepository(
       drizzle,
       schema.chatParticipants,
-      'chatParticipants'
+      "chatParticipants",
     ),
-    message: new TableRepository(drizzle, schema.messages, 'messages'),
+    message: new TableRepository(drizzle, schema.messages, "messages"),
     notification: new TableRepository(
       drizzle,
       schema.notifications,
-      'notifications'
+      "notifications",
     ),
     dmAcceptance: new TableRepository(
       drizzle,
       schema.dmAcceptances,
-      'dmAcceptances'
+      "dmAcceptances",
     ),
     userInteraction: new TableRepository(
       drizzle,
       schema.userInteractions,
-      'userInteractions'
+      "userInteractions",
     ),
     agentRegistry: new TableRepository(
       drizzle,
       schema.agentRegistries,
-      'agentRegistries'
+      "agentRegistries",
     ),
     agentCapability: new TableRepository(
       drizzle,
       schema.agentCapabilities,
-      'agentCapabilities'
+      "agentCapabilities",
     ),
-    agentLog: new TableRepository(drizzle, schema.agentLogs, 'agentLogs'),
+    agentLog: new TableRepository(drizzle, schema.agentLogs, "agentLogs"),
     agentMessage: new TableRepository(
       drizzle,
       schema.agentMessages,
-      'agentMessages'
+      "agentMessages",
     ),
     agentPerformanceMetrics: new TableRepository(
       drizzle,
       schema.agentPerformanceMetrics,
-      'agentPerformanceMetrics'
+      "agentPerformanceMetrics",
     ),
-    agentGoal: new TableRepository(drizzle, schema.agentGoals, 'agentGoals'),
+    agentGoal: new TableRepository(drizzle, schema.agentGoals, "agentGoals"),
     agentGoalAction: new TableRepository(
       drizzle,
       schema.agentGoalActions,
-      'agentGoalActions'
+      "agentGoalActions",
     ),
     agentPointsTransaction: new TableRepository(
       drizzle,
       schema.agentPointsTransactions,
-      'agentPointsTransactions'
+      "agentPointsTransactions",
     ),
-    agentTrade: new TableRepository(drizzle, schema.agentTrades, 'agentTrades'),
+    agentTrade: new TableRepository(drizzle, schema.agentTrades, "agentTrades"),
     externalAgentConnection: new TableRepository(
       drizzle,
       schema.externalAgentConnections,
-      'externalAgentConnections'
+      "externalAgentConnections",
     ),
-    npcTrade: new TableRepository(drizzle, schema.npcTrades, 'npcTrades'),
+    npcTrade: new TableRepository(drizzle, schema.npcTrades, "npcTrades"),
     npcInteraction: new TableRepository(
       drizzle,
       schema.npcInteractions,
-      'npcInteractions'
+      "npcInteractions",
     ),
-    tradingFee: new TableRepository(drizzle, schema.tradingFees, 'tradingFees'),
+    tradingFee: new TableRepository(drizzle, schema.tradingFees, "tradingFees"),
     balanceTransaction: new TableRepository(
       drizzle,
       schema.balanceTransactions,
-      'balanceTransactions'
+      "balanceTransactions",
     ),
     pointsTransaction: new TableRepository(
       drizzle,
       schema.pointsTransactions,
-      'pointsTransactions'
+      "pointsTransactions",
     ),
     userActorFollow: new TableRepository(
       drizzle,
       schema.userActorFollows,
-      'userActorFollows'
+      "userActorFollows",
     ),
-    userBlock: new TableRepository(drizzle, schema.userBlocks, 'userBlocks'),
-    userMute: new TableRepository(drizzle, schema.userMutes, 'userMutes'),
-    report: new TableRepository(drizzle, schema.reports, 'reports'),
+    userBlock: new TableRepository(drizzle, schema.userBlocks, "userBlocks"),
+    userMute: new TableRepository(drizzle, schema.userMutes, "userMutes"),
+    report: new TableRepository(drizzle, schema.reports, "reports"),
     twitterOAuthToken: new TableRepository(
       drizzle,
       schema.twitterOAuthTokens,
-      'twitterOAuthTokens'
+      "twitterOAuthTokens",
     ),
     onboardingIntent: new TableRepository(
       drizzle,
       schema.onboardingIntents,
-      'onboardingIntents'
+      "onboardingIntents",
     ),
-    favorite: new TableRepository(drizzle, schema.favorites, 'favorites'),
-    follow: new TableRepository(drizzle, schema.follows, 'follows'),
+    favorite: new TableRepository(drizzle, schema.favorites, "favorites"),
+    follow: new TableRepository(drizzle, schema.follows, "follows"),
     followStatus: new TableRepository(
       drizzle,
       schema.followStatuses,
-      'followStatuses'
+      "followStatuses",
     ),
     profileUpdateLog: new TableRepository(
       drizzle,
       schema.profileUpdateLogs,
-      'profileUpdateLogs'
+      "profileUpdateLogs",
     ),
     shareAction: new TableRepository(
       drizzle,
       schema.shareActions,
-      'shareActions'
+      "shareActions",
     ),
-    tag: new TableRepository(drizzle, schema.tags, 'tags'),
-    postTag: new TableRepository(drizzle, schema.postTags, 'postTags'),
+    tag: new TableRepository(drizzle, schema.tags, "tags"),
+    postTag: new TableRepository(drizzle, schema.postTags, "postTags"),
     trendingTag: new TableRepository(
       drizzle,
       schema.trendingTags,
-      'trendingTags'
+      "trendingTags",
     ),
-    llmCallLog: new TableRepository(drizzle, schema.llmCallLogs, 'llmCallLogs'),
+    llmCallLog: new TableRepository(drizzle, schema.llmCallLogs, "llmCallLogs"),
     marketOutcome: new TableRepository(
       drizzle,
       schema.marketOutcomes,
-      'marketOutcomes'
+      "marketOutcomes",
     ),
     trainedModel: new TableRepository(
       drizzle,
       schema.trainedModels,
-      'trainedModels'
+      "trainedModels",
     ),
     trainingBatch: new TableRepository(
       drizzle,
       schema.trainingBatches,
-      'trainingBatches'
+      "trainingBatches",
     ),
     benchmarkResult: new TableRepository(
       drizzle,
       schema.benchmarkResults,
-      'benchmarkResults'
+      "benchmarkResults",
     ),
     trajectory: new TableRepository(
       drizzle,
       schema.trajectories,
-      'trajectories'
+      "trajectories",
     ),
     rewardJudgment: new TableRepository(
       drizzle,
       schema.rewardJudgments,
-      'rewardJudgments'
+      "rewardJudgments",
     ),
     realtimeOutbox: new TableRepository(
       drizzle,
       schema.realtimeOutboxes,
-      'realtimeOutboxes'
+      "realtimeOutboxes",
     ),
-    game: new TableRepository(drizzle, schema.games, 'games'),
-    gameConfig: new TableRepository(drizzle, schema.gameConfigs, 'gameConfigs'),
-    oAuthState: new TableRepository(drizzle, schema.oAuthStates, 'oAuthStates'),
+    game: new TableRepository(drizzle, schema.games, "games"),
+    gameConfig: new TableRepository(drizzle, schema.gameConfigs, "gameConfigs"),
+    oAuthState: new TableRepository(drizzle, schema.oAuthStates, "oAuthStates"),
     systemSettings: new TableRepository(
       drizzle,
       schema.systemSettings,
-      'systemSettings'
+      "systemSettings",
     ),
-    worldEvent: new TableRepository(drizzle, schema.worldEvents, 'worldEvents'),
-    worldFact: new TableRepository(drizzle, schema.worldFacts, 'worldFacts'),
-    dailyTopic: new TableRepository(drizzle, schema.dailyTopics, 'dailyTopics'),
+    worldEvent: new TableRepository(drizzle, schema.worldEvents, "worldEvents"),
+    worldFact: new TableRepository(drizzle, schema.worldFacts, "worldFacts"),
+    dailyTopic: new TableRepository(drizzle, schema.dailyTopics, "dailyTopics"),
     rssFeedSource: new TableRepository(
       drizzle,
       schema.rssFeedSources,
-      'rssFeedSources'
+      "rssFeedSources",
     ),
     rssHeadline: new TableRepository(
       drizzle,
       schema.rssHeadlines,
-      'rssHeadlines'
+      "rssHeadlines",
     ),
     parodyHeadline: new TableRepository(
       drizzle,
       schema.parodyHeadlines,
-      'parodyHeadlines'
+      "parodyHeadlines",
     ),
     moderationEscrow: new TableRepository(
       drizzle,
       schema.moderationEscrows,
-      'moderationEscrows'
+      "moderationEscrows",
     ),
     generationLock: new TableRepository(
       drizzle,
       schema.generationLocks,
-      'generationLocks'
+      "generationLocks",
     ),
-    feedback: new TableRepository(drizzle, schema.feedbacks, 'feedbacks'),
-    referral: new TableRepository(drizzle, schema.referrals, 'referrals'),
+    feedback: new TableRepository(drizzle, schema.feedbacks, "feedbacks"),
+    referral: new TableRepository(drizzle, schema.referrals, "referrals"),
     widgetCache: new TableRepository(
       drizzle,
       schema.widgetCaches,
-      'widgetCaches'
+      "widgetCaches",
     ),
     userAgentConfig: new TableRepository(
       drizzle,
       schema.userAgentConfigs,
-      'userAgentConfigs'
+      "userAgentConfigs",
     ),
-    userApiKey: new TableRepository(drizzle, schema.userApiKeys, 'userApiKeys'),
-    adminRole: new TableRepository(drizzle, schema.adminRoles, 'adminRoles'),
+    userApiKey: new TableRepository(drizzle, schema.userApiKeys, "userApiKeys"),
+    adminRole: new TableRepository(drizzle, schema.adminRoles, "adminRoles"),
     tickTokenStats: new TableRepository(
       drizzle,
       schema.tickTokenStats,
-      'tickTokenStats'
+      "tickTokenStats",
     ),
     questionArcPlan: new TableRepository(
       drizzle,
       schema.questionArcPlans,
-      'questionArcPlans'
+      "questionArcPlans",
     ),
 
     // Group system
-    group: new TableRepository(drizzle, schema.groups, 'groups'),
+    group: new TableRepository(drizzle, schema.groups, "groups"),
     groupMember: new TableRepository(
       drizzle,
       schema.groupMembers,
-      'groupMembers'
+      "groupMembers",
     ),
     groupInvite: new TableRepository(
       drizzle,
       schema.groupInvites,
-      'groupInvites'
+      "groupInvites",
     ),
   };
 }

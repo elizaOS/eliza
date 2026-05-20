@@ -6,7 +6,7 @@
  * Services are "dumb executors" - all reasoning happens here.
  */
 
-import { NPC_POST_QUALITY_RULES } from '@feed/engine';
+import { NPC_POST_QUALITY_RULES } from "@feed/engine";
 
 // =============================================================================
 // Types
@@ -105,26 +105,26 @@ export interface PendingChatMessage {
 
 /** Action name constants - use these instead of magic strings */
 export const Actions = {
-  TRADE: 'TRADE',
-  POST: 'POST',
-  COMMENT: 'COMMENT',
-  REPLY_COMMENT: 'REPLY_COMMENT',
-  LIKE: 'LIKE',
-  REPOST: 'REPOST',
-  FOLLOW: 'FOLLOW',
-  UNFOLLOW: 'UNFOLLOW',
-  REPLY_CHAT: 'REPLY_CHAT',
-  DM: 'DM',
-  GROUP_MESSAGE: 'GROUP_MESSAGE',
-  CREATE_GROUP: 'CREATE_GROUP',
-  INVITE_TO_GROUP: 'INVITE_TO_GROUP',
-  KICK_FROM_GROUP: 'KICK_FROM_GROUP',
-  LEAVE_GROUP: 'LEAVE_GROUP',
-  SEND_MONEY: 'SEND_MONEY',
-  SHARE_INFORMATION: 'SHARE_INFORMATION',
-  REQUEST_PAYMENT: 'REQUEST_PAYMENT',
-  FINISH: 'FINISH',
-  WAIT: 'WAIT',
+  TRADE: "TRADE",
+  POST: "POST",
+  COMMENT: "COMMENT",
+  REPLY_COMMENT: "REPLY_COMMENT",
+  LIKE: "LIKE",
+  REPOST: "REPOST",
+  FOLLOW: "FOLLOW",
+  UNFOLLOW: "UNFOLLOW",
+  REPLY_CHAT: "REPLY_CHAT",
+  DM: "DM",
+  GROUP_MESSAGE: "GROUP_MESSAGE",
+  CREATE_GROUP: "CREATE_GROUP",
+  INVITE_TO_GROUP: "INVITE_TO_GROUP",
+  KICK_FROM_GROUP: "KICK_FROM_GROUP",
+  LEAVE_GROUP: "LEAVE_GROUP",
+  SEND_MONEY: "SEND_MONEY",
+  SHARE_INFORMATION: "SHARE_INFORMATION",
+  REQUEST_PAYMENT: "REQUEST_PAYMENT",
+  FINISH: "FINISH",
+  WAIT: "WAIT",
 } as const;
 
 /** Action name type derived from Actions constant */
@@ -132,14 +132,14 @@ export type ActionName = (typeof Actions)[keyof typeof Actions];
 
 /** Feature name constants */
 export const Features = {
-  TRADING: 'trading',
-  POSTING: 'posting',
-  COMMENTING: 'commenting',
-  ENGAGING: 'engaging',
-  DMS: 'DMs',
-  GROUP_CHATS: 'groupChats',
-  TRANSFERS: 'transfers',
-  INTEL: 'intel',
+  TRADING: "trading",
+  POSTING: "posting",
+  COMMENTING: "commenting",
+  ENGAGING: "engaging",
+  DMS: "DMs",
+  GROUP_CHATS: "groupChats",
+  TRANSFERS: "transfers",
+  INTEL: "intel",
 } as const;
 
 /** Feature name type derived from Features constant */
@@ -157,9 +157,9 @@ export interface ActionDefinition {
 export const ACTION_DEFINITIONS: Record<ActionName, ActionDefinition> = {
   [Actions.TRADE]: {
     name: Actions.TRADE,
-    description: 'Buy/sell on prediction markets or perps',
+    description: "Buy/sell on prediction markets or perps",
     requiredFeature: Features.TRADING,
-    parameters: ['marketType', 'marketId', 'side', 'amount', 'reasoning'],
+    parameters: ["marketType", "marketId", "side", "amount", "reasoning"],
     parameterSchema: `{
   "marketType": "prediction | perp",
   "marketId": "exact_market_id_or_ticker",
@@ -170,18 +170,18 @@ export const ACTION_DEFINITIONS: Record<ActionName, ActionDefinition> = {
   },
   [Actions.POST]: {
     name: Actions.POST,
-    description: 'Create a new post',
+    description: "Create a new post",
     requiredFeature: Features.POSTING,
-    parameters: ['content'],
+    parameters: ["content"],
     parameterSchema: `{
   "content": "Short post (1-2 sentences). NO full market questions!"
 }`,
   },
   [Actions.COMMENT]: {
     name: Actions.COMMENT,
-    description: 'Reply to a post from the feed',
+    description: "Reply to a post from the feed",
     requiredFeature: Features.COMMENTING,
-    parameters: ['postId', 'content', 'parentCommentId'],
+    parameters: ["postId", "content", "parentCommentId"],
     parameterSchema: `{
   "postId": "exact_post_id_from_list",
   "content": "Your comment (1-2 sentences)",
@@ -190,9 +190,9 @@ export const ACTION_DEFINITIONS: Record<ActionName, ActionDefinition> = {
   },
   [Actions.REPLY_COMMENT]: {
     name: Actions.REPLY_COMMENT,
-    description: 'Reply to a pending comment',
+    description: "Reply to a pending comment",
     requiredFeature: Features.COMMENTING,
-    parameters: ['commentId', 'postId', 'content'],
+    parameters: ["commentId", "postId", "content"],
     parameterSchema: `{
   "commentId": "exact_comment_id_from_pending_comments",
   "postId": "exact_post_id_from_pending_comments",
@@ -201,18 +201,18 @@ export const ACTION_DEFINITIONS: Record<ActionName, ActionDefinition> = {
   },
   [Actions.LIKE]: {
     name: Actions.LIKE,
-    description: 'Like a post',
+    description: "Like a post",
     requiredFeature: Features.ENGAGING,
-    parameters: ['postId'],
+    parameters: ["postId"],
     parameterSchema: `{
   "postId": "exact_post_id_from_list"
 }`,
   },
   [Actions.REPOST]: {
     name: Actions.REPOST,
-    description: 'Share/repost content with optional quote',
+    description: "Share/repost content with optional quote",
     requiredFeature: Features.ENGAGING,
-    parameters: ['postId', 'comment'],
+    parameters: ["postId", "comment"],
     parameterSchema: `{
   "postId": "exact_post_id_from_list",
   "comment": "optional quote comment (your take)"
@@ -220,27 +220,27 @@ export const ACTION_DEFINITIONS: Record<ActionName, ActionDefinition> = {
   },
   [Actions.FOLLOW]: {
     name: Actions.FOLLOW,
-    description: 'Follow a user or agent',
+    description: "Follow a user or agent",
     requiredFeature: Features.ENGAGING,
-    parameters: ['userId'],
+    parameters: ["userId"],
     parameterSchema: `{
   "userId": "exact_user_id_from_recent_posts_or_context"
 }`,
   },
   [Actions.UNFOLLOW]: {
     name: Actions.UNFOLLOW,
-    description: 'Unfollow a user or agent',
+    description: "Unfollow a user or agent",
     requiredFeature: Features.ENGAGING,
-    parameters: ['userId'],
+    parameters: ["userId"],
     parameterSchema: `{
   "userId": "exact_user_id_you_currently_follow"
 }`,
   },
   [Actions.REPLY_CHAT]: {
     name: Actions.REPLY_CHAT,
-    description: 'Reply to a pending chat message (DM or group)',
+    description: "Reply to a pending chat message (DM or group)",
     requiredFeature: null, // Validated at execution time based on chat type
-    parameters: ['chatId', 'content'],
+    parameters: ["chatId", "content"],
     parameterSchema: `{
   "chatId": "exact_chat_id_from_pending_chats",
   "content": "Your reply message"
@@ -248,9 +248,9 @@ export const ACTION_DEFINITIONS: Record<ActionName, ActionDefinition> = {
   },
   [Actions.DM]: {
     name: Actions.DM,
-    description: 'Start a new direct message conversation',
+    description: "Start a new direct message conversation",
     requiredFeature: Features.DMS,
-    parameters: ['recipientId', 'content'],
+    parameters: ["recipientId", "content"],
     parameterSchema: `{
   "recipientId": "exact_user_id_from_list",
   "content": "Message content"
@@ -258,9 +258,9 @@ export const ACTION_DEFINITIONS: Record<ActionName, ActionDefinition> = {
   },
   [Actions.GROUP_MESSAGE]: {
     name: Actions.GROUP_MESSAGE,
-    description: 'Send a message to a group chat',
+    description: "Send a message to a group chat",
     requiredFeature: Features.GROUP_CHATS,
-    parameters: ['chatId', 'content'],
+    parameters: ["chatId", "content"],
     parameterSchema: `{
   "chatId": "exact_chat_id_from_your_groups",
   "content": "Message to share with the group"
@@ -268,9 +268,9 @@ export const ACTION_DEFINITIONS: Record<ActionName, ActionDefinition> = {
   },
   [Actions.CREATE_GROUP]: {
     name: Actions.CREATE_GROUP,
-    description: 'Create a new group chat and invite initial members',
+    description: "Create a new group chat and invite initial members",
     requiredFeature: Features.GROUP_CHATS,
-    parameters: ['name', 'description', 'memberIds'],
+    parameters: ["name", "description", "memberIds"],
     parameterSchema: `{
   "name": "Group name",
   "description": "optional group description",
@@ -279,9 +279,9 @@ export const ACTION_DEFINITIONS: Record<ActionName, ActionDefinition> = {
   },
   [Actions.INVITE_TO_GROUP]: {
     name: Actions.INVITE_TO_GROUP,
-    description: 'Invite a user to one of your group chats',
+    description: "Invite a user to one of your group chats",
     requiredFeature: Features.GROUP_CHATS,
-    parameters: ['groupId', 'userId'],
+    parameters: ["groupId", "userId"],
     parameterSchema: `{
   "groupId": "exact_group_id_from_your_groups",
   "userId": "exact_user_id_to_invite"
@@ -289,9 +289,9 @@ export const ACTION_DEFINITIONS: Record<ActionName, ActionDefinition> = {
   },
   [Actions.KICK_FROM_GROUP]: {
     name: Actions.KICK_FROM_GROUP,
-    description: 'Remove a member from a group you own or admin',
+    description: "Remove a member from a group you own or admin",
     requiredFeature: Features.GROUP_CHATS,
-    parameters: ['groupId', 'userId', 'reason'],
+    parameters: ["groupId", "userId", "reason"],
     parameterSchema: `{
   "groupId": "exact_group_id_from_your_groups",
   "userId": "exact_user_id_to_remove",
@@ -300,18 +300,18 @@ export const ACTION_DEFINITIONS: Record<ActionName, ActionDefinition> = {
   },
   [Actions.LEAVE_GROUP]: {
     name: Actions.LEAVE_GROUP,
-    description: 'Leave a group chat you are a member of',
+    description: "Leave a group chat you are a member of",
     requiredFeature: Features.GROUP_CHATS,
-    parameters: ['groupId'],
+    parameters: ["groupId"],
     parameterSchema: `{
   "groupId": "exact_group_id_from_your_groups"
 }`,
   },
   [Actions.SEND_MONEY]: {
     name: Actions.SEND_MONEY,
-    description: 'Send money to another user or agent',
+    description: "Send money to another user or agent",
     requiredFeature: Features.TRANSFERS,
-    parameters: ['recipientId', 'amount', 'reason'],
+    parameters: ["recipientId", "amount", "reason"],
     parameterSchema: `{
   "recipientId": "exact_user_id_from_context",
   "amount": 50,
@@ -321,11 +321,11 @@ export const ACTION_DEFINITIONS: Record<ActionName, ActionDefinition> = {
   [Actions.SHARE_INFORMATION]: {
     name: Actions.SHARE_INFORMATION,
     description:
-      'Share verifiable information with another agent. Searches your DMs, group chats, ' +
-      'and team chat for messages matching the keywords, then sends a summary of real ' +
-      'matching content to the recipient. The recipient sees VERIFIED intel, not just your claim.',
+      "Share verifiable information with another agent. Searches your DMs, group chats, " +
+      "and team chat for messages matching the keywords, then sends a summary of real " +
+      "matching content to the recipient. The recipient sees VERIFIED intel, not just your claim.",
     requiredFeature: Features.INTEL,
-    parameters: ['recipientId', 'keywords', 'context', 'askingPrice'],
+    parameters: ["recipientId", "keywords", "context", "askingPrice"],
     parameterSchema: `{
   "recipientId": "exact_user_id_to_share_with",
   "keywords": ["keyword1", "keyword2"],
@@ -336,11 +336,11 @@ export const ACTION_DEFINITIONS: Record<ActionName, ActionDefinition> = {
   [Actions.REQUEST_PAYMENT]: {
     name: Actions.REQUEST_PAYMENT,
     description:
-      'Request payment from another agent for a service, information, or deal. ' +
-      'Creates a labeled payment request that the recipient can accept or decline. ' +
-      'Use this to set up negotiated exchanges — the outcome is tracked for training.',
+      "Request payment from another agent for a service, information, or deal. " +
+      "Creates a labeled payment request that the recipient can accept or decline. " +
+      "Use this to set up negotiated exchanges — the outcome is tracked for training.",
     requiredFeature: Features.TRANSFERS,
-    parameters: ['recipientId', 'amount', 'reason', 'deadline'],
+    parameters: ["recipientId", "amount", "reason", "deadline"],
     parameterSchema: `{
   "recipientId": "exact_user_id_to_request_from",
   "amount": 50,
@@ -350,14 +350,14 @@ export const ACTION_DEFINITIONS: Record<ActionName, ActionDefinition> = {
   },
   [Actions.FINISH]: {
     name: Actions.FINISH,
-    description: 'End this tick',
+    description: "End this tick",
     requiredFeature: null,
     parameters: [],
     parameterSchema: `{}`,
   },
   [Actions.WAIT]: {
     name: Actions.WAIT,
-    description: 'Wait without taking action',
+    description: "Wait without taking action",
     requiredFeature: null,
     parameters: [],
     parameterSchema: `{}`,
@@ -371,7 +371,7 @@ export function getActionDefinition(name: ActionName): ActionDefinition {
 
 /** Get all actions available for given features */
 export function getAvailableActions(
-  enabledFeatures: string[]
+  enabledFeatures: string[],
 ): ActionDefinition[] {
   return Object.values(ACTION_DEFINITIONS).filter((action) => {
     if (action.requiredFeature === null) return true;
@@ -436,7 +436,7 @@ export interface MarketTrendContext {
   volume24h: number;
   openInterest: number;
   volatility24h: number;
-  direction: 'up' | 'down' | 'flat';
+  direction: "up" | "down" | "flat";
 }
 
 /** NPC relationship context */
@@ -509,7 +509,7 @@ export interface AgentSocialConnection {
   isFollowing: boolean;
   isFollowedBy: boolean;
   interactionCount: number;
-  source: 'follow' | 'interaction' | 'both';
+  source: "follow" | "interaction" | "both";
 }
 
 export interface CreatorInfo {
@@ -586,7 +586,7 @@ export interface MultiStepDecision {
  * Share behavior types for post-trade sharing decisions.
  * Mutually exclusive - exactly one applies per roll.
  */
-export type ShareBehavior = 'public_only' | 'group_only' | 'both' | 'quiet';
+export type ShareBehavior = "public_only" | "group_only" | "both" | "quiet";
 
 /**
  * Determine share behavior based on a random roll.
@@ -607,10 +607,10 @@ export function determineShareBehavior(roll: number): ShareBehavior {
   // Defensively clamp roll to [0, 1] range
   const clampedRoll = Math.max(0, Math.min(1, roll));
 
-  if (clampedRoll < 0.25) return 'public_only'; // 25%
-  if (clampedRoll < 0.35) return 'both'; // 10%
-  if (clampedRoll < 0.6) return 'group_only'; // 25%
-  return 'quiet'; // 40%
+  if (clampedRoll < 0.25) return "public_only"; // 25%
+  if (clampedRoll < 0.35) return "both"; // 10%
+  if (clampedRoll < 0.6) return "group_only"; // 25%
+  return "quiet"; // 40%
 }
 
 // =============================================================================
@@ -643,7 +643,7 @@ export interface PromptTokenBreakdown {
  */
 export function fitSectionsWithinBudget(
   sections: PromptSection[],
-  budget: number
+  budget: number,
 ): { prompt: string; breakdown: PromptTokenBreakdown } {
   // Sort by priority (keep insertion order for equal priority)
   const sorted = [...sections].sort((a, b) => a.priority - b.priority);
@@ -665,11 +665,11 @@ export function fitSectionsWithinBudget(
   // Re-sort by original insertion order (use index from original sections array)
   const orderMap = new Map(sections.map((s, i) => [s.name, i]));
   included.sort(
-    (a, b) => (orderMap.get(a.name) ?? 0) - (orderMap.get(b.name) ?? 0)
+    (a, b) => (orderMap.get(a.name) ?? 0) - (orderMap.get(b.name) ?? 0),
   );
 
   return {
-    prompt: included.map((s) => s.content).join('\n'),
+    prompt: included.map((s) => s.content).join("\n"),
     breakdown: { total: totalTokens, sections: breakdown },
   };
 }
@@ -723,7 +723,7 @@ export function buildMultiStepDecisionPrompt(params: {
     traceActionResults,
     context,
     isNpc = false,
-    npcGameContext = '',
+    npcGameContext = "",
     shareBehavior: providedShareBehavior,
     shareTradeRoll: providedShareTradeRoll,
     characterStyle,
@@ -735,18 +735,18 @@ export function buildMultiStepDecisionPrompt(params: {
       ? traceActionResults
           .map(
             (r, i) =>
-              `${i + 1}. ${r.actionType}: ${r.success ? '✓' : '✗'} ${r.summary || ''}${r.error ? ` (Error: ${r.error})` : ''}`
+              `${i + 1}. ${r.actionType}: ${r.success ? "✓" : "✗"} ${r.summary || ""}${r.error ? ` (Error: ${r.error})` : ""}`,
           )
-          .join('\n')
-      : 'No actions taken yet this tick.';
+          .join("\n")
+      : "No actions taken yet this tick.";
 
   // Check if just traded this tick - encourage posting about trades
   const justTraded = traceActionResults.some(
-    (r) => r.actionType === Actions.TRADE && r.success
+    (r) => r.actionType === Actions.TRADE && r.success,
   );
   const tradeDetails = justTraded
     ? traceActionResults.find(
-        (r) => r.actionType === Actions.TRADE && r.success
+        (r) => r.actionType === Actions.TRADE && r.success,
       )
     : null;
 
@@ -756,7 +756,7 @@ export function buildMultiStepDecisionPrompt(params: {
 ${npcGameContext}
 
 `
-    : '';
+    : "";
 
   // Quality rules apply to ALL agents (NPCs and user-controlled)
   // These contain banned patterns and phrases that prevent repetitive content
@@ -768,15 +768,15 @@ ${NPC_POST_QUALITY_RULES}
   // If character-specific style rules and post examples are available, inject them
   const characterVoiceSection =
     characterStyle && characterStyle.length > 0
-      ? `\n# YOUR Character Voice Rules\n${characterStyle.map((s) => `- ${s}`).join('\n')}\n`
-      : '';
+      ? `\n# YOUR Character Voice Rules\n${characterStyle.map((s) => `- ${s}`).join("\n")}\n`
+      : "";
   const characterExamplesSection =
     characterPostExamples && characterPostExamples.length > 0
       ? `\n# YOUR Post Voice Examples (match this tone)\n${characterPostExamples
           .slice(0, 5)
           .map((e) => `- "${e}"`)
-          .join('\n')}\n`
-      : '';
+          .join("\n")}\n`
+      : "";
   const npcVoiceRulesSection = `
 # Voice Rules
 - You are a CHARACTER, not a reporter
@@ -796,15 +796,15 @@ ${characterVoiceSection}${characterExamplesSection}
   const canPost = context.enabledFeatures.includes(Features.POSTING);
   const canGroupChat = context.enabledFeatures.includes(Features.GROUP_CHATS);
   const justCoordinatedInGroup = traceActionResults.some(
-    (r) => r.actionType === Actions.GROUP_MESSAGE && r.success
+    (r) => r.actionType === Actions.GROUP_MESSAGE && r.success,
   );
 
   // Check if already posted this tick (for prompt messaging, not feature filtering)
   const hasPostedThisTick = traceActionResults.some(
-    (r) => r.actionType === Actions.POST && r.success
+    (r) => r.actionType === Actions.POST && r.success,
   );
   const tradeCount = traceActionResults.filter(
-    (r) => r.actionType === Actions.TRADE && r.success
+    (r) => r.actionType === Actions.TRADE && r.success,
   ).length;
 
   // Encourage sharing after trades - users love seeing NPCs share their trades
@@ -815,23 +815,23 @@ ${characterVoiceSection}${characterExamplesSection}
     determineShareBehavior(providedShareTradeRoll ?? Math.random());
 
   const shouldSharePublicly =
-    shareBehavior === 'public_only' || shareBehavior === 'both';
+    shareBehavior === "public_only" || shareBehavior === "both";
   const shouldShareInGroup =
-    shareBehavior === 'group_only' || shareBehavior === 'both';
-  const shouldStayQuiet = shareBehavior === 'quiet';
+    shareBehavior === "group_only" || shareBehavior === "both";
+  const shouldStayQuiet = shareBehavior === "quiet";
 
   const tradePostEncouragement =
     justTraded && tradeDetails
       ? `
 # 🔥 YOU JUST MADE A TRADE!
-You just traded: ${tradeDetails.summary || 'a position'}
+You just traded: ${tradeDetails.summary || "a position"}
 
 ${
   shouldStayQuiet
     ? `**Your vibe right now**: You're feeling chill about this one. No need to broadcast every move - sometimes the smart play is to stay quiet and let the trade speak for itself. Consider FINISH or doing something else.
 
 `
-    : ''
+    : ""
 }${
   shouldSharePublicly && canPost
     ? `**Consider posting about it**: Your followers want to know what you're doing!
@@ -840,7 +840,7 @@ ${
 - A hot take related to this trade
 
 `
-    : ''
+    : ""
 }${
   shouldShareInGroup && canGroupChat
     ? `**Consider sharing in your group chat**: Your tier community might appreciate the alpha!
@@ -849,15 +849,15 @@ ${
 - Build relationships with other traders
 
 `
-    : ''
+    : ""
 }${
   shouldSharePublicly && shouldShareInGroup
     ? `**You could do BOTH**: Post publicly AND share in group chat - real traders do this all the time!
 
 `
-    : ''
+    : ""
 }`
-      : '';
+      : "";
   const groupChatCoordinationEncouragement =
     justCoordinatedInGroup && canPost
       ? `
@@ -867,54 +867,54 @@ You just coordinated in a group chat. Make this visible in the public feed:
 - Turn private discussion into a clear market angle
 - Keep it short and concrete
 `
-      : '';
+      : "";
 
   // Action priority guidance — balanced across all agent types
   const priorityActions: string[] = [];
 
   if (canTrade) {
-    priorityActions.push('TRADE: Take a position or manage existing positions');
+    priorityActions.push("TRADE: Take a position or manage existing positions");
   }
 
   // Engagement actions are HIGH priority
   if (canComment) {
-    priorityActions.push('COMMENT on posts in the feed (engage with others!)');
+    priorityActions.push("COMMENT on posts in the feed (engage with others!)");
   }
   if (canEngage) {
-    priorityActions.push('LIKE posts you find interesting');
-    priorityActions.push('REPOST valuable content');
+    priorityActions.push("LIKE posts you find interesting");
+    priorityActions.push("REPOST valuable content");
     priorityActions.push(
-      'FOLLOW users/agents you consistently agree with or engage with'
+      "FOLLOW users/agents you consistently agree with or engage with",
     );
     priorityActions.push(
-      'UNFOLLOW users/agents when they are no longer relevant to your strategy'
+      "UNFOLLOW users/agents when they are no longer relevant to your strategy",
     );
   }
   if (canGroupChat) {
-    priorityActions.push('GROUP_MESSAGE to discuss with your community');
+    priorityActions.push("GROUP_MESSAGE to discuss with your community");
   }
   if (canRespondDMs) {
     priorityActions.push(
-      'DM someone to build relationships, share tips, or discuss strategy — social connections are as important as trades'
+      "DM someone to build relationships, share tips, or discuss strategy — social connections are as important as trades",
     );
   }
 
   // POST is a normal activity for all agents
   if (canPost) {
     priorityActions.push(
-      'POST: Share your thoughts, react to events, or comment on markets'
+      "POST: Share your thoughts, react to events, or comment on markets",
     );
   }
 
   // Always end with FINISH
   priorityActions.push(
-    'FINISH after 3-5 VARIED actions — a good tick includes a mix like: trade + DM + post + comment + follow (DM at least one person per tick!)'
+    "FINISH after 3-5 VARIED actions — a good tick includes a mix like: trade + DM + post + comment + follow (DM at least one person per tick!)",
   );
 
   // Build numbered list from the array
   const numberedList = priorityActions
     .map((action, index) => `${index + 1}. ${action}`)
-    .join('\n');
+    .join("\n");
 
   const actionPrioritySection = `
 # Action Priority (Balanced: Trade, Post, Engage)
@@ -934,17 +934,17 @@ ${numberedList}
     (context.groupChats?.length ?? 0);
   const actionabilitySection = `
 # Actionability Summary
-- Prediction markets: ${context.predictionMarkets.length}${!canAffordEntryTrade ? ' (CANNOT TRADE — balance below $1)' : ''}
-- Perp markets: ${context.perpMarkets.length}${!canAffordEntryTrade ? ' (CANNOT TRADE — balance below $1)' : ''}
-- Open positions: ${context.openPositions}${context.openPositions > 0 ? ' (can SELL/CLOSE)' : ''}
+- Prediction markets: ${context.predictionMarkets.length}${!canAffordEntryTrade ? " (CANNOT TRADE — balance below $1)" : ""}
+- Perp markets: ${context.perpMarkets.length}${!canAffordEntryTrade ? " (CANNOT TRADE — balance below $1)" : ""}
+- Open positions: ${context.openPositions}${context.openPositions > 0 ? " (can SELL/CLOSE)" : ""}
 - Recent posts: ${context.recentPosts.length}
 - Pending comment replies: ${context.pendingCommentReplies.length}
 - Pending chats: ${context.pendingChatMessages.length}
 - Group chats: ${context.groupChats?.length ?? 0}
 ${
   actionabilityTotal > 0
-    ? 'You MUST take at least one action before FINISH.'
-    : 'No actionable items found. FINISH is acceptable.'
+    ? "You MUST take at least one action before FINISH."
+    : "No actionable items found. FINISH is acceptable."
 }
 `;
 
@@ -952,8 +952,8 @@ ${
   // Prediction markets are shown read-only for conversation context.
   const npcUnifiedPipeline =
     isNpc &&
-    (process.env.FEED_UNIFIED_NPC_PIPELINE === 'true' ||
-      process.env.FEED_UNIFIED_NPC_PIPELINE === '1');
+    (process.env.FEED_UNIFIED_NPC_PIPELINE === "true" ||
+      process.env.FEED_UNIFIED_NPC_PIPELINE === "1");
 
   // Build conditional sections (only show context for enabled features)
   const tradingSection = canTrade
@@ -970,20 +970,20 @@ ${formatPredictionMarkets(context.predictionMarkets)}
 
 # Available Perp Markets
 ${formatPerpMarkets(context.perpMarkets)}`
-    : '';
+    : "";
 
   // Show recent posts if commenting, engaging, or DMs enabled (used to discover users)
   const showRecentPosts = canComment || canRespondDMs || canEngage;
   const recentPostsHeader = canComment
-    ? '# Recent Posts (can comment on, follow, or DM authors)'
+    ? "# Recent Posts (can comment on, follow, or DM authors)"
     : canRespondDMs
-      ? '# Recent Posts (can follow or DM authors)'
-      : '# Recent Posts (can follow authors)';
+      ? "# Recent Posts (can follow or DM authors)"
+      : "# Recent Posts (can follow authors)";
   const commentingSection = showRecentPosts
     ? `
 ${recentPostsHeader}
 ${formatRecentPosts(context.recentPosts)}`
-    : '';
+    : "";
 
   // Pending comment replies section (if commenting enabled)
   const pendingCommentsSection =
@@ -991,7 +991,7 @@ ${formatRecentPosts(context.recentPosts)}`
       ? `
 # Pending Comment Replies (use REPLY_COMMENT)
 ${formatPendingCommentReplies(context.pendingCommentReplies)}`
-      : '';
+      : "";
 
   // Pending chat messages section (if DMs or group chats enabled)
   const pendingChatsSection =
@@ -999,15 +999,15 @@ ${formatPendingCommentReplies(context.pendingCommentReplies)}`
       ? `
 # Pending Chat Messages (use REPLY_CHAT)
 ${formatPendingChatMessages(context.pendingChatMessages)}`
-      : '';
+      : "";
 
   // Group chats section - show available groups for sharing (including member counts)
   const groupChatsSection =
     canGroupChat && context.groupChats && context.groupChats.length > 0
       ? `
 # Your Group Chats (can share trades/thoughts here)
-${context.groupChats.map((g) => `- chatId: ${g.id} | groupId: ${g.groupId ?? 'n/a'} | ${g.name} | members: ${g.memberCount ?? 'unknown'}`).join('\n')}`
-      : '';
+${context.groupChats.map((g) => `- chatId: ${g.id} | groupId: ${g.groupId ?? "n/a"} | ${g.name} | members: ${g.memberCount ?? "unknown"}`).join("\n")}`
+      : "";
 
   // Group chat intel section - summaries, facts, and recent messages from group chats
   const groupChatIntelSection =
@@ -1018,44 +1018,44 @@ ${context.groupChatIntel
   .map((intel) => {
     const factsText =
       intel.keyFacts.length > 0
-        ? intel.keyFacts.map((f) => `  - ${f}`).join('\n')
-        : '';
+        ? intel.keyFacts.map((f) => `  - ${f}`).join("\n")
+        : "";
     const messagesText =
       intel.recentMessages.length > 0
         ? intel.recentMessages
             .slice(-5)
             .map((m) => `  ${m.speaker}: ${m.content.slice(0, 120)}`)
-            .join('\n')
-        : '';
-    return `**${intel.chatName}**: ${intel.summary}${factsText ? `\nKey facts:\n${factsText}` : ''}${messagesText ? `\nRecent:\n${messagesText}` : ''}`;
+            .join("\n")
+        : "";
+    return `**${intel.chatName}**: ${intel.summary}${factsText ? `\nKey facts:\n${factsText}` : ""}${messagesText ? `\nRecent:\n${messagesText}` : ""}`;
   })
-  .join('\n\n')}
+  .join("\n\n")}
 
 Use this intel to inform your trading decisions and group interactions. Information from one group may be valuable in another.`
-      : '';
+      : "";
 
   // Creator info section (only for user-controlled agents)
   const creatorSection =
     !isNpc && context.creator
       ? `
 # Your Creator
-You were created by **${context.creator.name}**${context.creator.username ? ` (@${context.creator.username})` : ''}.
+You were created by **${context.creator.name}**${context.creator.username ? ` (@${context.creator.username})` : ""}.
 `
-      : '';
+      : "";
 
   const continuitySection = context.contextRefreshSummary
     ? `
 # Continuity Notes (Previous Runtime)
 ${context.contextRefreshSummary}
 `
-    : '';
+    : "";
 
   // Build sections with priority for token budget management
   const TOKEN_BUDGET = 6000;
 
   const sections: PromptSection[] = [
     {
-      name: 'system',
+      name: "system",
       priority: 1,
       content: `You are ${agentName}, an autonomous agent on Feed prediction markets.
 ${creatorSection}${npcContextSection}${tradePostEncouragement}${groupChatCoordinationEncouragement}# Current Execution Context
@@ -1063,8 +1063,8 @@ ${creatorSection}${npcContextSection}${tradePostEncouragement}${groupChatCoordin
 **Actions Completed This Tick**: ${traceActionResults.length}
 
 # Your Current State
-- Balance: $${context.balance.toFixed(2)}${context.balance < 1 ? ' ⚠️ BELOW $1 MINIMUM — you CANNOT open new trades (buy_yes/buy_no/open_long/open_short). You CAN still SELL/CLOSE existing positions. Focus on social actions (COMMENT, REPLY_COMMENT, POST, GROUP_MESSAGE) or FINISH.' : context.balance < 10 && context.openPositions > 0 ? ' ⚠️ LOW BALANCE but you have open positions - you CAN still SELL/CLOSE positions to free up funds!' : ''}
-- Lifetime P&L: ${context.pnl >= 0 ? '+' : ''}$${context.pnl.toFixed(2)}
+- Balance: $${context.balance.toFixed(2)}${context.balance < 1 ? " ⚠️ BELOW $1 MINIMUM — you CANNOT open new trades (buy_yes/buy_no/open_long/open_short). You CAN still SELL/CLOSE existing positions. Focus on social actions (COMMENT, REPLY_COMMENT, POST, GROUP_MESSAGE) or FINISH." : context.balance < 10 && context.openPositions > 0 ? " ⚠️ LOW BALANCE but you have open positions - you CAN still SELL/CLOSE positions to free up funds!" : ""}
+- Lifetime P&L: ${context.pnl >= 0 ? "+" : ""}$${context.pnl.toFixed(2)}
 - Open Positions: ${context.openPositions}
 - Pending Comments: ${context.pendingCommentReplies.length}
 - Pending Chats: ${context.pendingChatMessages.length}
@@ -1072,50 +1072,50 @@ ${actionabilitySection}
 ${continuitySection}`,
     },
     {
-      name: 'positions',
+      name: "positions",
       priority: 2,
       content: `# Your Open Positions
 ${formatAgentPositions(context.agentPositions)}
 ${formatPositionManagementGuidance(context.agentPositions)}`,
     },
     {
-      name: 'tradeHistory',
+      name: "tradeHistory",
       priority: 2,
       content:
         !isNpc &&
         context.agentTradeHistory &&
         context.agentTradeHistory.length > 0
           ? `# Your Recent Trades\n${formatAgentTradeHistory(context.agentTradeHistory)}`
-          : '',
+          : "",
     },
     {
-      name: 'ownPosts',
+      name: "ownPosts",
       priority: 3,
       content: canPost
         ? `# Your Recent Posts (AVOID REPEATING - check how long ago you posted!)
 ${formatAgentOwnPosts(context.agentOwnPosts)}`
-        : '',
+        : "",
     },
-    { name: 'markets', priority: 2, content: tradingSection },
+    { name: "markets", priority: 2, content: tradingSection },
     {
-      name: 'memory',
+      name: "memory",
       priority: 3,
       content:
         !isNpc && context.recentMemory && context.recentMemory.length > 0
           ? `# Your Recent Activity\n${formatAgentMemory(context.recentMemory)}`
-          : '',
+          : "",
     },
     // Engine-grade context sections (Phase 1: unified NPC pipeline)
     {
-      name: 'marketTrends',
+      name: "marketTrends",
       priority: 3,
       content:
         canTrade && context.marketTrends && context.marketTrends.length > 0
           ? `# Market Trends (24h)\n${formatMarketTrends(context.marketTrends)}`
-          : '',
+          : "",
     },
     {
-      name: 'relationships',
+      name: "relationships",
       priority: 3,
       content: (() => {
         if (
@@ -1128,51 +1128,51 @@ ${formatAgentOwnPosts(context.agentOwnPosts)}`
         if (!isNpc && context.socialGraph && context.socialGraph.length > 0) {
           return `# Your Social Network\n${formatAgentSocialGraph(context.socialGraph)}`;
         }
-        return '';
+        return "";
       })(),
     },
     {
-      name: 'worldEvents',
+      name: "worldEvents",
       priority: 3,
       content:
         context.worldEvents && context.worldEvents.length > 0
           ? `# Recent World Events\n${formatWorldEvents(context.worldEvents)}`
-          : '',
+          : "",
     },
     {
-      name: 'narrative',
+      name: "narrative",
       priority: 3,
       content: context.narrativeContext
         ? (() => {
             const text = formatNarrativeContext(context.narrativeContext);
-            return text ? `# Recent Outcomes\n${text}` : '';
+            return text ? `# Recent Outcomes\n${text}` : "";
           })()
-        : '',
+        : "",
     },
     {
-      name: 'worldGrounding',
+      name: "worldGrounding",
       priority: 4,
       content: context.worldContext
         ? (() => {
             const text = formatWorldContextSection(context.worldContext);
-            return text ? `# World Context\n${text}` : '';
+            return text ? `# World Context\n${text}` : "";
           })()
-        : '',
+        : "",
     },
     {
-      name: 'moodState',
+      name: "moodState",
       priority: 4,
       content: context.moodState
         ? `# Your Current State\nMood: ${context.moodState.mood} | Reputation: ${context.moodState.reputationPoints} pts`
-        : '',
+        : "",
     },
-    { name: 'feed', priority: 3, content: commentingSection },
-    { name: 'pending', priority: 2, content: pendingCommentsSection },
-    { name: 'pendingChats', priority: 2, content: pendingChatsSection },
-    { name: 'groupChats', priority: 3, content: groupChatsSection },
-    { name: 'groupChatIntel', priority: 3, content: groupChatIntelSection },
+    { name: "feed", priority: 3, content: commentingSection },
+    { name: "pending", priority: 2, content: pendingCommentsSection },
+    { name: "pendingChats", priority: 2, content: pendingChatsSection },
+    { name: "groupChats", priority: 3, content: groupChatsSection },
+    { name: "groupChatIntel", priority: 3, content: groupChatIntelSection },
     {
-      name: 'actions',
+      name: "actions",
       priority: 1,
       content: `# Actions Completed This Tick
 ${actionsCompletedText}
@@ -1180,7 +1180,7 @@ ${actionsCompletedText}
 # Available Actions
 ${formatAvailableActions(context.enabledFeatures)}
 
-${context.diversityInstructions ? `${context.diversityInstructions}` : ''}
+${context.diversityInstructions ? `${context.diversityInstructions}` : ""}
 
 # Decision Rules
 1. **Be Specific**: Provide exact IDs (from "id: xxx") in parameters, amounts, and content. Never invent IDs.
@@ -1191,32 +1191,32 @@ ${context.diversityInstructions ? `${context.diversityInstructions}` : ''}
 6. **CHAIN REACTIONS**: See something interesting? React to it: LIKE it → COMMENT on it → TRADE based on it → DM the author. Real people chain actions naturally.
 7. **Keep Going**: Don't set isFinish=true until you've done at least 5 different things. There's always something to react to.
 8. **PRIVACY**: NEVER use POST to reply to a private message (DM). Use REPLY_CHAT for DMs.
-${hasPostedThisTick ? `9. **NO MORE POSTS**: You already posted this tick. Choose other actions (comment, like, trade, DM, group message, follow).` : tradeCount >= 3 ? `9. **TIME TO POST**: You've made ${tradeCount} trades but haven't shared your thoughts yet. POST something — a hot take, a reaction to news, your thesis. Then keep going with more actions.` : ''}`,
+${hasPostedThisTick ? `9. **NO MORE POSTS**: You already posted this tick. Choose other actions (comment, like, trade, DM, group message, follow).` : tradeCount >= 3 ? `9. **TIME TO POST**: You've made ${tradeCount} trades but haven't shared your thoughts yet. POST something — a hot take, a reaction to news, your thesis. Then keep going with more actions.` : ""}`,
     },
     {
-      name: 'actionIdeas',
+      name: "actionIdeas",
       priority: 2,
       content: `# Action Ideas (MIX these up — variety makes you interesting!)
-${canTrade ? '- **TRADE**: Take a position based on your intuitions' : ''}
-${canPost ? '- **POST**: Share your take on events, markets, or anything on your mind' : ''}
-${canComment ? "- **COMMENT**: Reply to someone's post from the feed" : ''}
-${canEngage ? '- **LIKE**: Show appreciation for a post (costs nothing, builds connections!)' : ''}
-${canEngage ? "- **REPOST**: Share someone else's post with your take added" : ''}
-${canEngage ? '- **FOLLOW**: Follow a user/agent whose posts you find interesting (use userId from Recent Posts)' : ''}
-${canEngage ? '- **UNFOLLOW**: Unfollow users/agents that are no longer relevant' : ''}
-${canComment ? '- **REPLY_COMMENT**: Reply to a pending comment on your post or thread' : ''}
-${canRespondDMs || canGroupChat ? '- **REPLY_CHAT**: Reply to a pending DM/group message' : ''}
-${canRespondDMs ? '- **DM**: Start a NEW private conversation with someone interesting (use their userId from Recent Posts)' : ''}
-${canGroupChat ? '- **GROUP_MESSAGE**: Share thoughts or intel with your group chat' : ''}
-${canGroupChat ? '- **CREATE_GROUP**: Start a new group chat and invite people' : ''}
-${canGroupChat ? '- **INVITE_TO_GROUP**: Add someone interesting to your group (use groupId + userId)' : ''}
-${canGroupChat ? '- **KICK_FROM_GROUP**: Remove a member from one of your groups (use groupId + userId)' : ''}
-${canGroupChat ? '- **LEAVE_GROUP**: Leave a group you no longer care about (use groupId)' : ''}
+${canTrade ? "- **TRADE**: Take a position based on your intuitions" : ""}
+${canPost ? "- **POST**: Share your take on events, markets, or anything on your mind" : ""}
+${canComment ? "- **COMMENT**: Reply to someone's post from the feed" : ""}
+${canEngage ? "- **LIKE**: Show appreciation for a post (costs nothing, builds connections!)" : ""}
+${canEngage ? "- **REPOST**: Share someone else's post with your take added" : ""}
+${canEngage ? "- **FOLLOW**: Follow a user/agent whose posts you find interesting (use userId from Recent Posts)" : ""}
+${canEngage ? "- **UNFOLLOW**: Unfollow users/agents that are no longer relevant" : ""}
+${canComment ? "- **REPLY_COMMENT**: Reply to a pending comment on your post or thread" : ""}
+${canRespondDMs || canGroupChat ? "- **REPLY_CHAT**: Reply to a pending DM/group message" : ""}
+${canRespondDMs ? "- **DM**: Start a NEW private conversation with someone interesting (use their userId from Recent Posts)" : ""}
+${canGroupChat ? "- **GROUP_MESSAGE**: Share thoughts or intel with your group chat" : ""}
+${canGroupChat ? "- **CREATE_GROUP**: Start a new group chat and invite people" : ""}
+${canGroupChat ? "- **INVITE_TO_GROUP**: Add someone interesting to your group (use groupId + userId)" : ""}
+${canGroupChat ? "- **KICK_FROM_GROUP**: Remove a member from one of your groups (use groupId + userId)" : ""}
+${canGroupChat ? "- **LEAVE_GROUP**: Leave a group you no longer care about (use groupId)" : ""}
 
 **BE ACTIVE AND SOCIAL**: A great tick looks like: browse feed → like 2-3 posts → comment on something interesting → trade on a market that caught your eye → DM someone about their take → post your own thought → follow someone new. Do at least 5-8 actions before finishing. You have up to 12 iterations — USE THEM.`,
     },
     {
-      name: 'style',
+      name: "style",
       priority: 3,
       content: `${
         canPost || canComment
@@ -1227,7 +1227,7 @@ ${canGroupChat ? '- **LEAVE_GROUP**: Leave a group you no longer care about (use
 - Hot takes on news or rumors
 - Your positions and thesis
 - Just vibing about the chaos`
-          : ''
+          : ""
       }
 
 # Post Style (MEME-STYLE ENCOURAGED)
@@ -1245,12 +1245,12 @@ Examples:
   ✅ GOOD: "Everyone's bearish on this... time to fade the crowd?"`,
     },
     {
-      name: 'outputFormat',
+      name: "outputFormat",
       priority: 1,
       content: `# Output Format (JSON only, no markdown)
 {
   "thought": "Brief reasoning for this decision",
-  "action": "${[canTrade ? 'TRADE' : '', canPost ? 'POST' : '', canComment ? 'COMMENT' : '', canComment ? 'REPLY_COMMENT' : '', canEngage ? 'LIKE' : '', canEngage ? 'REPOST' : '', canEngage ? 'FOLLOW' : '', canEngage ? 'UNFOLLOW' : '', canRespondDMs || canGroupChat ? 'REPLY_CHAT' : '', canRespondDMs ? 'DM' : '', canGroupChat ? 'GROUP_MESSAGE' : '', canGroupChat ? 'CREATE_GROUP' : '', canGroupChat ? 'INVITE_TO_GROUP' : '', canGroupChat ? 'KICK_FROM_GROUP' : '', canGroupChat ? 'LEAVE_GROUP' : '', 'FINISH'].filter(Boolean).join(' | ')}",
+  "action": "${[canTrade ? "TRADE" : "", canPost ? "POST" : "", canComment ? "COMMENT" : "", canComment ? "REPLY_COMMENT" : "", canEngage ? "LIKE" : "", canEngage ? "REPOST" : "", canEngage ? "FOLLOW" : "", canEngage ? "UNFOLLOW" : "", canRespondDMs || canGroupChat ? "REPLY_CHAT" : "", canRespondDMs ? "DM" : "", canGroupChat ? "GROUP_MESSAGE" : "", canGroupChat ? "CREATE_GROUP" : "", canGroupChat ? "INVITE_TO_GROUP" : "", canGroupChat ? "KICK_FROM_GROUP" : "", canGroupChat ? "LEAVE_GROUP" : "", "FINISH"].filter(Boolean).join(" | ")}",
   "parameters": { /* action-specific, see below */ },
   "isFinish": false
 }
@@ -1272,41 +1272,41 @@ Your decision (JSON only):`,
 // =============================================================================
 
 function formatAgentPositions(
-  positions: AgentTickContext['agentPositions']
+  positions: AgentTickContext["agentPositions"],
 ): string {
   const lines: string[] = [];
 
   if (positions.predictions.length > 0) {
-    lines.push('Prediction positions (use marketId to sell):');
+    lines.push("Prediction positions (use marketId to sell):");
     for (const p of positions.predictions) {
-      const pnlSign = p.pnlPercent >= 0 ? '+' : '';
-      const priceMovement = p.pnlPercent >= 0 ? '📈' : '📉';
+      const pnlSign = p.pnlPercent >= 0 ? "+" : "";
+      const priceMovement = p.pnlPercent >= 0 ? "📈" : "📉";
       const priceInfo = `avg cost: $${p.avgPrice.toFixed(2)} | market: ${(p.currentPrice * 100).toFixed(0)}%`;
       lines.push(
-        `  - ${p.side} on "${p.question.substring(0, 35)}..." (marketId: ${p.marketId})`
+        `  - ${p.side} on "${p.question.substring(0, 35)}..." (marketId: ${p.marketId})`,
       );
       lines.push(
-        `    ${p.shares.toFixed(1)} shares | ${priceInfo} | ${priceMovement} ${pnlSign}${p.pnlPercent.toFixed(1)}% | held: ${p.timeHeld}`
+        `    ${p.shares.toFixed(1)} shares | ${priceInfo} | ${priceMovement} ${pnlSign}${p.pnlPercent.toFixed(1)}% | held: ${p.timeHeld}`,
       );
     }
   }
 
   if (positions.perps.length > 0) {
-    lines.push('Perp positions (use ticker to close):');
+    lines.push("Perp positions (use ticker to close):");
     for (const p of positions.perps) {
-      const pnlSign = p.pnlPercent >= 0 ? '+' : '';
-      const priceMovement = p.pnlPercent >= 0 ? '📈' : '📉';
+      const pnlSign = p.pnlPercent >= 0 ? "+" : "";
+      const priceMovement = p.pnlPercent >= 0 ? "📈" : "📉";
       const priceInfo = `entry: $${p.entryPrice.toFixed(2)} → now: $${p.currentPrice.toFixed(2)}`;
       lines.push(
-        `  - ${p.side.toUpperCase()} ${p.ticker}: $${p.size.toFixed(0)} size`
+        `  - ${p.side.toUpperCase()} ${p.ticker}: $${p.size.toFixed(0)} size`,
       );
       lines.push(
-        `    ${priceInfo} | ${priceMovement} ${pnlSign}${p.pnlPercent.toFixed(1)}% | P&L: ${p.pnl >= 0 ? '+' : ''}$${p.pnl.toFixed(2)} | held: ${p.timeHeld}`
+        `    ${priceInfo} | ${priceMovement} ${pnlSign}${p.pnlPercent.toFixed(1)}% | P&L: ${p.pnl >= 0 ? "+" : ""}$${p.pnl.toFixed(2)} | held: ${p.timeHeld}`,
       );
     }
   }
 
-  return lines.length > 0 ? lines.join('\n') : 'No open positions.';
+  return lines.length > 0 ? lines.join("\n") : "No open positions.";
 }
 
 /**
@@ -1314,7 +1314,7 @@ function formatAgentPositions(
  * Helps identify stagnant, losing, or aged positions that should be reviewed
  */
 function formatPositionManagementGuidance(
-  positions: AgentTickContext['agentPositions']
+  positions: AgentTickContext["agentPositions"],
 ): string {
   const alerts: string[] = [];
 
@@ -1335,25 +1335,25 @@ function formatPositionManagementGuidance(
       p.timeHeldMs > STAGNANT_TIME_MS
     ) {
       alerts.push(
-        `⚠️ STAGNANT: ${p.ticker} ${p.side} has barely moved (${p.pnlPercent >= 0 ? '+' : ''}${p.pnlPercent.toFixed(1)}%) in ${p.timeHeld}. Consider closing if no catalyst expected.`
+        `⚠️ STAGNANT: ${p.ticker} ${p.side} has barely moved (${p.pnlPercent >= 0 ? "+" : ""}${p.pnlPercent.toFixed(1)}%) in ${p.timeHeld}. Consider closing if no catalyst expected.`,
       );
     }
     // Significant loss
     else if (p.pnlPercent < LOSS_THRESHOLD_PERCENT) {
       alerts.push(
-        `🔴 LOSING: ${p.ticker} ${p.side} is down ${p.pnlPercent.toFixed(1)}%. To cut losses, use side="close_position" with this ticker.`
+        `🔴 LOSING: ${p.ticker} ${p.side} is down ${p.pnlPercent.toFixed(1)}%. To cut losses, use side="close_position" with this ticker.`,
       );
     }
     // Good profit - consider taking
     else if (p.pnlPercent > PROFIT_THRESHOLD_PERCENT) {
       alerts.push(
-        `🟢 PROFIT: ${p.ticker} ${p.side} is up +${p.pnlPercent.toFixed(1)}%. Consider taking profits or setting a mental stop.`
+        `🟢 PROFIT: ${p.ticker} ${p.side} is up +${p.pnlPercent.toFixed(1)}%. Consider taking profits or setting a mental stop.`,
       );
     }
     // Very long hold
     else if (p.timeHeldMs > LONG_HOLD_TIME_MS) {
       alerts.push(
-        `⏰ AGED: ${p.ticker} ${p.side} held for ${p.timeHeld} (${p.pnlPercent >= 0 ? '+' : ''}${p.pnlPercent.toFixed(1)}%). Review if thesis still valid.`
+        `⏰ AGED: ${p.ticker} ${p.side} held for ${p.timeHeld} (${p.pnlPercent >= 0 ? "+" : ""}${p.pnlPercent.toFixed(1)}%). Review if thesis still valid.`,
       );
     }
   }
@@ -1361,82 +1361,82 @@ function formatPositionManagementGuidance(
   // Check prediction positions
   for (const p of positions.predictions) {
     const absChange = Math.abs(p.pnlPercent);
-    const sellAction = p.side.toLowerCase() === 'yes' ? 'sell_yes' : 'sell_no';
+    const sellAction = p.side.toLowerCase() === "yes" ? "sell_yes" : "sell_no";
 
     if (
       absChange < STAGNANT_THRESHOLD_PERCENT &&
       p.timeHeldMs > STAGNANT_TIME_MS
     ) {
       alerts.push(
-        `⚠️ STAGNANT: "${p.question.substring(0, 30)}..." ${p.side} hasn't moved (${p.pnlPercent >= 0 ? '+' : ''}${p.pnlPercent.toFixed(1)}%) in ${p.timeHeld}. To exit: use side="${sellAction}" on marketId ${p.marketId}.`
+        `⚠️ STAGNANT: "${p.question.substring(0, 30)}..." ${p.side} hasn't moved (${p.pnlPercent >= 0 ? "+" : ""}${p.pnlPercent.toFixed(1)}%) in ${p.timeHeld}. To exit: use side="${sellAction}" on marketId ${p.marketId}.`,
       );
     } else if (p.pnlPercent < LOSS_THRESHOLD_PERCENT) {
       alerts.push(
-        `🔴 LOSING: "${p.question.substring(0, 30)}..." ${p.side} down ${p.pnlPercent.toFixed(1)}%. To cut losses: use side="${sellAction}" on marketId ${p.marketId}.`
+        `🔴 LOSING: "${p.question.substring(0, 30)}..." ${p.side} down ${p.pnlPercent.toFixed(1)}%. To cut losses: use side="${sellAction}" on marketId ${p.marketId}.`,
       );
     } else if (p.pnlPercent > PROFIT_THRESHOLD_PERCENT) {
       alerts.push(
-        `🟢 PROFIT: "${p.question.substring(0, 30)}..." ${p.side} up +${p.pnlPercent.toFixed(1)}%. To take profits: use side="${sellAction}" on marketId ${p.marketId}.`
+        `🟢 PROFIT: "${p.question.substring(0, 30)}..." ${p.side} up +${p.pnlPercent.toFixed(1)}%. To take profits: use side="${sellAction}" on marketId ${p.marketId}.`,
       );
     }
     // Very long hold - check if thesis still valid
     else if (p.timeHeldMs > LONG_HOLD_TIME_MS) {
       alerts.push(
-        `⏰ AGED: "${p.question.substring(0, 30)}..." ${p.side} held for ${p.timeHeld} (${p.pnlPercent >= 0 ? '+' : ''}${p.pnlPercent.toFixed(1)}%). To exit if thesis invalid: use side="${sellAction}" on marketId ${p.marketId}.`
+        `⏰ AGED: "${p.question.substring(0, 30)}..." ${p.side} held for ${p.timeHeld} (${p.pnlPercent >= 0 ? "+" : ""}${p.pnlPercent.toFixed(1)}%). To exit if thesis invalid: use side="${sellAction}" on marketId ${p.marketId}.`,
       );
     }
   }
 
   if (alerts.length === 0) {
-    return '';
+    return "";
   }
 
   return `
 # Position Management Alerts
 💡 REMINDER: Selling/closing positions does NOT require balance - you receive funds FROM the sale!
-${alerts.join('\n')}
+${alerts.join("\n")}
 `;
 }
 
 function formatPredictionMarkets(markets: PredictionMarketContext[]): string {
-  if (markets.length === 0) return 'No active prediction markets.';
+  if (markets.length === 0) return "No active prediction markets.";
 
   return markets
     .map((m, idx) => {
       const yesPct = (m.yesPrice * 100).toFixed(0);
       const noPct = (m.noPrice * 100).toFixed(0);
       // Use short index for display, store real ID for parameters
-      return `- Market #${idx + 1} (id: ${m.id}): "${m.question.substring(0, 60)}${m.question.length > 60 ? '...' : ''}"
+      return `- Market #${idx + 1} (id: ${m.id}): "${m.question.substring(0, 60)}${m.question.length > 60 ? "..." : ""}"
     YES: ${yesPct}% | NO: ${noPct}% | Ends: ${m.endDate}`;
     })
-    .join('\n');
+    .join("\n");
 }
 
 function formatPerpMarkets(markets: PerpMarketContext[]): string {
-  if (markets.length === 0) return 'No perp markets available.';
+  if (markets.length === 0) return "No perp markets available.";
 
   return markets
     .map((m) => {
       const direction =
-        m.changePercent > 0 ? '📈' : m.changePercent < 0 ? '📉' : '➡️';
-      return `- ${m.ticker}: ${m.name} @ $${m.currentPrice.toFixed(2)} ${direction} ${m.changePercent > 0 ? '+' : ''}${m.changePercent.toFixed(1)}%`;
+        m.changePercent > 0 ? "📈" : m.changePercent < 0 ? "📉" : "➡️";
+      return `- ${m.ticker}: ${m.name} @ $${m.currentPrice.toFixed(2)} ${direction} ${m.changePercent > 0 ? "+" : ""}${m.changePercent.toFixed(1)}%`;
     })
-    .join('\n');
+    .join("\n");
 }
 
 function formatRecentPosts(posts: PostContext[]): string {
-  if (posts.length === 0) return 'No recent posts to engage with.';
+  if (posts.length === 0) return "No recent posts to engage with.";
 
   return posts
     .map((p, idx) => {
       // Use short index for display, store real ID for parameters
       const engagementStats = `💬${p.commentCount} ❤️${p.likeCount ?? 0} 🔁${p.repostCount ?? 0}`;
-      const baseInfo = `- Post #${idx + 1} (id: ${p.id}) @${p.authorName} (userId: ${p.authorId}) (${p.timeAgo}): "${p.content.substring(0, 80)}${p.content.length > 80 ? '...' : ''}" [${engagementStats}]`;
+      const baseInfo = `- Post #${idx + 1} (id: ${p.id}) @${p.authorName} (userId: ${p.authorId}) (${p.timeAgo}): "${p.content.substring(0, 80)}${p.content.length > 80 ? "..." : ""}" [${engagementStats}]`;
 
       // Show agent's existing engagement
       const engagementNotes: string[] = [];
-      if (p.agentLiked) engagementNotes.push('liked');
-      if (p.agentReposted) engagementNotes.push('reposted');
+      if (p.agentLiked) engagementNotes.push("liked");
+      if (p.agentReposted) engagementNotes.push("reposted");
       if (p.agentComment) {
         const truncatedComment =
           p.agentComment.length > 60
@@ -1446,16 +1446,16 @@ function formatRecentPosts(posts: PostContext[]): string {
       }
 
       if (engagementNotes.length > 0) {
-        return `${baseInfo}\n    [Already: ${engagementNotes.join(', ')}]`;
+        return `${baseInfo}\n    [Already: ${engagementNotes.join(", ")}]`;
       }
 
       return baseInfo;
     })
-    .join('\n');
+    .join("\n");
 }
 
 function formatPendingCommentReplies(replies: PendingCommentReply[]): string {
-  if (replies.length === 0) return 'No pending comment replies.';
+  if (replies.length === 0) return "No pending comment replies.";
 
   return replies
     .slice(0, 3)
@@ -1464,28 +1464,28 @@ function formatPendingCommentReplies(replies: PendingCommentReply[]): string {
     commentId: ${r.id} | postId: ${r.postId}
 ${r.formattedContext}`;
     })
-    .join('\n\n---\n\n');
+    .join("\n\n---\n\n");
 }
 
 function formatPendingChatMessages(messages: PendingChatMessage[]): string {
-  if (messages.length === 0) return 'No pending chat messages.';
+  if (messages.length === 0) return "No pending chat messages.";
 
   return messages
     .slice(0, 3)
     .map((m, idx) => {
-      const chatType = m.isGroupChat ? '👥 Group' : '💬 DM';
+      const chatType = m.isGroupChat ? "👥 Group" : "💬 DM";
       return `[${idx + 1}] ${chatType}: ${m.chatName} - from @${m.author}
     chatId: ${m.chatId}
 ${m.formattedContext}`;
     })
-    .join('\n\n---\n\n');
+    .join("\n\n---\n\n");
 }
 
 function formatAgentOwnPosts(
-  ownPosts: AgentOwnPostContext[] | undefined
+  ownPosts: AgentOwnPostContext[] | undefined,
 ): string {
   if (!ownPosts || ownPosts.length === 0)
-    return 'You have not posted recently.';
+    return "You have not posted recently.";
 
   return ownPosts
     .map((p, i) => {
@@ -1494,7 +1494,7 @@ function formatAgentOwnPosts(
         p.content.length > 80 ? `${p.content.substring(0, 80)}...` : p.content;
       return `[${i + 1}] "${truncatedContent}" (${p.timeAgo}) [${engagement}]`;
     })
-    .join('\n');
+    .join("\n");
 }
 
 // =============================================================================
@@ -1502,45 +1502,45 @@ function formatAgentOwnPosts(
 // =============================================================================
 
 function formatMarketTrends(trends: MarketTrendContext[]): string {
-  if (trends.length === 0) return 'No market data available.';
+  if (trends.length === 0) return "No market data available.";
 
   return trends
     .map((t) => {
       const arrow =
-        t.direction === 'up' ? '📈' : t.direction === 'down' ? '📉' : '➡️';
+        t.direction === "up" ? "📈" : t.direction === "down" ? "📉" : "➡️";
       const change =
         t.changePercent24h > 0
           ? `+${t.changePercent24h.toFixed(1)}%`
           : `${t.changePercent24h.toFixed(1)}%`;
       return `- ${t.ticker} $${t.currentPrice.toFixed(2)} ${arrow} ${change} | vol: $${t.volume24h.toFixed(0)} | OI: $${t.openInterest.toFixed(0)} | range: $${t.low24h.toFixed(2)}-$${t.high24h.toFixed(2)} | volatility: ${t.volatility24h.toFixed(1)}%`;
     })
-    .join('\n');
+    .join("\n");
 }
 
 function formatRelationships(relationships: RelationshipContext[]): string {
-  if (relationships.length === 0) return 'No known relationships.';
+  if (relationships.length === 0) return "No known relationships.";
 
   return relationships
     .map((r) => {
       const sentimentLabel =
-        r.sentiment > 0.5 ? 'ally' : r.sentiment < -0.5 ? 'rival' : 'neutral';
-      return `- ${r.actorName}: ${r.relationshipType} (${sentimentLabel}, strength: ${r.strength.toFixed(1)})${r.history ? ` — ${r.history.slice(0, 60)}` : ''}`;
+        r.sentiment > 0.5 ? "ally" : r.sentiment < -0.5 ? "rival" : "neutral";
+      return `- ${r.actorName}: ${r.relationshipType} (${sentimentLabel}, strength: ${r.strength.toFixed(1)})${r.history ? ` — ${r.history.slice(0, 60)}` : ""}`;
     })
-    .join('\n');
+    .join("\n");
 }
 
 function formatWorldEvents(events: WorldEventContext[]): string {
-  if (events.length === 0) return 'No recent events.';
+  if (events.length === 0) return "No recent events.";
 
   // Intentionally omits `pointsToward` — information asymmetry by design.
   // NPCs receive signal direction at the data layer (context-gatherers.ts);
   // user-controlled agents must INFER outcome direction from public event text only.
   return events
     .map((e) => {
-      const relevance = e.isRelevantToAgent ? ' ⭐ (involves you)' : '';
+      const relevance = e.isRelevantToAgent ? " ⭐ (involves you)" : "";
       return `- [${e.type}] ${e.description}${relevance}`;
     })
-    .join('\n');
+    .join("\n");
 }
 
 /**
@@ -1548,11 +1548,11 @@ function formatWorldEvents(events: WorldEventContext[]): string {
  */
 function formatAgentSocialGraph(connections: AgentSocialConnection[]): string {
   if (connections.length === 0)
-    return 'No social connections yet. Use FOLLOW on users from the feed, or COMMENT on posts to build relationships.';
+    return "No social connections yet. Use FOLLOW on users from the feed, or COMMENT on posts to build relationships.";
 
   const following = connections.filter((c) => c.isFollowing);
   const interactionOnly = connections.filter(
-    (c) => !c.isFollowing && c.interactionCount > 0
+    (c) => !c.isFollowing && c.interactionCount > 0,
   );
 
   const parts: string[] = [];
@@ -1560,14 +1560,14 @@ function formatAgentSocialGraph(connections: AgentSocialConnection[]): string {
   if (following.length > 0) {
     const lines = following.map((c) => {
       const name = c.username ? `@${c.username}` : c.displayName;
-      const mutual = c.isFollowedBy ? ' (mutual ↔)' : '';
+      const mutual = c.isFollowedBy ? " (mutual ↔)" : "";
       const interactions =
         c.interactionCount > 0
           ? ` — ${c.interactionCount} interactions this week`
-          : '';
+          : "";
       return `- ${name}${mutual}${interactions} (userId: ${c.userId})`;
     });
-    parts.push(`Following (${following.length}):\n${lines.join('\n')}`);
+    parts.push(`Following (${following.length}):\n${lines.join("\n")}`);
   }
 
   if (interactionOnly.length > 0) {
@@ -1575,30 +1575,30 @@ function formatAgentSocialGraph(connections: AgentSocialConnection[]): string {
       const name = c.username ? `@${c.username}` : c.displayName;
       return `- ${name} — ${c.interactionCount} interactions (consider FOLLOW?) (userId: ${c.userId})`;
     });
-    parts.push(`Engaged with recently (not following):\n${lines.join('\n')}`);
+    parts.push(`Engaged with recently (not following):\n${lines.join("\n")}`);
   }
 
-  return parts.join('\n\n');
+  return parts.join("\n\n");
 }
 
 function formatAgentMemory(entries: AgentMemoryEntry[]): string {
-  if (entries.length === 0) return '';
+  if (entries.length === 0) return "";
 
   return entries
     .map((e) => {
       const timeAgo = formatMemoryTimeAgo(e.createdAt);
       const typeLabel = e.type.toUpperCase();
-      const reasonText = e.thinking ? ` — "${e.thinking}"` : '';
+      const reasonText = e.thinking ? ` — "${e.thinking}"` : "";
       return `- [${timeAgo}] ${typeLabel}: ${e.message}${reasonText}`;
     })
-    .join('\n');
+    .join("\n");
 }
 
 function formatMemoryTimeAgo(date: Date): string {
   const ms = Date.now() - date.getTime();
-  if (ms < 0) return 'just now';
+  if (ms < 0) return "just now";
   const minutes = Math.floor(ms / 60_000);
-  if (minutes < 1) return 'just now';
+  if (minutes < 1) return "just now";
   if (minutes < 60) return `${minutes}m ago`;
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h ago`;
@@ -1665,7 +1665,7 @@ ${action.parameterSchema}`);
     }
   }
 
-  return schemas.join('\n\n');
+  return schemas.join("\n\n");
 }
 
 /**
@@ -1676,7 +1676,7 @@ function formatAvailableActions(enabledFeatures: string[]): string {
 
   return availableActions
     .map((action) => `- ${action.name}: ${action.description}`)
-    .join('\n');
+    .join("\n");
 }
 
 // =============================================================================
@@ -1684,32 +1684,32 @@ function formatAvailableActions(enabledFeatures: string[]): string {
 // =============================================================================
 
 function formatAgentTradeHistory(
-  trades: AgentTradeHistoryEntry[] | undefined
+  trades: AgentTradeHistoryEntry[] | undefined,
 ): string {
-  if (!trades || trades.length === 0) return 'No trade history yet.';
+  if (!trades || trades.length === 0) return "No trade history yet.";
 
   return trades
     .map((t) => {
-      const symbol = t.ticker || t.marketId || 'unknown';
-      const side = t.side?.toUpperCase() || '?';
+      const symbol = t.ticker || t.marketId || "unknown";
+      const side = t.side?.toUpperCase() || "?";
       const pnlText =
         t.pnl != null
-          ? ` → P&L: ${t.pnl >= 0 ? '+' : ''}$${t.pnl.toFixed(2)}`
-          : '';
+          ? ` → P&L: ${t.pnl >= 0 ? "+" : ""}$${t.pnl.toFixed(2)}`
+          : "";
       const reasonText = t.reasoning
         ? ` — "${t.reasoning.length > 100 ? `${t.reasoning.slice(0, 100)}...` : t.reasoning}"`
-        : '';
+        : "";
       const timeAgo = formatTradeTimeAgo(t.executedAt);
       return `- [${timeAgo}] ${side} ${t.marketType} ${symbol} $${t.amount.toFixed(0)} @ $${t.price.toFixed(2)}${pnlText}${reasonText}`;
     })
-    .join('\n');
+    .join("\n");
 }
 
 function formatTradeTimeAgo(date: Date): string {
   const ms = Date.now() - date.getTime();
-  if (ms < 0) return 'just now';
+  if (ms < 0) return "just now";
   const minutes = Math.floor(ms / 60_000);
-  if (minutes < 1) return 'just now';
+  if (minutes < 1) return "just now";
   if (minutes < 60) return `${minutes}m ago`;
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h ago`;
@@ -1718,9 +1718,9 @@ function formatTradeTimeAgo(date: Date): string {
 }
 
 function formatNarrativeContext(
-  narrative: AgentTickContext['narrativeContext']
+  narrative: AgentTickContext["narrativeContext"],
 ): string {
-  if (!narrative) return '';
+  if (!narrative) return "";
 
   const parts: string[] = [];
 
@@ -1736,13 +1736,13 @@ function formatNarrativeContext(
     parts.push(`**Event-Market Connections:**\n${narrative.eventSignals}`);
   }
 
-  return parts.join('\n\n');
+  return parts.join("\n\n");
 }
 
 function formatWorldContextSection(
-  worldCtx: AgentTickContext['worldContext']
+  worldCtx: AgentTickContext["worldContext"],
 ): string {
-  if (!worldCtx) return '';
+  if (!worldCtx) return "";
 
   const parts: string[] = [];
 
@@ -1754,7 +1754,7 @@ function formatWorldContextSection(
     parts.push(`**Key Actors:**\n${worldCtx.worldActors}`);
   }
 
-  return parts.join('\n\n');
+  return parts.join("\n\n");
 }
 
 // =============================================================================
@@ -1771,20 +1771,20 @@ export function buildMultiStepSummaryPrompt(params: {
   const resultsText = traceActionResults
     .map(
       (r, i) =>
-        `${i + 1}. ${r.actionType}: ${r.success ? 'Success' : 'Failed'}
-   ${r.summary || 'No details'}
-   ${r.result ? `Result: ${JSON.stringify(r.result)}` : ''}`
+        `${i + 1}. ${r.actionType}: ${r.success ? "Success" : "Failed"}
+   ${r.summary || "No details"}
+   ${r.result ? `Result: ${JSON.stringify(r.result)}` : ""}`,
     )
-    .join('\n\n');
+    .join("\n\n");
 
   return `You are ${agentName}. You just completed an autonomous tick with the following actions:
 
 # Actions Taken
-${resultsText || 'No actions were taken this tick.'}
+${resultsText || "No actions were taken this tick."}
 
 # Current State After Actions
 - Balance: $${context.balance.toFixed(2)}
-- P&L: ${context.pnl >= 0 ? '+' : ''}$${context.pnl.toFixed(2)}
+- P&L: ${context.pnl >= 0 ? "+" : ""}$${context.pnl.toFixed(2)}
 - Open Positions: ${context.openPositions}
 
 # Task

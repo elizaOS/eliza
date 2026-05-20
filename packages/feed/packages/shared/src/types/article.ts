@@ -34,7 +34,7 @@ export interface Article {
   /** Bias score from -1 (critical) to +1 (protective) */
   biasScore?: number;
   /** Overall article sentiment */
-  sentiment?: 'positive' | 'negative' | 'neutral';
+  sentiment?: "positive" | "negative" | "neutral";
   /** Editorial slant/angle description */
   slant?: string;
   /** Cover image URL */
@@ -81,7 +81,7 @@ export interface ArticlePersistInput {
   /** Bias score (-1 to +1) */
   biasScore?: number;
   /** Article sentiment */
-  sentiment?: 'positive' | 'negative' | 'neutral';
+  sentiment?: "positive" | "negative" | "neutral";
   /** Editorial slant description */
   slant?: string;
   /** Article category */
@@ -112,7 +112,7 @@ export interface ArticleItem {
   /** Optional journalist byline */
   byline?: string;
   /** Article sentiment (for display styling) - matches Article.sentiment type */
-  sentiment?: 'positive' | 'negative' | 'neutral';
+  sentiment?: "positive" | "negative" | "neutral";
   /** Article category (for filtering/display) */
   category?: string;
   /** Publication timestamp as ISO string */
@@ -133,7 +133,7 @@ export interface ArticleItem {
  */
 export type ArticlePreview = Pick<
   ArticleItem,
-  'id' | 'title' | 'summary' | 'authorOrgName' | 'publishedAt'
+  "id" | "title" | "summary" | "authorOrgName" | "publishedAt"
 > & {
   /** Cover image URL (may be null if not generated) */
   imageUrl: string | null;

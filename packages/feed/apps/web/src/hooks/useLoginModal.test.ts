@@ -1,7 +1,7 @@
-import { beforeEach, describe, expect, it } from 'bun:test';
-import { useLoginModal } from './useLoginModal';
+import { beforeEach, describe, expect, it } from "bun:test";
+import { useLoginModal } from "./useLoginModal";
 
-describe('useLoginModal', () => {
+describe("useLoginModal", () => {
   beforeEach(() => {
     useLoginModal.setState({
       isOpen: false,
@@ -12,24 +12,24 @@ describe('useLoginModal', () => {
     });
   });
 
-  it('queues a login modal without opening it immediately', () => {
+  it("queues a login modal without opening it immediately", () => {
     useLoginModal.getState().queueLoginModal({
-      context: 'home',
-      title: 'Welcome to Feed',
-      message: 'Log in to continue.',
+      context: "home",
+      title: "Welcome to Feed",
+      message: "Log in to continue.",
     });
 
     expect(useLoginModal.getState().isOpen).toBe(false);
     expect(useLoginModal.getState().queuedModal).toEqual({
-      context: 'home',
-      title: 'Welcome to Feed',
-      message: 'Log in to continue.',
+      context: "home",
+      title: "Welcome to Feed",
+      message: "Log in to continue.",
     });
   });
 
-  it('consumes a queued login modal without affecting the current modal state', () => {
+  it("consumes a queued login modal without affecting the current modal state", () => {
     useLoginModal.getState().queueLoginModal({
-      title: 'Queued modal',
+      title: "Queued modal",
     });
     useLoginModal.getState().consumeQueuedLoginModal();
 
@@ -37,12 +37,12 @@ describe('useLoginModal', () => {
     expect(useLoginModal.getState().isOpen).toBe(false);
   });
 
-  it('closes the active modal and clears any queued request', () => {
+  it("closes the active modal and clears any queued request", () => {
     useLoginModal.getState().showLoginModal({
-      title: 'Open modal',
+      title: "Open modal",
     });
     useLoginModal.getState().queueLoginModal({
-      title: 'Queued modal',
+      title: "Queued modal",
     });
 
     useLoginModal.getState().closeLoginModal();

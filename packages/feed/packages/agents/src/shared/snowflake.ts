@@ -8,4 +8,4 @@ export {
   isValidSnowflakeId,
   parseSnowflakeId,
   SnowflakeGenerator,
-} from '@feed/shared';
+} from "@feed/shared";

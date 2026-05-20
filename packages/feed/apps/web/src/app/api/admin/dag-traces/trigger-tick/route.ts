@@ -5,11 +5,11 @@
  * @access Admin
  */
 
-import { requireAdmin, successResponse, withErrorHandling } from '@feed/api';
-import { executeGameTick } from '@feed/engine';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { ensureEngineServices } from '@/lib/engine/ensure-engine-services';
+import { requireAdmin, successResponse, withErrorHandling } from "@feed/api";
+import { executeGameTick } from "@feed/engine";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { ensureEngineServices } from "@/lib/engine/ensure-engine-services";
 
 export const maxDuration = 300;
 
@@ -18,7 +18,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   ensureEngineServices();
 
-  logger.info('Admin-triggered game tick for DAG tracing', {}, 'DagTrace');
+  logger.info("Admin-triggered game tick for DAG tracing", {}, "DagTrace");
 
   const startMs = Date.now();
   const result = await executeGameTick();

@@ -1,4 +1,4 @@
-import { Actions } from './templates/multi-step-decision';
+import { Actions } from "./templates/multi-step-decision";
 
 const KNOWN_ACTIONS = new Set(Object.values(Actions));
 const ACTION_ALIASES: Record<string, string> = {
@@ -21,7 +21,7 @@ const ACTION_ALIASES: Record<string, string> = {
 export function normalizeDecisionAction(action: string): string {
   const normalized = action.trim().toUpperCase();
   if (!normalized) {
-    return '';
+    return "";
   }
 
   if (ACTION_ALIASES[normalized]) {
@@ -36,7 +36,7 @@ export function normalizeDecisionAction(action: string): string {
     .split(/[\n|,;/]+/)
     .map((fragment) => fragment.trim())
     .filter(Boolean)
-    .map((fragment) => fragment.replace(/[\s-]+/g, '_'));
+    .map((fragment) => fragment.replace(/[\s-]+/g, "_"));
 
   for (const candidate of candidates) {
     if (ACTION_ALIASES[candidate]) {
@@ -51,14 +51,14 @@ export function normalizeDecisionAction(action: string): string {
 
   if (normalized.length >= 2) {
     const prefixMatches = [...KNOWN_ACTIONS].filter((knownAction) =>
-      knownAction.startsWith(normalized)
+      knownAction.startsWith(normalized),
     );
     if (prefixMatches.length === 1) {
       return prefixMatches[0] ?? normalized;
     }
   }
 
-  let bestMatch = '';
+  let bestMatch = "";
   let bestIndex = Number.POSITIVE_INFINITY;
   for (const knownAction of KNOWN_ACTIONS) {
     const index = normalized.indexOf(knownAction);

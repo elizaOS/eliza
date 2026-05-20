@@ -1,13 +1,13 @@
-'use client';
+"use client";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
-import { extractUsername } from '@feed/shared';
-import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
-import { PageContainer } from '@/components/shared/PageContainer';
-import { ProfileHeaderSkeleton } from '@/components/shared/Skeleton';
-import { useAuth } from '@/hooks/useAuth';
+import { extractUsername } from "@feed/shared";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
+import { PageContainer } from "@/components/shared/PageContainer";
+import { ProfileHeaderSkeleton } from "@/components/shared/Skeleton";
+import { useAuth } from "@/hooks/useAuth";
 
 /**
  * Legacy profile route.
@@ -27,7 +27,7 @@ export default function ProfileRootRedirectPage() {
     if (!ready) return;
 
     if (!authenticated || !user?.id) {
-      router.replace('/feed');
+      router.replace("/feed");
       // Match previous behavior: trigger login shortly after redirecting.
       const timer = window.setTimeout(() => login(), 500);
       return () => window.clearTimeout(timer);

@@ -1,5 +1,5 @@
-import { definePrompt } from '../define-prompt';
-import { PARODY_NAME_RULES } from '../shared-sections';
+import { definePrompt } from "../define-prompt";
+import { PARODY_NAME_RULES } from "../shared-sections";
 
 /**
  * Prompt for generating a single satirical group chat name.
@@ -12,10 +12,10 @@ import { PARODY_NAME_RULES } from '../shared-sections';
  * Returns XML with group chat name.
  */
 export const groupChatName = definePrompt({
-  id: 'group-chat-names',
-  version: '3.0.0',
-  category: 'game',
-  description: 'Generates unique satirical group chat names',
+  id: "group-chat-names",
+  version: "3.0.0",
+  category: "game",
+  description: "Generates unique satirical group chat names",
   temperature: 0.9,
   maxTokens: 600,
   template: `{{realityGrounding}}

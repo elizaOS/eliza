@@ -4,7 +4,7 @@
  * Defines the interface for user data access.
  */
 
-import type { PaginationOptions, UserRecord } from '../types';
+import type { PaginationOptions, UserRecord } from "../types";
 
 export interface PointsTransactionRecord {
   id: string;
@@ -25,7 +25,7 @@ export interface UserPort {
 
   // Create/Update Operations
   createUser(
-    user: Omit<UserRecord, 'createdAt' | 'updatedAt'>
+    user: Omit<UserRecord, "createdAt" | "updatedAt">,
   ): Promise<UserRecord>;
   updateUser(id: string, updates: Partial<UserRecord>): Promise<UserRecord>;
   deleteUser(id: string): Promise<void>;
@@ -40,11 +40,11 @@ export interface UserPort {
 
   // Points Transactions
   createPointsTransaction(
-    transaction: Omit<PointsTransactionRecord, 'id' | 'createdAt'>
+    transaction: Omit<PointsTransactionRecord, "id" | "createdAt">,
   ): Promise<PointsTransactionRecord>;
   getUserPointsTransactions(
     userId: string,
-    limit?: number
+    limit?: number,
   ): Promise<PointsTransactionRecord[]>;
 
   // Existence check

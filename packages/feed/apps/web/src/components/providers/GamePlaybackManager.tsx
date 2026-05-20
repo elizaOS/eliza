@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { useEffect, useRef } from 'react';
-import { useGameStore } from '@/stores/gameStore';
+import { useEffect, useRef } from "react";
+import { useGameStore } from "@/stores/gameStore";
 
 /**
  * Game playback manager component for managing game timeline advancement.

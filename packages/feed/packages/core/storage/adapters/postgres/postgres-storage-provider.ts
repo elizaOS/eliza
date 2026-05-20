@@ -22,27 +22,27 @@
  * complete implementation of all ports for offline simulation and training.
  */
 
-import { checkDatabaseHealth, closeDatabase } from '@feed/db';
-import type { ActorPort, OrganizationPort } from '../../ports/actors';
-import type { AgentPort } from '../../ports/agents';
-import type { GamePort } from '../../ports/game';
-import type { MarketPort } from '../../ports/markets';
-import type { PostPort } from '../../ports/posts';
-import type { QuestionPort } from '../../ports/questions';
+import { checkDatabaseHealth, closeDatabase } from "@feed/db";
+import type { ActorPort, OrganizationPort } from "../../ports/actors";
+import type { AgentPort } from "../../ports/agents";
+import type { GamePort } from "../../ports/game";
+import type { MarketPort } from "../../ports/markets";
+import type { PostPort } from "../../ports/posts";
+import type { QuestionPort } from "../../ports/questions";
 import type {
   IStorageProvider,
   StorageMode,
-} from '../../ports/storage-provider';
-import type { TradingPort } from '../../ports/trading';
-import type { UserPort } from '../../ports/users';
+} from "../../ports/storage-provider";
+import type { TradingPort } from "../../ports/trading";
+import type { UserPort } from "../../ports/users";
 
 const NOT_IMPLEMENTED_MSG =
-  'PostgresStorageProvider port methods are not implemented. ' +
-  'For production, use @feed/db directly which provides: ' +
-  '• Full Drizzle ORM type safety ' +
-  '• Connection pooling and retries ' +
-  '• RLS context support (asUser, asSystem) ' +
-  '• Direct SQL for complex queries. ' +
+  "PostgresStorageProvider port methods are not implemented. " +
+  "For production, use @feed/db directly which provides: " +
+  "• Full Drizzle ORM type safety " +
+  "• Connection pooling and retries " +
+  "• RLS context support (asUser, asSystem) " +
+  "• Direct SQL for complex queries. " +
   'For simulation/training, use createStorageProvider({ mode: "json" }).';
 
 // Stub implementations that provide helpful guidance
@@ -371,7 +371,7 @@ class StubUserPort implements UserPort {
 }
 
 export class PostgresStorageProvider implements IStorageProvider {
-  readonly mode: StorageMode = 'postgres';
+  readonly mode: StorageMode = "postgres";
 
   readonly actors: ActorPort = new StubActorPort();
   readonly organizations: OrganizationPort = new StubOrganizationPort();
@@ -388,8 +388,8 @@ export class PostgresStorageProvider implements IStorageProvider {
     const healthy = await checkDatabaseHealth();
     if (!healthy) {
       throw new Error(
-        'PostgresStorageProvider: Database connection failed. ' +
-          'Check DATABASE_URL environment variable.'
+        "PostgresStorageProvider: Database connection failed. " +
+          "Check DATABASE_URL environment variable.",
       );
     }
   }

@@ -8,11 +8,11 @@ import {
   PerpDbAdapter as CorePerpDbAdapter,
   PerpQuoteStateService as CorePerpQuoteStateService,
   isOpenPerpPositionStateValid,
-} from '@feed/core/markets/perps';
+} from "@feed/core/markets/perps";
 import {
   PredictionDbAdapter as CorePredictionDbAdapter,
   PredictionMarketService as CorePredictionMarketService,
-} from '@feed/core/markets/prediction';
+} from "@feed/core/markets/prediction";
 import {
   actorRelationships,
   and,
@@ -43,13 +43,13 @@ import {
   trendingTags,
   widgetCaches,
   worldFacts,
-} from '@feed/db';
+} from "@feed/db";
 import {
   calculatePriceFromHoldings,
   generateSnowflakeId,
   logger,
   PERP_MARKET_CONFIG,
-} from '@feed/shared';
+} from "@feed/shared";
 import {
   endTrace,
   getActiveTracer,
@@ -57,10 +57,10 @@ import {
   startTrace,
   uninstallLLMInterceptor,
   writeTickTrace,
-} from './dag-trace';
-import { FeedLLMClient } from './llm/openai-client';
-import { QuestionManager } from './QuestionManager';
-import { RelationshipEvolutionEngine } from './RelationshipEvolutionEngine';
+} from "./dag-trace";
+import { FeedLLMClient } from "./llm/openai-client";
+import { QuestionManager } from "./QuestionManager";
+import { RelationshipEvolutionEngine } from "./RelationshipEvolutionEngine";
 // Services - using barrel exports from services/index.ts
 import {
   AlphaGroupInviteService,
@@ -87,7 +87,7 @@ import {
   tokenStatsService,
   WalletService,
   worldFactsGenerator,
-} from './services';
+} from "./services";
 import {
   buildMarketSimulationProfile,
   createInitialMarketSimulationState,
@@ -96,15 +96,15 @@ import {
   generateProfileDrivenMarketMove,
   getDefaultGlobalMarketSimulationState,
   type MarketSimulationState,
-} from './services/market-simulation-profiles';
+} from "./services/market-simulation-profiles";
 // Note: ActorSocialActions, FollowingMechanics, processNPCSocialEngagements,
 // npcSocialEngagementService moved to npc-tick
-import { broadcastToChannel } from './services/realtime-broadcaster';
-import type { TradingExecutionResult } from './types/market-decisions';
-import { calculateEstimatedCost } from './types/token-stats';
-import { getGameDayNumber, toSafeDayNumber } from './utils/date-utils';
-import { formatError } from './utils/error-utils';
-import { shuffleArray } from './utils/randomization';
+import { broadcastToChannel } from "./services/realtime-broadcaster";
+import type { TradingExecutionResult } from "./types/market-decisions";
+import { calculateEstimatedCost } from "./types/token-stats";
+import { getGameDayNumber, toSafeDayNumber } from "./utils/date-utils";
+import { formatError } from "./utils/error-utils";
+import { shuffleArray } from "./utils/randomization";
 // Note: Event-market pipeline is called from within narrative-event-processor
 
 // Services that are still in the web app (Web3/Oracle specific - use dynamic imports)
@@ -195,9 +195,9 @@ export interface GameTickResult {
 /** Executes a complete game tick (content, markets, questions, system updates). */
 export async function executeGameTick(
   skipContentGeneration = false,
-  skip = new Set<string>()
+  skip = new Set<string>(),
 ): Promise<GameTickResult> {
-  const fastMode = process.env.FEED_TRUST_CORPUS_FAST_MODE === 'true';
+  const fastMode = process.env.FEED_TRUST_CORPUS_FAST_MODE === "true";
   const timestamp = new Date();
   const startedAt = Date.now();
   const budgetMs = Number(process.env.GAME_TICK_BUDGET_MS || 180000); // 3 minutes default
@@ -207,7 +207,7 @@ export async function executeGameTick(
   const tokenStatsTickId = tokenStatsService.startTick(`tick-${startedAt}`);
 
   // DAG trace: capture all inputs/outputs when enabled
-  const dagTraceEnabled = process.env.FEED_DAG_TRACE === 'true';
+  const dagTraceEnabled = process.env.FEED_DAG_TRACE === "true";
   if (dagTraceEnabled) {
     startTrace(`tick-${startedAt}`, 0);
     installLLMInterceptor();
@@ -215,13 +215,13 @@ export async function executeGameTick(
   const tracer = dagTraceEnabled ? getActiveTracer() : null;
 
   logger.info(
-    'Executing game tick',
+    "Executing game tick",
     {
       timestamp: timestamp.toISOString(),
       tokenStatsTickId,
       ...(skip.size > 0 ? { skippedSubsystems: [...skip] } : {}),
     },
-    'GameTick'
+    "GameTick",
   );
 
   // Initialize result counters
@@ -238,18 +238,18 @@ export async function executeGameTick(
     alphaInvitesSent: 0,
   };
 
-  if (skip.has('gameplay-fast-path')) {
+  if (skip.has("gameplay-fast-path")) {
     logger.info(
-      'Gameplay fast path enabled - skipping remaining game tick work',
+      "Gameplay fast path enabled - skipping remaining game tick work",
       undefined,
-      'GameTick'
+      "GameTick",
     );
     tokenStatsService.endTick();
     return result;
   }
 
   // Bootstrap game data if needed (actors, organizations, mappings, pools, etc.)
-  tracer?.startNode('bootstrap', { fastMode });
+  tracer?.startNode("bootstrap", { fastMode });
   const bootstrapResult = fastMode ? null : await bootstrapGameIfNeeded();
 
   // Initialize fal.ai for article image generation (non-blocking)
@@ -263,19 +263,19 @@ export async function executeGameTick(
 
     if (hasChanges) {
       logger.info(
-        'Game data bootstrapped',
+        "Game data bootstrapped",
         {
           actorsCreated: bootstrapResult.actorsCreated,
           actorsToppedUp: bootstrapResult.actorsToppedUp,
           organizationsCreated: bootstrapResult.organizationsCreated,
           poolsCreated: bootstrapResult.poolsCreated,
         },
-        'GameTick'
+        "GameTick",
       );
     }
   }
 
-  tracer?.endNode('bootstrap', {
+  tracer?.endNode("bootstrap", {
     actorsCreated: bootstrapResult?.actorsCreated ?? 0,
     organizationsCreated: bootstrapResult?.organizationsCreated ?? 0,
     poolsCreated: bootstrapResult?.poolsCreated ?? 0,
@@ -292,9 +292,9 @@ export async function executeGameTick(
   // Validate startedAt is set - critical for day calculation
   if (!gameStartedAt) {
     logger.error(
-      'Game startedAt is NULL - day calculation will fail. Game day will default to 1.',
+      "Game startedAt is NULL - day calculation will fail. Game day will default to 1.",
       { gameId: continuousGame?.id },
-      'GameTick'
+      "GameTick",
     );
   }
 
@@ -304,65 +304,65 @@ export async function executeGameTick(
   };
 
   // Bootstrap initial content if this is a fresh setup
-  tracer?.startNode('bootstrap-content', { fastMode });
+  tracer?.startNode("bootstrap-content", { fastMode });
   if (!fastMode) {
     await bootstrapContentIfNeeded(timestamp);
   }
-  tracer?.endNode('bootstrap-content', { skipped: fastMode });
+  tracer?.endNode("bootstrap-content", { skipped: fastMode });
 
   // Initialize LLM client for game tick operations
   // Priority: Groq > Claude > OpenAI
   const llmClient = FeedLLMClient.forGameTick();
   const stats = llmClient.getStats();
   logger.info(
-    'LLM client initialized for game tick operations',
+    "LLM client initialized for game tick operations",
     {
       provider: stats.provider,
       model: stats.model,
     },
-    'GameTick'
+    "GameTick",
   );
 
   // Get active questions from database
-  tracer?.startNode('questions-load', { fastMode });
+  tracer?.startNode("questions-load", { fastMode });
   const activeQuestions = fastMode
     ? []
     : await db
         .select()
         .from(questionsSchema)
-        .where(eq(questionsSchema.status, 'active'));
+        .where(eq(questionsSchema.status, "active"));
   if (fastMode) {
     logger.info(
-      'Skipping active question load in fast mode',
+      "Skipping active question load in fast mode",
       undefined,
-      'GameTick'
+      "GameTick",
     );
   }
 
-  tracer?.endNode('questions-load', { count: activeQuestions.length });
+  tracer?.endNode("questions-load", { count: activeQuestions.length });
 
   logger.info(
     `Found ${activeQuestions.length} active questions`,
     { count: activeQuestions.length },
-    'GameTick'
+    "GameTick",
   );
 
   // Generate initial questions FIRST if this is the first tick
   let currentActiveQuestions = activeQuestions;
-  tracer?.startNode('questions-init', {
+  tracer?.startNode("questions-init", {
     activeCount: activeQuestions.length,
     fastMode,
   });
   if (activeQuestions.length === 0 && Date.now() < deadline && !fastMode) {
     logger.info(
-      'First tick detected - generating initial questions',
+      "First tick detected - generating initial questions",
       {},
-      'GameTick'
+      "GameTick",
     );
     const questionsGenerated = await generateNewQuestions(
       5, // Generate 5 initial questions
       llmClient,
-      deadline
+      deadline,
     );
     result.questionsCreated = questionsGenerated;
 
@@ -370,15 +370,15 @@ export async function executeGameTick(
     currentActiveQuestions = await db
       .select()
       .from(questionsSchema)
-      .where(eq(questionsSchema.status, 'active'));
+      .where(eq(questionsSchema.status, "active"));
 
     logger.info(
       `Initial questions created: ${questionsGenerated}`,
       { count: questionsGenerated },
-      'GameTick'
+      "GameTick",
     );
   }
-  tracer?.endNode('questions-init', {
+  tracer?.endNode("questions-init", {
     questionsCreated: result.questionsCreated,
   });
 
@@ -407,7 +407,7 @@ export async function executeGameTick(
 
   // Generate world events based on active questions (KEPT - game-tick owns world state)
   // Skip if buffer is sufficient (content generation handled by lookahead service)
-  tracer?.startNode('events', {
+  tracer?.startNode("events", {
     questionCount: currentActiveQuestions.length,
     skipContentGeneration,
     fastMode,
@@ -422,22 +422,22 @@ export async function executeGameTick(
       shuffledQuestions,
       timestamp,
       dayNumberForTimestamp(timestamp),
-      llmClient
+      llmClient,
     );
     const pulseEventsGenerated = await generateArcPulseEventsIfNeeded(
       shuffledQuestions,
       timestamp,
-      dayNumberForTimestamp(timestamp)
+      dayNumberForTimestamp(timestamp),
     );
     result.eventsCreated = eventsGenerated + pulseEventsGenerated;
   } else {
     logger.info(
-      'Skipping content generation (buffer sufficient)',
+      "Skipping content generation (buffer sufficient)",
       undefined,
-      'GameTick'
+      "GameTick",
     );
   }
-  tracer?.endNode('events', { eventsCreated: result.eventsCreated });
+  tracer?.endNode("events", { eventsCreated: result.eventsCreated });
 
   // =========================================================================
   // CRITICAL PRIORITY: Generate and execute NPC trading decisions
@@ -445,11 +445,11 @@ export async function executeGameTick(
   // Market decisions are essential for game economy and must always execute
   // =========================================================================
   logger.info(
-    'Starting critical market decision operations',
+    "Starting critical market decision operations",
     {
       timeRemaining: deadline - Date.now(),
     },
-    'GameTick'
+    "GameTick",
   );
 
   // ==========================================================================
@@ -457,10 +457,10 @@ export async function executeGameTick(
   // NPCs make trade + social decisions together in one unified pipeline.
   // MarketDecisionEngine batch trading has been removed.
   // ==========================================================================
-  tracer?.skipNode('market-baseline', 'unifiedNpcPipeline');
-  tracer?.skipNode('market-decisions', 'unifiedNpcPipeline');
-  tracer?.skipNode('trade-execution', 'unifiedNpcPipeline');
-  tracer?.skipNode('price-updates', 'unifiedNpcPipeline');
+  tracer?.skipNode("market-baseline", "unifiedNpcPipeline");
+  tracer?.skipNode("market-decisions", "unifiedNpcPipeline");
+  tracer?.skipNode("trade-execution", "unifiedNpcPipeline");
+  tracer?.skipNode("price-updates", "unifiedNpcPipeline");
 
   // ==========================================================================
   // NPC SOCIAL ENGAGEMENT - HANDLED BY npc-tick (DEDUPLICATION)
@@ -484,7 +484,7 @@ export async function executeGameTick(
   // NPC PORTFOLIO REBALANCING — handled by MultiStepExecutor in npc-tick
   // LLM reasoning naturally handles position management via TRADE actions.
   // ==========================================================================
-  tracer?.skipNode('rebalancing', 'unifiedNpcPipeline');
+  tracer?.skipNode("rebalancing", "unifiedNpcPipeline");
 
   // Article generation is now centralized in article-tick cron job.
   // This prevents duplicate article generation and ensures proper rate limiting.
@@ -493,15 +493,15 @@ export async function executeGameTick(
 
   const currentActiveCount =
     currentActiveQuestions.length - result.questionsResolved;
-  tracer?.startNode('question-topup', { currentActiveCount, fastMode });
+  tracer?.startNode("question-topup", { currentActiveCount, fastMode });
   if (currentActiveCount < 10 && !fastMode) {
     const shouldForceGeneration = currentActiveCount <= 0;
     if (Date.now() < deadline || shouldForceGeneration) {
       if (shouldForceGeneration && Date.now() >= deadline) {
         logger.warn(
-          'No active prediction questions – forcing generation past tick budget',
+          "No active prediction questions – forcing generation past tick budget",
           { budgetMs, currentActiveCount },
-          'GameTick'
+          "GameTick",
         );
       }
 
@@ -512,25 +512,25 @@ export async function executeGameTick(
       const questionsGenerated = await generateNewQuestions(
         Math.min(3, 15 - currentActiveCount),
         llmClient,
-        generationDeadline
+        generationDeadline,
       );
       result.questionsCreated += questionsGenerated;
     } else {
       logger.warn(
-        'Skipping question generation – tick budget exceeded',
+        "Skipping question generation – tick budget exceeded",
         { budgetMs },
-        'GameTick'
+        "GameTick",
       );
     }
   }
-  tracer?.endNode('question-topup', {
+  tracer?.endNode("question-topup", {
     questionsCreated: result.questionsCreated,
   });
 
   // Process narrative arcs for active questions
   // Each question can have an arc that progresses through phases
   // Arc events now create world events and can trigger article generation
-  tracer?.startNode('narrative-arcs', {
+  tracer?.startNode("narrative-arcs", {
     withinDeadline: Date.now() < deadline,
     fastMode,
   });
@@ -538,18 +538,18 @@ export async function executeGameTick(
     const narrativeStats = await processNarrativeArcs(
       currentActiveQuestions,
       dayNumberForTimestamp(timestamp) ?? 1,
-      llmClient
+      llmClient,
     );
     result.narrativeArcs = narrativeStats;
     if (narrativeStats.transitioned > 0 || narrativeStats.eventsGenerated > 0) {
-      logger.info('Narrative arcs processed', narrativeStats, 'GameTick');
+      logger.info("Narrative arcs processed", narrativeStats, "GameTick");
     }
   }
-  tracer?.endNode('narrative-arcs', { ...(result.narrativeArcs ?? {}) });
+  tracer?.endNode("narrative-arcs", { ...(result.narrativeArcs ?? {}) });
 
   // Process timeframed markets (multi-timeframe arcs: flash, intraday, daily, etc.)
   // These use timestamp-based progression rather than day-based
-  tracer?.startNode('timeframed-markets', {
+  tracer?.startNode("timeframed-markets", {
     withinDeadline: Date.now() < deadline,
   });
   if (Date.now() < deadline && !fastMode) {
@@ -557,17 +557,17 @@ export async function executeGameTick(
     result.timeframedMarkets = timeframeStats;
     if (timeframeStats.marketsProcessed > 0) {
       logger.info(
-        'Timeframed markets processed',
+        "Timeframed markets processed",
         {
           processed: timeframeStats.marketsProcessed,
           transitions: timeframeStats.transitionsOccurred,
           events: timeframeStats.eventsGenerated,
         },
-        'GameTick'
+        "GameTick",
       );
     }
   }
-  tracer?.endNode('timeframed-markets', {
+  tracer?.endNode("timeframed-markets", {
     ...(result.timeframedMarkets ?? {}),
   });
 
@@ -577,17 +577,17 @@ export async function executeGameTick(
   // No system-level Auto-AMM — prices emerge organically from NPC decisions.
   // =========================================================================
   tracer?.skipNode(
-    'prediction-auto-amm',
-    'Disabled: prices driven only by NPC trading'
+    "prediction-auto-amm",
+    "Disabled: prices driven only by NPC trading",
   );
 
   // Calculate and update currentDay based on game start time
-  tracer?.startNode('game-state-update', {});
+  tracer?.startNode("game-state-update", {});
   const currentDay = dayNumberForTimestamp(timestamp);
 
   // Log day calculation for diagnostics
   logger.info(
-    'Game day calculation',
+    "Game day calculation",
     {
       startedAt: gameStartedAt?.toISOString(),
       currentTimestamp: timestamp.toISOString(),
@@ -595,11 +595,11 @@ export async function executeGameTick(
       willSetTo: currentDay ?? 1,
       hoursElapsed: gameStartedAt
         ? Math.floor(
-            (timestamp.getTime() - gameStartedAt.getTime()) / (1000 * 60 * 60)
+            (timestamp.getTime() - gameStartedAt.getTime()) / (1000 * 60 * 60),
           )
         : null,
     },
-    'GameTick'
+    "GameTick",
   );
 
   await db
@@ -610,16 +610,16 @@ export async function executeGameTick(
       currentDay: currentDay ?? 1,
     })
     .where(eq(games.isContinuous, true));
-  tracer?.endNode('game-state-update', { currentDay });
+  tracer?.endNode("game-state-update", { currentDay });
 
-  tracer?.startNode('widget-caches', { fastMode });
+  tracer?.startNode("widget-caches", { fastMode });
   const cachesUpdated = fastMode ? 0 : await updateWidgetCaches();
   result.widgetCachesUpdated = cachesUpdated;
-  tracer?.endNode('widget-caches', { cachesUpdated });
+  tracer?.endNode("widget-caches", { cachesUpdated });
 
   // Calculate trending tags if needed (checks 30-minute interval internally)
   // Force calculation on first tick if we just generated baseline posts
-  tracer?.startNode('trending-tags', { fastMode });
+  tracer?.startNode("trending-tags", { fastMode });
   const forceCalculation =
     result.postsCreated > 0 && result.articlesCreated > 0;
   const trendingCalculated = fastMode
@@ -628,14 +628,14 @@ export async function executeGameTick(
       ? await forceTrendingCalculation()
       : await calculateTrendingIfNeeded();
   result.trendingCalculated = trendingCalculated;
-  tracer?.endNode('trending-tags', { trendingCalculated });
+  tracer?.endNode("trending-tags", { trendingCalculated });
   if (trendingCalculated) {
-    logger.info('Trending tags recalculated', {}, 'GameTick');
+    logger.info("Trending tags recalculated", {}, "GameTick");
   }
 
   // Sync reputation to ERC-8004 if service is available
   // Service is provided by agents package via setReputationSyncService()
-  tracer?.startNode('reputation-sync', { fastMode });
+  tracer?.startNode("reputation-sync", { fastMode });
   if (!fastMode) {
     const syncResult = await syncReputationIfAvailable({
       limit: 10, // Small batch during game tick
@@ -652,14 +652,14 @@ export async function executeGameTick(
           failed: syncResult.failed,
         };
         logger.info(
-          'Reputation sync completed during game tick',
+          "Reputation sync completed during game tick",
           result.reputationSyncStats,
-          'GameTick'
+          "GameTick",
         );
       }
     }
   }
-  tracer?.endNode('reputation-sync', { synced: result.reputationSynced });
+  tracer?.endNode("reputation-sync", { synced: result.reputationSynced });
 
   // ==========================================================================
   // WORLD FACTS - process RSS + parodies inline if no cron is running
@@ -672,7 +672,7 @@ export async function executeGameTick(
           await rssFeedService.getUntransformedHeadlines(10);
         if (untransformed.length > 0) {
           const { createParodyHeadlineGenerator } = await import(
-            './services/parody-headline-generator'
+            "./services/parody-headline-generator"
           );
           const gen = createParodyHeadlineGenerator();
           const parodies = await gen.processHeadlines(untransformed);
@@ -680,56 +680,55 @@ export async function executeGameTick(
             logger.info(
               `Processed ${parodies.length} parody headlines`,
               undefined,
-              'GameTick'
+              "GameTick",
             );
           }
         }
       }
     } catch (rssError) {
       logger.warn(
-        'RSS/parody processing failed, continuing',
+        "RSS/parody processing failed, continuing",
         { error: formatError(rssError) },
-        'GameTick'
+        "GameTick",
       );
     }
   }
 
   // Process alpha group invites (small chance for highly engaged users)
-  tracer?.startNode('alpha-invites', {});
+  tracer?.startNode("alpha-invites", {});
   const skipAlphaInvites =
-    process.env.FEED_SKIP_ALPHA_GROUP_INVITES === 'true' ||
-    process.env.FEED_TRUST_CORPUS_FAST_MODE === 'true';
+    process.env.FEED_SKIP_ALPHA_GROUP_INVITES === "true" ||
+    process.env.FEED_TRUST_CORPUS_FAST_MODE === "true";
   if (skipAlphaInvites || fastMode) {
     logger.info(
-      'Skipping alpha group invites for this tick',
+      "Skipping alpha group invites for this tick",
       {
-        reason:
-          'FEED_SKIP_ALPHA_GROUP_INVITES/FEED_TRUST_CORPUS_FAST_MODE',
+        reason: "FEED_SKIP_ALPHA_GROUP_INVITES/FEED_TRUST_CORPUS_FAST_MODE",
       },
-      'GameTick'
+      "GameTick",
     );
   } else {
     const invites = await AlphaGroupInviteService.processTickInvites();
     result.alphaInvitesSent = invites.length;
     if (invites.length > 0) {
       logger.info(
-        'Alpha group invites sent',
+        "Alpha group invites sent",
         { count: invites.length, invites },
-        'GameTick'
+        "GameTick",
       );
     }
   }
-  tracer?.endNode('alpha-invites', { invitesSent: result.alphaInvitesSent });
+  tracer?.endNode("alpha-invites", { invitesSent: result.alphaInvitesSent });
 
   // Evolve NPC relationships based on recent interactions (every 10 ticks to save compute)
   const shouldEvolveRelationships =
     Math.floor(timestamp.getTime() / 60000) % 10 === 0;
-  tracer?.startNode('relationships', {
+  tracer?.startNode("relationships", {
     shouldEvolve: shouldEvolveRelationships,
     fastMode,
   });
   if (shouldEvolveRelationships && Date.now() < deadline && !fastMode) {
-    logger.info('Evolving NPC relationships...', undefined, 'GameTick');
+    logger.info("Evolving NPC relationships...", undefined, "GameTick");
     const relationshipEngine = new RelationshipEvolutionEngine(llmClient);
     const relationshipsUpdated =
       await relationshipEngine.analyzeAndUpdateRelationships();
@@ -738,41 +737,40 @@ export async function executeGameTick(
       logger.info(
         `✅ Updated ${relationshipsUpdated} relationships`,
         { count: relationshipsUpdated },
-        'GameTick'
+        "GameTick",
       );
     }
 
     // Cleanup stale NPC anti-repetition histories (same cadence as relationships)
     // This prevents unbounded memory growth in long-running processes
     const { antiRepetitionService } = await import(
-      './services/npc-anti-repetition-service'
+      "./services/npc-anti-repetition-service"
     );
     const cleanedHistories = antiRepetitionService.cleanupStaleHistories();
     if (cleanedHistories > 0) {
       logger.debug(
         `Cleaned up ${cleanedHistories} stale NPC anti-repetition histories`,
         { count: cleanedHistories },
-        'GameTick'
+        "GameTick",
       );
     }
   }
-  tracer?.endNode('relationships', {
+  tracer?.endNode("relationships", {
     updated: result.relationshipsUpdated ?? 0,
   });
 
   // Process NPC group dynamics (form, join, leave, post, invite, kick)
-  tracer?.startNode('group-dynamics', {});
+  tracer?.startNode("group-dynamics", {});
   const skipNpcGroupDynamics =
-    process.env.FEED_SKIP_NPC_GROUP_DYNAMICS === 'true' ||
-    process.env.FEED_TRUST_CORPUS_FAST_MODE === 'true';
+    process.env.FEED_SKIP_NPC_GROUP_DYNAMICS === "true" ||
+    process.env.FEED_TRUST_CORPUS_FAST_MODE === "true";
   if (skipNpcGroupDynamics || fastMode) {
     logger.info(
-      'Skipping NPC group dynamics for this tick',
+      "Skipping NPC group dynamics for this tick",
       {
-        reason:
-          'FEED_SKIP_NPC_GROUP_DYNAMICS/FEED_TRUST_CORPUS_FAST_MODE',
+        reason: "FEED_SKIP_NPC_GROUP_DYNAMICS/FEED_TRUST_CORPUS_FAST_MODE",
       },
-      'GameTick'
+      "GameTick",
     );
   } else {
     try {
@@ -794,19 +792,19 @@ export async function executeGameTick(
         dynamics.usersKicked > 0 ||
         dynamics.messagesPosted > 0
       ) {
-        logger.info('NPC group dynamics processed', dynamics, 'GameTick');
+        logger.info("NPC group dynamics processed", dynamics, "GameTick");
       }
     } catch (groupError) {
       logger.error(
-        'NPC group dynamics failed, continuing tick',
+        "NPC group dynamics failed, continuing tick",
         groupError instanceof Error
           ? groupError
           : new Error(String(groupError)),
-        'GameTick'
+        "GameTick",
       );
     }
   }
-  tracer?.endNode('group-dynamics', { ...(result.npcGroupDynamics ?? {}) });
+  tracer?.endNode("group-dynamics", { ...(result.npcGroupDynamics ?? {}) });
 
   const durationMs = Date.now() - startedAt;
 
@@ -823,7 +821,7 @@ export async function executeGameTick(
     result.eventsCreated === 0
   ) {
     validationWarnings.push(
-      'Content generation ran but no content was created'
+      "Content generation ran but no content was created",
     );
   }
 
@@ -835,15 +833,15 @@ export async function executeGameTick(
       .from(questionsSchema)
       .where(
         and(
-          eq(questionsSchema.status, 'resolved'),
-          gte(questionsSchema.updatedAt, new Date(timestamp.getTime() - 60000)) // Updated in last minute
-        )
+          eq(questionsSchema.status, "resolved"),
+          gte(questionsSchema.updatedAt, new Date(timestamp.getTime() - 60000)), // Updated in last minute
+        ),
       )
       .limit(result.questionsResolved);
 
     if (resolvedQuestions.length !== result.questionsResolved) {
       validationWarnings.push(
-        `Expected ${result.questionsResolved} resolved questions but found ${resolvedQuestions.length}`
+        `Expected ${result.questionsResolved} resolved questions but found ${resolvedQuestions.length}`,
       );
     }
   }
@@ -855,8 +853,8 @@ export async function executeGameTick(
     .where(
       and(
         eq(marketsSchema.resolved, false),
-        gte(marketsSchema.endDate, timestamp)
-      )
+        gte(marketsSchema.endDate, timestamp),
+      ),
     )
     .limit(10);
 
@@ -872,7 +870,7 @@ export async function executeGameTick(
       // Odds should be between 0 and 100%
       if (yesOdds < 0 || yesOdds > 100 || noOdds < 0 || noOdds > 100) {
         validationWarnings.push(
-          `Market ${market.id} has invalid odds: YES=${yesOdds.toFixed(2)}%, NO=${noOdds.toFixed(2)}%`
+          `Market ${market.id} has invalid odds: YES=${yesOdds.toFixed(2)}%, NO=${noOdds.toFixed(2)}%`,
         );
       }
 
@@ -880,7 +878,7 @@ export async function executeGameTick(
       const sum = yesOdds + noOdds;
       if (sum < 99.9 || sum > 100.1) {
         validationWarnings.push(
-          `Market ${market.id} odds don't sum to 100%: ${sum.toFixed(2)}%`
+          `Market ${market.id} odds don't sum to 100%: ${sum.toFixed(2)}%`,
         );
       }
     }
@@ -889,12 +887,12 @@ export async function executeGameTick(
   // Log validation warnings if any
   if (validationWarnings.length > 0) {
     logger.warn(
-      'Game tick validation warnings',
+      "Game tick validation warnings",
       {
         warnings: validationWarnings,
         result,
       },
-      'GameTick'
+      "GameTick",
     );
   }
 
@@ -907,7 +905,7 @@ export async function executeGameTick(
       const cost = calculateEstimatedCost(
         modelStats.model,
         modelStats.totalInputTokens,
-        modelStats.totalOutputTokens
+        modelStats.totalOutputTokens,
       );
       estimatedCostUSD += cost.totalCostUSD;
     }
@@ -924,10 +922,10 @@ export async function executeGameTick(
     // Store token stats in database (non-blocking)
     // Serialize complex types to JSON-compatible format
     const byPromptTypeJson = JSON.parse(
-      JSON.stringify(tickTokenStatsData.byPromptType)
+      JSON.stringify(tickTokenStatsData.byPromptType),
     ) as JsonValue;
     const byModelJson = JSON.parse(
-      JSON.stringify(tickTokenStatsData.byModel)
+      JSON.stringify(tickTokenStatsData.byModel),
     ) as JsonValue;
 
     db.insert(tickTokenStats)
@@ -946,14 +944,14 @@ export async function executeGameTick(
       })
       .catch((error: Error) => {
         logger.warn(
-          'Failed to store token stats',
+          "Failed to store token stats",
           { error: error.message, tickId: tickTokenStatsData.tickId },
-          'GameTick'
+          "GameTick",
         );
       });
 
     logger.info(
-      'Token stats collected',
+      "Token stats collected",
       {
         tickId: tickTokenStatsData.tickId,
         totalCalls: tickTokenStatsData.totalCalls,
@@ -961,7 +959,7 @@ export async function executeGameTick(
         inputTokens: tickTokenStatsData.totalInputTokens,
         outputTokens: tickTokenStatsData.totalOutputTokens,
       },
-      'GameTick'
+      "GameTick",
     );
   }
 
@@ -978,9 +976,9 @@ export async function executeGameTick(
     }
   } catch (error) {
     logger.warn(
-      'Volatility simulation failed',
+      "Volatility simulation failed",
       { error: formatError(error) },
-      'GameTick'
+      "GameTick",
     );
   }
 
@@ -988,16 +986,16 @@ export async function executeGameTick(
     const quoteRefreshes = await refreshPerpQuoteStates();
     if (quoteRefreshes > 0) {
       logger.info(
-        'Refreshed perp quote states',
+        "Refreshed perp quote states",
         { marketsUpdated: quoteRefreshes },
-        'GameTick'
+        "GameTick",
       );
     }
   } catch (error) {
     logger.warn(
-      'Perp quote state refresh failed',
+      "Perp quote state refresh failed",
       { error: formatError(error) },
-      'GameTick'
+      "GameTick",
     );
   }
 
@@ -1011,27 +1009,27 @@ export async function executeGameTick(
         fundBalance: redistributionResult.fundBalanceAfter,
       };
       logger.info(
-        'Fee redistribution completed',
+        "Fee redistribution completed",
         {
           npcsToppedUp: redistributionResult.npcsToppedUp,
           totalDistributed: redistributionResult.totalDistributed,
           fundBalance: redistributionResult.fundBalanceAfter,
         },
-        'GameTick'
+        "GameTick",
       );
     }
   } catch (error) {
     logger.warn(
-      'Fee redistribution failed',
+      "Fee redistribution failed",
       { error: formatError(error) },
-      'GameTick'
+      "GameTick",
     );
   }
 
   // Finalize DAG trace
-  tracer?.startNode('token-stats-finalize', {});
+  tracer?.startNode("token-stats-finalize", {});
 
-  tracer?.endNode('token-stats-finalize', { ...(result.tokenStats ?? {}) });
+  tracer?.endNode("token-stats-finalize", { ...(result.tokenStats ?? {}) });
 
   // Write DAG trace to disk if enabled
   if (dagTraceEnabled) {
@@ -1054,14 +1052,14 @@ export async function executeGameTick(
   }
 
   logger.info(
-    'Game tick completed',
+    "Game tick completed",
     {
       ...result,
       durationMs,
       validationWarnings:
         validationWarnings.length > 0 ? validationWarnings.length : undefined,
     },
-    'GameTick'
+    "GameTick",
   );
 
   return result;
@@ -1097,14 +1095,14 @@ async function bootstrapContentIfNeeded(_timestamp: Date): Promise<void> {
   }
 
   logger.info(
-    'Bootstrapping initial content...',
+    "Bootstrapping initial content...",
     {
       currentTrending: trendingCount,
       currentRelationships: relationshipCount,
       needTrending: trendingCount < MIN_TRENDING,
       needRelationships: relationshipCount === 0,
     },
-    'GameTick'
+    "GameTick",
   );
 
   // Bootstrap relationships FIRST (needed for social dynamics)
@@ -1122,12 +1120,12 @@ async function bootstrapContentIfNeeded(_timestamp: Date): Promise<void> {
     db.select({ count: count() }).from(actorRelationships),
   ]);
   logger.info(
-    'Bootstrap complete',
+    "Bootstrap complete",
     {
       trendingCount: Number(finalTrending[0]?.count ?? 0),
       relationshipCount: Number(finalRelationships[0]?.count ?? 0),
     },
-    'GameTick'
+    "GameTick",
   );
 }
 
@@ -1135,7 +1133,7 @@ async function bootstrapContentIfNeeded(_timestamp: Date): Promise<void> {
  * Generate initial NPC relationships on first tick
  */
 async function bootstrapInitialRelationships(): Promise<void> {
-  logger.info('Generating initial NPC relationships...', undefined, 'GameTick');
+  logger.info("Generating initial NPC relationships...", undefined, "GameTick");
 
   // Get all actors and organizations from STATIC REGISTRY (no DB call!)
   const staticActors = StaticDataRegistry.getAllActors();
@@ -1155,7 +1153,7 @@ async function bootstrapInitialRelationships(): Promise<void> {
     id: o.id,
     name: o.name,
     description: o.description,
-    type: o.type as 'company' | 'media' | 'government',
+    type: o.type as "company" | "media" | "government",
     canBeInvolved: true,
   }));
 
@@ -1166,7 +1164,7 @@ async function bootstrapInitialRelationships(): Promise<void> {
   logger.info(
     `✅ Generated ${created} initial relationships`,
     { count: created },
-    'GameTick'
+    "GameTick",
   );
 }
 
@@ -1174,7 +1172,7 @@ async function bootstrapInitialRelationships(): Promise<void> {
  * Bootstrap trending tags
  */
 async function bootstrapTrending(): Promise<void> {
-  logger.info('Bootstrapping trending tags...', undefined, 'GameTick');
+  logger.info("Bootstrapping trending tags...", undefined, "GameTick");
 
   // Check if we have enough posts and tags
   const [postCountResult, taggedPostCountResult] = await Promise.all([
@@ -1188,23 +1186,23 @@ async function bootstrapTrending(): Promise<void> {
   const taggedPostCount = Number(taggedPostCountResult[0]?.count ?? 0);
 
   logger.info(
-    'Post/tag status for trending',
+    "Post/tag status for trending",
     {
       totalPosts: postCount,
       taggedPosts: taggedPostCount,
       taggedPercentage:
         postCount > 0 ? Math.round((taggedPostCount / postCount) * 100) : 0,
     },
-    'GameTick'
+    "GameTick",
   );
 
   // If we have tagged posts, calculate trending
   if (taggedPostCount >= 10) {
     await calculateTrendingTags();
     logger.info(
-      'Calculated trending from existing posts',
+      "Calculated trending from existing posts",
       undefined,
-      'GameTick'
+      "GameTick",
     );
     return;
   }
@@ -1212,27 +1210,27 @@ async function bootstrapTrending(): Promise<void> {
   // If we have posts but they're not tagged, tag them first
   if (postCount >= 10 && taggedPostCount < 10) {
     logger.info(
-      'Posts exist but not tagged, waiting for auto-tagging...',
+      "Posts exist but not tagged, waiting for auto-tagging...",
       undefined,
-      'GameTick'
+      "GameTick",
     );
     logger.info(
-      'Trending will be calculated once posts are tagged',
+      "Trending will be calculated once posts are tagged",
       undefined,
-      'GameTick'
+      "GameTick",
     );
     return;
   }
 
   // If we have very few posts, create sample tags and trending
-  logger.info('Creating sample trending data...', undefined, 'GameTick');
+  logger.info("Creating sample trending data...", undefined, "GameTick");
 
   const sampleTags = [
-    { name: 'markets', displayName: 'Markets', category: 'Finance' },
-    { name: 'tech', displayName: 'Tech', category: 'Tech' },
-    { name: 'ai', displayName: 'AI', category: 'Tech' },
-    { name: 'finance', displayName: 'Finance', category: 'Finance' },
-    { name: 'innovation', displayName: 'Innovation', category: 'Tech' },
+    { name: "markets", displayName: "Markets", category: "Finance" },
+    { name: "tech", displayName: "Tech", category: "Tech" },
+    { name: "ai", displayName: "AI", category: "Tech" },
+    { name: "finance", displayName: "Finance", category: "Finance" },
+    { name: "innovation", displayName: "Innovation", category: "Tech" },
   ];
 
   const now = new Date();
@@ -1274,7 +1272,7 @@ async function bootstrapTrending(): Promise<void> {
         })
         .returning();
       if (!newTag) {
-        logger.warn('Failed to create tag', { tagData }, 'GameTick');
+        logger.warn("Failed to create tag", { tagData }, "GameTick");
         continue;
       }
       tag = {
@@ -1303,7 +1301,7 @@ async function bootstrapTrending(): Promise<void> {
   logger.info(
     `Created ${sampleTags.length} sample trending tags`,
     undefined,
-    'GameTick'
+    "GameTick",
   );
 }
 
@@ -1313,12 +1311,12 @@ async function bootstrapTrending(): Promise<void> {
 /** Update market prices based on NPC trading activity (investment-based pricing). */
 export async function updateMarketPricesFromTrades(
   _timestamp: Date,
-  executionResult: TradingExecutionResult
+  executionResult: TradingExecutionResult,
 ): Promise<number> {
   if (!executionResult.executedTrades.length) return 0;
 
   const hasPerpTrades = executionResult.executedTrades.some(
-    (t) => t.marketType === 'perp'
+    (t) => t.marketType === "perp",
   );
   if (!hasPerpTrades) return 0;
 
@@ -1340,12 +1338,12 @@ export async function updateMarketPricesFromTrades(
     executionResult.executedTrades
       .filter(
         (
-          t
+          t,
         ): t is (typeof executionResult.executedTrades)[number] & {
           ticker: string;
-        } => t.marketType === 'perp' && typeof t.ticker === 'string'
+        } => t.marketType === "perp" && typeof t.ticker === "string",
       )
-      .map((t) => t.ticker.toUpperCase())
+      .map((t) => t.ticker.toUpperCase()),
   );
 
   const selected =
@@ -1364,7 +1362,7 @@ export async function updateMarketPricesFromTrades(
     .from(organizationState)
     .where(inArray(organizationState.id, orgIds));
   const initialByOrgId = new Map(
-    orgStates.map((o) => [o.id, Number(o.basePrice ?? 100)])
+    orgStates.map((o) => [o.id, Number(o.basePrice ?? 100)]),
   );
 
   const tickers = selected.map((s) => s.ticker);
@@ -1380,8 +1378,8 @@ export async function updateMarketPricesFromTrades(
     .where(
       and(
         inArray(perpPositions.ticker, tickers),
-        isNull(perpPositions.closedAt)
-      )
+        isNull(perpPositions.closedAt),
+      ),
     );
 
   const holdingsByTicker = new Map<string, number>();
@@ -1390,24 +1388,24 @@ export async function updateMarketPricesFromTrades(
     if (!isOpenPerpPositionStateValid(pos)) {
       invalidPositionsByTicker.set(
         pos.ticker,
-        (invalidPositionsByTicker.get(pos.ticker) ?? 0) + 1
+        (invalidPositionsByTicker.get(pos.ticker) ?? 0) + 1,
       );
       continue;
     }
 
     const current = holdingsByTicker.get(pos.ticker) ?? 0;
-    const delta = pos.side === 'long' ? Number(pos.size) : -Number(pos.size);
+    const delta = pos.side === "long" ? Number(pos.size) : -Number(pos.size);
     holdingsByTicker.set(pos.ticker, current + delta);
   }
 
   for (const [ticker, invalidPositions] of invalidPositionsByTicker) {
     logger.warn(
-      'Ignoring invalid open perp positions during tick price recomputation',
+      "Ignoring invalid open perp positions during tick price recomputation",
       {
         ticker,
         invalidPositions,
       },
-      'GameTick'
+      "GameTick",
     );
   }
 
@@ -1415,7 +1413,7 @@ export async function updateMarketPricesFromTrades(
     .map((snap) => {
       const basePrice = initialByOrgId.get(snap.organizationId);
       const initialPrice =
-        typeof basePrice === 'number' &&
+        typeof basePrice === "number" &&
         Number.isFinite(basePrice) &&
         basePrice > 0
           ? basePrice
@@ -1427,7 +1425,7 @@ export async function updateMarketPricesFromTrades(
         initialPrice,
         currentPrice,
         netHoldings,
-        PERP_MARKET_CONFIG
+        PERP_MARKET_CONFIG,
       );
 
       if (Math.abs(newPrice - currentPrice) < 0.001) return null;
@@ -1435,8 +1433,8 @@ export async function updateMarketPricesFromTrades(
       return {
         organizationId: snap.organizationId,
         newPrice,
-        source: 'npc_trade' as const,
-        reason: 'NPC trading price impact',
+        source: "npc_trade" as const,
+        reason: "NPC trading price impact",
         metadata: { ticker: snap.ticker },
       };
     })
@@ -1449,7 +1447,7 @@ export async function updateMarketPricesFromTrades(
   logger.info(
     `Perp price recomputation applied ${applied.length} updates`,
     { count: applied.length },
-    'GameTick'
+    "GameTick",
   );
 
   return applied.length;
@@ -1461,12 +1459,12 @@ export async function updateMarketPricesFromTrades(
 async function generateNewQuestions(
   count: number,
   llm: FeedLLMClient,
-  deadlineMs: number
+  deadlineMs: number,
 ): Promise<number> {
   const questionManager = new QuestionManager(llm);
   return await questionManager.generateQuestionsForContinuousGame(
     count,
-    deadlineMs
+    deadlineMs,
   );
 }
 
@@ -1474,7 +1472,7 @@ async function generateNewQuestions(
  * Resolve question payouts
  */
 export async function resolveQuestionPayouts(
-  questionNumber: number
+  questionNumber: number,
 ): Promise<void> {
   const [question] = await db
     .select()
@@ -1503,9 +1501,9 @@ export async function resolveQuestionPayouts(
 
   if (market.resolved) {
     logger.info(
-      'Market already resolved, skipping payouts',
+      "Market already resolved, skipping payouts",
       { marketId: market.id, questionNumber },
-      'GameTick'
+      "GameTick",
     );
     return;
   }
@@ -1524,7 +1522,7 @@ export async function resolveQuestionPayouts(
       db: new CorePredictionDbAdapter(tx),
       wallet: {
         debit: async () => {
-          throw new Error('Unexpected debit during market resolution');
+          throw new Error("Unexpected debit during market resolution");
         },
         credit: async ({ userId, amount, reason, description, relatedId }) => {
           totalPayout += amount;
@@ -1532,9 +1530,9 @@ export async function resolveQuestionPayouts(
             userId,
             amount,
             reason,
-            description ?? '',
+            description ?? "",
             relatedId,
-            tx
+            tx,
           );
         },
         recordPnL: async ({ userId, pnl }) => {
@@ -1544,7 +1542,7 @@ export async function resolveQuestionPayouts(
       },
       broadcast: {
         emit: (_channel, payload) =>
-          broadcastToChannel('markets', payload as Record<string, JsonValue>),
+          broadcastToChannel("markets", payload as Record<string, JsonValue>),
       },
       cache: {
         invalidate: () => invalidateAfterPredictionTrade(marketId),
@@ -1569,7 +1567,7 @@ export async function resolveQuestionPayouts(
 
     await coreService.resolve({
       marketId,
-      winningSide: winningSide ? 'yes' : 'no',
+      winningSide: winningSide ? "yes" : "no",
       resolvedAt: resolutionTimestamp,
       resolutionDescription: question.resolutionDescription ?? undefined,
       resolutionProofUrl: question.resolutionProofUrl ?? undefined,
@@ -1578,10 +1576,10 @@ export async function resolveQuestionPayouts(
     await tx
       .update(questionsSchema)
       .set({
-        status: 'resolved',
+        status: "resolved",
         resolvedOutcome: winningSide,
         resolutionReviewedAt: resolutionTimestamp,
-        resolutionReviewedBy: 'system',
+        resolutionReviewedBy: "system",
         updatedAt: resolutionTimestamp,
       })
       .where(eq(questionsSchema.id, question.id));
@@ -1604,8 +1602,8 @@ export async function resolveQuestionPayouts(
     await WalletService.recordPnL(
       entry.userId,
       entry.pnl,
-      'pred_resolve',
-      marketId
+      "pred_resolve",
+      marketId,
     );
   }
 
@@ -1616,15 +1614,15 @@ export async function resolveQuestionPayouts(
   });
 
   logger.info(
-    'Resolved prediction market payouts',
+    "Resolved prediction market payouts",
     {
       marketId: market.id,
       questionNumber,
-      winningSide: winningSide ? 'YES' : 'NO',
+      winningSide: winningSide ? "YES" : "NO",
       totalPayout,
       positionsSettled,
     },
-    'GameTick'
+    "GameTick",
   );
 }
 
@@ -1643,7 +1641,7 @@ async function updateWidgetCaches(): Promise<number> {
 
   // Combine static and dynamic data - filter to companies only
   const companies = staticOrgs
-    .filter((org) => org.type === 'company')
+    .filter((org) => org.type === "company")
     .map((org) => ({
       id: org.id,
       name: org.name,
@@ -1652,15 +1650,14 @@ async function updateWidgetCaches(): Promise<number> {
     }));
 
   if (!companies || companies.length === 0) {
-    logger.warn('No companies found for widget cache update', {}, 'GameTick');
+    logger.warn("No companies found for widget cache update", {}, "GameTick");
     return 0;
   }
 
   const perpMarketsWithStats = await Promise.all(
     companies
       .filter(
-        (company: (typeof companies)[number]) =>
-          company && company.id && company.name
+        (company: (typeof companies)[number]) => company?.id && company.name,
       )
       .map(async (company: (typeof companies)[number]) => {
         const currentPrice =
@@ -1668,36 +1665,36 @@ async function updateWidgetCaches(): Promise<number> {
 
         const priceHistory = await dbService().getPriceHistory(
           company.id,
-          1440
+          1440,
         );
 
         let changePercent24h = 0;
 
         if (priceHistory && priceHistory.length > 0) {
           const price24hAgo = priceHistory[priceHistory.length - 1];
-          if (price24hAgo && price24hAgo.price) {
+          if (price24hAgo?.price) {
             const change24h = currentPrice - price24hAgo.price;
             changePercent24h = (change24h / price24hAgo.price) * 100;
           }
         }
 
         return {
-          ticker: company.id.toUpperCase().replace(/-/g, ''),
+          ticker: company.id.toUpperCase().replace(/-/g, ""),
           organizationId: company.id,
-          name: company.name || 'Unknown Company',
+          name: company.name || "Unknown Company",
           currentPrice,
           changePercent24h,
           volume24h: 0,
         };
-      })
+      }),
   );
 
   const topPerpGainers = perpMarketsWithStats
     .sort(
       (
         a: (typeof perpMarketsWithStats)[number],
-        b: (typeof perpMarketsWithStats)[number]
-      ) => Math.abs(b.changePercent24h) - Math.abs(a.changePercent24h)
+        b: (typeof perpMarketsWithStats)[number],
+      ) => Math.abs(b.changePercent24h) - Math.abs(a.changePercent24h),
     )
     .slice(0, 3);
 
@@ -1725,12 +1722,12 @@ async function updateWidgetCaches(): Promise<number> {
   }
 
   const poolsWithReturn = poolsList
-    .filter((pool: (typeof poolsList)[number]) => pool && pool.id && pool.name) // Filter out invalid pools
+    .filter((pool: (typeof poolsList)[number]) => pool?.id && pool.name) // Filter out invalid pools
     .map((pool: (typeof poolsList)[number]) => {
       const totalDeposits = Number.parseFloat(
-        pool.totalDeposits?.toString() ?? '0'
+        pool.totalDeposits?.toString() ?? "0",
       );
-      const totalValue = Number.parseFloat(pool.totalValue?.toString() ?? '0');
+      const totalValue = Number.parseFloat(pool.totalValue?.toString() ?? "0");
       const totalReturn =
         totalDeposits > 0
           ? ((totalValue - totalDeposits) / totalDeposits) * 100
@@ -1738,8 +1735,8 @@ async function updateWidgetCaches(): Promise<number> {
 
       // Extract Actor name
       const npcActorName = pool.npcActorId
-        ? poolActorMap.get(pool.npcActorId) || 'Unknown'
-        : 'Unknown';
+        ? poolActorMap.get(pool.npcActorId) || "Unknown"
+        : "Unknown";
 
       return {
         id: pool.id,
@@ -1754,8 +1751,8 @@ async function updateWidgetCaches(): Promise<number> {
     .sort(
       (
         a: (typeof poolsWithReturn)[number],
-        b: (typeof poolsWithReturn)[number]
-      ) => b.totalReturn - a.totalReturn
+        b: (typeof poolsWithReturn)[number],
+      ) => b.totalReturn - a.totalReturn,
     )
     .slice(0, 3);
 
@@ -1772,8 +1769,8 @@ async function updateWidgetCaches(): Promise<number> {
     .where(
       and(
         eq(marketsSchema.resolved, false),
-        gte(marketsSchema.endDate, new Date())
-      )
+        gte(marketsSchema.endDate, new Date()),
+      ),
     );
 
   const marketsWithTimeWeightedVolume = activeMarketsList.map(
@@ -1796,20 +1793,20 @@ async function updateWidgetCaches(): Promise<number> {
 
       return {
         id: market.id, // Keep as Snowflake string, don't convert to int
-        text: market.question || 'Unknown Question',
+        text: market.question || "Unknown Question",
         totalVolume,
         yesPrice,
         timeWeightedScore,
       };
-    }
+    },
   );
 
   const topVolumeQuestions = marketsWithTimeWeightedVolume
     .sort(
       (
         a: (typeof marketsWithTimeWeightedVolume)[number],
-        b: (typeof marketsWithTimeWeightedVolume)[number]
-      ) => b.timeWeightedScore - a.timeWeightedScore
+        b: (typeof marketsWithTimeWeightedVolume)[number],
+      ) => b.timeWeightedScore - a.timeWeightedScore,
     )
     .slice(0, 3);
 
@@ -1825,7 +1822,7 @@ async function updateWidgetCaches(): Promise<number> {
   const [existingCache] = await db
     .select({ widget: widgetCaches.widget })
     .from(widgetCaches)
-    .where(eq(widgetCaches.widget, 'markets'))
+    .where(eq(widgetCaches.widget, "markets"))
     .limit(1);
 
   if (existingCache) {
@@ -1835,17 +1832,17 @@ async function updateWidgetCaches(): Promise<number> {
         data: cacheData as JsonValue,
         updatedAt: new Date(),
       })
-      .where(eq(widgetCaches.widget, 'markets'));
+      .where(eq(widgetCaches.widget, "markets"));
   } else {
     await db.insert(widgetCaches).values({
-      widget: 'markets',
+      widget: "markets",
       data: cacheData as JsonValue,
       updatedAt: new Date(),
     });
   }
 
   cachesUpdated++;
-  logger.info('Updated markets widget cache', {}, 'GameTick');
+  logger.info("Updated markets widget cache", {}, "GameTick");
 
   return cachesUpdated;
 }
@@ -1855,7 +1852,7 @@ async function updateWidgetCaches(): Promise<number> {
  * Waits a few seconds for tags to be generated from posts, then calculates trending
  */
 async function forceTrendingCalculation(): Promise<boolean> {
-  logger.info('Forcing trending calculation (first tick)', {}, 'GameTick');
+  logger.info("Forcing trending calculation (first tick)", {}, "GameTick");
 
   // Wait 3 seconds for tag generation to complete (tags are generated async)
   await new Promise((resolve) => setTimeout(resolve, 3000));
@@ -1863,14 +1860,14 @@ async function forceTrendingCalculation(): Promise<boolean> {
   // Call trending calculation directly (already imported at top of file)
   await calculateTrendingTags();
 
-  logger.info('Forced trending calculation complete', {}, 'GameTick');
+  logger.info("Forced trending calculation complete", {}, "GameTick");
   return true;
 }
 
 // World facts update interval (configurable, default 8 hours - runs ~3 times per game day)
 const DEFAULT_WORLD_FACTS_UPDATE_INTERVAL_HOURS = 8;
 const parsedIntervalHours = Number(
-  process.env.WORLD_FACTS_UPDATE_INTERVAL_HOURS
+  process.env.WORLD_FACTS_UPDATE_INTERVAL_HOURS,
 );
 const WORLD_FACTS_UPDATE_INTERVAL_MS =
   (Number.isFinite(parsedIntervalHours) && parsedIntervalHours > 0
@@ -1882,10 +1879,10 @@ const WORLD_FACTS_UPDATE_INTERVAL_MS =
 
 // Lock configuration for world facts generation
 // Default 30 minutes to handle slow LLM responses; configurable via env
-const WORLD_FACTS_LOCK_ID = 'world-facts-generation';
+const WORLD_FACTS_LOCK_ID = "world-facts-generation";
 const DEFAULT_WORLD_FACTS_LOCK_DURATION_MINUTES = 30;
 const parsedLockDuration = Number(
-  process.env.WORLD_FACTS_LOCK_DURATION_MINUTES
+  process.env.WORLD_FACTS_LOCK_DURATION_MINUTES,
 );
 const WORLD_FACTS_LOCK_DURATION_MS =
   (Number.isFinite(parsedLockDuration) && parsedLockDuration > 0
@@ -1897,7 +1894,7 @@ const WORLD_FACTS_LOCK_DURATION_MS =
 // No minimum floor - allows short locks for testing while ensuring renewal before expiry
 const WORLD_FACTS_LOCK_RENEWAL_INTERVAL_MS = Math.min(
   Math.floor(WORLD_FACTS_LOCK_DURATION_MS / 2),
-  WORLD_FACTS_LOCK_DURATION_MS - 1 // Ensure renewal is always before expiry
+  WORLD_FACTS_LOCK_DURATION_MS - 1, // Ensure renewal is always before expiry
 );
 
 /**
@@ -1910,13 +1907,13 @@ const WORLD_FACTS_LOCK_RENEWAL_INTERVAL_MS = Math.min(
  */
 export const GENERATION_MARKER = {
   /** Category for system markers */
-  CATEGORY: 'system',
+  CATEGORY: "system",
   /** Key identifying generation run markers */
-  KEY: 'generation-marker',
+  KEY: "generation-marker",
   /** Human-readable label */
-  LABEL: 'World Facts Generation Marker',
+  LABEL: "World Facts Generation Marker",
   /** Source identifier matching other auto-generated facts */
-  SOURCE: 'auto-generated',
+  SOURCE: "auto-generated",
   /** Markers are inactive (not shown in prompts) */
   IS_ACTIVE: false,
   /** Low priority to stay out of the way */
@@ -1934,15 +1931,15 @@ async function shouldUpdateWorldFacts(): Promise<boolean> {
   const [lastAutoFact] = await db
     .select({ createdAt: worldFacts.createdAt })
     .from(worldFacts)
-    .where(eq(worldFacts.source, 'auto-generated'))
+    .where(eq(worldFacts.source, "auto-generated"))
     .orderBy(desc(worldFacts.createdAt))
     .limit(1);
 
-  if (!lastAutoFact || !lastAutoFact.createdAt) {
+  if (!lastAutoFact?.createdAt) {
     logger.info(
-      'No auto-generated world facts found, triggering initial generation',
+      "No auto-generated world facts found, triggering initial generation",
       undefined,
-      'GameTick'
+      "GameTick",
     );
     return true; // Never generated before
   }
@@ -1953,14 +1950,14 @@ async function shouldUpdateWorldFacts(): Promise<boolean> {
 
   if (shouldUpdate) {
     logger.info(
-      'World facts generation triggered',
+      "World facts generation triggered",
       {
         hoursSinceLastGeneration: Math.round(
-          timeSinceLastGeneration / (60 * 60 * 1000)
+          timeSinceLastGeneration / (60 * 60 * 1000),
         ),
         thresholdHours: WORLD_FACTS_UPDATE_INTERVAL_MS / (60 * 60 * 1000),
       },
-      'GameTick'
+      "GameTick",
     );
   }
 
@@ -1989,7 +1986,7 @@ export async function updateWorldFactsIfNeeded(): Promise<{
   // This avoids lock acquire/release overhead on most ticks (updates only every ~8 hours)
   const shouldUpdate = await shouldUpdateWorldFacts();
   if (!shouldUpdate) {
-    logger.debug('World facts update not needed yet', undefined, 'GameTick');
+    logger.debug("World facts update not needed yet", undefined, "GameTick");
     return { updated: false };
   }
 
@@ -2000,31 +1997,31 @@ export async function updateWorldFactsIfNeeded(): Promise<{
   const lockAcquired = await DistributedLockService.acquireLock({
     lockId: WORLD_FACTS_LOCK_ID,
     durationMs: WORLD_FACTS_LOCK_DURATION_MS,
-    operation: 'world-facts-generation',
+    operation: "world-facts-generation",
     processId,
   });
 
   if (!lockAcquired) {
     logger.debug(
-      'World facts generation lock held by another process, skipping',
+      "World facts generation lock held by another process, skipping",
       {
         processId,
         lockId: WORLD_FACTS_LOCK_ID,
         lockDurationMs: WORLD_FACTS_LOCK_DURATION_MS,
       },
-      'GameTick'
+      "GameTick",
     );
     return { updated: false };
   }
 
   logger.debug(
-    'Acquired world facts generation lock',
+    "Acquired world facts generation lock",
     {
       processId,
       lockId: WORLD_FACTS_LOCK_ID,
       lockDurationMs: WORLD_FACTS_LOCK_DURATION_MS,
     },
-    'GameTick'
+    "GameTick",
   );
 
   // Set up periodic lock renewal to prevent expiry during long-running generation
@@ -2035,20 +2032,20 @@ export async function updateWorldFactsIfNeeded(): Promise<{
         const renewed = await DistributedLockService.acquireLock({
           lockId: WORLD_FACTS_LOCK_ID,
           durationMs: WORLD_FACTS_LOCK_DURATION_MS,
-          operation: 'world-facts-generation-renewal',
+          operation: "world-facts-generation-renewal",
           processId,
         });
         if (renewed) {
-          logger.debug('World facts lock renewed', undefined, 'GameTick');
+          logger.debug("World facts lock renewed", undefined, "GameTick");
         } else {
           logger.warn(
-            'Failed to renew world facts lock - another process may have acquired it',
+            "Failed to renew world facts lock - another process may have acquired it",
             undefined,
-            'GameTick'
+            "GameTick",
           );
         }
       } catch (error) {
-        logger.warn('Error renewing world facts lock', { error }, 'GameTick');
+        logger.warn("Error renewing world facts lock", { error }, "GameTick");
       }
     }, WORLD_FACTS_LOCK_RENEWAL_INTERVAL_MS);
   };
@@ -2061,17 +2058,17 @@ export async function updateWorldFactsIfNeeded(): Promise<{
     const stillNeedsUpdate = await shouldUpdateWorldFacts();
     if (!stillNeedsUpdate) {
       logger.debug(
-        'World facts update no longer needed (another process completed it)',
+        "World facts update no longer needed (another process completed it)",
         undefined,
-        'GameTick'
+        "GameTick",
       );
       return { updated: false };
     }
 
     logger.info(
-      '🌍 Starting world facts update from game tick',
+      "🌍 Starting world facts update from game tick",
       undefined,
-      'GameTick'
+      "GameTick",
     );
 
     const startTime = Date.now();
@@ -2080,7 +2077,7 @@ export async function updateWorldFactsIfNeeded(): Promise<{
     let feedResult = { fetched: 0, stored: 0, errors: 0 };
     let parodies: Awaited<
       ReturnType<
-        ReturnType<typeof createParodyHeadlineGenerator>['processHeadlines']
+        ReturnType<typeof createParodyHeadlineGenerator>["processHeadlines"]
       >
     > = [];
     let cleaned = 0;
@@ -2090,16 +2087,16 @@ export async function updateWorldFactsIfNeeded(): Promise<{
 
     try {
       // Step 1: Fetch all RSS feeds
-      logger.info('Fetching RSS feeds...', undefined, 'GameTick');
+      logger.info("Fetching RSS feeds...", undefined, "GameTick");
       feedResult = await rssFeedService.fetchAllFeeds();
       logger.info(
         `RSS feeds fetched: ${feedResult.fetched} sources, ${feedResult.stored} new headlines, ${feedResult.errors} errors`,
         feedResult,
-        'GameTick'
+        "GameTick",
       );
 
       // Step 2: Transform untransformed headlines into parodies
-      logger.info('Generating parody headlines...', undefined, 'GameTick');
+      logger.info("Generating parody headlines...", undefined, "GameTick");
       const untransformedHeadlines =
         await rssFeedService.getUntransformedHeadlines(20); // Process 20 at a time
 
@@ -2108,32 +2105,32 @@ export async function updateWorldFactsIfNeeded(): Promise<{
       logger.info(
         `Generated ${parodies.length} parody headlines`,
         { count: parodies.length },
-        'GameTick'
+        "GameTick",
       );
 
       // Step 3: Clean up old headlines (older than 7 days)
-      logger.info('Cleaning up old headlines...', undefined, 'GameTick');
+      logger.info("Cleaning up old headlines...", undefined, "GameTick");
       cleaned = await rssFeedService.cleanupOldHeadlines();
       logger.info(
         `Cleaned up ${cleaned} old headlines`,
         { count: cleaned },
-        'GameTick'
+        "GameTick",
       );
 
       dailyTopic = await dailyTopicService.ensureTopicForDate(new Date());
       logger.info(
-        'Daily topic ready',
+        "Daily topic ready",
         {
           topicKey: dailyTopic?.topicKey ?? null,
           topicLabel: dailyTopic?.topicLabel ?? null,
         },
-        'GameTick'
+        "GameTick",
       );
     } catch (error) {
       logger.error(
-        'Error in RSS/parody pipeline, aborting world facts update',
+        "Error in RSS/parody pipeline, aborting world facts update",
         { error },
-        'GameTick'
+        "GameTick",
       );
       return { updated: false };
     }
@@ -2141,9 +2138,9 @@ export async function updateWorldFactsIfNeeded(): Promise<{
     // Step 4: Generate new world facts from game activity (events, markets, questions, actors)
     // This is critical for keeping the world narrative fresh and dynamic
     logger.info(
-      'Generating new world facts from game activity...',
+      "Generating new world facts from game activity...",
       undefined,
-      'GameTick'
+      "GameTick",
     );
     let factsResult = {
       generated: 0,
@@ -2157,13 +2154,13 @@ export async function updateWorldFactsIfNeeded(): Promise<{
       logger.info(
         `Generated ${factsResult.generated} new world facts, archived ${factsResult.archived}`,
         factsResult,
-        'GameTick'
+        "GameTick",
       );
     } catch (error) {
       logger.error(
-        'Error generating world facts from game activity',
+        "Error generating world facts from game activity",
         { error },
-        'GameTick'
+        "GameTick",
       );
       // Don't set factsGenerationSucceeded - marker will be skipped so retries aren't delayed
     }
@@ -2190,16 +2187,16 @@ export async function updateWorldFactsIfNeeded(): Promise<{
         });
       } catch (error) {
         logger.error(
-          'Error inserting generation-marker world fact',
+          "Error inserting generation-marker world fact",
           { error, markerId, factsGenerated: factsResult.generated },
-          'GameTick'
+          "GameTick",
         );
       }
     }
 
     const duration = Date.now() - startTime;
     logger.info(
-      '✅ World facts update completed',
+      "✅ World facts update completed",
       {
         duration: `${duration}ms`,
         feedsFetched: feedResult.fetched,
@@ -2210,7 +2207,7 @@ export async function updateWorldFactsIfNeeded(): Promise<{
         worldFactsGenerated: factsResult.generated,
         worldFactsArchived: factsResult.archived,
       },
-      'GameTick'
+      "GameTick",
     );
 
     return {
@@ -2267,9 +2264,9 @@ export async function simulateMarketVolatility(options?: {
   try {
     if (options?.narrativeEventsCount && options.narrativeEventsCount > 0) {
       logger.debug(
-        'Skipping volatility simulation (narrative events fired)',
+        "Skipping volatility simulation (narrative events fired)",
         { narrativeEventsCount: options.narrativeEventsCount },
-        'GameTick'
+        "GameTick",
       );
       return 0;
     }
@@ -2297,10 +2294,10 @@ export async function simulateMarketVolatility(options?: {
       .where(inArray(organizationState.id, orgIds));
 
     const basePriceByOrgId = new Map(
-      orgStates.map((o) => [o.id, Number(o.basePrice ?? 100)])
+      orgStates.map((o) => [o.id, Number(o.basePrice ?? 100)]),
     );
     globalMarketSimulationState = evolveGlobalMarketSimulationState(
-      globalMarketSimulationState
+      globalMarketSimulationState,
     );
 
     let updatedCount = 0;
@@ -2314,14 +2311,14 @@ export async function simulateMarketVolatility(options?: {
       const currentPriceCandidate = Number(market.currentPrice);
       const basePrice = basePriceByOrgId.get(market.organizationId);
       const organization = StaticDataRegistry.getOrganization(
-        market.organizationId
+        market.organizationId,
       );
       const initialPrice =
-        typeof basePrice === 'number' &&
+        typeof basePrice === "number" &&
         Number.isFinite(basePrice) &&
         basePrice > 0
           ? basePrice
-          : typeof organization?.initialPrice === 'number' &&
+          : typeof organization?.initialPrice === "number" &&
               Number.isFinite(organization.initialPrice) &&
               organization.initialPrice > 0
             ? organization.initialPrice
@@ -2377,10 +2374,10 @@ export async function simulateMarketVolatility(options?: {
         priceUpdates.map((u) => ({
           organizationId: u.organizationId,
           newPrice: u.newPrice,
-          source: 'system' as const,
-          reason: 'Simulated market volatility',
+          source: "system" as const,
+          reason: "Simulated market volatility",
           metadata: { ticker: u.ticker },
-        }))
+        })),
       );
 
       // Also sync prices to perpMarketSnapshots (PriceUpdateService only updates organizationState)
@@ -2400,16 +2397,16 @@ export async function simulateMarketVolatility(options?: {
             newPrice: u.newPrice.toFixed(2),
           })),
         },
-        'MarketVolatility'
+        "MarketVolatility",
       );
     }
 
     return updatedCount;
   } catch (error) {
     logger.error(
-      'Failed to simulate market volatility',
+      "Failed to simulate market volatility",
       { error: formatError(error) },
-      'MarketVolatility'
+      "MarketVolatility",
     );
     return 0;
   }
@@ -2427,7 +2424,7 @@ export async function simulateMarketVolatility(options?: {
 async function processNarrativeArcs(
   activeQuestions: Array<{ id: string }>,
   dayNumber: number,
-  llmClient: FeedLLMClient
+  llmClient: FeedLLMClient,
 ): Promise<{
   arcsProcessed: number;
   transitioned: number;
@@ -2482,7 +2479,7 @@ async function processNarrativeArcs(
       logger.error(
         `Failed to process narrative arc for question ${question.id}`,
         { error: formatError(error) },
-        'GameTick'
+        "GameTick",
       );
     }
   }

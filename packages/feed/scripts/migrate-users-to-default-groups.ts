@@ -31,9 +31,9 @@ import {
   nftSnapshot,
   users,
   whitelist,
-} from '@feed/db';
-import { UserAlphaGroupAssignmentService } from '@feed/engine';
-import { logger } from '@feed/shared';
+} from "@feed/db";
+import { UserAlphaGroupAssignmentService } from "@feed/engine";
+import { logger } from "@feed/shared";
 
 /** Default limit for batch processing when no limit specified */
 const MIGRATE_USERS_DEFAULT_LIMIT = 100000;
@@ -48,30 +48,30 @@ interface MigrationStats {
 
 async function main() {
   const args = process.argv.slice(2);
-  const dryRun = args.includes('--dry-run');
+  const dryRun = args.includes("--dry-run");
   const batchSize =
     Number.parseInt(
-      args.find((a) => a.startsWith('--batch='))?.split('=')[1] ?? '100',
-      10
+      args.find((a) => a.startsWith("--batch="))?.split("=")[1] ?? "100",
+      10,
     ) || 100;
   const limit =
     Number.parseInt(
-      args.find((a) => a.startsWith('--limit='))?.split('=')[1] ?? '0',
-      10
+      args.find((a) => a.startsWith("--limit="))?.split("=")[1] ?? "0",
+      10,
     ) || 0;
-  const specificUser = args.find((a) => a.startsWith('--user='))?.split('=')[1];
+  const specificUser = args.find((a) => a.startsWith("--user="))?.split("=")[1];
 
   logger.info(
-    'Default Alpha Group Migration started',
-    { dryRun, batchSize, limit: limit || 'unlimited', specificUser },
-    'migrate-default-groups'
+    "Default Alpha Group Migration started",
+    { dryRun, batchSize, limit: limit || "unlimited", specificUser },
+    "migrate-default-groups",
   );
 
   if (dryRun) {
     logger.info(
-      'DRY RUN MODE - No changes will be made',
+      "DRY RUN MODE - No changes will be made",
       {},
-      'migrate-default-groups'
+      "migrate-default-groups",
     );
   }
 
@@ -88,7 +88,7 @@ async function main() {
     await UserAlphaGroupAssignmentService.getCapacityStats();
 
   logger.info(
-    'Current Tier 3 capacity status',
+    "Current Tier 3 capacity status",
     {
       totalGroups: capacityStats.totalTier3Groups,
       totalCapacity: capacityStats.totalTier3Capacity,
@@ -97,14 +97,14 @@ async function main() {
       fillRate: `${(capacityStats.fillRate * 100).toFixed(1)}%`,
       maxUsersCanServe: capacityStats.maxUsersCanServe,
     },
-    'migrate-default-groups'
+    "migrate-default-groups",
   );
 
   if (capacityStats.totalTier3Groups === 0) {
     logger.error(
-      'No Tier 3 groups found - run bootstrap-alpha-groups.ts first',
+      "No Tier 3 groups found - run bootstrap-alpha-groups.ts first",
       {},
-      'migrate-default-groups'
+      "migrate-default-groups",
     );
     process.exit(1);
   }
@@ -129,9 +129,9 @@ async function main() {
 
     if (!user) {
       logger.error(
-        'User not found',
+        "User not found",
         { userId: specificUser },
-        'migrate-default-groups'
+        "migrate-default-groups",
       );
       process.exit(1);
     }
@@ -157,8 +157,8 @@ async function main() {
           and(
             eq(users.isAdmin, true),
             eq(users.isActor, false),
-            eq(users.isAgent, false)
-          )
+            eq(users.isAgent, false),
+          ),
         ),
     ]);
 
@@ -169,21 +169,21 @@ async function main() {
     ]);
 
     logger.info(
-      'Access-granted users found',
+      "Access-granted users found",
       {
         nftSnapshot: snapshotUsers.length,
         whitelisted: whitelistedUsers.length,
         admins: adminUsers.length,
         uniqueTotal: accessUserIds.size,
       },
-      'migrate-default-groups'
+      "migrate-default-groups",
     );
 
     if (accessUserIds.size === 0) {
       logger.error(
-        'No access-granted users found. Aborting.',
+        "No access-granted users found. Aborting.",
         {},
-        'migrate-default-groups'
+        "migrate-default-groups",
       );
       process.exit(1);
     }
@@ -199,17 +199,17 @@ async function main() {
           eq(users.isActor, false),
           eq(users.isAgent, false),
           eq(users.isBanned, false),
-          eq(users.profileComplete, true)
-        )
+          eq(users.profileComplete, true),
+        ),
       )
       .orderBy(users.createdAt)
       .limit(limit > 0 ? limit : MIGRATE_USERS_DEFAULT_LIMIT);
   }
 
   logger.info(
-    'Found users to evaluate',
+    "Found users to evaluate",
     { count: usersToProcess.length },
-    'migrate-default-groups'
+    "migrate-default-groups",
   );
 
   // Process in batches
@@ -221,7 +221,7 @@ async function main() {
     logger.info(
       `Processing batch ${batchNum}/${totalBatches}`,
       { batchSize: batch.length },
-      'migrate-default-groups'
+      "migrate-default-groups",
     );
 
     for (const user of batch) {
@@ -236,8 +236,8 @@ async function main() {
           and(
             eq(groupMembers.userId, user.id),
             eq(groupMembers.isActive, true),
-            eq(groups.type, 'npc')
-          )
+            eq(groups.type, "npc"),
+          ),
         );
 
       const currentGroups = groupCount?.count ?? 0;
@@ -248,9 +248,9 @@ async function main() {
         // User already has sufficient groups
         stats.usersSkipped++;
         logger.debug(
-          'User already has sufficient groups',
+          "User already has sufficient groups",
           { userId: user.id, username: user.username, groups: currentGroups },
-          'migrate-default-groups'
+          "migrate-default-groups",
         );
         continue;
       }
@@ -259,27 +259,27 @@ async function main() {
 
       if (dryRun) {
         logger.info(
-          '[DRY RUN] Would assign groups to user',
+          "[DRY RUN] Would assign groups to user",
           {
             userId: user.id,
             username: user.username,
             currentGroups,
             groupsNeeded: targetGroups - currentGroups,
           },
-          'migrate-default-groups'
+          "migrate-default-groups",
         );
         continue;
       }
 
       // Assign default groups
       const result = await UserAlphaGroupAssignmentService.assignDefaultGroups(
-        user.id
+        user.id,
       );
 
       if (result.success) {
         stats.groupsAssigned += result.groupsAssigned;
         logger.info(
-          'Assigned groups to user',
+          "Assigned groups to user",
           {
             userId: user.id,
             username: user.username,
@@ -289,15 +289,15 @@ async function main() {
               tier: a.tier,
             })),
           },
-          'migrate-default-groups'
+          "migrate-default-groups",
         );
       } else {
         if (result.errors.length > 0) {
           stats.errors++;
           logger.warn(
-            'Failed to assign groups to user',
+            "Failed to assign groups to user",
             { userId: user.id, username: user.username, errors: result.errors },
-            'migrate-default-groups'
+            "migrate-default-groups",
           );
         }
       }
@@ -310,12 +310,12 @@ async function main() {
   }
 
   logger.info(
-    'Migration complete',
+    "Migration complete",
     {
       ...stats,
       dryRun,
     },
-    'migrate-default-groups'
+    "migrate-default-groups",
   );
 
   // Final capacity check
@@ -324,7 +324,7 @@ async function main() {
       await UserAlphaGroupAssignmentService.getCapacityStats();
 
     logger.info(
-      'Final capacity status',
+      "Final capacity status",
       {
         totalGroups: finalCapacity.totalTier3Groups,
         totalCapacity: finalCapacity.totalTier3Capacity,
@@ -333,22 +333,22 @@ async function main() {
         fillRate: `${(finalCapacity.fillRate * 100).toFixed(1)}%`,
         maxUsersCanServe: finalCapacity.maxUsersCanServe,
       },
-      'migrate-default-groups'
+      "migrate-default-groups",
     );
   }
 
-  logger.info('Done!', {}, 'migrate-default-groups');
+  logger.info("Done!", {}, "migrate-default-groups");
   process.exit(0);
 }
 
 main().catch((error) => {
   logger.error(
-    'Fatal error in migration script',
+    "Fatal error in migration script",
     {
       error: String(error),
       stack: error instanceof Error ? error.stack : undefined,
     },
-    'migrate-default-groups'
+    "migrate-default-groups",
   );
   process.exit(1);
 });

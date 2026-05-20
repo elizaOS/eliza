@@ -1,14 +1,14 @@
-import { useFeed } from './useFeed';
+import { useFeed } from "./useFeed";
 
 interface UseNarrativeFeedOptions {
   enabled?: boolean;
 }
 
 const NARRATIVE_CONFIG = {
-  endpoint: '/api/feed/narrative',
+  endpoint: "/api/feed/narrative",
   requiresAuth: false,
-  logContext: 'useNarrativeFeed',
-  feedName: 'Narrative',
+  logContext: "useNarrativeFeed",
+  feedName: "Narrative",
 } as const;
 
 /**

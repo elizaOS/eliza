@@ -4,6 +4,7 @@
  * Handles agents responding to direct messages autonomously
  */
 
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   and,
   chatParticipants,
@@ -14,13 +15,12 @@ import {
   messages,
   ne,
   users,
-} from '@feed/db';
-import type { IAgentRuntime } from '@elizaos/core';
-import { callGroqDirect } from '../llm/direct-groq';
-import { getAgentConfig } from '../shared/agent-config';
-import { logger } from '../shared/logger';
-import { getAgentContext, isNpcUser } from './agent-context';
-import { executeDirectMessage } from './DirectExecutors';
+} from "@feed/db";
+import { callGroqDirect } from "../llm/direct-groq";
+import { getAgentConfig } from "../shared/agent-config";
+import { logger } from "../shared/logger";
+import { getAgentContext, isNpcUser } from "./agent-context";
+import { executeDirectMessage } from "./DirectExecutors";
 
 /**
  * Service for autonomous direct message responses
@@ -36,7 +36,7 @@ export class AutonomousDMService {
    */
   async respondToDMs(
     agentUserId: string,
-    _runtime: IAgentRuntime
+    _runtime: IAgentRuntime,
   ): Promise<number> {
     // Resolve agent context (NPC vs USER_CONTROLLED)
     const { displayName: agentDisplayName } =
@@ -80,8 +80,8 @@ export class AutonomousDMService {
           .where(
             and(
               eq(chatParticipants.chatId, chat.id),
-              eq(chatParticipants.userId, ownerUserId)
-            )
+              eq(chatParticipants.userId, ownerUserId),
+            ),
           )
           .limit(1);
 
@@ -89,7 +89,7 @@ export class AutonomousDMService {
           logger.debug(
             `Skipping DM with owner ${ownerUserId} - use Agents chat instead`,
             undefined,
-            'AutonomousDM'
+            "AutonomousDM",
           );
           continue;
         }
@@ -104,8 +104,8 @@ export class AutonomousDMService {
           and(
             eq(messages.chatId, chat.id),
             ne(messages.senderId, agentUserId),
-            gte(messages.createdAt, oneHourAgo)
-          )
+            gte(messages.createdAt, oneHourAgo),
+          ),
         )
         .orderBy(desc(messages.createdAt))
         .limit(5);
@@ -115,7 +115,7 @@ export class AutonomousDMService {
       // Get conversation context
       const allMessages = await db.message.findMany({
         where: { chatId: chat.id },
-        orderBy: { createdAt: 'asc' },
+        orderBy: { createdAt: "asc" },
         take: 10,
       });
 
@@ -123,15 +123,15 @@ export class AutonomousDMService {
       if (!latestMessage) continue;
 
       // Generate response
-      const prompt = `${config?.systemPrompt ?? 'You are an AI agent on Feed.'}
+      const prompt = `${config?.systemPrompt ?? "You are an AI agent on Feed."}
 
 You are ${agentDisplayName} in a direct message conversation.
 
 Recent conversation:
 ${allMessages
   .slice(-5)
-  .map((m) => `${m.senderId === agentUserId ? 'You' : 'Them'}: ${m.content}`)
-  .join('\n')}
+  .map((m) => `${m.senderId === agentUserId ? "You" : "Them"}: ${m.content}`)
+  .join("\n")}
 
 Latest message from them:
 "${latestMessage.content}"
@@ -147,15 +147,15 @@ Generate ONLY the response text, nothing else.`;
       const responseContent = await callGroqDirect({
         prompt,
         system: config?.systemPrompt ?? undefined,
-        modelSize: 'small', // Free tier: Frequent operation, use fast model
+        modelSize: "small", // Free tier: Frequent operation, use fast model
         runtime: _runtime, // Pass runtime to access W&B trained models AND trajectory context
         temperature: 0.8,
         maxTokens: 80,
-        actionType: 'generate_dm_response',
-        purpose: 'response', // RLAIF: This is a response generation call
+        actionType: "generate_dm_response",
+        purpose: "response", // RLAIF: This is a response generation call
       });
 
-      const cleanContent = responseContent.trim().replace(/^["']|["']$/g, '');
+      const cleanContent = responseContent.trim().replace(/^["']|["']$/g, "");
 
       if (!cleanContent || cleanContent.length < 5) {
         continue;
@@ -172,7 +172,7 @@ Generate ONLY the response text, nothing else.`;
         logger.warn(
           `Failed to create DM response: ${result.error}`,
           undefined,
-          'AutonomousDM'
+          "AutonomousDM",
         );
         continue;
       }
@@ -181,7 +181,7 @@ Generate ONLY the response text, nothing else.`;
       logger.info(
         `Agent ${agentDisplayName} responded to DM in chat ${chat.id}`,
         undefined,
-        'AutonomousDM'
+        "AutonomousDM",
       );
 
       // Only respond to one DM per tick to avoid spam

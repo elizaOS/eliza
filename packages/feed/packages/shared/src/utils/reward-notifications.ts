@@ -1,6 +1,6 @@
 export interface AchievementUnlockedNotificationData {
   [key: string]: string | number;
-  kind: 'achievement_unlocked';
+  kind: "achievement_unlocked";
   achievementId: string;
   achievementName: string;
   tier: string;
@@ -10,7 +10,7 @@ export interface AchievementUnlockedNotificationData {
 
 export interface ChallengeCompletedNotificationData {
   [key: string]: string | number;
-  kind: 'challenge_completed';
+  kind: "challenge_completed";
   challengeId: string;
   challengeName: string;
   pointsReward: number;
@@ -39,7 +39,7 @@ export function buildAchievementUnlockedNotification(params: {
     title: `Achievement Unlocked: ${params.achievementName}`,
     message: `${toTitleCase(params.tier)} tier - +${params.pointsReward} points`,
     data: {
-      kind: 'achievement_unlocked',
+      kind: "achievement_unlocked",
       achievementId: params.achievementId,
       achievementName: params.achievementName,
       tier: params.tier,
@@ -60,7 +60,7 @@ export function buildChallengeCompletedNotification(params: {
     title: `Challenge Complete: ${params.challengeName}`,
     message: `+${params.pointsReward} points`,
     data: {
-      kind: 'challenge_completed',
+      kind: "challenge_completed",
       challengeId: params.challengeId,
       challengeName: params.challengeName,
       pointsReward: params.pointsReward,

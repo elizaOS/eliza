@@ -14,12 +14,12 @@ import type {
   PriceModifier,
   RelationshipState,
   ScheduledEvent,
-} from '@feed/db';
-import { isStringArray, logger } from '@feed/shared';
-import { z } from 'zod';
+} from "@feed/db";
+import { isStringArray, logger } from "@feed/shared";
+import { z } from "zod";
 
 // Re-export types from the source of truth for convenience
-export type { NpcMemory, PriceModifier, RelationshipState } from '@feed/db';
+export type { NpcMemory, PriceModifier, RelationshipState } from "@feed/db";
 
 /**
  * NPC Memory schema - validates against NpcMemory interface from @feed/db
@@ -28,12 +28,12 @@ export type { NpcMemory, PriceModifier, RelationshipState } from '@feed/db';
 export const NpcMemorySchema = z.object({
   id: z.string(),
   type: z.enum([
-    'posted',
-    'replied_to',
-    'mentioned_by',
-    'witnessed_event',
-    'traded',
-    'running_bit',
+    "posted",
+    "replied_to",
+    "mentioned_by",
+    "witnessed_event",
+    "traded",
+    "running_bit",
   ]),
   timestamp: z.string(), // ISO date string
   summary: z.string(),
@@ -69,7 +69,7 @@ export const RelationshipStateSchema = z.object({
  */
 export const RelationshipsMapSchema = z.record(
   z.string(),
-  RelationshipStateSchema
+  RelationshipStateSchema,
 );
 
 /**
@@ -86,7 +86,7 @@ export const InteractionUpdateSchema = z.object({
  */
 export function parseMemoriesSafe(
   data: unknown,
-  context?: { actorId?: string }
+  context?: { actorId?: string },
 ): NpcMemory[] {
   if (data === null || data === undefined) {
     return [];
@@ -99,12 +99,12 @@ export function parseMemoriesSafe(
 
   // Log the validation error but don't throw
   logger.warn(
-    'Invalid memories JSONB data',
+    "Invalid memories JSONB data",
     {
       actorId: context?.actorId,
       issues: result.error.issues.slice(0, 3),
     },
-    'JSONBValidation'
+    "JSONBValidation",
   );
 
   // Try to salvage valid memories from the array
@@ -123,14 +123,14 @@ export function parseMemoriesSafe(
     // Log salvage statistics
     if (discardedCount > 0) {
       logger.info(
-        'Salvaged partial memories from corrupted data',
+        "Salvaged partial memories from corrupted data",
         {
           actorId: context?.actorId,
           salvaged: validMemories.length,
           discarded: discardedCount,
           total: data.length,
         },
-        'JSONBValidation'
+        "JSONBValidation",
       );
     }
 
@@ -146,7 +146,7 @@ export function parseMemoriesSafe(
  */
 export function parseRelationshipsSafe(
   data: unknown,
-  context?: { actorId?: string }
+  context?: { actorId?: string },
 ): Record<string, RelationshipState> {
   if (data === null || data === undefined) {
     return {};
@@ -159,17 +159,17 @@ export function parseRelationshipsSafe(
 
   // Log the validation error but don't throw
   logger.warn(
-    'Invalid relationships JSONB data',
+    "Invalid relationships JSONB data",
     {
       actorId: context?.actorId,
       issues: result.error.issues.slice(0, 3),
     },
-    'JSONBValidation'
+    "JSONBValidation",
   );
 
   // Try to salvage valid relationships from the object
   // Limit inspection to first N entries to avoid expensive iteration on large maps
-  if (typeof data === 'object' && data !== null) {
+  if (typeof data === "object" && data !== null) {
     const MAX_SALVAGE = 1000;
     const validRelationships: Record<string, RelationshipState> = {};
     let discardedCount = 0;
@@ -198,7 +198,7 @@ export function parseRelationshipsSafe(
     // Log salvage statistics
     if (discardedCount > 0 || capHit) {
       logger.info(
-        'Salvaged partial relationships from corrupted data',
+        "Salvaged partial relationships from corrupted data",
         {
           actorId: context?.actorId,
           salvaged: Object.keys(validRelationships).length,
@@ -208,7 +208,7 @@ export function parseRelationshipsSafe(
           capHit,
           skippedDueToCap,
         },
-        'JSONBValidation'
+        "JSONBValidation",
       );
     }
 
@@ -223,8 +223,8 @@ export function parseRelationshipsSafe(
  * Throws if invalid - use for write operations.
  */
 export function validateMemory(
-  memory: unknown
-): asserts memory is Omit<NpcMemory, 'id'> {
+  memory: unknown,
+): asserts memory is Omit<NpcMemory, "id"> {
   PartialMemorySchema.parse(memory);
 }
 
@@ -233,7 +233,7 @@ export function validateMemory(
  * Throws if invalid - use for write operations.
  */
 export function validateRelationshipUpdate(
-  interaction: unknown
+  interaction: unknown,
 ): asserts interaction is z.infer<typeof InteractionUpdateSchema> {
   InteractionUpdateSchema.parse(interaction);
 }
@@ -260,7 +260,7 @@ export const PriceModifiersSchema = z.array(PriceModifierSchema);
  */
 export function parseModifiersSafe(
   data: unknown,
-  context?: { orgId?: string }
+  context?: { orgId?: string },
 ): PriceModifier[] {
   if (data === null || data === undefined) {
     return [];
@@ -273,12 +273,12 @@ export function parseModifiersSafe(
 
   // Log the validation error but don't throw
   logger.warn(
-    'Invalid modifiers JSONB data',
+    "Invalid modifiers JSONB data",
     {
       orgId: context?.orgId,
       issues: result.error.issues.slice(0, 3),
     },
-    'JSONBValidation'
+    "JSONBValidation",
   );
 
   // Try to salvage valid modifiers from the array
@@ -297,14 +297,14 @@ export function parseModifiersSafe(
     // Log salvage statistics
     if (discardedCount > 0) {
       logger.info(
-        'Salvaged partial modifiers from corrupted data',
+        "Salvaged partial modifiers from corrupted data",
         {
           orgId: context?.orgId,
           salvaged: validModifiers.length,
           discarded: discardedCount,
           total: data.length,
         },
-        'JSONBValidation'
+        "JSONBValidation",
       );
     }
 
@@ -319,7 +319,7 @@ export function parseModifiersSafe(
  * Throws if invalid - use for write operations.
  */
 export function validatePriceModifier(
-  modifier: unknown
+  modifier: unknown,
 ): asserts modifier is PriceModifier {
   PriceModifierSchema.parse(modifier);
 }
@@ -339,7 +339,7 @@ export const StringArraySchema = z.array(z.string());
  */
 export function parseStringArraySafe(
   data: unknown,
-  context?: { field?: string }
+  context?: { field?: string },
 ): string[] {
   if (data === null || data === undefined) {
     return [];
@@ -354,20 +354,20 @@ export function parseStringArraySafe(
 
   // Log warning and try to salvage valid strings
   logger.warn(
-    'Invalid string array JSONB data',
+    "Invalid string array JSONB data",
     {
       field: context?.field,
       dataType: typeof data,
       isArray: Array.isArray(data),
     },
-    'JSONBValidation'
+    "JSONBValidation",
   );
 
   // Salvage valid strings from array with metrics
   if (Array.isArray(data)) {
     const originalCount = data.length;
     const filtered = data.filter(
-      (item): item is string => typeof item === 'string'
+      (item): item is string => typeof item === "string",
     );
     const keptCount = filtered.length;
     const droppedCount = originalCount - keptCount;
@@ -375,14 +375,14 @@ export function parseStringArraySafe(
     // Log salvage metrics for observability
     if (droppedCount > 0) {
       logger.info(
-        'JSONBSalvage: salvaged partial string array data',
+        "JSONBSalvage: salvaged partial string array data",
         {
           field: context?.field,
           originalCount,
           keptCount,
           droppedCount,
         },
-        'JSONBValidation'
+        "JSONBValidation",
       );
     }
 
@@ -392,7 +392,7 @@ export function parseStringArraySafe(
   return [];
 }
 
-export { isStringArray } from '@feed/shared';
+export { isStringArray } from "@feed/shared";
 
 // =============================================================================
 // NARRATIVE ARC VALIDATORS (PendingTransition, ScheduledEvent)
@@ -426,14 +426,14 @@ export const ScheduledEventSchema = z.object({
   baseDay: z.number(),
   jitterHours: z.number(),
   eventType: z.enum([
-    'leak',
-    'rumor',
-    'scandal',
-    'confirmation',
-    'red_herring',
+    "leak",
+    "rumor",
+    "scandal",
+    "confirmation",
+    "red_herring",
   ]),
   description: z.string(),
-  signalDirection: z.enum(['YES', 'NO', 'NEUTRAL']),
+  signalDirection: z.enum(["YES", "NO", "NEUTRAL"]),
   fired: z.boolean(),
   firedAt: z.string().optional(),
 });
@@ -448,7 +448,7 @@ export const ScheduledEventsSchema = z.array(ScheduledEventSchema);
  */
 export function parsePendingTransitionsSafe(
   data: unknown,
-  context?: { arcId?: string }
+  context?: { arcId?: string },
 ): PendingTransition[] {
   if (data === null || data === undefined) {
     return [];
@@ -460,12 +460,12 @@ export function parsePendingTransitionsSafe(
   }
 
   logger.warn(
-    'Invalid pendingTransitions JSONB data',
+    "Invalid pendingTransitions JSONB data",
     {
       arcId: context?.arcId,
       issues: result.error.issues.slice(0, 3),
     },
-    'JSONBValidation'
+    "JSONBValidation",
   );
 
   // Try to salvage valid transitions with metrics logging
@@ -486,15 +486,15 @@ export function parsePendingTransitionsSafe(
     // Log salvage metrics only when there are actually invalid entries
     if (invalid > 0) {
       logger.info(
-        'Salvaged partial PendingTransition data',
+        "Salvaged partial PendingTransition data",
         {
-          parser: 'PendingTransition',
+          parser: "PendingTransition",
           arcId: context?.arcId,
           total,
           valid: valid.length,
           invalid,
         },
-        'JSONBValidation'
+        "JSONBValidation",
       );
     }
 
@@ -509,7 +509,7 @@ export function parsePendingTransitionsSafe(
  */
 export function parseScheduledEventsSafe(
   data: unknown,
-  context?: { questionId?: string }
+  context?: { questionId?: string },
 ): ScheduledEvent[] {
   if (data === null || data === undefined) {
     return [];
@@ -521,12 +521,12 @@ export function parseScheduledEventsSafe(
   }
 
   logger.warn(
-    'Invalid eventSchedule JSONB data',
+    "Invalid eventSchedule JSONB data",
     {
       questionId: context?.questionId,
       issues: result.error.issues.slice(0, 3),
     },
-    'JSONBValidation'
+    "JSONBValidation",
   );
 
   // Try to salvage valid events with metrics logging
@@ -547,15 +547,15 @@ export function parseScheduledEventsSafe(
     // Log salvage metrics only when there are actually invalid entries
     if (invalid > 0) {
       logger.info(
-        'Salvaged partial ScheduledEvent data',
+        "Salvaged partial ScheduledEvent data",
         {
-          parser: 'ScheduledEvent',
+          parser: "ScheduledEvent",
           questionId: context?.questionId,
           total,
           valid: valid.length,
           invalid,
         },
-        'JSONBValidation'
+        "JSONBValidation",
       );
     }
 

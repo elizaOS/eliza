@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { cn } from '@feed/shared';
-import Link from 'next/link';
-import type { NarrativeStory } from '@/app/feed/types/narrative';
+import { cn } from "@feed/shared";
+import Link from "next/link";
+import type { NarrativeStory } from "@/app/feed/types/narrative";
 
 interface ResolvedMarketFeedCardProps {
   story: NarrativeStory;
@@ -11,7 +11,7 @@ interface ResolvedMarketFeedCardProps {
 
 function computePercentages(
   yesShares: number,
-  noShares: number
+  noShares: number,
 ): { yesPercent: number; noPercent: number } {
   const total = yesShares + noShares;
   if (total === 0) return { yesPercent: 50, noPercent: 50 };
@@ -31,19 +31,19 @@ export function ResolvedMarketFeedCard({
 }: ResolvedMarketFeedCardProps) {
   const { yesPercent, noPercent } = computePercentages(
     story.yesShares ?? 0,
-    story.noShares ?? 0
+    story.noShares ?? 0,
   );
 
   const outcomeLabel =
     story.resolvedOutcome === true
-      ? 'YES'
+      ? "YES"
       : story.resolvedOutcome === false
-        ? 'NO'
-        : 'Pending';
+        ? "NO"
+        : "Pending";
 
   const viewHref = story.marketId
     ? `/markets/predictions/${encodeURIComponent(story.marketId)}`
-    : '/markets?tab=predictions';
+    : "/markets?tab=predictions";
 
   return (
     <article
@@ -58,13 +58,13 @@ export function ResolvedMarketFeedCard({
         <span
           aria-label={`Outcome: ${outcomeLabel}`}
           className={cn(
-            'rounded-full px-2 py-0.5 font-bold text-xs',
+            "rounded-full px-2 py-0.5 font-bold text-xs",
             story.resolvedOutcome === true &&
-              'bg-green-500/15 text-green-600 dark:text-green-400',
+              "bg-green-500/15 text-green-600 dark:text-green-400",
             story.resolvedOutcome === false &&
-              'bg-red-500/15 text-red-600 dark:text-red-400',
+              "bg-red-500/15 text-red-600 dark:text-red-400",
             story.resolvedOutcome == null &&
-              'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+              "bg-amber-500/15 text-amber-600 dark:text-amber-400",
           )}
         >
           {outcomeLabel}
@@ -96,10 +96,10 @@ export function ResolvedMarketFeedCard({
           >
             <div
               className={cn(
-                'h-full rounded-full',
+                "h-full rounded-full",
                 story.resolvedOutcome === true
-                  ? 'bg-green-500'
-                  : 'bg-green-500/40'
+                  ? "bg-green-500"
+                  : "bg-green-500/40",
               )}
               style={{ width: `${yesPercent}%` }}
             />
@@ -122,8 +122,10 @@ export function ResolvedMarketFeedCard({
           >
             <div
               className={cn(
-                'h-full rounded-full',
-                story.resolvedOutcome === false ? 'bg-red-500' : 'bg-red-500/40'
+                "h-full rounded-full",
+                story.resolvedOutcome === false
+                  ? "bg-red-500"
+                  : "bg-red-500/40",
               )}
               style={{ width: `${noPercent}%` }}
             />

@@ -23,11 +23,11 @@ import {
   tradingFees,
   users,
   withTransaction,
-} from '@feed/db';
-import { generateSnowflakeId, logger } from '@feed/shared';
-import type { SQL } from 'drizzle-orm';
-import { FEE_CONFIG, type FeeType } from '../config/fees';
-import { FeeRedistributionService } from './fee-redistribution-service';
+} from "@feed/db";
+import { generateSnowflakeId, logger } from "@feed/shared";
+import type { SQL } from "drizzle-orm";
+import { FEE_CONFIG, type FeeType } from "../config/fees";
+import { FeeRedistributionService } from "./fee-redistribution-service";
 
 /**
  * Transaction context type - either an existing transaction or the db client
@@ -42,7 +42,7 @@ export type TransactionContext = Transaction | DrizzleClient;
  */
 async function runInTransaction<T>(
   existingTx: TransactionContext | undefined,
-  fn: (tx: TransactionContext) => Promise<T>
+  fn: (tx: TransactionContext) => Promise<T>,
 ): Promise<T> {
   return existingTx ? fn(existingTx) : withTransaction(fn);
 }
@@ -181,7 +181,7 @@ export class FeeService {
     tradeAmount: number,
     tradeId?: string,
     marketId?: string,
-    existingTx?: TransactionContext
+    existingTx?: TransactionContext,
   ): Promise<FeeDistributionResult> {
     const feeCalc = FeeService.calculateFee(tradeAmount);
 
@@ -194,7 +194,7 @@ export class FeeService {
           tradeType,
           tradeAmount,
         },
-        'FeeService'
+        "FeeService",
       );
 
       return {
@@ -241,7 +241,7 @@ export class FeeService {
         .update(users)
         .set({
           totalFeesPaid: new Decimal(
-            currentTotalFees + feeCalc.feeAmount
+            currentTotalFees + feeCalc.feeAmount,
           ).toString(),
         })
         .where(eq(users.id, userId));
@@ -252,7 +252,7 @@ export class FeeService {
           referrerId,
           feeCalc.referrerShare,
           userId,
-          tx
+          tx,
         );
       }
 
@@ -273,23 +273,23 @@ export class FeeService {
     // This happens outside the transaction to avoid blocking on fund updates
     const stabilityFundDiversion =
       FeeRedistributionService.calculateDiversionAmount(
-        result.platformReceived
+        result.platformReceived,
       );
     if (stabilityFundDiversion > 0) {
       // Fire and forget - don't block fee processing on fund updates
       FeeRedistributionService.addToFund(stabilityFundDiversion).catch(
         (err) => {
           logger.warn(
-            'Failed to add to stability fund',
+            "Failed to add to stability fund",
             { error: err instanceof Error ? err.message : String(err) },
-            'FeeService'
+            "FeeService",
           );
-        }
+        },
       );
     }
 
     logger.info(
-      'Trading fee processed',
+      "Trading fee processed",
       {
         userId,
         tradeType,
@@ -298,7 +298,7 @@ export class FeeService {
         referrerId: result.referrerId,
         stabilityFundDiversion,
       },
-      'FeeService'
+      "FeeService",
     );
 
     return result;
@@ -322,7 +322,7 @@ export class FeeService {
    */
   private static async getUserReferrerInTx(
     userId: string,
-    tx: TransactionContext
+    tx: TransactionContext,
   ): Promise<string | null> {
     const [user] = await tx
       .select({ referredBy: users.referredBy })
@@ -340,7 +340,7 @@ export class FeeService {
     referrerId: string,
     feeAmount: number,
     traderId: string,
-    tx: TransactionContext
+    tx: TransactionContext,
   ): Promise<void> {
     // Credit referrer's virtual balance
     const [referrer] = await tx
@@ -356,7 +356,7 @@ export class FeeService {
       logger.warn(
         `Referrer not found: ${referrerId}`,
         { referrerId, traderId },
-        'FeeService'
+        "FeeService",
       );
       return;
     }
@@ -384,17 +384,17 @@ export class FeeService {
       balanceBefore: new Decimal(currentBalance).toString(),
       balanceAfter: new Decimal(newBalance).toString(),
       relatedId: traderId,
-      description: 'Referral fee earned from trading activity',
+      description: "Referral fee earned from trading activity",
     });
 
     logger.info(
-      'Referral fee distributed',
+      "Referral fee distributed",
       {
         referrerId,
         traderId,
         feeAmount,
       },
-      'FeeService'
+      "FeeService",
     );
   }
 
@@ -407,7 +407,7 @@ export class FeeService {
       startDate?: Date;
       endDate?: Date;
       limit?: number;
-    }
+    },
   ): Promise<ReferralEarnings> {
     const { startDate, endDate, limit = 10 } = options || {};
 
@@ -467,13 +467,13 @@ export class FeeService {
 
         return {
           userId: item.userId,
-          username: user?.username || 'Unknown',
-          displayName: user?.displayName || 'Unknown User',
+          username: user?.username || "Unknown",
+          displayName: user?.displayName || "Unknown User",
           profileImageUrl: user?.profileImageUrl || null,
           totalFees: Number(item.totalReferrerFee || 0),
           tradeCount: item.tradeCount,
         };
-      })
+      }),
     );
 
     // Get recent fees
@@ -507,7 +507,7 @@ export class FeeService {
           traderUsername: trader?.username || null,
           createdAt: fee.createdAt,
         };
-      })
+      }),
     );
 
     return {
@@ -523,7 +523,7 @@ export class FeeService {
    */
   static async getPlatformFeeStats(
     startDate?: Date,
-    endDate?: Date
+    endDate?: Date,
   ): Promise<{
     totalFeesCollected: number;
     totalReferrerFees: number;

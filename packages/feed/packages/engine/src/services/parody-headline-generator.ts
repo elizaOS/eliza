@@ -6,7 +6,7 @@
  * over-the-top satirical content and applies character mappings.
  */
 
-import type { ParodyHeadline, RSSHeadline } from '@feed/db';
+import type { ParodyHeadline, RSSHeadline } from "@feed/db";
 import {
   and,
   db,
@@ -16,12 +16,12 @@ import {
   isNull,
   or,
   parodyHeadlines,
-} from '@feed/db';
-import { generateSnowflakeId, logger } from '@feed/shared';
-import { FeedLLMClient } from '../llm/openai-client';
-import { characterMappingService } from './character-mapping-service';
-import { ContentQualityGate } from './content-quality-gate';
-import { StaticDataRegistry } from './static-data-registry';
+} from "@feed/db";
+import { generateSnowflakeId, logger } from "@feed/shared";
+import { FeedLLMClient } from "../llm/openai-client";
+import { characterMappingService } from "./character-mapping-service";
+import { ContentQualityGate } from "./content-quality-gate";
+import { StaticDataRegistry } from "./static-data-registry";
 
 /**
  * Quality gate threshold constants
@@ -84,7 +84,7 @@ export class ParodyHeadlineGenerator {
     originalTitle: string,
     originalContent?: string,
     sourceName?: string,
-    temperature = 0.9
+    temperature = 0.9,
   ): Promise<GeneratedParody> {
     // First, replace any real names with parody names in the original
     const titleReplacement =
@@ -97,7 +97,7 @@ export class ParodyHeadlineGenerator {
     const prompt = this.buildParodyPrompt(
       titleReplacement.transformedText,
       contentReplacement?.transformedText,
-      sourceName
+      sourceName,
     );
 
     // Generate parody using LLM
@@ -116,28 +116,28 @@ export class ParodyHeadlineGenerator {
       prompt,
       {
         properties: {
-          parodyTitle: { type: 'string' },
-          parodyContent: { type: 'string' },
+          parodyTitle: { type: "string" },
+          parodyContent: { type: "string" },
         },
-        required: ['parodyTitle'],
+        required: ["parodyTitle"],
       },
       {
         temperature,
         maxTokens: 500,
-        format: 'xml',
-        promptType: 'parody_headline_generation',
-      }
+        format: "xml",
+        promptType: "parody_headline_generation",
+      },
     );
 
     // Handle XML structure
     const parodyData =
-      'response' in response && response.response
+      "response" in response && response.response
         ? response.response
         : (response as { parodyTitle: string; parodyContent?: string });
 
     // Apply character mapping to replace any real names with fictional equivalents
     const processedTitle = await characterMappingService.transformText(
-      parodyData.parodyTitle
+      parodyData.parodyTitle,
     );
     const processedContent = parodyData.parodyContent
       ? await characterMappingService.transformText(parodyData.parodyContent)
@@ -172,11 +172,11 @@ export class ParodyHeadlineGenerator {
   private buildParodyPrompt(
     title: string,
     content?: string,
-    sourceName?: string
+    sourceName?: string,
   ): string {
     const knownOrgs = StaticDataRegistry.getAllOrganizations()
       .map((org) => org.name)
-      .join(', ');
+      .join(", ");
 
     return `You are a satirical news writer for a futuristic world where everyone is actually an AI.
 Your job is to transform real news headlines into witty, satirical versions.
@@ -192,9 +192,9 @@ ${knownOrgs}
 
 ORIGINAL HEADLINE:
 "${title}"
-${sourceName ? `Source: ${sourceName}` : ''}
+${sourceName ? `Source: ${sourceName}` : ""}
 
-${content ? `ORIGINAL CONTENT:\n${content.substring(0, 500)}...\n` : ''}
+${content ? `ORIGINAL CONTENT:\n${content.substring(0, 500)}...\n` : ""}
 
 TASK:
 Create a SATIRICAL version of this headline set in the AI world above.
@@ -206,7 +206,7 @@ REQUIREMENTS:
 ✅ Use organization names from the KNOWN ORGANIZATIONS list above
 ✅ Keep it somewhat believable within the satirical world
 ✅ Make it 1-2 sentences maximum
-${content ? '✅ Also create a brief satirical summary (2-3 sentences) based on the content' : ''}
+${content ? "✅ Also create a brief satirical summary (2-3 sentences) based on the content" : ""}
 
 STYLE:
 - Witty and satirical — humor from exaggerating real situations
@@ -226,7 +226,7 @@ OUTPUT FORMAT:
 Respond with ONLY this XML:
 <response>
   <parodyTitle>Your satirical headline here</parodyTitle>
-  ${content ? '<parodyContent>Your satirical 2-3 sentence summary here</parodyContent>' : ''}
+  ${content ? "<parodyContent>Your satirical 2-3 sentence summary here</parodyContent>" : ""}
 </response>
 
 Generate the parody now.`;
@@ -236,7 +236,7 @@ Generate the parody now.`;
    * Process multiple headlines into parodies
    */
   async processHeadlines(
-    headlines: Array<RSSHeadline & { source?: { name: string } | null }>
+    headlines: Array<RSSHeadline & { source?: { name: string } | null }>,
   ): Promise<ParodyHeadline[]> {
     const parodies: ParodyHeadline[] = [];
     let retryCount = 0;
@@ -245,7 +245,7 @@ Generate the parody now.`;
     // Track entity frequency to prevent single-entity dominance in parody output
     const entityMentions = new Map<string, number>();
     const MAX_ENTITY_MENTIONS_PER_BATCH = Number(
-      process.env.PARODY_MAX_ENTITY_MENTIONS || 3
+      process.env.PARODY_MAX_ENTITY_MENTIONS || 3,
     );
 
     for (const headline of headlines) {
@@ -253,26 +253,26 @@ Generate the parody now.`;
       let parody = await this.generateParody(
         headline.title,
         headline.summary || undefined,
-        headline.source?.name
+        headline.source?.name,
       );
 
       // Quality gate: validate before insert
       let quality = await ContentQualityGate.validateParody(
         headline.title,
         parody.parodyTitle,
-        parody.parodyContent
+        parody.parodyContent,
       );
 
       // Retry once at lower temperature if quality gate fails
       if (!quality.passed) {
         logger.warn(
-          'Parody failed quality gate — retrying at lower temperature',
+          "Parody failed quality gate — retrying at lower temperature",
           {
             original: headline.title,
             parody: parody.parodyTitle,
             reasons: quality.reasons,
           },
-          'ParodyHeadlineGenerator'
+          "ParodyHeadlineGenerator",
         );
 
         retryCount++;
@@ -281,13 +281,13 @@ Generate the parody now.`;
           headline.title,
           headline.summary || undefined,
           headline.source?.name,
-          RETRY_TEMPERATURE
+          RETRY_TEMPERATURE,
         );
 
         quality = await ContentQualityGate.validateParody(
           headline.title,
           parody.parodyTitle,
-          parody.parodyContent
+          parody.parodyContent,
         );
       }
 
@@ -295,13 +295,13 @@ Generate the parody now.`;
       if (!quality.passed) {
         skipCount++;
         logger.warn(
-          'Parody failed quality gate after retry — skipping',
+          "Parody failed quality gate after retry — skipping",
           {
             original: headline.title,
             parody: parody.parodyTitle,
             reasons: quality.reasons,
           },
-          'ParodyHeadlineGenerator'
+          "ParodyHeadlineGenerator",
         );
         continue;
       }
@@ -309,18 +309,18 @@ Generate the parody now.`;
       // Entity diversity check: skip if any mentioned character is over-represented
       const mentionedEntities = Object.values(parody.characterMappings);
       const isOverRepresented = mentionedEntities.some(
-        (e) => (entityMentions.get(e) ?? 0) >= MAX_ENTITY_MENTIONS_PER_BATCH
+        (e) => (entityMentions.get(e) ?? 0) >= MAX_ENTITY_MENTIONS_PER_BATCH,
       );
       if (isOverRepresented) {
         skipCount++;
         logger.debug(
-          'Parody skipped — entity over-represented in batch',
+          "Parody skipped — entity over-represented in batch",
           {
             original: headline.title,
             parody: parody.parodyTitle,
             entities: mentionedEntities,
           },
-          'ParodyHeadlineGenerator'
+          "ParodyHeadlineGenerator",
         );
         continue;
       }
@@ -334,7 +334,7 @@ Generate the parody now.`;
           id: await generateSnowflakeId(),
           originalHeadlineId: headline.id,
           originalTitle: headline.title,
-          originalSource: headline.source?.name || 'Unknown',
+          originalSource: headline.source?.name || "Unknown",
           parodyTitle: parody.parodyTitle,
           parodyContent: parody.parodyContent || null,
           characterMappings: parody.characterMappings,
@@ -350,19 +350,19 @@ Generate the parody now.`;
       }
 
       logger.info(
-        'Generated parody headline',
+        "Generated parody headline",
         {
           original: headline.title,
           parody: parody.parodyTitle,
           qualityScore: quality.score.toFixed(2),
         },
-        'ParodyHeadlineGenerator'
+        "ParodyHeadlineGenerator",
       );
     }
 
     if (retryCount > 0 || skipCount > 0) {
       logger.info(
-        'Parody quality gate batch summary',
+        "Parody quality gate batch summary",
         {
           total: headlines.length,
           passed: parodies.length,
@@ -371,9 +371,9 @@ Generate the parody now.`;
           retryRate:
             headlines.length > 0
               ? `${((retryCount / headlines.length) * 100).toFixed(1)}%`
-              : '0%',
+              : "0%",
         },
-        'ParodyHeadlineGenerator'
+        "ParodyHeadlineGenerator",
       );
     }
 
@@ -397,9 +397,9 @@ Generate the parody now.`;
           // Pre-migration records (null) are presumed OK; reject only scored failures
           or(
             isNull(parodyHeadlines.qualityScore),
-            gte(parodyHeadlines.qualityScore, MIN_QUALITY_SCORE)
-          )
-        )
+            gte(parodyHeadlines.qualityScore, MIN_QUALITY_SCORE),
+          ),
+        ),
       )
       .orderBy(desc(parodyHeadlines.generatedAt));
   }
@@ -425,20 +425,20 @@ Generate the parody now.`;
     const recentParodies = await this.getRecentParodies(7); // Last 7 days
 
     if (recentParodies.length === 0) {
-      return 'No recent news updates available.';
+      return "No recent news updates available.";
     }
 
     // Group by day
     const byDay = new Map<string, ParodyHeadline[]>();
     for (const parody of recentParodies) {
-      const day = new Date(parody.generatedAt).toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
+      const day = new Date(parody.generatedAt).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
       });
       if (!byDay.has(day)) {
         byDay.set(day, []);
       }
-      byDay.get(day)!.push(parody);
+      byDay.get(day)?.push(parody);
     }
 
     // Format by day
@@ -448,10 +448,10 @@ Generate the parody now.`;
         const headlines = parodies
           .slice(0, 3) // Max 3 per day
           .map((p) => `  - ${p.parodyTitle}`)
-          .join('\n');
+          .join("\n");
         return `${day}:\n${headlines}`;
       })
-      .join('\n\n');
+      .join("\n\n");
 
     return `NEWS FROM THE LAST 7 DAYS:\n\n${formattedDays}\n\n(These are satirical parodies of real-world news headlines, transformed for our futuristic AI world where everyone is an AI agent.)`;
   }

@@ -5,10 +5,10 @@ import {
   existsSync,
   promises as fs,
   mkdirSync,
-} from 'node:fs';
-import path from 'node:path';
-import { config as loadEnvFile } from 'dotenv';
-import { Client } from 'pg';
+} from "node:fs";
+import path from "node:path";
+import { config as loadEnvFile } from "dotenv";
+import { Client } from "pg";
 
 type JsonPrimitive = boolean | number | string | null;
 type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
@@ -165,7 +165,7 @@ Options:
 }
 
 function readArgValue(args: string[], name: string): string | null {
-  const exactIndex = args.findIndex((arg) => arg === name);
+  const exactIndex = args.indexOf(name);
   if (exactIndex !== -1) {
     const value = args[exactIndex + 1];
     if (!value) {
@@ -191,36 +191,36 @@ function hasFlag(args: string[], flag: string): boolean {
 }
 
 function timestampForPath(date: Date): string {
-  return date.toISOString().replace(/[:]/g, '-').replace(/\..+$/, 'Z');
+  return date.toISOString().replace(/[:]/g, "-").replace(/\..+$/, "Z");
 }
 
 function parseArgs(): CliOptions {
   const args = process.argv.slice(2);
 
-  if (hasFlag(args, '--help') || hasFlag(args, '-h')) {
+  if (hasFlag(args, "--help") || hasFlag(args, "-h")) {
     printUsage();
     process.exit(0);
   }
 
   const now = new Date();
   const defaultOutputDir = path.join(
-    'training-data',
-    'production-trajectories',
-    timestampForPath(now)
+    "training-data",
+    "production-trajectories",
+    timestampForPath(now),
   );
-  const batchSizeRaw = readArgValue(args, '--batch-size');
+  const batchSizeRaw = readArgValue(args, "--batch-size");
   const batchSize = batchSizeRaw ? Number(batchSizeRaw) : 5000;
 
   if (!Number.isFinite(batchSize) || batchSize <= 0) {
-    throw new Error('--batch-size must be a positive number');
+    throw new Error("--batch-size must be a positive number");
   }
 
   return {
-    envFile: readArgValue(args, '--env-file') ?? '.env.production.local',
-    outputDir: readArgValue(args, '--output-dir') ?? defaultOutputDir,
+    envFile: readArgValue(args, "--env-file") ?? ".env.production.local",
+    outputDir: readArgValue(args, "--output-dir") ?? defaultOutputDir,
     batchSize: Math.floor(batchSize),
-    since: readArgValue(args, '--since'),
-    trainableOnly: hasFlag(args, '--trainable-only'),
+    since: readArgValue(args, "--since"),
+    trainableOnly: hasFlag(args, "--trainable-only"),
   };
 }
 
@@ -257,7 +257,7 @@ function normalizeNumber(value: number | string | null): number | null {
   if (value === null) {
     return null;
   }
-  return typeof value === 'number' ? value : Number(value);
+  return typeof value === "number" ? value : Number(value);
 }
 
 function parseJsonValue(raw: string): JsonValue {
@@ -269,7 +269,7 @@ function toJsonArray(value: JsonValue): JsonValue[] {
 }
 
 function toJsonObject(value: JsonValue): JsonObject | null {
-  if (value === null || Array.isArray(value) || typeof value !== 'object') {
+  if (value === null || Array.isArray(value) || typeof value !== "object") {
     return null;
   }
   return value as JsonObject;
@@ -313,8 +313,8 @@ function transformRow(row: DbTrajectoryRow): ExportedTrajectoryRow {
     trajectory_id: row.trajectoryId,
     agent_id: row.agentId,
     archetype: row.archetype,
-    start_time: normalizeTimestamp(row.startTime) ?? '',
-    end_time: normalizeTimestamp(row.endTime) ?? '',
+    start_time: normalizeTimestamp(row.startTime) ?? "",
+    end_time: normalizeTimestamp(row.endTime) ?? "",
     duration_ms: row.durationMs,
     window_id: row.windowId,
     window_hours: row.windowHours,
@@ -339,8 +339,8 @@ function transformRow(row: DbTrajectoryRow): ExportedTrajectoryRow {
     is_evaluation: row.isEvaluation,
     used_in_training: row.usedInTraining,
     trained_in_batch: row.trainedInBatch,
-    created_at: normalizeTimestamp(row.createdAt) ?? '',
-    updated_at: normalizeTimestamp(row.updatedAt) ?? '',
+    created_at: normalizeTimestamp(row.createdAt) ?? "",
+    updated_at: normalizeTimestamp(row.updatedAt) ?? "",
     has_steps: hasSteps,
     step_count: steps.length,
     llm_call_count: llmCallCount,
@@ -374,7 +374,7 @@ async function fetchStats(client: Client): Promise<{
   const llmStats = llmStatsResult.rows[0];
 
   if (!exportStats || !llmStats) {
-    throw new Error('Failed to fetch export statistics');
+    throw new Error("Failed to fetch export statistics");
   }
 
   return { exportStats, llmStats };
@@ -385,34 +385,34 @@ async function main(): Promise<void> {
   const postgresUrl = requirePostgresUrl(options.envFile);
 
   const outputRoot = path.resolve(options.outputDir);
-  const rawDir = path.join(outputRoot, 'raw');
-  const hfAllDir = path.join(outputRoot, 'hf', 'all');
-  const hfTrainableDir = path.join(outputRoot, 'hf', 'trainable');
-  const manifestPath = path.join(outputRoot, 'manifest.json');
+  const rawDir = path.join(outputRoot, "raw");
+  const hfAllDir = path.join(outputRoot, "hf", "all");
+  const hfTrainableDir = path.join(outputRoot, "hf", "trainable");
+  const manifestPath = path.join(outputRoot, "manifest.json");
 
   ensureDirectory(outputRoot);
   ensureDirectory(rawDir);
   ensureDirectory(hfAllDir);
   ensureDirectory(hfTrainableDir);
 
-  const hfAllPath = path.join(hfAllDir, 'train.jsonl');
-  const hfTrainablePath = path.join(hfTrainableDir, 'train.jsonl');
+  const hfAllPath = path.join(hfAllDir, "train.jsonl");
+  const hfTrainablePath = path.join(hfTrainableDir, "train.jsonl");
 
   const client = new Client({
     connectionString: postgresUrl,
     statement_timeout: 120000,
   });
 
-  const hfAllWriter = createWriteStream(hfAllPath, { encoding: 'utf8' });
+  const hfAllWriter = createWriteStream(hfAllPath, { encoding: "utf8" });
   const hfTrainableWriter = createWriteStream(hfTrainablePath, {
-    encoding: 'utf8',
+    encoding: "utf8",
   });
 
   let rawChunkWriter = createWriteStream(
-    path.join(rawDir, 'chunk-00001.jsonl'),
+    path.join(rawDir, "chunk-00001.jsonl"),
     {
-      encoding: 'utf8',
-    }
+      encoding: "utf8",
+    },
   );
   let rawChunkCount = 1;
   let rowsWrittenToCurrentChunk = 0;
@@ -426,7 +426,7 @@ async function main(): Promise<void> {
   let hfAllRows = 0;
   let hfTrainableRows = 0;
 
-  let lastSeenId = '0';
+  let lastSeenId = "0";
 
   try {
     await client.connect();
@@ -436,11 +436,11 @@ async function main(): Promise<void> {
     const sinceTimestamp = options.since;
 
     if (!snapshotMaxId) {
-      throw new Error('Could not determine snapshot max trajectory id');
+      throw new Error("Could not determine snapshot max trajectory id");
     }
 
     console.log(
-      `Exporting ${totalRows.toLocaleString()} trajectories from ${options.envFile} into ${outputRoot}`
+      `Exporting ${totalRows.toLocaleString()} trajectories from ${options.envFile} into ${outputRoot}`,
     );
 
     while (true) {
@@ -454,7 +454,7 @@ async function main(): Promise<void> {
           ORDER BY id::bigint ASC
           LIMIT $4
         `,
-        [lastSeenId, snapshotMaxId, sinceTimestamp, options.batchSize]
+        [lastSeenId, snapshotMaxId, sinceTimestamp, options.batchSize],
       );
 
       if (result.rows.length === 0) {
@@ -499,27 +499,27 @@ async function main(): Promise<void> {
           rawChunkWriter.end();
           rawChunkCount += 1;
           rowsWrittenToCurrentChunk = 0;
-          const chunkName = `chunk-${String(rawChunkCount).padStart(5, '0')}.jsonl`;
+          const chunkName = `chunk-${String(rawChunkCount).padStart(5, "0")}.jsonl`;
           rawChunkWriter = createWriteStream(path.join(rawDir, chunkName), {
-            encoding: 'utf8',
+            encoding: "utf8",
           });
         }
       }
 
       const finalRow = result.rows[result.rows.length - 1];
       if (!finalRow) {
-        throw new Error('Missing final row while advancing export cursor');
+        throw new Error("Missing final row while advancing export cursor");
       }
       lastSeenId = finalRow.id;
 
       console.log(
-        `Processed ${totalExported.toLocaleString()} / ${totalRows.toLocaleString()} trajectories`
+        `Processed ${totalExported.toLocaleString()} / ${totalRows.toLocaleString()} trajectories`,
       );
     }
 
     if (!sinceTimestamp && totalExported !== totalRows) {
       throw new Error(
-        `Export row mismatch: expected ${totalRows}, exported ${totalExported}`
+        `Export row mismatch: expected ${totalRows}, exported ${totalExported}`,
       );
     }
 
@@ -541,7 +541,7 @@ async function main(): Promise<void> {
         judged_rows: Number(exportStats.judged_rows),
         llm_call_log_rows: Number(llmStats.total_llm_rows),
         llm_call_log_distinct_trajectories: Number(
-          llmStats.distinct_trajectory_rows
+          llmStats.distinct_trajectory_rows,
         ),
         snapshot_max_id: snapshotMaxId,
         earliest_created_at: normalizeTimestamp(exportStats.min_created_at),
@@ -566,10 +566,10 @@ async function main(): Promise<void> {
       },
     };
 
-    await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
+    await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
 
-    console.log('');
-    console.log('Export complete.');
+    console.log("");
+    console.log("Export complete.");
     console.log(`Manifest: ${manifestPath}`);
     console.log(`Rows exported: ${totalExported.toLocaleString()}`);
     console.log(`Rows with steps: ${rowsWithSteps.toLocaleString()}`);

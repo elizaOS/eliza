@@ -1,5 +1,5 @@
-import { definePrompt } from '../define-prompt';
-import { PARODY_NAME_RULES } from '../shared-sections';
+import { definePrompt } from "../define-prompt";
+import { PARODY_NAME_RULES } from "../shared-sections";
 
 /**
  * Prompt for generating feed posts announcing question resolutions.
@@ -12,10 +12,10 @@ import { PARODY_NAME_RULES } from '../shared-sections';
  * Returns XML with resolution announcement post.
  */
 export const questionResolvedFeed = definePrompt({
-  id: 'question-resolved-feed',
-  version: '4.0.0',
-  category: 'game',
-  description: 'Generates resolution announcements with full context',
+  id: "question-resolved-feed",
+  version: "4.0.0",
+  category: "game",
+  description: "Generates resolution announcements with full context",
   temperature: 0.7,
   maxTokens: 1500,
   template: `{{realityGrounding}}

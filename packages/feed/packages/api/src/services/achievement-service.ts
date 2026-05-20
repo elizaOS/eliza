@@ -9,6 +9,7 @@
  * All checkProgress calls are fire-and-forget from route handlers.
  */
 
+import { createHash } from "node:crypto";
 import {
   agentMessages,
   and,
@@ -38,7 +39,7 @@ import {
   userActivityLogs,
   userChallengeProgress,
   users,
-} from '@feed/db';
+} from "@feed/db";
 import {
   ACHIEVEMENT_DEFINITIONS,
   type AchievementDef,
@@ -53,11 +54,10 @@ import {
   logger,
   POINTS,
   WEEKLY_CHALLENGE_DEFINITIONS,
-} from '@feed/shared';
-import { createHash } from 'crypto';
-import { broadcastToChannel } from '../sse/event-broadcaster';
-import { createNotification } from './notification-service';
-import { ReputationService } from './reputation-service';
+} from "@feed/shared";
+import { broadcastToChannel } from "../sse/event-broadcaster";
+import { createNotification } from "./notification-service";
+import { ReputationService } from "./reputation-service";
 
 // ── Time Helpers ───────────────────────────────────────────────────
 
@@ -67,31 +67,31 @@ function getUTCDateString(date: Date = new Date()): string {
 
 function getISOWeekString(date: Date = new Date()): string {
   const d = new Date(
-    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate())
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
   );
   d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
   const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
   const weekNum = Math.ceil(
-    ((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7
+    ((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7,
   );
-  return `${d.getUTCFullYear()}-W${String(weekNum).padStart(2, '0')}`;
+  return `${d.getUTCFullYear()}-W${String(weekNum).padStart(2, "0")}`;
 }
 
 function getStartOfUTCDay(date: Date = new Date()): Date {
   return new Date(
-    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate())
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
   );
 }
 
 function getEndOfUTCDay(date: Date = new Date()): Date {
   return new Date(
-    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + 1)
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + 1),
   );
 }
 
 function getStartOfISOWeek(date: Date = new Date()): Date {
   const d = new Date(
-    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate())
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
   );
   const day = d.getUTCDay() || 7; // Monday=1, Sunday=7
   d.setUTCDate(d.getUTCDate() - day + 1); // Back to Monday
@@ -108,9 +108,9 @@ function getEndOfISOWeek(date: Date = new Date()): Date {
 function selectChallengeIds(
   pool: ChallengeDef[],
   pickCount: number,
-  seed: string
+  seed: string,
 ): string[] {
-  const hash = createHash('sha256').update(seed).digest();
+  const hash = createHash("sha256").update(seed).digest();
   const selected: number[] = [];
   let offset = 0;
 
@@ -122,14 +122,14 @@ function selectChallengeIds(
     offset += 4;
   }
 
-  return selected.map((i) => pool[i]!.id);
+  return selected.map((i) => pool[i]?.id);
 }
 
 export function getActiveDailyChallengeIds(date: Date = new Date()): string[] {
   return selectChallengeIds(
     DAILY_CHALLENGE_DEFINITIONS,
     3,
-    `daily:${getUTCDateString(date)}`
+    `daily:${getUTCDateString(date)}`,
   );
 }
 
@@ -137,7 +137,7 @@ export function getActiveWeeklyChallengeIds(date: Date = new Date()): string[] {
   return selectChallengeIds(
     WEEKLY_CHALLENGE_DEFINITIONS,
     2,
-    `weekly:${getISOWeekString(date)}`
+    `weekly:${getISOWeekString(date)}`,
   );
 }
 
@@ -152,7 +152,7 @@ const ACHIEVEMENT_RESOLVERS: Record<string, ProgressResolver> = {
       .select({ c: count() })
       .from(positions)
       .where(eq(positions.userId, userId));
-    return result[0]!.c;
+    return result[0]?.c;
   },
 
   perp_trade_count: async (userId) => {
@@ -160,7 +160,7 @@ const ACHIEVEMENT_RESOLVERS: Record<string, ProgressResolver> = {
       .select({ c: count() })
       .from(perpPositions)
       .where(eq(perpPositions.userId, userId));
-    return result[0]!.c;
+    return result[0]?.c;
   },
 
   total_trade_count: async (userId) => {
@@ -172,7 +172,7 @@ const ACHIEVEMENT_RESOLVERS: Record<string, ProgressResolver> = {
       .select({ c: count() })
       .from(perpPositions)
       .where(eq(perpPositions.userId, userId));
-    return predResult[0]!.c + perpResult[0]!.c;
+    return predResult[0]?.c + perpResult[0]?.c;
   },
 
   distinct_markets: async (userId) => {
@@ -180,7 +180,7 @@ const ACHIEVEMENT_RESOLVERS: Record<string, ProgressResolver> = {
       .select({ c: sql<number>`COUNT(DISTINCT ${positions.marketId})` })
       .from(positions)
       .where(eq(positions.userId, userId));
-    return Number(result[0]!.c);
+    return Number(result[0]?.c);
   },
 
   prediction_win_count: async (userId) => {
@@ -188,7 +188,7 @@ const ACHIEVEMENT_RESOLVERS: Record<string, ProgressResolver> = {
       .select({ c: count() })
       .from(positions)
       .where(and(eq(positions.userId, userId), eq(positions.outcome, true)));
-    return result[0]!.c;
+    return result[0]?.c;
   },
 
   agent_count: async (userId) => {
@@ -196,7 +196,7 @@ const ACHIEVEMENT_RESOLVERS: Record<string, ProgressResolver> = {
       .select({ c: count() })
       .from(users)
       .where(and(eq(users.managedBy, userId), eq(users.isAgent, true)));
-    return result[0]!.c;
+    return result[0]?.c;
   },
 
   agent_message_count: async (userId) => {
@@ -206,7 +206,7 @@ const ACHIEVEMENT_RESOLVERS: Record<string, ProgressResolver> = {
       .from(agentMessages)
       .innerJoin(users, eq(agentMessages.agentUserId, users.id))
       .where(eq(users.managedBy, userId));
-    return result[0]!.c;
+    return result[0]?.c;
   },
 
   agent_trade_count: async (userId) => {
@@ -217,7 +217,7 @@ const ACHIEVEMENT_RESOLVERS: Record<string, ProgressResolver> = {
       .from(sql`"AgentTrade" at2`)
       .innerJoin(users, sql`at2."agentUserId" = ${users.id}`)
       .where(eq(users.managedBy, userId));
-    return result[0]!.c;
+    return result[0]?.c;
   },
 
   group_message_count: async (userId) => {
@@ -226,7 +226,7 @@ const ACHIEVEMENT_RESOLVERS: Record<string, ProgressResolver> = {
       .from(messages)
       .innerJoin(chats, eq(messages.chatId, chats.id))
       .where(and(eq(messages.senderId, userId), eq(chats.isGroup, true)));
-    return result[0]!.c;
+    return result[0]?.c;
   },
 
   comment_count: async (userId) => {
@@ -234,7 +234,7 @@ const ACHIEVEMENT_RESOLVERS: Record<string, ProgressResolver> = {
       .select({ c: count() })
       .from(comments)
       .where(and(eq(comments.authorId, userId), isNull(comments.deletedAt)));
-    return result[0]!.c;
+    return result[0]?.c;
   },
 
   terminal_visit_count: async (userId) => {
@@ -244,10 +244,10 @@ const ACHIEVEMENT_RESOLVERS: Record<string, ProgressResolver> = {
       .where(
         and(
           eq(userActivityLogs.userId, userId),
-          eq(userActivityLogs.activityType, 'open_terminal')
-        )
+          eq(userActivityLogs.activityType, "open_terminal"),
+        ),
       );
-    return result[0]!.c;
+    return result[0]?.c;
   },
 
   agents_visit_count: async (userId) => {
@@ -257,10 +257,10 @@ const ACHIEVEMENT_RESOLVERS: Record<string, ProgressResolver> = {
       .where(
         and(
           eq(userActivityLogs.userId, userId),
-          eq(userActivityLogs.activityType, 'open_agents')
-        )
+          eq(userActivityLogs.activityType, "open_agents"),
+        ),
       );
-    return result[0]!.c;
+    return result[0]?.c;
   },
 
   login_streak: async (userId) => {
@@ -278,7 +278,7 @@ const ACHIEVEMENT_RESOLVERS: Record<string, ProgressResolver> = {
 type WindowedResolver = (
   userId: string,
   start: Date,
-  end: Date
+  end: Date,
 ) => Promise<number>;
 
 const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
@@ -292,10 +292,10 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
         and(
           eq(positions.userId, userId),
           gte(positions.createdAt, start),
-          lt(positions.createdAt, end)
-        )
+          lt(positions.createdAt, end),
+        ),
       );
-    return r[0]!.c;
+    return r[0]?.c;
   },
 
   daily_perp_trade: async (userId, start, end) => {
@@ -306,10 +306,10 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
         and(
           eq(perpPositions.userId, userId),
           gte(perpPositions.openedAt, start),
-          lt(perpPositions.openedAt, end)
-        )
+          lt(perpPositions.openedAt, end),
+        ),
       );
-    return r[0]!.c;
+    return r[0]?.c;
   },
 
   daily_total_trade: async (userId, start, end) => {
@@ -320,8 +320,8 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
         and(
           eq(positions.userId, userId),
           gte(positions.createdAt, start),
-          lt(positions.createdAt, end)
-        )
+          lt(positions.createdAt, end),
+        ),
       );
     const perp = await db
       .select({ c: count() })
@@ -330,10 +330,10 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
         and(
           eq(perpPositions.userId, userId),
           gte(perpPositions.openedAt, start),
-          lt(perpPositions.openedAt, end)
-        )
+          lt(perpPositions.openedAt, end),
+        ),
       );
-    return pred[0]!.c + perp[0]!.c;
+    return pred[0]?.c + perp[0]?.c;
   },
 
   daily_distinct_markets: async (userId, start, end) => {
@@ -344,10 +344,10 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
         and(
           eq(positions.userId, userId),
           gte(positions.createdAt, start),
-          lt(positions.createdAt, end)
-        )
+          lt(positions.createdAt, end),
+        ),
       );
-    return Number(r[0]!.c);
+    return Number(r[0]?.c);
   },
 
   daily_post: async (userId, start, end) => {
@@ -358,10 +358,10 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
         and(
           eq(posts.authorId, userId),
           gte(posts.timestamp, start),
-          lt(posts.timestamp, end)
-        )
+          lt(posts.timestamp, end),
+        ),
       );
-    return r[0]!.c;
+    return r[0]?.c;
   },
 
   daily_comment: async (userId, start, end) => {
@@ -373,10 +373,10 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           eq(comments.authorId, userId),
           isNull(comments.deletedAt),
           gte(comments.createdAt, start),
-          lt(comments.createdAt, end)
-        )
+          lt(comments.createdAt, end),
+        ),
       );
-    return r[0]!.c;
+    return r[0]?.c;
   },
 
   daily_reaction: async (userId, start, end) => {
@@ -387,10 +387,10 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
         and(
           eq(reactions.userId, userId),
           gte(reactions.createdAt, start),
-          lt(reactions.createdAt, end)
-        )
+          lt(reactions.createdAt, end),
+        ),
       );
-    return r[0]!.c;
+    return r[0]?.c;
   },
 
   daily_group_message: async (userId, start, end) => {
@@ -403,10 +403,10 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           eq(messages.senderId, userId),
           eq(chats.isGroup, true),
           gte(messages.createdAt, start),
-          lt(messages.createdAt, end)
-        )
+          lt(messages.createdAt, end),
+        ),
       );
-    return r[0]!.c;
+    return r[0]?.c;
   },
 
   daily_agent_message: async (userId, start, end) => {
@@ -418,10 +418,10 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
         and(
           eq(users.managedBy, userId),
           gte(agentMessages.createdAt, start),
-          lt(agentMessages.createdAt, end)
-        )
+          lt(agentMessages.createdAt, end),
+        ),
       );
-    return r[0]!.c;
+    return r[0]?.c;
   },
 
   daily_follow: async (userId, start, end) => {
@@ -432,10 +432,10 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
         and(
           eq(follows.followerId, userId),
           gte(follows.createdAt, start),
-          lt(follows.createdAt, end)
-        )
+          lt(follows.createdAt, end),
+        ),
       );
-    return r[0]!.c;
+    return r[0]?.c;
   },
 
   daily_share: async (userId, start, end) => {
@@ -446,10 +446,10 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
         and(
           eq(shares.userId, userId),
           gte(shares.createdAt, start),
-          lt(shares.createdAt, end)
-        )
+          lt(shares.createdAt, end),
+        ),
       );
-    return r[0]!.c;
+    return r[0]?.c;
   },
 
   // ── Page visits (UserActivityLog) ──
@@ -462,11 +462,11 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
       .where(
         and(
           eq(userActivityLogs.userId, userId),
-          eq(userActivityLogs.activityType, 'open_terminal'),
-          eq(userActivityLogs.activityDate, dateOnly)
-        )
+          eq(userActivityLogs.activityType, "open_terminal"),
+          eq(userActivityLogs.activityDate, dateOnly),
+        ),
       );
-    return r[0]!.c;
+    return r[0]?.c;
   },
 
   daily_agents_visit: async (userId, start, _end) => {
@@ -477,11 +477,11 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
       .where(
         and(
           eq(userActivityLogs.userId, userId),
-          eq(userActivityLogs.activityType, 'open_agents'),
-          eq(userActivityLogs.activityDate, dateOnly)
-        )
+          eq(userActivityLogs.activityType, "open_agents"),
+          eq(userActivityLogs.activityDate, dateOnly),
+        ),
       );
-    return r[0]!.c;
+    return r[0]?.c;
   },
 
   daily_markets_visit: async (userId, start, _end) => {
@@ -492,11 +492,11 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
       .where(
         and(
           eq(userActivityLogs.userId, userId),
-          eq(userActivityLogs.activityType, 'open_terminal'),
-          eq(userActivityLogs.activityDate, dateOnly)
-        )
+          eq(userActivityLogs.activityType, "open_terminal"),
+          eq(userActivityLogs.activityDate, dateOnly),
+        ),
       );
-    return r[0]!.c;
+    return r[0]?.c;
   },
 
   daily_feed_visit: async (userId, start, _end) => {
@@ -507,11 +507,11 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
       .where(
         and(
           eq(userActivityLogs.userId, userId),
-          eq(userActivityLogs.activityType, 'open_feed'),
-          eq(userActivityLogs.activityDate, dateOnly)
-        )
+          eq(userActivityLogs.activityType, "open_feed"),
+          eq(userActivityLogs.activityDate, dateOnly),
+        ),
       );
-    return r[0]!.c;
+    return r[0]?.c;
   },
 
   daily_leaderboard_visit: async (userId, start, _end) => {
@@ -522,11 +522,11 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
       .where(
         and(
           eq(userActivityLogs.userId, userId),
-          eq(userActivityLogs.activityType, 'open_leaderboard'),
-          eq(userActivityLogs.activityDate, dateOnly)
-        )
+          eq(userActivityLogs.activityType, "open_leaderboard"),
+          eq(userActivityLogs.activityDate, dateOnly),
+        ),
       );
-    return r[0]!.c;
+    return r[0]?.c;
   },
 
   daily_notifications_visit: async (userId, start, _end) => {
@@ -537,11 +537,11 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
       .where(
         and(
           eq(userActivityLogs.userId, userId),
-          eq(userActivityLogs.activityType, 'open_notifications'),
-          eq(userActivityLogs.activityDate, dateOnly)
-        )
+          eq(userActivityLogs.activityType, "open_notifications"),
+          eq(userActivityLogs.activityDate, dateOnly),
+        ),
       );
-    return r[0]!.c;
+    return r[0]?.c;
   },
 
   daily_market_detail_visit: async (userId, start, _end) => {
@@ -552,11 +552,11 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
       .where(
         and(
           eq(userActivityLogs.userId, userId),
-          eq(userActivityLogs.activityType, 'open_market_detail'),
-          eq(userActivityLogs.activityDate, dateOnly)
-        )
+          eq(userActivityLogs.activityType, "open_market_detail"),
+          eq(userActivityLogs.activityDate, dateOnly),
+        ),
       );
-    return r[0]!.c;
+    return r[0]?.c;
   },
 
   daily_group_join: async (userId, start, end) => {
@@ -567,10 +567,10 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
         and(
           eq(groupMembers.userId, userId),
           gte(groupMembers.joinedAt, start),
-          lt(groupMembers.joinedAt, end)
-        )
+          lt(groupMembers.joinedAt, end),
+        ),
       );
-    return r[0]!.c;
+    return r[0]?.c;
   },
 
   // ── Compound daily ──
@@ -583,8 +583,8 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
         and(
           eq(positions.userId, userId),
           gte(positions.createdAt, start),
-          lt(positions.createdAt, end)
-        )
+          lt(positions.createdAt, end),
+        ),
       );
     const perp = await db
       .select({ c: count() })
@@ -593,10 +593,10 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
         and(
           eq(perpPositions.userId, userId),
           gte(perpPositions.openedAt, start),
-          lt(perpPositions.openedAt, end)
-        )
+          lt(perpPositions.openedAt, end),
+        ),
       );
-    return pred[0]!.c > 0 && perp[0]!.c > 0 ? 1 : 0;
+    return pred[0]?.c > 0 && perp[0]?.c > 0 ? 1 : 0;
   },
 
   // ── Weekly resolvers ──
@@ -609,10 +609,10 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
         and(
           eq(positions.userId, userId),
           gte(positions.createdAt, start),
-          lt(positions.createdAt, end)
-        )
+          lt(positions.createdAt, end),
+        ),
       );
-    return r[0]!.c;
+    return r[0]?.c;
   },
 
   weekly_perp_trade: async (userId, start, end) => {
@@ -623,10 +623,10 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
         and(
           eq(perpPositions.userId, userId),
           gte(perpPositions.openedAt, start),
-          lt(perpPositions.openedAt, end)
-        )
+          lt(perpPositions.openedAt, end),
+        ),
       );
-    return r[0]!.c;
+    return r[0]?.c;
   },
 
   weekly_total_trade: async (userId, start, end) => {
@@ -637,8 +637,8 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
         and(
           eq(positions.userId, userId),
           gte(positions.createdAt, start),
-          lt(positions.createdAt, end)
-        )
+          lt(positions.createdAt, end),
+        ),
       );
     const perp = await db
       .select({ c: count() })
@@ -647,10 +647,10 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
         and(
           eq(perpPositions.userId, userId),
           gte(perpPositions.openedAt, start),
-          lt(perpPositions.openedAt, end)
-        )
+          lt(perpPositions.openedAt, end),
+        ),
       );
-    return pred[0]!.c + perp[0]!.c;
+    return pred[0]?.c + perp[0]?.c;
   },
 
   weekly_distinct_markets: async (userId, start, end) => {
@@ -661,10 +661,10 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
         and(
           eq(positions.userId, userId),
           gte(positions.createdAt, start),
-          lt(positions.createdAt, end)
-        )
+          lt(positions.createdAt, end),
+        ),
       );
-    return Number(r[0]!.c);
+    return Number(r[0]?.c);
   },
 
   weekly_trade_win: async (userId, start, end) => {
@@ -676,10 +676,10 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           eq(positions.userId, userId),
           eq(positions.outcome, true),
           gte(positions.resolvedAt, start),
-          lt(positions.resolvedAt, end)
-        )
+          lt(positions.resolvedAt, end),
+        ),
       );
-    return r[0]!.c;
+    return r[0]?.c;
   },
 
   weekly_post: async (userId, start, end) => {
@@ -690,10 +690,10 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
         and(
           eq(posts.authorId, userId),
           gte(posts.timestamp, start),
-          lt(posts.timestamp, end)
-        )
+          lt(posts.timestamp, end),
+        ),
       );
-    return r[0]!.c;
+    return r[0]?.c;
   },
 
   weekly_comment: async (userId, start, end) => {
@@ -705,10 +705,10 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           eq(comments.authorId, userId),
           isNull(comments.deletedAt),
           gte(comments.createdAt, start),
-          lt(comments.createdAt, end)
-        )
+          lt(comments.createdAt, end),
+        ),
       );
-    return r[0]!.c;
+    return r[0]?.c;
   },
 
   weekly_reaction: async (userId, start, end) => {
@@ -719,10 +719,10 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
         and(
           eq(reactions.userId, userId),
           gte(reactions.createdAt, start),
-          lt(reactions.createdAt, end)
-        )
+          lt(reactions.createdAt, end),
+        ),
       );
-    return r[0]!.c;
+    return r[0]?.c;
   },
 
   weekly_group_message: async (userId, start, end) => {
@@ -735,10 +735,10 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           eq(messages.senderId, userId),
           eq(chats.isGroup, true),
           gte(messages.createdAt, start),
-          lt(messages.createdAt, end)
-        )
+          lt(messages.createdAt, end),
+        ),
       );
-    return r[0]!.c;
+    return r[0]?.c;
   },
 
   weekly_agent_message: async (userId, start, end) => {
@@ -750,10 +750,10 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
         and(
           eq(users.managedBy, userId),
           gte(agentMessages.createdAt, start),
-          lt(agentMessages.createdAt, end)
-        )
+          lt(agentMessages.createdAt, end),
+        ),
       );
-    return r[0]!.c;
+    return r[0]?.c;
   },
 
   weekly_agent_trade: async (userId, start, end) => {
@@ -765,10 +765,10 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
         and(
           eq(users.managedBy, userId),
           sql`at2."executedAt" >= ${start}`,
-          sql`at2."executedAt" < ${end}`
-        )
+          sql`at2."executedAt" < ${end}`,
+        ),
       );
-    return r[0]!.c;
+    return r[0]?.c;
   },
 
   weekly_follow: async (userId, start, end) => {
@@ -779,10 +779,10 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
         and(
           eq(follows.followerId, userId),
           gte(follows.createdAt, start),
-          lt(follows.createdAt, end)
-        )
+          lt(follows.createdAt, end),
+        ),
       );
-    return r[0]!.c;
+    return r[0]?.c;
   },
 
   weekly_share: async (userId, start, end) => {
@@ -793,10 +793,10 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
         and(
           eq(shares.userId, userId),
           gte(shares.createdAt, start),
-          lt(shares.createdAt, end)
-        )
+          lt(shares.createdAt, end),
+        ),
       );
-    return r[0]!.c;
+    return r[0]?.c;
   },
 
   weekly_group_join: async (userId, start, end) => {
@@ -807,10 +807,10 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
         and(
           eq(groupMembers.userId, userId),
           gte(groupMembers.joinedAt, start),
-          lt(groupMembers.joinedAt, end)
-        )
+          lt(groupMembers.joinedAt, end),
+        ),
       );
-    return r[0]!.c;
+    return r[0]?.c;
   },
 
   weekly_group_create: async (userId, start, end) => {
@@ -821,10 +821,10 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
         and(
           eq(groups.createdById, userId),
           gte(groups.createdAt, start),
-          lt(groups.createdAt, end)
-        )
+          lt(groups.createdAt, end),
+        ),
       );
-    return r[0]!.c;
+    return r[0]?.c;
   },
 
   weekly_login_days: async (userId, start, end) => {
@@ -834,12 +834,12 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
       .where(
         and(
           eq(userActivityLogs.userId, userId),
-          eq(userActivityLogs.activityType, 'session'),
+          eq(userActivityLogs.activityType, "session"),
           gte(userActivityLogs.activityDate, start),
-          lt(userActivityLogs.activityDate, end)
-        )
+          lt(userActivityLogs.activityDate, end),
+        ),
       );
-    return r[0]!.c;
+    return r[0]?.c;
   },
 
   weekly_trade_days: async (userId, start, end) => {
@@ -850,10 +850,10 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
         and(
           eq(positions.userId, userId),
           gte(positions.createdAt, start),
-          lt(positions.createdAt, end)
-        )
+          lt(positions.createdAt, end),
+        ),
       );
-    return Number(r[0]!.c);
+    return Number(r[0]?.c);
   },
 
   // ── Compound weekly ──
@@ -866,8 +866,8 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
         and(
           eq(positions.userId, userId),
           gte(positions.createdAt, start),
-          lt(positions.createdAt, end)
-        )
+          lt(positions.createdAt, end),
+        ),
       );
     const perp = await db
       .select({ c: count() })
@@ -876,10 +876,10 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
         and(
           eq(perpPositions.userId, userId),
           gte(perpPositions.openedAt, start),
-          lt(perpPositions.openedAt, end)
-        )
+          lt(perpPositions.openedAt, end),
+        ),
       );
-    return pred[0]!.c > 0 && perp[0]!.c > 0 ? 1 : 0;
+    return pred[0]?.c > 0 && perp[0]?.c > 0 ? 1 : 0;
   },
 
   weekly_agent_and_group: async (userId, start, end) => {
@@ -891,8 +891,8 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
         and(
           eq(users.managedBy, userId),
           gte(agentMessages.createdAt, start),
-          lt(agentMessages.createdAt, end)
-        )
+          lt(agentMessages.createdAt, end),
+        ),
       );
     const hasGroup = await db
       .select({ c: count() })
@@ -903,10 +903,10 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           eq(messages.senderId, userId),
           eq(chats.isGroup, true),
           gte(messages.createdAt, start),
-          lt(messages.createdAt, end)
-        )
+          lt(messages.createdAt, end),
+        ),
       );
-    return hasAgent[0]!.c > 0 && hasGroup[0]!.c > 0 ? 1 : 0;
+    return hasAgent[0]?.c > 0 && hasGroup[0]?.c > 0 ? 1 : 0;
   },
 
   weekly_agent_interact: async (userId, start, end) => {
@@ -919,8 +919,8 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           eq(users.managedBy, userId),
           eq(users.isAgent, true),
           gte(users.createdAt, start),
-          lt(users.createdAt, end)
-        )
+          lt(users.createdAt, end),
+        ),
       );
     const messaged = await db
       .select({ agentId: agentMessages.agentUserId })
@@ -930,8 +930,8 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
         and(
           eq(users.managedBy, userId),
           gte(agentMessages.createdAt, start),
-          lt(agentMessages.createdAt, end)
-        )
+          lt(agentMessages.createdAt, end),
+        ),
       )
       .groupBy(agentMessages.agentUserId);
     const uniqueAgents = new Set([
@@ -950,8 +950,8 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           eq(positions.userId, userId),
           isNotNull(positions.resolvedAt),
           gte(positions.resolvedAt, start),
-          lt(positions.resolvedAt, end)
-        )
+          lt(positions.resolvedAt, end),
+        ),
       );
     const perpPnl = await db
       .select({
@@ -963,10 +963,10 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           eq(perpPositions.userId, userId),
           isNotNull(perpPositions.closedAt),
           gte(perpPositions.closedAt, start),
-          lt(perpPositions.closedAt, end)
-        )
+          lt(perpPositions.closedAt, end),
+        ),
       );
-    const totalPnl = Number(predPnl[0]!.total) + Number(perpPnl[0]!.total);
+    const totalPnl = Number(predPnl[0]?.total) + Number(perpPnl[0]?.total);
     return totalPnl > 0 ? 1 : 0;
   },
 
@@ -979,8 +979,8 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           eq(reactions.userId, userId),
           isNotNull(reactions.postId),
           gte(reactions.createdAt, start),
-          lt(reactions.createdAt, end)
-        )
+          lt(reactions.createdAt, end),
+        ),
       );
     const commentedPosts = await db
       .select({ c: sql<number>`COUNT(DISTINCT ${comments.postId})` })
@@ -990,11 +990,11 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           eq(comments.authorId, userId),
           isNull(comments.deletedAt),
           gte(comments.createdAt, start),
-          lt(comments.createdAt, end)
-        )
+          lt(comments.createdAt, end),
+        ),
       );
     // Threshold is applied to the minimum of both (must have >= threshold of each)
-    return Math.min(Number(likedPosts[0]!.c), Number(commentedPosts[0]!.c));
+    return Math.min(Number(likedPosts[0]?.c), Number(commentedPosts[0]?.c));
   },
 
   weekly_referral_play: async (userId, start, end) => {
@@ -1006,10 +1006,10 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
         and(
           eq(referrals.referrerId, userId),
           gte(positions.createdAt, start),
-          lt(positions.createdAt, end)
-        )
+          lt(positions.createdAt, end),
+        ),
       );
-    return r[0]!.c > 0 ? 1 : 0;
+    return r[0]?.c > 0 ? 1 : 0;
   },
 
   weekly_top_market: async (userId, start, end) => {
@@ -1031,10 +1031,10 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           eq(positions.userId, userId),
           eq(positions.marketId, topMarket[0].marketId),
           gte(positions.createdAt, start),
-          lt(positions.createdAt, end)
-        )
+          lt(positions.createdAt, end),
+        ),
       );
-    return userTrade[0]!.c > 0 ? 1 : 0;
+    return userTrade[0]?.c > 0 ? 1 : 0;
   },
 };
 
@@ -1046,7 +1046,7 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
  */
 export async function checkProgress(
   userId: string,
-  event: AchievementEvent
+  event: AchievementEvent,
 ): Promise<void> {
   const eventType = event.type as AchievementEventType;
   const relevantTrackingTypes = EVENT_TO_TRACKING_TYPES[eventType];
@@ -1060,25 +1060,25 @@ export async function checkProgress(
   } catch (error) {
     // Log but don't rethrow — checkProgress is fire-and-forget
     logger.error(
-      'checkProgress failed',
+      "checkProgress failed",
       {
         userId,
         eventType,
         error: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined,
       },
-      'AchievementService'
+      "AchievementService",
     );
   }
 }
 
 async function checkAchievements(
   userId: string,
-  relevantTrackingTypes: string[]
+  relevantTrackingTypes: string[],
 ): Promise<void> {
   // Find achievement definitions whose trackingType matches
   const relevantAchievements = ACHIEVEMENT_DEFINITIONS.filter((a) =>
-    relevantTrackingTypes.includes(a.trackingType)
+    relevantTrackingTypes.includes(a.trackingType),
   );
   if (relevantAchievements.length === 0) return;
 
@@ -1091,9 +1091,9 @@ async function checkAchievements(
         eq(userAchievements.userId, userId),
         inArray(
           userAchievements.achievementId,
-          relevantAchievements.map((a) => a.id)
-        )
-      )
+          relevantAchievements.map((a) => a.id),
+        ),
+      ),
     );
   const unlockedSet = new Set(alreadyUnlocked.map((r) => r.achievementId));
 
@@ -1106,7 +1106,7 @@ async function checkAchievements(
       logger.warn(
         `No achievement resolver for trackingType: ${achievement.trackingType}`,
         undefined,
-        'AchievementService'
+        "AchievementService",
       );
       continue;
     }
@@ -1120,7 +1120,7 @@ async function checkAchievements(
 
 async function unlockAchievement(
   userId: string,
-  achievement: AchievementDef
+  achievement: AchievementDef,
 ): Promise<void> {
   // Insert with conflict guard (unique on userId + achievementId)
   const [inserted] = await db
@@ -1141,12 +1141,12 @@ async function unlockAchievement(
   await ReputationService.awardReputation(
     userId,
     achievement.pointsReward,
-    'achievement_unlock',
+    "achievement_unlock",
     {
       achievementId: achievement.id,
       achievementName: achievement.name,
       tier: achievement.tier,
-    }
+    },
   );
 
   const notification = buildAchievementUnlockedNotification({
@@ -1160,14 +1160,14 @@ async function unlockAchievement(
   // Create notification + SSE broadcast (both required)
   await createNotification({
     userId,
-    type: 'achievement_unlocked',
+    type: "achievement_unlocked",
     title: notification.title,
     message: notification.message,
     data: notification.data,
   });
 
   await broadcastToChannel(`notifications:${userId}`, {
-    type: 'achievement_unlocked',
+    type: "achievement_unlocked",
     achievementId: achievement.id,
     name: achievement.name,
     tier: achievement.tier,
@@ -1182,7 +1182,7 @@ async function unlockAchievement(
       tier: achievement.tier,
       points: achievement.pointsReward,
     },
-    'AchievementService'
+    "AchievementService",
   );
 }
 
@@ -1191,7 +1191,7 @@ async function unlockAchievement(
 async function checkChallenges(
   userId: string,
   _event: AchievementEvent,
-  relevantTrackingTypes: string[]
+  relevantTrackingTypes: string[],
 ): Promise<void> {
   const now = new Date();
   const dailyIds = getActiveDailyChallengeIds(now);
@@ -1202,13 +1202,13 @@ async function checkChallenges(
   const relevantChallenges = ALL_CHALLENGE_DEFINITIONS.filter(
     (c) =>
       allActiveIds.includes(c.id) &&
-      relevantTrackingTypes.includes(c.trackingType)
+      relevantTrackingTypes.includes(c.trackingType),
   );
   if (relevantChallenges.length === 0) return;
 
   for (const challenge of relevantChallenges) {
     try {
-      const isDaily = challenge.pool === 'daily';
+      const isDaily = challenge.pool === "daily";
       const periodKey = isDaily ? getUTCDateString(now) : getISOWeekString(now);
       const start = isDaily ? getStartOfUTCDay(now) : getStartOfISOWeek(now);
       const end = isDaily ? getEndOfUTCDay(now) : getEndOfISOWeek(now);
@@ -1224,8 +1224,8 @@ async function checkChallenges(
           and(
             eq(userChallengeProgress.userId, userId),
             eq(userChallengeProgress.challengeId, challenge.id),
-            eq(userChallengeProgress.periodKey, periodKey)
-          )
+            eq(userChallengeProgress.periodKey, periodKey),
+          ),
         );
 
       if (existing[0]?.completed === 1) continue; // Already done
@@ -1236,7 +1236,7 @@ async function checkChallenges(
         logger.warn(
           `No challenge resolver for trackingType: ${challenge.trackingType}`,
           undefined,
-          'AchievementService'
+          "AchievementService",
         );
         continue;
       }
@@ -1262,8 +1262,8 @@ async function checkChallenges(
             .where(
               and(
                 eq(userChallengeProgress.id, existing[0].id),
-                eq(userChallengeProgress.completed, 0)
-              )
+                eq(userChallengeProgress.completed, 0),
+              ),
             )
             .returning({ id: userChallengeProgress.id });
           didComplete = !!updated;
@@ -1298,12 +1298,12 @@ async function checkChallenges(
         await ReputationService.awardReputation(
           userId,
           challenge.pointsReward,
-          'challenge_complete',
+          "challenge_complete",
           {
             challengeId: challenge.id,
             challengeName: challenge.name,
             periodKey,
-          }
+          },
         );
 
         const notification = buildChallengeCompletedNotification({
@@ -1316,14 +1316,14 @@ async function checkChallenges(
 
         await createNotification({
           userId,
-          type: 'challenge_completed',
+          type: "challenge_completed",
           title: notification.title,
           message: notification.message,
           data: notification.data,
         });
 
         await broadcastToChannel(`notifications:${userId}`, {
-          type: 'challenge_completed',
+          type: "challenge_completed",
           challengeId: challenge.id,
           name: challenge.name,
           pointsReward: challenge.pointsReward,
@@ -1335,7 +1335,7 @@ async function checkChallenges(
           userId,
           challenge.pool,
           periodKey,
-          isDaily ? dailyIds : weeklyIds
+          isDaily ? dailyIds : weeklyIds,
         );
       }
     } catch (error) {
@@ -1346,7 +1346,7 @@ async function checkChallenges(
           challengeId: challenge.id,
           error: error instanceof Error ? error.message : String(error),
         },
-        'AchievementService'
+        "AchievementService",
       );
     }
   }
@@ -1354,9 +1354,9 @@ async function checkChallenges(
 
 async function checkCompletionBonus(
   userId: string,
-  pool: 'daily' | 'weekly',
+  pool: "daily" | "weekly",
   periodKey: string,
-  activeIds: string[]
+  activeIds: string[],
 ): Promise<void> {
   const completedCount = await db
     .select({ c: count() })
@@ -1366,12 +1366,12 @@ async function checkCompletionBonus(
         eq(userChallengeProgress.userId, userId),
         eq(userChallengeProgress.periodKey, periodKey),
         inArray(userChallengeProgress.challengeId, activeIds),
-        eq(userChallengeProgress.completed, 1)
-      )
+        eq(userChallengeProgress.completed, 1),
+      ),
     );
 
-  const target = pool === 'daily' ? 3 : 2;
-  if (completedCount[0]!.c !== target) return;
+  const target = pool === "daily" ? 3 : 2;
+  if (completedCount[0]?.c !== target) return;
 
   // Check if bonus already awarded (use a special periodKey suffix)
   const bonusPeriodKey = `${periodKey}:bonus`;
@@ -1381,13 +1381,13 @@ async function checkCompletionBonus(
     .where(
       and(
         eq(userChallengeProgress.userId, userId),
-        eq(userChallengeProgress.periodKey, bonusPeriodKey)
-      )
+        eq(userChallengeProgress.periodKey, bonusPeriodKey),
+      ),
     );
-  if (existing[0]!.c > 0) return; // Already awarded
+  if (existing[0]?.c > 0) return; // Already awarded
 
   const bonus =
-    pool === 'daily'
+    pool === "daily"
       ? POINTS.CHALLENGE_DAILY_ALL_BONUS
       : POINTS.CHALLENGE_WEEKLY_ALL_BONUS;
 
@@ -1409,13 +1409,13 @@ async function checkCompletionBonus(
 
   if (!insertedBonus) return;
 
-  await ReputationService.awardReputation(userId, bonus, 'challenge_complete', {
+  await ReputationService.awardReputation(userId, bonus, "challenge_complete", {
     type: `${pool}_all_bonus`,
     periodKey,
   });
 
   await broadcastToChannel(`notifications:${userId}`, {
-    type: 'challenge_bonus',
+    type: "challenge_bonus",
     pool,
     bonus,
   });
@@ -1423,7 +1423,7 @@ async function checkCompletionBonus(
   logger.info(
     `${pool} completion bonus awarded to user ${userId}: +${bonus}`,
     { pool, periodKey, bonus },
-    'AchievementService'
+    "AchievementService",
   );
 }
 
@@ -1444,7 +1444,7 @@ export interface AchievementWithProgress {
 }
 
 export async function getUserAchievements(
-  userId: string
+  userId: string,
 ): Promise<AchievementWithProgress[]> {
   // Get user's unlocked achievements
   const unlocked = await db
@@ -1456,7 +1456,7 @@ export async function getUserAchievements(
     .where(eq(userAchievements.userId, userId));
 
   const unlockedMap = new Map(
-    unlocked.map((u) => [u.achievementId, u.unlockedAt])
+    unlocked.map((u) => [u.achievementId, u.unlockedAt]),
   );
 
   // Build result with progress for each achievement
@@ -1522,7 +1522,7 @@ export interface ChallengesResponse {
 }
 
 export async function getUserChallenges(
-  userId: string
+  userId: string,
 ): Promise<ChallengesResponse> {
   const now = new Date();
   const dailyPeriodKey = getUTCDateString(now);
@@ -1541,8 +1541,8 @@ export async function getUserChallenges(
         inArray(userChallengeProgress.periodKey, [
           dailyPeriodKey,
           weeklyPeriodKey,
-        ])
-      )
+        ]),
+      ),
     );
 
   const progressMap = new Map(progressRows.map((r) => [r.challengeId, r]));
@@ -1550,7 +1550,7 @@ export async function getUserChallenges(
   const buildChallenges = async (
     ids: string[],
     pool: ChallengeDef[],
-    _periodKey: string
+    _periodKey: string,
   ): Promise<ChallengeWithProgress[]> => {
     const results: ChallengeWithProgress[] = [];
 
@@ -1564,7 +1564,7 @@ export async function getUserChallenges(
 
       // If not completed and we have a resolver, get fresh progress
       if (!completed) {
-        const isDaily = def.pool === 'daily';
+        const isDaily = def.pool === "daily";
         const start = isDaily ? getStartOfUTCDay(now) : getStartOfISOWeek(now);
         const end = isDaily ? getEndOfUTCDay(now) : getEndOfISOWeek(now);
         const resolver = CHALLENGE_RESOLVERS[def.trackingType];
@@ -1594,12 +1594,12 @@ export async function getUserChallenges(
   const dailyChallenges = await buildChallenges(
     dailyIds,
     DAILY_CHALLENGE_DEFINITIONS,
-    dailyPeriodKey
+    dailyPeriodKey,
   );
   const weeklyChallenges = await buildChallenges(
     weeklyIds,
     WEEKLY_CHALLENGE_DEFINITIONS,
-    weeklyPeriodKey
+    weeklyPeriodKey,
   );
 
   const dailyAllCompleted =
@@ -1629,7 +1629,7 @@ export async function getUserChallenges(
 
 export async function getRecentAchievements(
   userId: string,
-  limit = 5
+  limit = 5,
 ): Promise<AchievementWithProgress[]> {
   const recent = await db
     .select({
@@ -1646,11 +1646,11 @@ export async function getRecentAchievements(
     if (!def) {
       return {
         id: r.achievementId,
-        name: 'Unknown',
-        description: '',
-        category: '',
-        tier: 'bronze',
-        iconKey: 'award',
+        name: "Unknown",
+        description: "",
+        category: "",
+        tier: "bronze",
+        iconKey: "award",
         pointsReward: 0,
         threshold: 1,
         progress: 1,

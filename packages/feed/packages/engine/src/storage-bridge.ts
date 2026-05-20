@@ -56,7 +56,7 @@ import {
   resetToPostgresMode,
   type StorageMode,
   saveJsonSnapshot,
-} from '@feed/db';
+} from "@feed/db";
 
 // Re-export db for convenience
 // Re-export storage mode utilities
@@ -67,7 +67,7 @@ export { db, getStorageMode, type StorageMode };
  * All data will be stored in JSON files, no database required.
  */
 export async function initializeSimulationMode(
-  basePath = './simulation-data'
+  basePath = "./simulation-data",
 ): Promise<void> {
   await initializeJsonMode(basePath);
 }
@@ -92,7 +92,7 @@ export function initializeDatabaseMode(): void {
  * Check if we're in database mode (production).
  */
 export function isDatabaseMode(): boolean {
-  return getStorageMode() === 'postgres';
+  return getStorageMode() === "postgres";
 }
 
 /**
@@ -106,7 +106,7 @@ export function isSimulationMode(): boolean {
  * Check if we're in test mode.
  */
 export function isTestMode(): boolean {
-  return getStorageMode() === 'memory';
+  return getStorageMode() === "memory";
 }
 
 /**

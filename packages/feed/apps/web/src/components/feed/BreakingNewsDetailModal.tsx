@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { Activity, Calendar, DollarSign, TrendingUp, X } from 'lucide-react';
-import Image from 'next/image';
-import { useEffect } from 'react';
+import { Activity, Calendar, DollarSign, TrendingUp, X } from "lucide-react";
+import Image from "next/image";
+import { useEffect } from "react";
 
 /**
  * Breaking news item structure for detail modal.
@@ -11,7 +11,7 @@ type BreakingNewsItem = {
   id: string;
   title: string;
   description: string;
-  icon: 'chart' | 'calendar' | 'dollar' | 'trending';
+  icon: "chart" | "calendar" | "dollar" | "trending";
   timestamp: string;
   trending?: boolean;
   source?: string;
@@ -64,42 +64,42 @@ export function BreakingNewsDetailModal({
   useEffect(() => {
     if (!isOpen) {
       // Ensure body overflow is reset when modal is closed
-      document.body.style.overflow = '';
+      document.body.style.overflow = "";
       return;
     }
 
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === "Escape") {
         onClose();
       }
     };
 
-    document.addEventListener('keydown', handleEscape);
+    document.addEventListener("keydown", handleEscape);
     // Prevent body scroll when modal is open
-    document.body.style.overflow = 'hidden';
+    document.body.style.overflow = "hidden";
 
     return () => {
-      document.removeEventListener('keydown', handleEscape);
-      document.body.style.overflow = '';
+      document.removeEventListener("keydown", handleEscape);
+      document.body.style.overflow = "";
     };
   }, [isOpen, onClose]);
 
   // Cleanup on unmount (for HMR)
   useEffect(() => {
     return () => {
-      document.body.style.overflow = '';
+      document.body.style.overflow = "";
     };
   }, []);
 
   if (!isOpen || !item) return null;
 
-  const getIcon = (icon: BreakingNewsItem['icon']) => {
+  const getIcon = (icon: BreakingNewsItem["icon"]) => {
     switch (icon) {
-      case 'chart':
+      case "chart":
         return <TrendingUp className="h-8 w-8" />;
-      case 'calendar':
+      case "calendar":
         return <Calendar className="h-8 w-8" />;
-      case 'dollar':
+      case "dollar":
         return <DollarSign className="h-8 w-8" />;
       default:
         return <Activity className="h-8 w-8" />;
@@ -108,12 +108,12 @@ export function BreakingNewsDetailModal({
 
   const formatDate = (timestamp: string) => {
     const date = new Date(timestamp);
-    return date.toLocaleString('en-US', {
-      month: 'long',
-      day: 'numeric',
-      year: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
+    return date.toLocaleString("en-US", {
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
       hour12: true,
     });
   };
@@ -192,7 +192,7 @@ export function BreakingNewsDetailModal({
                     <p className="text-foreground text-sm">
                       <span className="font-semibold text-gray-400">
                         Related Question:
-                      </span>{' '}
+                      </span>{" "}
                       #{item.relatedQuestion}
                     </p>
                   </div>
@@ -203,7 +203,7 @@ export function BreakingNewsDetailModal({
                     <p className="text-foreground text-sm">
                       <span className="font-semibold text-gray-400">
                         Source:
-                      </span>{' '}
+                      </span>{" "}
                       {item.source}
                     </p>
                   </div>

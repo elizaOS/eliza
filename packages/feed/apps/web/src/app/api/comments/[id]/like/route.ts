@@ -116,10 +116,10 @@ import {
   RATE_LIMIT_CONFIGS,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { and, comments, count, db, eq, reactions } from '@feed/db';
-import { generateSnowflakeId, IdParamSchema, logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/api";
+import { and, comments, count, db, eq, reactions } from "@feed/db";
+import { generateSnowflakeId, IdParamSchema, logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 /**
  * POST /api/comments/[id]/like
@@ -134,7 +134,7 @@ import type { NextRequest } from 'next/server';
 export const POST = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ id: string }> }
+    context: { params: Promise<{ id: string }> },
   ) => {
     // Authenticate user
     const user = await authenticate(request);
@@ -144,7 +144,7 @@ export const POST = withErrorHandling(
     const rateLimitError = checkRateLimitAndDuplicates(
       user.userId,
       null,
-      RATE_LIMIT_CONFIGS.LIKE_COMMENT
+      RATE_LIMIT_CONFIGS.LIKE_COMMENT,
     );
     if (rateLimitError) {
       return rateLimitError;
@@ -153,7 +153,7 @@ export const POST = withErrorHandling(
     // Ensure user exists in database (upsert pattern)
     const displayName = user.walletAddress
       ? `${user.walletAddress.slice(0, 6)}...${user.walletAddress.slice(-4)}`
-      : 'Anonymous';
+      : "Anonymous";
 
     const { user: dbUser } = await ensureUserForAuth(user, { displayName });
     const canonicalUserId = dbUser.id;
@@ -170,7 +170,7 @@ export const POST = withErrorHandling(
       .limit(1);
 
     if (!comment) {
-      throw new NotFoundError('Comment', commentId);
+      throw new NotFoundError("Comment", commentId);
     }
 
     // Check if already liked
@@ -181,13 +181,13 @@ export const POST = withErrorHandling(
         and(
           eq(reactions.commentId, commentId),
           eq(reactions.userId, canonicalUserId),
-          eq(reactions.type, 'like')
-        )
+          eq(reactions.type, "like"),
+        ),
       )
       .limit(1);
 
     if (existingReaction) {
-      throw new BusinessLogicError('Comment already liked', 'ALREADY_LIKED');
+      throw new BusinessLogicError("Comment already liked", "ALREADY_LIKED");
     }
 
     // Create like reaction
@@ -198,14 +198,14 @@ export const POST = withErrorHandling(
         id: reactionId,
         commentId,
         userId: canonicalUserId,
-        type: 'like',
+        type: "like",
       })
       .returning();
 
     if (!reaction) {
       throw new BusinessLogicError(
-        'Failed to create reaction',
-        'REACTION_FAILED'
+        "Failed to create reaction",
+        "REACTION_FAILED",
       );
     }
 
@@ -216,7 +216,7 @@ export const POST = withErrorHandling(
         canonicalUserId,
         commentId,
         comment.postId,
-        'like'
+        "like",
       );
     }
 
@@ -225,14 +225,14 @@ export const POST = withErrorHandling(
       .select({ count: count() })
       .from(reactions)
       .where(
-        and(eq(reactions.commentId, commentId), eq(reactions.type, 'like'))
+        and(eq(reactions.commentId, commentId), eq(reactions.type, "like")),
       );
     const likeCount = Number(likeCountResult?.count ?? 0);
 
     logger.info(
-      'Comment liked successfully',
+      "Comment liked successfully",
       { commentId, userId: canonicalUserId, likeCount },
-      'POST /api/comments/[id]/like'
+      "POST /api/comments/[id]/like",
     );
 
     return successResponse(
@@ -245,9 +245,9 @@ export const POST = withErrorHandling(
           createdAt: reaction.createdAt,
         },
       },
-      201
+      201,
     );
-  }
+  },
 );
 
 /**
@@ -263,7 +263,7 @@ export const POST = withErrorHandling(
 export const DELETE = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ id: string }> }
+    context: { params: Promise<{ id: string }> },
   ) => {
     // Authenticate user
     const user = await authenticate(request);
@@ -272,7 +272,7 @@ export const DELETE = withErrorHandling(
     // Ensure user exists in database (upsert pattern)
     const displayName = user.walletAddress
       ? `${user.walletAddress.slice(0, 6)}...${user.walletAddress.slice(-4)}`
-      : 'Anonymous';
+      : "Anonymous";
 
     const { user: dbUser } = await ensureUserForAuth(user, { displayName });
     const canonicalUserId = dbUser.id;
@@ -285,13 +285,13 @@ export const DELETE = withErrorHandling(
         and(
           eq(reactions.commentId, commentId),
           eq(reactions.userId, canonicalUserId),
-          eq(reactions.type, 'like')
-        )
+          eq(reactions.type, "like"),
+        ),
       )
       .limit(1);
 
     if (!reaction) {
-      throw new NotFoundError('Like', `${commentId}-${canonicalUserId}`);
+      throw new NotFoundError("Like", `${commentId}-${canonicalUserId}`);
     }
 
     // Delete like
@@ -302,14 +302,14 @@ export const DELETE = withErrorHandling(
       .select({ count: count() })
       .from(reactions)
       .where(
-        and(eq(reactions.commentId, commentId), eq(reactions.type, 'like'))
+        and(eq(reactions.commentId, commentId), eq(reactions.type, "like")),
       );
     const likeCount = Number(likeCountResult?.count ?? 0);
 
     logger.info(
-      'Comment unliked successfully',
+      "Comment unliked successfully",
       { commentId, userId: canonicalUserId, likeCount },
-      'DELETE /api/comments/[id]/like'
+      "DELETE /api/comments/[id]/like",
     );
 
     return successResponse({
@@ -317,8 +317,8 @@ export const DELETE = withErrorHandling(
         commentId,
         likeCount,
         isLiked: false,
-        message: 'Comment unliked successfully',
+        message: "Comment unliked successfully",
       },
     });
-  }
+  },
 );

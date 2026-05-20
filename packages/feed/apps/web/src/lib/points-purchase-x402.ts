@@ -1,15 +1,15 @@
-import 'server-only';
+import "server-only";
 
-import { type RedisClient, X402Manager } from '@feed/a2a';
-import { ensureRedisReady, type RedisInstance } from '@feed/api';
-import { getCurrentRpcUrl } from '@feed/shared';
+import { type RedisClient, X402Manager } from "@feed/a2a";
+import { ensureRedisReady, type RedisInstance } from "@feed/api";
+import { getCurrentRpcUrl } from "@feed/shared";
 
 function ioredisToX402Redis(redis: RedisInstance): RedisClient {
   return {
     get: (key) => redis.get(key),
     set: async (key, value, options) => {
       if (options?.ex !== undefined) {
-        await redis.set(key, value, 'EX', options.ex);
+        await redis.set(key, value, "EX", options.ex);
       } else {
         await redis.set(key, value);
       }

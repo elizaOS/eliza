@@ -11,33 +11,33 @@ export interface TradingStrategyConfig extends TradingStrategyBias {
 
 export const TRADING_STRATEGIES = {
   momentum: {
-    label: 'Momentum',
+    label: "Momentum",
     description:
-      'Prefers trading with the trend; will sometimes fade extremes or wait.',
+      "Prefers trading with the trend; will sometimes fade extremes or wait.",
     followTrend: 0.7,
     contrarian: 0.2,
     random: 0.1,
   },
   contrarian: {
-    label: 'Contrarian',
+    label: "Contrarian",
     description:
-      'Prefers fading crowded trades and betting against extremes; rarely follows the trend.',
+      "Prefers fading crowded trades and betting against extremes; rarely follows the trend.",
     followTrend: 0.2,
     contrarian: 0.7,
     random: 0.1,
   },
   value: {
-    label: 'Value',
+    label: "Value",
     description:
-      'Looks for mispricing/value and is more selective; mixes trend-following and contrarian entries.',
+      "Looks for mispricing/value and is more selective; mixes trend-following and contrarian entries.",
     followTrend: 0.3,
     contrarian: 0.4,
     random: 0.3,
   },
   random: {
-    label: 'Random',
+    label: "Random",
     description:
-      'Acts with higher entropy and less consistency; often holds or makes small opportunistic trades.',
+      "Acts with higher entropy and less consistency; often holds or makes small opportunistic trades.",
     followTrend: 0.33,
     contrarian: 0.33,
     random: 0.34,
@@ -58,7 +58,7 @@ function hashStringToUint32(value: string): number {
 export function getNpcTradingStrategy(npcId: string): NPCTradingStrategyKey {
   const keys = Object.keys(TRADING_STRATEGIES) as NPCTradingStrategyKey[];
   if (keys.length === 0) {
-    throw new Error('TRADING_STRATEGIES must not be empty');
+    throw new Error("TRADING_STRATEGIES must not be empty");
   }
 
   const hash = hashStringToUint32(npcId);
@@ -68,6 +68,6 @@ export function getNpcTradingStrategy(npcId: string): NPCTradingStrategyKey {
 export function formatTradingStrategyBias(bias: TradingStrategyBias): string {
   const toPct = (value: number) => `${Math.round(value * 100)}%`;
   return `Follow trend: ${toPct(bias.followTrend)} | Contrarian: ${toPct(
-    bias.contrarian
+    bias.contrarian,
   )} | Random: ${toPct(bias.random)}`;
 }

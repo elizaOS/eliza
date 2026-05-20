@@ -1,13 +1,13 @@
-'use client';
+"use client";
 
-import { getProfileUrl, POINTS } from '@feed/shared';
-import { ArrowRight, Award, TrendingUp, UserPlus, Users } from 'lucide-react';
-import Link from 'next/link';
-import { useEffect, useRef, useState } from 'react';
-import { Avatar } from '@/components/shared/Avatar';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { getAuthToken } from '@/lib/auth';
-import { apiUrl } from '@/utils/api-url';
+import { getProfileUrl, POINTS } from "@feed/shared";
+import { ArrowRight, Award, TrendingUp, UserPlus, Users } from "lucide-react";
+import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
+import { Avatar } from "@/components/shared/Avatar";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { getAuthToken } from "@/lib/auth";
+import { apiUrl } from "@/utils/api-url";
 
 /**
  * Referred user structure for rewards widget.
@@ -121,13 +121,13 @@ export function RewardsWidget({ userId }: RewardsWidgetProps) {
           headers: {
             Authorization: `Bearer ${token}`,
           },
-        }
+        },
       );
 
       if (!response.ok) {
         setLoading(false);
         rewardsWidgetFetchInFlight = false;
-        throw new Error('Failed to fetch referral data');
+        throw new Error("Failed to fetch referral data");
       }
 
       const result = await response.json();
@@ -217,11 +217,11 @@ export function RewardsWidget({ userId }: RewardsWidgetProps) {
                 <span
                   className={`font-semibold ${
                     data.stats.weeklyReferralCount >= data.stats.weeklyLimit
-                      ? 'text-red-500'
+                      ? "text-red-500"
                       : data.stats.weeklyReferralCount >=
                           data.stats.weeklyLimit * 0.8
-                        ? 'text-yellow-500'
-                        : 'text-foreground'
+                        ? "text-yellow-500"
+                        : "text-foreground"
                   }`}
                 >
                   {data.stats.weeklyReferralCount}/{data.stats.weeklyLimit}
@@ -291,7 +291,7 @@ export function RewardsWidget({ userId }: RewardsWidgetProps) {
                 <Avatar
                   src={referredUser.profileImageUrl || undefined}
                   alt={
-                    referredUser.displayName || referredUser.username || 'User'
+                    referredUser.displayName || referredUser.username || "User"
                   }
                   size="sm"
                 />
@@ -299,7 +299,7 @@ export function RewardsWidget({ userId }: RewardsWidgetProps) {
                   <p className="truncate font-medium text-foreground text-sm transition-colors group-hover:text-[#0066FF]">
                     {referredUser.displayName ||
                       referredUser.username ||
-                      'Anonymous'}
+                      "Anonymous"}
                   </p>
                   {referredUser.username && (
                     <p className="truncate text-muted-foreground text-xs">

@@ -1,23 +1,18 @@
-'use client';
+"use client";
 
-import { cn } from '@feed/shared';
-import { ArrowUp } from 'lucide-react';
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
-import { LoginButton } from '@/components/auth/LoginButton';
-import { Skeleton } from '@/components/shared/Skeleton';
+import { cn } from "@feed/shared";
+import { ArrowUp } from "lucide-react";
+import type React from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { LoginButton } from "@/components/auth/LoginButton";
+import { Skeleton } from "@/components/shared/Skeleton";
 import {
   MentionAutocomplete,
   type MentionableAgent,
   useMentionAutocomplete,
-} from './MentionAutocomplete';
-import { ReplyPreview } from './ReplyPreview';
-import type { ReplyToMessage } from './types';
+} from "./MentionAutocomplete";
+import { ReplyPreview } from "./ReplyPreview";
+import type { ReplyToMessage } from "./types";
 
 const MAX_TEXTAREA_HEIGHT = 160;
 
@@ -36,7 +31,7 @@ interface MentionRange {
 function isAtValidMentionPosition(text: string, atIndex: number): boolean {
   if (atIndex === 0) return true;
   const charBefore = text[atIndex - 1];
-  return /\s/.test(charBefore || '');
+  return /\s/.test(charBefore || "");
 }
 
 /**
@@ -46,7 +41,7 @@ function isAtValidMentionPosition(text: string, atIndex: number): boolean {
  */
 function findMentionRanges(
   text: string,
-  validUsernames: Set<string>
+  validUsernames: Set<string>,
 ): MentionRange[] {
   const ranges: MentionRange[] = [];
   const mentionRegex = /(@[A-Za-z0-9_.-]+)/g;
@@ -78,7 +73,7 @@ function findMentionRanges(
  */
 function getMentionAtCursor(
   cursorPos: number,
-  mentionRanges: MentionRange[]
+  mentionRanges: MentionRange[],
 ): MentionRange | null {
   for (const range of mentionRanges) {
     // Cursor is inside the mention (not at boundaries)
@@ -94,7 +89,7 @@ function getMentionAtCursor(
  */
 function getMentionBeforeCursor(
   cursorPos: number,
-  mentionRanges: MentionRange[]
+  mentionRanges: MentionRange[],
 ): MentionRange | null {
   for (const range of mentionRanges) {
     if (range.end === cursorPos) {
@@ -109,7 +104,7 @@ function getMentionBeforeCursor(
  */
 function getMentionAfterCursor(
   cursorPos: number,
-  mentionRanges: MentionRange[]
+  mentionRanges: MentionRange[],
 ): MentionRange | null {
   for (const range of mentionRanges) {
     if (range.start === cursorPos) {
@@ -153,7 +148,7 @@ function HighlightedText({
           style={{ padding: 0, margin: 0 }}
         >
           {mention}
-        </mark>
+        </mark>,
       );
     } else {
       parts.push(mention);
@@ -171,7 +166,7 @@ function HighlightedText({
   return (
     <>
       {parts}
-      {'\u00A0'}
+      {"\u00A0"}
     </>
   );
 }
@@ -182,7 +177,7 @@ export interface MessageInputProps {
   onSend: () => void;
   sending: boolean;
   authenticated: boolean;
-  density?: 'default' | 'compact';
+  density?: "default" | "compact";
   /** Additional disabled condition (e.g., insufficient points for agent chat) */
   disabled?: boolean;
   /** Custom placeholder text */
@@ -209,7 +204,7 @@ export function MessageInput({
   onSend,
   sending,
   authenticated,
-  density = 'default',
+  density = "default",
   disabled = false,
   placeholder,
   mentionableMembers,
@@ -251,7 +246,7 @@ export function MessageInput({
   // Calculate mention ranges for atomic mention behavior
   const mentionRanges = useMemo(
     () => findMentionRanges(value, validMentionHandles),
-    [value, validMentionHandles]
+    [value, validMentionHandles],
   );
 
   // Reference for the highlight overlay to sync scroll
@@ -261,9 +256,8 @@ export function MessageInput({
   const resizeTextarea = useCallback(() => {
     const textarea = textareaRef.current;
     if (textarea) {
-      textarea.style.height = 'auto';
-      textarea.style.height =
-        Math.min(textarea.scrollHeight, MAX_TEXTAREA_HEIGHT) + 'px';
+      textarea.style.height = "auto";
+      textarea.style.height = `${Math.min(textarea.scrollHeight, MAX_TEXTAREA_HEIGHT)}px`;
     }
   }, []);
 
@@ -307,7 +301,7 @@ export function MessageInput({
         textarea.setSelectionRange(newCursorPos, newCursorPos);
       }, 0);
     },
-    [value, mentionStartIndex, onChange, closeAutocomplete]
+    [value, mentionStartIndex, onChange, closeAutocomplete],
   );
 
   // Handle text input changes (with mention detection)
@@ -322,7 +316,7 @@ export function MessageInput({
       if (!mentionsEnabled) return;
 
       const textBeforeCursor = newValue.slice(0, cursorPos);
-      const atIndex = textBeforeCursor.lastIndexOf('@');
+      const atIndex = textBeforeCursor.lastIndexOf("@");
 
       if (atIndex >= 0) {
         // Check if @ is at a valid position (start of word)
@@ -356,7 +350,7 @@ export function MessageInput({
       openAutocomplete,
       closeAutocomplete,
       updateQuery,
-    ]
+    ],
   );
 
   // Handle selection/click to snap cursor out of mentions
@@ -393,7 +387,7 @@ export function MessageInput({
 
         if (handled) {
           // If Enter/Tab was pressed and we have a selection, select the member
-          if (e.key === 'Enter' || e.key === 'Tab') {
+          if (e.key === "Enter" || e.key === "Tab") {
             const member = getSelectedAgent();
             if (member) {
               handleSelectMember(member);
@@ -409,27 +403,27 @@ export function MessageInput({
         // Arrow key navigation - skip over mentions
         if (
           !hasSelection &&
-          (e.key === 'ArrowLeft' || e.key === 'ArrowRight')
+          (e.key === "ArrowLeft" || e.key === "ArrowRight")
         ) {
-          if (e.key === 'ArrowLeft' && cursorPos > 0) {
+          if (e.key === "ArrowLeft" && cursorPos > 0) {
             // Check if we're at the end of a mention
             const mentionBefore = getMentionBeforeCursor(
               cursorPos,
-              mentionRanges
+              mentionRanges,
             );
             if (mentionBefore) {
               e.preventDefault();
               textarea.setSelectionRange(
                 mentionBefore.start,
-                mentionBefore.start
+                mentionBefore.start,
               );
               return;
             }
-          } else if (e.key === 'ArrowRight' && cursorPos < value.length) {
+          } else if (e.key === "ArrowRight" && cursorPos < value.length) {
             // Check if we're at the start of a mention
             const mentionAfter = getMentionAfterCursor(
               cursorPos,
-              mentionRanges
+              mentionRanges,
             );
             if (mentionAfter) {
               e.preventDefault();
@@ -440,10 +434,10 @@ export function MessageInput({
         }
 
         // Backspace - delete entire mention if cursor is right after one
-        if (e.key === 'Backspace' && !hasSelection && cursorPos > 0) {
+        if (e.key === "Backspace" && !hasSelection && cursorPos > 0) {
           const mentionBefore = getMentionBeforeCursor(
             cursorPos,
-            mentionRanges
+            mentionRanges,
           );
           if (mentionBefore) {
             e.preventDefault();
@@ -455,7 +449,7 @@ export function MessageInput({
             setTimeout(() => {
               textarea.setSelectionRange(
                 mentionBefore.start,
-                mentionBefore.start
+                mentionBefore.start,
               );
             }, 0);
             return;
@@ -463,7 +457,7 @@ export function MessageInput({
         }
 
         // Delete key - delete entire mention if cursor is right before one
-        if (e.key === 'Delete' && !hasSelection && cursorPos < value.length) {
+        if (e.key === "Delete" && !hasSelection && cursorPos < value.length) {
           const mentionAfter = getMentionAfterCursor(cursorPos, mentionRanges);
           if (mentionAfter) {
             e.preventDefault();
@@ -481,7 +475,7 @@ export function MessageInput({
       }
 
       // Normal Enter to send (when autocomplete is closed)
-      if (e.key === 'Enter' && !e.shiftKey) {
+      if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         onSend();
       }
@@ -498,12 +492,12 @@ export function MessageInput({
       handleSelectMember,
       onChange,
       onSend,
-    ]
+    ],
   );
 
   // Determine placeholder text
-  const placeholderText = placeholder || 'Type a message...';
-  const compact = density === 'compact';
+  const placeholderText = placeholder || "Type a message...";
+  const compact = density === "compact";
 
   const [isFocused, setIsFocused] = useState(false);
   const hasContent = value.trim().length > 0;
@@ -518,7 +512,7 @@ export function MessageInput({
 
   if (!authenticated) {
     return (
-      <div className={cn('bg-background', compact ? 'px-3 py-2' : 'px-4 py-3')}>
+      <div className={cn("bg-background", compact ? "px-3 py-2" : "px-4 py-3")}>
         <div className="text-center">
           <p className="mb-3 text-muted-foreground text-sm">
             Log in to send messages
@@ -532,7 +526,7 @@ export function MessageInput({
   return (
     <div
       ref={containerRef}
-      className={cn(compact ? 'px-3 pt-0 pb-3' : 'px-4 pt-0 pb-4')}
+      className={cn(compact ? "px-3 pt-0 pb-3" : "px-4 pt-0 pb-4")}
     >
       {/* Reply preview banner */}
       {replyToMessage && onDismissReply && (
@@ -545,10 +539,10 @@ export function MessageInput({
       {/* Composer shell */}
       <div
         className={cn(
-          'relative flex items-end gap-2 rounded-xl border border-border pr-1 pb-1 pl-3 transition-shadow duration-200',
-          'focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/30',
-          isFocused && 'shadow-sm',
-          (sending || disabled) && 'opacity-60'
+          "relative flex items-end gap-2 rounded-xl border border-border pr-1 pb-1 pl-3 transition-shadow duration-200",
+          "focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/30",
+          isFocused && "shadow-sm",
+          (sending || disabled) && "opacity-60",
         )}
       >
         {/* Mention autocomplete dropdown */}
@@ -570,11 +564,11 @@ export function MessageInput({
               <div
                 ref={highlightRef}
                 className={cn(
-                  'wrap-break-word pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap pt-2',
+                  "wrap-break-word pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap pt-2",
                   compact
-                    ? 'text-sm leading-5.5 md:text-xs'
-                    : 'text-sm leading-5.5',
-                  'text-foreground'
+                    ? "text-sm leading-5.5 md:text-xs"
+                    : "text-sm leading-5.5",
+                  "text-foreground",
                 )}
                 aria-hidden="true"
               >
@@ -604,13 +598,13 @@ export function MessageInput({
                 autoCorrect="off"
                 autoCapitalize="off"
                 className={cn(
-                  'relative z-10 max-h-40 w-full resize-none overflow-y-auto bg-transparent pt-2',
+                  "relative z-10 max-h-40 w-full resize-none overflow-y-auto bg-transparent pt-2",
                   compact
-                    ? 'min-h-8 text-sm leading-5.5 md:text-xs'
-                    : 'min-h-8 text-sm leading-5.5',
-                  'text-transparent caret-foreground placeholder:text-muted-foreground/40',
-                  'outline-none',
-                  'disabled:cursor-not-allowed'
+                    ? "min-h-8 text-sm leading-5.5 md:text-xs"
+                    : "min-h-8 text-sm leading-5.5",
+                  "text-transparent caret-foreground placeholder:text-muted-foreground/40",
+                  "outline-none",
+                  "disabled:cursor-not-allowed",
                 )}
               />
             </>
@@ -629,13 +623,13 @@ export function MessageInput({
               disabled={sending || disabled}
               rows={1}
               className={cn(
-                'max-h-40 w-full resize-none overflow-y-auto bg-transparent pt-2',
+                "max-h-40 w-full resize-none overflow-y-auto bg-transparent pt-2",
                 compact
-                  ? 'min-h-8 text-sm leading-5.5 md:text-xs'
-                  : 'min-h-8 text-sm leading-5.5',
-                'text-foreground placeholder:text-muted-foreground/40',
-                'outline-none',
-                'disabled:cursor-not-allowed'
+                  ? "min-h-8 text-sm leading-5.5 md:text-xs"
+                  : "min-h-8 text-sm leading-5.5",
+                "text-foreground placeholder:text-muted-foreground/40",
+                "outline-none",
+                "disabled:cursor-not-allowed",
               )}
             />
           )}
@@ -647,10 +641,10 @@ export function MessageInput({
           onClick={onSend}
           disabled={!canSend}
           className={cn(
-            'flex size-8.5 shrink-0 items-center justify-center rounded-lg transition-all duration-150',
+            "flex size-8.5 shrink-0 items-center justify-center rounded-lg transition-all duration-150",
             canSend
-              ? 'bg-primary text-primary-foreground hover:bg-primary/90 active:scale-95'
-              : 'text-muted-foreground'
+              ? "bg-primary text-primary-foreground hover:bg-primary/90 active:scale-95"
+              : "text-muted-foreground",
           )}
         >
           {sending ? (

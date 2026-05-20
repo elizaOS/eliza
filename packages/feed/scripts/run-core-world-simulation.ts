@@ -22,7 +22,7 @@
  * - agent-tick (user/external agents)
  */
 
-import 'dotenv/config';
+import "dotenv/config";
 
 import {
   mkdirSync,
@@ -30,9 +30,9 @@ import {
   readFileSync,
   statSync,
   writeFileSync,
-} from 'node:fs';
-import path from 'node:path';
-import { parseArgs } from 'node:util';
+} from "node:fs";
+import path from "node:path";
+import { parseArgs } from "node:util";
 import {
   and,
   arcStates,
@@ -61,19 +61,19 @@ import {
   trendingTags,
   worldEvents,
   worldFacts,
-} from '@feed/db';
+} from "@feed/db";
 import {
   bootstrapGameIfNeeded,
   executeGameTick,
   StaticDataRegistry,
-} from '@feed/engine';
-import { logger } from '@feed/shared';
-import { Actions } from '../packages/agents/src/autonomous/templates/multi-step-decision';
+} from "@feed/engine";
+import { logger } from "@feed/shared";
+import { Actions } from "../packages/agents/src/autonomous/templates/multi-step-decision";
 import {
   getLLMCallCallback,
   type LLMCallInput,
   setLLMCallCallback,
-} from '../packages/engine/src/dag-trace';
+} from "../packages/engine/src/dag-trace";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -96,7 +96,7 @@ interface TextItem {
 
 interface PromptCallArtifact extends LLMCallInput {
   capturedAt: string;
-  source: 'engine' | 'npc' | 'debug-log';
+  source: "engine" | "npc" | "debug-log";
   actionType?: string;
   trajectoryId?: string;
   agentId?: string;
@@ -296,10 +296,10 @@ const CORE_NPC_ACTIONS = [
   Actions.REPOST,
 ] as const;
 
-const DAG_TRACE_DIR = path.resolve(process.cwd(), 'runs', 'dag-traces');
+const DAG_TRACE_DIR = path.resolve(process.cwd(), "runs", "dag-traces");
 
 function isJsonRecord(value: unknown): value is JsonRecord {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function parseJsonArray(value: string): unknown[] {
@@ -308,105 +308,105 @@ function parseJsonArray(value: string): unknown[] {
 }
 
 const STOP_WORDS = new Set([
-  'the',
-  'a',
-  'an',
-  'is',
-  'are',
-  'was',
-  'were',
-  'be',
-  'been',
-  'being',
-  'have',
-  'has',
-  'had',
-  'do',
-  'does',
-  'did',
-  'will',
-  'would',
-  'could',
-  'should',
-  'may',
-  'might',
-  'shall',
-  'can',
-  'to',
-  'of',
-  'in',
-  'for',
-  'on',
-  'with',
-  'at',
-  'by',
-  'from',
-  'as',
-  'and',
-  'but',
-  'or',
-  'not',
-  'so',
-  'if',
-  'when',
-  'where',
-  'how',
-  'what',
-  'which',
-  'who',
-  'this',
-  'that',
-  'these',
-  'those',
-  'i',
-  'me',
-  'my',
-  'we',
-  'us',
-  'our',
-  'you',
-  'your',
-  'he',
-  'him',
-  'his',
-  'she',
-  'her',
-  'it',
-  'its',
-  'they',
-  'them',
-  'their',
-  'about',
-  'up',
-  'out',
-  'then',
-  'here',
-  'there',
-  'also',
-  'over',
-  'new',
-  'said',
-  'says',
-  'like',
-  'well',
-  'back',
-  'even',
-  'still',
-  'way',
-  'just',
-  'into',
-  'than',
-  'after',
-  'before',
+  "the",
+  "a",
+  "an",
+  "is",
+  "are",
+  "was",
+  "were",
+  "be",
+  "been",
+  "being",
+  "have",
+  "has",
+  "had",
+  "do",
+  "does",
+  "did",
+  "will",
+  "would",
+  "could",
+  "should",
+  "may",
+  "might",
+  "shall",
+  "can",
+  "to",
+  "of",
+  "in",
+  "for",
+  "on",
+  "with",
+  "at",
+  "by",
+  "from",
+  "as",
+  "and",
+  "but",
+  "or",
+  "not",
+  "so",
+  "if",
+  "when",
+  "where",
+  "how",
+  "what",
+  "which",
+  "who",
+  "this",
+  "that",
+  "these",
+  "those",
+  "i",
+  "me",
+  "my",
+  "we",
+  "us",
+  "our",
+  "you",
+  "your",
+  "he",
+  "him",
+  "his",
+  "she",
+  "her",
+  "it",
+  "its",
+  "they",
+  "them",
+  "their",
+  "about",
+  "up",
+  "out",
+  "then",
+  "here",
+  "there",
+  "also",
+  "over",
+  "new",
+  "said",
+  "says",
+  "like",
+  "well",
+  "back",
+  "even",
+  "still",
+  "way",
+  "just",
+  "into",
+  "than",
+  "after",
+  "before",
 ]);
 
 const { values: args } = parseArgs({
   options: {
-    cycles: { type: 'string', default: '1' },
-    out: { type: 'string', default: '' },
-    rss: { type: 'string', default: 'snapshot' },
-    'npc-trade-probability': { type: 'string', default: '0.1' },
-    help: { type: 'boolean', default: false },
+    cycles: { type: "string", default: "1" },
+    out: { type: "string", default: "" },
+    rss: { type: "string", default: "snapshot" },
+    "npc-trade-probability": { type: "string", default: "0.1" },
+    help: { type: "boolean", default: false },
   },
   strict: true,
   allowPositionals: false,
@@ -427,22 +427,22 @@ Options:
 }
 
 const cycles = Math.max(1, Number.parseInt(args.cycles, 10) || 1);
-const rssMode = args.rss === 'live' ? 'live' : 'snapshot';
+const rssMode = args.rss === "live" ? "live" : "snapshot";
 const npcTradeProbability = Math.min(
   1,
-  Math.max(0, Number.parseFloat(args['npc-trade-probability']) || 0.1)
+  Math.max(0, Number.parseFloat(args["npc-trade-probability"]) || 0.1),
 );
-const runId = new Date().toISOString().replace(/[:.]/g, '-');
+const runId = new Date().toISOString().replace(/[:.]/g, "-");
 const outputDir =
   args.out && args.out.trim().length > 0
     ? path.resolve(args.out)
-    : path.resolve(process.cwd(), 'runs', 'core-simulations', runId);
-const jobsDir = path.join(outputDir, 'jobs');
-const cycleDir = path.join(outputDir, 'cycles');
-const promptsDir = path.join(outputDir, 'prompts');
-const feedsDir = path.join(outputDir, 'feeds');
-const widgetsDir = path.join(outputDir, 'widgets');
-const rssCacheDir = path.join(outputDir, 'rss-cache');
+    : path.resolve(process.cwd(), "runs", "core-simulations", runId);
+const jobsDir = path.join(outputDir, "jobs");
+const cycleDir = path.join(outputDir, "cycles");
+const promptsDir = path.join(outputDir, "prompts");
+const feedsDir = path.join(outputDir, "feeds");
+const widgetsDir = path.join(outputDir, "widgets");
+const rssCacheDir = path.join(outputDir, "rss-cache");
 
 mkdirSync(outputDir, { recursive: true });
 mkdirSync(jobsDir, { recursive: true });
@@ -452,37 +452,37 @@ mkdirSync(feedsDir, { recursive: true });
 mkdirSync(widgetsDir, { recursive: true });
 mkdirSync(rssCacheDir, { recursive: true });
 
-process.env.FEED_DAG_TRACE = 'true';
-process.env.DEBUG_SAVE_PROMPTS = 'true';
-process.env.GAME_START ??= 'true';
-process.env.NODE_ENV ??= 'development';
-process.env.VERCEL_ENV ??= 'production';
-process.env.REDIRECT_CRON_STAGING = 'false';
+process.env.FEED_DAG_TRACE = "true";
+process.env.DEBUG_SAVE_PROMPTS = "true";
+process.env.GAME_START ??= "true";
+process.env.NODE_ENV ??= "development";
+process.env.VERCEL_ENV ??= "production";
+process.env.REDIRECT_CRON_STAGING = "false";
 process.env.NPC_TRADE_PROBABILITY = npcTradeProbability.toString();
 
 function writeJson(filePath: string, value: unknown): void {
   mkdirSync(path.dirname(filePath), { recursive: true });
-  writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+  writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
 function writeText(filePath: string, value: string): void {
   mkdirSync(path.dirname(filePath), { recursive: true });
-  writeFileSync(filePath, value, 'utf8');
+  writeFileSync(filePath, value, "utf8");
 }
 
 function normalizeText(text: string): string {
   return text
     .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
     .trim();
 }
 
 function tokenize(text: string): Set<string> {
   return new Set(
     normalizeText(text)
-      .split(' ')
-      .filter((token) => token.length > 2 && !STOP_WORDS.has(token))
+      .split(" ")
+      .filter((token) => token.length > 2 && !STOP_WORDS.has(token)),
   );
 }
 
@@ -595,7 +595,8 @@ function buildContextSignalCoverage(calls: PromptCallArtifact[]) {
 
   for (const [key, pattern] of Object.entries(signals)) {
     const hitCount = calls.filter(
-      (call) => pattern.test(call.systemPrompt) || pattern.test(call.userPrompt)
+      (call) =>
+        pattern.test(call.systemPrompt) || pattern.test(call.userPrompt),
     ).length;
     coverage[key] =
       calls.length === 0 ? 0 : Number((hitCount / calls.length).toFixed(3));
@@ -624,19 +625,19 @@ function buildPromptAudit(calls: PromptCallArtifact[]) {
         const outputKey = normalizeText(call.rawResponse);
         normalizedInputs.set(
           inputKey,
-          (normalizedInputs.get(inputKey) ?? 0) + 1
+          (normalizedInputs.get(inputKey) ?? 0) + 1,
         );
         normalizedOutputs.set(
           outputKey,
-          (normalizedOutputs.get(outputKey) ?? 0) + 1
+          (normalizedOutputs.get(outputKey) ?? 0) + 1,
         );
       }
 
       const repeatedInputs = [...normalizedInputs.values()].filter(
-        (count) => count > 1
+        (count) => count > 1,
       );
       const repeatedOutputs = [...normalizedOutputs.values()].filter(
-        (count) => count > 1
+        (count) => count > 1,
       );
 
       return {
@@ -645,23 +646,24 @@ function buildPromptAudit(calls: PromptCallArtifact[]) {
         successCount: group.filter((call) => call.success).length,
         errorCount: group.filter((call) => !call.success).length,
         avgInputTokens: Math.round(
-          group.reduce((sum, call) => sum + call.inputTokens, 0) / group.length
+          group.reduce((sum, call) => sum + call.inputTokens, 0) / group.length,
         ),
         avgOutputTokens: Math.round(
-          group.reduce((sum, call) => sum + call.outputTokens, 0) / group.length
+          group.reduce((sum, call) => sum + call.outputTokens, 0) /
+            group.length,
         ),
         avgDurationMs: Math.round(
-          group.reduce((sum, call) => sum + call.durationMs, 0) / group.length
+          group.reduce((sum, call) => sum + call.durationMs, 0) / group.length,
         ),
         uniqueInputs: normalizedInputs.size,
         uniqueOutputs: normalizedOutputs.size,
         repeatedInputCalls: repeatedInputs.reduce(
           (sum, count) => sum + count,
-          0
+          0,
         ),
         repeatedOutputCalls: repeatedOutputs.reduce(
           (sum, count) => sum + count,
-          0
+          0,
         ),
         contextCoverage: buildContextSignalCoverage(group),
         examples: group.slice(0, 2).map((call) => ({
@@ -722,21 +724,21 @@ function buildPromptAudit(calls: PromptCallArtifact[]) {
       const message = `${promptType.promptType}: all captured inputs were identical across ${promptType.calls} calls`;
       warnings.push(message);
       recommendations.push(
-        `${promptType.promptType}: repeated identical inputs suggest stale or missing context; trim duplicated boilerplate and inject fresher world/event state.`
+        `${promptType.promptType}: repeated identical inputs suggest stale or missing context; trim duplicated boilerplate and inject fresher world/event state.`,
       );
     }
     if (promptType.calls >= 2 && promptType.uniqueOutputs <= 1) {
       const message = `${promptType.promptType}: all captured outputs were identical across ${promptType.calls} calls`;
       warnings.push(message);
       recommendations.push(
-        `${promptType.promptType}: repeated identical outputs suggest over-constrained prompting or missing differentiating context.`
+        `${promptType.promptType}: repeated identical outputs suggest over-constrained prompting or missing differentiating context.`,
       );
     }
     if (promptType.contextCoverage.worldFacts === 0) {
       const message = `${promptType.promptType}: no obvious world-facts/world-context signal was detected in captured prompts`;
       warnings.push(message);
       recommendations.push(
-        `${promptType.promptType}: add explicit world-facts or recent-event grounding so outputs stay tied to the current news cycle.`
+        `${promptType.promptType}: add explicit world-facts or recent-event grounding so outputs stay tied to the current news cycle.`,
       );
     }
   }
@@ -744,7 +746,7 @@ function buildPromptAudit(calls: PromptCallArtifact[]) {
   for (const block of repeatedPromptBlocks.slice(0, 10)) {
     if (block.promptTypes.length < 2) continue;
     recommendations.push(
-      `Repeated prompt block across ${block.promptTypes.join(', ')}: move shared invariant instructions into a reusable character or system layer, and keep per-call prompts focused on changing state.`
+      `Repeated prompt block across ${block.promptTypes.join(", ")}: move shared invariant instructions into a reusable character or system layer, and keep per-call prompts focused on changing state.`,
     );
   }
 
@@ -761,20 +763,20 @@ function buildPromptAudit(calls: PromptCallArtifact[]) {
 
 function parsePromptLogSection(
   markdown: string,
-  header: '# Input' | '# Output'
+  header: "# Input" | "# Output",
 ): string {
-  const nextHeader = header === '# Input' ? '# Output' : '\n---';
+  const nextHeader = header === "# Input" ? "# Output" : "\n---";
   const pattern = new RegExp(
-    `${header.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\n\\n\`\`\`\\n([\\s\\S]*?)\\n\`\`\`${nextHeader === '\n---' ? '(?=\\n\\n---|\\n---|$)' : `\\n\\n${nextHeader}`}`,
-    'm'
+    `${header.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\n\\n\`\`\`\\n([\\s\\S]*?)\\n\`\`\`${nextHeader === "\n---" ? "(?=\\n\\n---|\\n---|$)" : `\\n\\n${nextHeader}`}`,
+    "m",
   );
   const match = markdown.match(pattern);
-  return match?.[1]?.trim() ?? '';
+  return match?.[1]?.trim() ?? "";
 }
 
 function parsePromptMarkdownLog(
   filePath: string,
-  markdown: string
+  markdown: string,
 ): PromptCallArtifact | null {
   const promptTypeMatch = markdown.match(/^# Prompt Debug Log:\s+(.+)$/m);
   const timestampMatch = markdown.match(/^\*\*Timestamp:\*\*\s+(.+)$/m);
@@ -787,27 +789,27 @@ function parsePromptMarkdownLog(
   const promptType = promptTypeMatch?.[1]?.trim();
   if (!promptType) return null;
 
-  const inputBlock = parsePromptLogSection(markdown, '# Input');
-  const outputBlock = parsePromptLogSection(markdown, '# Output');
+  const inputBlock = parsePromptLogSection(markdown, "# Input");
+  const outputBlock = parsePromptLogSection(markdown, "# Output");
 
-  let systemPrompt = '';
+  let systemPrompt = "";
   let userPrompt = inputBlock;
   const systemUserSplit = inputBlock.match(
-    /^System:\s*([\s\S]*?)\nUser:\s*([\s\S]*)$/
+    /^System:\s*([\s\S]*?)\nUser:\s*([\s\S]*)$/,
   );
   if (systemUserSplit) {
-    systemPrompt = systemUserSplit[1]?.trim() ?? '';
-    userPrompt = systemUserSplit[2]?.trim() ?? '';
+    systemPrompt = systemUserSplit[1]?.trim() ?? "";
+    userPrompt = systemUserSplit[2]?.trim() ?? "";
   }
 
-  const temperature = Number.parseFloat(temperatureMatch?.[1] ?? '');
-  const maxTokens = Number.parseInt(maxTokensMatch?.[1] ?? '', 10);
+  const temperature = Number.parseFloat(temperatureMatch?.[1] ?? "");
+  const maxTokens = Number.parseInt(maxTokensMatch?.[1] ?? "", 10);
 
   return {
-    provider: providerMatch?.[1]?.trim() ?? 'unknown',
-    model: modelMatch?.[1]?.trim() ?? 'unknown',
+    provider: providerMatch?.[1]?.trim() ?? "unknown",
+    model: modelMatch?.[1]?.trim() ?? "unknown",
     promptType,
-    format: formatMatch?.[1]?.trim() ?? 'text',
+    format: formatMatch?.[1]?.trim() ?? "text",
     temperature: Number.isFinite(temperature) ? temperature : 0,
     maxTokens: Number.isFinite(maxTokens) ? maxTokens : 0,
     systemPrompt,
@@ -822,7 +824,7 @@ function parsePromptMarkdownLog(
       outputBlock.trim().length > 0 &&
       !/LLM response missing content/i.test(outputBlock),
     capturedAt: timestampMatch?.[1]?.trim() ?? new Date().toISOString(),
-    source: 'debug-log',
+    source: "debug-log",
     filePath,
   };
 }
@@ -836,7 +838,7 @@ function mergePromptCalls(calls: PromptCallArtifact[]): PromptCallArtifact[] {
       normalizeText(call.systemPrompt),
       normalizeText(call.userPrompt),
       normalizeText(call.rawResponse),
-    ].join('||');
+    ].join("||");
     const existing = merged.get(key);
 
     if (!existing) {
@@ -844,13 +846,13 @@ function mergePromptCalls(calls: PromptCallArtifact[]): PromptCallArtifact[] {
       continue;
     }
 
-    if (existing.source === 'debug-log' && call.source !== 'debug-log') {
+    if (existing.source === "debug-log" && call.source !== "debug-log") {
       merged.set(key, call);
     }
   }
 
   return [...merged.values()].sort((left, right) =>
-    right.capturedAt.localeCompare(left.capturedAt)
+    right.capturedAt.localeCompare(left.capturedAt),
   );
 }
 
@@ -858,44 +860,44 @@ function getPromptSurface(promptType: string): string {
   const normalized = promptType.toLowerCase();
 
   if (
-    normalized.includes('question') ||
-    normalized.includes('scenario') ||
-    normalized.includes('rank_questions')
+    normalized.includes("question") ||
+    normalized.includes("scenario") ||
+    normalized.includes("rank_questions")
   ) {
-    return 'questions';
+    return "questions";
   }
 
-  if (normalized.includes('trending') || normalized === 'tag_generation') {
-    return 'trending';
+  if (normalized.includes("trending") || normalized === "tag_generation") {
+    return "trending";
   }
 
   if (
-    normalized.includes('article') ||
-    normalized.includes('headline') ||
-    normalized.includes('news_report')
+    normalized.includes("article") ||
+    normalized.includes("headline") ||
+    normalized.includes("news_report")
   ) {
-    return 'news';
+    return "news";
   }
 
   if (
-    normalized.includes('event') ||
-    normalized.includes('arc') ||
-    normalized.includes('world_fact') ||
-    normalized.includes('daily_topic')
+    normalized.includes("event") ||
+    normalized.includes("arc") ||
+    normalized.includes("world_fact") ||
+    normalized.includes("daily_topic")
   ) {
-    return 'narratives';
+    return "narratives";
   }
 
   if (
-    normalized.includes('multi_step_decision') ||
-    normalized.startsWith('npc') ||
-    normalized.includes('autonomous') ||
-    normalized.includes('market-decisions')
+    normalized.includes("multi_step_decision") ||
+    normalized.startsWith("npc") ||
+    normalized.includes("autonomous") ||
+    normalized.includes("market-decisions")
   ) {
-    return 'npc';
+    return "npc";
   }
 
-  return 'other';
+  return "other";
 }
 
 function buildPromptExamples(calls: PromptCallArtifact[], limit = 12) {
@@ -941,7 +943,7 @@ function buildPromptSurfaceReport(calls: PromptCallArtifact[]) {
 
 function buildSurfaceModelIO(calls: PromptCallArtifact[], surface: string) {
   const surfaceCalls = calls.filter(
-    (call) => getPromptSurface(call.promptType) === surface
+    (call) => getPromptSurface(call.promptType) === surface,
   );
 
   return {
@@ -959,7 +961,7 @@ async function invokeHandler(
   label: string,
   cycle: number,
   handler: (request: Request) => Promise<Response>,
-  request: Request
+  request: Request,
 ): Promise<JobArtifact> {
   const startedAt = new Date();
   try {
@@ -969,7 +971,7 @@ async function invokeHandler(
     const body = bodyText.length > 0 ? safeJsonParse(bodyText) : null;
     const semanticSuccess =
       response.ok &&
-      !(isJsonRecord(body) && 'success' in body && body.success === false);
+      !(isJsonRecord(body) && "success" in body && body.success === false);
 
     return {
       name: label,
@@ -999,17 +1001,17 @@ async function invokeCronRoute(
   modulePath: string,
   label: string,
   cycle: number,
-  urlPath: string
+  urlPath: string,
 ): Promise<JobArtifact> {
   const module = (await import(modulePath)) as {
     POST: (request: Request) => Promise<Response>;
   };
   const request = new Request(`http://localhost${urlPath}`, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      authorization: 'Bearer development',
-      'content-type': 'application/json',
-      'user-agent': 'feed-core-sim/1.0',
+      authorization: "Bearer development",
+      "content-type": "application/json",
+      "user-agent": "feed-core-sim/1.0",
     },
   });
 
@@ -1019,15 +1021,15 @@ async function invokeCronRoute(
 async function invokeGetRoute(
   modulePath: string,
   label: string,
-  urlPath: string
+  urlPath: string,
 ): Promise<JobArtifact> {
   const module = (await import(modulePath)) as {
     GET: (request: Request) => Promise<Response>;
   };
   const request = new Request(`http://localhost${urlPath}`, {
-    method: 'GET',
+    method: "GET",
     headers: {
-      'user-agent': 'feed-core-sim/1.0',
+      "user-agent": "feed-core-sim/1.0",
     },
   });
 
@@ -1050,12 +1052,12 @@ async function installRssFetchCache() {
     .where(eq(rssFeedSources.isActive, true));
 
   const sourceByUrl = new Map(
-    sources.map((source) => [source.feedUrl, source])
+    sources.map((source) => [source.feedUrl, source]),
   );
 
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url =
-      typeof input === 'string'
+      typeof input === "string"
         ? input
         : input instanceof URL
           ? input.toString()
@@ -1067,8 +1069,8 @@ async function installRssFetchCache() {
     }
 
     const cachePath = path.join(rssCacheDir, `${source.id}.json`);
-    if (rssMode === 'snapshot' && statExists(cachePath)) {
-      const cached = JSON.parse(readFileSync(cachePath, 'utf8')) as {
+    if (rssMode === "snapshot" && statExists(cachePath)) {
+      const cached = JSON.parse(readFileSync(cachePath, "utf8")) as {
         status: number;
         headers: Record<string, string>;
         body: string;
@@ -1117,13 +1119,13 @@ function statExists(filePath: string): boolean {
 
 async function collectCycleSnapshot(since: Date) {
   const actorIds = new Set(
-    StaticDataRegistry.getAllActors().map((actor) => actor.id)
+    StaticDataRegistry.getAllActors().map((actor) => actor.id),
   );
   const organizationIds = new Set(
-    StaticDataRegistry.getAllOrganizations().map((org) => org.id)
+    StaticDataRegistry.getAllOrganizations().map((org) => org.id),
   );
 
-  const recentPosts: CycleSnapshot['samples']['posts'] = await db
+  const recentPosts: CycleSnapshot["samples"]["posts"] = await db
     .select({
       id: posts.id,
       authorId: posts.authorId,
@@ -1140,7 +1142,7 @@ async function collectCycleSnapshot(since: Date) {
     .orderBy(desc(posts.createdAt))
     .limit(200);
 
-  const recentEvents: CycleSnapshot['samples']['events'] = await db
+  const recentEvents: CycleSnapshot["samples"]["events"] = await db
     .select({
       id: worldEvents.id,
       eventType: worldEvents.eventType,
@@ -1155,7 +1157,7 @@ async function collectCycleSnapshot(since: Date) {
     .orderBy(desc(worldEvents.createdAt))
     .limit(200);
 
-  const recentQuestions: CycleSnapshot['samples']['questions'] = await db
+  const recentQuestions: CycleSnapshot["samples"]["questions"] = await db
     .select({
       id: questions.id,
       questionNumber: questions.questionNumber,
@@ -1199,8 +1201,8 @@ async function collectCycleSnapshot(since: Date) {
     .where(
       and(
         eq(timeframedMarkets.isActive, true),
-        eq(timeframedMarkets.isResolved, false)
-      )
+        eq(timeframedMarkets.isResolved, false),
+      ),
     )
     .orderBy(desc(timeframedMarkets.createdAt))
     .limit(200);
@@ -1226,10 +1228,10 @@ async function collectCycleSnapshot(since: Date) {
       : [];
 
   const linkedQuestionById = new Map(
-    linkedQuestions.map((question) => [question.id, question])
+    linkedQuestions.map((question) => [question.id, question]),
   );
 
-  const recentHeadlines: CycleSnapshot['samples']['headlines'] = await db
+  const recentHeadlines: CycleSnapshot["samples"]["headlines"] = await db
     .select({
       id: rssHeadlines.id,
       title: rssHeadlines.title,
@@ -1241,7 +1243,7 @@ async function collectCycleSnapshot(since: Date) {
     .orderBy(desc(rssHeadlines.fetchedAt))
     .limit(100);
 
-  const recentParodies: CycleSnapshot['samples']['parodies'] = await db
+  const recentParodies: CycleSnapshot["samples"]["parodies"] = await db
     .select({
       id: parodyHeadlines.id,
       originalTitle: parodyHeadlines.originalTitle,
@@ -1253,7 +1255,7 @@ async function collectCycleSnapshot(since: Date) {
     .orderBy(desc(parodyHeadlines.generatedAt))
     .limit(100);
 
-  const recentFacts: CycleSnapshot['samples']['worldFacts'] = await db
+  const recentFacts: CycleSnapshot["samples"]["worldFacts"] = await db
     .select({
       id: worldFacts.id,
       category: worldFacts.category,
@@ -1266,7 +1268,7 @@ async function collectCycleSnapshot(since: Date) {
     .orderBy(desc(worldFacts.createdAt))
     .limit(200);
 
-  const recentPredictionHistory: CycleSnapshot['samples']['predictionPriceHistory'] =
+  const recentPredictionHistory: CycleSnapshot["samples"]["predictionPriceHistory"] =
     await db
       .select({
         id: predictionPriceHistories.id,
@@ -1282,7 +1284,7 @@ async function collectCycleSnapshot(since: Date) {
       .orderBy(desc(predictionPriceHistories.createdAt))
       .limit(200);
 
-  const recentStockPrices: CycleSnapshot['samples']['stockPrices'] = await db
+  const recentStockPrices: CycleSnapshot["samples"]["stockPrices"] = await db
     .select({
       id: stockPrices.id,
       organizationId: stockPrices.organizationId,
@@ -1297,14 +1299,14 @@ async function collectCycleSnapshot(since: Date) {
     .limit(200);
 
   const orgPosts = recentPosts.filter((post) =>
-    organizationIds.has(post.authorId)
+    organizationIds.has(post.authorId),
   );
   const actorPosts = recentPosts.filter((post) => actorIds.has(post.authorId));
   const articlePosts = recentPosts.filter(
     (post) =>
-      post.type === 'article' ||
+      post.type === "article" ||
       post.articleTitle !== null ||
-      post.category === 'article'
+      post.category === "article",
   );
 
   return {
@@ -1337,33 +1339,33 @@ async function collectCycleSnapshot(since: Date) {
         recentQuestions.map((question) => ({
           id: question.id,
           text: question.text,
-        }))
+        })),
       ),
       eventDescriptions: buildDuplicateStats(
         recentEvents.map((event) => ({
           id: event.id,
           text: event.description,
-        }))
+        })),
       ),
       postBodies: buildDuplicateStats(
         recentPosts.map((post) => ({
           id: post.id,
           text: post.content,
-        }))
+        })),
       ),
       articleTitles: buildDuplicateStats(
         articlePosts
           .filter((post) => post.articleTitle)
           .map((post) => ({
             id: post.id,
-            text: post.articleTitle ?? '',
-          }))
+            text: post.articleTitle ?? "",
+          })),
       ),
       activeMarketQuestions: buildDuplicateStats(
         activeTimeframedMarkets.map((market) => ({
           id: market.id,
-          text: linkedQuestionById.get(market.questionId ?? '')?.text ?? '',
-        }))
+          text: linkedQuestionById.get(market.questionId ?? "")?.text ?? "",
+        })),
       ),
     },
     timeframeBreakdown: activeTimeframedMarkets.reduce<Record<string, number>>(
@@ -1372,7 +1374,7 @@ async function collectCycleSnapshot(since: Date) {
         acc[key] = (acc[key] ?? 0) + 1;
         return acc;
       },
-      {}
+      {},
     ),
   };
 }
@@ -1476,7 +1478,7 @@ async function collectTrajectoryAudit(since: Date): Promise<TrajectoryAudit> {
     .limit(1000);
 
   const trajectoryById = new Map(
-    trajectoryRows.map((row) => [row.trajectoryId, row])
+    trajectoryRows.map((row) => [row.trajectoryId, row]),
   );
 
   const actionAttempts: ActionAttemptRecord[] = [];
@@ -1485,22 +1487,22 @@ async function collectTrajectoryAudit(since: Date): Promise<TrajectoryAudit> {
     for (const rawStep of steps) {
       if (!isJsonRecord(rawStep)) continue;
       const action = isJsonRecord(rawStep.action) ? rawStep.action : null;
-      if (!action || typeof action.actionType !== 'string') continue;
+      if (!action || typeof action.actionType !== "string") continue;
 
       actionAttempts.push({
         trajectoryId: row.trajectoryId,
         agentId: row.agentId,
         finalStatus: row.finalStatus,
-        stepId: typeof rawStep.stepId === 'string' ? rawStep.stepId : '',
+        stepId: typeof rawStep.stepId === "string" ? rawStep.stepId : "",
         stepNumber:
-          typeof rawStep.stepNumber === 'number' ? rawStep.stepNumber : 0,
+          typeof rawStep.stepNumber === "number" ? rawStep.stepNumber : 0,
         timestamp:
-          typeof rawStep.timestamp === 'number' ? rawStep.timestamp : 0,
+          typeof rawStep.timestamp === "number" ? rawStep.timestamp : 0,
         actionType: action.actionType,
         success: action.success === true,
-        error: typeof action.error === 'string' ? action.error : undefined,
+        error: typeof action.error === "string" ? action.error : undefined,
         reasoning:
-          typeof action.reasoning === 'string' ? action.reasoning : undefined,
+          typeof action.reasoning === "string" ? action.reasoning : undefined,
         result: isJsonRecord(action.result) ? action.result : undefined,
       });
     }
@@ -1535,9 +1537,9 @@ async function collectTrajectoryAudit(since: Date): Promise<TrajectoryAudit> {
 
   const llmCalls: PromptCallArtifact[] = llmLogRows.map((row) => ({
     promptType: row.actionType ?? row.purpose,
-    provider: 'trajectory',
+    provider: "trajectory",
     model: row.model,
-    format: 'text',
+    format: "text",
     temperature: 0,
     maxTokens: row.completionTokens ?? 0,
     systemPrompt: row.systemPrompt,
@@ -1550,7 +1552,7 @@ async function collectTrajectoryAudit(since: Date): Promise<TrajectoryAudit> {
     durationMs: row.latencyMs ?? 0,
     success: true,
     capturedAt: row.createdAt.toISOString(),
-    source: 'npc',
+    source: "npc",
     actionType: row.actionType ?? undefined,
     trajectoryId: row.trajectoryId,
     agentId: trajectoryById.get(row.trajectoryId)?.agentId,
@@ -1587,7 +1589,7 @@ async function collectTrajectoryAudit(since: Date): Promise<TrajectoryAudit> {
         }))
         .sort((left, right) => right.attempts - left.attempts),
       unusedCoreActions: CORE_NPC_ACTIONS.filter(
-        (actionType) => !byActionType.has(actionType)
+        (actionType) => !byActionType.has(actionType),
       ),
     },
   };
@@ -1597,7 +1599,7 @@ function collectDagTraceDirectories(since: Date): string[] {
   if (!statExists(DAG_TRACE_DIR)) return [];
 
   return readdirSync(DAG_TRACE_DIR)
-    .filter((entry) => entry.startsWith('tick-'))
+    .filter((entry) => entry.startsWith("tick-"))
     .map((entry) => path.join(DAG_TRACE_DIR, entry))
     .filter((entryPath) => {
       try {
@@ -1626,43 +1628,43 @@ function getEmptyTrajectoryAudit(): TrajectoryAudit {
 
 function getHoursSince(
   timestamp: Date | string | null | undefined,
-  now: Date
+  now: Date,
 ): number | null {
   if (!timestamp) return null;
   const value = timestamp instanceof Date ? timestamp : new Date(timestamp);
   if (Number.isNaN(value.getTime())) return null;
   return Number(
-    ((now.getTime() - value.getTime()) / (1000 * 60 * 60)).toFixed(2)
+    ((now.getTime() - value.getTime()) / (1000 * 60 * 60)).toFixed(2),
   );
 }
 
 function getNarrativeStaleThresholdHours(
-  timeframe: string | null | undefined
+  timeframe: string | null | undefined,
 ): number {
   switch (timeframe) {
-    case '15m':
-    case '30m':
-    case 'flash':
+    case "15m":
+    case "30m":
+    case "flash":
       return 1;
-    case '1h':
-    case '2h':
-    case '4h':
-    case '6h':
-    case 'intraday':
+    case "1h":
+    case "2h":
+    case "4h":
+    case "6h":
+    case "intraday":
       return 6;
-    case '12h':
-    case '24h':
-    case 'daily':
+    case "12h":
+    case "24h":
+    case "daily":
       return 24;
-    case '3d':
-    case '7d':
-    case 'weekly':
+    case "3d":
+    case "7d":
+    case "weekly":
       return 72;
-    case 'monthly':
+    case "monthly":
       return 168;
-    case 'quarterly':
+    case "quarterly":
       return 336;
-    case 'longterm':
+    case "longterm":
       return 720;
     default:
       return 24;
@@ -1671,7 +1673,7 @@ function getNarrativeStaleThresholdHours(
 
 async function collectEventArtifacts(
   since: Date,
-  promptCalls: PromptCallArtifact[]
+  promptCalls: PromptCallArtifact[],
 ) {
   const eventRows: Array<{
     id: string;
@@ -1706,8 +1708,8 @@ async function collectEventArtifacts(
         .map((event) => event.relatedQuestion)
         .filter(
           (questionNumber): questionNumber is number =>
-            typeof questionNumber === 'number'
-        )
+            typeof questionNumber === "number",
+        ),
     ),
   ];
 
@@ -1732,7 +1734,7 @@ async function collectEventArtifacts(
       : [];
 
   const questionByNumber = new Map(
-    relatedQuestionRows.map((question) => [question.questionNumber, question])
+    relatedQuestionRows.map((question) => [question.questionNumber, question]),
   );
 
   const actorFrequency = new Map<string, number>();
@@ -1764,7 +1766,7 @@ async function collectEventArtifacts(
     const threadKey =
       event.relatedQuestion !== null
         ? `question:${event.relatedQuestion}`
-        : `actors:${(event.actors ?? []).slice().sort().join('|') || event.eventType}`;
+        : `actors:${(event.actors ?? []).slice().sort().join("|") || event.eventType}`;
     const existing = eventsByThread.get(threadKey) ?? {
       threadKey,
       questionNumber: event.relatedQuestion,
@@ -1796,18 +1798,18 @@ async function collectEventArtifacts(
     eventRows.map((event) => ({
       id: event.id,
       text: event.description,
-    }))
+    })),
   );
-  const modelIO = buildSurfaceModelIO(promptCalls, 'narratives');
+  const modelIO = buildSurfaceModelIO(promptCalls, "narratives");
 
   return {
     summary: {
       totalEvents: eventRows.length,
       linkedToQuestionCount: eventRows.filter(
-        (event) => event.relatedQuestion !== null
+        (event) => event.relatedQuestion !== null,
       ).length,
       unlinkedEventCount: eventRows.filter(
-        (event) => event.relatedQuestion === null
+        (event) => event.relatedQuestion === null,
       ).length,
       byType,
       duplicateDescriptionGroups: duplicates.exactDuplicateGroups.length,
@@ -1859,7 +1861,7 @@ async function collectEventArtifacts(
 
 async function collectNarrativeArtifacts(
   since: Date,
-  promptCalls: PromptCallArtifact[]
+  promptCalls: PromptCallArtifact[],
 ) {
   const now = new Date();
   const latestTopic = await db
@@ -1951,8 +1953,8 @@ async function collectNarrativeArtifacts(
     .where(
       and(
         eq(timeframedMarkets.isActive, true),
-        eq(timeframedMarkets.isResolved, false)
-      )
+        eq(timeframedMarkets.isResolved, false),
+      ),
     )
     .orderBy(desc(timeframedMarkets.createdAt))
     .limit(500);
@@ -2069,9 +2071,9 @@ async function collectNarrativeArtifacts(
     arcRows.map((arc) => ({
       id: arc.questionId,
       text: arc.questionText,
-    }))
+    })),
   );
-  const modelIO = buildSurfaceModelIO(promptCalls, 'narratives');
+  const modelIO = buildSurfaceModelIO(promptCalls, "narratives");
 
   const items = arcRows.map((arc) => {
     const linkedMarkets = marketsByQuestionId.get(arc.questionId) ?? [];
@@ -2088,11 +2090,11 @@ async function collectNarrativeArtifacts(
       null;
     const hoursSinceNarrativeSignal = getHoursSince(
       arc.lastEventAt ?? arc.stateEnteredAt,
-      now
+      now,
     );
     const isStale =
-      arc.questionStatus === 'active' &&
-      arc.currentState !== 'resolution' &&
+      arc.questionStatus === "active" &&
+      arc.currentState !== "resolution" &&
       hoursSinceNarrativeSignal !== null &&
       hoursSinceNarrativeSignal >
         getNarrativeStaleThresholdHours(primaryTimeframe);
@@ -2120,7 +2122,7 @@ async function collectNarrativeArtifacts(
       scheduledEventCount: scheduledEvents.length,
       firedScheduledEventCount: scheduledEvents.filter(
         (event) =>
-          isJsonRecord(event) && 'fired' in event && event.fired === true
+          isJsonRecord(event) && "fired" in event && event.fired === true,
       ).length,
       activeMarkets: linkedMarkets,
       recentEvents: recentEvents.slice(0, 8),
@@ -2134,11 +2136,11 @@ async function collectNarrativeArtifacts(
   }, {});
   const spawnSkipReasons = spawnLogs.reduce<Record<string, number>>(
     (acc, log) => {
-      const key = log.skipReason ?? 'none';
+      const key = log.skipReason ?? "none";
       acc[key] = (acc[key] ?? 0) + 1;
       return acc;
     },
-    {}
+    {},
   );
 
   return {
@@ -2155,11 +2157,11 @@ async function collectNarrativeArtifacts(
           }
         : null,
       totalNarratives: items.length,
-      activeNarratives: items.filter((item) => item.questionStatus === 'active')
+      activeNarratives: items.filter((item) => item.questionStatus === "active")
         .length,
       staleNarratives: items.filter((item) => item.isStale).length,
       narrativesWithoutRecentEvents: items.filter(
-        (item) => item.recentEvents.length === 0
+        (item) => item.recentEvents.length === 0,
       ).length,
       stateBreakdown,
       duplicateQuestionGroups: duplicates.exactDuplicateGroups.length,
@@ -2181,7 +2183,7 @@ async function collectNarrativeArtifacts(
 
 async function collectQuestionArtifacts(
   since: Date,
-  promptCalls: PromptCallArtifact[]
+  promptCalls: PromptCallArtifact[],
 ) {
   const createdQuestions: Array<{
     id: string;
@@ -2245,8 +2247,8 @@ async function collectQuestionArtifacts(
     .where(
       and(
         eq(timeframedMarkets.isActive, true),
-        eq(timeframedMarkets.isResolved, false)
-      )
+        eq(timeframedMarkets.isResolved, false),
+      ),
     )
     .orderBy(desc(timeframedMarkets.createdAt))
     .limit(500);
@@ -2306,7 +2308,7 @@ async function collectQuestionArtifacts(
   const questionIds = [...questionMap.keys()];
   const questionNumbers = [
     ...new Set(
-      [...questionMap.values()].map((question) => question.questionNumber)
+      [...questionMap.values()].map((question) => question.questionNumber),
     ),
   ];
 
@@ -2397,7 +2399,7 @@ async function collectQuestionArtifacts(
     items.map((question) => ({
       id: question.id,
       text: question.text,
-    }))
+    })),
   );
   const timeframeBreakdown = items
     .flatMap((question) => question.activeMarkets)
@@ -2408,19 +2410,19 @@ async function collectQuestionArtifacts(
     }, {});
   const topicBreakdown = items.reduce<Record<string, number>>(
     (acc, question) => {
-      const key = question.topicLabel ?? question.topicKey ?? 'unlabeled';
+      const key = question.topicLabel ?? question.topicKey ?? "unlabeled";
       acc[key] = (acc[key] ?? 0) + 1;
       return acc;
     },
-    {}
+    {},
   );
-  const modelIO = buildSurfaceModelIO(promptCalls, 'questions');
+  const modelIO = buildSurfaceModelIO(promptCalls, "questions");
 
   return {
     summary: {
       createdDuringRun: createdQuestions.length,
       activeQuestionCount: new Set(
-        activeQuestionRows.map((row) => row.questionId)
+        activeQuestionRows.map((row) => row.questionId),
       ).size,
       totalQuestionsEvaluated: items.length,
       duplicateQuestionGroups: duplicates.exactDuplicateGroups.length,
@@ -2441,12 +2443,12 @@ async function collectNewsArtifacts(
   since: Date,
   promptCalls: PromptCallArtifact[],
   storiesFeed: FeedResult,
-  breakingNewsWidget: JobArtifact
+  breakingNewsWidget: JobArtifact,
 ) {
   const organizationIds = new Set(
     StaticDataRegistry.getAllOrganizations().map(
-      (organization) => organization.id
-    )
+      (organization) => organization.id,
+    ),
   );
   const recentPosts: Array<{
     id: string;
@@ -2483,15 +2485,15 @@ async function collectNewsArtifacts(
     .orderBy(desc(posts.createdAt))
     .limit(500);
 
-  const topLevelPosts = recentPosts.filter((post) => post.type !== 'comment');
+  const topLevelPosts = recentPosts.filter((post) => post.type !== "comment");
   const organizationPosts = topLevelPosts.filter((post) =>
-    organizationIds.has(post.authorId)
+    organizationIds.has(post.authorId),
   );
   const articlePosts = topLevelPosts.filter(
     (post) =>
-      post.type === 'article' ||
+      post.type === "article" ||
       post.articleTitle !== null ||
-      post.category === 'article'
+      post.category === "article",
   );
 
   const headlines: Array<{
@@ -2548,23 +2550,23 @@ async function collectNewsArtifacts(
         story.title ??
         story.posts[0]?.content ??
         story.storyKey,
-    }))
+    })),
   );
   const headlineDuplicates = buildDuplicateStats(
     headlines.map((headline) => ({
       id: headline.id,
       text: headline.title,
-    }))
+    })),
   );
   const articleTitleDuplicates = buildDuplicateStats(
     articlePosts
       .filter((post) => post.articleTitle)
       .map((post) => ({
         id: post.id,
-        text: post.articleTitle ?? '',
-      }))
+        text: post.articleTitle ?? "",
+      })),
   );
-  const modelIO = buildSurfaceModelIO(promptCalls, 'news');
+  const modelIO = buildSurfaceModelIO(promptCalls, "news");
 
   return {
     summary: {
@@ -2624,7 +2626,7 @@ async function collectTrendingArtifacts(
   since: Date,
   promptCalls: PromptCallArtifact[],
   trendingSnapshot: Awaited<ReturnType<typeof collectTrendingTagSnapshot>>,
-  trendingWidget: JobArtifact
+  trendingWidget: JobArtifact,
 ) {
   const tagIds = trendingSnapshot.map((tag) => tag.tagId);
   const taggedPosts: Array<{
@@ -2651,8 +2653,8 @@ async function collectTrendingArtifacts(
             and(
               inArray(postTags.tagId, tagIds),
               isNull(posts.deletedAt),
-              gte(posts.createdAt, since)
-            )
+              gte(posts.createdAt, since),
+            ),
           )
           .orderBy(desc(posts.createdAt))
           .limit(500)
@@ -2689,31 +2691,31 @@ async function collectTrendingArtifacts(
   const widgetSummaryDuplicates = buildDuplicateStats(
     widgetTrending.map((item, index) => ({
       id: String(item.id ?? index),
-      text: typeof item.summary === 'string' ? item.summary : '',
-    }))
+      text: typeof item.summary === "string" ? item.summary : "",
+    })),
   );
   const tagNameDuplicates = buildDuplicateStats(
     trendingSnapshot.map((tag) => ({
       id: tag.id,
-      text: tag.tagDisplayName ?? tag.tagName ?? '',
-    }))
+      text: tag.tagDisplayName ?? tag.tagName ?? "",
+    })),
   );
   const categoryBreakdown = trendingSnapshot.reduce<Record<string, number>>(
     (acc, tag) => {
-      const key = tag.category ?? 'uncategorized';
+      const key = tag.category ?? "uncategorized";
       acc[key] = (acc[key] ?? 0) + 1;
       return acc;
     },
-    {}
+    {},
   );
-  const modelIO = buildSurfaceModelIO(promptCalls, 'trending');
+  const modelIO = buildSurfaceModelIO(promptCalls, "trending");
 
   return {
     summary: {
       trendingTagCount: trendingSnapshot.length,
       groupedTrendingStories: widgetTrending.length,
       zeroPostTrendingTags: trendingSnapshot.filter(
-        (tag) => tag.postCount === 0
+        (tag) => tag.postCount === 0,
       ).length,
       categoryBreakdown,
       duplicateTagNameGroups: tagNameDuplicates.exactDuplicateGroups.length,
@@ -2735,7 +2737,7 @@ async function collectTrendingArtifacts(
       widgetGroup:
         widgetTrending.find(
           (item) =>
-            Array.isArray(item.tagIds) && item.tagIds.includes(tag.tagId)
+            Array.isArray(item.tagIds) && item.tagIds.includes(tag.tagId),
         ) ?? null,
     })),
     widget: trendingWidget.body,
@@ -2750,7 +2752,7 @@ async function collectTrendingArtifacts(
 function buildQuestionReport(cycleSnapshots: CycleSnapshot[]) {
   const questionsById = new Map<
     string,
-    CycleSnapshot['samples']['questions'][number]
+    CycleSnapshot["samples"]["questions"][number]
   >();
   for (const snapshot of cycleSnapshots) {
     for (const question of snapshot.samples.questions) {
@@ -2765,15 +2767,15 @@ function buildQuestionReport(cycleSnapshots: CycleSnapshot[]) {
       allQuestions.map((question) => ({
         id: question.id,
         text: question.text,
-      }))
+      })),
     ),
     topicBreakdown: allQuestions.reduce<Record<string, number>>(
       (acc, question) => {
-        const key = question.topicLabel ?? question.topicKey ?? 'unlabeled';
+        const key = question.topicLabel ?? question.topicKey ?? "unlabeled";
         acc[key] = (acc[key] ?? 0) + 1;
         return acc;
       },
-      {}
+      {},
     ),
     samples: allQuestions.slice(0, 25),
   };
@@ -2782,7 +2784,7 @@ function buildQuestionReport(cycleSnapshots: CycleSnapshot[]) {
 function buildPredictionMarketReport(cycleSnapshots: CycleSnapshot[]) {
   const latestSnapshot = cycleSnapshots.at(-1);
   const historyRows = cycleSnapshots.flatMap(
-    (snapshot) => snapshot.samples.predictionPriceHistory
+    (snapshot) => snapshot.samples.predictionPriceHistory,
   );
   const historyByMarket = new Map<
     string,
@@ -2828,28 +2830,28 @@ function buildNewsReport(cycleSnapshots: CycleSnapshot[]) {
   const articlePosts = cycleSnapshots.flatMap((snapshot) =>
     snapshot.samples.posts.filter(
       (post) =>
-        post.type === 'article' ||
+        post.type === "article" ||
         post.articleTitle !== null ||
-        post.category === 'article'
-    )
+        post.category === "article",
+    ),
   );
 
   return {
     postsCreated: cycleSnapshots.reduce(
       (sum, snapshot) => sum + snapshot.counts.posts,
-      0
+      0,
     ),
     articlePostsCreated: cycleSnapshots.reduce(
       (sum, snapshot) => sum + snapshot.counts.articlePosts,
-      0
+      0,
     ),
     rssHeadlinesFetched: cycleSnapshots.reduce(
       (sum, snapshot) => sum + snapshot.counts.rssHeadlines,
-      0
+      0,
     ),
     parodyHeadlinesGenerated: cycleSnapshots.reduce(
       (sum, snapshot) => sum + snapshot.counts.parodyHeadlines,
-      0
+      0,
     ),
     eventDuplicates: latestSnapshot?.duplicateStats.eventDescriptions ?? {
       total: 0,
@@ -2861,8 +2863,8 @@ function buildNewsReport(cycleSnapshots: CycleSnapshot[]) {
         .filter((post) => post.articleTitle)
         .map((post) => ({
           id: post.id,
-          text: post.articleTitle ?? '',
-        }))
+          text: post.articleTitle ?? "",
+        })),
     ),
   };
 }
@@ -2874,7 +2876,7 @@ function buildFeedReport(storiesFeed: FeedResult, forYouFeed: FeedResult) {
       text:
         story.storyTitle ??
         story.posts[0]?.content ??
-        (typeof story.title === 'string' ? story.title : story.storyKey),
+        (typeof story.title === "string" ? story.title : story.storyKey),
     }));
 
   return {
@@ -2893,23 +2895,23 @@ function buildWarnings(
   jobArtifacts: JobArtifact[],
   promptAudit: ReturnType<typeof buildPromptAudit>,
   cycleSnapshots: CycleSnapshot[],
-  trajectoryAudit: TrajectoryAudit
+  trajectoryAudit: TrajectoryAudit,
 ) {
   const warnings = [...promptAudit.warnings];
 
   for (const job of jobArtifacts) {
     if (!job.success) {
       warnings.push(
-        `${job.name}: request failed${job.error ? ` (${job.error})` : ''}`
+        `${job.name}: request failed${job.error ? ` (${job.error})` : ""}`,
       );
       continue;
     }
     const body = job.body;
     if (
       body &&
-      typeof body === 'object' &&
+      typeof body === "object" &&
       body !== null &&
-      'skipped' in body
+      "skipped" in body
     ) {
       const skipped = (body as JsonRecord).skipped;
       if (skipped === true) {
@@ -2921,11 +2923,11 @@ function buildWarnings(
   for (const snapshot of cycleSnapshots) {
     const counts = snapshot.counts;
     if ((counts.questions ?? 0) === 0)
-      warnings.push('No questions were created in a cycle snapshot');
+      warnings.push("No questions were created in a cycle snapshot");
     if ((counts.events ?? 0) === 0)
-      warnings.push('No world events were created in a cycle snapshot');
+      warnings.push("No world events were created in a cycle snapshot");
     if ((counts.posts ?? 0) === 0)
-      warnings.push('No posts were created in a cycle snapshot');
+      warnings.push("No posts were created in a cycle snapshot");
   }
 
   for (const actionType of trajectoryAudit.actionSummary.unusedCoreActions) {
@@ -2933,7 +2935,7 @@ function buildWarnings(
   }
 
   if (trajectoryAudit.actionSummary.totalAttempts === 0) {
-    warnings.push('No NPC action attempts were recorded in trajectories');
+    warnings.push("No NPC action attempts were recorded in trajectories");
   }
 
   return [...new Set(warnings)];
@@ -3016,28 +3018,28 @@ function buildMarkdownReport(report: {
 }) {
   const lines: string[] = [];
   lines.push(`# Core World Simulation Report`);
-  lines.push('');
+  lines.push("");
   lines.push(`- Run ID: ${report.runId}`);
   lines.push(`- Cycles: ${report.cycles}`);
   lines.push(`- RSS mode: ${report.rssMode}`);
   lines.push(`- NPC trade probability: ${npcTradeProbability}`);
   lines.push(`- Prompt calls captured: ${report.promptAudit.totalCalls}`);
-  lines.push('');
+  lines.push("");
 
   lines.push(`## Jobs`);
-  lines.push('');
+  lines.push("");
   for (const job of report.jobs) {
     lines.push(
-      `- ${job.name} (cycle ${job.cycle}): ${job.success ? 'ok' : 'failed'} in ${job.durationMs}ms`
+      `- ${job.name} (cycle ${job.cycle}): ${job.success ? "ok" : "failed"} in ${job.durationMs}ms`,
     );
   }
-  lines.push('');
+  lines.push("");
 
   lines.push(`## Cycle Snapshots`);
-  lines.push('');
+  lines.push("");
   report.cycleSnapshots.forEach((snapshot, index) => {
     lines.push(`### Cycle ${index + 1}`);
-    lines.push('');
+    lines.push("");
     lines.push(`- Posts: ${snapshot.counts.posts}`);
     lines.push(`- Org posts: ${snapshot.counts.orgPosts}`);
     lines.push(`- Actor posts: ${snapshot.counts.actorPosts}`);
@@ -3045,208 +3047,208 @@ function buildMarkdownReport(report: {
     lines.push(`- Events: ${snapshot.counts.events}`);
     lines.push(`- Questions: ${snapshot.counts.questions}`);
     lines.push(
-      `- Active timeframed markets: ${snapshot.counts.activeTimeframedMarkets}`
+      `- Active timeframed markets: ${snapshot.counts.activeTimeframedMarkets}`,
     );
     lines.push(`- RSS headlines: ${snapshot.counts.rssHeadlines}`);
     lines.push(`- Parody headlines: ${snapshot.counts.parodyHeadlines}`);
     lines.push(`- World facts: ${snapshot.counts.worldFacts}`);
-    lines.push('');
+    lines.push("");
   });
 
   lines.push(`## Feed`);
-  lines.push('');
+  lines.push("");
   lines.push(`- Stories feed stories: ${report.stories.count}`);
   lines.push(
-    `- Stories feed exact duplicate groups: ${report.stories.duplicates.exactDuplicateGroups.length}`
+    `- Stories feed exact duplicate groups: ${report.stories.duplicates.exactDuplicateGroups.length}`,
   );
   lines.push(`- For You feed stories: ${report.forYou.count}`);
   lines.push(
-    `- For You exact duplicate groups: ${report.forYou.duplicates.exactDuplicateGroups.length}`
+    `- For You exact duplicate groups: ${report.forYou.duplicates.exactDuplicateGroups.length}`,
   );
-  lines.push('');
+  lines.push("");
 
   lines.push(`## Questions`);
-  lines.push('');
+  lines.push("");
   lines.push(`- Created: ${report.questionReport.totalCreated}`);
   lines.push(
-    `- Exact duplicate groups: ${report.questionReport.duplicates.exactDuplicateGroups.length}`
+    `- Exact duplicate groups: ${report.questionReport.duplicates.exactDuplicateGroups.length}`,
   );
   lines.push(
-    `- Similar question pairs: ${report.questionReport.duplicates.similarPairs.length}`
+    `- Similar question pairs: ${report.questionReport.duplicates.similarPairs.length}`,
   );
-  lines.push('');
+  lines.push("");
 
   lines.push(`## Prediction Markets`);
-  lines.push('');
+  lines.push("");
   lines.push(
-    `- Active markets: ${report.predictionMarketReport.activeMarketCount}`
+    `- Active markets: ${report.predictionMarketReport.activeMarketCount}`,
   );
   lines.push(
-    `- Price history rows captured: ${report.predictionMarketReport.historyRows}`
+    `- Price history rows captured: ${report.predictionMarketReport.historyRows}`,
   );
   lines.push(
-    `- Markets with movement: ${report.predictionMarketReport.marketsWithMovement}`
+    `- Markets with movement: ${report.predictionMarketReport.marketsWithMovement}`,
   );
-  lines.push('');
+  lines.push("");
 
   lines.push(`## News`);
-  lines.push('');
+  lines.push("");
   lines.push(`- Posts created: ${report.newsReport.postsCreated}`);
   lines.push(
-    `- Article posts created: ${report.newsReport.articlePostsCreated}`
+    `- Article posts created: ${report.newsReport.articlePostsCreated}`,
   );
   lines.push(
-    `- RSS headlines fetched: ${report.newsReport.rssHeadlinesFetched}`
+    `- RSS headlines fetched: ${report.newsReport.rssHeadlinesFetched}`,
   );
   lines.push(
-    `- Parody headlines generated: ${report.newsReport.parodyHeadlinesGenerated}`
+    `- Parody headlines generated: ${report.newsReport.parodyHeadlinesGenerated}`,
   );
-  lines.push('');
+  lines.push("");
 
   lines.push(`## Events`);
-  lines.push('');
+  lines.push("");
   lines.push(`- Total events: ${report.eventSummary.totalEvents}`);
   lines.push(
-    `- Linked to questions: ${report.eventSummary.linkedToQuestionCount}`
+    `- Linked to questions: ${report.eventSummary.linkedToQuestionCount}`,
   );
   lines.push(
-    `- Narrative threads: ${report.eventSummary.narrativeThreadCount}`
+    `- Narrative threads: ${report.eventSummary.narrativeThreadCount}`,
   );
   lines.push(
-    `- Duplicate event groups: ${report.eventSummary.duplicateDescriptionGroups}`
+    `- Duplicate event groups: ${report.eventSummary.duplicateDescriptionGroups}`,
   );
-  lines.push('');
+  lines.push("");
 
   lines.push(`## Narratives`);
-  lines.push('');
+  lines.push("");
   lines.push(
-    `- Narratives tracked: ${report.narrativeSummary.totalNarratives}`
+    `- Narratives tracked: ${report.narrativeSummary.totalNarratives}`,
   );
   lines.push(
-    `- Active narratives: ${report.narrativeSummary.activeNarratives}`
+    `- Active narratives: ${report.narrativeSummary.activeNarratives}`,
   );
   lines.push(`- Stale narratives: ${report.narrativeSummary.staleNarratives}`);
   lines.push(
-    `- Narratives without recent events: ${report.narrativeSummary.narrativesWithoutRecentEvents}`
+    `- Narratives without recent events: ${report.narrativeSummary.narrativesWithoutRecentEvents}`,
   );
   lines.push(
-    `- Spawn attempts / spawned markets: ${report.narrativeSummary.spawnAttempts} / ${report.narrativeSummary.spawnedMarkets}`
+    `- Spawn attempts / spawned markets: ${report.narrativeSummary.spawnAttempts} / ${report.narrativeSummary.spawnedMarkets}`,
   );
-  lines.push('');
+  lines.push("");
 
   lines.push(`## Question Inventory`);
-  lines.push('');
+  lines.push("");
   lines.push(
-    `- Created during run: ${report.questionDetails.createdDuringRun}`
+    `- Created during run: ${report.questionDetails.createdDuringRun}`,
   );
   lines.push(
-    `- Active questions now: ${report.questionDetails.activeQuestionCount}`
+    `- Active questions now: ${report.questionDetails.activeQuestionCount}`,
   );
   lines.push(
-    `- Total questions evaluated: ${report.questionDetails.totalQuestionsEvaluated}`
+    `- Total questions evaluated: ${report.questionDetails.totalQuestionsEvaluated}`,
   );
   lines.push(
-    `- Questions without events: ${report.questionDetails.zeroEventQuestions}`
+    `- Questions without events: ${report.questionDetails.zeroEventQuestions}`,
   );
-  lines.push('');
+  lines.push("");
 
   lines.push(`## News Inventory`);
-  lines.push('');
+  lines.push("");
   lines.push(`- Top-level posts: ${report.newsDetails.topLevelPosts}`);
   lines.push(`- Organization posts: ${report.newsDetails.organizationPosts}`);
   lines.push(`- Stories generated: ${report.newsDetails.storiesGenerated}`);
   lines.push(
-    `- Duplicate story groups: ${report.newsDetails.duplicateStoryGroups}`
+    `- Duplicate story groups: ${report.newsDetails.duplicateStoryGroups}`,
   );
-  lines.push('');
+  lines.push("");
 
   lines.push(`## Trending`);
-  lines.push('');
+  lines.push("");
   lines.push(`- Trending tags: ${report.trendingSummary.trendingTagCount}`);
   lines.push(
-    `- Grouped trending stories: ${report.trendingSummary.groupedTrendingStories}`
+    `- Grouped trending stories: ${report.trendingSummary.groupedTrendingStories}`,
   );
   lines.push(
-    `- Zero-post trending tags: ${report.trendingSummary.zeroPostTrendingTags}`
+    `- Zero-post trending tags: ${report.trendingSummary.zeroPostTrendingTags}`,
   );
-  lines.push('');
+  lines.push("");
 
   lines.push(`## Prompt Audit`);
-  lines.push('');
+  lines.push("");
   for (const promptType of report.promptAudit.promptTypes.slice(0, 20)) {
     lines.push(
-      `- ${promptType.promptType}: ${promptType.calls} calls, ${promptType.uniqueInputs} unique inputs, ${promptType.uniqueOutputs} unique outputs, avg ${promptType.avgInputTokens}/${promptType.avgOutputTokens} tokens`
+      `- ${promptType.promptType}: ${promptType.calls} calls, ${promptType.uniqueInputs} unique inputs, ${promptType.uniqueOutputs} unique outputs, avg ${promptType.avgInputTokens}/${promptType.avgOutputTokens} tokens`,
     );
   }
-  lines.push('');
+  lines.push("");
 
   lines.push(`## Model Surfaces`);
-  lines.push('');
+  lines.push("");
   for (const surface of report.promptSurfaceReport.slice(0, 10)) {
     lines.push(
-      `- ${surface.surface}: ${surface.callCount} calls across ${surface.promptTypes.length} prompt types`
+      `- ${surface.surface}: ${surface.callCount} calls across ${surface.promptTypes.length} prompt types`,
     );
   }
-  lines.push('');
+  lines.push("");
 
   lines.push(`## NPC Actions`);
-  lines.push('');
+  lines.push("");
   lines.push(
-    `- Attempts: ${report.trajectoryAudit.actionSummary.totalAttempts}`
+    `- Attempts: ${report.trajectoryAudit.actionSummary.totalAttempts}`,
   );
   lines.push(
-    `- Successes: ${report.trajectoryAudit.actionSummary.totalSuccesses}`
+    `- Successes: ${report.trajectoryAudit.actionSummary.totalSuccesses}`,
   );
   lines.push(
-    `- Failures: ${report.trajectoryAudit.actionSummary.totalFailures}`
+    `- Failures: ${report.trajectoryAudit.actionSummary.totalFailures}`,
   );
   for (const action of report.trajectoryAudit.actionSummary.byActionType.slice(
     0,
-    12
+    12,
   )) {
     lines.push(
-      `- ${action.actionType}: ${action.attempts} attempts, ${action.successes} success, ${action.failures} failure`
+      `- ${action.actionType}: ${action.attempts} attempts, ${action.successes} success, ${action.failures} failure`,
     );
   }
   if (report.trajectoryAudit.actionSummary.unusedCoreActions.length > 0) {
-    lines.push('');
+    lines.push("");
     lines.push(
-      `- Unused core actions: ${report.trajectoryAudit.actionSummary.unusedCoreActions.join(', ')}`
+      `- Unused core actions: ${report.trajectoryAudit.actionSummary.unusedCoreActions.join(", ")}`,
     );
   }
-  lines.push('');
+  lines.push("");
 
   if (report.promptAudit.repeatedPromptBlocks.length > 0) {
     lines.push(`## Repeated Prompt Blocks`);
-    lines.push('');
+    lines.push("");
     for (const block of report.promptAudit.repeatedPromptBlocks.slice(0, 10)) {
       lines.push(
-        `- ${block.count} uses across ${block.promptTypes.length} prompt types: ${block.sample}`
+        `- ${block.count} uses across ${block.promptTypes.length} prompt types: ${block.sample}`,
       );
     }
-    lines.push('');
+    lines.push("");
   }
 
   if (report.warnings.length > 0) {
     lines.push(`## Warnings`);
-    lines.push('');
+    lines.push("");
     for (const warning of report.warnings) {
       lines.push(`- ${warning}`);
     }
-    lines.push('');
+    lines.push("");
   }
 
   lines.push(`## Widgets`);
-  lines.push('');
+  lines.push("");
   lines.push(
-    `- Trending widget: ${report.trendingWidget.success ? 'ok' : 'failed'}`
+    `- Trending widget: ${report.trendingWidget.success ? "ok" : "failed"}`,
   );
   lines.push(
-    `- Breaking news widget: ${report.breakingNewsWidget.success ? 'ok' : 'failed'}`
+    `- Breaking news widget: ${report.breakingNewsWidget.success ? "ok" : "failed"}`,
   );
-  lines.push('');
+  lines.push("");
 
-  return `${lines.join('\n')}\n`;
+  return `${lines.join("\n")}\n`;
 }
 
 async function main() {
@@ -3258,53 +3260,53 @@ async function main() {
     llmCalls.push({
       ...call,
       capturedAt: new Date().toISOString(),
-      source: 'engine',
+      source: "engine",
     });
     priorCallback?.(call);
   });
 
   const restoreFetch =
-    rssMode === 'snapshot' ? await installRssFetchCache() : () => {};
+    rssMode === "snapshot" ? await installRssFetchCache() : () => {};
 
   const jobArtifacts: JobArtifact[] = [];
   const cycleSnapshots: CycleSnapshot[] = [];
 
   logger.info(
-    'Starting core world simulation',
+    "Starting core world simulation",
     {
       cycles,
       rssMode,
       npcTradeProbability,
       outputDir,
     },
-    'CoreWorldSim'
+    "CoreWorldSim",
   );
 
   try {
     const bootstrapResult = await bootstrapGameIfNeeded();
-    writeJson(path.join(outputDir, 'bootstrap.json'), bootstrapResult);
+    writeJson(path.join(outputDir, "bootstrap.json"), bootstrapResult);
 
     for (let cycle = 1; cycle <= cycles; cycle++) {
       const cycleStartedAt = new Date();
       logger.info(
         `Running simulation cycle ${cycle}/${cycles}`,
         undefined,
-        'CoreWorldSim'
+        "CoreWorldSim",
       );
 
       const worldFactsJob = await invokeCronRoute(
-        '../apps/web/src/app/api/cron/world-facts/route.ts',
-        'world-facts',
+        "../apps/web/src/app/api/cron/world-facts/route.ts",
+        "world-facts",
         cycle,
-        '/api/cron/world-facts'
+        "/api/cron/world-facts",
       );
       jobArtifacts.push(worldFactsJob);
       writeJson(
         path.join(
           jobsDir,
-          `${String(cycle).padStart(2, '0')}-world-facts.json`
+          `${String(cycle).padStart(2, "0")}-world-facts.json`,
         ),
-        worldFactsJob
+        worldFactsJob,
       );
 
       const gameTickStartedAt = new Date();
@@ -3313,7 +3315,7 @@ async function main() {
         const gameTickResult = await executeGameTick();
         const gameTickCompletedAt = new Date();
         gameTickJob = {
-          name: 'game-tick',
+          name: "game-tick",
           cycle,
           startedAt: gameTickStartedAt.toISOString(),
           completedAt: gameTickCompletedAt.toISOString(),
@@ -3325,7 +3327,7 @@ async function main() {
       } catch (error) {
         const gameTickCompletedAt = new Date();
         gameTickJob = {
-          name: 'game-tick',
+          name: "game-tick",
           cycle,
           startedAt: gameTickStartedAt.toISOString(),
           completedAt: gameTickCompletedAt.toISOString(),
@@ -3337,65 +3339,65 @@ async function main() {
       }
       jobArtifacts.push(gameTickJob);
       writeJson(
-        path.join(jobsDir, `${String(cycle).padStart(2, '0')}-game-tick.json`),
-        gameTickJob
+        path.join(jobsDir, `${String(cycle).padStart(2, "0")}-game-tick.json`),
+        gameTickJob,
       );
 
       const marketsJob = await invokeCronRoute(
-        '../apps/web/src/app/api/cron/markets-tick/route.ts',
-        'markets-tick',
+        "../apps/web/src/app/api/cron/markets-tick/route.ts",
+        "markets-tick",
         cycle,
-        '/api/cron/markets-tick'
+        "/api/cron/markets-tick",
       );
       jobArtifacts.push(marketsJob);
       writeJson(
         path.join(
           jobsDir,
-          `${String(cycle).padStart(2, '0')}-markets-tick.json`
+          `${String(cycle).padStart(2, "0")}-markets-tick.json`,
         ),
-        marketsJob
+        marketsJob,
       );
 
       const npcJob = await invokeCronRoute(
-        '../apps/web/src/app/api/cron/npc-tick/route.ts',
-        'npc-tick',
+        "../apps/web/src/app/api/cron/npc-tick/route.ts",
+        "npc-tick",
         cycle,
-        '/api/cron/npc-tick'
+        "/api/cron/npc-tick",
       );
       jobArtifacts.push(npcJob);
       writeJson(
-        path.join(jobsDir, `${String(cycle).padStart(2, '0')}-npc-tick.json`),
-        npcJob
+        path.join(jobsDir, `${String(cycle).padStart(2, "0")}-npc-tick.json`),
+        npcJob,
       );
 
       const organizationJob = await invokeCronRoute(
-        '../apps/web/src/app/api/cron/organization-tick/route.ts',
-        'organization-tick',
+        "../apps/web/src/app/api/cron/organization-tick/route.ts",
+        "organization-tick",
         cycle,
-        '/api/cron/organization-tick'
+        "/api/cron/organization-tick",
       );
       jobArtifacts.push(organizationJob);
       writeJson(
         path.join(
           jobsDir,
-          `${String(cycle).padStart(2, '0')}-organization-tick.json`
+          `${String(cycle).padStart(2, "0")}-organization-tick.json`,
         ),
-        organizationJob
+        organizationJob,
       );
 
       const articleJob = await invokeCronRoute(
-        '../apps/web/src/app/api/cron/article-tick/route.ts',
-        'article-tick',
+        "../apps/web/src/app/api/cron/article-tick/route.ts",
+        "article-tick",
         cycle,
-        '/api/cron/article-tick'
+        "/api/cron/article-tick",
       );
       jobArtifacts.push(articleJob);
       writeJson(
         path.join(
           jobsDir,
-          `${String(cycle).padStart(2, '0')}-article-tick.json`
+          `${String(cycle).padStart(2, "0")}-article-tick.json`,
         ),
-        articleJob
+        articleJob,
       );
 
       const cycleSnapshot = await collectCycleSnapshot(cycleStartedAt);
@@ -3404,55 +3406,55 @@ async function main() {
     }
 
     const { buildStoriesFeed } = (await import(
-      '../apps/web/src/app/api/feed/stories/pipeline.ts'
+      "../apps/web/src/app/api/feed/stories/pipeline.ts"
     )) as {
       buildStoriesFeed: () => Promise<FeedResult>;
     };
     const { buildForYouFeed } = (await import(
-      '../apps/web/src/app/api/feed/for-you/pipeline.ts'
+      "../apps/web/src/app/api/feed/for-you/pipeline.ts"
     )) as {
       buildForYouFeed: (userId?: string | null) => Promise<FeedResult>;
     };
 
     const storiesFeed = await buildStoriesFeed();
     const forYouFeed = await buildForYouFeed(null);
-    writeJson(path.join(feedsDir, 'stories.json'), storiesFeed);
-    writeJson(path.join(feedsDir, 'for-you.json'), forYouFeed);
+    writeJson(path.join(feedsDir, "stories.json"), storiesFeed);
+    writeJson(path.join(feedsDir, "for-you.json"), forYouFeed);
 
     const trendingWidget = await invokeGetRoute(
-      '../apps/web/src/app/api/feed/widgets/trending/route.ts',
-      'trending-widget',
-      '/api/feed/widgets/trending'
+      "../apps/web/src/app/api/feed/widgets/trending/route.ts",
+      "trending-widget",
+      "/api/feed/widgets/trending",
     );
-    writeJson(path.join(widgetsDir, 'trending.json'), trendingWidget);
+    writeJson(path.join(widgetsDir, "trending.json"), trendingWidget);
 
     const breakingNewsWidget = await invokeGetRoute(
-      '../apps/web/src/app/api/feed/widgets/breaking-news/route.ts',
-      'breaking-news-widget',
-      '/api/feed/widgets/breaking-news?limit=10'
+      "../apps/web/src/app/api/feed/widgets/breaking-news/route.ts",
+      "breaking-news-widget",
+      "/api/feed/widgets/breaking-news?limit=10",
     );
-    writeJson(path.join(widgetsDir, 'breaking-news.json'), breakingNewsWidget);
+    writeJson(path.join(widgetsDir, "breaking-news.json"), breakingNewsWidget);
 
     const trendingSnapshot = await collectTrendingTagSnapshot();
-    writeJson(path.join(widgetsDir, 'trending-tags-db.json'), trendingSnapshot);
+    writeJson(path.join(widgetsDir, "trending-tags-db.json"), trendingSnapshot);
 
     const trajectoryAudit = await collectTrajectoryAudit(runStartedAt);
     const copiedPromptLogs: string[] = [];
-    const debugPromptDir = path.resolve(process.cwd(), 'debug', 'prompts');
+    const debugPromptDir = path.resolve(process.cwd(), "debug", "prompts");
     if (statExists(debugPromptDir)) {
       for (const entry of readdirSync(debugPromptDir)) {
         const fullPath = path.join(debugPromptDir, entry);
         const stats = statSync(fullPath);
         if (stats.mtimeMs < runStartedAt.getTime()) continue;
-        const targetPath = path.join(promptsDir, 'markdown', entry);
-        writeText(targetPath, readFileSync(fullPath, 'utf8'));
+        const targetPath = path.join(promptsDir, "markdown", entry);
+        writeText(targetPath, readFileSync(fullPath, "utf8"));
         copiedPromptLogs.push(targetPath);
       }
     }
 
     const debugPromptCalls = copiedPromptLogs
       .map((filePath) =>
-        parsePromptMarkdownLog(filePath, readFileSync(filePath, 'utf8'))
+        parsePromptMarkdownLog(filePath, readFileSync(filePath, "utf8")),
       )
       .filter((call): call is PromptCallArtifact => call !== null);
     const allPromptCalls = mergePromptCalls([
@@ -3462,23 +3464,23 @@ async function main() {
     ]);
     const promptAudit = buildPromptAudit(allPromptCalls);
     const promptSurfaceReport = buildPromptSurfaceReport(allPromptCalls);
-    writeJson(path.join(promptsDir, 'engine-llm-calls.json'), llmCalls);
+    writeJson(path.join(promptsDir, "engine-llm-calls.json"), llmCalls);
     writeJson(
-      path.join(promptsDir, 'trajectory-llm-calls.json'),
-      trajectoryAudit.llmCalls
+      path.join(promptsDir, "trajectory-llm-calls.json"),
+      trajectoryAudit.llmCalls,
     );
-    writeJson(path.join(promptsDir, 'debug-log-calls.json'), debugPromptCalls);
-    writeJson(path.join(promptsDir, 'llm-calls.json'), allPromptCalls);
-    writeJson(path.join(promptsDir, 'audit.json'), promptAudit);
+    writeJson(path.join(promptsDir, "debug-log-calls.json"), debugPromptCalls);
+    writeJson(path.join(promptsDir, "llm-calls.json"), allPromptCalls);
+    writeJson(path.join(promptsDir, "audit.json"), promptAudit);
     writeJson(
-      path.join(outputDir, 'model-io-surfaces.json'),
-      promptSurfaceReport
+      path.join(outputDir, "model-io-surfaces.json"),
+      promptSurfaceReport,
     );
     writeJson(
-      path.join(outputDir, 'actions.json'),
-      trajectoryAudit.actionSummary
+      path.join(outputDir, "actions.json"),
+      trajectoryAudit.actionSummary,
     );
-    writeJson(path.join(outputDir, 'trajectories.json'), trajectoryAudit);
+    writeJson(path.join(outputDir, "trajectories.json"), trajectoryAudit);
 
     const feedReport = buildFeedReport(storiesFeed, forYouFeed);
     const questionReport = buildQuestionReport(cycleSnapshots);
@@ -3486,27 +3488,27 @@ async function main() {
     const newsReport = buildNewsReport(cycleSnapshots);
     const questionArtifacts = await collectQuestionArtifacts(
       runStartedAt,
-      allPromptCalls
+      allPromptCalls,
     );
     const eventArtifacts = await collectEventArtifacts(
       runStartedAt,
-      allPromptCalls
+      allPromptCalls,
     );
     const narrativeArtifacts = await collectNarrativeArtifacts(
       runStartedAt,
-      allPromptCalls
+      allPromptCalls,
     );
     const newsArtifacts = await collectNewsArtifacts(
       runStartedAt,
       allPromptCalls,
       storiesFeed,
-      breakingNewsWidget
+      breakingNewsWidget,
     );
     const trendingArtifacts = await collectTrendingArtifacts(
       runStartedAt,
       allPromptCalls,
       trendingSnapshot,
-      trendingWidget
+      trendingWidget,
     );
     const dagTraceDirs = collectDagTraceDirectories(runStartedAt);
     const warnings = [
@@ -3514,7 +3516,7 @@ async function main() {
         jobArtifacts,
         promptAudit,
         cycleSnapshots,
-        trajectoryAudit
+        trajectoryAudit,
       ),
       ...(narrativeArtifacts.summary.staleNarratives > 0
         ? [
@@ -3522,46 +3524,46 @@ async function main() {
           ]
         : []),
       ...(questionArtifacts.summary.activeQuestionCount === 0
-        ? ['No active prediction questions remained after the run']
+        ? ["No active prediction questions remained after the run"]
         : []),
       ...(trendingArtifacts.summary.trendingTagCount > 0 &&
       trendingArtifacts.summary.zeroPostTrendingTags ===
         trendingArtifacts.summary.trendingTagCount
-        ? ['All trending tags have zero linked posts']
+        ? ["All trending tags have zero linked posts"]
         : []),
       ...(newsArtifacts.summary.rssHeadlinesFetched === 0
-        ? ['No new RSS headlines were fetched during the run']
+        ? ["No new RSS headlines were fetched during the run"]
         : []),
     ];
 
     writeJson(
-      path.join(outputDir, 'question-stats.json'),
-      questionArtifacts.summary
+      path.join(outputDir, "question-stats.json"),
+      questionArtifacts.summary,
     );
     writeJson(
-      path.join(outputDir, 'prediction-market-stats.json'),
-      predictionMarketReport
+      path.join(outputDir, "prediction-market-stats.json"),
+      predictionMarketReport,
     );
-    writeJson(path.join(outputDir, 'news-stats.json'), newsArtifacts.summary);
-    writeJson(path.join(outputDir, 'feed-stats.json'), feedReport);
+    writeJson(path.join(outputDir, "news-stats.json"), newsArtifacts.summary);
+    writeJson(path.join(outputDir, "feed-stats.json"), feedReport);
     writeJson(
-      path.join(outputDir, 'events-stats.json'),
-      eventArtifacts.summary
-    );
-    writeJson(
-      path.join(outputDir, 'narrative-stats.json'),
-      narrativeArtifacts.summary
+      path.join(outputDir, "events-stats.json"),
+      eventArtifacts.summary,
     );
     writeJson(
-      path.join(outputDir, 'trending-stats.json'),
-      trendingArtifacts.summary
+      path.join(outputDir, "narrative-stats.json"),
+      narrativeArtifacts.summary,
     );
-    writeJson(path.join(outputDir, 'events.json'), eventArtifacts);
-    writeJson(path.join(outputDir, 'narratives.json'), narrativeArtifacts);
-    writeJson(path.join(outputDir, 'questions.json'), questionArtifacts);
-    writeJson(path.join(outputDir, 'news-stories.json'), newsArtifacts);
-    writeJson(path.join(outputDir, 'trending.json'), trendingArtifacts);
-    writeJson(path.join(outputDir, 'dag-traces.json'), dagTraceDirs);
+    writeJson(
+      path.join(outputDir, "trending-stats.json"),
+      trendingArtifacts.summary,
+    );
+    writeJson(path.join(outputDir, "events.json"), eventArtifacts);
+    writeJson(path.join(outputDir, "narratives.json"), narrativeArtifacts);
+    writeJson(path.join(outputDir, "questions.json"), questionArtifacts);
+    writeJson(path.join(outputDir, "news-stories.json"), newsArtifacts);
+    writeJson(path.join(outputDir, "trending.json"), trendingArtifacts);
+    writeJson(path.join(outputDir, "dag-traces.json"), dagTraceDirs);
 
     const summary = {
       runId,
@@ -3603,9 +3605,9 @@ async function main() {
       warnings,
     };
 
-    writeJson(path.join(outputDir, 'summary.json'), summary);
+    writeJson(path.join(outputDir, "summary.json"), summary);
     writeText(
-      path.join(outputDir, 'report.md'),
+      path.join(outputDir, "report.md"),
       buildMarkdownReport({
         runId,
         cycles,
@@ -3634,37 +3636,37 @@ async function main() {
         trendingWidget,
         breakingNewsWidget,
         warnings,
-      })
+      }),
     );
 
     logger.info(
-      'Core world simulation completed',
+      "Core world simulation completed",
       {
         outputDir,
         cycles,
         promptCalls: llmCalls.length,
       },
-      'CoreWorldSim'
+      "CoreWorldSim",
     );
   } catch (error) {
     const trajectoryAudit = await collectTrajectoryAudit(runStartedAt).catch(
-      () => getEmptyTrajectoryAudit()
+      () => getEmptyTrajectoryAudit(),
     );
     const copiedPromptLogs: string[] = [];
-    const debugPromptDir = path.resolve(process.cwd(), 'debug', 'prompts');
+    const debugPromptDir = path.resolve(process.cwd(), "debug", "prompts");
     if (statExists(debugPromptDir)) {
       for (const entry of readdirSync(debugPromptDir)) {
         const fullPath = path.join(debugPromptDir, entry);
         const stats = statSync(fullPath);
         if (stats.mtimeMs < runStartedAt.getTime()) continue;
-        const targetPath = path.join(promptsDir, 'markdown', entry);
-        writeText(targetPath, readFileSync(fullPath, 'utf8'));
+        const targetPath = path.join(promptsDir, "markdown", entry);
+        writeText(targetPath, readFileSync(fullPath, "utf8"));
         copiedPromptLogs.push(targetPath);
       }
     }
     const debugPromptCalls = copiedPromptLogs
       .map((filePath) =>
-        parsePromptMarkdownLog(filePath, readFileSync(filePath, 'utf8'))
+        parsePromptMarkdownLog(filePath, readFileSync(filePath, "utf8")),
       )
       .filter((call): call is PromptCallArtifact => call !== null);
     const allPromptCalls = mergePromptCalls([
@@ -3679,29 +3681,29 @@ async function main() {
       jobArtifacts,
       promptAudit,
       cycleSnapshots,
-      trajectoryAudit
+      trajectoryAudit,
     );
     const failure = error instanceof Error ? error : new Error(String(error));
 
-    writeJson(path.join(promptsDir, 'engine-llm-calls.json'), llmCalls);
+    writeJson(path.join(promptsDir, "engine-llm-calls.json"), llmCalls);
     writeJson(
-      path.join(promptsDir, 'trajectory-llm-calls.json'),
-      trajectoryAudit.llmCalls
+      path.join(promptsDir, "trajectory-llm-calls.json"),
+      trajectoryAudit.llmCalls,
     );
-    writeJson(path.join(promptsDir, 'debug-log-calls.json'), debugPromptCalls);
-    writeJson(path.join(promptsDir, 'llm-calls.json'), allPromptCalls);
-    writeJson(path.join(promptsDir, 'audit.json'), promptAudit);
+    writeJson(path.join(promptsDir, "debug-log-calls.json"), debugPromptCalls);
+    writeJson(path.join(promptsDir, "llm-calls.json"), allPromptCalls);
+    writeJson(path.join(promptsDir, "audit.json"), promptAudit);
     writeJson(
-      path.join(outputDir, 'model-io-surfaces.json'),
-      promptSurfaceReport
+      path.join(outputDir, "model-io-surfaces.json"),
+      promptSurfaceReport,
     );
     writeJson(
-      path.join(outputDir, 'actions.json'),
-      trajectoryAudit.actionSummary
+      path.join(outputDir, "actions.json"),
+      trajectoryAudit.actionSummary,
     );
-    writeJson(path.join(outputDir, 'trajectories.json'), trajectoryAudit);
-    writeJson(path.join(outputDir, 'dag-traces.json'), dagTraceDirs);
-    writeJson(path.join(outputDir, 'failure.json'), {
+    writeJson(path.join(outputDir, "trajectories.json"), trajectoryAudit);
+    writeJson(path.join(outputDir, "dag-traces.json"), dagTraceDirs);
+    writeJson(path.join(outputDir, "failure.json"), {
       runId,
       cycles,
       rssMode,
@@ -3727,9 +3729,9 @@ async function main() {
 
 main().catch((error) => {
   logger.error(
-    'Core world simulation failed',
+    "Core world simulation failed",
     error instanceof Error ? error : new Error(String(error)),
-    'CoreWorldSim'
+    "CoreWorldSim",
   );
   process.exit(1);
 });

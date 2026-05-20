@@ -56,17 +56,17 @@ import {
   requireCronAuth,
   requireUserByIdentifier,
   withErrorHandling,
-} from '@feed/api';
-import type { JsonObject } from '@feed/db';
-import { db } from '@feed/db';
-import { generateSnowflakeId, logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { z } from 'zod';
+} from "@feed/api";
+import type { JsonObject } from "@feed/db";
+import { db } from "@feed/db";
+import { generateSnowflakeId, logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { z } from "zod";
 
 const AgentToGameFeedbackSchema = z.object({
-  agentId: z.string().min(1, 'agentId is required'),
-  gameId: z.string().min(1, 'gameId is required'),
+  agentId: z.string().min(1, "agentId is required"),
+  gameId: z.string().min(1, "gameId is required"),
   score: z.number().min(0).max(100),
   comment: z.string().max(5000).optional(),
   tags: z.array(z.string().min(1)).max(10).optional(),
@@ -74,7 +74,7 @@ const AgentToGameFeedbackSchema = z.object({
 });
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
-  requireCronAuth(request, { jobName: 'AgentToGameFeedback' });
+  requireCronAuth(request, { jobName: "AgentToGameFeedback" });
 
   const payload = AgentToGameFeedbackSchema.parse(await request.json());
 
@@ -85,8 +85,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   if (!agent.isAgent) {
     return NextResponse.json(
-      { success: false, error: 'ONLY_AGENTS_CAN_SUBMIT' },
-      { status: 403 }
+      { success: false, error: "ONLY_AGENTS_CAN_SUBMIT" },
+      { status: 403 },
     );
   }
 
@@ -94,7 +94,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     where: {
       fromUserId: agent.id,
       gameId: payload.gameId,
-      interactionType: 'agent_to_game',
+      interactionType: "agent_to_game",
     },
     select: { id: true },
   });
@@ -103,16 +103,16 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     return NextResponse.json(
       {
         success: false,
-        error: 'Feedback already submitted for this game',
+        error: "Feedback already submitted for this game",
         feedbackId: existingFeedback.id,
       },
-      { status: 409 }
+      { status: 409 },
     );
   }
 
   const metadataBase: JsonObject =
     payload.metadata &&
-    typeof payload.metadata === 'object' &&
+    typeof payload.metadata === "object" &&
     !Array.isArray(payload.metadata)
       ? (payload.metadata as JsonObject)
       : {};
@@ -129,15 +129,15 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       fromAgentId: agent.id,
       score: payload.score,
       comment: payload.comment,
-      category: 'game_review',
+      category: "game_review",
       gameId: payload.gameId,
-      interactionType: 'agent_to_game',
+      interactionType: "agent_to_game",
       metadata,
       updatedAt: new Date(),
     },
   });
 
-  logger.info('Agent-to-game feedback created', {
+  logger.info("Agent-to-game feedback created", {
     feedbackId: feedback.id,
     agentId: agent.id,
     gameId: payload.gameId,
@@ -149,6 +149,6 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       success: true,
       feedbackId: feedback.id,
     },
-    { status: 201 }
+    { status: 201 },
   );
 });

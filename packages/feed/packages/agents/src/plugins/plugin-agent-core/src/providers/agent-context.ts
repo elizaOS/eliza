@@ -11,7 +11,7 @@ import type {
   Provider,
   ProviderResult,
   State,
-} from '@elizaos/core';
+} from "@elizaos/core";
 
 /**
  * Agent Context Provider
@@ -22,13 +22,13 @@ import type {
  * - Agent identity and autonomy
  */
 export const agentContextProvider: Provider = {
-  name: 'AGENT_CONTEXT',
-  description: 'Context about Feed platform and agent capabilities',
+  name: "AGENT_CONTEXT",
+  description: "Context about Feed platform and agent capabilities",
 
   get: async (
     _runtime: IAgentRuntime,
     _message: Memory,
-    _state: State
+    _state: State,
   ): Promise<ProviderResult> => {
     const contextText = `# About Feed
 Feed is a social prediction market platform with two main features:

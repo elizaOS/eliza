@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import type { NPCTrajectory, TraceData } from './types';
+import { useMemo } from "react";
+import type { NPCTrajectory, TraceData } from "./types";
 
 interface Props {
   trace: TraceData | null;
@@ -30,7 +30,7 @@ export function MarketPanel({ trace, selectedNPC }: Props) {
 
     for (const npc of trace.npcTrajectories) {
       for (const d of npc.decisions ?? []) {
-        if (d.action === 'hold' || d.action === 'wait' || !d.ticker) continue;
+        if (d.action === "hold" || d.action === "wait" || !d.ticker) continue;
         const ticker = d.ticker;
         const pos = byTicker.get(ticker) ?? {
           ticker,
@@ -42,10 +42,10 @@ export function MarketPanel({ trace, selectedNPC }: Props) {
           agents: [],
         };
 
-        if (d.action === 'open_long') pos.longs++;
-        if (d.action === 'open_short') pos.shorts++;
-        if (d.action === 'buy_yes') pos.yesCount++;
-        if (d.action === 'buy_no') pos.noCount++;
+        if (d.action === "open_long") pos.longs++;
+        if (d.action === "open_short") pos.shorts++;
+        if (d.action === "buy_yes") pos.yesCount++;
+        if (d.action === "buy_no") pos.noCount++;
         pos.totalVolume += d.amount ?? 0;
 
         const trade = npc.trades?.find((t) => t.ticker === ticker);
@@ -70,7 +70,7 @@ export function MarketPanel({ trace, selectedNPC }: Props) {
     if (!result) return [];
     // Extract from LLM call parsed responses
     const qCall = trace?.llmCallsFull?.find(
-      (c) => c.promptType === 'question_generation'
+      (c) => c.promptType === "question_generation",
     );
     if (qCall?.parsedResponse && Array.isArray(qCall.parsedResponse)) {
       return qCall.parsedResponse as Array<{
@@ -86,7 +86,7 @@ export function MarketPanel({ trace, selectedNPC }: Props) {
     return (
       <div style={panelStyle}>
         <div style={headerStyle}>Markets</div>
-        <div style={{ padding: 12, color: '#64748b', fontSize: 12 }}>
+        <div style={{ padding: 12, color: "#64748b", fontSize: 12 }}>
           No data
         </div>
       </div>
@@ -97,18 +97,18 @@ export function MarketPanel({ trace, selectedNPC }: Props) {
     <div style={panelStyle}>
       <div style={headerStyle}>
         Markets & Predictions
-        <span style={{ fontSize: 10, color: '#64748b', fontWeight: 400 }}>
+        <span style={{ fontSize: 10, color: "#64748b", fontWeight: 400 }}>
           {markets.length} active
         </span>
       </div>
 
       {/* Prediction Questions */}
       {questions.length > 0 && (
-        <div style={{ padding: '8px 12px', borderBottom: '1px solid #1e293b' }}>
+        <div style={{ padding: "8px 12px", borderBottom: "1px solid #1e293b" }}>
           <div
             style={{
               fontSize: 10,
-              color: '#94a3b8',
+              color: "#94a3b8",
               fontWeight: 600,
               marginBottom: 6,
             }}
@@ -119,15 +119,15 @@ export function MarketPanel({ trace, selectedNPC }: Props) {
             <div
               key={i}
               style={{
-                padding: '5px 0',
-                borderBottom: '1px solid #1e293b22',
+                padding: "5px 0",
+                borderBottom: "1px solid #1e293b22",
                 fontSize: 11,
               }}
             >
-              <div style={{ color: '#e2e8f0' }}>{q.text}</div>
+              <div style={{ color: "#e2e8f0" }}>{q.text}</div>
               <div
                 style={{
-                  display: 'flex',
+                  display: "flex",
                   gap: 8,
                   marginTop: 2,
                   fontSize: 10,
@@ -135,13 +135,13 @@ export function MarketPanel({ trace, selectedNPC }: Props) {
               >
                 <span
                   style={{
-                    color: q.outcome === 'yes' ? '#4ade80' : '#f87171',
+                    color: q.outcome === "yes" ? "#4ade80" : "#f87171",
                     fontWeight: 600,
                   }}
                 >
                   Outcome: {q.outcome.toUpperCase()}
                 </span>
-                <span style={{ color: '#64748b' }}>
+                <span style={{ color: "#64748b" }}>
                   {q.daysUntilResolution}d
                 </span>
               </div>
@@ -151,11 +151,11 @@ export function MarketPanel({ trace, selectedNPC }: Props) {
       )}
 
       {/* Market Positions by Ticker */}
-      <div style={{ padding: '8px 12px' }}>
+      <div style={{ padding: "8px 12px" }}>
         <div
           style={{
             fontSize: 10,
-            color: '#94a3b8',
+            color: "#94a3b8",
             fontWeight: 600,
             marginBottom: 6,
           }}
@@ -165,36 +165,36 @@ export function MarketPanel({ trace, selectedNPC }: Props) {
         {markets.map((m) => {
           const sentiment = m.longs + m.yesCount - (m.shorts + m.noCount);
           const sentimentColor =
-            sentiment > 0 ? '#4ade80' : sentiment < 0 ? '#f87171' : '#94a3b8';
+            sentiment > 0 ? "#4ade80" : sentiment < 0 ? "#f87171" : "#94a3b8";
           const sentimentLabel =
-            sentiment > 0 ? 'BULLISH' : sentiment < 0 ? 'BEARISH' : 'NEUTRAL';
+            sentiment > 0 ? "BULLISH" : sentiment < 0 ? "BEARISH" : "NEUTRAL";
           const isSelectedNPCTicker = selectedNPC?.decisions?.some(
-            (d) => d.ticker === m.ticker
+            (d) => d.ticker === m.ticker,
           );
 
           return (
             <div
               key={m.ticker}
               style={{
-                padding: '6px 8px',
+                padding: "6px 8px",
                 marginBottom: 4,
                 borderRadius: 5,
-                background: isSelectedNPCTicker ? '#1e1030' : '#1e293b',
+                background: isSelectedNPCTicker ? "#1e1030" : "#1e293b",
                 border: isSelectedNPCTicker
-                  ? '1px solid #ec4899'
-                  : '1px solid transparent',
+                  ? "1px solid #ec4899"
+                  : "1px solid transparent",
               }}
             >
               <div
                 style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
                 }}
               >
                 <span
                   style={{
-                    color: '#f1f5f9',
+                    color: "#f1f5f9",
                     fontWeight: 700,
                     fontSize: 13,
                   }}
@@ -207,7 +207,7 @@ export function MarketPanel({ trace, selectedNPC }: Props) {
                     fontSize: 9,
                     fontWeight: 700,
                     background: `${sentimentColor}15`,
-                    padding: '1px 5px',
+                    padding: "1px 5px",
                     borderRadius: 3,
                   }}
                 >
@@ -216,25 +216,25 @@ export function MarketPanel({ trace, selectedNPC }: Props) {
               </div>
               <div
                 style={{
-                  display: 'flex',
+                  display: "flex",
                   gap: 8,
                   fontSize: 10,
-                  color: '#94a3b8',
+                  color: "#94a3b8",
                   marginTop: 3,
                 }}
               >
                 <span>Vol: ${m.totalVolume.toLocaleString()}</span>
                 {m.longs > 0 && (
-                  <span style={{ color: '#4ade80' }}>{m.longs} long</span>
+                  <span style={{ color: "#4ade80" }}>{m.longs} long</span>
                 )}
                 {m.shorts > 0 && (
-                  <span style={{ color: '#f87171' }}>{m.shorts} short</span>
+                  <span style={{ color: "#f87171" }}>{m.shorts} short</span>
                 )}
                 {m.yesCount > 0 && (
-                  <span style={{ color: '#4ade80' }}>{m.yesCount} YES</span>
+                  <span style={{ color: "#4ade80" }}>{m.yesCount} YES</span>
                 )}
                 {m.noCount > 0 && (
-                  <span style={{ color: '#f87171' }}>{m.noCount} NO</span>
+                  <span style={{ color: "#f87171" }}>{m.noCount} NO</span>
                 )}
               </div>
               {/* Agent list */}
@@ -249,12 +249,12 @@ export function MarketPanel({ trace, selectedNPC }: Props) {
                         fontSize: 9,
                         color:
                           selectedNPC?.npcName === a.name
-                            ? '#f9a8d4'
-                            : '#64748b',
+                            ? "#f9a8d4"
+                            : "#64748b",
                         fontWeight: selectedNPC?.npcName === a.name ? 600 : 400,
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        padding: '1px 0',
+                        display: "flex",
+                        justifyContent: "space-between",
+                        padding: "1px 0",
                       }}
                     >
                       <span>
@@ -263,13 +263,13 @@ export function MarketPanel({ trace, selectedNPC }: Props) {
                       <span>
                         ${a.amount.toLocaleString()}
                         {!a.success && (
-                          <span style={{ color: '#ef4444' }}> FAIL</span>
+                          <span style={{ color: "#ef4444" }}> FAIL</span>
                         )}
                       </span>
                     </div>
                   ))}
                 {m.agents.length > 5 && (
-                  <div style={{ fontSize: 9, color: '#475569' }}>
+                  <div style={{ fontSize: 9, color: "#475569" }}>
                     +{m.agents.length - 5} more
                   </div>
                 )}
@@ -282,15 +282,15 @@ export function MarketPanel({ trace, selectedNPC }: Props) {
       {/* Tick summary stats */}
       <div
         style={{
-          padding: '8px 12px',
-          borderTop: '1px solid #1e293b',
-          marginTop: 'auto',
+          padding: "8px 12px",
+          borderTop: "1px solid #1e293b",
+          marginTop: "auto",
         }}
       >
         <div
           style={{
             fontSize: 10,
-            color: '#94a3b8',
+            color: "#94a3b8",
             fontWeight: 600,
             marginBottom: 4,
           }}
@@ -331,36 +331,36 @@ function StatRow({ label, value }: { label: string; value: string }) {
   return (
     <div
       style={{
-        display: 'flex',
-        justifyContent: 'space-between',
+        display: "flex",
+        justifyContent: "space-between",
         fontSize: 10,
-        padding: '2px 0',
-        color: '#94a3b8',
+        padding: "2px 0",
+        color: "#94a3b8",
       }}
     >
       <span>{label}</span>
-      <span style={{ color: '#e2e8f0' }}>{value}</span>
+      <span style={{ color: "#e2e8f0" }}>{value}</span>
     </div>
   );
 }
 
 const panelStyle: React.CSSProperties = {
   width: 260,
-  background: '#0f172a',
-  borderRight: '1px solid #1e293b',
-  display: 'flex',
-  flexDirection: 'column',
-  height: '100%',
-  overflow: 'auto',
+  background: "#0f172a",
+  borderRight: "1px solid #1e293b",
+  display: "flex",
+  flexDirection: "column",
+  height: "100%",
+  overflow: "auto",
 };
 
 const headerStyle: React.CSSProperties = {
-  padding: '10px 12px',
-  borderBottom: '1px solid #1e293b',
-  color: '#f1f5f9',
+  padding: "10px 12px",
+  borderBottom: "1px solid #1e293b",
+  color: "#f1f5f9",
   fontSize: 13,
   fontWeight: 700,
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
 };

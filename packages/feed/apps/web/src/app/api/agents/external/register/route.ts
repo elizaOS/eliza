@@ -9,8 +9,8 @@
  * @see src/lib/services/agent-registry.service.ts
  */
 
-import type { ExternalAgentConnectionParams } from '@feed/agents';
-import { agentRegistry } from '@feed/agents';
+import type { ExternalAgentConnectionParams } from "@feed/agents";
+import { agentRegistry } from "@feed/agents";
 import {
   authenticate,
   checkRateLimitAsync,
@@ -18,11 +18,11 @@ import {
   hashApiKey,
   RATE_LIMIT_CONFIGS,
   withErrorHandling,
-} from '@feed/api';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { z } from 'zod';
+} from "@feed/api";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { z } from "zod";
 
 // Validation schema for external agent registration
 const ExternalAgentRegisterSchema = z.object({
@@ -30,12 +30,12 @@ const ExternalAgentRegisterSchema = z.object({
   name: z.string().min(1).max(255),
   description: z.string(),
   endpoint: z.string().url(),
-  protocol: z.enum(['a2a', 'mcp', 'agent0', 'custom']),
+  protocol: z.enum(["a2a", "mcp", "agent0", "custom"]),
   capabilities: z.object({
     strategies: z.array(z.string()).optional().default([]),
     markets: z.array(z.string()).optional().default([]),
     actions: z.array(z.string()).optional().default([]),
-    version: z.string().optional().default('1.0.0'),
+    version: z.string().optional().default("1.0.0"),
     skills: z.array(z.string()).optional().default([]),
     domains: z.array(z.string()).optional().default([]),
     x402Support: z.boolean().optional(),
@@ -43,13 +43,13 @@ const ExternalAgentRegisterSchema = z.object({
   }),
   authentication: z
     .object({
-      type: z.enum(['API_KEY', 'OAUTH', 'JWT', 'MUTUAL_TLS']),
+      type: z.enum(["API_KEY", "OAUTH", "JWT", "MUTUAL_TLS"]),
       credentials: z.record(z.string(), z.any()).optional(),
     })
     .optional(),
   agentCard: z
     .object({
-      version: z.literal('1.0'),
+      version: z.literal("1.0"),
       agentId: z.string(),
       name: z.string(),
       description: z.string(),
@@ -62,7 +62,7 @@ const ExternalAgentRegisterSchema = z.object({
         strategies: z.array(z.string()).optional().default([]),
         markets: z.array(z.string()).optional().default([]),
         actions: z.array(z.string()).optional().default([]),
-        version: z.string().optional().default('1.0.0'),
+        version: z.string().optional().default("1.0.0"),
         skills: z.array(z.string()).optional().default([]),
         domains: z.array(z.string()).optional().default([]),
         x402Support: z.boolean().optional(),
@@ -71,7 +71,7 @@ const ExternalAgentRegisterSchema = z.object({
       authentication: z
         .object({
           required: z.boolean(),
-          methods: z.array(z.enum(['apiKey', 'oauth', 'wallet'])),
+          methods: z.array(z.enum(["apiKey", "oauth", "wallet"])),
         })
         .optional(),
       limits: z
@@ -91,36 +91,36 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
   // Rate limit check - 5 registrations per hour per user
   const rateLimitResult = await checkRateLimitAsync(
     authUser.userId,
-    RATE_LIMIT_CONFIGS.EXTERNAL_AGENT_REGISTER
+    RATE_LIMIT_CONFIGS.EXTERNAL_AGENT_REGISTER,
   );
 
   if (!rateLimitResult.allowed) {
     logger.warn(
-      'External agent registration rate limit exceeded',
+      "External agent registration rate limit exceeded",
       {
         userId: authUser.userId,
         retryAfter: rateLimitResult.retryAfter,
       },
-      'ExternalAgentRegister'
+      "ExternalAgentRegister",
     );
 
     return NextResponse.json(
       {
         success: false,
-        error: 'Too Many Requests',
-        message: 'Rate limit exceeded for agent registration',
+        error: "Too Many Requests",
+        message: "Rate limit exceeded for agent registration",
         retryAfter: rateLimitResult.retryAfter,
       },
       {
         status: 429,
         headers: {
-          'Retry-After': String(rateLimitResult.retryAfter ?? 3600),
-          'X-RateLimit-Limit': String(
-            RATE_LIMIT_CONFIGS.EXTERNAL_AGENT_REGISTER.maxRequests
+          "Retry-After": String(rateLimitResult.retryAfter ?? 3600),
+          "X-RateLimit-Limit": String(
+            RATE_LIMIT_CONFIGS.EXTERNAL_AGENT_REGISTER.maxRequests,
           ),
-          'X-RateLimit-Remaining': String(rateLimitResult.remaining ?? 0),
+          "X-RateLimit-Remaining": String(rateLimitResult.remaining ?? 0),
         },
-      }
+      },
     );
   }
 
@@ -132,10 +132,10 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: 'Validation error',
-        message: 'Invalid JSON body',
+        error: "Validation error",
+        message: "Invalid JSON body",
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -144,10 +144,10 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: 'Validation error',
+        error: "Validation error",
         details: validatedResult.error.issues,
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
   const validated = validatedResult.data;
@@ -165,7 +165,7 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
     protocol: validated.protocol,
     capabilities: validated.capabilities,
     authentication: {
-      type: 'apiKey',
+      type: "apiKey",
       credentials: JSON.stringify({
         apiKeyHash,
         ...validated.authentication?.credentials,
@@ -192,9 +192,9 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
       },
       apiKey, // Only returned on registration, never again!
       message:
-        'External agent registered successfully. Save your API key - it will not be shown again.',
+        "External agent registered successfully. Save your API key - it will not be shown again.",
       registeredBy: authUser.userId,
     },
-    { status: 201 }
+    { status: 201 },
   );
 });

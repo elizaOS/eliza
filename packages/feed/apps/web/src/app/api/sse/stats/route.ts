@@ -52,11 +52,11 @@ import {
   publicRateLimit,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/api";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   const { error, rateLimitInfo } = await publicRateLimit(request);
@@ -65,9 +65,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   const stats = connections.snapshot();
 
   logger.info(
-    'SSE stats fetched successfully',
+    "SSE stats fetched successfully",
     { totalClients: stats.totalConnections },
-    'GET /api/sse/stats'
+    "GET /api/sse/stats",
   );
 
   const res = successResponse({

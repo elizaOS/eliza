@@ -75,7 +75,7 @@
  * @see {@link /lib/db/context} RLS context
  */
 
-import { optionalAuth, successResponse, withErrorHandling } from '@feed/api';
+import { optionalAuth, successResponse, withErrorHandling } from "@feed/api";
 import {
   actorState,
   and,
@@ -89,10 +89,10 @@ import {
   sum,
   userActivityLogs,
   users,
-} from '@feed/db';
-import { StaticDataRegistry } from '@feed/engine';
-import { logger, StatsQuerySchema } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/db";
+import { StaticDataRegistry } from "@feed/engine";
+import { logger, StatsQuerySchema } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 interface FeedStats {
   activePlayers: number;
@@ -105,10 +105,10 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   // Validate query parameters
   const { searchParams } = new URL(request.url);
   const queryParams = {
-    includeMarkets: searchParams.get('includeMarkets') || 'true',
-    includeUsers: searchParams.get('includeUsers') || 'true',
-    includePools: searchParams.get('includePools') || 'true',
-    includeVolume: searchParams.get('includeVolume') || 'true',
+    includeMarkets: searchParams.get("includeMarkets") || "true",
+    includeUsers: searchParams.get("includeUsers") || "true",
+    includePools: searchParams.get("includePools") || "true",
+    includeVolume: searchParams.get("includeVolume") || "true",
   };
   StatsQuerySchema.parse(queryParams);
 
@@ -116,7 +116,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
   const queryStats = async (
-    db: Parameters<Parameters<typeof asUser>[1]>[0]
+    db: Parameters<Parameters<typeof asUser>[1]>[0],
   ) => {
     const [
       activePlayersResult,
@@ -133,8 +133,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         .where(
           and(
             eq(users.isActor, false),
-            gte(userActivityLogs.activityDate, sevenDaysAgo)
-          )
+            gte(userActivityLogs.activityDate, sevenDaysAgo),
+          ),
         ),
       db.select({ count: count() }).from(posts),
       db
@@ -148,8 +148,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       activePlayers: Number(activePlayersResult[0]?.count ?? 0),
       aiAgents: StaticDataRegistry.getAllActors().length,
       totalHoots: Number(totalHootsResult[0]?.count ?? 0),
-      userPoints: userPointsResult[0]?.total ?? '0',
-      actorPoints: actorPointsResult[0]?.total ?? '0',
+      userPoints: userPointsResult[0]?.total ?? "0",
+      actorPoints: actorPointsResult[0]?.total ?? "0",
     };
   };
 
@@ -169,9 +169,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   };
 
   logger.info(
-    'Feed stats fetched successfully',
+    "Feed stats fetched successfully",
     finalStats,
-    'GET /api/feed/widgets/stats'
+    "GET /api/feed/widgets/stats",
   );
 
   return successResponse({

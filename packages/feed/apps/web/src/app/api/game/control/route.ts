@@ -93,18 +93,13 @@ import {
   requireAdmin,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { asSystem } from '@feed/db';
-import {
-  generateSnowflakeId,
-  logger,
-  toISO,
-  toISOOrNull,
-} from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/api";
+import { asSystem } from "@feed/db";
+import { generateSnowflakeId, logger, toISO, toISOOrNull } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 interface ControlRequest {
-  action: 'start' | 'pause';
+  action: "start" | "pause";
 }
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
@@ -114,7 +109,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   const body = (await request.json()) as ControlRequest;
   const { action } = body;
 
-  if (!action || !['start', 'pause'].includes(action)) {
+  if (!action || !["start", "pause"].includes(action)) {
     throw new BadRequestError('Action must be "start" or "pause"');
   }
 
@@ -131,21 +126,21 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         data: {
           id: await generateSnowflakeId(),
           isContinuous: true,
-          isRunning: action === 'start',
+          isRunning: action === "start",
           currentDay: 1,
-          startedAt: action === 'start' ? now : null,
+          startedAt: action === "start" ? now : null,
           createdAt: now,
           updatedAt: now,
         },
       });
       logger.info(
-        `Game created and ${action === 'start' ? 'started' : 'paused'}`,
+        `Game created and ${action === "start" ? "started" : "paused"}`,
         { gameId: gameState.id },
-        'Game Control'
+        "Game Control",
       );
     } else {
       // Update the existing game
-      const isRunning = action === 'start';
+      const isRunning = action === "start";
       const updateData: {
         isRunning: boolean;
         startedAt?: Date;
@@ -154,7 +149,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         isRunning,
       };
 
-      if (action === 'start') {
+      if (action === "start") {
         updateData.startedAt = gameState.startedAt || new Date();
         updateData.pausedAt = undefined;
       } else {
@@ -167,13 +162,13 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       });
 
       logger.info(
-        `Game ${action === 'start' ? 'started' : 'paused'}`,
+        `Game ${action === "start" ? "started" : "paused"}`,
         {
           gameId: gameState.id,
           isRunning: gameState.isRunning,
           currentDay: gameState.currentDay,
         },
-        'Game Control'
+        "Game Control",
       );
     }
 
@@ -207,7 +202,7 @@ export const GET = withErrorHandling(async (_request: NextRequest) => {
     return successResponse({
       success: true,
       game: null,
-      message: 'No game found. Use POST to create and start a game.',
+      message: "No game found. Use POST to create and start a game.",
     });
   }
 

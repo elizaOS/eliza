@@ -1,4 +1,4 @@
-import { redirect } from 'next/navigation';
+import { redirect } from "next/navigation";
 
 export default async function PerpsMarketRedirectPage({
   params,
@@ -14,14 +14,14 @@ export default async function PerpsMarketRedirectPage({
   const ticker = Array.isArray(tickerParam) ? tickerParam[0] : tickerParam;
 
   const query = new URLSearchParams();
-  query.set('filter', 'perp');
-  query.set('marketKind', 'perp');
-  if (ticker) query.set('marketId', ticker);
+  query.set("filter", "perp");
+  query.set("marketKind", "perp");
+  if (ticker) query.set("marketId", ticker);
 
   const side = resolvedSearchParams.side;
   const sideValue = Array.isArray(side) ? side[0] : side;
-  if (sideValue === 'long' || sideValue === 'short') {
-    query.set('side', sideValue);
+  if (sideValue === "long" || sideValue === "short") {
+    query.set("side", sideValue);
   }
 
   redirect(`/markets?${query.toString()}`);

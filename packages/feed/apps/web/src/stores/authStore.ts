@@ -5,10 +5,10 @@
  * Persists authentication data to localStorage for session persistence.
  */
 
-import { isRecord } from '@feed/shared';
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-import { createSafeJsonStorage } from '@/utils/browser-storage';
+import { isRecord } from "@feed/shared";
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
+import { createSafeJsonStorage } from "@/utils/browser-storage";
 
 /**
  * User profile data structure.
@@ -82,7 +82,7 @@ export interface User {
  * - 'done': server responded successfully
  * - 'error': server unreachable or returned an error
  */
-type ProfileFetchStatus = 'idle' | 'loading' | 'done' | 'error';
+type ProfileFetchStatus = "idle" | "loading" | "done" | "error";
 
 interface AuthState {
   user: User | null;
@@ -99,7 +99,7 @@ interface AuthState {
   clearAuth: () => void;
 }
 
-type PersistedAuthState = Pick<AuthState, 'user' | 'loadedUserId'>;
+type PersistedAuthState = Pick<AuthState, "user" | "loadedUserId">;
 
 const CURRENT_AUTH_STORE_VERSION = 5;
 
@@ -113,14 +113,14 @@ function createInitialPersistedState(): PersistedAuthState {
 function isPersistedUser(value: unknown): value is User {
   return (
     isRecord(value) &&
-    typeof value.id === 'string' &&
-    typeof value.displayName === 'string'
+    typeof value.id === "string" &&
+    typeof value.displayName === "string"
   );
 }
 
 export function migrateAuthStoreState(
   persistedState: unknown,
-  version: number
+  version: number,
 ): PersistedAuthState {
   const initialState = createInitialPersistedState();
 
@@ -143,7 +143,7 @@ export function migrateAuthStoreState(
   return {
     user: isPersistedUser(persistedState.user) ? persistedState.user : null,
     loadedUserId:
-      typeof persistedState.loadedUserId === 'string'
+      typeof persistedState.loadedUserId === "string"
         ? persistedState.loadedUserId
         : null,
   };
@@ -155,7 +155,7 @@ export const useAuthStore = create<AuthState>()(
       ...createInitialPersistedState(),
       isLoadingProfile: false,
       needsOnboarding: false,
-      profileFetchStatus: 'idle' as ProfileFetchStatus,
+      profileFetchStatus: "idle" as ProfileFetchStatus,
       setUser: (user) => set({ user }),
       setLoadedUserId: (userId) => set({ loadedUserId: userId }),
       setIsLoadingProfile: (loading) => set({ isLoadingProfile: loading }),
@@ -167,12 +167,12 @@ export const useAuthStore = create<AuthState>()(
           ...createInitialPersistedState(),
           isLoadingProfile: false,
           needsOnboarding: false,
-          profileFetchStatus: 'idle' as ProfileFetchStatus,
+          profileFetchStatus: "idle" as ProfileFetchStatus,
         }),
     }),
     {
-      name: 'feed-auth',
-      storage: createSafeJsonStorage<PersistedAuthState>('localStorage'),
+      name: "feed-auth",
+      storage: createSafeJsonStorage<PersistedAuthState>("localStorage"),
       // Bumping this triggers migrateAuthStoreState. Update the accepted
       // legacy versions above when the persisted schema changes again.
       version: CURRENT_AUTH_STORE_VERSION,
@@ -182,6 +182,6 @@ export const useAuthStore = create<AuthState>()(
         user: state.user,
         loadedUserId: state.loadedUserId,
       }),
-    }
-  )
+    },
+  ),
 );

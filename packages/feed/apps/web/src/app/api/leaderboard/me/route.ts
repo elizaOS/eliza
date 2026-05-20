@@ -5,11 +5,11 @@ import {
   successResponse,
   TradingLeaderboardService,
   withErrorHandling,
-} from '@feed/api';
-import { type LeaderboardMetric, type LeaderboardScope } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { sanitizeForJson } from '@/lib/json/sanitize';
-import { parseLeaderboardQuery } from '../query';
+} from "@feed/api";
+import type { LeaderboardMetric, LeaderboardScope } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { sanitizeForJson } from "@/lib/json/sanitize";
+import { parseLeaderboardQuery } from "../query";
 
 /**
  * Authenticated leaderboard position endpoint.
@@ -24,7 +24,7 @@ type LeaderboardService = {
   getUserPosition: (
     userId: string,
     leaderboardType: LeaderboardScope,
-    pageSize?: number
+    pageSize?: number,
   ) => Promise<LeaderboardPosition | null>;
 };
 
@@ -37,14 +37,14 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   const authUser = await authenticate(request);
   const { searchParams } = new URL(request.url);
   const { pageSize, metric, type } = parseLeaderboardQuery(searchParams);
-  const leaderboardMetric = metric ?? 'reputation';
-  const leaderboardType = type ?? 'wallet';
+  const leaderboardMetric = metric ?? "reputation";
+  const leaderboardType = type ?? "wallet";
   const leaderboardService = LEADERBOARD_SERVICES[leaderboardMetric];
 
   const currentUser = await leaderboardService.getUserPosition(
     authUser.userId,
     leaderboardType,
-    pageSize
+    pageSize,
   );
 
   return successResponse(
@@ -53,6 +53,6 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       leaderboardType,
       leaderboardMetric,
       currentUser,
-    })
+    }),
   );
 });

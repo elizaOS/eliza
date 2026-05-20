@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import type { PnlHistoryScope } from '@/lib/wallet/pnl-history-types';
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { PnlHistoryScope } from "@/lib/wallet/pnl-history-types";
 
 interface PnlPoint {
   time: number;
@@ -30,7 +30,7 @@ export function buildPnlHistoryUrl(params: {
     scope: params.scope,
   });
   if (params.entityId) {
-    searchParams.set('entityId', params.entityId);
+    searchParams.set("entityId", params.entityId);
   }
   return `/api/users/${encodeURIComponent(params.userId)}/pnl-history?${searchParams.toString()}`;
 }
@@ -38,7 +38,7 @@ export function buildPnlHistoryUrl(params: {
 export function usePnlHistory(
   userId: string | undefined | null,
   timeframe: string,
-  options: UsePnlHistoryOptions = {}
+  options: UsePnlHistoryOptions = {},
 ) {
   const [state, setState] = useState<PnlHistoryState>({
     points: [],
@@ -46,7 +46,7 @@ export function usePnlHistory(
     error: null,
   });
   const controllerRef = useRef<AbortController | null>(null);
-  const scope = options.scope ?? 'team';
+  const scope = options.scope ?? "team";
   const entityId = options.entityId ?? null;
 
   const fetch_ = useCallback(async () => {
@@ -69,7 +69,7 @@ export function usePnlHistory(
           timeframe,
           userId,
         }),
-        { signal: controller.signal }
+        { signal: controller.signal },
       );
 
       if (controller.signal.aborted) return;
@@ -78,7 +78,7 @@ export function usePnlHistory(
         setState((prev) => ({
           ...prev,
           loading: false,
-          error: new Error('Failed to fetch P&L history'),
+          error: new Error("Failed to fetch P&L history"),
         }));
         return;
       }
@@ -97,7 +97,7 @@ export function usePnlHistory(
         ...prev,
         loading: false,
         error:
-          err instanceof Error ? err : new Error('Failed to fetch P&L history'),
+          err instanceof Error ? err : new Error("Failed to fetch P&L history"),
       }));
     }
   }, [entityId, scope, timeframe, userId]);

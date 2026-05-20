@@ -10,27 +10,27 @@
  *   bun run scripts/restore-user-groups.ts --user=<user-id>
  */
 
-import { db, eq, ilike, users } from '@feed/db';
+import { db, eq, ilike, users } from "@feed/db";
 import {
   TieredGroupService,
   UserAlphaGroupAssignmentService,
-} from '@feed/engine';
-import { logger } from '@feed/shared';
+} from "@feed/engine";
+import { logger } from "@feed/shared";
 
 async function main() {
   const args = process.argv.slice(2);
   const minGroups = UserAlphaGroupAssignmentService.TARGET_DEFAULT_GROUPS;
 
   // Parse arguments
-  const usernameArg = args.find((a) => a.startsWith('--username='));
-  const userIdArg = args.find((a) => a.startsWith('--user='));
+  const usernameArg = args.find((a) => a.startsWith("--username="));
+  const userIdArg = args.find((a) => a.startsWith("--user="));
 
   if (!usernameArg && !userIdArg) {
-    console.error('Usage:');
+    console.error("Usage:");
     console.error(
-      '  bun run scripts/restore-user-groups.ts --username=@username'
+      "  bun run scripts/restore-user-groups.ts --username=@username",
     );
-    console.error('  bun run scripts/restore-user-groups.ts --user=<user-id>');
+    console.error("  bun run scripts/restore-user-groups.ts --user=<user-id>");
     process.exit(1);
   }
 
@@ -38,13 +38,13 @@ async function main() {
   let userName: string | null = null;
 
   if (usernameArg) {
-    const rawUsername = usernameArg.slice('--username='.length).trim();
+    const rawUsername = usernameArg.slice("--username=".length).trim();
     // Remove @ prefix if present
-    const username = rawUsername.replace(/^@/, '').trim();
+    const username = rawUsername.replace(/^@/, "").trim();
 
     if (!username) {
       console.error(
-        'Invalid --username value. Expected --username=@username (non-empty).'
+        "Invalid --username value. Expected --username=@username (non-empty).",
       );
       process.exit(1);
     }
@@ -82,10 +82,10 @@ async function main() {
       userName = user.displayName || user.username;
     }
   } else if (userIdArg) {
-    const rawUserId = userIdArg.slice('--user='.length).trim();
+    const rawUserId = userIdArg.slice("--user=".length).trim();
     if (!rawUserId) {
       console.error(
-        'Invalid --user value. Expected --user=<user-id> (non-empty).'
+        "Invalid --user value. Expected --user=<user-id> (non-empty).",
       );
       process.exit(1);
     }
@@ -105,15 +105,15 @@ async function main() {
   }
 
   if (!userId) {
-    console.error('Could not determine user ID');
+    console.error("Could not determine user ID");
     process.exit(1);
   }
 
   console.log(`\n🔧 Restoring groups for: ${userName} (${userId})\n`);
 
   // Step 1: Ensure tier groups exist (bootstrap)
-  console.log('Step 1: Ensuring tier groups exist for all NPCs...');
-  const { StaticDataRegistry } = await import('@feed/engine');
+  console.log("Step 1: Ensuring tier groups exist for all NPCs...");
+  const { StaticDataRegistry } = await import("@feed/engine");
   const actors = StaticDataRegistry.getAllActors().filter((a) => !a.isTest);
 
   let groupsCreated = 0;
@@ -130,7 +130,7 @@ async function main() {
   }
 
   // Step 2: Assign default groups
-  console.log('\nStep 2: Assigning default groups...');
+  console.log("\nStep 2: Assigning default groups...");
   const result =
     await UserAlphaGroupAssignmentService.assignDefaultGroups(userId);
 
@@ -149,8 +149,8 @@ async function main() {
   }
 
   // Step 3: Show final state
-  console.log('\nStep 3: Final group count...');
-  const { count, groupMembers, groups, and } = await import('@feed/db');
+  console.log("\nStep 3: Final group count...");
+  const { count, groupMembers, groups, and } = await import("@feed/db");
   const [groupCount] = await db
     .select({ count: count() })
     .from(groupMembers)
@@ -159,19 +159,19 @@ async function main() {
       and(
         eq(groupMembers.userId, userId),
         eq(groupMembers.isActive, true),
-        eq(groups.type, 'npc')
-      )
+        eq(groups.type, "npc"),
+      ),
     );
 
   console.log(`  ✅ User is now in ${groupCount?.count ?? 0} NPC groups\n`);
 
   if ((groupCount?.count ?? 0) >= minGroups) {
     console.log(
-      '✨ Restoration complete! User should now see groups in /chats\n'
+      "✨ Restoration complete! User should now see groups in /chats\n",
     );
   } else {
     console.log(
-      `⚠️  User still has fewer than ${minGroups} groups. This may indicate capacity issues.\n`
+      `⚠️  User still has fewer than ${minGroups} groups. This may indicate capacity issues.\n`,
     );
   }
 
@@ -181,9 +181,9 @@ async function main() {
 main().catch((error) => {
   const errorObj = error instanceof Error ? error : new Error(String(error));
   logger.error(
-    'Fatal error in restore-user-groups',
+    "Fatal error in restore-user-groups",
     errorObj,
-    'restore-user-groups'
+    "restore-user-groups",
   );
   process.exit(1);
 });

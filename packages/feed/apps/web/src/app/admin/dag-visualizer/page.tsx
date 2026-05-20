@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { DagVisualizerClient } from './DagVisualizerClient';
+import { DagVisualizerClient } from "./DagVisualizerClient";
 
 export default function DagVisualizerPage() {
   return <DagVisualizerClient />;

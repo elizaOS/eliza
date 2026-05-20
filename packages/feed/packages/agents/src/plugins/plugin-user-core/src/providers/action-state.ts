@@ -12,8 +12,8 @@ import type {
   Provider,
   ProviderResult,
   State,
-} from '@elizaos/core';
-import { logger } from '../../../../shared/logger';
+} from "@elizaos/core";
+import { logger } from "../../../../shared/logger";
 
 /**
  * JSON-safe parameter value type for action parameters
@@ -45,12 +45,12 @@ type ActionTraceResult = ActionResult & {
  * Validates that an object has the required shape
  */
 function isActionTraceResult(value: unknown): value is ActionTraceResult {
-  if (!value || typeof value !== 'object') return false;
+  if (!value || typeof value !== "object") return false;
   const obj = value as Record<string, unknown>;
   return (
-    typeof obj.actionType === 'string' &&
-    typeof obj.timestamp === 'number' &&
-    typeof obj.success === 'boolean'
+    typeof obj.actionType === "string" &&
+    typeof obj.timestamp === "number" &&
+    typeof obj.success === "boolean"
   );
 }
 
@@ -59,12 +59,12 @@ function isActionTraceResult(value: unknown): value is ActionTraceResult {
  */
 function formatActionResults(results: ActionTraceResult[]): string {
   if (results.length === 0) {
-    return 'No actions taken yet in this request.';
+    return "No actions taken yet in this request.";
   }
 
   return results
     .map((result, index) => {
-      const status = result.success ? '✓ Success' : '✗ Failed';
+      const status = result.success ? "✓ Success" : "✗ Failed";
       let output = `${index + 1}. **${result.actionType}** - ${status}`;
 
       if (result.text) {
@@ -78,13 +78,13 @@ function formatActionResults(results: ActionTraceResult[]): string {
       if (result.values && Object.keys(result.values).length > 0) {
         const valuesStr = Object.entries(result.values)
           .map(([key, value]) => `   - ${key}: ${JSON.stringify(value)}`)
-          .join('\n');
+          .join("\n");
         output += `\n   Values:\n${valuesStr}`;
       }
 
       return output;
     })
-    .join('\n\n');
+    .join("\n\n");
 }
 
 /**
@@ -93,13 +93,13 @@ function formatActionResults(results: ActionTraceResult[]): string {
  * Provides context about actions taken during the current multi-step execution.
  */
 export const coordinatorActionStateProvider: Provider = {
-  name: 'ACTION_STATE',
-  description: 'Previous action results from the current execution',
+  name: "ACTION_STATE",
+  description: "Previous action results from the current execution",
 
   get: async (
     _runtime: IAgentRuntime,
     _message: Memory,
-    state: State
+    state: State,
   ): Promise<ProviderResult> => {
     // Safely validate action results from state with runtime type checking
     const rawResults = state.data?.actionResults;
@@ -112,7 +112,7 @@ export const coordinatorActionStateProvider: Provider = {
         logger.warn(
           `Filtered ${rawResults.length - actionResults.length} invalid action results`,
           { totalRaw: rawResults.length, valid: actionResults.length },
-          'ActionState'
+          "ActionState",
         );
       }
     }
@@ -138,7 +138,7 @@ export const coordinatorActionStateProvider: Provider = {
       text:
         actionResults.length > 0
           ? `# Actions Taken This Request\n\n${formattedResults}`
-          : 'No actions taken yet.',
+          : "No actions taken yet.",
     };
   },
 };

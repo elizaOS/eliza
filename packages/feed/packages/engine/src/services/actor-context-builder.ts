@@ -25,25 +25,25 @@ import {
   parodyHeadlines,
   questions,
   worldEvents,
-} from '@feed/db';
-import { logger } from '@feed/shared';
+} from "@feed/db";
+import { logger } from "@feed/shared";
 import type {
   EventContext,
   FeedPostContext,
   RelationshipContext,
-} from '../types/market-context';
+} from "../types/market-context";
 import {
   fetchRelevantPosts,
   findRelatedActorsByAffiliation,
   resolveActorName,
-} from '../utils/actor-utils';
+} from "../utils/actor-utils";
 import {
   formatActorFinanceGuardrails,
   formatActorToneGuardrails,
-} from '../utils/shared-utils';
-import { getAvoidedPatternsContext } from './npc-anti-repetition-service';
-import { NpcMemoryService } from './npc-memory-service';
-import { StaticDataRegistry } from './static-data-registry';
+} from "../utils/shared-utils";
+import { getAvoidedPatternsContext } from "./npc-anti-repetition-service";
+import { NpcMemoryService } from "./npc-memory-service";
+import { StaticDataRegistry } from "./static-data-registry";
 
 export interface ActorContext {
   // Identity
@@ -120,7 +120,7 @@ export class ActorContextBuilder {
   async buildContext(actorId: string): Promise<ActorContext | null> {
     const actor = StaticDataRegistry.getActor(actorId);
     if (!actor) {
-      logger.warn('Actor not found', { actorId }, 'ActorContextBuilder');
+      logger.warn("Actor not found", { actorId }, "ActorContextBuilder");
       return null;
     }
 
@@ -146,7 +146,7 @@ export class ActorContextBuilder {
       fetchRelevantPosts(
         findRelatedActorsByAffiliation(actorId, affiliations),
         twoDaysAgo,
-        now
+        now,
       ),
       this.getPersonalEvents(actorId, actor.name, now),
       this.getRecentWorldEvents(twoDaysAgo, now),
@@ -172,8 +172,8 @@ export class ActorContextBuilder {
         .then((rows) =>
           rows.map((r) => ({
             title: r.parodyTitle,
-            source: r.originalSource || 'unknown',
-          }))
+            source: r.originalSource || "unknown",
+          })),
         )
         .catch(() => [] as Array<{ title: string; source: string }>),
     ]);
@@ -184,33 +184,33 @@ export class ActorContextBuilder {
     const financeGuardrails = formatActorFinanceGuardrails(actor);
     const ignoreTopicsRule =
       actor.ignoreTopics && actor.ignoreTopics.length > 0
-        ? `You never talk about: ${actor.ignoreTopics.join(', ')}`
-        : '';
+        ? `You never talk about: ${actor.ignoreTopics.join(", ")}`
+        : "";
 
     return {
       identity: {
         id: actor.id,
         name: actor.name,
-        personality: actor.personality || '',
-        voice: actor.voice || '',
-        postStyle: actor.postStyle || '',
+        personality: actor.personality || "",
+        voice: actor.voice || "",
+        postStyle: actor.postStyle || "",
         postExamples: actor.postExample || [],
         domains: actor.domain || [],
         ignoreTopics: actor.ignoreTopics || [],
         affiliations,
-        tier: actor.tier || '',
-        description: actor.description || '',
-        system: packActor?.system || '',
+        tier: actor.tier || "",
+        description: actor.description || "",
+        system: packActor?.system || "",
       },
       actorRules: {
         styleAll: packActor?.style?.all || [],
         stylePost: packActor?.style?.post || [],
         styleChat: packActor?.style?.chat || [],
-        tradingStyle: packActor?.feed?.tradingStyle || '',
-        socialStyle: packActor?.feed?.socialStyle || '',
+        tradingStyle: packActor?.feed?.tradingStyle || "",
+        socialStyle: packActor?.feed?.socialStyle || "",
         motivations: packActor?.feed?.motivations || [],
         fears: packActor?.feed?.fears || [],
-        alignment: packActor?.feed?.alignment || 'neutral',
+        alignment: packActor?.feed?.alignment || "neutral",
       },
       awareness: {
         recentPosts: relevantPosts,
@@ -225,10 +225,10 @@ export class ActorContextBuilder {
       state: {
         mood:
           Number(moodState) > 0.3
-            ? 'positive'
+            ? "positive"
             : Number(moodState) < -0.3
-              ? 'negative'
-              : 'neutral',
+              ? "negative"
+              : "neutral",
         memories,
         avoidPatterns,
       },
@@ -243,7 +243,7 @@ export class ActorContextBuilder {
   private async getPersonalEvents(
     actorId: string,
     actorName: string,
-    now: Date
+    now: Date,
   ): Promise<EventContext[]> {
     const events = await db
       .select()
@@ -262,7 +262,7 @@ export class ActorContextBuilder {
         type: e.eventType,
         description:
           e.description.length > 300
-            ? e.description.slice(0, 300) + '...'
+            ? `${e.description.slice(0, 300)}...`
             : e.description,
         timestamp: e.timestamp.toISOString(),
         relatedQuestion: e.relatedQuestion || undefined,
@@ -272,13 +272,13 @@ export class ActorContextBuilder {
 
   private async getRecentWorldEvents(
     since: Date,
-    now: Date
+    now: Date,
   ): Promise<EventContext[]> {
     const events = await db
       .select()
       .from(worldEvents)
       .where(
-        and(lte(worldEvents.timestamp, now), gte(worldEvents.timestamp, since))
+        and(lte(worldEvents.timestamp, now), gte(worldEvents.timestamp, since)),
       )
       .orderBy(desc(worldEvents.timestamp))
       .limit(20);
@@ -287,7 +287,7 @@ export class ActorContextBuilder {
       type: e.eventType,
       description:
         e.description.length > 300
-          ? e.description.slice(0, 300) + '...'
+          ? `${e.description.slice(0, 300)}...`
           : e.description,
       timestamp: e.timestamp.toISOString(),
       relatedQuestion: e.relatedQuestion || undefined,
@@ -301,7 +301,7 @@ export class ActorContextBuilder {
     const resolved = await db
       .select()
       .from(questions)
-      .where(eq(questions.status, 'resolved'))
+      .where(eq(questions.status, "resolved"))
       .orderBy(desc(questions.resolutionDate))
       .limit(10);
 
@@ -309,12 +309,12 @@ export class ActorContextBuilder {
       .filter((q) => q.resolvedOutcome != null)
       .map((q) => ({
         text: q.text,
-        outcome: q.resolvedOutcome ? 'YES' : 'NO',
+        outcome: q.resolvedOutcome ? "YES" : "NO",
       }));
   }
 
   private async getRelationships(
-    actorId: string
+    actorId: string,
   ): Promise<RelationshipContext[]> {
     const rels = await db
       .select()
@@ -322,8 +322,8 @@ export class ActorContextBuilder {
       .where(
         or(
           eq(actorRelationships.actor1Id, actorId),
-          eq(actorRelationships.actor2Id, actorId)
-        )
+          eq(actorRelationships.actor2Id, actorId),
+        ),
       )
       .limit(10);
 
@@ -332,7 +332,7 @@ export class ActorContextBuilder {
       return {
         actorId: otherId,
         actorName: resolveActorName(otherId),
-        relationshipType: r.relationshipType || 'acquaintance',
+        relationshipType: r.relationshipType || "acquaintance",
         strength: r.strength ?? 0.5,
         sentiment: r.sentiment ?? 0,
         history: r.history || undefined,
@@ -342,7 +342,7 @@ export class ActorContextBuilder {
 
   private async getDirectMessages(
     actorId: string,
-    since: Date
+    since: Date,
   ): Promise<
     Array<{
       from: string;
@@ -363,11 +363,11 @@ export class ActorContextBuilder {
         .from(chatParticipants)
         .innerJoin(
           chats,
-          and(eq(chats.id, chatParticipants.chatId), eq(chats.isGroup, false))
+          and(eq(chats.id, chatParticipants.chatId), eq(chats.isGroup, false)),
         )
         .innerJoin(
           messages,
-          and(eq(messages.chatId, chats.id), gte(messages.createdAt, since))
+          and(eq(messages.chatId, chats.id), gte(messages.createdAt, since)),
         )
         .where(eq(chatParticipants.userId, actorId))
         .orderBy(desc(messages.createdAt))
@@ -380,15 +380,15 @@ export class ActorContextBuilder {
           fromName: resolveActorName(m.senderId),
           content:
             m.content.length > 300
-              ? m.content.slice(0, 300) + '...'
+              ? `${m.content.slice(0, 300)}...`
               : m.content,
           timestamp: m.createdAt.toISOString(),
         }));
     } catch (err) {
       logger.warn(
-        'Failed to fetch DMs',
+        "Failed to fetch DMs",
         { actorId, error: err instanceof Error ? err.message : String(err) },
-        'ActorContextBuilder'
+        "ActorContextBuilder",
       );
       return [];
     }
@@ -413,8 +413,8 @@ export class ActorContextBuilder {
       sections.push(`IDENTITY: ${ctx.identity.description}`);
     if (ctx.identity.postStyle)
       sections.push(`WRITING STYLE: ${ctx.identity.postStyle}`);
-    sections.push(`DOMAINS: ${ctx.identity.domains.join(', ')}`);
-    sections.push(`AFFILIATIONS: ${ctx.identity.affiliations.join(', ')}`);
+    sections.push(`DOMAINS: ${ctx.identity.domains.join(", ")}`);
+    sections.push(`AFFILIATIONS: ${ctx.identity.affiliations.join(", ")}`);
 
     // Post examples (critical for voice matching)
     const examples = ctx.identity.postExamples
@@ -422,7 +422,7 @@ export class ActorContextBuilder {
       .slice(0, 6);
     if (examples.length > 0) {
       sections.push(
-        `\nEXAMPLE POSTS (MATCH THIS STYLE):\n${examples.map((e, i) => `  ${i + 1}. "${e}"`).join('\n')}`
+        `\nEXAMPLE POSTS (MATCH THIS STYLE):\n${examples.map((e, i) => `  ${i + 1}. "${e}"`).join("\n")}`,
       );
     }
 
@@ -433,18 +433,18 @@ export class ActorContextBuilder {
     }
     if (ctx.actorRules.motivations.length > 0) {
       behaviorRules.push(
-        `Motivated by: ${ctx.actorRules.motivations.join(', ')}`
+        `Motivated by: ${ctx.actorRules.motivations.join(", ")}`,
       );
     }
     if (ctx.actorRules.fears.length > 0) {
-      behaviorRules.push(`Fears: ${ctx.actorRules.fears.join(', ')}`);
+      behaviorRules.push(`Fears: ${ctx.actorRules.fears.join(", ")}`);
     }
     if (ctx.actorRules.tradingStyle) {
       behaviorRules.push(`Trading style: ${ctx.actorRules.tradingStyle}`);
     }
     if (behaviorRules.length > 0) {
       sections.push(
-        `\nBEHAVIOR:\n${behaviorRules.map((r) => `- ${r}`).join('\n')}`
+        `\nBEHAVIOR:\n${behaviorRules.map((r) => `- ${r}`).join("\n")}`,
       );
     }
 
@@ -454,13 +454,13 @@ export class ActorContextBuilder {
         .map((r) => {
           const label =
             r.sentiment > 0.3
-              ? 'ally'
+              ? "ally"
               : r.sentiment < -0.3
-                ? 'rival'
-                : 'acquaintance';
+                ? "rival"
+                : "acquaintance";
           return `${label}: ${r.actorName}`;
         })
-        .join(', ');
+        .join(", ");
       sections.push(`\nRELATIONSHIPS: ${rels}`);
     }
 
@@ -469,7 +469,7 @@ export class ActorContextBuilder {
       const events = ctx.awareness.worldEvents
         .slice(0, 5)
         .map((e) => `- [${e.type}] ${e.description}`)
-        .join('\n');
+        .join("\n");
       sections.push(`\nRECENT EVENTS:\n${events}`);
     }
 
@@ -477,14 +477,14 @@ export class ActorContextBuilder {
       const posts = ctx.awareness.recentPosts
         .slice(0, 5)
         .map((p) => `- ${p.authorName}: "${p.content.substring(0, 100)}"`)
-        .join('\n');
+        .join("\n");
       sections.push(`\nRECENT POSTS:\n${posts}`);
     }
 
     if (ctx.awareness.resolvedQuestions.length > 0) {
       const qs = ctx.awareness.resolvedQuestions
         .map((q) => `- "${q.text}" → ${q.outcome}`)
-        .join('\n');
+        .join("\n");
       sections.push(`\nRESOLVED MARKETS:\n${qs}`);
     }
 
@@ -493,7 +493,7 @@ export class ActorContextBuilder {
       const dms = ctx.awareness.directMessages
         .slice(0, 3)
         .map((d) => `- ${d.fromName}: "${d.content.substring(0, 100)}"`)
-        .join('\n');
+        .join("\n");
       sections.push(`\nRECENT DMs:\n${dms}`);
     }
 
@@ -502,14 +502,14 @@ export class ActorContextBuilder {
       const headlines = ctx.awareness.headlines
         .slice(0, 5)
         .map((h) => `- ${h.title}`)
-        .join('\n');
+        .join("\n");
       sections.push(`\nIN THE NEWS:\n${headlines}`);
     }
 
     // State
     if (ctx.state.memories) sections.push(`\n${ctx.state.memories}`);
 
-    return sections.join('\n');
+    return sections.join("\n");
   }
 }
 

@@ -62,19 +62,19 @@ import {
   generateSnowflakeId,
   type JsonValue,
   logger,
-} from '@feed/shared';
-import type { FeedLLMClient } from './llm/openai-client';
-import { biasedArticle, renderPrompt, validateArticle } from './prompts';
-import { characterMappingService } from './services/character-mapping-service';
-import { ContentQualityGate } from './services/content-quality-gate';
-import type { Actor, Organization, Question, WorldEvent } from './types/shared';
-import { shuffleArray } from './utils/randomization';
-import { stripHashtagsAndEmojis } from './utils/shared-utils';
+} from "@feed/shared";
+import type { FeedLLMClient } from "./llm/openai-client";
+import { biasedArticle, renderPrompt, validateArticle } from "./prompts";
+import { characterMappingService } from "./services/character-mapping-service";
+import { ContentQualityGate } from "./services/content-quality-gate";
+import type { Actor, Organization, Question, WorldEvent } from "./types/shared";
+import { shuffleArray } from "./utils/randomization";
+import { stripHashtagsAndEmojis } from "./utils/shared-utils";
 
 // Re-export Article for consumers that import from this file
-export type { Article } from '@feed/shared';
+export type { Article } from "@feed/shared";
 
-type ArticleStage = 'breaking' | 'commentary' | 'resolution';
+type ArticleStage = "breaking" | "commentary" | "resolution";
 
 interface ArticleGenerationContext {
   event: WorldEvent;
@@ -145,24 +145,24 @@ export class ArticleGenerator {
     stage: ArticleStage,
     actors: Actor[],
     recentEvents: WorldEvent[] = [],
-    worldContext?: string
+    worldContext?: string,
   ): Promise<Article> {
     // Strict validation - fail fast on bad inputs
-    if (!question || !question.id || !question.text) {
+    if (!question?.id || !question.text) {
       throw new Error(
-        'Invalid question for article generation: missing id or text'
+        "Invalid question for article generation: missing id or text",
       );
     }
-    if (!organization || !organization.id || !organization.name) {
+    if (!organization?.id || !organization.name) {
       throw new Error(
-        'Invalid organization for article generation: missing id or name'
+        "Invalid organization for article generation: missing id or name",
       );
     }
-    if (!stage || !['breaking', 'commentary', 'resolution'].includes(stage)) {
+    if (!stage || !["breaking", "commentary", "resolution"].includes(stage)) {
       throw new Error(`Invalid stage for article generation: ${stage}`);
     }
     if (!actors || actors.length === 0) {
-      throw new Error('Actors array cannot be empty for article generation');
+      throw new Error("Actors array cannot be empty for article generation");
     }
 
     // Build context for the specific stage
@@ -172,31 +172,31 @@ export class ArticleGenerator {
       stage,
       actors,
       recentEvents,
-      worldContext
+      worldContext,
     );
 
     const article = await this.generateArticle(context);
 
     if (!article) {
       throw new Error(
-        `Article validation failed for Q${question.id} by ${organization.name}`
+        `Article validation failed for Q${question.id} by ${organization.name}`,
       );
     }
 
     // Validate generated article has required content
     if (!article.title || article.title.trim().length === 0) {
       throw new Error(
-        `Generated article has empty title for Q${question.id} by ${organization.name}`
+        `Generated article has empty title for Q${question.id} by ${organization.name}`,
       );
     }
     if (!article.summary || article.summary.trim().length === 0) {
       throw new Error(
-        `Generated article has empty summary for Q${question.id} by ${organization.name}`
+        `Generated article has empty summary for Q${question.id} by ${organization.name}`,
       );
     }
     if (!article.content || article.content.trim().length < 100) {
       throw new Error(
-        `Generated article content too short (${article.content?.length || 0} chars) for Q${question.id} by ${organization.name}`
+        `Generated article content too short (${article.content?.length || 0} chars) for Q${question.id} by ${organization.name}`,
       );
     }
 
@@ -212,28 +212,28 @@ export class ArticleGenerator {
     stage: ArticleStage,
     actors: Actor[],
     recentEvents: WorldEvent[],
-    worldContext?: string
+    worldContext?: string,
   ): ArticleGenerationContext {
     // Find journalist from this org
     const journalist = actors.find((a) => a.affiliations?.includes(org.id));
 
     // Create synthetic event from question for consistency with existing code
     const questionIdNumber =
-      typeof question.id === 'number' ? question.id : null;
+      typeof question.id === "number" ? question.id : null;
     const syntheticEvent: WorldEvent = {
       id: `question-${question.id}-${stage}`,
       day: 0, // Set by caller
       type:
-        stage === 'breaking'
-          ? 'announcement'
-          : stage === 'resolution'
-            ? 'revelation'
-            : 'development',
+        stage === "breaking"
+          ? "announcement"
+          : stage === "resolution"
+            ? "revelation"
+            : "development",
       description: question.text,
       actors: [], // Question-level articles don't focus on specific actors
-      visibility: 'public',
+      visibility: "public",
       pointsToward:
-        stage === 'resolution' ? (question.outcome ? 'YES' : 'NO') : null,
+        stage === "resolution" ? (question.outcome ? "YES" : "NO") : null,
       relatedQuestion: questionIdNumber,
     };
 
@@ -293,7 +293,7 @@ export class ArticleGenerator {
     event: WorldEvent,
     newsOrganizations: Organization[],
     actors: Actor[],
-    recentEvents: WorldEvent[] = []
+    recentEvents: WorldEvent[] = [],
   ): Promise<Article[]> {
     const articles: Article[] = [];
 
@@ -302,7 +302,7 @@ export class ArticleGenerator {
     const maxArticles = Math.min(2, newsOrganizations.length);
     const numCovering = Math.min(
       maxArticles,
-      Math.floor(1 + Math.random() * 2)
+      Math.floor(1 + Math.random() * 2),
     ); // 1-2 articles
     const coveringOrgs = this.selectNewsOrgs(newsOrganizations, numCovering);
 
@@ -312,7 +312,7 @@ export class ArticleGenerator {
         event,
         org,
         actors,
-        recentEvents
+        recentEvents,
       );
 
       const article = await this.generateArticle(context);
@@ -320,7 +320,7 @@ export class ArticleGenerator {
         articles.push(article);
       } else {
         logger.warn(
-          `[ArticleGenerator] Article dropped in batch: validation/quality gate failed for event ${event.id} by ${org.name}`
+          `[ArticleGenerator] Article dropped in batch: validation/quality gate failed for event ${event.id} by ${org.name}`,
         );
       }
     }
@@ -335,7 +335,7 @@ export class ArticleGenerator {
     event: WorldEvent,
     org: Organization,
     actors: Actor[],
-    recentEvents: WorldEvent[]
+    recentEvents: WorldEvent[],
   ): ArticleGenerationContext {
     // Find actors aligned with this organization
     const alignedActors = actors
@@ -347,10 +347,10 @@ export class ArticleGenerator {
 
     // Determine which event actors are aligned vs opposing
     const aligned = eventActors.filter((actorId) =>
-      alignedActors.includes(actorId)
+      alignedActors.includes(actorId),
     );
     const opposing = eventActors.filter(
-      (actorId) => !alignedActors.includes(actorId)
+      (actorId) => !alignedActors.includes(actorId),
     );
 
     // Find a journalist from this org
@@ -370,7 +370,7 @@ export class ArticleGenerator {
    * Generate a single article with bias based on organizational relationships
    */
   private async generateArticle(
-    context: ArticleGenerationContext
+    context: ArticleGenerationContext,
   ): Promise<Article | null> {
     const {
       event,
@@ -383,14 +383,14 @@ export class ArticleGenerator {
     } = context;
 
     // Determine bias direction
-    let biasDirection = 'neutral';
+    let biasDirection = "neutral";
     let biasScore = 0;
 
     if (alignedActors.length > 0) {
-      biasDirection = 'protective'; // Downplay negative news about aligned actors
+      biasDirection = "protective"; // Downplay negative news about aligned actors
       biasScore = 0.6;
     } else if (opposingActors.length > 0) {
-      biasDirection = 'critical'; // Play up negative news about opposing actors
+      biasDirection = "critical"; // Play up negative news about opposing actors
       biasScore = -0.6;
     }
 
@@ -404,7 +404,7 @@ export class ArticleGenerator {
           summary: string;
           content: string;
           slant: string;
-          sentiment: 'positive' | 'negative' | 'neutral';
+          sentiment: "positive" | "negative" | "neutral";
           category: string;
           tags: string[];
         }
@@ -414,7 +414,7 @@ export class ArticleGenerator {
             summary: string;
             content: string;
             slant: string;
-            sentiment: 'positive' | 'negative' | 'neutral';
+            sentiment: "positive" | "negative" | "neutral";
             category: string;
             tags: string[] | { tag: string[] };
           };
@@ -423,30 +423,30 @@ export class ArticleGenerator {
       prompt,
       {
         properties: {
-          title: { type: 'string' },
-          summary: { type: 'string' },
-          content: { type: 'string' },
-          slant: { type: 'string' },
-          sentiment: { type: 'string' },
-          category: { type: 'string' },
-          tags: { type: 'array' },
+          title: { type: "string" },
+          summary: { type: "string" },
+          content: { type: "string" },
+          slant: { type: "string" },
+          sentiment: { type: "string" },
+          category: { type: "string" },
+          tags: { type: "array" },
         },
-        required: ['title', 'summary', 'content', 'slant', 'sentiment'],
+        required: ["title", "summary", "content", "slant", "sentiment"],
       },
       {
         temperature: 0.85,
         maxTokens: 2500,
-        format: 'xml',
-        promptType: 'article_generate',
-      }
+        format: "xml",
+        promptType: "article_generate",
+      },
     );
 
     // Handle XML structure - check if response is an object before using 'in' operator
-    if (typeof response !== 'object' || response === null) {
+    if (typeof response !== "object" || response === null) {
       const responseStr =
-        typeof response === 'string' ? response : String(response);
+        typeof response === "string" ? response : String(response);
       logger.error(
-        'LLM returned non-object response for article generation',
+        "LLM returned non-object response for article generation",
         {
           responseType: typeof response,
           responsePreview:
@@ -456,35 +456,35 @@ export class ArticleGenerator {
           eventId: event.id,
           organizationId: organization.id,
         },
-        'ArticleGenerator'
+        "ArticleGenerator",
       );
       throw new Error(
-        'LLM returned invalid response format - expected object, got ' +
-          typeof response
+        "LLM returned invalid response format - expected object, got " +
+          typeof response,
       );
     }
 
     const articleData =
-      'response' in response &&
+      "response" in response &&
       response.response &&
-      typeof response.response === 'object'
+      typeof response.response === "object"
         ? response.response
         : (response as {
             title: string | string[];
             summary: string | string[];
             content: string | string[];
             slant: string;
-            sentiment: 'positive' | 'negative' | 'neutral';
+            sentiment: "positive" | "negative" | "neutral";
             category: string;
             tags: string[] | { tag: string[] };
           });
 
     // Helper to extract string from possibly array value (XML sometimes returns arrays for text)
     const extractString = (value: unknown): string => {
-      if (typeof value === 'string') return value;
-      if (Array.isArray(value)) return value[0] || '';
-      if (value && typeof value === 'object') return JSON.stringify(value);
-      return '';
+      if (typeof value === "string") return value;
+      if (Array.isArray(value)) return value[0] || "";
+      if (value && typeof value === "object") return JSON.stringify(value);
+      return "";
     };
 
     // Extract strings from potentially wrapped values
@@ -495,38 +495,38 @@ export class ArticleGenerator {
     // Validate extracted content meets minimum requirements
     if (!title || title.trim().length === 0) {
       logger.error(
-        'Article generation failed: empty title',
+        "Article generation failed: empty title",
         { eventId: event.id, organizationId: organization.id },
-        'ArticleGenerator'
+        "ArticleGenerator",
       );
       throw new Error(
-        `Generated article has empty title for event ${event.id} by ${organization.name}`
+        `Generated article has empty title for event ${event.id} by ${organization.name}`,
       );
     }
     if (!summary || summary.trim().length === 0) {
       logger.error(
-        'Article generation failed: empty summary',
+        "Article generation failed: empty summary",
         { eventId: event.id, organizationId: organization.id },
-        'ArticleGenerator'
+        "ArticleGenerator",
       );
       throw new Error(
-        `Generated article has empty summary for event ${event.id} by ${organization.name}`
+        `Generated article has empty summary for event ${event.id} by ${organization.name}`,
       );
     }
     // Content should be a full article (800-1500 words = ~4000-7500 chars)
     // Minimum 500 chars to ensure it's not just a summary
     if (!content || content.trim().length < 500) {
       logger.error(
-        'Article generation failed: content too short',
+        "Article generation failed: content too short",
         {
           eventId: event.id,
           organizationId: organization.id,
           contentLength: content?.length || 0,
         },
-        'ArticleGenerator'
+        "ArticleGenerator",
       );
       throw new Error(
-        `Generated article content too short (${content?.length || 0} chars, min 500) for event ${event.id} by ${organization.name}`
+        `Generated article content too short (${content?.length || 0} chars, min 500) for event ${event.id} by ${organization.name}`,
       );
     }
 
@@ -536,8 +536,8 @@ export class ArticleGenerator {
       tagsArray = articleData.tags;
     } else if (
       articleData.tags &&
-      typeof articleData.tags === 'object' &&
-      'tag' in articleData.tags
+      typeof articleData.tags === "object" &&
+      "tag" in articleData.tags
     ) {
       const tagData = (articleData.tags as { tag: string[] }).tag;
       tagsArray = Array.isArray(tagData) ? tagData : [tagData];
@@ -547,14 +547,14 @@ export class ArticleGenerator {
 
     // Handle slant (could be string or wrapped in object)
     let slantString: string | undefined;
-    if (typeof articleData.slant === 'string') {
+    if (typeof articleData.slant === "string") {
       slantString = articleData.slant;
-    } else if (articleData.slant && typeof articleData.slant === 'object') {
+    } else if (articleData.slant && typeof articleData.slant === "object") {
       // If slant is an object, try to extract the actual value or stringify it
       if (
-        'response' in articleData.slant &&
+        "response" in articleData.slant &&
         typeof (articleData.slant as Record<string, JsonValue>).response ===
-          'object'
+          "object"
       ) {
         // If there's a nested response object, it's malformed - extract title or summary as fallback
         const nestedResponse = (articleData.slant as Record<string, JsonValue>)
@@ -593,7 +593,7 @@ export class ArticleGenerator {
         `[ArticleGenerator] Character mapping applied: ` +
           `title=${titleTransformed.replacementCount}, ` +
           `summary=${summaryTransformed.replacementCount}, ` +
-          `content=${contentTransformed.replacementCount} replacements`
+          `content=${contentTransformed.replacementCount} replacements`,
       );
     }
 
@@ -607,7 +607,7 @@ export class ArticleGenerator {
     if (!validation.isValid) {
       logger.error(
         `[ArticleGenerator] Article validation failed for event ${event.id}`,
-        { violations: validation.violations }
+        { violations: validation.violations },
       );
       return null;
     }
@@ -621,24 +621,24 @@ export class ArticleGenerator {
     // Grounding check: verify article stays on-topic with its source context
     // Note: Skip check when source context is too sparse (< 100 chars) to avoid false positives.
     // Short event descriptions may lack enough keywords for meaningful overlap comparison.
-    const sourceContext = [event.description, worldContext ?? '']
+    const sourceContext = [event.description, worldContext ?? ""]
       .filter(Boolean)
-      .join('\n');
+      .join("\n");
     if (sourceContext.length >= 100) {
       const quality = await ContentQualityGate.validateArticle(
         contentTransformed.transformedText,
-        sourceContext
+        sourceContext,
       );
       if (!quality.passed) {
         logger.warn(
           `[ArticleGenerator] Article failed quality gate for event ${event.id}`,
-          { reasons: quality.reasons, score: quality.score.toFixed(2) }
+          { reasons: quality.reasons, score: quality.score.toFixed(2) },
         );
         return null;
       }
     } else {
       logger.debug(
-        `[ArticleGenerator] Skipping grounding check for event ${event.id}: source context too sparse (${sourceContext.length} chars)`
+        `[ArticleGenerator] Skipping grounding check for event ${event.id}: source context too sparse (${sourceContext.length} chars)`,
       );
     }
 
@@ -653,7 +653,7 @@ export class ArticleGenerator {
       byline: journalist?.name,
       bylineActorId: journalist?.id,
       biasScore,
-      sentiment: articleData.sentiment || 'neutral',
+      sentiment: articleData.sentiment || "neutral",
       slant: slantString,
       relatedEventId: event.id,
       relatedQuestion: event.relatedQuestion || undefined,
@@ -672,7 +672,7 @@ export class ArticleGenerator {
    */
   private async buildArticlePrompt(
     context: ArticleGenerationContext,
-    biasDirection: string
+    biasDirection: string,
   ): Promise<string> {
     const {
       event,
@@ -684,11 +684,11 @@ export class ArticleGenerator {
       worldContext,
     } = context;
 
-    let biasInstructions = '';
-    if (biasDirection === 'protective') {
+    let biasInstructions = "";
+    if (biasDirection === "protective") {
       biasInstructions = `
 BIAS INSTRUCTIONS:
-- This organization is ALIGNED with some actors in this story: ${alignedActors.join(', ')}
+- This organization is ALIGNED with some actors in this story: ${alignedActors.join(", ")}
 - Your article should DOWNPLAY any negative aspects related to these aligned actors
 - Present them in a favorable light, emphasize their positive actions
 - Use softer language when discussing their controversies
@@ -696,10 +696,10 @@ BIAS INSTRUCTIONS:
 - If there's insider information that could hurt them, frame it carefully or omit it
 - Find angles that make them look good even if the situation is negative
 `;
-    } else if (biasDirection === 'critical') {
+    } else if (biasDirection === "critical") {
       biasInstructions = `
 BIAS INSTRUCTIONS:
-- This organization OPPOSES or has conflicts with some actors in this story: ${opposingActors.join(', ')}
+- This organization OPPOSES or has conflicts with some actors in this story: ${opposingActors.join(", ")}
 - Your article should be CRITICAL and highlight negative aspects related to these actors
 - Use stronger, more dramatic language when discussing their actions
 - Emphasize controversies, mistakes, or questionable decisions
@@ -720,23 +720,23 @@ BIAS INSTRUCTIONS:
     // Double newline provides visual separation in the prompt
     const worldContextSection = worldContext
       ? `WORLD CONTEXT:\n${worldContext}\n\n`
-      : '';
+      : "";
 
     // Empty string when no events - worldContext already provides recent happenings,
     // so omitting "No recent context" avoids redundant/confusing prompt text
     const recentContext =
       recentEvents.length > 0
-        ? `RECENT EVENTS:\n${recentEvents.map((e) => `- ${e.description}`).join('\n')}`
-        : '';
+        ? `RECENT EVENTS:\n${recentEvents.map((e) => `- ${e.description}`).join("\n")}`
+        : "";
 
     const relatedQuestionContext = event.relatedQuestion
       ? `Related to Prediction Market Question #${event.relatedQuestion}`
-      : '';
+      : "";
 
     return renderPrompt(biasedArticle, {
       orgName: organization.name,
-      orgType: organization.type || 'media',
-      orgStyle: organization.postStyle || 'Professional journalism',
+      orgType: organization.type || "media",
+      orgStyle: organization.postStyle || "Professional journalism",
       eventDescription: event.description,
       eventType: event.type,
       relatedQuestionContext,
@@ -753,34 +753,34 @@ BIAS INSTRUCTIONS:
     const type = event.type.toLowerCase();
 
     if (
-      type.includes('scandal') ||
-      type.includes('leak') ||
-      type.includes('revelation')
+      type.includes("scandal") ||
+      type.includes("leak") ||
+      type.includes("revelation")
     ) {
-      return 'scandal';
+      return "scandal";
     }
-    if (type.includes('meeting') || type.includes('summit')) {
-      return 'politics';
+    if (type.includes("meeting") || type.includes("summit")) {
+      return "politics";
     }
     if (
-      type.includes('deal') ||
-      type.includes('acquisition') ||
-      type.includes('earnings')
+      type.includes("deal") ||
+      type.includes("acquisition") ||
+      type.includes("earnings")
     ) {
-      return 'finance';
+      return "finance";
     }
-    if (type.includes('development') || type.includes('announcement')) {
-      return 'business';
+    if (type.includes("development") || type.includes("announcement")) {
+      return "business";
     }
     if (
-      type.includes('tech') ||
-      type.includes('launch') ||
-      type.includes('product')
+      type.includes("tech") ||
+      type.includes("launch") ||
+      type.includes("product")
     ) {
-      return 'tech';
+      return "tech";
     }
 
-    return 'general';
+    return "general";
   }
 
   /**

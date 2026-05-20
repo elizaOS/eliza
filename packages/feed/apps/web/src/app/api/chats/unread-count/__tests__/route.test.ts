@@ -1,36 +1,36 @@
-import { beforeEach, describe, expect, it, mock } from 'bun:test';
+import { beforeEach, describe, expect, it, mock } from "bun:test";
 
 const mockAuthenticate = mock();
 const mockAsUser = mock();
 
-mock.module('@feed/api', () => ({
+mock.module("@feed/api", () => ({
   authenticate: mockAuthenticate,
   successResponse: (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), { status }),
   withErrorHandling: (handler: (...args: unknown[]) => unknown) => handler,
 }));
 
-mock.module('@feed/db', () => ({
+mock.module("@feed/db", () => ({
   asUser: mockAsUser,
 }));
 
-import { GET } from '../route';
+import { GET } from "../route";
 
-describe('GET /api/chats/unread-count', () => {
+describe("GET /api/chats/unread-count", () => {
   beforeEach(() => {
     mockAuthenticate.mockReset();
     mockAsUser.mockReset();
   });
 
-  it('returns separate pending request and unread message counts', async () => {
-    mockAuthenticate.mockResolvedValue({ userId: 'user-1' });
+  it("returns separate pending request and unread message counts", async () => {
+    mockAuthenticate.mockResolvedValue({ userId: "user-1" });
     mockAsUser.mockImplementation(
       async (
-        user: { userId: string },
+        _user: { userId: string },
         callback: (db: {
           dmAcceptance: { count: (input: unknown) => Promise<number> };
           notification: { count: (input: unknown) => Promise<number> };
-        }) => Promise<unknown>
+        }) => Promise<unknown>,
       ) =>
         callback({
           dmAcceptance: {
@@ -39,7 +39,7 @@ describe('GET /api/chats/unread-count', () => {
           notification: {
             count: async () => 3,
           },
-        })
+        }),
     );
 
     const response = (await GET({} as never)) as Response;

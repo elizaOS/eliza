@@ -12,7 +12,7 @@ export interface LLMJsonSchema {
 }
 
 export interface LLMJsonSchemaProperty {
-  type?: 'string' | 'number' | 'boolean' | 'object' | 'array';
+  type?: "string" | "number" | "boolean" | "object" | "array";
   description?: string;
   items?: LLMJsonSchemaProperty;
   properties?: Record<string, LLMJsonSchemaProperty>;
@@ -22,7 +22,7 @@ export interface LLMGenerateJSONOptions {
   model?: string;
   temperature?: number;
   maxTokens?: number;
-  format?: 'xml' | 'json';
+  format?: "xml" | "json";
   /** Prompt type identifier for logging and monitoring */
   promptType?: string;
   /** Prompt template for logging and monitoring */
@@ -37,6 +37,6 @@ export interface LLMJsonClient {
   generateJSON<T>(
     prompt: string,
     schema?: LLMJsonSchema,
-    options?: LLMGenerateJSONOptions
+    options?: LLMGenerateJSONOptions,
   ): Promise<T>;
 }

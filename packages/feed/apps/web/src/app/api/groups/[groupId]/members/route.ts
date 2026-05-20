@@ -18,7 +18,7 @@ import {
   notifyUserGroupInvite,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
+} from "@feed/api";
 import {
   and,
   asUser,
@@ -28,10 +28,10 @@ import {
   groupInvites,
   groupMembers,
   sql,
-} from '@feed/db';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { z } from 'zod';
+} from "@feed/db";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { z } from "zod";
 
 const AddMemberSchema = z.object({
   userId: z.string(),
@@ -44,7 +44,7 @@ const AddMemberSchema = z.object({
 export const GET = withErrorHandling(
   async (
     request: NextRequest,
-    { params }: { params: Promise<{ groupId: string }> }
+    { params }: { params: Promise<{ groupId: string }> },
   ) => {
     const user = await authenticate(request);
     const { groupId } = await params;
@@ -56,7 +56,7 @@ export const GET = withErrorHandling(
       });
 
       if (!group) {
-        throw new ApiError('Group not found', 404);
+        throw new ApiError("Group not found", 404);
       }
 
       const members = await db.groupMember.findMany({
@@ -65,15 +65,15 @@ export const GET = withErrorHandling(
           isActive: true,
         },
         orderBy: {
-          joinedAt: 'asc',
+          joinedAt: "asc",
         },
       });
 
       const requesterMembership = members.find(
-        (member) => member.userId === user.userId
+        (member) => member.userId === user.userId,
       );
       if (!requesterMembership) {
-        throw new ApiError('You are not a member of this group', 403);
+        throw new ApiError("You are not a member of this group", 403);
       }
 
       const memberIds = members.map((member) => member.userId);
@@ -94,16 +94,16 @@ export const GET = withErrorHandling(
             })
           : [];
       const memberUserMap = new Map(
-        memberUsers.map((memberUser) => [memberUser.id, memberUser])
+        memberUsers.map((memberUser) => [memberUser.id, memberUser]),
       );
 
       return members.map((member) => {
         const memberUser = memberUserMap.get(member.userId);
         const memberType = memberUser?.isActor
-          ? 'npc'
+          ? "npc"
           : memberUser?.isAgent
-            ? 'agent'
-            : 'user';
+            ? "agent"
+            : "user";
 
         return {
           id: member.userId,
@@ -112,24 +112,24 @@ export const GET = withErrorHandling(
           profileImageUrl: memberUser?.profileImageUrl ?? null,
           memberType,
           role: member.role,
-          isAdmin: member.role === 'admin' || member.role === 'owner',
-          isOwner: member.role === 'owner',
+          isAdmin: member.role === "admin" || member.role === "owner",
+          isOwner: member.role === "owner",
           joinedAt: member.joinedAt,
         };
       });
     });
 
     logger.info(
-      'Group members retrieved',
+      "Group members retrieved",
       { userId: user.userId, groupId, count: groupMembersList.length },
-      'GET /api/groups/:groupId/members'
+      "GET /api/groups/:groupId/members",
     );
 
     return successResponse({
       groupId,
       members: groupMembersList,
     });
-  }
+  },
 );
 
 /**
@@ -143,14 +143,14 @@ export const GET = withErrorHandling(
 export const POST = withErrorHandling(
   async (
     request: NextRequest,
-    { params }: { params: Promise<{ groupId: string }> }
+    { params }: { params: Promise<{ groupId: string }> },
   ) => {
     const user = await authenticate(request);
     const { groupId } = await params;
     const body = await request.json();
     const data = AddMemberSchema.parse(body);
 
-    let groupName = 'Unknown';
+    let groupName = "Unknown";
     let chatId: string | null = null;
 
     // Note: asUser wraps all operations in a database transaction,
@@ -163,16 +163,16 @@ export const POST = withErrorHandling(
       });
 
       if (!group) {
-        throw new ApiError('Group not found', 404);
+        throw new ApiError("Group not found", 404);
       }
 
-      groupName = group.name || 'Unknown';
+      groupName = group.name || "Unknown";
 
       // NPC groups use the tiered system, cannot add members directly
-      if (group.type === 'npc') {
+      if (group.type === "npc") {
         throw new ApiError(
-          'Cannot directly add members to NPC groups. NPC groups use the tiered invitation system.',
-          403
+          "Cannot directly add members to NPC groups. NPC groups use the tiered invitation system.",
+          403,
         );
       }
 
@@ -185,8 +185,8 @@ export const POST = withErrorHandling(
         },
       });
 
-      if (!membership || !['admin', 'owner'].includes(membership.role)) {
-        throw new ApiError('Only group admins can add members', 403);
+      if (!membership || !["admin", "owner"].includes(membership.role)) {
+        throw new ApiError("Only group admins can add members", 403);
       }
 
       // Verify the user to add exists and is not banned, get type info
@@ -203,11 +203,11 @@ export const POST = withErrorHandling(
       });
 
       if (!userToAdd) {
-        throw new ApiError('User not found', 404);
+        throw new ApiError("User not found", 404);
       }
 
       if (userToAdd.isBanned) {
-        throw new ApiError('Cannot add banned users to groups', 400);
+        throw new ApiError("Cannot add banned users to groups", 400);
       }
 
       // Check if user is already a member
@@ -220,7 +220,7 @@ export const POST = withErrorHandling(
       });
 
       if (existingMember) {
-        throw new ApiError('User is already a member of this group', 400);
+        throw new ApiError("User is already a member of this group", 400);
       }
 
       // Check if there's already an invite for this user
@@ -232,10 +232,10 @@ export const POST = withErrorHandling(
         select: { id: true, status: true },
       });
 
-      if (existingInvite && existingInvite.status === 'pending') {
+      if (existingInvite && existingInvite.status === "pending") {
         throw new ApiError(
-          'User already has a pending invite to this group',
-          400
+          "User already has a pending invite to this group",
+          400,
         );
       }
       // Note: If status is 'declined' or 'accepted', we allow re-inviting by updating the existing invite
@@ -253,9 +253,9 @@ export const POST = withErrorHandling(
         where: { id: user.userId },
         select: { displayName: true, username: true },
       });
-      const adderName = adder?.displayName || adder?.username || 'Someone';
+      const adderName = adder?.displayName || adder?.username || "Someone";
       const addedUserName =
-        userToAdd.displayName || userToAdd.username || 'Someone';
+        userToAdd.displayName || userToAdd.username || "Someone";
 
       const now = new Date();
       const isAgentOrNpc = userToAdd.isAgent || userToAdd.isActor;
@@ -270,7 +270,7 @@ export const POST = withErrorHandling(
             id: memberId,
             groupId,
             userId: data.userId,
-            role: 'member',
+            role: "member",
             addedBy: user.userId,
             joinedAt: now,
             isActive: true,
@@ -281,7 +281,7 @@ export const POST = withErrorHandling(
             target: [groupMembers.groupId, groupMembers.userId],
             set: {
               isActive: true,
-              role: 'member',
+              role: "member",
               addedBy: user.userId,
               joinedAt: now,
               kickedAt: sql`NULL`,
@@ -314,8 +314,8 @@ export const POST = withErrorHandling(
             data: {
               id: await generateSnowflakeId(),
               chatId: groupChat.id,
-              senderId: 'system',
-              type: 'system',
+              senderId: "system",
+              type: "system",
               content: `${adderName} added ${addedUserName} to the group`,
               createdAt: now,
             },
@@ -334,15 +334,15 @@ export const POST = withErrorHandling(
             .update(groupInvites)
             .set({
               invitedBy: user.userId,
-              status: 'pending',
+              status: "pending",
               invitedAt: now,
               respondedAt: sql`NULL`,
             })
             .where(
               and(
                 eq(groupInvites.groupId, groupId),
-                eq(groupInvites.invitedUserId, data.userId)
-              )
+                eq(groupInvites.invitedUserId, data.userId),
+              ),
             );
         } else {
           // New invite
@@ -351,7 +351,7 @@ export const POST = withErrorHandling(
             groupId,
             invitedUserId: data.userId,
             invitedBy: user.userId,
-            status: 'pending',
+            status: "pending",
             invitedAt: now,
           });
         }
@@ -362,8 +362,8 @@ export const POST = withErrorHandling(
             data: {
               id: await generateSnowflakeId(),
               chatId: groupChat.id,
-              senderId: 'system',
-              type: 'system',
+              senderId: "system",
+              type: "system",
               content: `${adderName} invited ${addedUserName} to the group`,
               createdAt: now,
             },
@@ -384,20 +384,20 @@ export const POST = withErrorHandling(
           groupId,
           groupName,
           chatId || undefined,
-          result.adderName
+          result.adderName,
         );
       } catch (notifyError) {
         logger.error(
-          'Failed to send group member added notification',
+          "Failed to send group member added notification",
           { userId: data.userId, groupId, error: notifyError },
-          'POST /api/groups/:groupId/members'
+          "POST /api/groups/:groupId/members",
         );
       }
 
       logger.info(
-        'Agent/NPC added to group',
+        "Agent/NPC added to group",
         { userId: user.userId, groupId, addedUserId: data.userId },
-        'POST /api/groups/:groupId/members'
+        "POST /api/groups/:groupId/members",
       );
 
       return successResponse({ success: true, added: true, invited: false });
@@ -410,25 +410,25 @@ export const POST = withErrorHandling(
           groupId,
           groupName,
           result.inviteId || undefined,
-          result.adderName // Pass pre-fetched name to avoid N+1
+          result.adderName, // Pass pre-fetched name to avoid N+1
         );
       } catch (notifyError) {
         logger.error(
-          'Failed to send group invite notification',
+          "Failed to send group invite notification",
           { userId: data.userId, groupId, error: notifyError },
-          'POST /api/groups/:groupId/members'
+          "POST /api/groups/:groupId/members",
         );
       }
 
       logger.info(
-        'User invited to group',
+        "User invited to group",
         { userId: user.userId, groupId, invitedUserId: data.userId },
-        'POST /api/groups/:groupId/members'
+        "POST /api/groups/:groupId/members",
       );
 
       return successResponse({ success: true, added: false, invited: true });
     }
-  }
+  },
 );
 
 /**
@@ -438,15 +438,15 @@ export const POST = withErrorHandling(
 export const DELETE = withErrorHandling(
   async (
     request: NextRequest,
-    { params }: { params: Promise<{ groupId: string }> }
+    { params }: { params: Promise<{ groupId: string }> },
   ) => {
     const user = await authenticate(request);
     const { groupId } = await params;
     const { searchParams } = new URL(request.url);
-    const userIdToRemove = searchParams.get('userId');
+    const userIdToRemove = searchParams.get("userId");
 
     if (!userIdToRemove) {
-      throw new ApiError('userId parameter is required', 400);
+      throw new ApiError("userId parameter is required", 400);
     }
 
     await asUser(user, async (db) => {
@@ -461,10 +461,10 @@ export const DELETE = withErrorHandling(
 
       const isSelf = user.userId === userIdToRemove;
       const isAdmin =
-        userMembership && ['admin', 'owner'].includes(userMembership.role);
+        userMembership && ["admin", "owner"].includes(userMembership.role);
 
       if (!isAdmin && !isSelf) {
-        throw new ApiError('Only group admins can remove members', 403);
+        throw new ApiError("Only group admins can remove members", 403);
       }
 
       // Get target member
@@ -477,12 +477,12 @@ export const DELETE = withErrorHandling(
       });
 
       if (!targetMembership) {
-        throw new ApiError('User is not a member of this group', 404);
+        throw new ApiError("User is not a member of this group", 404);
       }
 
       // Cannot remove the owner
-      if (targetMembership.role === 'owner') {
-        throw new ApiError('Cannot remove the group owner', 400);
+      if (targetMembership.role === "owner") {
+        throw new ApiError("Cannot remove the group owner", 400);
       }
 
       // Mark member as inactive (soft delete)
@@ -491,7 +491,7 @@ export const DELETE = withErrorHandling(
         data: {
           isActive: false,
           kickedAt: new Date(),
-          kickReason: isSelf ? 'left' : 'removed by admin',
+          kickReason: isSelf ? "left" : "removed by admin",
         },
       });
 
@@ -516,7 +516,7 @@ export const DELETE = withErrorHandling(
           select: { displayName: true, username: true },
         });
         const removedName =
-          removedUser?.displayName || removedUser?.username || 'Someone';
+          removedUser?.displayName || removedUser?.username || "Someone";
 
         if (isSelf) {
           // User left on their own
@@ -524,8 +524,8 @@ export const DELETE = withErrorHandling(
             data: {
               id: await generateSnowflakeId(),
               chatId: groupChat.id,
-              senderId: 'system',
-              type: 'system',
+              senderId: "system",
+              type: "system",
               content: `${removedName} left the group`,
               createdAt: new Date(),
             },
@@ -536,14 +536,14 @@ export const DELETE = withErrorHandling(
             where: { id: user.userId },
             select: { displayName: true, username: true },
           });
-          const adminName = admin?.displayName || admin?.username || 'Someone';
+          const adminName = admin?.displayName || admin?.username || "Someone";
 
           await db.message.create({
             data: {
               id: await generateSnowflakeId(),
               chatId: groupChat.id,
-              senderId: 'system',
-              type: 'system',
+              senderId: "system",
+              type: "system",
               content: `${adminName} removed ${removedName} from the group`,
               createdAt: new Date(),
             },
@@ -553,11 +553,11 @@ export const DELETE = withErrorHandling(
     });
 
     logger.info(
-      'Member removed from group',
+      "Member removed from group",
       { userId: user.userId, groupId, removedUserId: userIdToRemove },
-      'DELETE /api/groups/:groupId/members'
+      "DELETE /api/groups/:groupId/members",
     );
 
     return successResponse({ success: true });
-  }
+  },
 );

@@ -26,9 +26,9 @@
  * />
  * ```
  */
-'use client';
+"use client";
 
-import { FEED_POINTS_SYMBOL, cn } from '@feed/shared';
+import { cn, FEED_POINTS_SYMBOL } from "@feed/shared";
 import {
   Activity,
   AlertCircle,
@@ -36,9 +36,9 @@ import {
   TrendingDown,
   TrendingUp,
   Wallet,
-} from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { apiUrl } from '@/utils/api-url';
+} from "lucide-react";
+import { useEffect, useState } from "react";
+import { apiUrl } from "@/utils/api-url";
 
 /**
  * Position structure for NPC portfolio.
@@ -90,7 +90,7 @@ interface NPCPortfolioCardProps {
 
 export function NPCPortfolioCard({
   actorId,
-  className = '',
+  className = "",
   showPositions = true,
 }: NPCPortfolioCardProps) {
   const [data, setData] = useState<PortfolioData | null>(null);
@@ -100,7 +100,7 @@ export function NPCPortfolioCard({
     const fetchPortfolio = async () => {
       setLoading(true);
       const response = await fetch(
-        apiUrl(`/api/npc/${encodeURIComponent(actorId)}/portfolio`)
+        apiUrl(`/api/npc/${encodeURIComponent(actorId)}/portfolio`),
       );
       const result = await response.json();
 
@@ -119,7 +119,7 @@ export function NPCPortfolioCard({
 
   if (loading) {
     return (
-      <div className={cn('rounded-2xl bg-sidebar px-4 py-3', className)}>
+      <div className={cn("rounded-2xl bg-sidebar px-4 py-3", className)}>
         <div className="text-muted-foreground text-sm">
           Loading portfolio...
         </div>
@@ -129,7 +129,7 @@ export function NPCPortfolioCard({
 
   if (!data) {
     return (
-      <div className={cn('rounded-2xl bg-sidebar px-4 py-3', className)}>
+      <div className={cn("rounded-2xl bg-sidebar px-4 py-3", className)}>
         <div className="text-muted-foreground text-sm">
           Portfolio data unavailable
         </div>
@@ -140,20 +140,20 @@ export function NPCPortfolioCard({
   const { portfolio, positions } = data;
 
   const getRiskColor = (riskScore: number) => {
-    if (riskScore >= 0.7) return 'text-red-500';
-    if (riskScore >= 0.4) return 'text-yellow-500';
-    return 'text-green-500';
+    if (riskScore >= 0.7) return "text-red-500";
+    if (riskScore >= 0.4) return "text-yellow-500";
+    return "text-green-500";
   };
 
   const getRiskLabel = (riskScore: number) => {
-    if (riskScore >= 0.7) return 'High Risk';
-    if (riskScore >= 0.4) return 'Moderate';
-    return 'Low Risk';
+    if (riskScore >= 0.7) return "High Risk";
+    if (riskScore >= 0.4) return "Moderate";
+    return "Low Risk";
   };
 
   return (
     <div
-      className={cn('space-y-4 rounded-2xl bg-sidebar px-4 py-3', className)}
+      className={cn("space-y-4 rounded-2xl bg-sidebar px-4 py-3", className)}
     >
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -163,8 +163,8 @@ export function NPCPortfolioCard({
         </h3>
         <div
           className={cn(
-            'font-medium text-sm',
-            getRiskColor(portfolio.riskScore)
+            "font-medium text-sm",
+            getRiskColor(portfolio.riskScore),
           )}
         >
           {getRiskLabel(portfolio.riskScore)}
@@ -189,7 +189,7 @@ export function NPCPortfolioCard({
             )}
             <span
               className={
-                portfolio.unrealizedPnL >= 0 ? 'text-green-500' : 'text-red-500'
+                portfolio.unrealizedPnL >= 0 ? "text-green-500" : "text-red-500"
               }
             >
               {FEED_POINTS_SYMBOL}
@@ -201,7 +201,7 @@ export function NPCPortfolioCard({
             <div className="flex items-center gap-1 text-muted-foreground text-sm">
               <span
                 className={
-                  portfolio.realizedPnL >= 0 ? 'text-green-500' : 'text-red-500'
+                  portfolio.realizedPnL >= 0 ? "text-green-500" : "text-red-500"
                 }
               >
                 {FEED_POINTS_SYMBOL}
@@ -262,7 +262,7 @@ export function NPCPortfolioCard({
                 className="flex items-center justify-between rounded bg-muted/30 p-2 text-xs"
               >
                 <div className="flex items-center gap-3">
-                  {position.side === 'long' || position.side === 'buy' ? (
+                  {position.side === "long" || position.side === "buy" ? (
                     <TrendingUp className="h-3 w-3 text-green-500" />
                   ) : (
                     <TrendingDown className="h-3 w-3 text-red-500" />
@@ -287,11 +287,11 @@ export function NPCPortfolioCard({
                   <span
                     className={
                       position.unrealizedPnL >= 0
-                        ? 'text-green-500'
-                        : 'text-red-500'
+                        ? "text-green-500"
+                        : "text-red-500"
                     }
                   >
-                    {position.unrealizedPnL >= 0 ? '+' : ''}
+                    {position.unrealizedPnL >= 0 ? "+" : ""}
                     {FEED_POINTS_SYMBOL}
                     {position.unrealizedPnL.toLocaleString()}
                   </span>

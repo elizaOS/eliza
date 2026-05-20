@@ -19,15 +19,15 @@ import {
   describe,
   expect,
   it,
-} from 'bun:test';
-import type { WalletPort } from '@feed/core/markets/perps';
+} from "bun:test";
+import type { WalletPort } from "@feed/core/markets/perps";
 import {
   isOpenPerpPositionStateValid,
   PerpDbAdapter,
   PerpMarketService,
   type PerpServiceDeps,
   type PriceImpactPort,
-} from '@feed/core/markets/perps';
+} from "@feed/core/markets/perps";
 import {
   and,
   db,
@@ -36,12 +36,12 @@ import {
   organizationState,
   perpMarketSnapshots,
   perpPositions,
-} from '@feed/db';
+} from "@feed/db";
 import {
   calculatePriceFromHoldings,
   calculateTradeImpact,
   PERP_MARKET_CONFIG,
-} from '@feed/shared';
+} from "@feed/shared";
 
 // ---------------------------------------------------------------------------
 // Test-local wallet (in-memory, no real wallet service needed)
@@ -69,7 +69,7 @@ class TestWallet implements WalletPort {
       throw new Error(`Insufficient funds: ${bal} < ${p.amount}`);
     this.balances.set(p.userId, bal - p.amount);
     this.txLog.push({
-      type: 'debit',
+      type: "debit",
       userId: p.userId,
       amount: p.amount,
       reason: p.reason,
@@ -86,7 +86,7 @@ class TestWallet implements WalletPort {
     const bal = this.balances.get(p.userId) ?? this.defaultBalance;
     this.balances.set(p.userId, bal + p.amount);
     this.txLog.push({
-      type: 'credit',
+      type: "credit",
       userId: p.userId,
       amount: p.amount,
       reason: p.reason,
@@ -100,7 +100,7 @@ class TestWallet implements WalletPort {
     relatedId?: string;
   }) {
     this.txLog.push({
-      type: 'pnl',
+      type: "pnl",
       userId: p.userId,
       amount: p.pnl,
       reason: p.reason,
@@ -155,7 +155,7 @@ function createTestPriceImpact(): PriceImpactPort {
 
       const initialPrice = Number(state.basePrice ?? 100);
       const currentPrice = Number(
-        snapshot.currentPrice ?? state.currentPrice ?? initialPrice
+        snapshot.currentPrice ?? state.currentPrice ?? initialPrice,
       );
 
       const openPositions = await db
@@ -169,8 +169,8 @@ function createTestPriceImpact(): PriceImpactPort {
         .where(
           and(
             eq(perpPositions.ticker, normalizedTicker),
-            isNull(perpPositions.closedAt)
-          )
+            isNull(perpPositions.closedAt),
+          ),
         );
 
       let netHoldings = 0;
@@ -180,14 +180,14 @@ function createTestPriceImpact(): PriceImpactPort {
         }
 
         const size = Number(pos.size);
-        netHoldings += pos.side === 'long' ? size : -size;
+        netHoldings += pos.side === "long" ? size : -size;
       }
 
       const newPrice = calculatePriceFromHoldings(
         initialPrice,
         currentPrice,
         netHoldings,
-        PERP_MARKET_CONFIG
+        PERP_MARKET_CONFIG,
       );
 
       if (Math.abs(newPrice - currentPrice) < 0.001) return currentPrice;
@@ -246,12 +246,12 @@ function createTestService(wallet: TestWallet): PerpMarketService {
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
-let TEST_TICKER = '';
-let ORG_ID = '';
+let TEST_TICKER = "";
+let ORG_ID = "";
 
-const USER_A = 'test-avg-fill-user-a-' + Date.now();
-const USER_B = 'test-avg-fill-user-b-' + Date.now();
-const USER_C = 'test-avg-fill-user-c-' + Date.now();
+const USER_A = `test-avg-fill-user-a-${Date.now()}`;
+const USER_B = `test-avg-fill-user-b-${Date.now()}`;
+const USER_C = `test-avg-fill-user-c-${Date.now()}`;
 
 const createdPositionIds: string[] = [];
 
@@ -269,8 +269,8 @@ async function findCleanTestMarket() {
       .where(
         and(
           eq(perpPositions.ticker, market.ticker),
-          isNull(perpPositions.closedAt)
-        )
+          isNull(perpPositions.closedAt),
+        ),
       )
       .limit(1);
 
@@ -279,7 +279,7 @@ async function findCleanTestMarket() {
     }
   }
 
-  throw new Error('No clean perp market found for avg-fill integration tests');
+  throw new Error("No clean perp market found for avg-fill integration tests");
 }
 
 async function resetTestMarketState() {
@@ -287,7 +287,10 @@ async function resetTestMarketState() {
     .select({ id: perpPositions.id })
     .from(perpPositions)
     .where(
-      and(eq(perpPositions.ticker, TEST_TICKER), isNull(perpPositions.closedAt))
+      and(
+        eq(perpPositions.ticker, TEST_TICKER),
+        isNull(perpPositions.closedAt),
+      ),
     );
 
   if (openPositions.length > 0) {
@@ -316,7 +319,7 @@ async function resetTestMarketState() {
     .where(eq(organizationState.id, ORG_ID));
 }
 
-describe('Perp Constant-Product AMM Average Fill Integration', () => {
+describe("Perp Constant-Product AMM Average Fill Integration", () => {
   beforeAll(async () => {
     const cleanMarket = await findCleanTestMarket();
 
@@ -341,17 +344,17 @@ describe('Perp Constant-Product AMM Average Fill Integration', () => {
     await resetTestMarketState();
 
     console.log(
-      `\nUsing ticker: ${TEST_TICKER}, basePrice: ${BASE_PRICE}, baseReserve: ${PERP_MARKET_CONFIG.INITIAL_BASE_RESERVE}`
+      `\nUsing ticker: ${TEST_TICKER}, basePrice: ${BASE_PRICE}, baseReserve: ${PERP_MARKET_CONFIG.INITIAL_BASE_RESERVE}`,
     );
     console.log(
-      `Users: ${USER_A.slice(-10)}, ${USER_B.slice(-10)}, ${USER_C.slice(-10)}`
+      `Users: ${USER_A.slice(-10)}, ${USER_B.slice(-10)}, ${USER_C.slice(-10)}`,
     );
   });
 
   afterAll(async () => {
     console.log(`\nCleaning up ${createdPositionIds.length} test positions...`);
     await resetTestMarketState();
-    console.log('Cleanup complete.');
+    console.log("Cleanup complete.");
   });
 
   beforeEach(async () => {
@@ -361,7 +364,7 @@ describe('Perp Constant-Product AMM Average Fill Integration', () => {
   // =========================================================================
   // TEST 1: Open long → avg fill is between pre and post spot
   // =========================================================================
-  it('open long uses AMM average fill entry price', async () => {
+  it("open long uses AMM average fill entry price", async () => {
     const wallet = new TestWallet();
     const service = createTestService(wallet);
 
@@ -372,20 +375,20 @@ describe('Perp Constant-Product AMM Average Fill Integration', () => {
       BASE_PRICE,
       0, // no prior holdings
       size,
-      PERP_MARKET_CONFIG
+      PERP_MARKET_CONFIG,
     );
 
     const result = await service.openPosition({
       userId: USER_A,
       ticker: TEST_TICKER,
-      side: 'long',
+      side: "long",
       size,
       leverage: 5,
     });
     createdPositionIds.push(result.positionId);
 
     console.log(
-      `  Open long: base=${BASE_PRICE}, expectedAvg=${avgFillPrice.toFixed(2)}, newSpot=${newSpotPrice.toFixed(2)}, actual=${result.entryPrice.toFixed(2)}`
+      `  Open long: base=${BASE_PRICE}, expectedAvg=${avgFillPrice.toFixed(2)}, newSpot=${newSpotPrice.toFixed(2)}, actual=${result.entryPrice.toFixed(2)}`,
     );
 
     // Avg fill should be between the pre-trade and post-trade spot prices
@@ -396,7 +399,7 @@ describe('Perp Constant-Product AMM Average Fill Integration', () => {
   // =========================================================================
   // TEST 2: Round-trip long → PnL ~ 0 (self-impact cancels)
   // =========================================================================
-  it('round-trip long has near-zero PnL (self-impact cancels)', async () => {
+  it("round-trip long has near-zero PnL (self-impact cancels)", async () => {
     const wallet = new TestWallet(100_000);
     const service = createTestService(wallet);
 
@@ -407,7 +410,7 @@ describe('Perp Constant-Product AMM Average Fill Integration', () => {
     const open = await service.openPosition({
       userId: USER_B,
       ticker: TEST_TICKER,
-      side: 'long',
+      side: "long",
       size,
       leverage: 5,
     });
@@ -425,7 +428,7 @@ describe('Perp Constant-Product AMM Average Fill Integration', () => {
     const totalFees = open.feePaid + close.feePaid;
 
     console.log(
-      `  Round-trip: entry=${open.entryPrice.toFixed(2)}, exit=${close.exitPrice?.toFixed(2)}, PnL=${pnl.toFixed(4)}, net=${netChange.toFixed(2)}, fees=${totalFees.toFixed(2)}`
+      `  Round-trip: entry=${open.entryPrice.toFixed(2)}, exit=${close.exitPrice?.toFixed(2)}, PnL=${pnl.toFixed(4)}, net=${netChange.toFixed(2)}, fees=${totalFees.toFixed(2)}`,
     );
 
     // PnL should be near zero (AMM is symmetric for same-size open+close)
@@ -438,7 +441,7 @@ describe('Perp Constant-Product AMM Average Fill Integration', () => {
   // =========================================================================
   // TEST 3: Round-trip short → PnL ~ 0
   // =========================================================================
-  it('round-trip short has near-zero PnL', async () => {
+  it("round-trip short has near-zero PnL", async () => {
     const wallet = new TestWallet(100_000);
     const service = createTestService(wallet);
 
@@ -448,7 +451,7 @@ describe('Perp Constant-Product AMM Average Fill Integration', () => {
     const open = await service.openPosition({
       userId: USER_C,
       ticker: TEST_TICKER,
-      side: 'short',
+      side: "short",
       size,
       leverage: 10,
     });
@@ -465,7 +468,7 @@ describe('Perp Constant-Product AMM Average Fill Integration', () => {
     const totalFees = open.feePaid + close.feePaid;
 
     console.log(
-      `  Round-trip short: entry=${open.entryPrice.toFixed(2)}, exit=${close.exitPrice?.toFixed(2)}, PnL=${pnl.toFixed(4)}, net=${netChange.toFixed(2)}, fees=${totalFees.toFixed(2)}`
+      `  Round-trip short: entry=${open.entryPrice.toFixed(2)}, exit=${close.exitPrice?.toFixed(2)}, PnL=${pnl.toFixed(4)}, net=${netChange.toFixed(2)}, fees=${totalFees.toFixed(2)}`,
     );
 
     expect(Math.abs(pnl)).toBeLessThan(1.0);
@@ -475,7 +478,7 @@ describe('Perp Constant-Product AMM Average Fill Integration', () => {
   // =========================================================================
   // TEST 4: Max leverage short (the original BF-75 exploit) → no profit
   // =========================================================================
-  it('max leverage short does NOT generate self-impact profit', async () => {
+  it("max leverage short does NOT generate self-impact profit", async () => {
     const wallet = new TestWallet(100_000);
     const service = createTestService(wallet);
 
@@ -484,7 +487,7 @@ describe('Perp Constant-Product AMM Average Fill Integration', () => {
     const open = await service.openPosition({
       userId: USER_B,
       ticker: TEST_TICKER,
-      side: 'short',
+      side: "short",
       size: 10_000,
       leverage: 10,
     });
@@ -501,7 +504,7 @@ describe('Perp Constant-Product AMM Average Fill Integration', () => {
     const totalFees = open.feePaid + close.feePaid;
 
     console.log(
-      `  Exploit test: entry=${open.entryPrice.toFixed(2)}, exit=${close.exitPrice?.toFixed(2)}, PnL=${pnl.toFixed(4)}, netProfit=${netProfit.toFixed(2)}, fees=${totalFees.toFixed(2)}`
+      `  Exploit test: entry=${open.entryPrice.toFixed(2)}, exit=${close.exitPrice?.toFixed(2)}, PnL=${pnl.toFixed(4)}, netProfit=${netProfit.toFixed(2)}, fees=${totalFees.toFixed(2)}`,
     );
 
     // The exploit should be blocked: user should NOT profit
@@ -513,7 +516,7 @@ describe('Perp Constant-Product AMM Average Fill Integration', () => {
   // =========================================================================
   // TEST 5: Multiple rapid open/close cycles → no compounding exploit
   // =========================================================================
-  it('rapid open/close cycles do not generate profit', async () => {
+  it("rapid open/close cycles do not generate profit", async () => {
     const wallet = new TestWallet(50_000);
     const service = createTestService(wallet);
 
@@ -524,7 +527,7 @@ describe('Perp Constant-Product AMM Average Fill Integration', () => {
       const open = await service.openPosition({
         userId: USER_A,
         ticker: TEST_TICKER,
-        side: i % 2 === 0 ? 'long' : 'short',
+        side: i % 2 === 0 ? "long" : "short",
         size: 1500,
         leverage: 5,
       });
@@ -542,7 +545,7 @@ describe('Perp Constant-Product AMM Average Fill Integration', () => {
     const netChange = endBal - startBal;
 
     console.log(
-      `  5 cycles: start=${startBal.toFixed(2)}, end=${endBal.toFixed(2)}, net=${netChange.toFixed(2)}, fees=${totalFees.toFixed(2)}`
+      `  5 cycles: start=${startBal.toFixed(2)}, end=${endBal.toFixed(2)}, net=${netChange.toFixed(2)}, fees=${totalFees.toFixed(2)}`,
     );
 
     // Net change should be negative (just fees, no compounding profit)
@@ -552,7 +555,7 @@ describe('Perp Constant-Product AMM Average Fill Integration', () => {
   // =========================================================================
   // TEST 6: Multi-user: A profits from B's legitimate impact
   // =========================================================================
-  it('multi-user: profit from other users impact is legitimate', async () => {
+  it("multi-user: profit from other users impact is legitimate", async () => {
     const walletA = new TestWallet(100_000);
     const serviceA = createTestService(walletA);
     const walletB = new TestWallet(100_000);
@@ -562,7 +565,7 @@ describe('Perp Constant-Product AMM Average Fill Integration', () => {
     const openA = await serviceA.openPosition({
       userId: USER_A,
       ticker: TEST_TICKER,
-      side: 'long',
+      side: "long",
       size: 2000,
       leverage: 5,
     });
@@ -572,7 +575,7 @@ describe('Perp Constant-Product AMM Average Fill Integration', () => {
     const openB = await serviceB.openPosition({
       userId: USER_B,
       ticker: TEST_TICKER,
-      side: 'long',
+      side: "long",
       size: 5000,
       leverage: 5,
     });
@@ -586,7 +589,7 @@ describe('Perp Constant-Product AMM Average Fill Integration', () => {
 
     const pnlA = closeA.realizedPnL ?? 0;
     console.log(
-      `  Multi-user: A entry=${openA.entryPrice.toFixed(2)}, exit=${closeA.exitPrice?.toFixed(2)}, PnL=${pnlA.toFixed(2)}`
+      `  Multi-user: A entry=${openA.entryPrice.toFixed(2)}, exit=${closeA.exitPrice?.toFixed(2)}, PnL=${pnlA.toFixed(2)}`,
     );
 
     // A should have SOME positive PnL (from B's impact pushing price up)
@@ -604,14 +607,14 @@ describe('Perp Constant-Product AMM Average Fill Integration', () => {
   // =========================================================================
   // TEST 7: Partial close works correctly
   // =========================================================================
-  it('partial close correctly applies avg fill on closed portion', async () => {
+  it("partial close correctly applies avg fill on closed portion", async () => {
     const wallet = new TestWallet(100_000);
     const service = createTestService(wallet);
 
     const open = await service.openPosition({
       userId: USER_C,
       ticker: TEST_TICKER,
-      side: 'long',
+      side: "long",
       size: 4000,
       leverage: 5,
     });
@@ -625,7 +628,7 @@ describe('Perp Constant-Product AMM Average Fill Integration', () => {
     });
 
     console.log(
-      `  Partial close: size=${partialClose.size}, remaining=${partialClose.remainingSize}, PnL=${(partialClose.realizedPnL ?? 0).toFixed(4)}`
+      `  Partial close: size=${partialClose.size}, remaining=${partialClose.remainingSize}, PnL=${(partialClose.realizedPnL ?? 0).toFixed(4)}`,
     );
 
     expect(partialClose.fullyClosed).toBe(false);
@@ -640,7 +643,7 @@ describe('Perp Constant-Product AMM Average Fill Integration', () => {
     });
 
     console.log(
-      `  Full close: PnL=${(fullClose.realizedPnL ?? 0).toFixed(4)}, fullyClosed=${fullClose.fullyClosed}`
+      `  Full close: PnL=${(fullClose.realizedPnL ?? 0).toFixed(4)}, fullyClosed=${fullClose.fullyClosed}`,
     );
     expect(fullClose.fullyClosed).toBe(true);
   });
@@ -648,7 +651,7 @@ describe('Perp Constant-Product AMM Average Fill Integration', () => {
   // =========================================================================
   // TEST 8: Wallet balance consistency
   // =========================================================================
-  it('wallet balances are consistent after many operations', async () => {
+  it("wallet balances are consistent after many operations", async () => {
     const wallet = new TestWallet(50_000);
     const service = createTestService(wallet);
     const userId = USER_A;
@@ -656,7 +659,7 @@ describe('Perp Constant-Product AMM Average Fill Integration', () => {
 
     const posIds: string[] = [];
 
-    for (const side of ['long', 'short', 'long'] as const) {
+    for (const side of ["long", "short", "long"] as const) {
       const r = await service.openPosition({
         userId,
         ticker: TEST_TICKER,
@@ -670,7 +673,7 @@ describe('Perp Constant-Product AMM Average Fill Integration', () => {
 
     const midBal = wallet.bal(userId);
     console.log(
-      `  After 3 trades: ${startBal.toFixed(2)} → ${midBal.toFixed(2)}`
+      `  After 3 trades: ${startBal.toFixed(2)} → ${midBal.toFixed(2)}`,
     );
     expect(startBal - midBal).toBeGreaterThan(100);
     expect(startBal - midBal).toBeLessThan(2000);
@@ -683,8 +686,8 @@ describe('Perp Constant-Product AMM Average Fill Integration', () => {
         and(
           eq(perpPositions.ticker, TEST_TICKER),
           eq(perpPositions.userId, userId),
-          isNull(perpPositions.closedAt)
-        )
+          isNull(perpPositions.closedAt),
+        ),
       );
 
     for (const p of openPos) {
@@ -694,7 +697,7 @@ describe('Perp Constant-Product AMM Average Fill Integration', () => {
     const endBal = wallet.bal(userId);
     const netChange = endBal - startBal;
     console.log(
-      `  After close all: ${endBal.toFixed(2)}, net=${netChange.toFixed(2)}`
+      `  After close all: ${endBal.toFixed(2)}, net=${netChange.toFixed(2)}`,
     );
 
     // Net change should be modest (mostly fees, no huge exploit)
@@ -705,7 +708,7 @@ describe('Perp Constant-Product AMM Average Fill Integration', () => {
   // =========================================================================
   // TEST 9: Math verification — constant-product AMM symmetry
   // =========================================================================
-  it('AMM avg fill formula produces symmetric round-trip values', () => {
+  it("AMM avg fill formula produces symmetric round-trip values", () => {
     const price = 100;
     const size = 5000;
 
@@ -717,11 +720,11 @@ describe('Perp Constant-Product AMM Average Fill Integration', () => {
       price,
       size,
       -size,
-      PERP_MARKET_CONFIG
+      PERP_MARKET_CONFIG,
     );
 
     console.log(
-      `  AMM math: openAvg=${openImpact.avgFillPrice.toFixed(4)}, closeAvg=${closeImpact.avgFillPrice.toFixed(4)}, openSpot=${openImpact.newSpotPrice.toFixed(4)}, closeSpot=${closeImpact.newSpotPrice.toFixed(4)}`
+      `  AMM math: openAvg=${openImpact.avgFillPrice.toFixed(4)}, closeAvg=${closeImpact.avgFillPrice.toFixed(4)}, openSpot=${openImpact.newSpotPrice.toFixed(4)}, closeSpot=${closeImpact.newSpotPrice.toFixed(4)}`,
     );
 
     // After open+close of same size, spot should return to initial price
@@ -739,14 +742,14 @@ describe('Perp Constant-Product AMM Average Fill Integration', () => {
       price,
       -size,
       size,
-      PERP_MARKET_CONFIG
+      PERP_MARKET_CONFIG,
     );
 
     expect(closeShort.newSpotPrice).toBeCloseTo(price, 2);
     expect(openShort.avgFillPrice).toBeLessThan(price);
 
     console.log(
-      `  Short: openAvg=${openShort.avgFillPrice.toFixed(4)}, closeAvg=${closeShort.avgFillPrice.toFixed(4)}`
+      `  Short: openAvg=${openShort.avgFillPrice.toFixed(4)}, closeAvg=${closeShort.avgFillPrice.toFixed(4)}`,
     );
   });
 });

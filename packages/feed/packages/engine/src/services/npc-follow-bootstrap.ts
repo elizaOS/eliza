@@ -9,9 +9,9 @@
  * Run once during game bootstrap or on demand.
  */
 
-import { actorFollows, db } from '@feed/db';
-import { generateSnowflakeId, logger } from '@feed/shared';
-import { StaticDataRegistry } from './static-data-registry';
+import { actorFollows, db } from "@feed/db";
+import { generateSnowflakeId, logger } from "@feed/shared";
+import { StaticDataRegistry } from "./static-data-registry";
 
 export async function bootstrapNpcFollows(): Promise<number> {
   const allActors = StaticDataRegistry.getAllActors();
@@ -26,7 +26,7 @@ export async function bootstrapNpcFollows(): Promise<number> {
       if (!other.affiliations?.length) continue;
 
       const shared = actor.affiliations.some((a) =>
-        other.affiliations!.includes(a)
+        other.affiliations?.includes(a),
       );
       if (shared) {
         // Canonical ordering to avoid duplicates
@@ -47,7 +47,7 @@ export async function bootstrapNpcFollows(): Promise<number> {
     })
     .from(actorFollows);
   const existingSet = new Set(
-    existing.map((f) => `${f.followerId}:${f.followingId}`)
+    existing.map((f) => `${f.followerId}:${f.followingId}`),
   );
 
   // Insert new follows
@@ -60,7 +60,7 @@ export async function bootstrapNpcFollows(): Promise<number> {
   }> = [];
 
   for (const pair of followPairs) {
-    const [actor1, actor2] = pair.split(':');
+    const [actor1, actor2] = pair.split(":");
     if (!actor1 || !actor2) continue;
 
     for (const [follower, following] of [
@@ -79,13 +79,13 @@ export async function bootstrapNpcFollows(): Promise<number> {
         });
       } catch (err) {
         logger.warn(
-          'Failed to generate snowflake ID for follow',
+          "Failed to generate snowflake ID for follow",
           {
             follower,
             following,
             error: err instanceof Error ? err.message : String(err),
           },
-          'NpcFollowBootstrap'
+          "NpcFollowBootstrap",
         );
       }
     }
@@ -102,21 +102,21 @@ export async function bootstrapNpcFollows(): Promise<number> {
         created += batch.length;
       } catch (err) {
         logger.warn(
-          'Follow batch insert failed',
+          "Follow batch insert failed",
           {
             error: err instanceof Error ? err.message : String(err),
             batchIndex: i,
           },
-          'NpcFollowBootstrap'
+          "NpcFollowBootstrap",
         );
       }
     }
   }
 
   logger.info(
-    'NPC follow graph bootstrapped',
+    "NPC follow graph bootstrapped",
     { totalPairs: followPairs.size, followsCreated: created },
-    'NpcFollowBootstrap'
+    "NpcFollowBootstrap",
   );
 
   return created;

@@ -82,10 +82,10 @@ import {
   publicRateLimit,
   requireUserByIdentifier,
   withErrorHandling,
-} from '@feed/api';
-import { getReputationBreakdown } from '@feed/engine';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@feed/api";
+import { getReputationBreakdown } from "@feed/engine";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 interface RouteParams {
   params: Promise<{
@@ -95,7 +95,7 @@ interface RouteParams {
 
 export const GET = withErrorHandling(async function GET(
   request: NextRequest,
-  { params }: RouteParams
+  { params }: RouteParams,
 ) {
   const { error, rateLimitInfo } = await publicRateLimit(request);
   if (error) return error;
@@ -109,11 +109,11 @@ export const GET = withErrorHandling(async function GET(
   const res = NextResponse.json({
     success: true,
     userId: user.id,
-    reputationScore: breakdown!.reputationScore,
-    trustLevel: breakdown!.trustLevel,
-    confidenceScore: breakdown!.confidenceScore,
-    breakdown: breakdown!.breakdown,
-    metrics: breakdown!.metrics,
+    reputationScore: breakdown?.reputationScore,
+    trustLevel: breakdown?.trustLevel,
+    confidenceScore: breakdown?.confidenceScore,
+    breakdown: breakdown?.breakdown,
+    metrics: breakdown?.metrics,
     weights: {
       pnl: 0.4,
       feedback: 0.4,

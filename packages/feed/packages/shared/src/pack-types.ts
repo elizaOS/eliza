@@ -7,7 +7,7 @@
  * one pack; a "30 Under 30 scammer CEOs" universe is another.
  */
 
-import type { ActorTier } from './game-types';
+import type { ActorTier } from "./game-types";
 
 // =============================================================================
 // Pack Manifest
@@ -27,7 +27,7 @@ export interface PackManifest {
   /** Semver version */
   version: string;
   /** Overall tone of the simulation */
-  tone: 'satirical' | 'serious' | 'mixed';
+  tone: "satirical" | "serious" | "mixed";
   /** One-liner premise, e.g. "Crypto parody universe" */
   premise: string;
 
@@ -174,9 +174,9 @@ export interface PackActor {
 
   feed: {
     /** Moral alignment */
-    alignment: 'good' | 'neutral' | 'evil';
+    alignment: "good" | "neutral" | "evil";
     /** Team assignment for trust/scam benchmarks */
-    team: 'blue' | 'red' | 'gray';
+    team: "blue" | "red" | "gray";
     /** Scam detection profile */
     scamProfile: string;
     /** Competence level */
@@ -232,12 +232,12 @@ export interface PackOrganization {
   description: string;
   profileDescription?: string;
   type:
-    | 'company'
-    | 'media'
-    | 'government'
-    | 'vc'
-    | 'organization'
-    | 'financial';
+    | "company"
+    | "media"
+    | "government"
+    | "vc"
+    | "organization"
+    | "financial";
   canBeInvolved: boolean;
   initialPrice?: number;
   postStyle?: string;
@@ -260,7 +260,7 @@ export interface PackOrganization {
 export interface OrgCorrelation {
   orgId: string;
   relatedOrgId: string;
-  type: 'supplier' | 'competitor' | 'partner' | 'investor' | 'subsidiary';
+  type: "supplier" | "competitor" | "partner" | "investor" | "subsidiary";
   /** -1 to 1. Negative = inverse correlation (competitors), positive = co-movement */
   strength: number;
 }

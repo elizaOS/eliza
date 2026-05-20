@@ -6,13 +6,13 @@
  * that style; otherwise text-to-image with a detailed style prompt.
  */
 
-import { logger } from '@feed/shared';
-import { fal } from '@fal-ai/client';
-import { formatError } from '../utils/error-utils';
+import { fal } from "@fal-ai/client";
+import { logger } from "@feed/shared";
+import { formatError } from "../utils/error-utils";
 import {
   initFalClient,
   isImageGenerationAvailable,
-} from './article-image-service';
+} from "./article-image-service";
 
 interface FalImage {
   url: string;
@@ -45,45 +45,45 @@ function buildVariationHint(displayName?: string): string {
   if (base) {
     return `This agent is named "${base}" — reflect a distinct, friendly personality in expression or accessories (still a monkey mascot).`;
   }
-  return 'Make this monkey visually distinct from typical stock avatars.';
+  return "Make this monkey visually distinct from typical stock avatars.";
 }
 
 function buildTextToImagePrompt(
-  params: GenerateAgentMonkeyAvatarParams
+  params: GenerateAgentMonkeyAvatarParams,
 ): string {
   const hint = buildVariationHint(params.displayName);
   return [
-    'Square profile picture, head and shoulders, centered.',
-    'A cute 3D-rendered monkey mascot character: soft rounded shapes, expressive eyes, subtle smile, plush-toy / collectible-figure aesthetic.',
-    'Clean simple background (soft gradient or light studio), no clutter.',
+    "Square profile picture, head and shoulders, centered.",
+    "A cute 3D-rendered monkey mascot character: soft rounded shapes, expressive eyes, subtle smile, plush-toy / collectible-figure aesthetic.",
+    "Clean simple background (soft gradient or light studio), no clutter.",
     hint,
-    'Family-friendly. No text, no labels, no numbers, no letters, no logos, no watermarks, no real human faces.',
-  ].join(' ');
+    "Family-friendly. No text, no labels, no numbers, no letters, no logos, no watermarks, no real human faces.",
+  ].join(" ");
 }
 
 function buildEditPrompt(params: GenerateAgentMonkeyAvatarParams): string {
   const hint = buildVariationHint(params.displayName);
   return [
-    'Create a NEW unique monkey character avatar for a social trading bot profile.',
-    'Match the art style, rendering quality, lighting, and mascot vibe of the reference image, but the result must be a clearly different monkey:',
-    'different fur tones or markings, face shape, eye style, expression, or a small accessory (hat, collar, glasses) — not a copy.',
-    'Square head-and-shoulders composition, centered, soft clean background.',
+    "Create a NEW unique monkey character avatar for a social trading bot profile.",
+    "Match the art style, rendering quality, lighting, and mascot vibe of the reference image, but the result must be a clearly different monkey:",
+    "different fur tones or markings, face shape, eye style, expression, or a small accessory (hat, collar, glasses) — not a copy.",
+    "Square head-and-shoulders composition, centered, soft clean background.",
     hint,
-    'No text, no labels, no numbers, no letters, no logos, no watermarks, family-friendly.',
-  ].join(' ');
+    "No text, no labels, no numbers, no letters, no logos, no watermarks, family-friendly.",
+  ].join(" ");
 }
 
 /**
  * Generate a monkey-style agent avatar; returns a temporary fal.media URL or null.
  */
 export async function generateAgentMonkeyProfileImage(
-  params: GenerateAgentMonkeyAvatarParams = {}
+  params: GenerateAgentMonkeyAvatarParams = {},
 ): Promise<string | null> {
   if (!isImageGenerationAvailable()) {
     logger.debug(
-      'Skipping agent avatar generation — FAL_KEY not set',
+      "Skipping agent avatar generation — FAL_KEY not set",
       {},
-      'AgentAvatarService'
+      "AgentAvatarService",
     );
     return null;
   }
@@ -97,14 +97,14 @@ export async function generateAgentMonkeyProfileImage(
 
   try {
     if (referenceUrl) {
-      const result = (await fal.subscribe('fal-ai/nano-banana-2/edit', {
+      const result = (await fal.subscribe("fal-ai/nano-banana-2/edit", {
         input: {
           prompt: buildEditPrompt(params),
           image_urls: [referenceUrl],
           num_images: 1,
-          aspect_ratio: '1:1',
-          output_format: 'png',
-          resolution: '1K',
+          aspect_ratio: "1:1",
+          output_format: "png",
+          resolution: "1K",
           limit_generations: true,
         },
         logs: false,
@@ -113,19 +113,19 @@ export async function generateAgentMonkeyProfileImage(
       const url = result.data.images[0]?.url;
       if (!url) {
         logger.warn(
-          'fal edit returned no image URL for agent avatar',
+          "fal edit returned no image URL for agent avatar",
           {},
-          'AgentAvatarService'
+          "AgentAvatarService",
         );
         return null;
       }
       return url;
     }
 
-    const result = (await fal.subscribe('fal-ai/nano-banana-2', {
+    const result = (await fal.subscribe("fal-ai/nano-banana-2", {
       input: {
         prompt: buildTextToImagePrompt(params),
-        image_size: 'square',
+        image_size: "square",
         num_images: 1,
         num_inference_steps: 4,
       },
@@ -135,18 +135,18 @@ export async function generateAgentMonkeyProfileImage(
     const url = result.data.images[0]?.url;
     if (!url) {
       logger.warn(
-        'fal t2i returned no image URL for agent avatar',
+        "fal t2i returned no image URL for agent avatar",
         {},
-        'AgentAvatarService'
+        "AgentAvatarService",
       );
       return null;
     }
     return url;
   } catch (error) {
     logger.warn(
-      'fal.ai agent avatar generation failed',
+      "fal.ai agent avatar generation failed",
       { error: formatError(error) },
-      'AgentAvatarService'
+      "AgentAvatarService",
     );
     return null;
   }

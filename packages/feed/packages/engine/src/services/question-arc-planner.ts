@@ -41,9 +41,9 @@
  * ```
  */
 
-import { logger } from '@feed/shared';
-import type { Actor, Organization, Question } from '../types';
-import type { RngFunction } from './narrative-state-service';
+import { logger } from "@feed/shared";
+import type { Actor, Organization, Question } from "../types";
+import type { RngFunction } from "./narrative-state-service";
 
 /**
  * Phase-specific event distribution targets
@@ -80,11 +80,11 @@ export interface ScheduledEvent {
   /** Hours of jitter from base day (can be negative or positive) */
   jitterHours: number;
   /** Event type determines narrative impact */
-  eventType: 'leak' | 'rumor' | 'scandal' | 'confirmation' | 'red_herring';
+  eventType: "leak" | "rumor" | "scandal" | "confirmation" | "red_herring";
   /** Brief description for LLM prompt context */
   description: string;
   /** Signal direction this event should suggest */
-  signalDirection: 'YES' | 'NO' | 'NEUTRAL';
+  signalDirection: "YES" | "NO" | "NEUTRAL";
   /** Whether this event has been fired */
   fired: boolean;
   /** Timestamp when fired (ISO string) */
@@ -136,7 +136,7 @@ export interface QuestionArcPlan {
   plannedRedHerrings: Array<{
     day: number;
     description: string;
-    apparentDirection: 'YES' | 'NO';
+    apparentDirection: "YES" | "NO";
   }>;
 
   // Deterministic event schedule (replaces probability-based firing)
@@ -202,7 +202,7 @@ export class QuestionArcPlanner {
     question: Question,
     actors: Actor[],
     organizations: Organization[],
-    rng: RngFunction = Math.random
+    rng: RngFunction = Math.random,
   ): QuestionArcPlan {
     // Determine key narrative days using provided RNG for reproducibility
     const uncertaintyPeakDay = 8 + Math.floor(rng() * 5); // Day 8-12
@@ -257,7 +257,7 @@ export class QuestionArcPlanner {
       question,
       phases,
       redHerrings,
-      rng
+      rng,
     );
 
     // Calculate event distribution targets
@@ -275,18 +275,18 @@ export class QuestionArcPlanner {
     };
 
     logger.info(
-      'Generated question arc plan',
+      "Generated question arc plan",
       {
         questionId: question.id,
         questionText: question.text.substring(0, 50),
-        outcome: question.outcome ? 'YES' : 'NO',
+        outcome: question.outcome ? "YES" : "NO",
         uncertaintyPeakDay,
         clarityOnsetDay,
         verificationDay,
         insiders: insiders.length,
         deceivers: deceivers.length,
       },
-      'QuestionArcPlanner'
+      "QuestionArcPlanner",
     );
 
     return plan;
@@ -303,7 +303,7 @@ export class QuestionArcPlanner {
     question: Question,
     actors: Actor[],
     organizations: Organization[],
-    rng: RngFunction = Math.random
+    rng: RngFunction = Math.random,
   ): string[] {
     // Extract organization names/IDs mentioned in question
     const questionLower = question.text.toLowerCase();
@@ -311,7 +311,7 @@ export class QuestionArcPlanner {
       .filter(
         (org) =>
           questionLower.includes(org.name.toLowerCase()) ||
-          questionLower.includes(org.id.toLowerCase())
+          questionLower.includes(org.id.toLowerCase()),
       )
       .map((o) => o.id);
 
@@ -319,13 +319,13 @@ export class QuestionArcPlanner {
     const potentialInsiders = actors.filter(
       (a) =>
         a.affiliations?.some((org) => relatedOrgs.includes(org)) &&
-        (a.tier === 'S_TIER' || a.tier === 'A_TIER' || a.tier === 'B_TIER')
+        (a.tier === "S_TIER" || a.tier === "A_TIER" || a.tier === "B_TIER"),
     );
 
     // Select 2-3 insiders using provided RNG for reproducibility
     const numInsiders = Math.min(
       2 + Math.floor(rng() * 2), // 2-3
-      potentialInsiders.length
+      potentialInsiders.length,
     );
 
     // Shuffle using the RNG for reproducibility
@@ -342,20 +342,20 @@ export class QuestionArcPlanner {
    */
   private selectDeceivers(
     actors: Actor[],
-    rng: RngFunction = Math.random
+    rng: RngFunction = Math.random,
   ): string[] {
     const potentialDeceivers = actors.filter(
       (a) =>
-        a.personality?.includes('contrarian') ||
-        a.personality?.includes('conspiracy') ||
-        a.domain?.includes('politics') ||
-        a.description?.toLowerCase().includes('conspiracy')
+        a.personality?.includes("contrarian") ||
+        a.personality?.includes("conspiracy") ||
+        a.domain?.includes("politics") ||
+        a.description?.toLowerCase().includes("conspiracy"),
     );
 
     // Select 1-2 deceivers using provided RNG for reproducibility
     const numDeceivers = Math.min(
       1 + Math.floor(rng() * 2), // 1-2
-      potentialDeceivers.length
+      potentialDeceivers.length,
     );
 
     // Shuffle using the RNG for reproducibility
@@ -378,18 +378,18 @@ export class QuestionArcPlanner {
   private planRedHerrings(
     question: Question,
     uncertaintyPeakDay: number,
-    rng: RngFunction = Math.random
+    rng: RngFunction = Math.random,
   ): Array<{
     day: number;
     description: string;
-    apparentDirection: 'YES' | 'NO';
+    apparentDirection: "YES" | "NO";
   }> {
     const redHerrings: Array<{
       day: number;
       description: string;
-      apparentDirection: 'YES' | 'NO';
+      apparentDirection: "YES" | "NO";
     }> = [];
-    const oppositeOutcome: 'YES' | 'NO' = question.outcome ? 'NO' : 'YES';
+    const oppositeOutcome: "YES" | "NO" = question.outcome ? "NO" : "YES";
 
     // Create 2-3 red herrings around uncertainty peak using provided RNG
     const numRedHerrings = 2 + Math.floor(rng() * 2); // 2-3
@@ -435,23 +435,23 @@ export class QuestionArcPlanner {
    */
   private generateEventSchedule(
     question: Question,
-    phases: QuestionArcPlan['phases'],
-    redHerrings: QuestionArcPlan['plannedRedHerrings'],
-    rng: RngFunction
+    phases: QuestionArcPlan["phases"],
+    redHerrings: QuestionArcPlan["plannedRedHerrings"],
+    rng: RngFunction,
   ): ScheduledEvent[] {
     const schedule: ScheduledEvent[] = [];
-    const correctDirection: 'YES' | 'NO' = question.outcome ? 'YES' : 'NO';
-    const wrongDirection: 'YES' | 'NO' = question.outcome ? 'NO' : 'YES';
+    const correctDirection: "YES" | "NO" = question.outcome ? "YES" : "NO";
+    const wrongDirection: "YES" | "NO" = question.outcome ? "NO" : "YES";
 
     // Event types by phase (earlier phases have more rumors, later have more confirmations)
     const phaseEventTypes: Record<
       string,
-      Array<'leak' | 'rumor' | 'scandal' | 'confirmation'>
+      Array<"leak" | "rumor" | "scandal" | "confirmation">
     > = {
-      early: ['rumor', 'rumor', 'leak'],
-      middle: ['rumor', 'leak', 'scandal', 'leak'],
-      late: ['leak', 'confirmation', 'scandal'],
-      climax: ['confirmation', 'confirmation'],
+      early: ["rumor", "rumor", "leak"],
+      middle: ["rumor", "leak", "scandal", "leak"],
+      late: ["leak", "confirmation", "scandal"],
+      climax: ["confirmation", "confirmation"],
     };
 
     // Generate events for each phase
@@ -461,7 +461,7 @@ export class QuestionArcPlanner {
 
       // Generate correct signal events
       for (let i = 0; i < phaseConfig.targetCorrectSignals; i++) {
-        const eventTypes = phaseEventTypes[phaseName] ?? (['rumor'] as const);
+        const eventTypes = phaseEventTypes[phaseName] ?? (["rumor"] as const);
         const eventType = eventTypes[i % eventTypes.length]!;
         const baseDay = startDay + Math.floor(rng() * daySpan);
         const jitterHours = Math.floor(rng() * 16) - 8; // ±8 hours
@@ -484,7 +484,7 @@ export class QuestionArcPlanner {
         schedule.push({
           baseDay,
           jitterHours,
-          eventType: 'rumor', // Misdirection is usually rumors
+          eventType: "rumor", // Misdirection is usually rumors
           description: `${phaseName} phase misdirection pointing to ${wrongDirection}`,
           signalDirection: wrongDirection,
           fired: false,
@@ -499,9 +499,9 @@ export class QuestionArcPlanner {
         schedule.push({
           baseDay,
           jitterHours,
-          eventType: 'rumor',
+          eventType: "rumor",
           description: `${phaseName} phase ambiguous signal`,
-          signalDirection: 'NEUTRAL',
+          signalDirection: "NEUTRAL",
           fired: false,
         });
       }
@@ -514,7 +514,7 @@ export class QuestionArcPlanner {
       schedule.push({
         baseDay: redHerring.day,
         jitterHours,
-        eventType: 'red_herring',
+        eventType: "red_herring",
         description: redHerring.description,
         signalDirection: redHerring.apparentDirection,
         fired: false,
@@ -536,10 +536,10 @@ export class QuestionArcPlanner {
    */
   getPhaseForDay(
     day: number,
-    arcPlan: QuestionArcPlan
-  ): 'early' | 'middle' | 'late' | 'climax' | null {
+    arcPlan: QuestionArcPlan,
+  ): "early" | "middle" | "late" | "climax" | null {
     for (const [phaseName, phase] of Object.entries(arcPlan.phases) as Array<
-      ['early' | 'middle' | 'late' | 'climax', PhaseTargets]
+      ["early" | "middle" | "late" | "climax", PhaseTargets]
     >) {
       const [start, end] = phase.daysRange;
       if (day >= start && day <= end) {

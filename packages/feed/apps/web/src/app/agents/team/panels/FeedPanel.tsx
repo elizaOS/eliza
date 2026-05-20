@@ -1,10 +1,10 @@
-'use client';
+"use client";
 
-import type { FeedTagData } from '@feed/shared';
-import { cn } from '@feed/shared';
-import { Heart, MessageCircle, Share2 } from 'lucide-react';
-import Link from 'next/link';
-import { PanelViewMoreLink } from './PanelViewMoreLink';
+import type { FeedTagData } from "@feed/shared";
+import { cn } from "@feed/shared";
+import { Heart, MessageCircle, Share2 } from "lucide-react";
+import Link from "next/link";
+import { PanelViewMoreLink } from "./PanelViewMoreLink";
 
 interface FeedPanelProps {
   data: FeedTagData;
@@ -13,38 +13,38 @@ interface FeedPanelProps {
 /** Generate a consistent color based on a string (author name) */
 function getAvatarColor(name: string): string {
   const colors = [
-    'bg-red-500',
-    'bg-orange-500',
-    'bg-amber-500',
-    'bg-yellow-500',
-    'bg-lime-500',
-    'bg-green-500',
-    'bg-emerald-500',
-    'bg-teal-500',
-    'bg-cyan-500',
-    'bg-sky-500',
-    'bg-blue-500',
-    'bg-indigo-500',
-    'bg-violet-500',
-    'bg-purple-500',
-    'bg-fuchsia-500',
-    'bg-pink-500',
-    'bg-rose-500',
+    "bg-red-500",
+    "bg-orange-500",
+    "bg-amber-500",
+    "bg-yellow-500",
+    "bg-lime-500",
+    "bg-green-500",
+    "bg-emerald-500",
+    "bg-teal-500",
+    "bg-cyan-500",
+    "bg-sky-500",
+    "bg-blue-500",
+    "bg-indigo-500",
+    "bg-violet-500",
+    "bg-purple-500",
+    "bg-fuchsia-500",
+    "bg-pink-500",
+    "bg-rose-500",
   ];
   let hash = 0;
   for (let i = 0; i < name.length; i++) {
     hash = name.charCodeAt(i) + ((hash << 5) - hash);
   }
-  return colors[Math.abs(hash) % colors.length] ?? 'bg-primary';
+  return colors[Math.abs(hash) % colors.length] ?? "bg-primary";
 }
 
 /** Get initial(s) from author name */
 function getInitials(name: string): string {
   const parts = name.split(/[\s_-]+/).filter(Boolean);
   if (parts.length >= 2) {
-    return `${parts[0]?.[0] ?? ''}${parts[1]?.[0] ?? ''}`.toUpperCase();
+    return `${parts[0]?.[0] ?? ""}${parts[1]?.[0] ?? ""}`.toUpperCase();
   }
-  return (name.slice(0, 2) || '??').toUpperCase();
+  return (name.slice(0, 2) || "??").toUpperCase();
 }
 
 export function FeedPanel({ data }: FeedPanelProps) {
@@ -64,7 +64,7 @@ export function FeedPanel({ data }: FeedPanelProps) {
       <div className="flex items-center justify-between">
         <h3 className="font-semibold text-sm">Feed Posts</h3>
         <span className="rounded-full bg-muted px-2 py-0.5 text-muted-foreground text-xs">
-          {count} {count === 1 ? 'post' : 'posts'}
+          {count} {count === 1 ? "post" : "posts"}
         </span>
       </div>
 
@@ -88,8 +88,8 @@ export function FeedPanel({ data }: FeedPanelProps) {
               ) : (
                 <div
                   className={cn(
-                    'flex h-8 w-8 shrink-0 items-center justify-center rounded-full font-medium text-white text-xs',
-                    getAvatarColor(post.authorName)
+                    "flex h-8 w-8 shrink-0 items-center justify-center rounded-full font-medium text-white text-xs",
+                    getAvatarColor(post.authorName),
                   )}
                 >
                   {getInitials(post.authorName)}

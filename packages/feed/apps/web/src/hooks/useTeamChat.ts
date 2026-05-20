@@ -5,7 +5,7 @@
  * containing all their agents.
  */
 
-import { generateUUID, logger, type MessageMetadata } from '@feed/shared';
+import { generateUUID, logger, type MessageMetadata } from "@feed/shared";
 import {
   useCallback,
   useEffect,
@@ -13,32 +13,32 @@ import {
   useMemo,
   useRef,
   useState,
-} from 'react';
-import { toast } from 'sonner';
+} from "react";
+import { toast } from "sonner";
 import type {
   ChatDetails,
   ChatParticipant,
   Message,
   ReplyToMessage,
-} from '@/components/chats/types';
-import { MessageTypeEnum } from '@/components/chats/types';
-import { useAuth } from '@/hooks/useAuth';
+} from "@/components/chats/types";
+import { MessageTypeEnum } from "@/components/chats/types";
+import { useAuth } from "@/hooks/useAuth";
 import {
   OptimisticMessageIdPrefix,
   useChatMessages,
-} from '@/hooks/useChatMessages';
-import { useSSEChannel } from '@/hooks/useSSE';
-import { useToggleReaction } from '@/hooks/useToggleReaction';
-import { getPrivyAccessTokenSafely } from '@/lib/auth/privyAccessToken';
-import { getUserDisplayName } from '@/lib/user-display';
-import { useAuthStore } from '@/stores/authStore';
+} from "@/hooks/useChatMessages";
+import { useSSEChannel } from "@/hooks/useSSE";
+import { useToggleReaction } from "@/hooks/useToggleReaction";
+import { getPrivyAccessTokenSafely } from "@/lib/auth/privyAccessToken";
+import { getUserDisplayName } from "@/lib/user-display";
+import { useAuthStore } from "@/stores/authStore";
 
 // Constants for scroll behavior
 const SCROLL_NEAR_BOTTOM_THRESHOLD = 150;
 const SCROLL_STABLE_FRAMES_REQUIRED = 5;
 // Maximum retries for scroll height stabilization (~2 seconds max)
 const MAX_SCROLL_STABLE_RETRIES = 20;
-const TEAM_CHAT_AUTH_FAILURE_MESSAGE = 'Authentication failed. Please retry.';
+const TEAM_CHAT_AUTH_FAILURE_MESSAGE = "Authentication failed. Please retry.";
 
 /**
  * Extract agent IDs from @mentions in message content.
@@ -48,7 +48,7 @@ const TEAM_CHAT_AUTH_FAILURE_MESSAGE = 'Authentication failed. Please retry.';
  */
 function extractMentionedAgentIds(
   content: string,
-  agents: TeamChatAgent[]
+  agents: TeamChatAgent[],
 ): string[] {
   // Require @ to be at start or preceded by non-word char (excludes emails like user@domain.com)
   const mentionRegex = /(?:^|[^\w])@([A-Za-z0-9_.-]+)/g;
@@ -64,7 +64,7 @@ function extractMentionedAgentIds(
 
   return agents
     .filter(
-      (a) => a.username && mentionedUsernames.has(a.username.toLowerCase())
+      (a) => a.username && mentionedUsernames.has(a.username.toLowerCase()),
     )
     .map((a) => a.id);
 }
@@ -75,10 +75,10 @@ function extractMentionedAgentIds(
  */
 function extractMentionStrings(
   content: string,
-  agents: TeamChatAgent[]
+  agents: TeamChatAgent[],
 ): string[] {
   const validUsernames = new Set(
-    agents.map((a) => a.username?.toLowerCase()).filter(Boolean)
+    agents.map((a) => a.username?.toLowerCase()).filter(Boolean),
   );
   const mentionRegex = /(?:^|[^\w])(@[A-Za-z0-9_.-]+)/g;
   const mentions: string[] = [];
@@ -121,7 +121,7 @@ interface TeamChatAgent {
   displayName: string | null;
   profileImageUrl: string | null;
   isAgent: boolean;
-  modelTier: 'free' | 'pro';
+  modelTier: "free" | "pro";
   virtualBalance: number;
 }
 
@@ -154,13 +154,13 @@ function getConversationDisplayName(conversation: ConversationInfo): string {
 
   // Fallback: "New Chat - Jan 30, 1:55 AM"
   const date = new Date(conversation.createdAt);
-  const dateStr = date.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
+  const dateStr = date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
   });
-  const timeStr = date.toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
+  const timeStr = date.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
     hour12: true,
   });
   return `New Chat - ${dateStr}, ${timeStr}`;
@@ -213,11 +213,11 @@ interface UseTeamChatReturn {
   toggleReaction: (
     messageId: string,
     emoji: string,
-    currentlyReactedByMe: boolean
+    currentlyReactedByMe: boolean,
   ) => Promise<void>;
   refresh: () => Promise<void>;
   handleScroll: (container: HTMLDivElement) => void;
-  scrollToBottom: (behavior?: 'instant' | 'smooth') => void;
+  scrollToBottom: (behavior?: "instant" | "smooth") => void;
 
   // Conversations (fresh chat feature)
   conversations: ConversationInfo[];
@@ -239,13 +239,13 @@ export function useTeamChat(): UseTeamChatReturn {
   const [error, setError] = useState<string | null>(null);
 
   // Message state
-  const [messageInput, setMessageInput] = useState('');
+  const [messageInput, setMessageInput] = useState("");
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
 
   // Reply state
   const [replyToMessage, setReplyToMessage] = useState<ReplyToMessage | null>(
-    null
+    null,
   );
 
   // Typing indicator state
@@ -258,7 +258,7 @@ export function useTeamChat(): UseTeamChatReturn {
 
   // Agent processing state (for stop functionality)
   const [processingAgentIds, setProcessingAgentIds] = useState<Set<string>>(
-    new Set()
+    new Set(),
   );
 
   // Conversations state (fresh chat feature)
@@ -270,13 +270,13 @@ export function useTeamChat(): UseTeamChatReturn {
       getPrivyAccessTokenSafely(getAccessToken, {
         onError: (error) => {
           logger.warn(
-            'Failed to retrieve team chat access token',
+            "Failed to retrieve team chat access token",
             { error: error.message },
-            'useTeamChat'
+            "useTeamChat",
           );
         },
       }),
-    [getAccessToken]
+    [getAccessToken],
   );
 
   // Refs
@@ -315,13 +315,13 @@ export function useTeamChat(): UseTeamChatReturn {
   // to querying for the visible [data-chat-messages-container].
   const getScrollContainer = useCallback((): HTMLElement | null => {
     const fromRef = messagesEndRef.current?.closest(
-      '[class*="overflow"]'
+      '[class*="overflow"]',
     ) as HTMLElement | null;
     if (fromRef && fromRef.offsetHeight > 0) return fromRef;
 
     // Ref points to a hidden container — find the visible one
     const containers = document.querySelectorAll<HTMLElement>(
-      '[data-chat-messages-container]'
+      "[data-chat-messages-container]",
     );
     for (const el of containers) {
       if (el.offsetHeight > 0) return el;
@@ -331,22 +331,22 @@ export function useTeamChat(): UseTeamChatReturn {
 
   // Scroll to bottom helper
   const scrollToBottom = useCallback(
-    (behavior: 'instant' | 'smooth' = 'instant') => {
+    (behavior: "instant" | "smooth" = "instant") => {
       const container = getScrollContainer();
       if (container) {
-        if (behavior === 'instant') {
+        if (behavior === "instant") {
           container.scrollTop = container.scrollHeight;
         } else {
           container.scrollTo({
             top: container.scrollHeight,
-            behavior: 'smooth',
+            behavior: "smooth",
           });
         }
       } else {
         messagesEndRef.current?.scrollIntoView({ behavior });
       }
     },
-    [getScrollContainer]
+    [getScrollContainer],
   );
 
   // Initial scroll: Wait for scrollHeight to stabilize
@@ -363,7 +363,7 @@ export function useTeamChat(): UseTeamChatReturn {
     hasInitialScrolledRef.current = true;
     const container = getScrollContainer();
     if (!container) {
-      scrollToBottom('instant');
+      scrollToBottom("instant");
       return;
     }
 
@@ -426,7 +426,7 @@ export function useTeamChat(): UseTeamChatReturn {
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     if (messageCount > prevCount && wasNearBottomRef.current) {
       // Small delay to let DOM update
-      timeoutId = setTimeout(() => scrollToBottom('instant'), 20);
+      timeoutId = setTimeout(() => scrollToBottom("instant"), 20);
     }
     return () => {
       if (timeoutId) clearTimeout(timeoutId);
@@ -435,19 +435,19 @@ export function useTeamChat(): UseTeamChatReturn {
 
   // Maintain scroll position when messages are replaced (optimistic → confirmed)
   // Runs synchronously before paint to prevent visible jump
-  const prevMessageIdsRef = useRef<string>('');
+  const prevMessageIdsRef = useRef<string>("");
   useLayoutEffect(() => {
     if (!wasNearBottomRef.current || realtimeMessages.length === 0) return;
 
-    const currentIds = realtimeMessages.map((m) => m.id).join(',');
+    const currentIds = realtimeMessages.map((m) => m.id).join(",");
     if (currentIds === prevMessageIdsRef.current) return;
 
     const prevIds = prevMessageIdsRef.current;
     prevMessageIdsRef.current = currentIds;
-    if (prevIds === '') return;
+    if (prevIds === "") return;
 
     // If count unchanged but IDs changed → replacement happened
-    if (prevIds.split(',').length === realtimeMessages.length) {
+    if (prevIds.split(",").length === realtimeMessages.length) {
       const container = getScrollContainer();
       if (container) container.scrollTop = container.scrollHeight;
     }
@@ -467,12 +467,12 @@ export function useTeamChat(): UseTeamChatReturn {
   const handleIndicatorEvent = useCallback(
     (data: Record<string, unknown>) => {
       // Handle typing indicator (user or agent is typing)
-      if (data.type === 'typing_indicator') {
+      if (data.type === "typing_indicator") {
         // Validate required fields before processing
         if (
-          typeof data.userId !== 'string' ||
-          typeof data.displayName !== 'string' ||
-          typeof data.isTyping !== 'boolean'
+          typeof data.userId !== "string" ||
+          typeof data.displayName !== "string" ||
+          typeof data.isTyping !== "boolean"
         ) {
           return;
         }
@@ -490,7 +490,7 @@ export function useTeamChat(): UseTeamChatReturn {
             const existing = prev.find((u) => u.userId === userId);
             if (existing) {
               return prev.map((u) =>
-                u.userId === userId ? { ...u, expiresAt } : u
+                u.userId === userId ? { ...u, expiresAt } : u,
               );
             }
             return [...prev, { userId, displayName, expiresAt }];
@@ -502,12 +502,12 @@ export function useTeamChat(): UseTeamChatReturn {
       }
 
       // Handle thinking indicator (agent is processing complex query)
-      if (data.type === 'thinking_indicator') {
+      if (data.type === "thinking_indicator") {
         // Validate required fields before processing
         if (
-          typeof data.agentId !== 'string' ||
-          typeof data.agentName !== 'string' ||
-          typeof data.isThinking !== 'boolean'
+          typeof data.agentId !== "string" ||
+          typeof data.agentName !== "string" ||
+          typeof data.isThinking !== "boolean"
         ) {
           return;
         }
@@ -515,7 +515,7 @@ export function useTeamChat(): UseTeamChatReturn {
         const agentName = data.agentName;
         const isThinking = data.isThinking;
         const thinkingLabel =
-          typeof data.thinkingLabel === 'string' ? data.thinkingLabel : null;
+          typeof data.thinkingLabel === "string" ? data.thinkingLabel : null;
 
         setThinkingAgents((prev) => {
           if (isThinking) {
@@ -524,7 +524,7 @@ export function useTeamChat(): UseTeamChatReturn {
             const existing = prev.find((a) => a.agentId === agentId);
             if (existing) {
               return prev.map((a) =>
-                a.agentId === agentId ? { ...a, thinkingLabel, expiresAt } : a
+                a.agentId === agentId ? { ...a, thinkingLabel, expiresAt } : a,
               );
             }
             return [...prev, { agentId, agentName, thinkingLabel, expiresAt }];
@@ -535,7 +535,7 @@ export function useTeamChat(): UseTeamChatReturn {
         });
       }
     },
-    [user?.id]
+    [user?.id],
   );
 
   // Subscribe to typing/thinking events on the chat channel.
@@ -544,7 +544,7 @@ export function useTeamChat(): UseTeamChatReturn {
   // a new string would be created each render, causing unnecessary re-subscriptions.
   const indicatorChannel = useMemo(
     () => (teamChat?.chatId ? (`chat:${teamChat.chatId}` as const) : null),
-    [teamChat?.chatId]
+    [teamChat?.chatId],
   );
   useSSEChannel(indicatorChannel, handleIndicatorEvent);
 
@@ -568,19 +568,19 @@ export function useTeamChat(): UseTeamChatReturn {
       if (!token) return;
 
       // Fire and forget - don't block on typing indicators
-      fetch('/api/agents/team-chat/typing', {
-        method: 'POST',
+      fetch("/api/agents/team-chat/typing", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ isTyping }),
       }).catch((err) => {
         // Log for debugging but don't block user experience
-        logger.debug('Typing indicator failed', { error: err }, 'useTeamChat');
+        logger.debug("Typing indicator failed", { error: err }, "useTeamChat");
       });
     },
-    [teamChat, getSafeAccessToken]
+    [teamChat, getSafeAccessToken],
   );
 
   // Debounced typing handler
@@ -613,7 +613,7 @@ export function useTeamChat(): UseTeamChatReturn {
         sendTypingIndicator(false);
       }
     },
-    [sendTypingIndicator]
+    [sendTypingIndicator],
   );
 
   // Cleanup typing state on unmount.
@@ -642,29 +642,29 @@ export function useTeamChat(): UseTeamChatReturn {
     try {
       const token = await getSafeAccessToken();
       if (!token) {
-        setError('Authentication failed while loading Agents. Please retry.');
+        setError("Authentication failed while loading Agents. Please retry.");
         return;
       }
 
       // Use POST to ensure team chat exists and sync any pre-existing agents
-      const response = await fetch('/api/agents/team-chat', {
-        method: 'POST',
+      const response = await fetch("/api/agents/team-chat", {
+        method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
       });
 
       if (!response.ok) {
         const data = await response.json();
-        setError(data.message || data.error || 'Failed to load Agents');
+        setError(data.message || data.error || "Failed to load Agents");
         return;
       }
 
       const data = await response.json();
       setTeamChat(data.teamChat);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load Agents');
+      setError(err instanceof Error ? err.message : "Failed to load Agents");
     } finally {
       setLoading(false);
     }
@@ -685,9 +685,9 @@ export function useTeamChat(): UseTeamChatReturn {
 
       const mentionText = `@${username}`;
       // Escape special regex characters in username to prevent ReDoS
-      const escapedMention = mentionText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const escapedMention = mentionText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       // Check if already tagged (word boundary check)
-      const regex = new RegExp(`(^|\\s)${escapedMention}(\\s|$)`, 'i');
+      const regex = new RegExp(`(^|\\s)${escapedMention}(\\s|$)`, "i");
       if (regex.test(messageInput)) return; // Already tagged
 
       // Append to input
@@ -696,7 +696,7 @@ export function useTeamChat(): UseTeamChatReturn {
         : `${mentionText} `;
       setMessageInput(newValue);
     },
-    [messageInput]
+    [messageInput],
   );
 
   // Stop a processing agent (aborts the fetch request)
@@ -724,7 +724,7 @@ export function useTeamChat(): UseTeamChatReturn {
           id: teamChat.chatId,
           name: activeConversation
             ? getConversationDisplayName(activeConversation)
-            : 'New Chat',
+            : "New Chat",
           isGroup: true,
           createdAt: teamChat.createdAt,
           updatedAt: teamChat.updatedAt,
@@ -736,7 +736,7 @@ export function useTeamChat(): UseTeamChatReturn {
             ? [
                 {
                   id: user.id,
-                  displayName: getUserDisplayName(user, 'You'),
+                  displayName: getUserDisplayName(user, "You"),
                   username: user.username,
                   profileImageUrl: user.profileImageUrl,
                 } as ChatParticipant,
@@ -747,10 +747,10 @@ export function useTeamChat(): UseTeamChatReturn {
             (agent) =>
               ({
                 id: agent.id,
-                displayName: getUserDisplayName(agent, 'Agent'),
+                displayName: getUserDisplayName(agent, "Agent"),
                 username: agent.username,
                 profileImageUrl: agent.profileImageUrl,
-              }) as ChatParticipant
+              }) as ChatParticipant,
           ),
         ],
       }
@@ -772,7 +772,7 @@ export function useTeamChat(): UseTeamChatReturn {
     // Extract mentioned agents from message content
     const mentionedAgentIds = extractMentionedAgentIds(
       content,
-      teamChat.agents
+      teamChat.agents,
     );
 
     // Extract mention strings for sticky mentions (preserve after send)
@@ -785,13 +785,13 @@ export function useTeamChat(): UseTeamChatReturn {
         : teamChat.agents.map((a) => a.id);
 
     const availableAgents = targetAgentIds.filter(
-      (id) => !processingAgentIds.has(id)
+      (id) => !processingAgentIds.has(id),
     );
 
     // If all target agents are busy, notify user and don't proceed
     if (availableAgents.length === 0) {
       toast.warning(
-        'All agents are currently busy — your message was not sent.'
+        "All agents are currently busy — your message was not sent.",
       );
       return;
     }
@@ -804,18 +804,18 @@ export function useTeamChat(): UseTeamChatReturn {
       chatId: teamChat.chatId,
       content,
       senderId: user.id,
-      type: 'user',
+      type: "user",
       createdAt: new Date().toISOString(),
       stableKey: optimisticId,
     });
 
     // Scroll to bottom after DOM updates with new message
-    setTimeout(() => scrollToBottom('instant'), 50);
+    setTimeout(() => scrollToBottom("instant"), 50);
 
     // Preserve mentions for next message (sticky mentions)
     // If there were mentions, pre-fill input with them; otherwise clear
     const stickyMentions =
-      mentionStrings.length > 0 ? mentionStrings.join(' ') + ' ' : '';
+      mentionStrings.length > 0 ? `${mentionStrings.join(" ")} ` : "";
     setMessageInput(stickyMentions);
     setReplyToMessage(null);
     setSending(true);
@@ -826,16 +826,16 @@ export function useTeamChat(): UseTeamChatReturn {
       if (!token) {
         // Rollback optimistic message on auth failure
         removeMessage(optimisticId);
-        setSendError('Not authenticated');
+        setSendError("Not authenticated");
         return;
       }
 
       // First, save user message to team chat (happens once for all agents)
       // Pass targetIds for message routing (empty = coordinator, otherwise = agent IDs)
-      const response = await fetch('/api/agents/team-chat/message', {
-        method: 'POST',
+      const response = await fetch("/api/agents/team-chat/message", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
@@ -849,7 +849,7 @@ export function useTeamChat(): UseTeamChatReturn {
         // Rollback optimistic message on server error
         removeMessage(optimisticId);
         const data = await response.json();
-        setSendError(data.message || data.error || 'Failed to send message');
+        setSendError(data.message || data.error || "Failed to send message");
         return;
       }
 
@@ -866,8 +866,8 @@ export function useTeamChat(): UseTeamChatReturn {
           prev.map((c) =>
             c.id === teamChat.chatId
               ? { ...c, name: responseData.generatedTitle as string }
-              : c
-          )
+              : c,
+          ),
         );
       }
 
@@ -885,8 +885,8 @@ export function useTeamChat(): UseTeamChatReturn {
       });
 
       // Get user info for team chat context
-      const ownerName = getUserDisplayName(user, 'User');
-      const ownerUsername = user.username || '';
+      const ownerName = getUserDisplayName(user, "User");
+      const ownerUsername = user.username || "";
 
       // Create thinking message IDs for each agent (for tracking)
       const thinkingIds = new Map<string, string>();
@@ -898,9 +898,9 @@ export function useTeamChat(): UseTeamChatReturn {
         addMessage({
           id: thinkingId,
           chatId: teamChat.chatId,
-          content: '',
+          content: "",
           senderId: agentId,
-          type: 'user',
+          type: "user",
           createdAt: new Date().toISOString(),
           stableKey: thinkingId,
           isThinking: true,
@@ -908,7 +908,7 @@ export function useTeamChat(): UseTeamChatReturn {
       }
 
       // Scroll to show thinking indicators
-      setTimeout(() => scrollToBottom('instant'), 50);
+      setTimeout(() => scrollToBottom("instant"), 50);
 
       // Call each available agent in parallel
       const agentCalls = availableAgents.map(async (agentId) => {
@@ -921,13 +921,13 @@ export function useTeamChat(): UseTeamChatReturn {
 
         // Look up agent to get their modelTier for pro mode
         const agent = teamChat.agents.find((a) => a.id === agentId);
-        const usePro = agent?.modelTier === 'pro';
+        const usePro = agent?.modelTier === "pro";
 
         try {
           const agentResponse = await fetch(`/api/agents/${agentId}/chat`, {
-            method: 'POST',
+            method: "POST",
             headers: {
-              'Content-Type': 'application/json',
+              "Content-Type": "application/json",
               Authorization: `Bearer ${token}`,
             },
             body: JSON.stringify({
@@ -970,12 +970,12 @@ export function useTeamChat(): UseTeamChatReturn {
             if (data.isLLMFailure) {
               // LLM failed to parse - no points charged, show warning
               toast.warning(
-                `${getUserDisplayName(agent, 'Agent')} had trouble understanding. No points charged.`
+                `${getUserDisplayName(agent, "Agent")} had trouble understanding. No points charged.`,
               );
             }
 
             // Update agent balance in local state
-            if (typeof data.balanceAfter === 'number') {
+            if (typeof data.balanceAfter === "number") {
               setTeamChat((prev) => {
                 if (!prev) return prev;
                 return {
@@ -983,7 +983,7 @@ export function useTeamChat(): UseTeamChatReturn {
                   agents: prev.agents.map((a) =>
                     a.id === agentId
                       ? { ...a, virtualBalance: data.balanceAfter as number }
-                      : a
+                      : a,
                   ),
                 };
               });
@@ -996,25 +996,25 @@ export function useTeamChat(): UseTeamChatReturn {
                 message?: string;
               };
               const errorMessage =
-                errorData.error || errorData.message || 'Failed to respond';
+                errorData.error || errorData.message || "Failed to respond";
 
               // Check for insufficient balance error
               // Match "insufficient balance" specifically to avoid false positives
               // (e.g., "insufficient permissions" should not trigger this)
-              if (errorMessage.toLowerCase().includes('insufficient balance')) {
+              if (errorMessage.toLowerCase().includes("insufficient balance")) {
                 // Replace thinking bubble with system message that has action button
-                const agentDisplayName = getUserDisplayName(agent, 'Agent');
+                const agentDisplayName = getUserDisplayName(agent, "Agent");
                 updateMessage(thinkingId, {
                   id: `system-insufficient-${agentId}-${Date.now()}`,
                   content: `${agentDisplayName} needs more points to respond.`,
-                  senderId: 'system',
+                  senderId: "system",
                   type: MessageTypeEnum.SYSTEM,
                   isThinking: false,
                   metadata: {
                     action: {
                       // Open bottom panel with wallet tab for this agent
                       url: `/agents/team?openWallet=${encodeURIComponent(agentId)}`,
-                      label: 'Open Wallet →',
+                      label: "Open Wallet →",
                     },
                   },
                 });
@@ -1022,13 +1022,13 @@ export function useTeamChat(): UseTeamChatReturn {
                 // Remove thinking bubble and show toast for other errors
                 removeMessage(thinkingId);
                 toast.error(
-                  `${getUserDisplayName(agent, 'Agent')}: ${errorMessage}`
+                  `${getUserDisplayName(agent, "Agent")}: ${errorMessage}`,
                 );
               }
             } catch {
               removeMessage(thinkingId);
               toast.error(
-                `${getUserDisplayName(agent, 'Agent')} failed to respond`
+                `${getUserDisplayName(agent, "Agent")} failed to respond`,
               );
             }
           }
@@ -1037,12 +1037,12 @@ export function useTeamChat(): UseTeamChatReturn {
           removeMessage(thinkingId);
 
           // Don't show toast for abort errors - they're expected when user stops
-          if (err instanceof Error && err.name === 'AbortError') {
+          if (err instanceof Error && err.name === "AbortError") {
             // User cancelled, no need to notify
           } else {
             // Network or other unexpected errors - show toast
             toast.error(
-              `${getUserDisplayName(agent, 'Agent')}: Connection error. Please try again.`
+              `${getUserDisplayName(agent, "Agent")}: Connection error. Please try again.`,
             );
           }
         } finally {
@@ -1061,16 +1061,16 @@ export function useTeamChat(): UseTeamChatReturn {
       // Responses will come through SSE/broadcast
       Promise.all(agentCalls).catch((err) => {
         logger.error(
-          'Error in parallel agent calls',
+          "Error in parallel agent calls",
           { error: err },
-          'useTeamChat'
+          "useTeamChat",
         );
       });
     } catch (err) {
       // Rollback optimistic message on network error
       removeMessage(optimisticId);
       setSendError(
-        err instanceof Error ? err.message : 'Failed to send message'
+        err instanceof Error ? err.message : "Failed to send message",
       );
     } finally {
       setSending(false);
@@ -1107,7 +1107,7 @@ export function useTeamChat(): UseTeamChatReturn {
         toast.error(TEAM_CHAT_AUTH_FAILURE_MESSAGE);
         return;
       }
-      const response = await fetch('/api/agents/team-chat/conversations', {
+      const response = await fetch("/api/agents/team-chat/conversations", {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -1121,19 +1121,19 @@ export function useTeamChat(): UseTeamChatReturn {
           error?: string;
         };
         logger.error(
-          'Failed to fetch conversations',
+          "Failed to fetch conversations",
           { status: response.status, errorData },
-          'useTeamChat'
+          "useTeamChat",
         );
-        toast.error(errorData.error || 'Failed to load conversations');
+        toast.error(errorData.error || "Failed to load conversations");
       }
     } catch (err) {
       logger.error(
-        'Failed to fetch conversations',
+        "Failed to fetch conversations",
         { error: err },
-        'useTeamChat'
+        "useTeamChat",
       );
-      toast.error('Failed to load conversations');
+      toast.error("Failed to load conversations");
     } finally {
       setConversationsLoading(false);
     }
@@ -1150,7 +1150,7 @@ export function useTeamChat(): UseTeamChatReturn {
       // Find the most recently created conversation (sorted by createdAt desc)
       const sortedConversations = [...conversations].sort(
         (a, b) =>
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
       );
       const mostRecentChat = sortedConversations[0];
 
@@ -1163,12 +1163,12 @@ export function useTeamChat(): UseTeamChatReturn {
         // Switch to the existing empty chat instead of creating a new one
         // Update active state in conversations list
         setConversations((prev) =>
-          prev.map((c) => ({ ...c, isActive: c.id === mostRecentChat.id }))
+          prev.map((c) => ({ ...c, isActive: c.id === mostRecentChat.id })),
         );
 
         // Update team chat with the empty chat's ID
         setTeamChat((prev) =>
-          prev ? { ...prev, chatId: mostRecentChat.id } : prev
+          prev ? { ...prev, chatId: mostRecentChat.id } : prev,
         );
 
         // Clear messages (useChatMessages will refetch for new chatId)
@@ -1182,10 +1182,10 @@ export function useTeamChat(): UseTeamChatReturn {
           toast.error(TEAM_CHAT_AUTH_FAILURE_MESSAGE);
           return;
         }
-        const response = await fetch('/api/agents/team-chat/conversations', {
-          method: 'POST',
+        const response = await fetch("/api/agents/team-chat/conversations", {
+          method: "POST",
           headers: {
-            'Content-Type': 'application/json',
+            "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({ title }),
@@ -1205,25 +1205,25 @@ export function useTeamChat(): UseTeamChatReturn {
 
           // Update team chat with new chatId
           setTeamChat((prev) =>
-            prev ? { ...prev, chatId: data.activeChatId } : prev
+            prev ? { ...prev, chatId: data.activeChatId } : prev,
           );
 
           // Clear messages for fresh start (useChatMessages will refetch)
           clearMessages();
         } else {
           const errorData = (await response.json()) as { error?: string };
-          toast.error(errorData.error || 'Failed to create conversation');
+          toast.error(errorData.error || "Failed to create conversation");
         }
       } catch (err) {
         logger.error(
-          'Failed to create conversation',
+          "Failed to create conversation",
           { error: err },
-          'useTeamChat'
+          "useTeamChat",
         );
-        toast.error('Failed to create conversation');
+        toast.error("Failed to create conversation");
       }
     },
-    [user, teamChat, conversations, getSafeAccessToken, clearMessages]
+    [user, teamChat, conversations, getSafeAccessToken, clearMessages],
   );
 
   /**
@@ -1243,13 +1243,13 @@ export function useTeamChat(): UseTeamChatReturn {
         const response = await fetch(
           `/api/agents/team-chat/conversations/${chatId}`,
           {
-            method: 'PUT',
+            method: "PUT",
             headers: {
-              'Content-Type': 'application/json',
+              "Content-Type": "application/json",
               Authorization: `Bearer ${token}`,
             },
-            body: JSON.stringify({ action: 'switch' }),
-          }
+            body: JSON.stringify({ action: "switch" }),
+          },
         );
 
         if (response.ok) {
@@ -1257,12 +1257,12 @@ export function useTeamChat(): UseTeamChatReturn {
 
           // Update active state in conversations list
           setConversations((prev) =>
-            prev.map((c) => ({ ...c, isActive: c.id === chatId }))
+            prev.map((c) => ({ ...c, isActive: c.id === chatId })),
           );
 
           // Update team chat with new chatId
           setTeamChat((prev) =>
-            prev ? { ...prev, chatId: data.activeChatId } : prev
+            prev ? { ...prev, chatId: data.activeChatId } : prev,
           );
 
           // Clear messages and reply state (useChatMessages will refetch for new chatId)
@@ -1270,18 +1270,18 @@ export function useTeamChat(): UseTeamChatReturn {
           setReplyToMessage(null);
         } else {
           const errorData = (await response.json()) as { error?: string };
-          toast.error(errorData.error || 'Failed to switch conversation');
+          toast.error(errorData.error || "Failed to switch conversation");
         }
       } catch (err) {
         logger.error(
-          'Failed to switch conversation',
+          "Failed to switch conversation",
           { error: err },
-          'useTeamChat'
+          "useTeamChat",
         );
-        toast.error('Failed to switch conversation');
+        toast.error("Failed to switch conversation");
       }
     },
-    [user, teamChat, getSafeAccessToken, clearMessages]
+    [user, teamChat, getSafeAccessToken, clearMessages],
   );
 
   /**
@@ -1300,34 +1300,34 @@ export function useTeamChat(): UseTeamChatReturn {
         const response = await fetch(
           `/api/agents/team-chat/conversations/${chatId}`,
           {
-            method: 'PUT',
+            method: "PUT",
             headers: {
-              'Content-Type': 'application/json',
+              "Content-Type": "application/json",
               Authorization: `Bearer ${token}`,
             },
-            body: JSON.stringify({ action: 'rename', title: newTitle }),
-          }
+            body: JSON.stringify({ action: "rename", title: newTitle }),
+          },
         );
 
         if (response.ok) {
           // Update name in conversations list
           setConversations((prev) =>
-            prev.map((c) => (c.id === chatId ? { ...c, name: newTitle } : c))
+            prev.map((c) => (c.id === chatId ? { ...c, name: newTitle } : c)),
           );
         } else {
           const errorData = (await response.json()) as { error?: string };
-          toast.error(errorData.error || 'Failed to rename conversation');
+          toast.error(errorData.error || "Failed to rename conversation");
         }
       } catch (err) {
         logger.error(
-          'Failed to rename conversation',
+          "Failed to rename conversation",
           { error: err },
-          'useTeamChat'
+          "useTeamChat",
         );
-        toast.error('Failed to rename conversation');
+        toast.error("Failed to rename conversation");
       }
     },
-    [user, getSafeAccessToken]
+    [user, getSafeAccessToken],
   );
 
   /**
@@ -1346,9 +1346,9 @@ export function useTeamChat(): UseTeamChatReturn {
         const response = await fetch(
           `/api/agents/team-chat/conversations/${chatId}`,
           {
-            method: 'DELETE',
+            method: "DELETE",
             headers: { Authorization: `Bearer ${token}` },
-          }
+          },
         );
 
         if (response.ok) {
@@ -1361,7 +1361,7 @@ export function useTeamChat(): UseTeamChatReturn {
             // (e.g. race condition where another session deleted conversations).
             // Refresh the full list so the UI recovers to a consistent state.
             toast.error(
-              'Conversation deleted, but could not determine the new active chat. Refreshing...'
+              "Conversation deleted, but could not determine the new active chat. Refreshing...",
             );
             await refreshConversations();
             return;
@@ -1371,28 +1371,28 @@ export function useTeamChat(): UseTeamChatReturn {
           setConversations((prev) =>
             prev
               .filter((c) => c.id !== chatId)
-              .map((c) => ({ ...c, isActive: c.id === data.newActiveChatId }))
+              .map((c) => ({ ...c, isActive: c.id === data.newActiveChatId })),
           );
           setTeamChat((prev) =>
-            prev ? { ...prev, chatId: data.newActiveChatId! } : prev
+            prev ? { ...prev, chatId: data.newActiveChatId! } : prev,
           );
           clearMessages();
         } else {
           const errorData = (await response.json().catch(() => ({}))) as {
             error?: string;
           };
-          toast.error(errorData.error || 'Failed to delete conversation');
+          toast.error(errorData.error || "Failed to delete conversation");
         }
       } catch (err) {
         logger.error(
-          'Failed to delete conversation',
+          "Failed to delete conversation",
           { error: err },
-          'useTeamChat'
+          "useTeamChat",
         );
-        toast.error('Failed to delete conversation');
+        toast.error("Failed to delete conversation");
       }
     },
-    [user, getSafeAccessToken, clearMessages, refreshConversations]
+    [user, getSafeAccessToken, clearMessages, refreshConversations],
   );
 
   // Fetch conversations when team chat loads
@@ -1407,7 +1407,7 @@ export function useTeamChat(): UseTeamChatReturn {
   const handleReplyToMessage = useCallback(
     (msg: Message) => {
       const participant = chatDetails?.participants?.find(
-        (p) => p.id === msg.senderId
+        (p) => p.id === msg.senderId,
       );
       setReplyToMessage({
         id: msg.id,
@@ -1416,7 +1416,7 @@ export function useTeamChat(): UseTeamChatReturn {
         senderName: participant?.displayName ?? undefined,
       });
     },
-    [chatDetails?.participants]
+    [chatDetails?.participants],
   );
 
   const clearReplyToMessage = useCallback(() => {

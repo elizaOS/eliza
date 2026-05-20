@@ -18,17 +18,17 @@ import {
   expect,
   setDefaultTimeout,
   test,
-} from 'bun:test';
-import { NextRequest } from 'next/server';
+} from "bun:test";
+import { NextRequest } from "next/server";
 import type {
   GET as MarketsTickGet,
   POST as MarketsTickPost,
-} from '@/app/api/cron/markets-tick/route';
+} from "@/app/api/cron/markets-tick/route";
 
 // Set test environment first (before any imports)
-process.env.NODE_ENV = 'test';
-process.env.BUN_ENV = 'test';
-process.env.LLM_TIMEOUT_MS = '30000';
+process.env.NODE_ENV = "test";
+process.env.BUN_ENV = "test";
+process.env.LLM_TIMEOUT_MS = "30000";
 
 import {
   and,
@@ -41,12 +41,12 @@ import {
   questions,
   sql,
   timeframedMarkets,
-} from '@feed/db';
+} from "@feed/db";
 import {
   GRANULAR_TO_DB_TIMEFRAME,
   mapGranularToDbTimeframe,
-} from '@feed/engine';
-import { generateSnowflakeId } from '@feed/shared';
+} from "@feed/engine";
+import { generateSnowflakeId } from "@feed/shared";
 
 // Set timeout to 120 seconds for integration tests (market creation can be slow)
 setDefaultTimeout(120000);
@@ -92,7 +92,7 @@ async function cleanupTestData(): Promise<void> {
 async function ensureTestGame(): Promise<{ id: string; isRunning: boolean }> {
   // Check if we have a continuous game
   const [game] = await db.execute(
-    sql`SELECT id, "isRunning" FROM "Game" WHERE "isContinuous" = true LIMIT 1`
+    sql`SELECT id, "isRunning" FROM "Game" WHERE "isContinuous" = true LIMIT 1`,
   );
 
   if (game) {
@@ -100,7 +100,7 @@ async function ensureTestGame(): Promise<{ id: string; isRunning: boolean }> {
   }
 
   // For tests, we'll skip if no game exists
-  return { id: 'test-game', isRunning: false };
+  return { id: "test-game", isRunning: false };
 }
 
 /**
@@ -130,7 +130,7 @@ async function createTestMarket(options: {
     rank: 1,
     createdDate: new Date(),
     resolutionDate: options.endTime ?? new Date(Date.now() + 60 * 60 * 1000),
-    status: options.isActive === false ? 'resolved' : 'active',
+    status: options.isActive === false ? "resolved" : "active",
     updatedAt: new Date(),
   });
   testIds.questionIds.push(questionId);
@@ -162,8 +162,8 @@ async function countActiveMainMarkets(): Promise<number> {
     .where(
       and(
         eq(timeframedMarkets.isActive, true),
-        isNull(timeframedMarkets.parentMarketId)
-      )
+        isNull(timeframedMarkets.parentMarketId),
+      ),
     );
   return result?.count ?? 0;
 }
@@ -176,18 +176,18 @@ beforeAll(async () => {
   try {
     // Verify database connection
     await db.execute(sql`SELECT 1`);
-    console.log('[Integration Test] Database connection verified');
+    console.log("[Integration Test] Database connection verified");
     dbAvailable = true;
 
     // Clean up any stale test data from previous runs
     await db.execute(
-      sql`DELETE FROM "TimeframedMarket" WHERE "questionId" IN (SELECT id FROM "Question" WHERE text LIKE 'Integration test:%')`
+      sql`DELETE FROM "TimeframedMarket" WHERE "questionId" IN (SELECT id FROM "Question" WHERE text LIKE 'Integration test:%')`,
     );
     await db.execute(
-      sql`DELETE FROM "Question" WHERE text LIKE 'Integration test:%'`
+      sql`DELETE FROM "Question" WHERE text LIKE 'Integration test:%'`,
     );
   } catch (error) {
-    console.error('[Integration Test] Database not available:', error);
+    console.error("[Integration Test] Database not available:", error);
     dbAvailable = false;
   }
 });
@@ -208,23 +208,23 @@ afterAll(async () => {
   }
 });
 
-function createCronRequest(method: 'GET' | 'POST' = 'POST'): NextRequest {
-  return new NextRequest('http://localhost/api/cron/markets-tick', {
+function createCronRequest(method: "GET" | "POST" = "POST"): NextRequest {
+  return new NextRequest("http://localhost/api/cron/markets-tick", {
     method,
     headers: {
-      Authorization: `Bearer ${process.env.CRON_SECRET || 'test-secret'}`,
-      'x-integration-probe': '1',
+      Authorization: `Bearer ${process.env.CRON_SECRET || "test-secret"}`,
+      "x-integration-probe": "1",
     },
   });
 }
 
 // ============ TESTS ============
 
-describe('Markets Tick Integration', () => {
-  describe('Database Operations', () => {
-    test('should verify database connection', async () => {
+describe("Markets Tick Integration", () => {
+  describe("Database Operations", () => {
+    test("should verify database connection", async () => {
       if (!dbAvailable) {
-        console.log('Skipping - database not available');
+        console.log("Skipping - database not available");
         return;
       }
 
@@ -232,15 +232,15 @@ describe('Markets Tick Integration', () => {
       expect(result).toBeDefined();
     });
 
-    test('should create and cleanup test markets correctly', async () => {
+    test("should create and cleanup test markets correctly", async () => {
       if (!dbAvailable) {
-        console.log('Skipping - database not available');
+        console.log("Skipping - database not available");
         return;
       }
 
       // Create a test market
       const { marketId, questionId } = await createTestMarket({
-        timeframe: 'flash',
+        timeframe: "flash",
         isActive: true,
       });
 
@@ -251,17 +251,17 @@ describe('Markets Tick Integration', () => {
         .where(eq(timeframedMarkets.id, marketId));
 
       expect(market).toBeDefined();
-      expect(market!.questionId).toBe(questionId);
-      expect(market!.isActive).toBe(true);
+      expect(market?.questionId).toBe(questionId);
+      expect(market?.isActive).toBe(true);
 
       // Cleanup will happen in afterEach
     });
   });
 
-  describe('Market Structure', () => {
-    test('should count main markets separately from sub-markets', async () => {
+  describe("Market Structure", () => {
+    test("should count main markets separately from sub-markets", async () => {
       if (!dbAvailable) {
-        console.log('Skipping - database not available');
+        console.log("Skipping - database not available");
         return;
       }
 
@@ -269,7 +269,7 @@ describe('Markets Tick Integration', () => {
 
       // Create a main market
       await createTestMarket({
-        timeframe: 'flash',
+        timeframe: "flash",
         isActive: true,
       });
 
@@ -277,9 +277,9 @@ describe('Markets Tick Integration', () => {
       expect(afterMainCount).toBe(initialCount + 1);
     });
 
-    test('should exclude sub-markets from main market count', async () => {
+    test("should exclude sub-markets from main market count", async () => {
       if (!dbAvailable) {
-        console.log('Skipping - database not available');
+        console.log("Skipping - database not available");
         return;
       }
 
@@ -287,7 +287,7 @@ describe('Markets Tick Integration', () => {
 
       // Create a main market
       const { marketId: parentMarketId } = await createTestMarket({
-        timeframe: 'flash',
+        timeframe: "flash",
         isActive: true,
       });
 
@@ -303,13 +303,13 @@ describe('Markets Tick Integration', () => {
       await db.insert(questions).values({
         id: subQuestionId,
         questionNumber: nextQuestionNumber,
-        text: 'Integration test: Sub-market',
+        text: "Integration test: Sub-market",
         scenarioId: 1,
         outcome: true,
         rank: 1,
         createdDate: new Date(),
         resolutionDate: new Date(Date.now() + 30 * 60 * 1000),
-        status: 'active',
+        status: "active",
         updatedAt: new Date(),
       });
       testIds.questionIds.push(subQuestionId);
@@ -319,7 +319,7 @@ describe('Markets Tick Integration', () => {
         id: subMarketId,
         questionId: subQuestionId,
         parentMarketId,
-        timeframe: 'flash',
+        timeframe: "flash",
         startTime: subNow,
         endTime: new Date(Date.now() + 30 * 60 * 1000),
         isActive: true,
@@ -333,9 +333,9 @@ describe('Markets Tick Integration', () => {
       expect(afterSubCount).toBe(initialCount + 1); // Only +1, not +2
     });
 
-    test('should exclude sub-markets from gap-filling even with many sub-markets', async () => {
+    test("should exclude sub-markets from gap-filling even with many sub-markets", async () => {
       if (!dbAvailable) {
-        console.log('Skipping - database not available');
+        console.log("Skipping - database not available");
         return;
       }
 
@@ -343,7 +343,7 @@ describe('Markets Tick Integration', () => {
 
       // Create a parent main market
       const { marketId: parentMarketId } = await createTestMarket({
-        timeframe: 'flash',
+        timeframe: "flash",
         isActive: true,
       });
 
@@ -367,7 +367,7 @@ describe('Markets Tick Integration', () => {
           rank: 1,
           createdDate: new Date(),
           resolutionDate: new Date(Date.now() + (15 + i * 5) * 60 * 1000),
-          status: 'active',
+          status: "active",
           updatedAt: new Date(),
         });
         testIds.questionIds.push(subQuestionId);
@@ -377,7 +377,7 @@ describe('Markets Tick Integration', () => {
           id: subMarketId,
           questionId: subQuestionId,
           parentMarketId,
-          timeframe: 'flash',
+          timeframe: "flash",
           startTime: subNow,
           endTime: new Date(Date.now() + (15 + i * 5) * 60 * 1000),
           isActive: true,
@@ -400,7 +400,7 @@ describe('Markets Tick Integration', () => {
 
       // Total should include all created markets (1 main + 10 subs)
       expect(totalActive).toBeGreaterThanOrEqual(
-        initialCount + 1 + subMarketCount
+        initialCount + 1 + subMarketCount,
       );
 
       // Gap-filling logic uses countActiveMainMarkets(), which excludes sub-markets
@@ -411,23 +411,23 @@ describe('Markets Tick Integration', () => {
     });
   });
 
-  describe('Market Timeframe Distribution', () => {
-    test('should have correct DB timeframe mapping', () => {
+  describe("Market Timeframe Distribution", () => {
+    test("should have correct DB timeframe mapping", () => {
       // Test the mapping logic using the production mapping from @feed/engine
       // This ensures the test fails if the production mapping changes
 
       // Verify expected aggregations from the production mapping
       const flashCount = Object.entries(GRANULAR_TO_DB_TIMEFRAME).filter(
-        ([, v]) => v === 'flash'
+        ([, v]) => v === "flash",
       ).length;
       const intradayCount = Object.entries(GRANULAR_TO_DB_TIMEFRAME).filter(
-        ([, v]) => v === 'intraday'
+        ([, v]) => v === "intraday",
       ).length;
       const dailyCount = Object.entries(GRANULAR_TO_DB_TIMEFRAME).filter(
-        ([, v]) => v === 'daily'
+        ([, v]) => v === "daily",
       ).length;
       const weeklyCount = Object.entries(GRANULAR_TO_DB_TIMEFRAME).filter(
-        ([, v]) => v === 'weekly'
+        ([, v]) => v === "weekly",
       ).length;
 
       expect(flashCount).toBe(2); // 15m + 30m
@@ -437,20 +437,20 @@ describe('Markets Tick Integration', () => {
     });
   });
 
-  describe('Response Metrics', () => {
-    test('should track market operations in test data', async () => {
+  describe("Response Metrics", () => {
+    test("should track market operations in test data", async () => {
       if (!dbAvailable) {
-        console.log('Skipping - database not available');
+        console.log("Skipping - database not available");
         return;
       }
 
       // Create multiple markets to test tracking
       const market1 = await createTestMarket({
-        timeframe: 'flash',
+        timeframe: "flash",
         isActive: true,
       });
       const market2 = await createTestMarket({
-        timeframe: 'intraday',
+        timeframe: "intraday",
         isActive: true,
       });
 
@@ -461,10 +461,10 @@ describe('Markets Tick Integration', () => {
     });
   });
 
-  describe('Game State', () => {
-    test('should detect game availability', async () => {
+  describe("Game State", () => {
+    test("should detect game availability", async () => {
       if (!dbAvailable) {
-        console.log('Skipping - database not available');
+        console.log("Skipping - database not available");
         return;
       }
 
@@ -475,8 +475,8 @@ describe('Markets Tick Integration', () => {
   });
 });
 
-describe('Idempotency Check Logic', () => {
-  test('should aggregate target counts by DB timeframe', () => {
+describe("Idempotency Check Logic", () => {
+  test("should aggregate target counts by DB timeframe", () => {
     // This tests the logic without requiring database
     // Uses the production mapping function from @feed/engine
     // MARKET_STRUCTURE has these counts:
@@ -486,14 +486,14 @@ describe('Idempotency Check Logic', () => {
     // 2d: 1, 3d: 1 -> weekly total: 2
 
     const marketStructure: Record<string, { count: number }> = {
-      '15m': { count: 2 },
-      '30m': { count: 2 },
-      '1h': { count: 1 },
-      '6h': { count: 1 },
-      '12h': { count: 1 },
-      '1d': { count: 1 },
-      '2d': { count: 1 },
-      '3d': { count: 1 },
+      "15m": { count: 2 },
+      "30m": { count: 2 },
+      "1h": { count: 1 },
+      "6h": { count: 1 },
+      "12h": { count: 1 },
+      "1d": { count: 1 },
+      "2d": { count: 1 },
+      "3d": { count: 1 },
     };
 
     // Uses the production mapping function that throws on unknown timeframe
@@ -507,15 +507,15 @@ describe('Idempotency Check Logic', () => {
       return total;
     }
 
-    expect(getTargetCountForDbTimeframe('flash')).toBe(4);
-    expect(getTargetCountForDbTimeframe('intraday')).toBe(2);
-    expect(getTargetCountForDbTimeframe('daily')).toBe(2);
-    expect(getTargetCountForDbTimeframe('weekly')).toBe(2);
+    expect(getTargetCountForDbTimeframe("flash")).toBe(4);
+    expect(getTargetCountForDbTimeframe("intraday")).toBe(2);
+    expect(getTargetCountForDbTimeframe("daily")).toBe(2);
+    expect(getTargetCountForDbTimeframe("weekly")).toBe(2);
   });
 
-  test('should throw on unknown timeframe', () => {
-    expect(() => mapGranularToDbTimeframe('invalid-timeframe')).toThrow(
-      'Unsupported granular timeframe: invalid-timeframe'
+  test("should throw on unknown timeframe", () => {
+    expect(() => mapGranularToDbTimeframe("invalid-timeframe")).toThrow(
+      "Unsupported granular timeframe: invalid-timeframe",
     );
   });
 });
@@ -523,21 +523,21 @@ describe('Idempotency Check Logic', () => {
 // ============ POST HANDLER INTEGRATION TESTS ============
 // These tests exercise the actual HTTP endpoint behavior with a test database
 
-describe('POST Handler Integration', () => {
+describe("POST Handler Integration", () => {
   // Import the POST handler dynamically to ensure mocks are applied
   let POST: typeof MarketsTickPost;
   let GET: typeof MarketsTickGet;
 
   beforeAll(async () => {
     // Dynamic import after mocks are set up
-    const routeModule = await import('@/app/api/cron/markets-tick/route');
+    const routeModule = await import("@/app/api/cron/markets-tick/route");
     POST = routeModule.POST;
     GET = routeModule.GET;
   });
 
-  test('should return valid JSON response structure', async () => {
+  test("should return valid JSON response structure", async () => {
     if (!dbAvailable) {
-      console.log('Skipping - database not available');
+      console.log("Skipping - database not available");
       return;
     }
 
@@ -548,14 +548,14 @@ describe('POST Handler Integration', () => {
     expect(response.status).toBe(200);
 
     const data = await response.json();
-    expect(data).toHaveProperty('success');
-    expect(typeof data.success).toBe('boolean');
+    expect(data).toHaveProperty("success");
+    expect(typeof data.success).toBe("boolean");
     expect(data.probe).toBe(true);
   });
 
-  test('should include performance metrics in response', async () => {
+  test("should include performance metrics in response", async () => {
     if (!dbAvailable) {
-      console.log('Skipping - database not available');
+      console.log("Skipping - database not available");
       return;
     }
 
@@ -568,9 +568,9 @@ describe('POST Handler Integration', () => {
     expect(data.probe).toBe(true);
   });
 
-  test('should include duration in response', async () => {
+  test("should include duration in response", async () => {
     if (!dbAvailable) {
-      console.log('Skipping - database not available');
+      console.log("Skipping - database not available");
       return;
     }
 
@@ -582,14 +582,14 @@ describe('POST Handler Integration', () => {
     expect(data.durationMs).toBe(0);
   });
 
-  test('GET should delegate to POST and return equivalent response', async () => {
+  test("GET should delegate to POST and return equivalent response", async () => {
     if (!dbAvailable) {
-      console.log('Skipping - database not available');
+      console.log("Skipping - database not available");
       return;
     }
 
-    const getRequest = createCronRequest('GET');
-    const postRequest = createCronRequest('POST');
+    const getRequest = createCronRequest("GET");
+    const postRequest = createCronRequest("POST");
 
     const getResponse = await GET(getRequest);
     const postResponse = await POST(postRequest);
@@ -602,9 +602,9 @@ describe('POST Handler Integration', () => {
     expect(getData).toEqual(postData);
   });
 
-  test('should skip when game is not running', async () => {
+  test("should skip when game is not running", async () => {
     if (!dbAvailable) {
-      console.log('Skipping - database not available');
+      console.log("Skipping - database not available");
       return;
     }
 
@@ -617,12 +617,12 @@ describe('POST Handler Integration', () => {
 
     expect(data.success).toBe(true);
     expect(data.skipped).toBe(true);
-    expect(typeof data.reason).toBe('string');
+    expect(typeof data.reason).toBe("string");
   });
 
-  test('should return complete execution metrics when not skipped', async () => {
+  test("should return complete execution metrics when not skipped", async () => {
     if (!dbAvailable) {
-      console.log('Skipping - database not available');
+      console.log("Skipping - database not available");
       return;
     }
 

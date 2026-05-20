@@ -56,6 +56,9 @@
  * @env {string} OPENAI_API_KEY - Required: direct OpenAI API key (gpt-image-1.5 is OpenAI-only)
  */
 
+import { access, mkdir, rm, writeFile } from "node:fs/promises";
+import { join, join as pathJoin } from "node:path";
+import { fal } from "@fal-ai/client";
 import {
   actorBanner,
   actorPortrait,
@@ -63,14 +66,11 @@ import {
   organizationBanner,
   organizationLogo,
   renderPrompt,
-} from '@feed/engine';
-import { fal } from '@fal-ai/client';
-import { config } from 'dotenv';
-import { access, mkdir, rm, writeFile } from 'fs/promises';
-import { join, join as pathJoin } from 'path';
-import { z } from 'zod';
-import { parseFlagValue } from './cli-utils.js';
-import { logger } from './lib/logger.js';
+} from "@feed/engine";
+import { config } from "dotenv";
+import { z } from "zod";
+import { parseFlagValue } from "./cli-utils.js";
+import { logger } from "./lib/logger.js";
 
 // ─── CLI flags ────────────────────────────────────────────────────────────────
 //
@@ -84,7 +84,7 @@ import { logger } from './lib/logger.js';
 //   bun run images -- --org org-openagi
 
 // Load environment variables — walk up to find .env at monorepo root
-config({ path: pathJoin(import.meta.dir, '..', '..', '..', '.env') });
+config({ path: pathJoin(import.meta.dir, "..", "..", "..", ".env") });
 config(); // also load from CWD as fallback
 
 const ActorSchema = z.object({
@@ -133,64 +133,64 @@ async function fileExists(path: string): Promise<boolean> {
  */
 function getOriginalCompanyName(satiricalName: string, orgId: string): string {
   const mappings: Record<string, string> = {
-    openlie: 'OpenAGI',
-    anthropimp: 'Anthropic',
-    anthoprick: 'Anthropic',
-    deepmined: 'DeepMind',
-    facehook: 'Facebook/Meta',
-    palantyrant: 'Palantir',
-    anduritalin: 'Anduril',
-    xitter: 'Twitter/X',
-    huskla: 'Tesla',
-    spacehusk: 'SpaceX',
-    neuraljank: 'Neuralink',
-    macrohard: 'Microsoft',
-    goolag: 'Google',
-    scamazon: 'Amazon',
-    crapple: 'Apple',
-    'faux-news': 'Fox News',
-    msdnc: 'MSNBC',
-    cnn: 'CNN',
-    'washout-post': 'Washington Post',
-    'the-new-york-crimes': 'New York Times',
-    'the-daily-liar': 'The Daily Wire',
-    microtreasury: 'MicroStrategy',
-    conbase: 'Coinbase',
-    ai16z: 'Andreessen Horowitz (a16z)',
-    taxifornia: 'California',
-    'loot-social': 'Truth Social',
-    'grift-social': 'Truth Social',
-    'dump-organization': 'Trump Organization',
-    'sucker-carlton-tonight': 'Tucker Carlson Tonight',
-    infobores: 'InfoWars',
-    'aimerica-first': 'America First',
-    cnbs: 'CNBC',
-    'the-fud': 'Federal Reserve',
-    nvidiot: 'NVIDIA',
-    blackcrook: 'BlackRock',
-    boomerberg: 'Bloomberg',
-    'wall-street-urinal': 'Wall Street Journal',
-    politicon: 'Politico',
-    'financial-crimes': 'Financial Times',
-    'ethereal-foundation': 'Ethereum Foundation',
-    angelgrift: 'AngelList',
-    angelfist: 'AngelList',
-    'founders-fraud': 'Founders Fund',
-    'ark-ingest': 'ARK Invest',
-    'larp-invest': 'ARK Invest',
-    'vulture-capital': 'Social Capital',
-    'department-of-war': 'Department of Defense',
-    'cia-inc': 'CIA',
-    'effective-authoritarianism': 'Effective Altruism',
-    goober: 'Uber',
-    'uber-but-worse': 'Uber',
-    'cloud-kitchens': 'CloudKitchens',
-    'all-in-podcast': 'All-In Podcast',
-    'craft-vultures': 'Craft Ventures',
-    'pirate-liars': 'Pirate Wires',
-    'network-grift-state': 'The Network State',
-    entropic: 'Extropic',
-    'dont-try-protocol': "Blueprint/Don't Die",
+    openlie: "OpenAGI",
+    anthropimp: "Anthropic",
+    anthoprick: "Anthropic",
+    deepmined: "DeepMind",
+    facehook: "Facebook/Meta",
+    palantyrant: "Palantir",
+    anduritalin: "Anduril",
+    xitter: "Twitter/X",
+    huskla: "Tesla",
+    spacehusk: "SpaceX",
+    neuraljank: "Neuralink",
+    macrohard: "Microsoft",
+    goolag: "Google",
+    scamazon: "Amazon",
+    crapple: "Apple",
+    "faux-news": "Fox News",
+    msdnc: "MSNBC",
+    cnn: "CNN",
+    "washout-post": "Washington Post",
+    "the-new-york-crimes": "New York Times",
+    "the-daily-liar": "The Daily Wire",
+    microtreasury: "MicroStrategy",
+    conbase: "Coinbase",
+    ai16z: "Andreessen Horowitz (a16z)",
+    taxifornia: "California",
+    "loot-social": "Truth Social",
+    "grift-social": "Truth Social",
+    "dump-organization": "Trump Organization",
+    "sucker-carlton-tonight": "Tucker Carlson Tonight",
+    infobores: "InfoWars",
+    "aimerica-first": "America First",
+    cnbs: "CNBC",
+    "the-fud": "Federal Reserve",
+    nvidiot: "NVIDIA",
+    blackcrook: "BlackRock",
+    boomerberg: "Bloomberg",
+    "wall-street-urinal": "Wall Street Journal",
+    politicon: "Politico",
+    "financial-crimes": "Financial Times",
+    "ethereal-foundation": "Ethereum Foundation",
+    angelgrift: "AngelList",
+    angelfist: "AngelList",
+    "founders-fraud": "Founders Fund",
+    "ark-ingest": "ARK Invest",
+    "larp-invest": "ARK Invest",
+    "vulture-capital": "Social Capital",
+    "department-of-war": "Department of Defense",
+    "cia-inc": "CIA",
+    "effective-authoritarianism": "Effective Altruism",
+    goober: "Uber",
+    "uber-but-worse": "Uber",
+    "cloud-kitchens": "CloudKitchens",
+    "all-in-podcast": "All-In Podcast",
+    "craft-vultures": "Craft Ventures",
+    "pirate-liars": "Pirate Wires",
+    "network-grift-state": "The Network State",
+    entropic: "Extropic",
+    "dont-try-protocol": "Blueprint/Don't Die",
   };
 
   return mappings[orgId] || satiricalName;
@@ -200,8 +200,8 @@ function getOriginalCompanyName(satiricalName: string, orgId: string): string {
 // Uses fal-ai/flux-pro for high-fidelity portrait generation.
 // Returns a Buffer (JPEG) downloaded from the fal CDN URL.
 
-const FAL_PORTRAIT_MODEL = 'fal-ai/flux-pro/v1.1';
-const FAL_BANNER_MODEL = 'fal-ai/flux-pro/v1.1';
+const FAL_PORTRAIT_MODEL = "fal-ai/flux-pro/v1.1";
+const FAL_BANNER_MODEL = "fal-ai/flux-pro/v1.1";
 
 interface FalImageOutput {
   images?: Array<{ url: string; content_type?: string }>;
@@ -210,16 +210,16 @@ interface FalImageOutput {
 
 async function falGenerate(
   prompt: string,
-  aspectRatio: '1:1' | '3:2' | '16:9',
-  model = FAL_PORTRAIT_MODEL
+  aspectRatio: "1:1" | "3:2" | "16:9",
+  model = FAL_PORTRAIT_MODEL,
 ): Promise<Buffer> {
   const result = await fal.subscribe(model, {
     input: {
       prompt,
       num_images: 1,
       aspect_ratio: aspectRatio,
-      output_format: 'jpeg',
-      safety_tolerance: '5',
+      output_format: "jpeg",
+      safety_tolerance: "5",
     },
     logs: false,
   });
@@ -243,16 +243,16 @@ async function falGenerate(
 async function generateActorImage(actor: Actor): Promise<Buffer> {
   logger.info(`Generating profile picture for ${actor.name}...`);
 
-  const descriptionParts = actor.description.split('.').slice(0, 3).join('. ');
+  const descriptionParts = actor.description.split(".").slice(0, 3).join(". ");
   const prompt = renderPrompt(actorPortrait, {
     actorName: actor.name,
     realName: actor.realName || actor.name,
     pfpDescription: actor.pfpDescription!,
     descriptionParts,
-    personality: actor.personality || 'satirical',
+    personality: actor.personality || "satirical",
   });
 
-  const buf = await falGenerate(prompt, '1:1');
+  const buf = await falGenerate(prompt, "1:1");
   logger.info(`Generated profile picture for ${actor.name}`);
   return buf;
 }
@@ -273,7 +273,7 @@ async function generateActorBannerImage(actor: Actor): Promise<Buffer> {
     profileBanner: actor.profileBanner,
   });
 
-  const buf = await falGenerate(prompt, '3:2', FAL_BANNER_MODEL);
+  const buf = await falGenerate(prompt, "3:2", FAL_BANNER_MODEL);
   logger.info(`Generated banner for ${actor.name}`);
   return buf;
 }
@@ -297,7 +297,7 @@ async function generateOrganizationImage(org: Organization): Promise<Buffer> {
     organizationDescription: org.description,
   });
 
-  const buf = await falGenerate(prompt, '1:1');
+  const buf = await falGenerate(prompt, "1:1");
   logger.info(`Generated logo for ${org.name}`);
   return buf;
 }
@@ -306,13 +306,13 @@ async function generateOrganizationImage(org: Organization): Promise<Buffer> {
  * Generates a banner for an organization via fal.ai flux-pro.
  */
 async function generateOrganizationBannerImage(
-  org: Organization
+  org: Organization,
 ): Promise<Buffer> {
   logger.info(`Generating banner for ${org.name}...`);
 
   if (!org.bannerDescription) {
     throw new Error(
-      `Organization ${org.name} is missing bannerDescription field`
+      `Organization ${org.name} is missing bannerDescription field`,
     );
   }
 
@@ -323,7 +323,7 @@ async function generateOrganizationBannerImage(
     bannerDescription: org.bannerDescription,
   });
 
-  const buf = await falGenerate(prompt, '3:2', FAL_BANNER_MODEL);
+  const buf = await falGenerate(prompt, "3:2", FAL_BANNER_MODEL);
   logger.info(`Generated banner for ${org.name}`);
   return buf;
 }
@@ -337,7 +337,7 @@ async function saveImageBuffer(buf: Buffer, filepath: string): Promise<void> {
 }
 
 interface ImageJob {
-  type: 'actor-pfp' | 'actor-banner' | 'org-pfp' | 'org-banner';
+  type: "actor-pfp" | "actor-banner" | "org-pfp" | "org-banner";
   id: string;
   name: string;
   outputPath: string;
@@ -353,7 +353,7 @@ interface ImageJob {
  */
 async function processQueue(
   jobs: ImageJob[],
-  maxConcurrent = 3
+  maxConcurrent = 3,
 ): Promise<{ generated: number; failed: number }> {
   let generated = 0;
   let failed = 0;
@@ -366,7 +366,7 @@ async function processQueue(
 
     const jobPromise = (async () => {
       logger.info(
-        `[${generated + failed + 1}/${jobs.length}] Generating ${job.type} for ${job.name}...`
+        `[${generated + failed + 1}/${jobs.length}] Generating ${job.type} for ${job.name}...`,
       );
       await job
         .generator()
@@ -374,7 +374,7 @@ async function processQueue(
           await saveImageBuffer(buf, job.outputPath);
           generated++;
           logger.info(
-            `✅ [${generated}/${jobs.length}] Generated ${job.type} for ${job.name}`
+            `✅ [${generated}/${jobs.length}] Generated ${job.type} for ${job.name}`,
           );
         })
         .catch((error: Error) => {
@@ -414,9 +414,9 @@ async function deleteIfExists(filePath: string): Promise<void> {
 async function main() {
   // Parse CLI flags
   const args = process.argv.slice(2);
-  const forceRegenerate = args.includes('--force');
-  const filterActorId = parseFlagValue(args, '--actor');
-  const filterOrgId = parseFlagValue(args, '--org');
+  const forceRegenerate = args.includes("--force");
+  const filterActorId = parseFlagValue(args, "--actor");
+  const filterOrgId = parseFlagValue(args, "--org");
 
   if (filterActorId) {
     logger.info(`Filtering to single actor: ${filterActorId}`);
@@ -425,23 +425,23 @@ async function main() {
     logger.info(`Filtering to single organization: ${filterOrgId}`);
   }
   if (forceRegenerate) {
-    logger.info('--force: existing images will be deleted and regenerated');
+    logger.info("--force: existing images will be deleted and regenerated");
   }
 
-  logger.info('Checking actor and organization images...');
+  logger.info("Checking actor and organization images...");
   logger.info(
-    'Model: fal-ai/flux-pro | Quality: high | Format: jpeg | Provider: fal.ai'
+    "Model: fal-ai/flux-pro | Quality: high | Format: jpeg | Provider: fal.ai",
   );
 
   if (forceRegenerate) {
-    logger.info('--force flag detected: will regenerate ALL images');
+    logger.info("--force flag detected: will regenerate ALL images");
   }
 
   // Image generation uses fal.ai (flux-pro). Set FAL_KEY in your .env.
   const falKey = process.env.FAL_KEY;
   if (!falKey) {
-    logger.error('FAL_KEY is required for image generation.');
-    logger.error('Add FAL_KEY to your .env file (get one at fal.ai).');
+    logger.error("FAL_KEY is required for image generation.");
+    logger.error("Add FAL_KEY to your .env file (get one at fal.ai).");
     process.exit(1);
   }
 
@@ -453,11 +453,11 @@ async function main() {
   const actorsDb = ActorsDatabaseSchema.parse(parsedActors);
 
   // Paths are relative to the web app's public folder
-  const webPublicDir = join(process.cwd(), '..', 'web', 'public');
-  const actorsImagesDir = join(webPublicDir, 'images', 'actors');
-  const actorsBannersDir = join(webPublicDir, 'images', 'actor-banners');
-  const orgsImagesDir = join(webPublicDir, 'images', 'organizations');
-  const orgsBannersDir = join(webPublicDir, 'images', 'org-banners');
+  const webPublicDir = join(process.cwd(), "..", "web", "public");
+  const actorsImagesDir = join(webPublicDir, "images", "actors");
+  const actorsBannersDir = join(webPublicDir, "images", "actor-banners");
+  const orgsImagesDir = join(webPublicDir, "images", "organizations");
+  const orgsBannersDir = join(webPublicDir, "images", "org-banners");
 
   // Create directories if they don't exist
   await Promise.all([
@@ -483,12 +483,12 @@ async function main() {
   if (filterActorId && actorsToProcess.length === 0) {
     logger.error(`No actor found with id "${filterActorId}"`);
     logger.info(
-      'Available actor ids: ' +
+      "Available actor ids: " +
         actorsDb.actors
           .map((a) => a.id)
           .slice(0, 10)
-          .join(', ') +
-        '...'
+          .join(", ") +
+        "...",
     );
     process.exit(1);
   }
@@ -496,12 +496,12 @@ async function main() {
   if (filterOrgId && orgsToProcess.length === 0) {
     logger.error(`No organization found with id "${filterOrgId}"`);
     logger.info(
-      'Available org ids: ' +
+      "Available org ids: " +
         actorsDb.organizations
           .map((o) => o.id)
           .slice(0, 10)
-          .join(', ') +
-        '...'
+          .join(", ") +
+        "...",
     );
     process.exit(1);
   }
@@ -519,7 +519,7 @@ async function main() {
       skippedCount++;
     } else {
       jobs.push({
-        type: 'actor-pfp',
+        type: "actor-pfp",
         id: actor.id,
         name: actor.name,
         outputPath: imagePath,
@@ -541,7 +541,7 @@ async function main() {
       skippedCount++;
     } else {
       jobs.push({
-        type: 'actor-banner',
+        type: "actor-banner",
         id: actor.id,
         name: actor.name,
         outputPath: bannerPath,
@@ -563,7 +563,7 @@ async function main() {
       skippedCount++;
     } else {
       jobs.push({
-        type: 'org-pfp',
+        type: "org-pfp",
         id: org.id,
         name: org.name,
         outputPath: imagePath,
@@ -585,7 +585,7 @@ async function main() {
       skippedCount++;
     } else {
       jobs.push({
-        type: 'org-banner',
+        type: "org-banner",
         id: org.id,
         name: org.name,
         outputPath: bannerPath,
@@ -595,21 +595,21 @@ async function main() {
   }
 
   logger.info(
-    `Found ${jobs.length} images to generate (${skippedCount} already exist)`
+    `Found ${jobs.length} images to generate (${skippedCount} already exist)`,
   );
 
   if (jobs.length === 0) {
-    logger.info('All images already exist! Use --force to regenerate.');
+    logger.info("All images already exist! Use --force to regenerate.");
     return;
   }
 
   // Process jobs with up to 3 concurrent operations (OpenAI rate limit safe)
   logger.info(
-    'Starting concurrent generation (max 3 at a time, gpt-image-1.5 high quality)...'
+    "Starting concurrent generation (max 3 at a time, gpt-image-1.5 high quality)...",
   );
   const result = await processQueue(jobs, 3);
 
-  logger.info('Complete!', {
+  logger.info("Complete!", {
     generated: result.generated,
     failed: result.failed,
     skipped: skippedCount,
@@ -623,6 +623,6 @@ main()
     process.exit(0);
   })
   .catch((error: Error) => {
-    logger.error('Fatal error:', error);
+    logger.error("Fatal error:", error);
     process.exit(1);
   });

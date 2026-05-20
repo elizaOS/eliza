@@ -1,25 +1,25 @@
-'use client';
+"use client";
 
-import type { PostInteraction } from '@feed/shared';
-import { cn, getProfileUrl } from '@feed/shared';
-import { Repeat2 } from 'lucide-react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { type KeyboardEvent, type MouseEvent, memo } from 'react';
-import { InteractionBar } from '@/components/interactions';
-import { ModerationMenu } from '@/components/moderation/ModerationMenu';
+import type { PostInteraction } from "@feed/shared";
+import { cn, getProfileUrl } from "@feed/shared";
+import { Repeat2 } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { type KeyboardEvent, type MouseEvent, memo } from "react";
+import { InteractionBar } from "@/components/interactions";
+import { ModerationMenu } from "@/components/moderation/ModerationMenu";
 import {
   CommentPreview,
   type CommentPreviewData,
-} from '@/components/posts/CommentPreview';
-import { Avatar } from '@/components/shared/Avatar';
-import { TaggedText } from '@/components/shared/TaggedText';
+} from "@/components/posts/CommentPreview";
+import { Avatar } from "@/components/shared/Avatar";
+import { TaggedText } from "@/components/shared/TaggedText";
 import {
   isNpcIdentifier,
   VerifiedBadge,
-} from '@/components/shared/VerifiedBadge';
-import { useFontSize } from '@/contexts/FontSizeContext';
-import { useAuth } from '@/hooks/useAuth';
+} from "@/components/shared/VerifiedBadge";
+import { useFontSize } from "@/contexts/FontSizeContext";
+import { useAuth } from "@/hooks/useAuth";
 
 /**
  * Post card component for displaying feed posts.
@@ -89,7 +89,7 @@ export interface PostCardProps {
     commentPreviews?: CommentPreviewData[];
   };
   className?: string;
-  density?: 'default' | 'compact';
+  density?: "default" | "compact";
   onCommentClick?: () => void;
   onOpen?: () => void;
   onLikeChange?: (isLiked: boolean) => void;
@@ -103,7 +103,7 @@ export interface PostCardProps {
 export const PostCard = memo(function PostCard({
   post,
   className,
-  density = 'default',
+  density = "default",
   onCommentClick,
   onOpen,
   onLikeChange,
@@ -116,7 +116,7 @@ export const PostCard = memo(function PostCard({
   const router = useRouter();
   const { fontSize } = useFontSize();
   const { user } = useAuth();
-  const compact = density === 'compact';
+  const compact = density === "compact";
   const densityScale = compact ? 0.9 : 1;
 
   const postDate = new Date(post.timestamp);
@@ -127,18 +127,18 @@ export const PostCard = memo(function PostCard({
 
   let timeAgo: string;
   if (diffMinutes < 1) {
-    timeAgo = 'Just now';
+    timeAgo = "Just now";
   } else if (diffMinutes < 60) {
     timeAgo = `${diffMinutes}m ago`;
   } else if (diffHours < 24) {
     timeAgo = `${diffHours}h ago`;
   } else {
     // Show date for posts older than 24 hours
-    timeAgo = postDate.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
+    timeAgo = postDate.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
       year:
-        postDate.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
+        postDate.getFullYear() !== now.getFullYear() ? "numeric" : undefined,
     });
   }
 
@@ -212,7 +212,7 @@ export const PostCard = memo(function PostCard({
   };
 
   const handleQuotedPostKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== 'Enter' && event.key !== ' ') {
+    if (event.key !== "Enter" && event.key !== " ") {
       return;
     }
 
@@ -227,13 +227,13 @@ export const PostCard = memo(function PostCard({
   };
 
   const handleTaggedTextClick = (tag: string) => {
-    if (tag.startsWith('@')) {
+    if (tag.startsWith("@")) {
       const username = tag.slice(1);
-      router.push(getProfileUrl('', username));
+      router.push(getProfileUrl("", username));
       return;
     }
 
-    if (tag.startsWith('$')) {
+    if (tag.startsWith("$")) {
       const symbol = tag.slice(1);
       router.push(`/markets?search=${encodeURIComponent(symbol)}`);
     }
@@ -244,10 +244,10 @@ export const PostCard = memo(function PostCard({
     return (
       <article
         className={cn(
-          compact ? 'px-3 py-2' : 'px-4 py-3',
-          'w-full overflow-hidden',
-          'border-border border-b',
-          className
+          compact ? "px-3 py-2" : "px-4 py-3",
+          "w-full overflow-hidden",
+          "border-border border-b",
+          className,
         )}
       >
         <div className="flex items-center justify-center py-8 text-muted-foreground italic">
@@ -260,12 +260,12 @@ export const PostCard = memo(function PostCard({
   return (
     <article
       className={cn(
-        compact ? 'px-3 py-3' : 'px-4 py-4',
+        compact ? "px-3 py-3" : "px-4 py-4",
         !isDetail &&
-          'cursor-pointer transition-all duration-200 hover:bg-muted/30',
-        'w-full overflow-hidden',
-        !isDetail && 'border-border border-b',
-        className
+          "cursor-pointer transition-all duration-200 hover:bg-muted/30",
+        "w-full overflow-hidden",
+        !isDetail && "border-border border-b",
+        className,
       )}
       style={{
         fontSize: `${fontSize * densityScale}rem`,
@@ -277,7 +277,7 @@ export const PostCard = memo(function PostCard({
         <div className="mb-1 flex items-center gap-2 pl-12 text-muted-foreground text-xs">
           <Repeat2 size={14} className="text-green-600" />
           <span>
-            Reposted by{' '}
+            Reposted by{" "}
             {user?.id === post.authorId ? (
               <span className="font-semibold text-foreground">you</span>
             ) : (
@@ -305,7 +305,7 @@ export const PostCard = memo(function PostCard({
               <Avatar
                 id={displayAuthorId}
                 name={displayAuthorName}
-                type={post.type === 'article' ? 'business' : 'actor'}
+                type={post.type === "article" ? "business" : "actor"}
                 size="md"
                 src={displayAuthorProfileImageUrl || undefined}
                 scaleFactor={fontSize}
@@ -368,11 +368,11 @@ export const PostCard = memo(function PostCard({
         </div>
 
         {/* Primary post body — full width, same inset as quote card */}
-        {post.type === 'article' ? (
+        {post.type === "article" ? (
           <div className="w-full">
             <div className="mb-3 flex items-start justify-between gap-4">
               <h2 className="flex-1 font-bold text-foreground text-lg leading-tight sm:text-xl">
-                {post.articleTitle || 'Untitled Article'}
+                {post.articleTitle || "Untitled Article"}
               </h2>
               {!isDetail && (
                 <button
@@ -415,7 +415,7 @@ export const PostCard = memo(function PostCard({
         ) : (
           <div className="post-content w-full whitespace-pre-wrap break-words text-[15px] text-foreground leading-normal">
             <TaggedText
-              text={post.content || ''}
+              text={post.content || ""}
               onTagClick={handleTaggedTextClick}
             />
           </div>
@@ -425,15 +425,15 @@ export const PostCard = memo(function PostCard({
         {post.isRepost && !isSimpleRepost && (
           <div
             className={cn(
-              'rounded-xl border border-border p-4',
-              'overflow-hidden transition-colors',
+              "rounded-xl border border-border p-4",
+              "overflow-hidden transition-colors",
               quotedPostId
-                ? 'cursor-pointer hover:bg-muted/50'
-                : 'cursor-default'
+                ? "cursor-pointer hover:bg-muted/50"
+                : "cursor-default",
             )}
-            role={quotedPostId ? 'link' : undefined}
+            role={quotedPostId ? "link" : undefined}
             tabIndex={quotedPostId ? 0 : undefined}
-            aria-label={quotedPostId ? 'View quoted post' : undefined}
+            aria-label={quotedPostId ? "View quoted post" : undefined}
             onClick={quotedPostId ? handleQuotedPostClick : undefined}
             onKeyDown={quotedPostId ? handleQuotedPostKeyDown : undefined}
           >

@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
-import { SSEManager } from './SSEManager';
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { SSEManager } from "./SSEManager";
 
 const originalFetch = globalThis.fetch;
 const originalWindow = globalThis.window;
@@ -43,29 +43,29 @@ const waitForAsyncWork = async () => {
   await new Promise((resolve) => setTimeout(resolve, 20));
 };
 
-describe('SSEManager token recovery', () => {
+describe("SSEManager token recovery", () => {
   beforeEach(() => {
     MockEventSource.instances = [];
 
-    Object.defineProperty(globalThis, 'window', {
+    Object.defineProperty(globalThis, "window", {
       configurable: true,
       value: {
         addEventListener: () => {},
         removeEventListener: () => {},
         location: {
-          origin: 'https://feed.test',
+          origin: "https://feed.test",
         },
       },
     });
 
-    Object.defineProperty(globalThis, 'navigator', {
+    Object.defineProperty(globalThis, "navigator", {
       configurable: true,
       value: {
         onLine: true,
       },
     });
 
-    Object.defineProperty(globalThis, 'EventSource', {
+    Object.defineProperty(globalThis, "EventSource", {
       configurable: true,
       value: MockEventSource,
     });
@@ -75,21 +75,21 @@ describe('SSEManager token recovery', () => {
     SSEManager.resetInstance();
     globalThis.fetch = originalFetch;
 
-    Object.defineProperty(globalThis, 'window', {
+    Object.defineProperty(globalThis, "window", {
       configurable: true,
       value: originalWindow,
     });
-    Object.defineProperty(globalThis, 'navigator', {
+    Object.defineProperty(globalThis, "navigator", {
       configurable: true,
       value: originalNavigator,
     });
-    Object.defineProperty(globalThis, 'EventSource', {
+    Object.defineProperty(globalThis, "EventSource", {
       configurable: true,
       value: originalEventSource,
     });
   });
 
-  it('refetches a realtime token after a failed SSE handshake', async () => {
+  it("refetches a realtime token after a failed SSE handshake", async () => {
     let tokenIndex = 0;
     const fetchMock = mock(async () => {
       tokenIndex += 1;
@@ -100,8 +100,8 @@ describe('SSEManager token recovery', () => {
         }),
         {
           status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        }
+          headers: { "Content-Type": "application/json" },
+        },
       );
     });
     globalThis.fetch = fetchMock as unknown as typeof fetch;
@@ -110,31 +110,31 @@ describe('SSEManager token recovery', () => {
       reconnectDelay: 1,
       maxReconnectDelay: 1,
     });
-    manager.setAuthProvider(async () => 'privy-token');
+    manager.setAuthProvider(async () => "privy-token");
     manager.setAuthenticated(true);
 
-    const unsubscribe = manager.subscribe('markets', () => {});
+    const unsubscribe = manager.subscribe("markets", () => {});
     await waitForAsyncWork();
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(MockEventSource.instances).toHaveLength(1);
     expect(
-      new URL(MockEventSource.instances[0]!.url).searchParams.get('token')
-    ).toBe('token-1');
+      new URL(MockEventSource.instances[0]?.url).searchParams.get("token"),
+    ).toBe("token-1");
 
-    MockEventSource.instances[0]!.emitError();
+    MockEventSource.instances[0]?.emitError();
     await waitForAsyncWork();
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(MockEventSource.instances).toHaveLength(2);
     expect(
-      new URL(MockEventSource.instances[1]!.url).searchParams.get('token')
-    ).toBe('token-2');
+      new URL(MockEventSource.instances[1]?.url).searchParams.get("token"),
+    ).toBe("token-2");
 
     unsubscribe();
   });
 
-  it('keeps using the cached token after a disconnect on an established connection', async () => {
+  it("keeps using the cached token after a disconnect on an established connection", async () => {
     let tokenIndex = 0;
     const fetchMock = mock(async () => {
       tokenIndex += 1;
@@ -145,8 +145,8 @@ describe('SSEManager token recovery', () => {
         }),
         {
           status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        }
+          headers: { "Content-Type": "application/json" },
+        },
       );
     });
     globalThis.fetch = fetchMock as unknown as typeof fetch;
@@ -155,10 +155,10 @@ describe('SSEManager token recovery', () => {
       reconnectDelay: 1,
       maxReconnectDelay: 1,
     });
-    manager.setAuthProvider(async () => 'privy-token');
+    manager.setAuthProvider(async () => "privy-token");
     manager.setAuthenticated(true);
 
-    const unsubscribe = manager.subscribe('markets', () => {});
+    const unsubscribe = manager.subscribe("markets", () => {});
     await waitForAsyncWork();
 
     const firstConnection = MockEventSource.instances[0]!;
@@ -169,8 +169,8 @@ describe('SSEManager token recovery', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(MockEventSource.instances).toHaveLength(2);
     expect(
-      new URL(MockEventSource.instances[1]!.url).searchParams.get('token')
-    ).toBe('token-1');
+      new URL(MockEventSource.instances[1]?.url).searchParams.get("token"),
+    ).toBe("token-1");
 
     unsubscribe();
   });

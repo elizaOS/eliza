@@ -65,16 +65,16 @@ import {
   successResponse,
   WaitlistService,
   withErrorHandling,
-} from '@feed/api';
-import { logger, POINTS } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { z } from 'zod';
+} from "@feed/api";
+import { logger, POINTS } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { z } from "zod";
 
 const EmailBonusSchema = z.object({
   email: z
     .string()
     .trim()
-    .email('Valid email address is required')
+    .email("Valid email address is required")
     .transform((value) => value.toLowerCase()),
 });
 
@@ -86,9 +86,9 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   const { email } = EmailBonusSchema.parse(body);
 
   logger.info(
-    'Email bonus request',
+    "Email bonus request",
     { userId },
-    'POST /api/waitlist/bonus/email'
+    "POST /api/waitlist/bonus/email",
   );
 
   const awarded = await WaitlistService.awardEmailBonus(userId, email);
@@ -97,7 +97,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     awarded,
     bonusAmount: awarded ? POINTS.EMAIL_SUBMIT : 0,
     message: awarded
-      ? 'Email bonus awarded'
-      : 'Email bonus already awarded or user not found',
+      ? "Email bonus awarded"
+      : "Email bonus already awarded or user not found",
   });
 });

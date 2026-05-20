@@ -1,6 +1,6 @@
-import { type FeedEventPayload, logger } from '@feed/shared';
-import { useCallback, useEffect, useRef } from 'react';
-import { useAuth } from '@/hooks/useAuth';
+import { type FeedEventPayload, logger } from "@feed/shared";
+import { useCallback, useEffect, useRef } from "react";
+import { useAuth } from "@/hooks/useAuth";
 
 const FLUSH_DELAY_MS = 750;
 const MAX_BATCH_SIZE = 20;
@@ -32,9 +32,9 @@ export function useFeedEventTracker() {
       const droppedCount = batch.length - retryable.length;
       if (droppedCount > 0) {
         logger.warn(
-          'Dropped feed events after exceeding retry limit',
+          "Dropped feed events after exceeding retry limit",
           { droppedCount, reason, maxAttempts: MAX_RETRY_ATTEMPTS },
-          'useFeedEventTracker'
+          "useFeedEventTracker",
         );
       }
 
@@ -42,7 +42,7 @@ export function useFeedEventTracker() {
         queueRef.current.unshift(...retryable);
       }
     },
-    []
+    [],
   );
 
   const flush = useCallback(async () => {
@@ -60,14 +60,14 @@ export function useFeedEventTracker() {
     try {
       const token = await getAccessToken();
       if (!token) {
-        requeueBatch(batch, 'missing_token');
+        requeueBatch(batch, "missing_token");
         return;
       }
 
-      const response = await fetch('/api/feed/events', {
-        method: 'POST',
+      const response = await fetch("/api/feed/events", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ events: batch.map((item) => item.payload) }),
@@ -82,44 +82,44 @@ export function useFeedEventTracker() {
           // getAccessToken() will return a refreshed token on the next flush cycle.
           // Cap auth retries to prevent an infinite loop if token refresh consistently fails.
           const authRetryable = batch.filter(
-            (item) => (item.authRetries ?? 0) < MAX_AUTH_RETRIES
+            (item) => (item.authRetries ?? 0) < MAX_AUTH_RETRIES,
           );
           const authDropped = batch.length - authRetryable.length;
           if (authDropped > 0) {
             logger.warn(
-              'Dropped feed events after exceeding auth retry limit',
+              "Dropped feed events after exceeding auth retry limit",
               { authDropped, maxAuthRetries: MAX_AUTH_RETRIES },
-              'useFeedEventTracker'
+              "useFeedEventTracker",
             );
           }
           if (authRetryable.length > 0) {
             logger.warn(
-              'Feed events batch rejected with 401 — re-queuing for token refresh',
+              "Feed events batch rejected with 401 — re-queuing for token refresh",
               { batchSize: authRetryable.length },
-              'useFeedEventTracker'
+              "useFeedEventTracker",
             );
             queueRef.current.unshift(
               ...authRetryable.map((item) => ({
                 ...item,
                 attempts: 0,
                 authRetries: (item.authRetries ?? 0) + 1,
-              }))
+              })),
             );
           }
         } else {
           logger.warn(
-            'Dropped non-retryable feed events batch',
+            "Dropped non-retryable feed events batch",
             { status: response.status, batchSize: batch.length },
-            'useFeedEventTracker'
+            "useFeedEventTracker",
           );
         }
       }
     } catch (error) {
-      requeueBatch(batch, 'network_error');
+      requeueBatch(batch, "network_error");
       logger.warn(
-        'Failed to flush feed events',
+        "Failed to flush feed events",
         { error, batchSize: batch.length },
-        'useFeedEventTracker'
+        "useFeedEventTracker",
       );
     } finally {
       isFlushingRef.current = false;
@@ -155,7 +155,7 @@ export function useFeedEventTracker() {
       }
       scheduleFlush();
     },
-    [authenticated, flush, scheduleFlush]
+    [authenticated, flush, scheduleFlush],
   );
 
   useEffect(() => {

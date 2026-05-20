@@ -25,26 +25,26 @@ import {
   publicRateLimit,
   type RealtimeChannel,
   withErrorHandling,
-} from '@feed/api';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@feed/api";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 /** Public channels only; no chat:, notifications:, or agent: channels. */
 const PUBLIC_CHANNELS: RealtimeChannel[] = [
-  'feed',
-  'markets',
-  'breaking-news',
-  'upcoming-events',
+  "feed",
+  "markets",
+  "breaking-news",
+  "upcoming-events",
 ];
 
 /** Sentinel userId in token payload so SSE validation accepts the token without a real user. */
-const PUBLIC_TOKEN_USER_ID = '__public__';
+const PUBLIC_TOKEN_USER_ID = "__public__";
 /** 15 minutes; balance between reducing token refresh traffic and limiting exposure if token leaks. */
 const TTL_SECONDS = 900;
 
 export const GET = withErrorHandling(async function GET(request: NextRequest) {
-  const { error, rateLimitInfo } = await publicRateLimit(request, 'firehose');
+  const { error, rateLimitInfo } = await publicRateLimit(request, "firehose");
   if (error) return error;
 
   const token = issueRealtimeToken({
@@ -56,9 +56,9 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
   const expiresAt = Date.now() + TTL_SECONDS * 1000;
 
   logger.info(
-    'Issued public realtime token',
+    "Issued public realtime token",
     { channels: PUBLIC_CHANNELS },
-    'Realtime'
+    "Realtime",
   );
 
   const res = NextResponse.json({

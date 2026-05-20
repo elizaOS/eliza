@@ -4,10 +4,10 @@ import {
   publicRateLimit,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { PerpOpenPositionSchema } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { createPerpMarketService } from '../_adapters';
+} from "@feed/api";
+import { PerpOpenPositionSchema } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { createPerpMarketService } from "../_adapters";
 
 /**
  * POST /api/markets/perps/preview
@@ -23,17 +23,17 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   const body = await request.json();
   const { ticker, side, size, leverage } = PerpOpenPositionSchema.parse(body);
-  const normalizedSide = side.toLowerCase() as 'long' | 'short';
-  const numericSize = typeof size === 'string' ? Number(size) : size;
+  const normalizedSide = side.toLowerCase() as "long" | "short";
+  const numericSize = typeof size === "string" ? Number(size) : size;
   let authenticatedUser: Awaited<ReturnType<typeof authenticate>> | null = null;
-  if (request.headers.get('authorization')) {
+  if (request.headers.get("authorization")) {
     authenticatedUser = await authenticate(request);
   }
 
   const service = createPerpMarketService();
   const preview = authenticatedUser
     ? {
-        settlementMode: 'offchain',
+        settlementMode: "offchain",
         ...(await service.previewOrder({
           userId: authenticatedUser.userId,
           ticker,
@@ -43,7 +43,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         })),
       }
     : {
-        settlementMode: 'offchain',
+        settlementMode: "offchain",
         ...(await service.previewOpenPosition({
           ticker,
           side: normalizedSide,

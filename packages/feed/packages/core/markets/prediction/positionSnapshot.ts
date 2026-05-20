@@ -1,4 +1,4 @@
-import { PredictionPricing } from './pricing';
+import { PredictionPricing } from "./pricing";
 
 export interface PredictionPositionSnapshot {
   costBasis: number;
@@ -11,13 +11,13 @@ export interface PredictionPositionSnapshot {
 export function calculatePredictionPositionSnapshot(params: {
   shares: number;
   avgPrice: number;
-  side: 'yes' | 'no';
+  side: "yes" | "no";
   yesShares: number;
   noShares: number;
   feeRate: number;
   resolved?: boolean;
   resolution?: boolean | null;
-  onSellPreviewError?: 'fallback' | 'throw';
+  onSellPreviewError?: "fallback" | "throw";
 }): PredictionPositionSnapshot {
   const {
     shares,
@@ -28,7 +28,7 @@ export function calculatePredictionPositionSnapshot(params: {
     feeRate,
     resolved = false,
     resolution = null,
-    onSellPreviewError = 'fallback',
+    onSellPreviewError = "fallback",
   } = params;
 
   const costBasisNet = shares * avgPrice;
@@ -42,7 +42,7 @@ export function calculatePredictionPositionSnapshot(params: {
 
   if (resolved && resolution !== null) {
     const isWinningSide =
-      (side === 'yes' && resolution) || (side === 'no' && !resolution);
+      (side === "yes" && resolution) || (side === "no" && !resolution);
     const currentValue = isWinningSide ? shares : 0;
 
     return {
@@ -72,11 +72,11 @@ export function calculatePredictionPositionSnapshot(params: {
       noShares,
       side,
       shares,
-      feeRate
+      feeRate,
     );
     currentValue = sellPreview.netProceeds ?? sellPreview.totalCost;
   } catch (error) {
-    if (onSellPreviewError === 'throw') {
+    if (onSellPreviewError === "throw") {
       throw error;
     }
   }

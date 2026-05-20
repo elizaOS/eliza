@@ -11,8 +11,8 @@ import {
   getUserChallenges,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import type { NextRequest } from 'next/server';
+} from "@feed/api";
+import type { NextRequest } from "next/server";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   const { dbUserId } = await authenticateWithDbUser(request);

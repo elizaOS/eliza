@@ -4,8 +4,8 @@
  * Executes decisions via Feed A2A protocol
  */
 
-import type { JsonValue } from '@feed/shared';
-import type { Decision } from './decision';
+import type { JsonValue } from "@feed/shared";
+import type { Decision } from "./decision";
 
 export interface ActionResult {
   success: boolean;
@@ -20,27 +20,27 @@ export interface ActionResult {
 export interface A2AActionClient {
   buyShares(
     marketId: string,
-    outcome: 'YES' | 'NO',
-    amount: number
+    outcome: "YES" | "NO",
+    amount: number,
   ): Promise<Record<string, JsonValue>>;
   sellShares(
     positionId: string,
-    shares: number
+    shares: number,
   ): Promise<Record<string, JsonValue>>;
   openPosition(
     ticker: string,
-    side: 'LONG' | 'SHORT',
+    side: "LONG" | "SHORT",
     amount: number,
-    leverage: number
+    leverage: number,
   ): Promise<Record<string, JsonValue>>;
   closePosition(positionId: string): Promise<Record<string, JsonValue>>;
   createPost(
     content: string,
-    type?: string
+    type?: string,
   ): Promise<Record<string, JsonValue>>;
   createComment(
     postId: string,
-    content: string
+    content: string,
   ): Promise<Record<string, JsonValue>>;
 }
 
@@ -49,25 +49,25 @@ export interface A2AActionClient {
  */
 export async function executeAction(
   client: A2AActionClient,
-  decision: Decision
+  decision: Decision,
 ): Promise<ActionResult> {
   const params = decision.params || {};
 
   switch (decision.action) {
-    case 'BUY_YES':
-    case 'BUY_NO': {
+    case "BUY_YES":
+    case "BUY_NO": {
       const marketId = params.marketId as string;
       const amount = params.amount as number;
 
-      if (!marketId || typeof amount !== 'number') {
+      if (!marketId || typeof amount !== "number") {
         return {
           success: false,
-          message: 'Invalid parameters for buy shares',
-          error: 'marketId and amount are required',
+          message: "Invalid parameters for buy shares",
+          error: "marketId and amount are required",
         };
       }
 
-      const outcome = decision.action === 'BUY_YES' ? 'YES' : 'NO';
+      const outcome = decision.action === "BUY_YES" ? "YES" : "NO";
       const result = await client.buyShares(marketId, outcome, amount);
 
       return {
@@ -77,15 +77,15 @@ export async function executeAction(
       };
     }
 
-    case 'SELL': {
+    case "SELL": {
       const positionId = params.positionId as string;
       const shares = params.shares as number;
 
-      if (!positionId || typeof shares !== 'number') {
+      if (!positionId || typeof shares !== "number") {
         return {
           success: false,
-          message: 'Invalid parameters for sell shares',
-          error: 'positionId and shares are required',
+          message: "Invalid parameters for sell shares",
+          error: "positionId and shares are required",
         };
       }
 
@@ -98,21 +98,21 @@ export async function executeAction(
       };
     }
 
-    case 'OPEN_LONG':
-    case 'OPEN_SHORT': {
+    case "OPEN_LONG":
+    case "OPEN_SHORT": {
       const ticker = params.ticker as string;
       const size = params.size as number;
       const leverage = params.leverage as number;
 
-      if (!ticker || typeof size !== 'number' || typeof leverage !== 'number') {
+      if (!ticker || typeof size !== "number" || typeof leverage !== "number") {
         return {
           success: false,
-          message: 'Invalid parameters for open position',
-          error: 'ticker, size, and leverage are required',
+          message: "Invalid parameters for open position",
+          error: "ticker, size, and leverage are required",
         };
       }
 
-      const side = decision.action === 'OPEN_LONG' ? 'LONG' : 'SHORT';
+      const side = decision.action === "OPEN_LONG" ? "LONG" : "SHORT";
       const result = await client.openPosition(ticker, side, size, leverage);
 
       return {
@@ -122,14 +122,14 @@ export async function executeAction(
       };
     }
 
-    case 'CLOSE_POSITION': {
+    case "CLOSE_POSITION": {
       const positionId = params.positionId as string;
 
       if (!positionId) {
         return {
           success: false,
-          message: 'Invalid parameters for close position',
-          error: 'positionId is required',
+          message: "Invalid parameters for close position",
+          error: "positionId is required",
         };
       }
 
@@ -142,35 +142,35 @@ export async function executeAction(
       };
     }
 
-    case 'CREATE_POST': {
+    case "CREATE_POST": {
       const content = params.content as string;
 
-      if (!content || typeof content !== 'string') {
+      if (!content || typeof content !== "string") {
         return {
           success: false,
-          message: 'Invalid parameters for create post',
-          error: 'content is required',
+          message: "Invalid parameters for create post",
+          error: "content is required",
         };
       }
 
-      const result = await client.createPost(content, 'post');
+      const result = await client.createPost(content, "post");
 
       return {
         success: true,
-        message: 'Created post',
+        message: "Created post",
         data: result,
       };
     }
 
-    case 'CREATE_COMMENT': {
+    case "CREATE_COMMENT": {
       const postId = params.postId as string;
       const content = params.content as string;
 
-      if (!postId || !content || typeof content !== 'string') {
+      if (!postId || !content || typeof content !== "string") {
         return {
           success: false,
-          message: 'Invalid parameters for create comment',
-          error: 'postId and content are required',
+          message: "Invalid parameters for create comment",
+          error: "postId and content are required",
         };
       }
 
@@ -182,12 +182,10 @@ export async function executeAction(
         data: result,
       };
     }
-
-    case 'HOLD':
     default:
       return {
         success: true,
-        message: 'Holding - no action taken',
+        message: "Holding - no action taken",
       };
   }
 }

@@ -11,9 +11,9 @@
  *    (for content without a single source, e.g. consolidated facts)
  */
 
-import { logger } from '@feed/shared';
-import { cosineSimilarity, getEmbedding } from '../llm/embedding-client';
-import { StaticDataRegistry } from './static-data-registry';
+import { logger } from "@feed/shared";
+import { cosineSimilarity, getEmbedding } from "../llm/embedding-client";
+import { StaticDataRegistry } from "./static-data-registry";
 
 export interface GroundingResult {
   grounded: boolean;
@@ -26,133 +26,133 @@ export interface GroundingResult {
  * Strips common stop words to focus on content-bearing terms.
  */
 const STOP_WORDS = new Set([
-  'the',
-  'a',
-  'an',
-  'is',
-  'are',
-  'was',
-  'were',
-  'be',
-  'been',
-  'being',
-  'have',
-  'has',
-  'had',
-  'do',
-  'does',
-  'did',
-  'will',
-  'would',
-  'could',
-  'should',
-  'may',
-  'might',
-  'shall',
-  'can',
-  'to',
-  'of',
-  'in',
-  'for',
-  'on',
-  'with',
-  'at',
-  'by',
-  'from',
-  'as',
-  'into',
-  'through',
-  'during',
-  'before',
-  'after',
-  'above',
-  'below',
-  'between',
-  'and',
-  'but',
-  'or',
-  'nor',
-  'not',
-  'so',
-  'yet',
-  'both',
-  'either',
-  'neither',
-  'each',
-  'every',
-  'all',
-  'any',
-  'few',
-  'more',
-  'most',
-  'other',
-  'some',
-  'such',
-  'no',
-  'only',
-  'own',
-  'same',
-  'than',
-  'too',
-  'very',
-  'just',
-  'because',
-  'if',
-  'when',
-  'where',
-  'how',
-  'what',
-  'which',
-  'who',
-  'whom',
-  'this',
-  'that',
-  'these',
-  'those',
-  'i',
-  'me',
-  'my',
-  'we',
-  'us',
-  'our',
-  'you',
-  'your',
-  'he',
-  'him',
-  'his',
-  'she',
-  'her',
-  'it',
-  'its',
-  'they',
-  'them',
-  'their',
-  'about',
-  'up',
-  'out',
-  'then',
-  'here',
-  'there',
-  'also',
-  'over',
-  'new',
-  'said',
-  'says',
-  'like',
-  'well',
-  'back',
-  'even',
-  'still',
-  'way',
-  'take',
-  'make',
-  'get',
+  "the",
+  "a",
+  "an",
+  "is",
+  "are",
+  "was",
+  "were",
+  "be",
+  "been",
+  "being",
+  "have",
+  "has",
+  "had",
+  "do",
+  "does",
+  "did",
+  "will",
+  "would",
+  "could",
+  "should",
+  "may",
+  "might",
+  "shall",
+  "can",
+  "to",
+  "of",
+  "in",
+  "for",
+  "on",
+  "with",
+  "at",
+  "by",
+  "from",
+  "as",
+  "into",
+  "through",
+  "during",
+  "before",
+  "after",
+  "above",
+  "below",
+  "between",
+  "and",
+  "but",
+  "or",
+  "nor",
+  "not",
+  "so",
+  "yet",
+  "both",
+  "either",
+  "neither",
+  "each",
+  "every",
+  "all",
+  "any",
+  "few",
+  "more",
+  "most",
+  "other",
+  "some",
+  "such",
+  "no",
+  "only",
+  "own",
+  "same",
+  "than",
+  "too",
+  "very",
+  "just",
+  "because",
+  "if",
+  "when",
+  "where",
+  "how",
+  "what",
+  "which",
+  "who",
+  "whom",
+  "this",
+  "that",
+  "these",
+  "those",
+  "i",
+  "me",
+  "my",
+  "we",
+  "us",
+  "our",
+  "you",
+  "your",
+  "he",
+  "him",
+  "his",
+  "she",
+  "her",
+  "it",
+  "its",
+  "they",
+  "them",
+  "their",
+  "about",
+  "up",
+  "out",
+  "then",
+  "here",
+  "there",
+  "also",
+  "over",
+  "new",
+  "said",
+  "says",
+  "like",
+  "well",
+  "back",
+  "even",
+  "still",
+  "way",
+  "take",
+  "make",
+  "get",
 ]);
 
 function extractKeywords(text: string): Set<string> {
   const words = text
     .toLowerCase()
-    .replace(/[^a-z0-9\s'-]/g, ' ')
+    .replace(/[^a-z0-9\s'-]/g, " ")
     .split(/\s+/)
     .filter((w) => w.length > 2 && !STOP_WORDS.has(w));
 
@@ -235,7 +235,7 @@ const MIN_KEYWORD_OVERLAP = 0.15;
  */
 function checkKeywordOverlap(
   sourceText: string,
-  generatedText: string
+  generatedText: string,
 ): { passed: boolean; overlap: number; reasons: string[] } {
   const sourceKeywords = extractKeywords(sourceText);
   const generatedKeywords = extractKeywords(generatedText);
@@ -273,7 +273,7 @@ const MAX_UNKNOWN_ENTITIES = 1;
  */
 function checkEntityConsistency(
   generatedText: string,
-  sourceText?: string
+  sourceText?: string,
 ): { passed: boolean; score: number; reasons: string[] } {
   const knownNames = getKnownNames();
   const generatedEntities = extractProperNouns(generatedText);
@@ -300,7 +300,7 @@ function checkEntityConsistency(
     reasons:
       unknownEntities.length > MAX_UNKNOWN_ENTITIES
         ? [
-            `${unknownEntities.length} unknown entities: ${unknownEntities.slice(0, 3).join(', ')}`,
+            `${unknownEntities.length} unknown entities: ${unknownEntities.slice(0, 3).join(", ")}`,
           ]
         : [],
   };
@@ -321,7 +321,7 @@ const EMBEDDING_MAX_SIMILARITY = 0.98;
  */
 async function checkEmbeddingGrounding(
   sourceText: string,
-  generatedText: string
+  generatedText: string,
 ): Promise<{ passed: boolean; score: number; reasons: string[] }> {
   // Empty/whitespace-only inputs produce meaningless embeddings — skip.
   if (!sourceText.trim() || !generatedText.trim()) {
@@ -342,12 +342,12 @@ async function checkEmbeddingGrounding(
   const reasons: string[] = [];
   if (similarity < EMBEDDING_MIN_SIMILARITY) {
     reasons.push(
-      `Embedding similarity too low (${similarity.toFixed(3)}) — unrelated to source`
+      `Embedding similarity too low (${similarity.toFixed(3)}) — unrelated to source`,
     );
   }
   if (similarity > EMBEDDING_MAX_SIMILARITY) {
     reasons.push(
-      `Embedding similarity too high (${similarity.toFixed(3)}) — near-verbatim copy`
+      `Embedding similarity too high (${similarity.toFixed(3)}) — near-verbatim copy`,
     );
   }
 
@@ -373,7 +373,7 @@ function checkRepetition(text: string): {
 } {
   const words = text
     .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/[^a-z0-9\s]/g, " ")
     .split(/\s+/)
     .filter((w) => w.length > 2 && !STOP_WORDS.has(w));
 
@@ -414,7 +414,7 @@ function checkEntityDensity(text: string): {
   const entities = extractProperNouns(text);
 
   const unknownEntities = entities.filter(
-    (e) => !knownNames.has(e.toLowerCase())
+    (e) => !knownNames.has(e.toLowerCase()),
   );
 
   const passed =
@@ -443,7 +443,7 @@ function checkEntityDensity(text: string): {
  */
 export async function validateGrounding(
   sourceText: string,
-  generatedText: string
+  generatedText: string,
 ): Promise<GroundingResult> {
   // Fast path: empty/whitespace-only inputs are trivially grounded
   const trimmedSource = sourceText.trim();
@@ -479,14 +479,14 @@ export async function validateGrounding(
 
   if (!grounded) {
     logger.warn(
-      'Content failed grounding validation',
+      "Content failed grounding validation",
       {
         confidence: confidence.toFixed(2),
         reasons,
         sourcePreview: sourceText.substring(0, 80),
         generatedPreview: generatedText.substring(0, 80),
       },
-      'GroundingValidator'
+      "GroundingValidator",
     );
   }
 
@@ -530,13 +530,13 @@ export function validateCoherence(text: string): GroundingResult {
 
   if (!grounded) {
     logger.warn(
-      'Content failed coherence validation',
+      "Content failed coherence validation",
       {
         confidence: confidence.toFixed(2),
         reasons,
         textPreview: text.substring(0, 80),
       },
-      'GroundingValidator'
+      "GroundingValidator",
     );
   }
 
@@ -549,7 +549,7 @@ export function validateCoherence(text: string): GroundingResult {
  */
 export function filterIncoherent<T>(
   items: T[],
-  textExtractor: (item: T) => string
+  textExtractor: (item: T) => string,
 ): T[] {
   return items.filter((item) => {
     const result = validateCoherence(textExtractor(item));

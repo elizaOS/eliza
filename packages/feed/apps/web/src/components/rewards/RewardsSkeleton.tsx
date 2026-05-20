@@ -1,7 +1,7 @@
-import { Separator } from '@/components/shared/Separator';
+import { Separator } from "@/components/shared/Separator";
 
 function SkeletonBox({
-  className = '',
+  className = "",
   delay = 0,
 }: {
   className?: string;
@@ -17,7 +17,7 @@ function SkeletonBox({
 }
 
 function SkeletonText({
-  className = '',
+  className = "",
   delay = 0,
 }: {
   className?: string;

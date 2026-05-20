@@ -1,13 +1,13 @@
-'use client';
+"use client";
 
-import { cn, formatCurrency } from '@feed/shared';
+import { cn, formatCurrency } from "@feed/shared";
 import {
   AlertTriangle,
   CheckCircle,
   TrendingDown,
   TrendingUp,
   XCircle,
-} from 'lucide-react';
+} from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -17,16 +17,16 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+} from "@/components/ui/alert-dialog";
 
 /**
  * Trade type discriminator for confirmation dialog.
  */
 type TradeType =
-  | 'open-perp'
-  | 'close-perp'
-  | 'buy-prediction'
-  | 'sell-prediction';
+  | "open-perp"
+  | "close-perp"
+  | "buy-prediction"
+  | "sell-prediction";
 
 /**
  * Base trade details interface with type discriminator.
@@ -39,9 +39,9 @@ interface BaseTradeDetails {
  * Open perpetual position trade details.
  */
 interface OpenPerpDetails extends BaseTradeDetails {
-  type: 'open-perp';
+  type: "open-perp";
   ticker: string;
-  side: 'long' | 'short';
+  side: "long" | "short";
   size: number;
   leverage: number;
   entryPrice: number;
@@ -55,9 +55,9 @@ interface OpenPerpDetails extends BaseTradeDetails {
  * Close perpetual position trade details.
  */
 interface ClosePerpDetails extends BaseTradeDetails {
-  type: 'close-perp';
+  type: "close-perp";
   ticker: string;
-  side: 'long' | 'short';
+  side: "long" | "short";
   size: number;
   leverage: number;
   entryPrice: number;
@@ -70,9 +70,9 @@ interface ClosePerpDetails extends BaseTradeDetails {
  * Buy prediction shares trade details.
  */
 interface BuyPredictionDetails extends BaseTradeDetails {
-  type: 'buy-prediction';
+  type: "buy-prediction";
   question: string;
-  side: 'YES' | 'NO';
+  side: "YES" | "NO";
   amount: number;
   sharesBought: number;
   avgPrice: number;
@@ -86,10 +86,10 @@ interface BuyPredictionDetails extends BaseTradeDetails {
  * Sell prediction shares trade details.
  */
 interface SellPredictionDetails extends BaseTradeDetails {
-  type: 'sell-prediction';
-  mode?: 'sell';
+  type: "sell-prediction";
+  mode?: "sell";
   question: string;
-  side: 'YES' | 'NO';
+  side: "YES" | "NO";
   shares: number;
   avgPrice: number;
   currentPrice: number;
@@ -161,51 +161,51 @@ export function TradeConfirmationDialog({
 
   const getTitle = () => {
     switch (tradeDetails.type) {
-      case 'open-perp':
-        return `Confirm ${tradeDetails.side === 'long' ? 'Long' : 'Short'} Position`;
-      case 'close-perp':
-        return 'Confirm Close Position';
-      case 'buy-prediction':
+      case "open-perp":
+        return `Confirm ${tradeDetails.side === "long" ? "Long" : "Short"} Position`;
+      case "close-perp":
+        return "Confirm Close Position";
+      case "buy-prediction":
         return `Confirm Buy ${tradeDetails.side} Shares`;
-      case 'sell-prediction':
+      case "sell-prediction":
         return `Confirm Sell ${tradeDetails.side} Shares`;
     }
   };
 
   const getDescription = () => {
     switch (tradeDetails.type) {
-      case 'open-perp':
+      case "open-perp":
         return `You're about to open a ${tradeDetails.leverage}x ${tradeDetails.side} position on $${tradeDetails.ticker}`;
-      case 'close-perp':
+      case "close-perp":
         return `You're about to close your ${tradeDetails.leverage}x ${tradeDetails.side} position on $${tradeDetails.ticker}`;
-      case 'buy-prediction':
+      case "buy-prediction":
         return `You're about to buy ${tradeDetails.side} shares on this market`;
-      case 'sell-prediction':
+      case "sell-prediction":
         return `You're about to sell ${tradeDetails.side} shares on this market`;
     }
   };
 
   const getIcon = () => {
     switch (tradeDetails.type) {
-      case 'open-perp':
-        return tradeDetails.side === 'long' ? (
+      case "open-perp":
+        return tradeDetails.side === "long" ? (
           <TrendingUp className="h-6 w-6 text-green-600" />
         ) : (
           <TrendingDown className="h-6 w-6 text-red-600" />
         );
-      case 'close-perp':
+      case "close-perp":
         return tradeDetails.unrealizedPnL >= 0 ? (
           <CheckCircle className="h-6 w-6 text-green-600" />
         ) : (
           <XCircle className="h-6 w-6 text-red-600" />
         );
-      case 'buy-prediction':
-        return tradeDetails.side === 'YES' ? (
+      case "buy-prediction":
+        return tradeDetails.side === "YES" ? (
           <CheckCircle className="h-6 w-6 text-green-600" />
         ) : (
           <XCircle className="h-6 w-6 text-red-600" />
         );
-      case 'sell-prediction':
+      case "sell-prediction":
         return tradeDetails.unrealizedPnL >= 0 ? (
           <CheckCircle className="h-6 w-6 text-green-600" />
         ) : (
@@ -216,7 +216,7 @@ export function TradeConfirmationDialog({
 
   const renderDetails = () => {
     switch (tradeDetails.type) {
-      case 'open-perp':
+      case "open-perp":
         return (
           <div className="space-y-3 rounded-lg bg-muted/30 p-4">
             <div className="flex justify-between text-sm">
@@ -264,12 +264,12 @@ export function TradeConfirmationDialog({
                 </span>
                 <span
                   className={cn(
-                    'font-medium',
+                    "font-medium",
                     tradeDetails.liquidationDistance > 5
-                      ? 'text-green-600'
+                      ? "text-green-600"
                       : tradeDetails.liquidationDistance > 2
-                        ? 'text-yellow-600'
-                        : 'text-red-600'
+                        ? "text-yellow-600"
+                        : "text-red-600",
                   )}
                 >
                   {tradeDetails.liquidationDistance.toFixed(2)}%
@@ -288,7 +288,7 @@ export function TradeConfirmationDialog({
           </div>
         );
 
-      case 'close-perp':
+      case "close-perp":
         return (
           <div className="space-y-3 rounded-lg bg-muted/30 p-4">
             <div className="flex justify-between text-sm">
@@ -321,24 +321,24 @@ export function TradeConfirmationDialog({
                 <div className="text-right">
                   <div
                     className={cn(
-                      'font-bold',
+                      "font-bold",
                       tradeDetails.unrealizedPnL >= 0
-                        ? 'text-green-600'
-                        : 'text-red-600'
+                        ? "text-green-600"
+                        : "text-red-600",
                     )}
                   >
-                    {tradeDetails.unrealizedPnL >= 0 ? '+' : ''}
+                    {tradeDetails.unrealizedPnL >= 0 ? "+" : ""}
                     {formatPrice(tradeDetails.unrealizedPnL)}
                   </div>
                   <div
                     className={cn(
-                      'text-xs',
+                      "text-xs",
                       tradeDetails.unrealizedPnL >= 0
-                        ? 'text-green-600'
-                        : 'text-red-600'
+                        ? "text-green-600"
+                        : "text-red-600",
                     )}
                   >
-                    {tradeDetails.unrealizedPnL >= 0 ? '+' : ''}
+                    {tradeDetails.unrealizedPnL >= 0 ? "+" : ""}
                     {tradeDetails.unrealizedPnLPercent.toFixed(2)}%
                   </div>
                 </div>
@@ -347,7 +347,7 @@ export function TradeConfirmationDialog({
           </div>
         );
 
-      case 'buy-prediction':
+      case "buy-prediction":
         return (
           <div className="space-y-3 rounded-lg bg-muted/30 p-4">
             <div className="text-sm">
@@ -399,13 +399,13 @@ export function TradeConfirmationDialog({
                 <span className="text-muted-foreground">Expected Profit</span>
                 <span
                   className={cn(
-                    'font-bold',
+                    "font-bold",
                     tradeDetails.expectedProfit >= 0
-                      ? 'text-green-600'
-                      : 'text-red-600'
+                      ? "text-green-600"
+                      : "text-red-600",
                   )}
                 >
-                  {tradeDetails.expectedProfit >= 0 ? '+' : ''}
+                  {tradeDetails.expectedProfit >= 0 ? "+" : ""}
                   {formatPrice(tradeDetails.expectedProfit)}
                 </span>
               </div>
@@ -413,7 +413,7 @@ export function TradeConfirmationDialog({
           </div>
         );
 
-      case 'sell-prediction':
+      case "sell-prediction":
         return (
           <div className="space-y-3 rounded-lg bg-muted/30 p-4">
             <div className="text-sm">
@@ -452,24 +452,24 @@ export function TradeConfirmationDialog({
                 <div className="text-right">
                   <div
                     className={cn(
-                      'font-bold',
+                      "font-bold",
                       tradeDetails.unrealizedPnL >= 0
-                        ? 'text-green-600'
-                        : 'text-red-600'
+                        ? "text-green-600"
+                        : "text-red-600",
                     )}
                   >
-                    {tradeDetails.unrealizedPnL >= 0 ? '+' : ''}
+                    {tradeDetails.unrealizedPnL >= 0 ? "+" : ""}
                     {formatPrice(tradeDetails.unrealizedPnL)}
                   </div>
                   <div
                     className={cn(
-                      'text-xs',
+                      "text-xs",
                       tradeDetails.unrealizedPnL >= 0
-                        ? 'text-green-600'
-                        : 'text-red-600'
+                        ? "text-green-600"
+                        : "text-red-600",
                     )}
                   >
-                    {tradeDetails.unrealizedPnL >= 0 ? '+' : ''}
+                    {tradeDetails.unrealizedPnL >= 0 ? "+" : ""}
                     {tradeDetails.unrealizedPnLPercent.toFixed(2)}%
                   </div>
                 </div>
@@ -517,21 +517,21 @@ export function TradeConfirmationDialog({
             }}
             disabled={isSubmitting}
             className={cn(
-              tradeDetails.type === 'open-perp' && tradeDetails.side === 'long'
-                ? 'bg-green-600 hover:bg-green-700'
-                : tradeDetails.type === 'open-perp' &&
-                    tradeDetails.side === 'short'
-                  ? 'bg-red-600 hover:bg-red-700'
-                  : tradeDetails.type === 'buy-prediction' &&
-                      tradeDetails.side === 'YES'
-                    ? 'bg-green-600 hover:bg-green-700'
-                    : tradeDetails.type === 'buy-prediction' &&
-                        tradeDetails.side === 'NO'
-                      ? 'bg-red-600 hover:bg-red-700'
-                      : ''
+              tradeDetails.type === "open-perp" && tradeDetails.side === "long"
+                ? "bg-green-600 hover:bg-green-700"
+                : tradeDetails.type === "open-perp" &&
+                    tradeDetails.side === "short"
+                  ? "bg-red-600 hover:bg-red-700"
+                  : tradeDetails.type === "buy-prediction" &&
+                      tradeDetails.side === "YES"
+                    ? "bg-green-600 hover:bg-green-700"
+                    : tradeDetails.type === "buy-prediction" &&
+                        tradeDetails.side === "NO"
+                      ? "bg-red-600 hover:bg-red-700"
+                      : "",
             )}
           >
-            {isSubmitting ? 'Processing...' : 'Confirm Trade'}
+            {isSubmitting ? "Processing..." : "Confirm Trade"}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { cn } from '@feed/shared';
-import * as TooltipPrimitive from '@radix-ui/react-tooltip';
+import { cn } from "@feed/shared";
+import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import {
   type ComponentRef,
   type ReactNode,
@@ -9,7 +9,7 @@ import {
   useEffect,
   useRef,
   useState,
-} from 'react';
+} from "react";
 
 /**
  * Viewport-aware tooltip built on Radix UI.
@@ -37,9 +37,9 @@ interface TooltipProps {
   children: ReactNode;
   content: ReactNode;
   /** Side to prefer — will flip if not enough space */
-  side?: 'top' | 'bottom' | 'left' | 'right';
+  side?: "top" | "bottom" | "left" | "right";
   /** Alignment along the side */
-  align?: 'start' | 'center' | 'end';
+  align?: "start" | "center" | "end";
   /** Additional class for the content container */
   className?: string;
   /** Whether to show an arrow pointer */
@@ -48,11 +48,11 @@ interface TooltipProps {
 
 function TooltipContent({
   content,
-  side = 'bottom',
-  align = 'center',
+  side = "bottom",
+  align = "center",
   className,
   arrow = true,
-}: Omit<TooltipProps, 'children' | 'delayDuration'>) {
+}: Omit<TooltipProps, "children" | "delayDuration">) {
   return (
     <TooltipPrimitive.Portal>
       <TooltipPrimitive.Content
@@ -61,10 +61,10 @@ function TooltipContent({
         sideOffset={6}
         collisionPadding={8}
         className={cn(
-          'z-50 max-w-[min(calc(100vw-24px),280px)] rounded-lg border border-border bg-popover px-3 py-2 shadow-lg',
-          'fade-in-0 zoom-in-95 data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 animate-in data-[state=closed]:animate-out',
-          'data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2',
-          className
+          "z-50 max-w-[min(calc(100vw-24px),280px)] rounded-lg border border-border bg-popover px-3 py-2 shadow-lg",
+          "fade-in-0 zoom-in-95 data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 animate-in data-[state=closed]:animate-out",
+          "data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+          className,
         )}
       >
         {content}
@@ -101,7 +101,7 @@ export function Tooltip({
 
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
-      if (e.pointerType === 'touch') {
+      if (e.pointerType === "touch") {
         e.preventDefault();
         if (isTouchRef.current) {
           closeTouch();
@@ -111,7 +111,7 @@ export function Tooltip({
         }
       }
     },
-    [closeTouch]
+    [closeTouch],
   );
 
   // Close when tapping outside on touch devices
@@ -119,15 +119,15 @@ export function Tooltip({
     if (!open || !isTouchRef.current) return;
     const handleOutside = (e: PointerEvent) => {
       if (
-        e.pointerType === 'touch' &&
+        e.pointerType === "touch" &&
         triggerRef.current &&
         !triggerRef.current.contains(e.target as Node)
       ) {
         closeTouch();
       }
     };
-    document.addEventListener('pointerdown', handleOutside);
-    return () => document.removeEventListener('pointerdown', handleOutside);
+    document.addEventListener("pointerdown", handleOutside);
+    return () => document.removeEventListener("pointerdown", handleOutside);
   }, [open, closeTouch]);
 
   // Let Radix handle hover on non-touch (mouse/pen);

@@ -3,13 +3,13 @@ export type NotifyGroupChatInviteFn = (
   npcId: string,
   groupId: string,
   chatName: string,
-  inviteId: string
+  inviteId: string,
 ) => Promise<void>;
 
 let notifyFn: NotifyGroupChatInviteFn | null = null;
 
 export function setNotifyGroupChatInvite(
-  fn: NotifyGroupChatInviteFn | null
+  fn: NotifyGroupChatInviteFn | null,
 ): void {
   notifyFn = fn;
 }
@@ -19,7 +19,7 @@ export async function notifyGroupChatInvite(
   npcId: string,
   groupId: string,
   chatName: string,
-  inviteId: string
+  inviteId: string,
 ): Promise<void> {
   if (!notifyFn) return;
   await notifyFn(userId, npcId, groupId, chatName, inviteId);

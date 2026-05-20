@@ -16,12 +16,12 @@ import {
   publicRateLimit,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
+} from "@feed/api";
 import {
   getNftTokenOwnersFromIndexer,
   getOwnerUsersByWalletAddresses,
   NftIndexerUnavailableError,
-} from '@feed/api/services/nft-indexer-service';
+} from "@feed/api/services/nft-indexer-service";
 import {
   db,
   eq,
@@ -29,10 +29,10 @@ import {
   nftCollection,
   nftOwnership,
   users,
-} from '@feed/db';
-import { logger, toISO } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import type { NftDetail, NftDetailResponse } from '@/types/nft';
+} from "@feed/db";
+import { logger, toISO } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import type { NftDetail, NftDetailResponse } from "@/types/nft";
 
 interface RouteParams {
   params: Promise<{ tokenId: string }>;
@@ -46,11 +46,11 @@ export const GET = withErrorHandling(
     const { tokenId: tokenIdParam } = await context.params;
     const tokenId = parseInt(tokenIdParam, 10);
 
-    if (isNaN(tokenId) || tokenId < 0) {
-      throw new NotFoundError('Invalid token ID');
+    if (Number.isNaN(tokenId) || tokenId < 0) {
+      throw new NotFoundError("Invalid token ID");
     }
 
-    logger.info('Fetching NFT details', { tokenId }, 'GET /api/nft/[tokenId]');
+    logger.info("Fetching NFT details", { tokenId }, "GET /api/nft/[tokenId]");
 
     // Get NFT collection data
     const [nft] = await db
@@ -107,7 +107,7 @@ export const GET = withErrorHandling(
     } catch (error) {
       if (
         !(error instanceof NftIndexerUnavailableError) &&
-        !(error instanceof Error && error.name === 'ValidationError')
+        !(error instanceof Error && error.name === "ValidationError")
       ) {
         throw error;
       }
@@ -166,7 +166,7 @@ export const GET = withErrorHandling(
       imageUrl: nft.imageUrl,
       thumbnailUrl: nft.thumbnailUrl,
       imageCid: nft.imageCid,
-      imageResolution: '4096x4096',
+      imageResolution: "4096x4096",
       metadataUri: nft.metadataUri,
       story: {
         title: nft.storyTitle,
@@ -205,17 +205,17 @@ export const GET = withErrorHandling(
     };
 
     logger.info(
-      'NFT details fetched',
+      "NFT details fetched",
       {
         tokenId,
         hasOwner: !!ownership,
         hasClaim: !!claim,
       },
-      'GET /api/nft/[tokenId]'
+      "GET /api/nft/[tokenId]",
     );
 
     const res = successResponse(response);
     if (rateLimitInfo) addPublicReadHeaders(res, rateLimitInfo);
     return res;
-  }
+  },
 );

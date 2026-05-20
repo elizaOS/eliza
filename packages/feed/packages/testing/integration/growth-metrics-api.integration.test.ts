@@ -19,20 +19,20 @@ import {
   expect,
   setDefaultTimeout,
   test,
-} from 'bun:test';
-import { db, eq, userSessions, users } from '@feed/db';
-import { generateSnowflakeId } from '@feed/shared';
+} from "bun:test";
+import { db, eq, userSessions, users } from "@feed/db";
+import { generateSnowflakeId } from "@feed/shared";
 import {
   getAdminToken,
   requireAuth as requireAuthShared,
   requireServer as requireServerShared,
   waitForServerAvailability,
-} from './helpers';
+} from "./helpers";
 
 const BASE_URL =
   process.env.TEST_API_URL ||
   process.env.TEST_BASE_URL ||
-  'http://localhost:3000';
+  "http://localhost:3000";
 
 let serverAvailable = false;
 let devAdminToken: string | null = null;
@@ -51,10 +51,10 @@ function requireAuth(): void {
 
 async function adminRequest(path: string, options: RequestInit = {}) {
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
     ...(options.headers as Record<string, string>),
   };
-  if (devAdminToken) headers['x-dev-admin-token'] = devAdminToken;
+  if (devAdminToken) headers["x-dev-admin-token"] = devAdminToken;
 
   return fetch(`${BASE_URL}${path}`, {
     ...options,
@@ -67,7 +67,7 @@ async function publicRequest(path: string, options: RequestInit = {}) {
   return fetch(`${BASE_URL}${path}`, {
     ...options,
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
       ...(options.headers as Record<string, string>),
     },
     signal: AbortSignal.timeout(15000),
@@ -82,7 +82,7 @@ async function createTestUser(
     isActor: boolean;
     isBanned: boolean;
     createdAt: Date;
-  }> = {}
+  }> = {},
 ) {
   const userId = await generateSnowflakeId();
   await db.insert(users).values({
@@ -107,7 +107,7 @@ async function createTestSession(
     lastActiveAt?: Date;
     endedAt?: Date | null;
     pageCount?: number;
-  } = {}
+  } = {},
 ) {
   const sessionId = await generateSnowflakeId();
   const clientSessionId = `test-session-${sessionId}`;
@@ -125,14 +125,14 @@ async function createTestSession(
   return sessionId;
 }
 
-describe('Growth Metrics API', () => {
+describe("Growth Metrics API", () => {
   beforeAll(async () => {
     // Check server availability
     serverAvailable = await waitForServerAvailability(BASE_URL, 15);
     if (serverAvailable) {
-      console.log('Server availability: Available');
+      console.log("Server availability: Available");
     } else {
-      console.log('Server not available - tests will be skipped');
+      console.log("Server not available - tests will be skipped");
     }
 
     // Get dev admin token
@@ -154,25 +154,25 @@ describe('Growth Metrics API', () => {
         .catch(() => {});
     }
     console.log(
-      `Cleaned up ${testUserIds.length} test users, ${testSessionIds.length} sessions`
+      `Cleaned up ${testUserIds.length} test users, ${testSessionIds.length} sessions`,
     );
   });
 
-  describe('Authentication', () => {
-    test('requires authentication', async () => {
+  describe("Authentication", () => {
+    test("requires authentication", async () => {
       requireServer();
 
-      const res = await publicRequest('/api/admin/stats/growth');
+      const res = await publicRequest("/api/admin/stats/growth");
       expect(res.status).toBe(401);
 
       const data = await res.json();
       expect(data.error).toBeDefined();
     });
 
-    test('accepts valid dev admin token', async () => {
+    test("accepts valid dev admin token", async () => {
       requireAuth();
 
-      const res = await adminRequest('/api/admin/stats/growth');
+      const res = await adminRequest("/api/admin/stats/growth");
       expect(res.status).toBe(200);
 
       const data = await res.json();
@@ -180,11 +180,11 @@ describe('Growth Metrics API', () => {
     });
   });
 
-  describe('Response Structure', () => {
-    test('returns complete growth metrics structure', async () => {
+  describe("Response Structure", () => {
+    test("returns complete growth metrics structure", async () => {
       requireAuth();
 
-      const res = await adminRequest('/api/admin/stats/growth');
+      const res = await adminRequest("/api/admin/stats/growth");
       expect(res.status).toBe(200);
 
       const data = await res.json();
@@ -192,44 +192,44 @@ describe('Growth Metrics API', () => {
 
       // WAU metrics
       expect(data.wau).toBeDefined();
-      expect(typeof data.wau.current).toBe('number');
-      expect(typeof data.wau.previous).toBe('number');
-      expect(typeof data.wau.change).toBe('number');
-      expect(['up', 'down', 'stable']).toContain(data.wau.trend);
+      expect(typeof data.wau.current).toBe("number");
+      expect(typeof data.wau.previous).toBe("number");
+      expect(typeof data.wau.change).toBe("number");
+      expect(["up", "down", "stable"]).toContain(data.wau.trend);
 
       // User balance (Trader vs Commander)
       expect(data.userBalance).toBeDefined();
-      expect(typeof data.userBalance.tradersOnly).toBe('number');
-      expect(typeof data.userBalance.commandersOnly).toBe('number');
-      expect(typeof data.userBalance.hybrid).toBe('number');
-      expect(typeof data.userBalance.total).toBe('number');
-      expect(typeof data.userBalance.tradersOnlyPct).toBe('number');
-      expect(typeof data.userBalance.commandersOnlyPct).toBe('number');
-      expect(typeof data.userBalance.hybridPct).toBe('number');
+      expect(typeof data.userBalance.tradersOnly).toBe("number");
+      expect(typeof data.userBalance.commandersOnly).toBe("number");
+      expect(typeof data.userBalance.hybrid).toBe("number");
+      expect(typeof data.userBalance.total).toBe("number");
+      expect(typeof data.userBalance.tradersOnlyPct).toBe("number");
+      expect(typeof data.userBalance.commandersOnlyPct).toBe("number");
+      expect(typeof data.userBalance.hybridPct).toBe("number");
 
       // Engagement metrics
       expect(data.engagement).toBeDefined();
-      expect(typeof data.engagement.tradesPerTrader).toBe('number');
-      expect(typeof data.engagement.totalTrades).toBe('number');
-      expect(typeof data.engagement.uniqueTraders).toBe('number');
-      expect(typeof data.engagement.actionsPerCommander).toBe('number');
-      expect(typeof data.engagement.totalActions).toBe('number');
-      expect(typeof data.engagement.uniqueCommanders).toBe('number');
+      expect(typeof data.engagement.tradesPerTrader).toBe("number");
+      expect(typeof data.engagement.totalTrades).toBe("number");
+      expect(typeof data.engagement.uniqueTraders).toBe("number");
+      expect(typeof data.engagement.actionsPerCommander).toBe("number");
+      expect(typeof data.engagement.totalActions).toBe("number");
+      expect(typeof data.engagement.uniqueCommanders).toBe("number");
 
       // Activation metrics
       expect(data.activation).toBeDefined();
-      expect(typeof data.activation.rate).toBe('number');
-      expect(typeof data.activation.totalSignups).toBe('number');
-      expect(typeof data.activation.activatedUsers).toBe('number');
+      expect(typeof data.activation.rate).toBe("number");
+      expect(typeof data.activation.totalSignups).toBe("number");
+      expect(typeof data.activation.activatedUsers).toBe("number");
       expect(data.activation.funnel).toBeDefined();
-      expect(typeof data.activation.funnel.signups).toBe('number');
-      expect(typeof data.activation.funnel.tradedWithin24h).toBe('number');
-      expect(typeof data.activation.funnel.commandedWithin24h).toBe('number');
-      expect(typeof data.activation.funnel.activated).toBe('number');
+      expect(typeof data.activation.funnel.signups).toBe("number");
+      expect(typeof data.activation.funnel.tradedWithin24h).toBe("number");
+      expect(typeof data.activation.funnel.commandedWithin24h).toBe("number");
+      expect(typeof data.activation.funnel.activated).toBe("number");
 
       // Session metrics
       expect(data.sessions).toBeDefined();
-      expect(typeof data.sessions.totalSessions).toBe('number');
+      expect(typeof data.sessions.totalSessions).toBe("number");
 
       // Retention metrics
       expect(data.retention).toBeDefined();
@@ -243,11 +243,11 @@ describe('Growth Metrics API', () => {
       expect(data.metadata.periodEnd).toBeDefined();
     });
 
-    test('returns time series when requested', async () => {
+    test("returns time series when requested", async () => {
       requireAuth();
 
       const res = await adminRequest(
-        '/api/admin/stats/growth?includeTimeSeries=true'
+        "/api/admin/stats/growth?includeTimeSeries=true",
       );
       expect(res.status).toBe(200);
 
@@ -257,14 +257,14 @@ describe('Growth Metrics API', () => {
       if (data.timeSeries.length > 0) {
         const entry = data.timeSeries[0];
         expect(entry.date).toBeDefined();
-        expect(typeof entry.wau).toBe('number');
+        expect(typeof entry.wau).toBe("number");
       }
     });
 
-    test('returns empty time series when not requested', async () => {
+    test("returns empty time series when not requested", async () => {
       requireAuth();
 
-      const res = await adminRequest('/api/admin/stats/growth');
+      const res = await adminRequest("/api/admin/stats/growth");
       expect(res.status).toBe(200);
 
       const data = await res.json();
@@ -273,13 +273,13 @@ describe('Growth Metrics API', () => {
     });
   });
 
-  describe('Period Parameter', () => {
-    test('accepts valid period values', async () => {
+  describe("Period Parameter", () => {
+    test("accepts valid period values", async () => {
       requireAuth();
 
-      for (const period of ['day', 'week', 'month']) {
+      for (const period of ["day", "week", "month"]) {
         const res = await adminRequest(
-          `/api/admin/stats/growth?period=${period}`
+          `/api/admin/stats/growth?period=${period}`,
         );
         expect(res.status).toBe(200);
 
@@ -288,42 +288,42 @@ describe('Growth Metrics API', () => {
       }
     });
 
-    test('defaults to week for invalid period', async () => {
+    test("defaults to week for invalid period", async () => {
       requireAuth();
 
-      const res = await adminRequest('/api/admin/stats/growth?period=invalid');
+      const res = await adminRequest("/api/admin/stats/growth?period=invalid");
       expect(res.status).toBe(200);
 
       const data = await res.json();
-      expect(data.metadata.period).toBe('week');
+      expect(data.metadata.period).toBe("week");
     });
 
-    test('defaults to week when period not provided', async () => {
+    test("defaults to week when period not provided", async () => {
       requireAuth();
 
-      const res = await adminRequest('/api/admin/stats/growth');
+      const res = await adminRequest("/api/admin/stats/growth");
       expect(res.status).toBe(200);
 
       const data = await res.json();
-      expect(data.metadata.period).toBe('week');
+      expect(data.metadata.period).toBe("week");
     });
   });
 
-  describe('Data Validation', () => {
-    test('WAU values are non-negative', async () => {
+  describe("Data Validation", () => {
+    test("WAU values are non-negative", async () => {
       requireAuth();
 
-      const res = await adminRequest('/api/admin/stats/growth');
+      const res = await adminRequest("/api/admin/stats/growth");
       const data = await res.json();
 
       expect(data.wau.current).toBeGreaterThanOrEqual(0);
       expect(data.wau.previous).toBeGreaterThanOrEqual(0);
     });
 
-    test('percentages sum approximately to 100', async () => {
+    test("percentages sum approximately to 100", async () => {
       requireAuth();
 
-      const res = await adminRequest('/api/admin/stats/growth');
+      const res = await adminRequest("/api/admin/stats/growth");
       const data = await res.json();
 
       // Only check if there are active users
@@ -338,20 +338,20 @@ describe('Growth Metrics API', () => {
       }
     });
 
-    test('activation rate is between 0 and 100', async () => {
+    test("activation rate is between 0 and 100", async () => {
       requireAuth();
 
-      const res = await adminRequest('/api/admin/stats/growth');
+      const res = await adminRequest("/api/admin/stats/growth");
       const data = await res.json();
 
       expect(data.activation.rate).toBeGreaterThanOrEqual(0);
       expect(data.activation.rate).toBeLessThanOrEqual(100);
     });
 
-    test('engagement metrics are non-negative', async () => {
+    test("engagement metrics are non-negative", async () => {
       requireAuth();
 
-      const res = await adminRequest('/api/admin/stats/growth');
+      const res = await adminRequest("/api/admin/stats/growth");
       const data = await res.json();
 
       expect(data.engagement.tradesPerTrader).toBeGreaterThanOrEqual(0);
@@ -362,10 +362,10 @@ describe('Growth Metrics API', () => {
       expect(data.engagement.uniqueCommanders).toBeGreaterThanOrEqual(0);
     });
 
-    test('funnel stages are consistent', async () => {
+    test("funnel stages are consistent", async () => {
       requireAuth();
 
-      const res = await adminRequest('/api/admin/stats/growth');
+      const res = await adminRequest("/api/admin/stats/growth");
       const data = await res.json();
 
       const { funnel } = data.activation;
@@ -376,17 +376,17 @@ describe('Growth Metrics API', () => {
       expect(funnel.commandedWithin24h).toBeLessThanOrEqual(funnel.signups + 1);
     });
 
-    test('retention cohorts have valid structure', async () => {
+    test("retention cohorts have valid structure", async () => {
       requireAuth();
 
-      const res = await adminRequest('/api/admin/stats/growth');
+      const res = await adminRequest("/api/admin/stats/growth");
       const data = await res.json();
 
       for (const cohort of data.retention.cohorts) {
         expect(cohort.cohortDate).toBeDefined();
-        expect(typeof cohort.cohortSize).toBe('number');
-        expect(typeof cohort.retainedD7).toBe('number');
-        expect(typeof cohort.retentionRate).toBe('number');
+        expect(typeof cohort.cohortSize).toBe("number");
+        expect(typeof cohort.retainedD7).toBe("number");
+        expect(typeof cohort.retentionRate).toBe("number");
         expect(cohort.retentionRate).toBeGreaterThanOrEqual(0);
         expect(cohort.retentionRate).toBeLessThanOrEqual(100);
         expect(cohort.retainedD7).toBeLessThanOrEqual(cohort.cohortSize);
@@ -394,22 +394,22 @@ describe('Growth Metrics API', () => {
     });
   });
 
-  describe('Session Metrics', () => {
-    test('returns null for sessions when no data exists', async () => {
+  describe("Session Metrics", () => {
+    test("returns null for sessions when no data exists", async () => {
       requireAuth();
 
       // Create a user but no sessions
       await createTestUser({});
 
-      const res = await adminRequest('/api/admin/stats/growth');
+      const res = await adminRequest("/api/admin/stats/growth");
       const data = await res.json();
 
       // Session metrics should exist even if null
       expect(data.sessions).toBeDefined();
-      expect(typeof data.sessions.totalSessions).toBe('number');
+      expect(typeof data.sessions.totalSessions).toBe("number");
     });
 
-    test('calculates session metrics when data exists', async () => {
+    test("calculates session metrics when data exists", async () => {
       requireAuth();
 
       // Create test user with sessions
@@ -424,19 +424,19 @@ describe('Growth Metrics API', () => {
         pageCount: 5,
       });
 
-      const res = await adminRequest('/api/admin/stats/growth');
+      const res = await adminRequest("/api/admin/stats/growth");
       const data = await res.json();
 
       expect(data.sessions.totalSessions).toBeGreaterThanOrEqual(0);
     });
   });
 
-  describe('Time Series', () => {
-    test('time series dates are in chronological order', async () => {
+  describe("Time Series", () => {
+    test("time series dates are in chronological order", async () => {
       requireAuth();
 
       const res = await adminRequest(
-        '/api/admin/stats/growth?includeTimeSeries=true'
+        "/api/admin/stats/growth?includeTimeSeries=true",
       );
       const data = await res.json();
 
@@ -449,14 +449,14 @@ describe('Growth Metrics API', () => {
       }
     });
 
-    test('time series respects period parameter', async () => {
+    test("time series respects period parameter", async () => {
       requireAuth();
 
       const dayRes = await adminRequest(
-        '/api/admin/stats/growth?period=day&includeTimeSeries=true'
+        "/api/admin/stats/growth?period=day&includeTimeSeries=true",
       );
       const monthRes = await adminRequest(
-        '/api/admin/stats/growth?period=month&includeTimeSeries=true'
+        "/api/admin/stats/growth?period=month&includeTimeSeries=true",
       );
 
       const dayData = await dayRes.json();
@@ -466,63 +466,63 @@ describe('Growth Metrics API', () => {
       // day = 7 days, month = 90 days
       if (monthData.timeSeries.length > 0 && dayData.timeSeries.length > 0) {
         expect(monthData.timeSeries.length).toBeGreaterThan(
-          dayData.timeSeries.length
+          dayData.timeSeries.length,
         );
       }
     });
   });
 
-  describe('WAU Trend Calculation', () => {
-    test('trend is up when current > previous by more than 5%', async () => {
+  describe("WAU Trend Calculation", () => {
+    test("trend is up when current > previous by more than 5%", async () => {
       requireAuth();
 
-      const res = await adminRequest('/api/admin/stats/growth');
+      const res = await adminRequest("/api/admin/stats/growth");
       const data = await res.json();
 
       if (data.wau.previous > 0) {
         const changePercent =
           ((data.wau.current - data.wau.previous) / data.wau.previous) * 100;
         if (changePercent > 5) {
-          expect(data.wau.trend).toBe('up');
+          expect(data.wau.trend).toBe("up");
         } else if (changePercent < -5) {
-          expect(data.wau.trend).toBe('down');
+          expect(data.wau.trend).toBe("down");
         } else {
-          expect(data.wau.trend).toBe('stable');
+          expect(data.wau.trend).toBe("stable");
         }
       }
     });
   });
 
-  describe('Error Handling', () => {
-    test('handles invalid date parameters gracefully', async () => {
+  describe("Error Handling", () => {
+    test("handles invalid date parameters gracefully", async () => {
       requireAuth();
 
       const res = await adminRequest(
-        '/api/admin/stats/growth?startDate=invalid'
+        "/api/admin/stats/growth?startDate=invalid",
       );
       // Should still return 200 with null startDate
       expect(res.status).toBe(200);
     });
 
-    test('handles very long query strings', async () => {
+    test("handles very long query strings", async () => {
       requireAuth();
 
-      const longValue = 'a'.repeat(5000);
+      const longValue = "a".repeat(5000);
       const res = await adminRequest(
-        `/api/admin/stats/growth?period=${longValue}`
+        `/api/admin/stats/growth?period=${longValue}`,
       );
 
       expect(res.status).toBeLessThan(500);
     });
   });
 
-  describe('Concurrent Requests', () => {
-    test('handles multiple concurrent requests', async () => {
+  describe("Concurrent Requests", () => {
+    test("handles multiple concurrent requests", async () => {
       requireAuth();
 
       const requests = Array(5)
         .fill(null)
-        .map(() => adminRequest('/api/admin/stats/growth'));
+        .map(() => adminRequest("/api/admin/stats/growth"));
 
       const responses = await Promise.all(requests);
 
@@ -534,12 +534,12 @@ describe('Growth Metrics API', () => {
     });
   });
 
-  describe('Edge Cases', () => {
-    test('handles empty database gracefully', async () => {
+  describe("Edge Cases", () => {
+    test("handles empty database gracefully", async () => {
       requireAuth();
 
       // Even with minimal data, should return valid structure
-      const res = await adminRequest('/api/admin/stats/growth');
+      const res = await adminRequest("/api/admin/stats/growth");
       expect(res.status).toBe(200);
 
       const data = await res.json();
@@ -549,39 +549,39 @@ describe('Growth Metrics API', () => {
       expect(data.activation).toBeDefined();
     });
 
-    test('excludes actors from WAU', async () => {
+    test("excludes actors from WAU", async () => {
       requireAuth();
 
       // Create an actor - should not count in WAU
       await createTestUser({ isActor: true });
 
-      const res = await adminRequest('/api/admin/stats/growth');
+      const res = await adminRequest("/api/admin/stats/growth");
       const data = await res.json();
 
       // Just verify the query runs successfully - actors should be filtered
       expect(data.wau.current).toBeGreaterThanOrEqual(0);
     });
 
-    test('excludes agents from WAU', async () => {
+    test("excludes agents from WAU", async () => {
       requireAuth();
 
       // Create an agent - should not count in WAU
       await createTestUser({ isAgent: true });
 
-      const res = await adminRequest('/api/admin/stats/growth');
+      const res = await adminRequest("/api/admin/stats/growth");
       const data = await res.json();
 
       // Just verify the query runs successfully - agents should be filtered
       expect(data.wau.current).toBeGreaterThanOrEqual(0);
     });
 
-    test('excludes banned users from WAU', async () => {
+    test("excludes banned users from WAU", async () => {
       requireAuth();
 
       // Create a banned user - should not count in WAU
       await createTestUser({ isBanned: true });
 
-      const res = await adminRequest('/api/admin/stats/growth');
+      const res = await adminRequest("/api/admin/stats/growth");
       const data = await res.json();
 
       // Just verify the query runs successfully - banned users should be filtered

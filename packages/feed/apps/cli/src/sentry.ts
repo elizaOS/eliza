@@ -1,4 +1,4 @@
-import * as Sentry from '@sentry/bun';
+import * as Sentry from "@sentry/bun";
 
 type CliSentryContext = {
   domain?: string;
@@ -6,7 +6,7 @@ type CliSentryContext = {
 };
 
 function isSentryDisabled(): boolean {
-  return process.env.DISABLE_SENTRY === 'true';
+  return process.env.DISABLE_SENTRY === "true";
 }
 
 function hasDsn(): boolean {
@@ -29,32 +29,32 @@ export function initCliSentry(context: CliSentryContext): void {
   Sentry.init({
     dsn: process.env.SENTRY_DSN,
     environment:
-      process.env.SENTRY_ENVIRONMENT ?? process.env.NODE_ENV ?? 'development',
+      process.env.SENTRY_ENVIRONMENT ?? process.env.NODE_ENV ?? "development",
     release: resolveCliRelease(),
     tracesSampleRate: 0,
   });
 
-  Sentry.setTag('surface', 'cli');
-  if (context.domain) Sentry.setTag('cli.domain', context.domain);
-  if (context.command) Sentry.setTag('cli.command', context.command);
+  Sentry.setTag("surface", "cli");
+  if (context.domain) Sentry.setTag("cli.domain", context.domain);
+  if (context.command) Sentry.setTag("cli.command", context.command);
 }
 
 export async function captureCliExceptionAndFlush(
   error: unknown,
-  context: CliSentryContext
+  context: CliSentryContext,
 ): Promise<void> {
   if (isSentryDisabled() || !hasDsn()) {
     return;
   }
 
   const normalized =
-    error instanceof Error ? error : new Error(error ? String(error) : 'Error');
+    error instanceof Error ? error : new Error(error ? String(error) : "Error");
 
   Sentry.withScope((scope) => {
-    scope.setTag('surface', 'cli');
-    if (context.domain) scope.setTag('cli.domain', context.domain);
-    if (context.command) scope.setTag('cli.command', context.command);
-    scope.setContext('cli', {
+    scope.setTag("surface", "cli");
+    if (context.domain) scope.setTag("cli.domain", context.domain);
+    if (context.command) scope.setTag("cli.command", context.command);
+    scope.setContext("cli", {
       domain: context.domain,
       command: context.command,
     });

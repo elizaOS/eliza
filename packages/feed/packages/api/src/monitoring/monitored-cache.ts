@@ -6,8 +6,8 @@
  * to be injected from the application layer.
  */
 
-import { serializeCacheValue } from '../cache/cache-service';
-import { performanceMonitor } from './performance-monitor';
+import { serializeCacheValue } from "../cache/cache-service";
+import { performanceMonitor } from "./performance-monitor";
 
 export interface CacheOptions {
   ttl?: number;
@@ -30,7 +30,7 @@ export function setCacheService(service: CacheService): void {
 function getCacheService(): CacheService {
   if (!cacheServiceInstance) {
     throw new Error(
-      'CacheService not initialized. Call setCacheService() first.'
+      "CacheService not initialized. Call setCacheService() first.",
     );
   }
   return cacheServiceInstance;
@@ -41,7 +41,7 @@ function getCacheService(): CacheService {
  */
 export async function getMonitoredCache<T>(
   key: string,
-  options: CacheOptions = {}
+  options: CacheOptions = {},
 ): Promise<T | null> {
   const startTime = performance.now();
 
@@ -53,7 +53,7 @@ export async function getMonitoredCache<T>(
   // Estimate size (rough approximation)
   const bytes = value ? serializeCacheValue(value).length : 0;
 
-  performanceMonitor.recordCacheOperation('get', hit, latency, bytes);
+  performanceMonitor.recordCacheOperation("get", hit, latency, bytes);
 
   return value;
 }
@@ -64,7 +64,7 @@ export async function getMonitoredCache<T>(
 export async function setMonitoredCache<T>(
   key: string,
   value: T,
-  options: CacheOptions = {}
+  options: CacheOptions = {},
 ): Promise<void> {
   const startTime = performance.now();
 
@@ -75,7 +75,7 @@ export async function setMonitoredCache<T>(
   // Estimate size
   const bytes = serializeCacheValue(value).length;
 
-  performanceMonitor.recordCacheOperation('set', true, latency, bytes);
+  performanceMonitor.recordCacheOperation("set", true, latency, bytes);
 }
 
 /**
@@ -83,7 +83,7 @@ export async function setMonitoredCache<T>(
  */
 export async function invalidateMonitoredCache(
   key: string,
-  options: CacheOptions = {}
+  options: CacheOptions = {},
 ): Promise<void> {
   const startTime = performance.now();
 
@@ -91,5 +91,5 @@ export async function invalidateMonitoredCache(
   await cacheService.invalidate(key, options);
   const latency = performance.now() - startTime;
 
-  performanceMonitor.recordCacheOperation('delete', true, latency);
+  performanceMonitor.recordCacheOperation("delete", true, latency);
 }

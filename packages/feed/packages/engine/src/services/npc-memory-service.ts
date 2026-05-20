@@ -16,12 +16,12 @@ import {
   eq,
   type NpcMemory,
   type RelationshipState,
-} from '@feed/db';
-import { generateSnowflakeId, logger } from '@feed/shared';
-import { first } from '../utils/array-utils';
-import { getGameDayNumber } from '../utils/date-utils';
-import { formatError } from '../utils/error-utils';
-import { parseMemoriesSafe, parseRelationshipsSafe } from './jsonb-validators';
+} from "@feed/db";
+import { generateSnowflakeId, logger } from "@feed/shared";
+import { first } from "../utils/array-utils";
+import { getGameDayNumber } from "../utils/date-utils";
+import { formatError } from "../utils/error-utils";
+import { parseMemoriesSafe, parseRelationshipsSafe } from "./jsonb-validators";
 
 /**
  * Maximum memories per NPC before oldest are evicted.
@@ -65,10 +65,10 @@ function isTransientError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   const message = error.message.toLowerCase();
   return (
-    message.includes('econnreset') ||
-    message.includes('etimedout') ||
-    message.includes('connection') ||
-    message.includes('timeout')
+    message.includes("econnreset") ||
+    message.includes("etimedout") ||
+    message.includes("connection") ||
+    message.includes("timeout")
   );
 }
 
@@ -88,7 +88,7 @@ export class NpcMemoryService {
    */
   async addMemory(
     actorId: string,
-    memory: Omit<NpcMemory, 'id'>
+    memory: Omit<NpcMemory, "id">,
   ): Promise<boolean> {
     // Generate memory ID once before the retry loop to ensure consistency across retries
     const memoryId = await generateSnowflakeId();
@@ -109,7 +109,7 @@ export class NpcMemoryService {
           logger.warn(
             `Cannot add memory: ActorState not found for ${actorId}`,
             { actorId },
-            'NpcMemoryService'
+            "NpcMemoryService",
           );
           return false;
         }
@@ -142,8 +142,8 @@ export class NpcMemoryService {
           .where(
             and(
               eq(actorState.id, actorId),
-              eq(actorState.updatedAt, state.updatedAt)
-            )
+              eq(actorState.updatedAt, state.updatedAt),
+            ),
           )
           .returning({ id: actorState.id });
 
@@ -151,19 +151,19 @@ export class NpcMemoryService {
         if (result.length === 0) {
           if (attempt < MAX_RETRIES - 1) {
             // Exponential backoff before retry
-            const delay = RETRY_BASE_DELAY_MS * Math.pow(2, attempt);
+            const delay = RETRY_BASE_DELAY_MS * 2 ** attempt;
             await new Promise((resolve) => setTimeout(resolve, delay));
             logger.debug(
               `Memory update conflict for ${actorId}, retrying (attempt ${attempt + 1})`,
               { actorId },
-              'NpcMemoryService'
+              "NpcMemoryService",
             );
             continue;
           }
           logger.warn(
             `Memory update failed after ${MAX_RETRIES} attempts due to concurrent modification`,
             { actorId },
-            'NpcMemoryService'
+            "NpcMemoryService",
           );
           return false;
         }
@@ -171,7 +171,7 @@ export class NpcMemoryService {
         logger.debug(
           `Added memory for ${actorId}`,
           { memoryType: memory.type, totalMemories: memories.length },
-          'NpcMemoryService'
+          "NpcMemoryService",
         );
         return true; // Success
       } catch (error) {
@@ -179,22 +179,22 @@ export class NpcMemoryService {
         logger.error(
           `Failed to add memory for ${actorId} (attempt ${attempt + 1}/${MAX_RETRIES})`,
           { error: formatError(error) },
-          'NpcMemoryService'
+          "NpcMemoryService",
         );
 
         // Check if this is a non-retryable error (e.g., constraint violation)
         const errorCode = (error as { code?: string }).code;
         const isConstraintViolation =
-          errorCode === '23505' ||
-          errorCode === 'P2002' ||
-          errorCode === '23503';
+          errorCode === "23505" ||
+          errorCode === "P2002" ||
+          errorCode === "23503";
         if (isConstraintViolation) {
           return false; // Don't retry constraint violations
         }
 
         // For transient errors, allow retry with backoff
         if (attempt < MAX_RETRIES - 1) {
-          const delay = RETRY_BASE_DELAY_MS * Math.pow(2, attempt);
+          const delay = RETRY_BASE_DELAY_MS * 2 ** attempt;
           await new Promise((resolve) => setTimeout(resolve, delay));
           continue;
         }
@@ -210,7 +210,7 @@ export class NpcMemoryService {
   async getRecentMemories(
     actorId: string,
     limit = 10,
-    types?: NpcMemory['type'][]
+    types?: NpcMemory["type"][],
   ): Promise<NpcMemory[]> {
     try {
       const [state] = await db
@@ -239,7 +239,7 @@ export class NpcMemoryService {
       logger.error(
         `Failed to get memories for ${actorId}`,
         { error: formatError(error) },
-        'NpcMemoryService'
+        "NpcMemoryService",
       );
       return [];
     }
@@ -250,7 +250,7 @@ export class NpcMemoryService {
    */
   async getRelationship(
     actorId: string,
-    otherActorId: string
+    otherActorId: string,
   ): Promise<RelationshipState | null> {
     try {
       const [state] = await db
@@ -278,7 +278,7 @@ export class NpcMemoryService {
           otherActorId,
           error: formatError(error),
         },
-        'NpcMemoryService'
+        "NpcMemoryService",
       );
       return null;
     }
@@ -294,7 +294,7 @@ export class NpcMemoryService {
     interaction: {
       sentimentChange: number; // -1 to 1
       note?: string;
-    }
+    },
   ): Promise<boolean> {
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       try {
@@ -311,7 +311,7 @@ export class NpcMemoryService {
           logger.warn(
             `Cannot update relationship: ActorState not found for ${actorId}`,
             { actorId },
-            'NpcMemoryService'
+            "NpcMemoryService",
           );
           return false;
         }
@@ -362,27 +362,27 @@ export class NpcMemoryService {
           .where(
             and(
               eq(actorState.id, actorId),
-              eq(actorState.updatedAt, state.updatedAt)
-            )
+              eq(actorState.updatedAt, state.updatedAt),
+            ),
           )
           .returning({ id: actorState.id });
 
         // If no rows were updated, another process modified the record
         if (result.length === 0) {
           if (attempt < MAX_RETRIES - 1) {
-            const delay = RETRY_BASE_DELAY_MS * Math.pow(2, attempt);
+            const delay = RETRY_BASE_DELAY_MS * 2 ** attempt;
             await new Promise((resolve) => setTimeout(resolve, delay));
             logger.debug(
               `Relationship update conflict for ${actorId}, retrying (attempt ${attempt + 1})`,
               { actorId },
-              'NpcMemoryService'
+              "NpcMemoryService",
             );
             continue;
           }
           logger.warn(
             `Relationship update failed after ${MAX_RETRIES} attempts due to concurrent modification`,
             { actorId },
-            'NpcMemoryService'
+            "NpcMemoryService",
           );
           return false;
         }
@@ -394,7 +394,7 @@ export class NpcMemoryService {
             otherActorId,
             newSentiment: relationships[otherActorId]?.sentiment,
           },
-          'NpcMemoryService'
+          "NpcMemoryService",
         );
         return true; // Success
       } catch (error) {
@@ -414,7 +414,7 @@ export class NpcMemoryService {
             attempt: attempt + 1,
             error: formatError(error),
           },
-          'NpcMemoryService'
+          "NpcMemoryService",
         );
         return false;
       }
@@ -438,7 +438,7 @@ export class NpcMemoryService {
       posted?: boolean;
       active?: boolean;
       gameStartedAt?: Date;
-    } = {}
+    } = {},
   ): Promise<boolean> {
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       try {
@@ -459,7 +459,7 @@ export class NpcMemoryService {
           logger.warn(
             `Actor state not found for ${actorId}`,
             { actorId },
-            'NpcMemoryService'
+            "NpcMemoryService",
           );
           return false;
         }
@@ -491,11 +491,11 @@ export class NpcMemoryService {
               // Use game day calculation - reset when game day changes
               const currentGameDay = getGameDayNumber(
                 options.gameStartedAt,
-                now
+                now,
               );
               const lastResetGameDay = getGameDayNumber(
                 options.gameStartedAt,
-                resetAt
+                resetAt,
               );
               shouldReset = currentGameDay !== lastResetGameDay;
             } else {
@@ -520,8 +520,8 @@ export class NpcMemoryService {
           .where(
             and(
               eq(actorState.id, actorId),
-              eq(actorState.updatedAt, state.updatedAt)
-            )
+              eq(actorState.updatedAt, state.updatedAt),
+            ),
           )
           .returning({ id: actorState.id });
 
@@ -529,19 +529,19 @@ export class NpcMemoryService {
         if (result.length === 0) {
           if (attempt < MAX_RETRIES - 1) {
             // Exponential backoff before retry
-            const delay = RETRY_BASE_DELAY_MS * Math.pow(2, attempt);
+            const delay = RETRY_BASE_DELAY_MS * 2 ** attempt;
             await new Promise((resolve) => setTimeout(resolve, delay));
             logger.debug(
               `Activity state update conflict for ${actorId}, retrying (attempt ${attempt + 1})`,
               { actorId },
-              'NpcMemoryService'
+              "NpcMemoryService",
             );
             continue;
           }
           logger.warn(
             `Activity state update failed after ${MAX_RETRIES} attempts due to concurrent modification`,
             { actorId },
-            'NpcMemoryService'
+            "NpcMemoryService",
           );
           return false;
         }
@@ -559,7 +559,7 @@ export class NpcMemoryService {
               actorId,
               error: formatError(error),
             },
-            'NpcMemoryService'
+            "NpcMemoryService",
           );
           continue;
         }
@@ -572,7 +572,7 @@ export class NpcMemoryService {
             attempt: attempt + 1,
             isTransient,
           },
-          'NpcMemoryService'
+          "NpcMemoryService",
         );
         return false;
       }
@@ -591,7 +591,7 @@ export class NpcMemoryService {
    */
   async addMemoryBatch(
     actorIds: string[],
-    memory: Omit<NpcMemory, 'id'>
+    memory: Omit<NpcMemory, "id">,
   ): Promise<number> {
     if (actorIds.length === 0) {
       return 0;
@@ -607,18 +607,18 @@ export class NpcMemoryService {
     // Delegate to addMemory which has retry logic built in
     // Use Promise.allSettled for isolation between actors
     const updateResults = await Promise.allSettled(
-      actorIds.map((actorId) => this.addMemory(actorId, memory))
+      actorIds.map((actorId) => this.addMemory(actorId, memory)),
     );
 
     // Count successes - addMemory returns boolean, so check fulfilled results with true value
     const successCount = updateResults.filter(
-      (r) => r.status === 'fulfilled' && r.value === true
+      (r) => r.status === "fulfilled" && r.value === true,
     ).length;
 
     logger.debug(
       `Batch memory added to ${successCount}/${actorIds.length} actors`,
       { memoryType: memory.type, successCount, totalActors: actorIds.length },
-      'NpcMemoryService'
+      "NpcMemoryService",
     );
 
     return successCount;
@@ -631,7 +631,7 @@ export class NpcMemoryService {
   getRecentMemoriesFromRaw(
     rawMemories: unknown,
     actorId: string,
-    limit = 10
+    limit = 10,
   ): NpcMemory[] {
     const memories = parseMemoriesSafe(rawMemories, { actorId });
     return memories.slice(-limit).reverse();
@@ -642,7 +642,7 @@ export class NpcMemoryService {
    */
   formatMemoriesForPrompt(memories: NpcMemory[]): string {
     if (memories.length === 0) {
-      return '';
+      return "";
     }
 
     const lines = memories.map((m) => {
@@ -650,7 +650,7 @@ export class NpcMemoryService {
       return `- [${timeAgo}] ${m.summary}`;
     });
 
-    return `## Recent Memories\n${lines.join('\n')}`;
+    return `## Recent Memories\n${lines.join("\n")}`;
   }
 
   /**
@@ -674,7 +674,7 @@ export class NpcMemoryService {
       const absDiffMs = Math.abs(diffMs);
       // Treat small future offsets as "just now" (clock skew tolerance)
       if (absDiffMs < 60000) {
-        return 'just now';
+        return "just now";
       }
       const futureMins = Math.floor(absDiffMs / 60000);
       const futureHours = Math.floor(futureMins / 60);
@@ -702,7 +702,7 @@ export class NpcMemoryService {
     if (diffMins > 0) {
       return `${diffMins}m ago`;
     }
-    return 'just now';
+    return "just now";
   }
 }
 

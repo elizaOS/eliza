@@ -9,16 +9,16 @@
  * Admin only endpoint.
  */
 
-import { requireAdmin, successResponse, withErrorHandling } from '@feed/api';
-import { and, db, eq, users } from '@feed/db';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+import { requireAdmin, successResponse, withErrorHandling } from "@feed/api";
+import { and, db, eq, users } from "@feed/db";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   // Require admin authentication
   await requireAdmin(request);
 
-  logger.info('Admin list requested', {}, 'GET /api/admin/admins');
+  logger.info("Admin list requested", {}, "GET /api/admin/admins");
 
   // Get all admin users
   const admins = await db
@@ -42,7 +42,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     .where(and(eq(users.isAdmin, true), eq(users.isActor, false)))
     .orderBy(users.createdAt);
 
-  logger.info(`Found ${admins.length} admins`, {}, 'GET /api/admin/admins');
+  logger.info(`Found ${admins.length} admins`, {}, "GET /api/admin/admins");
 
   return successResponse({
     admins,

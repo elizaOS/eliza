@@ -1,4 +1,4 @@
-import { definePrompt } from '../define-prompt';
+import { definePrompt } from "../define-prompt";
 
 /**
  * Prompt for generating article cover images.
@@ -11,10 +11,10 @@ import { definePrompt } from '../define-prompt';
  * Returns image generation prompt for article cover.
  */
 export const articleCover = definePrompt({
-  id: 'article-cover',
-  version: '2.0.0',
-  category: 'image',
-  description: 'Generates satirical parody cover images for news articles',
+  id: "article-cover",
+  version: "2.0.0",
+  category: "image",
+  description: "Generates satirical parody cover images for news articles",
   template: `
 Create a SATIRICAL PARODY cover image for a futuristic news article from an absurdist AI-dominated world.
 
@@ -78,26 +78,26 @@ Create an image that is clearly SATIRICAL and UNIQUE - never something that coul
  * These inject absurdity and uniqueness to ensure parody aesthetic.
  */
 export const SURREAL_TWISTS = [
-  'Everything is slightly melting like a Salvador Dali painting',
-  'Small robots are watching from unexpected corners',
-  'The scene exists in a retrowave sunset void',
-  'Geometric shapes float menacingly in the background',
-  'The lighting suggests this takes place on a vaporwave grid',
-  'Tiny AI entities (glowing orbs with expressions) observe the scene',
-  'The perspective is slightly impossible, like an Escher drawing',
-  'Everything has a subtle holographic shimmer',
-  'The color palette is synthwave pink and cyan',
-  'Abstract glitch artifacts tear through parts of the image',
-  'The scene is reflected in infinite mirrors',
-  'Crystalline structures grow from unexpected surfaces',
-  'The atmosphere has a dreamy, ethereal fog',
-  'Neon wireframe overlays hint at a simulation',
-  'The scene exists inside a giant computer chip landscape',
-  'Oversized circuit board patterns texture the environment',
+  "Everything is slightly melting like a Salvador Dali painting",
+  "Small robots are watching from unexpected corners",
+  "The scene exists in a retrowave sunset void",
+  "Geometric shapes float menacingly in the background",
+  "The lighting suggests this takes place on a vaporwave grid",
+  "Tiny AI entities (glowing orbs with expressions) observe the scene",
+  "The perspective is slightly impossible, like an Escher drawing",
+  "Everything has a subtle holographic shimmer",
+  "The color palette is synthwave pink and cyan",
+  "Abstract glitch artifacts tear through parts of the image",
+  "The scene is reflected in infinite mirrors",
+  "Crystalline structures grow from unexpected surfaces",
+  "The atmosphere has a dreamy, ethereal fog",
+  "Neon wireframe overlays hint at a simulation",
+  "The scene exists inside a giant computer chip landscape",
+  "Oversized circuit board patterns texture the environment",
   "Everything casts shadows that don't quite match the objects",
-  'The sky is a gradient of impossible colors',
-  'Floating mathematical symbols drift like particles',
-  'The scene has a fisheye lens distortion effect',
+  "The sky is a gradient of impossible colors",
+  "Floating mathematical symbols drift like particles",
+  "The scene has a fisheye lens distortion effect",
 ] as const;
 
 /**

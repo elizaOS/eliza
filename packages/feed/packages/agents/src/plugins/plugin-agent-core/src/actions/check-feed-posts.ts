@@ -5,8 +5,6 @@
  * Similar to what users see on the /feed page.
  */
 
-import type { MessageTag } from '@feed/shared';
-import { getTimeAgo } from '@feed/shared';
 import type {
   Action,
   ActionResult,
@@ -14,8 +12,10 @@ import type {
   IAgentRuntime,
   Memory,
   State,
-} from '@elizaos/core';
-import { logger } from '../../../../shared/logger';
+} from "@elizaos/core";
+import type { MessageTag } from "@feed/shared";
+import { getTimeAgo } from "@feed/shared";
+import { logger } from "../../../../shared/logger";
 
 /** Extended ActionResult with optional tag for UI */
 interface ActionResultWithTag extends ActionResult {
@@ -44,47 +44,47 @@ interface FeedApiResponse {
 }
 
 export const checkFeedPostsAction: Action = {
-  name: 'CHECK_FEED_POSTS',
+  name: "CHECK_FEED_POSTS",
   description:
-    'Check the latest posts from the global feed. Returns recent posts from all users on the platform.',
+    "Check the latest posts from the global feed. Returns recent posts from all users on the platform.",
 
   parameters: {
     limit: {
-      type: 'number',
-      description: 'Number of posts to retrieve (default: 10, max: 50)',
+      type: "number",
+      description: "Number of posts to retrieve (default: 10, max: 50)",
       required: false,
     },
-  } as unknown as Action['parameters'],
+  } as unknown as Action["parameters"],
 
   examples: [
     [
       {
-        name: 'user',
+        name: "user",
         content: { text: "What's happening on the feed?" },
       },
       {
-        name: 'assistant',
-        content: { text: 'Let me check the latest posts on the feed...' },
+        name: "assistant",
+        content: { text: "Let me check the latest posts on the feed..." },
       },
     ],
     [
       {
-        name: 'user',
-        content: { text: 'Show me the latest 5 posts' },
+        name: "user",
+        content: { text: "Show me the latest 5 posts" },
       },
       {
-        name: 'assistant',
+        name: "assistant",
         content: { text: "I'll fetch the 5 most recent posts for you." },
       },
     ],
     [
       {
-        name: 'user',
+        name: "user",
         content: { text: "What's trending right now?" },
       },
       {
-        name: 'assistant',
-        content: { text: 'Let me check the recent activity on the feed...' },
+        name: "assistant",
+        content: { text: "Let me check the recent activity on the feed..." },
       },
     ],
   ],
@@ -92,7 +92,7 @@ export const checkFeedPostsAction: Action = {
   validate: async (
     _runtime: IAgentRuntime,
     _message: Memory,
-    _state?: State
+    _state?: State,
   ): Promise<boolean> => true,
 
   handler: async (
@@ -100,7 +100,7 @@ export const checkFeedPostsAction: Action = {
     _message: Memory,
     state?: State,
     _options?: Record<string, unknown>,
-    _callback?: HandlerCallback
+    _callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const actionParams = state?.data?.actionParams as
       | { limit?: number }
@@ -112,7 +112,7 @@ export const checkFeedPostsAction: Action = {
     try {
       // Fetch posts from the API with timeout to prevent hanging
       const baseUrl =
-        process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+        process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
@@ -135,8 +135,8 @@ export const checkFeedPostsAction: Action = {
       if (!data.success || !data.posts) {
         return {
           success: false,
-          text: 'Failed to retrieve feed posts.',
-          error: 'Invalid API response',
+          text: "Failed to retrieve feed posts.",
+          error: "Invalid API response",
         };
       }
 
@@ -145,7 +145,7 @@ export const checkFeedPostsAction: Action = {
       if (feedPosts.length === 0) {
         return {
           success: true,
-          text: 'The feed is empty. No posts yet.',
+          text: "The feed is empty. No posts yet.",
           data: { posts: [], count: 0 },
           values: { count: 0 },
         };
@@ -156,7 +156,7 @@ export const checkFeedPostsAction: Action = {
         index: i + 1,
         id: post.id,
         content: post.content,
-        authorName: post.authorName || post.authorUsername || 'Unknown',
+        authorName: post.authorName || post.authorUsername || "Unknown",
         authorId: post.authorId,
         authorProfileImageUrl: post.authorProfileImageUrl,
         timeAgo: getTimeAgo(new Date(post.timestamp)),
@@ -168,7 +168,7 @@ export const checkFeedPostsAction: Action = {
       logger.info(
         `[CHECK_FEED_POSTS] Retrieved ${feedPosts.length} posts from feed`,
         undefined,
-        'CheckFeedPosts'
+        "CheckFeedPosts",
       );
 
       // Build a summary text
@@ -176,9 +176,9 @@ export const checkFeedPostsAction: Action = {
         .slice(0, 5)
         .map(
           (p) =>
-            `${p.index}. @${p.authorName} (${p.timeAgo}): "${p.content.substring(0, 80)}${p.content.length > 80 ? '...' : ''}"`
+            `${p.index}. @${p.authorName} (${p.timeAgo}): "${p.content.substring(0, 80)}${p.content.length > 80 ? "..." : ""}"`,
         )
-        .join('\n');
+        .join("\n");
 
       return {
         success: true,
@@ -202,9 +202,9 @@ export const checkFeedPostsAction: Action = {
         },
         // Tag for sidebar display
         tag: {
-          type: 'feed',
-          label: 'Feed',
-          icon: 'Newspaper',
+          type: "feed",
+          label: "Feed",
+          icon: "Newspaper",
           data: {
             posts: formattedPosts,
             count: feedPosts.length,
@@ -213,8 +213,8 @@ export const checkFeedPostsAction: Action = {
         },
       } as ActionResultWithTag;
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      logger.error('[CHECK_FEED_POSTS] Error:', errorMsg);
+      const errorMsg = error instanceof Error ? error.message : "Unknown error";
+      logger.error("[CHECK_FEED_POSTS] Error:", errorMsg);
 
       return {
         success: false,

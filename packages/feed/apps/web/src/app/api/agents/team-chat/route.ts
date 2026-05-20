@@ -58,8 +58,8 @@
  *         description: Unauthorized
  */
 
-import { teamChatService } from '@feed/agents';
-import { authenticateUser, withErrorHandling } from '@feed/api';
+import { teamChatService } from "@feed/agents";
+import { authenticateUser, withErrorHandling } from "@feed/api";
 import {
   chatParticipants,
   chats,
@@ -71,10 +71,10 @@ import {
   messages,
   userAgentConfigs,
   withTransaction,
-} from '@feed/db';
-import { logger, toISO } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@feed/db";
+import { logger, toISO } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 /**
  * GET /api/agents/team-chat
@@ -84,24 +84,24 @@ export const GET = withErrorHandling(async function GET(req: NextRequest) {
   const user = await authenticateUser(req);
 
   const teamChatWithMembers = await teamChatService.getTeamChatWithMembers(
-    user.id
+    user.id,
   );
 
   if (!teamChatWithMembers) {
     return NextResponse.json(
       {
         success: false,
-        error: 'No team chat exists',
-        message: 'Create your first agent to initialize your Agents chat.',
+        error: "No team chat exists",
+        message: "Create your first agent to initialize your Agents chat.",
       },
-      { status: 404 }
+      { status: 404 },
     );
   }
 
   logger.info(
     `Team chat retrieved for user ${user.id}`,
     { chatId: teamChatWithMembers.chatId },
-    'TeamChatAPI'
+    "TeamChatAPI",
   );
 
   // Fetch modelTier for each agent from userAgentConfigs
@@ -119,7 +119,7 @@ export const GET = withErrorHandling(async function GET(req: NextRequest) {
 
   // Create a map for quick lookup
   const modelTierMap = new Map(
-    agentConfigs.map((c) => [c.userId, c.modelTier])
+    agentConfigs.map((c) => [c.userId, c.modelTier]),
   );
 
   return NextResponse.json({
@@ -136,7 +136,7 @@ export const GET = withErrorHandling(async function GET(req: NextRequest) {
         displayName: agent.displayName,
         profileImageUrl: agent.profileImageUrl,
         isAgent: agent.isAgent,
-        modelTier: modelTierMap.get(agent.id) ?? 'free',
+        modelTier: modelTierMap.get(agent.id) ?? "free",
         virtualBalance: Number(agent.virtualBalance ?? 0),
       })),
       agentCount: teamChatWithMembers.agents.length,
@@ -161,13 +161,13 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
 
   const agents = await teamChatService.getTeamChatAgents(
     user.id,
-    teamChat.groupId
+    teamChat.groupId,
   );
 
   logger.info(
     `Team chat ensured for user ${user.id}`,
     { chatId: teamChat.chatId, syncedAgents: syncedCount },
-    'TeamChatAPI'
+    "TeamChatAPI",
   );
 
   // Fetch modelTier for each agent from userAgentConfigs
@@ -185,7 +185,7 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
 
   // Create a map for quick lookup
   const modelTierMap = new Map(
-    agentConfigs.map((c) => [c.userId, c.modelTier])
+    agentConfigs.map((c) => [c.userId, c.modelTier]),
   );
 
   return NextResponse.json({
@@ -202,7 +202,7 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
         displayName: agent.displayName,
         profileImageUrl: agent.profileImageUrl,
         isAgent: agent.isAgent,
-        modelTier: modelTierMap.get(agent.id) ?? 'free',
+        modelTier: modelTierMap.get(agent.id) ?? "free",
         virtualBalance: Number(agent.virtualBalance ?? 0),
       })),
       agentCount: agents.length,
@@ -232,13 +232,13 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
  * visits Agents again or when an agent is created.
  */
 export const DELETE = withErrorHandling(async function DELETE(
-  req: NextRequest
+  req: NextRequest,
 ) {
   // Gate destructive endpoint to development only
-  if (process.env.NODE_ENV === 'production') {
+  if (process.env.NODE_ENV === "production") {
     return NextResponse.json(
-      { success: false, error: 'This endpoint is disabled in production' },
-      { status: 403 }
+      { success: false, error: "This endpoint is disabled in production" },
+      { status: 403 },
     );
   }
 
@@ -248,15 +248,15 @@ export const DELETE = withErrorHandling(async function DELETE(
 
   if (!teamChat) {
     return NextResponse.json(
-      { success: false, error: 'No team chat exists to delete' },
-      { status: 404 }
+      { success: false, error: "No team chat exists to delete" },
+      { status: 404 },
     );
   }
 
   logger.warn(
     `Deleting team chat (destructive operation)`,
     { chatId: teamChat.chatId, groupId: teamChat.groupId },
-    'TeamChatAPI'
+    "TeamChatAPI",
   );
 
   // Delete all related data in a transaction for atomicity
@@ -290,11 +290,11 @@ export const DELETE = withErrorHandling(async function DELETE(
   logger.info(
     `Team chat deleted`,
     { chatId: teamChat.chatId, groupId: teamChat.groupId },
-    'TeamChatAPI'
+    "TeamChatAPI",
   );
 
   return NextResponse.json({
     success: true,
-    message: 'Team chat deleted. Visit Agents again to create a fresh one.',
+    message: "Team chat deleted. Visit Agents again to create a fresh one.",
   });
 });

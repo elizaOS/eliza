@@ -4,13 +4,6 @@
  * (Same pattern as AutonomousTradingService)
  */
 
-import { PerpDbAdapter, PerpMarketService } from '@feed/core/markets/perps';
-import { and, db, eq, isNull, perpPositions } from '@feed/db';
-import {
-  createPerpPriceImpactPort,
-  FEE_CONFIG,
-  WalletService,
-} from '@feed/engine';
 import type {
   Action,
   ActionResult,
@@ -18,47 +11,54 @@ import type {
   IAgentRuntime,
   Memory,
   State,
-} from '@elizaos/core';
-import { AgentPnLService } from '../../../../services/AgentPnLService';
-import { logger } from '../../../../shared/logger';
+} from "@elizaos/core";
+import { PerpDbAdapter, PerpMarketService } from "@feed/core/markets/perps";
+import { and, db, eq, isNull, perpPositions } from "@feed/db";
+import {
+  createPerpPriceImpactPort,
+  FEE_CONFIG,
+  WalletService,
+} from "@feed/engine";
+import { AgentPnLService } from "../../../../services/AgentPnLService";
+import { logger } from "../../../../shared/logger";
 
 const agentPnLService = new AgentPnLService();
 
 export const closePerpAction: Action = {
-  name: 'CLOSE_PERP',
+  name: "CLOSE_PERP",
   description:
-    'Close YOUR perpetual position (full or partial). IMPORTANT: Call CHECK_PNL first to see your open positions and get the position ID. Optionally specify amount for partial close.',
+    "Close YOUR perpetual position (full or partial). IMPORTANT: Call CHECK_PNL first to see your open positions and get the position ID. Optionally specify amount for partial close.",
   parameters: {
     positionId: {
-      type: 'string',
-      description: 'The ID of the perpetual position to close',
+      type: "string",
+      description: "The ID of the perpetual position to close",
       required: true,
     },
     amount: {
-      type: 'number',
+      type: "number",
       description:
-        'Dollar amount of position to close. If not specified, closes the entire position.',
+        "Dollar amount of position to close. If not specified, closes the entire position.",
       required: false,
     },
-  } as unknown as Action['parameters'],
+  } as unknown as Action["parameters"],
   examples: [
     [
       {
-        name: 'user',
-        content: { text: 'Close my NVDA position' },
+        name: "user",
+        content: { text: "Close my NVDA position" },
       },
       {
-        name: 'assistant',
-        content: { text: 'Closing your NVDA position now...' },
+        name: "assistant",
+        content: { text: "Closing your NVDA position now..." },
       },
     ],
     [
       {
-        name: 'user',
-        content: { text: 'Exit my Tesla short' },
+        name: "user",
+        content: { text: "Exit my Tesla short" },
       },
       {
-        name: 'assistant',
+        name: "assistant",
         content: { text: "I'll close that position for you." },
       },
     ],
@@ -67,7 +67,7 @@ export const closePerpAction: Action = {
   validate: async (
     _runtime: IAgentRuntime,
     _message: Memory,
-    _state?: State
+    _state?: State,
   ): Promise<boolean> => true,
 
   handler: async (
@@ -75,7 +75,7 @@ export const closePerpAction: Action = {
     _message: Memory,
     state?: State,
     _options?: Record<string, unknown>,
-    _callback?: HandlerCallback
+    _callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const agentUserId = runtime.agentId;
 
@@ -90,8 +90,8 @@ export const closePerpAction: Action = {
     if (!positionId) {
       return {
         success: false,
-        text: 'Missing positionId. Call CHECK_PNL first to get position IDs.',
-        error: 'Missing positionId',
+        text: "Missing positionId. Call CHECK_PNL first to get position IDs.",
+        error: "Missing positionId",
       };
     }
 
@@ -104,8 +104,8 @@ export const closePerpAction: Action = {
           and(
             eq(perpPositions.id, positionId),
             eq(perpPositions.userId, agentUserId),
-            isNull(perpPositions.closedAt)
-          )
+            isNull(perpPositions.closedAt),
+          ),
         )
         .limit(1);
 
@@ -113,7 +113,7 @@ export const closePerpAction: Action = {
         return {
           success: false,
           text: `Position not found. Call CHECK_PNL first to get valid position IDs.`,
-          error: 'Position not found',
+          error: "Position not found",
         };
       }
 
@@ -136,8 +136,8 @@ export const closePerpAction: Action = {
             userId,
             amount,
             reason,
-            description ?? '',
-            relatedId
+            description ?? "",
+            relatedId,
           );
         },
         credit: async ({
@@ -157,8 +157,8 @@ export const closePerpAction: Action = {
             userId,
             amount,
             reason,
-            description ?? '',
-            relatedId
+            description ?? "",
+            relatedId,
           );
         },
         recordPnL: async ({
@@ -213,18 +213,18 @@ export const closePerpAction: Action = {
       await agentPnLService.recordTrade({
         agentId: agentUserId,
         userId: agentUserId,
-        marketType: 'perp',
+        marketType: "perp",
         ticker: position.ticker,
-        action: 'close',
-        side: position.side as 'long' | 'short',
+        action: "close",
+        side: position.side as "long" | "short",
         amount: closedAmount,
         price: exitPrice,
         pnl,
         reasoning:
-          (state?.data?.thought as string) || 'Chat-initiated perp close',
+          (state?.data?.thought as string) || "Chat-initiated perp close",
       });
 
-      logger.info('[CLOSE_PERP] Position closed', {
+      logger.info("[CLOSE_PERP] Position closed", {
         agentUserId,
         positionId,
         ticker: position.ticker,
@@ -264,8 +264,8 @@ export const closePerpAction: Action = {
         },
       };
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      logger.error('[CLOSE_PERP] Error:', errorMsg);
+      const errorMsg = error instanceof Error ? error.message : "Unknown error";
+      logger.error("[CLOSE_PERP] Error:", errorMsg);
       return {
         success: false,
         text: `Failed to close position: ${errorMsg}`,

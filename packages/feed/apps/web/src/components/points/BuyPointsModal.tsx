@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { cn, logger } from '@feed/shared';
+import { cn, logger } from "@feed/shared";
 
 import {
   AlertCircle,
@@ -8,12 +8,12 @@ import {
   CreditCard,
   DollarSign,
   X,
-} from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
-import { toast } from 'sonner';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { useAuth } from '@/hooks/useAuth';
-import { isStripeEnabled } from '@/lib/stripe';
+} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { useAuth } from "@/hooks/useAuth";
+import { isStripeEnabled } from "@/lib/stripe";
 
 /**
  * Trading balance purchase modal — Stripe card payment only.
@@ -27,17 +27,17 @@ interface BuyPointsModalProps {
   onSuccess?: () => void;
 }
 
-type PaymentStep = 'input' | 'redirecting' | 'error';
+type PaymentStep = "input" | "redirecting" | "error";
 
 /** Abort requests that take longer than this. */
 const API_FETCH_TIMEOUT_MS = 45_000;
 const API_FETCH_TIMEOUT_MESSAGE =
-  'Request timed out. Check your connection and try again in a moment.';
+  "Request timed out. Check your connection and try again in a moment.";
 
 function isAbortLikeError(error: unknown): error is Error {
   return (
     error instanceof Error &&
-    (error.name === 'AbortError' || error.name === 'TimeoutError')
+    (error.name === "AbortError" || error.name === "TimeoutError")
   );
 }
 
@@ -49,8 +49,8 @@ export function BuyPointsModal({
   const { user } = useAuth();
   const { getAccessToken } = useAuth();
 
-  const [amountUSD, setAmountUSD] = useState('10');
-  const [step, setStep] = useState<PaymentStep>('input');
+  const [amountUSD, setAmountUSD] = useState("10");
+  const [step, setStep] = useState<PaymentStep>("input");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -69,8 +69,8 @@ export function BuyPointsModal({
     if (!isOpen) {
       const timeoutId = setTimeout(() => {
         if (isMountedRef.current) {
-          setAmountUSD('10');
-          setStep('input');
+          setAmountUSD("10");
+          setStep("input");
           setLoading(false);
           setError(null);
         }
@@ -83,28 +83,28 @@ export function BuyPointsModal({
   // Handle escape key and body scroll lock
   useEffect(() => {
     if (!isOpen) {
-      document.body.style.overflow = '';
+      document.body.style.overflow = "";
       return;
     }
 
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !loading && step === 'input') {
+      if (e.key === "Escape" && !loading && step === "input") {
         onClose();
       }
     };
 
-    document.addEventListener('keydown', handleEscape);
-    document.body.style.overflow = 'hidden';
+    document.addEventListener("keydown", handleEscape);
+    document.body.style.overflow = "hidden";
 
     return () => {
-      document.removeEventListener('keydown', handleEscape);
-      document.body.style.overflow = '';
+      document.removeEventListener("keydown", handleEscape);
+      document.body.style.overflow = "";
     };
   }, [isOpen, onClose, loading, step]);
 
   useEffect(() => {
     return () => {
-      document.body.style.overflow = '';
+      document.body.style.overflow = "";
     };
   }, []);
 
@@ -114,23 +114,23 @@ export function BuyPointsModal({
   const balanceUnits = Math.floor(amountNum * 100);
 
   const handleClose = () => {
-    if (loading || step === 'redirecting') return;
+    if (loading || step === "redirecting") return;
     onClose();
   };
 
   const handleStripeCheckout = async () => {
     if (!user) {
-      toast.error('Please sign in to continue');
+      toast.error("Please sign in to continue");
       return;
     }
 
     if (amountNum < 1) {
-      toast.error('Minimum purchase is $1');
+      toast.error("Minimum purchase is $1");
       return;
     }
 
     if (amountNum > 1000) {
-      toast.error('Maximum purchase is $1000');
+      toast.error("Maximum purchase is $1000");
       return;
     }
 
@@ -141,17 +141,17 @@ export function BuyPointsModal({
       const token = await getAccessToken();
 
       if (!token) {
-        logger.error('Authentication required', undefined, 'BuyPointsModal');
-        setError('Authentication required');
-        setStep('error');
-        toast.error('Please sign in to continue');
+        logger.error("Authentication required", undefined, "BuyPointsModal");
+        setError("Authentication required");
+        setStep("error");
+        toast.error("Please sign in to continue");
         return;
       }
 
-      const response = await fetch('/api/stripe/checkout/session', {
-        method: 'POST',
+      const response = await fetch("/api/stripe/checkout/session", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ amountUSD: amountNum }),
@@ -161,37 +161,37 @@ export function BuyPointsModal({
       const data = await response.json();
 
       if (!response.ok || !data.success) {
-        const errorMessage = data.error || 'Failed to create checkout session';
+        const errorMessage = data.error || "Failed to create checkout session";
         logger.error(
-          'Failed to create Stripe checkout',
+          "Failed to create Stripe checkout",
           { error: errorMessage },
-          'BuyPointsModal'
+          "BuyPointsModal",
         );
         setError(errorMessage);
-        setStep('error');
-        toast.error('Failed to start checkout');
+        setStep("error");
+        toast.error("Failed to start checkout");
         return;
       }
 
-      setStep('redirecting');
+      setStep("redirecting");
       window.location.href = data.url;
     } catch (err) {
       if (isAbortLikeError(err)) {
-        logger.error('Stripe checkout timed out', undefined, 'BuyPointsModal');
+        logger.error("Stripe checkout timed out", undefined, "BuyPointsModal");
         setError(API_FETCH_TIMEOUT_MESSAGE);
-        setStep('error');
+        setStep("error");
         toast.error(API_FETCH_TIMEOUT_MESSAGE);
         return;
       }
-      const errorMessage = err instanceof Error ? err.message : 'Network error';
+      const errorMessage = err instanceof Error ? err.message : "Network error";
       logger.error(
-        'Stripe checkout failed',
+        "Stripe checkout failed",
         { error: errorMessage },
-        'BuyPointsModal'
+        "BuyPointsModal",
       );
       setError(errorMessage);
-      setStep('error');
-      toast.error('Failed to connect to payment server');
+      setStep("error");
+      toast.error("Failed to connect to payment server");
     } finally {
       if (isMountedRef.current) {
         setLoading(false);
@@ -201,7 +201,7 @@ export function BuyPointsModal({
 
   const renderContent = () => {
     switch (step) {
-      case 'input':
+      case "input":
         return (
           <div className="flex h-full flex-col">
             <div className="flex-1 space-y-5">
@@ -224,13 +224,13 @@ export function BuyPointsModal({
                     pattern="[0-9]*"
                     value={amountUSD}
                     onChange={(e) => {
-                      const sanitized = e.target.value.replace(/[^0-9]/g, '');
-                      const noLeadingZeros = sanitized.replace(/^0+/, '') || '';
+                      const sanitized = e.target.value.replace(/[^0-9]/g, "");
+                      const noLeadingZeros = sanitized.replace(/^0+/, "") || "";
                       const num = parseInt(noLeadingZeros, 10);
-                      if (noLeadingZeros === '' || isNaN(num)) {
-                        setAmountUSD('');
+                      if (noLeadingZeros === "" || Number.isNaN(num)) {
+                        setAmountUSD("");
                       } else if (num > 1000) {
-                        setAmountUSD('1000');
+                        setAmountUSD("1000");
                       } else {
                         setAmountUSD(noLeadingZeros);
                       }
@@ -247,10 +247,10 @@ export function BuyPointsModal({
                       key={amt}
                       onClick={() => setAmountUSD(amt.toString())}
                       className={cn(
-                        'rounded-lg border-2 py-2.5 font-medium transition-all',
+                        "rounded-lg border-2 py-2.5 font-medium transition-all",
                         amountNum === amt
-                          ? 'border-primary bg-primary text-primary-foreground'
-                          : 'border-border hover:border-muted-foreground/50'
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-border hover:border-muted-foreground/50",
                       )}
                       disabled={loading}
                     >
@@ -331,18 +331,18 @@ export function BuyPointsModal({
                   !stripeAvailable
                 }
                 className={cn(
-                  'flex flex-1 items-center justify-center gap-2 rounded-lg py-3 font-medium transition-all',
-                  'bg-primary text-primary-foreground hover:bg-primary/90',
-                  'disabled:cursor-not-allowed disabled:opacity-50'
+                  "flex flex-1 items-center justify-center gap-2 rounded-lg py-3 font-medium transition-all",
+                  "bg-primary text-primary-foreground hover:bg-primary/90",
+                  "disabled:cursor-not-allowed disabled:opacity-50",
                 )}
               >
-                {loading ? 'Processing...' : 'Fund Balance'}
+                {loading ? "Processing..." : "Fund Balance"}
               </button>
             </div>
           </div>
         );
 
-      case 'redirecting':
+      case "redirecting":
         return (
           <div className="flex flex-col items-center justify-center py-12">
             <div className="mb-6">
@@ -358,7 +358,7 @@ export function BuyPointsModal({
           </div>
         );
 
-      case 'error':
+      case "error":
         return (
           <div
             data-testid="payment-error"
@@ -374,7 +374,7 @@ export function BuyPointsModal({
               data-testid="payment-error-message"
               className="mb-8 text-center text-muted-foreground text-sm"
             >
-              {error || 'An error occurred during payment'}
+              {error || "An error occurred during payment"}
             </p>
             <div className="flex w-full gap-3">
               <button
@@ -385,7 +385,7 @@ export function BuyPointsModal({
               </button>
               <button
                 onClick={() => {
-                  setStep('input');
+                  setStep("input");
                   setError(null);
                 }}
                 className="flex-1 rounded-lg bg-primary py-3 font-medium text-primary-foreground transition-colors hover:bg-primary/90"
@@ -425,7 +425,7 @@ export function BuyPointsModal({
             <button
               onClick={handleClose}
               className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              disabled={loading || step === 'redirecting'}
+              disabled={loading || step === "redirecting"}
               aria-label="Close"
             >
               <X className="h-5 w-5" />

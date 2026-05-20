@@ -10,7 +10,7 @@
  * @packageDocumentation
  */
 
-import { broadcastAgentActivity, type TradeActivityData } from '@feed/api';
+import { broadcastAgentActivity, type TradeActivityData } from "@feed/api";
 import {
   agentLogs,
   agentTrades,
@@ -21,11 +21,11 @@ import {
   markets,
   users,
   withTransaction,
-} from '@feed/db';
-import { StaticDataRegistry } from '@feed/engine';
-import { v4 as uuidv4 } from 'uuid';
-import { logger } from '../shared/logger';
-import { generateSnowflakeId } from '../shared/snowflake';
+} from "@feed/db";
+import { StaticDataRegistry } from "@feed/engine";
+import { v4 as uuidv4 } from "uuid";
+import { logger } from "../shared/logger";
+import { generateSnowflakeId } from "../shared/snowflake";
 
 /**
  * Service for agent profit and loss tracking
@@ -50,11 +50,11 @@ export class AgentPnLService {
   async recordTrade(params: {
     agentId: string;
     userId: string;
-    marketType: 'prediction' | 'perp';
+    marketType: "prediction" | "perp";
     marketId?: string;
     ticker?: string;
-    action: 'open' | 'close';
-    side?: 'long' | 'short' | 'yes' | 'no';
+    action: "open" | "close";
+    side?: "long" | "short" | "yes" | "no";
     amount: number;
     price: number;
     pnl?: number;
@@ -87,14 +87,14 @@ export class AgentPnLService {
       logger.warn(
         `Agent ${agentId} not found in database when recording trade - broadcast will use fallback name`,
         undefined,
-        'AgentPnLService'
+        "AgentPnLService",
       );
     }
-    const agentName = agentResult[0]?.displayName ?? 'Agent';
+    const agentName = agentResult[0]?.displayName ?? "Agent";
 
     // Fetch market question for prediction trades (for SSE broadcast enrichment)
     let marketQuestion: string | undefined;
-    if (marketType === 'prediction' && marketId) {
+    if (marketType === "prediction" && marketId) {
       const marketResult = await db
         .select({ question: markets.question })
         .from(markets)
@@ -123,9 +123,9 @@ export class AgentPnLService {
       await tx.insert(agentLogs).values({
         id: await generateSnowflakeId(),
         agentUserId: agentId,
-        type: 'trade',
-        level: 'info',
-        message: `Trade executed: ${action} ${side || ''} ${amount} @ ${price}`,
+        type: "trade",
+        level: "info",
+        message: `Trade executed: ${action} ${side || ""} ${amount} @ ${price}`,
         thinking: reasoning ?? null,
         metadata: {
           marketType,
@@ -139,7 +139,7 @@ export class AgentPnLService {
     logger.info(
       `Trade recorded for agent ${agentId}`,
       undefined,
-      'AgentPnLService'
+      "AgentPnLService",
     );
 
     // Broadcast activity to SSE channel for real-time UI updates (only for user agents).
@@ -163,14 +163,14 @@ export class AgentPnLService {
         reasoning: reasoning ?? null,
       };
 
-      broadcastAgentActivity(agentId, agentName, 'trade', activityData).catch(
+      broadcastAgentActivity(agentId, agentName, "trade", activityData).catch(
         (error: Error) => {
           logger.warn(
             `Failed to broadcast agent activity: ${error.message}`,
             { agentId, tradeId },
-            'AgentPnLService'
+            "AgentPnLService",
           );
-        }
+        },
       );
     }
   }

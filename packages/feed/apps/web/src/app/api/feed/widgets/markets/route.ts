@@ -44,26 +44,26 @@ import {
   getCacheOrFetch,
   optionalAuth,
   withErrorHandling,
-} from '@feed/api';
-import { asPublic, asUser, getDbInstance } from '@feed/db';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@feed/api";
+import { asPublic, asUser, getDbInstance } from "@feed/db";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 // Disable static generation for this route - it requires database access
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 // Cache config (60 seconds)
 export const revalidate = 60;
 
 export const GET = withErrorHandling(async function GET(request: NextRequest) {
   // Optional auth - markets are public but RLS still applies
   const authUser: AuthenticatedUser | null = await optionalAuth(request).catch(
-    () => null
+    () => null,
   );
 
   // For unauthenticated users, use cached widget data
-  if (!authUser || !authUser.userId) {
+  if (!authUser?.userId) {
     const formattedMarkets = await getCacheOrFetch(
-      'markets-widget-v2', // v2 to invalidate old cache without price changes
+      "markets-widget-v2", // v2 to invalidate old cache without price changes
       async () => {
         const questions = await getDbInstance().getActiveQuestions();
 
@@ -78,7 +78,7 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
               id: { in: marketIds },
             },
             orderBy: {
-              createdAt: 'desc',
+              createdAt: "desc",
             },
           });
         });
@@ -96,7 +96,7 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
               },
             },
             orderBy: {
-              createdAt: 'asc',
+              createdAt: "asc",
             },
           });
         });
@@ -106,7 +106,7 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
 
         for (const marketId of marketIds) {
           const marketPositions = recentPositions.filter(
-            (p) => p.marketId === marketId
+            (p) => p.marketId === marketId,
           );
           if (marketPositions.length > 0) {
             // Calculate initial and final prices from positions
@@ -148,7 +148,7 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
         return (
           questions
             // Don't filter out questions without markets - show all active questions
-            .filter((q) => q.status === 'active')
+            .filter((q) => q.status === "active")
             .map((q) => {
               const market = marketMap.get(String(q.id));
               const yesShares = market ? Number(market.yesShares) : 0;
@@ -181,11 +181,11 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
 
               const aRecency = Math.max(
                 0,
-                1 - (aTime - now) / (30 * 24 * 60 * 60 * 1000)
+                1 - (aTime - now) / (30 * 24 * 60 * 60 * 1000),
               );
               const bRecency = Math.max(
                 0,
-                1 - (bTime - now) / (30 * 24 * 60 * 60 * 1000)
+                1 - (bTime - now) / (30 * 24 * 60 * 60 * 1000),
               );
 
               const aScore = a.volume * 0.7 + aRecency * 1000 * 0.3;
@@ -199,7 +199,7 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
       {
         namespace: CACHE_KEYS.WIDGET,
         ttl: DEFAULT_TTLS.WIDGET,
-      }
+      },
     );
 
     return NextResponse.json({
@@ -225,7 +225,7 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
         id: { in: marketIds },
       },
       orderBy: {
-        createdAt: 'desc',
+        createdAt: "desc",
       },
     });
   });
@@ -243,7 +243,7 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
         },
       },
       orderBy: {
-        createdAt: 'asc',
+        createdAt: "asc",
       },
     });
   });
@@ -253,7 +253,7 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
 
   for (const marketId of marketIds) {
     const marketPositions = recentPositions.filter(
-      (p) => p.marketId === marketId
+      (p) => p.marketId === marketId,
     );
     if (marketPositions.length > 0) {
       // Calculate initial and final prices from positions
@@ -294,7 +294,7 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
 
   const formattedMarkets = questions
     // Don't filter out questions without markets - show all active questions
-    .filter((q) => q.status === 'active')
+    .filter((q) => q.status === "active")
     .map((q) => {
       const market = marketMap.get(String(q.id));
       const yesShares = market ? Number(market.yesShares) : 0;
@@ -323,11 +323,11 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
 
       const aRecency = Math.max(
         0,
-        1 - (aTime - now) / (30 * 24 * 60 * 60 * 1000)
+        1 - (aTime - now) / (30 * 24 * 60 * 60 * 1000),
       );
       const bRecency = Math.max(
         0,
-        1 - (bTime - now) / (30 * 24 * 60 * 60 * 1000)
+        1 - (bTime - now) / (30 * 24 * 60 * 60 * 1000),
       );
 
       const aScore = a.volume * 0.7 + aRecency * 1000 * 0.3;

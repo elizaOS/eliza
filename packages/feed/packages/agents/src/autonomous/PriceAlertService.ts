@@ -22,12 +22,12 @@ import {
   sql,
   userAgentConfigs,
   users,
-} from '@feed/db';
-import type { PriceAlert } from '@feed/db/schema';
+} from "@feed/db";
+import type { PriceAlert } from "@feed/db/schema";
 // Import TeamChatService to resolve the team chat for owner alerts
-import { teamChatService } from '../services/TeamChatService';
-import { logger } from '../shared/logger';
-import { executeDirectMessage } from './DirectExecutors';
+import { teamChatService } from "../services/TeamChatService";
+import { logger } from "../shared/logger";
+import { executeDirectMessage } from "./DirectExecutors";
 
 /**
  * Price Alert Service
@@ -70,8 +70,8 @@ export class PriceAlertService {
 
       // Check threshold
       const triggered =
-        (alert.condition === 'below' && currentPrice < alert.threshold) ||
-        (alert.condition === 'above' && currentPrice > alert.threshold);
+        (alert.condition === "below" && currentPrice < alert.threshold) ||
+        (alert.condition === "above" && currentPrice > alert.threshold);
 
       if (!triggered) continue;
 
@@ -79,7 +79,7 @@ export class PriceAlertService {
       const message = this.formatAlertMessage(alert, currentPrice);
       let deliveryChatId: string | undefined;
 
-      if (alert.deliveryChannel === 'group' && alert.deliveryChatId) {
+      if (alert.deliveryChannel === "group" && alert.deliveryChatId) {
         deliveryChatId = alert.deliveryChatId;
       } else {
         // Default: deliver to team chat (agent→owner standard channel)
@@ -90,7 +90,7 @@ export class PriceAlertService {
         logger.warn(
           `[PriceAlert] No delivery channel found for alert ${alert.id}`,
           { agentUserId, tokenSymbol: alert.tokenSymbol },
-          'PriceAlertService'
+          "PriceAlertService",
         );
         continue;
       }
@@ -107,7 +107,7 @@ export class PriceAlertService {
         logger.info(
           `[PriceAlert] Alert triggered: ${alert.tokenSymbol} ${alert.condition} ${alert.threshold} (current: ${currentPrice})`,
           { agentUserId, alertId: alert.id, chatId: deliveryChatId },
-          'PriceAlertService'
+          "PriceAlertService",
         );
 
         // Update lastTriggeredAt in the config
@@ -116,7 +116,7 @@ export class PriceAlertService {
         logger.warn(
           `[PriceAlert] Failed to send alert: ${result.error}`,
           { agentUserId, alertId: alert.id },
-          'PriceAlertService'
+          "PriceAlertService",
         );
       }
     }
@@ -129,12 +129,12 @@ export class PriceAlertService {
    */
   private formatAlertMessage(alert: PriceAlert, currentPrice: number): string {
     const direction =
-      alert.condition === 'below' ? 'dropped below' : 'rose above';
-    const emoji = alert.condition === 'below' ? '📉' : '📈';
+      alert.condition === "below" ? "dropped below" : "rose above";
+    const emoji = alert.condition === "below" ? "📉" : "📈";
     const diff = Math.abs(currentPrice - alert.threshold);
     const pctDiff = ((diff / alert.threshold) * 100).toFixed(1);
 
-    return `${emoji} Price Alert: ${alert.tokenSymbol} has ${direction} $${alert.threshold}. Current price: $${currentPrice.toFixed(2)} (${pctDiff}% ${alert.condition === 'below' ? 'below' : 'above'} threshold).`;
+    return `${emoji} Price Alert: ${alert.tokenSymbol} has ${direction} $${alert.threshold}. Current price: $${currentPrice.toFixed(2)} (${pctDiff}% ${alert.condition === "below" ? "below" : "above"} threshold).`;
   }
 
   /**
@@ -159,7 +159,7 @@ export class PriceAlertService {
    * Agents communicate with owners via the team chat (Agents group).
    */
   private async getOwnerTeamChatId(
-    agentUserId: string
+    agentUserId: string,
   ): Promise<string | undefined> {
     // Find the agent's owner
     const [agent] = await db
@@ -181,7 +181,7 @@ export class PriceAlertService {
    */
   private async updateAlertTimestamp(
     agentUserId: string,
-    alertId: string
+    alertId: string,
   ): Promise<void> {
     const now = new Date().toISOString();
 

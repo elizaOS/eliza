@@ -1,1 +1,1 @@
-export { default } from '@web/app/notifications/loading';
+export { default } from "@web/app/notifications/loading";

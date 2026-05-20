@@ -78,6 +78,7 @@
  * @see {@link /examples/feed-typescript-agent} Example agent usage
  */
 
+import { randomBytes } from "node:crypto";
 import {
   AuthorizationError,
   cleanupExpiredSessions,
@@ -86,23 +87,22 @@ import {
   successResponse,
   verifyAgentCredentials,
   withErrorHandling,
-} from '@feed/api';
-import { AgentAuthSchema, logger } from '@feed/shared';
-import { randomBytes } from 'crypto';
-import type { NextRequest } from 'next/server';
-import { z } from 'zod';
+} from "@feed/api";
+import { AgentAuthSchema, logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { z } from "zod";
 
-const isProduction = process.env.NODE_ENV === 'production';
+const isProduction = process.env.NODE_ENV === "production";
 
 /**
  * In development, accept any non-empty string as agentId (not just Snowflake IDs).
  * This allows dev-mode agent IDs like "feed-agent-alice" or "dev-admin-local".
  */
 const DevAgentAuthSchema = z.object({
-  agentId: z.string().min(1, { message: 'Agent ID is required' }),
+  agentId: z.string().min(1, { message: "Agent ID is required" }),
   agentSecret: z
     .string()
-    .min(32, { message: 'Agent secret must be at least 32 characters' }),
+    .min(32, { message: "Agent secret must be at least 32 characters" }),
 });
 
 /**
@@ -113,9 +113,9 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   const body = await request.json();
 
   // Check if body is empty or not an object
-  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
     throw new Error(
-      'Request body must be a JSON object containing agentId and agentSecret fields.'
+      "Request body must be a JSON object containing agentId and agentSecret fields.",
     );
   }
 
@@ -126,9 +126,9 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // Verify agent credentials
   if (!verifyAgentCredentials(agentId, agentSecret)) {
     throw new AuthorizationError(
-      'Invalid agent credentials',
-      'agent',
-      'authenticate'
+      "Invalid agent credentials",
+      "agent",
+      "authenticate",
     );
   }
 
@@ -136,7 +136,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   cleanupExpiredSessions();
 
   // Generate session token
-  const sessionToken = randomBytes(32).toString('hex');
+  const sessionToken = randomBytes(32).toString("hex");
 
   // Create session
   const session = await createAgentSession(agentId, sessionToken);
@@ -144,7 +144,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   logger.info(
     `Agent ${agentId} authenticated successfully`,
     undefined,
-    'POST /api/agents/auth'
+    "POST /api/agents/auth",
   );
 
   return successResponse({

@@ -45,32 +45,32 @@
  * ```
  */
 
-import { verifyCronAuth, withErrorHandling } from '@feed/api';
-import { logger } from '@feed/shared';
-import { huggingFaceIntegration } from '@feed/training';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+import { verifyCronAuth, withErrorHandling } from "@feed/api";
+import { logger } from "@feed/shared";
+import { huggingFaceIntegration } from "@feed/training";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 export const POST = withErrorHandling(async function POST(
-  request: NextRequest
+  request: NextRequest,
 ) {
   // Security: Verify cron authorization (fail-closed in production)
-  if (!verifyCronAuth(request, { jobName: 'WeeklyDatasetUpload' })) {
-    logger.warn('Unauthorized cron request', undefined, 'WeeklyDatasetUpload');
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!verifyCronAuth(request, { jobName: "WeeklyDatasetUpload" })) {
+    logger.warn("Unauthorized cron request", undefined, "WeeklyDatasetUpload");
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   logger.info(
-    'Starting weekly dataset upload job',
+    "Starting weekly dataset upload job",
     undefined,
-    'WeeklyDatasetUpload'
+    "WeeklyDatasetUpload",
   );
 
   // Use the integrated service
   const result = await huggingFaceIntegration.executeWeeklyUpload();
 
   logger.info(
-    'Weekly dataset upload job completed',
+    "Weekly dataset upload job completed",
     {
       duration: result.duration,
       benchmarkDataset: result.datasets.benchmarks.success,
@@ -80,7 +80,7 @@ export const POST = withErrorHandling(async function POST(
       modelsUploaded: result.models.uploaded,
       errors: result.errors.length,
     },
-    'WeeklyDatasetUpload'
+    "WeeklyDatasetUpload",
   );
 
   return NextResponse.json({

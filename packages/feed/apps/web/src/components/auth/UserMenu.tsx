@@ -1,11 +1,11 @@
-'use client';
+"use client";
 
 import {
   extractErrorMessage,
   getDisplayReferralUrl,
   getReferralUrl,
   logger,
-} from '@feed/shared';
+} from "@feed/shared";
 import {
   BookOpen,
   Check,
@@ -15,15 +15,15 @@ import {
   MoreHorizontal,
   Settings,
   Trophy,
-} from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
-import { useGameGuide } from '@/components/providers/GameGuideProvider';
-import { Avatar } from '@/components/shared/Avatar';
-import { Dropdown, DropdownItem } from '@/components/shared/Dropdown';
-import { useAuth } from '@/hooks/useAuth';
-import { useAuthStore } from '@/stores/authStore';
-import { apiUrl } from '@/utils/api-url';
+} from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
+import { useGameGuide } from "@/components/providers/GameGuideProvider";
+import { Avatar } from "@/components/shared/Avatar";
+import { Dropdown, DropdownItem } from "@/components/shared/Dropdown";
+import { useAuth } from "@/hooks/useAuth";
+import { useAuthStore } from "@/stores/authStore";
+import { apiUrl } from "@/utils/api-url";
 
 /**
  * User menu component displaying user profile and account actions.
@@ -57,7 +57,7 @@ export function UserMenu() {
     if (!user?.id) return;
     try {
       const res = await fetch(
-        apiUrl(`/api/users/${encodeURIComponent(user.id)}/portfolio-breakdown`)
+        apiUrl(`/api/users/${encodeURIComponent(user.id)}/portfolio-breakdown`),
       );
       if (res.ok) {
         const data = await res.json();
@@ -82,18 +82,18 @@ export function UserMenu() {
       // Refresh the auth state to get latest reputation points
       void refresh().catch((error) => {
         logger.warn(
-          'Failed to refresh auth state after rewards update',
+          "Failed to refresh auth state after rewards update",
           {
             error: extractErrorMessage(error),
           },
-          'UserMenu'
+          "UserMenu",
         );
       });
     };
 
-    window.addEventListener('rewards-updated', handleRewardsUpdated);
+    window.addEventListener("rewards-updated", handleRewardsUpdated);
     return () => {
-      window.removeEventListener('rewards-updated', handleRewardsUpdated);
+      window.removeEventListener("rewards-updated", handleRewardsUpdated);
     };
   }, [refresh]);
 
@@ -110,7 +110,7 @@ export function UserMenu() {
   }
 
   const displayName =
-    user.displayName || user.email?.split('@')[0] || 'Anonymous';
+    user.displayName || user.email?.split("@")[0] || "Anonymous";
   const username = user.username || `user${user.id.slice(0, 8)}`;
 
   const trigger = (
@@ -177,10 +177,10 @@ export function UserMenu() {
             <div className="flex min-w-0 flex-1 flex-col">
               <span
                 className={
-                  copiedCode ? 'text-green-500' : 'text-sidebar-foreground'
+                  copiedCode ? "text-green-500" : "text-sidebar-foreground"
                 }
               >
-                {copiedCode ? 'Link Copied!' : 'Copy Referral Link'}
+                {copiedCode ? "Link Copied!" : "Copy Referral Link"}
               </span>
               <span className="truncate font-mono text-muted-foreground text-xs">
                 {getDisplayReferralUrl(user.referralCode)}
@@ -190,14 +190,14 @@ export function UserMenu() {
         </DropdownItem>
       )}
 
-      <DropdownItem onClick={() => router.push('/settings')}>
+      <DropdownItem onClick={() => router.push("/settings")}>
         <div className="flex items-center gap-3">
           <Settings className="h-6 w-6 text-sidebar-foreground" />
           <span className="text-sidebar-foreground">Settings</span>
         </div>
       </DropdownItem>
 
-      <DropdownItem onClick={() => router.push('/achievements')}>
+      <DropdownItem onClick={() => router.push("/achievements")}>
         <div className="flex items-center gap-3">
           <Trophy className="h-6 w-6 text-sidebar-foreground" />
           <span className="text-sidebar-foreground">Achievements</span>
@@ -211,7 +211,7 @@ export function UserMenu() {
         </div>
       </DropdownItem>
 
-      <DropdownItem onClick={() => router.push('/settings?tab=api')}>
+      <DropdownItem onClick={() => router.push("/settings?tab=api")}>
         <div className="flex items-center gap-3">
           <Key className="h-6 w-6 text-sidebar-foreground" />
           <span className="text-sidebar-foreground">API Keys</span>

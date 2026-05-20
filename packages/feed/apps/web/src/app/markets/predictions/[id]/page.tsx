@@ -1,4 +1,4 @@
-import { redirect } from 'next/navigation';
+import { redirect } from "next/navigation";
 
 export default async function PredictionMarketRedirectPage({
   params,
@@ -14,14 +14,14 @@ export default async function PredictionMarketRedirectPage({
   const id = Array.isArray(idParam) ? idParam[0] : idParam;
 
   const query = new URLSearchParams();
-  query.set('filter', 'prediction');
-  query.set('marketKind', 'prediction');
-  if (id) query.set('marketId', id);
+  query.set("filter", "prediction");
+  query.set("marketKind", "prediction");
+  if (id) query.set("marketId", id);
 
   const side = resolvedSearchParams.side;
   const sideValue = Array.isArray(side) ? side[0] : side;
-  if (sideValue === 'yes' || sideValue === 'no') {
-    query.set('side', sideValue);
+  if (sideValue === "yes" || sideValue === "no") {
+    query.set("side", sideValue);
   }
 
   redirect(`/markets?${query.toString()}`);

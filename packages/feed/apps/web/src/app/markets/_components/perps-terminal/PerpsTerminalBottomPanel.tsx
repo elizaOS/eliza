@@ -1,25 +1,25 @@
-'use client';
+"use client";
 
-import { cn } from '@feed/shared';
-import { Minus } from 'lucide-react';
-import { useMemo, useRef, useState } from 'react';
-import { AssetTradesFeed } from '@/components/markets/AssetTradesFeed';
-import { PerpPositionsList } from '@/components/markets/PerpPositionsList';
-import { useAuth } from '@/hooks/useAuth';
-import { invalidatePerpMarketsCache } from '@/stores/perpMarketsStore';
+import { cn } from "@feed/shared";
+import { Minus } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { AssetTradesFeed } from "@/components/markets/AssetTradesFeed";
+import { PerpPositionsList } from "@/components/markets/PerpPositionsList";
+import { useAuth } from "@/hooks/useAuth";
+import { invalidatePerpMarketsCache } from "@/stores/perpMarketsStore";
 import {
   invalidateUserPositions,
   usePerpPositions,
-} from '@/stores/userPositionsStore';
-import { invalidateWalletBalance } from '@/stores/walletBalanceStore';
+} from "@/stores/userPositionsStore";
+import { invalidateWalletBalance } from "@/stores/walletBalanceStore";
 
 export type PerpsTerminalBottomTab =
-  | 'agent'
-  | 'socials'
-  | 'pnl'
-  | 'positions'
-  | 'orders'
-  | 'trades';
+  | "agent"
+  | "socials"
+  | "pnl"
+  | "positions"
+  | "orders"
+  | "trades";
 
 interface PerpsTerminalBottomPanelProps {
   ticker: string | null;
@@ -40,7 +40,7 @@ export function PerpsTerminalBottomPanel({
   const userId = authenticated ? (user?.id ?? null) : null;
 
   const [internalActiveTab, setInternalActiveTab] =
-    useState<PerpsTerminalBottomTab>('positions');
+    useState<PerpsTerminalBottomTab>("positions");
   const activeTab = propActiveTab ?? internalActiveTab;
 
   const { positions: perpPositions, refresh: refreshUserPositions } =
@@ -49,7 +49,7 @@ export function PerpsTerminalBottomPanel({
   const filteredPositions = useMemo(() => {
     if (!ticker) return [];
     return perpPositions.filter(
-      (p) => p.ticker.toLowerCase() === ticker.toLowerCase() && !p.closedAt
+      (p) => p.ticker.toLowerCase() === ticker.toLowerCase() && !p.closedAt,
     );
   }, [perpPositions, ticker]);
 
@@ -73,8 +73,8 @@ export function PerpsTerminalBottomPanel({
         <div className="flex items-center justify-between border-white/5 border-b bg-background/30 px-2">
           <div className="scrollbar-hide flex min-w-0 flex-1 overflow-x-auto">
             <TabButton
-              active={activeTab === 'positions'}
-              onClick={() => setActiveTab('positions')}
+              active={activeTab === "positions"}
+              onClick={() => setActiveTab("positions")}
             >
               Positions
               {ticker && (
@@ -84,40 +84,40 @@ export function PerpsTerminalBottomPanel({
               )}
             </TabButton>
             <TabButton
-              active={activeTab === 'orders'}
-              onClick={() => setActiveTab('orders')}
+              active={activeTab === "orders"}
+              onClick={() => setActiveTab("orders")}
               disabled
               soon
             >
               Orders
             </TabButton>
             <TabButton
-              active={activeTab === 'pnl'}
-              onClick={() => setActiveTab('pnl')}
+              active={activeTab === "pnl"}
+              onClick={() => setActiveTab("pnl")}
               disabled
               soon
             >
               PnL Analysis
             </TabButton>
             <TabButton
-              active={activeTab === 'agent'}
-              onClick={() => setActiveTab('agent')}
+              active={activeTab === "agent"}
+              onClick={() => setActiveTab("agent")}
               disabled
               soon
             >
               Agent
             </TabButton>
             <TabButton
-              active={activeTab === 'socials'}
-              onClick={() => setActiveTab('socials')}
+              active={activeTab === "socials"}
+              onClick={() => setActiveTab("socials")}
               disabled
               soon
             >
               Social
             </TabButton>
             <TabButton
-              active={activeTab === 'trades'}
-              onClick={() => setActiveTab('trades')}
+              active={activeTab === "trades"}
+              onClick={() => setActiveTab("trades")}
             >
               Trades
             </TabButton>
@@ -145,7 +145,7 @@ export function PerpsTerminalBottomPanel({
           <div className="flex h-full items-center justify-center text-muted-foreground text-sm">
             Log in to view your positions.
           </div>
-        ) : activeTab === 'positions' ? (
+        ) : activeTab === "positions" ? (
           <div className="h-full overflow-auto">
             {filteredPositions.length > 0 ? (
               <PerpPositionsList
@@ -159,7 +159,7 @@ export function PerpsTerminalBottomPanel({
               </div>
             )}
           </div>
-        ) : activeTab === 'trades' ? (
+        ) : activeTab === "trades" ? (
           <div className="h-full">
             <AssetTradesFeed
               marketType="perp"
@@ -202,11 +202,11 @@ function TabButton({
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        '-mb-px inline-flex items-center gap-2 border-b-2 px-4 py-2 font-semibold text-xs transition-colors',
+        "-mb-px inline-flex items-center gap-2 border-b-2 px-4 py-2 font-semibold text-xs transition-colors",
         active
-          ? 'border-primary text-primary'
-          : 'border-transparent text-muted-foreground hover:text-foreground',
-        disabled && 'cursor-not-allowed opacity-60 hover:text-muted-foreground'
+          ? "border-primary text-primary"
+          : "border-transparent text-muted-foreground hover:text-foreground",
+        disabled && "cursor-not-allowed opacity-60 hover:text-muted-foreground",
       )}
     >
       {children}

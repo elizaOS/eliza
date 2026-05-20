@@ -2,19 +2,19 @@
  * JSON Market Adapter
  */
 
-import type { MarketPort } from '../../../ports/markets';
+import type { MarketPort } from "../../../ports/markets";
 import type {
   MarketSnapshotRecord,
   PredictionMarketRecord,
-} from '../../../types';
-import type { JsonIdGenerator } from '../id-generator';
-import type { JsonStorageState } from '../types';
+} from "../../../types";
+import type { JsonIdGenerator } from "../id-generator";
+import type { JsonStorageState } from "../types";
 
 export class JsonMarketAdapter implements MarketPort {
   constructor(
     private state: JsonStorageState,
     private idGen: JsonIdGenerator,
-    private onChange: () => void
+    private onChange: () => void,
   ) {}
 
   async getMarket(id: string): Promise<PredictionMarketRecord | null> {
@@ -26,15 +26,15 @@ export class JsonMarketAdapter implements MarketPort {
   }
 
   async getMarketsByCategory(
-    category: string
+    category: string,
   ): Promise<PredictionMarketRecord[]> {
     return Object.values(this.state.markets).filter(
-      (m) => m.category === category
+      (m) => m.category === category,
     );
   }
 
   async createMarket(
-    market: Omit<PredictionMarketRecord, 'createdAt'>
+    market: Omit<PredictionMarketRecord, "createdAt">,
   ): Promise<PredictionMarketRecord> {
     const record: PredictionMarketRecord = {
       ...market,
@@ -47,7 +47,7 @@ export class JsonMarketAdapter implements MarketPort {
 
   async updateMarket(
     id: string,
-    updates: Partial<PredictionMarketRecord>
+    updates: Partial<PredictionMarketRecord>,
   ): Promise<PredictionMarketRecord> {
     const existing = this.state.markets[id];
     if (!existing) {
@@ -78,7 +78,7 @@ export class JsonMarketAdapter implements MarketPort {
     id: string,
     yesShares: string,
     noShares: string,
-    liquidity: string
+    liquidity: string,
   ): Promise<void> {
     const market = this.state.markets[id];
     if (!market) {
@@ -93,7 +93,7 @@ export class JsonMarketAdapter implements MarketPort {
 
   async getMarketSnapshots(
     marketId: string,
-    limit = 100
+    limit = 100,
   ): Promise<MarketSnapshotRecord[]> {
     return this.state.marketSnapshots
       .filter((s) => s.marketId === marketId)
@@ -102,11 +102,11 @@ export class JsonMarketAdapter implements MarketPort {
   }
 
   async recordMarketSnapshot(
-    snapshot: Omit<MarketSnapshotRecord, 'id' | 'timestamp'>
+    snapshot: Omit<MarketSnapshotRecord, "id" | "timestamp">,
   ): Promise<MarketSnapshotRecord> {
     const record: MarketSnapshotRecord = {
       ...snapshot,
-      id: this.idGen.generate('snapshot'),
+      id: this.idGen.generate("snapshot"),
       timestamp: new Date(),
     };
     this.state.marketSnapshots.push(record);

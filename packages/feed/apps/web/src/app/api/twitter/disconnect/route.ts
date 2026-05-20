@@ -43,14 +43,14 @@ import {
   authenticate,
   requireUserByIdentifier,
   withErrorHandling,
-} from '@feed/api';
-import { db } from '@feed/db';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@feed/api";
+import { db } from "@feed/db";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 export const POST = withErrorHandling(async function POST(
-  request: NextRequest
+  request: NextRequest,
 ) {
   const authUser = await authenticate(request);
   const user = await requireUserByIdentifier(authUser.userId, { id: true });
@@ -70,9 +70,9 @@ export const POST = withErrorHandling(async function POST(
   });
 
   logger.info(
-    'Twitter account disconnected',
+    "Twitter account disconnected",
     { userId: user.id },
-    'TwitterDisconnect'
+    "TwitterDisconnect",
   );
 
   return NextResponse.json({ success: true });

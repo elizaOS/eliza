@@ -3,18 +3,18 @@
  * when navigating between pages
  */
 
-import type { A2AReputationResponse } from '@feed/agents/client';
-import type { PortfolioBreakdownSnapshot } from '@feed/engine/client';
+import type { A2AReputationResponse } from "@feed/agents/client";
+import type { PortfolioBreakdownSnapshot } from "@feed/engine/client";
 import type {
   ArticleItem,
   PerpPositionFromAPI,
   PredictionPosition,
   UserProfileStats,
-} from '@feed/shared';
-import { create } from 'zustand';
+} from "@feed/shared";
+import { create } from "zustand";
 
 // Re-export ArticleItem for consumers that import from this file
-export type { ArticleItem } from '@feed/shared';
+export type { ArticleItem } from "@feed/shared";
 
 /**
  * Trending item structure for trending panel (supports grouped trends).
@@ -35,7 +35,7 @@ export interface BreakingNewsItem {
   id: string;
   title: string;
   description: string;
-  icon: 'chart' | 'calendar' | 'dollar' | 'trending';
+  icon: "chart" | "calendar" | "dollar" | "trending";
   timestamp: string;
   trending?: boolean;
   source?: string;
@@ -138,7 +138,7 @@ interface WidgetCacheState {
   setPositionsPreview: (userId: string, data: PositionsPreviewData) => void;
   setPortfolioWidget: (
     userId: string,
-    data: PortfolioBreakdownSnapshot
+    data: PortfolioBreakdownSnapshot,
   ) => void;
 
   // Get cache entry (returns null if stale or missing)

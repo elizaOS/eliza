@@ -6,12 +6,12 @@ import {
   publicRateLimit,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { z } from 'zod';
-import { createPerpMarketService } from './_adapters';
-import { mergeOrganizationMetadataForPerpMarkets } from './_org-metadata';
+} from "@feed/api";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { z } from "zod";
+import { createPerpMarketService } from "./_adapters";
+import { mergeOrganizationMetadataForPerpMarkets } from "./_org-metadata";
 
 const PerpsListQuerySchema = z
   .object({
@@ -39,16 +39,16 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
   const { searchParams } = new URL(request.url);
   const parsed = PerpsListQuerySchema.safeParse(
-    Object.fromEntries(searchParams)
+    Object.fromEntries(searchParams),
   );
-  const usePagination = searchParams.has('limit') || searchParams.has('page');
+  const usePagination = searchParams.has("limit") || searchParams.has("page");
   if (!parsed.success && usePagination) {
     const res = successResponse(
       {
-        error: 'Invalid query parameters',
+        error: "Invalid query parameters",
         details: parsed.error.flatten(),
       },
-      400
+      400,
     );
     if (rateLimitInfo) addPublicReadHeaders(res, rateLimitInfo);
     return res;
@@ -69,12 +69,12 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     }
 
     return await getCacheOrFetch(
-      'snapshot',
+      "snapshot",
       () => service.getMarketsSnapshot(),
       {
         namespace: CACHE_KEYS.MARKETS_API_PERPS,
         ttl: DEFAULT_TTLS.MARKETS_API_PERPS,
-      }
+      },
     );
   };
 
@@ -82,9 +82,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   markets = await mergeOrganizationMetadataForPerpMarkets(markets);
 
   logger.info(
-    'Perpetual markets fetched successfully',
+    "Perpetual markets fetched successfully",
     { count: markets.length, paginated: usePagination },
-    'GET /api/markets/perps'
+    "GET /api/markets/perps",
   );
 
   const res = successResponse({

@@ -1,14 +1,14 @@
-'use client';
+"use client";
 
-import { cn, logger } from '@feed/shared';
-import { Send } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
-import { toast } from 'sonner';
-import { Avatar } from '@/components/shared/Avatar';
-import { useAuth } from '@/hooks/useAuth';
-import { useSocialTracking } from '@/hooks/usePostHog';
-import { getAuthToken } from '@/lib/auth';
-import { apiUrl } from '@/utils/api-url';
+import { cn, logger } from "@feed/shared";
+import { Send } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
+import { Avatar } from "@/components/shared/Avatar";
+import { useAuth } from "@/hooks/useAuth";
+import { useSocialTracking } from "@/hooks/usePostHog";
+import { getAuthToken } from "@/lib/auth";
+import { apiUrl } from "@/utils/api-url";
 
 /**
  * Detect if the user is on macOS for keyboard shortcut display
@@ -18,8 +18,8 @@ function useIsMac(): boolean {
 
   useEffect(() => {
     setIsMac(
-      typeof navigator !== 'undefined' &&
-        /Mac|iPhone|iPad|iPod/.test(navigator.userAgent)
+      typeof navigator !== "undefined" &&
+        /Mac|iPhone|iPad|iPod/.test(navigator.userAgent),
     );
   }, []);
 
@@ -80,14 +80,14 @@ function isValidPostResponse(post: unknown): post is {
   authorProfileImageUrl?: string | null;
   timestamp: string;
 } {
-  if (!post || typeof post !== 'object') return false;
+  if (!post || typeof post !== "object") return false;
   const p = post as Record<string, unknown>;
   return (
-    typeof p.id === 'string' &&
-    typeof p.content === 'string' &&
-    typeof p.authorId === 'string' &&
-    typeof p.authorName === 'string' &&
-    typeof p.timestamp === 'string'
+    typeof p.id === "string" &&
+    typeof p.content === "string" &&
+    typeof p.authorId === "string" &&
+    typeof p.authorName === "string" &&
+    typeof p.timestamp === "string"
   );
 }
 
@@ -95,7 +95,7 @@ export function InlineComposer({
   onPostCreated,
   className,
 }: InlineComposerProps) {
-  const [content, setContent] = useState('');
+  const [content, setContent] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -111,7 +111,7 @@ export function InlineComposer({
     if (!canSubmit) return;
 
     if (!authenticated || !user) {
-      toast.error('Please log in to post');
+      toast.error("Please log in to post");
       return;
     }
 
@@ -120,19 +120,19 @@ export function InlineComposer({
     const token = getAuthToken();
 
     if (!token) {
-      toast.error('Please wait for authentication to complete.');
+      toast.error("Please wait for authentication to complete.");
       setIsSubmitting(false);
       return;
     }
 
     try {
       const headers: HeadersInit = {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       };
 
-      const response = await fetch(apiUrl('/api/posts'), {
-        method: 'POST',
+      const response = await fetch(apiUrl("/api/posts"), {
+        method: "POST",
         headers,
         body: JSON.stringify({
           content: content.trim(),
@@ -141,12 +141,12 @@ export function InlineComposer({
 
       if (response.ok) {
         const data = await response.json();
-        setContent('');
+        setContent("");
         setIsFocused(false);
 
         // Reset textarea height
         if (textareaRef.current) {
-          textareaRef.current.style.height = 'auto';
+          textareaRef.current.style.height = "auto";
         }
 
         if (isValidPostResponse(data.post)) {
@@ -154,21 +154,21 @@ export function InlineComposer({
           onPostCreated?.(data.post);
         } else if (data.post) {
           logger.error(
-            'Malformed post response from API',
+            "Malformed post response from API",
             { post: data.post },
-            'InlineComposer'
+            "InlineComposer",
           );
         }
       } else {
         const errorData = await response.json().catch(() => ({}));
         const errorMessage =
-          errorData?.error || 'Failed to create post. Please try again.';
-        logger.error('Failed to create post:', errorData, 'InlineComposer');
+          errorData?.error || "Failed to create post. Please try again.";
+        logger.error("Failed to create post:", errorData, "InlineComposer");
         toast.error(errorMessage);
       }
     } catch (err) {
-      logger.error('Error creating post:', { error: err }, 'InlineComposer');
-      toast.error('Network error. Please check your connection and try again.');
+      logger.error("Error creating post:", { error: err }, "InlineComposer");
+      toast.error("Network error. Please check your connection and try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -176,7 +176,7 @@ export function InlineComposer({
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // Submit on Cmd/Ctrl + Enter
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       handleSubmit();
     }
@@ -194,7 +194,7 @@ export function InlineComposer({
       cancelAnimationFrame(resizeFrameRef.current);
     }
     resizeFrameRef.current = requestAnimationFrame(() => {
-      textarea.style.height = 'auto';
+      textarea.style.height = "auto";
       textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`;
       resizeFrameRef.current = null;
     });
@@ -208,9 +208,9 @@ export function InlineComposer({
   return (
     <div
       className={cn(
-        'border-border border-b bg-card/50 p-4 transition-colors',
-        isFocused && 'bg-card',
-        className
+        "border-border border-b bg-card/50 p-4 transition-colors",
+        isFocused && "bg-card",
+        className,
       )}
     >
       <div className="flex gap-3">
@@ -218,7 +218,7 @@ export function InlineComposer({
         <div className="shrink-0">
           <Avatar
             id={user.id}
-            name={user.displayName || user.username || 'User'}
+            name={user.displayName || user.username || "User"}
             src={user.profileImageUrl || undefined}
             size="md"
           />
@@ -237,24 +237,24 @@ export function InlineComposer({
             aria-label="What's happening?"
             aria-describedby={
               isOverLimit
-                ? 'inline-composer-error inline-composer-char-count'
-                : 'inline-composer-char-count'
+                ? "inline-composer-error inline-composer-char-count"
+                : "inline-composer-char-count"
             }
             aria-invalid={isOverLimit}
             disabled={isSubmitting}
             rows={isFocused || content ? 3 : 1}
             className={cn(
-              'w-full resize-none bg-transparent text-foreground placeholder-muted-foreground',
-              'border-none outline-none focus:ring-0',
-              'text-base leading-relaxed',
-              'transition-all duration-200',
-              isSubmitting && 'opacity-50'
+              "w-full resize-none bg-transparent text-foreground placeholder-muted-foreground",
+              "border-none outline-none focus:ring-0",
+              "text-base leading-relaxed",
+              "transition-all duration-200",
+              isSubmitting && "opacity-50",
             )}
           />
           {/* Hidden error message for screen readers */}
           {isOverLimit && (
             <span id="inline-composer-error" className="sr-only" role="alert">
-              Post exceeds the {MAX_LENGTH} character limit by{' '}
+              Post exceeds the {MAX_LENGTH} character limit by{" "}
               {Math.abs(charactersRemaining)} characters.
             </span>
           )}
@@ -270,12 +270,12 @@ export function InlineComposer({
                   aria-live="polite"
                   aria-label={`${charactersRemaining} characters remaining`}
                   className={cn(
-                    'text-sm transition-colors',
+                    "text-sm transition-colors",
                     isOverLimit
-                      ? 'font-semibold text-red-500'
+                      ? "font-semibold text-red-500"
                       : charactersRemaining <= 20
-                        ? 'text-yellow-500'
-                        : 'text-muted-foreground'
+                        ? "text-yellow-500"
+                        : "text-muted-foreground",
                   )}
                 >
                   {charactersRemaining}
@@ -283,9 +283,9 @@ export function InlineComposer({
 
                 {/* Keyboard shortcut hint */}
                 <span className="text-muted-foreground text-xs">
-                  {isMac ? '⌘' : 'Ctrl'}+Enter
+                  {isMac ? "⌘" : "Ctrl"}+Enter
                   <span className="sr-only">
-                    Keyboard shortcut: {isMac ? 'Command' : 'Control'} plus
+                    Keyboard shortcut: {isMac ? "Command" : "Control"} plus
                     Enter
                   </span>
                 </span>
@@ -296,11 +296,11 @@ export function InlineComposer({
                   onClick={handleSubmit}
                   disabled={!canSubmit}
                   className={cn(
-                    'flex items-center gap-2 rounded-full px-4 py-2 font-semibold text-sm',
-                    'transition-all duration-200',
+                    "flex items-center gap-2 rounded-full px-4 py-2 font-semibold text-sm",
+                    "transition-all duration-200",
                     canSubmit
-                      ? 'bg-[#0066FF] text-white hover:bg-[#0052CC]'
-                      : 'cursor-not-allowed bg-muted text-muted-foreground'
+                      ? "bg-[#0066FF] text-white hover:bg-[#0052CC]"
+                      : "cursor-not-allowed bg-muted text-muted-foreground",
                   )}
                 >
                   {isSubmitting ? (

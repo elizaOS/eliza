@@ -9,23 +9,23 @@
  *   bun run scripts/generate-pwa-icons.ts
  */
 
-import * as fs from 'node:fs';
-import * as path from 'node:path';
+import * as fs from "node:fs";
+import * as path from "node:path";
 
-const ROOT = path.resolve(import.meta.dir, '..');
-const SVG_PATH = path.join(ROOT, 'apps/web/public/favicon.svg');
-const ICONS_DIR = path.join(ROOT, 'apps/web/public/icons');
+const ROOT = path.resolve(import.meta.dir, "..");
+const SVG_PATH = path.join(ROOT, "apps/web/public/favicon.svg");
+const ICONS_DIR = path.join(ROOT, "apps/web/public/icons");
 
 const SIZES = [144, 192, 512];
 
 async function generateIcons() {
   // Dynamic import sharp — it may need to be installed
-  let sharp: typeof import('sharp');
+  let sharp: typeof import("sharp");
   try {
-    sharp = await import('sharp');
+    sharp = await import("sharp");
   } catch {
     console.error(
-      'sharp is not installed. Run: bun add -d sharp\nThen re-run this script.'
+      "sharp is not installed. Run: bun add -d sharp\nThen re-run this script.",
     );
     process.exit(1);
   }
@@ -40,7 +40,7 @@ async function generateIcons() {
     await sharp
       .default(svgBuffer)
       .resize(size, size, {
-        fit: 'contain',
+        fit: "contain",
         background: { r: 0, g: 0, b: 0, alpha: 0 },
       })
       .png()
@@ -53,7 +53,7 @@ async function generateIcons() {
     const innerIcon = await sharp
       .default(svgBuffer)
       .resize(innerSize, innerSize, {
-        fit: 'contain',
+        fit: "contain",
         background: { r: 0, g: 0, b: 0, alpha: 0 },
       })
       .png()
@@ -71,7 +71,7 @@ async function generateIcons() {
       .composite([
         {
           input: innerIcon,
-          gravity: 'centre',
+          gravity: "centre",
         },
       ])
       .png()
@@ -79,10 +79,10 @@ async function generateIcons() {
     console.log(`  Created ${maskablePath}`);
   }
 
-  console.log('\nPWA icons generated successfully.');
+  console.log("\nPWA icons generated successfully.");
 }
 
 generateIcons().catch((err) => {
-  console.error('Failed to generate icons:', err);
+  console.error("Failed to generate icons:", err);
   process.exit(1);
 });

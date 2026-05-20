@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import type { User } from '@/stores/authStore';
-import type { MarketCategory } from '@/types/markets';
-import { PnLShareModal } from './PnLShareModal';
+import type { User } from "@/stores/authStore";
+import type { MarketCategory } from "@/types/markets";
+import { PnLShareModal } from "./PnLShareModal";
 
 /**
  * Category PnL data structure for category PnL share modal.

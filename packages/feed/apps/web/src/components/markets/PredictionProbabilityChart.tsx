@@ -1,14 +1,14 @@
-'use client';
+"use client";
 
-import { cn } from '@feed/shared';
-import type { ISeriesApi, Time } from 'lightweight-charts';
-import { AreaSeries } from 'lightweight-charts';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { cn } from "@feed/shared";
+import type { ISeriesApi, Time } from "lightweight-charts";
+import { AreaSeries } from "lightweight-charts";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   formatChartTime,
   useLightweightChart,
-} from '@/components/charts/LightweightChartBase';
-import { MARKET_TIME_RANGES, type MarketTimeRange } from '@/types/markets';
+} from "@/components/charts/LightweightChartBase";
+import { MARKET_TIME_RANGES, type MarketTimeRange } from "@/types/markets";
 
 /**
  * Price point structure for prediction chart data.
@@ -53,7 +53,7 @@ interface PredictionProbabilityChartProps {
    * - fixed: uses a fixed-height chart (good for pages)
    * - fill: stretches to the available parent height (good for flex layouts like the terminal)
    */
-  height?: 'fixed' | 'fill';
+  height?: "fixed" | "fill";
   /** When false, hides the YES/NO legend below the chart. Defaults to true. */
   showLegend?: boolean;
   /**
@@ -64,7 +64,7 @@ interface PredictionProbabilityChartProps {
   /** When false, hides the right price scale (0%/100% labels). Defaults to true. */
   showPriceScale?: boolean;
   /** Visual palette for the chart. Defaults to the classic YES/NO colors. */
-  palette?: 'classic' | 'neutral';
+  palette?: "classic" | "neutral";
 }
 
 /**
@@ -90,17 +90,17 @@ export function PredictionProbabilityChart({
   timeRange,
   onTimeRangeChange,
   showHeader = true,
-  height = 'fixed',
+  height = "fixed",
   showLegend = true,
   fillChartClassName,
   showPriceScale = true,
-  palette = 'classic',
+  palette = "classic",
 }: PredictionProbabilityChartProps) {
   const [chartInitError, setChartInitError] = useState<string | null>(null);
-  const yesSeries = useRef<ISeriesApi<'Area'> | null>(null);
-  const noSeries = useRef<ISeriesApi<'Area'> | null>(null);
+  const yesSeries = useRef<ISeriesApi<"Area"> | null>(null);
+  const noSeries = useRef<ISeriesApi<"Area"> | null>(null);
   const seriesInitialized = useRef(false);
-  const fillHeight = height === 'fill';
+  const fillHeight = height === "fill";
 
   const {
     chartContainerRef,
@@ -127,19 +127,19 @@ export function PredictionProbabilityChart({
         (point) =>
           Number.isFinite(point.time) &&
           Number.isFinite(point.yesPrice) &&
-          point.yesPrice >= 0
+          point.yesPrice >= 0,
       )
       .sort((a, b) => a.time - b.time);
 
     // Apply time range filter
     let filtered = validData;
-    if (timeRange !== 'ALL') {
+    if (timeRange !== "ALL") {
       const now = Date.now();
       const ranges: Record<MarketTimeRange, number> = {
-        '1H': 60 * 60 * 1000,
-        '4H': 4 * 60 * 60 * 1000,
-        '1D': 24 * 60 * 60 * 1000,
-        '1W': 7 * 24 * 60 * 60 * 1000,
+        "1H": 60 * 60 * 1000,
+        "4H": 4 * 60 * 60 * 1000,
+        "1D": 24 * 60 * 60 * 1000,
+        "1W": 7 * 24 * 60 * 60 * 1000,
         ALL: 0,
       };
       const cutoff = now - ranges[timeRange];
@@ -179,32 +179,32 @@ export function PredictionProbabilityChart({
   const unavailableReason = chartInitError ?? chartBaseError;
   const chartPalette = useMemo(
     () =>
-      palette === 'neutral'
+      palette === "neutral"
         ? {
-            yesLine: '#2563eb',
-            yesTop: 'rgba(37, 99, 235, 0.24)',
-            yesBottom: 'rgba(37, 99, 235, 0.04)',
-            noTop: 'rgba(15, 23, 42, 0.03)',
-            noBottom: 'rgba(15, 23, 42, 0.14)',
-            yesMarker: '#2563eb',
-            yesDotClassName: 'bg-blue-600',
-            noDotClassName: 'bg-foreground/60',
-            yesLegendColor: 'rgba(37, 99, 235, 0.24)',
-            noLegendColor: 'rgba(15, 23, 42, 0.14)',
+            yesLine: "#2563eb",
+            yesTop: "rgba(37, 99, 235, 0.24)",
+            yesBottom: "rgba(37, 99, 235, 0.04)",
+            noTop: "rgba(15, 23, 42, 0.03)",
+            noBottom: "rgba(15, 23, 42, 0.14)",
+            yesMarker: "#2563eb",
+            yesDotClassName: "bg-blue-600",
+            noDotClassName: "bg-foreground/60",
+            yesLegendColor: "rgba(37, 99, 235, 0.24)",
+            noLegendColor: "rgba(15, 23, 42, 0.14)",
           }
         : {
-            yesLine: '#22c55e',
-            yesTop: 'rgba(34, 197, 94, 0.35)',
-            yesBottom: 'rgba(34, 197, 94, 0.05)',
-            noTop: 'rgba(239, 68, 68, 0.05)',
-            noBottom: 'rgba(239, 68, 68, 0.25)',
-            yesMarker: '#22c55e',
-            yesDotClassName: 'bg-green-500',
-            noDotClassName: 'bg-red-500',
-            yesLegendColor: 'rgba(34, 197, 94, 0.35)',
-            noLegendColor: 'rgba(239, 68, 68, 0.25)',
+            yesLine: "#22c55e",
+            yesTop: "rgba(34, 197, 94, 0.35)",
+            yesBottom: "rgba(34, 197, 94, 0.05)",
+            noTop: "rgba(239, 68, 68, 0.05)",
+            noBottom: "rgba(239, 68, 68, 0.25)",
+            yesMarker: "#22c55e",
+            yesDotClassName: "bg-green-500",
+            noDotClassName: "bg-red-500",
+            yesLegendColor: "rgba(34, 197, 94, 0.35)",
+            noLegendColor: "rgba(239, 68, 68, 0.25)",
           },
-    [palette]
+    [palette],
   );
 
   // Initialize series when chart is ready
@@ -215,7 +215,7 @@ export function PredictionProbabilityChart({
       setChartInitError(null);
 
       const priceFormat = {
-        type: 'custom' as const,
+        type: "custom" as const,
         formatter: (price: number) => `${price.toFixed(1)}%`,
         minMove: 0.01,
       };
@@ -228,7 +228,7 @@ export function PredictionProbabilityChart({
         crosshairMarkerVisible: true,
         crosshairMarkerRadius: 4,
         crosshairMarkerBackgroundColor: chartPalette.yesMarker,
-        crosshairMarkerBorderColor: '#ffffff',
+        crosshairMarkerBorderColor: "#ffffff",
         crosshairMarkerBorderWidth: 2,
         priceFormat,
         // Fix scale to always show 0–100%
@@ -238,7 +238,7 @@ export function PredictionProbabilityChart({
       };
 
       const noOptions = {
-        lineColor: 'transparent',
+        lineColor: "transparent",
         topColor: chartPalette.noTop,
         bottomColor: chartPalette.noBottom,
         invertFilledArea: true,
@@ -253,33 +253,33 @@ export function PredictionProbabilityChart({
       const chartAny = chart as unknown as {
         addSeries?: (
           seriesType: unknown,
-          options: unknown
-        ) => ISeriesApi<'Area'>;
-        addAreaSeries?: (options: unknown) => ISeriesApi<'Area'>;
+          options: unknown,
+        ) => ISeriesApi<"Area">;
+        addAreaSeries?: (options: unknown) => ISeriesApi<"Area">;
       };
 
-      if (typeof chartAny.addSeries === 'function' && AreaSeries) {
+      if (typeof chartAny.addSeries === "function" && AreaSeries) {
         yesSeries.current = chartAny.addSeries.call(
           chart,
           AreaSeries,
-          yesOptions
-        ) as ISeriesApi<'Area'>;
+          yesOptions,
+        ) as ISeriesApi<"Area">;
         noSeries.current = chartAny.addSeries.call(
           chart,
           AreaSeries,
-          noOptions
-        ) as ISeriesApi<'Area'>;
-      } else if (typeof chartAny.addAreaSeries === 'function') {
+          noOptions,
+        ) as ISeriesApi<"Area">;
+      } else if (typeof chartAny.addAreaSeries === "function") {
         yesSeries.current = chartAny.addAreaSeries.call(chart, yesOptions);
         noSeries.current = chartAny.addAreaSeries.call(chart, noOptions);
       } else {
-        throw new Error('Unsupported lightweight-charts API');
+        throw new Error("Unsupported lightweight-charts API");
       }
 
       seriesInitialized.current = true;
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : 'Failed to initialize chart';
+        error instanceof Error ? error.message : "Failed to initialize chart";
       setChartInitError(message);
       yesSeries.current = null;
       noSeries.current = null;
@@ -305,7 +305,7 @@ export function PredictionProbabilityChart({
         noSeries.current.setData([]);
       } catch (error) {
         const message =
-          error instanceof Error ? error.message : 'Failed to clear chart data';
+          error instanceof Error ? error.message : "Failed to clear chart data";
         setChartInitError(message);
       }
       return;
@@ -319,7 +319,7 @@ export function PredictionProbabilityChart({
       chart.timeScale().fitContent();
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : 'Failed to render chart data';
+        error instanceof Error ? error.message : "Failed to render chart data";
       setChartInitError(message);
     }
   }, [chart, chartData]);
@@ -328,10 +328,10 @@ export function PredictionProbabilityChart({
     <div
       data-market-id={marketId}
       className={cn(
-        'w-full',
+        "w-full",
         ((showHeader && !fillHeight) || (!showHeader && fillHeight)) &&
-          'space-y-3',
-        fillHeight && 'flex h-full min-h-0 flex-col gap-3'
+          "space-y-3",
+        fillHeight && "flex h-full min-h-0 flex-col gap-3",
       )}
     >
       {showHeader && (
@@ -340,8 +340,8 @@ export function PredictionProbabilityChart({
             <div className="flex items-center gap-2">
               <div
                 className={cn(
-                  'h-3 w-3 rounded-full',
-                  chartPalette.yesDotClassName
+                  "h-3 w-3 rounded-full",
+                  chartPalette.yesDotClassName,
                 )}
               />
               <span className="font-semibold text-sm">YES {yesDisplay}%</span>
@@ -349,8 +349,8 @@ export function PredictionProbabilityChart({
             <div className="flex items-center gap-2">
               <div
                 className={cn(
-                  'h-3 w-3 rounded-full',
-                  chartPalette.noDotClassName
+                  "h-3 w-3 rounded-full",
+                  chartPalette.noDotClassName,
                 )}
               />
               <span className="font-semibold text-sm">NO {noDisplay}%</span>
@@ -364,8 +364,8 @@ export function PredictionProbabilityChart({
                 onClick={() => onTimeRangeChange(range)}
                 className={`cursor-pointer rounded px-2 py-1 text-xs transition-colors ${
                   timeRange === range
-                    ? 'bg-primary text-primary-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground"
                 }`}
               >
                 {range}
@@ -376,14 +376,14 @@ export function PredictionProbabilityChart({
       )}
 
       {/* Chart container */}
-      <div className={cn('relative', fillHeight && 'min-h-0 flex-1')}>
+      <div className={cn("relative", fillHeight && "min-h-0 flex-1")}>
         <div
           ref={chartContainerRef}
           className={cn(
-            'w-full rounded-lg bg-muted/10',
+            "w-full rounded-lg bg-muted/10",
             fillHeight
-              ? (fillChartClassName ?? 'h-full min-h-[240px]')
-              : 'h-[400px]'
+              ? (fillChartClassName ?? "h-full min-h-[240px]")
+              : "h-[400px]",
           )}
         />
         {/* Overlay states are mutually exclusive - priority: unavailable > loading > initializing > empty */}

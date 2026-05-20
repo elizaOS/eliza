@@ -8,10 +8,10 @@
  * manual review before the market can be resolved.
  */
 
-import { requireAdmin, successResponse, withErrorHandling } from '@feed/api';
-import { and, asc, db, eq, isNull, or, questions } from '@feed/db';
-import { toISOOrNull } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+import { requireAdmin, successResponse, withErrorHandling } from "@feed/api";
+import { and, asc, db, eq, isNull, or, questions } from "@feed/db";
+import { toISOOrNull } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   await requireAdmin(request);
@@ -33,13 +33,13 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     .from(questions)
     .where(
       and(
-        eq(questions.status, 'active'),
+        eq(questions.status, "active"),
         eq(questions.requiresManualReview, true),
         or(
           isNull(questions.resolutionReviewStatus),
-          eq(questions.resolutionReviewStatus, 'pending')
-        )
-      )
+          eq(questions.resolutionReviewStatus, "pending"),
+        ),
+      ),
     )
     .orderBy(asc(questions.resolutionDate))
     .limit(200);
@@ -55,10 +55,10 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       resolutionProofUrl: q.resolutionProofUrl ?? null,
       resolutionDescription: q.resolutionDescription ?? null,
       resolutionConfidence:
-        typeof q.resolutionConfidence === 'number'
+        typeof q.resolutionConfidence === "number"
           ? q.resolutionConfidence
           : null,
-      resolutionReviewStatus: q.resolutionReviewStatus ?? 'pending',
+      resolutionReviewStatus: q.resolutionReviewStatus ?? "pending",
       requiresManualReview: Boolean(q.requiresManualReview),
       updatedAt: toISOOrNull(q.updatedAt),
     })),

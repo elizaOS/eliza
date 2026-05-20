@@ -7,22 +7,18 @@
  * entities, timeframes, categories, and near-duplicates.
  */
 
-import { parseArgs } from 'node:util';
-import { getRawDrizzle } from '@feed/db';
-import {
-  organizations,
-  questions,
-  timeframedMarkets,
-} from '@feed/db/schema';
-import { and, eq, gte } from 'drizzle-orm';
+import { parseArgs } from "node:util";
+import { getRawDrizzle } from "@feed/db";
+import { organizations, questions, timeframedMarkets } from "@feed/db/schema";
+import { and, eq, gte } from "drizzle-orm";
 
 // ---------------------------------------------------------------------------
 // CLI args
 // ---------------------------------------------------------------------------
 const { values: args } = parseArgs({
   options: {
-    history: { type: 'string', short: 'h' },
-    verbose: { type: 'boolean', short: 'v', default: false },
+    history: { type: "string", short: "h" },
+    verbose: { type: "boolean", short: "v", default: false },
   },
   strict: true,
 });
@@ -30,7 +26,7 @@ const { values: args } = parseArgs({
 const verbose = args.verbose ?? false;
 const historyDays = args.history ? Number.parseInt(args.history, 10) : 0;
 if (args.history && Number.isNaN(historyDays)) {
-  console.error(crit('Invalid --history value: must be a number'));
+  console.error(crit("Invalid --history value: must be a number"));
   process.exit(1);
 }
 
@@ -38,100 +34,100 @@ if (args.history && Number.isNaN(historyDays)) {
 // Constants
 // ---------------------------------------------------------------------------
 const STOPWORDS = new Set([
-  'the',
-  'a',
-  'an',
-  'is',
-  'will',
-  'be',
-  'by',
-  'to',
-  'of',
-  'in',
-  'for',
-  'and',
-  'or',
-  'this',
-  'that',
-  'with',
-  'on',
-  'at',
-  'it',
-  'its',
-  'as',
-  'are',
-  'was',
-  'were',
-  'been',
-  'has',
-  'have',
-  'had',
-  'do',
-  'does',
-  'did',
-  'not',
-  'no',
-  'but',
-  'if',
-  'so',
-  'than',
-  'too',
-  'very',
-  'can',
-  'could',
-  'would',
-  'should',
-  'may',
-  'might',
-  'shall',
-  'from',
-  'about',
-  'up',
-  'out',
-  'into',
-  'over',
-  'after',
-  'before',
-  'between',
-  'under',
-  'again',
-  'then',
-  'once',
-  'here',
-  'there',
-  'when',
-  'where',
-  'why',
-  'how',
-  'all',
-  'each',
-  'every',
-  'both',
-  'few',
-  'more',
-  'most',
-  'other',
-  'some',
-  'such',
-  'any',
+  "the",
+  "a",
+  "an",
+  "is",
+  "will",
+  "be",
+  "by",
+  "to",
+  "of",
+  "in",
+  "for",
+  "and",
+  "or",
+  "this",
+  "that",
+  "with",
+  "on",
+  "at",
+  "it",
+  "its",
+  "as",
+  "are",
+  "was",
+  "were",
+  "been",
+  "has",
+  "have",
+  "had",
+  "do",
+  "does",
+  "did",
+  "not",
+  "no",
+  "but",
+  "if",
+  "so",
+  "than",
+  "too",
+  "very",
+  "can",
+  "could",
+  "would",
+  "should",
+  "may",
+  "might",
+  "shall",
+  "from",
+  "about",
+  "up",
+  "out",
+  "into",
+  "over",
+  "after",
+  "before",
+  "between",
+  "under",
+  "again",
+  "then",
+  "once",
+  "here",
+  "there",
+  "when",
+  "where",
+  "why",
+  "how",
+  "all",
+  "each",
+  "every",
+  "both",
+  "few",
+  "more",
+  "most",
+  "other",
+  "some",
+  "such",
+  "any",
 ]);
 
 const MARKET_STRUCTURE: Record<string, number> = {
-  '3d': 1,
-  '2d': 1,
-  '1d': 1,
-  '12h': 1,
-  '6h': 1,
-  '1h': 1,
-  '30m': 2,
-  '15m': 2,
+  "3d": 1,
+  "2d": 1,
+  "1d": 1,
+  "12h": 1,
+  "6h": 1,
+  "1h": 1,
+  "30m": 2,
+  "15m": 2,
 };
 
 // ANSI helpers
-const RED = '\x1b[31m';
-const YEL = '\x1b[33m';
-const GRN = '\x1b[32m';
-const RST = '\x1b[0m';
+const RED = "\x1b[31m";
+const YEL = "\x1b[33m";
+const GRN = "\x1b[32m";
+const RST = "\x1b[0m";
 
 const warn = (s: string) => `${YEL}${s}${RST}`;
 const crit = (s: string) => `${RED}${s}${RST}`;
@@ -145,9 +141,9 @@ function tokenize(text: string): Set<string> {
   return new Set(
     text
       .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/[^a-z0-9\s]/g, " ")
       .split(/\s+/)
-      .filter((t) => t.length > 2 && !STOPWORDS.has(t))
+      .filter((t) => t.length > 2 && !STOPWORDS.has(t)),
   );
 }
 
@@ -163,7 +159,7 @@ function jaccard(a: Set<string>, b: Set<string>): number {
 function addPairToClusters(
   clusters: Set<number>[],
   leftIndex: number,
-  rightIndex: number
+  rightIndex: number,
 ): void {
   const matchingClusterIndexes: number[] = [];
 
@@ -233,8 +229,8 @@ async function main() {
     .where(
       and(
         eq(timeframedMarkets.isActive, true),
-        eq(timeframedMarkets.isResolved, false)
-      )
+        eq(timeframedMarkets.isResolved, false),
+      ),
     );
 
   // Build org name lookup for entity reporting
@@ -249,12 +245,12 @@ async function main() {
   console.log(`Active Markets: ${total}\n`);
 
   if (total === 0) {
-    console.log('No active markets found. Nothing to report.');
+    console.log("No active markets found. Nothing to report.");
     return;
   }
 
   // Token sets for each market
-  const tokenSets = activeRows.map((m) => tokenize(m.questionText ?? ''));
+  const tokenSets = activeRows.map((m) => tokenize(m.questionText ?? ""));
 
   // ----- Topic Analysis -----
   const similarities: number[] = [];
@@ -285,17 +281,17 @@ async function main() {
       : 0;
   const largestCluster = clusters.reduce((max, c) => Math.max(max, c.size), 0);
   const largestClusterIdx = clusters.findIndex(
-    (c) => c.size === largestCluster
+    (c) => c.size === largestCluster,
   );
   const largestClusterSample =
     largestClusterIdx >= 0
       ? (activeRows[[...clusters[largestClusterIdx]][0]]?.questionText?.slice(
           0,
-          60
-        ) ?? 'unknown')
-      : '';
+          60,
+        ) ?? "unknown")
+      : "";
 
-  console.log('Topic Analysis:');
+  console.log("Topic Analysis:");
   console.log(`  Unique topic clusters: ${clusters.length}`);
   const simLabel =
     avgSim >= 0.2
@@ -303,7 +299,7 @@ async function main() {
       : ok(`${avgSim.toFixed(2)}`);
   console.log(`  Avg pairwise similarity: ${simLabel}`);
   console.log(
-    `  Largest cluster: ${largestCluster} markets about "${largestClusterSample}"`
+    `  Largest cluster: ${largestCluster} markets about "${largestClusterSample}"`,
   );
   console.log();
 
@@ -324,27 +320,27 @@ async function main() {
     ...Array.from(orgCounts.entries()).map(([name, count]) => ({
       name,
       count,
-      type: 'org' as const,
+      type: "org" as const,
     })),
     ...Array.from(actorCounts.entries()).map(([name, count]) => ({
       name,
       count,
-      type: 'actor' as const,
+      type: "actor" as const,
     })),
   ]
     .sort((a, b) => b.count - a.count)
     .slice(0, 5);
 
-  console.log('Entity Frequency:');
+  console.log("Entity Frequency:");
   if (topEntities.length === 0) {
-    console.log('  (no affiliated entities found)');
+    console.log("  (no affiliated entities found)");
   }
   for (const e of topEntities) {
     const pct = Math.round((e.count / total) * 100);
     const flag =
-      pct > 50 ? crit(`!! OVER-REPRESENTED`) : pct > 40 ? warn(`! high`) : '';
+      pct > 50 ? crit(`!! OVER-REPRESENTED`) : pct > 40 ? warn(`! high`) : "";
     console.log(
-      `  ${e.name.padEnd(20)} ${e.count}/${total} markets (${pct}%) ${flag}`
+      `  ${e.name.padEnd(20)} ${e.count}/${total} markets (${pct}%) ${flag}`,
     );
   }
   console.log();
@@ -356,7 +352,7 @@ async function main() {
     tfCounts.set(key, (tfCounts.get(key) ?? 0) + 1);
   }
 
-  console.log('Timeframe Balance:');
+  console.log("Timeframe Balance:");
   const tfParts: string[] = [];
   for (const [tf, expected] of Object.entries(MARKET_STRUCTURE)) {
     const actual = tfCounts.get(tf) ?? 0;
@@ -368,7 +364,7 @@ async function main() {
           : warn(`${actual}/${expected} ! OVER`);
     tfParts.push(`  ${tf}: ${status}`);
   }
-  console.log(tfParts.join('\n'));
+  console.log(tfParts.join("\n"));
   console.log();
 
   // ----- Category Distribution -----
@@ -377,13 +373,13 @@ async function main() {
     catCounts.set(m.category, (catCounts.get(m.category) ?? 0) + 1);
   }
 
-  console.log('Category Distribution:');
+  console.log("Category Distribution:");
   const sortedCats = Array.from(catCounts.entries()).sort(
-    (a, b) => b[1] - a[1]
+    (a, b) => b[1] - a[1],
   );
   for (const [cat, count] of sortedCats) {
     const pct = Math.round((count / total) * 100);
-    const flag = pct > 60 ? crit(`!! DOMINANT`) : '';
+    const flag = pct > 60 ? crit(`!! DOMINANT`) : "";
     console.log(`  ${cat}: ${count} (${pct}%) ${flag}`);
   }
   console.log();
@@ -396,24 +392,24 @@ async function main() {
     }
   }
 
-  console.log('Daily Topic Concentration:');
+  console.log("Daily Topic Concentration:");
   if (topicCounts.size === 0) {
-    console.log('  (no topic keys assigned)');
+    console.log("  (no topic keys assigned)");
   }
   const sortedTopics = Array.from(topicCounts.entries()).sort(
-    (a, b) => b[1] - a[1]
+    (a, b) => b[1] - a[1],
   );
   for (const [topic, count] of sortedTopics) {
     const pct = Math.round((count / total) * 100);
-    const flag = pct > 70 ? crit(`!! MONO-TOPIC`) : '';
+    const flag = pct > 70 ? crit(`!! MONO-TOPIC`) : "";
     console.log(`  "${topic}": ${count}/${total} (${pct}%) ${flag}`);
   }
   console.log();
 
   // ----- Near-Duplicate Detection -----
-  console.log('Near-Duplicates:');
+  console.log("Near-Duplicates:");
   if (duplicates.length === 0) {
-    console.log(`  ${ok('None detected')}`);
+    console.log(`  ${ok("None detected")}`);
   }
   for (const d of duplicates.sort((a, b) => b.score - a.score)) {
     console.log(`  Q${d.i} <-> Q${d.j}: Jaccard ${warn(d.score.toFixed(2))}`);
@@ -421,8 +417,8 @@ async function main() {
       console.log(`    "${activeRows[d.i].questionText}"`);
       console.log(`    "${activeRows[d.j].questionText}"`);
     } else {
-      const t1 = activeRows[d.i].questionText?.slice(0, 70) ?? '';
-      const t2 = activeRows[d.j].questionText?.slice(0, 70) ?? '';
+      const t1 = activeRows[d.i].questionText?.slice(0, 70) ?? "";
+      const t2 = activeRows[d.j].questionText?.slice(0, 70) ?? "";
       console.log(`    "${t1}"`);
       console.log(`    "${t2}"`);
     }
@@ -442,30 +438,30 @@ async function main() {
       .where(
         and(
           eq(timeframedMarkets.isResolved, true),
-          gte(timeframedMarkets.resolvedAt, since)
-        )
+          gte(timeframedMarkets.resolvedAt, since),
+        ),
       );
 
     console.log(
-      `\nHistory (last ${historyDays} days): ${resolved.length} resolved markets`
+      `\nHistory (last ${historyDays} days): ${resolved.length} resolved markets`,
     );
     const histCats = new Map<string, number>();
     for (const r of resolved) {
       histCats.set(r.category, (histCats.get(r.category) ?? 0) + 1);
     }
     for (const [cat, count] of Array.from(histCats.entries()).sort(
-      (a, b) => b[1] - a[1]
+      (a, b) => b[1] - a[1],
     )) {
       console.log(`  ${cat}: ${count}`);
     }
   }
 
-  console.log(`\n${ok('Report complete.')}\n`);
+  console.log(`\n${ok("Report complete.")}\n`);
 }
 
 main()
   .catch((err) => {
-    console.error(crit('Report failed:'), err);
+    console.error(crit("Report failed:"), err);
     process.exit(1);
   })
   .finally(() => {

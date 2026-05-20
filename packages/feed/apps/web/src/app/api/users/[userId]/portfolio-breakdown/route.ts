@@ -16,15 +16,15 @@ import {
   ensureMinimalUserByIdentifier,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { calculatePortfolioBreakdown } from '@feed/engine';
-import { logger, UserIdParamSchema } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/api";
+import { calculatePortfolioBreakdown } from "@feed/engine";
+import { logger, UserIdParamSchema } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 export const GET = withErrorHandling(
   async (
     _request: NextRequest,
-    context: { params: Promise<{ userId: string }> }
+    context: { params: Promise<{ userId: string }> },
   ) => {
     const { userId } = UserIdParamSchema.parse(await context.params);
     const { id: canonicalUserId } = await ensureMinimalUserByIdentifier(userId);
@@ -32,17 +32,17 @@ export const GET = withErrorHandling(
 
     if (!snapshot) {
       throw new BusinessLogicError(
-        'User portfolio breakdown not found',
-        'PORTFOLIO_BREAKDOWN_NOT_FOUND'
+        "User portfolio breakdown not found",
+        "PORTFOLIO_BREAKDOWN_NOT_FOUND",
       );
     }
 
     logger.info(
-      'Portfolio breakdown fetched successfully',
+      "Portfolio breakdown fetched successfully",
       { userId: canonicalUserId },
-      'GET /api/users/[userId]/portfolio-breakdown'
+      "GET /api/users/[userId]/portfolio-breakdown",
     );
 
     return successResponse(snapshot);
-  }
+  },
 );

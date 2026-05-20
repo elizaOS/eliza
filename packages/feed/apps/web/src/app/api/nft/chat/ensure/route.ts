@@ -2,9 +2,9 @@ import {
   authenticateWithDbUser,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { ensureNftChatMembership } from '@feed/api/services/nft-chat-gating-service';
-import type { NextRequest } from 'next/server';
+} from "@feed/api";
+import { ensureNftChatMembership } from "@feed/api/services/nft-chat-gating-service";
+import type { NextRequest } from "next/server";
 
 /**
  * POST /api/nft/chat/ensure

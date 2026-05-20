@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, mock } from 'bun:test';
+import { beforeEach, describe, expect, it, mock } from "bun:test";
 
 const mockLoggerInfo = mock();
 
@@ -22,7 +22,7 @@ function createSelectChain() {
   chain.limit = mock(() => chain);
   chain.then = (
     onFulfilled?: ((value: unknown) => unknown) | null,
-    onRejected?: ((reason: unknown) => unknown) | null
+    onRejected?: ((reason: unknown) => unknown) | null,
   ) => {
     const result = selectResults[selectCallIndex] ?? [];
     selectCallIndex += 1;
@@ -48,58 +48,58 @@ const mockDb = {
   }),
 };
 
-mock.module('@feed/db', () => ({
+mock.module("@feed/db", () => ({
   and: (...conditions: unknown[]) => conditions,
   db: mockDb,
   dbWrite: mockDb,
   eq: (left: unknown, right: unknown) => ({ left, right }),
   ne: (left: unknown, right: unknown) => ({ left, right }),
   users: {
-    id: 'users.id',
-    username: 'users.username',
-    referralCode: 'users.referralCode',
+    id: "users.id",
+    username: "users.username",
+    referralCode: "users.referralCode",
   },
 }));
 
-mock.module('@feed/shared', () => ({
+mock.module("@feed/shared", () => ({
   logger: {
     info: mockLoggerInfo,
   },
 }));
 
 const { getOrCreateReferralCode, isReferralCodeAvailableForUser } =
-  await import('../referral-service');
+  await import("../referral-service");
 
-describe('referral-service', () => {
+describe("referral-service", () => {
   beforeEach(() => {
     resetDbState();
     mockLoggerInfo.mockReset();
   });
 
-  it('reports referral codes as unavailable when another user already owns them', async () => {
-    selectResults = [[{ id: 'user_2' }]];
+  it("reports referral codes as unavailable when another user already owns them", async () => {
+    selectResults = [[{ id: "user_2" }]];
 
     await expect(
-      isReferralCodeAvailableForUser('user_1', 'alice')
+      isReferralCodeAvailableForUser("user_1", "alice"),
     ).resolves.toBe(false);
   });
 
-  it('syncs the referral code to the username when available', async () => {
+  it("syncs the referral code to the username when available", async () => {
     selectResults = [
-      [{ id: 'user_1', username: 'alice', referralCode: null }],
+      [{ id: "user_1", username: "alice", referralCode: null }],
       [],
     ];
 
-    await expect(getOrCreateReferralCode('user_1')).resolves.toBe('alice');
-    expect(updatePayload).toEqual({ referralCode: 'alice' });
+    await expect(getOrCreateReferralCode("user_1")).resolves.toBe("alice");
+    expect(updatePayload).toEqual({ referralCode: "alice" });
     expect(mockLoggerInfo).toHaveBeenCalledTimes(1);
   });
 
-  it('rejects users without usernames before generating a referral code', async () => {
-    selectResults = [[{ id: 'user_1', username: null, referralCode: null }]];
+  it("rejects users without usernames before generating a referral code", async () => {
+    selectResults = [[{ id: "user_1", username: null, referralCode: null }]];
 
-    await expect(getOrCreateReferralCode('user_1')).rejects.toThrow(
-      'does not have a username'
+    await expect(getOrCreateReferralCode("user_1")).rejects.toThrow(
+      "does not have a username",
     );
     expect(updatePayload).toBeNull();
   });

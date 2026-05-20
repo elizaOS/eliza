@@ -152,12 +152,12 @@ import {
   notifyUserGroupInvite,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { asUser, generateSnowflakeId, groupInvites } from '@feed/db';
-import { logger } from '@feed/shared';
-import { nanoid } from 'nanoid';
-import type { NextRequest } from 'next/server';
-import { z } from 'zod';
+} from "@feed/api";
+import { asUser, generateSnowflakeId, groupInvites } from "@feed/db";
+import { logger } from "@feed/shared";
+import { nanoid } from "nanoid";
+import type { NextRequest } from "next/server";
+import { z } from "zod";
 
 const CreateGroupSchema = z.object({
   name: z.string().min(1).max(100),
@@ -168,7 +168,7 @@ const CreateGroupSchema = z.object({
   // Agent groups (type: 'agent') are created via MCP tools.
   requiredNftContractAddress: z
     .string()
-    .regex(/^0x[a-fA-F0-9]{40}$/, 'Invalid contract address format')
+    .regex(/^0x[a-fA-F0-9]{40}$/, "Invalid contract address format")
     .optional(),
   requiredNftTokenId: z.number().int().min(0).nullable().optional(),
   requiredNftChainId: z.number().int().positive().optional(),
@@ -202,7 +202,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         id: { in: groupIds },
       },
       orderBy: {
-        createdAt: 'desc',
+        createdAt: "desc",
       },
     });
 
@@ -211,12 +211,12 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       groupIds.map((gid) =>
         db.groupMember.count({
           where: { groupId: gid, isActive: true },
-        })
-      )
+        }),
+      ),
     );
 
     const memberCountMap = new Map(
-      groupIds.map((gid, i) => [gid, memberCounts[i] ?? 0])
+      groupIds.map((gid, i) => [gid, memberCounts[i] ?? 0]),
     );
 
     // Build role map from memberships
@@ -239,17 +239,17 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       createdAt: group.createdAt,
       updatedAt: group.updatedAt,
       memberCount: memberCountMap.get(group.id) ?? 0,
-      role: roleMap.get(group.id) ?? 'member',
+      role: roleMap.get(group.id) ?? "member",
       isOwner: group.ownerId === user.userId,
       isAdmin:
-        roleMap.get(group.id) === 'admin' || roleMap.get(group.id) === 'owner',
+        roleMap.get(group.id) === "admin" || roleMap.get(group.id) === "owner",
     }));
   });
 
   logger.info(
-    'Groups list retrieved',
+    "Groups list retrieved",
     { userId: user.userId, groupCount: groups.length },
-    'GET /api/groups'
+    "GET /api/groups",
   );
 
   return successResponse({ groups });
@@ -273,7 +273,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       data: {
         id: groupId,
         name: data.name,
-        type: 'user', // User-created group
+        type: "user", // User-created group
         ownerId: user.userId,
         createdById: user.userId,
         updatedAt: new Date(),
@@ -304,7 +304,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         id: nanoid(),
         groupId,
         userId: user.userId,
-        role: 'owner',
+        role: "owner",
         addedBy: user.userId,
       },
     });
@@ -328,7 +328,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       humanId: string;
       inviteId: string;
     }> = [];
-    let creatorName = 'Someone';
+    let creatorName = "Someone";
 
     if (data.memberIds.length > 0) {
       const otherMembers = data.memberIds.filter((id) => id !== user.userId);
@@ -355,7 +355,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
             where: { id: user.userId },
             select: { displayName: true, username: true },
           });
-          creatorName = creator?.displayName || creator?.username || 'Someone';
+          creatorName = creator?.displayName || creator?.username || "Someone";
 
           // Separate humans from agents/NPCs
           const agents = validMembers.filter((m) => m.isAgent || m.isActor);
@@ -370,7 +370,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
                 id: nanoid(),
                 groupId,
                 userId: uId,
-                role: 'member',
+                role: "member",
                 addedBy: user.userId,
               })),
             });
@@ -389,19 +389,19 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
             // Create system message for agents added
             const agentNames = agents.map(
-              (m) => m.displayName || m.username || 'Unknown'
+              (m) => m.displayName || m.username || "Unknown",
             );
             const agentNamesText =
               agentNames.length <= 3
-                ? agentNames.join(', ')
-                : `${agentNames.slice(0, 2).join(', ')} and ${agentNames.length - 2} others`;
+                ? agentNames.join(", ")
+                : `${agentNames.slice(0, 2).join(", ")} and ${agentNames.length - 2} others`;
 
             await db.message.create({
               data: {
                 id: await generateSnowflakeId(),
                 chatId,
-                senderId: 'system',
-                type: 'system',
+                senderId: "system",
+                type: "system",
                 content: `${creatorName} added ${agentNamesText} to the group`,
                 createdAt: new Date(),
               },
@@ -426,14 +426,14 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
                   groupId,
                   invitedUserId: humanId,
                   invitedBy: user.userId,
-                  status: 'pending',
+                  status: "pending",
                   invitedAt,
                 })
                 .onConflictDoUpdate({
                   target: [groupInvites.groupId, groupInvites.invitedUserId],
                   set: {
                     invitedBy: user.userId,
-                    status: 'pending',
+                    status: "pending",
                     invitedAt,
                   },
                 })
@@ -443,13 +443,13 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
               const actualInviteId = result[0]?.id ?? newInviteId;
               if (!result[0]?.id) {
                 logger.warn(
-                  'Invite returning() returned empty result, using generated ID',
+                  "Invite returning() returned empty result, using generated ID",
                   {
                     groupId,
                     invitedUserId: humanId,
                     generatedId: newInviteId,
                   },
-                  'POST /api/groups'
+                  "POST /api/groups",
                 );
               }
               humanInviteNotifications.push({
@@ -462,19 +462,19 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
             // Create system message for invites sent
             const humanNames = humans.map(
-              (m) => m.displayName || m.username || 'Unknown'
+              (m) => m.displayName || m.username || "Unknown",
             );
             const humanNamesText =
               humanNames.length <= 3
-                ? humanNames.join(', ')
-                : `${humanNames.slice(0, 2).join(', ')} and ${humanNames.length - 2} others`;
+                ? humanNames.join(", ")
+                : `${humanNames.slice(0, 2).join(", ")} and ${humanNames.length - 2} others`;
 
             await db.message.create({
               data: {
                 id: await generateSnowflakeId(),
                 chatId,
-                senderId: 'system',
-                type: 'system',
+                senderId: "system",
+                type: "system",
                 content: `${creatorName} invited ${humanNamesText} to the group`,
                 createdAt: new Date(),
               },
@@ -508,9 +508,9 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
           result.group.id,
           data.name,
           result.chatId,
-          result.notifications.creatorName
-        )
-      )
+          result.notifications.creatorName,
+        ),
+      ),
     );
   }
 
@@ -523,14 +523,14 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
           result.group.id,
           data.name,
           inviteId,
-          result.notifications.creatorName // Pass pre-fetched name to avoid N+1
-        )
-      )
+          result.notifications.creatorName, // Pass pre-fetched name to avoid N+1
+        ),
+      ),
     );
   }
 
   logger.info(
-    'Group created',
+    "Group created",
     {
       userId: user.userId,
       groupId: result.group.id,
@@ -538,10 +538,10 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       memberCount: result.memberCount,
       invitedCount: result.invitedCount,
     },
-    'POST /api/groups'
+    "POST /api/groups",
   );
 
-  void checkProgress(user.userId, { type: 'group_created' });
+  void checkProgress(user.userId, { type: "group_created" });
 
   return successResponse({
     group: {

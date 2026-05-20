@@ -16,10 +16,10 @@ import {
   requireAdmin,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import type { NextRequest } from 'next/server';
+} from "@feed/api";
+import type { NextRequest } from "next/server";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 /**
  * GET /api/admin/cron-metrics

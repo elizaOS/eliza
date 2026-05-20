@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { cn, logger } from '@feed/shared';
+import { cn, logger } from "@feed/shared";
 import {
   Crown,
   Loader2,
@@ -11,13 +11,13 @@ import {
   UserMinus,
   UserPlus,
   X,
-} from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { Avatar } from '@/components/shared/Avatar';
-import { useAuth } from '@/hooks/useAuth';
-import { useAuthStore } from '@/stores/authStore';
-import { apiUrl } from '@/utils/api-url';
-import { GroupTypeBadge } from './MemberTypeBadge';
+} from "lucide-react";
+import { useEffect, useState } from "react";
+import { Avatar } from "@/components/shared/Avatar";
+import { useAuth } from "@/hooks/useAuth";
+import { useAuthStore } from "@/stores/authStore";
+import { apiUrl } from "@/utils/api-url";
+import { GroupTypeBadge } from "./MemberTypeBadge";
 
 /**
  * Member structure for group management modal.
@@ -32,8 +32,8 @@ interface Member {
   displayName: string | null;
   username: string | null;
   profileImageUrl: string | null;
-  memberType: 'user' | 'agent' | 'npc';
-  role: 'owner' | 'admin' | 'member';
+  memberType: "user" | "agent" | "npc";
+  role: "owner" | "admin" | "member";
   isAdmin: boolean;
   isOwner: boolean;
   joinedAt: Date | string;
@@ -49,9 +49,9 @@ interface GroupDetails {
   id: string;
   name: string;
   description: string | null;
-  type: 'user' | 'npc' | 'agent' | 'team';
+  type: "user" | "npc" | "agent" | "team";
   members: Member[];
-  userRole: 'owner' | 'admin' | 'member';
+  userRole: "owner" | "admin" | "member";
   isAdmin: boolean;
   isOwner: boolean;
 }
@@ -64,7 +64,7 @@ interface SearchResult {
   displayName: string | null;
   username: string | null;
   profileImageUrl: string | null;
-  type: 'user' | 'agent';
+  type: "user" | "agent";
 }
 
 /**
@@ -110,10 +110,10 @@ export function GroupManagementModal({
 
   // Group info state
   const [isEditingGroupName, setIsEditingGroupName] = useState(false);
-  const [groupNameDraft, setGroupNameDraft] = useState('');
+  const [groupNameDraft, setGroupNameDraft] = useState("");
 
   const secondaryBtnClass =
-    'rounded-lg border border-border bg-background px-3 py-1.5 font-medium text-sm transition-colors hover:bg-accent disabled:opacity-50';
+    "rounded-lg border border-border bg-background px-3 py-1.5 font-medium text-sm transition-colors hover:bg-accent disabled:opacity-50";
 
   const resetGroupNameEdit = () => {
     setError(null);
@@ -122,13 +122,13 @@ export function GroupManagementModal({
 
   // Add member state
   const [showAddMember, setShowAddMember] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
 
   // Confirm dialogs
   const [confirmAction, setConfirmAction] = useState<{
-    type: 'remove' | 'promote' | 'demote' | 'delete' | 'leave';
+    type: "remove" | "promote" | "demote" | "delete" | "leave";
     userId?: string;
     userName?: string;
   } | null>(null);
@@ -139,9 +139,9 @@ export function GroupManagementModal({
       setGroupDetails(null);
       setError(null);
       setIsEditingGroupName(false);
-      setGroupNameDraft('');
+      setGroupNameDraft("");
       setShowAddMember(false);
-      setSearchQuery('');
+      setSearchQuery("");
       setSearchResults([]);
       return;
     }
@@ -158,21 +158,21 @@ export function GroupManagementModal({
         });
 
         if (!response.ok) {
-          setError('Failed to load group details');
+          setError("Failed to load group details");
           return;
         }
 
         const data = await response.json();
         setGroupDetails(data.group);
-        setGroupNameDraft(data.group?.name || '');
+        setGroupNameDraft(data.group?.name || "");
         setIsEditingGroupName(false);
       } catch (err) {
         logger.error(
-          'Failed to load group details',
+          "Failed to load group details",
           err instanceof Error ? err : { error: err },
-          'GroupManagementModal'
+          "GroupManagementModal",
         );
-        setError('Failed to load group details. Please try again.');
+        setError("Failed to load group details. Please try again.");
       } finally {
         setLoading(false);
       }
@@ -186,23 +186,23 @@ export function GroupManagementModal({
 
     const nextName = groupNameDraft.trim();
     if (!nextName) {
-      setError('Group name is required');
+      setError("Group name is required");
       return;
     }
     if (nextName.length > 100) {
-      setError('Group name must be 100 characters or less');
+      setError("Group name must be 100 characters or less");
       return;
     }
 
-    setActionLoading('group-name');
+    setActionLoading("group-name");
     setError(null);
 
     try {
       const token = await getAccessToken();
       const response = await fetch(`/api/groups/${groupId}`, {
-        method: 'PATCH',
+        method: "PATCH",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ name: nextName }),
@@ -210,7 +210,7 @@ export function GroupManagementModal({
 
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
-        setError(data.error || 'Failed to update group name');
+        setError(data.error || "Failed to update group name");
         return;
       }
 
@@ -228,7 +228,7 @@ export function GroupManagementModal({
         } else {
           // PATCH succeeded; optimistically update UI with the new name
           setGroupDetails((prev) =>
-            prev ? { ...prev, name: nextName } : prev
+            prev ? { ...prev, name: nextName } : prev,
           );
           setGroupNameDraft(nextName);
         }
@@ -242,11 +242,11 @@ export function GroupManagementModal({
       onGroupUpdated?.();
     } catch (err) {
       logger.error(
-        'Failed to update group name',
+        "Failed to update group name",
         err instanceof Error ? err : { error: err },
-        'GroupManagementModal'
+        "GroupManagementModal",
       );
-      setError('Network error. Please try again.');
+      setError("Network error. Please try again.");
     } finally {
       setActionLoading(null);
     }
@@ -270,7 +270,7 @@ export function GroupManagementModal({
             headers: {
               Authorization: `Bearer ${token}`,
             },
-          }
+          },
         );
 
         if (response.ok) {
@@ -292,8 +292,8 @@ export function GroupManagementModal({
                 displayName: u.displayName,
                 username: u.username,
                 profileImageUrl: u.profileImageUrl,
-                type: u.isAgent ? ('agent' as const) : ('user' as const),
-              })
+                type: u.isAgent ? ("agent" as const) : ("user" as const),
+              }),
             );
           setSearchResults(results);
         } else {
@@ -301,9 +301,9 @@ export function GroupManagementModal({
         }
       } catch (error) {
         logger.error(
-          'Member search failed',
+          "Member search failed",
           error instanceof Error ? error : { error },
-          'GroupManagementModal'
+          "GroupManagementModal",
         );
         setSearchResults([]);
       } finally {
@@ -324,9 +324,9 @@ export function GroupManagementModal({
     try {
       const token = await getAccessToken();
       const response = await fetch(apiUrl(`/api/groups/${groupId}/members`), {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ userId }),
@@ -334,7 +334,7 @@ export function GroupManagementModal({
 
       if (!response.ok) {
         const data = await response.json();
-        setError(data.error || 'Failed to add member');
+        setError(data.error || "Failed to add member");
         return;
       }
 
@@ -351,16 +351,16 @@ export function GroupManagementModal({
         setGroupDetails(data.group);
       }
 
-      setSearchQuery('');
+      setSearchQuery("");
       setSearchResults([]);
       onGroupUpdated?.();
     } catch (err) {
       logger.error(
-        'Failed to add member',
+        "Failed to add member",
         err instanceof Error ? err : { error: err },
-        'GroupManagementModal'
+        "GroupManagementModal",
       );
-      setError('Network error. Please try again.');
+      setError("Network error. Please try again.");
     } finally {
       setActionLoading(null);
     }
@@ -375,16 +375,16 @@ export function GroupManagementModal({
     const response = await fetch(
       `/api/groups/${groupId}/members?userId=${userId}`,
       {
-        method: 'DELETE',
+        method: "DELETE",
         headers: {
           Authorization: `Bearer ${token}`,
         },
-      }
+      },
     );
 
     if (!response.ok) {
       const data = await response.json();
-      setError(data.error || 'Failed to remove member');
+      setError(data.error || "Failed to remove member");
       setActionLoading(null);
       setConfirmAction(null);
       return;
@@ -413,9 +413,9 @@ export function GroupManagementModal({
     setError(null);
     const token = await getAccessToken();
     const response = await fetch(apiUrl(`/api/groups/${groupId}/admins`), {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({ userId }),
@@ -423,7 +423,7 @@ export function GroupManagementModal({
 
     if (!response.ok) {
       const data = await response.json();
-      setError(data.error || 'Failed to promote member');
+      setError(data.error || "Failed to promote member");
       setActionLoading(null);
       setConfirmAction(null);
       return;
@@ -454,16 +454,16 @@ export function GroupManagementModal({
     const response = await fetch(
       `/api/groups/${groupId}/admins?userId=${userId}`,
       {
-        method: 'DELETE',
+        method: "DELETE",
         headers: {
           Authorization: `Bearer ${token}`,
         },
-      }
+      },
     );
 
     if (!response.ok) {
       const data = await response.json();
-      setError(data.error || 'Failed to remove admin status');
+      setError(data.error || "Failed to remove admin status");
       setActionLoading(null);
       setConfirmAction(null);
       return;
@@ -488,11 +488,11 @@ export function GroupManagementModal({
   const handleDeleteGroup = async () => {
     if (!groupId) return;
 
-    setActionLoading('delete');
+    setActionLoading("delete");
     setError(null);
     const token = await getAccessToken();
     const response = await fetch(apiUrl(`/api/groups/${groupId}`), {
-      method: 'DELETE',
+      method: "DELETE",
       headers: {
         Authorization: `Bearer ${token}`,
       },
@@ -500,7 +500,7 @@ export function GroupManagementModal({
 
     if (!response.ok) {
       const data = await response.json();
-      setError(data.error || 'Failed to delete group');
+      setError(data.error || "Failed to delete group");
       setActionLoading(null);
       setConfirmAction(null);
       return;
@@ -513,22 +513,22 @@ export function GroupManagementModal({
   const handleLeaveGroup = async () => {
     if (!groupId || !user) return;
 
-    setActionLoading('leave');
+    setActionLoading("leave");
     setError(null);
     const token = await getAccessToken();
     const response = await fetch(
       `/api/groups/${groupId}/members?userId=${user.id}`,
       {
-        method: 'DELETE',
+        method: "DELETE",
         headers: {
           Authorization: `Bearer ${token}`,
         },
-      }
+      },
     );
 
     if (!response.ok) {
       const data = await response.json();
-      setError(data.error || 'Failed to leave group');
+      setError(data.error || "Failed to leave group");
       setActionLoading(null);
       setConfirmAction(null);
       return;
@@ -542,19 +542,19 @@ export function GroupManagementModal({
     if (!confirmAction) return;
 
     switch (confirmAction.type) {
-      case 'remove':
+      case "remove":
         if (confirmAction.userId) handleRemoveMember(confirmAction.userId);
         break;
-      case 'promote':
+      case "promote":
         if (confirmAction.userId) handlePromoteToAdmin(confirmAction.userId);
         break;
-      case 'demote':
+      case "demote":
         if (confirmAction.userId) handleDemoteAdmin(confirmAction.userId);
         break;
-      case 'delete':
+      case "delete":
         handleDeleteGroup();
         break;
-      case 'leave':
+      case "leave":
         handleLeaveGroup();
         break;
     }
@@ -568,7 +568,7 @@ export function GroupManagementModal({
   };
 
   // NPC groups cannot have members added via this modal
-  const isNpcGroup = groupDetails?.type === 'npc';
+  const isNpcGroup = groupDetails?.type === "npc";
 
   return (
     <>
@@ -588,7 +588,7 @@ export function GroupManagementModal({
           <div className="flex shrink-0 items-start justify-between border-border border-b px-6 py-4">
             <div className="min-w-0 flex-1">
               <h2 className="truncate font-bold text-xl">
-                {groupDetails?.name || 'Group Settings'}
+                {groupDetails?.name || "Group Settings"}
               </h2>
               {groupDetails && (
                 <div className="mt-1">
@@ -624,7 +624,7 @@ export function GroupManagementModal({
                   {/* Leave Group (everyone can do this) */}
                   {!groupDetails.isOwner && (
                     <button
-                      onClick={() => setConfirmAction({ type: 'leave' })}
+                      onClick={() => setConfirmAction({ type: "leave" })}
                       disabled={!!actionLoading}
                       className="rounded-lg border border-red-500 px-4 py-2 font-medium text-red-500 text-sm transition-colors hover:bg-red-500/10 disabled:opacity-50"
                     >
@@ -636,7 +636,7 @@ export function GroupManagementModal({
                   {/* Delete Group (owner only, not for NPC groups) */}
                   {groupDetails.isOwner && !isNpcGroup && (
                     <button
-                      onClick={() => setConfirmAction({ type: 'delete' })}
+                      onClick={() => setConfirmAction({ type: "delete" })}
                       disabled={!!actionLoading}
                       className="rounded-lg border border-red-500 px-4 py-2 font-medium text-red-500 text-sm transition-colors hover:bg-red-500/10 disabled:opacity-50"
                     >
@@ -675,10 +675,10 @@ export function GroupManagementModal({
                                 disabled={!!actionLoading}
                                 className="rounded-lg bg-primary px-3 py-1.5 font-medium text-primary-foreground text-sm transition-colors hover:bg-primary/90 disabled:opacity-50"
                               >
-                                {actionLoading === 'group-name' ? (
+                                {actionLoading === "group-name" ? (
                                   <Loader2 className="inline h-4 w-4 animate-spin" />
                                 ) : (
-                                  'Save'
+                                  "Save"
                                 )}
                               </button>
                               <button
@@ -715,16 +715,15 @@ export function GroupManagementModal({
                         value={groupNameDraft}
                         onChange={(e) => setGroupNameDraft(e.target.value)}
                         onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
+                          if (e.key === "Enter") {
                             e.preventDefault();
                             handleUpdateGroupName();
                           }
-                          if (e.key === 'Escape') {
+                          if (e.key === "Escape") {
                             resetGroupNameEdit();
                             setIsEditingGroupName(false);
                           }
                         }}
-                        autoFocus
                         maxLength={100}
                         className="mt-2 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm transition-colors focus:border-primary focus:outline-none"
                       />
@@ -792,7 +791,7 @@ export function GroupManagementModal({
                                 id={result.id}
                                 src={result.profileImageUrl || undefined}
                                 name={
-                                  result.username || result.displayName || '?'
+                                  result.username || result.displayName || "?"
                                 }
                                 type="user"
                                 size="sm"
@@ -801,7 +800,7 @@ export function GroupManagementModal({
                                 <div className="truncate font-medium text-sm">
                                   {result.displayName ||
                                     result.username ||
-                                    'Unknown'}
+                                    "Unknown"}
                                 </div>
                                 {result.username && (
                                   <div className="truncate text-muted-foreground text-xs">
@@ -839,9 +838,9 @@ export function GroupManagementModal({
                           <Avatar
                             id={member.id}
                             src={member.profileImageUrl || undefined}
-                            name={member.username || member.displayName || '?'}
+                            name={member.username || member.displayName || "?"}
                             type={
-                              member.memberType === 'npc' ? 'actor' : 'user'
+                              member.memberType === "npc" ? "actor" : "user"
                             }
                             size="md"
                           />
@@ -850,7 +849,7 @@ export function GroupManagementModal({
                               <span className="truncate font-medium text-sm">
                                 {member.displayName ||
                                   member.username ||
-                                  'Unknown'}
+                                  "Unknown"}
                               </span>
                               {isOwner && (
                                 <Crown className="h-3.5 w-3.5 shrink-0 text-yellow-500" />
@@ -873,12 +872,12 @@ export function GroupManagementModal({
                                 <button
                                   onClick={() =>
                                     setConfirmAction({
-                                      type: 'promote',
+                                      type: "promote",
                                       userId: member.id,
                                       userName:
                                         member.displayName ||
                                         member.username ||
-                                        'this user',
+                                        "this user",
                                     })
                                   }
                                   disabled={!!actionLoading}
@@ -891,12 +890,12 @@ export function GroupManagementModal({
                                 <button
                                   onClick={() =>
                                     setConfirmAction({
-                                      type: 'demote',
+                                      type: "demote",
                                       userId: member.id,
                                       userName:
                                         member.displayName ||
                                         member.username ||
-                                        'this user',
+                                        "this user",
                                     })
                                   }
                                   disabled={!!actionLoading}
@@ -909,12 +908,12 @@ export function GroupManagementModal({
                               <button
                                 onClick={() =>
                                   setConfirmAction({
-                                    type: 'remove',
+                                    type: "remove",
                                     userId: member.id,
                                     userName:
                                       member.displayName ||
                                       member.username ||
-                                      'this user',
+                                      "this user",
                                   })
                                 }
                                 disabled={!!actionLoading}
@@ -952,23 +951,23 @@ export function GroupManagementModal({
           >
             <div className="space-y-4 p-6">
               <h3 className="font-semibold text-lg">
-                {confirmAction.type === 'delete' && 'Delete Group?'}
-                {confirmAction.type === 'remove' && 'Remove Member?'}
-                {confirmAction.type === 'promote' && 'Make Admin?'}
-                {confirmAction.type === 'demote' && 'Remove Admin?'}
-                {confirmAction.type === 'leave' && 'Leave Group?'}
+                {confirmAction.type === "delete" && "Delete Group?"}
+                {confirmAction.type === "remove" && "Remove Member?"}
+                {confirmAction.type === "promote" && "Make Admin?"}
+                {confirmAction.type === "demote" && "Remove Admin?"}
+                {confirmAction.type === "leave" && "Leave Group?"}
               </h3>
               <p className="text-muted-foreground text-sm">
-                {confirmAction.type === 'delete' &&
-                  'This will permanently delete the group and all its data. This action cannot be undone.'}
-                {confirmAction.type === 'remove' &&
+                {confirmAction.type === "delete" &&
+                  "This will permanently delete the group and all its data. This action cannot be undone."}
+                {confirmAction.type === "remove" &&
                   `Remove ${confirmAction.userName} from this group? They can be re-added later.`}
-                {confirmAction.type === 'promote' &&
+                {confirmAction.type === "promote" &&
                   `Give ${confirmAction.userName} admin privileges? They will be able to manage members and settings.`}
-                {confirmAction.type === 'demote' &&
+                {confirmAction.type === "demote" &&
                   `Remove admin privileges from ${confirmAction.userName}? They will remain a regular member.`}
-                {confirmAction.type === 'leave' &&
-                  'Are you sure you want to leave this group? You will need to be re-added to join again.'}
+                {confirmAction.type === "leave" &&
+                  "Are you sure you want to leave this group? You will need to be re-added to join again."}
               </p>
 
               <div className="flex gap-3">
@@ -983,18 +982,18 @@ export function GroupManagementModal({
                   onClick={handleConfirmAction}
                   disabled={!!actionLoading}
                   className={cn(
-                    'flex-1 rounded-lg px-4 py-2.5 font-medium transition-colors disabled:opacity-50',
-                    confirmAction.type === 'delete' ||
-                      confirmAction.type === 'remove' ||
-                      confirmAction.type === 'leave'
-                      ? 'bg-red-500 text-primary-foreground hover:bg-red-600'
-                      : 'bg-primary text-primary-foreground hover:bg-primary/90'
+                    "flex-1 rounded-lg px-4 py-2.5 font-medium transition-colors disabled:opacity-50",
+                    confirmAction.type === "delete" ||
+                      confirmAction.type === "remove" ||
+                      confirmAction.type === "leave"
+                      ? "bg-red-500 text-primary-foreground hover:bg-red-600"
+                      : "bg-primary text-primary-foreground hover:bg-primary/90",
                   )}
                 >
                   {actionLoading ? (
                     <Loader2 className="inline h-4 w-4 animate-spin" />
                   ) : (
-                    'Confirm'
+                    "Confirm"
                   )}
                 </button>
               </div>

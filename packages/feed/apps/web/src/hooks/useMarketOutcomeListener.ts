@@ -1,12 +1,12 @@
-'use client';
+"use client";
 
-import { logger } from '@feed/shared';
-import { useCallback } from 'react';
-import { useOutcomeNotification } from '@/components/providers/OutcomeNotificationProvider';
-import { useAuth } from '@/hooks/useAuth';
-import type { Channel } from '@/hooks/useSSE';
-import { useSSEChannel } from '@/hooks/useSSE';
-import { isMarketResolvedData } from '@/types/notifications';
+import { logger } from "@feed/shared";
+import { useCallback } from "react";
+import { useOutcomeNotification } from "@/components/providers/OutcomeNotificationProvider";
+import { useAuth } from "@/hooks/useAuth";
+import type { Channel } from "@/hooks/useSSE";
+import { useSSEChannel } from "@/hooks/useSSE";
+import { isMarketResolvedData } from "@/types/notifications";
 
 /**
  * Subscribes to the `notifications:{userId}` SSE channel and forwards
@@ -25,13 +25,13 @@ export function useMarketOutcomeListener(): void {
 
   const handleMessage = useCallback(
     (data: Record<string, unknown>) => {
-      if (data.type !== 'market_resolved') return;
+      if (data.type !== "market_resolved") return;
 
       if (!isMarketResolvedData(data)) {
         logger.warn(
-          'Malformed market_resolved SSE event — skipping',
+          "Malformed market_resolved SSE event — skipping",
           { data },
-          'useMarketOutcomeListener'
+          "useMarketOutcomeListener",
         );
         return;
       }
@@ -42,11 +42,11 @@ export function useMarketOutcomeListener(): void {
         outcome: data.outcome,
         points: data.points,
         agentName:
-          typeof data.agentName === 'string' ? data.agentName : undefined,
+          typeof data.agentName === "string" ? data.agentName : undefined,
         deepLink: data.deepLink,
       });
     },
-    [showOutcome]
+    [showOutcome],
   );
 
   useSSEChannel(channel, handleMessage);

@@ -9,58 +9,58 @@
  */
 export const ROUTES = {
   // Core routes
-  HOME: '/',
-  FEED: '/feed',
-  CHATS: '/chats',
+  HOME: "/",
+  FEED: "/feed",
+  CHATS: "/chats",
 
   // Profile routes
-  PROFILE: '/profile',
+  PROFILE: "/profile",
   PROFILE_BY_ID: (id: string) => `/profile/${id}`,
 
   // Markets routes
-  MARKETS: '/markets',
-  MARKETS_TRENDING: '/markets',
-  MARKETS_PERPS: '/markets?tab=perps',
+  MARKETS: "/markets",
+  MARKETS_TRENDING: "/markets",
+  MARKETS_PERPS: "/markets?tab=perps",
   MARKETS_PERPS_BY_TICKER: (ticker: string) => `/markets/perps/${ticker}`,
-  MARKETS_PREDICTIONS: '/markets?tab=predictions',
+  MARKETS_PREDICTIONS: "/markets?tab=predictions",
   MARKETS_PREDICTIONS_BY_ID: (id: string) => `/markets/predictions/${id}`,
 
   // Other main pages
-  GAME: '/game',
-  LEADERBOARD: '/leaderboard',
-  NOTIFICATIONS: '/notifications',
-  REWARDS: '/rewards',
-  REPUTATION: '/reputation',
-  REGISTRY: '/registry',
+  GAME: "/game",
+  LEADERBOARD: "/leaderboard",
+  NOTIFICATIONS: "/notifications",
+  REWARDS: "/rewards",
+  REPUTATION: "/reputation",
+  REGISTRY: "/registry",
 
   // Settings
-  SETTINGS: '/settings',
-  SETTINGS_MODERATION: '/settings/moderation',
+  SETTINGS: "/settings",
+  SETTINGS_MODERATION: "/settings/moderation",
 
   // Agents
-  AGENTS: '/agents',
-  AGENTS_CREATE: '/agents/create',
+  AGENTS: "/agents",
+  AGENTS_CREATE: "/agents/create",
   AGENTS_BY_ID: (id: string) => `/agents/${id}`,
-  AGENTS_TEAM_CHAT: '/agents/team',
+  AGENTS_TEAM_CHAT: "/agents/team",
 
   // Content
   POST_BY_ID: (id: string) => `/post/${id}`,
   ARTICLE_BY_ID: (id: string) => `/article/${id}`,
   TRENDING_BY_TAG: (tag: string) => `/trending/${tag}`,
-  TRENDING_GROUP: '/trending/group',
+  TRENDING_GROUP: "/trending/group",
 
   // Wallet
-  WALLET: '/wallet',
-  WALLET_BALANCE: '/wallet?tab=balance',
-  WALLET_PNL: '/wallet?tab=pnl',
-  WALLET_POSITIONS: '/wallet?tab=positions',
+  WALLET: "/wallet",
+  WALLET_BALANCE: "/wallet?tab=balance",
+  WALLET_PNL: "/wallet?tab=pnl",
+  WALLET_POSITIONS: "/wallet?tab=positions",
 
   // NFT
-  NFT: '/nft',
+  NFT: "/nft",
   NFT_BY_TOKEN: (id: string) => `/nft/${id}`,
 
   // Research
-  RESEARCH: '/research',
+  RESEARCH: "/research",
 
   // Content (additional)
   COMMENT_BY_ID: (id: string) => `/comment/${id}`,
@@ -70,23 +70,23 @@ export const ROUTES = {
   ORGS_BY_ID: (id: string) => `/orgs/${id}`,
 
   // Admin
-  ADMIN: '/admin',
-  ADMIN_GROUPS: '/admin/groups',
-  ADMIN_PERFORMANCE: '/admin/performance',
-  ADMIN_RL_TRAINING: '/admin/rl-training',
-  ADMIN_TRAINING: '/admin/training',
-  ADMIN_DAG: '/admin/dag-visualizer',
-  ADMIN_RESOLUTIONS: '/admin/resolutions',
+  ADMIN: "/admin",
+  ADMIN_GROUPS: "/admin/groups",
+  ADMIN_PERFORMANCE: "/admin/performance",
+  ADMIN_RL_TRAINING: "/admin/rl-training",
+  ADMIN_TRAINING: "/admin/training",
+  ADMIN_DAG: "/admin/dag-visualizer",
+  ADMIN_RESOLUTIONS: "/admin/resolutions",
 
   // Share
   SHARE_PNL: (userId: string) => `/share/pnl/${userId}`,
   SHARE_REFERRAL: (userId: string) => `/share/referral/${userId}`,
 
   // API docs
-  API_DOCS: '/api-docs',
+  API_DOCS: "/api-docs",
 
   // Offline
-  OFFLINE: '/~offline',
+  OFFLINE: "/~offline",
 } as const;
 
 /**
@@ -254,10 +254,10 @@ export const SELECTORS = {
   ERROR_MESSAGE: '[role="alert"], .error, .text-red',
   MODAL: '[role="dialog"], .modal',
   TOAST: '[data-testid="toast"], [role="status"]',
-  BUTTON: 'button',
-  INPUT: 'input',
-  TEXTAREA: 'textarea',
-  SELECT: 'select',
+  BUTTON: "button",
+  INPUT: "input",
+  TEXTAREA: "textarea",
+  SELECT: "select",
   CHECKBOX: 'input[type="checkbox"]',
   SLIDER: 'input[type="range"], [role="slider"]',
 } as const;
@@ -267,27 +267,27 @@ export const SELECTORS = {
  */
 export const TEST_FORM_DATA = {
   // Profile
-  DISPLAY_NAME: 'Test User Display Name',
-  USERNAME: 'testuser123',
-  BIO: 'This is a test bio for E2E testing purposes.',
+  DISPLAY_NAME: "Test User Display Name",
+  USERNAME: "testuser123",
+  BIO: "This is a test bio for E2E testing purposes.",
 
   // Post
-  POST_CONTENT: 'This is a test post from E2E tests',
+  POST_CONTENT: "This is a test post from E2E tests",
 
   // Chat
-  CHAT_MESSAGE: 'Hello, this is a test message!',
+  CHAT_MESSAGE: "Hello, this is a test message!",
 
   // Search
-  SEARCH_QUERY: 'test search query',
+  SEARCH_QUERY: "test search query",
 
   // Edge cases
-  EMPTY_STRING: '',
-  LONG_STRING: 'A'.repeat(5000),
-  SPECIAL_CHARS: '!@#$%^&*(){}[]<>?/\\|`~',
-  UNICODE_STRING: '日本語テスト 🎉 émojis äöü',
+  EMPTY_STRING: "",
+  LONG_STRING: "A".repeat(5000),
+  SPECIAL_CHARS: "!@#$%^&*(){}[]<>?/\\|`~",
+  UNICODE_STRING: "日本語テスト 🎉 émojis äöü",
   XSS_ATTEMPT: '<script>alert("xss")</script>',
   SQL_INJECTION: "'; DROP TABLE users; --",
-  WHITESPACE_ONLY: '   \t\n   ',
+  WHITESPACE_ONLY: "   \t\n   ",
   NEGATIVE_NUMBER: -999999,
   LARGE_NUMBER: 999999999999,
   ZERO: 0,
@@ -330,7 +330,7 @@ export const TRADING_TEST_DATA = {
 
   // Prediction market
   PREDICTION_AMOUNTS: [1, 10, 100, 0.5],
-  YES_NO_SIDES: ['YES', 'NO'] as const,
+  YES_NO_SIDES: ["YES", "NO"] as const,
 
   // Invalid inputs
   INVALID_SIZE: -1,
@@ -342,8 +342,8 @@ export const TRADING_TEST_DATA = {
  * This wallet should already be an admin in localnet
  */
 export const DEFAULT_ANVIL_ACCOUNT = {
-  address: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
+  address: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
   privateKey:
-    '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80',
-  mnemonic: 'test test test test test test test test test test test junk',
+    "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+  mnemonic: "test test test test test test test test test test test junk",
 } as const;

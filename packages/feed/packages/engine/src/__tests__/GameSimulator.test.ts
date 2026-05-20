@@ -37,14 +37,14 @@
  * @see {@link GameSimulator} - Class under test
  */
 
-import { beforeEach, describe, expect, test } from 'bun:test';
+import { beforeEach, describe, expect, test } from "bun:test";
 import {
   type GameConfig,
   type GameResult,
   GameSimulator,
-} from '../GameSimulator';
+} from "../GameSimulator";
 
-describe('GameSimulator - Standalone Engine', () => {
+describe("GameSimulator - Standalone Engine", () => {
   let simulator: GameSimulator;
   let config: GameConfig;
 
@@ -57,13 +57,13 @@ describe('GameSimulator - Standalone Engine', () => {
     simulator = new GameSimulator(config);
   });
 
-  describe('Instantiation', () => {
-    test('can create simulator without server dependencies', () => {
+  describe("Instantiation", () => {
+    test("can create simulator without server dependencies", () => {
       expect(simulator).toBeDefined();
       expect(simulator).toBeInstanceOf(GameSimulator);
     });
 
-    test('accepts custom configuration', () => {
+    test("accepts custom configuration", () => {
       const custom = new GameSimulator({
         outcome: false,
         numAgents: 10,
@@ -75,14 +75,14 @@ describe('GameSimulator - Standalone Engine', () => {
       expect(custom).toBeDefined();
     });
 
-    test('sets defaults for missing config', () => {
+    test("sets defaults for missing config", () => {
       const minimal = new GameSimulator({ outcome: true });
       expect(minimal).toBeDefined();
     });
   });
 
-  describe('Complete Game Simulation', () => {
-    test('runs complete 30-day game', async () => {
+  describe("Complete Game Simulation", () => {
+    test("runs complete 30-day game", async () => {
       const result = await simulator.runCompleteGame();
 
       expect(result).toBeDefined();
@@ -92,7 +92,7 @@ describe('GameSimulator - Standalone Engine', () => {
       expect(result.events.length).toBeGreaterThan(0);
     });
 
-    test('completes in under 2 seconds', async () => {
+    test("completes in under 2 seconds", async () => {
       const start = Date.now();
       await simulator.runCompleteGame();
       const duration = Date.now() - start;
@@ -100,32 +100,32 @@ describe('GameSimulator - Standalone Engine', () => {
       expect(duration).toBeLessThan(2000);
     });
 
-    test('emits all required events', async () => {
+    test("emits all required events", async () => {
       const eventTypes = new Set<string>();
 
-      simulator.on('event', (event) => {
+      simulator.on("event", (event) => {
         eventTypes.add(event.type);
       });
 
       await simulator.runCompleteGame();
 
-      expect(eventTypes.has('game:started')).toBe(true);
-      expect(eventTypes.has('day:changed')).toBe(true);
-      expect(eventTypes.has('clue:distributed')).toBe(true);
-      expect(eventTypes.has('agent:bet')).toBe(true);
-      expect(eventTypes.has('market:updated')).toBe(true);
-      expect(eventTypes.has('outcome:revealed')).toBe(true);
-      expect(eventTypes.has('game:ended')).toBe(true);
+      expect(eventTypes.has("game:started")).toBe(true);
+      expect(eventTypes.has("day:changed")).toBe(true);
+      expect(eventTypes.has("clue:distributed")).toBe(true);
+      expect(eventTypes.has("agent:bet")).toBe(true);
+      expect(eventTypes.has("market:updated")).toBe(true);
+      expect(eventTypes.has("outcome:revealed")).toBe(true);
+      expect(eventTypes.has("game:ended")).toBe(true);
     });
 
-    test('processes all 30 days', async () => {
+    test("processes all 30 days", async () => {
       const result = await simulator.runCompleteGame();
 
-      const dayEvents = result.events.filter((e) => e.type === 'day:changed');
+      const dayEvents = result.events.filter((e) => e.type === "day:changed");
       expect(dayEvents.length).toBe(30);
     });
 
-    test('creates event log', async () => {
+    test("creates event log", async () => {
       const result = await simulator.runCompleteGame();
 
       expect(result.events).toBeDefined();
@@ -134,24 +134,24 @@ describe('GameSimulator - Standalone Engine', () => {
     });
   });
 
-  describe('Predetermined Outcomes', () => {
-    test('YES outcome produces YES result', async () => {
+  describe("Predetermined Outcomes", () => {
+    test("YES outcome produces YES result", async () => {
       const yesSimulator = new GameSimulator({ outcome: true, numAgents: 5 });
       const result = await yesSimulator.runCompleteGame();
 
       expect(result.outcome).toBe(true);
     });
 
-    test('NO outcome produces NO result', async () => {
+    test("NO outcome produces NO result", async () => {
       const noSimulator = new GameSimulator({ outcome: false, numAgents: 5 });
       const result = await noSimulator.runCompleteGame();
 
       expect(result.outcome).toBe(false);
     });
 
-    test('clues align with predetermined outcome', async () => {
+    test("clues align with predetermined outcome", async () => {
       const events: Array<{ data: { clue?: string } }> = [];
-      simulator.on('clue:distributed', (event) => events.push(event));
+      simulator.on("clue:distributed", (event) => events.push(event));
 
       await simulator.runCompleteGame();
 
@@ -159,14 +159,14 @@ describe('GameSimulator - Standalone Engine', () => {
     });
   });
 
-  describe('Agent Behavior', () => {
-    test('creates correct number of agents', async () => {
+  describe("Agent Behavior", () => {
+    test("creates correct number of agents", async () => {
       const result = await simulator.runCompleteGame();
 
       expect(result.agents.length).toBe(5);
     });
 
-    test('designates insiders correctly', async () => {
+    test("designates insiders correctly", async () => {
       const result = await simulator.runCompleteGame();
 
       const insiders = result.agents.filter((a) => a.isInsider);
@@ -175,27 +175,27 @@ describe('GameSimulator - Standalone Engine', () => {
       expect(insiders.length).toBeGreaterThanOrEqual(expected);
     });
 
-    test('agents receive clues', async () => {
+    test("agents receive clues", async () => {
       const result = await simulator.runCompleteGame();
 
       const agentsWithClues = result.agents.filter((a) => a.cluesReceived > 0);
       expect(agentsWithClues.length).toBeGreaterThan(0);
     });
 
-    test('agents place bets', async () => {
+    test("agents place bets", async () => {
       const result = await simulator.runCompleteGame();
 
-      const betEvents = result.events.filter((e) => e.type === 'agent:bet');
+      const betEvents = result.events.filter((e) => e.type === "agent:bet");
       expect(betEvents.length).toBeGreaterThan(0);
     });
   });
 
-  describe('Market Evolution', () => {
-    test('market starts at 50/50', async () => {
+  describe("Market Evolution", () => {
+    test("market starts at 50/50", async () => {
       let firstMarketUpdate:
         | { data?: { yesOdds?: number; noOdds?: number } }
         | undefined;
-      simulator.on('market:updated', (event) => {
+      simulator.on("market:updated", (event) => {
         if (!firstMarketUpdate) firstMarketUpdate = event;
       });
 
@@ -205,7 +205,7 @@ describe('GameSimulator - Standalone Engine', () => {
       expect(firstMarketUpdate).toBeDefined();
     });
 
-    test('market moves toward correct outcome', async () => {
+    test("market moves toward correct outcome", async () => {
       const result = await simulator.runCompleteGame();
 
       const finalMarket = result.market;
@@ -217,15 +217,15 @@ describe('GameSimulator - Standalone Engine', () => {
       }
     });
 
-    test('volume increases over time', async () => {
+    test("volume increases over time", async () => {
       const result = await simulator.runCompleteGame();
 
       expect(result.market.totalVolume).toBeGreaterThan(0);
     });
   });
 
-  describe('Game Results', () => {
-    test('identifies winners correctly', async () => {
+  describe("Game Results", () => {
+    test("identifies winners correctly", async () => {
       const result = await simulator.runCompleteGame();
 
       expect(result.winners).toBeDefined();
@@ -233,14 +233,14 @@ describe('GameSimulator - Standalone Engine', () => {
       expect(result.winners.length).toBeGreaterThan(0);
     });
 
-    test('calculates reputation changes', async () => {
+    test("calculates reputation changes", async () => {
       const result = await simulator.runCompleteGame();
 
       expect(result.reputationChanges).toBeDefined();
       expect(result.reputationChanges.length).toBe(result.agents.length);
 
       const winnerChanges = result.reputationChanges.filter((c) =>
-        result.winners.includes(c.agentId)
+        result.winners.includes(c.agentId),
       );
       winnerChanges.forEach((change) => {
         expect(change.change).toBeGreaterThan(0);
@@ -248,8 +248,8 @@ describe('GameSimulator - Standalone Engine', () => {
     });
   });
 
-  describe('Performance', () => {
-    test('runs fast enough for batch testing', async () => {
+  describe("Performance", () => {
+    test("runs fast enough for batch testing", async () => {
       const games: GameResult[] = [];
       const start = Date.now();
 

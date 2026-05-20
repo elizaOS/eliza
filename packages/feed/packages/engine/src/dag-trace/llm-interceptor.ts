@@ -8,10 +8,10 @@
  * (callGroqDirect, callAgentLLM, etc.) are forwarded into the active trace.
  */
 
-import type { AgentLLMBridgeData } from '@feed/shared';
+import type { AgentLLMBridgeData } from "@feed/shared";
 
-import { getActiveTracer } from './tracer';
-import type { LLMCallInput } from './types';
+import { getActiveTracer } from "./tracer";
+import type { LLMCallInput } from "./types";
 
 /**
  * Callback type matching the shape emitted by openai-client.ts after each LLM call.
@@ -51,23 +51,23 @@ export function installLLMInterceptor(): void {
 
   // Agent LLM bridge — forward agent package LLM calls into the DAG trace
   // Uses dynamic import to avoid hard dependency if shared doesn't have the bridge yet
-  import('@feed/shared')
+  import("@feed/shared")
     .then((shared) => {
-      if (typeof shared.setAgentLLMBridge === 'function') {
+      if (typeof shared.setAgentLLMBridge === "function") {
         shared.setAgentLLMBridge((data: AgentLLMBridgeData) => {
           const tracer = getActiveTracer();
           if (tracer) {
             // Apply defaults for optional fields to prevent NaN poisoning
             const call: LLMCallInput = {
-              provider: '',
-              model: '',
-              promptType: 'agent',
-              format: 'text',
+              provider: "",
+              model: "",
+              promptType: "agent",
+              format: "text",
               temperature: 0,
               maxTokens: 0,
-              systemPrompt: '',
-              userPrompt: '',
-              rawResponse: '',
+              systemPrompt: "",
+              userPrompt: "",
+              rawResponse: "",
               parsedResponse: null,
               inputTokens: 0,
               outputTokens: 0,
@@ -97,9 +97,9 @@ export function uninstallLLMInterceptor(): void {
   setLLMCallCallback(null);
 
   // Clear agent bridge
-  import('@feed/shared')
+  import("@feed/shared")
     .then((shared) => {
-      if (typeof shared.setAgentLLMBridge === 'function') {
+      if (typeof shared.setAgentLLMBridge === "function") {
         shared.setAgentLLMBridge(null);
       }
     })

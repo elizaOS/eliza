@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
-import { useAuth } from '@/hooks/useAuth';
-import { getAuthToken } from '@/lib/auth';
+import { useEffect, useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
+import { getAuthToken } from "@/lib/auth";
 
 /**
  * Hook for polling unread notification count.
@@ -35,12 +35,12 @@ export function useUnreadNotifications() {
 
       try {
         const response = await fetch(
-          '/api/notifications?unreadOnly=true&limit=1',
+          "/api/notifications?unreadOnly=true&limit=1",
           {
             headers: {
               Authorization: `Bearer ${token}`,
             },
-          }
+          },
         );
 
         if (response.ok) {

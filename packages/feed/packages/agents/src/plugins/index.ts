@@ -8,16 +8,16 @@
  */
 
 export {
-  feedPlugin,
   default as defaultFeedPlugin,
+  feedPlugin,
   initializeFeedPlugin,
-} from './feed';
-export type { FeedRuntime } from './feed/types';
-export { groqPlugin } from './groq';
-export * from './plugin-agent-core/src';
-export * from './plugin-autonomy/src';
-export * from './plugin-experience/src';
-export * from './plugin-trajectory-logger/src';
+} from "./feed";
+export type { FeedRuntime } from "./feed/types";
+export { groqPlugin } from "./groq";
+export * from "./plugin-agent-core/src";
+export * from "./plugin-autonomy/src";
+export * from "./plugin-experience/src";
+export * from "./plugin-trajectory-logger/src";
 // Note: plugin-user-core has action names that overlap with plugin-agent-core
 // Export only the plugin and unique exports to avoid TS2308 ambiguity errors
 export {
@@ -29,4 +29,4 @@ export {
   coordinatorRecentMessagesProvider,
   coordinatorTeamMembersProvider,
   userCorePlugin,
-} from './plugin-user-core/src';
+} from "./plugin-user-core/src";

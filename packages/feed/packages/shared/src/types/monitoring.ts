@@ -90,7 +90,7 @@ export interface AgentActivityLog {
   agentId: string;
   timestamp: number;
   action: string;
-  type: 'market' | 'coalition' | 'payment' | 'error' | 'connection';
+  type: "market" | "coalition" | "payment" | "error" | "connection";
   details: Record<string, string | number | boolean | null>;
   success: boolean;
   error?: string;
@@ -114,8 +114,8 @@ export interface AgentPerformanceSummary {
     averageConfidence: number;
   };
   trends: {
-    accuracyTrend: 'improving' | 'declining' | 'stable';
-    volumeTrend: 'increasing' | 'decreasing' | 'stable';
-    reputationTrend: 'improving' | 'declining' | 'stable';
+    accuracyTrend: "improving" | "declining" | "stable";
+    volumeTrend: "increasing" | "decreasing" | "stable";
+    reputationTrend: "improving" | "declining" | "stable";
   };
 }

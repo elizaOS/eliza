@@ -7,7 +7,7 @@
  * TODO: Consider replacing with @types/sentry__bun package or contributing
  * these types upstream to DefinitelyTyped or Sentry's own repository.
  */
-declare module '@sentry/bun' {
+declare module "@sentry/bun" {
   export interface Scope {
     setTag(key: string, value: string): void;
     setContext(name: string, context: Record<string, unknown>): void;

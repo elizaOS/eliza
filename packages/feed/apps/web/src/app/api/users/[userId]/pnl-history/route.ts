@@ -5,38 +5,38 @@ import {
   RATE_LIMIT_CONFIGS,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { and, db, eq, users } from '@feed/db';
-import { logger, UserIdParamSchema } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@feed/api";
+import { and, db, eq, users } from "@feed/db";
+import { logger, UserIdParamSchema } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 import {
   getPnlHistoryCutoff,
   loadScopedPnlHistoryPoints,
   type PnlHistoryRange,
   type PnlHistoryScope,
-} from '@/lib/wallet/pnlHistory';
+} from "@/lib/wallet/pnlHistory";
 
 function parseRange(value: string | null): PnlHistoryRange {
   switch (value) {
-    case '1H':
-    case '4H':
-    case '1D':
-    case '1W':
-    case 'ALL':
+    case "1H":
+    case "4H":
+    case "1D":
+    case "1W":
+    case "ALL":
       return value;
     default:
-      return '1D';
+      return "1D";
   }
 }
 
 function parseScope(value: string | null): PnlHistoryScope {
   switch (value) {
-    case 'owner':
-    case 'agent':
+    case "owner":
+    case "agent":
       return value;
     default:
-      return 'team';
+      return "team";
   }
 }
 
@@ -47,7 +47,7 @@ async function resolveScopeUserIds(params: {
 }): Promise<string[]> {
   const { entityId, ownerUserId, scope } = params;
 
-  if (scope === 'owner') {
+  if (scope === "owner") {
     return [ownerUserId];
   }
 
@@ -56,7 +56,7 @@ async function resolveScopeUserIds(params: {
     .from(users)
     .where(and(eq(users.managedBy, ownerUserId), eq(users.isAgent, true)));
 
-  if (scope === 'team') {
+  if (scope === "team") {
     return [ownerUserId, ...agentRows.map((row) => row.id)];
   }
 
@@ -72,29 +72,29 @@ async function resolveScopeUserIds(params: {
 export const GET = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ userId: string }> }
+    context: { params: Promise<{ userId: string }> },
   ) => {
     const clientIp = getClientIp(request.headers);
     const rateLimitConfig = clientIp
       ? RATE_LIMIT_CONFIGS.PUBLIC_BALANCE_FETCH
       : RATE_LIMIT_CONFIGS.PUBLIC_BALANCE_FETCH_ANONYMOUS;
 
-    const rateLimitKey = clientIp ? `ip:${clientIp}` : 'ip:anonymous';
+    const rateLimitKey = clientIp ? `ip:${clientIp}` : "ip:anonymous";
     const rateLimit = await checkRateLimitAsync(rateLimitKey, rateLimitConfig);
 
     if (!rateLimit.allowed) {
       const retryAfterSeconds = rateLimit.retryAfter || 60;
       return NextResponse.json(
-        { error: 'Too many requests', retryAfter: retryAfterSeconds },
-        { status: 429, headers: { 'Retry-After': String(retryAfterSeconds) } }
+        { error: "Too many requests", retryAfter: retryAfterSeconds },
+        { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } },
       );
     }
 
     const { userId } = UserIdParamSchema.parse(await context.params);
     const { searchParams } = new URL(request.url);
-    const range = parseRange(searchParams.get('range'));
-    const scope = parseScope(searchParams.get('scope'));
-    const entityId = searchParams.get('entityId');
+    const range = parseRange(searchParams.get("range"));
+    const scope = parseScope(searchParams.get("scope"));
+    const entityId = searchParams.get("entityId");
 
     const dbUser = await findUserByIdentifier(userId, { id: true });
     if (!dbUser) {
@@ -119,7 +119,7 @@ export const GET = withErrorHandling(
     });
 
     logger.info(
-      'Wallet current P&L history fetched',
+      "Wallet current P&L history fetched",
       {
         userId: dbUser.id,
         range,
@@ -127,13 +127,13 @@ export const GET = withErrorHandling(
         entityId,
         pointCount: points.length,
       },
-      'GET /api/users/[userId]/pnl-history'
+      "GET /api/users/[userId]/pnl-history",
     );
 
     return successResponse({
-      metric: 'currentPnL',
+      metric: "currentPnL",
       points,
       scope,
     });
-  }
+  },
 );

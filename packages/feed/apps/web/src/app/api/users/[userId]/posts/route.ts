@@ -86,7 +86,7 @@ import {
   publicRateLimit,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
+} from "@feed/api";
 import {
   and,
   comments,
@@ -101,15 +101,15 @@ import {
   reactions,
   shares,
   users,
-} from '@feed/db';
-import { StaticDataRegistry } from '@feed/engine';
+} from "@feed/db";
+import { StaticDataRegistry } from "@feed/engine";
 import {
   logger,
   toISO,
   UserIdParamSchema,
   UserPostsQuerySchema,
-} from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 /**
  * GET /api/users/[userId]/posts
@@ -118,7 +118,7 @@ import type { NextRequest } from 'next/server';
 export const GET = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ userId: string }> }
+    context: { params: Promise<{ userId: string }> },
   ) => {
     const { error, user, rateLimitInfo } = await publicRateLimit(request);
     if (error) return error;
@@ -130,14 +130,14 @@ export const GET = withErrorHandling(
     // If user doesn't exist yet (new Privy user), return empty data
     if (!targetUser) {
       logger.info(
-        'User not found - returning empty data (may be new Privy user)',
+        "User not found - returning empty data (may be new Privy user)",
         { userId },
-        'GET /api/users/[userId]/posts'
+        "GET /api/users/[userId]/posts",
       );
       const emptyRes = successResponse({
         items: [],
         total: 0,
-        type: 'posts',
+        type: "posts",
       });
       if (rateLimitInfo) addPublicReadHeaders(emptyRes, rateLimitInfo);
       return emptyRes;
@@ -148,13 +148,13 @@ export const GET = withErrorHandling(
     // Validate query parameters
     const { searchParams } = new URL(request.url);
     const queryParams = {
-      type: searchParams.get('type') || 'posts',
-      page: searchParams.get('page') ?? undefined,
-      limit: searchParams.get('limit') ?? undefined,
+      type: searchParams.get("type") || "posts",
+      page: searchParams.get("page") ?? undefined,
+      limit: searchParams.get("limit") ?? undefined,
     };
     const { type } = UserPostsQuerySchema.parse(queryParams);
 
-    if (type === 'replies') {
+    if (type === "replies") {
       // Get user's comments (replies)
       const userComments = await db
         .select()
@@ -162,15 +162,15 @@ export const GET = withErrorHandling(
         .where(
           and(
             eq(comments.authorId, canonicalUserId),
-            isNull(comments.deletedAt)
-          )
+            isNull(comments.deletedAt),
+          ),
         )
         .orderBy(desc(comments.createdAt))
         .limit(100);
 
       if (userComments.length === 0) {
         return successResponse({
-          type: 'replies',
+          type: "replies",
           items: [],
           total: 0,
         });
@@ -182,7 +182,7 @@ export const GET = withErrorHandling(
         ...new Set(
           userComments
             .map((c) => c.parentCommentId)
-            .filter((id): id is string => id !== null)
+            .filter((id): id is string => id !== null),
         ),
       ];
 
@@ -221,8 +221,8 @@ export const GET = withErrorHandling(
           .where(
             and(
               inArray(comments.id, parentCommentIds),
-              isNull(comments.deletedAt)
-            )
+              isNull(comments.deletedAt),
+            ),
           );
 
         parentCommentsMap = new Map(parentCommentsData.map((c) => [c.id, c]));
@@ -238,13 +238,13 @@ export const GET = withErrorHandling(
         .where(
           and(
             inArray(reactions.commentId, commentIds),
-            eq(reactions.type, 'like')
-          )
+            eq(reactions.type, "like"),
+          ),
         )
         .groupBy(reactions.commentId);
 
       const likeCountsMap = new Map(
-        likeCountsResult.map((r) => [r.commentId, Number(r.count)])
+        likeCountsResult.map((r) => [r.commentId, Number(r.count)]),
       );
 
       // Fetch reply counts for comments
@@ -257,13 +257,13 @@ export const GET = withErrorHandling(
         .where(
           and(
             inArray(comments.parentCommentId, commentIds),
-            isNull(comments.deletedAt)
-          )
+            isNull(comments.deletedAt),
+          ),
         )
         .groupBy(comments.parentCommentId);
 
       const replyCountsMap = new Map(
-        replyCountsResult.map((r) => [r.parentCommentId, Number(r.count)])
+        replyCountsResult.map((r) => [r.parentCommentId, Number(r.count)]),
       );
 
       // Check if user has liked comments
@@ -276,13 +276,13 @@ export const GET = withErrorHandling(
             and(
               inArray(reactions.commentId, commentIds),
               eq(reactions.userId, user.userId),
-              eq(reactions.type, 'like')
-            )
+              eq(reactions.type, "like"),
+            ),
           );
         userLikesSet = new Set(
           userLikes
             .map((l) => l.commentId)
-            .filter((id): id is string => id !== null)
+            .filter((id): id is string => id !== null),
         );
       }
 
@@ -299,8 +299,8 @@ export const GET = withErrorHandling(
                 .where(
                   and(
                     inArray(reactions.postId, postIds),
-                    eq(reactions.type, 'like')
-                  )
+                    eq(reactions.type, "like"),
+                  ),
                 )
                 .groupBy(reactions.postId),
               db
@@ -312,8 +312,8 @@ export const GET = withErrorHandling(
                 .where(
                   and(
                     inArray(comments.postId, postIds),
-                    isNull(comments.deletedAt)
-                  )
+                    isNull(comments.deletedAt),
+                  ),
                 )
                 .groupBy(comments.postId),
               db
@@ -328,13 +328,13 @@ export const GET = withErrorHandling(
           : [[], [], []];
 
       const postLikeCountsMap = new Map(
-        postLikeCounts.map((r) => [r.postId, Number(r.count)])
+        postLikeCounts.map((r) => [r.postId, Number(r.count)]),
       );
       const postCommentCountsMap = new Map(
-        postCommentCounts.map((r) => [r.postId, Number(r.count)])
+        postCommentCounts.map((r) => [r.postId, Number(r.count)]),
       );
       const postShareCountsMap = new Map(
-        postShareCounts.map((r) => [r.postId, Number(r.count)])
+        postShareCounts.map((r) => [r.postId, Number(r.count)]),
       );
 
       // Fetch interaction counts for parent comments
@@ -352,8 +352,8 @@ export const GET = withErrorHandling(
               .where(
                 and(
                   inArray(reactions.commentId, parentCommentIds),
-                  eq(reactions.type, 'like')
-                )
+                  eq(reactions.type, "like"),
+                ),
               )
               .groupBy(reactions.commentId),
             db
@@ -365,8 +365,8 @@ export const GET = withErrorHandling(
               .where(
                 and(
                   inArray(comments.parentCommentId, parentCommentIds),
-                  isNull(comments.deletedAt)
-                )
+                  isNull(comments.deletedAt),
+                ),
               )
               .groupBy(comments.parentCommentId),
           ]);
@@ -374,17 +374,18 @@ export const GET = withErrorHandling(
         parentCommentLikeCountsMap = new Map(
           parentCommentLikeCounts
             .filter(
-              (r): r is typeof r & { commentId: string } => r.commentId !== null
+              (r): r is typeof r & { commentId: string } =>
+                r.commentId !== null,
             )
-            .map((r) => [r.commentId, Number(r.count)])
+            .map((r) => [r.commentId, Number(r.count)]),
         );
         parentCommentReplyCountsMap = new Map(
           parentCommentReplyCounts
             .filter(
               (r): r is typeof r & { parentCommentId: string } =>
-                r.parentCommentId !== null
+                r.parentCommentId !== null,
             )
-            .map((r) => [r.parentCommentId, Number(r.count)])
+            .map((r) => [r.parentCommentId, Number(r.count)]),
         );
       }
 
@@ -403,8 +404,8 @@ export const GET = withErrorHandling(
                     and(
                       inArray(reactions.postId, postIds),
                       eq(reactions.userId, user.userId),
-                      eq(reactions.type, 'like')
-                    )
+                      eq(reactions.type, "like"),
+                    ),
                   )
               : Promise.resolve([] as Array<{ postId: string | null }>),
             postIds.length > 0
@@ -414,8 +415,8 @@ export const GET = withErrorHandling(
                   .where(
                     and(
                       inArray(shares.postId, postIds),
-                      eq(shares.userId, user.userId)
-                    )
+                      eq(shares.userId, user.userId),
+                    ),
                   )
               : Promise.resolve([] as Array<{ postId: string }>),
             parentCommentIds.length > 0
@@ -426,8 +427,8 @@ export const GET = withErrorHandling(
                     and(
                       inArray(reactions.commentId, parentCommentIds),
                       eq(reactions.userId, user.userId),
-                      eq(reactions.type, 'like')
-                    )
+                      eq(reactions.type, "like"),
+                    ),
                   )
               : Promise.resolve([] as Array<{ commentId: string | null }>),
           ]);
@@ -435,20 +436,20 @@ export const GET = withErrorHandling(
         userPostLikesSet = new Set(
           userPostLikes
             .map((l) => l.postId)
-            .filter((id): id is string => id !== null)
+            .filter((id): id is string => id !== null),
         );
         userPostSharesSet = new Set(userPostShares.map((s) => s.postId));
         userParentCommentLikesSet = new Set(
           userParentCommentLikes
             .map((l) => l.commentId)
-            .filter((id): id is string => id !== null)
+            .filter((id): id is string => id !== null),
         );
       }
 
       // Fetch author info for posts and parent comments
       const parentCommentAuthorIds = [
         ...new Set(
-          Array.from(parentCommentsMap.values()).map((c) => c.authorId)
+          Array.from(parentCommentsMap.values()).map((c) => c.authorId),
         ),
       ];
       const allAuthorIds = [
@@ -472,7 +473,7 @@ export const GET = withErrorHandling(
       // Helper function to get author info (same pattern as comment API)
       // Check StaticDataRegistry first (for actors/orgs), then database
       const getAuthorInfo = (
-        authorId: string
+        authorId: string,
       ): {
         id: string;
         displayName: string;
@@ -567,13 +568,13 @@ export const GET = withErrorHandling(
       });
 
       logger.info(
-        'User replies fetched successfully',
+        "User replies fetched successfully",
         { userId: canonicalUserId, total: replies.length },
-        'GET /api/users/[userId]/posts'
+        "GET /api/users/[userId]/posts",
       );
 
       return successResponse({
-        type: 'replies',
+        type: "replies",
         items: replies,
         total: replies.length,
       });
@@ -587,15 +588,15 @@ export const GET = withErrorHandling(
         and(
           eq(posts.authorId, canonicalUserId),
           isNull(posts.deletedAt),
-          lte(posts.timestamp, now)
-        )
+          lte(posts.timestamp, now),
+        ),
       )
       .orderBy(desc(posts.timestamp))
       .limit(100);
 
     if (userPosts.length === 0) {
       return successResponse({
-        type: 'posts',
+        type: "posts",
         items: [],
         total: 0,
       });
@@ -611,12 +612,12 @@ export const GET = withErrorHandling(
       })
       .from(reactions)
       .where(
-        and(inArray(reactions.postId, postIds), eq(reactions.type, 'like'))
+        and(inArray(reactions.postId, postIds), eq(reactions.type, "like")),
       )
       .groupBy(reactions.postId);
 
     const likeCountsMap = new Map(
-      likeCountsResult.map((r) => [r.postId, Number(r.count)])
+      likeCountsResult.map((r) => [r.postId, Number(r.count)]),
     );
 
     // Fetch comment counts
@@ -630,7 +631,7 @@ export const GET = withErrorHandling(
       .groupBy(comments.postId);
 
     const commentCountsMap = new Map(
-      commentCountsResult.map((r) => [r.postId, Number(r.count)])
+      commentCountsResult.map((r) => [r.postId, Number(r.count)]),
     );
 
     // Fetch share counts
@@ -644,7 +645,7 @@ export const GET = withErrorHandling(
       .groupBy(shares.postId);
 
     const shareCountsMap = new Map(
-      shareCountsResult.map((r) => [r.postId, Number(r.count)])
+      shareCountsResult.map((r) => [r.postId, Number(r.count)]),
     );
 
     // Check if user has liked/shared posts
@@ -659,18 +660,23 @@ export const GET = withErrorHandling(
             and(
               inArray(reactions.postId, postIds),
               eq(reactions.userId, user.userId),
-              eq(reactions.type, 'like')
-            )
+              eq(reactions.type, "like"),
+            ),
           ),
         db
           .select({ postId: shares.postId })
           .from(shares)
           .where(
-            and(inArray(shares.postId, postIds), eq(shares.userId, user.userId))
+            and(
+              inArray(shares.postId, postIds),
+              eq(shares.userId, user.userId),
+            ),
           ),
       ]);
       userLikesSet = new Set(
-        userLikes.map((l) => l.postId).filter((id): id is string => id !== null)
+        userLikes
+          .map((l) => l.postId)
+          .filter((id): id is string => id !== null),
       );
       userSharesSet = new Set(userShares.map((s) => s.postId));
     }
@@ -737,7 +743,7 @@ export const GET = withErrorHandling(
         .where(inArray(users.id, originalPostAuthorIds));
 
       originalUserAuthorsMap = new Map(
-        originalAuthorsUsers.map((u) => [u.id, u])
+        originalAuthorsUsers.map((u) => [u.id, u]),
       );
       originalActorAuthorsMap = new Map(
         originalPostAuthorIds
@@ -750,7 +756,7 @@ export const GET = withErrorHandling(
               name: a.name,
               profileImageUrl: a.profileImageUrl ?? null,
             },
-          ])
+          ]),
       );
       originalOrgAuthorsMap = new Map(
         originalPostAuthorIds
@@ -759,7 +765,7 @@ export const GET = withErrorHandling(
           .map((o) => [
             o.id,
             { id: o.id, name: o.name, imageUrl: o.imageUrl ?? null },
-          ])
+          ]),
       );
     }
 
@@ -780,8 +786,8 @@ export const GET = withErrorHandling(
             .where(
               and(
                 inArray(reactions.postId, originalPostIds),
-                eq(reactions.type, 'like')
-              )
+                eq(reactions.type, "like"),
+              ),
             )
             .groupBy(reactions.postId),
           db
@@ -803,13 +809,13 @@ export const GET = withErrorHandling(
         ]);
 
       originalReactionMap = new Map(
-        originalPostReactions.map((r) => [r.postId!, Number(r.count)])
+        originalPostReactions.map((r) => [r.postId!, Number(r.count)]),
       );
       originalCommentMap = new Map(
-        originalPostComments.map((c) => [c.postId, Number(c.count)])
+        originalPostComments.map((c) => [c.postId, Number(c.count)]),
       );
       originalShareMap = new Map(
-        originalPostShares.map((s) => [s.postId, Number(s.count)])
+        originalPostShares.map((s) => [s.postId, Number(s.count)]),
       );
     }
 
@@ -862,10 +868,10 @@ export const GET = withErrorHandling(
         if (originalPost && !originalPost.deletedAt) {
           // Get original post author info
           const originalUser = originalUserAuthorsMap.get(
-            originalPost.authorId
+            originalPost.authorId,
           );
           const originalActor = originalActorAuthorsMap.get(
-            originalPost.authorId
+            originalPost.authorId,
           );
           const originalOrg = originalOrgAuthorsMap.get(originalPost.authorId);
 
@@ -929,21 +935,21 @@ export const GET = withErrorHandling(
     // Sort by timestamp (posts already include reposts/quotes)
     const allItems = formattedPosts.sort(
       (a, b) =>
-        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
     );
 
     logger.info(
-      'User posts fetched successfully',
+      "User posts fetched successfully",
       { userId: canonicalUserId, total: allItems.length },
-      'GET /api/users/[userId]/posts'
+      "GET /api/users/[userId]/posts",
     );
 
     const res = successResponse({
-      type: 'posts',
+      type: "posts",
       items: allItems,
       total: allItems.length,
     });
     if (rateLimitInfo) addPublicReadHeaders(res, rateLimitInfo);
     return res;
-  }
+  },
 );

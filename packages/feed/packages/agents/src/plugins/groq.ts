@@ -7,36 +7,36 @@
  * @packageDocumentation
  */
 
-import { createGroq } from '@ai-sdk/groq';
-import { GROQ_MODELS, type JsonValue } from '@feed/shared';
+import { createGroq } from "@ai-sdk/groq";
 import type {
   IAgentRuntime,
   ModelTypeName,
   ObjectGenerationParams,
   Plugin,
-} from '@elizaos/core';
+} from "@elizaos/core";
 import {
   type DetokenizeTextParams,
   type GenerateTextParams,
   ModelType,
   type TokenizeTextParams,
-} from '@elizaos/core';
-import { generateObject, generateText } from 'ai';
-import { encodingForModel, type TiktokenModel } from 'js-tiktoken';
-import { buildReasoningTraceMetadata } from '../llm/reasoning-trace';
+} from "@elizaos/core";
+import { GROQ_MODELS, type JsonValue } from "@feed/shared";
+import { generateObject, generateText } from "ai";
+import { encodingForModel, type TiktokenModel } from "js-tiktoken";
+import { buildReasoningTraceMetadata } from "../llm/reasoning-trace";
 import {
   ensureTrajectoryStep,
   type RuntimeTrajectoryLogger,
-} from '../plugins/plugin-trajectory-logger/src/action-interceptor';
-import { logger } from '../shared/logger';
-import { isPromptLoggingEnabled, logPrompt } from '../utils/prompt-logger';
+} from "../plugins/plugin-trajectory-logger/src/action-interceptor";
+import { logger } from "../shared/logger";
+import { isPromptLoggingEnabled, logPrompt } from "../utils/prompt-logger";
 
 function getStringSetting(
   runtime: IAgentRuntime,
-  key: string
+  key: string,
 ): string | undefined {
   const value = runtime.getSetting(key);
-  return typeof value === 'string' ? value : undefined;
+  return typeof value === "string" ? value : undefined;
 }
 
 /**
@@ -45,26 +45,26 @@ function getStringSetting(
  */
 function getBaseURL(runtime: IAgentRuntime): string {
   return (
-    getStringSetting(runtime, 'GROQ_BASE_URL') ||
+    getStringSetting(runtime, "GROQ_BASE_URL") ||
     process.env.GROQ_BASE_URL ||
-    'https://api.groq.com/openai/v1'
+    "https://api.groq.com/openai/v1"
   );
 }
 
 function resolveGroqRuntimeModel(
   runtime: IAgentRuntime,
-  size: 'small' | 'large'
+  size: "small" | "large",
 ): string {
   const defaultSmall = GROQ_MODELS.FREE.modelId;
   const defaultLarge = GROQ_MODELS.PRO.modelId;
 
-  if (size === 'small') {
-    return getStringSetting(runtime, 'GROQ_SMALL_MODEL') || defaultSmall;
+  if (size === "small") {
+    return getStringSetting(runtime, "GROQ_SMALL_MODEL") || defaultSmall;
   }
 
   return (
-    getStringSetting(runtime, 'GROQ_LARGE_MODEL') ||
-    getStringSetting(runtime, 'GROQ_PRIMARY_MODEL') ||
+    getStringSetting(runtime, "GROQ_LARGE_MODEL") ||
+    getStringSetting(runtime, "GROQ_PRIMARY_MODEL") ||
     defaultLarge
   );
 }
@@ -118,11 +118,11 @@ async function generateGroqText(
     stopSequences: string[];
     trajectoryLogger?: RuntimeTrajectoryLogger;
     trajectoryId?: string;
-    purpose?: 'action' | 'reasoning' | 'evaluation' | 'response' | 'other';
+    purpose?: "action" | "reasoning" | "evaluation" | "response" | "other";
     actionType?: string;
     modelVersion?: string;
     runtime?: IAgentRuntime;
-  }
+  },
 ) {
   const startTime = Date.now();
   const result = await generateText({
@@ -139,11 +139,11 @@ async function generateGroqText(
 
   if (isPromptLoggingEnabled()) {
     await logPrompt({
-      promptType: params.actionType || params.purpose || 'groq_plugin_text',
-      input: `System: ${params.system || ''}\n\nUser: ${params.prompt}`,
+      promptType: params.actionType || params.purpose || "groq_plugin_text",
+      input: `System: ${params.system || ""}\n\nUser: ${params.prompt}`,
       output: result.text,
       metadata: {
-        provider: 'groq_plugin',
+        provider: "groq_plugin",
         model,
         temperature: params.temperature,
         maxTokens: params.maxTokens,
@@ -171,12 +171,12 @@ async function generateGroqText(
     trajectoryLogger.logLLMCall(stepId, {
       model,
       modelVersion: params.modelVersion,
-      systemPrompt: params.system || '',
+      systemPrompt: params.system || "",
       userPrompt: params.prompt,
       response: result.text,
       temperature: params.temperature,
       maxTokens: params.maxTokens,
-      purpose: params.purpose || 'action',
+      purpose: params.purpose || "action",
       actionType: params.actionType,
       latencyMs,
       promptTokens: undefined,
@@ -187,17 +187,17 @@ async function generateGroqText(
 
   // Forward to DAG trace bridge if active
   try {
-    const { getAgentLLMBridge } = require('@feed/shared');
+    const { getAgentLLMBridge } = require("@feed/shared");
     const bridge = getAgentLLMBridge();
     if (bridge) {
       bridge({
-        provider: 'groq',
+        provider: "groq",
         model,
-        promptType: params.actionType || params.purpose || 'agent-groq-plugin',
-        format: 'text',
+        promptType: params.actionType || params.purpose || "agent-groq-plugin",
+        format: "text",
         temperature: params.temperature ?? 0.7,
         maxTokens: params.maxTokens ?? 8192,
-        systemPrompt: params.system || '',
+        systemPrompt: params.system || "",
         userPrompt: params.prompt,
         rawResponse: result.text,
         parsedResponse: null,
@@ -222,29 +222,29 @@ async function generateGroqText(
 async function generateGroqObject(
   groq: ReturnType<typeof createGroq>,
   model: string,
-  params: ObjectGenerationParams
+  params: ObjectGenerationParams,
 ) {
   const { object } = await generateObject({
     model: groq.languageModel(model),
-    output: 'no-schema',
+    output: "no-schema",
     prompt: params.prompt,
     temperature: params.temperature,
   });
 
   if (isPromptLoggingEnabled()) {
     await logPrompt({
-      promptType: 'groq_plugin_object',
+      promptType: "groq_plugin_object",
       input: params.prompt,
       output: JSON.stringify(object, null, 2),
       metadata: {
-        provider: 'groq_plugin',
+        provider: "groq_plugin",
         model,
         temperature: params.temperature,
       },
     });
   }
 
-  if (typeof object === 'object' && object !== null && !Array.isArray(object)) {
+  if (typeof object === "object" && object !== null && !Array.isArray(object)) {
     return object as Record<string, unknown>;
   }
 
@@ -252,8 +252,8 @@ async function generateGroqObject(
 }
 
 export const groqPlugin: Plugin = {
-  name: 'groq',
-  description: 'Groq plugin for Feed agents',
+  name: "groq",
+  description: "Groq plugin for Feed agents",
   config: {
     GROQ_API_KEY: process.env.GROQ_API_KEY ?? null,
     GROQ_SMALL_MODEL: GROQ_MODELS.FREE.modelId,
@@ -261,19 +261,19 @@ export const groqPlugin: Plugin = {
   },
   async init() {
     if (!process.env.GROQ_API_KEY) {
-      throw Error('Missing GROQ_API_KEY in environment variables');
+      throw Error("Missing GROQ_API_KEY in environment variables");
     }
   },
   models: {
     [ModelType.TEXT_TOKENIZER_ENCODE]: async (
       _runtime,
-      { prompt, modelType = ModelType.TEXT_LARGE }: TokenizeTextParams
+      { prompt, modelType = ModelType.TEXT_LARGE }: TokenizeTextParams,
     ) => {
       return await tokenizeText(modelType ?? ModelType.TEXT_LARGE, prompt);
     },
     [ModelType.TEXT_TOKENIZER_DECODE]: async (
       _runtime,
-      { tokens, modelType = ModelType.TEXT_LARGE }: DetokenizeTextParams
+      { tokens, modelType = ModelType.TEXT_LARGE }: DetokenizeTextParams,
     ) => {
       return await detokenizeText(modelType ?? ModelType.TEXT_LARGE, tokens);
     },
@@ -286,16 +286,16 @@ export const groqPlugin: Plugin = {
         frequencyPenalty = 0.7,
         presencePenalty = 0.7,
         maxTokens = 8000,
-      }: GenerateTextParams
+      }: GenerateTextParams,
     ) => {
       const baseURL = getBaseURL(runtime);
       const groq = createGroq({
-        apiKey: getStringSetting(runtime, 'GROQ_API_KEY') ?? '',
+        apiKey: getStringSetting(runtime, "GROQ_API_KEY") ?? "",
         fetch: runtime.fetch ?? undefined,
         baseURL,
       });
 
-      const model = resolveGroqRuntimeModel(runtime, 'small');
+      const model = resolveGroqRuntimeModel(runtime, "small");
 
       interface RuntimeWithExtensions extends IAgentRuntime {
         currentTrajectoryId?: string;
@@ -312,7 +312,7 @@ export const groqPlugin: Plugin = {
         frequencyPenalty,
         presencePenalty,
         stopSequences,
-        purpose: 'action',
+        purpose: "action",
         modelVersion,
         runtime,
       });
@@ -326,10 +326,10 @@ export const groqPlugin: Plugin = {
         temperature = 0.7,
         frequencyPenalty = 0.7,
         presencePenalty = 0.7,
-      }: GenerateTextParams
+      }: GenerateTextParams,
     ) => {
       const baseURL = getBaseURL(runtime);
-      const apiKey = getStringSetting(runtime, 'GROQ_API_KEY') ?? '';
+      const apiKey = getStringSetting(runtime, "GROQ_API_KEY") ?? "";
 
       const groq = createGroq({
         apiKey,
@@ -337,7 +337,7 @@ export const groqPlugin: Plugin = {
         baseURL,
       });
 
-      const model = resolveGroqRuntimeModel(runtime, 'large');
+      const model = resolveGroqRuntimeModel(runtime, "large");
 
       type RuntimeWithTrajectory = typeof runtime & {
         currentTrajectoryId?: string;
@@ -347,12 +347,12 @@ export const groqPlugin: Plugin = {
       const modelVersion = runtimeWithTrajectory.currentModelVersion;
 
       logger.debug(
-        'Using Groq model for inference',
+        "Using Groq model for inference",
         {
           model,
-          modelSource: 'groq',
+          modelSource: "groq",
         },
-        'GroqPlugin'
+        "GroqPlugin",
       );
 
       return await generateGroqText(groq, model, {
@@ -363,22 +363,22 @@ export const groqPlugin: Plugin = {
         frequencyPenalty,
         presencePenalty,
         stopSequences,
-        purpose: 'action',
+        purpose: "action",
         modelVersion,
         runtime,
       });
     },
     [ModelType.OBJECT_SMALL]: async (
       runtime,
-      params: ObjectGenerationParams
+      params: ObjectGenerationParams,
     ) => {
       const baseURL = getBaseURL(runtime);
       const groq = createGroq({
-        apiKey: getStringSetting(runtime, 'GROQ_API_KEY') ?? '',
+        apiKey: getStringSetting(runtime, "GROQ_API_KEY") ?? "",
         fetch: runtime.fetch ?? undefined,
         baseURL,
       });
-      const model = resolveGroqRuntimeModel(runtime, 'small');
+      const model = resolveGroqRuntimeModel(runtime, "small");
 
       return (await generateGroqObject(groq, model, params)) as Record<
         string,
@@ -387,15 +387,15 @@ export const groqPlugin: Plugin = {
     },
     [ModelType.OBJECT_LARGE]: async (
       runtime,
-      params: ObjectGenerationParams
+      params: ObjectGenerationParams,
     ) => {
       const baseURL = getBaseURL(runtime);
       const groq = createGroq({
-        apiKey: getStringSetting(runtime, 'GROQ_API_KEY') ?? '',
+        apiKey: getStringSetting(runtime, "GROQ_API_KEY") ?? "",
         fetch: runtime.fetch ?? undefined,
         baseURL,
       });
-      const model = resolveGroqRuntimeModel(runtime, 'large');
+      const model = resolveGroqRuntimeModel(runtime, "large");
 
       return (await generateGroqObject(groq, model, params)) as Record<
         string,

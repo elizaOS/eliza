@@ -52,16 +52,16 @@
  * ```
  */
 
-import { requireAdmin, successResponse, withErrorHandling } from '@feed/api';
-import { db } from '@feed/db';
-import type { NextRequest } from 'next/server';
+import { requireAdmin, successResponse, withErrorHandling } from "@feed/api";
+import { db } from "@feed/db";
+import type { NextRequest } from "next/server";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   await requireAdmin(request);
 
   const appeals = await db.user.findMany({
     where: {
-      appealStatus: 'human_review',
+      appealStatus: "human_review",
       isBanned: true,
     },
     select: {
@@ -86,7 +86,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       lifetimePnL: true,
     },
     orderBy: {
-      appealSubmittedAt: 'asc', // Oldest first
+      appealSubmittedAt: "asc", // Oldest first
     },
   });
 

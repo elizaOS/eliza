@@ -5,20 +5,20 @@ import {
   NotFoundError,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { asUser } from '@feed/db';
-import type { NextRequest } from 'next/server';
+} from "@feed/api";
+import { asUser } from "@feed/db";
+import type { NextRequest } from "next/server";
 
 export const GET = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ id: string }> }
+    context: { params: Promise<{ id: string }> },
   ) => {
     const user = await authenticate(request);
     const { id: chatId } = await context.params;
 
     if (!chatId) {
-      throw new BusinessLogicError('Chat ID is required', 'CHAT_ID_REQUIRED');
+      throw new BusinessLogicError("Chat ID is required", "CHAT_ID_REQUIRED");
     }
 
     const result = await asUser(user, async (dbClient) => {
@@ -34,7 +34,7 @@ export const GET = withErrorHandling(
       });
 
       if (!chat) {
-        throw new NotFoundError('Chat', chatId);
+        throw new NotFoundError("Chat", chatId);
       }
 
       if (!chat.nftGated || !chat.requiredNftContractAddress) {
@@ -56,7 +56,7 @@ export const GET = withErrorHandling(
           ownsNft: false,
           tokenIds: [],
           nftRequired: true,
-          reason: 'Wallet address required',
+          reason: "Wallet address required",
         };
       }
 
@@ -64,7 +64,7 @@ export const GET = withErrorHandling(
         userData.walletAddress,
         chat.requiredNftContractAddress,
         chat.requiredNftTokenId ?? null,
-        chat.requiredNftChainId ?? undefined
+        chat.requiredNftChainId ?? undefined,
       );
 
       let tokenIds: number[] = [];
@@ -72,7 +72,7 @@ export const GET = withErrorHandling(
         tokenIds = await NFTVerificationService.getUserTokenIds(
           userData.walletAddress,
           chat.requiredNftContractAddress,
-          chat.requiredNftChainId ?? undefined
+          chat.requiredNftChainId ?? undefined,
         ).catch(() => []);
       } else if (ownsNft && chat.requiredNftTokenId !== null) {
         tokenIds = [chat.requiredNftTokenId];
@@ -89,5 +89,5 @@ export const GET = withErrorHandling(
     });
 
     return successResponse(result);
-  }
+  },
 );

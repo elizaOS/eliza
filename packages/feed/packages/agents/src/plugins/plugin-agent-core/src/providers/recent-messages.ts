@@ -9,6 +9,13 @@
  * In regular DM mode: Queries the `agentMessages` table (legacy behavior).
  */
 
+import type {
+  IAgentRuntime,
+  Memory,
+  Provider,
+  ProviderResult,
+  State,
+} from "@elizaos/core";
 import {
   and,
   db,
@@ -17,14 +24,7 @@ import {
   messages as messagesTable,
   or,
   sql,
-} from '@feed/db';
-import type {
-  IAgentRuntime,
-  Memory,
-  Provider,
-  ProviderResult,
-  State,
-} from '@elizaos/core';
+} from "@feed/db";
 
 /**
  * Format timestamp to relative time string
@@ -36,7 +36,7 @@ function formatRelativeTime(date: Date): string {
   const diffHours = Math.floor(diffMs / 3600000);
   const diffDays = Math.floor(diffMs / 86400000);
 
-  if (diffMins < 1) return 'just now';
+  if (diffMins < 1) return "just now";
   if (diffMins < 60) return `${diffMins}m ago`;
   if (diffHours < 24) return `${diffHours}h ago`;
   return `${diffDays}d ago`;
@@ -46,8 +46,8 @@ function formatRelativeTime(date: Date): string {
  * Format time as HH:MM
  */
 function formatTime(date: Date): string {
-  const hours = date.getHours().toString().padStart(2, '0');
-  const minutes = date.getMinutes().toString().padStart(2, '0');
+  const hours = date.getHours().toString().padStart(2, "0");
+  const minutes = date.getMinutes().toString().padStart(2, "0");
   return `${hours}:${minutes}`;
 }
 
@@ -60,13 +60,13 @@ function formatTime(date: Date): string {
  * between the owner and this agent (not other agents' messages).
  */
 export const recentMessagesProvider: Provider = {
-  name: 'RECENT_MESSAGES',
-  description: 'Recent conversation history with the user',
+  name: "RECENT_MESSAGES",
+  description: "Recent conversation history with the user",
 
   get: async (
     runtime: IAgentRuntime,
     _message: Memory,
-    state: State
+    state: State,
   ): Promise<ProviderResult> => {
     const agentUserId = runtime.agentId;
 
@@ -98,10 +98,10 @@ export const recentMessagesProvider: Provider = {
               // User messages targeting this agent (use @> for GIN index efficiency)
               and(
                 eq(messagesTable.senderId, ownerId),
-                sql`${messagesTable.targetIds} @> ARRAY[${agentUserId}]`
-              )
-            )
-          )
+                sql`${messagesTable.targetIds} @> ARRAY[${agentUserId}]`,
+              ),
+            ),
+          ),
         )
         .orderBy(desc(messagesTable.createdAt))
         .limit(10);
@@ -113,11 +113,11 @@ export const recentMessagesProvider: Provider = {
         return {
           data: { recentMessages: [], messageCount: 0 },
           values: {
-            recentMessages: 'No previous conversation history with this user.',
+            recentMessages: "No previous conversation history with this user.",
             messageCount: 0,
             hasHistory: false,
           },
-          text: 'No previous conversation history with this user.',
+          text: "No previous conversation history with this user.",
         };
       }
 
@@ -126,17 +126,17 @@ export const recentMessagesProvider: Provider = {
       formattedMessages = [...recentMsgs]
         .reverse()
         .map((msg) => {
-          const speaker = msg.senderId === ownerId ? 'User' : 'You';
+          const speaker = msg.senderId === ownerId ? "User" : "You";
           const time = formatTime(msg.createdAt);
           const relativeTime = formatRelativeTime(msg.createdAt);
           return `${time} (${relativeTime}) ${speaker}: ${msg.content}`;
         })
-        .join('\n');
+        .join("\n");
     } else {
       // Legacy DM mode: Query agentMessages table
       const messages = await db.agentMessage.findMany({
         where: { agentUserId },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
         take: 10,
       });
 
@@ -147,11 +147,11 @@ export const recentMessagesProvider: Provider = {
         return {
           data: { recentMessages: [], messageCount: 0 },
           values: {
-            recentMessages: 'No previous conversation history.',
+            recentMessages: "No previous conversation history.",
             messageCount: 0,
             hasHistory: false,
           },
-          text: 'No previous conversation history.',
+          text: "No previous conversation history.",
         };
       }
 
@@ -160,12 +160,12 @@ export const recentMessagesProvider: Provider = {
       formattedMessages = [...messages]
         .reverse()
         .map((msg) => {
-          const speaker = msg.role === 'user' ? 'User' : 'Agent';
+          const speaker = msg.role === "user" ? "User" : "Agent";
           const time = formatTime(msg.createdAt);
           const relativeTime = formatRelativeTime(msg.createdAt);
           return `${time} (${relativeTime}) ${speaker}: ${msg.content}`;
         })
-        .join('\n');
+        .join("\n");
     }
 
     return {

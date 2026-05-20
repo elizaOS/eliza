@@ -1,12 +1,12 @@
-'use client';
+"use client";
 
-import { FEED_POINTS_SYMBOL, cn, logger } from '@feed/shared';
-import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { useWidgetRefresh } from '@/contexts/WidgetRefreshContext';
-import { usePerpMarkets } from '@/stores/perpMarketsStore';
-import { apiUrl } from '@/utils/api-url';
+import { cn, FEED_POINTS_SYMBOL, logger } from "@feed/shared";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { useWidgetRefresh } from "@/contexts/WidgetRefreshContext";
+import { usePerpMarkets } from "@/stores/perpMarketsStore";
+import { apiUrl } from "@/utils/api-url";
 
 /**
  * Prediction market structure for markets panel.
@@ -55,13 +55,13 @@ export function MarketsPanel() {
 
   const fetchMarkets = useCallback(async () => {
     // Fetch prediction markets only - perps come from shared store
-    const response = await fetch(apiUrl('/api/feed/widgets/markets'));
+    const response = await fetch(apiUrl("/api/feed/widgets/markets"));
 
     if (!response.ok) {
       logger.error(
-        'Failed to fetch markets',
+        "Failed to fetch markets",
         { status: response.status, statusText: response.statusText },
-        'MarketsPanel'
+        "MarketsPanel",
       );
       setMarkets([]);
       setPredictionsLoading(false);
@@ -71,9 +71,9 @@ export function MarketsPanel() {
     const text = await response.text();
     if (!text) {
       logger.error(
-        'Empty response from markets API',
+        "Empty response from markets API",
         undefined,
-        'MarketsPanel'
+        "MarketsPanel",
       );
       setMarkets([]);
       setPredictionsLoading(false);
@@ -98,8 +98,8 @@ export function MarketsPanel() {
     const refreshAll = async () => {
       await Promise.all([fetchMarkets(), refetchPerps()]);
     };
-    registerRefresh('markets', refreshAll);
-    return () => unregisterRefresh('markets');
+    registerRefresh("markets", refreshAll);
+    return () => unregisterRefresh("markets");
   }, [registerRefresh, unregisterRefresh, fetchMarkets, refetchPerps]);
 
   const handleMarketClick = (marketId: string) => {
@@ -115,20 +115,20 @@ export function MarketsPanel() {
     () =>
       markets
         .filter(
-          (m) => m.changePercent24h !== undefined && m.changePercent24h !== 0
+          (m) => m.changePercent24h !== undefined && m.changePercent24h !== 0,
         )
         .sort(
           (a, b) =>
             Math.abs(b.changePercent24h || 0) -
-            Math.abs(a.changePercent24h || 0)
+            Math.abs(a.changePercent24h || 0),
         )
         .slice(0, 3),
-    [markets]
+    [markets],
   );
 
   const { tokenGainers, tokenLosers } = useMemo(() => {
     const sorted = [...perpMarkets].sort(
-      (a, b) => b.changePercent24h - a.changePercent24h
+      (a, b) => b.changePercent24h - a.changePercent24h,
     );
     return {
       tokenGainers: sorted.slice(0, 3),
@@ -174,13 +174,13 @@ export function MarketsPanel() {
                         </span>
                         <span
                           className={cn(
-                            'font-semibold text-xs',
+                            "font-semibold text-xs",
                             (market.changePercent24h || 0) >= 0
-                              ? 'text-green-600'
-                              : 'text-red-600'
+                              ? "text-green-600"
+                              : "text-red-600",
                           )}
                         >
-                          {(market.changePercent24h || 0) >= 0 ? '+' : ''}
+                          {(market.changePercent24h || 0) >= 0 ? "+" : ""}
                           {(market.changePercent24h || 0).toFixed(1)}%
                         </span>
                       </div>
@@ -214,20 +214,20 @@ export function MarketsPanel() {
                         <div className="mt-0.5 flex items-center justify-between gap-1">
                           <span className="truncate text-muted-foreground text-xs">
                             {FEED_POINTS_SYMBOL}
-                            {token.currentPrice.toLocaleString('en-US', {
+                            {token.currentPrice.toLocaleString("en-US", {
                               minimumFractionDigits: 2,
                               maximumFractionDigits: 2,
                             })}
                           </span>
                           <span
                             className={cn(
-                              'font-semibold text-xs',
+                              "font-semibold text-xs",
                               token.changePercent24h >= 0
-                                ? 'text-green-600'
-                                : 'text-muted-foreground'
+                                ? "text-green-600"
+                                : "text-muted-foreground",
                             )}
                           >
-                            {token.changePercent24h >= 0 ? '+' : ''}
+                            {token.changePercent24h >= 0 ? "+" : ""}
                             {token.changePercent24h.toFixed(1)}%
                           </span>
                         </div>
@@ -254,17 +254,17 @@ export function MarketsPanel() {
                         <div className="mt-0.5 flex items-center justify-between gap-1">
                           <span className="truncate text-muted-foreground text-xs">
                             {FEED_POINTS_SYMBOL}
-                            {token.currentPrice.toLocaleString('en-US', {
+                            {token.currentPrice.toLocaleString("en-US", {
                               minimumFractionDigits: 2,
                               maximumFractionDigits: 2,
                             })}
                           </span>
                           <span
                             className={cn(
-                              'font-semibold text-xs',
+                              "font-semibold text-xs",
                               token.changePercent24h < 0
-                                ? 'text-red-600'
-                                : 'text-muted-foreground'
+                                ? "text-red-600"
+                                : "text-muted-foreground",
                             )}
                           >
                             {token.changePercent24h.toFixed(1)}%

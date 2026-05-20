@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import type { PortfolioBreakdownSnapshot } from '@/hooks/usePortfolioPnL';
-import type { User } from '@/stores/authStore';
-import { PnLShareModal } from './PnLShareModal';
+import type { PortfolioBreakdownSnapshot } from "@/hooks/usePortfolioPnL";
+import type { User } from "@/stores/authStore";
+import { PnLShareModal } from "./PnLShareModal";
 
 /**
  * Portfolio PnL share modal component for sharing portfolio PnL.

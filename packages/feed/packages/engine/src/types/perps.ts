@@ -8,14 +8,14 @@
  * - PnL calculations
  */
 
-import { MARKET_CONFIG } from '../config/fees';
+import { MARKET_CONFIG } from "../config/fees";
 
 export interface PerpPosition {
   id: string;
   userId: string;
   ticker: string;
   organizationId: string;
-  side: 'long' | 'short';
+  side: "long" | "short";
   entryPrice: number;
   currentPrice: number;
   size: number;
@@ -56,16 +56,16 @@ export interface PerpMarket {
 
 export interface OrderRequest {
   ticker: string;
-  side: 'long' | 'short';
+  side: "long" | "short";
   size: number;
   leverage: number;
-  orderType: 'market' | 'limit';
+  orderType: "market" | "limit";
   limitPrice?: number;
 }
 
 export interface PositionUpdate {
   positionId: string;
-  action: 'increase' | 'decrease' | 'close';
+  action: "increase" | "decrease" | "close";
   amount?: number;
   newLeverage?: number;
 }
@@ -73,7 +73,7 @@ export interface PositionUpdate {
 export interface Liquidation {
   positionId: string;
   ticker: string;
-  side: 'long' | 'short';
+  side: "long" | "short";
   liquidationPrice: number;
   actualPrice: number;
   loss: number;
@@ -110,13 +110,13 @@ export interface TradingStats {
  */
 export function calculateLiquidationPrice(
   entryPrice: number,
-  side: 'long' | 'short',
-  leverage: number
+  side: "long" | "short",
+  leverage: number,
 ): number {
   // Liquidation at full margin loss (1/leverage). Matches Hyperliquid-style mechanics.
   const liquidationThreshold = 1 / leverage;
 
-  if (side === 'long') {
+  if (side === "long") {
     return entryPrice * (1 - liquidationThreshold);
   }
   return entryPrice * (1 + liquidationThreshold);
@@ -128,12 +128,12 @@ export function calculateLiquidationPrice(
 export function calculateUnrealizedPnL(
   entryPrice: number,
   currentPrice: number,
-  side: 'long' | 'short',
-  size: number
+  side: "long" | "short",
+  size: number,
 ): { pnl: number; pnlPercent: number } {
   let pnl: number;
 
-  if (side === 'long') {
+  if (side === "long") {
     pnl = ((currentPrice - entryPrice) / entryPrice) * size;
   } else {
     pnl = ((entryPrice - currentPrice) / entryPrice) * size;
@@ -149,7 +149,7 @@ export function calculateUnrealizedPnL(
  */
 export function calculateFundingPayment(
   positionSize: number,
-  fundingRate: number
+  fundingRate: number,
 ): number {
   const fundingPerPeriod = fundingRate / 1095.75;
   return positionSize * fundingPerPeriod;
@@ -161,9 +161,9 @@ export function calculateFundingPayment(
 export function shouldLiquidate(
   currentPrice: number,
   liquidationPrice: number,
-  side: 'long' | 'short'
+  side: "long" | "short",
 ): boolean {
-  if (side === 'long') {
+  if (side === "long") {
     return currentPrice <= liquidationPrice;
   }
   return currentPrice >= liquidationPrice;
@@ -175,7 +175,7 @@ export function shouldLiquidate(
 export function calculateMarkPrice(
   indexPrice: number,
   lastPrice: number,
-  fundingRate: number
+  fundingRate: number,
 ): number {
   const baseMarkPrice = indexPrice * 0.7 + lastPrice * 0.3;
   const fundingAdjustment = fundingRate * 0.01;

@@ -67,13 +67,13 @@ import {
   AgentType,
   agentRegistry,
   getExternalAgentAdapter,
-} from '@feed/agents';
+} from "@feed/agents";
 import {
   getClientIp,
   logAdminView,
   requireAdmin,
   withErrorHandling,
-} from '@feed/api';
+} from "@feed/api";
 import {
   agentLogs,
   and,
@@ -84,11 +84,11 @@ import {
   gte,
   userAgentConfigs,
   users,
-} from '@feed/db';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@feed/db";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 /**
  * GET /api/admin/agents
@@ -101,8 +101,8 @@ export const GET = withErrorHandling(async (req: NextRequest) => {
   logAdminView({
     adminId: admin.userId,
     ipAddress: getClientIp(req.headers) ?? undefined,
-    resourceType: 'agents',
-    metadata: { action: 'view_all_agents' },
+    resourceType: "agents",
+    metadata: { action: "view_all_agents" },
   });
   // Get all agents with their configs
   const agentsWithConfigs = await db
@@ -117,7 +117,9 @@ export const GET = withErrorHandling(async (req: NextRequest) => {
 
   const agents = agentsWithConfigs.map((a) => a.user);
   const configMap = new Map(
-    agentsWithConfigs.filter((a) => a.config).map((a) => [a.user.id, a.config!])
+    agentsWithConfigs
+      .filter((a) => a.config)
+      .map((a) => [a.user.id, a.config!]),
   );
 
   // Get performance metrics for all agents
@@ -134,7 +136,7 @@ export const GET = withErrorHandling(async (req: NextRequest) => {
     select: { id: true, displayName: true, username: true },
   });
   const creatorMap = new Map(
-    creators.map((c) => [c.id, c.displayName || c.username])
+    creators.map((c) => [c.id, c.displayName || c.username]),
   );
 
   // Get recent logs count for each agent (last 24 hours)
@@ -148,7 +150,7 @@ export const GET = withErrorHandling(async (req: NextRequest) => {
     .where(gte(agentLogs.createdAt, oneDayAgo))
     .groupBy(agentLogs.agentUserId);
   const logCountMap = new Map(
-    logCounts.map((l) => [l.agentUserId, Number(l._count)])
+    logCounts.map((l) => [l.agentUserId, Number(l._count)]),
   );
 
   // Get error counts
@@ -159,11 +161,11 @@ export const GET = withErrorHandling(async (req: NextRequest) => {
     })
     .from(agentLogs)
     .where(
-      and(gte(agentLogs.createdAt, oneDayAgo), eq(agentLogs.level, 'error'))
+      and(gte(agentLogs.createdAt, oneDayAgo), eq(agentLogs.level, "error")),
     )
     .groupBy(agentLogs.agentUserId);
   const errorCountMap = new Map(
-    errorCounts.map((e) => [e.agentUserId, Number(e._count)])
+    errorCounts.map((e) => [e.agentUserId, Number(e._count)]),
   );
 
   // Format agents
@@ -184,15 +186,15 @@ export const GET = withErrorHandling(async (req: NextRequest) => {
 
     return {
       id: agent.id,
-      name: agent.username || '',
-      displayName: agent.displayName || agent.username || '',
+      name: agent.username || "",
+      displayName: agent.displayName || agent.username || "",
       description: agent.bio || null,
       profileImageUrl: agent.profileImageUrl || null,
-      creatorId: agent.managedBy || 'system',
+      creatorId: agent.managedBy || "system",
       creatorName: agent.managedBy
         ? creatorMap.get(agent.managedBy) || null
-        : 'System',
-      modelTier: config?.modelTier || 'lite',
+        : "System",
+      modelTier: config?.modelTier || "lite",
       balance: Number(agent.virtualBalance ?? 0),
 
       // Autonomous status
@@ -244,20 +246,20 @@ export const GET = withErrorHandling(async (req: NextRequest) => {
       displayName: agent.name,
       description: agent.systemPrompt,
       profileImageUrl: null,
-      creatorId: 'external',
-      creatorName: 'External',
-      modelTier: 'external' as const,
+      creatorId: "external",
+      creatorName: "External",
+      modelTier: "external" as const,
       balance: 0,
 
       // External agent specific
-      type: 'EXTERNAL' as const,
-      protocol: connection?.protocol || 'unknown',
+      type: "EXTERNAL" as const,
+      protocol: connection?.protocol || "unknown",
       endpoint: connection?.endpoint || null,
       isHealthy: connection?.isHealthy ?? false,
       lastHealthCheck: connection?.lastHealthCheck || null,
 
       // Autonomous status (all false for external)
-      autonomousEnabled: agent.status === 'ACTIVE',
+      autonomousEnabled: agent.status === "ACTIVE",
       autonomousTrading: false,
       autonomousPosting: false,
       autonomousCommenting: false,
@@ -295,17 +297,17 @@ export const GET = withErrorHandling(async (req: NextRequest) => {
   const stats = {
     total: allAgents.length,
     running: allAgents.filter(
-      (a) => a.autonomousEnabled && a.agentStatus === 'running'
+      (a) => a.autonomousEnabled && a.agentStatus === "running",
     ).length,
     paused: allAgents.filter(
-      (a) => !a.autonomousEnabled || a.agentStatus === 'paused'
+      (a) => !a.autonomousEnabled || a.agentStatus === "paused",
     ).length,
     error: allAgents.filter(
-      (a) => a.agentStatus === 'error' || a.recentErrorsCount > 0
+      (a) => a.agentStatus === "error" || a.recentErrorsCount > 0,
     ).length,
     totalActions24h: Array.from(logCountMap.values()).reduce(
       (sum, count) => sum + count,
-      0
+      0,
     ),
     external: formattedExternalAgents.length,
     externalHealthy: formattedExternalAgents.filter((a) => a.isHealthy).length,

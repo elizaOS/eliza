@@ -94,9 +94,9 @@ import {
   successResponse,
   WaitlistService,
   withErrorHandling,
-} from '@feed/api';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/api";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 type LeaderboardResponse = {
   leaderboard: Awaited<ReturnType<typeof WaitlistService.getTopWaitlistUsers>>;
@@ -104,13 +104,13 @@ type LeaderboardResponse = {
   page: number;
   totalPages: number;
   hasMore: boolean;
-  pointsType: 'total' | 'invite';
+  pointsType: "total" | "invite";
 };
 
-const CACHE_KEY_NAMESPACE = 'waitlist:leaderboard';
+const CACHE_KEY_NAMESPACE = "waitlist:leaderboard";
 // Increased cache to 5 minutes to reduce data transfer costs
 const CACHE_TTL_MS = Number(
-  process.env.WAITLIST_LEADERBOARD_CACHE_MS ?? 300_000
+  process.env.WAITLIST_LEADERBOARD_CACHE_MS ?? 300_000,
 ); // 300s (5 min) default
 const CACHE_TTL_SECONDS = Math.max(1, Math.floor(CACHE_TTL_MS / 1000));
 const STALE_SECONDS = CACHE_TTL_SECONDS * 3;
@@ -119,15 +119,15 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   const { searchParams } = new URL(request.url);
   const page = Math.max(
     1,
-    Number.parseInt(searchParams.get('page') || '1', 10)
+    Number.parseInt(searchParams.get("page") || "1", 10),
   );
   const limit = Math.min(
-    Number.parseInt(searchParams.get('limit') || '10', 10),
-    100
+    Number.parseInt(searchParams.get("limit") || "10", 10),
+    100,
   ); // Cap at 100
-  const pointsTypeParam = (searchParams.get('pointsType') || '').toLowerCase();
-  const pointsType: 'total' | 'invite' =
-    pointsTypeParam === 'total' ? 'total' : 'invite';
+  const pointsTypeParam = (searchParams.get("pointsType") || "").toLowerCase();
+  const pointsType: "total" | "invite" =
+    pointsTypeParam === "total" ? "total" : "invite";
 
   // Calculate offset for pagination
   const offset = (page - 1) * limit;
@@ -141,23 +141,23 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     });
     if (cached) {
       return successResponse(cached, 200, {
-        'x-cache': 'waitlist-leaderboard-hit',
-        'Cache-Control': `public, s-maxage=${CACHE_TTL_SECONDS}, stale-while-revalidate=${STALE_SECONDS}`,
-        Vary: 'Accept-Encoding',
+        "x-cache": "waitlist-leaderboard-hit",
+        "Cache-Control": `public, s-maxage=${CACHE_TTL_SECONDS}, stale-while-revalidate=${STALE_SECONDS}`,
+        Vary: "Accept-Encoding",
       });
     }
   }
 
   logger.info(
-    'Waitlist leaderboard request',
+    "Waitlist leaderboard request",
     { page, limit, offset, pointsType },
-    'GET /api/waitlist/leaderboard'
+    "GET /api/waitlist/leaderboard",
   );
 
   const topUsers = await WaitlistService.getTopWaitlistUsers(
     limit,
     offset,
-    pointsType
+    pointsType,
   );
 
   // Calculate total pages (cap at 100 users for leaderboard display)
@@ -183,8 +183,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   }
 
   return successResponse(responseBody, 200, {
-    'x-cache': 'waitlist-leaderboard-miss',
-    'Cache-Control': `public, s-maxage=${CACHE_TTL_SECONDS}, stale-while-revalidate=${STALE_SECONDS}`,
-    Vary: 'Accept-Encoding',
+    "x-cache": "waitlist-leaderboard-miss",
+    "Cache-Control": `public, s-maxage=${CACHE_TTL_SECONDS}, stale-while-revalidate=${STALE_SECONDS}`,
+    Vary: "Accept-Encoding",
   });
 });

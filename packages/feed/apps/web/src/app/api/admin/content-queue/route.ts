@@ -12,7 +12,7 @@
  * to avoid N+1 query patterns at scale.
  */
 
-import { requireAdmin, successResponse, withErrorHandling } from '@feed/api';
+import { requireAdmin, successResponse, withErrorHandling } from "@feed/api";
 import {
   and,
   comments,
@@ -25,20 +25,20 @@ import {
   reports,
   sql,
   users,
-} from '@feed/db';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { z } from 'zod';
+} from "@feed/db";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { z } from "zod";
 
 // Allowed image URL domains for content moderation display
 const ALLOWED_IMAGE_DOMAINS = [
-  'images.unsplash.com',
-  'picsum.photos',
-  'cloudinary.com',
-  'res.cloudinary.com',
-  'feed-storage.s3.amazonaws.com',
-  'storage.googleapis.com',
-  'cdn.feed.market',
+  "images.unsplash.com",
+  "picsum.photos",
+  "cloudinary.com",
+  "res.cloudinary.com",
+  "feed-storage.s3.amazonaws.com",
+  "storage.googleapis.com",
+  "cdn.feed.market",
 ];
 
 /**
@@ -50,21 +50,21 @@ function sanitizeImageUrl(url: string | null): string | null {
 
   const parsed = new URL(url); // Let it throw on invalid URL - handled at API boundary
 
-  if (parsed.protocol !== 'https:') {
-    logger.warn('Non-HTTPS image URL rejected', { url }, 'sanitizeImageUrl');
+  if (parsed.protocol !== "https:") {
+    logger.warn("Non-HTTPS image URL rejected", { url }, "sanitizeImageUrl");
     return null;
   }
 
   const isAllowedDomain = ALLOWED_IMAGE_DOMAINS.some(
     (domain) =>
-      parsed.hostname === domain || parsed.hostname.endsWith(`.${domain}`)
+      parsed.hostname === domain || parsed.hostname.endsWith(`.${domain}`),
   );
 
   if (!isAllowedDomain) {
     logger.warn(
       `Image URL from non-allowlisted domain rejected: ${parsed.hostname}`,
       { url },
-      'sanitizeImageUrl'
+      "sanitizeImageUrl",
     );
     return null; // Enforce allowlist for security
   }
@@ -73,8 +73,8 @@ function sanitizeImageUrl(url: string | null): string | null {
 }
 
 const ContentQueueQuerySchema = z.object({
-  type: z.enum(['all', 'posts', 'comments']).default('all'),
-  status: z.enum(['pending', 'resolved']).default('pending'),
+  type: z.enum(["all", "posts", "comments"]).default("all"),
+  status: z.enum(["pending", "resolved"]).default("pending"),
   limit: z.coerce.number().min(1).max(100).default(50),
   offset: z.coerce.number().min(0).max(1000).default(0), // Max offset prevents scanning entire dataset
 });
@@ -86,33 +86,33 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
   // Validate query parameters with Zod
   const parseResult = ContentQueueQuerySchema.safeParse({
-    type: searchParams.get('type') || undefined,
-    status: searchParams.get('status') || undefined,
-    limit: searchParams.get('limit') || undefined,
-    offset: searchParams.get('offset') || undefined,
+    type: searchParams.get("type") || undefined,
+    status: searchParams.get("status") || undefined,
+    limit: searchParams.get("limit") || undefined,
+    offset: searchParams.get("offset") || undefined,
   });
 
   if (!parseResult.success) {
     return successResponse(
       {
-        error: 'Invalid query parameters',
+        error: "Invalid query parameters",
         details: parseResult.error.flatten(),
       },
-      400
+      400,
     );
   }
 
   const { type: contentType, status, limit, offset } = parseResult.data;
 
   logger.info(
-    'Content queue requested',
+    "Content queue requested",
     { contentType, status, limit, offset },
-    'GET /api/admin/content-queue'
+    "GET /api/admin/content-queue",
   );
 
   // Get reported posts with report counts using JOIN + GROUP BY (optimized, no N+1)
   const reportedPosts =
-    contentType === 'comments'
+    contentType === "comments"
       ? []
       : await db
           .select({
@@ -134,10 +134,10 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
             reports,
             and(
               eq(reports.reportedPostId, posts.id),
-              eq(reports.status, status)
-            )
+              eq(reports.status, status),
+            ),
           )
-          .where(status === 'pending' ? isNull(posts.deletedAt) : undefined)
+          .where(status === "pending" ? isNull(posts.deletedAt) : undefined)
           .groupBy(
             posts.id,
             posts.content,
@@ -148,7 +148,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
             users.username,
             users.displayName,
             users.profileImageUrl,
-            users.isActor
+            users.isActor,
           )
           .orderBy(desc(posts.createdAt))
           .limit(limit)
@@ -156,7 +156,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
   // Get reported comments with report counts using JOIN + GROUP BY
   const reportedComments =
-    contentType === 'posts'
+    contentType === "posts"
       ? []
       : await db
           .select({
@@ -178,10 +178,10 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
             reports,
             and(
               eq(reports.reportedCommentId, comments.id),
-              eq(reports.status, status)
-            )
+              eq(reports.status, status),
+            ),
           )
-          .where(status === 'pending' ? isNull(comments.deletedAt) : undefined)
+          .where(status === "pending" ? isNull(comments.deletedAt) : undefined)
           .groupBy(
             comments.id,
             comments.content,
@@ -192,7 +192,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
             users.username,
             users.displayName,
             users.profileImageUrl,
-            users.isActor
+            users.isActor,
           )
           .orderBy(desc(comments.createdAt))
           .limit(limit)
@@ -207,7 +207,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     .from(posts)
     .innerJoin(
       reports,
-      and(eq(reports.reportedPostId, posts.id), eq(reports.status, 'pending'))
+      and(eq(reports.reportedPostId, posts.id), eq(reports.status, "pending")),
     );
 
   // Get comment stats using efficient aggregation (separate from paginated results)
@@ -221,8 +221,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       reports,
       and(
         eq(reports.reportedCommentId, comments.id),
-        eq(reports.status, 'pending')
-      )
+        eq(reports.status, "pending"),
+      ),
     );
 
   return successResponse({
@@ -230,7 +230,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       const sanitizedImage = sanitizeImageUrl(p.imageUrl);
       return {
         ...p,
-        type: 'post' as const,
+        type: "post" as const,
         isHidden: p.deletedAt !== null,
         reactionCount: 0,
         commentCount: 0,
@@ -239,7 +239,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     }),
     comments: reportedComments.map((c) => ({
       ...c,
-      type: 'comment' as const,
+      type: "comment" as const,
       isHidden: c.deletedAt !== null,
       reactionCount: 0,
     })),

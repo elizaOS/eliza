@@ -7,7 +7,7 @@ import {
   getRateLimitStatus as apiGetRateLimitStatus,
   notifyGroupChatInvite as apiNotifyGroupChatInvite,
   resetRateLimit as apiResetRateLimit,
-} from '@feed/api';
+} from "@feed/api";
 import {
   type DistributedLockProvider,
   type RateLimitProvider,
@@ -15,7 +15,7 @@ import {
   setDistributedLockProvider,
   setNotifyGroupChatInvite,
   setRateLimitProvider,
-} from '@feed/engine';
+} from "@feed/engine";
 
 let initialized = false;
 
@@ -33,12 +33,12 @@ export function ensureEngineServices(): void {
   setBroadcastToChannel((channel, data) =>
     apiBroadcastToChannel(
       channel as Parameters<typeof apiBroadcastToChannel>[0],
-      data as Parameters<typeof apiBroadcastToChannel>[1]
-    )
+      data as Parameters<typeof apiBroadcastToChannel>[1],
+    ),
   );
 
   setNotifyGroupChatInvite((userId, npcId, groupId, chatName, inviteId) =>
-    apiNotifyGroupChatInvite(userId, npcId, groupId, chatName, inviteId)
+    apiNotifyGroupChatInvite(userId, npcId, groupId, chatName, inviteId),
   );
 
   const provider: DistributedLockProvider = {

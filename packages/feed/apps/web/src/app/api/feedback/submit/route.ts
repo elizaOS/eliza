@@ -69,25 +69,25 @@ import {
   BusinessLogicError,
   requireUserByIdentifier,
   withErrorHandling,
-} from '@feed/api';
-import { db } from '@feed/db';
-import { updateFeedbackMetrics } from '@feed/engine';
-import { generateSnowflakeId, logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { z } from 'zod';
+} from "@feed/api";
+import { db } from "@feed/db";
+import { updateFeedbackMetrics } from "@feed/engine";
+import { generateSnowflakeId, logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { z } from "zod";
 
 const FeedbackSubmitSchema = z
   .object({
-    toUserId: z.string().min(1, 'toUserId is required'),
+    toUserId: z.string().min(1, "toUserId is required"),
     score: z.number().min(0).max(100).optional(),
     stars: z.number().int().min(1).max(5).optional(),
     comment: z.string().max(5000).optional(),
     category: z.string().min(1).optional(),
   })
   .refine(({ score, stars }) => score !== undefined || stars !== undefined, {
-    message: 'Either score or stars must be provided',
-    path: ['score'],
+    message: "Either score or stars must be provided",
+    path: ["score"],
   });
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
@@ -105,8 +105,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   if (fromUser.id === toUser.id) {
     throw new BusinessLogicError(
-      'Cannot submit feedback to yourself',
-      'SELF_FEEDBACK'
+      "Cannot submit feedback to yourself",
+      "SELF_FEEDBACK",
     );
   }
 
@@ -118,14 +118,14 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       toUserId: toUser.id,
       score,
       comment: body.comment ?? null,
-      category: body.category ?? 'general',
-      interactionType: 'user_to_agent',
+      category: body.category ?? "general",
+      interactionType: "user_to_agent",
       createdAt: now,
       updatedAt: now,
     },
   });
 
-  logger.info('Feedback submitted successfully', {
+  logger.info("Feedback submitted successfully", {
     feedbackId: feedback.id,
     fromUserId: fromUser.id,
     toUserId: toUser.id,
@@ -134,8 +134,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   // Update feedback metrics
   await updateFeedbackMetrics(toUser.id, score, {
-    category: body.category ?? 'general',
-    interactionType: 'user_to_agent',
+    category: body.category ?? "general",
+    interactionType: "user_to_agent",
   });
 
   return NextResponse.json(
@@ -143,8 +143,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       success: true,
       feedbackId: feedback.id,
       score,
-      message: 'Feedback submitted successfully',
+      message: "Feedback submitted successfully",
     },
-    { status: 201 }
+    { status: 201 },
   );
 });

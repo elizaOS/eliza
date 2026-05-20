@@ -19,7 +19,7 @@ import {
   requireAdmin,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
+} from "@feed/api";
 import {
   and,
   asSystem,
@@ -29,9 +29,9 @@ import {
   eq,
   inArray,
   users,
-} from '@feed/db';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/db";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 /**
  * POST /api/admin/groups/[id]/revalidate-nft
@@ -41,7 +41,7 @@ import type { NextRequest } from 'next/server';
 export const POST = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ id: string }> }
+    context: { params: Promise<{ id: string }> },
   ) => {
     const admin = await requireAdmin(request);
     const { id: chatId } = await context.params;
@@ -49,9 +49,9 @@ export const POST = withErrorHandling(
     logAdminView({
       adminId: admin.userId,
       ipAddress: getClientIp(request.headers) ?? undefined,
-      resourceType: 'nft-groups',
+      resourceType: "nft-groups",
       resourceId: chatId,
-      metadata: { action: 'revalidate_nft_access' },
+      metadata: { action: "revalidate_nft_access" },
     });
 
     // Get the chat and verify it's NFT-gated
@@ -60,11 +60,11 @@ export const POST = withErrorHandling(
     });
 
     if (!chat) {
-      throw new NotFoundError('Chat', chatId);
+      throw new NotFoundError("Chat", chatId);
     }
 
     if (!chat.nftGated || !chat.requiredNftContractAddress) {
-      throw new BusinessLogicError('Chat is not NFT-gated', 'NOT_NFT_GATED');
+      throw new BusinessLogicError("Chat is not NFT-gated", "NOT_NFT_GATED");
     }
 
     // Get all active participants with their wallet addresses
@@ -78,8 +78,8 @@ export const POST = withErrorHandling(
         .where(
           and(
             eq(chatParticipants.chatId, chatId),
-            eq(chatParticipants.isActive, true)
-          )
+            eq(chatParticipants.isActive, true),
+          ),
         );
 
       if (participantList.length === 0) return [];
@@ -100,7 +100,7 @@ export const POST = withErrorHandling(
         userId: p.userId,
         walletAddress: usersMap.get(p.userId)?.walletAddress ?? null,
       }));
-    }, 'admin-revalidate-nft');
+    }, "admin-revalidate-nft");
 
     // Check each participant's NFT ownership
     const results = {
@@ -125,7 +125,7 @@ export const POST = withErrorHandling(
           chatId,
           chat.groupId,
           participant.userId,
-          'No wallet connected'
+          "No wallet connected",
         );
         results.noWallet++;
         results.removedUsers.push(participant.userId);
@@ -137,7 +137,7 @@ export const POST = withErrorHandling(
         await NFTVerificationService.invalidateOwnershipCache(
           participant.walletAddress,
           chat.requiredNftContractAddress,
-          chat.requiredNftChainId ?? undefined
+          chat.requiredNftChainId ?? undefined,
         );
 
         // Check NFT ownership
@@ -145,7 +145,7 @@ export const POST = withErrorHandling(
           participant.walletAddress,
           chat.requiredNftContractAddress,
           chat.requiredNftTokenId ?? null,
-          chat.requiredNftChainId ?? undefined
+          chat.requiredNftChainId ?? undefined,
         );
 
         if (!verification.canAccess) {
@@ -154,7 +154,7 @@ export const POST = withErrorHandling(
             chatId,
             chat.groupId,
             participant.userId,
-            verification.reason ?? 'No longer owns required NFT'
+            verification.reason ?? "No longer owns required NFT",
           );
           results.removed++;
           results.removedUsers.push(participant.userId);
@@ -163,26 +163,26 @@ export const POST = withErrorHandling(
         }
       } catch (error) {
         logger.error(
-          'Error validating NFT ownership',
+          "Error validating NFT ownership",
           {
             userId: participant.userId,
             chatId,
             error: error instanceof Error ? error.message : String(error),
           },
-          'POST /api/admin/groups/[id]/revalidate-nft'
+          "POST /api/admin/groups/[id]/revalidate-nft",
         );
         results.errors++;
       }
     }
 
     logger.info(
-      'NFT revalidation completed',
+      "NFT revalidation completed",
       {
         adminId: admin.userId,
         chatId,
         results,
       },
-      'POST /api/admin/groups/[id]/revalidate-nft'
+      "POST /api/admin/groups/[id]/revalidate-nft",
     );
 
     return successResponse({
@@ -197,5 +197,5 @@ export const POST = withErrorHandling(
         removedUserIds: results.removedUsers,
       },
     });
-  }
+  },
 );

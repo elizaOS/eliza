@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { logger } from '@feed/shared';
-import * as Sentry from '@sentry/nextjs';
+import { logger } from "@feed/shared";
+import * as Sentry from "@sentry/nextjs";
 /**
  * PostHog error boundary component for catching and tracking React errors.
  *
@@ -26,8 +26,8 @@ import * as Sentry from '@sentry/nextjs';
  * </PostHogErrorBoundary>
  * ```
  */
-import React, { Component, type ReactNode } from 'react';
-import { posthog } from '@/lib/posthog';
+import React, { Component, type ReactNode } from "react";
+import { posthog } from "@/lib/posthog";
 
 interface Props {
   children: ReactNode;
@@ -53,7 +53,7 @@ export class PostHogErrorBoundary extends Component<Props, State> {
     // Track error with PostHog
     if (posthog) {
       const properties: Record<string, string | boolean> = {
-        $exception_type: error.name || 'Error',
+        $exception_type: error.name || "Error",
         $exception_message: error.message,
         errorBoundary: true,
         timestamp: new Date().toISOString(),
@@ -67,14 +67,14 @@ export class PostHogErrorBoundary extends Component<Props, State> {
         properties.componentStack = errorInfo.componentStack;
       }
 
-      posthog.capture('$exception', properties);
+      posthog.capture("$exception", properties);
     }
 
     // Capture error in Sentry as well (primary error reporting)
     Sentry.withScope((scope) => {
-      scope.setTag('errorBoundary', 'posthog');
-      scope.setTag('surface', 'react');
-      scope.setContext('react', {
+      scope.setTag("errorBoundary", "posthog");
+      scope.setTag("surface", "react");
+      scope.setContext("react", {
         componentStack: errorInfo.componentStack,
       });
       Sentry.captureException(error);
@@ -82,9 +82,9 @@ export class PostHogErrorBoundary extends Component<Props, State> {
 
     // Also log using logger
     logger.error(
-      'Error caught by PostHogErrorBoundary',
+      "Error caught by PostHogErrorBoundary",
       { error, errorInfo },
-      'PostHogErrorBoundary'
+      "PostHogErrorBoundary",
     );
   }
 

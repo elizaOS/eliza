@@ -13,10 +13,10 @@
  */
 
 const CRON_INTERVAL = 60000; // 60 seconds
-const GAME_TICK_URL = 'http://localhost:3000/api/cron/game-tick';
-const MARKETS_TICK_URL = 'http://localhost:3000/api/cron/markets-tick';
-const AGENT_TICK_URL = 'http://localhost:3000/api/cron/agent-tick';
-const NPC_TICK_URL = 'http://localhost:3000/api/cron/npc-tick';
+const GAME_TICK_URL = "http://localhost:3000/api/cron/game-tick";
+const MARKETS_TICK_URL = "http://localhost:3000/api/cron/markets-tick";
+const AGENT_TICK_URL = "http://localhost:3000/api/cron/agent-tick";
+const NPC_TICK_URL = "http://localhost:3000/api/cron/npc-tick";
 
 let intervalId: NodeJS.Timeout | null = null;
 let tickCount = 0;
@@ -26,30 +26,30 @@ async function executeGameTick() {
   console.info(
     `🎮 Triggering game tick #${tickCount}...`,
     undefined,
-    'LocalCron'
+    "LocalCron",
   );
 
   const response = await fetch(GAME_TICK_URL, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      Authorization: `Bearer ${process.env.CRON_SECRET || 'development'}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${process.env.CRON_SECRET || "development"}`,
+      "Content-Type": "application/json",
     },
   }).catch((error: Error) => {
     const errorMessage = error.message;
     console.error(
       `Game tick #${tickCount} error: ${errorMessage}`,
       { error },
-      'LocalCron'
+      "LocalCron",
     );
 
-    if (errorMessage.includes('ECONNREFUSED')) {
+    if (errorMessage.includes("ECONNREFUSED")) {
       console.error(
-        '❌ Next.js dev server not running!',
+        "❌ Next.js dev server not running!",
         undefined,
-        'LocalCron'
+        "LocalCron",
       );
-      console.error('   Start it first: bun run dev', undefined, 'LocalCron');
+      console.error("   Start it first: bun run dev", undefined, "LocalCron");
       process.exit(1);
     }
     return null;
@@ -58,21 +58,21 @@ async function executeGameTick() {
   if (!response) return;
 
   if (!response.ok) {
-    const text = await response.text().catch(() => '');
+    const text = await response.text().catch(() => "");
     console.error(
       `Game tick #${tickCount} failed (HTTP ${response.status})`,
       { body: text.slice(0, 200) },
-      'LocalCron'
+      "LocalCron",
     );
     return;
   }
 
-  const contentType = response.headers.get('content-type') || '';
-  if (!contentType.includes('application/json')) {
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
     console.warn(
       `Game tick #${tickCount} returned non-JSON (${response.status})`,
       undefined,
-      'LocalCron'
+      "LocalCron",
     );
     return;
   }
@@ -83,7 +83,7 @@ async function executeGameTick() {
     console.warn(
       `Game tick #${tickCount} skipped: ${data.reason}`,
       undefined,
-      'LocalCron'
+      "LocalCron",
     );
     return;
   }
@@ -96,7 +96,7 @@ async function executeGameTick() {
       events: data.result?.eventsCreated || 0,
       markets: data.result?.marketsUpdated || 0,
     },
-    'LocalCron'
+    "LocalCron",
   );
 }
 
@@ -104,21 +104,21 @@ async function executeAgentTick() {
   console.info(
     `🤖 Triggering agent tick #${tickCount}...`,
     undefined,
-    'LocalCron'
+    "LocalCron",
   );
 
   const response = await fetch(AGENT_TICK_URL, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      Authorization: `Bearer ${process.env.CRON_SECRET || 'development'}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${process.env.CRON_SECRET || "development"}`,
+      "Content-Type": "application/json",
     },
   }).catch((error: Error) => {
     const errorMessage = error.message;
     console.error(
       `Agent tick #${tickCount} error: ${errorMessage}`,
       { error },
-      'LocalCron'
+      "LocalCron",
     );
     return null;
   });
@@ -126,15 +126,15 @@ async function executeAgentTick() {
   if (!response) return;
 
   // Check content-type before parsing JSON
-  const contentType = response.headers.get('content-type') || '';
+  const contentType = response.headers.get("content-type") || "";
 
   if (!response.ok) {
-    if (contentType.includes('application/json')) {
+    if (contentType.includes("application/json")) {
       const data = await response.json();
       console.error(
         `Agent tick #${tickCount} failed (HTTP ${response.status})`,
         data,
-        'LocalCron'
+        "LocalCron",
       );
     } else {
       const text = await response.text();
@@ -143,17 +143,17 @@ async function executeAgentTick() {
         {
           body: text.slice(0, 500),
         },
-        'LocalCron'
+        "LocalCron",
       );
     }
     return;
   }
 
-  if (!contentType.includes('application/json')) {
+  if (!contentType.includes("application/json")) {
     console.error(
       `Agent tick #${tickCount} returned non-JSON response`,
       { contentType },
-      'LocalCron'
+      "LocalCron",
     );
     return;
   }
@@ -167,7 +167,7 @@ async function executeAgentTick() {
       totalActions: data.totalActions || 0,
       errors: data.errors || 0,
     },
-    'LocalCron'
+    "LocalCron",
   );
 }
 
@@ -175,38 +175,38 @@ async function executeNpcTick() {
   console.info(
     `👤 Triggering NPC tick #${tickCount}...`,
     undefined,
-    'LocalCron'
+    "LocalCron",
   );
 
   const response = await fetch(NPC_TICK_URL, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      Authorization: `Bearer ${process.env.CRON_SECRET || 'development'}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${process.env.CRON_SECRET || "development"}`,
+      "Content-Type": "application/json",
     },
   }).catch((error: Error) => {
     console.error(
       `NPC tick #${tickCount} error: ${error.message}`,
       { error },
-      'LocalCron'
+      "LocalCron",
     );
     return null;
   });
 
   if (!response) return;
 
-  const contentType = response.headers.get('content-type') || '';
+  const contentType = response.headers.get("content-type") || "";
   if (!response.ok) {
     const text = await response.text();
     console.error(
       `NPC tick #${tickCount} failed (HTTP ${response.status})`,
       { body: text.slice(0, 500) },
-      'LocalCron'
+      "LocalCron",
     );
     return;
   }
 
-  if (contentType.includes('application/json')) {
+  if (contentType.includes("application/json")) {
     const data = await response.json();
     console.info(
       `✅ NPC tick #${tickCount} completed`,
@@ -214,7 +214,7 @@ async function executeNpcTick() {
         postsCreated: data.postsCreated || 0,
         npcsProcessed: data.npcsProcessed || 0,
       },
-      'LocalCron'
+      "LocalCron",
     );
   }
 }
@@ -223,44 +223,44 @@ async function executeMarketsTick() {
   console.info(
     `📈 Triggering markets tick #${tickCount}...`,
     undefined,
-    'LocalCron'
+    "LocalCron",
   );
 
   const response = await fetch(MARKETS_TICK_URL, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      Authorization: `Bearer ${process.env.CRON_SECRET || 'development'}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${process.env.CRON_SECRET || "development"}`,
+      "Content-Type": "application/json",
     },
   }).catch((error: Error) => {
     console.error(
       `Markets tick #${tickCount} error: ${error.message}`,
       { error },
-      'LocalCron'
+      "LocalCron",
     );
     return null;
   });
 
   if (!response) return;
 
-  const contentType = response.headers.get('content-type') || '';
+  const contentType = response.headers.get("content-type") || "";
   if (!response.ok) {
     const text = await response.text();
     console.error(
       `Markets tick #${tickCount} failed (HTTP ${response.status})`,
       { body: text.slice(0, 500) },
-      'LocalCron'
+      "LocalCron",
     );
     return;
   }
 
-  if (contentType.includes('application/json')) {
+  if (contentType.includes("application/json")) {
     const data = await response.json();
     if (data.skipped) {
       console.info(
         `Markets tick #${tickCount} skipped: ${data.reason}`,
         undefined,
-        'LocalCron'
+        "LocalCron",
       );
     } else {
       console.info(
@@ -270,7 +270,7 @@ async function executeMarketsTick() {
           created: data.created ?? 0,
           active: data.active ?? 0,
         },
-        'LocalCron'
+        "LocalCron",
       );
     }
   }
@@ -288,18 +288,18 @@ const HEALTH_CHECK_TIMEOUT_MS = 60_000;
 
 async function waitForServer(
   maxAttempts = 60,
-  delayMs = 3000
+  delayMs = 3000,
 ): Promise<boolean> {
   console.info(
-    'Waiting for Next.js server to be ready...',
+    "Waiting for Next.js server to be ready...",
     undefined,
-    'LocalCron'
+    "LocalCron",
   );
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      const response = await fetch('http://localhost:3000/api/health', {
-        method: 'GET',
+      const response = await fetch("http://localhost:3000/api/health", {
+        method: "GET",
         signal: AbortSignal.timeout(HEALTH_CHECK_TIMEOUT_MS),
       });
 
@@ -307,7 +307,7 @@ async function waitForServer(
         console.info(
           `✅ Server ready after ${attempt} attempt(s)`,
           undefined,
-          'LocalCron'
+          "LocalCron",
         );
         return true;
       }
@@ -316,7 +316,7 @@ async function waitForServer(
         console.info(
           `Attempt ${attempt}/${maxAttempts}: health returned HTTP ${response.status}, waiting ${delayMs}ms...`,
           undefined,
-          'LocalCron'
+          "LocalCron",
         );
         await new Promise((resolve) => setTimeout(resolve, delayMs));
       }
@@ -325,7 +325,7 @@ async function waitForServer(
         console.info(
           `Attempt ${attempt}/${maxAttempts}: Server not ready, waiting ${delayMs}ms...`,
           undefined,
-          'LocalCron'
+          "LocalCron",
         );
         await new Promise((resolve) => setTimeout(resolve, delayMs));
       }
@@ -333,31 +333,31 @@ async function waitForServer(
   }
 
   console.error(
-    '❌ Server did not become ready after maximum attempts',
+    "❌ Server did not become ready after maximum attempts",
     undefined,
-    'LocalCron'
+    "LocalCron",
   );
   return false;
 }
 
 async function main() {
-  console.info('🔄 LOCAL CRON SIMULATOR', undefined, 'LocalCron');
-  console.info('======================', undefined, 'LocalCron');
+  console.info("🔄 LOCAL CRON SIMULATOR", undefined, "LocalCron");
+  console.info("======================", undefined, "LocalCron");
   console.info(
-    'Simulating Vercel Cron by calling game-tick, markets-tick, agent-tick, npc-tick every minute',
+    "Simulating Vercel Cron by calling game-tick, markets-tick, agent-tick, npc-tick every minute",
     undefined,
-    'LocalCron'
+    "LocalCron",
   );
-  console.info('Press Ctrl+C to stop', undefined, 'LocalCron');
-  console.info('', undefined, 'LocalCron');
+  console.info("Press Ctrl+C to stop", undefined, "LocalCron");
+  console.info("", undefined, "LocalCron");
 
   // Wait for server to be ready with health check
   const serverReady = await waitForServer();
   if (!serverReady) {
     console.error(
-      'Cannot start cron simulator - server is not ready',
+      "Cannot start cron simulator - server is not ready",
       undefined,
-      'LocalCron'
+      "LocalCron",
     );
     process.exit(1);
   }
@@ -372,20 +372,20 @@ async function main() {
 
   // Handle shutdown gracefully
   const cleanup = () => {
-    console.info('Stopping local cron simulator...', undefined, 'LocalCron');
+    console.info("Stopping local cron simulator...", undefined, "LocalCron");
     if (intervalId) {
       clearInterval(intervalId);
       intervalId = null;
     }
-    console.info(`Total ticks executed: ${tickCount}`, undefined, 'LocalCron');
+    console.info(`Total ticks executed: ${tickCount}`, undefined, "LocalCron");
   };
 
-  process.on('SIGINT', () => {
+  process.on("SIGINT", () => {
     cleanup();
     process.exit(0);
   });
 
-  process.on('SIGTERM', () => {
+  process.on("SIGTERM", () => {
     cleanup();
     process.exit(0);
   });

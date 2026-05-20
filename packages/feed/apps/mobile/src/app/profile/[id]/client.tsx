@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import { useParams, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { apiUrl } from '@/utils/api-url';
+import { useParams, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { apiUrl } from "@/utils/api-url";
 
 export function MobileProfileResolvePage() {
   const router = useRouter();
@@ -16,16 +16,16 @@ export function MobileProfileResolvePage() {
 
     async function resolve() {
       const response = await fetch(
-        apiUrl(`/api/profiles/resolve/${encodeURIComponent(identifier)}`)
+        apiUrl(`/api/profiles/resolve/${encodeURIComponent(identifier)}`),
       );
 
       if (response.status === 404) {
-        router.replace('/');
+        router.replace("/");
         return;
       }
 
       if (!response.ok) {
-        setError('Failed to resolve profile');
+        setError("Failed to resolve profile");
         return;
       }
 
@@ -33,7 +33,7 @@ export function MobileProfileResolvePage() {
       if (data.redirect) {
         router.replace(data.redirect);
       } else {
-        router.replace('/');
+        router.replace("/");
       }
     }
 

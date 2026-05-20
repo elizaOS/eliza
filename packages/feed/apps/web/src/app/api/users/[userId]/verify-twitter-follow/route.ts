@@ -52,10 +52,10 @@ import {
   requireUserByIdentifier,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { db, eq, users } from '@feed/db';
-import { logger, UserIdParamSchema } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/api";
+import { db, eq, users } from "@feed/db";
+import { logger, UserIdParamSchema } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 /**
  * POST /api/users/[userId]/verify-twitter-follow
@@ -64,7 +64,7 @@ import type { NextRequest } from 'next/server';
 export const POST = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ userId: string }> }
+    context: { params: Promise<{ userId: string }> },
   ) => {
     // Authenticate user
     const authUser = await authenticate(request);
@@ -73,9 +73,9 @@ export const POST = withErrorHandling(
     // Check if the authenticated user has a database record
     if (!authUser.dbUserId) {
       throw new AuthorizationError(
-        'User profile not found. Please complete onboarding first.',
-        'twitter-follow-verification',
-        'create'
+        "User profile not found. Please complete onboarding first.",
+        "twitter-follow-verification",
+        "create",
       );
     }
 
@@ -85,9 +85,9 @@ export const POST = withErrorHandling(
     // Verify user is claiming their own follow reward
     if (authUser.dbUserId !== canonicalUserId) {
       throw new AuthorizationError(
-        'You can only claim your own Twitter follow reward',
-        'twitter-follow-verification',
-        'create'
+        "You can only claim your own Twitter follow reward",
+        "twitter-follow-verification",
+        "create",
       );
     }
 
@@ -105,8 +105,8 @@ export const POST = withErrorHandling(
     // VALIDATION: Check if user has linked Twitter account
     if (!user?.twitterUsername && !user?.twitterId) {
       throw new BusinessLogicError(
-        'Please link your Twitter account first to claim this reward.',
-        'TWITTER_NOT_LINKED'
+        "Please link your Twitter account first to claim this reward.",
+        "TWITTER_NOT_LINKED",
       );
     }
 
@@ -114,14 +114,14 @@ export const POST = withErrorHandling(
 
     if (alreadyAwarded) {
       logger.info(
-        'Twitter follow reward already claimed',
+        "Twitter follow reward already claimed",
         { userId: canonicalUserId },
-        'POST /api/users/[userId]/verify-twitter-follow'
+        "POST /api/users/[userId]/verify-twitter-follow",
       );
 
       return successResponse({
         verified: true,
-        message: 'You already received reputation for this action.',
+        message: "You already received reputation for this action.",
         reputation: {
           awarded: 0,
           newReputationTotal: 0,
@@ -142,13 +142,13 @@ export const POST = withErrorHandling(
 
       // Ensure the waitlist dashboard reflects new reputation immediately.
       await invalidateCache(canonicalUserId, {
-        namespace: 'waitlist:position',
+        namespace: "waitlist:position",
       });
 
       logger.info(
         `Awarded ${reputationAwarded} reputation for Twitter follow (trusted)`,
         { userId: canonicalUserId, reputationAwarded },
-        'POST /api/users/[userId]/verify-twitter-follow'
+        "POST /api/users/[userId]/verify-twitter-follow",
       );
     }
 
@@ -157,11 +157,11 @@ export const POST = withErrorHandling(
       message:
         reputationAwarded > 0
           ? `Thank you for following! You earned ${reputationAwarded} reputation.`
-          : 'Follow reward claimed successfully!',
+          : "Follow reward claimed successfully!",
       reputation: {
         awarded: reputationAwarded,
         newReputationTotal,
       },
     });
-  }
+  },
 );

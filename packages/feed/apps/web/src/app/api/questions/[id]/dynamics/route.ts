@@ -50,22 +50,22 @@ import {
   addPublicReadHeaders,
   publicRateLimit,
   withErrorHandling,
-} from '@feed/api';
-import { PredictionPricing } from '@feed/core/markets/prediction';
-import { db } from '@feed/db';
-import { toISO } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@feed/api";
+import { PredictionPricing } from "@feed/core/markets/prediction";
+import { db } from "@feed/db";
+import { toISO } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 export const GET = withErrorHandling(async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const { error, rateLimitInfo } = await publicRateLimit(request);
   if (error) return error;
 
   const { id } = await params;
-  const questionNumber = Number.parseInt(id);
+  const questionNumber = Number.parseInt(id, 10);
 
   // Get question and market:
   const question = await db.question.findUnique({
@@ -73,7 +73,7 @@ export const GET = withErrorHandling(async function GET(
   });
 
   if (!question) {
-    return NextResponse.json({ error: 'Question not found' }, { status: 404 });
+    return NextResponse.json({ error: "Question not found" }, { status: 404 });
   }
 
   const market = await db.market.findUnique({
@@ -81,7 +81,7 @@ export const GET = withErrorHandling(async function GET(
   });
 
   if (!market) {
-    return NextResponse.json({ error: 'Market not found' }, { status: 404 });
+    return NextResponse.json({ error: "Market not found" }, { status: 404 });
   }
 
   // Get positions for volume analysis (public data):
@@ -89,7 +89,7 @@ export const GET = withErrorHandling(async function GET(
     where: {
       marketId: market.id,
     },
-    orderBy: { createdAt: 'asc' },
+    orderBy: { createdAt: "asc" },
     take: 1000, // Last 1000 positions
   });
 
@@ -110,7 +110,7 @@ export const GET = withErrorHandling(async function GET(
     if (!positionGroups.has(hourKey)) {
       positionGroups.set(hourKey, []);
     }
-    positionGroups.get(hourKey)!.push(pos);
+    positionGroups.get(hourKey)?.push(pos);
   }
 
   // Calculate price for each time bucket based on positions
@@ -134,7 +134,7 @@ export const GET = withErrorHandling(async function GET(
     const totalShares = yesShares + noShares;
     const yesPrice =
       totalShares > 0
-        ? PredictionPricing.getCurrentPrice(yesShares, noShares, 'yes')
+        ? PredictionPricing.getCurrentPrice(yesShares, noShares, "yes")
         : 0.5;
     const noPrice = 1 - yesPrice;
 
@@ -156,7 +156,7 @@ export const GET = withErrorHandling(async function GET(
 
   const currentYesPrice =
     totalShares > 0
-      ? PredictionPricing.getCurrentPrice(yesShares, noShares, 'yes')
+      ? PredictionPricing.getCurrentPrice(yesShares, noShares, "yes")
       : 0.5;
 
   // Calculate total volume from positions:
@@ -176,7 +176,7 @@ export const GET = withErrorHandling(async function GET(
     })
     .slice(0, 10)
     .map((p) => ({
-      side: p.side ? 'YES' : 'NO',
+      side: p.side ? "YES" : "NO",
       shares: Number(p.shares),
       avgPrice: Number(p.avgPrice),
       value: Number(p.shares) * Number(p.avgPrice),
@@ -201,25 +201,25 @@ export const GET = withErrorHandling(async function GET(
     // Momentum indicators (PUBLIC):
     momentum:
       priceMomentum > 0.05
-        ? 'strong_yes'
+        ? "strong_yes"
         : priceMomentum < -0.05
-          ? 'strong_no'
+          ? "strong_no"
           : Math.abs(priceMomentum) > 0.02
-            ? 'moderate'
-            : 'stable',
+            ? "moderate"
+            : "stable",
     priceChange: Number(priceMomentum.toFixed(4)),
 
     // Volume trend (PUBLIC):
     volumeTrend:
-      totalVolume > 10000 ? 'high' : totalVolume > 1000 ? 'medium' : 'low',
+      totalVolume > 10000 ? "high" : totalVolume > 1000 ? "medium" : "low",
 
     // Conviction indicator (PUBLIC):
     conviction:
       totalVolume > 10000 && Math.abs(priceMomentum) > 0.05
-        ? 'high'
+        ? "high"
         : totalVolume > 1000 || Math.abs(priceMomentum) > 0.03
-          ? 'medium'
-          : 'low',
+          ? "medium"
+          : "low",
 
     // Price history (PUBLIC):
     priceHistory: priceHistory.slice(-100), // Last 100 data points (empty for now)

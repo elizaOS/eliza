@@ -5,16 +5,16 @@ import {
   describe,
   expect,
   it,
-} from 'bun:test';
-import { closeDatabase, db, dbRead, getDatabaseClientState } from '@feed/db';
+} from "bun:test";
+import { closeDatabase, db, dbRead, getDatabaseClientState } from "@feed/db";
 import {
   setupTestEnvironment,
   shouldSkipDatabaseTests,
-} from '../helpers/setup';
+} from "../helpers/setup";
 
 const dbLazyDescribe = shouldSkipDatabaseTests() ? describe.skip : describe;
 
-dbLazyDescribe('Lazy Connection Creation (Integration)', () => {
+dbLazyDescribe("Lazy Connection Creation (Integration)", () => {
   let originalReplicaUrl: string | undefined;
 
   beforeAll(async () => {
@@ -35,7 +35,7 @@ dbLazyDescribe('Lazy Connection Creation (Integration)', () => {
     await closeDatabase();
   });
 
-  it('does not create the primary client on property access', () => {
+  it("does not create the primary client on property access", () => {
     void db.user;
 
     const state = getDatabaseClientState();
@@ -47,7 +47,7 @@ dbLazyDescribe('Lazy Connection Creation (Integration)', () => {
     expect(state.hasReadReplicaProxy).toBe(false);
   });
 
-  it('creates the primary client when a query executes', async () => {
+  it("creates the primary client when a query executes", async () => {
     await db.user.findMany({ take: 1 });
 
     const state = getDatabaseClientState();
@@ -59,7 +59,7 @@ dbLazyDescribe('Lazy Connection Creation (Integration)', () => {
     expect(state.hasReadReplicaProxy).toBe(false);
   });
 
-  it('eagerly falls back to the primary client for dbRead without a replica', () => {
+  it("eagerly falls back to the primary client for dbRead without a replica", () => {
     delete process.env.DATABASE_READ_REPLICA_URL;
 
     void dbRead.user;
@@ -73,7 +73,7 @@ dbLazyDescribe('Lazy Connection Creation (Integration)', () => {
     expect(state.hasReadReplicaProxy).toBe(false);
   });
 
-  it('uses the replica client for read-only queries when configured', async () => {
+  it("uses the replica client for read-only queries when configured", async () => {
     expect(process.env.DATABASE_URL).toBeTruthy();
 
     process.env.DATABASE_READ_REPLICA_URL = process.env.DATABASE_URL;

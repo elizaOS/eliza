@@ -30,48 +30,48 @@
  * @packageDocumentation
  */
 
-import type { Plugin } from '@elizaos/core';
-import { buyPredictionAction } from './actions/buy-prediction';
-import { checkAutonomyAction } from './actions/check-autonomy';
-import { checkBalanceAction } from './actions/check-balance';
-import { checkCommentDetailAction } from './actions/check-comment-detail';
-import { checkFeedPostsAction } from './actions/check-feed-posts';
-import { checkOwnerPnlAction } from './actions/check-owner-pnl';
-import { checkPerpsAction } from './actions/check-perps';
-import { checkPnlAction } from './actions/check-pnl';
-import { checkPostDetailAction } from './actions/check-post-detail';
-import { checkPredictionsAction } from './actions/check-predictions';
-import { checkRecentCommentsAction } from './actions/check-recent-comments';
-import { checkRecentMarketTradesAction } from './actions/check-recent-market-trades';
-import { checkRecentPostsAction } from './actions/check-recent-posts';
-import { checkTeamChatAction } from './actions/check-team-chat';
-import { closePerpAction } from './actions/close-perp';
-import { createCommentAction } from './actions/create-comment';
-import { createPostAction } from './actions/create-post';
-import { lookupUserAction } from './actions/lookup-user';
+import type { Plugin } from "@elizaos/core";
+import { buyPredictionAction } from "./actions/buy-prediction";
+import { checkAutonomyAction } from "./actions/check-autonomy";
+import { checkBalanceAction } from "./actions/check-balance";
+import { checkCommentDetailAction } from "./actions/check-comment-detail";
+import { checkFeedPostsAction } from "./actions/check-feed-posts";
+import { checkOwnerPnlAction } from "./actions/check-owner-pnl";
+import { checkPerpsAction } from "./actions/check-perps";
+import { checkPnlAction } from "./actions/check-pnl";
+import { checkPostDetailAction } from "./actions/check-post-detail";
+import { checkPredictionsAction } from "./actions/check-predictions";
+import { checkRecentCommentsAction } from "./actions/check-recent-comments";
+import { checkRecentMarketTradesAction } from "./actions/check-recent-market-trades";
+import { checkRecentPostsAction } from "./actions/check-recent-posts";
+import { checkTeamChatAction } from "./actions/check-team-chat";
+import { closePerpAction } from "./actions/close-perp";
+import { createCommentAction } from "./actions/create-comment";
+import { createPostAction } from "./actions/create-post";
+import { lookupUserAction } from "./actions/lookup-user";
 import {
   listPriceAlertsAction,
   removePriceAlertAction,
   setPriceAlertAction,
-} from './actions/manage-price-alerts';
-import { openPerpAction } from './actions/open-perp';
-import { sellPredictionAction } from './actions/sell-prediction';
-import { toggleAutonomyAction } from './actions/toggle-autonomy';
+} from "./actions/manage-price-alerts";
+import { openPerpAction } from "./actions/open-perp";
+import { sellPredictionAction } from "./actions/sell-prediction";
+import { toggleAutonomyAction } from "./actions/toggle-autonomy";
 import {
   actionStateProvider,
   actionsProvider,
   agentContextProvider,
   recentMessagesProvider,
   teamMembersProvider,
-} from './providers';
+} from "./providers";
 
 /**
  * Agent Core Plugin
  */
 export const agentCorePlugin: Plugin = {
-  name: 'agent-core',
+  name: "agent-core",
   description:
-    'Core agent capabilities for multi-step chat with autonomy control, posting, commenting, trading, and market insights',
+    "Core agent capabilities for multi-step chat with autonomy control, posting, commenting, trading, and market insights",
 
   actions: [
     // Autonomy management
@@ -116,8 +116,8 @@ export const agentCorePlugin: Plugin = {
   ],
 };
 
-export * from './actions';
-export * from './providers';
-export * from './types';
+export * from "./actions";
+export * from "./providers";
+export * from "./types";
 
 export default agentCorePlugin;

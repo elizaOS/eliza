@@ -1,29 +1,29 @@
-'use client';
+"use client";
 
-import type { PortfolioBreakdownSnapshot } from '@feed/engine/client';
+import type { PortfolioBreakdownSnapshot } from "@feed/engine/client";
 import type {
   PerpPositionFromAPI,
   PredictionPosition,
   UserProfileStats,
-} from '@feed/shared';
-import { FEED_POINTS_SYMBOL, cn, logger, toNumber } from '@feed/shared';
-import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { useAuth } from '@/hooks/useAuth';
-import { useWidgetCacheStore } from '@/stores/widgetCacheStore';
-import { apiUrl } from '@/utils/api-url';
-import { PositionDetailModal } from './PositionDetailModal';
+} from "@feed/shared";
+import { cn, FEED_POINTS_SYMBOL, logger, toNumber } from "@feed/shared";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { useAuth } from "@/hooks/useAuth";
+import { useWidgetCacheStore } from "@/stores/widgetCacheStore";
+import { apiUrl } from "@/utils/api-url";
+import { PositionDetailModal } from "./PositionDetailModal";
 
 // Module-scope formatters to avoid recreating on every render
 const formatPoints = (points: number) => {
-  return points.toLocaleString('en-US', {
+  return points.toLocaleString("en-US", {
     maximumFractionDigits: 0,
   });
 };
 
 const formatPercent = (value: number) => {
-  return `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`;
+  return `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`;
 };
 
 const formatPrice = (price: number) => {
@@ -43,7 +43,7 @@ async function fetchProfileWidgetData(userId: string): Promise<{
 }> {
   const [breakdownRes, positionsRes, profileRes] = await Promise.all([
     fetch(
-      apiUrl(`/api/users/${encodeURIComponent(userId)}/portfolio-breakdown`)
+      apiUrl(`/api/users/${encodeURIComponent(userId)}/portfolio-breakdown`),
     ),
     fetch(apiUrl(`/api/markets/positions/${encodeURIComponent(userId)}`)),
     fetch(apiUrl(`/api/users/${encodeURIComponent(userId)}/profile`)),
@@ -63,7 +63,7 @@ async function fetchProfileWidgetData(userId: string): Promise<{
       profile: { status: profileRes.status, statusText: profileRes.statusText },
     };
     throw new Error(
-      `All profile widget fetches failed: ${JSON.stringify(errorDetails)}`
+      `All profile widget fetches failed: ${JSON.stringify(errorDetails)}`,
     );
   }
 
@@ -159,7 +159,7 @@ export function ProfileWidget({ userId }: ProfileWidgetProps) {
   const router = useRouter();
   const { user } = useAuth();
   const [portfolio, setPortfolio] = useState<PortfolioBreakdownSnapshot | null>(
-    null
+    null,
   );
   const [predictions, setPredictions] = useState<PredictionPosition[]>([]);
   const [perps, setPerps] = useState<PerpPositionFromAPI[]>([]);
@@ -173,8 +173,8 @@ export function ProfileWidget({ userId }: ProfileWidgetProps) {
 
   // Modal state
   const [modalOpen, setModalOpen] = useState(false);
-  const [modalType, setModalType] = useState<'prediction' | 'perp'>(
-    'prediction'
+  const [modalType, setModalType] = useState<"prediction" | "perp">(
+    "prediction",
   );
   const [selectedPosition, setSelectedPosition] = useState<
     PredictionPosition | PerpPositionFromAPI | null
@@ -213,7 +213,7 @@ export function ProfileWidget({ userId }: ProfileWidgetProps) {
 
       return true;
     },
-    [userId, widgetCache]
+    [userId, widgetCache],
   );
 
   useEffect(() => {
@@ -253,14 +253,14 @@ export function ProfileWidget({ userId }: ProfileWidgetProps) {
         }
       } catch (fetchError) {
         logger.error(
-          'Error fetching profile widget data',
+          "Error fetching profile widget data",
           fetchError instanceof Error ? fetchError : { error: fetchError },
-          'ProfileWidget'
+          "ProfileWidget",
         );
         setError(
           fetchError instanceof Error
             ? fetchError
-            : new Error('Failed to load profile data')
+            : new Error("Failed to load profile data"),
         );
       } finally {
         setLoading(false);
@@ -284,14 +284,14 @@ export function ProfileWidget({ userId }: ProfileWidgetProps) {
       applyFetchResult(result);
     } catch (fetchError) {
       logger.error(
-        'Error fetching profile widget data',
+        "Error fetching profile widget data",
         fetchError instanceof Error ? fetchError : { error: fetchError },
-        'ProfileWidget'
+        "ProfileWidget",
       );
       setError(
         fetchError instanceof Error
           ? fetchError
-          : new Error('Failed to load profile data')
+          : new Error("Failed to load profile data"),
       );
     } finally {
       setLoading(false);
@@ -338,7 +338,7 @@ export function ProfileWidget({ userId }: ProfileWidgetProps) {
     <div className="flex items-center justify-between py-1.5">
       <span className="text-muted-foreground text-sm">{label}</span>
       <span
-        className={cn('font-medium text-foreground text-sm', valueClassName)}
+        className={cn("font-medium text-foreground text-sm", valueClassName)}
       >
         {value}
       </span>
@@ -381,10 +381,10 @@ export function ProfileWidget({ userId }: ProfileWidgetProps) {
               </span>
               <span
                 className={cn(
-                  'font-semibold text-sm',
+                  "font-semibold text-sm",
                   (portfolio?.totalPnL ?? 0) >= 0
-                    ? 'text-green-500'
-                    : 'text-red-500'
+                    ? "text-green-500"
+                    : "text-red-500",
                 )}
               >
                 {formatPoints(portfolio?.totalPnL ?? 0)} (
@@ -398,7 +398,7 @@ export function ProfileWidget({ userId }: ProfileWidgetProps) {
       {/* Holdings Section */}
       <div className="rounded-lg border border-border p-4">
         <button
-          onClick={() => router.push('/markets')}
+          onClick={() => router.push("/markets")}
           className="mb-3 flex items-center gap-2 transition-colors hover:text-primary"
         >
           <h3 className="font-semibold text-foreground text-sm">Holdings</h3>
@@ -422,7 +422,7 @@ export function ProfileWidget({ userId }: ProfileWidgetProps) {
                     key={pred.id}
                     onClick={() => {
                       setSelectedPosition(pred);
-                      setModalType('prediction');
+                      setModalType("prediction");
                       setModalOpen(true);
                     }}
                     className="w-full rounded-lg p-2 text-left transition-colors hover:bg-muted/30"
@@ -432,13 +432,13 @@ export function ProfileWidget({ userId }: ProfileWidgetProps) {
                     </div>
                     <div className="mt-0.5 flex items-center justify-between">
                       <span className="text-muted-foreground text-xs">
-                        {pred.shares} shares {pred.side} @{' '}
+                        {pred.shares} shares {pred.side} @{" "}
                         {formatPrice(pred.avgPrice)}
                       </span>
                       <span
                         className={cn(
-                          'font-medium text-xs',
-                          pnlPct >= 0 ? 'text-green-500' : 'text-red-500'
+                          "font-medium text-xs",
+                          pnlPct >= 0 ? "text-green-500" : "text-red-500",
                         )}
                       >
                         {formatPercent(pnlPct)}
@@ -463,7 +463,7 @@ export function ProfileWidget({ userId }: ProfileWidgetProps) {
                   key={perp.id}
                   onClick={() => {
                     setSelectedPosition(perp);
-                    setModalType('perp');
+                    setModalType("perp");
                     setModalOpen(true);
                   }}
                   className="w-full rounded-lg p-2 text-left transition-colors hover:bg-muted/30"
@@ -479,10 +479,10 @@ export function ProfileWidget({ userId }: ProfileWidgetProps) {
                     </span>
                     <span
                       className={cn(
-                        'font-medium text-xs',
+                        "font-medium text-xs",
                         perp.unrealizedPnL >= 0
-                          ? 'text-green-500'
-                          : 'text-red-500'
+                          ? "text-green-500"
+                          : "text-red-500",
                       )}
                     >
                       {formatPoints(perp.unrealizedPnL)} pts (
@@ -540,11 +540,11 @@ export function ProfileWidget({ userId }: ProfileWidgetProps) {
             applyFetchResult(result);
           } catch (refreshError) {
             logger.error(
-              'Error refreshing profile data',
+              "Error refreshing profile data",
               refreshError instanceof Error
                 ? refreshError
                 : { error: refreshError },
-              'ProfileWidget'
+              "ProfileWidget",
             );
             // Don't set error state here since original data is still valid
           }

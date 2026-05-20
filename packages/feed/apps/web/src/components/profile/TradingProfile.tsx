@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import type { PortfolioBreakdownSnapshot } from '@feed/engine/client';
-import { cn, formatCompactCurrency } from '@feed/shared';
+import type { PortfolioBreakdownSnapshot } from "@feed/engine/client";
+import { cn, formatCompactCurrency } from "@feed/shared";
 import {
   Activity,
   AlertCircle,
@@ -12,13 +12,13 @@ import {
   TrendingDown,
   TrendingUp,
   Trophy,
-} from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { TradesFeed } from '@/components/trades/TradesFeed';
-import { useAuth } from '@/hooks/useAuth';
-import { apiUrl } from '@/utils/api-url';
+} from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { TradesFeed } from "@/components/trades/TradesFeed";
+import { useAuth } from "@/hooks/useAuth";
+import { apiUrl } from "@/utils/api-url";
 
 /**
  * Trading profile component for displaying comprehensive trading statistics and positions.
@@ -79,7 +79,7 @@ interface PortfolioPnL {
 interface PerpPosition {
   id: string;
   ticker: string;
-  side: 'long' | 'short';
+  side: "long" | "short";
   entryPrice: number;
   currentPrice: number;
   size: number;
@@ -159,8 +159,8 @@ export function TradingProfile({
   >([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeSection, setActiveSection] = useState<'positions' | 'history'>(
-    'positions'
+  const [activeSection, setActiveSection] = useState<"positions" | "history">(
+    "positions",
   );
 
   const fetchTradingData = useCallback(async () => {
@@ -176,9 +176,9 @@ export function TradingProfile({
     setError(null);
 
     const token = await getAccessToken();
-    const headers: HeadersInit = { 'Content-Type': 'application/json' };
+    const headers: HeadersInit = { "Content-Type": "application/json" };
     if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
+      headers.Authorization = `Bearer ${token}`;
     }
 
     // Fetch all data in parallel
@@ -197,7 +197,7 @@ export function TradingProfile({
           {
             headers,
             signal: abortController.signal,
-          }
+          },
         ),
         isOwner
           ? fetch(
@@ -205,7 +205,7 @@ export function TradingProfile({
               {
                 headers,
                 signal: abortController.signal,
-              }
+              },
             )
           : Promise.resolve(null),
       ]);
@@ -218,7 +218,7 @@ export function TradingProfile({
     // Check responses
     if (!profileRes.ok) {
       setError(
-        `Failed to load profile: ${profileRes.status} ${profileRes.statusText}`
+        `Failed to load profile: ${profileRes.status} ${profileRes.statusText}`,
       );
       setLoading(false);
       return;
@@ -235,7 +235,7 @@ export function TradingProfile({
     }
     if (isOwner && breakdownRes && !breakdownRes.ok) {
       setError(
-        `Failed to load portfolio breakdown: ${breakdownRes.status} ${breakdownRes.statusText}`
+        `Failed to load portfolio breakdown: ${breakdownRes.status} ${breakdownRes.statusText}`,
       );
       setLoading(false);
       return;
@@ -259,7 +259,7 @@ export function TradingProfile({
     // Validate profile data
     const userProfile = profileData.user;
     if (!userProfile) {
-      setError('User profile not found');
+      setError("User profile not found");
       setLoading(false);
       return;
     }
@@ -267,7 +267,7 @@ export function TradingProfile({
     // Find user rank
     const totalPlayers = leaderboardData.pagination?.totalCount || 0;
     const userInLeaderboard = leaderboardData.leaderboard?.find(
-      (u: { id: string }) => u.id === userId
+      (u: { id: string }) => u.id === userId,
     );
     const rank = userInLeaderboard?.rank || 0;
 
@@ -295,11 +295,11 @@ export function TradingProfile({
 
       const perpPnL = perpPos.reduce(
         (sum, p) => sum + toNumber(p.unrealizedPnL),
-        0
+        0,
       );
       const predictionPnL = predPos.reduce(
         (sum, p) => sum + toNumber(p.unrealizedPnL),
-        0
+        0,
       );
       const roi = originalAmount > 0 ? (totalPnL / originalAmount) * 100 : 0;
 
@@ -335,7 +335,7 @@ export function TradingProfile({
   const formatCurrency = formatCompactCurrency;
 
   const calculateCurrentPrice = (
-    market: PredictionPosition['Market'] | null | undefined
+    market: PredictionPosition["Market"] | null | undefined,
   ) => {
     if (!market) return 0.5; // Default to 50/50 if market data unavailable
     const yesShares = toNumber(market.yesShares);
@@ -404,11 +404,11 @@ export function TradingProfile({
           </div>
           <p
             className={cn(
-              'font-bold text-2xl',
-              isProfitable ? 'text-green-600' : 'text-red-600'
+              "font-bold text-2xl",
+              isProfitable ? "text-green-600" : "text-red-600",
             )}
           >
-            {isProfitable ? '+' : ''}
+            {isProfitable ? "+" : ""}
             {formatCurrency(lifetimePnL)}
           </p>
         </div>
@@ -447,7 +447,7 @@ export function TradingProfile({
             </span>
           </div>
           <p className="font-bold text-2xl">
-            {stats?.rank && stats.rank > 0 ? `#${stats.rank}` : '-'}
+            {stats?.rank && stats.rank > 0 ? `#${stats.rank}` : "-"}
             {stats?.totalPlayers && stats.totalPlayers > 0 && (
               <span className="ml-1 font-normal text-muted-foreground text-sm">
                 / {stats.totalPlayers.toLocaleString()}
@@ -471,13 +471,13 @@ export function TradingProfile({
                 <p className="mb-1 text-muted-foreground text-sm">Total P&L</p>
                 <p
                   className={cn(
-                    'font-bold text-xl',
+                    "font-bold text-xl",
                     portfolioPnL.totalPnL >= 0
-                      ? 'text-green-600'
-                      : 'text-red-600'
+                      ? "text-green-600"
+                      : "text-red-600",
                   )}
                 >
-                  {portfolioPnL.totalPnL >= 0 ? '+' : ''}
+                  {portfolioPnL.totalPnL >= 0 ? "+" : ""}
                   {formatCurrency(portfolioPnL.totalPnL)}
                 </p>
               </div>
@@ -486,11 +486,11 @@ export function TradingProfile({
                 <p className="mb-1 text-muted-foreground text-sm">ROI</p>
                 <p
                   className={cn(
-                    'font-bold text-xl',
-                    portfolioPnL.roi >= 0 ? 'text-green-600' : 'text-red-600'
+                    "font-bold text-xl",
+                    portfolioPnL.roi >= 0 ? "text-green-600" : "text-red-600",
                   )}
                 >
-                  {portfolioPnL.roi >= 0 ? '+' : ''}
+                  {portfolioPnL.roi >= 0 ? "+" : ""}
                   {portfolioPnL.roi.toFixed(2)}%
                 </p>
               </div>
@@ -539,13 +539,13 @@ export function TradingProfile({
                 <p className="mb-1 text-muted-foreground text-sm">Perps P&L</p>
                 <p
                   className={cn(
-                    'font-semibold text-lg',
+                    "font-semibold text-lg",
                     portfolioPnL.perpPnL >= 0
-                      ? 'text-green-600'
-                      : 'text-red-600'
+                      ? "text-green-600"
+                      : "text-red-600",
                   )}
                 >
-                  {portfolioPnL.perpPnL >= 0 ? '+' : ''}
+                  {portfolioPnL.perpPnL >= 0 ? "+" : ""}
                   {formatCurrency(portfolioPnL.perpPnL)}
                 </p>
               </div>
@@ -556,13 +556,13 @@ export function TradingProfile({
                 </p>
                 <p
                   className={cn(
-                    'font-semibold text-lg',
+                    "font-semibold text-lg",
                     portfolioPnL.predictionPnL >= 0
-                      ? 'text-green-600'
-                      : 'text-red-600'
+                      ? "text-green-600"
+                      : "text-red-600",
                   )}
                 >
-                  {portfolioPnL.predictionPnL >= 0 ? '+' : ''}
+                  {portfolioPnL.predictionPnL >= 0 ? "+" : ""}
                   {formatCurrency(portfolioPnL.predictionPnL)}
                 </p>
               </div>
@@ -572,7 +572,7 @@ export function TradingProfile({
                   Position Count
                 </p>
                 <p className="font-semibold text-lg">
-                  {portfolioPnL.perpPositions} perps /{' '}
+                  {portfolioPnL.perpPositions} perps /{" "}
                   {portfolioPnL.predictionPositions} predictions
                 </p>
               </div>
@@ -585,36 +585,36 @@ export function TradingProfile({
       <div className="sticky top-0 z-10 border-border border-b bg-background">
         <div className="flex px-4">
           <button
-            onClick={() => setActiveSection('positions')}
+            onClick={() => setActiveSection("positions")}
             className={cn(
-              'relative flex-1 py-4 font-semibold transition-colors hover:bg-muted/30',
-              activeSection === 'positions'
-                ? 'text-foreground opacity-100'
-                : 'text-foreground opacity-50'
+              "relative flex-1 py-4 font-semibold transition-colors hover:bg-muted/30",
+              activeSection === "positions"
+                ? "text-foreground opacity-100"
+                : "text-foreground opacity-50",
             )}
           >
             <div className="flex items-center justify-center gap-2">
               <Activity className="h-4 w-4" />
               <span>Open Positions</span>
             </div>
-            {activeSection === 'positions' && (
+            {activeSection === "positions" && (
               <div className="absolute right-0 bottom-0 left-0 h-0.5 bg-primary" />
             )}
           </button>
           <button
-            onClick={() => setActiveSection('history')}
+            onClick={() => setActiveSection("history")}
             className={cn(
-              'relative flex-1 py-4 font-semibold transition-colors hover:bg-muted/30',
-              activeSection === 'history'
-                ? 'text-foreground opacity-100'
-                : 'text-foreground opacity-50'
+              "relative flex-1 py-4 font-semibold transition-colors hover:bg-muted/30",
+              activeSection === "history"
+                ? "text-foreground opacity-100"
+                : "text-foreground opacity-50",
             )}
           >
             <div className="flex items-center justify-center gap-2">
               <Clock className="h-4 w-4" />
               <span>Trade History</span>
             </div>
-            {activeSection === 'history' && (
+            {activeSection === "history" && (
               <div className="absolute right-0 bottom-0 left-0 h-0.5 bg-primary" />
             )}
           </button>
@@ -623,7 +623,7 @@ export function TradingProfile({
 
       {/* Content */}
       <div className="px-4">
-        {activeSection === 'positions' ? (
+        {activeSection === "positions" ? (
           <div className="space-y-6">
             {/* Perpetual Positions */}
             <div>
@@ -639,7 +639,7 @@ export function TradingProfile({
               ) : (
                 <div className="space-y-3">
                   {perpPositions.map((position) => {
-                    const isLong = position.side === 'long';
+                    const isLong = position.side === "long";
                     const pnl = toNumber(position.unrealizedPnL);
                     const isPnLPositive = pnl >= 0;
 
@@ -663,10 +663,10 @@ export function TradingProfile({
                             </span>
                             <span
                               className={cn(
-                                'rounded px-2 py-0.5 font-medium text-xs',
+                                "rounded px-2 py-0.5 font-medium text-xs",
                                 isLong
-                                  ? 'bg-green-500/20 text-green-500'
-                                  : 'bg-red-500/20 text-red-500'
+                                  ? "bg-green-500/20 text-green-500"
+                                  : "bg-red-500/20 text-red-500",
                               )}
                             >
                               {position.side.toUpperCase()}
@@ -677,11 +677,11 @@ export function TradingProfile({
                           </div>
                           <span
                             className={cn(
-                              'font-bold text-lg',
-                              isPnLPositive ? 'text-green-600' : 'text-red-600'
+                              "font-bold text-lg",
+                              isPnLPositive ? "text-green-600" : "text-red-600",
                             )}
                           >
-                            {isPnLPositive ? '+' : ''}
+                            {isPnLPositive ? "+" : ""}
                             {formatCurrency(pnl)}
                           </span>
                         </div>
@@ -732,7 +732,7 @@ export function TradingProfile({
               ) : (
                 <div className="space-y-3">
                   {predictionPositions.map((position) => {
-                    const isYes = position.side === 'YES';
+                    const isYes = position.side === "YES";
                     const currentPrice = calculateCurrentPrice(position.Market);
                     const avgPrice = toNumber(position.avgPrice);
                     const shares = toNumber(position.shares);
@@ -744,7 +744,7 @@ export function TradingProfile({
                         key={position.id}
                         onClick={() =>
                           router.push(
-                            `/markets/predictions/${position.Market.id}`
+                            `/markets/predictions/${position.Market.id}`,
                           )
                         }
                         className="cursor-pointer rounded-lg border border-border bg-card p-4 transition-all hover:border-primary/50"
@@ -753,10 +753,10 @@ export function TradingProfile({
                           <div className="flex items-center gap-2">
                             <span
                               className={cn(
-                                'rounded px-2 py-1 font-medium text-xs',
+                                "rounded px-2 py-1 font-medium text-xs",
                                 isYes
-                                  ? 'bg-green-500/20 text-green-500'
-                                  : 'bg-red-500/20 text-red-500'
+                                  ? "bg-green-500/20 text-green-500"
+                                  : "bg-red-500/20 text-red-500",
                               )}
                             >
                               {position.side}
@@ -764,11 +764,11 @@ export function TradingProfile({
                           </div>
                           <span
                             className={cn(
-                              'font-bold text-lg',
-                              isPnLPositive ? 'text-green-600' : 'text-red-600'
+                              "font-bold text-lg",
+                              isPnLPositive ? "text-green-600" : "text-red-600",
                             )}
                           >
-                            {isPnLPositive ? '+' : ''}
+                            {isPnLPositive ? "+" : ""}
                             {formatCurrency(unrealizedPnL)}
                           </span>
                         </div>

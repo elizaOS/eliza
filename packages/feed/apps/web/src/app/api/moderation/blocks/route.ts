@@ -53,24 +53,24 @@
  * ```
  */
 
-import { authenticate, successResponse, withErrorHandling } from '@feed/api';
-import { db } from '@feed/db';
-import { GetBlocksSchema } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+import { authenticate, successResponse, withErrorHandling } from "@feed/api";
+import { db } from "@feed/db";
+import { GetBlocksSchema } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   const authUser = await authenticate(request);
 
   const { searchParams } = new URL(request.url);
   const { limit, offset } = GetBlocksSchema.parse({
-    limit: searchParams.get('limit') || '20',
-    offset: searchParams.get('offset') || '0',
+    limit: searchParams.get("limit") || "20",
+    offset: searchParams.get("offset") || "0",
   });
 
   const [blocks, total] = await Promise.all([
     db.userBlock.findMany({
       where: { blockerId: authUser.userId },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
       take: limit,
       skip: offset,
       include: {

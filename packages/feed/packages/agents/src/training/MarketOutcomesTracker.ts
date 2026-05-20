@@ -14,9 +14,9 @@ import {
   marketOutcomes,
   markets,
   perpPositions,
-} from '@feed/db';
-import { generateSnowflakeId, logger } from '../utils';
-import { getPreviousWindowId } from './window-utils';
+} from "@feed/db";
+import { generateSnowflakeId, logger } from "../utils";
+import { getPreviousWindowId } from "./window-utils";
 
 export interface WindowOutcomes {
   windowId: string;
@@ -59,8 +59,8 @@ export class MarketOutcomesTracker {
       .where(
         and(
           gte(perpPositions.openedAt, windowStart),
-          lte(perpPositions.openedAt, windowEnd)
-        )
+          lte(perpPositions.openedAt, windowEnd),
+        ),
       );
 
     // Group by ticker and calculate movements
@@ -97,7 +97,7 @@ export class MarketOutcomesTracker {
         startPrice: String(data.start),
         endPrice: String(data.end),
         changePercent: String(changePercent),
-        sentiment: changePercent > 0 ? 'BULLISH' : 'BEARISH',
+        sentiment: changePercent > 0 ? "BULLISH" : "BEARISH",
       });
     }
 
@@ -115,8 +115,8 @@ export class MarketOutcomesTracker {
         and(
           eq(markets.resolved, true),
           gte(markets.updatedAt, windowStart),
-          lte(markets.updatedAt, windowEnd)
-        )
+          lte(markets.updatedAt, windowEnd),
+        ),
       );
 
     // Save prediction outcomes
@@ -130,7 +130,7 @@ export class MarketOutcomesTracker {
         windowId,
         predictionMarketId: market.id,
         question: market.question,
-        outcome: market.resolution ? 'YES' : 'NO',
+        outcome: market.resolution ? "YES" : "NO",
         finalProbability: String(finalProb),
       });
     }
@@ -197,8 +197,8 @@ export class MarketOutcomesTracker {
       .filter((o: (typeof outcomes)[number]) => o.predictionMarketId)
       .map((o: (typeof outcomes)[number]) => ({
         marketId: o.predictionMarketId!,
-        question: o.question || '',
-        outcome: o.outcome || 'UNRESOLVED',
+        question: o.question || "",
+        outcome: o.outcome || "UNRESOLVED",
         finalProbability: Number(o.finalProbability || 0),
       }));
 

@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import * as React from 'react';
-import { Response } from './Response';
+import * as React from "react";
+import { Response } from "./Response";
 
 interface AnimatedResponseProps {
   children: string;
@@ -31,7 +31,7 @@ export const AnimatedResponse: React.FC<AnimatedResponseProps> = ({
   onTextUpdate,
 }) => {
   const [visibleText, setVisibleText] = React.useState(
-    shouldAnimate ? '' : children
+    shouldAnimate ? "" : children,
   );
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: messageId is intentionally included to reset animation on new messages
@@ -43,7 +43,7 @@ export const AnimatedResponse: React.FC<AnimatedResponseProps> = ({
 
     const safeDuration = Math.max(1000, maxDurationMs);
 
-    setVisibleText('');
+    setVisibleText("");
 
     const TYPING_INTERVAL = 20;
     const totalChars = children.length;
@@ -69,4 +69,4 @@ export const AnimatedResponse: React.FC<AnimatedResponseProps> = ({
   return <Response className={className}>{visibleText}</Response>;
 };
 
-AnimatedResponse.displayName = 'AnimatedResponse';
+AnimatedResponse.displayName = "AnimatedResponse";

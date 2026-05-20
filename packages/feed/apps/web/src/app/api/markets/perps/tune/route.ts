@@ -118,11 +118,11 @@
  * ```
  */
 
-import { requireAdmin, withErrorHandling } from '@feed/api';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { z } from 'zod';
+import { requireAdmin, withErrorHandling } from "@feed/api";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { z } from "zod";
 
 const TuningQuerySchema = z.object({
   ticker: z.string().optional(),
@@ -135,7 +135,7 @@ const TuningBodySchema = z.object({
   exitThreshold: z.number().min(0).max(1).optional(),
   positionSizeMultiplier: z.number().min(0.1).max(3.0).optional(),
   sentimentOverride: z
-    .enum(['bullish', 'bearish', 'neutral'])
+    .enum(["bullish", "bearish", "neutral"])
     .optional()
     .nullable(),
   maxLeverageOverride: z.number().min(1).max(100).optional().nullable(),
@@ -146,16 +146,16 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
   const { searchParams } = new URL(request.url);
   const queryParse = TuningQuerySchema.safeParse({
-    ticker: searchParams.get('ticker') || undefined,
+    ticker: searchParams.get("ticker") || undefined,
   });
 
   if (!queryParse.success) {
     return NextResponse.json(
       {
-        error: 'Invalid query parameters',
+        error: "Invalid query parameters",
         details: queryParse.error.flatten(),
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -205,8 +205,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   if (!parsed.success) {
     return NextResponse.json(
-      { error: 'Invalid request payload', details: parsed.error.flatten() },
-      { status: 400 }
+      { error: "Invalid request payload", details: parsed.error.flatten() },
+      { status: 400 },
     );
   }
 
@@ -215,15 +215,15 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // In a full implementation, this would save to a database table
   // For now, just return success with the parameters
   logger.info(
-    `Perp tuning parameters updated${body.ticker ? ` for ${body.ticker}` : ' (global)'}`,
+    `Perp tuning parameters updated${body.ticker ? ` for ${body.ticker}` : " (global)"}`,
     { ticker: body.ticker, parameters: body },
-    'PerpTuning'
+    "PerpTuning",
   );
 
   return NextResponse.json(
     {
       success: true,
-      message: `Tuning parameters updated${body.ticker ? ` for ${body.ticker}` : ' (global)'}`,
+      message: `Tuning parameters updated${body.ticker ? ` for ${body.ticker}` : " (global)"}`,
       parameters: {
         ticker: body.ticker || null,
         riskMultiplier: body.riskMultiplier ?? 1.0,
@@ -235,6 +235,6 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         updatedAt: new Date().toISOString(),
       },
     },
-    { status: 201 }
+    { status: 201 },
   );
 });

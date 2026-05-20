@@ -3,8 +3,8 @@
  * Handles agent registration, lookup, and verification
  */
 
-import type { Database } from 'bun:sqlite';
-import type { LocalBlockchain } from './local-blockchain';
+import type { Database } from "bun:sqlite";
+import type { LocalBlockchain } from "./local-blockchain";
 
 interface Agent {
   id: string;
@@ -32,7 +32,7 @@ interface AgentRegistration {
 export class AgentRegistry {
   constructor(
     private db: Database,
-    private blockchain: LocalBlockchain
+    private blockchain: LocalBlockchain,
   ) {}
 
   /**
@@ -44,7 +44,7 @@ export class AgentRegistry {
 
     // Check if agent already exists by ID
     const existingById = this.db
-      .query('SELECT * FROM agents WHERE id = ?')
+      .query("SELECT * FROM agents WHERE id = ?")
       .get(id) as Record<string, unknown> | null;
     if (existingById) {
       throw new Error(`Agent ${id} already registered`);
@@ -52,7 +52,7 @@ export class AgentRegistry {
 
     // Check if agent already exists by wallet address
     const existingByWallet = this.db
-      .query('SELECT * FROM agents WHERE wallet_address = ?')
+      .query("SELECT * FROM agents WHERE wallet_address = ?")
       .get(registration.walletAddress) as Record<string, unknown> | null;
     if (existingByWallet) {
       // Return the existing agent instead of throwing
@@ -62,7 +62,7 @@ export class AgentRegistry {
     // Verify on-chain registration if blockchain is available
     const isVerified = await this.blockchain.verifyAgentRegistration(
       registration.walletAddress,
-      registration.tokenId
+      registration.tokenId,
     );
 
     // Insert agent
@@ -78,18 +78,18 @@ export class AgentRegistry {
       registration.tokenId,
       registration.chainId,
       registration.displayName || `Agent ${registration.tokenId}`,
-      registration.description || '',
-      registration.avatarUrl || '',
+      registration.description || "",
+      registration.avatarUrl || "",
       now,
       isVerified ? 1 : 0,
-      JSON.stringify(registration.metadata || {})
+      JSON.stringify(registration.metadata || {}),
     );
 
     // Also create user record for social features
     await this.ensureUserExists(
       id,
       registration.walletAddress,
-      registration.displayName
+      registration.displayName,
     );
 
     return {
@@ -98,8 +98,8 @@ export class AgentRegistry {
       tokenId: registration.tokenId,
       chainId: registration.chainId,
       displayName: registration.displayName || `Agent ${registration.tokenId}`,
-      description: registration.description || '',
-      avatarUrl: registration.avatarUrl || '',
+      description: registration.description || "",
+      avatarUrl: registration.avatarUrl || "",
       createdAt: new Date(now),
       isVerified,
       metadata: registration.metadata || {},
@@ -111,7 +111,7 @@ export class AgentRegistry {
    */
   getAgent(agentId: string): Agent | null {
     const row = this.db
-      .query('SELECT * FROM agents WHERE id = ?')
+      .query("SELECT * FROM agents WHERE id = ?")
       .get(agentId) as Record<string, unknown> | null;
 
     if (!row) {
@@ -126,7 +126,7 @@ export class AgentRegistry {
    */
   getAgentByWallet(walletAddress: string): Agent | null {
     const row = this.db
-      .query('SELECT * FROM agents WHERE wallet_address = ?')
+      .query("SELECT * FROM agents WHERE wallet_address = ?")
       .get(walletAddress) as Record<string, unknown> | null;
 
     if (!row) {
@@ -142,7 +142,7 @@ export class AgentRegistry {
   async getOrCreateAgent(
     walletAddress: string,
     tokenId: number,
-    chainId: number = 31337
+    chainId: number = 31337,
   ): Promise<Agent> {
     const id = `agent-${chainId}-${tokenId}`;
 
@@ -171,7 +171,7 @@ export class AgentRegistry {
    */
   listAgents(limit: number = 50, offset: number = 0): Agent[] {
     const rows = this.db
-      .query('SELECT * FROM agents ORDER BY created_at DESC LIMIT ? OFFSET ?')
+      .query("SELECT * FROM agents ORDER BY created_at DESC LIMIT ? OFFSET ?")
       .all(limit, offset) as Record<string, unknown>[];
 
     return rows.map((row) => this.rowToAgent(row));
@@ -182,7 +182,7 @@ export class AgentRegistry {
    */
   getAgentCount(): number {
     const result = this.db
-      .query('SELECT COUNT(*) as count FROM agents')
+      .query("SELECT COUNT(*) as count FROM agents")
       .get() as { count: number };
     return result?.count || 0;
   }
@@ -195,20 +195,20 @@ export class AgentRegistry {
     search?: string;
     limit?: number;
   }): Agent[] {
-    let query = 'SELECT * FROM agents WHERE 1=1';
+    let query = "SELECT * FROM agents WHERE 1=1";
     const params: (string | number)[] = [];
 
     if (criteria.verified !== undefined) {
-      query += ' AND is_verified = ?';
+      query += " AND is_verified = ?";
       params.push(criteria.verified ? 1 : 0);
     }
 
     if (criteria.search) {
-      query += ' AND (display_name LIKE ? OR description LIKE ?)';
+      query += " AND (display_name LIKE ? OR description LIKE ?)";
       params.push(`%${criteria.search}%`, `%${criteria.search}%`);
     }
 
-    query += ' ORDER BY created_at DESC LIMIT ?';
+    query += " ORDER BY created_at DESC LIMIT ?";
     params.push(criteria.limit || 20);
 
     const rows = this.db.query(query).all(...params) as Record<
@@ -224,11 +224,11 @@ export class AgentRegistry {
   private async ensureUserExists(
     userId: string,
     walletAddress: string,
-    displayName?: string
+    displayName?: string,
   ): Promise<void> {
     // Check by ID
     const existingById = this.db
-      .query('SELECT id FROM users WHERE id = ?')
+      .query("SELECT id FROM users WHERE id = ?")
       .get(userId);
     if (existingById) {
       return;
@@ -236,7 +236,7 @@ export class AgentRegistry {
 
     // Check by wallet address
     const existingByWallet = this.db
-      .query('SELECT id FROM users WHERE wallet_address = ?')
+      .query("SELECT id FROM users WHERE wallet_address = ?")
       .get(walletAddress);
     if (existingByWallet) {
       return;
@@ -253,9 +253,9 @@ export class AgentRegistry {
       walletAddress,
       displayName || `Agent ${userId.slice(-8)}`,
       username,
-      'Autonomous agent on Feed',
+      "Autonomous agent on Feed",
       1000,
-      100
+      100,
     );
   }
 
@@ -270,7 +270,7 @@ export class AgentRegistry {
       avatarUrl: row.avatar_url as string,
       createdAt: new Date(row.created_at as string),
       isVerified: Boolean(row.is_verified),
-      metadata: JSON.parse((row.metadata as string) || '{}'),
+      metadata: JSON.parse((row.metadata as string) || "{}"),
     };
   }
 }

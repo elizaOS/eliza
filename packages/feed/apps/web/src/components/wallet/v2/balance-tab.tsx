@@ -1,13 +1,13 @@
-'use client';
+"use client";
 
-import { formatCurrency } from '@feed/shared';
-import { useMemo } from 'react';
-import { calculateWalletPortfolioSummary } from '@/components/wallet/shared/portfolioBreakdown';
+import { formatCurrency } from "@feed/shared";
+import { useMemo } from "react";
+import { calculateWalletPortfolioSummary } from "@/components/wallet/shared/portfolioBreakdown";
 import {
   usePortfolioPnL,
   usePortfolioPnLPolling,
-} from '@/hooks/usePortfolioPnL';
-import { useUserPositions } from '@/stores/userPositionsStore';
+} from "@/hooks/usePortfolioPnL";
+import { useUserPositions } from "@/stores/userPositionsStore";
 
 interface BalanceTabProps {
   userId: string;
@@ -82,7 +82,7 @@ export function BalanceTab({ userId, onBuyPoints }: BalanceTabProps) {
   const openPositionsTotal = walletSummary?.summary.positions ?? 0;
   const agentsOnlyTotal = agentMembers.reduce(
     (sum, member) => sum + member.total,
-    0
+    0,
   );
 
   return (

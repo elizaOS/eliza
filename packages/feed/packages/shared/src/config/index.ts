@@ -5,9 +5,9 @@
  * Import this instead of reading from environment variables.
  */
 
-import type { Address } from 'viem';
-import { base, baseSepolia, hardhat, mainnet, sepolia } from 'viem/chains';
-import configData from './public-config.json';
+import type { Address } from "viem";
+import { base, baseSepolia, hardhat, mainnet, sepolia } from "viem/chains";
+import configData from "./public-config.json";
 
 // Re-export viem chain objects for NFT services (chains.ts was removed in Phase 1).
 // TODO: Remove these exports once NFT code is fully deleted in a future phase.
@@ -63,13 +63,13 @@ export interface PublicConfig {
 
 export const PUBLIC_CONFIG = configData as PublicConfig;
 
-type NetworkId = 'local' | 'baseSepolia' | 'base' | 'ethereum';
+type NetworkId = "local" | "baseSepolia" | "base" | "ethereum";
 
 const CHAIN_ID_TO_NETWORK: Record<number, NetworkId> = {
-  31337: 'local',
-  84532: 'baseSepolia',
-  8453: 'base',
-  1: 'ethereum',
+  31337: "local",
+  84532: "baseSepolia",
+  8453: "base",
+  1: "ethereum",
 };
 
 export function getCurrentChainId(): number {
@@ -79,8 +79,8 @@ export function getCurrentChainId(): number {
   // Default to local for development, Base Sepolia for test
   // For production, use Base mainnet (8453) as default
   // Note: ensures production defaults to Base mainnet for compatibility with user wallets
-  if (process.env.NODE_ENV === 'production') return 8453;
-  if (process.env.NODE_ENV === 'test') return 84532;
+  if (process.env.NODE_ENV === "production") return 8453;
+  if (process.env.NODE_ENV === "test") return 84532;
   return 31337;
 }
 
@@ -88,7 +88,7 @@ export function getCurrentChainId(): number {
 export const CHAIN_ID = getCurrentChainId();
 
 function getCurrentNetwork(): NetworkConfig | EthereumNetworkConfig {
-  const networkId = CHAIN_ID_TO_NETWORK[getCurrentChainId()] || 'local';
+  const networkId = CHAIN_ID_TO_NETWORK[getCurrentChainId()] || "local";
   return PUBLIC_CONFIG.networks[networkId];
 }
 
@@ -115,7 +115,7 @@ export function getCurrentContractAddresses():
   | EthereumContractAddresses {
   const contracts = getCurrentNetwork().contracts;
 
-  if ('nft' in contracts) {
+  if ("nft" in contracts) {
     return contracts;
   }
 
@@ -138,12 +138,12 @@ export function areContractsDeployed(chainId: number): boolean {
   const contracts =
     chainId === getCurrentChainId()
       ? getCurrentContractAddresses()
-      : PUBLIC_CONFIG.networks[CHAIN_ID_TO_NETWORK[chainId] || 'local']
+      : PUBLIC_CONFIG.networks[CHAIN_ID_TO_NETWORK[chainId] || "local"]
           .contracts;
 
   return (
-    'identityRegistry' in contracts &&
-    contracts.identityRegistry !== '0x0000000000000000000000000000000000000000'
+    "identityRegistry" in contracts &&
+    contracts.identityRegistry !== "0x0000000000000000000000000000000000000000"
   );
 }
 export const REPUTATION_SYSTEM_BASE_SEPOLIA = PUBLIC_CONFIG.networks.baseSepolia
@@ -175,9 +175,9 @@ export function getCurrentRpcUrl(): string {
  * - Local: Uses localhost:3000
  */
 function normalizeBaseUrl(input: string): string {
-  const trimmed = input.trim().replace(/\/+$/, '');
-  if (!trimmed) return 'http://localhost:3000';
-  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+  const trimmed = input.trim().replace(/\/+$/, "");
+  if (!trimmed) return "http://localhost:3000";
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
     return trimmed;
   }
   return `https://${trimmed}`;
@@ -185,7 +185,7 @@ function normalizeBaseUrl(input: string): string {
 
 export function getBaseUrl(): string {
   // 0. Browser runtime: always use the current origin
-  if (typeof window !== 'undefined' && window.location?.origin) {
+  if (typeof window !== "undefined" && window.location?.origin) {
     return window.location.origin;
   }
 
@@ -202,7 +202,7 @@ export function getBaseUrl(): string {
   }
 
   // 3. Local development fallback
-  return 'http://localhost:3000';
+  return "http://localhost:3000";
 }
 
 export function getAPIBaseUrl(): string {
@@ -211,8 +211,8 @@ export function getAPIBaseUrl(): string {
 
 export function getA2AEndpoint(): string {
   const baseUrl = getBaseUrl();
-  const protocol = baseUrl.startsWith('https') ? 'wss' : 'ws';
-  const host = baseUrl.replace(/^https?:\/\//, '');
+  const protocol = baseUrl.startsWith("https") ? "wss" : "ws";
+  const host = baseUrl.replace(/^https?:\/\//, "");
   return `${protocol}://${host}/ws/a2a`;
 }
 

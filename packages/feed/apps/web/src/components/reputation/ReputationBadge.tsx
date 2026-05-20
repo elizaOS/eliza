@@ -28,12 +28,12 @@
  * ```
  */
 
-import type { ShieldAlert } from 'lucide-react';
-import { Award, Shield, ShieldCheck } from 'lucide-react';
+import type { ShieldAlert } from "lucide-react";
+import { Award, Shield, ShieldCheck } from "lucide-react";
 
 interface ReputationBadgeProps {
   reputationPoints: number;
-  size?: 'sm' | 'md' | 'lg';
+  size?: "sm" | "md" | "lg";
   showLabel?: boolean;
   className?: string;
 }
@@ -41,7 +41,7 @@ interface ReputationBadgeProps {
 /**
  * Trust level type based on reputation points.
  */
-type TrustLevel = 'newcomer' | 'trusted' | 'veteran' | 'elite';
+type TrustLevel = "newcomer" | "trusted" | "veteran" | "elite";
 
 /**
  * Get trust level from reputation points.
@@ -52,17 +52,17 @@ type TrustLevel = 'newcomer' | 'trusted' | 'veteran' | 'elite';
  * @returns Trust level
  */
 function getTrustLevel(points: number): TrustLevel {
-  if (points >= 10000) return 'elite';
-  if (points >= 5000) return 'veteran';
-  if (points >= 1000) return 'trusted';
-  return 'newcomer';
+  if (points >= 10000) return "elite";
+  if (points >= 5000) return "veteran";
+  if (points >= 1000) return "trusted";
+  return "newcomer";
 }
 
 export function ReputationBadge({
   reputationPoints,
-  size = 'md',
+  size = "md",
   showLabel = true,
-  className = '',
+  className = "",
 }: ReputationBadgeProps) {
   const trustLevel = getTrustLevel(reputationPoints);
 
@@ -77,44 +77,43 @@ export function ReputationBadge({
   let glowColor: string;
 
   switch (trustLevel) {
-    case 'elite':
+    case "elite":
       BadgeIcon = Award;
-      badgeColor = 'text-yellow-500';
-      glowColor = 'shadow-yellow-500/50';
-      badgeLabel = 'Elite';
+      badgeColor = "text-yellow-500";
+      glowColor = "shadow-yellow-500/50";
+      badgeLabel = "Elite";
       break;
-    case 'veteran':
+    case "veteran":
       BadgeIcon = ShieldCheck;
-      badgeColor = 'text-purple-500';
-      glowColor = 'shadow-purple-500/50';
-      badgeLabel = 'Veteran';
+      badgeColor = "text-purple-500";
+      glowColor = "shadow-purple-500/50";
+      badgeLabel = "Veteran";
       break;
-    case 'trusted':
+    case "trusted":
       BadgeIcon = ShieldCheck;
-      badgeColor = 'text-blue-500';
-      glowColor = 'shadow-blue-500/50';
-      badgeLabel = 'Trusted';
+      badgeColor = "text-blue-500";
+      glowColor = "shadow-blue-500/50";
+      badgeLabel = "Trusted";
       break;
-    case 'newcomer':
     default:
       BadgeIcon = Shield;
-      badgeColor = 'text-gray-400';
-      glowColor = 'shadow-gray-400/50';
-      badgeLabel = 'Newcomer';
+      badgeColor = "text-gray-400";
+      glowColor = "shadow-gray-400/50";
+      badgeLabel = "Newcomer";
       break;
   }
 
   // Size classes
   const sizeClasses = {
-    sm: 'w-4 h-4',
-    md: 'w-6 h-6',
-    lg: 'w-8 h-8',
+    sm: "w-4 h-4",
+    md: "w-6 h-6",
+    lg: "w-8 h-8",
   };
 
   const textSizeClasses = {
-    sm: 'text-xs',
-    md: 'text-sm',
-    lg: 'text-base',
+    sm: "text-xs",
+    md: "text-sm",
+    lg: "text-base",
   };
 
   return (
@@ -125,7 +124,7 @@ export function ReputationBadge({
           fill="currentColor"
           strokeWidth={1.5}
         />
-        {trustLevel === 'elite' && (
+        {trustLevel === "elite" && (
           <div className="absolute inset-0 animate-pulse">
             <BadgeIcon
               className={`${sizeClasses[size]} ${badgeColor} opacity-50`}
@@ -152,7 +151,7 @@ export function ReputationBadge({
  */
 interface ReputationScoreProps {
   reputationPoints: number;
-  size?: 'sm' | 'md' | 'lg';
+  size?: "sm" | "md" | "lg";
   showChange?: boolean;
   change?: number;
   className?: string;
@@ -160,34 +159,33 @@ interface ReputationScoreProps {
 
 export function ReputationScore({
   reputationPoints,
-  size = 'md',
+  size = "md",
   showChange = false,
   change = 0,
-  className = '',
+  className = "",
 }: ReputationScoreProps) {
   const trustLevel = getTrustLevel(reputationPoints);
 
   const sizeClasses = {
-    sm: 'text-sm',
-    md: 'text-lg',
-    lg: 'text-2xl',
+    sm: "text-sm",
+    md: "text-lg",
+    lg: "text-2xl",
   };
 
-  let scoreColor = 'text-gray-400';
+  let scoreColor = "text-gray-400";
 
   switch (trustLevel) {
-    case 'elite':
-      scoreColor = 'text-yellow-500';
+    case "elite":
+      scoreColor = "text-yellow-500";
       break;
-    case 'veteran':
-      scoreColor = 'text-purple-500';
+    case "veteran":
+      scoreColor = "text-purple-500";
       break;
-    case 'trusted':
-      scoreColor = 'text-blue-500';
+    case "trusted":
+      scoreColor = "text-blue-500";
       break;
-    case 'newcomer':
     default:
-      scoreColor = 'text-gray-400';
+      scoreColor = "text-gray-400";
       break;
   }
 
@@ -199,10 +197,10 @@ export function ReputationScore({
       {showChange && change !== 0 && (
         <span
           className={`font-medium text-xs ${
-            change > 0 ? 'text-green-500' : 'text-red-500'
+            change > 0 ? "text-green-500" : "text-red-500"
           }`}
         >
-          {change > 0 ? '+' : ''}
+          {change > 0 ? "+" : ""}
           {change}
         </span>
       )}

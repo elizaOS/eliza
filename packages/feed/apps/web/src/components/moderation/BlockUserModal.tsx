@@ -27,12 +27,12 @@
  * />
  * ```
  */
-'use client';
+"use client";
 
-import { Ban, X } from 'lucide-react';
-import { useState, useTransition } from 'react';
-import { toast } from 'sonner';
-import { apiUrl } from '@/utils/api-url';
+import { Ban, X } from "lucide-react";
+import { useState, useTransition } from "react";
+import { toast } from "sonner";
+import { apiUrl } from "@/utils/api-url";
 
 interface BlockUserModalProps {
   isOpen: boolean;
@@ -51,23 +51,23 @@ export function BlockUserModal({
   isNPC = false,
   onSuccess,
 }: BlockUserModalProps) {
-  const [reason, setReason] = useState('');
+  const [reason, setReason] = useState("");
   const [isBlocking, startBlocking] = useTransition();
 
   const handleBlock = () => {
     startBlocking(async () => {
       const response = await fetch(apiUrl(`/api/users/${targetUserId}/block`), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: 'block',
+          action: "block",
           reason: reason || undefined,
         }),
       });
 
       if (!response.ok) {
         const error = await response.json();
-        toast.error(error.message || 'Failed to block user');
+        toast.error(error.message || "Failed to block user");
         return;
       }
 

@@ -99,18 +99,18 @@
  * ```
  */
 
-import { authenticate, withErrorHandling } from '@feed/api';
-import { db } from '@feed/db';
-import { generateSnowflakeId } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+import { authenticate, withErrorHandling } from "@feed/api";
+import { db } from "@feed/db";
+import { generateSnowflakeId } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 /**
  * GET - List agent's goals
  */
 export const GET = withErrorHandling(async function GET(
   req: NextRequest,
-  { params }: { params: Promise<{ agentId: string }> }
+  { params }: { params: Promise<{ agentId: string }> },
 ) {
   const authUser = await authenticate(req);
   const userId = authUser.userId;
@@ -122,21 +122,21 @@ export const GET = withErrorHandling(async function GET(
     select: { isAgent: true, managedBy: true },
   });
 
-  if (!agent || !agent.isAgent) {
-    return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
+  if (!agent?.isAgent) {
+    return NextResponse.json({ error: "Agent not found" }, { status: 404 });
   }
 
   if (agent.managedBy !== userId) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
   // Get all goals for this agent
   const goals = await db.agentGoal.findMany({
     where: { agentUserId: agentId },
     orderBy: [
-      { status: 'asc' }, // active first
-      { priority: 'desc' },
-      { createdAt: 'desc' },
+      { status: "asc" }, // active first
+      { priority: "desc" },
+      { createdAt: "desc" },
     ],
   });
 
@@ -159,7 +159,7 @@ export const GET = withErrorHandling(async function GET(
   if (goalIds.length > 0) {
     const allActions = await db.agentGoalAction.findMany({
       where: { goalId: { in: goalIds } },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
     });
 
     // Group actions by goalId and take top 5 per goal
@@ -192,7 +192,7 @@ export const GET = withErrorHandling(async function GET(
  */
 export const POST = withErrorHandling(async function POST(
   req: NextRequest,
-  { params }: { params: Promise<{ agentId: string }> }
+  { params }: { params: Promise<{ agentId: string }> },
 ) {
   const authUser = await authenticate(req);
   const userId = authUser.userId;
@@ -204,12 +204,12 @@ export const POST = withErrorHandling(async function POST(
     select: { isAgent: true, managedBy: true },
   });
 
-  if (!agent || !agent.isAgent) {
-    return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
+  if (!agent?.isAgent) {
+    return NextResponse.json({ error: "Agent not found" }, { status: 404 });
   }
 
   if (agent.managedBy !== userId) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
   // Parse request body
@@ -221,33 +221,33 @@ export const POST = withErrorHandling(async function POST(
     !type ||
     !name ||
     !description ||
-    typeof type !== 'string' ||
-    typeof name !== 'string' ||
-    typeof description !== 'string'
+    typeof type !== "string" ||
+    typeof name !== "string" ||
+    typeof description !== "string"
   ) {
     return NextResponse.json(
-      { error: 'Missing required fields: type, name, description' },
-      { status: 400 }
+      { error: "Missing required fields: type, name, description" },
+      { status: 400 },
     );
   }
 
   // Validate type
-  const validTypes = ['trading', 'social', 'learning', 'reputation', 'custom'];
+  const validTypes = ["trading", "social", "learning", "reputation", "custom"];
   if (!validTypes.includes(type)) {
     return NextResponse.json(
       {
-        error: `Invalid goal type. Must be one of: ${validTypes.join(', ')}`,
+        error: `Invalid goal type. Must be one of: ${validTypes.join(", ")}`,
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
   // Validate priority
-  const priorityValue = typeof priority === 'number' ? priority : 5;
+  const priorityValue = typeof priority === "number" ? priority : 5;
   if (priorityValue < 1 || priorityValue > 10) {
     return NextResponse.json(
-      { error: 'Priority must be between 1 and 10' },
-      { status: 400 }
+      { error: "Priority must be between 1 and 10" },
+      { status: 400 },
     );
   }
 
@@ -259,9 +259,9 @@ export const POST = withErrorHandling(async function POST(
       type,
       name,
       description,
-      target: typeof target === 'string' ? target : undefined,
+      target: typeof target === "string" ? target : undefined,
       priority: priorityValue,
-      status: 'active',
+      status: "active",
       progress: 0,
       createdAt: new Date(),
       updatedAt: new Date(),

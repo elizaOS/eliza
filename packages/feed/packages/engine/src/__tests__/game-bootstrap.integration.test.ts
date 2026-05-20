@@ -5,11 +5,11 @@
  * Uses the games table only (doesn't depend on ActorState/OrganizationState).
  */
 
-import { afterEach, describe, expect, it } from 'bun:test';
-import { db, eq, games, generateSnowflakeId } from '@feed/db';
+import { afterEach, describe, expect, it } from "bun:test";
+import { db, eq, games, generateSnowflakeId } from "@feed/db";
 
 // Test game creation/auto-start logic directly on games table
-describe('Game Auto-Start Logic', () => {
+describe("Game Auto-Start Logic", () => {
   const createdGameIds: string[] = [];
 
   afterEach(async () => {
@@ -20,7 +20,7 @@ describe('Game Auto-Start Logic', () => {
     createdGameIds.length = 0;
   });
 
-  it('should have a continuous game in the database', async () => {
+  it("should have a continuous game in the database", async () => {
     // Check if a continuous game exists
     const existingGames = await db
       .select()
@@ -55,12 +55,12 @@ describe('Game Auto-Start Logic', () => {
       const game = existingGames[0];
       expect(game?.isContinuous).toBe(true);
       console.log(
-        `Existing game found: ${game?.id}, isRunning: ${game?.isRunning}`
+        `Existing game found: ${game?.id}, isRunning: ${game?.isRunning}`,
       );
     }
   });
 
-  it('should be able to start a paused game', async () => {
+  it("should be able to start a paused game", async () => {
     // Get or create a continuous game
     const existingGames = await db
       .select()
@@ -83,7 +83,7 @@ describe('Game Auto-Start Logic', () => {
         updatedAt: new Date(),
       });
     } else {
-      gameId = existingGames[0]!.id;
+      gameId = existingGames[0]?.id;
 
       // Pause it for the test
       await db
@@ -127,7 +127,7 @@ describe('Game Auto-Start Logic', () => {
     }
   });
 
-  it('ensureGameState logic creates running game when none exists', async () => {
+  it("ensureGameState logic creates running game when none exists", async () => {
     // This tests the same logic as ensureGameState in GameBootstrapService
 
     // Check for existing continuous game
@@ -154,7 +154,7 @@ describe('Game Auto-Start Logic', () => {
         updatedAt: now,
       });
 
-      console.log('Created new game with isRunning: true');
+      console.log("Created new game with isRunning: true");
 
       // Verify
       const newGame = await db.select().from(games).where(eq(games.id, gameId));
@@ -187,25 +187,25 @@ describe('Game Auto-Start Logic', () => {
   });
 });
 
-describe('NPC User Provisioning', () => {
+describe("NPC User Provisioning", () => {
   // Track created user IDs for cleanup
   const createdNpcUserIds: string[] = [];
 
   afterEach(async () => {
     // Clean up created NPC User records to avoid side effects
     if (createdNpcUserIds.length > 0) {
-      const { users, inArray } = await import('@feed/db');
+      const { users, inArray } = await import("@feed/db");
       await db.delete(users).where(inArray(users.id, createdNpcUserIds));
       createdNpcUserIds.length = 0;
     }
   });
 
-  it('should ensure NPC actors have User records', async () => {
+  it("should ensure NPC actors have User records", async () => {
     // Import dynamic to avoid circular dependencies
     const { GameBootstrapService } = await import(
-      '../services/game-bootstrap-service'
+      "../services/game-bootstrap-service"
     );
-    const { users, inArray } = await import('@feed/db');
+    const { users, inArray } = await import("@feed/db");
 
     // Get static actors (NPCs)
     const staticActors = GameBootstrapService.getStaticActors();
@@ -219,7 +219,7 @@ describe('NPC User Provisioning', () => {
 
     // Call ensureNpcUsers (this is tested via full bootstrap normally)
     const createdCount =
-      await GameBootstrapService['ensureNpcUsers'](staticActors);
+      await GameBootstrapService.ensureNpcUsers(staticActors);
 
     // Track for cleanup
     createdNpcUserIds.push(...npcUserIds);
@@ -236,20 +236,20 @@ describe('NPC User Provisioning', () => {
 
     // If we run again, should create 0 (all exist)
     const secondRunCount =
-      await GameBootstrapService['ensureNpcUsers'](staticActors);
+      await GameBootstrapService.ensureNpcUsers(staticActors);
     expect(secondRunCount).toBe(0);
 
     console.log(
-      `NPC User provisioning: ${createdCount} created first run, ${secondRunCount} second run`
+      `NPC User provisioning: ${createdCount} created first run, ${secondRunCount} second run`,
     );
   });
 
-  it('should handle empty actors array gracefully', async () => {
+  it("should handle empty actors array gracefully", async () => {
     const { GameBootstrapService } = await import(
-      '../services/game-bootstrap-service'
+      "../services/game-bootstrap-service"
     );
 
-    const result = await GameBootstrapService['ensureNpcUsers']([]);
+    const result = await GameBootstrapService.ensureNpcUsers([]);
     expect(result).toBe(0);
   });
 });

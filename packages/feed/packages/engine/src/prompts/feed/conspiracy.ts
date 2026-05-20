@@ -1,14 +1,14 @@
-import { definePrompt } from '../define-prompt';
+import { definePrompt } from "../define-prompt";
 
 /**
  * Prompt for generating conspiracy theory / contrarian takes.
  * Actor-first design with conspiracy-specific instruction.
  */
 export const conspiracy = definePrompt({
-  id: 'conspiracy',
-  version: '6.0.0',
-  category: 'feed',
-  description: 'Generates conspiracy/contrarian take — actor identity first',
+  id: "conspiracy",
+  version: "6.0.0",
+  category: "feed",
+  description: "Generates conspiracy/contrarian take — actor identity first",
   temperature: 1.1,
   maxTokens: 8000,
   template: `You are {{characterName}}.

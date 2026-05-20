@@ -9,34 +9,34 @@
   --card-foreground: #0f1419;
   --popover: #ffffff;
   --popover-foreground: #0f1419;
-  --primary: #0066FF;
+  --primary: #0066ff;
   --primary-foreground: #ffffff;
   --secondary: #0f1419;
   --secondary-foreground: #ffffff;
   --muted: #e5e5e6;
   --muted-foreground: #0f1419;
   --accent: #e3ecf6;
-  --accent-foreground: #0066FF;
+  --accent-foreground: #0066ff;
   --destructive: #f4212e;
   --destructive-foreground: #ffffff;
-  --border: #3C3A3A2A;
+  --border: #3c3a3a2a;
   --input: #f7f9fa;
-  --ring: #0066FF;
-  --chart-1: #0066FF;
+  --ring: #0066ff;
+  --chart-1: #0066ff;
   --chart-2: #00b87a;
   --chart-3: #f7b928;
   --chart-4: #17bf63;
   --chart-5: #e0245e;
   --sidebar: #ffffff;
   --sidebar-foreground: #0f1419;
-  --sidebar-primary: #0066FF;
+  --sidebar-primary: #0066ff;
   --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: #eeeeee;
-  --sidebar-accent-foreground: #0066FF;
+  --sidebar-accent-foreground: #0066ff;
   --sidebar-border: #e1e8ed;
-  --sidebar-ring: #0066FF;
+  --sidebar-ring: #0066ff;
   --scrollbar-track: #e5e5e6;
-  --scrollbar-thumb: #0066FF;
+  --scrollbar-thumb: #0066ff;
   --scrollbar-thumb-hover: #2952d9;
   /* Reserved for onboarding theme overrides. Currently aliases --primary but can be
      customized for onboarding-specific styling without affecting the global theme. */
@@ -50,15 +50,20 @@
   --shadow-blur: 3px;
   --shadow-spread: 0px;
   --shadow-opacity: 0.08;
-  --shadow-color: rgba(101,119,134,0.2);
-  --shadow-2xs: 0px 2px 0px 0px hsl(226 89% 58% / 0.00);
-  --shadow-xs: 0px 2px 0px 0px hsl(226 89% 58% / 0.00);
-  --shadow-sm: 0px 2px 0px 0px hsl(226 89% 58% / 0.00), 0px 1px 2px -1px hsl(226 89% 58% / 0.00);
-  --shadow: 0px 2px 0px 0px hsl(226 89% 58% / 0.00), 0px 1px 2px -1px hsl(226 89% 58% / 0.00);
-  --shadow-md: 0px 2px 0px 0px hsl(226 89% 58% / 0.00), 0px 2px 4px -1px hsl(226 89% 58% / 0.00);
-  --shadow-lg: 0px 2px 0px 0px hsl(226 89% 58% / 0.00), 0px 4px 6px -1px hsl(226 89% 58% / 0.00);
-  --shadow-xl: 0px 2px 0px 0px hsl(226 89% 58% / 0.00), 0px 8px 10px -1px hsl(226 89% 58% / 0.00);
-  --shadow-2xl: 0px 2px 0px 0px hsl(226 89% 58% / 0.00);
+  --shadow-color: rgba(101, 119, 134, 0.2);
+  --shadow-2xs: 0px 2px 0px 0px hsl(226 89% 58% / 0);
+  --shadow-xs: 0px 2px 0px 0px hsl(226 89% 58% / 0);
+  --shadow-sm:
+    0px 2px 0px 0px hsl(226 89% 58% / 0), 0px 1px 2px -1px hsl(226 89% 58% / 0);
+  --shadow:
+    0px 2px 0px 0px hsl(226 89% 58% / 0), 0px 1px 2px -1px hsl(226 89% 58% / 0);
+  --shadow-md:
+    0px 2px 0px 0px hsl(226 89% 58% / 0), 0px 2px 4px -1px hsl(226 89% 58% / 0);
+  --shadow-lg:
+    0px 2px 0px 0px hsl(226 89% 58% / 0), 0px 4px 6px -1px hsl(226 89% 58% / 0);
+  --shadow-xl:
+    0px 2px 0px 0px hsl(226 89% 58% / 0), 0px 8px 10px -1px hsl(226 89% 58% / 0);
+  --shadow-2xl: 0px 2px 0px 0px hsl(226 89% 58% / 0);
   --tracking-normal: 0em;
   --spacing: 0.25rem;
 }
@@ -70,34 +75,34 @@
   --card-foreground: #d9d9d9;
   --popover: #000000;
   --popover-foreground: #e7e9ea;
-  --primary: #0066FF;
+  --primary: #0066ff;
   --primary-foreground: #ffffff;
   --secondary: #f0f3f4;
   --secondary-foreground: #0f1419;
   --muted: #181818;
   --muted-foreground: #72767a;
   --accent: #061622;
-  --accent-foreground: #0066FF;
+  --accent-foreground: #0066ff;
   --destructive: #f4212e;
   --destructive-foreground: #ffffff;
   --border: #393d41;
   --input: #22303c;
-  --ring: #0066FF;
-  --chart-1: #0066FF;
+  --ring: #0066ff;
+  --chart-1: #0066ff;
   --chart-2: #00b87a;
   --chart-3: #f7b928;
   --chart-4: #17bf63;
   --chart-5: #e0245e;
   --sidebar: #000000;
   --sidebar-foreground: #d9d9d9;
-  --sidebar-primary: #0066FF;
+  --sidebar-primary: #0066ff;
   --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: #2a2a2a;
-  --sidebar-accent-foreground: #0066FF;
+  --sidebar-accent-foreground: #0066ff;
   --sidebar-border: #393d41;
-  --sidebar-ring: #0066FF;
+  --sidebar-ring: #0066ff;
   --scrollbar-track: #000000;
-  --scrollbar-thumb: #0066FF;
+  --scrollbar-thumb: #0066ff;
   --scrollbar-thumb-hover: #2952d9;
   /* Reserved for onboarding theme overrides. Currently aliases --primary but can be
      customized for onboarding-specific styling without affecting the global theme. */
@@ -111,15 +116,20 @@
   --shadow-blur: 0px;
   --shadow-spread: 0px;
   --shadow-opacity: 0;
-  --shadow-color: rgba(52,98,243,0.25);
-  --shadow-2xs: 0px 2px 0px 0px hsl(226 89% 58% / 0.00);
-  --shadow-xs: 0px 2px 0px 0px hsl(226 89% 58% / 0.00);
-  --shadow-sm: 0px 2px 0px 0px hsl(226 89% 58% / 0.00), 0px 1px 2px -1px hsl(226 89% 58% / 0.00);
-  --shadow: 0px 2px 0px 0px hsl(226 89% 58% / 0.00), 0px 1px 2px -1px hsl(226 89% 58% / 0.00);
-  --shadow-md: 0px 2px 0px 0px hsl(226 89% 58% / 0.00), 0px 2px 4px -1px hsl(226 89% 58% / 0.00);
-  --shadow-lg: 0px 2px 0px 0px hsl(226 89% 58% / 0.00), 0px 4px 6px -1px hsl(226 89% 58% / 0.00);
-  --shadow-xl: 0px 2px 0px 0px hsl(226 89% 58% / 0.00), 0px 8px 10px -1px hsl(226 89% 58% / 0.00);
-  --shadow-2xl: 0px 2px 0px 0px hsl(226 89% 58% / 0.00);
+  --shadow-color: rgba(52, 98, 243, 0.25);
+  --shadow-2xs: 0px 2px 0px 0px hsl(226 89% 58% / 0);
+  --shadow-xs: 0px 2px 0px 0px hsl(226 89% 58% / 0);
+  --shadow-sm:
+    0px 2px 0px 0px hsl(226 89% 58% / 0), 0px 1px 2px -1px hsl(226 89% 58% / 0);
+  --shadow:
+    0px 2px 0px 0px hsl(226 89% 58% / 0), 0px 1px 2px -1px hsl(226 89% 58% / 0);
+  --shadow-md:
+    0px 2px 0px 0px hsl(226 89% 58% / 0), 0px 2px 4px -1px hsl(226 89% 58% / 0);
+  --shadow-lg:
+    0px 2px 0px 0px hsl(226 89% 58% / 0), 0px 4px 6px -1px hsl(226 89% 58% / 0);
+  --shadow-xl:
+    0px 2px 0px 0px hsl(226 89% 58% / 0), 0px 8px 10px -1px hsl(226 89% 58% / 0);
+  --shadow-2xl: 0px 2px 0px 0px hsl(226 89% 58% / 0);
 }
 
 .writing-vertical-lr {
@@ -180,7 +190,9 @@
 body {
   background-color: var(--background);
   color: var(--foreground);
-  font-feature-settings: "rlig" 1, "calt" 1;
+  font-feature-settings:
+    "rlig" 1,
+    "calt" 1;
   /* Prevent native pull-to-refresh and overscroll effects */
   overscroll-behavior-y: contain;
 }
@@ -198,35 +210,35 @@ body:has([data-sonner-toast]) .app-shell-root {
 }
 
 body [data-sonner-toaster] {
-  position: fixed !important;
-  top: 0 !important;
-  right: 0 !important;
-  left: 0 !important;
-  inset: 0 0 auto 0 !important;
-  width: 100vw !important;
-  transform: none !important;
-  padding: 0 !important;
-  z-index: 2147483647 !important;
-  display: flex !important;
-  flex-direction: column !important;
-  gap: 0 !important;
+  position: fixed;
+  top: 0;
+  right: 0;
+  left: 0;
+  inset: 0 0 auto 0;
+  width: 100vw;
+  transform: none;
+  padding: 0;
+  z-index: 2147483647;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
   background: var(--background);
   border-bottom: 1px solid var(--border);
 }
 
-body [data-sonner-toaster][data-x-position='center'] {
-  right: 0 !important;
-  left: 0 !important;
+body [data-sonner-toaster][data-x-position="center"] {
+  right: 0;
+  left: 0;
 }
 
 body [data-sonner-toaster] [data-sonner-toast] {
-  width: 100% !important;
-  max-width: none !important;
-  margin: 0 !important;
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  border-right: 0 !important;
-  border-left: 0 !important;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  border-radius: 0;
+  box-shadow: none;
+  border-right: 0;
+  border-left: 0;
 }
 
 /* Prevent pull-to-refresh on the entire app */
@@ -248,23 +260,39 @@ button:disabled {
 }
 
 @keyframes accordion-down {
-  from { height: 0 }
-  to { height: var(--radix-accordion-content-height) }
+  from {
+    height: 0;
+  }
+  to {
+    height: var(--radix-accordion-content-height);
+  }
 }
 
 @keyframes accordion-up {
-  from { height: var(--radix-accordion-content-height) }
-  to { height: 0 }
+  from {
+    height: var(--radix-accordion-content-height);
+  }
+  to {
+    height: 0;
+  }
 }
 
 @keyframes slide-in {
-  from { transform: translateY(100%) }
-  to { transform: translateY(0) }
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
 }
 
 @keyframes fade-in {
-  from { opacity: 0 }
-  to { opacity: 1 }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 /* Mobile-first touch targets */
@@ -395,7 +423,9 @@ button:disabled {
 
 /* Chat neumorphic styles */
 .chat-card {
-  box-shadow: inset 5px 5px 5px rgba(0, 0, 0, 0.1), inset -5px -5px 5px rgba(255, 255, 255, 0.05);
+  box-shadow:
+    inset 5px 5px 5px rgba(0, 0, 0, 0.1),
+    inset -5px -5px 5px rgba(255, 255, 255, 0.05);
 }
 
 .message-input {
@@ -407,17 +437,23 @@ button:disabled {
 }
 
 .chat-tab {
-  box-shadow: inset 3px 3px 5px rgba(0, 0, 0, 0.1), inset -3px -3px 5px rgba(255, 255, 255, 0.05);
+  box-shadow:
+    inset 3px 3px 5px rgba(0, 0, 0, 0.1),
+    inset -3px -3px 5px rgba(255, 255, 255, 0.05);
   transition: all 0.3s ease;
 }
 
 .chat-tab-active {
-  box-shadow: inset 3px 3px 5px var(--primary-glow, rgba(0, 102, 255, 0.3)), inset -3px -3px 5px var(--primary-glow-secondary, rgba(0, 102, 255, 0.1));
+  box-shadow:
+    inset 3px 3px 5px var(--primary-glow, rgba(0, 102, 255, 0.3)),
+    inset -3px -3px 5px var(--primary-glow-secondary, rgba(0, 102, 255, 0.1));
 }
 
 /* Dark mode adjustments for chat styles */
 .dark .chat-card {
-  box-shadow: inset 5px 5px 5px rgba(0, 0, 0, 0.3), inset -5px -5px 5px rgba(255, 255, 255, 0.02);
+  box-shadow:
+    inset 5px 5px 5px rgba(0, 0, 0, 0.3),
+    inset -5px -5px 5px rgba(255, 255, 255, 0.02);
 }
 
 .dark .message-input {
@@ -429,7 +465,9 @@ button:disabled {
 }
 
 .dark .chat-tab {
-  box-shadow: inset 3px 3px 5px rgba(0, 0, 0, 0.3), inset -3px -3px 5px rgba(255, 255, 255, 0.02);
+  box-shadow:
+    inset 3px 3px 5px rgba(0, 0, 0, 0.3),
+    inset -3px -3px 5px rgba(255, 255, 255, 0.02);
 }
 
 /* Confetti Animation (used by RevealModal, OutcomeNotificationPopup) */
@@ -485,7 +523,8 @@ button:disabled {
 }
 
 @keyframes confetti-sway {
-  0%, 100% {
+  0%,
+  100% {
     transform: translateX(0);
   }
   25% {
@@ -498,8 +537,12 @@ button:disabled {
 
 /* Wave container — stays hidden until its delay, then appears */
 @keyframes confetti-wave-in {
-  0% { opacity: 0; }
-  100% { opacity: 1; }
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
 }
 
 /* Outer wrapper: burst outward fast */
@@ -530,7 +573,8 @@ button:disabled {
 }
 
 .confetti-3d-spin {
-  animation: confetti-sway var(--sway-speed) ease-in-out infinite,
+  animation:
+    confetti-sway var(--sway-speed) ease-in-out infinite,
     confetti-3d-spin var(--spin-speed) linear infinite;
 }
 

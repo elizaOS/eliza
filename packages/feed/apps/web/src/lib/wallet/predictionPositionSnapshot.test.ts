@@ -1,18 +1,18 @@
-import { describe, expect, it } from 'bun:test';
-import { calculatePredictionPositionSnapshot } from './predictionPositionSnapshot';
+import { describe, expect, it } from "bun:test";
+import { calculatePredictionPositionSnapshot } from "./predictionPositionSnapshot";
 
-describe('calculatePredictionPositionSnapshot', () => {
-  it('prices a resolved winning position at full payout', () => {
+describe("calculatePredictionPositionSnapshot", () => {
+  it("prices a resolved winning position at full payout", () => {
     const snapshot = calculatePredictionPositionSnapshot({
       shares: 12,
       avgPrice: 0.4,
-      sideKey: 'yes',
+      sideKey: "yes",
       yesShares: 520,
       noShares: 480,
       feeRate: 0,
       resolved: true,
       resolution: true,
-      onSellPreviewError: 'throw',
+      onSellPreviewError: "throw",
     });
 
     expect(snapshot.currentProbability).toBe(1);
@@ -21,17 +21,17 @@ describe('calculatePredictionPositionSnapshot', () => {
     expect(snapshot.unrealizedPnL).toBeCloseTo(7.2, 6);
   });
 
-  it('prices a resolved losing position at zero', () => {
+  it("prices a resolved losing position at zero", () => {
     const snapshot = calculatePredictionPositionSnapshot({
       shares: 8,
       avgPrice: 0.65,
-      sideKey: 'no',
+      sideKey: "no",
       yesShares: 520,
       noShares: 480,
       feeRate: 0,
       resolved: true,
       resolution: true,
-      onSellPreviewError: 'throw',
+      onSellPreviewError: "throw",
     });
 
     expect(snapshot.currentProbability).toBe(0);

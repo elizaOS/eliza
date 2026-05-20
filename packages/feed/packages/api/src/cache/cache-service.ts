@@ -13,13 +13,13 @@
  * - Works with any Redis server via standard protocol
  */
 
-import { logger } from '@feed/shared';
-import { getRedisClient, isRedisAvailable } from '../redis';
+import { logger } from "@feed/shared";
+import { getRedisClient, isRedisAvailable } from "../redis";
 
-const CACHE_BIGINT_MARKER = '__feedCacheBigInt__';
+const CACHE_BIGINT_MARKER = "__feedCacheBigInt__";
 
 function cacheJsonReplacer(_key: string, value: unknown): unknown {
-  if (typeof value === 'bigint') {
+  if (typeof value === "bigint") {
     return { [CACHE_BIGINT_MARKER]: value.toString() };
   }
   return value;
@@ -27,12 +27,12 @@ function cacheJsonReplacer(_key: string, value: unknown): unknown {
 
 function cacheJsonReviver(_key: string, value: unknown): unknown {
   if (
-    typeof value === 'object' &&
+    typeof value === "object" &&
     value !== null &&
     CACHE_BIGINT_MARKER in value
   ) {
     const markerValue = (value as Record<string, unknown>)[CACHE_BIGINT_MARKER];
-    if (typeof markerValue === 'string') {
+    if (typeof markerValue === "string") {
       return BigInt(markerValue);
     }
   }
@@ -78,12 +78,12 @@ const memoryCache = new Map<string, CacheEntry<unknown>>();
  * for consistent cache key naming.
  */
 export const CACHE_KEYS = {
-  POST: 'post',
-  POSTS_LIST: 'posts:list',
-  POSTS_BY_ACTOR: 'posts:actor',
-  POSTS_FOLLOWING: 'posts:following',
-  USER: 'user',
-  USER_BALANCE: 'user:balance',
+  POST: "post",
+  POSTS_LIST: "posts:list",
+  POSTS_BY_ACTOR: "posts:actor",
+  POSTS_FOLLOWING: "posts:following",
+  USER: "user",
+  USER_BALANCE: "user:balance",
   /**
    * Unified namespace for identifier-based user lookups (id, privyId, username)
    *
@@ -98,34 +98,34 @@ export const CACHE_KEYS = {
    *
    * @see {@link packages/api/src/users/user-lookup.ts} for implementation details
    */
-  USER_IDENTIFIER: 'user:identifier',
-  ACTOR: 'actor',
-  ORGANIZATION: 'org',
-  MARKET: 'market',
-  MARKETS_LIST: 'markets:list',
+  USER_IDENTIFIER: "user:identifier",
+  ACTOR: "actor",
+  ORGANIZATION: "org",
+  MARKET: "market",
+  MARKETS_LIST: "markets:list",
   /**
    * GET /api/markets/perps full snapshot (cache-aside; invalidated on perp trades).
    * WHY separate from MARKETS_LIST: MARKETS_LIST is the engine-level cache;
    * this is the API-route-level cache with its own TTL and invalidation points.
    */
-  MARKETS_API_PERPS: 'markets:api:perps',
+  MARKETS_API_PERPS: "markets:api:perps",
   /**
    * GET /api/markets/predictions active (unresolved) list when unpaginated.
    * WHY not per-page keys: The screener always loads the full list; caching
    * one key ('all') gives high hit rate. Paginated requests bypass this cache.
    */
-  MARKETS_API_PREDICTIONS_LIST: 'markets:api:predictions:list',
+  MARKETS_API_PREDICTIONS_LIST: "markets:api:predictions:list",
   /**
    * Per-user prediction positions slice for GET /api/markets/predictions?userId=.
    * WHY per-user: Position values (currentValue, unrealizedPnL) depend on which
    * positions the user holds — can't share between users. Keyed by userId so
    * one user's trade only invalidates their own entry.
    */
-  MARKETS_API_PREDICTIONS_POSITIONS: 'markets:api:predictions:positions',
-  ACTIVE_MARKETS: 'markets:active', // Active markets for idempotency checks
-  TRENDING_TAGS: 'trending:tags',
-  WIDGET: 'widget',
-  NFT_OWNERSHIP: 'nft:ownership',
+  MARKETS_API_PREDICTIONS_POSITIONS: "markets:api:predictions:positions",
+  ACTIVE_MARKETS: "markets:active", // Active markets for idempotency checks
+  TRENDING_TAGS: "trending:tags",
+  WIDGET: "widget",
+  NFT_OWNERSHIP: "nft:ownership",
 } as const;
 
 /**
@@ -216,9 +216,9 @@ function getThunderingHerdBeta(): number {
   const parsed = Number.parseFloat(envValue);
   if (Number.isNaN(parsed)) {
     logger.warn(
-      'Invalid CACHE_THUNDERING_HERD_BETA value, using default',
+      "Invalid CACHE_THUNDERING_HERD_BETA value, using default",
       { envValue, default: DEFAULT_BETA },
-      'CacheService'
+      "CacheService",
     );
     return DEFAULT_BETA;
   }
@@ -227,9 +227,9 @@ function getThunderingHerdBeta(): number {
   const clamped = Math.min(MAX_BETA, Math.max(MIN_BETA, parsed));
   if (clamped !== parsed) {
     logger.warn(
-      'CACHE_THUNDERING_HERD_BETA clamped to recommended range',
+      "CACHE_THUNDERING_HERD_BETA clamped to recommended range",
       { original: parsed, clamped, range: `${MIN_BETA}-${MAX_BETA}` },
-      'CacheService'
+      "CacheService",
     );
   }
 
@@ -283,7 +283,7 @@ setInterval(cleanMemoryCache, 60000);
  */
 export async function getCache<T>(
   key: string,
-  options: CacheOptions = {}
+  options: CacheOptions = {},
 ): Promise<T | null> {
   const fullKey = options.namespace ? `${options.namespace}:${key}` : key;
 
@@ -292,20 +292,20 @@ export async function getCache<T>(
     const cached = await client.get(fullKey);
 
     if (cached !== null && cached !== undefined) {
-      if (!cached || cached.trim() === '') {
+      if (!cached || cached.trim() === "") {
         logger.warn(
-          'Empty cached value in Redis',
+          "Empty cached value in Redis",
           { key: fullKey },
-          'CacheService'
+          "CacheService",
         );
         return null;
       }
 
-      logger.debug('Cache hit (Redis)', { key: fullKey }, 'CacheService');
+      logger.debug("Cache hit (Redis)", { key: fullKey }, "CacheService");
       return parseCacheValue<T>(cached);
     }
 
-    logger.debug('Cache miss (Redis)', { key: fullKey }, 'CacheService');
+    logger.debug("Cache miss (Redis)", { key: fullKey }, "CacheService");
     return null;
   }
 
@@ -313,14 +313,14 @@ export async function getCache<T>(
 
   if (entry) {
     if (entry.expiresAt > Date.now()) {
-      logger.debug('Cache hit (Memory)', { key: fullKey }, 'CacheService');
+      logger.debug("Cache hit (Memory)", { key: fullKey }, "CacheService");
       return entry.value as T;
     }
     memoryCache.delete(fullKey);
-    logger.debug('Cache expired (Memory)', { key: fullKey }, 'CacheService');
+    logger.debug("Cache expired (Memory)", { key: fullKey }, "CacheService");
   }
 
-  logger.debug('Cache miss (Memory)', { key: fullKey }, 'CacheService');
+  logger.debug("Cache miss (Memory)", { key: fullKey }, "CacheService");
   return null;
 }
 
@@ -346,7 +346,7 @@ export async function getCache<T>(
 export async function setCache<T>(
   key: string,
   value: T,
-  options: CacheOptions = {}
+  options: CacheOptions = {},
 ): Promise<void> {
   const fullKey = options.namespace ? `${options.namespace}:${key}` : key;
   const ttl = options.ttl || 300;
@@ -361,25 +361,25 @@ export async function setCache<T>(
   if (client) {
     if (serialized.length > MAX_REDIS_PAYLOAD_BYTES) {
       logger.warn(
-        'Cache payload too large for Redis, falling back to memory cache',
+        "Cache payload too large for Redis, falling back to memory cache",
         {
           key: fullKey,
           sizeBytes: serialized.length,
           maxBytes: MAX_REDIS_PAYLOAD_BYTES,
         },
-        'CacheService'
+        "CacheService",
       );
       // Fall through to in-memory cache below
     } else {
-      await client.set(fullKey, serialized, 'EX', ttl);
-      logger.debug('Cache set (Redis)', { key: fullKey, ttl }, 'CacheService');
+      await client.set(fullKey, serialized, "EX", ttl);
+      logger.debug("Cache set (Redis)", { key: fullKey, ttl }, "CacheService");
       return;
     }
   }
 
   const expiresAt = Date.now() + ttl * 1000;
   memoryCache.set(fullKey, { value, expiresAt });
-  logger.debug('Cache set (Memory)', { key: fullKey, ttl }, 'CacheService');
+  logger.debug("Cache set (Memory)", { key: fullKey, ttl }, "CacheService");
 }
 
 /**
@@ -398,18 +398,18 @@ export async function setCache<T>(
  */
 export async function invalidateCache(
   key: string,
-  options: CacheOptions = {}
+  options: CacheOptions = {},
 ): Promise<void> {
   const fullKey = options.namespace ? `${options.namespace}:${key}` : key;
 
   const client = getRedisClient();
   if (client) {
     await client.del(fullKey);
-    logger.debug('Cache invalidated (Redis)', { key: fullKey }, 'CacheService');
+    logger.debug("Cache invalidated (Redis)", { key: fullKey }, "CacheService");
   }
 
   memoryCache.delete(fullKey);
-  logger.debug('Cache invalidated (Memory)', { key: fullKey }, 'CacheService');
+  logger.debug("Cache invalidated (Memory)", { key: fullKey }, "CacheService");
 }
 
 /**
@@ -429,7 +429,7 @@ export async function invalidateCache(
  */
 export async function invalidateCachePattern(
   pattern: string,
-  options: CacheOptions = {}
+  options: CacheOptions = {},
 ): Promise<void> {
   const fullPattern = options.namespace
     ? `${options.namespace}:${pattern}`
@@ -442,36 +442,36 @@ export async function invalidateCachePattern(
     const stream = client.scanStream({ match: fullPattern });
     const keys: string[] = [];
 
-    stream.on('data', (resultKeys: string[]) => {
+    stream.on("data", (resultKeys: string[]) => {
       keys.push(...resultKeys);
     });
 
     await new Promise<void>((resolve, reject) => {
-      stream.on('end', () => resolve());
-      stream.on('error', reject);
+      stream.on("end", () => resolve());
+      stream.on("error", reject);
     });
 
     if (keys.length > 0) {
       await client.del(...keys);
       logger.info(
-        'Cache pattern invalidated (Redis)',
+        "Cache pattern invalidated (Redis)",
         { pattern: fullPattern, count: keys.length },
-        'CacheService'
+        "CacheService",
       );
     }
   }
 
   // Invalidate in memory cache
   const memoryKeys = Array.from(memoryCache.keys()).filter((key) =>
-    key.includes(pattern)
+    key.includes(pattern),
   );
   memoryKeys.forEach((key) => memoryCache.delete(key));
 
   if (memoryKeys.length > 0) {
     logger.debug(
-      'Cache pattern invalidated (Memory)',
+      "Cache pattern invalidated (Memory)",
       { pattern: fullPattern, count: memoryKeys.length },
-      'CacheService'
+      "CacheService",
     );
   }
 }
@@ -505,7 +505,7 @@ export async function invalidateCachePattern(
 export async function getCacheOrFetch<T>(
   key: string,
   fetchFn: () => Promise<T>,
-  options: CacheOptions = {}
+  options: CacheOptions = {},
 ): Promise<T> {
   const fullKey = options.namespace ? `${options.namespace}:${key}` : key;
   const ttl = options.ttl || 300;
@@ -525,7 +525,7 @@ export async function getCacheOrFetch<T>(
     if (
       valueResult !== null &&
       valueResult !== undefined &&
-      valueResult.trim() !== ''
+      valueResult.trim() !== ""
     ) {
       try {
         cached = parseCacheValue<T>(valueResult);
@@ -533,9 +533,9 @@ export async function getCacheOrFetch<T>(
       } catch (parseError) {
         // Malformed cache entry - treat as cache miss and remove bad key
         logger.warn(
-          'Failed to parse cached value, removing corrupted entry',
+          "Failed to parse cached value, removing corrupted entry",
           { key: fullKey, error: parseError },
-          'CacheService'
+          "CacheService",
         );
         void client.del(fullKey);
         cached = null;
@@ -565,9 +565,9 @@ export async function getCacheOrFetch<T>(
 
     if (shouldRefreshEarly) {
       logger.debug(
-        'Thundering herd: early refresh triggered',
+        "Thundering herd: early refresh triggered",
         { key: fullKey, remainingTtl, ttl },
-        'CacheService'
+        "CacheService",
       );
       // Refresh in background, return cached data immediately
       void (async () => {
@@ -576,9 +576,9 @@ export async function getCacheOrFetch<T>(
           await setCache(key, freshData, options);
         } catch (error) {
           logger.warn(
-            'Background cache refresh failed',
+            "Background cache refresh failed",
             { key: fullKey, error },
-            'CacheService'
+            "CacheService",
           );
         }
       })();
@@ -588,7 +588,7 @@ export async function getCacheOrFetch<T>(
   }
 
   // Cache miss or expired - fetch from source
-  logger.debug('Fetching data for cache', { key }, 'CacheService');
+  logger.debug("Fetching data for cache", { key }, "CacheService");
   const data = await fetchFn();
 
   // Cache the result
@@ -610,7 +610,7 @@ export async function getCacheOrFetch<T>(
 export async function warmCache<T>(
   key: string,
   value: T,
-  options: CacheOptions = {}
+  options: CacheOptions = {},
 ): Promise<void> {
   await setCache(key, value, options);
 }
@@ -641,7 +641,7 @@ export async function warmCache<T>(
  */
 export async function getCacheBatch<T>(
   keys: string[],
-  options: CacheOptions = {}
+  options: CacheOptions = {},
 ): Promise<Map<string, T>> {
   if (keys.length === 0) {
     return new Map();
@@ -649,7 +649,7 @@ export async function getCacheBatch<T>(
 
   const result = new Map<string, T>();
   const fullKeys = keys.map((key) =>
-    options.namespace ? `${options.namespace}:${key}` : key
+    options.namespace ? `${options.namespace}:${key}` : key,
   );
   const keyToOriginal = new Map(fullKeys.map((fk, i) => [fk, keys[i]]));
 
@@ -667,31 +667,31 @@ export async function getCacheBatch<T>(
           originalKey !== undefined &&
           value !== null &&
           value !== undefined &&
-          value.trim() !== ''
+          value.trim() !== ""
         ) {
           try {
             result.set(originalKey, parseCacheValue<T>(value));
           } catch {
             logger.warn(
-              'Failed to parse cached value',
+              "Failed to parse cached value",
               { key: fullKeys[i] },
-              'CacheService'
+              "CacheService",
             );
           }
         }
       }
 
       logger.debug(
-        'Batch cache get (Redis)',
+        "Batch cache get (Redis)",
         { requested: keys.length, found: result.size },
-        'CacheService'
+        "CacheService",
       );
       return result;
     } catch (error) {
       logger.warn(
-        'Batch cache get failed, falling back to memory',
+        "Batch cache get failed, falling back to memory",
         { error },
-        'CacheService'
+        "CacheService",
       );
     }
   }
@@ -708,9 +708,9 @@ export async function getCacheBatch<T>(
   }
 
   logger.debug(
-    'Batch cache get (Memory)',
+    "Batch cache get (Memory)",
     { requested: keys.length, found: result.size },
-    'CacheService'
+    "CacheService",
   );
   return result;
 }
@@ -735,7 +735,7 @@ export async function getCacheBatch<T>(
  */
 export async function setCacheBatch<T>(
   entries: Map<string, T> | Array<[string, T]>,
-  options: CacheOptions = {}
+  options: CacheOptions = {},
 ): Promise<void> {
   const entriesArray = entries instanceof Map ? Array.from(entries) : entries;
 
@@ -754,22 +754,22 @@ export async function setCacheBatch<T>(
       for (const [key, value] of entriesArray) {
         const fullKey = options.namespace ? `${options.namespace}:${key}` : key;
         const serialized = serializeCacheValue(value);
-        pipeline.set(fullKey, serialized, 'EX', ttl);
+        pipeline.set(fullKey, serialized, "EX", ttl);
       }
 
       await pipeline.exec();
 
       logger.debug(
-        'Batch cache set (Redis)',
+        "Batch cache set (Redis)",
         { count: entriesArray.length, ttl },
-        'CacheService'
+        "CacheService",
       );
       return;
     } catch (error) {
       logger.warn(
-        'Batch cache set failed, falling back to memory',
+        "Batch cache set failed, falling back to memory",
         { error },
-        'CacheService'
+        "CacheService",
       );
     }
   }
@@ -783,9 +783,9 @@ export async function setCacheBatch<T>(
   }
 
   logger.debug(
-    'Batch cache set (Memory)',
+    "Batch cache set (Memory)",
     { count: entriesArray.length, ttl },
-    'CacheService'
+    "CacheService",
   );
 }
 
@@ -821,7 +821,7 @@ export async function setCacheBatch<T>(
 export async function getCacheBatchOrFetch<T>(
   keys: string[],
   fetchFn: (keys: string[]) => Promise<Map<string, T>>,
-  options: CacheOptions = {}
+  options: CacheOptions = {},
 ): Promise<Map<string, T>> {
   if (keys.length === 0) {
     return new Map();
@@ -835,18 +835,18 @@ export async function getCacheBatchOrFetch<T>(
 
   if (missingKeys.length === 0) {
     logger.debug(
-      'Batch cache hit (all)',
+      "Batch cache hit (all)",
       { count: keys.length },
-      'CacheService'
+      "CacheService",
     );
     return cachedValues;
   }
 
   // Step 3: Fetch missing values
   logger.debug(
-    'Batch cache miss',
+    "Batch cache miss",
     { cached: cachedValues.size, missing: missingKeys.length },
-    'CacheService'
+    "CacheService",
   );
 
   const fetchedValues = await fetchFn(missingKeys);
@@ -906,7 +906,7 @@ export function getCacheStats() {
  * impact application performance.
  */
 export async function clearAllCache(): Promise<void> {
-  logger.warn('Clearing all cache', undefined, 'CacheService');
+  logger.warn("Clearing all cache", undefined, "CacheService");
 
   // Clear memory cache
   memoryCache.clear();
@@ -915,9 +915,9 @@ export async function clearAllCache(): Promise<void> {
   if (isRedisAvailable()) {
     // Only clear our namespaced keys, not the entire Redis instance
     logger.warn(
-      'Redis cache clear requested but not implemented for safety',
+      "Redis cache clear requested but not implemented for safety",
       undefined,
-      'CacheService'
+      "CacheService",
     );
   }
 }

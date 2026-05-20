@@ -4,38 +4,38 @@ import {
   publicRateLimit,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { toISO } from '@feed/shared';
+} from "@feed/api";
+import { toISO } from "@feed/shared";
 
-import type { NextRequest } from 'next/server';
-import { decodeCursor, encodeCursor, findCursorIndex } from '../feed-cursor';
+import type { NextRequest } from "next/server";
+import { decodeCursor, encodeCursor, findCursorIndex } from "../feed-cursor";
 import {
   buildStoriesFeed,
   enrichStoriesForUser,
   type StoriesPipelineResult,
-} from './pipeline';
+} from "./pipeline";
 
 const PAGE_SIZE = 20;
 const CACHE_TTL_S = 60;
 
 // Stories are globally scored (not user-personalised), so all users share one
 // cached snapshot. Per-user like/share state is applied after cache lookup.
-const CACHE_KEY = 'feed:stories:v1:current';
+const CACHE_KEY = "feed:stories:v1:current";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   const {
     error: rateLimitError,
     user,
     rateLimitInfo,
-  } = await publicRateLimit(request, 'read');
+  } = await publicRateLimit(request, "read");
   if (rateLimitError) {
     return rateLimitError;
   }
 
   const { searchParams } = request.nextUrl;
-  const cursorParam = searchParams.get('cursor');
-  const rawOffset = Number(searchParams.get('offset') ?? 0);
-  const rawLimit = Number(searchParams.get('limit') ?? PAGE_SIZE);
+  const cursorParam = searchParams.get("cursor");
+  const rawOffset = Number(searchParams.get("offset") ?? 0);
+  const rawLimit = Number(searchParams.get("limit") ?? PAGE_SIZE);
   const limit = Number.isFinite(rawLimit)
     ? Math.min(PAGE_SIZE, Math.max(1, rawLimit))
     : PAGE_SIZE;
@@ -46,7 +46,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   const fullResult = await getCacheOrFetch<StoriesPipelineResult>(
     CACHE_KEY,
     buildStoriesFeed,
-    { ttl: CACHE_TTL_S }
+    { ttl: CACHE_TTL_S },
   );
 
   // Deep-clone stories before per-user enrichment to avoid mutating the shared
@@ -71,7 +71,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   const nextCursor = lastStory
     ? encodeCursor(
         lastStory.finalRankScore ?? lastStory.storyScore,
-        lastStory.storyKey
+        lastStory.storyKey,
       )
     : null;
 
@@ -87,13 +87,13 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
   if (rateLimitInfo) {
     if (userId) {
-      response.headers.set('Cache-Control', 'private, no-store');
-      response.headers.set('X-RateLimit-Limit', rateLimitInfo.limit.toString());
+      response.headers.set("Cache-Control", "private, no-store");
+      response.headers.set("X-RateLimit-Limit", rateLimitInfo.limit.toString());
       response.headers.set(
-        'X-RateLimit-Remaining',
-        rateLimitInfo.remaining.toString()
+        "X-RateLimit-Remaining",
+        rateLimitInfo.remaining.toString(),
       );
-      response.headers.set('X-RateLimit-Reset', toISO(rateLimitInfo.resetAt));
+      response.headers.set("X-RateLimit-Reset", toISO(rateLimitInfo.resetAt));
     } else {
       addPublicReadHeaders(response, rateLimitInfo);
     }

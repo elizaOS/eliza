@@ -1,4 +1,4 @@
-import { relations } from 'drizzle-orm';
+import { relations } from "drizzle-orm";
 import {
   boolean,
   index,
@@ -7,9 +7,9 @@ import {
   pgTable,
   text,
   timestamp,
-} from 'drizzle-orm/pg-core';
-import type { JsonValue } from '../types';
-import { users } from './users';
+} from "drizzle-orm/pg-core";
+import type { JsonValue } from "../types";
+import { users } from "./users";
 
 /**
  * Price alert configuration for agent-monitored price thresholds.
@@ -21,11 +21,11 @@ export interface PriceAlert {
   /** Must match perpMarketSnapshots.ticker (e.g., "OPENAGI", "TSLAI") */
   tokenSymbol: string;
   /** Threshold direction */
-  condition: 'below' | 'above';
+  condition: "below" | "above";
   /** Price threshold to trigger on */
   threshold: number;
   /** Where to deliver the alert */
-  deliveryChannel: 'team_chat' | 'group';
+  deliveryChannel: "team_chat" | "group";
   /** Group chat ID — required when deliveryChannel is 'group' */
   deliveryChatId?: string;
   /** Whether this alert is active */
@@ -44,69 +44,69 @@ export interface PriceAlert {
  * Only created when a user enables agent functionality.
  */
 export const userAgentConfigs = pgTable(
-  'UserAgentConfig',
+  "UserAgentConfig",
   {
-    id: text('id').primaryKey(),
-    userId: text('userId').notNull().unique(),
+    id: text("id").primaryKey(),
+    userId: text("userId").notNull().unique(),
 
     // Agent personality and behavior
-    personality: text('personality'),
-    systemPrompt: text('system'),
-    tradingStrategy: text('tradingStrategy'),
-    style: json('style').$type<JsonValue>(),
-    messageExamples: json('messageExamples').$type<JsonValue>(),
-    personaPrompt: text('personaPrompt'),
+    personality: text("personality"),
+    systemPrompt: text("system"),
+    tradingStrategy: text("tradingStrategy"),
+    style: json("style").$type<JsonValue>(),
+    messageExamples: json("messageExamples").$type<JsonValue>(),
+    personaPrompt: text("personaPrompt"),
 
     // Goals and constraints
-    goals: json('goals').$type<JsonValue>(),
-    directives: json('directives').$type<JsonValue>(),
-    constraints: json('constraints').$type<JsonValue>(),
+    goals: json("goals").$type<JsonValue>(),
+    directives: json("directives").$type<JsonValue>(),
+    constraints: json("constraints").$type<JsonValue>(),
 
     // Price alerts - monitored during each agent tick
-    priceAlerts: json('priceAlerts').$type<PriceAlert[]>().default([]),
+    priceAlerts: json("priceAlerts").$type<PriceAlert[]>().default([]),
 
     // Agent alignment and team for simulation and RL training
-    alignment: text('alignment').notNull().default('neutral'),
-    team: text('team').notNull().default('gray'),
+    alignment: text("alignment").notNull().default("neutral"),
+    team: text("team").notNull().default("gray"),
 
     // Agent settings
-    planningHorizon: text('planningHorizon').notNull().default('single'),
-    riskTolerance: text('riskTolerance').notNull().default('medium'),
-    maxActionsPerTick: integer('maxActionsPerTick').notNull().default(3),
-    modelTier: text('modelTier').notNull().default('free'),
+    planningHorizon: text("planningHorizon").notNull().default("single"),
+    riskTolerance: text("riskTolerance").notNull().default("medium"),
+    maxActionsPerTick: integer("maxActionsPerTick").notNull().default(3),
+    modelTier: text("modelTier").notNull().default("free"),
 
     // Autonomous behavior flags
-    autonomousPosting: boolean('autonomousPosting').notNull().default(false),
-    autonomousCommenting: boolean('autonomousCommenting')
+    autonomousPosting: boolean("autonomousPosting").notNull().default(false),
+    autonomousCommenting: boolean("autonomousCommenting")
       .notNull()
       .default(false),
     // autonomousTrading defaults to true - agents should trade by default per user feedback
-    autonomousTrading: boolean('autonomousTrading').notNull().default(true),
-    autonomousDMs: boolean('autonomousDMs').notNull().default(false),
-    autonomousGroupChats: boolean('autonomousGroupChats')
+    autonomousTrading: boolean("autonomousTrading").notNull().default(true),
+    autonomousDMs: boolean("autonomousDMs").notNull().default(false),
+    autonomousGroupChats: boolean("autonomousGroupChats")
       .notNull()
       .default(false),
-    autonomousTransfers: boolean('autonomousTransfers')
+    autonomousTransfers: boolean("autonomousTransfers")
       .notNull()
       .default(false),
-    a2aEnabled: boolean('a2aEnabled').notNull().default(false),
+    a2aEnabled: boolean("a2aEnabled").notNull().default(false),
 
     // Runtime state
-    status: text('status').notNull().default('idle'),
-    errorMessage: text('errorMessage'),
-    lastTickAt: timestamp('lastTickAt', { mode: 'date' }),
-    lastChatAt: timestamp('lastChatAt', { mode: 'date' }),
+    status: text("status").notNull().default("idle"),
+    errorMessage: text("errorMessage"),
+    lastTickAt: timestamp("lastTickAt", { mode: "date" }),
+    lastChatAt: timestamp("lastChatAt", { mode: "date" }),
 
     // Timestamps
-    createdAt: timestamp('createdAt', { mode: 'date' }).notNull().defaultNow(),
-    updatedAt: timestamp('updatedAt', { mode: 'date' }).notNull(),
+    createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt", { mode: "date" }).notNull(),
   },
   (table) => [
-    index('UserAgentConfig_userId_idx').on(table.userId),
-    index('UserAgentConfig_status_idx').on(table.status),
-    index('UserAgentConfig_autonomousTrading_idx').on(table.autonomousTrading),
-    index('UserAgentConfig_alignment_team_idx').on(table.alignment, table.team),
-  ]
+    index("UserAgentConfig_userId_idx").on(table.userId),
+    index("UserAgentConfig_status_idx").on(table.status),
+    index("UserAgentConfig_autonomousTrading_idx").on(table.autonomousTrading),
+    index("UserAgentConfig_alignment_team_idx").on(table.alignment, table.team),
+  ],
 );
 
 // Relations
@@ -117,7 +117,7 @@ export const userAgentConfigsRelations = relations(
       fields: [userAgentConfigs.userId],
       references: [users.id],
     }),
-  })
+  }),
 );
 
 // Type exports

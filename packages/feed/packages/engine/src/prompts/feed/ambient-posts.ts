@@ -1,4 +1,4 @@
-import { definePrompt } from '../define-prompt';
+import { definePrompt } from "../define-prompt";
 
 /**
  * Prompt for generating a single ambient post from an NPC actor.
@@ -12,10 +12,10 @@ import { definePrompt } from '../define-prompt';
  * Called PER CHARACTER (not batched) with full character context.
  */
 export const ambientPosts = definePrompt({
-  id: 'ambient-posts',
-  version: '6.0.0',
-  category: 'feed',
-  description: 'Generates ambient post — actor identity first, minimal rules',
+  id: "ambient-posts",
+  version: "6.0.0",
+  category: "feed",
+  description: "Generates ambient post — actor identity first, minimal rules",
   temperature: 1.1,
   maxTokens: 8000,
   template: `You are {{characterName}}.

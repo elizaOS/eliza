@@ -1,15 +1,15 @@
-'use client';
+"use client";
 
-import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { memo } from 'react';
-import { Avatar } from '@/components/shared/Avatar';
-import { Skeleton } from '@/components/shared/Skeleton';
-import type { ProfileFormData } from '../hooks/useAgentForm';
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { memo } from "react";
+import { Avatar } from "@/components/shared/Avatar";
+import { Skeleton } from "@/components/shared/Skeleton";
+import type { ProfileFormData } from "../hooks/useAgentForm";
 
 interface ProfilePreviewCardProps {
   profileData: ProfileFormData;
-  onCycleProfilePic: (direction: 'next' | 'prev') => void;
-  onCycleBanner: (direction: 'next' | 'prev') => void;
+  onCycleProfilePic: (direction: "next" | "prev") => void;
+  onCycleBanner: (direction: "next" | "prev") => void;
   isLoading?: boolean;
 }
 
@@ -53,7 +53,7 @@ export const ProfilePreviewCard = memo(function ProfilePreviewCard({
         )}
         <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
           <button
-            onClick={() => onCycleBanner('prev')}
+            onClick={() => onCycleBanner("prev")}
             className="rounded-lg bg-background/80 p-1.5 hover:bg-background"
             aria-label="Previous banner"
             type="button"
@@ -61,7 +61,7 @@ export const ProfilePreviewCard = memo(function ProfilePreviewCard({
             <ChevronLeft className="h-4 w-4" />
           </button>
           <button
-            onClick={() => onCycleBanner('next')}
+            onClick={() => onCycleBanner("next")}
             className="rounded-lg bg-background/80 p-1.5 hover:bg-background"
             aria-label="Next banner"
             type="button"
@@ -76,14 +76,14 @@ export const ProfilePreviewCard = memo(function ProfilePreviewCard({
         {/* Avatar */}
         <div className="group absolute top-0 -translate-y-1/2">
           <Avatar
-            id={profileData.username || 'placeholder'}
+            id={profileData.username || "placeholder"}
             src={profileData.profileImageUrl || undefined}
             size="lg"
             className="ring-4 ring-background"
           />
           <div className="absolute inset-0 flex items-center justify-center gap-1 rounded-full bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
             <button
-              onClick={() => onCycleProfilePic('prev')}
+              onClick={() => onCycleProfilePic("prev")}
               className="rounded-lg bg-background/80 p-1 hover:bg-background"
               aria-label="Previous avatar"
               type="button"
@@ -91,7 +91,7 @@ export const ProfilePreviewCard = memo(function ProfilePreviewCard({
               <ChevronLeft className="h-3 w-3" />
             </button>
             <button
-              onClick={() => onCycleProfilePic('next')}
+              onClick={() => onCycleProfilePic("next")}
               className="rounded-lg bg-background/80 p-1 hover:bg-background"
               aria-label="Next avatar"
               type="button"
@@ -104,10 +104,10 @@ export const ProfilePreviewCard = memo(function ProfilePreviewCard({
         {/* Info */}
         <div className="mt-2">
           <h3 className="font-bold text-lg">
-            {profileData.displayName || 'Agent Name'}
+            {profileData.displayName || "Agent Name"}
           </h3>
           <p className="text-muted-foreground text-sm">
-            @{profileData.username || 'username'}
+            @{profileData.username || "username"}
           </p>
 
           {profileData.bio && (

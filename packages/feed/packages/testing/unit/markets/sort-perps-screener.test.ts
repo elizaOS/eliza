@@ -1,16 +1,16 @@
-import { describe, expect, it } from 'bun:test';
-import { sortPerpsForScreener } from '../../../../apps/web/src/app/markets/_lib/sortPerpsForScreener';
-import type { PerpMarket } from '../../../../apps/web/src/types/markets';
+import { describe, expect, it } from "bun:test";
+import { sortPerpsForScreener } from "../../../../apps/web/src/app/markets/_lib/sortPerpsForScreener";
+import type { PerpMarket } from "../../../../apps/web/src/types/markets";
 
 function mockPerp(
   ticker: string,
   volume24h: number,
   changePercent24h: number,
-  opts?: Partial<PerpMarket>
+  opts?: Partial<PerpMarket>,
 ): PerpMarket {
   return {
     ticker,
-    organizationId: 'org',
+    organizationId: "org",
     name: ticker,
     currentPrice: 100,
     change24h: changePercent24h,
@@ -30,116 +30,116 @@ function mockPerp(
   };
 }
 
-describe('sortPerpsForScreener', () => {
+describe("sortPerpsForScreener", () => {
   const markets = [
-    mockPerp('LOW', 100, 1),
-    mockPerp('HIGH_VOL', 900, 2),
-    mockPerp('BIG_MOVE', 200, 50),
+    mockPerp("LOW", 100, 1),
+    mockPerp("HIGH_VOL", 900, 2),
+    mockPerp("BIG_MOVE", 200, 50),
   ];
 
-  it('volume24h desc sorts by volume descending', () => {
+  it("volume24h desc sorts by volume descending", () => {
     const out = sortPerpsForScreener(
       markets,
-      { key: 'volume24h', dir: 'desc' },
-      10
+      { key: "volume24h", dir: "desc" },
+      10,
     );
-    expect(out[0]?.ticker).toBe('HIGH_VOL');
-    expect(out[1]?.ticker).toBe('BIG_MOVE');
-    expect(out[2]?.ticker).toBe('LOW');
+    expect(out[0]?.ticker).toBe("HIGH_VOL");
+    expect(out[1]?.ticker).toBe("BIG_MOVE");
+    expect(out[2]?.ticker).toBe("LOW");
   });
 
-  it('asset asc sorts alphabetically by ticker', () => {
-    const out = sortPerpsForScreener(markets, { key: 'asset', dir: 'asc' }, 10);
-    expect(out[0]?.ticker).toBe('BIG_MOVE');
-    expect(out[1]?.ticker).toBe('HIGH_VOL');
-    expect(out[2]?.ticker).toBe('LOW');
+  it("asset asc sorts alphabetically by ticker", () => {
+    const out = sortPerpsForScreener(markets, { key: "asset", dir: "asc" }, 10);
+    expect(out[0]?.ticker).toBe("BIG_MOVE");
+    expect(out[1]?.ticker).toBe("HIGH_VOL");
+    expect(out[2]?.ticker).toBe("LOW");
   });
 
-  it('asset desc sorts reverse-alphabetically', () => {
+  it("asset desc sorts reverse-alphabetically", () => {
     const out = sortPerpsForScreener(
       markets,
-      { key: 'asset', dir: 'desc' },
-      10
+      { key: "asset", dir: "desc" },
+      10,
     );
-    expect(out[0]?.ticker).toBe('LOW');
-    expect(out[2]?.ticker).toBe('BIG_MOVE');
+    expect(out[0]?.ticker).toBe("LOW");
+    expect(out[2]?.ticker).toBe("BIG_MOVE");
   });
 
-  it('change24h desc sorts by change percent descending', () => {
+  it("change24h desc sorts by change percent descending", () => {
     const out = sortPerpsForScreener(
       markets,
-      { key: 'change24h', dir: 'desc' },
-      10
+      { key: "change24h", dir: "desc" },
+      10,
     );
-    expect(out[0]?.ticker).toBe('BIG_MOVE');
+    expect(out[0]?.ticker).toBe("BIG_MOVE");
   });
 
-  it('change24h asc sorts by change percent ascending', () => {
+  it("change24h asc sorts by change percent ascending", () => {
     const out = sortPerpsForScreener(
       markets,
-      { key: 'change24h', dir: 'asc' },
-      10
+      { key: "change24h", dir: "asc" },
+      10,
     );
-    expect(out[0]?.ticker).toBe('LOW');
+    expect(out[0]?.ticker).toBe("LOW");
   });
 
-  it('trending desc gives highest score to high-volume+high-change markets', () => {
+  it("trending desc gives highest score to high-volume+high-change markets", () => {
     const out = sortPerpsForScreener(
       markets,
-      { key: 'trending', dir: 'desc' },
-      10
+      { key: "trending", dir: "desc" },
+      10,
     );
-    expect(out[0]?.ticker).toBe('HIGH_VOL');
+    expect(out[0]?.ticker).toBe("HIGH_VOL");
   });
 
-  it('price desc sorts by price descending', () => {
+  it("price desc sorts by price descending", () => {
     const data = [
-      mockPerp('CHEAP', 100, 0, { currentPrice: 5 }),
-      mockPerp('MID', 100, 0, { currentPrice: 50 }),
-      mockPerp('PRICEY', 100, 0, { currentPrice: 500 }),
+      mockPerp("CHEAP", 100, 0, { currentPrice: 5 }),
+      mockPerp("MID", 100, 0, { currentPrice: 50 }),
+      mockPerp("PRICEY", 100, 0, { currentPrice: 500 }),
     ];
-    const out = sortPerpsForScreener(data, { key: 'price', dir: 'desc' }, 10);
-    expect(out[0]?.ticker).toBe('PRICEY');
-    expect(out[2]?.ticker).toBe('CHEAP');
+    const out = sortPerpsForScreener(data, { key: "price", dir: "desc" }, 10);
+    expect(out[0]?.ticker).toBe("PRICEY");
+    expect(out[2]?.ticker).toBe("CHEAP");
   });
 
-  it('openInterest desc sorts by OI descending', () => {
+  it("openInterest desc sorts by OI descending", () => {
     const data = [
-      mockPerp('LOW_OI', 100, 0, { openInterest: 10 }),
-      mockPerp('HIGH_OI', 100, 0, { openInterest: 9999 }),
+      mockPerp("LOW_OI", 100, 0, { openInterest: 10 }),
+      mockPerp("HIGH_OI", 100, 0, { openInterest: 9999 }),
     ];
     const out = sortPerpsForScreener(
       data,
-      { key: 'openInterest', dir: 'desc' },
-      10
+      { key: "openInterest", dir: "desc" },
+      10,
     );
-    expect(out[0]?.ticker).toBe('HIGH_OI');
+    expect(out[0]?.ticker).toBe("HIGH_OI");
   });
 
-  it('funding desc sorts by funding rate descending', () => {
+  it("funding desc sorts by funding rate descending", () => {
     const data = [
-      mockPerp('NEG_FR', 100, 0, {
-        fundingRate: { rate: -0.05, nextFundingTime: '', predictedRate: 0 },
+      mockPerp("NEG_FR", 100, 0, {
+        fundingRate: { rate: -0.05, nextFundingTime: "", predictedRate: 0 },
       }),
-      mockPerp('POS_FR', 100, 0, {
-        fundingRate: { rate: 0.1, nextFundingTime: '', predictedRate: 0 },
+      mockPerp("POS_FR", 100, 0, {
+        fundingRate: { rate: 0.1, nextFundingTime: "", predictedRate: 0 },
       }),
     ];
-    const out = sortPerpsForScreener(data, { key: 'funding', dir: 'desc' }, 10);
-    expect(out[0]?.ticker).toBe('POS_FR');
+    const out = sortPerpsForScreener(data, { key: "funding", dir: "desc" }, 10);
+    expect(out[0]?.ticker).toBe("POS_FR");
   });
 
-  it('respects maxRows', () => {
+  it("respects maxRows", () => {
     const out = sortPerpsForScreener(
       markets,
-      { key: 'volume24h', dir: 'desc' },
-      2
+      { key: "volume24h", dir: "desc" },
+      2,
     );
     expect(out).toHaveLength(2);
   });
 
-  it('returns empty for empty input', () => {
-    const out = sortPerpsForScreener([], { key: 'trending', dir: 'desc' }, 10);
+  it("returns empty for empty input", () => {
+    const out = sortPerpsForScreener([], { key: "trending", dir: "desc" }, 10);
     expect(out).toHaveLength(0);
   });
 });

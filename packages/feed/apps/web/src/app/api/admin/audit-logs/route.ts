@@ -64,20 +64,11 @@ import {
   requireAdmin,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import {
-  adminAuditLogs,
-  and,
-  count,
-  db,
-  desc,
-  eq,
-  lt,
-  users,
-} from '@feed/db';
-import { logger, toISO } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { z } from 'zod';
+} from "@feed/api";
+import { adminAuditLogs, and, count, db, desc, eq, lt, users } from "@feed/db";
+import { logger, toISO } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { z } from "zod";
 
 // Audit log filters schema
 // Action and resourceType accept any string value from the database
@@ -103,16 +94,16 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
   // Validate query parameters with Zod
   const parseResult = AuditLogFiltersSchema.safeParse({
-    limit: searchParams.get('limit') || undefined,
-    offset: searchParams.get('offset') || undefined,
-    cursor: searchParams.get('cursor') || undefined,
-    adminId: searchParams.get('adminId') || undefined,
-    action: searchParams.get('action') || undefined,
-    resourceType: searchParams.get('resourceType') || undefined,
+    limit: searchParams.get("limit") || undefined,
+    offset: searchParams.get("offset") || undefined,
+    cursor: searchParams.get("cursor") || undefined,
+    adminId: searchParams.get("adminId") || undefined,
+    action: searchParams.get("action") || undefined,
+    resourceType: searchParams.get("resourceType") || undefined,
   });
 
   if (!parseResult.success) {
-    return errorResponse('Invalid query parameters', 'VALIDATION_ERROR', 400, {
+    return errorResponse("Invalid query parameters", "VALIDATION_ERROR", 400, {
       details: parseResult.error.flatten(),
     });
   }
@@ -130,7 +121,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   const useCursorPagination = !!cursor;
 
   logger.info(
-    'Admin audit logs requested',
+    "Admin audit logs requested",
     {
       limit,
       offset: useCursorPagination ? undefined : offset,
@@ -138,9 +129,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       filterAdminId,
       filterAction,
       filterResourceType,
-      paginationMode: useCursorPagination ? 'cursor' : 'offset',
+      paginationMode: useCursorPagination ? "cursor" : "offset",
     },
-    'GET /api/admin/audit-logs'
+    "GET /api/admin/audit-logs",
   );
 
   // Build filter conditions (not cursor)

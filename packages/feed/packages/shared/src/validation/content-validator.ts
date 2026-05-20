@@ -25,7 +25,7 @@
  * ```
  */
 
-import { logger } from '../utils/logger';
+import { logger } from "../utils/logger";
 
 /**
  * Content Validator Class
@@ -73,15 +73,15 @@ export class ContentValidator {
    */
   static validatePostContent(
     content: unknown,
-    context?: string
+    context?: string,
   ): asserts content is string {
-    const ctx = context || 'post';
+    const ctx = context || "post";
 
     if (content === null || content === undefined) {
       throw new Error(`${ctx}: content is null or undefined`);
     }
 
-    if (typeof content !== 'string') {
+    if (typeof content !== "string") {
       throw new Error(`${ctx}: content must be string, got ${typeof content}`);
     }
 
@@ -96,10 +96,10 @@ export class ContentValidator {
           length: content.length,
           max: ContentValidator.MAX_POST_LENGTH,
         },
-        'ContentValidator'
+        "ContentValidator",
       );
       throw new Error(
-        `${ctx}: content exceeds maximum length (${ContentValidator.MAX_POST_LENGTH} chars)`
+        `${ctx}: content exceeds maximum length (${ContentValidator.MAX_POST_LENGTH} chars)`,
       );
     }
   }
@@ -118,17 +118,17 @@ export class ContentValidator {
    */
   static validateEventDescription(
     description: unknown,
-    context?: string
+    context?: string,
   ): asserts description is string {
-    const ctx = context || 'event';
+    const ctx = context || "event";
 
     if (description === null || description === undefined) {
       throw new Error(`${ctx}: description is null or undefined`);
     }
 
-    if (typeof description !== 'string') {
+    if (typeof description !== "string") {
       throw new Error(
-        `${ctx}: description must be string, got ${typeof description}`
+        `${ctx}: description must be string, got ${typeof description}`,
       );
     }
 
@@ -143,7 +143,7 @@ export class ContentValidator {
           length: description.length,
           max: ContentValidator.MAX_EVENT_DESCRIPTION,
         },
-        'ContentValidator'
+        "ContentValidator",
       );
       // Don't throw - just warn (truncation happens later)
     }
@@ -162,15 +162,15 @@ export class ContentValidator {
    */
   static validateQuestionText(
     text: unknown,
-    context?: string
+    context?: string,
   ): asserts text is string {
-    const ctx = context || 'question';
+    const ctx = context || "question";
 
     if (text === null || text === undefined) {
       throw new Error(`${ctx}: text is null or undefined`);
     }
 
-    if (typeof text !== 'string') {
+    if (typeof text !== "string") {
       throw new Error(`${ctx}: text must be string, got ${typeof text}`);
     }
 
@@ -180,7 +180,7 @@ export class ContentValidator {
 
     if (text.length > ContentValidator.MAX_QUESTION_TEXT) {
       throw new Error(
-        `${ctx}: text exceeds maximum length (${ContentValidator.MAX_QUESTION_TEXT} chars)`
+        `${ctx}: text exceeds maximum length (${ContentValidator.MAX_QUESTION_TEXT} chars)`,
       );
     }
   }
@@ -197,15 +197,15 @@ export class ContentValidator {
    */
   static validateEntityName(
     name: unknown,
-    context?: string
+    context?: string,
   ): asserts name is string {
-    const ctx = context || 'entity';
+    const ctx = context || "entity";
 
     if (name === null || name === undefined) {
       throw new Error(`${ctx}: name is null or undefined`);
     }
 
-    if (typeof name !== 'string') {
+    if (typeof name !== "string") {
       throw new Error(`${ctx}: name must be string, got ${typeof name}`);
     }
 
@@ -226,11 +226,11 @@ export class ContentValidator {
    */
   static validateDayNumber(
     day: unknown,
-    context?: string
+    context?: string,
   ): asserts day is number {
-    const ctx = context || 'day';
+    const ctx = context || "day";
 
-    if (typeof day !== 'number') {
+    if (typeof day !== "number") {
       throw new Error(`${ctx}: day must be number, got ${typeof day}`);
     }
 
@@ -254,7 +254,7 @@ export class ContentValidator {
    * @throws {Error} If timestamp is invalid or cannot be parsed
    */
   static validateTimestamp(timestamp: unknown, context?: string): void {
-    const ctx = context || 'timestamp';
+    const ctx = context || "timestamp";
 
     if (!timestamp) {
       throw new Error(`${ctx}: timestamp is required`);
@@ -264,15 +264,15 @@ export class ContentValidator {
 
     if (timestamp instanceof Date) {
       date = timestamp;
-    } else if (typeof timestamp === 'string') {
+    } else if (typeof timestamp === "string") {
       date = new Date(timestamp);
     } else {
       throw new Error(
-        `${ctx}: timestamp must be Date or ISO string, got ${typeof timestamp}`
+        `${ctx}: timestamp must be Date or ISO string, got ${typeof timestamp}`,
       );
     }
 
-    if (isNaN(date.getTime())) {
+    if (Number.isNaN(date.getTime())) {
       throw new Error(`${ctx}: timestamp is invalid date`);
     }
   }
@@ -313,15 +313,15 @@ export class ContentValidator {
     }
 
     logger.warn(
-      'Truncating content',
+      "Truncating content",
       {
         originalLength: content.length,
         maxLength,
       },
-      'ContentValidator'
+      "ContentValidator",
     );
 
-    return content.substring(0, maxLength - 3) + '...';
+    return `${content.substring(0, maxLength - 3)}...`;
   }
 
   /**
@@ -336,7 +336,7 @@ export class ContentValidator {
   static sanitizeContent(content: string): string {
     return content
       .trim()
-      .replace(/\u0000/g, '') // Remove null bytes
-      .replace(/[\u0001-\u0008\u000B\u000C\u000E-\u001F]/g, ''); // Remove control characters
+      .replace(/\u0000/g, "") // Remove null bytes
+      .replace(/[\u0001-\u0008\u000B\u000C\u000E-\u001F]/g, ""); // Remove control characters
   }
 }

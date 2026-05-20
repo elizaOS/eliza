@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { cn } from '@feed/shared';
-import { Search, X } from 'lucide-react';
+import { cn } from "@feed/shared";
+import { Search, X } from "lucide-react";
 
 interface ChatSearchBarProps {
   value: string;
@@ -18,15 +18,15 @@ export function ChatSearchBar({ value, onChange }: ChatSearchBarProps) {
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className={cn(
-          'w-full rounded-lg py-2 pr-9 pl-9 text-sm',
-          'message-input bg-sidebar-accent/50',
-          'text-foreground placeholder:text-muted-foreground',
-          'outline-none'
+          "w-full rounded-lg py-2 pr-9 pl-9 text-sm",
+          "message-input bg-sidebar-accent/50",
+          "text-foreground placeholder:text-muted-foreground",
+          "outline-none",
         )}
       />
       {value && (
         <button
-          onClick={() => onChange('')}
+          onClick={() => onChange("")}
           aria-label="Clear search"
           className="absolute top-1/2 right-4 flex min-h-[44px] min-w-[44px] -translate-y-1/2 items-center justify-center rounded-md transition-colors hover:bg-muted-foreground/20"
         >

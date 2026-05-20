@@ -8,27 +8,27 @@
  * @route POST /api/mcp - JSON-RPC 2.0 tool execution
  */
 
-import { withErrorHandling } from '@feed/api';
+import { withErrorHandling } from "@feed/api";
 import {
   getMCPServerInfo,
   getServerCapabilities,
   MCP_PROTOCOL_VERSIONS,
   type MCPAuthContext,
   MCPRequestHandler,
-} from '@feed/mcp';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { checkApiKey } from '@/lib/api/check-api-key';
+} from "@feed/mcp";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { checkApiKey } from "@/lib/api/check-api-key";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 /**
  * GET /api/mcp
  * Returns MCP service information and capabilities
  */
 export const GET = withErrorHandling(async function GET(request: NextRequest) {
-  const { error } = await checkApiKey(request, 'Feed MCP');
+  const { error } = await checkApiKey(request, "Feed MCP");
   if (error) return error;
 
   const serverInfo = getMCPServerInfo();
@@ -38,18 +38,18 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
     {
       service: serverInfo.name,
       version: serverInfo.version,
-      protocol: 'MCP',
+      protocol: "MCP",
       protocolVersions: MCP_PROTOCOL_VERSIONS,
       capabilities,
-      endpoint: '/api/mcp',
-      documentation: 'https://docs.feed.market/mcp',
+      endpoint: "/api/mcp",
+      documentation: "https://docs.feed.market/mcp",
     },
     {
       headers: {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'public, max-age=3600',
+        "Content-Type": "application/json",
+        "Cache-Control": "public, max-age=3600",
       },
-    }
+    },
   );
 });
 
@@ -58,9 +58,9 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
  * Handles JSON-RPC 2.0 MCP protocol requests
  */
 export const POST = withErrorHandling(async function POST(
-  request: NextRequest
+  request: NextRequest,
 ) {
-  const { error, authResult } = await checkApiKey(request, 'Feed MCP');
+  const { error, authResult } = await checkApiKey(request, "Feed MCP");
   if (error) return error;
 
   // Parse JSON-RPC request
@@ -70,15 +70,15 @@ export const POST = withErrorHandling(async function POST(
   } catch {
     return NextResponse.json(
       {
-        jsonrpc: '2.0',
-        error: { code: -32700, message: 'Parse error: Invalid JSON' },
+        jsonrpc: "2.0",
+        error: { code: -32700, message: "Parse error: Invalid JSON" },
         id: null,
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
-  logger.info('MCP request', {
+  logger.info("MCP request", {
     method: body.method,
     toolName: body.params?.name,
     authMethod: authResult?.authMethod,
@@ -87,7 +87,7 @@ export const POST = withErrorHandling(async function POST(
   });
 
   // Create authentication context for tool execution
-  const apiKey = request.headers.get('X-Feed-Api-Key');
+  const apiKey = request.headers.get("X-Feed-Api-Key");
   const authContext: MCPAuthContext = {
     apiKey: apiKey ?? undefined,
     userId: authResult?.userId,
@@ -99,12 +99,12 @@ export const POST = withErrorHandling(async function POST(
 
   // Log tool execution for audit trail
   if (
-    authResult?.authMethod === 'user-key' &&
-    body.method === 'tools/call' &&
+    authResult?.authMethod === "user-key" &&
+    body.method === "tools/call" &&
     !response.error
   ) {
     const result = response.result as { isError?: boolean } | undefined;
-    logger.info('MCP tool executed', {
+    logger.info("MCP tool executed", {
       userId: authResult.userId,
       toolName: body.params?.name,
       success: !result?.isError,
@@ -113,7 +113,7 @@ export const POST = withErrorHandling(async function POST(
 
   return NextResponse.json(response, {
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
     },
   });
 });

@@ -10,9 +10,9 @@
  * XML is more forgiving than JSON and easier for LLMs to generate correctly.
  */
 
-import { logger } from '@feed/shared';
-import type { JsonValue } from '../types/common';
-import { formatError } from '../utils/error-utils';
+import { logger } from "@feed/shared";
+import type { JsonValue } from "../types/common";
+import { formatError } from "../utils/error-utils";
 
 export interface XMLParseResult {
   success: boolean;
@@ -45,8 +45,8 @@ export function extractXMLFromText(content: string): string {
   }
 
   // If starts with XML but no closing tag found, try to extract up to last >
-  if (cleaned.startsWith('<')) {
-    const endIndex = cleaned.lastIndexOf('>');
+  if (cleaned.startsWith("<")) {
+    const endIndex = cleaned.lastIndexOf(">");
     if (endIndex !== -1) {
       return cleaned.substring(0, endIndex + 1);
     }
@@ -54,11 +54,11 @@ export function extractXMLFromText(content: string): string {
   }
 
   // Last resort: Extract everything between first < and matching >
-  const startIndex = cleaned.indexOf('<');
+  const startIndex = cleaned.indexOf("<");
   if (startIndex !== -1) {
     // Find the root tag name
     const tagMatch = cleaned.substring(startIndex).match(/<([\w-]+)[\s>]/);
-    if (tagMatch && tagMatch[1]) {
+    if (tagMatch?.[1]) {
       const tagName = tagMatch[1];
       const closingTag = `</${tagName}>`;
       const endIndex = cleaned.indexOf(closingTag, startIndex);
@@ -84,19 +84,19 @@ export function extractThinkingContent(content: string): string {
   const allMatches = [...thinkMatches, ...thinkingMatches];
 
   if (allMatches.length === 0) {
-    return '';
+    return "";
   }
 
   // Extract inner content from each match
   return allMatches
     .map((match) => {
       const innerMatch = match.match(
-        /<(?:think|thinking)>([\s\S]*?)<\/(?:think|thinking)>/i
+        /<(?:think|thinking)>([\s\S]*?)<\/(?:think|thinking)>/i,
       );
-      return innerMatch?.[1]?.trim() || '';
+      return innerMatch?.[1]?.trim() || "";
     })
     .filter(Boolean)
-    .join('\n\n');
+    .join("\n\n");
 }
 
 /**
@@ -111,10 +111,10 @@ export function stripThinkingBlocks(content: string): string {
 
   // Remove <think>...</think> blocks (DeepSeek, Qwen reasoning)
   // Use non-greedy matching to handle multiple blocks
-  let cleaned = content.replace(/<think>[\s\S]*?<\/think>/gi, '');
+  let cleaned = content.replace(/<think>[\s\S]*?<\/think>/gi, "");
 
   // Also handle <thinking>...</thinking> variant
-  cleaned = cleaned.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '');
+  cleaned = cleaned.replace(/<thinking>[\s\S]*?<\/thinking>/gi, "");
 
   // NOTE: We intentionally do NOT strip <reasoning> tags!
   // <reasoning> is a valid field inside <decision> elements that we need to preserve.
@@ -123,13 +123,13 @@ export function stripThinkingBlocks(content: string): string {
   const strippedLength = originalLength - cleaned.length;
   if (strippedLength > 0) {
     logger.debug(
-      'Stripped LLM thinking blocks',
+      "Stripped LLM thinking blocks",
       {
         originalLength,
         strippedChars: strippedLength,
         remainingLength: cleaned.length,
       },
-      'XMLParser'
+      "XMLParser",
     );
   }
 
@@ -146,8 +146,8 @@ export function cleanXMLMarkdown(content: string): string {
   cleaned = stripThinkingBlocks(cleaned);
 
   // Remove markdown code fences
-  cleaned = cleaned.replace(/```xml\n?/g, '');
-  cleaned = cleaned.replace(/```\n?/g, '');
+  cleaned = cleaned.replace(/```xml\n?/g, "");
+  cleaned = cleaned.replace(/```\n?/g, "");
 
   // Remove any leading/trailing whitespace
   cleaned = cleaned.trim();
@@ -167,7 +167,7 @@ export function repairTruncatedXML(xml: string): string {
   let match;
 
   while ((match = tagRegex.exec(xml)) !== null) {
-    const isClosing = match[1] === '/';
+    const isClosing = match[1] === "/";
     const tagName = match[2];
 
     if (!tagName) continue; // Skip if no tag name captured
@@ -177,8 +177,8 @@ export function repairTruncatedXML(xml: string): string {
       const fullMatch = match[0];
       if (
         fullMatch &&
-        !fullMatch.endsWith('/>') &&
-        !['br', 'hr', 'img', 'input'].includes(tagName)
+        !fullMatch.endsWith("/>") &&
+        !["br", "hr", "img", "input"].includes(tagName)
       ) {
         openTags.push(tagName);
       }
@@ -209,8 +209,8 @@ export function parseXMLToObject(xml: string): JsonValue {
 
   // Find root element
   const rootMatch = cleaned.match(/<([\w-]+)[^>]*>([\s\S]*)<\/\1>/);
-  if (!rootMatch || !rootMatch[1] || !rootMatch[2]) {
-    throw new Error('No root element found in XML');
+  if (!rootMatch?.[1] || !rootMatch[2]) {
+    throw new Error("No root element found in XML");
   }
 
   const content = rootMatch[2];
@@ -226,11 +226,11 @@ function parseXMLContent(content: string): JsonValue {
   const trimmed = content.trim();
 
   // Check if it's just text content (no child tags)
-  if (!trimmed.includes('<')) {
+  if (!trimmed.includes("<")) {
     // Try to parse as primitive
-    if (trimmed === 'true') return true;
-    if (trimmed === 'false') return false;
-    if (trimmed === 'null') return null;
+    if (trimmed === "true") return true;
+    if (trimmed === "false") return false;
+    if (trimmed === "null") return null;
     const num = Number(trimmed);
     // Check for finite numbers only (excludes NaN, Infinity, -Infinity)
     if (Number.isFinite(num) && trimmed === String(num)) return num;
@@ -264,7 +264,7 @@ function parseXMLContent(content: string): JsonValue {
 
   // If no children found, return text content
   if (Object.keys(children).length === 0) {
-    const textContent = trimmed.replace(/<[^>]+>/g, '').trim();
+    const textContent = trimmed.replace(/<[^>]+>/g, "").trim();
     if (textContent) {
       return textContent;
     }
@@ -289,13 +289,13 @@ export function parseXML(content: string): XMLParseResult {
     cleaned = extractXMLFromText(cleaned);
 
     // FALLBACK: If LLM returned JSON instead of XML, try to parse it
-    if (cleaned.trim().startsWith('{') || cleaned.trim().startsWith('[')) {
+    if (cleaned.trim().startsWith("{") || cleaned.trim().startsWith("[")) {
       logger.warn(
-        'LLM returned JSON instead of XML, attempting JSON parse as fallback',
+        "LLM returned JSON instead of XML, attempting JSON parse as fallback",
         {
           contentPreview: cleaned.substring(0, 100),
         },
-        'XMLParser'
+        "XMLParser",
       );
 
       try {
@@ -307,27 +307,27 @@ export function parseXML(content: string): XMLParseResult {
         };
       } catch (jsonError) {
         logger.error(
-          'Failed to parse as both XML and JSON',
+          "Failed to parse as both XML and JSON",
           {
-            xmlError: 'No root element',
+            xmlError: "No root element",
             jsonError:
               jsonError instanceof Error
                 ? jsonError.message
                 : String(jsonError),
           },
-          'XMLParser'
+          "XMLParser",
         );
 
         return {
           success: false,
           data: null,
-          error: 'Failed to parse as both XML and JSON',
+          error: "Failed to parse as both XML and JSON",
         };
       }
     }
 
     // Handle continuation responses with multiple root elements
-    if (cleaned.includes('Continue from where you left off')) {
+    if (cleaned.includes("Continue from where you left off")) {
       return parseContinuationXML(cleaned);
     }
 
@@ -341,12 +341,12 @@ export function parseXML(content: string): XMLParseResult {
     };
   } catch (error) {
     logger.error(
-      'Failed to parse XML',
+      "Failed to parse XML",
       {
         error: formatError(error),
         contentPreview: content.substring(0, 200),
       },
-      'XMLParser'
+      "XMLParser",
     );
 
     return {
@@ -364,21 +364,21 @@ function parseContinuationXML(content: string): XMLParseResult {
   try {
     // Extract all complete XML documents from continuation
     const xmlDocs: string[] = [];
-    const lines = content.split('\n');
-    let currentDoc = '';
+    const lines = content.split("\n");
+    let currentDoc = "";
     let inDoc = false;
 
     for (const line of lines) {
       if (line.trim().match(/^<[\w-]+[^/]*>/)) {
         // Start of new root element
         inDoc = true;
-        currentDoc = line + '\n';
+        currentDoc = `${line}\n`;
       } else if (inDoc) {
-        currentDoc += line + '\n';
+        currentDoc += `${line}\n`;
         // Check if this closes the root
         if (line.trim().match(/^<\/[\w-]+>$/)) {
           xmlDocs.push(currentDoc.trim());
-          currentDoc = '';
+          currentDoc = "";
           inDoc = false;
         }
       }
@@ -393,16 +393,16 @@ function parseContinuationXML(content: string): XMLParseResult {
           const parsed = parseXMLToObject(doc);
 
           // If it's an array wrapper, extract items
-          if (parsed && typeof parsed === 'object') {
+          if (parsed && typeof parsed === "object") {
             const obj = parsed as Record<string, JsonValue>;
-            if ('decision' in obj) {
+            if ("decision" in obj) {
               const decisions = obj.decision;
               if (Array.isArray(decisions)) {
                 allItems.push(...decisions);
               } else {
                 allItems.push(decisions);
               }
-            } else if ('item' in obj) {
+            } else if ("item" in obj) {
               const items = obj.item;
               if (Array.isArray(items)) {
                 allItems.push(...items);
@@ -417,24 +417,24 @@ function parseContinuationXML(content: string): XMLParseResult {
           }
         } catch (error) {
           logger.warn(
-            'Failed to parse XML fragment',
+            "Failed to parse XML fragment",
             {
               error: formatError(error),
               fragment: doc.substring(0, 100),
             },
-            'XMLParser'
+            "XMLParser",
           );
         }
       }
 
       if (allItems.length > 0) {
         logger.info(
-          'Merged continuation XML documents',
+          "Merged continuation XML documents",
           {
             totalItems: allItems.length,
             fragments: xmlDocs.length,
           },
-          'XMLParser'
+          "XMLParser",
         );
 
         return {

@@ -1,16 +1,16 @@
-'use client';
+"use client";
 
 import {
   cn,
   FEEDBACK_DESCRIPTION_MAX_LENGTH,
   FEEDBACK_DESCRIPTION_MIN_LENGTH,
-} from '@feed/shared';
-import type { FeedbackType } from './FeedbackTypeSelector';
+} from "@feed/shared";
+import type { FeedbackType } from "./FeedbackTypeSelector";
 
 const PLACEHOLDERS: Record<FeedbackType, string> = {
-  bug: 'Describe what happened...',
-  feature_request: 'Tell us what you would like to see or change...',
-  performance: 'Describe the performance issue...',
+  bug: "Describe what happened...",
+  feature_request: "Tell us what you would like to see or change...",
+  performance: "Describe the performance issue...",
 };
 
 interface DescriptionFieldProps {
@@ -32,7 +32,7 @@ export function DescriptionField({
         htmlFor="description"
         className="font-medium text-foreground text-sm"
       >
-        Description{' '}
+        Description{" "}
         <span className="text-muted-foreground text-xs">
           (required, min {FEEDBACK_DESCRIPTION_MIN_LENGTH} characters)
         </span>
@@ -45,10 +45,10 @@ export function DescriptionField({
         maxLength={maxLength}
         rows={6}
         className={cn(
-          'w-full rounded-lg border border-border bg-muted px-3 py-2',
-          'text-foreground placeholder-muted-foreground',
-          'focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#1c9cf0]',
-          'resize-none transition-colors'
+          "w-full rounded-lg border border-border bg-muted px-3 py-2",
+          "text-foreground placeholder-muted-foreground",
+          "focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#1c9cf0]",
+          "resize-none transition-colors",
         )}
       />
       <div className="flex justify-between text-muted-foreground text-xs">

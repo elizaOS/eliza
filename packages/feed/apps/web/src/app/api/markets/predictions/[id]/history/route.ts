@@ -3,31 +3,31 @@ import {
   publicRateLimit,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { and, db, desc, eq, gte, predictionPriceHistories } from '@feed/db';
-import { PredictionMarketIdSchema, toISO } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { z } from 'zod';
-import { chooseBucketMs } from '@/lib/api/chart-utils';
+} from "@feed/api";
+import { and, db, desc, eq, gte, predictionPriceHistories } from "@feed/db";
+import { PredictionMarketIdSchema, toISO } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { z } from "zod";
+import { chooseBucketMs } from "@/lib/api/chart-utils";
 
-type TimeRange = '1H' | '4H' | '1D' | '1W' | 'ALL';
+type TimeRange = "1H" | "4H" | "1D" | "1W" | "ALL";
 
 const QuerySchema = z.object({
   limit: z
     .preprocess(
       (value) => (value === null ? undefined : value),
-      z.coerce.number().min(1).max(2000)
+      z.coerce.number().min(1).max(2000),
     )
     .optional()
     .default(200),
-  range: z.enum(['1H', '4H', '1D', '1W', 'ALL']).optional(),
+  range: z.enum(["1H", "4H", "1D", "1W", "ALL"]).optional(),
 });
 
 const RANGE_MS: Record<TimeRange, number> = {
-  '1H': 60 * 60 * 1000,
-  '4H': 4 * 60 * 60 * 1000,
-  '1D': 24 * 60 * 60 * 1000,
-  '1W': 7 * 24 * 60 * 60 * 1000,
+  "1H": 60 * 60 * 1000,
+  "4H": 4 * 60 * 60 * 1000,
+  "1D": 24 * 60 * 60 * 1000,
+  "1W": 7 * 24 * 60 * 60 * 1000,
   ALL: 0,
 };
 
@@ -43,7 +43,7 @@ function downsamplePredictionHistory(
     source: string;
     createdAt: Date;
   }>,
-  maxPoints: number
+  maxPoints: number,
 ): Array<{
   id: string;
   yesPrice: number;
@@ -82,24 +82,24 @@ function downsamplePredictionHistory(
 export const GET = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ id: string }> }
+    context: { params: Promise<{ id: string }> },
   ) => {
     const { error, rateLimitInfo } = await publicRateLimit(request);
     if (error) return error;
 
     const { id: marketId } = PredictionMarketIdSchema.parse(
-      await context.params
+      await context.params,
     );
     const { searchParams } = new URL(request.url);
     const { limit, range } = QuerySchema.parse({
-      limit: searchParams.get('limit'),
-      range: searchParams.get('range'),
+      limit: searchParams.get("limit"),
+      range: searchParams.get("range"),
     });
 
     const now = new Date();
-    const selectedRange = (range ?? 'ALL') as TimeRange;
+    const selectedRange = (range ?? "ALL") as TimeRange;
     const since =
-      selectedRange === 'ALL'
+      selectedRange === "ALL"
         ? null
         : new Date(now.getTime() - RANGE_MS[selectedRange]);
 
@@ -110,9 +110,9 @@ export const GET = withErrorHandling(
         since
           ? and(
               eq(predictionPriceHistories.marketId, marketId),
-              gte(predictionPriceHistories.createdAt, since)
+              gte(predictionPriceHistories.createdAt, since),
             )
-          : eq(predictionPriceHistories.marketId, marketId)
+          : eq(predictionPriceHistories.marketId, marketId),
       )
       .orderBy(desc(predictionPriceHistories.createdAt))
       .limit(range ? Math.max(limit * 10, 5000) : limit);
@@ -146,5 +146,5 @@ export const GET = withErrorHandling(
     });
     if (rateLimitInfo) addPublicReadHeaders(res, rateLimitInfo);
     return res;
-  }
+  },
 );

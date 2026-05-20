@@ -7,24 +7,24 @@
  * @access Admin
  */
 
-import { requireAdmin, successResponse, withErrorHandling } from '@feed/api';
-import type { WhitelistSource } from '@feed/api/services/whitelist-service';
+import { requireAdmin, successResponse, withErrorHandling } from "@feed/api";
+import type { WhitelistSource } from "@feed/api/services/whitelist-service";
 import {
   addToWhitelist,
   getWhitelistStats,
   listWhitelistEntries,
   removeFromWhitelist,
-} from '@feed/api/services/whitelist-service';
-import { db, eq, or, sql, users } from '@feed/db';
-import { type NextRequest, NextResponse } from 'next/server';
+} from "@feed/api/services/whitelist-service";
+import { db, eq, or, sql, users } from "@feed/db";
+import { type NextRequest, NextResponse } from "next/server";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   await requireAdmin(request);
 
   const { searchParams } = new URL(request.url);
-  const source = searchParams.get('source') as WhitelistSource | null;
-  const search = searchParams.get('search') ?? undefined;
-  const includeRevoked = searchParams.get('includeRevoked') === 'true';
+  const source = searchParams.get("source") as WhitelistSource | null;
+  const search = searchParams.get("search") ?? undefined;
+  const includeRevoked = searchParams.get("includeRevoked") === "true";
 
   const [entries, stats] = await Promise.all([
     listWhitelistEntries({
@@ -48,12 +48,12 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     reason?: string;
   };
 
-  if (!userId || typeof userId !== 'string') {
-    return NextResponse.json({ error: 'userId is required' }, { status: 400 });
+  if (!userId || typeof userId !== "string") {
+    return NextResponse.json({ error: "userId is required" }, { status: 400 });
   }
 
   // Strip leading @ and resolve by userId or username
-  const identifier = userId.trim().replace(/^@/, '');
+  const identifier = userId.trim().replace(/^@/, "");
 
   const [user] = await db
     .select({ id: users.id, username: users.username })
@@ -61,26 +61,26 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     .where(
       or(
         eq(users.id, identifier),
-        sql`lower(${users.username}) = lower(${identifier})`
-      )
+        sql`lower(${users.username}) = lower(${identifier})`,
+      ),
     )
     .limit(1);
 
   if (!user) {
-    return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
 
   const result = await addToWhitelist({
     userId: user.id,
-    source: source ?? 'admin_manual',
+    source: source ?? "admin_manual",
     reason,
     grantedBy: admin.dbUserId ?? undefined,
   });
 
   if (result.alreadyExists) {
     return NextResponse.json(
-      { error: 'User is already whitelisted' },
-      { status: 409 }
+      { error: "User is already whitelisted" },
+      { status: 409 },
     );
   }
 
@@ -97,16 +97,16 @@ export const DELETE = withErrorHandling(async (request: NextRequest) => {
   const body = await request.json();
   const { userId } = body as { userId: string };
 
-  if (!userId || typeof userId !== 'string') {
-    return NextResponse.json({ error: 'userId is required' }, { status: 400 });
+  if (!userId || typeof userId !== "string") {
+    return NextResponse.json({ error: "userId is required" }, { status: 400 });
   }
 
   const result = await removeFromWhitelist(userId);
 
   if (!result.removed) {
     return NextResponse.json(
-      { error: 'User not found in whitelist or already revoked' },
-      { status: 404 }
+      { error: "User not found in whitelist or already revoked" },
+      { status: 404 },
     );
   }
 

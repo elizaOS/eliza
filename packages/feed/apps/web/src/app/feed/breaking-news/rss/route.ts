@@ -5,19 +5,19 @@
  * to RSS so all aggregation and RLS logic stays in one place. Limit 20 keeps the feed focused.
  */
 
-import { publicRateLimit } from '@feed/api';
-import type { NextRequest } from 'next/server';
+import { publicRateLimit } from "@feed/api";
+import type { NextRequest } from "next/server";
 import {
   buildRssXml,
   getRssCacheHeaders,
   type RssChannel,
   type RssItem,
-} from '@/lib/rss';
+} from "@/lib/rss";
 
 /** WHY: Absolute origin needed for RSS item links (see feed/rss/route). */
 function getOrigin(request: NextRequest): string {
-  const forwardedHost = request.headers.get('x-forwarded-host');
-  const forwardedProto = request.headers.get('x-forwarded-proto');
+  const forwardedHost = request.headers.get("x-forwarded-host");
+  const forwardedProto = request.headers.get("x-forwarded-proto");
   if (forwardedHost && forwardedProto) {
     return `${forwardedProto}://${forwardedHost}`;
   }
@@ -45,13 +45,13 @@ export async function GET(request: NextRequest) {
   const res = await fetch(
     `${origin}/api/feed/widgets/breaking-news?limit=${limit}`,
     {
-      cache: 'no-store',
-      headers: { cookie: request.headers.get('cookie') ?? '' },
-    }
+      cache: "no-store",
+      headers: { cookie: request.headers.get("cookie") ?? "" },
+    },
   );
 
   if (!res.ok) {
-    return new Response('Breaking news feed temporarily unavailable', {
+    return new Response("Breaking news feed temporarily unavailable", {
       status: 502,
     });
   }
@@ -71,15 +71,15 @@ export async function GET(request: NextRequest) {
     return {
       title: item.title,
       link,
-      description: item.fullDescription ?? item.description ?? '',
+      description: item.fullDescription ?? item.description ?? "",
       pubDate: item.timestamp,
     };
   });
 
   const channel: RssChannel = {
-    title: 'Feed Breaking News',
+    title: "Feed Breaking News",
     link: `${origin}/feed`,
-    description: 'World events, price updates, and posts from Feed',
+    description: "World events, price updates, and posts from Feed",
     siteUrl: origin,
   };
 
@@ -88,7 +88,7 @@ export async function GET(request: NextRequest) {
   return new Response(xml, {
     status: 200,
     headers: {
-      'Content-Type': 'application/rss+xml; charset=utf-8',
+      "Content-Type": "application/rss+xml; charset=utf-8",
       ...getRssCacheHeaders(),
     },
   });

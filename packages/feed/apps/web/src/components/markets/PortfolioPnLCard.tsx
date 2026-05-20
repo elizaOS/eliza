@@ -1,5 +1,5 @@
-import type { PortfolioBreakdownSnapshot } from '@feed/engine/client';
-import { Share2, Sparkles } from 'lucide-react';
+import type { PortfolioBreakdownSnapshot } from "@feed/engine/client";
+import { Share2, Sparkles } from "lucide-react";
 
 interface PortfolioPnLCardProps {
   data: PortfolioBreakdownSnapshot | null;

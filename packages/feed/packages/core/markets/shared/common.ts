@@ -1,4 +1,4 @@
-export type MarketKind = 'prediction' | 'perp';
+export type MarketKind = "prediction" | "perp";
 
 export interface FeeConfig {
   tradingFeeRate: number; // e.g. 0.001 = 0.1%
@@ -54,7 +54,7 @@ export interface WalletPort {
     relatedId?: string;
   }): Promise<void>;
   getBalance(
-    userId: string
+    userId: string,
   ): Promise<{ balance: number; lifetimePnL?: number }>;
 }
 
@@ -70,6 +70,6 @@ export interface ClockPort {
   now(): Date;
 }
 
-export interface DbTransaction<T = void> {
-  <R>(fn: (tx: T) => Promise<R>): Promise<R>;
-}
+export type DbTransaction<T = void> = <R>(
+  fn: (tx: T) => Promise<R>,
+) => Promise<R>;

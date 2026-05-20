@@ -1,1 +1,1 @@
-export { default } from '@web/app/not-found';
+export { default } from "@web/app/not-found";

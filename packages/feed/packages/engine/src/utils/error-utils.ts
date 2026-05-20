@@ -5,7 +5,7 @@
  * Ensures errors are properly formatted, logged, and propagated.
  */
 
-import { logger } from '@feed/shared';
+import { logger } from "@feed/shared";
 
 /**
  * Safely extract error message from an unknown error value.
@@ -18,10 +18,10 @@ export function formatError(error: unknown): string {
   if (error instanceof Error) {
     return error.message;
   }
-  if (typeof error === 'string') {
+  if (typeof error === "string") {
     return error;
   }
-  if (error && typeof error === 'object' && 'message' in error) {
+  if (error && typeof error === "object" && "message" in error) {
     return String((error as { message: unknown }).message);
   }
   return String(error);
@@ -54,7 +54,7 @@ export function formatErrorWithStack(error: unknown): {
 export function logAndRethrow(
   error: unknown,
   context: string,
-  service = 'Engine'
+  service = "Engine",
 ): never {
   const { message, stack } = formatErrorWithStack(error);
   logger.error(context, { error: message, stack }, service);
@@ -71,7 +71,7 @@ export function logAndRethrow(
 export function logError(
   error: unknown,
   context: string,
-  service = 'Engine'
+  service = "Engine",
 ): void {
   const { message, stack } = formatErrorWithStack(error);
   logger.error(context, { error: message, stack }, service);
@@ -87,7 +87,7 @@ export function logError(
 export function logWarning(
   error: unknown,
   context: string,
-  service = 'Engine'
+  service = "Engine",
 ): void {
   logger.warn(context, { error: formatError(error) }, service);
 }
@@ -100,7 +100,7 @@ export function logWarning(
  * @param code - The error code to check for
  */
 export function hasErrorCode(error: unknown, code: string): boolean {
-  if (error && typeof error === 'object' && 'code' in error) {
+  if (error && typeof error === "object" && "code" in error) {
     return (error as { code: unknown }).code === code;
   }
   return false;
@@ -118,22 +118,22 @@ export function isTransientError(error: unknown): boolean {
 
   // Common transient error patterns
   const transientPatterns = [
-    'timeout',
-    'timed out',
-    'connection reset',
-    'connection refused',
-    'econnreset',
-    'econnrefused',
-    'etimedout',
-    'network error',
-    'temporary',
-    'too many requests',
-    'rate limit',
-    'service unavailable',
-    '503',
-    '429',
-    'busy',
-    'overloaded',
+    "timeout",
+    "timed out",
+    "connection reset",
+    "connection refused",
+    "econnreset",
+    "econnrefused",
+    "etimedout",
+    "network error",
+    "temporary",
+    "too many requests",
+    "rate limit",
+    "service unavailable",
+    "503",
+    "429",
+    "busy",
+    "overloaded",
   ];
 
   return transientPatterns.some((pattern) => message.includes(pattern));
@@ -151,7 +151,7 @@ export function isTransientError(error: unknown): boolean {
 export async function safeExecute<T>(
   operation: () => Promise<T>,
   context: string,
-  service = 'Engine'
+  service = "Engine",
 ): Promise<T | null> {
   try {
     return await operation();
@@ -187,7 +187,7 @@ export async function safeExecute<T>(
 export async function handleNonCritical<T>(
   operation: () => Promise<T>,
   context: string,
-  service = 'Engine'
+  service = "Engine",
 ): Promise<T | null> {
   try {
     return await operation();
@@ -211,7 +211,7 @@ export async function handleNonCriticalWithDefault<T>(
   operation: () => Promise<T>,
   defaultValue: T,
   context: string,
-  service = 'Engine'
+  service = "Engine",
 ): Promise<T> {
   try {
     return await operation();
@@ -235,7 +235,7 @@ export async function withRetry<T>(
   operation: () => Promise<T>,
   maxRetries: number,
   context: string,
-  service = 'Engine'
+  service = "Engine",
 ): Promise<T> {
   let lastError: unknown;
 
@@ -251,11 +251,11 @@ export async function withRetry<T>(
       }
 
       // Exponential backoff
-      const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
+      const delay = Math.min(1000 * 2 ** (attempt - 1), 10000);
       logger.debug(
         `${context} failed (attempt ${attempt}/${maxRetries}), retrying in ${delay}ms`,
         { error: formatError(error) },
-        service
+        service,
       );
 
       await new Promise((resolve) => setTimeout(resolve, delay));

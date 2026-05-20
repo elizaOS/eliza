@@ -1,9 +1,9 @@
-import type { ClockPort } from '../shared/common';
+import type { ClockPort } from "../shared/common";
 import {
   evolveSyntheticPerpQuoteState,
   getSyntheticPerpQuoteState,
-} from './microstructure';
-import type { PerpDbPort } from './types';
+} from "./microstructure";
+import type { PerpDbPort } from "./types";
 
 interface PerpQuoteStateServiceDeps {
   db: PerpDbPort;

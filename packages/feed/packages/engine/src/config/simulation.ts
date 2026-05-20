@@ -13,32 +13,32 @@
  * Used by both fast simulation and training adapters
  */
 export const SIMULATION_AGENT_NAMES = [
-  'Marcus Chen',
-  'Sarah Williams',
-  'Alex Rivera',
-  'Jordan Lee',
-  'Emma Thompson',
-  'David Kim',
-  'Lisa Patel',
-  'Chris Morgan',
-  'Rachel Santos',
-  'James Wilson',
-  'Olivia Brown',
-  'Michael Davis',
-  'Sophia Martinez',
-  'Daniel Taylor',
-  'Ava Anderson',
+  "Marcus Chen",
+  "Sarah Williams",
+  "Alex Rivera",
+  "Jordan Lee",
+  "Emma Thompson",
+  "David Kim",
+  "Lisa Patel",
+  "Chris Morgan",
+  "Rachel Santos",
+  "James Wilson",
+  "Olivia Brown",
+  "Michael Davis",
+  "Sophia Martinez",
+  "Daniel Taylor",
+  "Ava Anderson",
 ] as const;
 
 /**
  * Sample prediction market questions for simulation
  */
 export const SIMULATION_QUESTIONS = [
-  'Will TechCorp announce quarterly earnings above expectations?',
-  'Will the Fed raise interest rates this month?',
-  'Will CryptoToken reach $100 by end of day?',
-  'Will the merger between MegaCorp and StartupInc be approved?',
-  'Will the new regulation pass the committee vote?',
+  "Will TechCorp announce quarterly earnings above expectations?",
+  "Will the Fed raise interest rates this month?",
+  "Will CryptoToken reach $100 by end of day?",
+  "Will the merger between MegaCorp and StartupInc be approved?",
+  "Will the new regulation pass the committee vote?",
 ] as const;
 
 /**
@@ -46,20 +46,20 @@ export const SIMULATION_QUESTIONS = [
  */
 export const PREDICTION_TEMPLATES = [
   {
-    q: 'Will {company} stock reach ${target} by end of month?',
-    desc: 'Price target prediction',
+    q: "Will {company} stock reach ${target} by end of month?",
+    desc: "Price target prediction",
   },
   {
-    q: 'Will {company} announce earnings beat this quarter?',
-    desc: 'Earnings prediction',
+    q: "Will {company} announce earnings beat this quarter?",
+    desc: "Earnings prediction",
   },
   {
-    q: 'Will {sector} sector outperform market this week?',
-    desc: 'Sector performance',
+    q: "Will {sector} sector outperform market this week?",
+    desc: "Sector performance",
   },
   {
-    q: 'Will {company} announce new product launch?',
-    desc: 'Product announcement',
+    q: "Will {company} announce new product launch?",
+    desc: "Product announcement",
   },
 ] as const;
 
@@ -67,11 +67,11 @@ export const PREDICTION_TEMPLATES = [
  * Sample companies for simulation
  */
 export const SIMULATION_COMPANIES = [
-  { ticker: 'TECH', name: 'TechCorp Industries', sector: 'Technology' },
-  { ticker: 'FINA', name: 'FinaBank Holdings', sector: 'Finance' },
-  { ticker: 'HLTH', name: 'HealthGen Solutions', sector: 'Healthcare' },
-  { ticker: 'ENRG', name: 'EnergyFlow Corp', sector: 'Energy' },
-  { ticker: 'RETA', name: 'RetailMax Inc', sector: 'Retail' },
+  { ticker: "TECH", name: "TechCorp Industries", sector: "Technology" },
+  { ticker: "FINA", name: "FinaBank Holdings", sector: "Finance" },
+  { ticker: "HLTH", name: "HealthGen Solutions", sector: "Healthcare" },
+  { ticker: "ENRG", name: "EnergyFlow Corp", sector: "Energy" },
+  { ticker: "RETA", name: "RetailMax Inc", sector: "Retail" },
 ] as const;
 
 /**
@@ -79,18 +79,18 @@ export const SIMULATION_COMPANIES = [
  */
 export const SIMULATION_CLUE_TEMPLATES = {
   positive: [
-    'Insider sources suggest outcome leaning positive',
-    'Early indicators point toward YES',
-    'Key stakeholder reportedly supportive',
-    'Internal documents hint at favorable decision',
-    'Reliable sources confirm positive trajectory',
+    "Insider sources suggest outcome leaning positive",
+    "Early indicators point toward YES",
+    "Key stakeholder reportedly supportive",
+    "Internal documents hint at favorable decision",
+    "Reliable sources confirm positive trajectory",
   ],
   negative: [
-    'Insider sources suggest outcome leaning negative',
-    'Early indicators point toward NO',
-    'Key stakeholder reportedly opposed',
-    'Internal documents hint at unfavorable decision',
-    'Reliable sources confirm negative trajectory',
+    "Insider sources suggest outcome leaning negative",
+    "Early indicators point toward NO",
+    "Key stakeholder reportedly opposed",
+    "Internal documents hint at unfavorable decision",
+    "Reliable sources confirm negative trajectory",
   ],
 } as const;
 
@@ -111,16 +111,16 @@ export const DEFAULT_SIMULATION_CONFIG = {
  * Agent trading strategies for simulation
  */
 export type SimulationStrategy =
-  | 'informed'
-  | 'momentum'
-  | 'contrarian'
-  | 'random';
+  | "informed"
+  | "momentum"
+  | "contrarian"
+  | "random";
 
 export const SIMULATION_STRATEGIES: readonly SimulationStrategy[] = [
-  'informed',
-  'momentum',
-  'contrarian',
-  'random',
+  "informed",
+  "momentum",
+  "contrarian",
+  "random",
 ] as const;
 
 // =============================================================================
@@ -145,24 +145,24 @@ export const SIMULATION_DEFAULT_PRICES = {
  */
 export const SIMULATION_PREDICTION_MARKETS = [
   {
-    id: 'q1',
-    text: 'Will BitcAIn hit $150k by EOM?',
+    id: "q1",
+    text: "Will BitcAIn hit $150k by EOM?",
     yesPrice: 65,
     noPrice: 35,
     resolveDays: 14,
     totalVolume: 50000,
   },
   {
-    id: 'q2',
-    text: 'Will TeslAI announce Model 2?',
+    id: "q2",
+    text: "Will TeslAI announce Model 2?",
     yesPrice: 40,
     noPrice: 60,
     resolveDays: 5,
     totalVolume: 30000,
   },
   {
-    id: 'q3',
-    text: 'Will Fed cut rates in October?',
+    id: "q3",
+    text: "Will Fed cut rates in October?",
     yesPrice: 55,
     noPrice: 45,
     resolveDays: 2,
@@ -175,9 +175,9 @@ export const SIMULATION_PREDICTION_MARKETS = [
  * Used in formatRecentEvents() bypasses.
  */
 export const SIMULATION_RECENT_EVENTS = [
-  { author: 'AIlon Musk', content: 'TeslAI is going to Mars next week' },
-  { author: 'Sam AIltman', content: 'AGI achieved internally' },
-  { author: 'Vitalik ButerAIn', content: 'Gas fees are too damn high' },
+  { author: "AIlon Musk", content: "TeslAI is going to Mars next week" },
+  { author: "Sam AIltman", content: "AGI achieved internally" },
+  { author: "Vitalik ButerAIn", content: "Gas fees are too damn high" },
 ] as const;
 
 /**
@@ -186,16 +186,16 @@ export const SIMULATION_RECENT_EVENTS = [
  */
 export const SIMULATION_EVENT_MARKET_SIGNALS = [
   {
-    question: 'Will BitcAIn hit $150k?',
-    direction: 'up',
-    change: '+5.2%',
-    reason: 'Positive development announced',
+    question: "Will BitcAIn hit $150k?",
+    direction: "up",
+    change: "+5.2%",
+    reason: "Positive development announced",
   },
   {
-    question: 'Will TeslAI announce Model 2?',
-    direction: 'down',
-    change: '-3.1%',
-    reason: 'Leak suggests delays',
+    question: "Will TeslAI announce Model 2?",
+    direction: "down",
+    change: "-3.1%",
+    reason: "Leak suggests delays",
   },
 ] as const;
 
@@ -205,7 +205,7 @@ export const SIMULATION_EVENT_MARKET_SIGNALS = [
  */
 export function getSimulationPrice(
   ticker: string,
-  overrides?: Map<string, number>
+  overrides?: Map<string, number>,
 ): number {
   if (overrides?.has(ticker)) {
     return overrides.get(ticker)!;
@@ -218,7 +218,7 @@ export function getSimulationPrice(
  * Returns override keys if provided, otherwise default keys.
  */
 export function getSimulationTickers(
-  overrides?: Map<string, number>
+  overrides?: Map<string, number>,
 ): string[] {
   if (overrides && overrides.size > 0) {
     return Array.from(overrides.keys());
@@ -231,18 +231,18 @@ export function getSimulationTickers(
  */
 export function formatSimulationPredictionMarkets(): string {
   return SIMULATION_PREDICTION_MARKETS.map(
-    (m) => `- "${m.text}" (resolves in ${m.resolveDays} days)`
-  ).join('\n');
+    (m) => `- "${m.text}" (resolves in ${m.resolveDays} days)`,
+  ).join("\n");
 }
 
 /**
  * Format recent events for prompt context.
  */
 export function formatSimulationRecentEvents(): string {
-  const header = 'Recent developments (last 24h):';
+  const header = "Recent developments (last 24h):";
   const events = SIMULATION_RECENT_EVENTS.map(
-    (e) => `- ${e.author}: "${e.content}"`
-  ).join('\n');
+    (e) => `- ${e.author}: "${e.content}"`,
+  ).join("\n");
   return `${header}\n${events}`;
 }
 
@@ -250,11 +250,11 @@ export function formatSimulationRecentEvents(): string {
  * Format event-market signals for prompt context.
  */
 export function formatSimulationEventMarketSignals(): string {
-  const header = 'EVENT-MARKET SIGNALS:';
+  const header = "EVENT-MARKET SIGNALS:";
   const signals = SIMULATION_EVENT_MARKET_SIGNALS.map(
     (s) =>
-      `- "${s.question}" ${s.direction === 'up' ? '↑' : '↓'} ${s.change} (${s.reason}...)`
-  ).join('\n');
+      `- "${s.question}" ${s.direction === "up" ? "↑" : "↓"} ${s.change} (${s.reason}...)`,
+  ).join("\n");
   return `${header}\n${signals}`;
 }
 
@@ -264,6 +264,6 @@ export function formatSimulationEventMarketSignals(): string {
 export function formatSimulationActiveMarkets(): string {
   const prices = Object.entries(SIMULATION_DEFAULT_PRICES)
     .map(([ticker, price]) => `${ticker} $${price.toLocaleString()}`)
-    .join(', ');
+    .join(", ");
   return `Active Markets: ${prices}`;
 }

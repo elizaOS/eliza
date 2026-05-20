@@ -11,18 +11,26 @@
  */
 
 import {
+  type ActionResult,
+  composePromptFromState,
+  type Memory,
+  ModelType,
+  parseKeyValueXml,
+  type State,
+} from "@elizaos/core";
+import {
   agentRuntimeManager,
   agentService,
   notifyTeamChatMessage,
   teamChatService,
-} from '@feed/agents';
+} from "@feed/agents";
 import {
   authenticateUser,
   broadcastChatMessage,
   checkProgress,
   withErrorHandling,
-} from '@feed/api';
-import { db, eq, messages, userAgentConfigs, users } from '@feed/db';
+} from "@feed/api";
+import { db, eq, messages, userAgentConfigs, users } from "@feed/db";
 import {
   checkUserInput,
   GROQ_MODELS,
@@ -31,21 +39,13 @@ import {
   type MessageMetadata,
   type MessageTag,
   toISO,
-} from '@feed/shared';
-import {
-  type ActionResult,
-  composePromptFromState,
-  type Memory,
-  ModelType,
-  parseKeyValueXml,
-  type State,
-} from '@elizaos/core';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { v4 as uuidv4 } from 'uuid';
-import { cleanupRuntimeStateCache } from '@/lib/agents/runtime-state-cache';
-import { MODEL_TIER_POINTS_COST } from '@/lib/constants';
-import { trackServerEvent } from '@/lib/posthog/server';
+} from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { v4 as uuidv4 } from "uuid";
+import { cleanupRuntimeStateCache } from "@/lib/agents/runtime-state-cache";
+import { MODEL_TIER_POINTS_COST } from "@/lib/constants";
+import { trackServerEvent } from "@/lib/posthog/server";
 
 // =============================================================================
 // Multi-Step Decision Template
@@ -220,10 +220,10 @@ Output ONLY this XML with your actual response (not examples or placeholders):
 export const POST = withErrorHandling(
   async (
     req: NextRequest,
-    { params }: { params: Promise<{ agentId: string }> }
+    { params }: { params: Promise<{ agentId: string }> },
   ) => {
     const { agentId } = await params;
-    logger.info('Agent chat endpoint hit', { agentId }, 'AgentChat');
+    logger.info("Agent chat endpoint hit", { agentId }, "AgentChat");
 
     const body = (await req.json()) as {
       message: string;
@@ -248,7 +248,7 @@ export const POST = withErrorHandling(
     // Helper to check if request was cancelled
     const checkCancelled = () => {
       if (signal.aborted) {
-        logger.info('Request cancelled by client', { agentId }, 'AgentChat');
+        logger.info("Request cancelled by client", { agentId }, "AgentChat");
         return true;
       }
       return false;
@@ -258,13 +258,13 @@ export const POST = withErrorHandling(
     const inputCheck = checkUserInput(message);
     if (!inputCheck.safe) {
       logger.warn(
-        'Unsafe user input blocked',
+        "Unsafe user input blocked",
         { agentId, reason: inputCheck.reason, category: inputCheck.category },
-        'AgentChat'
+        "AgentChat",
       );
       return NextResponse.json(
-        { success: false, error: inputCheck.reason || 'Invalid input' },
-        { status: 400 }
+        { success: false, error: inputCheck.reason || "Invalid input" },
+        { status: 400 },
       );
     }
 
@@ -275,17 +275,17 @@ export const POST = withErrorHandling(
     if (teamChatId) {
       const isValidTeamChat = await teamChatService.validateTeamChatOwnership(
         user.id,
-        teamChatId
+        teamChatId,
       );
       if (!isValidTeamChat) {
         logger.warn(
-          'Invalid team chat ID - user does not own this chat',
+          "Invalid team chat ID - user does not own this chat",
           { userId: user.id, teamChatId, agentId },
-          'AgentChat'
+          "AgentChat",
         );
         return NextResponse.json(
-          { success: false, error: 'Invalid team chat' },
-          { status: 403 }
+          { success: false, error: "Invalid team chat" },
+          { status: 403 },
         );
       }
     }
@@ -293,12 +293,12 @@ export const POST = withErrorHandling(
     // Verify ownership
     const agentWithConfig = await agentService.getAgentWithConfig(
       agentId,
-      user.id
+      user.id,
     );
     if (!agentWithConfig) {
       return NextResponse.json(
-        { success: false, error: 'Agent not found' },
-        { status: 404 }
+        { success: false, error: "Agent not found" },
+        { status: 404 },
       );
     }
     const agentConfig = agentWithConfig.agentConfig;
@@ -320,7 +320,7 @@ export const POST = withErrorHandling(
           success: false,
           error: `Insufficient balance. Have: ${newBalance.toFixed(2)}, Need: ${pointsCost.toFixed(2)}`,
         },
-        { status: 402 }
+        { status: 402 },
       );
     }
 
@@ -334,7 +334,7 @@ export const POST = withErrorHandling(
       .where(eq(users.id, user.id))
       .limit(1);
     const ownerName =
-      ownerProfile?.displayName || ownerProfile?.username || 'User';
+      ownerProfile?.displayName || ownerProfile?.username || "User";
     const ownerUsername = ownerProfile?.username || undefined;
 
     // Create message object for ElizaOS
@@ -366,15 +366,15 @@ export const POST = withErrorHandling(
         // Check if client cancelled the request
         if (checkCancelled()) {
           return NextResponse.json(
-            { success: false, cancelled: true, error: 'Request cancelled' },
-            { status: 499 } // Client Closed Request
+            { success: false, cancelled: true, error: "Request cancelled" },
+            { status: 499 }, // Client Closed Request
           );
         }
 
         logger.info(
           `[MultiStep] Iteration ${iteration}/${MAX_ITERATIONS}`,
           { agentId, actionsCompleted: traceActionResults.length },
-          'AgentChat'
+          "AgentChat",
         );
 
         // Compose state with providers
@@ -383,17 +383,17 @@ export const POST = withErrorHandling(
         // Include TEAM_MEMBERS provider when in team chat mode
         const providers = isTeamChatMode
           ? [
-              'AGENT_CONTEXT',
-              'RECENT_MESSAGES',
-              'ACTION_STATE',
-              'ACTIONS',
-              'TEAM_MEMBERS',
+              "AGENT_CONTEXT",
+              "RECENT_MESSAGES",
+              "ACTION_STATE",
+              "ACTIONS",
+              "TEAM_MEMBERS",
             ]
-          : ['AGENT_CONTEXT', 'RECENT_MESSAGES', 'ACTION_STATE', 'ACTIONS'];
+          : ["AGENT_CONTEXT", "RECENT_MESSAGES", "ACTION_STATE", "ACTIONS"];
         const state: State = await runtime.composeState(
           elizaMessage,
           providers,
-          true
+          true,
         );
 
         // Add custom values to state
@@ -401,9 +401,9 @@ export const POST = withErrorHandling(
           ...state.values,
           agentId, // Pass agentId for actions that need it
           system:
-            agentConfig?.systemPrompt ?? 'You are a helpful AI assistant.',
-          personality: agentConfig?.personality ?? '',
-          tradingStrategy: agentConfig?.tradingStrategy ?? '',
+            agentConfig?.systemPrompt ?? "You are a helpful AI assistant.",
+          personality: agentConfig?.personality ?? "",
+          tradingStrategy: agentConfig?.tradingStrategy ?? "",
           currentMessage: message,
           iterationCount: iteration,
           maxIterations: MAX_ITERATIONS,
@@ -417,8 +417,8 @@ export const POST = withErrorHandling(
           teamChatId,
           teamChatOwnerName: teamChatOwnerName || ownerName,
           teamChatOwnerUsername: teamChatOwnerUsername || ownerUsername,
-          agentName: agentWithConfig.displayName || 'Agent',
-          agentUsername: agentWithConfig.username || '',
+          agentName: agentWithConfig.displayName || "Agent",
+          agentUsername: agentWithConfig.username || "",
         };
 
         // Add action results to state data
@@ -446,8 +446,8 @@ export const POST = withErrorHandling(
           // Check cancellation after LLM call
           if (checkCancelled()) {
             return NextResponse.json(
-              { success: false, cancelled: true, error: 'Request cancelled' },
-              { status: 499 }
+              { success: false, cancelled: true, error: "Request cancelled" },
+              { status: 499 },
             );
           }
 
@@ -457,7 +457,7 @@ export const POST = withErrorHandling(
             logger.debug(
               `[MultiStep] Parsed decision on attempt ${attempt}`,
               { action: parsedStep.action, isFinish: parsedStep.isFinish },
-              'AgentChat'
+              "AgentChat",
             );
             break;
           }
@@ -465,7 +465,7 @@ export const POST = withErrorHandling(
           logger.warn(
             `[MultiStep] Failed to parse decision (attempt ${attempt})`,
             { preview: response.substring(0, 200) },
-            'AgentChat'
+            "AgentChat",
           );
         }
 
@@ -476,21 +476,21 @@ export const POST = withErrorHandling(
           break;
         }
 
-        const thought = (parsedStep.thought as string) ?? '';
-        const action = (parsedStep.action as string) ?? '';
+        const thought = (parsedStep.thought as string) ?? "";
+        const action = (parsedStep.action as string) ?? "";
         const parameters = parsedStep.parameters;
         const isFinish = parsedStep.isFinish;
 
         // No action - go to summary phase
-        if (!action || action === '') {
+        if (!action || action === "") {
           break;
         }
 
         // Check cancellation before action execution
         if (checkCancelled()) {
           return NextResponse.json(
-            { success: false, cancelled: true, error: 'Request cancelled' },
-            { status: 499 }
+            { success: false, cancelled: true, error: "Request cancelled" },
+            { status: 499 },
           );
         }
 
@@ -498,21 +498,21 @@ export const POST = withErrorHandling(
         logger.info(
           `[MultiStep] Executing action: ${action}`,
           { parameters },
-          'AgentChat'
+          "AgentChat",
         );
 
         // Parse parameters
         let actionParams = {};
         if (parameters) {
-          if (typeof parameters === 'string') {
+          if (typeof parameters === "string") {
             try {
               actionParams = JSON.parse(parameters);
             } catch {
               logger.warn(
-                `[MultiStep] Failed to parse parameters: ${parameters}`
+                `[MultiStep] Failed to parse parameters: ${parameters}`,
               );
             }
-          } else if (typeof parameters === 'object') {
+          } else if (typeof parameters === "object") {
             actionParams = parameters;
           }
         }
@@ -549,7 +549,7 @@ export const POST = withErrorHandling(
         const actionContent = {
           text: `Executing action: ${action}`,
           actions: [action],
-          thought: thought ?? '',
+          thought: thought ?? "",
         };
 
         const actionMessage: Memory = {
@@ -590,7 +590,7 @@ export const POST = withErrorHandling(
                   actionResult = {
                     success: firstResult.content?.success ?? false,
                     text:
-                      typeof firstResult.content?.text === 'string'
+                      typeof firstResult.content?.text === "string"
                         ? firstResult.content.text
                         : undefined,
                     values: firstResult.content?.values,
@@ -599,7 +599,7 @@ export const POST = withErrorHandling(
                 }
               }
               return [];
-            }
+            },
           );
 
           // Fallback to state cache if callback didn't capture
@@ -632,14 +632,14 @@ export const POST = withErrorHandling(
             success,
             text: actionResult?.text || `${action} executed`,
             error: success ? undefined : actionResult?.text,
-            values: actionResult?.values as ActionResult['values'],
+            values: actionResult?.values as ActionResult["values"],
             parameters: actionParams,
             timestamp: Date.now(),
             tag: actionResult?.tag,
           });
         } catch (error) {
           const errorMsg =
-            error instanceof Error ? error.message : 'Unknown error';
+            error instanceof Error ? error.message : "Unknown error";
           traceActionResults.push({
             actionType: action,
             success: false,
@@ -651,7 +651,7 @@ export const POST = withErrorHandling(
         }
 
         // Check if done - always go to summary phase for proper response
-        if (isFinish === 'true' || isFinish === true) {
+        if (isFinish === "true" || isFinish === true) {
           break;
         }
       }
@@ -660,20 +660,20 @@ export const POST = withErrorHandling(
       {
         // Include TEAM_MEMBERS provider when in team chat mode
         const summaryProviders = isTeamChatMode
-          ? ['AGENT_CONTEXT', 'RECENT_MESSAGES', 'ACTION_STATE', 'TEAM_MEMBERS']
-          : ['AGENT_CONTEXT', 'RECENT_MESSAGES', 'ACTION_STATE'];
+          ? ["AGENT_CONTEXT", "RECENT_MESSAGES", "ACTION_STATE", "TEAM_MEMBERS"]
+          : ["AGENT_CONTEXT", "RECENT_MESSAGES", "ACTION_STATE"];
         const state = await runtime.composeState(
           elizaMessage,
           summaryProviders,
-          true
+          true,
         );
         state.values = {
           ...state.values,
           agentId, // Pass agentId for actions that need it
           system:
-            agentConfig?.systemPrompt ?? 'You are a helpful AI assistant.',
-          personality: agentConfig?.personality ?? '',
-          tradingStrategy: agentConfig?.tradingStrategy ?? '',
+            agentConfig?.systemPrompt ?? "You are a helpful AI assistant.",
+          personality: agentConfig?.personality ?? "",
+          tradingStrategy: agentConfig?.tradingStrategy ?? "",
           currentMessage: message,
           // Owner info for personalized conversation
           ownerId: user.id, // For RECENT_MESSAGES provider to filter team chat messages
@@ -684,8 +684,8 @@ export const POST = withErrorHandling(
           teamChatId,
           teamChatOwnerName: teamChatOwnerName || ownerName,
           teamChatOwnerUsername: teamChatOwnerUsername || ownerUsername,
-          agentName: agentWithConfig.displayName || 'Agent',
-          agentUsername: agentWithConfig.username || '',
+          agentName: agentWithConfig.displayName || "Agent",
+          agentUsername: agentWithConfig.username || "",
         };
         state.data = {
           ...state.data,
@@ -695,8 +695,8 @@ export const POST = withErrorHandling(
         // Check cancellation before summary generation
         if (checkCancelled()) {
           return NextResponse.json(
-            { success: false, cancelled: true, error: 'Request cancelled' },
-            { status: 499 }
+            { success: false, cancelled: true, error: "Request cancelled" },
+            { status: 499 },
           );
         }
 
@@ -730,7 +730,7 @@ export const POST = withErrorHandling(
             logger.debug(
               `[MultiStep] Parsed summary on attempt ${attempt}`,
               { preview: extractedText.substring(0, 50) },
-              'AgentChat'
+              "AgentChat",
             );
             break;
           }
@@ -738,14 +738,14 @@ export const POST = withErrorHandling(
           logger.warn(
             `[MultiStep] Failed to parse summary (attempt ${attempt})`,
             { preview: summaryResponse.substring(0, 200) },
-            'AgentChat'
+            "AgentChat",
           );
         }
 
         finalResponse =
           extractedText ||
           (traceActionResults.length > 0
-            ? 'Actions completed.'
+            ? "Actions completed."
             : "I'm here to help!");
       }
 
@@ -797,21 +797,21 @@ export const POST = withErrorHandling(
           content: responseText,
           chatId: teamChatId,
           senderId: agentId,
-          type: 'user',
+          type: "user",
           createdAt: assistantMessageTime.toISOString(),
           metadata: messageMetadata,
         }).catch((err) => {
           logger.warn(
             `Failed to broadcast agent message to team chat: ${err}`,
             { teamChatId, agentId },
-            'AgentChat'
+            "AgentChat",
           );
         });
 
         logger.info(
           `Agent response written to team chat ${teamChatId}`,
           { agentMessageId: responseMessageId, agentId },
-          'AgentChat'
+          "AgentChat",
         );
       } else {
         // Legacy DM mode: Write to agentMessages table
@@ -823,7 +823,7 @@ export const POST = withErrorHandling(
             {
               id: userMessageId,
               agentUserId: agentId,
-              role: 'user',
+              role: "user",
               content: message,
               pointsCost: 0,
               metadata: {},
@@ -832,7 +832,7 @@ export const POST = withErrorHandling(
             {
               id: responseMessageId,
               agentUserId: agentId,
-              role: 'assistant',
+              role: "assistant",
               content: responseText,
               modelUsed,
               pointsCost: actualPointsCost, // Use actual cost (0 for LLM failures)
@@ -862,11 +862,11 @@ export const POST = withErrorHandling(
         data: {
           id: uuidv4(),
           agentUserId: agentId,
-          type: 'chat',
-          level: isLLMFailure ? 'warn' : 'info',
+          type: "chat",
+          level: isLLMFailure ? "warn" : "info",
           message: isLLMFailure
-            ? 'Chat interaction completed with LLM failure'
-            : 'Chat interaction completed',
+            ? "Chat interaction completed with LLM failure"
+            : "Chat interaction completed",
           prompt: message,
           completion: responseText,
           metadata: {
@@ -887,15 +887,15 @@ export const POST = withErrorHandling(
           newBalance = await agentService.deductPoints(
             agentId,
             actualPointsCost,
-            `Chat message (${usePro ? 'pro' : 'free'} mode)`,
-            undefined
+            `Chat message (${usePro ? "pro" : "free"} mode)`,
+            undefined,
           );
         } catch (err) {
           // Log but don't fail - response already saved, points can be reconciled
           logger.error(
-            'Failed to deduct points after successful response',
+            "Failed to deduct points after successful response",
             { agentId, pointsCost: actualPointsCost, error: err },
-            'AgentChat'
+            "AgentChat",
           );
           // Keep original balance in response (will be slightly incorrect but safe)
         }
@@ -904,10 +904,10 @@ export const POST = withErrorHandling(
       logger.info(
         `Chat completed for agent ${agentId}`,
         { actionsExecuted: traceActionResults.length },
-        'AgentsAPI'
+        "AgentsAPI",
       );
 
-      trackServerEvent(user.id, 'agent_message_sent', {
+      trackServerEvent(user.id, "agent_message_sent", {
         agent_id: agentId,
         message_id: responseMessageId,
         use_pro: usePro,
@@ -915,13 +915,13 @@ export const POST = withErrorHandling(
         model_used: modelUsed,
       }).catch((err) => {
         logger.warn(
-          'Failed to track agent_message_sent',
+          "Failed to track agent_message_sent",
           { error: err },
-          'AgentChat'
+          "AgentChat",
         );
       });
 
-      void checkProgress(user.userId, { type: 'agent_message_sent' });
+      void checkProgress(user.userId, { type: "agent_message_sent" });
 
       return NextResponse.json({
         success: true,
@@ -944,7 +944,7 @@ export const POST = withErrorHandling(
     } finally {
       cleanupRuntimeStateCache(runtime, elizaMessage.id);
     }
-  }
+  },
 );
 
 // =============================================================================
@@ -954,7 +954,7 @@ export const POST = withErrorHandling(
 export const GET = withErrorHandling(
   async (
     req: NextRequest,
-    { params }: { params: Promise<{ agentId: string }> }
+    { params }: { params: Promise<{ agentId: string }> },
   ) => {
     const user = await authenticateUser(req);
     const { agentId } = await params;
@@ -962,19 +962,19 @@ export const GET = withErrorHandling(
     const agent = await agentService.getAgent(agentId, user.id);
     if (!agent) {
       return NextResponse.json(
-        { success: false, error: 'Agent not found' },
-        { status: 404 }
+        { success: false, error: "Agent not found" },
+        { status: 404 },
       );
     }
 
     const { searchParams } = new URL(req.url);
-    const limit = Number.parseInt(searchParams.get('limit') || '50');
-    const cursor = searchParams.get('cursor') || undefined;
+    const limit = Number.parseInt(searchParams.get("limit") || "50", 10);
+    const cursor = searchParams.get("cursor") || undefined;
 
     const { messages, hasMore, nextCursor } = await agentService.getChatHistory(
       agentId,
       limit,
-      cursor
+      cursor,
     );
 
     return NextResponse.json({
@@ -992,5 +992,5 @@ export const GET = withErrorHandling(
         nextCursor,
       },
     });
-  }
+  },
 );

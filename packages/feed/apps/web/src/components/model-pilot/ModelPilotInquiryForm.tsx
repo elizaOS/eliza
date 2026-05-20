@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import {
   calculateModelPilotEstimateRange,
@@ -12,29 +12,29 @@ import {
   type ModelPilotReviewLevel,
   type ModelPilotScenario,
   modelPilotDeliverableAffectsEstimate,
-} from '@feed/shared';
-import { type Dispatch, type SetStateAction, useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { toast } from 'sonner';
-import { PageContainer } from '@/components/shared/PageContainer';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
+} from "@feed/shared";
+import { type Dispatch, type SetStateAction, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+import { toast } from "sonner";
+import { PageContainer } from "@/components/shared/PageContainer";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 
-const TERMS_URL = 'https://docs.feed.market/legal/terms-of-service/';
+const TERMS_URL = "https://docs.feed.market/legal/terms-of-service/";
 
 const fieldClass =
-  'flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50';
+  "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
 
 const rangeClass =
-  'h-1.5 w-full cursor-pointer appearance-none rounded-md bg-muted accent-primary';
+  "h-1.5 w-full cursor-pointer appearance-none rounded-md bg-muted accent-primary";
 
-type PricingScopeMode = 'none' | 'full' | 'fineTuneOnly';
+type PricingScopeMode = "none" | "full" | "fineTuneOnly";
 
 function PricingScopeBadge({ mode }: { mode: PricingScopeMode }) {
-  if (mode === 'fineTuneOnly') {
+  if (mode === "fineTuneOnly") {
     return (
       <span
         className="inline-flex max-w-full shrink-0 items-center rounded border border-primary/45 bg-primary/10 px-2 py-0.5 font-medium text-primary text-xs leading-tight"
@@ -44,7 +44,7 @@ function PricingScopeBadge({ mode }: { mode: PricingScopeMode }) {
       </span>
     );
   }
-  if (mode === 'full') {
+  if (mode === "full") {
     return (
       <span className="inline-flex max-w-full shrink-0 items-center rounded border border-primary/50 bg-primary/10 px-2 py-0.5 font-medium text-primary text-xs leading-tight">
         Affects this estimate
@@ -59,7 +59,7 @@ function PricingScopeBadge({ mode }: { mode: PricingScopeMode }) {
 }
 
 const estimateDockClass =
-  'fixed inset-x-0 bottom-0 z-[120] border-primary/35 border-t-2 bg-background px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-12px_40px_rgba(0,0,0,0.1)] backdrop-blur-md lg:py-3';
+  "fixed inset-x-0 bottom-0 z-[120] border-primary/35 border-t-2 bg-background px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-12px_40px_rgba(0,0,0,0.1)] backdrop-blur-md lg:py-3";
 
 /**
  * Renders the live estimate strip on document.body so position:fixed is always
@@ -105,43 +105,43 @@ function ModelPilotEstimateDock({ estimate }: { estimate: string }) {
         </p>
       </div>
     </div>,
-    document.body
+    document.body,
   );
 }
 
 export function ModelPilotInquiryForm() {
-  const [modelProvider, setModelProvider] = useState('');
-  const [modelName, setModelName] = useState('');
-  const [apiEndpoint, setApiEndpoint] = useState('');
+  const [modelProvider, setModelProvider] = useState("");
+  const [modelName, setModelName] = useState("");
+  const [apiEndpoint, setApiEndpoint] = useState("");
   const [toolUse, setToolUse] = useState(false);
   const [memory, setMemory] = useState(false);
 
   const [selectedDeliverables, setSelectedDeliverables] = useState<
     ModelPilotDeliverable[]
-  >(['Behavioral data', 'Evaluation report']);
+  >(["Behavioral data", "Evaluation report"]);
   const [selectedScenarios, setSelectedScenarios] = useState<
     ModelPilotScenario[]
-  >(['Market manipulation', 'Scam detection']);
+  >(["Market manipulation", "Scam detection"]);
   const [selectedOutputs, setSelectedOutputs] = useState<ModelPilotOutput[]>([
-    'Structured data',
-    'Evaluation report',
+    "Structured data",
+    "Evaluation report",
   ]);
 
   const [concurrentAgents, setConcurrentAgents] = useState(500);
   const [scenarioRuns, setScenarioRuns] = useState(10_000);
   const [humanReview, setHumanReview] =
-    useState<ModelPilotReviewLevel>('Light review');
+    useState<ModelPilotReviewLevel>("Light review");
   const [privateDeployment, setPrivateDeployment] = useState(false);
   const [dataExclusivity, setDataExclusivity] = useState(false);
 
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState("");
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const toggle = <T extends string>(
     item: T,
     setList: Dispatch<SetStateAction<T[]>>,
-    options?: { minSelected?: number }
+    options?: { minSelected?: number },
   ) => {
     const min = options?.minSelected ?? 0;
     setList((prev) => {
@@ -171,9 +171,9 @@ export function ModelPilotInquiryForm() {
 
     setIsSubmitting(true);
     try {
-      const res = await fetch('/api/model-pilot-inquiry', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/model-pilot-inquiry", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email: email.trim(),
           agreedToTerms: true as const,
@@ -200,22 +200,22 @@ export function ModelPilotInquiryForm() {
 
       if (!res.ok) {
         if (res.status === 429) {
-          toast.error('Too many requests. Please try again shortly.');
+          toast.error("Too many requests. Please try again shortly.");
         } else if (res.status === 400) {
           toast.error(
-            'Something in the form could not be sent. Check required selections and try again.'
+            "Something in the form could not be sent. Check required selections and try again.",
           );
-        } else if (data.reason === 'provider_not_configured') {
+        } else if (data.reason === "provider_not_configured") {
           toast.error(
-            'Email delivery is not configured. Please try again later.'
+            "Email delivery is not configured. Please try again later.",
           );
         } else {
-          toast.error('Could not send your request. Please try again.');
+          toast.error("Could not send your request. Please try again.");
         }
         return;
       }
 
-      toast.success('Request received. Check your email for a copy.');
+      toast.success("Request received. Check your email for a copy.");
       setAgreedToTerms(false);
     } finally {
       setIsSubmitting(false);
@@ -237,7 +237,7 @@ export function ModelPilotInquiryForm() {
             <p className="mt-3 max-w-prose text-base text-muted-foreground leading-relaxed md:text-lg">
               Connect your model, run adversarial social and market scenarios,
               and receive behavioral data, evaluations, or a fine-tuned version
-              of your model. Use the{' '}
+              of your model. Use the{" "}
               <span className="font-medium text-foreground">Live</span> strip at
               the bottom to watch the estimate while you scroll.
             </p>
@@ -308,7 +308,7 @@ export function ModelPilotInquiryForm() {
                       </Label>
                       <Input
                         id="model-pilot-endpoint"
-                        className={cn(fieldClass, 'font-mono text-xs')}
+                        className={cn(fieldClass, "font-mono text-xs")}
                         placeholder="https://api.your-provider.com/v1/chat/completions"
                         value={apiEndpoint}
                         onChange={(ev) => setApiEndpoint(ev.target.value)}
@@ -359,10 +359,10 @@ export function ModelPilotInquiryForm() {
                     </div>
                     <p className="mt-1 text-muted-foreground text-sm">
                       Pick everything you want; the calculator only moves when
-                      you include a{' '}
+                      you include a{" "}
                       <span className="font-medium text-foreground">
                         fine-tuned
-                      </span>{' '}
+                      </span>{" "}
                       deliverable. Everything here still drives the proposal we
                       send you.
                     </p>
@@ -379,20 +379,20 @@ export function ModelPilotInquiryForm() {
                           })
                         }
                         className={cn(
-                          'rounded-md border px-4 py-3 text-left font-medium text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+                          "rounded-md border px-4 py-3 text-left font-medium text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
                           selectedDeliverables.includes(item)
-                            ? 'border-primary bg-primary text-primary-foreground'
-                            : 'border-border bg-background text-muted-foreground hover:bg-muted/60'
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-border bg-background text-muted-foreground hover:bg-muted/60",
                         )}
                       >
                         <span className="block">{item}</span>
                         {modelPilotDeliverableAffectsEstimate(item) ? (
                           <span
                             className={cn(
-                              'mt-1 block font-normal text-[10px] uppercase tracking-wide',
+                              "mt-1 block font-normal text-[10px] uppercase tracking-wide",
                               selectedDeliverables.includes(item)
-                                ? 'text-primary-foreground/80'
-                                : 'text-primary'
+                                ? "text-primary-foreground/80"
+                                : "text-primary",
                             )}
                           >
                             Affects estimate
@@ -433,10 +433,10 @@ export function ModelPilotInquiryForm() {
                           toggle(item, setSelectedScenarios, { minSelected: 1 })
                         }
                         className={cn(
-                          'rounded-md border px-4 py-2 font-medium text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+                          "rounded-md border px-4 py-2 font-medium text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
                           selectedScenarios.includes(item)
-                            ? 'border-border bg-muted text-foreground'
-                            : 'border-border bg-background text-muted-foreground hover:bg-muted/50'
+                            ? "border-border bg-muted text-foreground"
+                            : "border-border bg-background text-muted-foreground hover:bg-muted/50",
                         )}
                       >
                         {item}
@@ -461,7 +461,7 @@ export function ModelPilotInquiryForm() {
                     </div>
                     <p className="mt-1 text-muted-foreground text-sm">
                       Concurrent agents and scenario runs scale the range. Human
-                      review adds cost only for{' '}
+                      review adds cost only for{" "}
                       <span className="font-medium text-foreground">
                         Full labeling support
                       </span>
@@ -635,10 +635,10 @@ export function ModelPilotInquiryForm() {
                         aria-pressed={selectedOutputs.includes(item)}
                         onClick={() => toggle(item, setSelectedOutputs)}
                         className={cn(
-                          'rounded-md border px-4 py-2 font-medium text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+                          "rounded-md border px-4 py-2 font-medium text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
                           selectedOutputs.includes(item)
-                            ? 'border-border bg-muted text-foreground'
-                            : 'border-border bg-background text-muted-foreground hover:bg-muted/50'
+                            ? "border-border bg-muted text-foreground"
+                            : "border-border bg-background text-muted-foreground hover:bg-muted/50",
                         )}
                       >
                         {item}
@@ -709,7 +709,7 @@ export function ModelPilotInquiryForm() {
                         Model
                       </span>
                       <div className="font-medium text-foreground text-sm">
-                        {modelName.trim() || 'Customer-provided model'}
+                        {modelName.trim() || "Customer-provided model"}
                       </div>
                     </div>
                     <div>
@@ -746,9 +746,9 @@ export function ModelPilotInquiryForm() {
                       <ul className="space-y-1 font-medium text-foreground text-sm">
                         <li>• Scenario setup</li>
                         <li>• Data processing</li>
-                        {humanReview !== 'Off' && <li>• {humanReview}</li>}
+                        {humanReview !== "Off" && <li>• {humanReview}</li>}
                         {selectedDeliverables.some(
-                          modelPilotDeliverableAffectsEstimate
+                          modelPilotDeliverableAffectsEstimate,
                         ) && <li>• Fine-tuning service</li>}
                         {privateDeployment && <li>• Private deployment</li>}
                         {dataExclusivity && <li>• Data exclusivity</li>}
@@ -783,7 +783,7 @@ export function ModelPilotInquiryForm() {
                         className="mt-0.5 size-4 rounded border border-border text-primary focus:ring-ring"
                       />
                       <span className="text-muted-foreground text-xs leading-relaxed">
-                        I agree to the{' '}
+                        I agree to the{" "}
                         <a
                           href={TERMS_URL}
                           target="_blank"
@@ -791,7 +791,7 @@ export function ModelPilotInquiryForm() {
                           className="font-medium text-primary underline"
                         >
                           Terms of Service
-                        </a>{' '}
+                        </a>{" "}
                         and consent to being contacted.
                       </span>
                     </label>
@@ -802,7 +802,7 @@ export function ModelPilotInquiryForm() {
                     className="w-full"
                     disabled={!email.trim() || !agreedToTerms || isSubmitting}
                   >
-                    {isSubmitting ? 'Sending…' : 'Request pilot'}
+                    {isSubmitting ? "Sending…" : "Request pilot"}
                   </Button>
                 </div>
               </div>

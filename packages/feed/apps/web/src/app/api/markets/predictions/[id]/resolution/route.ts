@@ -3,14 +3,14 @@ import {
   publicRateLimit,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import type { NextRequest } from 'next/server';
-import { getPublicResolutionAudit } from '../../_resolution-audit';
+} from "@feed/api";
+import type { NextRequest } from "next/server";
+import { getPublicResolutionAudit } from "../../_resolution-audit";
 
 export const GET = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ id: string }> }
+    context: { params: Promise<{ id: string }> },
   ) => {
     const { error, rateLimitInfo } = await publicRateLimit(request);
     if (error) return error;
@@ -19,7 +19,7 @@ export const GET = withErrorHandling(
     const audit = await getPublicResolutionAudit(marketId);
 
     if (!audit) {
-      return successResponse({ error: 'Market not found' }, 404);
+      return successResponse({ error: "Market not found" }, 404);
     }
 
     const response = successResponse({
@@ -30,5 +30,5 @@ export const GET = withErrorHandling(
 
     if (rateLimitInfo) addPublicReadHeaders(response, rateLimitInfo);
     return response;
-  }
+  },
 );

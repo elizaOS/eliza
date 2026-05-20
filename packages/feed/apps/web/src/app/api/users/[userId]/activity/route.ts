@@ -15,7 +15,7 @@ import {
   requireUserByIdentifier,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
+} from "@feed/api";
 import {
   balanceTransactions,
   comments,
@@ -26,21 +26,21 @@ import {
   markets,
   pointsTransactions,
   posts,
-} from '@feed/db';
-import { toISO, UserIdParamSchema } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { z } from 'zod';
+} from "@feed/db";
+import { toISO, UserIdParamSchema } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { z } from "zod";
 
 const QuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).optional().default(50),
   type: z
-    .enum(['all', 'points', 'post', 'comment', 'trade'])
+    .enum(["all", "points", "post", "comment", "trade"])
     .optional()
-    .default('all'),
+    .default("all"),
 });
 
 interface TradeActivity {
-  type: 'trade';
+  type: "trade";
   id: string;
   timestamp: string;
   data: {
@@ -53,7 +53,7 @@ interface TradeActivity {
 }
 
 interface PointsActivity {
-  type: 'points';
+  type: "points";
   id: string;
   timestamp: string;
   data: {
@@ -66,7 +66,7 @@ interface PointsActivity {
 }
 
 interface PostActivity {
-  type: 'post';
+  type: "post";
   id: string;
   timestamp: string;
   data: {
@@ -76,7 +76,7 @@ interface PostActivity {
 }
 
 interface CommentActivity {
-  type: 'comment';
+  type: "comment";
   id: string;
   timestamp: string;
   data: {
@@ -100,7 +100,7 @@ type UserActivity =
 export const GET = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ userId: string }> }
+    context: { params: Promise<{ userId: string }> },
   ) => {
     // Authenticate user
     const authUser = await authenticate(request);
@@ -109,9 +109,9 @@ export const GET = withErrorHandling(
     // Check if the authenticated user has a database record
     if (!authUser.dbUserId) {
       throw new AuthorizationError(
-        'User profile not found. Please complete onboarding first.',
-        'activity',
-        'read'
+        "User profile not found. Please complete onboarding first.",
+        "activity",
+        "read",
       );
     }
 
@@ -121,28 +121,28 @@ export const GET = withErrorHandling(
     // Verify user is getting their own activity
     if (authUser.dbUserId !== canonicalUserId) {
       throw new AuthorizationError(
-        'You can only view your own activity',
-        'activity',
-        'read'
+        "You can only view your own activity",
+        "activity",
+        "read",
       );
     }
 
     const { searchParams } = new URL(request.url);
     const { limit, type } = QuerySchema.parse({
-      limit: searchParams.get('limit') ?? undefined,
-      type: searchParams.get('type') ?? undefined,
+      limit: searchParams.get("limit") ?? undefined,
+      type: searchParams.get("type") ?? undefined,
     });
 
     const activities: UserActivity[] = [];
 
     // Fetch trades from balanceTransactions (individual trade events)
-    if (type === 'all' || type === 'trade') {
+    if (type === "all" || type === "trade") {
       const tradeTypes = [
-        'pred_buy',
-        'pred_sell',
-        'perp_open',
-        'perp_close',
-        'perp_liquidation',
+        "pred_buy",
+        "pred_sell",
+        "perp_open",
+        "perp_close",
+        "perp_liquidation",
       ];
 
       const userTrades = await db
@@ -161,15 +161,15 @@ export const GET = withErrorHandling(
 
       // Filter to only trade types
       const filteredTrades = userTrades.filter((t) =>
-        tradeTypes.includes(t.type)
+        tradeTypes.includes(t.type),
       );
 
       // Get market info for trades that have relatedId (marketId)
       const marketIds = [
         ...new Set(
           filteredTrades
-            .filter((t) => t.relatedId && t.type.startsWith('pred_'))
-            .map((t) => t.relatedId as string)
+            .filter((t) => t.relatedId && t.type.startsWith("pred_"))
+            .map((t) => t.relatedId as string),
         ),
       ];
 
@@ -188,7 +188,7 @@ export const GET = withErrorHandling(
 
       for (const trade of filteredTrades.slice(0, limit)) {
         activities.push({
-          type: 'trade',
+          type: "trade",
           id: trade.id,
           timestamp: toISO(trade.createdAt),
           data: {
@@ -205,7 +205,7 @@ export const GET = withErrorHandling(
     }
 
     // Fetch points transactions if requested (excluding trading_pnl since we show trades separately)
-    if (type === 'all' || type === 'points') {
+    if (type === "all" || type === "points") {
       const transactions = await db
         .select({
           id: pointsTransactions.id,
@@ -223,10 +223,10 @@ export const GET = withErrorHandling(
 
       for (const tx of transactions) {
         // Skip trading_pnl since we show trades from balanceTransactions
-        if (tx.reason === 'trading_pnl') continue;
+        if (tx.reason === "trading_pnl") continue;
 
         activities.push({
-          type: 'points',
+          type: "points",
           id: tx.id,
           timestamp: toISO(tx.createdAt),
           data: {
@@ -241,7 +241,7 @@ export const GET = withErrorHandling(
     }
 
     // Fetch posts if requested
-    if (type === 'all' || type === 'post') {
+    if (type === "all" || type === "post") {
       const userPosts = await db
         .select({
           id: posts.id,
@@ -255,7 +255,7 @@ export const GET = withErrorHandling(
 
       for (const post of userPosts) {
         activities.push({
-          type: 'post',
+          type: "post",
           id: post.id,
           timestamp: toISO(post.createdAt),
           data: {
@@ -267,7 +267,7 @@ export const GET = withErrorHandling(
     }
 
     // Fetch comments if requested
-    if (type === 'all' || type === 'comment') {
+    if (type === "all" || type === "comment") {
       const userComments = await db
         .select({
           id: comments.id,
@@ -283,7 +283,7 @@ export const GET = withErrorHandling(
 
       for (const comment of userComments) {
         activities.push({
-          type: 'comment',
+          type: "comment",
           id: comment.id,
           timestamp: toISO(comment.createdAt),
           data: {
@@ -299,7 +299,7 @@ export const GET = withErrorHandling(
     // Sort all activities by timestamp (newest first)
     activities.sort(
       (a, b) =>
-        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
     );
 
     const limitedActivities = activities.slice(0, limit);
@@ -313,5 +313,5 @@ export const GET = withErrorHandling(
         hasMore: activities.length > limit,
       },
     });
-  }
+  },
 );

@@ -18,7 +18,7 @@ import {
   posts,
   reactions,
   shares,
-} from '@feed/db';
+} from "@feed/db";
 
 /**
  * Participation statistics for a user

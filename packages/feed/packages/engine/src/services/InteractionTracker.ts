@@ -5,10 +5,10 @@
  * Simple text-based system - just records what happened.
  */
 
-import type { InputJsonValue } from '@feed/db';
-import { db, npcInteractions } from '@feed/db';
-import type { Actor } from '@feed/shared';
-import { generateSnowflakeId, logger } from '@feed/shared';
+import type { InputJsonValue } from "@feed/db";
+import { db, npcInteractions } from "@feed/db";
+import type { Actor } from "@feed/shared";
+import { generateSnowflakeId, logger } from "@feed/shared";
 
 export class InteractionTracker {
   /**
@@ -18,12 +18,12 @@ export class InteractionTracker {
     authorId: string,
     mentionedId: string,
     postContent: string,
-    sentiment: number
+    sentiment: number,
   ): Promise<void> {
     // Sort IDs for consistency - fail fast if invalid IDs provided
     if (!authorId || !mentionedId) {
       throw new Error(
-        `Invalid actor IDs in trackPostMention: authorId=${authorId}, mentionedId=${mentionedId}`
+        `Invalid actor IDs in trackPostMention: authorId=${authorId}, mentionedId=${mentionedId}`,
       );
     }
     const sorted = [authorId, mentionedId].sort();
@@ -34,9 +34,9 @@ export class InteractionTracker {
       id: await generateSnowflakeId(),
       actor1Id: id1,
       actor2Id: id2,
-      interactionType: 'mention',
+      interactionType: "mention",
       sentiment,
-      context: `${authorId === id1 ? 'actor1' : 'actor2'} mentioned ${authorId === id1 ? 'actor2' : 'actor1'} in post: "${postContent.substring(0, 100)}"`,
+      context: `${authorId === id1 ? "actor1" : "actor2"} mentioned ${authorId === id1 ? "actor2" : "actor1"} in post: "${postContent.substring(0, 100)}"`,
       metadata: {
         postContent: postContent.substring(0, 200),
       } as InputJsonValue,
@@ -44,9 +44,9 @@ export class InteractionTracker {
     });
 
     logger.debug(
-      'Tracked post mention',
+      "Tracked post mention",
       { authorId, mentionedId, sentiment },
-      'InteractionTracker'
+      "InteractionTracker",
     );
   }
 
@@ -57,12 +57,12 @@ export class InteractionTracker {
     replierId: string,
     originalAuthorId: string,
     replyContent: string,
-    sentiment: number
+    sentiment: number,
   ): Promise<void> {
     // Fail fast if invalid IDs provided
     if (!replierId || !originalAuthorId) {
       throw new Error(
-        `Invalid actor IDs in trackReply: replierId=${replierId}, originalAuthorId=${originalAuthorId}`
+        `Invalid actor IDs in trackReply: replierId=${replierId}, originalAuthorId=${originalAuthorId}`,
       );
     }
     const sorted = [replierId, originalAuthorId].sort();
@@ -73,9 +73,9 @@ export class InteractionTracker {
       id: await generateSnowflakeId(),
       actor1Id: id1,
       actor2Id: id2,
-      interactionType: 'reply',
+      interactionType: "reply",
       sentiment,
-      context: `${replierId === id1 ? 'actor1' : 'actor2'} replied to ${replierId === id1 ? 'actor2' : 'actor1'}: "${replyContent.substring(0, 100)}"`,
+      context: `${replierId === id1 ? "actor1" : "actor2"} replied to ${replierId === id1 ? "actor2" : "actor1"}: "${replyContent.substring(0, 100)}"`,
       metadata: {
         replyContent: replyContent.substring(0, 200),
       } as InputJsonValue,
@@ -83,9 +83,9 @@ export class InteractionTracker {
     });
 
     logger.debug(
-      'Tracked reply',
+      "Tracked reply",
       { replierId, originalAuthorId, sentiment },
-      'InteractionTracker'
+      "InteractionTracker",
     );
   }
 
@@ -95,7 +95,7 @@ export class InteractionTracker {
   static async trackArticleMention(
     actorIds: string[],
     articleTitle: string,
-    articleSentiment: number
+    articleSentiment: number,
   ): Promise<void> {
     // Create interactions for all pairs
     for (let i = 0; i < actorIds.length; i++) {
@@ -104,7 +104,7 @@ export class InteractionTracker {
         const actor2 = actorIds[j];
         if (!actor1 || !actor2) {
           throw new Error(
-            `Invalid actor IDs in trackArticleMention at indices [${i}, ${j}]: actor1=${actor1}, actor2=${actor2}`
+            `Invalid actor IDs in trackArticleMention at indices [${i}, ${j}]: actor1=${actor1}, actor2=${actor2}`,
           );
         }
         // Skip self-interaction
@@ -115,7 +115,7 @@ export class InteractionTracker {
           id: await generateSnowflakeId(),
           actor1Id: id1!,
           actor2Id: id2!,
-          interactionType: 'article',
+          interactionType: "article",
           sentiment: articleSentiment,
           context: `both mentioned in article: "${articleTitle}"`,
           metadata: { articleTitle } as InputJsonValue,
@@ -125,9 +125,9 @@ export class InteractionTracker {
     }
 
     logger.debug(
-      'Tracked article mentions',
+      "Tracked article mentions",
       { actorCount: actorIds.length, articleTitle },
-      'InteractionTracker'
+      "InteractionTracker",
     );
   }
 
@@ -137,7 +137,7 @@ export class InteractionTracker {
   static async trackEventInvolvement(
     actorIds: string[],
     eventDescription: string,
-    eventOutcome: 'positive' | 'negative' | 'neutral'
+    eventOutcome: "positive" | "negative" | "neutral",
   ): Promise<void> {
     const sentimentMap = {
       positive: 0.3,
@@ -152,7 +152,7 @@ export class InteractionTracker {
         const actor2 = actorIds[j];
         if (!actor1 || !actor2) {
           throw new Error(
-            `Invalid actor IDs in trackEventInvolvement at indices [${i}, ${j}]: actor1=${actor1}, actor2=${actor2}`
+            `Invalid actor IDs in trackEventInvolvement at indices [${i}, ${j}]: actor1=${actor1}, actor2=${actor2}`,
           );
         }
         // Skip self-interaction
@@ -163,7 +163,7 @@ export class InteractionTracker {
           id: await generateSnowflakeId(),
           actor1Id: id1!,
           actor2Id: id2!,
-          interactionType: 'event',
+          interactionType: "event",
           sentiment: sentimentMap[eventOutcome],
           context: `both involved in: ${eventDescription.substring(0, 100)}`,
           metadata: {
@@ -176,9 +176,9 @@ export class InteractionTracker {
     }
 
     logger.debug(
-      'Tracked event involvement',
+      "Tracked event involvement",
       { actorCount: actorIds.length, eventDescription },
-      'InteractionTracker'
+      "InteractionTracker",
     );
   }
 

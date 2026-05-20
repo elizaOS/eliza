@@ -1,2 +1,2 @@
-import deploymentData from './index.json';
+import deploymentData from "./index.json";
 export default deploymentData;

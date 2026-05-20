@@ -4,8 +4,8 @@
  * Runs agents in parallel with different archetypes, recording trajectories.
  */
 
-import { HarnessA2AClient } from './a2a-client';
-import { getArchetype } from './archetypes';
+import { HarnessA2AClient } from "./a2a-client";
+import { getArchetype } from "./archetypes";
 import type {
   A2AClientInterface,
   ActionResult,
@@ -16,19 +16,19 @@ import type {
   TrainableAgent,
   Trajectory,
   TrajectoryStep,
-} from './types';
+} from "./types";
 
 const ANVIL_PRIVATE_KEYS = [
-  '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80',
-  '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d',
-  '0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a',
-  '0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6',
-  '0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a',
-  '0x8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e2d3348e872092edffba',
-  '0x92db14e403b83dfe3df233f83dfa3a0d7096f21ca9b0d6d6b8d88b2b4ec1564e',
-  '0x4bbbf85ce3377467afe5d46f804f221813b2bb87f24d81f60f1fcdbf7cbf4356',
-  '0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97',
-  '0x2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6',
+  "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+  "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
+  "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a",
+  "0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6",
+  "0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a",
+  "0x8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e2d3348e872092edffba",
+  "0x92db14e403b83dfe3df233f83dfa3a0d7096f21ca9b0d6d6b8d88b2b4ec1564e",
+  "0x4bbbf85ce3377467afe5d46f804f221813b2bb87f24d81f60f1fcdbf7cbf4356",
+  "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97",
+  "0x2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6",
 ];
 
 interface AgentInstance {
@@ -81,7 +81,7 @@ export class AgentHarness {
             try {
               await harnessClient.register(
                 `${agent.name}-${archetype.id}-${i}`,
-                `${archetype.description} (${agent.language})`
+                `${archetype.description} (${agent.language})`,
               );
             } catch {
               // ignored
@@ -101,9 +101,9 @@ export class AgentHarness {
           // getAgentId() exists on HarnessA2AClient but not on all A2AClientInterface
           // implementations (e.g. FeedProductionClient, SimulationA2AAdapter).
           const agentId =
-            'getAgentId' in client &&
+            "getAgentId" in client &&
             typeof (client as { getAgentId(): string }).getAgentId ===
-              'function'
+              "function"
               ? (client as { getAgentId(): string }).getAgentId()
               : `${agent.name}-${archetype.id}-${instanceId}`;
 
@@ -143,7 +143,7 @@ export class AgentHarness {
    */
   private async executeTick(
     instance: AgentInstance,
-    tick: number
+    tick: number,
   ): Promise<TrajectoryStep> {
     const { agent, client, trajectory } = instance;
     const archetype = getArchetype(instance.archetypeId);
@@ -155,7 +155,7 @@ export class AgentHarness {
         client.getPositions(),
         client.getMarkets(),
         client.getFeed(10),
-      ]
+      ],
     );
 
     const context: AgentContext = {
@@ -202,21 +202,21 @@ export class AgentHarness {
   private async executeAction(
     decision: AgentDecision,
     client: HarnessA2AClient,
-    context: AgentContext
+    context: AgentContext,
   ): Promise<ActionResult> {
     switch (decision.action) {
-      case 'BUY_YES':
-      case 'BUY_NO': {
+      case "BUY_YES":
+      case "BUY_NO": {
         if (context.markets.length === 0 || context.balance < 10) {
           return {
             success: false,
             action: decision.action,
-            error: 'No markets or insufficient balance',
+            error: "No markets or insufficient balance",
           };
         }
         const market =
           context.markets[Math.floor(Math.random() * context.markets.length)];
-        const outcome = decision.action === 'BUY_YES' ? 'YES' : 'NO';
+        const outcome = decision.action === "BUY_YES" ? "YES" : "NO";
         const amount = Math.min(50, context.balance * 0.1);
         const trade = await client.buyShares(market.id, outcome, amount);
         return {
@@ -226,12 +226,12 @@ export class AgentHarness {
         };
       }
 
-      case 'SELL_SHARES': {
+      case "SELL_SHARES": {
         if (context.positions.length === 0) {
           return {
             success: false,
             action: decision.action,
-            error: 'No positions to sell',
+            error: "No positions to sell",
           };
         }
         const position = context.positions[0];
@@ -239,7 +239,7 @@ export class AgentHarness {
         const trade = await client.sellShares(
           position.marketId,
           position.outcome,
-          sharesToSell
+          sharesToSell,
         );
         return {
           success: true,
@@ -248,10 +248,10 @@ export class AgentHarness {
         };
       }
 
-      case 'CREATE_POST': {
+      case "CREATE_POST": {
         const content =
           (decision.params.content as string) ||
-          'Automated post from training harness';
+          "Automated post from training harness";
         const post = await client.createPost(content);
         return {
           success: true,
@@ -260,12 +260,12 @@ export class AgentHarness {
         };
       }
 
-      case 'LIKE_POST': {
+      case "LIKE_POST": {
         if (context.posts.length === 0) {
           return {
             success: false,
             action: decision.action,
-            error: 'No posts to like',
+            error: "No posts to like",
           };
         }
         const post =
@@ -278,18 +278,18 @@ export class AgentHarness {
         };
       }
 
-      case 'COMMENT_POST': {
+      case "COMMENT_POST": {
         if (context.posts.length === 0) {
           return {
             success: false,
             action: decision.action,
-            error: 'No posts to comment',
+            error: "No posts to comment",
           };
         }
         const post =
           context.posts[Math.floor(Math.random() * context.posts.length)];
         const content =
-          (decision.params.content as string) || 'Interesting point!';
+          (decision.params.content as string) || "Interesting point!";
         const result = await client.commentPost(post.id, content);
         return {
           success: true,
@@ -298,13 +298,13 @@ export class AgentHarness {
         };
       }
 
-      case 'VIEW_FEED':
-      case 'DISCOVER_AGENTS':
-      case 'SEARCH_USERS':
-      case 'CHECK_LEADERBOARD':
-      case 'CHECK_NOTIFICATIONS':
-      case 'VIEW_MARKET_DATA':
-      case 'HOLD':
+      case "VIEW_FEED":
+      case "DISCOVER_AGENTS":
+      case "SEARCH_USERS":
+      case "CHECK_LEADERBOARD":
+      case "CHECK_NOTIFICATIONS":
+      case "VIEW_MARKET_DATA":
+      case "HOLD":
         return { success: true, action: decision.action };
 
       default:
@@ -326,7 +326,7 @@ export class AgentHarness {
     archetype: {
       riskTolerance: number;
       actionWeights: { trade: number; post: number; social: number };
-    }
+    },
   ): number {
     let reward = 0;
 
@@ -336,13 +336,13 @@ export class AgentHarness {
 
       // Bonus for archetype-aligned actions
       const actionType = decision.action;
-      if (actionType.includes('BUY') || actionType === 'SELL_SHARES') {
+      if (actionType.includes("BUY") || actionType === "SELL_SHARES") {
         reward += archetype.actionWeights.trade * 2;
       }
-      if (actionType === 'CREATE_POST') {
+      if (actionType === "CREATE_POST") {
         reward += archetype.actionWeights.post * 2;
       }
-      if (actionType.includes('LIKE') || actionType.includes('COMMENT')) {
+      if (actionType.includes("LIKE") || actionType.includes("COMMENT")) {
         reward += archetype.actionWeights.social * 2;
       }
     } else {
@@ -350,7 +350,7 @@ export class AgentHarness {
     }
 
     // Risk-adjusted reward
-    if (decision.action.includes('BUY') && context.balance < 100) {
+    if (decision.action.includes("BUY") && context.balance < 100) {
       // Penalize risky trading with low balance
       reward *= 1 - archetype.riskTolerance;
     }
@@ -364,14 +364,14 @@ export class AgentHarness {
   private async runBatch(
     batch: AgentInstance[],
     tick: number,
-    errors: string[]
+    errors: string[],
   ): Promise<TrajectoryStep[]> {
     const results = await Promise.allSettled(
-      batch.map((instance) => this.executeTick(instance, tick))
+      batch.map((instance) => this.executeTick(instance, tick)),
     );
 
     return results.map((r, idx) => {
-      if (r.status === 'fulfilled') return r.value;
+      if (r.status === "fulfilled") return r.value;
       const msg =
         r.reason instanceof Error ? r.reason.message : String(r.reason);
       const label = `${batch[idx].agent.name}/${batch[idx].archetypeId} tick ${tick}`;
@@ -391,11 +391,11 @@ export class AgentHarness {
             : undefined,
         },
         decision: {
-          action: 'HOLD' as const,
+          action: "HOLD" as const,
           params: {},
           reasoning: `Error: ${msg}`,
         },
-        result: { success: false, action: 'HOLD' as const, error: msg },
+        result: { success: false, action: "HOLD" as const, error: msg },
         reward: -1,
       };
       // Push into trajectory so steps.length always equals ticksPerAgent
@@ -412,16 +412,16 @@ export class AgentHarness {
     const startTime = Date.now();
     const errors: string[] = [];
 
-    console.log('\n🎯 Agent Training Harness Starting...');
-    console.log('=====================================');
-    console.log(`Agents: ${this.config.agents.map((a) => a.name).join(', ')}`);
+    console.log("\n🎯 Agent Training Harness Starting...");
+    console.log("=====================================");
+    console.log(`Agents: ${this.config.agents.map((a) => a.name).join(", ")}`);
     console.log(
-      `Archetypes: ${this.config.archetypes.map((a) => a.id).join(', ')}`
+      `Archetypes: ${this.config.archetypes.map((a) => a.id).join(", ")}`,
     );
     console.log(`Instances per combo: ${this.config.instancesPerAgent}`);
     console.log(`Ticks per agent: ${this.config.ticksPerAgent}`);
     console.log(`Parallel: ${this.config.parallelAgents}`);
-    console.log('');
+    console.log("");
 
     // Initialize all instances
     await this.initializeInstances();
@@ -444,9 +444,9 @@ export class AgentHarness {
         for (let j = 0; j < batch.length; j++) {
           const instance = batch[j];
           const step = steps[j];
-          const symbol = step.result.success ? '✅' : '❌';
+          const symbol = step.result.success ? "✅" : "❌";
           console.log(
-            `   ${symbol} ${instance.agent.name}/${instance.archetypeId}: ${step.decision.action}`
+            `   ${symbol} ${instance.agent.name}/${instance.archetypeId}: ${step.decision.action}`,
           );
         }
       }
@@ -454,7 +454,7 @@ export class AgentHarness {
       // Wait between ticks
       if (tick < this.config.ticksPerAgent) {
         await new Promise((resolve) =>
-          setTimeout(resolve, this.config.tickInterval)
+          setTimeout(resolve, this.config.tickInterval),
         );
       }
     }
@@ -470,7 +470,7 @@ export class AgentHarness {
         } catch (err) {
           console.warn(
             `Cleanup failed for ${instance.agent.name}/${instance.archetypeId}:`,
-            err instanceof Error ? err.message : err
+            err instanceof Error ? err.message : err,
           );
         }
       }
@@ -496,14 +496,14 @@ export class AgentHarness {
       await this.saveTrajectories(trajectories);
     }
 
-    console.log('\n=====================================');
-    console.log('🏁 Training Complete!');
+    console.log("\n=====================================");
+    console.log("🏁 Training Complete!");
     console.log(`   Agents: ${result.agentsRun}`);
     console.log(`   Ticks: ${result.totalTicks}`);
     console.log(`   Duration: ${(duration / 1000).toFixed(1)}s`);
     console.log(`   Trajectories: ${trajectories.length}`);
     console.log(`   Errors: ${errors.length}`);
-    console.log('');
+    console.log("");
 
     return result;
   }
@@ -533,7 +533,7 @@ export class AgentHarness {
       }
 
       // By agent type
-      const agentType = (traj.metadata?.agentType as string) || 'unknown';
+      const agentType = (traj.metadata?.agentType as string) || "unknown";
       if (!byAgent[agentType]) {
         byAgent[agentType] = { instances: 0, ticks: 0, avgReward: 0 };
       }
@@ -561,10 +561,10 @@ export class AgentHarness {
    * Save trajectories to files
    */
   private async saveTrajectories(trajectories: Trajectory[]): Promise<void> {
-    const fs = await import('fs');
-    const path = await import('path');
+    const fs = await import("node:fs");
+    const path = await import("node:path");
 
-    const outputDir = this.config.outputDir || './trajectories';
+    const outputDir = this.config.outputDir || "./trajectories";
 
     // Ensure directory exists
     if (!fs.existsSync(outputDir)) {
@@ -591,8 +591,8 @@ export class AgentHarness {
       })),
     };
     fs.writeFileSync(
-      path.join(outputDir, 'summary.json'),
-      JSON.stringify(summary, null, 2)
+      path.join(outputDir, "summary.json"),
+      JSON.stringify(summary, null, 2),
     );
 
     console.log(`📁 Saved ${trajectories.length} trajectories to ${outputDir}`);
@@ -603,7 +603,7 @@ export class AgentHarness {
  * Create and run a training harness
  */
 export async function runHarness(
-  config: HarnessConfig
+  config: HarnessConfig,
 ): Promise<HarnessResult> {
   const harness = new AgentHarness(config);
   return harness.run();

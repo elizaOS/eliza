@@ -1,1 +1,1 @@
-export { GET } from '../markets/predictions/route';
+export { GET } from "../markets/predictions/route";

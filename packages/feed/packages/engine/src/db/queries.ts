@@ -22,7 +22,7 @@ import {
   posts,
   questions as questionsSchema,
   worldEvents,
-} from '@feed/db';
+} from "@feed/db";
 
 // =============================================================================
 // Question Queries
@@ -36,7 +36,7 @@ export async function getActiveQuestions() {
   return db
     .select()
     .from(questionsSchema)
-    .where(eq(questionsSchema.status, 'active'));
+    .where(eq(questionsSchema.status, "active"));
 }
 
 /**
@@ -46,7 +46,7 @@ export async function getActiveQuestionsWithLimit(limit: number) {
   return db
     .select()
     .from(questionsSchema)
-    .where(eq(questionsSchema.status, 'active'))
+    .where(eq(questionsSchema.status, "active"))
     .limit(limit);
 }
 
@@ -88,8 +88,8 @@ export async function getActiveMarkets(timestamp: Date = new Date()) {
     .where(
       and(
         eq(marketsSchema.resolved, false),
-        gte(marketsSchema.endDate, timestamp)
-      )
+        gte(marketsSchema.endDate, timestamp),
+      ),
     );
 }
 
@@ -173,7 +173,7 @@ export async function getWorldEventsForQuestion(questionId: string) {
   const numericId = Number(questionId);
   if (Number.isNaN(numericId)) {
     throw new Error(
-      `getWorldEventsForQuestion: Invalid questionId "${questionId}" - must be a numeric string for worldEvents.relatedQuestion`
+      `getWorldEventsForQuestion: Invalid questionId "${questionId}" - must be a numeric string for worldEvents.relatedQuestion`,
     );
   }
   return db

@@ -15,17 +15,17 @@
  * @body { platform: 'ios' | 'android', token: string }
  */
 
-import { authenticate, withErrorHandling } from '@feed/api';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+import { authenticate, withErrorHandling } from "@feed/api";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 // Redis key prefix for device tokens
-const DEVICE_TOKEN_PREFIX = 'push:device:';
+const DEVICE_TOKEN_PREFIX = "push:device:";
 // TTL: 90 days (tokens may rotate, stale ones expire)
 const TOKEN_TTL_SECONDS = 90 * 24 * 60 * 60;
 
 async function getRedis() {
-  const { getRedisClient } = await import('@feed/api');
+  const { getRedisClient } = await import("@feed/api");
   return getRedisClient();
 }
 
@@ -41,23 +41,23 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   if (!platform || !token) {
     return NextResponse.json(
-      { error: 'Missing required fields: platform, token' },
-      { status: 400 }
+      { error: "Missing required fields: platform, token" },
+      { status: 400 },
     );
   }
 
-  if (platform !== 'ios' && platform !== 'android') {
+  if (platform !== "ios" && platform !== "android") {
     return NextResponse.json(
       { error: 'Invalid platform. Must be "ios" or "android".' },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
   const redis = await getRedis();
   if (!redis) {
     return NextResponse.json(
-      { error: 'Push notification service unavailable' },
-      { status: 503 }
+      { error: "Push notification service unavailable" },
+      { status: 503 },
     );
   }
 

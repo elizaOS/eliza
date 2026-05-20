@@ -20,11 +20,11 @@ interface FetchMobileHeaderPointsSnapshotOptions {
 }
 
 export function isAbortError(error: unknown): boolean {
-  if (error instanceof DOMException && error.name === 'AbortError') {
+  if (error instanceof DOMException && error.name === "AbortError") {
     return true;
   }
 
-  if (error instanceof Error && error.name === 'AbortError') {
+  if (error instanceof Error && error.name === "AbortError") {
     return true;
   }
 
@@ -34,7 +34,7 @@ export function isAbortError(error: unknown): boolean {
 async function fetchJsonSafely<T>(
   input: RequestInfo,
   init: RequestInit,
-  signal: AbortSignal
+  signal: AbortSignal,
 ): Promise<T | null> {
   try {
     const response = await fetch(input, {
@@ -62,7 +62,7 @@ export async function fetchMobileHeaderPointsSnapshot({
   signal,
 }: FetchMobileHeaderPointsSnapshotOptions): Promise<MobileHeaderPointsSnapshot> {
   const headers: HeadersInit = {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
     Authorization: `Bearer ${token}`,
   };
   const encodedUserId = encodeURIComponent(userId);
@@ -71,12 +71,12 @@ export async function fetchMobileHeaderPointsSnapshot({
     fetchJsonSafely<MobileHeaderBalanceResponse>(
       `/api/users/${encodedUserId}/balance`,
       { headers },
-      signal
+      signal,
     ),
     fetchJsonSafely<MobileHeaderProfileResponse>(
       `/api/users/${encodedUserId}/profile`,
       { headers },
-      signal
+      signal,
     ),
   ]);
 
@@ -86,7 +86,7 @@ export async function fetchMobileHeaderPointsSnapshot({
         ? null
         : Number(balanceData.balance),
     reputationPoints:
-      typeof profileData?.user?.reputationPoints === 'number'
+      typeof profileData?.user?.reputationPoints === "number"
         ? profileData.user.reputationPoints
         : null,
   };

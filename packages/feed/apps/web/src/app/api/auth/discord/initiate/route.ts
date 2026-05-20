@@ -9,16 +9,16 @@
  * authorization page. Generates secure state parameter with CSRF protection.
  */
 
-import { authenticate, withErrorHandling } from '@feed/api';
-import { db } from '@feed/db';
+import { authenticate, withErrorHandling } from "@feed/api";
+import { db } from "@feed/db";
 import {
   generateSnowflakeId,
   getWaitlistBaseUrl,
   logger,
   toISO,
-} from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 export const GET = withErrorHandling(async function GET(request: NextRequest) {
   const authUser = await authenticate(request);
@@ -34,37 +34,37 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
       id: await generateSnowflakeId(),
       userId,
       state,
-      codeVerifier: 'discord-oauth', // Placeholder since Discord doesn't use PKCE
-      returnPath: 'discord', // Use returnPath to store provider
+      codeVerifier: "discord-oauth", // Placeholder since Discord doesn't use PKCE
+      returnPath: "discord", // Use returnPath to store provider
       expiresAt: new Date(Date.now() + 10 * 60 * 1000),
     },
   });
 
   logger.info(
-    'Created OAuth state record',
+    "Created OAuth state record",
     {
       userId,
       state,
       oauthRecordId: oauthRecord.id,
       expiresAt: toISO(oauthRecord.expiresAt),
     },
-    'DiscordInitiate'
+    "DiscordInitiate",
   );
 
-  const authUrl = new URL('https://discord.com/api/oauth2/authorize');
-  authUrl.searchParams.set('response_type', 'code');
-  authUrl.searchParams.set('client_id', process.env.DISCORD_CLIENT_ID!);
+  const authUrl = new URL("https://discord.com/api/oauth2/authorize");
+  authUrl.searchParams.set("response_type", "code");
+  authUrl.searchParams.set("client_id", process.env.DISCORD_CLIENT_ID!);
   authUrl.searchParams.set(
-    'redirect_uri',
-    `${getWaitlistBaseUrl()}/api/auth/discord/callback`
+    "redirect_uri",
+    `${getWaitlistBaseUrl()}/api/auth/discord/callback`,
   );
-  authUrl.searchParams.set('scope', 'identify guilds');
-  authUrl.searchParams.set('state', state);
+  authUrl.searchParams.set("scope", "identify guilds");
+  authUrl.searchParams.set("state", state);
 
   logger.info(
-    'Initiating Discord OAuth',
-    { userId, state: state.substring(0, 20) + '...' },
-    'DiscordInitiate'
+    "Initiating Discord OAuth",
+    { userId, state: `${state.substring(0, 20)}...` },
+    "DiscordInitiate",
   );
 
   return NextResponse.redirect(authUrl.toString());

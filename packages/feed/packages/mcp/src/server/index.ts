@@ -2,4 +2,4 @@
  * MCP Server
  */
 
-export * from './mcp-server';
+export * from "./mcp-server";

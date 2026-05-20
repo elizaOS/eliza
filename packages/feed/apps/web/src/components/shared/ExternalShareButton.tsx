@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 /**
  * External share button component with tracking and reputation rewards.
@@ -17,13 +17,13 @@
  * ```
  */
 
-import { trackExternalShare } from '@feed/shared';
-import { Check, Link as LinkIcon, Share2, Twitter } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { useAuth } from '@/hooks/useAuth';
-import { getAuthToken } from '@/lib/auth';
-import { apiUrl } from '@/utils/api-url';
-import { ShareVerificationModal } from './ShareVerificationModal';
+import { trackExternalShare } from "@feed/shared";
+import { Check, Link as LinkIcon, Share2, Twitter } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
+import { getAuthToken } from "@/lib/auth";
+import { apiUrl } from "@/utils/api-url";
+import { ShareVerificationModal } from "./ShareVerificationModal";
 
 // Farcaster icon component
 function FarcasterIcon({ className }: { className?: string }) {
@@ -40,7 +40,7 @@ function FarcasterIcon({ className }: { className?: string }) {
  * Props for ExternalShareButton component.
  */
 interface ExternalShareButtonProps {
-  contentType: 'post' | 'profile' | 'market' | 'referral' | 'leaderboard';
+  contentType: "post" | "profile" | "market" | "referral" | "leaderboard";
   contentId?: string;
   url?: string;
   text?: string;
@@ -60,7 +60,7 @@ export function ExternalShareButton({
   contentId,
   url,
   text,
-  className = '',
+  className = "",
   inline = false,
 }: ExternalShareButtonProps) {
   const { authenticated, user } = useAuth();
@@ -69,15 +69,15 @@ export function ExternalShareButton({
   const [showVerification, setShowVerification] = useState(false);
   const [pendingVerification, setPendingVerification] = useState<{
     shareId: string;
-    platform: 'twitter' | 'farcaster';
+    platform: "twitter" | "farcaster";
   } | null>(null);
   const [earnedPlatforms, setEarnedPlatforms] = useState<Set<string>>(
-    new Set()
+    new Set(),
   );
 
   const shareUrl =
-    url || (typeof window !== 'undefined' ? window.location.href : '');
-  const shareText = text || 'Check this out!';
+    url || (typeof window !== "undefined" ? window.location.href : "");
+  const shareText = text || "Check this out!";
 
   // Check for existing earned shares on mount
   useEffect(() => {
@@ -89,13 +89,13 @@ export function ExternalShareButton({
 
       const response = await fetch(
         apiUrl(
-          `/api/users/${encodeURIComponent(user.id)}/share?contentType=${contentType}`
+          `/api/users/${encodeURIComponent(user.id)}/share?contentType=${contentType}`,
         ),
         {
           headers: {
             Authorization: `Bearer ${token}`,
           },
-        }
+        },
       );
 
       if (response.ok) {
@@ -120,10 +120,10 @@ export function ExternalShareButton({
     const twitterUrl = textContainsUrl
       ? `https://x.com/intent/tweet?text=${encodeURIComponent(shareText)}`
       : `https://x.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`;
-    window.open(twitterUrl, '_blank', 'width=550,height=420');
+    window.open(twitterUrl, "_blank", "width=550,height=420");
 
     // If already earned, skip verification
-    if (earnedPlatforms.has('twitter')) {
+    if (earnedPlatforms.has("twitter")) {
       setShared(true);
       setTimeout(() => setShared(false), 2000);
       setShowMenu(false);
@@ -133,7 +133,7 @@ export function ExternalShareButton({
     const result =
       authenticated && user
         ? await trackExternalShare({
-            platform: 'twitter',
+            platform: "twitter",
             contentType,
             contentId,
             url: shareUrl,
@@ -151,7 +151,7 @@ export function ExternalShareButton({
     // Show verification modal after a short delay (gives user time to post)
     if (shareId && user) {
       setTimeout(() => {
-        setPendingVerification({ shareId, platform: 'twitter' });
+        setPendingVerification({ shareId, platform: "twitter" });
         setShowVerification(true);
       }, 3000); // 3 second delay
     }
@@ -159,14 +159,14 @@ export function ExternalShareButton({
 
   const handleShareToFarcaster = async () => {
     // Farcaster compose URL - uses official protocol endpoint (farcaster.xyz)
-    const castText = shareText.includes('http')
+    const castText = shareText.includes("http")
       ? shareText // Already has link in text
       : `${shareText}\n\n${shareUrl}`; // Add link if not present
     const farcasterComposeUrl = `https://farcaster.xyz/~/compose?text=${encodeURIComponent(castText)}&embeds[]=${encodeURIComponent(shareUrl)}`;
-    window.open(farcasterComposeUrl, '_blank', 'width=550,height=600');
+    window.open(farcasterComposeUrl, "_blank", "width=550,height=600");
 
     // If already earned, skip verification
-    if (earnedPlatforms.has('farcaster')) {
+    if (earnedPlatforms.has("farcaster")) {
       setShared(true);
       setTimeout(() => setShared(false), 2000);
       setShowMenu(false);
@@ -176,7 +176,7 @@ export function ExternalShareButton({
     const result =
       authenticated && user
         ? await trackExternalShare({
-            platform: 'farcaster',
+            platform: "farcaster",
             contentType,
             contentId,
             url: shareUrl,
@@ -194,7 +194,7 @@ export function ExternalShareButton({
     // Show verification modal after a short delay (gives user time to post)
     if (shareId && user) {
       setTimeout(() => {
-        setPendingVerification({ shareId, platform: 'farcaster' });
+        setPendingVerification({ shareId, platform: "farcaster" });
         setShowVerification(true);
       }, 3000); // 3 second delay
     }
@@ -204,7 +204,7 @@ export function ExternalShareButton({
     await navigator.clipboard.writeText(shareUrl);
     if (authenticated && user) {
       void trackExternalShare({
-        platform: 'link',
+        platform: "link",
         contentType,
         contentId,
         url: shareUrl,

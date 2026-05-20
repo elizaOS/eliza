@@ -1,12 +1,12 @@
-'use client';
+"use client";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
-import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
-import { AgentCreate } from '@/components/agents/AgentCreate';
-import { PageContainer } from '@/components/shared/PageContainer';
-import { useAuth } from '@/hooks/useAuth';
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
+import { AgentCreate } from "@/components/agents/AgentCreate";
+import { PageContainer } from "@/components/shared/PageContainer";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function CreateAgentPage() {
   const router = useRouter();
@@ -15,7 +15,7 @@ export default function CreateAgentPage() {
   // Auth required — redirect to feed and show login
   useEffect(() => {
     if (!ready || authenticated) return;
-    router.push('/feed');
+    router.push("/feed");
     const timer = setTimeout(() => login(), 500);
     return () => clearTimeout(timer);
   }, [ready, authenticated, router, login]);
@@ -27,11 +27,11 @@ export default function CreateAgentPage() {
   return (
     <PageContainer noPadding>
       <AgentCreate
-        onBack={() => router.push('/agents')}
+        onBack={() => router.push("/agents")}
         onSuccess={(agent) => {
           // Redirect to team chat and select the new agent
           router.push(
-            `/agents/team?selectAgent=${encodeURIComponent(agent.id)}`
+            `/agents/team?selectAgent=${encodeURIComponent(agent.id)}`,
           );
         }}
       />

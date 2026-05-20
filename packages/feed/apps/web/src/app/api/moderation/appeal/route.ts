@@ -76,15 +76,15 @@ import {
   createNotification,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import type { JsonValue } from '@feed/db';
-import { db } from '@feed/db';
-import { WalletService } from '@feed/engine';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { type Address, createPublicClient, http } from 'viem';
-import { baseSepolia } from 'viem/chains';
-import { z } from 'zod';
+} from "@feed/api";
+import type { JsonValue } from "@feed/db";
+import { db } from "@feed/db";
+import { WalletService } from "@feed/engine";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { type Address, createPublicClient, http } from "viem";
+import { baseSepolia } from "viem/chains";
+import { z } from "zod";
 
 const AppealSchema = z.object({
   reason: z.string().min(10).max(2000),
@@ -114,13 +114,13 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   });
 
   if (!user) {
-    return successResponse({ success: false, error: 'User not found' }, 404);
+    return successResponse({ success: false, error: "User not found" }, 404);
   }
 
   if (!user.isBanned) {
     return successResponse(
-      { success: false, error: 'User is not banned' },
-      400
+      { success: false, error: "User is not banned" },
+      400,
     );
   }
 
@@ -130,20 +130,20 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       {
         success: false,
         error:
-          'You have already used your free appeal. You must stake $10 for a second review.',
+          "You have already used your free appeal. You must stake $10 for a second review.",
       },
-      400
+      400,
     );
   }
 
-  if (user.appealStaked && user.appealStatus === 'human_review') {
+  if (user.appealStaked && user.appealStatus === "human_review") {
     return successResponse(
       {
         success: false,
         error:
-          'Your appeal is already in human review. Please wait for a decision.',
+          "Your appeal is already in human review. Please wait for a decision.",
       },
-      400
+      400,
     );
   }
 
@@ -169,19 +169,19 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         return successResponse(
           {
             success: false,
-            error: 'Escrow payment does not belong to you',
+            error: "Escrow payment does not belong to you",
           },
-          400
+          400,
         );
       }
 
-      if (escrow.status !== 'paid') {
+      if (escrow.status !== "paid") {
         return successResponse(
           {
             success: false,
             error: `Escrow payment is ${escrow.status}, must be 'paid' to use for appeal`,
           },
-          400
+          400,
         );
       }
 
@@ -190,9 +190,9 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
           {
             success: false,
             error:
-              'Escrow payment has been refunded and cannot be used for appeal',
+              "Escrow payment has been refunded and cannot be used for appeal",
           },
-          400
+          400,
         );
       }
 
@@ -208,18 +208,18 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
           return successResponse(
             {
               success: false,
-              error: 'You have already used this escrow payment for an appeal',
+              error: "You have already used this escrow payment for an appeal",
             },
-            400
+            400,
           );
         }
         return successResponse(
           {
             success: false,
             error:
-              'This escrow payment has already been used for an appeal by another user',
+              "This escrow payment has already been used for an appeal by another user",
           },
-          400
+          400,
         );
       }
 
@@ -236,7 +236,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       // Verify regular stake transaction
       const verificationResult = await verifyStakeTransaction(
         stakeTxHash,
-        userId
+        userId,
       );
       if (!verificationResult.verified) {
         return successResponse(
@@ -244,9 +244,9 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
             success: false,
             error:
               verificationResult.error ||
-              'Failed to verify stake transaction. If using escrow payment, ensure it is paid and belongs to you.',
+              "Failed to verify stake transaction. If using escrow payment, ensure it is paid and belongs to you.",
           },
-          400
+          400,
         );
       }
 
@@ -263,7 +263,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   // Determine appeal type
   const isStakedAppeal = user.appealStaked || !!stakeTxHash;
-  const appealType = isStakedAppeal ? 'lenient_review' : 'strict_review';
+  const appealType = isStakedAppeal ? "lenient_review" : "strict_review";
 
   // Update user appeal status
   await db.user.update({
@@ -285,22 +285,22 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       await db.user.update({
         where: { id: userId },
         data: {
-          appealStatus: 'human_review',
+          appealStatus: "human_review",
         },
       });
 
       await createNotification({
         userId,
-        type: 'system',
-        title: 'Appeal Under Human Review',
+        type: "system",
+        title: "Appeal Under Human Review",
         message:
-          'Your staked appeal has been reviewed and requires human confirmation. A moderator will review your case shortly.',
+          "Your staked appeal has been reviewed and requires human confirmation. A moderator will review your case shortly.",
       });
 
       return successResponse({
         success: true,
-        message: 'Appeal submitted for human review',
-        status: 'human_review',
+        message: "Appeal submitted for human review",
+        status: "human_review",
       });
     }
     // Approved - restore account
@@ -308,8 +308,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
     return successResponse({
       success: true,
-      message: 'Appeal approved - account restored',
-      status: 'approved',
+      message: "Appeal approved - account restored",
+      status: "approved",
     });
   }
   // Strict review - check if false positive
@@ -321,31 +321,31 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
     return successResponse({
       success: true,
-      message: 'Appeal approved - false positive confirmed',
-      status: 'approved',
+      message: "Appeal approved - false positive confirmed",
+      status: "approved",
     });
   }
   // Denied - user must stake for second review
   await db.user.update({
     where: { id: userId },
     data: {
-      appealStatus: 'denied',
+      appealStatus: "denied",
       appealReviewedAt: new Date(),
     },
   });
 
   await createNotification({
     userId,
-    type: 'system',
-    title: 'Appeal Denied',
+    type: "system",
+    title: "Appeal Denied",
     message:
-      'Your appeal was denied. You can stake $10 for a second, more lenient review.',
+      "Your appeal was denied. You can stake $10 for a second, more lenient review.",
   });
 
   return successResponse({
     success: false,
-    message: 'Appeal denied. Stake $10 for a second review.',
-    status: 'denied',
+    message: "Appeal denied. Stake $10 for a second review.",
+    status: "denied",
     requiresStake: true,
   });
 });
@@ -356,21 +356,21 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 async function processStrictAppeal(
   userId: string,
   reason: string,
-  user: { bannedReason: string | null; falsePositiveHistory: unknown }
+  user: { bannedReason: string | null; falsePositiveHistory: unknown },
 ): Promise<{ isFalsePositive: boolean; reasoning: string }> {
   // Collect context
   const context = await collectAppealContext(userId, user);
 
   const prompt = `You are a strict appeal judge. A user has been banned and is appealing.
 
-BAN REASON: ${user.bannedReason || 'No reason provided'}
+BAN REASON: ${user.bannedReason || "No reason provided"}
 APPEAL REASON: ${reason}
 
 USER CONTEXT:
 ${JSON.stringify(context, null, 2)}
 
 FALSE POSITIVE HISTORY:
-${user.falsePositiveHistory ? JSON.stringify(user.falsePositiveHistory, null, 2) : 'None'}
+${user.falsePositiveHistory ? JSON.stringify(user.falsePositiveHistory, null, 2) : "None"}
 
 TASK: Determine if this ban was a FALSE POSITIVE (user was incorrectly banned).
 
@@ -390,15 +390,15 @@ Respond with JSON:
   const response = await callClaudeDirect({
     prompt,
     system:
-      'You are a strict appeal judge. Only approve appeals if the ban was clearly a false positive. Be conservative.',
-    model: 'claude-sonnet-4-5',
+      "You are a strict appeal judge. Only approve appeals if the ban was clearly a false positive. Be conservative.",
+    model: "claude-sonnet-4-5",
     temperature: 0.2,
     maxTokens: 2048,
   });
 
   const jsonMatch = response.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
-    throw new Error('No JSON found in response');
+    throw new Error("No JSON found in response");
   }
 
   const result = JSON.parse(jsonMatch[0]) as {
@@ -414,20 +414,20 @@ Respond with JSON:
 async function processLenientAppeal(
   userId: string,
   reason: string,
-  user: { bannedReason: string | null; falsePositiveHistory: unknown }
+  user: { bannedReason: string | null; falsePositiveHistory: unknown },
 ): Promise<{ shouldDeny: boolean; reasoning: string }> {
   const context = await collectAppealContext(userId, user);
 
   const prompt = `You are a lenient appeal judge. A user has staked $10 for a second review.
 
-BAN REASON: ${user.bannedReason || 'No reason provided'}
+BAN REASON: ${user.bannedReason || "No reason provided"}
 APPEAL REASON: ${reason}
 
 USER CONTEXT:
 ${JSON.stringify(context, null, 2)}
 
 FALSE POSITIVE HISTORY:
-${user.falsePositiveHistory ? JSON.stringify(user.falsePositiveHistory, null, 2) : 'None'}
+${user.falsePositiveHistory ? JSON.stringify(user.falsePositiveHistory, null, 2) : "None"}
 
 TASK: Only deny if the user is VERY OBVIOUSLY a scammer or CSAM poster.
 
@@ -454,15 +454,15 @@ Respond with JSON:
   const response = await callClaudeDirect({
     prompt,
     system:
-      'You are a lenient appeal judge. Be VERY lenient. Only deny if user is VERY OBVIOUSLY a scammer or CSAM poster. If there is ANY doubt, approve.',
-    model: 'claude-sonnet-4-5',
+      "You are a lenient appeal judge. Be VERY lenient. Only deny if user is VERY OBVIOUSLY a scammer or CSAM poster. If there is ANY doubt, approve.",
+    model: "claude-sonnet-4-5",
     temperature: 0.3,
     maxTokens: 2048,
   });
 
   const jsonMatch = response.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
-    throw new Error('No JSON found in response');
+    throw new Error("No JSON found in response");
   }
 
   const result = JSON.parse(jsonMatch[0]) as {
@@ -477,14 +477,14 @@ Respond with JSON:
  */
 async function collectAppealContext(
   userId: string,
-  user: { bannedReason: string | null }
+  user: { bannedReason: string | null },
 ) {
   const now = new Date();
   const [reports, recentPosts, recentMessages] = await Promise.all([
     db.report.findMany({
       where: { reportedUserId: userId },
       take: 10,
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
       select: {
         id: true,
         category: true,
@@ -501,7 +501,7 @@ async function collectAppealContext(
         timestamp: { lte: now }, // ✅ No future posts - prevent information leakage
       },
       take: 10,
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
       select: {
         id: true,
         content: true,
@@ -511,7 +511,7 @@ async function collectAppealContext(
     db.message.findMany({
       where: { senderId: userId },
       take: 20,
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
       select: {
         id: true,
         content: true,
@@ -543,7 +543,7 @@ async function restoreAccount(userId: string, reasoning: string) {
   falsePositiveHistory.push({
     date: new Date().toISOString(),
     reason: reasoning,
-    reviewedBy: 'ai',
+    reviewedBy: "ai",
   });
 
   await db.user.update({
@@ -555,7 +555,7 @@ async function restoreAccount(userId: string, reasoning: string) {
       bannedAt: null,
       bannedBy: null,
       bannedReason: null,
-      appealStatus: 'approved',
+      appealStatus: "approved",
       appealReviewedAt: new Date(),
       falsePositiveHistory: falsePositiveHistory as JsonValue,
     },
@@ -573,12 +573,12 @@ async function restoreAccount(userId: string, reasoning: string) {
 
   await createNotification({
     userId,
-    type: 'system',
-    title: 'Appeal Approved - Account Restored',
+    type: "system",
+    title: "Appeal Approved - Account Restored",
     message: `Your appeal was approved. ${reasoning}`,
   });
 
-  logger.info('Account restored after appeal', { userId, reasoning }, 'Appeal');
+  logger.info("Account restored after appeal", { userId, reasoning }, "Appeal");
 }
 
 /**
@@ -586,31 +586,31 @@ async function restoreAccount(userId: string, reasoning: string) {
  */
 async function verifyStakeTransaction(
   txHash: string,
-  userId: string
+  userId: string,
 ): Promise<{ verified: boolean; amount?: number; error?: string }> {
   const publicClient = createPublicClient({
     chain: baseSepolia,
     transport: http(
       process.env.NEXT_PUBLIC_RPC_URL ||
         process.env.BASE_SEPOLIA_RPC_URL ||
-        'https://sepolia.base.org'
+        "https://sepolia.base.org",
     ),
   });
 
   const tx = await publicClient.getTransaction({ hash: txHash as Address });
   if (!tx) {
-    return { verified: false, error: 'Transaction not found on blockchain' };
+    return { verified: false, error: "Transaction not found on blockchain" };
   }
 
   const receipt = await publicClient.getTransactionReceipt({
     hash: txHash as Address,
   });
   if (!receipt) {
-    return { verified: false, error: 'Transaction not yet confirmed' };
+    return { verified: false, error: "Transaction not yet confirmed" };
   }
 
-  if (receipt.status !== 'success') {
-    return { verified: false, error: 'Transaction failed on blockchain' };
+  if (receipt.status !== "success") {
+    return { verified: false, error: "Transaction failed on blockchain" };
   }
 
   // Get user's wallet address
@@ -620,7 +620,7 @@ async function verifyStakeTransaction(
   });
 
   if (!user?.walletAddress) {
-    return { verified: false, error: 'User has no wallet address' };
+    return { verified: false, error: "User has no wallet address" };
   }
 
   // Verify sender matches user's wallet (with case-insensitive comparison)
@@ -629,7 +629,7 @@ async function verifyStakeTransaction(
   if (!senderMatch) {
     return {
       verified: false,
-      error: 'Transaction sender does not match user wallet',
+      error: "Transaction sender does not match user wallet",
     };
   }
 
@@ -637,7 +637,7 @@ async function verifyStakeTransaction(
   // For ETH/USDC, we need to check the value or token transfer
   // Since we're dealing with USD, we'll check if value is reasonable (at least 0.01 ETH or equivalent)
   // In production, you'd want to check against a specific token contract
-  const minStakeWei = BigInt('10000000000000000'); // 0.01 ETH minimum
+  const minStakeWei = BigInt("10000000000000000"); // 0.01 ETH minimum
   const txValue = tx.value || BigInt(0);
 
   // If it's a token transfer, we'd need to decode the transaction data
@@ -649,26 +649,26 @@ async function verifyStakeTransaction(
     if (!hasTokenTransfer) {
       return {
         verified: false,
-        error: 'Transaction value too low or not a valid stake',
+        error: "Transaction value too low or not a valid stake",
       };
     }
   }
 
   // Calculate USD amount (simplified - in production use oracle for accurate conversion)
   // Assuming 1 ETH = $3000, 0.01 ETH = $30, so we need at least 0.0033 ETH for $10
-  const minStakeFor10USD = BigInt('3300000000000000'); // ~0.0033 ETH
+  const minStakeFor10USD = BigInt("3300000000000000"); // ~0.0033 ETH
   const amountUSD =
     txValue >= minStakeFor10USD ? 10 : (Number(txValue) * 3000) / 1e18;
 
   logger.info(
-    'Stake transaction verified',
+    "Stake transaction verified",
     {
       txHash,
       userId,
       amountUSD,
       txValue: txValue.toString(),
     },
-    'Appeal'
+    "Appeal",
   );
 
   return { verified: true, amount: amountUSD };
@@ -679,14 +679,14 @@ async function verifyStakeTransaction(
  */
 async function refundAppealStake(
   userId: string,
-  stakeAmount: number
+  stakeAmount: number,
 ): Promise<void> {
   await WalletService.credit(
     userId,
     stakeAmount,
-    'appeal_stake_refund',
-    'Appeal stake refund - account restored',
-    undefined
+    "appeal_stake_refund",
+    "Appeal stake refund - account restored",
+    undefined,
   );
 
   // Clear stake flags
@@ -700,11 +700,11 @@ async function refundAppealStake(
   });
 
   logger.info(
-    'Appeal stake refunded',
+    "Appeal stake refunded",
     {
       userId,
       stakeAmount,
     },
-    'Appeal'
+    "Appeal",
   );
 }

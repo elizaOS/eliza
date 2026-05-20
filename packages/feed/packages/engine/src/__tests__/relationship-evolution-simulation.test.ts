@@ -5,11 +5,11 @@
  * in simulation mode to avoid raw Drizzle DB calls that would fail in JSON mode.
  */
 
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 // Mock the simulation mode check BEFORE importing the engine
 const mockIsSimulationMode = mock(() => true);
-mock.module('../storage-bridge', () => ({
+mock.module("../storage-bridge", () => ({
   isSimulationMode: mockIsSimulationMode,
 }));
 
@@ -35,7 +35,7 @@ const mockDbUpdate = mock(() => ({
   })),
 }));
 
-mock.module('@feed/db', () => ({
+mock.module("@feed/db", () => ({
   db: {
     select: mockDbSelect,
     insert: mockDbInsert,
@@ -50,8 +50,8 @@ mock.module('@feed/db', () => ({
   desc: () => {},
 }));
 
-mock.module('@feed/shared', () => ({
-  generateSnowflakeId: mock(() => Promise.resolve('test-id-123')),
+mock.module("@feed/shared", () => ({
+  generateSnowflakeId: mock(() => Promise.resolve("test-id-123")),
   logger: {
     info: mock(() => {}),
     warn: mock(() => {}),
@@ -61,9 +61,9 @@ mock.module('@feed/shared', () => ({
 }));
 
 // Now import the engine
-import { RelationshipEvolutionEngine } from '../RelationshipEvolutionEngine';
+import { RelationshipEvolutionEngine } from "../RelationshipEvolutionEngine";
 
-describe('RelationshipEvolutionEngine - Simulation Mode', () => {
+describe("RelationshipEvolutionEngine - Simulation Mode", () => {
   beforeEach(() => {
     // Reset mocks before each test
     mockDbSelect.mockClear();
@@ -72,8 +72,8 @@ describe('RelationshipEvolutionEngine - Simulation Mode', () => {
     mockIsSimulationMode.mockImplementation(() => true);
   });
 
-  describe('generateInitialRelationships', () => {
-    test('returns 0 in simulation mode without DB calls', async () => {
+  describe("generateInitialRelationships", () => {
+    test("returns 0 in simulation mode without DB calls", async () => {
       const engine = new RelationshipEvolutionEngine();
       const result = await engine.generateInitialRelationships([], []);
 
@@ -83,23 +83,23 @@ describe('RelationshipEvolutionEngine - Simulation Mode', () => {
     });
   });
 
-  describe('trackInteraction', () => {
-    test('returns early in simulation mode without DB calls', async () => {
+  describe("trackInteraction", () => {
+    test("returns early in simulation mode without DB calls", async () => {
       const engine = new RelationshipEvolutionEngine();
       await engine.trackInteraction({
-        actor1Id: 'actor1',
-        actor2Id: 'actor2',
-        type: 'mention',
+        actor1Id: "actor1",
+        actor2Id: "actor2",
+        type: "mention",
         sentiment: 0.5,
-        context: 'test interaction',
+        context: "test interaction",
       });
 
       expect(mockDbInsert).not.toHaveBeenCalled();
     });
   });
 
-  describe('analyzeAndUpdateRelationships', () => {
-    test('returns 0 in simulation mode without DB calls', async () => {
+  describe("analyzeAndUpdateRelationships", () => {
+    test("returns 0 in simulation mode without DB calls", async () => {
       const engine = new RelationshipEvolutionEngine();
       const result = await engine.analyzeAndUpdateRelationships();
 
@@ -109,31 +109,31 @@ describe('RelationshipEvolutionEngine - Simulation Mode', () => {
     });
   });
 
-  describe('getRelationshipContextForActor', () => {
-    test('returns empty string in simulation mode without DB calls', async () => {
+  describe("getRelationshipContextForActor", () => {
+    test("returns empty string in simulation mode without DB calls", async () => {
       const engine = new RelationshipEvolutionEngine();
-      const result = await engine.getRelationshipContextForActor('actor1');
+      const result = await engine.getRelationshipContextForActor("actor1");
 
-      expect(result).toBe('');
+      expect(result).toBe("");
       expect(mockDbSelect).not.toHaveBeenCalled();
     });
   });
 
-  describe('getActorRelationships (static)', () => {
-    test('returns empty array in simulation mode without DB calls', async () => {
+  describe("getActorRelationships (static)", () => {
+    test("returns empty array in simulation mode without DB calls", async () => {
       const result =
-        await RelationshipEvolutionEngine.getActorRelationships('actor1');
+        await RelationshipEvolutionEngine.getActorRelationships("actor1");
 
       expect(result).toEqual([]);
       expect(mockDbSelect).not.toHaveBeenCalled();
     });
   });
 
-  describe('getRelationship (static)', () => {
-    test('returns null in simulation mode without DB calls', async () => {
+  describe("getRelationship (static)", () => {
+    test("returns null in simulation mode without DB calls", async () => {
       const result = await RelationshipEvolutionEngine.getRelationship(
-        'actor1',
-        'actor2'
+        "actor1",
+        "actor2",
       );
 
       expect(result).toBeNull();
@@ -142,7 +142,7 @@ describe('RelationshipEvolutionEngine - Simulation Mode', () => {
   });
 });
 
-describe('RelationshipEvolutionEngine - Non-Simulation Mode', () => {
+describe("RelationshipEvolutionEngine - Non-Simulation Mode", () => {
   beforeEach(() => {
     // Reset mocks before each test
     mockDbSelect.mockClear();
@@ -151,12 +151,12 @@ describe('RelationshipEvolutionEngine - Non-Simulation Mode', () => {
     mockIsSimulationMode.mockImplementation(() => false);
   });
 
-  describe('getActorRelationships (static)', () => {
-    test('calls DB in non-simulation mode', async () => {
+  describe("getActorRelationships (static)", () => {
+    test("calls DB in non-simulation mode", async () => {
       // This will throw because our mock doesn't return a proper array,
       // but the important thing is that the DB SELECT was called
       try {
-        await RelationshipEvolutionEngine.getActorRelationships('actor1');
+        await RelationshipEvolutionEngine.getActorRelationships("actor1");
       } catch {
         // Expected - mock doesn't return proper array
       }
@@ -166,9 +166,9 @@ describe('RelationshipEvolutionEngine - Non-Simulation Mode', () => {
     });
   });
 
-  describe('getRelationship (static)', () => {
-    test('calls DB in non-simulation mode', async () => {
-      await RelationshipEvolutionEngine.getRelationship('actor1', 'actor2');
+  describe("getRelationship (static)", () => {
+    test("calls DB in non-simulation mode", async () => {
+      await RelationshipEvolutionEngine.getRelationship("actor1", "actor2");
 
       // DB should be called when not in simulation mode
       expect(mockDbSelect).toHaveBeenCalled();

@@ -16,13 +16,13 @@
  * previously-seen contamination terms.
  */
 
-import { logger } from '@feed/shared';
+import { logger } from "@feed/shared";
 import {
   clearKnownNamesCache,
   getKnownNames,
   validateCoherence,
   validateGrounding,
-} from './content-grounding-validator';
+} from "./content-grounding-validator";
 
 // Re-export for convenience — the canonical implementation is in content-grounding-validator.ts
 export { clearKnownNamesCache };
@@ -50,13 +50,13 @@ export class ContentQualityGate {
   static async validateParody(
     originalTitle: string,
     parodyTitle: string,
-    parodyContent?: string
+    parodyContent?: string,
   ): Promise<ContentQualityResult> {
     const reasons: string[] = [];
     const scores: number[] = [];
 
     // 1. Structure
-    const structure = this.checkStructure(parodyTitle, {
+    const structure = ContentQualityGate.checkStructure(parodyTitle, {
       minLength: 10,
       maxLength: 500,
       original: originalTitle,
@@ -65,7 +65,7 @@ export class ContentQualityGate {
     if (!structure.passed) reasons.push(...structure.reasons);
 
     // 2. Entity allowlist
-    const entity = this.checkEntityAllowlist(parodyTitle);
+    const entity = ContentQualityGate.checkEntityAllowlist(parodyTitle);
     scores.push(entity.score);
     if (!entity.passed) reasons.push(...entity.reasons);
 
@@ -88,15 +88,15 @@ export class ContentQualityGate {
 
     const passed = reasons.length === 0;
 
-    logger[passed ? 'debug' : 'warn'](
-      `Parody ${passed ? 'passed' : 'failed'} quality gate`,
+    logger[passed ? "debug" : "warn"](
+      `Parody ${passed ? "passed" : "failed"} quality gate`,
       {
         originalTitle,
         parodyTitle,
         score: compositeScore.toFixed(2),
         ...(reasons.length > 0 && { reasons }),
       },
-      'ContentQualityGate'
+      "ContentQualityGate",
     );
 
     return { passed, score: compositeScore, reasons };
@@ -110,13 +110,13 @@ export class ContentQualityGate {
    */
   static async validateWorldFact(
     factText: string,
-    sourceContext?: string
+    sourceContext?: string,
   ): Promise<ContentQualityResult> {
     const reasons: string[] = [];
     const scores: number[] = [];
 
     // 1. Structure
-    const structure = this.checkStructure(factText, {
+    const structure = ContentQualityGate.checkStructure(factText, {
       minLength: 15,
       maxLength: 1000,
     });
@@ -124,7 +124,7 @@ export class ContentQualityGate {
     if (!structure.passed) reasons.push(...structure.reasons);
 
     // 2. Entity allowlist
-    const entity = this.checkEntityAllowlist(factText);
+    const entity = ContentQualityGate.checkEntityAllowlist(factText);
     scores.push(entity.score);
     if (!entity.passed) reasons.push(...entity.reasons);
 
@@ -146,14 +146,14 @@ export class ContentQualityGate {
 
     const passed = reasons.length === 0;
 
-    logger[passed ? 'debug' : 'warn'](
-      `World fact ${passed ? 'passed' : 'failed'} quality gate`,
+    logger[passed ? "debug" : "warn"](
+      `World fact ${passed ? "passed" : "failed"} quality gate`,
       {
         factText: factText.substring(0, 100),
         score: compositeScore.toFixed(2),
         ...(reasons.length > 0 && { reasons }),
       },
-      'ContentQualityGate'
+      "ContentQualityGate",
     );
 
     return { passed, score: compositeScore, reasons };
@@ -165,13 +165,13 @@ export class ContentQualityGate {
    */
   static async validateArticle(
     articleText: string,
-    sourceContext: string
+    sourceContext: string,
   ): Promise<ContentQualityResult> {
     const reasons: string[] = [];
     const scores: number[] = [];
 
     // 1. Structure
-    const structure = this.checkStructure(articleText, {
+    const structure = ContentQualityGate.checkStructure(articleText, {
       minLength: 100,
       maxLength: 15000,
     });
@@ -179,7 +179,7 @@ export class ContentQualityGate {
     if (!structure.passed) reasons.push(...structure.reasons);
 
     // 2. Entity allowlist
-    const entity = this.checkEntityAllowlist(articleText);
+    const entity = ContentQualityGate.checkEntityAllowlist(articleText);
     scores.push(entity.score);
     if (!entity.passed) reasons.push(...entity.reasons);
 
@@ -195,14 +195,14 @@ export class ContentQualityGate {
 
     const passed = reasons.length === 0;
 
-    logger[passed ? 'debug' : 'warn'](
-      `Article ${passed ? 'passed' : 'failed'} quality gate`,
+    logger[passed ? "debug" : "warn"](
+      `Article ${passed ? "passed" : "failed"} quality gate`,
       {
         articlePreview: articleText.substring(0, 100),
         score: compositeScore.toFixed(2),
         ...(reasons.length > 0 && { reasons }),
       },
-      'ContentQualityGate'
+      "ContentQualityGate",
     );
 
     return { passed, score: compositeScore, reasons };
@@ -215,7 +215,7 @@ export class ContentQualityGate {
    */
   private static checkStructure(
     text: string,
-    opts: { minLength: number; maxLength: number; original?: string }
+    opts: { minLength: number; maxLength: number; original?: string },
   ): { passed: boolean; score: number; reasons: string[] } {
     const reasons: string[] = [];
 
@@ -232,7 +232,7 @@ export class ContentQualityGate {
       const normalizedOriginal = opts.original.toLowerCase().trim();
       const normalizedText = trimmed.toLowerCase();
       if (normalizedText === normalizedOriginal) {
-        reasons.push('Verbatim copy of original');
+        reasons.push("Verbatim copy of original");
       }
     }
 
@@ -280,12 +280,13 @@ export class ContentQualityGate {
 
     // Allow up to MAX_UNKNOWN_ENTITIES unknown proper nouns (could be real-world references),
     // but more suggests the LLM is inventing entities
-    const passed = unknownEntities.length <= this.MAX_UNKNOWN_ENTITIES;
+    const passed =
+      unknownEntities.length <= ContentQualityGate.MAX_UNKNOWN_ENTITIES;
     const score = passed ? 1 : 0;
     const reasons =
-      unknownEntities.length > this.MAX_UNKNOWN_ENTITIES
+      unknownEntities.length > ContentQualityGate.MAX_UNKNOWN_ENTITIES
         ? [
-            `${unknownEntities.length} unknown entities: ${unknownEntities.slice(0, 3).join(', ')}`,
+            `${unknownEntities.length} unknown entities: ${unknownEntities.slice(0, 3).join(", ")}`,
           ]
         : [];
 

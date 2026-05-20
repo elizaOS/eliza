@@ -54,9 +54,9 @@ import {
   authenticate,
   requireUserByIdentifier,
   withErrorHandling,
-} from '@feed/api';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@feed/api";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 export const GET = withErrorHandling(async function GET(request: NextRequest) {
   const authUser = await authenticate(request);

@@ -8,10 +8,10 @@
  * web (same-origin) and mobile (cross-origin via NEXT_PUBLIC_API_URL).
  */
 
-import { extractErrorMessage, logger } from '@feed/shared';
-import { getBrowserDevAuthSession } from '@/lib/auth/dev-auth';
+import { extractErrorMessage, logger } from "@feed/shared";
+import { getBrowserDevAuthSession } from "@/lib/auth/dev-auth";
 
-import { apiUrl } from './api-url';
+import { apiUrl } from "./api-url";
 
 /**
  * API Fetch Options
@@ -39,7 +39,7 @@ export interface ApiFetchOptions extends RequestInit {
  * @returns Access token or null if unavailable
  */
 export async function getAccessToken(): Promise<string | null> {
-  if (typeof window === 'undefined') return null;
+  if (typeof window === "undefined") return null;
   const devSession = getBrowserDevAuthSession();
   if (devSession?.accessToken) {
     return devSession.accessToken;
@@ -57,11 +57,11 @@ export async function getAccessToken(): Promise<string | null> {
       return token;
     } catch (error) {
       logger.warn(
-        'Failed to retrieve access token',
+        "Failed to retrieve access token",
         {
           error: extractErrorMessage(error),
         },
-        'apiFetch'
+        "apiFetch",
       );
       return null;
     }
@@ -101,7 +101,7 @@ export const getPrivyAccessToken = getAccessToken;
  */
 export async function apiFetch(
   input: RequestInfo,
-  init: ApiFetchOptions = {}
+  init: ApiFetchOptions = {},
 ): Promise<Response> {
   const { auth = true, autoRetryOn401 = true, headers, ...rest } = init;
   const finalHeaders = new Headers(headers ?? {});
@@ -109,33 +109,33 @@ export async function apiFetch(
   // Always try to add the Authorization header with the access token.
   // This provides a fallback when HTTP-only cookies aren't available
   // (e.g., initial login, cross-origin requests, or cookie misconfiguration).
-  if (auth && !finalHeaders.has('Authorization')) {
+  if (auth && !finalHeaders.has("Authorization")) {
     const token = await getAccessToken();
     if (token) {
-      finalHeaders.set('Authorization', `Bearer ${token}`);
-    } else if (typeof window !== 'undefined') {
+      finalHeaders.set("Authorization", `Bearer ${token}`);
+    } else if (typeof window !== "undefined") {
       // Check for embed token from Milady desktop/web host
       const embedToken = (window as Window & { __feedEmbedToken?: string })
         .__feedEmbedToken;
       if (embedToken) {
-        finalHeaders.set('Authorization', `Bearer ${embedToken}`);
+        finalHeaders.set("Authorization", `Bearer ${embedToken}`);
       } else {
         logger.warn(
-          'No access token available for authenticated request',
-          { url: typeof input === 'string' ? input : (input as Request).url },
-          'apiFetch'
+          "No access token available for authenticated request",
+          { url: typeof input === "string" ? input : (input as Request).url },
+          "apiFetch",
         );
       }
     }
   }
 
   // Resolve relative API paths to absolute URLs when NEXT_PUBLIC_API_URL is set
-  const resolvedInput = typeof input === 'string' ? apiUrl(input) : input;
+  const resolvedInput = typeof input === "string" ? apiUrl(input) : input;
 
   let response = await fetch(resolvedInput, {
     ...rest,
     headers: finalHeaders,
-    credentials: auth ? 'include' : (rest.credentials ?? 'same-origin'),
+    credentials: auth ? "include" : (rest.credentials ?? "same-origin"),
   });
 
   // If we get a 401 and auto-retry is enabled, refresh the token and retry
@@ -145,13 +145,13 @@ export async function apiFetch(
 
     if (freshToken) {
       // Update the Authorization header with the fresh token
-      finalHeaders.set('Authorization', `Bearer ${freshToken}`);
+      finalHeaders.set("Authorization", `Bearer ${freshToken}`);
 
       // Retry with the refreshed token
       response = await fetch(resolvedInput, {
         ...rest,
         headers: finalHeaders,
-        credentials: 'include',
+        credentials: "include",
       });
     }
   }

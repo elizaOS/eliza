@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import { useCallback, useState } from 'react';
-import { useAuth } from '@/hooks/useAuth';
+import { useCallback, useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
 
-type PredictionTradeSide = 'YES' | 'NO';
+type PredictionTradeSide = "YES" | "NO";
 
 type BuyPredictionInput = {
   marketId: string;
@@ -30,31 +30,31 @@ type SellPredictionResult = {
 
 function readApiErrorMessage(payload: unknown, fallback: string): string {
   if (
-    typeof payload === 'object' &&
+    typeof payload === "object" &&
     payload !== null &&
-    'error' in payload &&
-    typeof payload.error === 'object' &&
+    "error" in payload &&
+    typeof payload.error === "object" &&
     payload.error !== null &&
-    'message' in payload.error &&
-    typeof payload.error.message === 'string'
+    "message" in payload.error &&
+    typeof payload.error.message === "string"
   ) {
     return payload.error.message;
   }
 
   if (
-    typeof payload === 'object' &&
+    typeof payload === "object" &&
     payload !== null &&
-    'error' in payload &&
-    typeof payload.error === 'string'
+    "error" in payload &&
+    typeof payload.error === "string"
   ) {
     return payload.error;
   }
 
   if (
-    typeof payload === 'object' &&
+    typeof payload === "object" &&
     payload !== null &&
-    'message' in payload &&
-    typeof payload.message === 'string'
+    "message" in payload &&
+    typeof payload.message === "string"
   ) {
     return payload.message;
   }
@@ -74,7 +74,7 @@ export function usePredictionTrading() {
   const requireAccessToken = useCallback(async () => {
     const token = await getAccessToken();
     if (!token) {
-      throw new Error('Authentication required. Please log in.');
+      throw new Error("Authentication required. Please log in.");
     }
 
     return token;
@@ -91,23 +91,23 @@ export function usePredictionTrading() {
         const response = await fetch(
           `/api/markets/predictions/${input.marketId}/buy`,
           {
-            method: 'POST',
+            method: "POST",
             headers: {
-              'Content-Type': 'application/json',
+              "Content-Type": "application/json",
               Authorization: `Bearer ${accessToken}`,
             },
             body: JSON.stringify({
               side: input.side.toLowerCase(),
               amount: input.amount,
             }),
-          }
+          },
         );
         const payload = await parseJsonPayload<{
           position: { shares: number; avgPrice: number };
         }>(response);
 
         if (!response.ok) {
-          throw new Error(readApiErrorMessage(payload, 'Failed to buy shares'));
+          throw new Error(readApiErrorMessage(payload, "Failed to buy shares"));
         }
 
         return {
@@ -118,14 +118,14 @@ export function usePredictionTrading() {
         const message =
           caughtError instanceof Error
             ? caughtError.message
-            : 'Prediction buy failed';
+            : "Prediction buy failed";
         setError(message);
         throw caughtError;
       } finally {
         setLoading(false);
       }
     },
-    [requireAccessToken]
+    [requireAccessToken],
   );
 
   const sellPrediction = useCallback(
@@ -139,16 +139,16 @@ export function usePredictionTrading() {
         const response = await fetch(
           `/api/markets/predictions/${input.marketId}/sell`,
           {
-            method: 'POST',
+            method: "POST",
             headers: {
-              'Content-Type': 'application/json',
+              "Content-Type": "application/json",
               Authorization: `Bearer ${accessToken}`,
             },
             body: JSON.stringify({
               shares: input.shares,
               positionId: input.positionId,
             }),
-          }
+          },
         );
         const payload = await parseJsonPayload<{
           pnl: number;
@@ -157,7 +157,7 @@ export function usePredictionTrading() {
 
         if (!response.ok) {
           throw new Error(
-            readApiErrorMessage(payload, 'Failed to sell shares')
+            readApiErrorMessage(payload, "Failed to sell shares"),
           );
         }
 
@@ -169,14 +169,14 @@ export function usePredictionTrading() {
         const message =
           caughtError instanceof Error
             ? caughtError.message
-            : 'Prediction sell failed';
+            : "Prediction sell failed";
         setError(message);
         throw caughtError;
       } finally {
         setLoading(false);
       }
     },
-    [requireAccessToken]
+    [requireAccessToken],
   );
 
   return {

@@ -6,16 +6,16 @@
  * Usage: FEED_DAG_TRACE=true bun run scripts/run-traced-tick.ts
  */
 
-import 'dotenv/config';
+import "dotenv/config";
 
 // Force enable tracing
-process.env.FEED_DAG_TRACE = 'true';
+process.env.FEED_DAG_TRACE = "true";
 
-import { executeGameTick } from '@feed/engine';
-import { logger } from '@feed/shared';
+import { executeGameTick } from "@feed/engine";
+import { logger } from "@feed/shared";
 
 async function main() {
-  logger.info('Starting traced game tick...', {}, 'TracedTick');
+  logger.info("Starting traced game tick...", {}, "TracedTick");
 
   const start = Date.now();
   try {
@@ -23,7 +23,7 @@ async function main() {
     const durationMs = Date.now() - start;
 
     logger.info(
-      'Traced game tick completed',
+      "Traced game tick completed",
       {
         durationMs,
         postsCreated: result.postsCreated,
@@ -31,17 +31,17 @@ async function main() {
         questionsCreated: result.questionsCreated,
         marketsUpdated: result.marketsUpdated,
       },
-      'TracedTick'
+      "TracedTick",
     );
 
     // Check for trace output
-    const fs = await import('node:fs');
-    const path = await import('node:path');
-    const traceDir = path.resolve(process.cwd(), 'runs', 'dag-traces');
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const traceDir = path.resolve(process.cwd(), "runs", "dag-traces");
     if (fs.existsSync(traceDir)) {
       const entries = fs
         .readdirSync(traceDir)
-        .filter((e) => e.startsWith('tick-'))
+        .filter((e) => e.startsWith("tick-"))
         .sort()
         .reverse();
       logger.info(
@@ -49,20 +49,20 @@ async function main() {
         {
           latest: entries[0],
         },
-        'TracedTick'
+        "TracedTick",
       );
     } else {
       logger.warn(
-        'No trace directory found - tracing may not be enabled',
+        "No trace directory found - tracing may not be enabled",
         {},
-        'TracedTick'
+        "TracedTick",
       );
     }
   } catch (error) {
     logger.error(
-      'Traced game tick failed',
+      "Traced game tick failed",
       error instanceof Error ? error : new Error(String(error)),
-      'TracedTick'
+      "TracedTick",
     );
   }
 

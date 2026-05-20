@@ -15,8 +15,8 @@ import {
   posts,
   questions,
   worldEvents,
-} from '@feed/db';
-import { generateSnowflakeId, logger } from '@feed/shared';
+} from "@feed/db";
+import { generateSnowflakeId, logger } from "@feed/shared";
 import type {
   ActiveMarket,
   ActiveQuestion,
@@ -30,27 +30,27 @@ import type {
   QuestionInput,
   TradeInput,
   TradeResult,
-} from '../GameTick';
-import { persistArticle } from '../services/article-persistence';
-import { StaticDataRegistry } from '../services/static-data-registry';
+} from "../GameTick";
+import { persistArticle } from "../services/article-persistence";
+import { StaticDataRegistry } from "../services/static-data-registry";
 import {
   generateTagsFromPost,
   storeTagsForPost,
-} from '../services/tag-service';
-import { formatError } from '../utils/error-utils';
+} from "../services/tag-service";
+import { formatError } from "../utils/error-utils";
 
 export class DbStateStore implements GameStateStore {
   async getActiveQuestions(): Promise<ActiveQuestion[]> {
     const rows = await db
       .select()
       .from(questions)
-      .where(eq(questions.status, 'active'));
+      .where(eq(questions.status, "active"));
 
     return rows.map((q) => ({
       id: q.id,
       questionNumber: q.questionNumber,
       text: q.text,
-      status: q.status as 'active' | 'resolved',
+      status: q.status as "active" | "resolved",
       outcome: q.outcome ?? undefined,
       resolutionDate: q.resolutionDate ?? undefined,
       scenarioId: q.scenarioId ?? undefined,
@@ -63,16 +63,16 @@ export class DbStateStore implements GameStateStore {
       .from(questions)
       .where(
         and(
-          eq(questions.status, 'active'),
-          lte(questions.resolutionDate, beforeTime)
-        )
+          eq(questions.status, "active"),
+          lte(questions.resolutionDate, beforeTime),
+        ),
       );
 
     return rows.map((q) => ({
       id: q.id,
       questionNumber: q.questionNumber,
       text: q.text,
-      status: q.status as 'active' | 'resolved',
+      status: q.status as "active" | "resolved",
       outcome: q.outcome ?? undefined,
       resolutionDate: q.resolutionDate ?? undefined,
       scenarioId: q.scenarioId ?? undefined,
@@ -87,7 +87,7 @@ export class DbStateStore implements GameStateStore {
       id,
       questionNumber,
       text: question.text,
-      status: 'active',
+      status: "active",
       outcome: false, // Default outcome until resolved
       rank: 1, // Default rank
       resolutionDate: question.resolutionDate,
@@ -103,7 +103,7 @@ export class DbStateStore implements GameStateStore {
     await db
       .update(questions)
       .set({
-        status: 'resolved',
+        status: "resolved",
         outcome,
         updatedAt: new Date(),
       })
@@ -132,7 +132,7 @@ export class DbStateStore implements GameStateStore {
   async updateMarketPrice(
     _marketId: string,
     _yesPrice: number,
-    _noPrice: number
+    _noPrice: number,
   ): Promise<void> {
     // Prices are derived from shares - no direct update needed
   }
@@ -146,7 +146,7 @@ export class DbStateStore implements GameStateStore {
       content: post.content,
       type: post.type,
       timestamp: post.timestamp,
-      gameId: 'continuous',
+      gameId: "continuous",
     });
 
     // Fire-and-forget: generate and store tags so NPC posts surface in
@@ -159,9 +159,9 @@ export class DbStateStore implements GameStateStore {
       })
       .catch((tagError) => {
         logger.warn(
-          'Failed to generate/store NPC post tags (non-blocking)',
+          "Failed to generate/store NPC post tags (non-blocking)",
           { postId: id, error: formatError(tagError) },
-          'DbStateStore'
+          "DbStateStore",
         );
       });
 
@@ -194,20 +194,20 @@ export class DbStateStore implements GameStateStore {
         summary: article.summary,
         content: article.content,
         authorOrgId: article.authorOrgId,
-        gameId: 'continuous',
+        gameId: "continuous",
         category: article.category,
         timestamp: article.timestamp,
       },
-      { checkRateLimit: false, generateImage: false }
+      { checkRateLimit: false, generateImage: false },
     );
 
     if (!result.success) {
       if (result.rateLimited) {
         throw new Error(
-          `Rate limited: Article creation blocked by rate limiter${result.error ? ` - ${result.error}` : ''}`
+          `Rate limited: Article creation blocked by rate limiter${result.error ? ` - ${result.error}` : ""}`,
         );
       }
-      throw new Error(result.error || 'Failed to persist article');
+      throw new Error(result.error || "Failed to persist article");
     }
 
     // With discriminated union, articleId is guaranteed to exist when success is true
@@ -238,7 +238,7 @@ export class DbStateStore implements GameStateStore {
     return staticOrgs.map((o) => ({
       id: o.id,
       name: o.name,
-      type: o.type as 'company' | 'media' | 'government',
+      type: o.type as "company" | "media" | "government",
     }));
   }
 
@@ -246,7 +246,7 @@ export class DbStateStore implements GameStateStore {
     // Trade execution requires full TradeExecutionService
     return {
       success: false,
-      error: 'Use TradeExecutionService for trade execution',
+      error: "Use TradeExecutionService for trade execution",
     };
   }
 

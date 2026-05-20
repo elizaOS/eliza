@@ -1,5 +1,5 @@
 // GET /api/markets/predictions/[id]/trades – paginated trades for a market
-import type { JsonValue } from '@feed/api';
+import type { JsonValue } from "@feed/api";
 import {
   addPublicReadHeaders,
   getCache,
@@ -7,11 +7,11 @@ import {
   setCache,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { db, eq, inArray, markets, sql, users } from '@feed/db';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { z } from 'zod';
+} from "@feed/api";
+import { db, eq, inArray, markets, sql, users } from "@feed/db";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { z } from "zod";
 
 const QuerySchema = z.object({
   limit: z.coerce.number().min(1).max(100).default(20),
@@ -20,7 +20,7 @@ const QuerySchema = z.object({
 
 type PredictionTradeRow = {
   id: string;
-  type: 'balance' | 'npc';
+  type: "balance" | "npc";
   userId: string;
   transactionType: string | null;
   amount: number | string;
@@ -38,7 +38,7 @@ type PredictionTradeRow = {
 export const GET = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ id: string }> }
+    context: { params: Promise<{ id: string }> },
   ) => {
     const { error, rateLimitInfo } = await publicRateLimit(request);
     if (error) return error;
@@ -48,14 +48,14 @@ export const GET = withErrorHandling(
     // Parse query parameters
     const { searchParams } = new URL(request.url);
     const queryParams = QuerySchema.parse({
-      limit: searchParams.get('limit') || '20',
-      offset: searchParams.get('offset') || '0',
+      limit: searchParams.get("limit") || "20",
+      offset: searchParams.get("offset") || "0",
     });
 
     logger.info(
-      'Prediction market trades requested',
+      "Prediction market trades requested",
       { marketId, queryParams },
-      'GET /api/markets/predictions/[id]/trades'
+      "GET /api/markets/predictions/[id]/trades",
     );
 
     // Check Redis cache first
@@ -77,7 +77,7 @@ export const GET = withErrorHandling(
       .limit(1);
 
     if (!market) {
-      return successResponse({ error: 'Market not found' }, 404);
+      return successResponse({ error: "Market not found" }, 404);
     }
 
     const limitPlusOne = queryParams.limit + 1;
@@ -155,10 +155,10 @@ export const GET = withErrorHandling(
 
     const trades = pageRows.map((row) => {
       const timestamp = new Date(Number(row.timestampMs)).toISOString();
-      if (row.type === 'balance') {
+      if (row.type === "balance") {
         return {
           id: row.id,
-          type: 'balance' as const,
+          type: "balance" as const,
           user: userMap.get(row.userId) ?? null,
           transactionType: row.transactionType,
           amount: Number(row.amount),
@@ -169,11 +169,11 @@ export const GET = withErrorHandling(
 
       return {
         id: row.id,
-        type: 'npc' as const,
+        type: "npc" as const,
         user: userMap.get(row.userId) ?? null,
-        marketType: row.marketType ?? 'prediction',
-        ticker: row.ticker ?? '',
-        action: row.action ?? 'unknown',
+        marketType: row.marketType ?? "prediction",
+        ticker: row.ticker ?? "",
+        action: row.action ?? "unknown",
         side: row.side ?? null,
         amount: Number(row.amount),
         price: Number(row.price ?? 0),
@@ -192,10 +192,10 @@ export const GET = withErrorHandling(
     };
 
     // Cache briefly; feed is also updated via SSE.
-    await setCache(cacheKey, result, { ttl: 10, namespace: 'market-trades' });
+    await setCache(cacheKey, result, { ttl: 10, namespace: "market-trades" });
 
     const res = successResponse(result);
     if (rateLimitInfo) addPublicReadHeaders(res, rateLimitInfo);
     return res;
-  }
+  },
 );

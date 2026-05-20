@@ -23,7 +23,7 @@ export function buildCoordinatorDecisionTemplate(agentCount: number): string {
 **Gather, Relay & Execute**: DISPATCH_TO_AGENTS (research) → RELAY_TO_AGENT (trader with context) → summarize
 **Expert Consultation**: DISPATCH_TO_AGENT to the single relevant expert
 `
-      : '';
+      : "";
 
   return `# Your Role
 {{coordinatorContext}}

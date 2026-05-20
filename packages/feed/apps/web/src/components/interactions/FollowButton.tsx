@@ -1,14 +1,14 @@
-'use client';
+"use client";
 
-import { cn, logger } from '@feed/shared';
-import { Minus, Plus, UserMinus, UserPlus } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { toast } from 'sonner';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { useAuth } from '@/hooks/useAuth';
-import { useSocialTracking } from '@/hooks/usePostHog';
-import { getAuthToken } from '@/lib/auth';
-import { apiUrl } from '@/utils/api-url';
+import { cn, logger } from "@feed/shared";
+import { Minus, Plus, UserMinus, UserPlus } from "lucide-react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { useAuth } from "@/hooks/useAuth";
+import { useSocialTracking } from "@/hooks/usePostHog";
+import { getAuthToken } from "@/lib/auth";
+import { apiUrl } from "@/utils/api-url";
 
 /**
  * Follow button component for following/unfollowing users.
@@ -32,8 +32,8 @@ import { apiUrl } from '@/utils/api-url';
 interface FollowButtonProps {
   userId: string;
   initialFollowing?: boolean;
-  size?: 'sm' | 'md' | 'lg';
-  variant?: 'button' | 'icon' | 'circle';
+  size?: "sm" | "md" | "lg";
+  variant?: "button" | "icon" | "circle";
   className?: string;
   onFollowChange?: (isFollowing: boolean) => void;
   onFollowerCountChange?: (delta: number) => void; // +1 for follow, -1 for unfollow
@@ -42,8 +42,8 @@ interface FollowButtonProps {
 export function FollowButton({
   userId,
   initialFollowing,
-  size = 'md',
-  variant = 'button',
+  size = "md",
+  variant = "button",
   className,
   onFollowChange,
   onFollowerCountChange,
@@ -67,9 +67,7 @@ export function FollowButton({
       user &&
       (user.id === userId ||
         user.username === userId ||
-        (user.username &&
-          user.username.startsWith('@') &&
-          user.username.slice(1) === userId));
+        (user.username?.startsWith("@") && user.username.slice(1) === userId));
 
     if (!authenticated || !user || isOwnProfile) {
       setIsChecking(false);
@@ -96,7 +94,7 @@ export function FollowButton({
           headers: {
             Authorization: `Bearer ${token}`,
           },
-        }
+        },
       );
 
       if (response.ok) {
@@ -114,7 +112,7 @@ export function FollowButton({
 
   const handleFollow = async () => {
     if (!authenticated || !user) {
-      toast.error('Please sign in to follow users');
+      toast.error("Please sign in to follow users");
       return;
     }
 
@@ -122,9 +120,7 @@ export function FollowButton({
     const isOwnProfile =
       user.id === userId ||
       user.username === userId ||
-      (user.username &&
-        user.username.startsWith('@') &&
-        user.username.slice(1) === userId);
+      (user.username?.startsWith("@") && user.username.slice(1) === userId);
 
     if (isOwnProfile) {
       // Don't show error, just return silently (button shouldn't be visible anyway)
@@ -133,9 +129,9 @@ export function FollowButton({
 
     if (!userId) {
       logger.error(
-        'No userId/username provided to FollowButton',
+        "No userId/username provided to FollowButton",
         {},
-        'FollowButton'
+        "FollowButton",
       );
       return;
     }
@@ -143,7 +139,7 @@ export function FollowButton({
     setIsLoading(true);
     const token = getAuthToken();
     if (!token) {
-      toast.error('Authentication required');
+      toast.error("Authentication required");
       setIsLoading(false);
       return;
     }
@@ -158,7 +154,7 @@ export function FollowButton({
 
     // Encode userId/username to handle special characters
     const encodedIdentifier = encodeURIComponent(userId);
-    const method = newFollowingState ? 'POST' : 'DELETE';
+    const method = newFollowingState ? "POST" : "DELETE";
     const response = await fetch(
       apiUrl(`/api/users/${encodedIdentifier}/follow`),
       {
@@ -166,7 +162,7 @@ export function FollowButton({
         headers: {
           Authorization: `Bearer ${token}`,
         },
-      }
+      },
     );
 
     if (response.ok) {
@@ -185,17 +181,17 @@ export function FollowButton({
       if (response.status === 404) {
         // If profile not found, silently fail or show a more helpful message
         logger.warn(
-          'Profile not found for follow:',
+          "Profile not found for follow:",
           { userId },
-          'FollowButton'
+          "FollowButton",
         );
-        toast.error('Unable to follow this profile');
+        toast.error("Unable to follow this profile");
       } else {
         // Extract error message properly (handle both string and object formats)
         const errorMessage =
-          typeof errorData?.error === 'string'
+          typeof errorData?.error === "string"
             ? errorData.error
-            : errorData?.error?.message || 'Failed to update follow status';
+            : errorData?.error?.message || "Failed to update follow status";
         toast.error(errorMessage);
       }
     }
@@ -207,9 +203,7 @@ export function FollowButton({
     user &&
     (user.id === userId ||
       user.username === userId ||
-      (user.username &&
-        user.username.startsWith('@') &&
-        user.username.slice(1) === userId));
+      (user.username?.startsWith("@") && user.username.slice(1) === userId));
 
   // Don't show for own profile or when not authenticated
   if (isOwnProfile || !authenticated) {
@@ -217,24 +211,24 @@ export function FollowButton({
   }
 
   const sizeClasses = {
-    sm: 'text-xs px-2 py-1',
-    md: 'text-sm px-3 py-1.5',
-    lg: 'text-base px-4 py-2',
+    sm: "text-xs px-2 py-1",
+    md: "text-sm px-3 py-1.5",
+    lg: "text-base px-4 py-2",
   };
 
   const iconSizes = {
-    sm: 'w-4 h-4', // Increased from w-3 h-3
-    md: 'w-5 h-5', // Increased from w-4 h-4
-    lg: 'w-6 h-6', // Increased from w-5 h-5
+    sm: "w-4 h-4", // Increased from w-3 h-3
+    md: "w-5 h-5", // Increased from w-4 h-4
+    lg: "w-6 h-6", // Increased from w-5 h-5
   };
 
   const iconButtonSizes = {
-    sm: 'p-1.5', // Consistent padding for touch targets
-    md: 'p-2',
-    lg: 'p-2.5',
+    sm: "p-1.5", // Consistent padding for touch targets
+    md: "p-2",
+    lg: "p-2.5",
   };
 
-  if (variant === 'circle') {
+  if (variant === "circle") {
     if (isChecking) return null;
 
     return (
@@ -242,15 +236,15 @@ export function FollowButton({
         onClick={handleFollow}
         disabled={isLoading}
         className={cn(
-          'flex items-center justify-center rounded-full border-2 border-background transition-colors',
+          "flex items-center justify-center rounded-full border-2 border-background transition-colors",
           isFollowing
-            ? 'bg-red-500 hover:bg-red-600'
-            : 'bg-primary hover:bg-primary/80',
-          isLoading && 'cursor-not-allowed opacity-50',
-          'h-5 w-5',
-          className
+            ? "bg-red-500 hover:bg-red-600"
+            : "bg-primary hover:bg-primary/80",
+          isLoading && "cursor-not-allowed opacity-50",
+          "h-5 w-5",
+          className,
         )}
-        aria-label={isFollowing ? 'Unfollow' : 'Follow'}
+        aria-label={isFollowing ? "Unfollow" : "Follow"}
       >
         {isFollowing ? (
           <Minus className="h-3 w-3 text-white" />
@@ -261,20 +255,20 @@ export function FollowButton({
     );
   }
 
-  if (variant === 'icon') {
+  if (variant === "icon") {
     // Show subtle skeleton during loading to prevent layout shift
     if (isChecking) {
       return (
         <div
           className={cn(
-            'flex items-center justify-center rounded transition-colors',
+            "flex items-center justify-center rounded transition-colors",
             iconButtonSizes[size],
-            className
+            className,
           )}
           aria-label="Loading follow status"
         >
           <Skeleton
-            className={cn(iconSizes[size], 'rounded-full opacity-40')}
+            className={cn(iconSizes[size], "rounded-full opacity-40")}
           />
         </div>
       );
@@ -285,18 +279,18 @@ export function FollowButton({
         onClick={handleFollow}
         disabled={isLoading}
         className={cn(
-          'rounded transition-colors',
+          "rounded transition-colors",
           iconButtonSizes[size],
           isFollowing
-            ? 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
-            : 'text-primary hover:bg-primary/10 hover:text-primary/80',
-          isLoading && 'cursor-not-allowed opacity-50',
-          className
+            ? "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+            : "text-primary hover:bg-primary/10 hover:text-primary/80",
+          isLoading && "cursor-not-allowed opacity-50",
+          className,
         )}
-        aria-label={isFollowing ? 'Unfollow' : 'Follow'}
+        aria-label={isFollowing ? "Unfollow" : "Follow"}
       >
         {isLoading ? (
-          <Skeleton className={cn(iconSizes[size], 'rounded')} />
+          <Skeleton className={cn(iconSizes[size], "rounded")} />
         ) : isFollowing ? (
           <UserMinus className={iconSizes[size]} />
         ) : (
@@ -311,9 +305,9 @@ export function FollowButton({
     return (
       <div
         className={cn(
-          'flex items-center justify-center rounded-full border border-muted',
+          "flex items-center justify-center rounded-full border border-muted",
           sizeClasses[size],
-          className
+          className,
         )}
         aria-label="Loading follow status"
       >
@@ -328,20 +322,18 @@ export function FollowButton({
       onClick={handleFollow}
       disabled={isLoading}
       className={cn(
-        'group relative flex items-center justify-center gap-1.5 rounded-full font-bold transition-all duration-200',
-        'border',
+        "group relative flex items-center justify-center gap-1.5 rounded-full font-bold transition-all duration-200",
+        "border",
         isFollowing
-          ? 'border-border bg-background text-foreground hover:border-red-500/50 hover:bg-red-500/10 hover:text-red-500'
-          : 'border-[#0066FF] bg-[#0066FF] text-primary-foreground hover:bg-[#0052CC]',
+          ? "border-border bg-background text-foreground hover:border-red-500/50 hover:bg-red-500/10 hover:text-red-500"
+          : "border-[#0066FF] bg-[#0066FF] text-primary-foreground hover:bg-[#0052CC]",
         sizeClasses[size],
-        isLoading && 'cursor-not-allowed opacity-50',
-        className
+        isLoading && "cursor-not-allowed opacity-50",
+        className,
       )}
     >
       {isLoading ? (
-        <>
-          <span>...</span>
-        </>
+        <span>...</span>
       ) : isFollowing ? (
         <>
           <span className="group-hover:hidden">Following</span>

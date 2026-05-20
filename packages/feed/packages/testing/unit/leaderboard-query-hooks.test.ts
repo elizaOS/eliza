@@ -11,19 +11,19 @@
  * Run with: bun test packages/testing/unit/leaderboard-query-hooks.test.ts
  */
 
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import {
   fetchLeaderboardData,
   type LeaderboardData,
-} from '../../../apps/web/src/app/leaderboard/fetchLeaderboardData';
+} from "../../../apps/web/src/app/leaderboard/fetchLeaderboardData";
 import {
   getLeaderboardPositionQueryKey,
   getLeaderboardQueryKey,
-} from '../../../apps/web/src/app/leaderboard/useLeaderboardQuery';
+} from "../../../apps/web/src/app/leaderboard/useLeaderboardQuery";
 
 // ─── Test fetchLeaderboardData integration ───────────────────────────────────
 
-describe('fetchLeaderboardData — generatedAt support', () => {
+describe("fetchLeaderboardData — generatedAt support", () => {
   const originalFetch = globalThis.fetch;
 
   beforeEach(() => {
@@ -34,39 +34,39 @@ describe('fetchLeaderboardData — generatedAt support', () => {
     globalThis.fetch = originalFetch;
   });
 
-  it('passes through generatedAt from API response', async () => {
+  it("passes through generatedAt from API response", async () => {
     const mockResponse: LeaderboardData = {
       leaderboard: [],
       pagination: { page: 1, pageSize: 100, totalCount: 0, totalPages: 0 },
-      leaderboardType: 'wallet',
-      leaderboardMetric: 'reputation',
+      leaderboardType: "wallet",
+      leaderboardMetric: "reputation",
       currentUser: null,
       followingUserIds: [],
       followingUserIdsResolved: false,
-      generatedAt: '2026-04-01T12:00:00.000Z',
+      generatedAt: "2026-04-01T12:00:00.000Z",
     };
 
     globalThis.fetch = mock().mockResolvedValue(
-      new Response(JSON.stringify(mockResponse), { status: 200 })
+      new Response(JSON.stringify(mockResponse), { status: 200 }),
     ) as unknown as typeof fetch;
 
     const result = await fetchLeaderboardData({
       currentPage: 1,
       pageSize: 100,
-      selectedMetric: 'reputation',
-      selectedScope: 'wallet',
+      selectedMetric: "reputation",
+      selectedScope: "wallet",
       retries: 0,
     });
 
-    expect(result.generatedAt).toBe('2026-04-01T12:00:00.000Z');
+    expect(result.generatedAt).toBe("2026-04-01T12:00:00.000Z");
   });
 
-  it('works when generatedAt is absent (backwards compat)', async () => {
+  it("works when generatedAt is absent (backwards compat)", async () => {
     const mockResponse = {
       leaderboard: [],
       pagination: { page: 1, pageSize: 100, totalCount: 0, totalPages: 0 },
-      leaderboardType: 'wallet',
-      leaderboardMetric: 'reputation',
+      leaderboardType: "wallet",
+      leaderboardMetric: "reputation",
       currentUser: null,
       followingUserIds: [],
       followingUserIdsResolved: false,
@@ -74,14 +74,14 @@ describe('fetchLeaderboardData — generatedAt support', () => {
     };
 
     globalThis.fetch = mock().mockResolvedValue(
-      new Response(JSON.stringify(mockResponse), { status: 200 })
+      new Response(JSON.stringify(mockResponse), { status: 200 }),
     ) as unknown as typeof fetch;
 
     const result = await fetchLeaderboardData({
       currentPage: 1,
       pageSize: 100,
-      selectedMetric: 'reputation',
-      selectedScope: 'wallet',
+      selectedMetric: "reputation",
+      selectedScope: "wallet",
       retries: 0,
     });
 
@@ -89,98 +89,98 @@ describe('fetchLeaderboardData — generatedAt support', () => {
     expect(result.leaderboard).toEqual([]);
   });
 
-  it('does not include userId in URL when not provided', async () => {
+  it("does not include userId in URL when not provided", async () => {
     const fetchMock = mock().mockResolvedValue(
       new Response(
         JSON.stringify({
           leaderboard: [],
           pagination: { page: 1, pageSize: 100, totalCount: 0, totalPages: 0 },
-          leaderboardType: 'wallet',
-          leaderboardMetric: 'trading',
+          leaderboardType: "wallet",
+          leaderboardMetric: "trading",
           currentUser: null,
           followingUserIds: [],
           followingUserIdsResolved: false,
         }),
-        { status: 200 }
-      )
+        { status: 200 },
+      ),
     );
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
     await fetchLeaderboardData({
       currentPage: 2,
       pageSize: 50,
-      selectedMetric: 'trading',
-      selectedScope: 'team',
+      selectedMetric: "trading",
+      selectedScope: "team",
       retries: 0,
     });
 
     const calledUrl = (fetchMock.mock.calls[0] as [string])[0];
-    expect(calledUrl).toContain('metric=trading');
-    expect(calledUrl).toContain('type=team');
-    expect(calledUrl).toContain('page=2');
-    expect(calledUrl).toContain('pageSize=50');
-    expect(calledUrl).not.toContain('userId');
+    expect(calledUrl).toContain("metric=trading");
+    expect(calledUrl).toContain("type=team");
+    expect(calledUrl).toContain("page=2");
+    expect(calledUrl).toContain("pageSize=50");
+    expect(calledUrl).not.toContain("userId");
   });
 
-  it('includes userId in URL when provided', async () => {
+  it("includes userId in URL when provided", async () => {
     const fetchMock = mock().mockResolvedValue(
       new Response(
         JSON.stringify({
           leaderboard: [],
           pagination: { page: 1, pageSize: 100, totalCount: 0, totalPages: 0 },
-          leaderboardType: 'wallet',
-          leaderboardMetric: 'reputation',
+          leaderboardType: "wallet",
+          leaderboardMetric: "reputation",
           currentUser: null,
           followingUserIds: [],
           followingUserIdsResolved: false,
         }),
-        { status: 200 }
-      )
+        { status: 200 },
+      ),
     );
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
     await fetchLeaderboardData({
       currentPage: 1,
       pageSize: 100,
-      selectedMetric: 'reputation',
-      selectedScope: 'wallet',
-      userId: 'user-123',
+      selectedMetric: "reputation",
+      selectedScope: "wallet",
+      userId: "user-123",
       retries: 0,
     });
 
     const calledUrl = (fetchMock.mock.calls[0] as [string])[0];
-    expect(calledUrl).toContain('userId=user-123');
+    expect(calledUrl).toContain("userId=user-123");
   });
 
-  it('sends Authorization header when authToken provided', async () => {
+  it("sends Authorization header when authToken provided", async () => {
     const fetchMock = mock().mockResolvedValue(
       new Response(
         JSON.stringify({
           leaderboard: [],
           pagination: { page: 1, pageSize: 100, totalCount: 0, totalPages: 0 },
-          leaderboardType: 'wallet',
-          leaderboardMetric: 'reputation',
+          leaderboardType: "wallet",
+          leaderboardMetric: "reputation",
           currentUser: null,
           followingUserIds: [],
           followingUserIdsResolved: false,
         }),
-        { status: 200 }
-      )
+        { status: 200 },
+      ),
     );
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
     await fetchLeaderboardData({
       currentPage: 1,
       pageSize: 100,
-      selectedMetric: 'reputation',
-      selectedScope: 'wallet',
-      authToken: 'my-token',
+      selectedMetric: "reputation",
+      selectedScope: "wallet",
+      authToken: "my-token",
       retries: 0,
     });
 
     const calledOptions = (fetchMock.mock.calls[0] as [string, RequestInit])[1];
     expect(calledOptions.headers).toEqual({
-      Authorization: 'Bearer my-token',
+      Authorization: "Bearer my-token",
     });
   });
 });
@@ -189,33 +189,33 @@ describe('fetchLeaderboardData — generatedAt support', () => {
 // We test that the hooks would produce the right query keys and options
 // by examining the source module exports directly (configuration-level test).
 
-describe('Leaderboard query key design', () => {
-  it('page queries isolate cache by metric, scope, page, user, and auth state', () => {
+describe("Leaderboard query key design", () => {
+  it("page queries isolate cache by metric, scope, page, user, and auth state", () => {
     const key1 = getLeaderboardQueryKey({
-      metric: 'reputation',
+      metric: "reputation",
       page: 1,
       pageSize: 100,
-      scope: 'wallet',
+      scope: "wallet",
     });
     const key2 = getLeaderboardQueryKey({
-      metric: 'reputation',
+      metric: "reputation",
       page: 2,
       pageSize: 100,
-      scope: 'wallet',
+      scope: "wallet",
     });
     const key3 = getLeaderboardQueryKey({
-      metric: 'trading',
+      metric: "trading",
       page: 1,
       pageSize: 100,
-      scope: 'wallet',
+      scope: "wallet",
     });
     const key4 = getLeaderboardQueryKey({
-      metric: 'reputation',
+      metric: "reputation",
       page: 1,
       pageSize: 100,
-      scope: 'wallet',
-      userId: 'user-1',
-      authToken: 'token',
+      scope: "wallet",
+      userId: "user-1",
+      authToken: "token",
     });
 
     // Different pages = different keys
@@ -228,43 +228,43 @@ describe('Leaderboard query key design', () => {
     expect(JSON.stringify(key1)).toBe(
       JSON.stringify(
         getLeaderboardQueryKey({
-          metric: 'reputation',
+          metric: "reputation",
           page: 1,
           pageSize: 100,
-          scope: 'wallet',
-        })
-      )
+          scope: "wallet",
+        }),
+      ),
     );
   });
 
-  it('position queries isolate cache by metric, scope, page size, user, and auth state', () => {
+  it("position queries isolate cache by metric, scope, page size, user, and auth state", () => {
     const key1 = getLeaderboardPositionQueryKey({
-      metric: 'reputation',
-      scope: 'wallet',
+      metric: "reputation",
+      scope: "wallet",
       pageSize: 100,
-      userId: 'user-1',
-      authToken: 'token-1',
+      userId: "user-1",
+      authToken: "token-1",
     });
     const key2 = getLeaderboardPositionQueryKey({
-      metric: 'trading',
-      scope: 'wallet',
+      metric: "trading",
+      scope: "wallet",
       pageSize: 100,
-      userId: 'user-1',
-      authToken: 'token-1',
+      userId: "user-1",
+      authToken: "token-1",
     });
     const key3 = getLeaderboardPositionQueryKey({
-      metric: 'reputation',
-      scope: 'team',
+      metric: "reputation",
+      scope: "team",
       pageSize: 50,
-      userId: 'user-1',
-      authToken: 'token-1',
+      userId: "user-1",
+      authToken: "token-1",
     });
     const key4 = getLeaderboardPositionQueryKey({
-      metric: 'reputation',
-      scope: 'wallet',
+      metric: "reputation",
+      scope: "wallet",
       pageSize: 100,
-      userId: 'user-2',
-      authToken: 'token-1',
+      userId: "user-2",
+      authToken: "token-1",
     });
 
     // Different tabs = different keys
@@ -277,24 +277,24 @@ describe('Leaderboard query key design', () => {
     expect(key1[3]).toBe(100);
   });
 
-  it('prefetch next page produces key matching page query', () => {
+  it("prefetch next page produces key matching page query", () => {
     // When we prefetch page 2, the key must match what useLeaderboardQuery
     // would produce for page 2, so React Query deduplicates.
     const currentPageKey = getLeaderboardQueryKey({
-      metric: 'trading',
+      metric: "trading",
       page: 1,
       pageSize: 100,
-      scope: 'wallet',
-      userId: 'user-1',
-      authToken: 'token',
+      scope: "wallet",
+      userId: "user-1",
+      authToken: "token",
     });
     const prefetchedKey = getLeaderboardQueryKey({
-      metric: 'trading',
+      metric: "trading",
       page: 2,
       pageSize: 100,
-      scope: 'wallet',
-      userId: 'user-1',
-      authToken: 'token',
+      scope: "wallet",
+      userId: "user-1",
+      authToken: "token",
     });
 
     // Same structure, different page number

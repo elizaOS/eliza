@@ -152,12 +152,12 @@ import {
   publicRateLimit,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { db } from '@feed/db';
-import { StaticDataRegistry } from '@feed/engine';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { z } from 'zod';
+} from "@feed/api";
+import { db } from "@feed/db";
+import { StaticDataRegistry } from "@feed/engine";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { z } from "zod";
 
 const QuerySchema = z.object({
   limit: z.coerce.number().min(1).max(100).default(50),
@@ -172,12 +172,12 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   // Parse query parameters
   const { searchParams } = new URL(request.url);
   const params = QuerySchema.parse({
-    limit: searchParams.get('limit') || '50',
-    offset: searchParams.get('offset') || '0',
-    userId: searchParams.get('userId') || undefined,
+    limit: searchParams.get("limit") || "50",
+    offset: searchParams.get("offset") || "0",
+    userId: searchParams.get("userId") || undefined,
   });
 
-  logger.info('Public trading feed requested', { params }, 'GET /api/trades');
+  logger.info("Public trading feed requested", { params }, "GET /api/trades");
 
   const userFilter = params.userId ? { userId: params.userId } : {};
 
@@ -186,16 +186,16 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   const balanceTransactions = await db.balanceTransaction.findMany({
     take: params.limit,
     skip: params.offset,
-    orderBy: { createdAt: 'desc' },
+    orderBy: { createdAt: "desc" },
     where: {
       ...userFilter,
       type: {
         in: [
-          'pred_buy',
-          'pred_sell',
-          'perp_open',
-          'perp_close',
-          'perp_liquidation',
+          "pred_buy",
+          "pred_sell",
+          "perp_open",
+          "perp_close",
+          "perp_liquidation",
         ],
       },
     },
@@ -224,7 +224,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     npcTrades = await db.npcTrade.findMany({
       take: params.limit,
       skip: params.offset,
-      orderBy: { executedAt: 'desc' },
+      orderBy: { executedAt: "desc" },
     });
   } else {
     const actor = StaticDataRegistry.getActor(params.userId);
@@ -233,7 +233,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       npcTrades = await db.npcTrade.findMany({
         take: params.limit,
         skip: params.offset,
-        orderBy: { executedAt: 'desc' },
+        orderBy: { executedAt: "desc" },
         where: { npcActorId: params.userId },
       });
     }
@@ -280,7 +280,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         id: user.id,
         username:
           user.username ||
-          user.displayName?.toLowerCase().replace(/\s+/g, '-') ||
+          user.displayName?.toLowerCase().replace(/\s+/g, "-") ||
           actorId,
         displayName: user.displayName || actor?.name || actorId,
         profileImageUrl: user.profileImageUrl,
@@ -289,7 +289,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     } else if (actor) {
       actorsMap.set(actorId, {
         id: actor.id,
-        username: actor.name.toLowerCase().replace(/\s+/g, '-'),
+        username: actor.name.toLowerCase().replace(/\s+/g, "-"),
         displayName: actor.name,
         profileImageUrl: actor.profileImageUrl ?? null,
         isActor: true,
@@ -310,7 +310,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     perpPositions = await db.perpPosition.findMany({
       take: params.limit,
       skip: params.offset,
-      orderBy: { openedAt: 'desc' },
+      orderBy: { openedAt: "desc" },
       where: { userId: params.userId },
     });
   } else {
@@ -318,7 +318,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     perpPositions = await db.perpPosition.findMany({
       take: params.limit,
       skip: params.offset,
-      orderBy: { openedAt: 'desc' },
+      orderBy: { openedAt: "desc" },
     });
   }
 
@@ -329,7 +329,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     organizationIds
       .map((id) => StaticDataRegistry.getOrganization(id))
       .filter((o): o is NonNullable<typeof o> => o !== null)
-      .map((o) => [o.id, { id: o.id, name: o.name, type: o.type }])
+      .map((o) => [o.id, { id: o.id, name: o.name, type: o.type }]),
   );
 
   // Fetch users for perp positions
@@ -352,11 +352,11 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       ...balanceTransactions
         .filter(
           (tx) =>
-            (tx.type === 'pred_buy' || tx.type === 'pred_sell') && tx.relatedId
+            (tx.type === "pred_buy" || tx.type === "pred_sell") && tx.relatedId,
         )
         .map((tx) => tx.relatedId as string),
       ...npcTrades
-        .filter((t) => t.marketType === 'prediction' && t.marketId)
+        .filter((t) => t.marketType === "prediction" && t.marketId)
         .map((t) => t.marketId as string),
     ]),
   ];
@@ -383,13 +383,13 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         return !user?.isActor; // Exclude NPC actors
       })
       .map((tx) => {
-        const isPrediction = tx.type === 'pred_buy' || tx.type === 'pred_sell';
+        const isPrediction = tx.type === "pred_buy" || tx.type === "pred_sell";
         const market =
           isPrediction && tx.relatedId
             ? (predictionMarketsMap.get(tx.relatedId) ?? null)
             : null;
         return {
-          type: 'balance' as const,
+          type: "balance" as const,
           id: tx.id,
           timestamp: tx.createdAt,
           user: balanceUsersMap.get(tx.userId) || null,
@@ -405,11 +405,11 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     ...npcTrades.map((trade) => {
       const actor = actorsMap.get(trade.npcActorId);
       const npcMarket =
-        trade.marketType === 'prediction' && trade.marketId
+        trade.marketType === "prediction" && trade.marketId
           ? (predictionMarketsMap.get(trade.marketId) ?? null)
           : null;
       return {
-        type: 'npc' as const,
+        type: "npc" as const,
         id: trade.id,
         timestamp: trade.executedAt,
         user: actor
@@ -437,7 +437,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     ...perpPositions.map((pos) => {
       const organization = organizationsMap.get(pos.organizationId);
       return {
-        type: 'perp' as const,
+        type: "perp" as const,
         id: pos.id,
         timestamp: pos.openedAt,
         user: perpUsersMap.get(pos.userId) || null,

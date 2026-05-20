@@ -1,14 +1,14 @@
-'use client';
+"use client";
 
-import { cn, logger } from '@feed/shared';
-import { Check, ExternalLink, Mail, Shield, X as XIcon } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { toast } from 'sonner';
-import { useTelegramMiniApp } from '@/components/providers/TelegramMiniAppProvider';
-import { useAuth } from '@/hooks/useAuth';
-import { getAuthToken } from '@/lib/auth';
-import { useAuthStore } from '@/stores/authStore';
-import { apiUrl } from '@/utils/api-url';
+import { cn, logger } from "@feed/shared";
+import { Check, ExternalLink, Mail, Shield, X as XIcon } from "lucide-react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import { useTelegramMiniApp } from "@/components/providers/TelegramMiniAppProvider";
+import { useAuth } from "@/hooks/useAuth";
+import { getAuthToken } from "@/lib/auth";
+import { useAuthStore } from "@/stores/authStore";
+import { apiUrl } from "@/utils/api-url";
 
 /**
  * Link social accounts modal component for connecting social accounts.
@@ -61,21 +61,21 @@ export function LinkSocialAccountsModal({
   // These stubs maintain API compatibility while Steward linking is implemented
   const linkEmail = () => {
     logger.info(
-      'Email linking via Steward — not yet implemented in UI',
+      "Email linking via Steward — not yet implemented in UI",
       {},
-      'LinkSocialAccountsModal'
+      "LinkSocialAccountsModal",
     );
     toast.info(
-      'Email linking coming soon. Please sign in with your email directly.'
+      "Email linking coming soon. Please sign in with your email directly.",
     );
   };
   const linkFarcaster = () => {
     logger.info(
-      'Farcaster linking via SIWF — not yet implemented in UI',
+      "Farcaster linking via SIWF — not yet implemented in UI",
       {},
-      'LinkSocialAccountsModal'
+      "LinkSocialAccountsModal",
     );
-    toast.info('Farcaster linking coming soon.');
+    toast.info("Farcaster linking coming soon.");
   };
 
   useEffect(() => {
@@ -89,16 +89,16 @@ export function LinkSocialAccountsModal({
 
   const handleEmailLink = () => {
     if (!user?.id) return;
-    setLinking('email');
+    setLinking("email");
     linkEmail();
   };
 
   const handleTwitterOAuth = async () => {
     if (!user?.id) return;
 
-    setLinking('twitter');
+    setLinking("twitter");
 
-    sessionStorage.setItem('oauth_return_url', window.location.pathname);
+    sessionStorage.setItem("oauth_return_url", window.location.pathname);
     window.location.href = `/api/auth/twitter/initiate`;
   };
 
@@ -107,14 +107,14 @@ export function LinkSocialAccountsModal({
 
     const token = getAuthToken();
     if (!token) {
-      toast.error('Please sign in again to unlink X');
+      toast.error("Please sign in again to unlink X");
       return;
     }
 
     setUnlinkingTwitter(true);
     try {
-      const response = await fetch(apiUrl('/api/twitter/disconnect'), {
-        method: 'POST',
+      const response = await fetch(apiUrl("/api/twitter/disconnect"), {
+        method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -126,7 +126,7 @@ export function LinkSocialAccountsModal({
       } | null;
 
       if (!response.ok || !data?.success) {
-        toast.error(data?.error || 'Failed to unlink X account');
+        toast.error(data?.error || "Failed to unlink X account");
         return;
       }
 
@@ -136,9 +136,9 @@ export function LinkSocialAccountsModal({
         twitterUsername: undefined,
       });
       setConfirmUnlinkTwitter(false);
-      toast.success('X account unlinked');
+      toast.success("X account unlinked");
     } catch {
-      toast.error('Network error. Please try again.');
+      toast.error("Network error. Please try again.");
     } finally {
       setUnlinkingTwitter(false);
     }
@@ -146,13 +146,13 @@ export function LinkSocialAccountsModal({
 
   const handleFarcasterAuth = () => {
     if (!user?.id) return;
-    setLinking('farcaster');
+    setLinking("farcaster");
     linkFarcaster();
   };
 
   const handleTelegramLink = () => {
     if (!user?.id) return;
-    setLinking('telegram');
+    setLinking("telegram");
 
     if (isMiniApp) {
       // Inside Telegram MiniApp — use captured initData for seamless linking.
@@ -160,12 +160,12 @@ export function LinkSocialAccountsModal({
       const started = linkTelegramSeamless();
       if (!started) {
         setLinking(null);
-        toast.error('Unable to link Telegram. Please try again.');
+        toast.error("Unable to link Telegram. Please try again.");
       }
     } else {
       // Phase 2: Telegram linking outside mini-app — not yet implemented
       setLinking(null);
-      toast.info('Open Feed in Telegram to link your Telegram account.');
+      toast.info("Open Feed in Telegram to link your Telegram account.");
     }
   };
 
@@ -223,15 +223,15 @@ export function LinkSocialAccountsModal({
                 </div>
                 <button
                   onClick={handleEmailLink}
-                  disabled={linking === 'email'}
+                  disabled={linking === "email"}
                   className={cn(
-                    'w-full rounded-lg px-4 py-2 font-semibold transition-colors',
-                    'bg-[#0066FF] text-primary-foreground hover:bg-[#2952d9]',
-                    'disabled:cursor-not-allowed disabled:opacity-50',
-                    'flex items-center justify-center gap-2'
+                    "w-full rounded-lg px-4 py-2 font-semibold transition-colors",
+                    "bg-[#0066FF] text-primary-foreground hover:bg-[#2952d9]",
+                    "disabled:cursor-not-allowed disabled:opacity-50",
+                    "flex items-center justify-center gap-2",
                   )}
                 >
-                  {linking === 'email' ? (
+                  {linking === "email" ? (
                     <span>Opening Privy...</span>
                   ) : (
                     <>
@@ -266,7 +266,7 @@ export function LinkSocialAccountsModal({
                   <span className="font-medium text-sm">
                     {user.twitterUsername
                       ? `@${user.twitterUsername}`
-                      : 'Connected'}
+                      : "Connected"}
                   </span>
                   <div className="ml-auto flex items-center gap-2">
                     {user.twitterUsername && (
@@ -310,12 +310,12 @@ export function LinkSocialAccountsModal({
                         onClick={() => void handleTwitterDisconnect()}
                         disabled={unlinkingTwitter}
                         className={cn(
-                          'rounded px-3 py-1.5 font-semibold text-xs',
-                          'bg-red-600 text-white hover:bg-red-600/90',
-                          'disabled:cursor-not-allowed disabled:opacity-50'
+                          "rounded px-3 py-1.5 font-semibold text-xs",
+                          "bg-red-600 text-white hover:bg-red-600/90",
+                          "disabled:cursor-not-allowed disabled:opacity-50",
                         )}
                       >
-                        {unlinkingTwitter ? 'Unlinking...' : 'Confirm unlink'}
+                        {unlinkingTwitter ? "Unlinking..." : "Confirm unlink"}
                       </button>
                     </div>
                   </div>
@@ -332,18 +332,16 @@ export function LinkSocialAccountsModal({
                 </div>
                 <button
                   onClick={handleTwitterOAuth}
-                  disabled={linking === 'twitter'}
+                  disabled={linking === "twitter"}
                   className={cn(
-                    'w-full rounded-lg px-4 py-2 font-semibold transition-colors',
-                    'bg-[#0066FF] text-primary-foreground hover:bg-[#2952d9]',
-                    'disabled:cursor-not-allowed disabled:opacity-50',
-                    'flex items-center justify-center gap-2'
+                    "w-full rounded-lg px-4 py-2 font-semibold transition-colors",
+                    "bg-[#0066FF] text-primary-foreground hover:bg-[#2952d9]",
+                    "disabled:cursor-not-allowed disabled:opacity-50",
+                    "flex items-center justify-center gap-2",
                   )}
                 >
-                  {linking === 'twitter' ? (
-                    <>
-                      <span>Connecting...</span>
-                    </>
+                  {linking === "twitter" ? (
+                    <span>Connecting...</span>
                   ) : (
                     <>
                       <Shield className="h-4 w-4" />
@@ -402,18 +400,16 @@ export function LinkSocialAccountsModal({
                 </div>
                 <button
                   onClick={handleFarcasterAuth}
-                  disabled={linking === 'farcaster'}
+                  disabled={linking === "farcaster"}
                   className={cn(
-                    'w-full rounded-lg px-4 py-2 font-semibold transition-colors',
-                    'bg-[#8A63D2] text-white hover:bg-[#7952c4]',
-                    'disabled:cursor-not-allowed disabled:opacity-50',
-                    'flex items-center justify-center gap-2'
+                    "w-full rounded-lg px-4 py-2 font-semibold transition-colors",
+                    "bg-[#8A63D2] text-white hover:bg-[#7952c4]",
+                    "disabled:cursor-not-allowed disabled:opacity-50",
+                    "flex items-center justify-center gap-2",
                   )}
                 >
-                  {linking === 'farcaster' ? (
-                    <>
-                      <span>Connecting...</span>
-                    </>
+                  {linking === "farcaster" ? (
+                    <span>Connecting...</span>
                   ) : (
                     <>
                       <Shield className="h-4 w-4" />
@@ -446,7 +442,7 @@ export function LinkSocialAccountsModal({
                 <span className="font-medium text-sm">
                   {user.telegramUsername
                     ? `@${user.telegramUsername}`
-                    : 'Connected'}
+                    : "Connected"}
                 </span>
                 {user.telegramUsername && (
                   <a
@@ -465,21 +461,21 @@ export function LinkSocialAccountsModal({
                   <Shield className="mt-0.5 h-4 w-4 shrink-0 text-sky-500" />
                   <p className="text-muted-foreground text-xs">
                     {isMiniApp
-                      ? 'Link your Telegram account to earn points and unlock rewards.'
-                      : 'Open Feed in Telegram to seamlessly link your account, or connect via Privy.'}
+                      ? "Link your Telegram account to earn points and unlock rewards."
+                      : "Open Feed in Telegram to seamlessly link your account, or connect via Privy."}
                   </p>
                 </div>
                 <button
                   onClick={handleTelegramLink}
-                  disabled={linking === 'telegram'}
+                  disabled={linking === "telegram"}
                   className={cn(
-                    'w-full rounded-lg px-4 py-2 font-semibold transition-colors',
-                    'bg-[#229ED9] text-white hover:bg-[#1d8abf]',
-                    'disabled:cursor-not-allowed disabled:opacity-50',
-                    'flex items-center justify-center gap-2'
+                    "w-full rounded-lg px-4 py-2 font-semibold transition-colors",
+                    "bg-[#229ED9] text-white hover:bg-[#1d8abf]",
+                    "disabled:cursor-not-allowed disabled:opacity-50",
+                    "flex items-center justify-center gap-2",
                   )}
                 >
-                  {linking === 'telegram' ? (
+                  {linking === "telegram" ? (
                     <span>Connecting...</span>
                   ) : (
                     <>

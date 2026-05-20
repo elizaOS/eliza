@@ -26,12 +26,12 @@
  * />
  * ```
  */
-'use client';
+"use client";
 
-import { FEED_POINTS_SYMBOL, cn } from '@feed/shared';
-import { Activity, TrendingDown, TrendingUp, Trophy } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { apiUrl } from '@/utils/api-url';
+import { cn, FEED_POINTS_SYMBOL } from "@feed/shared";
+import { Activity, TrendingDown, TrendingUp, Trophy } from "lucide-react";
+import { useEffect, useState } from "react";
+import { apiUrl } from "@/utils/api-url";
 
 /**
  * Performance metrics structure for NPC leaderboard.
@@ -79,7 +79,7 @@ interface NPCLeaderboardProps {
 export function NPCLeaderboard({
   limit = 50,
   minValue = 0,
-  className = '',
+  className = "",
 }: NPCLeaderboardProps) {
   const [data, setData] = useState<LeaderboardData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -89,8 +89,8 @@ export function NPCLeaderboard({
       setLoading(true);
       const response = await fetch(
         apiUrl(
-          `/api/npc/performance/leaderboard?limit=${limit}&minValue=${minValue}`
-        )
+          `/api/npc/performance/leaderboard?limit=${limit}&minValue=${minValue}`,
+        ),
       );
       const result = await response.json();
 
@@ -109,7 +109,7 @@ export function NPCLeaderboard({
 
   if (loading) {
     return (
-      <div className={cn('rounded-lg bg-sidebar p-4', className)}>
+      <div className={cn("rounded-lg bg-sidebar p-4", className)}>
         <div className="text-muted-foreground text-sm">
           Loading leaderboard...
         </div>
@@ -119,7 +119,7 @@ export function NPCLeaderboard({
 
   if (!data || data.leaderboard.length === 0) {
     return (
-      <div className={cn('rounded-lg bg-sidebar p-4', className)}>
+      <div className={cn("rounded-lg bg-sidebar p-4", className)}>
         <div className="text-muted-foreground text-sm">
           No leaderboard data available
         </div>
@@ -128,14 +128,14 @@ export function NPCLeaderboard({
   }
 
   const getRankMedalColor = (rank: number) => {
-    if (rank === 1) return 'text-yellow-500';
-    if (rank === 2) return 'text-gray-400';
-    if (rank === 3) return 'text-orange-600';
-    return 'text-muted-foreground';
+    if (rank === 1) return "text-yellow-500";
+    if (rank === 2) return "text-gray-400";
+    if (rank === 3) return "text-orange-600";
+    return "text-muted-foreground";
   };
 
   return (
-    <div className={cn('space-y-4 rounded-lg bg-sidebar p-4', className)}>
+    <div className={cn("space-y-4 rounded-lg bg-sidebar p-4", className)}>
       {/* Header */}
       <div className="flex items-center justify-between">
         <h3 className="flex items-center gap-2 font-bold text-foreground text-lg">
@@ -153,15 +153,15 @@ export function NPCLeaderboard({
           <div
             key={entry.actorId}
             className={cn(
-              'flex items-center gap-3 rounded-lg bg-muted/30 p-3 transition-colors hover:bg-muted/50',
-              entry.rank <= 3 && 'border border-border/50'
+              "flex items-center gap-3 rounded-lg bg-muted/30 p-3 transition-colors hover:bg-muted/50",
+              entry.rank <= 3 && "border border-border/50",
             )}
           >
             {/* Rank */}
             <div className="w-8 shrink-0 text-center">
               {entry.rank <= 3 ? (
                 <Trophy
-                  className={cn('h-6 w-6', getRankMedalColor(entry.rank))}
+                  className={cn("h-6 w-6", getRankMedalColor(entry.rank))}
                 />
               ) : (
                 <span className="font-bold text-muted-foreground text-sm">
@@ -214,10 +214,10 @@ export function NPCLeaderboard({
               <div className="hidden text-right sm:block">
                 <div
                   className={cn(
-                    'flex items-center gap-1 font-medium text-sm',
+                    "flex items-center gap-1 font-medium text-sm",
                     entry.performance.roi >= 0
-                      ? 'text-green-500'
-                      : 'text-red-500'
+                      ? "text-green-500"
+                      : "text-red-500",
                   )}
                 >
                   {entry.performance.roi >= 0 ? (
@@ -225,7 +225,7 @@ export function NPCLeaderboard({
                   ) : (
                     <TrendingDown className="h-3 w-3" />
                   )}
-                  {entry.performance.roi >= 0 ? '+' : ''}
+                  {entry.performance.roi >= 0 ? "+" : ""}
                   {entry.performance.roi.toFixed(1)}%
                 </div>
                 <div className="text-muted-foreground text-xs">ROI</div>
@@ -235,13 +235,13 @@ export function NPCLeaderboard({
               <div className="hidden text-right md:block">
                 <div
                   className={cn(
-                    'font-medium text-sm',
+                    "font-medium text-sm",
                     entry.performance.unrealizedPnL >= 0
-                      ? 'text-green-500'
-                      : 'text-red-500'
+                      ? "text-green-500"
+                      : "text-red-500",
                   )}
                 >
-                  {entry.performance.unrealizedPnL >= 0 ? '+' : ''}
+                  {entry.performance.unrealizedPnL >= 0 ? "+" : ""}
                   {FEED_POINTS_SYMBOL}
                   {Math.abs(entry.performance.unrealizedPnL).toLocaleString()}
                 </div>
@@ -272,7 +272,7 @@ export function NPCLeaderboard({
       {/* Footer */}
       {data.leaderboard.length === data.metadata.limit && (
         <div className="border-border border-t pt-2 text-center text-muted-foreground text-xs">
-          Showing top {data.metadata.limit} NPCs. Minimum portfolio value:{' '}
+          Showing top {data.metadata.limit} NPCs. Minimum portfolio value:{" "}
           {FEED_POINTS_SYMBOL}
           {data.metadata.minValue.toLocaleString()}
         </div>

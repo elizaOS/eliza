@@ -78,14 +78,10 @@ import {
   authenticate,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { asUser } from '@feed/db';
-import {
-  AgentOnboardSchema,
-  generateSnowflakeId,
-  logger,
-} from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/api";
+import { asUser } from "@feed/db";
+import { AgentOnboardSchema, generateSnowflakeId, logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 /**
  * POST /api/agents/onboard
@@ -96,9 +92,9 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   const user = await authenticate(request);
   if (!user.isAgent || !user.userId) {
     throw new AuthorizationError(
-      'Only agents can use this endpoint',
-      'agent',
-      'onboard'
+      "Only agents can use this endpoint",
+      "agent",
+      "onboard",
     );
   }
 
@@ -125,8 +121,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         privyId: agentId,
         username: agentId,
         displayName: agentName || agentId,
-        virtualBalance: '10000', // Start with 10k points
-        totalDeposited: '10000',
+        virtualBalance: "10000", // Start with 10k points
+        totalDeposited: "10000",
         bio: `Autonomous AI agent: ${agentId}`,
         updatedAt: new Date(),
       },
@@ -144,20 +140,20 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     });
 
     if (!userWithFields) {
-      throw new Error('Failed to create or find user');
+      throw new Error("Failed to create or find user");
     }
 
     return userWithFields;
   });
 
   logger.info(
-    'Agent onboarded successfully',
+    "Agent onboarded successfully",
     { agentId },
-    'POST /api/agents/onboard'
+    "POST /api/agents/onboard",
   );
 
   return successResponse({
-    message: 'Agent registered successfully',
+    message: "Agent registered successfully",
     agentId,
     registered: true,
   });
@@ -171,18 +167,18 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   const user = await authenticate(request);
   if (!user.isAgent || !user.userId) {
     throw new AuthorizationError(
-      'Only agents can use this endpoint',
-      'agent',
-      'check-status'
+      "Only agents can use this endpoint",
+      "agent",
+      "check-status",
     );
   }
 
   const agentId = user.userId;
 
   logger.info(
-    'Agent registration status checked',
+    "Agent registration status checked",
     { agentId },
-    'GET /api/agents/onboard'
+    "GET /api/agents/onboard",
   );
 
   return successResponse({

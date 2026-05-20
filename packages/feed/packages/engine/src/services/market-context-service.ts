@@ -7,8 +7,8 @@
  * Token-aware: Limits context size to prevent LLM token overflows
  */
 
-import { PerpDbAdapter } from '@feed/core/markets/perps';
-import { maxSafeBuy } from '@feed/core/markets/prediction/client';
+import { PerpDbAdapter } from "@feed/core/markets/perps";
+import { maxSafeBuy } from "@feed/core/markets/prediction/client";
 import {
   actorRelationships,
   actorState,
@@ -31,14 +31,14 @@ import {
   posts,
   questions,
   worldEvents,
-} from '@feed/db';
-import { logger } from '@feed/shared';
+} from "@feed/db";
+import { logger } from "@feed/shared";
 import {
   getSimulationPrice,
   getSimulationTickers,
   SIMULATION_PREDICTION_MARKETS,
-} from '../config/simulation';
-import { isSimulationMode } from '../storage-bridge';
+} from "../config/simulation";
+import { isSimulationMode } from "../storage-bridge";
 import type {
   EventContext,
   FeedPostContext,
@@ -50,23 +50,23 @@ import type {
   PerpMarketSnapshot,
   PredictionMarketSnapshot,
   RelationshipContext,
-} from '../types/market-context';
+} from "../types/market-context";
 import {
   fetchRelevantPosts,
   findRelatedActorsByAffiliation,
   resolveActorName,
-} from '../utils/actor-utils';
-import { parseStringArraySafe } from './jsonb-validators';
+} from "../utils/actor-utils";
+import { parseStringArraySafe } from "./jsonb-validators";
 import {
   buildPerpMarketSnapshot,
   buildPredictionMarketSnapshot,
-} from './market-context-helpers';
+} from "./market-context-helpers";
 import {
   buildPredictionMarketProfile,
   getPredictionMarketLiquidityTier,
-} from './prediction-market-profiles';
-import { SignalExtractionService } from './signal-extraction-service';
-import { StaticDataRegistry } from './static-data-registry';
+} from "./prediction-market-profiles";
+import { SignalExtractionService } from "./signal-extraction-service";
+import { StaticDataRegistry } from "./static-data-registry";
 
 export class MarketContextService {
   /**
@@ -102,7 +102,7 @@ export class MarketContextService {
 
       // Filter out test actors
       const npcs = staticActors
-        .filter((actor) => !actor.name.includes('Group Test') && !actor.isTest)
+        .filter((actor) => !actor.name.includes("Group Test") && !actor.isTest)
         .map((actor) => ({
           id: actor.id,
           name: actor.name,
@@ -113,7 +113,7 @@ export class MarketContextService {
           affiliations: actor.affiliations,
           postStyle: actor.postStyle,
           postExample: actor.postExample,
-          tradingBalance: '100000', // Mock balance
+          tradingBalance: "100000", // Mock balance
           reputationPoints: 10000,
           hasPool: true,
         }));
@@ -161,7 +161,7 @@ export class MarketContextService {
             noPrice: m.noPrice,
             totalVolume: m.totalVolume,
             resolutionDate: new Date(
-              Date.now() + m.resolveDays * 86400000
+              Date.now() + m.resolveDays * 86400000,
             ).toISOString(),
             daysUntilResolution: m.resolveDays,
             horizonBucket: profile.horizonBucket,
@@ -179,8 +179,8 @@ export class MarketContextService {
         contexts.set(npc.id, {
           npcId: npc.id,
           npcName: npc.name,
-          personality: npc.personality || 'neutral trader',
-          tier: npc.tier || 'B_TIER',
+          personality: npc.personality || "neutral trader",
+          tier: npc.tier || "B_TIER",
           availableBalance: 100000,
           relationships: [], // Empty for simulation
           recentPosts: [], // Empty for simulation
@@ -203,7 +203,7 @@ export class MarketContextService {
 
     // Combine static and dynamic data, filter test actors
     const npcs = staticActors
-      .filter((actor) => !actor.name.includes('Group Test') && !actor.isTest)
+      .filter((actor) => !actor.name.includes("Group Test") && !actor.isTest)
       .map((actor) => {
         const state = stateMap.get(actor.id);
         return {
@@ -216,7 +216,7 @@ export class MarketContextService {
           affiliations: actor.affiliations,
           postStyle: actor.postStyle,
           postExample: actor.postExample,
-          tradingBalance: state?.tradingBalance ?? '10000',
+          tradingBalance: state?.tradingBalance ?? "10000",
           reputationPoints: state?.reputationPoints ?? 10000,
           hasPool: state?.hasPool ?? false,
         };
@@ -232,7 +232,7 @@ export class MarketContextService {
     // Extract signal analysis for active prediction markets (for better NPC trading)
     // This is internal context - never exposed to players
     const marketSignals = await this.extractMarketSignals(
-      marketSnapshots.predictions
+      marketSnapshots.predictions,
     );
 
     // Get group chats with messages
@@ -252,8 +252,8 @@ export class MarketContextService {
       .where(
         inArray(
           messages.chatId,
-          groupChats.map((c) => c.id)
-        )
+          groupChats.map((c) => c.id),
+        ),
       )
       .orderBy(desc(messages.createdAt))
       .limit(500); // Limit total messages
@@ -279,8 +279,8 @@ export class MarketContextService {
             .where(
               or(
                 inArray(actorRelationships.actor1Id, npcIds),
-                inArray(actorRelationships.actor2Id, npcIds)
-              )
+                inArray(actorRelationships.actor2Id, npcIds),
+              ),
             )
         : [];
 
@@ -298,8 +298,8 @@ export class MarketContextService {
             .where(
               and(
                 inArray(chatParticipants.chatId, groupChatIds),
-                inArray(chatParticipants.userId, npcIds)
-              )
+                inArray(chatParticipants.userId, npcIds),
+              ),
             )
         : [];
     const chatIdsByNpc = new Map<string, Set<string>>();
@@ -327,7 +327,7 @@ export class MarketContextService {
         for (const msg of chatMsgs) {
           npcGroupChats.push({
             chatId: chat.id,
-            chatName: chat.name || 'Group Chat',
+            chatName: chat.name || "Group Chat",
             from: msg.senderId,
             fromName: actorNameById.get(msg.senderId) ?? msg.senderId,
             message: msg.content,
@@ -358,8 +358,8 @@ export class MarketContextService {
       contexts.set(npc.id, {
         npcId: npc.id,
         npcName: npc.name,
-        personality: npc.personality || 'neutral trader',
-        tier: npc.tier || 'B_TIER',
+        personality: npc.personality || "neutral trader",
+        tier: npc.tier || "B_TIER",
         availableBalance,
         relationships: npcRelationships,
         recentPosts,
@@ -379,7 +379,7 @@ export class MarketContextService {
         npcCount: contexts.size,
         durationMs: duration,
       },
-      'MarketContextService'
+      "MarketContextService",
     );
 
     return contexts;
@@ -415,7 +415,7 @@ export class MarketContextService {
     // Combine static and dynamic data
     const npc = {
       ...staticNpc,
-      tradingBalance: npcState?.tradingBalance ?? '10000',
+      tradingBalance: npcState?.tradingBalance ?? "10000",
       reputationPoints: npcState?.reputationPoints ?? 10000,
       hasPool: npcState?.hasPool ?? false,
     };
@@ -430,7 +430,7 @@ export class MarketContextService {
 
     // Extract signal analysis for prediction markets
     const marketSignals = await this.extractMarketSignals(
-      marketSnapshots.predictions
+      marketSnapshots.predictions,
     );
 
     // Get relationships for this NPC
@@ -445,8 +445,8 @@ export class MarketContextService {
     return {
       npcId: npc.id,
       npcName: npc.name,
-      personality: npc.personality || 'neutral trader',
-      tier: npc.tier || 'B_TIER',
+      personality: npc.personality || "neutral trader",
+      tier: npc.tier || "B_TIER",
       availableBalance,
       relationships,
       recentPosts,
@@ -469,7 +469,7 @@ export class MarketContextService {
    * @returns Array of relationship contexts
    */
   private async getRelationshipsForNPC(
-    npcId: string
+    npcId: string,
   ): Promise<RelationshipContext[]> {
     const relationshipsList = await db
       .select()
@@ -477,8 +477,8 @@ export class MarketContextService {
       .where(
         or(
           eq(actorRelationships.actor1Id, npcId),
-          eq(actorRelationships.actor2Id, npcId)
-        )
+          eq(actorRelationships.actor2Id, npcId),
+        ),
       );
 
     return relationshipsList.map((rel) => {
@@ -527,7 +527,7 @@ export class MarketContextService {
       .select()
       .from(chats)
       .where(
-        and(eq(chats.isGroup, true), inArray(chats.id, participantChatIds))
+        and(eq(chats.isGroup, true), inArray(chats.id, participantChatIds)),
       );
 
     const result: GroupChatContext[] = [];
@@ -544,12 +544,12 @@ export class MarketContextService {
         const maxMsgLength = 300;
         const message =
           msg.content.length > maxMsgLength
-            ? msg.content.slice(0, maxMsgLength) + '...'
+            ? `${msg.content.slice(0, maxMsgLength)}...`
             : msg.content;
 
         result.push({
           chatId: chat.id,
-          chatName: chat.name || 'Group Chat',
+          chatName: chat.name || "Group Chat",
           from: msg.senderId,
           fromName: resolveActorName(msg.senderId),
           message,
@@ -586,8 +586,8 @@ export class MarketContextService {
       .where(
         or(
           eq(actorRelationships.actor1Id, npcId),
-          eq(actorRelationships.actor2Id, npcId)
-        )
+          eq(actorRelationships.actor2Id, npcId),
+        ),
       );
     for (const rel of relationships) {
       const otherId = rel.actor1Id === npcId ? rel.actor2Id : rel.actor1Id;
@@ -607,8 +607,8 @@ export class MarketContextService {
         and(
           isNull(posts.deletedAt),
           lte(posts.timestamp, now),
-          gte(posts.timestamp, twoDaysAgo)
-        )
+          gte(posts.timestamp, twoDaysAgo),
+        ),
       )
       .orderBy(desc(posts.timestamp))
       .limit(15);
@@ -617,13 +617,13 @@ export class MarketContextService {
       const maxContentLength = 500;
       const content =
         post.content.length > maxContentLength
-          ? post.content.slice(0, maxContentLength) + '...'
+          ? `${post.content.slice(0, maxContentLength)}...`
           : post.content;
 
       const maxTitleLength = 120;
       const articleTitle =
         post.articleTitle && post.articleTitle.length > maxTitleLength
-          ? post.articleTitle.slice(0, maxTitleLength) + '...'
+          ? `${post.articleTitle.slice(0, maxTitleLength)}...`
           : post.articleTitle;
 
       return {
@@ -662,14 +662,14 @@ export class MarketContextService {
       const maxDescLength = 300;
       const description =
         event.description.length > maxDescLength
-          ? event.description.slice(0, maxDescLength) + '...'
+          ? `${event.description.slice(0, maxDescLength)}...`
           : event.description;
 
       return {
         type: event.eventType,
         description,
         actors: parseStringArraySafe(event.actors, {
-          field: 'worldEvents.actors',
+          field: "worldEvents.actors",
         }),
         timestamp: event.timestamp.toISOString(),
         relatedQuestion: event.relatedQuestion || undefined,
@@ -690,7 +690,7 @@ export class MarketContextService {
    */
   async getEventsForNPC(
     npcId: string,
-    npcName: string
+    npcName: string,
   ): Promise<EventContext[]> {
     // In simulation mode, events are not persisted to DB - return empty
     if (isSimulationMode()) {
@@ -707,8 +707,8 @@ export class MarketContextService {
       .where(
         and(
           lte(worldEvents.timestamp, now),
-          gte(worldEvents.timestamp, threeDaysAgo)
-        )
+          gte(worldEvents.timestamp, threeDaysAgo),
+        ),
       )
       .orderBy(desc(worldEvents.timestamp))
       .limit(100);
@@ -721,7 +721,7 @@ export class MarketContextService {
         actorsArray.some(
           (a) =>
             a.toLowerCase().includes(npcName.toLowerCase()) ||
-            npcName.toLowerCase().includes(a.toLowerCase())
+            npcName.toLowerCase().includes(a.toLowerCase()),
         );
       const isMentioned =
         event.description.toLowerCase().includes(npcName.toLowerCase()) ||
@@ -734,14 +734,14 @@ export class MarketContextService {
       const maxDescLength = 200;
       const description =
         event.description.length > maxDescLength
-          ? event.description.slice(0, maxDescLength) + '...'
+          ? `${event.description.slice(0, maxDescLength)}...`
           : event.description;
 
       return {
         type: event.eventType,
         description,
         actors: parseStringArraySafe(event.actors, {
-          field: 'worldEvents.actors',
+          field: "worldEvents.actors",
         }),
         timestamp: event.timestamp.toISOString(),
         relatedQuestion: event.relatedQuestion || undefined,
@@ -776,8 +776,8 @@ export class MarketContextService {
           eq(posts.authorId, npcId),
           gte(posts.timestamp, threeDaysAgo),
           lte(posts.timestamp, now),
-          isNull(posts.deletedAt)
-        )
+          isNull(posts.deletedAt),
+        ),
       )
       .orderBy(desc(posts.timestamp))
       .limit(10);
@@ -786,7 +786,7 @@ export class MarketContextService {
       const maxContentLength = 200;
       const content =
         post.content.length > maxContentLength
-          ? post.content.slice(0, maxContentLength) + '...'
+          ? `${post.content.slice(0, maxContentLength)}...`
           : post.content;
 
       return {
@@ -834,7 +834,7 @@ export class MarketContextService {
     const marketList = await perpDb.listMarkets();
     return marketList
       .sort(
-        (a, b) => b.openInterest - a.openInterest || b.volume24h - a.volume24h
+        (a, b) => b.openInterest - a.openInterest || b.volume24h - a.volume24h,
       )
       .map((market) => buildPerpMarketSnapshot(market));
   }
@@ -873,8 +873,8 @@ export class MarketContextService {
           liquidity: Number.parseFloat(market.liquidity.toString()),
           endDate: market.endDate,
         },
-        now
-      )
+        now,
+      ),
     );
   }
 
@@ -890,7 +890,7 @@ export class MarketContextService {
    * @returns Array of market signal contexts
    */
   private async extractMarketSignals(
-    predictionMarkets: PredictionMarketSnapshot[]
+    predictionMarkets: PredictionMarketSnapshot[],
   ): Promise<MarketSignalContext[]> {
     if (predictionMarkets.length === 0) {
       return [];
@@ -923,28 +923,28 @@ export class MarketContextService {
           noSignal: analysis.noSignal,
           netSignal: analysis.netSignal,
           strength: analysis.signalStrength,
-          suggestedOutcome: 'UNCERTAIN' as const, // Neutralized: don't leak predetermined outcomes to NPCs
+          suggestedOutcome: "UNCERTAIN" as const, // Neutralized: don't leak predetermined outcomes to NPCs
           confidence: analysis.confidence,
         });
 
         logger.debug(
-          'Extracted market signal',
+          "Extracted market signal",
           {
             marketId: market.id,
             suggestedOutcome: analysis.suggestedOutcome,
-            confidence: (analysis.confidence * 100).toFixed(1) + '%',
+            confidence: `${(analysis.confidence * 100).toFixed(1)}%`,
           },
-          'MarketContextService'
+          "MarketContextService",
         );
       } catch (error) {
         // Signal extraction is optional - continue if it fails
         logger.debug(
-          'Signal extraction failed for market (non-critical)',
+          "Signal extraction failed for market (non-critical)",
           {
             marketId: market.id,
-            error: error instanceof Error ? error.message : 'Unknown',
+            error: error instanceof Error ? error.message : "Unknown",
           },
-          'MarketContextService'
+          "MarketContextService",
         );
       }
     }
@@ -953,7 +953,7 @@ export class MarketContextService {
   }
 
   private async getCurrentPositionsByNpcIds(
-    npcIds: string[]
+    npcIds: string[],
   ): Promise<Map<string, NPCPosition[]>> {
     if (npcIds.length === 0) {
       return new Map();
@@ -980,8 +980,8 @@ export class MarketContextService {
         .where(
           and(
             inArray(perpPositions.userId, npcIds),
-            isNull(perpPositions.closedAt)
-          )
+            isNull(perpPositions.closedAt),
+          ),
         ),
       db
         .select({
@@ -999,9 +999,9 @@ export class MarketContextService {
         .where(
           and(
             inArray(poolPositions.poolId, npcIds),
-            eq(poolPositions.marketType, 'perp'),
-            isNull(poolPositions.closedAt)
-          )
+            eq(poolPositions.marketType, "perp"),
+            isNull(poolPositions.closedAt),
+          ),
         ),
       db
         .select({
@@ -1020,15 +1020,15 @@ export class MarketContextService {
         .where(
           and(
             inArray(poolPositions.poolId, npcIds),
-            eq(poolPositions.marketType, 'prediction'),
-            isNull(poolPositions.closedAt)
-          )
+            eq(poolPositions.marketType, "prediction"),
+            isNull(poolPositions.closedAt),
+          ),
         ),
     ]);
 
     const positionsByNpc = new Map<string, NPCPosition[]>();
     const livePerpPositionIds = new Set(
-      openPerpPositions.map((position) => position.id)
+      openPerpPositions.map((position) => position.id),
     );
 
     const pushPosition = (npcId: string, position: NPCPosition): void => {
@@ -1043,7 +1043,7 @@ export class MarketContextService {
     for (const position of openPerpPositions) {
       pushPosition(position.userId, {
         id: position.id,
-        marketType: 'perp',
+        marketType: "perp",
         ticker: position.ticker,
         side: position.side,
         entryPrice: Number(position.entryPrice),
@@ -1058,7 +1058,7 @@ export class MarketContextService {
       if (!position.poolId || livePerpPositionIds.has(position.id)) continue;
       pushPosition(position.poolId, {
         id: position.id,
-        marketType: 'perp',
+        marketType: "perp",
         ticker: position.ticker ?? undefined,
         side: position.side,
         entryPrice: Number(position.entryPrice),
@@ -1073,7 +1073,7 @@ export class MarketContextService {
       if (!position.poolId) continue;
       pushPosition(position.poolId, {
         id: position.id,
-        marketType: 'prediction',
+        marketType: "prediction",
         marketId: position.marketId || undefined,
         side: position.side,
         entryPrice: Number(position.entryPrice),

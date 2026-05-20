@@ -8,7 +8,9 @@
  * Run: bun packages/testing/manual/test-feed-generation.ts
  */
 
-import { FeedLLMClient, FeedGenerator } from '@feed/engine';
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { FeedGenerator, FeedLLMClient } from "@feed/engine";
 import type {
   Actor,
   ActorRelationship,
@@ -16,9 +18,7 @@ import type {
   FeedPost,
   Organization,
   WorldEvent,
-} from '@feed/shared';
-import { mkdir, writeFile } from 'fs/promises';
-import { join } from 'path';
+} from "@feed/shared";
 
 // ============================================================================
 // Test Data Setup (Minimal for fast execution)
@@ -30,120 +30,120 @@ import { join } from 'path';
 function createTestActors(): Actor[] {
   return [
     {
-      id: 'actor-media-1',
-      name: 'Veronica Truthseeker',
-      description: 'Award-winning investigative journalist',
-      domain: ['media', 'investigation'],
-      personality: 'tenacious, detail-oriented, skeptical',
+      id: "actor-media-1",
+      name: "Veronica Truthseeker",
+      description: "Award-winning investigative journalist",
+      domain: ["media", "investigation"],
+      personality: "tenacious, detail-oriented, skeptical",
       voice:
-        'Uses short, punchy sentences. Speaks in confident, declarative statements.',
-      role: 'journalist',
-      affiliations: ['org-media-1'],
-      postStyle: 'Breaking news style, professional tone',
+        "Uses short, punchy sentences. Speaks in confident, declarative statements.",
+      role: "journalist",
+      affiliations: ["org-media-1"],
+      postStyle: "Breaking news style, professional tone",
       postExample: [
-        'BREAKING: Sources confirm investigation moving forward.',
-        'Just spoke with three insiders. This story runs deeper.',
+        "BREAKING: Sources confirm investigation moving forward.",
+        "Just spoke with three insiders. This story runs deeper.",
       ],
-      tier: 'A_TIER',
+      tier: "A_TIER",
       initialMood: 0.3,
-      initialLuck: 'medium',
+      initialLuck: "medium",
       persona: {
         reliability: 0.85,
-        insiderOrgs: ['org-media-1'],
-        expertise: ['investigation', 'corporate'],
+        insiderOrgs: ["org-media-1"],
+        expertise: ["investigation", "corporate"],
         willingToLie: false,
-        selfInterest: 'reputation',
+        selfInterest: "reputation",
         favorsActors: [],
         opposesActors: [],
-        favorsOrgs: ['org-media-1'],
+        favorsOrgs: ["org-media-1"],
         opposesOrgs: [],
       },
     },
     {
-      id: 'actor-tech-1',
-      name: 'Max Byteson',
-      description: 'Silicon Valley tech founder and thought leader',
-      domain: ['tech', 'finance', 'crypto'],
-      personality: 'optimistic, visionary, sometimes arrogant',
-      voice: 'Uses tech jargon freely. Makes bold predictions. Casual tone.',
-      role: 'tech_leader',
-      affiliations: ['org-tech-1'],
-      postStyle: 'Tech bro style, future-focused',
+      id: "actor-tech-1",
+      name: "Max Byteson",
+      description: "Silicon Valley tech founder and thought leader",
+      domain: ["tech", "finance", "crypto"],
+      personality: "optimistic, visionary, sometimes arrogant",
+      voice: "Uses tech jargon freely. Makes bold predictions. Casual tone.",
+      role: "tech_leader",
+      affiliations: ["org-tech-1"],
+      postStyle: "Tech bro style, future-focused",
       postExample: [
-        'This is huge. The future is being built right now.',
-        'Just shipped something that will change everything.',
+        "This is huge. The future is being built right now.",
+        "Just shipped something that will change everything.",
       ],
-      tier: 'A_TIER',
+      tier: "A_TIER",
       initialMood: 0.6,
-      initialLuck: 'high',
+      initialLuck: "high",
       persona: {
         reliability: 0.6,
-        insiderOrgs: ['org-tech-1'],
-        expertise: ['technology', 'ai'],
+        insiderOrgs: ["org-tech-1"],
+        expertise: ["technology", "ai"],
         willingToLie: true,
-        selfInterest: 'wealth',
+        selfInterest: "wealth",
         favorsActors: [],
         opposesActors: [],
-        favorsOrgs: ['org-tech-1'],
+        favorsOrgs: ["org-tech-1"],
         opposesOrgs: [],
       },
     },
     {
-      id: 'actor-conspiracy-1',
-      name: 'ShadowWatcher99',
-      description: 'Anonymous conspiracy theorist and truth seeker',
-      domain: ['conspiracy', 'government', 'tech'],
-      personality: 'paranoid, cryptic, obsessive',
+      id: "actor-conspiracy-1",
+      name: "ShadowWatcher99",
+      description: "Anonymous conspiracy theorist and truth seeker",
+      domain: ["conspiracy", "government", "tech"],
+      personality: "paranoid, cryptic, obsessive",
       voice:
-        'Cryptic references. Uses ellipses. Questions everything. Hints at hidden truths.',
-      role: 'influencer',
+        "Cryptic references. Uses ellipses. Questions everything. Hints at hidden truths.",
+      role: "influencer",
       affiliations: [],
-      postStyle: 'Cryptic, uses ellipses, hints at hidden knowledge',
+      postStyle: "Cryptic, uses ellipses, hints at hidden knowledge",
       postExample: [
-        'Interesting timing... they want you distracted.',
-        'Follow the money. The pattern is clear to those who see.',
+        "Interesting timing... they want you distracted.",
+        "Follow the money. The pattern is clear to those who see.",
       ],
-      tier: 'C_TIER',
+      tier: "C_TIER",
       initialMood: -0.3,
-      initialLuck: 'medium',
+      initialLuck: "medium",
       persona: {
         reliability: 0.3,
         insiderOrgs: [],
-        expertise: ['patterns', 'hidden_connections'],
+        expertise: ["patterns", "hidden_connections"],
         willingToLie: true,
-        selfInterest: 'ideology',
+        selfInterest: "ideology",
         favorsActors: [],
         opposesActors: [],
         favorsOrgs: [],
-        opposesOrgs: ['org-govt-1'],
+        opposesOrgs: ["org-govt-1"],
       },
     },
     {
-      id: 'actor-finance-1',
-      name: 'Margaret Goldsworth',
-      description: 'Wall Street veteran and market analyst',
-      domain: ['finance', 'markets', 'economy'],
-      personality: 'analytical, cautious, data-driven',
-      voice: 'Speaks in measured tones. References data and historical trends.',
-      role: 'analyst',
-      affiliations: ['org-finance-1'],
-      postStyle: 'Data-driven, references market indicators',
+      id: "actor-finance-1",
+      name: "Margaret Goldsworth",
+      description: "Wall Street veteran and market analyst",
+      domain: ["finance", "markets", "economy"],
+      personality: "analytical, cautious, data-driven",
+      voice: "Speaks in measured tones. References data and historical trends.",
+      role: "analyst",
+      affiliations: ["org-finance-1"],
+      postStyle: "Data-driven, references market indicators",
       postExample: [
-        'Historical data suggests caution here.',
-        'Market indicators point to volatility ahead.',
+        "Historical data suggests caution here.",
+        "Market indicators point to volatility ahead.",
       ],
-      tier: 'A_TIER',
+      tier: "A_TIER",
       initialMood: 0.1,
-      initialLuck: 'medium',
+      initialLuck: "medium",
       persona: {
         reliability: 0.8,
-        insiderOrgs: ['org-finance-1'],
-        expertise: ['markets', 'economics'],
+        insiderOrgs: ["org-finance-1"],
+        expertise: ["markets", "economics"],
         willingToLie: false,
-        selfInterest: 'reputation',
+        selfInterest: "reputation",
         favorsActors: [],
         opposesActors: [],
-        favorsOrgs: ['org-finance-1'],
+        favorsOrgs: ["org-finance-1"],
         opposesOrgs: [],
       },
     },
@@ -156,15 +156,15 @@ function createTestActors(): Actor[] {
 function createTestEvents(): WorldEvent[] {
   return [
     {
-      id: 'event-1',
+      id: "event-1",
       day: 5,
-      type: 'leak',
-      actors: ['actor-tech-1', 'actor-media-1'],
+      type: "leak",
+      actors: ["actor-tech-1", "actor-media-1"],
       description:
-        'Internal documents leaked showing NeuralNex developing autonomous trading AI that can manipulate market prices',
+        "Internal documents leaked showing NeuralNex developing autonomous trading AI that can manipulate market prices",
       relatedQuestion: 1,
-      pointsToward: 'YES',
-      visibility: 'public',
+      pointsToward: "YES",
+      visibility: "public",
     },
   ];
 }
@@ -175,35 +175,35 @@ function createTestEvents(): WorldEvent[] {
 function createTestOrganizations(): Organization[] {
   return [
     {
-      id: 'org-tech-1',
-      name: 'NeuralNex',
-      ticker: 'NRLNX',
-      description: 'Leading AI research company',
-      type: 'company',
+      id: "org-tech-1",
+      name: "NeuralNex",
+      ticker: "NRLNX",
+      description: "Leading AI research company",
+      type: "company",
       canBeInvolved: true,
-      postStyle: 'Corporate, optimistic about AI progress',
+      postStyle: "Corporate, optimistic about AI progress",
       initialPrice: 150.0,
       currentPrice: 148.5,
     },
     {
-      id: 'org-media-1',
-      name: 'GlobalNews Network',
-      ticker: 'GNN',
-      description: 'Major news outlet',
-      type: 'media',
+      id: "org-media-1",
+      name: "GlobalNews Network",
+      ticker: "GNN",
+      description: "Major news outlet",
+      type: "media",
       canBeInvolved: true,
-      postStyle: 'Professional journalism, breaking news format',
+      postStyle: "Professional journalism, breaking news format",
       initialPrice: 45.0,
       currentPrice: 45.2,
     },
     {
-      id: 'org-finance-1',
-      name: 'Apex Capital',
-      ticker: 'APEX',
-      description: 'Leading investment firm',
-      type: 'financial',
+      id: "org-finance-1",
+      name: "Apex Capital",
+      ticker: "APEX",
+      description: "Leading investment firm",
+      type: "financial",
       canBeInvolved: true,
-      postStyle: 'Professional, market-focused',
+      postStyle: "Professional, market-focused",
       initialPrice: 200.0,
       currentPrice: 198.0,
     },
@@ -218,7 +218,7 @@ function createActorStates(actors: Actor[]): Map<string, ActorState> {
   for (const actor of actors) {
     states.set(actor.id, {
       mood: actor.initialMood ?? 0,
-      luck: actor.initialLuck ?? 'medium',
+      luck: actor.initialLuck ?? "medium",
     });
   }
   return states;
@@ -230,14 +230,14 @@ function createActorStates(actors: Actor[]): Map<string, ActorState> {
 function createRelationships(_actors: Actor[]): ActorRelationship[] {
   return [
     {
-      id: 'rel-1',
-      actor1Id: 'actor-media-1',
-      actor2Id: 'actor-tech-1',
-      relationshipType: 'watchdog-target',
+      id: "rel-1",
+      actor1Id: "actor-media-1",
+      actor2Id: "actor-tech-1",
+      relationshipType: "watchdog-target",
       strength: 0.6,
       sentiment: -0.2,
       isPublic: true,
-      history: 'Journalist has covered tech founder critically in past',
+      history: "Journalist has covered tech founder critically in past",
       createdAt: new Date(),
       updatedAt: new Date(),
     },
@@ -248,7 +248,7 @@ function createRelationships(_actors: Actor[]): ActorRelationship[] {
 // Output Helpers
 // ============================================================================
 
-const OUTPUT_DIR = '/tmp/feed-feed-tests';
+const OUTPUT_DIR = "/tmp/feed-feed-tests";
 
 async function ensureOutputDir(): Promise<void> {
   try {
@@ -290,7 +290,7 @@ interface OutputMetadata {
 
 async function writeOutputFiles(
   testName: string,
-  data: OutputData
+  data: OutputData,
 ): Promise<void> {
   await ensureOutputDir();
 
@@ -301,7 +301,7 @@ async function writeOutputFiles(
   // Write human-readable TXT
   const txtPath = join(OUTPUT_DIR, `${testName}.txt`);
   let txtContent = `${data.testName}\n`;
-  txtContent += `${'='.repeat(60)}\n`;
+  txtContent += `${"=".repeat(60)}\n`;
   txtContent += `Generated: ${data.timestamp}\n`;
   txtContent += `Duration: ${data.duration}ms\n`;
   txtContent += `Success: ${data.success}\n`;
@@ -312,7 +312,7 @@ async function writeOutputFiles(
 
   for (let i = 0; i < data.output.posts.length; i++) {
     const post = data.output.posts[i]!;
-    txtContent += `[${i + 1}] @${post.author}${post.type ? ` (${post.type})` : ''}\n`;
+    txtContent += `[${i + 1}] @${post.author}${post.type ? ` (${post.type})` : ""}\n`;
     txtContent += `${post.post}\n`;
     if (post.sentiment !== undefined) {
       txtContent += `  Sentiment: ${post.sentiment}\n`;
@@ -320,7 +320,7 @@ async function writeOutputFiles(
     if (post.clueStrength !== undefined) {
       txtContent += `  Clue Strength: ${post.clueStrength}\n`;
     }
-    txtContent += '\n';
+    txtContent += "\n";
   }
 
   txtContent += `\n--- Metadata ---\n`;
@@ -329,7 +329,7 @@ async function writeOutputFiles(
   txtContent += `Has Hashtags: ${data.output.metadata.hasHashtags}\n`;
   txtContent += `Has Emojis: ${data.output.metadata.hasEmojis}\n`;
   txtContent += `Has Real Names: ${data.output.metadata.hasRealNames}\n`;
-  txtContent += `Unique Authors: ${data.output.metadata.uniqueAuthors.join(', ')}\n`;
+  txtContent += `Unique Authors: ${data.output.metadata.uniqueAuthors.join(", ")}\n`;
 
   if (data.output.metadata.characterLimitViolations.length > 0) {
     txtContent += `\n⚠️ Character Limit Violations:\n`;
@@ -345,7 +345,7 @@ async function writeOutputFiles(
   let mdContent = `# ${data.testName}\n\n`;
   mdContent += `> Generated: ${data.timestamp}  \n`;
   mdContent += `> Duration: ${data.duration}ms  \n`;
-  mdContent += `> Status: ${data.success ? '✅ Success' : '❌ Failed'}\n\n`;
+  mdContent += `> Status: ${data.success ? "✅ Success" : "❌ Failed"}\n\n`;
 
   if (data.error) {
     mdContent += `## Error\n\n\`\`\`\n${data.error}\n\`\`\`\n\n`;
@@ -356,11 +356,11 @@ async function writeOutputFiles(
   // Group posts by type for better organization
   const postsByType = new Map<string, typeof data.output.posts>();
   for (const post of data.output.posts) {
-    const type = post.type || 'unknown';
+    const type = post.type || "unknown";
     if (!postsByType.has(type)) {
       postsByType.set(type, []);
     }
-    postsByType.get(type)!.push(post);
+    postsByType.get(type)?.push(post);
   }
 
   for (const [type, posts] of postsByType) {
@@ -374,33 +374,33 @@ async function writeOutputFiles(
       const details: string[] = [];
       if (post.sentiment !== undefined) {
         const sentimentNum =
-          typeof post.sentiment === 'string'
+          typeof post.sentiment === "string"
             ? parseFloat(post.sentiment)
             : post.sentiment;
-        if (!isNaN(sentimentNum)) {
+        if (!Number.isNaN(sentimentNum)) {
           const sentimentEmoji =
-            sentimentNum > 0.3 ? '😊' : sentimentNum < -0.3 ? '😠' : '😐';
+            sentimentNum > 0.3 ? "😊" : sentimentNum < -0.3 ? "😠" : "😐";
           details.push(
-            `Sentiment: ${sentimentNum.toFixed(2)} ${sentimentEmoji}`
+            `Sentiment: ${sentimentNum.toFixed(2)} ${sentimentEmoji}`,
           );
         }
       }
       if (post.clueStrength !== undefined) {
         const clueNum =
-          typeof post.clueStrength === 'string'
+          typeof post.clueStrength === "string"
             ? parseFloat(post.clueStrength)
             : post.clueStrength;
-        if (!isNaN(clueNum) && clueNum > 0) {
+        if (!Number.isNaN(clueNum) && clueNum > 0) {
           details.push(`Clue Strength: ${clueNum.toFixed(2)}`);
         }
       }
       if (post.pointsToward !== undefined && post.pointsToward !== null) {
-        details.push(`Points Toward: ${post.pointsToward ? 'YES' : 'NO'}`);
+        details.push(`Points Toward: ${post.pointsToward ? "YES" : "NO"}`);
       }
       details.push(`Length: ${post.post.length} chars`);
 
       if (details.length > 0) {
-        mdContent += `*${details.join(' | ')}*\n\n`;
+        mdContent += `*${details.join(" | ")}*\n\n`;
       }
     }
   }
@@ -410,9 +410,9 @@ async function writeOutputFiles(
   mdContent += `|--------|-------|\n`;
   mdContent += `| Total Posts | ${data.output.metadata.postCount} |\n`;
   mdContent += `| Avg Length | ${data.output.metadata.avgLength.toFixed(0)} chars |\n`;
-  mdContent += `| Has Hashtags | ${data.output.metadata.hasHashtags ? '⚠️ Yes' : '✅ No'} |\n`;
-  mdContent += `| Has Emojis | ${data.output.metadata.hasEmojis ? '⚠️ Yes' : '✅ No'} |\n`;
-  mdContent += `| Has Real Names | ${data.output.metadata.hasRealNames ? '⚠️ Yes' : '✅ No'} |\n`;
+  mdContent += `| Has Hashtags | ${data.output.metadata.hasHashtags ? "⚠️ Yes" : "✅ No"} |\n`;
+  mdContent += `| Has Emojis | ${data.output.metadata.hasEmojis ? "⚠️ Yes" : "✅ No"} |\n`;
+  mdContent += `| Has Real Names | ${data.output.metadata.hasRealNames ? "⚠️ Yes" : "✅ No"} |\n`;
 
   mdContent += `\n### Authors\n\n`;
   for (const author of data.output.metadata.uniqueAuthors) {
@@ -440,22 +440,22 @@ const HASHTAG_REGEX = /#\w+/g;
 const EMOJI_REGEX =
   /[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu;
 const REAL_NAMES = [
-  'Elon Musk',
-  'Sam Altman',
-  'Jensen Huang',
-  'Sundar Pichai',
-  'Mark Zuckerberg',
-  'Jeff Bezos',
-  'Tim Cook',
-  'Satya Nadella',
-  'OpenAI',
-  'Google',
-  'Meta',
-  'Apple',
-  'Microsoft',
-  'Tesla',
-  'NVIDIA',
-  'Amazon',
+  "Elon Musk",
+  "Sam Altman",
+  "Jensen Huang",
+  "Sundar Pichai",
+  "Mark Zuckerberg",
+  "Jeff Bezos",
+  "Tim Cook",
+  "Satya Nadella",
+  "OpenAI",
+  "Google",
+  "Meta",
+  "Apple",
+  "Microsoft",
+  "Tesla",
+  "NVIDIA",
+  "Amazon",
 ];
 
 const CHARACTER_LIMITS: Record<string, number> = {
@@ -470,22 +470,22 @@ const CHARACTER_LIMITS: Record<string, number> = {
 };
 
 function analyzeOutput(
-  posts: Array<{ post: string; author: string; type?: string }>
+  posts: Array<{ post: string; author: string; type?: string }>,
 ): OutputMetadata {
-  const allContent = posts.map((p) => p.post).join(' ');
+  const allContent = posts.map((p) => p.post).join(" ");
   const hasHashtags = HASHTAG_REGEX.test(allContent);
   const hasEmojis = EMOJI_REGEX.test(allContent);
   const hasRealNames = REAL_NAMES.some((name) =>
-    allContent.toLowerCase().includes(name.toLowerCase())
+    allContent.toLowerCase().includes(name.toLowerCase()),
   );
 
   const characterLimitViolations: string[] = [];
   for (const post of posts) {
-    const postType = (post.type || 'UNKNOWN').toUpperCase();
+    const postType = (post.type || "UNKNOWN").toUpperCase();
     const limit = CHARACTER_LIMITS[postType];
     if (limit && post.post.length > limit) {
       characterLimitViolations.push(
-        `${postType}: ${post.post.length} chars (max: ${limit})`
+        `${postType}: ${post.post.length} chars (max: ${limit})`,
       );
     }
   }
@@ -518,10 +518,10 @@ function analyzeOutput(
 async function testFullDayFeed(
   feedGenerator: FeedGenerator,
   actors: Actor[],
-  events: WorldEvent[]
+  events: WorldEvent[],
 ): Promise<FeedPost[]> {
-  console.log('\n📋 Test 1: Full Day Feed Generation (1 event)');
-  console.log('-'.repeat(50));
+  console.log("\n📋 Test 1: Full Day Feed Generation (1 event)");
+  console.log("-".repeat(50));
 
   const startTime = Date.now();
   let success = true;
@@ -548,8 +548,8 @@ async function testFullDayFeed(
     type: p.type,
   }));
 
-  await writeOutputFiles('feed-full-day', {
-    testName: 'Full Day Feed (1 event)',
+  await writeOutputFiles("feed-full-day", {
+    testName: "Full Day Feed (1 event)",
     timestamp: new Date().toISOString(),
     input: {
       day: 5,
@@ -579,10 +579,10 @@ async function testFullDayFeed(
  */
 async function testMinuteAmbientPost(
   feedGenerator: FeedGenerator,
-  actors: Actor[]
+  actors: Actor[],
 ): Promise<Array<{ post: string; author: string; type?: string }>> {
-  console.log('\n⏰ Test 2: Minute Ambient Post');
-  console.log('-'.repeat(50));
+  console.log("\n⏰ Test 2: Minute Ambient Post");
+  console.log("-".repeat(50));
 
   const startTime = Date.now();
   let success = true;
@@ -605,14 +605,14 @@ async function testMinuteAmbientPost(
         role: actor.role,
         mood: actor.initialMood,
       },
-      new Date()
+      new Date(),
     );
 
     if (result) {
       posts.push({
         post: result.content,
         author: actor.name,
-        type: 'ambient',
+        type: "ambient",
         sentiment: result.sentiment,
       });
     }
@@ -625,8 +625,8 @@ async function testMinuteAmbientPost(
 
   const duration = Date.now() - startTime;
 
-  await writeOutputFiles('feed-minute-ambient', {
-    testName: 'Minute Ambient Post',
+  await writeOutputFiles("feed-minute-ambient", {
+    testName: "Minute Ambient Post",
     timestamp: new Date().toISOString(),
     input: {
       day: 5,
@@ -665,16 +665,16 @@ interface TestResult {
 }
 
 function generateSummaryReport(results: TestResult[]): void {
-  console.log('\n' + '='.repeat(80));
-  console.log('📊 FEED GENERATION TEST SUMMARY');
-  console.log('='.repeat(80));
+  console.log(`\n${"=".repeat(80)}`);
+  console.log("📊 FEED GENERATION TEST SUMMARY");
+  console.log("=".repeat(80));
 
   const successCount = results.filter((r) => r.success).length;
   const totalPosts = results.reduce((sum, r) => sum + r.postCount, 0);
   const totalDuration = results.reduce((sum, r) => sum + r.duration, 0);
   const totalViolations = results.reduce(
     (sum, r) => sum + r.violations.length,
-    0
+    0,
   );
 
   console.log(`\nTests Passed: ${successCount}/${results.length}`);
@@ -682,30 +682,30 @@ function generateSummaryReport(results: TestResult[]): void {
   console.log(`Total Duration: ${(totalDuration / 1000).toFixed(2)}s`);
   console.log(`Total Violations: ${totalViolations}`);
 
-  console.log('\nTest Results:');
-  console.log('-'.repeat(60));
+  console.log("\nTest Results:");
+  console.log("-".repeat(60));
 
   for (const result of results) {
-    const status = result.success ? '✅' : '❌';
+    const status = result.success ? "✅" : "❌";
     const violations =
       result.violations.length > 0
         ? ` (${result.violations.length} violations)`
-        : '';
+        : "";
     console.log(
-      `${status} ${result.name}: ${result.postCount} posts in ${result.duration}ms${violations}`
+      `${status} ${result.name}: ${result.postCount} posts in ${result.duration}ms${violations}`,
     );
 
     if (Object.keys(result.postTypes).length > 0) {
       const types = Object.entries(result.postTypes)
         .map(([type, count]) => `${type}:${count}`)
-        .join(', ');
+        .join(", ");
       console.log(`   Post types: ${types}`);
     }
   }
 
   if (totalViolations > 0) {
-    console.log('\n⚠️ Violations Detected:');
-    console.log('-'.repeat(60));
+    console.log("\n⚠️ Violations Detected:");
+    console.log("-".repeat(60));
 
     for (const result of results) {
       if (result.violations.length > 0) {
@@ -720,9 +720,9 @@ function generateSummaryReport(results: TestResult[]): void {
     }
   }
 
-  console.log('\n' + '='.repeat(80));
+  console.log(`\n${"=".repeat(80)}`);
   console.log(`📁 Output files written to: ${OUTPUT_DIR}`);
-  console.log('='.repeat(80));
+  console.log("=".repeat(80));
 }
 
 // ============================================================================
@@ -730,9 +730,9 @@ function generateSummaryReport(results: TestResult[]): void {
 // ============================================================================
 
 async function main(): Promise<void> {
-  console.log('🧪 Feed Generation Test Suite (Fast Mode)');
-  console.log('='.repeat(80));
-  console.log('Testing feed generation with minimal test data...\n');
+  console.log("🧪 Feed Generation Test Suite (Fast Mode)");
+  console.log("=".repeat(80));
+  console.log("Testing feed generation with minimal test data...\n");
 
   // Check for API keys
   const hasGroqKey = !!process.env.GROQ_API_KEY;
@@ -740,21 +740,21 @@ async function main(): Promise<void> {
   const hasOpenAIKey = !!process.env.OPENAI_API_KEY;
 
   if (!hasGroqKey && !hasClaudeKey && !hasOpenAIKey) {
-    console.error('❌ Error: No LLM API key found.');
+    console.error("❌ Error: No LLM API key found.");
     console.error(
-      'Please set GROQ_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY'
+      "Please set GROQ_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY",
     );
     process.exit(1);
   }
 
-  console.log('API Keys detected:');
-  console.log(`  GROQ_API_KEY: ${hasGroqKey ? '✅' : '❌'}`);
-  console.log(`  ANTHROPIC_API_KEY: ${hasClaudeKey ? '✅' : '❌'}`);
-  console.log(`  OPENAI_API_KEY: ${hasOpenAIKey ? '✅' : '❌'}`);
-  console.log('');
+  console.log("API Keys detected:");
+  console.log(`  GROQ_API_KEY: ${hasGroqKey ? "✅" : "❌"}`);
+  console.log(`  ANTHROPIC_API_KEY: ${hasClaudeKey ? "✅" : "❌"}`);
+  console.log(`  OPENAI_API_KEY: ${hasOpenAIKey ? "✅" : "❌"}`);
+  console.log("");
 
   // Setup minimal test data
-  console.log('📦 Setting up test data (minimal)...');
+  console.log("📦 Setting up test data (minimal)...");
   const actors = createTestActors();
   const events = createTestEvents();
   const organizations = createTestOrganizations();
@@ -767,7 +767,7 @@ async function main(): Promise<void> {
   console.log(`  - ${relationships.length} relationship created`);
 
   // Initialize FeedGenerator with real LLM
-  console.log('\n🔌 Initializing FeedGenerator with LLM...');
+  console.log("\n🔌 Initializing FeedGenerator with LLM...");
   const llm = new FeedLLMClient();
   const feedGenerator = new FeedGenerator(llm);
 
@@ -799,7 +799,7 @@ async function main(): Promise<void> {
   }
   feedGenerator.setNPCPersonas(npcPersonas);
 
-  console.log('  ✅ FeedGenerator configured');
+  console.log("  ✅ FeedGenerator configured");
 
   // Run tests and collect results
   const results: TestResult[] = [];
@@ -810,7 +810,7 @@ async function main(): Promise<void> {
     const dayFeedPosts = await testFullDayFeed(feedGenerator, actors, events);
     const postTypes: Record<string, number> = {};
     for (const post of dayFeedPosts) {
-      const type = post.type || 'unknown';
+      const type = post.type || "unknown";
       postTypes[type] = (postTypes[type] || 0) + 1;
     }
 
@@ -819,11 +819,11 @@ async function main(): Promise<void> {
         post: p.content,
         author: p.authorName,
         type: p.type,
-      }))
+      })),
     );
 
     results.push({
-      name: 'Full Day Feed',
+      name: "Full Day Feed",
       success: true,
       postCount: dayFeedPosts.length,
       duration: Date.now() - startTime1,
@@ -832,7 +832,7 @@ async function main(): Promise<void> {
     });
   } catch (e) {
     results.push({
-      name: 'Full Day Feed',
+      name: "Full Day Feed",
       success: false,
       postCount: 0,
       duration: Date.now() - startTime1,
@@ -848,7 +848,7 @@ async function main(): Promise<void> {
     const metadata = analyzeOutput(ambientPosts);
 
     results.push({
-      name: 'Minute Ambient Post',
+      name: "Minute Ambient Post",
       success: true,
       postCount: ambientPosts.length,
       duration: Date.now() - startTime2,
@@ -857,7 +857,7 @@ async function main(): Promise<void> {
     });
   } catch (e) {
     results.push({
-      name: 'Minute Ambient Post',
+      name: "Minute Ambient Post",
       success: false,
       postCount: 0,
       duration: Date.now() - startTime2,
@@ -870,33 +870,33 @@ async function main(): Promise<void> {
   generateSummaryReport(results);
 
   // Validation checks
-  console.log('\n📝 VALIDATION CHECKS');
-  console.log('-'.repeat(60));
+  console.log("\n📝 VALIDATION CHECKS");
+  console.log("-".repeat(60));
 
   const allViolations = results.flatMap((r) => r.violations);
   const hasHashtagViolations = allViolations.some((v) =>
-    v.toLowerCase().includes('hashtag')
+    v.toLowerCase().includes("hashtag"),
   );
   const hasEmojiViolations = allViolations.some((v) =>
-    v.toLowerCase().includes('emoji')
+    v.toLowerCase().includes("emoji"),
   );
   const hasCharLimitViolations = allViolations.some(
-    (v) => v.includes('chars') && v.includes('max')
+    (v) => v.includes("chars") && v.includes("max"),
   );
 
-  console.log(`  Zero hashtags: ${!hasHashtagViolations ? '✅' : '❌'}`);
-  console.log(`  Zero emojis: ${!hasEmojiViolations ? '✅' : '❌'}`);
+  console.log(`  Zero hashtags: ${!hasHashtagViolations ? "✅" : "❌"}`);
+  console.log(`  Zero emojis: ${!hasEmojiViolations ? "✅" : "❌"}`);
   console.log(
-    `  Character limits: ${!hasCharLimitViolations ? '✅' : '⚠️ Some violations (expected from LLM)'}`
+    `  Character limits: ${!hasCharLimitViolations ? "✅" : "⚠️ Some violations (expected from LLM)"}`,
   );
   console.log(`  Multiple post types: ✅`);
 
-  console.log('\n✅ Test suite completed!');
+  console.log("\n✅ Test suite completed!");
   process.exit(0);
 }
 
 // Run main
 main().catch((e) => {
-  console.error('Fatal error:', e);
+  console.error("Fatal error:", e);
   process.exit(1);
 });

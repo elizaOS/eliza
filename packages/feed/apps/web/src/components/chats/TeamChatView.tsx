@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { cn, type MessageTag } from '@feed/shared';
+import { cn, type MessageTag } from "@feed/shared";
 import {
   ArrowDown,
   Brain,
@@ -9,18 +9,18 @@ import {
   PanelRight,
   Radio,
   Users,
-} from 'lucide-react';
-import React from 'react';
-import { Separator } from '@/components/shared/Separator';
-import { FeedbackMessages } from './FeedbackMessages';
-import type { MentionableAgent } from './MentionAutocomplete';
-import { MessageInput } from './MessageInput';
-import { MessageList } from './MessageList';
+} from "lucide-react";
+import React from "react";
+import { Separator } from "@/components/shared/Separator";
+import { FeedbackMessages } from "./FeedbackMessages";
+import type { MentionableAgent } from "./MentionAutocomplete";
+import { MessageInput } from "./MessageInput";
+import { MessageList } from "./MessageList";
 import {
   getDistanceFromBottom,
   shouldShowScrollToLatest,
-} from './scroll-utils';
-import type { ChatDetails, Message, ReplyToMessage } from './types';
+} from "./scroll-utils";
+import type { ChatDetails, Message, ReplyToMessage } from "./types";
 
 /** Typing user info */
 interface TypingUserInfo {
@@ -41,7 +41,7 @@ function TypingIndicator({
   density,
 }: {
   typingUsers: TypingUserInfo[];
-  density: 'default' | 'compact';
+  density: "default" | "compact";
 }) {
   const first = typingUsers[0];
   const second = typingUsers[1];
@@ -58,20 +58,20 @@ function TypingIndicator({
   return (
     <div
       className={cn(
-        'flex items-center gap-2 text-muted-foreground',
-        density === 'compact'
-          ? 'px-3 py-1.5 text-sm md:text-xs'
-          : 'px-4 py-2 text-sm'
+        "flex items-center gap-2 text-muted-foreground",
+        density === "compact"
+          ? "px-3 py-1.5 text-sm md:text-xs"
+          : "px-4 py-2 text-sm",
       )}
     >
       <span className="flex gap-1">
-        <span className="animate-bounce" style={{ animationDelay: '0ms' }}>
+        <span className="animate-bounce" style={{ animationDelay: "0ms" }}>
           •
         </span>
-        <span className="animate-bounce" style={{ animationDelay: '150ms' }}>
+        <span className="animate-bounce" style={{ animationDelay: "150ms" }}>
           •
         </span>
-        <span className="animate-bounce" style={{ animationDelay: '300ms' }}>
+        <span className="animate-bounce" style={{ animationDelay: "300ms" }}>
           •
         </span>
       </span>
@@ -89,29 +89,29 @@ function ThinkingIndicator({
   density,
 }: {
   thinkingAgents: ThinkingAgentInfo[];
-  density: 'default' | 'compact';
+  density: "default" | "compact";
 }) {
   if (thinkingAgents.length === 0) return null;
 
   return (
     <div
       className={cn(
-        'space-y-1',
-        density === 'compact' ? 'px-3 py-1.5' : 'px-4 py-2'
+        "space-y-1",
+        density === "compact" ? "px-3 py-1.5" : "px-4 py-2",
       )}
     >
       {thinkingAgents.map((agent) => (
         <div
           key={agent.agentId}
           className={cn(
-            'flex items-center gap-2 text-blue-500',
-            density === 'compact' ? 'text-sm md:text-xs' : 'text-sm'
+            "flex items-center gap-2 text-blue-500",
+            density === "compact" ? "text-sm md:text-xs" : "text-sm",
           )}
         >
           <Brain className="h-4 w-4 animate-pulse" />
           <span className="font-medium">{agent.agentName}</span>
           <span className="text-muted-foreground">
-            {agent.thinkingLabel ?? 'Thinking...'}
+            {agent.thinkingLabel ?? "Thinking..."}
           </span>
         </div>
       ))}
@@ -126,7 +126,7 @@ interface TeamChatViewProps {
   sseConnected: boolean;
   /** When embedding in another container that already has a header (e.g. terminal tabs). */
   hideHeader?: boolean;
-  density?: 'default' | 'compact';
+  density?: "default" | "compact";
   loading: boolean;
   isLoadingMore: boolean;
   hasMore: boolean;
@@ -161,7 +161,7 @@ interface TeamChatViewProps {
   onToggleReaction?: (
     messageId: string,
     emoji: string,
-    currentlyReactedByMe: boolean
+    currentlyReactedByMe: boolean,
   ) => void;
   /** Set of agent user IDs — for settings icon on latest agent message */
   agentIds?: ReadonlySet<string>;
@@ -188,7 +188,7 @@ export function TeamChatView({
   authenticated,
   sseConnected,
   hideHeader = false,
-  density = 'default',
+  density = "default",
   loading,
   isLoadingMore,
   hasMore,
@@ -217,7 +217,7 @@ export function TeamChatView({
   onReply,
   onDismissReply,
 }: TeamChatViewProps) {
-  const compact = density === 'compact';
+  const compact = density === "compact";
   const messagesContainerRef = React.useRef<HTMLDivElement | null>(null);
   const [showScrollToLatest, setShowScrollToLatest] = React.useState(false);
 
@@ -226,11 +226,11 @@ export function TeamChatView({
       const distanceFromBottom = getDistanceFromBottom(
         container.scrollTop,
         container.scrollHeight,
-        container.clientHeight
+        container.clientHeight,
       );
       setShowScrollToLatest(shouldShowScrollToLatest(distanceFromBottom));
     },
-    []
+    [],
   );
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: chatDetails?.chat?.id, chatDetails?.messages?.length, and loading are intentional trigger deps — they re-run the effect on conversation switch / new message arrival even though they aren't referenced inside the callback body.
@@ -253,12 +253,12 @@ export function TeamChatView({
     if (container) {
       container.scrollTo({
         top: container.scrollHeight,
-        behavior: 'smooth',
+        behavior: "smooth",
       });
       setShowScrollToLatest(false);
       return;
     }
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     setShowScrollToLatest(false);
   }, [messagesEndRef]);
 
@@ -288,7 +288,7 @@ export function TeamChatView({
                   onClick={onToggleLeftSidebar}
                   className="hidden shrink-0 rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground lg:block"
                   aria-label={
-                    leftSidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'
+                    leftSidebarCollapsed ? "Show sidebar" : "Hide sidebar"
                   }
                 >
                   <PanelLeft className="h-4 w-4" strokeWidth={1.5} />
@@ -296,7 +296,7 @@ export function TeamChatView({
               )}
               <div className="min-w-0">
                 <h2 className="truncate font-semibold text-foreground text-lg">
-                  {chatDetails.chat.name || 'Agents'}
+                  {chatDetails.chat.name || "Agents"}
                 </h2>
               </div>
             </div>
@@ -316,12 +316,12 @@ export function TeamChatView({
                 <Radio
                   className={
                     sseConnected
-                      ? 'h-4 w-4 text-green-500'
-                      : 'h-4 w-4 text-muted-foreground'
+                      ? "h-4 w-4 text-green-500"
+                      : "h-4 w-4 text-muted-foreground"
                   }
                 />
                 <span className="text-muted-foreground text-sm">
-                  {sseConnected ? 'Live' : 'Connecting...'}
+                  {sseConnected ? "Live" : "Connecting..."}
                 </span>
               </div>
               {/* Right sidebar toggle */}
@@ -329,7 +329,7 @@ export function TeamChatView({
                 <button
                   onClick={onToggleRightSidebar}
                   className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                  aria-label={rightSidebarOpen ? 'Close panel' : 'Open panel'}
+                  aria-label={rightSidebarOpen ? "Close panel" : "Open panel"}
                 >
                   <PanelRight className="h-4 w-4" strokeWidth={1.5} />
                 </button>
@@ -357,8 +357,8 @@ export function TeamChatView({
           data-chat-messages-container
           ref={messagesContainerRef}
           className={cn(
-            'flex-1 overflow-y-auto overflow-x-hidden',
-            compact ? 'space-y-2 px-3 py-2' : 'space-y-4 px-4 py-3'
+            "flex-1 overflow-y-auto overflow-x-hidden",
+            compact ? "space-y-2 px-3 py-2" : "space-y-4 px-4 py-3",
           )}
           onScroll={(e) => {
             onScroll?.(e.currentTarget);

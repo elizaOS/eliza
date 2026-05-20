@@ -1,51 +1,51 @@
-'use client';
+"use client";
 
-import type { UserPredictionPosition } from '@feed/shared';
+import type { UserPredictionPosition } from "@feed/shared";
 import {
   calculateUnrealizedPnL,
   cn,
   formatCurrency,
   logger,
-} from '@feed/shared';
-import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { toast } from 'sonner';
+} from "@feed/shared";
+import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import {
   type ClosePerpDetails,
   type SellPredictionDetails,
   TradeConfirmationDialog,
-} from '@/components/markets/TradeConfirmationDialog';
-import { useAuth } from '@/hooks/useAuth';
-import { useMarketPrices } from '@/hooks/useMarketPrices';
-import { useOnClickOutside } from '@/hooks/useOnClickOutside';
-import { usePerpTrade } from '@/hooks/usePerpTrade';
-import { usePredictionTrading } from '@/hooks/usePredictionTrading';
-import { invalidatePerpMarketsCache } from '@/stores/perpMarketsStore';
+} from "@/components/markets/TradeConfirmationDialog";
+import { useAuth } from "@/hooks/useAuth";
+import { useMarketPrices } from "@/hooks/useMarketPrices";
+import { useOnClickOutside } from "@/hooks/useOnClickOutside";
+import { usePerpTrade } from "@/hooks/usePerpTrade";
+import { usePredictionTrading } from "@/hooks/usePredictionTrading";
+import { invalidatePerpMarketsCache } from "@/stores/perpMarketsStore";
 import {
   invalidateUserPositions,
   useUserPositions,
   useUserPositionsStore,
-} from '@/stores/userPositionsStore';
-import { invalidateWalletBalance } from '@/stores/walletBalanceStore';
-import type { DisplayPerpPosition } from '@/types/markets';
+} from "@/stores/userPositionsStore";
+import { invalidateWalletBalance } from "@/stores/walletBalanceStore";
+import type { DisplayPerpPosition } from "@/types/markets";
 
 interface PositionsTabProps {
   userId: string;
 }
 
-type MemberFilter = 'all' | 'owner' | string;
-type OutcomeFilter = 'all' | 'won' | 'lost';
+type MemberFilter = "all" | "owner" | string;
+type OutcomeFilter = "all" | "won" | "lost";
 
 type PendingTrade =
   | {
-      kind: 'close-perp';
+      kind: "close-perp";
       position: DisplayPerpPosition;
       currentPrice: number;
       pnl: number;
       pnlPercent: number;
     }
   | {
-      kind: 'sell-prediction';
+      kind: "sell-prediction";
       position: UserPredictionPosition;
       expectedValue: number;
       unrealizedPnL: number;
@@ -55,7 +55,7 @@ type PendingTrade =
 interface ClosedPerpPosition {
   id: string;
   ticker: string;
-  side: 'long' | 'short';
+  side: "long" | "short";
   entryPrice: number;
   currentPrice: number;
   size: number;
@@ -70,7 +70,7 @@ interface ClosedPredictionPosition {
   id: string;
   marketId: string;
   question: string;
-  side: 'YES' | 'NO';
+  side: "YES" | "NO";
   shares: number;
   avgPrice: number;
   currentPrice: number;
@@ -97,11 +97,11 @@ export function PositionsTab({ userId }: PositionsTabProps) {
 
   const [closingIds, setClosingIds] = useState<Set<string>>(new Set());
   const [predictionActionId, setPredictionActionId] = useState<string | null>(
-    null
+    null,
   );
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [pendingTrade, setPendingTrade] = useState<PendingTrade | null>(null);
-  const [memberFilter, setMemberFilter] = useState<MemberFilter>('all');
+  const [memberFilter, setMemberFilter] = useState<MemberFilter>("all");
   const [memberDropdownOpen, setMemberDropdownOpen] = useState(false);
   const memberDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -111,7 +111,7 @@ export function PositionsTab({ userId }: PositionsTabProps) {
     ClosedPredictionPosition[]
   >([]);
   const [closedLoading, setClosedLoading] = useState(false);
-  const [outcomeFilter, setOutcomeFilter] = useState<OutcomeFilter>('all');
+  const [outcomeFilter, setOutcomeFilter] = useState<OutcomeFilter>("all");
   // Client-side pagination for closed positions
   const [closedPage, setClosedPage] = useState(1);
 
@@ -123,10 +123,10 @@ export function PositionsTab({ userId }: PositionsTabProps) {
       try {
         const [perpsRes, predsRes] = await Promise.all([
           fetch(
-            `/api/markets/positions/${encodeURIComponent(userId)}?status=closed&type=perps&limit=${CLOSED_PAGE_SIZE}&page=1`
+            `/api/markets/positions/${encodeURIComponent(userId)}?status=closed&type=perps&limit=${CLOSED_PAGE_SIZE}&page=1`,
           ),
           fetch(
-            `/api/markets/positions/${encodeURIComponent(userId)}?status=closed&type=predictions&limit=${CLOSED_PAGE_SIZE}&page=1`
+            `/api/markets/positions/${encodeURIComponent(userId)}?status=closed&type=predictions&limit=${CLOSED_PAGE_SIZE}&page=1`,
           ),
         ]);
 
@@ -143,15 +143,15 @@ export function PositionsTab({ userId }: PositionsTabProps) {
           const data = await predsRes.json();
           if (!cancelled) {
             setClosedPredictions(
-              parseClosedPredictions(data?.predictions?.positions ?? [])
+              parseClosedPredictions(data?.predictions?.positions ?? []),
             );
           }
         }
       } catch (err) {
         logger.warn(
-          'Failed to fetch closed positions',
+          "Failed to fetch closed positions",
           { userId, error: err },
-          'PositionsTab'
+          "PositionsTab",
         );
       } finally {
         if (!cancelled) setClosedLoading(false);
@@ -166,7 +166,7 @@ export function PositionsTab({ userId }: PositionsTabProps) {
   // Live prices for perp positions
   const tickers = useMemo(
     () => perpPositions.map((pos) => pos.ticker),
-    [perpPositions]
+    [perpPositions],
   );
   const livePrices = useMarketPrices(tickers);
 
@@ -180,11 +180,11 @@ export function PositionsTab({ userId }: PositionsTabProps) {
           position.entryPrice,
           currentPrice,
           position.side,
-          position.size
+          position.size,
         );
         return { position, currentPrice, pnl, pnlPercent };
       }),
-    [perpPositions, livePrices]
+    [perpPositions, livePrices],
   );
 
   // Build member list for filter dropdown
@@ -202,7 +202,7 @@ export function PositionsTab({ userId }: PositionsTabProps) {
     for (const pos of closedPredictions) {
       if (pos.isAgentPosition && pos.agentName) agents.add(pos.agentName);
     }
-    return ['all', 'owner', ...Array.from(agents)] as string[];
+    return ["all", "owner", ...Array.from(agents)] as string[];
   }, [perpPositions, predictionPositions, closedPerps, closedPredictions]);
 
   useOnClickOutside(memberDropdownRef, () => {
@@ -210,42 +210,42 @@ export function PositionsTab({ userId }: PositionsTabProps) {
   });
 
   const memberFilterLabel =
-    memberFilter === 'all'
-      ? 'All Members'
-      : memberFilter === 'owner'
-        ? 'You'
+    memberFilter === "all"
+      ? "All Members"
+      : memberFilter === "owner"
+        ? "You"
         : memberFilter;
 
   // Filter positions by member
   const filteredPerps = useMemo(() => {
-    if (memberFilter === 'all') return perpsWithPnL;
-    if (memberFilter === 'owner')
+    if (memberFilter === "all") return perpsWithPnL;
+    if (memberFilter === "owner")
       return perpsWithPnL.filter((p) => !p.position.isAgentPosition);
     return perpsWithPnL.filter((p) => p.position.agentName === memberFilter);
   }, [perpsWithPnL, memberFilter]);
 
   const visiblePredictionPositions = predictionPositions.filter(
-    (position) => !position.resolved
+    (position) => !position.resolved,
   );
 
   const filteredPredictions = useMemo(() => {
     const open = visiblePredictionPositions;
-    if (memberFilter === 'all') return open;
-    if (memberFilter === 'owner') return open.filter((p) => !p.isAgentPosition);
+    if (memberFilter === "all") return open;
+    if (memberFilter === "owner") return open.filter((p) => !p.isAgentPosition);
     return open.filter((p) => p.agentName === memberFilter);
   }, [visiblePredictionPositions, memberFilter]);
 
   // Filter closed positions by member and outcome
   const filteredClosedPerps = useMemo(() => {
     let filtered = closedPerps;
-    if (memberFilter === 'owner')
+    if (memberFilter === "owner")
       filtered = filtered.filter((p) => !p.isAgentPosition);
-    else if (memberFilter !== 'all')
+    else if (memberFilter !== "all")
       filtered = filtered.filter((p) => p.agentName === memberFilter);
 
-    if (outcomeFilter === 'won')
+    if (outcomeFilter === "won")
       filtered = filtered.filter((p) => p.realizedPnL >= 0);
-    else if (outcomeFilter === 'lost')
+    else if (outcomeFilter === "lost")
       filtered = filtered.filter((p) => p.realizedPnL < 0);
 
     return filtered;
@@ -253,13 +253,13 @@ export function PositionsTab({ userId }: PositionsTabProps) {
 
   const filteredClosedPredictions = useMemo(() => {
     let filtered = closedPredictions;
-    if (memberFilter === 'owner')
+    if (memberFilter === "owner")
       filtered = filtered.filter((p) => !p.isAgentPosition);
-    else if (memberFilter !== 'all')
+    else if (memberFilter !== "all")
       filtered = filtered.filter((p) => p.agentName === memberFilter);
 
-    if (outcomeFilter === 'won') filtered = filtered.filter((p) => p.pnl >= 0);
-    else if (outcomeFilter === 'lost')
+    if (outcomeFilter === "won") filtered = filtered.filter((p) => p.pnl >= 0);
+    else if (outcomeFilter === "lost")
       filtered = filtered.filter((p) => p.pnl < 0);
 
     return filtered;
@@ -268,12 +268,12 @@ export function PositionsTab({ userId }: PositionsTabProps) {
   // Combine all filtered closed positions into one list for pagination
   const allFilteredClosed = useMemo(() => {
     const items: Array<
-      | { kind: 'perp'; data: ClosedPerpPosition }
-      | { kind: 'prediction'; data: ClosedPredictionPosition }
+      | { kind: "perp"; data: ClosedPerpPosition }
+      | { kind: "prediction"; data: ClosedPredictionPosition }
     > = [
-      ...filteredClosedPerps.map((p) => ({ kind: 'perp' as const, data: p })),
+      ...filteredClosedPerps.map((p) => ({ kind: "perp" as const, data: p })),
       ...filteredClosedPredictions.map((p) => ({
-        kind: 'prediction' as const,
+        kind: "prediction" as const,
         data: p,
       })),
     ];
@@ -282,14 +282,14 @@ export function PositionsTab({ userId }: PositionsTabProps) {
 
   const closedTotalPages = Math.max(
     1,
-    Math.ceil(allFilteredClosed.length / CLOSED_DISPLAY_SIZE)
+    Math.ceil(allFilteredClosed.length / CLOSED_DISPLAY_SIZE),
   );
 
   // Clamp page if data shrinks
   const safeClosedPage = Math.min(closedPage, closedTotalPages);
   const closedPageItems = allFilteredClosed.slice(
     (safeClosedPage - 1) * CLOSED_DISPLAY_SIZE,
-    safeClosedPage * CLOSED_DISPLAY_SIZE
+    safeClosedPage * CLOSED_DISPLAY_SIZE,
   );
 
   // Close perp handlers
@@ -298,10 +298,10 @@ export function PositionsTab({ userId }: PositionsTabProps) {
       position: DisplayPerpPosition,
       currentPrice: number,
       pnl: number,
-      pnlPercent: number
+      pnlPercent: number,
     ) => {
       setPendingTrade({
-        kind: 'close-perp',
+        kind: "close-perp",
         position,
         currentPrice,
         pnl,
@@ -309,11 +309,11 @@ export function PositionsTab({ userId }: PositionsTabProps) {
       });
       setConfirmDialogOpen(true);
     },
-    []
+    [],
   );
 
   const handleConfirmClose = useCallback(async () => {
-    if (!pendingTrade || pendingTrade.kind !== 'close-perp') return;
+    if (!pendingTrade || pendingTrade.kind !== "close-perp") return;
 
     const closingPosition = pendingTrade.position;
     const positionId = closingPosition.id;
@@ -325,17 +325,17 @@ export function PositionsTab({ userId }: PositionsTabProps) {
     try {
       const data = await closePerpPosition(positionId);
       const pnl =
-        typeof data?.pnl === 'number'
+        typeof data?.pnl === "number"
           ? data.pnl
-          : typeof data?.realizedPnL === 'number'
+          : typeof data?.realizedPnL === "number"
             ? data.realizedPnL
             : 0;
 
-      const pnlSign = pnl >= 0 ? '+' : '-';
-      toast.success('Position closed!', {
+      const pnlSign = pnl >= 0 ? "+" : "-";
+      toast.success("Position closed!", {
         description: `${closingPosition.ticker}: ${pnlSign}${formatCurrency(
           Math.abs(pnl),
-          { useThousandsSeparator: true }
+          { useThousandsSeparator: true },
         )} PnL`,
       });
 
@@ -343,9 +343,9 @@ export function PositionsTab({ userId }: PositionsTabProps) {
       invalidatePerpMarketsCache();
       invalidateWalletBalance();
     } catch (err) {
-      toast.error('Failed to close position', {
+      toast.error("Failed to close position", {
         description:
-          err instanceof Error ? err.message : 'An unexpected error occurred',
+          err instanceof Error ? err.message : "An unexpected error occurred",
       });
     } finally {
       setClosingIds((prev) => {
@@ -365,7 +365,7 @@ export function PositionsTab({ userId }: PositionsTabProps) {
     const pnlPercent = costBasis !== 0 ? (unrealizedPnL / costBasis) * 100 : 0;
 
     setPendingTrade({
-      kind: 'sell-prediction',
+      kind: "sell-prediction",
       position,
       expectedValue: currentValue,
       unrealizedPnL,
@@ -375,7 +375,7 @@ export function PositionsTab({ userId }: PositionsTabProps) {
   }, []);
 
   const handleConfirmSell = useCallback(async () => {
-    if (!pendingTrade || pendingTrade.kind !== 'sell-prediction') return;
+    if (!pendingTrade || pendingTrade.kind !== "sell-prediction") return;
 
     const position = pendingTrade.position;
     setPredictionActionId(position.id);
@@ -389,11 +389,11 @@ export function PositionsTab({ userId }: PositionsTabProps) {
         positionId: position.id,
       });
 
-      const pnlSign = result.pnl >= 0 ? '+' : '-';
-      toast.success('Shares sold!', {
+      const pnlSign = result.pnl >= 0 ? "+" : "-";
+      toast.success("Shares sold!", {
         description: `Sold ${position.shares.toFixed(2)} ${position.side} shares for ${pnlSign}${formatCurrency(
           Math.abs(result.pnl),
-          { useThousandsSeparator: true }
+          { useThousandsSeparator: true },
         )} PnL`,
       });
 
@@ -401,11 +401,11 @@ export function PositionsTab({ userId }: PositionsTabProps) {
       invalidateWalletBalance();
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : 'Failed to sell shares';
+        err instanceof Error ? err.message : "Failed to sell shares";
       logger.error(
-        'Failed to sell prediction shares',
+        "Failed to sell prediction shares",
         { marketId: position.marketId, positionId: position.id, error: err },
-        'PositionsTab'
+        "PositionsTab",
       );
       toast.error(message);
     } finally {
@@ -416,7 +416,7 @@ export function PositionsTab({ userId }: PositionsTabProps) {
 
   const handleConfirm = useCallback(async () => {
     if (!pendingTrade) return;
-    if (pendingTrade.kind === 'close-perp') {
+    if (pendingTrade.kind === "close-perp") {
       await handleConfirmClose();
     } else {
       await handleConfirmSell();
@@ -431,9 +431,9 @@ export function PositionsTab({ userId }: PositionsTabProps) {
   // Build trade details for confirmation dialog
   const tradeDetails = (() => {
     if (!pendingTrade) return null;
-    if (pendingTrade.kind === 'close-perp') {
+    if (pendingTrade.kind === "close-perp") {
       return {
-        type: 'close-perp' as const,
+        type: "close-perp" as const,
         ticker: pendingTrade.position.ticker,
         side: pendingTrade.position.side,
         size: pendingTrade.position.size,
@@ -445,8 +445,8 @@ export function PositionsTab({ userId }: PositionsTabProps) {
       } as ClosePerpDetails;
     }
     return {
-      type: 'sell-prediction' as const,
-      mode: 'sell',
+      type: "sell-prediction" as const,
+      mode: "sell",
       question: pendingTrade.position.question,
       side: pendingTrade.position.side,
       shares: pendingTrade.position.shares,
@@ -494,7 +494,7 @@ export function PositionsTab({ userId }: PositionsTabProps) {
             <div className="absolute top-full right-0 z-50 mt-1 min-w-[160px] overflow-hidden rounded-lg border border-border bg-background shadow-lg">
               {memberOptions.map((opt) => {
                 const label =
-                  opt === 'all' ? 'All Members' : opt === 'owner' ? 'You' : opt;
+                  opt === "all" ? "All Members" : opt === "owner" ? "You" : opt;
                 return (
                   <button
                     key={opt}
@@ -503,10 +503,10 @@ export function PositionsTab({ userId }: PositionsTabProps) {
                       setMemberDropdownOpen(false);
                     }}
                     className={cn(
-                      'w-full px-3 py-2 text-left text-sm transition-colors',
+                      "w-full px-3 py-2 text-left text-sm transition-colors",
                       memberFilter === opt
-                        ? 'bg-muted font-medium'
-                        : 'hover:bg-muted/50'
+                        ? "bg-muted font-medium"
+                        : "hover:bg-muted/50",
                     )}
                   >
                     {label}
@@ -550,37 +550,37 @@ export function PositionsTab({ userId }: PositionsTabProps) {
                         </span>
                         <span
                           className={cn(
-                            'rounded px-1 pt-0 pb-0.5 font-medium text-[10px] leading-tight',
-                            position.side === 'long'
-                              ? 'bg-emerald-500/15 text-emerald-500'
-                              : 'bg-red-500/15 text-red-500'
+                            "rounded px-1 pt-0 pb-0.5 font-medium text-[10px] leading-tight",
+                            position.side === "long"
+                              ? "bg-emerald-500/15 text-emerald-500"
+                              : "bg-red-500/15 text-red-500",
                           )}
                         >
                           {position.side.toUpperCase()} {position.leverage}X
                         </span>
                         {position.isAgentPosition && (
                           <span className="text-muted-foreground text-xs">
-                            {position.agentName ?? 'Agent'}
+                            {position.agentName ?? "Agent"}
                           </span>
                         )}
                       </div>
                       <div className="flex items-baseline gap-1.5">
                         <span
                           className={cn(
-                            'font-semibold text-sm',
-                            pnl >= 0 ? 'text-emerald-500' : 'text-red-500'
+                            "font-semibold text-sm",
+                            pnl >= 0 ? "text-emerald-500" : "text-red-500",
                           )}
                         >
-                          {pnl >= 0 ? '+' : ''}
+                          {pnl >= 0 ? "+" : ""}
                           {fmt(pnl)}
                         </span>
                         <span
                           className={cn(
-                            'text-xs',
-                            pnl >= 0 ? 'text-emerald-500' : 'text-red-500'
+                            "text-xs",
+                            pnl >= 0 ? "text-emerald-500" : "text-red-500",
                           )}
                         >
-                          {pnl >= 0 ? '+' : ''}
+                          {pnl >= 0 ? "+" : ""}
                           {pnlPercent.toFixed(1)}%
                         </span>
                       </div>
@@ -620,18 +620,18 @@ export function PositionsTab({ userId }: PositionsTabProps) {
                             position,
                             currentPrice,
                             pnl,
-                            pnlPercent
+                            pnlPercent,
                           )
                         }
                         disabled={isClosing}
                         className="shrink-0 rounded-md border border-border px-3 py-1 text-muted-foreground text-xs transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
                       >
-                        {isClosing ? 'Closing...' : 'Close'}
+                        {isClosing ? "Closing..." : "Close"}
                       </button>
                     </div>
                   </div>
                 );
-              }
+              },
             )}
           </div>
         </div>
@@ -671,24 +671,24 @@ export function PositionsTab({ userId }: PositionsTabProps) {
                     <div className="shrink-0 text-right">
                       <div
                         className={cn(
-                          'font-semibold text-sm',
+                          "font-semibold text-sm",
                           unrealizedPnL >= 0
-                            ? 'text-emerald-500'
-                            : 'text-red-500'
+                            ? "text-emerald-500"
+                            : "text-red-500",
                         )}
                       >
-                        {unrealizedPnL >= 0 ? '+' : ''}
+                        {unrealizedPnL >= 0 ? "+" : ""}
                         {fmtPrediction(unrealizedPnL)}
                       </div>
                       <div
                         className={cn(
-                          'text-xs',
+                          "text-xs",
                           unrealizedPnL >= 0
-                            ? 'text-emerald-500'
-                            : 'text-red-500'
+                            ? "text-emerald-500"
+                            : "text-red-500",
                         )}
                       >
-                        {unrealizedPnL >= 0 ? '+' : ''}
+                        {unrealizedPnL >= 0 ? "+" : ""}
                         {pnlPercent.toFixed(1)}%
                       </div>
                     </div>
@@ -696,7 +696,7 @@ export function PositionsTab({ userId }: PositionsTabProps) {
 
                   {position.isAgentPosition && (
                     <div className="mt-1 text-muted-foreground text-xs">
-                      {position.agentName ?? 'Agent'}
+                      {position.agentName ?? "Agent"}
                     </div>
                   )}
 
@@ -709,10 +709,10 @@ export function PositionsTab({ userId }: PositionsTabProps) {
                           {position.shares.toFixed(2)}
                           <span
                             className={cn(
-                              'rounded px-1 pt-0 pb-0.5 font-medium text-[10px] leading-tight',
-                              position.side === 'YES'
-                                ? 'bg-blue-500/15 text-blue-600'
-                                : 'bg-foreground/10 text-foreground'
+                              "rounded px-1 pt-0 pb-0.5 font-medium text-[10px] leading-tight",
+                              position.side === "YES"
+                                ? "bg-blue-500/15 text-blue-600"
+                                : "bg-foreground/10 text-foreground",
                             )}
                           >
                             {position.side}
@@ -738,10 +738,10 @@ export function PositionsTab({ userId }: PositionsTabProps) {
                       className="shrink-0 rounded-md border border-border px-3 py-1 text-muted-foreground text-xs transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
                     >
                       {isSubmitting
-                        ? 'Selling...'
+                        ? "Selling..."
                         : position.shares < 0.01
-                          ? 'Too Small'
-                          : 'Sell'}
+                          ? "Too Small"
+                          : "Sell"}
                     </button>
                   </div>
                 </div>
@@ -760,7 +760,7 @@ export function PositionsTab({ userId }: PositionsTabProps) {
               Closed Positions
             </div>
             <div className="flex gap-1 rounded-lg border border-border p-0.5">
-              {(['all', 'won', 'lost'] as const).map((filter) => (
+              {(["all", "won", "lost"] as const).map((filter) => (
                 <button
                   key={filter}
                   onClick={() => {
@@ -768,13 +768,13 @@ export function PositionsTab({ userId }: PositionsTabProps) {
                     setClosedPage(1);
                   }}
                   className={cn(
-                    'rounded-md px-2.5 py-1 font-medium text-xs transition-colors',
+                    "rounded-md px-2.5 py-1 font-medium text-xs transition-colors",
                     outcomeFilter === filter
-                      ? 'bg-muted text-foreground'
-                      : 'text-muted-foreground hover:text-foreground'
+                      ? "bg-muted text-foreground"
+                      : "text-muted-foreground hover:text-foreground",
                   )}
                 >
-                  {filter === 'all' ? 'All' : filter === 'won' ? 'Won' : 'Lost'}
+                  {filter === "all" ? "All" : filter === "won" ? "Won" : "Lost"}
                 </button>
               ))}
             </div>
@@ -796,7 +796,7 @@ export function PositionsTab({ userId }: PositionsTabProps) {
           {!closedLoading && closedPageItems.length > 0 && (
             <div className="space-y-1.5 md:space-y-2">
               {closedPageItems.map((item) => {
-                if (item.kind === 'perp') {
+                if (item.kind === "perp") {
                   const position = item.data;
                   const pnl = position.realizedPnL;
                   const pnlPercent =
@@ -814,23 +814,23 @@ export function PositionsTab({ userId }: PositionsTabProps) {
                           </span>
                           <span
                             className={cn(
-                              'rounded px-1 pt-0 pb-0.5 font-medium text-[10px] leading-tight',
-                              position.side === 'long'
-                                ? 'bg-emerald-500/15 text-emerald-500'
-                                : 'bg-red-500/15 text-red-500'
+                              "rounded px-1 pt-0 pb-0.5 font-medium text-[10px] leading-tight",
+                              position.side === "long"
+                                ? "bg-emerald-500/15 text-emerald-500"
+                                : "bg-red-500/15 text-red-500",
                             )}
                           >
                             {position.side.toUpperCase()} {position.leverage}X
                           </span>
                           <span
                             className={cn(
-                              'rounded px-1.5 pt-0 pb-0.5 font-medium text-[10px] leading-tight',
+                              "rounded px-1.5 pt-0 pb-0.5 font-medium text-[10px] leading-tight",
                               won
-                                ? 'bg-emerald-500/15 text-emerald-500'
-                                : 'bg-red-500/15 text-red-500'
+                                ? "bg-emerald-500/15 text-emerald-500"
+                                : "bg-red-500/15 text-red-500",
                             )}
                           >
-                            {won ? 'Won' : 'Lost'}
+                            {won ? "Won" : "Lost"}
                           </span>
                           {position.agentName && (
                             <span className="text-muted-foreground/70 text-xs">
@@ -841,20 +841,20 @@ export function PositionsTab({ userId }: PositionsTabProps) {
                         <div className="flex items-baseline gap-1.5">
                           <span
                             className={cn(
-                              'font-semibold text-sm',
-                              won ? 'text-emerald-500' : 'text-red-500'
+                              "font-semibold text-sm",
+                              won ? "text-emerald-500" : "text-red-500",
                             )}
                           >
-                            {pnl >= 0 ? '+' : ''}
+                            {pnl >= 0 ? "+" : ""}
                             {fmt(pnl)}
                           </span>
                           <span
                             className={cn(
-                              'text-xs',
-                              won ? 'text-emerald-500' : 'text-red-500'
+                              "text-xs",
+                              won ? "text-emerald-500" : "text-red-500",
                             )}
                           >
-                            {pnl >= 0 ? '+' : ''}
+                            {pnl >= 0 ? "+" : ""}
                             {pnlPercent.toFixed(1)}%
                           </span>
                         </div>
@@ -912,23 +912,23 @@ export function PositionsTab({ userId }: PositionsTabProps) {
                         <div className="mt-1 flex items-center gap-1.5">
                           <span
                             className={cn(
-                              'rounded px-1 pt-0 pb-0.5 font-medium text-[10px] leading-tight',
-                              position.side === 'YES'
-                                ? 'bg-blue-500/15 text-blue-600'
-                                : 'bg-foreground/10 text-foreground'
+                              "rounded px-1 pt-0 pb-0.5 font-medium text-[10px] leading-tight",
+                              position.side === "YES"
+                                ? "bg-blue-500/15 text-blue-600"
+                                : "bg-foreground/10 text-foreground",
                             )}
                           >
                             {position.side}
                           </span>
                           <span
                             className={cn(
-                              'rounded px-1.5 pt-0 pb-0.5 font-medium text-[10px] leading-tight',
+                              "rounded px-1.5 pt-0 pb-0.5 font-medium text-[10px] leading-tight",
                               won
-                                ? 'bg-emerald-500/15 text-emerald-500'
-                                : 'bg-red-500/15 text-red-500'
+                                ? "bg-emerald-500/15 text-emerald-500"
+                                : "bg-red-500/15 text-red-500",
                             )}
                           >
-                            {won ? 'Won' : 'Lost'}
+                            {won ? "Won" : "Lost"}
                           </span>
                           {position.agentName && (
                             <span className="text-muted-foreground/70 text-xs">
@@ -940,20 +940,20 @@ export function PositionsTab({ userId }: PositionsTabProps) {
                       <div className="shrink-0 text-right">
                         <div
                           className={cn(
-                            'font-semibold text-sm',
-                            won ? 'text-emerald-500' : 'text-red-500'
+                            "font-semibold text-sm",
+                            won ? "text-emerald-500" : "text-red-500",
                           )}
                         >
-                          {pnl >= 0 ? '+' : ''}
+                          {pnl >= 0 ? "+" : ""}
                           {fmtPrediction(pnl)}
                         </div>
                         <div
                           className={cn(
-                            'text-xs',
-                            won ? 'text-emerald-500' : 'text-red-500'
+                            "text-xs",
+                            won ? "text-emerald-500" : "text-red-500",
                           )}
                         >
-                          {pnl >= 0 ? '+' : ''}
+                          {pnl >= 0 ? "+" : ""}
                           {pnlPercent.toFixed(1)}%
                         </div>
                       </div>
@@ -998,10 +998,10 @@ export function PositionsTab({ userId }: PositionsTabProps) {
           {/* Empty state for outcome filter */}
           {!closedLoading &&
             allFilteredClosed.length === 0 &&
-            outcomeFilter !== 'all' && (
+            outcomeFilter !== "all" && (
               <div className="rounded-xl border border-border/60 py-6 text-center">
                 <p className="text-muted-foreground text-sm">
-                  No {outcomeFilter === 'won' ? 'winning' : 'losing'} positions
+                  No {outcomeFilter === "won" ? "winning" : "losing"} positions
                   found
                 </p>
               </div>
@@ -1043,7 +1043,7 @@ export function PositionsTab({ userId }: PositionsTabProps) {
         onOpenChange={setConfirmDialogOpen}
         onConfirm={handleConfirm}
         isSubmitting={
-          (pendingTrade?.kind === 'close-perp' &&
+          (pendingTrade?.kind === "close-perp" &&
             closingIds.has(pendingTrade.position.id)) ||
           predictionTradeLoading ||
           predictionActionId !== null
@@ -1057,12 +1057,12 @@ export function PositionsTab({ userId }: PositionsTabProps) {
 // ── Parsers ──
 
 function parseClosedPerps(
-  raw: Record<string, unknown>[]
+  raw: Record<string, unknown>[],
 ): ClosedPerpPosition[] {
   return raw.map((p) => ({
     id: p.id as string,
     ticker: p.ticker as string,
-    side: p.side as 'long' | 'short',
+    side: p.side as "long" | "short",
     entryPrice: Number(p.entryPrice ?? 0),
     currentPrice: Number(p.currentPrice ?? 0),
     size: Number(p.size ?? 0),
@@ -1075,13 +1075,13 @@ function parseClosedPerps(
 }
 
 function parseClosedPredictions(
-  raw: Record<string, unknown>[]
+  raw: Record<string, unknown>[],
 ): ClosedPredictionPosition[] {
   return raw.map((p) => ({
     id: p.id as string,
     marketId: p.marketId as string,
-    question: (p.question as string) ?? '',
-    side: (p.side as 'YES' | 'NO') ?? 'YES',
+    question: (p.question as string) ?? "",
+    side: (p.side as "YES" | "NO") ?? "YES",
     shares: Number(p.shares ?? 0),
     avgPrice: Number(p.avgPrice ?? 0),
     currentPrice: Number(p.currentPrice ?? 0),

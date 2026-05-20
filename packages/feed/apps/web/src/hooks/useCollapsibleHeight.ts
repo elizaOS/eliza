@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from "react";
 
 /**
  * Hook for managing animated collapsible height transitions.
@@ -34,7 +34,7 @@ export function useCollapsibleHeight(isOpen: boolean) {
   const contentRef = useRef<HTMLDivElement>(null);
   const didMountRef = useRef(false);
   const [height, setHeight] = useState<number | undefined>(
-    isOpen ? undefined : 0
+    isOpen ? undefined : 0,
   );
 
   useEffect(() => {

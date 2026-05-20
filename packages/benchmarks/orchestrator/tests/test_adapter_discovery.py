@@ -831,18 +831,11 @@ def test_direct_and_native_rows_keep_truthful_matrix_compatibility(
     ):
         for harness in ("eliza", "hermes", "openclaw"):
             cell = cells[(benchmark_id, harness)]
-            if harness == "hermes":
-                assert cell.compatible is True
-                assert cell.command
-                assert "hermes-adapter/run_env_cli.py" in cell.command_display
-                assert "--harness" in cell.command
-                assert cell.command[cell.command.index("--harness") + 1] == harness
-            else:
-                assert cell.compatible is False
-                assert cell.command is None
-                assert cell.reason == (
-                    f"harness '{harness}' not in adapter compatibility (hermes)"
-                )
+            assert cell.compatible is True
+            assert cell.command
+            assert "hermes-adapter/run_env_cli.py" in cell.command_display
+            assert "--harness" in cell.command
+            assert cell.command[cell.command.index("--harness") + 1] == harness
 
     for harness in ("eliza", "hermes", "openclaw"):
         cell = cells[("gauntlet", harness)]

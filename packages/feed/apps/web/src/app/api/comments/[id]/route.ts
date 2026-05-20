@@ -131,7 +131,7 @@ import {
   optionalAuth,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
+} from "@feed/api";
 import {
   and,
   asc,
@@ -144,13 +144,13 @@ import {
   reactions,
   shares,
   users,
-} from '@feed/db';
-import { StaticDataRegistry } from '@feed/engine';
-import { IdParamSchema, logger, UpdateCommentSchema } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/db";
+import { StaticDataRegistry } from "@feed/engine";
+import { IdParamSchema, logger, UpdateCommentSchema } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 // Max reply count to return (for efficiency)
-import { MAX_REPLY_COUNT } from '@/lib/constants';
+import { MAX_REPLY_COUNT } from "@/lib/constants";
 
 // Max parent chain depth to prevent infinite loops
 const MAX_PARENT_DEPTH = 50;
@@ -208,7 +208,7 @@ async function getParentChain(commentId: string | null): Promise<
  * Caps at MAX_REPLY_COUNT for performance
  */
 async function countAllRepliesBatch(
-  commentIds: string[]
+  commentIds: string[],
 ): Promise<Map<string, number>> {
   const countMap = new Map<string, number>();
 
@@ -255,7 +255,7 @@ async function countAllRepliesBatch(
 export const GET = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ id: string }> }
+    context: { params: Promise<{ id: string }> },
   ) => {
     const { id: commentId } = IdParamSchema.parse(await context.params);
 
@@ -271,7 +271,7 @@ export const GET = withErrorHandling(
       .limit(1);
 
     if (!comment) {
-      throw new NotFoundError('Comment', commentId);
+      throw new NotFoundError("Comment", commentId);
     }
 
     // Get the post info with author
@@ -287,7 +287,7 @@ export const GET = withErrorHandling(
       .limit(1);
 
     // Get post author info - check StaticDataRegistry first (for actors/orgs), then database
-    let postAuthorName = post?.authorId || 'Unknown';
+    let postAuthorName = post?.authorId || "Unknown";
     let postAuthorUsername: string | null = null;
     let postAuthorProfileImageUrl: string | null = null;
 
@@ -341,7 +341,7 @@ export const GET = withErrorHandling(
             .select({ count: count() })
             .from(reactions)
             .where(
-              and(eq(reactions.postId, post.id), eq(reactions.type, 'like'))
+              and(eq(reactions.postId, post.id), eq(reactions.type, "like")),
             ),
           db
             .select({ count: count() })
@@ -366,8 +366,8 @@ export const GET = withErrorHandling(
               and(
                 eq(reactions.postId, post.id),
                 eq(reactions.userId, canonicalUserId),
-                eq(reactions.type, 'like')
-              )
+                eq(reactions.type, "like"),
+              ),
             )
             .limit(1),
           db
@@ -376,8 +376,8 @@ export const GET = withErrorHandling(
             .where(
               and(
                 eq(shares.postId, post.id),
-                eq(shares.userId, canonicalUserId)
-              )
+                eq(shares.userId, canonicalUserId),
+              ),
             )
             .limit(1),
         ]);
@@ -436,13 +436,13 @@ export const GET = withErrorHandling(
       .where(
         and(
           inArray(reactions.commentId, allCommentIds),
-          eq(reactions.type, 'like')
-        )
+          eq(reactions.type, "like"),
+        ),
       )
       .groupBy(reactions.commentId);
 
     const likeCountMap = new Map(
-      likeCounts.map((l) => [l.commentId, Number(l.count)])
+      likeCounts.map((l) => [l.commentId, Number(l.count)]),
     );
 
     // Get user's likes if authenticated
@@ -455,11 +455,11 @@ export const GET = withErrorHandling(
           and(
             inArray(reactions.commentId, allCommentIds),
             eq(reactions.userId, canonicalUserId),
-            eq(reactions.type, 'like')
-          )
+            eq(reactions.type, "like"),
+          ),
         );
       userLikes = new Set(
-        likes.map((l) => l.commentId).filter((id): id is string => id !== null)
+        likes.map((l) => l.commentId).filter((id): id is string => id !== null),
       );
     }
 
@@ -491,7 +491,7 @@ export const GET = withErrorHandling(
         id: parent.id,
         content: parent.content,
         authorId: parent.authorId,
-        authorName: author?.displayName || 'Unknown',
+        authorName: author?.displayName || "Unknown",
         authorUsername: author?.username || null,
         authorProfileImageUrl: author?.profileImageUrl || null,
         createdAt: parent.createdAt,
@@ -512,7 +512,7 @@ export const GET = withErrorHandling(
       content: comment.content,
       postId: comment.postId,
       authorId: comment.authorId,
-      authorName: commentAuthor?.displayName || 'Unknown',
+      authorName: commentAuthor?.displayName || "Unknown",
       authorUsername: commentAuthor?.username || null,
       authorProfileImageUrl: commentAuthor?.profileImageUrl || null,
       parentCommentId: comment.parentCommentId,
@@ -532,11 +532,11 @@ export const GET = withErrorHandling(
         content: reply.content,
         postId: reply.postId,
         authorId: reply.authorId,
-        authorName: author?.displayName || 'Unknown',
+        authorName: author?.displayName || "Unknown",
         authorUsername: author?.username || null,
         authorProfileImageUrl: author?.profileImageUrl || null,
         parentCommentId: reply.parentCommentId,
-        parentCommentAuthorName: commentAuthor?.displayName || 'Unknown',
+        parentCommentAuthorName: commentAuthor?.displayName || "Unknown",
         createdAt: reply.createdAt,
         updatedAt: reply.updatedAt,
         likeCount: likeCountMap.get(reply.id) || 0,
@@ -566,7 +566,7 @@ export const GET = withErrorHandling(
           }
         : null,
     });
-  }
+  },
 );
 
 /**
@@ -576,7 +576,7 @@ export const GET = withErrorHandling(
 export const PATCH = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ id: string }> }
+    context: { params: Promise<{ id: string }> },
   ) => {
     // Authenticate user
     const user = await authenticate(request);
@@ -594,15 +594,15 @@ export const PATCH = withErrorHandling(
       .limit(1);
 
     if (!comment) {
-      throw new NotFoundError('Comment', commentId);
+      throw new NotFoundError("Comment", commentId);
     }
 
     // Check if user is the author
     if (comment.authorId !== user.userId) {
       throw new AuthorizationError(
-        'You can only edit your own comments',
-        'comment',
-        'edit'
+        "You can only edit your own comments",
+        "comment",
+        "edit",
       );
     }
 
@@ -618,7 +618,7 @@ export const PATCH = withErrorHandling(
       .returning();
 
     if (!updatedComment) {
-      throw new NotFoundError('Comment', commentId);
+      throw new NotFoundError("Comment", commentId);
     }
 
     // Get user info
@@ -639,7 +639,7 @@ export const PATCH = withErrorHandling(
         .select({ count: count() })
         .from(reactions)
         .where(
-          and(eq(reactions.commentId, commentId), eq(reactions.type, 'like'))
+          and(eq(reactions.commentId, commentId), eq(reactions.type, "like")),
         ),
       db
         .select({ count: count() })
@@ -651,9 +651,9 @@ export const PATCH = withErrorHandling(
     const replyCount = Number(replyCountResult?.count ?? 0);
 
     logger.info(
-      'Comment updated successfully',
+      "Comment updated successfully",
       { commentId, userId: user.userId },
-      'PATCH /api/comments/[id]'
+      "PATCH /api/comments/[id]",
     );
 
     return successResponse({
@@ -668,7 +668,7 @@ export const PATCH = withErrorHandling(
       likeCount,
       replyCount,
     });
-  }
+  },
 );
 
 /**
@@ -678,7 +678,7 @@ export const PATCH = withErrorHandling(
 export const DELETE = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ id: string }> }
+    context: { params: Promise<{ id: string }> },
   ) => {
     // Authenticate user
     const user = await authenticate(request);
@@ -692,15 +692,15 @@ export const DELETE = withErrorHandling(
       .limit(1);
 
     if (!comment) {
-      throw new NotFoundError('Comment', commentId);
+      throw new NotFoundError("Comment", commentId);
     }
 
     // Check if user is the author
     if (comment.authorId !== user.userId) {
       throw new AuthorizationError(
-        'You can only delete your own comments',
-        'comment',
-        'delete'
+        "You can only delete your own comments",
+        "comment",
+        "delete",
       );
     }
 
@@ -736,15 +736,15 @@ export const DELETE = withErrorHandling(
     await db.delete(comments).where(eq(comments.id, commentId));
 
     logger.info(
-      'Comment deleted successfully',
+      "Comment deleted successfully",
       { commentId, userId: user.userId, deletedRepliesCount: repliesCount },
-      'DELETE /api/comments/[id]'
+      "DELETE /api/comments/[id]",
     );
 
     return successResponse({
-      message: 'Comment deleted successfully',
+      message: "Comment deleted successfully",
       deletedCommentId: commentId,
       deletedRepliesCount: repliesCount,
     });
-  }
+  },
 );

@@ -4,4 +4,4 @@
  * Request handlers for A2A protocol operations
  */
 
-export * from './escrow-handlers';
+export * from "./escrow-handlers";

@@ -64,10 +64,10 @@ import {
   addPublicReadHeaders,
   publicRateLimit,
   withErrorHandling,
-} from '@feed/api';
-import { StaticDataRegistry } from '@feed/engine';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@feed/api";
+import { StaticDataRegistry } from "@feed/engine";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 /**
  * GET /api/organizations
@@ -83,13 +83,13 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
   if (error) return error;
 
   const { searchParams } = new URL(request.url);
-  const idsParam = searchParams.get('ids');
+  const idsParam = searchParams.get("ids");
 
   const allOrgs = StaticDataRegistry.getAllOrganizations();
 
   const organizations = idsParam
     ? allOrgs
-        .filter((org) => idsParam.split(',').includes(org.id))
+        .filter((org) => idsParam.split(",").includes(org.id))
         .map((org) => ({
           id: org.id,
           name: org.name,

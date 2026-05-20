@@ -35,12 +35,12 @@ export function getStaticAssetUrl(path: string, cdnBaseUrl?: string): string {
   }
 
   // Ensure path starts with /
-  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
 
   // Use provided CDN URL or environment variable
   const staticAssetsUrl =
     cdnBaseUrl ||
-    (typeof process !== 'undefined'
+    (typeof process !== "undefined"
       ? process.env.NEXT_PUBLIC_STATIC_ASSETS_URL
       : undefined);
 
@@ -57,7 +57,7 @@ export function getStaticAssetUrl(path: string, cdnBaseUrl?: string): string {
 /** Count of preset profile images under {@link AGENT_DEFAULT_PROFILE_DIR} (`pfp-001.png` …). */
 export const TOTAL_AGENT_DEFAULT_PROFILE_PICTURES = 150;
 
-const AGENT_DEFAULT_PROFILE_DIR = '/assets/user-pfps';
+const AGENT_DEFAULT_PROFILE_DIR = "/assets/user-pfps";
 
 /**
  * Get deterministic fallback profile image based on ID
@@ -71,16 +71,16 @@ const AGENT_DEFAULT_PROFILE_DIR = '/assets/user-pfps';
  */
 export function getFallbackProfileImageUrl(
   id: string,
-  cdnBaseUrl?: string
+  cdnBaseUrl?: string,
 ): string {
   const hash = Array.from(id).reduce(
     (acc, char) => acc + char.charCodeAt(0),
-    0
+    0,
   );
   const profileNum = (hash % TOTAL_AGENT_DEFAULT_PROFILE_PICTURES) + 1;
   return getStaticAssetUrl(
-    `${AGENT_DEFAULT_PROFILE_DIR}/pfp-${String(profileNum).padStart(3, '0')}.png`,
-    cdnBaseUrl
+    `${AGENT_DEFAULT_PROFILE_DIR}/pfp-${String(profileNum).padStart(3, "0")}.png`,
+    cdnBaseUrl,
   );
 }
 
@@ -90,15 +90,15 @@ export function getFallbackProfileImageUrl(
  */
 export function getAgentDefaultProfileImageUrl(
   index1Based: number,
-  cdnBaseUrl?: string
+  cdnBaseUrl?: string,
 ): string {
   const n = Math.min(
     TOTAL_AGENT_DEFAULT_PROFILE_PICTURES,
-    Math.max(1, Math.floor(index1Based))
+    Math.max(1, Math.floor(index1Based)),
   );
   return getStaticAssetUrl(
-    `${AGENT_DEFAULT_PROFILE_DIR}/pfp-${String(n).padStart(3, '0')}.png`,
-    cdnBaseUrl
+    `${AGENT_DEFAULT_PROFILE_DIR}/pfp-${String(n).padStart(3, "0")}.png`,
+    cdnBaseUrl,
   );
 }
 
@@ -112,7 +112,7 @@ export function randomAgentDefaultProfileIndex(): number {
  * `profile-N.jpg` / `monkey-N.jpg`.
  */
 export function parseAgentPresetProfileIndex(
-  url: string | null | undefined
+  url: string | null | undefined,
 ): number | undefined {
   if (!url) return undefined;
   const pfp = url.match(/pfp-(\d+)\.png/i);
@@ -142,7 +142,7 @@ export function getProfileImageUrl(
   profileImageUrl: string | null | undefined,
   userId: string | null | undefined,
   isActor = true,
-  cdnBaseUrl?: string
+  cdnBaseUrl?: string,
 ): string | null {
   // If profile image URL is provided (uploaded image from CDN), use it
   if (profileImageUrl) {
@@ -177,7 +177,7 @@ export function getProfileImageUrl(
 export function getOrganizationImageUrl(
   imageUrl: string | null | undefined,
   orgId: string | null | undefined,
-  cdnBaseUrl?: string
+  cdnBaseUrl?: string,
 ): string | null {
   // If image URL is provided, use it
   if (imageUrl) {
@@ -211,8 +211,8 @@ export function getOrganizationImageUrl(
 export function getBannerImageUrl(
   bannerUrl: string | null | undefined,
   entityId: string | null | undefined,
-  entityType: 'actor' | 'organization' | 'user' = 'actor',
-  cdnBaseUrl?: string
+  entityType: "actor" | "organization" | "user" = "actor",
+  cdnBaseUrl?: string,
 ): string | null {
   // If banner URL is provided, use it
   if (bannerUrl) {
@@ -226,16 +226,16 @@ export function getBannerImageUrl(
 
   // For actors/organizations, try to use static banner image
   if (entityId) {
-    if (entityType === 'actor') {
+    if (entityType === "actor") {
       return getStaticAssetUrl(
         `/images/actor-banners/${entityId}.jpg`,
-        cdnBaseUrl
+        cdnBaseUrl,
       );
     }
-    if (entityType === 'organization') {
+    if (entityType === "organization") {
       return getStaticAssetUrl(
         `/images/org-banners/${entityId}.jpg`,
-        cdnBaseUrl
+        cdnBaseUrl,
       );
     }
   }

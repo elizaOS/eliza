@@ -70,10 +70,10 @@ import {
   NotFoundError,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { asUser } from '@feed/db';
-import { generateSnowflakeId, IdParamSchema, logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/api";
+import { asUser } from "@feed/db";
+import { generateSnowflakeId, IdParamSchema, logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 /**
  * POST /api/profiles/[id]/favorite
@@ -82,7 +82,7 @@ import type { NextRequest } from 'next/server';
 export const POST = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ id: string }> }
+    context: { params: Promise<{ id: string }> },
   ) => {
     // Authenticate user
     const user = await authenticate(request);
@@ -104,7 +104,7 @@ export const POST = withErrorHandling(
       }
 
       if (!targetUser) {
-        throw new NotFoundError('Profile', targetIdentifier);
+        throw new NotFoundError("Profile", targetIdentifier);
       }
 
       const targetUserId = targetUser.id;
@@ -112,8 +112,8 @@ export const POST = withErrorHandling(
       // Prevent self-favoriting
       if (user.userId === targetUserId) {
         throw new BusinessLogicError(
-          'Cannot favorite yourself',
-          'SELF_FAVORITE_NOT_ALLOWED'
+          "Cannot favorite yourself",
+          "SELF_FAVORITE_NOT_ALLOWED",
         );
       }
 
@@ -127,8 +127,8 @@ export const POST = withErrorHandling(
 
       if (existingFavorite) {
         throw new BusinessLogicError(
-          'Profile already favorited',
-          'ALREADY_FAVORITED'
+          "Profile already favorited",
+          "ALREADY_FAVORITED",
         );
       }
 
@@ -157,13 +157,13 @@ export const POST = withErrorHandling(
     });
 
     logger.info(
-      'Profile favorited successfully',
+      "Profile favorited successfully",
       { userId: user.userId, targetUserId: result.targetUserId },
-      'POST /api/profiles/[id]/favorite'
+      "POST /api/profiles/[id]/favorite",
     );
 
     if (!result.favorite) {
-      throw new Error('Failed to create favorite');
+      throw new Error("Failed to create favorite");
     }
 
     return successResponse(
@@ -172,9 +172,9 @@ export const POST = withErrorHandling(
         targetUser: result.targetUser ?? null,
         createdAt: result.favorite.createdAt,
       },
-      201
+      201,
     );
-  }
+  },
 );
 
 /**
@@ -184,7 +184,7 @@ export const POST = withErrorHandling(
 export const DELETE = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ id: string }> }
+    context: { params: Promise<{ id: string }> },
   ) => {
     // Authenticate user
     const user = await authenticate(request);
@@ -206,7 +206,7 @@ export const DELETE = withErrorHandling(
       }
 
       if (!targetUser) {
-        throw new NotFoundError('Profile', targetIdentifier);
+        throw new NotFoundError("Profile", targetIdentifier);
       }
 
       const targetUserId = targetUser.id;
@@ -220,7 +220,7 @@ export const DELETE = withErrorHandling(
       });
 
       if (!favorite) {
-        throw new NotFoundError('Favorite', `${user.userId}-${targetUserId}`);
+        throw new NotFoundError("Favorite", `${user.userId}-${targetUserId}`);
       }
 
       // Delete favorite
@@ -234,11 +234,11 @@ export const DELETE = withErrorHandling(
     });
 
     logger.info(
-      'Profile unfavorited successfully',
+      "Profile unfavorited successfully",
       { userId: user.userId, targetUserId },
-      'DELETE /api/profiles/[id]/favorite'
+      "DELETE /api/profiles/[id]/favorite",
     );
 
-    return successResponse({ message: 'Profile unfavorited successfully' });
-  }
+    return successResponse({ message: "Profile unfavorited successfully" });
+  },
 );

@@ -1,11 +1,11 @@
-'use client';
+"use client";
 
-import { cn } from '@feed/shared';
-import { AlertCircle, Bot, Check, RefreshCw, Zap } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
-import { toast } from 'sonner';
-import { getAuthToken } from '@/lib/auth';
-import { apiUrl } from '@/utils/api-url';
+import { cn } from "@feed/shared";
+import { AlertCircle, Bot, Check, RefreshCw, Zap } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
+import { getAuthToken } from "@/lib/auth";
+import { apiUrl } from "@/utils/api-url";
 
 /**
  * AI model info structure.
@@ -25,7 +25,7 @@ interface AIModelsData {
     claude: boolean;
     openai: boolean;
   };
-  activeProvider: 'groq' | 'claude' | 'openai';
+  activeProvider: "groq" | "claude" | "openai";
   recommendedModels: ModelInfo[];
 }
 
@@ -49,25 +49,25 @@ export function AIModelsTab() {
   const [loading, setLoading] = useState(true);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<Record<string, unknown> | null>(
-    null
+    null,
   );
 
   const fetchData = useCallback(async () => {
     const token = getAuthToken();
     if (!token) {
-      toast.error('Not authenticated');
+      toast.error("Not authenticated");
       setLoading(false);
       return;
     }
 
-    const response = await fetch(apiUrl('/api/admin/ai-models'), {
+    const response = await fetch(apiUrl("/api/admin/ai-models"), {
       headers: {
         Authorization: `Bearer ${token}`,
       },
     });
 
     if (!response.ok) {
-      toast.error('Failed to load AI models');
+      toast.error("Failed to load AI models");
       setLoading(false);
       return;
     }
@@ -86,13 +86,13 @@ export function AIModelsTab() {
     setTestResult(null);
     const token = getAuthToken();
     if (!token) {
-      toast.error('Not authenticated');
+      toast.error("Not authenticated");
       setTesting(false);
       return;
     }
 
-    const response = await fetch(apiUrl('/api/admin/ai-models/test'), {
-      method: 'POST',
+    const response = await fetch(apiUrl("/api/admin/ai-models/test"), {
+      method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
       },
@@ -103,7 +103,7 @@ export function AIModelsTab() {
     if (response.ok) {
       setTestResult(result.data);
     } else {
-      toast.error(result.error || 'Test failed');
+      toast.error(result.error || "Test failed");
       setTestResult({ error: result.error, details: result.details });
     }
     setTesting(false);
@@ -111,11 +111,11 @@ export function AIModelsTab() {
 
   const getProviderIcon = (provider: string) => {
     switch (provider) {
-      case 'groq':
+      case "groq":
         return <Zap className="h-4 w-4" />;
-      case 'claude':
+      case "claude":
         return <Bot className="h-4 w-4" />;
-      case 'openai':
+      case "openai":
         return <Bot className="h-4 w-4" />;
       default:
         return <Bot className="h-4 w-4" />;
@@ -124,12 +124,12 @@ export function AIModelsTab() {
 
   const getProviderName = (provider: string) => {
     switch (provider) {
-      case 'groq':
-        return 'Groq';
-      case 'claude':
-        return 'Claude (Anthropic)';
-      case 'openai':
-        return 'OpenAI';
+      case "groq":
+        return "Groq";
+      case "claude":
+        return "Claude (Anthropic)";
+      case "openai":
+        return "OpenAI";
       default:
         return provider;
     }
@@ -166,7 +166,7 @@ export function AIModelsTab() {
           disabled={loading}
           className="rounded-lg p-2 transition-colors hover:bg-accent"
         >
-          <RefreshCw className={cn('h-5 w-5', loading && 'animate-spin')} />
+          <RefreshCw className={cn("h-5 w-5", loading && "animate-spin")} />
         </button>
       </div>
 
@@ -194,10 +194,10 @@ export function AIModelsTab() {
             <div
               key={provider}
               className={cn(
-                'rounded-lg border p-4 transition-colors',
+                "rounded-lg border p-4 transition-colors",
                 available
-                  ? 'border-green-500/30 bg-green-500/5'
-                  : 'border-border bg-muted/20'
+                  ? "border-green-500/30 bg-green-500/5"
+                  : "border-border bg-muted/20",
               )}
             >
               <div className="flex items-center justify-between">
@@ -260,7 +260,7 @@ export function AIModelsTab() {
                 GROQ_API_KEY=your_api_key_here
               </code>
               <p className="mt-3 text-yellow-200/80">
-                Get your API key from:{' '}
+                Get your API key from:{" "}
                 <a
                   href="https://console.groq.com"
                   target="_blank"
@@ -279,27 +279,27 @@ export function AIModelsTab() {
       {testResult && (
         <div
           className={cn(
-            'rounded-lg border p-6',
+            "rounded-lg border p-6",
             testResult.error
-              ? 'border-red-500/20 bg-red-500/10'
-              : 'border-green-500/20 bg-green-500/10'
+              ? "border-red-500/20 bg-red-500/10"
+              : "border-green-500/20 bg-green-500/10",
           )}
         >
           <h3 className="mb-3 font-semibold text-lg">
-            {testResult.error ? '❌ Test Failed' : '✅ Test Successful'}
+            {testResult.error ? "❌ Test Failed" : "✅ Test Successful"}
           </h3>
           {!testResult.error ? (
             <div className="space-y-2 text-sm">
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground">Provider:</span>
                 <span className="font-medium font-mono">
-                  {String(testResult.provider || 'unknown')}
+                  {String(testResult.provider || "unknown")}
                 </span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground">Model:</span>
                 <span className="font-medium font-mono">
-                  {String(testResult.model || 'unknown')}
+                  {String(testResult.model || "unknown")}
                 </span>
               </div>
               <div className="flex items-center gap-2">
@@ -318,7 +318,7 @@ export function AIModelsTab() {
           ) : (
             <div className="space-y-2 text-sm">
               <div className="text-red-200">
-                {String(testResult.error || 'Unknown error')}
+                {String(testResult.error || "Unknown error")}
               </div>
               {testResult.details !== undefined &&
                 testResult.details !== null && (
@@ -342,9 +342,9 @@ export function AIModelsTab() {
           onClick={handleTest}
           disabled={testing}
           className={cn(
-            'rounded-lg px-6 py-2 font-medium transition-all',
-            'bg-primary text-primary-foreground hover:bg-primary/90',
-            'disabled:cursor-not-allowed disabled:opacity-50'
+            "rounded-lg px-6 py-2 font-medium transition-all",
+            "bg-primary text-primary-foreground hover:bg-primary/90",
+            "disabled:cursor-not-allowed disabled:opacity-50",
           )}
         >
           {testing ? (

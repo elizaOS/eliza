@@ -7,16 +7,16 @@
  * Run: bun test integration/metrics-snapshot-cron.integration.test.ts --preload ./integration/preload.ts
  */
 
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { db, eq, inArray, systemMetricsSnapshots } from '@feed/db';
-import { getAdminToken } from './helpers';
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { db, eq, inArray, systemMetricsSnapshots } from "@feed/db";
+import { getAdminToken } from "./helpers";
 
 const BASE_URL =
   process.env.TEST_API_URL ||
   process.env.TEST_BASE_URL ||
-  'http://localhost:3000';
+  "http://localhost:3000";
 
-const CRON_SECRET = process.env.CRON_SECRET || 'development';
+const CRON_SECRET = process.env.CRON_SECRET || "development";
 
 let serverAvailable = false;
 let devAdminToken: string | null = null;
@@ -32,7 +32,7 @@ async function cronRequest(path: string, options: RequestInit = {}) {
   return fetch(`${BASE_URL}${path}`, {
     ...options,
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
       Authorization: `Bearer ${CRON_SECRET}`,
       ...(options.headers as Record<string, string>),
     },
@@ -42,10 +42,10 @@ async function cronRequest(path: string, options: RequestInit = {}) {
 
 async function adminRequest(path: string, options: RequestInit = {}) {
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
     ...(options.headers as Record<string, string>),
   };
-  if (devAdminToken) headers['x-dev-admin-token'] = devAdminToken;
+  if (devAdminToken) headers["x-dev-admin-token"] = devAdminToken;
 
   return fetch(`${BASE_URL}${path}`, {
     ...options,
@@ -54,7 +54,7 @@ async function adminRequest(path: string, options: RequestInit = {}) {
   });
 }
 
-describe('Metrics Snapshot Cron Job', () => {
+describe("Metrics Snapshot Cron Job", () => {
   beforeAll(async () => {
     // Check server availability
     try {
@@ -63,11 +63,11 @@ describe('Metrics Snapshot Cron Job', () => {
       });
       serverAvailable = response.ok;
       console.log(
-        `Server availability: ${serverAvailable ? 'Available' : 'Unavailable'}`
+        `Server availability: ${serverAvailable ? "Available" : "Unavailable"}`,
       );
     } catch {
       serverAvailable = false;
-      console.log('Server not available - tests will be skipped');
+      console.log("Server not available - tests will be skipped");
     }
 
     // Get dev admin token
@@ -83,18 +83,18 @@ describe('Metrics Snapshot Cron Job', () => {
           .where(inArray(systemMetricsSnapshots.id, testSnapshotIds));
         console.log(`Cleaned up ${testSnapshotIds.length} test snapshots`);
       } catch (error) {
-        console.error('Error cleaning up test snapshots:', error);
+        console.error("Error cleaning up test snapshots:", error);
       }
     }
   });
 
-  describe('Authentication', () => {
-    test('handles requests without cron authorization', async () => {
+  describe("Authentication", () => {
+    test("handles requests without cron authorization", async () => {
       requireServer();
 
       const response = await fetch(`${BASE_URL}/api/cron/metrics-snapshot`, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
         signal: AbortSignal.timeout(10000),
       });
 
@@ -104,10 +104,10 @@ describe('Metrics Snapshot Cron Job', () => {
       expect([200, 401, 403, 500]).toContain(response.status);
     });
 
-    test('accepts valid CRON_SECRET authorization', async () => {
+    test("accepts valid CRON_SECRET authorization", async () => {
       requireServer();
 
-      const response = await cronRequest('/api/cron/metrics-snapshot');
+      const response = await cronRequest("/api/cron/metrics-snapshot");
       const data = await response.json();
 
       // Should either succeed (200) or return 500 with error details
@@ -120,8 +120,8 @@ describe('Metrics Snapshot Cron Job', () => {
     });
   });
 
-  describe('Snapshot Creation', () => {
-    test('creates snapshot with all required metrics', async () => {
+  describe("Snapshot Creation", () => {
+    test("creates snapshot with all required metrics", async () => {
       requireServer();
 
       // First, clear any existing snapshot for this hour to force creation
@@ -134,7 +134,7 @@ describe('Metrics Snapshot Cron Job', () => {
         .delete(systemMetricsSnapshots)
         .where(eq(systemMetricsSnapshots.timestamp, hourBoundary));
 
-      const response = await cronRequest('/api/cron/metrics-snapshot');
+      const response = await cronRequest("/api/cron/metrics-snapshot");
       const data = await response.json();
 
       if (response.status === 200 && data.success && !data.skipped) {
@@ -159,24 +159,24 @@ describe('Metrics Snapshot Cron Job', () => {
         expect(data.systemHealth.apiUptime).toBeLessThanOrEqual(100);
       } else if (data.skipped) {
         // Snapshot already exists, that's fine
-        expect(data.reason).toContain('already exists');
+        expect(data.reason).toContain("already exists");
       }
     });
 
-    test('skips when snapshot already exists for hour', async () => {
+    test("skips when snapshot already exists for hour", async () => {
       requireServer();
 
       // First request creates (or already exists)
-      const firstResponse = await cronRequest('/api/cron/metrics-snapshot');
+      const firstResponse = await cronRequest("/api/cron/metrics-snapshot");
 
       // Only test skip behavior if first request succeeded
       if (firstResponse.status !== 200) {
-        console.log('First request failed, skipping duplicate test');
+        console.log("First request failed, skipping duplicate test");
         return;
       }
 
       // Second request should skip
-      const response = await cronRequest('/api/cron/metrics-snapshot');
+      const response = await cronRequest("/api/cron/metrics-snapshot");
       const data = await response.json();
 
       // Should succeed (either created or skipped)
@@ -184,35 +184,35 @@ describe('Metrics Snapshot Cron Job', () => {
         expect(data.success).toBe(true);
         // Second call should have skipped
         if (data.skipped) {
-          expect(data.reason).toContain('already exists');
+          expect(data.reason).toContain("already exists");
         }
       } else {
         // If 500, there might be a DB issue - just log it
-        console.log('Duplicate check returned error:', data);
+        console.log("Duplicate check returned error:", data);
       }
     });
 
-    test('stores correct environment', async () => {
+    test("stores correct environment", async () => {
       requireServer();
 
-      const response = await cronRequest('/api/cron/metrics-snapshot');
+      const response = await cronRequest("/api/cron/metrics-snapshot");
       const data = await response.json();
 
       if (data.environment) {
-        expect(['production', 'staging', 'development']).toContain(
-          data.environment
+        expect(["production", "staging", "development"]).toContain(
+          data.environment,
         );
       }
     });
   });
 
-  describe('Error Handling', () => {
-    test('returns 500 with error details on failure', async () => {
+  describe("Error Handling", () => {
+    test("returns 500 with error details on failure", async () => {
       requireServer();
 
       // This is tricky to test without breaking the DB
       // We'll just verify the error format if we get one
-      const response = await cronRequest('/api/cron/metrics-snapshot');
+      const response = await cronRequest("/api/cron/metrics-snapshot");
       const data = await response.json();
 
       if (response.status === 500) {
@@ -223,15 +223,15 @@ describe('Metrics Snapshot Cron Job', () => {
       }
     });
 
-    test('records cron execution metrics', async () => {
+    test("records cron execution metrics", async () => {
       requireServer();
 
-      const response = await cronRequest('/api/cron/metrics-snapshot');
+      const response = await cronRequest("/api/cron/metrics-snapshot");
 
       // The cron metrics are recorded internally
       // We can verify by checking the system stats endpoint
       if (response.status === 200) {
-        const statsResponse = await adminRequest('/api/admin/stats/system');
+        const statsResponse = await adminRequest("/api/admin/stats/system");
         if (statsResponse.ok) {
           const stats = await statsResponse.json();
           expect(Array.isArray(stats.cronJobs?.allJobs)).toBe(true);
@@ -239,8 +239,8 @@ describe('Metrics Snapshot Cron Job', () => {
           const allJobs = stats.cronJobs?.allJobs || [];
           const metricsJob = allJobs.find(
             (job: { jobName?: string; name?: string }) =>
-              job.jobName === 'metrics-snapshot' ||
-              job.name === 'metrics-snapshot'
+              job.jobName === "metrics-snapshot" ||
+              job.name === "metrics-snapshot",
           );
           expect(metricsJob).toBeDefined();
         }
@@ -248,11 +248,11 @@ describe('Metrics Snapshot Cron Job', () => {
     });
   });
 
-  describe('Data Validation', () => {
-    test('snapshot timestamp is on hour boundary', async () => {
+  describe("Data Validation", () => {
+    test("snapshot timestamp is on hour boundary", async () => {
       requireServer();
 
-      const response = await cronRequest('/api/cron/metrics-snapshot');
+      const response = await cronRequest("/api/cron/metrics-snapshot");
       const data = await response.json();
 
       if (data.timestamp) {
@@ -263,10 +263,10 @@ describe('Metrics Snapshot Cron Job', () => {
       }
     });
 
-    test('numeric metrics are non-negative', async () => {
+    test("numeric metrics are non-negative", async () => {
       requireServer();
 
-      const response = await cronRequest('/api/cron/metrics-snapshot');
+      const response = await cronRequest("/api/cron/metrics-snapshot");
       const data = await response.json();
 
       if (data.success && !data.skipped && data.metrics) {

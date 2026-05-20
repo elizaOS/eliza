@@ -10,11 +10,11 @@ import {
   authenticate,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { asUser } from '@feed/db';
-import { StaticDataRegistry } from '@feed/engine';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/api";
+import { asUser } from "@feed/db";
+import { StaticDataRegistry } from "@feed/engine";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 100;
@@ -22,18 +22,18 @@ const MAX_LIMIT = 100;
 export const GET = withErrorHandling(
   async (
     request: NextRequest,
-    { params }: { params: Promise<{ groupId: string }> }
+    { params }: { params: Promise<{ groupId: string }> },
   ) => {
     const user = await authenticate(request);
     const { groupId } = await params;
     const { searchParams } = new URL(request.url);
-    const cursor = searchParams.get('cursor');
+    const cursor = searchParams.get("cursor");
     const limit = Math.min(
       MAX_LIMIT,
       Math.max(
         1,
-        Number.parseInt(searchParams.get('limit') ?? String(DEFAULT_LIMIT), 10)
-      )
+        Number.parseInt(searchParams.get("limit") ?? String(DEFAULT_LIMIT), 10),
+      ),
     );
 
     const result = await asUser(user, async (db) => {
@@ -43,7 +43,7 @@ export const GET = withErrorHandling(
       });
 
       if (!group) {
-        throw new ApiError('Group not found', 404);
+        throw new ApiError("Group not found", 404);
       }
 
       const membership = await db.groupMember.findFirst({
@@ -55,7 +55,7 @@ export const GET = withErrorHandling(
       });
 
       if (!membership) {
-        throw new ApiError('You are not a member of this group', 403);
+        throw new ApiError("You are not a member of this group", 403);
       }
 
       const groupChat = await db.chat.findFirst({
@@ -64,7 +64,7 @@ export const GET = withErrorHandling(
       });
 
       if (!groupChat) {
-        throw new ApiError('Group chat not found', 404);
+        throw new ApiError("Group chat not found", 404);
       }
 
       const cursorMessage = cursor
@@ -86,7 +86,7 @@ export const GET = withErrorHandling(
             : {}),
         },
         orderBy: {
-          createdAt: 'desc',
+          createdAt: "desc",
         },
         take: limit + 1,
         select: {
@@ -105,8 +105,8 @@ export const GET = withErrorHandling(
         new Set(
           visibleMessages
             .map((message) => message.senderId)
-            .filter((senderId) => senderId !== 'system')
-        )
+            .filter((senderId) => senderId !== "system"),
+        ),
       );
 
       const senderUsers =
@@ -125,7 +125,7 @@ export const GET = withErrorHandling(
             })
           : [];
       const senderUserMap = new Map(
-        senderUsers.map((senderUser) => [senderUser.id, senderUser])
+        senderUsers.map((senderUser) => [senderUser.id, senderUser]),
       );
 
       return {
@@ -133,15 +133,15 @@ export const GET = withErrorHandling(
         groupName: group.name,
         chatId: groupChat.id,
         messages: visibleMessages.map((message) => {
-          if (message.senderId === 'system') {
+          if (message.senderId === "system") {
             return {
               id: message.id,
               content: message.content,
               createdAt: message.createdAt,
               type: message.type,
               sender: {
-                id: 'system',
-                name: 'System',
+                id: "system",
+                name: "System",
                 username: null,
                 profileImageUrl: null,
                 isNPC: false,
@@ -163,7 +163,7 @@ export const GET = withErrorHandling(
                 senderUser?.displayName ||
                 senderUser?.username ||
                 actor?.name ||
-                'Unknown',
+                "Unknown",
               username: senderUser?.username ?? null,
               profileImageUrl:
                 senderUser?.profileImageUrl || actor?.profileImageUrl || null,
@@ -182,7 +182,7 @@ export const GET = withErrorHandling(
     });
 
     logger.info(
-      'Group messages retrieved',
+      "Group messages retrieved",
       {
         userId: user.userId,
         groupId,
@@ -190,9 +190,9 @@ export const GET = withErrorHandling(
         limit,
         hasCursor: !!cursor,
       },
-      'GET /api/groups/:groupId/messages'
+      "GET /api/groups/:groupId/messages",
     );
 
     return successResponse(result);
-  }
+  },
 );

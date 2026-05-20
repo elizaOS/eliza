@@ -73,17 +73,17 @@ import {
   type AuthenticatedUser,
   optionalAuth,
   withErrorHandling,
-} from '@feed/api';
-import { asPublic, asUser, desc, eq, posts, postTags } from '@feed/db';
+} from "@feed/api";
+import { asPublic, asUser, desc, eq, posts, postTags } from "@feed/db";
 import {
   generateTrendingSummary,
   getCurrentTrendingTags,
   groupTrendingTags,
   type TrendingTag,
-} from '@feed/engine';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@feed/engine";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 // Server-side cache with longer TTL
 interface CachedTrendingData {
@@ -103,12 +103,12 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   // Check server-side cache first
   if (trendingCache && Date.now() - trendingCache.timestamp < CACHE_TTL_MS) {
     logger.debug(
-      'Returning cached trending data',
+      "Returning cached trending data",
       {
         age: Date.now() - trendingCache.timestamp,
         durationMs: Date.now() - startTime,
       },
-      'GET /api/feed/widgets/trending'
+      "GET /api/feed/widgets/trending",
     );
 
     return NextResponse.json({
@@ -120,9 +120,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   // Request deduplication: if another request is already processing, wait for it
   if (ongoingRequest) {
     logger.debug(
-      'Waiting for ongoing trending request to complete',
+      "Waiting for ongoing trending request to complete",
       undefined,
-      'GET /api/feed/widgets/trending'
+      "GET /api/feed/widgets/trending",
     );
     const result = await ongoingRequest;
     return NextResponse.json({
@@ -138,54 +138,53 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
     if (!trending || trending.length === 0) {
       logger.info(
-        'No trending tags available',
+        "No trending tags available",
         undefined,
-        'GET /api/feed/widgets/trending'
+        "GET /api/feed/widgets/trending",
       );
       return [];
     }
 
     // Optional auth - trending tags are public but RLS still applies
     const authUser: AuthenticatedUser | null = await optionalAuth(
-      request
+      request,
     ).catch(() => null);
 
     // First, get all trending items with summaries
     const trendingItems: TrendingTag[] = await Promise.all(
       trending.map(async (item) => {
-        const recentPosts =
-          authUser && authUser.userId
-            ? await asUser(authUser, async (db) => {
-                return await db
-                  .select({
-                    postId: postTags.postId,
-                    postContent: posts.content,
-                  })
-                  .from(postTags)
-                  .innerJoin(posts, eq(postTags.postId, posts.id))
-                  .where(eq(postTags.tagId, item.tag.id))
-                  .orderBy(desc(postTags.createdAt))
-                  .limit(3);
-              })
-            : await asPublic(async (db) => {
-                return await db
-                  .select({
-                    postId: postTags.postId,
-                    postContent: posts.content,
-                  })
-                  .from(postTags)
-                  .innerJoin(posts, eq(postTags.postId, posts.id))
-                  .where(eq(postTags.tagId, item.tag.id))
-                  .orderBy(desc(postTags.createdAt))
-                  .limit(3);
-              });
+        const recentPosts = authUser?.userId
+          ? await asUser(authUser, async (db) => {
+              return await db
+                .select({
+                  postId: postTags.postId,
+                  postContent: posts.content,
+                })
+                .from(postTags)
+                .innerJoin(posts, eq(postTags.postId, posts.id))
+                .where(eq(postTags.tagId, item.tag.id))
+                .orderBy(desc(postTags.createdAt))
+                .limit(3);
+            })
+          : await asPublic(async (db) => {
+              return await db
+                .select({
+                  postId: postTags.postId,
+                  postContent: posts.content,
+                })
+                .from(postTags)
+                .innerJoin(posts, eq(postTags.postId, posts.id))
+                .where(eq(postTags.tagId, item.tag.id))
+                .orderBy(desc(postTags.createdAt))
+                .limit(3);
+            });
 
         const postContents = recentPosts.map((pt) => pt.postContent);
 
         const summary = await generateTrendingSummary(
           item.tag.displayName,
           item.tag.category,
-          postContents
+          postContents,
         );
 
         return {
@@ -197,12 +196,12 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
           summary,
           rank: item.rank,
         };
-      })
+      }),
     );
 
     // Filter out null values
     const validItems = trendingItems.filter(
-      (item): item is NonNullable<typeof item> => item !== null
+      (item): item is NonNullable<typeof item> => item !== null,
     );
 
     // Group related tags using LLM analysis
@@ -219,12 +218,12 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
     const duration = Date.now() - startTime;
     logger.info(
-      'Generated trending data',
+      "Generated trending data",
       {
         groups: topGroups.length,
         durationMs: duration,
       },
-      'GET /api/feed/widgets/trending'
+      "GET /api/feed/widgets/trending",
     );
 
     return topGroups;
@@ -238,7 +237,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     return NextResponse.json({
       success: true,
       trending: [],
-      message: 'No trending data yet - check back after first game tick',
+      message: "No trending data yet - check back after first game tick",
     });
   }
 

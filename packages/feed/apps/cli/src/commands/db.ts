@@ -9,22 +9,22 @@
  * @module cli/commands/db
  */
 
-import { $ } from 'bun';
-import { existsSync } from 'fs';
-import { join } from 'path';
-import { parseArgs, wantsHelp } from '../lib/args.js';
-import { logger } from '../lib/logger.js';
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import { $ } from "bun";
+import { parseArgs, wantsHelp } from "../lib/args.js";
+import { logger } from "../lib/logger.js";
 
-const CONTAINER_NAME = 'feed-postgres';
-const COMPOSE_FILE = 'docker-compose.yml';
-const HOST_PORT = '5433';
+const CONTAINER_NAME = "feed-postgres";
+const COMPOSE_FILE = "docker-compose.yml";
+const HOST_PORT = "5433";
 
 export function isRecoverableComposeStartError(message: string): boolean {
   const normalized = message.toLowerCase();
 
   return (
-    normalized.includes('failed to set up container networking') ||
-    (normalized.includes('network') && normalized.includes('not found'))
+    normalized.includes("failed to set up container networking") ||
+    (normalized.includes("network") && normalized.includes("not found"))
   );
 }
 
@@ -38,15 +38,15 @@ async function startPostgresContainer(forceRecreate = false): Promise<void> {
 }
 
 function getShellErrorText(error: unknown): string {
-  if (error && typeof error === 'object' && 'stderr' in error) {
+  if (error && typeof error === "object" && "stderr" in error) {
     const stderr = error.stderr;
 
-    if (typeof stderr === 'string') {
+    if (typeof stderr === "string") {
       return stderr;
     }
 
     if (stderr instanceof Uint8Array) {
-      return Buffer.from(stderr).toString('utf8');
+      return Buffer.from(stderr).toString("utf8");
     }
 
     if (stderr != null) {
@@ -99,25 +99,25 @@ ENVIRONMENT:
  * @internal
  */
 async function checkDocker(): Promise<void> {
-  logger.step('Checking Docker installation...');
+  logger.step("Checking Docker installation...");
 
   try {
     await $`docker --version`.quiet();
   } catch {
-    logger.fail('Docker is not installed!');
-    console.log('Install Docker: https://docs.docker.com/get-docker/');
+    logger.fail("Docker is not installed!");
+    console.log("Install Docker: https://docs.docker.com/get-docker/");
     process.exit(1);
   }
 
   try {
     await $`docker info`.quiet();
   } catch {
-    logger.fail('Docker is installed but not running!');
-    console.log('Please start Docker Desktop or the Docker daemon.');
+    logger.fail("Docker is installed but not running!");
+    console.log("Please start Docker Desktop or the Docker daemon.");
     process.exit(1);
   }
 
-  logger.success('Docker is running');
+  logger.success("Docker is running");
 }
 
 /**
@@ -145,7 +145,7 @@ async function isContainerRunning(): Promise<boolean> {
     await $`docker ps --filter name=${CONTAINER_NAME} --format "{{.Names}}"`
       .quiet()
       .text()
-      .catch(() => '');
+      .catch(() => "");
   return result.trim() === CONTAINER_NAME;
 }
 
@@ -160,7 +160,7 @@ async function doesContainerExist(): Promise<boolean> {
     await $`docker ps -a --filter name=${CONTAINER_NAME} --format "{{.Names}}"`
       .quiet()
       .text()
-      .catch(() => '');
+      .catch(() => "");
   return result.trim() === CONTAINER_NAME;
 }
 
@@ -173,18 +173,18 @@ async function doesContainerExist(): Promise<boolean> {
  * @internal
  */
 async function startDatabase(): Promise<void> {
-  logger.header('Starting PostgreSQL');
+  logger.header("Starting PostgreSQL");
 
   await checkDocker();
   checkComposeFile();
 
   if (await isContainerRunning()) {
-    logger.success('PostgreSQL is already running');
+    logger.success("PostgreSQL is already running");
     await showConnectionInfo();
     return;
   }
 
-  logger.step('Starting container...');
+  logger.step("Starting container...");
   try {
     await startPostgresContainer();
   } catch (error) {
@@ -195,14 +195,14 @@ async function startDatabase(): Promise<void> {
     }
 
     logger.warn(
-      'Detected stale Docker networking state. Recreating feed-postgres...'
+      "Detected stale Docker networking state. Recreating feed-postgres...",
     );
 
     await $`docker rm -f ${CONTAINER_NAME}`.quiet().catch(() => undefined);
     await startPostgresContainer(true);
   }
 
-  logger.step('Waiting for PostgreSQL to be ready...');
+  logger.step("Waiting for PostgreSQL to be ready...");
 
   let attempts = 0;
   const maxAttempts = 30;
@@ -212,10 +212,10 @@ async function startDatabase(): Promise<void> {
       await $`docker inspect --format='{{.State.Health.Status}}' ${CONTAINER_NAME}`
         .quiet()
         .text()
-        .catch(() => '');
+        .catch(() => "");
 
-    if (health.trim() === 'healthy') {
-      logger.success('PostgreSQL is ready');
+    if (health.trim() === "healthy") {
+      logger.success("PostgreSQL is ready");
       await showConnectionInfo();
       return;
     }
@@ -224,7 +224,7 @@ async function startDatabase(): Promise<void> {
     attempts++;
   }
 
-  logger.warn('Health check timeout - PostgreSQL may still be starting...');
+  logger.warn("Health check timeout - PostgreSQL may still be starting...");
   await showConnectionInfo();
 }
 
@@ -236,18 +236,18 @@ async function startDatabase(): Promise<void> {
  * @internal
  */
 async function stopDatabase(): Promise<void> {
-  logger.header('Stopping PostgreSQL');
+  logger.header("Stopping PostgreSQL");
 
   await checkDocker();
 
   if (!(await isContainerRunning())) {
-    logger.success('PostgreSQL is not running');
+    logger.success("PostgreSQL is not running");
     return;
   }
 
-  logger.step('Stopping container...');
+  logger.step("Stopping container...");
   await $`docker-compose stop postgres`;
-  logger.success('PostgreSQL stopped');
+  logger.success("PostgreSQL stopped");
 }
 
 /**
@@ -258,7 +258,7 @@ async function stopDatabase(): Promise<void> {
  * @internal
  */
 async function restartDatabase(): Promise<void> {
-  logger.header('Restarting PostgreSQL');
+  logger.header("Restarting PostgreSQL");
 
   await stopDatabase();
   await new Promise((resolve) => setTimeout(resolve, 2000));
@@ -274,7 +274,7 @@ async function restartDatabase(): Promise<void> {
  * @internal
  */
 async function showStatus(): Promise<void> {
-  logger.header('Database Status');
+  logger.header("Database Status");
 
   await checkDocker();
 
@@ -282,19 +282,19 @@ async function showStatus(): Promise<void> {
   const isRunning = await isContainerRunning();
 
   if (!exists) {
-    console.log('Status: Not created');
+    console.log("Status: Not created");
     console.log("\nRun 'feed db start' to create and start the database.");
     return;
   }
 
   if (isRunning) {
-    console.log('Status: ✅ Running');
+    console.log("Status: ✅ Running");
 
     const uptime =
       await $`docker inspect --format='{{.State.StartedAt}}' ${CONTAINER_NAME}`
         .quiet()
         .text()
-        .catch(() => '');
+        .catch(() => "");
     if (uptime) {
       console.log(`Started: ${uptime.trim()}`);
     }
@@ -303,14 +303,14 @@ async function showStatus(): Promise<void> {
       await $`docker inspect --format='{{.State.Health.Status}}' ${CONTAINER_NAME}`
         .quiet()
         .text()
-        .catch(() => '');
+        .catch(() => "");
     if (health) {
       console.log(`Health: ${health.trim()}`);
     }
 
     await showConnectionInfo();
   } else {
-    console.log('Status: ⏸️  Stopped');
+    console.log("Status: ⏸️  Stopped");
     console.log("\nRun 'feed db start' to start the database.");
   }
 }
@@ -324,14 +324,14 @@ async function showStatus(): Promise<void> {
  * @internal
  */
 async function showConnectionInfo(): Promise<void> {
-  console.log('\nConnection Info:');
-  console.log('  Host:     localhost');
+  console.log("\nConnection Info:");
+  console.log("  Host:     localhost");
   console.log(`  Port:     ${HOST_PORT}`);
-  console.log('  Database: feed');
-  console.log('  User:     feed');
-  console.log('  Password: feed_dev_password');
+  console.log("  Database: feed");
+  console.log("  User:     feed");
+  console.log("  Password: feed_dev_password");
   console.log(
-    `\n  URL: postgresql://feed:feed_dev_password@localhost:${HOST_PORT}/feed`
+    `\n  URL: postgresql://feed:feed_dev_password@localhost:${HOST_PORT}/feed`,
   );
 }
 
@@ -345,17 +345,17 @@ async function showConnectionInfo(): Promise<void> {
  * @internal
  */
 async function runMigrations(): Promise<void> {
-  logger.header('Running Database Migrations');
+  logger.header("Running Database Migrations");
 
   if (!(await isContainerRunning())) {
-    logger.fail('PostgreSQL is not running!');
-    console.log('Start it first with: feed db start');
+    logger.fail("PostgreSQL is not running!");
+    console.log("Start it first with: feed db start");
     process.exit(1);
   }
 
-  logger.step('Pushing schema changes...');
+  logger.step("Pushing schema changes...");
   await $`bunx drizzle-kit push --config=packages/db/drizzle.config.ts`;
-  logger.success('Migrations complete');
+  logger.success("Migrations complete");
 }
 
 /**
@@ -368,18 +368,18 @@ async function runMigrations(): Promise<void> {
  * @internal
  */
 async function seedDatabase(): Promise<void> {
-  logger.header('Seeding Database');
+  logger.header("Seeding Database");
 
   if (!(await isContainerRunning())) {
-    logger.fail('PostgreSQL is not running!');
-    console.log('Start it first with: feed db start');
+    logger.fail("PostgreSQL is not running!");
+    console.log("Start it first with: feed db start");
     process.exit(1);
   }
 
-  logger.step('Running seed script...');
-  const rootDir = import.meta.dirname.replace('/apps/cli/src/commands', '');
+  logger.step("Running seed script...");
+  const rootDir = import.meta.dirname.replace("/apps/cli/src/commands", "");
   await $`bun run ${rootDir}/scripts/seed-database.ts`;
-  logger.success('Database seeded');
+  logger.success("Database seeded");
 }
 
 /**
@@ -392,19 +392,19 @@ async function seedDatabase(): Promise<void> {
  * @internal
  */
 async function resetDatabase(): Promise<void> {
-  logger.header('Resetting Database');
+  logger.header("Resetting Database");
 
-  logger.warn('This will delete all data!');
+  logger.warn("This will delete all data!");
 
   if (!(await isContainerRunning())) {
-    logger.fail('PostgreSQL is not running!');
-    console.log('Start it first with: feed db start');
+    logger.fail("PostgreSQL is not running!");
+    console.log("Start it first with: feed db start");
     process.exit(1);
   }
 
-  logger.step('Resetting schema...');
+  logger.step("Resetting schema...");
   await $`bunx drizzle-kit push --force --config=packages/db/drizzle.config.ts`;
-  logger.success('Database reset complete');
+  logger.success("Database reset complete");
 }
 
 /**
@@ -433,31 +433,31 @@ export async function runDbCommand(args: string[]): Promise<void> {
   }
 
   switch (parsed.command) {
-    case 'start':
+    case "start":
       await startDatabase();
       break;
 
-    case 'stop':
+    case "stop":
       await stopDatabase();
       break;
 
-    case 'restart':
+    case "restart":
       await restartDatabase();
       break;
 
-    case 'status':
+    case "status":
       await showStatus();
       break;
 
-    case 'migrate':
+    case "migrate":
       await runMigrations();
       break;
 
-    case 'seed':
+    case "seed":
       await seedDatabase();
       break;
 
-    case 'reset':
+    case "reset":
       await resetDatabase();
       break;
 

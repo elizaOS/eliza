@@ -18,15 +18,12 @@
  * - 404 — No matching entity
  */
 
-import {
-  findUserByIdentifierWithSelect,
-  withErrorHandling,
-} from '@feed/api';
-import { users } from '@feed/db';
-import { loadActorsData } from '@feed/engine';
-import { extractUsername } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+import { findUserByIdentifierWithSelect, withErrorHandling } from "@feed/api";
+import { users } from "@feed/db";
+import { loadActorsData } from "@feed/engine";
+import { extractUsername } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 function equalsLoose(a: string, b: string): boolean {
   return a.toLowerCase() === b.toLowerCase();
@@ -35,7 +32,7 @@ function equalsLoose(a: string, b: string): boolean {
 export const GET = withErrorHandling(
   async (
     _request: NextRequest,
-    context: { params: Promise<{ identifier: string }> }
+    context: { params: Promise<{ identifier: string }> },
   ) => {
     const { identifier: rawIdentifier } = await context.params;
     const identifier = decodeURIComponent(rawIdentifier);
@@ -69,7 +66,7 @@ export const GET = withErrorHandling(
       organizations?.find(
         (o) =>
           (o as { username?: string }).username &&
-          equalsLoose((o as { username: string }).username, identifier)
+          equalsLoose((o as { username: string }).username, identifier),
       );
 
     if (org) {
@@ -83,7 +80,7 @@ export const GET = withErrorHandling(
       actors?.find(
         (a) =>
           (a as { username?: string }).username &&
-          equalsLoose((a as { username: string }).username, identifier)
+          equalsLoose((a as { username: string }).username, identifier),
       ) ||
       actors?.find((a) => a.name.toLowerCase() === idLower);
 
@@ -100,6 +97,6 @@ export const GET = withErrorHandling(
       });
     }
 
-    return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
-  }
+    return NextResponse.json({ error: "Profile not found" }, { status: 404 });
+  },
 );

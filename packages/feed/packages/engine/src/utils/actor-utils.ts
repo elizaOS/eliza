@@ -5,9 +5,9 @@
  * (ActorContextBuilder, MarketContextService, etc.)
  */
 
-import { and, db, desc, gte, inArray, isNull, lte, posts } from '@feed/db';
-import { StaticDataRegistry } from '../services/static-data-registry';
-import type { FeedPostContext } from '../types/market-context';
+import { and, db, desc, gte, inArray, isNull, lte, posts } from "@feed/db";
+import { StaticDataRegistry } from "../services/static-data-registry";
+import type { FeedPostContext } from "../types/market-context";
 
 /**
  * Resolve an actor ID to a display name via the static registry.
@@ -23,7 +23,7 @@ export function resolveActorName(actorId: string): string {
  */
 export function findRelatedActorsByAffiliation(
   actorId: string,
-  affiliations: string[]
+  affiliations: string[],
 ): string[] {
   const relatedIds: string[] = [];
   if (affiliations.length === 0) return relatedIds;
@@ -57,7 +57,7 @@ export async function fetchRelevantPosts(
     maxTotal?: number;
     maxContentLength?: number;
     maxTitleLength?: number;
-  }
+  },
 ): Promise<FeedPostContext[]> {
   const maxRelated = options?.maxRelated ?? 10;
   const maxTotal = options?.maxTotal ?? 15;
@@ -75,8 +75,8 @@ export async function fetchRelevantPosts(
           isNull(posts.deletedAt),
           lte(posts.timestamp, now),
           gte(posts.timestamp, since),
-          inArray(posts.authorId, relatedActorIds)
-        )
+          inArray(posts.authorId, relatedActorIds),
+        ),
       )
       .orderBy(desc(posts.timestamp))
       .limit(maxRelated);
@@ -93,26 +93,26 @@ export async function fetchRelevantPosts(
         and(
           isNull(posts.deletedAt),
           lte(posts.timestamp, now),
-          gte(posts.timestamp, since)
-        )
+          gte(posts.timestamp, since),
+        ),
       )
       .orderBy(desc(posts.timestamp))
       .limit(remainingSlots + relevantPosts.length);
 
     relevantPosts.push(
-      ...general.filter((p) => !existingIds.has(p.id)).slice(0, remainingSlots)
+      ...general.filter((p) => !existingIds.has(p.id)).slice(0, remainingSlots),
     );
   }
 
   return relevantPosts.map((post) => {
     const content =
       post.content.length > maxContentLength
-        ? post.content.slice(0, maxContentLength) + '...'
+        ? `${post.content.slice(0, maxContentLength)}...`
         : post.content;
 
     const articleTitle =
       post.articleTitle && post.articleTitle.length > maxTitleLength
-        ? post.articleTitle.slice(0, maxTitleLength) + '...'
+        ? `${post.articleTitle.slice(0, maxTitleLength)}...`
         : post.articleTitle;
 
     return {

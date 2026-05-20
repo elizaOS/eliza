@@ -30,7 +30,7 @@ import type {
   SystemStats,
   Trade,
   UserInfo,
-} from './types';
+} from "./types";
 
 /**
  * Minimal interface for SimulationEngine compatibility
@@ -40,7 +40,7 @@ export interface SimulationEngineInterface {
   getGameState(): GameState;
   performAction(
     type: string,
-    data: Record<string, unknown>
+    data: Record<string, unknown>,
   ): Promise<{ success: boolean; result?: unknown; error?: string }>;
   advanceTick(): void;
   isComplete(): boolean;
@@ -129,7 +129,7 @@ export class SimulationA2AAdapter implements A2AClientInterface {
   // ===== Portfolio =====
 
   async getBalance(): Promise<{ balance: number; currency: string }> {
-    return { balance: this.balance, currency: 'USD' };
+    return { balance: this.balance, currency: "USD" };
   }
 
   async getPositions(): Promise<{ positions: Position[] }> {
@@ -140,7 +140,7 @@ export class SimulationA2AAdapter implements A2AClientInterface {
       const market = state.predictionMarkets.find((m) => m.id === pos.marketId);
       if (market) {
         const currentPrice =
-          pos.outcome === 'YES' ? market.yesPrice : market.noPrice;
+          pos.outcome === "YES" ? market.yesPrice : market.noPrice;
         positions.push({
           ...pos,
           currentPrice,
@@ -174,7 +174,7 @@ export class SimulationA2AAdapter implements A2AClientInterface {
         question: m.question,
         yesPrice: m.yesPrice,
         noPrice: m.noPrice,
-        status: 'active',
+        status: "active",
       }));
 
     const perps: Market[] = state.perpetualMarkets.map((m) => ({
@@ -182,7 +182,7 @@ export class SimulationA2AAdapter implements A2AClientInterface {
       question: m.ticker,
       yesPrice: m.price,
       noPrice: 0,
-      status: 'active',
+      status: "active",
     }));
 
     return { predictions, perps };
@@ -201,23 +201,23 @@ export class SimulationA2AAdapter implements A2AClientInterface {
       question: market.question,
       yesPrice: market.yesPrice,
       noPrice: market.noPrice,
-      status: market.resolved ? 'resolved' : 'active',
+      status: market.resolved ? "resolved" : "active",
     };
   }
 
   async buyShares(
     marketId: string,
-    outcome: 'YES' | 'NO',
-    amount: number
+    outcome: "YES" | "NO",
+    amount: number,
   ): Promise<Trade> {
-    const result = await this.engine.performAction('buy_prediction', {
+    const result = await this.engine.performAction("buy_prediction", {
       marketId,
       outcome,
       amount,
     });
 
     if (!result.success) {
-      throw new Error(result.error || 'Failed to buy shares');
+      throw new Error(result.error || "Failed to buy shares");
     }
 
     const { positionId, shares } = result.result as {
@@ -227,14 +227,14 @@ export class SimulationA2AAdapter implements A2AClientInterface {
     const state = this.engine.getGameState();
     const market = state.predictionMarkets.find((m) => m.id === marketId);
     const price = market
-      ? outcome === 'YES'
+      ? outcome === "YES"
         ? market.yesPrice
         : market.noPrice
       : 0.5;
 
     // Track position
     const existingPos = Array.from(this.positions.values()).find(
-      (p) => p.marketId === marketId && p.outcome === outcome
+      (p) => p.marketId === marketId && p.outcome === outcome,
     );
 
     if (existingPos) {
@@ -269,8 +269,8 @@ export class SimulationA2AAdapter implements A2AClientInterface {
 
   async sellShares(
     marketId: string,
-    outcome: 'YES' | 'NO',
-    sharesToSell: number
+    outcome: "YES" | "NO",
+    sharesToSell: number,
   ): Promise<Trade> {
     const state = this.engine.getGameState();
     const market = state.predictionMarkets.find((m) => m.id === marketId);
@@ -279,12 +279,12 @@ export class SimulationA2AAdapter implements A2AClientInterface {
       throw new Error(`Market ${marketId} not found`);
     }
 
-    const price = outcome === 'YES' ? market.yesPrice : market.noPrice;
+    const price = outcome === "YES" ? market.yesPrice : market.noPrice;
     const proceeds = sharesToSell * price;
 
     // Update position
     const pos = Array.from(this.positions.values()).find(
-      (p) => p.marketId === marketId && p.outcome === outcome
+      (p) => p.marketId === marketId && p.outcome === outcome,
     );
 
     if (pos) {
@@ -327,10 +327,10 @@ export class SimulationA2AAdapter implements A2AClientInterface {
   }
 
   async createPost(content: string): Promise<Post> {
-    const result = await this.engine.performAction('create_post', { content });
+    const result = await this.engine.performAction("create_post", { content });
 
     if (!result.success) {
-      throw new Error(result.error || 'Failed to create post');
+      throw new Error(result.error || "Failed to create post");
     }
 
     const { postId } = result.result as { postId: string };
@@ -358,7 +358,7 @@ export class SimulationA2AAdapter implements A2AClientInterface {
   }
 
   async likePost(
-    postId: string
+    postId: string,
   ): Promise<{ success: boolean; likesCount: number }> {
     // Simulation - just increment likes locally
     const post = this.posts.find((p) => p.id === postId);
@@ -369,7 +369,7 @@ export class SimulationA2AAdapter implements A2AClientInterface {
     return { success: true, likesCount: 1 };
   }
 
-  async commentPost(postId: string, content: string): Promise<{ id: string }> {
+  async commentPost(postId: string, _content: string): Promise<{ id: string }> {
     // Simulation - just create a comment ID
     return { id: `comment-${Date.now()}-${postId.slice(-4)}` };
   }
@@ -382,7 +382,7 @@ export class SimulationA2AAdapter implements A2AClientInterface {
       agents: state.agents.map((a) => ({
         id: a.id,
         name: a.name,
-        walletAddress: `0x${a.id.slice(-40).padStart(40, '0')}`,
+        walletAddress: `0x${a.id.slice(-40).padStart(40, "0")}`,
       })),
     };
   }
@@ -390,7 +390,7 @@ export class SimulationA2AAdapter implements A2AClientInterface {
   async searchUsers(query: string): Promise<{ users: UserInfo[] }> {
     const state = this.engine.getGameState();
     const matching = state.agents.filter((a) =>
-      a.name.toLowerCase().includes(query.toLowerCase())
+      a.name.toLowerCase().includes(query.toLowerCase()),
     );
     return {
       users: matching.map((a) => ({
@@ -406,7 +406,7 @@ export class SimulationA2AAdapter implements A2AClientInterface {
     const state = this.engine.getGameState();
     const totalVolume = state.predictionMarkets.reduce(
       (sum, m) => sum + m.totalVolume,
-      0
+      0,
     );
 
     return {

@@ -8,17 +8,10 @@
  * and membership management.
  */
 
-import {
-  and,
-  chatParticipants,
-  chats,
-  db,
-  eq,
-  groupMembers,
-} from '@feed/db';
-import { logger } from '@feed/shared';
+import { and, chatParticipants, chats, db, eq, groupMembers } from "@feed/db";
+import { logger } from "@feed/shared";
 
-import { notifyNftAccessRevoked } from './notification-service';
+import { notifyNftAccessRevoked } from "./notification-service";
 
 /**
  * Remove a user from an NFT-gated chat and optionally mark their group membership as inactive.
@@ -34,10 +27,10 @@ export async function removeUserFromNftChat(
   chatId: string,
   groupId: string | null,
   userId: string,
-  reason: string
+  reason: string,
 ): Promise<void> {
   // Get chat name for notification before removal
-  let chatName = 'NFT-gated chat';
+  let chatName = "NFT-gated chat";
   try {
     const [chat] = await db
       .select({ name: chats.name })
@@ -61,8 +54,8 @@ export async function removeUserFromNftChat(
         and(
           eq(chatParticipants.chatId, chatId),
           eq(chatParticipants.userId, userId),
-          eq(chatParticipants.isActive, true)
-        )
+          eq(chatParticipants.isActive, true),
+        ),
       );
 
     // If there's a linked group, mark group membership as inactive with kick reason
@@ -78,8 +71,8 @@ export async function removeUserFromNftChat(
           and(
             eq(groupMembers.groupId, groupId),
             eq(groupMembers.userId, userId),
-            eq(groupMembers.isActive, true)
-          )
+            eq(groupMembers.isActive, true),
+          ),
         );
     }
   });
@@ -90,13 +83,13 @@ export async function removeUserFromNftChat(
   } catch (error) {
     // Log but don't fail the removal if notification fails
     logger.warn(
-      'Failed to send NFT access revoked notification',
+      "Failed to send NFT access revoked notification",
       {
         userId,
         chatId,
         error: error instanceof Error ? error.message : String(error),
       },
-      'NFTGroupService'
+      "NFTGroupService",
     );
   }
 }

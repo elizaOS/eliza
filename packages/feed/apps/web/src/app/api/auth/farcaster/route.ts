@@ -13,25 +13,25 @@
  *   4. Client POSTs to /api/auth/session to set the httpOnly cookie
  */
 
-import { withErrorHandling } from '@feed/api';
-import { db, eq, users } from '@feed/db';
-import { generateSnowflakeId } from '@feed/shared';
-import { createAppClient, viemConnector } from '@farcaster/auth-client';
-import { SignJWT } from 'jose';
-import { NextRequest, NextResponse } from 'next/server';
+import { createAppClient, viemConnector } from "@farcaster/auth-client";
+import { withErrorHandling } from "@feed/api";
+import { db, eq, users } from "@feed/db";
+import { generateSnowflakeId } from "@feed/shared";
+import { SignJWT } from "jose";
+import { type NextRequest, NextResponse } from "next/server";
 
 import {
   ensureStewardUser,
   getStewardJwtSecret,
-} from '@/lib/auth/steward-server';
+} from "@/lib/auth/steward-server";
 
 /** Mint a Steward-compatible HS256 JWT for this user. */
 async function mintToken(stewardUserId: string, fid: number): Promise<string> {
-  return new SignJWT({ userId: stewardUserId, tenantId: 'feed', fid })
-    .setProtectedHeader({ alg: 'HS256' })
-    .setIssuer('steward')
+  return new SignJWT({ userId: stewardUserId, tenantId: "feed", fid })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuer("steward")
     .setIssuedAt()
-    .setExpirationTime('24h')
+    .setExpirationTime("24h")
     .sign(getStewardJwtSecret());
 }
 
@@ -41,25 +41,25 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
     body = (await req.json()) as typeof body;
   } catch {
     return NextResponse.json(
-      { ok: false, error: 'Invalid request body' },
-      { status: 400 }
+      { ok: false, error: "Invalid request body" },
+      { status: 400 },
     );
   }
 
   const { message, signature, nonce } = body;
   if (!message || !signature || !nonce) {
     return NextResponse.json(
-      { ok: false, error: 'message, signature, nonce are required' },
-      { status: 400 }
+      { ok: false, error: "message, signature, nonce are required" },
+      { status: 400 },
     );
   }
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
   const domain = new URL(appUrl).hostname;
 
   // Server-side SIWF verification using @farcaster/auth-client
   const appClient = createAppClient({
-    relay: 'https://relay.farcaster.xyz',
+    relay: "https://relay.farcaster.xyz",
     ethereum: viemConnector(),
   });
 
@@ -80,9 +80,9 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
         ok: false,
         error:
           (verifyError as { message?: string } | undefined)?.message ??
-          'Invalid Farcaster signature',
+          "Invalid Farcaster signature",
       },
-      { status: 401 }
+      { status: 401 },
     );
   }
 
@@ -131,8 +131,8 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
       .returning({ id: users.id });
     if (!newUser) {
       return NextResponse.json(
-        { ok: false, error: 'Failed to create user record' },
-        { status: 500 }
+        { ok: false, error: "Failed to create user record" },
+        { status: 500 },
       );
     }
     feedUserId = newUser.id;

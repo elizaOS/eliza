@@ -10,25 +10,25 @@
  * - Server must be running
  */
 
-import { test as setup } from '@playwright/test';
-import { existsSync, writeFileSync } from 'fs';
-import path from 'path';
-import { PLAYWRIGHT_DEV_AUTH_STORAGE_KEY } from '../e2e/dev-auth';
+import { existsSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import { test as setup } from "@playwright/test";
+import { PLAYWRIGHT_DEV_AUTH_STORAGE_KEY } from "../e2e/dev-auth";
 
-const authFile = path.join(__dirname, '../../../.playwright/auth.json');
-const tokenFile = path.join(__dirname, '../../../.playwright/test-tokens.json');
+const authFile = path.join(__dirname, "../../../.playwright/auth.json");
+const tokenFile = path.join(__dirname, "../../../.playwright/test-tokens.json");
 const baseURL =
   process.env.PLAYWRIGHT_BASE_URL ||
   process.env.TEST_BASE_URL ||
-  process.env.TEST_API_URL?.replace(/\/api$/, '') ||
-  'http://127.0.0.1:3400';
+  process.env.TEST_API_URL?.replace(/\/api$/, "") ||
+  "http://127.0.0.1:3400";
 
-setup('extract auth tokens for integration tests', async ({ page }) => {
+setup("extract auth tokens for integration tests", async ({ page }) => {
   // Check if auth state exists (from E2E setup)
   if (!existsSync(authFile)) {
     throw new Error(
       `Authentication state file not found: ${authFile}\n` +
-        'Please run E2E auth setup first: bunx playwright test --project=setup'
+        "Please run E2E auth setup first: bunx playwright test --project=setup",
     );
   }
 
@@ -43,11 +43,11 @@ setup('extract auth tokens for integration tests', async ({ page }) => {
 
     const parsed = JSON.parse(raw) as unknown;
     if (
-      typeof parsed !== 'object' ||
+      typeof parsed !== "object" ||
       parsed === null ||
       Array.isArray(parsed) ||
-      typeof (parsed as { userId?: unknown }).userId !== 'string' ||
-      typeof (parsed as { accessToken?: unknown }).accessToken !== 'string'
+      typeof (parsed as { userId?: unknown }).userId !== "string" ||
+      typeof (parsed as { accessToken?: unknown }).accessToken !== "string"
     ) {
       return null;
     }
@@ -73,10 +73,10 @@ setup('extract auth tokens for integration tests', async ({ page }) => {
   }
 
   // Wait for Privy SDK to be ready
-  console.log('⏳ Waiting for Privy SDK to initialize...');
+  console.log("⏳ Waiting for Privy SDK to initialize...");
   await page.waitForFunction(
     () => {
-      if (typeof window === 'undefined') return false;
+      if (typeof window === "undefined") return false;
       const privy = (
         window as {
           privy?: {
@@ -86,28 +86,28 @@ setup('extract auth tokens for integration tests', async ({ page }) => {
         }
       ).privy;
       return (
-        privy?.ready === true && typeof privy.getAccessToken === 'function'
+        privy?.ready === true && typeof privy.getAccessToken === "function"
       );
     },
-    { timeout: 30000 }
+    { timeout: 30000 },
   );
 
-  console.log('✅ Privy SDK is ready');
+  console.log("✅ Privy SDK is ready");
 
   // Extract access token and user ID from browser
-  console.log('🔑 Extracting authentication tokens...');
+  console.log("🔑 Extracting authentication tokens...");
   const { accessToken, userId } = await page.evaluate(async (apiUrl) => {
     const privy = (
       window as { privy?: { getAccessToken?: () => Promise<string | null> } }
     ).privy;
     if (!privy?.getAccessToken) {
-      throw new Error('Privy SDK getAccessToken not available');
+      throw new Error("Privy SDK getAccessToken not available");
     }
 
     const token = await privy.getAccessToken();
     if (!token) {
       throw new Error(
-        'Could not get access token - user may not be authenticated'
+        "Could not get access token - user may not be authenticated",
       );
     }
 
@@ -118,7 +118,7 @@ setup('extract auth tokens for integration tests', async ({ page }) => {
 
     if (!response.ok) {
       throw new Error(
-        `API request failed: ${response.status} ${response.statusText}`
+        `API request failed: ${response.status} ${response.statusText}`,
       );
     }
 
@@ -130,11 +130,11 @@ setup('extract auth tokens for integration tests', async ({ page }) => {
   }, baseURL);
 
   if (!accessToken) {
-    throw new Error('Failed to extract access token');
+    throw new Error("Failed to extract access token");
   }
 
   if (!userId) {
-    throw new Error('Failed to extract user ID');
+    throw new Error("Failed to extract user ID");
   }
 
   // Save tokens for integration tests

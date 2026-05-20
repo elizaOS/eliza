@@ -16,32 +16,32 @@
  * - hmac_signature: hex-encoded HMAC-SHA256 of `<uuid>.<timestamp>`
  */
 
-import { withErrorHandling } from '@feed/api';
-import { logger } from '@feed/shared';
-import { NextResponse } from 'next/server';
-import { generateSignedState } from './state-utils';
+import { withErrorHandling } from "@feed/api";
+import { logger } from "@feed/shared";
+import { NextResponse } from "next/server";
+import { generateSignedState } from "./state-utils";
 
 export const GET = withErrorHandling(async () => {
   const clientSecret = process.env.DISCORD_CLIENT_SECRET;
 
   if (!clientSecret) {
     logger.error(
-      'Discord Activity state generation failed: DISCORD_CLIENT_SECRET not configured',
+      "Discord Activity state generation failed: DISCORD_CLIENT_SECRET not configured",
       {},
-      'DiscordActivity'
+      "DiscordActivity",
     );
     return NextResponse.json(
-      { error: 'Discord Activity not configured' },
-      { status: 500 }
+      { error: "Discord Activity not configured" },
+      { status: 500 },
     );
   }
 
   const state = generateSignedState(clientSecret);
 
   logger.debug(
-    'Discord Activity OAuth state token generated',
+    "Discord Activity OAuth state token generated",
     {},
-    'DiscordActivity'
+    "DiscordActivity",
   );
 
   return NextResponse.json({ state });

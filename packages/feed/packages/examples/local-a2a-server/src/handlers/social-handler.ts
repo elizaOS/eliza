@@ -3,8 +3,8 @@
  * Handles social features: posts, likes, comments, notifications
  */
 
-import type { Database } from 'bun:sqlite';
-import { randomUUID } from 'crypto';
+import type { Database } from "bun:sqlite";
+import { randomUUID } from "node:crypto";
 
 interface Post {
   id: string;
@@ -95,11 +95,11 @@ export class SocialHandler {
    */
   createPost(authorId: string, content: string, mediaUrls?: string[]): Post {
     if (!content || content.trim().length === 0) {
-      throw new Error('Post content cannot be empty');
+      throw new Error("Post content cannot be empty");
     }
 
     if (content.length > 500) {
-      throw new Error('Post content too long (max 500 characters)');
+      throw new Error("Post content too long (max 500 characters)");
     }
 
     const postId = randomUUID();
@@ -114,18 +114,18 @@ export class SocialHandler {
       authorId,
       content,
       JSON.stringify(mediaUrls || []),
-      now
+      now,
     );
 
     // Get author info
     const authorRow = this.db
-      .query('SELECT display_name FROM users WHERE id = ?')
+      .query("SELECT display_name FROM users WHERE id = ?")
       .get(authorId) as { display_name: string } | null;
 
     return {
       id: postId,
       authorId,
-      authorName: authorRow?.display_name || 'Unknown',
+      authorName: authorRow?.display_name || "Unknown",
       content,
       mediaUrls: mediaUrls || [],
       likesCount: 0,
@@ -140,45 +140,45 @@ export class SocialHandler {
    */
   likePost(
     userId: string,
-    postId: string
+    postId: string,
   ): { success: boolean; likesCount: number } {
     // Check if already liked
     const existing = this.db
-      .query('SELECT id FROM likes WHERE user_id = ? AND post_id = ?')
+      .query("SELECT id FROM likes WHERE user_id = ? AND post_id = ?")
       .get(userId, postId);
 
     if (existing) {
       // Unlike
       this.db.run(
-        'DELETE FROM likes WHERE user_id = ? AND post_id = ?',
+        "DELETE FROM likes WHERE user_id = ? AND post_id = ?",
         userId,
-        postId
+        postId,
       );
       this.db.run(
-        'UPDATE posts SET likes_count = likes_count - 1 WHERE id = ?',
-        postId
+        "UPDATE posts SET likes_count = likes_count - 1 WHERE id = ?",
+        postId,
       );
     } else {
       // Like
       const likeId = randomUUID();
       this.db.run(
-        'INSERT INTO likes (id, user_id, post_id) VALUES (?, ?, ?)',
+        "INSERT INTO likes (id, user_id, post_id) VALUES (?, ?, ?)",
         likeId,
         userId,
-        postId
+        postId,
       );
       this.db.run(
-        'UPDATE posts SET likes_count = likes_count + 1 WHERE id = ?',
-        postId
+        "UPDATE posts SET likes_count = likes_count + 1 WHERE id = ?",
+        postId,
       );
 
       // Create notification for post author
-      this.createNotification(postId, userId, 'like');
+      this.createNotification(postId, userId, "like");
     }
 
     // Get updated count
     const countRow = this.db
-      .query('SELECT likes_count FROM posts WHERE id = ?')
+      .query("SELECT likes_count FROM posts WHERE id = ?")
       .get(postId) as { likes_count: number } | null;
 
     return {
@@ -192,7 +192,7 @@ export class SocialHandler {
    */
   commentPost(userId: string, postId: string, content: string): Post {
     if (!content || content.trim().length === 0) {
-      throw new Error('Comment cannot be empty');
+      throw new Error("Comment cannot be empty");
     }
 
     const commentId = randomUUID();
@@ -207,26 +207,26 @@ export class SocialHandler {
       userId,
       content,
       postId,
-      now
+      now,
     );
 
     this.db.run(
-      'UPDATE posts SET comments_count = comments_count + 1 WHERE id = ?',
-      postId
+      "UPDATE posts SET comments_count = comments_count + 1 WHERE id = ?",
+      postId,
     );
 
     // Create notification
-    this.createNotification(postId, userId, 'comment');
+    this.createNotification(postId, userId, "comment");
 
     // Get author info
     const authorRow = this.db
-      .query('SELECT display_name FROM users WHERE id = ?')
+      .query("SELECT display_name FROM users WHERE id = ?")
       .get(userId) as { display_name: string } | null;
 
     return {
       id: commentId,
       authorId: userId,
-      authorName: authorRow?.display_name || 'Unknown',
+      authorName: authorRow?.display_name || "Unknown",
       content,
       mediaUrls: [],
       likesCount: 0,
@@ -254,8 +254,8 @@ export class SocialHandler {
         walletAddress: row.wallet_address as string,
         displayName: row.display_name as string,
         username: row.username as string,
-        bio: (row.bio as string) || '',
-        avatarUrl: (row.avatar_url as string) || '',
+        bio: (row.bio as string) || "",
+        avatarUrl: (row.avatar_url as string) || "",
       })),
     };
   }
@@ -265,18 +265,18 @@ export class SocialHandler {
    */
   getNotifications(
     userId: string,
-    params: Record<string, unknown>
+    params: Record<string, unknown>,
   ): { notifications: Notification[] } {
     const limit = (params.limit as number) || 20;
     const unreadOnly = params.unreadOnly as boolean | undefined;
 
-    let query = 'SELECT * FROM notifications WHERE user_id = ?';
+    let query = "SELECT * FROM notifications WHERE user_id = ?";
     const queryParams: (string | number)[] = [userId];
 
     if (unreadOnly) {
-      query += ' AND is_read = 0';
+      query += " AND is_read = 0";
     }
-    query += ' ORDER BY created_at DESC LIMIT ?';
+    query += " ORDER BY created_at DESC LIMIT ?";
     queryParams.push(limit);
 
     const results = this.db.query(query).all(...queryParams) as Record<
@@ -289,8 +289,8 @@ export class SocialHandler {
         id: row.id as string,
         type: row.type as string,
         title: row.title as string,
-        message: (row.message as string) || '',
-        data: JSON.parse((row.data as string) || '{}'),
+        message: (row.message as string) || "",
+        data: JSON.parse((row.data as string) || "{}"),
         isRead: Boolean(row.is_read),
         createdAt: row.created_at as string,
       })),
@@ -302,12 +302,12 @@ export class SocialHandler {
    */
   markNotificationRead(
     userId: string,
-    notificationId: string
+    notificationId: string,
   ): { success: boolean } {
     this.db.run(
-      'UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?',
+      "UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?",
       notificationId,
-      userId
+      userId,
     );
 
     return { success: true };
@@ -316,11 +316,11 @@ export class SocialHandler {
   private createNotification(
     postId: string,
     fromUserId: string,
-    type: 'like' | 'comment'
+    type: "like" | "comment",
   ): void {
     // Get post author
     const postRow = this.db
-      .query('SELECT author_id FROM posts WHERE id = ?')
+      .query("SELECT author_id FROM posts WHERE id = ?")
       .get(postId) as { author_id: string } | null;
 
     if (!postRow) return;
@@ -331,15 +331,15 @@ export class SocialHandler {
 
     // Get from user name
     const userRow = this.db
-      .query('SELECT display_name FROM users WHERE id = ?')
+      .query("SELECT display_name FROM users WHERE id = ?")
       .get(fromUserId) as { display_name: string } | null;
 
-    const fromName = userRow?.display_name || 'Someone';
+    const fromName = userRow?.display_name || "Someone";
 
     const notificationId = randomUUID();
-    const title = type === 'like' ? 'New Like' : 'New Comment';
+    const title = type === "like" ? "New Like" : "New Comment";
     const message =
-      type === 'like'
+      type === "like"
         ? `${fromName} liked your post`
         : `${fromName} commented on your post`;
 
@@ -353,7 +353,7 @@ export class SocialHandler {
       type,
       title,
       message,
-      JSON.stringify({ postId, fromUserId })
+      JSON.stringify({ postId, fromUserId }),
     );
   }
 
@@ -362,10 +362,10 @@ export class SocialHandler {
    */
   getSocialStats(): { totalUsers: number; totalPosts: number } {
     const userRow = this.db
-      .query('SELECT COUNT(*) as count FROM users WHERE id != ?')
-      .get('system') as { count: number };
+      .query("SELECT COUNT(*) as count FROM users WHERE id != ?")
+      .get("system") as { count: number };
     const postRow = this.db
-      .query('SELECT COUNT(*) as count FROM posts WHERE is_deleted = 0')
+      .query("SELECT COUNT(*) as count FROM posts WHERE is_deleted = 0")
       .get() as { count: number };
 
     return {
@@ -378,9 +378,9 @@ export class SocialHandler {
     return {
       id: row.id as string,
       authorId: row.author_id as string,
-      authorName: (row.author_name as string) || 'Unknown',
+      authorName: (row.author_name as string) || "Unknown",
       content: row.content as string,
-      mediaUrls: JSON.parse((row.media_urls as string) || '[]'),
+      mediaUrls: JSON.parse((row.media_urls as string) || "[]"),
       likesCount: (row.likes_count as number) || 0,
       commentsCount: (row.comments_count as number) || 0,
       repostsCount: (row.reposts_count as number) || 0,

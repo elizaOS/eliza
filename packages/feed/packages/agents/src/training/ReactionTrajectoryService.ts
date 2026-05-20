@@ -10,23 +10,15 @@
  * 3. Export for training with calculated rewards
  */
 
-import {
-  and,
-  db,
-  eq,
-  gte,
-  isNull,
-  lte,
-  reactionTrajectories,
-} from '@feed/db';
-import { generateSnowflakeId, logger } from '@feed/shared';
+import { and, db, eq, gte, isNull, lte, reactionTrajectories } from "@feed/db";
+import { generateSnowflakeId, logger } from "@feed/shared";
 
 export interface ReactionDecision {
   eventId: string;
   eventType: string;
   eventSeverity: number;
   npcId: string;
-  npcRole: 'insider' | 'affiliated' | 'observer';
+  npcRole: "insider" | "affiliated" | "observer";
   arcPhase: string | null;
   orgCoordinationContext: {
     orgMatesReacted: number;
@@ -35,13 +27,13 @@ export interface ReactionDecision {
 }
 
 export interface ReactionAction {
-  actionType: 'post' | 'comment' | 'trade' | 'none';
+  actionType: "post" | "comment" | "trade" | "none";
   angle: string | null;
   sentiment: string | null;
   postId: string | null;
   tradeDetails: {
     ticker: string;
-    direction: 'buy' | 'sell';
+    direction: "buy" | "sell";
     amount: number;
   } | null;
 }
@@ -68,7 +60,7 @@ export class ReactionTrajectoryService {
    */
   async recordReactionStart(
     decision: ReactionDecision,
-    action: ReactionAction
+    action: ReactionAction,
   ): Promise<string> {
     const id = await generateSnowflakeId();
     const now = new Date();
@@ -96,24 +88,24 @@ export class ReactionTrajectoryService {
       });
 
       logger.debug(
-        'Recorded reaction start',
+        "Recorded reaction start",
         {
           trajectoryId: id,
           eventId: decision.eventId,
           action: action.actionType,
         },
-        'ReactionTrajectoryService'
+        "ReactionTrajectoryService",
       );
 
       return id;
     } catch (error) {
       logger.warn(
-        'Failed to record reaction start',
+        "Failed to record reaction start",
         {
           eventId: decision.eventId,
           error: error instanceof Error ? error.message : String(error),
         },
-        'ReactionTrajectoryService'
+        "ReactionTrajectoryService",
       );
       throw error;
     }
@@ -124,7 +116,7 @@ export class ReactionTrajectoryService {
    */
   async recordReactionOutcome(
     trajectoryId: string,
-    outcome: ReactionOutcome
+    outcome: ReactionOutcome,
   ): Promise<void> {
     const reward = this.calculateRewardFromOutcome(outcome);
 
@@ -144,9 +136,9 @@ export class ReactionTrajectoryService {
       .where(eq(reactionTrajectories.id, trajectoryId));
 
     logger.debug(
-      'Recorded reaction outcome',
+      "Recorded reaction outcome",
       { trajectoryId, reward },
-      'ReactionTrajectoryService'
+      "ReactionTrajectoryService",
     );
   }
 
@@ -155,7 +147,7 @@ export class ReactionTrajectoryService {
    * Returns trajectories created 1-24h ago without outcomes.
    */
   async getPendingOutcomeMeasurements(
-    limit: number = 100
+    limit: number = 100,
   ): Promise<{ id: string; postId: string | null }[]> {
     const now = Date.now();
     const oneHourAgo = new Date(now - 1 * 60 * 60 * 1000);
@@ -171,8 +163,8 @@ export class ReactionTrajectoryService {
         and(
           gte(reactionTrajectories.createdAt, twentyFourHoursAgo),
           lte(reactionTrajectories.createdAt, oneHourAgo),
-          isNull(reactionTrajectories.outcomeRecordedAt)
-        )
+          isNull(reactionTrajectories.outcomeRecordedAt),
+        ),
       )
       .limit(limit);
 
@@ -210,12 +202,12 @@ export class ReactionTrajectoryService {
    */
   calculateReward(
     outcome: ReactionOutcome,
-    decision: ReactionDecision
+    decision: ReactionDecision,
   ): number {
     let reward = this.calculateRewardFromOutcome(outcome);
 
     // Role-appropriate bonus
-    if (decision.npcRole === 'insider' && outcome.otherNpcsReacted > 0) {
+    if (decision.npcRole === "insider" && outcome.otherNpcsReacted > 0) {
       reward += 0.2; // Insiders should spark conversation
     }
 
@@ -239,7 +231,7 @@ export class ReactionTrajectoryService {
    * Get trajectories ready for training export.
    */
   async getTrainingReadyTrajectories(
-    limit: number = 500
+    limit: number = 500,
   ): Promise<(typeof reactionTrajectories.$inferSelect)[]> {
     return db
       .select()
@@ -248,8 +240,8 @@ export class ReactionTrajectoryService {
         and(
           eq(reactionTrajectories.usedInTraining, false),
           // Has outcome recorded
-          gte(reactionTrajectories.outcomeRecordedAt, new Date(0))
-        )
+          gte(reactionTrajectories.outcomeRecordedAt, new Date(0)),
+        ),
       )
       .limit(limit);
   }

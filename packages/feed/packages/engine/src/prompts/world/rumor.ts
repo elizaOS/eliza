@@ -1,5 +1,5 @@
-import { definePrompt } from '../define-prompt';
-import { ANTI_REPETITION_RULES, PARODY_NAME_RULES } from '../shared-sections';
+import { definePrompt } from "../define-prompt";
+import { ANTI_REPETITION_RULES, PARODY_NAME_RULES } from "../shared-sections";
 
 /**
  * Prompt for generating rumors and unconfirmed information for game world.
@@ -12,10 +12,10 @@ import { ANTI_REPETITION_RULES, PARODY_NAME_RULES } from '../shared-sections';
  * Returns XML with rumor content.
  */
 export const rumor = definePrompt({
-  id: 'rumor',
-  version: '4.0.0',
-  category: 'world',
-  description: 'Generates contextually-connected rumors with character context',
+  id: "rumor",
+  version: "4.0.0",
+  category: "world",
+  description: "Generates contextually-connected rumors with character context",
   temperature: 0.9,
   maxTokens: 800,
   template: `{{realityGrounding}}

@@ -1,12 +1,12 @@
-'use client';
+"use client";
 
-import { POINTS } from '@feed/shared';
-import { useCallback, useEffect, useState } from 'react';
-import { useAuth } from '@/hooks/useAuth';
-import { useSSEChannel } from '@/hooks/useSSE';
-import { useAuthStore } from '@/stores/authStore';
-import { ChallengeCard } from './challenge-card';
-import { useAnimatedCount } from './use-animated-count';
+import { POINTS } from "@feed/shared";
+import { useCallback, useEffect, useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
+import { useSSEChannel } from "@/hooks/useSSE";
+import { useAuthStore } from "@/stores/authStore";
+import { ChallengeCard } from "./challenge-card";
+import { useAnimatedCount } from "./use-animated-count";
 
 interface ChallengeWithProgress {
   id: string;
@@ -38,7 +38,7 @@ interface ChallengesData {
 
 export function formatCountdown(resetsAt: string): string {
   const diff = new Date(resetsAt).getTime() - Date.now();
-  if (diff <= 0) return 'Resetting...';
+  if (diff <= 0) return "Resetting...";
   const hours = Math.floor(diff / (1000 * 60 * 60));
   if (hours >= 24) {
     const days = Math.floor(hours / 24);
@@ -61,7 +61,7 @@ function BonusTracker({
   return (
     <div
       className={`flex items-center justify-between border border-border p-3 ${
-        allCompleted ? 'border-emerald-500/30 bg-emerald-500/10' : 'bg-muted/30'
+        allCompleted ? "border-emerald-500/30 bg-emerald-500/10" : "bg-muted/30"
       }`}
     >
       <div className="flex items-center gap-2.5">
@@ -70,19 +70,19 @@ function BonusTracker({
             <div
               key={i}
               className={`h-2 w-2 rounded-full transition-colors ${
-                i < completed ? 'bg-emerald-500' : 'bg-muted-foreground/20'
+                i < completed ? "bg-emerald-500" : "bg-muted-foreground/20"
               }`}
             />
           ))}
         </div>
         <span
-          className={`text-xs ${allCompleted ? 'font-semibold text-emerald-500' : 'text-muted-foreground'}`}
+          className={`text-xs ${allCompleted ? "font-semibold text-emerald-500" : "text-muted-foreground"}`}
         >
           {completed}/{total} complete
         </span>
       </div>
       <span
-        className={`font-semibold text-xs ${allCompleted ? 'text-emerald-500' : 'text-muted-foreground'}`}
+        className={`font-semibold text-xs ${allCompleted ? "text-emerald-500" : "text-muted-foreground"}`}
       >
         +{bonus} reputation
       </span>
@@ -94,10 +94,10 @@ export function ChallengesTab() {
   const { authenticated, getAccessToken } = useAuth();
   const { user } = useAuthStore();
   const [challengesData, setChallengesData] = useState<ChallengesData | null>(
-    null
+    null,
   );
   const [loading, setLoading] = useState(true);
-  const [countdown, setCountdown] = useState({ daily: '', weekly: '' });
+  const [countdown, setCountdown] = useState({ daily: "", weekly: "" });
 
   const fetchData = useCallback(async () => {
     if (!authenticated) {
@@ -110,7 +110,7 @@ export function ChallengesTab() {
       return;
     }
 
-    const res = await fetch('/api/challenges', {
+    const res = await fetch("/api/challenges", {
       headers: { Authorization: `Bearer ${token}` },
     });
 
@@ -130,14 +130,14 @@ export function ChallengesTab() {
     (data: Record<string, unknown>) => {
       const type = data.type as string;
       if (
-        type === 'challenge_completed' ||
-        type === 'challenge_bonus' ||
-        type === 'achievement_unlocked'
+        type === "challenge_completed" ||
+        type === "challenge_bonus" ||
+        type === "achievement_unlocked"
       ) {
         fetchData();
       }
     },
-    [fetchData]
+    [fetchData],
   );
 
   const channel =
@@ -228,9 +228,9 @@ export function ChallengesTab() {
 
         <p className="mt-2 text-muted-foreground text-xs">
           {totalCompleted === totalChallenges
-            ? 'All challenges complete — nice work! 🎉'
+            ? "All challenges complete — nice work! 🎉"
             : totalCompleted === 0
-              ? 'Complete challenges to earn bonus reputation'
+              ? "Complete challenges to earn bonus reputation"
               : `${totalChallenges - totalCompleted} more to go — keep it up!`}
         </p>
       </div>
@@ -238,7 +238,7 @@ export function ChallengesTab() {
       {/* Daily Challenges */}
       <div
         className="animate-fadeIn"
-        style={{ animationDelay: '0ms', animationFillMode: 'backwards' }}
+        style={{ animationDelay: "0ms", animationFillMode: "backwards" }}
       >
         <div className="mb-2 flex items-center justify-between">
           <span className="font-semibold text-foreground text-sm">
@@ -256,7 +256,7 @@ export function ChallengesTab() {
               className="animate-fadeIn"
               style={{
                 animationDelay: `${(i + 1) * 60}ms`,
-                animationFillMode: 'backwards',
+                animationFillMode: "backwards",
               }}
             >
               <ChallengeCard
@@ -286,7 +286,7 @@ export function ChallengesTab() {
       {/* Weekly Challenges */}
       <div
         className="animate-fadeIn"
-        style={{ animationDelay: '200ms', animationFillMode: 'backwards' }}
+        style={{ animationDelay: "200ms", animationFillMode: "backwards" }}
       >
         <div className="mb-2 flex items-center justify-between">
           <span className="font-semibold text-foreground text-sm">
@@ -304,7 +304,7 @@ export function ChallengesTab() {
               className="animate-fadeIn"
               style={{
                 animationDelay: `${250 + (i + 1) * 60}ms`,
-                animationFillMode: 'backwards',
+                animationFillMode: "backwards",
               }}
             >
               <ChallengeCard

@@ -55,12 +55,12 @@ import {
   publicRateLimit,
   requireUserByIdentifier,
   withErrorHandling,
-} from '@feed/api';
-import { db } from '@feed/db';
-import { NPCInvestmentManager } from '@feed/engine';
-import { toISO } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@feed/api";
+import { db } from "@feed/db";
+import { NPCInvestmentManager } from "@feed/engine";
+import { toISO } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 interface RouteParams {
   params: Promise<{
@@ -70,7 +70,7 @@ interface RouteParams {
 
 export const GET = withErrorHandling(async function GET(
   request: NextRequest,
-  { params }: RouteParams
+  { params }: RouteParams,
 ) {
   const { error, rateLimitInfo } = await publicRateLimit(request);
   if (error) return error;
@@ -88,8 +88,8 @@ export const GET = withErrorHandling(async function GET(
 
   if (!pool) {
     return NextResponse.json(
-      { error: 'No active pool found for actor' },
-      { status: 404 }
+      { error: "No active pool found for actor" },
+      { status: 404 },
     );
   }
 
@@ -114,7 +114,7 @@ export const GET = withErrorHandling(async function GET(
       openedAt: true,
     },
     orderBy: {
-      openedAt: 'desc',
+      openedAt: "desc",
     },
   });
 
@@ -124,10 +124,10 @@ export const GET = withErrorHandling(async function GET(
     ticker: pos.ticker,
     marketId: pos.marketId,
     side: pos.side,
-    size: Number.parseFloat(pos.size!.toString()),
-    entryPrice: Number.parseFloat(pos.entryPrice!.toString()),
-    currentPrice: Number.parseFloat(pos.currentPrice!.toString()),
-    unrealizedPnL: Number.parseFloat(pos.unrealizedPnL!.toString()),
+    size: Number.parseFloat(pos.size?.toString()),
+    entryPrice: Number.parseFloat(pos.entryPrice?.toString()),
+    currentPrice: Number.parseFloat(pos.currentPrice?.toString()),
+    unrealizedPnL: Number.parseFloat(pos.unrealizedPnL?.toString()),
     leverage: pos.leverage,
     createdAt: toISO(pos.openedAt),
   }));

@@ -5,23 +5,23 @@
  * and repeat requests within TTL return the stored URL without regenerating.
  */
 
-import { createHash } from 'node:crypto';
-import { getCache, setCache } from '../cache/cache-service';
+import { createHash } from "node:crypto";
+import { getCache, setCache } from "../cache/cache-service";
 
-const CACHE_NAMESPACE = 'agent_avatar_idem';
+const CACHE_NAMESPACE = "agent_avatar_idem";
 const TTL_SECONDS = 900;
 
 const inflight = new Map<string, Promise<{ url: string }>>();
 
 function cacheKeyFor(userId: string, idempotencyKey: string): string {
-  const hash = createHash('sha256').update(idempotencyKey).digest('hex');
+  const hash = createHash("sha256").update(idempotencyKey).digest("hex");
   return `${userId}:${hash}`;
 }
 
 /** Fast path for API: return stored URL without starting fal (skips rate limit). */
 export async function getCachedAgentAvatarUrl(
   userId: string,
-  idempotencyKey: string
+  idempotencyKey: string,
 ): Promise<string | null> {
   const cacheKey = cacheKeyFor(userId, idempotencyKey);
   const cached = await getCache<{ url: string }>(cacheKey, {
@@ -37,7 +37,7 @@ export async function getCachedAgentAvatarUrl(
 export async function executeAgentAvatarOnce(
   userId: string,
   idempotencyKey: string,
-  work: () => Promise<{ url: string }>
+  work: () => Promise<{ url: string }>,
 ): Promise<{ url: string }> {
   const cacheKey = cacheKeyFor(userId, idempotencyKey);
 
@@ -66,7 +66,7 @@ export async function executeAgentAvatarOnce(
         {
           namespace: CACHE_NAMESPACE,
           ttl: TTL_SECONDS,
-        }
+        },
       );
       return result;
     })().finally(() => {

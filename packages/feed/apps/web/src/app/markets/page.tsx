@@ -1,24 +1,24 @@
-'use client';
+"use client";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
-import nextDynamic from 'next/dynamic';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
-import { toast } from 'sonner';
-import { PageContainer } from '@/components/shared/PageContainer';
-import { PositionsTab } from '@/components/wallet/v2/positions-tab';
-import { useAuth } from '@/hooks/useAuth';
-import { useUserPositionsPolling } from '@/stores/userPositionsStore';
-import { invalidateWalletBalance } from '@/stores/walletBalanceStore';
-import { MarketsTradingTerminal } from './_components/terminal/MarketsTradingTerminal';
+import nextDynamic from "next/dynamic";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
+import { PageContainer } from "@/components/shared/PageContainer";
+import { PositionsTab } from "@/components/wallet/v2/positions-tab";
+import { useAuth } from "@/hooks/useAuth";
+import { useUserPositionsPolling } from "@/stores/userPositionsStore";
+import { invalidateWalletBalance } from "@/stores/walletBalanceStore";
+import { MarketsTradingTerminal } from "./_components/terminal/MarketsTradingTerminal";
 
 const BuyPointsModal = nextDynamic(
   () =>
-    import('@/components/points/BuyPointsModal').then((m) => ({
+    import("@/components/points/BuyPointsModal").then((m) => ({
       default: m.BuyPointsModal,
     })),
-  { ssr: false }
+  { ssr: false },
 );
 
 /**
@@ -46,20 +46,20 @@ export default function MarketsPage() {
     // Prevent re-entry if already handled (can happen before router.replace completes)
     if (stripeHandledRef.current) return;
 
-    const stripeSuccess = searchParams.get('stripe_success');
-    const stripeCancelled = searchParams.get('stripe_cancelled');
+    const stripeSuccess = searchParams.get("stripe_success");
+    const stripeCancelled = searchParams.get("stripe_cancelled");
 
-    if (stripeSuccess === 'true') {
+    if (stripeSuccess === "true") {
       stripeHandledRef.current = true;
       // Payment received - points are credited via webhook asynchronously
       // Message is conservative since webhook timing is not guaranteed
       const showToast = () => {
         toast.success(
-          'Payment received! Your points will be credited shortly.',
+          "Payment received! Your points will be credited shortly.",
           {
             duration: 5000,
-            description: 'Your balance will update automatically.',
-          }
+            description: "Your balance will update automatically.",
+          },
         );
         invalidateWalletBalance();
       };
@@ -68,17 +68,17 @@ export default function MarketsPage() {
 
       // Clean up URL params after showing toast
       const url = new URL(window.location.href);
-      url.searchParams.delete('stripe_success');
-      url.searchParams.delete('session_id');
+      url.searchParams.delete("stripe_success");
+      url.searchParams.delete("session_id");
       router.replace(url.pathname + url.search, { scroll: false });
 
       return () => clearTimeout(timeout);
-    } else if (stripeCancelled === 'true') {
+    } else if (stripeCancelled === "true") {
       stripeHandledRef.current = true;
       invalidateWalletBalance();
       // Clean up URL params
       const url = new URL(window.location.href);
-      url.searchParams.delete('stripe_cancelled');
+      url.searchParams.delete("stripe_cancelled");
       router.replace(url.pathname + url.search, { scroll: false });
     }
     return undefined;

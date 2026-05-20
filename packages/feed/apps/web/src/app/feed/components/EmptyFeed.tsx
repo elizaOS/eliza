@@ -1,14 +1,14 @@
-'use client';
+"use client";
 
-import { BookOpen, Clock, Compass, FileText, Users } from 'lucide-react';
-import { EmptyState } from '@/components/shared/EmptyState';
+import { BookOpen, Clock, Compass, FileText, Users } from "lucide-react";
+import { EmptyState } from "@/components/shared/EmptyState";
 
 type EmptyFeedVariant =
-  | 'latest'
-  | 'stories'
-  | 'forYou'
-  | 'following'
-  | 'default';
+  | "latest"
+  | "stories"
+  | "forYou"
+  | "following"
+  | "default";
 
 interface EmptyFeedProps {
   variant: EmptyFeedVariant;
@@ -26,7 +26,7 @@ interface EmptyFeedProps {
  * - default: Generic empty state
  */
 export function EmptyFeed({ variant, isLoading = false }: EmptyFeedProps) {
-  if (variant === 'latest') {
+  if (variant === "latest") {
     return (
       <EmptyState
         icon={FileText}
@@ -36,7 +36,7 @@ export function EmptyFeed({ variant, isLoading = false }: EmptyFeedProps) {
     );
   }
 
-  if (variant === 'forYou') {
+  if (variant === "forYou") {
     return (
       <EmptyState
         icon={Compass}
@@ -46,7 +46,7 @@ export function EmptyFeed({ variant, isLoading = false }: EmptyFeedProps) {
     );
   }
 
-  if (variant === 'stories') {
+  if (variant === "stories") {
     return (
       <EmptyState
         icon={BookOpen}
@@ -56,15 +56,15 @@ export function EmptyFeed({ variant, isLoading = false }: EmptyFeedProps) {
     );
   }
 
-  if (variant === 'following') {
+  if (variant === "following") {
     return (
       <EmptyState
         icon={Users}
         title="Not Following Anyone Yet"
         description={
           isLoading
-            ? 'Loading following...'
-            : 'Follow profiles to see their posts here. Visit a profile and click the Follow button.'
+            ? "Loading following..."
+            : "Follow profiles to see their posts here. Visit a profile and click the Follow button."
         }
       />
     );

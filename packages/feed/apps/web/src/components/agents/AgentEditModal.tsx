@@ -1,11 +1,11 @@
-'use client';
+"use client";
 
 import {
   cn,
   getAgentDefaultProfileImageUrl,
   parseAgentPresetProfileIndex,
   TOTAL_AGENT_DEFAULT_PROFILE_PICTURES,
-} from '@feed/shared';
+} from "@feed/shared";
 import {
   ChevronLeft,
   ChevronRight,
@@ -13,15 +13,15 @@ import {
   Trash2,
   Upload,
   X as XIcon,
-} from 'lucide-react';
+} from "lucide-react";
 
-import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { toast } from 'sonner';
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import {
-  AgentConfigurationData,
+  type AgentConfigurationData,
   AgentConfigurationForm,
-} from '@/components/agents/AgentConfigurationForm';
+} from "@/components/agents/AgentConfigurationForm";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -31,10 +31,10 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import { useAuth } from '@/hooks/useAuth';
-import { apiUrl } from '@/utils/api-url';
-import { uploadImage, validateImageFile } from '@/utils/upload-image';
+} from "@/components/ui/alert-dialog";
+import { useAuth } from "@/hooks/useAuth";
+import { apiUrl } from "@/utils/api-url";
+import { uploadImage, validateImageFile } from "@/utils/upload-image";
 
 const TOTAL_BANNERS = 100;
 const MAX_BIO_LENGTH = 160;
@@ -50,7 +50,7 @@ interface AgentData {
   bio?: string[];
   personality?: string;
   tradingStrategy?: string;
-  modelTier: 'free' | 'pro';
+  modelTier: "free" | "pro";
   isActive: boolean;
   autonomousEnabled: boolean;
   autonomousPosting?: boolean;
@@ -86,17 +86,17 @@ export function AgentEditModal({
 
   const [profileData, setProfileData] = useState({
     name: agent.name,
-    description: agent.description || '',
-    profileImageUrl: agent.profileImageUrl || '',
-    coverImageUrl: agent.coverImageUrl || '',
+    description: agent.description || "",
+    profileImageUrl: agent.profileImageUrl || "",
+    coverImageUrl: agent.coverImageUrl || "",
   });
 
   const [promptsData, setPromptsData] = useState({
     system: agent.system,
     personality:
       agent.personality ||
-      (Array.isArray(agent.bio) ? agent.bio.filter((b) => b).join('\n') : ''),
-    tradingStrategy: agent.tradingStrategy || '',
+      (Array.isArray(agent.bio) ? agent.bio.filter((b) => b).join("\n") : ""),
+    tradingStrategy: agent.tradingStrategy || "",
   });
 
   const [settingsData, setSettingsData] = useState<AgentConfigurationData>({
@@ -111,10 +111,10 @@ export function AgentEditModal({
 
   // Image upload state
   const [uploadedProfileFile, setUploadedProfileFile] = useState<File | null>(
-    null
+    null,
   );
   const [uploadedBannerFile, setUploadedBannerFile] = useState<File | null>(
-    null
+    null,
   );
   const [profilePictureIndex, setProfilePictureIndex] = useState(() => {
     return parseAgentPresetProfileIndex(agent.profileImageUrl) ?? 1;
@@ -126,14 +126,14 @@ export function AgentEditModal({
   const [uploadedProfileImage, setUploadedProfileImage] = useState<
     string | null
   >(
-    agent.profileImageUrl?.startsWith('/assets/')
+    agent.profileImageUrl?.startsWith("/assets/")
       ? null
-      : agent.profileImageUrl || null
+      : agent.profileImageUrl || null,
   );
   const [uploadedBanner, setUploadedBanner] = useState<string | null>(
-    agent.coverImageUrl?.startsWith('/assets/')
+    agent.coverImageUrl?.startsWith("/assets/")
       ? null
-      : agent.coverImageUrl || null
+      : agent.coverImageUrl || null,
   );
 
   const profileInputRef = useRef<HTMLInputElement>(null);
@@ -161,11 +161,11 @@ export function AgentEditModal({
   }, [currentProfileImage, currentBanner]);
 
   // Cycle profile picture
-  const cycleProfilePicture = useCallback((direction: 'next' | 'prev') => {
+  const cycleProfilePicture = useCallback((direction: "next" | "prev") => {
     setUploadedProfileImage(null);
     setUploadedProfileFile(null);
     setProfilePictureIndex((prev) => {
-      if (direction === 'next') {
+      if (direction === "next") {
         return prev >= TOTAL_AGENT_DEFAULT_PROFILE_PICTURES ? 1 : prev + 1;
       }
       return prev <= 1 ? TOTAL_AGENT_DEFAULT_PROFILE_PICTURES : prev - 1;
@@ -173,11 +173,11 @@ export function AgentEditModal({
   }, []);
 
   // Cycle banner
-  const cycleBanner = useCallback((direction: 'next' | 'prev') => {
+  const cycleBanner = useCallback((direction: "next" | "prev") => {
     setUploadedBanner(null);
     setUploadedBannerFile(null);
     setBannerIndex((prev) => {
-      if (direction === 'next') {
+      if (direction === "next") {
         return prev >= TOTAL_BANNERS ? 1 : prev + 1;
       }
       return prev <= 1 ? TOTAL_BANNERS : prev - 1;
@@ -200,7 +200,7 @@ export function AgentEditModal({
       };
       reader.readAsDataURL(file);
     },
-    []
+    [],
   );
 
   const handleBannerUpload = useCallback(
@@ -219,24 +219,24 @@ export function AgentEditModal({
       };
       reader.readAsDataURL(file);
     },
-    []
+    [],
   );
 
   // Handle save
   const handleSave = async () => {
     if (!profileData.name.trim()) {
-      toast.error('Agent name is required');
+      toast.error("Agent name is required");
       return;
     }
     if (!promptsData.system.trim()) {
-      toast.error('System prompt is required');
+      toast.error("System prompt is required");
       return;
     }
 
     setSaving(true);
     const token = await getAccessToken();
     if (!token) {
-      toast.error('Authentication required');
+      toast.error("Authentication required");
       setSaving(false);
       return;
     }
@@ -250,10 +250,10 @@ export function AgentEditModal({
         try {
           finalProfileImageUrl = await uploadImage(
             uploadedProfileFile,
-            'profile'
+            "profile",
           );
         } catch {
-          toast.error('Failed to upload profile image');
+          toast.error("Failed to upload profile image");
           setSaving(false);
           return;
         }
@@ -261,19 +261,19 @@ export function AgentEditModal({
 
       if (uploadedBannerFile) {
         try {
-          finalCoverImageUrl = await uploadImage(uploadedBannerFile, 'cover');
+          finalCoverImageUrl = await uploadImage(uploadedBannerFile, "cover");
         } catch {
-          toast.error('Failed to upload cover image');
+          toast.error("Failed to upload cover image");
           setSaving(false);
           return;
         }
       }
 
       const res = await fetch(apiUrl(`/api/agents/${agent.id}`), {
-        method: 'PUT',
+        method: "PUT",
         headers: {
           Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           name: profileData.name,
@@ -300,7 +300,7 @@ export function AgentEditModal({
 
       if (!res.ok) {
         const error = (await res.json()) as { error?: string };
-        toast.error(error.error || 'Failed to update agent');
+        toast.error(error.error || "Failed to update agent");
         setSaving(false);
         return;
       }
@@ -308,7 +308,7 @@ export function AgentEditModal({
       onUpdate();
       onClose();
     } catch {
-      toast.error('An error occurred while saving');
+      toast.error("An error occurred while saving");
     } finally {
       setSaving(false);
     }
@@ -321,26 +321,26 @@ export function AgentEditModal({
     const token = await getAccessToken();
 
     if (!token) {
-      toast.error('Authentication required');
+      toast.error("Authentication required");
       setDeleting(false);
       return;
     }
 
     try {
       const res = await fetch(apiUrl(`/api/agents/${agent.id}`), {
-        method: 'DELETE',
+        method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
       });
 
       if (res.ok) {
         onClose();
-        router.push('/agents');
+        router.push("/agents");
       } else {
         const error = await res.json().catch(() => ({}) as { error?: string });
-        toast.error(error.error || 'Failed to delete agent');
+        toast.error(error.error || "Failed to delete agent");
       }
     } catch {
-      toast.error('Failed to delete agent');
+      toast.error("Failed to delete agent");
     } finally {
       setDeleting(false);
     }
@@ -364,7 +364,7 @@ export function AgentEditModal({
             <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/40 opacity-100 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100">
               <button
                 type="button"
-                onClick={() => cycleBanner('prev')}
+                onClick={() => cycleBanner("prev")}
                 className="rounded-full bg-background/90 p-1.5 hover:bg-background sm:p-2"
               >
                 <ChevronLeft className="h-4 w-4" />
@@ -381,7 +381,7 @@ export function AgentEditModal({
               </label>
               <button
                 type="button"
-                onClick={() => cycleBanner('next')}
+                onClick={() => cycleBanner("next")}
                 className="rounded-full bg-background/90 p-1.5 hover:bg-background sm:p-2"
               >
                 <ChevronRight className="h-4 w-4" />
@@ -400,7 +400,7 @@ export function AgentEditModal({
               <div className="absolute inset-0 flex items-center justify-center gap-1 bg-black/40 opacity-100 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100">
                 <button
                   type="button"
-                  onClick={() => cycleProfilePicture('prev')}
+                  onClick={() => cycleProfilePicture("prev")}
                   className="rounded-full bg-background/90 p-1 hover:bg-background sm:p-1.5"
                 >
                   <ChevronLeft className="h-3 w-3 sm:h-4 sm:w-4" />
@@ -417,7 +417,7 @@ export function AgentEditModal({
                 </label>
                 <button
                   type="button"
-                  onClick={() => cycleProfilePicture('next')}
+                  onClick={() => cycleProfilePicture("next")}
                   className="rounded-full bg-background/90 p-1 hover:bg-background sm:p-1.5"
                 >
                   <ChevronRight className="h-3 w-3 sm:h-4 sm:w-4" />
@@ -450,8 +450,8 @@ export function AgentEditModal({
                 setProfileData((prev) => ({ ...prev, name: e.target.value }))
               }
               className={cn(
-                'w-full rounded-lg border border-border bg-muted px-4 py-3',
-                'focus:outline-none focus:ring-2 focus:ring-[#0066FF]'
+                "w-full rounded-lg border border-border bg-muted px-4 py-3",
+                "focus:outline-none focus:ring-2 focus:ring-[#0066FF]",
               )}
               placeholder="My Awesome Agent"
             />
@@ -471,7 +471,7 @@ export function AgentEditModal({
             </div>
             <textarea
               id="edit-description"
-              value={profileData.description ?? ''}
+              value={profileData.description ?? ""}
               onChange={(e) =>
                 setProfileData((prev) => ({
                   ...prev,
@@ -481,8 +481,8 @@ export function AgentEditModal({
               maxLength={MAX_BIO_LENGTH}
               rows={3}
               className={cn(
-                'w-full resize-none rounded-lg border border-border bg-muted px-4 py-3',
-                'focus:outline-none focus:ring-2 focus:ring-[#0066FF]'
+                "w-full resize-none rounded-lg border border-border bg-muted px-4 py-3",
+                "focus:outline-none focus:ring-2 focus:ring-[#0066FF]",
               )}
               placeholder="A short description of your agent..."
             />
@@ -510,8 +510,8 @@ export function AgentEditModal({
             placeholder="You are a trading agent focused on..."
             rows={4}
             className={cn(
-              'w-full resize-none rounded-lg border border-border bg-muted px-3 py-2 font-mono text-sm sm:px-4 sm:py-3',
-              'focus:outline-none focus:ring-2 focus:ring-[#0066FF]'
+              "w-full resize-none rounded-lg border border-border bg-muted px-3 py-2 font-mono text-sm sm:px-4 sm:py-3",
+              "focus:outline-none focus:ring-2 focus:ring-[#0066FF]",
             )}
           />
           <p className="text-muted-foreground text-xs">
@@ -535,8 +535,8 @@ export function AgentEditModal({
             placeholder="Analytical and methodical..."
             rows={3}
             className={cn(
-              'w-full resize-none rounded-lg border border-border bg-muted px-3 py-2 font-mono text-sm sm:px-4 sm:py-3',
-              'focus:outline-none focus:ring-2 focus:ring-[#0066FF]'
+              "w-full resize-none rounded-lg border border-border bg-muted px-3 py-2 font-mono text-sm sm:px-4 sm:py-3",
+              "focus:outline-none focus:ring-2 focus:ring-[#0066FF]",
             )}
           />
           <p className="text-muted-foreground text-xs">
@@ -560,8 +560,8 @@ export function AgentEditModal({
             placeholder="Focus on momentum indicators..."
             rows={3}
             className={cn(
-              'w-full resize-none rounded-lg border border-border bg-muted px-3 py-2 font-mono text-sm sm:px-4 sm:py-3',
-              'focus:outline-none focus:ring-2 focus:ring-[#0066FF]'
+              "w-full resize-none rounded-lg border border-border bg-muted px-3 py-2 font-mono text-sm sm:px-4 sm:py-3",
+              "focus:outline-none focus:ring-2 focus:ring-[#0066FF]",
             )}
           />
           <p className="text-muted-foreground text-xs">
@@ -599,7 +599,7 @@ export function AgentEditModal({
             ) : (
               <Trash2 className="h-4 w-4" />
             )}
-            {deleting ? 'Deleting...' : 'Delete'}
+            {deleting ? "Deleting..." : "Delete"}
           </button>
         </div>
       </div>
@@ -637,15 +637,15 @@ export function AgentEditModal({
             onClick={handleSave}
             disabled={saving}
             className={cn(
-              'flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 font-medium transition-all sm:py-3',
-              'bg-[#0066FF] text-primary-foreground hover:bg-[#2952d9]',
-              'disabled:cursor-not-allowed disabled:opacity-50'
+              "flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 font-medium transition-all sm:py-3",
+              "bg-[#0066FF] text-primary-foreground hover:bg-[#2952d9]",
+              "disabled:cursor-not-allowed disabled:opacity-50",
             )}
           >
             {saving ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
-              'Save Changes'
+              "Save Changes"
             )}
           </button>
         </div>

@@ -6,75 +6,75 @@
  * propagating bad state. Critical for data integrity.
  */
 
-import { describe, expect, mock, test } from 'bun:test';
-import { FeedGenerator } from '../FeedGenerator';
-import type { FeedLLMClient } from '../llm/openai-client';
+import { describe, expect, mock, test } from "bun:test";
+import { FeedGenerator } from "../FeedGenerator";
+import type { FeedLLMClient } from "../llm/openai-client";
 
 // Create a minimal mock LLM client for validation tests
 function createMockLLMClient(): FeedLLMClient {
   return {
-    generateText: mock(() => Promise.resolve('')),
+    generateText: mock(() => Promise.resolve("")),
     generateJSON: mock(() => Promise.resolve({})),
-    getProvider: () => 'groq',
+    getProvider: () => "groq",
     getStats: () => ({
-      provider: 'groq' as const,
-      model: 'test',
+      provider: "groq" as const,
+      model: "test",
       totalTokens: 0,
       totalCost: 0,
     }),
   } as unknown as FeedLLMClient;
 }
 
-describe('Fail-Fast Validation', () => {
-  test('generateDayFeed throws on invalid day number', async () => {
+describe("Fail-Fast Validation", () => {
+  test("generateDayFeed throws on invalid day number", async () => {
     const llm = createMockLLMClient();
     const feed = new FeedGenerator(llm);
 
     await expect(feed.generateDayFeed(0, [], [])).rejects.toThrow(
-      'day must be between 1 and 30'
+      "day must be between 1 and 30",
     );
 
     await expect(feed.generateDayFeed(31, [], [])).rejects.toThrow(
-      'day must be between 1 and 30'
+      "day must be between 1 and 30",
     );
   });
 
-  test('generateDayFeed throws on empty actors array', async () => {
+  test("generateDayFeed throws on empty actors array", async () => {
     const llm = createMockLLMClient();
     const feed = new FeedGenerator(llm);
 
     await expect(feed.generateDayFeed(1, [], [])).rejects.toThrow(
-      'cannot be empty'
+      "cannot be empty",
     );
   });
 
-  test('skips posts with empty content', () => {
+  test("skips posts with empty content", () => {
     const posts = [
-      { post: 'Valid content', sentiment: 0, clueStrength: 0.5 },
-      { post: '', sentiment: 0, clueStrength: 0.5 }, // Empty - should skip
-      { post: '   ', sentiment: 0, clueStrength: 0.5 }, // Whitespace - should skip
-      { post: 'Another valid', sentiment: 0, clueStrength: 0.5 },
+      { post: "Valid content", sentiment: 0, clueStrength: 0.5 },
+      { post: "", sentiment: 0, clueStrength: 0.5 }, // Empty - should skip
+      { post: "   ", sentiment: 0, clueStrength: 0.5 }, // Whitespace - should skip
+      { post: "Another valid", sentiment: 0, clueStrength: 0.5 },
     ];
 
     const valid = posts.filter((p) => p.post && p.post.trim().length > 0);
     expect(valid.length).toBe(2);
   });
 
-  test('validates event descriptions are not empty', () => {
+  test("validates event descriptions are not empty", () => {
     const events = [
-      { event: 'Valid event' },
-      { event: '' },
-      { event: 'Another valid event' },
+      { event: "Valid event" },
+      { event: "" },
+      { event: "Another valid event" },
     ];
 
     const valid = events.filter((e) => e.event && e.event.trim().length > 0);
     expect(valid.length).toBe(2);
   });
 
-  test('validates content length limits', () => {
+  test("validates content length limits", () => {
     const MAX_CONTENT_LENGTH = 5000;
-    const longContent = 'a'.repeat(10000);
-    const validContent = 'Valid post content';
+    const longContent = "a".repeat(10000);
+    const validContent = "Valid post content";
 
     expect(longContent.length).toBeGreaterThan(MAX_CONTENT_LENGTH);
     expect(validContent.length).toBeLessThan(MAX_CONTENT_LENGTH);

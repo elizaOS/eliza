@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { cn, logger } from '@feed/shared';
+import { cn, logger } from "@feed/shared";
 import {
   CheckCircle,
   Loader2,
@@ -13,23 +13,23 @@ import {
   UserPlus,
   Users,
   X,
-} from 'lucide-react';
+} from "lucide-react";
 import {
   useCallback,
   useEffect,
   useMemo,
   useState,
   useTransition,
-} from 'react';
-import { toast } from 'sonner';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { apiUrl } from '@/utils/api-url';
+} from "react";
+import { toast } from "sonner";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { apiUrl } from "@/utils/api-url";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-type WhitelistSource = 'snapshot_first_100' | 'admin_manual' | 'leaderboard';
+type WhitelistSource = "snapshot_first_100" | "admin_manual" | "leaderboard";
 
 interface WhitelistEntry {
   id: string;
@@ -59,7 +59,7 @@ interface WhitelistConfig {
   updatedBy: string | null;
 }
 
-type FilterSource = 'all' | WhitelistSource;
+type FilterSource = "all" | WhitelistSource;
 
 // ---------------------------------------------------------------------------
 // Component
@@ -73,16 +73,16 @@ export function WhitelistTab() {
   const [loading, setLoading] = useState(true);
 
   // Filter & search
-  const [filterSource, setFilterSource] = useState<FilterSource>('all');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [filterSource, setFilterSource] = useState<FilterSource>("all");
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Add user form
-  const [addUserId, setAddUserId] = useState('');
-  const [addReason, setAddReason] = useState('');
+  const [addUserId, setAddUserId] = useState("");
+  const [addReason, setAddReason] = useState("");
   const [isPending, startTransition] = useTransition();
 
   // Leaderboard config
-  const [rankThreshold, setRankThreshold] = useState('');
+  const [rankThreshold, setRankThreshold] = useState("");
   const [isSavingConfig, setIsSavingConfig] = useState(false);
 
   // Remove
@@ -95,7 +95,7 @@ export function WhitelistTab() {
   const filteredEntries = useMemo(() => {
     let result = entries;
 
-    if (filterSource !== 'all') {
+    if (filterSource !== "all") {
       result = result.filter((e) => e.source === filterSource);
     }
 
@@ -106,7 +106,7 @@ export function WhitelistTab() {
           e.username?.toLowerCase().includes(q) ||
           e.userId.toLowerCase().includes(q) ||
           e.walletAddress?.toLowerCase().includes(q) ||
-          e.displayName?.toLowerCase().includes(q)
+          e.displayName?.toLowerCase().includes(q),
       );
     }
 
@@ -119,17 +119,17 @@ export function WhitelistTab() {
 
   const fetchEntries = useCallback(async () => {
     try {
-      const res = await fetch(apiUrl('/api/admin/whitelist'));
-      if (!res.ok) throw new Error('Failed to fetch whitelist');
+      const res = await fetch(apiUrl("/api/admin/whitelist"));
+      if (!res.ok) throw new Error("Failed to fetch whitelist");
       const data = await res.json();
       setEntries(data.entries ?? []);
       setStats(data.stats ?? null);
     } catch (err) {
-      toast.error('Failed to load whitelist data');
+      toast.error("Failed to load whitelist data");
       logger.error(
-        'Failed to load whitelist data',
+        "Failed to load whitelist data",
         err instanceof Error ? err : { error: err },
-        'WhitelistTab'
+        "WhitelistTab",
       );
     } finally {
       setLoading(false);
@@ -138,21 +138,21 @@ export function WhitelistTab() {
 
   const fetchConfig = useCallback(async () => {
     try {
-      const res = await fetch(apiUrl('/api/admin/whitelist/config'));
-      if (!res.ok) throw new Error('Failed to fetch config');
+      const res = await fetch(apiUrl("/api/admin/whitelist/config"));
+      if (!res.ok) throw new Error("Failed to fetch config");
       const data = await res.json();
       const cfg = data.config ?? null;
       setConfig(cfg);
       setRankThreshold(
         cfg?.leaderboardRankThreshold != null
           ? String(cfg.leaderboardRankThreshold)
-          : '100'
+          : "100",
       );
     } catch (err) {
       logger.error(
-        'Failed to fetch whitelist config',
+        "Failed to fetch whitelist config",
         err instanceof Error ? err : { error: err },
-        'WhitelistTab'
+        "WhitelistTab",
       );
     }
   }, []);
@@ -171,12 +171,12 @@ export function WhitelistTab() {
 
     startTransition(async () => {
       try {
-        const res = await fetch(apiUrl('/api/admin/whitelist'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+        const res = await fetch(apiUrl("/api/admin/whitelist"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             userId: addUserId.trim(),
-            source: 'admin_manual',
+            source: "admin_manual",
             reason: addReason.trim() || undefined,
           }),
         });
@@ -184,15 +184,15 @@ export function WhitelistTab() {
         const data = await res.json();
 
         if (!res.ok) {
-          toast.error(data.error ?? 'Failed to add user');
+          toast.error(data.error ?? "Failed to add user");
           return;
         }
 
-        setAddUserId('');
-        setAddReason('');
+        setAddUserId("");
+        setAddReason("");
         await fetchEntries();
       } catch {
-        toast.error('Failed to add user');
+        toast.error("Failed to add user");
       }
     });
   }
@@ -204,22 +204,22 @@ export function WhitelistTab() {
 
     setRemovingUserId(userId);
     try {
-      const res = await fetch(apiUrl('/api/admin/whitelist'), {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch(apiUrl("/api/admin/whitelist"), {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId }),
       });
 
       const data = await res.json();
 
       if (!res.ok) {
-        toast.error(data.error ?? 'Failed to remove user');
+        toast.error(data.error ?? "Failed to remove user");
         return;
       }
 
       await fetchEntries();
     } catch {
-      toast.error('Failed to remove user');
+      toast.error("Failed to remove user");
     } finally {
       setRemovingUserId(null);
     }
@@ -233,26 +233,26 @@ export function WhitelistTab() {
         : 100;
 
       if (Number.isNaN(threshold) || threshold < 1) {
-        toast.error('Top N must be a positive integer');
+        toast.error("Top N must be a positive integer");
         return;
       }
 
-      const res = await fetch(apiUrl('/api/admin/whitelist/config'), {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch(apiUrl("/api/admin/whitelist/config"), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ leaderboardRankThreshold: threshold }),
       });
 
       const data = await res.json();
 
       if (!res.ok) {
-        toast.error(data.error ?? 'Failed to save config');
+        toast.error(data.error ?? "Failed to save config");
         return;
       }
 
       setConfig(data.config ?? null);
     } catch {
-      toast.error('Failed to save config');
+      toast.error("Failed to save config");
     } finally {
       setIsSavingConfig(false);
     }
@@ -264,23 +264,23 @@ export function WhitelistTab() {
 
   function sourceLabel(source: WhitelistSource) {
     switch (source) {
-      case 'snapshot_first_100':
-        return 'First 100';
-      case 'admin_manual':
-        return 'Admin';
-      case 'leaderboard':
-        return 'Leaderboard';
+      case "snapshot_first_100":
+        return "First 100";
+      case "admin_manual":
+        return "Admin";
+      case "leaderboard":
+        return "Leaderboard";
     }
   }
 
   function sourceBadgeClasses(source: WhitelistSource) {
     switch (source) {
-      case 'snapshot_first_100':
-        return 'bg-blue-500/10 text-blue-500';
-      case 'admin_manual':
-        return 'bg-purple-500/10 text-purple-500';
-      case 'leaderboard':
-        return 'bg-amber-500/10 text-amber-500';
+      case "snapshot_first_100":
+        return "bg-blue-500/10 text-blue-500";
+      case "admin_manual":
+        return "bg-purple-500/10 text-purple-500";
+      case "leaderboard":
+        return "bg-amber-500/10 text-amber-500";
     }
   }
 
@@ -331,7 +331,7 @@ export function WhitelistTab() {
             <p className="mt-1 font-bold text-2xl">
               {config?.leaderboardRankThreshold != null
                 ? `Top ${config.leaderboardRankThreshold}`
-                : 'Top 100'}
+                : "Top 100"}
             </p>
           </div>
           <div className="rounded-xl border border-border bg-card p-4">
@@ -368,8 +368,8 @@ export function WhitelistTab() {
             onClick={handleSaveConfig}
             disabled={isSavingConfig}
             className={cn(
-              'flex h-9 items-center gap-1.5 rounded-lg bg-primary px-4 font-medium text-primary-foreground text-sm transition-colors',
-              'hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50'
+              "flex h-9 items-center gap-1.5 rounded-lg bg-primary px-4 font-medium text-primary-foreground text-sm transition-colors",
+              "hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50",
             )}
           >
             {isSavingConfig ? (
@@ -397,7 +397,7 @@ export function WhitelistTab() {
               value={addUserId}
               onChange={(e) => setAddUserId(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') handleAddUser();
+                if (e.key === "Enter") handleAddUser();
               }}
               placeholder="Username or User ID..."
               className="h-9 rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary"
@@ -407,7 +407,7 @@ export function WhitelistTab() {
               value={addReason}
               onChange={(e) => setAddReason(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') handleAddUser();
+                if (e.key === "Enter") handleAddUser();
               }}
               placeholder="Reason (optional)"
               className="h-9 rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary"
@@ -416,8 +416,8 @@ export function WhitelistTab() {
               onClick={handleAddUser}
               disabled={isPending || !addUserId.trim()}
               className={cn(
-                'flex h-9 items-center gap-1.5 rounded-lg bg-primary px-3 font-medium text-primary-foreground text-sm transition-colors',
-                'hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50'
+                "flex h-9 items-center gap-1.5 rounded-lg bg-primary px-3 font-medium text-primary-foreground text-sm transition-colors",
+                "hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50",
               )}
             >
               {isPending ? (
@@ -436,20 +436,20 @@ export function WhitelistTab() {
         <div className="flex gap-2">
           {(
             [
-              { key: 'all', label: 'All' },
-              { key: 'snapshot_first_100', label: 'First 100' },
-              { key: 'leaderboard', label: 'Leaderboard' },
-              { key: 'admin_manual', label: 'Admin' },
+              { key: "all", label: "All" },
+              { key: "snapshot_first_100", label: "First 100" },
+              { key: "leaderboard", label: "Leaderboard" },
+              { key: "admin_manual", label: "Admin" },
             ] as const
           ).map(({ key, label }) => (
             <button
               key={key}
               onClick={() => setFilterSource(key)}
               className={cn(
-                'rounded-lg px-3 py-1.5 font-medium text-sm transition-colors',
+                "rounded-lg px-3 py-1.5 font-medium text-sm transition-colors",
                 filterSource === key
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted text-muted-foreground hover:bg-muted/80",
               )}
             >
               {label}
@@ -468,7 +468,7 @@ export function WhitelistTab() {
           />
           {searchQuery && (
             <button
-              onClick={() => setSearchQuery('')}
+              onClick={() => setSearchQuery("")}
               className="absolute top-1/2 right-2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
             >
               <X className="h-3.5 w-3.5" />
@@ -510,8 +510,8 @@ export function WhitelistTab() {
                   className="px-4 py-8 text-center text-muted-foreground"
                 >
                   {entries.length === 0
-                    ? 'No whitelist entries yet. Add users manually or import from snapshot.'
-                    : 'No entries match your search/filter.'}
+                    ? "No whitelist entries yet. Add users manually or import from snapshot."
+                    : "No entries match your search/filter."}
                 </td>
               </tr>
             ) : (
@@ -523,7 +523,7 @@ export function WhitelistTab() {
                   <td className="px-4 py-3">
                     <div>
                       <span className="font-medium">
-                        {entry.displayName ?? entry.username ?? 'Unknown'}
+                        {entry.displayName ?? entry.username ?? "Unknown"}
                       </span>
                       {entry.username && entry.displayName && (
                         <span className="ml-1 text-muted-foreground text-xs">
@@ -538,15 +538,15 @@ export function WhitelistTab() {
                   <td className="px-4 py-3">
                     <span
                       className={cn(
-                        'inline-flex items-center rounded-full px-2 py-0.5 font-medium text-xs',
-                        sourceBadgeClasses(entry.source)
+                        "inline-flex items-center rounded-full px-2 py-0.5 font-medium text-xs",
+                        sourceBadgeClasses(entry.source),
                       )}
                     >
                       {sourceLabel(entry.source)}
                     </span>
                   </td>
                   <td className="max-w-[200px] truncate px-4 py-3 text-muted-foreground text-xs">
-                    {entry.reason ?? '—'}
+                    {entry.reason ?? "—"}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground text-xs">
                     {new Date(entry.grantedAt).toLocaleDateString()}

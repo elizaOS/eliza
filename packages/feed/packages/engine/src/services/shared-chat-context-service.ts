@@ -18,12 +18,12 @@ import {
   messages,
   users,
   worldFacts,
-} from '@feed/db';
-import { generateSnowflakeId, logger } from '@feed/shared';
-import { GroupChatService } from './group-chat-service';
+} from "@feed/db";
+import { generateSnowflakeId, logger } from "@feed/shared";
+import { GroupChatService } from "./group-chat-service";
 
-const SHARED_CHAT_CONTEXT_CATEGORY = 'shared_chat_context';
-const SHARED_CHAT_CONTEXT_SOURCE = 'shared-chat-context';
+const SHARED_CHAT_CONTEXT_CATEGORY = "shared_chat_context";
+const SHARED_CHAT_CONTEXT_SOURCE = "shared-chat-context";
 const DEFAULT_MESSAGE_WINDOW = 10;
 const DEFAULT_CHAT_LIMIT = 10;
 const DEFAULT_FACT_LIMIT = 12;
@@ -31,63 +31,63 @@ const DEFAULT_STALE_MINUTES = 30;
 const DEFAULT_REFRESH_THRESHOLD = 10;
 
 const STOP_WORDS = new Set([
-  'about',
-  'after',
-  'again',
-  'also',
-  'and',
-  'any',
-  'are',
-  'because',
-  'been',
-  'being',
-  'between',
-  'can',
-  'could',
-  'docs',
-  'finish',
-  'from',
-  'hey',
-  'have',
-  'having',
-  'here',
-  'into',
-  'just',
-  'like',
-  'made',
-  'make',
-  'more',
-  'most',
-  'not',
-  'only',
-  'other',
-  'over',
-  'please',
-  'really',
-  'review',
-  'said',
-  'should',
-  'some',
-  'that',
-  'the',
-  'their',
-  'them',
-  'then',
-  'there',
-  'these',
-  'they',
-  'this',
-  'those',
-  'through',
-  'team',
-  'time',
-  'very',
-  'use',
-  'want',
-  'with',
-  'would',
-  'your',
-  'you',
+  "about",
+  "after",
+  "again",
+  "also",
+  "and",
+  "any",
+  "are",
+  "because",
+  "been",
+  "being",
+  "between",
+  "can",
+  "could",
+  "docs",
+  "finish",
+  "from",
+  "hey",
+  "have",
+  "having",
+  "here",
+  "into",
+  "just",
+  "like",
+  "made",
+  "make",
+  "more",
+  "most",
+  "not",
+  "only",
+  "other",
+  "over",
+  "please",
+  "really",
+  "review",
+  "said",
+  "should",
+  "some",
+  "that",
+  "the",
+  "their",
+  "them",
+  "then",
+  "there",
+  "these",
+  "they",
+  "this",
+  "those",
+  "through",
+  "team",
+  "time",
+  "very",
+  "use",
+  "want",
+  "with",
+  "would",
+  "your",
+  "you",
 ]);
 
 export interface SharedChatMessage {
@@ -142,7 +142,7 @@ export interface RefreshSharedChatContextOptions {
 }
 
 function truncateText(text: string, maxLength: number): string {
-  const normalized = text.trim().replace(/\s+/g, ' ');
+  const normalized = text.trim().replace(/\s+/g, " ");
   if (normalized.length <= maxLength) {
     return normalized;
   }
@@ -164,7 +164,7 @@ function uniqueStrings(values: Array<string | null | undefined>): string[] {
 function extractKeywords(texts: string[], limit = 5): string[] {
   const counts = new Map<string, number>();
   for (const text of texts) {
-    const textWithoutUrls = text.replace(/https?:\/\/\S+|www\.\S+/gi, ' ');
+    const textWithoutUrls = text.replace(/https?:\/\/\S+|www\.\S+/gi, " ");
     for (const rawWord of textWithoutUrls
       .toLowerCase()
       .match(/[a-z0-9][a-z0-9_-]{2,}/g) ?? []) {
@@ -178,7 +178,7 @@ function extractKeywords(texts: string[], limit = 5): string[] {
   return [...counts.entries()]
     .sort(
       (a, b) =>
-        b[1] - a[1] || b[0].length - a[0].length || a[0].localeCompare(b[0])
+        b[1] - a[1] || b[0].length - a[0].length || a[0].localeCompare(b[0]),
     )
     .slice(0, limit)
     .map(([word]) => word);
@@ -187,23 +187,23 @@ function extractKeywords(texts: string[], limit = 5): string[] {
 function buildSummary(
   chatName: string | null,
   messages: SharedChatMessage[],
-  keywords: string[]
+  keywords: string[],
 ): string {
   const participants = uniqueStrings(
-    messages.map((message) => message.senderName)
+    messages.map((message) => message.senderName),
   );
   const sortedMessages = [...messages].sort(
-    (left, right) => left.createdAt.getTime() - right.createdAt.getTime()
+    (left, right) => left.createdAt.getTime() - right.createdAt.getTime(),
   );
   const latestMessage = sortedMessages[sortedMessages.length - 1];
   const topicText =
-    keywords.length > 0 ? keywords.join(', ') : 'ongoing coordination';
+    keywords.length > 0 ? keywords.join(", ") : "ongoing coordination";
   const participantText =
-    participants.length > 0 ? participants.join(', ') : 'multiple participants';
+    participants.length > 0 ? participants.join(", ") : "multiple participants";
   const latestText = latestMessage
     ? truncateText(latestMessage.content, 160)
-    : 'No recent messages';
-  const heading = chatName ? `${chatName}` : 'Group chat';
+    : "No recent messages";
+  const heading = chatName ? `${chatName}` : "Group chat";
 
   return `${heading}: ${participantText} discussed ${topicText}. Latest: ${latestText}`;
 }
@@ -211,12 +211,12 @@ function buildSummary(
 function extractFacts(
   messages: SharedChatMessage[],
   keywords: string[],
-  factLimit: number
+  factLimit: number,
 ): string[] {
   const facts = new Set<string>();
 
   if (keywords.length > 0) {
-    facts.add(`Topic keywords: ${keywords.join(', ')}`);
+    facts.add(`Topic keywords: ${keywords.join(", ")}`);
   }
 
   const secretRequestPattern =
@@ -229,10 +229,10 @@ function extractFacts(
   const codePattern = /\b\d{5,8}\b/;
 
   for (const message of messages) {
-    const text = message.content.trim().replace(/\s+/g, ' ');
+    const text = message.content.trim().replace(/\s+/g, " ");
     if (!text) continue;
 
-    const speaker = message.senderName || 'Unknown';
+    const speaker = message.senderName || "Unknown";
     const truncated = truncateText(text, 160);
 
     if (linkPattern.test(text)) {
@@ -244,7 +244,7 @@ function extractFacts(
 
     if (secretRequestPattern.test(text) && askPattern.test(text)) {
       facts.add(
-        `Possible credential or secret request from ${speaker}: ${truncated}`
+        `Possible credential or secret request from ${speaker}: ${truncated}`,
       );
     }
 
@@ -257,21 +257,21 @@ function extractFacts(
       /code|verify|verification|login|auth/i.test(text)
     ) {
       facts.add(
-        `Verification / login code mentioned by ${speaker}: ${truncated}`
+        `Verification / login code mentioned by ${speaker}: ${truncated}`,
       );
     }
 
-    if (text.includes('?')) {
+    if (text.includes("?")) {
       facts.add(`Open question from ${speaker}: ${truncated}`);
     }
   }
 
   for (const message of [...messages].sort(
-    (left, right) => left.createdAt.getTime() - right.createdAt.getTime()
+    (left, right) => left.createdAt.getTime() - right.createdAt.getTime(),
   )) {
     if (facts.size >= factLimit) break;
     facts.add(
-      `Notable statement from ${message.senderName}: ${truncateText(message.content, 120)}`
+      `Notable statement from ${message.senderName}: ${truncateText(message.content, 120)}`,
     );
   }
 
@@ -279,7 +279,7 @@ function extractFacts(
 }
 
 function parseStoredSnapshot(
-  value: string | null
+  value: string | null,
 ): SharedChatContextSnapshot | null {
   if (!value) return null;
 
@@ -287,8 +287,8 @@ function parseStoredSnapshot(
     const parsed = JSON.parse(value) as Partial<SharedChatContextSnapshot>;
     if (
       !parsed ||
-      typeof parsed.chatId !== 'string' ||
-      typeof parsed.summary !== 'string'
+      typeof parsed.chatId !== "string" ||
+      typeof parsed.summary !== "string"
     ) {
       return null;
     }
@@ -296,28 +296,28 @@ function parseStoredSnapshot(
     return {
       chatId: parsed.chatId,
       chatName:
-        typeof parsed.chatName === 'string' || parsed.chatName === null
+        typeof parsed.chatName === "string" || parsed.chatName === null
           ? parsed.chatName
           : null,
       summary: parsed.summary,
       facts: Array.isArray(parsed.facts)
         ? parsed.facts.filter(
-            (fact): fact is string => typeof fact === 'string'
+            (fact): fact is string => typeof fact === "string",
           )
         : [],
       participantNames: Array.isArray(parsed.participantNames)
         ? parsed.participantNames.filter(
             (participant): participant is string =>
-              typeof participant === 'string'
+              typeof participant === "string",
           )
         : [],
       messageCount: Number(parsed.messageCount ?? 0),
       lastMessageAt:
-        typeof parsed.lastMessageAt === 'string'
+        typeof parsed.lastMessageAt === "string"
           ? parsed.lastMessageAt
           : new Date().toISOString(),
       refreshedAt:
-        typeof parsed.refreshedAt === 'string'
+        typeof parsed.refreshedAt === "string"
           ? parsed.refreshedAt
           : new Date().toISOString(),
     };
@@ -338,8 +338,8 @@ export class SharedChatContextService {
       .where(
         and(
           eq(worldFacts.category, SHARED_CHAT_CONTEXT_CATEGORY),
-          eq(worldFacts.key, this.getSnapshotKey(chatId))
-        )
+          eq(worldFacts.key, this.getSnapshotKey(chatId)),
+        ),
       )
       .limit(1);
     return row ?? null;
@@ -369,7 +369,7 @@ export class SharedChatContextService {
 
   private async getRecentMessages(
     chatId: string,
-    messageWindowSize: number
+    messageWindowSize: number,
   ): Promise<SharedChatMessage[]> {
     const rows = await db
       .select({
@@ -411,7 +411,7 @@ export class SharedChatContextService {
   }
 
   private async upsertSnapshot(
-    snapshot: SharedChatContextSnapshot
+    snapshot: SharedChatContextSnapshot,
   ): Promise<void> {
     const existing = await this.getSummaryRow(snapshot.chatId);
 
@@ -448,7 +448,7 @@ export class SharedChatContextService {
   }
 
   async getStoredSnapshot(
-    chatId: string
+    chatId: string,
   ): Promise<SharedChatContextSnapshot | null> {
     const row = await this.getSummaryRow(chatId);
     return parseStoredSnapshot(row?.value ?? null);
@@ -456,17 +456,17 @@ export class SharedChatContextService {
 
   async refreshChatContext(
     chatId: string,
-    options: RefreshSharedChatContextOptions = {}
+    options: RefreshSharedChatContextOptions = {},
   ): Promise<SharedChatContextSnapshot | null> {
     try {
       const messageWindowSize = Math.max(
         3,
-        options.messageWindowSize ?? DEFAULT_MESSAGE_WINDOW
+        options.messageWindowSize ?? DEFAULT_MESSAGE_WINDOW,
       );
       const factLimit = Math.max(1, options.factLimit ?? DEFAULT_FACT_LIMIT);
       const recentMessages = await this.getRecentMessages(
         chatId,
-        messageWindowSize
+        messageWindowSize,
       );
 
       if (recentMessages.length === 0) {
@@ -476,12 +476,12 @@ export class SharedChatContextService {
       const chatName = await this.getChatName(chatId);
       const keywords = extractKeywords(
         recentMessages.map((message) => message.content),
-        5
+        5,
       );
       const summary = buildSummary(chatName, recentMessages, keywords);
       const facts = extractFacts(recentMessages, keywords, factLimit);
       const participantNames = uniqueStrings(
-        recentMessages.map((message) => message.senderName)
+        recentMessages.map((message) => message.senderName),
       );
       const latestMessage = recentMessages[recentMessages.length - 1];
       const { messageCount } = await this.getLatestMessageMeta(chatId);
@@ -503,12 +503,12 @@ export class SharedChatContextService {
       return snapshot;
     } catch (error) {
       logger.warn(
-        'Failed to refresh shared chat context',
+        "Failed to refresh shared chat context",
         {
           chatId,
           error: error instanceof Error ? error.message : String(error),
         },
-        'SharedChatContextService'
+        "SharedChatContextService",
       );
       return null;
     }
@@ -516,7 +516,7 @@ export class SharedChatContextService {
 
   async maybeRefreshChatContext(
     chatId: string,
-    options: RefreshSharedChatContextOptions = {}
+    options: RefreshSharedChatContextOptions = {},
   ): Promise<SharedChatContextSnapshot | null> {
     const staleAfterMinutes =
       options.staleAfterMinutes ?? DEFAULT_STALE_MINUTES;
@@ -568,8 +568,8 @@ export class SharedChatContextService {
         and(
           eq(worldFacts.category, SHARED_CHAT_CONTEXT_CATEGORY),
           eq(worldFacts.source, SHARED_CHAT_CONTEXT_SOURCE),
-          eq(worldFacts.isActive, true)
-        )
+          eq(worldFacts.isActive, true),
+        ),
       )
       .orderBy(desc(worldFacts.updatedAt))
       .limit(100);
@@ -615,12 +615,12 @@ export class SharedChatContextService {
       factLimit?: number;
       staleAfterMinutes?: number;
       refreshThreshold?: number;
-    } = {}
+    } = {},
   ): Promise<RelevantGroupContext[]> {
     const chatLimit = Math.max(1, options.chatLimit ?? DEFAULT_CHAT_LIMIT);
     const messageWindowSize = Math.max(
       3,
-      options.messageWindowSize ?? DEFAULT_MESSAGE_WINDOW
+      options.messageWindowSize ?? DEFAULT_MESSAGE_WINDOW,
     );
 
     const memberships = await GroupChatService.getUserGroupChats(userId);
@@ -661,7 +661,7 @@ export class SharedChatContextService {
       .sort(
         (left, right) =>
           new Date(right.lastMessageAt).getTime() -
-          new Date(left.lastMessageAt).getTime()
+          new Date(left.lastMessageAt).getTime(),
       )
       .slice(0, chatLimit);
 
@@ -669,7 +669,7 @@ export class SharedChatContextService {
       orderedSnapshots.map(async (snapshot) => {
         const recentMessages = await this.getRecentMessages(
           snapshot.chatId,
-          messageWindowSize
+          messageWindowSize,
         );
 
         return {
@@ -680,12 +680,12 @@ export class SharedChatContextService {
             createdAt: message.createdAt.toISOString(),
           })),
         };
-      })
+      }),
     );
   }
 
   async getLivePlayerRoster(
-    options: { limit?: number } = {}
+    options: { limit?: number } = {},
   ): Promise<LivePlayerRosterEntry[]> {
     const limit = Math.max(1, options.limit ?? 50);
     const players = await db
@@ -715,8 +715,8 @@ export class SharedChatContextService {
       .where(
         and(
           eq(groupMembers.isActive, true),
-          inArray(groupMembers.userId, playerIds)
-        )
+          inArray(groupMembers.userId, playerIds),
+        ),
       )
       .groupBy(groupMembers.userId);
 
@@ -724,7 +724,7 @@ export class SharedChatContextService {
       membershipCounts.map((row) => [
         row.userId,
         Number(row.activeGroupChatCount),
-      ])
+      ]),
     );
 
     return players.map((player) => ({

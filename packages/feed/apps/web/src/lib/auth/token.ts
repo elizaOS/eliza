@@ -40,7 +40,7 @@ type WindowWithPrivyToken = Window & {
 };
 
 export function getAuthToken(): string | null {
-  if (typeof window === 'undefined') {
+  if (typeof window === "undefined") {
     return null;
   }
   return (window as WindowWithPrivyToken).__privyAccessToken ?? null;

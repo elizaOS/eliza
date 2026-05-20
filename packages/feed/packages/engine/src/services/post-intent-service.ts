@@ -12,41 +12,41 @@
  * - social: Relationship-driven post about/directed at another NPC.
  */
 
-import type { Actor, ActorRelationship } from '../types/shared';
+import type { Actor, ActorRelationship } from "../types/shared";
 import {
   getCharacterConfigOrDefault,
   shouldGenerateOrganicPost,
   shouldPostAboutTopic,
-} from './npc-character-config';
-import { StaticDataRegistry } from './static-data-registry';
+} from "./npc-character-config";
+import { StaticDataRegistry } from "./static-data-registry";
 
 /**
  * The decided intent for a single NPC post.
  */
 export type PostIntent =
-  | { type: 'organic' }
-  | { type: 'topical'; topic: string }
-  | { type: 'market' }
-  | { type: 'social'; targetActorId: string; targetName: string };
+  | { type: "organic" }
+  | { type: "topical"; topic: string }
+  | { type: "market" }
+  | { type: "social"; targetActorId: string; targetName: string };
 
 /**
  * Domains that make an actor a "finance speaker" who naturally talks markets.
  */
 const FINANCE_DOMAINS = new Set([
-  'finance',
-  'crypto',
-  'trading',
-  'defi',
-  'nft',
-  'business',
-  'economics',
-  'vc',
+  "finance",
+  "crypto",
+  "trading",
+  "defi",
+  "nft",
+  "business",
+  "economics",
+  "vc",
 ]);
 
 /**
  * Check if an actor is a finance/market-oriented character.
  */
-function isFinanceActor(actor: Pick<Actor, 'domain'>): boolean {
+function isFinanceActor(actor: Pick<Actor, "domain">): boolean {
   if (!actor.domain || actor.domain.length === 0) return false;
   return actor.domain.some((d) => FINANCE_DOMAINS.has(d.toLowerCase()));
 }
@@ -56,48 +56,48 @@ function isFinanceActor(actor: Pick<Actor, 'domain'>): boolean {
  * Tells the LLM what topics are in this character's world.
  */
 const DOMAIN_HINTS: Record<string, string> = {
-  activism: 'climate, protests, policy, leaders, emissions, justice, movements',
+  activism: "climate, protests, policy, leaders, emissions, justice, movements",
   environment:
-    'climate, carbon, renewables, sustainability, pollution, conservation',
+    "climate, carbon, renewables, sustainability, pollution, conservation",
   health:
-    'protocols, supplements, sleep, biohacking, optimization, longevity, nutrition',
+    "protocols, supplements, sleep, biohacking, optimization, longevity, nutrition",
   longevity:
-    'aging, supplements, biomarkers, sleep optimization, cellular health',
+    "aging, supplements, biomarkers, sleep optimization, cellular health",
   sports:
-    'games, competition, training, winning, discipline, teammates, championships',
-  culture: 'art, music, creativity, vision, fashion, influence, expression',
-  music: 'albums, production, art, creativity, concerts, sound, culture',
-  entertainment: 'shows, performances, celebrity, drama, media, stories',
-  tech: 'building, shipping, products, code, launches, breakthroughs, startups',
-  ai: 'models, capabilities, alignment, research, breakthroughs, compute',
+    "games, competition, training, winning, discipline, teammates, championships",
+  culture: "art, music, creativity, vision, fashion, influence, expression",
+  music: "albums, production, art, creativity, concerts, sound, culture",
+  entertainment: "shows, performances, celebrity, drama, media, stories",
+  tech: "building, shipping, products, code, launches, breakthroughs, startups",
+  ai: "models, capabilities, alignment, research, breakthroughs, compute",
   politics:
-    'power, elections, policy, governance, legislation, campaigns, leadership',
-  media: 'stories, sources, investigations, scoops, coverage, breaking news',
-  journalism: 'reporting, sources, investigations, stories, truth, coverage',
-  space: 'rockets, launches, Mars, orbit, satellites, exploration, cosmos',
-  safety: 'alignment, risk, responsible AI, oversight, existential threats',
-  research: 'papers, studies, data, experiments, findings, breakthroughs',
-  philosophy: 'meaning, consciousness, existence, ethics, wisdom, truth',
+    "power, elections, policy, governance, legislation, campaigns, leadership",
+  media: "stories, sources, investigations, scoops, coverage, breaking news",
+  journalism: "reporting, sources, investigations, stories, truth, coverage",
+  space: "rockets, launches, Mars, orbit, satellites, exploration, cosmos",
+  safety: "alignment, risk, responsible AI, oversight, existential threats",
+  research: "papers, studies, data, experiments, findings, breakthroughs",
+  philosophy: "meaning, consciousness, existence, ethics, wisdom, truth",
   crypto:
-    'bitcoin, ethereum, blockchain, decentralization, web3, tokens, protocol',
+    "bitcoin, ethereum, blockchain, decentralization, web3, tokens, protocol",
   finance:
-    'markets, positions, valuations, deals, portfolios, capital, investments',
+    "markets, positions, valuations, deals, portfolios, capital, investments",
   trading:
-    'positions, entries, exits, risk, leverage, setups, conviction plays',
+    "positions, entries, exits, risk, leverage, setups, conviction plays",
 };
 
 /**
  * Build domain hint string from actor's domain list.
  */
-export function getDomainHints(actor: Pick<Actor, 'domain'>): string {
+export function getDomainHints(actor: Pick<Actor, "domain">): string {
   if (!actor.domain || actor.domain.length === 0) {
-    return 'whatever is on your mind';
+    return "whatever is on your mind";
   }
   const hints = actor.domain
     .map((d) => DOMAIN_HINTS[d.toLowerCase()])
     .filter(Boolean);
-  if (hints.length === 0) return 'whatever is on your mind';
-  return hints.join(', ');
+  if (hints.length === 0) return "whatever is on your mind";
+  return hints.join(", ");
 }
 
 /**
@@ -123,7 +123,7 @@ export function selectPostIntent(
   actor: Actor,
   trendingTopic: string | undefined,
   relationships: ActorRelationship[],
-  allActors: Actor[]
+  allActors: Actor[],
 ): PostIntent {
   const isFinance = isFinanceActor(actor);
 
@@ -134,12 +134,12 @@ export function selectPostIntent(
   if (isFinance) {
     // Finance actors: mostly market-focused, with personality-driven organic breaks
     if (wantsOrganic) {
-      return { type: 'organic' };
+      return { type: "organic" };
     }
     // 15% topical (if topic matches their domain)
     if (Math.random() < 0.15 && trendingTopic) {
       if (shouldPostAboutTopic(actor.id, trendingTopic)) {
-        return { type: 'topical', topic: trendingTopic };
+        return { type: "topical", topic: trendingTopic };
       }
     }
     // 20% social
@@ -150,7 +150,7 @@ export function selectPostIntent(
       }
     }
     // Default: market commentary
-    return { type: 'market' };
+    return { type: "market" };
   }
 
   // Non-finance actors: personality-first, never market intent
@@ -159,7 +159,7 @@ export function selectPostIntent(
   //   40% social
   //   35% organic fallback
   if (wantsOrganic) {
-    return { type: 'organic' };
+    return { type: "organic" };
   }
 
   const roll = Math.random();
@@ -167,10 +167,10 @@ export function selectPostIntent(
   // 0–0.25: topical
   if (roll < 0.25 && trendingTopic) {
     if (shouldPostAboutTopic(actor.id, trendingTopic)) {
-      return { type: 'topical', topic: trendingTopic };
+      return { type: "topical", topic: trendingTopic };
     }
     // Topic doesn't match domain — fall through to organic
-    return { type: 'organic' };
+    return { type: "organic" };
   }
 
   // 0.25–0.65: social
@@ -183,7 +183,7 @@ export function selectPostIntent(
   }
 
   // 0.65–1.0 (or fallback): organic
-  return { type: 'organic' };
+  return { type: "organic" };
 }
 
 /**
@@ -193,11 +193,11 @@ export function selectPostIntent(
 function pickSocialTarget(
   actor: Actor,
   relationships: ActorRelationship[],
-  allActors: Actor[]
+  allActors: Actor[],
 ): PostIntent | null {
   // Find actors this NPC has a relationship with
   const actorRelationships = relationships.filter(
-    (r) => r.actor1Id === actor.id || r.actor2Id === actor.id
+    (r) => r.actor1Id === actor.id || r.actor2Id === actor.id,
   );
 
   // Get rivalry data from character config
@@ -241,7 +241,7 @@ function pickSocialTarget(
       !favoredIds.has(otherId) &&
       !opposedIds.has(otherId)
     ) {
-      const sentiment = typeof rel.sentiment === 'number' ? rel.sentiment : 0;
+      const sentiment = typeof rel.sentiment === "number" ? rel.sentiment : 0;
       // Strong sentiment (positive or negative) = more interesting interaction
       const weight = 1 + Math.abs(sentiment) * 2;
       candidates.push({ actorId: otherId, weight });
@@ -256,7 +256,7 @@ function pickSocialTarget(
       otherActors[Math.floor(Math.random() * otherActors.length)];
     if (!randomTarget) return null;
     return {
-      type: 'social',
+      type: "social",
       targetActorId: randomTarget.id,
       targetName: randomTarget.name,
     };
@@ -273,7 +273,7 @@ function pickSocialTarget(
         allActors.find((a) => a.id === candidate.actorId);
       if (!targetActor) continue;
       return {
-        type: 'social',
+        type: "social",
         targetActorId: candidate.actorId,
         targetName: targetActor.name,
       };
@@ -288,7 +288,7 @@ function pickSocialTarget(
     allActors.find((a) => a.id === firstCandidate.actorId);
   if (!fallbackTarget) return null;
   return {
-    type: 'social',
+    type: "social",
     targetActorId: firstCandidate.actorId,
     targetName: fallbackTarget.name,
   };
@@ -300,9 +300,9 @@ function pickSocialTarget(
  * current-events claims. Actual current context comes from realityGrounding
  * and world-context which are populated from real data sources.
  */
-export function getDomainContext(actor: Pick<Actor, 'domain'>): string {
-  if (!actor.domain || actor.domain.length === 0) return '';
+export function getDomainContext(actor: Pick<Actor, "domain">): string {
+  if (!actor.domain || actor.domain.length === 0) return "";
   const hints = getDomainHints(actor);
-  if (hints === 'whatever is on your mind') return '';
+  if (hints === "whatever is on your mind") return "";
   return `YOUR DOMAIN FOCUS: ${hints}`;
 }

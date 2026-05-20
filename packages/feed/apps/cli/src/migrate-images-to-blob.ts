@@ -26,11 +26,11 @@
  * ```
  */
 
-import { list, put } from '@vercel/blob';
-import { config } from 'dotenv';
-import { readdir, readFile } from 'fs/promises';
-import { extname, join } from 'path';
-import { logger } from './lib/logger.js';
+import { readdir, readFile } from "node:fs/promises";
+import { extname, join } from "node:path";
+import { list, put } from "@vercel/blob";
+import { config } from "dotenv";
+import { logger } from "./lib/logger.js";
 
 // Load environment variables
 config();
@@ -38,30 +38,30 @@ config();
 const BLOB_TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
 
 // Paths are relative to the web app's public folder
-const webPublicDir = join(process.cwd(), '..', 'web', 'public');
+const webPublicDir = join(process.cwd(), "..", "web", "public");
 
 // Directories to migrate
 const IMAGE_DIRS = [
-  { source: join(webPublicDir, 'images/actors'), blobPrefix: 'images/actors' },
+  { source: join(webPublicDir, "images/actors"), blobPrefix: "images/actors" },
   {
-    source: join(webPublicDir, 'images/actor-banners'),
-    blobPrefix: 'images/actor-banners',
+    source: join(webPublicDir, "images/actor-banners"),
+    blobPrefix: "images/actor-banners",
   },
   {
-    source: join(webPublicDir, 'images/organizations'),
-    blobPrefix: 'images/organizations',
+    source: join(webPublicDir, "images/organizations"),
+    blobPrefix: "images/organizations",
   },
   {
-    source: join(webPublicDir, 'images/org-banners'),
-    blobPrefix: 'images/org-banners',
+    source: join(webPublicDir, "images/org-banners"),
+    blobPrefix: "images/org-banners",
   },
   // User uploads (from local development)
   {
-    source: join(webPublicDir, 'uploads/profiles'),
-    blobPrefix: 'profiles',
+    source: join(webPublicDir, "uploads/profiles"),
+    blobPrefix: "profiles",
   },
-  { source: join(webPublicDir, 'uploads/covers'), blobPrefix: 'covers' },
-  { source: join(webPublicDir, 'uploads/posts'), blobPrefix: 'posts' },
+  { source: join(webPublicDir, "uploads/covers"), blobPrefix: "covers" },
+  { source: join(webPublicDir, "uploads/posts"), blobPrefix: "posts" },
 ];
 
 interface UploadJob {
@@ -96,16 +96,16 @@ async function uploadImage(job: UploadJob): Promise<UploadResult> {
   const ext = extname(job.filename).toLowerCase();
 
   const contentType =
-    ext === '.jpg' || ext === '.jpeg'
-      ? 'image/jpeg'
-      : ext === '.png'
-        ? 'image/png'
-        : ext === '.webp'
-          ? 'image/webp'
-          : 'application/octet-stream';
+    ext === ".jpg" || ext === ".jpeg"
+      ? "image/jpeg"
+      : ext === ".png"
+        ? "image/png"
+        : ext === ".webp"
+          ? "image/webp"
+          : "application/octet-stream";
 
   const blob = await put(job.blobPath, buffer, {
-    access: 'public',
+    access: "public",
     contentType,
     addRandomSuffix: false,
   });
@@ -121,7 +121,7 @@ async function uploadImage(job: UploadJob): Promise<UploadResult> {
  */
 async function processQueue(
   jobs: UploadJob[],
-  maxConcurrent = 10
+  maxConcurrent = 10,
 ): Promise<{ uploaded: number; failed: number; skipped: number }> {
   let uploaded = 0;
   let failed = 0;
@@ -161,11 +161,11 @@ async function processQueue(
 }
 
 async function main() {
-  logger.info('Starting image migration to Vercel Blob...');
+  logger.info("Starting image migration to Vercel Blob...");
 
   if (!BLOB_TOKEN) {
     logger.error(
-      'Error: BLOB_READ_WRITE_TOKEN not found in environment variables'
+      "Error: BLOB_READ_WRITE_TOKEN not found in environment variables",
     );
     process.exit(1);
   }
@@ -185,7 +185,7 @@ async function main() {
     }
 
     const imageFiles = files.filter((f) =>
-      ['.jpg', '.jpeg', '.png', '.webp'].includes(extname(f).toLowerCase())
+      [".jpg", ".jpeg", ".png", ".webp"].includes(extname(f).toLowerCase()),
     );
 
     logger.info(`Found ${imageFiles.length} images in ${dir.source}`);
@@ -202,15 +202,15 @@ async function main() {
   logger.info(`Total images to process: ${jobs.length}`);
 
   if (jobs.length === 0) {
-    logger.info('No images found to migrate');
+    logger.info("No images found to migrate");
     return;
   }
 
   // Process with concurrency
-  logger.info('Starting upload (max 10 concurrent)...');
+  logger.info("Starting upload (max 10 concurrent)...");
   const result = await processQueue(jobs, 10);
 
-  logger.info('Migration complete!', {
+  logger.info("Migration complete!", {
     uploaded: result.uploaded,
     failed: result.failed,
     skipped: result.skipped,
@@ -218,8 +218,8 @@ async function main() {
   });
 
   // List what was uploaded for verification
-  logger.info('Verifying uploaded images...');
-  const { blobs } = await list({ prefix: 'images/' });
+  logger.info("Verifying uploaded images...");
+  const { blobs } = await list({ prefix: "images/" });
   logger.info(`Total images in blob storage: ${blobs.length}`);
 
   if (result.failed > 0) {

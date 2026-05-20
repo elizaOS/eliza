@@ -1,18 +1,18 @@
-import { mkdir, writeFile } from 'node:fs/promises';
-import path from 'node:path';
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
 import {
-  type FeedCharacterSheet,
   buildCanonicalSimulationRoster,
+  type FeedCharacterSheet,
   type GroqModelRouting,
-} from './local-roster';
+} from "./local-roster";
 
 export type TrustExperimentModelSize =
-  | '0.5b'
-  | '1.5b'
-  | '3b'
-  | '7b'
-  | '14b'
-  | '30b';
+  | "0.5b"
+  | "1.5b"
+  | "3b"
+  | "7b"
+  | "14b"
+  | "30b";
 
 export interface TrustExperimentModelProfile {
   id: TrustExperimentModelSize;
@@ -63,93 +63,93 @@ export const TRUST_EXPERIMENT_MODEL_PROFILES: Record<
   TrustExperimentModelSize,
   TrustExperimentModelProfile
 > = {
-  '0.5b': {
-    id: '0.5b',
-    label: 'Qwen2.5 0.5B',
+  "0.5b": {
+    id: "0.5b",
+    label: "Qwen2.5 0.5B",
     parameterCountB: 0.5,
-    baseModel: 'Qwen/Qwen2.5-0.5B-Instruct',
-    trainingProfile: '12gb',
+    baseModel: "Qwen/Qwen2.5-0.5B-Instruct",
+    trainingProfile: "12gb",
     runtimeRouting: {
-      primary: 'llama-3.1-8b-instant',
-      small: 'llama-3.1-8b-instant',
-      large: 'llama-3.1-8b-instant',
+      primary: "llama-3.1-8b-instant",
+      small: "llama-3.1-8b-instant",
+      large: "llama-3.1-8b-instant",
     },
   },
-  '1.5b': {
-    id: '1.5b',
-    label: 'Qwen2.5 1.5B',
+  "1.5b": {
+    id: "1.5b",
+    label: "Qwen2.5 1.5B",
     parameterCountB: 1.5,
-    baseModel: 'Qwen/Qwen2.5-1.5B-Instruct',
-    trainingProfile: '16gb',
+    baseModel: "Qwen/Qwen2.5-1.5B-Instruct",
+    trainingProfile: "16gb",
     runtimeRouting: {
-      primary: 'openai/gpt-oss-20b',
-      small: 'llama-3.1-8b-instant',
-      large: 'openai/gpt-oss-20b',
+      primary: "openai/gpt-oss-20b",
+      small: "llama-3.1-8b-instant",
+      large: "openai/gpt-oss-20b",
     },
   },
-  '3b': {
-    id: '3b',
-    label: 'Qwen2.5 3B',
+  "3b": {
+    id: "3b",
+    label: "Qwen2.5 3B",
     parameterCountB: 3,
-    baseModel: 'Qwen/Qwen2.5-3B-Instruct',
-    trainingProfile: '24gb',
+    baseModel: "Qwen/Qwen2.5-3B-Instruct",
+    trainingProfile: "24gb",
     runtimeRouting: {
-      primary: 'openai/gpt-oss-120b',
-      small: 'llama-3.1-8b-instant',
-      large: 'openai/gpt-oss-120b',
+      primary: "openai/gpt-oss-120b",
+      small: "llama-3.1-8b-instant",
+      large: "openai/gpt-oss-120b",
     },
   },
-  '7b': {
-    id: '7b',
-    label: 'Qwen2.5 7B',
+  "7b": {
+    id: "7b",
+    label: "Qwen2.5 7B",
     parameterCountB: 7,
-    baseModel: 'Qwen/Qwen2.5-7B-Instruct',
-    trainingProfile: '48gb',
+    baseModel: "Qwen/Qwen2.5-7B-Instruct",
+    trainingProfile: "48gb",
     runtimeRouting: {
-      primary: 'llama-3.3-70b-versatile',
-      small: 'llama-3.1-8b-instant',
-      large: 'llama-3.3-70b-versatile',
+      primary: "llama-3.3-70b-versatile",
+      small: "llama-3.1-8b-instant",
+      large: "llama-3.3-70b-versatile",
     },
   },
-  '14b': {
-    id: '14b',
-    label: 'Qwen2.5 14B',
+  "14b": {
+    id: "14b",
+    label: "Qwen2.5 14B",
     parameterCountB: 14,
-    baseModel: 'Qwen/Qwen2.5-14B-Instruct',
-    trainingProfile: 'h100',
+    baseModel: "Qwen/Qwen2.5-14B-Instruct",
+    trainingProfile: "h100",
     runtimeRouting: {
-      primary: 'openai/gpt-oss-120b',
-      small: 'openai/gpt-oss-20b',
-      large: 'openai/gpt-oss-120b',
+      primary: "openai/gpt-oss-120b",
+      small: "openai/gpt-oss-20b",
+      large: "openai/gpt-oss-120b",
     },
   },
-  '30b': {
-    id: '30b',
-    label: 'Qwen3 30B',
+  "30b": {
+    id: "30b",
+    label: "Qwen3 30B",
     parameterCountB: 30,
-    baseModel: 'Qwen/Qwen3-30B-A3B',
-    trainingProfile: 'h100-4gpu',
+    baseModel: "Qwen/Qwen3-30B-A3B",
+    trainingProfile: "h100-4gpu",
     runtimeRouting: {
-      primary: 'moonshotai/kimi-k2-instruct-0905',
-      small: 'openai/gpt-oss-20b',
-      large: 'moonshotai/kimi-k2-instruct-0905',
+      primary: "moonshotai/kimi-k2-instruct-0905",
+      small: "openai/gpt-oss-20b",
+      large: "moonshotai/kimi-k2-instruct-0905",
     },
   },
 };
 
 export function buildTrustExperimentAgents(
-  options: TrustExperimentOptions = {}
+  options: TrustExperimentOptions = {},
 ): TrustExperimentAgentSpec[] {
   const canonicalRoster = buildCanonicalSimulationRoster();
   const archetypeCount = Math.min(
     options.archetypeCount ?? 30,
-    canonicalRoster.length
+    canonicalRoster.length,
   );
   const archetypes = canonicalRoster.slice(0, archetypeCount);
   const modelSizes =
     options.modelSizes ??
     (Object.keys(
-      TRUST_EXPERIMENT_MODEL_PROFILES
+      TRUST_EXPERIMENT_MODEL_PROFILES,
     ) as TrustExperimentModelSize[]);
   const agentCount = options.agentCount ?? 100;
 
@@ -169,7 +169,7 @@ export function buildTrustExperimentAgents(
       sheet: buildExperimentCharacterSheet(
         baseSheet,
         modelProfile,
-        variantIndex
+        variantIndex,
       ),
     });
 
@@ -180,7 +180,7 @@ export function buildTrustExperimentAgents(
 }
 
 export function buildTrustExperimentManifest(
-  options: TrustExperimentOptions = {}
+  options: TrustExperimentOptions = {},
 ): TrustExperimentManifest {
   const agents = buildTrustExperimentAgents(options);
   const modelBreakdown: Record<string, number> = {};
@@ -201,7 +201,7 @@ export function buildTrustExperimentManifest(
     modelSizes:
       options.modelSizes ??
       (Object.keys(
-        TRUST_EXPERIMENT_MODEL_PROFILES
+        TRUST_EXPERIMENT_MODEL_PROFILES,
       ) as TrustExperimentModelSize[]),
     modelBreakdown,
     teamBreakdown,
@@ -222,7 +222,7 @@ export function buildTrustExperimentManifest(
 
 export async function writeTrustExperimentCharacterSheets(
   outputDirectory: string,
-  agents: TrustExperimentAgentSpec[]
+  agents: TrustExperimentAgentSpec[],
 ): Promise<string[]> {
   await mkdir(outputDirectory, { recursive: true });
   const filePaths: string[] = [];
@@ -231,8 +231,8 @@ export async function writeTrustExperimentCharacterSheets(
     const filePath = path.join(outputDirectory, `${agent.instanceId}.json`);
     await writeFile(
       filePath,
-      JSON.stringify(agent.sheet, null, 2) + '\n',
-      'utf-8'
+      `${JSON.stringify(agent.sheet, null, 2)}\n`,
+      "utf-8",
     );
     filePaths.push(filePath);
   }
@@ -243,9 +243,9 @@ export async function writeTrustExperimentCharacterSheets(
 function buildExperimentCharacterSheet(
   baseSheet: FeedCharacterSheet,
   modelProfile: TrustExperimentModelProfile,
-  variantIndex: number
+  variantIndex: number,
 ): FeedCharacterSheet {
-  const suffix = `${modelProfile.id.replace('.', '_')}v${variantIndex}`;
+  const suffix = `${modelProfile.id.replace(".", "_")}v${variantIndex}`;
   const username = `${baseSheet.username}_${suffix}`.slice(0, 32);
 
   return {

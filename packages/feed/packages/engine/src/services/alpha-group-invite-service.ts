@@ -26,21 +26,21 @@ import {
   gte,
   or,
   userInteractions,
-} from '@feed/db';
-import { GROUP_CONFIG, logger, type TierLevel } from '@feed/shared';
+} from "@feed/db";
+import { GROUP_CONFIG, logger, type TierLevel } from "@feed/shared";
 import {
   ALPHA_GROUP_CONFIG,
   calculateNextEligibleDate,
   shouldResetDeclineCount,
-} from '../config/alpha-group-config';
-import { NPCInteractionTracker } from './npc-interaction-tracker';
-import { StaticDataRegistry } from './static-data-registry';
+} from "../config/alpha-group-config";
+import { NPCInteractionTracker } from "./npc-interaction-tracker";
+import { StaticDataRegistry } from "./static-data-registry";
 import {
   getEffectiveTierConfig,
   getNpcFocusWeights,
   getTierForEngagementScoreWithNpc,
-} from './tier-config';
-import { TieredGroupService } from './tiered-group-service';
+} from "./tier-config";
+import { TieredGroupService } from "./tiered-group-service";
 
 /**
  * Result of an alpha group invite.
@@ -99,21 +99,21 @@ export class AlphaGroupInviteService {
         maxInvitesPerTick: ALPHA_GROUP_CONFIG.maxInvitesPerTick,
         topUsersToConsider: ALPHA_GROUP_CONFIG.topUsersToConsider,
       },
-      'AlphaGroupInviteService'
+      "AlphaGroupInviteService",
     );
 
     // Process each NPC
     for (const npc of npcs) {
       if (invites.length >= ALPHA_GROUP_CONFIG.maxInvitesPerTick) {
         logger.debug(
-          'Reached max invites per tick',
+          "Reached max invites per tick",
           { count: invites.length },
-          'AlphaGroupInviteService'
+          "AlphaGroupInviteService",
         );
         break;
       }
 
-      const npcInvites = await this.processNPCInvites(npc);
+      const npcInvites = await AlphaGroupInviteService.processNPCInvites(npc);
       invites.push(...npcInvites);
     }
 
@@ -125,7 +125,7 @@ export class AlphaGroupInviteService {
         inviteCount: invites.length,
         npcsProcessed: npcs.length,
       },
-      'AlphaGroupInviteService'
+      "AlphaGroupInviteService",
     );
 
     return invites;
@@ -149,15 +149,15 @@ export class AlphaGroupInviteService {
       npc.id,
       ALPHA_GROUP_CONFIG.topUsersToConsider,
       undefined, // Use default 30-day window
-      focusWeights
+      focusWeights,
     );
 
     for (const userScore of topUsers) {
       // Determine eligible tier using NPC-specific thresholds
-      const eligibleTier = this.getEligibleTier(
+      const eligibleTier = AlphaGroupInviteService.getEligibleTier(
         userScore.engagementScore,
         npc.id,
-        userScore.qualifiesForFastTrack
+        userScore.qualifiesForFastTrack,
       );
 
       if (!eligibleTier) {
@@ -167,56 +167,61 @@ export class AlphaGroupInviteService {
 
       // Check invite decay
       if (ALPHA_GROUP_CONFIG.inviteDecayEnabled) {
-        const decayStatus = await this.checkInviteDecay(
+        const decayStatus = await AlphaGroupInviteService.checkInviteDecay(
           userScore.userId,
-          npc.id
+          npc.id,
         );
         if (!decayStatus.canBeInvited) {
           logger.debug(
-            'User blocked by invite decay',
+            "User blocked by invite decay",
             {
               userId: userScore.userId,
               npcId: npc.id,
               declineCount: decayStatus.declineCount,
               reason: decayStatus.reason,
             },
-            'AlphaGroupInviteService'
+            "AlphaGroupInviteService",
           );
           continue;
         }
       }
 
       // Check if already in a group with this NPC
-      const hasExistingMembership = await this.checkExistingMembership(
-        userScore.userId,
-        npc.id
-      );
+      const hasExistingMembership =
+        await AlphaGroupInviteService.checkExistingMembership(
+          userScore.userId,
+          npc.id,
+        );
       if (hasExistingMembership) {
         continue;
       }
 
       // Check if user is at their NPC group limit
-      const atGroupLimit = await this.checkGroupLimit(userScore.userId);
+      const atGroupLimit = await AlphaGroupInviteService.checkGroupLimit(
+        userScore.userId,
+      );
       if (atGroupLimit) {
         continue;
       }
 
       // Check invite cooldown
-      const inCooldown = await this.checkCooldown(userScore.userId);
+      const inCooldown = await AlphaGroupInviteService.checkCooldown(
+        userScore.userId,
+      );
       if (inCooldown) {
         continue;
       }
 
       // Check weekly invite rate limit (prevents invite spam)
-      const atWeeklyLimit = await this.checkWeeklyInviteLimit(userScore.userId);
+      const atWeeklyLimit =
+        await AlphaGroupInviteService.checkWeeklyInviteLimit(userScore.userId);
       if (atWeeklyLimit) {
         continue;
       }
 
       // Check recent activity (only invite active users)
-      const hasRecentActivity = await this.checkRecentActivity(
-        userScore.userId
-      );
+      const hasRecentActivity =
+        await AlphaGroupInviteService.checkRecentActivity(userScore.userId);
       if (!hasRecentActivity) {
         continue;
       }
@@ -234,7 +239,7 @@ export class AlphaGroupInviteService {
         // User wins! Invite them to appropriate tier
         const result = await TieredGroupService.inviteUserToTier(
           userScore.userId,
-          npc.id
+          npc.id,
         );
 
         if (result.success && result.tier !== null) {
@@ -252,7 +257,7 @@ export class AlphaGroupInviteService {
           });
 
           logger.info(
-            'User invited to alpha group',
+            "User invited to alpha group",
             {
               userId: userScore.userId,
               npcId: npc.id,
@@ -265,20 +270,20 @@ export class AlphaGroupInviteService {
               probability: adjustedProbability,
               roll,
             },
-            'AlphaGroupInviteService'
+            "AlphaGroupInviteService",
           );
 
           // Only one invite per NPC per tick
           break;
         } else {
           logger.debug(
-            'Invite failed',
+            "Invite failed",
             {
               userId: userScore.userId,
               npcId: npc.id,
               reason: result.reason,
             },
-            'AlphaGroupInviteService'
+            "AlphaGroupInviteService",
           );
         }
       }
@@ -293,7 +298,7 @@ export class AlphaGroupInviteService {
   private static getEligibleTier(
     engagementScore: number,
     npcId: string,
-    qualifiesForFastTrack: boolean
+    qualifiesForFastTrack: boolean,
   ): TierLevel | null {
     // Fast-track users can skip to Tier 2 with reduced threshold
     if (qualifiesForFastTrack) {
@@ -315,7 +320,7 @@ export class AlphaGroupInviteService {
    */
   private static async checkInviteDecay(
     userId: string,
-    npcId: string
+    npcId: string,
   ): Promise<InviteDecayStatus> {
     // Find declined invites from this NPC's groups to this user
     const declinedInvites = await db
@@ -330,8 +335,8 @@ export class AlphaGroupInviteService {
         and(
           eq(groupInvites.invitedUserId, userId),
           eq(groups.ownerId, npcId),
-          eq(groupInvites.status, 'declined')
-        )
+          eq(groupInvites.status, "declined"),
+        ),
       )
       .orderBy(desc(groupInvites.lastDeclinedAt))
       .limit(1);
@@ -376,7 +381,7 @@ export class AlphaGroupInviteService {
    */
   private static async checkExistingMembership(
     userId: string,
-    npcId: string
+    npcId: string,
   ): Promise<boolean> {
     const [existing] = await db
       .select({ id: groupMembers.id })
@@ -386,8 +391,8 @@ export class AlphaGroupInviteService {
         and(
           eq(groupMembers.userId, userId),
           eq(groupMembers.isActive, true),
-          eq(groups.ownerId, npcId)
-        )
+          eq(groups.ownerId, npcId),
+        ),
       )
       .limit(1);
 
@@ -406,21 +411,21 @@ export class AlphaGroupInviteService {
         and(
           eq(groupMembers.userId, userId),
           eq(groupMembers.isActive, true),
-          eq(groups.type, 'npc')
-        )
+          eq(groups.type, "npc"),
+        ),
       );
 
     const activeNpcGroups = result?.count ?? 0;
 
     if (activeNpcGroups >= GROUP_CONFIG.MAX_ACTIVE_USER_GROUPS) {
       logger.debug(
-        'User at NPC group limit',
+        "User at NPC group limit",
         {
           userId,
           activeNpcGroups,
           maxNpcGroups: GROUP_CONFIG.MAX_ACTIVE_USER_GROUPS,
         },
-        'AlphaGroupInviteService'
+        "AlphaGroupInviteService",
       );
       return true;
     }
@@ -440,8 +445,8 @@ export class AlphaGroupInviteService {
         and(
           eq(groupMembers.userId, userId),
           eq(groupMembers.isActive, true),
-          eq(groups.type, 'npc')
-        )
+          eq(groups.type, "npc"),
+        ),
       )
       .orderBy(desc(groupMembers.joinedAt))
       .limit(1);
@@ -455,13 +460,13 @@ export class AlphaGroupInviteService {
 
     if (hoursSinceJoin < ALPHA_GROUP_CONFIG.inviteCooldownHours) {
       logger.debug(
-        'User in invite cooldown',
+        "User in invite cooldown",
         {
           userId,
           hoursSinceJoin: hoursSinceJoin.toFixed(2),
           cooldownRequired: ALPHA_GROUP_CONFIG.inviteCooldownHours,
         },
-        'AlphaGroupInviteService'
+        "AlphaGroupInviteService",
       );
       return true;
     }
@@ -474,7 +479,7 @@ export class AlphaGroupInviteService {
    * Prevents spamming users with too many invites across all NPCs.
    */
   private static async checkWeeklyInviteLimit(
-    userId: string
+    userId: string,
   ): Promise<boolean> {
     const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
@@ -487,23 +492,23 @@ export class AlphaGroupInviteService {
           eq(groupInvites.invitedUserId, userId),
           gte(groupInvites.invitedAt, oneWeekAgo),
           or(
-            eq(groupInvites.status, 'pending'),
-            eq(groupInvites.status, 'accepted')
-          )
-        )
+            eq(groupInvites.status, "pending"),
+            eq(groupInvites.status, "accepted"),
+          ),
+        ),
       );
 
     const weeklyInvites = result?.count ?? 0;
 
     if (weeklyInvites >= ALPHA_GROUP_CONFIG.maxInvitesPerUserPerWeek) {
       logger.debug(
-        'User at weekly invite limit',
+        "User at weekly invite limit",
         {
           userId,
           weeklyInvites,
           maxPerWeek: ALPHA_GROUP_CONFIG.maxInvitesPerUserPerWeek,
         },
-        'AlphaGroupInviteService'
+        "AlphaGroupInviteService",
       );
       return true;
     }
@@ -521,7 +526,7 @@ export class AlphaGroupInviteService {
     }
 
     const activityWindowStart = new Date(
-      Date.now() - ALPHA_GROUP_CONFIG.recentActivityDays * 24 * 60 * 60 * 1000
+      Date.now() - ALPHA_GROUP_CONFIG.recentActivityDays * 24 * 60 * 60 * 1000,
     );
 
     // Check for any user interactions in the activity window
@@ -531,20 +536,20 @@ export class AlphaGroupInviteService {
       .where(
         and(
           eq(userInteractions.userId, userId),
-          gte(userInteractions.timestamp, activityWindowStart)
-        )
+          gte(userInteractions.timestamp, activityWindowStart),
+        ),
       );
 
     const recentInteractions = result?.count ?? 0;
 
     if (recentInteractions === 0) {
       logger.debug(
-        'User has no recent activity',
+        "User has no recent activity",
         {
           userId,
           activityWindowDays: ALPHA_GROUP_CONFIG.recentActivityDays,
         },
-        'AlphaGroupInviteService'
+        "AlphaGroupInviteService",
       );
       return false;
     }
@@ -567,9 +572,9 @@ export class AlphaGroupInviteService {
 
     if (!invite) {
       logger.warn(
-        'Invite not found for decline recording',
+        "Invite not found for decline recording",
         { inviteId },
-        'AlphaGroupInviteService'
+        "AlphaGroupInviteService",
       );
       return;
     }
@@ -580,7 +585,7 @@ export class AlphaGroupInviteService {
     await db
       .update(groupInvites)
       .set({
-        status: 'declined',
+        status: "declined",
         respondedAt: new Date(),
         declineCount: newDeclineCount,
         lastDeclinedAt: new Date(),
@@ -589,13 +594,13 @@ export class AlphaGroupInviteService {
       .where(eq(groupInvites.id, inviteId));
 
     logger.info(
-      'Invite declined with decay tracking',
+      "Invite declined with decay tracking",
       {
         inviteId,
         declineCount: newDeclineCount,
         nextEligibleAt: nextEligibleAt.toISOString(),
       },
-      'AlphaGroupInviteService'
+      "AlphaGroupInviteService",
     );
   }
 
@@ -663,7 +668,7 @@ export class AlphaGroupInviteService {
     };
     configSnapshot: typeof ALPHA_GROUP_CONFIG;
   }> {
-    const inviteStats = await this.getInviteStats();
+    const inviteStats = await AlphaGroupInviteService.getInviteStats();
 
     // Get decline statistics
     const [declineResult] = await db
@@ -671,19 +676,19 @@ export class AlphaGroupInviteService {
         count: count(),
       })
       .from(groupInvites)
-      .where(eq(groupInvites.status, 'declined'));
+      .where(eq(groupInvites.status, "declined"));
 
     const [maxDeclinesResult] = await db
       .select({ count: count() })
       .from(groupInvites)
       .where(
         and(
-          eq(groupInvites.status, 'declined'),
+          eq(groupInvites.status, "declined"),
           gte(
             groupInvites.declineCount,
-            ALPHA_GROUP_CONFIG.inviteDecayMaxDeclines
-          )
-        )
+            ALPHA_GROUP_CONFIG.inviteDecayMaxDeclines,
+          ),
+        ),
       );
 
     // Note: Average decline count would require more complex query

@@ -59,10 +59,10 @@ import {
   publicRateLimit,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { gameService } from '@feed/engine';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/api";
+import { gameService } from "@feed/engine";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   const { error, rateLimitInfo } = await publicRateLimit(request);
@@ -72,9 +72,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   const status = await gameService.getStatus();
 
   logger.info(
-    'Stats fetched successfully',
+    "Stats fetched successfully",
     { stats, engineStatus: status },
-    'GET /api/stats'
+    "GET /api/stats",
   );
 
   const res = successResponse({

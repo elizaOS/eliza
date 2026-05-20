@@ -1,1 +1,1 @@
-module.exports = require('node:crypto');
+module.exports = require("node:crypto");

@@ -3,11 +3,11 @@
  * These tests validate the article generation logic without requiring database setup
  */
 
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it } from "bun:test";
 
-describe('Article Generation Service', () => {
-  describe('Baseline Article Generation', () => {
-    it('should validate baseline article structure requirements', () => {
+describe("Article Generation Service", () => {
+  describe("Baseline Article Generation", () => {
+    it("should validate baseline article structure requirements", () => {
       // Baseline article requirements from the prompt
       const requirements = {
         titleMaxLength: 100,
@@ -22,33 +22,33 @@ describe('Article Generation Service', () => {
       expect(requirements.minParagraphs).toBe(4);
     });
 
-    it('should validate baseline topics have required fields', () => {
+    it("should validate baseline topics have required fields", () => {
       const baselineTopics = [
         {
-          topic: 'the current state of prediction markets',
-          category: 'finance',
+          topic: "the current state of prediction markets",
+          category: "finance",
         },
-        { topic: 'upcoming trends in tech and politics', category: 'tech' },
-        { topic: 'volatility in crypto markets', category: 'finance' },
+        { topic: "upcoming trends in tech and politics", category: "tech" },
+        { topic: "volatility in crypto markets", category: "finance" },
         {
-          topic: 'major developments to watch this week',
-          category: 'business',
+          topic: "major developments to watch this week",
+          category: "business",
         },
-        { topic: 'the state of global markets', category: 'finance' },
+        { topic: "the state of global markets", category: "finance" },
       ];
 
       baselineTopics.forEach((topicData) => {
         expect(topicData.topic).toBeDefined();
         expect(topicData.topic.length).toBeGreaterThan(0);
         expect(topicData.category).toBeDefined();
-        expect(['finance', 'tech', 'business']).toContain(topicData.category);
+        expect(["finance", "tech", "business"]).toContain(topicData.category);
       });
     });
 
-    it('should verify baseline article prompt includes all required elements', () => {
-      const mockOrgName = 'Test News Network';
-      const mockTopic = 'the current state of prediction markets';
-      const mockDescription = 'A reliable news source';
+    it("should verify baseline article prompt includes all required elements", () => {
+      const mockOrgName = "Test News Network";
+      const mockTopic = "the current state of prediction markets";
+      const mockDescription = "A reliable news source";
 
       const prompt = `You are ${mockOrgName}, a news organization. Write a detailed news article about ${mockTopic}.
 
@@ -66,19 +66,19 @@ Return your response as JSON in this exact format:
   "article": "full article body here"
 }`;
 
-      expect(prompt).toContain('compelling headline');
-      expect(prompt).toContain('max 100 chars');
-      expect(prompt).toContain('max 400 chars');
-      expect(prompt).toContain('at least 4 paragraphs');
-      expect(prompt).toContain('professional newsroom tone');
+      expect(prompt).toContain("compelling headline");
+      expect(prompt).toContain("max 100 chars");
+      expect(prompt).toContain("max 400 chars");
+      expect(prompt).toContain("at least 4 paragraphs");
+      expect(prompt).toContain("professional newsroom tone");
       expect(prompt).toContain('"title"');
       expect(prompt).toContain('"summary"');
       expect(prompt).toContain('"article"');
     });
   });
 
-  describe('Mixed Posts Article Generation', () => {
-    it('should validate mixed posts article structure requirements', () => {
+  describe("Mixed Posts Article Generation", () => {
+    it("should validate mixed posts article structure requirements", () => {
       const requirements = {
         titleMaxLength: 100,
         summaryMaxLength: 400,
@@ -92,9 +92,9 @@ Return your response as JSON in this exact format:
       expect(requirements.minParagraphs).toBe(4);
     });
 
-    it('should verify mixed posts article prompt includes full content requirements', () => {
-      const mockOrgName = 'Bloomberg News';
-      const mockQuestionText = 'Will Bitcoin reach $100k by end of 2025?';
+    it("should verify mixed posts article prompt includes full content requirements", () => {
+      const mockOrgName = "Bloomberg News";
+      const mockQuestionText = "Will Bitcoin reach $100k by end of 2025?";
 
       const prompt = `You are ${mockOrgName}, a news organization. Write a comprehensive news article about this prediction market: "${mockQuestionText}".
 
@@ -110,19 +110,19 @@ Return your response as JSON in this exact format:
   "article": "full article body here"
 }`;
 
-      expect(prompt).toContain('comprehensive news article');
-      expect(prompt).toContain('max 100 characters');
-      expect(prompt).toContain('max 400 characters');
-      expect(prompt).toContain('at least 4 paragraphs');
-      expect(prompt).toContain('professional newsroom piece');
-      expect(prompt).toContain('not bullet points');
+      expect(prompt).toContain("comprehensive news article");
+      expect(prompt).toContain("max 100 characters");
+      expect(prompt).toContain("max 400 characters");
+      expect(prompt).toContain("at least 4 paragraphs");
+      expect(prompt).toContain("professional newsroom piece");
+      expect(prompt).toContain("not bullet points");
       expect(prompt).toContain('"title"');
       expect(prompt).toContain('"summary"');
       expect(prompt).toContain('"article"');
     });
 
-    it('should validate article length checking logic', () => {
-      const shortArticle = 'This is too short.';
+    it("should validate article length checking logic", () => {
+      const shortArticle = "This is too short.";
       const longArticle = `
 This is the first paragraph with substantial content that provides context and analysis about the prediction market in question.
 
@@ -137,13 +137,13 @@ Finally, the fourth paragraph concludes with actionable insights and a summary o
       expect(longArticle.length).toBeGreaterThanOrEqual(400);
     });
 
-    it('should verify article would be rejected if too short', () => {
+    it("should verify article would be rejected if too short", () => {
       const minLength = 400;
       const testArticles = [
-        { content: 'Short', shouldPass: false },
-        { content: 'A'.repeat(200), shouldPass: false },
-        { content: 'A'.repeat(400), shouldPass: true },
-        { content: 'A'.repeat(1000), shouldPass: true },
+        { content: "Short", shouldPass: false },
+        { content: "A".repeat(200), shouldPass: false },
+        { content: "A".repeat(400), shouldPass: true },
+        { content: "A".repeat(1000), shouldPass: true },
       ];
 
       testArticles.forEach((test) => {
@@ -153,17 +153,17 @@ Finally, the fourth paragraph concludes with actionable insights and a summary o
     });
   });
 
-  describe('Article Data Structure', () => {
-    it('should verify article data structure has required fields', () => {
+  describe("Article Data Structure", () => {
+    it("should verify article data structure has required fields", () => {
       // Mock article data structure
       const mockArticle = {
-        id: 'test-123',
-        type: 'article',
-        content: 'This is a brief summary for the feed.',
-        fullContent: 'A'.repeat(500),
-        articleTitle: 'Test Article Title',
-        authorId: 'org-123',
-        gameId: 'continuous',
+        id: "test-123",
+        type: "article",
+        content: "This is a brief summary for the feed.",
+        fullContent: "A".repeat(500),
+        articleTitle: "Test Article Title",
+        authorId: "org-123",
+        gameId: "continuous",
         dayNumber: 1,
         timestamp: new Date(),
       };
@@ -172,22 +172,22 @@ Finally, the fourth paragraph concludes with actionable insights and a summary o
       expect(mockArticle.fullContent).toBeDefined();
       expect(mockArticle.content).not.toBe(mockArticle.fullContent);
       expect(mockArticle.fullContent.length).toBeGreaterThan(
-        mockArticle.content.length
+        mockArticle.content.length,
       );
       expect(mockArticle.fullContent.length).toBeGreaterThanOrEqual(400);
     });
 
-    it('should verify summary and fullContent are distinct', () => {
-      const summary = 'Summary text for feeds (200 chars max)';
-      const fullArticle = 'A'.repeat(500); // 500 chars of full content
+    it("should verify summary and fullContent are distinct", () => {
+      const summary = "Summary text for feeds (200 chars max)";
+      const fullArticle = "A".repeat(500); // 500 chars of full content
 
       expect(summary.length).toBeLessThan(fullArticle.length);
       expect(fullArticle.length).toBeGreaterThanOrEqual(400);
     });
   });
 
-  describe('Article Display Logic', () => {
-    it('should verify article can be split into paragraphs', () => {
+  describe("Article Display Logic", () => {
+    it("should verify article can be split into paragraphs", () => {
       const fullArticle = `
 First paragraph with content.
 
@@ -198,7 +198,7 @@ Third paragraph continues.
 Fourth paragraph concludes.
       `.trim();
 
-      const paragraphs = fullArticle.split('\n\n');
+      const paragraphs = fullArticle.split("\n\n");
       expect(paragraphs.length).toBeGreaterThanOrEqual(4);
 
       paragraphs.forEach((p) => {
@@ -206,43 +206,43 @@ Fourth paragraph concludes.
       });
     });
 
-    it('should verify Latest News uses summary not fullContent', () => {
+    it("should verify Latest News uses summary not fullContent", () => {
       const article = {
-        id: '123',
-        type: 'article',
-        articleTitle: 'Breaking News',
-        content: 'This is the summary shown in Latest News',
-        fullContent: 'This is the full article body with many paragraphs',
+        id: "123",
+        type: "article",
+        articleTitle: "Breaking News",
+        content: "This is the summary shown in Latest News",
+        fullContent: "This is the full article body with many paragraphs",
       };
 
       // Latest News should only use content (summary)
       const latestNewsDisplay = article.content;
       expect(latestNewsDisplay).toBe(
-        'This is the summary shown in Latest News'
+        "This is the summary shown in Latest News",
       );
-      expect(latestNewsDisplay).not.toContain('many paragraphs');
+      expect(latestNewsDisplay).not.toContain("many paragraphs");
     });
 
-    it('should verify article detail page uses fullContent', () => {
+    it("should verify article detail page uses fullContent", () => {
       const article = {
-        id: '123',
-        type: 'article',
-        articleTitle: 'Breaking News',
-        content: 'This is the summary',
-        fullContent: 'This is the full article body with detailed content',
+        id: "123",
+        type: "article",
+        articleTitle: "Breaking News",
+        content: "This is the summary",
+        fullContent: "This is the full article body with detailed content",
       };
 
       // Article detail should use fullContent
       const detailDisplay = article.fullContent;
       expect(detailDisplay).toBe(
-        'This is the full article body with detailed content'
+        "This is the full article body with detailed content",
       );
-      expect(detailDisplay).toContain('detailed content');
+      expect(detailDisplay).toContain("detailed content");
     });
   });
 
-  describe('Token Budget', () => {
-    it('should verify maxTokens are sufficient for full articles', () => {
+  describe("Token Budget", () => {
+    it("should verify maxTokens are sufficient for full articles", () => {
       // Each token is roughly 4 characters
       // For 400+ char minimum article: 400 / 4 = 100 tokens minimum
       // We set maxTokens: 1000 and 1100 for baseline
@@ -256,10 +256,10 @@ Fourth paragraph concludes.
       const estimatedMaxCharsForBaseline = baselineMaxTokens * 4;
 
       expect(estimatedMaxCharsForMixed).toBeGreaterThanOrEqual(
-        estimatedMinChars
+        estimatedMinChars,
       );
       expect(estimatedMaxCharsForBaseline).toBeGreaterThanOrEqual(
-        estimatedMinChars
+        estimatedMinChars,
       );
 
       // Should allow for substantial articles

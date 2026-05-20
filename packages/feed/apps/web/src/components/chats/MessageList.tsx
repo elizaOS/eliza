@@ -1,19 +1,19 @@
-'use client';
+"use client";
 
-import { type MessageTag } from '@feed/shared';
-import { Loader2, MessageCircle } from 'lucide-react';
-import React, { useMemo } from 'react';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { MessageBubble } from './MessageBubble';
-import { MessageContextMenu } from './MessageContextMenu';
-import { SystemMessage } from './SystemMessage';
+import type { MessageTag } from "@feed/shared";
+import { Loader2, MessageCircle } from "lucide-react";
+import React, { useMemo } from "react";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { MessageBubble } from "./MessageBubble";
+import { MessageContextMenu } from "./MessageContextMenu";
+import { SystemMessage } from "./SystemMessage";
 import type {
   ChatParticipant,
   Message,
   MessageType,
   ReplyToMessage,
-} from './types';
-import { MessageTypeEnum } from './types';
+} from "./types";
+import { MessageTypeEnum } from "./types";
 
 /**
  * Determines the message type for rendering.
@@ -40,14 +40,14 @@ interface MessageListProps {
   authenticated: boolean;
   topSentinelRef: React.RefObject<HTMLDivElement | null>;
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
-  density?: 'default' | 'compact';
+  density?: "default" | "compact";
   /** Callback when a message tag is clicked */
   onTagClick?: (tag: MessageTag, messageId: string) => void;
   /** Toggle a reaction emoji on a message (current user) */
   onToggleReaction?: (
     messageId: string,
     emoji: string,
-    currentlyReactedByMe: boolean
+    currentlyReactedByMe: boolean,
   ) => void;
   /** Compact action row: merge reactions + tags into one row, hide on own messages */
   compactActions?: boolean;
@@ -69,7 +69,7 @@ export function MessageList({
   authenticated,
   topSentinelRef,
   messagesEndRef,
-  density = 'default',
+  density = "default",
   onTagClick,
   onToggleReaction,
   compactActions = false,
@@ -206,8 +206,6 @@ export function MessageList({
         switch (messageType) {
           case MessageTypeEnum.SYSTEM:
             return <SystemMessage key={key} message={msg} />;
-
-          case MessageTypeEnum.USER:
           default: {
             const sender = participants.find((p) => p.id === msg.senderId);
             const isCurrentUser = currentUserId
@@ -235,7 +233,7 @@ export function MessageList({
                     }
                     compactActions={compactActions}
                     onViewSettings={showSettings}
-                  />
+                  />,
                 )}
               </React.Fragment>
             );

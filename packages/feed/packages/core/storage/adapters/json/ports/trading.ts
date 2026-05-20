@@ -2,20 +2,20 @@
  * JSON Trading Adapter
  */
 
-import type { TradingPort } from '../../../ports/trading';
+import type { TradingPort } from "../../../ports/trading";
 import type {
   NpcTradeRecord,
   PoolPositionRecord,
   PoolRecord,
-} from '../../../types';
-import type { JsonIdGenerator } from '../id-generator';
-import type { JsonStorageState } from '../types';
+} from "../../../types";
+import type { JsonIdGenerator } from "../id-generator";
+import type { JsonStorageState } from "../types";
 
 export class JsonTradingAdapter implements TradingPort {
   constructor(
     private state: JsonStorageState,
     private idGen: JsonIdGenerator,
-    private onChange: () => void
+    private onChange: () => void,
   ) {}
 
   async getPool(id: string): Promise<PoolRecord | null> {
@@ -30,7 +30,7 @@ export class JsonTradingAdapter implements TradingPort {
   }
 
   async createPool(
-    pool: Omit<PoolRecord, 'openedAt' | 'updatedAt'>
+    pool: Omit<PoolRecord, "openedAt" | "updatedAt">,
   ): Promise<PoolRecord> {
     const now = new Date();
     const record: PoolRecord = {
@@ -45,7 +45,7 @@ export class JsonTradingAdapter implements TradingPort {
 
   async updatePool(
     id: string,
-    updates: Partial<PoolRecord>
+    updates: Partial<PoolRecord>,
   ): Promise<PoolRecord> {
     const pool = this.state.pools[id];
     if (!pool) {
@@ -63,28 +63,28 @@ export class JsonTradingAdapter implements TradingPort {
 
   async getOpenPositions(poolId: string): Promise<PoolPositionRecord[]> {
     return Object.values(this.state.positions).filter(
-      (p) => p.poolId === poolId && !p.closedAt
+      (p) => p.poolId === poolId && !p.closedAt,
     );
   }
 
   async getOpenPositionsByMarket(
-    marketId: string
+    marketId: string,
   ): Promise<PoolPositionRecord[]> {
     return Object.values(this.state.positions).filter(
-      (p) => p.marketId === marketId && !p.closedAt
+      (p) => p.marketId === marketId && !p.closedAt,
     );
   }
 
   async getOpenPositionsByTicker(
-    ticker: string
+    ticker: string,
   ): Promise<PoolPositionRecord[]> {
     return Object.values(this.state.positions).filter(
-      (p) => p.ticker === ticker && !p.closedAt
+      (p) => p.ticker === ticker && !p.closedAt,
     );
   }
 
   async createPosition(
-    position: Omit<PoolPositionRecord, 'updatedAt'>
+    position: Omit<PoolPositionRecord, "updatedAt">,
   ): Promise<PoolPositionRecord> {
     const record: PoolPositionRecord = {
       ...position,
@@ -97,7 +97,7 @@ export class JsonTradingAdapter implements TradingPort {
 
   async updatePosition(
     id: string,
-    updates: Partial<PoolPositionRecord>
+    updates: Partial<PoolPositionRecord>,
   ): Promise<PoolPositionRecord> {
     const position = this.state.positions[id];
     if (!position) {
@@ -111,7 +111,7 @@ export class JsonTradingAdapter implements TradingPort {
 
   async closePosition(
     id: string,
-    realizedPnL: number
+    realizedPnL: number,
   ): Promise<PoolPositionRecord> {
     const position = this.state.positions[id];
     if (!position) {
@@ -128,7 +128,7 @@ export class JsonTradingAdapter implements TradingPort {
 
   async getNpcTrades(
     npcActorId: string,
-    limit = 100
+    limit = 100,
   ): Promise<NpcTradeRecord[]> {
     return this.state.npcTrades
       .filter((t) => t.npcActorId === npcActorId)
@@ -137,11 +137,11 @@ export class JsonTradingAdapter implements TradingPort {
   }
 
   async createNpcTrade(
-    trade: Omit<NpcTradeRecord, 'id' | 'createdAt'>
+    trade: Omit<NpcTradeRecord, "id" | "createdAt">,
   ): Promise<NpcTradeRecord> {
     const record: NpcTradeRecord = {
       ...trade,
-      id: this.idGen.generate('trade'),
+      id: this.idGen.generate("trade"),
       createdAt: new Date(),
     };
     this.state.npcTrades.push(record);

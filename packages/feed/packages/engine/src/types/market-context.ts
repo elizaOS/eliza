@@ -4,7 +4,7 @@
  * Types for providing market information to NPCs for trading decisions
  */
 
-import type { MarketType } from './market-decisions';
+import type { MarketType } from "./market-decisions";
 
 export interface PerpMarketSnapshot {
   ticker: string;
@@ -27,10 +27,10 @@ export interface PredictionMarketSnapshot {
   totalVolume: number;
   resolutionDate: string;
   daysUntilResolution: number;
-  horizonBucket: 'short' | 'medium' | 'long';
-  liquidityTier: 'thin' | 'balanced' | 'deep';
-  urgencyLevel: 'imminent' | 'near-term' | 'dated';
-  eventSensitivity: 'low' | 'medium' | 'high';
+  horizonBucket: "short" | "medium" | "long";
+  liquidityTier: "thin" | "balanced" | "deep";
+  urgencyLevel: "imminent" | "near-term" | "dated";
+  eventSensitivity: "low" | "medium" | "high";
   /**
    * Maximum safe single-trade gross amount (inclusive of fees) for this
    * market given current pool depth and the 20ppt odds-move cap. Trades
@@ -113,7 +113,7 @@ export interface MarketSignalContext {
   /** Signal strength (0-1) */
   strength: number;
   /** Suggested outcome based on signal */
-  suggestedOutcome: 'YES' | 'NO' | 'UNCERTAIN';
+  suggestedOutcome: "YES" | "NO" | "UNCERTAIN";
   /** Confidence in suggested outcome (0-1) */
   confidence: number;
 }

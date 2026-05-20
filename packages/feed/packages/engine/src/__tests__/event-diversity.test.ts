@@ -5,8 +5,8 @@
  * and event type diversity (rolling window penalty).
  */
 
-import { beforeEach, describe, expect, test } from 'bun:test';
-import { _testing } from '../services/event-generation-helpers';
+import { beforeEach, describe, expect, test } from "bun:test";
+import { _testing } from "../services/event-generation-helpers";
 
 const {
   selectRelevantActors,
@@ -21,18 +21,18 @@ beforeEach(() => {
   recentEventTypes.length = 0;
 });
 
-describe('selectRelevantActors', () => {
-  test('returns at most maxActors actors', () => {
+describe("selectRelevantActors", () => {
+  test("returns at most maxActors actors", () => {
     const result = selectRelevantActors(2);
     expect(result.length).toBeLessThanOrEqual(2);
   });
 
-  test('returns unique actor IDs (no duplicates)', () => {
+  test("returns unique actor IDs (no duplicates)", () => {
     const result = selectRelevantActors(2);
     expect(new Set(result).size).toBe(result.length);
   });
 
-  test('cooldown reduces repeat selection over many samples', () => {
+  test("cooldown reduces repeat selection over many samples", () => {
     // Run selection 50 times and track how often each actor appears
     const appearances = new Map<string, number>();
     for (let i = 0; i < 50; i++) {
@@ -54,7 +54,7 @@ describe('selectRelevantActors', () => {
     expect(maxAppearances).toBeLessThan(30);
   });
 
-  test('actors on cooldown get lower selection probability', () => {
+  test("actors on cooldown get lower selection probability", () => {
     // Select once to put some actors on cooldown
     const first = selectRelevantActors(2);
     expect(first.length).toBe(2);
@@ -74,28 +74,28 @@ describe('selectRelevantActors', () => {
     expect(repeats.size).toBeLessThanOrEqual(2);
   });
 
-  test('cooldown entries are cleaned up after expiry', () => {
+  test("cooldown entries are cleaned up after expiry", () => {
     // Manually insert an expired cooldown entry
-    actorEventCooldown.set('fake-actor', Date.now() - 5 * 60 * 60 * 1000); // 5h ago
-    actorEventCooldown.set('fake-actor-2', Date.now()); // just now
+    actorEventCooldown.set("fake-actor", Date.now() - 5 * 60 * 60 * 1000); // 5h ago
+    actorEventCooldown.set("fake-actor-2", Date.now()); // just now
 
     selectRelevantActors(1);
 
     // Expired entry should be cleaned up, recent one kept
-    expect(actorEventCooldown.has('fake-actor')).toBe(false);
-    expect(actorEventCooldown.has('fake-actor-2')).toBe(true);
+    expect(actorEventCooldown.has("fake-actor")).toBe(false);
+    expect(actorEventCooldown.has("fake-actor-2")).toBe(true);
   });
 });
 
-describe('selectEventType', () => {
-  test('returns a valid event type', () => {
+describe("selectEventType", () => {
+  test("returns a valid event type", () => {
     const result = selectEventType();
-    expect(result).toHaveProperty('type');
-    expect(result).toHaveProperty('weight');
-    expect(typeof result.type).toBe('string');
+    expect(result).toHaveProperty("type");
+    expect(result).toHaveProperty("weight");
+    expect(typeof result.type).toBe("string");
   });
 
-  test('diversity penalty reduces repeated type selection', () => {
+  test("diversity penalty reduces repeated type selection", () => {
     // Call many times and track type distribution
     const typeCounts = new Map<string, number>();
     for (let i = 0; i < 30; i++) {
@@ -112,7 +112,7 @@ describe('selectEventType', () => {
     expect(maxCount).toBeLessThan(15);
   });
 
-  test('rolling history is bounded to MAX_EVENT_TYPE_HISTORY', () => {
+  test("rolling history is bounded to MAX_EVENT_TYPE_HISTORY", () => {
     for (let i = 0; i < 20; i++) {
       selectEventType();
     }

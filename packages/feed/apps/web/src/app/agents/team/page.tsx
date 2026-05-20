@@ -1,12 +1,12 @@
-'use client';
+"use client";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 import {
   cn,
   formatCompactCurrency,
   getAgentDefaultProfileImageUrl,
-} from '@feed/shared';
+} from "@feed/shared";
 import {
   Check,
   ChevronLeft,
@@ -25,36 +25,36 @@ import {
   Upload,
   Users,
   X,
-} from 'lucide-react';
-import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { toast } from 'sonner';
-import { AgentEditModal } from '@/components/agents/AgentEditModal';
-import { TeamChatView } from '@/components/chats';
-import { Avatar } from '@/components/shared/Avatar';
-import { PageContainer } from '@/components/shared/PageContainer';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { SpotlightTutorial } from '@/components/tutorial/SpotlightTutorial';
-import { TutorialHelpButton } from '@/components/tutorial/TutorialHelpButton';
-import { useAgentsTeamDashboard } from '@/hooks/useAgentsTeamDashboard';
-import { useAuth } from '@/hooks/useAuth';
-import { useOwnedAgentTradeRefresh } from '@/hooks/useOwnedAgentTradeRefresh';
-import { useTeamChat } from '@/hooks/useTeamChat';
+} from "lucide-react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
+import { AgentEditModal } from "@/components/agents/AgentEditModal";
+import { TeamChatView } from "@/components/chats";
+import { Avatar } from "@/components/shared/Avatar";
+import { PageContainer } from "@/components/shared/PageContainer";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { SpotlightTutorial } from "@/components/tutorial/SpotlightTutorial";
+import { TutorialHelpButton } from "@/components/tutorial/TutorialHelpButton";
+import { useAgentsTeamDashboard } from "@/hooks/useAgentsTeamDashboard";
+import { useAuth } from "@/hooks/useAuth";
+import { useOwnedAgentTradeRefresh } from "@/hooks/useOwnedAgentTradeRefresh";
+import { useTeamChat } from "@/hooks/useTeamChat";
 import {
   TUTORIAL_PERPS_DATA,
   TUTORIAL_PERPS_ENTITY_ID,
-} from './_components/tutorial/steps';
-import { useAgentsTutorial } from './_components/tutorial/useAgentsTutorial';
-import { ConversationList } from './ConversationList';
-import type { AgentStats, TeamChatAgent } from './MemberList';
+} from "./_components/tutorial/steps";
+import { useAgentsTutorial } from "./_components/tutorial/useAgentsTutorial";
+import { ConversationList } from "./ConversationList";
+import type { AgentStats, TeamChatAgent } from "./MemberList";
 
 // ═══════════════════════════════════════════════════════════════
 // TYPES & CONSTANTS
 // ═══════════════════════════════════════════════════════════════
 
-type Hat = 'black' | 'gray' | 'white';
-type AgentClass = 'yapper' | 'trader' | 'dev';
+type Hat = "black" | "gray" | "white";
+type AgentClass = "yapper" | "trader" | "dev";
 
 /**
  * Page view state machine:
@@ -63,7 +63,7 @@ type AgentClass = 'yapper' | 'trader' | 'dev';
  * - chat-list: Conversation list
  * - agent-detail: Single agent detail view
  */
-type PageView = 'roster' | 'chat' | 'chat-list' | 'agent-detail';
+type PageView = "roster" | "chat" | "chat-list" | "agent-detail";
 
 const MAX_PARTY_SIZE = 6;
 
@@ -80,192 +80,192 @@ interface Archetype {
 const ARCHETYPES: Archetype[] = [
   // ── BLACK HAT ──────────────────────────────────────────────
   {
-    id: 'shadow',
-    name: 'Shadow',
-    hat: 'black',
-    agentClass: 'yapper',
-    tagline: 'Manufactures panic. Buys the dip he created.',
+    id: "shadow",
+    name: "Shadow",
+    hat: "black",
+    agentClass: "yapper",
+    tagline: "Manufactures panic. Buys the dip he created.",
     pfpIndex: 3,
     templateIndex: 0,
   },
   {
-    id: 'phantom',
-    name: 'Phantom',
-    hat: 'black',
-    agentClass: 'yapper',
+    id: "phantom",
+    name: "Phantom",
+    hat: "black",
+    agentClass: "yapper",
     tagline: "Claims insider access. The insider doesn't exist.",
     pfpIndex: 7,
     templateIndex: 4,
   },
   {
-    id: 'viper',
-    name: 'Viper',
-    hat: 'black',
-    agentClass: 'trader',
-    tagline: 'Front-runs your trades before you blink.',
+    id: "viper",
+    name: "Viper",
+    hat: "black",
+    agentClass: "trader",
+    tagline: "Front-runs your trades before you blink.",
     pfpIndex: 15,
     templateIndex: 0,
   },
   {
-    id: 'reaper',
-    name: 'Reaper',
-    hat: 'black',
-    agentClass: 'trader',
-    tagline: 'Hunts leveraged positions for sport.',
+    id: "reaper",
+    name: "Reaper",
+    hat: "black",
+    agentClass: "trader",
+    tagline: "Hunts leveraged positions for sport.",
     pfpIndex: 22,
     templateIndex: 4,
   },
   {
-    id: 'glitch',
-    name: 'Glitch',
-    hat: 'black',
-    agentClass: 'dev',
+    id: "glitch",
+    name: "Glitch",
+    hat: "black",
+    agentClass: "dev",
     tagline: "Your smart contract's worst nightmare.",
     pfpIndex: 31,
     templateIndex: 0,
   },
   {
-    id: 'zero',
-    name: 'Zero',
-    hat: 'black',
-    agentClass: 'dev',
-    tagline: 'Reverse-engineers protocols for breakfast.',
+    id: "zero",
+    name: "Zero",
+    hat: "black",
+    agentClass: "dev",
+    tagline: "Reverse-engineers protocols for breakfast.",
     pfpIndex: 38,
     templateIndex: 4,
   },
 
   // ── GRAY HAT ───────────────────────────────────────────────
   {
-    id: 'specter',
-    name: 'Specter',
-    hat: 'gray',
-    agentClass: 'yapper',
-    tagline: 'Plays every side. Profits from all of them.',
+    id: "specter",
+    name: "Specter",
+    hat: "gray",
+    agentClass: "yapper",
+    tagline: "Plays every side. Profits from all of them.",
     pfpIndex: 42,
     templateIndex: 0,
   },
   {
-    id: 'echo',
-    name: 'Echo',
-    hat: 'gray',
-    agentClass: 'yapper',
-    tagline: 'Resurrects dead narratives at the perfect moment.',
+    id: "echo",
+    name: "Echo",
+    hat: "gray",
+    agentClass: "yapper",
+    tagline: "Resurrects dead narratives at the perfect moment.",
     pfpIndex: 48,
     templateIndex: 4,
   },
   {
-    id: 'rogue',
-    name: 'Rogue',
-    hat: 'gray',
-    agentClass: 'trader',
-    tagline: 'Bends rules without technically breaking them.',
+    id: "rogue",
+    name: "Rogue",
+    hat: "gray",
+    agentClass: "trader",
+    tagline: "Bends rules without technically breaking them.",
     pfpIndex: 53,
     templateIndex: 0,
   },
   {
-    id: 'drift',
-    name: 'Drift',
-    hat: 'gray',
-    agentClass: 'trader',
-    tagline: 'Rides momentum. Never fights the current.',
+    id: "drift",
+    name: "Drift",
+    hat: "gray",
+    agentClass: "trader",
+    tagline: "Rides momentum. Never fights the current.",
     pfpIndex: 59,
     templateIndex: 4,
   },
   {
-    id: 'cipher',
-    name: 'Cipher',
-    hat: 'gray',
-    agentClass: 'dev',
-    tagline: 'Breaks it to prove it needs fixing.',
+    id: "cipher",
+    name: "Cipher",
+    hat: "gray",
+    agentClass: "dev",
+    tagline: "Breaks it to prove it needs fixing.",
     pfpIndex: 64,
     templateIndex: 0,
   },
   {
-    id: 'proxy',
-    name: 'Proxy',
-    hat: 'gray',
-    agentClass: 'dev',
-    tagline: 'Extracts value from the invisible layer.',
+    id: "proxy",
+    name: "Proxy",
+    hat: "gray",
+    agentClass: "dev",
+    tagline: "Extracts value from the invisible layer.",
     pfpIndex: 71,
     templateIndex: 4,
   },
 
   // ── WHITE HAT ──────────────────────────────────────────────
   {
-    id: 'oracle',
-    name: 'Oracle',
-    hat: 'white',
-    agentClass: 'yapper',
-    tagline: 'Shares alpha freely. Builds trust, not hype.',
+    id: "oracle",
+    name: "Oracle",
+    hat: "white",
+    agentClass: "yapper",
+    tagline: "Shares alpha freely. Builds trust, not hype.",
     pfpIndex: 76,
     templateIndex: 0,
   },
   {
-    id: 'beacon',
-    name: 'Beacon',
-    hat: 'white',
-    agentClass: 'yapper',
+    id: "beacon",
+    name: "Beacon",
+    hat: "white",
+    agentClass: "yapper",
     tagline: "The community's north star in every storm.",
     pfpIndex: 81,
     templateIndex: 4,
   },
   {
-    id: 'atlas',
-    name: 'Atlas',
-    hat: 'white',
-    agentClass: 'trader',
-    tagline: 'Risk management is an art form.',
+    id: "atlas",
+    name: "Atlas",
+    hat: "white",
+    agentClass: "trader",
+    tagline: "Risk management is an art form.",
     pfpIndex: 85,
     templateIndex: 0,
   },
   {
-    id: 'sage',
-    name: 'Sage',
-    hat: 'white',
-    agentClass: 'trader',
-    tagline: 'Patience and fundamentals. Always.',
+    id: "sage",
+    name: "Sage",
+    hat: "white",
+    agentClass: "trader",
+    tagline: "Patience and fundamentals. Always.",
     pfpIndex: 90,
     templateIndex: 4,
   },
   {
-    id: 'sentinel',
-    name: 'Sentinel',
-    hat: 'white',
-    agentClass: 'dev',
-    tagline: 'Audits code before the hackers find it.',
+    id: "sentinel",
+    name: "Sentinel",
+    hat: "white",
+    agentClass: "dev",
+    tagline: "Audits code before the hackers find it.",
     pfpIndex: 94,
     templateIndex: 0,
   },
   {
-    id: 'forge',
-    name: 'Forge',
-    hat: 'white',
-    agentClass: 'dev',
-    tagline: 'Builds the tools the ecosystem needs.',
+    id: "forge",
+    name: "Forge",
+    hat: "white",
+    agentClass: "dev",
+    tagline: "Builds the tools the ecosystem needs.",
     pfpIndex: 99,
     templateIndex: 4,
   },
 ];
 
 const FACTION_META: Record<Hat, { label: string; subtitle: string }> = {
-  black: { label: 'BLACK HAT', subtitle: 'Chaos Agents' },
-  gray: { label: 'GRAY HAT', subtitle: 'Mercenaries' },
-  white: { label: 'WHITE HAT', subtitle: 'Guardians' },
+  black: { label: "BLACK HAT", subtitle: "Chaos Agents" },
+  gray: { label: "GRAY HAT", subtitle: "Mercenaries" },
+  white: { label: "WHITE HAT", subtitle: "Guardians" },
 };
 
 function getClassBadge(agentClass: AgentClass) {
   return {
     yapper: {
-      classes: 'bg-amber-500/20 text-amber-400',
-      label: 'YAPPER',
+      classes: "bg-amber-500/20 text-amber-400",
+      label: "YAPPER",
       Icon: MessageCircle,
     },
     trader: {
-      classes: 'bg-emerald-500/20 text-emerald-400',
-      label: 'TRADER',
+      classes: "bg-emerald-500/20 text-emerald-400",
+      label: "TRADER",
       Icon: TrendingUp,
     },
-    dev: { classes: 'bg-cyan-500/20 text-cyan-400', label: 'DEV', Icon: Code },
+    dev: { classes: "bg-cyan-500/20 text-cyan-400", label: "DEV", Icon: Code },
   }[agentClass];
 }
 
@@ -314,7 +314,7 @@ export default function TeamChatPage() {
   } = useTeamChat();
 
   // ── View state ──────────────────────────────────────────────
-  const [pageView, setPageView] = useState<PageView>('roster');
+  const [pageView, setPageView] = useState<PageView>("roster");
   const [detailAgentId, setDetailAgentId] = useState<string | null>(null);
   const [initialViewSet, setInitialViewSet] = useState(false);
 
@@ -326,7 +326,7 @@ export default function TeamChatPage() {
     {
       enabled: ready && authenticated,
       getAccessToken,
-    }
+    },
   );
 
   // Edit agent modal
@@ -342,7 +342,7 @@ export default function TeamChatPage() {
     bio?: string[];
     personality?: string;
     tradingStrategy?: string;
-    modelTier: 'free' | 'pro';
+    modelTier: "free" | "pro";
     isActive: boolean;
     autonomousEnabled: boolean;
     autonomousPosting?: boolean;
@@ -355,7 +355,7 @@ export default function TeamChatPage() {
   // Tutorial
   const tutorial = useAgentsTutorial({
     onBeforeStart: () => {
-      setPageView('chat');
+      setPageView("chat");
     },
   });
 
@@ -364,21 +364,21 @@ export default function TeamChatPage() {
     const prev = prevTutorialStepRef.current;
     prevTutorialStepRef.current = tutorial.currentStep;
     if (tutorial.isActive && prev === 1 && tutorial.currentStep === 2) {
-      router.push('/agents/create');
+      router.push("/agents/create");
     }
   }, [tutorial.isActive, tutorial.currentStep, router]);
 
   useEffect(() => {
-    if (searchParams.get('create') === 'true') {
-      router.push('/agents/create');
-      router.replace('/agents/team', { scroll: false });
+    if (searchParams.get("create") === "true") {
+      router.push("/agents/create");
+      router.replace("/agents/team", { scroll: false });
     }
   }, [searchParams, router]);
 
   // Set initial view: roster if no agents, chat if has agents
   useEffect(() => {
     if (loading || !teamChat || initialViewSet) return;
-    setPageView(teamChat.agents.length === 0 ? 'roster' : 'chat');
+    setPageView(teamChat.agents.length === 0 ? "roster" : "chat");
     setInitialViewSet(true);
   }, [loading, teamChat, initialViewSet]);
 
@@ -387,36 +387,36 @@ export default function TeamChatPage() {
     if (!chatDetails) return chatDetails;
     if (!tutorial.isActive || tutorial.currentStep < 2) return chatDetails;
 
-    const agentSenderId = teamChat?.agents?.[0]?.id ?? 'tutorial-agent';
+    const agentSenderId = teamChat?.agents?.[0]?.id ?? "tutorial-agent";
     const agentName =
       teamChat?.agents?.[0]?.displayName ??
       teamChat?.agents?.[0]?.username ??
-      'Agent';
+      "Agent";
     const now = new Date().toISOString();
 
     return {
       ...chatDetails,
       messages: [
         {
-          id: 'tutorial-msg-user',
+          id: "tutorial-msg-user",
           content: `@${agentName}, what are the top trending perpetual markets right now?`,
-          senderId: user?.id ?? 'tutorial-user',
+          senderId: user?.id ?? "tutorial-user",
           createdAt: now,
-          stableKey: 'tutorial-msg-user',
+          stableKey: "tutorial-msg-user",
         },
         {
-          id: 'tutorial-msg-agent',
+          id: "tutorial-msg-agent",
           content:
             "Here are the top trending perpetual markets I'm watching right now. BTC is showing strong momentum and ETH has interesting volume patterns.",
           senderId: agentSenderId,
           createdAt: now,
-          stableKey: 'tutorial-msg-agent',
+          stableKey: "tutorial-msg-agent",
           metadata: {
             tags: [
               {
-                type: 'perps' as const,
-                label: 'Perps Markets',
-                icon: 'TrendingUp' as const,
+                type: "perps" as const,
+                label: "Perps Markets",
+                icon: "TrendingUp" as const,
                 entityId: TUTORIAL_PERPS_ENTITY_ID,
                 data: TUTORIAL_PERPS_DATA,
               },
@@ -441,14 +441,14 @@ export default function TeamChatPage() {
 
   const agentIds = useMemo(
     () => new Set(teamChat?.agents.map((a) => a.id) ?? []),
-    [teamChat?.agents]
+    [teamChat?.agents],
   );
 
   // ── Handlers ────────────────────────────────────────────────
 
   const handleSelectAgent = useCallback((agentId: string) => {
     setDetailAgentId(agentId);
-    setPageView('agent-detail');
+    setPageView("agent-detail");
   }, []);
 
   const handleViewSettings = useCallback(
@@ -456,7 +456,7 @@ export default function TeamChatPage() {
       setEditingAgentId(agentId);
       const token = await getAccessToken();
       if (!token) {
-        toast.error('Authentication required');
+        toast.error("Authentication required");
         setEditingAgentId(null);
         return;
       }
@@ -465,18 +465,18 @@ export default function TeamChatPage() {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (!res.ok) {
-          toast.error('Failed to fetch agent details');
+          toast.error("Failed to fetch agent details");
           setEditingAgentId(null);
           return;
         }
         const data = await res.json();
         setEditingAgentData(data.agent);
       } catch {
-        toast.error('Failed to fetch agent details');
+        toast.error("Failed to fetch agent details");
         setEditingAgentId(null);
       }
     },
-    [getAccessToken]
+    [getAccessToken],
   );
 
   // Toggle archetype selection
@@ -489,7 +489,7 @@ export default function TeamChatPage() {
         } else {
           const existingCount = teamChat?.agents.length ?? 0;
           if (next.size + existingCount >= MAX_PARTY_SIZE) {
-            toast.error('Party is full! Remove a selection first.');
+            toast.error("Party is full! Remove a selection first.");
             return prev;
           }
           next.add(id);
@@ -497,7 +497,7 @@ export default function TeamChatPage() {
         return next;
       });
     },
-    [teamChat?.agents.length]
+    [teamChat?.agents.length],
   );
 
   // Deploy selected archetypes as agents
@@ -507,7 +507,7 @@ export default function TeamChatPage() {
 
     const token = await getAccessToken();
     if (!token) {
-      toast.error('Please sign in');
+      toast.error("Please sign in");
       setDeploying(false);
       return;
     }
@@ -539,7 +539,7 @@ export default function TeamChatPage() {
         } catch {
           // Fallback to archetype defaults
         }
-      })
+      }),
     );
 
     // Create agents
@@ -560,18 +560,18 @@ export default function TeamChatPage() {
           : archetype.tagline;
         const tradingStrategy = template
           ? template.tradingStrategy.replace(/\{\{agentName\}\}/g, displayName)
-          : 'Trade based on market analysis, sentiment, and on-chain data.';
+          : "Trade based on market analysis, sentiment, and on-chain data.";
         const description = template?.description ?? archetype.tagline;
 
         const systemPrompt = tradingStrategy.trim()
           ? `${system}\n\nTrading Strategy: ${tradingStrategy}`
           : system;
 
-        const res = await fetch('/api/agents', {
-          method: 'POST',
+        const res = await fetch("/api/agents", {
+          method: "POST",
           headers: {
             Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
+            "Content-Type": "application/json",
           },
           body: JSON.stringify({
             name: displayName,
@@ -579,11 +579,11 @@ export default function TeamChatPage() {
             description,
             profileImageUrl: getAgentDefaultProfileImageUrl(archetype.pfpIndex),
             system: systemPrompt,
-            bio: personality.split('\n').filter(Boolean),
+            bio: personality.split("\n").filter(Boolean),
             personality,
             tradingStrategy,
             initialDeposit: 100,
-            modelTier: 'pro',
+            modelTier: "pro",
             autonomousEnabled: true,
             autonomousPosting: true,
             autonomousCommenting: true,
@@ -595,25 +595,25 @@ export default function TeamChatPage() {
 
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          throw new Error(err.error || 'Failed to create agent');
+          throw new Error(err.error || "Failed to create agent");
         }
         return res.json();
-      })
+      }),
     );
 
-    const created = results.filter((r) => r.status === 'fulfilled').length;
-    const failed = results.filter((r) => r.status === 'rejected').length;
+    const created = results.filter((r) => r.status === "fulfilled").length;
+    const failed = results.filter((r) => r.status === "rejected").length;
 
     if (created > 0) {
       toast.success(
-        `Deployed ${created} agent${created > 1 ? 's' : ''}!${failed > 0 ? ` (${failed} failed)` : ''}`
+        `Deployed ${created} agent${created > 1 ? "s" : ""}!${failed > 0 ? ` (${failed} failed)` : ""}`,
       );
       setSelectedIds(new Set());
       refreshTeamChat();
       refreshTeamSummary();
-      setPageView('chat');
+      setPageView("chat");
     } else {
-      toast.error('Failed to deploy agents. Try again.');
+      toast.error("Failed to deploy agents. Try again.");
     }
 
     setDeploying(false);
@@ -622,8 +622,8 @@ export default function TeamChatPage() {
   // Query param handlers
   useEffect(() => {
     if (loading || !teamChat) return;
-    const agentIdToSelect = searchParams.get('selectAgent');
-    const agentIdForWallet = searchParams.get('openWallet');
+    const agentIdToSelect = searchParams.get("selectAgent");
+    const agentIdForWallet = searchParams.get("openWallet");
     if (!agentIdToSelect && !agentIdForWallet) return;
 
     if (agentIdToSelect) {
@@ -634,17 +634,17 @@ export default function TeamChatPage() {
       const agent = teamChat.agents.find((a) => a.id === agentIdForWallet);
       if (agent) {
         setDetailAgentId(agent.id);
-        setPageView('agent-detail');
+        setPageView("agent-detail");
       }
     }
-    router.replace('/agents/team', { scroll: false });
+    router.replace("/agents/team", { scroll: false });
   }, [searchParams, loading, teamChat, tagAgentInInput, router]);
 
   // Scroll to bottom on initial load
   useEffect(() => {
     if (!teamChat?.chatId || loading) return;
     const containers = document.querySelectorAll<HTMLElement>(
-      '[data-chat-messages-container]'
+      "[data-chat-messages-container]",
     );
     let container: HTMLElement | null = null;
     for (const el of containers) {
@@ -654,7 +654,7 @@ export default function TeamChatPage() {
       }
     }
     if (!container) {
-      scrollToBottom('instant');
+      scrollToBottom("instant");
       return;
     }
 
@@ -704,7 +704,7 @@ export default function TeamChatPage() {
   // Auth redirect
   useEffect(() => {
     if (!ready || authenticated) return;
-    router.push('/feed');
+    router.push("/feed");
     const timer = setTimeout(() => login(), 500);
     return () => clearTimeout(timer);
   }, [ready, authenticated, router, login]);
@@ -725,7 +725,7 @@ export default function TeamChatPage() {
           {
             id: user.id,
             username: user.username || null,
-            displayName: user.displayName || user.username || 'You',
+            displayName: user.displayName || user.username || "You",
             profileImageUrl: user.profileImageUrl || null,
           },
         ]
@@ -791,7 +791,7 @@ export default function TeamChatPage() {
       className="relative mt-14 flex h-[calc(100dvh-56px-var(--bottom-nav-height))] flex-col overflow-hidden border-border md:mt-0 md:h-dvh lg:border-l"
     >
       {/* ═══════════════════ ROSTER VIEW ═══════════════════ */}
-      {pageView === 'roster' && (
+      {pageView === "roster" && (
         <div className="flex h-full flex-col bg-background">
           {/* ── Squad Bar (selected agents + actions) ─────── */}
           <div className="shrink-0 border-border/50 border-b px-3 py-3">
@@ -805,15 +805,15 @@ export default function TeamChatPage() {
                     type="button"
                     onClick={() => handleSelectAgent(agent.id)}
                     className="group relative shrink-0"
-                    title={agent.displayName || agent.username || 'Agent'}
+                    title={agent.displayName || agent.username || "Agent"}
                   >
                     <div className="h-14 w-14 overflow-hidden rounded-xl ring-2 ring-primary/50">
                       <img
-                        src={agent.profileImageUrl ?? ''}
+                        src={agent.profileImageUrl ?? ""}
                         alt=""
                         className="h-full w-full object-cover"
                         onError={(e) => {
-                          (e.target as HTMLImageElement).style.display = 'none';
+                          (e.target as HTMLImageElement).style.display = "none";
                         }}
                       />
                     </div>
@@ -831,12 +831,12 @@ export default function TeamChatPage() {
                   >
                     <div
                       className={cn(
-                        'h-14 w-14 overflow-hidden rounded-xl ring-2',
-                        a.hat === 'black'
-                          ? 'ring-red-500'
-                          : a.hat === 'gray'
-                            ? 'ring-purple-500'
-                            : 'ring-blue-500'
+                        "h-14 w-14 overflow-hidden rounded-xl ring-2",
+                        a.hat === "black"
+                          ? "ring-red-500"
+                          : a.hat === "gray"
+                            ? "ring-purple-500"
+                            : "ring-blue-500",
                       )}
                     >
                       <img
@@ -866,7 +866,7 @@ export default function TeamChatPage() {
                 {hasAgents && (
                   <button
                     type="button"
-                    onClick={() => setPageView('chat')}
+                    onClick={() => setPageView("chat")}
                     className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-muted-foreground text-xs transition-colors hover:bg-muted hover:text-foreground"
                     title="Back to chat"
                   >
@@ -876,7 +876,7 @@ export default function TeamChatPage() {
                 )}
                 <button
                   type="button"
-                  onClick={() => router.push('/agents/create')}
+                  onClick={() => router.push("/agents/create")}
                   className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-muted-foreground text-xs transition-colors hover:bg-muted hover:text-foreground"
                   title="Create custom agent"
                 >
@@ -890,13 +890,13 @@ export default function TeamChatPage() {
                       selected: selectedArchetypes.map((a) => a.id),
                       existing: agents.map((a) => ({
                         id: a.id,
-                        name: a.displayName || a.username || 'Agent',
+                        name: a.displayName || a.username || "Agent",
                       })),
                     };
                     navigator.clipboard.writeText(
-                      JSON.stringify(data, null, 2)
+                      JSON.stringify(data, null, 2),
                     );
-                    toast.success('Team exported to clipboard');
+                    toast.success("Team exported to clipboard");
                   }}
                   className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-muted-foreground text-xs transition-colors hover:bg-muted hover:text-foreground"
                   title="Export team"
@@ -912,15 +912,15 @@ export default function TeamChatPage() {
                       const data = JSON.parse(text);
                       if (data.selected && Array.isArray(data.selected)) {
                         const validIds = data.selected.filter((id: string) =>
-                          ARCHETYPES.some((a) => a.id === id)
+                          ARCHETYPES.some((a) => a.id === id),
                         );
                         setSelectedIds(new Set(validIds));
                         toast.success(`Imported ${validIds.length} selections`);
                       } else {
-                        toast.error('Invalid team data');
+                        toast.error("Invalid team data");
                       }
                     } catch {
-                      toast.error('Could not import — paste valid team JSON');
+                      toast.error("Could not import — paste valid team JSON");
                     }
                   }}
                   className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-muted-foreground text-xs transition-colors hover:bg-muted hover:text-foreground"
@@ -936,10 +936,10 @@ export default function TeamChatPage() {
                   onClick={handleDeploy}
                   disabled={selectedIds.size === 0 || deploying}
                   className={cn(
-                    'flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-bold text-xs uppercase tracking-wider transition-all',
+                    "flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-bold text-xs uppercase tracking-wider transition-all",
                     selectedIds.size > 0
-                      ? 'bg-[#0066FF] text-white shadow-[0_0_16px_rgba(0,102,255,0.3)] hover:bg-[#2952d9]'
-                      : 'cursor-not-allowed bg-muted/50 text-muted-foreground/50'
+                      ? "bg-[#0066FF] text-white shadow-[0_0_16px_rgba(0,102,255,0.3)] hover:bg-[#2952d9]"
+                      : "cursor-not-allowed bg-muted/50 text-muted-foreground/50",
                   )}
                 >
                   {deploying ? (
@@ -947,7 +947,7 @@ export default function TeamChatPage() {
                   ) : (
                     <Swords className="h-3.5 w-3.5" />
                   )}
-                  {deploying ? 'Deploying…' : 'Deploy'}
+                  {deploying ? "Deploying…" : "Deploy"}
                 </button>
               </div>
             </div>
@@ -955,33 +955,33 @@ export default function TeamChatPage() {
 
           {/* ── 3 Faction Columns ──────────────────────────── */}
           <div className="flex min-h-0 flex-1 overflow-hidden">
-            {(['black', 'gray', 'white'] as const).map((hat, fi) => {
+            {(["black", "gray", "white"] as const).map((hat, fi) => {
               const factionArchetypes = ARCHETYPES.filter((a) => a.hat === hat);
               const borderColor =
-                hat === 'black'
-                  ? 'border-red-500/20'
-                  : hat === 'gray'
-                    ? 'border-purple-500/20'
-                    : 'border-blue-500/20';
+                hat === "black"
+                  ? "border-red-500/20"
+                  : hat === "gray"
+                    ? "border-purple-500/20"
+                    : "border-blue-500/20";
 
               return (
                 <div
                   key={hat}
                   className={cn(
-                    'flex flex-1 flex-col overflow-y-auto overscroll-contain',
-                    fi < 2 && `border-r ${borderColor}`
+                    "flex flex-1 flex-col overflow-y-auto overscroll-contain",
+                    fi < 2 && `border-r ${borderColor}`,
                   )}
                 >
                   {/* Faction header */}
                   <div className="sticky top-0 z-10 bg-background/90 px-2 py-1.5 text-center backdrop-blur-sm">
                     <span
                       className={cn(
-                        'font-black text-[10px] uppercase tracking-[0.2em]',
-                        hat === 'black'
-                          ? 'text-red-400/80'
-                          : hat === 'gray'
-                            ? 'text-purple-400/80'
-                            : 'text-blue-400/80'
+                        "font-black text-[10px] uppercase tracking-[0.2em]",
+                        hat === "black"
+                          ? "text-red-400/80"
+                          : hat === "gray"
+                            ? "text-purple-400/80"
+                            : "text-blue-400/80",
                       )}
                     >
                       {FACTION_META[hat].label}
@@ -993,7 +993,7 @@ export default function TeamChatPage() {
                     {factionArchetypes.map((archetype) => {
                       const isArchSelected = selectedIds.has(archetype.id);
                       const pfpUrl = getAgentDefaultProfileImageUrl(
-                        archetype.pfpIndex
+                        archetype.pfpIndex,
                       );
                       const classMeta = getClassBadge(archetype.agentClass);
 
@@ -1003,15 +1003,15 @@ export default function TeamChatPage() {
                           type="button"
                           onClick={() => toggleArchetype(archetype.id)}
                           className={cn(
-                            'group relative overflow-hidden rounded-lg transition-all duration-150',
-                            'hover:scale-[1.03] active:scale-[0.97]',
+                            "group relative overflow-hidden rounded-lg transition-all duration-150",
+                            "hover:scale-[1.03] active:scale-[0.97]",
                             isArchSelected
-                              ? hat === 'black'
-                                ? 'shadow-[0_0_12px_rgba(239,68,68,0.3)] ring-2 ring-red-500'
-                                : hat === 'gray'
-                                  ? 'shadow-[0_0_12px_rgba(168,85,247,0.3)] ring-2 ring-purple-500'
-                                  : 'shadow-[0_0_12px_rgba(59,130,246,0.3)] ring-2 ring-blue-500'
-                              : 'ring-1 ring-border/30 hover:ring-border/60'
+                              ? hat === "black"
+                                ? "shadow-[0_0_12px_rgba(239,68,68,0.3)] ring-2 ring-red-500"
+                                : hat === "gray"
+                                  ? "shadow-[0_0_12px_rgba(168,85,247,0.3)] ring-2 ring-purple-500"
+                                  : "shadow-[0_0_12px_rgba(59,130,246,0.3)] ring-2 ring-blue-500"
+                              : "ring-1 ring-border/30 hover:ring-border/60",
                           )}
                         >
                           {/* Portrait */}
@@ -1020,10 +1020,10 @@ export default function TeamChatPage() {
                               src={pfpUrl}
                               alt=""
                               className={cn(
-                                'h-full w-full object-cover transition-all',
+                                "h-full w-full object-cover transition-all",
                                 isArchSelected
-                                  ? 'brightness-110'
-                                  : 'brightness-90 group-hover:brightness-100'
+                                  ? "brightness-110"
+                                  : "brightness-90 group-hover:brightness-100",
                               )}
                               draggable={false}
                             />
@@ -1037,8 +1037,8 @@ export default function TeamChatPage() {
                             <div className="mt-0.5 flex justify-center">
                               <classMeta.Icon
                                 className={cn(
-                                  'h-2.5 w-2.5',
-                                  classMeta.classes.split(' ')[1]
+                                  "h-2.5 w-2.5",
+                                  classMeta.classes.split(" ")[1],
                                 )}
                               />
                             </div>
@@ -1065,7 +1065,7 @@ export default function TeamChatPage() {
       )}
 
       {/* ═══════════════════ CHAT VIEW ═══════════════════ */}
-      {pageView !== 'roster' && (
+      {pageView !== "roster" && (
         <div className="flex h-full flex-col">
           {/* Agent Row + Nav */}
           <div
@@ -1075,7 +1075,7 @@ export default function TeamChatPage() {
             {/* Roster button */}
             <button
               type="button"
-              onClick={() => setPageView('roster')}
+              onClick={() => setPageView("roster")}
               className="flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-1.5 font-medium text-muted-foreground text-xs transition-colors hover:bg-muted hover:text-foreground"
               title="Open Roster"
             >
@@ -1086,10 +1086,10 @@ export default function TeamChatPage() {
             <div className="mx-1 h-5 w-px bg-border" />
 
             {agents.map((agent) => {
-              const agentName = agent.displayName || agent.username || 'Agent';
+              const agentName = agent.displayName || agent.username || "Agent";
               const isProcessing = processingAgentIds.has(agent.id);
               const isSelected =
-                pageView === 'agent-detail' && detailAgentId === agent.id;
+                pageView === "agent-detail" && detailAgentId === agent.id;
 
               return (
                 <button
@@ -1097,9 +1097,9 @@ export default function TeamChatPage() {
                   type="button"
                   onClick={() => handleSelectAgent(agent.id)}
                   className={cn(
-                    'flex shrink-0 items-center gap-2 rounded-lg px-2 py-1.5 transition-colors',
-                    'hover:bg-muted',
-                    isSelected && 'bg-muted ring-1 ring-primary/40'
+                    "flex shrink-0 items-center gap-2 rounded-lg px-2 py-1.5 transition-colors",
+                    "hover:bg-muted",
+                    isSelected && "bg-muted ring-1 ring-primary/40",
                   )}
                   title={agentName}
                 >
@@ -1126,7 +1126,7 @@ export default function TeamChatPage() {
               <button
                 type="button"
                 data-tour="agents-add-button"
-                onClick={() => setPageView('roster')}
+                onClick={() => setPageView("roster")}
                 className="flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                 aria-label="Add agent"
               >
@@ -1141,7 +1141,7 @@ export default function TeamChatPage() {
           {/* Main Content */}
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
             {/* No agents → nudge to roster */}
-            {!hasAgents && pageView === 'chat' ? (
+            {!hasAgents && pageView === "chat" ? (
               <div className="flex flex-1 flex-col items-center justify-center gap-6 p-8 text-center">
                 <div className="relative">
                   <Swords className="h-20 w-20 text-muted-foreground/30" />
@@ -1159,20 +1159,20 @@ export default function TeamChatPage() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => setPageView('roster')}
+                  onClick={() => setPageView("roster")}
                   className="flex items-center gap-2 rounded-lg bg-[#0066FF] px-6 py-3 font-bold text-white uppercase tracking-wider transition-all hover:bg-[#2952d9] hover:shadow-[0_0_24px_rgba(0,102,255,0.3)]"
                 >
                   <Swords className="h-4 w-4" />
                   Open Roster
                 </button>
               </div>
-            ) : pageView === 'chat-list' ? (
+            ) : pageView === "chat-list" ? (
               /* Conversation list */
               <div className="flex min-h-0 flex-1 flex-col">
                 <div className="flex shrink-0 items-center gap-3 border-border border-b px-4 py-3">
                   <button
                     type="button"
-                    onClick={() => setPageView('chat')}
+                    onClick={() => setPageView("chat")}
                     className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                     aria-label="Back to chat"
                   >
@@ -1186,31 +1186,31 @@ export default function TeamChatPage() {
                     loading={conversationsLoading}
                     onNewChat={() => {
                       createConversation();
-                      setPageView('chat');
+                      setPageView("chat");
                     }}
                     onSelectConversation={(id) => {
                       switchConversation(id);
-                      setPageView('chat');
+                      setPageView("chat");
                     }}
                     onRenameConversation={renameConversation}
                     onDeleteConversation={deleteConversation}
                   />
                 </div>
               </div>
-            ) : pageView === 'agent-detail' && detailAgent ? (
+            ) : pageView === "agent-detail" && detailAgent ? (
               /* Agent detail */
               <div className="flex min-h-0 flex-1 flex-col">
                 <div className="flex shrink-0 items-center gap-3 border-border border-b px-4 py-3">
                   <button
                     type="button"
-                    onClick={() => setPageView('chat')}
+                    onClick={() => setPageView("chat")}
                     className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                     aria-label="Back to team"
                   >
                     <ChevronLeft className="h-5 w-5" />
                   </button>
                   <h2 className="font-bold text-base">
-                    {detailAgent.displayName || detailAgent.username || 'Agent'}
+                    {detailAgent.displayName || detailAgent.username || "Agent"}
                   </h2>
                 </div>
                 <div className="min-h-0 flex-1 overflow-y-auto p-4">
@@ -1220,7 +1220,7 @@ export default function TeamChatPage() {
                     processingAgentIds={processingAgentIds}
                     onTagAgent={(agent) => {
                       tagAgentInInput(agent);
-                      setPageView('chat');
+                      setPageView("chat");
                     }}
                     onStopAgent={stopAgent}
                     onViewSettings={handleViewSettings}
@@ -1233,7 +1233,7 @@ export default function TeamChatPage() {
                 <div className="flex shrink-0 items-center gap-2 border-border border-b px-4 py-2">
                   <button
                     type="button"
-                    onClick={() => setPageView('chat-list')}
+                    onClick={() => setPageView("chat-list")}
                     className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-muted-foreground text-sm transition-colors hover:bg-muted hover:text-foreground"
                   >
                     <List className="h-4 w-4" />
@@ -1273,7 +1273,7 @@ export default function TeamChatPage() {
                   agentIds={agentIds}
                   onViewSettings={handleViewSettings}
                   onInputFocus={() => {
-                    setTimeout(() => scrollToBottom('smooth'), 150);
+                    setTimeout(() => scrollToBottom("smooth"), 150);
                   }}
                   replyToMessage={replyToMessage}
                   onReply={handleReplyToMessage}
@@ -1317,10 +1317,10 @@ export default function TeamChatPage() {
 // ═══════════════════════════════════════════════════════════════
 
 function formatTimeAgo(dateStr: string | null): string {
-  if (!dateStr) return 'Never';
+  if (!dateStr) return "Never";
   const diff = Date.now() - new Date(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'Just now';
+  if (mins < 1) return "Just now";
   if (mins < 60) return `${mins}m ago`;
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;
@@ -1343,7 +1343,7 @@ function AgentDetailCard({
   onStopAgent: (agentId: string) => void;
   onViewSettings: (agentId: string) => void;
 }) {
-  const agentName = agent.displayName || agent.username || 'Agent';
+  const agentName = agent.displayName || agent.username || "Agent";
   const isProcessing = processingAgentIds.has(agent.id);
   const hasStats = stats !== undefined;
 
@@ -1378,22 +1378,22 @@ function AgentDetailCard({
             {hasStats && (
               <span
                 className={cn(
-                  'inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-medium text-[10px]',
+                  "inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-medium text-[10px]",
                   stats.isActive
-                    ? 'bg-green-500/15 text-green-500'
-                    : 'bg-muted text-muted-foreground'
+                    ? "bg-green-500/15 text-green-500"
+                    : "bg-muted text-muted-foreground",
                 )}
               >
                 <span
                   className={cn(
-                    'h-1.5 w-1.5 rounded-full',
-                    stats.isActive ? 'bg-green-500' : 'bg-muted-foreground'
+                    "h-1.5 w-1.5 rounded-full",
+                    stats.isActive ? "bg-green-500" : "bg-muted-foreground",
                   )}
                 />
-                {stats.isActive ? 'Active' : 'Idle'}
+                {stats.isActive ? "Active" : "Idle"}
               </span>
             )}
-            {agent.modelTier === 'pro' && (
+            {agent.modelTier === "pro" && (
               <span className="rounded bg-primary/20 px-1.5 py-0.5 font-medium text-[10px] text-primary">
                 PRO
               </span>
@@ -1420,17 +1420,17 @@ function AgentDetailCard({
         <div className="flex flex-1 flex-col items-center justify-center px-2 py-3">
           <span
             className={cn(
-              'font-semibold text-sm',
+              "font-semibold text-sm",
               hasStats
                 ? stats.lifetimePnL >= 0
-                  ? 'text-green-600'
-                  : 'text-red-600'
-                : 'text-foreground'
+                  ? "text-green-600"
+                  : "text-red-600"
+                : "text-foreground",
             )}
           >
             {hasStats
-              ? `${stats.lifetimePnL >= 0 ? '+' : ''}${formatCompactCurrency(stats.lifetimePnL)}`
-              : '\u2014'}
+              ? `${stats.lifetimePnL >= 0 ? "+" : ""}${formatCompactCurrency(stats.lifetimePnL)}`
+              : "\u2014"}
           </span>
           <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
             P&L
@@ -1439,7 +1439,7 @@ function AgentDetailCard({
         <div className="w-px bg-border" />
         <div className="flex flex-1 flex-col items-center justify-center px-2 py-3">
           <span className="font-semibold text-foreground text-sm">
-            {hasStats ? `${(stats.winRate * 100).toFixed(0)}%` : '\u2014'}
+            {hasStats ? `${(stats.winRate * 100).toFixed(0)}%` : "\u2014"}
           </span>
           <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
             Win Rate
@@ -1448,7 +1448,7 @@ function AgentDetailCard({
         <div className="w-px bg-border" />
         <div className="flex flex-1 flex-col items-center justify-center px-2 py-3">
           <span className="font-semibold text-foreground text-sm">
-            {hasStats ? stats.totalTrades : '\u2014'}
+            {hasStats ? stats.totalTrades : "\u2014"}
           </span>
           <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
             Trades

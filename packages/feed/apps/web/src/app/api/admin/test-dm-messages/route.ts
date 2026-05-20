@@ -69,11 +69,11 @@ import {
   requireAdmin,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { db } from '@feed/db';
-import { generateSnowflakeId, logger, toISO } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { z } from 'zod';
+} from "@feed/api";
+import { db } from "@feed/db";
+import { generateSnowflakeId, logger, toISO } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { z } from "zod";
 
 const TestDMMessagesSchema = z.object({
   senderId: z.string().min(1),
@@ -91,14 +91,14 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     TestDMMessagesSchema.parse(body);
 
   logger.info(
-    'Admin sending test DM messages',
+    "Admin sending test DM messages",
     {
       adminUserId: adminUser.userId,
       senderId,
       recipientId,
       messageCount,
     },
-    'POST /api/admin/test-dm-messages'
+    "POST /api/admin/test-dm-messages",
   );
 
   // Verify both users exist (supports ID, username, or privyId)
@@ -118,11 +118,11 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   ]);
 
   if (!sender) {
-    throw new NotFoundError('Sender user', senderId);
+    throw new NotFoundError("Sender user", senderId);
   }
 
   if (!recipient) {
-    throw new NotFoundError('Recipient user', recipientId);
+    throw new NotFoundError("Recipient user", recipientId);
   }
 
   // Use the resolved user IDs
@@ -132,14 +132,14 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // Verify users are different
   if (resolvedSenderId === resolvedRecipientId) {
     throw new BusinessLogicError(
-      'Sender and recipient must be different users',
-      'SAME_USER'
+      "Sender and recipient must be different users",
+      "SAME_USER",
     );
   }
 
   // Create DM chat ID (consistent format - sort IDs for consistency)
   const sortedIds = [resolvedSenderId, resolvedRecipientId].sort();
-  const chatId = `dm-${sortedIds.join('-')}`;
+  const chatId = `dm-${sortedIds.join("-")}`;
 
   await db.chat.findUnique({
     where: { id: chatId },
@@ -172,7 +172,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   ]);
 
   logger.info(
-    'Created new DM chat for test messages',
+    "Created new DM chat for test messages",
     {
       chatId,
       senderId: resolvedSenderId,
@@ -180,17 +180,17 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       senderParticipantId: senderParticipant.id,
       recipientParticipantId: recipientParticipant.id,
     },
-    'POST /api/admin/test-dm-messages'
+    "POST /api/admin/test-dm-messages",
   );
 
   logger.info(
-    'Using existing DM chat for test messages',
+    "Using existing DM chat for test messages",
     {
       chatId,
       senderId: resolvedSenderId,
       recipientId: resolvedRecipientId,
     },
-    'POST /api/admin/test-dm-messages'
+    "POST /api/admin/test-dm-messages",
   );
 
   // Send test messages in batches
@@ -204,14 +204,14 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   }> = [];
 
   logger.info(
-    'Starting to send test messages',
+    "Starting to send test messages",
     {
       messageCount,
       batchSize,
       chatId,
       senderId: resolvedSenderId,
     },
-    'POST /api/admin/test-dm-messages'
+    "POST /api/admin/test-dm-messages",
   );
 
   for (let i = 0; i < messageCount; i += batchSize) {
@@ -235,25 +235,25 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     });
 
     logger.info(
-      'Created batch of messages',
+      "Created batch of messages",
       {
         batchNumber: Math.floor(i / batchSize) + 1,
         batchSize: batch.length,
         created: result.count,
         totalSoFar: i + batch.length,
       },
-      'POST /api/admin/test-dm-messages'
+      "POST /api/admin/test-dm-messages",
     );
 
     messages.push(...batch);
 
     logger.error(
-      'Failed to create message batch',
+      "Failed to create message batch",
       {
         batchNumber: Math.floor(i / batchSize) + 1,
         batchSize: batch.length,
       },
-      'POST /api/admin/test-dm-messages'
+      "POST /api/admin/test-dm-messages",
     );
 
     // Broadcast messages via SSE
@@ -275,7 +275,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         chatId,
         batchNumber: Math.floor(i / batchSize) + 1,
       },
-      'POST /api/admin/test-dm-messages'
+      "POST /api/admin/test-dm-messages",
     );
   }
 
@@ -286,13 +286,13 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   });
 
   logger.info(
-    'Admin test DM messages sent successfully',
+    "Admin test DM messages sent successfully",
     {
       adminUserId: adminUser.userId,
       chatId,
       messageCount: messages.length,
     },
-    'POST /api/admin/test-dm-messages'
+    "POST /api/admin/test-dm-messages",
   );
 
   return successResponse({
@@ -300,6 +300,6 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     message: `Successfully sent ${messages.length} test DM messages. Go to /chats to see them!`,
     chatId,
     messageCount: messages.length,
-    note: 'Chat cache is 30s. If not visible, refresh the page or wait 30 seconds.',
+    note: "Chat cache is 30s. If not visible, refresh the page or wait 30 seconds.",
   });
 });

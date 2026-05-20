@@ -79,11 +79,11 @@ import {
   BusinessLogicError,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { db } from '@feed/db';
-import { StaticDataRegistry } from '@feed/engine';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/api";
+import { db } from "@feed/db";
+import { StaticDataRegistry } from "@feed/engine";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 /**
  * GET /api/actors/[actorId]/stats
@@ -98,7 +98,7 @@ import type { NextRequest } from 'next/server';
 export const GET = withErrorHandling(
   async (
     _request: NextRequest,
-    context: { params: Promise<{ actorId: string }> }
+    context: { params: Promise<{ actorId: string }> },
   ) => {
     const params = await context.params;
     const { actorId } = params;
@@ -110,12 +110,12 @@ export const GET = withErrorHandling(
     if (!actor) {
       actor =
         StaticDataRegistry.getAllActors().find(
-          (a) => a.name.toLowerCase() === actorId.toLowerCase()
+          (a) => a.name.toLowerCase() === actorId.toLowerCase(),
         ) ?? null;
     }
 
     if (!actor) {
-      throw new BusinessLogicError(`Actor ${actorId} not found`, 'NOT_FOUND');
+      throw new BusinessLogicError(`Actor ${actorId} not found`, "NOT_FOUND");
     }
 
     const actualActorId = actor.id;
@@ -150,7 +150,7 @@ export const GET = withErrorHandling(
     const totalFollowers = actorFollowerCount + userActorFollowerCount;
 
     logger.info(
-      'Actor stats fetched successfully',
+      "Actor stats fetched successfully",
       {
         actorId,
         actualActorId,
@@ -159,7 +159,7 @@ export const GET = withErrorHandling(
         userActorFollowerCount,
         followingCount,
       },
-      'GET /api/actors/[actorId]/stats'
+      "GET /api/actors/[actorId]/stats",
     );
 
     return successResponse({
@@ -171,5 +171,5 @@ export const GET = withErrorHandling(
         userFollowers: userActorFollowerCount,
       },
     });
-  }
+  },
 );

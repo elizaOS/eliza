@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import { logger } from '@feed/shared';
-import * as Sentry from '@sentry/nextjs';
-import { AlertTriangle } from 'lucide-react';
-import { Component, type ReactNode } from 'react';
+import { logger } from "@feed/shared";
+import * as Sentry from "@sentry/nextjs";
+import { AlertTriangle } from "lucide-react";
+import { Component, type ReactNode } from "react";
 
 interface Props {
   children: ReactNode;
@@ -31,19 +31,19 @@ export class PanelErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo): void {
     Sentry.withScope((scope) => {
-      scope.setTag('errorBoundary', 'panel');
-      scope.setTag('surface', 'agent-team-panel');
-      scope.setContext('panelErrorBoundary', {
+      scope.setTag("errorBoundary", "panel");
+      scope.setTag("surface", "agent-team-panel");
+      scope.setContext("panelErrorBoundary", {
         componentStack: errorInfo.componentStack,
       });
       Sentry.captureException(error);
     });
 
-    if (process.env.NODE_ENV !== 'production') {
+    if (process.env.NODE_ENV !== "production") {
       logger.error(
-        'Panel rendering error',
+        "Panel rendering error",
         { message: error.message, componentStack: errorInfo.componentStack },
-        'PanelErrorBoundary'
+        "PanelErrorBoundary",
       );
     }
   }
@@ -63,7 +63,7 @@ export class PanelErrorBoundary extends Component<Props, State> {
             </p>
             <p className="text-muted-foreground text-xs">
               {this.state.error?.message ||
-                'An error occurred while rendering this content.'}
+                "An error occurred while rendering this content."}
             </p>
           </div>
           <button

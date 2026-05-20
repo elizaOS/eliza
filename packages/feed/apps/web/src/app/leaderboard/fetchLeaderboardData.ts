@@ -1,4 +1,4 @@
-import type { LeaderboardMetric, LeaderboardScope } from '@feed/shared';
+import type { LeaderboardMetric, LeaderboardScope } from "@feed/shared";
 
 export interface LeaderboardUser {
   id: string;
@@ -53,10 +53,10 @@ export interface LeaderboardData {
 export class LeaderboardFetchError extends Error {
   constructor(
     message: string,
-    public readonly status?: number
+    public readonly status?: number,
   ) {
     super(message);
-    this.name = 'LeaderboardFetchError';
+    this.name = "LeaderboardFetchError";
   }
 }
 
@@ -78,7 +78,7 @@ function buildLeaderboardUrl({
   selectedMetric,
   selectedScope,
   userId,
-}: Omit<FetchLeaderboardOptions, 'signal' | 'retryDelayMs' | 'retries'>) {
+}: Omit<FetchLeaderboardOptions, "signal" | "retryDelayMs" | "retries">) {
   const searchParams = new URLSearchParams({
     metric: selectedMetric,
     type: selectedScope,
@@ -87,7 +87,7 @@ function buildLeaderboardUrl({
   });
 
   if (userId) {
-    searchParams.set('userId', userId);
+    searchParams.set("userId", userId);
   }
 
   return `/api/leaderboard?${searchParams.toString()}`;
@@ -99,7 +99,7 @@ function isRetryableLeaderboardError(error: unknown): boolean {
   }
 
   if (error instanceof TypeError) {
-    return error.message.toLowerCase().includes('fetch');
+    return error.message.toLowerCase().includes("fetch");
   }
 
   if (error instanceof LeaderboardFetchError && error.status !== undefined) {
@@ -109,9 +109,9 @@ function isRetryableLeaderboardError(error: unknown): boolean {
   if (error instanceof Error) {
     const message = error.message.toLowerCase();
     return (
-      message.includes('failed to fetch') ||
-      message.includes('load failed') ||
-      message.includes('network')
+      message.includes("failed to fetch") ||
+      message.includes("load failed") ||
+      message.includes("network")
     );
   }
 
@@ -121,7 +121,7 @@ function isRetryableLeaderboardError(error: unknown): boolean {
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
-      reject(new DOMException('Aborted', 'AbortError'));
+      reject(new DOMException("Aborted", "AbortError"));
       return;
     }
 
@@ -132,20 +132,20 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 
     const onAbort = () => {
       cleanup();
-      reject(new DOMException('Aborted', 'AbortError'));
+      reject(new DOMException("Aborted", "AbortError"));
     };
 
     const cleanup = () => {
       globalThis.clearTimeout(timeoutId);
-      signal?.removeEventListener('abort', onAbort);
+      signal?.removeEventListener("abort", onAbort);
     };
 
-    signal?.addEventListener('abort', onAbort, { once: true });
+    signal?.addEventListener("abort", onAbort, { once: true });
   });
 }
 
 export function isAbortError(error: unknown): boolean {
-  return error instanceof Error && error.name === 'AbortError';
+  return error instanceof Error && error.name === "AbortError";
 }
 
 export async function fetchLeaderboardData({
@@ -178,7 +178,7 @@ export async function fetchLeaderboardData({
       if (!response.ok) {
         throw new LeaderboardFetchError(
           `Failed to fetch leaderboard: ${response.status}`,
-          response.status
+          response.status,
         );
       }
 
@@ -192,5 +192,5 @@ export async function fetchLeaderboardData({
     }
   }
 
-  throw new LeaderboardFetchError('Failed to fetch leaderboard');
+  throw new LeaderboardFetchError("Failed to fetch leaderboard");
 }

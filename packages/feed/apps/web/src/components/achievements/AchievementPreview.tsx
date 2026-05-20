@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { Award, CheckCircle2 } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
-import { useAuth } from '@/hooks/useAuth';
+import { Award, CheckCircle2 } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
 
 interface AchievementBrief {
   id: string;
@@ -13,9 +13,9 @@ interface AchievementBrief {
 }
 
 const TIER_COLORS: Record<string, string> = {
-  bronze: 'bg-amber-600/15 border-amber-600/30',
-  silver: 'bg-slate-400/15 border-slate-400/30',
-  gold: 'bg-yellow-500/15 border-yellow-500/30',
+  bronze: "bg-amber-600/15 border-amber-600/30",
+  silver: "bg-slate-400/15 border-slate-400/30",
+  gold: "bg-yellow-500/15 border-yellow-500/30",
 };
 
 export function AchievementPreview({ onViewAll }: { onViewAll?: () => void }) {
@@ -33,7 +33,7 @@ export function AchievementPreview({ onViewAll }: { onViewAll?: () => void }) {
       setLoading(false);
       return;
     }
-    const res = await fetch('/api/achievements', {
+    const res = await fetch("/api/achievements", {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (res.ok) {
@@ -91,7 +91,7 @@ export function AchievementPreview({ onViewAll }: { onViewAll?: () => void }) {
             <div
               key={a.id}
               className={`relative flex h-16 w-16 shrink-0 items-center justify-center rounded-lg border ${
-                a.unlocked ? tierColor : 'border-border bg-muted/30'
+                a.unlocked ? tierColor : "border-border bg-muted/30"
               }`}
             >
               {a.unlocked ? (

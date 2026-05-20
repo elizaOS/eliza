@@ -2,7 +2,7 @@
  * User-related validation schemas
  */
 
-import { z } from 'zod';
+import { z } from "zod";
 import {
   AssetOrUrlSchema,
   createTrimmedStringSchema,
@@ -12,7 +12,7 @@ import {
   URLSchema,
   UsernameSchema,
   WalletAddressSchema,
-} from './common';
+} from "./common";
 
 /**
  * Create user schema for registration
@@ -28,7 +28,7 @@ export const CreateUserSchema = z
     coverImageUrl: AssetOrUrlSchema.optional(),
   })
   .refine((data) => data.walletAddress || data.email, {
-    message: 'Either wallet address or email is required',
+    message: "Either wallet address or email is required",
   });
 
 /**
@@ -49,7 +49,7 @@ export const UpdateUserSchema = z.object({
  * Social connection schemas
  */
 export const ConnectSocialSchema = z.object({
-  platform: z.enum(['twitter', 'farcaster']),
+  platform: z.enum(["twitter", "farcaster"]),
   username: z.string().min(1).max(50),
   verificationToken: z.string().optional(), // For verification purposes
 });
@@ -62,7 +62,7 @@ export const ReferralSchema = z.object({
     .string()
     .min(6)
     .max(20)
-    .regex(/^[A-Z0-9]+$/, 'Referral code must be alphanumeric uppercase'),
+    .regex(/^[A-Z0-9]+$/, "Referral code must be alphanumeric uppercase"),
 });
 
 /**
@@ -80,12 +80,12 @@ export const UserAuthSchema = z.object({
 export const UserBalanceTransactionSchema = z.object({
   amount: z.number().positive(),
   type: z.enum([
-    'deposit',
-    'withdrawal',
-    'trade_profit',
-    'trade_loss',
-    'fee',
-    'reward',
+    "deposit",
+    "withdrawal",
+    "trade_profit",
+    "trade_loss",
+    "fee",
+    "reward",
   ]),
   description: z.string().optional(),
   transactionHash: z.string().optional(),
@@ -97,14 +97,14 @@ export const UserBalanceTransactionSchema = z.object({
 export const UserPointsTransactionSchema = z.object({
   points: z.number(),
   type: z.enum([
-    'profile_completion',
-    'profile_image',
-    'username',
-    'social_connect',
-    'wallet_connect',
-    'referral',
-    'trade',
-    'achievement',
+    "profile_completion",
+    "profile_image",
+    "username",
+    "social_connect",
+    "wallet_connect",
+    "referral",
+    "trade",
+    "achievement",
   ]),
   description: z.string(),
 });
@@ -159,11 +159,11 @@ export const OnChainRegistrationSchema = z.object({
     .refine(
       (val) =>
         !val ||
-        val.startsWith('/assets/') ||
-        val.startsWith('http://') ||
-        val.startsWith('https://') ||
-        val.startsWith('/uploads/'),
-      { message: 'Must be a valid URL or asset path' }
+        val.startsWith("/assets/") ||
+        val.startsWith("http://") ||
+        val.startsWith("https://") ||
+        val.startsWith("/uploads/"),
+      { message: "Must be a valid URL or asset path" },
     )
     .optional(),
   coverImageUrl: z
@@ -171,11 +171,11 @@ export const OnChainRegistrationSchema = z.object({
     .refine(
       (val) =>
         !val ||
-        val.startsWith('/assets/') ||
-        val.startsWith('http://') ||
-        val.startsWith('https://') ||
-        val.startsWith('/uploads/'),
-      { message: 'Must be a valid URL or asset path' }
+        val.startsWith("/assets/") ||
+        val.startsWith("http://") ||
+        val.startsWith("https://") ||
+        val.startsWith("/uploads/"),
+      { message: "Must be a valid URL or asset path" },
     )
     .optional(),
   endpoint: URLSchema.optional(),
@@ -239,7 +239,7 @@ export const UserListResponseSchema = z.object({
  * User posts query schema
  */
 export const UserPostsQuerySchema = z.object({
-  type: z.enum(['posts', 'replies']).default('posts'),
+  type: z.enum(["posts", "replies"]).default("posts"),
   page: z.coerce.number().min(1).default(1),
   limit: z.coerce.number().min(1).max(100).default(100),
 });

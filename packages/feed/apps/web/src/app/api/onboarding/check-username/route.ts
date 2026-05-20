@@ -100,11 +100,11 @@ import {
   publicRateLimit,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import type { DrizzleClient } from '@feed/db';
-import { asPublic, asUser } from '@feed/db';
-import { logger, sanitizeOnboardingUsername } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/api";
+import type { DrizzleClient } from "@feed/db";
+import { asPublic, asUser } from "@feed/db";
+import { logger, sanitizeOnboardingUsername } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 interface UsernameCheckResult {
   available: boolean;
@@ -117,7 +117,7 @@ interface UsernameCheckResult {
  */
 async function checkUsernameAvailability(
   baseUsername: string,
-  db: DrizzleClient
+  db: DrizzleClient,
 ): Promise<UsernameCheckResult> {
   const cleanUsername = sanitizeOnboardingUsername(baseUsername);
 
@@ -175,25 +175,25 @@ async function checkUsernameAvailability(
  */
 export const GET = withErrorHandling(async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
-  const username = searchParams.get('username');
+  const username = searchParams.get("username");
 
   if (!username) {
-    return errorResponse('Username is required', 'VALIDATION_ERROR', 400);
+    return errorResponse("Username is required", "VALIDATION_ERROR", 400);
   }
 
   if (username.length < 3) {
     return errorResponse(
-      'Username must be at least 3 characters',
-      'VALIDATION_ERROR',
-      400
+      "Username must be at least 3 characters",
+      "VALIDATION_ERROR",
+      400,
     );
   }
 
   if (username.length > 20) {
     return errorResponse(
-      'Username must be 20 characters or less',
-      'VALIDATION_ERROR',
-      400
+      "Username must be 20 characters or less",
+      "VALIDATION_ERROR",
+      400,
     );
   }
 
@@ -205,19 +205,18 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
   if (error) return error;
 
   // Check username availability with RLS (public or user context)
-  const result =
-    authUser && authUser.userId
-      ? await asUser(authUser, async (db) => {
-          return await checkUsernameAvailability(username, db);
-        })
-      : await asPublic(async (db) => {
-          return await checkUsernameAvailability(username, db);
-        });
+  const result = authUser?.userId
+    ? await asUser(authUser, async (db) => {
+        return await checkUsernameAvailability(username, db);
+      })
+    : await asPublic(async (db) => {
+        return await checkUsernameAvailability(username, db);
+      });
 
   logger.info(
-    'Username check result',
+    "Username check result",
     result,
-    'GET /api/onboarding/check-username'
+    "GET /api/onboarding/check-username",
   );
 
   const res = successResponse(result);

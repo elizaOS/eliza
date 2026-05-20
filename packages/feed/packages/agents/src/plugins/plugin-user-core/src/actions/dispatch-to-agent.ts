@@ -23,40 +23,40 @@ import type {
   IAgentRuntime,
   Memory,
   State,
-} from '@elizaos/core';
+} from "@elizaos/core";
 import {
   type BroadcastFn,
   dispatchAgentChat,
-} from '../../../../services/AgentChatService';
+} from "../../../../services/AgentChatService";
 
 export const dispatchToAgentAction: Action = {
-  name: 'DISPATCH_TO_AGENT',
+  name: "DISPATCH_TO_AGENT",
   description:
     "Execute a command on the user's behalf by dispatching to a specific agent in their team. Use when the user wants to trade, post, comment, or take any agent action. Do NOT use for information queries — use CHECK_PERPS, CHECK_PREDICTIONS etc. for those.",
 
   parameters: {
     agentId: {
-      type: 'string',
+      type: "string",
       required: true,
       description:
-        'The ID of the agent to dispatch to — use the [id: ...] shown in the Team Members list',
+        "The ID of the agent to dispatch to — use the [id: ...] shown in the Team Members list",
     },
     command: {
-      type: 'string',
+      type: "string",
       required: true,
       description:
         'The exact instruction to send to the agent (e.g., "open a 2x long on TSLAI for $100", "post about the current market")',
     },
-  } as unknown as Action['parameters'],
+  } as unknown as Action["parameters"],
 
   examples: [
     [
       {
-        name: 'user',
-        content: { text: 'Open a long position on TSLAI with $100' },
+        name: "user",
+        content: { text: "Open a long position on TSLAI with $100" },
       },
       {
-        name: 'coordinator',
+        name: "coordinator",
         content: {
           text: "I'll dispatch that trade to your trading agent.",
         },
@@ -64,11 +64,11 @@ export const dispatchToAgentAction: Action = {
     ],
     [
       {
-        name: 'user',
-        content: { text: 'Make my agent post about the NVDAI rally' },
+        name: "user",
+        content: { text: "Make my agent post about the NVDAI rally" },
       },
       {
-        name: 'coordinator',
+        name: "coordinator",
         content: {
           text: "I'll send that posting instruction to your agent now.",
         },
@@ -80,7 +80,7 @@ export const dispatchToAgentAction: Action = {
   validate: async (
     _runtime: IAgentRuntime,
     _message: Memory,
-    state?: State
+    state?: State,
   ): Promise<boolean> => {
     interface TeamMember {
       isAgent: boolean;
@@ -95,7 +95,7 @@ export const dispatchToAgentAction: Action = {
     _message: Memory,
     state?: State,
     _options?: Record<string, unknown>,
-    _callback?: HandlerCallback
+    _callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const actionParams = state?.data?.actionParams as
       | { agentId?: string; command?: string }
@@ -114,7 +114,7 @@ export const dispatchToAgentAction: Action = {
     if (!agentId || !command || !ownerId || !teamChatId || !broadcastFn) {
       const failResult: ActionResult = {
         success: false,
-        text: 'Missing required parameters for agent dispatch.',
+        text: "Missing required parameters for agent dispatch.",
       };
       _callback?.({ content: failResult as unknown as Content });
       return failResult;
@@ -135,7 +135,7 @@ export const dispatchToAgentAction: Action = {
       // with the correct agent ID instead of giving up.
       const failResult = {
         success: false,
-        text: `Failed to dispatch to agent "${agentId}": ${result.error ?? 'Unknown error'}. Check the Team Members list for the correct agent [id: ...] and retry.`,
+        text: `Failed to dispatch to agent "${agentId}": ${result.error ?? "Unknown error"}. Check the Team Members list for the correct agent [id: ...] and retry.`,
         values: { agentId, command, error: result.error },
       } as unknown as ActionResult;
       _callback?.({ content: failResult as unknown as Content });

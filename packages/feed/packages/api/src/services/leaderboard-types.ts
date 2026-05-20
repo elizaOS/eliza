@@ -1,8 +1,8 @@
 // These unions intentionally mirror the shared leaderboard query contract.
 // They stay local to the API package to keep service-layer types lightweight
 // and avoid coupling them to shared validation implementation details.
-export type LeaderboardMetric = 'reputation' | 'trading';
-export type LeaderboardScope = 'wallet' | 'team';
+export type LeaderboardMetric = "reputation" | "trading";
+export type LeaderboardScope = "wallet" | "team";
 
 export interface LeaderboardEntry {
   id: string;

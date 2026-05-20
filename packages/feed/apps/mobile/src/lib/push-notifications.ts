@@ -14,8 +14,8 @@
  * - A POST /api/notifications/register-device endpoint on the API server
  */
 
-import { apiUrl } from '@/utils/api-url';
-import { getPlatform, isNativePlatform } from './platform';
+import { apiUrl } from "@/utils/api-url";
+import { getPlatform, isNativePlatform } from "./platform";
 
 interface PushSetupOptions {
   /** Function to get the current auth token for API calls */
@@ -37,22 +37,22 @@ export async function initPushNotifications({
 }: PushSetupOptions): Promise<void> {
   if (!isNativePlatform()) return;
 
-  const { PushNotifications } = await import('@capacitor/push-notifications');
+  const { PushNotifications } = await import("@capacitor/push-notifications");
 
   const permission = await PushNotifications.requestPermissions();
-  if (permission.receive !== 'granted') return;
+  if (permission.receive !== "granted") return;
 
   await PushNotifications.register();
 
   // When the device gets a push token from APNs/FCM, send it to our API
-  PushNotifications.addListener('registration', async (token) => {
+  PushNotifications.addListener("registration", async (token) => {
     const authToken = await getAccessToken();
     if (!authToken) return;
 
-    await fetch(apiUrl('/api/notifications/register-device'), {
-      method: 'POST',
+    await fetch(apiUrl("/api/notifications/register-device"), {
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
         Authorization: `Bearer ${authToken}`,
       },
       body: JSON.stringify({
@@ -64,12 +64,12 @@ export async function initPushNotifications({
 
   // Handle notification received while app is in foreground
   PushNotifications.addListener(
-    'pushNotificationReceived',
-    (notification) => {}
+    "pushNotificationReceived",
+    (_notification) => {},
   );
 
   // Handle notification tap (user tapped a notification from the OS)
-  PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+  PushNotifications.addListener("pushNotificationActionPerformed", (action) => {
     const data = action.notification.data as Record<string, string>;
     // Navigate to the relevant screen based on notification data
     const path = data?.path || data?.url;
@@ -83,17 +83,17 @@ export async function initPushNotifications({
  * Remove the device's push token from the API (call on logout).
  */
 export async function unregisterPushNotifications(
-  getAccessToken: () => Promise<string | null>
+  getAccessToken: () => Promise<string | null>,
 ): Promise<void> {
   if (!isNativePlatform()) return;
 
   const authToken = await getAccessToken();
   if (!authToken) return;
 
-  await fetch(apiUrl('/api/notifications/unregister-device'), {
-    method: 'POST',
+  await fetch(apiUrl("/api/notifications/unregister-device"), {
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
       Authorization: `Bearer ${authToken}`,
     },
     body: JSON.stringify({ platform: getPlatform() }),

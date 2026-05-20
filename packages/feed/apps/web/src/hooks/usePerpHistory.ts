@@ -1,13 +1,13 @@
-import { logger } from '@feed/shared';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { logger } from "@feed/shared";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-import { useMarketPrices } from '@/hooks/useMarketPrices';
+import { useMarketPrices } from "@/hooks/useMarketPrices";
 import {
   type PerpTradeSSE,
   usePerpMarketStream,
-} from '@/hooks/usePerpMarketStream';
-import type { MarketTimeRange } from '@/types/markets';
-import { apiUrl } from '@/utils/api-url';
+} from "@/hooks/usePerpMarketStream";
+import type { MarketTimeRange } from "@/types/markets";
+import { apiUrl } from "@/utils/api-url";
 
 /**
  * Represents a single point in perpetual market price history.
@@ -45,7 +45,7 @@ interface UsePerpHistoryOptions {
   seed?: SeedSnapshot;
 }
 
-const getSeedSignature = (seed?: SeedSnapshot) => `${seed?.currentPrice ?? ''}`;
+const getSeedSignature = (seed?: SeedSnapshot) => `${seed?.currentPrice ?? ""}`;
 
 /**
  * Hook for fetching and managing perpetual market price history.
@@ -76,7 +76,7 @@ const getSeedSignature = (seed?: SeedSnapshot) => `${seed?.currentPrice ?? ''}`;
  */
 export function usePerpHistory(
   ticker: string | null,
-  options?: UsePerpHistoryOptions
+  options?: UsePerpHistoryOptions,
 ) {
   const limit = options?.limit ?? 200;
   const range = options?.range;
@@ -148,7 +148,7 @@ export function usePerpHistory(
         changePercent?: number | string;
         volume?: number | string | null;
         timestamp: string;
-      }>
+      }>,
     ): PerpHistoryPoint[] => {
       const parsed = points
         .map((point) => {
@@ -178,7 +178,7 @@ export function usePerpHistory(
           (point) =>
             Number.isFinite(point.time) &&
             Number.isFinite(point.price) &&
-            point.price > 0
+            point.price > 0,
         );
 
       const seed = seedRef.current?.currentPrice;
@@ -226,16 +226,16 @@ export function usePerpHistory(
         ...point,
         price: point.price * bestScale,
         change:
-          typeof point.change === 'number'
+          typeof point.change === "number"
             ? point.change * bestScale
             : undefined,
         volume:
-          typeof point.volume === 'number'
+          typeof point.volume === "number"
             ? point.volume * bestScale
             : undefined,
       }));
     },
-    []
+    [],
   );
 
   const fallbackFromSeed = useCallback(() => {
@@ -274,12 +274,12 @@ export function usePerpHistory(
     try {
       const params = new URLSearchParams({ limit: String(limit) });
       if (range) {
-        params.set('range', range);
+        params.set("range", range);
       }
       const response = await fetch(
         apiUrl(
-          `/api/markets/perps/${encodeURIComponent(ticker)}/history?${params.toString()}`
-        )
+          `/api/markets/perps/${encodeURIComponent(ticker)}/history?${params.toString()}`,
+        ),
       );
 
       let data: unknown = null;
@@ -304,16 +304,16 @@ export function usePerpHistory(
             changePercent?: number;
             volume?: number | null;
             timestamp: string;
-          }>
+          }>,
         );
         setHistory(formatted);
         if (formatted.length > 0) {
-          lastAppendedPriceRef.current = formatted[formatted.length - 1]!.price;
+          lastAppendedPriceRef.current = formatted[formatted.length - 1]?.price;
         }
       } else {
         if (!response.ok) {
           const message =
-            typeof record.error === 'string'
+            typeof record.error === "string"
               ? record.error
               : `Failed to fetch history: ${response.status}`;
           setError(message);
@@ -325,11 +325,11 @@ export function usePerpHistory(
       }
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : 'Failed to fetch history';
+        err instanceof Error ? err.message : "Failed to fetch history";
       logger.error(
-        'Failed to fetch perp history',
+        "Failed to fetch perp history",
         { ticker, error: err },
-        'usePerpHistory'
+        "usePerpHistory",
       );
       setError(message);
       setHistory((prev) => (prev.length > 2 ? prev : fallbackFromSeed()));
@@ -382,7 +382,7 @@ export function usePerpHistory(
         return next;
       });
     },
-    [limit]
+    [limit],
   );
 
   // Append live price updates from SSE price_update events
@@ -403,7 +403,7 @@ export function usePerpHistory(
           appendPricePoint(tradePrice, event.size);
         }
       },
-      [appendPricePoint]
+      [appendPricePoint],
     ),
   });
 

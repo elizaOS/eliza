@@ -1,4 +1,4 @@
-import { relations } from 'drizzle-orm';
+import { relations } from "drizzle-orm";
 import {
   boolean,
   decimal,
@@ -8,126 +8,126 @@ import {
   pgTable,
   text,
   timestamp,
-} from 'drizzle-orm/pg-core';
-import { npcTrades } from './actors';
+} from "drizzle-orm/pg-core";
+import { npcTrades } from "./actors";
 
 // Pool
 export const pools = pgTable(
-  'Pool',
+  "Pool",
   {
-    id: text('id').primaryKey(),
-    npcActorId: text('npcActorId').notNull(),
-    name: text('name').notNull(),
-    description: text('description'),
-    totalValue: decimal('totalValue', { precision: 18, scale: 2 })
+    id: text("id").primaryKey(),
+    npcActorId: text("npcActorId").notNull(),
+    name: text("name").notNull(),
+    description: text("description"),
+    totalValue: decimal("totalValue", { precision: 18, scale: 2 })
       .notNull()
-      .default('0'),
-    totalDeposits: decimal('totalDeposits', { precision: 18, scale: 2 })
+      .default("0"),
+    totalDeposits: decimal("totalDeposits", { precision: 18, scale: 2 })
       .notNull()
-      .default('0'),
-    availableBalance: decimal('availableBalance', { precision: 18, scale: 2 })
+      .default("0"),
+    availableBalance: decimal("availableBalance", { precision: 18, scale: 2 })
       .notNull()
-      .default('0'),
-    lifetimePnL: decimal('lifetimePnL', { precision: 18, scale: 2 })
+      .default("0"),
+    lifetimePnL: decimal("lifetimePnL", { precision: 18, scale: 2 })
       .notNull()
-      .default('0'),
-    performanceFeeRate: doublePrecision('performanceFeeRate')
+      .default("0"),
+    performanceFeeRate: doublePrecision("performanceFeeRate")
       .notNull()
       .default(0.05),
-    totalFeesCollected: decimal('totalFeesCollected', {
+    totalFeesCollected: decimal("totalFeesCollected", {
       precision: 18,
       scale: 2,
     })
       .notNull()
-      .default('0'),
-    isActive: boolean('isActive').notNull().default(true),
-    openedAt: timestamp('openedAt', { mode: 'date' }).notNull().defaultNow(),
-    closedAt: timestamp('closedAt', { mode: 'date' }),
-    updatedAt: timestamp('updatedAt', { mode: 'date' }).notNull(),
-    currentPrice: doublePrecision('currentPrice'),
-    priceChange24h: doublePrecision('priceChange24h'),
-    status: text('status').notNull().default('ACTIVE'),
-    tvl: decimal('tvl', { precision: 18, scale: 2 }),
-    volume24h: decimal('volume24h', { precision: 18, scale: 2 }),
+      .default("0"),
+    isActive: boolean("isActive").notNull().default(true),
+    openedAt: timestamp("openedAt", { mode: "date" }).notNull().defaultNow(),
+    closedAt: timestamp("closedAt", { mode: "date" }),
+    updatedAt: timestamp("updatedAt", { mode: "date" }).notNull(),
+    currentPrice: doublePrecision("currentPrice"),
+    priceChange24h: doublePrecision("priceChange24h"),
+    status: text("status").notNull().default("ACTIVE"),
+    tvl: decimal("tvl", { precision: 18, scale: 2 }),
+    volume24h: decimal("volume24h", { precision: 18, scale: 2 }),
   },
   (table) => [
-    index('Pool_isActive_idx').on(table.isActive),
-    index('Pool_npcActorId_idx').on(table.npcActorId),
-    index('Pool_status_idx').on(table.status),
-    index('Pool_totalValue_idx').on(table.totalValue),
-    index('Pool_volume24h_idx').on(table.volume24h),
-  ]
+    index("Pool_isActive_idx").on(table.isActive),
+    index("Pool_npcActorId_idx").on(table.npcActorId),
+    index("Pool_status_idx").on(table.status),
+    index("Pool_totalValue_idx").on(table.totalValue),
+    index("Pool_volume24h_idx").on(table.volume24h),
+  ],
 );
 
 // PoolDeposit
 export const poolDeposits = pgTable(
-  'PoolDeposit',
+  "PoolDeposit",
   {
-    id: text('id').primaryKey(),
-    poolId: text('poolId').notNull(),
-    userId: text('userId').notNull(),
-    amount: decimal('amount', { precision: 18, scale: 2 }).notNull(),
-    shares: decimal('shares', { precision: 18, scale: 6 }).notNull(),
-    currentValue: decimal('currentValue', {
+    id: text("id").primaryKey(),
+    poolId: text("poolId").notNull(),
+    userId: text("userId").notNull(),
+    amount: decimal("amount", { precision: 18, scale: 2 }).notNull(),
+    shares: decimal("shares", { precision: 18, scale: 6 }).notNull(),
+    currentValue: decimal("currentValue", {
       precision: 18,
       scale: 2,
     }).notNull(),
-    unrealizedPnL: decimal('unrealizedPnL', {
+    unrealizedPnL: decimal("unrealizedPnL", {
       precision: 18,
       scale: 2,
     }).notNull(),
-    depositedAt: timestamp('depositedAt', { mode: 'date' })
+    depositedAt: timestamp("depositedAt", { mode: "date" })
       .notNull()
       .defaultNow(),
-    withdrawnAt: timestamp('withdrawnAt', { mode: 'date' }),
-    withdrawnAmount: decimal('withdrawnAmount', { precision: 18, scale: 2 }),
+    withdrawnAt: timestamp("withdrawnAt", { mode: "date" }),
+    withdrawnAmount: decimal("withdrawnAmount", { precision: 18, scale: 2 }),
   },
   (table) => [
-    index('PoolDeposit_poolId_userId_idx').on(table.poolId, table.userId),
-    index('PoolDeposit_poolId_withdrawnAt_idx').on(
+    index("PoolDeposit_poolId_userId_idx").on(table.poolId, table.userId),
+    index("PoolDeposit_poolId_withdrawnAt_idx").on(
       table.poolId,
-      table.withdrawnAt
+      table.withdrawnAt,
     ),
-    index('PoolDeposit_userId_depositedAt_idx').on(
+    index("PoolDeposit_userId_depositedAt_idx").on(
       table.userId,
-      table.depositedAt
+      table.depositedAt,
     ),
-  ]
+  ],
 );
 
 // PoolPosition
 export const poolPositions = pgTable(
-  'PoolPosition',
+  "PoolPosition",
   {
-    id: text('id').primaryKey(),
-    poolId: text('poolId').notNull(),
-    marketType: text('marketType').notNull(),
-    ticker: text('ticker'),
-    marketId: text('marketId'),
-    side: text('side').notNull(),
-    entryPrice: doublePrecision('entryPrice').notNull(),
-    currentPrice: doublePrecision('currentPrice').notNull(),
-    size: doublePrecision('size').notNull(),
-    shares: doublePrecision('shares'),
-    leverage: integer('leverage'),
-    liquidationPrice: doublePrecision('liquidationPrice'),
-    unrealizedPnL: doublePrecision('unrealizedPnL').notNull(),
-    openedAt: timestamp('openedAt', { mode: 'date' }).notNull().defaultNow(),
-    closedAt: timestamp('closedAt', { mode: 'date' }),
-    realizedPnL: doublePrecision('realizedPnL'),
-    updatedAt: timestamp('updatedAt', { mode: 'date' }).notNull(),
+    id: text("id").primaryKey(),
+    poolId: text("poolId").notNull(),
+    marketType: text("marketType").notNull(),
+    ticker: text("ticker"),
+    marketId: text("marketId"),
+    side: text("side").notNull(),
+    entryPrice: doublePrecision("entryPrice").notNull(),
+    currentPrice: doublePrecision("currentPrice").notNull(),
+    size: doublePrecision("size").notNull(),
+    shares: doublePrecision("shares"),
+    leverage: integer("leverage"),
+    liquidationPrice: doublePrecision("liquidationPrice"),
+    unrealizedPnL: doublePrecision("unrealizedPnL").notNull(),
+    openedAt: timestamp("openedAt", { mode: "date" }).notNull().defaultNow(),
+    closedAt: timestamp("closedAt", { mode: "date" }),
+    realizedPnL: doublePrecision("realizedPnL"),
+    updatedAt: timestamp("updatedAt", { mode: "date" }).notNull(),
   },
   (table) => [
-    index('PoolPosition_marketType_marketId_idx').on(
+    index("PoolPosition_marketType_marketId_idx").on(
       table.marketType,
-      table.marketId
+      table.marketId,
     ),
-    index('PoolPosition_marketType_ticker_idx').on(
+    index("PoolPosition_marketType_ticker_idx").on(
       table.marketType,
-      table.ticker
+      table.ticker,
     ),
-    index('PoolPosition_poolId_closedAt_idx').on(table.poolId, table.closedAt),
-  ]
+    index("PoolPosition_poolId_closedAt_idx").on(table.poolId, table.closedAt),
+  ],
 );
 
 // Relations

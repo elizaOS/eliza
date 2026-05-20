@@ -38,17 +38,17 @@ import {
   eq,
   type TimeframedMarket,
   timeframedMarkets,
-} from '@feed/db';
-import { logger } from '@feed/shared';
-import { secureRandom } from '../utils/entropy';
-import { formatError } from '../utils/error-utils';
-import { clamp01 } from '../utils/math-utils';
+} from "@feed/db";
+import { logger } from "@feed/shared";
+import { secureRandom } from "../utils/entropy";
+import { formatError } from "../utils/error-utils";
+import { clamp01 } from "../utils/math-utils";
 import {
   getCurrentArcState,
   getEventCooldownMs,
   getEventMultiplier,
   getStateBoundaries,
-} from './market-timeframes';
+} from "./market-timeframes";
 
 // =============================================================================
 // TYPES
@@ -93,26 +93,26 @@ export interface TimeframeTickResult {
 /** Event types by arc state - more specific for different timeframes */
 const STATE_EVENT_TYPES: Record<string, string[]> = {
   // Long-term states
-  setup: ['rumor', 'announcement', 'speculation'],
-  tension: ['leak', 'insider_hint', 'market_signal'],
-  escalation: ['confirmation', 'denial', 'controversy'],
-  crisis: ['breaking_news', 'major_development', 'uncertainty_peak'],
-  revelation: ['proof', 'official_statement', 'definitive_signal'],
-  resolution: ['final_answer', 'market_close'],
+  setup: ["rumor", "announcement", "speculation"],
+  tension: ["leak", "insider_hint", "market_signal"],
+  escalation: ["confirmation", "denial", "controversy"],
+  crisis: ["breaking_news", "major_development", "uncertainty_peak"],
+  revelation: ["proof", "official_statement", "definitive_signal"],
+  resolution: ["final_answer", "market_close"],
 
   // Daily states
-  morning: ['morning_news', 'pre_market', 'opening_signal'],
-  midday: ['midday_update', 'volume_spike', 'institutional_move'],
-  afternoon: ['afternoon_reversal', 'trend_continuation', 'volatility'],
-  evening: ['closing_pressure', 'after_hours', 'final_moves'],
+  morning: ["morning_news", "pre_market", "opening_signal"],
+  midday: ["midday_update", "volume_spike", "institutional_move"],
+  afternoon: ["afternoon_reversal", "trend_continuation", "volatility"],
+  evening: ["closing_pressure", "after_hours", "final_moves"],
 
   // Intraday states
-  active: ['price_move', 'volume_surge', 'breakout'],
-  climax: ['peak_activity', 'decisive_move'],
+  active: ["price_move", "volume_surge", "breakout"],
+  climax: ["peak_activity", "decisive_move"],
 
   // Flash states
-  live: ['live_event', 'real_time_update'],
-  resolving: ['resolution_pending'],
+  live: ["live_event", "real_time_update"],
+  resolving: ["resolution_pending"],
 };
 
 /** Base probability of generating an event per tick, by state */
@@ -176,7 +176,7 @@ export class TimeframeArcProcessor {
         logger.debug(
           `Processing batch of ${activeMarkets.length} active markets (offset: ${offset})`,
           {},
-          'TimeframeArcProcessor'
+          "TimeframeArcProcessor",
         );
 
         for (const market of activeMarkets) {
@@ -221,7 +221,7 @@ export class TimeframeArcProcessor {
             logger.error(
               `Error processing market`,
               { marketId: market.id, error: msg },
-              'TimeframeArcProcessor'
+              "TimeframeArcProcessor",
             );
           }
         }
@@ -237,14 +237,14 @@ export class TimeframeArcProcessor {
           events: result.eventsGenerated,
           errors: result.errors.length,
         },
-        'TimeframeArcProcessor'
+        "TimeframeArcProcessor",
       );
     } catch (error) {
       const errorMessage = formatError(error);
       logger.error(
         `Tick failed`,
         { error: errorMessage },
-        'TimeframeArcProcessor'
+        "TimeframeArcProcessor",
       );
       result.failed = true;
       result.failureMessage = errorMessage;
@@ -258,13 +258,13 @@ export class TimeframeArcProcessor {
    */
   async checkStateTransition(
     market: TimeframedMarket,
-    now: Date = new Date()
+    now: Date = new Date(),
   ): Promise<ArcTransitionResult> {
     const expectedState = getCurrentArcState(
       market.startTime,
       market.endTime,
       market.timeframe,
-      now
+      now,
     );
 
     if (expectedState !== market.arcState) {
@@ -276,7 +276,7 @@ export class TimeframeArcProcessor {
           to: expectedState,
           timeframe: market.timeframe,
         },
-        'TimeframeArcProcessor'
+        "TimeframeArcProcessor",
       );
 
       await db
@@ -307,7 +307,7 @@ export class TimeframeArcProcessor {
    */
   async tryGenerateEvent(
     market: TimeframedMarket,
-    now: Date = new Date()
+    now: Date = new Date(),
   ): Promise<EventGenerationResult> {
     // Check cooldown
     const cooldownMs = getEventCooldownMs(market.timeframe);
@@ -317,7 +317,7 @@ export class TimeframeArcProcessor {
         return {
           generated: false,
           marketId: market.id,
-          reason: 'cooldown',
+          reason: "cooldown",
         };
       }
     }
@@ -334,17 +334,17 @@ export class TimeframeArcProcessor {
       return {
         generated: false,
         marketId: market.id,
-        reason: 'probability_check_failed',
+        reason: "probability_check_failed",
       };
     }
 
     // Select event type with nullish coalescing fallback to ensure non-undefined result
-    const eventTypes = STATE_EVENT_TYPES[market.arcState] ?? ['generic_event'];
+    const eventTypes = STATE_EVENT_TYPES[market.arcState] ?? ["generic_event"];
     const eventType =
       eventTypes.length > 0
         ? (eventTypes[Math.floor(secureRandom() * eventTypes.length)] ??
-          'generic_event')
-        : 'generic_event';
+          "generic_event")
+        : "generic_event";
 
     // Update market
     await db
@@ -364,7 +364,7 @@ export class TimeframeArcProcessor {
         state: market.arcState,
         probability,
       },
-      'TimeframeArcProcessor'
+      "TimeframeArcProcessor",
     );
 
     return {
@@ -382,13 +382,13 @@ export class TimeframeArcProcessor {
    */
   async markResolutionPending(
     market: TimeframedMarket,
-    now: Date = new Date()
+    now: Date = new Date(),
   ): Promise<ArcTransitionResult> {
     const terminalState = getCurrentArcState(
       market.startTime,
       market.endTime,
       market.timeframe,
-      now
+      now,
     );
 
     if (market.arcState === terminalState) {
@@ -415,7 +415,7 @@ export class TimeframeArcProcessor {
         previousState: market.arcState,
         terminalState,
       },
-      'TimeframeArcProcessor'
+      "TimeframeArcProcessor",
     );
 
     return {
@@ -430,12 +430,12 @@ export class TimeframeArcProcessor {
    * Get the current phase boundaries for a market
    */
   getPhaseBoundaries(
-    market: TimeframedMarket
+    market: TimeframedMarket,
   ): Array<{ state: string; start: Date; end: Date }> {
     return getStateBoundaries(
       market.startTime,
       market.endTime,
-      market.timeframe
+      market.timeframe,
     );
   }
 
@@ -460,11 +460,11 @@ export class TimeframeArcProcessor {
    */
   formatTimeRemaining(
     market: TimeframedMarket,
-    now: Date = new Date()
+    now: Date = new Date(),
   ): string {
     const ms = this.getTimeRemaining(market, now);
 
-    if (ms <= 0) return 'Resolved';
+    if (ms <= 0) return "Resolved";
 
     const seconds = Math.floor(ms / 1000);
     const minutes = Math.floor(seconds / 60);

@@ -13,25 +13,25 @@
  *   bun run report:feed -- --hours=6   (narrow window, default 24)
  */
 
-import { parseArgs } from 'node:util';
-import { getRawDrizzle } from '@feed/db';
-import { chats, messages, posts } from '@feed/db/schema';
-import { getAllActors, getAllOrganizations } from '@feed/engine';
-import { and, desc, gte, isNull, sql } from 'drizzle-orm';
+import { parseArgs } from "node:util";
+import { getRawDrizzle } from "@feed/db";
+import { chats, messages, posts } from "@feed/db/schema";
+import { getAllActors, getAllOrganizations } from "@feed/engine";
+import { and, desc, gte, isNull, sql } from "drizzle-orm";
 
 // ---------------------------------------------------------------------------
 // CLI
 // ---------------------------------------------------------------------------
 const { values: args } = parseArgs({
   options: {
-    json: { type: 'boolean', default: false },
-    hours: { type: 'string', default: '24' },
+    json: { type: "boolean", default: false },
+    hours: { type: "string", default: "24" },
   },
   strict: false,
 });
 
 const outputJson = args.json ?? false;
-const windowHours = Math.max(1, Number.parseInt(args.hours ?? '24', 10));
+const windowHours = Math.max(1, Number.parseInt(args.hours ?? "24", 10));
 
 // ---------------------------------------------------------------------------
 // Thresholds
@@ -51,13 +51,13 @@ const SAME_AUTHOR_DUPE_WINDOW_MIN = 30; // same author near-dupe window
 // ---------------------------------------------------------------------------
 // Color helpers
 // ---------------------------------------------------------------------------
-const reset = '\x1b[0m';
-const bold = '\x1b[1m';
-const red = '\x1b[31m';
-const yellow = '\x1b[33m';
-const green = '\x1b[32m';
-const cyan = '\x1b[36m';
-const dim = '\x1b[2m';
+const reset = "\x1b[0m";
+const bold = "\x1b[1m";
+const red = "\x1b[31m";
+const yellow = "\x1b[33m";
+const green = "\x1b[32m";
+const cyan = "\x1b[36m";
+const dim = "\x1b[2m";
 
 const OK = `${green}[OK]  ${reset}`;
 const WARN = `${yellow}[WARN]${reset}`;
@@ -137,9 +137,9 @@ function firstNWords(text: string, n: number): string {
     .trim()
     .split(/\s+/)
     .slice(0, n)
-    .join(' ')
+    .join(" ")
     .toLowerCase()
-    .replace(/[^a-z0-9 ]/g, '');
+    .replace(/[^a-z0-9 ]/g, "");
 }
 
 // ---------------------------------------------------------------------------
@@ -150,13 +150,13 @@ async function run(): Promise<FeedHealthReport> {
   const now = new Date();
   const windowStart = new Date(now.getTime() - windowHours * 60 * 60 * 1000);
   const exactDupeStart = new Date(
-    now.getTime() - EXACT_DUPE_WINDOW_MIN * 60 * 1000
+    now.getTime() - EXACT_DUPE_WINDOW_MIN * 60 * 1000,
   );
   const firstWordsDupeStart = new Date(
-    now.getTime() - FIRST_WORDS_DUPE_WINDOW_MIN * 60 * 1000
+    now.getTime() - FIRST_WORDS_DUPE_WINDOW_MIN * 60 * 1000,
   );
   const sameAuthorDupeStart = new Date(
-    now.getTime() - SAME_AUTHOR_DUPE_WINDOW_MIN * 60 * 1000
+    now.getTime() - SAME_AUTHOR_DUPE_WINDOW_MIN * 60 * 1000,
   );
 
   // Load actor / org sets for categorization
@@ -184,8 +184,8 @@ async function run(): Promise<FeedHealthReport> {
         gte(posts.timestamp, windowStart),
         isNull(posts.deletedAt),
         isNull(posts.commentOnPostId),
-        isNull(posts.parentCommentId)
-      )
+        isNull(posts.parentCommentId),
+      ),
     )
     .orderBy(desc(posts.timestamp));
 
@@ -222,7 +222,7 @@ async function run(): Promise<FeedHealthReport> {
     .map(([id, count]) => ({
       id,
       count,
-      flags: count > NPC_FLOOD_WARN ? ['FLOOD'] : [],
+      flags: count > NPC_FLOOD_WARN ? ["FLOOD"] : [],
     }));
 
   const orgTopPosters = Object.entries(postsByOrg)
@@ -231,7 +231,7 @@ async function run(): Promise<FeedHealthReport> {
     .map(([id, count]) => ({
       id,
       count,
-      flags: count > ORG_FLOOD_WARN ? ['FLOOD'] : [],
+      flags: count > ORG_FLOOD_WARN ? ["FLOOD"] : [],
     }));
 
   // -------------------------------------------------------------------------
@@ -240,7 +240,7 @@ async function run(): Promise<FeedHealthReport> {
 
   // 3a. Exact duplicate content in window
   const recentForDupeCheck = rawPosts.filter(
-    (p) => p.timestamp >= exactDupeStart
+    (p) => p.timestamp >= exactDupeStart,
   );
   const contentMap: Record<string, { count: number; authors: string[] }> = {};
   for (const p of recentForDupeCheck) {
@@ -256,19 +256,19 @@ async function run(): Promise<FeedHealthReport> {
   const exactDupes = Object.entries(contentMap)
     .filter(([, v]) => v.count > 1)
     .map(([content, v]) => ({
-      content: content.slice(0, 80) + (content.length > 80 ? '…' : ''),
+      content: content.slice(0, 80) + (content.length > 80 ? "…" : ""),
       count: v.count,
       authors: v.authors,
     }));
 
   // 3b. First-N-words near-dupes across different authors in short window
   const recentForFirstWords = rawPosts.filter(
-    (p) => p.timestamp >= firstWordsDupeStart
+    (p) => p.timestamp >= firstWordsDupeStart,
   );
   const prefixMap: Record<string, { count: number; authors: string[] }> = {};
   for (const p of recentForFirstWords) {
     const prefix = firstNWords(p.content, FIRST_WORDS_N);
-    if (prefix.split(' ').length < 4) continue; // too short to be meaningful
+    if (prefix.split(" ").length < 4) continue; // too short to be meaningful
     if (!prefixMap[prefix]) {
       prefixMap[prefix] = { count: 0, authors: [] };
     }
@@ -283,7 +283,7 @@ async function run(): Promise<FeedHealthReport> {
 
   // 3c. Same-author near-dupes (first N words match, within time window)
   const recentForSameAuthor = rawPosts.filter(
-    (p) => p.timestamp >= sameAuthorDupeStart
+    (p) => p.timestamp >= sameAuthorDupeStart,
   );
   const authorPrefixMap: Record<
     string,
@@ -296,14 +296,14 @@ async function run(): Promise<FeedHealthReport> {
     }
     authorPrefixMap[p.authorId].push({ prefix, content: p.content });
   }
-  const sameAuthorNearDupes: DuplicateSection['sameAuthorNearDupes'] = [];
+  const sameAuthorNearDupes: DuplicateSection["sameAuthorNearDupes"] = [];
   for (const [authorId, items] of Object.entries(authorPrefixMap)) {
     const seen = new Map<string, string>();
     for (const item of items) {
       if (seen.has(item.prefix)) {
         sameAuthorNearDupes.push({
           authorId,
-          content1: (seen.get(item.prefix) ?? '').slice(0, 80),
+          content1: (seen.get(item.prefix) ?? "").slice(0, 80),
           content2: item.content.slice(0, 80),
           windowMin: SAME_AUTHOR_DUPE_WINDOW_MIN,
         });
@@ -318,7 +318,7 @@ async function run(): Promise<FeedHealthReport> {
   // -------------------------------------------------------------------------
   const articleWindow = Math.min(windowHours, 6);
   const articleWindowStart = new Date(
-    now.getTime() - articleWindow * 60 * 60 * 1000
+    now.getTime() - articleWindow * 60 * 60 * 1000,
   );
 
   const articlePosts = await db
@@ -330,22 +330,22 @@ async function run(): Promise<FeedHealthReport> {
       and(
         gte(posts.timestamp, articleWindowStart),
         isNull(posts.deletedAt),
-        sql`${posts.type} = 'article'`
-      )
+        sql`${posts.type} = 'article'`,
+      ),
     )
     .orderBy(desc(posts.timestamp));
 
-  const hourlyBuckets: ArticleSection['hourlyBuckets'] = [];
+  const hourlyBuckets: ArticleSection["hourlyBuckets"] = [];
   for (let h = 0; h < articleWindow; h++) {
     const bucketStart = new Date(now.getTime() - (h + 1) * 60 * 60 * 1000);
     const bucketEnd = new Date(now.getTime() - h * 60 * 60 * 1000);
     const count = articlePosts.filter(
-      (p) => p.timestamp >= bucketStart && p.timestamp < bucketEnd
+      (p) => p.timestamp >= bucketStart && p.timestamp < bucketEnd,
     ).length;
     hourlyBuckets.unshift({
-      hour: bucketStart.toISOString().slice(0, 13) + ':00',
+      hour: `${bucketStart.toISOString().slice(0, 13)}:00`,
       count,
-      flags: count > ARTICLES_PER_HOUR_WARN ? ['FLOOD'] : [],
+      flags: count > ARTICLES_PER_HOUR_WARN ? ["FLOOD"] : [],
     });
   }
 
@@ -362,7 +362,7 @@ async function run(): Promise<FeedHealthReport> {
   const totalGroupChats = groupChatIdSet.size;
 
   let recentMessages = 0;
-  const shortMessages: GroupChatSection['shortMessages'] = [];
+  const shortMessages: GroupChatSection["shortMessages"] = [];
   const msgsPerChat: Record<string, number> = {};
 
   if (groupChatIdSet.size > 0) {
@@ -403,7 +403,7 @@ async function run(): Promise<FeedHealthReport> {
   const lastNpcPost = allTopLevel.find((p) => npcIds.has(p.authorId));
   const lastOrgPost = allTopLevel.find((p) => orgIds.has(p.authorId));
 
-  const lastArticle = rawPosts.find((p) => p.type === 'article');
+  const lastArticle = rawPosts.find((p) => p.type === "article");
 
   const npcStaleMins = lastNpcPost
     ? (now.getTime() - lastNpcPost.timestamp.getTime()) / 60000
@@ -438,7 +438,7 @@ async function run(): Promise<FeedHealthReport> {
     articles: {
       totalArticles: articlePosts.length,
       hourlyBuckets,
-      warnings: hourlyBuckets.filter((b) => b.flags.includes('FLOOD')).length,
+      warnings: hourlyBuckets.filter((b) => b.flags.includes("FLOOD")).length,
     },
     groupChats: {
       totalGroupChats,
@@ -464,9 +464,9 @@ async function run(): Promise<FeedHealthReport> {
 // Human-readable printer
 // ---------------------------------------------------------------------------
 function printReport(r: FeedHealthReport): void {
-  const line = `${dim}${'─'.repeat(70)}${reset}`;
+  const line = `${dim}${"─".repeat(70)}${reset}`;
   console.log(
-    `\n${bold}${cyan}=== FEED HEALTH REPORT — ${r.generatedAt} ===${reset}`
+    `\n${bold}${cyan}=== FEED HEALTH REPORT — ${r.generatedAt} ===${reset}`,
   );
   console.log(`${dim}Window: last ${r.windowHours}h${reset}\n`);
 
@@ -475,29 +475,29 @@ function printReport(r: FeedHealthReport): void {
   console.log(line);
   const d = r.distribution;
   console.log(`  Total top-level posts: ${bold}${d.totalPosts}${reset}`);
-  console.log('  By type:');
+  console.log("  By type:");
   for (const [type, count] of Object.entries(d.byType).sort(
-    (a, b) => b[1] - a[1]
+    (a, b) => b[1] - a[1],
   )) {
     console.log(`    ${type.padEnd(22)} ${count}`);
   }
-  console.log('  By author category:');
+  console.log("  By author category:");
   for (const [cat, count] of Object.entries(d.byCategory)) {
     console.log(`    ${cat.padEnd(22)} ${count}`);
   }
   if (d.npcTopPosters.length > 0) {
-    console.log('  Top NPC posters:');
+    console.log("  Top NPC posters:");
     for (const p of d.npcTopPosters.slice(0, 5)) {
       const flag =
-        p.flags.length > 0 ? ` ${yellow}[${p.flags.join(',')}]${reset}` : '';
+        p.flags.length > 0 ? ` ${yellow}[${p.flags.join(",")}]${reset}` : "";
       console.log(`    ${p.id.padEnd(30)} ${p.count} posts${flag}`);
     }
   }
   if (d.orgTopPosters.length > 0) {
-    console.log('  Top org posters:');
+    console.log("  Top org posters:");
     for (const p of d.orgTopPosters.slice(0, 5)) {
       const flag =
-        p.flags.length > 0 ? ` ${yellow}[${p.flags.join(',')}]${reset}` : '';
+        p.flags.length > 0 ? ` ${yellow}[${p.flags.join(",")}]${reset}` : "";
       console.log(`    ${p.id.padEnd(30)} ${p.count} posts${flag}`);
     }
   }
@@ -515,17 +515,17 @@ function printReport(r: FeedHealthReport): void {
   }
   for (const d of dup.exactDupes) {
     console.log(
-      `  ${ERR} Exact dupe ×${d.count}: "${d.content}" (authors: ${d.authors.slice(0, 3).join(', ')})`
+      `  ${ERR} Exact dupe ×${d.count}: "${d.content}" (authors: ${d.authors.slice(0, 3).join(", ")})`,
     );
   }
   for (const d of dup.firstWordsDupes) {
     console.log(
-      `  ${WARN} First-${FIRST_WORDS_N}-words dupe ×${d.count}: "${d.prefix}…" (authors: ${d.authors.slice(0, 3).join(', ')})`
+      `  ${WARN} First-${FIRST_WORDS_N}-words dupe ×${d.count}: "${d.prefix}…" (authors: ${d.authors.slice(0, 3).join(", ")})`,
     );
   }
   for (const d of dup.sameAuthorNearDupes.slice(0, 5)) {
     console.log(
-      `  ${WARN} Same-author near-dupe within ${d.windowMin}min: [${d.authorId}]`
+      `  ${WARN} Same-author near-dupe within ${d.windowMin}min: [${d.authorId}]`,
     );
     console.log(`    A: "${d.content1}"`);
     console.log(`    B: "${d.content2}"`);
@@ -533,15 +533,15 @@ function printReport(r: FeedHealthReport): void {
 
   // Articles
   console.log(
-    `\n${bold}ARTICLE HEALTH (last ${Math.min(r.windowHours, 6)}h)${reset}`
+    `\n${bold}ARTICLE HEALTH (last ${Math.min(r.windowHours, 6)}h)${reset}`,
   );
   console.log(line);
   const art = r.articles;
   console.log(`  Total articles: ${art.totalArticles}`);
   for (const b of art.hourlyBuckets) {
-    const flag = b.flags.includes('FLOOD')
+    const flag = b.flags.includes("FLOOD")
       ? ` ${WARN} FLOOD > ${ARTICLES_PER_HOUR_WARN}/hr`
-      : '';
+      : "";
     console.log(`  ${b.hour}  ${String(b.count).padStart(3)} articles${flag}`);
   }
   if (art.warnings === 0) {
@@ -553,18 +553,18 @@ function printReport(r: FeedHealthReport): void {
   console.log(line);
   const gc = r.groupChats;
   console.log(
-    `  Group chats: ${gc.totalGroupChats}   Messages (1h): ${gc.recentMessages}`
+    `  Group chats: ${gc.totalGroupChats}   Messages (1h): ${gc.recentMessages}`,
   );
   if (gc.floodedChats.length > 0) {
     for (const f of gc.floodedChats) {
       console.log(
-        `  ${WARN} Chat flood: ${f.chatId} — ${f.msgsPerHour} msgs/hr (>${GROUP_MSG_PER_HOUR_WARN})`
+        `  ${WARN} Chat flood: ${f.chatId} — ${f.msgsPerHour} msgs/hr (>${GROUP_MSG_PER_HOUR_WARN})`,
       );
     }
   }
   if (gc.shortMessages.length > 0) {
     console.log(
-      `  ${WARN} ${gc.shortMessages.length} messages under ${GROUP_MSG_MIN_CHARS} chars:`
+      `  ${WARN} ${gc.shortMessages.length} messages under ${GROUP_MSG_MIN_CHARS} chars:`,
     );
     for (const m of gc.shortMessages.slice(0, 5)) {
       console.log(`    [${m.senderId}] "${m.content}"`);
@@ -580,19 +580,19 @@ function printReport(r: FeedHealthReport): void {
   const s = r.staleness;
   const npcLabel = s.lastNpcPostAt
     ? ago(new Date(s.lastNpcPostAt))
-    : 'never (in window)';
+    : "never (in window)";
   const orgLabel = s.lastOrgPostAt
     ? ago(new Date(s.lastOrgPostAt))
-    : 'never (in window)';
+    : "never (in window)";
   const artLabel = s.lastArticleAt
     ? ago(new Date(s.lastArticleAt))
-    : 'none in window';
+    : "none in window";
 
   console.log(
-    `  ${s.npcStale ? WARN : OK} Last NPC post:     ${npcLabel}${s.npcStale ? ` ${yellow}(>${STALE_NPC_POST_MIN}min — cron may be down?)${reset}` : ''}`
+    `  ${s.npcStale ? WARN : OK} Last NPC post:     ${npcLabel}${s.npcStale ? ` ${yellow}(>${STALE_NPC_POST_MIN}min — cron may be down?)${reset}` : ""}`,
   );
   console.log(
-    `  ${s.orgStale ? WARN : OK} Last org post:     ${orgLabel}${s.orgStale ? ` ${yellow}(>${STALE_ORG_POST_MIN}min — org-tick may be down?)${reset}` : ''}`
+    `  ${s.orgStale ? WARN : OK} Last org post:     ${orgLabel}${s.orgStale ? ` ${yellow}(>${STALE_ORG_POST_MIN}min — org-tick may be down?)${reset}` : ""}`,
   );
   console.log(`  ${OK} Last article:      ${artLabel}`);
 

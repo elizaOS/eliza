@@ -110,7 +110,7 @@ export interface PaginatedResponse<T> {
 /**
  * Sort order
  */
-export type SortOrder = 'asc' | 'desc';
+export type SortOrder = "asc" | "desc";
 
 /**
  * Sort parameters

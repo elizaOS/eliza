@@ -5,7 +5,6 @@
  * Uses agentService.updateAgent() for proper logging and cache management.
  */
 
-import { agentLogs, db, eq, userAgentConfigs, users } from '@feed/db';
 import type {
   Action,
   ActionResult,
@@ -13,27 +12,28 @@ import type {
   IAgentRuntime,
   Memory,
   State,
-} from '@elizaos/core';
-import { logger } from '../../../../shared/logger';
-import { generateSnowflakeId } from '../../../../shared/snowflake';
+} from "@elizaos/core";
+import { agentLogs, db, eq, userAgentConfigs, users } from "@feed/db";
+import { logger } from "../../../../shared/logger";
+import { generateSnowflakeId } from "../../../../shared/snowflake";
 import type {
   AutonomyFeature,
   AutonomyStatus,
   ToggleAutonomyParams,
-} from '../types';
+} from "../types";
 
 /**
  * Map feature name to config field
  */
 const featureToConfigField: Record<
-  Exclude<AutonomyFeature, 'all'>,
+  Exclude<AutonomyFeature, "all">,
   keyof AutonomyStatus
 > = {
-  trading: 'autonomousTrading',
-  posting: 'autonomousPosting',
-  commenting: 'autonomousCommenting',
-  dms: 'autonomousDMs',
-  groupChats: 'autonomousGroupChats',
+  trading: "autonomousTrading",
+  posting: "autonomousPosting",
+  commenting: "autonomousCommenting",
+  dms: "autonomousDMs",
+  groupChats: "autonomousGroupChats",
 };
 
 /**
@@ -43,67 +43,67 @@ const featureToConfigField: Record<
  * Can toggle individual features or all at once.
  */
 export const toggleAutonomyAction: Action = {
-  name: 'TOGGLE_AUTONOMY',
+  name: "TOGGLE_AUTONOMY",
   description:
-    'Enable or disable YOUR autonomous behaviors (trading, posting, commenting, DMs, group chats). When enabled, you act independently - trading on your own analysis, creating posts, responding to comments, and engaging in conversations without needing explicit commands.',
+    "Enable or disable YOUR autonomous behaviors (trading, posting, commenting, DMs, group chats). When enabled, you act independently - trading on your own analysis, creating posts, responding to comments, and engaging in conversations without needing explicit commands.",
 
   parameters: {
     feature: {
-      type: 'string',
+      type: "string",
       description:
         'Feature to toggle: "trading", "posting", "commenting", "dms", "groupChats", or "all"',
       required: true,
     },
     enabled: {
-      type: 'boolean',
-      description: 'Whether to enable (true) or disable (false) the feature',
+      type: "boolean",
+      description: "Whether to enable (true) or disable (false) the feature",
       required: true,
     },
-  } as unknown as Action['parameters'],
+  } as unknown as Action["parameters"],
 
   examples: [
     [
       {
-        name: 'User',
+        name: "User",
         content: {
-          text: 'Enable autonomous trading',
+          text: "Enable autonomous trading",
         },
       },
       {
-        name: 'Agent',
+        name: "Agent",
         content: {
-          text: 'I have enabled autonomous trading. I will now automatically make trades based on market conditions.',
-          action: 'TOGGLE_AUTONOMY',
-        },
-      },
-    ],
-    [
-      {
-        name: 'User',
-        content: {
-          text: 'Turn off all your autonomous features',
-        },
-      },
-      {
-        name: 'Agent',
-        content: {
-          text: 'All autonomous features have been disabled. I will only respond when you message me directly.',
-          action: 'TOGGLE_AUTONOMY',
+          text: "I have enabled autonomous trading. I will now automatically make trades based on market conditions.",
+          action: "TOGGLE_AUTONOMY",
         },
       },
     ],
     [
       {
-        name: 'User',
+        name: "User",
         content: {
-          text: 'Stop posting automatically',
+          text: "Turn off all your autonomous features",
         },
       },
       {
-        name: 'Agent',
+        name: "Agent",
         content: {
-          text: 'I have disabled autonomous posting. I will no longer create posts on my own.',
-          action: 'TOGGLE_AUTONOMY',
+          text: "All autonomous features have been disabled. I will only respond when you message me directly.",
+          action: "TOGGLE_AUTONOMY",
+        },
+      },
+    ],
+    [
+      {
+        name: "User",
+        content: {
+          text: "Stop posting automatically",
+        },
+      },
+      {
+        name: "Agent",
+        content: {
+          text: "I have disabled autonomous posting. I will no longer create posts on my own.",
+          action: "TOGGLE_AUTONOMY",
         },
       },
     ],
@@ -112,7 +112,7 @@ export const toggleAutonomyAction: Action = {
   validate: async (
     _runtime: IAgentRuntime,
     _message: Memory,
-    _state?: State
+    _state?: State,
   ): Promise<boolean> => {
     return true;
   },
@@ -122,7 +122,7 @@ export const toggleAutonomyAction: Action = {
     _message: Memory,
     state?: State,
     _options?: Record<string, unknown>,
-    _callback?: HandlerCallback
+    _callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const agentUserId = _runtime.agentId;
 
@@ -133,14 +133,14 @@ export const toggleAutonomyAction: Action = {
 
     if (!actionParams) {
       logger.warn(
-        '[TOGGLE_AUTONOMY] No action parameters found in state',
+        "[TOGGLE_AUTONOMY] No action parameters found in state",
         undefined,
-        'ToggleAutonomy'
+        "ToggleAutonomy",
       );
       return {
         success: false,
-        text: 'Missing parameters: feature and enabled required.',
-        error: 'Missing parameters',
+        text: "Missing parameters: feature and enabled required.",
+        error: "Missing parameters",
       };
     }
 
@@ -148,19 +148,19 @@ export const toggleAutonomyAction: Action = {
 
     // Validate feature
     const validFeatures: AutonomyFeature[] = [
-      'trading',
-      'posting',
-      'commenting',
-      'dms',
-      'groupChats',
-      'all',
+      "trading",
+      "posting",
+      "commenting",
+      "dms",
+      "groupChats",
+      "all",
     ];
 
     if (!validFeatures.includes(feature)) {
       return {
         success: false,
-        text: `Invalid feature "${feature}". Valid: ${validFeatures.join(', ')}`,
-        error: 'Invalid feature',
+        text: `Invalid feature "${feature}". Valid: ${validFeatures.join(", ")}`,
+        error: "Invalid feature",
       };
     }
 
@@ -171,18 +171,18 @@ export const toggleAutonomyAction: Action = {
         .where(eq(users.id, agentUserId))
         .limit(1);
 
-      if (!agent || !agent.isAgent) {
+      if (!agent?.isAgent) {
         return {
           success: false,
-          text: 'Agent not found.',
-          error: 'Agent not found',
+          text: "Agent not found.",
+          error: "Agent not found",
         };
       }
 
       // Build update object
       const updates: Partial<AutonomyStatus> = {};
 
-      if (feature === 'all') {
+      if (feature === "all") {
         updates.autonomousTrading = enabled;
         updates.autonomousPosting = enabled;
         updates.autonomousCommenting = enabled;
@@ -213,20 +213,20 @@ export const toggleAutonomyAction: Action = {
       await db.insert(agentLogs).values({
         id: await generateSnowflakeId(),
         agentUserId,
-        type: 'system',
-        level: 'info',
-        message: 'Autonomy configuration updated',
+        type: "system",
+        level: "info",
+        message: "Autonomy configuration updated",
         metadata: { feature, enabled },
       });
 
       const featureDisplay =
-        feature === 'all' ? 'all autonomous features' : `autonomous ${feature}`;
-      const statusDisplay = enabled ? 'enabled' : 'disabled';
+        feature === "all" ? "all autonomous features" : `autonomous ${feature}`;
+      const statusDisplay = enabled ? "enabled" : "disabled";
 
       logger.info(
         `[TOGGLE_AUTONOMY] ${featureDisplay} ${statusDisplay} for agent ${agentUserId}`,
         undefined,
-        'ToggleAutonomy'
+        "ToggleAutonomy",
       );
 
       return {
@@ -237,11 +237,11 @@ export const toggleAutonomyAction: Action = {
       };
     } catch (error) {
       const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error';
+        error instanceof Error ? error.message : "Unknown error";
       logger.error(
         `[TOGGLE_AUTONOMY] Error: ${errorMessage}`,
         undefined,
-        'ToggleAutonomy'
+        "ToggleAutonomy",
       );
 
       return {

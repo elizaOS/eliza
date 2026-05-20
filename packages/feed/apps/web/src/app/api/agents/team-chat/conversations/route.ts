@@ -8,12 +8,12 @@
  * @route POST /api/agents/team-chat/conversations - Create new conversation
  */
 
-import { teamChatService } from '@feed/agents';
-import { authenticateUser, withErrorHandling } from '@feed/api';
-import { logger, toISO } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { z } from 'zod';
+import { teamChatService } from "@feed/agents";
+import { authenticateUser, withErrorHandling } from "@feed/api";
+import { logger, toISO } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { z } from "zod";
 
 // =============================================================================
 // GET: List conversations
@@ -61,8 +61,8 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
   const parseResult = createConversationSchema.safeParse(body);
   if (!parseResult.success) {
     return NextResponse.json(
-      { success: false, error: 'Invalid request body' },
-      { status: 400 }
+      { success: false, error: "Invalid request body" },
+      { status: 400 },
     );
   }
 
@@ -70,13 +70,13 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
 
   const { chat, teamChat } = await teamChatService.createConversation(
     user.id,
-    title
+    title,
   );
 
   logger.info(
     `New conversation created`,
     { userId: user.id, chatId: chat.id, title: chat.name },
-    'TeamChatConversationsAPI'
+    "TeamChatConversationsAPI",
   );
 
   return NextResponse.json(
@@ -91,6 +91,6 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
       },
       activeChatId: teamChat.chatId,
     },
-    { status: 201 }
+    { status: 201 },
   );
 });

@@ -41,13 +41,13 @@
  * ```
  */
 
-import { verifyCronAuth, withErrorHandling } from '@feed/api';
-import { logger, toISO } from '@feed/shared';
-import { automationPipeline, rulerScoringService } from '@feed/training';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+import { verifyCronAuth, withErrorHandling } from "@feed/api";
+import { logger, toISO } from "@feed/shared";
+import { automationPipeline, rulerScoringService } from "@feed/training";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 export const maxDuration = 300; // 5 minutes
 
 /**
@@ -55,11 +55,11 @@ export const maxDuration = 300; // 5 minutes
  */
 export const GET = withErrorHandling(async function GET(request: NextRequest) {
   // Security: Verify cron authorization
-  if (!verifyCronAuth(request, { jobName: 'TrainingCheckCron' })) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!verifyCronAuth(request, { jobName: "TrainingCheckCron" })) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const startTime = Date.now();
-  logger.info('Starting training check cycle', undefined, 'TrainingCheckCron');
+  logger.info("Starting training check cycle", undefined, "TrainingCheckCron");
 
   const results = {
     timestamp: new Date().toISOString(),
@@ -77,48 +77,48 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
 
   // 1. Score trajectories with RULER (last 6 hours of windows)
   logger.info(
-    'Scoring trajectories with RULER...',
+    "Scoring trajectories with RULER...",
     undefined,
-    'TrainingCheckCron'
+    "TrainingCheckCron",
   );
 
   const now = new Date();
   for (let hoursAgo = 0; hoursAgo < 6; hoursAgo++) {
     const windowDate = new Date(now.getTime() - hoursAgo * 60 * 60 * 1000);
-    const windowId = toISO(windowDate).slice(0, 13) + ':00';
+    const windowId = `${toISO(windowDate).slice(0, 13)}:00`;
 
     const scored = await rulerScoringService.scoreWindow(windowId);
     if (scored > 0) {
       results.scoring.windowsScored++;
       results.scoring.trajectoriesScored += scored;
       logger.info(
-        'Scored window with RULER',
+        "Scored window with RULER",
         {
           windowId,
           trajectoriesScored: scored,
         },
-        'TrainingCheckCron'
+        "TrainingCheckCron",
       );
     }
   }
 
   // 2. Check training readiness
-  logger.info('Checking training readiness...', undefined, 'TrainingCheckCron');
+  logger.info("Checking training readiness...", undefined, "TrainingCheckCron");
   results.readiness = await automationPipeline.checkTrainingReadiness();
 
   if (results.readiness.ready) {
     logger.info(
-      'System is ready for training!',
+      "System is ready for training!",
       results.readiness.stats,
-      'TrainingCheckCron'
+      "TrainingCheckCron",
     );
   } else {
     logger.info(
-      'System not ready for training',
+      "System not ready for training",
       {
         reason: results.readiness.reason,
       },
-      'TrainingCheckCron'
+      "TrainingCheckCron",
     );
   }
 
@@ -127,13 +127,13 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
 
   const duration = Date.now() - startTime;
   logger.info(
-    'Training check cycle complete',
+    "Training check cycle complete",
     {
       durationMs: duration,
       trajectoriesScored: results.scoring.trajectoriesScored,
       ready: results.readiness.ready,
     },
-    'TrainingCheckCron'
+    "TrainingCheckCron",
   );
 
   return NextResponse.json({

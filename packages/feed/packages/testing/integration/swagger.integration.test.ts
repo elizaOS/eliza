@@ -5,15 +5,15 @@
  * Requires server to be running.
  */
 
-import { beforeAll, describe, expect, test } from 'bun:test';
+import { beforeAll, describe, expect, test } from "bun:test";
 
 const BASE_URL =
   process.env.TEST_API_URL ||
   process.env.TEST_BASE_URL ||
-  'http://localhost:3000';
+  "http://localhost:3000";
 let serverAvailable = false;
 
-describe('Swagger/OpenAPI Documentation', () => {
+describe("Swagger/OpenAPI Documentation", () => {
   beforeAll(async () => {
     // Check if server is running
     try {
@@ -24,28 +24,28 @@ describe('Swagger/OpenAPI Documentation', () => {
     }
   });
 
-  test('should serve OpenAPI spec at /api/docs', async () => {
+  test("should serve OpenAPI spec at /api/docs", async () => {
     if (!serverAvailable) {
-      console.log('⏭️  Skipping Swagger test - server not available');
+      console.log("⏭️  Skipping Swagger test - server not available");
       return;
     }
 
     const response = await fetch(`${BASE_URL}/api/docs`);
     expect(response.ok).toBe(true);
-    expect(response.headers.get('content-type')).toContain('application/json');
+    expect(response.headers.get("content-type")).toContain("application/json");
 
     const spec = await response.json();
-    expect(spec).toHaveProperty('openapi');
-    expect(spec.openapi).toBe('3.0.0');
-    expect(spec).toHaveProperty('info');
-    expect(spec.info.title).toBe('Feed API');
-    expect(spec).toHaveProperty('paths');
-    expect(typeof spec.paths).toBe('object');
+    expect(spec).toHaveProperty("openapi");
+    expect(spec.openapi).toBe("3.0.0");
+    expect(spec).toHaveProperty("info");
+    expect(spec.info.title).toBe("Feed API");
+    expect(spec).toHaveProperty("paths");
+    expect(typeof spec.paths).toBe("object");
   }, 30000);
 
-  test('should include common API routes in spec', async () => {
+  test("should include common API routes in spec", async () => {
     if (!serverAvailable) {
-      console.log('⏭️  Skipping Swagger test - server not available');
+      console.log("⏭️  Skipping Swagger test - server not available");
       return;
     }
 
@@ -53,32 +53,32 @@ describe('Swagger/OpenAPI Documentation', () => {
     const spec = await response.json();
 
     // Check for common routes
-    expect(spec.paths).toHaveProperty('/api/health');
-    expect(spec.paths).toHaveProperty('/api/docs');
-    expect(spec.paths).toHaveProperty('/api/posts');
-    expect(spec.paths).toHaveProperty('/api/agents');
-    expect(spec.paths).toHaveProperty('/api/chats');
-    expect(spec.paths).toHaveProperty('/api/users/me');
+    expect(spec.paths).toHaveProperty("/api/health");
+    expect(spec.paths).toHaveProperty("/api/docs");
+    expect(spec.paths).toHaveProperty("/api/posts");
+    expect(spec.paths).toHaveProperty("/api/agents");
+    expect(spec.paths).toHaveProperty("/api/chats");
+    expect(spec.paths).toHaveProperty("/api/users/me");
   }, 30000);
 
-  test('should have proper security schemes defined', async () => {
+  test("should have proper security schemes defined", async () => {
     if (!serverAvailable) {
-      console.log('⏭️  Skipping Swagger test - server not available');
+      console.log("⏭️  Skipping Swagger test - server not available");
       return;
     }
 
     const response = await fetch(`${BASE_URL}/api/docs`);
     const spec = await response.json();
 
-    expect(spec).toHaveProperty('components');
-    expect(spec.components).toHaveProperty('securitySchemes');
-    expect(spec.components.securitySchemes).toHaveProperty('BearerAuth');
-    expect(spec.components.securitySchemes).toHaveProperty('CronSecret');
+    expect(spec).toHaveProperty("components");
+    expect(spec.components).toHaveProperty("securitySchemes");
+    expect(spec.components.securitySchemes).toHaveProperty("BearerAuth");
+    expect(spec.components.securitySchemes).toHaveProperty("CronSecret");
   }, 30000);
 
-  test('should have tags defined for route grouping', async () => {
+  test("should have tags defined for route grouping", async () => {
     if (!serverAvailable) {
-      console.log('⏭️  Skipping Swagger test - server not available');
+      console.log("⏭️  Skipping Swagger test - server not available");
       return;
     }
 
@@ -88,20 +88,20 @@ describe('Swagger/OpenAPI Documentation', () => {
     // Check for common tags
     if (spec.tags && Array.isArray(spec.tags)) {
       const tagNames = spec.tags.map((tag: { name: string }) => tag.name);
-      expect(tagNames).toContain('System');
-      expect(tagNames).toContain('Documentation');
+      expect(tagNames).toContain("System");
+      expect(tagNames).toContain("Documentation");
     }
   }, 30000);
 
-  test('should have Swagger UI page accessible', async () => {
+  test("should have Swagger UI page accessible", async () => {
     if (!serverAvailable) {
-      console.log('⏭️  Skipping Swagger UI test - server not available');
+      console.log("⏭️  Skipping Swagger UI test - server not available");
       return;
     }
 
     const response = await fetch(`${BASE_URL}/api-docs`);
     // Should return HTML page (200 OK)
     expect(response.ok).toBe(true);
-    expect(response.headers.get('content-type')).toContain('text/html');
+    expect(response.headers.get("content-type")).toContain("text/html");
   }, 30000);
 });

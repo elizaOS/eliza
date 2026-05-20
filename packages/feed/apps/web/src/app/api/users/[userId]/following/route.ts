@@ -94,7 +94,7 @@ import {
   requireTargetByIdentifier,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
+} from "@feed/api";
 import {
   actorFollows,
   and,
@@ -105,15 +105,15 @@ import {
   inArray,
   userActorFollows,
   users,
-} from '@feed/db';
-import { StaticDataRegistry } from '@feed/engine';
+} from "@feed/db";
+import { StaticDataRegistry } from "@feed/engine";
 import {
   logger,
   toISO,
   UserFollowersQuerySchema,
   UserIdParamSchema,
-} from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 interface FollowingResponse {
   id: string;
@@ -123,7 +123,7 @@ interface FollowingResponse {
   bio: string | null;
   followedAt: string;
   isActor: boolean;
-  type?: 'user' | 'actor';
+  type?: "user" | "actor";
   tier?: string | null;
   isMutualFollow?: boolean;
 }
@@ -135,7 +135,7 @@ interface FollowingResponse {
 export const GET = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ userId: string }> }
+    context: { params: Promise<{ userId: string }> },
   ) => {
     // Optional authentication - if authenticated, can provide personalized data
     const authUser = await optionalAuth(request);
@@ -145,9 +145,9 @@ export const GET = withErrorHandling(
     // Validate query parameters
     const { searchParams } = new URL(request.url);
     const queryParams = {
-      page: searchParams.get('page'),
-      limit: searchParams.get('limit'),
-      includeMutual: searchParams.get('includeMutual'),
+      page: searchParams.get("page"),
+      limit: searchParams.get("limit"),
+      includeMutual: searchParams.get("includeMutual"),
     };
     UserFollowersQuerySchema.parse(queryParams);
 
@@ -192,7 +192,7 @@ export const GET = withErrorHandling(
         displayName: f.followingName,
         username: f.followingUsername || null,
         profileImageUrl: f.followingProfileImageUrl || null,
-        bio: f.followingDescription || '',
+        bio: f.followingDescription || "",
         followedAt: toISO(f.createdAt),
         isActor: true,
         tier: f.followingTier || null,
@@ -256,8 +256,8 @@ export const GET = withErrorHandling(
             .where(
               and(
                 eq(follows.followerId, authUser.userId),
-                inArray(follows.followingId, followingUserIds)
-              )
+                inArray(follows.followingId, followingUserIds),
+              ),
             );
           for (const f of userMutualFollows) {
             mutualFollowMap.set(f.followingId, true);
@@ -272,8 +272,8 @@ export const GET = withErrorHandling(
             .where(
               and(
                 eq(userActorFollows.userId, authUser.userId),
-                inArray(userActorFollows.actorId, followingActorIds)
-              )
+                inArray(userActorFollows.actorId, followingActorIds),
+              ),
             );
           for (const f of actorMutualFollows) {
             mutualFollowMap.set(f.actorId, true);
@@ -284,13 +284,13 @@ export const GET = withErrorHandling(
       followingList = [
         ...userFollowsList.map((f) => ({
           id: f.followingId,
-          displayName: f.followingDisplayName || '',
+          displayName: f.followingDisplayName || "",
           username: f.followingUsername || null,
           profileImageUrl: f.followingProfileImageUrl || null,
           bio: f.followingBio || null,
           isActor: f.followingIsActor,
           followedAt: toISO(f.createdAt),
-          type: 'user' as const,
+          type: "user" as const,
           tier: null,
           isMutualFollow: mutualFollowMap.get(f.followingId) || false,
         })),
@@ -304,7 +304,7 @@ export const GET = withErrorHandling(
               bio: null,
               isActor: true,
               followedAt: toISO(f.createdAt),
-              type: 'actor' as const,
+              type: "actor" as const,
               tier: null,
               isMutualFollow: mutualFollowMap.get(f.actorId) || false,
             };
@@ -318,26 +318,26 @@ export const GET = withErrorHandling(
             bio: f.actorDescription || null,
             isActor: true,
             followedAt: toISO(f.createdAt),
-            type: 'actor' as const,
+            type: "actor" as const,
             tier: f.actorTier || null,
             isMutualFollow: mutualFollowMap.get(f.actorId) || false,
           };
         }),
       ].sort(
         (a, b) =>
-          new Date(b.followedAt).getTime() - new Date(a.followedAt).getTime()
+          new Date(b.followedAt).getTime() - new Date(a.followedAt).getTime(),
       );
     }
 
     logger.info(
-      'Following list fetched successfully',
+      "Following list fetched successfully",
       { targetId, count: followingList.length, isActor: !!targetActor },
-      'GET /api/users/[userId]/following'
+      "GET /api/users/[userId]/following",
     );
 
     return successResponse({
       following: followingList,
       count: followingList.length,
     });
-  }
+  },
 );

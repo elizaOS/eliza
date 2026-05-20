@@ -1,7 +1,7 @@
-import { beforeEach, describe, expect, it, mock } from 'bun:test';
-import { NotFoundError } from '@feed/agents';
-import { NextRequest } from 'next/server';
-import type { MockUserRecord, UserFindUniqueArgs } from '../types/test-types';
+import { beforeEach, describe, expect, it, mock } from "bun:test";
+import { NotFoundError } from "@feed/agents";
+import { NextRequest } from "next/server";
+import type { MockUserRecord, UserFindUniqueArgs } from "../types/test-types";
 
 // Mock result storage - will be set by tests
 let mockDbResult: MockUserRecord | null = null;
@@ -20,29 +20,26 @@ const mockSelect = mock(() => createChainableMock());
 
 // Mock modules before importing the module under test
 const mockVerifyAuthToken = mock((_token: string) =>
-  Promise.resolve({ userId: 'did:privy:testuser123' })
+  Promise.resolve({ userId: "did:privy:testuser123" }),
 );
 const mockVerifyAgentSession = mock((_token: string) =>
-  Promise.resolve<{ agentId: string } | null>(null)
+  Promise.resolve<{ agentId: string } | null>(null),
 );
 const mockFindUnique = mock<
   (args?: UserFindUniqueArgs) => Promise<MockUserRecord | null>
 >(() => Promise.resolve(null));
 
 // Mock Privy client - must be done before importing auth-middleware
-mock.module('@privy-io/server-auth', () => {
+mock.module("@privy-io/server-auth", () => {
   return {
     PrivyClient: class MockPrivyClient {
       verifyAuthToken = mockVerifyAuthToken;
-      constructor(_appId: string, _appSecret: string) {
-        // Mock constructor - no-op, doesn't validate app ID
-      }
     },
   };
 });
 
 // Mock agent auth service (dependency of auth-middleware)
-mock.module('@feed/api/src/agent-auth', () => ({
+mock.module("@feed/api/src/agent-auth", () => ({
   verifyAgentSession: mockVerifyAgentSession,
 }));
 
@@ -60,21 +57,21 @@ const mockAuthMiddleware = () => {
   // Mock authenticate function
   const authenticate = async (request: NextRequest) => {
     // Check for agent session first
-    const authHeader = request.headers.get('authorization');
+    const authHeader = request.headers.get("authorization");
     let token: string | undefined;
 
-    const cookieToken = request.cookies.get('privy-token')?.value;
+    const cookieToken = request.cookies.get("privy-token")?.value;
     if (cookieToken) {
       token = cookieToken;
-    } else if (authHeader?.startsWith('Bearer ')) {
+    } else if (authHeader?.startsWith("Bearer ")) {
       token = authHeader.substring(7);
     }
 
     if (!token) {
       const error = new Error(
-        'Missing or invalid authorization header or cookie'
+        "Missing or invalid authorization header or cookie",
       ) as Error & { code: string };
-      error.code = 'AUTH_FAILED';
+      error.code = "AUTH_FAILED";
       throw error;
     }
 
@@ -112,9 +109,9 @@ const mockAuthMiddleware = () => {
     const authUser = await authenticate(request);
     if (!authUser.dbUserId) {
       throw new NotFoundError(
-        'User',
+        "User",
         authUser.privyId,
-        'User profile not found. Please complete onboarding first.'
+        "User profile not found. Please complete onboarding first.",
       );
     }
     return {
@@ -128,28 +125,28 @@ const mockAuthMiddleware = () => {
     authenticateWithDbUser,
     getPrivyClient,
     isAuthenticationError: (
-      error: unknown
+      error: unknown,
     ): error is Error & { code: string } => {
       return (
-        typeof error === 'object' &&
+        typeof error === "object" &&
         error !== null &&
-        'code' in error &&
-        (error as { code?: unknown }).code === 'AUTH_FAILED'
+        "code" in error &&
+        (error as { code?: unknown }).code === "AUTH_FAILED"
       );
     },
     extractErrorMessage: (error: unknown): string => {
       if (error instanceof Error) return error.message;
-      if (typeof error === 'string') return error;
+      if (typeof error === "string") return error;
       return String(error);
     },
   };
 };
 
-mock.module('@feed/api/src/auth-middleware', mockAuthMiddleware);
+mock.module("@feed/api/src/auth-middleware", mockAuthMiddleware);
 
 // Mock @feed/api to re-export from our mocked auth-middleware
-const _actualFeedApi = await import('@feed/api');
-mock.module('@feed/api', () => {
+const _actualFeedApi = await import("@feed/api");
+mock.module("@feed/api", () => {
   const authMiddleware = mockAuthMiddleware();
   return {
     ..._actualFeedApi,
@@ -162,8 +159,8 @@ mock.module('@feed/api', () => {
 
 // Mock database (auth-middleware uses Drizzle query builder)
 // Include all exports that may be needed by dependencies
-const _actualDb = await import('@feed/db');
-mock.module('@feed/db', () => ({
+const _actualDb = await import("@feed/db");
+mock.module("@feed/db", () => ({
   ..._actualDb,
   db: {
     select: mockSelect,
@@ -173,9 +170,9 @@ mock.module('@feed/db', () => ({
   },
   // Tables
   users: {
-    id: 'id',
-    privyId: 'privyId',
-    walletAddress: 'walletAddress',
+    id: "id",
+    privyId: "privyId",
+    walletAddress: "walletAddress",
   },
   actors: {},
   agentLogs: {},
@@ -210,9 +207,9 @@ mock.module('@feed/db', () => ({
 
 // Import authenticate functions from the mocked module
 // The mock.module above ensures these use our mocked implementations
-import { authenticate, authenticateWithDbUser } from '@feed/api';
+import { authenticate, authenticateWithDbUser } from "@feed/api";
 
-describe('User Not Found Handling', () => {
+describe("User Not Found Handling", () => {
   beforeEach(() => {
     // Reset all mocks
     mockVerifyAuthToken.mockClear();
@@ -223,10 +220,10 @@ describe('User Not Found Handling', () => {
 
     // Set default mock implementations
     mockVerifyAuthToken.mockImplementation((_token: string) =>
-      Promise.resolve({ userId: 'did:privy:testuser123' })
+      Promise.resolve({ userId: "did:privy:testuser123" }),
     );
     mockVerifyAgentSession.mockImplementation((_token: string) =>
-      Promise.resolve<{ agentId: string } | null>(null)
+      Promise.resolve<{ agentId: string } | null>(null),
     );
 
     // Reset select mock to return chainable object that resolves with mockDbResult
@@ -239,119 +236,119 @@ describe('User Not Found Handling', () => {
     });
 
     // Set required env vars
-    process.env.NEXT_PUBLIC_PRIVY_APP_ID = 'test-app-id';
-    process.env.PRIVY_APP_SECRET = 'test-secret';
+    process.env.NEXT_PUBLIC_PRIVY_APP_ID = "test-app-id";
+    process.env.PRIVY_APP_SECRET = "test-secret";
   });
 
-  describe('authenticate()', () => {
-    it('should return Privy DID when user does not exist in database', async () => {
+  describe("authenticate()", () => {
+    it("should return Privy DID when user does not exist in database", async () => {
       mockDbResult = null; // No user in DB
 
-      const request = new NextRequest('https://feed.market/api/test', {
+      const request = new NextRequest("https://feed.market/api/test", {
         headers: {
-          authorization: 'Bearer valid-token',
+          authorization: "Bearer valid-token",
         },
       });
 
       const result = await authenticate(request);
 
-      expect(result.userId).toBe('did:privy:testuser123');
-      expect(result.privyId).toBe('did:privy:testuser123');
+      expect(result.userId).toBe("did:privy:testuser123");
+      expect(result.privyId).toBe("did:privy:testuser123");
       expect(result.dbUserId).toBeUndefined();
       expect(result.isAgent).toBe(false);
     });
 
-    it('should return database user ID when user exists in database', async () => {
+    it("should return database user ID when user exists in database", async () => {
       // Set mock to return user
       mockDbResult = {
-        id: 'db-user-123',
-        walletAddress: '0x1234567890123456789012345678901234567890',
+        id: "db-user-123",
+        walletAddress: "0x1234567890123456789012345678901234567890",
       };
 
-      const request = new NextRequest('https://feed.market/api/test', {
+      const request = new NextRequest("https://feed.market/api/test", {
         headers: {
-          authorization: 'Bearer valid-token',
+          authorization: "Bearer valid-token",
         },
       });
 
       const result = await authenticate(request);
 
-      expect(result.userId).toBe('db-user-123');
-      expect(result.dbUserId).toBe('db-user-123');
-      expect(result.privyId).toBe('did:privy:testuser123');
+      expect(result.userId).toBe("db-user-123");
+      expect(result.dbUserId).toBe("db-user-123");
+      expect(result.privyId).toBe("did:privy:testuser123");
       expect(result.walletAddress).toBe(
-        '0x1234567890123456789012345678901234567890'
+        "0x1234567890123456789012345678901234567890",
       );
       expect(result.isAgent).toBe(false);
     });
   });
 
-  describe('authenticateWithDbUser()', () => {
-    it('should throw error when user does not exist in database', async () => {
+  describe("authenticateWithDbUser()", () => {
+    it("should throw error when user does not exist in database", async () => {
       mockDbResult = null; // No user in DB
 
-      const request = new NextRequest('https://feed.market/api/test', {
+      const request = new NextRequest("https://feed.market/api/test", {
         headers: {
-          authorization: 'Bearer valid-token',
+          authorization: "Bearer valid-token",
         },
       });
 
       await expect(authenticateWithDbUser(request)).rejects.toThrow(
-        'User profile not found. Please complete onboarding first.'
+        "User profile not found. Please complete onboarding first.",
       );
     });
 
-    it('should return user with dbUserId when user exists in database', async () => {
+    it("should return user with dbUserId when user exists in database", async () => {
       // Set mock to return user
       mockDbResult = {
-        id: 'db-user-123',
-        walletAddress: '0x1234567890123456789012345678901234567890',
+        id: "db-user-123",
+        walletAddress: "0x1234567890123456789012345678901234567890",
       };
 
-      const request = new NextRequest('https://feed.market/api/test', {
+      const request = new NextRequest("https://feed.market/api/test", {
         headers: {
-          authorization: 'Bearer valid-token',
+          authorization: "Bearer valid-token",
         },
       });
 
       const result = await authenticateWithDbUser(request);
 
-      expect(result.userId).toBe('db-user-123');
-      expect(result.dbUserId).toBe('db-user-123');
-      expect(result.privyId).toBe('did:privy:testuser123');
+      expect(result.userId).toBe("db-user-123");
+      expect(result.dbUserId).toBe("db-user-123");
+      expect(result.privyId).toBe("did:privy:testuser123");
     });
   });
 
-  describe('NotFoundError', () => {
-    it('should support custom messages', () => {
+  describe("NotFoundError", () => {
+    it("should support custom messages", () => {
       const error = new NotFoundError(
-        'User',
-        'did:privy:testuser123',
-        'User profile not found. Please complete onboarding first.'
+        "User",
+        "did:privy:testuser123",
+        "User profile not found. Please complete onboarding first.",
       );
 
       expect(error.message).toBe(
-        'User profile not found. Please complete onboarding first.'
+        "User profile not found. Please complete onboarding first.",
       );
-      expect(error.code).toBe('NOT_FOUND');
+      expect(error.code).toBe("NOT_FOUND");
       expect(error.statusCode).toBe(404);
-      expect(error.context?.resource).toBe('User');
-      expect(error.context?.identifier).toBe('did:privy:testuser123');
+      expect(error.context?.resource).toBe("User");
+      expect(error.context?.identifier).toBe("did:privy:testuser123");
     });
 
-    it('should work with default message format', () => {
-      const error = new NotFoundError('User', 'did:privy:testuser123');
+    it("should work with default message format", () => {
+      const error = new NotFoundError("User", "did:privy:testuser123");
 
-      expect(error.message).toBe('User not found: did:privy:testuser123');
-      expect(error.code).toBe('NOT_FOUND');
+      expect(error.message).toBe("User not found: did:privy:testuser123");
+      expect(error.code).toBe("NOT_FOUND");
       expect(error.statusCode).toBe(404);
     });
 
-    it('should work with only resource name', () => {
-      const error = new NotFoundError('User');
+    it("should work with only resource name", () => {
+      const error = new NotFoundError("User");
 
-      expect(error.message).toBe('User not found');
-      expect(error.code).toBe('NOT_FOUND');
+      expect(error.message).toBe("User not found");
+      expect(error.code).toBe("NOT_FOUND");
       expect(error.statusCode).toBe(404);
     });
   });

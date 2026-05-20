@@ -79,7 +79,7 @@ import {
   optionalAuth,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
+} from "@feed/api";
 import {
   and,
   comments,
@@ -95,11 +95,11 @@ import {
   reactions,
   shares,
   users,
-} from '@feed/db';
-import { StaticDataRegistry } from '@feed/engine';
-import { logger, toISO } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { z } from 'zod';
+} from "@feed/db";
+import { StaticDataRegistry } from "@feed/engine";
+import { logger, toISO } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { z } from "zod";
 
 const QuerySchema = z.object({
   limit: z.coerce.number().min(1).max(100).default(50),
@@ -154,7 +154,7 @@ function calculateHotScore(
   likeCount: number,
   commentCount: number,
   shareCount: number,
-  timestamp: Date
+  timestamp: Date,
 ): number {
   const now = new Date();
   const hoursOld = (now.getTime() - timestamp.getTime()) / (1000 * 60 * 60);
@@ -178,29 +178,29 @@ function calculateHotScore(
 function toISOStringStrict(date: Date | string | null | undefined): string {
   if (date === null || date === undefined) {
     throw new Error(
-      'Invalid date input in toISOStringStrict: date is null or undefined'
+      "Invalid date input in toISOStringStrict: date is null or undefined",
     );
   }
   if (date instanceof Date) {
-    if (isNaN(date.getTime())) {
+    if (Number.isNaN(date.getTime())) {
       throw new Error(
-        'Invalid date input in toISOStringStrict: Date object is invalid'
+        "Invalid date input in toISOStringStrict: Date object is invalid",
       );
     }
     return toISO(date);
   }
-  if (typeof date === 'string') {
+  if (typeof date === "string") {
     // Always parse and validate string dates - don't trust format heuristics
     const parsed = new Date(date);
-    if (!isNaN(parsed.getTime())) {
+    if (!Number.isNaN(parsed.getTime())) {
       return toISO(parsed);
     }
     throw new Error(
-      `Invalid date input in toISOStringStrict: unparseable string "${date}"`
+      `Invalid date input in toISOStringStrict: unparseable string "${date}"`,
     );
   }
   throw new Error(
-    `Invalid date input in toISOStringStrict: unexpected type ${typeof date}`
+    `Invalid date input in toISOStringStrict: unexpected type ${typeof date}`,
   );
 }
 
@@ -211,10 +211,10 @@ function toISOStringStrict(date: Date | string | null | undefined): string {
 function validateDateWithFallback(
   rawValue: Date | string | null | undefined,
   fieldName: string,
-  postId: string
+  postId: string,
 ): Date {
-  const date = rawValue instanceof Date ? rawValue : new Date(rawValue ?? '');
-  if (isNaN(date.getTime())) {
+  const date = rawValue instanceof Date ? rawValue : new Date(rawValue ?? "");
+  if (Number.isNaN(date.getTime())) {
     logger.warn(
       `Invalid ${fieldName} for post ${postId}, falling back to current time`,
       {
@@ -222,7 +222,7 @@ function validateDateWithFallback(
         [`original${fieldName.charAt(0).toUpperCase() + fieldName.slice(1)}`]:
           rawValue,
       },
-      'HotPostsAPI'
+      "HotPostsAPI",
     );
     return new Date();
   }
@@ -238,13 +238,13 @@ function validateDateWithFallback(
 export const GET = withErrorHandling(async (request: NextRequest) => {
   // Optional auth for user-specific data (isLiked, isShared)
   const user = await optionalAuth(request).catch((err) => {
-    logger.debug('optionalAuth failed', { error: err }, 'HotPostsAPI');
+    logger.debug("optionalAuth failed", { error: err }, "HotPostsAPI");
     return null;
   });
 
   const { searchParams } = new URL(request.url);
   const params = QuerySchema.parse({
-    limit: searchParams.get('limit') || '50',
+    limit: searchParams.get("limit") || "50",
   });
 
   // Cache key includes limit but not user (engagement data is the same for all)
@@ -278,8 +278,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
             lte(posts.timestamp, now),
             // Exclude comments/replies - only top-level posts
             isNull(posts.commentOnPostId),
-            isNull(posts.parentCommentId)
-          )
+            isNull(posts.parentCommentId),
+          ),
         )
         .orderBy(desc(posts.timestamp))
         .limit(MAX_CANDIDATE_POSTS); // Get more than needed to allow for scoring
@@ -302,7 +302,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
           })
           .from(reactions)
           .where(
-            and(inArray(reactions.postId, postIds), eq(reactions.type, 'like'))
+            and(inArray(reactions.postId, postIds), eq(reactions.type, "like")),
           )
           .groupBy(reactions.postId),
         db
@@ -312,7 +312,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
           })
           .from(comments)
           .where(
-            and(inArray(comments.postId, postIds), isNull(comments.deletedAt))
+            and(inArray(comments.postId, postIds), isNull(comments.deletedAt)),
           )
           .groupBy(comments.postId),
         db
@@ -327,13 +327,13 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
       // Create maps for quick lookup
       const reactionMap = new Map(
-        reactionCounts.map((r) => [r.postId, Number(r.count)])
+        reactionCounts.map((r) => [r.postId, Number(r.count)]),
       );
       const commentMap = new Map(
-        commentCounts.map((c) => [c.postId, Number(c.count)])
+        commentCounts.map((c) => [c.postId, Number(c.count)]),
       );
       const shareMap = new Map(
-        shareCounts.map((s) => [s.postId, Number(s.count)])
+        shareCounts.map((s) => [s.postId, Number(s.count)]),
       );
 
       // Get author information
@@ -359,20 +359,20 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         // Validate and convert dates for scoring
         const validTimestamp = validateDateWithFallback(
           post.timestamp,
-          'timestamp',
-          post.id
+          "timestamp",
+          post.id,
         );
         const validCreatedAt = validateDateWithFallback(
           post.createdAt,
-          'createdAt',
-          post.id
+          "createdAt",
+          post.id,
         );
 
         const hotScore = calculateHotScore(
           likeCount,
           commentCount,
           shareCount,
-          validTimestamp
+          validTimestamp,
         );
 
         // Get author details
@@ -427,9 +427,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       };
     },
     {
-      namespace: 'feed',
+      namespace: "feed",
       ttl: 60, // Cache for 60 seconds
-    }
+    },
   );
 
   // If user is authenticated, add their like/share status
@@ -447,8 +447,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
           and(
             inArray(reactions.postId, result.postIds),
             eq(reactions.userId, user.userId),
-            eq(reactions.type, 'like')
-          )
+            eq(reactions.type, "like"),
+          ),
         ),
       db
         .select({ postId: shares.postId })
@@ -456,8 +456,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         .where(
           and(
             inArray(shares.postId, result.postIds),
-            eq(shares.userId, user.userId)
-          )
+            eq(shares.userId, user.userId),
+          ),
         ),
     ]);
 

@@ -10,14 +10,14 @@
  * - Comprehensive reporting
  */
 
-import { performanceMonitor } from '@feed/api';
-import { logger } from '@feed/shared';
-import type { LoadTestConfig, LoadTestResult } from './load-test-simulator';
-import { ResourceLimiter, type ResourceLimits } from './resource-limiter';
+import { performanceMonitor } from "@feed/api";
+import { logger } from "@feed/shared";
+import type { LoadTestConfig, LoadTestResult } from "./load-test-simulator";
+import { ResourceLimiter, type ResourceLimits } from "./resource-limiter";
 
 export interface EnhancedLoadTestConfig extends LoadTestConfig {
   /** Test type */
-  testType: 'mixed' | 'single-route' | 'all-routes-ddos';
+  testType: "mixed" | "single-route" | "all-routes-ddos";
 
   /** For single-route DDOS, which route to target */
   targetRoute?: string;
@@ -99,7 +99,7 @@ export class EnhancedLoadTestSimulator {
   private enableMonitoring = true;
   private resourceLimiter: ResourceLimiter | null = null;
 
-  constructor(baseUrl = 'http://localhost:3000') {
+  constructor(baseUrl = "http://localhost:3000") {
     this.baseUrl = baseUrl;
   }
 
@@ -107,7 +107,7 @@ export class EnhancedLoadTestSimulator {
    * Run an enhanced load test
    */
   async runTest(
-    config: EnhancedLoadTestConfig
+    config: EnhancedLoadTestConfig,
   ): Promise<EnhancedLoadTestResult> {
     this.results = [];
     this.errorCounts = new Map();
@@ -119,9 +119,9 @@ export class EnhancedLoadTestSimulator {
     this.resourceLimiter = new ResourceLimiter(config.resourceLimits);
     this.resourceLimiter.start(() => {
       logger.error(
-        'Resource limiter triggered emergency stop',
+        "Resource limiter triggered emergency stop",
         undefined,
-        'EnhancedLoadTestSimulator'
+        "EnhancedLoadTestSimulator",
       );
       this.stop();
     });
@@ -132,7 +132,7 @@ export class EnhancedLoadTestSimulator {
     }
 
     logger.info(
-      'Starting enhanced load test',
+      "Starting enhanced load test",
       {
         testType: config.testType,
         concurrentUsers: config.concurrentUsers,
@@ -141,7 +141,7 @@ export class EnhancedLoadTestSimulator {
         targetRoute: config.targetRoute,
         monitoring: this.enableMonitoring,
       },
-      'EnhancedLoadTestSimulator'
+      "EnhancedLoadTestSimulator",
     );
 
     // Adjust endpoints based on test type
@@ -155,7 +155,7 @@ export class EnhancedLoadTestSimulator {
       const worker = this.simulateUser(
         { ...config, endpoints: testEndpoints },
         endTime,
-        i
+        i,
       );
       workers.push(worker);
 
@@ -181,7 +181,7 @@ export class EnhancedLoadTestSimulator {
     const result = this.analyzeResults(config, testEndTime);
 
     logger.info(
-      'Enhanced load test completed',
+      "Enhanced load test completed",
       {
         totalRequests: result.totalRequests,
         successRate: `${(result.throughput.successRate * 100).toFixed(2)}%`,
@@ -189,7 +189,7 @@ export class EnhancedLoadTestSimulator {
         p95ResponseTime: `${result.responseTime.p95.toFixed(2)}ms`,
         bottlenecks: result.bottlenecks?.length || 0,
       },
-      'EnhancedLoadTestSimulator'
+      "EnhancedLoadTestSimulator",
     );
 
     return result;
@@ -199,23 +199,23 @@ export class EnhancedLoadTestSimulator {
    * Prepare endpoints based on test type
    */
   private prepareEndpoints(
-    config: EnhancedLoadTestConfig
-  ): LoadTestConfig['endpoints'] {
+    config: EnhancedLoadTestConfig,
+  ): LoadTestConfig["endpoints"] {
     switch (config.testType) {
-      case 'single-route':
+      case "single-route":
         // DDOS a single route
         if (!config.targetRoute) {
-          throw new Error('targetRoute required for single-route DDOS test');
+          throw new Error("targetRoute required for single-route DDOS test");
         }
         return [
           {
             path: config.targetRoute,
-            method: 'GET',
+            method: "GET",
             weight: 1.0,
           },
         ];
 
-      case 'all-routes-ddos': {
+      case "all-routes-ddos": {
         // DDOS all routes equally
         const equalWeight = 1.0 / config.endpoints.length;
         return config.endpoints.map((ep) => ({
@@ -223,8 +223,6 @@ export class EnhancedLoadTestSimulator {
           weight: equalWeight,
         }));
       }
-
-      case 'mixed':
       default:
         // Use provided weights
         return config.endpoints;
@@ -237,7 +235,7 @@ export class EnhancedLoadTestSimulator {
   private async simulateUser(
     config: LoadTestConfig,
     endTime: number,
-    _userId: number
+    _userId: number,
   ): Promise<void> {
     let requestCount = 0;
 
@@ -250,16 +248,16 @@ export class EnhancedLoadTestSimulator {
 
       if (this.resourceLimiter?.isStopped()) {
         logger.warn(
-          'Resource limiter stopped test',
+          "Resource limiter stopped test",
           undefined,
-          'EnhancedLoadTestSimulator'
+          "EnhancedLoadTestSimulator",
         );
         break;
       }
       // Rate limiting
       if (config.maxRps) {
         const expectedRequests = Math.floor(
-          ((Date.now() - this.startTime.getTime()) / 1000) * config.maxRps
+          ((Date.now() - this.startTime.getTime()) / 1000) * config.maxRps,
         );
         if (requestCount >= expectedRequests / config.concurrentUsers) {
           await this.sleep(10);
@@ -285,10 +283,10 @@ export class EnhancedLoadTestSimulator {
    * Select an endpoint based on weights
    */
   private selectEndpoint(
-    endpoints: LoadTestConfig['endpoints']
-  ): LoadTestConfig['endpoints'][0] {
+    endpoints: LoadTestConfig["endpoints"],
+  ): LoadTestConfig["endpoints"][0] {
     if (endpoints.length === 0) {
-      throw new Error('No endpoints provided for load testing');
+      throw new Error("No endpoints provided for load testing");
     }
 
     const rand = Math.random();
@@ -308,7 +306,7 @@ export class EnhancedLoadTestSimulator {
    * Make a request to an endpoint
    */
   private async makeRequest(
-    endpoint: LoadTestConfig['endpoints'][0]
+    endpoint: LoadTestConfig["endpoints"][0],
   ): Promise<void> {
     const startTime = Date.now();
     const url = `${this.baseUrl}${endpoint.path}`;
@@ -324,7 +322,7 @@ export class EnhancedLoadTestSimulator {
     const response = await fetch(url, {
       method: endpoint.method,
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
         ...endpoint.headers,
       },
       body: endpoint.body ? JSON.stringify(endpoint.body) : undefined,
@@ -362,10 +360,10 @@ export class EnhancedLoadTestSimulator {
    */
   private analyzeResults(
     config: EnhancedLoadTestConfig,
-    endTime: Date
+    endTime: Date,
   ): EnhancedLoadTestResult {
     const successfulResults = this.results.filter(
-      (r) => r.statusCode >= 200 && r.statusCode < 300
+      (r) => r.statusCode >= 200 && r.statusCode < 300,
     );
     const responseTimes = successfulResults
       .map((r) => r.responseTime)
@@ -416,13 +414,13 @@ export class EnhancedLoadTestSimulator {
     // Aggregate errors
     const errors = Array.from(this.errorCounts.entries()).map(
       ([key, count]) => {
-        const parts = key.split(':');
+        const parts = key.split(":");
         if (parts.length < 2) {
           throw new Error(`Invalid error key format: ${key}`);
         }
         const [endpoint, ...errorParts] = parts;
-        return { endpoint: endpoint!, error: errorParts.join(':'), count };
-      }
+        return { endpoint: endpoint!, error: errorParts.join(":"), count };
+      },
     );
 
     // Get performance metrics if monitoring enabled
@@ -437,7 +435,7 @@ export class EnhancedLoadTestSimulator {
 
       // Extract slow operations
       const slowestOps = Object.entries(
-        perfSnapshot.database.operationBreakdown
+        perfSnapshot.database.operationBreakdown,
       )
         .sort((a, b) => b[1].avgDuration - a[1].avgDuration)
         .slice(0, 10)
@@ -449,7 +447,7 @@ export class EnhancedLoadTestSimulator {
 
       // Extract CPU-intensive operations
       const cpuIntensiveOps = Object.entries(
-        perfSnapshot.database.operationBreakdown
+        perfSnapshot.database.operationBreakdown,
       )
         .filter(([, stats]) => stats.cpuIntensive)
         .map(([operation]) => operation);
@@ -560,32 +558,32 @@ export class EnhancedLoadTestSimulator {
  * Generate test scenarios for all routes
  */
 export async function generateAllRoutesScenario(
-  baseUrl = 'http://localhost:3000'
-): Promise<EnhancedLoadTestConfig['endpoints']> {
+  baseUrl = "http://localhost:3000",
+): Promise<EnhancedLoadTestConfig["endpoints"]> {
   // Fetch OpenAPI spec to discover all routes
   const response = await fetch(`${baseUrl}/api/docs`);
   const spec = (await response.json()) as {
     paths?: Record<string, Record<string, unknown>>;
   };
 
-  const endpoints: EnhancedLoadTestConfig['endpoints'] = [];
+  const endpoints: EnhancedLoadTestConfig["endpoints"] = [];
 
   if (spec.paths) {
     for (const [path, methods] of Object.entries(spec.paths)) {
       for (const method of Object.keys(methods)) {
         if (
-          ['get', 'post', 'put', 'delete', 'patch'].includes(
-            method.toLowerCase()
+          ["get", "post", "put", "delete", "patch"].includes(
+            method.toLowerCase(),
           )
         ) {
           endpoints.push({
             path,
             method: method.toUpperCase() as
-              | 'GET'
-              | 'POST'
-              | 'PUT'
-              | 'DELETE'
-              | 'PATCH',
+              | "GET"
+              | "POST"
+              | "PUT"
+              | "DELETE"
+              | "PATCH",
             weight: 1.0 / Object.keys(spec.paths).length,
           });
         }
@@ -602,7 +600,7 @@ export async function generateAllRoutesScenario(
 export const ENHANCED_TEST_SCENARIOS = {
   /** Test single route under heavy load */
   SINGLE_ROUTE_DDOS: (route: string): EnhancedLoadTestConfig => ({
-    testType: 'single-route',
+    testType: "single-route",
     targetRoute: route,
     concurrentUsers: 500, // Reduced from 1000 to prevent OOM
     durationSeconds: 30, // Reduced from 60 for safety
@@ -621,9 +619,9 @@ export const ENHANCED_TEST_SCENARIOS = {
 
   /** Test all routes equally under heavy load */
   ALL_ROUTES_DDOS: (
-    endpoints: EnhancedLoadTestConfig['endpoints']
+    endpoints: EnhancedLoadTestConfig["endpoints"],
   ): EnhancedLoadTestConfig => ({
-    testType: 'all-routes-ddos',
+    testType: "all-routes-ddos",
     concurrentUsers: 2000,
     durationSeconds: 120,
     rampUpSeconds: 20,
@@ -636,9 +634,9 @@ export const ENHANCED_TEST_SCENARIOS = {
 
   /** Mixed traffic with monitoring */
   REALISTIC_LOAD: (
-    endpoints: EnhancedLoadTestConfig['endpoints']
+    endpoints: EnhancedLoadTestConfig["endpoints"],
   ): EnhancedLoadTestConfig => ({
-    testType: 'mixed',
+    testType: "mixed",
     concurrentUsers: 500,
     durationSeconds: 300,
     rampUpSeconds: 30,

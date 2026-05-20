@@ -95,7 +95,7 @@ export interface ReportSummary {
     final: number;
     lowest: number;
     average: number;
-    trend: 'improving' | 'declining' | 'stable';
+    trend: "improving" | "declining" | "stable";
   };
 
   perpMarket: {
@@ -195,10 +195,10 @@ export function generateReport(result: SimulationResult): SimulationReport {
 function generateSummary(result: SimulationResult): ReportSummary {
   const healthTrend =
     result.finalHealthScore > result.initialHealthScore + 5
-      ? 'improving'
+      ? "improving"
       : result.finalHealthScore < result.initialHealthScore - 5
-        ? 'declining'
-        : 'stable';
+        ? "declining"
+        : "stable";
 
   return {
     scenarioName: result.config.name,
@@ -228,7 +228,7 @@ function generateSummary(result: SimulationResult): ReportSummary {
 
     predictionMarket: {
       finalLiquidity: formatCurrency(
-        result.finalPredictionState.totalLiquidity
+        result.finalPredictionState.totalLiquidity,
       ),
       avgSpread: `${result.finalPredictionState.avgSpread.toFixed(0)} bps`,
       totalVolume: formatCurrency(result.finalPredictionState.totalVolume),
@@ -325,157 +325,157 @@ export function formatReportForConsole(report: SimulationReport): string {
   const t = report.timeSeries;
 
   const lines: string[] = [
-    '',
-    '═══════════════════════════════════════════════════════════════',
+    "",
+    "═══════════════════════════════════════════════════════════════",
     `LIQUIDITY SIMULATION REPORT: ${s.scenarioName}`,
-    '═══════════════════════════════════════════════════════════════',
-    '',
+    "═══════════════════════════════════════════════════════════════",
+    "",
     `Description: ${s.description}`,
     `Duration: ${s.duration.ticks} ticks (${s.duration.simulatedHours.toFixed(1)} simulated hours)`,
     `Generated: ${report.generatedAt.toISOString()}`,
-    '',
-    '───────────────────────────────────────────────────────────────',
-    'HEALTH OVERVIEW',
-    '───────────────────────────────────────────────────────────────',
+    "",
+    "───────────────────────────────────────────────────────────────",
+    "HEALTH OVERVIEW",
+    "───────────────────────────────────────────────────────────────",
     `  Initial Score: ${s.health.initial}`,
     `  Final Score:   ${s.health.final} (${s.health.trend})`,
     `  Lowest Score:  ${s.health.lowest}`,
     `  Average Score: ${s.health.average.toFixed(1)}`,
-    '',
-    '───────────────────────────────────────────────────────────────',
-    'PERPETUAL MARKET',
-    '───────────────────────────────────────────────────────────────',
+    "",
+    "───────────────────────────────────────────────────────────────",
+    "PERPETUAL MARKET",
+    "───────────────────────────────────────────────────────────────",
     `  Long OI:          ${s.perpMarket.finalLongOI}`,
     `  Short OI:         ${s.perpMarket.finalShortOI}`,
     `  Imbalance:        ${s.perpMarket.imbalancePercent}`,
     `  Avg Funding APR:  ${s.perpMarket.avgFundingRateAPR}`,
     `  Total Funding:    ${s.perpMarket.totalFundingPaid}`,
-    '',
+    "",
     `  Price Range:      ${t.spotPrice.min.toFixed(2)} - ${t.spotPrice.max.toFixed(2)}`,
-    `  Price Change:     ${t.spotPrice.change >= 0 ? '+' : ''}${t.spotPrice.change.toFixed(2)}`,
+    `  Price Change:     ${t.spotPrice.change >= 0 ? "+" : ""}${t.spotPrice.change.toFixed(2)}`,
     `  Price Volatility: ${(t.spotPrice.volatility * 100).toFixed(2)}%`,
-    '',
-    '───────────────────────────────────────────────────────────────',
-    'PREDICTION MARKETS',
-    '───────────────────────────────────────────────────────────────',
+    "",
+    "───────────────────────────────────────────────────────────────",
+    "PREDICTION MARKETS",
+    "───────────────────────────────────────────────────────────────",
     `  Final Liquidity:  ${s.predictionMarket.finalLiquidity}`,
     `  Avg Spread:       ${s.predictionMarket.avgSpread}`,
     `  Total Volume:     ${s.predictionMarket.totalVolume}`,
     `  NPC Net P&L:      ${s.predictionMarket.npcNetPnL}`,
     `  User Net P&L:     ${s.predictionMarket.userNetPnL}`,
-    '',
+    "",
     `  Liquidity Range:  ${t.predictionLiquidity.min.toFixed(0)} - ${t.predictionLiquidity.max.toFixed(0)}`,
-    `  Liquidity Change: ${t.predictionLiquidity.change >= 0 ? '+' : ''}${t.predictionLiquidity.change.toFixed(0)}`,
-    '',
-    '───────────────────────────────────────────────────────────────',
-    'HEALTH ANALYSIS',
-    '───────────────────────────────────────────────────────────────',
+    `  Liquidity Change: ${t.predictionLiquidity.change >= 0 ? "+" : ""}${t.predictionLiquidity.change.toFixed(0)}`,
+    "",
+    "───────────────────────────────────────────────────────────────",
+    "HEALTH ANALYSIS",
+    "───────────────────────────────────────────────────────────────",
     `  Times Critical (<20): ${t.healthScore.timesBelowThreshold.critical}`,
     `  Times Poor (<40):     ${t.healthScore.timesBelowThreshold.poor}`,
     `  Times Fair (<60):     ${t.healthScore.timesBelowThreshold.fair}`,
     `  Health Volatility:    ${t.healthScore.volatility.toFixed(1)}`,
-    '',
+    "",
   ];
 
   if (s.eventsTriggered > 0) {
     lines.push(
-      '───────────────────────────────────────────────────────────────'
+      "───────────────────────────────────────────────────────────────",
     );
-    lines.push('EVENTS TRIGGERED');
+    lines.push("EVENTS TRIGGERED");
     lines.push(
-      '───────────────────────────────────────────────────────────────'
+      "───────────────────────────────────────────────────────────────",
     );
     lines.push(`  Count: ${s.eventsTriggered}`);
-    lines.push('');
+    lines.push("");
   }
 
   if (s.findings.length > 0) {
     lines.push(
-      '───────────────────────────────────────────────────────────────'
+      "───────────────────────────────────────────────────────────────",
     );
-    lines.push('FINDINGS');
+    lines.push("FINDINGS");
     lines.push(
-      '───────────────────────────────────────────────────────────────'
+      "───────────────────────────────────────────────────────────────",
     );
     for (const finding of s.findings) {
       lines.push(`  • ${finding}`);
     }
-    lines.push('');
+    lines.push("");
   }
 
   if (s.recommendations.length > 0) {
     lines.push(
-      '───────────────────────────────────────────────────────────────'
+      "───────────────────────────────────────────────────────────────",
     );
-    lines.push('RECOMMENDATIONS');
+    lines.push("RECOMMENDATIONS");
     lines.push(
-      '───────────────────────────────────────────────────────────────'
+      "───────────────────────────────────────────────────────────────",
     );
     for (const rec of s.recommendations) {
       lines.push(`  → ${rec}`);
     }
-    lines.push('');
+    lines.push("");
   }
 
-  lines.push('═══════════════════════════════════════════════════════════════');
-  lines.push('');
+  lines.push("═══════════════════════════════════════════════════════════════");
+  lines.push("");
 
-  return lines.join('\n');
+  return lines.join("\n");
 }
 
 /**
  * Compare multiple simulation results
  */
 export function compareScenarios(
-  results: Map<string, SimulationResult>
+  results: Map<string, SimulationResult>,
 ): string {
   const lines: string[] = [
-    '',
-    '═══════════════════════════════════════════════════════════════',
-    'SCENARIO COMPARISON',
-    '═══════════════════════════════════════════════════════════════',
-    '',
+    "",
+    "═══════════════════════════════════════════════════════════════",
+    "SCENARIO COMPARISON",
+    "═══════════════════════════════════════════════════════════════",
+    "",
   ];
 
   // Header row
   const scenarios = Array.from(results.keys());
   lines.push(
-    'Metric'.padEnd(30) + scenarios.map((s) => s.padStart(15)).join('')
+    "Metric".padEnd(30) + scenarios.map((s) => s.padStart(15)).join(""),
   );
-  lines.push('─'.repeat(30 + scenarios.length * 15));
+  lines.push("─".repeat(30 + scenarios.length * 15));
 
   // Data rows
   const metrics = [
     {
-      name: 'Final Health Score',
+      name: "Final Health Score",
       getter: (r: SimulationResult) => r.finalHealthScore.toFixed(0),
     },
     {
-      name: 'Lowest Health Score',
+      name: "Lowest Health Score",
       getter: (r: SimulationResult) => r.lowestHealthScore.toFixed(0),
     },
     {
-      name: 'Perp Imbalance %',
+      name: "Perp Imbalance %",
       getter: (r: SimulationResult) =>
         r.finalPerpState.imbalancePercent.toFixed(1),
     },
     {
-      name: 'Avg Funding APR %',
+      name: "Avg Funding APR %",
       getter: (r: SimulationResult) =>
         r.finalPerpState.avgFundingRateAPR.toFixed(2),
     },
     {
-      name: 'Pred Liquidity',
+      name: "Pred Liquidity",
       getter: (r: SimulationResult) =>
-        (r.finalPredictionState.totalLiquidity / 1000).toFixed(1) + 'k',
+        `${(r.finalPredictionState.totalLiquidity / 1000).toFixed(1)}k`,
     },
     {
-      name: 'NPC P&L',
+      name: "NPC P&L",
       getter: (r: SimulationResult) =>
         formatCurrencySigned(r.finalPredictionState.npcNetPnL),
     },
     {
-      name: 'User P&L',
+      name: "User P&L",
       getter: (r: SimulationResult) =>
         formatCurrencySigned(r.finalPredictionState.userNetPnL),
     },
@@ -484,16 +484,16 @@ export function compareScenarios(
   for (const metric of metrics) {
     const values = scenarios.map((s) => {
       const result = results.get(s);
-      return result ? metric.getter(result).padStart(15) : 'N/A'.padStart(15);
+      return result ? metric.getter(result).padStart(15) : "N/A".padStart(15);
     });
-    lines.push(metric.name.padEnd(30) + values.join(''));
+    lines.push(metric.name.padEnd(30) + values.join(""));
   }
 
-  lines.push('');
-  lines.push('═══════════════════════════════════════════════════════════════');
-  lines.push('');
+  lines.push("");
+  lines.push("═══════════════════════════════════════════════════════════════");
+  lines.push("");
 
-  return lines.join('\n');
+  return lines.join("\n");
 }
 
 /**
@@ -508,17 +508,17 @@ export function exportToJSON(report: SimulationReport): string {
  */
 export function exportTimeSeriesCSV(metrics: TickMetrics[]): string {
   const headers = [
-    'tick',
-    'timestamp',
-    'perpLongOI',
-    'perpShortOI',
-    'perpImbalance',
-    'perpFundingRate',
-    'perpSpotPrice',
-    'predictionTotalLiquidity',
-    'predictionAvgSpread',
-    'predictionVolume',
-    'overallHealthScore',
+    "tick",
+    "timestamp",
+    "perpLongOI",
+    "perpShortOI",
+    "perpImbalance",
+    "perpFundingRate",
+    "perpSpotPrice",
+    "predictionTotalLiquidity",
+    "predictionAvgSpread",
+    "predictionVolume",
+    "overallHealthScore",
   ];
 
   const rows = metrics.map((m) =>
@@ -534,10 +534,10 @@ export function exportTimeSeriesCSV(metrics: TickMetrics[]): string {
       m.predictionAvgSpread.toFixed(2),
       m.predictionVolume.toFixed(2),
       m.overallHealthScore.toFixed(0),
-    ].join(',')
+    ].join(","),
   );
 
-  return [headers.join(','), ...rows].join('\n');
+  return [headers.join(","), ...rows].join("\n");
 }
 
 // Utility functions
@@ -553,7 +553,7 @@ function formatCurrency(value: number): string {
 }
 
 function formatCurrencySigned(value: number): string {
-  const sign = value >= 0 ? '+' : '';
+  const sign = value >= 0 ? "+" : "";
   return sign + formatCurrency(value);
 }
 

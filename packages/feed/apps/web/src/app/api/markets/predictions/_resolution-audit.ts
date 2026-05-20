@@ -6,7 +6,7 @@ import {
   questions,
   timeframedMarkets,
   users,
-} from '@feed/db';
+} from "@feed/db";
 
 export type PublicResolutionAudit = {
   resolution: boolean | null;
@@ -19,12 +19,12 @@ export type PublicResolutionAudit = {
     id: string;
     displayName: string | null;
     username: string | null;
-    kind: 'admin' | 'system';
+    kind: "admin" | "system";
   } | null;
 };
 
 export async function getPublicResolutionAudit(
-  marketId: string
+  marketId: string,
 ): Promise<PublicResolutionAudit | null> {
   const [[market], [question], [latestResolvedFrame]] = await Promise.all([
     db.select().from(markets).where(eq(markets.id, marketId)).limit(1),
@@ -50,14 +50,14 @@ export async function getPublicResolutionAudit(
     (market.resolved ? market.updatedAt : null) ??
     null;
 
-  let resolvedBy: PublicResolutionAudit['resolvedBy'] = null;
+  let resolvedBy: PublicResolutionAudit["resolvedBy"] = null;
 
-  if (reviewerId === 'system') {
+  if (reviewerId === "system") {
     resolvedBy = {
-      id: 'system',
-      displayName: 'Feed Resolution Engine',
+      id: "system",
+      displayName: "Feed Resolution Engine",
       username: null,
-      kind: 'system',
+      kind: "system",
     };
   } else if (reviewerId) {
     const [reviewer] = await db
@@ -75,7 +75,7 @@ export async function getPublicResolutionAudit(
         id: reviewer.id,
         displayName: reviewer.displayName,
         username: reviewer.username,
-        kind: 'admin',
+        kind: "admin",
       };
     }
   }
@@ -85,7 +85,7 @@ export async function getPublicResolutionAudit(
     resolvedAt: resolvedAt?.toISOString() ?? null,
     reviewStatus: question?.resolutionReviewStatus ?? null,
     confidence:
-      typeof question?.resolutionConfidence === 'number'
+      typeof question?.resolutionConfidence === "number"
         ? question.resolutionConfidence
         : null,
     description:

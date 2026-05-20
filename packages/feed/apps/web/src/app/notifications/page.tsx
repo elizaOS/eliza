@@ -1,31 +1,31 @@
-'use client';
+"use client";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
-import { cn, logger } from '@feed/shared';
-import { Bell, Settings } from 'lucide-react';
-import nextDynamic from 'next/dynamic';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
-import { toast } from 'sonner';
-import { GroupInviteCard } from '@/components/groups/GroupInviteCard';
-import { Avatar } from '@/components/shared/Avatar';
-import { PageContainer } from '@/components/shared/PageContainer';
-import { PullToRefreshIndicator } from '@/components/shared/PullToRefreshIndicator';
-import { useAuth } from '@/hooks/useAuth';
-import { usePullToRefresh } from '@/hooks/usePullToRefresh';
-import { getNotificationPresentation } from '@/lib/notifications/presentation';
+import { cn, logger } from "@feed/shared";
+import { Bell, Settings } from "lucide-react";
+import nextDynamic from "next/dynamic";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
+import { GroupInviteCard } from "@/components/groups/GroupInviteCard";
+import { Avatar } from "@/components/shared/Avatar";
+import { PageContainer } from "@/components/shared/PageContainer";
+import { PullToRefreshIndicator } from "@/components/shared/PullToRefreshIndicator";
+import { useAuth } from "@/hooks/useAuth";
+import { usePullToRefresh } from "@/hooks/usePullToRefresh";
+import { getNotificationPresentation } from "@/lib/notifications/presentation";
 
 const WidgetSidebar = nextDynamic(
   () =>
-    import('@/components/shared/WidgetSidebar').then((m) => ({
+    import("@/components/shared/WidgetSidebar").then((m) => ({
       default: m.WidgetSidebar,
     })),
   {
     ssr: false,
     loading: () => <div className="hidden w-96 flex-none xl:block" />,
-  }
+  },
 );
 
 interface Notification {
@@ -69,7 +69,7 @@ export default function NotificationsPage() {
 
   useEffect(() => {
     if (authenticated) return;
-    router.push('/feed');
+    router.push("/feed");
     const timer = setTimeout(() => login(), 500);
     return () => clearTimeout(timer);
   }, [authenticated, router, login]);
@@ -89,12 +89,12 @@ export default function NotificationsPage() {
       }
 
       const [notifResponse, invitesResponse] = await Promise.all([
-        fetch('/api/notifications?limit=100', {
+        fetch("/api/notifications?limit=100", {
           headers: {
             Authorization: `Bearer ${token}`,
           },
         }),
-        fetch('/api/groups/invites', {
+        fetch("/api/groups/invites", {
           headers: {
             Authorization: `Bearer ${token}`,
           },
@@ -107,12 +107,12 @@ export default function NotificationsPage() {
         setUnreadCount(data.unreadCount || 0);
       } else {
         logger.error(
-          'Failed to fetch notifications',
+          "Failed to fetch notifications",
           { statusText: notifResponse.statusText },
-          'NotificationsPage'
+          "NotificationsPage",
         );
         if (!silent) {
-          toast.error('Failed to refresh notifications');
+          toast.error("Failed to refresh notifications");
         }
       }
 
@@ -125,7 +125,7 @@ export default function NotificationsPage() {
         setLoading(false);
       }
     },
-    [getAccessToken]
+    [getAccessToken],
   );
 
   const handleRefresh = useCallback(async () => {
@@ -149,7 +149,7 @@ export default function NotificationsPage() {
     // Use silent refresh (no loading indicator) for polling
     const interval = setInterval(() => {
       // Only refresh if page is visible (not in background tab)
-      if (document.visibilityState === 'visible') {
+      if (document.visibilityState === "visible") {
         fetchNotifications(false, true); // Silent refresh, no loading indicator, no toast
       }
     }, 60000); // 60 seconds = 1 minute
@@ -170,16 +170,16 @@ export default function NotificationsPage() {
 
       // Update local state optimistically first
       setNotifications((prev) =>
-        prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n))
+        prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n)),
       );
       setUnreadCount((prev) => Math.max(0, prev - 1));
 
       // Then make the API call
-      const response = await fetch('/api/notifications', {
-        method: 'PATCH',
+      const response = await fetch("/api/notifications", {
+        method: "PATCH",
         headers: {
           Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           notificationIds: [notificationId],
@@ -188,18 +188,20 @@ export default function NotificationsPage() {
 
       if (!response.ok) {
         logger.error(
-          'Failed to mark notification as read',
+          "Failed to mark notification as read",
           { statusText: response.statusText },
-          'NotificationsPage'
+          "NotificationsPage",
         );
         // Revert optimistic update on error
         setNotifications((prev) =>
-          prev.map((n) => (n.id === notificationId ? { ...n, read: false } : n))
+          prev.map((n) =>
+            n.id === notificationId ? { ...n, read: false } : n,
+          ),
         );
         setUnreadCount((prev) => prev + 1);
       }
     },
-    [getAccessToken]
+    [getAccessToken],
   );
 
   // Intersection Observer - marks notifications as read after viewing for 3 seconds
@@ -212,12 +214,12 @@ export default function NotificationsPage() {
       (entries) => {
         entries.forEach((entry) => {
           const notificationId = entry.target.getAttribute(
-            'data-notification-id'
+            "data-notification-id",
           );
           if (!notificationId) return;
 
           const notification = notifications.find(
-            (n) => n.id === notificationId
+            (n) => n.id === notificationId,
           );
           if (!notification || notification.read) return;
 
@@ -246,13 +248,13 @@ export default function NotificationsPage() {
       },
       {
         threshold: 0.5, // At least 50% of notification must be visible
-        rootMargin: '-50px', // Adds margin to trigger when fully in view
-      }
+        rootMargin: "-50px", // Adds margin to trigger when fully in view
+      },
     );
 
     // Observe all notification elements
     const notificationElements = document.querySelectorAll(
-      '[data-notification-id]'
+      "[data-notification-id]",
     );
     notificationElements.forEach((el) => observer.observe(el));
 
@@ -272,48 +274,48 @@ export default function NotificationsPage() {
     const diffHours = Math.floor(diffMs / 3600000);
     const diffDays = Math.floor(diffMs / 86400000);
 
-    if (diffMinutes < 1) return 'Just now';
+    if (diffMinutes < 1) return "Just now";
     if (diffMinutes < 60) return `${diffMinutes}m ago`;
     if (diffHours < 24) return `${diffHours}h ago`;
     if (diffDays < 7) return `${diffDays}d ago`;
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   };
 
   const getNotificationIcon = (type: string) => {
     switch (type) {
-      case 'comment':
-        return '💬';
-      case 'reaction':
-        return '❤️';
-      case 'follow':
-        return '👤';
-      case 'mention':
-        return '📢';
-      case 'reply':
-        return '↩️';
-      case 'share':
-        return '🔁';
-      case 'system':
-        return '✨';
+      case "comment":
+        return "💬";
+      case "reaction":
+        return "❤️";
+      case "follow":
+        return "👤";
+      case "mention":
+        return "📢";
+      case "reply":
+        return "↩️";
+      case "share":
+        return "🔁";
+      case "system":
+        return "✨";
       default:
-        return '🔔';
+        return "🔔";
     }
   };
 
   const getNotificationLink = (notification: Notification) => {
     if (
-      notification.type === 'market_resolved' &&
-      typeof notification.data?.deepLink === 'string'
+      notification.type === "market_resolved" &&
+      typeof notification.data?.deepLink === "string"
     ) {
       return notification.data.deepLink;
     }
 
     if (
-      notification.type === 'hourly_summary' ||
-      notification.type === 'daily_summary' ||
-      notification.type === 'weekly_summary'
+      notification.type === "hourly_summary" ||
+      notification.type === "daily_summary" ||
+      notification.type === "weekly_summary"
     ) {
-      return '/notifications';
+      return "/notifications";
     }
 
     // DM or group chat message - go to the specific chat if chatId is available
@@ -323,58 +325,58 @@ export default function NotificationsPage() {
 
     // Group chat invite - go to chat
     if (
-      notification.type === 'system' &&
-      notification.message.includes('invited you to')
+      notification.type === "system" &&
+      notification.message.includes("invited you to")
     ) {
       // Extract chat ID from the message or notification data
       // For now, go to chats page where they can see their invitations
-      return '/chats';
+      return "/chats";
     }
 
     // DM or group chat message without chatId (legacy notifications) - go to chats page
     if (
-      notification.type === 'system' &&
-      (notification.message.includes('Message') ||
-        notification.message.includes('message'))
+      notification.type === "system" &&
+      (notification.message.includes("Message") ||
+        notification.message.includes("message"))
     ) {
-      return '/chats';
+      return "/chats";
     }
 
     // Profile completion - go to settings
     if (
-      notification.type === 'system' &&
-      notification.message.includes('profile')
+      notification.type === "system" &&
+      notification.message.includes("profile")
     ) {
-      return '/settings';
+      return "/settings";
     }
 
     // Follow notification - go to the follower's profile
-    if (notification.type === 'follow' && notification.actorId) {
+    if (notification.type === "follow" && notification.actorId) {
       return `/profile/${notification.actorId}`;
     }
 
     // Comment or reaction on post - go to the post detail page
     if (
-      (notification.type === 'comment' ||
-        notification.type === 'reaction' ||
-        notification.type === 'reply') &&
+      (notification.type === "comment" ||
+        notification.type === "reaction" ||
+        notification.type === "reply") &&
       notification.postId
     ) {
       return `/post/${notification.postId}`;
     }
 
     // Share notification - go to the post
-    if (notification.type === 'share' && notification.postId) {
+    if (notification.type === "share" && notification.postId) {
       return `/post/${notification.postId}`;
     }
 
     // Mention - go to the post if available
-    if (notification.type === 'mention' && notification.postId) {
+    if (notification.type === "mention" && notification.postId) {
       return `/post/${notification.postId}`;
     }
 
     // Default: go to feed
-    return '/feed';
+    return "/feed";
   };
 
   if (!authenticated) {
@@ -475,9 +477,9 @@ export default function NotificationsPage() {
                         }
                         data-notification-id={notification.id}
                         className={cn(
-                          'block border-border border-b px-4 py-4 lg:px-6',
-                          'transition-colors hover:bg-muted/30',
-                          !notification.read && 'bg-primary/5'
+                          "block border-border border-b px-4 py-4 lg:px-6",
+                          "transition-colors hover:bg-muted/30",
+                          !notification.read && "bg-primary/5",
                         )}
                       >
                         <div className="flex items-center gap-3">
@@ -496,7 +498,7 @@ export default function NotificationsPage() {
                             />
                           ) : (
                             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full">
-                              {notification.type === 'system' ? (
+                              {notification.type === "system" ? (
                                 <span className="text-xl">
                                   {getNotificationIcon(notification.type)}
                                 </span>
@@ -518,7 +520,7 @@ export default function NotificationsPage() {
                                       </p>
                                     ) : null}
                                     <p className="text-muted-foreground leading-relaxed">
-                                      {presentation.message}{' '}
+                                      {presentation.message}{" "}
                                       <time className="text-muted-foreground/70 text-xs">
                                         {formatTimeAgo(notification.createdAt)}
                                       </time>
@@ -528,16 +530,16 @@ export default function NotificationsPage() {
                                   <p className="text-foreground leading-relaxed">
                                     <span className="block font-semibold md:inline">
                                       {notification.actor?.displayName ||
-                                        'Someone'}
-                                    </span>{' '}
+                                        "Someone"}
+                                    </span>{" "}
                                     <span className="text-muted-foreground">
                                       {notification.message
                                         .replace(
-                                          notification.actor?.displayName || '',
-                                          ''
+                                          notification.actor?.displayName || "",
+                                          "",
                                         )
-                                        .replace(/^:\s*/, '')}
-                                    </span>{' '}
+                                        .replace(/^:\s*/, "")}
+                                    </span>{" "}
                                     <time className="text-muted-foreground/70 text-xs">
                                       {formatTimeAgo(notification.createdAt)}
                                     </time>

@@ -8,9 +8,9 @@
  * Returns the current game tutorial onboarding status for the authenticated user.
  */
 
-import { authenticate, successResponse, withErrorHandling } from '@feed/api';
-import { getOrCreateOnboarding } from '@feed/engine';
-import type { NextRequest } from 'next/server';
+import { authenticate, successResponse, withErrorHandling } from "@feed/api";
+import { getOrCreateOnboarding } from "@feed/engine";
+import type { NextRequest } from "next/server";
 
 /**
  * Type guard for reward validation.
@@ -19,10 +19,10 @@ import type { NextRequest } from 'next/server';
 function isValidReward(r: unknown): r is { points: number } {
   return (
     r !== null &&
-    typeof r === 'object' &&
-    'points' in r &&
-    typeof (r as { points: unknown }).points === 'number' &&
-    !isNaN((r as { points: number }).points)
+    typeof r === "object" &&
+    "points" in r &&
+    typeof (r as { points: unknown }).points === "number" &&
+    !Number.isNaN((r as { points: number }).points)
   );
 }
 
@@ -41,7 +41,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   const totalReputationEarned =
     state?.rewards?.reduce(
       (sum: number, r: unknown) => (isValidReward(r) ? sum + r.points : sum),
-      0
+      0,
     ) ?? 0;
 
   return successResponse({

@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { useRouter } from 'next/navigation';
-import { useEffect, useRef } from 'react';
-import { useStewardAuthContext } from '@/components/providers/StewardAuthProvider';
+import { useRouter } from "next/navigation";
+import { useEffect, useRef } from "react";
+import { useStewardAuthContext } from "@/components/providers/StewardAuthProvider";
 
 /**
  * OAuth callback page for Steward OAuth providers (Google, Discord, Twitter/X).
@@ -24,12 +24,12 @@ export default function OAuthCallbackPage() {
     processed.current = true;
 
     const params = new URLSearchParams(window.location.search);
-    const token = params.get('token');
-    const refreshToken = params.get('refresh_token') ?? undefined;
-    const error = params.get('error');
+    const token = params.get("token");
+    const refreshToken = params.get("refresh_token") ?? undefined;
+    const error = params.get("error");
 
     // Sanitize URL immediately — remove sensitive query params from history
-    window.history.replaceState(null, '', window.location.pathname);
+    window.history.replaceState(null, "", window.location.pathname);
 
     if (error) {
       router.replace(`/?auth_error=${encodeURIComponent(error)}`);
@@ -37,13 +37,13 @@ export default function OAuthCallbackPage() {
     }
 
     if (!token) {
-      router.replace('/?auth_error=missing_token');
+      router.replace("/?auth_error=missing_token");
       return;
     }
 
     onLoginSuccess(token, refreshToken)
       .then(() => {
-        router.replace('/');
+        router.replace("/");
       })
       .catch((err: Error) => {
         router.replace(`/?auth_error=${encodeURIComponent(err.message)}`);

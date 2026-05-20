@@ -1,15 +1,15 @@
-import 'server-only';
+import "server-only";
 
-import { db, eq, users } from '@feed/db';
-import { getUserPositionsSnapshot } from '@/lib/markets/user-positions';
-import { listOwnedAgentSummaries } from './owned-agent-summaries';
-import type { TeamDashboardData } from './team-dashboard-types';
-import { buildTeamTradingSummary } from './team-trading-summary';
+import { db, eq, users } from "@feed/db";
+import { getUserPositionsSnapshot } from "@/lib/markets/user-positions";
+import { listOwnedAgentSummaries } from "./owned-agent-summaries";
+import type { TeamDashboardData } from "./team-dashboard-types";
+import { buildTeamTradingSummary } from "./team-trading-summary";
 
 export type {
   TeamDashboardAgent,
   TeamDashboardData,
-} from './team-dashboard-types';
+} from "./team-dashboard-types";
 
 export async function getTeamDashboardData({
   ownerId,
@@ -31,8 +31,8 @@ export async function getTeamDashboardData({
     listOwnedAgentSummaries(ownerId),
     getUserPositionsSnapshot({
       userId: ownerId,
-      type: 'all',
-      status: 'open',
+      type: "all",
+      status: "open",
       viewerUserId: ownerId,
     }),
   ]);
@@ -49,7 +49,7 @@ export async function getTeamDashboardData({
     }
     openPositionsByAgentId.set(
       position.agentId,
-      (openPositionsByAgentId.get(position.agentId) ?? 0) + 1
+      (openPositionsByAgentId.get(position.agentId) ?? 0) + 1,
     );
   }
 
@@ -59,7 +59,7 @@ export async function getTeamDashboardData({
     }
     openPositionsByAgentId.set(
       position.agentId,
-      (openPositionsByAgentId.get(position.agentId) ?? 0) + 1
+      (openPositionsByAgentId.get(position.agentId) ?? 0) + 1,
     );
   }
 

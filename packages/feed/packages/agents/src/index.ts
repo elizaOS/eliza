@@ -8,12 +8,12 @@
  */
 
 // Autonomous services
-export * from './autonomous';
+export * from "./autonomous";
 // Communication
-export * from './communication/CommunicationHub';
-export * from './communication/EventBus';
+export * from "./communication/CommunicationHub";
+export * from "./communication/EventBus";
 // Errors
-export * from './errors';
+export * from "./errors";
 // External agent adapter
 export {
   type AgentResponse,
@@ -23,27 +23,27 @@ export {
   type ExternalAgentMessage,
   getExternalAgentAdapter,
   type Protocol,
-} from './external/ExternalAgentAdapter';
+} from "./external/ExternalAgentAdapter";
 // LLM integrations
-export * from './llm';
+export * from "./llm";
 // Plugins - Feed plugin is the main export
 export {
   feedPlugin,
   initializeAgentA2AClient,
   initializeFeedPlugin,
-} from './plugins/feed';
-export type { FeedRuntime } from './plugins/feed/types';
+} from "./plugins/feed";
+export type { FeedRuntime } from "./plugins/feed/types";
 // Plugin utilities
-export { groqPlugin } from './plugins/groq';
-export * from './plugins/plugin-agent-core/src';
-export * from './plugins/plugin-autonomy/src';
-export * from './plugins/plugin-experience/src';
+export { groqPlugin } from "./plugins/groq";
+export * from "./plugins/plugin-agent-core/src";
+export * from "./plugins/plugin-autonomy/src";
+export * from "./plugins/plugin-experience/src";
 // Plugin sub-exports for trajectory logging, autonomy, experience
-export * from './plugins/plugin-trajectory-logger/src';
+export * from "./plugins/plugin-trajectory-logger/src";
 // Runtime
-export * from './runtime/AgentRuntimeManager';
+export * from "./runtime/AgentRuntimeManager";
 // Services
-export * from './services';
+export * from "./services";
 // Shared utilities
 export {
   getAgentConfig,
@@ -54,17 +54,17 @@ export {
   isAutonomousGroupChatsEnabled,
   isAutonomousPostingEnabled,
   isAutonomousTradingEnabled,
-} from './shared/agent-config';
+} from "./shared/agent-config";
 // Keep Solana registry helpers off the root barrel so non-Solana routes do not
 // pull Solana SDK dependencies into shared serverless bundles.
 // Templates loader
-export * from './templates-loader';
+export * from "./templates-loader";
 // Training utilities (RL model fetching, config)
-export * from './training';
+export * from "./training";
 // Core types
-export * from './types';
-export * from './types/agent-template';
-export * from './types/goals';
+export * from "./types";
+export * from "./types/agent-template";
+export * from "./types/goals";
 // Utils
-export * from './utils/createTestAgent';
-export * from './utils/prompt-builder';
+export * from "./utils/createTestAgent";
+export * from "./utils/prompt-builder";

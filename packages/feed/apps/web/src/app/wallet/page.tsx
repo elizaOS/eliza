@@ -1,29 +1,29 @@
-'use client';
+"use client";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
-import nextDynamic from 'next/dynamic';
-import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
-import { LoginButton } from '@/components/auth/LoginButton';
-import { PageContainer } from '@/components/shared/PageContainer';
-import { BalanceTab } from '@/components/wallet/v2/balance-tab';
-import { PnLTab } from '@/components/wallet/v2/pnl-tab';
-import { PositionsTab } from '@/components/wallet/v2/positions-tab';
-import { useAuth } from '@/hooks/useAuth';
-import { useTeamTradingSummary } from '@/hooks/useTeamTradingSummary';
-import { useUserPositionsPolling } from '@/stores/userPositionsStore';
+import nextDynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { LoginButton } from "@/components/auth/LoginButton";
+import { PageContainer } from "@/components/shared/PageContainer";
+import { BalanceTab } from "@/components/wallet/v2/balance-tab";
+import { PnLTab } from "@/components/wallet/v2/pnl-tab";
+import { PositionsTab } from "@/components/wallet/v2/positions-tab";
+import { useAuth } from "@/hooks/useAuth";
+import { useTeamTradingSummary } from "@/hooks/useTeamTradingSummary";
+import { useUserPositionsPolling } from "@/stores/userPositionsStore";
 import {
   invalidateWalletBalance,
   useWalletBalancePolling,
-} from '@/stores/walletBalanceStore';
+} from "@/stores/walletBalanceStore";
 
 const BuyPointsModal = nextDynamic(
   () =>
-    import('@/components/points/BuyPointsModal').then((m) => ({
+    import("@/components/points/BuyPointsModal").then((m) => ({
       default: m.BuyPointsModal,
     })),
-  { ssr: false }
+  { ssr: false },
 );
 
 export default function WalletPage() {
@@ -49,7 +49,7 @@ export default function WalletPage() {
   // Redirect unauthenticated users
   useEffect(() => {
     if (!ready || authenticated) return;
-    router.push('/feed');
+    router.push("/feed");
     const timer = setTimeout(() => login(), 500);
     return () => clearTimeout(timer);
   }, [ready, authenticated, router, login]);
@@ -112,7 +112,7 @@ export default function WalletPage() {
           onClose={() => setShowBuyPoints(false)}
           onSuccess={() => {
             invalidateWalletBalance();
-            window.dispatchEvent(new CustomEvent('rewards-updated'));
+            window.dispatchEvent(new CustomEvent("rewards-updated"));
           }}
         />
       )}

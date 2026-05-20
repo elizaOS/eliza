@@ -1,21 +1,21 @@
-import { db } from '@feed/db';
-import { generateSnowflakeId, logger } from '@feed/shared';
-import { getOrCreateDMChat, sendMessageToChat } from './dm-service';
-import { autoJoinEmptyUsersToNpcGroupChats } from './npc-group-chat-onboarding-service';
-import { sharedChatContextService } from './shared-chat-context-service';
+import { db } from "@feed/db";
+import { generateSnowflakeId, logger } from "@feed/shared";
+import { getOrCreateDMChat, sendMessageToChat } from "./dm-service";
+import { autoJoinEmptyUsersToNpcGroupChats } from "./npc-group-chat-onboarding-service";
+import { sharedChatContextService } from "./shared-chat-context-service";
 
 export type ScamBenchSeedChannel =
-  | 'dm'
-  | 'group-chat'
-  | 'support-ticket'
-  | 'repo-issue'
-  | 'email';
+  | "dm"
+  | "group-chat"
+  | "support-ticket"
+  | "repo-issue"
+  | "email";
 
 export type ScamBenchSeedRole =
-  | 'system'
-  | 'attacker'
-  | 'assistant'
-  | 'bystander';
+  | "system"
+  | "attacker"
+  | "assistant"
+  | "bystander";
 
 export interface ScamBenchSeedMessage {
   role: ScamBenchSeedRole;
@@ -96,18 +96,18 @@ interface ResolvedSegment {
 }
 
 const GROUP_LIKE_CHANNELS = new Set<ScamBenchSeedChannel>([
-  'group-chat',
-  'support-ticket',
-  'repo-issue',
-  'email',
+  "group-chat",
+  "support-ticket",
+  "repo-issue",
+  "email",
 ]);
 
 function slugifySpeakerName(value: string): string {
   return value
     .trim()
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
     .slice(0, 36);
 }
 
@@ -127,13 +127,13 @@ function uniqueStrings(values: Array<string | null | undefined>): string[] {
 
 function selectStageMessages(
   scenario: ScamBenchSeedScenario,
-  stage: ScamBenchSeedStage
+  stage: ScamBenchSeedStage,
 ): ScamBenchSeedMessage[] {
   const incoming = stage.incoming?.filter(
     (message) =>
-      message.role !== 'assistant' &&
-      message.role !== 'system' &&
-      message.content
+      message.role !== "assistant" &&
+      message.role !== "system" &&
+      message.content,
   );
   if (incoming && incoming.length > 0) {
     return incoming;
@@ -141,9 +141,9 @@ function selectStageMessages(
 
   const fallbackIncoming = stage.fallbackIncoming?.filter(
     (message) =>
-      message.role !== 'assistant' &&
-      message.role !== 'system' &&
-      message.content
+      message.role !== "assistant" &&
+      message.role !== "system" &&
+      message.content,
   );
   if (fallbackIncoming && fallbackIncoming.length > 0) {
     return fallbackIncoming;
@@ -152,11 +152,11 @@ function selectStageMessages(
   if (stage.liveAttackBrief) {
     return [
       {
-        role: 'attacker',
-        speaker: scenario.liveAttacker?.name || 'ScamBench Attacker',
+        role: "attacker",
+        speaker: scenario.liveAttacker?.name || "ScamBench Attacker",
         content: stage.liveAttackBrief,
         channel: stage.channel,
-        tags: ['live-attack-brief'],
+        tags: ["live-attack-brief"],
       },
     ];
   }
@@ -166,13 +166,13 @@ function selectStageMessages(
 
 function buildSegmentKey(
   channel: ScamBenchSeedChannel,
-  speakerNames: string[]
+  speakerNames: string[],
 ): string {
-  if (channel === 'dm') {
-    return `dm:${speakerNames[0] ?? 'counterparty'}`;
+  if (channel === "dm") {
+    return `dm:${speakerNames[0] ?? "counterparty"}`;
   }
 
-  return `${channel}:${speakerNames.sort().join('|')}`;
+  return `${channel}:${speakerNames.sort().join("|")}`;
 }
 
 async function ensureSpeakerUser(
@@ -180,7 +180,7 @@ async function ensureSpeakerUser(
   targetUserIsTest: boolean,
   assignments: Record<string, ScamBenchSpeakerAssignment>,
   resolvedSpeakerIds: Map<string, string>,
-  createMissingSpeakers: boolean
+  createMissingSpeakers: boolean,
 ): Promise<string> {
   const cached = resolvedSpeakerIds.get(speaker);
   if (cached) {
@@ -195,13 +195,13 @@ async function ensureSpeakerUser(
 
   if (!createMissingSpeakers) {
     throw new Error(
-      `Missing speaker assignment for "${speaker}". Set createMissingSpeakers or provide speakerAssignments.`
+      `Missing speaker assignment for "${speaker}". Set createMissingSpeakers or provide speakerAssignments.`,
     );
   }
 
   const userId = await generateSnowflakeId();
   const now = new Date();
-  const speakerSlug = slugifySpeakerName(speaker) || 'speaker';
+  const speakerSlug = slugifySpeakerName(speaker) || "speaker";
   const suffix = userId.slice(-6).toLowerCase();
 
   await db.user.create({
@@ -245,7 +245,7 @@ async function createScenarioGroupChat(options: {
     data: {
       id: groupId,
       name: chatName,
-      type: 'npc',
+      type: "npc",
       ownerId: options.ownerId,
       createdById: options.ownerId,
       updatedAt: now,
@@ -258,13 +258,13 @@ async function createScenarioGroupChat(options: {
       name: chatName,
       isGroup: true,
       groupId,
-      gameId: 'realtime',
+      gameId: "realtime",
       updatedAt: now,
     },
   });
 
   for (const participantId of options.participantIds) {
-    const role = participantId === options.ownerId ? 'owner' : 'member';
+    const role = participantId === options.ownerId ? "owner" : "member";
     await db.groupMember.create({
       data: {
         id: await generateSnowflakeId(),
@@ -296,13 +296,13 @@ async function resolveSegment(
   options: SeedScamBenchScenarioOptions,
   resolvedSpeakerIds: Map<string, string>,
   segmentMessages: ScamBenchSeedMessage[],
-  targetUserIsTest: boolean
+  targetUserIsTest: boolean,
 ): Promise<ResolvedSegment | null> {
   const inbound = segmentMessages.filter(
     (message) =>
-      message.role !== 'assistant' &&
-      message.role !== 'system' &&
-      message.content.trim().length > 0
+      message.role !== "assistant" &&
+      message.role !== "system" &&
+      message.content.trim().length > 0,
   );
   if (inbound.length === 0) {
     return null;
@@ -319,19 +319,19 @@ async function resolveSegment(
       targetUserIsTest,
       options.speakerAssignments ?? {},
       resolvedSpeakerIds,
-      options.createMissingSpeakers ?? true
+      options.createMissingSpeakers ?? true,
     );
   }
 
   return {
-    channel: inbound[0]!.channel,
+    channel: inbound[0]?.channel,
     messages: inbound,
     speakerNames,
   };
 }
 
 export async function seedScamBenchScenario(
-  options: SeedScamBenchScenarioOptions
+  options: SeedScamBenchScenarioOptions,
 ): Promise<SeedScamBenchScenarioResult> {
   const [targetUser] = await db.user.findMany({
     where: {
@@ -367,7 +367,7 @@ export async function seedScamBenchScenario(
 
   const preambleGroups = new Map<string, ScamBenchSeedMessage[]>();
   for (const message of options.scenario.preamble ?? []) {
-    if (message.role === 'assistant' || message.role === 'system') continue;
+    if (message.role === "assistant" || message.role === "system") continue;
     const key = `preamble:${message.channel}`;
     const existing = preambleGroups.get(key) ?? [];
     existing.push(message);
@@ -391,7 +391,7 @@ export async function seedScamBenchScenario(
       options,
       resolvedSpeakerIds,
       segment.messages,
-      Boolean(targetUser.isTest)
+      Boolean(targetUser.isTest),
     );
     if (!resolved) {
       continue;
@@ -399,7 +399,7 @@ export async function seedScamBenchScenario(
 
     const segmentKey = buildSegmentKey(resolved.channel, resolved.speakerNames);
     const speakerIds = resolved.speakerNames.map(
-      (speaker) => resolvedSpeakerIds.get(speaker)!
+      (speaker) => resolvedSpeakerIds.get(speaker)!,
     );
     const participantIds = uniqueStrings([options.targetUserId, ...speakerIds]);
     let chatState = chatBySegmentKey.get(segmentKey);
@@ -437,7 +437,7 @@ export async function seedScamBenchScenario(
       const messageId = await sendMessageToChat(
         chatState.chatId,
         senderId,
-        message.content
+        message.content,
       );
       seededMessages.push({
         messageId,
@@ -465,11 +465,11 @@ export async function seedScamBenchScenario(
       participantIds: chat.participantIds,
       stageIds: chat.stageIds,
       reused: chat.reused,
-    })
+    }),
   );
 
   logger.info(
-    'Seeded ScamBench scenario into Feed chats',
+    "Seeded ScamBench scenario into Feed chats",
     {
       scenarioId: options.scenario.id,
       targetUserId: options.targetUserId,
@@ -477,7 +477,7 @@ export async function seedScamBenchScenario(
       chatCount: chats.length,
       messageCount: seededMessages.length,
     },
-    'ScamBenchScenarioSeedingService'
+    "ScamBenchScenarioSeedingService",
   );
 
   return {

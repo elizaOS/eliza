@@ -1,18 +1,18 @@
-import { authenticate, successResponse, withErrorHandling } from '@feed/api';
-import { db, eq, users } from '@feed/db';
+import { authenticate, successResponse, withErrorHandling } from "@feed/api";
+import { db, eq, users } from "@feed/db";
 import {
   DEFAULT_NOTIFICATION_DIGEST_SETTINGS,
   logger,
   type NotificationDigestSettings,
-} from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { z } from 'zod';
-import { getMissingNotificationSchemaErrorCode } from '../schema-compat';
+} from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { z } from "zod";
+import { getMissingNotificationSchemaErrorCode } from "../schema-compat";
 
 const DigestSettingsSchema = z.object({
   digestEnabled: z.boolean(),
-  frequency: z.enum(['hourly', 'daily', 'weekly']),
-  deliveryChannel: z.enum(['in-app', 'email', 'both']),
+  frequency: z.enum(["hourly", "daily", "weekly"]),
+  deliveryChannel: z.enum(["in-app", "email", "both"]),
 });
 
 function toSettings(row: {
@@ -23,9 +23,9 @@ function toSettings(row: {
   return {
     digestEnabled: row.notificationDigestEnabled,
     frequency:
-      row.notificationDigestFrequency as NotificationDigestSettings['frequency'],
+      row.notificationDigestFrequency as NotificationDigestSettings["frequency"],
     deliveryChannel:
-      row.notificationDigestDeliveryChannel as NotificationDigestSettings['deliveryChannel'],
+      row.notificationDigestDeliveryChannel as NotificationDigestSettings["deliveryChannel"],
   };
 }
 
@@ -56,9 +56,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
     const errorMessage = error instanceof Error ? error.message : String(error);
     logger.warn(
-      'Notification digest settings unavailable because the database schema is pending',
+      "Notification digest settings unavailable because the database schema is pending",
       { userId: authUser.userId, code: missingSchemaCode, errorMessage },
-      'GET /api/notifications/digest-settings'
+      "GET /api/notifications/digest-settings",
     );
 
     return successResponse({

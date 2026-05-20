@@ -1,19 +1,19 @@
-import { afterAll, beforeEach, describe, expect, it, mock } from 'bun:test';
-import type { NextRequest } from 'next/server';
+import { afterAll, beforeEach, describe, expect, it, mock } from "bun:test";
+import type { NextRequest } from "next/server";
 
 const STRIPE_CHECKOUT_UNAVAILABLE_MESSAGE =
-  'Card payments are temporarily unavailable. Please try again later.';
+  "Card payments are temporarily unavailable. Please try again later.";
 
 const mockAuthenticate = mock(async () => ({
-  dbUserId: 'user-123',
-  email: 'user@example.com',
+  dbUserId: "user-123",
+  email: "user@example.com",
 }));
 const mockTrackServerEvent = mock(async () => undefined);
 const mockCreateSession = mock(async () => ({
-  id: 'cs_test_123',
-  url: 'https://checkout.stripe.com/c/pay/cs_test_123',
+  id: "cs_test_123",
+  url: "https://checkout.stripe.com/c/pay/cs_test_123",
 }));
-const mockGetBaseUrl = mock(() => 'https://feed.market');
+const mockGetBaseUrl = mock(() => "https://feed.market");
 const mockValidatePurchaseAmount = mock(() => ({ valid: true }));
 const mockLoggerInfo = mock(() => undefined);
 const mockLoggerError = mock(() => undefined);
@@ -24,20 +24,20 @@ class MockServiceUnavailableError extends Error {
   context?: Record<string, unknown>;
 
   constructor(
-    message = 'Service temporarily unavailable',
+    message = "Service temporarily unavailable",
     code?: string,
-    context?: Record<string, unknown>
+    context?: Record<string, unknown>,
   ) {
     super(message);
-    this.name = 'ServiceUnavailableError';
+    this.name = "ServiceUnavailableError";
     this.statusCode = 503;
     this.code = code;
     this.context = context;
   }
 }
 
-const _actualFeedApi = await import('@feed/api');
-mock.module('@feed/api', () => ({
+const _actualFeedApi = await import("@feed/api");
+mock.module("@feed/api", () => ({
   ..._actualFeedApi,
   authenticate: mockAuthenticate,
   ServiceUnavailableError: MockServiceUnavailableError,
@@ -50,25 +50,25 @@ mock.module('@feed/api', () => ({
         const message =
           error instanceof Error
             ? error.message
-            : 'An unexpected error occurred';
+            : "An unexpected error occurred";
         const statusCode =
-          typeof error === 'object' &&
+          typeof error === "object" &&
           error !== null &&
-          'statusCode' in error &&
-          typeof error.statusCode === 'number'
+          "statusCode" in error &&
+          typeof error.statusCode === "number"
             ? error.statusCode
             : 500;
 
         return new Response(JSON.stringify({ error: message }), {
           status: statusCode,
-          headers: { 'content-type': 'application/json' },
+          headers: { "content-type": "application/json" },
         });
       }
     },
 }));
 
-const _actualShared = await import('@feed/shared');
-mock.module('@feed/shared', () => ({
+const _actualShared = await import("@feed/shared");
+mock.module("@feed/shared", () => ({
   ..._actualShared,
   logger: {
     info: mockLoggerInfo,
@@ -76,18 +76,18 @@ mock.module('@feed/shared', () => ({
   },
 }));
 
-mock.module('@/lib/posthog/server', () => ({
+mock.module("@/lib/posthog/server", () => ({
   trackServerEvent: mockTrackServerEvent,
 }));
 
-const _actualStripeServer = await import('@/lib/stripe/server');
-mock.module('@/lib/stripe/server', () => ({
+const _actualStripeServer = await import("@/lib/stripe/server");
+mock.module("@/lib/stripe/server", () => ({
   ..._actualStripeServer,
   calculatePointsFromUSD: (amountUSD: number) => Math.floor(amountUSD * 100),
   getBaseUrl: mockGetBaseUrl,
   POINTS_CONFIG: {
     ..._actualStripeServer.POINTS_CONFIG,
-    CURRENCY: 'usd',
+    CURRENCY: "usd",
   },
   stripe: {
     checkout: {
@@ -99,39 +99,39 @@ mock.module('@/lib/stripe/server', () => ({
   validatePurchaseAmount: mockValidatePurchaseAmount,
 }));
 
-const { POST } = await import('@/app/api/stripe/checkout/session/route');
+const { POST } = await import("@/app/api/stripe/checkout/session/route");
 
 function makeRequest(
   body: Record<string, unknown>,
-  headers?: Record<string, string>
+  headers?: Record<string, string>,
 ): NextRequest {
-  return new Request('https://feed.market/api/stripe/checkout/session', {
-    method: 'POST',
+  return new Request("https://feed.market/api/stripe/checkout/session", {
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
-      origin: 'https://feed.market',
-      Authorization: 'Bearer test-token',
+      "Content-Type": "application/json",
+      origin: "https://feed.market",
+      Authorization: "Bearer test-token",
       ...headers,
     },
     body: JSON.stringify(body),
   }) as NextRequest;
 }
 
-describe('Stripe checkout session route', () => {
+describe("Stripe checkout session route", () => {
   beforeEach(() => {
     mockAuthenticate.mockClear();
     mockAuthenticate.mockResolvedValue({
-      dbUserId: 'user-123',
-      email: 'user@example.com',
+      dbUserId: "user-123",
+      email: "user@example.com",
     });
     mockTrackServerEvent.mockClear();
     mockCreateSession.mockClear();
     mockCreateSession.mockResolvedValue({
-      id: 'cs_test_123',
-      url: 'https://checkout.stripe.com/c/pay/cs_test_123',
+      id: "cs_test_123",
+      url: "https://checkout.stripe.com/c/pay/cs_test_123",
     });
     mockGetBaseUrl.mockClear();
-    mockGetBaseUrl.mockReturnValue('https://feed.market');
+    mockGetBaseUrl.mockReturnValue("https://feed.market");
     mockValidatePurchaseAmount.mockClear();
     mockValidatePurchaseAmount.mockReturnValue({ valid: true });
     mockLoggerInfo.mockClear();
@@ -142,47 +142,47 @@ describe('Stripe checkout session route', () => {
     mock.restore();
   });
 
-  it('creates a checkout session and returns the redirect URL', async () => {
+  it("creates a checkout session and returns the redirect URL", async () => {
     const response = await POST(makeRequest({ amountUSD: 25 }));
     const body = await response.json();
 
     expect(response.status).toBe(200);
     expect(body).toEqual({
       success: true,
-      sessionId: 'cs_test_123',
-      url: 'https://checkout.stripe.com/c/pay/cs_test_123',
+      sessionId: "cs_test_123",
+      url: "https://checkout.stripe.com/c/pay/cs_test_123",
     });
     expect(mockValidatePurchaseAmount).toHaveBeenCalledWith(25);
     expect(mockCreateSession).toHaveBeenCalledTimes(1);
     expect(mockCreateSession).toHaveBeenCalledWith(
       expect.objectContaining({
-        customer_email: 'user@example.com',
-        cancel_url: 'https://feed.market/markets?stripe_cancelled=true',
+        customer_email: "user@example.com",
+        cancel_url: "https://feed.market/markets?stripe_cancelled=true",
         success_url:
-          'https://feed.market/markets?stripe_success=true&session_id={CHECKOUT_SESSION_ID}',
+          "https://feed.market/markets?stripe_success=true&session_id={CHECKOUT_SESSION_ID}",
         metadata: {
-          app: 'feed',
-          userId: 'user-123',
-          balanceUnits: '2500',
-          amountUSD: '25',
-          purchaseType: 'trading_balance',
+          app: "feed",
+          userId: "user-123",
+          balanceUnits: "2500",
+          amountUSD: "25",
+          purchaseType: "trading_balance",
         },
-      })
+      }),
     );
     expect(mockTrackServerEvent).toHaveBeenCalledWith(
-      'user-123',
-      'stripe_checkout_initiated',
+      "user-123",
+      "stripe_checkout_initiated",
       {
         amountUSD: 25,
         balanceUnits: 2500,
-        sessionId: 'cs_test_123',
-      }
+        sessionId: "cs_test_123",
+      },
     );
   });
 
-  it('returns a stable 503 when Stripe checkout creation is unavailable', async () => {
+  it("returns a stable 503 when Stripe checkout creation is unavailable", async () => {
     mockCreateSession.mockRejectedValueOnce(
-      new Error('STRIPE_SECRET_KEY environment variable is required')
+      new Error("STRIPE_SECRET_KEY environment variable is required"),
     );
 
     const response = await POST(makeRequest({ amountUSD: 25 }));

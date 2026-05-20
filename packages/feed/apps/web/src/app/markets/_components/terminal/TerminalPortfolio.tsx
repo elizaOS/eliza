@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import { cn } from '@feed/shared';
-import { RefreshCw, Wallet } from 'lucide-react';
-import type { PortfolioBreakdownSnapshot } from '@/hooks/usePortfolioPnL';
-import { formatBalance } from '@/lib/market-formatters';
+import { cn } from "@feed/shared";
+import { RefreshCw, Wallet } from "lucide-react";
+import type { PortfolioBreakdownSnapshot } from "@/hooks/usePortfolioPnL";
+import { formatBalance } from "@/lib/market-formatters";
 
 /**
  * Formats a balance with explicit +/- sign prefix.
@@ -12,7 +12,7 @@ import { formatBalance } from '@/lib/market-formatters';
  */
 function formatSignedBalance(value: number): string {
   if (value === 0) return formatBalance(0);
-  const sign = value > 0 ? '+' : '-';
+  const sign = value > 0 ? "+" : "-";
   return `${sign}${formatBalance(Math.abs(value))}`;
 }
 
@@ -35,11 +35,11 @@ function formatPortfolioValue(
   isLoading: boolean,
   portfolio: PortfolioBreakdownSnapshot | null,
   getValue: (p: PortfolioBreakdownSnapshot) => number | string,
-  formatter: (v: number) => string = formatBalance
+  formatter: (v: number) => string = formatBalance,
 ): string {
-  if (isLoading || !portfolio) return '—';
+  if (isLoading || !portfolio) return "—";
   const value = getValue(portfolio);
-  return typeof value === 'number' ? formatter(value) : value;
+  return typeof value === "number" ? formatter(value) : value;
 }
 
 function StatCard({
@@ -57,7 +57,7 @@ function StatCard({
         {label}
       </div>
       <div
-        className={cn('mt-0.5 font-mono text-sm tabular-nums', valueClassName)}
+        className={cn("mt-0.5 font-mono text-sm tabular-nums", valueClassName)}
       >
         {value}
       </div>
@@ -87,10 +87,10 @@ export function TerminalPortfolio({
   // Use neutral color when portfolio data is not yet loaded
   const pnlValueClass =
     portfolio?.totalPnL == null
-      ? 'text-muted-foreground'
+      ? "text-muted-foreground"
       : portfolio.totalPnL >= 0
-        ? 'text-green-500'
-        : 'text-red-500';
+        ? "text-green-500"
+        : "text-red-500";
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -121,23 +121,23 @@ export function TerminalPortfolio({
               onClick={onRefresh}
               disabled={portfolioLoading || refreshDisabled}
               className={cn(
-                'inline-flex items-center gap-1 rounded bg-muted/20 px-2 py-1 font-semibold text-[10px] uppercase tracking-wider transition-colors',
+                "inline-flex items-center gap-1 rounded bg-muted/20 px-2 py-1 font-semibold text-[10px] uppercase tracking-wider transition-colors",
                 portfolioLoading || refreshDisabled
-                  ? 'cursor-not-allowed text-muted-foreground opacity-50'
-                  : 'text-foreground hover:bg-muted/30'
+                  ? "cursor-not-allowed text-muted-foreground opacity-50"
+                  : "text-foreground hover:bg-muted/30",
               )}
               aria-label="Refresh portfolio"
               aria-busy={portfolioLoading}
               title={
                 refreshDisabled
-                  ? 'Please wait before refreshing again'
-                  : 'Refresh'
+                  ? "Please wait before refreshing again"
+                  : "Refresh"
               }
             >
               <RefreshCw
                 className={cn(
-                  'h-3.5 w-3.5',
-                  portfolioLoading && 'animate-spin'
+                  "h-3.5 w-3.5",
+                  portfolioLoading && "animate-spin",
                 )}
               />
               Refresh
@@ -154,7 +154,7 @@ export function TerminalPortfolio({
         <div className="mt-2 grid grid-cols-2 gap-1.5 lg:grid-cols-4">
           <StatCard
             label="Wallet (spendable)"
-            value={balanceLoading ? '—' : formatBalance(balance)}
+            value={balanceLoading ? "—" : formatBalance(balance)}
           />
           <StatCard
             label="Total PnL"
@@ -162,7 +162,7 @@ export function TerminalPortfolio({
               portfolioLoading,
               portfolio,
               (p) => p.totalPnL,
-              formatSignedBalance
+              formatSignedBalance,
             )}
             valueClassName={pnlValueClass}
           />
@@ -171,7 +171,7 @@ export function TerminalPortfolio({
             value={formatPortfolioValue(
               portfolioLoading,
               portfolio,
-              (p) => p.totalAssets
+              (p) => p.totalAssets,
             )}
           />
           <StatCard
@@ -179,7 +179,7 @@ export function TerminalPortfolio({
             value={formatPortfolioValue(
               portfolioLoading,
               portfolio,
-              (p) => p.available
+              (p) => p.available,
             )}
           />
         </div>
@@ -190,7 +190,7 @@ export function TerminalPortfolio({
             value={formatPortfolioValue(
               portfolioLoading,
               portfolio,
-              (p) => p.agents
+              (p) => p.agents,
             )}
           />
           <StatCard
@@ -198,13 +198,13 @@ export function TerminalPortfolio({
             value={formatPortfolioValue(
               portfolioLoading,
               portfolio,
-              (p) => p.positions
+              (p) => p.positions,
             )}
           />
           <StatCard
             label="Agent Count"
             value={formatPortfolioValue(portfolioLoading, portfolio, (p) =>
-              p.agentCount.toLocaleString()
+              p.agentCount.toLocaleString(),
             )}
           />
           <StatCard
@@ -212,7 +212,7 @@ export function TerminalPortfolio({
             value={formatPortfolioValue(
               portfolioLoading,
               portfolio,
-              (p) => p.originalAmount
+              (p) => p.originalAmount,
             )}
           />
         </div>

@@ -245,8 +245,8 @@ import {
   rateLimitError,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import type { Post } from '@feed/db';
+} from "@feed/api";
+import type { Post } from "@feed/db";
 import {
   and,
   comments,
@@ -267,18 +267,18 @@ import {
   sql,
   userActorFollows,
   users,
-} from '@feed/db';
+} from "@feed/db";
 import {
   type GeneratedTag,
   generateTagsFromPost,
   handlePlayerMention,
   StaticDataRegistry,
   storeTagsForPost,
-} from '@feed/engine';
-import { generateSnowflakeId, logger, toISO } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { trackServerEvent } from '@/lib/posthog/server';
+} from "@feed/engine";
+import { generateSnowflakeId, logger, toISO } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { trackServerEvent } from "@/lib/posthog/server";
 
 /**
  * Engagement thresholds for comment preview visibility
@@ -362,7 +362,7 @@ async function fetchPostMetadataConsolidated(postIds: string[]): Promise<{
   // Build the array only once - subsequent CTEs reference target_posts
   const postIdsArray = sql`ARRAY[${sql.join(
     postIds.map((id) => sql`${id}`),
-    sql`, `
+    sql`, `,
   )}]::text[]`;
 
   // Single CTE query that fetches all interaction counts and comment previews
@@ -506,12 +506,12 @@ async function fetchPostMetadataConsolidated(postIds: string[]): Promise<{
 
   // Type guard to validate raw SQL results have expected shape
   function isRawResultRow(row: unknown): row is RawResultRow {
-    if (!row || typeof row !== 'object') return false;
+    if (!row || typeof row !== "object") return false;
     const r = row as Record<string, unknown>;
     return (
-      typeof r.result_type === 'string' &&
-      typeof r.post_id === 'string' &&
-      (r.result_type === 'metadata' || r.result_type === 'comment')
+      typeof r.result_type === "string" &&
+      typeof r.post_id === "string" &&
+      (r.result_type === "metadata" || r.result_type === "comment")
     );
   }
 
@@ -519,18 +519,18 @@ async function fetchPostMetadataConsolidated(postIds: string[]): Promise<{
   const rows = Array.isArray(result) ? result : [];
   for (const row of rows) {
     if (!isRawResultRow(row)) continue;
-    if (row.result_type === 'metadata') {
+    if (row.result_type === "metadata") {
       reactionMap.set(row.post_id, Number(row.like_count));
       commentMap.set(row.post_id, Number(row.comment_count));
       shareMap.set(row.post_id, Number(row.share_count));
-    } else if (row.result_type === 'comment' && row.comment_id) {
+    } else if (row.result_type === "comment" && row.comment_id) {
       const previews = commentPreviewMap.get(row.post_id) ?? [];
       previews.push({
         id: row.comment_id,
         postId: row.post_id,
-        content: row.comment_content ?? '',
+        content: row.comment_content ?? "",
         createdAt: row.comment_created_at ?? new Date(),
-        authorId: row.comment_author_id ?? '',
+        authorId: row.comment_author_id ?? "",
         userName: row.comment_user_name,
         userUsername: row.comment_user_username,
         userAvatar: row.comment_user_avatar,
@@ -564,14 +564,14 @@ function toISOStringSafe(date: Date | string | null | undefined): string {
   if (date instanceof Date) {
     return toISO(date);
   }
-  if (typeof date === 'string') {
+  if (typeof date === "string") {
     // If it's already an ISO string, return it
-    if (date.includes('T') && date.includes('Z')) {
+    if (date.includes("T") && date.includes("Z")) {
       return date;
     }
     // Try to parse and convert
     const parsed = new Date(date);
-    if (!isNaN(parsed.getTime())) {
+    if (!Number.isNaN(parsed.getTime())) {
       return toISO(parsed);
     }
   }
@@ -597,12 +597,12 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   } = await publicRateLimit(request);
   if (error) return error;
   const { searchParams } = new URL(request.url);
-  const limit = Number.parseInt(searchParams.get('limit') || '100');
-  const cursor = searchParams.get('cursor') || undefined; // Cursor-based pagination
-  const actorId = searchParams.get('actorId') || undefined;
-  const following = searchParams.get('following') === 'true';
-  const userId = searchParams.get('userId') || undefined;
-  const type = searchParams.get('type') || undefined;
+  const limit = Number.parseInt(searchParams.get("limit") || "100", 10);
+  const cursor = searchParams.get("cursor") || undefined; // Cursor-based pagination
+  const actorId = searchParams.get("actorId") || undefined;
+  const following = searchParams.get("following") === "true";
+  const userId = searchParams.get("userId") || undefined;
+  const type = searchParams.get("type") || undefined;
 
   // Following feed: only allow when authenticated and query userId matches authenticated user
   if (following && userId && authUser && authUser.userId === userId) {
@@ -629,9 +629,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         return [...followedUserIds, ...followedActorIds];
       },
       {
-        namespace: 'user:follows',
+        namespace: "user:follows",
         ttl: 120, // Cache follows for 2 minutes
-      }
+      },
     );
 
     if (allFollowedIds.length === 0) {
@@ -641,7 +641,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         posts: [],
         total: 0,
         limit,
-        source: 'following',
+        source: "following",
       });
     }
 
@@ -664,12 +664,12 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       userId,
       allFollowedIds,
       limit,
-      cursor
+      cursor,
     );
 
     // Filter out posts from blocked/muted users
     const filteredPosts = postsResult.filter(
-      (post) => !excludedUserIds.has(post.authorId)
+      (post) => !excludedUserIds.has(post.authorId),
     );
 
     // Get user data for filtered posts
@@ -677,7 +677,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       ...new Set(
         filteredPosts
           .map((p: Post) => p.authorId)
-          .filter((id): id is string => id !== undefined)
+          .filter((id): id is string => id !== undefined),
       ),
     ];
 
@@ -701,13 +701,13 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         .map((a) => [
           a.id,
           { id: a.id, name: a.name, profileImageUrl: a.profileImageUrl },
-        ])
+        ]),
     );
     const orgMap = new Map(
       authorIds
         .map((id) => StaticDataRegistry.getOrganization(id))
         .filter((o): o is NonNullable<typeof o> => o !== null)
-        .map((o) => [o.id, { id: o.id, name: o.name, imageUrl: o.imageUrl }])
+        .map((o) => [o.id, { id: o.id, name: o.name, imageUrl: o.imageUrl }]),
     );
 
     // Get interaction counts for all filtered posts in parallel
@@ -723,8 +723,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
             .where(
               and(
                 inArray(reactions.postId, postIds),
-                eq(reactions.type, 'like')
-              )
+                eq(reactions.type, "like"),
+              ),
             )
             .groupBy(reactions.postId)
         : [],
@@ -742,10 +742,10 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
     // Create maps for quick lookup
     const reactionMap = new Map(
-      reactionCounts.map((r) => [r.postId, Number(r.count)])
+      reactionCounts.map((r) => [r.postId, Number(r.count)]),
     );
     const commentMap = new Map(
-      commentCounts.map((c) => [c.postId, Number(c.count)])
+      commentCounts.map((c) => [c.postId, Number(c.count)]),
     );
 
     // Fetch original posts for reposts in the following feed.
@@ -762,7 +762,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         .select()
         .from(posts)
         .where(
-          and(inArray(posts.id, followingRepostIds), isNull(posts.deletedAt))
+          and(inArray(posts.id, followingRepostIds), isNull(posts.deletedAt)),
         );
       originals.forEach((p) => followingOriginalPostsMap.set(p.id, p));
     }
@@ -823,7 +823,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         author: post.authorId,
         authorId: post.authorId,
         authorName:
-          user?.displayName || user?.username || post.authorId || 'Unknown',
+          user?.displayName || user?.username || post.authorId || "Unknown",
         authorUsername: user?.username || null,
         timestamp: toISOStringSafe(post.timestamp),
         createdAt: toISOStringSafe(post.createdAt),
@@ -840,7 +840,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       success: true,
       posts: formattedFollowingPosts,
       limit,
-      source: 'following',
+      source: "following",
     });
     if (rateLimitInfo) addPublicReadHeaders(followingRes, rateLimitInfo);
     return followingRes;
@@ -850,17 +850,17 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   let postsResult: Post[];
 
   logger.info(
-    'Fetching posts from database',
+    "Fetching posts from database",
     { limit, cursor, actorId, type },
-    'GET /api/posts'
+    "GET /api/posts",
   );
 
   if (type) {
     // Filter by type (e.g., 'article')
     logger.info(
-      'Filtering posts by type',
+      "Filtering posts by type",
       { type, limit, cursor },
-      'GET /api/posts'
+      "GET /api/posts",
     );
 
     const now = new Date();
@@ -881,25 +881,25 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       .limit(limit);
 
     logger.info(
-      'Fetched posts by type',
+      "Fetched posts by type",
       { type, count: postsResult.length },
-      'GET /api/posts'
+      "GET /api/posts",
     );
   } else if (actorId) {
     // Get posts by specific actor (cached with cursor)
     postsResult = await cachedDb.getPostsByActor(actorId, limit, cursor);
     logger.info(
-      'Fetched posts by actor (cached)',
+      "Fetched posts by actor (cached)",
       { actorId, count: postsResult.length },
-      'GET /api/posts'
+      "GET /api/posts",
     );
   } else {
     // Get recent posts with cursor-based pagination
     postsResult = await cachedDb.getRecentPosts(limit, cursor);
     logger.info(
-      'Fetched recent posts (cached)',
+      "Fetched recent posts (cached)",
       { count: postsResult.length, limit, cursor },
-      'GET /api/posts'
+      "GET /api/posts",
     );
   }
 
@@ -908,7 +908,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     const samplePost = postsResult[0];
     if (samplePost) {
       logger.debug(
-        'Sample post structure',
+        "Sample post structure",
         {
           id: samplePost.id,
           hasTimestamp: !!samplePost.timestamp,
@@ -918,7 +918,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
           createdAtType: typeof samplePost.createdAt,
           createdAtValue: samplePost.createdAt,
         },
-        'GET /api/posts'
+        "GET /api/posts",
       );
     }
   }
@@ -938,7 +938,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       ...blockedByIds,
     ]);
     postsResult = postsResult.filter(
-      (post) => !excludedUserIds.has(post.authorId)
+      (post) => !excludedUserIds.has(post.authorId),
     );
   }
 
@@ -987,7 +987,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     .filter((id): id is string => id !== undefined);
   const originalPostAuthorIds = validPosts
     .filter((p) => p.originalPostId && p.originalPost)
-    .map((p) => p.originalPost!.authorId)
+    .map((p) => p.originalPost?.authorId)
     .filter((id): id is string => id !== undefined);
 
   const authorIds = [...new Set([...postAuthorIds, ...originalPostAuthorIds])];
@@ -1012,13 +1012,13 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       .map((a) => [
         a.id,
         { id: a.id, name: a.name, profileImageUrl: a.profileImageUrl },
-      ])
+      ]),
   );
   const orgMap = new Map(
     authorIds
       .map((id) => StaticDataRegistry.getOrganization(id))
       .filter((o): o is NonNullable<typeof o> => o !== null)
-      .map((o) => [o.id, { id: o.id, name: o.name, imageUrl: o.imageUrl }])
+      .map((o) => [o.id, { id: o.id, name: o.name, imageUrl: o.imageUrl }]),
   );
 
   // PERFORMANCE OPTIMIZATION: Single consolidated CTE query for all post metadata
@@ -1064,7 +1064,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     // Determine preview visibility with consistent bucketing per post
     // Uses character code sum to create deterministic bucket (0-99) for each post
     const engagementBucket =
-      postId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % 100;
+      postId.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0) % 100;
 
     let showPreview = true;
     let previewLimit = 1;
@@ -1141,7 +1141,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
       previews.push({
         id: comment.id,
-        content: comment.content || '',
+        content: comment.content || "",
         createdAt: toISOStringSafe(comment.createdAt),
         userId: comment.authorId,
         userName,
@@ -1300,13 +1300,13 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   // - Action diversity tracker (prevents consecutive same action types)
 
   logger.info(
-    'Formatted posts',
+    "Formatted posts",
     {
       originalCount: postsResult.length,
       formattedCount: formattedPosts.length,
       filteredOut: postsResult.length - formattedPosts.length,
     },
-    'GET /api/posts'
+    "GET /api/posts",
   );
 
   // Calculate next cursor (timestamp of last post for keyset pagination)
@@ -1327,8 +1327,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     addPublicReadHeaders(response, rateLimitInfo);
   } else {
     response.headers.set(
-      'Cache-Control',
-      's-maxage=10, stale-while-revalidate=60, must-revalidate'
+      "Cache-Control",
+      "s-maxage=10, stale-while-revalidate=60, must-revalidate",
     );
   }
 
@@ -1355,7 +1355,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   const fallbackDisplayName = authUser.walletAddress
     ? `${authUser.walletAddress.slice(0, 6)}...${authUser.walletAddress.slice(-4)}`
-    : 'Anonymous';
+    : "Anonymous";
 
   const { user: canonicalUser } = await ensureUserForAuth(authUser, {
     displayName: fallbackDisplayName,
@@ -1365,7 +1365,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     canonicalUserId,
     normalizedContent,
     RATE_LIMIT_CONFIGS.CREATE_POST,
-    DUPLICATE_DETECTION_CONFIGS.POST
+    DUPLICATE_DETECTION_CONFIGS.POST,
   );
   if (rateLimitResponse) {
     return rateLimitResponse;
@@ -1375,7 +1375,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   if (clientIpHash) {
     const ipRateLimit = await checkRateLimitAsync(
       `post-ip:${clientIpHash}`,
-      RATE_LIMIT_CONFIGS.CREATE_POST
+      RATE_LIMIT_CONFIGS.CREATE_POST,
     );
     if (!ipRateLimit.allowed) {
       return rateLimitError(ipRateLimit.retryAfter);
@@ -1394,13 +1394,13 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     .returning();
 
   if (!post) {
-    logger.error('Failed to create post', { postId }, 'POST /api/posts');
+    logger.error("Failed to create post", { postId }, "POST /api/posts");
     return NextResponse.json(
       {
         success: false,
-        error: 'Failed to create post',
+        error: "Failed to create post",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 
@@ -1409,13 +1409,13 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   await cachedDb.invalidatePostsCache();
   await cachedDb.invalidateActorPostsCache(canonicalUserId);
   logger.info(
-    'Invalidated post caches',
+    "Invalidated post caches",
     { postId: post.id },
-    'POST /api/posts'
+    "POST /api/posts",
   );
 
-  broadcastToChannel('feed', {
-    type: 'new_post',
+  broadcastToChannel("feed", {
+    type: "new_post",
     post: {
       id: post.id,
       content: post.content,
@@ -1430,17 +1430,17 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   // Invalidate the narrative feed cache so the new post appears in story scoring
   // immediately rather than waiting for the 120s TTL to expire.
-  invalidateCache('feed:narrative:v1', { namespace: 'feed' }).catch((err) => {
+  invalidateCache("feed:narrative:v1", { namespace: "feed" }).catch((err) => {
     logger.warn(
-      'Narrative feed cache invalidation failed after new post',
+      "Narrative feed cache invalidation failed after new post",
       { error: err, postId: post.id },
-      'POST /api/posts'
+      "POST /api/posts",
     );
   });
   logger.info(
-    'Broadcast new user post to feed channel',
+    "Broadcast new user post to feed channel",
     { postId: post.id },
-    'POST /api/posts'
+    "POST /api/posts",
   );
 
   const mentions = normalizedContent.match(/@(\w+)/g) || [];
@@ -1456,18 +1456,18 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   await Promise.all(
     mentionedUsers.map((mentionedUser) =>
-      notifyMention(mentionedUser.id, canonicalUserId, post.id, undefined)
-    )
+      notifyMention(mentionedUser.id, canonicalUserId, post.id, undefined),
+    ),
   );
 
   logger.info(
-    'Sent mention notifications',
+    "Sent mention notifications",
     {
       postId: post.id,
       mentionCount: mentionedUsers.length,
       mentionedUsernames: mentionedUsers.map((u) => u.username!),
     },
-    'POST /api/posts'
+    "POST /api/posts",
   );
 
   // Handle player influence for mentioned NPCs (boosts their response probability)
@@ -1485,15 +1485,15 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     // This ensures one failure doesn't prevent processing others
     void Promise.allSettled(
       mentionedActorIds.map((actorId) =>
-        handlePlayerMention(canonicalUserId, actorId, post.id)
-      )
+        handlePlayerMention(canonicalUserId, actorId, post.id),
+      ),
     ).then((results) => {
       // Log failures from settled results
       results.forEach((result, index) => {
-        if (result.status === 'rejected') {
+        if (result.status === "rejected") {
           const actorId = mentionedActorIds[index];
           logger.warn(
-            'Failed to handle player mention for NPC',
+            "Failed to handle player mention for NPC",
             {
               actorId,
               postId: post.id,
@@ -1502,20 +1502,20 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
                   ? result.reason.message
                   : String(result.reason),
             },
-            'POST /api/posts'
+            "POST /api/posts",
           );
         }
       });
       // Log summary after all handlePlayerMention calls have settled
       logger.info(
-        'Triggered NPC mention influence',
+        "Triggered NPC mention influence",
         { postId: post.id, npcCount: mentionedActorIds.length },
-        'POST /api/posts'
+        "POST /api/posts",
       );
     });
   }
 
-  trackServerEvent(canonicalUserId, 'post_created', {
+  trackServerEvent(canonicalUserId, "post_created", {
     postId: post.id,
     contentLength: normalizedContent.length,
     hasUsername: Boolean(canonicalUser.username),
@@ -1528,9 +1528,9 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       if (generatedTags.length > 0) {
         return storeTagsForPost(post.id, generatedTags).then(() => {
           logger.info(
-            'Tagged user post',
+            "Tagged user post",
             { postId: post.id, tagCount: generatedTags.length },
-            'POST /api/posts'
+            "POST /api/posts",
           );
         });
       }
@@ -1538,13 +1538,13 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     })
     .catch((tagError: Error) => {
       logger.warn(
-        'Failed to tag post',
+        "Failed to tag post",
         { postId: post.id, error: tagError },
-        'POST /api/posts'
+        "POST /api/posts",
       );
     });
 
-  void checkProgress(authUser.userId, { type: 'post_created' });
+  void checkProgress(authUser.userId, { type: "post_created" });
 
   return successResponse({
     success: true,

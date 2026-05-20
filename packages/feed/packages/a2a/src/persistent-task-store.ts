@@ -10,35 +10,35 @@
  * @public
  */
 
-import type { Task } from '@a2a-js/sdk';
+import type { Task } from "@a2a-js/sdk";
 import {
   getCache,
   getRedisClient,
   isRedisAvailable,
   setCache,
-} from '@feed/api';
-import { logger } from '@feed/shared';
-import { z } from 'zod';
+} from "@feed/api";
+import { logger } from "@feed/shared";
+import { z } from "zod";
 import {
   ExtendedTaskStore,
   type ListTasksParams,
   type ListTasksResult,
-} from './extended-task-store';
+} from "./extended-task-store";
 
 /**
  * Zod schema for TaskStatus validation
  */
 const TaskStatusSchema = z.object({
   state: z.enum([
-    'submitted',
-    'working',
-    'input-required',
-    'completed',
-    'canceled',
-    'failed',
-    'rejected',
-    'auth-required',
-    'unknown',
+    "submitted",
+    "working",
+    "input-required",
+    "completed",
+    "canceled",
+    "failed",
+    "rejected",
+    "auth-required",
+    "unknown",
   ]),
   timestamp: z.string().optional(),
   message: z.record(z.string(), z.unknown()).optional(),
@@ -51,7 +51,7 @@ const TaskStatusSchema = z.object({
 const TaskSchema = z.object({
   id: z.string(),
   contextId: z.string(),
-  kind: z.literal('task'),
+  kind: z.literal("task"),
   status: TaskStatusSchema,
   artifacts: z.array(z.record(z.string(), z.unknown())).optional(),
   history: z.array(z.record(z.string(), z.unknown())).optional(),
@@ -70,13 +70,13 @@ function isValidTask(obj: unknown): obj is Task {
  * Status update for atomic task status changes
  */
 export interface TaskStatusUpdate {
-  state: Task['status']['state'];
+  state: Task["status"]["state"];
   timestamp?: string;
-  message?: Task['status']['message'];
+  message?: Task["status"]["message"];
 }
 
-const TASK_CACHE_NAMESPACE = 'a2a:tasks';
-const TASK_INDEX_NAMESPACE = 'a2a:task-index';
+const TASK_CACHE_NAMESPACE = "a2a:tasks";
+const TASK_INDEX_NAMESPACE = "a2a:task-index";
 
 // Environment-configurable constants with sensible defaults (12-Factor App pattern)
 const DEFAULT_TTL_SECONDS =
@@ -145,9 +145,9 @@ export class PersistentTaskStore extends ExtendedTaskStore {
         await this.updateIndexes(task);
       } catch (error) {
         logger.warn(
-          'Failed to persist task to Redis, using memory only',
+          "Failed to persist task to Redis, using memory only",
           { taskId: task.id, error: String(error) },
-          'A2A'
+          "A2A",
         );
       }
     }
@@ -163,7 +163,7 @@ export class PersistentTaskStore extends ExtendedTaskStore {
    */
   async updateStatus(
     taskId: string,
-    statusUpdate: TaskStatusUpdate
+    statusUpdate: TaskStatusUpdate,
   ): Promise<Task | undefined> {
     // Load the current task
     const task = await this.load(taskId);
@@ -224,27 +224,27 @@ export class PersistentTaskStore extends ExtendedTaskStore {
             }
             // Invalid task structure - treat as cache miss
             logger.warn(
-              'Invalid task structure in Redis cache, treating as cache miss',
+              "Invalid task structure in Redis cache, treating as cache miss",
               {
                 taskId,
                 validationErrors: TaskSchema.safeParse(parsed).error?.issues,
               },
-              'A2A'
+              "A2A",
             );
           } catch (parseError) {
             // Corrupted cache entry - treat as cache miss
             logger.warn(
-              'Failed to parse task from Redis cache, treating as cache miss',
+              "Failed to parse task from Redis cache, treating as cache miss",
               { taskId, error: String(parseError) },
-              'A2A'
+              "A2A",
             );
           }
         }
       } catch (error) {
         logger.warn(
-          'Failed to load task from Redis',
+          "Failed to load task from Redis",
           { taskId, error: String(error) },
-          'A2A'
+          "A2A",
         );
       }
     }
@@ -291,7 +291,7 @@ export class PersistentTaskStore extends ExtendedTaskStore {
       if (client) {
         try {
           const keys = missingIds.map(
-            (id) => `${TASK_CACHE_NAMESPACE}:task:${id}`
+            (id) => `${TASK_CACHE_NAMESPACE}:task:${id}`,
           );
           const values = await client.mget(...keys);
 
@@ -307,11 +307,11 @@ export class PersistentTaskStore extends ExtendedTaskStore {
                 // Validate the parsed object has required Task properties
                 if (
                   parsed &&
-                  typeof parsed === 'object' &&
-                  typeof parsed.id === 'string' &&
+                  typeof parsed === "object" &&
+                  typeof parsed.id === "string" &&
                   parsed.status &&
-                  typeof parsed.status === 'object' &&
-                  typeof parsed.status.state === 'string'
+                  typeof parsed.status === "object" &&
+                  typeof parsed.status.state === "string"
                 ) {
                   const task = parsed as Task;
                   results.set(taskId, task);
@@ -323,9 +323,9 @@ export class PersistentTaskStore extends ExtendedTaskStore {
               } catch {
                 // Skip invalid entries
                 logger.debug(
-                  'Failed to parse task in batch load',
+                  "Failed to parse task in batch load",
                   { taskId },
-                  'A2A'
+                  "A2A",
                 );
               }
             }
@@ -335,9 +335,9 @@ export class PersistentTaskStore extends ExtendedTaskStore {
           await Promise.allSettled(savePromises);
         } catch (error) {
           logger.warn(
-            'Failed to batch load tasks from Redis, falling back to parallel individual loads',
+            "Failed to batch load tasks from Redis, falling back to parallel individual loads",
             { error: String(error) },
-            'A2A'
+            "A2A",
           );
           // Fallback to parallel individual loads for remaining using Promise.allSettled
           const fallbackPromises = missingIds
@@ -349,7 +349,7 @@ export class PersistentTaskStore extends ExtendedTaskStore {
 
           const fallbackResults = await Promise.allSettled(fallbackPromises);
           for (const result of fallbackResults) {
-            if (result.status === 'fulfilled' && result.value.task) {
+            if (result.status === "fulfilled" && result.value.task) {
               results.set(result.value.taskId, result.value.task);
             }
           }
@@ -365,7 +365,7 @@ export class PersistentTaskStore extends ExtendedTaskStore {
    */
   private mergeListResults(
     redisResult: ListTasksResult,
-    memoryResult: ListTasksResult
+    memoryResult: ListTasksResult,
   ): ListTasksResult {
     // Create a map to deduplicate by task id, preferring Redis (more persistent)
     const taskMap = new Map<string, Task>();
@@ -401,7 +401,7 @@ export class PersistentTaskStore extends ExtendedTaskStore {
       totalSize: taskMap.size,
       pageSize,
       // Compute nextPageToken based on merged results, not source offsets
-      nextPageToken: hasMore ? String(pageSize) : '',
+      nextPageToken: hasMore ? String(pageSize) : "",
     };
   }
 
@@ -425,9 +425,9 @@ export class PersistentTaskStore extends ExtendedTaskStore {
         return redisResult;
       } catch (error) {
         logger.warn(
-          'Failed to list tasks from Redis, falling back to memory',
+          "Failed to list tasks from Redis, falling back to memory",
           { error: String(error) },
-          'A2A'
+          "A2A",
         );
       }
     }
@@ -443,7 +443,7 @@ export class PersistentTaskStore extends ExtendedTaskStore {
     const client = getRedisClient();
     if (!client) return;
 
-    const contextId = task.contextId || 'global';
+    const contextId = task.contextId || "global";
     const status = task.status.state;
     // Parse timestamp with fallback to Date.now() if invalid/NaN
     let timestamp = Date.now();
@@ -490,9 +490,9 @@ export class PersistentTaskStore extends ExtendedTaskStore {
       await pipeline.exec();
     } catch (error) {
       logger.debug(
-        'Failed to update indexes atomically in Redis',
+        "Failed to update indexes atomically in Redis",
         { taskId: task.id, error: String(error) },
-        'A2A'
+        "A2A",
       );
     }
   }
@@ -502,7 +502,7 @@ export class PersistentTaskStore extends ExtendedTaskStore {
    * Returns entries sorted by timestamp descending (newest first)
    */
   private async getIndexFromSortedSet(
-    indexKey: string
+    indexKey: string,
   ): Promise<Array<{ taskId: string; timestamp: number }>> {
     const client = getRedisClient();
     if (!client) return [];
@@ -510,7 +510,7 @@ export class PersistentTaskStore extends ExtendedTaskStore {
     try {
       // ZREVRANGE returns members sorted by score descending (newest first)
       // with WITHSCORES to get the timestamps
-      const results = await client.zrevrange(indexKey, 0, -1, 'WITHSCORES');
+      const results = await client.zrevrange(indexKey, 0, -1, "WITHSCORES");
 
       // Results come as [member1, score1, member2, score2, ...]
       const entries: Array<{ taskId: string; timestamp: number }> = [];
@@ -527,9 +527,9 @@ export class PersistentTaskStore extends ExtendedTaskStore {
       return entries;
     } catch {
       logger.debug(
-        'Failed to get index from Redis sorted set',
+        "Failed to get index from Redis sorted set",
         { indexKey },
-        'A2A'
+        "A2A",
       );
     }
     return [];
@@ -539,9 +539,9 @@ export class PersistentTaskStore extends ExtendedTaskStore {
    * List tasks from Redis using sorted set indexes
    */
   private async listFromRedis(
-    params: ListTasksParams
+    params: ListTasksParams,
   ): Promise<ListTasksResult> {
-    const contextId = params.contextId || 'global';
+    const contextId = params.contextId || "global";
     const contextIndexKey = `${TASK_INDEX_NAMESPACE}:context:${contextId}`;
 
     // Get task IDs from context index (sorted set)
@@ -558,7 +558,7 @@ export class PersistentTaskStore extends ExtendedTaskStore {
     // Filter by lastUpdatedAfter
     if (params.lastUpdatedAfter) {
       taskEntries = taskEntries.filter(
-        (e) => e.timestamp >= params.lastUpdatedAfter!
+        (e) => e.timestamp >= params.lastUpdatedAfter!,
       );
     }
 
@@ -570,7 +570,7 @@ export class PersistentTaskStore extends ExtendedTaskStore {
       const parsed = Number.parseInt(params.pageToken, 10);
       if (!Number.isFinite(parsed) || parsed < 0) {
         throw new Error(
-          `Invalid pageToken: expected non-negative integer, got "${params.pageToken}"`
+          `Invalid pageToken: expected non-negative integer, got "${params.pageToken}"`,
         );
       }
       pageOffset = parsed;
@@ -579,7 +579,7 @@ export class PersistentTaskStore extends ExtendedTaskStore {
     const totalSize = taskEntries.length;
     const paginatedEntries = taskEntries.slice(
       pageOffset,
-      pageOffset + pageSize
+      pageOffset + pageSize,
     );
 
     // Load tasks in batch to avoid N+1 queries
@@ -608,7 +608,7 @@ export class PersistentTaskStore extends ExtendedTaskStore {
 
     // Calculate next page token
     const hasMore = totalSize > pageOffset + pageSize;
-    const nextPageToken = hasMore ? String(pageOffset + pageSize) : '';
+    const nextPageToken = hasMore ? String(pageOffset + pageSize) : "";
 
     return {
       tasks,

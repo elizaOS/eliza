@@ -1,13 +1,13 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from "bun:test";
 import {
   parseCacheValue,
   serializeCacheValue,
-} from '../../api/src/cache/cache-service';
+} from "../../api/src/cache/cache-service";
 
-describe('cache-service bigint serialization', () => {
-  test('round-trips nested bigint values through cache serialization', () => {
+describe("cache-service bigint serialization", () => {
+  test("round-trips nested bigint values through cache serialization", () => {
     const payload = {
-      id: 'user-1',
+      id: "user-1",
       largeNumber: 1234567890123456789n,
       nested: {
         gasUsed: 21000n,
@@ -19,15 +19,15 @@ describe('cache-service bigint serialization', () => {
     const parsed = parseCacheValue<typeof payload>(serialized);
 
     expect(parsed).toEqual(payload);
-    expect(typeof parsed.largeNumber).toBe('bigint');
-    expect(typeof parsed.nested.gasUsed).toBe('bigint');
-    expect(typeof parsed.values[0]).toBe('bigint');
+    expect(typeof parsed.largeNumber).toBe("bigint");
+    expect(typeof parsed.nested.gasUsed).toBe("bigint");
+    expect(typeof parsed.values[0]).toBe("bigint");
   });
 
-  test('keeps ordinary JSON payloads unchanged', () => {
+  test("keeps ordinary JSON payloads unchanged", () => {
     const payload = {
-      id: 'user-2',
-      createdAt: '2026-04-07T11:35:04.013Z',
+      id: "user-2",
+      createdAt: "2026-04-07T11:35:04.013Z",
       points: 42,
     };
 

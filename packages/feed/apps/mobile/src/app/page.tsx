@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { HomePageClient } from '@web/app/HomePageClient';
+import { HomePageClient } from "@web/app/HomePageClient";
 
 /**
  * Mobile home page — renders HomePageClient directly.

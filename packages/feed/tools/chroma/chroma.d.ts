@@ -3,18 +3,17 @@
  * These packages don't have official type declarations
  */
 
-declare module '@synthetixio/synpress-cache' {
-  import type { BrowserContext, Page } from '@playwright/test';
+declare module "@synthetixio/synpress-cache" {
+  import type { BrowserContext, Page } from "@playwright/test";
 
   export function defineWalletSetup(
     password: string,
-    setupFn: (context: BrowserContext, walletPage: Page) => Promise<void>
+    setupFn: (context: BrowserContext, walletPage: Page) => Promise<void>,
   ): unknown;
 }
 
-declare module '@synthetixio/synpress/playwright' {
-  import type { test as base } from '@playwright/test';
-  import type { BrowserContext, Page } from '@playwright/test';
+declare module "@synthetixio/synpress/playwright" {
+  import type { BrowserContext, test as base, Page } from "@playwright/test";
 
   // Wallet setup function result from defineWalletSetup
   type WalletSetup = unknown;
@@ -22,7 +21,7 @@ declare module '@synthetixio/synpress/playwright' {
   // MetaMask fixtures function
   export function metaMaskFixtures(
     walletSetup: WalletSetup,
-    extensionIndex?: number
+    extensionIndex?: number,
   ): typeof base;
 
   // Network configuration for MetaMask
@@ -46,9 +45,8 @@ declare module '@synthetixio/synpress/playwright' {
   }
 }
 
-declare module '@synthetixio/synpress-metamask/playwright' {
-  import type { test as base } from '@playwright/test';
-  import type { BrowserContext, Page } from '@playwright/test';
+declare module "@synthetixio/synpress-metamask/playwright" {
+  import type { BrowserContext, test as base, Page } from "@playwright/test";
 
   // Wallet setup function result from defineWalletSetup
   type WalletSetup = unknown;
@@ -56,7 +54,7 @@ declare module '@synthetixio/synpress-metamask/playwright' {
   // MetaMask fixtures function
   export function metaMaskFixtures(
     walletSetup: WalletSetup,
-    extensionIndex?: number
+    extensionIndex?: number,
   ): typeof base;
 
   export interface NetworkConfig {

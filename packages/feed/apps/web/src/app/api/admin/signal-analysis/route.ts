@@ -46,42 +46,42 @@ import {
   logAdminView,
   requireAdmin,
   withErrorHandling,
-} from '@feed/api';
-import { SignalExtractionService } from '@feed/engine';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@feed/api";
+import { SignalExtractionService } from "@feed/engine";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   const admin = await requireAdmin(request);
 
   const { searchParams } = new URL(request.url);
-  const questionNumber = searchParams.get('questionNumber');
+  const questionNumber = searchParams.get("questionNumber");
 
   // Audit log the view
   logAdminView({
     adminId: admin.userId,
     ipAddress: getClientIp(request.headers) ?? undefined,
-    resourceType: 'signal_analysis',
-    metadata: { action: 'view_signal_analysis', questionNumber },
+    resourceType: "signal_analysis",
+    metadata: { action: "view_signal_analysis", questionNumber },
   });
 
   if (!questionNumber) {
     return NextResponse.json(
-      { error: 'questionNumber parameter required' },
-      { status: 400 }
+      { error: "questionNumber parameter required" },
+      { status: 400 },
     );
   }
 
   // Extract signal (admin only, for debugging)
   const signal = await SignalExtractionService.extractMarketSignal(
-    Number.parseInt(questionNumber, 10)
+    Number.parseInt(questionNumber, 10),
   );
 
   return NextResponse.json({
     success: true,
     signal,
-    warning: 'This data is for admin debugging only. Never expose to agents.',
+    warning: "This data is for admin debugging only. Never expose to agents.",
   });
 });

@@ -11,6 +11,6 @@
  *   import { PredictionDbAdapter, PredictionMarketService } from '@feed/core/markets/prediction';
  */
 
-export * from './positionSnapshot';
-export * from './pricing';
-export * from './types';
+export * from "./positionSnapshot";
+export * from "./pricing";
+export * from "./types";

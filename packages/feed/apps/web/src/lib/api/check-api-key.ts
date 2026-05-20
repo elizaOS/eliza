@@ -2,13 +2,13 @@ import {
   type AuthResult,
   getServerApiKey,
   validateApiKeyAsync,
-} from '@feed/a2a';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@feed/a2a";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 export async function checkApiKey(
   request: NextRequest,
-  realm = 'Feed'
+  realm = "Feed",
 ): Promise<{
   error?: NextResponse;
   authResult?: AuthResult;
@@ -18,14 +18,14 @@ export async function checkApiKey(
       headers: {
         get: (name: string) => request.headers.get(name),
       },
-      host: request.headers.get('host') ?? undefined,
+      host: request.headers.get("host") ?? undefined,
     },
     {
       serverApiKey: getServerApiKey(),
       allowUserApiKeys: true,
       // Only allow localhost bypass in non-production to prevent Host header spoofing
-      allowLocalhost: process.env.NODE_ENV !== 'production',
-    }
+      allowLocalhost: process.env.NODE_ENV !== "production",
+    },
   );
 
   if (!authResult.authenticated) {
@@ -37,10 +37,10 @@ export async function checkApiKey(
           headers:
             authResult.statusCode === 401
               ? {
-                  'WWW-Authenticate': `ApiKey realm="${realm}", header="X-Feed-Api-Key"`,
+                  "WWW-Authenticate": `ApiKey realm="${realm}", header="X-Feed-Api-Key"`,
                 }
               : undefined,
-        }
+        },
       ),
     };
   }

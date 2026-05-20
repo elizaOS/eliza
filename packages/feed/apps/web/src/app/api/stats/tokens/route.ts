@@ -113,15 +113,15 @@ import {
   getCacheOrFetch,
   rateLimitError,
   withErrorHandling,
-} from '@feed/api';
-import { and, db, desc, gte, tickTokenStats } from '@feed/db';
-import { tokenStatsService } from '@feed/engine';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@feed/api";
+import { and, db, desc, gte, tickTokenStats } from "@feed/db";
+import { tokenStatsService } from "@feed/engine";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 // Disable static generation for this route
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 // Cache config (5 minutes for public stats)
 export const revalidate = 300;
 
@@ -163,17 +163,17 @@ function checkIpRateLimit(ip: string): {
 export const GET = withErrorHandling(async function GET(request: NextRequest) {
   // Get client IP for rate limiting
   const ip =
-    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
-    request.headers.get('x-real-ip') ??
-    'unknown';
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    request.headers.get("x-real-ip") ??
+    "unknown";
 
   // Check rate limit
   const rateLimit = checkIpRateLimit(ip);
   if (!rateLimit.allowed) {
     logger.warn(
-      'Token stats rate limit exceeded',
+      "Token stats rate limit exceeded",
       { ip },
-      'GET /api/stats/tokens'
+      "GET /api/stats/tokens",
     );
     return rateLimitError(rateLimit.retryAfter);
   }
@@ -182,21 +182,20 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const limit = Math.min(
     100,
-    Math.max(1, Number(searchParams.get('limit')) || 10)
+    Math.max(1, Number(searchParams.get("limit")) || 10),
   );
-  const period = searchParams.get('period') ?? 'day';
+  const period = searchParams.get("period") ?? "day";
 
   // Calculate time range based on period
   const now = new Date();
   let periodStart: Date;
   switch (period) {
-    case 'hour':
+    case "hour":
       periodStart = new Date(now.getTime() - 60 * 60 * 1000);
       break;
-    case 'week':
+    case "week":
       periodStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
       break;
-    case 'day':
     default:
       periodStart = new Date(now.getTime() - 24 * 60 * 60 * 1000);
   }
@@ -225,11 +224,11 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
         const totalCalls = dbStats.reduce((sum, t) => sum + t.totalCalls, 0);
         const totalInputTokens = dbStats.reduce(
           (sum, t) => sum + t.totalInputTokens,
-          0
+          0,
         );
         const totalOutputTokens = dbStats.reduce(
           (sum, t) => sum + t.totalOutputTokens,
-          0
+          0,
         );
         const totalTokens = totalInputTokens + totalOutputTokens;
 
@@ -351,9 +350,9 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
             .sort((a, b) => b.totalTokens - a.totalTokens),
           byModel: Array.from(modelMap.entries())
             .map(([key, data]) => {
-              const [, model] = key.split(':');
+              const [, model] = key.split(":");
               return {
-                model: model ?? 'unknown',
+                model: model ?? "unknown",
                 provider: data.provider,
                 callCount: data.callCount,
                 totalInputTokens: data.totalInputTokens,
@@ -394,10 +393,10 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
             estimatedTotalCostUSD: memorySummary.estimatedTotalCostUSD,
           },
           byPromptType: memorySummary.byPromptType.sort(
-            (a, b) => b.totalTokens - a.totalTokens
+            (a, b) => b.totalTokens - a.totalTokens,
           ),
           byModel: memorySummary.byModel.sort(
-            (a, b) => b.totalTokens - a.totalTokens
+            (a, b) => b.totalTokens - a.totalTokens,
           ),
           recentTicks: tokenStatsService.getRecentTicks(5).map((t) => ({
             tickId: t.tickId,
@@ -433,18 +432,18 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
     {
       namespace: CACHE_KEYS.WIDGET,
       ttl: DEFAULT_TTLS.WIDGET, // 5 minutes
-    }
+    },
   );
 
   logger.info(
-    'Token stats fetched',
+    "Token stats fetched",
     {
       period,
       limit,
       tickCount: stats.summary.tickCount,
       totalTokens: stats.summary.totalTokens,
     },
-    'GET /api/stats/tokens'
+    "GET /api/stats/tokens",
   );
 
   return NextResponse.json({

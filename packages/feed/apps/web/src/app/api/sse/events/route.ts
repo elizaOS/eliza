@@ -8,17 +8,17 @@ import {
   toStreamKey,
   verifyRealtimeToken,
   withErrorHandling,
-} from '@feed/api';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/api";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 // Vercel function configuration
 // Max duration for SSE connections - 300s on Enterprise, 60s on Pro, 10s on Hobby
 export const maxDuration = 300;
 
 // Force dynamic to prevent caching, use nodejs runtime for streaming support
-export const dynamic = 'force-dynamic';
-export const runtime = 'nodejs';
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 const MAX_CHANNELS = 50;
 
@@ -37,27 +37,27 @@ const parseCursor = (raw: string | null): CursorMap => {
   if (!raw) return {};
   const decoded = decodeURIComponent(raw);
   const parsed = JSON.parse(decoded) as CursorMap;
-  return parsed && typeof parsed === 'object' ? parsed : {};
+  return parsed && typeof parsed === "object" ? parsed : {};
 };
 
 export const GET = withErrorHandling(async function GET(request: NextRequest) {
-  const { error } = await publicRateLimit(request, 'firehose');
+  const { error } = await publicRateLimit(request, "firehose");
   if (error) return error;
 
   const { searchParams } = new URL(request.url);
-  const tokenParam = searchParams.get('token');
-  const cursorParam = searchParams.get('cursor');
-  const requestedChannelsParam = searchParams.get('channels');
+  const tokenParam = searchParams.get("token");
+  const cursorParam = searchParams.get("cursor");
+  const requestedChannelsParam = searchParams.get("channels");
 
   if (!tokenParam) {
-    return new Response('Missing token', { status: 401 });
+    return new Response("Missing token", { status: 401 });
   }
 
   const realtimePayload = verifyRealtimeToken(tokenParam);
   let allowedChannels: RealtimeChannel[] = realtimePayload?.channels ?? [];
 
   if (!realtimePayload?.userId) {
-    return new Response('Unauthorized', { status: 401 });
+    return new Response("Unauthorized", { status: 401 });
   }
 
   const userId = realtimePayload.userId;
@@ -67,18 +67,18 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
   const redis = await ensureRedisReady();
   if (!redis) {
     logger.error(
-      'Redis/Upstash not configured - realtime disabled',
+      "Redis/Upstash not configured - realtime disabled",
       undefined,
-      'SSE'
+      "SSE",
     );
-    return new Response('Realtime unavailable', { status: 503 });
+    return new Response("Realtime unavailable", { status: 503 });
   }
 
   // If the client passed an explicit channels list, intersect with token-authorized channels.
   if (requestedChannelsParam) {
     const decoded = decodeURIComponent(requestedChannelsParam);
     const requested = decoded
-      .split(',')
+      .split(",")
       .map((c) => c.trim())
       .filter(Boolean) as RealtimeChannel[];
     const requestedSet = new Set(requested);
@@ -86,11 +86,11 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
   }
 
   if (allowedChannels.length === 0) {
-    return new Response('No channels authorized', { status: 403 });
+    return new Response("No channels authorized", { status: 403 });
   }
 
   if (allowedChannels.length > MAX_CHANNELS) {
-    return new Response('Too many channels requested', { status: 400 });
+    return new Response("Too many channels requested", { status: 400 });
   }
 
   const encoder = new TextEncoder();
@@ -98,7 +98,7 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
   const cursors = parseCursor(cursorParam);
   const streamKeys = allowedChannels.map(toStreamKey);
   const keyToChannel = new Map(
-    streamKeys.map((k, idx) => [k, allowedChannels[idx]])
+    streamKeys.map((k, idx) => [k, allowedChannels[idx]]),
   );
   const lastIds = new Map<string, string>();
 
@@ -133,12 +133,12 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
 
       // Initial connected event
       send(
-        'event: connected\n' +
+        "event: connected\n" +
           `data: ${JSON.stringify({
             connectionId,
             channels: allowedChannels,
             timestamp: Date.now(),
-          })}\n\n`
+          })}\n\n`,
       );
 
       // Initialize lastIds with current stream positions to avoid race conditions.
@@ -157,14 +157,14 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
         // Otherwise, get the current last entry ID from the stream
         // This ensures we don't miss messages added right before we start reading
         try {
-          const info = (await redis.xinfo('STREAM', streamKey)) as unknown[];
+          const info = (await redis.xinfo("STREAM", streamKey)) as unknown[];
           // xinfo returns an array like ['length', 5, 'radix-tree-keys', 1, ..., 'last-entry', ['id', 'field', 'value'], ...]
           // or ['length', 5, ..., 'last-generated-id', '123-0', ...]
           // Find 'last-generated-id' in the array
           for (let i = 0; i < info.length - 1; i++) {
             if (
-              info[i] === 'last-generated-id' &&
-              typeof info[i + 1] === 'string'
+              info[i] === "last-generated-id" &&
+              typeof info[i + 1] === "string"
             ) {
               lastIds.set(streamKey, info[i + 1] as string);
               break;
@@ -174,31 +174,31 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
           // Distinguish stream-not-found (expected) from other errors (unexpected)
           const errMsg = err instanceof Error ? err.message : String(err);
           const isStreamNotFound =
-            errMsg.includes('no such key') ||
-            errMsg.includes('ERR no such key');
+            errMsg.includes("no such key") ||
+            errMsg.includes("ERR no such key");
           if (isStreamNotFound) {
-            logger.debug('Stream does not exist yet', { streamKey }, 'SSE');
+            logger.debug("Stream does not exist yet", { streamKey }, "SSE");
           } else {
             logger.warn(
-              'Unexpected error getting stream info',
+              "Unexpected error getting stream info",
               { streamKey, error: errMsg },
-              'SSE'
+              "SSE",
             );
           }
         }
       }
 
       logger.debug(
-        'SSE initialized lastIds',
+        "SSE initialized lastIds",
         { streamKeys, lastIds: Object.fromEntries(lastIds) },
-        'SSE'
+        "SSE",
       );
 
       const abortListener = () => {
         isControllerClosed = true;
         controller.close();
       };
-      request.signal.addEventListener('abort', abortListener, { once: true });
+      request.signal.addEventListener("abort", abortListener, { once: true });
 
       // Main event loop with blocking reads
       let loopCount = 0;
@@ -208,9 +208,9 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
         // Send heartbeat if needed
         if (!sendHeartbeat()) {
           logger.debug(
-            'Heartbeat failed, client disconnected',
+            "Heartbeat failed, client disconnected",
             { connectionId },
-            'SSE'
+            "SSE",
           );
           break;
         }
@@ -221,15 +221,15 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
           // Priority: lastId (from previous reads) > cursor (from client) > '$' (new messages only)
           // For first read, use '$' to only get new messages (prevents replaying entire stream)
           // Client should pass cursor for reconnection scenarios
-          return lastIds.get(k) || cursorId || '$';
+          return lastIds.get(k) || cursorId || "$";
         });
 
         // Debug: log every 15th iteration what IDs we're using (~15 seconds with 1s block)
         if (loopCount % 15 === 0) {
           logger.debug(
-            'SSE streamRead parameters',
+            "SSE streamRead parameters",
             { loopCount, streamKeys, ids, redisStatus: redis.status },
-            'SSE'
+            "SSE",
           );
         }
 
@@ -245,7 +245,7 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
           });
         } catch (readError) {
           logger.error(
-            'SSE streamRead error - continuing loop',
+            "SSE streamRead error - continuing loop",
             {
               connectionId,
               error:
@@ -254,7 +254,7 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
                   : String(readError),
               loopCount,
             },
-            'SSE'
+            "SSE",
           );
           // Wait a bit before retrying to avoid tight error loop
           await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -266,7 +266,7 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
           // Log every 30 iterations (~30 seconds) at debug level to reduce noise
           if (loopCount % 30 === 0) {
             logger.debug(
-              'SSE loop still running - no messages',
+              "SSE loop still running - no messages",
               {
                 connectionId,
                 loopCount,
@@ -274,16 +274,16 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
                 streamKeys,
                 ids,
               },
-              'SSE'
+              "SSE",
             );
           }
           continue;
         }
 
         logger.debug(
-          'Realtime stream read',
+          "Realtime stream read",
           { connectionId, count: messages.length },
-          'SSE'
+          "SSE",
         );
 
         for (const msg of messages) {
@@ -293,36 +293,36 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
           // Unwrap payload if encoded as { payload: {...} }
           const raw = msg.payload as Record<string, unknown>;
           const payload =
-            raw && typeof raw === 'object' && 'payload' in raw
+            raw && typeof raw === "object" && "payload" in raw
               ? (raw as { payload: Record<string, unknown> }).payload
               : raw;
 
           // Always emit 'message' events; actual type stays in the payload for fan-out client-side.
-          const eventType = 'message';
+          const eventType = "message";
           const innerType =
             payload &&
-            typeof payload === 'object' &&
-            'type' in payload &&
-            typeof (payload as { type: unknown }).type === 'string'
+            typeof payload === "object" &&
+            "type" in payload &&
+            typeof (payload as { type: unknown }).type === "string"
               ? (payload as { type: string }).type
-              : 'message';
+              : "message";
           const innerTimestamp =
             payload &&
-            typeof payload === 'object' &&
-            'timestamp' in payload &&
-            typeof (payload as { timestamp: unknown }).timestamp === 'number'
+            typeof payload === "object" &&
+            "timestamp" in payload &&
+            typeof (payload as { timestamp: unknown }).timestamp === "number"
               ? (payload as { timestamp: number }).timestamp
               : Date.now();
           const innerVersion =
             payload &&
-            typeof payload === 'object' &&
-            'version' in payload &&
-            typeof (payload as { version: unknown }).version === 'string'
+            typeof payload === "object" &&
+            "version" in payload &&
+            typeof (payload as { version: unknown }).version === "string"
               ? (payload as { version: string }).version
               : undefined;
 
           const innerData =
-            payload && typeof payload === 'object' && 'data' in payload
+            payload && typeof payload === "object" && "data" in payload
               ? (payload as { data: unknown }).data
               : payload;
 
@@ -338,9 +338,9 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
           const ok = send(packet);
           if (!ok) {
             logger.debug(
-              'Failed to enqueue SSE payload (client disconnected)',
+              "Failed to enqueue SSE payload (client disconnected)",
               { connectionId },
-              'SSE'
+              "SSE",
             );
             break;
           }
@@ -351,14 +351,14 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
 
       // Log why the loop exited
       logger.info(
-        'SSE loop exited',
+        "SSE loop exited",
         {
           connectionId,
           loopCount,
           aborted: request.signal.aborted,
           controllerClosed: isControllerClosed,
         },
-        'SSE'
+        "SSE",
       );
 
       connections.remove(connectionId);
@@ -369,24 +369,24 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
   });
 
   logger.info(
-    'SSE connection established',
+    "SSE connection established",
     {
       userId,
       connectionId,
       channels: allowedChannels,
       redisStatus: redis.status,
     },
-    'SSE'
+    "SSE",
   );
 
   return new Response(stream, {
     headers: {
       // Standard SSE headers per spec
-      'Content-Type': 'text/event-stream; charset=utf-8',
-      'Cache-Control': 'no-cache, no-transform',
-      Connection: 'keep-alive',
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
       // Prevent buffering by nginx/proxies
-      'X-Accel-Buffering': 'no',
+      "X-Accel-Buffering": "no",
     },
   });
 });

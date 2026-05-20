@@ -29,29 +29,29 @@ import {
   expect,
   setDefaultTimeout,
   test,
-} from 'bun:test';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { logger } from '@feed/shared';
-import { resolveLiveLlmTestConfig } from './helpers/live-runtime';
+} from "bun:test";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { logger } from "@feed/shared";
+import { resolveLiveLlmTestConfig } from "./helpers/live-runtime";
 
 // Set timeout to 5 minutes for LLM-based generation
 setDefaultTimeout(300000);
 
 // Output directory setup
-const OUTPUT_DIR = join(process.cwd(), '.output');
-const TIMESTAMP = new Date().toISOString().replace(/[:.]/g, '-');
+const OUTPUT_DIR = join(process.cwd(), ".output");
+const TIMESTAMP = new Date().toISOString().replace(/[:.]/g, "-");
 
 // Load environment variables
 const loadEnvFile = (filePath: string) => {
   if (!existsSync(filePath)) return;
-  const envContent = readFileSync(filePath, 'utf-8');
-  for (const line of envContent.split('\n')) {
+  const envContent = readFileSync(filePath, "utf-8");
+  for (const line of envContent.split("\n")) {
     const trimmed = line.trim();
-    if (trimmed && !trimmed.startsWith('#')) {
-      const [key, ...valueParts] = trimmed.split('=');
+    if (trimmed && !trimmed.startsWith("#")) {
+      const [key, ...valueParts] = trimmed.split("=");
       if (key && valueParts.length > 0) {
-        const value = valueParts.join('=').replace(/^["']|["']$/g, '');
+        const value = valueParts.join("=").replace(/^["']|["']$/g, "");
         if (!process.env[key]) {
           process.env[key] = value;
         }
@@ -60,9 +60,9 @@ const loadEnvFile = (filePath: string) => {
   }
 };
 
-loadEnvFile('.env');
-loadEnvFile('.env.test');
-loadEnvFile('.env.local');
+loadEnvFile(".env");
+loadEnvFile(".env.test");
+loadEnvFile(".env.local");
 
 const liveLlmTestConfig = resolveLiveLlmTestConfig();
 
@@ -77,7 +77,7 @@ function writeOutput(filename: string, data: unknown) {
   ensureOutputDir();
   const filepath = join(OUTPUT_DIR, `${filename}-${TIMESTAMP}.json`);
   writeFileSync(filepath, JSON.stringify(data, null, 2));
-  logger.info(`Output written to ${filepath}`, undefined, 'ProductionTest');
+  logger.info(`Output written to ${filepath}`, undefined, "ProductionTest");
   return filepath;
 }
 
@@ -126,31 +126,31 @@ function detectSwaps(content: string): string[] {
   return matches;
 }
 
-describe('Production Engine Tests', () => {
+describe("Production Engine Tests", () => {
   beforeAll(() => {
     ensureOutputDir();
     if (liveLlmTestConfig.requested && !liveLlmTestConfig.enabled) {
       throw new Error(
-        liveLlmTestConfig.skipReason ?? 'Live LLM test setup failed'
+        liveLlmTestConfig.skipReason ?? "Live LLM test setup failed",
       );
     }
     logger.info(
       `Starting production engine tests. Output dir: ${OUTPUT_DIR}`,
       undefined,
-      'ProductionTest'
+      "ProductionTest",
     );
     logger.info(
       `Live LLM tests enabled: ${liveLlmTestConfig.enabled}`,
       liveLlmTestConfig.skipReason
         ? { skipReason: liveLlmTestConfig.skipReason }
         : undefined,
-      'ProductionTest'
+      "ProductionTest",
     );
   });
 
-  describe('Static Data Registry', () => {
-    test('loads actors and organizations', async () => {
-      const { StaticDataRegistry } = await import('@feed/engine');
+  describe("Static Data Registry", () => {
+    test("loads actors and organizations", async () => {
+      const { StaticDataRegistry } = await import("@feed/engine");
 
       const actors = StaticDataRegistry.getAllActors();
       const organizations = StaticDataRegistry.getAllOrganizations();
@@ -176,7 +176,7 @@ describe('Production Engine Tests', () => {
         expect(org.type).toBeDefined();
       }
 
-      writeOutput('production-static-data', {
+      writeOutput("production-static-data", {
         actorCount: actors.length,
         organizationCount: organizations.length,
         sampleActors: actors.slice(0, 10).map((a) => ({
@@ -195,15 +195,15 @@ describe('Production Engine Tests', () => {
     });
   });
 
-  describe('Character Mapping Service', () => {
-    test('maps real names to parody names', async () => {
-      const { characterMappingService } = await import('@feed/engine');
+  describe("Character Mapping Service", () => {
+    test("maps real names to parody names", async () => {
+      const { characterMappingService } = await import("@feed/engine");
 
       // Test real-to-parody mapping
       const testCases = [
-        { real: 'Elon Musk', expected: /ailon|musk/i },
-        { real: 'Tesla', expected: /teslai/i },
-        { real: 'OpenAI', expected: /openagi/i },
+        { real: "Elon Musk", expected: /ailon|musk/i },
+        { real: "Tesla", expected: /teslai/i },
+        { real: "OpenAI", expected: /openagi/i },
       ];
 
       const results: Array<{
@@ -225,33 +225,33 @@ describe('Production Engine Tests', () => {
         });
       }
 
-      writeOutput('production-character-mapping', { results });
+      writeOutput("production-character-mapping", { results });
 
       // At least some mappings should work
       const correctCount = results.filter((r) => r.correct).length;
       expect(correctCount).toBeGreaterThan(0);
     });
 
-    test('detects real names that need replacement', async () => {
-      const { characterMappingService } = await import('@feed/engine');
+    test("detects real names that need replacement", async () => {
+      const { characterMappingService } = await import("@feed/engine");
 
       const testText =
-        'Elon Musk announced that Tesla and OpenAI are partnering.';
+        "Elon Musk announced that Tesla and OpenAI are partnering.";
       const detected = await characterMappingService.detectRealNames(testText);
 
       expect(detected.length).toBeGreaterThan(0);
 
-      writeOutput('production-real-name-detection', {
+      writeOutput("production-real-name-detection", {
         input: testText,
         detectedRealNames: detected,
       });
     });
   });
 
-  describe('NPC Persona Generator', () => {
-    test('generates consistent personas', async () => {
+  describe("NPC Persona Generator", () => {
+    test("generates consistent personas", async () => {
       const { NPCPersonaGenerator, StaticDataRegistry } = await import(
-        '@feed/engine'
+        "@feed/engine"
       );
 
       const generator = new NPCPersonaGenerator();
@@ -265,7 +265,7 @@ describe('Production Engine Tests', () => {
           description: a.description,
           domain: a.domain,
           personality: a.personality,
-          role: 'supporting' as const,
+          role: "supporting" as const,
           affiliations: a.affiliations,
           tier: a.tier ?? undefined,
         })),
@@ -276,7 +276,7 @@ describe('Production Engine Tests', () => {
           description: o.description,
           type: o.type,
           canBeInvolved: o.canBeInvolved,
-        }))
+        })),
       );
 
       expect(personas.size).toBeGreaterThan(0);
@@ -292,7 +292,7 @@ describe('Production Engine Tests', () => {
         expect(persona.reliability).toBeGreaterThanOrEqual(0);
         expect(persona.reliability).toBeLessThanOrEqual(1);
         expect(Array.isArray(persona.insiderOrgs)).toBe(true);
-        expect(typeof persona.willingToLie).toBe('boolean');
+        expect(typeof persona.willingToLie).toBe("boolean");
 
         personaData.push({
           actorId,
@@ -302,7 +302,7 @@ describe('Production Engine Tests', () => {
         });
       }
 
-      writeOutput('production-npc-personas', {
+      writeOutput("production-npc-personas", {
         totalPersonas: personas.size,
         personas: personaData,
         stats: {
@@ -317,31 +317,31 @@ describe('Production Engine Tests', () => {
     });
   });
 
-  describe('Lookahead Generation Service', () => {
+  describe("Lookahead Generation Service", () => {
     if (liveLlmTestConfig.enabled) {
-      test('checks lookahead status', async () => {
-        const { checkLookaheadStatus } = await import('@feed/engine');
+      test("checks lookahead status", async () => {
+        const { checkLookaheadStatus } = await import("@feed/engine");
 
         const status = await checkLookaheadStatus();
 
-        expect(typeof status.minutesAhead).toBe('number');
-        expect(typeof status.needsGeneration).toBe('boolean');
+        expect(typeof status.minutesAhead).toBe("number");
+        expect(typeof status.needsGeneration).toBe("boolean");
 
-        writeOutput('production-lookahead-status', status);
+        writeOutput("production-lookahead-status", status);
       });
     }
   });
 
-  describe('Post Generation', () => {
+  describe("Post Generation", () => {
     if (liveLlmTestConfig.enabled) {
-      test('generates NPC post with proper parody names', async () => {
+      test("generates NPC post with proper parody names", async () => {
         const { FeedLLMClient, StaticDataRegistry } = await import(
-          '@feed/engine'
+          "@feed/engine"
         );
 
         // Import the post generation helper
         const { generateNPCPost, loadSharedPostContext } = await import(
-          '@feed/engine/services/post-generation-helpers'
+          "@feed/engine/services/post-generation-helpers"
         );
 
         const llmClient = FeedLLMClient.forGameTick();
@@ -350,18 +350,18 @@ describe('Production Engine Tests', () => {
 
         expect(actor).toBeDefined();
         if (!actor) {
-          throw new Error('No actors available for post-generation test');
+          throw new Error("No actors available for post-generation test");
         }
 
         // Create a mock question
         const mockQuestion = {
-          id: 'test-question-1',
-          text: 'Will AIlon Musk announce a new TeslAI product this week?',
+          id: "test-question-1",
+          text: "Will AIlon Musk announce a new TeslAI product this week?",
           questionNumber: 1,
           outcome: null,
         };
 
-        const worldFacts = 'The market is volatile. Tech stocks are down.';
+        const worldFacts = "The market is volatile. Tech stocks are down.";
         const timestamp = new Date();
         const sharedContext = await loadSharedPostContext(timestamp);
 
@@ -381,10 +381,10 @@ describe('Production Engine Tests', () => {
           worldFacts,
           timestamp,
           sharedContext,
-          1
+          1,
         );
 
-        writeOutput('production-npc-post-generation', {
+        writeOutput("production-npc-post-generation", {
           actor: actor.name,
           question: mockQuestion.text,
           success,
@@ -396,20 +396,20 @@ describe('Production Engine Tests', () => {
     }
   });
 
-  describe('Content Swap Detection', () => {
-    test('detects real names in content', () => {
+  describe("Content Swap Detection", () => {
+    test("detects real names in content", () => {
       const testContent =
-        'Elon Musk announced that Tesla will launch a new product.';
+        "Elon Musk announced that Tesla will launch a new product.";
       const swaps = detectSwaps(testContent);
 
       expect(swaps.length).toBeGreaterThan(0);
-      expect(swaps.some((s) => s.includes('Elon Musk'))).toBe(true);
-      expect(swaps.some((s) => s.includes('Tesla'))).toBe(true);
+      expect(swaps.some((s) => s.includes("Elon Musk"))).toBe(true);
+      expect(swaps.some((s) => s.includes("Tesla"))).toBe(true);
     });
 
-    test('accepts parody names', () => {
+    test("accepts parody names", () => {
       const testContent =
-        'AIlon Musk announced that TeslAI will launch a new product.';
+        "AIlon Musk announced that TeslAI will launch a new product.";
       const swaps = detectSwaps(testContent);
 
       expect(swaps.length).toBe(0);
@@ -418,9 +418,9 @@ describe('Production Engine Tests', () => {
 
   afterAll(() => {
     logger.info(
-      'Production engine tests complete',
+      "Production engine tests complete",
       undefined,
-      'ProductionTest'
+      "ProductionTest",
     );
   });
 });

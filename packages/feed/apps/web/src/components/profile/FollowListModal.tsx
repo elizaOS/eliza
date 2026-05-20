@@ -1,14 +1,14 @@
-'use client';
+"use client";
 
-import { cn, getProfileUrl } from '@feed/shared';
-import { Loader2, Users, X } from 'lucide-react';
-import Link from 'next/link';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { toast } from 'sonner';
-import { Avatar } from '@/components/shared/Avatar';
-import { VerifiedBadge } from '@/components/shared/VerifiedBadge';
-import { useAuth } from '@/hooks/useAuth';
-import { apiUrl } from '@/utils/api-url';
+import { cn, getProfileUrl } from "@feed/shared";
+import { Loader2, Users, X } from "lucide-react";
+import Link from "next/link";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
+import { Avatar } from "@/components/shared/Avatar";
+import { VerifiedBadge } from "@/components/shared/VerifiedBadge";
+import { useAuth } from "@/hooks/useAuth";
+import { apiUrl } from "@/utils/api-url";
 
 /**
  * FollowListModal component for displaying followers or following lists.
@@ -47,7 +47,7 @@ interface FollowListModalProps {
   isOpen: boolean;
   onClose: () => void;
   userId: string;
-  type: 'followers' | 'following';
+  type: "followers" | "following";
   title?: string;
 }
 
@@ -66,14 +66,14 @@ export function FollowListModal({
     Record<string, boolean>
   >({});
   const [loadingFollow, setLoadingFollow] = useState<Record<string, boolean>>(
-    {}
+    {},
   );
 
   // AbortController ref for cancelling pending requests
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const displayTitle =
-    title || (type === 'followers' ? 'Followers' : 'Following');
+    title || (type === "followers" ? "Followers" : "Following");
 
   // Fetch the list when modal opens
   const fetchList = useCallback(async () => {
@@ -94,27 +94,27 @@ export function FollowListModal({
     try {
       const token = await getAccessToken();
       const headers: HeadersInit = {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       };
       if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
+        headers.Authorization = `Bearer ${token}`;
       }
 
       const response = await fetch(
         apiUrl(
-          `/api/users/${encodeURIComponent(userId)}/${type}?page=1&limit=100`
+          `/api/users/${encodeURIComponent(userId)}/${type}?page=1&limit=100`,
         ),
-        { headers, signal: abortController.signal }
+        { headers, signal: abortController.signal },
       );
 
       if (!response.ok) {
-        setError('Failed to load list');
+        setError("Failed to load list");
         setIsLoading(false);
         return;
       }
 
       const data = await response.json();
-      const list = type === 'followers' ? data.followers : data.following;
+      const list = type === "followers" ? data.followers : data.following;
       setUsers(list || []);
 
       // Initialize following status for each user
@@ -122,7 +122,7 @@ export function FollowListModal({
       if (authenticated && user) {
         const statusMap: Record<string, boolean> = {};
         for (const u of list || []) {
-          if (type === 'following' && userId === user.id) {
+          if (type === "following" && userId === user.id) {
             // Viewing own following list - current user follows everyone in this list
             statusMap[u.id] = true;
           } else {
@@ -137,10 +137,10 @@ export function FollowListModal({
       setIsLoading(false);
     } catch (err) {
       // Ignore abort errors - they're expected when cancelling requests
-      if (err instanceof Error && err.name === 'AbortError') {
+      if (err instanceof Error && err.name === "AbortError") {
         return;
       }
-      setError('Network error. Please try again.');
+      setError("Network error. Please try again.");
       setIsLoading(false);
     }
   }, [isOpen, userId, type, authenticated, user, getAccessToken]);
@@ -161,34 +161,34 @@ export function FollowListModal({
   // Handle body scroll lock
   useEffect(() => {
     if (isOpen) {
-      document.body.style.overflow = 'hidden';
+      document.body.style.overflow = "hidden";
     } else {
-      document.body.style.overflow = '';
+      document.body.style.overflow = "";
     }
     return () => {
-      document.body.style.overflow = '';
+      document.body.style.overflow = "";
     };
   }, [isOpen]);
 
   // Handle escape key
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === "Escape") {
         onClose();
       }
     };
 
     if (isOpen) {
-      window.addEventListener('keydown', handleEscape);
+      window.addEventListener("keydown", handleEscape);
     }
     return () => {
-      window.removeEventListener('keydown', handleEscape);
+      window.removeEventListener("keydown", handleEscape);
     };
   }, [isOpen, onClose]);
 
   const handleFollow = async (targetUserId: string) => {
     if (!authenticated || !user) {
-      toast.error('Please sign in to follow users');
+      toast.error("Please sign in to follow users");
       return;
     }
 
@@ -200,13 +200,13 @@ export function FollowListModal({
 
     const token = await getAccessToken();
     if (!token) {
-      toast.error('Authentication required');
+      toast.error("Authentication required");
       setLoadingFollow((prev) => ({ ...prev, [targetUserId]: false }));
       return;
     }
 
     const isCurrentlyFollowing = followingStatus[targetUserId] ?? false;
-    const method = isCurrentlyFollowing ? 'DELETE' : 'POST';
+    const method = isCurrentlyFollowing ? "DELETE" : "POST";
 
     // Optimistic update
     setFollowingStatus((prev) => ({
@@ -222,7 +222,7 @@ export function FollowListModal({
           headers: {
             Authorization: `Bearer ${token}`,
           },
-        }
+        },
       );
 
       if (!response.ok) {
@@ -231,13 +231,13 @@ export function FollowListModal({
           ...prev,
           [targetUserId]: isCurrentlyFollowing,
         }));
-        toast.error('Failed to update follow status');
+        toast.error("Failed to update follow status");
       } else {
         // Dispatch event to update profile stats
         window.dispatchEvent(
-          new CustomEvent('profile-updated', {
-            detail: { type: isCurrentlyFollowing ? 'unfollow' : 'follow' },
-          })
+          new CustomEvent("profile-updated", {
+            detail: { type: isCurrentlyFollowing ? "unfollow" : "follow" },
+          }),
         );
       }
     } catch {
@@ -246,7 +246,7 @@ export function FollowListModal({
         ...prev,
         [targetUserId]: isCurrentlyFollowing,
       }));
-      toast.error('Network error. Please try again.');
+      toast.error("Network error. Please try again.");
     }
 
     setLoadingFollow((prev) => ({ ...prev, [targetUserId]: false }));
@@ -312,9 +312,9 @@ export function FollowListModal({
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <Users className="mb-4 h-12 w-12 text-muted-foreground opacity-50" />
               <p className="text-muted-foreground">
-                {type === 'followers'
-                  ? 'No followers yet'
-                  : 'Not following anyone yet'}
+                {type === "followers"
+                  ? "No followers yet"
+                  : "Not following anyone yet"}
               </p>
             </div>
           ) : (
@@ -325,7 +325,7 @@ export function FollowListModal({
                 const isLoadingThis = loadingFollow[followUser.id] || false;
                 const profileUrl = getProfileUrl(
                   followUser.id,
-                  followUser.username
+                  followUser.username,
                 );
 
                 return (
@@ -338,7 +338,7 @@ export function FollowListModal({
                       <Avatar
                         id={followUser.id}
                         name={followUser.displayName}
-                        type={followUser.isActor ? 'actor' : 'user'}
+                        type={followUser.isActor ? "actor" : "user"}
                         src={followUser.profileImageUrl || undefined}
                         size="md"
                         className="flex-shrink-0"
@@ -370,11 +370,11 @@ export function FollowListModal({
                         onClick={() => handleFollow(followUser.id)}
                         disabled={isLoadingThis}
                         className={cn(
-                          'group relative flex shrink-0 items-center justify-center gap-1.5 rounded-full border px-3 py-1.5 font-bold text-sm transition-all duration-200',
+                          "group relative flex shrink-0 items-center justify-center gap-1.5 rounded-full border px-3 py-1.5 font-bold text-sm transition-all duration-200",
                           isFollowing
-                            ? 'border-border bg-background text-foreground hover:border-red-500/50 hover:bg-red-500/10 hover:text-red-500'
-                            : 'border-[#0066FF] bg-[#0066FF] text-primary-foreground hover:bg-[#0052CC]',
-                          isLoadingThis && 'cursor-not-allowed opacity-50'
+                            ? "border-border bg-background text-foreground hover:border-red-500/50 hover:bg-red-500/10 hover:text-red-500"
+                            : "border-[#0066FF] bg-[#0066FF] text-primary-foreground hover:bg-[#0052CC]",
+                          isLoadingThis && "cursor-not-allowed opacity-50",
                         )}
                       >
                         {isLoadingThis ? (

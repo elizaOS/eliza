@@ -10,7 +10,7 @@ import {
   logger,
   type PaymentVerificationParams,
   type PaymentVerificationResult,
-} from '@feed/shared';
+} from "@feed/shared";
 import {
   formatEther,
   hexlify,
@@ -18,10 +18,10 @@ import {
   type Provider,
   parseEther,
   randomBytes,
-} from 'ethers';
-import { z } from 'zod';
-import type { PaymentRequest } from '../types/a2a';
-import { PaymentRequestSchema } from '../types/a2a';
+} from "ethers";
+import { z } from "zod";
+import type { PaymentRequest } from "../types/a2a";
+import { PaymentRequestSchema } from "../types/a2a";
 
 export interface X402Config {
   rpcUrl: string;
@@ -54,15 +54,15 @@ const PendingPaymentSchema = z.object({
   verified: z.boolean(),
 });
 
-const REDIS_PREFIX = 'x402:payment:';
+const REDIS_PREFIX = "x402:payment:";
 
 export class X402Manager {
   private provider: Provider;
-  private config: Required<Omit<X402Config, 'redis' | 'rpcReadTimeoutMs'>> & {
+  private config: Required<Omit<X402Config, "redis" | "rpcReadTimeoutMs">> & {
     redis?: RedisClient;
     rpcReadTimeoutMs: number;
   };
-  private readonly DEFAULT_MIN_PAYMENT = '1000000000000000'; // 0.001 ETH
+  private readonly DEFAULT_MIN_PAYMENT = "1000000000000000"; // 0.001 ETH
   private readonly DEFAULT_TIMEOUT = 5 * 60 * 1000; // 5 minutes
   private readonly DEFAULT_RPC_READ_TIMEOUT_MS = 20_000;
   private inMemoryStore: Map<string, PendingPayment> = new Map();
@@ -81,7 +81,7 @@ export class X402Manager {
 
   private async withRpcTimeout<T>(
     label: string,
-    operation: Promise<T>
+    operation: Promise<T>,
   ): Promise<T> {
     const ms = this.config.rpcReadTimeoutMs;
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -104,7 +104,7 @@ export class X402Manager {
    */
   private async storePayment(
     requestId: string,
-    payment: PendingPayment
+    payment: PendingPayment,
   ): Promise<void> {
     const key = `${REDIS_PREFIX}${requestId}`;
     const ttlSeconds = Math.ceil(this.config.paymentTimeout / 1000);
@@ -116,12 +116,12 @@ export class X402Manager {
     // Also store in Redis if available
     if (this.config.redis) {
       await this.config.redis.set(key, serialized, { ex: ttlSeconds });
-      logger.debug('[X402Manager] Stored payment in Redis', {
+      logger.debug("[X402Manager] Stored payment in Redis", {
         requestId,
         ttl: ttlSeconds,
       });
     } else {
-      logger.debug('[X402Manager] Redis not configured, using memory storage', {
+      logger.debug("[X402Manager] Redis not configured, using memory storage", {
         requestId,
       });
     }
@@ -147,7 +147,7 @@ export class X402Manager {
     const cached = await this.config.redis.get(key);
 
     if (!cached) {
-      logger.debug('[X402Manager] Payment not found', { requestId });
+      logger.debug("[X402Manager] Payment not found", { requestId });
       return null;
     }
 
@@ -155,7 +155,7 @@ export class X402Manager {
     const validation = PendingPaymentSchema.safeParse(paymentData);
 
     if (!validation.success) {
-      logger.error('[X402Manager] Invalid payment data', {
+      logger.error("[X402Manager] Invalid payment data", {
         requestId,
         error: validation.error,
       });
@@ -184,7 +184,7 @@ export class X402Manager {
    */
   private async updatePayment(
     requestId: string,
-    payment: PendingPayment
+    payment: PendingPayment,
   ): Promise<void> {
     const key = `${REDIS_PREFIX}${requestId}`;
     const remainingMs = payment.request.expiresAt - Date.now();
@@ -197,7 +197,7 @@ export class X402Manager {
     // Update Redis if available
     if (this.config.redis) {
       await this.config.redis.set(key, serialized, { ex: ttlSeconds });
-      logger.debug('[X402Manager] Updated payment', { requestId });
+      logger.debug("[X402Manager] Updated payment", { requestId });
     }
   }
 
@@ -213,7 +213,7 @@ export class X402Manager {
     // Remove from Redis if available
     if (this.config.redis) {
       await this.config.redis.del(key);
-      logger.debug('[X402Manager] Deleted payment', { requestId });
+      logger.debug("[X402Manager] Deleted payment", { requestId });
     }
   }
 
@@ -225,7 +225,7 @@ export class X402Manager {
     to: string,
     amount: string,
     service: string,
-    metadata?: Record<string, string | number | boolean | null>
+    metadata?: Record<string, string | number | boolean | null>,
   ): Promise<PaymentRequest> {
     // Validate amount meets minimum
     const amountBn = parseEther(formatEther(amount));
@@ -233,7 +233,7 @@ export class X402Manager {
 
     if (amountBn < minAmountBn) {
       throw new Error(
-        `Payment amount must be at least ${this.config.minPaymentAmount} wei`
+        `Payment amount must be at least ${this.config.minPaymentAmount} wei`,
       );
     }
 
@@ -265,11 +265,11 @@ export class X402Manager {
    * Supports both EOA and smart wallet transactions
    */
   async verifyPayment(
-    verificationData: PaymentVerificationParams
+    verificationData: PaymentVerificationParams,
   ): Promise<PaymentVerificationResult> {
     const pending = await this.getPayment(verificationData.requestId);
     if (!pending) {
-      return { verified: false, error: 'Payment request not found or expired' };
+      return { verified: false, error: "Payment request not found or expired" };
     }
 
     if (pending.verified) {
@@ -278,53 +278,53 @@ export class X402Manager {
 
     if (Date.now() > pending.request.expiresAt) {
       await this.deletePayment(verificationData.requestId);
-      return { verified: false, error: 'Payment request expired' };
+      return { verified: false, error: "Payment request expired" };
     }
 
     let tx;
     try {
       tx = await this.withRpcTimeout(
-        'getTransaction',
-        this.provider.getTransaction(verificationData.txHash)
+        "getTransaction",
+        this.provider.getTransaction(verificationData.txHash),
       );
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      if (msg.includes('timed out')) {
+      if (msg.includes("timed out")) {
         return {
           verified: false,
           error:
-            'Blockchain RPC timed out. Wait for confirmation, then try again.',
+            "Blockchain RPC timed out. Wait for confirmation, then try again.",
         };
       }
       throw e;
     }
     if (!tx) {
-      return { verified: false, error: 'Transaction not found on blockchain' };
+      return { verified: false, error: "Transaction not found on blockchain" };
     }
 
     let txReceipt;
     try {
       txReceipt = await this.withRpcTimeout(
-        'getTransactionReceipt',
-        this.provider.getTransactionReceipt(verificationData.txHash)
+        "getTransactionReceipt",
+        this.provider.getTransactionReceipt(verificationData.txHash),
       );
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      if (msg.includes('timed out')) {
+      if (msg.includes("timed out")) {
         return {
           verified: false,
           error:
-            'Blockchain RPC timed out. Wait for confirmation, then try again.',
+            "Blockchain RPC timed out. Wait for confirmation, then try again.",
         };
       }
       throw e;
     }
     if (!txReceipt) {
-      return { verified: false, error: 'Transaction not yet confirmed' };
+      return { verified: false, error: "Transaction not yet confirmed" };
     }
 
     if (txReceipt.status !== 1) {
-      return { verified: false, error: 'Transaction failed on blockchain' };
+      return { verified: false, error: "Transaction failed on blockchain" };
     }
 
     const errors: string[] = [];
@@ -339,7 +339,7 @@ export class X402Manager {
 
     if (!fromMatch) {
       logger.warn(
-        `[X402Manager] Sender mismatch: expected ${pending.request.from}, got ${tx.from}, treating as smart wallet`
+        `[X402Manager] Sender mismatch: expected ${pending.request.from}, got ${tx.from}, treating as smart wallet`,
       );
       // For production, you may want to implement more sophisticated verification:
       // - Check transaction trace for internal calls to the sender's smart wallet
@@ -356,7 +356,7 @@ export class X402Manager {
       // 2. Tracing the transaction to see internal calls.
       // For now, we will reject if there is a direct mismatch, to be safe.
       errors.push(
-        `Recipient mismatch: expected ${pending.request.to}, got ${tx.to}`
+        `Recipient mismatch: expected ${pending.request.to}, got ${tx.to}`,
       );
     }
 
@@ -369,12 +369,12 @@ export class X402Manager {
 
     if (paidAmount < minAcceptableAmount) {
       errors.push(
-        `Insufficient payment: expected at least ${minAcceptableAmount}, got ${paidAmount}`
+        `Insufficient payment: expected at least ${minAcceptableAmount}, got ${paidAmount}`,
       );
     }
 
     if (errors.length > 0) {
-      return { verified: false, error: errors.join('; ') };
+      return { verified: false, error: errors.join("; ") };
     }
 
     // Mark as verified
@@ -386,7 +386,7 @@ export class X402Manager {
       {
         requestId: verificationData.requestId,
         isSmartWallet,
-      }
+      },
     );
 
     return { verified: true };
@@ -450,7 +450,7 @@ export class X402Manager {
         }
         return acc;
       },
-      { pending: 0, verified: 0, expired: 0 }
+      { pending: 0, verified: 0, expired: 0 },
     );
   }
 

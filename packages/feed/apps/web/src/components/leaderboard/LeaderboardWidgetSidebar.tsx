@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import {
   formatCurrency,
@@ -6,16 +6,16 @@ import {
   getProfileUrl,
   type LeaderboardMetric,
   type LeaderboardScope,
-} from '@feed/shared';
-import { Bot, ExternalLink } from 'lucide-react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useEffect, useRef } from 'react';
-import { FollowButton } from '@/components/interactions/FollowButton';
-import { OnChainBadge } from '@/components/profile/OnChainBadge';
-import { OverviewTab } from '@/components/rewards/v2/overview-tab';
-import { Avatar } from '@/components/shared/Avatar';
-import { useAuth } from '@/hooks/useAuth';
+} from "@feed/shared";
+import { Bot, ExternalLink } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useRef } from "react";
+import { FollowButton } from "@/components/interactions/FollowButton";
+import { OnChainBadge } from "@/components/profile/OnChainBadge";
+import { OverviewTab } from "@/components/rewards/v2/overview-tab";
+import { Avatar } from "@/components/shared/Avatar";
+import { useAuth } from "@/hooks/useAuth";
 
 export interface SelectedUser {
   id: string;
@@ -68,7 +68,7 @@ export function LeaderboardWidgetSidebar({
     if (window.innerWidth < 1280) return;
 
     let lastScrollTop = 0;
-    let direction: 'up' | 'down' = 'down';
+    let direction: "up" | "down" = "down";
     let translateY = 0;
     let ticking = false;
 
@@ -80,28 +80,28 @@ export function LeaderboardWidgetSidebar({
       const topOffset = Math.max(0, containerTop);
 
       if (scrollTop > lastScrollTop) {
-        direction = 'down';
+        direction = "down";
       } else if (scrollTop < lastScrollTop) {
-        direction = 'up';
+        direction = "up";
       }
       lastScrollTop = scrollTop;
 
       const fitsInViewport = sidebarHeight <= viewportHeight - topOffset;
 
       if (fitsInViewport) {
-        inner.style.position = 'fixed';
+        inner.style.position = "fixed";
         inner.style.top = `${topOffset}px`;
-        inner.style.transform = '';
+        inner.style.transform = "";
       } else {
         const maxTranslate = sidebarHeight - (viewportHeight - topOffset);
 
-        if (direction === 'down') {
+        if (direction === "down") {
           translateY = Math.min(scrollTop, maxTranslate);
         } else {
           translateY = Math.max(0, Math.min(scrollTop, maxTranslate));
         }
 
-        inner.style.position = 'fixed';
+        inner.style.position = "fixed";
         inner.style.top = `${topOffset}px`;
         inner.style.transform = `translateY(-${translateY}px)`;
       }
@@ -119,9 +119,9 @@ export function LeaderboardWidgetSidebar({
     const handleResize = () => {
       if (window.innerWidth < 1280) {
         if (inner) {
-          inner.style.position = '';
-          inner.style.top = '';
-          inner.style.transform = '';
+          inner.style.position = "";
+          inner.style.top = "";
+          inner.style.transform = "";
         }
         return;
       }
@@ -130,17 +130,17 @@ export function LeaderboardWidgetSidebar({
 
     updateSidebar();
 
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    window.addEventListener('resize', handleResize, { passive: true });
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    window.addEventListener("resize", handleResize, { passive: true });
 
     return () => {
-      window.removeEventListener('scroll', handleScroll);
-      window.removeEventListener('resize', handleResize);
+      window.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("resize", handleResize);
     };
   }, []);
 
-  const isTeamView = leaderboardScope === 'team';
-  const isTradingView = leaderboardMetric === 'trading';
+  const isTeamView = leaderboardScope === "team";
+  const isTradingView = leaderboardMetric === "trading";
   const formatLeaderboardValue = (value: number) =>
     formatNumberWithSeparators(value);
   const formatLeaderboardPnL = (value: number) =>
@@ -150,22 +150,22 @@ export function LeaderboardWidgetSidebar({
     const formatted = `${Math.abs(percent).toFixed(1)}%`;
     if (percent > 0) return `+${formatted}`;
     if (percent < 0) return `-${formatted}`;
-    return '0.0%';
+    return "0.0%";
   };
   const formatSignedLeaderboardPnL = (value: number) =>
     value > 0 ? `+${formatLeaderboardPnL(value)}` : formatLeaderboardPnL(value);
 
   const metricLabel =
-    leaderboardMetric === 'trading'
+    leaderboardMetric === "trading"
       ? isTeamView
-        ? 'Team Trading Return'
-        : 'Trading Return'
+        ? "Team Trading Return"
+        : "Trading Return"
       : isTeamView
-        ? 'Team Reputation'
-        : 'Reputation';
+        ? "Team Reputation"
+        : "Reputation";
 
   const metricValue =
-    leaderboardMetric === 'trading'
+    leaderboardMetric === "trading"
       ? isTeamView
         ? (selectedUser?.teamTradingReturn ?? selectedUser?.tradingReturn ?? 0)
         : (selectedUser?.tradingReturn ?? 0)
@@ -200,8 +200,8 @@ export function LeaderboardWidgetSidebar({
       <div ref={innerRef} className="mr-28 flex flex-col gap-6 px-4 py-6">
         {/* Rewards + Challenges */}
         <OverviewTab
-          onViewAchievements={() => router.push('/rewards?tab=achievements')}
-          onViewChallenges={() => router.push('/rewards?tab=challenges')}
+          onViewAchievements={() => router.push("/rewards?tab=achievements")}
+          onViewChallenges={() => router.push("/rewards?tab=challenges")}
         />
 
         {/* Selected User Detail */}
@@ -211,7 +211,7 @@ export function LeaderboardWidgetSidebar({
               <Avatar
                 id={selectedUser.id}
                 name={
-                  selectedUser.displayName || selectedUser.username || 'User'
+                  selectedUser.displayName || selectedUser.username || "User"
                 }
                 size="md"
                 src={selectedUser.profileImageUrl || undefined}
@@ -221,7 +221,7 @@ export function LeaderboardWidgetSidebar({
                   <h4 className="truncate font-semibold text-foreground">
                     {selectedUser.displayName ||
                       selectedUser.username ||
-                      'Anonymous'}
+                      "Anonymous"}
                   </h4>
                   {selectedUser.isAgent ? (
                     <span className="flex items-center gap-0.5 rounded bg-blue-500/10 px-1.5 py-0.5 text-blue-500 text-xs">
@@ -258,11 +258,11 @@ export function LeaderboardWidgetSidebar({
                 className={`font-bold text-xl ${
                   isTradingView
                     ? metricValue === 0
-                      ? 'text-foreground'
+                      ? "text-foreground"
                       : metricValue > 0
-                        ? 'text-green-500'
-                        : 'text-red-500'
-                    : 'text-foreground'
+                        ? "text-green-500"
+                        : "text-red-500"
+                    : "text-foreground"
                 }`}
               >
                 {isTradingView
@@ -275,27 +275,27 @@ export function LeaderboardWidgetSidebar({
               <div>
                 <div className="text-muted-foreground text-xs">
                   {isTeamView && isTradingView
-                    ? 'Team Lifetime P&L'
-                    : 'Lifetime P&L'}
+                    ? "Team Lifetime P&L"
+                    : "Lifetime P&L"}
                 </div>
                 <div
                   className={`font-bold ${
                     primaryLifetimePnL === 0
-                      ? 'text-muted-foreground'
+                      ? "text-muted-foreground"
                       : primaryLifetimePnL > 0
-                        ? 'text-green-500'
-                        : 'text-red-500'
+                        ? "text-green-500"
+                        : "text-red-500"
                   }`}
                 >
                   {primaryLifetimePnL === 0
                     ? formatLeaderboardPnL(0)
-                    : `${primaryLifetimePnL > 0 ? '+' : '-'}${formatLeaderboardPnL(Math.abs(primaryLifetimePnL))}`}
+                    : `${primaryLifetimePnL > 0 ? "+" : "-"}${formatLeaderboardPnL(Math.abs(primaryLifetimePnL))}`}
                 </div>
               </div>
 
               <div>
                 <div className="text-muted-foreground text-xs">
-                  {isTradingView ? 'Capital Base' : 'Trading Balance'}
+                  {isTradingView ? "Capital Base" : "Trading Balance"}
                 </div>
                 <div className="font-bold text-foreground">
                   {isTradingView
@@ -337,52 +337,52 @@ export function LeaderboardWidgetSidebar({
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">
                           {isTradingView
-                            ? 'User Lifetime P&L'
-                            : 'User Reputation'}
+                            ? "User Lifetime P&L"
+                            : "User Reputation"}
                         </span>
                         <span
                           className={`font-semibold ${
                             isTradingView &&
                             (selectedUser.userLifetimePnL ?? 0) !== 0
                               ? (selectedUser.userLifetimePnL ?? 0) > 0
-                                ? 'text-green-500'
-                                : 'text-red-500'
-                              : 'text-foreground'
+                                ? "text-green-500"
+                                : "text-red-500"
+                              : "text-foreground"
                           }`}
                         >
                           {isTradingView
                             ? formatSignedLeaderboardPnL(
-                                selectedUser.userLifetimePnL ?? 0
+                                selectedUser.userLifetimePnL ?? 0,
                               )
                             : formatLeaderboardValue(
-                                selectedUser.userReputationPoints ?? 0
+                                selectedUser.userReputationPoints ?? 0,
                               )}
                         </span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">
                           {isTradingView
-                            ? 'Agent Lifetime P&L'
-                            : 'Agent Reputation'}{' '}
-                          ({selectedUser.agentCount}{' '}
-                          {selectedUser.agentCount === 1 ? 'agent' : 'agents'})
+                            ? "Agent Lifetime P&L"
+                            : "Agent Reputation"}{" "}
+                          ({selectedUser.agentCount}{" "}
+                          {selectedUser.agentCount === 1 ? "agent" : "agents"})
                         </span>
                         <span
                           className={`font-semibold ${
                             isTradingView &&
                             (selectedUser.agentLifetimePnL ?? 0) !== 0
                               ? (selectedUser.agentLifetimePnL ?? 0) > 0
-                                ? 'text-green-500'
-                                : 'text-red-500'
-                              : 'text-foreground'
+                                ? "text-green-500"
+                                : "text-red-500"
+                              : "text-foreground"
                           }`}
                         >
                           {isTradingView
                             ? formatSignedLeaderboardPnL(
-                                selectedUser.agentLifetimePnL ?? 0
+                                selectedUser.agentLifetimePnL ?? 0,
                               )
                             : formatLeaderboardValue(
-                                selectedUser.agentReputationPoints ?? 0
+                                selectedUser.agentReputationPoints ?? 0,
                               )}
                         </span>
                       </div>
@@ -409,22 +409,22 @@ export function LeaderboardWidgetSidebar({
           </h3>
           <div className="space-y-2 text-muted-foreground text-sm">
             <p>
-              <span className="font-semibold text-foreground">Reputation:</span>{' '}
+              <span className="font-semibold text-foreground">Reputation:</span>{" "}
               Your progression score for trust, rewards, and the general
               leaderboard
             </p>
             <p>
-              <span className="font-semibold text-foreground">Trading:</span>{' '}
+              <span className="font-semibold text-foreground">Trading:</span>{" "}
               Ranked by realized return: lifetime P&amp;L divided by `
               max(capitalBase, 1000) `
             </p>
             {isTeamView && (
               <p>
                 <span className="font-semibold text-foreground">
-                  {isTradingView ? 'Team Trading:' : 'Team Reputation:'}
-                </span>{' '}
+                  {isTradingView ? "Team Trading:" : "Team Reputation:"}
+                </span>{" "}
                 {isTradingView
-                  ? 'Combined team lifetime P&L over external capital injected into the team, without double counting owner-agent transfers'
+                  ? "Combined team lifetime P&L over external capital injected into the team, without double counting owner-agent transfers"
                   : "Your reputation combined with all your AI agents' reputation"}
               </p>
             )}
@@ -432,7 +432,7 @@ export function LeaderboardWidgetSidebar({
               <p>
                 <span className="font-semibold text-foreground">
                   Capital floor:
-                </span>{' '}
+                </span>{" "}
                 Rankings use at least 1,000 of capital base to avoid inflated
                 returns on tiny balances.
               </p>

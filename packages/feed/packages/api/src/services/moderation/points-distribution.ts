@@ -16,8 +16,8 @@ import {
   pointsTransactions,
   reports,
   users,
-} from '@feed/db';
-import { generateSnowflakeId, logger } from '@feed/shared';
+} from "@feed/db";
+import { generateSnowflakeId, logger } from "@feed/shared";
 
 /**
  * ReputationService interface for dependency injection.
@@ -30,7 +30,7 @@ type ReputationServiceAdapter = {
     userId: string,
     amount: number,
     reason: string,
-    metadata?: Record<string, unknown>
+    metadata?: Record<string, unknown>,
   ) => Promise<{
     success: boolean;
     reputationAwarded: number;
@@ -48,7 +48,7 @@ export function setReputationService(service: ReputationServiceAdapter): void {
 function getReputationService(): ReputationServiceAdapter {
   if (!reputationServiceInstance) {
     throw new Error(
-      'ReputationService not initialized. Call setReputationService() first.'
+      "ReputationService not initialized. Call setReputationService() first.",
     );
   }
   return reputationServiceInstance;
@@ -58,7 +58,7 @@ function getReputationService(): ReputationServiceAdapter {
  * @deprecated Use setReputationService.
  */
 export function setPointsService(service: {
-  awardPoints: ReputationServiceAdapter['awardReputation'];
+  awardPoints: ReputationServiceAdapter["awardReputation"];
 }): void {
   setReputationService({
     awardReputation: service.awardPoints,
@@ -73,15 +73,15 @@ export function setPointsService(service: {
  */
 export async function distributeReputationToReporters(
   reportedUserId: string,
-  reason: 'scammer' | 'csam'
+  reason: "scammer" | "csam",
 ): Promise<void> {
   logger.info(
-    'Distributing reputation to successful reporters',
+    "Distributing reputation to successful reporters",
     {
       reportedUserId,
       reason,
     },
-    'ReputationDistribution'
+    "ReputationDistribution",
   );
 
   // Get the reported user's point balance
@@ -99,9 +99,9 @@ export async function distributeReputationToReporters(
 
   if (!reportedUser) {
     logger.warn(
-      'Reported user not found',
+      "Reported user not found",
       { reportedUserId },
-      'ReputationDistribution'
+      "ReputationDistribution",
     );
     return;
   }
@@ -112,9 +112,9 @@ export async function distributeReputationToReporters(
 
   if (forfeitedPoints <= 0) {
     logger.info(
-      'No reputation to distribute',
+      "No reputation to distribute",
       { reportedUserId, forfeitedPoints },
-      'ReputationDistribution'
+      "ReputationDistribution",
     );
     return;
   }
@@ -132,18 +132,18 @@ export async function distributeReputationToReporters(
     .where(
       and(
         eq(reports.reportedUserId, reportedUserId),
-        eq(reports.status, 'resolved'),
-        eq(reports.category, reason === 'scammer' ? 'spam' : 'inappropriate'),
-        gte(reports.createdAt, ninetyDaysAgo)
-      )
+        eq(reports.status, "resolved"),
+        eq(reports.category, reason === "scammer" ? "spam" : "inappropriate"),
+        gte(reports.createdAt, ninetyDaysAgo),
+      ),
     )
     .orderBy(asc(reports.createdAt));
 
   if (successfulReports.length === 0) {
     logger.info(
-      'No successful reports found',
+      "No successful reports found",
       { reportedUserId },
-      'ReputationDistribution'
+      "ReputationDistribution",
     );
     // Still forfeit the points (remove them from the user)
     await forfeitUserPoints(reportedUserId, forfeitedPoints);
@@ -153,12 +153,12 @@ export async function distributeReputationToReporters(
   // Distribute reputation proportionally.
   // Each reporter gets an equal share.
   const pointsPerReporter = Math.floor(
-    forfeitedPoints / successfulReports.length
+    forfeitedPoints / successfulReports.length,
   );
   const remainder = forfeitedPoints % successfulReports.length;
 
   logger.info(
-    'Distributing reputation',
+    "Distributing reputation",
     {
       reportedUserId,
       forfeitedPoints,
@@ -166,7 +166,7 @@ export async function distributeReputationToReporters(
       pointsPerReporter,
       remainder,
     },
-    'ReputationDistribution'
+    "ReputationDistribution",
   );
 
   const reputationService = getReputationService();
@@ -184,38 +184,38 @@ export async function distributeReputationToReporters(
       await reputationService.awardReputation(
         report.reporterId,
         pointsToAward,
-        'report_reward',
+        "report_reward",
         {
           reportedUserId,
           reportId: report.id,
           reason,
           forfeitedPoints: pointsToAward,
-        }
+        },
       );
 
       logger.info(
-        'Awarded reputation to reporter',
+        "Awarded reputation to reporter",
         {
           reporterId: report.reporterId,
           points: pointsToAward,
           reportId: report.id,
         },
-        'ReputationDistribution'
+        "ReputationDistribution",
       );
-    })
+    }),
   );
 
   // Log any failures
-  const failures = distributionResults.filter((r) => r.status === 'rejected');
+  const failures = distributionResults.filter((r) => r.status === "rejected");
   if (failures.length > 0) {
     logger.error(
-      'Failed to distribute reputation to some reporters',
+      "Failed to distribute reputation to some reporters",
       {
         reportedUserId,
         failures: failures.length,
         total: distributionResults.length,
       },
-      'ReputationDistribution'
+      "ReputationDistribution",
     );
   }
 
@@ -223,14 +223,14 @@ export async function distributeReputationToReporters(
   await forfeitUserPoints(reportedUserId, forfeitedPoints);
 
   logger.info(
-    '✅ Reputation distribution complete',
+    "✅ Reputation distribution complete",
     {
       reportedUserId,
       forfeitedPoints,
       reportersRewarded: successfulReports.length,
       totalDistributed: forfeitedPoints,
     },
-    'ReputationDistribution'
+    "ReputationDistribution",
   );
 }
 
@@ -244,7 +244,7 @@ export const distributePointsToReporters = distributeReputationToReporters;
  */
 async function forfeitUserPoints(
   userId: string,
-  amount: number
+  amount: number,
 ): Promise<void> {
   const [user] = await db
     .select({
@@ -293,22 +293,22 @@ async function forfeitUserPoints(
     amount: -amount,
     pointsBefore: user.reputationPoints,
     pointsAfter: user.reputationPoints - amount,
-    reason: 'forfeited',
+    reason: "forfeited",
     metadata: JSON.stringify({
-      reason: 'csam_or_scammer_confirmed',
+      reason: "csam_or_scammer_confirmed",
       forfeitedAmount: amount,
     }),
   });
 
   logger.info(
-    'Forfeited points from user',
+    "Forfeited points from user",
     {
       userId,
       amount,
       inviteRemoved: inviteToRemove,
       bonusRemoved: bonusToRemove,
     },
-    'PointsDistribution'
+    "PointsDistribution",
   );
 }
 

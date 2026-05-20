@@ -1,8 +1,8 @@
-import { beforeEach, describe, expect, it, mock } from 'bun:test';
+import { beforeEach, describe, expect, it, mock } from "bun:test";
 
 const authenticateMock = mock(async () => ({
-  userId: 'sender-1',
-  dbUserId: 'sender-1',
+  userId: "sender-1",
+  dbUserId: "sender-1",
 }));
 const checkRateLimitAsyncMock = mock(async () => ({
   allowed: true,
@@ -10,10 +10,10 @@ const checkRateLimitAsyncMock = mock(async () => ({
 }));
 const transferMock = mock(async () => ({
   success: true as const,
-  transferId: 'transfer-1',
+  transferId: "transfer-1",
   amount: 25,
-  senderUserId: 'sender-1',
-  recipientUserId: 'receiver-1',
+  senderUserId: "sender-1",
+  recipientUserId: "receiver-1",
   senderBalanceBefore: 100,
   senderBalanceAfter: 75,
   recipientBalanceBefore: 5,
@@ -21,12 +21,12 @@ const transferMock = mock(async () => ({
 }));
 
 const apiModulePath = new URL(
-  '../../../../../../../../packages/api/src/index.ts',
-  import.meta.url
+  "../../../../../../../../packages/api/src/index.ts",
+  import.meta.url,
 ).pathname;
 const sharedModulePath = new URL(
-  '../../../../../../../../packages/shared/src/index.ts',
-  import.meta.url
+  "../../../../../../../../packages/shared/src/index.ts",
+  import.meta.url,
 ).pathname;
 
 const apiModuleFactory = () => ({
@@ -45,11 +45,11 @@ const apiModuleFactory = () => ({
     A2A_TRANSFER_OPS: {
       maxRequests: 10,
       windowMs: 60000,
-      actionType: 'a2a_transfer_ops',
+      actionType: "a2a_transfer_ops",
     },
   },
   rateLimitError: (retryAfter?: number) =>
-    Response.json({ error: 'Too many requests', retryAfter }, { status: 429 }),
+    Response.json({ error: "Too many requests", retryAfter }, { status: 429 }),
   successResponse: (body: unknown) => Response.json(body),
   TradingBalanceTransferService: {
     transfer: transferMock,
@@ -63,9 +63,9 @@ const sharedModuleFactory = () => ({
   },
 });
 
-mock.module('@feed/api', apiModuleFactory);
+mock.module("@feed/api", apiModuleFactory);
 mock.module(apiModulePath, apiModuleFactory);
-mock.module('@feed/shared', sharedModuleFactory);
+mock.module("@feed/shared", sharedModuleFactory);
 mock.module(sharedModulePath, sharedModuleFactory);
 
 async function loadPostHandler() {
@@ -73,17 +73,17 @@ async function loadPostHandler() {
   return module.POST;
 }
 
-describe('POST /api/users/trading-balance/transfer', () => {
+describe("POST /api/users/trading-balance/transfer", () => {
   beforeEach(() => {
     authenticateMock.mockClear();
     checkRateLimitAsyncMock.mockClear();
     transferMock.mockClear();
     (globalThis as Record<string, unknown>).__routeTransferResult = {
       success: true,
-      transferId: 'transfer-1',
+      transferId: "transfer-1",
       amount: 25,
-      senderUserId: 'sender-1',
-      recipientUserId: 'receiver-1',
+      senderUserId: "sender-1",
+      recipientUserId: "receiver-1",
       senderBalanceBefore: 100,
       senderBalanceAfter: 75,
       recipientBalanceBefore: 5,
@@ -95,28 +95,28 @@ describe('POST /api/users/trading-balance/transfer', () => {
     };
   });
 
-  it('transfers trading balance through the canonical route', async () => {
+  it("transfers trading balance through the canonical route", async () => {
     const POST = await loadPostHandler();
     const response = (await POST(
-      new Request('https://example.com/api/users/trading-balance/transfer', {
-        method: 'POST',
+      new Request("https://example.com/api/users/trading-balance/transfer", {
+        method: "POST",
         body: JSON.stringify({
-          recipientUserId: 'receiver-1',
+          recipientUserId: "receiver-1",
           amount: 25,
-          description: 'settlement',
+          description: "settlement",
         }),
-      }) as unknown as import('next/server').NextRequest
+      }) as unknown as import("next/server").NextRequest,
     )) as Response;
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.transfer.id).toBe('transfer-1');
-    expect(body.transfer.amount).toBe('25');
-    expect(body.sender.balanceAfter).toBe('75');
-    expect(body.recipient.balanceAfter).toBe('30');
+    expect(body.transfer.id).toBe("transfer-1");
+    expect(body.transfer.amount).toBe("25");
+    expect(body.sender.balanceAfter).toBe("75");
+    expect(body.recipient.balanceAfter).toBe("30");
   });
 
-  it('returns 429 when rate limited', async () => {
+  it("returns 429 when rate limited", async () => {
     checkRateLimitAsyncMock.mockResolvedValueOnce({
       allowed: false,
       retryAfter: 12,
@@ -128,13 +128,13 @@ describe('POST /api/users/trading-balance/transfer', () => {
 
     const POST = await loadPostHandler();
     const response = (await POST(
-      new Request('https://example.com/api/users/trading-balance/transfer', {
-        method: 'POST',
+      new Request("https://example.com/api/users/trading-balance/transfer", {
+        method: "POST",
         body: JSON.stringify({
-          recipientUserId: 'receiver-1',
+          recipientUserId: "receiver-1",
           amount: 25,
         }),
-      }) as unknown as import('next/server').NextRequest
+      }) as unknown as import("next/server").NextRequest,
     )) as Response;
     const body = await response.json();
 

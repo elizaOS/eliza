@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { cn } from '@feed/shared';
-import { Download, Maximize2 } from 'lucide-react';
-import { useCallback, useState } from 'react';
+import { cn } from "@feed/shared";
+import { Download, Maximize2 } from "lucide-react";
+import { useCallback, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -19,9 +19,9 @@ import {
   Tooltip,
   XAxis,
   YAxis,
-} from 'recharts';
+} from "recharts";
 
-export type ChartType = 'line' | 'bar' | 'area' | 'pie';
+export type ChartType = "line" | "bar" | "area" | "pie";
 
 export interface ChartConfig {
   type: ChartType;
@@ -49,14 +49,14 @@ interface ChartRendererProps {
 }
 
 const DEFAULT_COLORS = [
-  '#3b82f6', // blue
-  '#22c55e', // green
-  '#f59e0b', // orange
-  '#ef4444', // red
-  '#8b5cf6', // purple
-  '#06b6d4', // cyan
-  '#ec4899', // pink
-  '#84cc16', // lime
+  "#3b82f6", // blue
+  "#22c55e", // green
+  "#f59e0b", // orange
+  "#ef4444", // red
+  "#8b5cf6", // purple
+  "#06b6d4", // cyan
+  "#ec4899", // pink
+  "#84cc16", // lime
 ];
 
 /**
@@ -117,7 +117,7 @@ function LineChartComponent({
           <CartesianGrid strokeDasharray="3 3" stroke="#333" />
         )}
         <XAxis
-          dataKey={config.xAxisKey || 'date'}
+          dataKey={config.xAxisKey || "date"}
           stroke="#888"
           fontSize={12}
           tickFormatter={config.formatXAxis}
@@ -131,8 +131,8 @@ function LineChartComponent({
               ? {
                   value: config.yAxisLabel,
                   angle: -90,
-                  position: 'insideLeft',
-                  style: { textAnchor: 'middle', fill: '#888' },
+                  position: "insideLeft",
+                  style: { textAnchor: "middle", fill: "#888" },
                 }
               : undefined
           }
@@ -179,7 +179,7 @@ function BarChartComponent({
           <CartesianGrid strokeDasharray="3 3" stroke="#333" />
         )}
         <XAxis
-          dataKey={config.xAxisKey || 'name'}
+          dataKey={config.xAxisKey || "name"}
           stroke="#888"
           fontSize={12}
           tickFormatter={config.formatXAxis}
@@ -195,7 +195,7 @@ function BarChartComponent({
               config.colors?.[index] ||
               DEFAULT_COLORS[index % DEFAULT_COLORS.length]
             }
-            stackId={config.stacked ? 'stack' : undefined}
+            stackId={config.stacked ? "stack" : undefined}
             radius={[4, 4, 0, 0]}
           />
         ))}
@@ -225,7 +225,7 @@ function AreaChartComponent({
           <CartesianGrid strokeDasharray="3 3" stroke="#333" />
         )}
         <XAxis
-          dataKey={config.xAxisKey || 'date'}
+          dataKey={config.xAxisKey || "date"}
           stroke="#888"
           fontSize={12}
           tickFormatter={config.formatXAxis}
@@ -247,7 +247,7 @@ function AreaChartComponent({
               DEFAULT_COLORS[index % DEFAULT_COLORS.length]
             }
             fillOpacity={0.2}
-            stackId={config.stacked ? 'stack' : undefined}
+            stackId={config.stacked ? "stack" : undefined}
           />
         ))}
       </AreaChart>
@@ -273,12 +273,12 @@ function PieChartComponent({
         <Pie
           data={data}
           dataKey={config.dataKey}
-          nameKey={config.xAxisKey || 'name'}
+          nameKey={config.xAxisKey || "name"}
           cx="50%"
           cy="50%"
           outerRadius={height / 3}
           label={({ name, percent }) =>
-            `${String(name || '')} ${((percent ?? 0) * 100).toFixed(0)}%`
+            `${String(name || "")} ${((percent ?? 0) * 100).toFixed(0)}%`
           }
           labelLine={false}
         >
@@ -320,17 +320,17 @@ export function ChartRenderer({
     // Default CSV export
     const headers = Object.keys(data[0] || {});
     const csvContent = [
-      headers.join(','),
+      headers.join(","),
       ...data.map((row) =>
-        headers.map((h) => JSON.stringify(row[h] ?? '')).join(',')
+        headers.map((h) => JSON.stringify(row[h] ?? "")).join(","),
       ),
-    ].join('\n');
+    ].join("\n");
 
-    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const blob = new Blob([csvContent], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
-    a.download = `${config.title.toLowerCase().replace(/\s+/g, '-')}.csv`;
+    a.download = `${config.title.toLowerCase().replace(/\s+/g, "-")}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }, [data, config.title, onExport]);
@@ -339,7 +339,7 @@ export function ChartRenderer({
 
   const renderChart = () => {
     switch (config.type) {
-      case 'line':
+      case "line":
         return (
           <LineChartComponent
             data={data}
@@ -347,11 +347,11 @@ export function ChartRenderer({
             height={chartHeight}
           />
         );
-      case 'bar':
+      case "bar":
         return (
           <BarChartComponent data={data} config={config} height={chartHeight} />
         );
-      case 'area':
+      case "area":
         return (
           <AreaChartComponent
             data={data}
@@ -359,7 +359,7 @@ export function ChartRenderer({
             height={chartHeight}
           />
         );
-      case 'pie':
+      case "pie":
         return (
           <PieChartComponent data={data} config={config} height={chartHeight} />
         );
@@ -377,9 +377,9 @@ export function ChartRenderer({
   const chartWrapper = (
     <div
       className={cn(
-        'rounded-lg border border-border bg-card p-4',
-        isFullscreen && 'fixed inset-4 z-50 overflow-auto',
-        className
+        "rounded-lg border border-border bg-card p-4",
+        isFullscreen && "fixed inset-4 z-50 overflow-auto",
+        className,
       )}
     >
       {/* Header */}
@@ -404,7 +404,7 @@ export function ChartRenderer({
           <button
             onClick={() => setIsFullscreen(!isFullscreen)}
             className="flex items-center gap-1 rounded bg-muted px-2 py-1 text-muted-foreground text-sm hover:bg-muted/80"
-            title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+            title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
           >
             <Maximize2 className="h-4 w-4" />
           </button>
@@ -455,13 +455,13 @@ export function DataTable({
     key: string;
     label: string;
     format?: (value: string | number | boolean | null) => string;
-    align?: 'left' | 'center' | 'right';
+    align?: "left" | "center" | "right";
   }>;
   title?: string;
   className?: string;
 }) {
   return (
-    <div className={cn('rounded-lg border border-border bg-card', className)}>
+    <div className={cn("rounded-lg border border-border bg-card", className)}>
       {title && (
         <div className="border-border border-b p-4">
           <h3 className="font-semibold text-lg">{title}</h3>
@@ -475,9 +475,9 @@ export function DataTable({
                 <th
                   key={col.key}
                   className={cn(
-                    'px-4 py-3 font-medium text-muted-foreground text-sm',
-                    col.align === 'right' && 'text-right',
-                    col.align === 'center' && 'text-center'
+                    "px-4 py-3 font-medium text-muted-foreground text-sm",
+                    col.align === "right" && "text-right",
+                    col.align === "center" && "text-center",
                   )}
                 >
                   {col.label}
@@ -495,16 +495,16 @@ export function DataTable({
                   <td
                     key={col.key}
                     className={cn(
-                      'px-4 py-3 text-sm',
-                      col.align === 'right' && 'text-right',
-                      col.align === 'center' && 'text-center'
+                      "px-4 py-3 text-sm",
+                      col.align === "right" && "text-right",
+                      col.align === "center" && "text-center",
                     )}
                   >
                     {col.format
                       ? col.format(
-                          row[col.key] as string | number | boolean | null
+                          row[col.key] as string | number | boolean | null,
                         )
-                      : String(row[col.key] ?? '')}
+                      : String(row[col.key] ?? "")}
                   </td>
                 ))}
               </tr>

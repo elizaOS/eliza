@@ -59,12 +59,12 @@ import {
   logAdminView,
   requireAdmin,
   withErrorHandling,
-} from '@feed/api';
-import { automationPipeline } from '@feed/training';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@feed/api";
+import { automationPipeline } from "@feed/training";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   const admin = await requireAdmin(request);
@@ -73,8 +73,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   logAdminView({
     adminId: admin.userId,
     ipAddress: getClientIp(request.headers) ?? undefined,
-    resourceType: 'training',
-    metadata: { action: 'view_status' },
+    resourceType: "training",
+    metadata: { action: "view_status" },
   });
 
   // Get automation status
@@ -95,7 +95,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   return NextResponse.json({
     success: true,
     data: {
-      status: 'healthy',
+      status: "healthy",
       automation: status,
       readiness,
       recentJobs,

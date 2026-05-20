@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { useMemo } from 'react';
-import { useUserPositions } from '@/hooks/useUserPositions';
+import { useMemo } from "react";
+import { useUserPositions } from "@/hooks/useUserPositions";
 
 interface UseAgentTotalPnLOptions {
   /** Agent ID to fetch positions for */
@@ -40,11 +40,11 @@ interface UseAgentTotalPnLOptions {
  */
 export function useAgentTotalPnL(
   optionsOrAgentId: UseAgentTotalPnLOptions | string | undefined,
-  legacyRealizedPnL?: string | number
+  legacyRealizedPnL?: string | number,
 ) {
   // Support both new object API and legacy (agentId, realizedPnL) signature
   const options: UseAgentTotalPnLOptions =
-    typeof optionsOrAgentId === 'object' && optionsOrAgentId !== null
+    typeof optionsOrAgentId === "object" && optionsOrAgentId !== null
       ? optionsOrAgentId
       : {
           agentId: optionsOrAgentId,
@@ -113,8 +113,8 @@ export function useAgentTotalPnL(
 
   // Guard against non-finite numbers to prevent NaN propagation
   const realizedRaw =
-    typeof realizedPnL === 'string'
-      ? parseFloat(realizedPnL ?? '0')
+    typeof realizedPnL === "string"
+      ? parseFloat(realizedPnL ?? "0")
       : Number(realizedPnL ?? 0);
   const realized = Number.isFinite(realizedRaw) ? realizedRaw : 0;
 

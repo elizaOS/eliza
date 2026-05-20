@@ -1,6 +1,6 @@
-import type { TeamTradingSummary } from './team-trading-summary';
+import type { TeamTradingSummary } from "./team-trading-summary";
 
-export type AgentModelTier = 'free' | 'pro';
+export type AgentModelTier = "free" | "pro";
 
 export interface TeamDashboardAgent {
   id: string;

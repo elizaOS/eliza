@@ -5,18 +5,18 @@
  * Falls back through providers in order: Groq -> Claude -> OpenAI
  */
 
-import { createAnthropic } from '@ai-sdk/anthropic';
-import { createGroq } from '@ai-sdk/groq';
-import { createOpenAI } from '@ai-sdk/openai';
+import { createAnthropic } from "@ai-sdk/anthropic";
+import { createGroq } from "@ai-sdk/groq";
+import { createOpenAI } from "@ai-sdk/openai";
 
 // Use unknown for model type since AI SDK types vary by version
 // The actual type is LanguageModelV2 from @ai-sdk/provider but it's not exported in all versions
 type LanguageModelType = unknown;
 
-import type { A2APerpPosition } from '@feed/a2a';
-import type { JsonValue } from '@feed/shared';
-import { generateText } from 'ai';
-import type { MemoryEntry } from './memory';
+import type { A2APerpPosition } from "@feed/a2a";
+import type { JsonValue } from "@feed/shared";
+import { generateText } from "ai";
+import type { MemoryEntry } from "./memory";
 
 export interface PredictionMarket {
   id?: string;
@@ -46,20 +46,20 @@ export interface DecisionContext {
 
 export interface Decision {
   action:
-    | 'BUY_YES'
-    | 'BUY_NO'
-    | 'SELL'
-    | 'OPEN_LONG'
-    | 'OPEN_SHORT'
-    | 'CLOSE_POSITION'
-    | 'CREATE_POST'
-    | 'CREATE_COMMENT'
-    | 'HOLD';
+    | "BUY_YES"
+    | "BUY_NO"
+    | "SELL"
+    | "OPEN_LONG"
+    | "OPEN_SHORT"
+    | "CLOSE_POSITION"
+    | "CREATE_POST"
+    | "CREATE_COMMENT"
+    | "HOLD";
   params?: Record<string, JsonValue>;
   reasoning?: string;
 }
 
-type Strategy = 'conservative' | 'balanced' | 'aggressive' | 'social';
+type Strategy = "conservative" | "balanced" | "aggressive" | "social";
 
 export interface DecisionMakerConfig {
   strategy: Strategy;
@@ -70,12 +70,12 @@ export interface DecisionMakerConfig {
 
 const STRATEGY_INSTRUCTIONS: Record<Strategy, string> = {
   conservative:
-    'Only trade with high confidence. Prefer holding cash. Risk tolerance: Low.',
+    "Only trade with high confidence. Prefer holding cash. Risk tolerance: Low.",
   balanced:
-    'Balance risk and reward. Trade moderately. Risk tolerance: Medium.',
-  aggressive: 'Seek maximum returns. Trade actively. Risk tolerance: High.',
+    "Balance risk and reward. Trade moderately. Risk tolerance: Medium.",
+  aggressive: "Seek maximum returns. Trade actively. Risk tolerance: High.",
   social:
-    'Focus on social engagement. Post and comment frequently. Trade occasionally.',
+    "Focus on social engagement. Post and comment frequently. Trade occasionally.",
 } as const;
 
 const MAX_DISPLAY_ITEMS = 3;
@@ -93,19 +93,19 @@ export class AgentDecisionMaker {
     // Initialize provider in order: Groq -> Claude -> OpenAI
     if (config.groqApiKey) {
       const groq = createGroq({ apiKey: config.groqApiKey });
-      this.model = groq('llama-3.1-8b-instant'); // Free tier: Fast and efficient
-      this.providerName = 'Groq (llama-3.1-8b-instant)';
+      this.model = groq("llama-3.1-8b-instant"); // Free tier: Fast and efficient
+      this.providerName = "Groq (llama-3.1-8b-instant)";
     } else if (config.anthropicApiKey) {
       const anthropic = createAnthropic({ apiKey: config.anthropicApiKey });
-      this.model = anthropic('claude-sonnet-4-5');
-      this.providerName = 'Claude (claude-sonnet-4-5)';
+      this.model = anthropic("claude-sonnet-4-5");
+      this.providerName = "Claude (claude-sonnet-4-5)";
     } else if (config.openaiApiKey) {
       const openai = createOpenAI({ apiKey: config.openaiApiKey });
-      this.model = openai('gpt-5.1');
-      this.providerName = 'OpenAI (gpt-5.1)';
+      this.model = openai("gpt-5.1");
+      this.providerName = "OpenAI (gpt-5.1)";
     } else {
       throw new Error(
-        'At least one LLM API key is required (GROQ_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY)'
+        "At least one LLM API key is required (GROQ_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY)",
       );
     }
 
@@ -143,7 +143,7 @@ export class AgentDecisionMaker {
     const formatPredictionMarket = (m: PredictionMarket) => {
       const total = m.yesShares + m.noShares;
       const yesPercent =
-        total > 0 ? ((m.yesShares / total) * 100).toFixed(0) : '50';
+        total > 0 ? ((m.yesShares / total) * 100).toFixed(0) : "50";
       return `- "${m.question}" (YES: ${yesPercent}%)`;
     };
 
@@ -167,16 +167,16 @@ Current Portfolio:
 - P&L: $${context.portfolio.pnl}
 
 Available Prediction Markets (top ${MAX_DISPLAY_ITEMS}):
-${context.markets.predictions.slice(0, MAX_DISPLAY_ITEMS).map(formatPredictionMarket).join('\n') || 'None'}
+${context.markets.predictions.slice(0, MAX_DISPLAY_ITEMS).map(formatPredictionMarket).join("\n") || "None"}
 
 Available Perp Markets (top ${MAX_DISPLAY_ITEMS}):
-${context.markets.perps.slice(0, MAX_DISPLAY_ITEMS).map(formatPerpMarket).join('\n') || 'None'}
+${context.markets.perps.slice(0, MAX_DISPLAY_ITEMS).map(formatPerpMarket).join("\n") || "None"}
 
 Recent Feed Activity:
-${context.feed.posts.slice(0, MAX_DISPLAY_ITEMS).map(formatPost).join('\n') || 'None'}
+${context.feed.posts.slice(0, MAX_DISPLAY_ITEMS).map(formatPost).join("\n") || "None"}
 
 Recent Memory (last ${MAX_DISPLAY_ITEMS} actions):
-${context.memory.map(formatMemory).join('\n') || 'No recent actions'}
+${context.memory.map(formatMemory).join("\n") || "No recent actions"}
 
 Decision Task:
 Analyze the above context and decide what action to take this tick.
@@ -208,12 +208,12 @@ Your decision (JSON only):`;
     // Extract JSON from response
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      throw new Error('No JSON found in LLM response');
+      throw new Error("No JSON found in LLM response");
     }
 
     const decision = JSON.parse(jsonMatch[0]);
     return {
-      action: decision.action || 'HOLD',
+      action: decision.action || "HOLD",
       params: decision.params,
       reasoning: decision.reasoning,
     };

@@ -17,10 +17,10 @@ export const GAME_TICK_CONFIG = {
 } as const;
 
 export const MARKET_DECISION_CONFIG = {
-  model: process.env.MARKET_DECISION_MODEL || 'openai/gpt-oss-120b',
+  model: process.env.MARKET_DECISION_MODEL || "openai/gpt-oss-120b",
   maxOutputTokens:
     Number(process.env.MARKET_DECISION_MAX_OUTPUT_TOKENS) || 32000,
-  strictValidation: process.env.STRICT_LLM_VALIDATION === 'true',
+  strictValidation: process.env.STRICT_LLM_VALIDATION === "true",
 } as const;
 
 // Parse values once to avoid re-reading process.env
@@ -45,14 +45,14 @@ export const BLOCKCHAIN_CONFIG = {
 } as const;
 
 // Cache nodeEnv and bunEnv once and derive all flags from cached values
-const nodeEnv = process.env.NODE_ENV || 'development';
+const nodeEnv = process.env.NODE_ENV || "development";
 const bunEnv = process.env.BUN_ENV;
 
 export const ENV_CONFIG = {
   nodeEnv,
-  isProduction: nodeEnv === 'production',
-  isTest: nodeEnv === 'test' || bunEnv === 'test',
-  isDevelopment: nodeEnv === 'development',
+  isProduction: nodeEnv === "production",
+  isTest: nodeEnv === "test" || bunEnv === "test",
+  isDevelopment: nodeEnv === "development",
 } as const;
 
 /**
@@ -63,7 +63,7 @@ export const ENV_CONFIG = {
 export const SUB_MARKET_CONFIG = {
   /** Enable event-based sub-market spawning (in addition to cron-based) */
   enableEventBasedSpawning:
-    process.env.ENABLE_EVENT_BASED_SUB_MARKETS === 'true',
+    process.env.ENABLE_EVENT_BASED_SUB_MARKETS === "true",
 } as const;
 
 export function hasTimeRemaining(deadline: number): boolean {

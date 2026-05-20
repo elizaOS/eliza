@@ -1,10 +1,10 @@
-import { createHash } from 'node:crypto';
-import { checkDatabaseHealth, db, queryMonitor } from '@feed/db';
-import { logger } from '@feed/shared';
-import type { CronJobStats } from '../monitoring/cron-metrics';
-import { cronMetrics } from '../monitoring/cron-metrics';
-import { getRedisClient, isRedisAvailable } from '../redis/client';
-import { getDeploymentEnvironment } from '../utils/environment';
+import { createHash } from "node:crypto";
+import { checkDatabaseHealth, db, queryMonitor } from "@feed/db";
+import { logger } from "@feed/shared";
+import type { CronJobStats } from "../monitoring/cron-metrics";
+import { cronMetrics } from "../monitoring/cron-metrics";
+import { getRedisClient, isRedisAvailable } from "../redis/client";
+import { getDeploymentEnvironment } from "../utils/environment";
 
 const GAME_TICK_WARNING_MS = 5 * 60 * 1000;
 const GAME_TICK_CRITICAL_MS = 10 * 60 * 1000;
@@ -15,9 +15,9 @@ const MEMORY_CRITICAL_PERCENT = 95;
 const CONTENT_LOOKAHEAD_WARNING_MINUTES = 5;
 const REALTIME_LAG_WARNING_SECONDS = 60;
 const ALERT_THROTTLE_SECONDS = 30 * 60;
-const REDIS_ALERT_PREFIX = 'observability:discord-alert:';
+const REDIS_ALERT_PREFIX = "observability:discord-alert:";
 
-type SystemStatusLevel = 'healthy' | 'warning' | 'critical';
+type SystemStatusLevel = "healthy" | "warning" | "critical";
 
 interface SystemActivityWindow {
   newUsers: number;
@@ -134,24 +134,24 @@ interface CronDashboardSnapshot {
   };
   alerts: Array<{
     jobName: string;
-    type: 'consecutive_failures' | 'high_duration' | 'no_recent_execution';
+    type: "consecutive_failures" | "high_duration" | "no_recent_execution";
     message: string;
-    severity: 'warning' | 'critical';
+    severity: "warning" | "critical";
   }>;
   jobs: SerializedCronJobStats[];
 }
 
 export interface SystemStatusSubsystem {
   key:
-    | 'database'
-    | 'redis'
-    | 'game-engine'
-    | 'cron'
-    | 'realtime'
-    | 'content'
-    | 'llm'
-    | 'query-performance'
-    | 'memory';
+    | "database"
+    | "redis"
+    | "game-engine"
+    | "cron"
+    | "realtime"
+    | "content"
+    | "llm"
+    | "query-performance"
+    | "memory";
   label: string;
   status: SystemStatusLevel;
   summary: string;
@@ -203,9 +203,9 @@ export interface SystemStatusSnapshot {
     createdAt: string;
   }>;
   cronJobs: {
-    summary: CronDashboardSnapshot['summary'];
-    alerts: CronDashboardSnapshot['alerts'];
-    allJobs: CronDashboardSnapshot['jobs'];
+    summary: CronDashboardSnapshot["summary"];
+    alerts: CronDashboardSnapshot["alerts"];
+    allJobs: CronDashboardSnapshot["jobs"];
     gameTick: SerializedCronJobStats | null;
     agentTick: SerializedCronJobStats | null;
     realtimeDrain: SerializedCronJobStats | null;
@@ -231,8 +231,8 @@ export interface BuildSystemStatusInput {
   game: SystemGameSource | null;
   activityMetrics: SystemActivityMetrics;
   cron: {
-    summary: CronDashboardSnapshot['summary'];
-    alerts: CronDashboardSnapshot['alerts'];
+    summary: CronDashboardSnapshot["summary"];
+    alerts: CronDashboardSnapshot["alerts"];
     jobs: CronJobStats[];
   };
   llm: SystemLlmMetrics;
@@ -263,7 +263,7 @@ function formatDuration(seconds: number): string {
   if (minutes > 0) parts.push(`${minutes}m`);
   if (secs > 0 || parts.length === 0) parts.push(`${secs}s`);
 
-  return parts.join(' ');
+  return parts.join(" ");
 }
 
 function formatPercent(value: number): string {
@@ -275,7 +275,7 @@ function round(value: number): number {
 }
 
 function formatCount(value: number): string {
-  return value.toLocaleString('en-US');
+  return value.toLocaleString("en-US");
 }
 
 function serializeCronJobStats(job: CronJobStats): SerializedCronJobStats {
@@ -301,18 +301,18 @@ function withPersistedMetricsSnapshotJob(
     timestamp: Date;
     createdAt: Date;
     snapshotDurationMs: number;
-  } | null
+  } | null,
 ): ReturnType<typeof cronMetrics.getDashboardMetrics> {
   if (!snapshot) {
     return dashboard;
   }
 
   const existingIndex = dashboard.jobs.findIndex(
-    (job) => job.jobName === 'metrics-snapshot'
+    (job) => job.jobName === "metrics-snapshot",
   );
 
   const metricsSnapshotJob: CronJobStats = {
-    jobName: 'metrics-snapshot',
+    jobName: "metrics-snapshot",
     totalExecutions: 1,
     successfulExecutions: 1,
     skippedExecutions: 0,
@@ -329,29 +329,29 @@ function withPersistedMetricsSnapshotJob(
   const jobs =
     existingIndex >= 0
       ? dashboard.jobs.map((job, index) =>
-          index === existingIndex ? metricsSnapshotJob : job
+          index === existingIndex ? metricsSnapshotJob : job,
         )
       : [...dashboard.jobs, metricsSnapshotJob];
 
   const alerts = dashboard.alerts.filter(
-    (alert) => alert.jobName !== 'metrics-snapshot'
+    (alert) => alert.jobName !== "metrics-snapshot",
   );
   const totalExecutions = jobs.reduce(
     (sum, job) => sum + job.totalExecutions,
-    0
+    0,
   );
   const totalSuccesses = jobs.reduce(
     (sum, job) => sum + job.successfulExecutions,
-    0
+    0,
   );
   const totalDuration = jobs.reduce(
     (sum, job) =>
       sum + job.avgDurationMs * (job.totalExecutions - job.skippedExecutions),
-    0
+    0,
   );
   const durationCount = jobs.reduce(
     (sum, job) => sum + (job.totalExecutions - job.skippedExecutions),
-    0
+    0,
   );
   const healthyJobs = jobs.filter((job) => job.consecutiveFailures < 3).length;
 
@@ -372,61 +372,61 @@ function withPersistedMetricsSnapshotJob(
 
 function getQueryStatus(slowRate: number): SystemStatusLevel {
   if (slowRate >= QUERY_SLOW_RATE_CRITICAL_PERCENT) {
-    return 'critical';
+    return "critical";
   }
 
   if (slowRate >= QUERY_SLOW_RATE_WARNING_PERCENT) {
-    return 'warning';
+    return "warning";
   }
 
-  return 'healthy';
+  return "healthy";
 }
 
 function getMemoryStatus(usagePercent: number): SystemStatusLevel {
   if (usagePercent >= MEMORY_CRITICAL_PERCENT) {
-    return 'critical';
+    return "critical";
   }
 
   if (usagePercent >= MEMORY_WARNING_PERCENT) {
-    return 'warning';
+    return "warning";
   }
 
-  return 'healthy';
+  return "healthy";
 }
 
 function getGameEngineSubsystem(
   input: BuildSystemStatusInput,
-  generatedAt: Date
+  generatedAt: Date,
 ): SystemStatusSubsystem {
   if (!input.databaseHealthy && !input.game) {
     return {
-      key: 'game-engine',
-      label: 'Game Engine',
-      status: 'critical',
-      summary: 'Unavailable',
-      details: 'Database is unreachable, game state could not be loaded.',
+      key: "game-engine",
+      label: "Game Engine",
+      status: "critical",
+      summary: "Unavailable",
+      details: "Database is unreachable, game state could not be loaded.",
     };
   }
 
   if (!input.game) {
     return {
-      key: 'game-engine',
-      label: 'Game Engine',
-      status: 'warning',
-      summary: 'No continuous game found',
-      details: 'No active game state was returned by the database.',
+      key: "game-engine",
+      label: "Game Engine",
+      status: "warning",
+      summary: "No continuous game found",
+      details: "No active game state was returned by the database.",
     };
   }
 
   if (!input.game.isRunning) {
     return {
-      key: 'game-engine',
-      label: 'Game Engine',
-      status: 'healthy',
-      summary: 'Paused',
+      key: "game-engine",
+      label: "Game Engine",
+      status: "healthy",
+      summary: "Paused",
       details: `Day ${input.game.currentTick} is currently paused.`,
       metric: {
-        label: 'Current day',
+        label: "Current day",
         value: `Day ${input.game.currentTick}`,
       },
     };
@@ -434,14 +434,14 @@ function getGameEngineSubsystem(
 
   if (!input.game.lastTickAt) {
     return {
-      key: 'game-engine',
-      label: 'Game Engine',
-      status: 'critical',
-      summary: 'Running without a recent tick',
+      key: "game-engine",
+      label: "Game Engine",
+      status: "critical",
+      summary: "Running without a recent tick",
       details:
-        'The game reports as running, but no last tick timestamp is available.',
+        "The game reports as running, but no last tick timestamp is available.",
       metric: {
-        label: 'Current day',
+        label: "Current day",
         value: `Day ${input.game.currentTick}`,
       },
     };
@@ -450,13 +450,13 @@ function getGameEngineSubsystem(
   const tickAgeMs = generatedAt.getTime() - input.game.lastTickAt.getTime();
   if (tickAgeMs > GAME_TICK_CRITICAL_MS) {
     return {
-      key: 'game-engine',
-      label: 'Game Engine',
-      status: 'critical',
-      summary: 'Tick is stale',
+      key: "game-engine",
+      label: "Game Engine",
+      status: "critical",
+      summary: "Tick is stale",
       details: `Last tick was ${Math.round(tickAgeMs / 60000)} minutes ago.`,
       metric: {
-        label: 'Current day',
+        label: "Current day",
         value: `Day ${input.game.currentTick}`,
       },
     };
@@ -464,50 +464,50 @@ function getGameEngineSubsystem(
 
   if (tickAgeMs > GAME_TICK_WARNING_MS) {
     return {
-      key: 'game-engine',
-      label: 'Game Engine',
-      status: 'warning',
-      summary: 'Tick is delayed',
+      key: "game-engine",
+      label: "Game Engine",
+      status: "warning",
+      summary: "Tick is delayed",
       details: `Last tick was ${Math.round(tickAgeMs / 60000)} minutes ago.`,
       metric: {
-        label: 'Current day',
+        label: "Current day",
         value: `Day ${input.game.currentTick}`,
       },
     };
   }
 
   return {
-    key: 'game-engine',
-    label: 'Game Engine',
-    status: 'healthy',
-    summary: 'Running normally',
+    key: "game-engine",
+    label: "Game Engine",
+    status: "healthy",
+    summary: "Running normally",
     details: `Last tick ${Math.max(0, Math.round(tickAgeMs / 1000))} seconds ago.`,
     metric: {
-      label: 'Current day',
+      label: "Current day",
       value: `Day ${input.game.currentTick}`,
     },
   };
 }
 
 function getCronSubsystem(
-  input: BuildSystemStatusInput
+  input: BuildSystemStatusInput,
 ): SystemStatusSubsystem {
   const criticalAlerts = input.cron.alerts.filter(
-    (alert) => alert.severity === 'critical'
+    (alert) => alert.severity === "critical",
   );
   const warningAlerts = input.cron.alerts.filter(
-    (alert) => alert.severity === 'warning'
+    (alert) => alert.severity === "warning",
   );
 
   if (criticalAlerts.length > 0) {
     return {
-      key: 'cron',
-      label: 'Cron Jobs',
-      status: 'critical',
-      summary: `${criticalAlerts.length} critical cron alert${criticalAlerts.length === 1 ? '' : 's'}`,
-      details: criticalAlerts[0]?.message ?? 'Critical cron alerts detected.',
+      key: "cron",
+      label: "Cron Jobs",
+      status: "critical",
+      summary: `${criticalAlerts.length} critical cron alert${criticalAlerts.length === 1 ? "" : "s"}`,
+      details: criticalAlerts[0]?.message ?? "Critical cron alerts detected.",
       metric: {
-        label: 'Healthy jobs',
+        label: "Healthy jobs",
         value: `${input.cron.summary.healthyJobs}/${input.cron.summary.totalJobs}`,
       },
     };
@@ -519,148 +519,148 @@ function getCronSubsystem(
     input.cron.summary.totalJobs === 0
   ) {
     return {
-      key: 'cron',
-      label: 'Cron Jobs',
-      status: 'warning',
+      key: "cron",
+      label: "Cron Jobs",
+      status: "warning",
       summary:
         input.cron.summary.totalJobs === 0
-          ? 'No recent cron history'
-          : `${warningAlerts.length} warning cron alert${warningAlerts.length === 1 ? '' : 's'}`,
+          ? "No recent cron history"
+          : `${warningAlerts.length} warning cron alert${warningAlerts.length === 1 ? "" : "s"}`,
       details:
         warningAlerts[0]?.message ??
-        'Cron jobs have not yet produced enough history for a health assessment.',
+        "Cron jobs have not yet produced enough history for a health assessment.",
       metric: {
-        label: 'Healthy jobs',
+        label: "Healthy jobs",
         value: `${input.cron.summary.healthyJobs}/${input.cron.summary.totalJobs}`,
       },
     };
   }
 
   return {
-    key: 'cron',
-    label: 'Cron Jobs',
-    status: 'healthy',
-    summary: 'No active cron alerts',
+    key: "cron",
+    label: "Cron Jobs",
+    status: "healthy",
+    summary: "No active cron alerts",
     details: `${input.cron.summary.healthyJobs}/${input.cron.summary.totalJobs} tracked jobs are healthy.`,
     metric: {
-      label: 'Success rate',
+      label: "Success rate",
       value: formatPercent(input.cron.summary.overallSuccessRate),
     },
   };
 }
 
 function getQuerySubsystem(
-  input: BuildSystemStatusInput
+  input: BuildSystemStatusInput,
 ): SystemStatusSubsystem {
   const query = input.performance.query;
   const summary =
     query.totalQueries === 0
-      ? 'No recent query sample'
+      ? "No recent query sample"
       : `${formatPercent(query.slowRate)} slow queries`;
 
   const details =
     query.totalQueries === 0
-      ? 'No database queries were sampled in the last minute.'
+      ? "No database queries were sampled in the last minute."
       : `P95 ${round(query.p95DurationMs)}ms · ${formatCount(query.totalQueries)} queries in the last minute.`;
 
   return {
-    key: 'query-performance',
-    label: 'Query Performance',
+    key: "query-performance",
+    label: "Query Performance",
     status: query.status,
     summary,
     details,
     metric: {
-      label: 'P95 latency',
+      label: "P95 latency",
       value: `${round(query.p95DurationMs)}ms`,
     },
   };
 }
 
 function getMemorySubsystem(
-  input: BuildSystemStatusInput
+  input: BuildSystemStatusInput,
 ): SystemStatusSubsystem {
   const memory = input.performance.memory;
 
   return {
-    key: 'memory',
-    label: 'Server Memory',
+    key: "memory",
+    label: "Server Memory",
     status: memory.status,
     summary: `${formatPercent(memory.usagePercent)} heap used`,
     details: `${round(memory.heapUsedMB)}MB / ${round(memory.heapTotalMB)}MB heap · RSS ${round(memory.rssMB)}MB.`,
     metric: {
-      label: 'Uptime',
+      label: "Uptime",
       value: input.performance.server.uptimeFormatted,
     },
   };
 }
 
 export function buildSystemStatusSnapshot(
-  input: BuildSystemStatusInput
+  input: BuildSystemStatusInput,
 ): SystemStatusSnapshot {
   const generatedAt = input.generatedAt ?? new Date();
 
   const subsystems: SystemStatusSubsystem[] = [
     {
-      key: 'database',
-      label: 'Database',
-      status: input.databaseHealthy ? 'healthy' : 'critical',
-      summary: input.databaseHealthy ? 'Connected' : 'Unavailable',
+      key: "database",
+      label: "Database",
+      status: input.databaseHealthy ? "healthy" : "critical",
+      summary: input.databaseHealthy ? "Connected" : "Unavailable",
       details: input.databaseHealthy
-        ? 'Primary database health check succeeded.'
-        : 'Database health check failed.',
+        ? "Primary database health check succeeded."
+        : "Database health check failed.",
       metric: {
-        label: 'Tables sampled',
+        label: "Tables sampled",
         value: formatCount(input.tables.length),
       },
     },
     {
-      key: 'redis',
-      label: 'Redis',
-      status: input.redisHealthy ? 'healthy' : 'warning',
-      summary: input.redisHealthy ? 'Available' : 'Unavailable',
+      key: "redis",
+      label: "Redis",
+      status: input.redisHealthy ? "healthy" : "warning",
+      summary: input.redisHealthy ? "Available" : "Unavailable",
       details: input.redisHealthy
-        ? 'Redis-backed cache and coordination are available.'
-        : 'Redis is unavailable; fallbacks may reduce observability quality.',
+        ? "Redis-backed cache and coordination are available."
+        : "Redis is unavailable; fallbacks may reduce observability quality.",
     },
     getGameEngineSubsystem(input, generatedAt),
     getCronSubsystem(input),
     {
-      key: 'realtime',
-      label: 'Realtime Outbox',
-      status: input.realtime.isHealthy ? 'healthy' : 'warning',
+      key: "realtime",
+      label: "Realtime Outbox",
+      status: input.realtime.isHealthy ? "healthy" : "warning",
       summary: input.realtime.isHealthy
-        ? 'Realtime delivery is healthy'
-        : 'Realtime delivery is lagging',
+        ? "Realtime delivery is healthy"
+        : "Realtime delivery is lagging",
       details: `${formatCount(input.realtime.outboxPending)} pending messages · ${formatCount(input.realtime.outboxLagSeconds)}s oldest lag.`,
       metric: {
-        label: 'Pending events',
+        label: "Pending events",
         value: formatCount(input.realtime.outboxPending),
       },
     },
     {
-      key: 'content',
-      label: 'Content Pipeline',
-      status: input.content.isHealthy ? 'healthy' : 'warning',
+      key: "content",
+      label: "Content Pipeline",
+      status: input.content.isHealthy ? "healthy" : "warning",
       summary: input.content.isHealthy
-        ? 'Lookahead is healthy'
-        : 'Lookahead is below target',
+        ? "Lookahead is healthy"
+        : "Lookahead is below target",
       details: `${formatCount(input.content.lookaheadMinutes)} minutes of lookahead · ${formatCount(input.content.activeQuestions)} active questions.`,
       metric: {
-        label: 'Lookahead',
+        label: "Lookahead",
         value: `${formatCount(input.content.lookaheadMinutes)} min`,
       },
     },
     {
-      key: 'llm',
-      label: 'LLM Calls',
-      status: input.llm.errorsLastHour > 0 ? 'warning' : 'healthy',
+      key: "llm",
+      label: "LLM Calls",
+      status: input.llm.errorsLastHour > 0 ? "warning" : "healthy",
       summary:
         input.llm.errorsLastHour > 0
-          ? `${formatCount(input.llm.errorsLastHour)} recent error${input.llm.errorsLastHour === 1 ? '' : 's'}`
-          : 'No recent LLM errors',
+          ? `${formatCount(input.llm.errorsLastHour)} recent error${input.llm.errorsLastHour === 1 ? "" : "s"}`
+          : "No recent LLM errors",
       details: `${formatCount(input.llm.callsLast24h)} calls in the last 24 hours.`,
       metric: {
-        label: 'Errors last hour',
+        label: "Errors last hour",
         value: formatCount(input.llm.errorsLastHour),
       },
     },
@@ -669,21 +669,21 @@ export function buildSystemStatusSnapshot(
   ];
 
   const criticalIssues = subsystems
-    .filter((subsystem) => subsystem.status === 'critical')
+    .filter((subsystem) => subsystem.status === "critical")
     .map((subsystem) => `${subsystem.label}: ${subsystem.summary}`);
   const issues = subsystems
-    .filter((subsystem) => subsystem.status !== 'healthy')
+    .filter((subsystem) => subsystem.status !== "healthy")
     .map((subsystem) => `${subsystem.label}: ${subsystem.summary}`);
 
   const criticalCount = subsystems.filter(
-    (subsystem) => subsystem.status === 'critical'
+    (subsystem) => subsystem.status === "critical",
   ).length;
   const warningCount = subsystems.filter(
-    (subsystem) => subsystem.status === 'warning'
+    (subsystem) => subsystem.status === "warning",
   ).length;
   const healthyCount = subsystems.length - criticalCount - warningCount;
   const status: SystemStatusLevel =
-    criticalCount > 0 ? 'critical' : warningCount > 0 ? 'warning' : 'healthy';
+    criticalCount > 0 ? "critical" : warningCount > 0 ? "warning" : "healthy";
 
   const timeSinceLastTickMs = input.game?.lastTickAt
     ? generatedAt.getTime() - input.game.lastTickAt.getTime()
@@ -736,11 +736,11 @@ export function buildSystemStatusSnapshot(
       alerts: input.cron.alerts,
       allJobs: serializedJobs,
       gameTick:
-        serializedJobs.find((job) => job.jobName === 'game-tick') ?? null,
+        serializedJobs.find((job) => job.jobName === "game-tick") ?? null,
       agentTick:
-        serializedJobs.find((job) => job.jobName === 'agent-tick') ?? null,
+        serializedJobs.find((job) => job.jobName === "agent-tick") ?? null,
       realtimeDrain:
-        serializedJobs.find((job) => job.jobName === 'realtime-drain') ?? null,
+        serializedJobs.find((job) => job.jobName === "realtime-drain") ?? null,
     },
     llm: input.llm,
     content: input.content,
@@ -763,7 +763,7 @@ export async function getSystemStatusSnapshot(): Promise<SystemStatusSnapshot> {
     checkDatabaseHealth(),
   ]);
   const databaseHealthy =
-    databaseHealthResult[0]?.status === 'fulfilled' &&
+    databaseHealthResult[0]?.status === "fulfilled" &&
     Boolean(databaseHealthResult[0].value);
 
   const redisHealthy = isRedisAvailable();
@@ -917,18 +917,18 @@ export async function getSystemStatusSnapshot(): Promise<SystemStatusSnapshot> {
     `,
     db.generationLock.findMany({
       where: { expiresAt: { gt: generatedAt } },
-      orderBy: { lockedAt: 'desc' },
+      orderBy: { lockedAt: "desc" },
       take: 5,
     }),
     db.post.findFirst({
-      orderBy: { timestamp: 'desc' },
+      orderBy: { timestamp: "desc" },
       select: { timestamp: true },
     }),
     db.report.count({
-      where: { status: 'pending' },
+      where: { status: "pending" },
     }),
     db.question.count({
-      where: { status: 'active' },
+      where: { status: "active" },
     }),
     db.$queryRaw<{
       timestamp: Date;
@@ -945,7 +945,7 @@ export async function getSystemStatusSnapshot(): Promise<SystemStatusSnapshot> {
 
   const cronDashboard = withPersistedMetricsSnapshotJob(
     inMemoryCronDashboard,
-    latestMetricsSnapshot[0] ?? null
+    latestMetricsSnapshot[0] ?? null,
   );
 
   const recentLlmErrorsCount = llmErrorCountResult[0]
@@ -956,13 +956,13 @@ export async function getSystemStatusSnapshot(): Promise<SystemStatusSnapshot> {
   const outboxOldest = outboxStats[0]?.oldest ?? null;
   const outboxLagSeconds = outboxOldest
     ? Math.floor(
-        (generatedAt.getTime() - new Date(outboxOldest).getTime()) / 1000
+        (generatedAt.getTime() - new Date(outboxOldest).getTime()) / 1000,
       )
     : 0;
   const lookaheadMinutes = latestPost
     ? Math.floor(
         (new Date(latestPost.timestamp).getTime() - generatedAt.getTime()) /
-          60000
+          60000,
       )
     : 0;
 
@@ -1021,7 +1021,7 @@ export async function getSystemStatusSnapshot(): Promise<SystemStatusSnapshot> {
       lockType: lock.operation,
       acquiredAt: lock.lockedAt.toISOString(),
       ageSeconds: Math.floor(
-        (generatedAt.getTime() - lock.lockedAt.getTime()) / 1000
+        (generatedAt.getTime() - lock.lockedAt.getTime()) / 1000,
       ),
     })),
     tables: tableSizes.map((table) => ({
@@ -1051,16 +1051,16 @@ function cleanupExpiredAlertReservations(nowMs: number) {
 }
 
 function getAlertFingerprint(snapshot: SystemStatusSnapshot): string {
-  return createHash('sha256')
+  return createHash("sha256")
     .update(
       JSON.stringify({
         environment:
           snapshot.environment.vercelEnv ?? snapshot.environment.nodeEnv,
         status: snapshot.status,
         criticalIssues: snapshot.criticalIssues,
-      })
+      }),
     )
-    .digest('hex');
+    .digest("hex");
 }
 
 function getDiscordWebhookUrl(): string | null {
@@ -1083,10 +1083,10 @@ async function reserveAlertWindow(fingerprint: string): Promise<boolean> {
       const redisKey = `${REDIS_ALERT_PREFIX}${fingerprint}`;
       const wasSet = await redis.set(
         redisKey,
-        '1',
-        'EX',
+        "1",
+        "EX",
         ALERT_THROTTLE_SECONDS,
-        'NX'
+        "NX",
       );
       if (!wasSet) {
         inMemoryAlertReservations.set(fingerprint, expiresAt);
@@ -1094,9 +1094,9 @@ async function reserveAlertWindow(fingerprint: string): Promise<boolean> {
       }
     } catch (error) {
       logger.warn(
-        'Failed to reserve Redis alert window',
+        "Failed to reserve Redis alert window",
         { error: error instanceof Error ? error.message : String(error) },
-        'SystemStatusService'
+        "SystemStatusService",
       );
     }
   }
@@ -1116,56 +1116,56 @@ async function releaseAlertWindow(fingerprint: string): Promise<void> {
     await redis.del(`${REDIS_ALERT_PREFIX}${fingerprint}`);
   } catch (error) {
     logger.warn(
-      'Failed to release Redis alert window',
+      "Failed to release Redis alert window",
       { error: error instanceof Error ? error.message : String(error) },
-      'SystemStatusService'
+      "SystemStatusService",
     );
   }
 }
 
 export function formatSystemStatusDiscordMessage(
-  snapshot: SystemStatusSnapshot
+  snapshot: SystemStatusSnapshot,
 ): string {
   const environment =
-    snapshot.environment.vercelEnv ?? snapshot.environment.nodeEnv ?? 'unknown';
+    snapshot.environment.vercelEnv ?? snapshot.environment.nodeEnv ?? "unknown";
   const region = snapshot.environment.region
     ? `\nRegion: ${snapshot.environment.region}`
-    : '';
+    : "";
   const issueLines =
     snapshot.criticalIssues.length > 0
       ? snapshot.criticalIssues
           .slice(0, 5)
           .map((issue) => `- ${issue}`)
-          .join('\n')
+          .join("\n")
       : snapshot.issues
           .slice(0, 5)
           .map((issue) => `- ${issue}`)
-          .join('\n');
+          .join("\n");
 
   return [
     `Feed ${snapshot.status.toUpperCase()} system alert`,
     `Environment: ${environment}${region}`,
     `Critical subsystems: ${snapshot.summary.criticalCount}/${snapshot.summary.total}`,
-    issueLines.length > 0 ? issueLines : '- No issue details available',
-  ].join('\n');
+    issueLines.length > 0 ? issueLines : "- No issue details available",
+  ].join("\n");
 }
 
 export async function sendDiscordSystemAlertIfNeeded(
-  snapshot: SystemStatusSnapshot
+  snapshot: SystemStatusSnapshot,
 ): Promise<{ sent: boolean; reason: string }> {
   const webhookUrl = getDiscordWebhookUrl();
   if (!webhookUrl) {
-    return { sent: false, reason: 'webhook_not_configured' };
+    return { sent: false, reason: "webhook_not_configured" };
   }
 
-  if (snapshot.status !== 'critical') {
-    return { sent: false, reason: 'status_not_critical' };
+  if (snapshot.status !== "critical") {
+    return { sent: false, reason: "status_not_critical" };
   }
 
   const fingerprint = getAlertFingerprint(snapshot);
   const reserved = await reserveAlertWindow(fingerprint);
   if (!reserved) {
-    return { sent: false, reason: 'throttled' };
+    return { sent: false, reason: "throttled" };
   }
 
   const payload = {
@@ -1174,9 +1174,9 @@ export async function sendDiscordSystemAlertIfNeeded(
 
   try {
     const response = await fetch(webhookUrl, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       body: JSON.stringify(payload),
     });
@@ -1184,24 +1184,24 @@ export async function sendDiscordSystemAlertIfNeeded(
     if (!response.ok) {
       await releaseAlertWindow(fingerprint);
       logger.error(
-        'Discord system alert failed',
+        "Discord system alert failed",
         {
           status: response.status,
           statusText: response.statusText,
         },
-        'SystemStatusService'
+        "SystemStatusService",
       );
-      return { sent: false, reason: 'discord_request_failed' };
+      return { sent: false, reason: "discord_request_failed" };
     }
 
-    return { sent: true, reason: 'sent' };
+    return { sent: true, reason: "sent" };
   } catch (error) {
     await releaseAlertWindow(fingerprint);
     logger.error(
-      'Discord system alert threw',
+      "Discord system alert threw",
       { error: error instanceof Error ? error.message : String(error) },
-      'SystemStatusService'
+      "SystemStatusService",
     );
-    return { sent: false, reason: 'discord_request_error' };
+    return { sent: false, reason: "discord_request_error" };
   }
 }

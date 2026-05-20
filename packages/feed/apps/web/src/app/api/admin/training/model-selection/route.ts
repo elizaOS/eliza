@@ -43,9 +43,9 @@
  * ```
  */
 
-import { requireAdmin, successResponse, withErrorHandling } from '@feed/api';
-import { modelSelectionService } from '@feed/training';
-import type { NextRequest } from 'next/server';
+import { requireAdmin, successResponse, withErrorHandling } from "@feed/api";
+import { modelSelectionService } from "@feed/training";
+import type { NextRequest } from "next/server";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   await requireAdmin(request);

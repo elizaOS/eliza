@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { Info } from 'lucide-react';
-import { Tooltip } from '@/components/ui/tooltip';
+import { Info } from "lucide-react";
+import { Tooltip } from "@/components/ui/tooltip";
 
 interface ChallengeCardProps {
   title: string;
@@ -10,7 +10,7 @@ interface ChallengeCardProps {
   points: number;
   completed: boolean;
   progress?: { current: number; total: number };
-  variant?: 'daily' | 'weekly';
+  variant?: "daily" | "weekly";
 }
 
 export function ChallengeCard({
@@ -29,7 +29,7 @@ export function ChallengeCard({
   return (
     <div
       className={`rounded-lg border border-border p-3 transition-all ${
-        completed ? 'border-emerald-500/20 bg-emerald-500/5' : 'bg-card'
+        completed ? "border-emerald-500/20 bg-emerald-500/5" : "bg-card"
       }`}
     >
       <div className="flex items-start justify-between gap-3">
@@ -38,9 +38,9 @@ export function ChallengeCard({
             {variant && (
               <span
                 className={`shrink-0 rounded px-1.5 py-0.5 font-semibold text-[10px] uppercase tracking-wide ${
-                  variant === 'daily'
-                    ? 'bg-blue-500/10 text-blue-500'
-                    : 'bg-purple-500/10 text-purple-500'
+                  variant === "daily"
+                    ? "bg-blue-500/10 text-blue-500"
+                    : "bg-purple-500/10 text-purple-500"
                 }`}
               >
                 {variant}
@@ -48,7 +48,7 @@ export function ChallengeCard({
             )}
             <h3
               className={`font-semibold text-sm ${
-                completed ? 'text-emerald-500' : 'text-foreground'
+                completed ? "text-emerald-500" : "text-foreground"
               }`}
             >
               {title}
@@ -98,8 +98,8 @@ export function ChallengeCard({
             <div
               className={`h-full rounded-full transition-all ${
                 percentage >= 67
-                  ? 'bg-gradient-to-r from-primary to-amber-500'
-                  : 'bg-primary'
+                  ? "bg-gradient-to-r from-primary to-amber-500"
+                  : "bg-primary"
               }`}
               style={{ width: `${percentage}%` }}
             />

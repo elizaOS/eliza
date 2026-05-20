@@ -64,7 +64,7 @@
  * ```
  */
 
-import type { JsonValue } from '@feed/api';
+import type { JsonValue } from "@feed/api";
 import {
   addPublicReadHeaders,
   getCache,
@@ -72,13 +72,13 @@ import {
   setCache,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { db } from '@feed/db';
-import { StaticDataRegistry } from '@feed/engine';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { z } from 'zod';
+} from "@feed/api";
+import { db } from "@feed/db";
+import { StaticDataRegistry } from "@feed/engine";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { z } from "zod";
 
 const QuerySchema = z.object({
   limit: z.coerce.number().min(1).max(100).default(50),
@@ -88,7 +88,7 @@ const QuerySchema = z.object({
 export const GET = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ ticker: string }> }
+    context: { params: Promise<{ ticker: string }> },
   ) => {
     const { error, rateLimitInfo } = await publicRateLimit(request);
     if (error) return error;
@@ -98,14 +98,14 @@ export const GET = withErrorHandling(
     // Parse query parameters
     const { searchParams } = new URL(request.url);
     const queryParams = QuerySchema.parse({
-      limit: searchParams.get('limit') || '50',
-      offset: searchParams.get('offset') || '0',
+      limit: searchParams.get("limit") || "50",
+      offset: searchParams.get("offset") || "0",
     });
 
     logger.info(
-      'Perp market trades requested',
+      "Perp market trades requested",
       { ticker: tickerParam, queryParams },
-      'GET /api/markets/perps/trades/[ticker]'
+      "GET /api/markets/perps/trades/[ticker]",
     );
 
     // Check Redis cache first (use lowercase for consistent cache keys)
@@ -114,9 +114,9 @@ export const GET = withErrorHandling(
 
     if (cached) {
       logger.debug(
-        'Cache hit for perp trades',
+        "Cache hit for perp trades",
         { ticker: tickerParam },
-        'PerpTrades'
+        "PerpTrades",
       );
       return successResponse(cached);
     }
@@ -128,16 +128,16 @@ export const GET = withErrorHandling(
         org.ticker === tickerParam.toUpperCase() ||
         org.ticker === tickerParam.toLowerCase() ||
         org.id === tickerParam ||
-        org.id === tickerParam.toLowerCase()
+        org.id === tickerParam.toLowerCase(),
     );
 
     if (!staticOrg) {
       logger.warn(
-        'Perp market not found for ticker',
+        "Perp market not found for ticker",
         { tickerParam },
-        'GET /api/markets/perps/trades/[ticker]'
+        "GET /api/markets/perps/trades/[ticker]",
       );
-      return NextResponse.json({ error: 'Market not found' }, { status: 404 });
+      return NextResponse.json({ error: "Market not found" }, { status: 404 });
     }
 
     const orgState = await db.organizationState.findUnique({
@@ -155,14 +155,14 @@ export const GET = withErrorHandling(
     // Use the organization's actual ticker or derive from id for perp position lookups
     const perpTicker =
       organization.ticker ||
-      organization.id.toUpperCase().replace(/-/g, '').substring(0, 12);
+      organization.id.toUpperCase().replace(/-/g, "").substring(0, 12);
 
     // Get perp positions for this ticker (try both the ticker and organizationId)
     const perpPositions = await db.perpPosition.findMany({
       where: {
         OR: [{ ticker: perpTicker }, { organizationId: organization.id }],
       },
-      orderBy: { openedAt: 'desc' },
+      orderBy: { openedAt: "desc" },
       take: queryParams.limit,
       skip: queryParams.offset,
     });
@@ -191,14 +191,14 @@ export const GET = withErrorHandling(
     // Get NPC trades for this ticker (try multiple formats)
     const npcTrades = await db.npcTrade.findMany({
       where: {
-        marketType: 'perp',
+        marketType: "perp",
         OR: [
           { ticker: perpTicker },
           { ticker: tickerParam },
           { ticker: tickerParam.toLowerCase() },
         ],
       },
-      orderBy: { executedAt: 'desc' },
+      orderBy: { executedAt: "desc" },
       take: queryParams.limit,
       skip: queryParams.offset,
     });
@@ -242,7 +242,7 @@ export const GET = withErrorHandling(
           id: dbActor.id,
           username:
             dbActor.username ||
-            dbActor.displayName?.toLowerCase().replace(/\s+/g, '-') ||
+            dbActor.displayName?.toLowerCase().replace(/\s+/g, "-") ||
             actorId,
           displayName: dbActor.displayName || staticActor?.name || actorId,
           profileImageUrl: dbActor.profileImageUrl,
@@ -252,7 +252,7 @@ export const GET = withErrorHandling(
         // Fallback to StaticDataRegistry when actor not in DB
         actorsMap.set(actorId, {
           id: staticActor.id,
-          username: staticActor.name.toLowerCase().replace(/\s+/g, '-'),
+          username: staticActor.name.toLowerCase().replace(/\s+/g, "-"),
           displayName: staticActor.name,
           profileImageUrl: staticActor.profileImageUrl ?? null,
           isActor: true,
@@ -266,10 +266,10 @@ export const GET = withErrorHandling(
       positionIds.length > 0
         ? await db.balanceTransaction.findMany({
             where: {
-              type: { in: ['perp_open', 'perp_close', 'perp_liquidation'] },
+              type: { in: ["perp_open", "perp_close", "perp_liquidation"] },
               relatedId: { in: positionIds },
             },
-            orderBy: { createdAt: 'desc' },
+            orderBy: { createdAt: "desc" },
             take: queryParams.limit,
             select: {
               id: true,
@@ -302,7 +302,7 @@ export const GET = withErrorHandling(
       // Perp position trades
       ...perpPositions.map((pos) => ({
         id: pos.id,
-        type: 'perp' as const,
+        type: "perp" as const,
         user: perpUsersMap.get(pos.userId) || null,
         side: pos.side,
         size: Number(pos.size),
@@ -318,7 +318,7 @@ export const GET = withErrorHandling(
       // NPC trades
       ...npcTrades.map((trade) => ({
         id: trade.id,
-        type: 'npc' as const,
+        type: "npc" as const,
         user: actorsMap.get(trade.npcActorId) || null,
         marketType: trade.marketType,
         ticker: trade.ticker,
@@ -333,7 +333,7 @@ export const GET = withErrorHandling(
       // Balance transaction trades
       ...balanceTransactions.map((tx) => ({
         id: tx.id,
-        type: 'balance' as const,
+        type: "balance" as const,
         user: txUsersMap.get(tx.userId) || null,
         transactionType: tx.type,
         amount: Number(tx.amount),
@@ -365,16 +365,16 @@ export const GET = withErrorHandling(
     };
 
     // Cache for 30 seconds
-    await setCache(cacheKey, result, { ttl: 30, namespace: 'market-trades' });
+    await setCache(cacheKey, result, { ttl: 30, namespace: "market-trades" });
 
     logger.info(
       `Returned ${trades.length} trades for perp market ${tickerParam}`,
       { total, hasMore },
-      'PerpTrades'
+      "PerpTrades",
     );
 
     const res = successResponse(result);
     if (rateLimitInfo) addPublicReadHeaders(res, rateLimitInfo);
     return res;
-  }
+  },
 );

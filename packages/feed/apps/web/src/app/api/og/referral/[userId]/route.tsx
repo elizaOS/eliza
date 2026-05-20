@@ -40,22 +40,22 @@
  * ```
  */
 
-import { withErrorHandling } from '@feed/api';
-import { db } from '@feed/db';
-import { ImageResponse } from 'next/og';
-import type { NextRequest } from 'next/server';
+import { withErrorHandling } from "@feed/api";
+import { db } from "@feed/db";
+import { ImageResponse } from "next/og";
+import type { NextRequest } from "next/server";
 
 // Use Node.js runtime for full database support
-export const runtime = 'nodejs';
+export const runtime = "nodejs";
 
 // Disable static generation for this route - it requires database access
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 // Cache for 1 hour
 export const revalidate = 3600;
 
 export const GET = withErrorHandling(async function GET(
   _request: NextRequest,
-  context: { params: Promise<{ userId: string }> }
+  context: { params: Promise<{ userId: string }> },
 ) {
   const { userId } = await context.params;
 
@@ -74,41 +74,41 @@ export const GET = withErrorHandling(async function GET(
     }),
   ]);
 
-  const displayName = user?.displayName || user?.username || 'A Feed Trader';
+  const displayName = user?.displayName || user?.username || "A Feed Trader";
 
   return new ImageResponse(
     <div
       style={{
-        height: '100%',
-        width: '100%',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'linear-gradient(135deg, #0B1C3D 0%, #1a2942 100%)',
-        fontFamily: 'Inter, sans-serif',
-        position: 'relative',
+        height: "100%",
+        width: "100%",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "linear-gradient(135deg, #0B1C3D 0%, #1a2942 100%)",
+        fontFamily: "Inter, sans-serif",
+        position: "relative",
       }}
     >
       <div
         style={{
-          position: 'absolute',
+          position: "absolute",
           inset: 0,
           backgroundImage:
-            'radial-gradient(circle at 20% 50%, rgba(99, 102, 241, 0.1) 0%, transparent 50%)',
-          display: 'flex',
+            "radial-gradient(circle at 20% 50%, rgba(99, 102, 241, 0.1) 0%, transparent 50%)",
+          display: "flex",
         }}
       />
 
       <div
         style={{
-          position: 'absolute',
+          position: "absolute",
           top: 40,
           left: 40,
           fontSize: 28,
-          fontWeight: 'bold',
-          color: 'white',
-          display: 'flex',
+          fontWeight: "bold",
+          color: "white",
+          display: "flex",
         }}
       >
         Feed
@@ -116,9 +116,9 @@ export const GET = withErrorHandling(async function GET(
 
       <div
         style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
           zIndex: 1,
         }}
       >
@@ -129,8 +129,8 @@ export const GET = withErrorHandling(async function GET(
             style={{
               width: 140,
               height: 140,
-              borderRadius: '50%',
-              border: '5px solid rgba(99, 102, 241, 0.3)',
+              borderRadius: "50%",
+              border: "5px solid rgba(99, 102, 241, 0.3)",
               marginBottom: 30,
             }}
           />
@@ -139,11 +139,11 @@ export const GET = withErrorHandling(async function GET(
         <div
           style={{
             fontSize: 56,
-            fontWeight: 'bold',
-            color: 'white',
-            textAlign: 'center',
+            fontWeight: "bold",
+            color: "white",
+            textAlign: "center",
             marginBottom: 20,
-            display: 'flex',
+            display: "flex",
           }}
         >
           Join Me on Feed
@@ -152,9 +152,9 @@ export const GET = withErrorHandling(async function GET(
         <div
           style={{
             fontSize: 32,
-            color: 'rgba(255, 255, 255, 0.8)',
+            color: "rgba(255, 255, 255, 0.8)",
             marginBottom: 50,
-            display: 'flex',
+            display: "flex",
           }}
         >
           Invited by {displayName}
@@ -162,29 +162,29 @@ export const GET = withErrorHandling(async function GET(
 
         <div
           style={{
-            display: 'flex',
+            display: "flex",
             gap: 30,
             marginTop: 20,
           }}
         >
           <div
             style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
               padding: 30,
               borderRadius: 16,
-              background: 'rgba(99, 102, 241, 0.1)',
-              border: '2px solid rgba(99, 102, 241, 0.3)',
+              background: "rgba(99, 102, 241, 0.1)",
+              border: "2px solid rgba(99, 102, 241, 0.3)",
               minWidth: 200,
             }}
           >
             <div
               style={{
                 fontSize: 20,
-                color: 'rgba(255, 255, 255, 0.7)',
+                color: "rgba(255, 255, 255, 0.7)",
                 marginBottom: 10,
-                display: 'flex',
+                display: "flex",
               }}
             >
               Points
@@ -192,9 +192,9 @@ export const GET = withErrorHandling(async function GET(
             <div
               style={{
                 fontSize: 48,
-                fontWeight: 'bold',
-                color: '#FCD34D',
-                display: 'flex',
+                fontWeight: "bold",
+                color: "#FCD34D",
+                display: "flex",
               }}
             >
               {(user?.reputationPoints || 0).toLocaleString()}
@@ -203,22 +203,22 @@ export const GET = withErrorHandling(async function GET(
 
           <div
             style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
               padding: 30,
               borderRadius: 16,
-              background: 'rgba(99, 102, 241, 0.1)',
-              border: '2px solid rgba(99, 102, 241, 0.3)',
+              background: "rgba(99, 102, 241, 0.1)",
+              border: "2px solid rgba(99, 102, 241, 0.3)",
               minWidth: 200,
             }}
           >
             <div
               style={{
                 fontSize: 20,
-                color: 'rgba(255, 255, 255, 0.7)',
+                color: "rgba(255, 255, 255, 0.7)",
                 marginBottom: 10,
-                display: 'flex',
+                display: "flex",
               }}
             >
               Referrals
@@ -226,9 +226,9 @@ export const GET = withErrorHandling(async function GET(
             <div
               style={{
                 fontSize: 48,
-                fontWeight: 'bold',
-                color: '#6366F1',
-                display: 'flex',
+                fontWeight: "bold",
+                color: "#6366F1",
+                display: "flex",
               }}
             >
               {referralCount}
@@ -239,20 +239,20 @@ export const GET = withErrorHandling(async function GET(
 
       <div
         style={{
-          position: 'absolute',
+          position: "absolute",
           bottom: 50,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
           gap: 15,
         }}
       >
         <div
           style={{
             fontSize: 24,
-            color: 'rgba(255, 255, 255, 0.9)',
+            color: "rgba(255, 255, 255, 0.9)",
             fontWeight: 600,
-            display: 'flex',
+            display: "flex",
           }}
         >
           Trade Narratives, Share the Upside
@@ -260,8 +260,8 @@ export const GET = withErrorHandling(async function GET(
         <div
           style={{
             fontSize: 18,
-            color: 'rgba(255, 255, 255, 0.6)',
-            display: 'flex',
+            color: "rgba(255, 255, 255, 0.6)",
+            display: "flex",
           }}
         >
           Click to join and start earning rewards
@@ -271,6 +271,6 @@ export const GET = withErrorHandling(async function GET(
     {
       width: 1200,
       height: 630,
-    }
+    },
   );
 });

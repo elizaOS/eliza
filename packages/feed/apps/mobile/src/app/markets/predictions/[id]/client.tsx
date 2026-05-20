@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { useEffect } from 'react';
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useEffect } from "react";
 
 export function MobilePredictionMarketRedirect() {
   const router = useRouter();
@@ -11,13 +11,13 @@ export function MobilePredictionMarketRedirect() {
   useEffect(() => {
     const id = params.id as string | undefined;
     const query = new URLSearchParams();
-    query.set('filter', 'prediction');
-    query.set('marketKind', 'prediction');
-    if (id) query.set('marketId', id);
+    query.set("filter", "prediction");
+    query.set("marketKind", "prediction");
+    if (id) query.set("marketId", id);
 
-    const side = searchParams.get('side');
-    if (side === 'yes' || side === 'no') {
-      query.set('side', side);
+    const side = searchParams.get("side");
+    if (side === "yes" || side === "no") {
+      query.set("side", side);
     }
 
     router.replace(`/markets?${query.toString()}`);

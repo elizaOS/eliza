@@ -1,10 +1,10 @@
-import { definePrompt } from '../define-prompt';
+import { definePrompt } from "../define-prompt";
 import {
   ANTI_REPETITION_RULES,
   CONTENT_REQUIREMENTS,
   FINAL_REMINDERS,
   WORLD_CONTEXT_HEADER,
-} from '../shared-sections';
+} from "../shared-sections";
 
 /**
  * Prompt for generating single company PR statements or announcements.
@@ -17,10 +17,10 @@ import {
  * Returns XML with post content and sentiment analysis metadata.
  */
 export const companyPost = definePrompt({
-  id: 'company-post',
-  version: '4.0.0',
-  category: 'feed',
-  description: 'Company PR with full narrative context',
+  id: "company-post",
+  version: "4.0.0",
+  category: "feed",
+  description: "Company PR with full narrative context",
   temperature: 0.9,
   maxTokens: 5000,
   template: `{{realityGrounding}}

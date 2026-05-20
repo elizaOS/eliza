@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { Check } from 'lucide-react';
+import { Check } from "lucide-react";
 
 export interface RewardTask {
   id: string;
@@ -19,7 +19,7 @@ interface RewardTaskListProps {
    * - 'desktop': slightly larger padding (px-4 py-3)
    * - 'mobile': slightly smaller padding (px-3 py-2.5)
    */
-  variant?: 'desktop' | 'mobile';
+  variant?: "desktop" | "mobile";
 }
 
 /**
@@ -31,9 +31,9 @@ interface RewardTaskListProps {
 export function RewardTaskList({
   tasks,
   onTaskClick,
-  variant = 'desktop',
+  variant = "desktop",
 }: RewardTaskListProps) {
-  const paddingClass = variant === 'desktop' ? 'px-4 py-3' : 'px-3 py-2.5';
+  const paddingClass = variant === "desktop" ? "px-4 py-3" : "px-3 py-2.5";
 
   return (
     <div className="space-y-2">
@@ -46,8 +46,8 @@ export function RewardTaskList({
           aria-disabled={task.completed}
           className={`flex w-full items-center justify-between rounded-md border text-left transition-colors ${paddingClass} ${
             task.completed
-              ? 'cursor-default border-green-500/30 bg-green-500/5'
-              : 'cursor-pointer border-border hover:bg-muted/30'
+              ? "cursor-default border-green-500/30 bg-green-500/5"
+              : "cursor-pointer border-border hover:bg-muted/30"
           }`}
         >
           <div className="min-w-0 flex-1">
@@ -62,8 +62,8 @@ export function RewardTaskList({
             </p>
           </div>
           <span
-            className={`${variant === 'desktop' ? 'ml-4' : 'ml-3'} font-medium text-sm ${
-              task.completed ? 'text-green-500' : 'text-muted-foreground'
+            className={`${variant === "desktop" ? "ml-4" : "ml-3"} font-medium text-sm ${
+              task.completed ? "text-green-500" : "text-muted-foreground"
             }`}
           >
             {task.completed ? `✓ ${task.points}` : `+${task.points}`}

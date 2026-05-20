@@ -7,12 +7,12 @@
  * Provides optimistic UI updates, SSE echo suppression, and automatic rollback on failure.
  */
 
-import { useCallback } from 'react';
-import { toast } from 'sonner';
-import type { MessageReactionSummary } from '@/components/chats/types';
-import { useAuth } from '@/hooks/useAuth';
-import { useAuthStore } from '@/stores/authStore';
-import type { ChatMessage } from './useChatMessages';
+import { useCallback } from "react";
+import { toast } from "sonner";
+import type { MessageReactionSummary } from "@/components/chats/types";
+import { useAuth } from "@/hooks/useAuth";
+import { useAuthStore } from "@/stores/authStore";
+import type { ChatMessage } from "./useChatMessages";
 
 /**
  * Compute the next reactions array after a local user toggles an emoji.
@@ -21,8 +21,8 @@ import type { ChatMessage } from './useChatMessages';
 export function applyReactionDelta(
   existing: MessageReactionSummary[] | undefined,
   emoji: string,
-  action: 'added' | 'removed',
-  isMine: boolean
+  action: "added" | "removed",
+  isMine: boolean,
 ): MessageReactionSummary[] {
   const map = new Map<string, MessageReactionSummary>();
   for (const r of existing ?? []) map.set(r.emoji, { ...r });
@@ -30,7 +30,7 @@ export function applyReactionDelta(
   const prev = map.get(emoji);
   const prevCount = prev?.count ?? 0;
   const nextCount =
-    action === 'added' ? prevCount + 1 : Math.max(0, prevCount - 1);
+    action === "added" ? prevCount + 1 : Math.max(0, prevCount - 1);
 
   if (nextCount <= 0) {
     map.delete(emoji);
@@ -38,7 +38,7 @@ export function applyReactionDelta(
     map.set(emoji, {
       emoji,
       count: nextCount,
-      reactedByMe: isMine ? action === 'added' : (prev?.reactedByMe ?? false),
+      reactedByMe: isMine ? action === "added" : (prev?.reactedByMe ?? false),
     });
   }
 
@@ -54,7 +54,7 @@ interface UseToggleReactionOptions {
   markPendingReactionDelta: (delta: {
     messageId: string;
     emoji: string;
-    action: 'added' | 'removed';
+    action: "added" | "removed";
   }) => void;
 }
 
@@ -80,9 +80,9 @@ export function useToggleReaction({
       const existing = messages.find((m) => m.id === messageId);
       const prevReactions = existing?.reactions;
 
-      const action: 'added' | 'removed' = currentlyReactedByMe
-        ? 'removed'
-        : 'added';
+      const action: "added" | "removed" = currentlyReactedByMe
+        ? "removed"
+        : "added";
 
       // Optimistic update + SSE echo suppression
       markPendingReactionDelta({ messageId, emoji, action });
@@ -95,9 +95,9 @@ export function useToggleReaction({
         : `/api/chats/${chatId}/messages/${messageId}/reactions`;
 
       const response = await fetch(url, {
-        method: currentlyReactedByMe ? 'DELETE' : 'POST',
+        method: currentlyReactedByMe ? "DELETE" : "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
         body: currentlyReactedByMe ? undefined : JSON.stringify({ emoji }),
@@ -106,7 +106,7 @@ export function useToggleReaction({
       if (!response.ok) {
         // Rollback optimistic update
         updateMessage(messageId, { reactions: prevReactions });
-        toast.error('Failed to update reaction');
+        toast.error("Failed to update reaction");
         return;
       }
 
@@ -122,7 +122,7 @@ export function useToggleReaction({
       messages,
       updateMessage,
       markPendingReactionDelta,
-    ]
+    ],
   );
 
   return toggleReaction;

@@ -1,17 +1,17 @@
-import type { PerpMarket } from '@/types/markets';
+import type { PerpMarket } from "@/types/markets";
 
 export type PerpScreenerSortKey =
-  | 'asset'
-  | 'volume24h'
-  | 'change24h'
-  | 'trending'
-  | 'price'
-  | 'openInterest'
-  | 'funding';
+  | "asset"
+  | "volume24h"
+  | "change24h"
+  | "trending"
+  | "price"
+  | "openInterest"
+  | "funding";
 
 export type PerpScreenerSort = {
   key: PerpScreenerSortKey;
-  dir: 'asc' | 'desc';
+  dir: "asc" | "desc";
 };
 
 const TRENDING_WEIGHTS = {
@@ -26,7 +26,7 @@ function compareTickers(a: PerpMarket, b: PerpMarket): number {
 function getTrendingScore(
   market: PerpMarket,
   maxVolume: number,
-  maxAbsChange: number
+  maxAbsChange: number,
 ): number {
   const volumeScore =
     ((market.volume24h ?? 0) / Math.max(maxVolume, 1)) *
@@ -41,7 +41,7 @@ function getTrendingScore(
 export function sortPerpsForScreener(
   markets: PerpMarket[],
   sort: PerpScreenerSort,
-  maxRows: number
+  maxRows: number,
 ): PerpMarket[] {
   if (markets.length === 0 || maxRows <= 0) {
     return [];
@@ -49,42 +49,42 @@ export function sortPerpsForScreener(
 
   const maxVolume = Math.max(
     ...markets.map((market) => market.volume24h ?? 0),
-    1
+    1,
   );
   const maxAbsChange = Math.max(
     ...markets.map((market) => Math.abs(market.changePercent24h ?? 0)),
-    1
+    1,
   );
-  const direction = sort.dir === 'asc' ? 1 : -1;
+  const direction = sort.dir === "asc" ? 1 : -1;
 
   return [...markets]
     .sort((a, b) => {
       switch (sort.key) {
-        case 'asset':
+        case "asset":
           return direction * compareTickers(a, b);
-        case 'volume24h': {
+        case "volume24h": {
           const delta = (a.volume24h ?? 0) - (b.volume24h ?? 0);
           return delta === 0 ? compareTickers(a, b) : direction * delta;
         }
-        case 'change24h': {
+        case "change24h": {
           const delta = (a.changePercent24h ?? 0) - (b.changePercent24h ?? 0);
           return delta === 0 ? compareTickers(a, b) : direction * delta;
         }
-        case 'trending': {
+        case "trending": {
           const delta =
             getTrendingScore(a, maxVolume, maxAbsChange) -
             getTrendingScore(b, maxVolume, maxAbsChange);
           return delta === 0 ? compareTickers(a, b) : direction * delta;
         }
-        case 'price': {
+        case "price": {
           const delta = (a.currentPrice ?? 0) - (b.currentPrice ?? 0);
           return delta === 0 ? compareTickers(a, b) : direction * delta;
         }
-        case 'openInterest': {
+        case "openInterest": {
           const delta = (a.openInterest ?? 0) - (b.openInterest ?? 0);
           return delta === 0 ? compareTickers(a, b) : direction * delta;
         }
-        case 'funding': {
+        case "funding": {
           const delta = (a.fundingRate?.rate ?? 0) - (b.fundingRate?.rate ?? 0);
           return delta === 0 ? compareTickers(a, b) : direction * delta;
         }

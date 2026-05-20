@@ -1,1 +1,1 @@
-export { default } from '@web/app/chats/loading';
+export { default } from "@web/app/chats/loading";

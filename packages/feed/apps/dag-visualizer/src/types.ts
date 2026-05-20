@@ -16,7 +16,7 @@ export interface TraceNodeData {
   startMs: number;
   endMs: number;
   durationMs: number;
-  status: 'success' | 'error' | 'skipped';
+  status: "success" | "error" | "skipped";
   inputs: Record<string, unknown>;
   outputs: Record<string, unknown>;
   error?: string;

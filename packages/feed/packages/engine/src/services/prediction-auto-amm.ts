@@ -10,11 +10,11 @@
  * System-level trades with no NPC identity and no scoring impact.
  */
 
-import { PredictionPricing } from '@feed/core/markets/prediction';
-import { and, arcStates, db, eq, gte, markets, questions } from '@feed/db';
-import { logger } from '@feed/shared';
-import { calculateAutoAmmTargetNudge } from './prediction-auto-amm-helpers';
-import { buildPredictionMarketProfile } from './prediction-market-profiles';
+import { PredictionPricing } from "@feed/core/markets/prediction";
+import { and, arcStates, db, eq, gte, markets, questions } from "@feed/db";
+import { logger } from "@feed/shared";
+import { calculateAutoAmmTargetNudge } from "./prediction-auto-amm-helpers";
+import { buildPredictionMarketProfile } from "./prediction-market-profiles";
 
 // =============================================================================
 // Types
@@ -22,7 +22,7 @@ import { buildPredictionMarketProfile } from './prediction-market-profiles';
 
 interface ArcSignal {
   marketId: string;
-  direction: 'YES' | 'NO' | 'NEUTRAL';
+  direction: "YES" | "NO" | "NEUTRAL";
   /** Arc state maps to a phase intensity */
   stateIntensity: number;
 }
@@ -103,7 +103,7 @@ export async function processAutoAMM(): Promise<AutoAMMResult> {
       const currentYesPrice = PredictionPricing.getCurrentPrice(
         yesShares,
         noShares,
-        'yes'
+        "yes",
       );
       const profile = buildPredictionMarketProfile({
         marketId: market.id,
@@ -115,7 +115,7 @@ export async function processAutoAMM(): Promise<AutoAMMResult> {
 
       const targetNudge = calculateAutoAmmTargetNudge({
         currentYesPrice,
-        signalDirection: signal?.direction ?? 'NEUTRAL',
+        signalDirection: signal?.direction ?? "NEUTRAL",
         signalIntensity: signal?.stateIntensity ?? 0,
         signalSensitivity: profile.signalSensitivity,
         autoAmmNudgeMultiplier: profile.autoAmmNudgeMultiplier,
@@ -154,17 +154,17 @@ export async function processAutoAMM(): Promise<AutoAMMResult> {
       const newYesPrice = PredictionPricing.getCurrentPrice(
         newYesShares,
         newNoShares,
-        'yes'
+        "yes",
       );
 
       logger.debug(
         `Auto-AMM: ${market.question.slice(0, 40)}... YES ${(currentYesPrice * 100).toFixed(1)}% → ${(newYesPrice * 100).toFixed(1)}%`,
         {
           marketId: market.id,
-          signal: signal?.direction ?? 'NEUTRAL',
+          signal: signal?.direction ?? "NEUTRAL",
           nudge: targetNudge.toFixed(4),
         },
-        'AutoAMM'
+        "AutoAMM",
       );
     }
 
@@ -175,14 +175,14 @@ export async function processAutoAMM(): Promise<AutoAMMResult> {
           marketsProcessed: result.marketsProcessed,
           priceAdjustments: result.priceAdjustments,
         },
-        'AutoAMM'
+        "AutoAMM",
       );
     }
   } catch (error) {
     logger.error(
-      'Auto-AMM processing failed',
+      "Auto-AMM processing failed",
       { error: error instanceof Error ? error.message : String(error) },
-      'AutoAMM'
+      "AutoAMM",
     );
   }
 
@@ -194,7 +194,7 @@ export async function processAutoAMM(): Promise<AutoAMMResult> {
  * Market ID = Question ID = arcStates.questionId
  */
 async function getArcSignals(
-  activeMarkets: Array<{ id: string }>
+  activeMarkets: Array<{ id: string }>,
 ): Promise<Map<string, ArcSignal>> {
   const signals = new Map<string, ArcSignal>();
 
@@ -235,16 +235,16 @@ async function getArcSignals(
 
       // Use actual outcome to determine direction — later arc states
       // push toward the CORRECT answer (not always YES)
-      let direction: 'YES' | 'NO' | 'NEUTRAL' = 'NEUTRAL';
+      let direction: "YES" | "NO" | "NEUTRAL" = "NEUTRAL";
       if (
-        state === 'escalation' ||
-        state === 'crisis' ||
-        state === 'revelation'
+        state === "escalation" ||
+        state === "crisis" ||
+        state === "revelation"
       ) {
         const outcome = outcomeMap.get(arc.questionId);
-        if (outcome === true) direction = 'YES';
-        else if (outcome === false) direction = 'NO';
-        else direction = 'YES'; // fallback if unknown
+        if (outcome === true) direction = "YES";
+        else if (outcome === false) direction = "NO";
+        else direction = "YES"; // fallback if unknown
       }
 
       signals.set(arc.questionId, {
@@ -255,9 +255,9 @@ async function getArcSignals(
     }
   } catch (error) {
     logger.warn(
-      'Failed to get arc signals for auto-AMM',
+      "Failed to get arc signals for auto-AMM",
       { error: error instanceof Error ? error.message : String(error) },
-      'AutoAMM'
+      "AutoAMM",
     );
   }
 

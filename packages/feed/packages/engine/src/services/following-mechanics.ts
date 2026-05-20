@@ -26,12 +26,12 @@ import {
   reactions,
   userInteractions,
   users,
-} from '@feed/db';
-import { generateSnowflakeId, logger } from '@feed/shared';
-import { NPC_FOLLOWING_CONFIG } from '../config/npc-activity';
-import { secureRandom } from '../utils/entropy';
-import { formatError } from '../utils/error-utils';
-import { StaticDataRegistry } from './static-data-registry';
+} from "@feed/db";
+import { generateSnowflakeId, logger } from "@feed/shared";
+import { NPC_FOLLOWING_CONFIG } from "../config/npc-activity";
+import { secureRandom } from "../utils/entropy";
+import { formatError } from "../utils/error-utils";
+import { StaticDataRegistry } from "./static-data-registry";
 
 /**
  * Fisher-Yates shuffle for uniform random sampling.
@@ -104,7 +104,7 @@ export class FollowingMechanics {
     userId: string,
     npcId: string,
     currentStreak: number,
-    currentQualityScore: number
+    currentQualityScore: number,
   ): Promise<FollowingChance> {
     // Use currentQualityScore to calculate following probability
     // Higher quality interactions increase following chance
@@ -115,7 +115,7 @@ export class FollowingMechanics {
       .select()
       .from(followStatuses)
       .where(
-        and(eq(followStatuses.userId, userId), eq(followStatuses.npcId, npcId))
+        and(eq(followStatuses.userId, userId), eq(followStatuses.npcId, npcId)),
       )
       .limit(1);
 
@@ -123,7 +123,7 @@ export class FollowingMechanics {
       return {
         willFollow: false,
         probability: 0,
-        reasons: ['Already following'],
+        reasons: ["Already following"],
         factors: { streak: 0, quality: 0, volume: 0 },
       };
     }
@@ -137,8 +137,8 @@ export class FollowingMechanics {
       .where(
         and(
           eq(userInteractions.userId, userId),
-          eq(userInteractions.npcId, npcId)
-        )
+          eq(userInteractions.npcId, npcId),
+        ),
       );
 
     const totalReplies = interactions.length;
@@ -149,15 +149,15 @@ export class FollowingMechanics {
     // Calculate factor scores (0-1)
     const streakFactor = Math.min(
       currentStreak / FollowingMechanics.MIN_STREAK_FOR_FOLLOW,
-      1
+      1,
     );
     const qualityFactor = Math.min(
       averageQuality / FollowingMechanics.MIN_QUALITY_SCORE,
-      1
+      1,
     );
     const volumeFactor = Math.min(
       totalReplies / FollowingMechanics.MIN_TOTAL_REPLIES,
-      1
+      1,
     );
 
     // Calculate weighted probability
@@ -171,7 +171,7 @@ export class FollowingMechanics {
 
     const probability = Math.min(
       baseProbability * qualityMultiplier,
-      FollowingMechanics.MAX_FOLLOW_PROBABILITY
+      FollowingMechanics.MAX_FOLLOW_PROBABILITY,
     );
 
     // Reasons for following (or not)
@@ -181,7 +181,7 @@ export class FollowingMechanics {
       reasons.push(`Consistent streak: ${currentStreak} hourly replies`);
     } else {
       reasons.push(
-        `Need ${FollowingMechanics.MIN_STREAK_FOR_FOLLOW - currentStreak} more consecutive hourly replies`
+        `Need ${FollowingMechanics.MIN_STREAK_FOR_FOLLOW - currentStreak} more consecutive hourly replies`,
       );
     }
 
@@ -189,7 +189,7 @@ export class FollowingMechanics {
       reasons.push(`High quality: ${(averageQuality * 100).toFixed(0)}% avg`);
     } else {
       reasons.push(
-        `Improve quality to ${(FollowingMechanics.MIN_QUALITY_SCORE * 100).toFixed(0)}%+ for better chances`
+        `Improve quality to ${(FollowingMechanics.MIN_QUALITY_SCORE * 100).toFixed(0)}%+ for better chances`,
       );
     }
 
@@ -197,7 +197,7 @@ export class FollowingMechanics {
       reasons.push(`Engaged: ${totalReplies} quality replies`);
     } else {
       reasons.push(
-        `Post ${FollowingMechanics.MIN_TOTAL_REPLIES - totalReplies} more quality replies`
+        `Post ${FollowingMechanics.MIN_TOTAL_REPLIES - totalReplies} more quality replies`,
       );
     }
 
@@ -222,14 +222,14 @@ export class FollowingMechanics {
   static async recordFollow(
     userId: string,
     npcId: string,
-    reason: string
+    reason: string,
   ): Promise<void> {
     // Check if exists
     const existing = await db
       .select({ id: followStatuses.id })
       .from(followStatuses)
       .where(
-        and(eq(followStatuses.userId, userId), eq(followStatuses.npcId, npcId))
+        and(eq(followStatuses.userId, userId), eq(followStatuses.npcId, npcId)),
       )
       .limit(1);
 
@@ -246,8 +246,8 @@ export class FollowingMechanics {
         .where(
           and(
             eq(followStatuses.userId, userId),
-            eq(followStatuses.npcId, npcId)
-          )
+            eq(followStatuses.npcId, npcId),
+          ),
         );
     } else {
       // Create new
@@ -266,8 +266,8 @@ export class FollowingMechanics {
       .where(
         and(
           eq(userInteractions.userId, userId),
-          eq(userInteractions.npcId, npcId)
-        )
+          eq(userInteractions.npcId, npcId),
+        ),
       );
 
     // Create notification for the user (NPCs follow users, not the other way around)
@@ -279,13 +279,13 @@ export class FollowingMechanics {
       } catch (notifyError) {
         // Log but don't fail the follow operation if notification fails
         logger.warn(
-          'Failed to send follow notification',
+          "Failed to send follow notification",
           {
             userId,
             npcId,
             error: formatError(notifyError),
           },
-          'FollowingMechanics'
+          "FollowingMechanics",
         );
       }
     }
@@ -299,7 +299,7 @@ export class FollowingMechanics {
       .select({ isActive: followStatuses.isActive })
       .from(followStatuses)
       .where(
-        and(eq(followStatuses.userId, userId), eq(followStatuses.npcId, npcId))
+        and(eq(followStatuses.userId, userId), eq(followStatuses.npcId, npcId)),
       )
       .limit(1);
 
@@ -316,8 +316,8 @@ export class FollowingMechanics {
       .where(
         and(
           eq(followStatuses.userId, userId),
-          eq(followStatuses.isActive, true)
-        )
+          eq(followStatuses.isActive, true),
+        ),
       )
       .orderBy(desc(followStatuses.followedAt));
 
@@ -330,13 +330,13 @@ export class FollowingMechanics {
   static async unfollow(
     userId: string,
     npcId: string,
-    reason: string
+    reason: string,
   ): Promise<void> {
     // Log unfollow reason for analytics and monitoring
     logger.info(
       `User ${userId} unfollowed ${npcId}. Reason: ${reason}`,
       undefined,
-      'FollowingMechanics'
+      "FollowingMechanics",
     );
 
     await db
@@ -349,8 +349,8 @@ export class FollowingMechanics {
         and(
           eq(followStatuses.userId, userId),
           eq(followStatuses.npcId, npcId),
-          eq(followStatuses.isActive, true)
-        )
+          eq(followStatuses.isActive, true),
+        ),
       );
   }
 
@@ -367,8 +367,8 @@ export class FollowingMechanics {
       .where(
         and(
           eq(userInteractions.userId, userId),
-          eq(userInteractions.npcId, npcId)
-        )
+          eq(userInteractions.npcId, npcId),
+        ),
       )
       .orderBy(desc(userInteractions.timestamp))
       .limit(10);
@@ -457,8 +457,8 @@ export class FollowingMechanics {
         .where(
           and(
             inArray(reactions.userId, playerIds),
-            gte(reactions.createdAt, sevenDaysAgo)
-          )
+            gte(reactions.createdAt, sevenDaysAgo),
+          ),
         )
         .groupBy(reactions.userId);
 
@@ -466,7 +466,7 @@ export class FollowingMechanics {
       // Coerce counts to numbers since DB may return strings
       for (const player of activePlayers) {
         const reactionData = reactionCounts.find(
-          (r) => r.userId === player.userId
+          (r) => r.userId === player.userId,
         );
         const reactionScore = Number(reactionData?.reactionCount ?? 0) * 0.5;
         const postScore = Number(player.postCount);
@@ -500,8 +500,8 @@ export class FollowingMechanics {
       .where(
         and(
           inArray(followStatuses.userId, eligiblePlayerIds),
-          eq(followStatuses.isActive, true)
-        )
+          eq(followStatuses.isActive, true),
+        ),
       );
 
     // Build Map<userId, Set<npcId>> for O(1) lookup
@@ -510,7 +510,7 @@ export class FollowingMechanics {
       if (!followsByUser.has(follow.userId)) {
         followsByUser.set(follow.userId, new Set());
       }
-      followsByUser.get(follow.userId)!.add(follow.npcId);
+      followsByUser.get(follow.userId)?.add(follow.npcId);
     }
 
     // Batch fetch engagement counts for all player-NPC pairs (eliminates N*M queries)
@@ -525,7 +525,7 @@ export class FollowingMechanics {
     // Shuffle allNpcs before slicing to avoid bias toward the start of the registry
     const maxNpcCandidates = Math.min(
       allNpcs.length,
-      NPC_FOLLOWING_CONFIG.totalMaxNpcCandidatesPerTick
+      NPC_FOLLOWING_CONFIG.totalMaxNpcCandidatesPerTick,
     );
     const shuffledNpcs = shuffleArray([...allNpcs]);
     const candidateNpcs = shuffledNpcs.slice(0, maxNpcCandidates);
@@ -543,8 +543,8 @@ export class FollowingMechanics {
         and(
           inArray(reactions.userId, eligiblePlayerIds),
           inArray(posts.authorId, candidateNpcIds),
-          gte(reactions.createdAt, engagementWindowStart)
-        )
+          gte(reactions.createdAt, engagementWindowStart),
+        ),
       )
       .groupBy(reactions.userId, posts.authorId);
 
@@ -587,7 +587,7 @@ export class FollowingMechanics {
       // Slice from the pre-shuffled array, then filter by already-following
       const sampledNpcs = shuffledCandidateNpcs.slice(0, perPlayerCap);
       const eligibleNpcs = sampledNpcs.filter(
-        (npc) => !followingNpcIds.has(npc.id)
+        (npc) => !followingNpcIds.has(npc.id),
       );
 
       if (eligibleNpcs.length === 0) {
@@ -626,7 +626,7 @@ export class FollowingMechanics {
           1 +
           Math.min(
             engagementCount / ENGAGEMENT_SCALE_DIVISOR,
-            MAX_ENGAGEMENT_BOOST
+            MAX_ENGAGEMENT_BOOST,
           );
 
         // Probability check with engagement boost applied (clamped to valid [0,1] range)
@@ -634,8 +634,8 @@ export class FollowingMechanics {
           0,
           Math.min(
             1,
-            NPC_FOLLOWING_CONFIG.proactiveFollowProbability * probabilityBoost
-          )
+            NPC_FOLLOWING_CONFIG.proactiveFollowProbability * probabilityBoost,
+          ),
         );
         if (secureRandom() > boostedProbability) {
           continue;
@@ -646,7 +646,7 @@ export class FollowingMechanics {
           await FollowingMechanics.recordFollow(
             player.userId,
             npc.id,
-            `Proactive follow: ${player.username} is an active player`
+            `Proactive follow: ${player.username} is an active player`,
           );
 
           result.followsCreated++;
@@ -655,17 +655,17 @@ export class FollowingMechanics {
           logger.info(
             `NPC ${npc.name} proactively followed player ${player.username}`,
             { npcId: npc.id, userId: player.userId },
-            'FollowingMechanics'
+            "FollowingMechanics",
           );
         } catch (followError) {
           logger.warn(
-            'Failed to create proactive follow',
+            "Failed to create proactive follow",
             {
               npcId: npc.id,
               userId: player.userId,
               error: formatError(followError),
             },
-            'FollowingMechanics'
+            "FollowingMechanics",
           );
         }
       }
@@ -760,8 +760,8 @@ export class FollowingMechanics {
         and(
           inArray(userInteractions.userId, userIds),
           inArray(userInteractions.npcId, npcIds),
-          gte(userInteractions.timestamp, interactionCutoff)
-        )
+          gte(userInteractions.timestamp, interactionCutoff),
+        ),
       )
       .orderBy(desc(userInteractions.timestamp))
       .limit(MAX_INTERACTIONS_QUERY_LIMIT);
@@ -828,7 +828,7 @@ export class FollowingMechanics {
         await FollowingMechanics.unfollow(
           follow.userId,
           follow.npcId,
-          'Quality dropped or inactivity'
+          "Quality dropped or inactivity",
         );
         unfollowCount++;
       }
@@ -838,7 +838,7 @@ export class FollowingMechanics {
       logger.info(
         `Processed ${unfollowCount} unfollows due to inactivity/quality`,
         {},
-        'FollowingMechanics'
+        "FollowingMechanics",
       );
     }
 

@@ -55,14 +55,14 @@
  * ```
  */
 
-import { requireAdmin, successResponse, withErrorHandling } from '@feed/api';
-import { logger } from '@feed/shared';
-import { modelStorage } from '@feed/training';
-import fs from 'fs/promises';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import os from 'os';
-import path from 'path';
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { requireAdmin, successResponse, withErrorHandling } from "@feed/api";
+import { logger } from "@feed/shared";
+import { modelStorage } from "@feed/training";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 export const maxDuration = 300; // 5 minutes for large uploads
 
@@ -70,27 +70,27 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   await requireAdmin(request);
 
   const formData = await request.formData();
-  const modelFile = formData.get('model') as File;
-  const version = formData.get('version') as string;
-  const metadataStr = formData.get('metadata') as string;
+  const modelFile = formData.get("model") as File;
+  const version = formData.get("version") as string;
+  const metadataStr = formData.get("metadata") as string;
 
   if (!modelFile || !version) {
     return NextResponse.json(
-      { error: 'Missing model file or version' },
-      { status: 400 }
+      { error: "Missing model file or version" },
+      { status: 400 },
     );
   }
 
   const metadata = metadataStr ? JSON.parse(metadataStr) : {};
 
-  logger.info('Uploading model to Vercel Blob', {
+  logger.info("Uploading model to Vercel Blob", {
     version,
     size: modelFile.size,
   });
 
   // Save to temp file
-  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'model-upload-'));
-  const tempPath = path.join(tempDir, 'model.safetensors');
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "model-upload-"));
+  const tempPath = path.join(tempDir, "model.safetensors");
 
   const buffer = Buffer.from(await modelFile.arrayBuffer());
   await fs.writeFile(tempPath, buffer);
@@ -105,7 +105,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // Cleanup
   await fs.rm(tempDir, { recursive: true, force: true });
 
-  logger.info('Model uploaded successfully', {
+  logger.info("Model uploaded successfully", {
     version,
     url: result.blobUrl,
   });

@@ -56,10 +56,10 @@ import {
   authenticate,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { and, asUser, chatParticipants, chats, eq } from '@feed/db';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/api";
+import { and, asUser, chatParticipants, chats, eq } from "@feed/db";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 /**
  * GET /api/chats/[id]/group
@@ -68,7 +68,7 @@ import type { NextRequest } from 'next/server';
 export const GET = withErrorHandling(
   async (
     request: NextRequest,
-    { params }: { params: Promise<{ id: string }> }
+    { params }: { params: Promise<{ id: string }> },
   ) => {
     const user = await authenticate(request);
     const { id: chatId } = await params;
@@ -81,13 +81,13 @@ export const GET = withErrorHandling(
         .where(
           and(
             eq(chatParticipants.chatId, chatId),
-            eq(chatParticipants.userId, user.userId)
-          )
+            eq(chatParticipants.userId, user.userId),
+          ),
         )
         .limit(1);
 
       if (!participant) {
-        throw new ApiError('You are not a participant in this chat', 403);
+        throw new ApiError("You are not a participant in this chat", 403);
       }
 
       // Get the chat and its groupId
@@ -98,22 +98,22 @@ export const GET = withErrorHandling(
         .limit(1);
 
       if (!chat) {
-        throw new ApiError('Chat not found', 404);
+        throw new ApiError("Chat not found", 404);
       }
 
       if (!chat.isGroup || !chat.groupId) {
-        throw new ApiError('This chat is not associated with a group', 400);
+        throw new ApiError("This chat is not associated with a group", 400);
       }
 
       return chat.groupId;
     });
 
     logger.info(
-      'Group ID retrieved from chat',
+      "Group ID retrieved from chat",
       { userId: user.userId, chatId, groupId },
-      'GET /api/chats/:id/group'
+      "GET /api/chats/:id/group",
     );
 
     return successResponse({ groupId });
-  }
+  },
 );

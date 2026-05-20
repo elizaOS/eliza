@@ -115,15 +115,15 @@ import {
   addPublicReadHeaders,
   publicRateLimit,
   withErrorHandling,
-} from '@feed/api';
-import { getReputationLeaderboard } from '@feed/engine';
-import { toISOOrNull } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@feed/api";
+import { getReputationLeaderboard } from "@feed/engine";
+import { toISOOrNull } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 import {
   getReputationActivityCutoff,
   parseReputationLeaderboardQuery,
-} from './query';
+} from "./query";
 
 export const GET = withErrorHandling(async function GET(request: NextRequest) {
   const { error, rateLimitInfo } = await publicRateLimit(request);

@@ -2,7 +2,7 @@ import {
   isOpenPerpPositionStateValid,
   PerpDbAdapter,
   type PriceImpactPort,
-} from '@feed/core/markets/perps';
+} from "@feed/core/markets/perps";
 import {
   and,
   db,
@@ -11,13 +11,13 @@ import {
   organizationState,
   perpMarketSnapshots,
   perpPositions,
-} from '@feed/db';
+} from "@feed/db";
 import {
   calculatePriceFromHoldings,
   logger,
   PERP_MARKET_CONFIG,
-} from '@feed/shared';
-import { PriceUpdateService } from './price-update-service';
+} from "@feed/shared";
+import { PriceUpdateService } from "./price-update-service";
 
 /**
  * Apply perp price impact for a ticker and return the resulting market price.
@@ -26,7 +26,7 @@ import { PriceUpdateService } from './price-update-service';
  * across A2A, MCP, agents, and engine trade execution paths.
  */
 export async function applyPerpUserTradePriceImpact(
-  ticker: string
+  ticker: string,
 ): Promise<number | undefined> {
   try {
     const normalizedTicker = ticker.toUpperCase();
@@ -42,9 +42,9 @@ export async function applyPerpUserTradePriceImpact(
 
     if (!snapshot) {
       logger.warn(
-        'PerpMarketSnapshot not found for price impact',
+        "PerpMarketSnapshot not found for price impact",
         { ticker: normalizedTicker },
-        'PerpPriceImpact'
+        "PerpPriceImpact",
       );
       return undefined;
     }
@@ -61,18 +61,18 @@ export async function applyPerpUserTradePriceImpact(
 
     if (!state) {
       logger.warn(
-        'OrganizationState not found for price impact',
+        "OrganizationState not found for price impact",
         { ticker: normalizedTicker, organizationId: snapshot.organizationId },
-        'PerpPriceImpact'
+        "PerpPriceImpact",
       );
       return undefined;
     }
 
     const initialPrice = Number(
-      state.basePrice ?? snapshot.currentPrice ?? 100
+      state.basePrice ?? snapshot.currentPrice ?? 100,
     );
     const currentPrice = Number(
-      snapshot.currentPrice ?? state.currentPrice ?? initialPrice
+      snapshot.currentPrice ?? state.currentPrice ?? initialPrice,
     );
 
     const openPositions = await db
@@ -86,8 +86,8 @@ export async function applyPerpUserTradePriceImpact(
       .where(
         and(
           eq(perpPositions.ticker, normalizedTicker),
-          isNull(perpPositions.closedAt)
-        )
+          isNull(perpPositions.closedAt),
+        ),
       );
 
     let netHoldings = 0;
@@ -99,17 +99,17 @@ export async function applyPerpUserTradePriceImpact(
       }
 
       const size = Number(pos.size);
-      netHoldings += pos.side === 'long' ? size : -size;
+      netHoldings += pos.side === "long" ? size : -size;
     }
 
     if (invalidPositions > 0) {
       logger.warn(
-        'Ignoring invalid open perp positions during price impact calculation',
+        "Ignoring invalid open perp positions during price impact calculation",
         {
           ticker: normalizedTicker,
           invalidPositions,
         },
-        'PerpPriceImpact'
+        "PerpPriceImpact",
       );
     }
 
@@ -117,7 +117,7 @@ export async function applyPerpUserTradePriceImpact(
       initialPrice,
       currentPrice,
       netHoldings,
-      PERP_MARKET_CONFIG
+      PERP_MARKET_CONFIG,
     );
 
     if (Math.abs(newPrice - currentPrice) < 0.001) {
@@ -128,8 +128,8 @@ export async function applyPerpUserTradePriceImpact(
       {
         organizationId: snapshot.organizationId,
         newPrice,
-        source: 'user_trade',
-        reason: 'User trade price impact',
+        source: "user_trade",
+        reason: "User trade price impact",
         metadata: { ticker: normalizedTicker },
       },
     ]);
@@ -137,18 +137,18 @@ export async function applyPerpUserTradePriceImpact(
     const perpDb = new PerpDbAdapter();
     const markets = await perpDb.listMarkets();
     const market = markets.find(
-      (m) => m.ticker.toUpperCase() === normalizedTicker
+      (m) => m.ticker.toUpperCase() === normalizedTicker,
     );
 
     return market?.currentPrice ?? newPrice;
   } catch (error) {
     logger.error(
-      'Failed to apply user trade price impact',
+      "Failed to apply user trade price impact",
       {
         ticker: ticker.toUpperCase(),
         error: error instanceof Error ? error.message : String(error),
       },
-      'PerpPriceImpact'
+      "PerpPriceImpact",
     );
     return undefined;
   }
@@ -158,7 +158,7 @@ export async function applyPerpUserTradePriceImpact(
  * Read base price for symmetric clamping in delta-based avg-fill logic.
  */
 export async function getPerpBasePrice(
-  ticker: string
+  ticker: string,
 ): Promise<number | undefined> {
   const normalizedTicker = ticker.toUpperCase();
 

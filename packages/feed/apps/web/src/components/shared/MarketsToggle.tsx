@@ -1,15 +1,15 @@
-'use client';
+"use client";
 
-import { cn, formatCurrency } from '@feed/shared';
-import type { MarketTab } from '@/types/markets';
+import { cn, formatCurrency } from "@feed/shared";
+import type { MarketTab } from "@/types/markets";
 
 // Re-export for backwards compatibility
-export type { MarketTab } from '@/types/markets';
+export type { MarketTab } from "@/types/markets";
 
 const TABS: { id: MarketTab; label: string }[] = [
-  { id: 'dashboard', label: 'Dashboard' },
-  { id: 'perps', label: 'Perps' },
-  { id: 'predictions', label: 'Predictions' },
+  { id: "dashboard", label: "Dashboard" },
+  { id: "perps", label: "Perps" },
+  { id: "predictions", label: "Predictions" },
 ];
 
 interface MarketsToggleProps {
@@ -36,8 +36,8 @@ export function MarketsToggle({
             type="button"
             onClick={() => onTabChange(id)}
             className={cn(
-              'relative flex-1 py-3.5 font-semibold transition-all hover:bg-muted/20',
-              activeTab === id ? 'text-foreground' : 'text-muted-foreground'
+              "relative flex-1 py-3.5 font-semibold transition-all hover:bg-muted/20",
+              activeTab === id ? "text-foreground" : "text-muted-foreground",
             )}
           >
             {label}

@@ -1,15 +1,15 @@
-'use client';
+"use client";
 
-import { useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useEffect } from 'react';
-import { PageContainer } from '@/components/shared/PageContainer';
-import { FeedLayoutSkeleton } from '@/components/shared/Skeleton';
-import { useAuth } from '@/hooks/useAuth';
-import { useLoginModal } from '@/hooks/useLoginModal';
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect } from "react";
+import { PageContainer } from "@/components/shared/PageContainer";
+import { FeedLayoutSkeleton } from "@/components/shared/Skeleton";
+import { useAuth } from "@/hooks/useAuth";
+import { useLoginModal } from "@/hooks/useLoginModal";
 
-export function getHomeFeedUrl(searchParams: Pick<URLSearchParams, 'get'>) {
-  const ref = searchParams.get('ref');
-  return ref ? `/feed?ref=${encodeURIComponent(ref)}` : '/feed';
+export function getHomeFeedUrl(searchParams: Pick<URLSearchParams, "get">) {
+  const ref = searchParams.get("ref");
+  return ref ? `/feed?ref=${encodeURIComponent(ref)}` : "/feed";
 }
 
 function HomePageContent() {
@@ -28,9 +28,9 @@ function HomePageContent() {
     // Show login modal if not authenticated
     if (!authenticated) {
       queueLoginModal({
-        title: 'Welcome to Feed',
+        title: "Welcome to Feed",
         message:
-          'Log in to start trading prediction markets, replying to NPCs, and earning rewards in this satirical game.',
+          "Log in to start trading prediction markets, replying to NPCs, and earning rewards in this satirical game.",
       });
     }
 

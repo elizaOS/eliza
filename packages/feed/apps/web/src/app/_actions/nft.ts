@@ -1,29 +1,29 @@
-'use server';
+"use server";
 
 import {
   extractPrivyApiDiagnostics,
   type PrivyApiDiagnostics,
   redactJwtLikeTokens,
-} from '@feed/api';
+} from "@feed/api";
 import {
   type ConfirmResult,
   confirmMint,
   prepareMint,
   reconcileOnChainMint,
-} from '@feed/api/services/nft-mint-service';
-import { logger } from '@feed/shared';
-import type { Hex } from 'viem';
-import { wrapServerActionWithSentry } from '@/lib/sentry/server-actions';
+} from "@feed/api/services/nft-mint-service";
+import { logger } from "@feed/shared";
+import type { Hex } from "viem";
+import { wrapServerActionWithSentry } from "@/lib/sentry/server-actions";
 
 // Re-export ConfirmResult so consumers don't need to import from the service
 export type { ConfirmResult };
 
 type MintStep =
-  | 'auth'
-  | 'user_context'
-  | 'prepare'
-  | 'send_transaction'
-  | 'confirm';
+  | "auth"
+  | "user_context"
+  | "prepare"
+  | "send_transaction"
+  | "confirm";
 
 /**
  * Result of the NFT mint action.
@@ -32,10 +32,10 @@ type MintStep =
  * - `status: 'error'`: An error occurred — message is safe to show in UI
  */
 export type MintNftActionResult =
-  | ({ status: 'confirmed'; txHash: Hex } & ConfirmResult)
-  | { status: 'pending'; txHash: Hex; message: string }
+  | ({ status: "confirmed"; txHash: Hex } & ConfirmResult)
+  | { status: "pending"; txHash: Hex; message: string }
   | {
-      status: 'error';
+      status: "error";
       error: string;
       step: MintStep;
       errorId: string;
@@ -54,19 +54,19 @@ async function mintNftActionImpl(_input?: {
 }): Promise<MintNftActionResult> {
   const errorId = crypto.randomUUID();
   logger.warn(
-    'NFT mint attempted while NFT features are disabled',
+    "NFT mint attempted while NFT features are disabled",
     { errorId },
-    'mintNftAction'
+    "mintNftAction",
   );
   return {
-    status: 'error',
-    error: 'NFT features are currently disabled.',
-    step: 'auth',
+    status: "error",
+    error: "NFT features are currently disabled.",
+    step: "auth",
     errorId,
   };
 }
 
 export const mintNftAction = wrapServerActionWithSentry(
-  'mintNftAction',
-  mintNftActionImpl
+  "mintNftAction",
+  mintNftActionImpl,
 );

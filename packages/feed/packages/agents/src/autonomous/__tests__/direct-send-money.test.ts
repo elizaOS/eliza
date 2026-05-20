@@ -1,10 +1,10 @@
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 import {
   AGENT_TRANSFER_IN_TRANSACTION_TYPE,
   AGENT_TRANSFER_OUT_TRANSACTION_TYPE,
-} from '@feed/shared';
+} from "@feed/shared";
 
-let mockRecipientUser: { id: string } | null = { id: 'user-2' };
+let mockRecipientUser: { id: string } | null = { id: "user-2" };
 let mockSenderBalance = 1000;
 let lastDebitCall: {
   userId: string;
@@ -33,10 +33,10 @@ let routeTransferResult: {
   recipientBalanceAfter: number;
 } = {
   success: true,
-  transferId: 'transfer-1',
+  transferId: "transfer-1",
   amount: 25,
-  senderUserId: 'sender-1',
-  recipientUserId: 'receiver-1',
+  senderUserId: "sender-1",
+  recipientUserId: "receiver-1",
   senderBalanceBefore: 100,
   senderBalanceAfter: 75,
   recipientBalanceBefore: 5,
@@ -46,18 +46,18 @@ let routeRateLimitResult = { allowed: true, retryAfter: 60 };
 
 const invalidateUserCacheMock = mock(async () => undefined);
 const routeAuthenticateMock = mock(async () => ({
-  userId: 'sender-1',
-  dbUserId: 'sender-1',
+  userId: "sender-1",
+  dbUserId: "sender-1",
 }));
 const routeCheckRateLimitAsyncMock = mock(
   async () =>
     (globalThis as Record<string, unknown>).__routeRateLimitResult ??
-    routeRateLimitResult
+    routeRateLimitResult,
 );
 const routeTransferMock = mock(
   async () =>
     (globalThis as Record<string, unknown>).__routeTransferResult ??
-    routeTransferResult
+    routeTransferResult,
 );
 
 const mockDb = {
@@ -89,7 +89,7 @@ const mockDb = {
   transaction: mock(async () => undefined),
 };
 
-mock.module('@feed/db', () => ({
+mock.module("@feed/db", () => ({
   actorState: {},
   aliasedTable: mock(() => ({})),
   and: (...args: unknown[]) => args,
@@ -101,30 +101,30 @@ mock.module('@feed/db', () => ({
   db: mockDb,
   dmAcceptances: {},
   eq: (a: unknown, b: unknown) => ({ a, b }),
-  follows: { id: 'id', followerId: 'followerId', followingId: 'followingId' },
-  groupMembers: { role: 'role' },
-  groups: { id: 'id' },
+  follows: { id: "id", followerId: "followerId", followingId: "followingId" },
+  groupMembers: { role: "role" },
+  groups: { id: "id" },
   gte: (...args: unknown[]) => args,
   isNull: (...args: unknown[]) => args,
   messages: {},
   perpPositions: {},
   posts: {
-    id: 'id',
-    authorId: 'authorId',
-    content: 'content',
-    originalPostId: 'originalPostId',
+    id: "id",
+    authorId: "authorId",
+    content: "content",
+    originalPostId: "originalPostId",
   },
   reactions: {},
-  shares: { id: 'id', postId: 'postId', userId: 'userId' },
+  shares: { id: "id", postId: "postId", userId: "userId" },
   sql: {},
-  users: { id: 'id', isActor: 'isActor', displayName: 'displayName' },
+  users: { id: "id", isActor: "isActor", displayName: "displayName" },
   // withTransaction executes the callback immediately (no real DB)
   withTransaction: mock(async (fn: (tx: unknown) => Promise<unknown>) =>
-    fn(mockDb)
+    fn(mockDb),
   ),
 }));
 
-mock.module('@feed/api', () => ({
+mock.module("@feed/api", () => ({
   authenticate: routeAuthenticateMock,
   BusinessLogicError: class BusinessLogicError extends Error {
     code: string;
@@ -147,11 +147,11 @@ mock.module('@feed/api', () => ({
     A2A_TRANSFER_OPS: {
       maxRequests: 10,
       windowMs: 60000,
-      actionType: 'a2a_transfer_ops',
+      actionType: "a2a_transfer_ops",
     },
   },
   rateLimitError: (retryAfter?: number) =>
-    Response.json({ error: 'Too many requests', retryAfter }, { status: 429 }),
+    Response.json({ error: "Too many requests", retryAfter }, { status: 429 }),
   successResponse: (body: unknown) => Response.json(body),
   TradingBalanceTransferService: {
     transfer: routeTransferMock,
@@ -159,17 +159,17 @@ mock.module('@feed/api', () => ({
   withErrorHandling: (handler: (...args: unknown[]) => unknown) => handler,
 }));
 
-mock.module('@feed/core/markets/perps', () => ({
+mock.module("@feed/core/markets/perps", () => ({
   PerpDbAdapter: class {},
   PerpMarketService: class {},
 }));
 
-mock.module('@feed/core/markets/prediction', () => ({
+mock.module("@feed/core/markets/prediction", () => ({
   PredictionDbAdapter: class {},
   PredictionMarketService: class {},
 }));
 
-mock.module('@feed/engine', () => ({
+mock.module("@feed/engine", () => ({
   FEE_CONFIG: {
     TRADING_FEE_RATE: 0,
     PLATFORM_SHARE: 0,
@@ -192,14 +192,14 @@ mock.module('@feed/engine', () => ({
         type: string,
         description: string,
         relatedId?: string,
-        _tx?: unknown
+        _tx?: unknown,
       ) => {
         if (debitShouldFail) {
-          throw new Error('Insufficient balance');
+          throw new Error("Insufficient balance");
         }
         lastDebitCall = { userId, amount, type, description, relatedId };
         mockSenderBalance -= amount;
-      }
+      },
     ),
     credit: mock(
       async (
@@ -208,10 +208,10 @@ mock.module('@feed/engine', () => ({
         type: string,
         description: string,
         relatedId?: string,
-        _tx?: unknown
+        _tx?: unknown,
       ) => {
         lastCreditCall = { userId, amount, type, description, relatedId };
-      }
+      },
     ),
     getBalance: mock(async () => ({
       balance: mockSenderBalance,
@@ -222,7 +222,7 @@ mock.module('@feed/engine', () => ({
   },
 }));
 
-mock.module('../../shared/logger', () => ({
+mock.module("../../shared/logger", () => ({
   logger: {
     info: mock(() => undefined),
     warn: mock(() => undefined),
@@ -231,37 +231,37 @@ mock.module('../../shared/logger', () => ({
   },
 }));
 
-mock.module('../../shared/snowflake', () => ({
-  generateSnowflakeId: mock(async () => 'snowflake-tx-id'),
+mock.module("../../shared/snowflake", () => ({
+  generateSnowflakeId: mock(async () => "snowflake-tx-id"),
 }));
 
-mock.module('../../services/AgentPnLService', () => ({
+mock.module("../../services/AgentPnLService", () => ({
   agentPnLService: { recordTrade: mock(async () => undefined) },
 }));
 
-mock.module('../TopicDiversityService', () => ({
+mock.module("../TopicDiversityService", () => ({
   topicDiversityService: { trackPostTopics: mock(async () => undefined) },
 }));
 
-mock.module('../utils/resolvePerpTicker', () => ({
+mock.module("../utils/resolvePerpTicker", () => ({
   resolvePerpTicker: mock(() => null),
 }));
 
-const { executeDirectSendMoney } = await import('../DirectExecutors');
+const { executeDirectSendMoney } = await import("../DirectExecutors");
 
-describe('executeDirectSendMoney', () => {
+describe("executeDirectSendMoney", () => {
   beforeEach(() => {
-    mockRecipientUser = { id: 'user-2' };
+    mockRecipientUser = { id: "user-2" };
     mockSenderBalance = 1000;
     lastDebitCall = null;
     lastCreditCall = null;
     debitShouldFail = false;
     routeTransferResult = {
       success: true,
-      transferId: 'transfer-1',
+      transferId: "transfer-1",
       amount: 25,
-      senderUserId: 'sender-1',
-      recipientUserId: 'receiver-1',
+      senderUserId: "sender-1",
+      recipientUserId: "receiver-1",
       senderBalanceBefore: 100,
       senderBalanceAfter: 75,
       recipientBalanceBefore: 5,
@@ -272,182 +272,182 @@ describe('executeDirectSendMoney', () => {
     delete (globalThis as Record<string, unknown>).__routeRateLimitResult;
   });
 
-  test('sends money successfully and returns updated balance', async () => {
+  test("sends money successfully and returns updated balance", async () => {
     const result = await executeDirectSendMoney({
-      agentUserId: 'agent-1',
-      recipientId: 'user-2',
+      agentUserId: "agent-1",
+      recipientId: "user-2",
       amount: 100,
-      reason: 'payment for services',
+      reason: "payment for services",
     });
 
     expect(result.success).toBe(true);
-    expect(result.transactionId).toBe('snowflake-tx-id');
+    expect(result.transactionId).toBe("snowflake-tx-id");
     expect(result.newBalance).toBe(900);
     expect(lastDebitCall).toBeDefined();
-    expect(lastDebitCall!.userId).toBe('agent-1');
-    expect(lastDebitCall!.amount).toBe(100);
-    expect(lastDebitCall!.type).toBe(AGENT_TRANSFER_OUT_TRANSACTION_TYPE);
+    expect(lastDebitCall?.userId).toBe("agent-1");
+    expect(lastDebitCall?.amount).toBe(100);
+    expect(lastDebitCall?.type).toBe(AGENT_TRANSFER_OUT_TRANSACTION_TYPE);
     expect(lastCreditCall).toBeDefined();
-    expect(lastCreditCall!.userId).toBe('user-2');
-    expect(lastCreditCall!.amount).toBe(100);
-    expect(lastCreditCall!.type).toBe(AGENT_TRANSFER_IN_TRANSACTION_TYPE);
+    expect(lastCreditCall?.userId).toBe("user-2");
+    expect(lastCreditCall?.amount).toBe(100);
+    expect(lastCreditCall?.type).toBe(AGENT_TRANSFER_IN_TRANSACTION_TYPE);
   });
 
-  test('links debit and credit with same transactionId', async () => {
+  test("links debit and credit with same transactionId", async () => {
     await executeDirectSendMoney({
-      agentUserId: 'agent-1',
-      recipientId: 'user-2',
+      agentUserId: "agent-1",
+      recipientId: "user-2",
       amount: 50,
     });
 
-    expect(lastDebitCall!.relatedId).toBe('snowflake-tx-id');
-    expect(lastCreditCall!.relatedId).toBe('snowflake-tx-id');
+    expect(lastDebitCall?.relatedId).toBe("snowflake-tx-id");
+    expect(lastCreditCall?.relatedId).toBe("snowflake-tx-id");
   });
 
-  test('includes reason in transaction descriptions', async () => {
+  test("includes reason in transaction descriptions", async () => {
     await executeDirectSendMoney({
-      agentUserId: 'agent-1',
-      recipientId: 'user-2',
+      agentUserId: "agent-1",
+      recipientId: "user-2",
       amount: 50,
-      reason: 'bet payment',
+      reason: "bet payment",
     });
 
-    expect(lastDebitCall!.description).toContain('bet payment');
-    expect(lastCreditCall!.description).toContain('bet payment');
+    expect(lastDebitCall?.description).toContain("bet payment");
+    expect(lastCreditCall?.description).toContain("bet payment");
   });
 
-  test('caps transfer at 50% of balance', async () => {
+  test("caps transfer at 50% of balance", async () => {
     mockSenderBalance = 1000;
 
     const result = await executeDirectSendMoney({
-      agentUserId: 'agent-1',
-      recipientId: 'user-2',
+      agentUserId: "agent-1",
+      recipientId: "user-2",
       amount: 800, // > 50% of 1000
     });
 
     expect(result.success).toBe(true);
     // Should be capped to 500 (50% of 1000)
-    expect(lastDebitCall!.amount).toBe(500);
-    expect(lastCreditCall!.amount).toBe(500);
+    expect(lastDebitCall?.amount).toBe(500);
+    expect(lastCreditCall?.amount).toBe(500);
   });
 
-  test('allows transfer at exactly 50% of balance', async () => {
+  test("allows transfer at exactly 50% of balance", async () => {
     mockSenderBalance = 1000;
 
     const result = await executeDirectSendMoney({
-      agentUserId: 'agent-1',
-      recipientId: 'user-2',
+      agentUserId: "agent-1",
+      recipientId: "user-2",
       amount: 500,
     });
 
     expect(result.success).toBe(true);
-    expect(lastDebitCall!.amount).toBe(500);
+    expect(lastDebitCall?.amount).toBe(500);
   });
 
-  test('rejects self-transfer', async () => {
+  test("rejects self-transfer", async () => {
     const result = await executeDirectSendMoney({
-      agentUserId: 'agent-1',
-      recipientId: 'agent-1',
+      agentUserId: "agent-1",
+      recipientId: "agent-1",
       amount: 100,
     });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('Cannot send money to yourself');
+    expect(result.error).toContain("Cannot send money to yourself");
     expect(lastDebitCall).toBeNull();
   });
 
-  test('rejects zero amount', async () => {
+  test("rejects zero amount", async () => {
     const result = await executeDirectSendMoney({
-      agentUserId: 'agent-1',
-      recipientId: 'user-2',
+      agentUserId: "agent-1",
+      recipientId: "user-2",
       amount: 0,
     });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('positive number');
+    expect(result.error).toContain("positive number");
     expect(lastDebitCall).toBeNull();
   });
 
-  test('rejects negative amount', async () => {
+  test("rejects negative amount", async () => {
     const result = await executeDirectSendMoney({
-      agentUserId: 'agent-1',
-      recipientId: 'user-2',
+      agentUserId: "agent-1",
+      recipientId: "user-2",
       amount: -50,
     });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('positive number');
+    expect(result.error).toContain("positive number");
   });
 
-  test('rejects NaN amount', async () => {
+  test("rejects NaN amount", async () => {
     const result = await executeDirectSendMoney({
-      agentUserId: 'agent-1',
-      recipientId: 'user-2',
+      agentUserId: "agent-1",
+      recipientId: "user-2",
       amount: Number.NaN,
     });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('positive number');
+    expect(result.error).toContain("positive number");
   });
 
-  test('rejects empty recipientId', async () => {
+  test("rejects empty recipientId", async () => {
     const result = await executeDirectSendMoney({
-      agentUserId: 'agent-1',
-      recipientId: '  ',
+      agentUserId: "agent-1",
+      recipientId: "  ",
       amount: 100,
     });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('Recipient ID is required');
+    expect(result.error).toContain("Recipient ID is required");
   });
 
-  test('rejects nonexistent recipient', async () => {
+  test("rejects nonexistent recipient", async () => {
     mockRecipientUser = null;
 
     const result = await executeDirectSendMoney({
-      agentUserId: 'agent-1',
-      recipientId: 'nonexistent',
+      agentUserId: "agent-1",
+      recipientId: "nonexistent",
       amount: 100,
     });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('not found');
+    expect(result.error).toContain("not found");
   });
 
-  test('rejects when sender has zero balance', async () => {
+  test("rejects when sender has zero balance", async () => {
     mockSenderBalance = 0;
 
     const result = await executeDirectSendMoney({
-      agentUserId: 'agent-1',
-      recipientId: 'user-2',
+      agentUserId: "agent-1",
+      recipientId: "user-2",
       amount: 100,
     });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('Insufficient balance');
+    expect(result.error).toContain("Insufficient balance");
   });
 
-  test('rejects when debit fails (insufficient funds)', async () => {
+  test("rejects when debit fails (insufficient funds)", async () => {
     debitShouldFail = true;
 
     const result = await executeDirectSendMoney({
-      agentUserId: 'agent-1',
-      recipientId: 'user-2',
+      agentUserId: "agent-1",
+      recipientId: "user-2",
       amount: 100,
     });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('Insufficient balance');
+    expect(result.error).toContain("Insufficient balance");
   });
 
-  test('sends without reason (optional parameter)', async () => {
+  test("sends without reason (optional parameter)", async () => {
     const result = await executeDirectSendMoney({
-      agentUserId: 'agent-1',
-      recipientId: 'user-2',
+      agentUserId: "agent-1",
+      recipientId: "user-2",
       amount: 25,
     });
 
     expect(result.success).toBe(true);
-    expect(lastDebitCall!.description).not.toContain('undefined');
+    expect(lastDebitCall?.description).not.toContain("undefined");
   });
 });

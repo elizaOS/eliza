@@ -14,21 +14,21 @@
 export function getStewardJwtSecret(): Uint8Array {
   const secret = process.env.STEWARD_JWT_SECRET;
   if (!secret) {
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('STEWARD_JWT_SECRET is required in production');
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("STEWARD_JWT_SECRET is required in production");
     }
-    return new TextEncoder().encode('dev-jwt-secret-change-in-prod');
+    return new TextEncoder().encode("dev-jwt-secret-change-in-prod");
   }
   return new TextEncoder().encode(secret);
 }
 
 /** Steward internal API base URL. */
 export const STEWARD_API_URL =
-  process.env.STEWARD_API_URL ?? 'http://localhost:3200';
+  process.env.STEWARD_API_URL ?? "http://localhost:3200";
 
 /** First platform key from the comma-separated STEWARD_PLATFORM_KEYS list. */
 export const STEWARD_PLATFORM_KEY =
-  (process.env.STEWARD_PLATFORM_KEYS ?? '').split(',')[0]?.trim() ?? '';
+  (process.env.STEWARD_PLATFORM_KEYS ?? "").split(",")[0]?.trim() ?? "";
 
 /**
  * Provision a Steward user record by email (idempotent).
@@ -39,10 +39,10 @@ export async function ensureStewardUser(email?: string): Promise<string> {
   if (!email || !STEWARD_PLATFORM_KEY) return crypto.randomUUID();
 
   const res = await fetch(`${STEWARD_API_URL}/platform/users`, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
-      'X-Steward-Platform-Key': STEWARD_PLATFORM_KEY,
+      "Content-Type": "application/json",
+      "X-Steward-Platform-Key": STEWARD_PLATFORM_KEY,
     },
     body: JSON.stringify({ email, emailVerified: false }),
   });
@@ -57,7 +57,7 @@ export async function ensureStewardUser(email?: string): Promise<string> {
   };
 
   if (!data.ok || !data.data?.userId)
-    throw new Error(data.error ?? 'Steward provisioning: missing userId');
+    throw new Error(data.error ?? "Steward provisioning: missing userId");
 
   return data.data.userId;
 }

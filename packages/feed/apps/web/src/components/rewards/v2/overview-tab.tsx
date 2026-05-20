@@ -1,13 +1,13 @@
-'use client';
+"use client";
 
-import { POINTS } from '@feed/shared';
-import { useCallback, useEffect, useState } from 'react';
-import { useAuth } from '@/hooks/useAuth';
-import { useSSEChannel } from '@/hooks/useSSE';
-import { useAuthStore } from '@/stores/authStore';
-import type { AchievementFromApi } from './achievements-tab';
-import { formatCountdown } from './challenges-tab';
-import { useAnimatedCount } from './use-animated-count';
+import { POINTS } from "@feed/shared";
+import { useCallback, useEffect, useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
+import { useSSEChannel } from "@/hooks/useSSE";
+import { useAuthStore } from "@/stores/authStore";
+import type { AchievementFromApi } from "./achievements-tab";
+import { formatCountdown } from "./challenges-tab";
+import { useAnimatedCount } from "./use-animated-count";
 
 interface StreakInfo {
   currentStreak: number;
@@ -49,7 +49,7 @@ interface OverviewTabProps {
   onViewChallenges: () => void;
 }
 
-const DAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+const DAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
 
 /** Day checkpoints (1..n) along the bar; one marker per day for short milestones, subsampled for long ones. */
 function milestoneMarkerDays(nextMilestone: number): number[] {
@@ -92,12 +92,12 @@ function StreakCalendar({
           <div key={i}>
             <div
               className={`flex items-center justify-center transition-all duration-300 ${
-                isToday ? 'h-9 w-9 sm:h-10 sm:w-10' : 'h-8 w-8 sm:h-9 sm:w-9'
+                isToday ? "h-9 w-9 sm:h-10 sm:w-10" : "h-8 w-8 sm:h-9 sm:w-9"
               } rounded-full ${
                 isCompleted
-                  ? 'bg-primary text-primary-foreground shadow-[0_0_12px_rgba(0,102,255,0.3)]'
-                  : 'border border-border bg-transparent text-muted-foreground'
-              } ${isToday && !isCompleted ? 'border-2 border-primary/50' : ''}`}
+                  ? "bg-primary text-primary-foreground shadow-[0_0_12px_rgba(0,102,255,0.3)]"
+                  : "border border-border bg-transparent text-muted-foreground"
+              } ${isToday && !isCompleted ? "border-2 border-primary/50" : ""}`}
             >
               {isCompleted ? (
                 <svg
@@ -131,11 +131,11 @@ export function OverviewTab({
   const [streak, setStreak] = useState<StreakInfo | null>(null);
   const [dailyData, setDailyData] = useState<DailyChallengesData | null>(null);
   const [weeklyData, setWeeklyData] = useState<WeeklyChallengesData | null>(
-    null
+    null,
   );
   const [achievements, setAchievements] = useState<AchievementFromApi[]>([]);
   const [loading, setLoading] = useState(true);
-  const [countdown, setCountdown] = useState({ daily: '', weekly: '' });
+  const [countdown, setCountdown] = useState({ daily: "", weekly: "" });
 
   const fetchData = useCallback(async () => {
     if (!authenticated) {
@@ -149,13 +149,13 @@ export function OverviewTab({
     }
 
     const [streakRes, challengesRes, achievementsRes] = await Promise.all([
-      fetch('/api/users/daily-login', {
+      fetch("/api/users/daily-login", {
         headers: { Authorization: `Bearer ${token}` },
       }),
-      fetch('/api/challenges', {
+      fetch("/api/challenges", {
         headers: { Authorization: `Bearer ${token}` },
       }),
-      fetch('/api/achievements', {
+      fetch("/api/achievements", {
         headers: { Authorization: `Bearer ${token}` },
       }),
     ]);
@@ -187,14 +187,14 @@ export function OverviewTab({
     (data: Record<string, unknown>) => {
       const type = data.type as string;
       if (
-        type === 'challenge_completed' ||
-        type === 'challenge_bonus' ||
-        type === 'achievement_unlocked'
+        type === "challenge_completed" ||
+        type === "challenge_bonus" ||
+        type === "achievement_unlocked"
       ) {
         fetchData();
       }
     },
-    [fetchData]
+    [fetchData],
   );
 
   const channel =
@@ -205,8 +205,8 @@ export function OverviewTab({
     if (!dailyData && !weeklyData) return;
     const update = () => {
       setCountdown({
-        daily: dailyData ? formatCountdown(dailyData.resetsAt) : '',
-        weekly: weeklyData ? formatCountdown(weeklyData.resetsAt) : '',
+        daily: dailyData ? formatCountdown(dailyData.resetsAt) : "",
+        weekly: weeklyData ? formatCountdown(weeklyData.resetsAt) : "",
       });
     };
     update();
@@ -323,8 +323,8 @@ export function OverviewTab({
                     key={day}
                     className={`absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-background ${
                       progressPercent >= pct
-                        ? 'bg-primary'
-                        : 'bg-muted-foreground/30'
+                        ? "bg-primary"
+                        : "bg-muted-foreground/30"
                     }`}
                     style={{ left: `${pct}%` }}
                   />
@@ -338,7 +338,7 @@ export function OverviewTab({
         <div className="mt-5 flex w-full items-center justify-center bg-emerald-500/10 py-3.5 font-semibold text-emerald-600 text-sm dark:text-emerald-400">
           {streak?.canClaim
             ? `+${nextReward} Reputation on next login`
-            : 'Claimed Today ✓'}
+            : "Claimed Today ✓"}
         </div>
       </div>
 
@@ -349,7 +349,7 @@ export function OverviewTab({
           <button
             onClick={onViewChallenges}
             className="block w-full animate-fadeIn border border-border bg-card p-4 text-left transition-all hover:border-emerald-500/30"
-            style={{ animationDelay: '80ms', animationFillMode: 'backwards' }}
+            style={{ animationDelay: "80ms", animationFillMode: "backwards" }}
           >
             <div className="flex items-center justify-between">
               <p className="font-semibold text-foreground text-sm">
@@ -369,8 +369,8 @@ export function OverviewTab({
               <div
                 className={`h-full transition-all duration-500 ${
                   challengePercent === 100
-                    ? 'bg-emerald-500'
-                    : 'bg-gradient-to-r from-emerald-500 to-emerald-400'
+                    ? "bg-emerald-500"
+                    : "bg-gradient-to-r from-emerald-500 to-emerald-400"
                 }`}
                 style={{ width: `${challengePercent}%` }}
               />
@@ -383,7 +383,7 @@ export function OverviewTab({
           <button
             onClick={onViewAchievements}
             className="block w-full animate-fadeIn border border-border bg-card p-4 text-left transition-all hover:border-amber-500/30"
-            style={{ animationDelay: '160ms', animationFillMode: 'backwards' }}
+            style={{ animationDelay: "160ms", animationFillMode: "backwards" }}
           >
             <div className="flex items-center justify-between">
               <p className="font-semibold text-foreground text-sm">

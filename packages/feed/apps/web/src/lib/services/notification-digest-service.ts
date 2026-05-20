@@ -1,4 +1,4 @@
-import { createNotification, sendNotificationEmail } from '@feed/api';
+import { createNotification, sendNotificationEmail } from "@feed/api";
 import {
   and,
   db,
@@ -11,7 +11,7 @@ import {
   or,
   positions,
   users,
-} from '@feed/db';
+} from "@feed/db";
 import {
   isValidDeliveryChannel,
   isValidDigestFrequency,
@@ -20,8 +20,8 @@ import {
   type NotificationDigestFrequency,
   type NotificationDigestSettings,
   type PerformanceDigestNotificationData,
-} from '@feed/shared';
-import { groupResolvedMarketOutcomes } from './market-resolution-notifications';
+} from "@feed/shared";
+import { groupResolvedMarketOutcomes } from "./market-resolution-notifications";
 
 interface DigestCandidateUser {
   id: string;
@@ -67,17 +67,17 @@ function isValidDigestCandidateRow(row: {
 }): row is ValidatedDigestRow {
   if (!isValidDigestFrequency(row.digestFrequency)) {
     logger.warn(
-      'Invalid digest frequency in database',
+      "Invalid digest frequency in database",
       { userId: row.id, value: row.digestFrequency },
-      'NotificationDigestService'
+      "NotificationDigestService",
     );
     return false;
   }
   if (!isValidDeliveryChannel(row.deliveryChannel)) {
     logger.warn(
-      'Invalid delivery channel in database',
+      "Invalid delivery channel in database",
       { userId: row.id, value: row.deliveryChannel },
-      'NotificationDigestService'
+      "NotificationDigestService",
     );
     return false;
   }
@@ -86,7 +86,7 @@ function isValidDigestCandidateRow(row: {
 
 export function getDigestWindowStart(
   now: Date,
-  frequency: NotificationDigestFrequency
+  frequency: NotificationDigestFrequency,
 ): Date {
   return new Date(now.getTime() - DIGEST_WINDOWS_MS[frequency]);
 }
@@ -107,8 +107,8 @@ export function isDigestDue(params: {
 }
 
 function formatSignedPoints(points: number): string {
-  const sign = points >= 0 ? '+' : '-';
-  return `${sign}${Math.abs(points).toLocaleString('en-US', {
+  const sign = points >= 0 ? "+" : "-";
+  return `${sign}${Math.abs(points).toLocaleString("en-US", {
     maximumFractionDigits: 2,
   })}`;
 }
@@ -152,18 +152,18 @@ export async function buildDigestForUser(params: {
     .leftJoin(users, eq(users.id, positions.userId))
     .where(
       and(
-        eq(positions.status, 'resolved'),
+        eq(positions.status, "resolved"),
         isNotNull(positions.outcome),
         isNotNull(positions.pnl),
         isNotNull(positions.resolvedAt),
-        gt(positions.shares, '0'),
+        gt(positions.shares, "0"),
         gte(positions.resolvedAt, windowStart),
         lt(positions.resolvedAt, params.now),
         or(
           eq(positions.userId, params.userId),
-          eq(users.managedBy, params.userId)
-        )
-      )
+          eq(users.managedBy, params.userId),
+        ),
+      ),
     );
 
   const groupedOutcomes = groupResolvedMarketOutcomes(
@@ -174,7 +174,7 @@ export async function buildDigestForUser(params: {
       marketName: row.marketName,
       points: Number(row.pnl),
       agentName: row.isAgent ? row.agentName : null,
-    }))
+    })),
   ).filter((entry) => entry.ownerUserId === params.userId);
 
   if (groupedOutcomes.length === 0) {
@@ -182,11 +182,11 @@ export async function buildDigestForUser(params: {
   }
 
   const netPointsChange = Number(
-    groupedOutcomes.reduce((sum, entry) => sum + entry.points, 0).toFixed(2)
+    groupedOutcomes.reduce((sum, entry) => sum + entry.points, 0).toFixed(2),
   );
   const marketsWon = groupedOutcomes.filter((entry) => entry.points > 0).length;
   const marketsLost = groupedOutcomes.filter(
-    (entry) => entry.points < 0
+    (entry) => entry.points < 0,
   ).length;
 
   const topAgent = groupedOutcomes
@@ -198,7 +198,7 @@ export async function buildDigestForUser(params: {
     }, new Map());
 
   const topPerformingAgent = Array.from(topAgent.entries()).sort(
-    (left, right) => right[1] - left[1]
+    (left, right) => right[1] - left[1],
   )[0];
 
   const summary = [
@@ -207,15 +207,15 @@ export async function buildDigestForUser(params: {
     `${marketsLost} lost`,
     topPerformingAgent
       ? `top agent ${topPerformingAgent[0]} (${formatSignedPoints(topPerformingAgent[1])})`
-      : 'no agent activity',
-  ].join(' | ');
+      : "no agent activity",
+  ].join(" | ");
 
   const title =
-    params.frequency === 'hourly'
-      ? 'Hourly performance digest'
-      : params.frequency === 'weekly'
-        ? 'Weekly performance digest'
-        : 'Daily performance digest';
+    params.frequency === "hourly"
+      ? "Hourly performance digest"
+      : params.frequency === "weekly"
+        ? "Weekly performance digest"
+        : "Daily performance digest";
 
   const message = `Your ${params.frequency} digest: ${summary}.`;
   const data: PerformanceDigestNotificationData = {
@@ -268,15 +268,15 @@ export async function deliverDigestForUser(params: {
   let delivered = false;
 
   if (
-    params.settings.deliveryChannel === 'in-app' ||
-    params.settings.deliveryChannel === 'both'
+    params.settings.deliveryChannel === "in-app" ||
+    params.settings.deliveryChannel === "both"
   ) {
     const notificationType =
-      params.settings.frequency === 'hourly'
-        ? 'hourly_summary'
-        : params.settings.frequency === 'weekly'
-          ? 'weekly_summary'
-          : 'daily_summary';
+      params.settings.frequency === "hourly"
+        ? "hourly_summary"
+        : params.settings.frequency === "weekly"
+          ? "weekly_summary"
+          : "daily_summary";
 
     const result = await createNotification({
       userId: params.candidate.id,
@@ -292,8 +292,8 @@ export async function deliverDigestForUser(params: {
   }
 
   if (
-    (params.settings.deliveryChannel === 'email' ||
-      params.settings.deliveryChannel === 'both') &&
+    (params.settings.deliveryChannel === "email" ||
+      params.settings.deliveryChannel === "both") &&
     params.candidate.email &&
     params.candidate.emailVerified
   ) {
@@ -303,11 +303,11 @@ export async function deliverDigestForUser(params: {
       title: digest.title,
       message: digest.message,
       category:
-        params.settings.frequency === 'hourly'
-          ? 'hourly_summary'
-          : params.settings.frequency === 'weekly'
-            ? 'weekly_summary'
-            : 'daily_summary',
+        params.settings.frequency === "hourly"
+          ? "hourly_summary"
+          : params.settings.frequency === "weekly"
+            ? "weekly_summary"
+            : "daily_summary",
     });
 
     delivered = true;
@@ -315,12 +315,12 @@ export async function deliverDigestForUser(params: {
 
   if (!delivered) {
     logger.info(
-      'Digest skipped because no active delivery channel was available',
+      "Digest skipped because no active delivery channel was available",
       {
         userId: params.candidate.id,
         deliveryChannel: params.settings.deliveryChannel,
       },
-      'NotificationDigestService'
+      "NotificationDigestService",
     );
     return { delivered: false, hadContent: true };
   }

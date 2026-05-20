@@ -2,13 +2,13 @@ import {
   calculatePredictionPositionSnapshot,
   type PredictionMarketRecord,
   type PredictionPositionRecord,
-} from '@feed/core/markets/prediction';
-import { FEE_CONFIG } from '@feed/engine';
+} from "@feed/core/markets/prediction";
+import { FEE_CONFIG } from "@feed/engine";
 
 export interface PredictionUserPositionSnapshot {
   id: string;
   marketId: string;
-  side: 'YES' | 'NO';
+  side: "YES" | "NO";
   shares: number;
   avgPrice: number;
   currentPrice: number;
@@ -23,7 +23,7 @@ export interface PredictionUserPositionSnapshot {
 
 export function buildPredictionUserPositionSnapshot(
   position: PredictionPositionRecord,
-  market: PredictionMarketRecord
+  market: PredictionMarketRecord,
 ): PredictionUserPositionSnapshot | null {
   if (position.shares < 0.01) {
     return null;
@@ -43,7 +43,7 @@ export function buildPredictionUserPositionSnapshot(
   return {
     id: position.id,
     marketId: position.marketId,
-    side: position.side === 'yes' ? 'YES' : 'NO',
+    side: position.side === "yes" ? "YES" : "NO",
     shares: position.shares,
     avgPrice: position.avgPrice,
     currentPrice: snapshot.currentUnitPrice,

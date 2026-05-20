@@ -1,4 +1,4 @@
-import { PerpDbAdapter, PerpMarketService } from '@feed/core/markets/perps';
+import { PerpDbAdapter, PerpMarketService } from "@feed/core/markets/perps";
 import {
   db,
   eq,
@@ -6,19 +6,19 @@ import {
   organizationState,
   organizations,
   perpMarketSnapshots,
-} from '@feed/db';
-import type { JsonValue } from '@feed/shared';
-import { logger } from '@feed/shared';
-import { FEE_CONFIG } from '../config/fees';
-import { broadcastToChannel } from './realtime-broadcaster';
-import { WalletService } from './wallet-service';
+} from "@feed/db";
+import type { JsonValue } from "@feed/shared";
+import { logger } from "@feed/shared";
+import { FEE_CONFIG } from "../config/fees";
+import { broadcastToChannel } from "./realtime-broadcaster";
+import { WalletService } from "./wallet-service";
 
 export type PriceUpdateSource =
-  | 'user_trade'
-  | 'npc_trade'
-  | 'event'
-  | 'system'
-  | 'volatility_simulation';
+  | "user_trade"
+  | "npc_trade"
+  | "event"
+  | "system"
+  | "volatility_simulation";
 
 export interface PriceUpdateInput {
   organizationId: string;
@@ -46,7 +46,7 @@ export class PriceUpdateService {
   ): number | null {
     for (const candidate of candidates) {
       if (
-        typeof candidate === 'number' &&
+        typeof candidate === "number" &&
         Number.isFinite(candidate) &&
         candidate > 0
       ) {
@@ -60,7 +60,7 @@ export class PriceUpdateService {
    * Apply a batch of price updates with persistence, engine sync, and SSE broadcast
    */
   static async applyUpdates(
-    updates: PriceUpdateInput[]
+    updates: PriceUpdateInput[],
   ): Promise<AppliedPriceUpdate[]> {
     if (updates.length === 0) return [];
 
@@ -72,16 +72,16 @@ export class PriceUpdateService {
             userId,
             amount,
             reason,
-            description ?? '',
-            relatedId
+            description ?? "",
+            relatedId,
           ),
         credit: ({ userId, amount, reason, description, relatedId }) =>
           WalletService.credit(
             userId,
             amount,
             reason,
-            description ?? '',
-            relatedId
+            description ?? "",
+            relatedId,
           ),
         recordPnL: async ({ userId, pnl, reason, relatedId }) => {
           await WalletService.recordPnL(userId, pnl, reason, relatedId);
@@ -102,9 +102,9 @@ export class PriceUpdateService {
     for (const update of updates) {
       if (!Number.isFinite(update.newPrice) || update.newPrice <= 0) {
         logger.warn(
-          'Skipping invalid price update',
+          "Skipping invalid price update",
           { update },
-          'PriceUpdateService'
+          "PriceUpdateService",
         );
         continue;
       }
@@ -137,18 +137,18 @@ export class PriceUpdateService {
       // Resolve basePrice for bounds enforcement
       // Priority: organizationState.basePrice > organization.initialPrice
       const resolvedBasePrice =
-        this.getFirstPositivePrice(
+        PriceUpdateService.getFirstPositivePrice(
           state?.basePrice,
-          organization?.initialPrice
+          organization?.initialPrice,
         ) ?? 100;
 
       // Price sanity check — must be positive and finite (AMM handles bounds)
       const clampedNewPrice = update.newPrice;
       if (!Number.isFinite(clampedNewPrice) || clampedNewPrice <= 0) {
         logger.warn(
-          'Invalid price update value, skipping',
+          "Invalid price update value, skipping",
           { orgId, newPrice: update.newPrice },
-          'PriceUpdateService'
+          "PriceUpdateService",
         );
         continue;
       }
@@ -192,7 +192,7 @@ export class PriceUpdateService {
         orgId,
         clampedNewPrice,
         change,
-        changePercent
+        changePercent,
       );
 
       priceMap.set(orgId, clampedNewPrice);
@@ -253,22 +253,22 @@ export class PriceUpdateService {
             db
               .update(perpMarketSnapshots)
               .set({ indexPrice: update.indexPrice, updatedAt: now })
-              .where(eq(perpMarketSnapshots.ticker, update.ticker))
-          )
+              .where(eq(perpMarketSnapshots.ticker, update.ticker)),
+          ),
         );
 
         if (indexUpdates.length > 0) {
           logger.debug(
             `Synced indexPrice for ${indexUpdates.length} perp market(s)`,
             { tickers: indexUpdates.map((u) => u.ticker) },
-            'PriceUpdateService'
+            "PriceUpdateService",
           );
         }
       } catch (err) {
         logger.warn(
-          'Failed to sync perp indexPrice',
+          "Failed to sync perp indexPrice",
           { err },
-          'PriceUpdateService'
+          "PriceUpdateService",
         );
       }
 
@@ -286,8 +286,8 @@ export class PriceUpdateService {
           timestamp: u.timestamp,
         }));
 
-        await broadcastToChannel('markets', {
-          type: 'price_update',
+        await broadcastToChannel("markets", {
+          type: "price_update",
           updates: updatesForBroadcast,
         });
 
@@ -295,7 +295,7 @@ export class PriceUpdateService {
           (await perpService.getMarketsSnapshot()).map((market) => [
             market.ticker.toUpperCase(),
             market,
-          ])
+          ]),
         );
 
         // If any updates include a canonical perp ticker, also broadcast a
@@ -304,7 +304,7 @@ export class PriceUpdateService {
           .map((u) => {
             const tickerRaw = u.metadata?.ticker;
             const ticker =
-              typeof tickerRaw === 'string' && tickerRaw.length > 0
+              typeof tickerRaw === "string" && tickerRaw.length > 0
                 ? tickerRaw.toUpperCase()
                 : null;
             if (!ticker) return null;
@@ -339,8 +339,8 @@ export class PriceUpdateService {
           .filter((u): u is NonNullable<typeof u> => u !== null);
 
         if (perpUpdates.length > 0) {
-          await broadcastToChannel('markets', {
-            type: 'perp_price_update',
+          await broadcastToChannel("markets", {
+            type: "perp_price_update",
             updates: perpUpdates,
           });
         }
@@ -351,7 +351,7 @@ export class PriceUpdateService {
       logger.info(
         `Applied ${appliedUpdates.length} organization price updates`,
         { count: appliedUpdates.length },
-        'PriceUpdateService'
+        "PriceUpdateService",
       );
     }
 

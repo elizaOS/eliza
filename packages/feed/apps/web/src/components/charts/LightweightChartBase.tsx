@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { FEED_POINTS_SYMBOL, logger } from '@feed/shared';
+import { FEED_POINTS_SYMBOL, logger } from "@feed/shared";
 import type {
   AreaSeriesOptions,
   ChartOptions,
@@ -9,9 +9,9 @@ import type {
   ISeriesApi,
   LineSeriesOptions,
   Time,
-} from 'lightweight-charts';
-import { ColorType, createChart } from 'lightweight-charts';
-import { useEffect, useRef, useState } from 'react';
+} from "lightweight-charts";
+import { ColorType, createChart } from "lightweight-charts";
+import { useEffect, useRef, useState } from "react";
 
 /**
  * Base chart props for Lightweight Charts wrapper.
@@ -33,8 +33,8 @@ interface ChartContainerNode {
  */
 export const DARK_CHART_THEME: DeepPartial<ChartOptions> = {
   layout: {
-    background: { type: ColorType.Solid, color: 'transparent' },
-    textColor: '#a1a1aa', // zinc-400 - readable on dark backgrounds
+    background: { type: ColorType.Solid, color: "transparent" },
+    textColor: "#a1a1aa", // zinc-400 - readable on dark backgrounds
     fontSize: 11,
     fontFamily:
       'ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji"',
@@ -42,26 +42,26 @@ export const DARK_CHART_THEME: DeepPartial<ChartOptions> = {
   },
   grid: {
     vertLines: { visible: false },
-    horzLines: { color: 'rgba(63, 63, 70, 0.5)', style: 1 }, // zinc-700 with opacity
+    horzLines: { color: "rgba(63, 63, 70, 0.5)", style: 1 }, // zinc-700 with opacity
   },
   crosshair: {
     vertLine: {
-      color: 'rgba(161, 161, 170, 0.5)', // zinc-400 with opacity
+      color: "rgba(161, 161, 170, 0.5)", // zinc-400 with opacity
       width: 1,
       style: 2,
-      labelBackgroundColor: '#27272a', // zinc-800
+      labelBackgroundColor: "#27272a", // zinc-800
     },
     horzLine: {
-      color: 'rgba(161, 161, 170, 0.5)', // zinc-400 with opacity
+      color: "rgba(161, 161, 170, 0.5)", // zinc-400 with opacity
       width: 1,
       style: 2,
-      labelBackgroundColor: '#27272a', // zinc-800
+      labelBackgroundColor: "#27272a", // zinc-800
     },
   },
   rightPriceScale: {
     borderVisible: false,
     scaleMargins: { top: 0.1, bottom: 0.1 },
-    textColor: '#a1a1aa', // zinc-400
+    textColor: "#a1a1aa", // zinc-400
   },
   timeScale: {
     borderVisible: false,
@@ -79,47 +79,47 @@ export const DARK_CHART_THEME: DeepPartial<ChartOptions> = {
  */
 export const AREA_STYLES = {
   green: {
-    lineColor: '#22c55e', // green-500 - brighter for visibility
-    topColor: 'rgba(34, 197, 94, 0.25)',
-    bottomColor: 'rgba(34, 197, 94, 0.02)',
+    lineColor: "#22c55e", // green-500 - brighter for visibility
+    topColor: "rgba(34, 197, 94, 0.25)",
+    bottomColor: "rgba(34, 197, 94, 0.02)",
     lineWidth: 2,
     crosshairMarkerVisible: true,
     crosshairMarkerRadius: 4,
-    crosshairMarkerBackgroundColor: '#22c55e',
-    crosshairMarkerBorderColor: '#ffffff',
+    crosshairMarkerBackgroundColor: "#22c55e",
+    crosshairMarkerBorderColor: "#ffffff",
     crosshairMarkerBorderWidth: 2,
   } satisfies DeepPartial<AreaSeriesOptions>,
   red: {
-    lineColor: '#ef4444', // red-500 - brighter for visibility
-    topColor: 'rgba(239, 68, 68, 0.25)',
-    bottomColor: 'rgba(239, 68, 68, 0.02)',
+    lineColor: "#ef4444", // red-500 - brighter for visibility
+    topColor: "rgba(239, 68, 68, 0.25)",
+    bottomColor: "rgba(239, 68, 68, 0.02)",
     lineWidth: 2,
     crosshairMarkerVisible: true,
     crosshairMarkerRadius: 4,
-    crosshairMarkerBackgroundColor: '#ef4444',
-    crosshairMarkerBorderColor: '#ffffff',
+    crosshairMarkerBackgroundColor: "#ef4444",
+    crosshairMarkerBorderColor: "#ffffff",
     crosshairMarkerBorderWidth: 2,
   } satisfies DeepPartial<AreaSeriesOptions>,
   blue: {
-    lineColor: '#3b82f6',
-    topColor: 'rgba(59, 130, 246, 0.25)',
-    bottomColor: 'rgba(59, 130, 246, 0.02)',
+    lineColor: "#3b82f6",
+    topColor: "rgba(59, 130, 246, 0.25)",
+    bottomColor: "rgba(59, 130, 246, 0.02)",
     lineWidth: 2,
     crosshairMarkerVisible: true,
     crosshairMarkerRadius: 4,
-    crosshairMarkerBackgroundColor: '#3b82f6',
-    crosshairMarkerBorderColor: '#ffffff',
+    crosshairMarkerBackgroundColor: "#3b82f6",
+    crosshairMarkerBorderColor: "#ffffff",
     crosshairMarkerBorderWidth: 2,
   } satisfies DeepPartial<AreaSeriesOptions>,
   bluePastel: {
-    lineColor: '#60a5fa', // blue-400
-    topColor: 'rgba(96, 165, 250, 0.22)',
-    bottomColor: 'rgba(96, 165, 250, 0.02)',
+    lineColor: "#60a5fa", // blue-400
+    topColor: "rgba(96, 165, 250, 0.22)",
+    bottomColor: "rgba(96, 165, 250, 0.02)",
     lineWidth: 2,
     crosshairMarkerVisible: true,
     crosshairMarkerRadius: 4,
-    crosshairMarkerBackgroundColor: '#60a5fa',
-    crosshairMarkerBorderColor: '#ffffff',
+    crosshairMarkerBackgroundColor: "#60a5fa",
+    crosshairMarkerBorderColor: "#ffffff",
     crosshairMarkerBorderWidth: 2,
   } satisfies DeepPartial<AreaSeriesOptions>,
 };
@@ -129,30 +129,30 @@ export const AREA_STYLES = {
  */
 export const LINE_STYLES = {
   green: {
-    color: '#22c55e', // green-500
+    color: "#22c55e", // green-500
     lineWidth: 2,
     crosshairMarkerVisible: true,
     crosshairMarkerRadius: 4,
-    crosshairMarkerBackgroundColor: '#22c55e',
-    crosshairMarkerBorderColor: '#ffffff',
+    crosshairMarkerBackgroundColor: "#22c55e",
+    crosshairMarkerBorderColor: "#ffffff",
     crosshairMarkerBorderWidth: 2,
   } satisfies DeepPartial<LineSeriesOptions>,
   red: {
-    color: '#ef4444', // red-500
+    color: "#ef4444", // red-500
     lineWidth: 2,
     crosshairMarkerVisible: true,
     crosshairMarkerRadius: 4,
-    crosshairMarkerBackgroundColor: '#ef4444',
-    crosshairMarkerBorderColor: '#ffffff',
+    crosshairMarkerBackgroundColor: "#ef4444",
+    crosshairMarkerBorderColor: "#ffffff",
     crosshairMarkerBorderWidth: 2,
   } satisfies DeepPartial<LineSeriesOptions>,
   violetPastel: {
-    color: '#8b5cf6', // violet-500 (a bit less pastel)
+    color: "#8b5cf6", // violet-500 (a bit less pastel)
     lineWidth: 2,
     crosshairMarkerVisible: true,
     crosshairMarkerRadius: 4,
-    crosshairMarkerBackgroundColor: '#8b5cf6',
-    crosshairMarkerBorderColor: '#ffffff',
+    crosshairMarkerBackgroundColor: "#8b5cf6",
+    crosshairMarkerBorderColor: "#ffffff",
     crosshairMarkerBorderWidth: 2,
   } satisfies DeepPartial<LineSeriesOptions>,
 };
@@ -198,7 +198,7 @@ export function getChartInitializationFailureMessage(params: {
  * @returns Chart container ref and chart API
  */
 export function useLightweightChart(
-  options?: DeepPartial<ChartOptions>
+  options?: DeepPartial<ChartOptions>,
 ): UseLightweightChartResult {
   const chartContainerRef = useRef<HTMLDivElement | null>(null);
   const [chart, setChart] = useState<IChartApi | null>(null);
@@ -210,7 +210,7 @@ export function useLightweightChart(
 
   useEffect(() => {
     // Skip during SSR
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined") return;
 
     let mounted = true;
     let rafId: number | null = null;
@@ -255,18 +255,18 @@ export function useLightweightChart(
         }
       } catch (error) {
         const message =
-          error instanceof Error ? error.message : 'Failed to create chart';
+          error instanceof Error ? error.message : "Failed to create chart";
         lastCreateErrorRef.current = message;
         clearChartContainer(container);
         setError(message);
         logger.error(
-          'createChart failed',
+          "createChart failed",
           {
             error: error instanceof Error ? error : { error },
             height: Math.floor(height),
             width: Math.floor(width),
           },
-          'LightweightChartBase'
+          "LightweightChartBase",
         );
       }
     };
@@ -291,11 +291,11 @@ export function useLightweightChart(
 
       const container = chartContainerRef.current;
       if (!container) {
-        setError('Chart container ref was not attached.');
+        setError("Chart container ref was not attached.");
         logger.error(
-          'Container ref missing',
+          "Container ref missing",
           undefined,
-          'LightweightChartBase'
+          "LightweightChartBase",
         );
         return;
       }
@@ -323,19 +323,19 @@ export function useLightweightChart(
         });
         setError(message);
         logger.warn(
-          'Chart container still zero-sized after timeout — ResizeObserver will retry when visible',
+          "Chart container still zero-sized after timeout — ResizeObserver will retry when visible",
           {
             height: Math.floor(retryRect.height),
             width: Math.floor(retryRect.width),
           },
-          'LightweightChartBase'
+          "LightweightChartBase",
         );
       }, 2500);
     }, 1500);
 
     // If the chart initially mounts into a zero-sized container (common with tabs/panels),
     // listen for size changes and retry initialization when dimensions become available.
-    if (typeof ResizeObserver !== 'undefined') {
+    if (typeof ResizeObserver !== "undefined") {
       resizeObserver = new ResizeObserver(() => {
         const container = chartContainerRef.current;
         if (!container) return;
@@ -355,12 +355,12 @@ export function useLightweightChart(
           });
         } catch (error) {
           const message =
-            error instanceof Error ? error.message : 'Failed to resize chart';
+            error instanceof Error ? error.message : "Failed to resize chart";
           setError(message);
           logger.warn(
-            'Failed to resize chart',
+            "Failed to resize chart",
             error instanceof Error ? error : { error },
-            'LightweightChartBase'
+            "LightweightChartBase",
           );
         }
       });
@@ -372,7 +372,7 @@ export function useLightweightChart(
     const handleVisibility = () => {
       scheduleCreate();
     };
-    document.addEventListener('visibilitychange', handleVisibility);
+    document.addEventListener("visibilitychange", handleVisibility);
 
     return () => {
       mounted = false;
@@ -387,7 +387,7 @@ export function useLightweightChart(
         resizeObserver.disconnect();
         resizeObserver = null;
       }
-      document.removeEventListener('visibilitychange', handleVisibility);
+      document.removeEventListener("visibilitychange", handleVisibility);
       if (chartInstanceRef.current) {
         chartInstanceRef.current.remove();
         chartInstanceRef.current = null;
@@ -414,7 +414,7 @@ export function formatChartTime(timestamp: number): Time {
  * Format price for display.
  */
 export function formatChartPrice(value: number, includeSymbol = false): string {
-  const prefix = includeSymbol ? FEED_POINTS_SYMBOL : '';
+  const prefix = includeSymbol ? FEED_POINTS_SYMBOL : "";
 
   if (value === 0) return `${prefix}0`;
   if (value >= 1_000_000_000)

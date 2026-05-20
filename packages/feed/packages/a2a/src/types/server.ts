@@ -8,8 +8,8 @@ import type {
   JsonValue,
   PaymentVerificationParams,
   PaymentVerificationResult,
-} from '@feed/shared';
-import type { AgentCapabilities, AgentProfile } from './a2a';
+} from "@feed/shared";
+import type { AgentCapabilities, AgentProfile } from "./a2a";
 
 /**
  * Agent registry entry
@@ -64,10 +64,10 @@ export interface IX402Manager {
     to: string,
     amount: string,
     service: string,
-    metadata?: Record<string, string | number | boolean | null>
+    metadata?: Record<string, string | number | boolean | null>,
   ): PaymentRequestResult;
   verifyPayment(
-    verificationData: PaymentVerificationParams
+    verificationData: PaymentVerificationParams,
   ): Promise<PaymentVerificationResult>;
   getPaymentRequest(requestId: string): PaymentRequestResult | null;
   isPaymentVerified(requestId: string): boolean;
@@ -119,7 +119,7 @@ export interface A2AServerConfig {
   authTimeout?: number;
   enableX402?: boolean;
   enableCoalitions?: boolean;
-  logLevel?: 'debug' | 'info' | 'warn' | 'error';
+  logLevel?: "debug" | "info" | "warn" | "error";
   registryClient?: IRegistryClient;
   agent0Client?: IAgent0Client;
   agentDiscovery?: IAgentDiscoveryService;
@@ -131,7 +131,7 @@ export interface A2AServerConfig {
 export interface A2AServerOptions
   extends Omit<
     A2AServerConfig,
-    'registryClient' | 'agent0Client' | 'agentDiscovery'
+    "registryClient" | "agent0Client" | "agentDiscovery"
   > {
   registryClient?: IRegistryClient;
   x402Manager?: IX402Manager;

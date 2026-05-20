@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { cn, formatDate } from '@feed/shared';
+import { cn, formatDate } from "@feed/shared";
 import {
   Ban,
   CheckCircle,
@@ -9,17 +9,17 @@ import {
   Shield,
   Users,
   VolumeX,
-} from 'lucide-react';
-import { useCallback, useEffect, useState, useTransition } from 'react';
-import { toast } from 'sonner';
-import { z } from 'zod';
-import { BlockUserModal } from '@/components/moderation/BlockUserModal';
-import { MuteUserModal } from '@/components/moderation/MuteUserModal';
-import { Avatar } from '@/components/shared/Avatar';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { formatCurrencyCompact } from '@/lib/format';
-import { getUserDisplayName } from '@/lib/user-display';
-import { apiUrl } from '@/utils/api-url';
+} from "lucide-react";
+import { useCallback, useEffect, useState, useTransition } from "react";
+import { toast } from "sonner";
+import { z } from "zod";
+import { BlockUserModal } from "@/components/moderation/BlockUserModal";
+import { MuteUserModal } from "@/components/moderation/MuteUserModal";
+import { Avatar } from "@/components/shared/Avatar";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { formatCurrencyCompact } from "@/lib/format";
+import { getUserDisplayName } from "@/lib/user-display";
+import { apiUrl } from "@/utils/api-url";
 
 /**
  * User schema for validation.
@@ -78,21 +78,21 @@ type User = z.infer<typeof UserSchema>;
 /**
  * Filter type for user management tab.
  */
-type FilterType = 'all' | 'actors' | 'users' | 'banned' | 'admins';
+type FilterType = "all" | "actors" | "users" | "banned" | "admins";
 /**
  * Sort by type for user management tab.
  */
 type SortByType =
-  | 'created'
-  | 'balance'
-  | 'reputation'
-  | 'username'
-  | 'reports_received'
-  | 'blocks_received'
-  | 'mutes_received'
-  | 'report_ratio'
-  | 'block_ratio'
-  | 'bad_user_score';
+  | "created"
+  | "balance"
+  | "reputation"
+  | "username"
+  | "reports_received"
+  | "blocks_received"
+  | "mutes_received"
+  | "report_ratio"
+  | "block_ratio"
+  | "bad_user_score";
 
 /**
  * User management tab component for managing users and actors.
@@ -120,38 +120,38 @@ export function UserManagementTab() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, startRefresh] = useTransition();
-  const [filter, setFilter] = useState<FilterType>('all');
-  const [sortBy, setSortBy] = useState<SortByType>('created');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [filter, setFilter] = useState<FilterType>("all");
+  const [sortBy, setSortBy] = useState<SortByType>("created");
+  const [searchQuery, setSearchQuery] = useState("");
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [showBanModal, setShowBanModal] = useState(false);
   const [showMuteModal, setShowMuteModal] = useState(false);
   const [showBlockModal, setShowBlockModal] = useState(false);
-  const [banReason, setBanReason] = useState('');
+  const [banReason, setBanReason] = useState("");
   const [isScammer, setIsScammer] = useState(false);
   const [isCSAM, setIsCSAM] = useState(false);
   const [isBanning, startBanning] = useTransition();
   const [whitelistingUserId, setWhitelistingUserId] = useState<string | null>(
-    null
+    null,
   );
 
   const fetchUsers = useCallback(
     (showRefreshing = false) => {
       const fetchLogic = async () => {
         const params = new URLSearchParams({
-          limit: '50',
+          limit: "50",
           filter,
           sortBy,
-          sortOrder: 'desc',
+          sortOrder: "desc",
         });
-        if (searchQuery) params.set('search', searchQuery);
+        if (searchQuery) params.set("search", searchQuery);
 
         const response = await fetch(apiUrl(`/api/admin/users?${params}`));
-        if (!response.ok) throw new Error('Failed to fetch users');
+        if (!response.ok) throw new Error("Failed to fetch users");
         const data = await response.json();
         const validation = z.array(UserSchema).safeParse(data.users);
         if (!validation.success) {
-          throw new Error('Invalid user data structure');
+          throw new Error("Invalid user data structure");
         }
         setUsers(validation.data || []);
         setLoading(false);
@@ -163,38 +163,38 @@ export function UserManagementTab() {
         void fetchLogic();
       }
     },
-    [filter, sortBy, searchQuery]
+    [filter, sortBy, searchQuery],
   );
 
   useEffect(() => {
     fetchUsers();
   }, [fetchUsers]);
 
-  const handleBanUser = (user: User, action: 'ban' | 'unban') => {
-    if (action === 'ban' && !banReason.trim()) {
-      toast.error('Please provide a reason for banning');
+  const handleBanUser = (user: User, action: "ban" | "unban") => {
+    if (action === "ban" && !banReason.trim()) {
+      toast.error("Please provide a reason for banning");
       return;
     }
 
     startBanning(async () => {
       const response = await fetch(apiUrl(`/api/admin/users/${user.id}/ban`), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action,
-          reason: action === 'ban' ? banReason : undefined,
-          isScammer: action === 'ban' ? isScammer : false,
-          isCSAM: action === 'ban' ? isCSAM : false,
+          reason: action === "ban" ? banReason : undefined,
+          isScammer: action === "ban" ? isScammer : false,
+          isCSAM: action === "ban" ? isCSAM : false,
         }),
       });
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.message || 'Failed to update user');
+        throw new Error(error.message || "Failed to update user");
       }
 
       setShowBanModal(false);
-      setBanReason('');
+      setBanReason("");
       setIsScammer(false);
       setIsCSAM(false);
       setSelectedUser(null);
@@ -205,24 +205,24 @@ export function UserManagementTab() {
   const handleWhitelistUser = async (userId: string) => {
     setWhitelistingUserId(userId);
     try {
-      const res = await fetch(apiUrl('/api/admin/whitelist'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, source: 'admin_manual' }),
+      const res = await fetch(apiUrl("/api/admin/whitelist"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, source: "admin_manual" }),
       });
 
       const data = await res.json();
 
       if (!res.ok) {
         if (res.status === 409) {
-          toast.info('User is already whitelisted');
+          toast.info("User is already whitelisted");
         } else {
-          toast.error(data.error ?? 'Failed to whitelist user');
+          toast.error(data.error ?? "Failed to whitelist user");
         }
         return;
       }
     } catch {
-      toast.error('Failed to whitelist user');
+      toast.error("Failed to whitelist user");
     } finally {
       setWhitelistingUserId(null);
     }
@@ -231,7 +231,7 @@ export function UserManagementTab() {
   const formatCurrency = formatCurrencyCompact;
 
   const UserRow = ({ user }: { user: User }) => {
-    const displayName = getUserDisplayName(user, 'Anonymous');
+    const displayName = getUserDisplayName(user, "Anonymous");
 
     return (
       <div className="rounded-2xl border border-border bg-card p-4 transition-colors hover:border-primary/50">
@@ -289,10 +289,10 @@ export function UserManagementTab() {
                 <div className="text-muted-foreground text-xs">P&L</div>
                 <div
                   className={cn(
-                    'font-bold',
+                    "font-bold",
                     parseFloat(user.lifetimePnL) >= 0
-                      ? 'text-green-600'
-                      : 'text-red-600'
+                      ? "text-green-600"
+                      : "text-red-600",
                   )}
                 >
                   {formatCurrency(user.lifetimePnL)}
@@ -350,12 +350,12 @@ export function UserManagementTab() {
                       <div className="text-muted-foreground">Bad Score</div>
                       <div
                         className={cn(
-                          'font-bold',
+                          "font-bold",
                           user._moderation.badUserScore > 10
-                            ? 'text-red-500'
+                            ? "text-red-500"
                             : user._moderation.badUserScore > 5
-                              ? 'text-orange-500'
-                              : 'text-yellow-600'
+                              ? "text-orange-500"
+                              : "text-yellow-600",
                         )}
                       >
                         {user._moderation.badUserScore.toFixed(1)}
@@ -432,7 +432,7 @@ export function UserManagementTab() {
               </button>
               {user.isBanned ? (
                 <button
-                  onClick={() => handleBanUser(user, 'unban')}
+                  onClick={() => handleBanUser(user, "unban")}
                   disabled={isBanning}
                   className="flex items-center gap-1 rounded bg-green-500/20 px-3 py-1.5 font-medium text-green-500 text-sm transition-colors hover:bg-green-500/30 disabled:opacity-50"
                 >
@@ -490,21 +490,21 @@ export function UserManagementTab() {
         {/* Filter and Sort */}
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex gap-2">
-            {(['all', 'users', 'actors', 'banned', 'admins'] as const).map(
+            {(["all", "users", "actors", "banned", "admins"] as const).map(
               (f) => (
                 <button
                   key={f}
                   onClick={() => setFilter(f)}
                   className={cn(
-                    'rounded px-3 py-1.5 font-medium text-sm transition-colors',
+                    "rounded px-3 py-1.5 font-medium text-sm transition-colors",
                     filter === f
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground hover:bg-muted/80",
                   )}
                 >
                   {f.charAt(0).toUpperCase() + f.slice(1)}
                 </button>
-              )
+              ),
             )}
           </div>
 
@@ -538,7 +538,7 @@ export function UserManagementTab() {
             className="ml-auto flex items-center gap-2 rounded bg-muted px-3 py-1.5 font-medium text-sm transition-colors hover:bg-muted/80 disabled:opacity-50"
           >
             <RefreshCw
-              className={cn('h-4 w-4', isRefreshing && 'animate-spin')}
+              className={cn("h-4 w-4", isRefreshing && "animate-spin")}
             />
             Refresh
           </button>
@@ -569,7 +569,7 @@ export function UserManagementTab() {
           }}
           targetUserId={selectedUser.id}
           targetDisplayName={
-            selectedUser.displayName || selectedUser.username || 'User'
+            selectedUser.displayName || selectedUser.username || "User"
           }
           onSuccess={() => {
             fetchUsers(true);
@@ -587,7 +587,7 @@ export function UserManagementTab() {
           }}
           targetUserId={selectedUser.id}
           targetDisplayName={
-            selectedUser.displayName || selectedUser.username || 'User'
+            selectedUser.displayName || selectedUser.username || "User"
           }
           onSuccess={() => {
             fetchUsers(true);
@@ -601,7 +601,7 @@ export function UserManagementTab() {
           <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6">
             <h2 className="mb-4 font-bold text-xl">Ban User</h2>
             <p className="mb-4 text-muted-foreground">
-              Are you sure you want to ban{' '}
+              Are you sure you want to ban{" "}
               <strong>
                 {selectedUser.displayName || selectedUser.username}
               </strong>
@@ -666,7 +666,7 @@ export function UserManagementTab() {
               <button
                 onClick={() => {
                   setShowBanModal(false);
-                  setBanReason('');
+                  setBanReason("");
                   setIsScammer(false);
                   setIsCSAM(false);
                   setSelectedUser(null);
@@ -677,7 +677,7 @@ export function UserManagementTab() {
                 Cancel
               </button>
               <button
-                onClick={() => handleBanUser(selectedUser, 'ban')}
+                onClick={() => handleBanUser(selectedUser, "ban")}
                 disabled={isBanning || !banReason.trim()}
                 className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-red-500 px-4 py-2 text-primary-foreground transition-colors hover:bg-red-600 disabled:opacity-50"
               >

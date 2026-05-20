@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { useParams } from 'next/navigation';
-import { ProfilePageClient } from '@/components/profile/ProfilePageClient';
+import { useParams } from "next/navigation";
+import { ProfilePageClient } from "@/components/profile/ProfilePageClient";
 
 export function MobileUserProfileByHandlePage() {
   const params = useParams();

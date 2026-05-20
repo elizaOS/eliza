@@ -64,18 +64,18 @@
  * ```
  */
 
-import { authenticate, withErrorHandling } from '@feed/api';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { getPointsPurchaseX402Manager } from '@/lib/points-purchase-x402';
-import { trackServerEvent } from '@/lib/posthog/server';
+import { authenticate, withErrorHandling } from "@feed/api";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { getPointsPurchaseX402Manager } from "@/lib/points-purchase-x402";
+import { trackServerEvent } from "@/lib/posthog/server";
 
 // Payment receiver address (configure this in your environment)
 const PAYMENT_RECEIVER =
   process.env.POINTS_PAYMENT_RECEIVER ||
   process.env.NEXT_PUBLIC_TREASURY_ADDRESS ||
-  '0x0000000000000000000000000000000000000000';
+  "0x0000000000000000000000000000000000000000";
 
 interface CreatePaymentBody {
   amountUSD: number; // Amount in USD
@@ -99,12 +99,12 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
     fromAddress,
     PAYMENT_RECEIVER,
     amountInWei,
-    'trading_balance_purchase',
+    "trading_balance_purchase",
     {
       userId,
       amountUSD,
       balanceUnits,
-    }
+    },
   );
 
   logger.info(
@@ -115,18 +115,18 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
       amountUSD,
       balanceUnits,
     },
-    'TradingBalanceFunding'
+    "TradingBalanceFunding",
   );
 
-  void trackServerEvent(userId, 'trading_balance_purchase_initiated', {
+  void trackServerEvent(userId, "trading_balance_purchase_initiated", {
     amountUSD,
     balanceUnits,
     requestId: paymentRequest.requestId,
   }).catch((err) => {
     logger.warn(
-      'Failed to track trading_balance_purchase_initiated',
+      "Failed to track trading_balance_purchase_initiated",
       { error: err },
-      'TradingBalanceFunding'
+      "TradingBalanceFunding",
     );
   });
 

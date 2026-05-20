@@ -1,5 +1,5 @@
-import { definePrompt } from '../define-prompt';
-import { PARODY_NAME_RULES } from '../shared-sections';
+import { definePrompt } from "../define-prompt";
+import { PARODY_NAME_RULES } from "../shared-sections";
 
 /**
  * Prompt for validating question resolution outcomes.
@@ -9,10 +9,10 @@ import { PARODY_NAME_RULES } from '../shared-sections';
  * narrative context for coherent resolution.
  */
 export const questionResolutionValidation = definePrompt({
-  id: 'question-resolution-validation',
-  version: '2.0.0',
-  category: 'game',
-  description: 'Validates resolution with full narrative context',
+  id: "question-resolution-validation",
+  version: "2.0.0",
+  category: "game",
+  description: "Validates resolution with full narrative context",
   temperature: 0.7,
   maxTokens: 5000,
   template: `{{realityGrounding}}

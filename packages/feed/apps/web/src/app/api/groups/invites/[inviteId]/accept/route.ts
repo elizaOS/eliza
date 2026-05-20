@@ -11,16 +11,16 @@ import {
   checkProgress,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
+} from "@feed/api";
 import {
   asUser,
   chatParticipants,
   generateSnowflakeId,
   groupMembers,
   sql,
-} from '@feed/db';
-import { GROUP_CONFIG, logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/db";
+import { GROUP_CONFIG, logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 /**
  * POST /api/groups/invites/[inviteId]/accept
@@ -29,7 +29,7 @@ import type { NextRequest } from 'next/server';
 export const POST = withErrorHandling(
   async (
     request: NextRequest,
-    { params }: { params: Promise<{ inviteId: string }> }
+    { params }: { params: Promise<{ inviteId: string }> },
   ) => {
     const user = await authenticate(request);
     const { inviteId } = await params;
@@ -41,15 +41,15 @@ export const POST = withErrorHandling(
       });
 
       if (!invite) {
-        throw new ApiError('Invite not found', 404);
+        throw new ApiError("Invite not found", 404);
       }
 
       if (invite.invitedUserId !== user.userId) {
-        throw new ApiError('This invite is not for you', 403);
+        throw new ApiError("This invite is not for you", 403);
       }
 
-      if (invite.status !== 'pending') {
-        throw new ApiError('This invite has already been processed', 400);
+      if (invite.status !== "pending") {
+        throw new ApiError("This invite has already been processed", 400);
       }
 
       // Check if the invited group exists and get its type
@@ -59,11 +59,11 @@ export const POST = withErrorHandling(
       });
 
       if (!invitedGroup) {
-        throw new ApiError('Group not found', 404);
+        throw new ApiError("Group not found", 404);
       }
 
       // Only check NPC group limit if the invited group is an NPC group
-      if (invitedGroup.type === 'npc') {
+      if (invitedGroup.type === "npc") {
         const activeMemberships = await db.groupMember.findMany({
           where: {
             userId: user.userId,
@@ -83,13 +83,13 @@ export const POST = withErrorHandling(
 
         // Count NPC groups
         const npcGroupCount = memberGroups.filter(
-          (g) => g.type === 'npc'
+          (g) => g.type === "npc",
         ).length;
 
         if (npcGroupCount >= GROUP_CONFIG.MAX_ACTIVE_USER_GROUPS) {
           throw new ApiError(
             `You can only be in ${GROUP_CONFIG.MAX_ACTIVE_USER_GROUPS} NPC groups at a time. Leave a group first.`,
-            400
+            400,
           );
         }
       }
@@ -104,7 +104,7 @@ export const POST = withErrorHandling(
       });
 
       if (existingActiveMember) {
-        throw new ApiError('You are already a member of this group', 400);
+        throw new ApiError("You are already a member of this group", 400);
       }
 
       // Find the chat for this group (Chat.groupId → Group.id)
@@ -124,7 +124,7 @@ export const POST = withErrorHandling(
           id: memberId,
           groupId: invite.groupId,
           userId: user.userId,
-          role: 'member',
+          role: "member",
           addedBy: invite.invitedBy,
           joinedAt: now,
           isActive: true,
@@ -135,7 +135,7 @@ export const POST = withErrorHandling(
           target: [groupMembers.groupId, groupMembers.userId],
           set: {
             isActive: true,
-            role: 'member',
+            role: "member",
             addedBy: invite.invitedBy,
             joinedAt: now,
             kickedAt: sql`NULL`,
@@ -170,7 +170,7 @@ export const POST = withErrorHandling(
         select: { displayName: true, username: true },
       });
       const joinerName =
-        joiningUser?.displayName || joiningUser?.username || 'Someone';
+        joiningUser?.displayName || joiningUser?.username || "Someone";
 
       // Create system message for joining
       if (groupChat) {
@@ -178,8 +178,8 @@ export const POST = withErrorHandling(
           data: {
             id: await generateSnowflakeId(),
             chatId: groupChat.id,
-            senderId: 'system',
-            type: 'system',
+            senderId: "system",
+            type: "system",
             content: `${joinerName} joined the group`,
             createdAt: now,
           },
@@ -190,7 +190,7 @@ export const POST = withErrorHandling(
       await db.groupInvite.update({
         where: { id: inviteId },
         data: {
-          status: 'accepted',
+          status: "accepted",
           respondedAt: new Date(),
         },
       });
@@ -199,7 +199,7 @@ export const POST = withErrorHandling(
       await db.notification.updateMany({
         where: {
           userId: user.userId,
-          type: 'group_invite',
+          type: "group_invite",
           inviteId: inviteId,
         },
         data: {
@@ -214,16 +214,16 @@ export const POST = withErrorHandling(
     });
 
     logger.info(
-      'Group invite accepted',
+      "Group invite accepted",
       { userId: user.userId, inviteId },
-      'POST /api/groups/invites/:inviteId/accept'
+      "POST /api/groups/invites/:inviteId/accept",
     );
 
-    void checkProgress(user.userId, { type: 'group_joined' });
+    void checkProgress(user.userId, { type: "group_joined" });
 
     return successResponse({
       success: true,
       ...result,
     });
-  }
+  },
 );

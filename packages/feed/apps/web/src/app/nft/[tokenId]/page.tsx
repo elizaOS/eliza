@@ -1,14 +1,14 @@
-'use client';
+"use client";
 
-import Image from 'next/image';
-import Link from 'next/link';
-import { useParams } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
-import { Avatar } from '@/components/shared/Avatar';
-import { PageContainer } from '@/components/shared/PageContainer';
-import { Skeleton } from '@/components/shared/Skeleton';
-import type { NftDetail, NftDetailResponse } from '@/types/nft';
-import { apiUrl } from '@/utils/api-url';
+import Image from "next/image";
+import Link from "next/link";
+import { useParams } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
+import { Avatar } from "@/components/shared/Avatar";
+import { PageContainer } from "@/components/shared/PageContainer";
+import { Skeleton } from "@/components/shared/Skeleton";
+import type { NftDetail, NftDetailResponse } from "@/types/nft";
+import { apiUrl } from "@/utils/api-url";
 
 export default function NftDetailPage() {
   const params = useParams();
@@ -27,9 +27,9 @@ export default function NftDetailPage() {
 
     if (!response.ok) {
       if (response.status === 404) {
-        setError('NFT not found');
+        setError("NFT not found");
       } else {
-        setError('Failed to load NFT details');
+        setError("Failed to load NFT details");
       }
       setLoading(false);
       return;
@@ -83,7 +83,7 @@ export default function NftDetailPage() {
       <PageContainer className="flex items-center justify-center px-4 py-16 sm:px-6">
         <div className="text-center">
           <p className="mb-2 font-medium text-foreground text-lg sm:text-xl">
-            {error ?? 'NFT not found'}
+            {error ?? "NFT not found"}
           </p>
           <p className="mb-6 text-muted-foreground text-sm sm:text-base">
             The NFT you&apos;re looking for doesn&apos;t exist.
@@ -210,7 +210,7 @@ export default function NftDetailPage() {
                   id={
                     nft.currentOwner.user?.id ?? nft.currentOwner.walletAddress
                   }
-                  name={ownerName ?? 'Unknown'}
+                  name={ownerName ?? "Unknown"}
                   src={nft.currentOwner.user?.profileImageUrl ?? undefined}
                   size="md"
                 />
@@ -227,7 +227,7 @@ export default function NftDetailPage() {
                   ) : (
                     <button
                       onClick={() =>
-                        handleCopy(nft.currentOwner!.walletAddress)
+                        handleCopy(nft.currentOwner?.walletAddress)
                       }
                       className="font-mono text-foreground text-sm hover:text-[#0066FF]"
                     >
@@ -245,7 +245,7 @@ export default function NftDetailPage() {
           {nft.story.content && (
             <div className="rounded-lg border border-border bg-card p-3 sm:p-4">
               <p className="mb-2 font-medium text-foreground text-sm sm:text-base">
-                {nft.story.title ?? 'Story'}
+                {nft.story.title ?? "Story"}
               </p>
               <p className="whitespace-pre-wrap text-muted-foreground text-xs sm:text-sm">
                 {nft.story.content}
@@ -294,7 +294,7 @@ export default function NftDetailPage() {
                 </div>
                 <div>
                   <p className="font-bold text-base text-foreground sm:text-lg">
-                    {nft.originalClaim.snapshotPoints?.toLocaleString() ?? '-'}
+                    {nft.originalClaim.snapshotPoints?.toLocaleString() ?? "-"}
                   </p>
                   <p className="text-[10px] text-muted-foreground sm:text-xs">
                     Points
@@ -303,8 +303,8 @@ export default function NftDetailPage() {
                 <div>
                   <p className="font-bold text-base text-foreground sm:text-lg">
                     {new Date(nft.originalClaim.claimedAt).toLocaleDateString(
-                      'en-US',
-                      { month: 'short', day: 'numeric' }
+                      "en-US",
+                      { month: "short", day: "numeric" },
                     )}
                   </p>
                   <p className="text-[10px] text-muted-foreground sm:text-xs">
@@ -338,7 +338,7 @@ export default function NftDetailPage() {
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Chain</span>
                 <span className="text-foreground">
-                  {nft.chainId === 1 ? 'Ethereum' : `Chain ${nft.chainId}`}
+                  {nft.chainId === 1 ? "Ethereum" : `Chain ${nft.chainId}`}
                 </span>
               </div>
             </div>

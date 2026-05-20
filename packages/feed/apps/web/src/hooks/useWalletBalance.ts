@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import type { UserBalanceDataAPI } from '@feed/shared';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { apiUrl } from '@/utils/api-url';
+import type { UserBalanceDataAPI } from "@feed/shared";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { apiUrl } from "@/utils/api-url";
 
 /**
  * Represents wallet balance state.
@@ -60,7 +60,7 @@ const defaultState: WalletBalanceState = {
  */
 export function useWalletBalance(
   userId?: string | null,
-  options: UseWalletBalanceOptions = {}
+  options: UseWalletBalanceOptions = {},
 ) {
   const { enabled = true } = options;
   const [state, setState] = useState<WalletBalanceState>(defaultState);
@@ -89,7 +89,7 @@ export function useWalletBalance(
         apiUrl(`/api/users/${encodeURIComponent(userId)}/balance`),
         {
           signal: controller.signal,
-        }
+        },
       );
     } catch (fetchError) {
       if (controller.signal.aborted) return;
@@ -97,7 +97,7 @@ export function useWalletBalance(
       setError(
         fetchError instanceof Error
           ? fetchError
-          : new Error('Failed to fetch wallet balance')
+          : new Error("Failed to fetch wallet balance"),
       );
       return;
     }
@@ -106,7 +106,7 @@ export function useWalletBalance(
 
     if (!response.ok) {
       setLoading(false);
-      setError(new Error('Failed to fetch wallet balance'));
+      setError(new Error("Failed to fetch wallet balance"));
       return;
     }
 
@@ -115,7 +115,7 @@ export function useWalletBalance(
       data = await response.json();
     } catch {
       setLoading(false);
-      setError(new Error('Failed to parse wallet balance response'));
+      setError(new Error("Failed to parse wallet balance response"));
       return;
     }
 

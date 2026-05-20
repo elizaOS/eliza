@@ -1,11 +1,11 @@
-'use client';
+"use client";
 
-import { MessageCircle } from 'lucide-react';
-import React from 'react';
-import { Separator } from '@/components/shared/Separator';
-import { ChatListSkeleton } from '@/components/shared/Skeleton';
-import { ChatListItem } from './ChatListItem';
-import type { Chat, ChatFilter } from './types';
+import { MessageCircle } from "lucide-react";
+import React from "react";
+import { Separator } from "@/components/shared/Separator";
+import { ChatListSkeleton } from "@/components/shared/Skeleton";
+import { ChatListItem } from "./ChatListItem";
+import type { Chat, ChatFilter } from "./types";
 
 interface ChatListProps {
   chats: Chat[];
@@ -34,14 +34,14 @@ export function ChatList({
         <MessageCircle className="mx-auto mb-4 h-12 w-12 opacity-50" />
         <p className="text-sm">
           {searchQuery
-            ? 'No conversations found'
-            : activeFilter === 'all'
-              ? 'No conversations yet'
-              : activeFilter === 'dms'
-                ? 'No direct messages yet'
-                : 'No group chats yet'}
+            ? "No conversations found"
+            : activeFilter === "all"
+              ? "No conversations yet"
+              : activeFilter === "dms"
+                ? "No direct messages yet"
+                : "No group chats yet"}
         </p>
-        {!searchQuery && activeFilter === 'dms' && (
+        {!searchQuery && activeFilter === "dms" && (
           <p className="mt-2 text-muted-foreground text-xs">
             Visit a user&apos;s profile to start a DM
           </p>

@@ -4,6 +4,6 @@ export type {
   TopPrediction,
   TrendingPerpMarket,
   UseMarketsPageDataOptions,
-} from './useMarketsPageData';
-export { useMarketsPageData } from './useMarketsPageData';
-export { useWatchlistStore } from './useWatchlistStore';
+} from "./useMarketsPageData";
+export { useMarketsPageData } from "./useMarketsPageData";
+export { useWatchlistStore } from "./useWatchlistStore";

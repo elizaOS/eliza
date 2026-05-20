@@ -66,18 +66,18 @@ import {
   requireCronAuth,
   requireUserByIdentifier,
   withErrorHandling,
-} from '@feed/api';
-import type { JsonValue } from '@feed/db';
-import { db } from '@feed/db';
-import { updateFeedbackMetrics, updateGameMetrics } from '@feed/engine';
-import { generateSnowflakeId, logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { z } from 'zod';
+} from "@feed/api";
+import type { JsonValue } from "@feed/db";
+import { db } from "@feed/db";
+import { updateFeedbackMetrics, updateGameMetrics } from "@feed/engine";
+import { generateSnowflakeId, logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { z } from "zod";
 
 const GameFeedbackSchema = z.object({
-  agentId: z.string().min(1, 'agentId is required'),
-  gameId: z.string().min(1, 'gameId is required'),
+  agentId: z.string().min(1, "agentId is required"),
+  gameId: z.string().min(1, "gameId is required"),
   score: z.number().min(0).max(100),
   won: z.boolean(),
   comment: z.string().max(5000).optional(),
@@ -85,7 +85,7 @@ const GameFeedbackSchema = z.object({
 });
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
-  requireCronAuth(request, { jobName: 'GameFeedback' });
+  requireCronAuth(request, { jobName: "GameFeedback" });
   const json = await request.json();
   const parsed = GameFeedbackSchema.parse(json);
 
@@ -98,12 +98,12 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     where: {
       toUserId: agent.id,
       gameId: body.gameId,
-      interactionType: 'game_to_agent',
+      interactionType: "game_to_agent",
     },
   });
 
   if (existingFeedback) {
-    logger.warn('Feedback already exists for this game', {
+    logger.warn("Feedback already exists for this game", {
       feedbackId: existingFeedback.id,
       agentId: agent.id,
       gameId: body.gameId,
@@ -111,10 +111,10 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     return NextResponse.json(
       {
         success: false,
-        error: 'Feedback already exists for this game',
+        error: "Feedback already exists for this game",
         feedbackId: existingFeedback.id,
       },
-      { status: 409 }
+      { status: 409 },
     );
   }
 
@@ -126,14 +126,14 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       score: body.score,
       comment: body.comment,
       gameId: body.gameId,
-      interactionType: 'game_to_agent',
+      interactionType: "game_to_agent",
       metadata: body.metadata as JsonValue | undefined,
       createdAt: now,
       updatedAt: now,
     },
   });
 
-  logger.info('Game feedback created', {
+  logger.info("Game feedback created", {
     feedbackId: feedback.id,
     agentId: agent.id,
     gameId: body.gameId,
@@ -143,13 +143,13 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   await updateGameMetrics(agent.id, body.score, body.won);
   await updateFeedbackMetrics(agent.id, body.score, {
-    category: 'game_performance',
-    interactionType: 'game_to_agent',
+    category: "game_performance",
+    interactionType: "game_to_agent",
   });
 
   // Agent0 feedback submission removed (Agent0 deleted in Phase 1)
   void (() => {
-    logger.debug('Agent0 feedback submission skipped (Agent0 removed)', {
+    logger.debug("Agent0 feedback submission skipped (Agent0 removed)", {
       feedbackId: feedback.id,
       agentId: agent.id,
       gameId: body.gameId,
@@ -175,6 +175,6 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       feedbackId: feedback.id,
       reputation: metrics,
     },
-    { status: 201 }
+    { status: 201 },
   );
 });

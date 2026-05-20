@@ -5,11 +5,11 @@
  * from game activity.
  */
 
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 import {
   createWorldFactsGenerator,
   WorldFactsGeneratorService,
-} from '../services/world-facts-generator';
+} from "../services/world-facts-generator";
 
 // Mock the database
 const mockSelectResult: Record<string, unknown>[] = [];
@@ -19,7 +19,7 @@ const mockUpdateResult: Record<string, unknown>[] = [];
 // Create a thenable that also supports method chaining for fluent API
 function createChainableThenable<T>(
   result: T[],
-  methods: Record<string, () => unknown> = {}
+  methods: Record<string, () => unknown> = {},
 ) {
   const thenable = {
     ...methods,
@@ -40,9 +40,9 @@ const mockDb = {
             orderBy: mock(() => ({
               limit: mock(() => Promise.resolve(mockSelectResult)),
             })),
-          })
+          }),
         ),
-      })
+      }),
     ),
   })),
   insert: mock(() => ({
@@ -57,7 +57,7 @@ const mockDb = {
   })),
 };
 
-mock.module('@feed/db', () => ({
+mock.module("@feed/db", () => ({
   db: mockDb,
   and: (...args: unknown[]) => args,
   desc: (col: unknown) => col,
@@ -67,45 +67,45 @@ mock.module('@feed/db', () => ({
   isNull: (a: unknown) => [a],
   lte: (a: unknown, b: unknown) => [a, b],
   posts: {
-    content: 'content',
-    authorId: 'authorId',
-    timestamp: 'timestamp',
-    deletedAt: 'deletedAt',
+    content: "content",
+    authorId: "authorId",
+    timestamp: "timestamp",
+    deletedAt: "deletedAt",
   },
   questions: {
-    id: 'id',
-    text: 'text',
-    status: 'status',
-    outcome: 'outcome',
-    createdAt: 'createdAt',
-    resolutionDate: 'resolutionDate',
+    id: "id",
+    text: "text",
+    status: "status",
+    outcome: "outcome",
+    createdAt: "createdAt",
+    resolutionDate: "resolutionDate",
   },
   worldEvents: {
-    id: 'id',
-    description: 'description',
-    eventType: 'eventType',
-    visibility: 'visibility',
-    timestamp: 'timestamp',
+    id: "id",
+    description: "description",
+    eventType: "eventType",
+    visibility: "visibility",
+    timestamp: "timestamp",
   },
   worldFacts: {
-    id: 'id',
-    category: 'category',
-    key: 'key',
-    label: 'label',
-    value: 'value',
-    source: 'source',
-    priority: 'priority',
-    isActive: 'isActive',
-    lastUpdated: 'lastUpdated',
-    updatedAt: 'updatedAt',
-    createdAt: 'createdAt',
+    id: "id",
+    category: "category",
+    key: "key",
+    label: "label",
+    value: "value",
+    source: "source",
+    priority: "priority",
+    isActive: "isActive",
+    lastUpdated: "lastUpdated",
+    updatedAt: "updatedAt",
+    createdAt: "createdAt",
   },
-  sql: (strings: TemplateStringsArray) => strings.join(''),
+  sql: (strings: TemplateStringsArray) => strings.join(""),
 }));
 
 // Mock the shared module
-mock.module('@feed/shared', () => ({
-  generateSnowflakeId: mock(() => Promise.resolve('123456789')),
+mock.module("@feed/shared", () => ({
+  generateSnowflakeId: mock(() => Promise.resolve("123456789")),
   logger: {
     info: mock(() => {}),
     debug: mock(() => {}),
@@ -121,18 +121,18 @@ mock.module('@feed/shared', () => ({
 const mockLlm = {
   generateJSON: mock(() =>
     Promise.resolve({
-      facts: ['Test fact 1', 'Test fact 2'],
-    })
+      facts: ["Test fact 1", "Test fact 2"],
+    }),
   ),
 } as unknown as ConstructorParameters<typeof WorldFactsGeneratorService>[1];
 
-mock.module('../llm/openai-client', () => ({
+mock.module("../llm/openai-client", () => ({
   FeedLLMClient: {
     forGameTick: mock(() => mockLlm),
   },
 }));
 
-describe('WorldFactsGeneratorService', () => {
+describe("WorldFactsGeneratorService", () => {
   beforeEach(() => {
     // Clear mocks
     mockSelectResult.length = 0;
@@ -140,14 +140,14 @@ describe('WorldFactsGeneratorService', () => {
     mockUpdateResult.length = 0;
   });
 
-  describe('constructor', () => {
-    test('uses default config when no config provided', () => {
+  describe("constructor", () => {
+    test("uses default config when no config provided", () => {
       const generator = new WorldFactsGeneratorService();
       // Can't directly access config, but we can verify it doesn't throw
       expect(generator).toBeDefined();
     });
 
-    test('accepts custom config', () => {
+    test("accepts custom config", () => {
       const generator = new WorldFactsGeneratorService({
         maxFactsPerUpdate: 20,
         maxFactAgeDays: 14,
@@ -156,7 +156,7 @@ describe('WorldFactsGeneratorService', () => {
       expect(generator).toBeDefined();
     });
 
-    test('accepts custom LLM client', () => {
+    test("accepts custom LLM client", () => {
       const customLlm = {
         generateJSON: mock(() => Promise.resolve({ facts: [] })),
       } as unknown as ConstructorParameters<
@@ -167,21 +167,21 @@ describe('WorldFactsGeneratorService', () => {
     });
   });
 
-  describe('generateNewWorldFacts', () => {
-    test('returns result structure with sources', async () => {
+  describe("generateNewWorldFacts", () => {
+    test("returns result structure with sources", async () => {
       const generator = new WorldFactsGeneratorService({}, mockLlm);
       const result = await generator.generateNewWorldFacts();
 
-      expect(result).toHaveProperty('generated');
-      expect(result).toHaveProperty('archived');
-      expect(result).toHaveProperty('sources');
-      expect(result.sources).toHaveProperty('events');
-      expect(result.sources).toHaveProperty('markets');
-      expect(result.sources).toHaveProperty('questions');
-      expect(result.sources).toHaveProperty('actors');
+      expect(result).toHaveProperty("generated");
+      expect(result).toHaveProperty("archived");
+      expect(result).toHaveProperty("sources");
+      expect(result.sources).toHaveProperty("events");
+      expect(result.sources).toHaveProperty("markets");
+      expect(result.sources).toHaveProperty("questions");
+      expect(result.sources).toHaveProperty("actors");
     });
 
-    test('handles empty data sources gracefully', async () => {
+    test("handles empty data sources gracefully", async () => {
       const generator = new WorldFactsGeneratorService({}, mockLlm);
       const result = await generator.generateNewWorldFacts();
 
@@ -190,27 +190,27 @@ describe('WorldFactsGeneratorService', () => {
     });
   });
 
-  describe('getWorldFactsStats', () => {
-    test('returns stats structure', async () => {
+  describe("getWorldFactsStats", () => {
+    test("returns stats structure", async () => {
       const generator = new WorldFactsGeneratorService({}, mockLlm);
       const stats = await generator.getWorldFactsStats();
 
-      expect(stats).toHaveProperty('totalActive');
-      expect(stats).toHaveProperty('autoGenerated');
-      expect(stats).toHaveProperty('manual');
-      expect(stats).toHaveProperty('oldestFact');
-      expect(stats).toHaveProperty('newestFact');
+      expect(stats).toHaveProperty("totalActive");
+      expect(stats).toHaveProperty("autoGenerated");
+      expect(stats).toHaveProperty("manual");
+      expect(stats).toHaveProperty("oldestFact");
+      expect(stats).toHaveProperty("newestFact");
     });
   });
 });
 
-describe('createWorldFactsGenerator', () => {
-  test('creates a generator with default config', () => {
+describe("createWorldFactsGenerator", () => {
+  test("creates a generator with default config", () => {
     const generator = createWorldFactsGenerator();
     expect(generator).toBeInstanceOf(WorldFactsGeneratorService);
   });
 
-  test('creates a generator with custom config', () => {
+  test("creates a generator with custom config", () => {
     const generator = createWorldFactsGenerator({
       maxFactsPerUpdate: 5,
       maxFactAgeDays: 3,
@@ -218,7 +218,7 @@ describe('createWorldFactsGenerator', () => {
     expect(generator).toBeInstanceOf(WorldFactsGeneratorService);
   });
 
-  test('creates a generator with custom LLM', () => {
+  test("creates a generator with custom LLM", () => {
     const customLlm = {
       generateJSON: mock(() => Promise.resolve({ facts: [] })),
     } as unknown as ConstructorParameters<typeof WorldFactsGeneratorService>[1];
@@ -227,8 +227,8 @@ describe('createWorldFactsGenerator', () => {
   });
 });
 
-describe('storeFact edge cases', () => {
-  test('handles empty strings in fact value gracefully', async () => {
+describe("storeFact edge cases", () => {
+  test("handles empty strings in fact value gracefully", async () => {
     // The service should handle edge cases without throwing
     const generator = new WorldFactsGeneratorService({}, mockLlm);
     // Since storeFact is private, we test through generateNewWorldFacts
@@ -237,12 +237,12 @@ describe('storeFact edge cases', () => {
     expect(result).toBeDefined();
   });
 
-  test('handles facts with special characters', async () => {
+  test("handles facts with special characters", async () => {
     const specialCharLlm = {
       generateJSON: mock(() =>
         Promise.resolve({
-          facts: ['Fact with "quotes" and \'apostrophes\' and emoji 🎉'],
-        })
+          facts: ["Fact with \"quotes\" and 'apostrophes' and emoji 🎉"],
+        }),
       ),
     } as unknown as ConstructorParameters<typeof WorldFactsGeneratorService>[1];
 
@@ -251,12 +251,12 @@ describe('storeFact edge cases', () => {
     expect(result).toBeDefined();
   });
 
-  test('handles facts with only non-alphanumeric characters', async () => {
+  test("handles facts with only non-alphanumeric characters", async () => {
     const nonAlphaLlm = {
       generateJSON: mock(() =>
         Promise.resolve({
-          facts: ['!@#$%^&*()'],
-        })
+          facts: ["!@#$%^&*()"],
+        }),
       ),
     } as unknown as ConstructorParameters<typeof WorldFactsGeneratorService>[1];
 
@@ -267,11 +267,11 @@ describe('storeFact edge cases', () => {
   });
 });
 
-describe('archiveOldFacts', () => {
-  test('respects minActiveFacts setting', async () => {
+describe("archiveOldFacts", () => {
+  test("respects minActiveFacts setting", async () => {
     const generator = new WorldFactsGeneratorService(
       { minActiveFacts: 100 },
-      mockLlm
+      mockLlm,
     );
 
     // When activeCount is below minimum, nothing should be archived

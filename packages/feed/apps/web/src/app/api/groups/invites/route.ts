@@ -5,10 +5,10 @@
  * @access Authenticated
  */
 
-import { authenticate, successResponse, withErrorHandling } from '@feed/api';
-import { asUser } from '@feed/db';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+import { authenticate, successResponse, withErrorHandling } from "@feed/api";
+import { asUser } from "@feed/db";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 /**
  * GET /api/groups/invites
@@ -22,10 +22,10 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     const pendingInvites = await db.groupInvite.findMany({
       where: {
         invitedUserId: user.userId,
-        status: 'pending',
+        status: "pending",
       },
       orderBy: {
-        invitedAt: 'desc',
+        invitedAt: "desc",
       },
     });
 
@@ -44,11 +44,11 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     // Get member counts for each group
     const memberCounts = await Promise.all(
       groupIds.map((gid) =>
-        db.groupMember.count({ where: { groupId: gid, isActive: true } })
-      )
+        db.groupMember.count({ where: { groupId: gid, isActive: true } }),
+      ),
     );
     const memberCountMap = new Map(
-      groupIds.map((gid, i) => [gid, memberCounts[i] ?? 0])
+      groupIds.map((gid, i) => [gid, memberCounts[i] ?? 0]),
     );
     const groupMap = new Map(groups.map((g) => [g.id, g]));
 
@@ -57,7 +57,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       return {
         inviteId: invite.id,
         groupId: invite.groupId,
-        groupName: group?.name || 'Unknown Group',
+        groupName: group?.name || "Unknown Group",
         groupDescription: group?.description,
         groupType: group?.type,
         memberCount: memberCountMap.get(invite.groupId) ?? 0,
@@ -69,9 +69,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   });
 
   logger.info(
-    'Group invites retrieved',
+    "Group invites retrieved",
     { userId: user.userId, inviteCount: invites.length },
-    'GET /api/groups/invites'
+    "GET /api/groups/invites",
   );
 
   return successResponse({ invites });

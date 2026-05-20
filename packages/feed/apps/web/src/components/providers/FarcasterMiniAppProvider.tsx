@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import { logger } from '@feed/shared';
-import { sdk } from '@farcaster/miniapp-sdk';
-import { createContext, useContext, useEffect, useRef, useState } from 'react';
-import { useStewardAuthContext } from './StewardAuthProvider';
+import { sdk } from "@farcaster/miniapp-sdk";
+import { logger } from "@feed/shared";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { useStewardAuthContext } from "./StewardAuthProvider";
 
 /**
  * Farcaster Mini App Provider.
@@ -43,7 +43,7 @@ export function useFarcasterMiniApp() {
   const context = useContext(FarcasterMiniAppContext);
   if (!context)
     throw new Error(
-      'useFarcasterMiniApp must be used within FarcasterMiniAppProvider'
+      "useFarcasterMiniApp must be used within FarcasterMiniAppProvider",
     );
   return context;
 }
@@ -60,7 +60,7 @@ export function FarcasterMiniAppProvider({
   const [fid, setFid] = useState<number>();
   const [username, setUsername] = useState<string>();
   const [miniAppContext, setMiniAppContext] = useState<MiniAppContext | null>(
-    null
+    null,
   );
   const hasCalledReady = useRef(false);
   const hasAttemptedLogin = useRef(false);
@@ -68,7 +68,7 @@ export function FarcasterMiniAppProvider({
 
   // Detect mini-app context and initialize SDK
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined") return;
 
     const initializeMiniApp = async () => {
       const context = await sdk.context;
@@ -83,9 +83,9 @@ export function FarcasterMiniAppProvider({
         }
 
         logger.info(
-          'Detected Farcaster Mini App context',
+          "Detected Farcaster Mini App context",
           { fid: context.user?.fid, username: context.user?.username },
-          'FarcasterMiniApp'
+          "FarcasterMiniApp",
         );
 
         if (!hasCalledReady.current) {
@@ -93,9 +93,9 @@ export function FarcasterMiniAppProvider({
           setTimeout(async () => {
             await sdk.actions.ready();
             logger.info(
-              'Farcaster Mini App ready() called',
+              "Farcaster Mini App ready() called",
               {},
-              'FarcasterMiniApp'
+              "FarcasterMiniApp",
             );
           }, 100);
         }
@@ -119,9 +119,9 @@ export function FarcasterMiniAppProvider({
 
     const attemptLogin = async () => {
       logger.info(
-        'Attempting Farcaster quickAuth auto-login',
+        "Attempting Farcaster quickAuth auto-login",
         { fid, username },
-        'FarcasterMiniApp'
+        "FarcasterMiniApp",
       );
 
       // quickAuth.getToken() returns a Farcaster-signed JWT containing the FID
@@ -132,10 +132,10 @@ export function FarcasterMiniAppProvider({
       ).quickAuth.getToken();
       const quickAuthToken = quickAuthResult.token;
 
-      const res = await fetch('/api/auth/farcaster-miniapp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
+      const res = await fetch("/api/auth/farcaster-miniapp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ token: quickAuthToken }),
       });
 
@@ -145,7 +145,7 @@ export function FarcasterMiniAppProvider({
         error?: string;
       };
       if (!data.ok || !data.token) {
-        throw new Error(data.error ?? 'Farcaster miniapp auth failed');
+        throw new Error(data.error ?? "Farcaster miniapp auth failed");
       }
 
       // Set httpOnly cookie and trigger profile fetch
@@ -153,18 +153,18 @@ export function FarcasterMiniAppProvider({
       isAuthenticated.current = true;
 
       logger.info(
-        'Farcaster Mini App quickAuth login successful',
+        "Farcaster Mini App quickAuth login successful",
         { fid, username },
-        'FarcasterMiniApp'
+        "FarcasterMiniApp",
       );
     };
 
     attemptLogin().catch((err: Error) => {
       hasAttemptedLogin.current = false;
       logger.error(
-        'Farcaster Mini App quickAuth failed',
+        "Farcaster Mini App quickAuth failed",
         { error: err.message, fid },
-        'FarcasterMiniApp'
+        "FarcasterMiniApp",
       );
       setError(err.message);
     });
@@ -177,18 +177,18 @@ export function FarcasterMiniAppProvider({
   }) => {
     if (!isMiniApp) {
       logger.warn(
-        'Attempted to use Mini App share outside of Mini App context',
+        "Attempted to use Mini App share outside of Mini App context",
         {},
-        'FarcasterMiniApp'
+        "FarcasterMiniApp",
       );
       return;
     }
     await sdk.actions.openUrl(
-      `https://farcaster.xyz/~/compose?text=${encodeURIComponent(options.text ?? '')}${
-        options.url ? `&embeds[]=${encodeURIComponent(options.url)}` : ''
-      }`
+      `https://farcaster.xyz/~/compose?text=${encodeURIComponent(options.text ?? "")}${
+        options.url ? `&embeds[]=${encodeURIComponent(options.url)}` : ""
+      }`,
     );
-    logger.info('Mini App share opened', options, 'FarcasterMiniApp');
+    logger.info("Mini App share opened", options, "FarcasterMiniApp");
   };
 
   return (

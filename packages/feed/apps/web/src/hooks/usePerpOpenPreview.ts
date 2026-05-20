@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { useDeferredValue, useEffect, useMemo, useState } from 'react';
-import type { TradeSide } from '@/types/markets';
-import { type OpenPerpPreviewResponse, usePerpTrade } from './usePerpTrade';
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import type { TradeSide } from "@/types/markets";
+import { type OpenPerpPreviewResponse, usePerpTrade } from "./usePerpTrade";
 
 interface UsePerpOpenPreviewParams {
   ticker: string | null;
@@ -14,7 +14,7 @@ interface UsePerpOpenPreviewParams {
 }
 
 interface PreviewState {
-  preview: OpenPerpPreviewResponse['preview'] | null;
+  preview: OpenPerpPreviewResponse["preview"] | null;
   loading: boolean;
   error: string | null;
 }
@@ -32,7 +32,7 @@ export function usePerpOpenPreview({
   const deferredLeverage = useDeferredValue(leverage);
   const normalizedTicker = useMemo(
     () => ticker?.trim().toUpperCase() ?? null,
-    [ticker]
+    [ticker],
   );
   const [state, setState] = useState<PreviewState>({
     preview: null,
@@ -58,7 +58,7 @@ export function usePerpOpenPreview({
               preview: null,
               loading: false,
               error: null,
-            }
+            },
       );
       return;
     }
@@ -78,7 +78,7 @@ export function usePerpOpenPreview({
           size: deferredSize,
           leverage: deferredLeverage,
         },
-        controller.signal
+        controller.signal,
       )
         .then((result) => {
           if (controller.signal.aborted) return;
@@ -93,7 +93,7 @@ export function usePerpOpenPreview({
           const message =
             error instanceof Error
               ? error.message
-              : 'Failed to fetch perp preview';
+              : "Failed to fetch perp preview";
           setState((current) => ({
             preview: current.preview,
             loading: false,

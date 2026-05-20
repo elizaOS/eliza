@@ -1,15 +1,15 @@
-'use client';
+"use client";
 
-import type { InteractionBarProps } from '@feed/shared';
-import { cn } from '@feed/shared';
-import { MessageCircle } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { FeedCommentSection } from '@/components/feed/FeedCommentSection';
-import { useAuth } from '@/hooks/useAuth';
-import { useInteractionStore } from '@/stores/interactionStore';
-import { DeleteButton } from './DeleteButton';
-import { LikeButton } from './LikeButton';
-import { RepostButton } from './RepostButton';
+import type { InteractionBarProps } from "@feed/shared";
+import { cn } from "@feed/shared";
+import { MessageCircle } from "lucide-react";
+import { useEffect, useState } from "react";
+import { FeedCommentSection } from "@/components/feed/FeedCommentSection";
+import { useAuth } from "@/hooks/useAuth";
+import { useInteractionStore } from "@/stores/interactionStore";
+import { DeleteButton } from "./DeleteButton";
+import { LikeButton } from "./LikeButton";
+import { RepostButton } from "./RepostButton";
 
 /**
  * Interaction bar component for post interactions.
@@ -148,7 +148,7 @@ export function InteractionBar({
       <div
         className={cn(
           className,
-          'mt-2 flex w-full items-center justify-between px-8 text-muted-foreground'
+          "mt-2 flex w-full items-center justify-between px-8 text-muted-foreground",
         )}
       >
         {/* Comment button */}
@@ -159,9 +159,9 @@ export function InteractionBar({
             handleCommentClick();
           }}
           className={cn(
-            'flex items-center gap-1',
-            'bg-transparent transition-all duration-200 hover:opacity-70',
-            'cursor-pointer text-muted-foreground text-xs'
+            "flex items-center gap-1",
+            "bg-transparent transition-all duration-200 hover:opacity-70",
+            "cursor-pointer text-muted-foreground text-xs",
           )}
         >
           <MessageCircle size={18} />
@@ -213,7 +213,7 @@ export function InteractionBar({
           <div onClick={(e) => e.stopPropagation()}>
             <DeleteButton
               postId={postId}
-              postAuthorId={postData?.authorId || ''}
+              postAuthorId={postData?.authorId || ""}
               size="sm"
             />
           </div>

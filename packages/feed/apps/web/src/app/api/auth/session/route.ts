@@ -7,11 +7,11 @@
  * DELETE — Clears steward-token and steward-refresh cookies (logout).
  */
 
-import { withErrorHandling } from '@feed/api';
-import { jwtVerify } from 'jose';
-import { cookies } from 'next/headers';
-import { NextRequest, NextResponse } from 'next/server';
-import { getStewardJwtSecret } from '@/lib/auth/steward-server';
+import { withErrorHandling } from "@feed/api";
+import { jwtVerify } from "jose";
+import { cookies } from "next/headers";
+import { type NextRequest, NextResponse } from "next/server";
+import { getStewardJwtSecret } from "@/lib/auth/steward-server";
 
 const THIRTY_DAYS = 60 * 60 * 24 * 30;
 
@@ -21,51 +21,51 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
     body = (await req.json()) as typeof body;
   } catch {
     return NextResponse.json(
-      { error: 'Invalid request body' },
-      { status: 400 }
+      { error: "Invalid request body" },
+      { status: 400 },
     );
   }
 
   const { token, refreshToken } = body;
   if (!token) {
-    return NextResponse.json({ error: 'token is required' }, { status: 400 });
+    return NextResponse.json({ error: "token is required" }, { status: 400 });
   }
 
   // Verify the JWT locally before storing — rejects tampered or expired tokens
   let userId: string;
   try {
     const { payload } = await jwtVerify(token, getStewardJwtSecret(), {
-      issuer: 'steward',
-      algorithms: ['HS256'],
+      issuer: "steward",
+      algorithms: ["HS256"],
     });
-    userId = String(payload['userId'] ?? '');
-    if (!userId) throw new Error('missing userId claim');
+    userId = String(payload.userId ?? "");
+    if (!userId) throw new Error("missing userId claim");
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'invalid token';
+    const msg = err instanceof Error ? err.message : "invalid token";
     return NextResponse.json(
       { error: `Invalid Steward token: ${msg}` },
-      { status: 401 }
+      { status: 401 },
     );
   }
 
   const cookieStore = await cookies();
-  const isProd = process.env.NODE_ENV === 'production';
+  const isProd = process.env.NODE_ENV === "production";
 
-  cookieStore.set('steward-token', token, {
+  cookieStore.set("steward-token", token, {
     httpOnly: true,
     secure: isProd,
-    sameSite: 'lax',
+    sameSite: "lax",
     maxAge: THIRTY_DAYS,
-    path: '/',
+    path: "/",
   });
 
   if (refreshToken) {
-    cookieStore.set('steward-refresh', refreshToken, {
+    cookieStore.set("steward-refresh", refreshToken, {
       httpOnly: true,
       secure: isProd,
-      sameSite: 'lax',
+      sameSite: "lax",
       maxAge: THIRTY_DAYS,
-      path: '/',
+      path: "/",
     });
   }
 
@@ -74,7 +74,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
 
 export const DELETE = withErrorHandling(async () => {
   const cookieStore = await cookies();
-  cookieStore.delete('steward-token');
-  cookieStore.delete('steward-refresh');
+  cookieStore.delete("steward-token");
+  cookieStore.delete("steward-refresh");
   return NextResponse.json({ ok: true });
 });

@@ -21,17 +21,17 @@ import {
   messages,
   sql,
   users,
-} from '@feed/db';
-import { generateSnowflakeId, logger } from '@feed/shared';
-import { type RngFunction, sampleRandom } from '../utils/randomization';
+} from "@feed/db";
+import { generateSnowflakeId, logger } from "@feed/shared";
+import { type RngFunction, sampleRandom } from "../utils/randomization";
 
 function isTestEnvironment(): boolean {
   return (
-    process.env.NODE_ENV === 'test' ||
-    process.env.BUN_ENV === 'test' ||
-    (typeof process !== 'undefined' &&
+    process.env.NODE_ENV === "test" ||
+    process.env.BUN_ENV === "test" ||
+    (typeof process !== "undefined" &&
       Array.isArray(process.argv) &&
-      process.argv.join(' ').includes('test'))
+      process.argv.join(" ").includes("test"))
   );
 }
 
@@ -88,7 +88,7 @@ export interface PlanMultiChatSeedAssignmentsOptions {
 }
 
 export function planMultiChatSeedAssignments(
-  options: PlanMultiChatSeedAssignmentsOptions
+  options: PlanMultiChatSeedAssignmentsOptions,
 ): MultiChatSeedAssignment[] {
   const targetChatsPerUser = Math.max(1, options.targetChatsPerUser);
   const rng = options.rng ?? Math.random;
@@ -111,14 +111,14 @@ export function planMultiChatSeedAssignments(
     if (remainingChatsForUser <= 0) continue;
 
     const available = chatSlots.filter(
-      (slot) => slot.slots > 0 && !alreadyJoined.has(slot.chatId)
+      (slot) => slot.slots > 0 && !alreadyJoined.has(slot.chatId),
     );
     if (available.length === 0) continue;
 
     const selectedChats = sampleRandom(
       available,
       Math.min(remainingChatsForUser, available.length),
-      rng
+      rng,
     );
 
     for (const selected of selectedChats) {
@@ -139,7 +139,7 @@ export function planMultiChatSeedAssignments(
 }
 
 export async function autoJoinEmptyUsersToNpcGroupChats(
-  options: AutoJoinEmptyUsersToNpcGroupChatsOptions
+  options: AutoJoinEmptyUsersToNpcGroupChatsOptions,
 ): Promise<number> {
   if (!options.enabled) {
     return 0;
@@ -157,7 +157,7 @@ export async function autoJoinEmptyUsersToNpcGroupChats(
   // shared/dev databases with unintended memberships.
   const baseUserFilter = and(
     eq(users.isActor, false),
-    eq(users.isBanned, false)
+    eq(users.isBanned, false),
   );
   const userFilter = isTestEnvironment()
     ? and(baseUserFilter, eq(users.isTest, true))
@@ -174,14 +174,14 @@ export async function autoJoinEmptyUsersToNpcGroupChats(
     .from(users)
     .leftJoin(
       groupMembers,
-      and(eq(users.id, groupMembers.userId), eq(groupMembers.isActive, true))
+      and(eq(users.id, groupMembers.userId), eq(groupMembers.isActive, true)),
     )
     .where(finalUserFilter)
     .groupBy(users.id)
     .limit(options.batchSize);
 
   const eligibleUsers = userMembershipCounts.filter(
-    (row) => Number(row.activeGroupCount ?? 0) < targetChatsPerUser
+    (row) => Number(row.activeGroupCount ?? 0) < targetChatsPerUser,
   );
   const userIds = eligibleUsers.map((u) => u.userId);
   if (userIds.length === 0) {
@@ -206,18 +206,18 @@ export async function autoJoinEmptyUsersToNpcGroupChats(
     .where(
       and(
         eq(chats.isGroup, true),
-        eq(groups.type, 'npc'),
+        eq(groups.type, "npc"),
         eq(chats.nftGated, false),
-        ...(chatAllowlist ? [inArray(chats.id, chatAllowlist)] : [])
-      )
+        ...(chatAllowlist ? [inArray(chats.id, chatAllowlist)] : []),
+      ),
     )
     .limit(200);
 
   if (candidateChats.length === 0) {
     logger.warn(
-      'Auto-join skipped: no NPC group chats available',
+      "Auto-join skipped: no NPC group chats available",
       { userCount: userIds.length },
-      'NPCGroupChatOnboarding'
+      "NPCGroupChatOnboarding",
     );
     return 0;
   }
@@ -249,14 +249,14 @@ export async function autoJoinEmptyUsersToNpcGroupChats(
           .where(
             and(
               inArray(chatParticipants.chatId, preferredChatIds),
-              eq(chatParticipants.isActive, true)
-            )
+              eq(chatParticipants.isActive, true),
+            ),
           )
           .groupBy(chatParticipants.chatId)
       : [];
 
   const participantCountMap = new Map(
-    participantCounts.map((row) => [row.chatId, row.count])
+    participantCounts.map((row) => [row.chatId, row.count]),
   );
 
   const existingMemberships = await db
@@ -270,8 +270,8 @@ export async function autoJoinEmptyUsersToNpcGroupChats(
     .where(
       and(
         eq(groupMembers.isActive, true),
-        inArray(groupMembers.userId, userIds)
-      )
+        inArray(groupMembers.userId, userIds),
+      ),
     );
 
   type ChatSlot = {
@@ -285,7 +285,7 @@ export async function autoJoinEmptyUsersToNpcGroupChats(
   for (const chat of preferredChats) {
     const currentCount = participantCountMap.get(chat.chatId) ?? 0;
     const maxMembers =
-      typeof chat.groupMaxMembers === 'number' && chat.groupMaxMembers > 0
+      typeof chat.groupMaxMembers === "number" && chat.groupMaxMembers > 0
         ? chat.groupMaxMembers
         : options.defaultMaxMembers;
     const slots = Math.max(0, maxMembers - currentCount);
@@ -301,9 +301,9 @@ export async function autoJoinEmptyUsersToNpcGroupChats(
 
   if (chatSlots.length === 0) {
     logger.warn(
-      'Auto-join skipped: all NPC group chats are full',
+      "Auto-join skipped: all NPC group chats are full",
       { userCount: userIds.length },
-      'NPCGroupChatOnboarding'
+      "NPCGroupChatOnboarding",
     );
     return 0;
   }
@@ -333,7 +333,7 @@ export async function autoJoinEmptyUsersToNpcGroupChats(
         id: await generateSnowflakeId(),
         groupId: a.groupId,
         userId: a.userId,
-        role: 'member',
+        role: "member",
         addedBy: a.invitedBy,
         joinedAt: now,
         isActive: true,
@@ -344,7 +344,7 @@ export async function autoJoinEmptyUsersToNpcGroupChats(
         target: [groupMembers.groupId, groupMembers.userId],
         set: {
           isActive: true,
-          role: 'member',
+          role: "member",
           addedBy: a.invitedBy,
           joinedAt: now,
           kickedAt: sql`NULL`,
@@ -373,13 +373,13 @@ export async function autoJoinEmptyUsersToNpcGroupChats(
   }
 
   logger.info(
-    'Auto-joined users into NPC group chats (dev demo)',
+    "Auto-joined users into NPC group chats (dev demo)",
     {
       membershipsCreated: assignments.length,
       targetChatsPerUser,
       batchSize: options.batchSize,
     },
-    'NPCGroupChatOnboarding'
+    "NPCGroupChatOnboarding",
   );
 
   return assignments.length;

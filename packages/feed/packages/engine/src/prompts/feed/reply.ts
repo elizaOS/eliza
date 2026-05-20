@@ -1,5 +1,5 @@
-import { definePrompt } from '../define-prompt';
-import { PARODY_NAME_RULES } from '../shared-sections';
+import { definePrompt } from "../define-prompt";
+import { PARODY_NAME_RULES } from "../shared-sections";
 
 /**
  * Prompt for generating a single reply (lighter context than replies.ts).
@@ -10,11 +10,11 @@ import { PARODY_NAME_RULES } from '../shared-sections';
  * parody world and prevent real-name drift.
  */
 export const reply = definePrompt({
-  id: 'reply',
-  version: '8.0.0',
-  category: 'feed',
+  id: "reply",
+  version: "8.0.0",
+  category: "feed",
   description:
-    'Generates single reply — lightweight, humor and dunks permitted',
+    "Generates single reply — lightweight, humor and dunks permitted",
   temperature: 0.9,
   maxTokens: 8000,
   template: `{{realityGrounding}}

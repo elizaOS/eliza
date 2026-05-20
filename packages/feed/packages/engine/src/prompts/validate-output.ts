@@ -8,8 +8,8 @@
  * - Character limits respected
  */
 
-import { escapeRegex } from '@feed/shared';
-import { getForbiddenRealNames } from './world-context';
+import { escapeRegex } from "@feed/shared";
+import { getForbiddenRealNames } from "./world-context";
 
 export interface ValidationResult {
   isValid: boolean;
@@ -96,7 +96,7 @@ export function validateNoRealNames(text: string): string[] {
     const match = pattern.exec(text);
     if (match) {
       violations.push(
-        `FORBIDDEN: Contains real-name pattern "${match[0]}" (matched by ${pattern})`
+        `FORBIDDEN: Contains real-name pattern "${match[0]}" (matched by ${pattern})`,
       );
     }
   });
@@ -105,7 +105,7 @@ export function validateNoRealNames(text: string): string[] {
   const forbiddenNames = getForbiddenRealNames();
   forbiddenNames.forEach((realName: string) => {
     // Case insensitive check to catch variations
-    const regex = new RegExp(`\\b${escapeRegex(realName)}\\b`, 'i');
+    const regex = new RegExp(`\\b${escapeRegex(realName)}\\b`, "i");
     if (regex.test(text)) {
       violations.push(`FORBIDDEN: Contains real name "${realName}"`);
     }
@@ -121,7 +121,7 @@ export function validateNoRealNames(text: string): string[] {
  */
 export function validateHashtags(
   text: string,
-  maxAllowed: number = 0
+  maxAllowed: number = 0,
 ): string[] {
   const violations: string[] = [];
   const hashtagRegex = /#\w+/g;
@@ -129,10 +129,10 @@ export function validateHashtags(
 
   if (hashtags && hashtags.length > maxAllowed) {
     if (maxAllowed === 0) {
-      violations.push(`FORBIDDEN: Contains hashtags: ${hashtags.join(', ')}`);
+      violations.push(`FORBIDDEN: Contains hashtags: ${hashtags.join(", ")}`);
     } else {
       violations.push(
-        `EXCESSIVE: Contains ${hashtags.length} hashtags (max: ${maxAllowed}): ${hashtags.join(', ')}`
+        `EXCESSIVE: Contains ${hashtags.length} hashtags (max: ${maxAllowed}): ${hashtags.join(", ")}`,
       );
     }
   }
@@ -151,7 +151,7 @@ export function validateNoEmojis(text: string): string[] {
   const emojis = text.match(emojiRegex);
 
   if (emojis && emojis.length > 0) {
-    violations.push(`FORBIDDEN: Contains emojis: ${emojis.join(' ')}`);
+    violations.push(`FORBIDDEN: Contains emojis: ${emojis.join(" ")}`);
   }
 
   return violations;
@@ -163,13 +163,13 @@ export function validateNoEmojis(text: string): string[] {
 export function validateCharacterLimit(
   text: string,
   maxLength: number,
-  postType: string
+  postType: string,
 ): string[] {
   const violations: string[] = [];
 
   if (text.length > maxLength) {
     violations.push(
-      `EXCEEDED: ${postType} is ${text.length} chars (max: ${maxLength})`
+      `EXCEEDED: ${postType} is ${text.length} chars (max: ${maxLength})`,
     );
   }
 
@@ -184,7 +184,7 @@ export function validateFeedPost(
   options: {
     maxLength: number;
     postType: string;
-  }
+  },
 ): ValidationResult {
   const violations: string[] = [];
   const warnings: string[] = [];
@@ -194,7 +194,7 @@ export function validateFeedPost(
   violations.push(...validateHashtags(text, 0));
   violations.push(...validateNoEmojis(text));
   violations.push(
-    ...validateCharacterLimit(text, options.maxLength, options.postType)
+    ...validateCharacterLimit(text, options.maxLength, options.postType),
   );
 
   // Warnings (should pass but not critical)
@@ -235,7 +235,7 @@ export const CHARACTER_LIMITS = {
  * Validate a batch of posts
  */
 export function validatePostBatch(
-  posts: Array<{ post: string; type: keyof typeof CHARACTER_LIMITS }>
+  posts: Array<{ post: string; type: keyof typeof CHARACTER_LIMITS }>,
 ): {
   allValid: boolean;
   results: Array<ValidationResult & { post: string }>;
@@ -272,27 +272,27 @@ export function validateArticle(article: {
   // Validate title
   const titleRealNames = validateNoRealNames(article.title);
   if (titleRealNames.length > 0) {
-    violations.push(`TITLE: ${titleRealNames.join(', ')}`);
+    violations.push(`TITLE: ${titleRealNames.join(", ")}`);
   }
   const titleHashtags = validateHashtags(article.title, 0);
   if (titleHashtags.length > 0) {
-    violations.push(`TITLE: ${titleHashtags.join(', ')}`);
+    violations.push(`TITLE: ${titleHashtags.join(", ")}`);
   }
 
   // Validate summary
   const summaryRealNames = validateNoRealNames(article.summary);
   if (summaryRealNames.length > 0) {
-    violations.push(`SUMMARY: ${summaryRealNames.join(', ')}`);
+    violations.push(`SUMMARY: ${summaryRealNames.join(", ")}`);
   }
   const summaryHashtags = validateHashtags(article.summary, 0);
   if (summaryHashtags.length > 0) {
-    violations.push(`SUMMARY: ${summaryHashtags.join(', ')}`);
+    violations.push(`SUMMARY: ${summaryHashtags.join(", ")}`);
   }
 
   // Validate content
   const contentRealNames = validateNoRealNames(article.content);
   if (contentRealNames.length > 0) {
-    violations.push(`CONTENT: ${contentRealNames.join(', ')}`);
+    violations.push(`CONTENT: ${contentRealNames.join(", ")}`);
   }
 
   // Warnings for short content

@@ -15,7 +15,7 @@ import {
   getClientIp,
   RATE_LIMIT_CONFIGS,
   withErrorHandling,
-} from '@feed/api';
+} from "@feed/api";
 import {
   agentTrades,
   db,
@@ -26,12 +26,12 @@ import {
   npcTrades,
   sql,
   users,
-} from '@feed/db';
-import { StaticDataRegistry } from '@feed/engine';
-import { logger, toISO } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { z } from 'zod';
+} from "@feed/db";
+import { StaticDataRegistry } from "@feed/engine";
+import { logger, toISO } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { z } from "zod";
 
 const QuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(20).optional().default(5),
@@ -39,10 +39,10 @@ const QuerySchema = z.object({
 
 interface RecentTrade {
   id: string;
-  marketType: 'prediction' | 'perp';
+  marketType: "prediction" | "perp";
   ticker: string | null;
   marketQuestion: string | null;
-  action: 'open' | 'close';
+  action: "open" | "close";
   side: string | null;
   amount: number;
   pnl: number | null;
@@ -61,11 +61,11 @@ interface RecentTradesResponse {
 export const GET = withErrorHandling(
   async (
     req: NextRequest,
-    { params }: { params: Promise<{ agentId: string }> }
+    { params }: { params: Promise<{ agentId: string }> },
   ) => {
     // IP-based rate limiting for public endpoint
     const clientIp = getClientIp(req.headers);
-    const rateLimitKey = clientIp ? `ip:${clientIp}` : 'ip:anonymous';
+    const rateLimitKey = clientIp ? `ip:${clientIp}` : "ip:anonymous";
     const rateLimitConfig = clientIp
       ? RATE_LIMIT_CONFIGS.PUBLIC_BALANCE_FETCH
       : RATE_LIMIT_CONFIGS.PUBLIC_BALANCE_FETCH_ANONYMOUS;
@@ -76,10 +76,10 @@ export const GET = withErrorHandling(
       return NextResponse.json(
         {
           success: false,
-          error: 'Too many requests',
+          error: "Too many requests",
           retryAfter: retryAfterSeconds,
         },
-        { status: 429, headers: { 'Retry-After': String(retryAfterSeconds) } }
+        { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } },
       );
     }
 
@@ -87,13 +87,13 @@ export const GET = withErrorHandling(
 
     const { searchParams } = new URL(req.url);
     const parsed = QuerySchema.safeParse({
-      limit: searchParams.get('limit'),
+      limit: searchParams.get("limit"),
     });
 
     if (!parsed.success) {
       return NextResponse.json(
-        { success: false, error: 'Invalid query parameters' },
-        { status: 400 }
+        { success: false, error: "Invalid query parameters" },
+        { status: 400 },
       );
     }
 
@@ -198,8 +198,8 @@ export const GET = withErrorHandling(
     const marketIds = [
       ...new Set(
         trades
-          .filter((t) => t.marketType === 'prediction' && t.marketId)
-          .map((t) => t.marketId!)
+          .filter((t) => t.marketType === "prediction" && t.marketId)
+          .map((t) => t.marketId!),
       ),
     ];
 
@@ -216,23 +216,23 @@ export const GET = withErrorHandling(
     }
 
     // Valid values for runtime validation
-    const validMarketTypes = ['prediction', 'perp'] as const;
-    const validActions = ['open', 'close'] as const;
+    const validMarketTypes = ["prediction", "perp"] as const;
+    const validActions = ["open", "close"] as const;
 
     // Format response
     const recentTrades: RecentTrade[] = trades.map((trade) => {
       // Runtime validation with defaults
       const marketType = validMarketTypes.includes(
-        trade.marketType as (typeof validMarketTypes)[number]
+        trade.marketType as (typeof validMarketTypes)[number],
       )
-        ? (trade.marketType as 'prediction' | 'perp')
-        : 'prediction';
+        ? (trade.marketType as "prediction" | "perp")
+        : "prediction";
 
       const action = validActions.includes(
-        trade.action as (typeof validActions)[number]
+        trade.action as (typeof validActions)[number],
       )
-        ? (trade.action as 'open' | 'close')
-        : 'open';
+        ? (trade.action as "open" | "close")
+        : "open";
 
       return {
         id: trade.id,
@@ -250,9 +250,9 @@ export const GET = withErrorHandling(
     });
 
     logger.debug(
-      'Fetched recent trades for agent',
+      "Fetched recent trades for agent",
       { agentId, tradeCount: recentTrades.length },
-      'GET /api/agents/[agentId]/recent-trades'
+      "GET /api/agents/[agentId]/recent-trades",
     );
 
     const response: RecentTradesResponse = {
@@ -265,5 +265,5 @@ export const GET = withErrorHandling(
     };
 
     return NextResponse.json(response);
-  }
+  },
 );

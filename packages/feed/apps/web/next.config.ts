@@ -1,24 +1,24 @@
-import { spawnSync } from 'node:child_process';
-import withSerwistInit from '@serwist/next';
-import { config } from 'dotenv';
-import type { NextConfig } from 'next';
-import * as path from 'path';
+import { spawnSync } from "node:child_process";
+import * as path from "node:path";
+import withSerwistInit from "@serwist/next";
+import { config } from "dotenv";
+import type { NextConfig } from "next";
 
 // Use process.cwd() which works reliably in Next.js config context
 // This is the app directory (apps/web), so go up two levels to get monorepo root
-const monorepoRoot = path.resolve(process.cwd(), '../..');
+const monorepoRoot = path.resolve(process.cwd(), "../..");
 
 // Serwist PWA — service worker generation
 const revision =
-  spawnSync('git', ['rev-parse', 'HEAD'], {
-    encoding: 'utf-8',
+  spawnSync("git", ["rev-parse", "HEAD"], {
+    encoding: "utf-8",
   }).stdout?.trim() || crypto.randomUUID();
 
 const withSerwist = withSerwistInit({
-  swSrc: 'src/app/sw.ts',
-  swDest: 'public/sw.js',
-  additionalPrecacheEntries: [{ url: '/~offline', revision }],
-  disable: process.env.NODE_ENV === 'development',
+  swSrc: "src/app/sw.ts",
+  swDest: "public/sw.js",
+  additionalPrecacheEntries: [{ url: "/~offline", revision }],
+  disable: process.env.NODE_ENV === "development",
 });
 
 // Capture any Sentry auth token explicitly provided by the environment before dotenv runs.
@@ -28,12 +28,12 @@ const sentryAuthTokenFromProcessEnv = process.env.SENTRY_AUTH_TOKEN;
 
 // Load .env files from monorepo root before Next.js processes them
 // This ensures env vars are available during config evaluation and at runtime
-config({ path: path.join(monorepoRoot, '.env') });
-config({ path: path.join(monorepoRoot, '.env.local') });
+config({ path: path.join(monorepoRoot, ".env") });
+config({ path: path.join(monorepoRoot, ".env.local") });
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  distDir: process.env.NEXT_DIST_DIR || '.next',
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   // Specify workspace root for monorepo
   outputFileTracingRoot: monorepoRoot,
   // Use standalone output for dynamic routes and API endpoints
@@ -42,27 +42,27 @@ const nextConfig: NextConfig = {
   // Transpile internal workspace packages to resolve TypeScript imports properly
   // This is necessary because these packages are not pre-built and use TypeScript source directly
   transpilePackages: [
-    '@feed/shared',
-    '@feed/engine',
-    '@feed/agents',
-    '@feed/api',
-    '@feed/db',
-    '@feed/a2a',
+    "@feed/shared",
+    "@feed/engine",
+    "@feed/agents",
+    "@feed/api",
+    "@feed/db",
+    "@feed/a2a",
   ],
   experimental: {
     optimizePackageImports: [
-      'lucide-react',
-      'framer-motion',
-      'recharts',
-      'date-fns',
-      'ethers',
-      'viem',
-      'react-hook-form',
-      '@hookform/resolvers',
-      '@tanstack/react-query',
-      'class-variance-authority',
-      'zod',
-      'ai',
+      "lucide-react",
+      "framer-motion",
+      "recharts",
+      "date-fns",
+      "ethers",
+      "viem",
+      "react-hook-form",
+      "@hookform/resolvers",
+      "@tanstack/react-query",
+      "class-variance-authority",
+      "zod",
+      "ai",
     ],
     // instrumentationHook removed - available by default in Next.js 15+
     // Reduce peak memory during webpack build (Next.js 15+)
@@ -86,34 +86,34 @@ const nextConfig: NextConfig = {
     // Legacy `/assets/agent-monkeys/` and `/assets/user-profiles/` preset URLs are rewritten to `user-pfps` in middleware.ts
     return [
       {
-        source: '/.well-known/farcaster.json',
-        destination: '/farcaster.json',
+        source: "/.well-known/farcaster.json",
+        destination: "/farcaster.json",
       },
       {
-        source: '/.well-known/agent-card.json',
-        destination: '/api/game/card',
+        source: "/.well-known/agent-card.json",
+        destination: "/api/game/card",
       },
       {
-        source: '/.well-known/assetlinks.json',
-        destination: '/assetlinks.json',
+        source: "/.well-known/assetlinks.json",
+        destination: "/assetlinks.json",
       },
     ];
   },
   // Externalize packages with native Node.js dependencies for server-side
   // Note: @feed/* packages are in transpilePackages, so they can't be here
   serverExternalPackages: [
-    'ipfs-http-client',
-    '@helia/unixfs',
-    'helia',
-    'blockstore-core',
-    'datastore-core',
-    '@libp2p/interface',
-    'electron-fetch',
-    'swagger-jsdoc',
-    'postgres',
-    'drizzle-orm',
-    'drizzle-orm/postgres-js',
-    'ioredis', // Node.js Redis client - requires tls/net modules not available in edge runtime
+    "ipfs-http-client",
+    "@helia/unixfs",
+    "helia",
+    "blockstore-core",
+    "datastore-core",
+    "@libp2p/interface",
+    "electron-fetch",
+    "swagger-jsdoc",
+    "postgres",
+    "drizzle-orm",
+    "drizzle-orm/postgres-js",
+    "ioredis", // Node.js Redis client - requires tls/net modules not available in edge runtime
     // NOTE: @elizaos/core was removed from externals because it's ESM-only ("type": "module").
     // Externalizing ESM packages causes require() errors at Vercel runtime (ERR_REQUIRE_ESM).
     // Webpack now bundles it directly which resolves the ESM compatibility issue.
@@ -122,19 +122,19 @@ const nextConfig: NextConfig = {
     qualities: [100, 75],
     remotePatterns: [
       {
-        protocol: 'https',
-        hostname: '**.public.blob.vercel-storage.com',
-        pathname: '/**',
+        protocol: "https",
+        hostname: "**.public.blob.vercel-storage.com",
+        pathname: "/**",
       },
       {
-        protocol: 'http',
-        hostname: 'localhost',
-        port: '9000',
-        pathname: '/**',
+        protocol: "http",
+        hostname: "localhost",
+        port: "9000",
+        pathname: "/**",
       },
       {
-        protocol: 'https',
-        hostname: '**',
+        protocol: "https",
+        hostname: "**",
       },
     ],
   },
@@ -159,18 +159,18 @@ const nextConfig: NextConfig = {
       ...config.resolve.fallback,
       electron: false,
       fs: false,
-      'node:fs': false,
-      'node:fs/promises': false,
-      'node:path': false,
-      'node:os': false,
-      'node:crypto': false,
-      'node:stream': false,
-      'node:util': false,
-      'node:url': false,
-      'node:net': false,
-      'node:tls': false,
-      'node:dns': false,
-      'node:perf_hooks': false,
+      "node:fs": false,
+      "node:fs/promises": false,
+      "node:path": false,
+      "node:os": false,
+      "node:crypto": false,
+      "node:stream": false,
+      "node:util": false,
+      "node:url": false,
+      "node:net": false,
+      "node:tls": false,
+      "node:dns": false,
+      "node:perf_hooks": false,
       net: false,
       tls: false,
       dns: false,
@@ -181,32 +181,32 @@ const nextConfig: NextConfig = {
       util: false,
       url: false,
       os: false,
-      '@react-native-async-storage/async-storage': false,
+      "@react-native-async-storage/async-storage": false,
     };
 
     // Alias electron to stub module to prevent webpack from trying to resolve it
     // electron-fetch checks process.versions.electron at runtime, so the stub is safe
     const electronStubPath = path.join(
       process.cwd(),
-      'webpack-electron-stub.js'
+      "webpack-electron-stub.js",
     );
     const reactDeviceDetectShimPath = path.join(
       process.cwd(),
-      'src/lib/device/react-device-detect-shim.ts'
+      "src/lib/device/react-device-detect-shim.ts",
     );
     config.resolve.alias = {
       ...config.resolve.alias,
       electron: electronStubPath,
       // Privy only reads a handful of user-agent booleans from this package.
       // Use a local shim to avoid the crashing vendor bundle on affected browsers.
-      'react-device-detect': reactDeviceDetectShimPath,
+      "react-device-detect": reactDeviceDetectShimPath,
     };
 
     // Ignore electron module completely - electron-fetch will handle it at runtime
     // This prevents webpack from trying to resolve electron during bundling
     const electronFetchStubPath = path.join(
       process.cwd(),
-      'webpack-electron-fetch-stub.js'
+      "webpack-electron-fetch-stub.js",
     );
     config.plugins = config.plugins || [];
 
@@ -219,8 +219,8 @@ const nextConfig: NextConfig = {
       // electron-fetch checks process.versions.electron at runtime anyway
       new webpack.NormalModuleReplacementPlugin(
         /^electron-fetch$/,
-        electronFetchStubPath
-      )
+        electronFetchStubPath,
+      ),
     );
 
     // Client: ignore server-only packages so they are never bundled in the browser.
@@ -230,7 +230,7 @@ const nextConfig: NextConfig = {
         new webpack.IgnorePlugin({
           resourceRegExp:
             /^@feed\/(api|db|training|agents)(\/.*)?$|^(ioredis|postgres|electron-fetch|ipfs-http-client)$|^@elizaos\/core$/,
-        })
+        }),
       );
     }
 
@@ -238,7 +238,7 @@ const nextConfig: NextConfig = {
     config.plugins.push(
       new webpack.IgnorePlugin({
         resourceRegExp: /^(electron|electron-fetch|swagger-jsdoc)$/,
-      })
+      }),
     );
 
     // Configure externals for optional dependencies and server-only packages
@@ -252,15 +252,15 @@ const nextConfig: NextConfig = {
       // and must be transpiled by webpack via transpilePackages
       // NOTE: @elizaos/core intentionally excluded - it's ESM-only and must be bundled
       const serverExternalPackagesList = [
-        'postgres',
-        'drizzle-orm',
-        'drizzle-orm/postgres-js',
-        'ioredis',
-        'swagger-jsdoc',
+        "postgres",
+        "drizzle-orm",
+        "drizzle-orm/postgres-js",
+        "ioredis",
+        "swagger-jsdoc",
       ];
 
       if (!Array.isArray(config.externals)) {
-        if (typeof config.externals === 'function') {
+        if (typeof config.externals === "function") {
           const originalExternals = config.externals;
           config.externals = [
             originalExternals,
@@ -270,16 +270,16 @@ const nextConfig: NextConfig = {
               }: {
                 request: string | undefined;
               },
-              callback: (error?: Error | null, result?: string) => void
+              callback: (error?: Error | null, result?: string) => void,
             ) => {
               if (
                 request &&
                 serverExternalPackagesList.some(
-                  (pkg) => request === pkg || request.startsWith(pkg + '/')
+                  (pkg) => request === pkg || request.startsWith(`${pkg}/`),
                 )
               ) {
                 // Externalize server-only packages - resolve at runtime
-                return callback(null, 'commonjs ' + request);
+                return callback(null, `commonjs ${request}`);
               }
               callback();
             },
@@ -296,19 +296,19 @@ const nextConfig: NextConfig = {
             }: {
               request: string | undefined;
             },
-            callback: (error?: Error | null, result?: string) => void
+            callback: (error?: Error | null, result?: string) => void,
           ) => {
             if (
               request &&
               serverExternalPackagesList.some(
-                (pkg) => request === pkg || request.startsWith(pkg + '/')
+                (pkg) => request === pkg || request.startsWith(`${pkg}/`),
               )
             ) {
               // Externalize server-only packages - resolve at runtime
-              return callback(null, 'commonjs ' + request);
+              return callback(null, `commonjs ${request}`);
             }
             callback();
-          }
+          },
         );
       }
     } else {
@@ -317,55 +317,55 @@ const nextConfig: NextConfig = {
       // These should only be loaded server-side via dynamic imports
       // CRITICAL: Externalize @feed/api and @feed/db to prevent bundling server-only code in client
       const serverOnlyPackages = [
-        'agent0-sdk',
-        '@feed/agents/agent0',
-        'ipfs-http-client',
-        'electron-fetch',
-        'postgres',
-        'ioredis',
-        '@feed/db',
-        '@feed/api',
-        'swagger-jsdoc',
+        "agent0-sdk",
+        "@feed/agents/agent0",
+        "ipfs-http-client",
+        "electron-fetch",
+        "postgres",
+        "ioredis",
+        "@feed/db",
+        "@feed/api",
+        "swagger-jsdoc",
       ];
 
       const nodeBuiltIns = [
-        'fs',
-        'node:fs',
-        'node:fs/promises',
-        'net',
-        'node:net',
-        'tls',
-        'node:tls',
-        'dns',
-        'node:dns',
-        'path',
-        'node:path',
-        'crypto',
-        'node:crypto',
-        'stream',
-        'node:stream',
-        'util',
-        'node:util',
-        'url',
-        'node:url',
-        'os',
-        'node:os',
-        'perf_hooks',
-        'node:perf_hooks',
-        'electron',
+        "fs",
+        "node:fs",
+        "node:fs/promises",
+        "net",
+        "node:net",
+        "tls",
+        "node:tls",
+        "dns",
+        "node:dns",
+        "path",
+        "node:path",
+        "crypto",
+        "node:crypto",
+        "stream",
+        "node:stream",
+        "util",
+        "node:util",
+        "url",
+        "node:url",
+        "os",
+        "node:os",
+        "perf_hooks",
+        "node:perf_hooks",
+        "electron",
       ];
 
       // Use function-based externals to catch all imports of server-only packages
       // Webpack externals function signature: ({context, request}, callback)
       const externalizeServerOnly = (
         { request }: { context?: string; request?: string },
-        callback: (error?: Error | null, result?: string) => void
+        callback: (error?: Error | null, result?: string) => void,
       ) => {
         // Externalize server-only packages (exact match or subpath)
         if (
           request &&
           serverOnlyPackages.some(
-            (pkg) => request === pkg || request.startsWith(pkg + '/')
+            (pkg) => request === pkg || request.startsWith(`${pkg}/`),
           )
         ) {
           return callback(null, `commonjs ${request}`);
@@ -380,12 +380,12 @@ const nextConfig: NextConfig = {
       // Combine with existing externals
       if (Array.isArray(config.externals)) {
         config.externals.push(externalizeServerOnly);
-      } else if (typeof config.externals === 'function') {
+      } else if (typeof config.externals === "function") {
         const originalExternals = config.externals;
         config.externals = [originalExternals, externalizeServerOnly];
       } else {
         config.externals = [config.externals, externalizeServerOnly].filter(
-          Boolean
+          Boolean,
         );
       }
     }
@@ -405,9 +405,9 @@ const sentryWebpackPluginOptions = {
   // For all available options, see:
   // https://www.npmjs.com/package/@sentry/webpack-plugin#options
 
-  org: process.env.SENTRY_ORG ?? 'eliza-uv',
+  org: process.env.SENTRY_ORG ?? "eliza-uv",
 
-  project: process.env.SENTRY_PROJECT ?? 'feed',
+  project: process.env.SENTRY_PROJECT ?? "feed",
 
   // Auth token for uploading source maps and creating releases
   // Set SENTRY_AUTH_TOKEN in environment to enable source map uploads
@@ -439,7 +439,7 @@ const sentryWebpackPluginOptions = {
   // This can increase your server load as well as your hosting bill.
   // Note: Check that the configured route will not match with your Next.js middleware, otherwise reporting of client-
   // side errors will fail.
-  tunnelRoute: '/monitoring',
+  tunnelRoute: "/monitoring",
 
   // Automatically tree-shake Sentry logger statements to reduce bundle size
   disableLogger: true,
@@ -463,17 +463,17 @@ async function getConfig(): Promise<NextConfig> {
   }
 
   try {
-    const { withSentryConfig } = await import('@sentry/nextjs');
+    const { withSentryConfig } = await import("@sentry/nextjs");
     resolvedConfig = withSentryConfig(
       resolvedConfig,
-      sentryWebpackPluginOptions
+      sentryWebpackPluginOptions,
     );
   } catch (error) {
-    const shouldLog = process.env.CI || process.env.NODE_ENV !== 'production';
+    const shouldLog = process.env.CI || process.env.NODE_ENV !== "production";
     if (shouldLog) {
       console.warn(
-        '[next.config.ts] Sentry integration disabled. Falling back to base config.',
-        error instanceof Error ? error.message : String(error)
+        "[next.config.ts] Sentry integration disabled. Falling back to base config.",
+        error instanceof Error ? error.message : String(error),
       );
     }
   }

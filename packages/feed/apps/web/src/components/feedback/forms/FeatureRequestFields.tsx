@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { StarRatingInput } from '../StarRating';
+import { StarRatingInput } from "../StarRating";
 
 interface FeatureRequestFieldsProps {
   rating: number;
@@ -14,7 +14,7 @@ export function FeatureRequestFields({
   return (
     <div className="space-y-3">
       <label className="font-medium text-foreground text-sm">
-        How strongly do you feel about this?{' '}
+        How strongly do you feel about this?{" "}
         <span className="text-destructive">*</span>
       </label>
       <StarRatingInput

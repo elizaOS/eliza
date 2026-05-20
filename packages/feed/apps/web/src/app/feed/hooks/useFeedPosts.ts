@@ -1,7 +1,7 @@
-import type { FeedPost } from '@feed/shared';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useSSEChannel } from '@/hooks/useSSE';
-import { apiUrl } from '@/utils/api-url';
+import type { FeedPost } from "@feed/shared";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useSSEChannel } from "@/hooks/useSSE";
+import { apiUrl } from "@/utils/api-url";
 
 const PAGE_SIZE = 20;
 
@@ -30,7 +30,7 @@ interface UseFeedPostsResult {
  * - Race condition prevention
  */
 export function useFeedPosts(
-  options: UseFeedPostsOptions = {}
+  options: UseFeedPostsOptions = {},
 ): UseFeedPostsResult {
   const { enabled = true } = options;
 
@@ -64,7 +64,7 @@ export function useFeedPosts(
       requestCursor: string | null,
       append = false,
       skipLoadingState = false,
-      forceNoStore = false
+      forceNoStore = false,
     ) => {
       if (append && loadingMoreRef.current) return;
 
@@ -88,14 +88,14 @@ export function useFeedPosts(
 
       const url = requestCursor
         ? apiUrl(
-            `/api/posts?limit=${PAGE_SIZE}&cursor=${encodeURIComponent(requestCursor)}`
+            `/api/posts?limit=${PAGE_SIZE}&cursor=${encodeURIComponent(requestCursor)}`,
           )
         : apiUrl(`/api/posts?limit=${PAGE_SIZE}`);
 
       let response: Response;
       try {
         response = await fetch(url, {
-          cache: forceNoStore ? 'no-store' : undefined,
+          cache: forceNoStore ? "no-store" : undefined,
         });
       } catch {
         stopLoading();
@@ -146,7 +146,7 @@ export function useFeedPosts(
       setHasMore(hasMoreFromAPI && newPosts.length > 0);
       stopLoading();
     },
-    []
+    [],
   );
 
   const refresh = useCallback(async () => {
@@ -174,7 +174,7 @@ export function useFeedPosts(
   }, [enabled, fetchPosts]);
 
   // SSE real-time updates
-  useSSEChannel('feed', () => {
+  useSSEChannel("feed", () => {
     if (enabled) {
       void fetchPosts(null, false, true, true);
     }

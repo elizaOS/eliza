@@ -1,14 +1,14 @@
-import { definePrompt } from '../define-prompt';
+import { definePrompt } from "../define-prompt";
 
 /**
  * Prompt for generating an NPC reaction to a world event.
  * Actor-first design: identity dominates, minimal shared rules.
  */
 export const reactions = definePrompt({
-  id: 'reactions',
-  version: '6.0.0',
-  category: 'feed',
-  description: 'Generates actor reaction to event — actor identity first',
+  id: "reactions",
+  version: "6.0.0",
+  category: "feed",
+  description: "Generates actor reaction to event — actor identity first",
   temperature: 1,
   maxTokens: 8000,
   template: `You are {{characterName}}.

@@ -1,12 +1,12 @@
-'use client';
+"use client";
 
-import type { CommentInputProps } from '@feed/shared';
-import { cn } from '@feed/shared';
-import { Send, X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
-import { useAuth } from '@/hooks/useAuth';
-import { useSocialTracking } from '@/hooks/usePostHog';
-import { useInteractionStore } from '@/stores/interactionStore';
+import type { CommentInputProps } from "@feed/shared";
+import { cn } from "@feed/shared";
+import { Send, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
+import { useSocialTracking } from "@/hooks/usePostHog";
+import { useInteractionStore } from "@/stores/interactionStore";
 
 /**
  * Maximum allowed length for comment content.
@@ -37,18 +37,18 @@ const MAX_COMMENT_LENGTH = 5000;
 export function CommentInput({
   postId,
   parentCommentId,
-  placeholder = 'Write a comment...',
+  placeholder = "Write a comment...",
   autoFocus = false,
   onSubmit,
   onCancel,
   className,
   replyingToName,
 }: CommentInputProps & { replyingToName?: string }) {
-  const [content, setContent] = useState('');
+  const [content, setContent] = useState("");
   const [isFocused, setIsFocused] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [optimisticComment, setOptimisticComment] = useState<string | null>(
-    null
+    null,
   );
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -66,7 +66,7 @@ export function CommentInput({
   useEffect(() => {
     const textarea = textareaRef.current;
     if (textarea) {
-      textarea.style.height = 'auto';
+      textarea.style.height = "auto";
       textarea.style.height = `${textarea.scrollHeight}px`;
     }
   }, []);
@@ -94,7 +94,7 @@ export function CommentInput({
 
     // Clear input optimistically
     const originalContent = content;
-    setContent('');
+    setContent("");
     setIsFocused(false);
 
     const comment = await addComment(postId, trimmedContent, parentCommentId);
@@ -119,20 +119,20 @@ export function CommentInput({
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // Submit on Enter (without Shift)
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSubmit();
     }
 
     // Cancel on Escape
-    if (e.key === 'Escape' && onCancel) {
+    if (e.key === "Escape" && onCancel) {
       e.preventDefault();
       onCancel();
     }
   };
 
   const handleCancel = () => {
-    setContent('');
+    setContent("");
     setIsFocused(false);
     if (onCancel) {
       onCancel();
@@ -167,11 +167,11 @@ export function CommentInput({
 
       <div
         className={cn(
-          'flex flex-col gap-2 rounded-lg border p-3 transition-colors',
+          "flex flex-col gap-2 rounded-lg border p-3 transition-colors",
           isFocused
-            ? 'border-primary bg-muted/50'
-            : 'border-border bg-background',
-          className
+            ? "border-primary bg-muted/50"
+            : "border-border bg-background",
+          className,
         )}
       >
         {/* Textarea */}
@@ -183,10 +183,10 @@ export function CommentInput({
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
           className={cn(
-            'w-full resize-none bg-transparent',
-            'text-sm placeholder:text-muted-foreground',
-            'focus:outline-none',
-            'max-h-[200px] min-h-[60px]'
+            "w-full resize-none bg-transparent",
+            "text-sm placeholder:text-muted-foreground",
+            "focus:outline-none",
+            "max-h-[200px] min-h-[60px]",
           )}
           disabled={isSubmitting}
         />
@@ -198,7 +198,7 @@ export function CommentInput({
             <div className="flex-1 text-muted-foreground text-xs">
               {showCharCount && (
                 <span
-                  className={cn(isOverLimit && 'font-medium text-destructive')}
+                  className={cn(isOverLimit && "font-medium text-destructive")}
                 >
                   {remainingChars} characters remaining
                 </span>
@@ -214,10 +214,10 @@ export function CommentInput({
                   onClick={handleCancel}
                   disabled={isSubmitting}
                   className={cn(
-                    'rounded-md px-3 py-1.5 text-sm',
-                    'text-muted-foreground hover:text-foreground',
-                    'transition-colors hover:bg-muted',
-                    'disabled:cursor-not-allowed disabled:opacity-50'
+                    "rounded-md px-3 py-1.5 text-sm",
+                    "text-muted-foreground hover:text-foreground",
+                    "transition-colors hover:bg-muted",
+                    "disabled:cursor-not-allowed disabled:opacity-50",
                   )}
                 >
                   <X size={16} />
@@ -230,17 +230,15 @@ export function CommentInput({
                 onClick={handleSubmit}
                 disabled={!content.trim() || isSubmitting || isOverLimit}
                 className={cn(
-                  'flex items-center gap-2 rounded-md px-4 py-1.5',
-                  'bg-primary text-primary-foreground',
-                  'transition-colors hover:bg-primary/90',
-                  'font-medium text-sm',
-                  'disabled:cursor-not-allowed disabled:opacity-50'
+                  "flex items-center gap-2 rounded-md px-4 py-1.5",
+                  "bg-primary text-primary-foreground",
+                  "transition-colors hover:bg-primary/90",
+                  "font-medium text-sm",
+                  "disabled:cursor-not-allowed disabled:opacity-50",
                 )}
               >
                 {isSubmitting ? (
-                  <>
-                    <span>Posting...</span>
-                  </>
+                  <span>Posting...</span>
                 ) : (
                   <>
                     <Send size={16} />

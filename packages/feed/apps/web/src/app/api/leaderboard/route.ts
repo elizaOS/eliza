@@ -64,14 +64,14 @@ import {
   successResponse,
   TradingLeaderboardService,
   withErrorHandling,
-} from '@feed/api';
-import { and, db, eq, follows, inArray } from '@feed/db';
-import { type LeaderboardMetric, logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { sanitizeForJson } from '@/lib/json/sanitize';
-import { parseLeaderboardQuery } from './query';
+} from "@feed/api";
+import { and, db, eq, follows, inArray } from "@feed/db";
+import { type LeaderboardMetric, logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { sanitizeForJson } from "@/lib/json/sanitize";
+import { parseLeaderboardQuery } from "./query";
 
-const CACHE_KEY_NAMESPACE = 'leaderboard';
+const CACHE_KEY_NAMESPACE = "leaderboard";
 const CACHE_TTL_MS = (() => {
   const raw = process.env.LEADERBOARD_CACHE_MS;
   if (raw === undefined) return 120_000;
@@ -89,16 +89,16 @@ type CachedLeaderboardEntry = {
 type LeaderboardService = {
   getWalletLeaderboard: (
     page?: number,
-    pageSize?: number
+    pageSize?: number,
   ) => Promise<LeaderboardResult>;
   getTeamLeaderboard: (
     page?: number,
-    pageSize?: number
+    pageSize?: number,
   ) => Promise<LeaderboardResult>;
   getUserPosition: (
     userId: string,
-    leaderboardType: LeaderboardResult['leaderboardType'],
-    pageSize?: number
+    leaderboardType: LeaderboardResult["leaderboardType"],
+    pageSize?: number,
   ) => Promise<LeaderboardPosition | null>;
 };
 
@@ -112,8 +112,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   const { searchParams } = new URL(request.url);
   const { page, pageSize, metric, type, userId } =
     parseLeaderboardQuery(searchParams);
-  const leaderboardMetric = metric ?? 'reputation';
-  const leaderboardType = type ?? 'wallet';
+  const leaderboardMetric = metric ?? "reputation";
+  const leaderboardType = type ?? "wallet";
   const leaderboardService = LEADERBOARD_SERVICES[leaderboardMetric];
   let effectiveUserId = authUser?.dbUserId ?? authUser?.userId;
 
@@ -141,7 +141,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
   if (!leaderboardData) {
     leaderboardData =
-      leaderboardType === 'team'
+      leaderboardType === "team"
         ? await leaderboardService.getTeamLeaderboard(page, pageSize)
         : await leaderboardService.getWalletLeaderboard(page, pageSize);
     generatedAt = new Date().toISOString();
@@ -153,7 +153,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         {
           namespace: CACHE_KEY_NAMESPACE,
           ttl: CACHE_TTL_SECONDS,
-        }
+        },
       );
     }
   }
@@ -164,11 +164,11 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       currentUser = await leaderboardService.getUserPosition(
         effectiveUserId,
         leaderboardType,
-        pageSize
+        pageSize,
       );
     } catch (error) {
       logger.warn(
-        'Failed to compute leaderboard currentUser; returning null',
+        "Failed to compute leaderboard currentUser; returning null",
         {
           effectiveUserId,
           leaderboardMetric,
@@ -176,7 +176,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
           pageSize,
           error: error instanceof Error ? error.message : String(error),
         },
-        'GET /api/leaderboard'
+        "GET /api/leaderboard",
       );
     }
   }
@@ -199,8 +199,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         .where(
           and(
             eq(follows.followerId, authUserId),
-            inArray(follows.followingId, leaderboardUserIds)
-          )
+            inArray(follows.followingId, leaderboardUserIds),
+          ),
         );
 
       followingUserIds = followedUsers.map((follow) => follow.followingId);
@@ -210,11 +210,11 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   }
 
   const isPersonalizedResponse = Boolean(
-    effectiveUserId || followingUserIdsResolved
+    effectiveUserId || followingUserIdsResolved,
   );
 
   logger.info(
-    'Leaderboard fetched successfully',
+    "Leaderboard fetched successfully",
     {
       page,
       pageSize,
@@ -224,7 +224,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       cacheHit,
       hasUserId: !!effectiveUserId,
     },
-    'GET /api/leaderboard'
+    "GET /api/leaderboard",
   );
 
   return successResponse(
@@ -245,11 +245,11 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     }),
     200,
     {
-      'x-cache': cacheHit ? 'leaderboard-hit' : 'leaderboard-miss',
-      'Cache-Control': isPersonalizedResponse
-        ? 'private, no-store'
+      "x-cache": cacheHit ? "leaderboard-hit" : "leaderboard-miss",
+      "Cache-Control": isPersonalizedResponse
+        ? "private, no-store"
         : `public, s-maxage=${CACHE_TTL_SECONDS}, stale-while-revalidate=${STALE_SECONDS}`,
-      Vary: 'Accept-Encoding',
-    }
+      Vary: "Accept-Encoding",
+    },
   );
 });

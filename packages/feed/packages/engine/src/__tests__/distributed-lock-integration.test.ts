@@ -8,7 +8,7 @@
  * when running alongside other tests with mocked modules.
  */
 
-import { beforeEach, describe, expect, test } from 'bun:test';
+import { beforeEach, describe, expect, test } from "bun:test";
 
 // Self-contained lock implementation for testing
 // Mirrors the DistributedLockProvider interface
@@ -76,145 +76,145 @@ const DistributedLockService = {
   },
 };
 
-describe('DistributedLockService - Basic Operations', () => {
+describe("DistributedLockService - Basic Operations", () => {
   beforeEach(() => {
     // Create fresh provider for each test
     provider = new TestDistributedLockProvider();
   });
 
-  test('should acquire lock when not held', async () => {
+  test("should acquire lock when not held", async () => {
     const result = await DistributedLockService.acquireLock({
-      lockId: 'test-lock',
+      lockId: "test-lock",
       durationMs: 5000,
-      operation: 'test',
-      processId: 'process-1',
+      operation: "test",
+      processId: "process-1",
     });
 
     expect(result).toBe(true);
   });
 
-  test('should fail to acquire lock when already held', async () => {
+  test("should fail to acquire lock when already held", async () => {
     // First acquisition succeeds
     const first = await DistributedLockService.acquireLock({
-      lockId: 'test-lock',
+      lockId: "test-lock",
       durationMs: 5000,
-      operation: 'test',
-      processId: 'process-1',
+      operation: "test",
+      processId: "process-1",
     });
     expect(first).toBe(true);
 
     // Second acquisition by different process fails
     const second = await DistributedLockService.acquireLock({
-      lockId: 'test-lock',
+      lockId: "test-lock",
       durationMs: 5000,
-      operation: 'test',
-      processId: 'process-2',
+      operation: "test",
+      processId: "process-2",
     });
     expect(second).toBe(false);
   });
 
-  test('should release lock and allow new acquisition', async () => {
+  test("should release lock and allow new acquisition", async () => {
     // Acquire
     await DistributedLockService.acquireLock({
-      lockId: 'test-lock',
+      lockId: "test-lock",
       durationMs: 5000,
-      operation: 'test',
-      processId: 'process-1',
+      operation: "test",
+      processId: "process-1",
     });
 
     // Release
-    await DistributedLockService.releaseLock('test-lock', 'process-1');
+    await DistributedLockService.releaseLock("test-lock", "process-1");
 
     // Now another process can acquire
     const result = await DistributedLockService.acquireLock({
-      lockId: 'test-lock',
+      lockId: "test-lock",
       durationMs: 5000,
-      operation: 'test',
-      processId: 'process-2',
+      operation: "test",
+      processId: "process-2",
     });
     expect(result).toBe(true);
   });
 
-  test('should not release lock held by different process', async () => {
+  test("should not release lock held by different process", async () => {
     // Process 1 acquires
     await DistributedLockService.acquireLock({
-      lockId: 'test-lock',
+      lockId: "test-lock",
       durationMs: 5000,
-      operation: 'test',
-      processId: 'process-1',
+      operation: "test",
+      processId: "process-1",
     });
 
     // Process 2 tries to release (should fail silently)
-    await DistributedLockService.releaseLock('test-lock', 'process-2');
+    await DistributedLockService.releaseLock("test-lock", "process-2");
 
     // Process 2 still cannot acquire (process 1 still holds it)
     const result = await DistributedLockService.acquireLock({
-      lockId: 'test-lock',
+      lockId: "test-lock",
       durationMs: 5000,
-      operation: 'test',
-      processId: 'process-2',
+      operation: "test",
+      processId: "process-2",
     });
     expect(result).toBe(false);
   });
 });
 
-describe('DistributedLockService - Lock Renewal', () => {
+describe("DistributedLockService - Lock Renewal", () => {
   beforeEach(() => {
     provider = new TestDistributedLockProvider();
   });
 
-  test('same process can renew its own lock', async () => {
+  test("same process can renew its own lock", async () => {
     // Initial acquisition
     const acquired = await DistributedLockService.acquireLock({
-      lockId: 'test-lock',
+      lockId: "test-lock",
       durationMs: 5000,
-      operation: 'test',
-      processId: 'process-1',
+      operation: "test",
+      processId: "process-1",
     });
     expect(acquired).toBe(true);
 
     // Renewal by same process
     const renewed = await DistributedLockService.acquireLock({
-      lockId: 'test-lock',
+      lockId: "test-lock",
       durationMs: 5000,
-      operation: 'test-renewal',
-      processId: 'process-1',
+      operation: "test-renewal",
+      processId: "process-1",
     });
     expect(renewed).toBe(true);
   });
 
-  test('different process cannot steal lock via renewal', async () => {
+  test("different process cannot steal lock via renewal", async () => {
     // Process 1 acquires
     await DistributedLockService.acquireLock({
-      lockId: 'test-lock',
+      lockId: "test-lock",
       durationMs: 5000,
-      operation: 'test',
-      processId: 'process-1',
+      operation: "test",
+      processId: "process-1",
     });
 
     // Process 2 tries to "renew" (should fail)
     const stolen = await DistributedLockService.acquireLock({
-      lockId: 'test-lock',
+      lockId: "test-lock",
       durationMs: 5000,
-      operation: 'test',
-      processId: 'process-2',
+      operation: "test",
+      processId: "process-2",
     });
     expect(stolen).toBe(false);
   });
 });
 
-describe('DistributedLockService - Expiration', () => {
+describe("DistributedLockService - Expiration", () => {
   beforeEach(() => {
     provider = new TestDistributedLockProvider();
   });
 
-  test('expired lock can be acquired by new process', async () => {
+  test("expired lock can be acquired by new process", async () => {
     // Acquire with very short duration
     await DistributedLockService.acquireLock({
-      lockId: 'test-lock',
+      lockId: "test-lock",
       durationMs: 1, // 1ms - will expire almost immediately
-      operation: 'test',
-      processId: 'process-1',
+      operation: "test",
+      processId: "process-1",
     });
 
     // Wait for expiration
@@ -222,22 +222,22 @@ describe('DistributedLockService - Expiration', () => {
 
     // Now another process can acquire
     const result = await DistributedLockService.acquireLock({
-      lockId: 'test-lock',
+      lockId: "test-lock",
       durationMs: 5000,
-      operation: 'test',
-      processId: 'process-2',
+      operation: "test",
+      processId: "process-2",
     });
     expect(result).toBe(true);
   });
 });
 
-describe('DistributedLockService - World Facts Scenario', () => {
+describe("DistributedLockService - World Facts Scenario", () => {
   beforeEach(() => {
     provider = new TestDistributedLockProvider();
   });
 
-  test('simulates world facts update lock flow', async () => {
-    const LOCK_ID = 'world-facts-generation';
+  test("simulates world facts update lock flow", async () => {
+    const LOCK_ID = "world-facts-generation";
     const LOCK_DURATION_MS = 30 * 60 * 1000; // 30 minutes
     const processId = `game-tick-${Date.now()}-abc123`;
 
@@ -245,7 +245,7 @@ describe('DistributedLockService - World Facts Scenario', () => {
     const acquired = await DistributedLockService.acquireLock({
       lockId: LOCK_ID,
       durationMs: LOCK_DURATION_MS,
-      operation: 'world-facts-generation',
+      operation: "world-facts-generation",
       processId,
     });
     expect(acquired).toBe(true);
@@ -254,7 +254,7 @@ describe('DistributedLockService - World Facts Scenario', () => {
     const renewed = await DistributedLockService.acquireLock({
       lockId: LOCK_ID,
       durationMs: LOCK_DURATION_MS,
-      operation: 'world-facts-generation-renewal',
+      operation: "world-facts-generation-renewal",
       processId,
     });
     expect(renewed).toBe(true);
@@ -264,7 +264,7 @@ describe('DistributedLockService - World Facts Scenario', () => {
     const blocked = await DistributedLockService.acquireLock({
       lockId: LOCK_ID,
       durationMs: LOCK_DURATION_MS,
-      operation: 'world-facts-generation',
+      operation: "world-facts-generation",
       processId: otherProcess,
     });
     expect(blocked).toBe(false);
@@ -276,14 +276,14 @@ describe('DistributedLockService - World Facts Scenario', () => {
     const newAcquire = await DistributedLockService.acquireLock({
       lockId: LOCK_ID,
       durationMs: LOCK_DURATION_MS,
-      operation: 'world-facts-generation',
+      operation: "world-facts-generation",
       processId: otherProcess,
     });
     expect(newAcquire).toBe(true);
   });
 
-  test('concurrent processes serialize correctly', async () => {
-    const LOCK_ID = 'world-facts-generation';
+  test("concurrent processes serialize correctly", async () => {
+    const LOCK_ID = "world-facts-generation";
     const results: string[] = [];
 
     // Retry configuration for acquiring lock
@@ -303,7 +303,7 @@ describe('DistributedLockService - World Facts Scenario', () => {
         const acquired = await DistributedLockService.acquireLock({
           lockId: LOCK_ID,
           durationMs: 100,
-          operation: 'test',
+          operation: "test",
           processId,
         });
 
@@ -325,22 +325,22 @@ describe('DistributedLockService - World Facts Scenario', () => {
     };
 
     const process1 = async () => {
-      const acquired = await acquireWithRetry('p1');
+      const acquired = await acquireWithRetry("p1");
       if (acquired) {
-        results.push('p1-acquired');
+        results.push("p1-acquired");
         await new Promise((r) => setTimeout(r, 20));
-        await DistributedLockService.releaseLock(LOCK_ID, 'p1');
-        results.push('p1-released');
+        await DistributedLockService.releaseLock(LOCK_ID, "p1");
+        results.push("p1-released");
       }
     };
 
     const process2 = async () => {
-      const acquired = await acquireWithRetry('p2');
+      const acquired = await acquireWithRetry("p2");
       if (acquired) {
-        results.push('p2-acquired');
+        results.push("p2-acquired");
         await new Promise((r) => setTimeout(r, 20));
-        await DistributedLockService.releaseLock(LOCK_ID, 'p2');
-        results.push('p2-released');
+        await DistributedLockService.releaseLock(LOCK_ID, "p2");
+        results.push("p2-released");
       }
     };
 
@@ -348,18 +348,18 @@ describe('DistributedLockService - World Facts Scenario', () => {
     await Promise.all([process1(), process2()]);
 
     // Both processes should eventually acquire and release the lock
-    const acquiredCount = results.filter((r) => r.endsWith('-acquired')).length;
-    const blockedCount = results.filter((r) => r.endsWith('-blocked')).length;
-    const releasedCount = results.filter((r) => r.endsWith('-released')).length;
+    const acquiredCount = results.filter((r) => r.endsWith("-acquired")).length;
+    const blockedCount = results.filter((r) => r.endsWith("-blocked")).length;
+    const releasedCount = results.filter((r) => r.endsWith("-released")).length;
 
     expect(acquiredCount).toBe(2); // Both should acquire
     expect(releasedCount).toBe(2); // Both should release
     expect(blockedCount).toBeGreaterThanOrEqual(1); // At least one had to wait
 
     // Verify both processes completed successfully
-    expect(results.includes('p1-acquired')).toBe(true);
-    expect(results.includes('p2-acquired')).toBe(true);
-    expect(results.includes('p1-released')).toBe(true);
-    expect(results.includes('p2-released')).toBe(true);
+    expect(results.includes("p1-acquired")).toBe(true);
+    expect(results.includes("p2-acquired")).toBe(true);
+    expect(results.includes("p1-released")).toBe(true);
+    expect(results.includes("p2-released")).toBe(true);
   });
 });

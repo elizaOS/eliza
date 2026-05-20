@@ -1,4 +1,4 @@
-import { broadcastToChannel, createNotification } from '@feed/api';
+import { broadcastToChannel, createNotification } from "@feed/api";
 import {
   and,
   db,
@@ -9,8 +9,8 @@ import {
   markets,
   positions,
   users,
-} from '@feed/db';
-import { logger, type MarketResolvedNotificationData } from '@feed/shared';
+} from "@feed/db";
+import { logger, type MarketResolvedNotificationData } from "@feed/shared";
 
 interface ResolvedOutcomeRow {
   holderId: string;
@@ -27,24 +27,24 @@ export interface GroupedResolvedOutcome {
   marketId: string;
   marketName: string;
   points: number;
-  outcome: 'win' | 'loss';
+  outcome: "win" | "loss";
   agentName?: string;
   deepLink: string;
   dedupeKey: string;
 }
 
 function formatPoints(points: number): string {
-  return Math.abs(points).toLocaleString('en-US', {
+  return Math.abs(points).toLocaleString("en-US", {
     maximumFractionDigits: 2,
   });
 }
 
 export function groupResolvedMarketOutcomes(
-  rows: ResolvedOutcomeRow[]
+  rows: ResolvedOutcomeRow[],
 ): GroupedResolvedOutcome[] {
   // outcome is intentionally omitted during accumulation — points change as
   // rows are merged, so outcome is derived once at the end from final points.
-  const grouped = new Map<string, Omit<GroupedResolvedOutcome, 'outcome'>>();
+  const grouped = new Map<string, Omit<GroupedResolvedOutcome, "outcome">>();
 
   for (const row of rows) {
     const key = `${row.ownerUserId}:${row.holderId}:${row.marketId}`;
@@ -68,25 +68,25 @@ export function groupResolvedMarketOutcomes(
 
   return Array.from(grouped.values()).map((entry) => ({
     ...entry,
-    outcome: entry.points >= 0 ? 'win' : 'loss',
+    outcome: entry.points >= 0 ? "win" : "loss",
   }));
 }
 
 function buildMessage(entry: GroupedResolvedOutcome): string {
   const points = formatPoints(entry.points);
   if (entry.agentName) {
-    return entry.outcome === 'win'
+    return entry.outcome === "win"
       ? `${entry.agentName} won ${points} points on ${entry.marketName}.`
       : `${entry.agentName} lost ${points} points on ${entry.marketName}.`;
   }
 
-  return entry.outcome === 'win'
+  return entry.outcome === "win"
     ? `${entry.marketName} resolved for a ${points}-point win.`
     : `${entry.marketName} resolved for a ${points}-point loss.`;
 }
 
 export async function notifyResolvedMarketOwners(
-  marketId: string
+  marketId: string,
 ): Promise<number> {
   const rows = await db
     .select({
@@ -104,12 +104,12 @@ export async function notifyResolvedMarketOwners(
     .where(
       and(
         eq(positions.marketId, marketId),
-        eq(positions.status, 'resolved'),
+        eq(positions.status, "resolved"),
         isNotNull(positions.outcome),
         isNotNull(positions.pnl),
         isNotNull(positions.resolvedAt),
-        gt(positions.shares, '0')
-      )
+        gt(positions.shares, "0"),
+      ),
     );
 
   const groupedOutcomes = groupResolvedMarketOutcomes(
@@ -120,7 +120,7 @@ export async function notifyResolvedMarketOwners(
       marketName: row.marketName,
       points: Number(row.pnl),
       agentName: row.isAgent ? row.agentName : null,
-    }))
+    })),
   );
 
   let createdCount = 0;
@@ -137,8 +137,8 @@ export async function notifyResolvedMarketOwners(
 
     const result = await createNotification({
       userId: entry.ownerUserId,
-      type: 'market_resolved',
-      title: 'Market resolved',
+      type: "market_resolved",
+      title: "Market resolved",
       message: buildMessage(entry),
       data,
       dedupeKey: entry.dedupeKey,
@@ -153,18 +153,18 @@ export async function notifyResolvedMarketOwners(
 
     try {
       await broadcastToChannel(`notifications:${entry.ownerUserId}`, {
-        type: 'market_resolved',
+        type: "market_resolved",
         ...data,
       } as Record<string, JsonValue>);
     } catch (error) {
       logger.error(
-        'Realtime market resolution notification failed (non-fatal)',
+        "Realtime market resolution notification failed (non-fatal)",
         {
           marketId: entry.marketId,
           ownerUserId: entry.ownerUserId,
           error: error instanceof Error ? error.message : String(error),
         },
-        'MarketResolutionNotifications'
+        "MarketResolutionNotifications",
       );
     }
   }

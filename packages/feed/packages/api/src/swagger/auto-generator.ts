@@ -5,8 +5,8 @@
  * @description Returns the canonical Feed OpenAPI spec used by the docs route.
  */
 
-import { swaggerDefinition } from './config';
-import { generateOpenApiSpec } from './generator';
+import { swaggerDefinition } from "./config";
+import { generateOpenApiSpec } from "./generator";
 
 /**
  * OpenAPI specification type.

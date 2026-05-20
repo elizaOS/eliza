@@ -6,36 +6,36 @@ import {
   rateLimitError,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { db, feedEvents } from '@feed/db';
-import { type FeedEventPayload, generateSnowflakeId } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { z } from 'zod';
+} from "@feed/api";
+import { db, feedEvents } from "@feed/db";
+import { type FeedEventPayload, generateSnowflakeId } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { z } from "zod";
 
 const FeedEventSchema = z.object({
   actionType: z.enum([
-    'impression',
-    'visible_2s',
-    'open_post',
-    'open_article',
-    'open_market',
-    'like',
-    'share',
-    'comment',
-    'follow',
-    'hide',
-    'trade_after_view',
+    "impression",
+    "visible_2s",
+    "open_post",
+    "open_article",
+    "open_market",
+    "like",
+    "share",
+    "comment",
+    "follow",
+    "hide",
+    "trade_after_view",
   ]),
   surface: z.enum([
-    'for_you',
-    'following',
-    'trades',
-    'latest',
-    'hot',
-    'stories',
+    "for_you",
+    "following",
+    "trades",
+    "latest",
+    "hot",
+    "stories",
   ]),
   itemId: z.string().min(1).max(100),
-  itemType: z.enum(['post', 'article', 'market']),
+  itemType: z.enum(["post", "article", "market"]),
   clusterId: z.string().max(100).nullable().optional(),
   marketId: z.string().max(100).nullable().optional(),
   topicKey: z.string().max(80).nullable().optional(),
@@ -53,11 +53,11 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   const { user } = await ensureUserForAuth(authUser, {
     displayName: authUser.walletAddress
       ? `${authUser.walletAddress.slice(0, 6)}...${authUser.walletAddress.slice(-4)}`
-      : 'Anonymous',
+      : "Anonymous",
   });
   const rateLimit = await checkRateLimitAsync(
     user.id,
-    RATE_LIMIT_CONFIGS.FEED_EVENT_BATCH
+    RATE_LIMIT_CONFIGS.FEED_EVENT_BATCH,
   );
   if (!rateLimit.allowed) {
     return rateLimitError(rateLimit.retryAfter ?? 60);
@@ -78,7 +78,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       authorId: event.authorId ?? null,
       feedPosition: event.feedPosition ?? null,
       dwellMs: event.dwellMs ?? null,
-    }))
+    })),
   );
 
   await db.insert(feedEvents).values(rows);

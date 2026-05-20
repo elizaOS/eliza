@@ -27,43 +27,43 @@ import {
   shares,
   userInteractions,
   users,
-} from '@feed/db';
-import { generateSnowflakeId, logger } from '@feed/shared';
+} from "@feed/db";
+import { generateSnowflakeId, logger } from "@feed/shared";
 
 const REPLY_TEMPLATES = [
-  'Great insight! I was thinking the same thing about this.',
-  'This is exactly the kind of alpha I was looking for. Thanks for sharing!',
+  "Great insight! I was thinking the same thing about this.",
+  "This is exactly the kind of alpha I was looking for. Thanks for sharing!",
   "Interesting take. I've been watching this closely too.",
-  'Finally someone talking sense about this. The market is definitely moving.',
+  "Finally someone talking sense about this. The market is definitely moving.",
   "Been following your calls for a while now. You've got a great track record!",
-  'This confirms my thesis. Going to size up my position.',
-  'Smart money is paying attention to this. Thanks for the heads up!',
-  'The charts are looking bullish. Your timing is always on point.',
+  "This confirms my thesis. Going to size up my position.",
+  "Smart money is paying attention to this. Thanks for the heads up!",
+  "The charts are looking bullish. Your timing is always on point.",
   "I'm in. Let's see where this goes! 🚀",
-  'Quality content as always. This is why I follow you.',
+  "Quality content as always. This is why I follow you.",
 ];
 
 const POST_TEMPLATES = [
-  'Just spotted an interesting pattern in the market today. What do you all think? 📈',
+  "Just spotted an interesting pattern in the market today. What do you all think? 📈",
   "Here's my take on the latest developments. Thread incoming... 🧵",
-  'The alpha is in the details. Always do your own research.',
-  'Market update: Things are getting spicy! 🌶️',
+  "The alpha is in the details. Always do your own research.",
+  "Market update: Things are getting spicy! 🌶️",
   "This is the kind of setup I've been waiting for.",
-  'Pay attention to what smart money is doing right now.',
+  "Pay attention to what smart money is doing right now.",
   "I'm seeing some unusual activity. Could be nothing, could be everything.",
-  'The market is giving us signals. Are you paying attention?',
-  'This might be the opportunity of the year. Not financial advice.',
-  'Sometimes the best trades are the ones you wait for.',
+  "The market is giving us signals. Are you paying attention?",
+  "This might be the opportunity of the year. Not financial advice.",
+  "Sometimes the best trades are the ones you wait for.",
 ];
 
 async function main() {
   const args = process.argv.slice(2);
-  const usernameArg = args.find((a) => a.startsWith('--user='))?.split('=')[1];
+  const usernameArg = args.find((a) => a.startsWith("--user="))?.split("=")[1];
 
   logger.info(
-    'Seeding alpha group test data',
+    "Seeding alpha group test data",
     { usernameArg },
-    'seed-alpha-test-data'
+    "seed-alpha-test-data",
   );
 
   // Get NPCs (up to 10 for variety)
@@ -78,25 +78,25 @@ async function main() {
     .limit(10);
 
   logger.info(
-    'Found NPCs',
+    "Found NPCs",
     {
       count: npcs.length,
       names: npcs.map((n) => n.username || n.displayName),
     },
-    'seed-alpha-test-data'
+    "seed-alpha-test-data",
   );
 
   if (npcs.length === 0) {
     logger.error(
-      'No NPCs found - run database seeding first',
+      "No NPCs found - run database seeding first",
       {},
-      'seed-alpha-test-data'
+      "seed-alpha-test-data",
     );
     process.exit(1);
   }
 
   // Get the test user
-  const targetUsername = usernameArg || 'ravioliravioli';
+  const targetUsername = usernameArg || "ravioliravioli";
   const [testUser] = await db
     .select({ id: users.id, username: users.username })
     .from(users)
@@ -104,14 +104,14 @@ async function main() {
     .limit(1);
 
   if (!testUser) {
-    logger.error('User not found', { targetUsername }, 'seed-alpha-test-data');
+    logger.error("User not found", { targetUsername }, "seed-alpha-test-data");
     process.exit(1);
   }
 
   logger.info(
-    'Test user found',
+    "Test user found",
     { username: testUser.username, userId: testUser.id },
-    'seed-alpha-test-data'
+    "seed-alpha-test-data",
   );
 
   // Track stats
@@ -124,9 +124,9 @@ async function main() {
   // Create posts and interactions for each NPC
   for (const npc of npcs) {
     logger.debug(
-      'Processing NPC',
+      "Processing NPC",
       { npcId: npc.id, npcName: npc.displayName || npc.username },
-      'seed-alpha-test-data'
+      "seed-alpha-test-data",
     );
 
     // Create 5 posts per NPC
@@ -145,7 +145,7 @@ async function main() {
             authorId: npc.id,
             content,
             timestamp: new Date(Date.now() - i * 2 * 60 * 60 * 1000), // Stagger by 2 hours
-            type: 'post',
+            type: "post",
           })
           .onConflictDoNothing();
         npcPosts.push(postId);
@@ -155,9 +155,9 @@ async function main() {
       }
     }
     logger.debug(
-      'Created posts',
+      "Created posts",
       { npcId: npc.id, postsCreated: npcPosts.length },
-      'seed-alpha-test-data'
+      "seed-alpha-test-data",
     );
 
     // Get all posts by this NPC (including existing ones)
@@ -178,9 +178,9 @@ async function main() {
             id: reactionId,
             postId: post.id,
             userId: testUser.id,
-            type: 'like',
+            type: "like",
             createdAt: new Date(
-              Date.now() - Math.random() * 24 * 60 * 60 * 1000
+              Date.now() - Math.random() * 24 * 60 * 60 * 1000,
             ),
           })
           .onConflictDoNothing();
@@ -204,7 +204,7 @@ async function main() {
             postId: post.id,
             authorId: testUser.id,
             createdAt: new Date(
-              Date.now() - Math.random() * 24 * 60 * 60 * 1000
+              Date.now() - Math.random() * 24 * 60 * 60 * 1000,
             ),
             updatedAt: now,
           })
@@ -222,7 +222,7 @@ async function main() {
             postId: post.id,
             commentId: commentId,
             timestamp: new Date(
-              Date.now() - Math.random() * 24 * 60 * 60 * 1000
+              Date.now() - Math.random() * 24 * 60 * 60 * 1000,
             ),
             qualityScore: 0.7 + Math.random() * 0.3, // Random quality 0.7-1.0
             wasFollowed: false,
@@ -245,7 +245,7 @@ async function main() {
               userId: testUser.id,
               postId: post.id,
               createdAt: new Date(
-                Date.now() - Math.random() * 24 * 60 * 60 * 1000
+                Date.now() - Math.random() * 24 * 60 * 60 * 1000,
               ),
             })
             .onConflictDoNothing();
@@ -257,17 +257,17 @@ async function main() {
     }
 
     logger.debug(
-      'Created interactions',
+      "Created interactions",
       { npcId: npc.id, postsInteracted: allNpcPosts.length },
-      'seed-alpha-test-data'
+      "seed-alpha-test-data",
     );
   }
 
   // Create grandfathered memberships for first 2 NPCs (as before)
   logger.info(
-    'Creating grandfathered group memberships',
+    "Creating grandfathered group memberships",
     {},
-    'seed-alpha-test-data'
+    "seed-alpha-test-data",
   );
 
   let groupsCreated = 0;
@@ -278,7 +278,7 @@ async function main() {
     const [existingGroup] = await db
       .select()
       .from(groups)
-      .where(and(eq(groups.ownerId, npc.id), eq(groups.type, 'npc')))
+      .where(and(eq(groups.ownerId, npc.id), eq(groups.type, "npc")))
       .limit(1);
 
     let groupId: string;
@@ -291,16 +291,16 @@ async function main() {
         description: `Exclusive alpha group for ${npc.displayName || npc.username}`,
         ownerId: npc.id,
         createdById: npc.id,
-        type: 'npc',
+        type: "npc",
         tier: 1,
         maxMembers: 12,
         createdAt: now,
         updatedAt: now,
       });
       logger.debug(
-        'Created group',
+        "Created group",
         { npcId: npc.id, npcUsername: npc.username },
-        'seed-alpha-test-data'
+        "seed-alpha-test-data",
       );
       groupsCreated++;
     } else {
@@ -314,8 +314,8 @@ async function main() {
       .where(
         and(
           eq(groupMembers.groupId, groupId),
-          eq(groupMembers.userId, testUser.id)
-        )
+          eq(groupMembers.userId, testUser.id),
+        ),
       )
       .limit(1);
 
@@ -325,7 +325,7 @@ async function main() {
         id: memberId,
         groupId: groupId,
         userId: testUser.id,
-        role: 'member',
+        role: "member",
         joinedAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
         isActive: true,
         tier: 1,
@@ -333,13 +333,13 @@ async function main() {
         grandfatheredAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
       });
       logger.debug(
-        'Added user to group',
+        "Added user to group",
         {
           userId: testUser.id,
           username: testUser.username,
           npcUsername: npc.username,
         },
-        'seed-alpha-test-data'
+        "seed-alpha-test-data",
       );
       membershipsCreated++;
     }
@@ -348,7 +348,7 @@ async function main() {
   // Summary
   const totalInteractions = likesCreated + repliesCreated + sharesCreated;
   logger.info(
-    'Test data seeding complete',
+    "Test data seeding complete",
     {
       stats: {
         postsCreated,
@@ -363,16 +363,16 @@ async function main() {
         username: testUser.username,
         totalInteractions,
         npcCount: npcs.length,
-        note: 'Should qualify for Tier 3 invites (threshold: 2 interactions, 20 score)',
+        note: "Should qualify for Tier 3 invites (threshold: 2 interactions, 20 score)",
       },
       nextSteps: [
-        'Run bootstrap script: bun run scripts/bootstrap-alpha-groups.ts',
+        "Run bootstrap script: bun run scripts/bootstrap-alpha-groups.ts",
         'Trigger a game tick: curl -X POST http://localhost:3000/api/cron/game-tick -H "Authorization: Bearer $CRON_SECRET"',
-        'Check /admin → Alpha Groups tab for invite stats',
+        "Check /admin → Alpha Groups tab for invite stats",
         "Check user's groups page for new invites",
       ],
     },
-    'seed-alpha-test-data'
+    "seed-alpha-test-data",
   );
 
   process.exit(0);
@@ -380,9 +380,9 @@ async function main() {
 
 main().catch((err) => {
   logger.error(
-    'Fatal error in seed script',
+    "Fatal error in seed script",
     { error: String(err) },
-    'seed-alpha-test-data'
+    "seed-alpha-test-data",
   );
   process.exit(1);
 });

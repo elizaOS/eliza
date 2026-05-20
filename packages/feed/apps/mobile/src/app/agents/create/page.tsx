@@ -1,1 +1,1 @@
-export { default } from '@web/app/agents/create/page';
+export { default } from "@web/app/agents/create/page";

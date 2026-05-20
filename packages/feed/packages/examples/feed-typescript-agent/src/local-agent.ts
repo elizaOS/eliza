@@ -8,10 +8,10 @@
  * 4. Runs autonomously
  */
 
-import dotenv from 'dotenv';
-import { ethers } from 'ethers';
+import dotenv from "dotenv";
+import { ethers } from "ethers";
 
-dotenv.config({ path: '.env.local' });
+dotenv.config({ path: ".env.local" });
 
 // A2A Client for local server
 class LocalA2AClient {
@@ -45,18 +45,18 @@ class LocalA2AClient {
    */
   async call<T>(
     method: string,
-    params: Record<string, unknown> = {}
+    params: Record<string, unknown> = {},
   ): Promise<T> {
     const response = await fetch(`${this.baseUrl}/api/a2a`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
-        'x-agent-id': this.agentId,
-        'x-agent-address': this.address,
-        'x-agent-token-id': this.tokenId.toString(),
+        "Content-Type": "application/json",
+        "x-agent-id": this.agentId,
+        "x-agent-address": this.address,
+        "x-agent-token-id": this.tokenId.toString(),
       },
       body: JSON.stringify({
-        jsonrpc: '2.0',
+        jsonrpc: "2.0",
         method,
         params,
         id: this.messageId++,
@@ -76,9 +76,9 @@ class LocalA2AClient {
 
   async register(
     displayName: string,
-    description: string
+    description: string,
   ): Promise<{ success: boolean; agent: { id: string } }> {
-    return this.call('register', {
+    return this.call("register", {
       walletAddress: this.address,
       tokenId: this.tokenId,
       chainId: 31337,
@@ -88,19 +88,19 @@ class LocalA2AClient {
   }
 
   async discover(): Promise<{ agents: Array<{ id: string; name: string }> }> {
-    return this.call('discover', {});
+    return this.call("discover", {});
   }
 
   async getInfo(
-    agentId: string
+    agentId: string,
   ): Promise<{ id: string; name: string; walletAddress: string }> {
-    return this.call('getInfo', { agentId });
+    return this.call("getInfo", { agentId });
   }
 
   // ===== Portfolio =====
 
   async getBalance(): Promise<{ balance: number; currency: string }> {
-    return this.call('getBalance', {});
+    return this.call("getBalance", {});
   }
 
   async getPositions(): Promise<{
@@ -112,7 +112,7 @@ class LocalA2AClient {
       pnl: number;
     }>;
   }> {
-    return this.call('getPositions', {});
+    return this.call("getPositions", {});
   }
 
   async getPortfolio(): Promise<{
@@ -120,11 +120,11 @@ class LocalA2AClient {
     positions: unknown[];
     pnl: number;
   }> {
-    return this.call('getPortfolio', {});
+    return this.call("getPortfolio", {});
   }
 
   async getWallet(): Promise<{ address: string; virtualBalance: number }> {
-    return this.call('getUserWallet', {});
+    return this.call("getUserWallet", {});
   }
 
   // ===== Markets =====
@@ -138,7 +138,7 @@ class LocalA2AClient {
     }>;
     perps: unknown[];
   }> {
-    return this.call('getMarkets', {});
+    return this.call("getMarkets", {});
   }
 
   async getMarketData(marketId: string): Promise<{
@@ -147,29 +147,29 @@ class LocalA2AClient {
     yesPrice: number;
     noPrice: number;
   }> {
-    return this.call('getMarketData', { marketId });
+    return this.call("getMarketData", { marketId });
   }
 
   async getMarketPrices(
-    marketIds: string[]
+    marketIds: string[],
   ): Promise<Record<string, { yes: number; no: number }>> {
-    return this.call('getMarketPrices', { marketIds });
+    return this.call("getMarketPrices", { marketIds });
   }
 
   async buyShares(
     marketId: string,
-    outcome: 'YES' | 'NO',
-    amount: number
+    outcome: "YES" | "NO",
+    amount: number,
   ): Promise<{ id: string; shares: number; price: number }> {
-    return this.call('buyShares', { marketId, outcome, amount });
+    return this.call("buyShares", { marketId, outcome, amount });
   }
 
   async sellShares(
     marketId: string,
-    outcome: 'YES' | 'NO',
-    shares: number
+    outcome: "YES" | "NO",
+    shares: number,
   ): Promise<{ id: string; shares: number; totalCost: number }> {
-    return this.call('sellShares', { marketId, outcome, shares });
+    return this.call("sellShares", { marketId, outcome, shares });
   }
 
   // ===== Social =====
@@ -182,33 +182,33 @@ class LocalA2AClient {
       likesCount: number;
     }>;
   }> {
-    return this.call('getFeed', { limit });
+    return this.call("getFeed", { limit });
   }
 
   async createPost(content: string): Promise<{ id: string; content: string }> {
-    return this.call('createPost', { content });
+    return this.call("createPost", { content });
   }
 
   async getPost(
-    postId: string
+    postId: string,
   ): Promise<{ id: string; content: string; likesCount: number }> {
-    return this.call('getPost', { postId });
+    return this.call("getPost", { postId });
   }
 
   async likePost(
-    postId: string
+    postId: string,
   ): Promise<{ success: boolean; likesCount: number }> {
-    return this.call('likePost', { postId });
+    return this.call("likePost", { postId });
   }
 
   async commentPost(postId: string, content: string): Promise<{ id: string }> {
-    return this.call('commentPost', { postId, content });
+    return this.call("commentPost", { postId, content });
   }
 
   async searchUsers(
-    query: string
+    query: string,
   ): Promise<{ users: Array<{ id: string; displayName: string }> }> {
-    return this.call('searchUsers', { query });
+    return this.call("searchUsers", { query });
   }
 
   // ===== Notifications =====
@@ -221,13 +221,13 @@ class LocalA2AClient {
       isRead: boolean;
     }>;
   }> {
-    return this.call('getNotifications', {});
+    return this.call("getNotifications", {});
   }
 
   async markNotificationRead(
-    notificationId: string
+    notificationId: string,
   ): Promise<{ success: boolean }> {
-    return this.call('markNotificationRead', { notificationId });
+    return this.call("markNotificationRead", { notificationId });
   }
 
   // ===== Stats =====
@@ -237,29 +237,29 @@ class LocalA2AClient {
     totalMarkets: number;
     totalVolume: number;
   }> {
-    return this.call('getStats', {});
+    return this.call("getStats", {});
   }
 
   async getLeaderboard(limit: number = 10): Promise<{
     entries: Array<{ rank: number; displayName: string; pnl: number }>;
   }> {
-    return this.call('getLeaderboard', { limit });
+    return this.call("getLeaderboard", { limit });
   }
 
   // ===== Payments (x402) =====
 
   async paymentRequest(
     amount: number,
-    currency: string = 'ETH'
+    currency: string = "ETH",
   ): Promise<{ paymentId: string; status: string }> {
-    return this.call('paymentRequest', { amount, currency });
+    return this.call("paymentRequest", { amount, currency });
   }
 
   async paymentReceipt(
     paymentId: string,
-    transactionHash: string
+    transactionHash: string,
   ): Promise<{ verified: boolean }> {
-    return this.call('paymentReceipt', {
+    return this.call("paymentReceipt", {
       paymentId,
       transactionHash,
       amount: 0.001,
@@ -279,23 +279,23 @@ class LocalA2AClient {
 
 type ActionType =
   // Trading
-  | 'BUY_YES'
-  | 'BUY_NO'
-  | 'SELL_SHARES'
+  | "BUY_YES"
+  | "BUY_NO"
+  | "SELL_SHARES"
   // Social
-  | 'CREATE_POST'
-  | 'LIKE_POST'
-  | 'COMMENT_POST'
-  | 'VIEW_FEED'
+  | "CREATE_POST"
+  | "LIKE_POST"
+  | "COMMENT_POST"
+  | "VIEW_FEED"
   // Discovery
-  | 'DISCOVER_AGENTS'
-  | 'SEARCH_USERS'
+  | "DISCOVER_AGENTS"
+  | "SEARCH_USERS"
   // Portfolio
-  | 'CHECK_LEADERBOARD'
-  | 'CHECK_NOTIFICATIONS'
-  | 'VIEW_MARKET_DATA'
+  | "CHECK_LEADERBOARD"
+  | "CHECK_NOTIFICATIONS"
+  | "VIEW_MARKET_DATA"
   // Meta
-  | 'HOLD';
+  | "HOLD";
 
 // ===== Decision Making =====
 
@@ -308,19 +308,19 @@ function makeDecision(context: {
 }): { action: ActionType; reasoning: string } {
   // Ensure we cycle through ALL actions to demonstrate them
   const allActions: ActionType[] = [
-    'BUY_YES',
-    'BUY_NO',
-    'SELL_SHARES',
-    'CREATE_POST',
-    'LIKE_POST',
-    'COMMENT_POST',
-    'VIEW_FEED',
-    'DISCOVER_AGENTS',
-    'SEARCH_USERS',
-    'CHECK_LEADERBOARD',
-    'CHECK_NOTIFICATIONS',
-    'VIEW_MARKET_DATA',
-    'HOLD',
+    "BUY_YES",
+    "BUY_NO",
+    "SELL_SHARES",
+    "CREATE_POST",
+    "LIKE_POST",
+    "COMMENT_POST",
+    "VIEW_FEED",
+    "DISCOVER_AGENTS",
+    "SEARCH_USERS",
+    "CHECK_LEADERBOARD",
+    "CHECK_NOTIFICATIONS",
+    "VIEW_MARKET_DATA",
+    "HOLD",
   ];
 
   // Cycle through actions to ensure we demonstrate all of them
@@ -328,44 +328,44 @@ function makeDecision(context: {
   const action = allActions[actionIndex];
 
   // Add some intelligence to skip impossible actions
-  if (action === 'SELL_SHARES' && context.positions.length === 0) {
+  if (action === "SELL_SHARES" && context.positions.length === 0) {
     return {
-      action: 'BUY_YES',
-      reasoning: 'No positions to sell, buying instead',
+      action: "BUY_YES",
+      reasoning: "No positions to sell, buying instead",
     };
   }
 
-  if ((action === 'BUY_YES' || action === 'BUY_NO') && context.balance < 10) {
+  if ((action === "BUY_YES" || action === "BUY_NO") && context.balance < 10) {
     return {
-      action: 'VIEW_FEED',
-      reasoning: 'Insufficient balance for trading, viewing feed',
+      action: "VIEW_FEED",
+      reasoning: "Insufficient balance for trading, viewing feed",
     };
   }
 
   if (
-    (action === 'LIKE_POST' || action === 'COMMENT_POST') &&
+    (action === "LIKE_POST" || action === "COMMENT_POST") &&
     context.posts.length === 0
   ) {
     return {
-      action: 'CREATE_POST',
-      reasoning: 'No posts to engage with, creating one',
+      action: "CREATE_POST",
+      reasoning: "No posts to engage with, creating one",
     };
   }
 
   const reasonings: Record<ActionType, string> = {
-    BUY_YES: 'Market sentiment positive, buying YES shares',
-    BUY_NO: 'Feeling contrarian, buying NO shares',
-    SELL_SHARES: 'Taking profits on existing position',
-    CREATE_POST: 'Time to share market insights',
-    LIKE_POST: 'Engaging with community content',
-    COMMENT_POST: 'Adding value to the discussion',
-    VIEW_FEED: 'Checking latest market chatter',
-    DISCOVER_AGENTS: 'Looking for other agents in the network',
-    SEARCH_USERS: 'Finding interesting users to follow',
-    CHECK_LEADERBOARD: 'Checking competitive rankings',
-    CHECK_NOTIFICATIONS: 'Reviewing notifications',
-    VIEW_MARKET_DATA: 'Analyzing market prices',
-    HOLD: 'Waiting for better opportunities',
+    BUY_YES: "Market sentiment positive, buying YES shares",
+    BUY_NO: "Feeling contrarian, buying NO shares",
+    SELL_SHARES: "Taking profits on existing position",
+    CREATE_POST: "Time to share market insights",
+    LIKE_POST: "Engaging with community content",
+    COMMENT_POST: "Adding value to the discussion",
+    VIEW_FEED: "Checking latest market chatter",
+    DISCOVER_AGENTS: "Looking for other agents in the network",
+    SEARCH_USERS: "Finding interesting users to follow",
+    CHECK_LEADERBOARD: "Checking competitive rankings",
+    CHECK_NOTIFICATIONS: "Reviewing notifications",
+    VIEW_MARKET_DATA: "Analyzing market prices",
+    HOLD: "Waiting for better opportunities",
   };
 
   return {
@@ -377,22 +377,22 @@ function makeDecision(context: {
 // ===== Main Agent Loop =====
 
 async function runAgent() {
-  console.log('');
-  console.log('🤖 Feed Local Agent Starting...');
-  console.log('================================');
-  console.log('This agent will cycle through ALL 24 A2A methods');
-  console.log('');
+  console.log("");
+  console.log("🤖 Feed Local Agent Starting...");
+  console.log("================================");
+  console.log("This agent will cycle through ALL 24 A2A methods");
+  console.log("");
 
   const privateKey = process.env.AGENT0_PRIVATE_KEY;
   if (!privateKey) {
-    throw new Error('AGENT0_PRIVATE_KEY not set in .env.local');
+    throw new Error("AGENT0_PRIVATE_KEY not set in .env.local");
   }
 
-  const baseUrl = process.env.FEED_API_URL || 'http://localhost:3001';
-  const tickInterval = parseInt(process.env.TICK_INTERVAL || '5000');
-  const agentName = process.env.AGENT_NAME || 'Demo Agent';
+  const baseUrl = process.env.FEED_API_URL || "http://localhost:3001";
+  const tickInterval = parseInt(process.env.TICK_INTERVAL || "5000", 10);
+  const agentName = process.env.AGENT_NAME || "Demo Agent";
   const agentDescription =
-    process.env.AGENT_DESCRIPTION || 'Autonomous Feed agent';
+    process.env.AGENT_DESCRIPTION || "Autonomous Feed agent";
 
   // Initialize client
   const client = new LocalA2AClient({
@@ -401,37 +401,37 @@ async function runAgent() {
   });
 
   // Phase 1: Register
-  console.log('📝 Phase 1: Registering agent...');
+  console.log("📝 Phase 1: Registering agent...");
   const registration = await client.register(agentName, agentDescription);
   console.log(`✅ Registered: ${registration.agent.id}`);
 
   // Phase 2: Get initial state
-  console.log('');
-  console.log('📊 Phase 2: Getting initial state...');
+  console.log("");
+  console.log("📊 Phase 2: Getting initial state...");
   const balance = await client.getBalance();
   const markets = await client.getMarkets();
   const stats = await client.getStats();
   console.log(`   Balance: $${balance.balance}`);
   console.log(
-    `   Markets: ${markets.predictions.length} predictions, ${markets.perps.length} perps`
+    `   Markets: ${markets.predictions.length} predictions, ${markets.perps.length} perps`,
   );
   console.log(
-    `   Network: ${stats.totalAgents} agents, $${stats.totalVolume} volume`
+    `   Network: ${stats.totalAgents} agents, $${stats.totalVolume} volume`,
   );
 
   // Phase 3: Autonomous Loop
-  console.log('');
-  console.log('🔄 Phase 3: Starting autonomous loop...');
+  console.log("");
+  console.log("🔄 Phase 3: Starting autonomous loop...");
   console.log(`   Tick interval: ${tickInterval}ms`);
-  console.log('');
+  console.log("");
 
   let tickCount = 0;
 
   const runTick = async () => {
     tickCount++;
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     console.log(`🔄 TICK #${tickCount}`);
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
     // Get context
     const portfolio = await client.getPortfolio();
@@ -440,7 +440,7 @@ async function runAgent() {
     const positions = await client.getPositions();
 
     console.log(
-      `📊 Balance: $${portfolio.balance.toFixed(2)} | Positions: ${positions.positions.length} | P&L: $${portfolio.pnl.toFixed(2)}`
+      `📊 Balance: $${portfolio.balance.toFixed(2)} | Positions: ${positions.positions.length} | P&L: $${portfolio.pnl.toFixed(2)}`,
     );
 
     // Make decision
@@ -458,48 +458,48 @@ async function runAgent() {
     // Execute action
     try {
       switch (decision.action) {
-        case 'BUY_YES':
-        case 'BUY_NO': {
+        case "BUY_YES":
+        case "BUY_NO": {
           if (marketsData.predictions.length > 0 && portfolio.balance >= 10) {
             const market =
               marketsData.predictions[
                 Math.floor(Math.random() * marketsData.predictions.length)
               ];
-            const outcome = decision.action === 'BUY_YES' ? 'YES' : 'NO';
+            const outcome = decision.action === "BUY_YES" ? "YES" : "NO";
             const amount = Math.min(50, portfolio.balance * 0.1);
             const trade = await client.buyShares(market.id, outcome, amount);
             console.log(
-              `✅ Bought ${trade.shares.toFixed(2)} ${outcome} shares @ $${trade.price.toFixed(2)}`
+              `✅ Bought ${trade.shares.toFixed(2)} ${outcome} shares @ $${trade.price.toFixed(2)}`,
             );
             console.log(`   Market: ${market.question.substring(0, 50)}...`);
           } else {
-            console.log('⏭️ Skipped: insufficient balance or no markets');
+            console.log("⏭️ Skipped: insufficient balance or no markets");
           }
           break;
         }
 
-        case 'SELL_SHARES': {
+        case "SELL_SHARES": {
           if (positions.positions.length > 0) {
             const position = positions.positions[0];
             const sharesToSell = Math.min(
               position.shares,
-              position.shares * 0.5
+              position.shares * 0.5,
             );
             const sale = await client.sellShares(
               position.marketId,
-              position.outcome as 'YES' | 'NO',
-              sharesToSell
+              position.outcome as "YES" | "NO",
+              sharesToSell,
             );
             console.log(
-              `✅ Sold ${sale.shares.toFixed(2)} shares, received $${sale.totalCost.toFixed(2)}`
+              `✅ Sold ${sale.shares.toFixed(2)} shares, received $${sale.totalCost.toFixed(2)}`,
             );
           } else {
-            console.log('⏭️ No positions to sell');
+            console.log("⏭️ No positions to sell");
           }
           break;
         }
 
-        case 'CREATE_POST': {
+        case "CREATE_POST": {
           const messages = [
             `Market analysis tick #${tickCount}: Looking for opportunities 📈`,
             `Agent ${client.getAgentId()} reporting in! Markets looking interesting today.`,
@@ -513,30 +513,30 @@ async function runAgent() {
           break;
         }
 
-        case 'LIKE_POST': {
+        case "LIKE_POST": {
           if (feed.posts.length > 0) {
             const post =
               feed.posts[Math.floor(Math.random() * feed.posts.length)];
             const result = await client.likePost(post.id);
             console.log(
-              `✅ Liked post ${post.id} (${result.likesCount} likes)`
+              `✅ Liked post ${post.id} (${result.likesCount} likes)`,
             );
           } else {
-            console.log('⏭️ No posts to like');
+            console.log("⏭️ No posts to like");
           }
           break;
         }
 
-        case 'COMMENT_POST': {
+        case "COMMENT_POST": {
           if (feed.posts.length > 0) {
             const post =
               feed.posts[Math.floor(Math.random() * feed.posts.length)];
             const comments = [
-              'Great insight! 🔥',
-              'Interesting take on this market.',
-              'Thanks for sharing!',
-              'I agree with this analysis.',
-              'Following this closely...',
+              "Great insight! 🔥",
+              "Interesting take on this market.",
+              "Thanks for sharing!",
+              "I agree with this analysis.",
+              "Following this closely...",
             ];
             const content =
               comments[Math.floor(Math.random() * comments.length)];
@@ -544,22 +544,22 @@ async function runAgent() {
             console.log(`✅ Commented on ${post.id}: "${content}"`);
             console.log(`   Comment ID: ${comment.id}`);
           } else {
-            console.log('⏭️ No posts to comment on');
+            console.log("⏭️ No posts to comment on");
           }
           break;
         }
 
-        case 'VIEW_FEED': {
+        case "VIEW_FEED": {
           console.log(`📰 Feed (${feed.posts.length} posts):`);
           for (const post of feed.posts.slice(0, 3)) {
             console.log(
-              `   - [${post.authorName}] ${post.content.substring(0, 50)}... (${post.likesCount}❤️)`
+              `   - [${post.authorName}] ${post.content.substring(0, 50)}... (${post.likesCount}❤️)`,
             );
           }
           break;
         }
 
-        case 'DISCOVER_AGENTS': {
+        case "DISCOVER_AGENTS": {
           const agents = await client.discover();
           console.log(`🔍 Discovered ${agents.agents.length} agents:`);
           for (const agent of agents.agents.slice(0, 3)) {
@@ -568,12 +568,12 @@ async function runAgent() {
           break;
         }
 
-        case 'SEARCH_USERS': {
-          const queries = ['agent', 'trader', 'bot', 'system'];
+        case "SEARCH_USERS": {
+          const queries = ["agent", "trader", "bot", "system"];
           const query = queries[Math.floor(Math.random() * queries.length)];
           const users = await client.searchUsers(query);
           console.log(
-            `🔍 Searched "${query}" - found ${users.users.length} users:`
+            `🔍 Searched "${query}" - found ${users.users.length} users:`,
           );
           for (const user of users.users.slice(0, 3)) {
             console.log(`   - ${user.displayName} (${user.id})`);
@@ -581,24 +581,24 @@ async function runAgent() {
           break;
         }
 
-        case 'CHECK_LEADERBOARD': {
+        case "CHECK_LEADERBOARD": {
           const leaderboard = await client.getLeaderboard(5);
           console.log(`🏆 Leaderboard (top 5):`);
           for (const entry of leaderboard.entries) {
             console.log(
-              `   #${entry.rank} ${entry.displayName}: $${entry.pnl.toFixed(2)} P&L`
+              `   #${entry.rank} ${entry.displayName}: $${entry.pnl.toFixed(2)} P&L`,
             );
           }
           break;
         }
 
-        case 'CHECK_NOTIFICATIONS': {
+        case "CHECK_NOTIFICATIONS": {
           const notifications = await client.getNotifications();
           console.log(
-            `🔔 Notifications (${notifications.notifications.length}):`
+            `🔔 Notifications (${notifications.notifications.length}):`,
           );
           for (const notif of notifications.notifications.slice(0, 3)) {
-            const status = notif.isRead ? '✓' : '•';
+            const status = notif.isRead ? "✓" : "•";
             console.log(`   ${status} [${notif.type}] ${notif.title}`);
             if (!notif.isRead) {
               await client.markNotificationRead(notif.id);
@@ -607,40 +607,40 @@ async function runAgent() {
           break;
         }
 
-        case 'VIEW_MARKET_DATA': {
+        case "VIEW_MARKET_DATA": {
           if (marketsData.predictions.length > 0) {
             const market = marketsData.predictions[0];
             const data = await client.getMarketData(market.id);
             console.log(`📊 Market: ${data.question}`);
             console.log(
-              `   YES: $${data.yesPrice.toFixed(2)} | NO: $${data.noPrice.toFixed(2)}`
+              `   YES: $${data.yesPrice.toFixed(2)} | NO: $${data.noPrice.toFixed(2)}`,
             );
 
             if (marketsData.predictions.length > 1) {
               const prices = await client.getMarketPrices(
-                marketsData.predictions.map((m) => m.id)
+                marketsData.predictions.map((m) => m.id),
               );
               console.log(
-                `   All prices: ${Object.keys(prices).length} markets fetched`
+                `   All prices: ${Object.keys(prices).length} markets fetched`,
               );
             }
           }
           break;
         }
 
-        case 'HOLD':
-          console.log('⏸️ Holding - no action taken');
+        case "HOLD":
+          console.log("⏸️ Holding - no action taken");
           break;
       }
     } catch (error) {
       console.error(
         `Action ${decision.action} failed:`,
-        error instanceof Error ? error.stack : error
+        error instanceof Error ? error.stack : error,
       );
     }
 
     console.log(`⏳ Next tick in ${tickInterval / 1000}s...`);
-    console.log('');
+    console.log("");
   };
 
   // Run first tick immediately
@@ -650,19 +650,19 @@ async function runAgent() {
   const interval = setInterval(runTick, tickInterval);
 
   // Graceful shutdown
-  process.on('SIGINT', () => {
-    console.log('');
-    console.log('🛑 Shutting down...');
+  process.on("SIGINT", () => {
+    console.log("");
+    console.log("🛑 Shutting down...");
     clearInterval(interval);
-    console.log('👋 Goodbye!');
+    console.log("👋 Goodbye!");
     process.exit(0);
   });
 
-  console.log('✅ Agent running! Press Ctrl+C to stop.');
+  console.log("✅ Agent running! Press Ctrl+C to stop.");
 }
 
 // Run the agent
 runAgent().catch((error) => {
-  console.error('Fatal error:', error);
+  console.error("Fatal error:", error);
   process.exit(1);
 });

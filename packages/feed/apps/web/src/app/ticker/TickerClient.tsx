@@ -1,15 +1,15 @@
-'use client';
+"use client";
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from "react";
 import type {
   TickerNewsItem,
   TickerPerpItem,
   TickerPredictionItem,
   TickerResponse,
-} from '@/types/ticker';
+} from "@/types/ticker";
 
-const DEFAULT_STREAMS = 'news,predictions,perps';
-const DEFAULT_THEME = 'dark';
+const DEFAULT_STREAMS = "news,predictions,perps";
+const DEFAULT_THEME = "dark";
 const DEFAULT_SPEED = 0.7;
 const DEFAULT_HEIGHT = 48;
 
@@ -18,7 +18,7 @@ const SPEED_MIN = 0.1;
 const SPEED_MAX = 3;
 
 function useTickerParams() {
-  if (typeof window === 'undefined') {
+  if (typeof window === "undefined") {
     return {
       streams: DEFAULT_STREAMS,
       theme: DEFAULT_THEME,
@@ -27,22 +27,22 @@ function useTickerParams() {
     };
   }
   const params = new URLSearchParams(window.location.search);
-  const raw = parseFloat(params.get('speed') || String(DEFAULT_SPEED));
+  const raw = parseFloat(params.get("speed") || String(DEFAULT_SPEED));
   const speed = Math.min(
     SPEED_MAX,
-    Math.max(SPEED_MIN, Number.isFinite(raw) ? raw : DEFAULT_SPEED)
+    Math.max(SPEED_MIN, Number.isFinite(raw) ? raw : DEFAULT_SPEED),
   );
   return {
-    streams: params.get('streams')?.trim() || DEFAULT_STREAMS,
-    theme: (params.get('theme') || DEFAULT_THEME).toLowerCase(),
+    streams: params.get("streams")?.trim() || DEFAULT_STREAMS,
+    theme: (params.get("theme") || DEFAULT_THEME).toLowerCase(),
     speed,
     height: Math.min(
       120,
       Math.max(
         32,
-        parseInt(params.get('height') || String(DEFAULT_HEIGHT), 10) ||
-          DEFAULT_HEIGHT
-      )
+        parseInt(params.get("height") || String(DEFAULT_HEIGHT), 10) ||
+          DEFAULT_HEIGHT,
+      ),
     ),
   };
 }
@@ -51,7 +51,7 @@ type TickerItem = {
   key: string;
   label: string;
   text: string;
-  type: 'news' | 'prediction' | 'perp';
+  type: "news" | "prediction" | "perp";
   /** Perps only: 24h % change for red/green coloring */
   changePercent24h?: number | null;
   /** Predictions only: yes % for the meter (0–100) */
@@ -63,30 +63,30 @@ function buildItems(response: TickerResponse): TickerItem[] {
   (response.news ?? []).forEach((n: TickerNewsItem) => {
     items.push({
       key: `news-${n.id}`,
-      label: 'News',
+      label: "News",
       text: n.title,
-      type: 'news',
+      type: "news",
     });
   });
   (response.predictions ?? []).forEach((p: TickerPredictionItem) => {
     items.push({
       key: `pred-${p.id}`,
-      label: 'Prediction',
+      label: "Prediction",
       text: p.question,
-      type: 'prediction',
+      type: "prediction",
       yesPercent: p.yesPercent,
     });
   });
   (response.perps ?? []).forEach((p: TickerPerpItem) => {
     const changeStr =
       p.changePercent24h == null
-        ? '—'
-        : `${p.changePercent24h >= 0 ? '+' : ''}${p.changePercent24h.toFixed(2)}%`;
+        ? "—"
+        : `${p.changePercent24h >= 0 ? "+" : ""}${p.changePercent24h.toFixed(2)}%`;
     items.push({
       key: `perp-${p.ticker}`,
-      label: 'Perp',
+      label: "Perp",
       text: `${p.ticker} $${p.price.toFixed(2)} (${changeStr})`,
-      type: 'perp',
+      type: "perp",
       changePercent24h: p.changePercent24h,
     });
   });
@@ -95,12 +95,12 @@ function buildItems(response: TickerResponse): TickerItem[] {
 
 function perpTextColor(
   changePercent24h: number | null | undefined,
-  isDark: boolean
+  isDark: boolean,
 ): string {
-  if (changePercent24h == null || changePercent24h === 0) return '';
+  if (changePercent24h == null || changePercent24h === 0) return "";
   if (changePercent24h > 0)
-    return isDark ? 'rgb(34, 197, 94)' : 'rgb(22, 163, 74)'; // green-500 / green-600
-  return isDark ? 'rgb(239, 68, 68)' : 'rgb(220, 38, 38)'; // red-500 / red-600
+    return isDark ? "rgb(34, 197, 94)" : "rgb(22, 163, 74)"; // green-500 / green-600
+  return isDark ? "rgb(239, 68, 68)" : "rgb(220, 38, 38)"; // red-500 / red-600
 }
 
 /** Semi-circular arc meter (0% left, 100% right), percentage centered inside. */
@@ -118,15 +118,15 @@ function PredictionArcMeter({
   // Top half-circle: from (10,50) left to (90,50) right, counterclockwise
   const halfCircleLength = Math.PI * r;
   const filledLength = (pct / 100) * halfCircleLength;
-  const trackColor = isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.12)';
+  const trackColor = isDark ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.12)";
   const fillColor =
     pct > 50
       ? isDark
-        ? 'rgb(34, 197, 94)'
-        : 'rgb(22, 163, 74)' // green
+        ? "rgb(34, 197, 94)"
+        : "rgb(22, 163, 74)" // green
       : isDark
-        ? 'rgb(234, 88, 12)'
-        : 'rgb(194, 65, 12)'; // orange-600 / orange-700 below 50%
+        ? "rgb(234, 88, 12)"
+        : "rgb(194, 65, 12)"; // orange-600 / orange-700 below 50%
 
   const h = (size * 60) / 100;
   return (
@@ -162,7 +162,7 @@ function PredictionArcMeter({
       </svg>
       <span
         className="relative font-bold text-[10px] tabular-nums leading-none"
-        style={{ color: isDark ? '#fafafa' : '#0a0a0a' }}
+        style={{ color: isDark ? "#fafafa" : "#0a0a0a" }}
       >
         {Math.round(pct)}%
       </span>
@@ -180,7 +180,7 @@ export function TickerClient() {
     try {
       setError(null);
       const res = await fetch(
-        `/api/ticker?streams=${encodeURIComponent(streams)}&limit=30`
+        `/api/ticker?streams=${encodeURIComponent(streams)}&limit=30`,
       );
       if (!res.ok) throw new Error(`Ticker API ${res.status}`);
       const json = (await res.json()) as { success?: boolean } & TickerResponse;
@@ -190,7 +190,7 @@ export function TickerClient() {
         perps: json.perps,
       });
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load ticker');
+      setError(e instanceof Error ? e.message : "Failed to load ticker");
       setData(null);
     } finally {
       setLoading(false);
@@ -203,10 +203,10 @@ export function TickerClient() {
     return () => clearInterval(interval);
   }, [fetchTicker]);
 
-  const isDark = theme === 'dark';
-  const bg = isDark ? '#0a0a0a' : '#fff';
-  const fg = isDark ? '#fafafa' : '#0a0a0a';
-  const muted = isDark ? '#71717a' : '#52525b';
+  const isDark = theme === "dark";
+  const bg = isDark ? "#0a0a0a" : "#fff";
+  const fg = isDark ? "#fafafa" : "#0a0a0a";
+  const muted = isDark ? "#71717a" : "#52525b";
   // One full scroll cycle: speed 0.1 → 600s, 0.5 → 240s, 1 → 120s, 3 → 40s
   const duration = Math.min(600, Math.max(20, Math.round(120 / speed)));
 
@@ -261,11 +261,11 @@ export function TickerClient() {
       >
         {[...items, ...items].map((item, index) => {
           const textColor =
-            item.type === 'perp'
+            item.type === "perp"
               ? perpTextColor(item.changePercent24h, isDark) || fg
               : fg;
           const isPrediction =
-            item.type === 'prediction' && item.yesPercent != null;
+            item.type === "prediction" && item.yesPercent != null;
           const uniqueKey = index < items.length ? item.key : `${item.key}-dup`;
           return (
             <span
@@ -276,8 +276,8 @@ export function TickerClient() {
                 className="rounded px-1.5 py-0.5 font-medium text-xs"
                 style={{
                   background: isDark
-                    ? 'rgba(255,255,255,0.12)'
-                    : 'rgba(0,0,0,0.08)',
+                    ? "rgba(255,255,255,0.12)"
+                    : "rgba(0,0,0,0.08)",
                   color: muted,
                 }}
               >

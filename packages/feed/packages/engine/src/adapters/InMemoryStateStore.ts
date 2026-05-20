@@ -8,7 +8,7 @@ import {
   PREDICTION_TEMPLATES,
   SIMULATION_AGENT_NAMES,
   SIMULATION_COMPANIES,
-} from '../config/simulation';
+} from "../config/simulation";
 import type {
   ActiveMarket,
   ActiveQuestion,
@@ -22,8 +22,8 @@ import type {
   QuestionInput,
   TradeInput,
   TradeResult,
-} from '../GameTick';
-import { SeededRandom } from '../utils/entropy';
+} from "../GameTick";
+import { SeededRandom } from "../utils/entropy";
 
 export interface SimulationConfig {
   numPredictionMarkets?: number;
@@ -46,7 +46,7 @@ export interface SimulationUser {
 export interface PredictionPosition {
   id: string;
   marketId: string;
-  outcome: 'YES' | 'NO';
+  outcome: "YES" | "NO";
   shares: number;
   avgPrice: number;
   createdAt: number;
@@ -55,7 +55,7 @@ export interface PredictionPosition {
 export interface PerpPosition {
   id: string;
   ticker: string;
-  side: 'LONG' | 'SHORT';
+  side: "LONG" | "SHORT";
   size: number;
   leverage: number;
   entryPrice: number;
@@ -164,9 +164,9 @@ export class InMemoryStateStore implements GameStateStore {
       const company = this.rng.pick(COMPANIES);
       const target = this.rng.nextInt(100, 500);
       const question = template.q
-        .replace('{company}', company.name)
-        .replace('{target}', target.toString())
-        .replace('{sector}', company.sector);
+        .replace("{company}", company.name)
+        .replace("{target}", target.toString())
+        .replace("{sector}", company.sector);
 
       const id = `market-${i + 1}`;
       const yesPrice = this.rng.nextFloat(0.3, 0.7);
@@ -217,7 +217,7 @@ export class InMemoryStateStore implements GameStateStore {
       const name = NPC_NAMES[i % NPC_NAMES.length] ?? `Agent ${i + 1}`;
       const id = `npc-${i + 1}`;
 
-      this.actorsList.push({ id, name, tier: 'supporting' });
+      this.actorsList.push({ id, name, tier: "supporting" });
       this.users.set(id, {
         id,
         name,
@@ -232,16 +232,16 @@ export class InMemoryStateStore implements GameStateStore {
   // GameStateStore interface implementation
   async getActiveQuestions(): Promise<ActiveQuestion[]> {
     return Array.from(this.questions.values()).filter(
-      (q) => q.status === 'active'
+      (q) => q.status === "active",
     );
   }
 
   async getQuestionsToResolve(beforeTime: Date): Promise<ActiveQuestion[]> {
     return Array.from(this.questions.values()).filter(
       (q) =>
-        q.status === 'active' &&
+        q.status === "active" &&
         q.resolutionDate &&
-        q.resolutionDate <= beforeTime
+        q.resolutionDate <= beforeTime,
     );
   }
 
@@ -252,7 +252,7 @@ export class InMemoryStateStore implements GameStateStore {
       id,
       questionNumber,
       text: question.text,
-      status: 'active',
+      status: "active",
       resolutionDate: question.resolutionDate,
       scenarioId: question.scenarioId,
       createdAt: new Date(),
@@ -263,7 +263,7 @@ export class InMemoryStateStore implements GameStateStore {
   async resolveQuestion(questionId: string, outcome: boolean): Promise<void> {
     const question = this.questions.get(questionId);
     if (question) {
-      question.status = 'resolved';
+      question.status = "resolved";
       question.outcome = outcome;
     }
     const market = this.markets.get(questionId);
@@ -281,7 +281,7 @@ export class InMemoryStateStore implements GameStateStore {
   async updateMarketPrice(
     marketId: string,
     yesPrice: number,
-    noPrice: number
+    noPrice: number,
   ): Promise<void> {
     const market = this.markets.get(marketId);
     if (market) {
@@ -296,7 +296,7 @@ export class InMemoryStateStore implements GameStateStore {
     this.postsList.push({
       id,
       authorId: post.authorId,
-      authorName: author?.name ?? 'Unknown',
+      authorName: author?.name ?? "Unknown",
       content: post.content,
       createdAt: post.timestamp.getTime(),
       likes: 0,
@@ -324,7 +324,7 @@ export class InMemoryStateStore implements GameStateStore {
     return this.createPost({
       authorId: article.authorOrgId,
       content: article.content,
-      type: 'article',
+      type: "article",
       timestamp: article.timestamp,
     });
   }
@@ -342,7 +342,7 @@ export class InMemoryStateStore implements GameStateStore {
       trade.actorId,
       trade.marketId,
       trade.side,
-      trade.amount
+      trade.amount,
     );
   }
 
@@ -377,16 +377,16 @@ export class InMemoryStateStore implements GameStateStore {
   buyPredictionShares(
     userId: string,
     marketId: string,
-    outcome: 'YES' | 'NO',
-    amount: number
+    outcome: "YES" | "NO",
+    amount: number,
   ): TradeResult {
     const user = this.getOrCreateUser(userId);
     const market = this.markets.get(marketId);
-    if (!market) return { success: false, error: 'Market not found' };
+    if (!market) return { success: false, error: "Market not found" };
     if (user.balance < amount)
-      return { success: false, error: 'Insufficient balance' };
+      return { success: false, error: "Insufficient balance" };
 
-    const price = outcome === 'YES' ? market.yesPrice : market.noPrice;
+    const price = outcome === "YES" ? market.yesPrice : market.noPrice;
     const shares = amount / price;
 
     user.balance -= amount;
@@ -400,7 +400,7 @@ export class InMemoryStateStore implements GameStateStore {
     });
 
     // Update market
-    if (outcome === 'YES') market.yesShares += shares;
+    if (outcome === "YES") market.yesShares += shares;
     else market.noShares += shares;
     market.totalVolume += amount;
     const total = market.yesShares + market.noShares;
@@ -413,22 +413,22 @@ export class InMemoryStateStore implements GameStateStore {
   sellPredictionShares(
     userId: string,
     marketId: string,
-    outcome: 'YES' | 'NO',
-    shares: number
+    outcome: "YES" | "NO",
+    shares: number,
   ): TradeResult {
     const user = this.users.get(userId);
-    if (!user) return { success: false, error: 'User not found' };
+    if (!user) return { success: false, error: "User not found" };
 
     const posIndex = user.predictionPositions.findIndex(
       (p) =>
-        p.marketId === marketId && p.outcome === outcome && p.shares >= shares
+        p.marketId === marketId && p.outcome === outcome && p.shares >= shares,
     );
-    if (posIndex === -1) return { success: false, error: 'Position not found' };
+    if (posIndex === -1) return { success: false, error: "Position not found" };
 
     const market = this.markets.get(marketId);
-    if (!market) return { success: false, error: 'Market not found' };
+    if (!market) return { success: false, error: "Market not found" };
 
-    const price = outcome === 'YES' ? market.yesPrice : market.noPrice;
+    const price = outcome === "YES" ? market.yesPrice : market.noPrice;
     const proceeds = shares * price;
 
     user.balance += proceeds;
@@ -442,21 +442,21 @@ export class InMemoryStateStore implements GameStateStore {
   openPerpPosition(
     userId: string,
     ticker: string,
-    side: 'LONG' | 'SHORT',
+    side: "LONG" | "SHORT",
     size: number,
-    leverage: number
+    leverage: number,
   ): TradeResult & { positionId?: string } {
     const user = this.getOrCreateUser(userId);
     const market = this.perpMarkets.get(ticker);
-    if (!market) return { success: false, error: 'Market not found' };
+    if (!market) return { success: false, error: "Market not found" };
 
     const margin = size / leverage;
     if (user.balance < margin)
-      return { success: false, error: 'Insufficient balance' };
+      return { success: false, error: "Insufficient balance" };
 
     const positionId = this.generateId();
     const liquidationPrice =
-      side === 'LONG'
+      side === "LONG"
         ? market.price * (1 - 1 / leverage)
         : market.price * (1 + 1 / leverage);
 
@@ -478,17 +478,17 @@ export class InMemoryStateStore implements GameStateStore {
 
   closePerpPosition(userId: string, positionId: string): TradeResult {
     const user = this.users.get(userId);
-    if (!user) return { success: false, error: 'User not found' };
+    if (!user) return { success: false, error: "User not found" };
 
     const posIndex = user.perpPositions.findIndex((p) => p.id === positionId);
-    if (posIndex === -1) return { success: false, error: 'Position not found' };
+    if (posIndex === -1) return { success: false, error: "Position not found" };
 
     const pos = user.perpPositions[posIndex]!;
     const market = this.perpMarkets.get(pos.ticker);
-    if (!market) return { success: false, error: 'Market not found' };
+    if (!market) return { success: false, error: "Market not found" };
 
     const pnl =
-      pos.side === 'LONG'
+      pos.side === "LONG"
         ? (market.price - pos.entryPrice) * pos.size
         : (pos.entryPrice - market.price) * pos.size;
 

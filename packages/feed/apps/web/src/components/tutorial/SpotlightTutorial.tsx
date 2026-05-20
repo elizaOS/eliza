@@ -1,20 +1,20 @@
-'use client';
+"use client";
 
-import { motion } from 'framer-motion';
-import { ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { motion } from "framer-motion";
+import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import {
   useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
   useState,
-} from 'react';
-import { createPortal } from 'react-dom';
+} from "react";
+import { createPortal } from "react-dom";
 export interface TutorialStep {
   target: string;
   title: string;
   description: string;
-  placement: 'top' | 'bottom' | 'left' | 'right';
+  placement: "top" | "bottom" | "left" | "right";
 }
 
 export interface TutorialState {
@@ -69,7 +69,7 @@ function computeTargetRect(selector: string): Rect | null {
 
   if (tourName) {
     const extras = Array.from(
-      document.querySelectorAll(`[data-tour-include="${tourName}"]`)
+      document.querySelectorAll(`[data-tour-include="${tourName}"]`),
     );
     // Note: Array.from ensures safe iteration over NodeList, avoiding TypeScript issues.
     for (const extra of Array.from(extras)) {
@@ -98,7 +98,7 @@ function computeTargetRect(selector: string): Rect | null {
 
 type SpotlightTutorialProps = Pick<
   TutorialState,
-  'isActive' | 'currentStep' | 'steps' | 'next' | 'prev' | 'dismiss'
+  "isActive" | "currentStep" | "steps" | "next" | "prev" | "dismiss"
 >;
 
 export function SpotlightTutorial({
@@ -192,7 +192,7 @@ export function SpotlightTutorial({
     const rectTimer = setTimeout(updateRect, 200);
     const tooltipTimer = setTimeout(
       () => setTooltipReady(true),
-      justActivated ? 0 : 350
+      justActivated ? 0 : 350,
     );
     return () => {
       clearTimeout(rectTimer);
@@ -210,13 +210,13 @@ export function SpotlightTutorial({
     const ro = new ResizeObserver(updateRect);
     ro.observe(el);
 
-    window.addEventListener('resize', updateRect);
-    window.addEventListener('scroll', updateRect, true);
+    window.addEventListener("resize", updateRect);
+    window.addEventListener("scroll", updateRect, true);
 
     return () => {
       ro.disconnect();
-      window.removeEventListener('resize', updateRect);
-      window.removeEventListener('scroll', updateRect, true);
+      window.removeEventListener("resize", updateRect);
+      window.removeEventListener("scroll", updateRect, true);
     };
   }, [isActive, step, updateRect]);
 
@@ -234,7 +234,7 @@ export function SpotlightTutorial({
           height: dynamicRect.height,
           borderRadius: 0,
           boxShadow:
-            '0 0 0 9999px rgba(0, 0, 0, 0.6), 0 0 30px 8px rgba(255, 255, 255, 0.2)',
+            "0 0 0 9999px rgba(0, 0, 0, 0.6), 0 0 30px 8px rgba(255, 255, 255, 0.2)",
         }}
       />
       {/* Brightness boost over the spotlighted area */}
@@ -246,7 +246,7 @@ export function SpotlightTutorial({
           width: dynamicRect.width,
           height: dynamicRect.height,
           borderRadius: 0,
-          backgroundColor: 'rgba(255, 255, 255, 0.1)',
+          backgroundColor: "rgba(255, 255, 255, 0.1)",
         }}
       />
 
@@ -266,7 +266,7 @@ export function SpotlightTutorial({
         />
       )}
     </div>,
-    document.body
+    document.body,
   );
 }
 
@@ -300,7 +300,7 @@ const Tooltip = ({
   // Merge refs
   useEffect(() => {
     if (!ref) return;
-    if (typeof ref === 'function') {
+    if (typeof ref === "function") {
       ref(internalRef.current);
     } else {
       (ref as React.MutableRefObject<HTMLDivElement | null>).current =
@@ -319,7 +319,7 @@ const Tooltip = ({
   const position = computeTooltipPosition(
     step.placement,
     dynamicRect,
-    tooltipSize
+    tooltipSize,
   );
 
   return (
@@ -377,7 +377,7 @@ const Tooltip = ({
           onClick={onNext}
           className="inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 font-semibold text-primary-foreground text-xs transition-colors hover:bg-primary/90"
         >
-          {isLastStep ? 'Done' : 'Next'}
+          {isLastStep ? "Done" : "Next"}
           {!isLastStep && <ChevronRight size={12} />}
         </button>
       </div>
@@ -386,27 +386,27 @@ const Tooltip = ({
 };
 
 function computeTooltipPosition(
-  placement: TutorialStep['placement'],
+  placement: TutorialStep["placement"],
   spotlight: Rect,
-  tooltip: { width: number; height: number }
+  tooltip: { width: number; height: number },
 ): { top: number; left: number } {
   let top = 0;
   let left = 0;
 
   switch (placement) {
-    case 'bottom':
+    case "bottom":
       top = spotlight.top + spotlight.height + TOOLTIP_GAP;
       left = spotlight.left + spotlight.width / 2 - tooltip.width / 2;
       break;
-    case 'top':
+    case "top":
       top = spotlight.top - tooltip.height - TOOLTIP_GAP;
       left = spotlight.left + spotlight.width / 2 - tooltip.width / 2;
       break;
-    case 'left':
+    case "left":
       top = spotlight.top + spotlight.height / 2 - tooltip.height / 2;
       left = spotlight.left - tooltip.width - TOOLTIP_GAP;
       break;
-    case 'right':
+    case "right":
       top = spotlight.top + spotlight.height / 2 - tooltip.height / 2;
       left = spotlight.left + spotlight.width + TOOLTIP_GAP;
       break;
@@ -417,11 +417,11 @@ function computeTooltipPosition(
   const vh = window.innerHeight;
   left = Math.max(
     VIEWPORT_MARGIN,
-    Math.min(left, vw - tooltip.width - VIEWPORT_MARGIN)
+    Math.min(left, vw - tooltip.width - VIEWPORT_MARGIN),
   );
   top = Math.max(
     VIEWPORT_MARGIN,
-    Math.min(top, vh - tooltip.height - VIEWPORT_MARGIN)
+    Math.min(top, vh - tooltip.height - VIEWPORT_MARGIN),
   );
 
   return { top, left };

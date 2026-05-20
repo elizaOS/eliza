@@ -5,12 +5,12 @@
  * by enforcing hourly limits.
  */
 
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 import {
   ArticleRateLimiterService,
   BreakingArticleRateLimiterService,
   createArticleRateLimiter,
-} from '../services/article-rate-limiter';
+} from "../services/article-rate-limiter";
 
 // Mock the database module
 let mockDbCount = 0;
@@ -20,17 +20,17 @@ const mockDb = {
   where: mock(() => Promise.resolve([{ count: mockDbCount }])),
 };
 
-mock.module('@feed/db', () => ({
+mock.module("@feed/db", () => ({
   db: mockDb,
   and: (...args: unknown[]) => args,
   eq: (a: unknown, b: unknown) => [a, b],
   gte: (a: unknown, b: unknown) => [a, b],
   isNull: (a: unknown) => [a],
-  posts: { type: 'type', timestamp: 'timestamp', deletedAt: 'deletedAt' },
-  sql: (strings: TemplateStringsArray) => strings.join(''),
+  posts: { type: "type", timestamp: "timestamp", deletedAt: "deletedAt" },
+  sql: (strings: TemplateStringsArray) => strings.join(""),
 }));
 
-describe('ArticleRateLimiterService', () => {
+describe("ArticleRateLimiterService", () => {
   beforeEach(() => {
     // Reset mock call counts
     mockDbCount = 0;
@@ -39,12 +39,12 @@ describe('ArticleRateLimiterService', () => {
     mockDb.where.mockClear();
     // Default to 0 articles
     mockDb.where.mockImplementation(() =>
-      Promise.resolve([{ count: mockDbCount }])
+      Promise.resolve([{ count: mockDbCount }]),
     );
   });
 
-  describe('constructor', () => {
-    test('uses default config when no config provided', () => {
+  describe("constructor", () => {
+    test("uses default config when no config provided", () => {
       const limiter = new ArticleRateLimiterService();
       const config = limiter.getConfig();
 
@@ -53,7 +53,7 @@ describe('ArticleRateLimiterService', () => {
       expect(config.windowMs).toBe(60 * 60 * 1000);
     });
 
-    test('accepts partial config and merges with defaults', () => {
+    test("accepts partial config and merges with defaults", () => {
       const limiter = new ArticleRateLimiterService({ maxArticlesPerHour: 5 });
       const config = limiter.getConfig();
 
@@ -61,7 +61,7 @@ describe('ArticleRateLimiterService', () => {
       expect(config.windowMs).toBe(60 * 60 * 1000); // default
     });
 
-    test('accepts full custom config', () => {
+    test("accepts full custom config", () => {
       const limiter = new ArticleRateLimiterService({
         maxArticlesPerHour: 10,
         windowMs: 30 * 60 * 1000, // 30 minutes
@@ -73,8 +73,8 @@ describe('ArticleRateLimiterService', () => {
     });
   });
 
-  describe('getRecentArticleCount', () => {
-    test('returns 0 when no articles exist', async () => {
+  describe("getRecentArticleCount", () => {
+    test("returns 0 when no articles exist", async () => {
       mockDb.where.mockImplementation(() => Promise.resolve([{ count: 0 }]));
 
       const limiter = new ArticleRateLimiterService();
@@ -83,7 +83,7 @@ describe('ArticleRateLimiterService', () => {
       expect(count).toBe(0);
     });
 
-    test('returns correct count when articles exist', async () => {
+    test("returns correct count when articles exist", async () => {
       mockDb.where.mockImplementation(() => Promise.resolve([{ count: 5 }]));
 
       const limiter = new ArticleRateLimiterService();
@@ -92,7 +92,7 @@ describe('ArticleRateLimiterService', () => {
       expect(count).toBe(5);
     });
 
-    test('handles null result gracefully', async () => {
+    test("handles null result gracefully", async () => {
       mockDb.where.mockImplementation(() => Promise.resolve([null]));
 
       const limiter = new ArticleRateLimiterService();
@@ -101,7 +101,7 @@ describe('ArticleRateLimiterService', () => {
       expect(count).toBe(0);
     });
 
-    test('handles empty result gracefully', async () => {
+    test("handles empty result gracefully", async () => {
       mockDb.where.mockImplementation(() => Promise.resolve([]));
 
       const limiter = new ArticleRateLimiterService();
@@ -111,8 +111,8 @@ describe('ArticleRateLimiterService', () => {
     });
   });
 
-  describe('canGenerateArticle', () => {
-    test('allows generation when under limit', async () => {
+  describe("canGenerateArticle", () => {
+    test("allows generation when under limit", async () => {
       mockDb.where.mockImplementation(() => Promise.resolve([{ count: 0 }]));
 
       const limiter = new ArticleRateLimiterService({ maxArticlesPerHour: 2 });
@@ -124,7 +124,7 @@ describe('ArticleRateLimiterService', () => {
       expect(result.remaining).toBe(2);
     });
 
-    test('allows generation when exactly one under limit', async () => {
+    test("allows generation when exactly one under limit", async () => {
       mockDb.where.mockImplementation(() => Promise.resolve([{ count: 1 }]));
 
       const limiter = new ArticleRateLimiterService({ maxArticlesPerHour: 2 });
@@ -135,7 +135,7 @@ describe('ArticleRateLimiterService', () => {
       expect(result.remaining).toBe(1);
     });
 
-    test('blocks generation when at limit', async () => {
+    test("blocks generation when at limit", async () => {
       mockDb.where.mockImplementation(() => Promise.resolve([{ count: 2 }]));
 
       const limiter = new ArticleRateLimiterService({ maxArticlesPerHour: 2 });
@@ -147,7 +147,7 @@ describe('ArticleRateLimiterService', () => {
       expect(result.remaining).toBe(0);
     });
 
-    test('blocks generation when over limit', async () => {
+    test("blocks generation when over limit", async () => {
       mockDb.where.mockImplementation(() => Promise.resolve([{ count: 5 }]));
 
       const limiter = new ArticleRateLimiterService({ maxArticlesPerHour: 2 });
@@ -158,8 +158,8 @@ describe('ArticleRateLimiterService', () => {
     });
   });
 
-  describe('getRemainingSlots', () => {
-    test('returns correct remaining slots', async () => {
+  describe("getRemainingSlots", () => {
+    test("returns correct remaining slots", async () => {
       mockDb.where.mockImplementation(() => Promise.resolve([{ count: 1 }]));
 
       const limiter = new ArticleRateLimiterService({ maxArticlesPerHour: 5 });
@@ -168,7 +168,7 @@ describe('ArticleRateLimiterService', () => {
       expect(remaining).toBe(4);
     });
 
-    test('returns 0 when at limit', async () => {
+    test("returns 0 when at limit", async () => {
       mockDb.where.mockImplementation(() => Promise.resolve([{ count: 5 }]));
 
       const limiter = new ArticleRateLimiterService({ maxArticlesPerHour: 5 });
@@ -178,28 +178,28 @@ describe('ArticleRateLimiterService', () => {
     });
   });
 
-  describe('checkAndLog', () => {
-    test('returns true when under limit', async () => {
+  describe("checkAndLog", () => {
+    test("returns true when under limit", async () => {
       mockDb.where.mockImplementation(() => Promise.resolve([{ count: 0 }]));
 
       const limiter = new ArticleRateLimiterService({ maxArticlesPerHour: 2 });
-      const allowed = await limiter.checkAndLog('test-source');
+      const allowed = await limiter.checkAndLog("test-source");
 
       expect(allowed).toBe(true);
     });
 
-    test('returns false when at limit', async () => {
+    test("returns false when at limit", async () => {
       mockDb.where.mockImplementation(() => Promise.resolve([{ count: 2 }]));
 
       const limiter = new ArticleRateLimiterService({ maxArticlesPerHour: 2 });
-      const allowed = await limiter.checkAndLog('test-source');
+      const allowed = await limiter.checkAndLog("test-source");
 
       expect(allowed).toBe(false);
     });
   });
 
-  describe('getConfig', () => {
-    test('returns a copy of the config', () => {
+  describe("getConfig", () => {
+    test("returns a copy of the config", () => {
       const limiter = new ArticleRateLimiterService({ maxArticlesPerHour: 5 });
       const config1 = limiter.getConfig();
       const config2 = limiter.getConfig();
@@ -210,35 +210,35 @@ describe('ArticleRateLimiterService', () => {
   });
 });
 
-describe('createArticleRateLimiter', () => {
-  test('creates a limiter with custom config', () => {
+describe("createArticleRateLimiter", () => {
+  test("creates a limiter with custom config", () => {
     const limiter = createArticleRateLimiter({ maxArticlesPerHour: 10 });
     const config = limiter.getConfig();
 
     expect(config.maxArticlesPerHour).toBe(10);
   });
 
-  test('throws error for maxArticlesPerHour <= 0', () => {
+  test("throws error for maxArticlesPerHour <= 0", () => {
     expect(() => createArticleRateLimiter({ maxArticlesPerHour: 0 })).toThrow(
-      'maxArticlesPerHour must be a positive number'
+      "maxArticlesPerHour must be a positive number",
     );
 
     expect(() => createArticleRateLimiter({ maxArticlesPerHour: -1 })).toThrow(
-      'maxArticlesPerHour must be a positive number'
+      "maxArticlesPerHour must be a positive number",
     );
   });
 
-  test('throws error for windowMs <= 0', () => {
+  test("throws error for windowMs <= 0", () => {
     expect(() => createArticleRateLimiter({ windowMs: 0 })).toThrow(
-      'windowMs must be a positive number'
+      "windowMs must be a positive number",
     );
 
     expect(() => createArticleRateLimiter({ windowMs: -1000 })).toThrow(
-      'windowMs must be a positive number'
+      "windowMs must be a positive number",
     );
   });
 
-  test('allows valid positive values', () => {
+  test("allows valid positive values", () => {
     const limiter = createArticleRateLimiter({
       maxArticlesPerHour: 1,
       windowMs: 1000,
@@ -249,7 +249,7 @@ describe('createArticleRateLimiter', () => {
     expect(config.windowMs).toBe(1000);
   });
 
-  test('allows undefined values (uses defaults)', () => {
+  test("allows undefined values (uses defaults)", () => {
     const limiter = createArticleRateLimiter({});
     const config = limiter.getConfig();
 
@@ -259,9 +259,9 @@ describe('createArticleRateLimiter', () => {
   });
 });
 
-describe('BreakingArticleRateLimiterService', () => {
-  describe('constructor', () => {
-    test('uses default config when no config provided', () => {
+describe("BreakingArticleRateLimiterService", () => {
+  describe("constructor", () => {
+    test("uses default config when no config provided", () => {
       const limiter = new BreakingArticleRateLimiterService();
       const config = limiter.getConfig();
 
@@ -270,7 +270,7 @@ describe('BreakingArticleRateLimiterService', () => {
       expect(config.windowMs).toBe(60 * 60 * 1000);
     });
 
-    test('accepts custom config', () => {
+    test("accepts custom config", () => {
       const limiter = new BreakingArticleRateLimiterService({
         maxArticlesPerHour: 5,
         windowMs: 30 * 60 * 1000,
@@ -282,21 +282,21 @@ describe('BreakingArticleRateLimiterService', () => {
     });
   });
 
-  describe('getRecentArticleCount', () => {
-    test('returns 0 when no articles recorded', async () => {
+  describe("getRecentArticleCount", () => {
+    test("returns 0 when no articles recorded", async () => {
       mockDbCount = 0;
       const limiter = new BreakingArticleRateLimiterService();
       expect(await limiter.getRecentArticleCount()).toBe(0);
     });
 
-    test('returns correct count from DB', async () => {
+    test("returns correct count from DB", async () => {
       mockDbCount = 2;
       const limiter = new BreakingArticleRateLimiterService();
 
       expect(await limiter.getRecentArticleCount()).toBe(2);
     });
 
-    test('includes in-flight reservations in count', async () => {
+    test("includes in-flight reservations in count", async () => {
       mockDbCount = 0;
       const limiter = new BreakingArticleRateLimiterService({
         maxArticlesPerHour: 5,
@@ -309,8 +309,8 @@ describe('BreakingArticleRateLimiterService', () => {
     });
   });
 
-  describe('canGenerateArticle', () => {
-    test('allows generation when under limit', async () => {
+  describe("canGenerateArticle", () => {
+    test("allows generation when under limit", async () => {
       const limiter = new BreakingArticleRateLimiterService({
         maxArticlesPerHour: 2,
       });
@@ -323,7 +323,7 @@ describe('BreakingArticleRateLimiterService', () => {
       expect(result.remaining).toBe(2);
     });
 
-    test('blocks generation when at limit', async () => {
+    test("blocks generation when at limit", async () => {
       mockDbCount = 1;
       const limiter = new BreakingArticleRateLimiterService({
         maxArticlesPerHour: 1,
@@ -336,7 +336,7 @@ describe('BreakingArticleRateLimiterService', () => {
       expect(result.remaining).toBe(0);
     });
 
-    test('counts DB articles plus reservations', async () => {
+    test("counts DB articles plus reservations", async () => {
       mockDbCount = 0;
       const limiter = new BreakingArticleRateLimiterService({
         maxArticlesPerHour: 2,
@@ -350,8 +350,8 @@ describe('BreakingArticleRateLimiterService', () => {
     });
   });
 
-  describe('tryReserveSlot', () => {
-    test('reserves slot when under limit and returns reservationId', async () => {
+  describe("tryReserveSlot", () => {
+    test("reserves slot when under limit and returns reservationId", async () => {
       mockDbCount = 0;
       const limiter = new BreakingArticleRateLimiterService({
         maxArticlesPerHour: 2,
@@ -360,11 +360,11 @@ describe('BreakingArticleRateLimiterService', () => {
       const reservationId = await limiter.tryReserveSlot();
 
       expect(reservationId).not.toBeNull();
-      expect(typeof reservationId).toBe('string');
+      expect(typeof reservationId).toBe("string");
       expect(await limiter.getRecentArticleCount()).toBe(1);
     });
 
-    test('fails to reserve when at limit and returns null', async () => {
+    test("fails to reserve when at limit and returns null", async () => {
       mockDbCount = 1;
       const limiter = new BreakingArticleRateLimiterService({
         maxArticlesPerHour: 1,
@@ -376,7 +376,7 @@ describe('BreakingArticleRateLimiterService', () => {
       expect(await limiter.getRecentArticleCount()).toBe(1); // Still just DB count
     });
 
-    test('multiple reservations consume slots', async () => {
+    test("multiple reservations consume slots", async () => {
       mockDbCount = 0;
       const limiter = new BreakingArticleRateLimiterService({
         maxArticlesPerHour: 3,
@@ -390,7 +390,7 @@ describe('BreakingArticleRateLimiterService', () => {
       expect(await limiter.getRecentArticleCount()).toBe(3);
     });
 
-    test('returns unique reservation IDs', async () => {
+    test("returns unique reservation IDs", async () => {
       mockDbCount = 0;
       const limiter = new BreakingArticleRateLimiterService({
         maxArticlesPerHour: 3,
@@ -409,8 +409,8 @@ describe('BreakingArticleRateLimiterService', () => {
     });
   });
 
-  describe('releaseSlot', () => {
-    test('releases a reserved slot by reservationId', async () => {
+  describe("releaseSlot", () => {
+    test("releases a reserved slot by reservationId", async () => {
       mockDbCount = 0;
       const limiter = new BreakingArticleRateLimiterService({
         maxArticlesPerHour: 1,
@@ -426,15 +426,15 @@ describe('BreakingArticleRateLimiterService', () => {
       expect(await limiter.getRecentArticleCount()).toBe(0);
     });
 
-    test('returns false when reservationId not found', () => {
+    test("returns false when reservationId not found", () => {
       const limiter = new BreakingArticleRateLimiterService();
 
-      const released = limiter.releaseSlot('non-existent-id');
+      const released = limiter.releaseSlot("non-existent-id");
 
       expect(released).toBe(false);
     });
 
-    test('allows new reservation after release', async () => {
+    test("allows new reservation after release", async () => {
       mockDbCount = 0;
       const limiter = new BreakingArticleRateLimiterService({
         maxArticlesPerHour: 1,
@@ -448,7 +448,7 @@ describe('BreakingArticleRateLimiterService', () => {
       expect(await limiter.tryReserveSlot()).not.toBeNull(); // Can reserve again
     });
 
-    test('releases only the specified reservation', async () => {
+    test("releases only the specified reservation", async () => {
       mockDbCount = 0;
       const limiter = new BreakingArticleRateLimiterService({
         maxArticlesPerHour: 3,
@@ -477,8 +477,8 @@ describe('BreakingArticleRateLimiterService', () => {
     });
   });
 
-  describe('recordBreakingArticle', () => {
-    test('is a no-op (DB-backed counting)', async () => {
+  describe("recordBreakingArticle", () => {
+    test("is a no-op (DB-backed counting)", async () => {
       mockDbCount = 0;
       const limiter = new BreakingArticleRateLimiterService();
       limiter.recordBreakingArticle();
@@ -487,7 +487,7 @@ describe('BreakingArticleRateLimiterService', () => {
       expect(await limiter.getRecentArticleCount()).toBe(0);
     });
 
-    test('count reflects DB state, not recordBreakingArticle calls', async () => {
+    test("count reflects DB state, not recordBreakingArticle calls", async () => {
       mockDbCount = 3;
       const limiter = new BreakingArticleRateLimiterService();
       limiter.recordBreakingArticle();
@@ -496,8 +496,8 @@ describe('BreakingArticleRateLimiterService', () => {
     });
   });
 
-  describe('getRemainingSlots', () => {
-    test('returns correct remaining slots', async () => {
+  describe("getRemainingSlots", () => {
+    test("returns correct remaining slots", async () => {
       mockDbCount = 1;
       const limiter = new BreakingArticleRateLimiterService({
         maxArticlesPerHour: 3,
@@ -509,8 +509,8 @@ describe('BreakingArticleRateLimiterService', () => {
     });
   });
 
-  describe('reset', () => {
-    test('clears all in-flight reservations', async () => {
+  describe("reset", () => {
+    test("clears all in-flight reservations", async () => {
       mockDbCount = 0;
       const limiter = new BreakingArticleRateLimiterService({
         maxArticlesPerHour: 5,
@@ -526,8 +526,8 @@ describe('BreakingArticleRateLimiterService', () => {
     });
   });
 
-  describe('window boundary behavior', () => {
-    test('DB articles within window are counted', async () => {
+  describe("window boundary behavior", () => {
+    test("DB articles within window are counted", async () => {
       mockDbCount = 1;
       const limiter = new BreakingArticleRateLimiterService({
         windowMs: 60000, // 1 minute
@@ -537,7 +537,7 @@ describe('BreakingArticleRateLimiterService', () => {
       expect(await limiter.getRecentArticleCount()).toBe(1);
     });
 
-    test('DB articles outside window are not counted (handled by DB query)', async () => {
+    test("DB articles outside window are not counted (handled by DB query)", async () => {
       // The DB query uses windowMs to filter, so if DB returns 0, count is 0
       mockDbCount = 0;
       const limiter = new BreakingArticleRateLimiterService({

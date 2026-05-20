@@ -12,26 +12,26 @@
  * - In production, this module is essentially a no-op
  */
 
-import { logger } from '@feed/shared';
-import { createHash } from 'crypto';
+import { createHash } from "node:crypto";
+import { logger } from "@feed/shared";
 
-const isDevelopment = process.env.NODE_ENV !== 'production';
+const isDevelopment = process.env.NODE_ENV !== "production";
 
 /**
  * Hardhat account #0 - standard development wallet
  * This is a well-known test private key from Hardhat's default accounts
  */
 const HARDHAT_DEV_PRIVATE_KEY =
-  '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
-const HARDHAT_DEV_ADDRESS = '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266';
+  "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+const HARDHAT_DEV_ADDRESS = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
 
 /**
  * Dev admin user ID - consistent across sessions
  */
-const DEV_ADMIN_USER_ID = 'dev-admin-local';
-export const DEV_USER_ID_COOKIE_NAME = 'feed-dev-user-id';
-export const DEV_ADMIN_TOKEN_COOKIE_NAME = 'feed-dev-admin-token';
-const DEV_USER_BEARER_PREFIX = 'dev-user:';
+const DEV_ADMIN_USER_ID = "dev-admin-local";
+export const DEV_USER_ID_COOKIE_NAME = "feed-dev-user-id";
+export const DEV_ADMIN_TOKEN_COOKIE_NAME = "feed-dev-admin-token";
+const DEV_USER_BEARER_PREFIX = "dev-user:";
 
 /**
  * Development credentials structure
@@ -58,9 +58,9 @@ export function createDevUserBearerToken(userId: string): string {
 }
 
 export function extractDevUserIdFromBearerToken(
-  token: string | null | undefined
+  token: string | null | undefined,
 ): string | null {
-  if (!token || !token.startsWith(DEV_USER_BEARER_PREFIX)) {
+  if (!token?.startsWith(DEV_USER_BEARER_PREFIX)) {
     return null;
   }
 
@@ -73,9 +73,9 @@ export function extractDevUserIdFromBearerToken(
  * Uses SHA-256 hash for deterministic but non-reversible derivation
  */
 function deriveSecret(seed: string, purpose: string): string {
-  const hash = createHash('sha256')
+  const hash = createHash("sha256")
     .update(`feed-dev:${seed}:${purpose}`)
-    .digest('hex');
+    .digest("hex");
   return `dev_${purpose}_${hash.substring(0, 32)}`;
 }
 
@@ -89,16 +89,16 @@ export function getDevCredentials(): DevCredentials | null {
   }
 
   // Use the machine hostname or a fixed seed for consistency
-  const seed = process.env.HOSTNAME || 'localhost';
+  const seed = process.env.HOSTNAME || "localhost";
 
   return {
     isDevMode: true,
     adminUserId: DEV_ADMIN_USER_ID,
     walletAddress: HARDHAT_DEV_ADDRESS,
     privateKey: HARDHAT_DEV_PRIVATE_KEY,
-    devAdminToken: deriveSecret(seed, 'admin'),
-    cronSecret: deriveSecret(seed, 'cron'),
-    agentSecret: deriveSecret(seed, 'agent'),
+    devAdminToken: deriveSecret(seed, "admin"),
+    cronSecret: deriveSecret(seed, "cron"),
+    agentSecret: deriveSecret(seed, "agent"),
   };
 }
 
@@ -228,11 +228,11 @@ export function logDevCredentials(): void {
 
   // Also log via logger for structured logs
   logger.info(
-    'Development credentials initialized',
+    "Development credentials initialized",
     {
       walletAddress: creds.walletAddress,
       adminUserId: creds.adminUserId,
     },
-    'DevCredentials'
+    "DevCredentials",
   );
 }

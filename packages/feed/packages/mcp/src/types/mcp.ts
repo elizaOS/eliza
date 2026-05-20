@@ -8,21 +8,21 @@ import type {
   JsonRpcResult,
   JsonValue,
   StringRecord,
-} from '@feed/shared';
+} from "@feed/shared";
 
 // Re-export JSON-RPC types from shared for consistency
 export type { JsonRpcParams, JsonRpcResult, JsonValue };
 
 // JSON-RPC 2.0 Base Types (matching A2A structure)
 export interface JsonRpcRequest {
-  jsonrpc: '2.0';
+  jsonrpc: "2.0";
   method: string;
   params?: JsonRpcParams;
   id: string | number;
 }
 
 export interface JsonRpcResponse {
-  jsonrpc: '2.0';
+  jsonrpc: "2.0";
   result?: JsonRpcResult;
   error?: JsonRpcError;
   id: string | number | null;
@@ -35,7 +35,7 @@ export interface JsonRpcError {
 }
 
 export interface JsonRpcNotification {
-  jsonrpc: '2.0';
+  jsonrpc: "2.0";
   method: string;
   params?: JsonRpcParams;
 }
@@ -43,27 +43,27 @@ export interface JsonRpcNotification {
 // MCP Protocol Methods
 export enum MCPMethod {
   // Lifecycle
-  INITIALIZE = 'initialize',
-  PING = 'ping',
+  INITIALIZE = "initialize",
+  PING = "ping",
 
   // Tools
-  TOOLS_LIST = 'tools/list',
-  TOOLS_CALL = 'tools/call',
+  TOOLS_LIST = "tools/list",
+  TOOLS_CALL = "tools/call",
 
   // Resources (for future expansion)
-  RESOURCES_LIST = 'resources/list',
-  RESOURCES_READ = 'resources/read',
+  RESOURCES_LIST = "resources/list",
+  RESOURCES_READ = "resources/read",
 
   // Prompts (for future expansion)
-  PROMPTS_LIST = 'prompts/list',
-  PROMPTS_GET = 'prompts/get',
+  PROMPTS_LIST = "prompts/list",
+  PROMPTS_GET = "prompts/get",
 }
 
 // MCP Protocol Versions
 export const MCP_PROTOCOL_VERSIONS = [
-  '2024-11-05',
-  '2025-03-26',
-  '2025-06-18',
+  "2024-11-05",
+  "2025-03-26",
+  "2025-06-18",
 ] as const;
 
 export type MCPProtocolVersion = (typeof MCP_PROTOCOL_VERSIONS)[number];
@@ -139,7 +139,7 @@ export interface MCPTool {
   name: string;
   description: string;
   inputSchema: {
-    type: 'object';
+    type: "object";
     properties: StringRecord<MCPToolInputSchemaProperty>;
     required?: string[];
   };
@@ -159,19 +159,19 @@ export interface ToolCallParams {
 
 // Tool Result Content
 export interface TextContent {
-  type: 'text';
+  type: "text";
   text: string;
   mimeType?: string;
 }
 
 export interface ImageContent {
-  type: 'image';
+  type: "image";
   data: string; // base64
   mimeType: string;
 }
 
 export interface ResourceContent {
-  type: 'resource';
+  type: "resource";
   resource: {
     uri: string;
     name?: string;
@@ -204,18 +204,16 @@ export interface MCPAuthContext {
 
 // Tool-specific argument types
 export interface GetMarketsArgs {
-  type?: 'prediction' | 'perpetuals' | 'all';
+  type?: "prediction" | "perpetuals" | "all";
 }
 
 export interface PlaceBetArgs {
   marketId: string;
-  side: 'YES' | 'NO';
+  side: "YES" | "NO";
   amount: number;
 }
 
-export interface GetBalanceArgs {
-  // No arguments - balance is always for the authenticated agent
-}
+export type GetBalanceArgs = {};
 
 export interface GetPositionsArgs {
   marketId?: string; // Filter by specific market
@@ -239,7 +237,7 @@ export interface QueryFeedArgs {
 // Market Operations - Additional Args
 export interface BuySharesArgs {
   marketId: string;
-  outcome: 'YES' | 'NO';
+  outcome: "YES" | "NO";
   amount: number;
 }
 
@@ -250,7 +248,7 @@ export interface SellSharesArgs {
 
 export interface OpenPositionArgs {
   ticker: string;
-  side: 'LONG' | 'SHORT';
+  side: "LONG" | "SHORT";
   amount: number;
   leverage: number;
 }
@@ -259,9 +257,7 @@ export interface GetMarketPricesArgs {
   marketId: string;
 }
 
-export interface GetPerpetualsArgs {
-  // No arguments
-}
+export type GetPerpetualsArgs = {};
 
 export interface GetTradesArgs {
   limit?: number;
@@ -280,7 +276,7 @@ export interface GetPostArgs {
 
 export interface CreatePostArgs {
   content: string;
-  type?: 'post' | 'article';
+  type?: "post" | "article";
   mediaUrl?: string;
 }
 
@@ -375,7 +371,7 @@ export interface GetUserStatsArgs {
 
 // Chats & Messaging - Args
 export interface GetChatsArgs {
-  filter?: 'all' | 'dms' | 'groups';
+  filter?: "all" | "dms" | "groups";
 }
 
 export interface GetChatMessagesArgs {
@@ -399,9 +395,7 @@ export interface LeaveChatArgs {
   chatId: string;
 }
 
-export interface GetUnreadCountArgs {
-  // No arguments
-}
+export type GetUnreadCountArgs = {};
 
 // Notifications - Args
 export interface GetNotificationsArgs {
@@ -412,13 +406,9 @@ export interface MarkNotificationsReadArgs {
   notificationIds: string[];
 }
 
-export interface GetPortfolioArgs {
-  // No arguments
-}
+export type GetPortfolioArgs = {};
 
-export interface GetGroupInvitesArgs {
-  // No arguments
-}
+export type GetGroupInvitesArgs = {};
 
 export interface AcceptGroupInviteArgs {
   inviteId: string;
@@ -432,14 +422,12 @@ export interface DeclineGroupInviteArgs {
 export interface GetLeaderboardArgs {
   page?: number;
   pageSize?: number;
-  type?: 'wallet' | 'team';
-  pointsType?: 'all' | 'earned' | 'referral';
+  type?: "wallet" | "team";
+  pointsType?: "all" | "earned" | "referral";
   minPoints?: number;
 }
 
-export interface GetSystemStatsArgs {
-  // No arguments
-}
+export type GetSystemStatsArgs = {};
 
 export interface ResolveMarketArgs {
   marketId: string;
@@ -448,17 +436,11 @@ export interface ResolveMarketArgs {
 }
 
 // Referrals & Rewards - Args
-export interface GetReferralCodeArgs {
-  // No arguments
-}
+export type GetReferralCodeArgs = {};
 
-export interface GetReferralsArgs {
-  // No arguments
-}
+export type GetReferralsArgs = {};
 
-export interface GetReferralStatsArgs {
-  // No arguments
-}
+export type GetReferralStatsArgs = {};
 
 // Reputation - Args
 export interface GetReputationArgs {
@@ -520,13 +502,9 @@ export interface ReportPostArgs {
   reason: string;
 }
 
-export interface GetBlocksArgs {
-  // No arguments
-}
+export type GetBlocksArgs = {};
 
-export interface GetMutesArgs {
-  // No arguments
-}
+export type GetMutesArgs = {};
 
 export interface CheckBlockStatusArgs {
   userId: string;
@@ -561,7 +539,7 @@ export interface RefundEscrowPaymentArgs {
 export interface ListEscrowPaymentsArgs {
   recipientId?: string;
   adminId?: string;
-  status?: 'pending' | 'paid' | 'refunded' | 'expired';
+  status?: "pending" | "paid" | "refunded" | "expired";
   limit?: number;
   offset?: number;
 }
@@ -621,7 +599,7 @@ export interface GetPositionsResult {
     id: string;
     marketId: string;
     question: string | null;
-    side: 'YES' | 'NO';
+    side: "YES" | "NO";
     shares: string;
     avgPrice: string;
   }>;
@@ -686,7 +664,7 @@ export interface GetTradesResult {
     id: string;
     marketId: string;
     userId: string;
-    side: 'YES' | 'NO';
+    side: "YES" | "NO";
     shares: string;
     price: string;
     timestamp: string;
@@ -697,7 +675,7 @@ export interface GetTradeHistoryResult {
   trades: Array<{
     id: string;
     marketId: string;
-    side: 'YES' | 'NO';
+    side: "YES" | "NO";
     shares: string;
     price: string;
     timestamp: string;
@@ -817,7 +795,7 @@ export interface SearchAgentsResult {
     displayName: string | null;
     profileImageUrl: string | null;
     bio: string | null;
-    type: 'agent' | 'npc';
+    type: "agent" | "npc";
   }>;
 }
 
@@ -842,7 +820,7 @@ export interface GetChatsResult {
   chats: Array<{
     id: string;
     name: string | null;
-    type: 'dm' | 'group';
+    type: "dm" | "group";
     lastMessageAt: string | null;
     unreadCount: number;
   }>;

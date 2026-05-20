@@ -34,8 +34,8 @@ export interface ParseResult {
  * Default post metadata
  */
 const DEFAULT_POST_METADATA: ParsedPostMetadata = {
-  gameId: 'feed',
-  authorId: 'system',
+  gameId: "feed",
+  authorId: "system",
   timestamp: new Date(),
 };
 
@@ -52,27 +52,27 @@ function getArrayElement<T>(arr: readonly T[], index: number): T | undefined {
  */
 function parseFormat1(postId: string): ParsedPostMetadata | null {
   const isoTimestampMatch = postId.match(
-    /(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z)$/
+    /(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z)$/,
   );
   if (!isoTimestampMatch?.[1]) return null;
 
   const timestampStr = isoTimestampMatch[1];
   const timestamp = new Date(timestampStr);
-  if (isNaN(timestamp.getTime())) return null;
+  if (Number.isNaN(timestamp.getTime())) return null;
 
-  const firstHyphenIndex = postId.indexOf('-');
+  const firstHyphenIndex = postId.indexOf("-");
   if (firstHyphenIndex === -1) return null;
 
   const gameId = postId.substring(0, firstHyphenIndex);
   const withoutGameId = postId.substring(firstHyphenIndex + 1);
-  const secondHyphenIndex = withoutGameId.indexOf('-');
+  const secondHyphenIndex = withoutGameId.indexOf("-");
 
-  let authorId = 'system';
+  let authorId = "system";
   if (secondHyphenIndex !== -1) {
     const afterGameTimestamp = withoutGameId.substring(secondHyphenIndex + 1);
     authorId = afterGameTimestamp.substring(
       0,
-      afterGameTimestamp.lastIndexOf('-' + timestampStr)
+      afterGameTimestamp.lastIndexOf(`-${timestampStr}`),
     );
   }
 
@@ -85,55 +85,55 @@ function parseFormat1(postId: string): ParsedPostMetadata | null {
  * Format 3: post-1762099655817-kash-patrol-abc123
  */
 function parsePostFormat(postId: string): ParsedPostMetadata | null {
-  if (!postId.startsWith('post-')) return null;
+  if (!postId.startsWith("post-")) return null;
 
-  const parts = postId.split('-');
+  const parts = postId.split("-");
   if (parts.length < 3) return null;
 
   const timestampPart = getArrayElement(parts, 1);
   if (!timestampPart) return null;
 
   const timestampNum = Number.parseInt(timestampPart, 10);
-  if (isNaN(timestampNum) || timestampNum <= 1000000000000) return null;
+  if (Number.isNaN(timestampNum) || timestampNum <= 1000000000000) return null;
 
   const timestamp = new Date(timestampNum);
-  if (isNaN(timestamp.getTime())) return null;
+  if (Number.isNaN(timestamp.getTime())) return null;
 
-  let authorId = 'system';
+  let authorId = "system";
   const thirdPart = getArrayElement(parts, 2);
-  if (parts.length >= 4 && thirdPart && !thirdPart.includes('.')) {
+  if (parts.length >= 4 && thirdPart && !thirdPart.includes(".")) {
     authorId = thirdPart;
   }
 
-  return { gameId: 'feed', authorId, timestamp };
+  return { gameId: "feed", authorId, timestamp };
 }
 
 /**
  * Parse Format 4: game-{gameId}-{timestamp} (legacy)
  */
 function parseGameFormat(postId: string): ParsedPostMetadata | null {
-  if (!postId.startsWith('game-')) return null;
+  if (!postId.startsWith("game-")) return null;
 
-  const parts = postId.split('-');
+  const parts = postId.split("-");
   if (parts.length < 3) return null;
 
   const gameId = getArrayElement(parts, 1);
   if (!gameId) return null;
 
-  const timestampPart = parts.slice(2).join('-');
+  const timestampPart = parts.slice(2).join("-");
   if (!timestampPart) return null;
 
   // Try ISO date first
   let timestamp = new Date(timestampPart);
-  if (isNaN(timestamp.getTime())) {
+  if (Number.isNaN(timestamp.getTime())) {
     // Try numeric timestamp
     const numericTimestamp = Number.parseInt(timestampPart, 10);
-    if (isNaN(numericTimestamp)) return null;
+    if (Number.isNaN(numericTimestamp)) return null;
     timestamp = new Date(numericTimestamp);
-    if (isNaN(timestamp.getTime())) return null;
+    if (Number.isNaN(timestamp.getTime())) return null;
   }
 
-  return { gameId, authorId: 'system', timestamp };
+  return { gameId, authorId: "system", timestamp };
 }
 
 /**

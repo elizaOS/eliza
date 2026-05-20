@@ -3,12 +3,12 @@ import {
   publicRateLimit,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
+} from "@feed/api";
 import {
   PredictionDbAdapter,
   PredictionMarketService,
   PredictionPricing,
-} from '@feed/core/markets/prediction';
+} from "@feed/core/markets/prediction";
 import {
   and,
   balanceTransactions,
@@ -17,21 +17,21 @@ import {
   eq,
   inArray,
   npcTrades,
-} from '@feed/db';
-import { FEE_CONFIG, WalletService } from '@feed/engine';
+} from "@feed/db";
+import { FEE_CONFIG, WalletService } from "@feed/engine";
 import {
   logger,
   MarketQuerySchema,
   PredictionMarketIdSchema,
   toISOOrNull,
-} from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { z } from 'zod';
+} from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { z } from "zod";
 import {
   buildPredictionUserPositionSnapshot,
   type PredictionUserPositionSnapshot,
-} from '../_position-snapshot';
-import { getPublicResolutionAudit } from '../_resolution-audit';
+} from "../_position-snapshot";
+import { getPublicResolutionAudit } from "../_resolution-audit";
 
 /**
  * GET /api/markets/predictions/[id]
@@ -40,7 +40,7 @@ import { getPublicResolutionAudit } from '../_resolution-audit';
 export const GET = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ id: string }> }
+    context: { params: Promise<{ id: string }> },
   ) => {
     const {
       error,
@@ -50,11 +50,11 @@ export const GET = withErrorHandling(
     if (error) return error;
 
     const { id: marketId } = PredictionMarketIdSchema.parse(
-      await context.params
+      await context.params,
     );
     const { searchParams } = new URL(request.url);
     const queryParse = MarketQuerySchema.merge(
-      z.object({ userId: z.string().optional() })
+      z.object({ userId: z.string().optional() }),
     )
       .partial()
       .safeParse(Object.fromEntries(searchParams));
@@ -62,10 +62,10 @@ export const GET = withErrorHandling(
     if (!queryParse.success) {
       return successResponse(
         {
-          error: 'Invalid query parameters',
+          error: "Invalid query parameters",
           details: queryParse.error.flatten(),
         },
-        400
+        400,
       );
     }
 
@@ -79,16 +79,16 @@ export const GET = withErrorHandling(
             userId,
             amount,
             reason,
-            description ?? '',
-            relatedId
+            description ?? "",
+            relatedId,
           ),
         credit: ({ userId, amount, reason, description, relatedId }) =>
           WalletService.credit(
             userId,
             amount,
             reason,
-            description ?? '',
-            relatedId
+            description ?? "",
+            relatedId,
           ),
         recordPnL: async ({ userId, pnl, reason, relatedId }) => {
           await WalletService.recordPnL(userId, pnl, reason, relatedId);
@@ -108,7 +108,7 @@ export const GET = withErrorHandling(
       (await service.ensureMarketExists({ marketId }).catch(() => null));
 
     if (!market) {
-      return successResponse({ error: 'Market not found' }, 404);
+      return successResponse({ error: "Market not found" }, 404);
     }
 
     const yesShares = market.yesShares;
@@ -116,9 +116,9 @@ export const GET = withErrorHandling(
     const yesProb = PredictionPricing.getCurrentPrice(
       yesShares,
       noShares,
-      'yes'
+      "yes",
     );
-    const noProb = PredictionPricing.getCurrentPrice(yesShares, noShares, 'no');
+    const noProb = PredictionPricing.getCurrentPrice(yesShares, noShares, "no");
 
     let userPositions: PredictionUserPositionSnapshot[] = [];
     let primaryPosition: PredictionUserPositionSnapshot | null = null;
@@ -130,7 +130,7 @@ export const GET = withErrorHandling(
         .map((p) => buildPredictionUserPositionSnapshot(p, market))
         .filter(
           (position): position is PredictionUserPositionSnapshot =>
-            position !== null
+            position !== null,
         );
       primaryPosition = userPositions[0] ?? null;
     }
@@ -142,17 +142,17 @@ export const GET = withErrorHandling(
         .where(
           and(
             eq(balanceTransactions.relatedId, marketId),
-            inArray(balanceTransactions.type, ['pred_buy', 'pred_sell'])
-          )
+            inArray(balanceTransactions.type, ["pred_buy", "pred_sell"]),
+          ),
         ),
       db
         .select({ count: count() })
         .from(npcTrades)
         .where(
           and(
-            eq(npcTrades.marketType, 'prediction'),
-            eq(npcTrades.marketId, marketId)
-          )
+            eq(npcTrades.marketType, "prediction"),
+            eq(npcTrades.marketId, marketId),
+          ),
         ),
     ]);
 
@@ -166,7 +166,7 @@ export const GET = withErrorHandling(
       id: market.id,
       text: market.question,
       question: market.question,
-      status: market.resolved ? 'resolved' : 'active',
+      status: market.resolved ? "resolved" : "active",
       resolution: market.resolution ?? null,
       resolved: market.resolved,
       resolutionDate: toISOOrNull(market.endDate),
@@ -186,13 +186,13 @@ export const GET = withErrorHandling(
     };
 
     logger.info(
-      'Prediction market fetched via core service',
+      "Prediction market fetched via core service",
       { marketId, hasUserId: !!userId },
-      'GET /api/markets/predictions/[id]'
+      "GET /api/markets/predictions/[id]",
     );
 
     const res = successResponse({ success: true, market: payload });
     if (rateLimitInfo) addPublicReadHeaders(res, rateLimitInfo);
     return res;
-  }
+  },
 );

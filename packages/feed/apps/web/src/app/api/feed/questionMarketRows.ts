@@ -9,13 +9,13 @@ interface QuestionMarketRow {
 
 function shouldReplaceRow<T extends QuestionMarketRow>(
   current: T,
-  candidate: T
+  candidate: T,
 ): boolean {
   return current.marketId === null && candidate.marketId !== null;
 }
 
 export function dedupeQuestionMarketRows<T extends QuestionMarketRow>(
-  rows: T[]
+  rows: T[],
 ): T[] {
   const deduped = new Map<number, T>();
 

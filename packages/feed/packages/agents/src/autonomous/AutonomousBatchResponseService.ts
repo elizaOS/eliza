@@ -12,24 +12,24 @@
  * 4. Executes responses for approved interactions
  */
 
-import { countTokensSync, truncateToTokenLimitSync } from '@feed/api';
-import type { UserAgentConfig } from '@feed/db';
-import type { IAgentRuntime } from '@elizaos/core';
-import { parseKeyValueXml } from '@elizaos/core';
-import { callGroqDirect } from '../llm/direct-groq';
-import { agentService } from '../services/AgentService';
-import { getAgentConfig } from '../shared/agent-config';
-import { logger } from '../shared/logger';
-import { type AgentContext, getAgentContext } from './agent-context';
-import { executeDirectComment, executeDirectMessage } from './DirectExecutors';
+import type { IAgentRuntime } from "@elizaos/core";
+import { parseKeyValueXml } from "@elizaos/core";
+import { countTokensSync, truncateToTokenLimitSync } from "@feed/api";
+import type { UserAgentConfig } from "@feed/db";
+import { callGroqDirect } from "../llm/direct-groq";
+import { agentService } from "../services/AgentService";
+import { getAgentConfig } from "../shared/agent-config";
+import { logger } from "../shared/logger";
+import { type AgentContext, getAgentContext } from "./agent-context";
+import { executeDirectComment, executeDirectMessage } from "./DirectExecutors";
 import type {
   PendingChatMessage,
   PendingCommentReply,
-} from './templates/multi-step-decision';
+} from "./templates/multi-step-decision";
 import {
   gatherPendingChatMessages,
   gatherPendingCommentReplies,
-} from './utils';
+} from "./utils";
 
 // =============================================================================
 // Types
@@ -50,7 +50,7 @@ interface PostInfo {
 }
 
 interface PendingInteraction {
-  type: 'comment_reply' | 'chat_message';
+  type: "comment_reply" | "chat_message";
   id: string;
   // Comment reply fields
   postId?: string;
@@ -68,7 +68,7 @@ interface PendingInteraction {
 
 interface ResponseDecision {
   shouldRespond: boolean;
-  priority?: 'low' | 'medium' | 'high';
+  priority?: "low" | "medium" | "high";
   reasoning?: string;
 }
 
@@ -81,14 +81,14 @@ export class AutonomousBatchResponseService {
   // Helper: Format interactions grouped by post for evaluation prompt
   // ===========================================================================
   private formatInteractionsGroupedByPost(
-    interactions: PendingInteraction[]
+    interactions: PendingInteraction[],
   ): string {
     // Group interactions by postId
     const byPost = new Map<string, PendingInteraction[]>();
     const chatMessages: PendingInteraction[] = [];
 
     for (const interaction of interactions) {
-      if (interaction.type === 'chat_message' || !interaction.postId) {
+      if (interaction.type === "chat_message" || !interaction.postId) {
         chatMessages.push(interaction);
       } else {
         const postInteractions = byPost.get(interaction.postId) || [];
@@ -104,9 +104,9 @@ export class AutonomousBatchResponseService {
       const firstInteraction = postInteractions[0];
       const post = firstInteraction?.post;
       const postAuthor = post?.isYourPost
-        ? 'You'
-        : post?.authorName || 'Unknown';
-      const postContent = post?.content || '[Post content unavailable]';
+        ? "You"
+        : post?.authorName || "Unknown";
+      const postContent = post?.content || "[Post content unavailable]";
 
       // Count interactions per author on this post
       const authorCounts = new Map<string, number>();
@@ -117,29 +117,29 @@ export class AutonomousBatchResponseService {
       const interactionLines = postInteractions.map((interaction) => {
         const authorCount = authorCounts.get(interaction.author) || 1;
         const authorNote =
-          authorCount > 1 ? ` (${authorCount} interactions on this post)` : '';
+          authorCount > 1 ? ` (${authorCount} interactions on this post)` : "";
 
         // Format thread without post info (since we're showing it at post level)
         const threadLines =
           interaction.thread?.map((msg, idx) => {
             const isLast = idx === (interaction.thread?.length || 0) - 1;
-            const replyIndicator = isLast ? ' [REPLY TO THIS]' : '';
+            const replyIndicator = isLast ? " [REPLY TO THIS]" : "";
             const depthLabel =
-              idx === 0 ? 'Comment' : `Reply (depth ${msg.depth})`;
+              idx === 0 ? "Comment" : `Reply (depth ${msg.depth})`;
             return `    - ${depthLabel} by @${msg.authorName}: "${msg.content}"${replyIndicator}`;
           }) || [];
 
         return `  [ID: ${interaction.id}] @${interaction.author}${authorNote}
   Time: ${new Date(interaction.timestamp).toLocaleString()}
   Thread:
-${threadLines.join('\n')}`;
+${threadLines.join("\n")}`;
       });
 
       sections.push(`═══════════════════════════════════════════════════════════════
-POST by @${postAuthor}: "${postContent.substring(0, 200)}${postContent.length > 200 ? '...' : ''}"
+POST by @${postAuthor}: "${postContent.substring(0, 200)}${postContent.length > 200 ? "..." : ""}"
 ═══════════════════════════════════════════════════════════════
 
-${interactionLines.join('\n\n')}`);
+${interactionLines.join("\n\n")}`);
     }
 
     // Format chat messages separately
@@ -147,17 +147,17 @@ ${interactionLines.join('\n\n')}`);
       const chatLines = chatMessages.map(
         (interaction) => `  [ID: ${interaction.id}] @${interaction.author}
   Time: ${new Date(interaction.timestamp).toLocaleString()}
-  Message: "${interaction.content}"`
+  Message: "${interaction.content}"`,
       );
 
       sections.push(`═══════════════════════════════════════════════════════════════
 DIRECT MESSAGES
 ═══════════════════════════════════════════════════════════════
 
-${chatLines.join('\n\n')}`);
+${chatLines.join("\n\n")}`);
     }
 
-    return sections.join('\n\n');
+    return sections.join("\n\n");
   }
 
   // ===========================================================================
@@ -165,7 +165,7 @@ ${chatLines.join('\n\n')}`);
   // Uses shared utilities and converts to internal format
   // ===========================================================================
   async gatherPendingInteractions(
-    agentUserId: string
+    agentUserId: string,
   ): Promise<PendingInteraction[]> {
     // Gather all types in parallel using shared utilities
     const [commentReplies, chatMessages] = await Promise.all([
@@ -189,10 +189,10 @@ ${chatLines.join('\n\n')}`);
    * Convert PendingCommentReply to internal PendingInteraction format
    */
   private convertCommentReplies(
-    replies: PendingCommentReply[]
+    replies: PendingCommentReply[],
   ): PendingInteraction[] {
     return replies.map((reply) => ({
-      type: 'comment_reply' as const,
+      type: "comment_reply" as const,
       id: reply.id,
       postId: reply.postId,
       targetCommentId: reply.id,
@@ -209,10 +209,10 @@ ${chatLines.join('\n\n')}`);
    * Convert PendingChatMessage to internal PendingInteraction format
    */
   private convertChatMessages(
-    messages: PendingChatMessage[]
+    messages: PendingChatMessage[],
   ): PendingInteraction[] {
     return messages.map((msg) => ({
-      type: 'chat_message' as const,
+      type: "chat_message" as const,
       id: msg.id,
       chatId: msg.chatId,
       author: msg.author,
@@ -230,7 +230,7 @@ ${chatLines.join('\n\n')}`);
     _runtime: IAgentRuntime,
     interactions: PendingInteraction[],
     agentContext: AgentContext,
-    agentConfig: UserAgentConfig | null
+    agentConfig: UserAgentConfig | null,
   ): Promise<ResponseDecision[]> {
     if (interactions.length === 0) {
       return [];
@@ -242,7 +242,7 @@ ${chatLines.join('\n\n')}`);
 
     // Build evaluation prompt - ask for IDs instead of positional true/false
     // This is more robust as it doesn't rely on counting/ordering
-    const prompt = `${config?.systemPrompt ?? 'You are an AI agent on Feed.'}
+    const prompt = `${config?.systemPrompt ?? "You are an AI agent on Feed."}
 
 You are ${agentDisplayName}, an AI agent on Feed. You need to decide which interactions warrant a response.
 
@@ -293,7 +293,7 @@ Do NOT include any explanations, only the XML format above.`;
       logger.warn(
         `Evaluation prompt too long: ${estimatedTokens} tokens, truncating`,
         undefined,
-        'AutonomousBatchResponse'
+        "AutonomousBatchResponse",
       );
       const truncated = truncateToTokenLimitSync(prompt, 30000, {
         ellipsis: true,
@@ -302,7 +302,7 @@ Do NOT include any explanations, only the XML format above.`;
       logger.info(
         `Truncated to ${truncated.tokens} tokens`,
         undefined,
-        'AutonomousBatchResponse'
+        "AutonomousBatchResponse",
       );
     }
 
@@ -322,33 +322,33 @@ Do NOT include any explanations, only the XML format above.`;
           callGroqDirect({
             prompt: currentPrompt,
             system: config?.systemPrompt ?? undefined,
-            modelSize: 'large', // Large model: Better at structured outputs
+            modelSize: "large", // Large model: Better at structured outputs
             runtime: _runtime, // Pass runtime to access W&B trained models AND trajectory context
             temperature: isRetry ? 0.5 : 0.6,
             maxTokens: 16384,
-            actionType: 'evaluate_interactions',
-            purpose: 'evaluation', // RLAIF: This is an evaluation/reasoning call
+            actionType: "evaluate_interactions",
+            purpose: "evaluation", // RLAIF: This is an evaluation/reasoning call
           }),
           new Promise<string>((_, reject) => {
             setTimeout(() => {
-              reject(new Error('Timeout'));
+              reject(new Error("Timeout"));
             }, 30000); // 30 second timeout
           }),
         ]);
 
         // Extract <response>...</response> block before parsing
         const responseMatch = decisionText.match(
-          /<response>([\s\S]*?)<\/response>/i
+          /<response>([\s\S]*?)<\/response>/i,
         );
         if (!responseMatch) {
           logger.warn(
-            'No <response> block found in batch evaluation',
+            "No <response> block found in batch evaluation",
             {
               agentUserId,
               attempt,
               raw: decisionText.substring(0, 500),
             },
-            'AutonomousBatchResponse'
+            "AutonomousBatchResponse",
           );
           continue;
         }
@@ -360,13 +360,13 @@ Do NOT include any explanations, only the XML format above.`;
 
         if (!parsed || parsed.respond_to === undefined) {
           logger.warn(
-            'Failed to parse respond_to from XML response',
+            "Failed to parse respond_to from XML response",
             {
               agentUserId,
               attempt,
               raw: responseMatch[0].substring(0, 200),
             },
-            'AutonomousBatchResponse'
+            "AutonomousBatchResponse",
           );
           continue;
         }
@@ -374,12 +374,12 @@ Do NOT include any explanations, only the XML format above.`;
         // Parse the IDs - empty string means no responses
         const responseValue = parsed.respond_to.trim();
 
-        if (responseValue === '') {
+        if (responseValue === "") {
           respondToIds = new Set();
         } else {
           // Parse comma-separated IDs
           const ids = parsed.respond_to
-            .split(',')
+            .split(",")
             .map((id) => id.trim())
             .filter(Boolean);
 
@@ -394,7 +394,7 @@ Do NOT include any explanations, only the XML format above.`;
               logger.warn(
                 `LLM returned unknown interaction ID: ${id}`,
                 undefined,
-                'AutonomousBatchResponse'
+                "AutonomousBatchResponse",
               );
             }
           }
@@ -405,22 +405,22 @@ Do NOT include any explanations, only the XML format above.`;
         logger.info(
           `Agent selected ${respondToIds.size}/${interactions.length} interactions to respond to`,
           undefined,
-          'AutonomousBatchResponse'
+          "AutonomousBatchResponse",
         );
         break;
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
-        if (errorMsg === 'Timeout') {
+        if (errorMsg === "Timeout") {
           logger.warn(
             `Interaction evaluation timeout (attempt ${attempt}/${MAX_ATTEMPTS})`,
             { agentUserId },
-            'AutonomousBatchResponse'
+            "AutonomousBatchResponse",
           );
         } else {
           logger.warn(
             `Interaction evaluation attempt ${attempt} failed`,
             { agentUserId, error: errorMsg },
-            'AutonomousBatchResponse'
+            "AutonomousBatchResponse",
           );
         }
       }
@@ -431,14 +431,14 @@ Do NOT include any explanations, only the XML format above.`;
       logger.error(
         `Failed to evaluate interactions after ${MAX_ATTEMPTS} attempts, defaulting to no responses`,
         { agentUserId },
-        'AutonomousBatchResponse'
+        "AutonomousBatchResponse",
       );
       respondToIds = new Set();
     }
 
     // Convert to ResponseDecision array (maintaining order of original interactions)
     return interactions.map((interaction) => ({
-      shouldRespond: respondToIds!.has(interaction.id),
+      shouldRespond: respondToIds?.has(interaction.id),
     }));
   }
 
@@ -451,7 +451,7 @@ Do NOT include any explanations, only the XML format above.`;
     interactions: PendingInteraction[],
     decisions: ResponseDecision[],
     agentContext: AgentContext,
-    agentConfig: UserAgentConfig | null
+    agentConfig: UserAgentConfig | null,
   ): Promise<number> {
     // Use pre-fetched agent context and config (passed from processBatch)
     const agentDisplayName = agentContext.displayName;
@@ -463,10 +463,10 @@ Do NOT include any explanations, only the XML format above.`;
       const interaction = interactions[i];
       const decision = decisions[i];
 
-      if (!interaction || !decision || !decision.shouldRespond) continue;
+      if (!interaction || !decision?.shouldRespond) continue;
 
       // Generate response with retry loop
-      const responsePrompt = `${respConfig?.systemPrompt ?? 'You are an AI agent on Feed.'}
+      const responsePrompt = `${respConfig?.systemPrompt ?? "You are an AI agent on Feed."}
 
 You are ${agentDisplayName}, responding to an interaction.
 
@@ -529,33 +529,33 @@ LEAVE EMPTY IF:
             callGroqDirect({
               prompt: currentPrompt,
               system: respConfig?.systemPrompt ?? undefined,
-              modelSize: 'large', // Large model: Higher quality responses
+              modelSize: "large", // Large model: Higher quality responses
               runtime: _runtime, // Pass runtime to access W&B trained models AND trajectory context
               temperature: isRetry ? 0.6 : 0.8,
               maxTokens: 16384,
-              actionType: 'execute_response',
-              purpose: 'response', // RLAIF: This is a response generation call
+              actionType: "execute_response",
+              purpose: "response", // RLAIF: This is a response generation call
             }),
             new Promise<string>((_, reject) => {
               setTimeout(() => {
-                reject(new Error('Timeout'));
+                reject(new Error("Timeout"));
               }, 20000); // 20 second timeout
             }),
           ]);
 
           // Extract <response>...</response> block
           const responseMatch = responseContent.match(
-            /<response>([\s\S]*?)<\/response>/i
+            /<response>([\s\S]*?)<\/response>/i,
           );
           if (!responseMatch) {
             logger.warn(
-              'No <response> block found in response generation',
+              "No <response> block found in response generation",
               {
                 interactionId: interaction.id,
                 attempt,
                 raw: responseContent.substring(0, 300),
               },
-              'AutonomousBatchResponse'
+              "AutonomousBatchResponse",
             );
             continue;
           }
@@ -568,19 +568,19 @@ LEAVE EMPTY IF:
 
           if (!parsed?.text || parsed.text.trim().length === 0) {
             logger.warn(
-              'Failed to parse XML response in response generation',
+              "Failed to parse XML response in response generation",
               {
                 interactionId: interaction.id,
                 attempt,
                 raw: responseContent.substring(0, 300),
               },
-              'AutonomousBatchResponse'
+              "AutonomousBatchResponse",
             );
             continue;
           }
 
           // Success!
-          cleanContent = parsed.text.trim().replace(/^["']|["']$/g, '');
+          cleanContent = parsed.text.trim().replace(/^["']|["']$/g, "");
           const thought = parsed.thought?.trim();
 
           // Check if LLM decided to skip (empty response)
@@ -588,15 +588,15 @@ LEAVE EMPTY IF:
             logger.info(
               `LLM chose to skip interaction ${interaction.id} (empty response)`,
               { thought },
-              'AutonomousBatchResponse'
+              "AutonomousBatchResponse",
             );
 
             // Log skipped interaction if there was reasoning
             if (thought) {
               agentService
                 .createLog(agentUserId, {
-                  type: 'system',
-                  level: 'debug',
+                  type: "system",
+                  level: "debug",
                   message: `Skipped automated response to ${interaction.type}`,
                   prompt: currentPrompt,
                   completion: responseContent,
@@ -609,9 +609,9 @@ LEAVE EMPTY IF:
                 })
                 .catch((err) => {
                   logger.warn(
-                    'Failed to create log for skipped response',
+                    "Failed to create log for skipped response",
                     { error: err, interactionId: interaction.id },
-                    'AutonomousBatchResponse'
+                    "AutonomousBatchResponse",
                   );
                 });
             }
@@ -625,8 +625,8 @@ LEAVE EMPTY IF:
             // No await needed if we don't care about the result
             agentService
               .createLog(agentUserId, {
-                type: interaction.type === 'comment_reply' ? 'comment' : 'chat',
-                level: 'info',
+                type: interaction.type === "comment_reply" ? "comment" : "chat",
+                level: "info",
                 message: `Generated automated response to ${interaction.type}`,
                 prompt: currentPrompt,
                 completion: responseContent,
@@ -639,9 +639,9 @@ LEAVE EMPTY IF:
               })
               .catch((err) => {
                 logger.error(
-                  'Failed to create log for automated response',
+                  "Failed to create log for automated response",
                   { error: err },
-                  'AutonomousBatchResponse'
+                  "AutonomousBatchResponse",
                 );
               });
           }
@@ -649,17 +649,17 @@ LEAVE EMPTY IF:
         } catch (error) {
           const errorMsg =
             error instanceof Error ? error.message : String(error);
-          if (errorMsg === 'Timeout') {
+          if (errorMsg === "Timeout") {
             logger.warn(
               `Response generation timeout (attempt ${attempt}/${RESPONSE_MAX_ATTEMPTS})`,
               { interactionId: interaction.id },
-              'AutonomousBatchResponse'
+              "AutonomousBatchResponse",
             );
           } else {
             logger.warn(
               `Response generation attempt ${attempt} failed`,
               { interactionId: interaction.id, error: errorMsg },
-              'AutonomousBatchResponse'
+              "AutonomousBatchResponse",
             );
           }
         }
@@ -669,14 +669,14 @@ LEAVE EMPTY IF:
         logger.warn(
           `Failed to generate valid response for interaction ${interaction.id}`,
           undefined,
-          'AutonomousBatchResponse'
+          "AutonomousBatchResponse",
         );
         continue;
       }
 
       // Post the response based on type
       if (
-        interaction.type === 'comment_reply' &&
+        interaction.type === "comment_reply" &&
         interaction.postId &&
         interaction.targetCommentId
       ) {
@@ -693,16 +693,16 @@ LEAVE EMPTY IF:
           logger.info(
             `Agent replied to comment ${interaction.targetCommentId} on post ${interaction.postId}`,
             undefined,
-            'AutonomousBatchResponse'
+            "AutonomousBatchResponse",
           );
         } else {
           logger.warn(
             `Failed to create comment reply: ${commentResult.error}`,
             { interactionId: interaction.id },
-            'AutonomousBatchResponse'
+            "AutonomousBatchResponse",
           );
         }
-      } else if (interaction.type === 'chat_message' && interaction.chatId) {
+      } else if (interaction.type === "chat_message" && interaction.chatId) {
         // Send chat message
         const messageResult = await executeDirectMessage({
           agentUserId,
@@ -715,13 +715,13 @@ LEAVE EMPTY IF:
           logger.info(
             `Agent responded in chat ${interaction.chatId}`,
             undefined,
-            'AutonomousBatchResponse'
+            "AutonomousBatchResponse",
           );
         } else {
           logger.warn(
             `Failed to create chat message: ${messageResult.error}`,
             { interactionId: interaction.id },
-            'AutonomousBatchResponse'
+            "AutonomousBatchResponse",
           );
         }
       }
@@ -738,12 +738,12 @@ LEAVE EMPTY IF:
   // ===========================================================================
   async processBatch(
     agentUserId: string,
-    _runtime: IAgentRuntime
+    _runtime: IAgentRuntime,
   ): Promise<number> {
     logger.info(
       `Starting batch response processing for agent ${agentUserId}`,
       undefined,
-      'AutonomousBatchResponse'
+      "AutonomousBatchResponse",
     );
 
     // Step 1: Gather all pending interactions
@@ -751,9 +751,9 @@ LEAVE EMPTY IF:
 
     if (allInteractions.length === 0) {
       logger.info(
-        'No pending interactions to process',
+        "No pending interactions to process",
         undefined,
-        'AutonomousBatchResponse'
+        "AutonomousBatchResponse",
       );
       return 0;
     }
@@ -761,7 +761,7 @@ LEAVE EMPTY IF:
     logger.info(
       `Found ${allInteractions.length} pending interactions`,
       undefined,
-      'AutonomousBatchResponse'
+      "AutonomousBatchResponse",
     );
 
     // Cap interactions BEFORE evaluation to prevent context overflow
@@ -771,7 +771,7 @@ LEAVE EMPTY IF:
       logger.info(
         `Capped interactions from ${allInteractions.length} to 30`,
         undefined,
-        'AutonomousBatchResponse'
+        "AutonomousBatchResponse",
       );
     }
 
@@ -785,14 +785,14 @@ LEAVE EMPTY IF:
       _runtime,
       cappedInteractions,
       agentContext,
-      agentConfig
+      agentConfig,
     );
 
     const responseCount = decisions.filter((d) => d.shouldRespond).length;
     logger.info(
       `Agent decided to respond to ${responseCount}/${cappedInteractions.length} interactions`,
       undefined,
-      'AutonomousBatchResponse'
+      "AutonomousBatchResponse",
     );
 
     if (responseCount === 0) {
@@ -806,13 +806,13 @@ LEAVE EMPTY IF:
       cappedInteractions,
       decisions,
       agentContext,
-      agentConfig
+      agentConfig,
     );
 
     logger.info(
       `Successfully created ${responsesCreated} responses`,
       undefined,
-      'AutonomousBatchResponse'
+      "AutonomousBatchResponse",
     );
 
     return responsesCreated;

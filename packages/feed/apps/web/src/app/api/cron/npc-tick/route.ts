@@ -20,7 +20,7 @@ import {
   autonomousCoordinator,
   npcBootstrapService,
   releaseAgentLock,
-} from '@feed/agents';
+} from "@feed/agents";
 import {
   DistributedLockService,
   getCacheOrFetch,
@@ -28,8 +28,8 @@ import {
   relayCronToStaging,
   verifyCronAuth,
   withErrorHandling,
-} from '@feed/api';
-import { db, eq, games } from '@feed/db';
+} from "@feed/api";
+import { db, eq, games } from "@feed/db";
 import {
   ActorSocialActions,
   FeedLLMClient,
@@ -51,11 +51,11 @@ import {
   StaticDataRegistry,
   secureRandom,
   worldFactsService,
-} from '@feed/engine';
-import { extractErrorMessage, logger, toISO } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { ensureEngineServices } from '@/lib/engine/ensure-engine-services';
+} from "@feed/engine";
+import { extractErrorMessage, logger, toISO } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { ensureEngineServices } from "@/lib/engine/ensure-engine-services";
 
 // =============================================================================
 // TIMESTAMP STAGGERING (Organic pacing)
@@ -101,7 +101,7 @@ interface GameState {
 
 // Vercel function configuration
 export const maxDuration = 300; // 5 minutes max for NPC tick
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 /**
  * Number of NPCs to process per tick (rotates through all).
@@ -133,11 +133,11 @@ export const GET = withErrorHandling(async function GET(req: NextRequest) {
  */
 export const POST = withErrorHandling(async function POST(_req: NextRequest) {
   // Verify cron authorization
-  if (!verifyCronAuth(_req, { jobName: 'NPCTick' })) {
-    logger.warn('Unauthorized npc-tick request attempt', undefined, 'NPCTick');
+  if (!verifyCronAuth(_req, { jobName: "NPCTick" })) {
+    logger.warn("Unauthorized npc-tick request attempt", undefined, "NPCTick");
     return NextResponse.json(
-      { error: 'Unauthorized cron request' },
-      { status: 401 }
+      { error: "Unauthorized cron request" },
+      { status: 401 },
     );
   }
 
@@ -146,36 +146,36 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
 
   const startTime = Date.now();
   const processId = `npc-tick-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
-  logger.info('NPC tick started', { processId }, 'NPCTick');
+  logger.info("NPC tick started", { processId }, "NPCTick");
 
   // Relay to staging if configured (fan-out)
-  const relayResult = await relayCronToStaging(_req, 'npc-tick');
+  const relayResult = await relayCronToStaging(_req, "npc-tick");
   if (relayResult.forwarded) {
     logger.info(
-      'Cron execution relayed to staging (fan-out: continuing local execution)',
+      "Cron execution relayed to staging (fan-out: continuing local execution)",
       { status: relayResult.status, error: relayResult.error },
-      'NPCTick'
+      "NPCTick",
     );
   }
 
   // Acquire global lock to prevent overlapping cron invocations
   // Duration matches maxDuration (300s) to prevent overlap when ticks take longer than cron interval
   const globalLockAcquired = await DistributedLockService.acquireLock({
-    lockId: 'npc-tick-global',
+    lockId: "npc-tick-global",
     durationMs: 300 * 1000, // 300 seconds (5 minutes) - matches maxDuration
-    operation: 'npc-tick-global',
+    operation: "npc-tick-global",
     processId,
   });
   if (!globalLockAcquired) {
     logger.info(
-      'NPC tick skipped - previous tick still running',
+      "NPC tick skipped - previous tick still running",
       { processId },
-      'NPCTick'
+      "NPCTick",
     );
     return NextResponse.json({
       success: true,
       skipped: true,
-      reason: 'Previous tick still running',
+      reason: "Previous tick still running",
       processed: 0,
     });
   }
@@ -184,23 +184,23 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
   try {
     // Check GAME_START environment variable
     const gameStartEnv = process.env.GAME_START?.toLowerCase();
-    if (gameStartEnv === 'false' || gameStartEnv === '0') {
+    if (gameStartEnv === "false" || gameStartEnv === "0") {
       logger.info(
-        'Game disabled via GAME_START env var - skipping NPC tick',
+        "Game disabled via GAME_START env var - skipping NPC tick",
         { GAME_START: process.env.GAME_START },
-        'NPCTick'
+        "NPCTick",
       );
       return NextResponse.json({
         success: true,
         skipped: true,
-        reason: 'Game disabled via GAME_START environment variable',
+        reason: "Game disabled via GAME_START environment variable",
         processed: 0,
       });
     }
 
     // Check Game status from database (cached for 60s to reduce DB load)
     const gameState = await getCacheOrFetch<GameState | null>(
-      'continuous-game',
+      "continuous-game",
       async () => {
         const [game] = await db
           .select({
@@ -214,15 +214,15 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
           .limit(1);
         return game ?? null;
       },
-      { namespace: 'npc-tick', ttl: 60 }
+      { namespace: "npc-tick", ttl: 60 },
     );
 
     if (!gameState) {
-      logger.info('NPC tick skipped (No continuous game found)', {}, 'NPCTick');
+      logger.info("NPC tick skipped (No continuous game found)", {}, "NPCTick");
       return NextResponse.json({
         success: true,
         skipped: true,
-        reason: 'No continuous game found',
+        reason: "No continuous game found",
         duration: Date.now() - startTime,
         processed: 0,
       });
@@ -230,14 +230,14 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
 
     if (!gameState.isRunning) {
       logger.info(
-        'NPC tick paused (Game is not running)',
+        "NPC tick paused (Game is not running)",
         { gameId: gameState.id },
-        'NPCTick'
+        "NPCTick",
       );
       return NextResponse.json({
         success: true,
         skipped: true,
-        reason: 'Game is paused',
+        reason: "Game is paused",
         gameId: gameState.id,
         duration: Date.now() - startTime,
         processed: 0,
@@ -248,16 +248,16 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
     // Use word-boundary regex to avoid false positives like "Contest" or "Testament"
     const testActorPattern = /\btest\b/i;
     const allNpcs = StaticDataRegistry.getAllActors().filter(
-      (a) => !testActorPattern.test(a.name)
+      (a) => !testActorPattern.test(a.name),
     );
 
     if (allNpcs.length === 0) {
-      logger.warn('No NPCs found in registry', {}, 'NPCTick');
+      logger.warn("No NPCs found in registry", {}, "NPCTick");
       return NextResponse.json({
         success: true,
         processed: 0,
         duration: Date.now() - startTime,
-        warning: 'No NPCs found in registry',
+        warning: "No NPCs found in registry",
       });
     }
 
@@ -271,17 +271,17 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
     const [recentlyMentionedActorIds, activeEventsData] = await Promise.all([
       getRecentlyMentionedActorIds().catch((error) => {
         logger.warn(
-          'Failed to get recently mentioned actors',
+          "Failed to get recently mentioned actors",
           { error: error instanceof Error ? error.message : String(error) },
-          'NPCTick'
+          "NPCTick",
         );
         return [];
       }),
       getActiveEventsForPosting().catch((error) => {
         logger.warn(
-          'Failed to get active events for posting',
+          "Failed to get active events for posting",
           { error: error instanceof Error ? error.message : String(error) },
-          'NPCTick'
+          "NPCTick",
         );
         return { activeEventQuestionIds: [], activeEvents: [] };
       }),
@@ -299,7 +299,7 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
       logger.info(
         `${recentlyMentionedActorIds.length} NPCs were recently mentioned`,
         { recentlyMentionedActorIds },
-        'NPCTick'
+        "NPCTick",
       );
     }
 
@@ -307,7 +307,7 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
       logger.info(
         `${activeEventsData.activeEvents.length} active events affecting NPC probability`,
         { activeEventCount: activeEventsData.activeEvents.length },
-        'NPCTick'
+        "NPCTick",
       );
     }
 
@@ -320,13 +320,13 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
     // Days are 1-indexed (Day 1 is first day of game), default to 1 if not set
     const gameDay = gameState.currentDay ?? 1;
     const activeNpcs = allNpcs.filter((npc) =>
-      isActiveHour(npc, currentHour, gameDay)
+      isActiveHour(npc, currentHour, gameDay),
     );
 
     logger.info(
       `${activeNpcs.length}/${allNpcs.length} NPCs active this hour (ID-based rotation)`,
       { currentHour, activeCount: activeNpcs.length },
-      'NPCTick'
+      "NPCTick",
     );
 
     // Calculate probability for each active NPC (equal chance with spam prevention)
@@ -335,7 +335,7 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
       probability: postingProbabilityService.calculate(
         npc,
         stateMap.get(npc.id) ?? null,
-        postingContext
+        postingContext,
       ),
     }));
 
@@ -343,11 +343,11 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
     // DIVERSITY GUARANTEE: Reserve 30% of batch for NPCs that haven't posted today
     // This ensures broader coverage across all NPCs instead of same ones repeatedly
     // =======================================================================
-    const today = toISO(now).split('T')[0];
+    const today = toISO(now).split("T")[0];
     const neverPostedToday = activeNpcs.filter((npc) => {
       const state = stateMap.get(npc.id);
       const lastPost = state?.lastPostAt;
-      return !lastPost || toISO(lastPost).split('T')[0] !== today;
+      return !lastPost || toISO(lastPost).split("T")[0] !== today;
     });
 
     // Reserve 30% of batch for diversity (NPCs that haven't posted today)
@@ -367,18 +367,18 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
     const shuffledNeverPosted = fisherYatesShuffle(neverPostedToday);
     const diversitySelection = shuffledNeverPosted.slice(
       0,
-      diversitySlotsReserved
+      diversitySlotsReserved,
     );
 
     // Remaining slots go to weighted random (exclude diversity picks)
     const diversityIds = new Set(diversitySelection.map((n) => n.id));
     const remainingCandidates = candidates.filter(
-      (c) => !diversityIds.has(c.npc.id)
+      (c) => !diversityIds.has(c.npc.id),
     );
     const regularSlots = NPCS_PER_TICK - diversitySelection.length;
     const regularSelection = postingProbabilityService.weightedSample(
       remainingCandidates,
-      regularSlots
+      regularSlots,
     );
 
     const npcsThisTick = [
@@ -396,7 +396,7 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
         remainingCandidatesCount: remainingCandidates.length,
         diversityNpcs: diversitySelection.map((n) => n.name),
       },
-      'NPCTick'
+      "NPCTick",
     );
 
     logger.info(
@@ -405,7 +405,7 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
         totalNpcs: allNpcs.length,
         selectedNpcs: npcsThisTick.map((n) => n.name),
       },
-      'NPCTick'
+      "NPCTick",
     );
 
     const results: Array<{
@@ -429,7 +429,7 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
         logger.error(
           `Circuit breaker triggered after ${consecutiveErrors} consecutive errors`,
           { processId, npcsRemaining: npcsThisTick.length - results.length },
-          'NPCTick'
+          "NPCTick",
         );
         break;
       }
@@ -442,13 +442,13 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
         logger.info(
           `Skipping NPC ${npc.name} - still running from previous tick`,
           { npcId: npc.id },
-          'NPCTick'
+          "NPCTick",
         );
         results.push({
           npcId: npc.id,
           name: npc.name,
-          status: 'skipped',
-          error: 'locked',
+          status: "skipped",
+          error: "locked",
           duration: Date.now() - npcStartTime,
         });
         continue;
@@ -461,7 +461,7 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
           logger.info(
             `NPC ${npc.name} not bootstrapped, registering on-demand`,
             { npcId: npc.id },
-            'NPCTick'
+            "NPCTick",
           );
           await npcBootstrapService.bootstrapNpc(npc.id);
         }
@@ -473,7 +473,7 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
           npc.id,
           runtime,
           true, // recordTrajectories - enabled for trajectory linking
-          true // isNpc = true (triggers NPC game context)
+          true, // isNpc = true (triggers NPC game context)
         );
 
         const actionCount =
@@ -495,7 +495,7 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
           });
         } catch (activityError) {
           logger.error(
-            'Failed to update NPC activity state',
+            "Failed to update NPC activity state",
             {
               npcId: npc.id,
               didPost,
@@ -504,14 +504,14 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
                   ? activityError.message
                   : String(activityError),
             },
-            'NPCTick'
+            "NPCTick",
           );
         }
 
         results.push({
           npcId: npc.id,
           name: npc.name,
-          status: tickResult.success ? 'success' : 'completed',
+          status: tickResult.success ? "success" : "completed",
           duration: Date.now() - npcStartTime,
           actions: actionCount,
         });
@@ -526,7 +526,7 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
             actions: actionCount,
             duration: Date.now() - npcStartTime,
           },
-          'NPCTick'
+          "NPCTick",
         );
       } catch (error) {
         errors++;
@@ -538,13 +538,13 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
             error: error instanceof Error ? error.message : String(error),
             consecutiveErrors,
           },
-          'NPCTick'
+          "NPCTick",
         );
 
         results.push({
           npcId: npc.id,
           name: npc.name,
-          status: 'error',
+          status: "error",
           error: error instanceof Error ? error.message : String(error),
           duration: Date.now() - npcStartTime,
         });
@@ -584,32 +584,32 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
         const [worldFacts, trendingContext] = await Promise.all([
           worldFactsService.generateWorldContext(false).catch((error) => {
             logger.warn(
-              'Failed to load world facts for NPC discourse',
+              "Failed to load world facts for NPC discourse",
               { error: error instanceof Error ? error.message : String(error) },
-              'NPCTick'
+              "NPCTick",
             );
             return null;
           }),
           getTrendingPromptContext().catch((error) => {
             logger.warn(
-              'Failed to load trending context for NPC discourse',
+              "Failed to load trending context for NPC discourse",
               { error: error instanceof Error ? error.message : String(error) },
-              'NPCTick'
+              "NPCTick",
             );
-            return '';
+            return "";
           }),
         ]);
 
         // Trim world facts to avoid bloating reply/quote/comment prompts
         const worldFactsLines =
-          worldFacts?.general?.split('\n').slice(0, 20).join('\n') ?? '';
+          worldFacts?.general?.split("\n").slice(0, 20).join("\n") ?? "";
         const worldFactsContext = worldFactsLines
           ? `=== WORLD CONTEXT (Current Reality — short) ===\n${worldFactsLines}\n`
-          : '';
+          : "";
 
         const interactionPromptContext = [worldFactsContext, trendingContext]
           .filter(Boolean)
-          .join('\n')
+          .join("\n")
           .trim();
 
         // Comment threads + lightweight engagement (likes/shares)
@@ -649,7 +649,7 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
           {
             quoteProbability: NPC_ENGAGEMENT_CONFIG.discourseQuoteProbability,
             getTimestamp: getStaggeredTimestamp, // Function called per-action
-          }
+          },
         );
 
         if (
@@ -659,20 +659,20 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
           engagementResult.commentsCreated > 0
         ) {
           logger.info(
-            'NPC feed interactions executed',
+            "NPC feed interactions executed",
             {
               discourseCreated,
               engagement: engagementResult,
             },
-            'NPCTick'
+            "NPCTick",
           );
         }
       } catch (err) {
         // Do not fail the NPC tick if interaction generation fails (keep core NPC tick alive)
         logger.error(
-          'NPC feed interactions failed',
+          "NPC feed interactions failed",
           { error: extractErrorMessage(err) },
-          'NPCTick'
+          "NPCTick",
         );
       }
     }
@@ -693,22 +693,22 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
 
         if (socialActions.length > 0) {
           logger.info(
-            'NPC social actions processed',
+            "NPC social actions processed",
             {
               total: socialActions.length,
               invites: socialActions.filter(
-                (a) => a.type === 'group_chat_invite'
+                (a) => a.type === "group_chat_invite",
               ).length,
-              dms: socialActions.filter((a) => a.type === 'dm').length,
+              dms: socialActions.filter((a) => a.type === "dm").length,
             },
-            'NPCTick'
+            "NPCTick",
           );
         }
       } catch (error) {
         logger.error(
-          'NPC social actions failed',
+          "NPC social actions failed",
           { error: error instanceof Error ? error.message : String(error) },
-          'NPCTick'
+          "NPCTick",
         );
       }
     }
@@ -733,19 +733,19 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
 
         if (followResult.followsCreated > 0) {
           logger.info(
-            'NPC proactive follows processed',
+            "NPC proactive follows processed",
             {
               followsCreated: followResult.followsCreated,
               playersConsidered: followResult.playersConsidered,
             },
-            'NPCTick'
+            "NPCTick",
           );
         }
       } catch (error) {
         logger.error(
-          'NPC proactive following failed',
+          "NPC proactive following failed",
           { error: error instanceof Error ? error.message : String(error) },
-          'NPCTick'
+          "NPCTick",
         );
       }
 
@@ -755,9 +755,9 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
           await FollowingMechanics.processUnfollowChecks(tradeDeadline);
       } catch (error) {
         logger.error(
-          'NPC unfollow checks failed',
+          "NPC unfollow checks failed",
           { error: error instanceof Error ? error.message : String(error) },
-          'NPCTick'
+          "NPCTick",
         );
       }
     }
@@ -787,15 +787,15 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
       try {
         // Get all active NPC pools
         const activeNPCs = StaticDataRegistry.getAllActors().filter(
-          (a) => a.role === 'main' || a.role === 'supporting'
+          (a) => a.role === "main" || a.role === "supporting",
         );
 
         // Guard against empty NPC list to avoid modulo-by-zero
         if (activeNPCs.length === 0) {
           logger.info(
-            'No active NPCs for portfolio rebalancing',
+            "No active NPCs for portfolio rebalancing",
             undefined,
-            'NPCTick'
+            "NPCTick",
           );
         } else {
           // Use tick-based deterministic rotation for even coverage across ticks
@@ -803,7 +803,7 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
           const tickNumber = Math.floor(startTime / 60000); // tick per minute
           const sampleSize = Math.min(
             NPC_TICK_CONFIG.batchSize,
-            activeNPCs.length
+            activeNPCs.length,
           );
           const startOffset = tickNumber % activeNPCs.length;
           // Select NPCs starting at offset, wrapping around the array
@@ -819,14 +819,14 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
             try {
               // Determine strategy from personality
               const strategy = determineStrategyFromPersonality(
-                npc.personality
+                npc.personality,
               );
 
               // Monitor and get rebalance actions
               const actions = await NPCInvestmentManager.monitorPortfolio(
                 npc.id, // poolId = actorId for NPC pools
                 npc.id,
-                strategy
+                strategy,
               );
 
               // Execute each rebalance action
@@ -834,7 +834,7 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
                 await NPCInvestmentManager.executeRebalanceAction(
                   npc.id,
                   npc.id,
-                  action
+                  action,
                 );
                 rebalanceActionsExecuted++;
               }
@@ -843,24 +843,24 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
               logger.warn(
                 `Portfolio rebalance failed for NPC ${npc.name}`,
                 { error: extractErrorMessage(npcErr) },
-                'NPCTick'
+                "NPCTick",
               );
             }
           }
 
           if (rebalanceActionsExecuted > 0) {
             logger.info(
-              'NPC portfolio rebalancing completed',
+              "NPC portfolio rebalancing completed",
               { actionsExecuted: rebalanceActionsExecuted },
-              'NPCTick'
+              "NPCTick",
             );
           }
         }
       } catch (err) {
         logger.error(
-          'NPC portfolio rebalancing failed',
+          "NPC portfolio rebalancing failed",
           { error: extractErrorMessage(err) },
-          'NPCTick'
+          "NPCTick",
         );
       }
     }
@@ -871,7 +871,7 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
     // DIVERSITY MONITORING: Track unique NPC posting distribution
     // =======================================================================
     const npcsWhoPostedThisTick = results.filter(
-      (r) => r.actions && r.actions > 0 && r.status === 'success'
+      (r) => r.actions && r.actions > 0 && r.status === "success",
     );
     const uniquePostersThisTick = npcsWhoPostedThisTick.length;
 
@@ -882,7 +882,7 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
 
     // Log diversity metrics separately for easy monitoring
     logger.info(
-      'NPC posting diversity metrics',
+      "NPC posting diversity metrics",
       {
         uniquePostersThisTick,
         diversitySlotsUsed: diversitySelection.length,
@@ -893,7 +893,7 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
         totalActiveNpcs: activeNpcs.length,
         totalNpcs: allNpcs.length,
       },
-      'NPCTick'
+      "NPCTick",
     );
 
     logger.info(
@@ -916,11 +916,11 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
           neverPostedTodayCount: neverPostedToday.length,
         },
       },
-      'NPCTick'
+      "NPCTick",
     );
 
     // Record metrics
-    recordCronExecution('npc-tick', new Date(startTime), {
+    recordCronExecution("npc-tick", new Date(startTime), {
       success: !abortedDueToCircuitBreaker,
       processed: results.length - skippedDueToLock,
       totalActions: totalActionsExecuted,
@@ -975,7 +975,7 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
     });
   } finally {
     // Always release global lock
-    await DistributedLockService.releaseLock('npc-tick-global', processId);
+    await DistributedLockService.releaseLock("npc-tick-global", processId);
   }
 });
 
@@ -984,35 +984,35 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
  * Matches logic from NPCInvestmentManager for consistency
  */
 function determineStrategyFromPersonality(
-  personality: string | null | undefined
-): 'aggressive' | 'conservative' | 'balanced' {
-  if (!personality) return 'balanced';
+  personality: string | null | undefined,
+): "aggressive" | "conservative" | "balanced" {
+  if (!personality) return "balanced";
 
   const personalityLower = personality.toLowerCase();
 
   const aggressiveKeywords = [
-    'erratic',
-    'disaster',
-    'memecoin',
-    'degen',
-    'bold',
-    'risk',
+    "erratic",
+    "disaster",
+    "memecoin",
+    "degen",
+    "bold",
+    "risk",
   ];
   const conservativeKeywords = [
-    'vampire',
-    'yacht',
-    'philosopher',
-    'cautious',
-    'steady',
+    "vampire",
+    "yacht",
+    "philosopher",
+    "cautious",
+    "steady",
   ];
 
   if (aggressiveKeywords.some((k) => personalityLower.includes(k))) {
-    return 'aggressive';
+    return "aggressive";
   }
 
   if (conservativeKeywords.some((k) => personalityLower.includes(k))) {
-    return 'conservative';
+    return "conservative";
   }
 
-  return 'balanced';
+  return "balanced";
 }

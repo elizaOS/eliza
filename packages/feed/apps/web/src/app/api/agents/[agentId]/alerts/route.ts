@@ -10,19 +10,19 @@
  * Alerts are checked every autonomous tick (~3 min) by PriceAlertService.
  */
 
-import { authenticateUser, withErrorHandling } from '@feed/api';
-import { db, eq, userAgentConfigs, users } from '@feed/db';
-import type { PriceAlert } from '@feed/db/schema';
-import { generateSnowflakeId } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { z } from 'zod';
+import { authenticateUser, withErrorHandling } from "@feed/api";
+import { db, eq, userAgentConfigs, users } from "@feed/db";
+import type { PriceAlert } from "@feed/db/schema";
+import { generateSnowflakeId } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { z } from "zod";
 
 const createAlertSchema = z.object({
   tokenSymbol: z.string().trim().min(1).max(20),
-  condition: z.enum(['above', 'below']),
+  condition: z.enum(["above", "below"]),
   threshold: z.number().positive(),
-  deliveryChannel: z.enum(['team_chat', 'group']).optional(),
+  deliveryChannel: z.enum(["team_chat", "group"]).optional(),
   deliveryChatId: z.string().optional(),
   cooldownMinutes: z.number().int().positive().max(1440).optional(),
 });
@@ -33,7 +33,7 @@ const createAlertSchema = z.object({
  */
 async function verifyAgentOwnership(
   req: NextRequest,
-  agentId: string
+  agentId: string,
 ): Promise<
   | { error: NextResponse }
   | { config: { id: string; priceAlerts: PriceAlert[] }; userId: string }
@@ -50,15 +50,15 @@ async function verifyAgentOwnership(
     .where(eq(users.id, agentId))
     .limit(1);
 
-  if (!agent || !agent.isAgent) {
+  if (!agent?.isAgent) {
     return {
-      error: NextResponse.json({ error: 'Agent not found' }, { status: 404 }),
+      error: NextResponse.json({ error: "Agent not found" }, { status: 404 }),
     };
   }
 
   if (agent.managedBy !== user.id) {
     return {
-      error: NextResponse.json({ error: 'Unauthorized' }, { status: 403 }),
+      error: NextResponse.json({ error: "Unauthorized" }, { status: 403 }),
     };
   }
 
@@ -74,8 +74,8 @@ async function verifyAgentOwnership(
   if (!config) {
     return {
       error: NextResponse.json(
-        { error: 'Agent configuration not found' },
-        { status: 404 }
+        { error: "Agent configuration not found" },
+        { status: 404 },
       ),
     };
   }
@@ -94,12 +94,12 @@ async function verifyAgentOwnership(
  */
 export const GET = withErrorHandling(async function GET(
   req: NextRequest,
-  { params }: { params: Promise<{ agentId: string }> }
+  { params }: { params: Promise<{ agentId: string }> },
 ) {
   const { agentId } = await params;
   const result = await verifyAgentOwnership(req, agentId);
 
-  if ('error' in result) return result.error;
+  if ("error" in result) return result.error;
 
   return NextResponse.json({
     success: true,
@@ -116,12 +116,12 @@ export const GET = withErrorHandling(async function GET(
  */
 export const POST = withErrorHandling(async function POST(
   req: NextRequest,
-  { params }: { params: Promise<{ agentId: string }> }
+  { params }: { params: Promise<{ agentId: string }> },
 ) {
   const { agentId } = await params;
   const result = await verifyAgentOwnership(req, agentId);
 
-  if ('error' in result) return result.error;
+  if ("error" in result) return result.error;
 
   const raw = await req.json();
   const parsed = createAlertSchema.safeParse(raw);
@@ -129,10 +129,10 @@ export const POST = withErrorHandling(async function POST(
   if (!parsed.success) {
     return NextResponse.json(
       {
-        error: 'Invalid input',
+        error: "Invalid input",
         details: parsed.error.flatten().fieldErrors,
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -145,10 +145,10 @@ export const POST = withErrorHandling(async function POST(
     cooldownMinutes,
   } = parsed.data;
 
-  if (deliveryChannel === 'group' && !deliveryChatId) {
+  if (deliveryChannel === "group" && !deliveryChatId) {
     return NextResponse.json(
       { error: 'deliveryChatId is required when deliveryChannel is "group"' },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -157,7 +157,7 @@ export const POST = withErrorHandling(async function POST(
 
   // Check for existing alert with same token+condition
   const existingIdx = alerts.findIndex(
-    (a) => a.tokenSymbol === upperSymbol && a.condition === condition
+    (a) => a.tokenSymbol === upperSymbol && a.condition === condition,
   );
 
   const now = new Date().toISOString();
@@ -185,7 +185,7 @@ export const POST = withErrorHandling(async function POST(
       tokenSymbol: upperSymbol,
       condition,
       threshold,
-      deliveryChannel: deliveryChannel ?? 'team_chat',
+      deliveryChannel: deliveryChannel ?? "team_chat",
       deliveryChatId,
       enabled: true,
       cooldownMinutes: cooldownMinutes ?? 15,
@@ -205,7 +205,7 @@ export const POST = withErrorHandling(async function POST(
       alert,
       updated,
     },
-    { status: updated ? 200 : 201 }
+    { status: updated ? 200 : 201 },
   );
 });
 
@@ -216,22 +216,22 @@ export const POST = withErrorHandling(async function POST(
  */
 export const DELETE = withErrorHandling(async function DELETE(
   req: NextRequest,
-  { params }: { params: Promise<{ agentId: string }> }
+  { params }: { params: Promise<{ agentId: string }> },
 ) {
   const { agentId } = await params;
   const result = await verifyAgentOwnership(req, agentId);
 
-  if ('error' in result) return result.error;
+  if ("error" in result) return result.error;
 
   const url = new URL(req.url);
-  const alertId = url.searchParams.get('alertId');
-  const tokenSymbol = url.searchParams.get('tokenSymbol');
-  const condition = url.searchParams.get('condition');
+  const alertId = url.searchParams.get("alertId");
+  const tokenSymbol = url.searchParams.get("tokenSymbol");
+  const condition = url.searchParams.get("condition");
 
   if (!alertId && !tokenSymbol) {
     return NextResponse.json(
-      { error: 'Provide alertId or tokenSymbol query parameter' },
-      { status: 400 }
+      { error: "Provide alertId or tokenSymbol query parameter" },
+      { status: 400 },
     );
   }
 
@@ -243,19 +243,19 @@ export const DELETE = withErrorHandling(async function DELETE(
     removed = alerts.find((a) => a.id === alertId);
     remaining = alerts.filter((a) => a.id !== alertId);
   } else {
-    const upperSymbol = tokenSymbol!.toUpperCase();
+    const upperSymbol = tokenSymbol?.toUpperCase();
     removed = alerts.find(
       (a) =>
         a.tokenSymbol === upperSymbol &&
-        (!condition || a.condition === condition)
+        (!condition || a.condition === condition),
     );
-    remaining = removed ? alerts.filter((a) => a.id !== removed!.id) : alerts;
+    remaining = removed ? alerts.filter((a) => a.id !== removed?.id) : alerts;
   }
 
   if (!removed) {
     return NextResponse.json(
-      { error: 'Price alert not found' },
-      { status: 404 }
+      { error: "Price alert not found" },
+      { status: 404 },
     );
   }
 

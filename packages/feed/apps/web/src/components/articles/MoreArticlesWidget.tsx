@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import Link from 'next/link';
-import { useEffect, useState } from 'react';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { apiUrl } from '@/utils/api-url';
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { apiUrl } from "@/utils/api-url";
 
 interface ArticlePreview {
   id: string;
@@ -40,7 +40,7 @@ export function MoreArticlesWidget({
       setIsLoading(true);
 
       const response = await fetch(
-        apiUrl(`/api/posts?type=article&limit=${limit + 1}`)
+        apiUrl(`/api/posts?type=article&limit=${limit + 1}`),
       );
 
       if (!response.ok) {
@@ -72,14 +72,14 @@ export function MoreArticlesWidget({
     const diffHours = Math.floor(diffMs / 3600000);
     const diffDays = Math.floor(diffMs / 86400000);
 
-    if (diffMinutes < 1) return 'Just now';
+    if (diffMinutes < 1) return "Just now";
     if (diffMinutes < 60) return `${diffMinutes}m ago`;
     if (diffHours < 24) return `${diffHours}h ago`;
     if (diffDays < 7) return `${diffDays}d ago`;
 
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
+    return date.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
     });
   };
 
@@ -114,7 +114,7 @@ export function MoreArticlesWidget({
             className="-mx-2 block rounded-lg px-2 py-1.5 transition-colors duration-200 hover:bg-muted/50"
           >
             <p className="font-semibold text-foreground text-sm leading-snug">
-              {article.articleTitle || 'Untitled Article'}
+              {article.articleTitle || "Untitled Article"}
             </p>
             <p className="mt-0.5 text-muted-foreground text-xs">
               {article.authorName} · {formatTimeAgo(article.timestamp)}

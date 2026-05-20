@@ -3,8 +3,8 @@
  * Handles portfolio, balance, and leaderboard operations
  */
 
-import type { Database } from 'bun:sqlite';
-import type { LocalBlockchain } from '../services/local-blockchain';
+import type { Database } from "bun:sqlite";
+import type { LocalBlockchain } from "../services/local-blockchain";
 
 interface Portfolio {
   balance: number;
@@ -17,7 +17,7 @@ interface Position {
   id: string;
   marketId: string;
   marketQuestion: string;
-  outcome: 'YES' | 'NO';
+  outcome: "YES" | "NO";
   shares: number;
   avgPrice: number;
   currentPrice: number;
@@ -44,7 +44,7 @@ interface LeaderboardEntry {
 export class PortfolioHandler {
   constructor(
     private db: Database,
-    private blockchain: LocalBlockchain
+    private blockchain: LocalBlockchain,
   ) {}
 
   /**
@@ -52,17 +52,17 @@ export class PortfolioHandler {
    */
   getBalance(userId: string): { balance: number; currency: string } {
     const row = this.db
-      .query('SELECT virtual_balance FROM users WHERE id = ?')
+      .query("SELECT virtual_balance FROM users WHERE id = ?")
       .get(userId) as { virtual_balance: number } | null;
 
     if (!row) {
       // Auto-create user with default balance
-      return { balance: 1000, currency: 'USD' };
+      return { balance: 1000, currency: "USD" };
     }
 
     return {
       balance: row.virtual_balance,
-      currency: 'USD',
+      currency: "USD",
     };
   }
 
@@ -86,7 +86,7 @@ export class PortfolioHandler {
 
     const positions = results.map((row) => {
       const currentPrice =
-        row.outcome === 'YES'
+        row.outcome === "YES"
           ? (row.yes_price as number)
           : (row.no_price as number);
       const shares = row.shares as number;
@@ -98,8 +98,8 @@ export class PortfolioHandler {
       return {
         id: row.id as string,
         marketId: row.market_id as string,
-        marketQuestion: (row.market_question as string) || 'Unknown Market',
-        outcome: row.outcome as 'YES' | 'NO',
+        marketQuestion: (row.market_question as string) || "Unknown Market",
+        outcome: row.outcome as "YES" | "NO",
         shares,
         avgPrice,
         currentPrice,
@@ -120,12 +120,12 @@ export class PortfolioHandler {
 
     const totalPositionValue = positionsData.positions.reduce(
       (sum, pos) => sum + pos.currentValue,
-      0
+      0,
     );
 
     const totalPnl = positionsData.positions.reduce(
       (sum, pos) => sum + pos.pnl,
-      0
+      0,
     );
 
     return {
@@ -141,18 +141,18 @@ export class PortfolioHandler {
    */
   async getWalletInfo(userId: string): Promise<WalletInfo> {
     const row = this.db
-      .query('SELECT wallet_address, virtual_balance FROM users WHERE id = ?')
+      .query("SELECT wallet_address, virtual_balance FROM users WHERE id = ?")
       .get(userId) as {
       wallet_address: string;
       virtual_balance: number;
     } | null;
 
     const walletAddress =
-      row?.wallet_address || '0x0000000000000000000000000000000000000000';
+      row?.wallet_address || "0x0000000000000000000000000000000000000000";
     const virtualBalance = row?.virtual_balance || 1000;
 
     // Get on-chain balance (falls back if blockchain unavailable)
-    let onChainBalance = '0';
+    let onChainBalance = "0";
     if (await this.blockchain.isAvailable()) {
       const balance = await this.blockchain.getBalance(walletAddress);
       onChainBalance = balance.toString();
@@ -201,7 +201,7 @@ export class PortfolioHandler {
       entries: results.map((row, index) => ({
         rank: index + 1,
         userId: row.user_id as string,
-        displayName: (row.display_name as string) || 'Anonymous',
+        displayName: (row.display_name as string) || "Anonymous",
         pnl: (row.pnl as number) || 0,
         totalVolume: (row.total_volume as number) || 0,
         winRate: 0.5 + ((row.pnl as number) > 0 ? 0.1 : -0.1), // Simplified

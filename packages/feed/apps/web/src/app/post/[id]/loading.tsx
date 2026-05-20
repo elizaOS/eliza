@@ -1,5 +1,5 @@
-import { PageContainer } from '@/components/shared/PageContainer';
-import { PostCardSkeleton, Skeleton } from '@/components/shared/Skeleton';
+import { PageContainer } from "@/components/shared/PageContainer";
+import { PostCardSkeleton, Skeleton } from "@/components/shared/Skeleton";
 
 export default function PostDetailLoading() {
   return (

@@ -59,10 +59,10 @@ import {
   requireUserByIdentifier,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { db, eq, users } from '@feed/db';
-import { logger, UserIdParamSchema } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/api";
+import { db, eq, users } from "@feed/db";
+import { logger, UserIdParamSchema } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 /**
  * GET /api/users/[userId]/referral-code
@@ -71,7 +71,7 @@ import type { NextRequest } from 'next/server';
 export const GET = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ userId: string }> }
+    context: { params: Promise<{ userId: string }> },
   ) => {
     // Authenticate user
     const authUser = await authenticate(request);
@@ -83,9 +83,9 @@ export const GET = withErrorHandling(
     // Verify user is accessing their own referral code
     if (authUser.userId !== canonicalUserId) {
       throw new AuthorizationError(
-        'You can only access your own referral code',
-        'referral-code',
-        'read'
+        "You can only access your own referral code",
+        "referral-code",
+        "read",
       );
     }
 
@@ -102,19 +102,19 @@ export const GET = withErrorHandling(
       .limit(1);
 
     if (!user) {
-      throw new NotFoundError('User', canonicalUserId);
+      throw new NotFoundError("User", canonicalUserId);
     }
 
     logger.info(
-      'Referral code fetched successfully',
+      "Referral code fetched successfully",
       { userId: canonicalUserId, referralCode },
-      'GET /api/users/[userId]/referral-code'
+      "GET /api/users/[userId]/referral-code",
     );
 
     return successResponse({
       referralCode,
       referralCount: user.referralCount,
-      referralUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://feed.market'}?ref=${referralCode}`,
+      referralUrl: `${process.env.NEXT_PUBLIC_APP_URL || "https://feed.market"}?ref=${referralCode}`,
     });
-  }
+  },
 );

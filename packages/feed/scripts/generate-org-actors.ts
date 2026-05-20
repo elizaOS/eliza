@@ -8,8 +8,8 @@
  * Usage: bun run scripts/generate-org-actors.ts
  */
 
-import { mkdirSync, readdirSync, writeFileSync } from 'fs';
-import { join } from 'path';
+import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 // We need to read the org TS files. Since they export default objects,
 // we'll dynamically import them.
@@ -24,40 +24,40 @@ const PERSONALITY_TEMPERATURES: Record<string, number> = {
 };
 
 const TIER_BY_ORG_TYPE: Record<string, string> = {
-  company: 'B_TIER',
-  media: 'C_TIER',
-  government: 'B_TIER',
-  vc: 'B_TIER',
-  organization: 'C_TIER',
-  financial: 'B_TIER',
+  company: "B_TIER",
+  media: "C_TIER",
+  government: "B_TIER",
+  vc: "B_TIER",
+  organization: "C_TIER",
+  financial: "B_TIER",
 };
 
 // Major orgs get higher tiers
 const MAJOR_ORG_IDS = new Set([
-  'openagi',
-  'aitropic',
-  'metai',
-  'aiphabet',
-  'maicrosoft',
-  'aipple',
-  'aimazon',
-  'teslai',
-  'aix',
-  'nvidai',
-  'coinbaise',
-  'palaintir',
+  "openagi",
+  "aitropic",
+  "metai",
+  "aiphabet",
+  "maicrosoft",
+  "aipple",
+  "aimazon",
+  "teslai",
+  "aix",
+  "nvidai",
+  "coinbaise",
+  "palaintir",
 ]);
 
 const SECONDARY_ORG_IDS = new Set([
-  'ethereum-foundaition',
-  'straitegy',
-  'ainduril',
-  'spaicex',
-  'the-new-york-taimes',
-  'wall-street-journai',
-  'faix-news',
-  'msainbc',
-  'bloombairg',
+  "ethereum-foundaition",
+  "straitegy",
+  "ainduril",
+  "spaicex",
+  "the-new-york-taimes",
+  "wall-street-journai",
+  "faix-news",
+  "msainbc",
+  "bloombairg",
 ]);
 
 interface OrgData {
@@ -80,52 +80,52 @@ interface OrgData {
 
 function orgTypeToPersonality(type: string): string {
   switch (type) {
-    case 'company':
-      return 'corporate entity';
-    case 'media':
-      return 'media organization';
-    case 'government':
-      return 'government institution';
-    case 'vc':
-      return 'venture capital firm';
-    case 'financial':
-      return 'financial institution';
+    case "company":
+      return "corporate entity";
+    case "media":
+      return "media organization";
+    case "government":
+      return "government institution";
+    case "vc":
+      return "venture capital firm";
+    case "financial":
+      return "financial institution";
     default:
-      return 'organization';
+      return "organization";
   }
 }
 
 function orgTypeToDomains(type: string): string[] {
   switch (type) {
-    case 'company':
-      return ['tech', 'business'];
-    case 'media':
-      return ['media', 'journalism'];
-    case 'government':
-      return ['politics', 'policy'];
-    case 'vc':
-      return ['finance', 'venture_capital'];
-    case 'financial':
-      return ['finance', 'markets'];
+    case "company":
+      return ["tech", "business"];
+    case "media":
+      return ["media", "journalism"];
+    case "government":
+      return ["politics", "policy"];
+    case "vc":
+      return ["finance", "venture_capital"];
+    case "financial":
+      return ["finance", "markets"];
     default:
-      return ['business'];
+      return ["business"];
   }
 }
 
 function buildOrgSystemPrompt(org: OrgData): string {
   const parts: string[] = [];
   parts.push(
-    `You are the official voice of ${org.name}${org.ticker ? ` (${org.ticker})` : ''}, a ${org.type} in the Feed prediction market simulation.`
+    `You are the official voice of ${org.name}${org.ticker ? ` (${org.ticker})` : ""}, a ${org.type} in the Feed prediction market simulation.`,
   );
   if (org.description) parts.push(org.description);
   if (org.postStyle) parts.push(`Your posting style: ${org.postStyle}`);
   parts.push(
-    'You post as a corporate/institutional account — professional but with character. You can comment on markets, share institutional perspectives, react to news about your industry, and engage with other actors.'
+    "You post as a corporate/institutional account — professional but with character. You can comment on markets, share institutional perspectives, react to news about your industry, and engage with other actors.",
   );
   parts.push(
-    'You participate in prediction markets, social interactions, and autonomous trading.'
+    "You participate in prediction markets, social interactions, and autonomous trading.",
   );
-  return parts.join('\n\n');
+  return parts.join("\n\n");
 }
 
 function buildOrgBio(org: OrgData): string[] {
@@ -139,18 +139,18 @@ function buildOrgBio(org: OrgData): string[] {
 }
 
 function getTier(org: OrgData): string {
-  if (MAJOR_ORG_IDS.has(org.id)) return 'A_TIER';
-  if (SECONDARY_ORG_IDS.has(org.id)) return 'B_TIER';
-  return TIER_BY_ORG_TYPE[org.type] ?? 'C_TIER';
+  if (MAJOR_ORG_IDS.has(org.id)) return "A_TIER";
+  if (SECONDARY_ORG_IDS.has(org.id)) return "B_TIER";
+  return TIER_BY_ORG_TYPE[org.type] ?? "C_TIER";
 }
 
 async function generateOrgActors(packDir: string) {
-  const orgsDir = join(packDir, 'src/organizations');
-  const actorsDir = join(packDir, 'src/actors');
+  const orgsDir = join(packDir, "src/organizations");
+  const actorsDir = join(packDir, "src/actors");
   mkdirSync(actorsDir, { recursive: true });
 
   const orgFiles = readdirSync(orgsDir).filter(
-    (f) => f.endsWith('.ts') && f !== 'index.ts'
+    (f) => f.endsWith(".ts") && f !== "index.ts",
   );
   let generated = 0;
 
@@ -179,23 +179,23 @@ async function generateOrgActors(packDir: string) {
       lore: org.description ? [org.description] : [],
       topics: domains,
       adjectives: [
-        'institutional',
-        'authoritative',
-        personality.split(' ')[0] ?? 'professional',
+        "institutional",
+        "authoritative",
+        personality.split(" ")[0] ?? "professional",
       ],
       style: {
         all: [
           `Post as the official ${org.name} account`,
-          'Maintain institutional tone with character',
-          'Be opinionated about your industry',
+          "Maintain institutional tone with character",
+          "Be opinionated about your industry",
         ],
         chat: [
-          'Respond as an institutional representative',
-          'Be direct and authoritative',
+          "Respond as an institutional representative",
+          "Be direct and authoritative",
         ],
         post: org.postStyle
           ? [org.postStyle]
-          : ['Professional institutional voice with personality'],
+          : ["Professional institutional voice with personality"],
       },
       messageExamples: [] as Array<
         Array<{ user: string; content: { text: string } }>
@@ -210,17 +210,17 @@ async function generateOrgActors(packDir: string) {
       affiliations: [] as string[], // Orgs don't affiliate with other orgs as actors
       personality,
       voice: org.postStyle ?? `Institutional voice of ${org.name}`,
-      postStyle: org.postStyle ?? 'Professional institutional posting',
+      postStyle: org.postStyle ?? "Professional institutional posting",
       description: org.description,
       profileDescription: org.profileDescription,
       pfpDescription: org.pfpDescription ?? `Logo of ${org.name}`,
       profileBanner: org.bannerDescription,
       feed: {
-        alignment: 'neutral' as const,
-        team: 'gray' as const,
-        scamProfile: 'wary',
-        competence: 'high',
-        tradingStyle: 'institutional',
+        alignment: "neutral" as const,
+        team: "gray" as const,
+        scamProfile: "wary",
+        competence: "high",
+        tradingStyle: "institutional",
         socialStyle: personality,
         autonomy: {
           trading: true,
@@ -231,7 +231,7 @@ async function generateOrgActors(packDir: string) {
         },
         datasetTags: [
           `tier:${tier}`,
-          'type:organization',
+          "type:organization",
           `org-type:${org.type}`,
           ...domains.map((d) => `domain:${d}`),
         ],
@@ -239,10 +239,10 @@ async function generateOrgActors(packDir: string) {
       // Identity mapping
       realName: org.originalName ?? org.name,
       originalFirstName: org.originalName ?? org.name,
-      originalLastName: '',
+      originalLastName: "",
       originalHandle: org.originalHandle ?? org.username ?? org.id,
       firstName: org.name,
-      lastName: '',
+      lastName: "",
     };
 
     // Write as TypeScript file matching the existing pattern
@@ -263,18 +263,18 @@ export default actor;
 
 async function main() {
   // Generate for pack-default
-  console.log('=== pack-default ===');
-  const defaultCount = await generateOrgActors('packages/pack-default');
+  console.log("=== pack-default ===");
+  const defaultCount = await generateOrgActors("packages/pack-default");
 
   // Generate for pack-corporate-30-under-30
-  console.log('\n=== pack-corporate-30-under-30 ===');
+  console.log("\n=== pack-corporate-30-under-30 ===");
   const corpCount = await generateOrgActors(
-    'packages/pack-corporate-30-under-30'
+    "packages/pack-corporate-30-under-30",
   );
 
   console.log(`\nTotal: ${defaultCount + corpCount} org-actor files generated`);
   console.log(
-    '\nNext: run scripts/rebuild-pack-indexes.ts to update actors-index.ts and manifest.ts'
+    "\nNext: run scripts/rebuild-pack-indexes.ts to update actors-index.ts and manifest.ts",
   );
 }
 

@@ -34,21 +34,21 @@ import {
   type Transaction,
   timeframedMarkets,
   withTransaction,
-} from '@feed/db';
-import { generateSnowflakeId, logger } from '@feed/shared';
-import { formatError } from '../utils/error-utils';
+} from "@feed/db";
+import { generateSnowflakeId, logger } from "@feed/shared";
+import { formatError } from "../utils/error-utils";
 import {
   deriveTopicFromText,
   normalizeTopicDate,
   normalizeTopicKey,
-} from './daily-topic-service';
+} from "./daily-topic-service";
 import {
   calculateEndTime,
   type SubMarketTrigger,
   shouldSpawnSubMarket,
   TIMEFRAME_CONFIGS,
-} from './market-timeframes';
-import { StaticDataRegistry } from './static-data-registry';
+} from "./market-timeframes";
+import { StaticDataRegistry } from "./static-data-registry";
 
 // =============================================================================
 // TYPES
@@ -109,9 +109,9 @@ export class SubMarketService {
         logger.debug(
           `No matching spawn trigger for event`,
           { eventType, category, timeframe },
-          'SubMarketService'
+          "SubMarketService",
         );
-        return { spawned: false, reason: 'no_matching_trigger' };
+        return { spawned: false, reason: "no_matching_trigger" };
       }
 
       // Get parent market
@@ -122,29 +122,29 @@ export class SubMarketService {
         .limit(1);
 
       if (!parent) {
-        return { spawned: false, reason: 'parent_not_found' };
+        return { spawned: false, reason: "parent_not_found" };
       }
 
       // Check child market limit
       if (parent.childMarketCount >= MAX_CHILD_MARKETS_PER_PARENT) {
-        await this.logSpawnSkipped(context, 'max_children_reached');
-        return { spawned: false, reason: 'max_children_reached' };
+        await this.logSpawnSkipped(context, "max_children_reached");
+        return { spawned: false, reason: "max_children_reached" };
       }
 
       // Check spawn interval
       const recentSpawns = await this.getRecentSpawns(
         parentMarketId,
-        MIN_SPAWN_INTERVAL_MINUTES
+        MIN_SPAWN_INTERVAL_MINUTES,
       );
       if (recentSpawns > 0) {
-        await this.logSpawnSkipped(context, 'too_recent');
-        return { spawned: false, reason: 'too_recent' };
+        await this.logSpawnSkipped(context, "too_recent");
+        return { spawned: false, reason: "too_recent" };
       }
 
       // Generate question from template
       const question = await this.generateQuestion(
         trigger.questionTemplate,
-        templateVars
+        templateVars,
       );
 
       // Create the child market
@@ -153,7 +153,7 @@ export class SubMarketService {
         trigger,
         question,
         context.eventId,
-        templateVars
+        templateVars,
       );
 
       // Log spawn
@@ -161,7 +161,7 @@ export class SubMarketService {
         context,
         trigger,
         childMarket.id,
-        question.text
+        question.text,
       );
 
       logger.info(
@@ -172,7 +172,7 @@ export class SubMarketService {
           timeframe: trigger.childTimeframe,
           question: question.text,
         },
-        'SubMarketService'
+        "SubMarketService",
       );
 
       return { spawned: true, marketId: childMarket.id };
@@ -180,9 +180,9 @@ export class SubMarketService {
       logger.error(
         `Failed to spawn sub-market`,
         { error: formatError(error) },
-        'SubMarketService'
+        "SubMarketService",
       );
-      return { spawned: false, reason: 'error' };
+      return { spawned: false, reason: "error" };
     }
   }
 
@@ -211,7 +211,7 @@ export class SubMarketService {
    * Get active markets by timeframe
    */
   async getActiveMarketsByTimeframe(
-    timeframe: MarketTimeframe
+    timeframe: MarketTimeframe,
   ): Promise<TimeframedMarket[]> {
     return db
       .select()
@@ -219,8 +219,8 @@ export class SubMarketService {
       .where(
         and(
           eq(timeframedMarkets.timeframe, timeframe),
-          eq(timeframedMarkets.isActive, true)
-        )
+          eq(timeframedMarkets.isActive, true),
+        ),
       );
   }
 
@@ -242,7 +242,7 @@ export class SubMarketService {
     const endTime = calculateEndTime(
       startTime,
       params.timeframe,
-      params.durationModifier ?? DEFAULT_DURATION_MODIFIER
+      params.durationModifier ?? DEFAULT_DURATION_MODIFIER,
     );
 
     // Determine root market ID
@@ -275,7 +275,7 @@ export class SubMarketService {
       rootMarketId: rootMarketId,
       startTime,
       endTime,
-      arcState: (arcStatesConfig[0] ?? 'setup') as ArcStateType,
+      arcState: (arcStatesConfig[0] ?? "setup") as ArcStateType,
       arcStateEnteredAt: now,
       isActive: true,
       isResolved: false,
@@ -307,7 +307,7 @@ export class SubMarketService {
    */
   async updateArcState(
     marketId: string,
-    newState: ArcStateType
+    newState: ArcStateType,
   ): Promise<void> {
     const now = new Date();
     await db
@@ -331,7 +331,7 @@ export class SubMarketService {
         isActive: false,
         isResolved: true,
         resolvedAt: now,
-        arcState: 'resolution',
+        arcState: "resolution",
         updatedAt: now,
       })
       .where(eq(timeframedMarkets.id, marketId));
@@ -350,8 +350,8 @@ export class SubMarketService {
         and(
           eq(timeframedMarkets.isActive, true),
           lte(timeframedMarkets.endTime, now),
-          eq(timeframedMarkets.isResolved, false)
-        )
+          eq(timeframedMarkets.isResolved, false),
+        ),
       );
   }
 
@@ -367,7 +367,7 @@ export class SubMarketService {
    */
   private async persistTimeframedMarket(
     marketData: NewTimeframedMarket,
-    tx?: Transaction
+    tx?: Transaction,
   ): Promise<TimeframedMarket> {
     const dbClient = tx ?? db;
     const [created] = await dbClient
@@ -390,7 +390,7 @@ export class SubMarketService {
    */
   private async incrementParentChildCount(
     parentMarketId: string,
-    tx?: Transaction
+    tx?: Transaction,
   ): Promise<void> {
     const dbClient = tx ?? db;
     const now = new Date();
@@ -408,13 +408,13 @@ export class SubMarketService {
     trigger: SubMarketTrigger,
     question: GeneratedQuestion,
     eventId?: string,
-    templateVars?: Record<string, string>
+    templateVars?: Record<string, string>,
   ): Promise<TimeframedMarket> {
     const now = new Date();
     const endTime = calculateEndTime(
       now,
       trigger.childTimeframe,
-      trigger.durationModifier ?? DEFAULT_DURATION_MODIFIER
+      trigger.durationModifier ?? DEFAULT_DURATION_MODIFIER,
     );
 
     const id = await generateSnowflakeId();
@@ -457,7 +457,7 @@ export class SubMarketService {
         }
       } else {
         logger.warn(
-          `topicSourceVar "${trigger.topicSourceVar}" not found in templateVars for trigger ${trigger.eventType}`
+          `topicSourceVar "${trigger.topicSourceVar}" not found in templateVars for trigger ${trigger.eventType}`,
         );
         inheritedTopic = {
           topicKey: derivedTopic.topicKey,
@@ -485,7 +485,7 @@ export class SubMarketService {
       rootMarketId: parent.rootMarketId ?? parent.id,
       startTime: now,
       endTime,
-      arcState: (arcStatesConfig[0] ?? 'setup') as ArcStateType,
+      arcState: (arcStatesConfig[0] ?? "setup") as ArcStateType,
       arcStateEnteredAt: now,
       isActive: true,
       isResolved: false,
@@ -515,7 +515,7 @@ export class SubMarketService {
 
   private async generateQuestion(
     template: string,
-    vars: Record<string, string>
+    vars: Record<string, string>,
   ): Promise<GeneratedQuestion> {
     let text = template;
 
@@ -555,7 +555,8 @@ export class SubMarketService {
       const actorName = vars.actor;
       const actor = actors.find(
         (a) =>
-          a.name.toLowerCase() === actorName.toLowerCase() || a.id === actorName
+          a.name.toLowerCase() === actorName.toLowerCase() ||
+          a.id === actorName,
       );
       if (actor) {
         affiliatedActorIds.push(actor.id);
@@ -571,7 +572,7 @@ export class SubMarketService {
 
   private async getRecentSpawns(
     parentMarketId: string,
-    withinMinutes: number
+    withinMinutes: number,
   ): Promise<number> {
     const cutoff = new Date(Date.now() - withinMinutes * 60 * 1000);
     // Use COUNT aggregation instead of fetching all rows for efficiency
@@ -581,8 +582,8 @@ export class SubMarketService {
       .where(
         and(
           eq(subMarketSpawnLogs.parentMarketId, parentMarketId),
-          gte(subMarketSpawnLogs.createdAt, cutoff)
-        )
+          gte(subMarketSpawnLogs.createdAt, cutoff),
+        ),
       );
 
     return result?.count ?? 0;
@@ -590,7 +591,7 @@ export class SubMarketService {
 
   private async logSpawnSkipped(
     context: SpawnContext,
-    reason: string
+    reason: string,
   ): Promise<void> {
     const log: NewSubMarketSpawnLog = {
       id: await generateSnowflakeId(),
@@ -609,7 +610,7 @@ export class SubMarketService {
     context: SpawnContext,
     trigger: SubMarketTrigger,
     spawnedMarketId: string,
-    generatedQuestion: string
+    generatedQuestion: string,
   ): Promise<void> {
     const log: NewSubMarketSpawnLog = {
       id: await generateSnowflakeId(),

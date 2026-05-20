@@ -17,11 +17,11 @@
  * the shared queue/hash at a time (TTL recovers if a process dies while holding the lock).
  */
 
-import { randomBytes } from 'node:crypto';
+import { randomBytes } from "node:crypto";
 
-import { asSystem, eq, userApiKeys } from '@feed/db';
-import { logger } from '@feed/shared';
-import { getRedisClient, isRedisAvailable } from '../redis';
+import { asSystem, eq, userApiKeys } from "@feed/db";
+import { logger } from "@feed/shared";
+import { getRedisClient, isRedisAvailable } from "../redis";
 
 /**
  * Redis keys for write-back cache.
@@ -30,10 +30,10 @@ import { getRedisClient, isRedisAvailable } from '../redis';
  * - Hash: O(1) lookup for latest timestamp per key (handles multiple updates before flush)
  * - Sorted Set: Natural ordering for batching oldest updates first
  */
-const REDIS_KEY_LAST_USED_UPDATES = 'api-key:last-used:updates'; // Hash: keyId → timestamp
-const REDIS_KEY_LAST_USED_QUEUE = 'api-key:last-used:queue'; // Sorted Set: score=timestamp, member=keyId
+const REDIS_KEY_LAST_USED_UPDATES = "api-key:last-used:updates"; // Hash: keyId → timestamp
+const REDIS_KEY_LAST_USED_QUEUE = "api-key:last-used:queue"; // Sorted Set: score=timestamp, member=keyId
 /** Cross-process flush mutex (SET NX); TTL bounds stuck-lock if a worker dies mid-flush */
-const REDIS_KEY_FLUSH_LOCK = 'api-key:last-used:flush-lock';
+const REDIS_KEY_FLUSH_LOCK = "api-key:last-used:flush-lock";
 const FLUSH_LOCK_TTL_SEC = 120;
 
 /** Safe release: only delete lock if value matches our token (ioredis: eval script, numKeys, key, arg) */
@@ -105,44 +105,44 @@ const globalFlusherState = globalThis as typeof globalThis & {
  * @returns Number of entries flushed
  */
 async function flushPendingUpdates(
-  maxEntries: number = FLUSH_BATCH_SIZE
+  maxEntries: number = FLUSH_BATCH_SIZE,
 ): Promise<number> {
   const redisClient = getRedisClient();
   if (!redisClient || !isRedisAvailable()) {
     logger.debug(
-      'Redis not available, skipping flush',
+      "Redis not available, skipping flush",
       undefined,
-      'ApiKeyFlusher'
+      "ApiKeyFlusher",
     );
     return 0;
   }
 
-  const lockToken = randomBytes(16).toString('hex');
+  const lockToken = randomBytes(16).toString("hex");
   let lockAcquired: string | null = null;
   try {
     lockAcquired = await redisClient.set(
       REDIS_KEY_FLUSH_LOCK,
       lockToken,
-      'EX',
+      "EX",
       FLUSH_LOCK_TTL_SEC,
-      'NX'
+      "NX",
     );
   } catch (error) {
     logger.debug(
-      'Redis unavailable while acquiring API key flush lock, skipping',
+      "Redis unavailable while acquiring API key flush lock, skipping",
       {
         error: error instanceof Error ? error.message : String(error),
       },
-      'ApiKeyFlusher'
+      "ApiKeyFlusher",
     );
     return 0;
   }
 
-  if (lockAcquired !== 'OK') {
+  if (lockAcquired !== "OK") {
     logger.debug(
-      'Flush lock held (another instance or overlapping flush), skipping',
+      "Flush lock held (another instance or overlapping flush), skipping",
       undefined,
-      'ApiKeyFlusher'
+      "ApiKeyFlusher",
     );
     return 0;
   }
@@ -154,7 +154,7 @@ async function flushPendingUpdates(
       REDIS_KEY_LAST_USED_QUEUE,
       0,
       maxEntries - 1,
-      'WITHSCORES'
+      "WITHSCORES",
     );
 
     if (queueEntries.length === 0) {
@@ -173,7 +173,7 @@ async function flushPendingUpdates(
     // before flush, we only need the latest timestamp (not the queue score which is first update time).
     const timestamps = await redisClient.hmget(
       REDIS_KEY_LAST_USED_UPDATES,
-      ...keyIds
+      ...keyIds,
     );
 
     // Build array of updates with valid timestamps
@@ -222,9 +222,9 @@ async function flushPendingUpdates(
       const pipelineResults = await pipeline.exec();
       if (pipelineResults === null) {
         logger.warn(
-          'Redis pipeline.exec() returned null during lastUsed flush cleanup (connection issue?)',
+          "Redis pipeline.exec() returned null during lastUsed flush cleanup (connection issue?)",
           { keyCount: keyIds.length },
-          'ApiKeyFlusher'
+          "ApiKeyFlusher",
         );
       } else {
         for (let i = 0; i < pipelineResults.length; i++) {
@@ -233,13 +233,13 @@ async function flushPendingUpdates(
           const [cmdErr] = entry;
           if (cmdErr) {
             logger.warn(
-              'Redis pipeline command failed during lastUsed flush cleanup',
+              "Redis pipeline command failed during lastUsed flush cleanup",
               {
                 index: i,
                 error:
                   cmdErr instanceof Error ? cmdErr.message : String(cmdErr),
               },
-              'ApiKeyFlusher'
+              "ApiKeyFlusher",
             );
           }
         }
@@ -248,9 +248,9 @@ async function flushPendingUpdates(
       // Safe to continue: entries remain in Redis and will be reprocessed on next flush.
       // Updates are idempotent (SET lastUsedAt = timestamp), so reprocessing is harmless.
       logger.warn(
-        'Failed to clean up Redis after successful DB flush — entries will be reprocessed',
+        "Failed to clean up Redis after successful DB flush — entries will be reprocessed",
         { error: redisError, keyCount: keyIds.length },
-        'ApiKeyFlusher'
+        "ApiKeyFlusher",
       );
     }
     // If cleanup failed partially, entries may remain in Redis and will be reprocessed.
@@ -262,16 +262,16 @@ async function flushPendingUpdates(
     logger.info(
       `Flushed ${updates.length} lastUsedAt updates to database`,
       { count: updates.length },
-      'ApiKeyFlusher'
+      "ApiKeyFlusher",
     );
 
     return updates.length;
   } catch (error) {
     flushFailureCount++;
     logger.error(
-      'Failed to flush lastUsedAt updates',
+      "Failed to flush lastUsedAt updates",
       { error },
-      'ApiKeyFlusher'
+      "ApiKeyFlusher",
     );
     return 0;
   } finally {
@@ -280,18 +280,18 @@ async function flushPendingUpdates(
         RELEASE_FLUSH_LOCK_LUA,
         1,
         REDIS_KEY_FLUSH_LOCK,
-        lockToken
+        lockToken,
       );
     } catch (releaseErr) {
       logger.warn(
-        'Failed to release API key flush lock (will expire by TTL)',
+        "Failed to release API key flush lock (will expire by TTL)",
         {
           error:
             releaseErr instanceof Error
               ? releaseErr.message
               : String(releaseErr),
         },
-        'ApiKeyFlusher'
+        "ApiKeyFlusher",
       );
     }
   }
@@ -305,14 +305,14 @@ async function flushPendingUpdates(
  */
 export function startLastUsedFlusher(): void {
   if (flushInterval) {
-    logger.warn('Flusher already started', undefined, 'ApiKeyFlusher');
+    logger.warn("Flusher already started", undefined, "ApiKeyFlusher");
     return;
   }
 
   logger.info(
-    'Starting API key lastUsedAt flusher',
+    "Starting API key lastUsedAt flusher",
     undefined,
-    'ApiKeyFlusher'
+    "ApiKeyFlusher",
   );
 
   // Flush on startup
@@ -320,7 +320,7 @@ export function startLastUsedFlusher(): void {
   // updates were in Redis, they would be lost without this. Fire-and-forget because startup
   // shouldn't block on flush (non-critical).
   flushPendingUpdates().catch((err) => {
-    logger.error('Startup flush failed', { error: err }, 'ApiKeyFlusher');
+    logger.error("Startup flush failed", { error: err }, "ApiKeyFlusher");
   });
 
   // Periodic flush
@@ -349,11 +349,11 @@ export function startLastUsedFlusher(): void {
       }
     })().catch((error) => {
       logger.warn(
-        'Scheduled API key flush skipped because Redis became unavailable',
+        "Scheduled API key flush skipped because Redis became unavailable",
         {
           error: error instanceof Error ? error.message : String(error),
         },
-        'ApiKeyFlusher'
+        "ApiKeyFlusher",
       );
     });
   }, FLUSH_INTERVAL_MS);
@@ -361,7 +361,7 @@ export function startLastUsedFlusher(): void {
   logger.info(
     `Flusher started: ${FLUSH_INTERVAL_MS}ms interval, ${FLUSH_BATCH_SIZE} batch size`,
     undefined,
-    'ApiKeyFlusher'
+    "ApiKeyFlusher",
   );
 }
 
@@ -373,9 +373,9 @@ export function stopLastUsedFlusher(): void {
     clearInterval(flushInterval);
     flushInterval = null;
     logger.info(
-      'Stopped API key lastUsedAt flusher',
+      "Stopped API key lastUsedAt flusher",
       undefined,
-      'ApiKeyFlusher'
+      "ApiKeyFlusher",
     );
   }
 }
@@ -394,7 +394,7 @@ export async function shutdownLastUsedFlusher(): Promise<void> {
     logger.info(
       `Flushed ${remaining} remaining updates on shutdown`,
       { count: remaining },
-      'ApiKeyFlusher'
+      "ApiKeyFlusher",
     );
   }
 }
@@ -426,7 +426,7 @@ export function getFlusherStats(): {
 // updates in Redis before process exits. Only register if process exists (not in edge runtime).
 // We avoid calling process.exit() here so framework-managed runtimes can shut down naturally.
 if (
-  typeof process !== 'undefined' &&
+  typeof process !== "undefined" &&
   !globalFlusherState.__feedApiKeyFlusherSignalsRegistered
 ) {
   globalFlusherState.__feedApiKeyFlusherSignalsRegistered = true;
@@ -438,10 +438,10 @@ if (
       logger.error(
         `Shutdown flush failed on ${signal}`,
         { error: err },
-        'ApiKeyFlusher'
+        "ApiKeyFlusher",
       );
     });
   };
-  process.on('SIGTERM', () => handleShutdown('SIGTERM'));
-  process.on('SIGINT', () => handleShutdown('SIGINT'));
+  process.on("SIGTERM", () => handleShutdown("SIGTERM"));
+  process.on("SIGINT", () => handleShutdown("SIGINT"));
 }

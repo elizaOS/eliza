@@ -1,13 +1,13 @@
-'use client';
+"use client";
 
-import { cn, GROUP_CONFIG, getCurrentChainId, logger } from '@feed/shared';
+import { cn, GROUP_CONFIG, getCurrentChainId, logger } from "@feed/shared";
 
-import { Check, Loader2, Search, Shield, Users, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { Avatar } from '@/components/shared/Avatar';
-import { useAuth } from '@/hooks/useAuth';
-import { useAuthStore } from '@/stores/authStore';
-import { apiUrl } from '@/utils/api-url';
+import { Check, Loader2, Search, Shield, Users, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Avatar } from "@/components/shared/Avatar";
+import { useAuth } from "@/hooks/useAuth";
+import { useAuthStore } from "@/stores/authStore";
+import { apiUrl } from "@/utils/api-url";
 
 /**
  * Member structure for group creation modal.
@@ -18,7 +18,7 @@ interface Member {
   displayName: string | null;
   username: string | null;
   profileImageUrl: string | null;
-  type: 'user' | 'agent';
+  type: "user" | "agent";
 }
 
 /**
@@ -54,29 +54,29 @@ export function CreateGroupModal({
 }: CreateGroupModalProps) {
   const { getAccessToken } = useAuth();
   const { user } = useAuthStore();
-  const [groupName, setGroupName] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [groupName, setGroupName] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<Member[]>([]);
   const [selectedMembers, setSelectedMembers] = useState<Member[]>([]);
   const [searching, setSearching] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [nftGated, setNftGated] = useState(false);
-  const [nftContractAddress, setNftContractAddress] = useState('');
-  const [nftTokenId, setNftTokenId] = useState<string>('');
+  const [nftContractAddress, setNftContractAddress] = useState("");
+  const [nftTokenId, setNftTokenId] = useState<string>("");
   const [nftChainId, setNftChainId] = useState<number | undefined>(undefined);
 
   // Reset state when modal opens/closes
   useEffect(() => {
     if (isOpen) {
-      setGroupName('');
-      setSearchQuery('');
+      setGroupName("");
+      setSearchQuery("");
       setSearchResults([]);
       setSelectedMembers([]);
       setError(null);
       setNftGated(false);
-      setNftContractAddress('');
-      setNftTokenId('');
+      setNftContractAddress("");
+      setNftTokenId("");
       setNftChainId(undefined);
     }
   }, [isOpen]);
@@ -99,7 +99,7 @@ export function CreateGroupModal({
             headers: {
               Authorization: `Bearer ${token}`,
             },
-          }
+          },
         );
 
         if (response.ok) {
@@ -116,8 +116,8 @@ export function CreateGroupModal({
               displayName: u.displayName,
               username: u.username,
               profileImageUrl: u.profileImageUrl,
-              type: u.isAgent ? ('agent' as const) : ('user' as const),
-            })
+              type: u.isAgent ? ("agent" as const) : ("user" as const),
+            }),
           );
           setSearchResults(results);
         } else {
@@ -125,9 +125,9 @@ export function CreateGroupModal({
         }
       } catch (error) {
         logger.error(
-          'Member search failed',
+          "Member search failed",
           error instanceof Error ? error : { error },
-          'CreateGroupModal'
+          "CreateGroupModal",
         );
         setSearchResults([]);
       } finally {
@@ -143,7 +143,7 @@ export function CreateGroupModal({
     if (!selectedMembers.find((m) => m.id === member.id)) {
       setSelectedMembers([...selectedMembers, member]);
     }
-    setSearchQuery('');
+    setSearchQuery("");
     setSearchResults([]);
   };
 
@@ -159,11 +159,11 @@ export function CreateGroupModal({
       // Auto-generate from members
       const memberNames = selectedMembers
         .slice(0, 2)
-        .map((m) => m.displayName || m.username || 'User');
-      const currentUserName = user?.displayName || user?.username || 'You';
+        .map((m) => m.displayName || m.username || "User");
+      const currentUserName = user?.displayName || user?.username || "You";
 
       if (selectedMembers.length === 0) {
-        setError('Please add at least one member or enter a group name');
+        setError("Please add at least one member or enter a group name");
         return;
       } else if (selectedMembers.length === 1) {
         finalGroupName = `${currentUserName}, ${memberNames[0]}`;
@@ -178,7 +178,7 @@ export function CreateGroupModal({
     setError(null);
 
     if (nftGated && !nftContractAddress.trim()) {
-      setError('Contract address required');
+      setError("Contract address required");
       setCreating(false);
       return;
     }
@@ -198,10 +198,10 @@ export function CreateGroupModal({
     };
 
     try {
-      const response = await fetch(apiUrl('/api/groups'), {
-        method: 'POST',
+      const response = await fetch(apiUrl("/api/groups"), {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(requestBody),
@@ -209,7 +209,7 @@ export function CreateGroupModal({
 
       if (!response.ok) {
         const data = await response.json();
-        setError(data.error || 'Failed to create group');
+        setError(data.error || "Failed to create group");
         return;
       }
 
@@ -218,11 +218,11 @@ export function CreateGroupModal({
       onClose();
     } catch (err) {
       logger.error(
-        'Failed to create group',
+        "Failed to create group",
         err instanceof Error ? err : { error: err },
-        'CreateGroupModal'
+        "CreateGroupModal",
       );
-      setError('Network error. Please try again.');
+      setError("Network error. Please try again.");
     } finally {
       setCreating(false);
     }
@@ -278,7 +278,7 @@ export function CreateGroupModal({
             <div>
               <div className="mb-2 flex items-baseline justify-between">
                 <label className="font-medium text-sm">
-                  Group Name{' '}
+                  Group Name{" "}
                   <span className="font-normal text-muted-foreground text-xs">
                     (Optional)
                   </span>
@@ -323,12 +323,12 @@ export function CreateGroupModal({
                       <Avatar
                         id={member.id}
                         src={member.profileImageUrl || undefined}
-                        name={member.username || member.displayName || '?'}
+                        name={member.username || member.displayName || "?"}
                         type="user"
                         size="sm"
                       />
                       <span className="text-sm">
-                        {member.displayName || member.username || 'Unknown'}
+                        {member.displayName || member.username || "Unknown"}
                       </span>
                       <button
                         onClick={() => handleRemoveMember(member.id)}
@@ -369,30 +369,30 @@ export function CreateGroupModal({
               <div className="max-h-[200px] overflow-hidden overflow-y-auto rounded-lg border border-border">
                 {searchResults.map((member) => {
                   const isSelected = selectedMembers.find(
-                    (m) => m.id === member.id
+                    (m) => m.id === member.id,
                   );
                   return (
                     <button
                       key={member.id}
                       onClick={() => !isSelected && handleAddMember(member)}
                       className={cn(
-                        'flex w-full items-center gap-3 p-3 text-left transition-colors',
+                        "flex w-full items-center gap-3 p-3 text-left transition-colors",
                         isSelected
-                          ? 'cursor-not-allowed bg-muted/50 opacity-50'
-                          : 'hover:bg-sidebar'
+                          ? "cursor-not-allowed bg-muted/50 opacity-50"
+                          : "hover:bg-sidebar",
                       )}
                       disabled={!!isSelected}
                     >
                       <Avatar
                         id={member.id}
                         src={member.profileImageUrl || undefined}
-                        name={member.username || member.displayName || '?'}
+                        name={member.username || member.displayName || "?"}
                         type="user"
                         size="sm"
                       />
                       <div className="min-w-0 flex-1">
                         <div className="truncate font-medium text-sm">
-                          {member.displayName || member.username || 'Unknown'}
+                          {member.displayName || member.username || "Unknown"}
                         </div>
                         {member.username && (
                           <div className="truncate text-muted-foreground text-xs">
@@ -442,21 +442,21 @@ export function CreateGroupModal({
                     if (!nftGated) {
                       setNftChainId(getCurrentChainId());
                     } else {
-                      setNftContractAddress('');
-                      setNftTokenId('');
+                      setNftContractAddress("");
+                      setNftTokenId("");
                       setNftChainId(undefined);
                     }
                   }}
                   className={cn(
-                    'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
-                    nftGated ? 'bg-primary' : 'bg-muted'
+                    "relative inline-flex h-6 w-11 items-center rounded-full transition-colors",
+                    nftGated ? "bg-primary" : "bg-muted",
                   )}
                   disabled={creating}
                 >
                   <span
                     className={cn(
-                      'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
-                      nftGated ? 'translate-x-6' : 'translate-x-1'
+                      "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
+                      nftGated ? "translate-x-6" : "translate-x-1",
                     )}
                   />
                 </button>
@@ -471,7 +471,7 @@ export function CreateGroupModal({
 
                   <div>
                     <label className="mb-2 block font-medium text-sm">
-                      NFT Contract Address{' '}
+                      NFT Contract Address{" "}
                       <span className="font-normal text-red-500">*</span>
                     </label>
                     <input
@@ -489,7 +489,7 @@ export function CreateGroupModal({
 
                   <div>
                     <label className="mb-2 block font-medium text-sm">
-                      Token ID{' '}
+                      Token ID{" "}
                       <span className="font-normal text-muted-foreground text-xs">
                         (Optional - leave blank for any token from collection)
                       </span>
@@ -500,7 +500,7 @@ export function CreateGroupModal({
                       value={nftTokenId}
                       onChange={(e) => {
                         const value = e.target.value;
-                        if (value === '' || /^\d+$/.test(value)) {
+                        if (value === "" || /^\d+$/.test(value)) {
                           setNftTokenId(value);
                         }
                       }}
@@ -539,7 +539,7 @@ export function CreateGroupModal({
                   {nftContractAddress.trim() && (
                     <div className="rounded-lg border border-blue-500/20 bg-blue-500/10 p-3">
                       <p className="text-blue-700 text-xs dark:text-blue-300">
-                        <strong>NFT Requirement:</strong>{' '}
+                        <strong>NFT Requirement:</strong>{" "}
                         {nftTokenId.trim()
                           ? `Token #${nftTokenId.trim()} from ${nftContractAddress.slice(0, 6)}...${nftContractAddress.slice(-4)}`
                           : `Any token from ${nftContractAddress.slice(0, 6)}...${nftContractAddress.slice(-4)}`}
@@ -558,9 +558,9 @@ export function CreateGroupModal({
                 <strong>Auto-name preview:</strong> {(() => {
                   const memberNames = selectedMembers
                     .slice(0, 2)
-                    .map((m) => m.displayName || m.username || 'User');
+                    .map((m) => m.displayName || m.username || "User");
                   const currentUserName =
-                    user?.displayName || user?.username || 'You';
+                    user?.displayName || user?.username || "You";
 
                   if (selectedMembers.length === 1) {
                     return `${currentUserName}, ${memberNames[0]}`;
@@ -582,9 +582,9 @@ export function CreateGroupModal({
                 creating || (selectedMembers.length === 0 && !groupName.trim())
               }
               className={cn(
-                'w-full rounded-lg px-4 py-3 font-medium transition-colors',
-                'bg-primary text-primary-foreground hover:bg-primary/90',
-                'disabled:cursor-not-allowed disabled:opacity-50'
+                "w-full rounded-lg px-4 py-3 font-medium transition-colors",
+                "bg-primary text-primary-foreground hover:bg-primary/90",
+                "disabled:cursor-not-allowed disabled:opacity-50",
               )}
             >
               {creating ? (

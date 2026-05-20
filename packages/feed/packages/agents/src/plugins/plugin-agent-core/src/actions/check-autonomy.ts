@@ -11,13 +11,13 @@ import type {
   IAgentRuntime,
   Memory,
   State,
-} from '@elizaos/core';
+} from "@elizaos/core";
 import {
   getAgentConfig,
   isAutonomousTradingEnabled,
-} from '../../../../shared/agent-config';
-import { logger } from '../../../../shared/logger';
-import type { AutonomyStatus } from '../types';
+} from "../../../../shared/agent-config";
+import { logger } from "../../../../shared/logger";
+import type { AutonomyStatus } from "../types";
 
 /**
  * CHECK_AUTONOMY Action
@@ -25,55 +25,55 @@ import type { AutonomyStatus } from '../types';
  * Returns the current status of all autonomous features.
  */
 export const checkAutonomyAction: Action = {
-  name: 'CHECK_AUTONOMY',
+  name: "CHECK_AUTONOMY",
   description:
-    'Check which of YOUR autonomous features are enabled (trading, posting, commenting, DMs, group chats). When enabled, you act independently without explicit commands from your owner.',
+    "Check which of YOUR autonomous features are enabled (trading, posting, commenting, DMs, group chats). When enabled, you act independently without explicit commands from your owner.",
 
-  parameters: [] as Action['parameters'],
+  parameters: [] as Action["parameters"],
 
   examples: [
     [
       {
-        name: 'User',
+        name: "User",
         content: {
-          text: 'What are my current autonomous settings?',
+          text: "What are my current autonomous settings?",
         },
       },
       {
-        name: 'Agent',
+        name: "Agent",
         content: {
-          text: 'Let me check your current autonomous feature settings.',
-          actions: ['CHECK_AUTONOMY'],
-        },
-      },
-    ],
-    [
-      {
-        name: 'User',
-        content: {
-          text: 'Which auto features are enabled?',
-        },
-      },
-      {
-        name: 'Agent',
-        content: {
-          text: 'Checking your autonomous feature status...',
-          actions: ['CHECK_AUTONOMY'],
+          text: "Let me check your current autonomous feature settings.",
+          actions: ["CHECK_AUTONOMY"],
         },
       },
     ],
     [
       {
-        name: 'User',
+        name: "User",
         content: {
-          text: 'Show me my autonomy settings',
+          text: "Which auto features are enabled?",
         },
       },
       {
-        name: 'Agent',
+        name: "Agent",
         content: {
-          text: 'Let me look up your current settings.',
-          actions: ['CHECK_AUTONOMY'],
+          text: "Checking your autonomous feature status...",
+          actions: ["CHECK_AUTONOMY"],
+        },
+      },
+    ],
+    [
+      {
+        name: "User",
+        content: {
+          text: "Show me my autonomy settings",
+        },
+      },
+      {
+        name: "Agent",
+        content: {
+          text: "Let me look up your current settings.",
+          actions: ["CHECK_AUTONOMY"],
         },
       },
     ],
@@ -82,7 +82,7 @@ export const checkAutonomyAction: Action = {
   validate: async (
     _runtime: IAgentRuntime,
     _message: Memory,
-    _state?: State
+    _state?: State,
   ): Promise<boolean> => {
     return true;
   },
@@ -92,7 +92,7 @@ export const checkAutonomyAction: Action = {
     _message: Memory,
     _state?: State,
     _options?: Record<string, unknown>,
-    _callback?: HandlerCallback
+    _callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const agentId = runtime.agentId;
 
@@ -116,7 +116,7 @@ export const checkAutonomyAction: Action = {
       logger.info(
         `[CHECK_AUTONOMY] Status retrieved for agent: ${agentId}`,
         undefined,
-        'CheckAutonomy'
+        "CheckAutonomy",
       );
 
       return {
@@ -133,8 +133,8 @@ export const checkAutonomyAction: Action = {
       };
     } catch (error) {
       const errorMsg =
-        error instanceof Error ? error.message : 'Unknown error occurred';
-      logger.error('[CHECK_AUTONOMY] Error:', errorMsg);
+        error instanceof Error ? error.message : "Unknown error occurred";
+      logger.error("[CHECK_AUTONOMY] Error:", errorMsg);
 
       return {
         success: false,

@@ -6,6 +6,7 @@
  * @packageDocumentation
  */
 
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   and,
   db,
@@ -16,14 +17,13 @@ import {
   inArray,
   messages,
   users,
-} from '@feed/db';
-import { StaticDataRegistry, shuffleArray } from '@feed/engine';
-import type { IAgentRuntime } from '@elizaos/core';
-import { callGroqDirect } from '../llm/direct-groq';
-import { getAgentConfig } from '../shared/agent-config';
-import { logger } from '../shared/logger';
-import { getAgentContext } from './agent-context';
-import { executeDirectMessage } from './DirectExecutors';
+} from "@feed/db";
+import { StaticDataRegistry, shuffleArray } from "@feed/engine";
+import { callGroqDirect } from "../llm/direct-groq";
+import { getAgentConfig } from "../shared/agent-config";
+import { logger } from "../shared/logger";
+import { getAgentContext } from "./agent-context";
+import { executeDirectMessage } from "./DirectExecutors";
 
 /**
  * Service for autonomous group chat participation
@@ -39,7 +39,7 @@ export class AutonomousGroupChatService {
    */
   async participateInGroupChats(
     agentUserId: string,
-    _runtime: IAgentRuntime
+    _runtime: IAgentRuntime,
   ): Promise<number> {
     // Resolve agent context (NPC vs USER_CONTROLLED)
     const { displayName: agentDisplayName } =
@@ -70,7 +70,7 @@ export class AutonomousGroupChatService {
       const teamGroups = await db
         .select({ id: groups.id })
         .from(groups)
-        .where(eq(groups.type, 'team'));
+        .where(eq(groups.type, "team"));
       teamGroupIds = new Set(teamGroups.map((g) => g.id));
     }
 
@@ -79,7 +79,7 @@ export class AutonomousGroupChatService {
 
     for (const chatParticipant of shuffledChats) {
       const chat = chatParticipant.chat;
-      if (!chat || !chat.isGroup) continue; // Skip DMs
+      if (!chat?.isGroup) continue; // Skip DMs
 
       // Skip team chats (Agents) - user explicitly triggers agent responses there
       if (chat.groupId && teamGroupIds.has(chat.groupId)) {
@@ -92,7 +92,7 @@ export class AutonomousGroupChatService {
         .select()
         .from(messages)
         .where(
-          and(eq(messages.chatId, chat.id), gte(messages.createdAt, oneDayAgo))
+          and(eq(messages.chatId, chat.id), gte(messages.createdAt, oneDayAgo)),
         )
         .orderBy(desc(messages.createdAt))
         .limit(15);
@@ -103,12 +103,13 @@ export class AutonomousGroupChatService {
       const agentMentioned = recentMessages.some(
         (m: { content: string; senderId: string }) =>
           m.senderId !== agentUserId &&
-          m.content.toLowerCase().includes(agentDisplayName.toLowerCase())
+          m.content.toLowerCase().includes(agentDisplayName.toLowerCase()),
       );
 
       // Don't spam - only respond if mentioned OR significant conversation activity
       const agentLastMessage = recentMessages.find(
-        (m: { content: string; senderId: string }) => m.senderId === agentUserId
+        (m: { content: string; senderId: string }) =>
+          m.senderId === agentUserId,
       );
       const hasRecentConversation = recentMessages.length >= 3;
       const shouldRespond =
@@ -122,7 +123,7 @@ export class AutonomousGroupChatService {
         ...new Set(
           recentMessages
             .map((m: { senderId: string }) => m.senderId)
-            .filter((id: string) => id !== agentUserId)
+            .filter((id: string) => id !== agentUserId),
         ),
       ];
       const senderNames = new Map<string, string>();
@@ -146,7 +147,7 @@ export class AutonomousGroupChatService {
       }
 
       // Generate contextual response
-      const prompt = `${config?.systemPrompt ?? 'You are an AI agent on Feed.'}
+      const prompt = `${config?.systemPrompt ?? "You are an AI agent on Feed."}
 
 You are ${agentDisplayName} in a group chat.
 
@@ -155,9 +156,9 @@ ${recentMessages
   .reverse()
   .map(
     (m: { content: string; senderId: string }) =>
-      `${m.senderId === agentUserId ? 'You' : senderNames.get(m.senderId) || 'User'}: ${m.content}`
+      `${m.senderId === agentUserId ? "You" : senderNames.get(m.senderId) || "User"}: ${m.content}`,
   )
-  .join('\n')}
+  .join("\n")}
 
 Task: Generate a helpful, engaging message (1-2 sentences) that contributes to the conversation.
 Be authentic to your personality and expertise.
@@ -174,20 +175,20 @@ Generate ONLY the message text, or "SKIP" if you shouldn't respond.`;
       const responseContent = await callGroqDirect({
         prompt,
         system: config?.systemPrompt ?? undefined,
-        modelSize: 'large', // Important social content
+        modelSize: "large", // Important social content
         runtime: _runtime, // Pass runtime to access W&B trained models AND trajectory context
         temperature: 0.8,
         maxTokens: 80,
-        actionType: 'generate_group_chat_response',
-        purpose: 'response', // RLAIF: This is a response generation call
+        actionType: "generate_group_chat_response",
+        purpose: "response", // RLAIF: This is a response generation call
       });
 
-      const cleanContent = responseContent.trim().replace(/^["']|["']$/g, '');
+      const cleanContent = responseContent.trim().replace(/^["']|["']$/g, "");
 
       if (
         !cleanContent ||
         cleanContent.length < 5 ||
-        cleanContent.toUpperCase() === 'SKIP'
+        cleanContent.toUpperCase() === "SKIP"
       ) {
         continue;
       }
@@ -203,7 +204,7 @@ Generate ONLY the message text, or "SKIP" if you shouldn't respond.`;
         logger.warn(
           `Failed to create group chat message: ${result.error}`,
           undefined,
-          'AutonomousGroupChat'
+          "AutonomousGroupChat",
         );
         continue;
       }
@@ -212,7 +213,7 @@ Generate ONLY the message text, or "SKIP" if you shouldn't respond.`;
       logger.info(
         `Agent ${agentDisplayName} participated in group chat ${chat.id}`,
         undefined,
-        'AutonomousGroupChat'
+        "AutonomousGroupChat",
       );
 
       // Allow up to 3 group chat responses per tick for cross-pollination

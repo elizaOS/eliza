@@ -9,9 +9,9 @@
  *
  * @module GrowthMetricsTab
  */
-'use client';
+"use client";
 
-import { cn, formatNumber } from '@feed/shared';
+import { cn, formatNumber } from "@feed/shared";
 import {
   Activity,
   ArrowDown,
@@ -26,14 +26,14 @@ import {
   TrendingUp,
   Users,
   Zap,
-} from 'lucide-react';
+} from "lucide-react";
 import {
   useCallback,
   useEffect,
   useMemo,
   useState,
   useTransition,
-} from 'react';
+} from "react";
 import {
   Area,
   AreaChart,
@@ -46,19 +46,19 @@ import {
   Tooltip,
   XAxis,
   YAxis,
-} from 'recharts';
-import { ActivityHeatmap } from '@/components/admin/ActivityHeatmap';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { apiUrl } from '@/utils/api-url';
+} from "recharts";
+import { ActivityHeatmap } from "@/components/admin/ActivityHeatmap";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { apiUrl } from "@/utils/api-url";
 
-type Period = 'day' | 'week' | 'month';
+type Period = "day" | "week" | "month";
 
 interface GrowthData {
   wau: {
     current: number;
     previous: number;
     change: number;
-    trend: 'up' | 'down' | 'stable';
+    trend: "up" | "down" | "stable";
   };
   userBalance: {
     tradersOnly: number;
@@ -103,7 +103,7 @@ interface GrowthData {
       retainedD7: number;
       retentionRate: number;
     }>;
-    status?: 'ok' | 'no_cohorts' | 'no_retention';
+    status?: "ok" | "no_cohorts" | "no_retention";
     message?: string;
   };
   timeSeries: Array<{ date: string; wau: number }>;
@@ -116,9 +116,9 @@ interface GrowthData {
 }
 
 const COLORS = {
-  traders: '#3b82f6', // blue
-  commanders: '#a855f7', // purple
-  hybrid: '#22c55e', // green
+  traders: "#3b82f6", // blue
+  commanders: "#a855f7", // purple
+  hybrid: "#22c55e", // green
 };
 
 interface MetricCardProps {
@@ -141,7 +141,7 @@ function MetricCard({
   return (
     <div className="rounded-xl border border-border bg-card p-5 transition-shadow hover:shadow-md">
       <div className="mb-3 flex items-center justify-between">
-        <div className={cn('rounded-lg p-2', iconBg)}>{icon}</div>
+        <div className={cn("rounded-lg p-2", iconBg)}>{icon}</div>
         {badge}
       </div>
       <div className="font-bold text-3xl">{value}</div>
@@ -155,7 +155,7 @@ export function GrowthMetricsTab() {
   const [data, setData] = useState<GrowthData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [period, setPeriod] = useState<Period>('week');
+  const [period, setPeriod] = useState<Period>("week");
   const [isRefreshing, startRefresh] = useTransition();
 
   const fetchData = useCallback(
@@ -164,12 +164,12 @@ export function GrowthMetricsTab() {
         setError(null);
         const response = await fetch(
           apiUrl(
-            `/api/admin/stats/growth?period=${period}&includeTimeSeries=true`
-          )
+            `/api/admin/stats/growth?period=${period}&includeTimeSeries=true`,
+          ),
         );
         if (!response.ok) {
           setData(null);
-          setError('Failed to load growth metrics');
+          setError("Failed to load growth metrics");
           setLoading(false);
           return;
         }
@@ -183,12 +183,12 @@ export function GrowthMetricsTab() {
       } else {
         void fetchLogic().catch(() => {
           setData(null);
-          setError('Failed to load growth metrics');
+          setError("Failed to load growth metrics");
           setLoading(false);
         });
       }
     },
-    [period]
+    [period],
   );
 
   useEffect(() => {
@@ -203,7 +203,7 @@ export function GrowthMetricsTab() {
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   };
 
   if (loading) {
@@ -227,7 +227,7 @@ export function GrowthMetricsTab() {
     return (
       <div className="py-12 text-center text-muted-foreground">
         <BarChart3 className="mx-auto mb-3 h-12 w-12 opacity-50" />
-        <p>{error ?? 'Failed to load growth metrics'}</p>
+        <p>{error ?? "Failed to load growth metrics"}</p>
         <button
           onClick={() => {
             setLoading(true);
@@ -245,16 +245,16 @@ export function GrowthMetricsTab() {
   // Prepare pie chart data
   const pieData = [
     {
-      name: 'Traders Only',
+      name: "Traders Only",
       value: data.userBalance.tradersOnly,
       color: COLORS.traders,
     },
     {
-      name: 'Commanders Only',
+      name: "Commanders Only",
       value: data.userBalance.commandersOnly,
       color: COLORS.commanders,
     },
-    { name: 'Hybrid', value: data.userBalance.hybrid, color: COLORS.hybrid },
+    { name: "Hybrid", value: data.userBalance.hybrid, color: COLORS.hybrid },
   ].filter((item) => item.value > 0);
 
   // Prepare funnel data
@@ -266,22 +266,22 @@ export function GrowthMetricsTab() {
 
     return [
       {
-        label: 'Signups (30d)',
+        label: "Signups (30d)",
         value: signups,
         pct: 100,
       },
       {
-        label: 'First Trade',
+        label: "First Trade",
         value: tradedWithin24h,
         pct: signups > 0 ? Math.round((tradedWithin24h / signups) * 100) : 0,
       },
       {
-        label: 'First Command',
+        label: "First Command",
         value: commandedWithin24h,
         pct: signups > 0 ? Math.round((commandedWithin24h / signups) * 100) : 0,
       },
       {
-        label: 'Activated',
+        label: "Activated",
         value: activated,
         pct: signups > 0 ? Math.round((activated / signups) * 100) : 0,
       },
@@ -303,7 +303,7 @@ export function GrowthMetricsTab() {
             Growth Metrics
           </h2>
           <p className="mt-1 text-muted-foreground">
-            Week of {formatDate(data.metadata.periodStart)} -{' '}
+            Week of {formatDate(data.metadata.periodStart)} -{" "}
             {formatDate(data.metadata.periodEnd)}
           </p>
         </div>
@@ -311,7 +311,7 @@ export function GrowthMetricsTab() {
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           {/* Period Selector */}
           <div className="flex rounded-lg border border-border bg-card">
-            {(['day', 'week', 'month'] as const).map((p) => (
+            {(["day", "week", "month"] as const).map((p) => (
               <button
                 key={p}
                 onClick={() => {
@@ -319,13 +319,13 @@ export function GrowthMetricsTab() {
                   setLoading(true);
                 }}
                 className={cn(
-                  'px-2.5 py-1.5 font-medium text-xs transition-colors first:rounded-l-lg last:rounded-r-lg sm:px-4 sm:py-2 sm:text-sm',
+                  "px-2.5 py-1.5 font-medium text-xs transition-colors first:rounded-l-lg last:rounded-r-lg sm:px-4 sm:py-2 sm:text-sm",
                   period === p
-                    ? 'bg-primary text-primary-foreground'
-                    : 'text-muted-foreground hover:bg-muted'
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-muted",
                 )}
               >
-                {p === 'day' ? '7D' : p === 'week' ? '4W' : '3M'}
+                {p === "day" ? "7D" : p === "week" ? "4W" : "3M"}
               </button>
             ))}
           </div>
@@ -337,8 +337,8 @@ export function GrowthMetricsTab() {
           >
             <RefreshCw
               className={cn(
-                'h-3.5 w-3.5 sm:h-4 sm:w-4',
-                isRefreshing && 'animate-spin'
+                "h-3.5 w-3.5 sm:h-4 sm:w-4",
+                isRefreshing && "animate-spin",
               )}
             />
             <span className="hidden sm:inline">Refresh</span>
@@ -355,7 +355,7 @@ export function GrowthMetricsTab() {
           label="Weekly Active Users"
           detail={`vs ${formatNumber(data.wau.previous)} last week`}
           badge={
-            data.wau.trend === 'stable' ? (
+            data.wau.trend === "stable" ? (
               <div className="flex items-center gap-1 rounded-full bg-muted px-2 py-1 font-medium text-muted-foreground text-xs">
                 <Minus className="h-3 w-3" />
                 Stable
@@ -363,13 +363,13 @@ export function GrowthMetricsTab() {
             ) : (
               <div
                 className={cn(
-                  'flex items-center gap-1 rounded-full px-2 py-1 font-medium text-xs',
-                  data.wau.trend === 'up'
-                    ? 'bg-green-500/10 text-green-500'
-                    : 'bg-red-500/10 text-red-500'
+                  "flex items-center gap-1 rounded-full px-2 py-1 font-medium text-xs",
+                  data.wau.trend === "up"
+                    ? "bg-green-500/10 text-green-500"
+                    : "bg-red-500/10 text-red-500",
                 )}
               >
-                {data.wau.trend === 'up' ? (
+                {data.wau.trend === "up" ? (
                   <ArrowUp className="h-3 w-3" />
                 ) : (
                   <ArrowDown className="h-3 w-3" />
@@ -403,19 +403,19 @@ export function GrowthMetricsTab() {
         <MetricCard
           icon={<Repeat className="h-5 w-5 text-cyan-500" />}
           iconBg="bg-cyan-500/10"
-          value={data.retention.d7 !== null ? `${data.retention.d7}%` : 'N/A'}
+          value={data.retention.d7 !== null ? `${data.retention.d7}%` : "N/A"}
           label="D7 Retention"
-          detail={data.retention.message ?? 'No data available'}
+          detail={data.retention.message ?? "No data available"}
         />
         <MetricCard
           icon={<Clock className="h-5 w-5 text-pink-500" />}
           iconBg="bg-pink-500/10"
-          value={data.sessions.avgSessionsPerWau ?? 'N/A'}
+          value={data.sessions.avgSessionsPerWau ?? "N/A"}
           label="Sessions per WAU"
           detail={
             data.sessions.totalSessions > 0
               ? `${formatNumber(data.sessions.totalSessions)} total sessions`
-              : 'No session data yet'
+              : "No session data yet"
           }
         />
       </div>
@@ -447,16 +447,16 @@ export function GrowthMetricsTab() {
                 <YAxis stroke="#888" fontSize={12} />
                 <Tooltip
                   contentStyle={{
-                    backgroundColor: '#1a1a1a',
-                    border: '1px solid #333',
-                    borderRadius: '8px',
+                    backgroundColor: "#1a1a1a",
+                    border: "1px solid #333",
+                    borderRadius: "8px",
                   }}
                   labelFormatter={(label) => formatDate(String(label))}
                   formatter={(value) => {
                     const numericValue = Array.isArray(value)
                       ? Number(value[0] ?? 0)
                       : Number(value ?? 0);
-                    return [formatNumber(numericValue), 'WAU'];
+                    return [formatNumber(numericValue), "WAU"];
                   }}
                 />
                 <Area
@@ -501,9 +501,9 @@ export function GrowthMetricsTab() {
                   </Pie>
                   <Tooltip
                     contentStyle={{
-                      backgroundColor: '#1a1a1a',
-                      border: '1px solid #333',
-                      borderRadius: '8px',
+                      backgroundColor: "#1a1a1a",
+                      border: "1px solid #333",
+                      borderRadius: "8px",
                     }}
                     formatter={(value, name) => {
                       const numericValue = Array.isArray(value)
@@ -511,7 +511,7 @@ export function GrowthMetricsTab() {
                         : Number(value ?? 0);
                       return [
                         `${formatNumber(numericValue)} (${Math.round((numericValue / data.userBalance.total) * 100)}%)`,
-                        String(name ?? ''),
+                        String(name ?? ""),
                       ];
                     }}
                   />
@@ -569,7 +569,7 @@ export function GrowthMetricsTab() {
             const isLast = index === funnelStages.length - 1;
             const width = isFirst ? 100 : Math.max(stage.pct, 2); // min 2% for visibility
             const pathLabel =
-              index === 1 ? 'Trade' : index === 2 ? 'Command' : null;
+              index === 1 ? "Trade" : index === 2 ? "Command" : null;
 
             return (
               <div key={stage.label}>
@@ -577,10 +577,10 @@ export function GrowthMetricsTab() {
                   <div className="flex items-center gap-2">
                     <span
                       className={cn(
-                        'text-sm',
+                        "text-sm",
                         isLast
-                          ? 'font-semibold text-green-500'
-                          : 'text-foreground'
+                          ? "font-semibold text-green-500"
+                          : "text-foreground",
                       )}
                     >
                       {stage.label}
@@ -588,10 +588,10 @@ export function GrowthMetricsTab() {
                     {pathLabel && (
                       <span
                         className={cn(
-                          'rounded px-1.5 py-0.5 text-xs',
+                          "rounded px-1.5 py-0.5 text-xs",
                           index === 1
-                            ? 'bg-blue-500/10 text-blue-500'
-                            : 'bg-purple-500/10 text-purple-500'
+                            ? "bg-blue-500/10 text-blue-500"
+                            : "bg-purple-500/10 text-purple-500",
                         )}
                       >
                         {pathLabel}
@@ -612,14 +612,14 @@ export function GrowthMetricsTab() {
                 <div className="h-6 overflow-hidden rounded-md bg-muted/50">
                   <div
                     className={cn(
-                      'h-full rounded-md transition-all duration-500',
+                      "h-full rounded-md transition-all duration-500",
                       isLast
-                        ? 'bg-green-500'
+                        ? "bg-green-500"
                         : index === 1
-                          ? 'bg-blue-500'
+                          ? "bg-blue-500"
                           : index === 2
-                            ? 'bg-purple-500'
-                            : 'bg-muted-foreground/20'
+                            ? "bg-purple-500"
+                            : "bg-muted-foreground/20",
                     )}
                     style={{ width: `${width}%` }}
                   />
@@ -640,13 +640,13 @@ export function GrowthMetricsTab() {
                 ? Math.round(
                     (data.activation.funnel.tradedWithin24h /
                       data.activation.funnel.signups) *
-                      100
+                      100,
                   )
                 : 0}
               %
             </div>
             <div className="mt-1 text-muted-foreground text-xs">
-              {formatNumber(data.activation.funnel.tradedWithin24h)} of{' '}
+              {formatNumber(data.activation.funnel.tradedWithin24h)} of{" "}
               {formatNumber(data.activation.funnel.signups)} signups
             </div>
           </div>
@@ -659,13 +659,13 @@ export function GrowthMetricsTab() {
                 ? Math.round(
                     (data.activation.funnel.commandedWithin24h /
                       data.activation.funnel.signups) *
-                      100
+                      100,
                   )
                 : 0}
               %
             </div>
             <div className="mt-1 text-muted-foreground text-xs">
-              {formatNumber(data.activation.funnel.commandedWithin24h)} of{' '}
+              {formatNumber(data.activation.funnel.commandedWithin24h)} of{" "}
               {formatNumber(data.activation.funnel.signups)} signups
             </div>
           </div>
@@ -747,7 +747,7 @@ export function GrowthMetricsTab() {
                   {formatNumber(data.wau.current)}
                 </td>
                 <td className="py-3 text-right text-muted-foreground">
-                  {data.wau.change >= 0 ? '+' : ''}
+                  {data.wau.change >= 0 ? "+" : ""}
                   {data.wau.change.toFixed(1)}% vs last week
                 </td>
               </tr>
@@ -809,21 +809,21 @@ export function GrowthMetricsTab() {
               <tr className="border-border/50 border-b">
                 <td className="py-3 font-medium">D7 Retention</td>
                 <td className="py-3 text-right font-mono text-cyan-500">
-                  {data.retention.d7 !== null ? `${data.retention.d7}%` : 'N/A'}
+                  {data.retention.d7 !== null ? `${data.retention.d7}%` : "N/A"}
                 </td>
                 <td className="py-3 text-right text-muted-foreground">
-                  {data.retention.message ?? 'No data'}
+                  {data.retention.message ?? "No data"}
                 </td>
               </tr>
               <tr className="border-border/50 border-b">
                 <td className="py-3 font-medium">Sessions per WAU</td>
                 <td className="py-3 text-right font-mono text-pink-500">
-                  {data.sessions.avgSessionsPerWau ?? 'N/A'}
+                  {data.sessions.avgSessionsPerWau ?? "N/A"}
                 </td>
                 <td className="py-3 text-right text-muted-foreground">
                   {data.sessions.totalSessions > 0
                     ? `${formatNumber(data.sessions.totalSessions)} total`
-                    : 'No session data yet'}
+                    : "No session data yet"}
                 </td>
               </tr>
               <tr>
@@ -831,12 +831,12 @@ export function GrowthMetricsTab() {
                 <td className="py-3 text-right font-mono text-pink-500">
                   {data.sessions.medianSessionLengthMinutes !== null
                     ? `${data.sessions.medianSessionLengthMinutes} min`
-                    : 'N/A'}
+                    : "N/A"}
                 </td>
                 <td className="py-3 text-right text-muted-foreground">
                   {data.sessions.totalSessions > 0
-                    ? 'From session tracking'
-                    : 'No session data yet'}
+                    ? "From session tracking"
+                    : "No session data yet"}
                 </td>
               </tr>
             </tbody>

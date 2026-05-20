@@ -29,8 +29,8 @@ export default function OfflinePage() {
         </svg>
         <h1 className="mb-3 font-semibold text-2xl">You're Offline</h1>
         <p className="mb-8 text-[#a1a1aa] leading-relaxed">
-          Feed requires an internet connection for real-time prediction
-          markets and live events.
+          Feed requires an internet connection for real-time prediction markets
+          and live events.
         </p>
         <button
           type="button"

@@ -12,50 +12,50 @@ import {
   validateDateRange,
   validateEnum,
   withErrorHandling,
-} from '@feed/api';
-import { db } from '@feed/db';
-import { FEE_CONFIG } from '@feed/engine';
-import { logger, toISO, toISOOrNull } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/api";
+import { db } from "@feed/db";
+import { FEE_CONFIG } from "@feed/engine";
+import { logger, toISO, toISOOrNull } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 /** Valid market types for filtering - whitelist to prevent injection */
-const VALID_MARKET_TYPES = ['all', 'prediction', 'perpetual'] as const;
+const VALID_MARKET_TYPES = ["all", "prediction", "perpetual"] as const;
 type MarketType = (typeof VALID_MARKET_TYPES)[number];
 
 function validateMarketType(value: string | null): MarketType {
-  return validateEnum(value, VALID_MARKET_TYPES, 'all');
+  return validateEnum(value, VALID_MARKET_TYPES, "all");
 }
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
-  const admin = await requirePermission(request, 'view_trading');
+  const admin = await requirePermission(request, "view_trading");
 
   // Apply rate limiting to prevent abuse of expensive stats queries
   const rateLimitResult = applyRateLimit(
     admin.userId,
-    RATE_LIMIT_CONFIGS.ADMIN_STATS
+    RATE_LIMIT_CONFIGS.ADMIN_STATS,
   );
   if (!rateLimitResult.allowed) {
     return rateLimitError(rateLimitResult.retryAfter);
   }
 
   const { searchParams } = new URL(request.url);
-  const startDate = parseDateParam(searchParams.get('startDate'));
-  const endDate = parseDateParam(searchParams.get('endDate'));
-  const marketType = validateMarketType(searchParams.get('marketType'));
-  const includeTimeSeries = searchParams.get('includeTimeSeries') === 'true';
+  const startDate = parseDateParam(searchParams.get("startDate"));
+  const endDate = parseDateParam(searchParams.get("endDate"));
+  const marketType = validateMarketType(searchParams.get("marketType"));
+  const includeTimeSeries = searchParams.get("includeTimeSeries") === "true";
 
   // Validate date range to prevent heavy queries
   const dateRangeError = validateDateRange(startDate, endDate);
   if (dateRangeError) {
-    return errorResponse(dateRangeError, 'INVALID_DATE_RANGE', 400, {
+    return errorResponse(dateRangeError, "INVALID_DATE_RANGE", 400, {
       maxDays: MAX_DATE_RANGE_DAYS,
     });
   }
 
   logger.info(
-    'Trading stats requested',
+    "Trading stats requested",
     { startDate, endDate, marketType, includeTimeSeries },
-    'GET /api/admin/stats/trading'
+    "GET /api/admin/stats/trading",
   );
 
   const now = new Date();
@@ -75,7 +75,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     db.market.count({ where: { resolved: false } }),
     db.market.count({ where: { resolved: true } }),
     db.position.count(),
-    db.position.count({ where: { shares: { gt: '0' } } }),
+    db.position.count({ where: { shares: { gt: "0" } } }),
     db.perpPosition.count(),
     db.perpPosition.count({ where: { closedAt: null } }),
   ]);
@@ -175,7 +175,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       fees: string;
     }>;
 
-    if (marketType === 'prediction') {
+    if (marketType === "prediction") {
       dailyStats = await db.$queryRaw<{
         date: string;
         trades: string;
@@ -190,7 +190,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
           AND bt.type IN ('prediction_buy', 'prediction_sell')
         GROUP BY DATE(bt."createdAt") ORDER BY date ASC
       `;
-    } else if (marketType === 'perpetual') {
+    } else if (marketType === "perpetual") {
       dailyStats = await db.$queryRaw<{
         date: string;
         trades: string;
@@ -247,7 +247,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   const recentTradesStartIso = recentTradesStart.toISOString();
   const recentTradesEndIso = recentTradesEnd.toISOString();
 
-  if (marketType === 'prediction') {
+  if (marketType === "prediction") {
     recentTrades = await db.$queryRaw`
       SELECT bt.id, bt."userId", u.username, u."displayName", bt.type, bt.amount, bt."createdAt"
       FROM "BalanceTransaction" bt
@@ -256,7 +256,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         AND bt."createdAt" >= ${recentTradesStartIso} AND bt."createdAt" <= ${recentTradesEndIso}
       ORDER BY bt."createdAt" DESC LIMIT 20
     `;
-  } else if (marketType === 'perpetual') {
+  } else if (marketType === "perpetual") {
     recentTrades = await db.$queryRaw`
       SELECT bt.id, bt."userId", u.username, u."displayName", bt.type, bt.amount, bt."createdAt"
       FROM "BalanceTransaction" bt
@@ -318,7 +318,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       startDate: toISOOrNull(startDate),
       endDate: toISOOrNull(endDate),
       marketType,
-      applied: Boolean(startDate || endDate || marketType !== 'all'),
+      applied: Boolean(startDate || endDate || marketType !== "all"),
     },
   });
 });

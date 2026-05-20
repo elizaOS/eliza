@@ -15,11 +15,11 @@ import {
   gte,
   inArray,
   worldEvents,
-} from '@feed/db';
-import { type ActorTier } from '@feed/shared';
-import { NPC_POSTING_CONFIG } from '../config/npc-activity';
-import { secureRandom } from '../utils/entropy';
-import { StaticDataRegistry } from './static-data-registry';
+} from "@feed/db";
+import type { ActorTier } from "@feed/shared";
+import { NPC_POSTING_CONFIG } from "../config/npc-activity";
+import { secureRandom } from "../utils/entropy";
+import { StaticDataRegistry } from "./static-data-registry";
 
 /**
  * Minimal actor interface for posting probability.
@@ -66,7 +66,7 @@ let lastDevCacheTime = 0;
  * Called at the top of cache getter functions.
  */
 function maybeInvalidateDevCaches(): void {
-  if (process.env.NODE_ENV === 'development') {
+  if (process.env.NODE_ENV === "development") {
     const now = Date.now();
     if (now - lastDevCacheTime > DEV_CACHE_TTL_MS) {
       orgIdToTickerMap = null;
@@ -147,7 +147,7 @@ function getActorToStocksMap(): Map<string, string[]> {
  */
 function hasAffiliatedEvent(
   actor: PostingActor,
-  context: PostingContext
+  context: PostingContext,
 ): boolean {
   if (context.activeEvents.length === 0) {
     return false;
@@ -170,7 +170,7 @@ function hasAffiliatedEvent(
     ) {
       // Convert affected stocks to lowercase Set for O(1) lookup
       const affectedStocksLower = new Set(
-        event.affectedStocks.map((s) => s.toLowerCase())
+        event.affectedStocks.map((s) => s.toLowerCase()),
       );
 
       for (const affiliation of actor.affiliations) {
@@ -198,7 +198,7 @@ function hasAffiliatedEvent(
 export function calculatePostingProbability(
   actor: PostingActor,
   state: ActorStateRow | null,
-  context: PostingContext
+  context: PostingContext,
 ): number {
   const postsToday = state?.postsToday ?? 0;
 
@@ -240,7 +240,7 @@ export function calculatePostingProbability(
  */
 export function weightedRandomSample<T extends { probability: number }>(
   candidates: T[],
-  count: number
+  count: number,
 ): T[] {
   if (candidates.length === 0) return [];
   if (candidates.length <= count) return [...candidates];
@@ -264,7 +264,7 @@ export function weightedRandomSample<T extends { probability: number }>(
     let selectedIdx = 0;
 
     for (let i = 0; i < remaining.length; i++) {
-      random -= remaining[i]!.probability;
+      random -= remaining[i]?.probability;
       if (random <= 0) {
         selectedIdx = i;
         break;
@@ -281,7 +281,7 @@ export function weightedRandomSample<T extends { probability: number }>(
  * Get NPC state for all actors from database.
  */
 export async function getNpcsWithState(
-  actorIds: string[]
+  actorIds: string[],
 ): Promise<Map<string, ActorStateRow>> {
   if (actorIds.length === 0) return new Map();
 
@@ -291,7 +291,7 @@ export async function getNpcsWithState(
     .where(
       actorIds.length === 1
         ? eq(actorState.id, actorIds[0]!)
-        : inArray(actorState.id, actorIds)
+        : inArray(actorState.id, actorIds),
     );
 
   const stateMap = new Map<string, ActorStateRow>();
@@ -309,14 +309,14 @@ export class PostingProbabilityService {
   calculate(
     actor: PostingActor,
     state: ActorStateRow | null,
-    context: PostingContext
+    context: PostingContext,
   ): number {
     return calculatePostingProbability(actor, state, context);
   }
 
   weightedSample<T extends { probability: number }>(
     candidates: T[],
-    count: number
+    count: number,
   ): T[] {
     return weightedRandomSample(candidates, count);
   }
@@ -353,7 +353,7 @@ const ACTIVE_EVENTS_CACHE_MS = 2 * 60 * 1000;
 let activeEventsCache: {
   data: {
     activeEventQuestionIds: string[];
-    activeEvents: PostingContext['activeEvents'];
+    activeEvents: PostingContext["activeEvents"];
   };
   timestamp: number;
 } | null = null;
@@ -367,7 +367,7 @@ let activeEventsCache: {
  */
 export async function getActiveEventsForPosting(): Promise<{
   activeEventQuestionIds: string[];
-  activeEvents: PostingContext['activeEvents'];
+  activeEvents: PostingContext["activeEvents"];
 }> {
   const now = Date.now();
 
@@ -381,7 +381,7 @@ export async function getActiveEventsForPosting(): Promise<{
 
   const currentDate = new Date();
   const cutoff = new Date(
-    currentDate.getTime() - RECENT_EVENTS_HOURS * 60 * 60 * 1000
+    currentDate.getTime() - RECENT_EVENTS_HOURS * 60 * 60 * 1000,
   );
 
   // Fetch recent world events (capped to MAX_RECENT_EVENTS to bound memory/processing)
@@ -393,7 +393,7 @@ export async function getActiveEventsForPosting(): Promise<{
     .limit(MAX_RECENT_EVENTS);
 
   // Build active events for posting context
-  const activeEvents: PostingContext['activeEvents'] = [];
+  const activeEvents: PostingContext["activeEvents"] = [];
   const activeEventQuestionIds = new Set<string>();
 
   // Use cached actor -> stocks mapping (built from static data)
@@ -402,7 +402,7 @@ export async function getActiveEventsForPosting(): Promise<{
   for (const event of recentEvents) {
     // Validate event.actors is an array of strings before using it
     const actorIds: string[] = Array.isArray(event.actors)
-      ? event.actors.filter((a): a is string => typeof a === 'string')
+      ? event.actors.filter((a): a is string => typeof a === "string")
       : [];
 
     // Collect affected stocks from affiliated actors

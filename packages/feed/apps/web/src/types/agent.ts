@@ -20,7 +20,7 @@ export interface AgentProfileMetadata {
   /** Cover image URL (optional) */
   coverImageUrl?: string | null;
   /** Agent type (default: 'user') */
-  type?: 'user' | string;
+  type?: "user" | string;
   /** ISO timestamp of update */
   updated?: string;
 }

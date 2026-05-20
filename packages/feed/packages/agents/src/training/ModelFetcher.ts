@@ -4,8 +4,8 @@
  * Fetches trained RL models from the database for inference.
  */
 
-import { db, desc, inArray, trainedModels } from '@feed/db';
-import { logger } from '@feed/shared';
+import { db, desc, inArray, trainedModels } from "@feed/db";
+import { logger } from "@feed/shared";
 
 export interface ModelArtifact {
   version: string;
@@ -26,7 +26,7 @@ export async function getLatestRLModel(): Promise<ModelArtifact | null> {
   const modelResult = await db
     .select()
     .from(trainedModels)
-    .where(inArray(trainedModels.status, ['ready', 'deployed']))
+    .where(inArray(trainedModels.status, ["ready", "deployed"]))
     .orderBy(desc(trainedModels.createdAt))
     .limit(1);
 
@@ -40,23 +40,23 @@ export async function getLatestRLModel(): Promise<ModelArtifact | null> {
 
   if (!rlModelId || rlModelId.trim().length === 0) {
     logger.error(
-      'Model has no storagePath or modelId',
+      "Model has no storagePath or modelId",
       {
         modelId: model.modelId,
         storagePath: model.storagePath,
       },
-      'ModelFetcher'
+      "ModelFetcher",
     );
     return null;
   }
 
   if (!model.baseModel || model.baseModel.trim().length === 0) {
     logger.error(
-      'Model has no baseModel',
+      "Model has no baseModel",
       {
         modelId: model.modelId,
       },
-      'ModelFetcher'
+      "ModelFetcher",
     );
     return null;
   }

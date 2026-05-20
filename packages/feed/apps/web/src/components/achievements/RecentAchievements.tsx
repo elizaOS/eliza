@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { Award } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Award } from "lucide-react";
+import { useEffect, useState } from "react";
 
 interface Achievement {
   id: string;
@@ -13,9 +13,9 @@ interface Achievement {
 }
 
 const TIER_COLORS: Record<string, string> = {
-  bronze: 'border-amber-600/40 bg-amber-600/10 text-amber-600',
-  silver: 'border-slate-400/40 bg-slate-400/10 text-slate-400',
-  gold: 'border-yellow-500/40 bg-yellow-500/10 text-yellow-500',
+  bronze: "border-amber-600/40 bg-amber-600/10 text-amber-600",
+  silver: "border-slate-400/40 bg-slate-400/10 text-slate-400",
+  gold: "border-yellow-500/40 bg-yellow-500/10 text-yellow-500",
 };
 
 /**

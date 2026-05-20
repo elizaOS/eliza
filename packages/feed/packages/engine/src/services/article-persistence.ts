@@ -14,13 +14,13 @@
  * @module services/article-persistence
  */
 
-import { db, eq, posts } from '@feed/db';
-import type { ArticlePersistInput } from '@feed/shared';
-import { generateSnowflakeId, logger } from '@feed/shared';
-import { formatError } from '../utils/error-utils';
-import { generateArticleImageWithRetry } from './article-image-service';
-import { articleRateLimiter } from './article-rate-limiter';
-import { generateTagsFromPost, storeTagsForPost } from './tag-service';
+import { db, eq, posts } from "@feed/db";
+import type { ArticlePersistInput } from "@feed/shared";
+import { generateSnowflakeId, logger } from "@feed/shared";
+import { formatError } from "../utils/error-utils";
+import { generateArticleImageWithRetry } from "./article-image-service";
+import { articleRateLimiter } from "./article-rate-limiter";
+import { generateTagsFromPost, storeTagsForPost } from "./tag-service";
 
 /**
  * Options for persisting an article
@@ -104,7 +104,7 @@ export type PersistArticleResult =
  */
 export async function persistArticle(
   article: ArticlePersistInput,
-  options: PersistArticleOptions = {}
+  options: PersistArticleOptions = {},
 ): Promise<PersistArticleResult> {
   const { checkRateLimit = true, generateImage = !!process.env.FAL_KEY } =
     options;
@@ -115,13 +115,13 @@ export async function persistArticle(
       await articleRateLimiter.canGenerateArticle();
     if (!allowed) {
       logger.debug(
-        'Article persistence blocked by rate limit',
+        "Article persistence blocked by rate limit",
         {
           authorOrgId: article.authorOrgId,
           currentCount,
           maxAllowed,
         },
-        'ArticlePersistence'
+        "ArticlePersistence",
       );
       return { success: false, rateLimited: true };
     }
@@ -135,7 +135,7 @@ export async function persistArticle(
     // Insert article into posts table
     await db.insert(posts).values({
       id: articleId,
-      type: 'article',
+      type: "article",
       content: article.summary,
       fullContent: article.content,
       articleTitle: article.title,
@@ -143,7 +143,7 @@ export async function persistArticle(
       biasScore: article.biasScore ?? undefined,
       sentiment: article.sentiment ?? undefined,
       slant: article.slant ?? undefined,
-      category: article.category || 'news',
+      category: article.category || "news",
       imageUrl: article.imageUrl ?? undefined,
       authorId: article.authorOrgId,
       gameId: article.gameId,
@@ -154,14 +154,14 @@ export async function persistArticle(
     });
 
     logger.debug(
-      'Article persisted successfully',
+      "Article persisted successfully",
       {
         articleId,
         authorOrgId: article.authorOrgId,
         title: article.title.slice(0, 50),
         gameId: article.gameId,
       },
-      'ArticlePersistence'
+      "ArticlePersistence",
     );
 
     // Fire-and-forget image generation
@@ -169,7 +169,7 @@ export async function persistArticle(
       void generateArticleImageWithRetry({
         title: article.title,
         summary: article.summary,
-        category: article.category || 'news',
+        category: article.category || "news",
       })
         .then(async (imageUrl) => {
           if (imageUrl) {
@@ -179,30 +179,30 @@ export async function persistArticle(
                 .set({ imageUrl })
                 .where(eq(posts.id, articleId));
               logger.debug(
-                'Article image updated',
+                "Article image updated",
                 { articleId, imageUrl: imageUrl.slice(0, 50) },
-                'ArticlePersistence'
+                "ArticlePersistence",
               );
             } catch (updateError) {
               logger.warn(
-                'Failed to update article with image URL',
+                "Failed to update article with image URL",
                 {
                   articleId,
                   error: formatError(updateError),
                 },
-                'ArticlePersistence'
+                "ArticlePersistence",
               );
             }
           }
         })
         .catch((err) => {
           logger.debug(
-            'Image generation failed (non-blocking)',
+            "Image generation failed (non-blocking)",
             {
               articleId,
               error: formatError(err),
             },
-            'ArticlePersistence'
+            "ArticlePersistence",
           );
         });
     }
@@ -213,20 +213,20 @@ export async function persistArticle(
         if (generatedTags.length > 0) {
           await storeTagsForPost(articleId, generatedTags);
           logger.debug(
-            'Article tags stored',
+            "Article tags stored",
             { articleId, tagCount: generatedTags.length },
-            'ArticlePersistence'
+            "ArticlePersistence",
           );
         }
       })
       .catch((tagError) => {
         logger.warn(
-          'Failed to generate/store article tags (non-blocking)',
+          "Failed to generate/store article tags (non-blocking)",
           {
             articleId,
             error: formatError(tagError),
           },
-          'ArticlePersistence'
+          "ArticlePersistence",
         );
       });
 
@@ -234,13 +234,13 @@ export async function persistArticle(
   } catch (error) {
     const errorMessage = formatError(error);
     logger.error(
-      'Failed to persist article',
+      "Failed to persist article",
       {
         articleId,
         authorOrgId: article.authorOrgId,
         error: errorMessage,
       },
-      'ArticlePersistence'
+      "ArticlePersistence",
     );
     return { success: false, error: errorMessage };
   }

@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, mock } from 'bun:test';
-import type { NextRequest } from 'next/server';
+import { beforeEach, describe, expect, it, mock } from "bun:test";
+import type { NextRequest } from "next/server";
 
 const mockAuthenticate = mock();
 const mockEnsureOfflineWalletReady = mock();
@@ -35,10 +35,10 @@ class MockNextRequest {
       body?: string;
       headers?: Record<string, string>;
       method?: string;
-    } = {}
+    } = {},
   ) {
     this.headers = new Headers(init.headers);
-    this.#body = init.body ?? '{}';
+    this.#body = init.body ?? "{}";
   }
 
   async json() {
@@ -49,18 +49,18 @@ class MockNextRequest {
 class MockConflictError extends Error {}
 class MockInternalServerError extends Error {}
 
-const _actualNextServer = await import('next/server');
-mock.module('next/server', () => ({
+const _actualNextServer = await import("next/server");
+mock.module("next/server", () => ({
   ..._actualNextServer,
 }));
 
-const _actualZod = await import('zod');
-mock.module('zod', () => ({
+const _actualZod = await import("zod");
+mock.module("zod", () => ({
   ..._actualZod,
 }));
 
-const _actualApi = await import('@feed/api');
-mock.module('@feed/api', () => ({
+const _actualApi = await import("@feed/api");
+mock.module("@feed/api", () => ({
   ..._actualApi,
   authenticate: mockAuthenticate,
   cachedDb: {
@@ -99,20 +99,20 @@ mock.module('@feed/api', () => ({
   successResponse: (data: unknown) =>
     Response.json({
       success: true,
-      ...(typeof data === 'object' && data !== null && !Array.isArray(data)
+      ...(typeof data === "object" && data !== null && !Array.isArray(data)
         ? (data as Record<string, unknown>)
         : {}),
     }),
   withErrorHandling: (
-    handler: (request: MockNextRequest) => Promise<Response>
+    handler: (request: MockNextRequest) => Promise<Response>,
   ) => handler,
 }));
 
-const _actualDb = await import('@feed/db');
-mock.module('@feed/db', () => ({
+const _actualDb = await import("@feed/db");
+mock.module("@feed/db", () => ({
   ..._actualDb,
   and: (...conditions: unknown[]) => conditions,
-  balanceTransactions: { id: 'balanceTransactions.id' },
+  balanceTransactions: { id: "balanceTransactions.id" },
   db: {
     select: mock(() => []),
     update: mock(() => ({
@@ -127,25 +127,25 @@ mock.module('@feed/db', () => ({
     })),
   },
   eq: (left: unknown, right: unknown) => ({ left, right }),
-  follows: { id: 'follows.id' },
+  follows: { id: "follows.id" },
   isRetryableError: mock(() => false),
   ne: (left: unknown, right: unknown) => ({ left, right }),
-  referrals: { id: 'referrals.id' },
+  referrals: { id: "referrals.id" },
   sql: (strings: TemplateStringsArray, ...values: unknown[]) => ({
     strings,
     values,
   }),
   toDatabaseErrorType: mock((error: unknown) => error),
   users: {
-    id: 'users.id',
-    walletAddress: 'users.walletAddress',
-    username: 'users.username',
+    id: "users.id",
+    walletAddress: "users.walletAddress",
+    username: "users.username",
   },
   withRetry: mockWithRetry,
   withTransaction: mockWithTransaction,
 }));
 
-const _actualEngine = await import('@feed/engine');
+const _actualEngine = await import("@feed/engine");
 (
   _actualEngine.UserAlphaGroupAssignmentService as unknown as Record<
     string,
@@ -156,18 +156,18 @@ const _actualEngine = await import('@feed/engine');
   assignments: [],
   errors: [],
 }));
-mock.module('@feed/engine', () => ({
+mock.module("@feed/engine", () => ({
   ..._actualEngine,
 }));
 
-const _actualShared = await import('@feed/shared');
-mock.module('@feed/shared', () => ({
+const _actualShared = await import("@feed/shared");
+mock.module("@feed/shared", () => ({
   ..._actualShared,
   checkForAdminEmail: mock(() => ({
     adminEmail: null,
     allVerifiedEmails: [],
   })),
-  generateSnowflakeId: mock(async () => 'generated-id'),
+  generateSnowflakeId: mock(async () => "generated-id"),
   logger: {
     info: mock(),
     warn: mock(),
@@ -190,15 +190,15 @@ mock.module('@feed/shared', () => ({
         : new Date(val).toISOString(),
 }));
 
-mock.module('@/lib/posthog/server', () => ({
+mock.module("@/lib/posthog/server", () => ({
   trackServerEvent: mockTrackServerEvent,
 }));
 
 const { POST } = await import(
-  '../../../apps/web/src/app/api/users/signup/route'
+  "../../../apps/web/src/app/api/users/signup/route"
 );
 
-describe('signup route referral code handling', () => {
+describe("signup route referral code handling", () => {
   beforeEach(() => {
     mockAuthenticate.mockReset();
     mockEnsureOfflineWalletReady.mockReset();
@@ -219,9 +219,9 @@ describe('signup route referral code handling', () => {
     mockInvalidateUserIdentifierCaches.mockReset();
 
     mockAuthenticate.mockResolvedValue({
-      userId: 'user_1',
-      dbUserId: 'user_1',
-      privyId: 'did:privy:user_1',
+      userId: "user_1",
+      dbUserId: "user_1",
+      privyId: "did:privy:user_1",
       walletAddress: null,
     });
     mockEnsureOfflineWalletReady.mockResolvedValue({
@@ -235,13 +235,13 @@ describe('signup route referral code handling', () => {
       balanceDelta: 1000,
       newBalance: 1000,
       alreadyProcessed: false,
-      transactionId: 'funding-tx-1',
+      transactionId: "funding-tx-1",
     });
     mockTrackServerEvent.mockResolvedValue(undefined);
     mockAwardReferralSignup.mockResolvedValue({
       success: false,
       pointsAwarded: 0,
-      error: 'not-applicable',
+      error: "not-applicable",
     });
     mockAwardPoints.mockResolvedValue({
       success: true,
@@ -254,11 +254,11 @@ describe('signup route referral code handling', () => {
     mockAwardProfileCompletion.mockResolvedValue({ pointsAwarded: 0 });
     mockWithRetry.mockResolvedValue({
       user: {
-        id: 'user_1',
-        privyId: 'did:privy:user_1',
-        username: 'alice',
-        displayName: 'Alice',
-        bio: '',
+        id: "user_1",
+        privyId: "did:privy:user_1",
+        username: "alice",
+        displayName: "Alice",
+        bio: "",
         profileImageUrl: null,
         coverImageUrl: null,
         walletAddress: null,
@@ -267,7 +267,7 @@ describe('signup route referral code handling', () => {
         hasBio: false,
         hasProfileImage: false,
         nftTokenId: null,
-        referralCode: 'alice',
+        referralCode: "alice",
         referredBy: null,
         reputationPoints: 1000,
         pointsAwardedForProfile: true,
@@ -275,8 +275,8 @@ describe('signup route referral code handling', () => {
         hasTwitter: false,
         farcasterUsername: null,
         twitterUsername: null,
-        createdAt: new Date('2026-03-20T20:11:55.000Z'),
-        updatedAt: new Date('2026-03-20T20:11:55.000Z'),
+        createdAt: new Date("2026-03-20T20:11:55.000Z"),
+        updatedAt: new Date("2026-03-20T20:11:55.000Z"),
       },
       referrerId: null,
       referralRecordId: null,
@@ -284,36 +284,36 @@ describe('signup route referral code handling', () => {
     mockWithTransaction.mockResolvedValue(undefined);
   });
 
-  it('returns success without a post-signup referral code regeneration call', async () => {
+  it("returns success without a post-signup referral code regeneration call", async () => {
     const request = new MockNextRequest(
-      'https://feed.market/api/users/signup',
+      "https://feed.market/api/users/signup",
       {
-        method: 'POST',
+        method: "POST",
         body: JSON.stringify({
-          username: 'alice',
-          displayName: 'Alice',
+          username: "alice",
+          displayName: "Alice",
           isWaitlist: true,
         }),
         headers: {
-          'content-type': 'application/json',
+          "content-type": "application/json",
         },
-      }
+      },
     );
 
     const response = await POST(request as unknown as NextRequest);
     const data = await response.json();
 
     expect(response.status).toBe(200);
-    expect(data.user.referralCode).toBe('alice');
+    expect(data.user.referralCode).toBe("alice");
     expect(mockGetOrCreateReferralCode).not.toHaveBeenCalled();
     expect(mockInvalidateUserIdentifierCaches).toHaveBeenCalled();
-    expect(mockNotifyNewAccount).toHaveBeenCalledWith('user_1');
+    expect(mockNotifyNewAccount).toHaveBeenCalledWith("user_1");
     expect(mockTrackServerEvent).toHaveBeenCalledWith(
-      'user_1',
-      'signup_completed',
+      "user_1",
+      "signup_completed",
       expect.objectContaining({
-        username: 'alice',
-      })
+        username: "alice",
+      }),
     );
   });
 });

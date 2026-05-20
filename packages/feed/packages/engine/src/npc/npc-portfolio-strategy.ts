@@ -8,7 +8,7 @@
  * - Modern Portfolio Theory principles
  */
 
-import { logger } from '@feed/shared';
+import { logger } from "@feed/shared";
 
 interface MarketConditions {
   volatility: number; // 0-1, market volatility index
@@ -44,7 +44,7 @@ export interface StrategyConfig {
   positionSizing: PositionSizing;
   riskParameters: RiskParameters;
   rebalanceThreshold: number; // % deviation before rebalance
-  holdingPeriod: 'short' | 'medium' | 'long';
+  holdingPeriod: "short" | "medium" | "long";
 }
 
 export class NPCPortfolioStrategy {
@@ -53,26 +53,26 @@ export class NPCPortfolioStrategy {
    */
   static getStrategy(
     personality: string | null,
-    marketConditions?: MarketConditions
+    marketConditions?: MarketConditions,
   ): StrategyConfig {
-    const personalityLower = (personality || '').toLowerCase();
+    const personalityLower = (personality || "").toLowerCase();
 
     // Select base strategy from personality
     let baseStrategy: StrategyConfig;
 
     if (
-      personalityLower.includes('erratic') ||
-      personalityLower.includes('disaster profiteer')
+      personalityLower.includes("erratic") ||
+      personalityLower.includes("disaster profiteer")
     ) {
       baseStrategy = NPCPortfolioStrategy.getAggressiveStrategy();
     } else if (
-      personalityLower.includes('vampire') ||
-      personalityLower.includes('yacht')
+      personalityLower.includes("vampire") ||
+      personalityLower.includes("yacht")
     ) {
       baseStrategy = NPCPortfolioStrategy.getConservativeStrategy();
     } else if (
-      personalityLower.includes('memecoin') ||
-      personalityLower.includes('nft degen')
+      personalityLower.includes("memecoin") ||
+      personalityLower.includes("nft degen")
     ) {
       baseStrategy = NPCPortfolioStrategy.getHighVolatilityStrategy();
     } else {
@@ -83,7 +83,7 @@ export class NPCPortfolioStrategy {
     if (marketConditions) {
       return NPCPortfolioStrategy.adjustForMarketConditions(
         baseStrategy,
-        marketConditions
+        marketConditions,
       );
     }
 
@@ -98,9 +98,9 @@ export class NPCPortfolioStrategy {
    */
   private static getAggressiveStrategy(): StrategyConfig {
     return {
-      name: 'Aggressive Growth',
+      name: "Aggressive Growth",
       description:
-        'High-risk, high-reward strategy with leverage and concentrated positions',
+        "High-risk, high-reward strategy with leverage and concentrated positions",
       assetAllocation: {
         perps: 70,
         predictions: 25,
@@ -119,7 +119,7 @@ export class NPCPortfolioStrategy {
         correlationLimit: 0.8, // Allow high correlation
       },
       rebalanceThreshold: 15, // Rebalance when >15% deviation
-      holdingPeriod: 'short',
+      holdingPeriod: "short",
     };
   }
 
@@ -131,9 +131,9 @@ export class NPCPortfolioStrategy {
    */
   private static getConservativeStrategy(): StrategyConfig {
     return {
-      name: 'Conservative Wealth Preservation',
+      name: "Conservative Wealth Preservation",
       description:
-        'Low-risk strategy focused on capital preservation and steady returns',
+        "Low-risk strategy focused on capital preservation and steady returns",
       assetAllocation: {
         perps: 30,
         predictions: 50,
@@ -152,7 +152,7 @@ export class NPCPortfolioStrategy {
         correlationLimit: 0.4, // Require diversification
       },
       rebalanceThreshold: 5, // Rebalance when >5% deviation
-      holdingPeriod: 'long',
+      holdingPeriod: "long",
     };
   }
 
@@ -164,8 +164,8 @@ export class NPCPortfolioStrategy {
    */
   private static getBalancedStrategy(): StrategyConfig {
     return {
-      name: 'Balanced Growth',
-      description: 'Moderate risk/reward with diversified allocation',
+      name: "Balanced Growth",
+      description: "Moderate risk/reward with diversified allocation",
       assetAllocation: {
         perps: 50,
         predictions: 40,
@@ -184,7 +184,7 @@ export class NPCPortfolioStrategy {
         correlationLimit: 0.6, // Moderate correlation allowed
       },
       rebalanceThreshold: 10, // Rebalance when >10% deviation
-      holdingPeriod: 'medium',
+      holdingPeriod: "medium",
     };
   }
 
@@ -196,9 +196,9 @@ export class NPCPortfolioStrategy {
    */
   private static getHighVolatilityStrategy(): StrategyConfig {
     return {
-      name: 'High Volatility Trading',
+      name: "High Volatility Trading",
       description:
-        'Extreme risk strategy for volatile assets with quick entries/exits',
+        "Extreme risk strategy for volatile assets with quick entries/exits",
       assetAllocation: {
         perps: 80,
         predictions: 15,
@@ -217,7 +217,7 @@ export class NPCPortfolioStrategy {
         correlationLimit: 0.9, // Correlation doesn't matter
       },
       rebalanceThreshold: 20, // Rebalance when >20% deviation
-      holdingPeriod: 'short',
+      holdingPeriod: "short",
     };
   }
 
@@ -226,7 +226,7 @@ export class NPCPortfolioStrategy {
    */
   private static adjustForMarketConditions(
     baseStrategy: StrategyConfig,
-    conditions: MarketConditions
+    conditions: MarketConditions,
   ): StrategyConfig {
     const adjusted = { ...baseStrategy };
 
@@ -243,9 +243,9 @@ export class NPCPortfolioStrategy {
       };
 
       logger.debug(
-        'Adjusted strategy for high volatility: reduced leverage and increased cash',
+        "Adjusted strategy for high volatility: reduced leverage and increased cash",
         { volatility: conditions.volatility },
-        'NPCPortfolioStrategy'
+        "NPCPortfolioStrategy",
       );
     }
 
@@ -258,9 +258,9 @@ export class NPCPortfolioStrategy {
       };
 
       logger.debug(
-        'Adjusted strategy for negative sentiment: shifted to predictions',
+        "Adjusted strategy for negative sentiment: shifted to predictions",
         { sentiment: conditions.sentiment },
-        'NPCPortfolioStrategy'
+        "NPCPortfolioStrategy",
       );
     }
 
@@ -270,14 +270,14 @@ export class NPCPortfolioStrategy {
         ...adjusted.positionSizing,
         maxPositionSize: adjusted.positionSizing.maxPositionSize * 0.8,
         targetPositionCount: Math.floor(
-          adjusted.positionSizing.targetPositionCount * 1.2
+          adjusted.positionSizing.targetPositionCount * 1.2,
         ),
       };
 
       logger.debug(
-        'Adjusted strategy for low volume: smaller positions, more diversification',
+        "Adjusted strategy for low volume: smaller positions, more diversification",
         { volume: conditions.volume },
-        'NPCPortfolioStrategy'
+        "NPCPortfolioStrategy",
       );
     }
 
@@ -297,7 +297,7 @@ export class NPCPortfolioStrategy {
   static calculateOptimalPositionSize(
     winProbability: number,
     payoutRatio: number,
-    strategy: StrategyConfig
+    strategy: StrategyConfig,
   ): number {
     // Kelly Criterion
     const p = Math.max(0.01, Math.min(0.99, winProbability)); // Clamp to (0.01, 0.99)
@@ -324,16 +324,16 @@ export class NPCPortfolioStrategy {
   static shouldRebalance(
     currentAllocation: AssetAllocation,
     targetAllocation: AssetAllocation,
-    threshold: number
+    threshold: number,
   ): boolean {
     const perpDeviation = Math.abs(
-      currentAllocation.perps - targetAllocation.perps
+      currentAllocation.perps - targetAllocation.perps,
     );
     const predDeviation = Math.abs(
-      currentAllocation.predictions - targetAllocation.predictions
+      currentAllocation.predictions - targetAllocation.predictions,
     );
     const cashDeviation = Math.abs(
-      currentAllocation.cash - targetAllocation.cash
+      currentAllocation.cash - targetAllocation.cash,
     );
 
     const maxDeviation = Math.max(perpDeviation, predDeviation, cashDeviation);
@@ -347,7 +347,7 @@ export class NPCPortfolioStrategy {
   static generateRebalancePlan(
     currentAllocation: AssetAllocation,
     targetAllocation: AssetAllocation,
-    totalPortfolioValue: number
+    totalPortfolioValue: number,
   ): {
     perpAdjustment: number;
     predictionAdjustment: number;
@@ -368,7 +368,7 @@ export class NPCPortfolioStrategy {
   /**
    * Get recommended holding period in hours
    */
-  static getHoldingPeriodHours(period: 'short' | 'medium' | 'long'): number {
+  static getHoldingPeriodHours(period: "short" | "medium" | "long"): number {
     const periods = {
       short: 24, // 1 day
       medium: 168, // 1 week
@@ -384,7 +384,7 @@ export class NPCPortfolioStrategy {
   static evaluateStrategy(
     actualReturns: number[],
     benchmarkReturns: number[],
-    riskFreeRate = 0.02 // 2% annual
+    riskFreeRate = 0.02, // 2% annual
   ): {
     sharpeRatio: number;
     maxDrawdown: number;

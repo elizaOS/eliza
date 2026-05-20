@@ -20,12 +20,12 @@ import {
   pointsTransactions,
   referrals,
   users,
-} from '@feed/db';
-import { generateSnowflakeId, logger, POINTS } from '@feed/shared';
-import { nanoid } from 'nanoid';
-import { NotFoundError } from '../errors';
-import { getOrCreateReferralCode } from './referral-service';
-import { ReputationService } from './reputation-service';
+} from "@feed/db";
+import { generateSnowflakeId, logger, POINTS } from "@feed/shared";
+import { nanoid } from "nanoid";
+import { NotFoundError } from "../errors";
+import { getOrCreateReferralCode } from "./referral-service";
+import { ReputationService } from "./reputation-service";
 
 export interface WaitlistMarkResult {
   success: boolean;
@@ -71,7 +71,7 @@ export class WaitlistService {
    */
   static async markAsWaitlisted(
     userId: string,
-    referralCode?: string
+    referralCode?: string,
   ): Promise<WaitlistMarkResult> {
     // Get user - they should already exist from onboarding
     const userResult = await db
@@ -93,9 +93,9 @@ export class WaitlistService {
     const user = userResult[0];
 
     if (!user) {
-      throw new NotFoundError('User', undefined, {
+      throw new NotFoundError("User", undefined, {
         userId,
-        message: 'User must complete onboarding before joining waitlist',
+        message: "User must complete onboarding before joining waitlist",
       });
     }
 
@@ -123,7 +123,7 @@ export class WaitlistService {
                 userId,
                 referralCode,
               },
-              'WaitlistService'
+              "WaitlistService",
             );
             referrerRewarded = false;
           }
@@ -136,7 +136,7 @@ export class WaitlistService {
                 existingReferrer: user.referredBy,
                 attemptedReferrer: referrer.id,
               },
-              'WaitlistService'
+              "WaitlistService",
             );
             referrerRewarded = false;
           }
@@ -149,7 +149,7 @@ export class WaitlistService {
                 userId,
                 referralCode,
               },
-              'WaitlistService'
+              "WaitlistService",
             );
           }
         }
@@ -158,7 +158,7 @@ export class WaitlistService {
       return {
         success: true,
         waitlistPosition: user.waitlistPosition,
-        inviteCode: user.referralCode || '',
+        inviteCode: user.referralCode || "",
         points: user.reputationPoints,
         referrerRewarded,
       };
@@ -205,7 +205,7 @@ export class WaitlistService {
               userId,
               referralCode,
             },
-            'WaitlistService'
+            "WaitlistService",
           );
           referrerRewarded = false;
         }
@@ -218,7 +218,7 @@ export class WaitlistService {
               existingReferrer: user.referredBy,
               attemptedReferrer: referrer.id,
             },
-            'WaitlistService'
+            "WaitlistService",
           );
           referrerRewarded = false;
         }
@@ -228,7 +228,7 @@ export class WaitlistService {
           // This handles weekly limits, IP checks, and creates proper Referral records
           const referralResult = await ReputationService.awardReferralSignup(
             referrer.id,
-            userId
+            userId,
           );
 
           if (referralResult.success) {
@@ -240,8 +240,8 @@ export class WaitlistService {
               .where(
                 and(
                   eq(referrals.referralCode, referralCode),
-                  eq(referrals.referredUserId, userId)
-                )
+                  eq(referrals.referredUserId, userId),
+                ),
               )
               .limit(1);
 
@@ -249,14 +249,14 @@ export class WaitlistService {
               await db
                 .update(referrals)
                 .set({
-                  status: 'completed',
+                  status: "completed",
                   completedAt: new Date(),
                 })
                 .where(
                   and(
                     eq(referrals.referralCode, referralCode),
-                    eq(referrals.referredUserId, userId)
-                  )
+                    eq(referrals.referredUserId, userId),
+                  ),
                 );
             } else {
               await db.insert(referrals).values({
@@ -264,7 +264,7 @@ export class WaitlistService {
                 referrerId: referrer.id,
                 referralCode,
                 referredUserId: userId,
-                status: 'completed',
+                status: "completed",
                 completedAt: new Date(),
               });
             }
@@ -284,7 +284,7 @@ export class WaitlistService {
                 reputationAwarded: referralResult.reputationAwarded,
                 newReputationTotal: referralResult.newReputationTotal,
               },
-              'WaitlistService'
+              "WaitlistService",
             );
           } else {
             // Referral failed (weekly limit, IP check, etc.)
@@ -295,7 +295,7 @@ export class WaitlistService {
                 referredUserId: userId,
                 error: referralResult.error,
               },
-              'WaitlistService'
+              "WaitlistService",
             );
             referrerRewarded = false;
           }
@@ -307,7 +307,7 @@ export class WaitlistService {
             userId,
             referralCode,
           },
-          'WaitlistService'
+          "WaitlistService",
         );
       }
     }
@@ -331,13 +331,13 @@ export class WaitlistService {
       .where(eq(users.id, userId));
 
     logger.info(
-      'User marked as waitlisted',
+      "User marked as waitlisted",
       {
         userId,
         position: newPosition,
         referrerRewarded,
       },
-      'WaitlistService'
+      "WaitlistService",
     );
 
     return {
@@ -361,7 +361,7 @@ export class WaitlistService {
       })
       .where(eq(users.id, userId));
 
-    logger.info('User graduated from waitlist', { userId }, 'WaitlistService');
+    logger.info("User graduated from waitlist", { userId }, "WaitlistService");
     return true;
   }
 
@@ -371,7 +371,7 @@ export class WaitlistService {
    * This creates the viral loop incentive.
    */
   static async getWaitlistPosition(
-    userId: string
+    userId: string,
   ): Promise<WaitlistPosition | null> {
     const userResult = await db
       .select({
@@ -391,7 +391,7 @@ export class WaitlistService {
 
     const user = userResult[0];
 
-    if (!user || !user.isWaitlistActive) {
+    if (!user?.isWaitlistActive) {
       return null;
     }
 
@@ -411,10 +411,10 @@ export class WaitlistService {
             // Tie-breaker: If same invite points, earlier signup wins
             and(
               eq(users.invitePoints, user.invitePoints),
-              lt(users.waitlistJoinedAt, userJoinedAt)
-            )
-          )
-        )
+              lt(users.waitlistJoinedAt, userJoinedAt),
+            ),
+          ),
+        ),
       );
 
     const usersAhead = usersAheadResult?.count ?? 0;
@@ -435,7 +435,7 @@ export class WaitlistService {
       totalAhead: usersAhead,
       totalCount,
       percentile,
-      inviteCode: user.referralCode || '',
+      inviteCode: user.referralCode || "",
       points: user.reputationPoints,
       invitePoints: user.invitePoints,
       earnedPoints: user.earnedPoints,
@@ -449,7 +449,7 @@ export class WaitlistService {
    */
   static async awardWalletBonus(
     userId: string,
-    walletAddress: string
+    walletAddress: string,
   ): Promise<boolean> {
     const userResult = await db
       .select({
@@ -493,7 +493,7 @@ export class WaitlistService {
       amount: bonusAmount,
       pointsBefore: user.reputationPoints,
       pointsAfter: newReputationPoints,
-      reason: 'wallet_connect',
+      reason: "wallet_connect",
       metadata: JSON.stringify({ walletAddress }),
     });
 
@@ -503,7 +503,7 @@ export class WaitlistService {
         userId,
         bonusAmount,
       },
-      'WaitlistService'
+      "WaitlistService",
     );
 
     return true;
@@ -515,7 +515,7 @@ export class WaitlistService {
    */
   static async awardEmailBonus(
     userId: string,
-    email: string
+    email: string,
   ): Promise<boolean> {
     const userResult = await db
       .select({
@@ -530,7 +530,7 @@ export class WaitlistService {
 
     const user = userResult[0];
 
-    if (!user || !user.isWaitlistActive) {
+    if (!user?.isWaitlistActive) {
       return false;
     }
 
@@ -559,13 +559,13 @@ export class WaitlistService {
       amount: bonusAmount,
       pointsBefore: user.reputationPoints,
       pointsAfter: newReputationPoints,
-      reason: 'email_submit',
+      reason: "email_submit",
     });
 
     logger.info(
       `Awarded email bonus to user ${userId}`,
       { userId, bonusAmount },
-      'WaitlistService'
+      "WaitlistService",
     );
 
     return true;
@@ -579,7 +579,7 @@ export class WaitlistService {
       .select({ count: count() })
       .from(users)
       .where(
-        and(ne(users.waitlistPosition, 0), eq(users.isWaitlistActive, true))
+        and(ne(users.waitlistPosition, 0), eq(users.isWaitlistActive, true)),
       );
 
     return result?.count ?? 0;
@@ -593,7 +593,7 @@ export class WaitlistService {
   static async getTopWaitlistUsers(
     limit = 10,
     offset = 0,
-    pointsType: 'total' | 'invite' = 'invite'
+    pointsType: "total" | "invite" = "invite",
   ) {
     // Ensure limit is reasonable
     const safeLimit = Math.min(Math.max(1, limit), 100);
@@ -601,7 +601,7 @@ export class WaitlistService {
 
     // Build orderBy based on pointsType
     const orderByColumns =
-      pointsType === 'total'
+      pointsType === "total"
         ? [
             desc(users.reputationPoints),
             desc(users.invitePoints),
@@ -629,8 +629,8 @@ export class WaitlistService {
         and(
           eq(users.isWaitlistActive, true),
           // Only include users with usernames (required for referral codes)
-          ne(users.username, '')
-        )
+          ne(users.username, ""),
+        ),
       )
       .orderBy(...orderByColumns)
       .offset(safeOffset)
@@ -643,7 +643,7 @@ export class WaitlistService {
       displayName: user.displayName,
       // profileImageUrl removed - fetch on-demand when profile is clicked to reduce bandwidth
       points:
-        pointsType === 'total' ? user.reputationPoints : user.invitePoints, // Keep for backward compatibility
+        pointsType === "total" ? user.reputationPoints : user.invitePoints, // Keep for backward compatibility
       invitePoints: user.invitePoints, // For frontend TopUser interface
       reputationPoints: user.reputationPoints, // For frontend TopUser interface
       referralCount: user.referralCount,

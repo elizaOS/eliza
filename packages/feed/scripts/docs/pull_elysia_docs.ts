@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { mkdir } from 'node:fs/promises';
+import { mkdir } from "node:fs/promises";
 
 /**
  * Fetch Elysia documentation into local markdown files using Bun/TypeScript.
@@ -14,25 +14,25 @@ import { mkdir } from 'node:fs/promises';
  *   bun run scripts/pull_elysia_docs.ts [--base-url https://elysiajs.com] [--output elysia] [--workers 16]
  */
 
-const BASE_URL = 'https://elysiajs.com';
-const HASHMAP_PATH = '/hashmap.json';
-const DEFAULT_OUTPUT = 'elysia';
+const BASE_URL = "https://elysiajs.com";
+const HASHMAP_PATH = "/hashmap.json";
+const DEFAULT_OUTPUT = "elysia";
 const DEFAULT_WORKERS = 16;
 
 const SKIP_SUFFIXES = [
-  '.png',
-  '.jpg',
-  '.jpeg',
-  '.gif',
-  '.svg',
-  '.webp',
-  '.ico',
-  '.pdf',
-  '.zip',
-  '.json',
-  '.map',
-  '.woff',
-  '.woff2',
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".svg",
+  ".webp",
+  ".ico",
+  ".pdf",
+  ".zip",
+  ".json",
+  ".map",
+  ".woff",
+  ".woff2",
 ];
 
 type Page = {
@@ -49,9 +49,9 @@ type Options = {
 
 const args = Bun.argv.slice(2);
 const opts: Options = {
-  baseUrl: getArg('--base-url', BASE_URL),
-  output: getArg('--output', DEFAULT_OUTPUT),
-  workers: Number(getArg('--workers', String(DEFAULT_WORKERS))),
+  baseUrl: getArg("--base-url", BASE_URL),
+  output: getArg("--output", DEFAULT_OUTPUT),
+  workers: Number(getArg("--workers", String(DEFAULT_WORKERS))),
 };
 
 function getArg(flag: string, fallback: string): string {
@@ -69,22 +69,22 @@ async function fetchJson(url: string) {
 function keyToPage(key: string, outputRoot: string): Page | null {
   if (SKIP_SUFFIXES.some((s) => key.endsWith(s))) return null;
 
-  const name = key.endsWith('.md') ? key.slice(0, -3) : key;
+  const name = key.endsWith(".md") ? key.slice(0, -3) : key;
   const lowered = name.toLowerCase();
   if (
-    lowered.startsWith('blog') ||
-    lowered.includes('blog_') ||
-    lowered.includes('4koma') ||
-    lowered.includes('playground')
+    lowered.startsWith("blog") ||
+    lowered.includes("blog_") ||
+    lowered.includes("4koma") ||
+    lowered.includes("playground")
   ) {
     return null;
   }
 
-  const path = name.replaceAll('_', '/');
-  const parts = path === 'index' ? ['index'] : path.split('/');
-  const filename = parts.pop() || 'index';
-  const dir = [outputRoot, ...parts].join('/');
-  const output = `${dir ? `${dir}/` : ''}${filename}.md`;
+  const path = name.replaceAll("_", "/");
+  const parts = path === "index" ? ["index"] : path.split("/");
+  const filename = parts.pop() || "index";
+  const dir = [outputRoot, ...parts].join("/");
+  const output = `${dir ? `${dir}/` : ""}${filename}.md`;
 
   return { key, path, output };
 }
@@ -101,7 +101,7 @@ async function fetchMd(baseUrl: string, path: string): Promise<string | null> {
 
 async function fetchHtml(
   baseUrl: string,
-  path: string
+  path: string,
 ): Promise<string | null> {
   const url = new URL(`/${path}`, baseUrl).toString();
   const res = await fetch(url);
@@ -113,13 +113,13 @@ async function fetchHtml(
 
 function stripScriptsStyles(html: string): string {
   return html
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "");
 }
 
 function extractMain(html: string): string {
   const mainMatch = html.match(
-    /<div[^>]*class="[^"]*vp-doc[^"]*"[^>]*>[\s\S]*?<\/div>/i
+    /<div[^>]*class="[^"]*vp-doc[^"]*"[^>]*>[\s\S]*?<\/div>/i,
   );
   if (mainMatch) return mainMatch[0];
   const main = html.match(/<main[^>]*>[\s\S]*?<\/main>/i);
@@ -133,100 +133,100 @@ function htmlToMarkdown(rawHtml: string): string {
   html = extractMain(html);
 
   // Remove nav/footer/aside headers.
-  html = html.replace(/<(nav|header|footer|aside)[^>]*>[\s\S]*?<\/\1>/gi, '');
+  html = html.replace(/<(nav|header|footer|aside)[^>]*>[\s\S]*?<\/\1>/gi, "");
   // Remove copy/back links like ← → Back.
-  html = html.replace(/<a[^>]*>(?:←|→|Back)<\/a>/gi, '');
+  html = html.replace(/<a[^>]*>(?:←|→|Back)<\/a>/gi, "");
 
   // Block-level replacements.
   html = html.replace(
     /<h1[^>]*>([\s\S]*?)<\/h1>/gi,
-    (_, t) => `# ${cleanupText(t)}\n\n`
+    (_, t) => `# ${cleanupText(t)}\n\n`,
   );
   html = html.replace(
     /<h2[^>]*>([\s\S]*?)<\/h2>/gi,
-    (_, t) => `## ${cleanupText(t)}\n\n`
+    (_, t) => `## ${cleanupText(t)}\n\n`,
   );
   html = html.replace(
     /<h3[^>]*>([\s\S]*?)<\/h3>/gi,
-    (_, t) => `### ${cleanupText(t)}\n\n`
+    (_, t) => `### ${cleanupText(t)}\n\n`,
   );
   html = html.replace(
     /<h4[^>]*>([\s\S]*?)<\/h4>/gi,
-    (_, t) => `#### ${cleanupText(t)}\n\n`
+    (_, t) => `#### ${cleanupText(t)}\n\n`,
   );
 
   html = html.replace(
     /<pre[^>]*><code[^>]*>([\s\S]*?)<\/code><\/pre>/gi,
-    (_, t) => `\`\`\`\n${decodeHtml(t.trim())}\n\`\`\`\n\n`
+    (_, t) => `\`\`\`\n${decodeHtml(t.trim())}\n\`\`\`\n\n`,
   );
   html = html.replace(
     /<code[^>]*>([\s\S]*?)<\/code>/gi,
-    (_, t) => `\`${cleanupInline(decodeHtml(t))}\``
+    (_, t) => `\`${cleanupInline(decodeHtml(t))}\``,
   );
 
   html = html.replace(
     /<p[^>]*>([\s\S]*?)<\/p>/gi,
-    (_, t) => `${cleanupText(t)}\n\n`
+    (_, t) => `${cleanupText(t)}\n\n`,
   );
-  html = html.replace(/<br\s*\/?>/gi, '\n');
+  html = html.replace(/<br\s*\/?>/gi, "\n");
 
   html = html.replace(
     /<li[^>]*>([\s\S]*?)<\/li>/gi,
-    (_, t) => `- ${cleanupText(t)}\n`
+    (_, t) => `- ${cleanupText(t)}\n`,
   );
-  html = html.replace(/<\/ul>/gi, '\n');
+  html = html.replace(/<\/ul>/gi, "\n");
 
   html = html.replace(
     /<a\s+[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi,
-    (_, href, text) => `[${cleanupInline(text)}](${href})`
+    (_, href, text) => `[${cleanupInline(text)}](${href})`,
   );
 
   // Remove any other tags.
-  html = html.replace(/<\/?(div|span|section|article)[^>]*>/gi, '');
-  html = html.replace(/<[^>]+>/g, '');
+  html = html.replace(/<\/?(div|span|section|article)[^>]*>/gi, "");
+  html = html.replace(/<[^>]+>/g, "");
 
   // Collapse whitespace.
   return html
-    .split('\n')
+    .split("\n")
     .map((line) => line.trimEnd())
-    .join('\n')
-    .replace(/\n{3,}/g, '\n\n')
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
 
 function cleanupText(t: string): string {
-  return decodeHtml(t.replace(/\s+/g, ' ').trim());
+  return decodeHtml(t.replace(/\s+/g, " ").trim());
 }
 
 function cleanupInline(t: string): string {
-  return decodeHtml(t.replace(/\s+/g, ' ').trim());
+  return decodeHtml(t.replace(/\s+/g, " ").trim());
 }
 
 function decodeHtml(text: string): string {
   return text
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
-    .replace(/&#x2F;/g, '/');
+    .replace(/&#x2F;/g, "/");
 }
 
 async function ensureDir(path: string) {
-  const dir = path.split('/').slice(0, -1).join('/');
+  const dir = path.split("/").slice(0, -1).join("/");
   if (!dir) return;
   await mkdir(dir, { recursive: true });
 }
 
 async function writeFile(path: string, content: string) {
   await ensureDir(path);
-  await Bun.write(path, content.endsWith('\n') ? content : `${content}\n`);
+  await Bun.write(path, content.endsWith("\n") ? content : `${content}\n`);
 }
 
 async function pullDocs(options: Options) {
   const hashmap = (await fetchJson(
-    new URL(HASHMAP_PATH, options.baseUrl).toString()
+    new URL(HASHMAP_PATH, options.baseUrl).toString(),
   )) as Record<string, string>;
   const pages: Page[] = [];
   for (const key of Object.keys(hashmap)) {

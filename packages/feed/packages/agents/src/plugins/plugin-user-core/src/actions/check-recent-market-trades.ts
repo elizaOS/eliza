@@ -7,9 +7,6 @@
  * - Combined and sorted by time
  */
 
-import { agentTrades, db, desc, eq, npcTrades, users } from '@feed/db';
-import { StaticDataRegistry } from '@feed/engine';
-import { getTimeAgo } from '@feed/shared';
 import type {
   Action,
   ActionResult,
@@ -17,39 +14,42 @@ import type {
   IAgentRuntime,
   Memory,
   State,
-} from '@elizaos/core';
-import { logger } from '../../../../shared/logger';
+} from "@elizaos/core";
+import { agentTrades, db, desc, eq, npcTrades, users } from "@feed/db";
+import { StaticDataRegistry } from "@feed/engine";
+import { getTimeAgo } from "@feed/shared";
+import { logger } from "../../../../shared/logger";
 
 export const checkRecentMarketTradesAction: Action = {
-  name: 'CHECK_RECENT_MARKET_TRADES',
+  name: "CHECK_RECENT_MARKET_TRADES",
   description:
-    'Check recent trading activity across the platform (NPCs and agents). Help users understand market momentum.',
+    "Check recent trading activity across the platform (NPCs and agents). Help users understand market momentum.",
   parameters: {
     limit: {
-      type: 'number',
-      description: 'Number of trades to show (default: 15, max: 30)',
+      type: "number",
+      description: "Number of trades to show (default: 15, max: 30)",
       required: false,
     },
-  } as unknown as Action['parameters'],
+  } as unknown as Action["parameters"],
   examples: [
     [
       {
-        name: 'user',
-        content: { text: 'What trades are happening?' },
+        name: "user",
+        content: { text: "What trades are happening?" },
       },
       {
-        name: 'coordinator',
+        name: "coordinator",
         content: { text: "I'll check recent market activity." },
       },
     ],
     [
       {
-        name: 'user',
-        content: { text: 'Who is trading what?' },
+        name: "user",
+        content: { text: "Who is trading what?" },
       },
       {
-        name: 'coordinator',
-        content: { text: 'Let me fetch the latest trades.' },
+        name: "coordinator",
+        content: { text: "Let me fetch the latest trades." },
       },
     ],
   ],
@@ -57,7 +57,7 @@ export const checkRecentMarketTradesAction: Action = {
   validate: async (
     _runtime: IAgentRuntime,
     _message: Memory,
-    _state?: State
+    _state?: State,
   ): Promise<boolean> => {
     return true;
   },
@@ -67,7 +67,7 @@ export const checkRecentMarketTradesAction: Action = {
     _message: Memory,
     state?: State,
     _options?: Record<string, unknown>,
-    _callback?: HandlerCallback
+    _callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const actionParams = state?.data?.actionParams as
       | { limit?: number }
@@ -75,7 +75,7 @@ export const checkRecentMarketTradesAction: Action = {
     // Coerce and validate limit to handle non-numeric values
     const rawLimit = actionParams?.limit;
     const parsedLimit =
-      typeof rawLimit === 'number' ? rawLimit : Number(rawLimit);
+      typeof rawLimit === "number" ? rawLimit : Number(rawLimit);
     const validLimit = Number.isFinite(parsedLimit) ? parsedLimit : 15;
     // Coerce to integer with Math.floor before clamping (PostgreSQL requires integer)
     const integerLimit = Math.floor(validLimit);
@@ -120,8 +120,8 @@ export const checkRecentMarketTradesAction: Action = {
     const allTrades = [
       ...rawNpcTrades.map((t) => ({
         trader:
-          StaticDataRegistry.getActor(t.npcActorId)?.name ?? 'Unknown NPC',
-        traderType: 'NPC' as const,
+          StaticDataRegistry.getActor(t.npcActorId)?.name ?? "Unknown NPC",
+        traderType: "NPC" as const,
         action: t.action,
         side: t.side,
         amount: Number(t.amount || 0),
@@ -132,8 +132,8 @@ export const checkRecentMarketTradesAction: Action = {
         timeAgo: getTimeAgo(t.executedAt),
       })),
       ...agentTradeResults.map((t) => ({
-        trader: t.displayName || t.username || 'Unknown Agent',
-        traderType: 'Agent' as const,
+        trader: t.displayName || t.username || "Unknown Agent",
+        traderType: "Agent" as const,
         action: t.action,
         side: t.side,
         amount: Number(t.amount || 0),
@@ -150,7 +150,7 @@ export const checkRecentMarketTradesAction: Action = {
     if (allTrades.length === 0) {
       return {
         success: true,
-        text: 'No recent trading activity.',
+        text: "No recent trading activity.",
         data: { trades: [], count: 0 },
         values: { count: 0 },
       };
@@ -159,15 +159,15 @@ export const checkRecentMarketTradesAction: Action = {
     logger.info(
       `[CHECK_RECENT_MARKET_TRADES] Retrieved ${allTrades.length} trades`,
       undefined,
-      'CheckRecentMarketTrades'
+      "CheckRecentMarketTrades",
     );
 
     // Compute counts from the finalized allTrades array so breakdown matches count
     const finalNpcTradeCount = allTrades.filter(
-      (t) => t.traderType === 'NPC'
+      (t) => t.traderType === "NPC",
     ).length;
     const finalAgentTradeCount = allTrades.filter(
-      (t) => t.traderType === 'Agent'
+      (t) => t.traderType === "Agent",
     ).length;
 
     return {

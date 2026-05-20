@@ -1,10 +1,10 @@
-'use client';
+"use client";
 
-import type { OnboardingProfilePayload } from '@feed/shared';
-import { createContext, useContext } from 'react';
-import type { ImportedProfileData } from './UserOnboardingFlow';
+import type { OnboardingProfilePayload } from "@feed/shared";
+import { createContext, useContext } from "react";
+import type { ImportedProfileData } from "./UserOnboardingFlow";
 
-export type OnboardingFlowPhase = 'profile' | 'guide';
+export type OnboardingFlowPhase = "profile" | "guide";
 
 export interface UserSignupOnboardingContextValue {
   phase: OnboardingFlowPhase;

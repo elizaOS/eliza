@@ -52,16 +52,16 @@ import {
   publicRateLimit,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import type { DrizzleClient } from '@feed/db';
-import { asPublic } from '@feed/db';
-import { StaticDataRegistry } from '@feed/engine';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/api";
+import type { DrizzleClient } from "@feed/db";
+import { asPublic } from "@feed/db";
+import { StaticDataRegistry } from "@feed/engine";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 function mapAgent0SummaryToEntity(
   summary: Record<string, unknown>,
-  _entityType: 'agent' | 'app'
+  _entityType: "agent" | "app",
 ): Record<string, unknown> {
   return {
     type: _entityType,
@@ -93,9 +93,9 @@ function mapAgent0SummaryToEntity(
  */
 export const GET = withErrorHandling(async (request: NextRequest) => {
   const { searchParams } = new URL(request.url);
-  const entityType = searchParams.get('type'); // 'users' | 'actors' | 'agents' | 'apps' | 'all'
-  const search = searchParams.get('search') || '';
-  const onChainOnly = searchParams.get('onChainOnly') === 'true';
+  const entityType = searchParams.get("type"); // 'users' | 'actors' | 'agents' | 'apps' | 'all'
+  const search = searchParams.get("search") || "";
+  const onChainOnly = searchParams.get("onChainOnly") === "true";
 
   const { error, rateLimitInfo } = await publicRateLimit(request);
   if (error) return error;
@@ -110,11 +110,11 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       if (search) {
         conditions.push({
           OR: [
-            { username: { contains: search, mode: 'insensitive' as const } },
+            { username: { contains: search, mode: "insensitive" as const } },
             {
-              displayName: { contains: search, mode: 'insensitive' as const },
+              displayName: { contains: search, mode: "insensitive" as const },
             },
-            { bio: { contains: search, mode: 'insensitive' as const } },
+            { bio: { contains: search, mode: "insensitive" as const } },
           ],
         });
       }
@@ -123,7 +123,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
       const users = await db.user.findMany({
         where,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
         take: 100,
       });
 
@@ -143,19 +143,19 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         followingCounts,
       ] = await Promise.all([
         Promise.all(
-          userIds.map((id) => db.position.count({ where: { userId: id } }))
+          userIds.map((id) => db.position.count({ where: { userId: id } })),
         ),
         Promise.all(
-          userIds.map((id) => db.comment.count({ where: { authorId: id } }))
+          userIds.map((id) => db.comment.count({ where: { authorId: id } })),
         ),
         Promise.all(
-          userIds.map((id) => db.reaction.count({ where: { userId: id } }))
+          userIds.map((id) => db.reaction.count({ where: { userId: id } })),
         ),
         Promise.all(
-          userIds.map((id) => db.follow.count({ where: { followingId: id } }))
+          userIds.map((id) => db.follow.count({ where: { followingId: id } })),
         ),
         Promise.all(
-          userIds.map((id) => db.follow.count({ where: { followerId: id } }))
+          userIds.map((id) => db.follow.count({ where: { followerId: id } })),
         ),
       ]);
 
@@ -166,9 +166,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         const totalFeedbackCount = metrics?.totalFeedbackCount ?? 0;
 
         return {
-          type: 'user',
+          type: "user",
           id: user.id,
-          name: user.displayName || user.username || 'Unknown',
+          name: user.displayName || user.username || "Unknown",
           username: user.username,
           bio: user.bio,
           imageUrl: user.profileImageUrl,
@@ -181,7 +181,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
           balance: user.virtualBalance.toString(),
           reputationPoints: Math.round(compositeScore),
           reputationScore: compositeScore,
-          trustLevel: metrics?.trustLevel ?? 'UNRATED',
+          trustLevel: metrics?.trustLevel ?? "UNRATED",
           onChainTrustScore: metrics?.onChainTrustScore ?? null,
           onChainAccuracyScore: metrics?.onChainAccuracyScore ?? null,
           averageFeedbackScore,
@@ -212,7 +212,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
           (a) =>
             a.name.toLowerCase().includes(searchLower) ||
             a.description?.toLowerCase().includes(searchLower) ||
-            a.role?.toLowerCase().includes(searchLower)
+            a.role?.toLowerCase().includes(searchLower),
         );
       }
 
@@ -236,29 +236,29 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       const [poolCounts, tradeCounts, followerCounts, followingCounts] =
         await Promise.all([
           Promise.all(
-            actorIds.map((id) => db.pool.count({ where: { npcActorId: id } }))
+            actorIds.map((id) => db.pool.count({ where: { npcActorId: id } })),
           ),
           Promise.all(
             actorIds.map((id) =>
-              db.npcTrade.count({ where: { npcActorId: id } })
-            )
+              db.npcTrade.count({ where: { npcActorId: id } }),
+            ),
           ),
           Promise.all(
             actorIds.map((id) =>
-              db.actorFollow.count({ where: { followingId: id } })
-            )
+              db.actorFollow.count({ where: { followingId: id } }),
+            ),
           ),
           Promise.all(
             actorIds.map((id) =>
-              db.actorFollow.count({ where: { followerId: id } })
-            )
+              db.actorFollow.count({ where: { followerId: id } }),
+            ),
           ),
         ]);
 
       return actors.map((actor, index) => {
         const state = stateMap.get(actor.id);
         return {
-          type: 'actor',
+          type: "actor",
           id: actor.id,
           name: actor.name,
           description: actor.description,
@@ -267,7 +267,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
           personality: actor.personality,
           tier: actor.tier,
           role: actor.role,
-          balance: state?.tradingBalance?.toString() ?? '10000',
+          balance: state?.tradingBalance?.toString() ?? "10000",
           reputationPoints: state?.reputationPoints ?? 10000,
           createdAt: state?.createdAt ?? new Date(),
           stats: {
@@ -297,31 +297,31 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   let agents: Awaited<ReturnType<typeof fetchAgents>> = [];
   let apps: Awaited<ReturnType<typeof fetchApps>> = [];
 
-  if (!entityType || entityType === 'all' || entityType === 'users') {
+  if (!entityType || entityType === "all" || entityType === "users") {
     users = await fetchUsers();
     // Also fetch actors when searching for users - AI NPCs should appear in user searches
     actors = await fetchActors();
   }
-  if (entityType === 'actors') {
+  if (entityType === "actors") {
     // Only fetch actors when explicitly requested
     actors = await fetchActors();
   }
-  if (!entityType || entityType === 'all' || entityType === 'agents') {
+  if (!entityType || entityType === "all" || entityType === "agents") {
     agents = await fetchAgents().catch((error) => {
       logger.warn(
-        'Agent0 agent search failed',
+        "Agent0 agent search failed",
         { error: error instanceof Error ? error.message : String(error) },
-        'GET /api/registry/all'
+        "GET /api/registry/all",
       );
       return [];
     });
   }
-  if (!entityType || entityType === 'all' || entityType === 'apps') {
+  if (!entityType || entityType === "all" || entityType === "apps") {
     apps = await fetchApps().catch((error) => {
       logger.warn(
-        'Agent0 app search failed',
+        "Agent0 app search failed",
         { error: error instanceof Error ? error.message : String(error) },
-        'GET /api/registry/all'
+        "GET /api/registry/all",
       );
       return [];
     });
@@ -342,9 +342,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   };
 
   logger.info(
-    'Registry fetched successfully',
+    "Registry fetched successfully",
     result.totals,
-    'GET /api/registry/all'
+    "GET /api/registry/all",
   );
 
   const res = successResponse(result);

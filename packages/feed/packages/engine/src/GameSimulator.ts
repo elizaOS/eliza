@@ -28,15 +28,15 @@
  * ```
  */
 
-import { EventEmitter } from 'events';
+import { EventEmitter } from "node:events";
 import {
   SIMULATION_AGENT_NAMES,
   SIMULATION_CLUE_TEMPLATES,
   SIMULATION_QUESTIONS,
   SIMULATION_STRATEGIES,
-} from './config/simulation';
-import { SeededRandom } from './utils/entropy';
-import { clamp } from './utils/math-utils';
+} from "./config/simulation";
+import { SeededRandom } from "./utils/entropy";
+import { clamp } from "./utils/math-utils";
 
 /**
  * Configuration for game simulation
@@ -79,7 +79,7 @@ export interface SimulatedAgent {
   betsPlaced: number;
   winningBets: number;
   totalPnl: number;
-  strategy: 'informed' | 'momentum' | 'contrarian' | 'random';
+  strategy: "informed" | "momentum" | "contrarian" | "random";
 }
 
 /**
@@ -169,7 +169,7 @@ export class GameSimulator extends EventEmitter {
 
   private initializeAgents(): void {
     const numInsiders = Math.floor(
-      this.config.numAgents * this.config.insiderPercentage
+      this.config.numAgents * this.config.insiderPercentage,
     );
 
     for (let i = 0; i < this.config.numAgents; i++) {
@@ -184,7 +184,7 @@ export class GameSimulator extends EventEmitter {
         winningBets: 0,
         totalPnl: 0,
         strategy: isInsider
-          ? 'informed'
+          ? "informed"
           : this.rng.pick([...SIMULATION_STRATEGIES]),
       });
     }
@@ -197,7 +197,7 @@ export class GameSimulator extends EventEmitter {
       data,
     };
     this.events.push(event);
-    this.emit('event', event);
+    this.emit("event", event);
     this.emit(type, event);
   }
 
@@ -207,7 +207,7 @@ export class GameSimulator extends EventEmitter {
   async runCompleteGame(): Promise<GameResult> {
     const startTime = Date.now();
 
-    this.emitEvent('game:started', {
+    this.emitEvent("game:started", {
       gameId: this.gameId,
       question: this.question,
       numAgents: this.config.numAgents,
@@ -223,7 +223,7 @@ export class GameSimulator extends EventEmitter {
     await this.revealOutcome();
     const result = this.calculateResults(startTime);
 
-    this.emitEvent('game:ended', {
+    this.emitEvent("game:ended", {
       gameId: this.gameId,
       outcome: this.config.outcome,
       duration: result.duration,
@@ -234,7 +234,7 @@ export class GameSimulator extends EventEmitter {
   }
 
   private async processDay(day: number): Promise<void> {
-    this.emitEvent('day:changed', { day, totalDays: this.config.duration });
+    this.emitEvent("day:changed", { day, totalDays: this.config.duration });
 
     // Distribute clues (more frequent towards end)
     const clueChance = 0.3 + (day / this.config.duration) * 0.4;
@@ -276,7 +276,7 @@ export class GameSimulator extends EventEmitter {
 
       agent.cluesReceived++;
 
-      this.emitEvent('clue:distributed', {
+      this.emitEvent("clue:distributed", {
         agentId: agent.id,
         day,
         clue,
@@ -297,7 +297,7 @@ export class GameSimulator extends EventEmitter {
 
     agent.betsPlaced++;
 
-    this.emitEvent('agent:bet', {
+    this.emitEvent("agent:bet", {
       agentId: agent.id,
       side: betSide,
       amount: betAmount,
@@ -305,7 +305,7 @@ export class GameSimulator extends EventEmitter {
       newBalance: agent.balance,
     });
 
-    this.emitEvent('market:updated', {
+    this.emitEvent("market:updated", {
       yesOdds: this.market.yesOdds,
       noOdds: this.market.noOdds,
       preBetOdds,
@@ -313,27 +313,25 @@ export class GameSimulator extends EventEmitter {
     });
   }
 
-  private decideBet(agent: SimulatedAgent, _day: number): 'YES' | 'NO' {
+  private decideBet(agent: SimulatedAgent, _day: number): "YES" | "NO" {
     switch (agent.strategy) {
-      case 'informed':
+      case "informed":
         // Insiders know the outcome, bet correctly with high probability
         if (agent.cluesReceived > 0) {
-          return this.config.outcome ? 'YES' : 'NO';
+          return this.config.outcome ? "YES" : "NO";
         }
         // Without clues, use market momentum
-        return this.market.yesOdds > 50 ? 'YES' : 'NO';
+        return this.market.yesOdds > 50 ? "YES" : "NO";
 
-      case 'momentum':
+      case "momentum":
         // Follow market direction
-        return this.market.yesOdds > 50 ? 'YES' : 'NO';
+        return this.market.yesOdds > 50 ? "YES" : "NO";
 
-      case 'contrarian':
+      case "contrarian":
         // Bet against market
-        return this.market.yesOdds > 50 ? 'NO' : 'YES';
-
-      case 'random':
+        return this.market.yesOdds > 50 ? "NO" : "YES";
       default:
-        return this.rng.next() > 0.5 ? 'YES' : 'NO';
+        return this.rng.next() > 0.5 ? "YES" : "NO";
     }
   }
 
@@ -347,16 +345,16 @@ export class GameSimulator extends EventEmitter {
 
   private executeBet(
     agent: SimulatedAgent,
-    side: 'YES' | 'NO',
-    amount: number
+    side: "YES" | "NO",
+    amount: number,
   ): void {
     // Calculate shares purchased using current price
     const shares =
       amount /
-      (side === 'YES' ? this.market.yesOdds / 100 : this.market.noOdds / 100);
+      (side === "YES" ? this.market.yesOdds / 100 : this.market.noOdds / 100);
 
     // Update market state
-    if (side === 'YES') {
+    if (side === "YES") {
       this.market.yesShares += shares;
     } else {
       this.market.noShares += shares;
@@ -365,7 +363,7 @@ export class GameSimulator extends EventEmitter {
     // Update odds using simplified LMSR
     const totalShares = this.market.yesShares + this.market.noShares;
     this.market.yesOdds = Math.round(
-      (this.market.yesShares / totalShares) * 100
+      (this.market.yesShares / totalShares) * 100,
     );
     this.market.noOdds = 100 - this.market.yesOdds;
 
@@ -378,7 +376,7 @@ export class GameSimulator extends EventEmitter {
   }
 
   private async revealOutcome(): Promise<void> {
-    this.emitEvent('outcome:revealed', {
+    this.emitEvent("outcome:revealed", {
       outcome: this.config.outcome,
       finalYesOdds: this.market.yesOdds,
       finalNoOdds: this.market.noOdds,
@@ -391,9 +389,9 @@ export class GameSimulator extends EventEmitter {
         agent.betsPlaced > 0
           ? Math.floor(
               agent.betsPlaced *
-                (agent.strategy === 'informed' && agent.cluesReceived > 0
+                (agent.strategy === "informed" && agent.cluesReceived > 0
                   ? 0.8
-                  : 0.5)
+                  : 0.5),
             )
           : 0;
       agent.winningBets = correctBets;
@@ -419,13 +417,13 @@ export class GameSimulator extends EventEmitter {
 
       if (agent.totalPnl > 0) {
         change = Math.round(agent.totalPnl / 10);
-        reason = 'Profitable trading';
+        reason = "Profitable trading";
       } else if (agent.totalPnl < 0) {
         change = Math.round(agent.totalPnl / 20); // Losses hurt less
-        reason = 'Trading losses';
+        reason = "Trading losses";
       } else {
         change = 0;
-        reason = 'No change';
+        reason = "No change";
       }
 
       return { agentId: agent.id, change, reason };

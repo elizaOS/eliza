@@ -83,44 +83,43 @@
  * @see {@link /api/games} Games listing endpoint
  */
 
-import { optionalAuth, successResponse, withErrorHandling } from '@feed/api';
-import { asPublic, asUser } from '@feed/db';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+import { optionalAuth, successResponse, withErrorHandling } from "@feed/api";
+import { asPublic, asUser } from "@feed/db";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 export const GET = withErrorHandling(async (_request: NextRequest) => {
   // Optional auth - game assets are public but RLS still applies
   const authUser = await optionalAuth(_request).catch(() => null);
 
   // Get group chats from database with RLS
-  const groupChats =
-    authUser && authUser.userId
-      ? await asUser(authUser, async (db) => {
-          return await db.chat.findMany({
-            where: {
-              isGroup: true,
-              gameId: 'continuous',
-            },
-            select: {
-              id: true,
-              name: true,
-              // Map to expected format
-            },
-          });
-        })
-      : await asPublic(async (db) => {
-          return await db.chat.findMany({
-            where: {
-              isGroup: true,
-              gameId: 'continuous',
-            },
-            select: {
-              id: true,
-              name: true,
-              // Map to expected format
-            },
-          });
+  const groupChats = authUser?.userId
+    ? await asUser(authUser, async (db) => {
+        return await db.chat.findMany({
+          where: {
+            isGroup: true,
+            gameId: "continuous",
+          },
+          select: {
+            id: true,
+            name: true,
+            // Map to expected format
+          },
         });
+      })
+    : await asPublic(async (db) => {
+        return await db.chat.findMany({
+          where: {
+            isGroup: true,
+            gameId: "continuous",
+          },
+          select: {
+            id: true,
+            name: true,
+            // Map to expected format
+          },
+        });
+      });
 
   // If you need additional game assets, store them in database or
   // have the client use /api/actors endpoint for actor/org/relationship data
@@ -132,9 +131,9 @@ export const GET = withErrorHandling(async (_request: NextRequest) => {
   };
 
   logger.info(
-    'Game assets fetched successfully',
+    "Game assets fetched successfully",
     { groupChatsCount: groupChats.length },
-    'GET /api/game-assets'
+    "GET /api/game-assets",
   );
 
   return successResponse({

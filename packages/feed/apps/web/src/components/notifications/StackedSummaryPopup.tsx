@@ -1,14 +1,14 @@
-'use client';
+"use client";
 
-import { cn } from '@feed/shared';
-import { AnimatePresence, motion } from 'framer-motion';
-import { Bell, ChevronRight, TrendingDown, TrendingUp } from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { cn } from "@feed/shared";
+import { AnimatePresence, motion } from "framer-motion";
+import { Bell, ChevronRight, TrendingDown, TrendingUp } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ConfettiCanvas,
   type OutcomeNotification,
-} from './OutcomeNotificationPopup';
+} from "./OutcomeNotificationPopup";
 
 const AUTO_DISMISS_MS = 12000;
 
@@ -45,7 +45,7 @@ export function StackedSummaryPopup({
       startedAtRef.current = Date.now();
       timerRef.current = setTimeout(onDismiss, ms);
     },
-    [onDismiss, clearTimer]
+    [onDismiss, clearTimer],
   );
 
   const pauseTimer = useCallback(() => {
@@ -74,14 +74,14 @@ export function StackedSummaryPopup({
 
   useEffect(() => {
     if (!isOpen) return;
-    document.body.style.overflow = 'hidden';
+    document.body.style.overflow = "hidden";
     return () => {
-      document.body.style.overflow = '';
+      document.body.style.overflow = "";
     };
   }, [isOpen]);
 
-  const wins = notifications.filter((n) => n.outcome === 'win');
-  const losses = notifications.filter((n) => n.outcome === 'loss');
+  const wins = notifications.filter((n) => n.outcome === "win");
+  const losses = notifications.filter((n) => n.outcome === "loss");
   const totalPoints = notifications.reduce((sum, n) => sum + n.points, 0);
   const isNetPositive = totalPoints >= 0;
 
@@ -99,8 +99,8 @@ export function StackedSummaryPopup({
           {/* Backdrop */}
           <div
             className={cn(
-              'absolute inset-0 backdrop-blur-md',
-              isNetPositive ? 'bg-green-950/20' : 'bg-black/70'
+              "absolute inset-0 backdrop-blur-md",
+              isNetPositive ? "bg-green-950/20" : "bg-black/70",
             )}
             onClick={onDismiss}
           />
@@ -113,7 +113,7 @@ export function StackedSummaryPopup({
             initial={{ scale: 0.85, opacity: 0, y: 40 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.9, opacity: 0, y: 20 }}
-            transition={{ type: 'spring', damping: 20, stiffness: 300 }}
+            transition={{ type: "spring", damping: 20, stiffness: 300 }}
             onMouseEnter={pauseTimer}
             onMouseLeave={resumeTimer}
             className="relative z-10 mx-4 w-full max-w-sm overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
@@ -124,7 +124,7 @@ export function StackedSummaryPopup({
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
                 transition={{
-                  type: 'spring',
+                  type: "spring",
                   damping: 12,
                   stiffness: 200,
                   delay: 0.15,
@@ -181,14 +181,14 @@ export function StackedSummaryPopup({
                 )}
                 <span
                   className={cn(
-                    'font-bold text-lg',
-                    isNetPositive ? 'text-green-500' : 'text-red-500'
+                    "font-bold text-lg",
+                    isNetPositive ? "text-green-500" : "text-red-500",
                   )}
                 >
-                  {totalPoints >= 0 ? '+' : ''}
-                  {totalPoints.toLocaleString('en-US', {
+                  {totalPoints >= 0 ? "+" : ""}
+                  {totalPoints.toLocaleString("en-US", {
                     maximumFractionDigits: 0,
-                  })}{' '}
+                  })}{" "}
                   pts net
                 </span>
               </div>
@@ -197,7 +197,7 @@ export function StackedSummaryPopup({
             {/* Individual results list */}
             <div className="scrollbar-hide mx-6 mt-3 max-h-48 overflow-y-auto overflow-x-hidden">
               {notifications.map((n) => {
-                const isWin = n.outcome === 'win';
+                const isWin = n.outcome === "win";
                 return (
                   <button
                     key={n.id}
@@ -205,9 +205,9 @@ export function StackedSummaryPopup({
                       clearTimer();
                       onViewResult(n);
                       // Guard against open redirects — deep links must be relative paths
-                      const safeLink = n.deepLink.startsWith('/')
+                      const safeLink = n.deepLink.startsWith("/")
                         ? n.deepLink
-                        : '/';
+                        : "/";
                       router.push(safeLink);
                     }}
                     className="group flex w-full items-center gap-3 rounded-lg py-2 text-left transition-colors hover:bg-muted/30"
@@ -224,12 +224,12 @@ export function StackedSummaryPopup({
                     </div>
                     <span
                       className={cn(
-                        'shrink-0 font-semibold text-sm',
-                        isWin ? 'text-green-500' : 'text-red-500'
+                        "shrink-0 font-semibold text-sm",
+                        isWin ? "text-green-500" : "text-red-500",
                       )}
                     >
-                      {n.points >= 0 ? '+' : ''}
-                      {n.points.toLocaleString('en-US', {
+                      {n.points >= 0 ? "+" : ""}
+                      {n.points.toLocaleString("en-US", {
                         maximumFractionDigits: 0,
                       })}
                     </span>
@@ -253,9 +253,9 @@ export function StackedSummaryPopup({
             <div
               className="h-0.5 origin-left rounded-bl-2xl bg-primary"
               style={{
-                transform: 'scaleX(1)',
+                transform: "scaleX(1)",
                 animation: `shrink-bar ${AUTO_DISMISS_MS}ms linear forwards`,
-                animationPlayState: paused ? 'paused' : 'running',
+                animationPlayState: paused ? "paused" : "running",
               }}
             />
           </motion.div>

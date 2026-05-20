@@ -7,19 +7,19 @@
  * @module testing/integration/helpers/playwright-api
  */
 
-import { type APIRequestContext, request } from '@playwright/test';
-import { existsSync, readFileSync } from 'fs';
-import path from 'path';
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { type APIRequestContext, request } from "@playwright/test";
 
-const authFile = path.join(__dirname, '../../../.playwright/auth.json');
-const tokenFile = path.join(__dirname, '../../../.playwright/test-tokens.json');
+const authFile = path.join(__dirname, "../../../.playwright/auth.json");
+const tokenFile = path.join(__dirname, "../../../.playwright/test-tokens.json");
 const rawBaseURL =
   process.env.TEST_BASE_URL ||
   process.env.PLAYWRIGHT_BASE_URL ||
   process.env.TEST_API_URL ||
   process.env.API_URL ||
-  'http://localhost:3000';
-const baseURL = rawBaseURL.replace(/\/api$/, '');
+  "http://localhost:3000";
+const baseURL = rawBaseURL.replace(/\/api$/, "");
 
 let apiRequest: APIRequestContext | null = null;
 let testUserId: string | null = null;
@@ -42,9 +42,9 @@ export function isAuthAvailable(): boolean {
  */
 export function getAuthUnavailableReason(): string {
   if (!existsSync(authFile)) {
-    return 'Playwright auth not set up (run: bunx playwright test --project=setup)';
+    return "Playwright auth not set up (run: bunx playwright test --project=setup)";
   }
-  return 'Unknown auth issue';
+  return "Unknown auth issue";
 }
 
 /**
@@ -63,9 +63,9 @@ export async function initPlaywrightAPI(): Promise<{
   if (!existsSync(authFile)) {
     throw new Error(
       `Authentication state file not found: ${authFile}\n` +
-        'Please run Playwright setup first:\n' +
-        '  bunx playwright test --project=setup\n' +
-        '  bunx playwright test --project=setup-integration-auth'
+        "Please run Playwright setup first:\n" +
+        "  bunx playwright test --project=setup\n" +
+        "  bunx playwright test --project=setup-integration-auth",
     );
   }
 
@@ -73,7 +73,7 @@ export async function initPlaywrightAPI(): Promise<{
     null;
   if (existsSync(tokenFile)) {
     try {
-      tokens = JSON.parse(readFileSync(tokenFile, 'utf-8'));
+      tokens = JSON.parse(readFileSync(tokenFile, "utf-8"));
     } catch (error) {
       console.warn(`⚠️  Could not read token file: ${error}`);
     }
@@ -99,10 +99,10 @@ export async function initPlaywrightAPI(): Promise<{
 
   if (!testUserId) {
     throw new Error(
-      'Could not determine test user ID. Please ensure:\n' +
-        '1. Playwright auth setup has been run\n' +
-        '2. User is authenticated\n' +
-        '3. Token file exists at .playwright/test-tokens.json'
+      "Could not determine test user ID. Please ensure:\n" +
+        "1. Playwright auth setup has been run\n" +
+        "2. User is authenticated\n" +
+        "3. Token file exists at .playwright/test-tokens.json",
     );
   }
 

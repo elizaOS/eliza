@@ -1,11 +1,11 @@
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 let mockTargetUser: { id: string; isActor: boolean } | null = {
-  id: 'target-user',
+  id: "target-user",
   isActor: false,
 };
 let shouldCreateFollow = true;
-let deleteReturningRows: Array<{ id: string }> = [{ id: 'follow-1' }];
+let deleteReturningRows: Array<{ id: string }> = [{ id: "follow-1" }];
 
 const invalidateUserCacheMock = mock(async () => undefined);
 
@@ -21,7 +21,7 @@ const mockDb = {
     values: mock(() => ({
       onConflictDoNothing: mock(() => ({
         returning: mock(async () =>
-          shouldCreateFollow ? [{ id: 'follow-1' }] : []
+          shouldCreateFollow ? [{ id: "follow-1" }] : [],
         ),
       })),
     })),
@@ -34,7 +34,7 @@ const mockDb = {
   transaction: mock(async () => undefined),
 };
 
-mock.module('@feed/db', () => ({
+mock.module("@feed/db", () => ({
   actorState: {},
   aliasedTable: mock(() => ({})),
   and: (...args: unknown[]) => args,
@@ -46,7 +46,7 @@ mock.module('@feed/db', () => ({
   db: mockDb,
   dmAcceptances: {},
   eq: (a: unknown, b: unknown) => ({ a, b }),
-  follows: { id: 'id', followerId: 'followerId', followingId: 'followingId' },
+  follows: { id: "id", followerId: "followerId", followingId: "followingId" },
   groupMembers: {},
   groups: {},
   gte: (...args: unknown[]) => args,
@@ -54,18 +54,18 @@ mock.module('@feed/db', () => ({
   messages: {},
   perpPositions: {},
   posts: {
-    id: 'id',
-    authorId: 'authorId',
-    content: 'content',
-    originalPostId: 'originalPostId',
+    id: "id",
+    authorId: "authorId",
+    content: "content",
+    originalPostId: "originalPostId",
   },
   reactions: {},
-  shares: { id: 'id', postId: 'postId', userId: 'userId' },
+  shares: { id: "id", postId: "postId", userId: "userId" },
   sql: {},
-  users: { id: 'id', isActor: 'isActor', displayName: 'displayName' },
+  users: { id: "id", isActor: "isActor", displayName: "displayName" },
 }));
 
-mock.module('@feed/api', () => ({
+mock.module("@feed/api", () => ({
   broadcastAgentActivity: mock(async () => undefined),
   broadcastChatMessage: mock(async () => undefined),
   broadcastToChannel: mock(async () => undefined),
@@ -75,17 +75,17 @@ mock.module('@feed/api', () => ({
   notifyGroupChatMessage: async () => undefined,
 }));
 
-mock.module('@feed/core/markets/perps', () => ({
+mock.module("@feed/core/markets/perps", () => ({
   PerpDbAdapter: class {},
   PerpMarketService: class {},
 }));
 
-mock.module('@feed/core/markets/prediction', () => ({
+mock.module("@feed/core/markets/prediction", () => ({
   PredictionDbAdapter: class {},
   PredictionMarketService: class {},
 }));
 
-mock.module('@feed/engine', () => ({
+mock.module("@feed/engine", () => ({
   FEE_CONFIG: {
     TRADING_FEE_RATE: 0,
     PLATFORM_SHARE: 0,
@@ -103,7 +103,7 @@ mock.module('@feed/engine', () => ({
   WalletService: class {},
 }));
 
-mock.module('../../shared/logger', () => ({
+mock.module("../../shared/logger", () => ({
   logger: {
     info: mock(() => undefined),
     warn: mock(() => undefined),
@@ -112,38 +112,38 @@ mock.module('../../shared/logger', () => ({
   },
 }));
 
-mock.module('../../shared/snowflake', () => ({
-  generateSnowflakeId: mock(async () => 'snowflake-id'),
+mock.module("../../shared/snowflake", () => ({
+  generateSnowflakeId: mock(async () => "snowflake-id"),
 }));
 
-mock.module('../../services/AgentPnLService', () => ({
+mock.module("../../services/AgentPnLService", () => ({
   agentPnLService: { recordTrade: mock(async () => undefined) },
 }));
 
-mock.module('../TopicDiversityService', () => ({
+mock.module("../TopicDiversityService", () => ({
   topicDiversityService: { trackPostTopics: mock(async () => undefined) },
 }));
 
-mock.module('../utils/resolvePerpTicker', () => ({
+mock.module("../utils/resolvePerpTicker", () => ({
   resolvePerpTicker: mock(() => null),
 }));
 
 const { executeDirectFollow, executeDirectUnfollow } = await import(
-  '../DirectExecutors'
+  "../DirectExecutors"
 );
 
-describe('executeDirectFollow / executeDirectUnfollow', () => {
+describe("executeDirectFollow / executeDirectUnfollow", () => {
   beforeEach(() => {
-    mockTargetUser = { id: 'target-user', isActor: false };
+    mockTargetUser = { id: "target-user", isActor: false };
     shouldCreateFollow = true;
-    deleteReturningRows = [{ id: 'follow-1' }];
+    deleteReturningRows = [{ id: "follow-1" }];
     invalidateUserCacheMock.mockClear();
   });
 
-  test('follows a valid target user and invalidates caches', async () => {
+  test("follows a valid target user and invalidates caches", async () => {
     const result = await executeDirectFollow({
-      agentUserId: 'agent-1',
-      targetUserId: 'target-user',
+      agentUserId: "agent-1",
+      targetUserId: "target-user",
     });
 
     expect(result.success).toBe(true);
@@ -152,12 +152,12 @@ describe('executeDirectFollow / executeDirectUnfollow', () => {
     expect(invalidateUserCacheMock).toHaveBeenCalledTimes(2);
   });
 
-  test('returns idempotent success when already following', async () => {
+  test("returns idempotent success when already following", async () => {
     shouldCreateFollow = false;
 
     const result = await executeDirectFollow({
-      agentUserId: 'agent-1',
-      targetUserId: 'target-user',
+      agentUserId: "agent-1",
+      targetUserId: "target-user",
     });
 
     expect(result.success).toBe(true);
@@ -166,78 +166,78 @@ describe('executeDirectFollow / executeDirectUnfollow', () => {
     expect(invalidateUserCacheMock).not.toHaveBeenCalled();
   });
 
-  test('rejects FOLLOW for actor targets', async () => {
-    mockTargetUser = { id: 'npc-1', isActor: true };
+  test("rejects FOLLOW for actor targets", async () => {
+    mockTargetUser = { id: "npc-1", isActor: true };
 
     const result = await executeDirectFollow({
-      agentUserId: 'agent-1',
-      targetUserId: 'npc-1',
+      agentUserId: "agent-1",
+      targetUserId: "npc-1",
     });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('users/agents only');
+    expect(result.error).toContain("users/agents only");
   });
 
-  test('rejects FOLLOW when targetUserId is empty', async () => {
+  test("rejects FOLLOW when targetUserId is empty", async () => {
     const result = await executeDirectFollow({
-      agentUserId: 'agent-1',
-      targetUserId: '  ',
+      agentUserId: "agent-1",
+      targetUserId: "  ",
     });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('Target user ID is required');
+    expect(result.error).toContain("Target user ID is required");
   });
 
-  test('rejects FOLLOW on self', async () => {
+  test("rejects FOLLOW on self", async () => {
     const result = await executeDirectFollow({
-      agentUserId: 'agent-1',
-      targetUserId: 'agent-1',
+      agentUserId: "agent-1",
+      targetUserId: "agent-1",
     });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('Cannot follow yourself');
+    expect(result.error).toContain("Cannot follow yourself");
   });
 
-  test('rejects FOLLOW when target user does not exist', async () => {
+  test("rejects FOLLOW when target user does not exist", async () => {
     mockTargetUser = null;
 
     const result = await executeDirectFollow({
-      agentUserId: 'agent-1',
-      targetUserId: 'nonexistent',
+      agentUserId: "agent-1",
+      targetUserId: "nonexistent",
     });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('User not found');
+    expect(result.error).toContain("User not found");
   });
 
-  test('rejects UNFOLLOW on self', async () => {
+  test("rejects UNFOLLOW on self", async () => {
     const result = await executeDirectUnfollow({
-      agentUserId: 'agent-1',
-      targetUserId: 'agent-1',
+      agentUserId: "agent-1",
+      targetUserId: "agent-1",
     });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('Cannot unfollow yourself');
+    expect(result.error).toContain("Cannot unfollow yourself");
   });
 
-  test('rejects UNFOLLOW for actor targets', async () => {
-    mockTargetUser = { id: 'npc-1', isActor: true };
+  test("rejects UNFOLLOW for actor targets", async () => {
+    mockTargetUser = { id: "npc-1", isActor: true };
 
     const result = await executeDirectUnfollow({
-      agentUserId: 'agent-1',
-      targetUserId: 'npc-1',
+      agentUserId: "agent-1",
+      targetUserId: "npc-1",
     });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('users/agents only');
+    expect(result.error).toContain("users/agents only");
   });
 
-  test('unfollows an existing relationship and invalidates caches', async () => {
-    deleteReturningRows = [{ id: 'follow-1' }];
+  test("unfollows an existing relationship and invalidates caches", async () => {
+    deleteReturningRows = [{ id: "follow-1" }];
 
     const result = await executeDirectUnfollow({
-      agentUserId: 'agent-1',
-      targetUserId: 'target-user',
+      agentUserId: "agent-1",
+      targetUserId: "target-user",
     });
 
     expect(result.success).toBe(true);
@@ -246,12 +246,12 @@ describe('executeDirectFollow / executeDirectUnfollow', () => {
     expect(invalidateUserCacheMock).toHaveBeenCalledTimes(2);
   });
 
-  test('unfollow is idempotent when no relationship exists', async () => {
+  test("unfollow is idempotent when no relationship exists", async () => {
     deleteReturningRows = [];
 
     const result = await executeDirectUnfollow({
-      agentUserId: 'agent-1',
-      targetUserId: 'target-user',
+      agentUserId: "agent-1",
+      targetUserId: "target-user",
     });
 
     expect(result.success).toBe(true);

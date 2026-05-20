@@ -31,12 +31,14 @@
  * ```
  */
 
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 // Default pack — imported statically since @feed/engine depends on @feed/pack-default
 import {
   actors as defaultPackActors,
   manifest as defaultPackManifest,
   organizations as defaultPackOrganizations,
-} from '@feed/pack-default';
+} from "@feed/pack-default";
 import type {
   ActorTier,
   ActorTierOverrides,
@@ -45,11 +47,9 @@ import type {
   PackData,
   PackManifest,
   PackOrganization,
-} from '@feed/shared';
-import { existsSync } from 'fs';
-import { join } from 'path';
-import { actors as actorsData } from '../data/actors';
-import { organizations as organizationsData } from '../data/organizations';
+} from "@feed/shared";
+import { actors as actorsData } from "../data/actors";
+import { organizations as organizationsData } from "../data/organizations";
 
 let defaultPackLoaded = false;
 function tryLoadDefaultPack(registry: typeof StaticDataRegistry): void {
@@ -102,12 +102,12 @@ export interface StaticActor {
 
 /** Organization type enum matching @feed/shared */
 export type OrgType =
-  | 'company'
-  | 'media'
-  | 'government'
-  | 'vc'
-  | 'organization'
-  | 'financial';
+  | "company"
+  | "media"
+  | "government"
+  | "vc"
+  | "organization"
+  | "financial";
 
 /**
  * Static organization data - immutable properties
@@ -168,7 +168,7 @@ export class StaticDataRegistry {
   private static orgList: StaticOrganization[] | null = null;
   private static charMappings: Map<string, CharacterMapping> | null = null;
   private static orgMappings: Map<string, OrganizationMapping> | null = null;
-  private static actorsByTier: Map<ActorTier | 'NONE', StaticActor[]> | null =
+  private static actorsByTier: Map<ActorTier | "NONE", StaticActor[]> | null =
     null;
   private static actorsByDomain: Map<string, StaticActor[]> | null = null;
   private static actorsByAffiliation: Map<string, StaticActor[]> | null = null;
@@ -184,25 +184,25 @@ export class StaticDataRegistry {
   // ==========================================================================
 
   private static initialize(): void {
-    if (this.actorMap !== null) return;
+    if (StaticDataRegistry.actorMap !== null) return;
     // Skip legacy initialization if pack already loaded
-    if (this.packManifest) return;
+    if (StaticDataRegistry.packManifest) return;
 
     // Try to auto-load the default pack before falling back to legacy imports
-    tryLoadDefaultPack(this);
-    if (this.packManifest) return;
+    tryLoadDefaultPack(StaticDataRegistry);
+    if (StaticDataRegistry.packManifest) return;
 
-    this.actorMap = new Map();
-    this.actorByUsername = new Map();
-    this.actorList = [];
-    this.actorsByTier = new Map([
-      ['S_TIER', []],
-      ['A_TIER', []],
-      ['B_TIER', []],
-      ['C_TIER', []],
-      ['NONE', []],
+    StaticDataRegistry.actorMap = new Map();
+    StaticDataRegistry.actorByUsername = new Map();
+    StaticDataRegistry.actorList = [];
+    StaticDataRegistry.actorsByTier = new Map([
+      ["S_TIER", []],
+      ["A_TIER", []],
+      ["B_TIER", []],
+      ["C_TIER", []],
+      ["NONE", []],
     ]);
-    this.actorsByDomain = new Map();
+    StaticDataRegistry.actorsByDomain = new Map();
 
     // Load actors from TypeScript data
     for (const actor of actorsData) {
@@ -248,41 +248,41 @@ export class StaticDataRegistry {
         postStyle: actorAny.postStyle,
         postExample: actorAny.postExample ?? [],
         role: actorAny.role,
-        initialLuck: actorAny.initialLuck ?? 'medium',
+        initialLuck: actorAny.initialLuck ?? "medium",
         initialMood: actorAny.initialMood ?? 0,
-        profileImageUrl: this.getActorImageUrl(actorAny.id),
-        isTest: actorAny.id.startsWith('test-'),
+        profileImageUrl: StaticDataRegistry.getActorImageUrl(actorAny.id),
+        isTest: actorAny.id.startsWith("test-"),
         tierOverrides: actorAny.tierOverrides,
         pfpDescription: actorAny.pfpDescription,
         profileBanner: actorAny.profileBanner,
       };
 
-      this.actorMap.set(actor.id, staticActor);
-      this.actorList.push(staticActor);
+      StaticDataRegistry.actorMap.set(actor.id, staticActor);
+      StaticDataRegistry.actorList.push(staticActor);
 
       // Index by username for lookup by username
       if (staticActor.username) {
-        this.actorByUsername.set(
+        StaticDataRegistry.actorByUsername.set(
           staticActor.username.toLowerCase(),
-          staticActor
+          staticActor,
         );
       }
 
       // Index by tier
-      const tierKey = (staticActor.tier ?? 'NONE') as ActorTier | 'NONE';
-      this.actorsByTier.get(tierKey)?.push(staticActor);
+      const tierKey = (staticActor.tier ?? "NONE") as ActorTier | "NONE";
+      StaticDataRegistry.actorsByTier.get(tierKey)?.push(staticActor);
 
       // Index by domain
       for (const domain of staticActor.domain) {
-        if (!this.actorsByDomain.has(domain)) {
-          this.actorsByDomain.set(domain, []);
+        if (!StaticDataRegistry.actorsByDomain.has(domain)) {
+          StaticDataRegistry.actorsByDomain.set(domain, []);
         }
-        this.actorsByDomain.get(domain)?.push(staticActor);
+        StaticDataRegistry.actorsByDomain.get(domain)?.push(staticActor);
       }
     }
 
-    this.orgMap = new Map();
-    this.orgList = [];
+    StaticDataRegistry.orgMap = new Map();
+    StaticDataRegistry.orgList = [];
 
     // Load organizations from TypeScript data
     for (const org of organizationsData) {
@@ -307,11 +307,11 @@ export class StaticDataRegistry {
         id: orgAny.id,
         name: orgAny.name,
         ticker: orgAny.ticker,
-        description: orgAny.description ?? '',
-        type: (orgAny.type as OrgType) ?? 'company',
+        description: orgAny.description ?? "",
+        type: (orgAny.type as OrgType) ?? "company",
         canBeInvolved: orgAny.canBeInvolved !== false,
         initialPrice: orgAny.initialPrice ?? null,
-        imageUrl: this.getOrgImageUrl(orgAny.id),
+        imageUrl: StaticDataRegistry.getOrgImageUrl(orgAny.id),
         originalName: orgAny.originalName,
         originalHandle: orgAny.originalHandle,
         postStyle: orgAny.postStyle,
@@ -320,104 +320,113 @@ export class StaticDataRegistry {
         profileDescription: orgAny.profileDescription,
       };
 
-      this.orgMap.set(orgAny.id, staticOrg);
-      this.orgList.push(staticOrg);
+      StaticDataRegistry.orgMap.set(orgAny.id, staticOrg);
+      StaticDataRegistry.orgList.push(staticOrg);
     }
 
     // Build character mappings
-    this.charMappings = new Map();
-    for (const actor of this.actorList) {
+    StaticDataRegistry.charMappings = new Map();
+    for (const actor of StaticDataRegistry.actorList) {
       if (actor.realName) {
         const mapping: CharacterMapping = {
           realName: actor.realName,
           parodyName: actor.name,
-          category: this.mapDomainToCategory(actor.domain),
-          aliases: this.generateActorAliases(actor),
-          priority: this.mapTierToPriority(actor.tier),
+          category: StaticDataRegistry.mapDomainToCategory(actor.domain),
+          aliases: StaticDataRegistry.generateActorAliases(actor),
+          priority: StaticDataRegistry.mapTierToPriority(actor.tier),
         };
-        this.charMappings.set(actor.realName.toLowerCase(), mapping);
+        StaticDataRegistry.charMappings.set(
+          actor.realName.toLowerCase(),
+          mapping,
+        );
       }
     }
 
     // Build organization mappings
-    this.orgMappings = new Map();
-    for (const org of this.orgList) {
+    StaticDataRegistry.orgMappings = new Map();
+    for (const org of StaticDataRegistry.orgList) {
       if (org.originalName) {
         const mapping: OrganizationMapping = {
           realName: org.originalName,
           parodyName: org.name,
-          category: this.mapOrgTypeToCategory(org.type),
+          category: StaticDataRegistry.mapOrgTypeToCategory(org.type),
           aliases: org.originalHandle ? [org.originalHandle] : [],
-          priority: this.getOrganizationPriority(org.originalName, org.type),
+          priority: StaticDataRegistry.getOrganizationPriority(
+            org.originalName,
+            org.type,
+          ),
         };
-        this.orgMappings.set(org.originalName.toLowerCase(), mapping);
+        StaticDataRegistry.orgMappings.set(
+          org.originalName.toLowerCase(),
+          mapping,
+        );
       }
     }
 
     // Add fallback mappings for common social platforms not in static data
     const fallbackMappings: OrganizationMapping[] = [
       {
-        realName: 'Discord',
-        parodyName: 'DIscord',
-        category: 'platform',
+        realName: "Discord",
+        parodyName: "DIscord",
+        category: "platform",
         aliases: [],
         priority: 80,
       },
       {
-        realName: 'Reddit',
-        parodyName: 'AIeddit',
-        category: 'platform',
+        realName: "Reddit",
+        parodyName: "AIeddit",
+        category: "platform",
         aliases: [],
         priority: 80,
       },
       {
-        realName: 'LinkedIn',
-        parodyName: 'LinkAIdIn',
-        category: 'platform',
+        realName: "LinkedIn",
+        parodyName: "LinkAIdIn",
+        category: "platform",
         aliases: [],
         priority: 80,
       },
       {
-        realName: 'TikTok',
-        parodyName: 'TikTAIk',
-        category: 'platform',
+        realName: "TikTok",
+        parodyName: "TikTAIk",
+        category: "platform",
         aliases: [],
         priority: 80,
       },
       {
-        realName: 'Instagram',
-        parodyName: 'InstAIgram',
-        category: 'platform',
+        realName: "Instagram",
+        parodyName: "InstAIgram",
+        category: "platform",
         aliases: [],
         priority: 80,
       },
       {
-        realName: 'YouTube',
-        parodyName: 'YoutAIbe',
-        category: 'platform',
+        realName: "YouTube",
+        parodyName: "YoutAIbe",
+        category: "platform",
         aliases: [],
         priority: 80,
       },
       {
-        realName: 'Facebook',
-        parodyName: 'FAIcebook',
-        category: 'platform',
+        realName: "Facebook",
+        parodyName: "FAIcebook",
+        category: "platform",
         aliases: [],
         priority: 80,
       },
       {
-        realName: 'Twitter',
-        parodyName: 'XAI',
-        category: 'platform',
-        aliases: ['X'],
+        realName: "Twitter",
+        parodyName: "XAI",
+        category: "platform",
+        aliases: ["X"],
         priority: 80,
       },
     ];
 
     for (const mapping of fallbackMappings) {
       const key = mapping.realName.toLowerCase();
-      if (!this.orgMappings.has(key)) {
-        this.orgMappings.set(key, mapping);
+      if (!StaticDataRegistry.orgMappings.has(key)) {
+        StaticDataRegistry.orgMappings.set(key, mapping);
       }
     }
   }
@@ -434,30 +443,30 @@ export class StaticDataRegistry {
     const { manifest, actors, organizations } = pack;
 
     // Store raw pack data
-    this.packManifest = manifest;
-    this.packActors = actors;
-    this.packOrganizations = organizations;
+    StaticDataRegistry.packManifest = manifest;
+    StaticDataRegistry.packActors = actors;
+    StaticDataRegistry.packOrganizations = organizations;
 
     // Clear existing caches
-    this.clearCache();
+    StaticDataRegistry.clearCache();
 
     // Re-set pack data (clearCache nulls it)
-    this.packManifest = manifest;
-    this.packActors = actors;
-    this.packOrganizations = organizations;
+    StaticDataRegistry.packManifest = manifest;
+    StaticDataRegistry.packActors = actors;
+    StaticDataRegistry.packOrganizations = organizations;
 
     // Initialize maps
-    this.actorMap = new Map();
-    this.actorByUsername = new Map();
-    this.actorList = [];
-    this.actorsByTier = new Map([
-      ['S_TIER', []],
-      ['A_TIER', []],
-      ['B_TIER', []],
-      ['C_TIER', []],
-      ['NONE', []],
+    StaticDataRegistry.actorMap = new Map();
+    StaticDataRegistry.actorByUsername = new Map();
+    StaticDataRegistry.actorList = [];
+    StaticDataRegistry.actorsByTier = new Map([
+      ["S_TIER", []],
+      ["A_TIER", []],
+      ["B_TIER", []],
+      ["C_TIER", []],
+      ["NONE", []],
     ]);
-    this.actorsByDomain = new Map();
+    StaticDataRegistry.actorsByDomain = new Map();
 
     // Load actors from pack data
     for (const packActor of actors) {
@@ -478,53 +487,53 @@ export class StaticDataRegistry {
         postStyle: packActor.postStyle,
         postExample: packActor.postExamples ?? [],
         role: undefined, // PackActor does not have a role field
-        initialLuck: 'medium',
+        initialLuck: "medium",
         initialMood: 0,
-        profileImageUrl: this.getActorImageUrl(packActor.id),
-        isTest: packActor.id.startsWith('test-'),
+        profileImageUrl: StaticDataRegistry.getActorImageUrl(packActor.id),
+        isTest: packActor.id.startsWith("test-"),
         tierOverrides: undefined,
         pfpDescription: packActor.pfpDescription,
         profileBanner: packActor.profileBanner,
       };
 
-      this.actorMap.set(packActor.id, staticActor);
-      this.actorList.push(staticActor);
+      StaticDataRegistry.actorMap.set(packActor.id, staticActor);
+      StaticDataRegistry.actorList.push(staticActor);
 
       // Index by username
       if (staticActor.username) {
-        this.actorByUsername.set(
+        StaticDataRegistry.actorByUsername.set(
           staticActor.username.toLowerCase(),
-          staticActor
+          staticActor,
         );
       }
 
       // Index by tier
-      const tierKey = (staticActor.tier ?? 'NONE') as ActorTier | 'NONE';
-      this.actorsByTier.get(tierKey)?.push(staticActor);
+      const tierKey = (staticActor.tier ?? "NONE") as ActorTier | "NONE";
+      StaticDataRegistry.actorsByTier.get(tierKey)?.push(staticActor);
 
       // Index by domain
       for (const domain of staticActor.domain) {
-        if (!this.actorsByDomain.has(domain)) {
-          this.actorsByDomain.set(domain, []);
+        if (!StaticDataRegistry.actorsByDomain.has(domain)) {
+          StaticDataRegistry.actorsByDomain.set(domain, []);
         }
-        this.actorsByDomain.get(domain)?.push(staticActor);
+        StaticDataRegistry.actorsByDomain.get(domain)?.push(staticActor);
       }
     }
 
     // Load organizations from pack data
-    this.orgMap = new Map();
-    this.orgList = [];
+    StaticDataRegistry.orgMap = new Map();
+    StaticDataRegistry.orgList = [];
 
     for (const packOrg of organizations) {
       const staticOrg: StaticOrganization = {
         id: packOrg.id,
         name: packOrg.name,
         ticker: packOrg.ticker,
-        description: packOrg.description ?? '',
-        type: packOrg.type ?? 'company',
+        description: packOrg.description ?? "",
+        type: packOrg.type ?? "company",
         canBeInvolved: packOrg.canBeInvolved !== false,
         initialPrice: packOrg.initialPrice ?? null,
-        imageUrl: this.getOrgImageUrl(packOrg.id),
+        imageUrl: StaticDataRegistry.getOrgImageUrl(packOrg.id),
         originalName: packOrg.originalName,
         originalHandle: packOrg.originalHandle,
         postStyle: packOrg.postStyle,
@@ -533,37 +542,46 @@ export class StaticDataRegistry {
         profileDescription: packOrg.profileDescription,
       };
 
-      this.orgMap.set(packOrg.id, staticOrg);
-      this.orgList.push(staticOrg);
+      StaticDataRegistry.orgMap.set(packOrg.id, staticOrg);
+      StaticDataRegistry.orgList.push(staticOrg);
     }
 
     // Build character mappings
-    this.charMappings = new Map();
-    for (const actor of this.actorList) {
+    StaticDataRegistry.charMappings = new Map();
+    for (const actor of StaticDataRegistry.actorList) {
       if (actor.realName) {
         const mapping: CharacterMapping = {
           realName: actor.realName,
           parodyName: actor.name,
-          category: this.mapDomainToCategory(actor.domain),
-          aliases: this.generateActorAliases(actor),
-          priority: this.mapTierToPriority(actor.tier),
+          category: StaticDataRegistry.mapDomainToCategory(actor.domain),
+          aliases: StaticDataRegistry.generateActorAliases(actor),
+          priority: StaticDataRegistry.mapTierToPriority(actor.tier),
         };
-        this.charMappings.set(actor.realName.toLowerCase(), mapping);
+        StaticDataRegistry.charMappings.set(
+          actor.realName.toLowerCase(),
+          mapping,
+        );
       }
     }
 
     // Build organization mappings
-    this.orgMappings = new Map();
-    for (const org of this.orgList) {
+    StaticDataRegistry.orgMappings = new Map();
+    for (const org of StaticDataRegistry.orgList) {
       if (org.originalName) {
         const mapping: OrganizationMapping = {
           realName: org.originalName,
           parodyName: org.name,
-          category: this.mapOrgTypeToCategory(org.type),
+          category: StaticDataRegistry.mapOrgTypeToCategory(org.type),
           aliases: org.originalHandle ? [org.originalHandle] : [],
-          priority: this.getOrganizationPriority(org.originalName, org.type),
+          priority: StaticDataRegistry.getOrganizationPriority(
+            org.originalName,
+            org.type,
+          ),
         };
-        this.orgMappings.set(org.originalName.toLowerCase(), mapping);
+        StaticDataRegistry.orgMappings.set(
+          org.originalName.toLowerCase(),
+          mapping,
+        );
       }
     }
   }
@@ -576,49 +594,49 @@ export class StaticDataRegistry {
    * Get the loaded pack ID, or null if no pack is loaded.
    */
   static getPackId(): string | null {
-    return this.packManifest?.id ?? null;
+    return StaticDataRegistry.packManifest?.id ?? null;
   }
 
   /**
    * Get rivalries from the loaded pack manifest.
    */
   static getRivalries(): [string, string][] {
-    return this.packManifest?.rivalries ?? [];
+    return StaticDataRegistry.packManifest?.rivalries ?? [];
   }
 
   /**
    * Get organization priorities from the loaded pack manifest.
    */
-  static getOrgPriorities(): PackManifest['orgPriorities'] | null {
-    return this.packManifest?.orgPriorities ?? null;
+  static getOrgPriorities(): PackManifest["orgPriorities"] | null {
+    return StaticDataRegistry.packManifest?.orgPriorities ?? null;
   }
 
   /**
    * Get organization correlations from the loaded pack manifest.
    */
   static getCorrelations(): OrgCorrelation[] {
-    return this.packManifest?.correlations ?? [];
+    return StaticDataRegistry.packManifest?.correlations ?? [];
   }
 
   /**
    * Get the full pack manifest, or null if no pack is loaded.
    */
   static getPackManifest(): PackManifest | null {
-    return this.packManifest;
+    return StaticDataRegistry.packManifest;
   }
 
   /**
    * Get the original PackActor by ID for full character data.
    */
   static getPackActor(id: string): PackActor | undefined {
-    return this.packActors.find((a) => a.id === id);
+    return StaticDataRegistry.packActors.find((a) => a.id === id);
   }
 
   /**
    * Get the original PackOrganization by ID for full org data.
    */
   static getPackOrganization(id: string): PackOrganization | undefined {
-    return this.packOrganizations.find((o) => o.id === id);
+    return StaticDataRegistry.packOrganizations.find((o) => o.id === id);
   }
 
   // ==========================================================================
@@ -630,68 +648,70 @@ export class StaticDataRegistry {
    * @param identifier - Actor ID or username (case-insensitive for username)
    */
   static getActor(identifier: string): StaticActor | null {
-    this.initialize();
+    StaticDataRegistry.initialize();
     // First try exact ID match
-    const byId = this.actorMap?.get(identifier);
+    const byId = StaticDataRegistry.actorMap?.get(identifier);
     if (byId) return byId;
     // Then try username match (case-insensitive)
-    return this.actorByUsername?.get(identifier.toLowerCase()) ?? null;
+    return (
+      StaticDataRegistry.actorByUsername?.get(identifier.toLowerCase()) ?? null
+    );
   }
 
   /**
    * Get all static actors - NO DATABASE CALL
    */
   static getAllActors(): StaticActor[] {
-    this.initialize();
-    return [...(this.actorList ?? [])];
+    StaticDataRegistry.initialize();
+    return [...(StaticDataRegistry.actorList ?? [])];
   }
 
   /**
    * Get actors by tier - NO DATABASE CALL
    */
   static getActorsByTier(tier: ActorTier): StaticActor[] {
-    this.initialize();
-    return [...(this.actorsByTier?.get(tier) ?? [])];
+    StaticDataRegistry.initialize();
+    return [...(StaticDataRegistry.actorsByTier?.get(tier) ?? [])];
   }
 
   /**
    * Get actors by domain - NO DATABASE CALL
    */
   static getActorsByDomain(domain: string): StaticActor[] {
-    this.initialize();
-    return [...(this.actorsByDomain?.get(domain) ?? [])];
+    StaticDataRegistry.initialize();
+    return [...(StaticDataRegistry.actorsByDomain?.get(domain) ?? [])];
   }
 
   /**
    * Get all actor IDs - NO DATABASE CALL
    */
   static getActorIds(): string[] {
-    this.initialize();
-    return this.actorList?.map((a) => a.id) ?? [];
+    StaticDataRegistry.initialize();
+    return StaticDataRegistry.actorList?.map((a) => a.id) ?? [];
   }
 
   /**
    * Get actor count - NO DATABASE CALL
    */
   static getActorCount(): number {
-    this.initialize();
-    return this.actorList?.length ?? 0;
+    StaticDataRegistry.initialize();
+    return StaticDataRegistry.actorList?.length ?? 0;
   }
 
   /**
    * Check if actor exists - NO DATABASE CALL
    */
   static hasActor(id: string): boolean {
-    this.initialize();
-    return this.actorMap?.has(id) ?? false;
+    StaticDataRegistry.initialize();
+    return StaticDataRegistry.actorMap?.has(id) ?? false;
   }
 
   /**
    * Get random actors - NO DATABASE CALL
    */
   static getRandomActors(count: number): StaticActor[] {
-    this.initialize();
-    const actors = [...(this.actorList ?? [])];
+    StaticDataRegistry.initialize();
+    const actors = [...(StaticDataRegistry.actorList ?? [])];
     const shuffled = actors.sort(() => Math.random() - 0.5);
     return shuffled.slice(0, count);
   }
@@ -700,18 +720,18 @@ export class StaticDataRegistry {
    * Get top actors by tier (S_TIER first) - NO DATABASE CALL
    */
   static getTopActors(count: number): StaticActor[] {
-    this.initialize();
+    StaticDataRegistry.initialize();
     const result: StaticActor[] = [];
-    const tiers: (ActorTier | 'NONE')[] = [
-      'S_TIER',
-      'A_TIER',
-      'B_TIER',
-      'C_TIER',
-      'NONE',
+    const tiers: (ActorTier | "NONE")[] = [
+      "S_TIER",
+      "A_TIER",
+      "B_TIER",
+      "C_TIER",
+      "NONE",
     ];
 
     for (const tier of tiers) {
-      const tierActors = this.actorsByTier?.get(tier) ?? [];
+      const tierActors = StaticDataRegistry.actorsByTier?.get(tier) ?? [];
       for (const actor of tierActors) {
         if (result.length >= count) break;
         result.push(actor);
@@ -730,48 +750,48 @@ export class StaticDataRegistry {
    * Get a static organization by ID - NO DATABASE CALL
    */
   static getOrganization(id: string): StaticOrganization | null {
-    this.initialize();
-    return this.orgMap?.get(id) ?? null;
+    StaticDataRegistry.initialize();
+    return StaticDataRegistry.orgMap?.get(id) ?? null;
   }
 
   /**
    * Get all static organizations - NO DATABASE CALL
    */
   static getAllOrganizations(): StaticOrganization[] {
-    this.initialize();
-    return [...(this.orgList ?? [])];
+    StaticDataRegistry.initialize();
+    return [...(StaticDataRegistry.orgList ?? [])];
   }
 
   /**
    * Get all organization IDs - NO DATABASE CALL
    */
   static getOrganizationIds(): string[] {
-    this.initialize();
-    return this.orgList?.map((o) => o.id) ?? [];
+    StaticDataRegistry.initialize();
+    return StaticDataRegistry.orgList?.map((o) => o.id) ?? [];
   }
 
   /**
    * Get organization count - NO DATABASE CALL
    */
   static getOrganizationCount(): number {
-    this.initialize();
-    return this.orgList?.length ?? 0;
+    StaticDataRegistry.initialize();
+    return StaticDataRegistry.orgList?.length ?? 0;
   }
 
   /**
    * Check if organization exists - NO DATABASE CALL
    */
   static hasOrganization(id: string): boolean {
-    this.initialize();
-    return this.orgMap?.has(id) ?? false;
+    StaticDataRegistry.initialize();
+    return StaticDataRegistry.orgMap?.has(id) ?? false;
   }
 
   /**
    * Get organizations by type - NO DATABASE CALL
    */
   static getOrganizationsByType(type: string): StaticOrganization[] {
-    this.initialize();
-    return this.orgList?.filter((o) => o.type === type) ?? [];
+    StaticDataRegistry.initialize();
+    return StaticDataRegistry.orgList?.filter((o) => o.type === type) ?? [];
   }
 
   /**
@@ -779,16 +799,16 @@ export class StaticDataRegistry {
    * Lazy-builds the ticker index on first call.
    */
   static getOrganizationByTicker(ticker: string): StaticOrganization | null {
-    this.initialize();
-    if (!this.orgByTicker) {
-      this.orgByTicker = new Map();
-      for (const org of this.orgList ?? []) {
+    StaticDataRegistry.initialize();
+    if (!StaticDataRegistry.orgByTicker) {
+      StaticDataRegistry.orgByTicker = new Map();
+      for (const org of StaticDataRegistry.orgList ?? []) {
         if (org.ticker) {
-          this.orgByTicker.set(org.ticker.toUpperCase(), org);
+          StaticDataRegistry.orgByTicker.set(org.ticker.toUpperCase(), org);
         }
       }
     }
-    return this.orgByTicker.get(ticker.toUpperCase()) ?? null;
+    return StaticDataRegistry.orgByTicker.get(ticker.toUpperCase()) ?? null;
   }
 
   // ==========================================================================
@@ -800,25 +820,26 @@ export class StaticDataRegistry {
    * Lazy-builds the affiliation index on first call.
    */
   static getActorsByAffiliation(orgId: string): StaticActor[] {
-    this.initialize();
-    if (!this.actorsByAffiliation) {
-      this.actorsByAffiliation = new Map();
-      for (const actor of this.actorList ?? []) {
+    StaticDataRegistry.initialize();
+    if (!StaticDataRegistry.actorsByAffiliation) {
+      StaticDataRegistry.actorsByAffiliation = new Map();
+      for (const actor of StaticDataRegistry.actorList ?? []) {
         for (const affId of actor.affiliations) {
-          const existing = this.actorsByAffiliation.get(affId) ?? [];
+          const existing =
+            StaticDataRegistry.actorsByAffiliation.get(affId) ?? [];
           existing.push(actor);
-          this.actorsByAffiliation.set(affId, existing);
+          StaticDataRegistry.actorsByAffiliation.set(affId, existing);
         }
       }
     }
-    return [...(this.actorsByAffiliation.get(orgId) ?? [])];
+    return [...(StaticDataRegistry.actorsByAffiliation.get(orgId) ?? [])];
   }
 
   /**
    * Get all organization IDs an actor is affiliated with - NO DATABASE CALL
    */
   static getActorAffiliations(actorId: string): string[] {
-    const actor = this.getActor(actorId);
+    const actor = StaticDataRegistry.getActor(actorId);
     return actor?.affiliations ?? [];
   }
 
@@ -826,11 +847,11 @@ export class StaticDataRegistry {
    * Get actors affiliated with any of the given organizations - NO DATABASE CALL
    */
   static getActorsByAffiliations(orgIds: string[]): StaticActor[] {
-    this.initialize();
+    StaticDataRegistry.initialize();
     const seen = new Set<string>();
     const result: StaticActor[] = [];
     for (const orgId of orgIds) {
-      for (const actor of this.getActorsByAffiliation(orgId)) {
+      for (const actor of StaticDataRegistry.getActorsByAffiliation(orgId)) {
         if (!seen.has(actor.id)) {
           seen.add(actor.id);
           result.push(actor);
@@ -848,24 +869,27 @@ export class StaticDataRegistry {
    * Get parody name for a real person - NO DATABASE CALL
    */
   static getParodyName(realName: string): string | null {
-    this.initialize();
-    return this.charMappings?.get(realName.toLowerCase())?.parodyName ?? null;
+    StaticDataRegistry.initialize();
+    return (
+      StaticDataRegistry.charMappings?.get(realName.toLowerCase())
+        ?.parodyName ?? null
+    );
   }
 
   /**
    * Get full character mapping - NO DATABASE CALL
    */
   static getCharacterMapping(realName: string): CharacterMapping | null {
-    this.initialize();
-    return this.charMappings?.get(realName.toLowerCase()) ?? null;
+    StaticDataRegistry.initialize();
+    return StaticDataRegistry.charMappings?.get(realName.toLowerCase()) ?? null;
   }
 
   /**
    * Get all character mappings - NO DATABASE CALL
    */
   static getAllCharacterMappings(): CharacterMapping[] {
-    this.initialize();
-    return [...(this.charMappings?.values() ?? [])];
+    StaticDataRegistry.initialize();
+    return [...(StaticDataRegistry.charMappings?.values() ?? [])];
   }
 
   // ==========================================================================
@@ -876,24 +900,27 @@ export class StaticDataRegistry {
    * Get parody name for a real organization - NO DATABASE CALL
    */
   static getParodyOrgName(realName: string): string | null {
-    this.initialize();
-    return this.orgMappings?.get(realName.toLowerCase())?.parodyName ?? null;
+    StaticDataRegistry.initialize();
+    return (
+      StaticDataRegistry.orgMappings?.get(realName.toLowerCase())?.parodyName ??
+      null
+    );
   }
 
   /**
    * Get full organization mapping - NO DATABASE CALL
    */
   static getOrganizationMapping(realName: string): OrganizationMapping | null {
-    this.initialize();
-    return this.orgMappings?.get(realName.toLowerCase()) ?? null;
+    StaticDataRegistry.initialize();
+    return StaticDataRegistry.orgMappings?.get(realName.toLowerCase()) ?? null;
   }
 
   /**
    * Get all organization mappings - NO DATABASE CALL
    */
   static getAllOrganizationMappings(): OrganizationMapping[] {
-    this.initialize();
-    return [...(this.orgMappings?.values() ?? [])];
+    StaticDataRegistry.initialize();
+    return [...(StaticDataRegistry.orgMappings?.values() ?? [])];
   }
 
   // ==========================================================================
@@ -904,20 +931,20 @@ export class StaticDataRegistry {
    * Clear all caches (useful for testing)
    */
   static clearCache(): void {
-    this.actorMap = null;
-    this.actorByUsername = null;
-    this.actorList = null;
-    this.orgMap = null;
-    this.orgList = null;
-    this.charMappings = null;
-    this.orgMappings = null;
-    this.actorsByTier = null;
-    this.actorsByDomain = null;
-    this.actorsByAffiliation = null;
-    this.orgByTicker = null;
-    this.packManifest = null;
-    this.packActors = [];
-    this.packOrganizations = [];
+    StaticDataRegistry.actorMap = null;
+    StaticDataRegistry.actorByUsername = null;
+    StaticDataRegistry.actorList = null;
+    StaticDataRegistry.orgMap = null;
+    StaticDataRegistry.orgList = null;
+    StaticDataRegistry.charMappings = null;
+    StaticDataRegistry.orgMappings = null;
+    StaticDataRegistry.actorsByTier = null;
+    StaticDataRegistry.actorsByDomain = null;
+    StaticDataRegistry.actorsByAffiliation = null;
+    StaticDataRegistry.orgByTicker = null;
+    StaticDataRegistry.packManifest = null;
+    StaticDataRegistry.packActors = [];
+    StaticDataRegistry.packOrganizations = [];
   }
 
   /**
@@ -931,24 +958,28 @@ export class StaticDataRegistry {
     actorsByTier: Record<string, number>;
     topDomains: Array<{ domain: string; count: number }>;
   } {
-    this.initialize();
+    StaticDataRegistry.initialize();
 
     const tierCounts: Record<string, number> = {};
-    for (const [tier, actors] of this.actorsByTier?.entries() ?? []) {
+    for (const [tier, actors] of StaticDataRegistry.actorsByTier?.entries() ??
+      []) {
       tierCounts[tier] = actors.length;
     }
 
     const domainCounts: Array<{ domain: string; count: number }> = [];
-    for (const [domain, actors] of this.actorsByDomain?.entries() ?? []) {
+    for (const [
+      domain,
+      actors,
+    ] of StaticDataRegistry.actorsByDomain?.entries() ?? []) {
       domainCounts.push({ domain, count: actors.length });
     }
     domainCounts.sort((a, b) => b.count - a.count);
 
     return {
-      actors: this.actorList?.length ?? 0,
-      organizations: this.orgList?.length ?? 0,
-      characterMappings: this.charMappings?.size ?? 0,
-      organizationMappings: this.orgMappings?.size ?? 0,
+      actors: StaticDataRegistry.actorList?.length ?? 0,
+      organizations: StaticDataRegistry.orgList?.length ?? 0,
+      characterMappings: StaticDataRegistry.charMappings?.size ?? 0,
+      organizationMappings: StaticDataRegistry.orgMappings?.size ?? 0,
       actorsByTier: tierCounts,
       topDomains: domainCounts.slice(0, 10),
     };
@@ -961,10 +992,10 @@ export class StaticDataRegistry {
   private static getActorImageUrl(actorId: string): string | undefined {
     const imagePath = join(
       process.cwd(),
-      'public',
-      'images',
-      'actors',
-      `${actorId}.jpg`
+      "public",
+      "images",
+      "actors",
+      `${actorId}.jpg`,
     );
     return existsSync(imagePath) ? `/images/actors/${actorId}.jpg` : undefined;
   }
@@ -972,10 +1003,10 @@ export class StaticDataRegistry {
   private static getOrgImageUrl(orgId: string): string | undefined {
     const imagePath = join(
       process.cwd(),
-      'public',
-      'images',
-      'organizations',
-      `${orgId}.jpg`
+      "public",
+      "images",
+      "organizations",
+      `${orgId}.jpg`,
     );
     return existsSync(imagePath)
       ? `/images/organizations/${orgId}.jpg`
@@ -983,28 +1014,28 @@ export class StaticDataRegistry {
   }
 
   private static mapDomainToCategory(domains: string[]): string {
-    if (domains.length === 0) return 'general';
-    if (domains.includes('crypto')) return 'crypto';
-    if (domains.includes('politics') || domains.includes('government'))
-      return 'politics';
+    if (domains.length === 0) return "general";
+    if (domains.includes("crypto")) return "crypto";
+    if (domains.includes("politics") || domains.includes("government"))
+      return "politics";
     if (
-      domains.includes('tech') ||
-      domains.includes('ai') ||
-      domains.includes('technology')
+      domains.includes("tech") ||
+      domains.includes("ai") ||
+      domains.includes("technology")
     )
-      return 'tech';
-    return domains[0] ?? 'general';
+      return "tech";
+    return domains[0] ?? "general";
   }
 
   private static mapTierToPriority(tier: ActorTier | null): number {
     switch (tier) {
-      case 'S_TIER':
+      case "S_TIER":
         return 100;
-      case 'A_TIER':
+      case "A_TIER":
         return 90;
-      case 'B_TIER':
+      case "B_TIER":
         return 80;
-      case 'C_TIER':
+      case "C_TIER":
         return 70;
       default:
         return 50;
@@ -1013,58 +1044,58 @@ export class StaticDataRegistry {
 
   private static mapOrgTypeToCategory(orgType: string): string {
     switch (orgType) {
-      case 'company':
-        return 'tech';
-      case 'media':
-        return 'media';
-      case 'government':
-        return 'government';
+      case "company":
+        return "tech";
+      case "media":
+        return "media";
+      case "government":
+        return "government";
       default:
-        return 'general';
+        return "general";
     }
   }
 
   private static getOrganizationPriority(
     orgName: string,
-    orgType: string
+    orgType: string,
   ): number {
     const majorTechOrgs = [
-      'OpenAI',
-      'Meta',
-      'Google',
-      'Microsoft',
-      'Apple',
-      'Amazon',
-      'Tesla',
-      'Twitter',
-      'Anthropic',
-      'NVIDIA',
+      "OpenAI",
+      "Meta",
+      "Google",
+      "Microsoft",
+      "Apple",
+      "Amazon",
+      "Tesla",
+      "Twitter",
+      "Anthropic",
+      "NVIDIA",
     ];
     if (
       majorTechOrgs.some((n) => orgName.toLowerCase().includes(n.toLowerCase()))
     )
       return 100;
 
-    const majorCryptoOrgs = ['BinAInce', 'CoinbAIse', 'EtherAIum'];
+    const majorCryptoOrgs = ["BinAInce", "CoinbAIse", "EtherAIum"];
     if (
       majorCryptoOrgs.some((n) =>
-        orgName.toLowerCase().includes(n.toLowerCase())
+        orgName.toLowerCase().includes(n.toLowerCase()),
       )
     )
       return 90;
 
-    const majorMedia = ['New York Times', 'Washington Post', 'CNN', 'Fox News'];
+    const majorMedia = ["New York Times", "Washington Post", "CNN", "Fox News"];
     if (majorMedia.some((n) => orgName.toLowerCase().includes(n.toLowerCase())))
       return 85;
 
-    if (orgType === 'government') return 80;
+    if (orgType === "government") return 80;
     return 70;
   }
 
   private static generateActorAliases(actor: StaticActor): string[] {
     const aliases: string[] = [];
     // Extract last name from parody name if it has spaces
-    const nameParts = actor.name.split(' ');
+    const nameParts = actor.name.split(" ");
     if (nameParts.length > 1) {
       const lastName = nameParts[nameParts.length - 1];
       if (lastName) aliases.push(lastName);

@@ -1,4 +1,4 @@
 /**
  * Database Module - Centralized query helpers
  */
-export * from './queries';
+export * from "./queries";

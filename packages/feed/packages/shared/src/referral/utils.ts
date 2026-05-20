@@ -9,10 +9,10 @@
  * Uses window.location.origin in browser, falls back to env variable or default
  */
 export function getReferralAppBaseUrl(): string {
-  if (typeof window !== 'undefined') {
+  if (typeof window !== "undefined") {
     return window.location.origin;
   }
-  return process.env.NEXT_PUBLIC_APP_URL || 'https://feed.market';
+  return process.env.NEXT_PUBLIC_APP_URL || "https://feed.market";
 }
 
 /**
@@ -25,18 +25,18 @@ export function getWaitlistBaseUrl(): string {
   const fromEnv = process.env.NEXT_PUBLIC_WAITLIST_URL;
   if (fromEnv && fromEnv.trim().length > 0) return fromEnv.trim();
 
-  if (typeof window !== 'undefined') {
+  if (typeof window !== "undefined") {
     const hostname = window.location.hostname.toLowerCase();
-    if (hostname.endsWith('staging.feed.market')) {
-      return 'https://staging.feed.market';
+    if (hostname.endsWith("staging.feed.market")) {
+      return "https://staging.feed.market";
     }
-    if (hostname.endsWith('feed.market')) {
-      return 'https://feed.market';
+    if (hostname.endsWith("feed.market")) {
+      return "https://feed.market";
     }
     return window.location.origin;
   }
 
-  return 'https://feed.market';
+  return "https://feed.market";
 }
 
 /**
@@ -70,7 +70,7 @@ export function getReferralUrl(usernameOrCode: string): string {
  */
 export function getDisplayReferralUrl(usernameOrCode: string): string {
   const host =
-    typeof window !== 'undefined' ? window.location.host : 'feed.market';
+    typeof window !== "undefined" ? window.location.host : "feed.market";
   return `${host}?ref=${usernameOrCode}`;
 }
 
@@ -89,11 +89,11 @@ export function getDisplayReferralUrl(usernameOrCode: string): string {
  */
 export function getReferralShareText(
   usernameOrCode: string,
-  customMessage?: string
+  customMessage?: string,
 ): string {
   const message =
     customMessage ||
-    'Join me in Feed, a real-time simulation where humans and AI agents battle across prediction markets, form alliances, and shape outcomes—together.';
+    "Join me in Feed, a real-time simulation where humans and AI agents battle across prediction markets, form alliances, and shape outcomes—together.";
   const url = getReferralUrl(usernameOrCode);
   return `${message}\n\n${url}`;
 }

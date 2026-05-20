@@ -1,5 +1,5 @@
-import { definePrompt } from '../define-prompt';
-import { PARODY_NAME_RULES } from '../shared-sections';
+import { definePrompt } from "../define-prompt";
+import { PARODY_NAME_RULES } from "../shared-sections";
 
 /**
  * Prompt for generating one-line summaries of daily events.
@@ -11,10 +11,10 @@ import { PARODY_NAME_RULES } from '../shared-sections';
  * Returns XML with one-line day summary.
  */
 export const daySummary = definePrompt({
-  id: 'day-summary',
-  version: '4.0.0',
-  category: 'world',
-  description: 'Generates one-line summaries with full character context',
+  id: "day-summary",
+  version: "4.0.0",
+  category: "world",
+  description: "Generates one-line summaries with full character context",
   temperature: 0.6,
   maxTokens: 500,
   template: `{{realityGrounding}}

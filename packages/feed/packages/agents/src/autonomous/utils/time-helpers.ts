@@ -2,14 +2,14 @@
  * Time formatting utilities for autonomous agents
  */
 
-export { getTimeAgo } from '@feed/shared';
+export { getTimeAgo } from "@feed/shared";
 
 /**
  * Format time held in human-readable format
  * e.g., "5m", "2h 15m", "3d 4h", "1w 2d"
  */
 export function formatTimeHeld(ms: number): string {
-  if (ms < 60000) return '<1m';
+  if (ms < 60000) return "<1m";
 
   const minutes = Math.floor(ms / 60000);
   const hours = Math.floor(ms / 3600000);

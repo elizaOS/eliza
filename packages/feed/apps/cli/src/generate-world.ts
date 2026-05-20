@@ -62,9 +62,9 @@
  * @since v0.1.0
  */
 
-import { GameWorld } from '@feed/engine';
-import { writeFile } from 'fs/promises';
-import { logger } from './lib/logger.js';
+import { writeFile } from "node:fs/promises";
+import { GameWorld } from "@feed/engine";
+import { logger } from "./lib/logger.js";
 
 /**
  * Command-line options for world generation
@@ -75,7 +75,7 @@ import { logger } from './lib/logger.js';
  * @property {boolean} [json] - Output JSON only (no logs)
  */
 interface CLIOptions {
-  outcome?: 'SUCCESS' | 'FAILURE';
+  outcome?: "SUCCESS" | "FAILURE";
   save?: string;
   verbose?: boolean;
   json?: boolean;
@@ -104,13 +104,13 @@ function parseArgs(): CLIOptions {
   const options: CLIOptions = {};
 
   args.forEach((arg) => {
-    if (arg.startsWith('--outcome=')) {
-      options.outcome = arg.split('=')[1] as 'SUCCESS' | 'FAILURE';
-    } else if (arg.startsWith('--save=')) {
-      options.save = arg.split('=')[1];
-    } else if (arg === '--verbose' || arg === '-v') {
+    if (arg.startsWith("--outcome=")) {
+      options.outcome = arg.split("=")[1] as "SUCCESS" | "FAILURE";
+    } else if (arg.startsWith("--save=")) {
+      options.save = arg.split("=")[1];
+    } else if (arg === "--verbose" || arg === "-v") {
       options.verbose = true;
-    } else if (arg === '--json') {
+    } else if (arg === "--json") {
       options.json = true;
     }
   });
@@ -168,81 +168,81 @@ function parseArgs(): CLIOptions {
 async function main() {
   const options = parseArgs();
 
-  const outcomeValue = options.outcome === 'FAILURE' ? false : true;
+  const outcomeValue = options.outcome !== "FAILURE";
 
   const world = new GameWorld({
     outcome: outcomeValue,
     numNPCs: 8,
     duration: 30,
-    verbosity: options.verbose ? 'detailed' : 'normal',
+    verbosity: options.verbose ? "detailed" : "normal",
   });
 
   if (options.verbose && !options.json) {
-    logger.info('GENERATING FEED GAME WORLD');
-    logger.info('=================================');
+    logger.info("GENERATING FEED GAME WORLD");
+    logger.info("=================================");
 
-    world.on('world:started', (event) => {
+    world.on("world:started", (event) => {
       logger.info(`Question: ${event.data.question}`);
-      logger.info(`True Outcome: ${outcomeValue ? 'SUCCESS' : 'FAILURE'}`);
+      logger.info(`True Outcome: ${outcomeValue ? "SUCCESS" : "FAILURE"}`);
       logger.info(`NPCs in world: ${event.data.npcs}`);
-      logger.info('--- TIMELINE ---');
+      logger.info("--- TIMELINE ---");
     });
 
-    world.on('day:begins', (event) => {
+    world.on("day:begins", (event) => {
       logger.info(`DAY ${event.data.day}`);
-      logger.info('─'.repeat(50));
+      logger.info("─".repeat(50));
     });
 
-    world.on('npc:action', (event) => {
+    world.on("npc:action", (event) => {
       logger.info(`${event.npc}: ${event.description}`);
     });
 
-    world.on('npc:conversation', (event) => {
+    world.on("npc:conversation", (event) => {
       logger.info(event.description);
     });
 
-    world.on('news:published', (event) => {
+    world.on("news:published", (event) => {
       logger.info(`${event.npc}: ${event.description}`);
     });
 
-    world.on('rumor:spread', (event) => {
+    world.on("rumor:spread", (event) => {
       logger.info(`Rumor: ${event.description}`);
     });
 
-    world.on('clue:revealed', (event) => {
+    world.on("clue:revealed", (event) => {
       logger.info(`${event.npc}: ${event.description}`);
     });
 
-    world.on('development:occurred', (event) => {
+    world.on("development:occurred", (event) => {
       logger.info(`DEVELOPMENT: ${event.description}`);
     });
 
-    world.on('feed:post', (post) => {
+    world.on("feed:post", (post) => {
       const emoji =
-        post.type === 'news'
-          ? '📰'
-          : post.type === 'reaction'
-            ? '💬'
-            : post.type === 'thread'
-              ? '🧵'
-              : '📢';
+        post.type === "news"
+          ? "📰"
+          : post.type === "reaction"
+            ? "💬"
+            : post.type === "thread"
+              ? "🧵"
+              : "📢";
 
-      const prefix = post.replyTo ? '    ↳' : '  ';
+      const prefix = post.replyTo ? "    ↳" : "  ";
       logger.info(`${prefix}${emoji} ${post.author}: ${post.content}`);
 
       if (post.clueStrength > 0.5) {
         logger.debug(
-          `${prefix}   [Strong clue: ${post.clueStrength.toFixed(1)}]`
+          `${prefix}   [Strong clue: ${post.clueStrength.toFixed(1)}]`,
         );
       }
     });
 
-    world.on('outcome:revealed', (event) => {
-      logger.info('='.repeat(50));
+    world.on("outcome:revealed", (event) => {
+      logger.info("=".repeat(50));
       logger.info(
-        `FINAL OUTCOME: ${event.data.outcome ? 'SUCCESS' : 'FAILURE'}`
+        `FINAL OUTCOME: ${event.data.outcome ? "SUCCESS" : "FAILURE"}`,
       );
-      logger.info('='.repeat(50));
+      logger.info("=".repeat(50));
     });
   }
 
@@ -258,11 +258,11 @@ async function main() {
   }
 
   if (!options.json) {
-    logger.info('World generation complete', {
+    logger.info("World generation complete", {
       totalEvents: finalWorld.events.length,
       npcs: finalWorld.npcs.length,
       daysSimulated: finalWorld.timeline.length,
-      finalOutcome: finalWorld.outcome ? 'SUCCESS' : 'FAILURE',
+      finalOutcome: finalWorld.outcome ? "SUCCESS" : "FAILURE",
     });
   } else {
     logger.info(JSON.stringify(finalWorld, null, 2));
@@ -273,7 +273,7 @@ async function main() {
 
 if (import.meta.main) {
   main().catch((error) => {
-    logger.error('Error:', error);
+    logger.error("Error:", error);
     process.exit(1);
   });
 }

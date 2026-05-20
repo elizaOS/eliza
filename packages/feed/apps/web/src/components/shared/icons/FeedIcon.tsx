@@ -1,6 +1,6 @@
-import type { SVGProps } from 'react';
+import type { SVGProps } from "react";
 
-import { FeedMark } from './FeedMark';
+import { FeedMark } from "./FeedMark";
 
 /**
  * Feed mascot icon (mark only, no wordmark).

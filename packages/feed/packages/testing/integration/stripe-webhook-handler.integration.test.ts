@@ -9,10 +9,10 @@
  * They test that given a parsed Stripe event, the correct actions occur.
  */
 
-import { afterAll, describe, expect, it } from 'bun:test';
-import { TradingBalanceFundingService } from '@feed/api';
-import { balanceTransactions, db, eq, users } from '@feed/db';
-import { generateSnowflakeId } from '@feed/shared';
+import { afterAll, describe, expect, it } from "bun:test";
+import { TradingBalanceFundingService } from "@feed/api";
+import { balanceTransactions, db, eq, users } from "@feed/db";
+import { generateSnowflakeId } from "@feed/shared";
 import {
   createChargeRefundedEvent,
   createCheckoutCompletedEvent,
@@ -23,10 +23,10 @@ import {
   type MockCheckoutSession,
   type MockDispute,
   type MockStripeEvent,
-} from '../unit/stripe/test-fixtures';
+} from "../unit/stripe/test-fixtures";
 
 // Test user ID prefix for cleanup
-const TEST_USER_PREFIX = 'webhook-test-';
+const TEST_USER_PREFIX = "webhook-test-";
 
 /**
  * Simulated webhook handler logic
@@ -37,8 +37,8 @@ const TEST_USER_PREFIX = 'webhook-test-';
 async function processWebhookEvent(
   event: MockStripeEvent,
   getUserIdFromPaymentIntent: (
-    paymentIntentId: string
-  ) => Promise<string | null>
+    paymentIntentId: string,
+  ) => Promise<string | null>,
 ): Promise<{ handled: boolean; action?: string; error?: string }> {
   // App metadata filter — only process events belonging to this app (feed).
   // Events without metadata.app are allowed for backward compatibility.
@@ -50,22 +50,22 @@ async function processWebhookEvent(
         ?.metadata as Record<string, string> | undefined
     )?.app;
 
-  if (appMetadata && appMetadata !== 'feed') {
-    return { handled: true, action: 'ignored_other_app' };
+  if (appMetadata && appMetadata !== "feed") {
+    return { handled: true, action: "ignored_other_app" };
   }
 
   switch (event.type) {
-    case 'checkout.session.completed': {
+    case "checkout.session.completed": {
       const session = event.data.object as MockCheckoutSession;
 
-      if (session.payment_status !== 'paid') {
-        return { handled: true, action: 'skipped_unpaid' };
+      if (session.payment_status !== "paid") {
+        return { handled: true, action: "skipped_unpaid" };
       }
 
       const { userId, amountUSD } = session.metadata;
 
       if (!userId || !amountUSD) {
-        return { handled: false, error: 'Missing metadata' };
+        return { handled: false, error: "Missing metadata" };
       }
 
       const result = await TradingBalanceFundingService.fundPurchase(
@@ -73,105 +73,105 @@ async function processWebhookEvent(
         parseFloat(amountUSD),
         session.id,
         session.payment_intent ?? undefined,
-        'stripe'
+        "stripe",
       );
 
       if (!result.success) {
         return { handled: false, error: result.error };
       }
 
-      return { handled: true, action: 'points_credited' };
+      return { handled: true, action: "points_credited" };
     }
 
-    case 'charge.dispute.created': {
+    case "charge.dispute.created": {
       const dispute = event.data.object as MockDispute;
       const userId = await getUserIdFromPaymentIntent(dispute.payment_intent);
 
       if (!userId) {
-        return { handled: false, error: 'User not found for payment intent' };
+        return { handled: false, error: "User not found for payment intent" };
       }
 
       const amountUSD = dispute.amount / 100;
       const result = await TradingBalanceFundingService.reversePurchaseFunding(
         userId,
         dispute.payment_intent,
-        'dispute',
+        "dispute",
         amountUSD,
-        event.id
+        event.id,
       );
 
       if (!result.success) {
         return { handled: false, error: result.error };
       }
 
-      return { handled: true, action: 'points_deducted_dispute' };
+      return { handled: true, action: "points_deducted_dispute" };
     }
 
-    case 'charge.dispute.closed': {
+    case "charge.dispute.closed": {
       const dispute = event.data.object as MockDispute;
       const userId = await getUserIdFromPaymentIntent(dispute.payment_intent);
 
       if (!userId) {
-        return { handled: false, error: 'User not found for payment intent' };
+        return { handled: false, error: "User not found for payment intent" };
       }
 
-      if (dispute.status === 'won') {
+      if (dispute.status === "won") {
         const amountUSD = dispute.amount / 100;
         const result = await TradingBalanceFundingService.creditDisputeWon(
           userId,
           dispute.id,
           amountUSD,
-          event.id
+          event.id,
         );
 
         if (!result.success) {
           return { handled: false, error: result.error };
         }
 
-        return { handled: true, action: 'points_recredited_dispute_won' };
+        return { handled: true, action: "points_recredited_dispute_won" };
       }
 
       // Dispute lost - no action needed (points already deducted)
-      return { handled: true, action: 'dispute_lost_logged' };
+      return { handled: true, action: "dispute_lost_logged" };
     }
 
-    case 'charge.refunded': {
+    case "charge.refunded": {
       const charge = event.data.object as MockCharge;
       const userId = await getUserIdFromPaymentIntent(charge.payment_intent);
 
       if (!userId) {
-        return { handled: false, error: 'User not found for payment intent' };
+        return { handled: false, error: "User not found for payment intent" };
       }
 
       const amountUSD = charge.amount_refunded / 100;
       const result = await TradingBalanceFundingService.reversePurchaseFunding(
         userId,
         charge.payment_intent,
-        'refund',
+        "refund",
         amountUSD,
-        event.id
+        event.id,
       );
 
       if (!result.success) {
         return { handled: false, error: result.error };
       }
 
-      return { handled: true, action: 'points_deducted_refund' };
+      return { handled: true, action: "points_deducted_refund" };
     }
 
     default:
-      return { handled: false, action: 'unhandled_event_type' };
+      return { handled: false, action: "unhandled_event_type" };
   }
 }
 
-describe('Stripe Webhook Handler Integration', () => {
+describe("Stripe Webhook Handler Integration", () => {
   const testUserIds: string[] = [];
   const paymentIntentToUser: Map<string, string> = new Map();
 
   async function createDbUser(
     initialBalance = 0,
     initialDeposited = initialBalance,
-    initialWithdrawn = 0
+    initialWithdrawn = 0,
   ): Promise<string> {
     const userId = `${TEST_USER_PREFIX}${await generateSnowflakeId()}`;
     testUserIds.push(userId);
@@ -225,7 +225,7 @@ describe('Stripe Webhook Handler Integration', () => {
 
   // Mock function to look up user from payment intent
   async function getUserIdFromPaymentIntent(
-    paymentIntentId: string
+    paymentIntentId: string,
   ): Promise<string | null> {
     return paymentIntentToUser.get(paymentIntentId) ?? null;
   }
@@ -241,18 +241,18 @@ describe('Stripe Webhook Handler Integration', () => {
     }
   });
 
-  describe('checkout.session.completed', () => {
-    it('should credit points for completed checkout', async () => {
+  describe("checkout.session.completed", () => {
+    it("should credit points for completed checkout", async () => {
       const userId = await createDbUser();
       const event = createCheckoutCompletedEvent(userId, 25);
 
       const result = await processWebhookEvent(
         event,
-        getUserIdFromPaymentIntent
+        getUserIdFromPaymentIntent,
       );
 
       expect(result.handled).toBe(true);
-      expect(result.action).toBe('points_credited');
+      expect(result.action).toBe("points_credited");
 
       const balance = await getUserBalance(userId);
       expect(balance).toBe(2500);
@@ -261,18 +261,18 @@ describe('Stripe Webhook Handler Integration', () => {
       expect(totals.totalWithdrawn).toBe(0);
     });
 
-    it('should skip unpaid sessions', async () => {
+    it("should skip unpaid sessions", async () => {
       const userId = await createDbUser();
       const event = createCheckoutCompletedEvent(userId, 25);
-      (event.data.object as MockCheckoutSession).payment_status = 'unpaid';
+      (event.data.object as MockCheckoutSession).payment_status = "unpaid";
 
       const result = await processWebhookEvent(
         event,
-        getUserIdFromPaymentIntent
+        getUserIdFromPaymentIntent,
       );
 
       expect(result.handled).toBe(true);
-      expect(result.action).toBe('skipped_unpaid');
+      expect(result.action).toBe("skipped_unpaid");
 
       const balance = await getUserBalance(userId);
       expect(balance).toBe(0);
@@ -281,21 +281,21 @@ describe('Stripe Webhook Handler Integration', () => {
       expect(totals.totalWithdrawn).toBe(10000);
     });
 
-    it('should fail for missing metadata', async () => {
-      const event = createCheckoutCompletedEvent('', 25);
-      (event.data.object as MockCheckoutSession).metadata.userId = '';
-      (event.data.object as MockCheckoutSession).metadata.amountUSD = '';
+    it("should fail for missing metadata", async () => {
+      const event = createCheckoutCompletedEvent("", 25);
+      (event.data.object as MockCheckoutSession).metadata.userId = "";
+      (event.data.object as MockCheckoutSession).metadata.amountUSD = "";
 
       const result = await processWebhookEvent(
         event,
-        getUserIdFromPaymentIntent
+        getUserIdFromPaymentIntent,
       );
 
       expect(result.handled).toBe(false);
-      expect(result.error).toContain('Missing metadata');
+      expect(result.error).toContain("Missing metadata");
     });
 
-    it('should be idempotent - same session processed twice', async () => {
+    it("should be idempotent - same session processed twice", async () => {
       const userId = await createDbUser();
       const sessionId = `cs_idempotent_${Date.now()}`;
       const event = createCheckoutCompletedEvent(userId, 50, { sessionId });
@@ -303,10 +303,10 @@ describe('Stripe Webhook Handler Integration', () => {
       // Process first time
       const result1 = await processWebhookEvent(
         event,
-        getUserIdFromPaymentIntent
+        getUserIdFromPaymentIntent,
       );
       expect(result1.handled).toBe(true);
-      expect(result1.action).toBe('points_credited');
+      expect(result1.action).toBe("points_credited");
 
       const balanceAfterFirst = await getUserBalance(userId);
       expect(balanceAfterFirst).toBe(5000);
@@ -317,8 +317,8 @@ describe('Stripe Webhook Handler Integration', () => {
     });
   });
 
-  describe('charge.dispute.created', () => {
-    it('should deduct points when dispute is created', async () => {
+  describe("charge.dispute.created", () => {
+    it("should deduct points when dispute is created", async () => {
       const userId = await createDbUser();
       const paymentIntentId = `pi_dispute_${Date.now()}`;
       paymentIntentToUser.set(paymentIntentId, userId);
@@ -329,7 +329,7 @@ describe('Stripe Webhook Handler Integration', () => {
         100,
         `cs_test_${Date.now()}`,
         paymentIntentId,
-        'stripe'
+        "stripe",
       );
 
       const balanceBefore = await getUserBalance(userId);
@@ -340,31 +340,31 @@ describe('Stripe Webhook Handler Integration', () => {
 
       const result = await processWebhookEvent(
         event,
-        getUserIdFromPaymentIntent
+        getUserIdFromPaymentIntent,
       );
 
       expect(result.handled).toBe(true);
-      expect(result.action).toBe('points_deducted_dispute');
+      expect(result.action).toBe("points_deducted_dispute");
 
       const balance = await getUserBalance(userId);
       expect(balance).toBe(0);
     });
 
-    it('should fail for unknown payment intent', async () => {
-      const event = createDisputeCreatedEvent('pi_unknown', 50);
+    it("should fail for unknown payment intent", async () => {
+      const event = createDisputeCreatedEvent("pi_unknown", 50);
 
       const result = await processWebhookEvent(
         event,
-        getUserIdFromPaymentIntent
+        getUserIdFromPaymentIntent,
       );
 
       expect(result.handled).toBe(false);
-      expect(result.error).toContain('User not found');
+      expect(result.error).toContain("User not found");
     });
   });
 
-  describe('charge.dispute.closed', () => {
-    it('should re-credit points when dispute is won', async () => {
+  describe("charge.dispute.closed", () => {
+    it("should re-credit points when dispute is won", async () => {
       const userId = await createDbUser(0);
       const paymentIntentId = `pi_dispute_won_${Date.now()}`;
       paymentIntentToUser.set(paymentIntentId, userId);
@@ -373,11 +373,11 @@ describe('Stripe Webhook Handler Integration', () => {
 
       const result = await processWebhookEvent(
         event,
-        getUserIdFromPaymentIntent
+        getUserIdFromPaymentIntent,
       );
 
       expect(result.handled).toBe(true);
-      expect(result.action).toBe('points_recredited_dispute_won');
+      expect(result.action).toBe("points_recredited_dispute_won");
 
       const balance = await getUserBalance(userId);
       expect(balance).toBe(7500);
@@ -386,7 +386,7 @@ describe('Stripe Webhook Handler Integration', () => {
       expect(totals.totalWithdrawn).toBe(0);
     });
 
-    it('should log but not act when dispute is lost', async () => {
+    it("should log but not act when dispute is lost", async () => {
       const userId = await createDbUser(0);
       const paymentIntentId = `pi_dispute_lost_${Date.now()}`;
       paymentIntentToUser.set(paymentIntentId, userId);
@@ -395,11 +395,11 @@ describe('Stripe Webhook Handler Integration', () => {
 
       const result = await processWebhookEvent(
         event,
-        getUserIdFromPaymentIntent
+        getUserIdFromPaymentIntent,
       );
 
       expect(result.handled).toBe(true);
-      expect(result.action).toBe('dispute_lost_logged');
+      expect(result.action).toBe("dispute_lost_logged");
 
       // Balance should remain unchanged
       const balance = await getUserBalance(userId);
@@ -410,8 +410,8 @@ describe('Stripe Webhook Handler Integration', () => {
     });
   });
 
-  describe('charge.refunded', () => {
-    it('should deduct points for full refund', async () => {
+  describe("charge.refunded", () => {
+    it("should deduct points for full refund", async () => {
       const userId = await createDbUser();
       const paymentIntentId = `pi_refund_${Date.now()}`;
       paymentIntentToUser.set(paymentIntentId, userId);
@@ -422,7 +422,7 @@ describe('Stripe Webhook Handler Integration', () => {
         50,
         `cs_test_${Date.now()}`,
         paymentIntentId,
-        'stripe'
+        "stripe",
       );
 
       const balanceBefore = await getUserBalance(userId);
@@ -433,17 +433,17 @@ describe('Stripe Webhook Handler Integration', () => {
 
       const result = await processWebhookEvent(
         event,
-        getUserIdFromPaymentIntent
+        getUserIdFromPaymentIntent,
       );
 
       expect(result.handled).toBe(true);
-      expect(result.action).toBe('points_deducted_refund');
+      expect(result.action).toBe("points_deducted_refund");
 
       const balance = await getUserBalance(userId);
       expect(balance).toBe(0);
     });
 
-    it('should deduct points for partial refund', async () => {
+    it("should deduct points for partial refund", async () => {
       const userId = await createDbUser();
       const paymentIntentId = `pi_partial_refund_${Date.now()}`;
       paymentIntentToUser.set(paymentIntentId, userId);
@@ -454,7 +454,7 @@ describe('Stripe Webhook Handler Integration', () => {
         100,
         `cs_test_${Date.now()}`,
         paymentIntentId,
-        'stripe'
+        "stripe",
       );
 
       const balanceBefore = await getUserBalance(userId);
@@ -465,17 +465,17 @@ describe('Stripe Webhook Handler Integration', () => {
 
       const result = await processWebhookEvent(
         event,
-        getUserIdFromPaymentIntent
+        getUserIdFromPaymentIntent,
       );
 
       expect(result.handled).toBe(true);
-      expect(result.action).toBe('points_deducted_refund');
+      expect(result.action).toBe("points_deducted_refund");
 
       const balance = await getUserBalance(userId);
       expect(balance).toBe(7000); // 10000 - 3000
     });
 
-    it('should floor at 0 when refund exceeds balance', async () => {
+    it("should floor at 0 when refund exceeds balance", async () => {
       const userId = await createDbUser(1000); // Only 1000 points
       const paymentIntentId = `pi_big_refund_${Date.now()}`;
       paymentIntentToUser.set(paymentIntentId, userId);
@@ -485,19 +485,19 @@ describe('Stripe Webhook Handler Integration', () => {
 
       const result = await processWebhookEvent(
         event,
-        getUserIdFromPaymentIntent
+        getUserIdFromPaymentIntent,
       );
 
       expect(result.handled).toBe(true);
-      expect(result.action).toBe('points_deducted_refund');
+      expect(result.action).toBe("points_deducted_refund");
 
       const balance = await getUserBalance(userId);
       expect(balance).toBe(0);
     });
   });
 
-  describe('Full Lifecycle Scenarios', () => {
-    it('should handle purchase -> dispute -> win correctly', async () => {
+  describe("Full Lifecycle Scenarios", () => {
+    it("should handle purchase -> dispute -> win correctly", async () => {
       const userId = await createDbUser();
       const sessionId = `cs_lifecycle_${Date.now()}`;
       const paymentIntentId = `pi_lifecycle_${Date.now()}`;
@@ -519,12 +519,12 @@ describe('Stripe Webhook Handler Integration', () => {
         50,
         {
           eventId: `evt_dispute_created_${Date.now()}`,
-        }
+        },
       );
 
       await processWebhookEvent(
         disputeCreatedEvent,
-        getUserIdFromPaymentIntent
+        getUserIdFromPaymentIntent,
       );
       balance = await getUserBalance(userId);
       expect(balance).toBe(0);
@@ -542,7 +542,7 @@ describe('Stripe Webhook Handler Integration', () => {
       expect(totals.totalWithdrawn).toBe(0);
     });
 
-    it('should handle purchase -> dispute -> lost correctly', async () => {
+    it("should handle purchase -> dispute -> lost correctly", async () => {
       const userId = await createDbUser();
       const paymentIntentId = `pi_dispute_lost_flow_${Date.now()}`;
       paymentIntentToUser.set(paymentIntentId, userId);
@@ -559,12 +559,12 @@ describe('Stripe Webhook Handler Integration', () => {
       // 2. Dispute created
       const disputeCreatedEvent = createDisputeCreatedEvent(
         paymentIntentId,
-        100
+        100,
       );
 
       await processWebhookEvent(
         disputeCreatedEvent,
-        getUserIdFromPaymentIntent
+        getUserIdFromPaymentIntent,
       );
       balance = await getUserBalance(userId);
       expect(balance).toBe(0);
@@ -577,7 +577,7 @@ describe('Stripe Webhook Handler Integration', () => {
       expect(balance).toBe(0);
     });
 
-    it('should handle multiple purchases with one refund', async () => {
+    it("should handle multiple purchases with one refund", async () => {
       const userId = await createDbUser();
       const pi1 = `pi_multi_1_${Date.now()}`;
       const pi2 = `pi_multi_2_${Date.now()}`;
@@ -589,15 +589,15 @@ describe('Stripe Webhook Handler Integration', () => {
       // 3 purchases
       await processWebhookEvent(
         createCheckoutCompletedEvent(userId, 10, { paymentIntentId: pi1 }),
-        getUserIdFromPaymentIntent
+        getUserIdFromPaymentIntent,
       );
       await processWebhookEvent(
         createCheckoutCompletedEvent(userId, 20, { paymentIntentId: pi2 }),
-        getUserIdFromPaymentIntent
+        getUserIdFromPaymentIntent,
       );
       await processWebhookEvent(
         createCheckoutCompletedEvent(userId, 30, { paymentIntentId: pi3 }),
-        getUserIdFromPaymentIntent
+        getUserIdFromPaymentIntent,
       );
 
       let balance = await getUserBalance(userId);
@@ -608,7 +608,7 @@ describe('Stripe Webhook Handler Integration', () => {
         createChargeRefundedEvent(pi2, 20, 20, {
           eventId: `evt_refund_${Date.now()}`,
         }),
-        getUserIdFromPaymentIntent
+        getUserIdFromPaymentIntent,
       );
 
       balance = await getUserBalance(userId);
@@ -616,47 +616,47 @@ describe('Stripe Webhook Handler Integration', () => {
     });
   });
 
-  describe('Unhandled Event Types', () => {
-    it('should return unhandled for unknown event types', async () => {
+  describe("Unhandled Event Types", () => {
+    it("should return unhandled for unknown event types", async () => {
       const unknownEvent: MockStripeEvent = {
         id: `evt_unknown_${Date.now()}`,
-        object: 'event',
-        type: 'customer.created',
+        object: "event",
+        type: "customer.created",
         created: Date.now(),
-        data: { object: { metadata: { app: 'feed' } } },
+        data: { object: { metadata: { app: "feed" } } },
       };
 
       const result = await processWebhookEvent(
         unknownEvent,
-        getUserIdFromPaymentIntent
+        getUserIdFromPaymentIntent,
       );
 
       expect(result.handled).toBe(false);
-      expect(result.action).toBe('unhandled_event_type');
+      expect(result.action).toBe("unhandled_event_type");
     });
   });
 
-  describe('App Metadata Filtering', () => {
-    describe('Events tagged with feed should be processed', () => {
-      it('should process checkout.session.completed with app=feed', async () => {
+  describe("App Metadata Filtering", () => {
+    describe("Events tagged with feed should be processed", () => {
+      it("should process checkout.session.completed with app=feed", async () => {
         const userId = await createDbUser();
         const event = createCheckoutCompletedEvent(userId, 10, {
-          app: 'feed',
+          app: "feed",
         });
 
         const result = await processWebhookEvent(
           event,
-          getUserIdFromPaymentIntent
+          getUserIdFromPaymentIntent,
         );
 
         expect(result.handled).toBe(true);
-        expect(result.action).toBe('points_credited');
+        expect(result.action).toBe("points_credited");
 
         const balance = await getUserBalance(userId);
         expect(balance).toBe(1000);
       });
 
-      it('should process charge.dispute.created with app=feed', async () => {
+      it("should process charge.dispute.created with app=feed", async () => {
         const userId = await createDbUser();
         const paymentIntentId = `pi_filter_dispute_${Date.now()}`;
         paymentIntentToUser.set(paymentIntentId, userId);
@@ -667,59 +667,59 @@ describe('Stripe Webhook Handler Integration', () => {
           50,
           `cs_test_${Date.now()}`,
           paymentIntentId,
-          'stripe'
+          "stripe",
         );
 
         const event = createDisputeCreatedEvent(paymentIntentId, 50, {
-          app: 'feed',
+          app: "feed",
         });
 
         const result = await processWebhookEvent(
           event,
-          getUserIdFromPaymentIntent
+          getUserIdFromPaymentIntent,
         );
 
         expect(result.handled).toBe(true);
-        expect(result.action).toBe('points_deducted_dispute');
+        expect(result.action).toBe("points_deducted_dispute");
       });
 
-      it('should process charge.dispute.closed (won) with app=feed', async () => {
+      it("should process charge.dispute.closed (won) with app=feed", async () => {
         const userId = await createDbUser(0);
         const paymentIntentId = `pi_filter_won_${Date.now()}`;
         paymentIntentToUser.set(paymentIntentId, userId);
 
         const event = createDisputeWonEvent(paymentIntentId, 25, {
-          app: 'feed',
+          app: "feed",
         });
 
         const result = await processWebhookEvent(
           event,
-          getUserIdFromPaymentIntent
+          getUserIdFromPaymentIntent,
         );
 
         expect(result.handled).toBe(true);
-        expect(result.action).toBe('points_recredited_dispute_won');
+        expect(result.action).toBe("points_recredited_dispute_won");
       });
 
-      it('should process charge.dispute.closed (lost) with app=feed', async () => {
+      it("should process charge.dispute.closed (lost) with app=feed", async () => {
         const userId = await createDbUser(0);
         const paymentIntentId = `pi_filter_lost_${Date.now()}`;
         paymentIntentToUser.set(paymentIntentId, userId);
 
         const event = createDisputeLostEvent(paymentIntentId, 25, {
-          app: 'feed',
+          app: "feed",
         });
 
         const result = await processWebhookEvent(
           event,
-          getUserIdFromPaymentIntent
+          getUserIdFromPaymentIntent,
         );
 
         expect(result.handled).toBe(true);
-        expect(result.action).toBe('dispute_lost_logged');
+        expect(result.action).toBe("dispute_lost_logged");
       });
 
-      it('should process charge.refunded with app=feed', async () => {
+      it("should process charge.refunded with app=feed", async () => {
         const userId = await createDbUser();
         const paymentIntentId = `pi_filter_refund_${Date.now()}`;
         paymentIntentToUser.set(paymentIntentId, userId);
@@ -729,120 +729,120 @@ describe('Stripe Webhook Handler Integration', () => {
           30,
           `cs_test_${Date.now()}`,
           paymentIntentId,
-          'stripe'
+          "stripe",
         );
 
         const event = createChargeRefundedEvent(paymentIntentId, 30, 30, {
-          app: 'feed',
+          app: "feed",
         });
 
         const result = await processWebhookEvent(
           event,
-          getUserIdFromPaymentIntent
+          getUserIdFromPaymentIntent,
         );
 
         expect(result.handled).toBe(true);
-        expect(result.action).toBe('points_deducted_refund');
+        expect(result.action).toBe("points_deducted_refund");
       });
     });
 
-    describe('Events tagged with eliza-cloud should be ignored', () => {
-      it('should ignore checkout.session.completed with app=eliza-cloud', async () => {
+    describe("Events tagged with eliza-cloud should be ignored", () => {
+      it("should ignore checkout.session.completed with app=eliza-cloud", async () => {
         const userId = await createDbUser();
         const event = createCheckoutCompletedEvent(userId, 10, {
-          app: 'eliza-cloud',
+          app: "eliza-cloud",
         });
 
         const result = await processWebhookEvent(
           event,
-          getUserIdFromPaymentIntent
+          getUserIdFromPaymentIntent,
         );
 
         expect(result.handled).toBe(true);
-        expect(result.action).toBe('ignored_other_app');
+        expect(result.action).toBe("ignored_other_app");
 
         // Balance should remain 0 — event was filtered out
         const balance = await getUserBalance(userId);
         expect(balance).toBe(0);
       });
 
-      it('should ignore charge.dispute.created with app=eliza-cloud', async () => {
+      it("should ignore charge.dispute.created with app=eliza-cloud", async () => {
         const userId = await createDbUser(5000);
         const paymentIntentId = `pi_ec_dispute_${Date.now()}`;
         paymentIntentToUser.set(paymentIntentId, userId);
 
         const event = createDisputeCreatedEvent(paymentIntentId, 50, {
-          app: 'eliza-cloud',
+          app: "eliza-cloud",
         });
 
         const result = await processWebhookEvent(
           event,
-          getUserIdFromPaymentIntent
+          getUserIdFromPaymentIntent,
         );
 
         expect(result.handled).toBe(true);
-        expect(result.action).toBe('ignored_other_app');
+        expect(result.action).toBe("ignored_other_app");
 
         // Balance should remain unchanged
         const balance = await getUserBalance(userId);
         expect(balance).toBe(5000);
       });
 
-      it('should ignore charge.dispute.closed (won) with app=eliza-cloud', async () => {
+      it("should ignore charge.dispute.closed (won) with app=eliza-cloud", async () => {
         const userId = await createDbUser(0);
         const paymentIntentId = `pi_ec_won_${Date.now()}`;
         paymentIntentToUser.set(paymentIntentId, userId);
 
         const event = createDisputeWonEvent(paymentIntentId, 50, {
-          app: 'eliza-cloud',
+          app: "eliza-cloud",
         });
 
         const result = await processWebhookEvent(
           event,
-          getUserIdFromPaymentIntent
+          getUserIdFromPaymentIntent,
         );
 
         expect(result.handled).toBe(true);
-        expect(result.action).toBe('ignored_other_app');
+        expect(result.action).toBe("ignored_other_app");
 
         const balance = await getUserBalance(userId);
         expect(balance).toBe(0);
       });
 
-      it('should ignore charge.dispute.closed (lost) with app=eliza-cloud', async () => {
+      it("should ignore charge.dispute.closed (lost) with app=eliza-cloud", async () => {
         const userId = await createDbUser(0);
         const paymentIntentId = `pi_ec_lost_${Date.now()}`;
         paymentIntentToUser.set(paymentIntentId, userId);
 
         const event = createDisputeLostEvent(paymentIntentId, 50, {
-          app: 'eliza-cloud',
+          app: "eliza-cloud",
         });
 
         const result = await processWebhookEvent(
           event,
-          getUserIdFromPaymentIntent
+          getUserIdFromPaymentIntent,
         );
 
         expect(result.handled).toBe(true);
-        expect(result.action).toBe('ignored_other_app');
+        expect(result.action).toBe("ignored_other_app");
       });
 
-      it('should ignore charge.refunded with app=eliza-cloud', async () => {
+      it("should ignore charge.refunded with app=eliza-cloud", async () => {
         const userId = await createDbUser(5000);
         const paymentIntentId = `pi_ec_refund_${Date.now()}`;
         paymentIntentToUser.set(paymentIntentId, userId);
 
         const event = createChargeRefundedEvent(paymentIntentId, 25, 50, {
-          app: 'eliza-cloud',
+          app: "eliza-cloud",
         });
 
         const result = await processWebhookEvent(
           event,
-          getUserIdFromPaymentIntent
+          getUserIdFromPaymentIntent,
         );
 
         expect(result.handled).toBe(true);
-        expect(result.action).toBe('ignored_other_app');
+        expect(result.action).toBe("ignored_other_app");
 
         // Balance should remain unchanged
         const balance = await getUserBalance(userId);
@@ -850,8 +850,8 @@ describe('Stripe Webhook Handler Integration', () => {
       });
     });
 
-    describe('Events without app metadata (backward compatibility)', () => {
-      it('should process checkout.session.completed without app tag', async () => {
+    describe("Events without app metadata (backward compatibility)", () => {
+      it("should process checkout.session.completed without app tag", async () => {
         const userId = await createDbUser();
         const event = createCheckoutCompletedEvent(userId, 15);
         // Remove app metadata to simulate legacy event
@@ -859,17 +859,17 @@ describe('Stripe Webhook Handler Integration', () => {
 
         const result = await processWebhookEvent(
           event,
-          getUserIdFromPaymentIntent
+          getUserIdFromPaymentIntent,
         );
 
         expect(result.handled).toBe(true);
-        expect(result.action).toBe('points_credited');
+        expect(result.action).toBe("points_credited");
 
         const balance = await getUserBalance(userId);
         expect(balance).toBe(1500);
       });
 
-      it('should process charge.dispute.created without app tag', async () => {
+      it("should process charge.dispute.created without app tag", async () => {
         const userId = await createDbUser();
         const paymentIntentId = `pi_noapp_dispute_${Date.now()}`;
         paymentIntentToUser.set(paymentIntentId, userId);
@@ -879,7 +879,7 @@ describe('Stripe Webhook Handler Integration', () => {
           40,
           `cs_test_${Date.now()}`,
           paymentIntentId,
-          'stripe'
+          "stripe",
         );
 
         const event = createDisputeCreatedEvent(paymentIntentId, 40);
@@ -888,14 +888,14 @@ describe('Stripe Webhook Handler Integration', () => {
 
         const result = await processWebhookEvent(
           event,
-          getUserIdFromPaymentIntent
+          getUserIdFromPaymentIntent,
         );
 
         expect(result.handled).toBe(true);
-        expect(result.action).toBe('points_deducted_dispute');
+        expect(result.action).toBe("points_deducted_dispute");
       });
 
-      it('should process charge.refunded without app tag', async () => {
+      it("should process charge.refunded without app tag", async () => {
         const userId = await createDbUser();
         const paymentIntentId = `pi_noapp_refund_${Date.now()}`;
         paymentIntentToUser.set(paymentIntentId, userId);
@@ -905,7 +905,7 @@ describe('Stripe Webhook Handler Integration', () => {
           20,
           `cs_test_${Date.now()}`,
           paymentIntentId,
-          'stripe'
+          "stripe",
         );
 
         const event = createChargeRefundedEvent(paymentIntentId, 20, 20);
@@ -914,27 +914,27 @@ describe('Stripe Webhook Handler Integration', () => {
 
         const result = await processWebhookEvent(
           event,
-          getUserIdFromPaymentIntent
+          getUserIdFromPaymentIntent,
         );
 
         expect(result.handled).toBe(true);
-        expect(result.action).toBe('points_deducted_refund');
+        expect(result.action).toBe("points_deducted_refund");
       });
     });
 
-    describe('subscription_details metadata fallback', () => {
-      it('should filter by subscription_details.metadata.app when top-level is empty', async () => {
+    describe("subscription_details metadata fallback", () => {
+      it("should filter by subscription_details.metadata.app when top-level is empty", async () => {
         // Simulate an event where app metadata is in subscription_details
         const event: MockStripeEvent = {
           id: `evt_sub_${Date.now()}`,
-          object: 'event',
-          type: 'invoice.payment_succeeded',
+          object: "event",
+          type: "invoice.payment_succeeded",
           created: Date.now(),
           data: {
             object: {
               metadata: {},
               subscription_details: {
-                metadata: { app: 'eliza-cloud' },
+                metadata: { app: "eliza-cloud" },
               },
             },
           },
@@ -942,24 +942,24 @@ describe('Stripe Webhook Handler Integration', () => {
 
         const result = await processWebhookEvent(
           event,
-          getUserIdFromPaymentIntent
+          getUserIdFromPaymentIntent,
         );
 
         expect(result.handled).toBe(true);
-        expect(result.action).toBe('ignored_other_app');
+        expect(result.action).toBe("ignored_other_app");
       });
 
-      it('should allow subscription_details with app=feed', async () => {
+      it("should allow subscription_details with app=feed", async () => {
         const event: MockStripeEvent = {
           id: `evt_sub_bab_${Date.now()}`,
-          object: 'event',
-          type: 'invoice.payment_succeeded',
+          object: "event",
+          type: "invoice.payment_succeeded",
           created: Date.now(),
           data: {
             object: {
               metadata: {},
               subscription_details: {
-                metadata: { app: 'feed' },
+                metadata: { app: "feed" },
               },
             },
           },
@@ -967,12 +967,12 @@ describe('Stripe Webhook Handler Integration', () => {
 
         const result = await processWebhookEvent(
           event,
-          getUserIdFromPaymentIntent
+          getUserIdFromPaymentIntent,
         );
 
         // This unhandled event type passes the filter but is unhandled
         expect(result.handled).toBe(false);
-        expect(result.action).toBe('unhandled_event_type');
+        expect(result.action).toBe("unhandled_event_type");
       });
     });
   });

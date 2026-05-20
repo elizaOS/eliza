@@ -11,7 +11,7 @@
  *   validate  - Validate actor data integrity
  */
 
-import type { JsonValue } from '@feed/db';
+import type { JsonValue } from "@feed/db";
 import {
   and,
   closeDatabase,
@@ -23,12 +23,12 @@ import {
   games,
   isNull,
   posts,
-} from '@feed/db';
-import type { GameHistory, GroupMessage } from '@feed/engine';
-import { GameGenerator, loadActorsData } from '@feed/engine';
-import { nanoid } from 'nanoid';
-import { getFlag, parseArgs, wantsHelp } from '../lib/args.js';
-import { logger } from '../lib/logger.js';
+} from "@feed/db";
+import type { GameHistory, GroupMessage } from "@feed/engine";
+import { GameGenerator, loadActorsData } from "@feed/engine";
+import { nanoid } from "nanoid";
+import { getFlag, parseArgs, wantsHelp } from "../lib/args.js";
+import { logger } from "../lib/logger.js";
 
 function printHelp(): void {
   console.log(`
@@ -74,8 +74,8 @@ async function generateSnowflakeId(): Promise<string> {
  * @param action - Either 'start' to start the game or 'pause' to pause it
  * @internal
  */
-async function controlGame(action: 'start' | 'pause'): Promise<void> {
-  logger.header(action === 'start' ? 'Starting Game' : 'Pausing Game');
+async function controlGame(action: "start" | "pause"): Promise<void> {
+  logger.header(action === "start" ? "Starting Game" : "Pausing Game");
 
   const result = await db
     .select()
@@ -92,25 +92,25 @@ async function controlGame(action: 'start' | 'pause'): Promise<void> {
       .values({
         id: gameId,
         isContinuous: true,
-        isRunning: action === 'start',
+        isRunning: action === "start",
         currentDay: 1,
-        startedAt: action === 'start' ? new Date() : null,
+        startedAt: action === "start" ? new Date() : null,
         updatedAt: new Date(),
       })
       .returning();
     game = created[0]!;
     logger.success(
-      `Game created and ${action === 'start' ? 'started' : 'paused'}`
+      `Game created and ${action === "start" ? "started" : "paused"}`,
     );
     console.log(`  Game ID: ${game.id}`);
   } else {
-    const isRunning = action === 'start';
+    const isRunning = action === "start";
     const updateData: Record<string, Date | boolean | null> = {
       isRunning,
       updatedAt: new Date(),
     };
 
-    if (action === 'start') {
+    if (action === "start") {
       updateData.startedAt = new Date();
       updateData.pausedAt = null;
     } else {
@@ -119,7 +119,7 @@ async function controlGame(action: 'start' | 'pause'): Promise<void> {
 
     await db.update(games).set(updateData).where(eq(games.id, game.id));
 
-    logger.success(`Game ${action === 'start' ? 'started' : 'paused'}`);
+    logger.success(`Game ${action === "start" ? "started" : "paused"}`);
     console.log(`  Game ID: ${game.id}`);
     console.log(`  Current Day: ${game.currentDay}`);
   }
@@ -131,7 +131,7 @@ async function controlGame(action: 'start' | 'pause'): Promise<void> {
  * @internal
  */
 async function showGameStatus(): Promise<void> {
-  logger.header('Game Status');
+  logger.header("Game Status");
 
   const result = await db
     .select()
@@ -142,15 +142,15 @@ async function showGameStatus(): Promise<void> {
   const game = result[0];
 
   if (!game) {
-    console.log('No continuous game found.');
-    console.log('\nCreate one with: feed game start');
+    console.log("No continuous game found.");
+    console.log("\nCreate one with: feed game start");
     return;
   }
 
   console.log(`Game ID:        ${game.id}`);
-  console.log(`Status:         ${game.isRunning ? '✅ RUNNING' : '⏸️  PAUSED'}`);
+  console.log(`Status:         ${game.isRunning ? "✅ RUNNING" : "⏸️  PAUSED"}`);
   console.log(`Current Day:    ${game.currentDay}`);
-  console.log(`Current Date:   ${game.currentDate?.toLocaleString() || 'N/A'}`);
+  console.log(`Current Date:   ${game.currentDate?.toLocaleString() || "N/A"}`);
   console.log(`Speed:          ${game.speed}ms between ticks`);
   console.log(`Active Qs:      ${game.activeQuestions || 0}`);
 
@@ -165,7 +165,7 @@ async function showGameStatus(): Promise<void> {
   }
 
   if (!game.isRunning) {
-    console.log('\n💡 To start the game: feed game start');
+    console.log("\n💡 To start the game: feed game start");
   }
 }
 
@@ -181,28 +181,28 @@ async function showGameStatus(): Promise<void> {
  * @internal
  */
 function validateGameHistory(value: JsonValue): GameHistory {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error('Invalid game history format');
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Invalid game history format");
   }
 
   const obj = value as Record<string, JsonValue>;
 
   if (
-    typeof obj.gameNumber !== 'number' ||
-    typeof obj.completedAt !== 'string' ||
-    typeof obj.summary !== 'string' ||
+    typeof obj.gameNumber !== "number" ||
+    typeof obj.completedAt !== "string" ||
+    typeof obj.summary !== "string" ||
     !Array.isArray(obj.keyOutcomes) ||
     !Array.isArray(obj.highlights) ||
     !Array.isArray(obj.topMoments)
   ) {
-    throw new Error('Invalid game history format');
+    throw new Error("Invalid game history format");
   }
 
   return {
     gameNumber: obj.gameNumber as number,
     completedAt: obj.completedAt as string,
     summary: obj.summary as string,
-    keyOutcomes: obj.keyOutcomes as GameHistory['keyOutcomes'],
+    keyOutcomes: obj.keyOutcomes as GameHistory["keyOutcomes"],
     highlights: obj.highlights as string[],
     topMoments: obj.topMoments as string[],
   };
@@ -221,7 +221,7 @@ function validateGameHistory(value: JsonValue): GameHistory {
  */
 async function generateMinimalGameHistory(
   gameId: string,
-  gameNumber: number
+  gameNumber: number,
 ): Promise<GameHistory> {
   const postsData = await db
     .select()
@@ -234,7 +234,7 @@ async function generateMinimalGameHistory(
   const summary = `Game ${gameNumber} featured ${postsData.length} posts over 30 days.`;
 
   const highlights = topPosts.map((p) =>
-    p.content.length > 100 ? p.content.substring(0, 100) + '...' : p.content
+    p.content.length > 100 ? `${p.content.substring(0, 100)}...` : p.content,
   );
 
   return {
@@ -270,14 +270,14 @@ async function validateActorsData(): Promise<void> {
     for (const affiliation of actor.affiliations) {
       if (!validOrgIds.has(affiliation)) {
         errors.push(
-          `${actor.name} (${actor.id}) has invalid affiliation: "${affiliation}"`
+          `${actor.name} (${actor.id}) has invalid affiliation: "${affiliation}"`,
         );
       }
     }
   }
 
   if (errors.length > 0) {
-    logger.fail('Actor validation failed');
+    logger.fail("Actor validation failed");
     for (const error of errors) {
       console.log(`  - ${error}`);
     }
@@ -297,28 +297,28 @@ async function validateActorsData(): Promise<void> {
  * @internal
  */
 async function generateGame(args: ReturnType<typeof parseArgs>): Promise<void> {
-  const verbose = getFlag(args, 'verbose', 'v');
+  const verbose = getFlag(args, "verbose", "v");
 
-  logger.header('Feed Game Generator');
+  logger.header("Feed Game Generator");
 
   // Validate actors
-  logger.step('Validating actors...');
+  logger.step("Validating actors...");
   await validateActorsData();
-  logger.success('Actors validated');
+  logger.success("Actors validated");
 
   // Check API keys
   const groqKey = process.env.GROQ_API_KEY;
   const openaiKey = process.env.OPENAI_API_KEY;
 
   if (!groqKey && !openaiKey) {
-    logger.fail('No API key found!');
-    console.log('\nSet one of the following:');
-    console.log('  export GROQ_API_KEY=your_key_here');
-    console.log('  export OPENAI_API_KEY=your_key_here');
+    logger.fail("No API key found!");
+    console.log("\nSet one of the following:");
+    console.log("  export GROQ_API_KEY=your_key_here");
+    console.log("  export OPENAI_API_KEY=your_key_here");
     process.exit(1);
   }
 
-  console.log(`Using: ${groqKey ? 'Groq' : 'OpenAI'}`);
+  console.log(`Using: ${groqKey ? "Groq" : "OpenAI"}`);
 
   const startTime = Date.now();
 
@@ -329,7 +329,7 @@ async function generateGame(args: ReturnType<typeof parseArgs>): Promise<void> {
     .orderBy(desc(games.currentDate));
 
   if (existingGames.length === 0) {
-    logger.step('No genesis game found, generating...');
+    logger.step("No genesis game found, generating...");
     const generator = new GameGenerator();
     const genesis = await generator.generateGenesis();
 
@@ -342,12 +342,12 @@ async function generateGame(args: ReturnType<typeof parseArgs>): Promise<void> {
       updatedAt: new Date(),
     });
 
-    logger.success('Genesis game created');
+    logger.success("Genesis game created");
     console.log(
-      `  Events: ${genesis.timeline.reduce((sum, day) => sum + day.events.length, 0)}`
+      `  Events: ${genesis.timeline.reduce((sum, day) => sum + day.events.length, 0)}`,
     );
     console.log(
-      `  Posts: ${genesis.timeline.reduce((sum, day) => sum + day.feedPosts.length, 0)}`
+      `  Posts: ${genesis.timeline.reduce((sum, day) => sum + day.feedPosts.length, 0)}`,
     );
   } else {
     console.log(`Found ${existingGames.length} existing game(s)`);
@@ -384,29 +384,29 @@ async function generateGame(args: ReturnType<typeof parseArgs>): Promise<void> {
     const lastGame = existingGames[0]!;
     const nextDate = new Date(lastGame.currentDate);
     nextDate.setDate(nextDate.getDate() + 30);
-    nextStartDate = nextDate.toISOString().split('T')[0]!;
+    nextStartDate = nextDate.toISOString().split("T")[0]!;
     gameNumber = existingGames.length + 1;
   } else {
     const now = new Date();
-    nextStartDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+    nextStartDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
   }
 
   logger.step(`Generating Game #${gameNumber} (starting ${nextStartDate})...`);
 
   const generator = new GameGenerator(
     undefined,
-    history.length > 0 ? history : undefined
+    history.length > 0 ? history : undefined,
   );
   const game = await generator.generateCompleteGame(nextStartDate);
   const duration = Date.now() - startTime;
 
-  logger.success('Generation complete');
+  logger.success("Generation complete");
   console.log(`  Duration: ${(duration / 1000).toFixed(1)}s`);
   console.log(
-    `  Events: ${game.timeline.reduce((sum, day) => sum + day.events.length, 0)}`
+    `  Events: ${game.timeline.reduce((sum, day) => sum + day.events.length, 0)}`,
   );
   console.log(
-    `  Posts: ${game.timeline.reduce((sum, day) => sum + day.feedPosts.length, 0)}`
+    `  Posts: ${game.timeline.reduce((sum, day) => sum + day.feedPosts.length, 0)}`,
   );
   console.log(
     `  Group messages: ${
@@ -415,18 +415,18 @@ async function generateGame(args: ReturnType<typeof parseArgs>): Promise<void> {
           (acc, day) => {
             Object.entries(day.groupChats).forEach(([groupId, messages]) => {
               if (!acc[groupId]) acc[groupId] = [];
-              acc[groupId]!.push(...messages);
+              acc[groupId]?.push(...messages);
             });
             return acc;
           },
-          {} as Record<string, GroupMessage[]>
-        )
+          {} as Record<string, GroupMessage[]>,
+        ),
       ).flat().length
-    }`
+    }`,
   );
 
   // Show scenarios
-  console.log('\nScenarios:');
+  console.log("\nScenarios:");
   game.setup.scenarios.forEach((scenario) => {
     console.log(`  ${scenario.id}. ${scenario.title} (${scenario.theme})`);
     if (verbose) {
@@ -435,7 +435,7 @@ async function generateGame(args: ReturnType<typeof parseArgs>): Promise<void> {
   });
 
   // Save to database
-  logger.step('Saving to database...');
+  logger.step("Saving to database...");
 
   const gameHistory = generator.createGameHistory(game);
 
@@ -478,10 +478,10 @@ async function generateGame(args: ReturnType<typeof parseArgs>): Promise<void> {
 }
 
 async function runSimulation(
-  _args: ReturnType<typeof parseArgs>
+  _args: ReturnType<typeof parseArgs>,
 ): Promise<void> {
   throw new Error(
-    'Game simulation is not available in this CLI. Use "feed game generate" or the training/benchmark tooling instead.'
+    'Game simulation is not available in this CLI. Use "feed game generate" or the training/benchmark tooling instead.',
   );
 }
 
@@ -500,29 +500,29 @@ export async function runGameCommand(args: string[]): Promise<void> {
 
   try {
     switch (parsed.command) {
-      case 'start':
-        await controlGame('start');
+      case "start":
+        await controlGame("start");
         break;
 
-      case 'pause':
-        await controlGame('pause');
+      case "pause":
+        await controlGame("pause");
         break;
 
-      case 'status':
+      case "status":
         await showGameStatus();
         break;
 
-      case 'generate':
+      case "generate":
         await generateGame(parsed);
         break;
 
-      case 'simulate':
+      case "simulate":
         await runSimulation(parsed);
         break;
 
-      case 'validate':
+      case "validate":
         await validateActorsData();
-        logger.success('All actor affiliations are valid!');
+        logger.success("All actor affiliations are valid!");
         break;
 
       default:

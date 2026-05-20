@@ -9,18 +9,18 @@
  * This allows other participants (and agents) to see when someone is typing.
  */
 
-import { teamChatService } from '@feed/agents';
+import { teamChatService } from "@feed/agents";
 import {
   authenticateUser,
   broadcastTypingIndicator,
   checkRateLimitAsync,
   RATE_LIMIT_CONFIGS,
   withErrorHandling,
-} from '@feed/api';
-import { db, eq, users } from '@feed/db';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { z } from 'zod';
+} from "@feed/api";
+import { db, eq, users } from "@feed/db";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { z } from "zod";
 
 /** Request body schema for typing indicator */
 const typingSchema = z.object({
@@ -33,16 +33,16 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
   // Rate limit typing indicators (more lenient than messages)
   const rateLimitResult = await checkRateLimitAsync(
     user.id,
-    RATE_LIMIT_CONFIGS.TYPING_INDICATOR
+    RATE_LIMIT_CONFIGS.TYPING_INDICATOR,
   );
   if (!rateLimitResult.allowed) {
     return NextResponse.json(
       {
         success: false,
-        error: 'Rate limit exceeded',
+        error: "Rate limit exceeded",
         retryAfter: rateLimitResult.retryAfter,
       },
-      { status: 429 }
+      { status: 429 },
     );
   }
 
@@ -51,8 +51,8 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
     body = await req.json();
   } catch {
     return NextResponse.json(
-      { success: false, error: 'Invalid JSON in request body' },
-      { status: 400 }
+      { success: false, error: "Invalid JSON in request body" },
+      { status: 400 },
     );
   }
 
@@ -62,9 +62,9 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: firstError?.message || 'isTyping must be a boolean',
+        error: firstError?.message || "isTyping must be a boolean",
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -75,8 +75,8 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
 
   if (!teamChat) {
     return NextResponse.json(
-      { success: false, error: 'No team chat exists' },
-      { status: 404 }
+      { success: false, error: "No team chat exists" },
+      { status: 404 },
     );
   }
 
@@ -87,14 +87,14 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
     .where(eq(users.id, user.id))
     .limit(1);
 
-  const displayName = userInfo?.displayName || userInfo?.username || 'User';
+  const displayName = userInfo?.displayName || userInfo?.username || "User";
 
   // Broadcast typing indicator
   await broadcastTypingIndicator(
     teamChat.chatId,
     user.id,
     displayName,
-    isTyping
+    isTyping,
   );
 
   return NextResponse.json({ success: true });

@@ -1,23 +1,23 @@
-'use client';
+"use client";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
-import { cn } from '@feed/shared';
-import { Loader2 } from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import { useEffect, useMemo } from 'react';
+import { cn } from "@feed/shared";
+import { Loader2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo } from "react";
 import {
   ChatHeader,
   ChatList,
   ChatSearchBar,
   ChatView,
   useChatPage,
-} from '@/components/chats';
-import { CreateGroupModal } from '@/components/groups/CreateGroupModal';
-import { GroupManagementModal } from '@/components/groups/GroupManagementModal';
-import { useAuth } from '@/hooks/useAuth';
-import { useOwnedAgents } from '@/hooks/useOwnedAgents';
-import { useSSE } from '@/hooks/useSSE';
+} from "@/components/chats";
+import { CreateGroupModal } from "@/components/groups/CreateGroupModal";
+import { GroupManagementModal } from "@/components/groups/GroupManagementModal";
+import { useAuth } from "@/hooks/useAuth";
+import { useOwnedAgents } from "@/hooks/useOwnedAgents";
+import { useSSE } from "@/hooks/useSSE";
 
 export default function ChatsPage() {
   const router = useRouter();
@@ -25,7 +25,7 @@ export default function ChatsPage() {
 
   // Get global SSE connection status
   const { isConnected: globalSSEConnected } = useSSE({
-    channels: ['feed'],
+    channels: ["feed"],
   });
 
   // Hook kept for potential future use (owned agent detection is via chatDetails)
@@ -109,7 +109,7 @@ export default function ChatsPage() {
   useEffect(() => {
     if (ownAgentId) {
       router.replace(
-        `/agents/team?selectAgent=${encodeURIComponent(ownAgentId)}`
+        `/agents/team?selectAgent=${encodeURIComponent(ownAgentId)}`,
       );
     }
   }, [ownAgentId, router]);
@@ -117,7 +117,7 @@ export default function ChatsPage() {
   // Auth required — redirect to feed and show login
   useEffect(() => {
     if (!ready || authenticated) return;
-    router.push('/feed');
+    router.push("/feed");
     const timer = setTimeout(() => login(), 500);
     return () => clearTimeout(timer);
   }, [ready, authenticated, router, login]);
@@ -141,10 +141,10 @@ export default function ChatsPage() {
           {/* Desktop (xl): always visible w-80 sidebar */}
           <div
             className={cn(
-              'h-full min-h-0 flex-col border-border bg-background',
+              "h-full min-h-0 flex-col border-border bg-background",
               selectedChatId
-                ? 'hidden w-80 border-r lg:flex' // Hide on mobile, show as sidebar on lg+
-                : 'flex w-full xl:w-80 xl:border-r' // Full width on mobile, sidebar width on xl
+                ? "hidden w-80 border-r lg:flex" // Hide on mobile, show as sidebar on lg+
+                : "flex w-full xl:w-80 xl:border-r", // Full width on mobile, sidebar width on xl
             )}
           >
             <ChatHeader
@@ -175,8 +175,8 @@ export default function ChatsPage() {
           {/* Note: Owned agent DMs redirect to team chat automatically */}
           <div
             className={cn(
-              'h-full min-h-0 min-w-0 flex-1 bg-background',
-              selectedChatId ? 'block' : 'hidden xl:block'
+              "h-full min-h-0 min-w-0 flex-1 bg-background",
+              selectedChatId ? "block" : "hidden xl:block",
             )}
           >
             {ownAgentId ? (

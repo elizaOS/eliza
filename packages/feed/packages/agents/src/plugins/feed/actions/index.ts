@@ -3,11 +3,11 @@
  * Export all actions
  */
 
-export { createGroupAction, sendMessageAction } from './messaging';
-export { commentAction, createPostAction, likePostAction } from './social';
+export { createGroupAction, sendMessageAction } from "./messaging";
+export { commentAction, createPostAction, likePostAction } from "./social";
 export {
   buySharesAction,
   closePerpPositionAction,
   openPerpPositionAction,
   sellSharesAction,
-} from './trading';
+} from "./trading";

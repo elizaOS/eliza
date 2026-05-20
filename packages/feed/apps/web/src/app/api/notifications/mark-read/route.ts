@@ -52,10 +52,10 @@
  * ```
  */
 
-import { authenticate, successResponse, withErrorHandling } from '@feed/api';
-import { and, db, eq, inArray, notifications } from '@feed/db';
-import type { NextRequest } from 'next/server';
-import { z } from 'zod';
+import { authenticate, successResponse, withErrorHandling } from "@feed/api";
+import { and, db, eq, inArray, notifications } from "@feed/db";
+import type { NextRequest } from "next/server";
+import { z } from "zod";
 
 const markReadSchema = z.object({
   notificationIds: z.array(z.string()).optional(),
@@ -80,13 +80,13 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       .where(
         and(
           eq(notifications.userId, user.userId),
-          eq(notifications.read, false)
-        )
+          eq(notifications.read, false),
+        ),
       );
 
     return successResponse({
       data: {
-        message: 'All notifications marked as read',
+        message: "All notifications marked as read",
       },
     });
   }
@@ -100,8 +100,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         and(
           eq(notifications.userId, user.userId),
           eq(notifications.type, type),
-          eq(notifications.read, false)
-        )
+          eq(notifications.read, false),
+        ),
       );
 
     return successResponse({
@@ -119,8 +119,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       .where(
         and(
           inArray(notifications.id, notificationIds),
-          eq(notifications.userId, user.userId) // Ensure user owns these notifications
-        )
+          eq(notifications.userId, user.userId), // Ensure user owns these notifications
+        ),
       );
 
     return successResponse({
@@ -132,7 +132,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   return successResponse({
     data: {
-      message: 'No notifications to mark',
+      message: "No notifications to mark",
     },
   });
 });

@@ -12,7 +12,7 @@
  *   cursor - Pagination cursor (trajectory ID) for next page
  */
 
-import { withErrorHandling } from '@feed/api';
+import { withErrorHandling } from "@feed/api";
 import {
   and,
   asc,
@@ -22,19 +22,19 @@ import {
   inArray,
   rewardJudgments,
   trajectories,
-} from '@feed/db';
-import { type NextRequest, NextResponse } from 'next/server';
+} from "@feed/db";
+import { type NextRequest, NextResponse } from "next/server";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 export const GET = withErrorHandling(async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
-    const since = searchParams.get('since');
-    const limitParam = searchParams.get('limit');
-    const cursor = searchParams.get('cursor');
+    const since = searchParams.get("since");
+    const limitParam = searchParams.get("limit");
+    const cursor = searchParams.get("cursor");
 
-    const limit = Math.min(parseInt(limitParam || '50', 10), 200);
+    const limit = Math.min(parseInt(limitParam || "50", 10), 200);
 
     // Build conditions
     const conditions = [
@@ -101,14 +101,14 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
       const judgment = judgmentMap.get(row.trajectoryId);
       let steps: unknown[] = [];
       try {
-        steps = JSON.parse(row.stepsJson || '[]');
+        steps = JSON.parse(row.stepsJson || "[]");
       } catch {
         /* invalid JSON */
       }
 
       let metadata: Record<string, unknown> = {};
       try {
-        metadata = JSON.parse(row.metadataJson || '{}');
+        metadata = JSON.parse(row.metadataJson || "{}");
       } catch {
         /* invalid JSON */
       }
@@ -116,7 +116,7 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
       let componentScores: Record<string, number> = {};
       try {
         componentScores = JSON.parse(
-          judgment?.componentScoresJson || row.rewardComponentsJson || '{}'
+          judgment?.componentScoresJson || row.rewardComponentsJson || "{}",
         );
       } catch {
         /* invalid JSON */
@@ -127,9 +127,9 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
         trajectoryId: row.trajectoryId,
         agentId: row.agentId,
         archetype: row.archetype,
-        team: (metadata as Record<string, string>).agentTeam || 'gray',
+        team: (metadata as Record<string, string>).agentTeam || "gray",
         alignment:
-          (metadata as Record<string, string>).agentAlignment || 'neutral',
+          (metadata as Record<string, string>).agentAlignment || "neutral",
         windowId: row.windowId,
         totalReward: row.totalReward,
         aiJudgeReward: row.aiJudgeReward ?? row.totalReward,
@@ -151,8 +151,8 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
     });
   } catch (_error) {
     return NextResponse.json(
-      { error: 'Failed to export trajectories' },
-      { status: 500 }
+      { error: "Failed to export trajectories" },
+      { status: 500 },
     );
   }
 });

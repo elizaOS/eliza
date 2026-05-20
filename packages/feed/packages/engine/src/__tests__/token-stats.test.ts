@@ -4,30 +4,30 @@
  * Tests for the token counting and statistics service.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   getTokenUsageCallback,
   setTokenUsageCallback,
-} from '../llm/openai-client';
-import { tokenStatsService } from '../services/token-stats-service';
+} from "../llm/openai-client";
+import { tokenStatsService } from "../services/token-stats-service";
 import {
   calculateEstimatedCost,
   TOKEN_COST_PER_MILLION,
-} from '../types/token-stats';
+} from "../types/token-stats";
 
-describe('Token Stats Types', () => {
-  test('TOKEN_COST_PER_MILLION has expected models', () => {
-    expect(TOKEN_COST_PER_MILLION['openai/gpt-oss-120b']).toBeDefined();
-    expect(TOKEN_COST_PER_MILLION['claude-sonnet-4-5']).toBeDefined();
-    expect(TOKEN_COST_PER_MILLION['gpt-5.1']).toBeDefined();
+describe("Token Stats Types", () => {
+  test("TOKEN_COST_PER_MILLION has expected models", () => {
+    expect(TOKEN_COST_PER_MILLION["openai/gpt-oss-120b"]).toBeDefined();
+    expect(TOKEN_COST_PER_MILLION["claude-sonnet-4-5"]).toBeDefined();
+    expect(TOKEN_COST_PER_MILLION["gpt-5.1"]).toBeDefined();
     expect(TOKEN_COST_PER_MILLION.default).toBeDefined();
   });
 
-  test('calculateEstimatedCost calculates correctly', () => {
+  test("calculateEstimatedCost calculates correctly", () => {
     const result = calculateEstimatedCost(
-      'openai/gpt-oss-120b',
+      "openai/gpt-oss-120b",
       1_000_000,
-      500_000
+      500_000,
     );
 
     expect(result.inputCostUSD).toBeCloseTo(0.3, 2); // $0.30 per 1M input tokens
@@ -35,11 +35,11 @@ describe('Token Stats Types', () => {
     expect(result.totalCostUSD).toBeCloseTo(0.45, 2);
   });
 
-  test('calculateEstimatedCost uses default for unknown models', () => {
+  test("calculateEstimatedCost uses default for unknown models", () => {
     const result = calculateEstimatedCost(
-      'unknown-model',
+      "unknown-model",
       1_000_000,
-      1_000_000
+      1_000_000,
     );
 
     expect(result.inputCostUSD).toBeCloseTo(1.0, 2); // default $1.00 per 1M
@@ -48,7 +48,7 @@ describe('Token Stats Types', () => {
   });
 });
 
-describe('tokenStatsService', () => {
+describe("tokenStatsService", () => {
   beforeEach(() => {
     tokenStatsService.clearAll();
   });
@@ -57,41 +57,41 @@ describe('tokenStatsService', () => {
     tokenStatsService.clearAll();
   });
 
-  test('startTick begins collection', () => {
+  test("startTick begins collection", () => {
     expect(tokenStatsService.isTickInProgress()).toBe(false);
 
-    const tickId = tokenStatsService.startTick('test-tick-1');
+    const tickId = tokenStatsService.startTick("test-tick-1");
 
-    expect(tickId).toBe('test-tick-1');
+    expect(tickId).toBe("test-tick-1");
     expect(tokenStatsService.isTickInProgress()).toBe(true);
   });
 
-  test('endTick returns statistics', () => {
-    tokenStatsService.startTick('test-tick-2');
+  test("endTick returns statistics", () => {
+    tokenStatsService.startTick("test-tick-2");
 
     const stats = tokenStatsService.endTick();
 
     expect(stats).not.toBeNull();
-    expect(stats?.tickId).toBe('test-tick-2');
+    expect(stats?.tickId).toBe("test-tick-2");
     expect(stats?.totalCalls).toBe(0);
     expect(stats?.totalTokens).toBe(0);
     expect(tokenStatsService.isTickInProgress()).toBe(false);
   });
 
-  test('callback collects LLM calls', () => {
-    tokenStatsService.startTick('test-tick-3');
+  test("callback collects LLM calls", () => {
+    tokenStatsService.startTick("test-tick-3");
 
     // Simulate an LLM call via the callback
     const callback = getTokenUsageCallback();
     expect(callback).not.toBeNull();
 
     callback?.({
-      provider: 'groq',
-      model: 'openai/gpt-oss-120b',
+      provider: "groq",
+      model: "openai/gpt-oss-120b",
       inputTokens: 1000,
       outputTokens: 500,
       totalTokens: 1500,
-      promptType: 'test-prompt',
+      promptType: "test-prompt",
       durationMs: 100,
       success: true,
     });
@@ -106,46 +106,46 @@ describe('tokenStatsService', () => {
     const finalStats = tokenStatsService.endTick();
     expect(finalStats?.totalCalls).toBe(1);
     expect(finalStats?.byPromptType).toHaveLength(1);
-    expect(finalStats?.byPromptType[0]?.promptType).toBe('test-prompt');
+    expect(finalStats?.byPromptType[0]?.promptType).toBe("test-prompt");
     expect(finalStats?.byModel).toHaveLength(1);
-    expect(finalStats?.byModel[0]?.model).toBe('openai/gpt-oss-120b');
+    expect(finalStats?.byModel[0]?.model).toBe("openai/gpt-oss-120b");
   });
 
-  test('multiple calls aggregate correctly', () => {
-    tokenStatsService.startTick('test-tick-4');
+  test("multiple calls aggregate correctly", () => {
+    tokenStatsService.startTick("test-tick-4");
 
     const callback = getTokenUsageCallback();
 
     // Simulate multiple calls
     callback?.({
-      provider: 'groq',
-      model: 'openai/gpt-oss-120b',
+      provider: "groq",
+      model: "openai/gpt-oss-120b",
       inputTokens: 1000,
       outputTokens: 500,
       totalTokens: 1500,
-      promptType: 'market-decisions',
+      promptType: "market-decisions",
       durationMs: 100,
       success: true,
     });
 
     callback?.({
-      provider: 'groq',
-      model: 'openai/gpt-oss-120b',
+      provider: "groq",
+      model: "openai/gpt-oss-120b",
       inputTokens: 2000,
       outputTokens: 800,
       totalTokens: 2800,
-      promptType: 'market-decisions',
+      promptType: "market-decisions",
       durationMs: 150,
       success: true,
     });
 
     callback?.({
-      provider: 'claude',
-      model: 'claude-sonnet-4-5',
+      provider: "claude",
+      model: "claude-sonnet-4-5",
       inputTokens: 500,
       outputTokens: 200,
       totalTokens: 700,
-      promptType: 'generate-post',
+      promptType: "generate-post",
       durationMs: 200,
       success: true,
     });
@@ -160,7 +160,7 @@ describe('tokenStatsService', () => {
     // Check prompt type aggregation
     expect(stats?.byPromptType).toHaveLength(2);
     const marketDecisions = stats?.byPromptType.find(
-      (p) => p.promptType === 'market-decisions'
+      (p) => p.promptType === "market-decisions",
     );
     expect(marketDecisions?.callCount).toBe(2);
     expect(marketDecisions?.totalInputTokens).toBe(3000);
@@ -168,36 +168,36 @@ describe('tokenStatsService', () => {
     // Check model aggregation
     expect(stats?.byModel).toHaveLength(2);
     const gptOss = stats?.byModel.find(
-      (m) => m.model === 'openai/gpt-oss-120b'
+      (m) => m.model === "openai/gpt-oss-120b",
     );
     expect(gptOss?.callCount).toBe(2);
-    expect(gptOss?.provider).toBe('groq');
+    expect(gptOss?.provider).toBe("groq");
   });
 
-  test('getSummary aggregates multiple ticks', () => {
+  test("getSummary aggregates multiple ticks", () => {
     // Run first tick
-    tokenStatsService.startTick('tick-1');
+    tokenStatsService.startTick("tick-1");
     getTokenUsageCallback()?.({
-      provider: 'groq',
-      model: 'openai/gpt-oss-120b',
+      provider: "groq",
+      model: "openai/gpt-oss-120b",
       inputTokens: 1000,
       outputTokens: 500,
       totalTokens: 1500,
-      promptType: 'test',
+      promptType: "test",
       durationMs: 100,
       success: true,
     });
     tokenStatsService.endTick();
 
     // Run second tick
-    tokenStatsService.startTick('tick-2');
+    tokenStatsService.startTick("tick-2");
     getTokenUsageCallback()?.({
-      provider: 'groq',
-      model: 'openai/gpt-oss-120b',
+      provider: "groq",
+      model: "openai/gpt-oss-120b",
       inputTokens: 2000,
       outputTokens: 1000,
       totalTokens: 3000,
-      promptType: 'test',
+      promptType: "test",
       durationMs: 150,
       success: true,
     });
@@ -216,21 +216,21 @@ describe('tokenStatsService', () => {
     expect(summary?.estimatedTotalCostUSD).toBeGreaterThan(0);
   });
 
-  test('failed calls are tracked', () => {
-    tokenStatsService.startTick('test-tick-5');
+  test("failed calls are tracked", () => {
+    tokenStatsService.startTick("test-tick-5");
 
     const callback = getTokenUsageCallback();
 
     callback?.({
-      provider: 'groq',
-      model: 'openai/gpt-oss-120b',
+      provider: "groq",
+      model: "openai/gpt-oss-120b",
       inputTokens: 0,
       outputTokens: 0,
       totalTokens: 0,
-      promptType: 'failed-call',
+      promptType: "failed-call",
       durationMs: 50,
       success: false,
-      error: 'Rate limit exceeded',
+      error: "Rate limit exceeded",
     });
 
     const stats = tokenStatsService.endTick();
@@ -239,17 +239,17 @@ describe('tokenStatsService', () => {
     expect(stats?.byPromptType[0]?.successRate).toBe(0);
   });
 
-  test('recentTicks stores history', () => {
+  test("recentTicks stores history", () => {
     // Run a few ticks
     for (let i = 0; i < 5; i++) {
       tokenStatsService.startTick(`tick-${i}`);
       getTokenUsageCallback()?.({
-        provider: 'groq',
-        model: 'openai/gpt-oss-120b',
+        provider: "groq",
+        model: "openai/gpt-oss-120b",
         inputTokens: 100 * (i + 1),
         outputTokens: 50 * (i + 1),
         totalTokens: 150 * (i + 1),
-        promptType: 'test',
+        promptType: "test",
         durationMs: 100,
         success: true,
       });
@@ -260,16 +260,16 @@ describe('tokenStatsService', () => {
 
     expect(recent).toHaveLength(3);
     // Most recent should be first
-    expect(recent[0]?.tickId).toBe('tick-4');
+    expect(recent[0]?.tickId).toBe("tick-4");
   });
 });
 
-describe('setTokenUsageCallback / getTokenUsageCallback', () => {
+describe("setTokenUsageCallback / getTokenUsageCallback", () => {
   afterEach(() => {
     setTokenUsageCallback(null);
   });
 
-  test('can set and get callback', () => {
+  test("can set and get callback", () => {
     expect(getTokenUsageCallback()).toBeNull();
 
     const callback = () => {};
@@ -278,7 +278,7 @@ describe('setTokenUsageCallback / getTokenUsageCallback', () => {
     expect(getTokenUsageCallback()).toBe(callback);
   });
 
-  test('can clear callback', () => {
+  test("can clear callback", () => {
     setTokenUsageCallback(() => {});
     setTokenUsageCallback(null);
 

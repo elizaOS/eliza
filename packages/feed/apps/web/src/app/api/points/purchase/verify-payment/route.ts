@@ -72,12 +72,12 @@ import {
   authenticate,
   TradingBalanceFundingService,
   withErrorHandling,
-} from '@feed/api';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { getPointsPurchaseX402Manager } from '@/lib/points-purchase-x402';
-import { trackServerEvent } from '@/lib/posthog/server';
+} from "@feed/api";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { getPointsPurchaseX402Manager } from "@/lib/points-purchase-x402";
+import { trackServerEvent } from "@/lib/posthog/server";
 
 interface VerifyPaymentBody {
   requestId: string;
@@ -109,14 +109,14 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
     logger.warn(
       `Payment verification failed for request ${requestId}`,
       { requestId, txHash, error: verificationResult.error },
-      'TradingBalanceFunding'
+      "TradingBalanceFunding",
     );
     return NextResponse.json(
       {
         success: false,
-        error: verificationResult.error ?? 'Payment verification failed',
+        error: verificationResult.error ?? "Payment verification failed",
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -126,13 +126,13 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
     // server-side state inconsistency, not a client error. Use 500 so the
     // client knows to retry rather than treating the request as permanently bad.
     logger.error(
-      'Payment request or metadata missing after verification',
+      "Payment request or metadata missing after verification",
       { requestId },
-      'TradingBalanceFunding'
+      "TradingBalanceFunding",
     );
     return NextResponse.json(
-      { success: false, error: 'Payment request not found' },
-      { status: 500 }
+      { success: false, error: "Payment request not found" },
+      { status: 500 },
     );
   }
 
@@ -141,21 +141,21 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
     userId,
     amountUSD,
     requestId,
-    txHash
+    txHash,
   );
 
   if (result.error) {
     logger.error(
-      'Failed to fund trading balance after payment verification',
+      "Failed to fund trading balance after payment verification",
       { userId, requestId, error: result.error },
-      'TradingBalanceFunding'
+      "TradingBalanceFunding",
     );
     return NextResponse.json(
       {
         success: false,
-        error: result.error ?? 'Failed to fund trading balance',
+        error: result.error ?? "Failed to fund trading balance",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 
@@ -170,11 +170,11 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
         balanceDelta: result.balanceDelta,
         newBalance: result.newBalance,
       },
-      'TradingBalanceFunding'
+      "TradingBalanceFunding",
     );
 
-    trackServerEvent(userId, 'trading_balance_purchase_completed', {
-      paymentProvider: 'crypto',
+    trackServerEvent(userId, "trading_balance_purchase_completed", {
+      paymentProvider: "crypto",
       amountUSD,
       balanceDelta: result.balanceDelta,
       newBalance: result.newBalance,
@@ -182,9 +182,9 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
       txHash,
     }).catch((err) => {
       logger.warn(
-        'Failed to track trading_balance_purchase_completed',
+        "Failed to track trading_balance_purchase_completed",
         { error: err },
-        'TradingBalanceFunding'
+        "TradingBalanceFunding",
       );
     });
   }

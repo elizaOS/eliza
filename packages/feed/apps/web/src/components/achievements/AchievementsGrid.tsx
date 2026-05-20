@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { CheckCircle2, Lock } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
-import { useAuth } from '@/hooks/useAuth';
+import { CheckCircle2, Lock } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
 
 interface AchievementWithProgress {
   id: string;
@@ -20,25 +20,25 @@ interface AchievementWithProgress {
 
 const TIER_BADGE_STYLES: Record<string, { badge: string; progress: string }> = {
   bronze: {
-    badge: 'bg-amber-600/15 text-amber-600',
-    progress: 'bg-amber-600',
+    badge: "bg-amber-600/15 text-amber-600",
+    progress: "bg-amber-600",
   },
   silver: {
-    badge: 'bg-slate-400/15 text-slate-400',
-    progress: 'bg-slate-400',
+    badge: "bg-slate-400/15 text-slate-400",
+    progress: "bg-slate-400",
   },
   gold: {
-    badge: 'bg-yellow-500/15 text-yellow-500',
-    progress: 'bg-yellow-500',
+    badge: "bg-yellow-500/15 text-yellow-500",
+    progress: "bg-yellow-500",
   },
 };
 
 const DEFAULT_TIER_BADGE = {
-  badge: 'bg-amber-600/15 text-amber-600',
-  progress: 'bg-amber-600',
+  badge: "bg-amber-600/15 text-amber-600",
+  progress: "bg-amber-600",
 };
 
-const TIER_LABELS = ['all', 'bronze', 'silver', 'gold'] as const;
+const TIER_LABELS = ["all", "bronze", "silver", "gold"] as const;
 
 function StatusIcon({ achievement }: { achievement: AchievementWithProgress }) {
   if (achievement.unlocked) {
@@ -62,7 +62,7 @@ function AchievementRow({
   const tierStyle = TIER_BADGE_STYLES[achievement.tier] ?? DEFAULT_TIER_BADGE;
   const progressPct = Math.min(
     100,
-    (achievement.progress / achievement.threshold) * 100
+    (achievement.progress / achievement.threshold) * 100,
   );
   const isInProgress = !achievement.unlocked && achievement.progress > 0;
 
@@ -70,8 +70,8 @@ function AchievementRow({
     <div
       className={`rounded-lg border p-4 transition-all ${
         achievement.unlocked
-          ? 'border-green-500/20 bg-green-500/5'
-          : 'border-border'
+          ? "border-green-500/20 bg-green-500/5"
+          : "border-border"
       }`}
     >
       <div className="flex items-start gap-3">
@@ -84,8 +84,8 @@ function AchievementRow({
               <h4
                 className={`font-semibold text-sm ${
                   achievement.unlocked
-                    ? 'text-green-600 dark:text-green-400'
-                    : 'text-foreground'
+                    ? "text-green-600 dark:text-green-400"
+                    : "text-foreground"
                 }`}
               >
                 {achievement.name}
@@ -98,7 +98,7 @@ function AchievementRow({
             </div>
             <span
               className={`shrink-0 font-bold text-sm ${
-                achievement.unlocked ? 'text-green-500' : 'text-foreground'
+                achievement.unlocked ? "text-green-500" : "text-foreground"
               }`}
             >
               +{achievement.pointsReward}
@@ -134,10 +134,10 @@ function AchievementRow({
 export function AchievementsGrid() {
   const { authenticated, getAccessToken } = useAuth();
   const [achievements, setAchievements] = useState<AchievementWithProgress[]>(
-    []
+    [],
   );
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<string>('all');
+  const [filter, setFilter] = useState<string>("all");
 
   const fetchAchievements = useCallback(async () => {
     if (!authenticated) {
@@ -149,7 +149,7 @@ export function AchievementsGrid() {
       setLoading(false);
       return;
     }
-    const res = await fetch('/api/achievements', {
+    const res = await fetch("/api/achievements", {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (res.ok) {
@@ -183,7 +183,7 @@ export function AchievementsGrid() {
   }
 
   const filtered =
-    filter === 'all'
+    filter === "all"
       ? achievements
       : achievements.filter((a) => a.tier === filter);
 
@@ -235,11 +235,11 @@ export function AchievementsGrid() {
               onClick={() => setFilter(tier)}
               className={`rounded-full px-3 py-1 font-medium text-xs capitalize transition-colors ${
                 filter === tier
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted text-muted-foreground hover:text-foreground'
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted text-muted-foreground hover:text-foreground"
               }`}
             >
-              {tier === 'all' ? 'All' : tier}
+              {tier === "all" ? "All" : tier}
             </button>
           ))}
         </div>

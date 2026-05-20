@@ -1,52 +1,52 @@
 #!/usr/bin/env bun
 
-import { parseArgs } from 'node:util';
-import { db } from '@feed/db';
+import { parseArgs } from "node:util";
+import { db } from "@feed/db";
 import {
   markets,
   perpMarketSnapshots,
   predictionPriceHistories,
-} from '@feed/db/schema';
-import { initializeDatabaseMode } from '@feed/engine';
-import { and, desc, eq, gte, inArray } from 'drizzle-orm';
+} from "@feed/db/schema";
+import { initializeDatabaseMode } from "@feed/engine";
+import { and, desc, eq, gte, inArray } from "drizzle-orm";
 import {
   computePerpRealismMetrics,
   computePredictionRealismMetrics,
   type SummaryStats,
-} from '../packages/engine/src/services/market-realism-metrics';
+} from "../packages/engine/src/services/market-realism-metrics";
 
 const { values: args } = parseArgs({
   options: {
-    json: { type: 'boolean', default: false },
-    hours: { type: 'string', default: '24' },
+    json: { type: "boolean", default: false },
+    hours: { type: "string", default: "24" },
   },
   strict: true,
 });
 
-const hours = Number.parseInt(args.hours ?? '24', 10);
+const hours = Number.parseInt(args.hours ?? "24", 10);
 if (!Number.isFinite(hours) || hours <= 0) {
-  throw new Error('--hours must be a positive integer');
+  throw new Error("--hours must be a positive integer");
 }
 
 function formatStat(stat: SummaryStats | null, digits = 2): string {
-  if (!stat) return 'n/a';
+  if (!stat) return "n/a";
   return `min ${stat.min.toFixed(digits)} | p50 ${stat.median.toFixed(
-    digits
+    digits,
   )} | mean ${stat.mean.toFixed(digits)} | p90 ${stat.p90.toFixed(
-    digits
+    digits,
   )} | max ${stat.max.toFixed(digits)}`;
 }
 
 function formatBuckets(record: Record<string, number>): string {
   return Object.entries(record)
     .map(([key, value]) => `${key}:${value}`)
-    .join(' | ');
+    .join(" | ");
 }
 
 async function main() {
   if (!process.env.DATABASE_URL) {
     throw new Error(
-      'DATABASE_URL is required to run market realism diagnostics.'
+      "DATABASE_URL is required to run market realism diagnostics.",
     );
   }
 
@@ -68,7 +68,7 @@ async function main() {
     .orderBy(desc(markets.createdAt));
 
   const activePredictionMarketIds = predictionMarkets.map(
-    (market) => market.id
+    (market) => market.id,
   );
 
   const predictionHistory =
@@ -85,9 +85,9 @@ async function main() {
               gte(predictionPriceHistories.createdAt, since),
               inArray(
                 predictionPriceHistories.marketId,
-                activePredictionMarketIds
-              )
-            )
+                activePredictionMarketIds,
+              ),
+            ),
           )
           .orderBy(desc(predictionPriceHistories.createdAt))
       : [];
@@ -138,7 +138,7 @@ async function main() {
       bidDepth: row.bidDepth ? Number(row.bidDepth) : undefined,
       askDepth: row.askDepth ? Number(row.askDepth) : undefined,
       liquidityRegime:
-        (row.liquidityRegime as 'thin' | 'balanced' | 'deep' | null) ??
+        (row.liquidityRegime as "thin" | "balanced" | "deep" | null) ??
         undefined,
       quoteUpdatedAt: row.quoteUpdatedAt ?? undefined,
     })),
@@ -157,68 +157,68 @@ async function main() {
     return;
   }
 
-  console.log('Market Realism Report');
+  console.log("Market Realism Report");
   console.log(`Generated: ${now.toISOString()}`);
   console.log(`Window: ${hours}h`);
-  console.log('');
+  console.log("");
 
-  console.log('Predictions');
+  console.log("Predictions");
   console.log(`- Active markets: ${predictionMetrics.activeMarkets}`);
   console.log(
-    `- YES price dispersion: ${formatStat(predictionMetrics.yesPriceDispersion, 3)}`
+    `- YES price dispersion: ${formatStat(predictionMetrics.yesPriceDispersion, 3)}`,
   );
   console.log(
-    `- Distance from 50/50: ${formatStat(predictionMetrics.distanceFromMid, 3)}`
+    `- Distance from 50/50: ${formatStat(predictionMetrics.distanceFromMid, 3)}`,
   );
   console.log(
-    `- 24h price change: ${formatStat(predictionMetrics.priceChange24h, 3)}`
+    `- 24h price change: ${formatStat(predictionMetrics.priceChange24h, 3)}`,
   );
   console.log(
-    `- Near 50/50: ${predictionMetrics.nearMidCount} | Extreme: ${predictionMetrics.extremeCount}`
+    `- Near 50/50: ${predictionMetrics.nearMidCount} | Extreme: ${predictionMetrics.extremeCount}`,
   );
   console.log(`- Horizons: ${formatBuckets(predictionMetrics.horizonBuckets)}`);
   console.log(`- Urgency: ${formatBuckets(predictionMetrics.urgencyLevels)}`);
   console.log(
-    `- Event sensitivity: ${formatBuckets(predictionMetrics.eventSensitivity)}`
+    `- Event sensitivity: ${formatBuckets(predictionMetrics.eventSensitivity)}`,
   );
   console.log(
-    `- Liquidity tiers: ${formatBuckets(predictionMetrics.liquidityTiers)}`
+    `- Liquidity tiers: ${formatBuckets(predictionMetrics.liquidityTiers)}`,
   );
   if (predictionMetrics.warnings.length > 0) {
-    console.log('- Warnings:');
+    console.log("- Warnings:");
     for (const warning of predictionMetrics.warnings) {
       console.log(`  - ${warning}`);
     }
   }
-  console.log('');
+  console.log("");
 
-  console.log('Perps');
+  console.log("Perps");
   console.log(`- Active markets: ${perpMetrics.activeMarkets}`);
   console.log(
-    `- Quote coverage: ${(perpMetrics.quoteCoverageRate * 100).toFixed(1)}%`
+    `- Quote coverage: ${(perpMetrics.quoteCoverageRate * 100).toFixed(1)}%`,
   );
   console.log(
     `- Invalid quote states: ${perpMetrics.invalidQuoteCount} (${(
       perpMetrics.invalidQuoteRate * 100
-    ).toFixed(1)}%)`
+    ).toFixed(1)}%)`,
   );
   console.log(
-    `- Invalid currentPrice values: ${perpMetrics.invalidCurrentPriceCount}`
+    `- Invalid currentPrice values: ${perpMetrics.invalidCurrentPriceCount}`,
   );
   console.log(`- Spread bps: ${formatStat(perpMetrics.spreadBps, 1)}`);
   console.log(`- Bid depth: ${formatStat(perpMetrics.bidDepth, 0)}`);
   console.log(`- Ask depth: ${formatStat(perpMetrics.askDepth, 0)}`);
   console.log(
-    `- Liquidity regimes: ${formatBuckets(perpMetrics.liquidityRegimes)}`
+    `- Liquidity regimes: ${formatBuckets(perpMetrics.liquidityRegimes)}`,
   );
   console.log(`- Stale quotes: ${perpMetrics.staleQuotesCount}`);
   for (const [size, stats] of Object.entries(
-    perpMetrics.depthRatioByOrderSize
+    perpMetrics.depthRatioByOrderSize,
   )) {
     console.log(`- Size/depth ratio @ ${size}: ${formatStat(stats, 2)}`);
   }
   if (perpMetrics.warnings.length > 0) {
-    console.log('- Warnings:');
+    console.log("- Warnings:");
     for (const warning of perpMetrics.warnings) {
       console.log(`  - ${warning}`);
     }

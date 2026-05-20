@@ -1,20 +1,20 @@
-'use client';
+"use client";
 
 import {
-  FEED_POINTS_SYMBOL,
   cn,
+  FEED_POINTS_SYMBOL,
   formatCompactCurrency,
   getTimeAgo,
   logger,
-} from '@feed/shared';
-import { Activity } from 'lucide-react';
-import { memo, useCallback, useEffect, useState } from 'react';
-import { useAuth } from '@/hooks/useAuth';
-import { apiUrl } from '@/utils/api-url';
+} from "@feed/shared";
+import { Activity } from "lucide-react";
+import { memo, useCallback, useEffect, useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
+import { apiUrl } from "@/utils/api-url";
 
 /** Activity types from the API */
 interface TradeActivity {
-  type: 'trade';
+  type: "trade";
   id: string;
   timestamp: string;
   data: {
@@ -27,7 +27,7 @@ interface TradeActivity {
 }
 
 interface PointsActivity {
-  type: 'points';
+  type: "points";
   id: string;
   timestamp: string;
   data: {
@@ -40,7 +40,7 @@ interface PointsActivity {
 }
 
 interface PostActivity {
-  type: 'post';
+  type: "post";
   id: string;
   timestamp: string;
   data: {
@@ -50,7 +50,7 @@ interface PostActivity {
 }
 
 interface CommentActivity {
-  type: 'comment';
+  type: "comment";
   id: string;
   timestamp: string;
   data: {
@@ -77,29 +77,29 @@ interface UserActivityProps {
  */
 function getReasonLabel(reason: string): string {
   const labels: Record<string, string> = {
-    purchase: 'Added trading funds',
-    purchase_refund: 'Received refund',
-    purchase_dispute: 'Funding dispute deduction',
-    purchase_dispute_won: 'Funding dispute won',
-    trading_pnl: 'Trading P&L',
-    transfer_sent: 'Balance transfer out',
-    transfer_received: 'Balance transfer in',
-    referral_signup: 'Referral bonus',
-    referral_qualified: 'Qualified referral bonus',
-    profile_completion: 'Profile completion bonus',
-    farcaster_link: 'Linked Farcaster',
-    twitter_link: 'Linked Twitter',
-    discord_link: 'Linked Discord',
-    wallet_connect: 'Connected wallet',
-    admin_award: 'Admin award',
-    admin_deduction: 'Admin deduction',
-    report_reward: 'Report reward',
-    agent_deposit: 'Deposited to agent',
-    agent_withdrawal: 'Withdrew from agent',
+    purchase: "Added trading funds",
+    purchase_refund: "Received refund",
+    purchase_dispute: "Funding dispute deduction",
+    purchase_dispute_won: "Funding dispute won",
+    trading_pnl: "Trading P&L",
+    transfer_sent: "Balance transfer out",
+    transfer_received: "Balance transfer in",
+    referral_signup: "Referral bonus",
+    referral_qualified: "Qualified referral bonus",
+    profile_completion: "Profile completion bonus",
+    farcaster_link: "Linked Farcaster",
+    twitter_link: "Linked Twitter",
+    discord_link: "Linked Discord",
+    wallet_connect: "Connected wallet",
+    admin_award: "Admin award",
+    admin_deduction: "Admin deduction",
+    report_reward: "Report reward",
+    agent_deposit: "Deposited to agent",
+    agent_withdrawal: "Withdrew from agent",
   };
   return (
     labels[reason] ||
-    reason.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+    reason.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
   );
 }
 
@@ -108,34 +108,34 @@ function getReasonLabel(reason: string): string {
  */
 function getTradeTitle(tradeType: string): string {
   const titles: Record<string, string> = {
-    pred_buy: 'Bought prediction position',
-    pred_sell: 'Sold prediction position',
-    perp_open: 'Opened perp position',
-    perp_close: 'Closed perp position',
-    perp_liquidation: 'Position liquidated',
+    pred_buy: "Bought prediction position",
+    pred_sell: "Sold prediction position",
+    perp_open: "Opened perp position",
+    perp_close: "Closed perp position",
+    perp_liquidation: "Position liquidated",
   };
-  return titles[tradeType] || 'Trade';
+  return titles[tradeType] || "Trade";
 }
 
 /**
  * Get activity title
  */
 function getActivityTitle(activity: UserActivityItem): string {
-  if (activity.type === 'trade') {
+  if (activity.type === "trade") {
     return getTradeTitle(activity.data.tradeType);
   }
-  if (activity.type === 'points') {
+  if (activity.type === "points") {
     return getReasonLabel(activity.data.reason);
   }
-  if (activity.type === 'post') {
-    return 'Created a post';
+  if (activity.type === "post") {
+    return "Created a post";
   }
-  if (activity.type === 'comment') {
+  if (activity.type === "comment") {
     return activity.data.parentCommentId
-      ? 'Replied to a comment'
-      : 'Commented on a post';
+      ? "Replied to a comment"
+      : "Commented on a post";
   }
-  return 'Activity';
+  return "Activity";
 }
 
 /**
@@ -146,13 +146,13 @@ function AmountBadge({ amount }: { amount: number }) {
   return (
     <div
       className={cn(
-        'shrink-0 rounded-md px-2.5 py-1 font-medium font-mono text-sm',
+        "shrink-0 rounded-md px-2.5 py-1 font-medium font-mono text-sm",
         isPositive
-          ? 'border border-emerald-300 bg-emerald-100 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400'
-          : 'border border-red-300 bg-red-100 text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400'
+          ? "border border-emerald-300 bg-emerald-100 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400"
+          : "border border-red-300 bg-red-100 text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400",
       )}
     >
-      {isPositive ? '+' : ''}
+      {isPositive ? "+" : ""}
       {formatCompactCurrency(amount)}
     </div>
   );
@@ -174,19 +174,19 @@ const ActivityCard = memo(function ActivityCard({
 
   // Determine which badge to show
   let badge = null;
-  if (activity.type === 'points') {
+  if (activity.type === "points") {
     badge = <AmountBadge amount={activity.data.amount} />;
   }
 
   return (
     <div
       className={cn(
-        'group relative cursor-pointer rounded-lg border border-border p-4 transition-colors hover:border-border/80',
-        'bg-card/50 hover:bg-card/80'
+        "group relative cursor-pointer rounded-lg border border-border p-4 transition-colors hover:border-border/80",
+        "bg-card/50 hover:bg-card/80",
       )}
       onClick={() => setExpanded((prev) => !prev)}
       onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
+        if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
           setExpanded((prev) => !prev);
         }
@@ -194,7 +194,7 @@ const ActivityCard = memo(function ActivityCard({
       role="button"
       tabIndex={0}
       aria-expanded={expanded}
-      aria-label={`${title}. Click to ${expanded ? 'collapse' : 'expand'} details.`}
+      aria-label={`${title}. Click to ${expanded ? "collapse" : "expand"} details.`}
     >
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
@@ -220,28 +220,28 @@ const ActivityCard = memo(function ActivityCard({
  */
 function getPointsSubtitle(
   reason: string,
-  paymentProvider: string | null
+  paymentProvider: string | null,
 ): string | null {
   // Show payment provider for purchases
-  if (reason === 'purchase' && paymentProvider) {
+  if (reason === "purchase" && paymentProvider) {
     return `via ${paymentProvider}`;
   }
   // Show context for other transaction types
-  if (reason.includes('transfer')) {
-    return 'Agent funding';
+  if (reason.includes("transfer")) {
+    return "Agent funding";
   }
-  if (reason.includes('referral')) {
-    return 'Referral program';
+  if (reason.includes("referral")) {
+    return "Referral program";
   }
   if (
-    reason.includes('link') ||
-    reason.includes('connect') ||
-    reason.includes('profile')
+    reason.includes("link") ||
+    reason.includes("connect") ||
+    reason.includes("profile")
   ) {
-    return 'Onboarding reward';
+    return "Onboarding reward";
   }
-  if (reason === 'trading_pnl') {
-    return 'Position settlement';
+  if (reason === "trading_pnl") {
+    return "Position settlement";
   }
   return null;
 }
@@ -250,10 +250,10 @@ function getPointsSubtitle(
  * Render activity-specific content
  */
 function renderActivityContent(activity: UserActivityItem, expanded: boolean) {
-  if (activity.type === 'trade') {
+  if (activity.type === "trade") {
     const { tradeType, amount, marketQuestion } = activity.data;
-    const isPrediction = tradeType.startsWith('pred_');
-    const typeLabel = isPrediction ? 'Prediction' : 'Perpetual';
+    const isPrediction = tradeType.startsWith("pred_");
+    const typeLabel = isPrediction ? "Prediction" : "Perpetual";
 
     return (
       <div className="space-y-2">
@@ -269,8 +269,8 @@ function renderActivityContent(activity: UserActivityItem, expanded: boolean) {
         {marketQuestion && (
           <p
             className={cn(
-              'text-muted-foreground text-sm',
-              expanded ? '' : 'line-clamp-2'
+              "text-muted-foreground text-sm",
+              expanded ? "" : "line-clamp-2",
             )}
           >
             {marketQuestion}
@@ -280,7 +280,7 @@ function renderActivityContent(activity: UserActivityItem, expanded: boolean) {
     );
   }
 
-  if (activity.type === 'points') {
+  if (activity.type === "points") {
     const { reason, paymentProvider } = activity.data;
     const subtitle = getPointsSubtitle(reason, paymentProvider);
 
@@ -294,12 +294,12 @@ function renderActivityContent(activity: UserActivityItem, expanded: boolean) {
     );
   }
 
-  if (activity.type === 'post') {
+  if (activity.type === "post") {
     return (
       <p
         className={cn(
-          'text-muted-foreground text-sm',
-          expanded ? '' : 'line-clamp-2'
+          "text-muted-foreground text-sm",
+          expanded ? "" : "line-clamp-2",
         )}
       >
         {activity.data.contentPreview}
@@ -307,12 +307,12 @@ function renderActivityContent(activity: UserActivityItem, expanded: boolean) {
     );
   }
 
-  if (activity.type === 'comment') {
+  if (activity.type === "comment") {
     return (
       <p
         className={cn(
-          'text-muted-foreground text-sm',
-          expanded ? '' : 'line-clamp-2'
+          "text-muted-foreground text-sm",
+          expanded ? "" : "line-clamp-2",
         )}
       >
         {activity.data.contentPreview}
@@ -368,7 +368,7 @@ export function UserActivity({ userId, className }: UserActivityProps) {
   const refresh = useCallback(async () => {
     const token = await getAccessToken();
     if (!token) {
-      setError(new Error('Not authenticated'));
+      setError(new Error("Not authenticated"));
       setIsLoading(false);
       return;
     }
@@ -381,7 +381,7 @@ export function UserActivity({ userId, className }: UserActivityProps) {
         apiUrl(`/api/users/${userId}/activity?limit=50`),
         {
           headers: { Authorization: `Bearer ${token}` },
-        }
+        },
       );
 
       if (!res.ok) {
@@ -395,12 +395,12 @@ export function UserActivity({ userId, className }: UserActivityProps) {
       setActivities(data.activities || []);
     } catch (err) {
       logger.error(
-        'Activity fetch error',
+        "Activity fetch error",
         err instanceof Error ? err : { error: err },
-        'UserActivity'
+        "UserActivity",
       );
       setError(
-        err instanceof Error ? err : new Error('Failed to load activity')
+        err instanceof Error ? err : new Error("Failed to load activity"),
       );
     } finally {
       setIsLoading(false);
@@ -412,7 +412,7 @@ export function UserActivity({ userId, className }: UserActivityProps) {
   }, [refresh]);
 
   return (
-    <div className={cn('flex flex-col', className)}>
+    <div className={cn("flex flex-col", className)}>
       {/* Error state with retry button */}
       {error && (
         <div className="mb-4 flex items-center justify-between rounded-lg border border-destructive/50 bg-destructive/10 p-3">
@@ -424,7 +424,7 @@ export function UserActivity({ userId, className }: UserActivityProps) {
             disabled={isLoading}
             className="ml-3 shrink-0 rounded-md bg-destructive/20 px-3 py-1 text-destructive text-sm transition-colors hover:bg-destructive/30 disabled:opacity-50"
           >
-            {isLoading ? 'Retrying...' : 'Retry'}
+            {isLoading ? "Retrying..." : "Retry"}
           </button>
         </div>
       )}

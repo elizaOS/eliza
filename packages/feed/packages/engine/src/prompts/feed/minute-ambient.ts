@@ -1,5 +1,5 @@
-import { definePrompt } from '../define-prompt';
-import { NPC_POST_QUALITY_RULES, PARODY_NAME_RULES } from '../shared-sections';
+import { definePrompt } from "../define-prompt";
+import { NPC_POST_QUALITY_RULES, PARODY_NAME_RULES } from "../shared-sections";
 
 /**
  * Lightweight ambient post for quick/frequent generation.
@@ -10,11 +10,11 @@ import { NPC_POST_QUALITY_RULES, PARODY_NAME_RULES } from '../shared-sections';
  * timeEnergy is optional — when present it unlocks time-appropriate humor modes.
  */
 export const minuteAmbient = definePrompt({
-  id: 'minute-ambient',
-  version: '8.0.0',
-  category: 'feed',
+  id: "minute-ambient",
+  version: "8.0.0",
+  category: "feed",
   description:
-    'Quick ambient post — minimal context, actor identity first, humor unlocked',
+    "Quick ambient post — minimal context, actor identity first, humor unlocked",
   temperature: 1,
   maxTokens: 500,
   template: `You are {{actorName}}.

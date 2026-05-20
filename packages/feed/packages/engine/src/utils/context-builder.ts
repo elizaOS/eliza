@@ -12,15 +12,15 @@
  * - Relationship context
  */
 
-import { and, db, desc, gte, lte, worldEvents } from '@feed/db';
-import { RelationshipEvolutionEngine } from '../RelationshipEvolutionEngine';
-import { parseStringArraySafe } from '../services/jsonb-validators';
-import { MarketContextService } from '../services/market-context-service';
-import { isSimulationMode } from '../storage-bridge';
-import type { Actor, FeedPost, Question, WorldEvent } from '../types/shared';
-import { CONTEXT_LIMITS, truncateArray, truncateText } from './context-limits';
-import { extractDayFromTimestamp } from './date-utils';
-import { shuffleArray } from './randomization';
+import { and, db, desc, gte, lte, worldEvents } from "@feed/db";
+import { RelationshipEvolutionEngine } from "../RelationshipEvolutionEngine";
+import { parseStringArraySafe } from "../services/jsonb-validators";
+import { MarketContextService } from "../services/market-context-service";
+import { isSimulationMode } from "../storage-bridge";
+import type { Actor, FeedPost, Question, WorldEvent } from "../types/shared";
+import { CONTEXT_LIMITS, truncateArray, truncateText } from "./context-limits";
+import { extractDayFromTimestamp } from "./date-utils";
+import { shuffleArray } from "./randomization";
 
 export interface ComprehensiveNPCContext {
   // Character-specific
@@ -51,8 +51,8 @@ export interface ComprehensiveNPCContext {
   relationships?: Array<{
     otherActorName: string;
     type: string;
-    sentiment: 'respect' | 'beef' | 'neutral';
-    strength: 'strong' | 'moderate' | 'weak';
+    sentiment: "respect" | "beef" | "neutral";
+    strength: "strong" | "moderate" | "weak";
     history?: string;
   }>;
 
@@ -86,28 +86,28 @@ export async function buildComprehensiveNPCContext(
   currentDay: number,
   allPreviousEvents?: WorldEvent[],
   previousPosts?: FeedPost[],
-  questions?: Question[]
+  questions?: Question[],
 ): Promise<ComprehensiveNPCContext> {
   const marketContextService = new MarketContextService();
   const simulationMode = isSimulationMode();
 
   const personalEventsRaw = await marketContextService.getEventsForNPC(
     actor.id,
-    actor.name
+    actor.name,
   );
 
   const personalEvents = truncateArray(
     personalEventsRaw,
-    CONTEXT_LIMITS.MAX_EVENTS_PERSONAL
+    CONTEXT_LIMITS.MAX_EVENTS_PERSONAL,
   ).map((e) => ({
     ...e,
     description: truncateText(
       e.description,
-      CONTEXT_LIMITS.MAX_EVENT_DESCRIPTION_LENGTH
+      CONTEXT_LIMITS.MAX_EVENT_DESCRIPTION_LENGTH,
     ),
   }));
 
-  let recentEvents: ComprehensiveNPCContext['recentEvents'] = [];
+  let recentEvents: ComprehensiveNPCContext["recentEvents"] = [];
   if (allPreviousEvents && allPreviousEvents.length > 0) {
     const filteredEvents = allPreviousEvents
       .filter((e) => e.day < currentDay)
@@ -116,17 +116,17 @@ export async function buildComprehensiveNPCContext(
     const shuffledEvents = shuffleArray(filteredEvents);
     recentEvents = truncateArray(
       shuffledEvents,
-      CONTEXT_LIMITS.MAX_EVENTS_RECENT
+      CONTEXT_LIMITS.MAX_EVENTS_RECENT,
     ).map((e) => ({
       type: e.type,
       description: truncateText(
         e.description || e.type,
-        CONTEXT_LIMITS.MAX_EVENT_DESCRIPTION_LENGTH
+        CONTEXT_LIMITS.MAX_EVENT_DESCRIPTION_LENGTH,
       ),
-      timestamp: `2025-10-${String(e.day).padStart(2, '0')}T12:00:00Z`,
+      timestamp: `2025-10-${String(e.day).padStart(2, "0")}T12:00:00Z`,
       actors: truncateArray(
         shuffleArray(e.actors || []),
-        CONTEXT_LIMITS.MAX_ACTORS_PER_EVENT
+        CONTEXT_LIMITS.MAX_ACTORS_PER_EVENT,
       ),
       pointsToward: e.pointsToward || undefined,
     }));
@@ -142,22 +142,22 @@ export async function buildComprehensiveNPCContext(
       .where(
         and(
           gte(worldEvents.timestamp, sevenDaysAgo),
-          lte(worldEvents.timestamp, now)
-        )
+          lte(worldEvents.timestamp, now),
+        ),
       )
       .orderBy(desc(worldEvents.timestamp))
       .limit(CONTEXT_LIMITS.MAX_EVENTS_RECENT);
 
     recentEvents = eventList.map((e) => ({
-      type: e.eventType || 'unknown',
+      type: e.eventType || "unknown",
       description: truncateText(
-        e.description || '',
-        CONTEXT_LIMITS.MAX_EVENT_DESCRIPTION_LENGTH
+        e.description || "",
+        CONTEXT_LIMITS.MAX_EVENT_DESCRIPTION_LENGTH,
       ),
       timestamp: e.timestamp.toISOString(),
       actors: truncateArray(
-        parseStringArraySafe(e.actors, { field: 'worldEvents.actors' }),
-        CONTEXT_LIMITS.MAX_ACTORS_PER_EVENT
+        parseStringArraySafe(e.actors, { field: "worldEvents.actors" }),
+        CONTEXT_LIMITS.MAX_ACTORS_PER_EVENT,
       ),
       pointsToward: e.pointsToward || undefined,
     }));
@@ -190,7 +190,7 @@ export async function buildComprehensiveNPCContext(
 
   const mappedPreviousPosts = truncateArray(
     npcPreviousPostsRaw,
-    CONTEXT_LIMITS.MAX_POSTS_PREVIOUS
+    CONTEXT_LIMITS.MAX_POSTS_PREVIOUS,
   ).map((p) => ({
     content: truncateText(p.content, CONTEXT_LIMITS.MAX_POST_CONTENT_LENGTH),
     timestamp: p.timestamp,
@@ -202,10 +202,10 @@ export async function buildComprehensiveNPCContext(
         if (!actor.domain && !actor.affiliations) return false;
         const questionText = q.text.toLowerCase();
         const domainMatch = actor.domain?.some((d) =>
-          questionText.includes(d.toLowerCase())
+          questionText.includes(d.toLowerCase()),
         );
         const affiliationMatch = actor.affiliations?.some((a) =>
-          questionText.includes(a.toLowerCase())
+          questionText.includes(a.toLowerCase()),
         );
         return domainMatch || affiliationMatch;
       })
@@ -214,34 +214,34 @@ export async function buildComprehensiveNPCContext(
   const shuffledQuestions = shuffleArray(relatedQuestionsRaw);
   const relatedQuestions = truncateArray(
     shuffledQuestions,
-    CONTEXT_LIMITS.MAX_QUESTIONS_RELATED
+    CONTEXT_LIMITS.MAX_QUESTIONS_RELATED,
   ).map((q) => ({
     text: truncateText(q.text, CONTEXT_LIMITS.MAX_QUESTION_TEXT_LENGTH),
-    status: q.status || 'active',
+    status: q.status || "active",
     resolvedOutcome: q.resolvedOutcome ?? undefined,
   }));
 
   const relationships = simulationMode
     ? []
     : shuffleArray(
-        await RelationshipEvolutionEngine.getActorRelationships(actor.id)
+        await RelationshipEvolutionEngine.getActorRelationships(actor.id),
       )
         .slice(0, 10)
         .map((rel) => {
           const isActor1 = rel.actor1Id === actor.id;
           const otherActorId = isActor1 ? rel.actor2Id : rel.actor1Id;
-          const sentimentDesc: 'respect' | 'beef' | 'neutral' =
+          const sentimentDesc: "respect" | "beef" | "neutral" =
             rel.sentiment > 0.3
-              ? 'respect'
+              ? "respect"
               : rel.sentiment < -0.3
-                ? 'beef'
-                : 'neutral';
-          const strengthDesc: 'strong' | 'moderate' | 'weak' =
+                ? "beef"
+                : "neutral";
+          const strengthDesc: "strong" | "moderate" | "weak" =
             rel.strength > 0.7
-              ? 'strong'
+              ? "strong"
               : rel.strength > 0.4
-                ? 'moderate'
-                : 'weak';
+                ? "moderate"
+                : "weak";
 
           return {
             otherActorName: otherActorId,
@@ -260,10 +260,10 @@ export async function buildComprehensiveNPCContext(
       ? shuffleArray(npcContext.currentPositions)
           .slice(0, 5)
           .map((pos) => ({
-            market: ('ticker' in pos ? pos.ticker : 'unknown') as string,
-            side: ('side' in pos ? pos.side : 'unknown') as string,
+            market: ("ticker" in pos ? pos.ticker : "unknown") as string,
+            side: ("side" in pos ? pos.side : "unknown") as string,
             pnl:
-              'pnl' in pos && typeof pos.pnl === 'number' ? pos.pnl : undefined,
+              "pnl" in pos && typeof pos.pnl === "number" ? pos.pnl : undefined,
           }))
       : [];
   }
@@ -276,18 +276,18 @@ export async function buildComprehensiveNPCContext(
     .slice(-10);
   const ongoingNarratives =
     narrativeEvents.length > 0
-      ? narrativeEvents.map((e) => `- ${e.description}`).join('\n')
+      ? narrativeEvents.map((e) => `- ${e.description}`).join("\n")
       : undefined;
 
   return {
     personalEvents: shuffledPersonalEvents.map((e) => ({
-      type: e.type || 'unknown',
+      type: e.type || "unknown",
       description: e.description,
       timestamp: e.timestamp,
       pointsToward: e.pointsToward || undefined,
     })),
     recentEvents: recentEvents.map((e) => ({
-      type: e.type || 'unknown',
+      type: e.type || "unknown",
       description: e.description,
       timestamp: e.timestamp,
       actors: e.actors,
@@ -317,7 +317,7 @@ export function formatComprehensiveContext(
     maxPersonalEvents?: number;
     maxRecentEvents?: number;
     maxPreviousPosts?: number;
-  }
+  },
 ): string {
   const {
     includePersonalEvents = true,
@@ -334,20 +334,20 @@ export function formatComprehensiveContext(
   if (includePersonalEvents && context.personalEvents.length > 0) {
     const personalEventsText = truncateArray(
       context.personalEvents,
-      maxPersonalEvents
+      maxPersonalEvents,
     )
       .map((e, i) => {
         const day = extractDayFromTimestamp(e.timestamp);
         const pointsToward = e.pointsToward
           ? ` (points toward ${e.pointsToward})`
-          : '';
+          : "";
         const description = truncateText(
           e.description,
-          CONTEXT_LIMITS.MAX_EVENT_DESCRIPTION_LENGTH
+          CONTEXT_LIMITS.MAX_EVENT_DESCRIPTION_LENGTH,
         );
         return `${i + 1}. Day ${day}: [${e.type}] ${description}${pointsToward}`;
       })
-      .join('\n');
+      .join("\n");
 
     const sectionText =
       `=== EVENTS YOU WERE INVOLVED IN ===\n` +
@@ -360,22 +360,22 @@ export function formatComprehensiveContext(
   if (includeRecentEvents && context.recentEvents.length > 0) {
     const recentEventsText = truncateArray(
       context.recentEvents,
-      maxRecentEvents
+      maxRecentEvents,
     )
       .map((e, i) => {
         const day = extractDayFromTimestamp(e.timestamp);
         const actors =
           e.actors && e.actors.length > 0
-            ? ` (involved: ${truncateArray(e.actors, CONTEXT_LIMITS.MAX_ACTORS_PER_EVENT).join(', ')})`
-            : '';
-        const pointsToward = e.pointsToward ? ` → ${e.pointsToward}` : '';
+            ? ` (involved: ${truncateArray(e.actors, CONTEXT_LIMITS.MAX_ACTORS_PER_EVENT).join(", ")})`
+            : "";
+        const pointsToward = e.pointsToward ? ` → ${e.pointsToward}` : "";
         const description = truncateText(
           e.description,
-          CONTEXT_LIMITS.MAX_EVENT_DESCRIPTION_LENGTH
+          CONTEXT_LIMITS.MAX_EVENT_DESCRIPTION_LENGTH,
         );
         return `${i + 1}. Day ${day}: [${e.type}] ${description}${actors}${pointsToward}`;
       })
-      .join('\n');
+      .join("\n");
 
     const sectionText =
       `=== RECENT WORLD EVENTS ===\n` +
@@ -388,17 +388,17 @@ export function formatComprehensiveContext(
   if (includePreviousPosts && context.previousPosts.length > 0) {
     const previousPostsText = truncateArray(
       context.previousPosts,
-      maxPreviousPosts
+      maxPreviousPosts,
     )
       .map((p, i) => {
         const day = extractDayFromTimestamp(p.timestamp);
         const content = truncateText(
           p.content,
-          CONTEXT_LIMITS.MAX_POST_CONTENT_LENGTH
+          CONTEXT_LIMITS.MAX_POST_CONTENT_LENGTH,
         );
         return `${i + 1}. Day ${day}: "${content}"`;
       })
-      .join('\n');
+      .join("\n");
 
     const sectionText =
       `=== YOUR RECENT POSTS ===\n` +
@@ -415,20 +415,20 @@ export function formatComprehensiveContext(
   ) {
     const questionsText = truncateArray(
       context.relatedQuestions,
-      CONTEXT_LIMITS.MAX_QUESTIONS_RELATED
+      CONTEXT_LIMITS.MAX_QUESTIONS_RELATED,
     )
       .map((q, i) => {
         const status =
-          q.status === 'resolved' && q.resolvedOutcome !== undefined
-            ? ` (resolved: ${q.resolvedOutcome ? 'YES' : 'NO'})`
+          q.status === "resolved" && q.resolvedOutcome !== undefined
+            ? ` (resolved: ${q.resolvedOutcome ? "YES" : "NO"})`
             : ` (${q.status})`;
         const text = truncateText(
           q.text,
-          CONTEXT_LIMITS.MAX_QUESTION_TEXT_LENGTH
+          CONTEXT_LIMITS.MAX_QUESTION_TEXT_LENGTH,
         );
         return `${i + 1}. "${text}"${status}`;
       })
-      .join('\n');
+      .join("\n");
 
     const sectionText =
       `=== RELATED PREDICTION QUESTIONS ===\n` +
@@ -440,50 +440,50 @@ export function formatComprehensiveContext(
 
   if (context.relationships && context.relationships.length > 0) {
     const allies = context.relationships.filter(
-      (r) => r.sentiment === 'respect'
+      (r) => r.sentiment === "respect",
     );
-    const rivals = context.relationships.filter((r) => r.sentiment === 'beef');
+    const rivals = context.relationships.filter((r) => r.sentiment === "beef");
     const neutral = context.relationships.filter(
-      (r) => r.sentiment === 'neutral'
+      (r) => r.sentiment === "neutral",
     );
 
     if (allies.length > 0) {
       const alliesText = shuffleArray(allies)
         .map((r) => {
-          const historyNote = r.history ? ` - ${r.history}` : '';
+          const historyNote = r.history ? ` - ${r.history}` : "";
           return `  🟢 ${r.otherActorName} (${r.strength} ${r.type})${historyNote}`;
         })
-        .join('\n');
+        .join("\n");
 
       const allyFramings = shuffleArray([
         "When they post, agree. When they're attacked, defend.",
-        'Support their narratives. Their wins are your wins.',
-        'Co-sign their takes. Back them up in threads.',
+        "Support their narratives. Their wins are your wins.",
+        "Co-sign their takes. Back them up in threads.",
       ]);
 
       const sectionText = `=== YOUR ALLIES (SUPPORT THEM) ===\n${alliesText}\n→ ${allyFramings[0]}`;
       sections.push(
-        truncateText(sectionText, CONTEXT_LIMITS.MAX_SECTION_LENGTH)
+        truncateText(sectionText, CONTEXT_LIMITS.MAX_SECTION_LENGTH),
       );
     }
 
     if (rivals.length > 0) {
       const rivalsText = shuffleArray(rivals)
         .map((r) => {
-          const historyNote = r.history ? ` - ${r.history}` : '';
+          const historyNote = r.history ? ` - ${r.history}` : "";
           return `  🔴 ${r.otherActorName} (${r.strength} ${r.type})${historyNote}`;
         })
-        .join('\n');
+        .join("\n");
 
       const rivalFramings = shuffleArray([
-        'Subtweet them. Dunk on them. Clown their takes.',
-        'Look for opportunities to undermine them.',
+        "Subtweet them. Dunk on them. Clown their takes.",
+        "Look for opportunities to undermine them.",
         "When they lose, celebrate. When they're wrong, ratio.",
       ]);
 
       const sectionText = `=== YOUR RIVALS (ATTACK THEM) ===\n${rivalsText}\n→ ${rivalFramings[0]}`;
       sections.push(
-        truncateText(sectionText, CONTEXT_LIMITS.MAX_SECTION_LENGTH)
+        truncateText(sectionText, CONTEXT_LIMITS.MAX_SECTION_LENGTH),
       );
     }
 
@@ -491,11 +491,11 @@ export function formatComprehensiveContext(
       const neutralText = shuffleArray(neutral)
         .slice(0, 5)
         .map((r) => `  🤝 ${r.otherActorName} (${r.type})`)
-        .join('\n');
+        .join("\n");
 
       const sectionText = `=== OTHER RELATIONSHIPS ===\n${neutralText}`;
       sections.push(
-        truncateText(sectionText, CONTEXT_LIMITS.MAX_SECTION_LENGTH)
+        truncateText(sectionText, CONTEXT_LIMITS.MAX_SECTION_LENGTH),
       );
     }
   }
@@ -505,16 +505,16 @@ export function formatComprehensiveContext(
       .map((p) => {
         const pnlNote =
           p.pnl !== undefined
-            ? ` (${p.pnl >= 0 ? '+' : ''}${p.pnl.toFixed(2)} PnL)`
-            : '';
+            ? ` (${p.pnl >= 0 ? "+" : ""}${p.pnl.toFixed(2)} PnL)`
+            : "";
         return `- ${p.market}: ${p.side}${pnlNote}`;
       })
-      .join('\n');
+      .join("\n");
 
     const positionFramings = shuffleArray([
-      'Your positions influence your perspective - you WANT your bets to win.',
-      'You have SKIN IN THE GAME. These positions shape your takes.',
-      'Money talks. Your bag affects your beliefs (or at least your public takes).',
+      "Your positions influence your perspective - you WANT your bets to win.",
+      "You have SKIN IN THE GAME. These positions shape your takes.",
+      "Money talks. Your bag affects your beliefs (or at least your public takes).",
     ]);
 
     const sectionText =
@@ -525,6 +525,6 @@ export function formatComprehensiveContext(
   }
 
   const shuffledSections = shuffleArray(sections);
-  const fullContext = shuffledSections.join('\n\n');
+  const fullContext = shuffledSections.join("\n\n");
   return truncateText(fullContext, CONTEXT_LIMITS.MAX_TOTAL_CONTEXT_LENGTH);
 }

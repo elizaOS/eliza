@@ -1,8 +1,8 @@
-import { definePrompt } from '../define-prompt';
+import { definePrompt } from "../define-prompt";
 import {
   NARRATIVE_CONTINUITY_RULES,
   PARODY_NAME_RULES,
-} from '../shared-sections';
+} from "../shared-sections";
 
 /**
  * Prompt for generating news reports from journalists covering game events.
@@ -15,10 +15,10 @@ import {
  * Returns XML with news report.
  */
 export const newsReport = definePrompt({
-  id: 'news-report',
-  version: '4.0.0',
-  category: 'world',
-  description: 'Generates news reports with full character context',
+  id: "news-report",
+  version: "4.0.0",
+  category: "world",
+  description: "Generates news reports with full character context",
   temperature: 0.8,
   maxTokens: 1500,
   template: `{{realityGrounding}}

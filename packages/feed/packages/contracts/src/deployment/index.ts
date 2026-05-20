@@ -12,6 +12,6 @@
  * import directly from `@feed/contracts/deployment/validation-node`.
  */
 
-export * from './addresses';
-export * from './env-detection';
-export * from './validation';
+export * from "./addresses";
+export * from "./env-detection";
+export * from "./validation";

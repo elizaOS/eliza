@@ -12,140 +12,140 @@
  * Run with: bun test unit/nft-gallery-api.test.ts
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from "bun:test";
 
 // Constants for validation testing
 const VALID_TOKEN_ID = 1;
 const MAX_TOKEN_ID = 100;
-const VALID_WALLET = '0x1234567890123456789012345678901234567890';
+const VALID_WALLET = "0x1234567890123456789012345678901234567890";
 const VALID_TX_HASH =
-  '0x1234567890123456789012345678901234567890123456789012345678901234';
+  "0x1234567890123456789012345678901234567890123456789012345678901234";
 
-describe('NFT Gallery API - Input Validation', () => {
-  describe('Token ID Validation', () => {
-    test('should accept valid token ID within range (1-100)', () => {
+describe("NFT Gallery API - Input Validation", () => {
+  describe("Token ID Validation", () => {
+    test("should accept valid token ID within range (1-100)", () => {
       expect(VALID_TOKEN_ID).toBeGreaterThanOrEqual(1);
       expect(VALID_TOKEN_ID).toBeLessThanOrEqual(MAX_TOKEN_ID);
     });
 
-    test('should accept token ID 1 (boundary)', () => {
+    test("should accept token ID 1 (boundary)", () => {
       const minTokenId = 1;
       expect(minTokenId).toBeGreaterThanOrEqual(1);
     });
 
-    test('should accept token ID 100 (boundary)', () => {
+    test("should accept token ID 100 (boundary)", () => {
       const maxTokenId = 100;
       expect(maxTokenId).toBeLessThanOrEqual(MAX_TOKEN_ID);
     });
 
-    test('should reject token ID 0', () => {
+    test("should reject token ID 0", () => {
       const invalidTokenId = 0;
       expect(invalidTokenId).toBeLessThan(1);
     });
 
-    test('should reject negative token IDs', () => {
+    test("should reject negative token IDs", () => {
       const negativeTokenId = -1;
       expect(negativeTokenId).toBeLessThan(1);
     });
 
-    test('should reject token ID above 100', () => {
+    test("should reject token ID above 100", () => {
       const aboveMaxTokenId = 101;
       expect(aboveMaxTokenId).toBeGreaterThan(MAX_TOKEN_ID);
     });
 
-    test('should reject non-integer token IDs', () => {
+    test("should reject non-integer token IDs", () => {
       const floatTokenId = 1.5;
       expect(Number.isInteger(floatTokenId)).toBe(false);
     });
 
-    test('should parse string token ID to integer', () => {
-      const stringTokenId = '42';
+    test("should parse string token ID to integer", () => {
+      const stringTokenId = "42";
       const parsed = parseInt(stringTokenId, 10);
       expect(parsed).toBe(42);
       expect(Number.isInteger(parsed)).toBe(true);
     });
 
-    test('should reject NaN from invalid string', () => {
-      const invalidString = 'not-a-number';
+    test("should reject NaN from invalid string", () => {
+      const invalidString = "not-a-number";
       const parsed = parseInt(invalidString, 10);
-      expect(isNaN(parsed)).toBe(true);
+      expect(Number.isNaN(parsed)).toBe(true);
     });
   });
 
-  describe('Pagination Validation', () => {
+  describe("Pagination Validation", () => {
     const DEFAULT_PAGE = 1;
     const DEFAULT_LIMIT = 20;
     const MAX_LIMIT = 100;
 
-    test('should use default page 1 when not specified', () => {
+    test("should use default page 1 when not specified", () => {
       const pageParam: number | undefined = undefined;
       const page = pageParam ?? DEFAULT_PAGE;
       expect(page).toBe(1);
     });
 
-    test('should use default limit 20 when not specified', () => {
+    test("should use default limit 20 when not specified", () => {
       const limitParam: number | undefined = undefined;
       const limit = limitParam ?? DEFAULT_LIMIT;
       expect(limit).toBe(20);
     });
 
-    test('should clamp limit to MAX_LIMIT', () => {
+    test("should clamp limit to MAX_LIMIT", () => {
       const requestedLimit = 500;
       const clampedLimit = Math.min(requestedLimit, MAX_LIMIT);
       expect(clampedLimit).toBe(MAX_LIMIT);
     });
 
-    test('should accept page 1 (boundary)', () => {
+    test("should accept page 1 (boundary)", () => {
       const page = 1;
       expect(page).toBeGreaterThanOrEqual(1);
     });
 
-    test('should reject page 0', () => {
+    test("should reject page 0", () => {
       const page = 0;
       const corrected = Math.max(1, page);
       expect(corrected).toBe(1);
     });
 
-    test('should reject negative page', () => {
+    test("should reject negative page", () => {
       const page = -5;
       const corrected = Math.max(1, page);
       expect(corrected).toBe(1);
     });
 
-    test('should accept limit 1 (boundary)', () => {
+    test("should accept limit 1 (boundary)", () => {
       const limit = 1;
       const clamped = Math.max(1, Math.min(limit, MAX_LIMIT));
       expect(clamped).toBe(1);
     });
 
-    test('should correct limit 0 to minimum 1', () => {
+    test("should correct limit 0 to minimum 1", () => {
       const limit = 0;
       const corrected = Math.max(1, limit);
       expect(corrected).toBe(1);
     });
 
-    test('should calculate correct offset', () => {
+    test("should calculate correct offset", () => {
       const page = 3;
       const limit = 20;
       const offset = (page - 1) * limit;
       expect(offset).toBe(40);
     });
 
-    test('should calculate total pages correctly', () => {
+    test("should calculate total pages correctly", () => {
       const totalItems = 100;
       const limit = 20;
       const totalPages = Math.ceil(totalItems / limit);
       expect(totalPages).toBe(5);
     });
 
-    test('should handle edge case when total is 0', () => {
+    test("should handle edge case when total is 0", () => {
       const totalItems = 0;
       const limit = 20;
       const totalPages = Math.ceil(totalItems / limit);
       expect(totalPages).toBe(0);
     });
 
-    test('should handle edge case when total equals limit', () => {
+    test("should handle edge case when total equals limit", () => {
       const totalItems = 20;
       const limit = 20;
       const totalPages = Math.ceil(totalItems / limit);
@@ -153,151 +153,151 @@ describe('NFT Gallery API - Input Validation', () => {
     });
   });
 
-  describe('Filter Validation', () => {
+  describe("Filter Validation", () => {
     function isValidClaimedFilter(filter: string | null): boolean {
-      return filter === 'true' || filter === 'false' || filter === null;
+      return filter === "true" || filter === "false" || filter === null;
     }
 
     function isValidSortOrder(order: string): boolean {
-      return order === 'asc' || order === 'desc';
+      return order === "asc" || order === "desc";
     }
 
     test('should accept claimed filter "true"', () => {
-      expect(isValidClaimedFilter('true')).toBe(true);
+      expect(isValidClaimedFilter("true")).toBe(true);
     });
 
     test('should accept claimed filter "false"', () => {
-      expect(isValidClaimedFilter('false')).toBe(true);
+      expect(isValidClaimedFilter("false")).toBe(true);
     });
 
-    test('should accept null claimed filter (show all)', () => {
+    test("should accept null claimed filter (show all)", () => {
       expect(isValidClaimedFilter(null)).toBe(true);
     });
 
     test('should accept valid sort field "tokenId"', () => {
-      const sort = 'tokenId';
-      const validSortFields = ['tokenId', 'name', 'claimedAt'];
+      const sort = "tokenId";
+      const validSortFields = ["tokenId", "name", "claimedAt"];
       expect(validSortFields).toContain(sort);
     });
 
     test('should accept valid sort field "name"', () => {
-      const sort = 'name';
-      const validSortFields = ['tokenId', 'name', 'claimedAt'];
+      const sort = "name";
+      const validSortFields = ["tokenId", "name", "claimedAt"];
       expect(validSortFields).toContain(sort);
     });
 
     test('should default invalid sort field to "tokenId"', () => {
-      const sort = 'invalid';
-      const validSortFields = ['tokenId', 'name', 'claimedAt'];
-      const effectiveSort = validSortFields.includes(sort) ? sort : 'tokenId';
-      expect(effectiveSort).toBe('tokenId');
+      const sort = "invalid";
+      const validSortFields = ["tokenId", "name", "claimedAt"];
+      const effectiveSort = validSortFields.includes(sort) ? sort : "tokenId";
+      expect(effectiveSort).toBe("tokenId");
     });
 
     test('should accept valid sort order "asc"', () => {
-      expect(isValidSortOrder('asc')).toBe(true);
+      expect(isValidSortOrder("asc")).toBe(true);
     });
 
     test('should accept valid sort order "desc"', () => {
-      expect(isValidSortOrder('desc')).toBe(true);
+      expect(isValidSortOrder("desc")).toBe(true);
     });
 
     test('should default invalid sort order to "asc"', () => {
-      const order: string = 'invalid';
+      const order: string = "invalid";
       const effectiveOrder =
-        order === 'asc' || order === 'desc' ? order : 'asc';
-      expect(effectiveOrder).toBe('asc');
+        order === "asc" || order === "desc" ? order : "asc";
+      expect(effectiveOrder).toBe("asc");
     });
 
-    test('should handle search query trimming', () => {
-      const searchQuery = '  Feed  ';
+    test("should handle search query trimming", () => {
+      const searchQuery = "  Feed  ";
       const trimmed = searchQuery.trim();
-      expect(trimmed).toBe('Feed');
+      expect(trimmed).toBe("Feed");
     });
 
-    test('should handle empty search query', () => {
-      const searchQuery = '   ';
+    test("should handle empty search query", () => {
+      const searchQuery = "   ";
       const trimmed = searchQuery.trim();
-      expect(trimmed).toBe('');
+      expect(trimmed).toBe("");
       expect(trimmed.length === 0).toBe(true);
     });
 
-    test('should parse token ID from search query', () => {
-      const searchQuery = '42';
+    test("should parse token ID from search query", () => {
+      const searchQuery = "42";
       const tokenIdSearch = parseInt(searchQuery.trim(), 10);
       expect(tokenIdSearch).toBe(42);
-      expect(isNaN(tokenIdSearch)).toBe(false);
+      expect(Number.isNaN(tokenIdSearch)).toBe(false);
     });
   });
 
-  describe('Wallet Address Validation', () => {
-    test('should accept valid Ethereum address format', () => {
+  describe("Wallet Address Validation", () => {
+    test("should accept valid Ethereum address format", () => {
       const address = VALID_WALLET;
       const isValid = /^0x[a-fA-F0-9]{40}$/.test(address);
       expect(isValid).toBe(true);
     });
 
-    test('should accept lowercase address', () => {
-      const address = '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd';
+    test("should accept lowercase address", () => {
+      const address = "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd";
       const isValid = /^0x[a-fA-F0-9]{40}$/.test(address);
       expect(isValid).toBe(true);
     });
 
-    test('should accept uppercase address', () => {
-      const address = '0xABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCD';
+    test("should accept uppercase address", () => {
+      const address = "0xABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCD";
       const isValid = /^0x[a-fA-F0-9]{40}$/.test(address);
       expect(isValid).toBe(true);
     });
 
-    test('should reject address without 0x prefix', () => {
-      const address = 'abcdefabcdefabcdefabcdefabcdefabcdefabcd';
+    test("should reject address without 0x prefix", () => {
+      const address = "abcdefabcdefabcdefabcdefabcdefabcdefabcd";
       const isValid = /^0x[a-fA-F0-9]{40}$/.test(address);
       expect(isValid).toBe(false);
     });
 
-    test('should reject address with wrong length', () => {
-      const shortAddress = '0x1234567890';
+    test("should reject address with wrong length", () => {
+      const shortAddress = "0x1234567890";
       const isValid = /^0x[a-fA-F0-9]{40}$/.test(shortAddress);
       expect(isValid).toBe(false);
     });
 
-    test('should reject address with invalid characters', () => {
-      const invalidAddress = '0xGHIJKLMNOPQRSTUVWXYZ0123456789012345678';
+    test("should reject address with invalid characters", () => {
+      const invalidAddress = "0xGHIJKLMNOPQRSTUVWXYZ0123456789012345678";
       const isValid = /^0x[a-fA-F0-9]{40}$/.test(invalidAddress);
       expect(isValid).toBe(false);
     });
 
-    test('should normalize address to lowercase', () => {
-      const mixedCase = '0xAbCdEf1234567890AbCdEf1234567890AbCdEf12';
+    test("should normalize address to lowercase", () => {
+      const mixedCase = "0xAbCdEf1234567890AbCdEf1234567890AbCdEf12";
       const normalized = mixedCase.toLowerCase();
-      expect(normalized).toBe('0xabcdef1234567890abcdef1234567890abcdef12');
+      expect(normalized).toBe("0xabcdef1234567890abcdef1234567890abcdef12");
     });
   });
 
-  describe('Transaction Hash Validation', () => {
-    test('should accept valid transaction hash format', () => {
+  describe("Transaction Hash Validation", () => {
+    test("should accept valid transaction hash format", () => {
       const txHash = VALID_TX_HASH;
       const isValid = /^0x[a-fA-F0-9]{64}$/.test(txHash);
       expect(isValid).toBe(true);
     });
 
-    test('should reject transaction hash with wrong length', () => {
-      const shortHash = '0x1234567890';
+    test("should reject transaction hash with wrong length", () => {
+      const shortHash = "0x1234567890";
       const isValid = /^0x[a-fA-F0-9]{64}$/.test(shortHash);
       expect(isValid).toBe(false);
     });
 
-    test('should reject transaction hash without 0x prefix', () => {
+    test("should reject transaction hash without 0x prefix", () => {
       const noPrefix =
-        '1234567890123456789012345678901234567890123456789012345678901234';
+        "1234567890123456789012345678901234567890123456789012345678901234";
       const isValid = /^0x[a-fA-F0-9]{64}$/.test(noPrefix);
       expect(isValid).toBe(false);
     });
   });
 });
 
-describe('NFT Gallery API - Response Structure', () => {
-  describe('Gallery Response Structure', () => {
-    test('should have correct pagination structure', () => {
+describe("NFT Gallery API - Response Structure", () => {
+  describe("Gallery Response Structure", () => {
+    test("should have correct pagination structure", () => {
       const pagination = {
         page: 1,
         limit: 20,
@@ -305,81 +305,81 @@ describe('NFT Gallery API - Response Structure', () => {
         totalPages: 5,
       };
 
-      expect(pagination).toHaveProperty('page');
-      expect(pagination).toHaveProperty('limit');
-      expect(pagination).toHaveProperty('total');
-      expect(pagination).toHaveProperty('totalPages');
-      expect(typeof pagination.page).toBe('number');
-      expect(typeof pagination.limit).toBe('number');
-      expect(typeof pagination.total).toBe('number');
-      expect(typeof pagination.totalPages).toBe('number');
+      expect(pagination).toHaveProperty("page");
+      expect(pagination).toHaveProperty("limit");
+      expect(pagination).toHaveProperty("total");
+      expect(pagination).toHaveProperty("totalPages");
+      expect(typeof pagination.page).toBe("number");
+      expect(typeof pagination.limit).toBe("number");
+      expect(typeof pagination.total).toBe("number");
+      expect(typeof pagination.totalPages).toBe("number");
     });
 
-    test('should have correct stats structure', () => {
+    test("should have correct stats structure", () => {
       const stats = {
         totalNfts: 100,
         claimedCount: 42,
         unclaimedCount: 58,
       };
 
-      expect(stats).toHaveProperty('totalNfts');
-      expect(stats).toHaveProperty('claimedCount');
-      expect(stats).toHaveProperty('unclaimedCount');
+      expect(stats).toHaveProperty("totalNfts");
+      expect(stats).toHaveProperty("claimedCount");
+      expect(stats).toHaveProperty("unclaimedCount");
       expect(stats.totalNfts).toBe(stats.claimedCount + stats.unclaimedCount);
     });
 
-    test('should have correct NFT summary structure', () => {
+    test("should have correct NFT summary structure", () => {
       const nftSummary = {
         tokenId: 1,
-        name: 'Test NFT',
-        thumbnailUrl: 'https://example.com/thumb.jpg',
-        imageUrl: 'https://example.com/image.jpg',
+        name: "Test NFT",
+        thumbnailUrl: "https://example.com/thumb.jpg",
+        imageUrl: "https://example.com/image.jpg",
         owner: null,
       };
 
-      expect(nftSummary).toHaveProperty('tokenId');
-      expect(nftSummary).toHaveProperty('name');
-      expect(nftSummary).toHaveProperty('thumbnailUrl');
-      expect(nftSummary).toHaveProperty('imageUrl');
-      expect(nftSummary).toHaveProperty('owner');
+      expect(nftSummary).toHaveProperty("tokenId");
+      expect(nftSummary).toHaveProperty("name");
+      expect(nftSummary).toHaveProperty("thumbnailUrl");
+      expect(nftSummary).toHaveProperty("imageUrl");
+      expect(nftSummary).toHaveProperty("owner");
     });
 
-    test('should have correct owner info structure when claimed', () => {
+    test("should have correct owner info structure when claimed", () => {
       const owner = {
         walletAddress: VALID_WALLET,
         user: {
-          id: 'user123',
-          username: 'testuser',
-          displayName: 'Test User',
-          profileImageUrl: 'https://example.com/avatar.jpg',
+          id: "user123",
+          username: "testuser",
+          displayName: "Test User",
+          profileImageUrl: "https://example.com/avatar.jpg",
         },
-        acquiredAt: '2024-01-01T00:00:00.000Z',
+        acquiredAt: "2024-01-01T00:00:00.000Z",
         txHash: VALID_TX_HASH,
       };
 
-      expect(owner).toHaveProperty('walletAddress');
-      expect(owner).toHaveProperty('user');
-      expect(owner).toHaveProperty('acquiredAt');
-      expect(owner).toHaveProperty('txHash');
-      expect(owner.user).toHaveProperty('id');
-      expect(owner.user).toHaveProperty('username');
+      expect(owner).toHaveProperty("walletAddress");
+      expect(owner).toHaveProperty("user");
+      expect(owner).toHaveProperty("acquiredAt");
+      expect(owner).toHaveProperty("txHash");
+      expect(owner.user).toHaveProperty("id");
+      expect(owner.user).toHaveProperty("username");
     });
 
-    test('should allow null owner for unclaimed NFTs', () => {
+    test("should allow null owner for unclaimed NFTs", () => {
       const nft = {
         tokenId: 1,
-        name: 'Unclaimed NFT',
+        name: "Unclaimed NFT",
         owner: null,
       };
 
       expect(nft.owner).toBeNull();
     });
 
-    test('should allow null user in owner for external wallets', () => {
+    test("should allow null user in owner for external wallets", () => {
       const owner = {
         walletAddress: VALID_WALLET,
         user: null,
-        acquiredAt: '2024-01-01T00:00:00.000Z',
+        acquiredAt: "2024-01-01T00:00:00.000Z",
         txHash: VALID_TX_HASH,
       };
 
@@ -387,99 +387,99 @@ describe('NFT Gallery API - Response Structure', () => {
     });
   });
 
-  describe('NFT Detail Response Structure', () => {
-    test('should have complete NFT detail structure', () => {
+  describe("NFT Detail Response Structure", () => {
+    test("should have complete NFT detail structure", () => {
       const nftDetail = {
         tokenId: 1,
-        name: 'Test NFT',
-        description: 'A test NFT',
-        imageUrl: 'https://example.com/image.jpg',
-        thumbnailUrl: 'https://example.com/thumb.jpg',
-        imageCid: 'QmTest...',
-        imageResolution: '4096x4096',
-        metadataUri: 'ipfs://QmTest...',
+        name: "Test NFT",
+        description: "A test NFT",
+        imageUrl: "https://example.com/image.jpg",
+        thumbnailUrl: "https://example.com/thumb.jpg",
+        imageCid: "QmTest...",
+        imageResolution: "4096x4096",
+        metadataUri: "ipfs://QmTest...",
         story: {
-          title: 'The Story',
-          content: 'Once upon a time...',
+          title: "The Story",
+          content: "Once upon a time...",
         },
-        attributes: [{ trait_type: 'Edition', value: 'Genesis' }],
+        attributes: [{ trait_type: "Edition", value: "Genesis" }],
         contractAddress: VALID_WALLET,
         chainId: 1,
         currentOwner: null,
         originalClaim: null,
       };
 
-      expect(nftDetail).toHaveProperty('tokenId');
-      expect(nftDetail).toHaveProperty('name');
-      expect(nftDetail).toHaveProperty('description');
-      expect(nftDetail).toHaveProperty('story');
-      expect(nftDetail).toHaveProperty('attributes');
-      expect(nftDetail).toHaveProperty('currentOwner');
-      expect(nftDetail).toHaveProperty('originalClaim');
-      expect(nftDetail.imageResolution).toBe('4096x4096');
+      expect(nftDetail).toHaveProperty("tokenId");
+      expect(nftDetail).toHaveProperty("name");
+      expect(nftDetail).toHaveProperty("description");
+      expect(nftDetail).toHaveProperty("story");
+      expect(nftDetail).toHaveProperty("attributes");
+      expect(nftDetail).toHaveProperty("currentOwner");
+      expect(nftDetail).toHaveProperty("originalClaim");
+      expect(nftDetail.imageResolution).toBe("4096x4096");
     });
 
-    test('should have correct claim info structure', () => {
+    test("should have correct claim info structure", () => {
       const claimInfo = {
-        claimedAt: '2024-01-01T00:00:00.000Z',
+        claimedAt: "2024-01-01T00:00:00.000Z",
         claimerAddress: VALID_WALLET,
-        claimerUserId: 'user123',
+        claimerUserId: "user123",
         snapshotRank: 42,
         snapshotPoints: 10000,
         txHash: VALID_TX_HASH,
       };
 
-      expect(claimInfo).toHaveProperty('claimedAt');
-      expect(claimInfo).toHaveProperty('claimerAddress');
-      expect(claimInfo).toHaveProperty('snapshotRank');
-      expect(claimInfo).toHaveProperty('snapshotPoints');
-      expect(claimInfo).toHaveProperty('txHash');
+      expect(claimInfo).toHaveProperty("claimedAt");
+      expect(claimInfo).toHaveProperty("claimerAddress");
+      expect(claimInfo).toHaveProperty("snapshotRank");
+      expect(claimInfo).toHaveProperty("snapshotPoints");
+      expect(claimInfo).toHaveProperty("txHash");
     });
 
-    test('should have correct attribute structure', () => {
+    test("should have correct attribute structure", () => {
       const attributes = [
-        { trait_type: 'Collection', value: 'Feed Top 100' },
-        { trait_type: 'Token Number', value: 42 },
-        { trait_type: 'Edition', value: 'Genesis' },
+        { trait_type: "Collection", value: "Feed Top 100" },
+        { trait_type: "Token Number", value: 42 },
+        { trait_type: "Edition", value: "Genesis" },
       ];
 
       attributes.forEach((attr) => {
-        expect(attr).toHaveProperty('trait_type');
-        expect(attr).toHaveProperty('value');
-        expect(typeof attr.trait_type).toBe('string');
+        expect(attr).toHaveProperty("trait_type");
+        expect(attr).toHaveProperty("value");
+        expect(typeof attr.trait_type).toBe("string");
       });
     });
   });
 
-  describe('Eligibility Response Structure', () => {
-    test('should have correct structure for eligible user', () => {
+  describe("Eligibility Response Structure", () => {
+    test("should have correct structure for eligible user", () => {
       const eligibility = {
         eligible: true,
-        status: 'eligible',
+        status: "eligible",
         snapshotRank: 42,
         snapshotPoints: 10000,
-        snapshotTakenAt: '2024-01-01T00:00:00.000Z',
+        snapshotTakenAt: "2024-01-01T00:00:00.000Z",
         hasMinted: false,
       };
 
       expect(eligibility.eligible).toBe(true);
-      expect(eligibility.status).toBe('eligible');
+      expect(eligibility.status).toBe("eligible");
       expect(eligibility.hasMinted).toBe(false);
-      expect(eligibility).toHaveProperty('snapshotRank');
-      expect(eligibility).toHaveProperty('snapshotPoints');
+      expect(eligibility).toHaveProperty("snapshotRank");
+      expect(eligibility).toHaveProperty("snapshotPoints");
     });
 
-    test('should have correct structure for already minted user', () => {
+    test("should have correct structure for already minted user", () => {
       const eligibility = {
         eligible: true,
-        status: 'already_minted',
+        status: "already_minted",
         snapshotRank: 42,
         snapshotPoints: 10000,
         hasMinted: true,
         mintedNft: {
           tokenId: 7,
-          name: 'My NFT',
-          thumbnailUrl: 'https://example.com/thumb.jpg',
+          name: "My NFT",
+          thumbnailUrl: "https://example.com/thumb.jpg",
           txHash: VALID_TX_HASH,
         },
       };
@@ -490,62 +490,62 @@ describe('NFT Gallery API - Response Structure', () => {
       expect(eligibility.mintedNft?.tokenId).toBe(7);
     });
 
-    test('should have correct structure for ineligible user', () => {
+    test("should have correct structure for ineligible user", () => {
       const eligibility = {
         eligible: false,
-        status: 'not_eligible',
+        status: "not_eligible",
         hasMinted: false,
-        reason: 'not_in_top_100',
+        reason: "not_in_top_100",
       };
 
       expect(eligibility.eligible).toBe(false);
-      expect(eligibility.status).toBe('not_eligible');
-      expect(eligibility).toHaveProperty('reason');
+      expect(eligibility.status).toBe("not_eligible");
+      expect(eligibility).toHaveProperty("reason");
     });
   });
 
-  describe('Mint Response Structure', () => {
-    test('should have correct prepare response structure', () => {
+  describe("Mint Response Structure", () => {
+    test("should have correct prepare response structure", () => {
       const prepareResponse = {
         contractAddress: VALID_WALLET,
         chainId: 1,
-        functionName: 'mint',
+        functionName: "mint",
         args: [VALID_WALLET],
-        value: '0',
+        value: "0",
       };
 
-      expect(prepareResponse).toHaveProperty('contractAddress');
-      expect(prepareResponse).toHaveProperty('chainId');
-      expect(prepareResponse).toHaveProperty('functionName');
-      expect(prepareResponse).toHaveProperty('args');
-      expect(prepareResponse).toHaveProperty('value');
+      expect(prepareResponse).toHaveProperty("contractAddress");
+      expect(prepareResponse).toHaveProperty("chainId");
+      expect(prepareResponse).toHaveProperty("functionName");
+      expect(prepareResponse).toHaveProperty("args");
+      expect(prepareResponse).toHaveProperty("value");
       expect(Array.isArray(prepareResponse.args)).toBe(true);
     });
 
-    test('should have correct confirm response structure', () => {
+    test("should have correct confirm response structure", () => {
       const confirmResponse = {
         success: true,
         tokenId: 42,
         nft: {
           tokenId: 42,
-          name: 'Minted NFT',
-          imageUrl: 'https://example.com/image.jpg',
-          thumbnailUrl: 'https://example.com/thumb.jpg',
-          storyTitle: 'The Story',
+          name: "Minted NFT",
+          imageUrl: "https://example.com/image.jpg",
+          thumbnailUrl: "https://example.com/thumb.jpg",
+          storyTitle: "The Story",
         },
       };
 
       expect(confirmResponse.success).toBe(true);
-      expect(confirmResponse).toHaveProperty('tokenId');
-      expect(confirmResponse).toHaveProperty('nft');
+      expect(confirmResponse).toHaveProperty("tokenId");
+      expect(confirmResponse).toHaveProperty("nft");
       expect(confirmResponse.nft.tokenId).toBe(confirmResponse.tokenId);
     });
   });
 });
 
-describe('NFT Gallery API - Edge Cases', () => {
-  describe('Empty States', () => {
-    test('should handle empty NFT collection gracefully', () => {
+describe("NFT Gallery API - Edge Cases", () => {
+  describe("Empty States", () => {
+    test("should handle empty NFT collection gracefully", () => {
       const response = {
         nfts: [],
         pagination: { page: 1, limit: 20, total: 0, totalPages: 0 },
@@ -557,7 +557,7 @@ describe('NFT Gallery API - Edge Cases', () => {
       expect(response.pagination.totalPages).toBe(0);
     });
 
-    test('should handle page beyond available data', () => {
+    test("should handle page beyond available data", () => {
       const totalNfts = 100;
       const limit = 20;
       const totalPages = Math.ceil(totalNfts / limit);
@@ -567,7 +567,7 @@ describe('NFT Gallery API - Edge Cases', () => {
       expect(requestedPage).toBeGreaterThan(totalPages);
     });
 
-    test('should handle filter that returns no results', () => {
+    test("should handle filter that returns no results", () => {
       const stats = {
         totalNfts: 100,
         claimedCount: 100,
@@ -579,22 +579,22 @@ describe('NFT Gallery API - Edge Cases', () => {
     });
   });
 
-  describe('Boundary Values', () => {
-    test('should handle exactly 100 NFTs', () => {
+  describe("Boundary Values", () => {
+    test("should handle exactly 100 NFTs", () => {
       const totalNfts = 100;
       const limit = 20;
       const totalPages = Math.ceil(totalNfts / limit);
       expect(totalPages).toBe(5);
     });
 
-    test('should handle single NFT', () => {
+    test("should handle single NFT", () => {
       const totalNfts = 1;
       const limit = 20;
       const totalPages = Math.ceil(totalNfts / limit);
       expect(totalPages).toBe(1);
     });
 
-    test('should handle all NFTs claimed', () => {
+    test("should handle all NFTs claimed", () => {
       const stats = {
         totalNfts: 100,
         claimedCount: 100,
@@ -603,7 +603,7 @@ describe('NFT Gallery API - Edge Cases', () => {
       expect(stats.claimedCount).toBe(stats.totalNfts);
     });
 
-    test('should handle no NFTs claimed', () => {
+    test("should handle no NFTs claimed", () => {
       const stats = {
         totalNfts: 100,
         claimedCount: 0,
@@ -612,46 +612,46 @@ describe('NFT Gallery API - Edge Cases', () => {
       expect(stats.unclaimedCount).toBe(stats.totalNfts);
     });
 
-    test('should handle rank 1 (top user)', () => {
+    test("should handle rank 1 (top user)", () => {
       const rank = 1;
       expect(rank).toBeGreaterThanOrEqual(1);
       expect(rank).toBeLessThanOrEqual(100);
     });
 
-    test('should handle rank 100 (last eligible user)', () => {
+    test("should handle rank 100 (last eligible user)", () => {
       const rank = 100;
       expect(rank).toBeLessThanOrEqual(100);
     });
   });
 
-  describe('Special Characters', () => {
-    test('should handle NFT name with special characters', () => {
+  describe("Special Characters", () => {
+    test("should handle NFT name with special characters", () => {
       const name = "The Oracle's Quest: A Tale of Fire & Ice";
       expect(name.length).toBeGreaterThan(0);
     });
 
-    test('should handle NFT name with unicode', () => {
-      const name = 'The Eternal ✨ Guardian 🛡️';
+    test("should handle NFT name with unicode", () => {
+      const name = "The Eternal ✨ Guardian 🛡️";
       expect(name.length).toBeGreaterThan(0);
     });
 
-    test('should handle search query with special characters', () => {
+    test("should handle search query with special characters", () => {
       const query = "Fire & Ice's Quest";
-      const escaped = query.replace(/[%_]/g, '\\$&');
+      const escaped = query.replace(/[%_]/g, "\\$&");
       expect(escaped).toBeDefined();
     });
 
-    test('should handle SQL injection attempts in search', () => {
+    test("should handle SQL injection attempts in search", () => {
       const maliciousQuery = "'; DROP TABLE nfts; --";
       // Should be safely parameterized in SQL query
       const safeQuery = `%${maliciousQuery}%`;
-      expect(safeQuery).toContain('DROP TABLE');
+      expect(safeQuery).toContain("DROP TABLE");
       // Parameterized queries prevent injection
     });
   });
 
-  describe('Concurrent Operations', () => {
-    test('should handle race condition detection for minting', () => {
+  describe("Concurrent Operations", () => {
+    test("should handle race condition detection for minting", () => {
       // Simulate two mint requests arriving simultaneously
       const snapshotEntry = { hasMinted: false };
 
@@ -667,7 +667,7 @@ describe('NFT Gallery API - Edge Cases', () => {
       expect(canMint2).toBe(false);
     });
 
-    test('should handle all NFTs being claimed simultaneously', () => {
+    test("should handle all NFTs being claimed simultaneously", () => {
       let availableNfts = 5;
 
       // Simulate concurrent claims
@@ -691,95 +691,95 @@ describe('NFT Gallery API - Edge Cases', () => {
   });
 });
 
-describe('NFT Gallery API - Error Cases', () => {
-  describe('Authentication Errors', () => {
-    test('should require authentication for eligibility check', () => {
+describe("NFT Gallery API - Error Cases", () => {
+  describe("Authentication Errors", () => {
+    test("should require authentication for eligibility check", () => {
       // Eligibility endpoint requires authentication
       const isAuthenticated = false;
       expect(isAuthenticated).toBe(false);
       // Should return 401
     });
 
-    test('should require authentication for mint prepare', () => {
+    test("should require authentication for mint prepare", () => {
       const isAuthenticated = false;
       expect(isAuthenticated).toBe(false);
       // Should return 401
     });
 
-    test('should require authentication for mint confirm', () => {
+    test("should require authentication for mint confirm", () => {
       const isAuthenticated = false;
       expect(isAuthenticated).toBe(false);
       // Should return 401
     });
   });
 
-  describe('Authorization Errors', () => {
-    test('should reject mint for ineligible user', () => {
-      const eligibility = { eligible: false, status: 'not_eligible' };
+  describe("Authorization Errors", () => {
+    test("should reject mint for ineligible user", () => {
+      const eligibility = { eligible: false, status: "not_eligible" };
       expect(eligibility.eligible).toBe(false);
       // Should return 403
     });
 
-    test('should reject double mint', () => {
+    test("should reject double mint", () => {
       const eligibility = { eligible: true, hasMinted: true };
       expect(eligibility.hasMinted).toBe(true);
       // Should return 409 Conflict
     });
 
-    test('should reject mint with wrong wallet', () => {
-      const userWallet = '0x1111111111111111111111111111111111111111';
-      const requestWallet = '0x2222222222222222222222222222222222222222';
+    test("should reject mint with wrong wallet", () => {
+      const userWallet = "0x1111111111111111111111111111111111111111";
+      const requestWallet = "0x2222222222222222222222222222222222222222";
       expect(userWallet.toLowerCase()).not.toBe(requestWallet.toLowerCase());
       // Should return 403
     });
   });
 
-  describe('Not Found Errors', () => {
-    test('should return 404 for non-existent token ID', () => {
+  describe("Not Found Errors", () => {
+    test("should return 404 for non-existent token ID", () => {
       const tokenId = 999;
       const maxTokenId = 100;
       expect(tokenId).toBeGreaterThan(maxTokenId);
       // Should return 404
     });
 
-    test('should return 404 for invalid token ID format', () => {
-      const tokenId = 'not-a-number';
+    test("should return 404 for invalid token ID format", () => {
+      const tokenId = "not-a-number";
       const parsed = parseInt(tokenId, 10);
-      expect(isNaN(parsed)).toBe(true);
+      expect(Number.isNaN(parsed)).toBe(true);
       // Should return 404
     });
   });
 
-  describe('Validation Errors', () => {
-    test('should reject missing txHash in confirm', () => {
+  describe("Validation Errors", () => {
+    test("should reject missing txHash in confirm", () => {
       const request = { walletAddress: VALID_WALLET };
-      expect(request).not.toHaveProperty('txHash');
+      expect(request).not.toHaveProperty("txHash");
       // Should return 400
     });
 
-    test('should reject missing walletAddress in confirm', () => {
+    test("should reject missing walletAddress in confirm", () => {
       const request = { txHash: VALID_TX_HASH };
-      expect(request).not.toHaveProperty('walletAddress');
+      expect(request).not.toHaveProperty("walletAddress");
       // Should return 400
     });
 
-    test('should reject invalid txHash format', () => {
-      const txHash = 'invalid-hash';
+    test("should reject invalid txHash format", () => {
+      const txHash = "invalid-hash";
       const isValid = /^0x[a-fA-F0-9]{64}$/.test(txHash);
       expect(isValid).toBe(false);
       // Should return 400
     });
 
-    test('should reject invalid walletAddress format', () => {
-      const walletAddress = 'invalid-address';
+    test("should reject invalid walletAddress format", () => {
+      const walletAddress = "invalid-address";
       const isValid = /^0x[a-fA-F0-9]{40}$/.test(walletAddress);
       expect(isValid).toBe(false);
       // Should return 400
     });
   });
 
-  describe('Server Errors', () => {
-    test('should handle no available NFTs for minting', () => {
+  describe("Server Errors", () => {
+    test("should handle no available NFTs for minting", () => {
       const unclaimedNfts: number[] = [];
       expect(unclaimedNfts.length).toBe(0);
       // Should return 500 with message about no NFTs available

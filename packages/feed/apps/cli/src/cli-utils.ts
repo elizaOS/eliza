@@ -1,4 +1,4 @@
-import { logger } from './lib/logger.js';
+import { logger } from "./lib/logger.js";
 
 /**
  * Parse a named flag value from argv.
@@ -9,15 +9,15 @@ import { logger } from './lib/logger.js';
  */
 export function parseFlagValue(
   args: string[],
-  flag: string
+  flag: string,
 ): string | undefined {
   const idx = args.indexOf(flag);
   if (idx === -1) return undefined;
   const value = args[idx + 1];
   // Guard: no value supplied, or next token is another flag
-  if (!value || value.startsWith('--')) {
+  if (!value || value.startsWith("--")) {
     logger.error(
-      `Flag ${flag} requires a value (e.g. ${flag} ailon-musk). Got: "${value ?? 'nothing'}"`
+      `Flag ${flag} requires a value (e.g. ${flag} ailon-musk). Got: "${value ?? "nothing"}"`,
     );
     process.exit(1);
   }

@@ -67,32 +67,32 @@
  * ```
  */
 
-import type { Task } from '@a2a-js/sdk';
-import type { DefaultRequestHandler as DefaultRequestHandlerType } from '@a2a-js/sdk/server';
+import type { Task } from "@a2a-js/sdk";
+import type { DefaultRequestHandler as DefaultRequestHandlerType } from "@a2a-js/sdk/server";
 import {
   DefaultExecutionEventBusManager,
   DefaultRequestHandler,
   JsonRpcTransportHandler,
-} from '@a2a-js/sdk/server';
+} from "@a2a-js/sdk/server";
 import {
-  FeedAgentExecutor,
   ErrorCode,
+  FeedAgentExecutor,
   generateAgentCardSync,
   type JsonRpcRequest,
   type ListTasksParams,
   PersistentTaskStore,
   RateLimiter,
-} from '@feed/a2a';
-import { getAgentConfig } from '@feed/agents';
-import { withErrorHandling } from '@feed/api';
-import { db, eq, users } from '@feed/db';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@feed/a2a";
+import { getAgentConfig } from "@feed/agents";
+import { withErrorHandling } from "@feed/api";
+import { db, eq, users } from "@feed/db";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 // Type assertions are used instead of type guards due to intersection type issues
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 // Per-agent handlers (cached per agent)
 const agentRateLimiters = new Map<string, RateLimiter>();
@@ -113,7 +113,7 @@ function getAgentRateLimiter(agentId: string): RateLimiter {
  * @returns Object with taskId, or errorResponse if validation fails
  */
 function getTaskIdFromParams(
-  body: JsonRpcRequest
+  body: JsonRpcRequest,
 ):
   | { taskId: string; errorResponse?: never }
   | { errorResponse: NextResponse; taskId?: never } {
@@ -124,14 +124,14 @@ function getTaskIdFromParams(
     return {
       errorResponse: NextResponse.json(
         {
-          jsonrpc: '2.0',
+          jsonrpc: "2.0",
           id: body.id ?? null,
           error: {
             code: -32602,
-            message: 'Invalid params: taskId or id is required',
+            message: "Invalid params: taskId or id is required",
           },
         },
-        { status: 400 }
+        { status: 400 },
       ),
     };
   }
@@ -147,7 +147,7 @@ function getTaskIdFromParams(
  */
 async function getTaskStoreAndTaskId(
   body: JsonRpcRequest,
-  agentId: string
+  agentId: string,
 ): Promise<
   | { taskStore: PersistentTaskStore; taskId: string; errorResponse?: never }
   | { errorResponse: NextResponse; taskStore?: never; taskId?: never }
@@ -169,7 +169,7 @@ async function getTaskStoreAndTaskId(
 }
 
 async function getAgentJsonRpcHandler(
-  agentId: string
+  agentId: string,
 ): Promise<JsonRpcTransportHandler> {
   if (!agentJsonRpcHandlers.has(agentId)) {
     if (!agentRequestHandlers.has(agentId)) {
@@ -205,14 +205,14 @@ async function getAgentJsonRpcHandler(
         generateAgentCardSync(agentCardData),
         taskStore,
         executor,
-        eventBusManager
+        eventBusManager,
       );
       agentRequestHandlers.set(agentId, requestHandler);
     }
     const requestHandler = agentRequestHandlers.get(agentId)!;
     agentJsonRpcHandlers.set(
       agentId,
-      new JsonRpcTransportHandler(requestHandler)
+      new JsonRpcTransportHandler(requestHandler),
     );
   }
   return agentJsonRpcHandlers.get(agentId)!;
@@ -220,7 +220,7 @@ async function getAgentJsonRpcHandler(
 
 export const POST = withErrorHandling(async function POST(
   req: NextRequest,
-  { params }: { params: Promise<{ agentId: string }> }
+  { params }: { params: Promise<{ agentId: string }> },
 ) {
   const { agentId } = await params;
 
@@ -232,40 +232,40 @@ export const POST = withErrorHandling(async function POST(
     .limit(1);
   const agentConfig = await getAgentConfig(agentId);
 
-  if (!agent || !agent.isAgent) {
+  if (!agent?.isAgent) {
     return NextResponse.json(
       {
-        jsonrpc: '2.0',
+        jsonrpc: "2.0",
         id: null,
         error: {
           code: ErrorCode.AGENT_NOT_FOUND,
-          message: 'Agent not found',
+          message: "Agent not found",
         },
       },
-      { status: 404 }
+      { status: 404 },
     );
   }
 
   if (!agentConfig?.a2aEnabled) {
     return NextResponse.json(
       {
-        jsonrpc: '2.0',
+        jsonrpc: "2.0",
         id: null,
         error: {
           code: ErrorCode.INVALID_REQUEST,
-          message: 'A2A is not enabled for this agent',
+          message: "A2A is not enabled for this agent",
         },
       },
-      { status: 403 }
+      { status: 403 },
     );
   }
 
   const body = (await req.json()) as JsonRpcRequest;
 
   const requestingAgentId =
-    req.headers.get('x-agent-id') ||
-    req.headers.get('x-agent-address') ||
-    'anonymous';
+    req.headers.get("x-agent-id") ||
+    req.headers.get("x-agent-address") ||
+    "anonymous";
 
   // Check rate limit
   const limiter = getAgentRateLimiter(agentId);
@@ -275,11 +275,11 @@ export const POST = withErrorHandling(async function POST(
     const remainingTokens = limiter.getTokens(requestingAgentId);
     return NextResponse.json(
       {
-        jsonrpc: '2.0',
+        jsonrpc: "2.0",
         id: body.id ?? null,
         error: {
           code: ErrorCode.RATE_LIMIT_EXCEEDED,
-          message: 'Rate limit exceeded',
+          message: "Rate limit exceeded",
           data: {
             limit: 100,
             remaining: remainingTokens,
@@ -290,15 +290,15 @@ export const POST = withErrorHandling(async function POST(
       {
         status: 429,
         headers: {
-          'X-RateLimit-Limit': '100',
-          'X-RateLimit-Remaining': remainingTokens.toString(),
-          'X-RateLimit-Reset': (Date.now() + 60000).toString(),
+          "X-RateLimit-Limit": "100",
+          "X-RateLimit-Remaining": remainingTokens.toString(),
+          "X-RateLimit-Reset": (Date.now() + 60000).toString(),
         },
-      }
+      },
     );
   }
 
-  logger.info('Per-agent A2A Request received', {
+  logger.info("Per-agent A2A Request received", {
     agentId,
     requestingAgentId,
     method: body.method,
@@ -307,22 +307,22 @@ export const POST = withErrorHandling(async function POST(
 
   // Handle official A2A methods
   const officialMethods = [
-    'message/send',
-    'message/stream',
-    'tasks/get',
-    'tasks/cancel',
-    'tasks/list',
-    'tasks/pushNotificationConfig/set',
-    'tasks/pushNotificationConfig/get',
-    'tasks/pushNotificationConfig/list',
-    'tasks/pushNotificationConfig/delete',
-    'tasks/resubscribe',
-    'agent/getAuthenticatedExtendedCard',
+    "message/send",
+    "message/stream",
+    "tasks/get",
+    "tasks/cancel",
+    "tasks/list",
+    "tasks/pushNotificationConfig/set",
+    "tasks/pushNotificationConfig/get",
+    "tasks/pushNotificationConfig/list",
+    "tasks/pushNotificationConfig/delete",
+    "tasks/resubscribe",
+    "agent/getAuthenticatedExtendedCard",
   ];
 
   if (officialMethods.includes(body.method)) {
     // Handle tasks/list manually
-    if (body.method === 'tasks/list') {
+    if (body.method === "tasks/list") {
       const jsonRpcHandler = await getAgentJsonRpcHandler(agentId);
 
       // Use type assertions to access internal SDK structure
@@ -350,48 +350,48 @@ export const POST = withErrorHandling(async function POST(
       ) {
         return NextResponse.json(
           {
-            jsonrpc: '2.0',
+            jsonrpc: "2.0",
             id: body.id ?? null,
             error: {
               code: -32602,
-              message: 'Invalid params: pageSize must be between 1 and 100',
+              message: "Invalid params: pageSize must be between 1 and 100",
               data: { pageSize: params.pageSize },
             },
           },
-          { status: 400 }
+          { status: 400 },
         );
       }
 
       if (params.historyLength !== undefined && params.historyLength < 0) {
         return NextResponse.json(
           {
-            jsonrpc: '2.0',
+            jsonrpc: "2.0",
             id: body.id ?? null,
             error: {
               code: -32602,
-              message: 'Invalid params: historyLength must be non-negative',
+              message: "Invalid params: historyLength must be non-negative",
               data: { historyLength: params.historyLength },
             },
           },
-          { status: 400 }
+          { status: 400 },
         );
       }
 
       const listParams: ListTasksParams = {
         contextId: params.contextId,
         status:
-          params.status === 'pending'
-            ? 'submitted'
-            : params.status === 'running'
-              ? 'working'
-              : params.status === 'cancelled'
-                ? 'canceled'
+          params.status === "pending"
+            ? "submitted"
+            : params.status === "running"
+              ? "working"
+              : params.status === "cancelled"
+                ? "canceled"
                 : (params.status as
-                    | 'submitted'
-                    | 'working'
-                    | 'completed'
-                    | 'failed'
-                    | 'canceled'
+                    | "submitted"
+                    | "working"
+                    | "completed"
+                    | "failed"
+                    | "canceled"
                     | undefined),
         pageSize: params.pageSize || 20,
         pageToken: params.pageToken,
@@ -403,7 +403,7 @@ export const POST = withErrorHandling(async function POST(
       const tasks = await taskStore.list(listParams);
 
       return NextResponse.json({
-        jsonrpc: '2.0',
+        jsonrpc: "2.0",
         id: body.id ?? null,
         result: {
           tasks: tasks.tasks,
@@ -413,7 +413,7 @@ export const POST = withErrorHandling(async function POST(
     }
 
     // Handle tasks/get manually - SDK expects params.id but clients may send params.taskId
-    if (body.method === 'tasks/get') {
+    if (body.method === "tasks/get") {
       const result = await getTaskStoreAndTaskId(body, agentId);
       if (result.errorResponse) return result.errorResponse;
 
@@ -423,26 +423,26 @@ export const POST = withErrorHandling(async function POST(
       if (!task) {
         return NextResponse.json(
           {
-            jsonrpc: '2.0',
+            jsonrpc: "2.0",
             id: body.id ?? null,
             error: {
               code: -32001,
               message: `Task not found: ${taskId}`,
             },
           },
-          { status: 404 }
+          { status: 404 },
         );
       }
 
       return NextResponse.json({
-        jsonrpc: '2.0',
+        jsonrpc: "2.0",
         id: body.id ?? null,
         result: { task },
       });
     }
 
     // Handle tasks/cancel manually - SDK expects params.id but clients may send params.taskId
-    if (body.method === 'tasks/cancel') {
+    if (body.method === "tasks/cancel") {
       const result = await getTaskStoreAndTaskId(body, agentId);
       if (result.errorResponse) return result.errorResponse;
 
@@ -450,33 +450,33 @@ export const POST = withErrorHandling(async function POST(
 
       // Use atomic updateStatus to avoid load-modify-save race conditions
       const canceledTask = await taskStore.updateStatus(taskId, {
-        state: 'canceled',
+        state: "canceled",
         timestamp: new Date().toISOString(),
       });
 
       if (!canceledTask) {
         return NextResponse.json(
           {
-            jsonrpc: '2.0',
+            jsonrpc: "2.0",
             id: body.id ?? null,
             error: {
               code: -32001,
               message: `Task not found: ${taskId}`,
             },
           },
-          { status: 404 }
+          { status: 404 },
         );
       }
 
       return NextResponse.json({
-        jsonrpc: '2.0',
+        jsonrpc: "2.0",
         id: body.id ?? null,
         result: { task: canceledTask },
       });
     }
 
     // Handle tasks/resubscribe with SSE response using SDK's resubscribe method
-    if (body.method === 'tasks/resubscribe') {
+    if (body.method === "tasks/resubscribe") {
       const taskIdResult = getTaskIdFromParams(body);
       if (taskIdResult.errorResponse) {
         return taskIdResult.errorResponse;
@@ -490,14 +490,14 @@ export const POST = withErrorHandling(async function POST(
       if (!requestHandler) {
         return NextResponse.json(
           {
-            jsonrpc: '2.0',
+            jsonrpc: "2.0",
             id: body.id ?? null,
             error: {
               code: -32001,
-              message: 'Request handler not available',
+              message: "Request handler not available",
             },
           },
-          { status: 500 }
+          { status: 500 },
         );
       }
 
@@ -519,7 +519,7 @@ export const POST = withErrorHandling(async function POST(
               // Controller may already be closed
             }
           };
-          req.signal.addEventListener('abort', abortHandler);
+          req.signal.addEventListener("abort", abortHandler);
 
           try {
             for await (const event of eventGenerator) {
@@ -527,8 +527,8 @@ export const POST = withErrorHandling(async function POST(
               if (req.signal.aborted) break;
 
               // Determine event type based on 'kind' property from SDK types
-              if ('kind' in event) {
-                if (event.kind === 'status-update') {
+              if ("kind" in event) {
+                if (event.kind === "status-update") {
                   controller.enqueue(
                     encoder.encode(
                       `event: task-status\ndata: ${JSON.stringify({
@@ -536,17 +536,17 @@ export const POST = withErrorHandling(async function POST(
                         contextId: event.contextId,
                         status: event.status,
                         final: event.final,
-                      })}\n\n`
-                    )
+                      })}\n\n`,
+                    ),
                   );
-                } else if (event.kind === 'artifact-update') {
+                } else if (event.kind === "artifact-update") {
                   controller.enqueue(
                     encoder.encode(
                       `event: task-artifact\ndata: ${JSON.stringify({
                         taskId: event.taskId,
                         artifact: event.artifact,
-                      })}\n\n`
-                    )
+                      })}\n\n`,
+                    ),
                   );
                 }
               } else {
@@ -558,19 +558,19 @@ export const POST = withErrorHandling(async function POST(
                       taskId: taskEvent.id,
                       contextId: taskEvent.contextId,
                       status: taskEvent.status,
-                    })}\n\n`
-                  )
+                    })}\n\n`,
+                  ),
                 );
               }
             }
           } catch (error) {
             logger.error(
-              'Error in resubscribe stream',
+              "Error in resubscribe stream",
               { error: String(error), taskId },
-              'A2A'
+              "A2A",
             );
           } finally {
-            req.signal.removeEventListener('abort', abortHandler);
+            req.signal.removeEventListener("abort", abortHandler);
             try {
               controller.close();
             } catch {
@@ -584,9 +584,9 @@ export const POST = withErrorHandling(async function POST(
             await eventGenerator.return(reason);
           } catch (error) {
             logger.debug(
-              'Error terminating event generator',
+              "Error terminating event generator",
               { error: String(error), taskId },
-              'A2A'
+              "A2A",
             );
           }
         },
@@ -594,10 +594,10 @@ export const POST = withErrorHandling(async function POST(
 
       return new Response(stream, {
         headers: {
-          'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache',
-          Connection: 'keep-alive',
-          'X-Accel-Buffering': 'no',
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+          "X-Accel-Buffering": "no",
         },
       });
     }
@@ -608,9 +608,9 @@ export const POST = withErrorHandling(async function POST(
 
     return NextResponse.json(response, {
       headers: {
-        'Content-Type': 'application/json',
-        'X-RateLimit-Limit': '100',
-        'X-RateLimit-Remaining': limiter
+        "Content-Type": "application/json",
+        "X-RateLimit-Limit": "100",
+        "X-RateLimit-Remaining": limiter
           .getTokens(requestingAgentId)
           .toString(),
       },
@@ -621,20 +621,20 @@ export const POST = withErrorHandling(async function POST(
   // If we reach here, it's an unsupported method
   return NextResponse.json(
     {
-      jsonrpc: '2.0',
+      jsonrpc: "2.0",
       id: body.id ?? null,
       error: {
         code: ErrorCode.METHOD_NOT_FOUND,
         message: `Method ${body.method} not supported. Use official A2A methods: message/send, tasks/get, tasks/list`,
       },
     },
-    { status: 404 }
+    { status: 404 },
   );
 });
 
 export const GET = withErrorHandling(async function GET(
   _req: NextRequest,
-  { params }: { params: Promise<{ agentId: string }> }
+  { params }: { params: Promise<{ agentId: string }> },
 ) {
   const { agentId } = await params;
 
@@ -646,21 +646,21 @@ export const GET = withErrorHandling(async function GET(
     .limit(1);
   const config = await getAgentConfig(agentId);
 
-  if (!agent || !agent.isAgent) {
+  if (!agent?.isAgent) {
     return NextResponse.json(
       {
-        error: 'Agent not found',
+        error: "Agent not found",
       },
-      { status: 404 }
+      { status: 404 },
     );
   }
 
   if (!config?.a2aEnabled) {
     return NextResponse.json(
       {
-        error: 'A2A is not enabled for this agent',
+        error: "A2A is not enabled for this agent",
       },
-      { status: 403 }
+      { status: 403 },
     );
   }
 
@@ -676,16 +676,16 @@ export const GET = withErrorHandling(async function GET(
 
   return NextResponse.json(
     {
-      service: 'A2A Server',
-      status: 'active',
+      service: "A2A Server",
+      status: "active",
       endpoint: `/api/agents/${agentId}/a2a`,
       agentCard,
     },
     {
       headers: {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'public, max-age=3600',
+        "Content-Type": "application/json",
+        "Cache-Control": "public, max-age=3600",
       },
-    }
+    },
   );
 });

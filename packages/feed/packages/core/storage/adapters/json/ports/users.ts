@@ -2,16 +2,16 @@
  * JSON User Adapter
  */
 
-import type { PointsTransactionRecord, UserPort } from '../../../ports/users';
-import type { PaginationOptions, UserRecord } from '../../../types';
-import type { JsonIdGenerator } from '../id-generator';
-import type { JsonStorageState } from '../types';
+import type { PointsTransactionRecord, UserPort } from "../../../ports/users";
+import type { PaginationOptions, UserRecord } from "../../../types";
+import type { JsonIdGenerator } from "../id-generator";
+import type { JsonStorageState } from "../types";
 
 export class JsonUserAdapter implements UserPort {
   constructor(
     private state: JsonStorageState,
     private idGen: JsonIdGenerator,
-    private onChange: () => void
+    private onChange: () => void,
   ) {}
 
   async getUser(id: string): Promise<UserRecord | null> {
@@ -22,7 +22,7 @@ export class JsonUserAdapter implements UserPort {
     const lowerUsername = username.toLowerCase();
     return (
       Object.values(this.state.users).find(
-        (u) => u.username.toLowerCase() === lowerUsername
+        (u) => u.username.toLowerCase() === lowerUsername,
       ) ?? null
     );
   }
@@ -31,13 +31,13 @@ export class JsonUserAdapter implements UserPort {
     const lowerWallet = walletAddress.toLowerCase();
     return (
       Object.values(this.state.users).find(
-        (u) => u.walletAddress?.toLowerCase() === lowerWallet
+        (u) => u.walletAddress?.toLowerCase() === lowerWallet,
       ) ?? null
     );
   }
 
   async createUser(
-    user: Omit<UserRecord, 'createdAt' | 'updatedAt'>
+    user: Omit<UserRecord, "createdAt" | "updatedAt">,
   ): Promise<UserRecord> {
     const now = new Date();
     const record: UserRecord = {
@@ -52,7 +52,7 @@ export class JsonUserAdapter implements UserPort {
 
   async updateUser(
     id: string,
-    updates: Partial<UserRecord>
+    updates: Partial<UserRecord>,
   ): Promise<UserRecord> {
     const user = this.state.users[id];
     if (!user) {
@@ -104,11 +104,11 @@ export class JsonUserAdapter implements UserPort {
   }
 
   async createPointsTransaction(
-    transaction: Omit<PointsTransactionRecord, 'id' | 'createdAt'>
+    transaction: Omit<PointsTransactionRecord, "id" | "createdAt">,
   ): Promise<PointsTransactionRecord> {
     const record: PointsTransactionRecord = {
       ...transaction,
-      id: this.idGen.generate('transaction'),
+      id: this.idGen.generate("transaction"),
       createdAt: new Date(),
     };
     this.state.pointsTransactions.push(record);
@@ -118,7 +118,7 @@ export class JsonUserAdapter implements UserPort {
 
   async getUserPointsTransactions(
     userId: string,
-    limit = 100
+    limit = 100,
   ): Promise<PointsTransactionRecord[]> {
     return this.state.pointsTransactions
       .filter((t) => t.userId === userId)

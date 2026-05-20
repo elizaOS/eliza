@@ -1,23 +1,23 @@
-'use client';
+"use client";
 
-import { logger } from '@feed/shared';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useAuth } from '@/hooks/useAuth';
-import { usePortfolioPnL } from '@/hooks/usePortfolioPnL';
-import { useSSEChannel } from '@/hooks/useSSE';
+import { logger } from "@feed/shared";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
+import { usePortfolioPnL } from "@/hooks/usePortfolioPnL";
+import { useSSEChannel } from "@/hooks/useSSE";
 import {
   usePerpMarkets,
   usePerpMarketsRealtime,
-} from '@/stores/perpMarketsStore';
+} from "@/stores/perpMarketsStore";
 import {
   useUserPositions,
   useUserPositionsPolling,
-} from '@/stores/userPositionsStore';
+} from "@/stores/userPositionsStore";
 import type {
   PerpMarket,
   PredictionMarketWithPosition,
   PredictionSort,
-} from '@/types/markets';
+} from "@/types/markets";
 
 // ============================================================================
 // Constants
@@ -90,9 +90,9 @@ export interface UseMarketsPageDataOptions {
  */
 export interface MarketsPageData {
   // Auth state
-  user: ReturnType<typeof useAuth>['user'];
+  user: ReturnType<typeof useAuth>["user"];
   authenticated: boolean;
-  login: ReturnType<typeof useAuth>['login'];
+  login: ReturnType<typeof useAuth>["login"];
 
   // Loading states
   loading: boolean;
@@ -109,14 +109,14 @@ export interface MarketsPageData {
   predictions: PredictionMarketWithPosition[];
 
   // Positions
-  perpPositions: ReturnType<typeof useUserPositions>['perpPositions'];
+  perpPositions: ReturnType<typeof useUserPositions>["perpPositions"];
   predictionPositions: ReturnType<
     typeof useUserPositions
-  >['predictionPositions'];
+  >["predictionPositions"];
 
   // Portfolio
-  portfolioPnL: ReturnType<typeof usePortfolioPnL>['data'];
-  portfolioError: ReturnType<typeof usePortfolioPnL>['error'];
+  portfolioPnL: ReturnType<typeof usePortfolioPnL>["data"];
+  portfolioError: ReturnType<typeof usePortfolioPnL>["error"];
   /** Timestamp of last portfolio update (ms since epoch) */
   portfolioUpdatedAt: number | null;
 
@@ -157,7 +157,7 @@ export interface MarketsPageData {
  * Defined outside the hook for referential stability.
  */
 function isPredictionActive(p: PredictionMarketWithPosition): boolean {
-  if (p.status !== 'active') return false;
+  if (p.status !== "active") return false;
   if (!p.resolutionDate) return true;
   return new Date(p.resolutionDate).getTime() > Date.now();
 }
@@ -168,9 +168,9 @@ function isPredictionActive(p: PredictionMarketWithPosition): boolean {
  * Defined outside the hook for referential stability.
  */
 function isPredictionExpiredOrResolved(
-  p: PredictionMarketWithPosition
+  p: PredictionMarketWithPosition,
 ): boolean {
-  if (p.status === 'resolved') return true;
+  if (p.status === "resolved") return true;
   // Expired: status is active but resolution date has passed
   if (!p.resolutionDate) return false;
   return new Date(p.resolutionDate).getTime() <= Date.now();
@@ -189,17 +189,17 @@ function isPredictionExpiredOrResolved(
  * @returns Markets page data and actions
  */
 export function useMarketsPageData(
-  options?: UseMarketsPageDataOptions
+  options?: UseMarketsPageDataOptions,
 ): MarketsPageData {
   const topItemsCount = options?.topItemsCount ?? DEFAULT_TOP_ITEMS_COUNT;
 
   const { user, authenticated, login } = useAuth();
 
   // Search and sort state
-  const [searchQuery, setSearchQuery] = useState('');
-  const [deferredSearchQuery, setDeferredSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
+  const [deferredSearchQuery, setDeferredSearchQuery] = useState("");
   const [predictionSort, setPredictionSort] =
-    useState<PredictionSort>('trending');
+    useState<PredictionSort>("trending");
 
   // Debounce search query for performance
   useEffect(() => {
@@ -248,7 +248,7 @@ export function useMarketsPageData(
 
   // Refs to break dependency chains and stabilize callbacks
   const fetchDataRef = useRef<((signal?: AbortSignal) => Promise<void>) | null>(
-    null
+    null,
   );
   const refreshPositionsRef = useRef(refreshUserPositions);
   const refetchPerpsRef = useRef(refetchPerps);
@@ -289,20 +289,20 @@ export function useMarketsPageData(
   // in rapid succession, each SSE event triggers this. Without throttling we'd
   // spam the positions API; 2 s lets at most one refresh per burst.
   useSSEChannel(
-    'markets',
+    "markets",
     useCallback((data: unknown) => {
-      if (!data || typeof data !== 'object') return;
+      if (!data || typeof data !== "object") return;
       const d = data as Record<string, unknown>;
       const type = d.type;
 
-      if (type === 'prediction_trade' && typeof d.marketId === 'string') {
+      if (type === "prediction_trade" && typeof d.marketId === "string") {
         const marketId = d.marketId;
         const yesShares =
-          typeof d.yesShares === 'number' ? d.yesShares : undefined;
+          typeof d.yesShares === "number" ? d.yesShares : undefined;
         const noShares =
-          typeof d.noShares === 'number' ? d.noShares : undefined;
-        const yesProb = typeof d.yesPrice === 'number' ? d.yesPrice : undefined;
-        const noProb = typeof d.noPrice === 'number' ? d.noPrice : undefined;
+          typeof d.noShares === "number" ? d.noShares : undefined;
+        const yesProb = typeof d.yesPrice === "number" ? d.yesPrice : undefined;
+        const noProb = typeof d.noPrice === "number" ? d.noPrice : undefined;
         setPredictions((prev) =>
           prev.map((p) => {
             if (String(p.id) !== String(marketId)) return p;
@@ -313,13 +313,13 @@ export function useMarketsPageData(
               ...(yesProb !== undefined && { yesProbability: yesProb }),
               ...(noProb !== undefined && { noProbability: noProb }),
             } as PredictionMarketWithPosition;
-          })
+          }),
         );
         const trade = d.trade;
         if (
           trade &&
-          typeof trade === 'object' &&
-          typeof (trade as Record<string, unknown>).actorId === 'string'
+          typeof trade === "object" &&
+          typeof (trade as Record<string, unknown>).actorId === "string"
         ) {
           const actorId = (trade as Record<string, unknown>).actorId as string;
           if (actorId && userIdRef.current === actorId) {
@@ -333,52 +333,52 @@ export function useMarketsPageData(
         return;
       }
 
-      if (type === 'prediction_resolution' && typeof d.marketId === 'string') {
+      if (type === "prediction_resolution" && typeof d.marketId === "string") {
         const marketId = d.marketId;
         const winningSide = d.winningSide;
         const ws =
-          winningSide === 'yes' || winningSide === 'no' ? winningSide : null;
+          winningSide === "yes" || winningSide === "no" ? winningSide : null;
         setPredictions((prev) =>
           prev.map((p) => {
             if (String(p.id) !== String(marketId)) return p;
             if (!ws) {
               return {
                 ...p,
-                status: 'resolved',
+                status: "resolved",
               } as PredictionMarketWithPosition;
             }
             return {
               ...p,
-              status: 'resolved',
-              resolvedOutcome: ws === 'yes',
-              yesProbability: ws === 'yes' ? 1 : 0,
-              noProbability: ws === 'no' ? 1 : 0,
-              ...(typeof d.resolutionProofUrl === 'string' && {
+              status: "resolved",
+              resolvedOutcome: ws === "yes",
+              yesProbability: ws === "yes" ? 1 : 0,
+              noProbability: ws === "no" ? 1 : 0,
+              ...(typeof d.resolutionProofUrl === "string" && {
                 resolutionProofUrl: d.resolutionProofUrl,
               }),
-              ...(typeof d.resolutionDescription === 'string' && {
+              ...(typeof d.resolutionDescription === "string" && {
                 resolutionDescription: d.resolutionDescription,
               }),
             } as PredictionMarketWithPosition;
-          })
+          }),
         );
         return;
       }
 
       if (
-        type === 'prediction_cancellation' &&
-        typeof d.marketId === 'string'
+        type === "prediction_cancellation" &&
+        typeof d.marketId === "string"
       ) {
         const marketId = d.marketId;
         setPredictions((prev) =>
           prev.map((p) =>
             String(p.id) === String(marketId)
-              ? ({ ...p, status: 'cancelled' } as PredictionMarketWithPosition)
-              : p
-          )
+              ? ({ ...p, status: "cancelled" } as PredictionMarketWithPosition)
+              : p,
+          ),
         );
       }
-    }, [])
+    }, []),
   );
 
   // Combined loading state - only true for INITIAL load (no data yet)
@@ -401,7 +401,7 @@ export function useMarketsPageData(
   const fetchData = useCallback(async (signal?: AbortSignal) => {
     const isAuth = authenticatedRef.current;
     const userId = userIdRef.current;
-    const url = `/api/markets/predictions${isAuth && userId ? `?userId=${encodeURIComponent(userId)}` : ''}`;
+    const url = `/api/markets/predictions${isAuth && userId ? `?userId=${encodeURIComponent(userId)}` : ""}`;
 
     const MAX_RETRIES = 3;
 
@@ -410,7 +410,7 @@ export function useMarketsPageData(
         const response = await fetch(url, { signal });
 
         if (response.status === 429 && attempt < MAX_RETRIES) {
-          const retryAfter = response.headers.get('Retry-After');
+          const retryAfter = response.headers.get("Retry-After");
           let backoffMs: number | undefined;
 
           if (retryAfter) {
@@ -436,17 +436,17 @@ export function useMarketsPageData(
           logger.warn(
             `Rate limited (429), retrying in ${backoffMs}ms (attempt ${attempt + 1}/${MAX_RETRIES})`,
             {},
-            'useMarketsPageData'
+            "useMarketsPageData",
           );
           await new Promise<void>((resolve, reject) => {
             const timer = setTimeout(resolve, backoffMs);
             signal?.addEventListener(
-              'abort',
+              "abort",
               () => {
                 clearTimeout(timer);
-                reject(new DOMException('Aborted', 'AbortError'));
+                reject(new DOMException("Aborted", "AbortError"));
               },
-              { once: true }
+              { once: true },
             );
           });
           continue;
@@ -455,9 +455,9 @@ export function useMarketsPageData(
         if (!response.ok) {
           const errorMsg = `Failed to load predictions (${response.status})`;
           logger.error(
-            'Failed to fetch predictions',
+            "Failed to fetch predictions",
             { status: response.status },
-            'useMarketsPageData'
+            "useMarketsPageData",
           );
           setPredictionsError(errorMsg);
           setPredictionsLoading(false);
@@ -476,7 +476,7 @@ export function useMarketsPageData(
         setPredictionsLoading(false);
         return;
       } catch (err) {
-        if (err instanceof Error && err.name === 'AbortError') {
+        if (err instanceof Error && err.name === "AbortError") {
           return;
         }
         if (attempt < MAX_RETRIES) {
@@ -484,11 +484,11 @@ export function useMarketsPageData(
           continue;
         }
         const errorMsg =
-          err instanceof Error ? err.message : 'Failed to load predictions';
+          err instanceof Error ? err.message : "Failed to load predictions";
         logger.error(
-          'Failed to fetch predictions',
+          "Failed to fetch predictions",
           { error: errorMsg },
-          'useMarketsPageData'
+          "useMarketsPageData",
         );
         setPredictionsError(errorMsg);
         setPredictionsLoading(false);
@@ -529,11 +529,11 @@ export function useMarketsPageData(
 
     if (shouldFetch) {
       fetchData(controller.signal).catch((err) => {
-        if (err instanceof Error && err.name !== 'AbortError') {
+        if (err instanceof Error && err.name !== "AbortError") {
           logger.warn(
-            'Failed to fetch predictions',
+            "Failed to fetch predictions",
             { error: err.message },
-            'useMarketsPageData'
+            "useMarketsPageData",
           );
         }
       });
@@ -591,7 +591,7 @@ export function useMarketsPageData(
     return perpMarkets.filter(
       (m) =>
         m.ticker.toLowerCase().includes(query) ||
-        m.name.toLowerCase().includes(query)
+        m.name.toLowerCase().includes(query),
     );
   }, [perpMarkets, deferredSearchQuery]);
 
@@ -613,7 +613,7 @@ export function useMarketsPageData(
 
     return [...active].sort((a, b) => {
       switch (predictionSort) {
-        case 'trending': {
+        case "trending": {
           const aVolume = (a.yesShares ?? 0) + (a.noShares ?? 0);
           const bVolume = (b.yesShares ?? 0) + (b.noShares ?? 0);
           const aTime = a.createdDate ? new Date(a.createdDate).getTime() : 0;
@@ -630,12 +630,12 @@ export function useMarketsPageData(
           if (bScore === aScore) return a.text.localeCompare(b.text);
           return bScore - aScore;
         }
-        case 'newest':
+        case "newest":
           return (
             (b.createdDate ? new Date(b.createdDate).getTime() : 0) -
             (a.createdDate ? new Date(a.createdDate).getTime() : 0)
           );
-        case 'ending-soon':
+        case "ending-soon":
           return (
             (a.resolutionDate
               ? new Date(a.resolutionDate).getTime()
@@ -644,7 +644,7 @@ export function useMarketsPageData(
               ? new Date(b.resolutionDate).getTime()
               : Number.POSITIVE_INFINITY)
           );
-        case 'volume':
+        case "volume":
           return (
             (b.yesShares ?? 0) +
             (b.noShares ?? 0) -
@@ -662,7 +662,7 @@ export function useMarketsPageData(
    */
   const resolvedPredictions = useMemo(
     () => filteredPredictions.filter(isPredictionExpiredOrResolved),
-    [filteredPredictions]
+    [filteredPredictions],
   );
 
   /**
@@ -684,7 +684,7 @@ export function useMarketsPageData(
     const maxVolume = Math.max(...perpMarkets.map((m) => m.volume24h), 1);
     const maxChange = Math.max(
       ...perpMarkets.map((m) => Math.abs(m.changePercent24h)),
-      1
+      1,
     );
 
     return perpMarkets
@@ -714,7 +714,7 @@ export function useMarketsPageData(
    */
   const topPredictions = useMemo((): TopPrediction[] => {
     return predictions
-      .filter((p) => p.status === 'active')
+      .filter((p) => p.status === "active")
       .map((p) => ({
         ...p,
         totalShares: (p.yesShares ?? 0) + (p.noShares ?? 0),
@@ -731,13 +731,13 @@ export function useMarketsPageData(
 
     const unrealizedPnL = perpPositions.reduce(
       (sum, pos) => sum + (pos.unrealizedPnL ?? 0),
-      0
+      0,
     );
     // totalValue and openInterest are equivalent for perps (sum of absolute position sizes)
     // In a more sophisticated implementation, totalValue could include notional (size * price)
     const openInterest = perpPositions.reduce(
       (sum, pos) => sum + Math.abs(pos.size ?? 0),
-      0
+      0,
     );
 
     return {
@@ -761,11 +761,11 @@ export function useMarketsPageData(
     }, 0);
     const totalShares = predictionPositions.reduce(
       (sum, pos) => sum + pos.shares,
-      0
+      0,
     );
     const totalValue = predictionPositions.reduce(
       (sum, pos) => sum + (pos.currentValue ?? pos.shares * pos.currentPrice),
-      0
+      0,
     );
 
     return {

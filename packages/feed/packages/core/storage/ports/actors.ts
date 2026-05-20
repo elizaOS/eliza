@@ -10,7 +10,7 @@ import type {
   ActorStateRecord,
   OrganizationRecord,
   OrganizationStateRecord,
-} from '../types';
+} from "../types";
 
 export interface ActorPort {
   // Actor Operations
@@ -22,7 +22,7 @@ export interface ActorPort {
   getActorState(id: string): Promise<ActorStateRecord | null>;
   getAllActorStates(): Promise<ActorStateRecord[]>;
   upsertActorState(
-    state: Partial<ActorStateRecord> & { id: string }
+    state: Partial<ActorStateRecord> & { id: string },
   ): Promise<ActorStateRecord>;
   updateActorBalance(id: string, balance: number): Promise<void>;
   updateActorReputation(id: string, points: number): Promise<void>;
@@ -40,7 +40,7 @@ export interface OrganizationPort {
   getAllOrganizationStates(): Promise<OrganizationStateRecord[]>;
   upsertOrganizationState(
     id: string,
-    currentPrice: number | null
+    currentPrice: number | null,
   ): Promise<OrganizationStateRecord>;
   updateOrganizationPrice(id: string, price: number): Promise<void>;
 }

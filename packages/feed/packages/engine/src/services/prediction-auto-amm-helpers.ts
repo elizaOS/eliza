@@ -6,19 +6,19 @@ export const NEUTRAL_REVERSION_RATE = 0.005;
 
 export function calculateAutoAmmTargetNudge(params: {
   currentYesPrice: number;
-  signalDirection: 'YES' | 'NO' | 'NEUTRAL';
+  signalDirection: "YES" | "NO" | "NEUTRAL";
   signalIntensity: number;
   signalSensitivity: number;
   autoAmmNudgeMultiplier: number;
   neutralReversionMultiplier: number;
 }): number {
-  if (params.signalDirection !== 'NEUTRAL') {
+  if (params.signalDirection !== "NEUTRAL") {
     const nudge =
       BASE_NUDGE_PERCENT *
       params.signalIntensity *
       params.signalSensitivity *
       params.autoAmmNudgeMultiplier;
-    return params.signalDirection === 'YES' ? nudge : -nudge;
+    return params.signalDirection === "YES" ? nudge : -nudge;
   }
 
   const deviation = params.currentYesPrice - 0.5;

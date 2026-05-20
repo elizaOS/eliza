@@ -25,9 +25,9 @@ import {
   posts,
   questions,
   users,
-} from '@feed/db';
-import { logger } from '@feed/shared';
-import { StaticDataRegistry } from './static-data-registry';
+} from "@feed/db";
+import { logger } from "@feed/shared";
+import { StaticDataRegistry } from "./static-data-registry";
 
 export interface SignalAnalysis {
   marketId: string;
@@ -60,7 +60,7 @@ export interface SignalAnalysis {
   lateSignal: { yes: number; no: number }; // Days 21-30
 
   // Recommendation
-  suggestedOutcome: 'YES' | 'NO' | 'UNCERTAIN';
+  suggestedOutcome: "YES" | "NO" | "UNCERTAIN";
   confidence: number; // 0-1, how confident the suggestion is
 }
 
@@ -69,7 +69,7 @@ export class SignalExtractionService {
    * Extract and aggregate signal for a prediction market
    */
   static async extractMarketSignal(
-    questionNumber: number
+    questionNumber: number,
   ): Promise<SignalAnalysis> {
     // Get the question
     const [question] = await db
@@ -106,8 +106,8 @@ export class SignalExtractionService {
         and(
           eq(posts.gameId, question.id), // Posts associated with this question's game
           isNull(posts.deletedAt),
-          lte(posts.timestamp, now) // ✅ No future posts
-        )
+          lte(posts.timestamp, now), // ✅ No future posts
+        ),
       )
       .limit(1000); // Limit to prevent huge queries
 
@@ -188,15 +188,15 @@ export class SignalExtractionService {
       if (!actor) continue;
 
       const reliability = SignalExtractionService.getDefaultReliability(
-        actor.role || null
+        actor.role || null,
       );
 
       // Use sentiment as a proxy for signal direction
       // Positive sentiment = YES signal, Negative sentiment = NO signal
       const sentiment =
-        post.sentiment === 'positive'
+        post.sentiment === "positive"
           ? 0.8
-          : post.sentiment === 'negative'
+          : post.sentiment === "negative"
             ? -0.8
             : post.biasScore || 0;
 
@@ -210,7 +210,7 @@ export class SignalExtractionService {
       // Default clue strength based on post type and day
       const dayNum = post.dayNumber || 1;
       const clueStrength =
-        post.type === 'article'
+        post.type === "article"
           ? 0.8
           : // Articles are stronger signal
             dayNum > 20
@@ -242,25 +242,25 @@ export class SignalExtractionService {
       }
 
       // Accumulate by type
-      const role = actor.role?.toLowerCase() || 'other';
+      const role = actor.role?.toLowerCase() || "other";
       const isYesSignal = sentiment > 0;
-      if (role.includes('insider') || role.includes('whistleblower')) {
-        byType.insider[isYesSignal ? 'yes' : 'no'] += weight;
-      } else if (role.includes('expert') || role.includes('analyst')) {
-        byType.expert[isYesSignal ? 'yes' : 'no'] += weight;
-      } else if (role.includes('journalist') || role.includes('reporter')) {
-        byType.journalist[isYesSignal ? 'yes' : 'no'] += weight;
+      if (role.includes("insider") || role.includes("whistleblower")) {
+        byType.insider[isYesSignal ? "yes" : "no"] += weight;
+      } else if (role.includes("expert") || role.includes("analyst")) {
+        byType.expert[isYesSignal ? "yes" : "no"] += weight;
+      } else if (role.includes("journalist") || role.includes("reporter")) {
+        byType.journalist[isYesSignal ? "yes" : "no"] += weight;
       }
 
       // Accumulate by period
       const day = post.dayNumber || 0;
       const isYesPeriod = sentiment > 0;
       if (day <= 10) {
-        byPeriod.early[isYesPeriod ? 'yes' : 'no'] += weight;
+        byPeriod.early[isYesPeriod ? "yes" : "no"] += weight;
       } else if (day <= 20) {
-        byPeriod.mid[isYesPeriod ? 'yes' : 'no'] += weight;
+        byPeriod.mid[isYesPeriod ? "yes" : "no"] += weight;
       } else {
-        byPeriod.late[isYesPeriod ? 'yes' : 'no'] += weight;
+        byPeriod.late[isYesPeriod ? "yes" : "no"] += weight;
       }
     }
 
@@ -275,11 +275,11 @@ export class SignalExtractionService {
       totalSignal > 0 ? Math.abs(netSignal) / totalSignal : 0;
 
     // Determine suggested outcome
-    let suggestedOutcome: 'YES' | 'NO' | 'UNCERTAIN';
+    let suggestedOutcome: "YES" | "NO" | "UNCERTAIN";
     if (signalStrength < 0.2) {
-      suggestedOutcome = 'UNCERTAIN';
+      suggestedOutcome = "UNCERTAIN";
     } else {
-      suggestedOutcome = netSignal > 0 ? 'YES' : 'NO';
+      suggestedOutcome = netSignal > 0 ? "YES" : "NO";
     }
 
     const confidence = signalStrength;
@@ -289,17 +289,17 @@ export class SignalExtractionService {
     noSources.sort((a, b) => b.weight - a.weight);
 
     logger.info(
-      'Signal extraction complete',
+      "Signal extraction complete",
       {
         questionNumber,
         yesSignal: yesSignal.toFixed(2),
         noSignal: noSignal.toFixed(2),
         netSignal: netSignal.toFixed(2),
-        signalRatio: (signalRatio * 100).toFixed(1) + '%',
+        signalRatio: `${(signalRatio * 100).toFixed(1)}%`,
         suggestedOutcome,
-        confidence: (confidence * 100).toFixed(1) + '%',
+        confidence: `${(confidence * 100).toFixed(1)}%`,
       },
-      'SignalExtractionService'
+      "SignalExtractionService",
     );
 
     return {
@@ -342,27 +342,27 @@ export class SignalExtractionService {
     const roleLower = role.toLowerCase();
 
     // Insiders and whistleblowers are most reliable
-    if (roleLower.includes('insider') || roleLower.includes('whistleblower')) {
+    if (roleLower.includes("insider") || roleLower.includes("whistleblower")) {
       return 0.9;
     }
 
     // Experts are moderately reliable
-    if (roleLower.includes('expert') || roleLower.includes('analyst')) {
+    if (roleLower.includes("expert") || roleLower.includes("analyst")) {
       return 0.7;
     }
 
     // Journalists are somewhat reliable
-    if (roleLower.includes('journalist') || roleLower.includes('reporter')) {
+    if (roleLower.includes("journalist") || roleLower.includes("reporter")) {
       return 0.6;
     }
 
     // Politicians are less reliable
-    if (roleLower.includes('politician') || roleLower.includes('senator')) {
+    if (roleLower.includes("politician") || roleLower.includes("senator")) {
       return 0.3;
     }
 
     // Deceivers and conspiracy theorists are unreliable
-    if (roleLower.includes('deceiver') || roleLower.includes('conspiracy')) {
+    if (roleLower.includes("deceiver") || roleLower.includes("conspiracy")) {
       return 0.1;
     }
 
@@ -374,7 +374,7 @@ export class SignalExtractionService {
    * Get simplified signal summary for quick agent consumption
    */
   static async getQuickSignal(questionNumber: number): Promise<{
-    outcome: 'YES' | 'NO' | 'UNCERTAIN';
+    outcome: "YES" | "NO" | "UNCERTAIN";
     confidence: number;
     yesEvidence: number;
     noEvidence: number;

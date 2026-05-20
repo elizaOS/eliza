@@ -6,20 +6,20 @@
  * API docs, offline page, and admin sub-routes.
  */
 
-import { expect, test } from './fixtures';
-import { pageContainsText } from './helpers/interaction-helpers';
+import { expect, test } from "./fixtures";
+import { pageContainsText } from "./helpers/interaction-helpers";
 import {
   cooldownBetweenTests,
   isServerHealthy,
   navigateTo,
   waitForPageLoad,
-} from './helpers/page-helpers';
-import { loginWithWallet } from './helpers/privy-auth';
-import { ROUTES, TIMEOUTS, VIEWPORTS } from './helpers/test-data';
+} from "./helpers/page-helpers";
+import { loginWithWallet } from "./helpers/privy-auth";
+import { ROUTES, TIMEOUTS, VIEWPORTS } from "./helpers/test-data";
 
 test.setTimeout(TIMEOUTS.EXTRA_LONG);
 
-test.describe('User Handle Routes', () => {
+test.describe("User Handle Routes", () => {
   test.beforeEach(async ({ page }) => {
     if (!(await isServerHealthy())) {
       test.skip();
@@ -35,26 +35,26 @@ test.describe('User Handle Routes', () => {
     await cooldownBetweenTests(page);
   });
 
-  test('loads user profile via /u/[handle]', async ({ page }) => {
-    await navigateTo(page, ROUTES.USER_BY_HANDLE('testuser'));
+  test("loads user profile via /u/[handle]", async ({ page }) => {
+    await navigateTo(page, ROUTES.USER_BY_HANDLE("testuser"));
     await waitForPageLoad(page);
     await page.waitForTimeout(2000);
 
-    const body = await page.locator('body').textContent();
+    const body = await page.locator("body").textContent();
     expect(body?.length).toBeGreaterThan(50);
   });
 
-  test('loads user profile via /u/id/[userId]', async ({ page }) => {
-    await navigateTo(page, ROUTES.USER_BY_ID('1'));
+  test("loads user profile via /u/id/[userId]", async ({ page }) => {
+    await navigateTo(page, ROUTES.USER_BY_ID("1"));
     await waitForPageLoad(page);
     await page.waitForTimeout(2000);
 
-    const body = await page.locator('body').textContent();
+    const body = await page.locator("body").textContent();
     expect(body?.length).toBeGreaterThan(50);
   });
 });
 
-test.describe('Actor Profile', () => {
+test.describe("Actor Profile", () => {
   test.beforeEach(async ({ page }) => {
     if (!(await isServerHealthy())) {
       test.skip();
@@ -70,18 +70,18 @@ test.describe('Actor Profile', () => {
     await cooldownBetweenTests(page);
   });
 
-  test('loads actor profile via /actors/[id]', async ({ page }) => {
-    await navigateTo(page, ROUTES.ACTORS_BY_ID('1'));
+  test("loads actor profile via /actors/[id]", async ({ page }) => {
+    await navigateTo(page, ROUTES.ACTORS_BY_ID("1"));
     await waitForPageLoad(page);
     await page.waitForTimeout(2000);
 
     // Should show profile content or 404
-    const body = await page.locator('body').textContent();
+    const body = await page.locator("body").textContent();
     expect(body?.length).toBeGreaterThan(50);
   });
 });
 
-test.describe('Organization Profile', () => {
+test.describe("Organization Profile", () => {
   test.beforeEach(async ({ page }) => {
     if (!(await isServerHealthy())) {
       test.skip();
@@ -97,17 +97,17 @@ test.describe('Organization Profile', () => {
     await cooldownBetweenTests(page);
   });
 
-  test('loads organization profile via /orgs/[id]', async ({ page }) => {
-    await navigateTo(page, ROUTES.ORGS_BY_ID('1'));
+  test("loads organization profile via /orgs/[id]", async ({ page }) => {
+    await navigateTo(page, ROUTES.ORGS_BY_ID("1"));
     await waitForPageLoad(page);
     await page.waitForTimeout(2000);
 
-    const body = await page.locator('body').textContent();
+    const body = await page.locator("body").textContent();
     expect(body?.length).toBeGreaterThan(50);
   });
 });
 
-test.describe('API Documentation', () => {
+test.describe("API Documentation", () => {
   test.beforeEach(async ({ page }) => {
     if (!(await isServerHealthy())) {
       test.skip();
@@ -121,46 +121,46 @@ test.describe('API Documentation', () => {
     await cooldownBetweenTests(page);
   });
 
-  test('loads API documentation page', async ({ page }) => {
+  test("loads API documentation page", async ({ page }) => {
     await navigateTo(page, ROUTES.API_DOCS);
     await waitForPageLoad(page);
     await page.waitForTimeout(2000);
 
     const hasApiContent = await pageContainsText(
       page,
-      'api',
-      'endpoint',
-      'documentation',
-      'swagger',
-      'openapi'
+      "api",
+      "endpoint",
+      "documentation",
+      "swagger",
+      "openapi",
     );
 
-    const body = await page.locator('body').textContent();
+    const body = await page.locator("body").textContent();
     expect(hasApiContent || (body?.length ?? 0) > 100).toBe(true);
   });
 
-  test('displays API endpoint documentation', async ({ page }) => {
+  test("displays API endpoint documentation", async ({ page }) => {
     await navigateTo(page, ROUTES.API_DOCS);
     await waitForPageLoad(page);
     await page.waitForTimeout(2000);
 
     const hasEndpoints = await pageContainsText(
       page,
-      'get',
-      'post',
-      'put',
-      'delete',
-      '/api',
-      'endpoint'
+      "get",
+      "post",
+      "put",
+      "delete",
+      "/api",
+      "endpoint",
     );
 
-    const body = await page.locator('body').textContent();
+    const body = await page.locator("body").textContent();
     expect(hasEndpoints || (body?.length ?? 0) > 100).toBe(true);
   });
 });
 
-test.describe('Offline Page', () => {
-  test('displays offline fallback page', async ({ page }) => {
+test.describe("Offline Page", () => {
+  test("displays offline fallback page", async ({ page }) => {
     if (!(await isServerHealthy())) {
       test.skip();
       return;
@@ -170,12 +170,12 @@ test.describe('Offline Page', () => {
     await waitForPageLoad(page);
     await page.waitForTimeout(2000);
 
-    const body = await page.locator('body').textContent();
+    const body = await page.locator("body").textContent();
     expect(body?.length).toBeGreaterThan(10);
   });
 });
 
-test.describe('Admin Sub-Routes', () => {
+test.describe("Admin Sub-Routes", () => {
   test.beforeEach(async ({ page }) => {
     if (!(await isServerHealthy())) {
       test.skip();
@@ -191,44 +191,44 @@ test.describe('Admin Sub-Routes', () => {
     await cooldownBetweenTests(page);
   });
 
-  test('loads admin DAG visualizer page', async ({ page }) => {
+  test("loads admin DAG visualizer page", async ({ page }) => {
     await navigateTo(page, ROUTES.ADMIN_DAG);
     await waitForPageLoad(page);
     await page.waitForTimeout(2000);
 
-    const body = await page.locator('body').textContent();
+    const body = await page.locator("body").textContent();
     expect(body?.length).toBeGreaterThan(50);
   });
 
-  test('loads admin resolutions page', async ({ page }) => {
+  test("loads admin resolutions page", async ({ page }) => {
     await navigateTo(page, ROUTES.ADMIN_RESOLUTIONS);
     await waitForPageLoad(page);
     await page.waitForTimeout(2000);
 
-    const body = await page.locator('body').textContent();
+    const body = await page.locator("body").textContent();
     expect(body?.length).toBeGreaterThan(50);
   });
 
-  test('loads admin groups page', async ({ page }) => {
+  test("loads admin groups page", async ({ page }) => {
     await navigateTo(page, ROUTES.ADMIN_GROUPS);
     await waitForPageLoad(page);
     await page.waitForTimeout(2000);
 
-    const body = await page.locator('body').textContent();
+    const body = await page.locator("body").textContent();
     expect(body?.length).toBeGreaterThan(50);
   });
 
-  test('loads admin performance page', async ({ page }) => {
+  test("loads admin performance page", async ({ page }) => {
     await navigateTo(page, ROUTES.ADMIN_PERFORMANCE);
     await waitForPageLoad(page);
     await page.waitForTimeout(2000);
 
-    const body = await page.locator('body').textContent();
+    const body = await page.locator("body").textContent();
     expect(body?.length).toBeGreaterThan(50);
   });
 });
 
-test.describe('Game Page', () => {
+test.describe("Game Page", () => {
   test.beforeEach(async ({ page }) => {
     if (!(await isServerHealthy())) {
       test.skip();
@@ -244,63 +244,63 @@ test.describe('Game Page', () => {
     await cooldownBetweenTests(page);
   });
 
-  test('loads game status page', async ({ page }) => {
+  test("loads game status page", async ({ page }) => {
     await navigateTo(page, ROUTES.GAME);
     await waitForPageLoad(page);
     await page.waitForTimeout(2000);
 
     const hasGameContent = await pageContainsText(
       page,
-      'game',
-      'status',
-      'running',
-      'stopped',
-      'statistics'
+      "game",
+      "status",
+      "running",
+      "stopped",
+      "statistics",
     );
 
-    const body = await page.locator('body').textContent();
+    const body = await page.locator("body").textContent();
     expect(hasGameContent || (body?.length ?? 0) > 100).toBe(true);
   });
 
-  test('displays game statistics', async ({ page }) => {
+  test("displays game statistics", async ({ page }) => {
     await navigateTo(page, ROUTES.GAME);
     await waitForPageLoad(page);
     await page.waitForTimeout(2000);
 
     const hasStats = await pageContainsText(
       page,
-      'post',
-      'question',
-      'company',
-      'agent',
-      'user',
-      'stat'
+      "post",
+      "question",
+      "company",
+      "agent",
+      "user",
+      "stat",
     );
 
-    const body = await page.locator('body').textContent();
+    const body = await page.locator("body").textContent();
     expect(hasStats || (body?.length ?? 0) > 100).toBe(true);
   });
 
-  test('shows refresh button', async ({ page }) => {
+  test("shows refresh button", async ({ page }) => {
     await navigateTo(page, ROUTES.GAME);
     await waitForPageLoad(page);
     await page.waitForTimeout(2000);
 
     const refreshButton = page
       .locator(
-        'button:has-text("Refresh"), button:has(svg.lucide-refresh-cw), button[aria-label*="refresh" i]'
+        'button:has-text("Refresh"), button:has(svg.lucide-refresh-cw), button[aria-label*="refresh" i]',
       )
       .first();
     const hasRefresh = await refreshButton
       .isVisible({ timeout: TIMEOUTS.SHORT })
       .catch(() => false);
 
-    const body = await page.locator('body').textContent();
+    const body = await page.locator("body").textContent();
     expect(hasRefresh || (body?.length ?? 0) > 100).toBe(true);
   });
 });
 
-test.describe('NFT Page', () => {
+test.describe("NFT Page", () => {
   test.beforeEach(async ({ page }) => {
     if (!(await isServerHealthy())) {
       test.skip();
@@ -316,25 +316,25 @@ test.describe('NFT Page', () => {
     await cooldownBetweenTests(page);
   });
 
-  test('loads NFT gallery page', async ({ page }) => {
+  test("loads NFT gallery page", async ({ page }) => {
     await navigateTo(page, ROUTES.NFT);
     await waitForPageLoad(page);
     await page.waitForTimeout(2000);
 
     const hasNftContent = await pageContainsText(
       page,
-      'nft',
-      'collection',
-      'gallery',
-      'mint',
-      'token'
+      "nft",
+      "collection",
+      "gallery",
+      "mint",
+      "token",
     );
 
-    const body = await page.locator('body').textContent();
+    const body = await page.locator("body").textContent();
     expect(hasNftContent || (body?.length ?? 0) > 100).toBe(true);
   });
 
-  test('displays search on NFT page', async ({ page }) => {
+  test("displays search on NFT page", async ({ page }) => {
     await navigateTo(page, ROUTES.NFT);
     await waitForPageLoad(page);
     await page.waitForTimeout(2000);
@@ -346,7 +346,7 @@ test.describe('NFT Page', () => {
       .isVisible({ timeout: TIMEOUTS.SHORT })
       .catch(() => false);
 
-    const body = await page.locator('body').textContent();
+    const body = await page.locator("body").textContent();
     expect(hasSearch || (body?.length ?? 0) > 100).toBe(true);
   });
 });

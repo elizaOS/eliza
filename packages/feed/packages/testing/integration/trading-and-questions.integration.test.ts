@@ -9,11 +9,11 @@
  * These tests exercise the real LLM-backed game tick path when explicitly enabled.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { asSystem, db } from '@feed/db';
-import { executeGameTick, StaticDataRegistry } from '@feed/engine';
-import { generateSnowflakeId } from '@feed/shared';
-import { resolveLiveLlmTestConfig } from './helpers/live-runtime';
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { asSystem, db } from "@feed/db";
+import { executeGameTick, StaticDataRegistry } from "@feed/engine";
+import { generateSnowflakeId } from "@feed/shared";
+import { resolveLiveLlmTestConfig } from "./helpers/live-runtime";
 
 const liveLlmTestConfig = resolveLiveLlmTestConfig();
 const liveTest = test.skipIf(!liveLlmTestConfig.enabled);
@@ -24,7 +24,7 @@ async function retireQuestionAndMarket(questionId: string) {
     await tx.question.update({
       where: { id: questionId },
       data: {
-        status: 'resolved',
+        status: "resolved",
         updatedAt: resolvedAt,
       },
     });
@@ -39,7 +39,7 @@ async function retireQuestionAndMarket(questionId: string) {
   });
 }
 
-describe('Trading and Question Generation Integration', () => {
+describe("Trading and Question Generation Integration", () => {
   let initialMarketCount: number;
   const testQuestionIds: string[] = [];
   const testMarketIds: string[] = [];
@@ -47,7 +47,7 @@ describe('Trading and Question Generation Integration', () => {
   beforeAll(async () => {
     if (liveLlmTestConfig.requested && !liveLlmTestConfig.enabled) {
       throw new Error(
-        liveLlmTestConfig.skipReason ?? 'Live LLM test setup failed'
+        liveLlmTestConfig.skipReason ?? "Live LLM test setup failed",
       );
     }
 
@@ -102,11 +102,11 @@ describe('Trading and Question Generation Integration', () => {
         data: {
           id: testId,
           questionNumber: Math.floor(Date.now() / 1000) % 1000000,
-          text: 'Test: Will trading work?',
+          text: "Test: Will trading work?",
           scenarioId: 1,
           outcome: false,
           rank: 1,
-          status: 'active',
+          status: "active",
           resolutionDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
           createdAt: new Date(),
           updatedAt: new Date(),
@@ -116,10 +116,10 @@ describe('Trading and Question Generation Integration', () => {
       await db.market.create({
         data: {
           id: testId, // Same ID as question - this is how QuestionManager creates them
-          question: 'Test: Will trading work?',
-          yesShares: '100',
-          noShares: '100',
-          liquidity: '200',
+          question: "Test: Will trading work?",
+          yesShares: "100",
+          noShares: "100",
+          liquidity: "200",
           resolved: false,
           endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
           createdAt: new Date(),
@@ -135,14 +135,14 @@ describe('Trading and Question Generation Integration', () => {
     const npcs = await db.user.findMany({
       where: {
         isAgent: false,
-        virtualBalance: { gt: '0' },
+        virtualBalance: { gt: "0" },
       },
       take: 5,
     });
 
     if (npcs.length === 0) {
       console.log(
-        '⚠️  Warning: No NPCs found with balance. Trading may not occur.'
+        "⚠️  Warning: No NPCs found with balance. Trading may not occur.",
       );
     }
   });
@@ -175,13 +175,13 @@ describe('Trading and Question Generation Integration', () => {
   });
 
   liveTest(
-    'should execute game tick and process trading',
+    "should execute game tick and process trading",
     async () => {
       // skipContentGeneration=true for faster test - still uses LLM for trading decisions
       const result = await executeGameTick(true);
 
       expect(result).toBeDefined();
-      expect(typeof result.marketsUpdated).toBe('number');
+      expect(typeof result.marketsUpdated).toBe("number");
       expect(result.marketsUpdated).toBeGreaterThanOrEqual(0);
 
       // Verify markets were updated if trading occurred
@@ -194,11 +194,11 @@ describe('Trading and Question Generation Integration', () => {
         expect(afterMarketCount).toBeGreaterThanOrEqual(initialMarketCount);
       }
     },
-    60000
+    60000,
   );
 
   liveTest(
-    'should create NPC positions when trading occurs',
+    "should create NPC positions when trading occurs",
     async () => {
       // Get initial NPC pool position count (PoolPosition is for NPC perp trading)
       const beforePositions = await db.poolPosition.count({
@@ -224,23 +224,23 @@ describe('Trading and Question Generation Integration', () => {
         expect(hasPositions).toBe(true);
       }
     },
-    60000
+    60000,
   );
 
   liveTest(
-    'should generate new questions when count is low',
+    "should generate new questions when count is low",
     async () => {
       // Get current active question count
       const beforeQuestions = await db.question.count({
-        where: { status: 'active' },
+        where: { status: "active" },
       });
 
       // If we have 10+ questions, delete some to trigger generation
       if (beforeQuestions >= 10) {
         // Delete oldest questions to get below threshold
         const questionsToDelete = await db.question.findMany({
-          where: { status: 'active' },
-          orderBy: { createdAt: 'asc' },
+          where: { status: "active" },
+          orderBy: { createdAt: "asc" },
           take: beforeQuestions - 8, // Leave 8 active (below 10 threshold)
         });
 
@@ -255,8 +255,8 @@ describe('Trading and Question Generation Integration', () => {
 
       // Verify the game tick completed successfully
       expect(result).toBeDefined();
-      expect(typeof result.questionsCreated).toBe('number');
-      expect(typeof result.questionsResolved).toBe('number');
+      expect(typeof result.questionsCreated).toBe("number");
+      expect(typeof result.questionsResolved).toBe("number");
 
       // When skipContentGeneration=true, questions may not be created
       // This is expected behavior. The test verifies the tick infrastructure works.
@@ -264,7 +264,7 @@ describe('Trading and Question Generation Integration', () => {
 
       // Check current question count
       const afterQuestions = await db.question.count({
-        where: { status: 'active' },
+        where: { status: "active" },
       });
 
       // If questions were generated despite skipContentGeneration, verify they have markets
@@ -274,7 +274,7 @@ describe('Trading and Question Generation Integration', () => {
         // Verify questions have associated markets
         const newQuestions = await db.question.findMany({
           where: {
-            status: 'active',
+            status: "active",
             createdAt: { gte: new Date(Date.now() - 60000) }, // Created in last minute
           },
         });
@@ -289,19 +289,19 @@ describe('Trading and Question Generation Integration', () => {
       }
 
       console.log(
-        `Question generation: before=${beforeQuestions}, after=${afterQuestions}, created=${result.questionsCreated}`
+        `Question generation: before=${beforeQuestions}, after=${afterQuestions}, created=${result.questionsCreated}`,
       );
     },
-    60000
+    60000,
   );
 
   liveTest(
-    'should update organization prices when NPCs trade',
+    "should update organization prices when NPCs trade",
     async () => {
       // Get an organization (company) to track price changes from static registry + dynamic state
       // Note: "marketsUpdated" in game tick refers to organization prices, not prediction markets
       const staticOrgs = StaticDataRegistry.getOrganizationsByType(
-        'company'
+        "company",
       ).filter((o) => o.ticker);
       const orgStates = await db.organizationState.findMany();
       const stateMap = new Map(orgStates.map((s) => [s.id, s]));
@@ -311,7 +311,7 @@ describe('Trading and Question Generation Integration', () => {
 
       // Test requires at least one company with state
       expect(staticOrg).toBeDefined();
-      if (!staticOrg) throw new Error('No organization found');
+      if (!staticOrg) throw new Error("No organization found");
 
       const orgState = stateMap.get(staticOrg.id);
       const beforePrice = orgState?.currentPrice
@@ -341,36 +341,36 @@ describe('Trading and Question Generation Integration', () => {
         // Just verify the price is a valid number (may or may not have changed)
         // Price changes depend on whether NPCs actually traded this org's perp
         if (afterPrice !== null) {
-          expect(typeof afterPrice).toBe('number');
-          expect(isFinite(afterPrice)).toBe(true);
+          expect(typeof afterPrice).toBe("number");
+          expect(Number.isFinite(afterPrice)).toBe(true);
         }
 
         // Log what happened for debugging
         const priceChanged = afterPrice !== beforePrice;
         console.log(
-          `Organization ${staticOrg.ticker}: price ${priceChanged ? 'changed' : 'unchanged'} (${beforePrice} -> ${afterPrice})`
+          `Organization ${staticOrg.ticker}: price ${priceChanged ? "changed" : "unchanged"} (${beforePrice} -> ${afterPrice})`,
         );
       }
 
       // Verify the game tick result is valid
       expect(result.marketsUpdated).toBeGreaterThanOrEqual(0);
     },
-    60000
+    60000,
   );
 
   liveTest(
-    'should create markets for new questions',
+    "should create markets for new questions",
     async () => {
       // Ensure we're below question threshold to trigger generation
       const activeQuestions = await db.question.count({
-        where: { status: 'active' },
+        where: { status: "active" },
       });
 
       if (activeQuestions >= 10) {
         // Resolve some questions to trigger generation
         const questionsToResolve = await db.question.findMany({
-          where: { status: 'active' },
-          orderBy: { createdAt: 'asc' },
+          where: { status: "active" },
+          orderBy: { createdAt: "asc" },
           take: activeQuestions - 8,
         });
 
@@ -394,7 +394,7 @@ describe('Trading and Question Generation Integration', () => {
         // Verify new questions have markets
         const newQuestions = await db.question.findMany({
           where: {
-            status: 'active',
+            status: "active",
             createdAt: { gte: new Date(Date.now() - 60000) },
           },
         });
@@ -409,11 +409,11 @@ describe('Trading and Question Generation Integration', () => {
         }
       }
     },
-    60000
+    60000,
   );
 
   liveTest(
-    'should verify trading and question generation work together',
+    "should verify trading and question generation work together",
     async () => {
       // This is a comprehensive test that verifies both features work in the same tick
 
@@ -422,7 +422,7 @@ describe('Trading and Question Generation Integration', () => {
 
       // Get baseline state
       const beforeQuestions = await db.question.count({
-        where: { status: 'active' },
+        where: { status: "active" },
       });
 
       // Run game tick - skipContentGeneration=true for faster test
@@ -430,15 +430,15 @@ describe('Trading and Question Generation Integration', () => {
 
       // Verify results structure
       expect(result).toBeDefined();
-      expect(typeof result.marketsUpdated).toBe('number');
-      expect(typeof result.questionsCreated).toBe('number');
-      expect(typeof result.questionsResolved).toBe('number');
+      expect(typeof result.marketsUpdated).toBe("number");
+      expect(typeof result.questionsCreated).toBe("number");
+      expect(typeof result.questionsResolved).toBe("number");
 
       // Verify trading occurred (if NPCs exist and have balance)
       const npcsWithBalance = await db.user.count({
         where: {
           isAgent: false,
-          virtualBalance: { gt: '0' },
+          virtualBalance: { gt: "0" },
         },
       });
 
@@ -447,10 +447,10 @@ describe('Trading and Question Generation Integration', () => {
         // Note: Trading may not occur every tick (NPCs may hold)
         // But if markets exist and NPCs have balance, trading should eventually occur
         const currentPositions = await db.position.count({
-          where: { status: 'active' },
+          where: { status: "active" },
         });
         console.log(
-          `Trading status: marketsUpdated=${result.marketsUpdated}, positions=${currentPositions}`
+          `Trading status: marketsUpdated=${result.marketsUpdated}, positions=${currentPositions}`,
         );
 
         // Verify trading infrastructure is working (even if no trades this tick)
@@ -461,7 +461,7 @@ describe('Trading and Question Generation Integration', () => {
       // Verify question generation (if below threshold)
       if (beforeQuestions < 10) {
         const afterQuestions = await db.question.count({
-          where: { status: 'active' },
+          where: { status: "active" },
         });
 
         // Questions should have been generated or at least attempted
@@ -478,7 +478,7 @@ describe('Trading and Question Generation Integration', () => {
       if (result.questionsCreated > 0) {
         const newQuestions = await db.question.findMany({
           where: {
-            status: 'active',
+            status: "active",
             createdAt: { gte: testStartTime },
           },
         });
@@ -502,6 +502,6 @@ describe('Trading and Question Generation Integration', () => {
         }
       }
     },
-    60000
+    60000,
   );
 });

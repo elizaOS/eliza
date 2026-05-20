@@ -4,23 +4,23 @@
  * @description Utilities for finding users by various identifiers (ID, privyId, username).
  */
 
-import { db, eq, users } from '@feed/db';
-import { type StaticActor, StaticDataRegistry } from '@feed/engine';
-import { resolveUserIdentifierKind } from '@feed/shared';
-import type { InferSelectModel } from 'drizzle-orm';
-import { sql } from 'drizzle-orm';
+import { db, eq, users } from "@feed/db";
+import { type StaticActor, StaticDataRegistry } from "@feed/engine";
+import { resolveUserIdentifierKind } from "@feed/shared";
+import type { InferSelectModel } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import {
   CACHE_KEYS,
   DEFAULT_TTLS,
   getCacheOrFetch,
-} from '../cache/cache-service';
-import { NotFoundError } from '../errors';
+} from "../cache/cache-service";
+import { NotFoundError } from "../errors";
 
 type User = InferSelectModel<typeof users>;
 
 function projectUser(
   user: User | null,
-  select?: Record<string, boolean>
+  select?: Record<string, boolean>,
 ): User | null {
   if (!user || !select) {
     return user;
@@ -33,7 +33,7 @@ function projectUser(
       }
       return result;
     },
-    {}
+    {},
   );
 
   return projected as User;
@@ -48,14 +48,14 @@ function projectUser(
  */
 async function fetchUserByClassifiedIdentifier(
   identifier: string,
-  kind: 'id' | 'privyId' | 'stewardId' | 'username'
+  kind: "id" | "privyId" | "stewardId" | "username",
 ): Promise<User | null> {
   const condition =
-    kind === 'id'
+    kind === "id"
       ? eq(users.id, identifier)
-      : kind === 'privyId'
+      : kind === "privyId"
         ? eq(users.privyId, identifier)
-        : kind === 'stewardId'
+        : kind === "stewardId"
           ? eq(users.stewardId, identifier)
           : sql`lower(${users.username}) = lower(${identifier})`;
 
@@ -64,7 +64,7 @@ async function fetchUserByClassifiedIdentifier(
 
   // Fallback: did:privy: identifiers may be stored as the primary key
   // instead of in the privyId column. PK lookup is O(1).
-  if (kind === 'privyId') {
+  if (kind === "privyId") {
     const [byId] = await db
       .select()
       .from(users)
@@ -100,13 +100,13 @@ async function fetchUserByClassifiedIdentifier(
  */
 function getUserIdentifierCacheKey(
   identifier: string,
-  kind: 'id' | 'privyId' | 'stewardId' | 'username'
+  kind: "id" | "privyId" | "stewardId" | "username",
 ): string {
-  if (kind === 'id') {
+  if (kind === "id") {
     return `id:${identifier}`;
-  } else if (kind === 'privyId') {
+  } else if (kind === "privyId") {
     return `privy:${identifier}`;
-  } else if (kind === 'stewardId') {
+  } else if (kind === "stewardId") {
     return `steward:${identifier}`;
   } else {
     return `username:${identifier.toLowerCase()}`;
@@ -149,11 +149,11 @@ function getUserIdentifierCacheKey(
  */
 export async function findUserByIdentifier(
   identifier: string,
-  select?: Record<string, boolean>
+  select?: Record<string, boolean>,
 ): Promise<User | null> {
   // WHY early return for empty/null? Avoids unnecessary classification and cache lookup
   // Empty strings can't match any identifier type, so return null immediately
-  if (!identifier || identifier.trim() === '') {
+  if (!identifier || identifier.trim() === "") {
     return null;
   }
 
@@ -170,7 +170,7 @@ export async function findUserByIdentifier(
     {
       namespace: CACHE_KEYS.USER_IDENTIFIER,
       ttl: DEFAULT_TTLS.USER,
-    }
+    },
   );
 
   return projectUser(user, select);
@@ -209,7 +209,7 @@ export async function findUserByIdentifierWithSelect<
   T extends Record<string, unknown>,
 >(identifier: string, select: T): Promise<T | null> {
   // WHY early return for empty/null? Same as findUserByIdentifier - avoid unnecessary work
-  if (!identifier || identifier.trim() === '') {
+  if (!identifier || identifier.trim() === "") {
     return null;
   }
 
@@ -226,7 +226,7 @@ export async function findUserByIdentifierWithSelect<
     {
       namespace: CACHE_KEYS.USER_IDENTIFIER,
       ttl: DEFAULT_TTLS.USER, // WHY 300s? Same as other user caches - balances freshness vs hit rate
-    }
+    },
   );
 
   if (!user) return null;
@@ -267,11 +267,11 @@ export async function findUserByIdentifierWithSelect<
  */
 export async function requireUserByIdentifier(
   identifier: string,
-  _select?: Record<string, boolean>
+  _select?: Record<string, boolean>,
 ): Promise<User> {
   const user = await findUserByIdentifier(identifier);
   if (!user) {
-    throw new NotFoundError('User', undefined, { identifier });
+    throw new NotFoundError("User", undefined, { identifier });
   }
   return user;
 }
@@ -308,7 +308,7 @@ export interface TargetLookupResult {
  * ```
  */
 export async function findTargetByIdentifier(
-  identifier: string
+  identifier: string,
 ): Promise<TargetLookupResult> {
   // Try to find as user first
   const user = await findUserByIdentifier(identifier);
@@ -359,12 +359,12 @@ export async function findTargetByIdentifier(
  * ```
  */
 export async function requireTargetByIdentifier(
-  identifier: string
+  identifier: string,
 ): Promise<TargetLookupResult & { targetId: string }> {
   const result = await findTargetByIdentifier(identifier);
 
   if (!result.targetId) {
-    throw new NotFoundError('User', undefined, { identifier });
+    throw new NotFoundError("User", undefined, { identifier });
   }
 
   return result as TargetLookupResult & { targetId: string };

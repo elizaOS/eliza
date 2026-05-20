@@ -48,15 +48,15 @@
  * ```
  */
 
-import { withErrorHandling } from '@feed/api';
-import { db } from '@feed/db';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+import { withErrorHandling } from "@feed/api";
+import { db } from "@feed/db";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 export const GET = withErrorHandling(async function GET(
   _req: NextRequest,
-  { params }: { params: Promise<{ gameId: string }> }
+  { params }: { params: Promise<{ gameId: string }> },
 ) {
   const { gameId } = await params;
 
@@ -65,38 +65,38 @@ export const GET = withErrorHandling(async function GET(
   const activeQuestions = await db.question.findMany({
     where: {
       // gameId: gameId,  // Add gameId to Question model if not exists
-      status: 'active',
+      status: "active",
     },
   });
 
   // If any questions still active, game is not complete
   if (activeQuestions.length > 0) {
     logger.warn(
-      'Training data requested for active game - rejected',
+      "Training data requested for active game - rejected",
       {
         gameId,
         activeQuestions: activeQuestions.length,
       },
-      'TrainingDataAPI'
+      "TrainingDataAPI",
     );
 
     return NextResponse.json(
       {
-        error: 'Training data only available for completed games',
-        status: 'GAME_ACTIVE',
+        error: "Training data only available for completed games",
+        status: "GAME_ACTIVE",
         message:
-          'This game has active questions. Training data will be available after all questions resolve.',
+          "This game has active questions. Training data will be available after all questions resolve.",
       },
-      { status: 403 }
+      { status: 403 },
     );
   }
 
   // Get all resolved questions
   const questions = await db.question.findMany({
     where: {
-      status: 'resolved',
+      status: "resolved",
     },
-    orderBy: { createdDate: 'asc' },
+    orderBy: { createdDate: "asc" },
   });
 
   // Get all posts from this time period, filtered by related question if available
@@ -125,7 +125,7 @@ export const GET = withErrorHandling(async function GET(
       createdAt: true,
       relatedQuestion: true,
     },
-    orderBy: { createdAt: 'asc' },
+    orderBy: { createdAt: "asc" },
   });
 
   // Collect posts that aren't associated with any question
@@ -135,7 +135,7 @@ export const GET = withErrorHandling(async function GET(
   const questionData = questions.map((q) => {
     // Filter posts to those strictly related to this question
     const questionPosts = posts.filter(
-      (p) => p.relatedQuestion === q.questionNumber
+      (p) => p.relatedQuestion === q.questionNumber,
     );
 
     return {
@@ -157,15 +157,15 @@ export const GET = withErrorHandling(async function GET(
         contentSentiment: p.sentiment,
         finalOutcome: q.resolvedOutcome,
         sentimentMatchedOutcome:
-          (p.sentiment === 'positive' && q.resolvedOutcome === true) ||
-          (p.sentiment === 'negative' && q.resolvedOutcome === false),
+          (p.sentiment === "positive" && q.resolvedOutcome === true) ||
+          (p.sentiment === "negative" && q.resolvedOutcome === false),
       })),
     };
   });
 
   return NextResponse.json({
     gameId,
-    status: 'completed',
+    status: "completed",
     questionsAnalyzed: questions.length,
     totalPosts: posts.length,
     questions: questionData,
@@ -181,8 +181,8 @@ export const GET = withErrorHandling(async function GET(
     // Metadata for training:
     trainingMetadata: {
       generatedAt: new Date().toISOString(),
-      purpose: 'offline_reinforcement_learning',
-      safetyNote: 'This data is only available after game completion',
+      purpose: "offline_reinforcement_learning",
+      safetyNote: "This data is only available after game completion",
     },
   });
 });

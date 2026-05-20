@@ -2,8 +2,8 @@
  * Utility functions for formatting values in the Markets page.
  */
 
-import { PredictionPricing } from '@feed/core/markets/prediction/client';
-import { FEED_POINTS_SYMBOL } from '@feed/shared';
+import { PredictionPricing } from "@feed/core/markets/prediction/client";
+import { FEED_POINTS_SYMBOL } from "@feed/shared";
 
 /**
  * Formats a price value as Feed points currency.
@@ -54,7 +54,7 @@ export function formatVolume(volume: number): string {
 export function getDaysLeft(date?: string): number | null {
   if (!date) return null;
   const diff = Math.ceil(
-    (new Date(date).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+    (new Date(date).getTime() - Date.now()) / (1000 * 60 * 60 * 24),
   );
   return Math.max(0, diff);
 }
@@ -72,7 +72,7 @@ export function getDaysLeft(date?: string): number | null {
  */
 export function calculateSharePercentages(
   yesShares: number | undefined,
-  noShares: number | undefined
+  noShares: number | undefined,
 ): { yesPercent: number; noPercent: number; totalShares: number } {
   const yes = yesShares ?? 0;
   const no = noShares ?? 0;
@@ -82,8 +82,8 @@ export function calculateSharePercentages(
     return { yesPercent: 50, noPercent: 50, totalShares: 0 };
   }
 
-  const yesPrice = PredictionPricing.getCurrentPrice(yes, no, 'yes');
-  const noPrice = PredictionPricing.getCurrentPrice(yes, no, 'no');
+  const yesPrice = PredictionPricing.getCurrentPrice(yes, no, "yes");
+  const noPrice = PredictionPricing.getCurrentPrice(yes, no, "no");
 
   return {
     yesPercent: yesPrice * 100,

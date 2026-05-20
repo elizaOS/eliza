@@ -61,18 +61,18 @@
  * @see {@link https://sdk.ag0.xyz/} Agent0 SDK documentation
  */
 
-import type { AgentCard } from '@feed/agents';
-import { agentRegistry } from '@feed/agents';
-import { withErrorHandling } from '@feed/api';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+import type { AgentCard } from "@feed/agents";
+import { agentRegistry } from "@feed/agents";
+import { withErrorHandling } from "@feed/api";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 export const GET = withErrorHandling(async function GET(
   _req: NextRequest,
-  { params }: { params: Promise<{ agentId: string }> }
+  { params }: { params: Promise<{ agentId: string }> },
 ) {
   const { agentId } = await params;
 
@@ -81,8 +81,8 @@ export const GET = withErrorHandling(async function GET(
 
   if (!agent) {
     return NextResponse.json(
-      { error: 'Agent not found', agentId },
-      { status: 404 }
+      { error: "Agent not found", agentId },
+      { status: 404 },
     );
   }
 
@@ -92,10 +92,10 @@ export const GET = withErrorHandling(async function GET(
   }
 
   // Build agent card from registration data
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
 
   const agentCard: AgentCard = {
-    version: '1.0',
+    version: "1.0",
     agentId: agent.agentId,
     name: agent.name,
     description: agent.systemPrompt,
@@ -131,7 +131,7 @@ export const GET = withErrorHandling(async function GET(
       skillsCount: agent.capabilities.skills?.length || 0,
       domainsCount: agent.capabilities.domains?.length || 0,
     },
-    'AgentCard'
+    "AgentCard",
   );
 
   return NextResponse.json(agentCard, { status: 200 });

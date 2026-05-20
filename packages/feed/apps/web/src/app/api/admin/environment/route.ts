@@ -18,28 +18,28 @@ import {
   requireSuperAdmin,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { logger } from '@feed/shared';
-import { cookies } from 'next/headers';
-import type { NextRequest } from 'next/server';
+} from "@feed/api";
+import { logger } from "@feed/shared";
+import { cookies } from "next/headers";
+import type { NextRequest } from "next/server";
 
-export type AdminEnvironment = 'production' | 'staging' | 'development';
+export type AdminEnvironment = "production" | "staging" | "development";
 
-const ENVIRONMENT_COOKIE = 'admin-environment';
+const ENVIRONMENT_COOKIE = "admin-environment";
 const VALID_ENVIRONMENTS: AdminEnvironment[] = [
-  'production',
-  'staging',
-  'development',
+  "production",
+  "staging",
+  "development",
 ];
 
 /**
  * Get the actual environment from environment variables
  */
 function getActualEnvironment(): AdminEnvironment {
-  if (process.env.VERCEL_ENV === 'production') return 'production';
-  if (process.env.VERCEL_ENV === 'preview') return 'staging';
-  if (process.env.NODE_ENV === 'production') return 'production';
-  return 'development';
+  if (process.env.VERCEL_ENV === "production") return "production";
+  if (process.env.VERCEL_ENV === "preview") return "staging";
+  if (process.env.NODE_ENV === "production") return "production";
+  return "development";
 }
 
 /**
@@ -61,9 +61,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     available: VALID_ENVIRONMENTS,
     info: {
       nodeEnv: process.env.NODE_ENV,
-      vercelEnv: process.env.VERCEL_ENV || 'local',
-      vercelUrl: process.env.VERCEL_URL || 'localhost',
-      region: process.env.VERCEL_REGION || 'local',
+      vercelEnv: process.env.VERCEL_ENV || "local",
+      vercelUrl: process.env.VERCEL_URL || "localhost",
+      region: process.env.VERCEL_REGION || "local",
     },
   });
 });
@@ -85,9 +85,9 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   if (!environment || !VALID_ENVIRONMENTS.includes(environment)) {
     return errorResponse(
-      `Invalid environment. Must be one of: ${VALID_ENVIRONMENTS.join(', ')}`,
-      'INVALID_ENVIRONMENT',
-      400
+      `Invalid environment. Must be one of: ${VALID_ENVIRONMENTS.join(", ")}`,
+      "INVALID_ENVIRONMENT",
+      400,
     );
   }
 
@@ -97,19 +97,19 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // Using 'strict' for sameSite to prevent CSRF attacks on this sensitive endpoint
   cookieStore.set(ENVIRONMENT_COOKIE, environment, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
     maxAge: 60 * 60 * 24 * 7, // 7 days
-    path: '/',
+    path: "/",
   });
 
   logger.info(
-    'Admin environment changed',
+    "Admin environment changed",
     {
       userId: admin.userId,
       environment,
     },
-    'POST /api/admin/environment'
+    "POST /api/admin/environment",
   );
 
   return successResponse({

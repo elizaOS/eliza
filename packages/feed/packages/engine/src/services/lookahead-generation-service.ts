@@ -33,40 +33,40 @@ import {
   max,
   posts,
   questions,
-} from '@feed/db';
-import { escapeRegex, logger } from '@feed/shared';
+} from "@feed/db";
+import { escapeRegex, logger } from "@feed/shared";
 import {
   CONTENT_PACING,
   getTimeOfDayMultiplier,
   shouldActorPost,
-} from '../config/content-pacing';
-import type { FeedLLMClient } from '../llm/openai-client';
-import { getGameDayNumber, toSafeDayNumber } from '../utils/date-utils';
+} from "../config/content-pacing";
+import type { FeedLLMClient } from "../llm/openai-client";
+import { getGameDayNumber, toSafeDayNumber } from "../utils/date-utils";
 import {
   secureRandom,
   secureShuffle,
   urgencyWeight,
   weightedPick,
-} from '../utils/entropy';
-import { worldFactsService } from '../world-facts-service';
+} from "../utils/entropy";
+import { worldFactsService } from "../world-facts-service";
 // generateEvents is now consolidated in game-tick and narrative-event-processor
 import {
   getActorRivals,
   shouldGenerateOrganicPost,
   shouldPostAboutTopic,
-} from './npc-character-config';
+} from "./npc-character-config";
 import {
   generateNPCPost,
   generateOrganicPost,
   generateOrgPost,
   generateRivalryPost,
   loadSharedPostContext,
-} from './post-generation-helpers';
-import { StaticDataRegistry } from './static-data-registry';
+} from "./post-generation-helpers";
+import { StaticDataRegistry } from "./static-data-registry";
 import {
   type DiverseTopicSuggestion,
   getTopicDiversityService,
-} from './topic-diversity-service';
+} from "./topic-diversity-service";
 
 const LOOKAHEAD_MINUTES = 15; // Generate 15 minutes ahead
 const GENERATION_BATCH_MINUTES = 5; // Generate in 5-minute batches
@@ -117,7 +117,7 @@ export async function checkLookaheadStatus(): Promise<{
     };
   }
 
-  const latest = new Date(latestPostResult[0]!.timestamp);
+  const latest = new Date(latestPostResult[0]?.timestamp);
   const minutesAhead = (latest.getTime() - now.getTime()) / (60 * 1000);
   const needsGeneration = minutesAhead < LOOKAHEAD_MINUTES;
 
@@ -136,7 +136,7 @@ export async function checkLookaheadStatus(): Promise<{
 export function extractPrices(text: string): string[] {
   const priceMatches = text.match(/\$?[\d,]+(?:k|K|,\d{3})?/g);
   if (!priceMatches) return [];
-  return priceMatches.map((p) => p.toLowerCase().replace(/,/g, ''));
+  return priceMatches.map((p) => p.toLowerCase().replace(/,/g, ""));
 }
 
 /**
@@ -156,7 +156,7 @@ export function extractPercentages(text: string): string[] {
  */
 export function extractDates(text: string): string[] {
   const dateMatches = text.match(
-    /(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}|Q[1-4]\s+\d{4}|\b20\d{2}\b/gi
+    /(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}|Q[1-4]\s+\d{4}|\b20\d{2}\b/gi,
   );
   if (!dateMatches) return [];
   return dateMatches.map((d) => d.toLowerCase());
@@ -169,7 +169,7 @@ export function extractDates(text: string): string[] {
  */
 export function extractSymbols(text: string): string[] {
   const symbolMatches = text.match(
-    /\b(?:BTC|ETH|SOL|DOGE|XRP|ADA|DOT|LINK|AVAX|MATIC)\b/gi
+    /\b(?:BTC|ETH|SOL|DOGE|XRP|ADA|DOT|LINK|AVAX|MATIC)\b/gi,
   );
   if (!symbolMatches) return [];
   return symbolMatches.map((s) => s.toUpperCase());
@@ -181,12 +181,12 @@ interface EntityPattern {
 }
 
 const STATIC_ENTITY_PATTERNS: EntityPattern[] = [
-  { pattern: /\bfed\b|federal reserve/i, entity: 'federal-reserve' },
-  { pattern: /\bsec\b/i, entity: 'sec' },
-  { pattern: /\bcongress\b/i, entity: 'congress' },
-  { pattern: /\bfsd\b/i, entity: 'teslai-fsd' },
-  { pattern: /\bsmh[- ]?\d+(?:\.\d+)?/i, entity: 'openagi-model' },
-  { pattern: /\bclaude[- ]?\d*/i, entity: 'aitropic-model' },
+  { pattern: /\bfed\b|federal reserve/i, entity: "federal-reserve" },
+  { pattern: /\bsec\b/i, entity: "sec" },
+  { pattern: /\bcongress\b/i, entity: "congress" },
+  { pattern: /\bfsd\b/i, entity: "teslai-fsd" },
+  { pattern: /\bsmh[- ]?\d+(?:\.\d+)?/i, entity: "openagi-model" },
+  { pattern: /\bclaude[- ]?\d*/i, entity: "aitropic-model" },
 ];
 
 let cachedEntityPatternPackId: string | null = null;
@@ -196,8 +196,8 @@ function buildEntityPattern(alias: string): RegExp | null {
   const normalized = alias
     .trim()
     .toLowerCase()
-    .replace(/^@/, '')
-    .replace(/\s+/g, ' ');
+    .replace(/^@/, "")
+    .replace(/\s+/g, " ");
 
   if (!normalized) {
     return null;
@@ -208,17 +208,17 @@ function buildEntityPattern(alias: string): RegExp | null {
     return null;
   }
 
-  return new RegExp(`\\b${tokens.map(escapeRegex).join('[-_\\s]*')}\\b`, 'i');
+  return new RegExp(`\\b${tokens.map(escapeRegex).join("[-_\\s]*")}\\b`, "i");
 }
 
 function collectAliases(
   values: Array<string | undefined>,
-  includeFirstToken: boolean
+  includeFirstToken: boolean,
 ): string[] {
   const aliases = new Set<string>();
 
   for (const value of values) {
-    const normalized = value?.trim().replace(/\s+/g, ' ');
+    const normalized = value?.trim().replace(/\s+/g, " ");
     if (!normalized) {
       continue;
     }
@@ -253,7 +253,7 @@ function buildDynamicEntityPatterns(): EntityPattern[] {
         organization.ticker,
         organization.originalName,
       ],
-      false
+      false,
     );
 
     for (const alias of aliases) {
@@ -275,7 +275,7 @@ function buildDynamicEntityPatterns(): EntityPattern[] {
   for (const actor of StaticDataRegistry.getAllActors()) {
     const aliases = collectAliases(
       [actor.id, actor.name, actor.realName, actor.username],
-      true
+      true,
     );
 
     for (const alias of aliases) {
@@ -337,26 +337,26 @@ export function extractActions(text: string): string[] {
   const actionPatterns: Array<{ pattern: RegExp; action: string }> = [
     {
       pattern: /\b(?:breaks?|broke)\b.*\b(?:above|below|through)\b/,
-      action: 'breakout',
+      action: "breakout",
     },
-    { pattern: /\b(?:crash|crashed|crashing)\b/, action: 'crash' },
-    { pattern: /\b(?:surge|surged|surging)\b/, action: 'surge' },
-    { pattern: /\b(?:announce|announced|announces)\b/, action: 'announcement' },
-    { pattern: /\b(?:launch|launched|launches)\b/, action: 'launch' },
-    { pattern: /\b(?:ban|banned|bans)\b/, action: 'ban' },
-    { pattern: /\b(?:approve|approved|approves)\b/, action: 'approval' },
-    { pattern: /\b(?:reject|rejected|rejects)\b/, action: 'rejection' },
-    { pattern: /\b(?:hack|hacked|breach)\b/, action: 'security-breach' },
-    { pattern: /\b(?:layoff|layoffs|laid off)\b/, action: 'layoffs' },
-    { pattern: /\b(?:acquisition|acquire|acquired)\b/, action: 'acquisition' },
-    { pattern: /\b(?:ipo|public offering)\b/, action: 'ipo' },
+    { pattern: /\b(?:crash|crashed|crashing)\b/, action: "crash" },
+    { pattern: /\b(?:surge|surged|surging)\b/, action: "surge" },
+    { pattern: /\b(?:announce|announced|announces)\b/, action: "announcement" },
+    { pattern: /\b(?:launch|launched|launches)\b/, action: "launch" },
+    { pattern: /\b(?:ban|banned|bans)\b/, action: "ban" },
+    { pattern: /\b(?:approve|approved|approves)\b/, action: "approval" },
+    { pattern: /\b(?:reject|rejected|rejects)\b/, action: "rejection" },
+    { pattern: /\b(?:hack|hacked|breach)\b/, action: "security-breach" },
+    { pattern: /\b(?:layoff|layoffs|laid off)\b/, action: "layoffs" },
+    { pattern: /\b(?:acquisition|acquire|acquired)\b/, action: "acquisition" },
+    { pattern: /\b(?:ipo|public offering)\b/, action: "ipo" },
     // Additional action patterns for common news events
-    { pattern: /\b(?:unveil|unveiled|unveils)\b/, action: 'unveil' },
-    { pattern: /\b(?:reveal|revealed|reveals)\b/, action: 'reveal' },
-    { pattern: /\b(?:hints?|hinted|hinting)\b/, action: 'hint' },
-    { pattern: /\b(?:claim|claimed|claims)\b/, action: 'claim' },
-    { pattern: /\b(?:partner|partnered|partnership)\b/, action: 'partnership' },
-    { pattern: /\b(?:release|released|releases)\b/, action: 'release' },
+    { pattern: /\b(?:unveil|unveiled|unveils)\b/, action: "unveil" },
+    { pattern: /\b(?:reveal|revealed|reveals)\b/, action: "reveal" },
+    { pattern: /\b(?:hints?|hinted|hinting)\b/, action: "hint" },
+    { pattern: /\b(?:claim|claimed|claims)\b/, action: "claim" },
+    { pattern: /\b(?:partner|partnered|partnership)\b/, action: "partnership" },
+    { pattern: /\b(?:release|released|releases)\b/, action: "release" },
   ];
 
   for (const { pattern, action } of actionPatterns) {
@@ -409,7 +409,7 @@ export function extractEventKeywords(text: string): string[] {
  */
 export async function generateAheadIfNeeded(
   llmClient: FeedLLMClient,
-  targetMinutesAhead: number = LOOKAHEAD_MINUTES
+  targetMinutesAhead: number = LOOKAHEAD_MINUTES,
 ): Promise<{
   generated: boolean;
   windowsGenerated: number;
@@ -419,12 +419,12 @@ export async function generateAheadIfNeeded(
 
   if (!status.needsGeneration) {
     logger.info(
-      'Lookahead sufficient',
+      "Lookahead sufficient",
       {
         minutesAhead: status.minutesAhead,
         target: targetMinutesAhead,
       },
-      'LookaheadGeneration'
+      "LookaheadGeneration",
     );
     return {
       generated: false,
@@ -434,13 +434,13 @@ export async function generateAheadIfNeeded(
   }
 
   logger.info(
-    'Generating ahead',
+    "Generating ahead",
     {
       currentAhead: status.minutesAhead,
       target: targetMinutesAhead,
       latestTimestamp: status.latestTimestamp?.toISOString(),
     },
-    'LookaheadGeneration'
+    "LookaheadGeneration",
   );
 
   // Calculate how many 5-minute windows to generate
@@ -449,7 +449,7 @@ export async function generateAheadIfNeeded(
   const minutesNeeded = targetMinutesAhead - currentAhead;
   const windowsToGenerate = Math.max(
     1,
-    Math.ceil(minutesNeeded / GENERATION_BATCH_MINUTES)
+    Math.ceil(minutesNeeded / GENERATION_BATCH_MINUTES),
   );
 
   // Start from whichever is later: now or last content timestamp
@@ -465,22 +465,22 @@ export async function generateAheadIfNeeded(
     // Calculate window boundaries consistently from baseTimestamp
     // Each window is exactly GENERATION_BATCH_MINUTES long with no overlaps
     const windowStart = new Date(
-      baseTimestamp.getTime() + i * GENERATION_BATCH_MINUTES * 60 * 1000
+      baseTimestamp.getTime() + i * GENERATION_BATCH_MINUTES * 60 * 1000,
     );
     const windowEnd = new Date(
-      windowStart.getTime() + GENERATION_BATCH_MINUTES * 60 * 1000
+      windowStart.getTime() + GENERATION_BATCH_MINUTES * 60 * 1000,
     );
 
     // Safety: skip if window end is somehow in the past
     if (windowEnd < now) {
       logger.warn(
-        'Skipping window in the past',
+        "Skipping window in the past",
         {
           windowStart: windowStart.toISOString(),
           windowEnd: windowEnd.toISOString(),
           now: now.toISOString(),
         },
-        'LookaheadGeneration'
+        "LookaheadGeneration",
       );
       continue;
     }
@@ -494,7 +494,7 @@ export async function generateAheadIfNeeded(
         windowStart: windowStart.toISOString(),
         windowEnd: windowEnd.toISOString(),
       },
-      'LookaheadGeneration'
+      "LookaheadGeneration",
     );
   }
 
@@ -521,7 +521,7 @@ export async function generateAheadIfNeeded(
  */
 async function checkTimeWindowHasContent(
   windowStart: Date,
-  windowEnd: Date
+  windowEnd: Date,
 ): Promise<boolean> {
   const [result] = await db
     .select({ count: count() })
@@ -530,8 +530,8 @@ async function checkTimeWindowHasContent(
       and(
         gte(posts.timestamp, windowStart),
         lt(posts.timestamp, windowEnd),
-        isNull(posts.deletedAt)
-      )
+        isNull(posts.deletedAt),
+      ),
     );
 
   const existingPosts = result?.count ?? 0;
@@ -556,18 +556,18 @@ async function checkTimeWindowHasContent(
 async function generateContentWindow(
   llmClient: FeedLLMClient,
   windowStart: Date,
-  windowEnd: Date
+  windowEnd: Date,
 ): Promise<void> {
   // Check for deduplication - skip if content already exists for this window
   const hasContent = await checkTimeWindowHasContent(windowStart, windowEnd);
   if (hasContent) {
     logger.info(
-      'Content already exists for time window - skipping generation',
+      "Content already exists for time window - skipping generation",
       {
         windowStart: windowStart.toISOString(),
         windowEnd: windowEnd.toISOString(),
       },
-      'LookaheadGeneration'
+      "LookaheadGeneration",
     );
     return;
   }
@@ -593,13 +593,13 @@ async function generateContentWindow(
   const activeQuestions = await db
     .select()
     .from(questions)
-    .where(eq(questions.status, 'active'));
+    .where(eq(questions.status, "active"));
 
   if (activeQuestions.length === 0) {
     logger.warn(
-      'No active questions - skipping content generation',
+      "No active questions - skipping content generation",
       {},
-      'LookaheadGeneration'
+      "LookaheadGeneration",
     );
     return;
   }
@@ -612,14 +612,14 @@ async function generateContentWindow(
 
   // Calculate base posts for this 5-minute window based on target hourly rate
   const basePostsPerWindow = Math.ceil(
-    (CONTENT_PACING.targetPostsPerHour / 60) * GENERATION_BATCH_MINUTES
+    (CONTENT_PACING.targetPostsPerHour / 60) * GENERATION_BATCH_MINUTES,
   );
 
   // Apply time-of-day multiplier and add some variance (±30%)
   const variance = 0.7 + secureRandom() * 0.6; // 0.7 to 1.3
   const numPosts = Math.max(
     1,
-    Math.round(basePostsPerWindow * timeMultiplier * variance)
+    Math.round(basePostsPerWindow * timeMultiplier * variance),
   );
   const windowDuration = windowEnd.getTime() - windowStart.getTime();
 
@@ -631,7 +631,7 @@ async function generateContentWindow(
       basePostsPerWindow,
       variance: variance.toFixed(2),
     },
-    'LookaheadGeneration'
+    "LookaheadGeneration",
   );
 
   // Event generation is now consolidated in game-tick and narrative-event-processor
@@ -672,8 +672,8 @@ async function generateContentWindow(
         and(
           gte(posts.timestamp, todayStart),
           lt(posts.timestamp, windowStart),
-          isNull(posts.deletedAt)
-        )
+          isNull(posts.deletedAt),
+        ),
       )
       .groupBy(posts.authorId),
   ]);
@@ -686,7 +686,7 @@ async function generateContentWindow(
         lastPostTime: stat.lastPostTime,
         dailyCount: Number(stat.dailyCount),
       },
-    ])
+    ]),
   );
 
   // Combine static actor data with dynamic state and pacing info
@@ -713,7 +713,7 @@ async function generateContentWindow(
 
   // Filter actors based on pacing rules (daily limits and cooldowns)
   const actorsList = allActors.filter((actor) =>
-    shouldActorPost(actor.lastPostTime, actor.dailyPostCount, windowHour)
+    shouldActorPost(actor.lastPostTime, actor.dailyPostCount, windowHour),
   );
 
   // Log pacing statistics
@@ -727,20 +727,20 @@ async function generateContentWindow(
         hour: windowHour,
         maxDaily: CONTENT_PACING.maxPostsPerActorPerDay,
       },
-      'LookaheadGeneration'
+      "LookaheadGeneration",
     );
   }
 
   // Get media organizations from static registry
   const orgsList = StaticDataRegistry.getAllOrganizations()
-    .filter((org) => org.type === 'media')
+    .filter((org) => org.type === "media")
     .slice(0, 5);
 
   if (actorsList.length === 0 && orgsList.length === 0) {
     logger.warn(
-      'No actors or organizations found - skipping content generation',
+      "No actors or organizations found - skipping content generation",
       {},
-      'LookaheadGeneration'
+      "LookaheadGeneration",
     );
     return;
   }
@@ -767,7 +767,7 @@ async function generateContentWindow(
   // Calculate organic post indices (posts without specific topics)
   const organicPostCount = Math.max(
     1,
-    Math.floor(numPosts * ORGANIC_POST_RATIO)
+    Math.floor(numPosts * ORGANIC_POST_RATIO),
   );
   const organicPostIndices = new Set<number>();
   for (let o = 0; o < organicPostCount && o < numPosts; o++) {
@@ -788,7 +788,7 @@ async function generateContentWindow(
   // Calculate rivalry post indices (contrarian posts from rivals)
   const rivalryPostCount = Math.max(
     1,
-    Math.floor(numPosts * RIVALRY_POST_RATIO)
+    Math.floor(numPosts * RIVALRY_POST_RATIO),
   );
   const rivalryPostIndices = new Set<number>();
   const usedByOrganicAndDiverse = new Set([
@@ -864,21 +864,21 @@ async function generateContentWindow(
           actor,
           worldFactsContext,
           postTimestamp,
-          postDayNumber
+          postDayNumber,
         );
         if (success) {
           logger.debug(
-            'Created lookahead organic NPC post',
+            "Created lookahead organic NPC post",
             { actor: actor.name, timestamp: postTimestamp.toISOString() },
-            'LookaheadGeneration'
+            "LookaheadGeneration",
           );
           return 1;
         }
         // Fall through to regular question-based post if organic generation fails
         logger.debug(
-          'Organic post generation failed, falling back to question-based post',
+          "Organic post generation failed, falling back to question-based post",
           { actor: actor.name },
-          'LookaheadGeneration'
+          "LookaheadGeneration",
         );
       }
     }
@@ -900,7 +900,7 @@ async function generateContentWindow(
           nextRoundRobinIndex++;
           if (rivalryQuestion) {
             // Determine rival's likely position (random for now, could be smarter)
-            const rivalPosition = secureRandom() < 0.5 ? 'YES' : 'NO';
+            const rivalPosition = secureRandom() < 0.5 ? "YES" : "NO";
 
             const success = await generateRivalryPost(
               llmClient,
@@ -910,18 +910,18 @@ async function generateContentWindow(
               rivalryQuestion,
               worldFactsContext,
               postTimestamp,
-              postDayNumber
+              postDayNumber,
             );
 
             if (success) {
               logger.debug(
-                'Created lookahead rivalry post',
+                "Created lookahead rivalry post",
                 {
                   actor: actor.name,
                   rival: rivalActor.name,
                   timestamp: postTimestamp.toISOString(),
                 },
-                'LookaheadGeneration'
+                "LookaheadGeneration",
               );
               return 1;
             }
@@ -945,9 +945,9 @@ async function generateContentWindow(
           shuffledQuestions[nextRoundRobinIndex % shuffledQuestions.length];
         nextRoundRobinIndex++;
         logger.debug(
-          'Using round-robin market selection',
+          "Using round-robin market selection",
           { questionId: question?.id, index: nextRoundRobinIndex },
-          'LookaheadGeneration'
+          "LookaheadGeneration",
         );
       } else {
         // Weighted selection with reduced urgency bias (2 instead of 5)
@@ -957,7 +957,7 @@ async function generateContentWindow(
       question = activeQuestions[0];
     }
 
-    if (!question || !question.text) {
+    if (!question?.text) {
       return 0;
     }
 
@@ -969,15 +969,16 @@ async function generateContentWindow(
         const currentQuestionId = question.id;
         const alternateQuestion = shuffledQuestions.find(
           (q) =>
-            q.id !== currentQuestionId && shouldPostAboutTopic(actor.id, q.text)
+            q.id !== currentQuestionId &&
+            shouldPostAboutTopic(actor.id, q.text),
         );
         if (alternateQuestion) {
           // Use the domain-relevant question instead
           question = alternateQuestion;
           logger.debug(
-            'Switched to domain-relevant question for actor',
+            "Switched to domain-relevant question for actor",
             { actor: actor.name, questionId: alternateQuestion.id },
-            'LookaheadGeneration'
+            "LookaheadGeneration",
           );
         } else {
           // No relevant topics for this actor - skip or still post with lower probability
@@ -999,12 +1000,12 @@ async function generateContentWindow(
     if (eventKeywords.length > 0) {
       if (diversityService.shouldSkipEvent(eventKeywords)) {
         logger.debug(
-          'Skipping duplicate event coverage',
+          "Skipping duplicate event coverage",
           {
             questionId: question.id,
             eventKeywords: eventKeywords.slice(0, 5),
           },
-          'LookaheadGeneration'
+          "LookaheadGeneration",
         );
         return 0;
       }
@@ -1018,12 +1019,12 @@ async function generateContentWindow(
       // High saturation - skip with 70% probability
       if (secureRandom() < 0.7) {
         logger.debug(
-          'Skipping oversaturated topic',
+          "Skipping oversaturated topic",
           {
             questionId: question.id,
             penalty: topicPenalty.toFixed(2),
           },
-          'LookaheadGeneration'
+          "LookaheadGeneration",
         );
         // Rollback event tracking since we're not generating
         if (eventKeywords.length > 0) {
@@ -1048,11 +1049,11 @@ async function generateContentWindow(
         enhancedWorldFacts,
         postTimestamp,
         sharedContext, // Pass pre-loaded context to avoid N+1 queries
-        postDayNumber // Pass currentDay for arc plan phase detection, signal guidance, and dayNumber storage
+        postDayNumber, // Pass currentDay for arc plan phase detection, signal guidance, and dayNumber storage
       );
       if (success) {
         logger.debug(
-          'Created lookahead NPC post',
+          "Created lookahead NPC post",
           {
             actor: actor.name,
             timestamp: postTimestamp.toISOString(),
@@ -1061,7 +1062,7 @@ async function generateContentWindow(
             diverseTopic: diverseTopic?.topic,
             eventKeywords: eventKeywords.slice(0, 3),
           },
-          'LookaheadGeneration'
+          "LookaheadGeneration",
         );
       } else if (eventKeywords.length > 0) {
         // Rollback event tracking on generation failure
@@ -1075,7 +1076,7 @@ async function generateContentWindow(
     if (diverseTopic) {
       const isOnBeat = diversityService.isTopicOnBeat(
         org.id,
-        diverseTopic.topic
+        diverseTopic.topic,
       );
       if (!isOnBeat && secureRandom() < 0.5) {
         // 50% chance to skip if org is off-beat for this diverse topic
@@ -1095,18 +1096,18 @@ async function generateContentWindow(
       question,
       enhancedWorldFacts,
       postTimestamp,
-      postDayNumber
+      postDayNumber,
     );
     if (success) {
       logger.debug(
-        'Created lookahead org post',
+        "Created lookahead org post",
         {
           org: org.name,
           timestamp: postTimestamp.toISOString(),
           questionId: question.id,
           diverseTopic: diverseTopic?.topic,
         },
-        'LookaheadGeneration'
+        "LookaheadGeneration",
       );
     }
 
@@ -1123,30 +1124,30 @@ async function generateContentWindow(
 
   // Count successful posts
   for (const result of results) {
-    if (result.status === 'fulfilled' && result.value > 0) {
+    if (result.status === "fulfilled" && result.value > 0) {
       postsCreated += result.value;
-    } else if (result.status === 'rejected') {
+    } else if (result.status === "rejected") {
       logger.warn(
-        'Post generation failed in lookahead window',
+        "Post generation failed in lookahead window",
         {
           error:
             result.reason instanceof Error
               ? result.reason.message
               : String(result.reason),
         },
-        'LookaheadGeneration'
+        "LookaheadGeneration",
       );
     }
   }
 
   logger.info(
-    'Content window generated',
+    "Content window generated",
     {
       windowStart: windowStart.toISOString(),
       windowEnd: windowEnd.toISOString(),
       postsCreated,
       attempted: numPosts,
     },
-    'LookaheadGeneration'
+    "LookaheadGeneration",
   );
 }

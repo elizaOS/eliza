@@ -17,20 +17,20 @@
  * ```
  */
 
-import { Award, Medal, Trophy } from 'lucide-react';
+import { Award, Medal, Trophy } from "lucide-react";
 
 interface RankBadgeProps {
   rank: number;
-  size?: 'sm' | 'md' | 'lg';
+  size?: "sm" | "md" | "lg";
   showLabel?: boolean;
   className?: string;
 }
 
 export function RankBadge({
   rank,
-  size = 'md',
+  size = "md",
   showLabel = true,
-  className = '',
+  className = "",
 }: RankBadgeProps) {
   // Only show badge for top 10
   if (rank > 10) {
@@ -44,29 +44,29 @@ export function RankBadge({
 
   if (rank === 1) {
     BadgeIcon = Trophy;
-    badgeColor = 'text-foreground';
-    badgeLabel = '1st Place';
+    badgeColor = "text-foreground";
+    badgeLabel = "1st Place";
   } else if (rank <= 3) {
     BadgeIcon = Medal;
-    badgeColor = 'text-muted-foreground';
-    badgeLabel = `${rank}${rank === 2 ? 'nd' : 'rd'} Place`;
+    badgeColor = "text-muted-foreground";
+    badgeLabel = `${rank}${rank === 2 ? "nd" : "rd"} Place`;
   } else {
     BadgeIcon = Award;
-    badgeColor = 'text-muted-foreground';
+    badgeColor = "text-muted-foreground";
     badgeLabel = `Top ${rank}`;
   }
 
   // Size classes
   const sizeClasses = {
-    sm: 'w-4 h-4',
-    md: 'w-6 h-6',
-    lg: 'w-8 h-8',
+    sm: "w-4 h-4",
+    md: "w-6 h-6",
+    lg: "w-8 h-8",
   };
 
   const textSizeClasses = {
-    sm: 'text-xs',
-    md: 'text-sm',
-    lg: 'text-base',
+    sm: "text-xs",
+    md: "text-sm",
+    lg: "text-base",
   };
 
   return (
@@ -108,30 +108,30 @@ export function RankBadge({
  */
 interface RankNumberProps {
   rank: number;
-  size?: 'sm' | 'md' | 'lg';
+  size?: "sm" | "md" | "lg";
   className?: string;
 }
 
 export function RankNumber({
   rank,
-  size = 'md',
-  className = '',
+  size = "md",
+  className = "",
 }: RankNumberProps) {
   const sizeClasses = {
-    sm: 'w-6 h-6 text-xs',
-    md: 'w-8 h-8 text-sm',
-    lg: 'w-10 h-10 text-base',
+    sm: "w-6 h-6 text-xs",
+    md: "w-8 h-8 text-sm",
+    lg: "w-10 h-10 text-base",
   };
 
-  let bgColor = 'bg-muted';
-  let textColor = 'text-muted-foreground';
+  let bgColor = "bg-muted";
+  let textColor = "text-muted-foreground";
 
   if (rank <= 3) {
-    bgColor = 'bg-foreground';
-    textColor = 'text-background';
+    bgColor = "bg-foreground";
+    textColor = "text-background";
   } else if (rank <= 10) {
-    bgColor = 'bg-muted';
-    textColor = 'text-foreground';
+    bgColor = "bg-muted";
+    textColor = "text-foreground";
   }
 
   return (

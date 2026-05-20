@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it } from "bun:test";
 
 /**
  * Tests for Hot Posts API - Scoring Algorithm
@@ -6,7 +6,7 @@ import { describe, expect, it } from 'bun:test';
  * These tests verify that the hot post scoring algorithm
  * correctly weights engagement metrics and applies time decay.
  */
-describe('Hot Posts API - Scoring Algorithm', () => {
+describe("Hot Posts API - Scoring Algorithm", () => {
   const AGE_PENALTY_PER_HOUR = 0.5;
   const LIKE_WEIGHT = 1;
   const COMMENT_WEIGHT = 2;
@@ -19,7 +19,7 @@ describe('Hot Posts API - Scoring Algorithm', () => {
     likeCount: number,
     commentCount: number,
     shareCount: number,
-    timestamp: Date
+    timestamp: Date,
   ): number => {
     const now = new Date();
     const hoursOld = (now.getTime() - timestamp.getTime()) / (1000 * 60 * 60);
@@ -34,8 +34,8 @@ describe('Hot Posts API - Scoring Algorithm', () => {
     return Math.max(0, engagementScore - agePenalty);
   };
 
-  describe('calculateHotScore', () => {
-    it('should weight shares highest, then comments, then likes', () => {
+  describe("calculateHotScore", () => {
+    it("should weight shares highest, then comments, then likes", () => {
       const now = new Date();
 
       // All else equal, shares should contribute most
@@ -47,7 +47,7 @@ describe('Hot Posts API - Scoring Algorithm', () => {
       expect(commentOnly).toBeGreaterThan(likeOnly);
     });
 
-    it('should apply time decay penalty', () => {
+    it("should apply time decay penalty", () => {
       const now = new Date();
       const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
       const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
@@ -60,19 +60,19 @@ describe('Hot Posts API - Scoring Algorithm', () => {
       expect(scoreOneHourAgo).toBeGreaterThan(scoreTwoHoursAgo);
     });
 
-    it('should not return negative scores', () => {
+    it("should not return negative scores", () => {
       const veryOld = new Date(Date.now() - 100 * 60 * 60 * 1000); // 100 hours ago
       const score = calculateHotScore(1, 0, 0, veryOld);
       expect(score).toBeGreaterThanOrEqual(0);
     });
 
-    it('should return 0 for posts with no engagement and some age', () => {
+    it("should return 0 for posts with no engagement and some age", () => {
       const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
       const score = calculateHotScore(0, 0, 0, oneHourAgo);
       expect(score).toBe(0);
     });
 
-    it('should calculate combined engagement score correctly', () => {
+    it("should calculate combined engagement score correctly", () => {
       const now = new Date();
 
       // 5 likes * 1 + 3 comments * 2 + 2 shares * 3 = 5 + 6 + 6 = 17
@@ -80,7 +80,7 @@ describe('Hot Posts API - Scoring Algorithm', () => {
       expect(Math.round(score)).toBe(17);
     });
 
-    it('should handle high engagement vs old post tradeoff', () => {
+    it("should handle high engagement vs old post tradeoff", () => {
       const now = new Date();
       const tenHoursAgo = new Date(now.getTime() - 10 * 60 * 60 * 1000);
 
@@ -97,26 +97,26 @@ describe('Hot Posts API - Scoring Algorithm', () => {
     });
   });
 
-  describe('toISOStringStrict', () => {
+  describe("toISOStringStrict", () => {
     /**
      * Replicates the toISOStringStrict function from the route.
      * STRICT: Throws on invalid input instead of masking with current time.
      */
     const toISOStringStrict = (
-      date: Date | string | null | undefined
+      date: Date | string | null | undefined,
     ): string => {
       if (date === null || date === undefined) {
-        throw new Error('Invalid date input: null or undefined');
+        throw new Error("Invalid date input: null or undefined");
       }
       if (date instanceof Date) {
-        if (isNaN(date.getTime())) {
-          throw new Error('Invalid date input: Date object is invalid');
+        if (Number.isNaN(date.getTime())) {
+          throw new Error("Invalid date input: Date object is invalid");
         }
         return date.toISOString();
       }
-      if (typeof date === 'string') {
+      if (typeof date === "string") {
         const parsed = new Date(date);
-        if (!isNaN(parsed.getTime())) {
+        if (!Number.isNaN(parsed.getTime())) {
           return parsed.toISOString();
         }
         throw new Error(`Invalid date input: unparseable string "${date}"`);
@@ -124,33 +124,33 @@ describe('Hot Posts API - Scoring Algorithm', () => {
       throw new Error(`Invalid date input: unexpected type ${typeof date}`);
     };
 
-    it('should handle Date objects', () => {
-      const date = new Date('2025-01-04T12:00:00.000Z');
-      expect(toISOStringStrict(date)).toBe('2025-01-04T12:00:00.000Z');
+    it("should handle Date objects", () => {
+      const date = new Date("2025-01-04T12:00:00.000Z");
+      expect(toISOStringStrict(date)).toBe("2025-01-04T12:00:00.000Z");
     });
 
-    it('should handle ISO string format', () => {
-      const isoString = '2025-01-04T12:00:00.000Z';
+    it("should handle ISO string format", () => {
+      const isoString = "2025-01-04T12:00:00.000Z";
       expect(toISOStringStrict(isoString)).toBe(isoString);
     });
 
-    it('should handle parseable date strings', () => {
-      const dateString = '2025-01-04';
+    it("should handle parseable date strings", () => {
+      const dateString = "2025-01-04";
       const result = toISOStringStrict(dateString);
-      expect(result).toContain('2025-01-04');
-      expect(result).toContain('T');
+      expect(result).toContain("2025-01-04");
+      expect(result).toContain("T");
     });
 
-    it('should throw for null', () => {
-      expect(() => toISOStringStrict(null)).toThrow('Invalid date input');
+    it("should throw for null", () => {
+      expect(() => toISOStringStrict(null)).toThrow("Invalid date input");
     });
 
-    it('should throw for undefined', () => {
-      expect(() => toISOStringStrict(undefined)).toThrow('Invalid date input');
+    it("should throw for undefined", () => {
+      expect(() => toISOStringStrict(undefined)).toThrow("Invalid date input");
     });
 
-    it('should throw for invalid date string', () => {
-      expect(() => toISOStringStrict('not-a-date')).toThrow('unparseable');
+    it("should throw for invalid date string", () => {
+      expect(() => toISOStringStrict("not-a-date")).toThrow("unparseable");
     });
   });
 });

@@ -66,10 +66,10 @@ import {
   successResponse,
   WaitlistService,
   withErrorHandling,
-} from '@feed/api';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { z } from 'zod';
+} from "@feed/api";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { z } from "zod";
 
 const MarkSchema = z.object({
   referralCode: z.string().optional(),
@@ -83,38 +83,38 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   const { user: dbUser } = await ensureUserForAuth(authUser, {
     displayName: authUser.walletAddress
       ? `${authUser.walletAddress.slice(0, 6)}...${authUser.walletAddress.slice(-4)}`
-      : 'User',
+      : "User",
   });
 
   const body = (await request.json()) as { referralCode?: string };
   const { referralCode } = MarkSchema.parse(body);
 
   logger.info(
-    'Waitlist mark request',
+    "Waitlist mark request",
     {
       userId: dbUser.id,
       hasReferral: !!referralCode,
     },
-    'POST /api/waitlist/mark'
+    "POST /api/waitlist/mark",
   );
 
   const result = await WaitlistService.markAsWaitlisted(
     dbUser.id,
-    referralCode
+    referralCode,
   );
 
   if (!result.success) {
-    throw new Error(result.error || 'Failed to mark user as waitlisted');
+    throw new Error(result.error || "Failed to mark user as waitlisted");
   }
 
   logger.info(
-    'User marked as waitlisted',
+    "User marked as waitlisted",
     {
       userId: dbUser.id,
       position: result.waitlistPosition,
       referrerRewarded: result.referrerRewarded,
     },
-    'POST /api/waitlist/mark'
+    "POST /api/waitlist/mark",
   );
 
   return successResponse({

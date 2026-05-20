@@ -11,8 +11,8 @@
  * implementation, plus an optional injection point for API/runtime overrides.
  */
 
-import { logger } from '@feed/shared';
-import { createHash } from 'crypto';
+import { createHash } from "node:crypto";
+import { logger } from "@feed/shared";
 
 // =============================================================================
 // Duplicate detection (in-memory)
@@ -31,29 +31,29 @@ type DuplicateConfig = {
 export const DUPLICATE_DETECTION_CONFIGS = {
   POST: {
     windowMs: 5 * 60 * 1000, // 5 minutes
-    actionType: 'post',
+    actionType: "post",
   },
   COMMENT: {
     windowMs: 2 * 60 * 1000, // 2 minutes
-    actionType: 'comment',
+    actionType: "comment",
   },
   MESSAGE: {
     windowMs: 1 * 60 * 1000, // 1 minute
-    actionType: 'message',
+    actionType: "message",
   },
 } as const;
 
 const duplicateStore = new Map<string, DuplicateRecord[]>();
 
 function hashContent(content: string): string {
-  const normalized = content.trim().toLowerCase().replace(/\s+/g, ' ');
-  return createHash('sha256').update(normalized).digest('hex');
+  const normalized = content.trim().toLowerCase().replace(/\s+/g, " ");
+  return createHash("sha256").update(normalized).digest("hex");
 }
 
 export function checkDuplicate(
   userId: string,
   content: string,
-  config: DuplicateConfig
+  config: DuplicateConfig,
 ): { isDuplicate: boolean; lastPostedAt?: Date } {
   const key = `${userId}:${config.actionType}`;
   const contentHash = hashContent(content);
@@ -67,24 +67,24 @@ export function checkDuplicate(
 
   const windowStart = now - config.windowMs;
   const recentRecords = records.filter(
-    (record) => record.timestamp > windowStart
+    (record) => record.timestamp > windowStart,
   );
   duplicateStore.set(key, recentRecords);
 
   const duplicate = recentRecords.find(
-    (record) => record.contentHash === contentHash
+    (record) => record.contentHash === contentHash,
   );
 
   if (duplicate) {
     logger.warn(
-      'Duplicate content detected',
+      "Duplicate content detected",
       {
         userId,
         actionType: config.actionType,
         contentHash,
         lastPostedAt: new Date(duplicate.timestamp).toISOString(),
       },
-      'DuplicateDetector'
+      "DuplicateDetector",
     );
 
     return {
@@ -96,9 +96,9 @@ export function checkDuplicate(
   recentRecords.push({ contentHash, timestamp: now });
 
   logger.debug(
-    'Content uniqueness check passed',
+    "Content uniqueness check passed",
     { userId, actionType: config.actionType, contentHash },
-    'DuplicateDetector'
+    "DuplicateDetector",
   );
 
   return { isDuplicate: false };
@@ -107,15 +107,15 @@ export function checkDuplicate(
 export function clearDuplicates(userId: string, actionType: string): void {
   duplicateStore.delete(`${userId}:${actionType}`);
   logger.info(
-    'Duplicate records cleared',
+    "Duplicate records cleared",
     { userId, actionType },
-    'DuplicateDetector'
+    "DuplicateDetector",
   );
 }
 
 export function clearAllDuplicates(): void {
   duplicateStore.clear();
-  logger.info('All duplicate records cleared', {}, 'DuplicateDetector');
+  logger.info("All duplicate records cleared", {}, "DuplicateDetector");
 }
 
 export function cleanupDuplicates(): void {
@@ -126,7 +126,7 @@ export function cleanupDuplicates(): void {
 
   for (const [key, records] of duplicateStore.entries()) {
     const validRecords = records.filter(
-      (record) => now - record.timestamp < maxAge
+      (record) => now - record.timestamp < maxAge,
     );
     if (validRecords.length === 0) {
       duplicateStore.delete(key);
@@ -140,9 +140,9 @@ export function cleanupDuplicates(): void {
 
   if (cleanedCount > 0) {
     logger.info(
-      'Cleaned up old duplicate records',
+      "Cleaned up old duplicate records",
       { cleanedCount, totalRemaining: duplicateStore.size },
-      'DuplicateDetector'
+      "DuplicateDetector",
     );
   }
 }
@@ -156,7 +156,7 @@ export function getDuplicateStats(): {
   let totalRecords = 0;
 
   for (const [key, records] of duplicateStore.entries()) {
-    const actionType = key.split(':')[1] ?? 'unknown';
+    const actionType = key.split(":")[1] ?? "unknown";
     totalRecords += records.length;
     recordsByType[actionType] =
       (recordsByType[actionType] ?? 0) + records.length;
@@ -170,7 +170,7 @@ export function getDuplicateStats(): {
 }
 
 // Best-effort periodic cleanup (no-op in environments without setInterval)
-if (typeof setInterval !== 'undefined' && process.env.NODE_ENV !== 'test') {
+if (typeof setInterval !== "undefined" && process.env.NODE_ENV !== "test") {
   setInterval(cleanupDuplicates, 5 * 60 * 1000);
 }
 
@@ -198,138 +198,138 @@ export type UserRateLimitResult = {
 
 export const RATE_LIMIT_CONFIGS = {
   // Content creation
-  CREATE_POST: { maxRequests: 3, windowMs: 60000, actionType: 'create_post' },
+  CREATE_POST: { maxRequests: 3, windowMs: 60000, actionType: "create_post" },
   CREATE_COMMENT: {
     maxRequests: 10,
     windowMs: 60000,
-    actionType: 'create_comment',
+    actionType: "create_comment",
   },
 
   // Interactions
-  LIKE_POST: { maxRequests: 20, windowMs: 60000, actionType: 'like_post' },
+  LIKE_POST: { maxRequests: 20, windowMs: 60000, actionType: "like_post" },
   LIKE_COMMENT: {
     maxRequests: 20,
     windowMs: 60000,
-    actionType: 'like_comment',
+    actionType: "like_comment",
   },
-  SHARE_POST: { maxRequests: 5, windowMs: 60000, actionType: 'share_post' },
+  SHARE_POST: { maxRequests: 5, windowMs: 60000, actionType: "share_post" },
 
   // Social actions
-  FOLLOW_USER: { maxRequests: 10, windowMs: 60000, actionType: 'follow_user' },
+  FOLLOW_USER: { maxRequests: 10, windowMs: 60000, actionType: "follow_user" },
   UNFOLLOW_USER: {
     maxRequests: 10,
     windowMs: 60000,
-    actionType: 'unfollow_user',
+    actionType: "unfollow_user",
   },
 
   // Messages
   SEND_MESSAGE: {
     maxRequests: 20,
     windowMs: 60000,
-    actionType: 'send_message',
+    actionType: "send_message",
   },
 
   // Uploads
-  UPLOAD_IMAGE: { maxRequests: 5, windowMs: 60000, actionType: 'upload_image' },
+  UPLOAD_IMAGE: { maxRequests: 5, windowMs: 60000, actionType: "upload_image" },
 
   // Feedback
   SUBMIT_FEEDBACK: {
     maxRequests: 5,
     windowMs: 60000,
-    actionType: 'submit_feedback',
+    actionType: "submit_feedback",
   },
 
   // Profile updates
   UPDATE_PROFILE: {
     maxRequests: 5,
     windowMs: 60000,
-    actionType: 'update_profile',
+    actionType: "update_profile",
   },
 
   // Agent actions
   GENERATE_AGENT_PROFILE: {
     maxRequests: 5,
     windowMs: 60000,
-    actionType: 'generate_agent_profile',
+    actionType: "generate_agent_profile",
   },
   GENERATE_AGENT_FIELD: {
     maxRequests: 10,
     windowMs: 60000,
-    actionType: 'generate_agent_field',
+    actionType: "generate_agent_field",
   },
   GENERATE_AGENT_AVATAR: {
     maxRequests: 8,
     windowMs: 60000,
-    actionType: 'generate_agent_avatar',
+    actionType: "generate_agent_avatar",
   },
 
   // Market actions
   OPEN_POSITION: {
     maxRequests: 10,
     windowMs: 60000,
-    actionType: 'open_position',
+    actionType: "open_position",
   },
   CLOSE_POSITION: {
     maxRequests: 10,
     windowMs: 60000,
-    actionType: 'close_position',
+    actionType: "close_position",
   },
   BUY_PREDICTION: {
     maxRequests: 10,
     windowMs: 60000,
-    actionType: 'buy_prediction',
+    actionType: "buy_prediction",
   },
   SELL_PREDICTION: {
     maxRequests: 10,
     windowMs: 60000,
-    actionType: 'sell_prediction',
+    actionType: "sell_prediction",
   },
 
   // Admin actions
   ADMIN_ACTION: {
     maxRequests: 100,
     windowMs: 60000,
-    actionType: 'admin_action',
+    actionType: "admin_action",
   },
-  ADMIN_STATS: { maxRequests: 30, windowMs: 60000, actionType: 'admin_stats' },
+  ADMIN_STATS: { maxRequests: 30, windowMs: 60000, actionType: "admin_stats" },
 
   // Public endpoints
   PUBLIC_BALANCE_FETCH: {
     maxRequests: 60,
     windowMs: 60000,
-    actionType: 'public_balance_fetch',
+    actionType: "public_balance_fetch",
   },
   PUBLIC_BALANCE_FETCH_ANONYMOUS: {
     maxRequests: 10,
     windowMs: 60000,
-    actionType: 'public_balance_fetch_anonymous',
+    actionType: "public_balance_fetch_anonymous",
   },
   PUBLIC_NFT_IMAGE: {
     maxRequests: 60,
     windowMs: 60000,
-    actionType: 'public_nft_image',
+    actionType: "public_nft_image",
   },
   PUBLIC_NFT_IMAGE_ANONYMOUS: {
     maxRequests: 10,
     windowMs: 60000,
-    actionType: 'public_nft_image_anonymous',
+    actionType: "public_nft_image_anonymous",
   },
 
   // Default fallback
-  DEFAULT: { maxRequests: 30, windowMs: 60000, actionType: 'default' },
+  DEFAULT: { maxRequests: 30, windowMs: 60000, actionType: "default" },
 } as const;
 
 export interface RateLimitProvider {
   checkRateLimitAsync(
     userId: string,
-    config: RateLimitConfig
+    config: RateLimitConfig,
   ): Promise<UserRateLimitResult>;
   checkRateLimit(userId: string, config: RateLimitConfig): UserRateLimitResult;
   resetRateLimit(userId: string, actionType: string): Promise<void>;
   clearAllRateLimits(): Promise<void>;
   getRateLimitStatus(
     userId: string,
-    config: RateLimitConfig
+    config: RateLimitConfig,
   ): Promise<{ count: number; remaining: number; resetAt: Date }>;
 }
 
@@ -337,7 +337,7 @@ const memoryFallbackStore = new Map<string, RateLimitRecord>();
 
 function checkRateLimitMemory(
   userId: string,
-  config: RateLimitConfig
+  config: RateLimitConfig,
 ): UserRateLimitResult {
   const key = `${userId}:${config.actionType}`;
   const now = Date.now();
@@ -350,7 +350,7 @@ function checkRateLimitMemory(
 
   const windowStart = now - config.windowMs;
   record.recentActions = record.recentActions.filter(
-    (timestamp) => timestamp > windowStart
+    (timestamp) => timestamp > windowStart,
   );
 
   if (record.recentActions.length >= config.maxRequests) {
@@ -360,7 +360,7 @@ function checkRateLimitMemory(
       : Math.ceil(config.windowMs / 1000);
 
     logger.warn(
-      'Rate limit exceeded (memory)',
+      "Rate limit exceeded (memory)",
       {
         userId,
         actionType: config.actionType,
@@ -368,7 +368,7 @@ function checkRateLimitMemory(
         maxRequests: config.maxRequests,
         retryAfter,
       },
-      'RateLimiter'
+      "RateLimiter",
     );
 
     return { allowed: false, retryAfter, remaining: 0 };
@@ -381,7 +381,7 @@ function checkRateLimitMemory(
   const remaining = config.maxRequests - record.recentActions.length;
 
   logger.debug(
-    'Rate limit check passed (memory)',
+    "Rate limit check passed (memory)",
     {
       userId,
       actionType: config.actionType,
@@ -389,7 +389,7 @@ function checkRateLimitMemory(
       maxRequests: config.maxRequests,
       remaining,
     },
-    'RateLimiter'
+    "RateLimiter",
   );
 
   return { allowed: true, remaining };
@@ -398,7 +398,7 @@ function checkRateLimitMemory(
 class InMemoryRateLimitProvider implements RateLimitProvider {
   async checkRateLimitAsync(
     userId: string,
-    config: RateLimitConfig
+    config: RateLimitConfig,
   ): Promise<UserRateLimitResult> {
     return checkRateLimitMemory(userId, config);
   }
@@ -410,20 +410,20 @@ class InMemoryRateLimitProvider implements RateLimitProvider {
   async resetRateLimit(userId: string, actionType: string): Promise<void> {
     memoryFallbackStore.delete(`${userId}:${actionType}`);
     logger.info(
-      'Rate limit reset (memory)',
+      "Rate limit reset (memory)",
       { userId, actionType },
-      'RateLimiter'
+      "RateLimiter",
     );
   }
 
   async clearAllRateLimits(): Promise<void> {
     memoryFallbackStore.clear();
-    logger.info('All rate limits cleared (memory)', {}, 'RateLimiter');
+    logger.info("All rate limits cleared (memory)", {}, "RateLimiter");
   }
 
   async getRateLimitStatus(
     userId: string,
-    config: RateLimitConfig
+    config: RateLimitConfig,
   ): Promise<{ count: number; remaining: number; resetAt: Date }> {
     const now = Date.now();
     const record = memoryFallbackStore.get(`${userId}:${config.actionType}`);
@@ -438,7 +438,7 @@ class InMemoryRateLimitProvider implements RateLimitProvider {
 
     const windowStart = now - config.windowMs;
     const validActions = record.recentActions.filter(
-      (timestamp) => timestamp > windowStart
+      (timestamp) => timestamp > windowStart,
     );
     const oldestAction = validActions[0] ?? now;
 
@@ -458,21 +458,21 @@ export function setRateLimitProvider(next: RateLimitProvider): void {
 
 export function checkRateLimit(
   userId: string,
-  config: RateLimitConfig
+  config: RateLimitConfig,
 ): UserRateLimitResult {
   return provider.checkRateLimit(userId, config);
 }
 
 export function checkRateLimitAsync(
   userId: string,
-  config: RateLimitConfig
+  config: RateLimitConfig,
 ): Promise<UserRateLimitResult> {
   return provider.checkRateLimitAsync(userId, config);
 }
 
 export function resetRateLimit(
   userId: string,
-  actionType: string
+  actionType: string,
 ): Promise<void> {
   return provider.resetRateLimit(userId, actionType);
 }
@@ -483,7 +483,7 @@ export function clearAllRateLimits(): Promise<void> {
 
 export function getRateLimitStatus(
   userId: string,
-  config: RateLimitConfig
+  config: RateLimitConfig,
 ): Promise<{ count: number; remaining: number; resetAt: Date }> {
   return provider.getRateLimitStatus(userId, config);
 }
@@ -496,7 +496,7 @@ export function cleanupMemoryRateLimits(): void {
 
   for (const [key, record] of memoryFallbackStore.entries()) {
     const hasRecentActions = record.recentActions.some(
-      (timestamp) => now - timestamp < maxAge
+      (timestamp) => now - timestamp < maxAge,
     );
     if (!hasRecentActions) {
       memoryFallbackStore.delete(key);
@@ -506,9 +506,9 @@ export function cleanupMemoryRateLimits(): void {
 
   if (cleanedCount > 0) {
     logger.info(
-      'Cleaned up old rate limit records (memory)',
+      "Cleaned up old rate limit records (memory)",
       { cleanedCount, totalRemaining: memoryFallbackStore.size },
-      'RateLimiter'
+      "RateLimiter",
     );
   }
 }

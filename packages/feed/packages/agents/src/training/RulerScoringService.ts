@@ -13,29 +13,20 @@
  * Based on: https://art.openpipe.ai/fundamentals/ruler
  */
 
-import {
-  and,
-  asc,
-  db,
-  eq,
-  inArray,
-  isNull,
-  not,
-  trajectories,
-} from '@feed/db';
-import type { JsonValue } from '@feed/shared';
-import { asUUID } from '@elizaos/core';
-import { v4 as uuidv4 } from 'uuid';
+import { asUUID } from "@elizaos/core";
+import { and, asc, db, eq, inArray, isNull, not, trajectories } from "@feed/db";
+import type { JsonValue } from "@feed/shared";
+import { v4 as uuidv4 } from "uuid";
 import {
   getLLMCaller,
   getToTrainingMessages,
   type TrajectoryForTraining,
   type TrajectoryStepForTraining,
-} from '../dependencies';
-import { getRubric, sanitizeArchetype } from '../rubrics';
-import { logger, splitIntoBatches } from '../utils';
-import { upsertRewardJudgment } from './reward-judgments';
-import type { TrajectoryStep as TrainingTrajectoryStep } from './types';
+} from "../dependencies";
+import { getRubric, sanitizeArchetype } from "../rubrics";
+import { logger, splitIntoBatches } from "../utils";
+import { upsertRewardJudgment } from "./reward-judgments";
+import type { TrajectoryStep as TrainingTrajectoryStep } from "./types";
 
 // Use types from dependencies
 type RichTrajectory = TrajectoryForTraining;
@@ -50,7 +41,7 @@ export interface RulerScore {
 
 export interface MarketOutcomes {
   stocks: Array<{ ticker: string; changePercent: number }>;
-  predictions: Array<{ marketId: string; outcome: 'YES' | 'NO' }>;
+  predictions: Array<{ marketId: string; outcome: "YES" | "NO" }>;
 }
 
 interface TrajectoryScore {
@@ -90,21 +81,21 @@ export class RulerScoringService {
     const trajectoriesResult = await this.getTrajectoriesToScore(trajectoryIds);
 
     if (trajectoriesResult.length === 0) {
-      logger.info('No trajectories to score', {}, 'RulerScoring');
+      logger.info("No trajectories to score", {}, "RulerScoring");
       return 0;
     }
 
     const groups = this.groupByScenario(trajectoriesResult);
 
     logger.info(
-      'Grouped trajectories for RULER scoring',
+      "Grouped trajectories for RULER scoring",
       {
         totalTrajectories: trajectoriesResult.length,
         groups: groups.length,
         avgGroupSize:
           groups.length > 0 ? trajectoriesResult.length / groups.length : 0,
       },
-      'RulerScoring'
+      "RulerScoring",
     );
 
     let totalScored = 0;
@@ -112,13 +103,13 @@ export class RulerScoringService {
     for (const group of groups) {
       if (group.trajectories.length < this.minGroupSize) {
         logger.warn(
-          'Skipping group with insufficient trajectories',
+          "Skipping group with insufficient trajectories",
           {
             scenarioId: group.scenarioId,
             count: group.trajectories.length,
             minRequired: this.minGroupSize,
           },
-          'RulerScoring'
+          "RulerScoring",
         );
         continue;
       }
@@ -132,12 +123,12 @@ export class RulerScoringService {
     }
 
     logger.info(
-      'RULER scoring complete',
+      "RULER scoring complete",
       {
         totalScored,
         totalTrajectories: trajectoriesResult.length,
       },
-      'RulerScoring'
+      "RulerScoring",
     );
 
     return totalScored;
@@ -175,7 +166,7 @@ export class RulerScoringService {
     return {
       trajectoryId: updated.trajectoryId,
       overallScore: updated.aiJudgeReward,
-      reasoning: updated.aiJudgeReasoning || '',
+      reasoning: updated.aiJudgeReasoning || "",
       scoredAt: updated.judgedAt || new Date(),
     };
   }
@@ -199,7 +190,7 @@ export class RulerScoringService {
       episodeLength: number | null;
       archetype: string | null;
     }>,
-    scenarioId: string
+    scenarioId: string,
   ): Promise<number> {
     const richTrajectories: Array<{
       traj: RichTrajectory;
@@ -210,15 +201,15 @@ export class RulerScoringService {
     for (const dbTraj of trajectoriesData) {
       if (
         !dbTraj.stepsJson ||
-        dbTraj.stepsJson === 'null' ||
-        dbTraj.stepsJson === '[]'
+        dbTraj.stepsJson === "null" ||
+        dbTraj.stepsJson === "[]"
       ) {
         logger.warn(
-          'Skipping trajectory with invalid stepsJson',
+          "Skipping trajectory with invalid stepsJson",
           {
             trajectoryId: dbTraj.trajectoryId,
           },
-          'RulerScoring'
+          "RulerScoring",
         );
         continue;
       }
@@ -267,11 +258,11 @@ export class RulerScoringService {
               maxTokens: l.maxTokens,
               latencyMs: l.latencyMs,
               purpose: l.purpose as
-                | 'action'
-                | 'reasoning'
-                | 'evaluation'
-                | 'response'
-                | 'other',
+                | "action"
+                | "reasoning"
+                | "evaluation"
+                | "response"
+                | "other",
               actionType: l.actionType,
             })),
             action: {
@@ -288,7 +279,7 @@ export class RulerScoringService {
             reward: s.reward,
             done: idx === steps.length - 1,
             metadata: {},
-          })
+          }),
         ),
         totalReward: steps.reduce((sum, s) => sum + s.reward, 0),
         rewardComponents: {
@@ -296,7 +287,7 @@ export class RulerScoringService {
         },
         metrics: {
           episodeLength: dbTraj.episodeLength || steps.length,
-          finalStatus: 'completed',
+          finalStatus: "completed",
           finalPnL: dbTraj.finalPnL || undefined,
         },
         metadata: {
@@ -313,24 +304,24 @@ export class RulerScoringService {
 
     if (richTrajectories.length < this.minGroupSize) {
       logger.warn(
-        'Insufficient valid trajectories in group',
+        "Insufficient valid trajectories in group",
         {
           scenarioId,
           validCount: richTrajectories.length,
         },
-        'RulerScoring'
+        "RulerScoring",
       );
       return 0;
     }
 
     const commonPrefix = this.extractCommonPrefix(
-      richTrajectories.map((rt) => rt.messages)
+      richTrajectories.map((rt) => rt.messages),
     );
 
     const judgePrompt = this.buildJudgePrompt(
       richTrajectories,
       commonPrefix,
-      scenarioId
+      scenarioId,
     );
 
     const judgeResponse = await this.callJudge(judgePrompt);
@@ -340,12 +331,12 @@ export class RulerScoringService {
       judgeResponse.scores.length !== richTrajectories.length
     ) {
       logger.error(
-        'Invalid judge response',
+        "Invalid judge response",
         {
           expectedScores: richTrajectories.length,
           receivedScores: judgeResponse?.scores.length || 0,
         },
-        'RulerScoring'
+        "RulerScoring",
       );
       return 0;
     }
@@ -362,29 +353,29 @@ export class RulerScoringService {
 
       if (!scoreData) {
         logger.warn(
-          'Judge did not return score for trajectory',
+          "Judge did not return score for trajectory",
           {
             expectedTrajId,
             receivedIds: judgeResponse.scores.map((s) => s.trajectory_id),
           },
-          'RulerScoring'
+          "RulerScoring",
         );
         continue;
       }
 
-      const trajectoryId = richTrajectories[i]!.traj.trajectoryId;
+      const trajectoryId = richTrajectories[i]?.traj.trajectoryId;
 
       const normalizedScore = Math.max(0, Math.min(1, scoreData.score));
       await upsertRewardJudgment({
         trajectoryId,
-        judgeModel: 'groq-large',
-        judgeVersion: 'ruler-v1',
+        judgeModel: "groq-large",
+        judgeVersion: "ruler-v1",
         overallScore: normalizedScore,
         normalizedScore,
         groupId: scenarioId,
         reasoning: scoreData.explanation,
         criteria: {
-          type: 'llm_ruler_judge',
+          type: "llm_ruler_judge",
           scenarioId,
         },
       });
@@ -393,13 +384,13 @@ export class RulerScoringService {
     }
 
     logger.info(
-      'Scored trajectory group',
+      "Scored trajectory group",
       {
         scenarioId,
         scored,
         groupSize: richTrajectories.length,
       },
-      'RulerScoring'
+      "RulerScoring",
     );
 
     return scored;
@@ -418,13 +409,13 @@ export class RulerScoringService {
       archetype: string;
     }>,
     commonPrefix: Array<{ role: string; content: string }>,
-    scenarioId: string
+    scenarioId: string,
   ): string {
     // Build context section with game knowledge (injected into prompt)
     const contextParts: string[] = [];
     contextParts.push(`Scenario: ${scenarioId}`);
     contextParts.push(
-      `\nTrajectory Performance Context (use this to inform your scoring):`
+      `\nTrajectory Performance Context (use this to inform your scoring):`,
     );
 
     for (let i = 0; i < richTrajectories.length; i++) {
@@ -434,24 +425,24 @@ export class RulerScoringService {
       contextParts.push(`\n${trajId}:`);
       contextParts.push(`  - Archetype: ${rt.archetype}`);
       contextParts.push(
-        `  - Final P&L: $${rt.traj.metrics.finalPnL?.toFixed(2) || '0.00'}`
+        `  - Final P&L: $${rt.traj.metrics.finalPnL?.toFixed(2) || "0.00"}`,
       );
       contextParts.push(
-        `  - Episode Length: ${rt.traj.metrics.episodeLength || 0} steps`
+        `  - Episode Length: ${rt.traj.metrics.episodeLength || 0} steps`,
       );
       contextParts.push(`  - Total Reward: ${rt.traj.totalReward.toFixed(2)}`);
 
       const actionTypes = rt.traj.steps
         .filter((s: TrajectoryStep): boolean => !!s.action)
-        .map((s: TrajectoryStep): string => s.action!.actionType);
+        .map((s: TrajectoryStep): string => s.action?.actionType);
       const uniqueActions = [...new Set(actionTypes)];
       contextParts.push(
-        `  - Actions Taken: ${uniqueActions.join(', ')} (${actionTypes.length} total)`
+        `  - Actions Taken: ${uniqueActions.join(", ")} (${actionTypes.length} total)`,
       );
 
       // Add success/error info
       const errors = rt.traj.steps.filter(
-        (s: TrajectoryStep): boolean => !!s.action && !s.action.success
+        (s: TrajectoryStep): boolean => !!s.action && !s.action.success,
       ).length;
       const successRate =
         rt.traj.steps.length > 0
@@ -459,7 +450,7 @@ export class RulerScoringService {
               ((rt.traj.steps.length - errors) / rt.traj.steps.length) *
               100
             ).toFixed(1)
-          : '0';
+          : "0";
       contextParts.push(`  - Success Rate: ${successRate}%`);
 
       if (errors > 0) {
@@ -489,24 +480,24 @@ export class RulerScoringService {
     const userContent =
       commonPrefix.length > 0
         ? `<context>\n${JSON.stringify(commonPrefix, null, 2)}\n</context>\n\n`
-        : '';
+        : "";
 
-    const prompt = `${userContent}${contextParts.join('\n')}\n\nTrajectories:\n\n${trajectorySections.join('\n\n')}`;
+    const prompt = `${userContent}${contextParts.join("\n")}\n\nTrajectories:\n\n${trajectorySections.join("\n\n")}`;
 
     // Determine archetype-specific rubric
     // If all trajectories share the same archetype, use that archetype's rubric
     // Otherwise, fall back to the default rubric
     const archetypes = [...new Set(richTrajectories.map((rt) => rt.archetype))];
     const isSingleArchetype =
-      archetypes.length === 1 && archetypes[0] !== 'default';
+      archetypes.length === 1 && archetypes[0] !== "default";
     const rubric = isSingleArchetype
       ? getRubric(archetypes[0]!)
       : DEFAULT_RUBRIC;
     const archetypeContext = isSingleArchetype
-      ? `\n\nYou are evaluating ${archetypes[0]!.toUpperCase()} agents. Score them based on how well they embody that archetype's behavior and goals.`
+      ? `\n\nYou are evaluating ${archetypes[0]?.toUpperCase()} agents. Score them based on how well they embody that archetype's behavior and goals.`
       : archetypes.length > 1
-        ? `\n\nNote: This group contains mixed archetypes (${archetypes.join(', ')}). Consider each agent's archetype when scoring.`
-        : '';
+        ? `\n\nNote: This group contains mixed archetypes (${archetypes.join(", ")}). Consider each agent's archetype when scoring.`
+        : "";
 
     const systemPrompt = `You are an expert evaluator of AI agent performance. All trajectories below were given the same goal/scenario. Your job is to compare them and assign scores from 0 to 1 based on how well each trajectory achieved its goal.${archetypeContext}
 
@@ -556,26 +547,26 @@ Return ONLY the JSON, no other text.`;
     const response = await llmCaller.callGroqDirect({
       prompt: structuredPrompt,
       system: promptData.system,
-      modelSize: 'large',
+      modelSize: "large",
       temperature: 0.3,
       maxTokens: 2000,
-      actionType: 'ruler_score_trajectories',
+      actionType: "ruler_score_trajectories",
     });
 
     let jsonText = response.trim();
     jsonText = jsonText
-      .replace(/```json\n?/g, '')
-      .replace(/```\n?/g, '')
+      .replace(/```json\n?/g, "")
+      .replace(/```\n?/g, "")
       .trim();
 
     const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       logger.error(
-        'Judge response does not contain JSON',
+        "Judge response does not contain JSON",
         {
           response: response.substring(0, 500),
         },
-        'RulerScoring'
+        "RulerScoring",
       );
       return null;
     }
@@ -584,9 +575,9 @@ Return ONLY the JSON, no other text.`;
 
     if (!parsed.scores || !Array.isArray(parsed.scores)) {
       logger.error(
-        'Invalid judge response structure',
+        "Invalid judge response structure",
         { parsed },
-        'RulerScoring'
+        "RulerScoring",
       );
       return null;
     }
@@ -606,7 +597,7 @@ Return ONLY the JSON, no other text.`;
    * RULER deduplicates common prefixes to save tokens.
    */
   private extractCommonPrefix(
-    messageLists: Array<Array<{ role: string; content: string }>>
+    messageLists: Array<Array<{ role: string; content: string }>>,
   ): Array<{ role: string; content: string }> {
     if (messageLists.length === 0) return [];
 
@@ -618,8 +609,8 @@ Return ONLY the JSON, no other text.`;
       const allMatch = messageLists.every(
         (msgs) =>
           msgs[i] &&
-          msgs[i]!.role === msg.role &&
-          msgs[i]!.content === msg.content
+          msgs[i]?.role === msg.role &&
+          msgs[i]?.content === msg.content,
       );
 
       if (allMatch) {
@@ -643,16 +634,16 @@ Return ONLY the JSON, no other text.`;
       finalPnL: number | null;
       episodeLength: number | null;
       archetype: string | null;
-    }>
+    }>,
   ): Array<{ scenarioId: string; trajectories: typeof trajectoriesData }> {
     const groups = new Map<string, typeof trajectoriesData>();
 
     for (const traj of trajectoriesData) {
-      const scenarioId = traj.scenarioId || 'default';
+      const scenarioId = traj.scenarioId || "default";
       if (!groups.has(scenarioId)) {
         groups.set(scenarioId, []);
       }
-      groups.get(scenarioId)!.push(traj);
+      groups.get(scenarioId)?.push(traj);
     }
 
     return Array.from(groups.entries()).map(([scenarioId, trajs]) => ({
@@ -679,8 +670,8 @@ Return ONLY the JSON, no other text.`;
         .where(
           and(
             inArray(trajectories.trajectoryId, trajectoryIds),
-            isNull(trajectories.aiJudgeReward)
-          )
+            isNull(trajectories.aiJudgeReward),
+          ),
         );
     }
 
@@ -699,9 +690,9 @@ Return ONLY the JSON, no other text.`;
         and(
           isNull(trajectories.aiJudgeReward),
           eq(trajectories.isTrainingData, true),
-          not(eq(trajectories.stepsJson, 'null')),
-          not(eq(trajectories.stepsJson, '[]'))
-        )
+          not(eq(trajectories.stepsJson, "null")),
+          not(eq(trajectories.stepsJson, "[]")),
+        ),
       )
       .orderBy(asc(trajectories.startTime));
   }
@@ -718,9 +709,9 @@ Return ONLY the JSON, no other text.`;
           eq(trajectories.windowId, windowId),
           eq(trajectories.isTrainingData, true),
           isNull(trajectories.aiJudgeReward),
-          not(eq(trajectories.stepsJson, 'null')),
-          not(eq(trajectories.stepsJson, '[]'))
-        )
+          not(eq(trajectories.stepsJson, "null")),
+          not(eq(trajectories.stepsJson, "[]")),
+        ),
       );
 
     if (trajectoriesResult.length === 0) {
@@ -728,7 +719,7 @@ Return ONLY the JSON, no other text.`;
     }
 
     return await this.scoreTrajectories(
-      trajectoriesResult.map((t) => t.trajectoryId)
+      trajectoriesResult.map((t) => t.trajectoryId),
     );
   }
 }

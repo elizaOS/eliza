@@ -28,11 +28,11 @@ export class PredictionPricing {
   static getCurrentPrice(
     yesShares: number,
     noShares: number,
-    side: 'yes' | 'no'
+    side: "yes" | "no",
   ): number {
     const total = yesShares + noShares;
     if (total <= 0) return 0.5;
-    return side === 'yes' ? noShares / total : yesShares / total;
+    return side === "yes" ? noShares / total : yesShares / total;
   }
 
   /**
@@ -52,7 +52,7 @@ export class PredictionPricing {
     shares: number,
     avgPrice: number,
     totalWinnerShares: number = 0,
-    totalLoserDeposits: number = 0
+    totalLoserDeposits: number = 0,
   ): number {
     const costBasis = shares * avgPrice;
     if (totalWinnerShares <= 0) return costBasis;
@@ -66,7 +66,7 @@ export class PredictionPricing {
   static initializeMarket(initialLiquidity = 10_000, yesProbability = 0.5) {
     const clampedYesProbability = Math.max(
       0.05,
-      Math.min(0.95, yesProbability)
+      Math.min(0.95, yesProbability),
     );
     const noShares = Math.max(1, initialLiquidity * clampedYesProbability);
     const yesShares = Math.max(1, initialLiquidity - noShares);
@@ -76,18 +76,18 @@ export class PredictionPricing {
   static calculateBuy(
     currentYesShares: number,
     currentNoShares: number,
-    side: 'yes' | 'no',
-    usdAmount: number
+    side: "yes" | "no",
+    usdAmount: number,
   ): ShareCalculation {
-    if (usdAmount <= 0) throw new Error('Trade amount must be positive');
+    if (usdAmount <= 0) throw new Error("Trade amount must be positive");
     const k = currentYesShares * currentNoShares;
-    if (k <= 0) throw new Error('Market has insufficient liquidity');
+    if (k <= 0) throw new Error("Market has insufficient liquidity");
 
     let newYesShares: number;
     let newNoShares: number;
     let sharesBought: number;
 
-    if (side === 'yes') {
+    if (side === "yes") {
       newNoShares = currentNoShares + usdAmount;
       newYesShares = k / newNoShares;
       sharesBought = currentYesShares - newYesShares;
@@ -98,7 +98,7 @@ export class PredictionPricing {
     }
 
     if (sharesBought <= 0)
-      throw new Error('Calculated shares must be positive');
+      throw new Error("Calculated shares must be positive");
 
     const newTotal = newYesShares + newNoShares;
     const newYesPrice = newNoShares / newTotal;
@@ -108,7 +108,7 @@ export class PredictionPricing {
     const currentNoPrice = currentYesShares / currentTotal;
 
     const priceImpact =
-      side === 'yes'
+      side === "yes"
         ? ((newYesPrice - currentYesPrice) / currentYesPrice) * 100
         : ((newNoPrice - currentNoPrice) / currentNoPrice) * 100;
 
@@ -127,18 +127,18 @@ export class PredictionPricing {
   static calculateSell(
     currentYesShares: number,
     currentNoShares: number,
-    side: 'yes' | 'no',
-    sharesToSell: number
+    side: "yes" | "no",
+    sharesToSell: number,
   ): ShareCalculation {
-    if (sharesToSell <= 0) throw new Error('Shares to sell must be positive');
+    if (sharesToSell <= 0) throw new Error("Shares to sell must be positive");
     const k = currentYesShares * currentNoShares;
-    if (k <= 0) throw new Error('Market has insufficient liquidity');
+    if (k <= 0) throw new Error("Market has insufficient liquidity");
 
     let newYesShares: number;
     let newNoShares: number;
     let proceeds: number;
 
-    if (side === 'yes') {
+    if (side === "yes") {
       newYesShares = currentYesShares + sharesToSell;
       newNoShares = k / newYesShares;
       proceeds = currentNoShares - newNoShares;
@@ -149,7 +149,7 @@ export class PredictionPricing {
     }
 
     if (!Number.isFinite(proceeds) || proceeds <= 0) {
-      throw new Error('Calculated proceeds must be positive');
+      throw new Error("Calculated proceeds must be positive");
     }
 
     const newTotal = newYesShares + newNoShares;
@@ -160,7 +160,7 @@ export class PredictionPricing {
     const currentNoPrice = currentYesShares / currentTotal;
 
     const priceImpact =
-      side === 'yes'
+      side === "yes"
         ? ((newYesPrice - currentYesPrice) / currentYesPrice) * 100
         : ((newNoPrice - currentNoPrice) / currentNoPrice) * 100;
 
@@ -179,17 +179,17 @@ export class PredictionPricing {
   static calculateBuyWithFees(
     currentYesShares: number,
     currentNoShares: number,
-    side: 'yes' | 'no',
+    side: "yes" | "no",
     totalAmount: number,
-    feeRate: number
+    feeRate: number,
   ): ShareCalculationWithFees {
     const fee = totalAmount * feeRate;
     const netAmount = totalAmount - fee;
-    const base = this.calculateBuy(
+    const base = PredictionPricing.calculateBuy(
       currentYesShares,
       currentNoShares,
       side,
-      netAmount
+      netAmount,
     );
     return {
       ...base,
@@ -203,15 +203,15 @@ export class PredictionPricing {
   static calculateSellWithFees(
     currentYesShares: number,
     currentNoShares: number,
-    side: 'yes' | 'no',
+    side: "yes" | "no",
     sharesToSell: number,
-    feeRate: number
+    feeRate: number,
   ): ShareCalculationWithFees {
-    const base = this.calculateSell(
+    const base = PredictionPricing.calculateSell(
       currentYesShares,
       currentNoShares,
       side,
-      sharesToSell
+      sharesToSell,
     );
     const gross = base.totalCost;
     const fee = gross * feeRate;
@@ -250,7 +250,7 @@ export function maxSafeBuy(
   yesShares: number,
   noShares: number,
   feeRate = 0.01,
-  capPpt = 0.19
+  capPpt = 0.19,
 ): number {
   const k = yesShares * noShares;
   if (k <= 0 || !Number.isFinite(k)) return 0;
@@ -285,12 +285,12 @@ export function calculateExpectedPayout(
   shares: number,
   avgPrice: number,
   totalWinnerShares: number = 0,
-  totalLoserDeposits: number = 0
+  totalLoserDeposits: number = 0,
 ): number {
   return PredictionPricing.calculateExpectedPayout(
     shares,
     avgPrice,
     totalWinnerShares,
-    totalLoserDeposits
+    totalLoserDeposits,
   );
 }

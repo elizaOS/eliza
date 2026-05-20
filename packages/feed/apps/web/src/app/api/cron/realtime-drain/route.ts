@@ -3,19 +3,19 @@ import {
   requireCronAuth,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/api";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
-export const dynamic = 'force-dynamic';
-export const runtime = 'nodejs';
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   // Security: Verify cron authorization
-  requireCronAuth(request, { jobName: 'RealtimeDrain' });
+  requireCronAuth(request, { jobName: "RealtimeDrain" });
 
   const result = await drainOutboxBatch();
-  logger.info('Realtime outbox drain completed', result, 'Realtime');
+  logger.info("Realtime outbox drain completed", result, "Realtime");
   return successResponse({
     success: true,
     ...result,

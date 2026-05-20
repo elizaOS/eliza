@@ -1,11 +1,11 @@
-export type UserPositionsType = 'all' | 'perp' | 'prediction';
-export type UserPositionsStatus = 'open' | 'closed' | 'all';
+export type UserPositionsType = "all" | "perp" | "prediction";
+export type UserPositionsStatus = "open" | "closed" | "all";
 
 export interface UserPerpPositionSnapshot {
   id: string;
   marketId?: string;
   ticker: string;
-  side: 'long' | 'short';
+  side: "long" | "short";
   entryPrice: number;
   currentPrice: number;
   size: number;
@@ -26,7 +26,7 @@ export interface UserPredictionPositionSnapshot {
   id: string;
   marketId: string;
   question: string;
-  side: 'YES' | 'NO';
+  side: "YES" | "NO";
   shares: number;
   avgPrice: number;
   currentPrice: number;
@@ -73,5 +73,5 @@ export function isOpenPredictionPosition(position: {
   resolved?: boolean;
   status?: string;
 }) {
-  return position.resolved === false && position.status === 'active';
+  return position.resolved === false && position.status === "active";
 }

@@ -4,28 +4,28 @@
  * Provides helpers to apply rate limiting and duplicate detection to API routes
  */
 
-import type { AuthenticatedUser } from '@feed/shared';
-import { logger } from '@feed/shared';
+import type { AuthenticatedUser } from "@feed/shared";
+import { logger } from "@feed/shared";
 
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { optionalAuth } from '../auth-middleware';
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { optionalAuth } from "../auth-middleware";
 import {
   checkDuplicate,
   type DUPLICATE_DETECTION_CONFIGS,
-} from '../utils/duplicate-detector';
-import { getClientIp } from '../utils/ip-utils';
+} from "../utils/duplicate-detector";
+import { getClientIp } from "../utils/ip-utils";
 import {
   checkRateLimit,
   checkRateLimitAsync,
   RATE_LIMIT_CONFIGS,
-} from './user-rate-limiter';
+} from "./user-rate-limiter";
 
 function isRateLimitingDisabled() {
   return (
-    process.env.DISABLE_RATE_LIMITING === 'true' &&
-    (process.env.NODE_ENV !== 'production' ||
-      process.env.ALLOW_TEST_PRIVY_DID_AUTH === 'true')
+    process.env.DISABLE_RATE_LIMITING === "true" &&
+    (process.env.NODE_ENV !== "production" ||
+      process.env.ALLOW_TEST_PRIVY_DID_AUTH === "true")
   );
 }
 
@@ -36,18 +36,18 @@ export function rateLimitError(retryAfter?: number) {
   const response = NextResponse.json(
     {
       success: false,
-      error: 'Rate limit exceeded',
-      message: `Too many requests. Please try again ${retryAfter ? `in ${retryAfter} seconds` : 'later'}.`,
+      error: "Rate limit exceeded",
+      message: `Too many requests. Please try again ${retryAfter ? `in ${retryAfter} seconds` : "later"}.`,
       retryAfter,
     },
-    { status: 429 }
+    { status: 429 },
   );
 
   // Add standard rate limit headers
   if (retryAfter) {
-    response.headers.set('Retry-After', retryAfter.toString());
+    response.headers.set("Retry-After", retryAfter.toString());
   }
-  response.headers.set('X-RateLimit-Exceeded', 'true');
+  response.headers.set("X-RateLimit-Exceeded", "true");
 
   return response;
 }
@@ -59,12 +59,12 @@ export function duplicateContentError(lastPostedAt?: Date) {
   return NextResponse.json(
     {
       success: false,
-      error: 'Duplicate content',
+      error: "Duplicate content",
       message:
-        'You have already posted this content recently. Please wait before posting it again.',
+        "You have already posted this content recently. Please wait before posting it again.",
       lastPostedAt: lastPostedAt?.toISOString(),
     },
-    { status: 409 } // 409 Conflict
+    { status: 409 }, // 409 Conflict
   );
 }
 
@@ -87,7 +87,7 @@ export function duplicateContentError(lastPostedAt?: Date) {
  */
 export function applyRateLimit(
   userId: string,
-  config: (typeof RATE_LIMIT_CONFIGS)[keyof typeof RATE_LIMIT_CONFIGS]
+  config: (typeof RATE_LIMIT_CONFIGS)[keyof typeof RATE_LIMIT_CONFIGS],
 ) {
   if (isRateLimitingDisabled()) {
     return {
@@ -117,7 +117,7 @@ export function applyRateLimit(
 export function applyDuplicateDetection(
   userId: string,
   content: string,
-  config: (typeof DUPLICATE_DETECTION_CONFIGS)[keyof typeof DUPLICATE_DETECTION_CONFIGS]
+  config: (typeof DUPLICATE_DETECTION_CONFIGS)[keyof typeof DUPLICATE_DETECTION_CONFIGS],
 ) {
   return checkDuplicate(userId, content, config);
 }
@@ -141,7 +141,7 @@ export function checkRateLimitAndDuplicates(
   userId: string,
   content: string | null,
   rateLimitConfig: (typeof RATE_LIMIT_CONFIGS)[keyof typeof RATE_LIMIT_CONFIGS],
-  duplicateConfig?: (typeof DUPLICATE_DETECTION_CONFIGS)[keyof typeof DUPLICATE_DETECTION_CONFIGS]
+  duplicateConfig?: (typeof DUPLICATE_DETECTION_CONFIGS)[keyof typeof DUPLICATE_DETECTION_CONFIGS],
 ): NextResponse | null {
   if (isRateLimitingDisabled()) {
     return null;
@@ -150,7 +150,7 @@ export function checkRateLimitAndDuplicates(
   // Check rate limit first
   const rateLimitResult = checkRateLimit(userId, rateLimitConfig);
   if (!rateLimitResult.allowed) {
-    logger.warn('Rate limit check failed', {
+    logger.warn("Rate limit check failed", {
       userId,
       actionType: rateLimitConfig.actionType,
       retryAfter: rateLimitResult.retryAfter,
@@ -162,7 +162,7 @@ export function checkRateLimitAndDuplicates(
   if (content && duplicateConfig) {
     const duplicateResult = checkDuplicate(userId, content, duplicateConfig);
     if (duplicateResult.isDuplicate) {
-      logger.warn('Duplicate content detected', {
+      logger.warn("Duplicate content detected", {
         userId,
         actionType: duplicateConfig.actionType,
         lastPostedAt: duplicateResult.lastPostedAt?.toISOString(),
@@ -172,7 +172,7 @@ export function checkRateLimitAndDuplicates(
   }
 
   // All checks passed
-  logger.debug('Rate limit and duplicate checks passed', {
+  logger.debug("Rate limit and duplicate checks passed", {
     userId,
     actionType: rateLimitConfig.actionType,
     remaining: rateLimitResult.remaining,
@@ -187,10 +187,10 @@ export function checkRateLimitAndDuplicates(
 export function addRateLimitHeaders(
   response: NextResponse,
   remaining: number,
-  resetAt: Date
+  resetAt: Date,
 ): NextResponse {
-  response.headers.set('X-RateLimit-Remaining', remaining.toString());
-  response.headers.set('X-RateLimit-Reset', resetAt.toISOString());
+  response.headers.set("X-RateLimit-Remaining", remaining.toString());
+  response.headers.set("X-RateLimit-Reset", resetAt.toISOString());
   return response;
 }
 
@@ -211,26 +211,26 @@ export function addPublicReadHeaders(
     limit: number;
     remaining: number;
     resetAt: Date;
-  }
+  },
 ): NextResponse {
-  response.headers.set('X-RateLimit-Limit', rateLimitInfo.limit.toString());
+  response.headers.set("X-RateLimit-Limit", rateLimitInfo.limit.toString());
   response.headers.set(
-    'X-RateLimit-Remaining',
-    rateLimitInfo.remaining.toString()
+    "X-RateLimit-Remaining",
+    rateLimitInfo.remaining.toString(),
   );
   response.headers.set(
-    'X-RateLimit-Reset',
-    rateLimitInfo.resetAt.toISOString()
+    "X-RateLimit-Reset",
+    rateLimitInfo.resetAt.toISOString(),
   );
   response.headers.set(
-    'Cache-Control',
-    'public, s-maxage=5, stale-while-revalidate=10'
+    "Cache-Control",
+    "public, s-maxage=5, stale-while-revalidate=10",
   );
   return response;
 }
 
 /** Options for public rate limit: 'read' for GET endpoints, 'firehose' for SSE token/connection limits. */
-export type PublicRateLimitKind = 'read' | 'firehose';
+export type PublicRateLimitKind = "read" | "firehose";
 
 /**
  * Result of publicRateLimit. Use `user` in the handler to avoid calling optionalAuth() again;
@@ -266,11 +266,11 @@ export interface PublicRateLimitResult {
  */
 export async function publicRateLimit(
   request: NextRequest,
-  kind: PublicRateLimitKind = 'read'
+  kind: PublicRateLimitKind = "read",
 ): Promise<PublicRateLimitResult> {
   const user = await optionalAuth(request).catch(() => null);
 
-  const isFirehose = kind === 'firehose';
+  const isFirehose = kind === "firehose";
   const authedConfig = isFirehose
     ? RATE_LIMIT_CONFIGS.PUBLIC_FIREHOSE_AUTHED
     : RATE_LIMIT_CONFIGS.PUBLIC_READ_AUTHED;
@@ -305,7 +305,7 @@ export async function publicRateLimit(
       key = clientIp;
       config = publicConfig;
     } else {
-      key = 'anonymous';
+      key = "anonymous";
       config = anonymousConfig;
     }
   }
@@ -313,8 +313,8 @@ export async function publicRateLimit(
   const result = await checkRateLimitAsync(key, config);
 
   if (!result.allowed) {
-    logger.warn('Public rate limit exceeded', {
-      key: key === 'anonymous' ? 'anonymous' : '[redacted]',
+    logger.warn("Public rate limit exceeded", {
+      key: key === "anonymous" ? "anonymous" : "[redacted]",
       actionType: config.actionType,
       retryAfter: result.retryAfter,
     });

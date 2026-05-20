@@ -1,5 +1,5 @@
-import { definePrompt } from '../define-prompt';
-import { ANTI_REPETITION_RULES, PARODY_NAME_RULES } from '../shared-sections';
+import { definePrompt } from "../define-prompt";
+import { ANTI_REPETITION_RULES, PARODY_NAME_RULES } from "../shared-sections";
 
 /**
  * Prompt for generating expert analysis from NPCs with domain expertise.
@@ -12,10 +12,10 @@ import { ANTI_REPETITION_RULES, PARODY_NAME_RULES } from '../shared-sections';
  * Returns XML with expert analysis.
  */
 export const expertAnalysis = definePrompt({
-  id: 'expert-analysis',
-  version: '4.0.0',
-  category: 'world',
-  description: 'Generates expert analysis with full character context',
+  id: "expert-analysis",
+  version: "4.0.0",
+  category: "world",
+  description: "Generates expert analysis with full character context",
   temperature: 0.7,
   maxTokens: 1000,
   template: `{{realityGrounding}}

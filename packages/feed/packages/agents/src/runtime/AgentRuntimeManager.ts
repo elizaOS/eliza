@@ -13,6 +13,14 @@
  */
 
 import {
+  AgentRuntime,
+  type Character,
+  type Plugin,
+  type UUID,
+} from "@elizaos/core";
+import anthropicPlugin from "@elizaos/plugin-anthropic";
+import openaiPlugin from "@elizaos/plugin-openai";
+import {
   actorState,
   agentLogs,
   agentTrades,
@@ -22,46 +30,38 @@ import {
   eq,
   gte,
   users,
-} from '@feed/db';
+} from "@feed/db";
 import {
   type ActorData,
   loadActorById,
   StaticDataRegistry,
-} from '@feed/engine';
+} from "@feed/engine";
 import {
   COORDINATOR_RUNTIME_ID as COORDINATOR_RUNTIME_ID_STRING,
   COORDINATOR_SYSTEM_PROMPT,
   GROQ_MODELS,
   type PackActor,
-} from '@feed/shared';
-import {
-  AgentRuntime,
-  type Character,
-  type Plugin,
-  type UUID,
-} from '@elizaos/core';
-import anthropicPlugin from '@elizaos/plugin-anthropic';
-import openaiPlugin from '@elizaos/plugin-openai';
-import { feedPlugin } from '../plugins/feed';
-import { enhanceRuntimeWithFeed } from '../plugins/feed/integration';
-import { groqPlugin } from '../plugins/groq';
-import { agentCorePlugin } from '../plugins/plugin-agent-core/src';
+} from "@feed/shared";
+import { feedPlugin } from "../plugins/feed";
+import { enhanceRuntimeWithFeed } from "../plugins/feed/integration";
+import { groqPlugin } from "../plugins/groq";
+import { agentCorePlugin } from "../plugins/plugin-agent-core/src";
 // TODO: experiencePlugin disabled due to missing plugin implementation
 // Re-enable when plugin-experience is properly implemented and exports valid Plugin
 // import { experiencePlugin } from '../plugins/plugin-experience/src';
-import { trajectoryLoggerPlugin } from '../plugins/plugin-trajectory-logger/src';
+import { trajectoryLoggerPlugin } from "../plugins/plugin-trajectory-logger/src";
 import {
   wrapPluginActions,
   wrapPluginProviders,
-} from '../plugins/plugin-trajectory-logger/src/action-interceptor';
-import { TrajectoryLoggerService } from '../plugins/plugin-trajectory-logger/src/TrajectoryLoggerService';
-import { userCorePlugin } from '../plugins/plugin-user-core/src';
-import { agentRegistry } from '../services/agent-registry.service';
-import { getAgentConfig } from '../shared/agent-config';
-import { logger } from '../shared/logger';
-import { generateSnowflakeId } from '../shared/snowflake';
-import { type AgentRegistration, AgentType } from '../types/agent-registry';
-import type { JsonValue } from '../types/common';
+} from "../plugins/plugin-trajectory-logger/src/action-interceptor";
+import { TrajectoryLoggerService } from "../plugins/plugin-trajectory-logger/src/TrajectoryLoggerService";
+import { userCorePlugin } from "../plugins/plugin-user-core/src";
+import { agentRegistry } from "../services/agent-registry.service";
+import { getAgentConfig } from "../shared/agent-config";
+import { logger } from "../shared/logger";
+import { generateSnowflakeId } from "../shared/snowflake";
+import { type AgentRegistration, AgentType } from "../types/agent-registry";
+import type { JsonValue } from "../types/common";
 
 /**
  * Extended AgentRuntime with Feed-specific properties
@@ -92,7 +92,7 @@ const MS_PER_HOUR = 60 * 60 * 1000;
 const MAX_REFRESH_WINDOW_LOGS = 250;
 const MAX_REFRESH_WINDOW_TRADES = 250;
 const CONTEXT_REFRESH_INTERVAL_MS = (() => {
-  const configured = Number(process.env.AGENT_CONTEXT_REFRESH_HOURS ?? '');
+  const configured = Number(process.env.AGENT_CONTEXT_REFRESH_HOURS ?? "");
   if (Number.isFinite(configured) && configured > 0) {
     return Math.floor(configured * MS_PER_HOUR);
   }
@@ -124,14 +124,14 @@ function createAdapterStubs(existingAdapter: unknown): unknown {
   };
   const adapterLogs = new Map<string, AdapterLogRecord>();
   const readAgentId = (value: unknown): string | null => {
-    if (typeof value === 'string' && value) {
+    if (typeof value === "string" && value) {
       return value;
     }
     if (
       value &&
-      typeof value === 'object' &&
-      'id' in value &&
-      typeof (value as { id?: unknown }).id === 'string'
+      typeof value === "object" &&
+      "id" in value &&
+      typeof (value as { id?: unknown }).id === "string"
     ) {
       return (value as { id: string }).id;
     }
@@ -145,9 +145,9 @@ function createAdapterStubs(existingAdapter: unknown): unknown {
     }
     if (
       values &&
-      typeof values === 'object' &&
-      'participantId' in values &&
-      typeof (values as { participantId?: unknown }).participantId === 'string'
+      typeof values === "object" &&
+      "participantId" in values &&
+      typeof (values as { participantId?: unknown }).participantId === "string"
     ) {
       return [(values as { participantId: string }).participantId];
     }
@@ -164,7 +164,7 @@ function createAdapterStubs(existingAdapter: unknown): unknown {
   };
   const addParticipantsToRoomState = (
     roomIdValue: unknown,
-    participantIdsValue: unknown
+    participantIdsValue: unknown,
   ): Array<Record<string, unknown>> => {
     const roomId = readAgentId(roomIdValue);
     const participantIds = readIds(participantIdsValue);
@@ -195,7 +195,7 @@ function createAdapterStubs(existingAdapter: unknown): unknown {
         roomId,
         participantId,
         entityId: participantId,
-      })
+      }),
     );
   };
   const getRoomsForParticipantState = (participantIdValue: unknown) => {
@@ -209,7 +209,7 @@ function createAdapterStubs(existingAdapter: unknown): unknown {
   };
   const isRoomParticipantState = (
     roomIdValue: unknown,
-    participantIdValue: unknown
+    participantIdValue: unknown,
   ): boolean => {
     const roomId = readAgentId(roomIdValue);
     const participantId = readAgentId(participantIdValue);
@@ -223,21 +223,21 @@ function createAdapterStubs(existingAdapter: unknown): unknown {
     return false;
   };
   const createAdapterLogId = (): string =>
-    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
       ? crypto.randomUUID()
       : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const normalizeLogRecord = (
-    entry: Record<string, unknown>
+    entry: Record<string, unknown>,
   ): AdapterLogRecord | null => {
     const entityId = readAgentId(entry.entityId);
     const roomId = readAgentId(entry.roomId);
     const type = entry.type;
-    if (!entityId || !roomId || typeof type !== 'string') {
+    if (!entityId || !roomId || typeof type !== "string") {
       return null;
     }
     return {
       id:
-        typeof entry.id === 'string' && entry.id
+        typeof entry.id === "string" && entry.id
           ? entry.id
           : createAdapterLogId(),
       createdAt: entry.createdAt instanceof Date ? entry.createdAt : new Date(),
@@ -245,7 +245,7 @@ function createAdapterStubs(existingAdapter: unknown): unknown {
       roomId,
       type,
       body:
-        entry.body && typeof entry.body === 'object'
+        entry.body && typeof entry.body === "object"
           ? (entry.body as Record<string, unknown>)
           : {},
     };
@@ -253,7 +253,7 @@ function createAdapterStubs(existingAdapter: unknown): unknown {
   const upsertAgentRecords = (agents: unknown[]): Record<string, unknown>[] => {
     const records: Record<string, unknown>[] = [];
     for (const agent of agents) {
-      if (!agent || typeof agent !== 'object') {
+      if (!agent || typeof agent !== "object") {
         continue;
       }
       const agentRecord = agent as Record<string, unknown>;
@@ -268,11 +268,11 @@ function createAdapterStubs(existingAdapter: unknown): unknown {
     return records;
   };
   const upsertEntityRecords = (
-    entities: unknown[]
+    entities: unknown[],
   ): Record<string, unknown>[] => {
     const records: Record<string, unknown>[] = [];
     for (const entity of entities) {
-      if (!entity || typeof entity !== 'object') {
+      if (!entity || typeof entity !== "object") {
         continue;
       }
       const entityRecord = entity as Record<string, unknown>;
@@ -286,9 +286,9 @@ function createAdapterStubs(existingAdapter: unknown): unknown {
     return records;
   };
   const ensureRoomExistsState = (
-    roomValue: unknown
+    roomValue: unknown,
   ): Record<string, unknown> | null => {
-    if (!roomValue || typeof roomValue !== 'object') {
+    if (!roomValue || typeof roomValue !== "object") {
       const roomId = readAgentId(roomValue);
       if (!roomId) {
         return null;
@@ -308,7 +308,7 @@ function createAdapterStubs(existingAdapter: unknown): unknown {
   };
   const ensureParticipantInRoomState = (
     participantIdValue: unknown,
-    roomIdValue: unknown
+    roomIdValue: unknown,
   ): Record<string, unknown> | null => {
     const records = addParticipantsToRoomState(roomIdValue, participantIdValue);
     return records[0] ?? null;
@@ -368,7 +368,7 @@ function createAdapterStubs(existingAdapter: unknown): unknown {
                 : null;
             })
             .filter((entity): entity is Record<string, unknown> =>
-              Boolean(entity)
+              Boolean(entity),
             )
         : [],
     createEntities: async (entities: unknown[]) =>
@@ -382,7 +382,7 @@ function createAdapterStubs(existingAdapter: unknown): unknown {
     getEntitiesForRooms: async (roomIds: unknown[]) =>
       Array.isArray(roomIds)
         ? roomIds.map((roomId) => ({
-            roomId: typeof roomId === 'string' ? roomId : String(roomId),
+            roomId: typeof roomId === "string" ? roomId : String(roomId),
             entities: [],
           }))
         : [],
@@ -439,14 +439,14 @@ function createAdapterStubs(existingAdapter: unknown): unknown {
     getRoomsForParticipants: async (participantIds: unknown[]) =>
       Array.isArray(participantIds)
         ? participantIds.flatMap((participantId) =>
-            getRoomsForParticipantState(participantId)
+            getRoomsForParticipantState(participantId),
           )
         : [],
     createRooms: async (rooms: unknown[]) => {
       const roomRecords = Array.isArray(rooms)
         ? rooms.filter(
             (room): room is Record<string, unknown> =>
-              Boolean(room) && typeof room === 'object'
+              Boolean(room) && typeof room === "object",
           )
         : [];
       for (const room of roomRecords) {
@@ -484,7 +484,7 @@ function createAdapterStubs(existingAdapter: unknown): unknown {
     countMemories: async () => 0,
     // Logging
     log: async (entry: unknown) => {
-      if (!entry || typeof entry !== 'object') {
+      if (!entry || typeof entry !== "object") {
         return;
       }
       const logRecord = normalizeLogRecord(entry as Record<string, unknown>);
@@ -494,7 +494,7 @@ function createAdapterStubs(existingAdapter: unknown): unknown {
     },
     getLogs: async (params: unknown) => {
       const filters =
-        params && typeof params === 'object'
+        params && typeof params === "object"
           ? (params as {
               entityId?: unknown;
               roomId?: unknown;
@@ -506,7 +506,7 @@ function createAdapterStubs(existingAdapter: unknown): unknown {
           : {};
       const entityId = readAgentId(filters.entityId);
       const roomId = readAgentId(filters.roomId);
-      const type = typeof filters.type === 'string' ? filters.type : undefined;
+      const type = typeof filters.type === "string" ? filters.type : undefined;
       const effectiveLimit = filters.limit ?? filters.count ?? Infinity;
       const offset = filters.offset ?? 0;
 
@@ -525,9 +525,9 @@ function createAdapterStubs(existingAdapter: unknown): unknown {
       Array.isArray(logIds)
         ? logIds
             .map((logId) =>
-              typeof logId === 'string'
+              typeof logId === "string"
                 ? (adapterLogs.get(logId) ?? null)
-                : null
+                : null,
             )
             .filter((log): log is AdapterLogRecord => Boolean(log))
         : [],
@@ -536,7 +536,7 @@ function createAdapterStubs(existingAdapter: unknown): unknown {
         return;
       }
       for (const entry of entries) {
-        if (!entry || typeof entry !== 'object') {
+        if (!entry || typeof entry !== "object") {
           continue;
         }
         const logRecord = normalizeLogRecord(entry as Record<string, unknown>);
@@ -550,7 +550,7 @@ function createAdapterStubs(existingAdapter: unknown): unknown {
         return;
       }
       for (const entry of logs) {
-        if (!entry || typeof entry !== 'object') {
+        if (!entry || typeof entry !== "object") {
           continue;
         }
         const update = entry as {
@@ -558,7 +558,7 @@ function createAdapterStubs(existingAdapter: unknown): unknown {
           updates?: Record<string, unknown>;
         };
         const id =
-          typeof update.id === 'string' && update.id ? update.id : null;
+          typeof update.id === "string" && update.id ? update.id : null;
         const existing = id ? adapterLogs.get(id) : null;
         if (!id || !existing || !update.updates) {
           continue;
@@ -571,20 +571,20 @@ function createAdapterStubs(existingAdapter: unknown): unknown {
               ? update.updates.createdAt
               : existing.createdAt,
           entityId:
-            typeof update.updates.entityId === 'string' &&
+            typeof update.updates.entityId === "string" &&
             update.updates.entityId
               ? update.updates.entityId
               : existing.entityId,
           roomId:
-            typeof update.updates.roomId === 'string' && update.updates.roomId
+            typeof update.updates.roomId === "string" && update.updates.roomId
               ? update.updates.roomId
               : existing.roomId,
           type:
-            typeof update.updates.type === 'string' && update.updates.type
+            typeof update.updates.type === "string" && update.updates.type
               ? update.updates.type
               : existing.type,
           body:
-            update.updates.body && typeof update.updates.body === 'object'
+            update.updates.body && typeof update.updates.body === "object"
               ? (update.updates.body as Record<string, unknown>)
               : existing.body,
         });
@@ -595,13 +595,13 @@ function createAdapterStubs(existingAdapter: unknown): unknown {
         return;
       }
       for (const logId of logIds) {
-        if (typeof logId === 'string' && logId) {
+        if (typeof logId === "string" && logId) {
           adapterLogs.delete(logId);
         }
       }
     },
     deleteLog: async (logId: unknown) => {
-      if (typeof logId === 'string' && logId) {
+      if (typeof logId === "string" && logId) {
         adapterLogs.delete(logId);
       }
     },
@@ -661,22 +661,22 @@ function applyRuntimeCompatibilityShims(runtime: AgentRuntime): void {
   const runtimeRecord = runtime as unknown as Record<string, unknown>;
   const bindAdapterMethod = (
     runtimeName: string,
-    adapterName: string
+    adapterName: string,
   ): void => {
     const adapterMethod = adapterRecord[adapterName];
-    if (typeof adapterMethod !== 'function') {
+    if (typeof adapterMethod !== "function") {
       return;
     }
     runtimeRecord[runtimeName] = (...args: unknown[]) =>
       (adapterMethod as (...innerArgs: unknown[]) => unknown).apply(
         runtime.adapter,
-        args
+        args,
       );
   };
 
-  bindAdapterMethod('ensureRoomExists', 'ensureRoomExists');
-  bindAdapterMethod('addParticipant', 'addParticipant');
-  bindAdapterMethod('ensureParticipantInRoom', 'ensureParticipantInRoom');
+  bindAdapterMethod("ensureRoomExists", "ensureRoomExists");
+  bindAdapterMethod("addParticipant", "addParticipant");
+  bindAdapterMethod("ensureParticipantInRoom", "ensureParticipantInRoom");
 }
 
 export class AgentRuntimeManager {
@@ -684,9 +684,9 @@ export class AgentRuntimeManager {
 
   private constructor() {
     logger.info(
-      'AgentRuntimeManager initialized',
+      "AgentRuntimeManager initialized",
       undefined,
-      'AgentRuntimeManager'
+      "AgentRuntimeManager",
     );
   }
 
@@ -703,7 +703,7 @@ export class AgentRuntimeManager {
 
   private async persistContextRefreshSummary(
     agentUserId: string,
-    lifecycle: RuntimeLifecycleMetadata
+    lifecycle: RuntimeLifecycleMetadata,
   ): Promise<void> {
     const refreshEndedAt = new Date();
     const refreshStartedAt = new Date(lifecycle.createdAtMs);
@@ -720,8 +720,8 @@ export class AgentRuntimeManager {
           .where(
             and(
               eq(agentLogs.agentUserId, agentUserId),
-              gte(agentLogs.createdAt, refreshStartedAt)
-            )
+              gte(agentLogs.createdAt, refreshStartedAt),
+            ),
           )
           .orderBy(desc(agentLogs.createdAt))
           .limit(MAX_REFRESH_WINDOW_LOGS),
@@ -736,8 +736,8 @@ export class AgentRuntimeManager {
           .where(
             and(
               eq(agentTrades.agentUserId, agentUserId),
-              gte(agentTrades.executedAt, refreshStartedAt)
-            )
+              gte(agentTrades.executedAt, refreshStartedAt),
+            ),
           )
           .orderBy(desc(agentTrades.executedAt))
           .limit(MAX_REFRESH_WINDOW_TRADES),
@@ -769,30 +769,30 @@ export class AgentRuntimeManager {
     };
 
     for (const entry of windowLogs) {
-      if (entry.level === 'error') {
+      if (entry.level === "error") {
         actionCounts.errors++;
       }
 
       switch (entry.type) {
-        case 'tick':
+        case "tick":
           actionCounts.ticks++;
           break;
-        case 'trade':
+        case "trade":
           actionCounts.trades++;
           break;
-        case 'post':
+        case "post":
           actionCounts.posts++;
           break;
-        case 'comment':
+        case "comment":
           actionCounts.comments++;
           break;
-        case 'dm':
+        case "dm":
           actionCounts.dms++;
           break;
-        case 'like':
+        case "like":
           actionCounts.likes++;
           break;
-        case 'repost':
+        case "repost":
           actionCounts.reposts++;
           break;
         default:
@@ -802,42 +802,42 @@ export class AgentRuntimeManager {
 
     const closedTrades = windowTrades.filter((trade) => trade.pnl !== null);
     const winningTrades = closedTrades.filter(
-      (trade) => Number(trade.pnl ?? 0) > 0
+      (trade) => Number(trade.pnl ?? 0) > 0,
     ).length;
     const realizedPnl = Number(
       closedTrades
         .reduce((acc, trade) => acc + Number(trade.pnl ?? 0), 0)
-        .toFixed(2)
+        .toFixed(2),
     );
     const runtimeAgeHours = Number(
       (
         (refreshEndedAt.getTime() - lifecycle.createdAtMs) /
         MS_PER_HOUR
-      ).toFixed(2)
+      ).toFixed(2),
     );
 
     const user = userSnapshot[0];
     const npc = npcSnapshot[0];
     const balanceText = user
-      ? `$${Number(user.virtualBalance ?? 0).toFixed(2)} balance, lifetime PnL ${Number(user.lifetimePnL ?? 0) >= 0 ? '+' : ''}$${Number(user.lifetimePnL ?? 0).toFixed(2)}`
+      ? `$${Number(user.virtualBalance ?? 0).toFixed(2)} balance, lifetime PnL ${Number(user.lifetimePnL ?? 0) >= 0 ? "+" : ""}$${Number(user.lifetimePnL ?? 0).toFixed(2)}`
       : npc
         ? `$${Number(npc.tradingBalance ?? 0).toFixed(2)} NPC trading balance`
-        : 'balance unavailable';
+        : "balance unavailable";
 
     const summary =
       `Runtime refreshed after ${runtimeAgeHours}h. ` +
       `Window activity: ${actionCounts.ticks} ticks, ${actionCounts.trades} logged trades, ` +
       `${actionCounts.posts} posts, ${actionCounts.comments} comments, ${actionCounts.dms} DMs, ` +
       `${actionCounts.likes + actionCounts.reposts} engagements. ` +
-      `Trade outcomes: ${windowTrades.length} trades, ${closedTrades.length} closed, ${winningTrades} wins, realized PnL ${realizedPnl >= 0 ? '+' : ''}$${Math.abs(realizedPnl).toFixed(2)}. ` +
+      `Trade outcomes: ${windowTrades.length} trades, ${closedTrades.length} closed, ${winningTrades} wins, realized PnL ${realizedPnl >= 0 ? "+" : ""}$${Math.abs(realizedPnl).toFixed(2)}. ` +
       `Current state: ${balanceText}.`;
 
     const metadata: Record<string, JsonValue> = {
-      event: 'context_refresh',
+      event: "context_refresh",
       summary,
       refreshCount: lifecycle.refreshCount + 1,
       refreshIntervalHours: Number(
-        (CONTEXT_REFRESH_INTERVAL_MS / MS_PER_HOUR).toFixed(2)
+        (CONTEXT_REFRESH_INTERVAL_MS / MS_PER_HOUR).toFixed(2),
       ),
       runtimeAgeHours,
       windowStart: refreshStartedAt.toISOString(),
@@ -869,9 +869,9 @@ export class AgentRuntimeManager {
     await db.insert(agentLogs).values({
       id: await generateSnowflakeId(),
       agentUserId,
-      type: 'system',
-      level: 'info',
-      message: 'Context refresh checkpoint',
+      type: "system",
+      level: "info",
+      message: "Context refresh checkpoint",
       metadata,
     });
   }
@@ -900,7 +900,7 @@ export class AgentRuntimeManager {
         logger.info(
           `Using cached runtime for agent ${agentUserId} (lifecycle initialized)`,
           undefined,
-          'AgentRuntimeManager'
+          "AgentRuntimeManager",
         );
         return runtime;
       }
@@ -910,7 +910,7 @@ export class AgentRuntimeManager {
         logger.info(
           `Using cached runtime for agent ${agentUserId}`,
           undefined,
-          'AgentRuntimeManager'
+          "AgentRuntimeManager",
         );
         return runtime;
       }
@@ -927,19 +927,19 @@ export class AgentRuntimeManager {
           refreshIntervalHours: CONTEXT_REFRESH_INTERVAL_MS / MS_PER_HOUR,
           refreshCount,
         },
-        'AgentRuntimeManager'
+        "AgentRuntimeManager",
       );
 
       try {
         await this.persistContextRefreshSummary(agentUserId, lifecycle);
       } catch (error) {
         logger.warn(
-          'Failed to persist context refresh summary before runtime reset',
+          "Failed to persist context refresh summary before runtime reset",
           {
             agentId: agentUserId,
             error: error instanceof Error ? error.message : String(error),
           },
-          'AgentRuntimeManager'
+          "AgentRuntimeManager",
         );
       }
 
@@ -980,7 +980,7 @@ export class AgentRuntimeManager {
       logger.debug(
         `Runtime created for ${registration.type} agent ${agentUserId}`,
         undefined,
-        'AgentRuntimeManager'
+        "AgentRuntimeManager",
       );
 
       return runtime;
@@ -1007,25 +1007,25 @@ export class AgentRuntimeManager {
 
     const parseBio = (): string[] => {
       if (!agentConfig?.messageExamples) {
-        return [agentUser.bio || ''];
+        return [agentUser.bio || ""];
       }
 
       const parsed =
-        typeof agentConfig.messageExamples === 'string'
+        typeof agentConfig.messageExamples === "string"
           ? JSON.parse(agentConfig.messageExamples)
           : agentConfig.messageExamples;
       if (Array.isArray(parsed)) {
         return parsed;
       }
       logger.warn(
-        'messageExamples is not an array, using bio',
+        "messageExamples is not an array, using bio",
         {
           agentId: agentUser.id,
           type: typeof parsed,
         },
-        'AgentRuntimeManager'
+        "AgentRuntimeManager",
       );
-      return [agentUser.bio || ''];
+      return [agentUser.bio || ""];
     };
 
     const parseStyle = (): Record<string, JsonValue> | undefined => {
@@ -1034,41 +1034,41 @@ export class AgentRuntimeManager {
       }
 
       const style =
-        typeof agentConfig.style === 'string'
+        typeof agentConfig.style === "string"
           ? JSON.parse(agentConfig.style)
           : agentConfig.style;
       return style as Record<string, JsonValue>;
     };
 
     logger.info(
-      'Agent using Groq models',
+      "Agent using Groq models",
       {
         agentId: agentUserId,
         modelSmall: GROQ_MODELS.FREE.modelId,
         modelLarge: GROQ_MODELS.PRO.modelId,
       },
-      'AgentRuntimeManager'
+      "AgentRuntimeManager",
     );
 
     // Build character from agent user config
     // Use type assertion — Feed stores style as plain JSON objects,
     // but alpha elizaos Character expects protobuf StyleGuides.
     const character = {
-      name: agentUser.displayName || agentUser.username || 'Agent',
-      system: agentConfig?.systemPrompt || 'You are a helpful AI agent',
+      name: agentUser.displayName || agentUser.username || "Agent",
+      system: agentConfig?.systemPrompt || "You are a helpful AI agent",
       bio: parseBio(),
       messageExamples: [],
       style: parseStyle(),
       plugins: [],
       settings: {
         // ElizaCloud unified inference (takes priority in direct-groq.ts and plugins)
-        ELIZACLOUD_API_KEY: process.env.ELIZACLOUD_API_KEY || '',
-        ELIZACLOUD_API_URL: process.env.ELIZACLOUD_API_URL || '',
+        ELIZACLOUD_API_KEY: process.env.ELIZACLOUD_API_KEY || "",
+        ELIZACLOUD_API_URL: process.env.ELIZACLOUD_API_URL || "",
         // GROQ configuration (used when ELIZACLOUD_API_KEY is not set)
-        GROQ_API_KEY: process.env.GROQ_API_KEY || '',
+        GROQ_API_KEY: process.env.GROQ_API_KEY || "",
         GROQ_LARGE_MODEL: GROQ_MODELS.PRO.modelId,
         GROQ_SMALL_MODEL: GROQ_MODELS.FREE.modelId,
-        ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
+        ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || "",
       },
     } as Character;
 
@@ -1082,7 +1082,7 @@ export class AgentRuntimeManager {
     logger.info(
       `Creating runtime for agent user ${agentUserId}`,
       undefined,
-      'AgentRuntimeManager'
+      "AgentRuntimeManager",
     );
 
     const hasGroqAccess = !!(
@@ -1116,16 +1116,16 @@ export class AgentRuntimeManager {
 
     const runtime = new AgentRuntime(runtimeConfig) as ExtendedAgentRuntime;
 
-    runtime.currentModel = 'groq';
+    runtime.currentModel = "groq";
 
     // Stub adapter methods - Feed uses its own DB, not ElizaOS's
     runtime.adapter = createAdapterStubs(
-      runtime.adapter
+      runtime.adapter,
     ) as typeof runtime.adapter;
     applyRuntimeCompatibilityShims(runtime);
 
     // Configure logger
-    if (!runtime.logger || !runtime.logger.log) {
+    if (!runtime.logger?.log) {
       const customLogger = {
         log: (msg: string) =>
           logger.info(msg, undefined, `Agent[${agentUser.displayName}]`),
@@ -1141,7 +1141,7 @@ export class AgentRuntimeManager {
           logger.info(`✓ ${msg}`, undefined, `Agent[${agentUser.displayName}]`),
         notice: (msg: string) =>
           logger.info(msg, undefined, `Agent[${agentUser.displayName}]`),
-        level: 'info' as const,
+        level: "info" as const,
         trace: (msg: string) =>
           logger.debug(msg, undefined, `Agent[${agentUser.displayName}]`),
         fatal: (msg: string) =>
@@ -1177,7 +1177,7 @@ export class AgentRuntimeManager {
 
     const trajectoryLogger = await this.getRuntimeTrajectoryLogger(
       runtime,
-      agentUserId
+      agentUserId,
     );
 
     // Wrap Feed plugin BEFORE registering (so wrapped version is used)
@@ -1186,13 +1186,13 @@ export class AgentRuntimeManager {
     if (feedPlugin.actions) {
       wrappedFeedPlugin = wrapPluginActions(
         wrappedFeedPlugin,
-        trajectoryLogger
+        trajectoryLogger,
       );
     }
     if (feedPlugin.providers) {
       wrappedFeedPlugin = wrapPluginProviders(
         wrappedFeedPlugin,
-        trajectoryLogger
+        trajectoryLogger,
       );
     }
 
@@ -1214,7 +1214,7 @@ export class AgentRuntimeManager {
     logger.debug(
       `Runtime created for agent user ${agentUserId}`,
       undefined,
-      'AgentRuntimeManager'
+      "AgentRuntimeManager",
     );
 
     return runtime;
@@ -1225,11 +1225,11 @@ export class AgentRuntimeManager {
    * Uses registry data or falls back to User model
    */
   private async createUserAgentRuntime(
-    registration: AgentRegistration
+    registration: AgentRegistration,
   ): Promise<AgentRuntime> {
     if (!registration.userId) {
       throw new Error(
-        `USER_CONTROLLED agent ${registration.agentId} missing userId`
+        `USER_CONTROLLED agent ${registration.agentId} missing userId`,
       );
     }
 
@@ -1250,17 +1250,17 @@ export class AgentRuntimeManager {
     // Parse bio from messageExamples or bio field
     const parseBio = (): string[] => {
       if (!userAgentConfig?.messageExamples) {
-        return [agentUser.bio || ''];
+        return [agentUser.bio || ""];
       }
 
       const parsed =
-        typeof userAgentConfig.messageExamples === 'string'
+        typeof userAgentConfig.messageExamples === "string"
           ? JSON.parse(userAgentConfig.messageExamples)
           : userAgentConfig.messageExamples;
       if (Array.isArray(parsed)) {
         return parsed;
       }
-      return [agentUser.bio || ''];
+      return [agentUser.bio || ""];
     };
 
     // Parse style
@@ -1270,7 +1270,7 @@ export class AgentRuntimeManager {
       }
 
       const style =
-        typeof userAgentConfig.style === 'string'
+        typeof userAgentConfig.style === "string"
           ? JSON.parse(userAgentConfig.style)
           : userAgentConfig.style;
       return style;
@@ -1295,7 +1295,7 @@ export class AgentRuntimeManager {
     return this.createRuntimeWithPlugins(
       registration.agentId,
       character,
-      registration.userId
+      registration.userId,
     );
   }
 
@@ -1304,20 +1304,20 @@ export class AgentRuntimeManager {
    * Loads ActorData and creates Character from NPC configuration
    */
   private async createNpcRuntime(
-    registration: AgentRegistration
+    registration: AgentRegistration,
   ): Promise<AgentRuntime> {
     // Verify actor exists in static registry
     const actor = StaticDataRegistry.getActor(registration.agentId);
 
     if (!actor) {
       throw new Error(
-        `Actor ${registration.agentId} not found in static registry`
+        `Actor ${registration.agentId} not found in static registry`,
       );
     }
 
     // Try to get full PackActor for rich Eliza character fields
     const packActor: PackActor | undefined = StaticDataRegistry.getPackActor(
-      registration.agentId
+      registration.agentId,
     );
 
     let character: Character;
@@ -1345,8 +1345,7 @@ export class AgentRuntimeManager {
       } as unknown as Character;
 
       // Attach feed metadata so MultiStepExecutor can access autonomy flags
-      (character as unknown as Record<string, unknown>).feed =
-        packActor.feed;
+      (character as unknown as Record<string, unknown>).feed = packActor.feed;
     } else {
       // Fallback: build minimal Character from ActorData (backward compat)
       const actorData: ActorData | null = loadActorById(actor.id);
@@ -1380,7 +1379,7 @@ export class AgentRuntimeManager {
       registration.agentId,
       character,
       undefined,
-      true
+      true,
     );
   }
 
@@ -1389,7 +1388,7 @@ export class AgentRuntimeManager {
    * Minimal Character config for external agents using A2A/MCP protocols
    */
   private async createExternalRuntime(
-    registration: AgentRegistration
+    registration: AgentRegistration,
   ): Promise<AgentRuntime> {
     // External agents may not have full Character config
     // Use minimal viable configuration
@@ -1420,7 +1419,7 @@ export class AgentRuntimeManager {
     agentId: string,
     character: Character,
     userId?: string,
-    isNpc?: boolean
+    isNpc?: boolean,
   ): Promise<AgentRuntime> {
     // Database configuration
     const dbPort = process.env.POSTGRES_DEV_PORT || 5432;
@@ -1465,16 +1464,16 @@ export class AgentRuntimeManager {
     if (character.settings?.MODEL_VERSION) {
       runtime.currentModelVersion = character.settings.MODEL_VERSION as string;
     }
-    runtime.currentModel = 'groq';
+    runtime.currentModel = "groq";
 
     // Stub adapter methods - Feed uses its own DB, not ElizaOS's
     runtime.adapter = createAdapterStubs(
-      runtime.adapter
+      runtime.adapter,
     ) as typeof runtime.adapter;
     applyRuntimeCompatibilityShims(runtime);
 
     // Configure logger
-    this.configureLogger(runtime, character.name ?? 'agent');
+    this.configureLogger(runtime, character.name ?? "agent");
 
     // Register plugins
     const pluginRegistrationPromises: Promise<void>[] = [];
@@ -1494,7 +1493,7 @@ export class AgentRuntimeManager {
 
     const trajectoryLogger = await this.getRuntimeTrajectoryLogger(
       runtime,
-      agentId
+      agentId,
     );
 
     // Wrap and enhance with Feed plugin
@@ -1515,15 +1514,15 @@ export class AgentRuntimeManager {
   private getModelSettings(): Record<string, string> {
     return {
       // ElizaCloud unified inference (takes priority over direct provider keys)
-      ELIZACLOUD_API_KEY: process.env.ELIZACLOUD_API_KEY || '',
-      ELIZACLOUD_API_URL: process.env.ELIZACLOUD_API_URL || '',
+      ELIZACLOUD_API_KEY: process.env.ELIZACLOUD_API_KEY || "",
+      ELIZACLOUD_API_URL: process.env.ELIZACLOUD_API_URL || "",
       // GROQ configuration (used when ELIZACLOUD_API_KEY is not set)
       // Keys must match what groq.ts plugin looks up via runtime.getSetting()
-      GROQ_API_KEY: process.env.GROQ_API_KEY || '',
-      GROQ_BASE_URL: process.env.GROQ_BASE_URL || '',
+      GROQ_API_KEY: process.env.GROQ_API_KEY || "",
+      GROQ_BASE_URL: process.env.GROQ_BASE_URL || "",
       GROQ_LARGE_MODEL: GROQ_MODELS.PRO.modelId,
       GROQ_SMALL_MODEL: GROQ_MODELS.FREE.modelId,
-      ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
+      ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || "",
     };
   }
 
@@ -1531,7 +1530,7 @@ export class AgentRuntimeManager {
    * Configure runtime logger
    */
   private configureLogger(runtime: AgentRuntime, agentName: string): void {
-    if (!runtime.logger || !runtime.logger.log) {
+    if (!runtime.logger?.log) {
       const customLogger = {
         log: (msg: string) =>
           logger.info(msg, undefined, `Agent[${agentName}]`),
@@ -1547,7 +1546,7 @@ export class AgentRuntimeManager {
           logger.info(`✓ ${msg}`, undefined, `Agent[${agentName}]`),
         notice: (msg: string) =>
           logger.info(msg, undefined, `Agent[${agentName}]`),
-        level: 'info' as const,
+        level: "info" as const,
         trace: (msg: string) =>
           logger.debug(msg, undefined, `Agent[${agentName}]`),
         fatal: (msg: string) =>
@@ -1564,10 +1563,10 @@ export class AgentRuntimeManager {
 
   private async getRuntimeTrajectoryLogger(
     runtime: AgentRuntime,
-    runtimeId: string
+    runtimeId: string,
   ): Promise<TrajectoryLoggerService> {
     const existing = runtime.getService<TrajectoryLoggerService>(
-      TrajectoryLoggerService.serviceType
+      TrajectoryLoggerService.serviceType,
     );
 
     if (existing) {
@@ -1576,7 +1575,7 @@ export class AgentRuntimeManager {
     }
 
     const service = (await runtime.getServiceLoadPromise(
-      TrajectoryLoggerService.serviceType
+      TrajectoryLoggerService.serviceType,
     )) as TrajectoryLoggerService;
 
     trajectoryLoggers.set(runtimeId, service);
@@ -1589,20 +1588,20 @@ export class AgentRuntimeManager {
   private async enhanceWithFeed(
     runtime: AgentRuntime,
     agentId: string,
-    trajectoryLogger: TrajectoryLoggerService
+    trajectoryLogger: TrajectoryLoggerService,
   ): Promise<void> {
     // Wrap Feed plugin BEFORE registering (so wrapped version is used)
     let wrappedFeedPlugin = feedPlugin;
     if (feedPlugin.actions) {
       wrappedFeedPlugin = wrapPluginActions(
         wrappedFeedPlugin,
-        trajectoryLogger
+        trajectoryLogger,
       );
     }
     if (feedPlugin.providers) {
       wrappedFeedPlugin = wrapPluginProviders(
         wrappedFeedPlugin,
-        trajectoryLogger
+        trajectoryLogger,
       );
     }
 
@@ -1622,9 +1621,9 @@ export class AgentRuntimeManager {
     // Check cache first
     if (globalRuntimes.has(COORDINATOR_RUNTIME_ID)) {
       logger.debug(
-        'Using cached coordinator runtime',
+        "Using cached coordinator runtime",
         undefined,
-        'AgentRuntimeManager'
+        "AgentRuntimeManager",
       );
       return globalRuntimes.get(COORDINATOR_RUNTIME_ID)!;
     }
@@ -1633,9 +1632,9 @@ export class AgentRuntimeManager {
     const pendingPromise = pendingRuntimePromises.get(COORDINATOR_RUNTIME_ID);
     if (pendingPromise) {
       logger.debug(
-        'Waiting for pending coordinator runtime creation',
+        "Waiting for pending coordinator runtime creation",
         undefined,
-        'AgentRuntimeManager'
+        "AgentRuntimeManager",
       );
       return pendingPromise;
     }
@@ -1649,9 +1648,9 @@ export class AgentRuntimeManager {
         globalRuntimes.set(COORDINATOR_RUNTIME_ID, runtime);
 
         logger.info(
-          'Coordinator runtime created and cached',
+          "Coordinator runtime created and cached",
           undefined,
-          'AgentRuntimeManager'
+          "AgentRuntimeManager",
         );
 
         return runtime;
@@ -1686,10 +1685,10 @@ export class AgentRuntimeManager {
 
     // Character configuration for coordinator
     const character: Character = {
-      name: 'Coordinator',
+      name: "Coordinator",
       system: COORDINATOR_SYSTEM_PROMPT,
       bio: [
-        'Team chat coordinator for Feed - helps users understand and coordinate their AI agents',
+        "Team chat coordinator for Feed - helps users understand and coordinate their AI agents",
       ],
       messageExamples: [],
       plugins: [],
@@ -1722,16 +1721,16 @@ export class AgentRuntimeManager {
 
     const runtime = new AgentRuntime(runtimeConfig) as ExtendedAgentRuntime;
 
-    runtime.currentModel = 'groq';
+    runtime.currentModel = "groq";
 
     // Stub adapter methods - Feed uses its own DB
     runtime.adapter = createAdapterStubs(
-      runtime.adapter
+      runtime.adapter,
     ) as typeof runtime.adapter;
     applyRuntimeCompatibilityShims(runtime);
 
     // Configure logger
-    this.configureLogger(runtime, 'Coordinator');
+    this.configureLogger(runtime, "Coordinator");
 
     // Register plugins
     const pluginRegistrationPromises: Promise<void>[] = [];
@@ -1749,7 +1748,7 @@ export class AgentRuntimeManager {
 
     const trajectoryLogger = await this.getRuntimeTrajectoryLogger(
       runtime,
-      COORDINATOR_RUNTIME_ID
+      COORDINATOR_RUNTIME_ID,
     );
 
     // Store trajectory logger reference
@@ -1765,7 +1764,7 @@ export class AgentRuntimeManager {
    * Get trajectory logger for an agent
    */
   public getTrajectoryLogger(
-    agentUserId: string
+    agentUserId: string,
   ): TrajectoryLoggerService | null {
     return trajectoryLoggers.get(agentUserId) || null;
   }
@@ -1785,7 +1784,7 @@ export class AgentRuntimeManager {
       logger.info(
         `Runtime cleared for agent ${agentUserId}`,
         undefined,
-        'AgentRuntimeManager'
+        "AgentRuntimeManager",
       );
     }
   }
@@ -1801,7 +1800,7 @@ export class AgentRuntimeManager {
     globalRuntimes.clear();
     trajectoryLoggers.clear();
     runtimeLifecycleMetadata.clear();
-    logger.info('All runtimes cleared', undefined, 'AgentRuntimeManager');
+    logger.info("All runtimes cleared", undefined, "AgentRuntimeManager");
   }
 
   public getRuntimeCount(): number {

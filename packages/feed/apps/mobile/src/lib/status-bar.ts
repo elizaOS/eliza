@@ -5,9 +5,9 @@
  * and provides safe area awareness for notch/dynamic island/nav bar.
  */
 
-import { isAndroid, isNativePlatform } from './platform';
+import { isAndroid, isNativePlatform } from "./platform";
 
-export type StatusBarStyle = 'dark' | 'light';
+export type StatusBarStyle = "dark" | "light";
 
 /**
  * Set the status bar style to match the current theme.
@@ -19,15 +19,15 @@ export type StatusBarStyle = 'dark' | 'light';
 export async function setStatusBarStyle(theme: StatusBarStyle): Promise<void> {
   if (!isNativePlatform()) return;
 
-  const { StatusBar, Style } = await import('@capacitor/status-bar');
+  const { StatusBar, Style } = await import("@capacitor/status-bar");
   await StatusBar.setStyle({
-    style: theme === 'dark' ? Style.Dark : Style.Light,
+    style: theme === "dark" ? Style.Dark : Style.Light,
   });
 
   // On Android, also set the background color
   if (isAndroid()) {
     await StatusBar.setBackgroundColor({
-      color: theme === 'dark' ? '#0a0a0a' : '#ffffff',
+      color: theme === "dark" ? "#0a0a0a" : "#ffffff",
     });
   }
 }
@@ -40,6 +40,6 @@ export async function setStatusBarStyle(theme: StatusBarStyle): Promise<void> {
 export async function enableEdgeToEdge(): Promise<void> {
   if (!isNativePlatform()) return;
 
-  const { StatusBar } = await import('@capacitor/status-bar');
+  const { StatusBar } = await import("@capacitor/status-bar");
   await StatusBar.setOverlaysWebView({ overlay: true });
 }

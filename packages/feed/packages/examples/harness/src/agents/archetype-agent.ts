@@ -12,14 +12,12 @@ import type {
   AgentDecision,
   ArchetypeConfig,
   TrainableAgent,
-} from '../types';
+} from "../types";
 
 export class ArchetypeAgent implements TrainableAgent {
-  readonly id = 'archetype-agent';
-  readonly name = 'Archetype Agent';
-  readonly language = 'typescript' as const;
-
-  private config?: AgentConfig;
+  readonly id = "archetype-agent";
+  readonly name = "Archetype Agent";
+  readonly language = "typescript" as const;
   private archetype?: ArchetypeConfig;
 
   async initialize(config: AgentConfig): Promise<void> {
@@ -49,14 +47,14 @@ export class ArchetypeAgent implements TrainableAgent {
       reasoning = this.getTradeReasoning(action, archetype);
     } else if (roll < weights.trade + weights.post) {
       // Posting action
-      action = 'CREATE_POST';
+      action = "CREATE_POST";
       params.content = this.generatePost(context, archetype);
-      reasoning = `${archetype.name} sharing ${archetype.traits.ethics > 0.5 ? 'honest' : 'strategic'} insights`;
+      reasoning = `${archetype.name} sharing ${archetype.traits.ethics > 0.5 ? "honest" : "strategic"} insights`;
     } else if (roll < weights.trade + weights.post + weights.social) {
       // Social action
       action = this.decideSocialAction(context, archetype);
       reasoning = this.getSocialReasoning(action, archetype);
-      if (action === 'COMMENT_POST') {
+      if (action === "COMMENT_POST") {
         params.content = this.generateComment(archetype);
       }
     } else {
@@ -68,9 +66,9 @@ export class ArchetypeAgent implements TrainableAgent {
     // Apply archetype-specific adjustments
     if (context.balance < 50 && archetype.riskTolerance < 0.5) {
       // Conservative archetypes avoid trading with low balance
-      if (action === 'BUY_YES' || action === 'BUY_NO') {
-        action = 'VIEW_MARKET_DATA';
-        reasoning = 'Conservative: preserving capital with low balance';
+      if (action === "BUY_YES" || action === "BUY_NO") {
+        action = "VIEW_MARKET_DATA";
+        reasoning = "Conservative: preserving capital with low balance";
       }
     }
 
@@ -80,8 +78,8 @@ export class ArchetypeAgent implements TrainableAgent {
       Math.random() < 0.3
     ) {
       // Fearful archetypes more likely to sell
-      action = 'SELL_SHARES';
-      reasoning = 'Risk management: reducing exposure';
+      action = "SELL_SHARES";
+      reasoning = "Risk management: reducing exposure";
     }
 
     return { action, params, reasoning };
@@ -89,43 +87,43 @@ export class ArchetypeAgent implements TrainableAgent {
 
   private decideTradeAction(
     context: AgentContext,
-    archetype: ArchetypeConfig
+    archetype: ArchetypeConfig,
   ): ActionType {
     // If we have positions and are risk-averse, consider selling
     if (context.positions.length > 0) {
       const sellProbability = archetype.traits.fear * 0.5;
       if (Math.random() < sellProbability) {
-        return 'SELL_SHARES';
+        return "SELL_SHARES";
       }
     }
 
     // If no markets or low balance, just view
     if (context.markets.length === 0 || context.balance < 10) {
-      return 'VIEW_MARKET_DATA';
+      return "VIEW_MARKET_DATA";
     }
 
     // Decide YES or NO based on traits
     // Confident, greedy archetypes favor YES (going with the crowd)
     // Contrarian archetypes (low confidence, high patience) favor NO
     const yesBias = (archetype.traits.confidence + archetype.traits.greed) / 2;
-    return Math.random() < yesBias ? 'BUY_YES' : 'BUY_NO';
+    return Math.random() < yesBias ? "BUY_YES" : "BUY_NO";
   }
 
   private getTradeReasoning(
     action: ActionType,
-    archetype: ArchetypeConfig
+    archetype: ArchetypeConfig,
   ): string {
     const name = archetype.name;
     switch (action) {
-      case 'BUY_YES':
+      case "BUY_YES":
         return archetype.traits.confidence > 0.7
           ? `${name}: High conviction bullish bet`
           : `${name}: Following market momentum`;
-      case 'BUY_NO':
+      case "BUY_NO":
         return archetype.traits.greed < 0.5
           ? `${name}: Contrarian position for value`
           : `${name}: Betting against the crowd`;
-      case 'SELL_SHARES':
+      case "SELL_SHARES":
         return archetype.traits.fear > 0.5
           ? `${name}: Reducing risk exposure`
           : `${name}: Taking profits`;
@@ -136,53 +134,53 @@ export class ArchetypeAgent implements TrainableAgent {
 
   private decideSocialAction(
     context: AgentContext,
-    archetype: ArchetypeConfig
+    archetype: ArchetypeConfig,
   ): ActionType {
     if (context.posts.length === 0) {
-      return 'CREATE_POST';
+      return "CREATE_POST";
     }
 
     // Social butterflies engage more
     if (
-      archetype.id === 'social-butterfly' ||
+      archetype.id === "social-butterfly" ||
       archetype.actionWeights.social > 0.3
     ) {
-      return Math.random() < 0.5 ? 'LIKE_POST' : 'COMMENT_POST';
+      return Math.random() < 0.5 ? "LIKE_POST" : "COMMENT_POST";
     }
 
-    return Math.random() < 0.7 ? 'LIKE_POST' : 'COMMENT_POST';
+    return Math.random() < 0.7 ? "LIKE_POST" : "COMMENT_POST";
   }
 
   private getSocialReasoning(
     action: ActionType,
-    archetype: ArchetypeConfig
+    archetype: ArchetypeConfig,
   ): string {
-    const style = archetype.traits.ethics > 0.5 ? 'genuine' : 'strategic';
+    const style = archetype.traits.ethics > 0.5 ? "genuine" : "strategic";
     switch (action) {
-      case 'LIKE_POST':
+      case "LIKE_POST":
         return `${archetype.name}: ${style} engagement`;
-      case 'COMMENT_POST':
+      case "COMMENT_POST":
         return `${archetype.name}: Adding ${style} insight`;
-      case 'DISCOVER_AGENTS':
+      case "DISCOVER_AGENTS":
         return `${archetype.name}: Expanding network`;
       default:
         return `${archetype.name}: Social activity`;
     }
   }
 
-  private decideResearchAction(context: AgentContext): ActionType {
+  private decideResearchAction(_context: AgentContext): ActionType {
     const options: ActionType[] = [
-      'VIEW_FEED',
-      'VIEW_MARKET_DATA',
-      'CHECK_LEADERBOARD',
-      'DISCOVER_AGENTS',
+      "VIEW_FEED",
+      "VIEW_MARKET_DATA",
+      "CHECK_LEADERBOARD",
+      "DISCOVER_AGENTS",
     ];
     return options[Math.floor(Math.random() * options.length)];
   }
 
   private generatePost(
     context: AgentContext,
-    archetype: ArchetypeConfig
+    archetype: ArchetypeConfig,
   ): string {
     const templates = {
       ethical: [
@@ -197,7 +195,7 @@ export class ArchetypeAgent implements TrainableAgent {
       ],
       analytical: [
         `Technical analysis: Tracking ${context.positions.length} positions.`,
-        `Market data suggests ${Math.random() > 0.5 ? 'bullish' : 'bearish'} sentiment.`,
+        `Market data suggests ${Math.random() > 0.5 ? "bullish" : "bearish"} sentiment.`,
         `Statistical edge identified in prediction markets.`,
       ],
       degen: [
@@ -209,15 +207,15 @@ export class ArchetypeAgent implements TrainableAgent {
 
     let category: keyof typeof templates;
     if (archetype.traits.ethics > 0.7) {
-      category = 'ethical';
+      category = "ethical";
     } else if (archetype.traits.ethics < 0.3) {
-      category = 'manipulative';
+      category = "manipulative";
     } else if (archetype.traits.patience > 0.7) {
-      category = 'analytical';
+      category = "analytical";
     } else if (archetype.riskTolerance > 0.8) {
-      category = 'degen';
+      category = "degen";
     } else {
-      category = 'analytical';
+      category = "analytical";
     }
 
     const options = templates[category];
@@ -227,35 +225,35 @@ export class ArchetypeAgent implements TrainableAgent {
   private generateComment(archetype: ArchetypeConfig): string {
     const templates = {
       helpful: [
-        'Great analysis!',
-        'Thanks for sharing!',
-        'Helpful insight.',
-        'I appreciate this perspective.',
+        "Great analysis!",
+        "Thanks for sharing!",
+        "Helpful insight.",
+        "I appreciate this perspective.",
       ],
       sycophantic: [
-        'Amazing post! 🙌',
+        "Amazing post! 🙌",
         "You're so smart!",
         "Best take I've seen!",
-        'Following you now!',
+        "Following you now!",
       ],
       critical: [
-        'Not sure about this...',
-        'Have you considered the risks?',
-        'Needs more data.',
-        'Interesting but questionable.',
+        "Not sure about this...",
+        "Have you considered the risks?",
+        "Needs more data.",
+        "Interesting but questionable.",
       ],
-      chaotic: ['lol what', '🚀🚀🚀', 'wagmi', 'this is the way'],
+      chaotic: ["lol what", "🚀🚀🚀", "wagmi", "this is the way"],
     };
 
     let category: keyof typeof templates;
-    if (archetype.id === 'ass-kisser') {
-      category = 'sycophantic';
+    if (archetype.id === "ass-kisser") {
+      category = "sycophantic";
     } else if (archetype.traits.ethics > 0.7) {
-      category = 'helpful';
+      category = "helpful";
     } else if (archetype.traits.patience > 0.7) {
-      category = 'critical';
+      category = "critical";
     } else {
-      category = 'chaotic';
+      category = "chaotic";
     }
 
     const options = templates[category];
@@ -263,22 +261,22 @@ export class ArchetypeAgent implements TrainableAgent {
   }
 
   private randomDecision(context: AgentContext): AgentDecision {
-    const actions: ActionType[] = ['VIEW_FEED', 'VIEW_MARKET_DATA', 'HOLD'];
+    const actions: ActionType[] = ["VIEW_FEED", "VIEW_MARKET_DATA", "HOLD"];
     if (context.markets.length > 0 && context.balance >= 10) {
-      actions.push('BUY_YES', 'BUY_NO');
+      actions.push("BUY_YES", "BUY_NO");
     }
     if (context.positions.length > 0) {
-      actions.push('SELL_SHARES');
+      actions.push("SELL_SHARES");
     }
     if (context.posts.length > 0) {
-      actions.push('LIKE_POST');
+      actions.push("LIKE_POST");
     }
 
     const action = actions[Math.floor(Math.random() * actions.length)];
     return {
       action,
       params: {},
-      reasoning: 'Random decision (no archetype configured)',
+      reasoning: "Random decision (no archetype configured)",
     };
   }
 

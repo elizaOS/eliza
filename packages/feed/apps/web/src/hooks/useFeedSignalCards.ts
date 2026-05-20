@@ -1,14 +1,14 @@
-'use client';
+"use client";
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo } from "react";
 import type {
   TopGainerProps,
   TopLoserProps,
-} from '@/components/notifications/FeedSignalCards';
-import { useAuth } from '@/hooks/useAuth';
-import { useUserPositions } from '@/hooks/useUserPositions';
+} from "@/components/notifications/FeedSignalCards";
+import { useAuth } from "@/hooks/useAuth";
+import { useUserPositions } from "@/hooks/useUserPositions";
 
-const CAP_STATE_KEY = 'bab_feed_signal_cap';
+const CAP_STATE_KEY = "bab_feed_signal_cap";
 
 interface FeedSignalCapState {
   date: string; // YYYY-MM-DD — resets daily
@@ -28,7 +28,7 @@ function readCapState(): FeedSignalCapState {
     shownLoserIds: [],
   };
 
-  if (typeof window === 'undefined') return empty;
+  if (typeof window === "undefined") return empty;
 
   try {
     const stored = localStorage.getItem(CAP_STATE_KEY);
@@ -41,7 +41,7 @@ function readCapState(): FeedSignalCapState {
 }
 
 function writeCapState(state: FeedSignalCapState): void {
-  if (typeof window === 'undefined') return;
+  if (typeof window === "undefined") return;
   try {
     localStorage.setItem(CAP_STATE_KEY, JSON.stringify(state));
   } catch {
@@ -51,10 +51,10 @@ function writeCapState(state: FeedSignalCapState): void {
 
 function markShown(
   state: FeedSignalCapState,
-  type: 'gainer' | 'loser',
-  marketId: string
+  type: "gainer" | "loser",
+  marketId: string,
 ): FeedSignalCapState {
-  if (type === 'gainer') {
+  if (type === "gainer") {
     if (state.shownGainerIds.includes(marketId)) return state;
     return { ...state, shownGainerIds: [...state.shownGainerIds, marketId] };
   }
@@ -103,13 +103,13 @@ export function useFeedSignalCards(): FeedSignalCardsResult {
 
     // Only consider active, unresolved positions with non-zero cost basis
     const active = predictionPositions.filter(
-      (p) => !p.resolved && p.costBasis > 0
+      (p) => !p.resolved && p.costBasis > 0,
     );
     if (active.length === 0) return noCards;
 
     // Sort by unrealizedPnL descending: best gainer first, worst loser last
     const sorted = [...active].sort(
-      (a, b) => b.unrealizedPnL - a.unrealizedPnL
+      (a, b) => b.unrealizedPnL - a.unrealizedPnL,
     );
 
     let capState = readCapState();
@@ -128,7 +128,7 @@ export function useFeedSignalCards(): FeedSignalCardsResult {
           gainPercent,
           agentName: pos.agentName,
         };
-        capState = markShown(capState, 'gainer', pos.marketId);
+        capState = markShown(capState, "gainer", pos.marketId);
         break;
       }
     }
@@ -146,7 +146,7 @@ export function useFeedSignalCards(): FeedSignalCardsResult {
           lossPercent,
           agentName: pos.agentName,
         };
-        capState = markShown(capState, 'loser', pos.marketId);
+        capState = markShown(capState, "loser", pos.marketId);
         break;
       }
     }

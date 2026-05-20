@@ -7,15 +7,15 @@
  * tags so both "Feed Feed" and "Feed Breaking News" are discoverable,
  * since Next metadata only allows one URL per MIME type.
  */
-import type { Metadata } from 'next';
+import type { Metadata } from "next";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 export const revalidate = false;
 
 export const metadata: Metadata = {
   alternates: {
     types: {
-      'application/rss+xml': '/feed/rss',
+      "application/rss+xml": "/feed/rss",
     },
   },
 };

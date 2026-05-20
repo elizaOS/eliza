@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import type { ProfileInfo } from '@feed/shared';
+import type { ProfileInfo } from "@feed/shared";
 import {
   type Actor,
   cn,
@@ -11,10 +11,10 @@ import {
   logger,
   type Organization,
   POST_TYPES,
-} from '@feed/shared';
-import { ArrowLeft, MessageCircle, Search } from 'lucide-react';
-import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+} from "@feed/shared";
+import { ArrowLeft, MessageCircle, Search } from "lucide-react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   useCallback,
   useEffect,
@@ -22,34 +22,34 @@ import {
   useMemo,
   useRef,
   useState,
-} from 'react';
-import { RecentAchievements } from '@/components/achievements';
-import { ArticleCard } from '@/components/articles/ArticleCard';
-import { FollowButton } from '@/components/interactions/FollowButton';
-import { ModerationMenu } from '@/components/moderation/ModerationMenu';
-import { PostCard } from '@/components/posts/PostCard';
-import { FollowListModal } from '@/components/profile/FollowListModal';
-import { OnChainBadge } from '@/components/profile/OnChainBadge';
+} from "react";
+import { RecentAchievements } from "@/components/achievements";
+import { ArticleCard } from "@/components/articles/ArticleCard";
+import { FollowButton } from "@/components/interactions/FollowButton";
+import { ModerationMenu } from "@/components/moderation/ModerationMenu";
+import { PostCard } from "@/components/posts/PostCard";
+import { FollowListModal } from "@/components/profile/FollowListModal";
+import { OnChainBadge } from "@/components/profile/OnChainBadge";
 import {
   type ProfileReply,
   ProfileReplyCard,
-} from '@/components/profile/ProfileReplyCard';
-import { Avatar } from '@/components/shared/Avatar';
-import { EmptyState } from '@/components/shared/EmptyState';
-import { PageContainer } from '@/components/shared/PageContainer';
+} from "@/components/profile/ProfileReplyCard";
+import { Avatar } from "@/components/shared/Avatar";
+import { EmptyState } from "@/components/shared/EmptyState";
+import { PageContainer } from "@/components/shared/PageContainer";
 import {
   FeedSkeleton,
   ProfileHeaderSkeleton,
-} from '@/components/shared/Skeleton';
-import { VerifiedBadge } from '@/components/shared/VerifiedBadge';
-import { WidgetSidebar } from '@/components/shared/WidgetSidebar';
-import { TradesFeed } from '@/components/trades/TradesFeed';
-import { useAuth } from '@/hooks/useAuth';
-import { useErrorToasts } from '@/hooks/useErrorToasts';
-import { useGameStore } from '@/stores/gameStore';
-import { apiUrl } from '@/utils/api-url';
+} from "@/components/shared/Skeleton";
+import { VerifiedBadge } from "@/components/shared/VerifiedBadge";
+import { WidgetSidebar } from "@/components/shared/WidgetSidebar";
+import { TradesFeed } from "@/components/trades/TradesFeed";
+import { useAuth } from "@/hooks/useAuth";
+import { useErrorToasts } from "@/hooks/useErrorToasts";
+import { useGameStore } from "@/stores/gameStore";
+import { apiUrl } from "@/utils/api-url";
 
-type ProfileRouteMode = 'auto' | 'user' | 'user_id' | 'actor' | 'org';
+type ProfileRouteMode = "auto" | "user" | "user_id" | "actor" | "org";
 
 export function ProfilePageClient({
   identifier,
@@ -59,31 +59,31 @@ export function ProfilePageClient({
   mode: ProfileRouteMode;
 }) {
   const router = useRouter();
-  const isUsernameParam = mode === 'auto' ? isUsername(identifier) : false;
+  const isUsernameParam = mode === "auto" ? isUsername(identifier) : false;
 
   const handleBack = useCallback(() => {
-    if (typeof window !== 'undefined' && window.history.length > 1) {
+    if (typeof window !== "undefined" && window.history.length > 1) {
       router.back();
     } else {
-      router.push('/feed');
+      router.push("/feed");
     }
   }, [router]);
 
   // In "auto" mode the identifier might be either username or userId.
   // In other modes we treat identifier as the primary lookup key for that route.
   const routeKey =
-    mode === 'user'
+    mode === "user"
       ? extractUsername(identifier)
-      : mode === 'auto' && isUsernameParam
+      : mode === "auto" && isUsernameParam
         ? extractUsername(identifier)
         : identifier;
 
   const searchParams = useSearchParams();
   const { user, authenticated, getAccessToken } = useAuth();
-  const [searchQuery, setSearchQuery] = useState('');
-  const initialTab = searchParams.get('tab');
-  const [tab, setTab] = useState<'posts' | 'replies' | 'trades'>(
-    initialTab === 'trades' || initialTab === 'replies' ? initialTab : 'posts'
+  const [searchQuery, setSearchQuery] = useState("");
+  const initialTab = searchParams.get("tab");
+  const [tab, setTab] = useState<"posts" | "replies" | "trades">(
+    initialTab === "trades" || initialTab === "replies" ? initialTab : "posts",
   );
   const { allGames } = useGameStore();
   const [optimisticFollowerCount, setOptimisticFollowerCount] = useState<
@@ -91,8 +91,8 @@ export function ProfilePageClient({
   >(null);
   const [followListModal, setFollowListModal] = useState<{
     isOpen: boolean;
-    type: 'followers' | 'following';
-  }>({ isOpen: false, type: 'followers' });
+    type: "followers" | "following";
+  }>({ isOpen: false, type: "followers" });
 
   // Only meaningful for user profiles.
   const isOwnProfile =
@@ -101,17 +101,15 @@ export function ProfilePageClient({
     (user.id === routeKey ||
       user.id === identifier ||
       user.username === routeKey ||
+      (user.username?.startsWith("@") && user.username.slice(1) === routeKey) ||
       (user.username &&
-        user.username.startsWith('@') &&
-        user.username.slice(1) === routeKey) ||
-      (user.username &&
-        !user.username.startsWith('@') &&
+        !user.username.startsWith("@") &&
         user.username === routeKey));
 
   // Redirect /profile/<id> to username-based URL for own profile to avoid flash.
   // Only applies to auto mode (legacy /profile/[id]).
   useLayoutEffect(() => {
-    if (mode !== 'auto') return;
+    if (mode !== "auto") return;
 
     if (authenticated && user?.username && !isUsernameParam) {
       const decodedIdentifier = decodeURIComponent(identifier);
@@ -121,7 +119,7 @@ export function ProfilePageClient({
         user.id === identifier;
 
       if (viewingOwnId && user.username) {
-        const cleanUsername = user.username.startsWith('@')
+        const cleanUsername = user.username.startsWith("@")
           ? user.username.slice(1)
           : user.username;
         if (
@@ -194,14 +192,14 @@ export function ProfilePageClient({
 
     if (actorInfo.isAgent && actorInfo.managedBy === user.id) {
       router.push(
-        `/agents/team?selectAgent=${encodeURIComponent(actorInfo.id)}`
+        `/agents/team?selectAgent=${encodeURIComponent(actorInfo.id)}`,
       );
       setIsCreatingDM(false);
       return;
     }
 
     const sortedIds = [user.id, actorInfo.id].sort();
-    const chatId = `dm-${sortedIds.join('-')}`;
+    const chatId = `dm-${sortedIds.join("-")}`;
     router.push(`/chats?chat=${chatId}&newDM=${actorInfo.id}`);
 
     setIsCreatingDM(false);
@@ -214,7 +212,7 @@ export function ProfilePageClient({
     }
 
     const token = await getAccessToken();
-    const headers: HeadersInit = { 'Content-Type': 'application/json' };
+    const headers: HeadersInit = { "Content-Type": "application/json" };
     if (token) {
       headers.Authorization = `Bearer ${token}`;
     }
@@ -222,15 +220,15 @@ export function ProfilePageClient({
     const actorIdLower = routeKey.toLowerCase();
 
     const allowUserLookup =
-      mode === 'auto' || mode === 'user' || mode === 'user_id';
-    const allowActorLookup = mode === 'auto' || mode === 'actor';
-    const allowOrgLookup = mode === 'auto' || mode === 'org';
+      mode === "auto" || mode === "user" || mode === "user_id";
+    const allowActorLookup = mode === "auto" || mode === "actor";
+    const allowOrgLookup = mode === "auto" || mode === "org";
 
     if (allowUserLookup) {
-      if (mode === 'user') {
+      if (mode === "user") {
         const usernameLookupResponse = await fetch(
           `/api/users/by-username/${encodeURIComponent(routeKey)}`,
-          { headers }
+          { headers },
         ).catch(() => null);
 
         if (usernameLookupResponse?.ok) {
@@ -253,17 +251,17 @@ export function ProfilePageClient({
           if (foundUser && !foundUser.isActor) {
             setActorInfo({
               id: foundUser.id,
-              name: foundUser.displayName || foundUser.username || 'User',
-              description: foundUser.bio || '',
-              role: foundUser.isAgent ? 'Agent' : 'User',
-              type: 'user' as const,
+              name: foundUser.displayName || foundUser.username || "User",
+              description: foundUser.bio || "",
+              role: foundUser.isAgent ? "Agent" : "User",
+              type: "user" as const,
               isUser: !foundUser.isAgent,
               isAgent: foundUser.isAgent || false,
               managedBy: foundUser.managedBy || null,
               username: foundUser.username ?? undefined,
               profileImageUrl: foundUser.profileImageUrl ?? undefined,
               coverImageUrl: foundUser.coverImageUrl ?? undefined,
-              stats: foundUser.stats as ProfileInfo['stats'],
+              stats: foundUser.stats as ProfileInfo["stats"],
               nftTokenId: foundUser.nftTokenId ?? undefined,
             });
             setLoading(false);
@@ -281,7 +279,7 @@ export function ProfilePageClient({
       // Auto + user_id: attempt by ID first
       const userResponse = await fetch(
         `/api/users/${encodeURIComponent(routeKey)}/profile`,
-        { headers }
+        { headers },
       ).catch(() => null);
 
       if (userResponse?.ok) {
@@ -314,28 +312,28 @@ export function ProfilePageClient({
         if (isNonActorUser) {
           setActorInfo({
             id: foundUser.id,
-            name: foundUser.displayName || foundUser.username || 'User',
-            description: foundUser.bio || '',
-            role: foundUser.isAgent ? 'Agent' : 'User',
-            type: 'user' as const,
+            name: foundUser.displayName || foundUser.username || "User",
+            description: foundUser.bio || "",
+            role: foundUser.isAgent ? "Agent" : "User",
+            type: "user" as const,
             isUser: !foundUser.isAgent,
             isAgent: foundUser.isAgent || false,
             managedBy: foundUser.managedBy || null,
             username: foundUser.username ?? undefined,
             profileImageUrl: foundUser.profileImageUrl ?? undefined,
             coverImageUrl: foundUser.coverImageUrl ?? undefined,
-            stats: foundUser.stats as ProfileInfo['stats'],
+            stats: foundUser.stats as ProfileInfo["stats"],
             nftTokenId: foundUser.nftTokenId ?? undefined,
           });
 
           // In legacy /profile, redirect to username URL for non-own profiles.
           if (
-            mode === 'auto' &&
+            mode === "auto" &&
             foundUser.username &&
             !isUsernameParam &&
             !isOwnProfileRef.current
           ) {
-            const cleanUsername = foundUser.username.startsWith('@')
+            const cleanUsername = foundUser.username.startsWith("@")
               ? foundUser.username.slice(1)
               : foundUser.username;
             if (cleanUsername.toLowerCase() !== routeKey.toLowerCase()) {
@@ -351,17 +349,17 @@ export function ProfilePageClient({
       }
 
       // Auto: fallback to username lookup.
-      if (mode === 'auto') {
+      if (mode === "auto") {
         const allowUsernameLookup =
           isUsernameParam ||
-          (!routeKey.startsWith('did:privy:') &&
+          (!routeKey.startsWith("did:privy:") &&
             routeKey.length <= 42 &&
-            !routeKey.includes('-'));
+            !routeKey.includes("-"));
 
         if (allowUsernameLookup) {
           const usernameLookupResponse = await fetch(
             `/api/users/by-username/${encodeURIComponent(routeKey)}`,
-            { headers }
+            { headers },
           ).catch(() => null);
 
           if (usernameLookupResponse?.ok) {
@@ -385,17 +383,17 @@ export function ProfilePageClient({
             if (foundUser && !foundUser.isActor) {
               setActorInfo({
                 id: foundUser.id,
-                name: foundUser.displayName || foundUser.username || 'User',
-                description: foundUser.bio || '',
-                role: foundUser.isAgent ? 'Agent' : 'User',
-                type: 'user' as const,
+                name: foundUser.displayName || foundUser.username || "User",
+                description: foundUser.bio || "",
+                role: foundUser.isAgent ? "Agent" : "User",
+                type: "user" as const,
                 isUser: !foundUser.isAgent,
                 isAgent: foundUser.isAgent || false,
                 managedBy: foundUser.managedBy || null,
                 username: foundUser.username ?? undefined,
                 profileImageUrl: foundUser.profileImageUrl ?? undefined,
                 coverImageUrl: foundUser.coverImageUrl ?? undefined,
-                stats: foundUser.stats as ProfileInfo['stats'],
+                stats: foundUser.stats as ProfileInfo["stats"],
                 nftTokenId: foundUser.nftTokenId ?? undefined,
               });
 
@@ -404,7 +402,7 @@ export function ProfilePageClient({
                 foundUser.username &&
                 !isOwnProfileRef.current
               ) {
-                const cleanUsername = foundUser.username.startsWith('@')
+                const cleanUsername = foundUser.username.startsWith("@")
                   ? foundUser.username.slice(1)
                   : foundUser.username;
                 if (cleanUsername.toLowerCase() !== routeKey.toLowerCase()) {
@@ -421,7 +419,7 @@ export function ProfilePageClient({
         }
       }
 
-      if (mode === 'user_id') {
+      if (mode === "user_id") {
         setActorInfo(null);
         setLoading(false);
         hasFetchedRef.current = true;
@@ -442,7 +440,7 @@ export function ProfilePageClient({
       organizations: [],
     };
     try {
-      const response = await fetch(apiUrl('/api/actors'));
+      const response = await fetch(apiUrl("/api/actors"));
       if (response.ok) {
         actorsDb = (await response.json()) as typeof actorsDb;
       }
@@ -455,14 +453,14 @@ export function ProfilePageClient({
       if (!actor) {
         actor = actorsDb.actors?.find(
           (a) =>
-            'username' in a &&
-            typeof a.username === 'string' &&
-            a.username.toLowerCase() === actorIdLower
+            "username" in a &&
+            typeof a.username === "string" &&
+            a.username.toLowerCase() === actorIdLower,
         );
       }
       if (!actor) {
         actor = actorsDb.actors?.find(
-          (a) => a.name.toLowerCase() === actorIdLower
+          (a) => a.name.toLowerCase() === actorIdLower,
         );
       }
 
@@ -482,7 +480,7 @@ export function ProfilePageClient({
 
         let stats = { followers: 0, following: 0, posts: 0 };
         const statsResponse = await fetch(
-          `/api/actors/${encodeURIComponent(actor.id)}/stats`
+          `/api/actors/${encodeURIComponent(actor.id)}/stats`,
         ).catch(() => null);
 
         if (statsResponse?.ok) {
@@ -507,15 +505,15 @@ export function ProfilePageClient({
           domain: actor.domain,
           personality: actor.personality,
           affiliations: actor.affiliations,
-          role: actor.role || actor.tier || 'Actor',
-          type: 'actor' as const,
+          role: actor.role || actor.tier || "Actor",
+          type: "actor" as const,
           game: gameId ? { id: gameId } : undefined,
-          username: ('username' in actor
+          username: ("username" in actor
             ? (actor.username as string)
             : actor.id) as string | undefined,
           profileImageUrl:
-            'profileImageUrl' in actor &&
-            typeof actor.profileImageUrl === 'string' &&
+            "profileImageUrl" in actor &&
+            typeof actor.profileImageUrl === "string" &&
             actor.profileImageUrl
               ? actor.profileImageUrl
               : `/images/actors/${actor.id}.jpg`,
@@ -531,13 +529,13 @@ export function ProfilePageClient({
       let org = actorsDb.organizations?.find((o) => o.id === routeKey);
       if (!org) {
         org = actorsDb.organizations?.find(
-          (o) => o.name.toLowerCase() === actorIdLower
+          (o) => o.name.toLowerCase() === actorIdLower,
         );
       }
       if (org) {
         let stats = { followers: 0, following: 0, posts: 0 };
         const statsResponse = await fetch(
-          `/api/actors/${encodeURIComponent(org.id)}/stats`
+          `/api/actors/${encodeURIComponent(org.id)}/stats`,
         ).catch(() => null);
 
         if (statsResponse?.ok) {
@@ -554,8 +552,8 @@ export function ProfilePageClient({
         }
 
         const orgProfileImageUrl =
-          'profileImageUrl' in org &&
-          typeof org.profileImageUrl === 'string' &&
+          "profileImageUrl" in org &&
+          typeof org.profileImageUrl === "string" &&
           org.profileImageUrl
             ? org.profileImageUrl
             : `/images/organizations/${org.id}.jpg`;
@@ -565,8 +563,8 @@ export function ProfilePageClient({
           name: org.name,
           description: org.description,
           profileDescription: org.profileDescription,
-          type: 'organization' as const,
-          role: 'Organization',
+          type: "organization" as const,
+          role: "Organization",
           profileImageUrl: orgProfileImageUrl,
           stats,
         });
@@ -593,9 +591,9 @@ export function ProfilePageClient({
       }, 1000);
     };
 
-    window.addEventListener('profile-updated', handleProfileUpdate);
+    window.addEventListener("profile-updated", handleProfileUpdate);
     return () =>
-      window.removeEventListener('profile-updated', handleProfileUpdate);
+      window.removeEventListener("profile-updated", handleProfileUpdate);
   }, [loadActorInfo]);
 
   useEffect(() => {
@@ -615,7 +613,7 @@ export function ProfilePageClient({
       setLoadingPosts(true);
       const searchId = actorInfo?.id || routeKey;
       const response = await fetch(
-        `/api/posts?actorId=${encodeURIComponent(searchId)}&limit=100`
+        `/api/posts?actorId=${encodeURIComponent(searchId)}&limit=100`,
       );
       if (response.ok) {
         const data = (await response.json()) as { posts?: unknown };
@@ -632,7 +630,7 @@ export function ProfilePageClient({
   }, [routeKey, actorInfo?.id]);
 
   useEffect(() => {
-    if (tab !== 'replies') return;
+    if (tab !== "replies") return;
     if (!actorInfo?.id) return;
 
     const controller = new AbortController();
@@ -641,14 +639,14 @@ export function ProfilePageClient({
       setLoadingReplies(true);
       try {
         const token = await getAccessToken();
-        const headers: HeadersInit = { 'Content-Type': 'application/json' };
+        const headers: HeadersInit = { "Content-Type": "application/json" };
         if (token) {
           headers.Authorization = `Bearer ${token}`;
         }
 
         const response = await fetch(
           `/api/users/${encodeURIComponent(actorInfo.id)}/posts?type=replies`,
-          { headers, signal: controller.signal }
+          { headers, signal: controller.signal },
         );
         if (response.ok) {
           const data = (await response.json()) as {
@@ -659,11 +657,11 @@ export function ProfilePageClient({
           setReplies(items);
         }
       } catch (error) {
-        if (error instanceof Error && error.name !== 'AbortError') {
+        if (error instanceof Error && error.name !== "AbortError") {
           logger.error(
-            'Failed to fetch replies',
+            "Failed to fetch replies",
             error instanceof Error ? error : { error },
-            'ProfilePageClient'
+            "ProfilePageClient",
           );
         }
       } finally {
@@ -738,8 +736,8 @@ export function ProfilePageClient({
           originalPostId: apiPost.originalPostId,
           originalPost: apiPost.originalPost,
         },
-        gameId: '',
-        gameName: '',
+        gameId: "",
+        gameName: "",
         timestampMs: new Date(apiPost.timestamp).getTime(),
       });
     });
@@ -772,7 +770,7 @@ export function ProfilePageClient({
   }, [actorPosts]);
 
   const tabFilteredPosts = useMemo(() => {
-    return tab === 'posts' ? originalPosts : replyPosts;
+    return tab === "posts" ? originalPosts : replyPosts;
   }, [tab, originalPosts, replyPosts]);
 
   const filteredPosts = useMemo(() => {
@@ -780,12 +778,12 @@ export function ProfilePageClient({
 
     const query = searchQuery.toLowerCase();
     return tabFilteredPosts.filter((item) =>
-      item.post.content?.toLowerCase().includes(query)
+      item.post.content?.toLowerCase().includes(query),
     );
   }, [tabFilteredPosts, searchQuery]);
 
   if (loading) {
-    if (isOwnProfile && user?.username && mode === 'auto' && !isUsernameParam) {
+    if (isOwnProfile && user?.username && mode === "auto" && !isUsernameParam) {
       return null;
     }
 
@@ -870,15 +868,15 @@ export function ProfilePageClient({
                 {(() => {
                   const bannerUrl =
                     (actorInfo.isUser || actorInfo.isAgent) &&
-                    actorInfo.type === 'user' &&
-                    'coverImageUrl' in actorInfo
+                    actorInfo.type === "user" &&
+                    "coverImageUrl" in actorInfo
                       ? (actorInfo.coverImageUrl as string)
                       : getBannerImageUrl(
                           null,
                           actorInfo.id,
-                          actorInfo.type === 'organization'
-                            ? 'organization'
-                            : 'actor'
+                          actorInfo.type === "organization"
+                            ? "organization"
+                            : "actor",
                         );
 
                   return bannerUrl ? (
@@ -887,9 +885,9 @@ export function ProfilePageClient({
                       alt={`${actorInfo.name} banner`}
                       className="h-full w-full object-cover"
                       onError={(e) => {
-                        e.currentTarget.style.display = 'none';
+                        e.currentTarget.style.display = "none";
                         e.currentTarget.nextElementSibling?.classList.remove(
-                          'hidden'
+                          "hidden",
                         );
                       }}
                     />
@@ -897,11 +895,11 @@ export function ProfilePageClient({
                 })()}
                 <div
                   className={cn(
-                    'pointer-events-none absolute inset-0 h-full w-full bg-gradient-to-br from-primary/20 to-primary/5',
-                    actorInfo.type === 'actor' ||
-                      actorInfo.type === 'organization'
-                      ? 'hidden'
-                      : ''
+                    "pointer-events-none absolute inset-0 h-full w-full bg-gradient-to-br from-primary/20 to-primary/5",
+                    actorInfo.type === "actor" ||
+                      actorInfo.type === "organization"
+                      ? "hidden"
+                      : "",
                   )}
                 />
               </div>
@@ -913,14 +911,14 @@ export function ProfilePageClient({
                       <Avatar
                         id={actorInfo.id}
                         name={
-                          (actorInfo.name ?? actorInfo.username ?? '') as string
+                          (actorInfo.name ?? actorInfo.username ?? "") as string
                         }
                         type={
-                          actorInfo.type === 'organization'
-                            ? 'business'
-                            : actorInfo.isUser || actorInfo.type === 'user'
-                              ? 'user'
-                              : (actorInfo.type as 'actor' | undefined)
+                          actorInfo.type === "organization"
+                            ? "business"
+                            : actorInfo.isUser || actorInfo.type === "user"
+                              ? "user"
+                              : (actorInfo.type as "actor" | undefined)
                         }
                         src={actorInfo.profileImageUrl || undefined}
                         size="lg"
@@ -932,7 +930,7 @@ export function ProfilePageClient({
                   <div className="flex items-center gap-2 pt-3">
                     {authenticated && user && user.id !== actorInfo.id && (
                       <>
-                        {((actorInfo.isUser && actorInfo.type === 'user') ||
+                        {((actorInfo.isUser && actorInfo.type === "user") ||
                           actorInfo.isAgent) && (
                           <button
                             onClick={() => void handleMessageClick()}
@@ -941,8 +939,8 @@ export function ProfilePageClient({
                             title={
                               actorInfo.isAgent &&
                               actorInfo.managedBy === user.id
-                                ? 'Message in Agents'
-                                : 'Send message'
+                                ? "Message in Agents"
+                                : "Send message"
                             }
                           >
                             <MessageCircle className="h-5 w-5" />
@@ -962,7 +960,7 @@ export function ProfilePageClient({
                             });
                           }}
                         />
-                        {actorInfo.isUser && actorInfo.type === 'user' && (
+                        {actorInfo.isUser && actorInfo.type === "user" && (
                           <ModerationMenu
                             targetUserId={actorInfo.id}
                             targetUsername={actorInfo.username ?? undefined}
@@ -977,7 +975,7 @@ export function ProfilePageClient({
                         )}
                       </>
                     )}
-                    {isOwnProfile && actorInfo.type === 'user' && (
+                    {isOwnProfile && actorInfo.type === "user" && (
                       <Link
                         href="/settings?tab=profile"
                         className="rounded-full border border-border px-4 py-2 font-bold transition-colors hover:bg-muted/50"
@@ -991,12 +989,12 @@ export function ProfilePageClient({
                 <div className="mb-3">
                   <div className="mb-0.5 flex items-center gap-1">
                     <h2 className="font-bold text-xl">
-                      {actorInfo.name ?? actorInfo.username ?? ''}
+                      {actorInfo.name ?? actorInfo.username ?? ""}
                     </h2>
-                    {actorInfo.type === 'actor' && !actorInfo.isUser && (
+                    {actorInfo.type === "actor" && !actorInfo.isUser && (
                       <VerifiedBadge size="md" />
                     )}
-                    {actorInfo.type === 'user' && (
+                    {actorInfo.type === "user" && (
                       <OnChainBadge
                         isRegistered={Boolean(actorInfo.nftTokenId)}
                         nftTokenId={actorInfo.nftTokenId ?? null}
@@ -1017,7 +1015,7 @@ export function ProfilePageClient({
                   </p>
                 )}
 
-                {actorInfo.type === 'user' && (
+                {actorInfo.type === "user" && (
                   <div className="mb-3">
                     <RecentAchievements userId={actorInfo.id} />
                   </div>
@@ -1026,7 +1024,7 @@ export function ProfilePageClient({
                 <div className="flex gap-4 text-[15px]">
                   <button
                     onClick={() =>
-                      setFollowListModal({ isOpen: true, type: 'following' })
+                      setFollowListModal({ isOpen: true, type: "following" })
                     }
                     className="hover:underline"
                   >
@@ -1039,7 +1037,7 @@ export function ProfilePageClient({
                   </button>
                   <button
                     onClick={() =>
-                      setFollowListModal({ isOpen: true, type: 'followers' })
+                      setFollowListModal({ isOpen: true, type: "followers" })
                     }
                     className="hover:underline"
                   >
@@ -1061,34 +1059,34 @@ export function ProfilePageClient({
                 <div className="flex items-center gap-3 px-4 py-2">
                   <div className="flex flex-1 gap-2">
                     <button
-                      onClick={() => setTab('posts')}
+                      onClick={() => setTab("posts")}
                       className={cn(
-                        'flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-2 font-medium text-sm transition-colors',
-                        tab === 'posts'
-                          ? 'bg-muted text-foreground'
-                          : 'text-muted-foreground hover:bg-muted/50'
+                        "flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-2 font-medium text-sm transition-colors",
+                        tab === "posts"
+                          ? "bg-muted text-foreground"
+                          : "text-muted-foreground hover:bg-muted/50",
                       )}
                     >
                       Posts
                     </button>
                     <button
-                      onClick={() => setTab('replies')}
+                      onClick={() => setTab("replies")}
                       className={cn(
-                        'flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-2 font-medium text-sm transition-colors',
-                        tab === 'replies'
-                          ? 'bg-muted text-foreground'
-                          : 'text-muted-foreground hover:bg-muted/50'
+                        "flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-2 font-medium text-sm transition-colors",
+                        tab === "replies"
+                          ? "bg-muted text-foreground"
+                          : "text-muted-foreground hover:bg-muted/50",
                       )}
                     >
                       Replies
                     </button>
                     <button
-                      onClick={() => setTab('trades')}
+                      onClick={() => setTab("trades")}
                       className={cn(
-                        'flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-2 font-medium text-sm transition-colors',
-                        tab === 'trades'
-                          ? 'bg-muted text-foreground'
-                          : 'text-muted-foreground hover:bg-muted/50'
+                        "flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-2 font-medium text-sm transition-colors",
+                        tab === "trades"
+                          ? "bg-muted text-foreground"
+                          : "text-muted-foreground hover:bg-muted/50",
                       )}
                     >
                       Trades
@@ -1110,9 +1108,9 @@ export function ProfilePageClient({
               </div>
 
               <div className="sm:px-4 sm:py-4">
-                {tab === 'trades' ? (
+                {tab === "trades" ? (
                   <TradesFeed userId={actorInfo.id} />
-                ) : tab === 'replies' ? (
+                ) : tab === "replies" ? (
                   loadingReplies ? (
                     <FeedSkeleton count={5} />
                   ) : replies.length === 0 ? (
@@ -1127,7 +1125,7 @@ export function ProfilePageClient({
                           key={reply.id}
                           reply={reply}
                           authorId={actorInfo.id}
-                          authorName={actorInfo.name ?? ''}
+                          authorName={actorInfo.name ?? ""}
                           authorUsername={actorInfo.username ?? null}
                           authorProfileImageUrl={
                             actorInfo.profileImageUrl ?? null
@@ -1143,7 +1141,7 @@ export function ProfilePageClient({
                     title="No posts found"
                     description={
                       searchQuery.trim()
-                        ? 'Try a different search query.'
+                        ? "Try a different search query."
                         : "This user hasn't posted yet."
                     }
                   />
@@ -1159,7 +1157,7 @@ export function ProfilePageClient({
                         commentCount: item.post.commentCount,
                         shareCount: item.post.shareCount,
                         authorId: item.post.author,
-                        authorName: item.post.authorName ?? '',
+                        authorName: item.post.authorName ?? "",
                         author: {
                           id: item.post.author,
                           displayName: item.post.authorName,
@@ -1176,7 +1174,7 @@ export function ProfilePageClient({
                         originalPost: item.post.originalPost || null,
                       };
 
-                      return postData.type && postData.type === 'article' ? (
+                      return postData.type && postData.type === "article" ? (
                         <ArticleCard
                           key={`${item.post.id}-${i}`}
                           post={postData}

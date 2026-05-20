@@ -6,26 +6,26 @@ import {
   publicRateLimit,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
+} from "@feed/api";
 import {
   PredictionDbAdapter,
   type PredictionMarketRecord,
   PredictionMarketService,
   type PredictionPositionRecord,
   PredictionPricing,
-} from '@feed/core/markets/prediction';
-import { FEE_CONFIG, WalletService } from '@feed/engine';
-import { logger, MarketQuerySchema, toISOOrNull } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { z } from 'zod';
+} from "@feed/core/markets/prediction";
+import { FEE_CONFIG, WalletService } from "@feed/engine";
+import { logger, MarketQuerySchema, toISOOrNull } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { z } from "zod";
 import {
   buildPredictionUserPositionSnapshot,
   type PredictionUserPositionSnapshot,
-} from './_position-snapshot';
+} from "./_position-snapshot";
 
 function buildUserPositionsRecord(
   positions: PredictionPositionRecord[],
-  marketMap: Map<string, PredictionMarketRecord>
+  marketMap: Map<string, PredictionMarketRecord>,
 ): Record<string, PredictionUserPositionSnapshot[]> {
   const userPositionsMap: Record<string, PredictionUserPositionSnapshot[]> = {};
 
@@ -53,16 +53,16 @@ function createPredictionService() {
           userId,
           amount,
           reason,
-          description ?? '',
-          relatedId
+          description ?? "",
+          relatedId,
         ),
       credit: ({ userId, amount, reason, description, relatedId }) =>
         WalletService.credit(
           userId,
           amount,
           reason,
-          description ?? '',
-          relatedId
+          description ?? "",
+          relatedId,
         ),
       recordPnL: async ({ userId, pnl, reason, relatedId }) => {
         await WalletService.recordPnL(userId, pnl, reason, relatedId);
@@ -105,7 +105,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
   const { searchParams } = new URL(request.url);
   const queryParse = MarketQuerySchema.merge(
-    z.object({ userId: z.string().optional() })
+    z.object({ userId: z.string().optional() }),
   )
     .partial()
     .safeParse(Object.fromEntries(searchParams));
@@ -113,15 +113,15 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   if (!queryParse.success) {
     return successResponse(
       {
-        error: 'Invalid query parameters',
+        error: "Invalid query parameters",
         details: queryParse.error.flatten(),
       },
-      400
+      400,
     );
   }
 
   const { userId } = queryParse.data;
-  const usePagination = searchParams.has('limit') || searchParams.has('page');
+  const usePagination = searchParams.has("limit") || searchParams.has("page");
   const page = Math.max(1, queryParse.data.page ?? 1);
   const limit = Math.min(100, Math.max(1, queryParse.data.limit ?? 20));
 
@@ -135,7 +135,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     const offset = (page - 1) * limit;
     markets = await service.listMarkets({ limit, offset });
   } else {
-    markets = await getCacheOrFetch('all', () => service.listMarkets(), {
+    markets = await getCacheOrFetch("all", () => service.listMarkets(), {
       namespace: CACHE_KEYS.MARKETS_API_PREDICTIONS_LIST,
       ttl: DEFAULT_TTLS.MARKETS_API_PREDICTIONS_LIST,
     });
@@ -155,14 +155,14 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         {
           namespace: CACHE_KEYS.MARKETS_API_PREDICTIONS_POSITIONS,
           ttl: DEFAULT_TTLS.MARKETS_API_PREDICTIONS_POSITIONS,
-        }
+        },
       );
       for (const [k, v] of Object.entries(positionsRecord)) {
         userPositionsMap.set(k, v);
       }
     } catch (error) {
       logger.error(
-        'Failed to fetch prediction market positions; returning public markets without positions',
+        "Failed to fetch prediction market positions; returning public markets without positions",
         {
           requestedUserId: userId,
           authenticatedUserId: authUser.userId,
@@ -171,7 +171,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
           url: request.url,
           error: error instanceof Error ? error.message : String(error),
         },
-        'GET /api/markets/predictions'
+        "GET /api/markets/predictions",
       );
     }
   }
@@ -182,9 +182,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     const yesProb = PredictionPricing.getCurrentPrice(
       yesShares,
       noShares,
-      'yes'
+      "yes",
     );
-    const noProb = PredictionPricing.getCurrentPrice(yesShares, noShares, 'no');
+    const noProb = PredictionPricing.getCurrentPrice(yesShares, noShares, "no");
     const dbUserPositions = userPositionsMap.get(m.id) ?? [];
     const userPositions = dbUserPositions;
     const primaryPosition = userPositions[0] ?? null;
@@ -194,7 +194,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       // Frontend expects 'text' field for the question text
       text: m.question,
       question: m.question, // Also include as 'question' for backward compatibility
-      status: m.status ?? (m.resolved ? 'resolved' : 'active'),
+      status: m.status ?? (m.resolved ? "resolved" : "active"),
       resolution: m.resolution,
       resolved: m.resolved,
       // Frontend expects 'resolutionDate' for the end date
@@ -214,13 +214,13 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   });
 
   logger.info(
-    'Prediction markets fetched via core service',
+    "Prediction markets fetched via core service",
     {
       count: questionsData.length,
       hasUserId: !!userId,
       paginated: usePagination,
     },
-    'GET /api/markets/predictions'
+    "GET /api/markets/predictions",
   );
 
   const res = successResponse({

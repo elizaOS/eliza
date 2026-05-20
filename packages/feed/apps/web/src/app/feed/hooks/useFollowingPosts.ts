@@ -1,8 +1,8 @@
-import type { FeedPost } from '@feed/shared';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useAuth } from '@/hooks/useAuth';
-import { useAuthStore } from '@/stores/authStore';
-import { apiUrl } from '@/utils/api-url';
+import type { FeedPost } from "@feed/shared";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
+import { useAuthStore } from "@/stores/authStore";
+import { apiUrl } from "@/utils/api-url";
 
 const PAGE_SIZE = 20;
 
@@ -22,7 +22,7 @@ interface UseFollowingPostsResult {
  * Requires authentication - returns empty if not logged in
  */
 export function useFollowingPosts(
-  options: UseFollowingPostsOptions = {}
+  options: UseFollowingPostsOptions = {},
 ): UseFollowingPostsResult {
   const { enabled = true } = options;
 
@@ -48,14 +48,14 @@ export function useFollowingPosts(
     try {
       const token = await getAccessToken();
 
-      const headers: HeadersInit = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const headers: HeadersInit = { "Content-Type": "application/json" };
+      if (token) headers.Authorization = `Bearer ${token}`;
 
       const response = await fetch(
         apiUrl(
-          `/api/posts?following=true&userId=${userId}&limit=${PAGE_SIZE}&offset=0`
+          `/api/posts?following=true&userId=${userId}&limit=${PAGE_SIZE}&offset=0`,
         ),
-        { headers }
+        { headers },
       );
 
       if (response.ok) {

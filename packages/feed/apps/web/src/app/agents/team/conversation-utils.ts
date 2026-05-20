@@ -12,25 +12,25 @@ export interface ConversationDisplayInfo {
  */
 export function getConversationDisplayName(
   conversation: ConversationDisplayInfo,
-  locale?: string
+  locale?: string,
 ): string {
   if (conversation.name) return conversation.name;
 
   const date = new Date(conversation.createdAt);
   if (Number.isNaN(date.getTime())) {
-    return 'New Chat';
+    return "New Chat";
   }
 
   const effectiveLocale =
     locale ??
-    (typeof navigator !== 'undefined' ? navigator.language : undefined);
+    (typeof navigator !== "undefined" ? navigator.language : undefined);
   const dateStr = date.toLocaleDateString(effectiveLocale, {
-    month: 'short',
-    day: 'numeric',
+    month: "short",
+    day: "numeric",
   });
   const timeStr = date.toLocaleTimeString(effectiveLocale, {
-    hour: 'numeric',
-    minute: '2-digit',
+    hour: "numeric",
+    minute: "2-digit",
     hour12: true,
   });
 

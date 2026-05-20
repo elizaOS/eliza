@@ -1,12 +1,12 @@
-'use client';
+"use client";
 
-import { Info } from 'lucide-react';
-import Link from 'next/link';
-import { memo } from 'react';
+import { Info } from "lucide-react";
+import Link from "next/link";
+import { memo } from "react";
 import {
   type AgentConfigurationData,
   AgentConfigurationForm,
-} from '@/components/agents/AgentConfigurationForm';
+} from "@/components/agents/AgentConfigurationForm";
 
 // Re-export the type for convenience
 export type { AgentConfigurationData as AgentSettingsData };

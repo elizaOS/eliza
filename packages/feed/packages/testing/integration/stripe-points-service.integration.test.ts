@@ -13,16 +13,16 @@
  * - Balance floor at 0 for reversals
  */
 
-import { afterAll, describe, expect, it } from 'bun:test';
-import { TradingBalanceFundingService } from '@feed/api';
-import { and, balanceTransactions, db, eq, users } from '@feed/db';
-import { generateSnowflakeId } from '@feed/shared';
-import { TestScenarios } from '../unit/stripe/test-fixtures';
+import { afterAll, describe, expect, it } from "bun:test";
+import { TradingBalanceFundingService } from "@feed/api";
+import { and, balanceTransactions, db, eq, users } from "@feed/db";
+import { generateSnowflakeId } from "@feed/shared";
+import { TestScenarios } from "../unit/stripe/test-fixtures";
 
 // Test user ID prefix for cleanup
-const TEST_USER_PREFIX = 'stripe-test-';
+const TEST_USER_PREFIX = "stripe-test-";
 
-describe('TradingBalanceFundingService Stripe Integration', () => {
+describe("TradingBalanceFundingService Stripe Integration", () => {
   // Track created test users for cleanup
   const testUserIds: string[] = [];
 
@@ -32,7 +32,7 @@ describe('TradingBalanceFundingService Stripe Integration', () => {
   async function createDbUser(
     initialBalance = 0,
     initialDeposited = initialBalance,
-    initialWithdrawn = 0
+    initialWithdrawn = 0,
   ): Promise<string> {
     const userId = `${TEST_USER_PREFIX}${await generateSnowflakeId()}`;
     testUserIds.push(userId);
@@ -104,8 +104,8 @@ describe('TradingBalanceFundingService Stripe Integration', () => {
     }
   });
 
-  describe('fundPurchase with Stripe', () => {
-    it('should credit correct points for $10 purchase', async () => {
+  describe("fundPurchase with Stripe", () => {
+    it("should credit correct points for $10 purchase", async () => {
       const userId = await createDbUser();
       const scenario = TestScenarios.simplePurchase;
 
@@ -114,7 +114,7 @@ describe('TradingBalanceFundingService Stripe Integration', () => {
         scenario.amountUSD,
         `cs_test_${Date.now()}`,
         `pi_test_${Date.now()}`,
-        'stripe'
+        "stripe",
       );
 
       expect(result.success).toBe(true);
@@ -129,7 +129,7 @@ describe('TradingBalanceFundingService Stripe Integration', () => {
       expect(totals.totalWithdrawn).toBe(0);
     });
 
-    it('should credit correct points for minimum $1 purchase', async () => {
+    it("should credit correct points for minimum $1 purchase", async () => {
       const userId = await createDbUser();
       const scenario = TestScenarios.minimumPurchase;
 
@@ -138,7 +138,7 @@ describe('TradingBalanceFundingService Stripe Integration', () => {
         scenario.amountUSD,
         `cs_test_${Date.now()}`,
         `pi_test_${Date.now()}`,
-        'stripe'
+        "stripe",
       );
 
       expect(result.success).toBe(true);
@@ -151,7 +151,7 @@ describe('TradingBalanceFundingService Stripe Integration', () => {
       expect(totals.totalWithdrawn).toBe(0);
     });
 
-    it('should credit correct points for maximum $1000 purchase', async () => {
+    it("should credit correct points for maximum $1000 purchase", async () => {
       const userId = await createDbUser();
       const scenario = TestScenarios.maximumPurchase;
 
@@ -160,7 +160,7 @@ describe('TradingBalanceFundingService Stripe Integration', () => {
         scenario.amountUSD,
         `cs_test_${Date.now()}`,
         `pi_test_${Date.now()}`,
-        'stripe'
+        "stripe",
       );
 
       expect(result.success).toBe(true);
@@ -173,7 +173,7 @@ describe('TradingBalanceFundingService Stripe Integration', () => {
       expect(totals.totalWithdrawn).toBe(0);
     });
 
-    it('should add to existing balance', async () => {
+    it("should add to existing balance", async () => {
       const initialBalance = 5000;
       const userId = await createDbUser(initialBalance);
 
@@ -182,7 +182,7 @@ describe('TradingBalanceFundingService Stripe Integration', () => {
         10, // $10 = 1000 points
         `cs_test_${Date.now()}`,
         `pi_test_${Date.now()}`,
-        'stripe'
+        "stripe",
       );
 
       expect(result.success).toBe(true);
@@ -196,7 +196,7 @@ describe('TradingBalanceFundingService Stripe Integration', () => {
       expect(totals.totalWithdrawn).toBe(0);
     });
 
-    it('should return the original funding result on idempotent replays', async () => {
+    it("should return the original funding result on idempotent replays", async () => {
       const userId = await createDbUser();
       const sessionId = `cs_test_${Date.now()}`;
       const paymentIntentId = `pi_test_${Date.now()}`;
@@ -206,7 +206,7 @@ describe('TradingBalanceFundingService Stripe Integration', () => {
         10,
         sessionId,
         paymentIntentId,
-        'stripe'
+        "stripe",
       );
 
       expect(result1.success).toBe(true);
@@ -218,7 +218,7 @@ describe('TradingBalanceFundingService Stripe Integration', () => {
         10,
         sessionId,
         paymentIntentId,
-        'stripe'
+        "stripe",
       );
 
       expect(result2.success).toBe(true);
@@ -228,7 +228,7 @@ describe('TradingBalanceFundingService Stripe Integration', () => {
       expect(result2.transactionId).toBe(result1.transactionId);
     });
 
-    it('should create transaction record with correct metadata', async () => {
+    it("should create transaction record with correct metadata", async () => {
       const userId = await createDbUser();
       const sessionId = `cs_test_${Date.now()}`;
       const paymentIntentId = `pi_test_${Date.now()}`;
@@ -238,7 +238,7 @@ describe('TradingBalanceFundingService Stripe Integration', () => {
         25,
         sessionId,
         paymentIntentId,
-        'stripe'
+        "stripe",
       );
 
       // Get the transaction from balanceTransactions
@@ -250,8 +250,8 @@ describe('TradingBalanceFundingService Stripe Integration', () => {
           and(
             eq(balanceTransactions.userId, userId),
             eq(balanceTransactions.relatedId, paymentIntentId),
-            eq(balanceTransactions.type, 'stripe_purchase')
-          )
+            eq(balanceTransactions.type, "stripe_purchase"),
+          ),
         )
         .limit(1);
 
@@ -259,30 +259,30 @@ describe('TradingBalanceFundingService Stripe Integration', () => {
       const tx = txResult[0]!;
       expect(tx.userId).toBe(userId);
       expect(Number(tx.amount)).toBe(2500);
-      expect(tx.type).toBe('stripe_purchase');
+      expect(tx.type).toBe("stripe_purchase");
       // Verify description contains payment info
-      const description = JSON.parse(tx.description || '{}');
-      expect(description.paymentProvider).toBe('stripe');
+      const description = JSON.parse(tx.description || "{}");
+      expect(description.paymentProvider).toBe("stripe");
       expect(description.paymentTxHash).toBe(paymentIntentId);
       expect(description.paymentRequestId).toBe(sessionId);
     });
 
-    it('should fail for non-existent user', async () => {
+    it("should fail for non-existent user", async () => {
       const result = await TradingBalanceFundingService.fundPurchase(
-        'non-existent-user-id',
+        "non-existent-user-id",
         10,
         `cs_test_${Date.now()}`,
         `pi_test_${Date.now()}`,
-        'stripe'
+        "stripe",
       );
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('User not found');
+      expect(result.error).toContain("User not found");
     });
   });
 
-  describe('reversePurchaseFunding', () => {
-    it('should deduct full amount for refund with sufficient balance', async () => {
+  describe("reversePurchaseFunding", () => {
+    it("should deduct full amount for refund with sufficient balance", async () => {
       // First create and fund user
       const userId = await createDbUser();
       await TradingBalanceFundingService.fundPurchase(
@@ -290,7 +290,7 @@ describe('TradingBalanceFundingService Stripe Integration', () => {
         50, // $50 = 5000 points
         `cs_test_${Date.now()}`,
         `pi_test_${Date.now()}`,
-        'stripe'
+        "stripe",
       );
 
       const balanceBeforeRefund = await getUserBalance(userId);
@@ -301,9 +301,9 @@ describe('TradingBalanceFundingService Stripe Integration', () => {
       const result = await TradingBalanceFundingService.reversePurchaseFunding(
         userId,
         `pi_original_${Date.now()}`,
-        'refund',
+        "refund",
         50, // Full refund
-        refundEventId
+        refundEventId,
       );
 
       expect(result.success).toBe(true);
@@ -317,7 +317,7 @@ describe('TradingBalanceFundingService Stripe Integration', () => {
       expect(totals.totalWithdrawn).toBe(5000);
     });
 
-    it('should floor balance at 0 when refund exceeds balance', async () => {
+    it("should floor balance at 0 when refund exceeds balance", async () => {
       // Create user with some points
       const userId = await createDbUser(1000); // 1000 points
 
@@ -325,9 +325,9 @@ describe('TradingBalanceFundingService Stripe Integration', () => {
       const result = await TradingBalanceFundingService.reversePurchaseFunding(
         userId,
         `pi_test_${Date.now()}`,
-        'refund',
+        "refund",
         50,
-        `evt_refund_${Date.now()}`
+        `evt_refund_${Date.now()}`,
       );
 
       expect(result.success).toBe(true);
@@ -341,7 +341,7 @@ describe('TradingBalanceFundingService Stripe Integration', () => {
       expect(totals.totalWithdrawn).toBe(5000);
     });
 
-    it('should be idempotent - same event processed twice', async () => {
+    it("should be idempotent - same event processed twice", async () => {
       const userId = await createDbUser(5000);
       const eventId = `evt_refund_idempotent_${Date.now()}`;
 
@@ -349,9 +349,9 @@ describe('TradingBalanceFundingService Stripe Integration', () => {
       const result1 = await TradingBalanceFundingService.reversePurchaseFunding(
         userId,
         `pi_test_${Date.now()}`,
-        'refund',
+        "refund",
         20,
-        eventId
+        eventId,
       );
 
       expect(result1.success).toBe(true);
@@ -367,9 +367,9 @@ describe('TradingBalanceFundingService Stripe Integration', () => {
       const result2 = await TradingBalanceFundingService.reversePurchaseFunding(
         userId,
         `pi_test_${Date.now()}`,
-        'refund',
+        "refund",
         20,
-        eventId
+        eventId,
       );
 
       expect(result2.success).toBe(true);
@@ -386,22 +386,22 @@ describe('TradingBalanceFundingService Stripe Integration', () => {
       expect(totalsAfterSecond.totalWithdrawn).toBe(2000);
     });
 
-    it('should handle dispute deduction correctly', async () => {
+    it("should handle dispute deduction correctly", async () => {
       const userId = await createDbUser();
       await TradingBalanceFundingService.fundPurchase(
         userId,
         100, // $100 = 10000 points
         `cs_test_${Date.now()}`,
         `pi_test_${Date.now()}`,
-        'stripe'
+        "stripe",
       );
 
       const result = await TradingBalanceFundingService.reversePurchaseFunding(
         userId,
         `pi_test_${Date.now()}`,
-        'dispute',
+        "dispute",
         100,
-        `evt_dispute_${Date.now()}`
+        `evt_dispute_${Date.now()}`,
       );
 
       expect(result.success).toBe(true);
@@ -414,29 +414,29 @@ describe('TradingBalanceFundingService Stripe Integration', () => {
         .from(balanceTransactions)
         .where(eq(balanceTransactions.userId, userId));
 
-      const disputeTx = transactions.find((tx) => tx.type === 'stripe_dispute');
+      const disputeTx = transactions.find((tx) => tx.type === "stripe_dispute");
       expect(disputeTx).toBeDefined();
       const totals = await getUserFundingTotals(userId);
       expect(totals.totalDeposited).toBe(10000);
       expect(totals.totalWithdrawn).toBe(10000);
     });
 
-    it('should fail for non-existent user', async () => {
+    it("should fail for non-existent user", async () => {
       const result = await TradingBalanceFundingService.reversePurchaseFunding(
-        'non-existent-user',
+        "non-existent-user",
         `pi_test_${Date.now()}`,
-        'refund',
+        "refund",
         10,
-        `evt_test_${Date.now()}`
+        `evt_test_${Date.now()}`,
       );
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('User not found');
+      expect(result.error).toContain("User not found");
     });
   });
 
-  describe('creditDisputeWon', () => {
-    it('should re-credit points after winning dispute', async () => {
+  describe("creditDisputeWon", () => {
+    it("should re-credit points after winning dispute", async () => {
       const userId = await createDbUser();
 
       // Simulate: purchase -> dispute -> win
@@ -446,16 +446,16 @@ describe('TradingBalanceFundingService Stripe Integration', () => {
         50,
         `cs_test_${Date.now()}`,
         `pi_test_${Date.now()}`,
-        'stripe'
+        "stripe",
       );
 
       // 2. Dispute created - points deducted
       await TradingBalanceFundingService.reversePurchaseFunding(
         userId,
         `pi_dispute_${Date.now()}`,
-        'dispute',
+        "dispute",
         50,
-        `evt_dispute_created_${Date.now()}`
+        `evt_dispute_created_${Date.now()}`,
       );
 
       const balanceAfterDispute = await getUserBalance(userId);
@@ -466,7 +466,7 @@ describe('TradingBalanceFundingService Stripe Integration', () => {
         userId,
         `dp_test_${Date.now()}`,
         50,
-        `evt_dispute_won_${Date.now()}`
+        `evt_dispute_won_${Date.now()}`,
       );
 
       expect(result.success).toBe(true);
@@ -480,7 +480,7 @@ describe('TradingBalanceFundingService Stripe Integration', () => {
       expect(totals.totalWithdrawn).toBe(0);
     });
 
-    it('should add to existing balance when re-crediting', async () => {
+    it("should add to existing balance when re-crediting", async () => {
       // User earned some points between dispute and winning
       const userId = await createDbUser(2000, 2000, 5000);
 
@@ -488,7 +488,7 @@ describe('TradingBalanceFundingService Stripe Integration', () => {
         userId,
         `dp_test_${Date.now()}`,
         50,
-        `evt_dispute_won_${Date.now()}`
+        `evt_dispute_won_${Date.now()}`,
       );
 
       expect(result.success).toBe(true);
@@ -502,7 +502,7 @@ describe('TradingBalanceFundingService Stripe Integration', () => {
       expect(totals.totalWithdrawn).toBe(0);
     });
 
-    it('should be idempotent - same event processed twice', async () => {
+    it("should be idempotent - same event processed twice", async () => {
       const userId = await createDbUser(0);
       const eventId = `evt_dispute_won_idempotent_${Date.now()}`;
 
@@ -511,7 +511,7 @@ describe('TradingBalanceFundingService Stripe Integration', () => {
         userId,
         `dp_test_${Date.now()}`,
         30,
-        eventId
+        eventId,
       );
 
       expect(result1.success).toBe(true);
@@ -522,7 +522,7 @@ describe('TradingBalanceFundingService Stripe Integration', () => {
         userId,
         `dp_test_${Date.now()}`,
         30,
-        eventId
+        eventId,
       );
 
       expect(result2.success).toBe(true);
@@ -539,21 +539,21 @@ describe('TradingBalanceFundingService Stripe Integration', () => {
       expect(totals.totalWithdrawn).toBe(0);
     });
 
-    it('should fail for non-existent user', async () => {
+    it("should fail for non-existent user", async () => {
       const result = await TradingBalanceFundingService.creditDisputeWon(
-        'non-existent-user',
+        "non-existent-user",
         `dp_test_${Date.now()}`,
         50,
-        `evt_test_${Date.now()}`
+        `evt_test_${Date.now()}`,
       );
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('User not found');
+      expect(result.error).toContain("User not found");
     });
   });
 
-  describe('Full Lifecycle Scenarios', () => {
-    it('should handle purchase -> full refund correctly', async () => {
+  describe("Full Lifecycle Scenarios", () => {
+    it("should handle purchase -> full refund correctly", async () => {
       const userId = await createDbUser();
       const scenario = TestScenarios.fullRefund;
 
@@ -563,16 +563,16 @@ describe('TradingBalanceFundingService Stripe Integration', () => {
         scenario.purchaseAmountUSD,
         `cs_test_${Date.now()}`,
         `pi_test_${Date.now()}`,
-        'stripe'
+        "stripe",
       );
 
       // Refund
       await TradingBalanceFundingService.reversePurchaseFunding(
         userId,
         `pi_test_${Date.now()}`,
-        'refund',
+        "refund",
         scenario.refundAmountUSD,
-        `evt_refund_${Date.now()}`
+        `evt_refund_${Date.now()}`,
       );
 
       const balance = await getUserBalance(userId);
@@ -582,7 +582,7 @@ describe('TradingBalanceFundingService Stripe Integration', () => {
       expect(totals.totalWithdrawn).toBe(5000);
     });
 
-    it('should handle purchase -> partial refund correctly', async () => {
+    it("should handle purchase -> partial refund correctly", async () => {
       const userId = await createDbUser();
       const scenario = TestScenarios.partialRefund;
 
@@ -592,16 +592,16 @@ describe('TradingBalanceFundingService Stripe Integration', () => {
         scenario.purchaseAmountUSD,
         `cs_test_${Date.now()}`,
         `pi_test_${Date.now()}`,
-        'stripe'
+        "stripe",
       );
 
       // Partial refund $30 = 3000 points
       await TradingBalanceFundingService.reversePurchaseFunding(
         userId,
         `pi_test_${Date.now()}`,
-        'refund',
+        "refund",
         scenario.refundAmountUSD,
-        `evt_refund_${Date.now()}`
+        `evt_refund_${Date.now()}`,
       );
 
       const balance = await getUserBalance(userId);
@@ -611,7 +611,7 @@ describe('TradingBalanceFundingService Stripe Integration', () => {
       expect(totals.totalWithdrawn).toBe(3000);
     });
 
-    it('should handle purchase -> dispute -> dispute won correctly', async () => {
+    it("should handle purchase -> dispute -> dispute won correctly", async () => {
       const userId = await createDbUser();
       const scenario = TestScenarios.disputeWon;
 
@@ -621,16 +621,16 @@ describe('TradingBalanceFundingService Stripe Integration', () => {
         scenario.purchaseAmountUSD,
         `cs_test_${Date.now()}`,
         `pi_test_${Date.now()}`,
-        'stripe'
+        "stripe",
       );
 
       // Dispute created
       await TradingBalanceFundingService.reversePurchaseFunding(
         userId,
         `pi_test_${Date.now()}`,
-        'dispute',
+        "dispute",
         scenario.purchaseAmountUSD,
-        `evt_dispute_${Date.now()}`
+        `evt_dispute_${Date.now()}`,
       );
 
       const balanceAfterDispute = await getUserBalance(userId);
@@ -644,7 +644,7 @@ describe('TradingBalanceFundingService Stripe Integration', () => {
         userId,
         `dp_test_${Date.now()}`,
         scenario.purchaseAmountUSD,
-        `evt_dispute_won_${Date.now()}`
+        `evt_dispute_won_${Date.now()}`,
       );
 
       const balanceAfterWin = await getUserBalance(userId);
@@ -654,7 +654,7 @@ describe('TradingBalanceFundingService Stripe Integration', () => {
       expect(totalsAfterWin.totalWithdrawn).toBe(0);
     });
 
-    it('should handle multiple purchases and refunds', async () => {
+    it("should handle multiple purchases and refunds", async () => {
       const userId = await createDbUser();
 
       // Multiple purchases
@@ -663,21 +663,21 @@ describe('TradingBalanceFundingService Stripe Integration', () => {
         10,
         `cs_1_${Date.now()}`,
         `pi_1`,
-        'stripe'
+        "stripe",
       );
       await TradingBalanceFundingService.fundPurchase(
         userId,
         20,
         `cs_2_${Date.now()}`,
         `pi_2`,
-        'stripe'
+        "stripe",
       );
       await TradingBalanceFundingService.fundPurchase(
         userId,
         30,
         `cs_3_${Date.now()}`,
         `pi_3`,
-        'stripe'
+        "stripe",
       );
 
       let balance = await getUserBalance(userId);
@@ -690,9 +690,9 @@ describe('TradingBalanceFundingService Stripe Integration', () => {
       await TradingBalanceFundingService.reversePurchaseFunding(
         userId,
         `pi_2`,
-        'refund',
+        "refund",
         20,
-        `evt_refund_${Date.now()}`
+        `evt_refund_${Date.now()}`,
       );
 
       balance = await getUserBalance(userId);
@@ -703,8 +703,8 @@ describe('TradingBalanceFundingService Stripe Integration', () => {
     });
   });
 
-  describe('Payment Provider Tracking', () => {
-    it('should store crypto as payment provider when not specified', async () => {
+  describe("Payment Provider Tracking", () => {
+    it("should store crypto as payment provider when not specified", async () => {
       const userId = await createDbUser();
       const txHash = `tx_${Date.now()}`;
 
@@ -713,7 +713,7 @@ describe('TradingBalanceFundingService Stripe Integration', () => {
         userId,
         10,
         `x402_${Date.now()}`,
-        txHash
+        txHash,
       );
 
       const txResult = await db
@@ -722,17 +722,17 @@ describe('TradingBalanceFundingService Stripe Integration', () => {
         .where(
           and(
             eq(balanceTransactions.userId, userId),
-            eq(balanceTransactions.type, 'crypto_purchase')
-          )
+            eq(balanceTransactions.type, "crypto_purchase"),
+          ),
         )
         .limit(1);
 
       expect(txResult.length).toBe(1);
-      const description = JSON.parse(txResult[0]!.description || '{}');
-      expect(description.paymentProvider).toBe('crypto');
+      const description = JSON.parse(txResult[0]?.description || "{}");
+      expect(description.paymentProvider).toBe("crypto");
     });
 
-    it('should store stripe as payment provider when specified', async () => {
+    it("should store stripe as payment provider when specified", async () => {
       const userId = await createDbUser();
       const paymentIntentId = `pi_${Date.now()}`;
 
@@ -741,7 +741,7 @@ describe('TradingBalanceFundingService Stripe Integration', () => {
         10,
         `cs_test_${Date.now()}`,
         paymentIntentId,
-        'stripe'
+        "stripe",
       );
 
       const txResult = await db
@@ -750,14 +750,14 @@ describe('TradingBalanceFundingService Stripe Integration', () => {
         .where(
           and(
             eq(balanceTransactions.userId, userId),
-            eq(balanceTransactions.type, 'stripe_purchase')
-          )
+            eq(balanceTransactions.type, "stripe_purchase"),
+          ),
         )
         .limit(1);
 
       expect(txResult.length).toBe(1);
-      const description = JSON.parse(txResult[0]!.description || '{}');
-      expect(description.paymentProvider).toBe('stripe');
+      const description = JSON.parse(txResult[0]?.description || "{}");
+      expect(description.paymentProvider).toBe("stripe");
     });
   });
 });

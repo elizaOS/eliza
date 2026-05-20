@@ -5,6 +5,14 @@
  * Shows IDs for each comment so agent can reference them for replies.
  */
 
+import type {
+  Action,
+  ActionResult,
+  HandlerCallback,
+  IAgentRuntime,
+  Memory,
+  State,
+} from "@elizaos/core";
 import {
   and,
   comments,
@@ -16,18 +24,10 @@ import {
   posts,
   shares,
   users,
-} from '@feed/db';
-import { StaticDataRegistry } from '@feed/engine';
-import type { MessageTag } from '@feed/shared';
-import type {
-  Action,
-  ActionResult,
-  HandlerCallback,
-  IAgentRuntime,
-  Memory,
-  State,
-} from '@elizaos/core';
-import { logger } from '../../../../shared/logger';
+} from "@feed/db";
+import { StaticDataRegistry } from "@feed/engine";
+import type { MessageTag } from "@feed/shared";
+import { logger } from "../../../../shared/logger";
 
 /** Extended ActionResult with optional tag for UI */
 interface ActionResultWithTag extends ActionResult {
@@ -102,7 +102,7 @@ function buildCommentTree(flatComments: CommentWithAuthor[]): CommentThread[] {
  */
 function formatCommentTree(
   threads: CommentThread[],
-  maxDepth = 10
+  maxDepth = 10,
 ): {
   formatted: string;
 } {
@@ -111,7 +111,7 @@ function formatCommentTree(
   function traverse(
     node: CommentThread,
     depth: number,
-    parentId: string | null
+    parentId: string | null,
   ) {
     if (depth > maxDepth) return;
 
@@ -130,7 +130,7 @@ function formatCommentTree(
 
     // Sort replies by time
     const sortedReplies = [...node.replies].sort(
-      (a, b) => a.createdAt.getTime() - b.createdAt.getTime()
+      (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
     );
 
     for (const reply of sortedReplies) {
@@ -142,40 +142,40 @@ function formatCommentTree(
     traverse(thread, 0, null);
   }
 
-  return { formatted: lines.join('\n') };
+  return { formatted: lines.join("\n") };
 }
 
 export const checkPostDetailAction: Action = {
-  name: 'CHECK_POST_DETAIL',
+  name: "CHECK_POST_DETAIL",
   description:
-    'Get detailed information about a post including all comments with thread structure.',
+    "Get detailed information about a post including all comments with thread structure.",
 
   parameters: {
     postId: {
-      type: 'string',
-      description: 'The ID of the post to retrieve',
+      type: "string",
+      description: "The ID of the post to retrieve",
       required: true,
     },
-  } as unknown as Action['parameters'],
+  } as unknown as Action["parameters"],
 
   examples: [
     [
       {
-        name: 'user',
-        content: { text: 'Show me post 123456' },
+        name: "user",
+        content: { text: "Show me post 123456" },
       },
       {
-        name: 'assistant',
-        content: { text: 'Let me get the details of that post...' },
+        name: "assistant",
+        content: { text: "Let me get the details of that post..." },
       },
     ],
     [
       {
-        name: 'user',
-        content: { text: 'What are people saying on that post?' },
+        name: "user",
+        content: { text: "What are people saying on that post?" },
       },
       {
-        name: 'assistant',
+        name: "assistant",
         content: { text: "I'll check the comments on that post..." },
       },
     ],
@@ -184,7 +184,7 @@ export const checkPostDetailAction: Action = {
   validate: async (
     _runtime: IAgentRuntime,
     _message: Memory,
-    _state?: State
+    _state?: State,
   ): Promise<boolean> => true,
 
   handler: async (
@@ -192,7 +192,7 @@ export const checkPostDetailAction: Action = {
     _message: Memory,
     state?: State,
     _options?: Record<string, unknown>,
-    _callback?: HandlerCallback
+    _callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const actionParams = state?.data?.actionParams as
       | { postId?: string }
@@ -202,8 +202,8 @@ export const checkPostDetailAction: Action = {
     if (!postId) {
       return {
         success: false,
-        text: 'Missing postId parameter. Please provide the post ID.',
-        error: 'Missing postId',
+        text: "Missing postId parameter. Please provide the post ID.",
+        error: "Missing postId",
       };
     }
 
@@ -228,7 +228,7 @@ export const checkPostDetailAction: Action = {
         return {
           success: false,
           text: `Post not found with ID: ${postId}`,
-          error: 'Post not found',
+          error: "Post not found",
         };
       }
 
@@ -254,7 +254,7 @@ export const checkPostDetailAction: Action = {
         authorId: string,
         userDisplayName: string | null,
         userUsername: string | null,
-        userProfileImageUrl: string | null
+        userProfileImageUrl: string | null,
       ): { name: string; profileImageUrl: string | null } => {
         // Check if this is an actor/NPC
         const actor = StaticDataRegistry.getActor(authorId);
@@ -276,7 +276,7 @@ export const checkPostDetailAction: Action = {
 
         // Fall back to user data
         return {
-          name: userDisplayName || userUsername || 'Unknown',
+          name: userDisplayName || userUsername || "Unknown",
           profileImageUrl: userProfileImageUrl,
         };
       };
@@ -288,7 +288,7 @@ export const checkPostDetailAction: Action = {
             c.authorId,
             c.authorDisplayName,
             c.authorUsername,
-            c.authorProfileImageUrl
+            c.authorProfileImageUrl,
           );
           return {
             id: c.id,
@@ -299,7 +299,7 @@ export const checkPostDetailAction: Action = {
             authorName: authorInfo.name,
             authorProfileImageUrl: authorInfo.profileImageUrl,
           };
-        }
+        },
       );
 
       // Build comment tree
@@ -318,21 +318,21 @@ export const checkPostDetailAction: Action = {
         post.authorId,
         post.authorDisplayName,
         post.authorUsername,
-        post.authorProfileImageUrl
+        post.authorProfileImageUrl,
       );
       const postAuthorName = postAuthorInfo.name;
       const postAuthorProfileImageUrl = postAuthorInfo.profileImageUrl;
 
       // Build formatted view
       const formattedView = `POST [ID: ${post.id}] by @${postAuthorName}:
-"${post.content.substring(0, 500)}${post.content.length > 500 ? '...' : ''}"
+"${post.content.substring(0, 500)}${post.content.length > 500 ? "..." : ""}"
 
-${postComments.length > 0 ? `COMMENTS (${postComments.length}):\n${formattedComments}` : 'No comments yet.'}`;
+${postComments.length > 0 ? `COMMENTS (${postComments.length}):\n${formattedComments}` : "No comments yet."}`;
 
       logger.info(
         `[CHECK_POST_DETAIL] Retrieved post ${postId} with ${postComments.length} comments`,
         undefined,
-        'CheckPostDetail'
+        "CheckPostDetail",
       );
 
       return {
@@ -357,9 +357,9 @@ ${postComments.length > 0 ? `COMMENTS (${postComments.length}):\n${formattedComm
         },
         // Tag for sidebar display (simplified - no comments)
         tag: {
-          type: 'post',
-          label: 'Post',
-          icon: 'FileText',
+          type: "post",
+          label: "Post",
+          icon: "FileText",
           entityId: post.id,
           data: {
             post: {
@@ -376,8 +376,8 @@ ${postComments.length > 0 ? `COMMENTS (${postComments.length}):\n${formattedComm
         },
       } as ActionResultWithTag;
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      logger.error('[CHECK_POST_DETAIL] Error:', errorMsg);
+      const errorMsg = error instanceof Error ? error.message : "Unknown error";
+      logger.error("[CHECK_POST_DETAIL] Error:", errorMsg);
 
       return {
         success: false,

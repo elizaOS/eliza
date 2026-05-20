@@ -10,29 +10,29 @@
  * - P&L is calculated
  */
 
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { existsSync, readFileSync } from "node:fs";
 import {
   agentRuntimeManager,
   autonomousCoordinator,
   createTestAgent,
-} from '@feed/agents';
-import { db } from '@feed/db';
-import { WalletService } from '@feed/engine';
-import { generateSnowflakeId } from '@feed/shared';
-import { existsSync, readFileSync } from 'fs';
-import { resolveLiveLlmTestConfig } from './helpers/live-runtime';
+} from "@feed/agents";
+import { db } from "@feed/db";
+import { WalletService } from "@feed/engine";
+import { generateSnowflakeId } from "@feed/shared";
+import { resolveLiveLlmTestConfig } from "./helpers/live-runtime";
 
 // Load environment variables from .env files if they exist (for CI and local environments)
 // Priority: process.env > .env.test > .env.local
 const loadEnvFile = (filePath: string) => {
   if (!existsSync(filePath)) return;
-  const envContent = readFileSync(filePath, 'utf-8');
-  for (const line of envContent.split('\n')) {
+  const envContent = readFileSync(filePath, "utf-8");
+  for (const line of envContent.split("\n")) {
     const trimmed = line.trim();
-    if (trimmed && !trimmed.startsWith('#')) {
-      const [key, ...valueParts] = trimmed.split('=');
+    if (trimmed && !trimmed.startsWith("#")) {
+      const [key, ...valueParts] = trimmed.split("=");
       if (key && valueParts.length > 0) {
-        const value = valueParts.join('=').replace(/^["']|["']$/g, '');
+        const value = valueParts.join("=").replace(/^["']|["']$/g, "");
         // Only set if not already in process.env (env vars take precedence)
         if (!process.env[key]) {
           process.env[key] = value;
@@ -43,13 +43,13 @@ const loadEnvFile = (filePath: string) => {
 };
 
 // Load .env.test first (created by CI prepare-env.sh), then .env.local (for local dev)
-loadEnvFile('.env.test');
-loadEnvFile('.env.local');
+loadEnvFile(".env.test");
+loadEnvFile(".env.local");
 
 const liveLlmTestConfig = resolveLiveLlmTestConfig();
 const liveTest = test.skipIf(!liveLlmTestConfig.enabled);
 
-describe('Agent Actions Persistence Integration', () => {
+describe("Agent Actions Persistence Integration", () => {
   let testAgentId: string;
   let testMarketId: string;
   let testPostId: string;
@@ -58,7 +58,7 @@ describe('Agent Actions Persistence Integration', () => {
   beforeAll(async () => {
     if (liveLlmTestConfig.requested && !liveLlmTestConfig.enabled) {
       throw new Error(
-        liveLlmTestConfig.skipReason ?? 'Live LLM test setup failed'
+        liveLlmTestConfig.skipReason ?? "Live LLM test setup failed",
       );
     }
 
@@ -69,33 +69,33 @@ describe('Agent Actions Persistence Integration', () => {
     // Mock fetch to handle A2A client initialization
     const mockFetch = async (
       input: RequestInfo | URL,
-      init?: RequestInit
+      init?: RequestInit,
     ): Promise<Response> => {
       const url = input.toString();
-      if (url.includes('.well-known/agent-card.json')) {
+      if (url.includes(".well-known/agent-card.json")) {
         // Return a valid A2A agent card structure with required fields
         const baseUrl =
           process.env.NEXT_PUBLIC_APP_URL ||
           process.env.FEED_A2A_ENDPOINT ||
-          'http://localhost:3000';
+          "http://localhost:3000";
         const agentCard = {
-          protocolVersion: '0.3.0',
-          name: 'Test Agent',
-          description: 'A test agent for integration testing',
+          protocolVersion: "0.3.0",
+          name: "Test Agent",
+          description: "A test agent for integration testing",
           url: `${baseUrl}/api/agents/test-agent/a2a`,
-          preferredTransport: 'JSONRPC' as const,
+          preferredTransport: "JSONRPC" as const,
           additionalInterfaces: [
             {
               url: `${baseUrl}/api/agents/test-agent/a2a`,
-              transport: 'JSONRPC' as const,
+              transport: "JSONRPC" as const,
             },
           ],
           provider: {
-            organization: 'Feed',
-            url: 'https://feed.market',
+            organization: "Feed",
+            url: "https://feed.market",
           },
           iconUrl: `${baseUrl}/logo.svg`,
-          version: '1.0.0',
+          version: "1.0.0",
           documentationUrl: `${baseUrl}/docs`,
           capabilities: {
             streaming: false,
@@ -104,27 +104,27 @@ describe('Agent Actions Persistence Integration', () => {
           },
           securitySchemes: {},
           security: [],
-          defaultInputModes: ['text/plain', 'application/json'],
-          defaultOutputModes: ['application/json'],
+          defaultInputModes: ["text/plain", "application/json"],
+          defaultOutputModes: ["application/json"],
           skills: [],
           supportsAuthenticatedExtendedCard: false,
         };
         return new Response(JSON.stringify(agentCard), {
           status: 200,
-          headers: { 'Content-Type': 'application/json' },
+          headers: { "Content-Type": "application/json" },
         });
       }
       // Mock A2A endpoint calls to prevent actual HTTP requests during tests
-      if (url.includes('/api/agents/') && url.includes('/a2a')) {
+      if (url.includes("/api/agents/") && url.includes("/a2a")) {
         // Parse the request body to get the RPC ID and method
         let rpcId = 1;
-        let method = '';
+        let method = "";
         let params: { id?: string } = {};
 
         if (init?.body) {
           try {
             const body =
-              typeof init.body === 'string' ? JSON.parse(init.body) : init.body;
+              typeof init.body === "string" ? JSON.parse(init.body) : init.body;
             if (body.id !== undefined) {
               rpcId = body.id;
             }
@@ -140,26 +140,26 @@ describe('Agent Actions Persistence Integration', () => {
         }
 
         // Handle different A2A methods
-        if (method === 'tasks/get' || method === 'tasks.get') {
+        if (method === "tasks/get" || method === "tasks.get") {
           // Return completed task for polling with proper structure
           return new Response(
             JSON.stringify({
-              jsonrpc: '2.0',
+              jsonrpc: "2.0",
               id: rpcId,
               result: {
                 task: {
                   id: params.id || `mock-task-${Date.now()}`,
                   status: {
-                    state: 'completed',
+                    state: "completed",
                   },
                   artifacts: [
                     {
                       parts: [
                         {
-                          kind: 'data',
+                          kind: "data",
                           data: {
                             success: false,
-                            error: 'A2A endpoint mocked for testing',
+                            error: "A2A endpoint mocked for testing",
                           },
                         },
                       ],
@@ -170,30 +170,30 @@ describe('Agent Actions Persistence Integration', () => {
             }),
             {
               status: 200,
-              headers: { 'Content-Type': 'application/json' },
-            }
+              headers: { "Content-Type": "application/json" },
+            },
           );
         }
 
         // For message/send, return a task that will be polled
         return new Response(
           JSON.stringify({
-            jsonrpc: '2.0',
+            jsonrpc: "2.0",
             id: rpcId,
             result: {
-              kind: 'task',
+              kind: "task",
               task: {
                 id: `mock-task-${Date.now()}`,
                 status: {
-                  state: 'pending',
+                  state: "pending",
                 },
               },
             },
           }),
           {
             status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }
+            headers: { "Content-Type": "application/json" },
+          },
         );
       }
 
@@ -202,10 +202,10 @@ describe('Agent Actions Persistence Integration', () => {
         return await originalFetch(input, init);
       } catch (error) {
         // If it's a connection error to localhost, return 503 to avoid crashing
-        if (url.includes('localhost')) {
+        if (url.includes("localhost")) {
           return new Response(null, {
             status: 503,
-            statusText: 'Service Unavailable',
+            statusText: "Service Unavailable",
           });
         }
         throw error;
@@ -217,13 +217,13 @@ describe('Agent Actions Persistence Integration', () => {
 
     // Create test agent with autonomous features enabled
     const agentResult = await createTestAgent(
-      'integration-test-agent-actions',
+      "integration-test-agent-actions",
       {
         autonomousTrading: true,
         autonomousPosting: true,
         autonomousCommenting: true,
         virtualBalance: 10000,
-      }
+      },
     );
 
     testAgentId = agentResult.agentId;
@@ -234,10 +234,10 @@ describe('Agent Actions Persistence Integration', () => {
       await db.market.create({
         data: {
           id: testMarketId,
-          question: 'Integration test: Will agents trade?',
-          yesShares: '100',
-          noShares: '100',
-          liquidity: '200', // Required field
+          question: "Integration test: Will agents trade?",
+          yesShares: "100",
+          noShares: "100",
+          liquidity: "200", // Required field
           resolved: false,
           endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days from now
           createdAt: new Date(),
@@ -245,9 +245,9 @@ describe('Agent Actions Persistence Integration', () => {
         },
       });
     } catch (error) {
-      console.error('Failed to create test market:', error);
+      console.error("Failed to create test market:", error);
       // Market creation failed, set to null to skip cleanup
-      testMarketId = '';
+      testMarketId = "";
     }
 
     // Create a test post for commenting
@@ -257,16 +257,16 @@ describe('Agent Actions Persistence Integration', () => {
       data: {
         id: testAuthorId,
         username: `test-author-${testAuthorId.slice(-6)}`,
-        displayName: 'Test Author',
+        displayName: "Test Author",
         updatedAt: new Date(),
       },
     });
     await db.post.create({
       data: {
         id: testPostId,
-        content: 'Test post for agent commenting',
+        content: "Test post for agent commenting",
         authorId: testAuthorId,
-        type: 'post',
+        type: "post",
         timestamp: new Date(),
         createdAt: new Date(),
       },
@@ -335,7 +335,7 @@ describe('Agent Actions Persistence Integration', () => {
     }
   });
 
-  liveTest('should create Position records when agent trades', async () => {
+  liveTest("should create Position records when agent trades", async () => {
     // Get initial position count
     const initialPositions = await db.position.count({
       where: { userId: testAgentId },
@@ -348,7 +348,7 @@ describe('Agent Actions Persistence Integration', () => {
     const runtime = await agentRuntimeManager.getRuntime(testAgentId);
     const result = await autonomousCoordinator.executeAutonomousTick(
       testAgentId,
-      runtime
+      runtime,
     );
 
     // Verify tick executed
@@ -366,25 +366,25 @@ describe('Agent Actions Persistence Integration', () => {
       // Verify position has correct data
       const positions = await db.position.findMany({
         where: { userId: testAgentId },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
         take: 1,
       });
 
       expect(positions.length).toBeGreaterThan(0);
-      expect(positions[0]).toHaveProperty('marketId');
-      expect(positions[0]).toHaveProperty('side');
-      expect(positions[0]).toHaveProperty('shares');
-      expect(positions[0]).toHaveProperty('status', 'active');
+      expect(positions[0]).toHaveProperty("marketId");
+      expect(positions[0]).toHaveProperty("side");
+      expect(positions[0]).toHaveProperty("shares");
+      expect(positions[0]).toHaveProperty("status", "active");
 
       // Verify balance was updated
       const afterBalance = await WalletService.getBalance(testAgentId);
       expect(Number(afterBalance.balance)).toBeLessThan(
-        Number(initialBalance.balance)
+        Number(initialBalance.balance),
       );
     }
   });
 
-  liveTest('should create Post records when agent posts', async () => {
+  liveTest("should create Post records when agent posts", async () => {
     // Get initial post count
     const initialPosts = await db.post.count({
       where: { authorId: testAgentId },
@@ -394,7 +394,7 @@ describe('Agent Actions Persistence Integration', () => {
     const runtime = await agentRuntimeManager.getRuntime(testAgentId);
     const result = await autonomousCoordinator.executeAutonomousTick(
       testAgentId,
-      runtime
+      runtime,
     );
 
     // Verify tick executed
@@ -412,18 +412,18 @@ describe('Agent Actions Persistence Integration', () => {
       // Verify post has correct data
       const posts = await db.post.findMany({
         where: { authorId: testAgentId },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
         take: 1,
       });
 
       expect(posts.length).toBeGreaterThan(0);
-      expect(posts[0]).toHaveProperty('content');
-      expect(posts[0]).toHaveProperty('authorId', testAgentId);
+      expect(posts[0]).toHaveProperty("content");
+      expect(posts[0]).toHaveProperty("authorId", testAgentId);
       expect(posts[0]?.content.length).toBeGreaterThan(0);
     }
   });
 
-  liveTest('should create Comment records when agent comments', async () => {
+  liveTest("should create Comment records when agent comments", async () => {
     // Get initial comment count
     const initialComments = await db.comment.count({
       where: { authorId: testAgentId },
@@ -433,7 +433,7 @@ describe('Agent Actions Persistence Integration', () => {
     const runtime = await agentRuntimeManager.getRuntime(testAgentId);
     const result = await autonomousCoordinator.executeAutonomousTick(
       testAgentId,
-      runtime
+      runtime,
     );
 
     // Verify tick executed
@@ -451,24 +451,24 @@ describe('Agent Actions Persistence Integration', () => {
       // Verify comment has correct data
       const comments = await db.comment.findMany({
         where: { authorId: testAgentId },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
         take: 1,
       });
 
       expect(comments.length).toBeGreaterThan(0);
-      expect(comments[0]).toHaveProperty('content');
-      expect(comments[0]).toHaveProperty('authorId', testAgentId);
-      expect(comments[0]).toHaveProperty('postId');
+      expect(comments[0]).toHaveProperty("content");
+      expect(comments[0]).toHaveProperty("authorId", testAgentId);
+      expect(comments[0]).toHaveProperty("postId");
       expect(comments[0]?.content.length).toBeGreaterThan(0);
     }
   });
 
-  liveTest('should update agent P&L when trades are executed', async () => {
+  liveTest("should update agent P&L when trades are executed", async () => {
     // Run agent tick - errors should fail the test, not skip
     const runtime = await agentRuntimeManager.getRuntime(testAgentId);
     const result = await autonomousCoordinator.executeAutonomousTick(
       testAgentId,
-      runtime
+      runtime,
     );
 
     // Verify tick executed
@@ -483,7 +483,7 @@ describe('Agent Actions Persistence Integration', () => {
 
       // P&L should be tracked (may be positive or negative)
       expect(agentAfter?.lifetimePnL).toBeDefined();
-      expect(typeof agentAfter?.lifetimePnL).toBe('number');
+      expect(typeof agentAfter?.lifetimePnL).toBe("number");
     }
   });
 });

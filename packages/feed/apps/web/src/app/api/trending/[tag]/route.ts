@@ -60,16 +60,16 @@ import {
   addPublicReadHeaders,
   publicRateLimit,
   withErrorHandling,
-} from '@feed/api';
-import { asPublic, asUser } from '@feed/db';
-import { getPostsByTag, StaticDataRegistry } from '@feed/engine';
-import { toISO } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@feed/api";
+import { asPublic, asUser } from "@feed/db";
+import { getPostsByTag, StaticDataRegistry } from "@feed/engine";
+import { toISO } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 export const GET = withErrorHandling(async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ tag: string }> }
+  { params }: { params: Promise<{ tag: string }> },
 ) {
   const {
     error,
@@ -80,16 +80,16 @@ export const GET = withErrorHandling(async function GET(
 
   const { tag } = await params;
   const url = new URL(request.url);
-  const limit = Number.parseInt(url.searchParams.get('limit') || '20');
-  const offset = Number.parseInt(url.searchParams.get('offset') || '0');
+  const limit = Number.parseInt(url.searchParams.get("limit") || "20", 10);
+  const offset = Number.parseInt(url.searchParams.get("offset") || "0", 10);
 
   if (!tag) {
     return NextResponse.json(
       {
         success: false,
-        error: 'Tag parameter is required',
+        error: "Tag parameter is required",
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -99,11 +99,11 @@ export const GET = withErrorHandling(async function GET(
     return NextResponse.json(
       {
         success: false,
-        error: 'Tag not found',
+        error: "Tag not found",
         posts: [],
         total: 0,
       },
-      { status: 404 }
+      { status: 404 },
     );
   }
 
@@ -115,7 +115,7 @@ export const GET = withErrorHandling(async function GET(
       const org = StaticDataRegistry.getOrganization(post.authorId);
 
       const [user, likeCount, commentCount, shareCount, userLike, userShare] =
-        authUser && authUser.userId
+        authUser?.userId
           ? await asUser(authUser, async (db) => {
               return await Promise.all([
                 db.user.findUnique({
@@ -129,7 +129,7 @@ export const GET = withErrorHandling(async function GET(
                   },
                 }),
                 db.reaction.count({
-                  where: { postId: post.id, type: 'like' },
+                  where: { postId: post.id, type: "like" },
                 }),
                 db.comment.count({
                   where: { postId: post.id },
@@ -141,7 +141,7 @@ export const GET = withErrorHandling(async function GET(
                   where: {
                     postId: post.id,
                     userId: authUser.userId,
-                    type: 'like',
+                    type: "like",
                   },
                   select: { id: true },
                 }),
@@ -164,7 +164,7 @@ export const GET = withErrorHandling(async function GET(
                   },
                 }),
                 db.reaction.count({
-                  where: { postId: post.id, type: 'like' },
+                  where: { postId: post.id, type: "like" },
                 }),
                 db.comment.count({
                   where: { postId: post.id },
@@ -183,7 +183,7 @@ export const GET = withErrorHandling(async function GET(
         user?.username ||
         actor?.name ||
         org?.name ||
-        'Unknown';
+        "Unknown";
       const authorUsername = user?.username || null;
       const authorProfileImageUrl =
         user?.profileImageUrl ||
@@ -205,7 +205,7 @@ export const GET = withErrorHandling(async function GET(
         isLiked: !!userLike,
         isShared: !!userShare,
       };
-    })
+    }),
   );
 
   const res = NextResponse.json({

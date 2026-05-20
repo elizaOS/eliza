@@ -6,11 +6,11 @@ import {
   expect,
   mock,
   test,
-} from 'bun:test';
-import { NextRequest } from 'next/server';
-import * as actualApiModule from '../../../api/src/index';
-import * as actualDbModule from '../../../db/src/index';
-import * as actualEngineModule from '../../../engine/src/index';
+} from "bun:test";
+import { NextRequest } from "next/server";
+import * as actualApiModule from "../../../api/src/index";
+import * as actualDbModule from "../../../db/src/index";
+import * as actualEngineModule from "../../../engine/src/index";
 
 /**
  * Article Tick Cron Job Tests
@@ -57,7 +57,7 @@ interface CronMockState {
   marketsAcquireLockResult: boolean;
 }
 
-const CRON_MOCK_STATE_KEY = '__feedCronMockState';
+const CRON_MOCK_STATE_KEY = "__feedCronMockState";
 
 type GlobalWithCronMockState = typeof globalThis & {
   [CRON_MOCK_STATE_KEY]?: CronMockState;
@@ -90,7 +90,7 @@ const nextMockSnowflakeId = (): string => {
 // The resultFn is called at query execution time to get the current mock state
 // This mirrors the markets-tick.test.ts pattern for dynamic result evaluation
 const createQueryBuilder = (
-  resultFn: () => unknown = () => [{ id: 'mock-id' }]
+  resultFn: () => unknown = () => [{ id: "mock-id" }],
 ) => {
   const builder = {
     set: mock(() => builder),
@@ -106,7 +106,7 @@ const createQueryBuilder = (
         | null,
       onRejected?:
         | ((reason: unknown) => TResult2 | PromiseLike<TResult2>)
-        | null
+        | null,
     ): Promise<TResult1 | TResult2> => {
       return Promise.resolve(resultFn()).then(onFulfilled, onRejected);
     },
@@ -116,55 +116,55 @@ const createQueryBuilder = (
 
 const registerMocks = () => {
   // Mock @feed/db - uses resultFn pattern for dynamic state evaluation
-  mock.module('@feed/db', () => ({
+  mock.module("@feed/db", () => ({
     ...actualDbModule,
     db: {
       select: mock(() =>
         createQueryBuilder(() =>
-          cronMockState.articleGame ? [cronMockState.articleGame] : []
-        )
+          cronMockState.articleGame ? [cronMockState.articleGame] : [],
+        ),
       ),
       insert: mock(() =>
-        createQueryBuilder(() => [{ id: `mock-${Date.now()}` }])
+        createQueryBuilder(() => [{ id: `mock-${Date.now()}` }]),
       ),
-      update: mock(() => createQueryBuilder(() => [{ id: 'mock-updated' }])),
-      delete: mock(() => createQueryBuilder(() => [{ id: 'mock-deleted' }])),
+      update: mock(() => createQueryBuilder(() => [{ id: "mock-updated" }])),
+      delete: mock(() => createQueryBuilder(() => [{ id: "mock-deleted" }])),
     },
     games: {
-      _tableName: 'games',
-      id: 'id',
-      isRunning: 'isRunning',
-      isContinuous: 'isContinuous',
-      currentDay: 'currentDay',
+      _tableName: "games",
+      id: "id",
+      isRunning: "isRunning",
+      isContinuous: "isContinuous",
+      currentDay: "currentDay",
     },
     questions: {
-      _tableName: 'questions',
-      status: 'status',
-      resolutionDate: 'resolutionDate',
-      id: 'id',
-      questionNumber: 'questionNumber',
+      _tableName: "questions",
+      status: "status",
+      resolutionDate: "resolutionDate",
+      id: "id",
+      questionNumber: "questionNumber",
     },
-    userAgentConfigs: { _tableName: 'userAgentConfigs' },
-    users: { _tableName: 'users' },
-    actors: { _tableName: 'actors' },
-    comments: { _tableName: 'comments' },
-    organizations: { _tableName: 'organizations' },
-    balanceTransactions: { _tableName: 'balanceTransactions' },
-    pointsTransactions: { _tableName: 'pointsTransactions' },
-    perpPositions: { _tableName: 'perpPositions' },
-    poolPositions: { _tableName: 'poolPositions' },
-    markets: { _tableName: 'markets' },
-    generationLocks: { _tableName: 'generationLocks' },
-    agentPerformanceMetrics: { _tableName: 'agentPerformanceMetrics' },
-    agentTrades: { _tableName: 'agentTrades' },
-    npcTrades: { _tableName: 'npcTrades' },
-    timeframedMarkets: { _tableName: 'timeframedMarkets' },
-    worldEvents: { _tableName: 'worldEvents', timestamp: 'timestamp' },
+    userAgentConfigs: { _tableName: "userAgentConfigs" },
+    users: { _tableName: "users" },
+    actors: { _tableName: "actors" },
+    comments: { _tableName: "comments" },
+    organizations: { _tableName: "organizations" },
+    balanceTransactions: { _tableName: "balanceTransactions" },
+    pointsTransactions: { _tableName: "pointsTransactions" },
+    perpPositions: { _tableName: "perpPositions" },
+    poolPositions: { _tableName: "poolPositions" },
+    markets: { _tableName: "markets" },
+    generationLocks: { _tableName: "generationLocks" },
+    agentPerformanceMetrics: { _tableName: "agentPerformanceMetrics" },
+    agentTrades: { _tableName: "agentTrades" },
+    npcTrades: { _tableName: "npcTrades" },
+    timeframedMarkets: { _tableName: "timeframedMarkets" },
+    worldEvents: { _tableName: "worldEvents", timestamp: "timestamp" },
     posts: {
-      _tableName: 'posts',
-      type: 'type',
-      timestamp: 'timestamp',
-      deletedAt: 'deletedAt',
+      _tableName: "posts",
+      type: "type",
+      timestamp: "timestamp",
+      deletedAt: "deletedAt",
     },
     eq: (): SqlCondition => ({}),
     ne: (): SqlCondition => ({}),
@@ -181,10 +181,10 @@ const registerMocks = () => {
     isNull: (): SqlCondition => ({}),
     isNotNull: (): SqlCondition => ({}),
     sql: (strings: TemplateStringsArray, ...values: unknown[]) => ({
-      sql: strings.join('?'),
+      sql: strings.join("?"),
       values,
     }),
-    max: (col: unknown) => ({ _aggregation: 'max', column: col }),
+    max: (col: unknown) => ({ _aggregation: "max", column: col }),
     generateSnowflakeId: async () => nextMockSnowflakeId(),
     withTransaction: async <T>(fn: (tx: unknown) => Promise<T>) => fn({}),
     asUser: async <T>(_userId: string, fn: (db: unknown) => Promise<T>) =>
@@ -194,17 +194,17 @@ const registerMocks = () => {
   }));
 
   // Mock @feed/api - supports both article-tick and markets-tick consumers
-  mock.module('@feed/api', () => ({
+  mock.module("@feed/api", () => ({
     ...actualApiModule,
     CACHE_KEYS: {
-      gameState: (_gameId: string) => 'game-state',
+      gameState: (_gameId: string) => "game-state",
     },
     DEFAULT_TTLS: {
       gameState: 60,
     },
     verifyCronAuth: (req: Request | NextRequest) => {
       const pathname = new URL(req.url).pathname;
-      return pathname.includes('/markets-tick')
+      return pathname.includes("/markets-tick")
         ? cronMockState.marketsCronAuthResult
         : cronMockState.articleCronAuthResult;
     },
@@ -219,12 +219,12 @@ const registerMocks = () => {
     resetRateLimit: async () => {},
     invalidateCache: async () => {},
     getCacheOrFetch: async <T>(_key: string, fn: () => Promise<T>) => {
-      if (_key === 'continuous-game') {
+      if (_key === "continuous-game") {
         return cronMockState.articleGame as T;
       }
-      if (_key.includes('game-state')) {
+      if (_key.includes("game-state")) {
         return (cronMockState.marketsGame || {
-          id: 'continuous',
+          id: "continuous",
           isRunning: false,
           isContinuous: true,
           currentDay: 1,
@@ -235,7 +235,7 @@ const registerMocks = () => {
     recordCronExecution: () => {},
     DistributedLockService: {
       acquireLock: async (options?: { lockId?: string }) => {
-        if (options?.lockId?.includes('markets-tick')) {
+        if (options?.lockId?.includes("markets-tick")) {
           return cronMockState.marketsAcquireLockResult;
         }
         return true;
@@ -244,15 +244,15 @@ const registerMocks = () => {
     },
   }));
 
-  mock.module('@feed/core/markets/prediction', () => ({
+  mock.module("@feed/core/markets/prediction", () => ({
     PredictionDbAdapter: class {},
     PredictionMarketService: class {
-      ensureMarketExists = async () => ({ id: 'mock-market-id' });
+      ensureMarketExists = async () => ({ id: "mock-market-id" });
     },
   }));
 
   // Mock @feed/engine - includes exports needed by both cron routes
-  mock.module('@feed/engine', () => ({
+  mock.module("@feed/engine", () => ({
     ...actualEngineModule,
     articleRateLimiter: {
       canGenerateArticle: async () => ({
@@ -266,49 +266,48 @@ const registerMocks = () => {
       generateArticleForQuestion = async () => ({
         // Complete Article interface with all required fields
         id: `mock-article-${Date.now()}`,
-        title: 'Test Article',
-        summary: 'Test summary',
-        content: 'Test content that is long enough to pass validation. '.repeat(
-          20
+        title: "Test Article",
+        summary: "Test summary",
+        content: "Test content that is long enough to pass validation. ".repeat(
+          20,
         ),
-        authorOrgId: 'org-1',
-        authorOrgName: 'Test News',
-        byline: 'Test Author',
-        bylineActorId: 'actor-1',
+        authorOrgId: "org-1",
+        authorOrgName: "Test News",
+        byline: "Test Author",
+        bylineActorId: "actor-1",
         biasScore: 0,
-        sentiment: 'neutral' as const,
-        slant: 'Neutral coverage',
-        relatedEventId: 'event-1',
+        sentiment: "neutral" as const,
+        slant: "Neutral coverage",
+        relatedEventId: "event-1",
         relatedActorIds: [],
-        relatedOrgIds: ['org-1'],
-        category: 'news',
-        tags: ['test', 'article'],
+        relatedOrgIds: ["org-1"],
+        category: "news",
+        tags: ["test", "article"],
         publishedAt: new Date(),
       });
     },
     FeedLLMClient: {
       forGameTick: () => ({
         generateJSON: async () => ({
-          title: 'Test Article',
-          summary: 'Test summary',
-          article: 'Test article body',
+          title: "Test Article",
+          summary: "Test summary",
+          article: "Test article body",
         }),
       }),
     },
     QuestionManager: class {
-      constructor(_llmClient: unknown) {}
       async generateTimeframeQuestion() {
         return {
-          text: 'Will AIlon Musk launch a new product?',
+          text: "Will AIlon Musk launch a new product?",
           expectedOutcome: true,
-          resolutionCriteria: 'Product launch announcement',
+          resolutionCriteria: "Product launch announcement",
           affiliatedActorIds: [],
           affiliatedOrgIds: [],
         };
       }
       async generateResolutionWithProof() {
         return {
-          description: 'The product was launched',
+          description: "The product was launched",
           confidence: 0.95,
           requiresManualReview: false,
           proof: null,
@@ -327,7 +326,7 @@ const registerMocks = () => {
     }),
     getReputationBreakdown: () => ({
       total: 0,
-      level: 'neutral',
+      level: "neutral",
       trend: 0,
       factors: {},
     }),
@@ -335,7 +334,7 @@ const registerMocks = () => {
     resolveQuestionPayouts: async () => {},
     SignalExtractionService: {
       extractMarketSignal: async () => ({
-        suggestedOutcome: 'YES',
+        suggestedOutcome: "YES",
         confidence: 0.8,
         yesSignal: 0.7,
         noSignal: 0.3,
@@ -346,26 +345,26 @@ const registerMocks = () => {
     StaticDataRegistry: {
       getOrganizationsByType: () => [
         {
-          id: 'org-1',
-          name: 'Test News',
-          description: 'A news org',
-          type: 'media',
+          id: "org-1",
+          name: "Test News",
+          description: "A news org",
+          type: "media",
           canBeInvolved: true,
         },
       ],
       getTopActors: () => [
         {
-          id: 'actor-1',
-          name: 'Test Actor',
-          description: 'A test actor',
-          domain: ['tech'],
-          personality: 'Analytical and cautious',
-          tier: 'mid',
+          id: "actor-1",
+          name: "Test Actor",
+          description: "A test actor",
+          domain: ["tech"],
+          personality: "Analytical and cautious",
+          tier: "mid",
           affiliations: [],
-          postStyle: 'Neutral analysis',
+          postStyle: "Neutral analysis",
           postExample: [],
-          role: 'Analyst',
-          initialLuck: 'medium',
+          role: "Analyst",
+          initialLuck: "medium",
           initialMood: 0,
         },
       ],
@@ -387,13 +386,13 @@ const registerMocks = () => {
     setRateLimitProvider: () => {},
     timeframeArcPlanner: {
       planTimeframeArc: () => ({
-        questionId: 'q-1',
-        timeframe: '1d',
-        category: 'daily',
+        questionId: "q-1",
+        timeframe: "1d",
+        category: "daily",
         outcome: true,
         durationMs: 86400000,
         phases: {},
-        phaseOrder: ['setup', 'peak', 'resolution'],
+        phaseOrder: ["setup", "peak", "resolution"],
         insiders: [],
         deceivers: [],
         affiliatedOrgIds: [],
@@ -402,7 +401,7 @@ const registerMocks = () => {
       }),
     },
     worldFactsService: {
-      generatePromptContext: async () => 'Test world facts context',
+      generatePromptContext: async () => "Test world facts context",
     },
   }));
 };
@@ -413,10 +412,10 @@ const registerMocks = () => {
 let GET: (req: NextRequest) => Promise<Response>;
 let POST: (req: NextRequest) => Promise<Response>;
 
-describe('Article Tick Cron', () => {
+describe("Article Tick Cron", () => {
   beforeAll(async () => {
     registerMocks();
-    const routeModule = await import('@/app/api/cron/article-tick/route');
+    const routeModule = await import("@/app/api/cron/article-tick/route");
     GET = routeModule.GET;
     POST = routeModule.POST;
   });
@@ -432,34 +431,34 @@ describe('Article Tick Cron', () => {
     cronMockState.articleCoveredEventIds.clear();
   });
 
-  describe('Authorization', () => {
-    test('should reject unauthorized requests when verifyCronAuth returns false', async () => {
+  describe("Authorization", () => {
+    test("should reject unauthorized requests when verifyCronAuth returns false", async () => {
       cronMockState.articleCronAuthResult = false;
 
-      const req = new NextRequest('http://localhost/api/cron/article-tick', {
-        method: 'POST',
+      const req = new NextRequest("http://localhost/api/cron/article-tick", {
+        method: "POST",
       });
       const res = await POST(req);
 
       expect(res.status).toBe(401);
       const data = await res.json();
-      expect(data.error).toBe('Unauthorized cron request');
+      expect(data.error).toBe("Unauthorized cron request");
       expect(data.success).toBeUndefined();
     });
 
-    test('GET should delegate to POST and return identical response', async () => {
+    test("GET should delegate to POST and return identical response", async () => {
       // Set up a known game state so we get predictable responses
       cronMockState.articleGame = null; // No game = skipped state
 
       // Create identical requests for GET and POST
-      const getReq = new NextRequest('http://localhost/api/cron/article-tick', {
-        method: 'GET',
+      const getReq = new NextRequest("http://localhost/api/cron/article-tick", {
+        method: "GET",
       });
       const postReq = new NextRequest(
-        'http://localhost/api/cron/article-tick',
+        "http://localhost/api/cron/article-tick",
         {
-          method: 'POST',
-        }
+          method: "POST",
+        },
       );
 
       // Call both handlers
@@ -480,77 +479,77 @@ describe('Article Tick Cron', () => {
       // Verify the expected behavior (skipped because no game)
       expect(getBody.success).toBe(true);
       expect(getBody.skipped).toBe(true);
-      expect(getBody.reason).toBe('No continuous game found');
+      expect(getBody.reason).toBe("No continuous game found");
     });
   });
 
-  describe('Game State Checks', () => {
-    test('should be skipped when no continuous game exists', async () => {
+  describe("Game State Checks", () => {
+    test("should be skipped when no continuous game exists", async () => {
       cronMockState.articleGame = null;
 
-      const req = new NextRequest('http://localhost/api/cron/article-tick', {
-        method: 'POST',
+      const req = new NextRequest("http://localhost/api/cron/article-tick", {
+        method: "POST",
       });
       const res = await POST(req);
       const data = await res.json();
 
       expect(data.success).toBe(true);
       expect(data.skipped).toBe(true);
-      expect(data.reason).toBe('No continuous game found');
+      expect(data.reason).toBe("No continuous game found");
     });
 
-    test('should be paused when game.isRunning is false', async () => {
+    test("should be paused when game.isRunning is false", async () => {
       cronMockState.articleGame = {
-        id: 'game-123',
+        id: "game-123",
         isContinuous: true,
         isRunning: false,
         currentDay: 1,
       };
 
-      const req = new NextRequest('http://localhost/api/cron/article-tick', {
-        method: 'POST',
+      const req = new NextRequest("http://localhost/api/cron/article-tick", {
+        method: "POST",
       });
       const res = await POST(req);
       const data = await res.json();
 
       expect(data.success).toBe(true);
       expect(data.skipped).toBe(true);
-      expect(data.reason).toBe('Game is paused');
+      expect(data.reason).toBe("Game is paused");
     });
   });
 
-  describe('Rate Limiting', () => {
-    test('should skip when rate limit reached', async () => {
+  describe("Rate Limiting", () => {
+    test("should skip when rate limit reached", async () => {
       cronMockState.articleGame = {
-        id: 'game-123',
+        id: "game-123",
         isContinuous: true,
         isRunning: true,
         currentDay: 1,
       };
       cronMockState.articleCount = 2; // At limit
 
-      const req = new NextRequest('http://localhost/api/cron/article-tick', {
-        method: 'POST',
+      const req = new NextRequest("http://localhost/api/cron/article-tick", {
+        method: "POST",
       });
       const res = await POST(req);
       const data = await res.json();
 
       expect(data.success).toBe(true);
       expect(data.skipped).toBe(true);
-      expect(data.reason).toBe('Rate limit reached');
+      expect(data.reason).toBe("Rate limit reached");
     });
 
-    test('should proceed when under rate limit', async () => {
+    test("should proceed when under rate limit", async () => {
       cronMockState.articleGame = {
-        id: 'game-123',
+        id: "game-123",
         isContinuous: true,
         isRunning: true,
         currentDay: 1,
       };
       cronMockState.articleCount = 0; // Under limit
 
-      const req = new NextRequest('http://localhost/api/cron/article-tick', {
-        method: 'POST',
+      const req = new NextRequest("http://localhost/api/cron/article-tick", {
+        method: "POST",
       });
       const res = await POST(req);
       const data = await res.json();
@@ -562,22 +561,22 @@ describe('Article Tick Cron', () => {
       expect(data.skipped).toBe(false);
 
       // Should not be skipped due to rate limit
-      expect(data.reason).not.toBe('Rate limit reached');
+      expect(data.reason).not.toBe("Rate limit reached");
     });
   });
 
-  describe('Response Structure', () => {
-    test('should return rate limit info in response', async () => {
+  describe("Response Structure", () => {
+    test("should return rate limit info in response", async () => {
       cronMockState.articleGame = {
-        id: 'game-123',
+        id: "game-123",
         isContinuous: true,
         isRunning: true,
         currentDay: 1,
       };
       cronMockState.articleCount = 1; // Under limit (2), so processing should proceed
 
-      const req = new NextRequest('http://localhost/api/cron/article-tick', {
-        method: 'POST',
+      const req = new NextRequest("http://localhost/api/cron/article-tick", {
+        method: "POST",
       });
       const res = await POST(req);
       const data = await res.json();

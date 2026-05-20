@@ -1,37 +1,37 @@
-import { afterEach, describe, expect, mock, test } from 'bun:test';
+import { afterEach, describe, expect, mock, test } from "bun:test";
 
 const configureTrainingDependencies = mock(() => {});
-const agentService = { createAgent: mock(async () => ({ id: 'agent-1' })) };
+const agentService = { createAgent: mock(async () => ({ id: "agent-1" })) };
 const agentRuntimeManager = { getRuntime: mock(async () => ({})) };
 const autonomousCoordinator = {
   executeAutonomousTick: mock(async () => ({ success: true })),
 };
 
-mock.module('@feed/training/rubrics/index', () => ({
-  getAvailableArchetypes: () => ['trader'],
+mock.module("@feed/training/rubrics/index", () => ({
+  getAvailableArchetypes: () => ["trader"],
   getPriorityMetrics: () => [],
-  getRubric: () => 'rubric',
+  getRubric: () => "rubric",
   hasCustomRubric: () => true,
 }));
 
-mock.module('@feed/training', () => ({
+mock.module("@feed/training", () => ({
   configureTrainingDependencies,
 }));
 
-mock.module('@feed/agents', () => ({
+mock.module("@feed/agents", () => ({
   agentService,
   agentRuntimeManager,
   autonomousCoordinator,
 }));
 
-describe('configureAgentTrainingDependencies', () => {
+describe("configureAgentTrainingDependencies", () => {
   afterEach(() => {
     configureTrainingDependencies.mockClear();
   });
 
-  test('registers live agent dependencies for parallel generation', async () => {
+  test("registers live agent dependencies for parallel generation", async () => {
     const { configureAgentTrainingDependencies } = await import(
-      '../commands/train.ts?train-parallel-deps'
+      "../commands/train.ts?train-parallel-deps"
     );
 
     await configureAgentTrainingDependencies();

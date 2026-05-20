@@ -67,7 +67,7 @@ import {
   addPublicReadHeaders,
   publicRateLimit,
   withErrorHandling,
-} from '@feed/api';
+} from "@feed/api";
 import {
   and,
   asPublic,
@@ -84,11 +84,11 @@ import {
   shares,
   tags,
   users,
-} from '@feed/db';
-import { StaticDataRegistry } from '@feed/engine';
-import { logger, toISO } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@feed/db";
+import { StaticDataRegistry } from "@feed/engine";
+import { logger, toISO } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   const {
@@ -99,61 +99,60 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   if (error) return error;
 
   const { searchParams } = new URL(request.url);
-  const tagsParam = searchParams.get('tags');
-  const limitParam = searchParams.get('limit');
+  const tagsParam = searchParams.get("tags");
+  const limitParam = searchParams.get("limit");
 
   if (!tagsParam) {
     return NextResponse.json(
-      { success: false, error: 'Missing required parameter: tags' },
-      { status: 400 }
+      { success: false, error: "Missing required parameter: tags" },
+      { status: 400 },
     );
   }
 
   const tagSlugs = tagsParam
-    .split(',')
+    .split(",")
     .map((slug) => slug.trim().toLowerCase())
     .filter((slug) => slug.length > 0);
 
   if (tagSlugs.length === 0) {
     return NextResponse.json(
-      { success: false, error: 'Invalid tags parameter' },
-      { status: 400 }
+      { success: false, error: "Invalid tags parameter" },
+      { status: 400 },
     );
   }
 
   const limit = limitParam ? Number.parseInt(limitParam, 10) : 50;
 
   logger.info(
-    'Fetching grouped trending posts',
+    "Fetching grouped trending posts",
     { tagSlugs, limit },
-    'GET /api/trending/group'
+    "GET /api/trending/group",
   );
 
   // Get tag information by slug (name)
-  const tagsList =
-    authUser && authUser.userId
-      ? await asUser(authUser, async (db) => {
-          return await db
-            .select({
-              id: tags.id,
-              name: tags.name,
-              displayName: tags.displayName,
-              category: tags.category,
-            })
-            .from(tags)
-            .where(inArray(tags.name, tagSlugs));
-        })
-      : await asPublic(async (db) => {
-          return await db
-            .select({
-              id: tags.id,
-              name: tags.name,
-              displayName: tags.displayName,
-              category: tags.category,
-            })
-            .from(tags)
-            .where(inArray(tags.name, tagSlugs));
-        });
+  const tagsList = authUser?.userId
+    ? await asUser(authUser, async (db) => {
+        return await db
+          .select({
+            id: tags.id,
+            name: tags.name,
+            displayName: tags.displayName,
+            category: tags.category,
+          })
+          .from(tags)
+          .where(inArray(tags.name, tagSlugs));
+      })
+    : await asPublic(async (db) => {
+        return await db
+          .select({
+            id: tags.id,
+            name: tags.name,
+            displayName: tags.displayName,
+            category: tags.category,
+          })
+          .from(tags)
+          .where(inArray(tags.name, tagSlugs));
+      });
 
   // Extract tag IDs for the post lookup
   const tagIds = tagsList.map((t) => t.id);
@@ -168,60 +167,55 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
   // Get posts that have any of these tags
   // Filter out deleted posts to match what users can actually see
-  const postTagRelations =
-    authUser && authUser.userId
-      ? await asUser(authUser, async (db) => {
-          return await db
-            .select({
-              postId: postTags.postId,
-              tagId: postTags.tagId,
-              createdAt: postTags.createdAt,
-              post: {
-                id: posts.id,
-                content: posts.content,
-                authorId: posts.authorId,
-                timestamp: posts.timestamp,
-                type: posts.type,
-                articleTitle: posts.articleTitle,
-                byline: posts.byline,
-                biasScore: posts.biasScore,
-                category: posts.category,
-              },
-            })
-            .from(postTags)
-            .innerJoin(posts, eq(postTags.postId, posts.id))
-            .where(
-              and(inArray(postTags.tagId, tagIds), isNull(posts.deletedAt))
-            )
-            .orderBy(desc(postTags.createdAt))
-            .limit(limit * 2); // Get more to deduplicate
-        })
-      : await asPublic(async (db) => {
-          return await db
-            .select({
-              postId: postTags.postId,
-              tagId: postTags.tagId,
-              createdAt: postTags.createdAt,
-              post: {
-                id: posts.id,
-                content: posts.content,
-                authorId: posts.authorId,
-                timestamp: posts.timestamp,
-                type: posts.type,
-                articleTitle: posts.articleTitle,
-                byline: posts.byline,
-                biasScore: posts.biasScore,
-                category: posts.category,
-              },
-            })
-            .from(postTags)
-            .innerJoin(posts, eq(postTags.postId, posts.id))
-            .where(
-              and(inArray(postTags.tagId, tagIds), isNull(posts.deletedAt))
-            )
-            .orderBy(desc(postTags.createdAt))
-            .limit(limit * 2);
-        });
+  const postTagRelations = authUser?.userId
+    ? await asUser(authUser, async (db) => {
+        return await db
+          .select({
+            postId: postTags.postId,
+            tagId: postTags.tagId,
+            createdAt: postTags.createdAt,
+            post: {
+              id: posts.id,
+              content: posts.content,
+              authorId: posts.authorId,
+              timestamp: posts.timestamp,
+              type: posts.type,
+              articleTitle: posts.articleTitle,
+              byline: posts.byline,
+              biasScore: posts.biasScore,
+              category: posts.category,
+            },
+          })
+          .from(postTags)
+          .innerJoin(posts, eq(postTags.postId, posts.id))
+          .where(and(inArray(postTags.tagId, tagIds), isNull(posts.deletedAt)))
+          .orderBy(desc(postTags.createdAt))
+          .limit(limit * 2); // Get more to deduplicate
+      })
+    : await asPublic(async (db) => {
+        return await db
+          .select({
+            postId: postTags.postId,
+            tagId: postTags.tagId,
+            createdAt: postTags.createdAt,
+            post: {
+              id: posts.id,
+              content: posts.content,
+              authorId: posts.authorId,
+              timestamp: posts.timestamp,
+              type: posts.type,
+              articleTitle: posts.articleTitle,
+              byline: posts.byline,
+              biasScore: posts.biasScore,
+              category: posts.category,
+            },
+          })
+          .from(postTags)
+          .innerJoin(posts, eq(postTags.postId, posts.id))
+          .where(and(inArray(postTags.tagId, tagIds), isNull(posts.deletedAt)))
+          .orderBy(desc(postTags.createdAt))
+          .limit(limit * 2);
+      });
 
   // Deduplicate posts (same post might have multiple tags from the group)
   const seenPostIds = new Set<string>();
@@ -240,47 +234,46 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
   // Get user info for authors
   const authorIds = [...new Set(uniquePosts.map((pt) => pt.post.authorId))];
-  const usersList =
-    authUser && authUser.userId
-      ? await asUser(authUser, async (db) => {
-          return await db
-            .select({
-              id: users.id,
-              username: users.username,
-              displayName: users.displayName,
-            })
-            .from(users)
-            .where(inArray(users.id, authorIds));
-        })
-      : await asPublic(async (db) => {
-          return await db
-            .select({
-              id: users.id,
-              username: users.username,
-              displayName: users.displayName,
-            })
-            .from(users)
-            .where(inArray(users.id, authorIds));
-        });
+  const usersList = authUser?.userId
+    ? await asUser(authUser, async (db) => {
+        return await db
+          .select({
+            id: users.id,
+            username: users.username,
+            displayName: users.displayName,
+          })
+          .from(users)
+          .where(inArray(users.id, authorIds));
+      })
+    : await asPublic(async (db) => {
+        return await db
+          .select({
+            id: users.id,
+            username: users.username,
+            displayName: users.displayName,
+          })
+          .from(users)
+          .where(inArray(users.id, authorIds));
+      });
 
   const userMap = new Map(usersList.map((u) => [u.id, u]));
   const actorMap = new Map(
     authorIds
       .map((id) => StaticDataRegistry.getActor(id))
       .filter((a): a is NonNullable<typeof a> => a !== null)
-      .map((a) => [a.id, { id: a.id, name: a.name }])
+      .map((a) => [a.id, { id: a.id, name: a.name }]),
   );
   const orgMap = new Map(
     authorIds
       .map((id) => StaticDataRegistry.getOrganization(id))
       .filter((o): o is NonNullable<typeof o> => o !== null)
-      .map((o) => [o.id, { id: o.id, name: o.name }])
+      .map((o) => [o.id, { id: o.id, name: o.name }]),
   );
 
   // Get interaction counts using Drizzle's count aggregation
   const [likeCounts, commentCounts, shareCounts] =
     postIds.length > 0
-      ? authUser && authUser.userId
+      ? authUser?.userId
         ? await asUser(authUser, async (db) => {
             return await Promise.all([
               db
@@ -323,7 +316,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
   const likeMap = new Map(likeCounts.map((lc) => [lc.postId, lc.count || 0]));
   const commentMap = new Map(
-    commentCounts.map((cc) => [cc.postId, cc.count || 0])
+    commentCounts.map((cc) => [cc.postId, cc.count || 0]),
   );
   const shareMap = new Map(shareCounts.map((sc) => [sc.postId, sc.count || 0]));
 
@@ -364,12 +357,12 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   });
 
   logger.info(
-    'Grouped trending posts retrieved',
+    "Grouped trending posts retrieved",
     {
       tagCount: tagsList.length,
       postCount: formattedPosts.length,
     },
-    'GET /api/trending/group'
+    "GET /api/trending/group",
   );
 
   const res = NextResponse.json({

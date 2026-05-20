@@ -45,12 +45,12 @@
  * @see {@link /api/auth/farcaster/callback} Farcaster callback
  */
 
-import { withErrorHandling } from '@feed/api';
-import { NextResponse } from 'next/server';
+import { withErrorHandling } from "@feed/api";
+import { NextResponse } from "next/server";
 
 export const GET = withErrorHandling(async function GET() {
   const twitterAvailable = Boolean(
-    process.env.TWITTER_CLIENT_ID && process.env.TWITTER_CLIENT_SECRET
+    process.env.TWITTER_CLIENT_ID && process.env.TWITTER_CLIENT_SECRET,
   );
 
   const farcasterAvailable = Boolean(process.env.NEYNAR_API_KEY);

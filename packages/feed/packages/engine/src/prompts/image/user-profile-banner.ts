@@ -1,4 +1,4 @@
-import { definePrompt } from '../define-prompt';
+import { definePrompt } from "../define-prompt";
 
 /**
  * Prompt for generating humorous profile banners for new users.
@@ -10,10 +10,10 @@ import { definePrompt } from '../define-prompt';
  * Returns image generation prompt for user profile banner.
  */
 export const userProfileBanner = definePrompt({
-  id: 'user-profile-banner',
-  version: '1.0.0',
-  category: 'image',
-  description: 'Generates humorous profile banners for new users',
+  id: "user-profile-banner",
+  version: "1.0.0",
+  category: "image",
+  description: "Generates humorous profile banners for new users",
   template: `
 Create a humorous and memetic profile banner for a social media user. The banner should be funny, aesthetic, and reflect internet culture. This is a LANDSCAPE image that will be used as a profile header/cover photo.
 

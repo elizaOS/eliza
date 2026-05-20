@@ -1,13 +1,13 @@
-'use client';
+"use client";
 
-import { cn, formatCompactCurrency } from '@feed/shared';
-import { Loader2, Users, Wallet } from 'lucide-react';
-import { useMemo } from 'react';
+import { cn, formatCompactCurrency } from "@feed/shared";
+import { Loader2, Users, Wallet } from "lucide-react";
+import { useMemo } from "react";
 import type {
   TeamScope,
   TeamTradingSummary,
-} from '@/lib/agents/team-trading-summary';
-import { ScopeToggle } from './_components/ScopeToggle';
+} from "@/lib/agents/team-trading-summary";
+import { ScopeToggle } from "./_components/ScopeToggle";
 
 export function TeamPortfolio({
   summary,
@@ -22,19 +22,19 @@ export function TeamPortfolio({
   error: string | null;
   scope: TeamScope;
   onScopeChange: (scope: TeamScope) => void;
-  onSelectMember?: (id: string, type: 'user' | 'agent') => void;
+  onSelectMember?: (id: string, type: "user" | "agent") => void;
 }) {
   // Hooks must be called unconditionally (Rules of Hooks)
   const members = useMemo(() => {
     if (!summary) return [];
-    return scope === 'agents_only'
-      ? summary.members.filter((m) => m.entityType === 'agent')
+    return scope === "agents_only"
+      ? summary.members.filter((m) => m.entityType === "agent")
       : summary.members;
   }, [summary, scope]);
 
   const totalWallet = useMemo(() => {
     if (!summary) return 0;
-    return scope === 'agents_only'
+    return scope === "agents_only"
       ? summary.agentsOnlyTotals.walletBalance
       : summary.totals.walletBalance;
   }, [summary, scope]);
@@ -94,8 +94,8 @@ export function TeamPortfolio({
         </div>
         <div className="space-y-1">
           {members.map((m) => {
-            const label = m.entityType === 'owner' ? 'Owner' : 'Agent';
-            const name = m.name || (m.entityType === 'owner' ? 'You' : 'Agent');
+            const label = m.entityType === "owner" ? "Owner" : "Agent";
+            const name = m.name || (m.entityType === "owner" ? "You" : "Agent");
 
             return (
               <button
@@ -105,12 +105,12 @@ export function TeamPortfolio({
                   if (!onSelectMember) return;
                   onSelectMember(
                     m.id,
-                    m.entityType === 'owner' ? 'user' : 'agent'
+                    m.entityType === "owner" ? "user" : "agent",
                   );
                 }}
                 className={cn(
-                  'flex w-full items-center justify-between gap-3 rounded-md px-2 py-2 text-left transition-colors',
-                  onSelectMember ? 'hover:bg-muted/40' : 'cursor-default'
+                  "flex w-full items-center justify-between gap-3 rounded-md px-2 py-2 text-left transition-colors",
+                  onSelectMember ? "hover:bg-muted/40" : "cursor-default",
                 )}
               >
                 <div className="min-w-0">

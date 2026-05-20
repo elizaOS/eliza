@@ -6,19 +6,19 @@
  * Cookie forwarded so optional auth on the API still applies (e.g. RLS); limit 50 for a full page of items.
  */
 
-import { publicRateLimit } from '@feed/api';
-import type { NextRequest } from 'next/server';
+import { publicRateLimit } from "@feed/api";
+import type { NextRequest } from "next/server";
 import {
   buildRssXml,
   getRssCacheHeaders,
   type RssChannel,
   type RssItem,
-} from '@/lib/rss';
+} from "@/lib/rss";
 
 /** WHY: Behind a proxy we need x-forwarded-* to build absolute URLs for RSS <link> and <item> elements. */
 function getOrigin(request: NextRequest): string {
-  const forwardedHost = request.headers.get('x-forwarded-host');
-  const forwardedProto = request.headers.get('x-forwarded-proto');
+  const forwardedHost = request.headers.get("x-forwarded-host");
+  const forwardedProto = request.headers.get("x-forwarded-proto");
   if (forwardedHost && forwardedProto) {
     return `${forwardedProto}://${forwardedHost}`;
   }
@@ -33,13 +33,13 @@ export async function GET(request: NextRequest) {
   const limit = 50;
 
   const res = await fetch(`${origin}/api/feed/hot?limit=${limit}`, {
-    cache: 'no-store',
-    headers: { cookie: request.headers.get('cookie') ?? '' },
+    cache: "no-store",
+    headers: { cookie: request.headers.get("cookie") ?? "" },
   });
 
   if (!res.ok) {
     // WHY 502: Upstream API (our own) failed; caller should retry later.
-    return new Response('Feed temporarily unavailable', { status: 502 });
+    return new Response("Feed temporarily unavailable", { status: 502 });
   }
 
   const data = (await res.json()) as {
@@ -55,17 +55,17 @@ export async function GET(request: NextRequest) {
   const posts = data.posts ?? [];
   // WHY 80/500: Keep title and description short for RSS readers; full content is at link.
   const items: RssItem[] = posts.map((post) => ({
-    title: `${post.authorName}: ${post.content.slice(0, 80)}${post.content.length > 80 ? '…' : ''}`,
+    title: `${post.authorName}: ${post.content.slice(0, 80)}${post.content.length > 80 ? "…" : ""}`,
     link: `${origin}/post/${post.id}`,
     description:
-      post.content.slice(0, 500) + (post.content.length > 500 ? '…' : ''),
+      post.content.slice(0, 500) + (post.content.length > 500 ? "…" : ""),
     pubDate: post.timestamp,
   }));
 
   const channel: RssChannel = {
-    title: 'Feed Feed',
+    title: "Feed Feed",
     link: `${origin}/feed`,
-    description: 'Hot posts from Feed',
+    description: "Hot posts from Feed",
     siteUrl: origin,
   };
 
@@ -74,7 +74,7 @@ export async function GET(request: NextRequest) {
   return new Response(xml, {
     status: 200,
     headers: {
-      'Content-Type': 'application/rss+xml; charset=utf-8',
+      "Content-Type": "application/rss+xml; charset=utf-8",
       ...getRssCacheHeaders(),
     },
   });

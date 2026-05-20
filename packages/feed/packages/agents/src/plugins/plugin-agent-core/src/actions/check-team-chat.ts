@@ -4,8 +4,6 @@
  * Useful when agents want to see what other agents have said
  */
 
-import { db, desc, eq, messages, users } from '@feed/db';
-import { COORDINATOR_INFO, COORDINATOR_SENDER_ID } from '@feed/shared';
 import type {
   Action,
   ActionResult,
@@ -13,39 +11,41 @@ import type {
   IAgentRuntime,
   Memory,
   State,
-} from '@elizaos/core';
-import { logger } from '../../../../shared/logger';
+} from "@elizaos/core";
+import { db, desc, eq, messages, users } from "@feed/db";
+import { COORDINATOR_INFO, COORDINATOR_SENDER_ID } from "@feed/shared";
+import { logger } from "../../../../shared/logger";
 
 export const checkTeamChatAction: Action = {
-  name: 'CHECK_TEAM_CHAT',
+  name: "CHECK_TEAM_CHAT",
   description:
-    'View recent messages from the team Agents chat. Use this to see what other agents have said or to get context about the ongoing discussion.',
+    "View recent messages from the team Agents chat. Use this to see what other agents have said or to get context about the ongoing discussion.",
   parameters: {
     limit: {
-      type: 'number',
-      description: 'Number of recent messages to fetch (default: 10, max: 50)',
+      type: "number",
+      description: "Number of recent messages to fetch (default: 10, max: 50)",
       optional: true,
     },
-  } as unknown as Action['parameters'],
+  } as unknown as Action["parameters"],
   examples: [
     [
       {
-        name: 'user',
-        content: { text: 'Check what other agents said' },
+        name: "user",
+        content: { text: "Check what other agents said" },
       },
       {
-        name: 'assistant',
+        name: "assistant",
         content: { text: "I'll check the team chat for recent messages." },
       },
     ],
     [
       {
-        name: 'user',
-        content: { text: 'See the team conversation' },
+        name: "user",
+        content: { text: "See the team conversation" },
       },
       {
-        name: 'assistant',
-        content: { text: 'Let me look at the team chat history.' },
+        name: "assistant",
+        content: { text: "Let me look at the team chat history." },
       },
     ],
   ],
@@ -53,7 +53,7 @@ export const checkTeamChatAction: Action = {
   validate: async (
     _runtime: IAgentRuntime,
     _message: Memory,
-    _state?: State
+    _state?: State,
   ): Promise<boolean> => {
     // Always validate - the handler will check if teamChatId is available
     // This ensures the action appears in the list even when teamChatId
@@ -66,7 +66,7 @@ export const checkTeamChatAction: Action = {
     _message: Memory,
     state?: State,
     _options?: Record<string, unknown>,
-    _callback?: HandlerCallback
+    _callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const agentUserId = runtime.agentId;
     const teamChatId = state?.values?.teamChatId as string | undefined;
@@ -74,8 +74,8 @@ export const checkTeamChatAction: Action = {
     if (!teamChatId) {
       return {
         success: false,
-        text: 'This action is only available in team chat mode.',
-        error: 'No team chat ID provided',
+        text: "This action is only available in team chat mode.",
+        error: "No team chat ID provided",
       };
     }
 
@@ -115,22 +115,22 @@ export const checkTeamChatAction: Action = {
         if (msg.senderId === COORDINATOR_SENDER_ID) {
           return {
             sender: `${COORDINATOR_INFO.displayName} @${COORDINATOR_INFO.username}`,
-            role: 'Coordinator',
+            role: "Coordinator",
             content: msg.content,
             time: timestamp,
           };
         }
 
         const senderName =
-          msg.senderDisplayName || msg.senderUsername || 'Unknown';
-        const senderHandle = msg.senderUsername ? `@${msg.senderUsername}` : '';
+          msg.senderDisplayName || msg.senderUsername || "Unknown";
+        const senderHandle = msg.senderUsername ? `@${msg.senderUsername}` : "";
         // Explicitly handle null (deleted users) vs true/false
         const role =
           msg.isAgent === true
-            ? 'Agent'
+            ? "Agent"
             : msg.isAgent === false
-              ? 'User'
-              : 'Unknown';
+              ? "User"
+              : "Unknown";
 
         return {
           sender: `${senderName} ${senderHandle}`.trim(),
@@ -143,9 +143,9 @@ export const checkTeamChatAction: Action = {
       // Text formatted for display
       const displayText = formattedMessages
         .map((m) => `[${m.time}] ${m.sender} (${m.role}): ${m.content}`)
-        .join('\n\n');
+        .join("\n\n");
 
-      logger.info('[CHECK_TEAM_CHAT] Retrieved messages', {
+      logger.info("[CHECK_TEAM_CHAT] Retrieved messages", {
         agentUserId,
         teamChatId,
         messageCount: chronologicalMessages.length,
@@ -164,12 +164,12 @@ export const checkTeamChatAction: Action = {
         values: {
           messageCount: chronologicalMessages.length,
           // Also provide as formatted text for easy reading
-          conversationText: displayText || 'No messages yet.',
+          conversationText: displayText || "No messages yet.",
         },
       };
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      logger.error('[CHECK_TEAM_CHAT] Error:', errorMsg);
+      const errorMsg = error instanceof Error ? error.message : "Unknown error";
+      logger.error("[CHECK_TEAM_CHAT] Error:", errorMsg);
       return {
         success: false,
         text: `Failed to check team chat: ${errorMsg}`,

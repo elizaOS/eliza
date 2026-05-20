@@ -5,13 +5,13 @@
  * Similar to X/Twitter trending topics
  */
 
-import { db, desc, trendingTags } from '@feed/db';
-import { logger } from '@feed/shared';
+import { db, desc, trendingTags } from "@feed/db";
+import { logger } from "@feed/shared";
 import {
   getRelatedTags,
   getTagStatistics,
   storeTrendingTags,
-} from './tag-service';
+} from "./tag-service";
 
 const CALCULATION_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours (6x per day)
 const TRENDING_WINDOW_DAYS = 7; // Look at last 7 days
@@ -47,7 +47,7 @@ function calculateTrendingScore(
   recentPostCount: number,
   oldestPostDate: Date,
   newestPostDate: Date,
-  windowEnd: Date
+  windowEnd: Date,
 ): number {
   // Base score from total post count
   let score = postCount;
@@ -83,15 +83,15 @@ function calculateTrendingScore(
 export async function calculateTrendingTags(): Promise<void> {
   const startTime = Date.now();
   logger.info(
-    'Starting trending tags calculation',
+    "Starting trending tags calculation",
     undefined,
-    'TrendingCalculationService'
+    "TrendingCalculationService",
   );
 
   // Define time window (last 7 days)
   const windowEnd = new Date();
   const windowStart = new Date(
-    windowEnd.getTime() - TRENDING_WINDOW_DAYS * 24 * 60 * 60 * 1000
+    windowEnd.getTime() - TRENDING_WINDOW_DAYS * 24 * 60 * 60 * 1000,
   );
 
   // Get tag statistics
@@ -99,19 +99,19 @@ export async function calculateTrendingTags(): Promise<void> {
 
   if (tagStats.length === 0) {
     logger.info(
-      'No tags to calculate trending for',
+      "No tags to calculate trending for",
       undefined,
-      'TrendingCalculationService'
+      "TrendingCalculationService",
     );
     return;
   }
 
   logger.debug(
-    'Retrieved tag statistics',
+    "Retrieved tag statistics",
     {
       tagCount: tagStats.length,
     },
-    'TrendingCalculationService'
+    "TrendingCalculationService",
   );
 
   // Calculate scores for each tag
@@ -126,7 +126,7 @@ export async function calculateTrendingTags(): Promise<void> {
       tag.recentPostCount,
       tag.oldestPostDate,
       tag.newestPostDate,
-      windowEnd
+      windowEnd,
     ),
   }));
 
@@ -155,7 +155,7 @@ export async function calculateTrendingTags(): Promise<void> {
         rank: index + 1,
         relatedContext,
       };
-    })
+    }),
   );
 
   // Store trending tags
@@ -163,13 +163,13 @@ export async function calculateTrendingTags(): Promise<void> {
 
   const duration = Date.now() - startTime;
   logger.info(
-    'Trending tags calculation completed',
+    "Trending tags calculation completed",
     {
       duration: `${duration}ms`,
       tagsCalculated: topTrending.length,
       topTag: topTrending[0]?.tagDisplayName,
     },
-    'TrendingCalculationService'
+    "TrendingCalculationService",
   );
 }
 
@@ -181,9 +181,9 @@ export async function calculateTrendingIfNeeded(): Promise<boolean> {
 
   if (!shouldCalculate) {
     logger.debug(
-      'Trending calculation not needed yet',
+      "Trending calculation not needed yet",
       undefined,
-      'TrendingCalculationService'
+      "TrendingCalculationService",
     );
     return false;
   }
@@ -212,7 +212,7 @@ export async function getTrendingPromptContext(): Promise<string> {
     .limit(10);
 
   if (topTrending.length === 0) {
-    return '';
+    return "";
   }
 
   // Get tag names from tag service
@@ -222,15 +222,15 @@ export async function getTrendingPromptContext(): Promise<string> {
   const trendingLines = topTrending.map((trend) => {
     const tag = tagDetails.get(trend.tagId);
     const name = tag?.displayName || tag?.name || `#tag-${trend.tagId}`;
-    const context = trend.relatedContext ? ` (${trend.relatedContext})` : '';
+    const context = trend.relatedContext ? ` (${trend.relatedContext})` : "";
     const postInfo =
-      trend.postCount > 1 ? ` - ${trend.postCount} posts` : ' - 1 post';
+      trend.postCount > 1 ? ` - ${trend.postCount} posts` : " - 1 post";
     return `${trend.rank}. ${name}${context}${postInfo}`;
   });
 
   return `
 === TRENDING TOPICS (What people are talking about) ===
-${trendingLines.join('\n')}
+${trendingLines.join("\n")}
 
 Consider referencing these trends in your post if relevant to your perspective.
 =======================================================
@@ -241,14 +241,14 @@ Consider referencing these trends in your post if relevant to your perspective.
  * Get tag details by IDs (helper for trending context)
  */
 async function getTagDetails(
-  tagIds: string[]
+  tagIds: string[],
 ): Promise<Map<string, { name: string; displayName: string | null }>> {
   if (tagIds.length === 0) {
     return new Map();
   }
 
   // Import tags table dynamically to avoid circular imports
-  const { tags, inArray } = await import('@feed/db');
+  const { tags, inArray } = await import("@feed/db");
 
   const tagRows = await db
     .select({

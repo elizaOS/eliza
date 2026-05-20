@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { cn } from '@feed/shared';
+import { cn } from "@feed/shared";
 import {
   Check,
   Loader2,
@@ -9,12 +9,12 @@ import {
   Plus,
   Trash2,
   X,
-} from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import {
   canDeleteConversation,
   getConversationDisplayName,
-} from './conversation-utils';
+} from "./conversation-utils";
 
 /** Conversation info */
 interface ConversationInfo {
@@ -53,7 +53,7 @@ export function ConversationList({
   onClose,
 }: ConversationListProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editValue, setEditValue] = useState('');
+  const [editValue, setEditValue] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -74,7 +74,7 @@ export function ConversationList({
 
   const handleStartEdit = (
     e: React.MouseEvent,
-    conversation: ConversationInfo
+    conversation: ConversationInfo,
   ) => {
     e.stopPropagation(); // Prevent selecting the conversation
     if (!onRenameConversation) return;
@@ -85,7 +85,7 @@ export function ConversationList({
 
   const handleDeleteConversation = async (
     e: React.MouseEvent,
-    conversation: ConversationInfo
+    conversation: ConversationInfo,
   ) => {
     e.stopPropagation();
     if (!onDeleteConversation) return;
@@ -93,13 +93,13 @@ export function ConversationList({
     if (deletingId) return;
 
     const confirmed = window.confirm(
-      'Delete this conversation? This action cannot be undone.'
+      "Delete this conversation? This action cannot be undone.",
     );
     if (!confirmed) return;
 
     if (editingId === conversation.id) {
       setEditingId(null);
-      setEditValue('');
+      setEditValue("");
     }
 
     setDeletingId(conversation.id);
@@ -131,14 +131,14 @@ export function ConversationList({
 
   const handleCancelRename = () => {
     setEditingId(null);
-    setEditValue('');
+    setEditValue("");
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
+    if (e.key === "Enter") {
       e.preventDefault();
       handleSaveRename();
-    } else if (e.key === 'Escape') {
+    } else if (e.key === "Escape") {
       handleCancelRename();
     }
   };
@@ -179,10 +179,10 @@ export function ConversationList({
             <div
               key={conversation.id}
               className={cn(
-                'group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors',
+                "group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors",
                 conversation.isActive
-                  ? 'bg-primary/10 text-primary'
-                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
               )}
             >
               {editingId === conversation.id ? (
@@ -250,8 +250,8 @@ export function ConversationList({
                           className="rounded p-0.5 text-muted-foreground opacity-100 transition-opacity hover:text-destructive disabled:cursor-not-allowed disabled:text-muted-foreground/40 md:opacity-0 md:group-hover:opacity-100"
                           title={
                             canDeleteConversation(conversations.length)
-                              ? 'Delete'
-                              : 'Cannot delete the only conversation'
+                              ? "Delete"
+                              : "Cannot delete the only conversation"
                           }
                           aria-label="Delete conversation"
                         >

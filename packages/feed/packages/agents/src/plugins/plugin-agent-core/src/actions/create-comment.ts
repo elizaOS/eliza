@@ -5,7 +5,6 @@
  * Use CHECK_POST_DETAIL or CHECK_COMMENT_DETAIL first to get IDs.
  */
 
-import { and, comments, db, eq, isNull, posts } from '@feed/db';
 import type {
   Action,
   ActionResult,
@@ -13,51 +12,52 @@ import type {
   IAgentRuntime,
   Memory,
   State,
-} from '@elizaos/core';
-import { logger } from '../../../../shared/logger';
-import { generateSnowflakeId } from '../../../../shared/snowflake';
+} from "@elizaos/core";
+import { and, comments, db, eq, isNull, posts } from "@feed/db";
+import { logger } from "../../../../shared/logger";
+import { generateSnowflakeId } from "../../../../shared/snowflake";
 
 export const createCommentAction: Action = {
-  name: 'CREATE_COMMENT',
-  description: 'Create a comment on a post or reply to an existing comment.',
+  name: "CREATE_COMMENT",
+  description: "Create a comment on a post or reply to an existing comment.",
 
   parameters: {
     postId: {
-      type: 'string',
-      description: 'The ID of the post to comment on (required)',
+      type: "string",
+      description: "The ID of the post to comment on (required)",
       required: true,
     },
     parentCommentId: {
-      type: 'string',
+      type: "string",
       description:
-        'The ID of the comment to reply to (optional - omit to comment directly on the post)',
+        "The ID of the comment to reply to (optional - omit to comment directly on the post)",
       required: false,
     },
     content: {
-      type: 'string',
-      description: 'The content of your comment (required)',
+      type: "string",
+      description: "The content of your comment (required)",
       required: true,
     },
-  } as unknown as Action['parameters'],
+  } as unknown as Action["parameters"],
 
   examples: [
     [
       {
-        name: 'user',
+        name: "user",
         content: { text: 'Comment on post 123 saying "Great point!"' },
       },
       {
-        name: 'assistant',
+        name: "assistant",
         content: { text: "I'll add that comment to the post..." },
       },
     ],
     [
       {
-        name: 'user',
-        content: { text: 'Reply to comment 456 disagreeing with their take' },
+        name: "user",
+        content: { text: "Reply to comment 456 disagreeing with their take" },
       },
       {
-        name: 'assistant',
+        name: "assistant",
         content: { text: "I'll reply to that comment..." },
       },
     ],
@@ -66,7 +66,7 @@ export const createCommentAction: Action = {
   validate: async (
     _runtime: IAgentRuntime,
     _message: Memory,
-    _state?: State
+    _state?: State,
   ): Promise<boolean> => true,
 
   handler: async (
@@ -74,7 +74,7 @@ export const createCommentAction: Action = {
     _message: Memory,
     state?: State,
     _options?: Record<string, unknown>,
-    _callback?: HandlerCallback
+    _callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const agentUserId = runtime.agentId;
     const actionParams = state?.data?.actionParams as
@@ -93,16 +93,16 @@ export const createCommentAction: Action = {
     if (!postId) {
       return {
         success: false,
-        text: 'Missing postId parameter. Use CHECK_POST_DETAIL first to get the post ID.',
-        error: 'Missing postId',
+        text: "Missing postId parameter. Use CHECK_POST_DETAIL first to get the post ID.",
+        error: "Missing postId",
       };
     }
 
     if (!content || content.trim().length === 0) {
       return {
         success: false,
-        text: 'Missing or empty content parameter. Please provide the comment text.',
-        error: 'Missing content',
+        text: "Missing or empty content parameter. Please provide the comment text.",
+        error: "Missing content",
       };
     }
 
@@ -118,7 +118,7 @@ export const createCommentAction: Action = {
         return {
           success: false,
           text: `Post not found or deleted. Use CHECK_POST_DETAIL to verify the post ID.`,
-          error: 'Post not found',
+          error: "Post not found",
         };
       }
 
@@ -128,7 +128,7 @@ export const createCommentAction: Action = {
           .select({ id: comments.id, postId: comments.postId })
           .from(comments)
           .where(
-            and(eq(comments.id, parentCommentId), isNull(comments.deletedAt))
+            and(eq(comments.id, parentCommentId), isNull(comments.deletedAt)),
           )
           .limit(1);
 
@@ -136,7 +136,7 @@ export const createCommentAction: Action = {
           return {
             success: false,
             text: `Parent comment not found or deleted. Use CHECK_POST_DETAIL to see available comments.`,
-            error: 'Parent comment not found',
+            error: "Parent comment not found",
           };
         }
 
@@ -145,7 +145,7 @@ export const createCommentAction: Action = {
           return {
             success: false,
             text: `Parent comment does not belong to the specified post.`,
-            error: 'Comment/post mismatch',
+            error: "Comment/post mismatch",
           };
         }
       }
@@ -172,7 +172,7 @@ export const createCommentAction: Action = {
       logger.info(
         `[CREATE_COMMENT] ${actionDescription}`,
         { commentId, postId, parentCommentId },
-        'CreateComment'
+        "CreateComment",
       );
 
       return {
@@ -197,8 +197,8 @@ export const createCommentAction: Action = {
         },
       };
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      logger.error('[CREATE_COMMENT] Error:', errorMsg);
+      const errorMsg = error instanceof Error ? error.message : "Unknown error";
+      logger.error("[CREATE_COMMENT] Error:", errorMsg);
 
       return {
         success: false,

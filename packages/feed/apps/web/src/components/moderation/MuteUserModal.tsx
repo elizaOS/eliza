@@ -27,12 +27,12 @@
  * />
  * ```
  */
-'use client';
+"use client";
 
-import { VolumeX, X } from 'lucide-react';
-import { useState, useTransition } from 'react';
-import { toast } from 'sonner';
-import { apiUrl } from '@/utils/api-url';
+import { VolumeX, X } from "lucide-react";
+import { useState, useTransition } from "react";
+import { toast } from "sonner";
+import { apiUrl } from "@/utils/api-url";
 
 interface MuteUserModalProps {
   isOpen: boolean;
@@ -51,23 +51,23 @@ export function MuteUserModal({
   isNPC: _isNPC,
   onSuccess,
 }: MuteUserModalProps) {
-  const [reason, setReason] = useState('');
+  const [reason, setReason] = useState("");
   const [isMuting, startMuting] = useTransition();
 
   const handleMute = () => {
     startMuting(async () => {
       const response = await fetch(apiUrl(`/api/users/${targetUserId}/mute`), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: 'mute',
+          action: "mute",
           reason: reason || undefined,
         }),
       });
 
       if (!response.ok) {
         const error = await response.json();
-        toast.error(error.message || 'Failed to mute user');
+        toast.error(error.message || "Failed to mute user");
         return;
       }
 

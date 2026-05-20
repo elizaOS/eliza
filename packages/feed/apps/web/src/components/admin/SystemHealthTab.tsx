@@ -4,9 +4,9 @@
  * Uses the shared system status snapshot from `/api/admin/stats/system` so the
  * dashboard and cron alerting describe the same subsystem state.
  */
-'use client';
+"use client";
 
-import { cn } from '@feed/shared';
+import { cn } from "@feed/shared";
 import {
   Activity,
   AlertCircle,
@@ -23,23 +23,23 @@ import {
   Server,
   Timer,
   Zap,
-} from 'lucide-react';
-import { useCallback, useEffect, useState, useTransition } from 'react';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { apiUrl } from '@/utils/api-url';
+} from "lucide-react";
+import { useCallback, useEffect, useState, useTransition } from "react";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { apiUrl } from "@/utils/api-url";
 
-type SystemStatusLevel = 'healthy' | 'warning' | 'critical';
+type SystemStatusLevel = "healthy" | "warning" | "critical";
 
 type SubsystemKey =
-  | 'database'
-  | 'redis'
-  | 'game-engine'
-  | 'cron'
-  | 'realtime'
-  | 'content'
-  | 'llm'
-  | 'query-performance'
-  | 'memory';
+  | "database"
+  | "redis"
+  | "game-engine"
+  | "cron"
+  | "realtime"
+  | "content"
+  | "llm"
+  | "query-performance"
+  | "memory";
 
 interface SystemStatusData {
   status: SystemStatusLevel;
@@ -85,7 +85,7 @@ interface SystemStatusData {
     alerts: Array<{
       jobName: string;
       message: string;
-      severity: 'warning' | 'critical';
+      severity: "warning" | "critical";
     }>;
     gameTick: CronJob | null;
     agentTick: CronJob | null;
@@ -123,17 +123,17 @@ const subsystemIcons: Record<
 > = {
   database: Database,
   redis: Layers3,
-  'game-engine': Zap,
+  "game-engine": Zap,
   cron: Clock3,
   realtime: Radio,
   content: MessageSquare,
   llm: Activity,
-  'query-performance': Timer,
+  "query-performance": Timer,
   memory: Cpu,
 };
 
 function formatTimeSince(ms: number | null) {
-  if (ms === null) return 'Never';
+  if (ms === null) return "Never";
   if (ms < 60_000) return `${Math.round(ms / 1000)}s ago`;
   if (ms < 3_600_000) return `${Math.round(ms / 60_000)}m ago`;
   if (ms < 86_400_000) return `${Math.round(ms / 3_600_000)}h ago`;
@@ -141,7 +141,7 @@ function formatTimeSince(ms: number | null) {
 }
 
 function formatTimeFromIso(value: string | null) {
-  if (!value) return 'Never';
+  if (!value) return "Never";
   return formatTimeSince(Date.now() - new Date(value).getTime());
 }
 
@@ -159,33 +159,33 @@ function formatUptime(ms: number) {
 
 function getStatusContainerClass(status: SystemStatusLevel) {
   switch (status) {
-    case 'healthy':
-      return 'border-green-500/20 bg-green-500/10 text-green-600';
-    case 'warning':
-      return 'border-amber-500/20 bg-amber-500/10 text-amber-600';
-    case 'critical':
-      return 'border-red-500/20 bg-red-500/10 text-red-600';
+    case "healthy":
+      return "border-green-500/20 bg-green-500/10 text-green-600";
+    case "warning":
+      return "border-amber-500/20 bg-amber-500/10 text-amber-600";
+    case "critical":
+      return "border-red-500/20 bg-red-500/10 text-red-600";
   }
 }
 
 function getStatusDotClass(status: SystemStatusLevel) {
   switch (status) {
-    case 'healthy':
-      return 'bg-green-500';
-    case 'warning':
-      return 'bg-amber-500';
-    case 'critical':
-      return 'bg-red-500';
+    case "healthy":
+      return "bg-green-500";
+    case "warning":
+      return "bg-amber-500";
+    case "critical":
+      return "bg-red-500";
   }
 }
 
 function getStatusIcon(status: SystemStatusLevel) {
   switch (status) {
-    case 'healthy':
+    case "healthy":
       return <CheckCircle className="h-6 w-6 text-green-500" />;
-    case 'warning':
+    case "warning":
       return <AlertTriangle className="h-6 w-6 text-amber-500" />;
-    case 'critical':
+    case "critical":
       return <AlertCircle className="h-6 w-6 text-red-500" />;
   }
 }
@@ -220,7 +220,7 @@ function MetricCard({
 function SubsystemCard({
   subsystem,
 }: {
-  subsystem: SystemStatusData['subsystems'][number];
+  subsystem: SystemStatusData["subsystems"][number];
 }) {
   const Icon = subsystemIcons[subsystem.key] ?? Server;
 
@@ -240,14 +240,14 @@ function SubsystemCard({
         </div>
         <div
           className={cn(
-            'flex items-center gap-2 rounded-full border px-2.5 py-1 font-medium text-xs capitalize',
-            getStatusContainerClass(subsystem.status)
+            "flex items-center gap-2 rounded-full border px-2.5 py-1 font-medium text-xs capitalize",
+            getStatusContainerClass(subsystem.status),
           )}
         >
           <div
             className={cn(
-              'h-2 w-2 rounded-full',
-              getStatusDotClass(subsystem.status)
+              "h-2 w-2 rounded-full",
+              getStatusDotClass(subsystem.status),
             )}
           />
           {subsystem.status}
@@ -281,10 +281,10 @@ function CronJobRow({ job }: { job: CronJob | null }) {
 
   const status: SystemStatusLevel =
     job.consecutiveFailures >= 5
-      ? 'critical'
+      ? "critical"
       : job.consecutiveFailures >= 3
-        ? 'warning'
-        : 'healthy';
+        ? "warning"
+        : "healthy";
 
   return (
     <div className="rounded-lg bg-muted/40 px-3 py-3">
@@ -292,12 +292,12 @@ function CronJobRow({ job }: { job: CronJob | null }) {
         <div className="font-medium text-sm">{job.jobName}</div>
         <div
           className={cn(
-            'flex items-center gap-2 rounded-full border px-2 py-1 text-[11px] capitalize',
-            getStatusContainerClass(status)
+            "flex items-center gap-2 rounded-full border px-2 py-1 text-[11px] capitalize",
+            getStatusContainerClass(status),
           )}
         >
           <div
-            className={cn('h-2 w-2 rounded-full', getStatusDotClass(status))}
+            className={cn("h-2 w-2 rounded-full", getStatusDotClass(status))}
           />
           {status}
         </div>
@@ -320,7 +320,7 @@ export function SystemHealthTab() {
 
   const fetchHealth = useCallback((showRefreshing = false) => {
     const runFetch = async () => {
-      const response = await fetch(apiUrl('/api/admin/stats/system'));
+      const response = await fetch(apiUrl("/api/admin/stats/system"));
 
       if (!response.ok) {
         setLoading(false);
@@ -385,8 +385,8 @@ export function SystemHealthTab() {
         <div className="flex items-center gap-4">
           <div
             className={cn(
-              'rounded-xl border p-4',
-              getStatusContainerClass(data.status)
+              "rounded-xl border p-4",
+              getStatusContainerClass(data.status),
             )}
           >
             {getStatusIcon(data.status)}
@@ -397,10 +397,10 @@ export function SystemHealthTab() {
             </h2>
             <p className="text-muted-foreground">
               {data.summary.criticalCount > 0
-                ? `${data.summary.criticalCount} critical subsystem${data.summary.criticalCount === 1 ? '' : 's'}`
+                ? `${data.summary.criticalCount} critical subsystem${data.summary.criticalCount === 1 ? "" : "s"}`
                 : data.summary.warningCount > 0
-                  ? `${data.summary.warningCount} warning subsystem${data.summary.warningCount === 1 ? '' : 's'}`
-                  : 'All tracked subsystems are healthy'}
+                  ? `${data.summary.warningCount} warning subsystem${data.summary.warningCount === 1 ? "" : "s"}`
+                  : "All tracked subsystems are healthy"}
             </p>
           </div>
         </div>
@@ -417,7 +417,7 @@ export function SystemHealthTab() {
             className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2 font-medium text-sm transition-colors hover:bg-muted/80 disabled:opacity-50"
           >
             <RefreshCw
-              className={cn('h-4 w-4', isRefreshing && 'animate-spin')}
+              className={cn("h-4 w-4", isRefreshing && "animate-spin")}
             />
             Refresh
           </button>
@@ -427,17 +427,17 @@ export function SystemHealthTab() {
       {data.issues.length > 0 ? (
         <div
           className={cn(
-            'rounded-xl border p-4',
-            data.status === 'critical'
-              ? 'border-red-500/20 bg-red-500/10'
-              : 'border-amber-500/20 bg-amber-500/10'
+            "rounded-xl border p-4",
+            data.status === "critical"
+              ? "border-red-500/20 bg-red-500/10"
+              : "border-amber-500/20 bg-amber-500/10",
           )}
         >
           <div className="mb-2 flex items-center gap-2 font-semibold">
             <AlertTriangle
               className={cn(
-                'h-5 w-5',
-                data.status === 'critical' ? 'text-red-500' : 'text-amber-500'
+                "h-5 w-5",
+                data.status === "critical" ? "text-red-500" : "text-amber-500",
               )}
             />
             Active Issues
@@ -462,9 +462,9 @@ export function SystemHealthTab() {
         <MetricCard
           icon={Zap}
           label="Game tick"
-          value={data.gameEngine.isRunning ? 'Running' : 'Paused'}
+          value={data.gameEngine.isRunning ? "Running" : "Paused"}
           subValue={`Day ${data.gameEngine.currentDay} · last tick ${formatTimeSince(
-            data.gameEngine.timeSinceLastTickMs
+            data.gameEngine.timeSinceLastTickMs,
           )}`}
         />
         <MetricCard
@@ -533,20 +533,20 @@ export function SystemHealthTab() {
               <div
                 key={`${alert.jobName}-${alert.message}-${index}`}
                 className={cn(
-                  'rounded-lg border px-4 py-3',
-                  alert.severity === 'critical'
-                    ? 'border-red-500/20 bg-red-500/10'
-                    : 'border-amber-500/20 bg-amber-500/10'
+                  "rounded-lg border px-4 py-3",
+                  alert.severity === "critical"
+                    ? "border-red-500/20 bg-red-500/10"
+                    : "border-amber-500/20 bg-amber-500/10",
                 )}
               >
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-medium text-sm">{alert.jobName}</span>
                   <span
                     className={cn(
-                      'rounded-full px-2 py-0.5 text-[11px] uppercase tracking-wide',
-                      alert.severity === 'critical'
-                        ? 'bg-red-500/15 text-red-600'
-                        : 'bg-amber-500/15 text-amber-600'
+                      "rounded-full px-2 py-0.5 text-[11px] uppercase tracking-wide",
+                      alert.severity === "critical"
+                        ? "bg-red-500/15 text-red-600"
+                        : "bg-amber-500/15 text-amber-600",
                     )}
                   >
                     {alert.severity}

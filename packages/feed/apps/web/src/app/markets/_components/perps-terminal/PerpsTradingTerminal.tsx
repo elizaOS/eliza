@@ -1,32 +1,32 @@
-'use client';
+"use client";
 
-import { cn } from '@feed/shared';
-import { BarChart2, Bell, Home, Trophy, X } from 'lucide-react';
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
-import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
-import { Avatar } from '@/components/shared/Avatar';
-import { MarketsToggle } from '@/components/shared/MarketsToggle';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { useAuth } from '@/hooks/useAuth';
+import { cn } from "@feed/shared";
+import { BarChart2, Bell, Home, Trophy, X } from "lucide-react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import { Avatar } from "@/components/shared/Avatar";
+import { MarketsToggle } from "@/components/shared/MarketsToggle";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { useAuth } from "@/hooks/useAuth";
 import {
   usePerpMarkets,
   usePerpMarketsRealtime,
-} from '@/stores/perpMarketsStore';
-import { useUserPositionsPolling } from '@/stores/userPositionsStore';
+} from "@/stores/perpMarketsStore";
+import { useUserPositionsPolling } from "@/stores/userPositionsStore";
 import {
   useWalletBalance,
   useWalletBalancePolling,
-} from '@/stores/walletBalanceStore';
-import type { MarketTab, PerpMarket } from '@/types/markets';
-import { PerpsMarketDetailPanel } from './PerpsMarketDetailPanel';
-import { PerpsMarketListPanel } from './PerpsMarketListPanel';
-import { PerpsOrderEntryPanel } from './PerpsOrderEntryPanel';
+} from "@/stores/walletBalanceStore";
+import type { MarketTab, PerpMarket } from "@/types/markets";
+import { PerpsMarketDetailPanel } from "./PerpsMarketDetailPanel";
+import { PerpsMarketListPanel } from "./PerpsMarketListPanel";
+import { PerpsOrderEntryPanel } from "./PerpsOrderEntryPanel";
 import {
   PerpsTerminalBottomPanel,
   type PerpsTerminalBottomTab,
-} from './PerpsTerminalBottomPanel';
+} from "./PerpsTerminalBottomPanel";
 
 interface PerpsTradingTerminalProps {
   activeTab: MarketTab;
@@ -36,7 +36,7 @@ interface PerpsTradingTerminalProps {
 function pickDefaultMarket(markets: PerpMarket[]): PerpMarket | null {
   if (markets.length === 0) return null;
   const sorted = [...markets].sort(
-    (a, b) => (b.volume24h ?? 0) - (a.volume24h ?? 0)
+    (a, b) => (b.volume24h ?? 0) - (a.volume24h ?? 0),
   );
   return sorted[0] ?? null;
 }
@@ -60,12 +60,12 @@ export function PerpsTradingTerminal({
   const [rightCollapsed, setRightCollapsed] = useState(false);
   const [bottomCollapsed, setBottomCollapsed] = useState(false);
   const [bottomTab, setBottomTab] =
-    useState<PerpsTerminalBottomTab>('positions');
+    useState<PerpsTerminalBottomTab>("positions");
 
   const [isMobileMarketListOpen, setIsMobileMarketListOpen] = useState(false);
   const [isMobileOrderSheetOpen, setIsMobileOrderSheetOpen] = useState(false);
   const [activeMobileTab, setActiveMobileTab] =
-    useState<PerpsTerminalBottomTab>('positions');
+    useState<PerpsTerminalBottomTab>("positions");
 
   const fallbackMarket = useMemo(() => pickDefaultMarket(markets), [markets]);
 
@@ -79,7 +79,7 @@ export function PerpsTradingTerminal({
     if (!activeTicker) return null;
     return (
       markets.find(
-        (m) => m.ticker.toLowerCase() === activeTicker.toLowerCase()
+        (m) => m.ticker.toLowerCase() === activeTicker.toLowerCase(),
       ) ?? null
     );
   }, [markets, activeTicker]);
@@ -110,21 +110,21 @@ export function PerpsTradingTerminal({
               onClick={() => setLeftCollapsed((v) => !v)}
               className="rounded border border-white/10 bg-background/30 px-2 py-1 transition-colors hover:bg-muted/20 hover:text-foreground"
             >
-              {leftCollapsed ? 'Show markets' : 'Hide markets'}
+              {leftCollapsed ? "Show markets" : "Hide markets"}
             </button>
             <button
               type="button"
               onClick={() => setRightCollapsed((v) => !v)}
               className="rounded border border-white/10 bg-background/30 px-2 py-1 transition-colors hover:bg-muted/20 hover:text-foreground"
             >
-              {rightCollapsed ? 'Show trade' : 'Hide trade'}
+              {rightCollapsed ? "Show trade" : "Hide trade"}
             </button>
             <button
               type="button"
               onClick={() => setBottomCollapsed((v) => !v)}
               className="rounded border border-white/10 bg-background/30 px-2 py-1 transition-colors hover:bg-muted/20 hover:text-foreground"
             >
-              {bottomCollapsed ? 'Show bottom' : 'Hide bottom'}
+              {bottomCollapsed ? "Show bottom" : "Hide bottom"}
             </button>
           </div>
         </div>
@@ -262,8 +262,8 @@ export function PerpsTradingTerminal({
                 type="button"
                 onClick={() => setBottomCollapsed(false)}
                 className={cn(
-                  'flex h-7 shrink-0 items-center justify-between border-white/5 border-t bg-background/40 px-4 text-muted-foreground',
-                  'transition-colors hover:bg-muted/20 hover:text-foreground'
+                  "flex h-7 shrink-0 items-center justify-between border-white/5 border-t bg-background/40 px-4 text-muted-foreground",
+                  "transition-colors hover:bg-muted/20 hover:text-foreground",
                 )}
               >
                 <span className="font-semibold text-[10px] tracking-widest">
@@ -292,7 +292,7 @@ export function PerpsTradingTerminal({
               className="flex items-center gap-2 rounded-full bg-muted px-3 py-1.5"
             >
               <span className="font-bold text-sm">
-                {activeMarket?.ticker ?? 'Select'}
+                {activeMarket?.ticker ?? "Select"}
               </span>
               <span className="text-muted-foreground text-xs">▼</span>
             </button>
@@ -317,12 +317,12 @@ export function PerpsTradingTerminal({
             <div className="sticky top-0 z-30 flex h-12 shrink-0 items-center border-white/5 border-b bg-background px-2 shadow-sm">
               {(
                 [
-                  { id: 'positions', label: 'Positions', enabled: true },
-                  { id: 'orders', label: 'Orders', enabled: false },
-                  { id: 'pnl', label: 'PnL Analysis', enabled: false },
-                  { id: 'agent', label: 'Agent', enabled: false },
-                  { id: 'socials', label: 'Social', enabled: false },
-                  { id: 'trades', label: 'Trades', enabled: true },
+                  { id: "positions", label: "Positions", enabled: true },
+                  { id: "orders", label: "Orders", enabled: false },
+                  { id: "pnl", label: "PnL Analysis", enabled: false },
+                  { id: "agent", label: "Agent", enabled: false },
+                  { id: "socials", label: "Social", enabled: false },
+                  { id: "trades", label: "Trades", enabled: true },
                 ] as const
               ).map(({ id, label, enabled }) => {
                 const isActive = activeMobileTab === id;
@@ -332,9 +332,9 @@ export function PerpsTradingTerminal({
                     type="button"
                     disabled={!enabled}
                     className={cn(
-                      'relative flex h-full min-w-[88px] flex-1 items-center justify-center py-3 font-bold text-sm capitalize transition-colors',
-                      isActive ? 'text-foreground' : 'text-muted-foreground',
-                      !enabled && 'cursor-not-allowed opacity-60'
+                      "relative flex h-full min-w-[88px] flex-1 items-center justify-center py-3 font-bold text-sm capitalize transition-colors",
+                      isActive ? "text-foreground" : "text-muted-foreground",
+                      !enabled && "cursor-not-allowed opacity-60",
                     )}
                     onClick={() => {
                       if (!enabled) return;
@@ -374,7 +374,7 @@ export function PerpsTradingTerminal({
               className="pointer-events-auto w-full max-w-sm rounded-full bg-foreground py-3.5 font-bold text-background shadow-lg transition-transform active:scale-95"
               disabled={!activeMarket}
             >
-              Trade {activeMarket?.ticker ?? ''}
+              Trade {activeMarket?.ticker ?? ""}
             </button>
           </div>
 
@@ -438,7 +438,7 @@ export function PerpsTradingTerminal({
               <div className="slide-in-from-bottom-2 relative z-10 flex max-h-[85vh] w-full animate-in flex-col rounded-t-2xl border-white/5 border-t bg-background/95 shadow-2xl duration-200">
                 <div className="flex items-center justify-between border-white/5 border-b p-4">
                   <h2 className="font-bold text-lg">
-                    Trade {activeMarket?.ticker ?? ''}
+                    Trade {activeMarket?.ticker ?? ""}
                   </h2>
                   <button
                     type="button"
@@ -474,9 +474,9 @@ function MobileBottomNav({
 }) {
   const items = [
     {
-      href: '/profile',
-      key: 'profile',
-      label: 'Profile',
+      href: "/profile",
+      key: "profile",
+      label: "Profile",
       icon: (
         <div className="h-6 w-6">
           <Avatar
@@ -489,23 +489,23 @@ function MobileBottomNav({
         </div>
       ),
     },
-    { href: '/', key: 'home', label: 'Home', icon: <Home size={22} /> },
+    { href: "/", key: "home", label: "Home", icon: <Home size={22} /> },
     {
-      href: '/notifications',
-      key: 'notifications',
-      label: 'Notifications',
+      href: "/notifications",
+      key: "notifications",
+      label: "Notifications",
       icon: <Bell size={22} />,
     },
     {
-      href: '/leaderboard',
-      key: 'leaderboard',
-      label: 'Leaderboard',
+      href: "/leaderboard",
+      key: "leaderboard",
+      label: "Leaderboard",
       icon: <Trophy size={22} />,
     },
     {
-      href: '/markets',
-      key: 'markets',
-      label: 'Markets',
+      href: "/markets",
+      key: "markets",
+      label: "Markets",
       icon: <BarChart2 size={22} strokeWidth={2.5} />,
     },
   ] as const;
@@ -514,16 +514,16 @@ function MobileBottomNav({
     <div className="relative z-40 flex h-[72px] select-none items-center justify-between rounded-t-[20px] border-white/5 border-t bg-background px-2 pb-safe font-medium text-[10px] text-muted-foreground shadow-[0_-5px_15px_rgba(0,0,0,0.12)]">
       {items.map((item) => {
         const isActive =
-          item.href === '/markets'
-            ? activePathname.startsWith('/markets')
+          item.href === "/markets"
+            ? activePathname.startsWith("/markets")
             : activePathname === item.href;
         return (
           <Link
             key={item.key}
             href={item.href}
             className={cn(
-              'flex flex-1 flex-col items-center justify-center gap-1 py-1 transition-colors',
-              isActive ? 'font-bold text-foreground' : 'hover:text-foreground'
+              "flex flex-1 flex-col items-center justify-center gap-1 py-1 transition-colors",
+              isActive ? "font-bold text-foreground" : "hover:text-foreground",
             )}
           >
             {item.icon}

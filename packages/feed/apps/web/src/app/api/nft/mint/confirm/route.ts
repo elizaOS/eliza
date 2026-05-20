@@ -3,10 +3,10 @@ import {
   BadRequestError,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { confirmMint } from '@feed/api/services/nft-mint-service';
-import type { NextRequest } from 'next/server';
-import type { Hex } from 'viem';
+} from "@feed/api";
+import { confirmMint } from "@feed/api/services/nft-mint-service";
+import type { NextRequest } from "next/server";
+import type { Hex } from "viem";
 
 const TX_HASH_RE = /^0x[a-fA-F0-9]{64}$/;
 const ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/;
@@ -27,13 +27,13 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   };
 
   if (!txHash || !TX_HASH_RE.test(txHash)) {
-    throw new BadRequestError('Invalid transaction hash format');
+    throw new BadRequestError("Invalid transaction hash format");
   }
   if (!walletAddress || !ADDRESS_RE.test(walletAddress)) {
-    throw new BadRequestError('Invalid wallet address format');
+    throw new BadRequestError("Invalid wallet address format");
   }
 
   return successResponse(
-    await confirmMint(userId, txHash as Hex, walletAddress as Hex)
+    await confirmMint(userId, txHash as Hex, walletAddress as Hex),
   );
 });

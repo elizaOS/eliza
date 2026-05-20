@@ -3,19 +3,6 @@
  * Sell shares from a prediction market position via core PredictionMarketService
  */
 
-import type { JsonValue } from '@feed/api';
-import { broadcastToChannel } from '@feed/api';
-import {
-  PredictionDbAdapter,
-  PredictionMarketService,
-} from '@feed/core/markets/prediction';
-import { and, asUser, db, eq, positions } from '@feed/db';
-import {
-  FEE_CONFIG,
-  FeeService,
-  invalidateAfterPredictionTrade,
-  WalletService,
-} from '@feed/engine';
 import type {
   Action,
   ActionResult,
@@ -23,46 +10,59 @@ import type {
   IAgentRuntime,
   Memory,
   State,
-} from '@elizaos/core';
-import { AgentPnLService } from '../../../../services/AgentPnLService';
-import { logger } from '../../../../shared/logger';
+} from "@elizaos/core";
+import type { JsonValue } from "@feed/api";
+import { broadcastToChannel } from "@feed/api";
+import {
+  PredictionDbAdapter,
+  PredictionMarketService,
+} from "@feed/core/markets/prediction";
+import { and, asUser, db, eq, positions } from "@feed/db";
+import {
+  FEE_CONFIG,
+  FeeService,
+  invalidateAfterPredictionTrade,
+  WalletService,
+} from "@feed/engine";
+import { AgentPnLService } from "../../../../services/AgentPnLService";
+import { logger } from "../../../../shared/logger";
 
 const agentPnLService = new AgentPnLService();
 
 export const sellPredictionAction: Action = {
-  name: 'SELL_PREDICTION',
+  name: "SELL_PREDICTION",
   description:
-    'Sell shares from YOUR prediction market position. IMPORTANT: Call CHECK_PNL first to see your holdings - you need the position ID and your actual share count. Do NOT rely on conversation history. Requires positionId and shares.',
+    "Sell shares from YOUR prediction market position. IMPORTANT: Call CHECK_PNL first to see your holdings - you need the position ID and your actual share count. Do NOT rely on conversation history. Requires positionId and shares.",
   parameters: {
     positionId: {
-      type: 'string',
-      description: 'The ID of the position to sell from',
+      type: "string",
+      description: "The ID of the position to sell from",
       required: true,
     },
     shares: {
-      type: 'number',
-      description: 'Number of shares to sell',
+      type: "number",
+      description: "Number of shares to sell",
       required: true,
     },
-  } as unknown as Action['parameters'],
+  } as unknown as Action["parameters"],
   examples: [
     [
       {
-        name: 'user',
-        content: { text: 'Sell 50 shares from my Tesla position' },
+        name: "user",
+        content: { text: "Sell 50 shares from my Tesla position" },
       },
       {
-        name: 'assistant',
-        content: { text: 'Selling those shares for you...' },
+        name: "assistant",
+        content: { text: "Selling those shares for you..." },
       },
     ],
     [
       {
-        name: 'user',
-        content: { text: 'Close out my position on the Apple prediction' },
+        name: "user",
+        content: { text: "Close out my position on the Apple prediction" },
       },
       {
-        name: 'assistant',
+        name: "assistant",
         content: { text: "I'll sell your shares from that position." },
       },
     ],
@@ -71,7 +71,7 @@ export const sellPredictionAction: Action = {
   validate: async (
     _runtime: IAgentRuntime,
     _message: Memory,
-    _state?: State
+    _state?: State,
   ): Promise<boolean> => true,
 
   handler: async (
@@ -79,7 +79,7 @@ export const sellPredictionAction: Action = {
     _message: Memory,
     state?: State,
     _options?: Record<string, unknown>,
-    _callback?: HandlerCallback
+    _callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const agentUserId = runtime.agentId;
 
@@ -94,16 +94,16 @@ export const sellPredictionAction: Action = {
     if (!positionId || !sharesToSell) {
       return {
         success: false,
-        text: 'Missing parameters. Call CHECK_PNL first to get positionId and share count.',
-        error: 'Missing parameters: positionId or shares',
+        text: "Missing parameters. Call CHECK_PNL first to get positionId and share count.",
+        error: "Missing parameters: positionId or shares",
       };
     }
 
     if (sharesToSell <= 0) {
       return {
         success: false,
-        text: 'Shares must be greater than 0.',
-        error: 'Invalid shares',
+        text: "Shares must be greater than 0.",
+        error: "Invalid shares",
       };
     }
 
@@ -116,8 +116,8 @@ export const sellPredictionAction: Action = {
           and(
             eq(positions.id, positionId),
             eq(positions.userId, agentUserId),
-            eq(positions.status, 'active')
-          )
+            eq(positions.status, "active"),
+          ),
         )
         .limit(1);
 
@@ -125,7 +125,7 @@ export const sellPredictionAction: Action = {
         return {
           success: false,
           text: `Position not found. Call CHECK_PNL first to get valid positionId.`,
-          error: 'Position not found',
+          error: "Position not found",
         };
       }
 
@@ -134,7 +134,7 @@ export const sellPredictionAction: Action = {
         return {
           success: false,
           text: `Only ${currentShares.toFixed(2)} shares available. Call CHECK_PNL to verify.`,
-          error: 'Insufficient shares',
+          error: "Insufficient shares",
           values: { currentShares },
         };
       }
@@ -149,18 +149,18 @@ export const sellPredictionAction: Action = {
                 userId,
                 amount,
                 reason,
-                description ?? '',
+                description ?? "",
                 relatedId,
-                txDb
+                txDb,
               ),
             credit: ({ userId, amount, reason, description, relatedId }) =>
               WalletService.credit(
                 userId,
                 amount,
                 reason,
-                description ?? '',
+                description ?? "",
                 relatedId,
-                txDb
+                txDb,
               ),
             recordPnL: async ({ userId, pnl, reason, relatedId }) => {
               await WalletService.recordPnL(userId, pnl, reason, relatedId);
@@ -194,7 +194,7 @@ export const sellPredictionAction: Action = {
                 amount,
                 positionId,
                 relatedId,
-                txDb // Pass the existing transaction to avoid nested transaction deadlocks
+                txDb, // Pass the existing transaction to avoid nested transaction deadlocks
               ),
           },
         });
@@ -217,17 +217,17 @@ export const sellPredictionAction: Action = {
       await agentPnLService.recordTrade({
         agentId: agentUserId,
         userId: agentUserId,
-        marketType: 'prediction',
+        marketType: "prediction",
         marketId: sell.marketId,
-        action: 'close',
-        side: position.side ? 'yes' : 'no',
+        action: "close",
+        side: position.side ? "yes" : "no",
         amount: proceeds,
         price: sell.result.avgPrice,
-        reasoning: (state?.data?.thought as string) || 'Chat-initiated sell',
+        reasoning: (state?.data?.thought as string) || "Chat-initiated sell",
         pnl: realizedPnL,
       });
 
-      logger.info('[SELL_PREDICTION] Trade successful', {
+      logger.info("[SELL_PREDICTION] Trade successful", {
         agentUserId,
         positionId,
         sharesSold: sharesToSell,
@@ -241,7 +241,7 @@ export const sellPredictionAction: Action = {
         data: {
           positionId,
           marketId: sell.marketId,
-          side: position.side ? 'YES' : 'NO',
+          side: position.side ? "YES" : "NO",
           sharesSold: sharesToSell,
           proceeds,
           remainingShares,
@@ -254,8 +254,8 @@ export const sellPredictionAction: Action = {
         },
       };
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      logger.error('[SELL_PREDICTION] Error:', errorMsg);
+      const errorMsg = error instanceof Error ? error.message : "Unknown error";
+      logger.error("[SELL_PREDICTION] Error:", errorMsg);
       return {
         success: false,
         text: `Failed to sell shares: ${errorMsg}`,

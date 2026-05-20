@@ -11,8 +11,8 @@
  * This file is kept for backwards compatibility and utility functions.
  */
 
-import { logger } from '@feed/shared';
-import type { Address } from 'viem';
+import { logger } from "@feed/shared";
+import type { Address } from "viem";
 
 export interface ProfileMetadata {
   name: string;
@@ -58,17 +58,17 @@ export function isBackendSigningEnabled(): boolean {
  * @throws Error - Always throws as this method is deprecated
  */
 export async function updateProfileBackendSigned(
-  _params: BackendSignedUpdateParams
+  _params: BackendSignedUpdateParams,
 ): Promise<BackendSignedUpdateResult> {
   logger.warn(
-    'updateProfileBackendSigned is deprecated - profile updates are now database-first',
+    "updateProfileBackendSigned is deprecated - profile updates are now database-first",
     {},
-    'BackendSigner'
+    "BackendSigner",
   );
 
   throw new Error(
-    'Backend-signed on-chain profile updates are disabled. ' +
-      'Profile updates are saved to the database and synced to chain via background job.'
+    "Backend-signed on-chain profile updates are disabled. " +
+      "Profile updates are saved to the database and synced to chain via background job.",
   );
 }
 
@@ -81,8 +81,8 @@ export async function updateProfileBackendSigned(
  * @returns Always returns false as backend signing is disabled
  */
 export async function verifyBackendSignedUpdate(
-  _txHash: `0x${string}`
+  _txHash: `0x${string}`,
 ): Promise<boolean> {
-  logger.warn('verifyBackendSignedUpdate is deprecated', {}, 'BackendSigner');
+  logger.warn("verifyBackendSignedUpdate is deprecated", {}, "BackendSigner");
   return false;
 }

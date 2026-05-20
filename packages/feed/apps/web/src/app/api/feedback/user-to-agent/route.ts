@@ -98,17 +98,17 @@ import {
   BusinessLogicError,
   requireUserByIdentifier,
   withErrorHandling,
-} from '@feed/api';
-import type { JsonValue } from '@feed/db';
-import { db } from '@feed/db';
-import { updateFeedbackMetrics } from '@feed/engine';
-import { generateSnowflakeId, logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { z } from 'zod';
+} from "@feed/api";
+import type { JsonValue } from "@feed/db";
+import { db } from "@feed/db";
+import { updateFeedbackMetrics } from "@feed/engine";
+import { generateSnowflakeId, logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { z } from "zod";
 
 const UserToAgentFeedbackSchema = z.object({
-  agentId: z.string().min(1, 'agentId is required'),
+  agentId: z.string().min(1, "agentId is required"),
   score: z.number().min(0).max(100),
   rating: z.number().int().min(1).max(5).optional(),
   comment: z.string().max(5000).optional(),
@@ -118,7 +118,7 @@ const UserToAgentFeedbackSchema = z.object({
 });
 
 const UserToAgentFeedbackQuerySchema = z.object({
-  agentId: z.string().min(1, 'agentId is required'),
+  agentId: z.string().min(1, "agentId is required"),
   limit: z.number().int().min(1).max(100).default(20),
   offset: z.number().int().min(0).default(0),
 });
@@ -136,8 +136,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   if (fromUser.id === toAgent.id) {
     throw new BusinessLogicError(
-      'Cannot submit feedback to yourself',
-      'SELF_FEEDBACK'
+      "Cannot submit feedback to yourself",
+      "SELF_FEEDBACK",
     );
   }
 
@@ -151,14 +151,14 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       rating: body.rating,
       comment: body.comment,
       category: body.category,
-      interactionType: body.interactionType ?? 'user_to_agent',
+      interactionType: body.interactionType ?? "user_to_agent",
       metadata: body.metadata as JsonValue | undefined,
       createdAt: now,
       updatedAt: now,
     },
   });
 
-  logger.info('User-to-agent feedback created', {
+  logger.info("User-to-agent feedback created", {
     feedbackId: feedback.id,
     fromUserId: fromUser.id,
     toAgentId: toAgent.id,
@@ -168,7 +168,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   await updateFeedbackMetrics(toAgent.id, body.score, {
     category: body.category,
-    interactionType: body.interactionType ?? 'user_to_agent',
+    interactionType: body.interactionType ?? "user_to_agent",
   });
 
   const metrics = await db.agentPerformanceMetrics.findUnique({
@@ -192,7 +192,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       feedbackId: feedback.id,
       reputation: metrics,
     },
-    { status: 201 }
+    { status: 201 },
   );
 });
 
@@ -201,9 +201,9 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
  */
 export const GET = withErrorHandling(async (request: NextRequest) => {
   const { searchParams } = new URL(request.url);
-  const agentIdParam = searchParams.get('agentId')!;
-  const limitParam = searchParams.get('limit');
-  const offsetParam = searchParams.get('offset');
+  const agentIdParam = searchParams.get("agentId")!;
+  const limitParam = searchParams.get("limit");
+  const offsetParam = searchParams.get("offset");
 
   const queryParse = UserToAgentFeedbackQuerySchema.parse({
     agentId: agentIdParam,
@@ -220,10 +220,10 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       toUserId: agent.id,
       interactionType: {
         in: [
-          'user_to_agent',
-          'chat',
-          'trade_recommendation',
-          'game_assistance',
+          "user_to_agent",
+          "chat",
+          "trade_recommendation",
+          "game_assistance",
         ],
       },
     },
@@ -238,7 +238,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       },
     },
     orderBy: {
-      createdAt: 'desc',
+      createdAt: "desc",
     },
     take: limit,
     skip: offset,
@@ -249,10 +249,10 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       toUserId: agent.id,
       interactionType: {
         in: [
-          'user_to_agent',
-          'chat',
-          'trade_recommendation',
-          'game_assistance',
+          "user_to_agent",
+          "chat",
+          "trade_recommendation",
+          "game_assistance",
         ],
       },
     },

@@ -20,13 +20,13 @@
  * Run manually: `bun test src/engine/__tests__/integration/game-quality.test.ts`
  */
 
-import { beforeAll, describe, expect, setDefaultTimeout, test } from 'bun:test';
-import { logger } from '@feed/shared';
-import { existsSync, readFileSync } from 'fs';
-import { resolveLiveLlmTestConfig } from '../../../../testing/integration/helpers/live-runtime';
-import { GameGenerator } from '../../GameGenerator';
-import type { GeneratedGame } from '../../types/shared';
-import { formatError } from '../../utils/error-utils';
+import { beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
+import { existsSync, readFileSync } from "node:fs";
+import { logger } from "@feed/shared";
+import { resolveLiveLlmTestConfig } from "../../../../testing/integration/helpers/live-runtime";
+import { GameGenerator } from "../../GameGenerator";
+import type { GeneratedGame } from "../../types/shared";
+import { formatError } from "../../utils/error-utils";
 
 // Set timeout to 10 minutes for LLM-based generation
 setDefaultTimeout(600000);
@@ -35,13 +35,13 @@ setDefaultTimeout(600000);
 // Priority: process.env > .env.test > .env.local
 const loadEnvFile = (filePath: string) => {
   if (!existsSync(filePath)) return;
-  const envContent = readFileSync(filePath, 'utf-8');
-  for (const line of envContent.split('\n')) {
+  const envContent = readFileSync(filePath, "utf-8");
+  for (const line of envContent.split("\n")) {
     const trimmed = line.trim();
-    if (trimmed && !trimmed.startsWith('#')) {
-      const [key, ...valueParts] = trimmed.split('=');
+    if (trimmed && !trimmed.startsWith("#")) {
+      const [key, ...valueParts] = trimmed.split("=");
       if (key && valueParts.length > 0) {
-        const value = valueParts.join('=').replace(/^["']|["']$/g, '');
+        const value = valueParts.join("=").replace(/^["']|["']$/g, "");
         // Only set if not already in process.env (env vars take precedence)
         if (!process.env[key]) {
           process.env[key] = value;
@@ -52,28 +52,28 @@ const loadEnvFile = (filePath: string) => {
 };
 
 // Load .env.test first (created by CI prepare-env.sh), then .env.local (for local dev)
-loadEnvFile('.env.test');
-loadEnvFile('.env.local');
+loadEnvFile(".env.test");
+loadEnvFile(".env.local");
 
 const hasLLMKey = !!(
-  (process.env.GROQ_API_KEY?.trim() ?? '') !== '' ||
-  (process.env.ANTHROPIC_API_KEY?.trim() ?? '') !== '' ||
-  (process.env.OPENAI_API_KEY?.trim() ?? '') !== ''
+  (process.env.GROQ_API_KEY?.trim() ?? "") !== "" ||
+  (process.env.ANTHROPIC_API_KEY?.trim() ?? "") !== "" ||
+  (process.env.OPENAI_API_KEY?.trim() ?? "") !== ""
 );
 const liveLlmConfig = resolveLiveLlmTestConfig();
 
 const requireLLMKey = () => {
   if (!hasLLMKey) {
     throw new Error(
-      'GAME QUALITY TESTS REQUIRE LLM API KEY. ' +
-        'Set GROQ_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY to run these tests. ' +
-        'These tests validate actual engine functionality and MUST NOT be skipped.'
+      "GAME QUALITY TESTS REQUIRE LLM API KEY. " +
+        "Set GROQ_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY to run these tests. " +
+        "These tests validate actual engine functionality and MUST NOT be skipped.",
     );
   }
 };
 
 describe.skipIf(!liveLlmConfig.enabled)(
-  'Game Quality Integration Tests',
+  "Game Quality Integration Tests",
   () => {
     // Shared game instance - generated once before all tests
     let game: GeneratedGame | null = null;
@@ -83,13 +83,13 @@ describe.skipIf(!liveLlmConfig.enabled)(
 
       try {
         logger.info(
-          'Generating shared game for all quality tests...',
+          "Generating shared game for all quality tests...",
           undefined,
-          'QualityTest'
+          "QualityTest",
         );
         const generator = new GameGenerator();
         game = await generator.generateCompleteGame();
-        logger.info('Game generated successfully', undefined, 'QualityTest');
+        logger.info("Game generated successfully", undefined, "QualityTest");
       } catch (error) {
         const errorMessage = formatError(error);
         // Game generation failure is a test failure, not a skip
@@ -97,11 +97,11 @@ describe.skipIf(!liveLlmConfig.enabled)(
       }
     });
 
-    test('generated game has no undefined fields', async () => {
+    test("generated game has no undefined fields", async () => {
       // Game must be generated - enforced by beforeAll
       expect(game).toBeDefined();
 
-      logger.info('Validating game structure...', undefined, 'QualityTest');
+      logger.info("Validating game structure...", undefined, "QualityTest");
 
       const allActors = [
         ...game.setup.mainActors,
@@ -117,17 +117,17 @@ describe.skipIf(!liveLlmConfig.enabled)(
         expect(actor.role).toBeDefined();
 
         if (actor.persona) {
-          expect(typeof actor.persona.reliability).toBe('number');
+          expect(typeof actor.persona.reliability).toBe("number");
           expect(actor.persona.reliability).toBeGreaterThanOrEqual(0);
           expect(actor.persona.reliability).toBeLessThanOrEqual(1);
           expect(Array.isArray(actor.persona.insiderOrgs)).toBe(true);
-          expect(typeof actor.persona.willingToLie).toBe('boolean');
+          expect(typeof actor.persona.willingToLie).toBe("boolean");
         }
       }
       logger.info(
         `✅ All ${allActors.length} actors have required fields`,
         undefined,
-        'QualityTest'
+        "QualityTest",
       );
 
       let eventCount = 0;
@@ -149,7 +149,7 @@ describe.skipIf(!liveLlmConfig.enabled)(
       logger.info(
         `✅ All ${eventCount} events have required fields`,
         undefined,
-        'QualityTest'
+        "QualityTest",
       );
 
       let postCount = 0;
@@ -165,7 +165,7 @@ describe.skipIf(!liveLlmConfig.enabled)(
           expect(post.day).toBeDefined();
 
           const timestamp = new Date(post.timestamp);
-          expect(isNaN(timestamp.getTime())).toBe(false);
+          expect(Number.isNaN(timestamp.getTime())).toBe(false);
 
           if (post.sentiment !== null && post.sentiment !== undefined) {
             expect(post.sentiment).toBeGreaterThanOrEqual(-1);
@@ -182,16 +182,16 @@ describe.skipIf(!liveLlmConfig.enabled)(
       logger.info(
         `✅ All ${postCount} feed posts have required fields`,
         undefined,
-        'QualityTest'
+        "QualityTest",
       );
       logger.info(
-        '✅ PASS: No undefined fields detected',
+        "✅ PASS: No undefined fields detected",
         undefined,
-        'QualityTest'
+        "QualityTest",
       );
     });
 
-    test('all actor IDs are unique', async () => {
+    test("all actor IDs are unique", async () => {
       // Game must be generated - enforced by beforeAll
       expect(game).toBeDefined();
 
@@ -208,11 +208,11 @@ describe.skipIf(!liveLlmConfig.enabled)(
       logger.info(
         `✅ All ${ids.length} actor IDs are unique`,
         undefined,
-        'QualityTest'
+        "QualityTest",
       );
     });
 
-    test('all event IDs are unique', async () => {
+    test("all event IDs are unique", async () => {
       // Game must be generated - enforced by beforeAll
       expect(game).toBeDefined();
 
@@ -224,11 +224,11 @@ describe.skipIf(!liveLlmConfig.enabled)(
       logger.info(
         `✅ All ${ids.length} event IDs are unique`,
         undefined,
-        'QualityTest'
+        "QualityTest",
       );
     });
 
-    test('all actor references are valid', async () => {
+    test("all actor references are valid", async () => {
       // Game must be generated - enforced by beforeAll
       expect(game).toBeDefined();
 
@@ -250,9 +250,9 @@ describe.skipIf(!liveLlmConfig.enabled)(
         for (const post of day.feedPosts) {
           // Allow system authors
           if (
-            post.author.startsWith('game-') ||
-            post.author.startsWith('market-') ||
-            post.author === 'ambient'
+            post.author.startsWith("game-") ||
+            post.author.startsWith("market-") ||
+            post.author === "ambient"
           ) {
             continue;
           }
@@ -264,13 +264,13 @@ describe.skipIf(!liveLlmConfig.enabled)(
       }
 
       logger.info(
-        '✅ All actor and organization references are valid',
+        "✅ All actor and organization references are valid",
         undefined,
-        'QualityTest'
+        "QualityTest",
       );
     });
 
-    test('questions have metadata and arc plans', async () => {
+    test("questions have metadata and arc plans", async () => {
       // Game must be generated - enforced by beforeAll
       expect(game).toBeDefined();
 
@@ -278,33 +278,33 @@ describe.skipIf(!liveLlmConfig.enabled)(
         expect(question.metadata).toBeDefined();
         expect(question.metadata?.arcPlan).toBeDefined();
 
-        const arcPlan = question.metadata!.arcPlan!;
+        const arcPlan = question.metadata?.arcPlan!;
 
-        expect(typeof arcPlan.uncertaintyPeakDay).toBe('number');
-        expect(typeof arcPlan.clarityOnsetDay).toBe('number');
-        expect(typeof arcPlan.verificationDay).toBe('number');
+        expect(typeof arcPlan.uncertaintyPeakDay).toBe("number");
+        expect(typeof arcPlan.clarityOnsetDay).toBe("number");
+        expect(typeof arcPlan.verificationDay).toBe("number");
         expect(Array.isArray(arcPlan.insiders)).toBe(true);
         expect(Array.isArray(arcPlan.deceivers)).toBe(true);
 
         expect(arcPlan.clarityOnsetDay).toBeGreaterThan(
-          arcPlan.uncertaintyPeakDay
+          arcPlan.uncertaintyPeakDay,
         );
         expect(arcPlan.verificationDay).toBeGreaterThan(
-          arcPlan.clarityOnsetDay
+          arcPlan.clarityOnsetDay,
         );
 
         logger.info(
           `Q${question.id}: Uncertainty peak=${arcPlan.uncertaintyPeakDay}, Clarity=${arcPlan.clarityOnsetDay}, Verification=${arcPlan.verificationDay}`,
           undefined,
-          'QualityTest'
+          "QualityTest",
         );
       }
 
       logger.info(
-        '✅ All questions have valid arc plans',
+        "✅ All questions have valid arc plans",
         undefined,
-        'QualityTest'
+        "QualityTest",
       );
     });
-  }
+  },
 );

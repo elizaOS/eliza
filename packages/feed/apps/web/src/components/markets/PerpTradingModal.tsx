@@ -1,26 +1,26 @@
-'use client';
+"use client";
 
-import { FEE_CONFIG } from '@feed/engine/client';
-import { FEED_POINTS_SYMBOL, cn, logger } from '@feed/shared';
-import { AlertTriangle, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { toast } from 'sonner';
-import { useAuth } from '@/hooks/useAuth';
-import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
-import { usePerpOpenPreview } from '@/hooks/usePerpOpenPreview';
-import { usePerpTrade } from '@/hooks/usePerpTrade';
-import { useMarketTracking } from '@/hooks/usePostHog';
+import { FEE_CONFIG } from "@feed/engine/client";
+import { cn, FEED_POINTS_SYMBOL, logger } from "@feed/shared";
+import { AlertTriangle, TrendingDown, TrendingUp, Wallet } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
+import { useAuth } from "@/hooks/useAuth";
+import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
+import { usePerpOpenPreview } from "@/hooks/usePerpOpenPreview";
+import { usePerpTrade } from "@/hooks/usePerpTrade";
+import { useMarketTracking } from "@/hooks/usePostHog";
 import {
   getPerpRebalanceInfo,
   shouldApplyPerpBalanceGate,
-} from '@/lib/perps/rebalance';
-import { invalidatePerpMarketsCache } from '@/stores/perpMarketsStore';
-import { usePerpPositions } from '@/stores/userPositionsStore';
+} from "@/lib/perps/rebalance";
+import { invalidatePerpMarketsCache } from "@/stores/perpMarketsStore";
+import { usePerpPositions } from "@/stores/userPositionsStore";
 import {
   invalidateWalletBalance,
   useWalletBalance,
-} from '@/stores/walletBalanceStore';
-import type { PerpMarket, TradeSide } from '@/types/markets';
+} from "@/stores/walletBalanceStore";
+import type { PerpMarket, TradeSide } from "@/types/markets";
 
 /**
  * Perpetual trading modal component for opening new positions.
@@ -68,12 +68,12 @@ export function PerpTradingModal({
   isOpen,
   onClose,
   onSuccess,
-  defaultSide = 'long',
+  defaultSide = "long",
 }: PerpTradingModalProps) {
   const { user, authenticated, login, getAccessToken } = useAuth();
   const { trackMarketView, trackTrade } = useMarketTracking();
   const [side, setSide] = useState<TradeSide>(defaultSide);
-  const [size, setSize] = useState('100');
+  const [size, setSize] = useState("100");
   const [leverage, setLeverage] = useState(10);
   const [loading, setLoading] = useState(false);
   const { openPosition } = usePerpTrade({ getAccessToken });
@@ -83,7 +83,7 @@ export function PerpTradingModal({
     refresh: refreshBalance,
   } = useWalletBalance(isOpen ? user?.id : null);
   const { positions: perpPositions } = usePerpPositions(
-    isOpen && authenticated ? (user?.id ?? null) : null
+    isOpen && authenticated ? (user?.id ?? null) : null,
   );
 
   // Track previous isOpen to detect open transition
@@ -97,7 +97,7 @@ export function PerpTradingModal({
     // Only reset when transitioning from closed to open
     if (!prevIsOpen && isOpen) {
       setSide(defaultSide);
-      trackMarketView(market.ticker, 'perp');
+      trackMarketView(market.ticker, "perp");
     }
   }, [isOpen, defaultSide, market.ticker, trackMarketView]);
 
@@ -109,15 +109,15 @@ export function PerpTradingModal({
     if (!isOpen) return;
 
     const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !loading) {
+      if (event.key === "Escape" && !loading) {
         onClose();
       }
     };
 
-    document.addEventListener('keydown', handleEscape);
+    document.addEventListener("keydown", handleEscape);
 
     return () => {
-      document.removeEventListener('keydown', handleEscape);
+      document.removeEventListener("keydown", handleEscape);
     };
   }, [isOpen, loading, onClose]);
 
@@ -126,7 +126,7 @@ export function PerpTradingModal({
     perpPositions.find(
       (position) =>
         !position.closedAt &&
-        position.ticker.toUpperCase() === market.ticker.toUpperCase()
+        position.ticker.toUpperCase() === market.ticker.toUpperCase(),
     ) ?? null;
   const rebalanceInfo = getPerpRebalanceInfo({
     existingPosition,
@@ -135,7 +135,7 @@ export function PerpTradingModal({
   });
   const hasExistingPosition = existingPosition !== null;
   const topOfBookPrice =
-    side === 'long'
+    side === "long"
       ? (market.askPrice ?? market.currentPrice)
       : (market.bidPrice ?? market.currentPrice);
   const {
@@ -157,7 +157,7 @@ export function PerpTradingModal({
       ? openPreview.totalRequired > 0
       : shouldApplyPerpBalanceGate(rebalanceInfo);
   const capitalCheckLeverage =
-    rebalanceInfo?.type === 'add'
+    rebalanceInfo?.type === "add"
       ? (existingPosition?.leverage ?? leverage)
       : leverage;
   const marginRequired =
@@ -167,14 +167,14 @@ export function PerpTradingModal({
       : 0);
   const liquidationPrice =
     openPreview?.liquidationPrice ??
-    (side === 'long'
+    (side === "long"
       ? quotedExecutionPrice * (1 - 0.9 / leverage)
       : quotedExecutionPrice * (1 + 0.9 / leverage));
 
   const positionValue = sizeNum * leverage;
   const liquidationDistance =
     openPreview?.liquidationDistancePercent ??
-    (side === 'long'
+    (side === "long"
       ? ((market.currentPrice - liquidationPrice) / market.currentPrice) * 100
       : ((liquidationPrice - market.currentPrice) / market.currentPrice) * 100);
 
@@ -214,13 +214,13 @@ export function PerpTradingModal({
 
     if (sizeNum < market.minOrderSize) {
       toast.error(
-        `Minimum order size is ${FEED_POINTS_SYMBOL}${market.minOrderSize}`
+        `Minimum order size is ${FEED_POINTS_SYMBOL}${market.minOrderSize}`,
       );
       return;
     }
 
     if (showBalanceWarning) {
-      toast.error('Insufficient balance to cover margin and fees');
+      toast.error("Insufficient balance to cover margin and fees");
       return;
     }
 
@@ -234,10 +234,10 @@ export function PerpTradingModal({
         leverage,
       });
 
-      toast.success('Position opened!', {
+      toast.success("Position opened!", {
         description: `Opened ${leverage}x ${side} on ${market.ticker} at ${FEED_POINTS_SYMBOL}${result.position.entryPrice.toFixed(2)}`,
       });
-      trackTrade('open', market.ticker, sizeNum, true);
+      trackTrade("open", market.ticker, sizeNum, true);
 
       // Invalidate caches to ensure fresh data on next fetch
       invalidatePerpMarketsCache();
@@ -247,13 +247,13 @@ export function PerpTradingModal({
       onClose();
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : 'Failed to open position';
+        err instanceof Error ? err.message : "Failed to open position";
       logger.error(
-        'Failed to open perp position',
+        "Failed to open perp position",
         { ticker: market.ticker, side, size: sizeNum, leverage, error: err },
-        'PerpTradingModal'
+        "PerpTradingModal",
       );
-      trackTrade('open', market.ticker, sizeNum, false);
+      trackTrade("open", market.ticker, sizeNum, false);
       toast.error(message);
     } finally {
       setLoading(false);
@@ -325,7 +325,7 @@ export function PerpTradingModal({
                 <Wallet className="h-4 w-4" /> Balance
               </span>
               <span className="font-semibold text-foreground">
-                {balanceLoading ? '...' : formatPrice(balance)}
+                {balanceLoading ? "..." : formatPrice(balance)}
               </span>
             </div>
           )}
@@ -333,14 +333,14 @@ export function PerpTradingModal({
           <div className="mb-6 flex gap-2">
             <button
               type="button"
-              onClick={() => setSide('long')}
+              onClick={() => setSide("long")}
               disabled={loading}
               className={cn(
-                'flex flex-1 cursor-pointer items-center justify-center gap-2 rounded py-3 font-bold text-sm transition-all sm:text-base',
-                side === 'long'
-                  ? 'bg-green-600 text-primary-foreground'
-                  : 'bg-muted text-muted-foreground hover:bg-muted',
-                loading && 'cursor-not-allowed opacity-50'
+                "flex flex-1 cursor-pointer items-center justify-center gap-2 rounded py-3 font-bold text-sm transition-all sm:text-base",
+                side === "long"
+                  ? "bg-green-600 text-primary-foreground"
+                  : "bg-muted text-muted-foreground hover:bg-muted",
+                loading && "cursor-not-allowed opacity-50",
               )}
             >
               <TrendingUp size={18} />
@@ -348,14 +348,14 @@ export function PerpTradingModal({
             </button>
             <button
               type="button"
-              onClick={() => setSide('short')}
+              onClick={() => setSide("short")}
               disabled={loading}
               className={cn(
-                'flex flex-1 cursor-pointer items-center justify-center gap-2 rounded py-3 font-bold text-sm transition-all sm:text-base',
-                side === 'short'
-                  ? 'bg-red-600 text-primary-foreground'
-                  : 'bg-muted text-muted-foreground hover:bg-muted',
-                loading && 'cursor-not-allowed opacity-50'
+                "flex flex-1 cursor-pointer items-center justify-center gap-2 rounded py-3 font-bold text-sm transition-all sm:text-base",
+                side === "short"
+                  ? "bg-red-600 text-primary-foreground"
+                  : "bg-muted text-muted-foreground hover:bg-muted",
+                loading && "cursor-not-allowed opacity-50",
               )}
             >
               <TrendingDown size={18} />
@@ -376,8 +376,8 @@ export function PerpTradingModal({
                 step="10"
                 disabled={loading}
                 className={cn(
-                  'w-32 rounded bg-background/50 px-3 py-1.5 text-right font-medium text-foreground focus:bg-background focus:outline-none focus:ring-2 focus:ring-[#0066FF]/30',
-                  loading && 'cursor-not-allowed opacity-50'
+                  "w-32 rounded bg-background/50 px-3 py-1.5 text-right font-medium text-foreground focus:bg-background focus:outline-none focus:ring-2 focus:ring-[#0066FF]/30",
+                  loading && "cursor-not-allowed opacity-50",
                 )}
                 placeholder={`Min: ${FEED_POINTS_SYMBOL}${market.minOrderSize}`}
               />
@@ -397,12 +397,12 @@ export function PerpTradingModal({
                 max={market.maxLeverage}
                 value={leverage}
                 onChange={(event) =>
-                  setLeverage(Number.parseInt(event.target.value))
+                  setLeverage(Number.parseInt(event.target.value, 10))
                 }
                 disabled={loading}
                 className={cn(
-                  'mt-2 h-2 w-full cursor-pointer appearance-none rounded bg-background',
-                  loading && 'cursor-not-allowed opacity-50'
+                  "mt-2 h-2 w-full cursor-pointer appearance-none rounded bg-background",
+                  loading && "cursor-not-allowed opacity-50",
                 )}
               />
               <div className="mt-1 flex justify-between text-muted-foreground text-xs">
@@ -462,12 +462,12 @@ export function PerpTradingModal({
                     </span>
                     <span
                       className={cn(
-                        'text-right font-medium',
+                        "text-right font-medium",
                         liquidationDistance > 5
-                          ? 'text-green-600'
+                          ? "text-green-600"
                           : liquidationDistance > 2
-                            ? 'text-yellow-600'
-                            : 'text-red-600'
+                            ? "text-yellow-600"
+                            : "text-red-600",
                       )}
                     >
                       {liquidationDistance.toFixed(2)}%
@@ -486,8 +486,8 @@ export function PerpTradingModal({
                 <span className="text-muted-foreground">Total Required</span>
                 <span
                   className={cn(
-                    'text-right font-bold',
-                    showBalanceWarning ? 'text-red-600' : 'text-foreground'
+                    "text-right font-bold",
+                    showBalanceWarning ? "text-red-600" : "text-foreground",
                   )}
                 >
                   {formatPrice(totalRequired)}
@@ -501,7 +501,7 @@ export function PerpTradingModal({
               we do not show misleading numbers before submit.
               {openPreview && openPreview.totalRequired > 0 && (
                 <div className="mt-2 font-semibold">
-                  Estimated additional capital required:{' '}
+                  Estimated additional capital required:{" "}
                   {formatPrice(openPreview.totalRequired)}
                 </div>
               )}
@@ -540,9 +540,9 @@ export function PerpTradingModal({
                   High Risk Position
                 </div>
                 <p className="text-muted-foreground">
-                  {leverage > 50 && 'Leverage above 50x is extremely risky. '}
+                  {leverage > 50 && "Leverage above 50x is extremely risky. "}
                   {marginRequired > 1000 &&
-                    'This position requires significant margin. '}
+                    "This position requires significant margin. "}
                   Small price movements can lead to liquidation.
                 </p>
               </div>
@@ -562,15 +562,15 @@ export function PerpTradingModal({
               balanceLoading
             }
             className={cn(
-              'flex w-full cursor-pointer items-center justify-center gap-2 rounded py-3 font-bold text-lg text-primary-foreground transition-all',
-              side === 'long'
-                ? 'bg-green-600 hover:bg-green-700'
-                : 'bg-red-600 hover:bg-red-700',
+              "flex w-full cursor-pointer items-center justify-center gap-2 rounded py-3 font-bold text-lg text-primary-foreground transition-all",
+              side === "long"
+                ? "bg-green-600 hover:bg-green-700"
+                : "bg-red-600 hover:bg-red-700",
               (loading ||
                 sizeNum < market.minOrderSize ||
                 showBalanceWarning ||
                 balanceLoading) &&
-                'cursor-not-allowed opacity-50'
+                "cursor-not-allowed opacity-50",
             )}
           >
             {loading ? (
@@ -579,7 +579,7 @@ export function PerpTradingModal({
                 Opening Position...
               </>
             ) : (
-              `${side === 'long' ? 'LONG' : 'SHORT'} ${market.ticker} ${leverage}x`
+              `${side === "long" ? "LONG" : "SHORT"} ${market.ticker} ${leverage}x`
             )}
           </button>
           <button

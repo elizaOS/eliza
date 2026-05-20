@@ -10,16 +10,16 @@
  * Uses the unified virtualBalance for all agent operations.
  */
 
-import { agentService } from '@feed/agents';
-import { authenticateUser, withErrorHandling } from '@feed/api';
-import { balanceTransactions, db, desc, eq, users } from '@feed/db';
-import { FEED_POINTS_SYMBOL, logger, toISO } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+import { agentService } from "@feed/agents";
+import { authenticateUser, withErrorHandling } from "@feed/api";
+import { balanceTransactions, db, desc, eq, users } from "@feed/db";
+import { FEED_POINTS_SYMBOL, logger, toISO } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 export const GET = withErrorHandling(async function GET(
   req: NextRequest,
-  { params }: { params: Promise<{ agentId: string }> }
+  { params }: { params: Promise<{ agentId: string }> },
 ) {
   const user = await authenticateUser(req);
   const { agentId } = await params;
@@ -68,7 +68,7 @@ export const GET = withErrorHandling(async function GET(
 
 export const POST = withErrorHandling(async function POST(
   req: NextRequest,
-  { params }: { params: Promise<{ agentId: string }> }
+  { params }: { params: Promise<{ agentId: string }> },
 ) {
   const user = await authenticateUser(req);
   const { agentId } = await params;
@@ -76,19 +76,19 @@ export const POST = withErrorHandling(async function POST(
 
   const { action, amount } = body;
 
-  if (action === 'deposit') {
+  if (action === "deposit") {
     await agentService.depositTradingBalance(agentId, user.id, amount);
     logger.info(
       `Deposited ${FEED_POINTS_SYMBOL}${amount} to agent ${agentId}`,
       undefined,
-      'AgentsAPI'
+      "AgentsAPI",
     );
   } else {
     await agentService.withdrawTradingBalance(agentId, user.id, amount);
     logger.info(
       `Withdrew ${FEED_POINTS_SYMBOL}${amount} from agent ${agentId}`,
       undefined,
-      'AgentsAPI'
+      "AgentsAPI",
     );
   }
 
@@ -110,6 +110,6 @@ export const POST = withErrorHandling(async function POST(
       totalWithdrawn: Number(agent?.totalWithdrawn ?? 0),
     },
     userBalance,
-    message: `${action === 'deposit' ? 'Deposited' : 'Withdrew'} ${FEED_POINTS_SYMBOL}${amount.toFixed(2)} successfully`,
+    message: `${action === "deposit" ? "Deposited" : "Withdrew"} ${FEED_POINTS_SYMBOL}${amount.toFixed(2)} successfully`,
   });
 });

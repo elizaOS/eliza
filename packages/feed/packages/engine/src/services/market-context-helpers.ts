@@ -1,28 +1,28 @@
-import type { PerpMarketRecord } from '@feed/core/markets/perps';
+import type { PerpMarketRecord } from "@feed/core/markets/perps";
 import {
   maxSafeBuy,
   type PredictionMarketRecord,
   PredictionPricing,
-} from '@feed/core/markets/prediction/client';
+} from "@feed/core/markets/prediction/client";
 import type {
   PerpMarketSnapshot,
   PredictionMarketSnapshot,
-} from '../types/market-context';
+} from "../types/market-context";
 import {
   buildPredictionMarketProfile,
   getPredictionMarketLiquidityTier,
-} from './prediction-market-profiles';
+} from "./prediction-market-profiles";
 
 export const MAX_MARKET_QUESTION_LENGTH = 120;
 
 function truncateQuestion(question: string, maxQuestionLength: number): string {
   return question.length > maxQuestionLength
-    ? question.slice(0, maxQuestionLength) + '...'
+    ? `${question.slice(0, maxQuestionLength)}...`
     : question;
 }
 
 export function buildPerpMarketSnapshot(
-  market: PerpMarketRecord
+  market: PerpMarketRecord,
 ): PerpMarketSnapshot {
   return {
     ticker: market.ticker,
@@ -41,12 +41,12 @@ export function buildPerpMarketSnapshot(
 export function buildPredictionMarketSnapshot(
   market: Pick<
     PredictionMarketRecord,
-    'id' | 'question' | 'yesShares' | 'noShares' | 'liquidity' | 'endDate'
+    "id" | "question" | "yesShares" | "noShares" | "liquidity" | "endDate"
   >,
   now: Date = new Date(),
   options?: {
     maxQuestionLength?: number;
-  }
+  },
 ): PredictionMarketSnapshot {
   const profile = buildPredictionMarketProfile({
     marketId: market.id,
@@ -58,22 +58,22 @@ export function buildPredictionMarketSnapshot(
     PredictionPricing.getCurrentPrice(
       market.yesShares,
       market.noShares,
-      'yes'
+      "yes",
     ) * 100;
   const noPrice =
-    PredictionPricing.getCurrentPrice(market.yesShares, market.noShares, 'no') *
+    PredictionPricing.getCurrentPrice(market.yesShares, market.noShares, "no") *
     100;
   const daysUntilResolution = Math.max(
     0,
     Math.ceil(
-      (market.endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
-    )
+      (market.endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
+    ),
   );
 
   return {
     id: market.id,
     text:
-      typeof options?.maxQuestionLength === 'number'
+      typeof options?.maxQuestionLength === "number"
         ? truncateQuestion(market.question, options.maxQuestionLength)
         : market.question,
     yesPrice,

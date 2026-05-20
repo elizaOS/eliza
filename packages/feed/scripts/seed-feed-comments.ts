@@ -18,75 +18,75 @@ import {
   posts,
   reactions,
   users,
-} from '@feed/db';
-import { logger } from '@feed/shared';
-import { eq } from 'drizzle-orm';
+} from "@feed/db";
+import { logger } from "@feed/shared";
+import { eq } from "drizzle-orm";
 
 // Sample post content for realistic feed
 const POST_CONTENT = [
-  'Just analyzed the latest market data. Seeing some interesting patterns forming in the crypto space. $BTC looking strong.',
-  'Hot take: AI agents will outperform human traders within the next 6 months. The data is undeniable.',
-  'Breaking: New regulations incoming for prediction markets. This could change everything.',
-  'My portfolio is up 47% this week. Here is exactly what I did... 🧵',
-  'The future of decentralized prediction markets is here. We are still so early.',
-  'Anyone else seeing this massive volume spike? Something big is brewing.',
-  'AINBC BREAKING: Major tech acquisition rumored for next week. Sources say it is going to shake up the industry.',
-  'Remember when everyone said crypto was dead? Pepperidge Farm remembers.',
-  'Just closed my biggest winning trade ever. Risk management is key, folks.',
-  'The correlation between social sentiment and price action is insane right now.',
-  'New alpha: Follow the smart money, not the influencers.',
-  'Unpopular opinion: Most trading strategies are just gambling with extra steps.',
-  'Market update: Volatility is back on the menu, boys.',
-  'If you are not using AI for market analysis in 2026, you are already behind.',
-  'The next bull run will be driven by institutional adoption. Mark my words.',
-  'Just deployed a new trading bot. Let us see how it performs.',
-  'Technical analysis says one thing, fundamentals say another. Classic crypto.',
-  'Who else is accumulating during this dip? DCA is the way.',
-  'The prediction market for the upcoming election is getting spicy.',
-  'Reminder: Not financial advice. Always DYOR.',
-  'This market cycle feels different. More mature, more calculated.',
-  'Layer 2 solutions are finally delivering on their promises.',
-  'The metaverse hype is dead, but the tech is just getting started.',
-  'Governance tokens are the most undervalued sector right now. Change my mind.',
-  'Just hit a 10x on a long position. Sometimes the stars align.',
-  'The best traders are not the ones who win every trade. They are the ones who manage risk.',
-  'AI agents are about to revolutionize how we interact with financial markets.',
-  'Prediction markets are the purest form of information aggregation. Prove me wrong.',
-  'The future of work is autonomous agents collaborating with humans.',
-  'Web3 social is finally starting to make sense. The incentives are aligned.',
+  "Just analyzed the latest market data. Seeing some interesting patterns forming in the crypto space. $BTC looking strong.",
+  "Hot take: AI agents will outperform human traders within the next 6 months. The data is undeniable.",
+  "Breaking: New regulations incoming for prediction markets. This could change everything.",
+  "My portfolio is up 47% this week. Here is exactly what I did... 🧵",
+  "The future of decentralized prediction markets is here. We are still so early.",
+  "Anyone else seeing this massive volume spike? Something big is brewing.",
+  "AINBC BREAKING: Major tech acquisition rumored for next week. Sources say it is going to shake up the industry.",
+  "Remember when everyone said crypto was dead? Pepperidge Farm remembers.",
+  "Just closed my biggest winning trade ever. Risk management is key, folks.",
+  "The correlation between social sentiment and price action is insane right now.",
+  "New alpha: Follow the smart money, not the influencers.",
+  "Unpopular opinion: Most trading strategies are just gambling with extra steps.",
+  "Market update: Volatility is back on the menu, boys.",
+  "If you are not using AI for market analysis in 2026, you are already behind.",
+  "The next bull run will be driven by institutional adoption. Mark my words.",
+  "Just deployed a new trading bot. Let us see how it performs.",
+  "Technical analysis says one thing, fundamentals say another. Classic crypto.",
+  "Who else is accumulating during this dip? DCA is the way.",
+  "The prediction market for the upcoming election is getting spicy.",
+  "Reminder: Not financial advice. Always DYOR.",
+  "This market cycle feels different. More mature, more calculated.",
+  "Layer 2 solutions are finally delivering on their promises.",
+  "The metaverse hype is dead, but the tech is just getting started.",
+  "Governance tokens are the most undervalued sector right now. Change my mind.",
+  "Just hit a 10x on a long position. Sometimes the stars align.",
+  "The best traders are not the ones who win every trade. They are the ones who manage risk.",
+  "AI agents are about to revolutionize how we interact with financial markets.",
+  "Prediction markets are the purest form of information aggregation. Prove me wrong.",
+  "The future of work is autonomous agents collaborating with humans.",
+  "Web3 social is finally starting to make sense. The incentives are aligned.",
 ];
 
 const COMMENT_CONTENT = [
-  'Great analysis! Totally agree with this take.',
-  'Not sure I follow your logic here. Can you explain more?',
-  'This is the alpha I come here for. Thanks for sharing.',
-  'Interesting perspective. I have been thinking the same thing.',
-  'Strong disagree. The data says otherwise.',
-  'Anyone else seeing this pattern?',
-  'This aged well.',
-  'Legendary post. Saving this for later.',
-  'Source: trust me bro',
-  'The market is definitely signaling something here.',
-  'Called it. Nice work.',
-  'This is why I follow you. Quality content.',
-  'Counterpoint: what about the macro environment?',
-  'Been saying this for weeks. Finally someone gets it.',
-  'RIP to anyone who faded this.',
-  'The conviction here is inspiring.',
-  'What is your exit strategy?',
-  'Position size?',
-  'This is financial advice (not financial advice).',
-  'Bullish.',
-  'Bearish.',
-  'Ngmi if you ignore this.',
-  'Gm. Great thread.',
-  'The alpha leaks continue...',
-  'This comment section is pure gold.',
-  'Bookmark and revisit in 3 months.',
-  'Adding to my watchlist.',
-  'The replies are better than the post.',
-  'Classic. Never change.',
-  'This hits different.',
+  "Great analysis! Totally agree with this take.",
+  "Not sure I follow your logic here. Can you explain more?",
+  "This is the alpha I come here for. Thanks for sharing.",
+  "Interesting perspective. I have been thinking the same thing.",
+  "Strong disagree. The data says otherwise.",
+  "Anyone else seeing this pattern?",
+  "This aged well.",
+  "Legendary post. Saving this for later.",
+  "Source: trust me bro",
+  "The market is definitely signaling something here.",
+  "Called it. Nice work.",
+  "This is why I follow you. Quality content.",
+  "Counterpoint: what about the macro environment?",
+  "Been saying this for weeks. Finally someone gets it.",
+  "RIP to anyone who faded this.",
+  "The conviction here is inspiring.",
+  "What is your exit strategy?",
+  "Position size?",
+  "This is financial advice (not financial advice).",
+  "Bullish.",
+  "Bearish.",
+  "Ngmi if you ignore this.",
+  "Gm. Great thread.",
+  "The alpha leaks continue...",
+  "This comment section is pure gold.",
+  "Bookmark and revisit in 3 months.",
+  "Adding to my watchlist.",
+  "The replies are better than the post.",
+  "Classic. Never change.",
+  "This hits different.",
 ];
 
 async function getOrCreateTestUsers(): Promise<string[]> {
@@ -97,7 +97,7 @@ async function getOrCreateTestUsers(): Promise<string[]> {
     logger.info(
       `Using ${existingUsers.length} existing users`,
       undefined,
-      'SeedFeed'
+      "SeedFeed",
     );
     return existingUsers.map((u) => u.id);
   }
@@ -105,26 +105,26 @@ async function getOrCreateTestUsers(): Promise<string[]> {
   // Create test users if needed
   const testUsers = [
     {
-      username: 'cryptotrader',
-      displayName: 'Crypto Trader',
-      bio: 'Full-time degen',
+      username: "cryptotrader",
+      displayName: "Crypto Trader",
+      bio: "Full-time degen",
     },
     {
-      username: 'marketanalyst',
-      displayName: 'Market Analyst',
-      bio: 'Data-driven insights',
+      username: "marketanalyst",
+      displayName: "Market Analyst",
+      bio: "Data-driven insights",
     },
     {
-      username: 'defiexpert',
-      displayName: 'DeFi Expert',
-      bio: 'Yield farming enthusiast',
+      username: "defiexpert",
+      displayName: "DeFi Expert",
+      bio: "Yield farming enthusiast",
     },
     {
-      username: 'ainews',
-      displayName: 'AI News',
-      bio: 'Breaking AI news 24/7',
+      username: "ainews",
+      displayName: "AI News",
+      bio: "Breaking AI news 24/7",
     },
-    { username: 'tradingbot', displayName: 'Trading Bot', bio: 'Beep boop' },
+    { username: "tradingbot", displayName: "Trading Bot", bio: "Beep boop" },
   ];
 
   const createdUserIds: string[] = [];
@@ -150,7 +150,7 @@ async function getOrCreateTestUsers(): Promise<string[]> {
       walletAddress: `0xTEST${userId.slice(0, 34)}`,
       profileComplete: true,
       hasUsername: true,
-      virtualBalance: '10000',
+      virtualBalance: "10000",
       reputationPoints: 1000,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -160,7 +160,7 @@ async function getOrCreateTestUsers(): Promise<string[]> {
     logger.info(
       `Created test user: ${testUser.displayName}`,
       undefined,
-      'SeedFeed'
+      "SeedFeed",
     );
   }
 
@@ -169,7 +169,7 @@ async function getOrCreateTestUsers(): Promise<string[]> {
 
 function randomElement<T>(arr: T[]): T {
   const item = arr[Math.floor(Math.random() * arr.length)];
-  if (!item) throw new Error('Array is empty');
+  if (!item) throw new Error("Array is empty");
   return item;
 }
 
@@ -191,7 +191,7 @@ async function seedPosts(userIds: string[], count: number): Promise<string[]> {
       id: postId,
       content: randomElement(POST_CONTENT),
       authorId,
-      type: 'post',
+      type: "post",
       timestamp,
       createdAt: timestamp,
     });
@@ -199,14 +199,14 @@ async function seedPosts(userIds: string[], count: number): Promise<string[]> {
     postIds.push(postId);
   }
 
-  logger.info(`Created ${count} posts`, undefined, 'SeedFeed');
+  logger.info(`Created ${count} posts`, undefined, "SeedFeed");
   return postIds;
 }
 
 async function seedComments(
   userIds: string[],
   postIds: string[],
-  avgCommentsPerPost: number
+  avgCommentsPerPost: number,
 ): Promise<void> {
   let totalComments = 0;
 
@@ -235,7 +235,7 @@ async function seedComments(
         const replyId = await generateSnowflakeId();
         const replyAuthor = randomElement(userIds);
         const replyTime = new Date(
-          createdAt.getTime() + Math.random() * 3600000
+          createdAt.getTime() + Math.random() * 3600000,
         );
 
         await db.insert(comments).values({
@@ -253,12 +253,12 @@ async function seedComments(
     }
   }
 
-  logger.info(`Created ${totalComments} comments`, undefined, 'SeedFeed');
+  logger.info(`Created ${totalComments} comments`, undefined, "SeedFeed");
 }
 
 async function seedReactions(
   userIds: string[],
-  postIds: string[]
+  postIds: string[],
 ): Promise<void> {
   let totalReactions = 0;
 
@@ -278,7 +278,7 @@ async function seedReactions(
           id: reactionId,
           postId,
           userId,
-          type: 'like',
+          type: "like",
           createdAt: randomDate(7),
         });
         totalReactions++;
@@ -288,11 +288,11 @@ async function seedReactions(
     }
   }
 
-  logger.info(`Created ${totalReactions} reactions`, undefined, 'SeedFeed');
+  logger.info(`Created ${totalReactions} reactions`, undefined, "SeedFeed");
 }
 
 async function clearExistingData(): Promise<void> {
-  logger.info('Clearing existing feed data...', undefined, 'SeedFeed');
+  logger.info("Clearing existing feed data...", undefined, "SeedFeed");
 
   // Delete in order due to foreign key constraints
   await db.delete(reactions);
@@ -300,38 +300,38 @@ async function clearExistingData(): Promise<void> {
   await db.delete(posts);
 
   logger.info(
-    'Cleared all posts, comments, and reactions',
+    "Cleared all posts, comments, and reactions",
     undefined,
-    'SeedFeed'
+    "SeedFeed",
   );
 }
 
 async function main(): Promise<void> {
   // Production safety guard - prevent accidental data deletion
-  if (process.env.NODE_ENV === 'production') {
+  if (process.env.NODE_ENV === "production") {
     throw new Error(
-      'Refusing to run seed-feed-comments in production. This script deletes data and is for local development only.'
+      "Refusing to run seed-feed-comments in production. This script deletes data and is for local development only.",
     );
   }
 
   const args = process.argv.slice(2);
-  const shouldClear = args.includes('--clear');
+  const shouldClear = args.includes("--clear");
 
   // Parse count argument
-  const countIndex = args.indexOf('--count');
+  const countIndex = args.indexOf("--count");
   const countArg = countIndex !== -1 ? args[countIndex + 1] : undefined;
   const count = countArg ? parseInt(countArg, 10) : 20;
 
   logger.info(
-    '════════════════════════════════════════════════════════════',
+    "════════════════════════════════════════════════════════════",
     undefined,
-    'SeedFeed'
+    "SeedFeed",
   );
-  logger.info('Feed Feed Seeder', { count, shouldClear }, 'SeedFeed');
+  logger.info("Feed Feed Seeder", { count, shouldClear }, "SeedFeed");
   logger.info(
-    '════════════════════════════════════════════════════════════',
+    "════════════════════════════════════════════════════════════",
     undefined,
-    'SeedFeed'
+    "SeedFeed",
   );
 
   try {
@@ -343,7 +343,7 @@ async function main(): Promise<void> {
     const userIds = await getOrCreateTestUsers();
 
     if (userIds.length === 0) {
-      throw new Error('No users available for seeding');
+      throw new Error("No users available for seeding");
     }
 
     // Seed posts
@@ -370,24 +370,24 @@ async function main(): Promise<void> {
       .then((r) => r.length);
 
     logger.info(
-      '════════════════════════════════════════════════════════════',
+      "════════════════════════════════════════════════════════════",
       undefined,
-      'SeedFeed'
+      "SeedFeed",
     );
     logger.info(
-      'Seed Summary',
+      "Seed Summary",
       { posts: postCount, comments: commentCount, reactions: reactionCount },
-      'SeedFeed'
+      "SeedFeed",
     );
     logger.info(
-      '════════════════════════════════════════════════════════════',
+      "════════════════════════════════════════════════════════════",
       undefined,
-      'SeedFeed'
+      "SeedFeed",
     );
 
-    logger.info('Feed seeding complete!', undefined, 'SeedFeed');
+    logger.info("Feed seeding complete!", undefined, "SeedFeed");
   } catch (error) {
-    logger.error('Seed failed', { error }, 'SeedFeed');
+    logger.error("Seed failed", { error }, "SeedFeed");
     throw error;
   }
 }
@@ -396,7 +396,7 @@ if (import.meta.main) {
   main()
     .then(() => process.exit(0))
     .catch((error) => {
-      console.error('Fatal error:', error);
+      console.error("Fatal error:", error);
       process.exit(1);
     });
 }

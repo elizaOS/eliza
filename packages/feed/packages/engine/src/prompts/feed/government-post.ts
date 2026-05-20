@@ -1,10 +1,10 @@
-import { definePrompt } from '../define-prompt';
+import { definePrompt } from "../define-prompt";
 import {
   ANTI_REPETITION_RULES,
   CONTENT_REQUIREMENTS,
   FINAL_REMINDERS,
   WORLD_CONTEXT_HEADER,
-} from '../shared-sections';
+} from "../shared-sections";
 
 /**
  * Prompt for generating single government agency response or statement.
@@ -17,10 +17,10 @@ import {
  * Returns XML with government statement and metadata.
  */
 export const governmentPost = definePrompt({
-  id: 'government-post',
-  version: '4.0.0',
-  category: 'feed',
-  description: 'Government statement with full narrative context',
+  id: "government-post",
+  version: "4.0.0",
+  category: "feed",
+  description: "Government statement with full narrative context",
   temperature: 0.9,
   maxTokens: 5000,
   template: `{{realityGrounding}}

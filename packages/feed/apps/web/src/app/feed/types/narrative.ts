@@ -6,4 +6,4 @@ export type {
   ArcStateType,
   NarrativePost,
   NarrativeStory,
-} from '@feed/shared';
+} from "@feed/shared";

@@ -4,12 +4,6 @@
  * (Same pattern as AutonomousTradingService)
  */
 
-import { PerpDbAdapter, PerpMarketService } from '@feed/core/markets/perps';
-import {
-  createPerpPriceImpactPort,
-  FEE_CONFIG,
-  WalletService,
-} from '@feed/engine';
 import type {
   Action,
   ActionResult,
@@ -17,58 +11,64 @@ import type {
   IAgentRuntime,
   Memory,
   State,
-} from '@elizaos/core';
-import { AgentPnLService } from '../../../../services/AgentPnLService';
-import { logger } from '../../../../shared/logger';
+} from "@elizaos/core";
+import { PerpDbAdapter, PerpMarketService } from "@feed/core/markets/perps";
+import {
+  createPerpPriceImpactPort,
+  FEE_CONFIG,
+  WalletService,
+} from "@feed/engine";
+import { AgentPnLService } from "../../../../services/AgentPnLService";
+import { logger } from "../../../../shared/logger";
 
 const agentPnLService = new AgentPnLService();
 
 export const openPerpAction: Action = {
-  name: 'OPEN_PERP',
+  name: "OPEN_PERP",
   description:
-    'Open a leveraged perpetual position using YOUR funds. IMPORTANT: Call CHECK_PERPS first for tickers and prices, and CHECK_BALANCE to verify you have sufficient funds. Requires ticker, side (LONG/SHORT), amount in dollars, and optional leverage (1-10x).',
+    "Open a leveraged perpetual position using YOUR funds. IMPORTANT: Call CHECK_PERPS first for tickers and prices, and CHECK_BALANCE to verify you have sufficient funds. Requires ticker, side (LONG/SHORT), amount in dollars, and optional leverage (1-10x).",
   parameters: {
     ticker: {
-      type: 'string',
-      description: 'Stock ticker symbol (e.g., AAPL, TSLA, NVDA)',
+      type: "string",
+      description: "Stock ticker symbol (e.g., AAPL, TSLA, NVDA)",
       required: true,
     },
     side: {
-      type: 'string',
-      enum: ['LONG', 'SHORT'],
+      type: "string",
+      enum: ["LONG", "SHORT"],
       description:
         'Position direction: "LONG" (bet price goes up) or "SHORT" (bet price goes down)',
       required: true,
     },
     amount: {
-      type: 'number',
-      description: 'Dollar amount to use as collateral',
+      type: "number",
+      description: "Dollar amount to use as collateral",
       required: true,
     },
     leverage: {
-      type: 'number',
-      description: 'Leverage multiplier (1-10x). Default: 1',
+      type: "number",
+      description: "Leverage multiplier (1-10x). Default: 1",
       required: false,
     },
-  } as unknown as Action['parameters'],
+  } as unknown as Action["parameters"],
   examples: [
     [
       {
-        name: 'user',
-        content: { text: 'Open a 5x long on NVDA with $100' },
+        name: "user",
+        content: { text: "Open a 5x long on NVDA with $100" },
       },
       {
-        name: 'assistant',
-        content: { text: 'Opening a leveraged long position on NVDA...' },
+        name: "assistant",
+        content: { text: "Opening a leveraged long position on NVDA..." },
       },
     ],
     [
       {
-        name: 'user',
-        content: { text: 'Short Tesla with $50' },
+        name: "user",
+        content: { text: "Short Tesla with $50" },
       },
       {
-        name: 'assistant',
+        name: "assistant",
         content: { text: "I'll open a short position on TSLA for you." },
       },
     ],
@@ -77,7 +77,7 @@ export const openPerpAction: Action = {
   validate: async (
     _runtime: IAgentRuntime,
     _message: Memory,
-    _state?: State
+    _state?: State,
   ): Promise<boolean> => true,
 
   handler: async (
@@ -85,7 +85,7 @@ export const openPerpAction: Action = {
     _message: Memory,
     state?: State,
     _options?: Record<string, unknown>,
-    _callback?: HandlerCallback
+    _callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const agentUserId = runtime.agentId;
 
@@ -93,7 +93,7 @@ export const openPerpAction: Action = {
     const actionParams = state?.data?.actionParams as
       | {
           ticker?: string;
-          side?: 'LONG' | 'SHORT';
+          side?: "LONG" | "SHORT";
           amount?: number;
           leverage?: number;
         }
@@ -101,8 +101,8 @@ export const openPerpAction: Action = {
 
     const ticker = actionParams?.ticker;
     const side = actionParams?.side?.toUpperCase() as
-      | 'LONG'
-      | 'SHORT'
+      | "LONG"
+      | "SHORT"
       | undefined;
     const amount = actionParams?.amount;
     const leverage = Math.min(Math.max(actionParams?.leverage ?? 1, 1), 10);
@@ -110,24 +110,24 @@ export const openPerpAction: Action = {
     if (!ticker || !side || !amount) {
       return {
         success: false,
-        text: 'Missing parameters. Call CHECK_PERPS first to get ticker.',
-        error: 'Missing parameters: ticker, side, or amount',
+        text: "Missing parameters. Call CHECK_PERPS first to get ticker.",
+        error: "Missing parameters: ticker, side, or amount",
       };
     }
 
-    if (side !== 'LONG' && side !== 'SHORT') {
+    if (side !== "LONG" && side !== "SHORT") {
       return {
         success: false,
-        text: 'Invalid side. Must be LONG or SHORT.',
-        error: 'Invalid side',
+        text: "Invalid side. Must be LONG or SHORT.",
+        error: "Invalid side",
       };
     }
 
     if (amount <= 0) {
       return {
         success: false,
-        text: 'Amount must be greater than 0.',
-        error: 'Invalid amount',
+        text: "Amount must be greater than 0.",
+        error: "Invalid amount",
       };
     }
 
@@ -138,7 +138,7 @@ export const openPerpAction: Action = {
         return {
           success: false,
           text: `Insufficient balance ($${balance.balance.toFixed(2)}). Call CHECK_BALANCE first.`,
-          error: 'Insufficient balance',
+          error: "Insufficient balance",
           values: { balance: balance.balance },
         };
       }
@@ -162,8 +162,8 @@ export const openPerpAction: Action = {
             userId,
             amount,
             reason,
-            description ?? '',
-            relatedId
+            description ?? "",
+            relatedId,
           );
         },
         credit: async ({
@@ -183,8 +183,8 @@ export const openPerpAction: Action = {
             userId,
             amount,
             reason,
-            description ?? '',
-            relatedId
+            description ?? "",
+            relatedId,
           );
         },
         recordPnL: async ({
@@ -218,14 +218,14 @@ export const openPerpAction: Action = {
       // Check if market exists (case-insensitive lookup)
       const marketSnapshot = await service.getMarketsSnapshot();
       const market = marketSnapshot.find(
-        (m) => m.ticker.toLowerCase() === ticker?.toLowerCase()
+        (m) => m.ticker.toLowerCase() === ticker?.toLowerCase(),
       );
 
       if (!market) {
         return {
           success: false,
           text: `Market "${ticker}" not found. Call CHECK_PERPS first to get valid ticker.`,
-          error: 'Market not found',
+          error: "Market not found",
         };
       }
 
@@ -233,7 +233,7 @@ export const openPerpAction: Action = {
       const tradeResult = await service.openPosition({
         userId: agentUserId,
         ticker: market.ticker,
-        side: side.toLowerCase() as 'long' | 'short',
+        side: side.toLowerCase() as "long" | "short",
         size: amount,
         leverage,
       });
@@ -242,17 +242,17 @@ export const openPerpAction: Action = {
       await agentPnLService.recordTrade({
         agentId: agentUserId,
         userId: agentUserId,
-        marketType: 'perp',
+        marketType: "perp",
         ticker: market.ticker,
-        action: 'open',
-        side: side.toLowerCase() as 'long' | 'short',
+        action: "open",
+        side: side.toLowerCase() as "long" | "short",
         amount,
         price: tradeResult.entryPrice,
         reasoning:
-          (state?.data?.thought as string) || 'Chat-initiated perp trade',
+          (state?.data?.thought as string) || "Chat-initiated perp trade",
       });
 
-      logger.info('[OPEN_PERP] Position opened', {
+      logger.info("[OPEN_PERP] Position opened", {
         agentUserId,
         ticker: market.ticker,
         side,
@@ -283,8 +283,8 @@ export const openPerpAction: Action = {
         },
       };
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      logger.error('[OPEN_PERP] Error:', errorMsg);
+      const errorMsg = error instanceof Error ? error.message : "Unknown error";
+      logger.error("[OPEN_PERP] Error:", errorMsg);
       return {
         success: false,
         text: `Failed to open position: ${errorMsg}`,

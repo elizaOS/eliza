@@ -5,11 +5,11 @@
  * the MetaMask extension pre-loaded for E2E testing.
  */
 
-import { createWalletTest, expect } from '@avalix/chroma';
+import { createWalletTest, expect } from "@avalix/chroma";
 
 export const test = createWalletTest({
-  wallets: [{ type: 'metamask' }],
+  wallets: [{ type: "metamask" }],
 });
 
-export type { BrowserContext, Page } from '@playwright/test';
+export type { BrowserContext, Page } from "@playwright/test";
 export { expect };

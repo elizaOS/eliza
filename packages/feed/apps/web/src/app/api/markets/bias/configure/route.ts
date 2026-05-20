@@ -109,44 +109,44 @@
  * @see {@link /lib/feedback/bias-engine} Bias engine
  */
 
-import { requireAdmin, withErrorHandling } from '@feed/api';
-import { biasEngine } from '@feed/engine';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { z } from 'zod';
+import { requireAdmin, withErrorHandling } from "@feed/api";
+import { biasEngine } from "@feed/engine";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { z } from "zod";
 
 const SetBiasSchema = z.object({
-  action: z.literal('set'),
+  action: z.literal("set"),
   entityId: z.string().min(1),
   entityName: z.string().min(1),
-  direction: z.enum(['up', 'down']),
+  direction: z.enum(["up", "down"]),
   strength: z.number().min(0).max(1).optional(),
   durationHours: z.number().optional(),
   decayRate: z.number().min(0).max(1).optional(),
 });
 
 const RemoveBiasSchema = z.object({
-  action: z.literal('remove'),
+  action: z.literal("remove"),
   entityId: z.string().min(1),
 });
 
 const BulkSetBiasSchema = z.object({
-  action: z.literal('bulk-set'),
+  action: z.literal("bulk-set"),
   biases: z
     .array(
       z.object({
         entityId: z.string().min(1),
         entityName: z.string().min(1),
-        direction: z.enum(['up', 'down']),
+        direction: z.enum(["up", "down"]),
         strength: z.number().min(0).max(1).optional(),
         durationHours: z.number().optional(),
         decayRate: z.number().min(0).max(1).optional(),
-      })
+      }),
     )
     .min(1),
 });
 
-const BiasConfigSchema = z.discriminatedUnion('action', [
+const BiasConfigSchema = z.discriminatedUnion("action", [
   SetBiasSchema,
   RemoveBiasSchema,
   BulkSetBiasSchema,
@@ -160,7 +160,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   const body = parsed;
 
-  if (body.action === 'set') {
+  if (body.action === "set") {
     biasEngine.setBias(
       body.entityId,
       body.entityName,
@@ -169,7 +169,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       {
         durationHours: body.durationHours,
         decayRate: body.decayRate,
-      }
+      },
     );
 
     const adjustment = biasEngine.getBiasAdjustment(body.entityId);
@@ -186,10 +186,10 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
           adjustment,
         },
       },
-      { status: 201 }
+      { status: 201 },
     );
   }
-  if (body.action === 'remove') {
+  if (body.action === "remove") {
     biasEngine.removeBias(body.entityId);
 
     return NextResponse.json({
@@ -205,6 +205,6 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       message: `${body.biases.length} biases configured`,
       count: body.biases.length,
     },
-    { status: 201 }
+    { status: 201 },
   );
 });

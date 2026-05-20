@@ -20,15 +20,15 @@
  * while maintaining the core principle: uncertainty early, clarity late.
  */
 
-import { logger } from '@feed/shared';
-import type { Actor, Organization } from '../types';
-import { shuffleArray } from '../utils/randomization';
-import type { RngFunction } from './narrative-state-service';
+import { logger } from "@feed/shared";
+import type { Actor, Organization } from "../types";
+import { shuffleArray } from "../utils/randomization";
+import type { RngFunction } from "./narrative-state-service";
 
 /**
  * Timeframe categories for arc planning
  */
-export type TimeframeCategory = 'flash' | 'intraday' | 'daily' | 'weekly';
+export type TimeframeCategory = "flash" | "intraday" | "daily" | "weekly";
 
 /**
  * Phase targets for compressed arcs
@@ -159,10 +159,10 @@ export class TimeframeArcPlanner {
    * Get the timeframe category from a timeframe string
    */
   static getCategory(timeframe: string): TimeframeCategory {
-    if (['15m', '30m'].includes(timeframe)) return 'flash';
-    if (['1h', '6h'].includes(timeframe)) return 'intraday';
-    if (['12h', '1d'].includes(timeframe)) return 'daily';
-    return 'weekly'; // 2d, 3d
+    if (["15m", "30m"].includes(timeframe)) return "flash";
+    if (["1h", "6h"].includes(timeframe)) return "intraday";
+    if (["12h", "1d"].includes(timeframe)) return "daily";
+    return "weekly"; // 2d, 3d
   }
 
   /**
@@ -177,7 +177,7 @@ export class TimeframeArcPlanner {
     actors: Actor[],
     organizations: Organization[],
     affiliatedActorIds: string[] = [],
-    affiliatedOrgIds: string[] = []
+    affiliatedOrgIds: string[] = [],
   ): TimeframeArcPlan {
     const category = TimeframeArcPlanner.getCategory(timeframe);
     const phases = PHASE_CONFIGS[category];
@@ -188,7 +188,7 @@ export class TimeframeArcPlanner {
       questionText,
       actors,
       organizations,
-      affiliatedActorIds
+      affiliatedActorIds,
     );
     const deceivers = this.selectDeceivers(actors, category);
 
@@ -208,7 +208,7 @@ export class TimeframeArcPlanner {
     };
 
     logger.info(
-      'Created timeframe arc plan',
+      "Created timeframe arc plan",
       {
         questionId,
         timeframe,
@@ -218,7 +218,7 @@ export class TimeframeArcPlanner {
         deceivers: deceivers.length,
         durationHours: durationMs / (60 * 60 * 1000),
       },
-      'TimeframeArcPlanner'
+      "TimeframeArcPlanner",
     );
 
     return plan;
@@ -230,7 +230,7 @@ export class TimeframeArcPlanner {
   getCurrentPhase(
     startTime: Date,
     now: Date,
-    arcPlan: TimeframeArcPlan
+    arcPlan: TimeframeArcPlan,
   ): string | null {
     const elapsed = now.getTime() - startTime.getTime();
     const progress = elapsed / arcPlan.durationMs;
@@ -260,17 +260,17 @@ export class TimeframeArcPlanner {
   getSignalDirection(
     phase: string,
     arcPlan: TimeframeArcPlan,
-    rng: RngFunction = Math.random
-  ): 'correct' | 'wrong' | 'ambiguous' {
+    rng: RngFunction = Math.random,
+  ): "correct" | "wrong" | "ambiguous" {
     const phaseConfig = arcPlan.phases[phase];
-    if (!phaseConfig) return 'ambiguous';
+    if (!phaseConfig) return "ambiguous";
 
     const rand = rng();
 
     if (rand < phaseConfig.correctSignalRatio) {
-      return 'correct';
+      return "correct";
     } else {
-      return 'wrong';
+      return "wrong";
     }
   }
 
@@ -284,7 +284,7 @@ export class TimeframeArcPlanner {
   getClueStrength(
     phase: string,
     arcPlan: TimeframeArcPlan,
-    rng: RngFunction = Math.random
+    rng: RngFunction = Math.random,
   ): number {
     const phaseConfig = arcPlan.phases[phase];
     if (!phaseConfig) return 0.5;
@@ -298,7 +298,7 @@ export class TimeframeArcPlanner {
    */
   calculateExpectedCertainty(
     progress: number,
-    arcPlan: TimeframeArcPlan
+    arcPlan: TimeframeArcPlan,
   ): number {
     let cumulative = 0;
 
@@ -322,7 +322,7 @@ export class TimeframeArcPlanner {
     questionText: string,
     actors: Actor[],
     organizations: Organization[],
-    affiliatedActorIds: string[]
+    affiliatedActorIds: string[],
   ): string[] {
     // Start with explicitly affiliated actors
     const insiders = new Set(affiliatedActorIds);
@@ -336,7 +336,7 @@ export class TimeframeArcPlanner {
     const potentialInsiders = actors.filter(
       (a) =>
         a.affiliations?.some((orgId) => relatedOrgIds.includes(orgId)) &&
-        (a.tier === 'S_TIER' || a.tier === 'A_TIER' || a.tier === 'B_TIER')
+        (a.tier === "S_TIER" || a.tier === "A_TIER" || a.tier === "B_TIER"),
     );
 
     // Add 1-2 additional insiders
@@ -353,17 +353,17 @@ export class TimeframeArcPlanner {
    */
   private selectDeceivers(
     actors: Actor[],
-    category: TimeframeCategory
+    category: TimeframeCategory,
   ): string[] {
     // Fewer deceivers for short timeframes (less time for misdirection)
     const maxDeceivers =
-      category === 'flash' ? 0 : category === 'intraday' ? 1 : 2;
+      category === "flash" ? 0 : category === "intraday" ? 1 : 2;
 
     const potentialDeceivers = actors.filter(
       (a) =>
-        a.personality?.includes('contrarian') ||
-        a.personality?.includes('conspiracy') ||
-        a.description?.toLowerCase().includes('conspiracy')
+        a.personality?.includes("contrarian") ||
+        a.personality?.includes("conspiracy") ||
+        a.description?.toLowerCase().includes("conspiracy"),
     );
 
     const shuffled = shuffleArray(potentialDeceivers);

@@ -1,16 +1,16 @@
-import 'server-only';
+import "server-only";
 
-import { findUserByIdentifier } from '@feed/api';
-import { asPublic, asUser, db, eq, users } from '@feed/db';
-import { FEE_CONFIG } from '@feed/engine/config/fees';
-import { toISO, toISOOrNull } from '@feed/shared';
-import { calculatePredictionPositionSnapshot } from '@/lib/wallet/predictionPositionSnapshot';
+import { findUserByIdentifier } from "@feed/api";
+import { asPublic, asUser, db, eq, users } from "@feed/db";
+import { FEE_CONFIG } from "@feed/engine/config/fees";
+import { toISO, toISOOrNull } from "@feed/shared";
+import { calculatePredictionPositionSnapshot } from "@/lib/wallet/predictionPositionSnapshot";
 import type {
   UserPerpPositionSnapshot,
   UserPositionsSnapshot,
   UserPositionsStatus,
   UserPositionsType,
-} from './user-positions-types';
+} from "./user-positions-types";
 
 export {
   isOpenPredictionPosition,
@@ -19,7 +19,7 @@ export {
   type UserPositionsStatus,
   type UserPositionsType,
   type UserPredictionPositionSnapshot,
-} from './user-positions-types';
+} from "./user-positions-types";
 
 interface UserLookup {
   id: string;
@@ -127,7 +127,7 @@ async function loadDbPerpPositions(params: {
   return allPerpPositions.map((position) => ({
     id: position.id,
     ticker: position.ticker,
-    side: position.side.toLowerCase() as 'long' | 'short',
+    side: position.side.toLowerCase() as "long" | "short",
     entryPrice: Number(position.entryPrice),
     currentPrice: Number(position.currentPrice),
     size: Number(position.size),
@@ -147,8 +147,8 @@ async function loadDbPerpPositions(params: {
 
 export async function getUserPositionsSnapshot({
   userId,
-  type = 'all',
-  status = 'open',
+  type = "all",
+  status = "open",
   page = 1,
   limit = 20,
   viewerUserId,
@@ -166,16 +166,16 @@ export async function getUserPositionsSnapshot({
     ? [
         ...new Set(
           [dbUser.id, dbUser.privyId].filter((candidate): candidate is string =>
-            Boolean(candidate)
-          )
+            Boolean(candidate),
+          ),
         ),
       ]
     : [userId];
 
   const closedAtFilter =
-    status === 'closed' ? { not: null } : status === 'all' ? undefined : null;
+    status === "closed" ? { not: null } : status === "all" ? undefined : null;
   const predictionStatusFilter =
-    status === 'closed' ? { in: ['closed', 'resolved'] } : undefined;
+    status === "closed" ? { in: ["closed", "resolved"] } : undefined;
 
   const userAgents = await asPublic(async () => {
     return db
@@ -189,7 +189,7 @@ export async function getUserPositionsSnapshot({
 
   const agentIds = userAgents.map((agent) => agent.id);
   const agentNameById = new Map(
-    userAgents.map((agent) => [agent.id, agent.displayName])
+    userAgents.map((agent) => [agent.id, agent.displayName]),
   );
 
   const predictionWhereBase = {
@@ -228,7 +228,7 @@ export async function getUserPositionsSnapshot({
             });
           })
         : Promise.resolve([]),
-    ]
+    ],
   );
 
   const allPredictionPositions = [
@@ -279,13 +279,13 @@ export async function getUserPositionsSnapshot({
       const market = marketById.get(position.marketId);
       if (!market) {
         throw new Error(
-          `Missing market ${position.marketId} for position ${position.id}`
+          `Missing market ${position.marketId} for position ${position.id}`,
         );
       }
 
       const shares = Number(position.shares);
       const avgPrice = Number(position.avgPrice);
-      const sideKey = position.side ? 'yes' : 'no';
+      const sideKey = position.side ? "yes" : "no";
       const snapshot = calculatePredictionPositionSnapshot({
         shares,
         avgPrice,
@@ -301,7 +301,7 @@ export async function getUserPositionsSnapshot({
         id: position.id,
         marketId: position.marketId,
         question: market.question,
-        side: (position.side ? 'YES' : 'NO') as 'YES' | 'NO',
+        side: (position.side ? "YES" : "NO") as "YES" | "NO",
         shares,
         avgPrice,
         currentPrice: snapshot.currentUnitPrice,
@@ -328,36 +328,36 @@ export async function getUserPositionsSnapshot({
     totalPositions: mappedPerps.length,
     totalPnL: mappedPerps.reduce(
       (sum, position) => sum + position.unrealizedPnL,
-      0
+      0,
     ),
     totalFunding: mappedPerps.reduce(
       (sum, position) => sum + position.fundingPaid,
-      0
+      0,
     ),
   };
 
-  const filteredPerps = type === 'prediction' ? [] : mappedPerps;
-  const filteredPredictions = type === 'perp' ? [] : mappedPredictions;
+  const filteredPerps = type === "prediction" ? [] : mappedPerps;
+  const filteredPredictions = type === "perp" ? [] : mappedPredictions;
 
-  if (status === 'closed') {
+  if (status === "closed") {
     filteredPerps.sort(
       (left, right) =>
         new Date(right.closedAt ?? 0).getTime() -
-        new Date(left.closedAt ?? 0).getTime()
+        new Date(left.closedAt ?? 0).getTime(),
     );
     filteredPredictions.sort(
       (left, right) =>
         new Date(right.resolvedAt ?? right.createdAt ?? 0).getTime() -
-        new Date(left.resolvedAt ?? left.createdAt ?? 0).getTime()
+        new Date(left.resolvedAt ?? left.createdAt ?? 0).getTime(),
     );
   }
 
   const paginatedPerps =
-    status === 'closed'
+    status === "closed"
       ? filteredPerps.slice((page - 1) * limit, page * limit)
       : filteredPerps;
   const paginatedPredictions =
-    status === 'closed'
+    status === "closed"
       ? filteredPredictions.slice((page - 1) * limit, page * limit)
       : filteredPredictions;
 
@@ -365,7 +365,7 @@ export async function getUserPositionsSnapshot({
     perpetuals: {
       positions: paginatedPerps,
       stats:
-        type === 'prediction'
+        type === "prediction"
           ? { totalPositions: 0, totalPnL: 0, totalFunding: 0 }
           : perpStats,
       total: filteredPerps.length,

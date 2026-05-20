@@ -10,14 +10,14 @@
  * (not per-platform) — logout should silence push across all sessions.
  */
 
-import { authenticate, withErrorHandling } from '@feed/api';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+import { authenticate, withErrorHandling } from "@feed/api";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
-const DEVICE_TOKEN_PREFIX = 'push:device:';
+const DEVICE_TOKEN_PREFIX = "push:device:";
 
 async function getRedis() {
-  const { getRedisClient } = await import('@feed/api');
+  const { getRedisClient } = await import("@feed/api");
   return getRedisClient();
 }
 
@@ -28,8 +28,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   const redis = await getRedis();
   if (!redis) {
     return NextResponse.json(
-      { error: 'Push notification service unavailable' },
-      { status: 503 }
+      { error: "Push notification service unavailable" },
+      { status: 503 },
     );
   }
 

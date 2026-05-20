@@ -1,27 +1,27 @@
 #!/usr/bin/env bun
 
-import path from 'node:path';
-import { parseArgs } from 'node:util';
+import path from "node:path";
+import { parseArgs } from "node:util";
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   agentRuntimeManager,
   autonomousCoordinator,
   createTestAgent,
-} from '@feed/agents';
-import { db, eq, users } from '@feed/db';
-import { executeGameTick } from '@feed/engine';
-import { sleep } from '@feed/shared';
-import type { IAgentRuntime } from '@elizaos/core';
-import { config as loadDotenv } from 'dotenv';
+} from "@feed/agents";
+import { db, eq, users } from "@feed/db";
+import { executeGameTick } from "@feed/engine";
+import { sleep } from "@feed/shared";
+import { config as loadDotenv } from "dotenv";
 import {
-  type FeedCharacterSheet,
   buildCanonicalSimulationRoster,
   type CharacterMessageExampleTurn,
+  type FeedCharacterSheet,
   writeLocalCharacterSheets,
-} from '../packages/agents/src/character-roster/local-roster';
-import { upsertAgentConfig } from '../packages/agents/src/shared/agent-config';
+} from "../packages/agents/src/character-roster/local-roster";
+import { upsertAgentConfig } from "../packages/agents/src/shared/agent-config";
 
-loadDotenv({ path: path.resolve(process.cwd(), '.env') });
-loadDotenv({ path: path.resolve(process.cwd(), '.env.local') });
+loadDotenv({ path: path.resolve(process.cwd(), ".env") });
+loadDotenv({ path: path.resolve(process.cwd(), ".env.local") });
 
 interface SimulationOptions {
   agentTicks: number;
@@ -38,7 +38,7 @@ interface AgentTickSummary {
   error?: string;
 }
 
-type RuntimeCharacter = IAgentRuntime['character'] & {
+type RuntimeCharacter = IAgentRuntime["character"] & {
   username?: string;
   lore?: string[];
   topics?: string[];
@@ -56,17 +56,17 @@ function parseSimulationOptions(): SimulationOptions {
   const { values } = parseArgs({
     args: Bun.argv.slice(2),
     options: {
-      'agent-ticks': { type: 'string', default: '1' },
-      'world-ticks': { type: 'string', default: '1' },
-      parallel: { type: 'string', default: '5' },
-      delay: { type: 'string', default: '350' },
+      "agent-ticks": { type: "string", default: "1" },
+      "world-ticks": { type: "string", default: "1" },
+      parallel: { type: "string", default: "5" },
+      delay: { type: "string", default: "350" },
     },
     strict: true,
     allowPositionals: false,
   });
 
-  const agentTicks = parseInt(values['agent-ticks'], 10);
-  const worldTicks = parseInt(values['world-ticks'], 10);
+  const agentTicks = parseInt(values["agent-ticks"], 10);
+  const worldTicks = parseInt(values["world-ticks"], 10);
   const parallel = parseInt(values.parallel, 10);
   const delayMs = parseInt(values.delay, 10);
 
@@ -78,18 +78,18 @@ function parseSimulationOptions(): SimulationOptions {
   };
 }
 
-function inferModelTier(sheet: FeedCharacterSheet): 'free' | 'pro' {
-  return sheet.settings.groq.large.startsWith('llama-') ? 'free' : 'pro';
+function inferModelTier(sheet: FeedCharacterSheet): "free" | "pro" {
+  return sheet.settings.groq.large.startsWith("llama-") ? "free" : "pro";
 }
 
 function buildAgentPersonalitySummary(sheet: FeedCharacterSheet): string {
   return [
     `${sheet.feed.alignment} ${sheet.feed.team} posture`,
     sheet.feed.socialStyle,
-    `scam:${sheet.feed.scamProfile.replaceAll('_', ' ')}`,
+    `scam:${sheet.feed.scamProfile.replaceAll("_", " ")}`,
     `caution:${sheet.feed.caution}`,
     `deception:${sheet.feed.deception}`,
-  ].join(' | ');
+  ].join(" | ");
 }
 
 function buildConfigStyle(sheet: FeedCharacterSheet) {
@@ -112,7 +112,7 @@ function buildConfigStyle(sheet: FeedCharacterSheet) {
 }
 
 async function ensureCharacterAgent(
-  sheet: FeedCharacterSheet
+  sheet: FeedCharacterSheet,
 ): Promise<{ agentId: string; username: string }> {
   const result = await createTestAgent(sheet.id, {
     username: sheet.username,
@@ -130,7 +130,7 @@ async function ensureCharacterAgent(
     .update(users)
     .set({
       displayName: sheet.name,
-      bio: sheet.bio.join('\n'),
+      bio: sheet.bio.join("\n"),
       updatedAt: new Date(),
     })
     .where(eq(users.id, result.agentId));
@@ -157,25 +157,25 @@ async function ensureCharacterAgent(
     ],
     planningHorizon: sheet.feed.autonomy.groups
       ? sheet.feed.autonomy.dms
-        ? 'campaign'
-        : sheet.feed.team === 'gray'
-          ? 'swing'
-          : 'campaign'
-      : 'single',
+        ? "campaign"
+        : sheet.feed.team === "gray"
+          ? "swing"
+          : "campaign"
+      : "single",
     riskTolerance:
-      sheet.feed.caution === 'paranoid'
-        ? 'low'
-        : sheet.feed.caution === 'reckless'
-          ? 'high'
+      sheet.feed.caution === "paranoid"
+        ? "low"
+        : sheet.feed.caution === "reckless"
+          ? "high"
           : sheet.settings.temperature > 0.75
-            ? 'high'
+            ? "high"
             : sheet.settings.temperature < 0.6
-              ? 'low'
-              : 'medium',
+              ? "low"
+              : "medium",
     maxActionsPerTick:
-      sheet.feed.caution === 'paranoid'
+      sheet.feed.caution === "paranoid"
         ? 2
-        : sheet.feed.caution === 'careful'
+        : sheet.feed.caution === "careful"
           ? 3
           : 5,
     modelTier: inferModelTier(sheet),
@@ -196,7 +196,7 @@ async function ensureCharacterAgent(
 
 function applySheetToRuntime(
   runtime: IAgentRuntime,
-  sheet: FeedCharacterSheet
+  sheet: FeedCharacterSheet,
 ): void {
   const runtimeCharacter = runtime.character as RuntimeCharacter;
   runtimeCharacter.name = sheet.name;
@@ -230,7 +230,7 @@ function applySheetToRuntime(
 
 async function executeAgentTick(
   sheet: FeedCharacterSheet,
-  agentId: string
+  agentId: string,
 ): Promise<AgentTickSummary> {
   try {
     const runtime = await agentRuntimeManager.getRuntime(agentId);
@@ -239,7 +239,7 @@ async function executeAgentTick(
     const result = await autonomousCoordinator.executeAutonomousTick(
       agentId,
       runtime,
-      true
+      true,
     );
 
     return {
@@ -263,7 +263,7 @@ async function runAgentTickRound(
   roster: FeedCharacterSheet[],
   idByCharacterId: Map<string, string>,
   parallel: number,
-  delayMs: number
+  delayMs: number,
 ): Promise<AgentTickSummary[]> {
   const summaries: AgentTickSummary[] = [];
 
@@ -274,7 +274,7 @@ async function runAgentTickRound(
         const agentId = idByCharacterId.get(sheet.id);
         if (!agentId) {
           return {
-            agentId: '',
+            agentId: "",
             username: sheet.username,
             success: false,
             error: `Missing agent for character ${sheet.id}`,
@@ -282,7 +282,7 @@ async function runAgentTickRound(
         }
 
         return executeAgentTick(sheet, agentId);
-      })
+      }),
     );
 
     summaries.push(...batchResults);
@@ -300,12 +300,12 @@ async function main(): Promise<void> {
   const roster = buildCanonicalSimulationRoster();
   await writeLocalCharacterSheets();
 
-  console.log('Preparing local character roster...');
+  console.log("Preparing local character roster...");
   console.log(`Character count: ${roster.length} canonical characters`);
   console.log(
-    `Simulation plan: ${options.worldTicks} world tick(s), ${options.agentTicks} agent tick round(s), parallel=${options.parallel}`
+    `Simulation plan: ${options.worldTicks} world tick(s), ${options.agentTicks} agent tick round(s), parallel=${options.parallel}`,
   );
-  console.log('');
+  console.log("");
 
   const idByCharacterId = new Map<string, string>();
 
@@ -313,54 +313,54 @@ async function main(): Promise<void> {
     const agent = await ensureCharacterAgent(sheet);
     idByCharacterId.set(sheet.id, agent.agentId);
     console.log(
-      `Ready: ${sheet.name} (@${sheet.username}) -> ${agent.agentId} | ${sheet.settings.groq.primary}`
+      `Ready: ${sheet.name} (@${sheet.username}) -> ${agent.agentId} | ${sheet.settings.groq.primary}`,
     );
   }
 
-  console.log('');
-  console.log('Warming game state...');
+  console.log("");
+  console.log("Warming game state...");
   for (let tickIndex = 0; tickIndex < options.worldTicks; tickIndex++) {
     const tickResult = await executeGameTick(false);
     console.log(
-      `World tick ${tickIndex + 1}/${options.worldTicks}: posts=${tickResult.postsCreated} events=${tickResult.eventsCreated} markets=${tickResult.marketsUpdated} questions=${tickResult.questionsCreated}`
+      `World tick ${tickIndex + 1}/${options.worldTicks}: posts=${tickResult.postsCreated} events=${tickResult.eventsCreated} markets=${tickResult.marketsUpdated} questions=${tickResult.questionsCreated}`,
     );
   }
 
   let allSummaries: AgentTickSummary[] = [];
 
   for (let roundIndex = 0; roundIndex < options.agentTicks; roundIndex++) {
-    console.log('');
+    console.log("");
     console.log(
-      `Agent round ${roundIndex + 1}/${options.agentTicks} running for ${roster.length} characters...`
+      `Agent round ${roundIndex + 1}/${options.agentTicks} running for ${roster.length} characters...`,
     );
 
     const roundSummaries = await runAgentTickRound(
       roster,
       idByCharacterId,
       options.parallel,
-      options.delayMs
+      options.delayMs,
     );
     allSummaries = allSummaries.concat(roundSummaries);
 
     const successful = roundSummaries.filter((item) => item.success).length;
     const failed = roundSummaries.length - successful;
     const withTrajectory = roundSummaries.filter(
-      (item) => item.trajectoryId
+      (item) => item.trajectoryId,
     ).length;
 
     console.log(
-      `Round ${roundIndex + 1} complete: success=${successful} failed=${failed} trajectories=${withTrajectory}`
+      `Round ${roundIndex + 1} complete: success=${successful} failed=${failed} trajectories=${withTrajectory}`,
     );
   }
 
   const totalSuccess = allSummaries.filter((item) => item.success).length;
   const totalFailures = allSummaries.length - totalSuccess;
   const totalTrajectories = allSummaries.filter(
-    (item) => item.trajectoryId
+    (item) => item.trajectoryId,
   ).length;
 
-  console.log('');
-  console.log('Simulation summary');
+  console.log("");
+  console.log("Simulation summary");
   console.log(`  Characters: ${roster.length}`);
   console.log(`  Agent tick attempts: ${allSummaries.length}`);
   console.log(`  Successful ticks: ${totalSuccess}`);
@@ -368,11 +368,11 @@ async function main(): Promise<void> {
   console.log(`  Trajectories captured: ${totalTrajectories}`);
 
   if (totalFailures > 0) {
-    console.log('');
-    console.log('Failures');
+    console.log("");
+    console.log("Failures");
     for (const summary of allSummaries.filter((item) => !item.success)) {
       console.log(
-        `  @${summary.username}: ${summary.error || 'unknown error'}`
+        `  @${summary.username}: ${summary.error || "unknown error"}`,
       );
     }
   }

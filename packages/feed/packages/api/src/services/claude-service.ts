@@ -4,13 +4,13 @@
  * For moderation and evaluation tasks that require Claude's superior reasoning
  */
 
-import Anthropic from '@anthropic-ai/sdk';
-import { logger } from '@feed/shared';
+import Anthropic from "@anthropic-ai/sdk";
+import { logger } from "@feed/shared";
 
 export async function callClaudeDirect(params: {
   prompt: string;
   system?: string;
-  model?: 'claude-sonnet-4-5' | 'claude-haiku-4-5' | 'claude-opus-4-1';
+  model?: "claude-sonnet-4-5" | "claude-haiku-4-5" | "claude-opus-4-1";
   temperature?: number;
   maxTokens?: number;
 }): Promise<string> {
@@ -19,15 +19,15 @@ export async function callClaudeDirect(params: {
 
   if (!elizacloudKey && !anthropicKey) {
     throw new Error(
-      'No API key configured for Claude — set ELIZACLOUD_API_KEY or ANTHROPIC_API_KEY'
+      "No API key configured for Claude — set ELIZACLOUD_API_KEY or ANTHROPIC_API_KEY",
     );
   }
 
   let anthropic: Anthropic;
   if (elizacloudKey) {
     const base = (
-      process.env.ELIZACLOUD_API_URL || 'https://api.elizacloud.com'
-    ).replace(/\/$/, '');
+      process.env.ELIZACLOUD_API_URL || "https://api.elizacloud.com"
+    ).replace(/\/$/, "");
     anthropic = new Anthropic({
       apiKey: elizacloudKey,
       baseURL: `${base}/anthropic/v1`,
@@ -38,7 +38,7 @@ export async function callClaudeDirect(params: {
     });
   }
 
-  const model = params.model || 'claude-sonnet-4-5';
+  const model = params.model || "claude-sonnet-4-5";
 
   const startTime = Date.now();
 
@@ -49,7 +49,7 @@ export async function callClaudeDirect(params: {
     system: params.system,
     messages: [
       {
-        role: 'user',
+        role: "user",
         content: params.prompt,
       },
     ],
@@ -58,19 +58,19 @@ export async function callClaudeDirect(params: {
   const latencyMs = Date.now() - startTime;
 
   const firstContent = message.content[0];
-  if (!firstContent || firstContent.type !== 'text') {
-    throw new Error('Unexpected response format from Claude');
+  if (!firstContent || firstContent.type !== "text") {
+    throw new Error("Unexpected response format from Claude");
   }
 
   logger.debug(
-    'Claude API call completed',
+    "Claude API call completed",
     {
       model,
       latencyMs,
       inputTokens: message.usage.input_tokens,
       outputTokens: message.usage.output_tokens,
     },
-    'ClaudeDirect'
+    "ClaudeDirect",
   );
 
   return firstContent.text;

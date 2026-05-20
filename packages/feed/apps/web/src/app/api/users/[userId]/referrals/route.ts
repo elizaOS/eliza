@@ -65,7 +65,7 @@ import {
   requireUserByIdentifier,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
+} from "@feed/api";
 import {
   and,
   count,
@@ -80,13 +80,9 @@ import {
   sum,
   tradingFees,
   users,
-} from '@feed/db';
-import {
-  logger,
-  ReferralQuerySchema,
-  UserIdParamSchema,
-} from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/db";
+import { logger, ReferralQuerySchema, UserIdParamSchema } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 /**
  * GET /api/users/[userId]/referrals
@@ -95,7 +91,7 @@ import type { NextRequest } from 'next/server';
 export const GET = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ userId: string }> }
+    context: { params: Promise<{ userId: string }> },
   ) => {
     // Authenticate user
     const authUser = await authenticate(request);
@@ -105,9 +101,9 @@ export const GET = withErrorHandling(
     // Check if the authenticated user has a database record
     if (!authUser.dbUserId) {
       throw new NotFoundError(
-        'User profile not found. Please complete onboarding first.',
-        'USER_NOT_FOUND',
-        { userId }
+        "User profile not found. Please complete onboarding first.",
+        "USER_NOT_FOUND",
+        { userId },
       );
     }
 
@@ -118,16 +114,16 @@ export const GET = withErrorHandling(
     const { searchParams } = new URL(request.url);
     const queryParams = {
       userId,
-      includeStats: searchParams.get('includeStats') || 'false',
+      includeStats: searchParams.get("includeStats") || "false",
     };
     ReferralQuerySchema.parse(queryParams);
 
     // Verify user is accessing their own referrals
     if (authUser.dbUserId !== canonicalUserId) {
       throw new AuthorizationError(
-        'You can only access your own referrals',
-        'referrals',
-        'read'
+        "You can only access your own referrals",
+        "referrals",
+        "read",
       );
     }
 
@@ -156,7 +152,7 @@ export const GET = withErrorHandling(
       .limit(1);
 
     if (!user) {
-      throw new NotFoundError('User', canonicalUserId);
+      throw new NotFoundError("User", canonicalUserId);
     }
 
     // Get all completed referrals - explicitly select only needed columns
@@ -170,8 +166,8 @@ export const GET = withErrorHandling(
       .where(
         and(
           eq(referrals.referrerId, canonicalUserId),
-          eq(referrals.status, 'completed')
-        )
+          eq(referrals.status, "completed"),
+        ),
       )
       .orderBy(desc(referrals.completedAt));
 
@@ -207,7 +203,7 @@ export const GET = withErrorHandling(
     }
 
     const completedUsersMap = new Map(
-      completedReferredUsersData.map((u) => [u.id, u])
+      completedReferredUsersData.map((u) => [u.id, u]),
     );
 
     // Get pending referrals (users who haven't completed profile yet)
@@ -228,8 +224,8 @@ export const GET = withErrorHandling(
       .where(
         and(
           eq(users.referredBy, canonicalUserId),
-          eq(users.profileComplete, false)
-        )
+          eq(users.profileComplete, false),
+        ),
       )
       .orderBy(desc(users.createdAt));
 
@@ -250,11 +246,11 @@ export const GET = withErrorHandling(
         and(
           eq(pointsTransactions.userId, canonicalUserId),
           inArray(pointsTransactions.reason, [
-            'referral_signup',
-            'referral_qualified',
-            'referral_bonus',
-          ])
-        )
+            "referral_signup",
+            "referral_qualified",
+            "referral_bonus",
+          ]),
+        ),
       );
 
     const totalFeesEarned = Number(feeEarnings?.total || 0);
@@ -269,9 +265,9 @@ export const GET = withErrorHandling(
       .where(
         and(
           eq(referrals.referrerId, canonicalUserId),
-          eq(referrals.status, 'completed'),
-          gte(referrals.completedAt, oneWeekAgo)
-        )
+          eq(referrals.status, "completed"),
+          gte(referrals.completedAt, oneWeekAgo),
+        ),
       );
 
     const weeklyReferralCount = Number(weeklyCountResult?.count || 0);
@@ -293,8 +289,8 @@ export const GET = withErrorHandling(
         .where(
           and(
             eq(follows.followerId, canonicalUserId),
-            inArray(follows.followingId, allReferredUserIds)
-          )
+            inArray(follows.followingId, allReferredUserIds),
+          ),
         );
 
       followingUserIds = new Set(followStatuses.map((f) => f.followingId));
@@ -303,7 +299,7 @@ export const GET = withErrorHandling(
     // Format completed referred users with follow status
     const completedReferredUsers = completedReferralsData
       .filter(
-        (r) => r.referredUserId && completedUsersMap.has(r.referredUserId)
+        (r) => r.referredUserId && completedUsersMap.has(r.referredUserId),
       )
       .map((r) => {
         const userData = completedUsersMap.get(r.referredUserId!)!;
@@ -316,7 +312,7 @@ export const GET = withErrorHandling(
           reputationPoints: userData.reputationPoints,
           isFollowing: followingUserIds.has(userData.id),
           joinedAt: r.completedAt,
-          status: 'completed' as const,
+          status: "completed" as const,
         };
       });
 
@@ -330,7 +326,7 @@ export const GET = withErrorHandling(
       reputationPoints: u.reputationPoints,
       isFollowing: followingUserIds.has(u.id),
       joinedAt: null,
-      status: 'pending' as const,
+      status: "pending" as const,
       email: u.email,
       farcasterUsername: u.farcasterUsername,
       twitterUsername: u.twitterUsername,
@@ -339,17 +335,17 @@ export const GET = withErrorHandling(
     // Use username as referral code (without @)
     const referralCode = user.username || null;
     const referralUrl = referralCode
-      ? `${process.env.NEXT_PUBLIC_APP_URL || 'https://feed.market'}?ref=${referralCode}`
+      ? `${process.env.NEXT_PUBLIC_APP_URL || "https://feed.market"}?ref=${referralCode}`
       : null;
 
     logger.info(
-      'Referrals fetched successfully',
+      "Referrals fetched successfully",
       {
         userId: canonicalUserId,
         completedReferrals: completedReferralsData.length,
         pendingReferrals: pendingReferredUsers.length,
       },
-      'GET /api/users/[userId]/referrals'
+      "GET /api/users/[userId]/referrals",
     );
 
     return successResponse({
@@ -384,5 +380,5 @@ export const GET = withErrorHandling(
       pendingReferredUsers: formattedPendingUsers, // NEW: Pending users
       referralUrl,
     });
-  }
+  },
 );

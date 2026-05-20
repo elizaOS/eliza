@@ -13,17 +13,17 @@
  * @module /api/activity/heartbeat
  */
 
-import { checkProgress, optionalAuth, withErrorHandling } from '@feed/api';
+import { checkProgress, optionalAuth, withErrorHandling } from "@feed/api";
 import {
   db,
   generateSnowflakeId,
   userActivityLogs,
   userSessions,
-} from '@feed/db';
-import { logger, PATH_TO_ACTIVITY_TYPE } from '@feed/shared';
-import { and, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@feed/db";
+import { logger, PATH_TO_ACTIVITY_TYPE } from "@feed/shared";
+import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 // Session timeout: 30 minutes of inactivity
 const SESSION_TIMEOUT_MS = 30 * 60 * 1000;
@@ -60,22 +60,22 @@ interface HeartbeatRequest {
 }
 
 function parseDeviceType(userAgent: string | null): string {
-  if (!userAgent) return 'unknown';
+  if (!userAgent) return "unknown";
   const ua = userAgent.toLowerCase();
   if (/mobile|android|iphone|ipad|ipod/.test(ua)) {
-    if (/ipad|tablet/.test(ua)) return 'tablet';
-    return 'mobile';
+    if (/ipad|tablet/.test(ua)) return "tablet";
+    return "mobile";
   }
-  return 'desktop';
+  return "desktop";
 }
 
 async function hashIp(ip: string | null): Promise<string | null> {
   if (!ip) return null;
   const encoder = new TextEncoder();
-  const data = encoder.encode(ip + (process.env.IP_HASH_SALT || 'feed'));
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const data = encoder.encode(ip + (process.env.IP_HASH_SALT || "feed"));
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
@@ -84,10 +84,10 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   const body = (await request.json()) as HeartbeatRequest;
   const { sessionId } = body;
 
-  if (!sessionId || typeof sessionId !== 'string' || sessionId.length > 100) {
+  if (!sessionId || typeof sessionId !== "string" || sessionId.length > 100) {
     return NextResponse.json(
-      { success: false, error: 'Invalid sessionId' },
-      { status: 400 }
+      { success: false, error: "Invalid sessionId" },
+      { status: 400 },
     );
   }
 
@@ -97,7 +97,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   if (!authUser?.dbUserId) {
     // Silently accept unauthenticated requests to avoid console errors
     // for logged-out users who still have the heartbeat running
-    return NextResponse.json({ success: true, reason: 'unauthenticated' });
+    return NextResponse.json({ success: true, reason: "unauthenticated" });
   }
 
   const validUserId: string = authUser.dbUserId;
@@ -106,7 +106,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   const rawPageViews = body.pageViews ?? 0;
   const pageViews = Math.min(
     Math.max(0, Math.floor(Number(rawPageViews) || 0)),
-    MAX_PAGE_VIEWS_PER_HEARTBEAT
+    MAX_PAGE_VIEWS_PER_HEARTBEAT,
   );
 
   // Clean up stale rate limit cache entries (replaces module-scope setInterval)
@@ -118,21 +118,21 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   const now = Date.now();
 
   if (lastHeartbeat && now - lastHeartbeat < HEARTBEAT_RATE_LIMIT_MS) {
-    return NextResponse.json({ success: true, reason: 'rate_limited' });
+    return NextResponse.json({ success: true, reason: "rate_limited" });
   }
 
   heartbeatCache.set(cacheKey, now);
 
   // Get device info
-  const userAgentHeader = request.headers.get('user-agent');
+  const userAgentHeader = request.headers.get("user-agent");
   const deviceType = parseDeviceType(userAgentHeader);
-  const forwardedFor = request.headers.get('x-forwarded-for');
-  const clientIp = forwardedFor?.split(',')[0]?.trim() ?? null;
+  const forwardedFor = request.headers.get("x-forwarded-for");
+  const clientIp = forwardedFor?.split(",")[0]?.trim() ?? null;
   const ipHash = await hashIp(clientIp);
 
   const nowDate = new Date();
   const sessionTimeoutThreshold = new Date(
-    nowDate.getTime() - SESSION_TIMEOUT_MS
+    nowDate.getTime() - SESSION_TIMEOUT_MS,
   );
 
   // DB work (best-effort): if the session tables are missing/mis-migrated in a
@@ -156,9 +156,9 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         heartbeatCount: 1,
       });
       logger.debug(
-        'Created session',
+        "Created session",
         { userId: validUserId, id },
-        'POST /api/activity/heartbeat'
+        "POST /api/activity/heartbeat",
       );
     }
 
@@ -167,7 +167,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       where: and(
         eq(userSessions.userId, validUserId),
         eq(userSessions.sessionId, sessionId),
-        isNull(userSessions.endedAt)
+        isNull(userSessions.endedAt),
       ),
     });
 
@@ -199,7 +199,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     const activityDate = new Date(
       nowDate.getFullYear(),
       nowDate.getMonth(),
-      nowDate.getDate()
+      nowDate.getDate(),
     );
 
     const activityLogId = await generateSnowflakeId();
@@ -208,7 +208,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       .values({
         id: activityLogId,
         userId: validUserId,
-        activityType: 'session',
+        activityType: "session",
         activityDate,
       })
       .onConflictDoNothing();
@@ -217,13 +217,13 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     const lastPath = body.lastPath;
     if (lastPath) {
       // Match exact path or strip dynamic segments for base path
-      const basePath = `/${lastPath.split('/').filter(Boolean)[0] ?? ''}`;
+      const basePath = `/${lastPath.split("/").filter(Boolean)[0] ?? ""}`;
       const isMarketDetail =
-        lastPath.startsWith('/markets/predictions/') ||
-        lastPath.startsWith('/markets/perps/');
+        lastPath.startsWith("/markets/predictions/") ||
+        lastPath.startsWith("/markets/perps/");
       const pageActivityType =
         PATH_TO_ACTIVITY_TYPE[lastPath] ??
-        (isMarketDetail ? ('open_market_detail' as const) : undefined) ??
+        (isMarketDetail ? ("open_market_detail" as const) : undefined) ??
         PATH_TO_ACTIVITY_TYPE[basePath] ??
         undefined;
       if (pageActivityType) {
@@ -239,7 +239,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
           .onConflictDoNothing();
 
         void checkProgress(validUserId, {
-          type: 'page_visited',
+          type: "page_visited",
           activityType: pageActivityType,
         });
       }
@@ -250,15 +250,15 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     const code = causeCode ?? (error as { code?: string } | null)?.code;
 
     // 42P01 = undefined_table, 42703 = undefined_column
-    if (code === '42P01' || code === '42703') {
+    if (code === "42P01" || code === "42703") {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
       logger.warn(
-        'Heartbeat DB unavailable (degraded)',
+        "Heartbeat DB unavailable (degraded)",
         { code, errorMessage },
-        'POST /api/activity/heartbeat'
+        "POST /api/activity/heartbeat",
       );
-      return NextResponse.json({ success: true, reason: 'db_unavailable' });
+      return NextResponse.json({ success: true, reason: "db_unavailable" });
     }
 
     throw error;
@@ -271,9 +271,9 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
       logger.warn(
-        'Opportunistic stale-session cleanup failed',
+        "Opportunistic stale-session cleanup failed",
         { errorMessage },
-        'POST /api/activity/heartbeat'
+        "POST /api/activity/heartbeat",
       );
     });
   }
@@ -297,7 +297,7 @@ async function closeStaleSessionsInternal(): Promise<{ id: string }[]> {
   const staleSessions = await db.query.userSessions.findMany({
     where: and(
       isNull(userSessions.endedAt),
-      lt(userSessions.lastActiveAt, threshold)
+      lt(userSessions.lastActiveAt, threshold),
     ),
     columns: {
       id: true,
@@ -320,8 +320,8 @@ async function closeStaleSessionsInternal(): Promise<{ id: string }[]> {
       and(
         isNull(userSessions.endedAt),
         lt(userSessions.lastActiveAt, threshold),
-        inArray(userSessions.id, staleSessionIds)
-      )
+        inArray(userSessions.id, staleSessionIds),
+      ),
     );
 
   return staleSessions.map((s) => ({ id: s.id }));

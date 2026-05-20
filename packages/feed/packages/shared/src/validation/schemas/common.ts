@@ -2,9 +2,9 @@
  * Common reusable Zod schemas for validation across the application
  */
 
-import { z } from 'zod';
-import { JsonValueSchema } from '../../types/common';
-import { isValidSnowflakeId } from '../../utils/snowflake';
+import { z } from "zod";
+import { JsonValueSchema } from "../../types/common";
+import { isValidSnowflakeId } from "../../utils/snowflake";
 
 /**
  * Snowflake ID validation schema
@@ -13,7 +13,7 @@ import { isValidSnowflakeId } from '../../utils/snowflake';
 export const SnowflakeIdSchema = z
   .string()
   .refine((val) => isValidSnowflakeId(val), {
-    message: 'Invalid Snowflake ID format',
+    message: "Invalid Snowflake ID format",
   });
 
 /**
@@ -39,22 +39,22 @@ export const UserIdSchema = z.string().refine(
   },
   {
     message:
-      'Invalid user identifier. Must be a UUID, Privy DID (did:privy:...), or username',
-  }
+      "Invalid user identifier. Must be a UUID, Privy DID (did:privy:...), or username",
+  },
 );
 
 /**
  * Email validation schema
  */
 export const EmailSchema = z.string().email({
-  message: 'Invalid email address',
+  message: "Invalid email address",
 });
 
 /**
  * DateTime validation schema (ISO 8601)
  */
 export const DateTimeSchema = z.string().datetime({
-  message: 'Invalid datetime format. Use ISO 8601',
+  message: "Invalid datetime format. Use ISO 8601",
 });
 
 /**
@@ -62,14 +62,14 @@ export const DateTimeSchema = z.string().datetime({
  */
 export const WalletAddressSchema = z
   .string()
-  .regex(/^0x[a-fA-F0-9]{40}$/, 'Invalid Ethereum wallet address');
+  .regex(/^0x[a-fA-F0-9]{40}$/, "Invalid Ethereum wallet address");
 
 /**
  * Transaction hash validation
  */
 export const TransactionHashSchema = z
   .string()
-  .regex(/^0x[a-fA-F0-9]{64}$/, 'Invalid transaction hash');
+  .regex(/^0x[a-fA-F0-9]{64}$/, "Invalid transaction hash");
 
 /**
  * Pagination schema for list endpoints
@@ -78,7 +78,7 @@ export const PaginationSchema = z.object({
   page: z.coerce.number().positive().default(1),
   limit: z.coerce.number().positive().max(100).default(20),
   sortBy: z.string().optional(),
-  sortOrder: z.enum(['asc', 'desc']).default('desc'),
+  sortOrder: z.enum(["asc", "desc"]).default("desc"),
 });
 
 /**
@@ -97,8 +97,8 @@ export const DateRangeSchema = z
       return true;
     },
     {
-      message: 'Start date must be before or equal to end date',
-    }
+      message: "Start date must be before or equal to end date",
+    },
   );
 
 /**
@@ -106,33 +106,33 @@ export const DateRangeSchema = z
  */
 export const MoneySchema = z.object({
   amount: z.number().positive({
-    message: 'Amount must be positive',
+    message: "Amount must be positive",
   }),
   currency: z
     .string()
-    .length(3, 'Currency code must be 3 characters')
-    .default('USD'),
+    .length(3, "Currency code must be 3 characters")
+    .default("USD"),
 });
 
 /**
  * Percentage schema (0-100)
  */
 export const PercentageSchema = z.number().min(0).max(100, {
-  message: 'Percentage must be between 0 and 100',
+  message: "Percentage must be between 0 and 100",
 });
 
 /**
  * Decimal percentage schema (0-1)
  */
 export const DecimalPercentageSchema = z.number().min(0).max(1, {
-  message: 'Percentage must be between 0 and 1',
+  message: "Percentage must be between 0 and 1",
 });
 
 /**
  * URL validation schema
  */
 export const URLSchema = z.string().url({
-  message: 'Invalid URL format',
+  message: "Invalid URL format",
 });
 
 /**
@@ -145,18 +145,18 @@ export const AssetOrUrlSchema = z.string().refine(
   (val) => {
     const value = val.trim();
     if (value.length === 0) return true;
-    if (value.startsWith('/assets/') || value.startsWith('/uploads/')) {
+    if (value.startsWith("/assets/") || value.startsWith("/uploads/")) {
       return true;
     }
 
     try {
       const parsed = new URL(value);
-      return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+      return parsed.protocol === "http:" || parsed.protocol === "https:";
     } catch {
       return false;
     }
   },
-  { message: 'Invalid URL format' }
+  { message: "Invalid URL format" },
 );
 
 /**
@@ -164,18 +164,18 @@ export const AssetOrUrlSchema = z.string().refine(
  */
 export const PhoneNumberSchema = z
   .string()
-  .regex(/^\+?[1-9]\d{1,14}$/, 'Invalid phone number format');
+  .regex(/^\+?[1-9]\d{1,14}$/, "Invalid phone number format");
 
 /**
  * Username validation
  */
 export const UsernameSchema = z
   .string()
-  .min(3, 'Username must be at least 3 characters')
-  .max(30, 'Username must be at most 30 characters')
+  .min(3, "Username must be at least 3 characters")
+  .max(30, "Username must be at most 30 characters")
   .regex(
     /^[a-zA-Z0-9_-]+$/,
-    'Username can only contain letters, numbers, underscores, and hyphens'
+    "Username can only contain letters, numbers, underscores, and hyphens",
   );
 
 /**
@@ -183,13 +183,13 @@ export const UsernameSchema = z
  */
 export const PasswordSchema = z
   .string()
-  .min(8, 'Password must be at least 8 characters')
-  .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
-  .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
-  .regex(/[0-9]/, 'Password must contain at least one number')
+  .min(8, "Password must be at least 8 characters")
+  .regex(/[A-Z]/, "Password must contain at least one uppercase letter")
+  .regex(/[a-z]/, "Password must contain at least one lowercase letter")
+  .regex(/[0-9]/, "Password must contain at least one number")
   .regex(
     /[^A-Za-z0-9]/,
-    'Password must contain at least one special character'
+    "Password must contain at least one special character",
   );
 
 /**
@@ -197,7 +197,7 @@ export const PasswordSchema = z
  */
 export const APIKeySchema = z
   .string()
-  .regex(/^[a-zA-Z0-9]{32,64}$/, 'Invalid API key format');
+  .regex(/^[a-zA-Z0-9]{32,64}$/, "Invalid API key format");
 
 /**
  * Market ID schema (e.g., BTC-USD, ETH-USDT)
@@ -206,86 +206,86 @@ export const MarketIdSchema = z
   .string()
   .regex(
     /^[A-Z]+-[A-Z]+$/,
-    'Market ID must be in format BASE-QUOTE (e.g., BTC-USD)'
+    "Market ID must be in format BASE-QUOTE (e.g., BTC-USD)",
   );
 
 /**
  * Strategy type enum
  */
 export const StrategyTypeSchema = z.enum([
-  'TREND_FOLLOWING',
-  'MEAN_REVERSION',
-  'ARBITRAGE',
-  'MARKET_MAKING',
-  'MOMENTUM',
-  'PAIRS_TRADING',
-  'STATISTICAL_ARBITRAGE',
+  "TREND_FOLLOWING",
+  "MEAN_REVERSION",
+  "ARBITRAGE",
+  "MARKET_MAKING",
+  "MOMENTUM",
+  "PAIRS_TRADING",
+  "STATISTICAL_ARBITRAGE",
 ]);
 
 /**
  * Order side enum
  */
-export const OrderSideSchema = z.enum(['BUY', 'SELL']);
+export const OrderSideSchema = z.enum(["BUY", "SELL"]);
 
 /**
  * Order type enum
  */
 export const OrderTypeSchema = z.enum([
-  'MARKET',
-  'LIMIT',
-  'STOP',
-  'STOP_LIMIT',
+  "MARKET",
+  "LIMIT",
+  "STOP",
+  "STOP_LIMIT",
 ]);
 
 /**
  * Position status enum
  */
-export const PositionStatusSchema = z.enum(['OPEN', 'CLOSED', 'LIQUIDATED']);
+export const PositionStatusSchema = z.enum(["OPEN", "CLOSED", "LIQUIDATED"]);
 
 /**
  * Pool status enum
  */
 export const PoolStatusSchema = z.enum([
-  'ACTIVE',
-  'INACTIVE',
-  'LOCKED',
-  'DEPRECATED',
+  "ACTIVE",
+  "INACTIVE",
+  "LOCKED",
+  "DEPRECATED",
 ]);
 
 /**
  * Agent tier enum
  */
 export const AgentTierSchema = z.enum([
-  'BRONZE',
-  'SILVER',
-  'GOLD',
-  'PLATINUM',
-  'DIAMOND',
+  "BRONZE",
+  "SILVER",
+  "GOLD",
+  "PLATINUM",
+  "DIAMOND",
 ]);
 
 /**
  * Risk tolerance enum
  */
 export const RiskToleranceSchema = z.enum([
-  'LOW',
-  'MEDIUM',
-  'HIGH',
-  'VERY_HIGH',
+  "LOW",
+  "MEDIUM",
+  "HIGH",
+  "VERY_HIGH",
 ]);
 
 /**
  * Time frame enum for trading
  */
 export const TimeFrameSchema = z.enum([
-  '1m',
-  '5m',
-  '15m',
-  '30m',
-  '1h',
-  '4h',
-  '1d',
-  '1w',
-  '1M',
+  "1m",
+  "5m",
+  "15m",
+  "30m",
+  "1h",
+  "4h",
+  "1d",
+  "1w",
+  "1M",
 ]);
 
 /**
@@ -293,28 +293,28 @@ export const TimeFrameSchema = z.enum([
  */
 export const NumericStringSchema = z
   .string()
-  .regex(/^\d+(\.\d+)?$/, 'Must be a valid numeric string');
+  .regex(/^\d+(\.\d+)?$/, "Must be a valid numeric string");
 
 /**
  * Big number schema (for large blockchain values)
  */
 export const BigNumberSchema = z
   .string()
-  .regex(/^\d+$/, 'Must be a valid big number string');
+  .regex(/^\d+$/, "Must be a valid big number string");
 
 /**
  * Hex string schema
  */
 export const HexStringSchema = z
   .string()
-  .regex(/^0x[a-fA-F0-9]+$/, 'Must be a valid hex string');
+  .regex(/^0x[a-fA-F0-9]+$/, "Must be a valid hex string");
 
 /**
  * Optional string that transforms empty strings to undefined
  */
 export const OptionalStringSchema = z
   .string()
-  .transform((val) => (val === '' ? undefined : val))
+  .transform((val) => (val === "" ? undefined : val))
   .optional();
 
 /**
@@ -341,8 +341,8 @@ export function createTrimmedStringSchema(min?: number, max?: number) {
  */
 export const SearchQuerySchema = z
   .string()
-  .min(1, 'Search query cannot be empty')
-  .max(100, 'Search query too long')
+  .min(1, "Search query cannot be empty")
+  .max(100, "Search query too long")
   .transform((val) => val.trim().toLowerCase());
 
 /**
@@ -354,7 +354,7 @@ export const FileUploadSchema = z.object({
   size: z
     .number()
     .positive()
-    .max(10 * 1024 * 1024, 'File size must be less than 10MB'),
+    .max(10 * 1024 * 1024, "File size must be less than 10MB"),
   data: z.string(), // Base64 encoded
 });
 
@@ -395,7 +395,7 @@ export const ErrorResponseSchema = z.object({
         z.object({
           field: z.string(),
           message: z.string(),
-        })
+        }),
       )
       .optional(),
     context: z.record(z.string(), JsonValueSchema).optional(),
@@ -407,21 +407,21 @@ export const ErrorResponseSchema = z.object({
  */
 export function createBatchSchema<T extends z.ZodType>(
   itemSchema: T,
-  maxItems = 100
+  maxItems = 100,
 ) {
   return z
     .array(itemSchema)
-    .min(1, 'At least one item is required')
+    .min(1, "At least one item is required")
     .max(maxItems, `Maximum ${maxItems} items allowed`);
 }
 
 /**
  * Leaderboard query parameters schema
  */
-export const LEADERBOARD_METRICS = ['reputation', 'trading'] as const;
+export const LEADERBOARD_METRICS = ["reputation", "trading"] as const;
 export type LeaderboardMetric = (typeof LEADERBOARD_METRICS)[number];
 
-export const LEADERBOARD_SCOPES = ['wallet', 'team'] as const;
+export const LEADERBOARD_SCOPES = ["wallet", "team"] as const;
 export type LeaderboardScope = (typeof LEADERBOARD_SCOPES)[number];
 
 // Canonical leaderboard contract:
@@ -440,7 +440,7 @@ export const LeaderboardQuerySchema = z.object({
     .nonnegative()
     .default(100)
     .transform((val) => Math.max(1, Math.min(val, 100))),
-  metric: z.enum(LEADERBOARD_METRICS).optional().default('reputation'),
-  type: z.enum(LEADERBOARD_SCOPES).optional().default('wallet'),
+  metric: z.enum(LEADERBOARD_METRICS).optional().default("reputation"),
+  type: z.enum(LEADERBOARD_SCOPES).optional().default("wallet"),
   userId: z.string().optional(),
 });

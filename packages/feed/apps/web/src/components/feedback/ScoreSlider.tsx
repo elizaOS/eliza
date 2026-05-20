@@ -26,11 +26,11 @@
  * />
  * ```
  */
-'use client';
+"use client";
 
-import { cn } from '@feed/shared';
-import { Minus, TrendingDown, TrendingUp } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { cn } from "@feed/shared";
+import { Minus, TrendingDown, TrendingUp } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 interface ScoreSliderProps {
   value?: number; // 0-100
@@ -53,7 +53,7 @@ export function ScoreSlider({
   showValue = true,
   showLabels = true,
   readonly = false,
-  className = '',
+  className = "",
 }: ScoreSliderProps) {
   const [isDragging, setIsDragging] = useState(false);
   const sliderRef = useRef<HTMLDivElement>(null);
@@ -62,21 +62,21 @@ export function ScoreSlider({
   const percentage = ((clampedValue - min) / (max - min)) * 100;
 
   const getColorClass = (score: number): string => {
-    if (score >= 80) return 'bg-green-500';
-    if (score >= 60) return 'bg-blue-500';
-    if (score >= 40) return 'bg-yellow-500';
-    if (score >= 20) return 'bg-orange-500';
-    return 'bg-red-500';
+    if (score >= 80) return "bg-green-500";
+    if (score >= 60) return "bg-blue-500";
+    if (score >= 40) return "bg-yellow-500";
+    if (score >= 20) return "bg-orange-500";
+    return "bg-red-500";
   };
 
   const getScoreLabel = (
-    score: number
+    score: number,
   ): { label: string; Icon: typeof TrendingUp } => {
-    if (score >= 80) return { label: 'Excellent', Icon: TrendingUp };
-    if (score >= 60) return { label: 'Good', Icon: TrendingUp };
-    if (score >= 40) return { label: 'Average', Icon: Minus };
-    if (score >= 20) return { label: 'Below Average', Icon: TrendingDown };
-    return { label: 'Poor', Icon: TrendingDown };
+    if (score >= 80) return { label: "Excellent", Icon: TrendingUp };
+    if (score >= 60) return { label: "Good", Icon: TrendingUp };
+    if (score >= 40) return { label: "Average", Icon: Minus };
+    if (score >= 20) return { label: "Below Average", Icon: TrendingDown };
+    return { label: "Poor", Icon: TrendingDown };
   };
 
   const updateValue = useCallback(
@@ -92,7 +92,7 @@ export function ScoreSlider({
 
       onChange(newValue);
     },
-    [readonly, onChange, min, max, step]
+    [readonly, onChange, min, max, step],
   );
 
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -106,7 +106,7 @@ export function ScoreSlider({
       if (!isDragging) return;
       updateValue(e.clientX);
     },
-    [isDragging, updateValue]
+    [isDragging, updateValue],
   );
 
   const handleMouseUp = useCallback(() => {
@@ -115,12 +115,12 @@ export function ScoreSlider({
 
   useEffect(() => {
     if (isDragging) {
-      window.addEventListener('mousemove', handleMouseMove);
-      window.addEventListener('mouseup', handleMouseUp);
+      window.addEventListener("mousemove", handleMouseMove);
+      window.addEventListener("mouseup", handleMouseUp);
 
       return () => {
-        window.removeEventListener('mousemove', handleMouseMove);
-        window.removeEventListener('mouseup', handleMouseUp);
+        window.removeEventListener("mousemove", handleMouseMove);
+        window.removeEventListener("mouseup", handleMouseUp);
       };
     }
     return undefined;
@@ -129,7 +129,7 @@ export function ScoreSlider({
   const { label, Icon } = getScoreLabel(clampedValue);
 
   return (
-    <div className={cn('space-y-3', className)}>
+    <div className={cn("space-y-3", className)}>
       {/* Value Display */}
       {showValue && (
         <div className="flex items-center justify-between">
@@ -153,17 +153,17 @@ export function ScoreSlider({
         ref={sliderRef}
         onMouseDown={handleMouseDown}
         className={cn(
-          'relative h-3 overflow-hidden rounded-full bg-gray-700',
-          !readonly && 'cursor-pointer',
-          isDragging && 'cursor-grabbing'
+          "relative h-3 overflow-hidden rounded-full bg-gray-700",
+          !readonly && "cursor-pointer",
+          isDragging && "cursor-grabbing",
         )}
       >
         {/* Filled Track */}
         <div
           className={cn(
-            'absolute top-0 left-0 h-full transition-all',
+            "absolute top-0 left-0 h-full transition-all",
             getColorClass(clampedValue),
-            isDragging ? 'duration-0' : 'duration-200'
+            isDragging ? "duration-0" : "duration-200",
           )}
           style={{ width: `${percentage}%` }}
         />
@@ -172,9 +172,9 @@ export function ScoreSlider({
         {!readonly && (
           <div
             className={cn(
-              'absolute top-1/2 h-5 w-5 -translate-y-1/2 rounded-full bg-white shadow-lg transition-transform',
-              isDragging ? 'scale-110 duration-0' : 'duration-200',
-              !readonly && 'hover:scale-110'
+              "absolute top-1/2 h-5 w-5 -translate-y-1/2 rounded-full bg-white shadow-lg transition-transform",
+              isDragging ? "scale-110 duration-0" : "duration-200",
+              !readonly && "hover:scale-110",
             )}
             style={{ left: `calc(${percentage}% - 10px)` }}
           />
@@ -209,7 +209,7 @@ export function ScoreSliderCompact({
   value,
   onChange,
   readonly = false,
-  className = '',
+  className = "",
 }: ScoreSliderCompactProps) {
   return (
     <ScoreSlider
@@ -241,10 +241,10 @@ export function PercentageSlider({
   onChange,
   label,
   readonly = false,
-  className = '',
+  className = "",
 }: PercentageSliderProps) {
   return (
-    <div className={cn('space-y-2', className)}>
+    <div className={cn("space-y-2", className)}>
       {label && (
         <div className="flex items-center justify-between">
           <span className="font-medium text-foreground text-sm">{label}</span>

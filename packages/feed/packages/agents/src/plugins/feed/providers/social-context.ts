@@ -13,8 +13,8 @@ import type {
   Provider,
   ProviderResult,
   State,
-} from '@elizaos/core';
-import { logger } from '../../../shared/logger';
+} from "@elizaos/core";
+import { logger } from "../../../shared/logger";
 
 type SharedChatFact = {
   chatId: string;
@@ -59,7 +59,7 @@ type SharedChatContextServiceShape = {
       factLimit?: number;
       staleAfterMinutes?: number;
       refreshThreshold?: number;
-    }
+    },
   ) => Promise<RelevantGroupContext[]>;
   getLivePlayerRoster: (options: {
     limit?: number;
@@ -67,7 +67,7 @@ type SharedChatContextServiceShape = {
 };
 
 const SHARED_CHAT_CONTEXT_SERVICE_PATH =
-  '../../../../../engine/src/services/shared-chat-context-service';
+  "../../../../../engine/src/services/shared-chat-context-service";
 
 let sharedChatContextServicePromise: Promise<SharedChatContextServiceShape> | null =
   null;
@@ -78,7 +78,7 @@ async function getSharedChatContextService(): Promise<SharedChatContextServiceSh
       SHARED_CHAT_CONTEXT_SERVICE_PATH
     ).then(
       (module) =>
-        module.sharedChatContextService as SharedChatContextServiceShape
+        module.sharedChatContextService as SharedChatContextServiceShape,
     );
   }
 
@@ -86,7 +86,7 @@ async function getSharedChatContextService(): Promise<SharedChatContextServiceSh
 }
 
 function truncateText(text: string, maxLength: number): string {
-  const normalized = text.trim().replace(/\s+/g, ' ');
+  const normalized = text.trim().replace(/\s+/g, " ");
   if (normalized.length <= maxLength) return normalized;
   return `${normalized.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
 }
@@ -94,7 +94,7 @@ function truncateText(text: string, maxLength: number): string {
 function formatRelativeTime(isoString: string): string {
   const timestamp = new Date(isoString).getTime();
   if (Number.isNaN(timestamp)) {
-    return 'recently';
+    return "recently";
   }
 
   const diffMs = Date.now() - timestamp;
@@ -102,20 +102,20 @@ function formatRelativeTime(isoString: string): string {
   const diffHours = Math.floor(diffMs / 3600000);
   const diffDays = Math.floor(diffMs / 86400000);
 
-  if (diffMins < 1) return 'just now';
+  if (diffMins < 1) return "just now";
   if (diffMins < 60) return `${diffMins}m ago`;
   if (diffHours < 24) return `${diffHours}h ago`;
   return `${diffDays}d ago`;
 }
 
 export const sharedChatFactsProvider: Provider = {
-  name: 'SHARED_CHAT_FACTS',
-  description: 'Compact facts extracted from recent group chat summaries',
+  name: "SHARED_CHAT_FACTS",
+  description: "Compact facts extracted from recent group chat summaries",
 
   get: async (
     _runtime: IAgentRuntime,
     _message: Memory,
-    _state: State
+    _state: State,
   ): Promise<ProviderResult> => {
     try {
       const sharedChatContextService = await getSharedChatContextService();
@@ -127,20 +127,20 @@ export const sharedChatFactsProvider: Provider = {
         return {
           data: { facts: [], factCount: 0 },
           values: {
-            sharedChatFacts: '',
+            sharedChatFacts: "",
             factCount: 0,
             hasSharedChatFacts: false,
           },
-          text: '',
+          text: "",
         };
       }
 
       const formattedFacts = facts
         .map(
           (fact, index) =>
-            `${index + 1}. [${fact.chatName || fact.chatId}] ${fact.fact} (${formatRelativeTime(fact.refreshedAt)})`
+            `${index + 1}. [${fact.chatName || fact.chatId}] ${fact.fact} (${formatRelativeTime(fact.refreshedAt)})`,
         )
-        .join('\n');
+        .join("\n");
 
       return {
         data: { facts, factCount: facts.length },
@@ -153,32 +153,32 @@ export const sharedChatFactsProvider: Provider = {
       };
     } catch (error) {
       logger.warn(
-        'Failed to fetch shared chat facts',
+        "Failed to fetch shared chat facts",
         error instanceof Error ? error.message : String(error),
-        'SharedChatFactsProvider'
+        "SharedChatFactsProvider",
       );
       return {
         data: { facts: [], factCount: 0 },
         values: {
-          sharedChatFacts: 'Shared chat facts unavailable.',
+          sharedChatFacts: "Shared chat facts unavailable.",
           factCount: 0,
           hasSharedChatFacts: false,
         },
-        text: 'Shared chat facts unavailable.',
+        text: "Shared chat facts unavailable.",
       };
     }
   },
 };
 
 export const recentRelevantGroupContextProvider: Provider = {
-  name: 'RECENT_RELEVANT_GROUP_CONTEXT',
+  name: "RECENT_RELEVANT_GROUP_CONTEXT",
   description:
-    'Recent summaries and compact message windows from the agent’s relevant group chats',
+    "Recent summaries and compact message windows from the agent’s relevant group chats",
 
   get: async (
     runtime: IAgentRuntime,
     _message: Memory,
-    _state: State
+    _state: State,
   ): Promise<ProviderResult> => {
     try {
       const sharedChatContextService = await getSharedChatContextService();
@@ -191,18 +191,18 @@ export const recentRelevantGroupContextProvider: Provider = {
             factLimit: 5,
             staleAfterMinutes: 30,
             refreshThreshold: 10,
-          }
+          },
         );
 
       if (contexts.length === 0) {
         return {
           data: { contexts: [], contextCount: 0 },
           values: {
-            recentRelevantGroupContext: '',
+            recentRelevantGroupContext: "",
             contextCount: 0,
             hasRelevantGroupContext: false,
           },
-          text: '',
+          text: "",
         };
       }
 
@@ -210,21 +210,21 @@ export const recentRelevantGroupContextProvider: Provider = {
         .map((context, index) => {
           const factsText =
             context.facts.length > 0
-              ? context.facts.map((fact) => `  - ${fact}`).join('\n')
-              : '  - None';
+              ? context.facts.map((fact) => `  - ${fact}`).join("\n")
+              : "  - None";
           const messagesText =
             context.recentMessages.length > 0
               ? context.recentMessages
                   .map(
                     (item) =>
-                      `  - ${item.speaker}: ${truncateText(item.content, 160)} (${formatRelativeTime(item.createdAt)})`
+                      `  - ${item.speaker}: ${truncateText(item.content, 160)} (${formatRelativeTime(item.createdAt)})`,
                   )
-                  .join('\n')
-              : '  - No recent messages';
+                  .join("\n")
+              : "  - No recent messages";
 
           return `Chat ${index + 1}: ${context.chatName || context.chatId}\nSummary: ${context.summary}\nFacts:\n${factsText}\nRecent messages:\n${messagesText}`;
         })
-        .join('\n\n');
+        .join("\n\n");
 
       return {
         data: { contexts, contextCount: contexts.length },
@@ -237,32 +237,32 @@ export const recentRelevantGroupContextProvider: Provider = {
       };
     } catch (error) {
       logger.warn(
-        'Failed to fetch recent relevant group context',
+        "Failed to fetch recent relevant group context",
         error instanceof Error ? error.message : String(error),
-        'RecentRelevantGroupContextProvider'
+        "RecentRelevantGroupContextProvider",
       );
       return {
         data: { contexts: [], contextCount: 0 },
         values: {
           recentRelevantGroupContext:
-            'Recent relevant group context unavailable.',
+            "Recent relevant group context unavailable.",
           contextCount: 0,
           hasRelevantGroupContext: false,
         },
-        text: 'Recent relevant group context unavailable.',
+        text: "Recent relevant group context unavailable.",
       };
     }
   },
 };
 
 export const livePlayerRosterProvider: Provider = {
-  name: 'LIVE_PLAYER_ROSTER',
-  description: 'Live roster of non-NPC users and agents currently in Feed',
+  name: "LIVE_PLAYER_ROSTER",
+  description: "Live roster of non-NPC users and agents currently in Feed",
 
   get: async (
     _runtime: IAgentRuntime,
     _message: Memory,
-    _state: State
+    _state: State,
   ): Promise<ProviderResult> => {
     try {
       const sharedChatContextService = await getSharedChatContextService();
@@ -274,22 +274,22 @@ export const livePlayerRosterProvider: Provider = {
         return {
           data: { roster: [], playerCount: 0 },
           values: {
-            livePlayerRoster: '',
+            livePlayerRoster: "",
             playerCount: 0,
             hasLivePlayerRoster: false,
           },
-          text: '',
+          text: "",
         };
       }
 
       const formattedRoster = roster
         .map((player, index) => {
           const name = player.displayName || player.username || player.id;
-          const handle = player.username ? `@${player.username}` : '';
-          const role = player.isAgent ? 'Agent' : 'User';
-          return `${index + 1}. ${name}${handle ? ` (${handle})` : ''} - ${role}, active group chats: ${player.activeGroupChatCount}`;
+          const handle = player.username ? `@${player.username}` : "";
+          const role = player.isAgent ? "Agent" : "User";
+          return `${index + 1}. ${name}${handle ? ` (${handle})` : ""} - ${role}, active group chats: ${player.activeGroupChatCount}`;
         })
-        .join('\n');
+        .join("\n");
 
       return {
         data: { roster, playerCount: roster.length },
@@ -302,18 +302,18 @@ export const livePlayerRosterProvider: Provider = {
       };
     } catch (error) {
       logger.warn(
-        'Failed to fetch live player roster',
+        "Failed to fetch live player roster",
         error instanceof Error ? error.message : String(error),
-        'LivePlayerRosterProvider'
+        "LivePlayerRosterProvider",
       );
       return {
         data: { roster: [], playerCount: 0 },
         values: {
-          livePlayerRoster: 'Live player roster unavailable.',
+          livePlayerRoster: "Live player roster unavailable.",
           playerCount: 0,
           hasLivePlayerRoster: false,
         },
-        text: 'Live player roster unavailable.',
+        text: "Live player roster unavailable.",
       };
     }
   },

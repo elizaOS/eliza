@@ -1,4 +1,4 @@
-import type { JsonValue } from '@feed/api';
+import type { JsonValue } from "@feed/api";
 import {
   authenticate,
   broadcastToChannel,
@@ -6,24 +6,24 @@ import {
   invalidateMarketsApiPredictionsAfterUserTrade,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
+} from "@feed/api";
 import {
   PredictionDbAdapter,
   PredictionMarketService,
-} from '@feed/core/markets/prediction';
+} from "@feed/core/markets/prediction";
 import {
   FEE_CONFIG,
   FeeService,
   invalidateAfterPredictionTrade,
   WalletService,
-} from '@feed/engine';
+} from "@feed/engine";
 import {
   logger,
   PredictionMarketIdSchema,
   PredictionMarketTradeSchema,
-} from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { trackServerEvent } from '@/lib/posthog/server';
+} from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { trackServerEvent } from "@/lib/posthog/server";
 
 const buildService = (marketId: string) =>
   new PredictionMarketService({
@@ -34,20 +34,20 @@ const buildService = (marketId: string) =>
           userId,
           amount,
           reason,
-          description ?? '',
-          relatedId
+          description ?? "",
+          relatedId,
         ),
       credit: ({ userId, amount, reason, description, relatedId }) =>
         WalletService.credit(
           userId,
           amount,
           reason,
-          description ?? '',
-          relatedId
+          description ?? "",
+          relatedId,
         ),
       recordPnL: ({ userId, pnl, reason, relatedId }) =>
         WalletService.recordPnL(userId, pnl, reason, relatedId).then(
-          () => undefined
+          () => undefined,
         ),
       getBalance: (userId: string) => WalletService.getBalance(userId),
     },
@@ -70,7 +70,7 @@ const buildService = (marketId: string) =>
           type as (typeof FEE_CONFIG.FEE_TYPES)[keyof typeof FEE_CONFIG.FEE_TYPES],
           amount,
           positionId,
-          relatedId
+          relatedId,
         ),
     },
   });
@@ -79,14 +79,14 @@ const buildService = (marketId: string) =>
 export const POST = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ id: string }> }
+    context: { params: Promise<{ id: string }> },
   ) => {
     const { id: marketId } = PredictionMarketIdSchema.parse(
-      await context.params
+      await context.params,
     );
     const user = await authenticate(request);
     const { side, amount } = PredictionMarketTradeSchema.parse(
-      await request.json()
+      await request.json(),
     );
 
     const service = buildService(marketId);
@@ -99,7 +99,7 @@ export const POST = withErrorHandling(
 
     const balance = await WalletService.getBalance(user.userId);
 
-    trackServerEvent(user.userId, 'prediction_bought', {
+    trackServerEvent(user.userId, "prediction_bought", {
       marketId,
       side,
       amount,
@@ -110,10 +110,10 @@ export const POST = withErrorHandling(
       newYesPrice: result.market.yesPrice,
       newNoPrice: result.market.noPrice,
     }).catch((error) => {
-      logger.warn('Failed to track prediction_bought event', { error });
+      logger.warn("Failed to track prediction_bought event", { error });
     });
 
-    void checkProgress(user.userId, { type: 'prediction_trade', marketId });
+    void checkProgress(user.userId, { type: "prediction_trade", marketId });
     void invalidateMarketsApiPredictionsAfterUserTrade(user.userId);
 
     return successResponse(
@@ -133,7 +133,7 @@ export const POST = withErrorHandling(
         },
         newBalance: balance.balance,
       },
-      201
+      201,
     );
-  }
+  },
 );

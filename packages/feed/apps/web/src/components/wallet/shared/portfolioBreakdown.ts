@@ -1,9 +1,9 @@
-import { calculatePerpPositionMarketValue } from '@feed/engine/client';
-import type { PortfolioBreakdownSnapshot } from '@/hooks/usePortfolioPnL';
+import { calculatePerpPositionMarketValue } from "@feed/engine/client";
+import type { PortfolioBreakdownSnapshot } from "@/hooks/usePortfolioPnL";
 import type {
   PerpPosition,
   UserPredictionPosition,
-} from '@/stores/userPositionsStore';
+} from "@/stores/userPositionsStore";
 
 export interface WalletPortfolioMember {
   id: string;
@@ -34,7 +34,7 @@ export function calculateWalletPortfolioSummary(params: {
   const { userId, snapshot, perpPositions, predictionPositions } = params;
   const membersById = new Map<string, WalletPortfolioMember>();
   const ownerMember = (snapshot.members ?? []).find(
-    (member) => !member.isAgent
+    (member) => !member.isAgent,
   );
   const ownerMemberId = ownerMember?.id ?? userId;
 
@@ -60,7 +60,7 @@ export function calculateWalletPortfolioSummary(params: {
 
     membersById.set(id, {
       id,
-      name: isAgent ? name : 'You (Owner)',
+      name: isAgent ? name : "You (Owner)",
       cash: wallet,
       openPositions: 0,
       total: wallet,
@@ -75,7 +75,7 @@ export function calculateWalletPortfolioSummary(params: {
   if (!membersById.has(ownerMemberId)) {
     addMember({
       id: ownerMemberId,
-      name: 'You (Owner)',
+      name: "You (Owner)",
       wallet: snapshot.wallet,
       isAgent: false,
     });
@@ -85,7 +85,7 @@ export function calculateWalletPortfolioSummary(params: {
     memberId: string,
     fallbackName: string,
     value: number,
-    isAgent: boolean
+    isAgent: boolean,
   ) => {
     if (!memberId) return;
 
@@ -98,7 +98,7 @@ export function calculateWalletPortfolioSummary(params: {
 
     membersById.set(memberId, {
       id: memberId,
-      name: isAgent ? fallbackName : 'You (Owner)',
+      name: isAgent ? fallbackName : "You (Owner)",
       cash: 0,
       openPositions: value,
       total: value,
@@ -108,25 +108,25 @@ export function calculateWalletPortfolioSummary(params: {
 
   for (const position of perpPositions) {
     const memberId = position.isAgentPosition
-      ? (position.agentId ?? '')
+      ? (position.agentId ?? "")
       : ownerMemberId;
     addPositionValue(
       memberId,
-      position.agentName ?? 'Agent',
+      position.agentName ?? "Agent",
       calculatePerpPositionMarketValue(position),
-      Boolean(position.isAgentPosition)
+      Boolean(position.isAgentPosition),
     );
   }
 
   for (const position of predictionPositions) {
     const memberId = position.isAgentPosition
-      ? (position.agentId ?? '')
+      ? (position.agentId ?? "")
       : ownerMemberId;
     addPositionValue(
       memberId,
-      position.agentName ?? 'Agent',
+      position.agentName ?? "Agent",
       position.currentValue ?? position.shares * position.currentPrice,
-      Boolean(position.isAgentPosition)
+      Boolean(position.isAgentPosition),
     );
   }
 

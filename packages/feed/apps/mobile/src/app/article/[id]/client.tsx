@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import ArticlePage from '@web/app/article/[id]/page';
-import { useParams } from 'next/navigation';
+import ArticlePage from "@web/app/article/[id]/page";
+import { useParams } from "next/navigation";
 
 export function PageContent() {
   const params = useParams<{ id: string }>();

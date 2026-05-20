@@ -4,7 +4,7 @@
  * Defines the interface for prediction market data access.
  */
 
-import type { MarketSnapshotRecord, PredictionMarketRecord } from '../types';
+import type { MarketSnapshotRecord, PredictionMarketRecord } from "../types";
 
 export interface MarketPort {
   // Prediction Market Operations
@@ -12,11 +12,11 @@ export interface MarketPort {
   getActiveMarkets(): Promise<PredictionMarketRecord[]>;
   getMarketsByCategory(category: string): Promise<PredictionMarketRecord[]>;
   createMarket(
-    market: Omit<PredictionMarketRecord, 'createdAt'>
+    market: Omit<PredictionMarketRecord, "createdAt">,
   ): Promise<PredictionMarketRecord>;
   updateMarket(
     id: string,
-    updates: Partial<PredictionMarketRecord>
+    updates: Partial<PredictionMarketRecord>,
   ): Promise<PredictionMarketRecord>;
   resolveMarket(id: string, outcome: boolean): Promise<void>;
 
@@ -25,15 +25,15 @@ export interface MarketPort {
     id: string,
     yesShares: string,
     noShares: string,
-    liquidity: string
+    liquidity: string,
   ): Promise<void>;
 
   // Market Snapshots (price history)
   getMarketSnapshots(
     marketId: string,
-    limit?: number
+    limit?: number,
   ): Promise<MarketSnapshotRecord[]>;
   recordMarketSnapshot(
-    snapshot: Omit<MarketSnapshotRecord, 'id' | 'timestamp'>
+    snapshot: Omit<MarketSnapshotRecord, "id" | "timestamp">,
   ): Promise<MarketSnapshotRecord>;
 }

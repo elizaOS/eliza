@@ -1,9 +1,9 @@
 // POST /api/users/me/game-guide - Mark game guide as completed
 
-import { authenticate, successResponse, withErrorHandling } from '@feed/api';
-import { db, eq, users } from '@feed/db';
-import { logger, toISO } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+import { authenticate, successResponse, withErrorHandling } from "@feed/api";
+import { db, eq, users } from "@feed/db";
+import { logger, toISO } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const authUser = await authenticate(request);
@@ -17,9 +17,9 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   if (result.length === 0) {
     logger.warn(
-      'Game guide: no user found',
+      "Game guide: no user found",
       { privyId: authUser.privyId },
-      'game-guide'
+      "game-guide",
     );
   }
 

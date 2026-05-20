@@ -1,18 +1,18 @@
-'use client';
+"use client";
 
-import { logger } from '@feed/shared';
-import { useCallback, useEffect, useState } from 'react';
-import { useStewardAuthContext } from '@/components/providers/StewardAuthProvider';
-import { Button } from '@/components/ui/button';
+import { logger } from "@feed/shared";
+import { useCallback, useEffect, useState } from "react";
+import { useStewardAuthContext } from "@/components/providers/StewardAuthProvider";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { useAuth } from '@/hooks/useAuth';
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { useAuth } from "@/hooks/useAuth";
 
 /**
  * Steward-backed login modal.
@@ -24,7 +24,7 @@ import { useAuth } from '@/hooks/useAuth';
  * - Farcaster SIWF
  */
 
-type Step = 'idle' | 'email-sent' | 'loading' | 'error';
+type Step = "idle" | "email-sent" | "loading" | "error";
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -34,20 +34,19 @@ interface LoginModalProps {
 }
 
 function getStewardApiUrl(): string {
-  if (typeof window === 'undefined') {
-    return process.env.NEXT_PUBLIC_STEWARD_API_URL ?? 'http://localhost:3200';
+  if (typeof window === "undefined") {
+    return process.env.NEXT_PUBLIC_STEWARD_API_URL ?? "http://localhost:3200";
   }
-  return process.env.NEXT_PUBLIC_STEWARD_API_URL ?? 'http://localhost:3200';
+  return process.env.NEXT_PUBLIC_STEWARD_API_URL ?? "http://localhost:3200";
 }
 
-const STEWARD_TENANT_ID =
-  process.env.NEXT_PUBLIC_STEWARD_TENANT_ID ?? 'feed';
+const STEWARD_TENANT_ID = process.env.NEXT_PUBLIC_STEWARD_TENANT_ID ?? "feed";
 
 /** Build the Steward OAuth authorize URL. Callback lands on our /auth/callback/[provider] page. */
 function oauthUrl(provider: string): string {
   const stewardBase = getStewardApiUrl();
   const callbackBase =
-    typeof window !== 'undefined' ? window.location.origin : '';
+    typeof window !== "undefined" ? window.location.origin : "";
   const redirectUri = `${callbackBase}/auth/callback/${provider}`;
   return (
     `${stewardBase}/auth/oauth/${provider}/authorize` +
@@ -64,9 +63,9 @@ export function LoginModal({
 }: LoginModalProps) {
   const { stewardAuth, onLoginSuccess } = useStewardAuthContext();
   const { authenticated } = useAuth();
-  const [email, setEmail] = useState('');
-  const [step, setStep] = useState<Step>('idle');
-  const [errorMsg, setErrorMsg] = useState('');
+  const [email, setEmail] = useState("");
+  const [step, setStep] = useState<Step>("idle");
+  const [errorMsg, setErrorMsg] = useState("");
 
   useEffect(() => {
     if (authenticated && isOpen) onClose();
@@ -74,62 +73,62 @@ export function LoginModal({
 
   useEffect(() => {
     if (!isOpen) {
-      setStep('idle');
-      setEmail('');
-      setErrorMsg('');
+      setStep("idle");
+      setEmail("");
+      setErrorMsg("");
     }
   }, [isOpen]);
 
   const handleEmailLogin = useCallback(async () => {
     const trimmed = email.trim();
-    if (!trimmed || !trimmed.includes('@')) {
-      setErrorMsg('Please enter a valid email address.');
+    if (!trimmed?.includes("@")) {
+      setErrorMsg("Please enter a valid email address.");
       return;
     }
-    setStep('loading');
-    setErrorMsg('');
+    setStep("loading");
+    setErrorMsg("");
     try {
       const result = await stewardAuth.signInWithEmail(trimmed);
       if (result.ok) {
-        setStep('email-sent');
-        logger.info('Magic link sent', { email: trimmed }, 'LoginModal');
+        setStep("email-sent");
+        logger.info("Magic link sent", { email: trimmed }, "LoginModal");
       } else {
-        setErrorMsg('Failed to send magic link. Please try again.');
-        setStep('error');
+        setErrorMsg("Failed to send magic link. Please try again.");
+        setStep("error");
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Unknown error';
-      logger.warn('Email login failed', { error: msg }, 'LoginModal');
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      logger.warn("Email login failed", { error: msg }, "LoginModal");
       setErrorMsg(msg);
-      setStep('error');
+      setStep("error");
     }
   }, [email, stewardAuth]);
 
   const handlePasskeyLogin = useCallback(async () => {
     const trimmed = email.trim();
-    if (!trimmed || !trimmed.includes('@')) {
-      setErrorMsg('Please enter your email address to use a passkey.');
+    if (!trimmed?.includes("@")) {
+      setErrorMsg("Please enter your email address to use a passkey.");
       return;
     }
-    setStep('loading');
-    setErrorMsg('');
+    setStep("loading");
+    setErrorMsg("");
     try {
       const result = await stewardAuth.signInWithPasskey(trimmed);
       await onLoginSuccess(result.token);
-      logger.info('Passkey login successful', { email: trimmed }, 'LoginModal');
+      logger.info("Passkey login successful", { email: trimmed }, "LoginModal");
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Passkey login failed';
-      logger.warn('Passkey login failed', { error: msg }, 'LoginModal');
+      const msg = err instanceof Error ? err.message : "Passkey login failed";
+      logger.warn("Passkey login failed", { error: msg }, "LoginModal");
       setErrorMsg(msg);
-      setStep('error');
+      setStep("error");
     }
   }, [email, stewardAuth, onLoginSuccess]);
 
   const handleOAuth = useCallback(
-    (provider: 'google' | 'discord' | 'twitter') => {
+    (provider: "google" | "discord" | "twitter") => {
       window.location.href = oauthUrl(provider);
     },
-    []
+    [],
   );
 
   return (
@@ -142,7 +141,7 @@ export function LoginModal({
       <DialogContent className="p-8 sm:max-w-sm">
         <DialogHeader>
           <DialogTitle className="text-center text-xl">
-            {title ?? 'Sign in to Feed'}
+            {title ?? "Sign in to Feed"}
           </DialogTitle>
           {message && (
             <DialogDescription className="text-center">
@@ -152,7 +151,7 @@ export function LoginModal({
         </DialogHeader>
 
         <div className="flex flex-col gap-3 pt-1">
-          {step === 'email-sent' ? (
+          {step === "email-sent" ? (
             <div className="rounded-xl border bg-muted/50 p-5 text-center">
               <div className="mb-2 text-2xl">📬</div>
               <p className="font-semibold">Check your inbox</p>
@@ -160,10 +159,10 @@ export function LoginModal({
                 We sent a magic link to <strong>{email}</strong>.
               </p>
               <p className="mt-1 text-muted-foreground text-xs">
-                No email? Check spam or{' '}
+                No email? Check spam or{" "}
                 <button
                   className="text-primary underline-offset-4 hover:underline"
-                  onClick={() => setStep('idle')}
+                  onClick={() => setStep("idle")}
                   type="button"
                 >
                   try again
@@ -177,8 +176,8 @@ export function LoginModal({
               <div className="flex flex-col gap-2">
                 <Button
                   variant="outline"
-                  onClick={() => handleOAuth('google')}
-                  disabled={step === 'loading'}
+                  onClick={() => handleOAuth("google")}
+                  disabled={step === "loading"}
                   className="w-full gap-2"
                 >
                   <GoogleIcon />
@@ -186,8 +185,8 @@ export function LoginModal({
                 </Button>
                 <Button
                   variant="outline"
-                  onClick={() => handleOAuth('discord')}
-                  disabled={step === 'loading'}
+                  onClick={() => handleOAuth("discord")}
+                  disabled={step === "loading"}
                   className="w-full gap-2"
                 >
                   <DiscordIcon />
@@ -195,8 +194,8 @@ export function LoginModal({
                 </Button>
                 <Button
                   variant="outline"
-                  onClick={() => handleOAuth('twitter')}
-                  disabled={step === 'loading'}
+                  onClick={() => handleOAuth("twitter")}
+                  disabled={step === "loading"}
                   className="w-full gap-2"
                 >
                   <XIcon />
@@ -208,7 +207,7 @@ export function LoginModal({
               <FarcasterSignInSection
                 onLoginSuccess={onLoginSuccess}
                 onClose={onClose}
-                loading={step === 'loading'}
+                loading={step === "loading"}
               />
 
               <div className="relative flex items-center gap-3">
@@ -227,32 +226,32 @@ export function LoginModal({
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') void handleEmailLogin();
+                    if (e.key === "Enter") void handleEmailLogin();
                   }}
-                  disabled={step === 'loading'}
+                  disabled={step === "loading"}
                   autoComplete="email"
                   className="h-10"
                 />
                 <div className="flex gap-2">
                   <Button
                     onClick={() => void handleEmailLogin()}
-                    disabled={step === 'loading' || !email.trim()}
+                    disabled={step === "loading" || !email.trim()}
                     className="flex-1"
                     size="sm"
                   >
-                    {step === 'loading' ? (
+                    {step === "loading" ? (
                       <span className="flex items-center gap-2">
                         <LoadingSpinner />
                         Sending…
                       </span>
                     ) : (
-                      'Send link'
+                      "Send link"
                     )}
                   </Button>
                   <Button
                     variant="outline"
                     onClick={() => void handlePasskeyLogin()}
-                    disabled={step === 'loading' || !email.trim()}
+                    disabled={step === "loading" || !email.trim()}
                     className="flex-1"
                     size="sm"
                     title="Sign in with a passkey (biometric / hardware key)"
@@ -286,14 +285,14 @@ function FarcasterSignInSection({
   onClose: () => void;
   loading: boolean;
 }) {
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const [SignInButton, setSignInButton] = useState<React.ComponentType<{
     onSuccess?: (res: unknown) => void;
     onError?: (err: unknown) => void;
   }> | null>(null);
 
   useEffect(() => {
-    import('@farcaster/auth-kit')
+    import("@farcaster/auth-kit")
       .then((mod) => setSignInButton(() => mod.SignInButton))
       .catch(() => {
         // auth-kit unavailable — omit the button silently
@@ -302,12 +301,12 @@ function FarcasterSignInSection({
 
   const handleSuccess = useCallback(
     async (res: { message?: string; signature?: string; nonce?: string }) => {
-      setError('');
+      setError("");
       try {
-        const r = await fetch('/api/auth/farcaster', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
+        const r = await fetch("/api/auth/farcaster", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
           body: JSON.stringify({
             message: res.message,
             signature: res.signature,
@@ -320,31 +319,31 @@ function FarcasterSignInSection({
           error?: string;
         };
         if (!data.ok || !data.token)
-          throw new Error(data.error ?? 'Farcaster auth failed');
+          throw new Error(data.error ?? "Farcaster auth failed");
         await onLoginSuccess(data.token);
         onClose();
       } catch (err) {
         const msg =
-          err instanceof Error ? err.message : 'Farcaster sign-in failed';
-        logger.warn('Farcaster SIWF failed', { error: msg }, 'LoginModal');
+          err instanceof Error ? err.message : "Farcaster sign-in failed";
+        logger.warn("Farcaster SIWF failed", { error: msg }, "LoginModal");
         setError(msg);
       }
     },
-    [onLoginSuccess, onClose]
+    [onLoginSuccess, onClose],
   );
 
   if (!SignInButton) return null;
 
   return (
     <div className="flex flex-col items-center gap-1">
-      <div className={loading ? 'pointer-events-none opacity-50' : ''}>
+      <div className={loading ? "pointer-events-none opacity-50" : ""}>
         <SignInButton
           onSuccess={(res) =>
             void handleSuccess(res as Parameters<typeof handleSuccess>[0])
           }
           onError={(err) => {
             const msg =
-              err instanceof Error ? err.message : 'Farcaster sign-in error';
+              err instanceof Error ? err.message : "Farcaster sign-in error";
             setError(msg);
           }}
         />

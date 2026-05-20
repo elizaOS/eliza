@@ -71,10 +71,10 @@ import {
   successResponse,
   WaitlistService,
   withErrorHandling,
-} from '@feed/api';
-import { and, db, desc, eq, referrals, users } from '@feed/db';
-import { logger, toISO, toISOOrNull } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/api";
+import { and, db, desc, eq, referrals, users } from "@feed/db";
+import { logger, toISO, toISOOrNull } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 type PositionResponse = {
   position: number | null;
@@ -106,7 +106,7 @@ type PositionResponse = {
     farcasterUsername: string | null;
     twitterUsername: string | null;
     createdAt: string;
-    status: 'pending';
+    status: "pending";
   }>;
   qualifiedUsers?: Array<{
     id: string;
@@ -115,14 +115,14 @@ type PositionResponse = {
     profileImageUrl: string | null;
     createdAt: string;
     completedAt: string;
-    status: 'qualified';
+    status: "qualified";
   }>;
   invitedCount?: number;
   qualifiedCount?: number;
   totalReferralPoints?: number;
 };
 
-const CACHE_KEY_NAMESPACE = 'waitlist:position';
+const CACHE_KEY_NAMESPACE = "waitlist:position";
 const CACHE_TTL_MS = Number(process.env.WAITLIST_POSITION_CACHE_MS ?? 30_000); // 30s default (increased from 5s)
 const CACHE_TTL_SECONDS = Math.max(1, Math.floor(CACHE_TTL_MS / 1000));
 const STALE_SECONDS = CACHE_TTL_SECONDS * 3;
@@ -134,7 +134,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   const userId = authUser.dbUserId || authUser.userId;
 
   if (!userId) {
-    throw new Error('User not found in database');
+    throw new Error("User not found in database");
   }
 
   if (CACHE_TTL_MS > 0) {
@@ -143,16 +143,16 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     });
     if (cached) {
       return successResponse(cached, 200, {
-        'x-cache': 'waitlist-position-hit',
-        'Cache-Control': `private, max-age=${CACHE_TTL_SECONDS}, stale-while-revalidate=${STALE_SECONDS}`,
+        "x-cache": "waitlist-position-hit",
+        "Cache-Control": `private, max-age=${CACHE_TTL_SECONDS}, stale-while-revalidate=${STALE_SECONDS}`,
       });
     }
   }
 
   logger.info(
-    'Waitlist position request',
+    "Waitlist position request",
     { userId },
-    'GET /api/waitlist/position'
+    "GET /api/waitlist/position",
   );
 
   const position = await WaitlistService.getWaitlistPosition(userId);
@@ -163,7 +163,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     logger.info(
       "Waitlist position not found - user not on waitlist or doesn't exist yet",
       { userId },
-      'GET /api/waitlist/position'
+      "GET /api/waitlist/position",
     );
     return successResponse(
       {
@@ -171,8 +171,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       },
       200,
       {
-        'x-cache': 'waitlist-position-miss',
-      }
+        "x-cache": "waitlist-position-miss",
+      },
     );
   }
 
@@ -180,7 +180,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   const basePoints = Math.max(
     0,
     position.points -
-      (position.invitePoints + position.earnedPoints + position.bonusPoints)
+      (position.invitePoints + position.earnedPoints + position.bonusPoints),
   );
 
   // Calculate weekly referral count and fetch referral details
@@ -203,13 +203,13 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     .from(referrals)
     .leftJoin(users, eq(referrals.referredUserId, users.id))
     .where(
-      and(eq(referrals.referrerId, userId), eq(referrals.status, 'completed'))
+      and(eq(referrals.referrerId, userId), eq(referrals.status, "completed")),
     )
     .orderBy(desc(referrals.completedAt))
     .limit(MAX_REFERRALS_PER_LIST);
 
   const weeklyReferralCount = completedReferralsRaw.filter(
-    (r) => r.completedAt && r.completedAt >= oneWeekAgo
+    (r) => r.completedAt && r.completedAt >= oneWeekAgo,
   ).length;
 
   // Get pending referrals (invited but not qualified) - limit to prevent unbounded payloads
@@ -241,7 +241,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     farcasterUsername: u.farcasterUsername,
     twitterUsername: u.twitterUsername,
     createdAt: toISO(u.createdAt),
-    status: 'pending' as const,
+    status: "pending" as const,
   }));
 
   const qualifiedUsers = completedReferralsRaw
@@ -253,7 +253,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       profileImageUrl: r.profileImageUrl,
       createdAt: toISOOrNull(r.userCreatedAt) ?? new Date().toISOString(),
       completedAt: toISOOrNull(r.completedAt) ?? new Date().toISOString(),
-      status: 'qualified' as const,
+      status: "qualified" as const,
     }));
 
   const responseBody: PositionResponse = {
@@ -293,7 +293,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   }
 
   return successResponse(responseBody, 200, {
-    'x-cache': 'waitlist-position-miss',
-    'Cache-Control': `private, max-age=${CACHE_TTL_SECONDS}, stale-while-revalidate=${STALE_SECONDS}`,
+    "x-cache": "waitlist-position-miss",
+    "Cache-Control": `private, max-age=${CACHE_TTL_SECONDS}, stale-while-revalidate=${STALE_SECONDS}`,
   });
 });

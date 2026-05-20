@@ -2,20 +2,20 @@
  * JSON Game Adapter
  */
 
-import type { GamePort } from '../../../ports/game';
+import type { GamePort } from "../../../ports/game";
 import type {
   GameRecord,
   StockPriceRecord,
   WorldEventRecord,
-} from '../../../types';
-import type { JsonIdGenerator } from '../id-generator';
-import type { JsonStorageState } from '../types';
+} from "../../../types";
+import type { JsonIdGenerator } from "../id-generator";
+import type { JsonStorageState } from "../types";
 
 export class JsonGameAdapter implements GamePort {
   constructor(
     private state: JsonStorageState,
     private idGen: JsonIdGenerator,
-    private onChange: () => void
+    private onChange: () => void,
   ) {}
 
   async getGameState(): Promise<GameRecord | null> {
@@ -29,7 +29,7 @@ export class JsonGameAdapter implements GamePort {
 
     const now = new Date();
     const game: GameRecord = {
-      id: this.idGen.generate('game'),
+      id: this.idGen.generate("game"),
       isContinuous: true,
       isRunning: true,
       currentDay: 1,
@@ -46,7 +46,7 @@ export class JsonGameAdapter implements GamePort {
 
   async updateGameState(updates: Partial<GameRecord>): Promise<GameRecord> {
     if (!this.state.game) {
-      throw new Error('Game not initialized');
+      throw new Error("Game not initialized");
     }
 
     this.state.game = {
@@ -69,7 +69,7 @@ export class JsonGameAdapter implements GamePort {
   }
 
   async createEvent(
-    event: Omit<WorldEventRecord, 'timestamp'>
+    event: Omit<WorldEventRecord, "timestamp">,
   ): Promise<WorldEventRecord> {
     const record: WorldEventRecord = {
       ...event,
@@ -88,10 +88,10 @@ export class JsonGameAdapter implements GamePort {
     organizationId: string,
     price: number,
     change: number,
-    changePercent: number
+    changePercent: number,
   ): Promise<StockPriceRecord> {
     const record: StockPriceRecord = {
-      id: this.idGen.generate('price'),
+      id: this.idGen.generate("price"),
       organizationId,
       price,
       change,
@@ -112,10 +112,10 @@ export class JsonGameAdapter implements GamePort {
       lowPrice: number;
       closePrice: number;
       volume: number;
-    }
+    },
   ): Promise<StockPriceRecord> {
     const record: StockPriceRecord = {
-      id: this.idGen.generate('price'),
+      id: this.idGen.generate("price"),
       organizationId,
       price: data.closePrice,
       change: data.closePrice - data.openPrice,
@@ -135,7 +135,7 @@ export class JsonGameAdapter implements GamePort {
 
   async getPriceHistory(
     organizationId: string,
-    limit = 1440
+    limit = 1440,
   ): Promise<StockPriceRecord[]> {
     return this.state.stockPrices
       .filter((p) => p.organizationId === organizationId)
@@ -145,7 +145,7 @@ export class JsonGameAdapter implements GamePort {
 
   async getDailySnapshots(
     organizationId: string,
-    days = 30
+    days = 30,
   ): Promise<StockPriceRecord[]> {
     return this.state.stockPrices
       .filter((p) => p.organizationId === organizationId && p.isSnapshot)

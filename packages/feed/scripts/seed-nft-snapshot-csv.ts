@@ -14,9 +14,9 @@
  *   bun run scripts/seed-nft-snapshot-csv.ts --file "/path/to/file.csv" --dry-run
  */
 
-import { closeDatabase, db, eq, nftSnapshot, users } from '@feed/db';
-import { parse } from 'csv-parse/sync';
-import { nanoid } from 'nanoid';
+import { closeDatabase, db, eq, nftSnapshot, users } from "@feed/db";
+import { parse } from "csv-parse/sync";
+import { nanoid } from "nanoid";
 
 type CliOptions = {
   file: string;
@@ -30,25 +30,25 @@ function parseArgs(): CliOptions {
   const args = process.argv.slice(2);
 
   const getArgValue = (name: string): string | undefined => {
-    const idx = args.findIndex((arg) => arg === name);
+    const idx = args.indexOf(name);
     if (idx === -1) return undefined;
     return args[idx + 1];
   };
 
-  const file = getArgValue('--file');
+  const file = getArgValue("--file");
   if (!file) {
     throw new Error(
-      'Missing required --file argument. Example: --file "/path/to/snapshot.csv"'
+      'Missing required --file argument. Example: --file "/path/to/snapshot.csv"',
     );
   }
 
-  const snapshotAtRaw = getArgValue('--snapshot-at');
+  const snapshotAtRaw = getArgValue("--snapshot-at");
   const snapshotAt = snapshotAtRaw ? new Date(snapshotAtRaw) : new Date();
   if (Number.isNaN(snapshotAt.getTime())) {
     throw new Error(`Invalid --snapshot-at value: ${snapshotAtRaw}`);
   }
 
-  const dryRun = args.includes('--dry-run');
+  const dryRun = args.includes("--dry-run");
 
   return { file, snapshotAt, dryRun };
 }
@@ -98,7 +98,7 @@ async function main(): Promise<void> {
   }) as CsvRow[];
 
   if (rows.length === 0) {
-    console.log('[SeedNftSnapshotCsv] CSV is empty. Nothing to import.');
+    console.log("[SeedNftSnapshotCsv] CSV is empty. Nothing to import.");
     await closeDatabase();
     return;
   }
@@ -179,22 +179,22 @@ async function main(): Promise<void> {
     .from(nftSnapshot);
 
   const mintedUserIds = new Set(
-    existingSnapshots.filter((s) => s.hasMinted).map((s) => s.userId)
+    existingSnapshots.filter((s) => s.hasMinted).map((s) => s.userId),
   );
 
-  console.log('[SeedNftSnapshotCsv] Summary before write');
+  console.log("[SeedNftSnapshotCsv] Summary before write");
   console.log(`- CSV rows: ${rows.length}`);
   console.log(`- Resolved users: ${resolved.length}`);
   console.log(`- Unresolved rows: ${unresolved.length}`);
   console.log(`- Existing minted snapshots preserved: ${mintedUserIds.size}`);
   console.log(`- Snapshot time: ${options.snapshotAt.toISOString()}`);
-  console.log(`- Dry run: ${options.dryRun ? 'yes' : 'no'}`);
+  console.log(`- Dry run: ${options.dryRun ? "yes" : "no"}`);
 
   if (unresolved.length > 0) {
     const preview = unresolved.slice(0, 10);
-    console.log('[SeedNftSnapshotCsv] First unresolved rows (up to 10):');
+    console.log("[SeedNftSnapshotCsv] First unresolved rows (up to 10):");
     for (const entry of preview) {
-      console.log(`  row=${entry.row} id=${entry.id ?? 'null'}`);
+      console.log(`  row=${entry.row} id=${entry.id ?? "null"}`);
     }
   }
 
@@ -245,7 +245,7 @@ async function main(): Promise<void> {
     insertedOrUpdated++;
   }
 
-  console.log('[SeedNftSnapshotCsv] Done');
+  console.log("[SeedNftSnapshotCsv] Done");
   console.log(`- Inserted/updated: ${insertedOrUpdated}`);
   console.log(`- Skipped (already minted): ${skippedMinted}`);
   console.log(`- Unresolved (not imported): ${unresolved.length}`);

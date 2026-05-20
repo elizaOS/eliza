@@ -1,2 +1,2 @@
-'use client';
-export { default } from '@web/app/error';
+"use client";
+export { default } from "@web/app/error";

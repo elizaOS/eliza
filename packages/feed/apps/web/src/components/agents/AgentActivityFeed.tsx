@@ -1,12 +1,12 @@
-'use client';
+"use client";
 
-import { cn } from '@feed/shared';
-import { Activity, RefreshCw, Wifi, WifiOff } from 'lucide-react';
-import { memo } from 'react';
-import { useAgentActivity } from '@/hooks/useAgentActivity';
-import { AgentActivityCard } from './AgentActivityCard';
+import { cn } from "@feed/shared";
+import { Activity, RefreshCw, Wifi, WifiOff } from "lucide-react";
+import { memo } from "react";
+import { useAgentActivity } from "@/hooks/useAgentActivity";
+import { AgentActivityCard } from "./AgentActivityCard";
 
-export type ActivityTypeFilter = 'all' | 'trade' | 'post' | 'comment';
+export type ActivityTypeFilter = "all" | "trade" | "post" | "comment";
 
 interface AgentActivityFeedProps {
   agentId?: string;
@@ -34,10 +34,10 @@ interface AgentActivityFeedProps {
 export const AgentActivityFeed = memo(function AgentActivityFeed({
   agentId,
   limit = 50,
-  type = 'all',
+  type = "all",
   showAgent = false,
   showConnectionStatus = true,
-  emptyMessage = 'No activity yet',
+  emptyMessage = "No activity yet",
   className,
 }: AgentActivityFeedProps) {
   const { activities, isLoading, isConnected, refresh, error } =
@@ -49,7 +49,7 @@ export const AgentActivityFeed = memo(function AgentActivityFeed({
     });
 
   return (
-    <div className={cn('flex flex-col', className)}>
+    <div className={cn("flex flex-col", className)}>
       {/* Header with connection status */}
       {showConnectionStatus && (
         <div className="mb-4 flex items-center justify-between">
@@ -64,12 +64,12 @@ export const AgentActivityFeed = memo(function AgentActivityFeed({
             onClick={() => void refresh()}
             disabled={isLoading}
             className={cn(
-              'rounded-md p-1.5 transition-colors hover:bg-muted',
-              'text-muted-foreground hover:text-foreground'
+              "rounded-md p-1.5 transition-colors hover:bg-muted",
+              "text-muted-foreground hover:text-foreground",
             )}
             title="Refresh"
           >
-            <RefreshCw className={cn('h-4 w-4', isLoading && 'animate-spin')} />
+            <RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} />
           </button>
         </div>
       )}
@@ -85,7 +85,7 @@ export const AgentActivityFeed = memo(function AgentActivityFeed({
             disabled={isLoading}
             className="ml-3 shrink-0 rounded-md bg-destructive/20 px-3 py-1 text-destructive text-sm transition-colors hover:bg-destructive/30 disabled:opacity-50"
           >
-            {isLoading ? 'Retrying...' : 'Retry'}
+            {isLoading ? "Retrying..." : "Retry"}
           </button>
         </div>
       )}
@@ -125,10 +125,10 @@ function ConnectionIndicator({ isConnected }: { isConnected: boolean }) {
   return (
     <div
       className={cn(
-        'flex items-center gap-1.5 rounded-full px-2 py-0.5 font-medium text-xs',
+        "flex items-center gap-1.5 rounded-full px-2 py-0.5 font-medium text-xs",
         isConnected
-          ? 'bg-success/20 text-success'
-          : 'bg-muted text-muted-foreground'
+          ? "bg-success/20 text-success"
+          : "bg-muted text-muted-foreground",
       )}
     >
       {isConnected ? (

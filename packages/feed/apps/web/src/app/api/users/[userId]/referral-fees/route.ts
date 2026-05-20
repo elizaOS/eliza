@@ -60,15 +60,15 @@ import {
   requireUserByIdentifier,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { FeeService } from '@feed/engine';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/api";
+import { FeeService } from "@feed/engine";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 export const GET = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ userId: string }> }
+    context: { params: Promise<{ userId: string }> },
   ) => {
     const authUser = await authenticate(request);
     const { userId } = await context.params;
@@ -80,7 +80,7 @@ export const GET = withErrorHandling(
     });
 
     if (authUser.userId !== user.id) {
-      throw new Error('Unauthorized');
+      throw new Error("Unauthorized");
     }
 
     // Get referral earnings
@@ -89,13 +89,13 @@ export const GET = withErrorHandling(
     });
 
     logger.info(
-      'Referral fees fetched',
+      "Referral fees fetched",
       {
         userId: user.id,
         totalEarned: earnings.totalEarned,
         totalReferrals: earnings.totalReferrals,
       },
-      'GET /api/users/[userId]/referral-fees'
+      "GET /api/users/[userId]/referral-fees",
     );
 
     return successResponse({
@@ -104,5 +104,5 @@ export const GET = withErrorHandling(
       topReferrals: earnings.topReferrals,
       recentFees: earnings.recentFees,
     });
-  }
+  },
 );

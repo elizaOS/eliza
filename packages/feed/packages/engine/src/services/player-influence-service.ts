@@ -9,11 +9,11 @@
  * process instance, which is acceptable since mention boost is a soft preference.
  */
 
-import { db, eq, organizations } from '@feed/db';
-import { logger } from '@feed/shared';
-import { formatError } from '../utils/error-utils';
-import { npcMemoryService } from './npc-memory-service';
-import { StaticDataRegistry } from './static-data-registry';
+import { db, eq, organizations } from "@feed/db";
+import { logger } from "@feed/shared";
+import { formatError } from "../utils/error-utils";
+import { npcMemoryService } from "./npc-memory-service";
+import { StaticDataRegistry } from "./static-data-registry";
 
 /**
  * Threshold for a "significant" trade (in game currency)
@@ -110,7 +110,7 @@ const memoryFallbackCache = new LRUMentionCache(MAX_MENTION_CACHE_SIZE);
  */
 export async function recordMention(
   actorId: string,
-  timestamp: Date
+  timestamp: Date,
 ): Promise<void> {
   // Always update local fallback cache for wasMentionedRecentlySync to work
   // This ensures sync checks work even when Redis is the primary store
@@ -143,7 +143,7 @@ async function removeMention(actorId: string): Promise<void> {
 export async function handlePlayerMention(
   playerId: string,
   mentionedActorId: string,
-  postId: string
+  postId: string,
 ): Promise<void> {
   try {
     // Use a single timestamp for both operations to ensure consistency
@@ -154,7 +154,7 @@ export async function handlePlayerMention(
 
     // 2. Add to NPC's memory
     await npcMemoryService.addMemory(mentionedActorId, {
-      type: 'mentioned_by',
+      type: "mentioned_by",
       timestamp: now.toISOString(),
       summary: `Was mentioned by a player in a post`,
       actorIds: [playerId],
@@ -164,7 +164,7 @@ export async function handlePlayerMention(
     logger.info(
       `Player ${playerId} mentioned NPC ${mentionedActorId}`,
       { playerId, mentionedActorId, postId },
-      'PlayerInfluence'
+      "PlayerInfluence",
     );
   } catch (error) {
     logger.error(
@@ -174,7 +174,7 @@ export async function handlePlayerMention(
         mentionedActorId,
         error: formatError(error),
       },
-      'PlayerInfluence'
+      "PlayerInfluence",
     );
   }
 }
@@ -254,8 +254,8 @@ export async function getRecentlyMentionedActorIds(): Promise<string[]> {
 export async function handlePlayerTrade(
   playerId: string,
   stockTicker: string,
-  side: 'long' | 'short',
-  size: number
+  side: "long" | "short",
+  size: number,
 ): Promise<void> {
   // Only process significant trades
   if (size < SIGNIFICANT_TRADE_THRESHOLD) {
@@ -273,11 +273,11 @@ export async function handlePlayerTrade(
     // Use batch method to add memory to all NPCs at once
     // This reduces N+1 queries by fetching all states in one query
     const successCount = await npcMemoryService.addMemoryBatch(relevantNpcs, {
-      type: 'witnessed_event',
+      type: "witnessed_event",
       timestamp: new Date().toISOString(),
-      summary: `A player took a ${size >= LARGE_TRADE_THRESHOLD ? 'large ' : ''}${side} position on ${stockTicker}`,
+      summary: `A player took a ${size >= LARGE_TRADE_THRESHOLD ? "large " : ""}${side} position on ${stockTicker}`,
       actorIds: [playerId],
-      sentiment: side === 'long' ? 0.1 : -0.1,
+      sentiment: side === "long" ? 0.1 : -0.1,
     });
 
     logger.info(
@@ -290,7 +290,7 @@ export async function handlePlayerTrade(
         affectedNpcs: relevantNpcs.length,
         successCount,
       },
-      'PlayerInfluence'
+      "PlayerInfluence",
     );
   } catch (error) {
     logger.error(
@@ -300,7 +300,7 @@ export async function handlePlayerTrade(
         stockTicker,
         error: formatError(error),
       },
-      'PlayerInfluence'
+      "PlayerInfluence",
     );
   }
 }
@@ -319,9 +319,9 @@ async function getNpcsAffiliatedWith(stockTicker: string): Promise<string[]> {
   const allActors = StaticDataRegistry.getAllActors();
   if (allActors.length === 0) {
     logger.debug(
-      'StaticDataRegistry not yet initialized, skipping NPC affiliation lookup',
+      "StaticDataRegistry not yet initialized, skipping NPC affiliation lookup",
       { stockTicker },
-      'PlayerInfluence'
+      "PlayerInfluence",
     );
     return [];
   }
@@ -375,7 +375,7 @@ export class PlayerInfluenceService {
   async handleMention(
     playerId: string,
     mentionedActorId: string,
-    postId: string
+    postId: string,
   ): Promise<void> {
     return handlePlayerMention(playerId, mentionedActorId, postId);
   }
@@ -383,8 +383,8 @@ export class PlayerInfluenceService {
   async handleTrade(
     playerId: string,
     stockTicker: string,
-    side: 'long' | 'short',
-    size: number
+    side: "long" | "short",
+    size: number,
   ): Promise<void> {
     return handlePlayerTrade(playerId, stockTicker, side, size);
   }

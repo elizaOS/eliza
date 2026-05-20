@@ -5,12 +5,6 @@
  * (determined by the LLM in the multi-step decision).
  */
 
-import { db, posts } from '@feed/db';
-import {
-  type GeneratedTag,
-  generateTagsFromPost,
-  storeTagsForPost,
-} from '@feed/engine';
 import type {
   Action,
   ActionResult,
@@ -18,9 +12,15 @@ import type {
   IAgentRuntime,
   Memory,
   State,
-} from '@elizaos/core';
-import { logger } from '../../../../shared/logger';
-import { generateSnowflakeId } from '../../../../shared/snowflake';
+} from "@elizaos/core";
+import { db, posts } from "@feed/db";
+import {
+  type GeneratedTag,
+  generateTagsFromPost,
+  storeTagsForPost,
+} from "@feed/engine";
+import { logger } from "../../../../shared/logger";
+import { generateSnowflakeId } from "../../../../shared/snowflake";
 
 export interface CreatePostParams {
   content: string;
@@ -32,45 +32,45 @@ export interface CreatePostParams {
  * Creates a post on the Feed social feed.
  */
 export const createPostAction: Action = {
-  name: 'CREATE_POST',
-  description: 'Create a post on the Feed social feed',
+  name: "CREATE_POST",
+  description: "Create a post on the Feed social feed",
 
   parameters: {
     content: {
-      type: 'string',
-      description: 'The content/text of the post to create',
+      type: "string",
+      description: "The content/text of the post to create",
       required: true,
     },
-  } as unknown as Action['parameters'],
+  } as unknown as Action["parameters"],
 
   examples: [
     [
       {
-        name: 'User',
+        name: "User",
         content: {
-          text: 'Post about the current market conditions',
+          text: "Post about the current market conditions",
         },
       },
       {
-        name: 'Agent',
+        name: "Agent",
         content: {
-          text: 'Creating a post about market conditions...',
-          actions: ['CREATE_POST'],
+          text: "Creating a post about market conditions...",
+          actions: ["CREATE_POST"],
         },
       },
     ],
     [
       {
-        name: 'User',
+        name: "User",
         content: {
-          text: 'Share your thoughts on BitcAIn',
+          text: "Share your thoughts on BitcAIn",
         },
       },
       {
-        name: 'Agent',
+        name: "Agent",
         content: {
           text: "I'll share my thoughts on BitcAIn...",
-          actions: ['CREATE_POST'],
+          actions: ["CREATE_POST"],
         },
       },
     ],
@@ -79,7 +79,7 @@ export const createPostAction: Action = {
   validate: async (
     _runtime: IAgentRuntime,
     _message: Memory,
-    _state?: State
+    _state?: State,
   ): Promise<boolean> => {
     return true;
   },
@@ -89,7 +89,7 @@ export const createPostAction: Action = {
     _message: Memory,
     state?: State,
     _options?: Record<string, unknown>,
-    _callback?: HandlerCallback
+    _callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const agentId = runtime.agentId;
 
@@ -101,11 +101,11 @@ export const createPostAction: Action = {
     const content = actionParams?.content;
 
     if (!content || content.trim().length === 0) {
-      logger.error('[CREATE_POST] No content provided');
+      logger.error("[CREATE_POST] No content provided");
       return {
         success: false,
-        text: 'No content provided.',
-        error: 'No content provided',
+        text: "No content provided.",
+        error: "No content provided",
       };
     }
 
@@ -114,16 +114,16 @@ export const createPostAction: Action = {
     if (trimmedContent.length < 5) {
       return {
         success: false,
-        text: 'Content too short (min 5 chars).',
-        error: 'Content too short',
+        text: "Content too short (min 5 chars).",
+        error: "Content too short",
       };
     }
 
     if (trimmedContent.length > 1000) {
       return {
         success: false,
-        text: 'Content too long (max 1000 chars).',
-        error: 'Content too long',
+        text: "Content too long (max 1000 chars).",
+        error: "Content too long",
       };
     }
 
@@ -134,7 +134,7 @@ export const createPostAction: Action = {
         id: postId,
         content: trimmedContent,
         authorId: agentId,
-        type: 'post',
+        type: "post",
         timestamp: new Date(),
         createdAt: new Date(),
       });
@@ -142,7 +142,7 @@ export const createPostAction: Action = {
       logger.info(
         `[CREATE_POST] Post created: ${postId}`,
         undefined,
-        'CreatePost'
+        "CreatePost",
       );
 
       // Generate and store tags asynchronously (don't block the response)
@@ -151,9 +151,9 @@ export const createPostAction: Action = {
           if (generatedTags.length > 0) {
             return storeTagsForPost(postId, generatedTags).then(() => {
               logger.info(
-                '[CREATE_POST] Tagged post',
+                "[CREATE_POST] Tagged post",
                 { postId, tagCount: generatedTags.length },
-                'CreatePost'
+                "CreatePost",
               );
             });
           }
@@ -161,22 +161,22 @@ export const createPostAction: Action = {
         })
         .catch((tagError: Error) => {
           logger.warn(
-            '[CREATE_POST] Failed to tag post',
+            "[CREATE_POST] Failed to tag post",
             { postId, error: String(tagError) },
-            'CreatePost'
+            "CreatePost",
           );
         });
 
       return {
         success: true,
-        text: 'Post created.',
+        text: "Post created.",
         data: { postId, content: trimmedContent, authorId: agentId },
         values: { postId },
       };
     } catch (error) {
       const errorMsg =
-        error instanceof Error ? error.message : 'Unknown error occurred';
-      logger.error('[CREATE_POST] Error:', errorMsg);
+        error instanceof Error ? error.message : "Unknown error occurred";
+      logger.error("[CREATE_POST] Error:", errorMsg);
 
       return {
         success: false,

@@ -11,7 +11,7 @@ import {
   requireSuperAdmin,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
+} from "@feed/api";
 import {
   ADMIN_PERMISSIONS,
   ADMIN_ROLES,
@@ -26,10 +26,10 @@ import {
   ROLE_PERMISSIONS,
   sql,
   users,
-} from '@feed/db';
-import { logger, toISO } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { z } from 'zod';
+} from "@feed/db";
+import { logger, toISO } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { z } from "zod";
 
 /**
  * Zod schema for role grant/revoke request validation
@@ -38,8 +38,8 @@ import { z } from 'zod';
  * to ensure validation stays in sync with the database schema.
  */
 const RoleRequestSchema = z.object({
-  userId: z.string().min(1, 'userId is required'),
-  action: z.enum(['grant', 'revoke']),
+  userId: z.string().min(1, "userId is required"),
+  action: z.enum(["grant", "revoke"]),
   role: z.enum(ADMIN_ROLES).optional(),
   permissions: z.array(z.enum(ADMIN_PERMISSIONS)).optional(),
 });
@@ -52,10 +52,10 @@ class RoleOperationError extends Error {
   constructor(
     message: string,
     public code: string,
-    public statusCode: number = 400
+    public statusCode: number = 400,
   ) {
     super(message);
-    this.name = 'RoleOperationError';
+    this.name = "RoleOperationError";
   }
 }
 
@@ -85,7 +85,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // Rate limit role management to prevent abuse
   const rateLimitResult = applyRateLimit(
     admin.userId,
-    RATE_LIMIT_CONFIGS.ADMIN_ACTION
+    RATE_LIMIT_CONFIGS.ADMIN_ACTION,
   );
   if (!rateLimitResult.allowed) {
     return rateLimitError(rateLimitResult.retryAfter);
@@ -98,16 +98,16 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   if (!parseResult.success) {
     const firstIssue = parseResult.error.issues[0];
     return errorResponse(
-      firstIssue?.message ?? 'Invalid request body',
-      'VALIDATION_ERROR',
-      400
+      firstIssue?.message ?? "Invalid request body",
+      "VALIDATION_ERROR",
+      400,
     );
   }
 
   // Extract validated data with proper typing
   const { userId, action, role, permissions } = parseResult.data as {
     userId: string;
-    action: 'grant' | 'revoke';
+    action: "grant" | "revoke";
     role?: AdminRoleType;
     permissions?: AdminPermission[];
   };
@@ -123,15 +123,15 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     .limit(1);
 
   if (!targetUser) {
-    return errorResponse('User not found', 'USER_NOT_FOUND', 404);
+    return errorResponse("User not found", "USER_NOT_FOUND", 404);
   }
 
-  if (action === 'grant') {
+  if (action === "grant") {
     if (!role) {
       return errorResponse(
-        `Valid role is required. Must be one of: ${ADMIN_ROLES.join(', ')}`,
-        'INVALID_ROLE',
-        400
+        `Valid role is required. Must be one of: ${ADMIN_ROLES.join(", ")}`,
+        "INVALID_ROLE",
+        400,
       );
     }
 
@@ -141,13 +141,13 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     // If custom permissions provided, validate they are a subset of role's allowed permissions
     if (permissions) {
       const invalidPermissions = permissions.filter(
-        (p) => !roleDefaultPermissions.includes(p)
+        (p) => !roleDefaultPermissions.includes(p),
       );
       if (invalidPermissions.length > 0) {
         return errorResponse(
-          `Custom permissions must be a subset of ${role} permissions. Invalid: ${invalidPermissions.join(', ')}`,
-          'INVALID_PERMISSIONS',
-          400
+          `Custom permissions must be a subset of ${role} permissions. Invalid: ${invalidPermissions.join(", ")}`,
+          "INVALID_PERMISSIONS",
+          400,
         );
       }
     }
@@ -185,9 +185,9 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     });
 
     logger.info(
-      'Admin role granted/updated',
+      "Admin role granted/updated",
       { targetUserId: userId, role, grantedBy: admin.userId },
-      'POST /api/admin/roles'
+      "POST /api/admin/roles",
     );
 
     return successResponse({
@@ -212,17 +212,17 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   if (!existingRole) {
     return errorResponse(
-      'User does not have an active admin role',
-      'NO_ACTIVE_ROLE',
-      400
+      "User does not have an active admin role",
+      "NO_ACTIVE_ROLE",
+      400,
     );
   }
 
   if (admin.userId === userId) {
     return errorResponse(
-      'Cannot revoke your own admin role',
-      'CANNOT_REVOKE_SELF',
-      400
+      "Cannot revoke your own admin role",
+      "CANNOT_REVOKE_SELF",
+      400,
     );
   }
 
@@ -231,23 +231,23 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   try {
     await db.transaction(async (tx) => {
       // Check if this would remove the last super admin
-      if (existingRole.role === 'SUPER_ADMIN') {
+      if (existingRole.role === "SUPER_ADMIN") {
         // Use SELECT FOR UPDATE to acquire row locks and prevent concurrent revocations
         const superAdminCountResult = await tx.execute(
           sql`SELECT COUNT(*) as count FROM ${adminRoles}
               WHERE ${adminRoles.role} = 'SUPER_ADMIN'
               AND ${adminRoles.revokedAt} IS NULL
-              FOR UPDATE`
+              FOR UPDATE`,
         );
 
         const superAdminCountValue = Number(
-          (superAdminCountResult[0] as { count: string })?.count ?? 0
+          (superAdminCountResult[0] as { count: string })?.count ?? 0,
         );
         if (superAdminCountValue <= 1) {
           throw new RoleOperationError(
-            'Cannot revoke the last super admin',
-            'LAST_SUPER_ADMIN',
-            400
+            "Cannot revoke the last super admin",
+            "LAST_SUPER_ADMIN",
+            400,
           );
         }
       }
@@ -270,14 +270,14 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   }
 
   logger.info(
-    'Admin role revoked',
+    "Admin role revoked",
     { targetUserId: userId, revokedBy: admin.userId },
-    'POST /api/admin/roles'
+    "POST /api/admin/roles",
   );
 
   return successResponse({
     success: true,
-    message: 'Admin role revoked',
+    message: "Admin role revoked",
     user: {
       userId,
       username: targetUser.username,

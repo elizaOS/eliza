@@ -17,18 +17,18 @@ import {
   expect,
   setDefaultTimeout,
   test,
-} from 'bun:test';
-import { DailyLoginService } from '@feed/api';
-import { db, eq, sql, users } from '@feed/db';
-import { generateSnowflakeId, POINTS } from '@feed/shared';
-import { waitForEndpointAvailability } from './helpers';
+} from "bun:test";
+import { DailyLoginService } from "@feed/api";
+import { db, eq, sql, users } from "@feed/db";
+import { generateSnowflakeId, POINTS } from "@feed/shared";
+import { waitForEndpointAvailability } from "./helpers";
 
 setDefaultTimeout(30000);
 
 const BASE_URL =
   process.env.TEST_API_URL ||
   process.env.PLAYWRIGHT_BASE_URL ||
-  'http://localhost:3000';
+  "http://localhost:3000";
 
 let serverAvailable = false;
 let dbAvailable = false;
@@ -42,7 +42,7 @@ async function checkServerHealth(): Promise<boolean> {
     {},
     (response) => response.status !== 404 && response.status < 500,
     15,
-    10000
+    10000,
   );
 }
 
@@ -60,7 +60,7 @@ async function checkDatabaseHealth(): Promise<boolean> {
 /** Log skip reason when infrastructure is unavailable */
 function skipIfNoServer(): boolean {
   if (!serverAvailable) {
-    console.log('⏭️ Skipped: Server not available');
+    console.log("⏭️ Skipped: Server not available");
     return true;
   }
   return false;
@@ -68,7 +68,7 @@ function skipIfNoServer(): boolean {
 
 function skipIfNoDb(): boolean {
   if (!dbAvailable) {
-    console.log('⏭️ Skipped: Database not available');
+    console.log("⏭️ Skipped: Database not available");
     return true;
   }
   return false;
@@ -82,7 +82,7 @@ async function createTestUser(): Promise<string> {
     id,
     privyId,
     username: `test-daily-login-${id}`,
-    displayName: 'Test User',
+    displayName: "Test User",
     profileComplete: true,
     isActor: false,
     isAgent: false,
@@ -121,7 +121,7 @@ async function setUserStreak(
   userId: string,
   streak: number,
   lastDailyLogin: Date | null,
-  options?: { longestStreak?: number; totalDailyLogins?: number }
+  options?: { longestStreak?: number; totalDailyLogins?: number },
 ): Promise<void> {
   await db
     .update(users)
@@ -136,16 +136,16 @@ async function setUserStreak(
 
 // ─── Setup / Teardown ────────────────────────────────────────────────────────
 
-describe('Daily Login - Integration Tests', () => {
+describe("Daily Login - Integration Tests", () => {
   beforeAll(async () => {
     serverAvailable = await checkServerHealth();
     dbAvailable = await checkDatabaseHealth();
 
     if (!serverAvailable) {
-      console.warn('⚠️  Server not available - HTTP tests will be skipped');
+      console.warn("⚠️  Server not available - HTTP tests will be skipped");
     }
     if (!dbAvailable) {
-      console.warn('⚠️  Database not available - DB tests will be skipped');
+      console.warn("⚠️  Database not available - DB tests will be skipped");
     }
 
     if (dbAvailable) {
@@ -161,10 +161,10 @@ describe('Daily Login - Integration Tests', () => {
 
   // ─── HTTP Authentication Tests ───────────────────────────────────────────
 
-  describe('HTTP - Authentication', () => {
+  describe("HTTP - Authentication", () => {
     // Auth failures should return 401 Unauthorized, not 500.
     // 500 would indicate a server bug that should be investigated.
-    test('GET without auth returns 401', async () => {
+    test("GET without auth returns 401", async () => {
       if (skipIfNoServer()) return;
 
       const res = await fetch(`${BASE_URL}/api/users/daily-login`, {
@@ -173,41 +173,41 @@ describe('Daily Login - Integration Tests', () => {
       expect(res.status).toBe(401);
     });
 
-    test('POST without auth returns 401', async () => {
+    test("POST without auth returns 401", async () => {
       if (skipIfNoServer()) return;
 
       const res = await fetch(`${BASE_URL}/api/users/daily-login`, {
-        method: 'POST',
+        method: "POST",
         signal: AbortSignal.timeout(10000),
       });
       expect(res.status).toBe(401);
     });
 
-    test('invalid Bearer token is rejected', async () => {
+    test("invalid Bearer token is rejected", async () => {
       if (skipIfNoServer()) return;
 
       const res = await fetch(`${BASE_URL}/api/users/daily-login`, {
-        headers: { Authorization: 'Bearer invalid-token-xyz' },
+        headers: { Authorization: "Bearer invalid-token-xyz" },
         signal: AbortSignal.timeout(10000),
       });
       expect(res.status).toBe(401);
     });
 
-    test('malformed auth header is rejected', async () => {
+    test("malformed auth header is rejected", async () => {
       if (skipIfNoServer()) return;
 
       const res = await fetch(`${BASE_URL}/api/users/daily-login`, {
-        headers: { Authorization: 'NotBearer token' },
+        headers: { Authorization: "NotBearer token" },
         signal: AbortSignal.timeout(10000),
       });
       expect(res.status).toBe(401);
     });
 
-    test('empty Bearer token is rejected', async () => {
+    test("empty Bearer token is rejected", async () => {
       if (skipIfNoServer()) return;
 
       const res = await fetch(`${BASE_URL}/api/users/daily-login`, {
-        headers: { Authorization: 'Bearer ' },
+        headers: { Authorization: "Bearer " },
         signal: AbortSignal.timeout(10000),
       });
       expect(res.status).toBe(401);
@@ -216,29 +216,29 @@ describe('Daily Login - Integration Tests', () => {
 
   // ─── HTTP Method Tests ───────────────────────────────────────────────────
 
-  describe('HTTP - Methods', () => {
-    test('PUT returns 405', async () => {
+  describe("HTTP - Methods", () => {
+    test("PUT returns 405", async () => {
       if (skipIfNoServer()) return;
       const res = await fetch(`${BASE_URL}/api/users/daily-login`, {
-        method: 'PUT',
+        method: "PUT",
         signal: AbortSignal.timeout(10000),
       });
       expect(res.status).toBe(405);
     });
 
-    test('DELETE returns 405', async () => {
+    test("DELETE returns 405", async () => {
       if (skipIfNoServer()) return;
       const res = await fetch(`${BASE_URL}/api/users/daily-login`, {
-        method: 'DELETE',
+        method: "DELETE",
         signal: AbortSignal.timeout(10000),
       });
       expect(res.status).toBe(405);
     });
 
-    test('PATCH returns 405', async () => {
+    test("PATCH returns 405", async () => {
       if (skipIfNoServer()) return;
       const res = await fetch(`${BASE_URL}/api/users/daily-login`, {
-        method: 'PATCH',
+        method: "PATCH",
         signal: AbortSignal.timeout(10000),
       });
       expect(res.status).toBe(405);
@@ -247,8 +247,8 @@ describe('Daily Login - Integration Tests', () => {
 
   // ─── HTTP Edge Cases ─────────────────────────────────────────────────────
 
-  describe('HTTP - Edge Cases', () => {
-    test('endpoint exists (not 404)', async () => {
+  describe("HTTP - Edge Cases", () => {
+    test("endpoint exists (not 404)", async () => {
       if (skipIfNoServer()) return;
       const res = await fetch(`${BASE_URL}/api/users/daily-login`, {
         signal: AbortSignal.timeout(10000),
@@ -256,13 +256,13 @@ describe('Daily Login - Integration Tests', () => {
       expect(res.status).not.toBe(404);
     });
 
-    test('concurrent requests handled gracefully', async () => {
+    test("concurrent requests handled gracefully", async () => {
       if (skipIfNoServer()) return;
 
       const requests = Array.from({ length: 10 }, () =>
         fetch(`${BASE_URL}/api/users/daily-login`, {
           signal: AbortSignal.timeout(10000),
-        })
+        }),
       );
 
       const responses = await Promise.all(requests);
@@ -276,7 +276,7 @@ describe('Daily Login - Integration Tests', () => {
 
 // ─── Database Integration Tests ──────────────────────────────────────────────
 
-describe('Daily Login - Database Integration', () => {
+describe("Daily Login - Database Integration", () => {
   let localTestUserId: string | null = null;
 
   beforeAll(async () => {
@@ -292,51 +292,51 @@ describe('Daily Login - Database Integration', () => {
     }
   });
 
-  describe('Initial State', () => {
-    test('new user has zero streak', async () => {
+  describe("Initial State", () => {
+    test("new user has zero streak", async () => {
       if (skipIfNoDb() || !localTestUserId) return;
 
       const user = await getUserStreak(localTestUserId);
       expect(user).toBeDefined();
-      expect(user!.dailyLoginStreak).toBe(0);
-      expect(user!.lastDailyLogin).toBeNull();
-      expect(user!.longestStreak).toBe(0);
-      expect(user!.totalDailyLogins).toBe(0);
+      expect(user?.dailyLoginStreak).toBe(0);
+      expect(user?.lastDailyLogin).toBeNull();
+      expect(user?.longestStreak).toBe(0);
+      expect(user?.totalDailyLogins).toBe(0);
     });
   });
 
-  describe('Streak Updates', () => {
-    test('setUserStreak correctly updates database', async () => {
+  describe("Streak Updates", () => {
+    test("setUserStreak correctly updates database", async () => {
       if (skipIfNoDb() || !localTestUserId) return;
 
-      const testDate = new Date('2025-01-15T12:00:00.000Z');
+      const testDate = new Date("2025-01-15T12:00:00.000Z");
       await setUserStreak(localTestUserId, 5, testDate);
 
       const user = await getUserStreak(localTestUserId);
-      expect(user!.dailyLoginStreak).toBe(5);
-      expect(user!.lastDailyLogin?.toISOString()).toBe(testDate.toISOString());
-      expect(user!.longestStreak).toBe(5);
+      expect(user?.dailyLoginStreak).toBe(5);
+      expect(user?.lastDailyLogin?.toISOString()).toBe(testDate.toISOString());
+      expect(user?.longestStreak).toBe(5);
 
       // Reset for other tests
       await setUserStreak(localTestUserId, 0, null);
     });
   });
 
-  describe('Data Integrity', () => {
-    test('streak values are integers', async () => {
+  describe("Data Integrity", () => {
+    test("streak values are integers", async () => {
       if (skipIfNoDb() || !localTestUserId) return;
 
       const user = await getUserStreak(localTestUserId);
-      expect(Number.isInteger(user!.dailyLoginStreak)).toBe(true);
-      expect(Number.isInteger(user!.longestStreak)).toBe(true);
-      expect(Number.isInteger(user!.totalDailyLogins)).toBe(true);
+      expect(Number.isInteger(user?.dailyLoginStreak)).toBe(true);
+      expect(Number.isInteger(user?.longestStreak)).toBe(true);
+      expect(Number.isInteger(user?.totalDailyLogins)).toBe(true);
     });
 
-    test('virtualBalance is numeric string', async () => {
+    test("virtualBalance is numeric string", async () => {
       if (skipIfNoDb() || !localTestUserId) return;
 
       const user = await getUserStreak(localTestUserId);
-      const balance = Number(user!.virtualBalance);
+      const balance = Number(user?.virtualBalance);
       expect(Number.isFinite(balance)).toBe(true);
     });
   });
@@ -344,7 +344,7 @@ describe('Daily Login - Database Integration', () => {
 
 // ─── Service Logic Integration ───────────────────────────────────────────────
 
-describe('Daily Login - DailyLoginService Integration', () => {
+describe("Daily Login - DailyLoginService Integration", () => {
   let serviceTestUserId: string | null = null;
 
   beforeAll(async () => {
@@ -360,8 +360,8 @@ describe('Daily Login - DailyLoginService Integration', () => {
     }
   });
 
-  describe('getStreakInfo', () => {
-    test('returns correct info for new user', async () => {
+  describe("getStreakInfo", () => {
+    test("returns correct info for new user", async () => {
       if (skipIfNoDb() || !serviceTestUserId) return;
 
       await setUserStreak(serviceTestUserId, 0, null);
@@ -375,24 +375,24 @@ describe('Daily Login - DailyLoginService Integration', () => {
       expect(info.nextReward).toBe(POINTS.DAILY_LOGIN_DAY_1);
     });
 
-    test('throws for invalid userId format', async () => {
+    test("throws for invalid userId format", async () => {
       if (skipIfNoDb()) return;
 
       await expect(
-        DailyLoginService.getStreakInfo('invalid-format')
-      ).rejects.toThrow('Invalid userId format');
+        DailyLoginService.getStreakInfo("invalid-format"),
+      ).rejects.toThrow("Invalid userId format");
     });
 
-    test('throws for non-existent valid userId', async () => {
+    test("throws for non-existent valid userId", async () => {
       if (skipIfNoDb()) return;
 
       // Valid snowflake format but doesn't exist
       await expect(
-        DailyLoginService.getStreakInfo('123456789012345678')
-      ).rejects.toThrow('User not found');
+        DailyLoginService.getStreakInfo("123456789012345678"),
+      ).rejects.toThrow("User not found");
     });
 
-    test('returns effectiveStreak=0 when streak has expired (Bug 1 fix)', async () => {
+    test("returns effectiveStreak=0 when streak has expired (Bug 1 fix)", async () => {
       if (skipIfNoDb() || !serviceTestUserId) return;
 
       // Set streak to 50, but lastDailyLogin to 48 hours ago (past 36h grace)
@@ -415,14 +415,14 @@ describe('Daily Login - DailyLoginService Integration', () => {
     });
   });
 
-  describe('claimDailyReward - First Claim', () => {
-    test('first claim sets streak to 1 and awards points', async () => {
+  describe("claimDailyReward - First Claim", () => {
+    test("first claim sets streak to 1 and awards points", async () => {
       if (skipIfNoDb() || !serviceTestUserId) return;
 
       // Reset user to clean state
       await setUserStreak(serviceTestUserId, 0, null);
       const beforeUser = await getUserStreak(serviceTestUserId);
-      const balanceBefore = Number(beforeUser!.virtualBalance);
+      const balanceBefore = Number(beforeUser?.virtualBalance);
 
       const result =
         await DailyLoginService.claimDailyReward(serviceTestUserId);
@@ -436,17 +436,17 @@ describe('Daily Login - DailyLoginService Integration', () => {
 
       // Verify database was updated
       const afterUser = await getUserStreak(serviceTestUserId);
-      expect(afterUser!.dailyLoginStreak).toBe(1);
-      expect(afterUser!.lastDailyLogin).not.toBeNull();
-      expect(afterUser!.totalDailyLogins).toBe(1);
-      expect(Number(afterUser!.virtualBalance)).toBe(
-        balanceBefore + POINTS.DAILY_LOGIN_DAY_1
+      expect(afterUser?.dailyLoginStreak).toBe(1);
+      expect(afterUser?.lastDailyLogin).not.toBeNull();
+      expect(afterUser?.totalDailyLogins).toBe(1);
+      expect(Number(afterUser?.virtualBalance)).toBe(
+        balanceBefore + POINTS.DAILY_LOGIN_DAY_1,
       );
     });
   });
 
-  describe('claimDailyReward - Repeat Claim Prevention', () => {
-    test('claim within 24h fails with error', async () => {
+  describe("claimDailyReward - Repeat Claim Prevention", () => {
+    test("claim within 24h fails with error", async () => {
       if (skipIfNoDb() || !serviceTestUserId) return;
 
       // Set lastDailyLogin to 1 hour ago
@@ -457,13 +457,13 @@ describe('Daily Login - DailyLoginService Integration', () => {
         await DailyLoginService.claimDailyReward(serviceTestUserId);
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('Cannot claim yet');
+      expect(result.error).toContain("Cannot claim yet");
       expect(result.streak).toBe(5); // Unchanged
     });
   });
 
-  describe('claimDailyReward - Grace Period', () => {
-    test('claim after 25h continues streak', async () => {
+  describe("claimDailyReward - Grace Period", () => {
+    test("claim after 25h continues streak", async () => {
       if (skipIfNoDb() || !serviceTestUserId) return;
 
       // Set lastDailyLogin to 25 hours ago
@@ -480,8 +480,8 @@ describe('Daily Login - DailyLoginService Integration', () => {
     });
   });
 
-  describe('claimDailyReward - Streak Reset', () => {
-    test('claim after 48h resets streak to 1', async () => {
+  describe("claimDailyReward - Streak Reset", () => {
+    test("claim after 48h resets streak to 1", async () => {
       if (skipIfNoDb() || !serviceTestUserId) return;
 
       // Set lastDailyLogin to 48 hours ago (past grace period)
@@ -498,8 +498,8 @@ describe('Daily Login - DailyLoginService Integration', () => {
     });
   });
 
-  describe('claimDailyReward - Milestones', () => {
-    test('day 7 awards milestone bonus', async () => {
+  describe("claimDailyReward - Milestones", () => {
+    test("day 7 awards milestone bonus", async () => {
       if (skipIfNoDb() || !serviceTestUserId) return;
 
       // Set streak to 6, last claim 25h ago
@@ -514,13 +514,13 @@ describe('Daily Login - DailyLoginService Integration', () => {
       expect(result.reward).toBe(POINTS.DAILY_LOGIN_DAY_7);
       expect(result.milestoneBonus).toBe(POINTS.DAILY_LOGIN_MILESTONE_7D);
       expect(result.totalAwarded).toBe(
-        POINTS.DAILY_LOGIN_DAY_7 + POINTS.DAILY_LOGIN_MILESTONE_7D
+        POINTS.DAILY_LOGIN_DAY_7 + POINTS.DAILY_LOGIN_MILESTONE_7D,
       );
     });
   });
 
-  describe('claimDailyReward - Longest Streak', () => {
-    test('longestStreak updates when current exceeds it', async () => {
+  describe("claimDailyReward - Longest Streak", () => {
+    test("longestStreak updates when current exceeds it", async () => {
       if (skipIfNoDb() || !serviceTestUserId) return;
 
       // Set current streak to 9, longest to 10
@@ -543,10 +543,10 @@ describe('Daily Login - DailyLoginService Integration', () => {
 
       // longestStreak should stay at 10 (not decrease)
       const user = await getUserStreak(serviceTestUserId);
-      expect(user!.longestStreak).toBe(10);
+      expect(user?.longestStreak).toBe(10);
     });
 
-    test('longestStreak increases when beaten', async () => {
+    test("longestStreak increases when beaten", async () => {
       if (skipIfNoDb() || !serviceTestUserId) return;
 
       // Set current streak to 10, longest to 10
@@ -568,18 +568,18 @@ describe('Daily Login - DailyLoginService Integration', () => {
       expect(result.streak).toBe(11);
 
       const user = await getUserStreak(serviceTestUserId);
-      expect(user!.longestStreak).toBe(11);
+      expect(user?.longestStreak).toBe(11);
     });
   });
 
-  describe('claimDailyReward - Idempotency', () => {
-    test('rapid double-claim only awards once', async () => {
+  describe("claimDailyReward - Idempotency", () => {
+    test("rapid double-claim only awards once", async () => {
       if (skipIfNoDb() || !serviceTestUserId) return;
 
       // Reset to clean state
       await setUserStreak(serviceTestUserId, 0, null);
       const beforeUser = await getUserStreak(serviceTestUserId);
-      const balanceBefore = Number(beforeUser!.virtualBalance);
+      const balanceBefore = Number(beforeUser?.virtualBalance);
 
       // First claim
       const result1 =
@@ -591,42 +591,42 @@ describe('Daily Login - DailyLoginService Integration', () => {
       const result2 =
         await DailyLoginService.claimDailyReward(serviceTestUserId);
       expect(result2.success).toBe(false);
-      expect(result2.error).toContain('Cannot claim yet');
+      expect(result2.error).toContain("Cannot claim yet");
 
       // Verify only one reward was given
       const afterUser = await getUserStreak(serviceTestUserId);
-      expect(afterUser!.dailyLoginStreak).toBe(1);
-      expect(Number(afterUser!.virtualBalance)).toBe(
-        balanceBefore + POINTS.DAILY_LOGIN_DAY_1
+      expect(afterUser?.dailyLoginStreak).toBe(1);
+      expect(Number(afterUser?.virtualBalance)).toBe(
+        balanceBefore + POINTS.DAILY_LOGIN_DAY_1,
       );
     });
   });
 
-  describe('claimDailyReward - Invalid User', () => {
-    test('returns error for invalid userId format', async () => {
+  describe("claimDailyReward - Invalid User", () => {
+    test("returns error for invalid userId format", async () => {
       if (skipIfNoDb()) return;
 
-      const result = await DailyLoginService.claimDailyReward('invalid-format');
+      const result = await DailyLoginService.claimDailyReward("invalid-format");
 
       expect(result.success).toBe(false);
-      expect(result.error).toBe('Invalid userId format');
+      expect(result.error).toBe("Invalid userId format");
     });
 
-    test('returns error for non-existent valid userId', async () => {
+    test("returns error for non-existent valid userId", async () => {
       if (skipIfNoDb()) return;
 
       const result =
-        await DailyLoginService.claimDailyReward('123456789012345678');
+        await DailyLoginService.claimDailyReward("123456789012345678");
 
       expect(result.success).toBe(false);
-      expect(result.error).toBe('User not found');
+      expect(result.error).toBe("User not found");
     });
   });
 });
 
 // ─── Concurrency Tests ───────────────────────────────────────────────────────
 
-describe('Daily Login - Concurrency', () => {
+describe("Daily Login - Concurrency", () => {
   let concurrencyTestUserId: string | null = null;
 
   beforeAll(async () => {
@@ -642,25 +642,25 @@ describe('Daily Login - Concurrency', () => {
     }
   });
 
-  test('concurrent reads are consistent', async () => {
+  test("concurrent reads are consistent", async () => {
     if (skipIfNoDb() || !concurrencyTestUserId) return;
 
     await setUserStreak(concurrencyTestUserId, 7, new Date());
 
     // Perform 10 concurrent reads
     const reads = Array.from({ length: 10 }, () =>
-      getUserStreak(concurrencyTestUserId!)
+      getUserStreak(concurrencyTestUserId!),
     );
 
     const results = await Promise.all(reads);
 
     // All reads should return the same value
     for (const result of results) {
-      expect(result!.dailyLoginStreak).toBe(7);
+      expect(result?.dailyLoginStreak).toBe(7);
     }
   });
 
-  test('database handles rapid updates', async () => {
+  test("database handles rapid updates", async () => {
     if (skipIfNoDb() || !concurrencyTestUserId) return;
 
     // Execute rapid sequential updates
@@ -672,22 +672,22 @@ describe('Daily Login - Concurrency', () => {
     }
 
     const user = await getUserStreak(concurrencyTestUserId);
-    expect(user!.dailyLoginStreak).toBe(5);
+    expect(user?.dailyLoginStreak).toBe(5);
   });
 });
 
 // ─── Error Handling Tests ────────────────────────────────────────────────────
 
-describe('Daily Login - Error Handling', () => {
-  test('non-existent user returns undefined from DB query', async () => {
+describe("Daily Login - Error Handling", () => {
+  test("non-existent user returns undefined from DB query", async () => {
     if (skipIfNoDb()) return;
 
-    const fakeUserId = 'non-existent-user-12345';
+    const fakeUserId = "non-existent-user-12345";
     const user = await getUserStreak(fakeUserId);
     expect(user).toBeUndefined();
   });
 
-  test('service clamps negative streak values to zero', async () => {
+  test("service clamps negative streak values to zero", async () => {
     if (skipIfNoDb()) return;
 
     const tempUserId = await createTestUser();
@@ -710,15 +710,15 @@ describe('Daily Login - Error Handling', () => {
 
 // ─── Output Verification ─────────────────────────────────────────────────────
 
-describe('Daily Login - Output Verification', () => {
-  test('reward values match constants', () => {
+describe("Daily Login - Output Verification", () => {
+  test("reward values match constants", () => {
     expect(POINTS.DAILY_LOGIN_DAY_1).toBe(50);
     expect(POINTS.DAILY_LOGIN_DAY_7).toBe(200);
     expect(POINTS.DAILY_LOGIN_MILESTONE_7D).toBe(500);
     expect(POINTS.DAILY_LOGIN_MILESTONE_90D).toBe(5000);
   });
 
-  test('cumulative week 1 rewards are exactly 1375', () => {
+  test("cumulative week 1 rewards are exactly 1375", () => {
     let total = 0;
     for (let i = 1; i <= 7; i++) {
       const key = `DAILY_LOGIN_DAY_${i}` as keyof typeof POINTS;
@@ -728,7 +728,7 @@ describe('Daily Login - Output Verification', () => {
     expect(total).toBe(1375);
   });
 
-  test('all milestone values', () => {
+  test("all milestone values", () => {
     expect(POINTS.DAILY_LOGIN_MILESTONE_7D).toBe(500);
     expect(POINTS.DAILY_LOGIN_MILESTONE_14D).toBe(750);
     expect(POINTS.DAILY_LOGIN_MILESTONE_30D).toBe(1500);

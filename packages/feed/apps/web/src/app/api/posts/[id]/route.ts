@@ -63,7 +63,7 @@
  *         description: Post not found
  */
 
-import type { JsonValue } from '@feed/api';
+import type { JsonValue } from "@feed/api";
 import {
   addPublicReadHeaders,
   authenticate,
@@ -72,7 +72,7 @@ import {
   publicRateLimit,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
+} from "@feed/api";
 import {
   and,
   comments,
@@ -85,11 +85,11 @@ import {
   reactions,
   shares,
   users,
-} from '@feed/db';
-import { gameService, StaticDataRegistry } from '@feed/engine';
-import { logger, PostIdParamSchema, toISO } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { POST as likePost } from './like/route';
+} from "@feed/db";
+import { gameService, StaticDataRegistry } from "@feed/engine";
+import { logger, PostIdParamSchema, toISO } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { POST as likePost } from "./like/route";
 
 /**
  * GET /api/posts/[id]
@@ -98,7 +98,7 @@ import { POST as likePost } from './like/route';
 export const GET = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ id: string }> }
+    context: { params: Promise<{ id: string }> },
   ) => {
     const { error, user, rateLimitInfo } = await publicRateLimit(request);
     if (error) return error;
@@ -118,8 +118,8 @@ export const GET = withErrorHandling(
       .where(
         and(
           eq(posts.id, postId),
-          lte(posts.timestamp, now) // No future posts
-        )
+          lte(posts.timestamp, now), // No future posts
+        ),
       )
       .limit(1);
 
@@ -128,7 +128,7 @@ export const GET = withErrorHandling(
 
     // Check if post exists and is not in the future
     if (post && post.timestamp > now) {
-      throw new NotFoundError('Post', postId);
+      throw new NotFoundError("Post", postId);
     }
 
     // If not in database, try to find it in game store/realtime feed first
@@ -163,7 +163,7 @@ export const GET = withErrorHandling(
       if (gamePost) {
         const gamePostTimestamp = new Date(gamePost.timestamp);
         if (gamePostTimestamp > now) {
-          throw new NotFoundError('Post', postId);
+          throw new NotFoundError("Post", postId);
         }
       }
 
@@ -176,7 +176,7 @@ export const GET = withErrorHandling(
               .select({ count: count() })
               .from(reactions)
               .where(
-                and(eq(reactions.postId, postId), eq(reactions.type, 'like'))
+                and(eq(reactions.postId, postId), eq(reactions.type, "like")),
               ),
             db
               .select({ count: count() })
@@ -229,8 +229,8 @@ export const GET = withErrorHandling(
                 and(
                   eq(reactions.postId, postId),
                   eq(reactions.userId, userId),
-                  eq(reactions.type, 'like')
-                )
+                  eq(reactions.type, "like"),
+                ),
               )
               .limit(1),
             db
@@ -250,7 +250,7 @@ export const GET = withErrorHandling(
         let repostMetadata = {};
 
         const originalPostIdFromGame =
-          'originalPostId' in gamePost
+          "originalPostId" in gamePost
             ? ((gamePost as Record<string, JsonValue>).originalPostId as
                 | string
                 | undefined)
@@ -326,7 +326,7 @@ export const GET = withErrorHandling(
           successResponse({
             data: {
               id: gamePost.id,
-              type: 'post',
+              type: "post",
               content: gamePost.content,
               fullContent: null,
               articleTitle: null,
@@ -348,46 +348,46 @@ export const GET = withErrorHandling(
               shareCount,
               isLiked,
               isShared,
-              source: 'game-store',
+              source: "game-store",
               ...repostMetadata, // Add repost metadata if applicable
             },
-          })
+          }),
         );
       }
 
-      let authorId = 'system';
-      let gameId = 'feed';
+      let authorId = "system";
+      let gameId = "feed";
       let timestamp = new Date();
 
       const isoTimestampMatch = postId.match(
-        /(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z)$/
+        /(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z)$/,
       );
 
       if (isoTimestampMatch?.[1]) {
         const timestampStr = isoTimestampMatch[1];
         timestamp = new Date(timestampStr);
-        const firstHyphenIndex = postId.indexOf('-');
+        const firstHyphenIndex = postId.indexOf("-");
         if (firstHyphenIndex !== -1) {
           gameId = postId.substring(0, firstHyphenIndex);
           const withoutGameId = postId.substring(firstHyphenIndex + 1);
-          const secondHyphenIndex = withoutGameId.indexOf('-');
+          const secondHyphenIndex = withoutGameId.indexOf("-");
           if (secondHyphenIndex !== -1) {
             const afterGameTimestamp = withoutGameId.substring(
-              secondHyphenIndex + 1
+              secondHyphenIndex + 1,
             );
             authorId = afterGameTimestamp.substring(
               0,
-              afterGameTimestamp.lastIndexOf('-' + timestampStr)
+              afterGameTimestamp.lastIndexOf(`-${timestampStr}`),
             );
           }
         }
-      } else if (postId.startsWith('post-')) {
-        const parts = postId.split('-');
+      } else if (postId.startsWith("post-")) {
+        const parts = postId.split("-");
         if (parts.length >= 3 && parts[1]) {
           const timestampNum = Number.parseInt(parts[1], 10);
-          if (!isNaN(timestampNum) && timestampNum > 1000000000000) {
+          if (!Number.isNaN(timestampNum) && timestampNum > 1000000000000) {
             timestamp = new Date(timestampNum);
-            if (parts.length >= 4 && parts[2] && !parts[2].includes('.')) {
+            if (parts.length >= 4 && parts[2] && !parts[2].includes(".")) {
               const potentialActorId = parts[2];
               const actorRecord = StaticDataRegistry.getActor(potentialActorId);
               if (actorRecord) {
@@ -412,7 +412,7 @@ export const GET = withErrorHandling(
           .insert(posts)
           .values({
             id: postId,
-            content: '[Game-generated post]',
+            content: "[Game-generated post]",
             authorId,
             gameId,
             timestamp,
@@ -424,7 +424,7 @@ export const GET = withErrorHandling(
       }
 
       if (!createdPost) {
-        throw new BusinessLogicError('Post not found', 'POST_NOT_FOUND');
+        throw new BusinessLogicError("Post not found", "POST_NOT_FOUND");
       }
 
       // Get counts for the created/existing post
@@ -434,7 +434,7 @@ export const GET = withErrorHandling(
             .select({ count: count() })
             .from(reactions)
             .where(
-              and(eq(reactions.postId, postId), eq(reactions.type, 'like'))
+              and(eq(reactions.postId, postId), eq(reactions.type, "like")),
             ),
           db
             .select({ count: count() })
@@ -463,8 +463,8 @@ export const GET = withErrorHandling(
               and(
                 eq(reactions.postId, postId),
                 eq(reactions.userId, userId),
-                eq(reactions.type, 'like')
-              )
+                eq(reactions.type, "like"),
+              ),
             )
             .limit(1),
           db
@@ -512,7 +512,7 @@ export const GET = withErrorHandling(
         successResponse({
           data: {
             id: createdPost.id,
-            type: createdPost.type || 'post',
+            type: createdPost.type || "post",
             content: createdPost.content,
             fullContent: createdPost.fullContent || null,
             articleTitle: createdPost.articleTitle || null,
@@ -540,21 +540,21 @@ export const GET = withErrorHandling(
             shareCount,
             isLiked,
             isShared,
-            source: 'database',
+            source: "database",
           },
-        })
+        }),
       );
     }
 
     if (!post) {
-      throw new BusinessLogicError('Post not found', 'POST_NOT_FOUND');
+      throw new BusinessLogicError("Post not found", "POST_NOT_FOUND");
     }
 
     // Check if post is deleted
     if (post.deletedAt) {
       throw new BusinessLogicError(
-        'This post has been deleted',
-        'POST_DELETED'
+        "This post has been deleted",
+        "POST_DELETED",
       );
     }
 
@@ -564,7 +564,7 @@ export const GET = withErrorHandling(
         db
           .select({ count: count() })
           .from(reactions)
-          .where(and(eq(reactions.postId, postId), eq(reactions.type, 'like'))),
+          .where(and(eq(reactions.postId, postId), eq(reactions.type, "like"))),
         db
           .select({ count: count() })
           .from(comments)
@@ -592,8 +592,8 @@ export const GET = withErrorHandling(
             and(
               eq(reactions.postId, postId),
               eq(reactions.userId, userId),
-              eq(reactions.type, 'like')
-            )
+              eq(reactions.type, "like"),
+            ),
           )
           .limit(1),
         db
@@ -719,16 +719,16 @@ export const GET = withErrorHandling(
     }
 
     logger.info(
-      'Post fetched successfully',
-      { postId, source: 'database' },
-      'GET /api/posts/[id]'
+      "Post fetched successfully",
+      { postId, source: "database" },
+      "GET /api/posts/[id]",
     );
 
     return withHeaders(
       successResponse({
         data: {
           id: post.id,
-          type: post.type || 'post',
+          type: post.type || "post",
           content: post.content,
           fullContent: post.fullContent || null,
           articleTitle: post.articleTitle || null,
@@ -753,22 +753,22 @@ export const GET = withErrorHandling(
           shareCount,
           isLiked,
           isShared,
-          source: 'database',
+          source: "database",
           ...repostMetadata, // Add repost metadata if applicable
         },
-      })
+      }),
     );
-  }
+  },
 );
 
 // Backwards-compatible alias for clients that POST to the post resource to like it.
 export const POST = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ id: string }> }
+    context: { params: Promise<{ id: string }> },
   ) => {
     return likePost(request, context);
-  }
+  },
 );
 
 /**
@@ -778,7 +778,7 @@ export const POST = withErrorHandling(
 export const DELETE = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ id: string }> }
+    context: { params: Promise<{ id: string }> },
   ) => {
     const { id: postId } = PostIdParamSchema.parse(await context.params);
 
@@ -797,22 +797,22 @@ export const DELETE = withErrorHandling(
       .limit(1);
 
     if (!post) {
-      throw new BusinessLogicError('Post not found', 'POST_NOT_FOUND');
+      throw new BusinessLogicError("Post not found", "POST_NOT_FOUND");
     }
 
     // Check if post is already deleted
     if (post.deletedAt) {
       throw new BusinessLogicError(
-        'Post already deleted',
-        'POST_ALREADY_DELETED'
+        "Post already deleted",
+        "POST_ALREADY_DELETED",
       );
     }
 
     // Check if user is the author of the post
     if (post.authorId !== user.userId) {
       throw new BusinessLogicError(
-        'Unauthorized to delete this post',
-        'UNAUTHORIZED'
+        "Unauthorized to delete this post",
+        "UNAUTHORIZED",
       );
     }
 
@@ -823,14 +823,14 @@ export const DELETE = withErrorHandling(
       .where(eq(posts.id, postId));
 
     logger.info(
-      'Post soft deleted',
+      "Post soft deleted",
       { postId, userId: user.userId },
-      'DELETE /api/posts/[id]'
+      "DELETE /api/posts/[id]",
     );
 
     return successResponse({
-      message: 'Post deleted successfully',
+      message: "Post deleted successfully",
       data: { id: postId, deletedAt: new Date().toISOString() },
     });
-  }
+  },
 );

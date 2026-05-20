@@ -96,12 +96,12 @@ import {
   requireAdmin,
   requireUserByIdentifier,
   withErrorHandling,
-} from '@feed/api';
-import { db } from '@feed/db';
-import { getReputationBreakdown } from '@feed/engine';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@feed/api";
+import { db } from "@feed/db";
+import { getReputationBreakdown } from "@feed/engine";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 interface SyncRequest {
   userId?: string;
@@ -121,14 +121,14 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   body = (await request.json()) as SyncRequest;
 
   // Agent0 reputation sync removed in Phase 1.
-  logger.info('Reputation sync endpoint called (Agent0 sync removed)', {
+  logger.info("Reputation sync endpoint called (Agent0 sync removed)", {
     userId: body.userId,
   });
 
   return NextResponse.json({
     success: true,
     message:
-      'Agent0 reputation sync has been removed. Use internal reputation system.',
+      "Agent0 reputation sync has been removed. Use internal reputation system.",
   });
 });
 
@@ -138,7 +138,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
  */
 export const GET = withErrorHandling(async (request: NextRequest) => {
   const { searchParams } = new URL(request.url);
-  const userId = searchParams.get('userId')!;
+  const userId = searchParams.get("userId")!;
 
   const user = await requireUserByIdentifier(userId);
 
@@ -156,21 +156,21 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
   return NextResponse.json({
     userId: user.id,
-    synced: metrics!.onChainReputationSync,
-    lastSyncedAt: metrics!.lastSyncedAt,
+    synced: metrics?.onChainReputationSync,
+    lastSyncedAt: metrics?.lastSyncedAt,
     reputation: {
-      score: reputation!.reputationScore,
-      trustLevel: reputation!.trustLevel,
-      confidence: reputation!.confidenceScore,
-      onChainTrustScore: metrics!.onChainTrustScore,
-      onChainAccuracyScore: metrics!.onChainAccuracyScore,
+      score: reputation?.reputationScore,
+      trustLevel: reputation?.trustLevel,
+      confidence: reputation?.confidenceScore,
+      onChainTrustScore: metrics?.onChainTrustScore,
+      onChainAccuracyScore: metrics?.onChainAccuracyScore,
     },
     metrics: {
-      gamesPlayed: reputation!.metrics.gamesPlayed,
-      winRate: reputation!.metrics.winRate,
-      normalizedPnL: reputation!.metrics.normalizedPnL,
-      averageFeedbackScore: reputation!.metrics.averageFeedbackScore,
-      totalFeedback: reputation!.metrics.totalFeedbackCount,
+      gamesPlayed: reputation?.metrics.gamesPlayed,
+      winRate: reputation?.metrics.winRate,
+      normalizedPnL: reputation?.metrics.normalizedPnL,
+      averageFeedbackScore: reputation?.metrics.averageFeedbackScore,
+      totalFeedback: reputation?.metrics.totalFeedbackCount,
     },
   });
 });

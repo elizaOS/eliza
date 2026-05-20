@@ -61,7 +61,7 @@
 import {
   PredictionDbAdapter as CorePredictionDbAdapter,
   PredictionMarketService as CorePredictionMarketService,
-} from '@feed/core/markets/prediction';
+} from "@feed/core/markets/prediction";
 import {
   and,
   db,
@@ -72,28 +72,28 @@ import {
   tags,
   trendingTags,
   worldEvents,
-} from '@feed/db';
+} from "@feed/db";
 import {
   generateSnowflakeId,
   logger,
   RESOLUTION_CONFIDENCE_CONFIG,
-} from '@feed/shared';
-import { type Article, ArticleGenerator } from './ArticleGenerator';
-import type { FeedLLMClient } from './llm/openai-client';
-import { FeedLLMClient as FeedLLMClientValue } from './llm/openai-client';
-import { MarketDecisionEngine } from './MarketDecisionEngine';
+} from "@feed/shared";
+import { type Article, ArticleGenerator } from "./ArticleGenerator";
+import type { FeedLLMClient } from "./llm/openai-client";
+import { FeedLLMClient as FeedLLMClientValue } from "./llm/openai-client";
+import { MarketDecisionEngine } from "./MarketDecisionEngine";
 import {
   generateWorldContext,
   questionGeneration,
   questionResolutionValidation,
   renderPrompt,
   worldImpactAssessment,
-} from './prompts';
+} from "./prompts";
 import {
   filterIncoherent as filterIncoherentBase,
   validateCoherence,
-} from './services/content-grounding-validator';
-import { getPredictionMarketInitialization } from './services/prediction-market-profiles';
+} from "./services/content-grounding-validator";
+import { getPredictionMarketInitialization } from "./services/prediction-market-profiles";
 
 /**
  * Wrapper around filterIncoherent that logs when items are filtered out.
@@ -102,7 +102,7 @@ import { getPredictionMarketInitialization } from './services/prediction-market-
 function filterIncoherent<T>(
   items: T[],
   getText: (item: T) => string,
-  context?: string
+  context?: string,
 ): T[] {
   const originalCount = items.length;
   const filtered = filterIncoherentBase(items, getText);
@@ -110,9 +110,9 @@ function filterIncoherent<T>(
 
   if (droppedCount > 0) {
     logger.debug(
-      `filterIncoherent dropped ${droppedCount}/${originalCount} items${context ? ` in ${context}` : ''}`,
+      `filterIncoherent dropped ${droppedCount}/${originalCount} items${context ? ` in ${context}` : ""}`,
       { originalCount, filteredCount: filtered.length, droppedCount, context },
-      'QuestionManager'
+      "QuestionManager",
     );
   }
 
@@ -126,13 +126,13 @@ import {
   dailyTopicService,
   isTextOnAnyTopic,
   isTextOnTopic,
-} from './services/daily-topic-service';
-import { MarketContextService } from './services/market-context-service';
-import { MarketMetricsService } from './services/market-metrics-service';
-import { saveArcPlan } from './services/narrative-state-service';
-import { QuestionArcPlanner } from './services/question-arc-planner';
-import { StaticDataRegistry } from './services/static-data-registry';
-import { TradeExecutionService } from './services/trade-execution-service';
+} from "./services/daily-topic-service";
+import { MarketContextService } from "./services/market-context-service";
+import { MarketMetricsService } from "./services/market-metrics-service";
+import { saveArcPlan } from "./services/narrative-state-service";
+import { QuestionArcPlanner } from "./services/question-arc-planner";
+import { StaticDataRegistry } from "./services/static-data-registry";
+import { TradeExecutionService } from "./services/trade-execution-service";
 import type {
   DayTimeline,
   Organization,
@@ -140,13 +140,13 @@ import type {
   Scenario,
   SelectedActor,
   WorldEvent,
-} from './types/shared';
-import { firstOrThrow } from './utils/array-utils';
-import { toDateString } from './utils/date-utils';
-import { formatError } from './utils/error-utils';
-import { clamp } from './utils/math-utils';
-import { shuffleArray } from './utils/randomization';
-import { worldFactsService } from './world-facts-service';
+} from "./types/shared";
+import { firstOrThrow } from "./utils/array-utils";
+import { toDateString } from "./utils/date-utils";
+import { formatError } from "./utils/error-utils";
+import { clamp } from "./utils/math-utils";
+import { shuffleArray } from "./utils/randomization";
+import { worldFactsService } from "./world-facts-service";
 
 // =============================================================================
 // Helper Functions
@@ -164,10 +164,10 @@ export function isEligibleActor(actor: {
   tier?: string | null;
 }): boolean {
   return (
-    actor.role === 'main' ||
-    actor.role === 'supporting' ||
-    actor.tier === 'S_TIER' ||
-    actor.tier === 'A_TIER'
+    actor.role === "main" ||
+    actor.role === "supporting" ||
+    actor.tier === "S_TIER" ||
+    actor.tier === "A_TIER"
   );
 }
 
@@ -205,7 +205,7 @@ export interface ResolutionWithProof {
   /** Natural language description of why/how the question resolved */
   description: string;
   /** Optional proof article with URL */
-  proof?: { type: 'article'; article: Article; url: string };
+  proof?: { type: "article"; article: Article; url: string };
   /** Confidence score (0-1) based on speculative signal detection */
   confidence: number;
   /** Whether this resolution requires manual admin review */
@@ -300,7 +300,7 @@ export class QuestionManager {
    * ```
    */
   async generateDailyQuestions(
-    params: QuestionCreationParams
+    params: QuestionCreationParams,
   ): Promise<Question[]> {
     const {
       currentDate,
@@ -316,9 +316,9 @@ export class QuestionManager {
     // Don't generate if we're at max capacity (20 questions)
     if (activeQuestions.length >= 20) {
       logger.warn(
-        'Max 20 questions reached, skipping generation',
+        "Max 20 questions reached, skipping generation",
         undefined,
-        'QuestionManager'
+        "QuestionManager",
       );
       return [];
     }
@@ -326,7 +326,7 @@ export class QuestionManager {
     // Generate 1-3 new questions
     const numToGenerate = Math.min(
       Math.floor(Math.random() * 3) + 1, // 1-3 questions
-      20 - activeQuestions.length // Don't exceed max
+      20 - activeQuestions.length, // Don't exceed max
     );
 
     const currentDateObj = new Date(currentDate);
@@ -337,7 +337,7 @@ export class QuestionManager {
       events: filterIncoherent(
         day.events,
         (e) => e.description,
-        `recentEvents day ${day.day}`
+        `recentEvents day ${day.day}`,
       ),
     }));
     const recentContext =
@@ -346,23 +346,23 @@ export class QuestionManager {
             .slice(-5)
             .map(
               (day) =>
-                `Day ${day.day}: ${day.events.map((e) => e.description).join('; ')}`
+                `Day ${day.day}: ${day.events.map((e) => e.description).join("; ")}`,
             )
-            .join('\n')}`
-        : '';
+            .join("\n")}`
+        : "";
 
     // Build context from active questions (filter incoherent content)
     const cleanDailyActiveQs = filterIncoherent(
       activeQuestions,
       (q) => q.text,
-      'activeQuestions for daily generation'
+      "activeQuestions for daily generation",
     );
     const activeQuestionsContext =
       cleanDailyActiveQs.length > 0
         ? `\n\nCURRENT ACTIVE QUESTIONS (${cleanDailyActiveQs.length}/20):\n${cleanDailyActiveQs
             .map((q) => `- ${q.text} (resolves ${q.resolutionDate})`)
-            .join('\n')}`
-        : '\n\nNo active questions yet.';
+            .join("\n")}`
+        : "\n\nNo active questions yet.";
 
     const resolvedDailyTopic =
       dailyTopic ??
@@ -375,7 +375,7 @@ export class QuestionManager {
       recentContext,
       activeQuestionsContext,
       numToGenerate,
-      resolvedDailyTopic
+      resolvedDailyTopic,
     );
 
     const rawResponse = await this.llm.generateJSON<
@@ -400,12 +400,12 @@ export class QuestionManager {
     >(prompt, undefined, {
       temperature: 0.9,
       maxTokens: 8000,
-      promptType: 'question_generate_batch',
+      promptType: "question_generate_batch",
     });
 
     // Handle XML structure
     const response =
-      'response' in rawResponse && rawResponse.response
+      "response" in rawResponse && rawResponse.response
         ? rawResponse.response
         : (rawResponse as {
             questions: Array<{
@@ -417,7 +417,7 @@ export class QuestionManager {
           });
 
     if (!response.questions || response.questions.length === 0) {
-      logger.warn('LLM returned no questions', undefined, 'QuestionManager');
+      logger.warn("LLM returned no questions", undefined, "QuestionManager");
       return [];
     }
 
@@ -426,13 +426,13 @@ export class QuestionManager {
       .filter(
         (q) =>
           validateCoherence(q.text).grounded &&
-          (!resolvedDailyTopic || isTextOnTopic(q.text, resolvedDailyTopic))
+          (!resolvedDailyTopic || isTextOnTopic(q.text, resolvedDailyTopic)),
       )
       .slice(0, numToGenerate)
       .map((q, index) => {
         const resolutionDate = new Date(currentDateObj);
         resolutionDate.setDate(
-          resolutionDate.getDate() + clamp(q.daysUntilResolution || 3, 1, 7)
+          resolutionDate.getDate() + clamp(q.daysUntilResolution || 3, 1, 7),
         );
 
         return {
@@ -443,7 +443,7 @@ export class QuestionManager {
           rank: 1,
           createdDate: currentDate,
           resolutionDate: toDateString(resolutionDate),
-          status: 'active',
+          status: "active",
           topicKey: resolvedDailyTopic?.topicKey,
           topicLabel: resolvedDailyTopic?.topicLabel,
           topicDate: resolvedDailyTopic?.date,
@@ -463,49 +463,49 @@ export class QuestionManager {
     recentContext: string,
     activeQuestionsContext: string,
     numToGenerate: number,
-    dailyTopic: DailyTopicContext | null
+    dailyTopic: DailyTopicContext | null,
   ): Promise<string> {
     const scenariosList = scenarios
       .map(
         (s) => `
 Scenario ${s.id}: ${s.title}
 ${s.description}
-Actors: ${s.mainActors.join(', ')}
-${s.involvedOrganizations?.length ? `Organizations: ${s.involvedOrganizations.join(', ')}` : ''}
-`
+Actors: ${s.mainActors.join(", ")}
+${s.involvedOrganizations?.length ? `Organizations: ${s.involvedOrganizations.join(", ")}` : ""}
+`,
       )
-      .join('\n');
+      .join("\n");
 
     // Shuffle actors and organizations to add variety to prompts
     const shuffledActors = shuffleArray(actors.filter(isEligibleActor));
     const actorsList = shuffledActors
       .slice(0, 20)
       .map((a) => `- ${a.name}: ${a.description}`)
-      .join('\n');
+      .join("\n");
 
     const shuffledOrgs = shuffleArray(
-      organizations.filter((o) => o.type === 'company')
+      organizations.filter((o) => o.type === "company"),
     );
     const orgsList = shuffledOrgs
       .slice(0, 15)
       .map((o) => `- ${o.name}: ${o.description}`)
-      .join('\n');
+      .join("\n");
 
     // Generate world context with reality grounding for better question quality
     const worldContext = await generateWorldContext({
       maxActors: 50,
-      realityGroundingLevel: 'concise',
+      realityGroundingLevel: "concise",
     });
 
     // Load example questions from TypeScript export
-    let exampleQuestions = '';
-    const { getQuestionExamples } = await import('./data/question-examples');
+    let exampleQuestions = "";
+    const { getQuestionExamples } = await import("./data/question-examples");
     const examples = getQuestionExamples();
     const shuffled = shuffleArray(examples);
     exampleQuestions = shuffled
       .slice(0, 10)
       .map((q) => `✅ "${q}"`)
-      .join('\n');
+      .join("\n");
 
     return renderPrompt(questionGeneration, {
       scenariosList,
@@ -561,7 +561,7 @@ ${s.involvedOrganizations?.length ? `Organizations: ${s.involvedOrganizations.jo
    */
   getQuestionsToResolve(
     activeQuestions: Question[],
-    currentDate: string
+    currentDate: string,
   ): Question[] {
     const currentDateObj = new Date(currentDate);
 
@@ -608,11 +608,11 @@ ${s.involvedOrganizations?.length ? `Organizations: ${s.involvedOrganizations.jo
     question: Question,
     outcome: boolean,
     resolutionDescription?: string,
-    resolutionProofUrl?: string
+    resolutionProofUrl?: string,
   ): Question {
     return {
       ...question,
-      status: 'resolved',
+      status: "resolved",
       resolvedOutcome: outcome,
       resolutionDescription,
       resolutionProofUrl,
@@ -626,12 +626,12 @@ ${s.involvedOrganizations?.length ? `Organizations: ${s.involvedOrganizations.jo
     question: Question,
     eventDescription: string,
     actors: SelectedActor[],
-    organizations: Organization[]
-  ): Promise<{ type: 'article'; article: Article; url: string } | null> {
+    organizations: Organization[],
+  ): Promise<{ type: "article"; article: Article; url: string } | null> {
     const articleGenerator = new ArticleGenerator(this.llm);
 
     // Find a suitable media organization
-    const mediaOrgs = organizations.filter((o) => o.type === 'media');
+    const mediaOrgs = organizations.filter((o) => o.type === "media");
     // Use random media org or fallback to first org
     const org =
       mediaOrgs.length > 0
@@ -644,41 +644,41 @@ ${s.involvedOrganizations?.length ? `Organizations: ${s.involvedOrganizations.jo
     const event: WorldEvent = {
       id: `resolution-${question.id}`,
       day: 0, // Placeholder, not critical for article generation logic here
-      type: 'revelation',
+      type: "revelation",
       description: eventDescription,
       actors: [],
       relatedQuestion:
-        typeof question.id === 'number' ? question.id : undefined,
-      pointsToward: question.outcome ? 'YES' : 'NO',
-      visibility: 'public',
+        typeof question.id === "number" ? question.id : undefined,
+      pointsToward: question.outcome ? "YES" : "NO",
+      visibility: "public",
     };
 
     // Get world facts context for article generation with graceful fallback
-    let worldFactsContext = '';
+    let worldFactsContext = "";
     try {
       worldFactsContext = await worldFactsService.generatePromptContext();
     } catch (error) {
       logger.warn(
-        'Failed to fetch world facts context for proof content - proceeding without',
+        "Failed to fetch world facts context for proof content - proceeding without",
         {
           questionId: question.id,
           error: formatError(error),
         },
-        'QuestionManager'
+        "QuestionManager",
       );
     }
 
     const article = await articleGenerator.generateArticleForQuestion(
       question,
       org,
-      'resolution',
+      "resolution",
       actors,
       [event],
-      worldFactsContext // World facts context for current game state
+      worldFactsContext, // World facts context for current game state
     );
 
     return {
-      type: 'article',
+      type: "article",
       article,
       url: `/article/${article.id}`,
     };
@@ -691,13 +691,13 @@ ${s.involvedOrganizations?.length ? `Organizations: ${s.involvedOrganizations.jo
     question: Question,
     actors: SelectedActor[],
     organizations: Organization[],
-    recentEvents: DayTimeline[]
+    recentEvents: DayTimeline[],
   ): Promise<ResolutionWithProof> {
     const description = await this.generateResolutionEvent(
       question,
       actors,
       organizations,
-      recentEvents
+      recentEvents,
     );
 
     // Generate proof
@@ -705,16 +705,16 @@ ${s.involvedOrganizations?.length ? `Organizations: ${s.involvedOrganizations.jo
       question,
       description,
       actors,
-      organizations
+      organizations,
     );
 
     const evidenceText = [
       description,
-      proof?.type === 'article' ? proof.article.title : null,
-      proof?.type === 'article' ? proof.article.summary : null,
+      proof?.type === "article" ? proof.article.title : null,
+      proof?.type === "article" ? proof.article.summary : null,
     ]
-      .filter((s): s is string => typeof s === 'string' && s.trim().length > 0)
-      .join('\n');
+      .filter((s): s is string => typeof s === "string" && s.trim().length > 0)
+      .join("\n");
 
     // Guard: empty evidence should always trigger manual review
     if (!evidenceText.trim()) {
@@ -723,7 +723,7 @@ ${s.involvedOrganizations?.length ? `Organizations: ${s.involvedOrganizations.jo
         proof: proof || undefined,
         confidence: RESOLUTION_CONFIDENCE_CONFIG.MIN_CONFIDENCE,
         requiresManualReview: true,
-        confidenceSignals: ['no_evidence'],
+        confidenceSignals: ["no_evidence"],
       };
     }
 
@@ -749,22 +749,22 @@ ${s.involvedOrganizations?.length ? `Organizations: ${s.involvedOrganizations.jo
     // Patterns are designed to minimize false positives from common phrases
     const speculativeSignals: Array<[RegExp, string, number]> = [
       // High-weight: strong speculation indicators
-      [/\brumou?r(s|ed)?\b/i, 'rumor', 0.25],
-      [/\bunconfirmed\b/i, 'unconfirmed', 0.25],
-      [/\balleged(ly)?\b/i, 'alleged', 0.2],
-      [/\bsources?\s+(say|claim|suggest)\b/i, 'sources_say', 0.2],
+      [/\brumou?r(s|ed)?\b/i, "rumor", 0.25],
+      [/\bunconfirmed\b/i, "unconfirmed", 0.25],
+      [/\balleged(ly)?\b/i, "alleged", 0.2],
+      [/\bsources?\s+(say|claim|suggest)\b/i, "sources_say", 0.2],
       // Medium-weight: conditional language (stricter patterns to avoid false positives)
-      [/\b(might|could)\s+(be|have|become|lead|cause)\b/i, 'conditional', 0.15],
-      [/\bexpected\s+to\b/i, 'expected_to', 0.15],
+      [/\b(might|could)\s+(be|have|become|lead|cause)\b/i, "conditional", 0.15],
+      [/\bexpected\s+to\b/i, "expected_to", 0.15],
       // More specific: "likely to be/happen" vs "the likely winner" (definitive)
-      [/\blikely\s+to\s+(be|happen|occur|result)\b/i, 'likely', 0.12],
+      [/\blikely\s+to\s+(be|happen|occur|result)\b/i, "likely", 0.12],
       // Low-weight: common but still speculative
-      [/\breportedly\b/i, 'reportedly', 0.1],
-      [/\bpossibly\b/i, 'possibly', 0.1],
+      [/\breportedly\b/i, "reportedly", 0.1],
+      [/\bpossibly\b/i, "possibly", 0.1],
       // More specific: "apparently uncertain" vs "apparently successful" (confirming)
       [
         /\bapparently\s+(not|uncertain|unclear|unconfirmed)\b/i,
-        'apparently',
+        "apparently",
         0.08,
       ],
     ];
@@ -833,7 +833,7 @@ ${s.involvedOrganizations?.length ? `Organizations: ${s.involvedOrganizations.jo
     question: Question,
     _actors: SelectedActor[],
     _organizations: Organization[],
-    recentEvents: DayTimeline[]
+    recentEvents: DayTimeline[],
   ): Promise<string> {
     // Get context from recent events related to this question
     const relatedEvents = recentEvents
@@ -843,18 +843,18 @@ ${s.involvedOrganizations?.length ? `Organizations: ${s.involvedOrganizations.jo
 
     const eventHistory =
       relatedEvents.length > 0
-        ? `Recent events: ${relatedEvents.map((e) => e.description).join('; ')}`
-        : 'No prior events';
+        ? `Recent events: ${relatedEvents.map((e) => e.description).join("; ")}`
+        : "No prior events";
 
     const outcomeContext = question.outcome
-      ? 'PROVES it happened/succeeded'
-      : 'PROVES it failed/was cancelled/did not happen';
+      ? "PROVES it happened/succeeded"
+      : "PROVES it failed/was cancelled/did not happen";
 
     const prompt = renderPrompt(questionResolutionValidation, {
       questionText: question.text,
-      outcome: question.outcome ? 'YES' : 'NO',
+      outcome: question.outcome ? "YES" : "NO",
       eventHistory,
-      contextInfo: '',
+      contextInfo: "",
       outcomeContext,
     });
 
@@ -864,18 +864,18 @@ ${s.involvedOrganizations?.length ? `Organizations: ${s.involvedOrganizations.jo
     >(prompt, undefined, {
       temperature: 0.7,
       maxTokens: 5000,
-      promptType: 'question_resolution_event',
+      promptType: "question_resolution_event",
     });
 
     // Handle XML structure
     const response =
-      'response' in rawResponse && rawResponse.response
+      "response" in rawResponse && rawResponse.response
         ? rawResponse.response
         : (rawResponse as { event: string; type: string });
 
     const eventDescription =
       response.event ||
-      `Resolution: ${question.text} outcome is ${question.outcome ? 'YES' : 'NO'}`;
+      `Resolution: ${question.text} outcome is ${question.outcome ? "YES" : "NO"}`;
 
     // Assess world impact
     await this.assessAndRecordWorldImpact(question, eventDescription);
@@ -888,18 +888,18 @@ ${s.involvedOrganizations?.length ? `Organizations: ${s.involvedOrganizations.jo
    */
   private async assessAndRecordWorldImpact(
     question: Question,
-    resolutionEvent: string
+    resolutionEvent: string,
   ): Promise<void> {
     const worldContext = await generateWorldContext({
       includeWorldFacts: true,
-      realityGroundingLevel: 'concise',
+      realityGroundingLevel: "concise",
     });
 
     const prompt = renderPrompt(worldImpactAssessment, {
       worldFacts: worldContext.worldFacts,
       questionText: question.text,
-      outcome: question.outcome ? 'YES' : 'NO',
-      outcomeText: question.outcome ? 'True/Happened' : 'False/Did not happen',
+      outcome: question.outcome ? "YES" : "NO",
+      outcomeText: question.outcome ? "True/Happened" : "False/Did not happen",
       resolutionEvent,
     });
 
@@ -914,11 +914,11 @@ ${s.involvedOrganizations?.length ? `Organizations: ${s.involvedOrganizations.jo
             newFact: string | null;
           };
         }
-    >(prompt, undefined, { promptType: 'question_assess_world_impact' });
+    >(prompt, undefined, { promptType: "question_assess_world_impact" });
 
     // Handle potential wrapped response
     let result: { changesWorld: boolean; newFact: string | null };
-    if ('response' in response) {
+    if ("response" in response) {
       result = response.response;
     } else {
       result = response;
@@ -929,7 +929,7 @@ ${s.involvedOrganizations?.length ? `Organizations: ${s.involvedOrganizations.jo
       logger.info(
         `Added new world fact: ${result.newFact}`,
         { questionId: question.id },
-        'QuestionManager'
+        "QuestionManager",
       );
     }
   }
@@ -954,7 +954,7 @@ ${s.involvedOrganizations?.length ? `Organizations: ${s.involvedOrganizations.jo
    * ```
    */
   getActiveQuestions(questions: Question[]): Question[] {
-    return questions.filter((q) => q.status === 'active');
+    return questions.filter((q) => q.status === "active");
   }
 
   /**
@@ -977,7 +977,7 @@ ${s.involvedOrganizations?.length ? `Organizations: ${s.involvedOrganizations.jo
    * ```
    */
   getResolvedQuestions(questions: Question[]): Question[] {
-    return questions.filter((q) => q.status === 'resolved');
+    return questions.filter((q) => q.status === "resolved");
   }
 
   /**
@@ -1046,15 +1046,15 @@ ${s.involvedOrganizations?.length ? `Organizations: ${s.involvedOrganizations.jo
   async generateQuestionsForContinuousGame(
     count: number,
     deadlineMs: number,
-    options?: { seedTopics?: string[] }
+    options?: { seedTopics?: string[] },
   ): Promise<number> {
     let questionsCreated = 0;
 
     // Gather ALL context needed for intelligent question generation
     logger.info(
-      'Gathering context for question generation...',
+      "Gathering context for question generation...",
       { count },
-      'QuestionManager'
+      "QuestionManager",
     );
 
     const [
@@ -1071,7 +1071,7 @@ ${s.involvedOrganizations?.length ? `Organizations: ${s.involvedOrganizations.jo
       worldFactsService.generatePromptContext(),
       generateWorldContext({
         maxActors: 50,
-        realityGroundingLevel: 'concise',
+        realityGroundingLevel: "concise",
         includeMarkets: true,
         includePredictions: true,
         includeTrades: true,
@@ -1085,10 +1085,10 @@ ${s.involvedOrganizations?.length ? `Organizations: ${s.involvedOrganizations.jo
           and(
             gte(
               worldEvents.timestamp,
-              new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+              new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
             ),
-            eq(worldEvents.visibility, 'public')
-          )
+            eq(worldEvents.visibility, "public"),
+          ),
         )
         .orderBy(desc(worldEvents.timestamp))
         .limit(20),
@@ -1096,7 +1096,7 @@ ${s.involvedOrganizations?.length ? `Organizations: ${s.involvedOrganizations.jo
       db
         .select()
         .from(questions)
-        .where(eq(questions.status, 'active'))
+        .where(eq(questions.status, "active"))
         .orderBy(desc(questions.createdAt))
         .limit(20),
       // Get recently resolved questions (last 7 days) with outcomes
@@ -1109,12 +1109,12 @@ ${s.involvedOrganizations?.length ? `Organizations: ${s.involvedOrganizations.jo
         .from(questions)
         .where(
           and(
-            eq(questions.status, 'resolved'),
+            eq(questions.status, "resolved"),
             gte(
               questions.updatedAt,
-              new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-            )
-          )
+              new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+            ),
+          ),
         )
         .orderBy(desc(questions.updatedAt))
         .limit(10),
@@ -1130,14 +1130,14 @@ ${s.involvedOrganizations?.length ? `Organizations: ${s.involvedOrganizations.jo
             role: a.role,
             personality: a.personality,
             affiliations: a.affiliations,
-          }))
+          })),
       ),
       // Get organizations (shuffled for variety)
       Promise.resolve(
         shuffleArray(
           StaticDataRegistry.getAllOrganizations().filter(
-            (o) => o.type === 'company'
-          )
+            (o) => o.type === "company",
+          ),
         )
           .slice(0, 20)
           .map((o) => ({
@@ -1145,7 +1145,7 @@ ${s.involvedOrganizations?.length ? `Organizations: ${s.involvedOrganizations.jo
             name: o.name,
             description: o.description,
             type: o.type,
-          }))
+          })),
       ),
       // Get trending topics for context (with manual join for tags)
       db
@@ -1166,14 +1166,14 @@ ${s.involvedOrganizations?.length ? `Organizations: ${s.involvedOrganizations.jo
     ]);
 
     // Load example questions from TypeScript export
-    let exampleQuestions = '';
-    const { getQuestionExamples } = await import('./data/question-examples');
+    let exampleQuestions = "";
+    const { getQuestionExamples } = await import("./data/question-examples");
     const examples = getQuestionExamples();
     const shuffled = shuffleArray(examples);
     exampleQuestions = shuffled
       .slice(0, 10)
       .map((q) => `✅ "${q}"`)
-      .join('\n');
+      .join("\n");
 
     // Format context strings - compact format (filter incoherent events)
     const cleanEvents = filterIncoherent(recentEvents, (e) => e.description);
@@ -1182,24 +1182,24 @@ ${s.involvedOrganizations?.length ? `Organizations: ${s.involvedOrganizations.jo
         ? `EVENTS(7d): ${cleanEvents
             .slice(0, 10)
             .map((e) => `${e.description.substring(0, 60)}`)
-            .join(' | ')}`
-        : '';
+            .join(" | ")}`
+        : "";
 
     const cleanActiveQuestions = filterIncoherent(
       activeQuestions,
-      (q) => q.text
+      (q) => q.text,
     );
     const activeQuestionsContext =
       cleanActiveQuestions.length > 0
         ? `ACTIVE(${cleanActiveQuestions.length}): ${cleanActiveQuestions
             .slice(0, 10)
             .map((q) => `"${q.text.substring(0, 50)}..."`)
-            .join(' | ')}`
-        : '';
+            .join(" | ")}`
+        : "";
 
     const cleanResolvedQuestions = filterIncoherent(
       resolvedQuestions,
-      (q) => q.text
+      (q) => q.text,
     );
     const resolvedQuestionsContext =
       cleanResolvedQuestions.length > 0
@@ -1207,34 +1207,34 @@ ${s.involvedOrganizations?.length ? `Organizations: ${s.involvedOrganizations.jo
             .slice(0, 5)
             .map(
               (q) =>
-                `"${q.text.substring(0, 40)}..."→${q.resolvedOutcome ? 'YES' : 'NO'}`
+                `"${q.text.substring(0, 40)}..."→${q.resolvedOutcome ? "YES" : "NO"}`,
             )
-            .join(' | ')}`
-        : '';
+            .join(" | ")}`
+        : "";
 
     const actorsContext =
       actorsList.length > 0
         ? `ACTORS: ${actorsList
             .slice(0, 15)
             .map((a) => a.name)
-            .join(', ')}`
-        : '';
+            .join(", ")}`
+        : "";
 
     const orgsContext =
       organizationsList.length > 0
         ? `COMPANIES: ${organizationsList
             .slice(0, 10)
             .map((o) => o.name)
-            .join(', ')}`
-        : '';
+            .join(", ")}`
+        : "";
 
     const trendingContext =
       trendingTagsList.length > 0
         ? `TRENDING: ${trendingTagsList
             .slice(0, 5)
-            .map((tt) => tt.tagDisplayName || tt.tagName || 'Unknown')
-            .join(', ')}`
-        : '';
+            .map((tt) => tt.tagDisplayName || tt.tagName || "Unknown")
+            .join(", ")}`
+        : "";
 
     // Market metrics context (BAB-5: metrics-based question generation)
     const marketMetricsContext = marketMetrics.promptContext;
@@ -1242,13 +1242,13 @@ ${s.involvedOrganizations?.length ? `Organizations: ${s.involvedOrganizations.jo
     // Build compact prompt
     const seedTopicContext =
       options?.seedTopics && options.seedTopics.length > 0
-        ? `TODAY'S TOP STORIES (base at least ${Math.min(count, options.seedTopics.length)} questions on these current events):\n${options.seedTopics.map((t, i) => `${i + 1}. ${t}`).join('\n')}`
-        : '';
+        ? `TODAY'S TOP STORIES (base at least ${Math.min(count, options.seedTopics.length)} questions on these current events):\n${options.seedTopics.map((t, i) => `${i + 1}. ${t}`).join("\n")}`
+        : "";
 
     const contextParts = [
       seedTopicContext,
       worldFactsContext,
-      worldContext.realityGrounding || '',
+      worldContext.realityGrounding || "",
       recentEventsContext,
       activeQuestionsContext,
       resolvedQuestionsContext,
@@ -1258,15 +1258,15 @@ ${s.involvedOrganizations?.length ? `Organizations: ${s.involvedOrganizations.jo
       marketMetricsContext, // BAB-5: metrics-based question generation
       worldContext.currentMarkets
         ? `MARKETS: ${worldContext.currentMarkets}`
-        : '',
+        : "",
       worldContext.activePredictions
         ? `PREDICTIONS: ${worldContext.activePredictions}`
-        : '',
-      worldContext.recentTrades ? `TRADES: ${worldContext.recentTrades}` : '',
-      exampleQuestions ? `EXAMPLES: ${exampleQuestions}` : '',
+        : "",
+      worldContext.recentTrades ? `TRADES: ${worldContext.recentTrades}` : "",
+      exampleQuestions ? `EXAMPLES: ${exampleQuestions}` : "",
     ]
       .filter(Boolean)
-      .join('\n');
+      .join("\n");
 
     const prompt = `Generate ${count} prediction market questions.
 
@@ -1325,9 +1325,9 @@ XML: <response><questions><question><text>...</text><resolutionCriteria>...</res
 
     if (Date.now() > deadlineMs) {
       logger.warn(
-        'Question generation aborted due to tick budget limit',
+        "Question generation aborted due to tick budget limit",
         { questionsCreated },
-        'QuestionManager'
+        "QuestionManager",
       );
       return questionsCreated;
     }
@@ -1356,26 +1356,26 @@ XML: <response><questions><question><text>...</text><resolutionCriteria>...</res
       {
         properties: {
           questions: {
-            type: 'array',
+            type: "array",
             items: {
-              type: 'object',
+              type: "object",
               properties: {
-                text: { type: 'string' },
-                resolutionCriteria: { type: 'string' },
-                daysUntilResolution: { type: 'number' },
-                expectedOutcome: { type: 'string' },
+                text: { type: "string" },
+                resolutionCriteria: { type: "string" },
+                daysUntilResolution: { type: "number" },
+                expectedOutcome: { type: "string" },
               },
             },
           },
         },
-        required: ['questions'],
+        required: ["questions"],
       },
       {
         temperature: 0.9,
         maxTokens: 8000,
-        format: 'xml',
-        promptType: 'question_generate_real_world',
-      }
+        format: "xml",
+        promptType: "question_generate_real_world",
+      },
     );
 
     // Handle XML structure - may be {questions: [...]} or {questions: {question: [...]}}
@@ -1390,7 +1390,7 @@ XML: <response><questions><question><text>...</text><resolutionCriteria>...</res
     };
 
     const rawQuestions =
-      response && 'response' in response && response.response
+      response && "response" in response && response.response
         ? (response.response as QuestionsResponse).questions
         : (response as QuestionsResponse).questions;
 
@@ -1398,16 +1398,16 @@ XML: <response><questions><question><text>...</text><resolutionCriteria>...</res
     const questionsData: QuestionData[] = Array.isArray(rawQuestions)
       ? rawQuestions
       : rawQuestions &&
-          'question' in rawQuestions &&
+          "question" in rawQuestions &&
           Array.isArray(rawQuestions.question)
         ? rawQuestions.question
         : [];
 
     if (questionsData.length === 0) {
       logger.warn(
-        'No questions generated from LLM response',
+        "No questions generated from LLM response",
         { response },
-        'QuestionManager'
+        "QuestionManager",
       );
       return questionsCreated;
     }
@@ -1445,30 +1445,30 @@ XML: <response><questions><question><text>...</text><resolutionCriteria>...</res
     for (const questionData of questionsData.slice(0, count)) {
       if (Date.now() > deadlineMs) {
         logger.warn(
-          'Question generation aborted due to tick budget limit',
+          "Question generation aborted due to tick budget limit",
           { questionsCreated },
-          'QuestionManager'
+          "QuestionManager",
         );
         break;
       }
 
       if (!questionData.text || !questionData.resolutionCriteria) {
         logger.warn(
-          'Invalid question data, skipping',
+          "Invalid question data, skipping",
           { questionData },
-          'QuestionManager'
+          "QuestionManager",
         );
         continue;
       }
 
       // Sanitize question text to remove any template variables that leaked through
       const sanitizedText = questionData.text
-        .replace(/\{resolutionDate\}/gi, '')
-        .replace(/\{resolution_date\}/gi, '')
-        .replace(/\{date\}/gi, '')
-        .replace(/\{[a-zA-Z_]+\}/g, '') // Remove any other template variables
-        .replace(/\s+/g, ' ') // Normalize whitespace
-        .replace(/by\s*\?$/i, '?') // Clean up "by ?" at end
+        .replace(/\{resolutionDate\}/gi, "")
+        .replace(/\{resolution_date\}/gi, "")
+        .replace(/\{date\}/gi, "")
+        .replace(/\{[a-zA-Z_]+\}/g, "") // Remove any other template variables
+        .replace(/\s+/g, " ") // Normalize whitespace
+        .replace(/by\s*\?$/i, "?") // Clean up "by ?" at end
         .trim();
 
       // Update the question text with sanitized version
@@ -1478,25 +1478,25 @@ XML: <response><questions><question><text>...</text><resolutionCriteria>...</res
       const coherence = validateCoherence(sanitizedText);
       if (!coherence.grounded) {
         logger.warn(
-          'Rejected incoherent question before storage',
+          "Rejected incoherent question before storage",
           { text: sanitizedText.substring(0, 100), reasons: coherence.reasons },
-          'QuestionManager'
+          "QuestionManager",
         );
         continue;
       }
 
       // Convert "yes"/"no" to boolean
-      const expectedOutcomeStr = String(questionData.expectedOutcome || '')
+      const expectedOutcomeStr = String(questionData.expectedOutcome || "")
         .toLowerCase()
         .trim();
       const expectedOutcome =
-        expectedOutcomeStr === 'yes' || expectedOutcomeStr === 'true';
+        expectedOutcomeStr === "yes" || expectedOutcomeStr === "true";
 
       // Clamp daysUntilResolution to 1-7 range and ensure it's a valid integer
       const rawDays = questionData.daysUntilResolution;
       const daysUntilResolution = Math.max(
         1,
-        Math.min(7, Math.round(rawDays || 3))
+        Math.min(7, Math.round(rawDays || 3)),
       );
 
       // Calculate resolution date from current date + daysUntilResolution
@@ -1514,13 +1514,13 @@ XML: <response><questions><question><text>...</text><resolutionCriteria>...</res
           expectedOutcome: expectedOutcomeStr,
           outcomeBoolean: expectedOutcome,
         },
-        'QuestionManager'
+        "QuestionManager",
       );
 
       // Dedup: skip if too similar to existing active question
       const newTextLower = questionData.text.toLowerCase().trim();
       const existingTexts = activeQuestions.map((q) =>
-        q.text.toLowerCase().trim()
+        q.text.toLowerCase().trim(),
       );
       const isDuplicate = existingTexts.some((existing) => {
         // Exact match
@@ -1535,9 +1535,9 @@ XML: <response><questions><question><text>...</text><resolutionCriteria>...</res
       });
       if (isDuplicate) {
         logger.warn(
-          'Skipping duplicate question',
+          "Skipping duplicate question",
           { text: questionData.text.slice(0, 80) },
-          'QuestionManager'
+          "QuestionManager",
         );
         continue;
       }
@@ -1552,7 +1552,7 @@ XML: <response><questions><question><text>...</text><resolutionCriteria>...</res
           outcome: expectedOutcome,
           rank: 1,
           resolutionDate,
-          status: 'active',
+          status: "active",
           topicKey: currentTopic?.topicKey,
           topicLabel: currentTopic?.topicLabel,
           topicDate: currentTopic?.date,
@@ -1561,7 +1561,7 @@ XML: <response><questions><question><text>...</text><resolutionCriteria>...</res
         .returning();
       const question = firstOrThrow(
         questionResults,
-        'Question insert returned empty'
+        "Question insert returned empty",
       );
       const marketInitialization = getPredictionMarketInitialization({
         marketId: question.id,
@@ -1578,7 +1578,7 @@ XML: <response><questions><question><text>...</text><resolutionCriteria>...</res
       });
 
       logger.debug(
-        'Question and market created with matching resolution dates',
+        "Question and market created with matching resolution dates",
         {
           questionId: question.id,
           questionNumber: question.questionNumber,
@@ -1587,7 +1587,7 @@ XML: <response><questions><question><text>...</text><resolutionCriteria>...</res
           initialLiquidity: marketInitialization.initialLiquidity,
           marketEndDate: market.endDate.toISOString(),
         },
-        'QuestionManager'
+        "QuestionManager",
       );
 
       // Create and persist arc plan for this question
@@ -1606,13 +1606,13 @@ XML: <response><questions><question><text>...</text><resolutionCriteria>...</res
         }));
 
       const allOrgs: Organization[] = StaticDataRegistry.getAllOrganizations()
-        .filter((o) => o.type === 'company')
+        .filter((o) => o.type === "company")
         .slice(0, 20)
         .map((o) => ({
           id: o.id,
           name: o.name,
           description: o.description,
-          type: o.type as Organization['type'],
+          type: o.type as Organization["type"],
           canBeInvolved: o.canBeInvolved ?? true, // Default to true for backward compatibility
         }));
 
@@ -1624,25 +1624,24 @@ XML: <response><questions><question><text>...</text><resolutionCriteria>...</res
           scenario: scenarioId,
           outcome: expectedOutcome,
           rank: 1,
-          status: 'active',
+          status: "active",
         },
         allActors,
-        allOrgs
+        allOrgs,
       );
 
       // Save arc plan to database for use in subsequent ticks
       await saveArcPlan(question.id, arcPlan);
 
-      const skipNpcBetting =
-        process.env.FEED_TRUST_CORPUS_FAST_MODE === 'true';
+      const skipNpcBetting = process.env.FEED_TRUST_CORPUS_FAST_MODE === "true";
       if (skipNpcBetting) {
         logger.info(
-          'Skipping NPC betting on new question in fast mode',
+          "Skipping NPC betting on new question in fast mode",
           {
             questionId: question.id,
             questionNumber: question.questionNumber,
           },
-          'QuestionManager'
+          "QuestionManager",
         );
       } else {
         // Trigger NPC betting on this new question
@@ -1654,13 +1653,13 @@ XML: <response><questions><question><text>...</text><resolutionCriteria>...</res
               new MarketContextService();
             const marketDecisionLLM = FeedLLMClientValue.forGameTick();
             const modelName =
-              process.env.MARKET_DECISION_MODEL || 'openai/gpt-oss-120b';
-            const isKimiModel = modelName.toLowerCase().includes('kimi');
+              process.env.MARKET_DECISION_MODEL || "openai/gpt-oss-120b";
+            const isKimiModel = modelName.toLowerCase().includes("kimi");
             const defaultMaxOutput = isKimiModel ? 16000 : 32000;
             const maxOutputTokens = Number.parseInt(
               process.env.MARKET_DECISION_MAX_OUTPUT_TOKENS ||
                 defaultMaxOutput.toString(),
-              10
+              10,
             );
             return new MarketDecisionEngine(marketDecisionLLM, contextService, {
               model: modelName,
@@ -1673,7 +1672,7 @@ XML: <response><questions><question><text>...</text><resolutionCriteria>...</res
 
         // Filter to decisions for this new question
         const questionDecisions = decisions.filter(
-          (d) => d.marketType === 'prediction' && d.marketId === question.id
+          (d) => d.marketType === "prediction" && d.marketId === question.id,
         );
 
         if (questionDecisions.length > 0) {
@@ -1692,7 +1691,7 @@ XML: <response><questions><question><text>...</text><resolutionCriteria>...</res
               successfulTrades: executionResult.successfulTrades,
               failedTrades: executionResult.failedTrades,
             },
-            'QuestionManager'
+            "QuestionManager",
           );
         }
       }
@@ -1724,7 +1723,7 @@ XML: <response><questions><question><text>...</text><resolutionCriteria>...</res
     timeframe: string,
     durationMs: number,
     dailyTopic?: DailyTopicContext | null,
-    allTopics: DailyTopicContext[] = []
+    allTopics: DailyTopicContext[] = [],
   ): Promise<{
     text: string;
     resolutionCriteria: string;
@@ -1738,7 +1737,7 @@ XML: <response><questions><question><text>...</text><resolutionCriteria>...</res
     logger.info(
       `Generating ${timeframe} question (${category} category)`,
       { timeframe, durationMs, durationLabel },
-      'QuestionManager'
+      "QuestionManager",
     );
 
     const resolvedDailyTopic =
@@ -1762,18 +1761,18 @@ XML: <response><questions><question><text>...</text><resolutionCriteria>...</res
           and(
             gte(
               worldEvents.timestamp,
-              new Date(Date.now() - this.getLookbackMs(category))
+              new Date(Date.now() - this.getLookbackMs(category)),
             ),
-            eq(worldEvents.visibility, 'public')
-          )
+            eq(worldEvents.visibility, "public"),
+          ),
         )
         .orderBy(desc(worldEvents.timestamp))
-        .limit(category === 'short' ? 10 : 20),
+        .limit(category === "short" ? 10 : 20),
       // Get active questions to avoid duplication
       db
         .select()
         .from(questions)
-        .where(eq(questions.status, 'active'))
+        .where(eq(questions.status, "active"))
         .orderBy(desc(questions.createdAt))
         .limit(20),
       // Get actors (shuffled for variety)
@@ -1785,21 +1784,21 @@ XML: <response><questions><question><text>...</text><resolutionCriteria>...</res
             name: a.name,
             description: a.description,
             domain: a.domain,
-          }))
+          })),
       ),
       // Get organizations (shuffled for variety)
       Promise.resolve(
         shuffleArray(
           StaticDataRegistry.getAllOrganizations().filter(
-            (o) => o.type === 'company'
-          )
+            (o) => o.type === "company",
+          ),
         )
           .slice(0, 15)
           .map((o) => ({
             id: o.id,
             name: o.name,
             description: o.description,
-          }))
+          })),
       ),
       // Get trending topics
       db
@@ -1816,15 +1815,15 @@ XML: <response><questions><question><text>...</text><resolutionCriteria>...</res
     // Build context strings
     const cleanTimeframeEvents = filterIncoherent(
       recentEvents,
-      (e) => e.description
+      (e) => e.description,
     );
     const eventsContext =
       cleanTimeframeEvents.length > 0
         ? `RECENT EVENTS:\n${cleanTimeframeEvents
             .slice(0, 8)
             .map((e) => `- ${e.description}`)
-            .join('\n')}`
-        : '';
+            .join("\n")}`
+        : "";
 
     const cleanActiveQs = filterIncoherent(activeQuestions, (q) => q.text);
     const activeQContext =
@@ -1832,22 +1831,22 @@ XML: <response><questions><question><text>...</text><resolutionCriteria>...</res
         ? `AVOID DUPLICATING:\n${cleanActiveQs
             .slice(0, 10)
             .map((q) => `- "${q.text}"`)
-            .join('\n')}`
-        : '';
+            .join("\n")}`
+        : "";
 
-    const actorsContext = `ACTORS: ${actorsList.map((a) => a.name).join(', ')}`;
-    const orgsContext = `COMPANIES: ${organizationsList.map((o) => o.name).join(', ')}`;
+    const actorsContext = `ACTORS: ${actorsList.map((a) => a.name).join(", ")}`;
+    const orgsContext = `COMPANIES: ${organizationsList.map((o) => o.name).join(", ")}`;
     const trendingContext =
       trendingTagsList.length > 0
-        ? `TRENDING: ${trendingTagsList.map((t) => t.tagDisplayName || t.tagName).join(', ')}`
-        : '';
+        ? `TRENDING: ${trendingTagsList.map((t) => t.tagDisplayName || t.tagName).join(", ")}`
+        : "";
 
     // Timeframe-specific guidance
     const categoryGuidance = this.getCategoryGuidance(
       category,
       durationLabel,
       actorsList,
-      organizationsList
+      organizationsList,
     );
 
     const dailyTopicContext =
@@ -1914,24 +1913,24 @@ XML: <response><question><text>Your question here</text><resolutionCriteria>How 
         {
           properties: {
             question: {
-              type: 'object',
+              type: "object",
               properties: {
-                text: { type: 'string' },
-                resolutionCriteria: { type: 'string' },
-                expectedOutcome: { type: 'string' },
-                primaryActor: { type: 'string' },
-                primaryOrg: { type: 'string' },
+                text: { type: "string" },
+                resolutionCriteria: { type: "string" },
+                expectedOutcome: { type: "string" },
+                primaryActor: { type: "string" },
+                primaryOrg: { type: "string" },
               },
             },
           },
-          required: ['question'],
+          required: ["question"],
         },
         {
           temperature: 0.85,
           maxTokens: 500,
-          format: 'xml',
-          promptType: 'generate_timeframe_question',
-        }
+          format: "xml",
+          promptType: "generate_timeframe_question",
+        },
       );
 
       // Handle XML structure variations
@@ -1940,39 +1939,39 @@ XML: <response><question><text>Your question here</text><resolutionCriteria>How 
 
       if (!questionData?.text) {
         logger.warn(
-          'Failed to generate timeframe question - empty response',
+          "Failed to generate timeframe question - empty response",
           { timeframe, response },
-          'QuestionManager'
+          "QuestionManager",
         );
         return null;
       }
 
       // Sanitize question text
       const sanitizedText = questionData.text
-        .replace(/\{[a-zA-Z_]+\}/g, '')
-        .replace(/\s+/g, ' ')
+        .replace(/\{[a-zA-Z_]+\}/g, "")
+        .replace(/\s+/g, " ")
         .trim();
 
       // Reject questions that fail coherence checks (garbled/hallucinated text)
       const coherence = validateCoherence(sanitizedText);
       if (!coherence.grounded) {
         logger.warn(
-          'Rejected incoherent timeframe question before storage',
+          "Rejected incoherent timeframe question before storage",
           {
             timeframe,
             text: sanitizedText.substring(0, 100),
             reasons: coherence.reasons,
           },
-          'QuestionManager'
+          "QuestionManager",
         );
         return null;
       }
 
       // Parse expected outcome
-      const outcomeStr = String(questionData.expectedOutcome || '')
+      const outcomeStr = String(questionData.expectedOutcome || "")
         .toLowerCase()
         .trim();
-      const expectedOutcome = outcomeStr === 'yes' || outcomeStr === 'true';
+      const expectedOutcome = outcomeStr === "yes" || outcomeStr === "true";
 
       // Find affiliated actor/org IDs
       const affiliatedActorIds: string[] = [];
@@ -1981,14 +1980,15 @@ XML: <response><question><text>Your question here</text><resolutionCriteria>How 
       if (questionData.primaryActor) {
         const actor = actorsList.find(
           (a) =>
-            a.name.toLowerCase() === questionData.primaryActor?.toLowerCase()
+            a.name.toLowerCase() === questionData.primaryActor?.toLowerCase(),
         );
         if (actor) affiliatedActorIds.push(actor.id);
       }
 
       if (questionData.primaryOrg) {
         const org = organizationsList.find(
-          (o) => o.name.toLowerCase() === questionData.primaryOrg?.toLowerCase()
+          (o) =>
+            o.name.toLowerCase() === questionData.primaryOrg?.toLowerCase(),
         );
         if (org) affiliatedOrgIds.push(org.id);
       }
@@ -2000,9 +2000,9 @@ XML: <response><question><text>Your question here</text><resolutionCriteria>How 
         ...affiliatedOrgIds
           .map((id) => organizationsList.find((org) => org.id === id)?.name)
           .filter((name): name is string => Boolean(name)),
-      ].join(' ');
+      ].join(" ");
 
-      const combinedText = `${sanitizedText} ${questionData.resolutionCriteria || ''} ${questionData.primaryActor || ''} ${questionData.primaryOrg || ''} ${affiliatedNames}`;
+      const combinedText = `${sanitizedText} ${questionData.resolutionCriteria || ""} ${questionData.primaryActor || ""} ${questionData.primaryOrg || ""} ${affiliatedNames}`;
       const onTopic =
         allTopics.length > 1
           ? isTextOnAnyTopic(combinedText, allTopics)
@@ -2010,13 +2010,13 @@ XML: <response><question><text>Your question here</text><resolutionCriteria>How 
 
       if (resolvedDailyTopic && !onTopic) {
         logger.warn(
-          'Rejected off-topic timeframe question',
+          "Rejected off-topic timeframe question",
           {
             timeframe,
             topicKey: resolvedDailyTopic.topicKey,
             question: sanitizedText,
           },
-          'QuestionManager'
+          "QuestionManager",
         );
         return null;
       }
@@ -2028,25 +2028,25 @@ XML: <response><question><text>Your question here</text><resolutionCriteria>How 
           expectedOutcome,
           topicKey: resolvedDailyTopic?.topicKey,
         },
-        'QuestionManager'
+        "QuestionManager",
       );
 
       return {
         text: sanitizedText,
         resolutionCriteria:
-          questionData.resolutionCriteria || 'Verifiable via public sources',
+          questionData.resolutionCriteria || "Verifiable via public sources",
         expectedOutcome,
         affiliatedActorIds,
         affiliatedOrgIds,
       };
     } catch (error) {
       logger.error(
-        'Failed to generate timeframe question',
+        "Failed to generate timeframe question",
         {
           error: formatError(error),
           timeframe,
         },
-        'QuestionManager'
+        "QuestionManager",
       );
       return null;
     }
@@ -2055,10 +2055,10 @@ XML: <response><question><text>Your question here</text><resolutionCriteria>How 
   /**
    * Get timeframe category from timeframe key
    */
-  private getTimeframeCategory(timeframe: string): 'short' | 'medium' | 'long' {
-    if (['15m', '30m', '1h'].includes(timeframe)) return 'short';
-    if (['6h', '12h', '1d'].includes(timeframe)) return 'medium';
-    return 'long'; // 2d, 3d
+  private getTimeframeCategory(timeframe: string): "short" | "medium" | "long" {
+    if (["15m", "30m", "1h"].includes(timeframe)) return "short";
+    if (["6h", "12h", "1d"].includes(timeframe)) return "medium";
+    return "long"; // 2d, 3d
   }
 
   /**
@@ -2067,26 +2067,26 @@ XML: <response><question><text>Your question here</text><resolutionCriteria>How 
   private getDurationLabel(durationMs: number): string {
     const minutes = Math.round(durationMs / 60000);
     if (minutes < 60) {
-      return minutes === 1 ? '1 minute' : `${minutes} minutes`;
+      return minutes === 1 ? "1 minute" : `${minutes} minutes`;
     }
     const hours = Math.floor(durationMs / (60 * 60 * 1000));
     if (hours < 24) {
-      return hours === 1 ? '1 hour' : `${hours} hours`;
+      return hours === 1 ? "1 hour" : `${hours} hours`;
     }
     const days = Math.round(durationMs / (24 * 60 * 60 * 1000));
-    return days === 1 ? '1 day' : `${days} days`;
+    return days === 1 ? "1 day" : `${days} days`;
   }
 
   /**
    * Get lookback period for context based on category
    */
-  private getLookbackMs(category: 'short' | 'medium' | 'long'): number {
+  private getLookbackMs(category: "short" | "medium" | "long"): number {
     switch (category) {
-      case 'short':
+      case "short":
         return 2 * 60 * 60 * 1000; // 2 hours
-      case 'medium':
+      case "medium":
         return 24 * 60 * 60 * 1000; // 1 day
-      case 'long':
+      case "long":
         return 7 * 24 * 60 * 60 * 1000; // 7 days
     }
   }
@@ -2095,16 +2095,16 @@ XML: <response><question><text>Your question here</text><resolutionCriteria>How 
    * Get category-specific prompt guidance
    */
   private getCategoryGuidance(
-    category: 'short' | 'medium' | 'long',
+    category: "short" | "medium" | "long",
     durationLabel: string,
     actors: Array<{ id: string; name: string }>,
-    orgs: Array<{ id: string; name: string }>
+    orgs: Array<{ id: string; name: string }>,
   ): string {
-    const actorExample = actors[0]?.name || 'AIlon Musk';
-    const orgExample = orgs[0]?.name || 'Aipple';
+    const actorExample = actors[0]?.name || "AIlon Musk";
+    const orgExample = orgs[0]?.name || "Aipple";
 
     switch (category) {
-      case 'short':
+      case "short":
         return `SHORT-TERM QUESTION (${durationLabel}):
 Generate questions about IMMEDIATE, OBSERVABLE events:
 - Social media activity: "Will ${actorExample} post within ${durationLabel}?"
@@ -2113,7 +2113,7 @@ Generate questions about IMMEDIATE, OBSERVABLE events:
 - Trading volume: "Will trading volume spike in the next ${durationLabel}?"
 - Live events: Outcomes of ongoing events`;
 
-      case 'medium':
+      case "medium":
         return `MEDIUM-TERM QUESTION (${durationLabel}):
 Generate questions about DAILY developments:
 - Announcements: "Will ${orgExample} announce something today?"
@@ -2122,7 +2122,7 @@ Generate questions about DAILY developments:
 - Market trends: "Will crypto markets end the day green?"
 - Scheduled events: Outcomes of planned meetings or releases`;
 
-      case 'long':
+      case "long":
         return `LONG-TERM QUESTION (${durationLabel}):
 Generate questions about MULTI-DAY narratives:
 - Investigations: "Will the investigation conclude within ${durationLabel}?"

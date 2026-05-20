@@ -1,17 +1,17 @@
-'use client';
+"use client";
 
-import { cn, formatCompactCurrency } from '@feed/shared';
-import { Activity, Plus, RefreshCw, X } from 'lucide-react';
-import { useCallback, useEffect, useState, useTransition } from 'react';
-import { z } from 'zod';
-import { Avatar } from '@/components/shared/Avatar';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { apiUrl } from '@/utils/api-url';
+import { cn, formatCompactCurrency } from "@feed/shared";
+import { Activity, Plus, RefreshCw, X } from "lucide-react";
+import { useCallback, useEffect, useState, useTransition } from "react";
+import { z } from "zod";
+import { Avatar } from "@/components/shared/Avatar";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { apiUrl } from "@/utils/api-url";
 
 /**
  * Trade type schema for validation.
  */
-const TradeTypeSchema = z.enum(['balance', 'npc', 'position']);
+const TradeTypeSchema = z.enum(["balance", "npc", "position"]);
 type TradeType = z.infer<typeof TradeTypeSchema>;
 
 /**
@@ -39,7 +39,7 @@ const BaseTradeSchema = z.object({
  * Balance trade schema for validation.
  */
 const BalanceTradeSchema = BaseTradeSchema.extend({
-  type: z.literal('balance'),
+  type: z.literal("balance"),
   amount: z.string(),
   balanceBefore: z.string(),
   balanceAfter: z.string(),
@@ -53,7 +53,7 @@ type BalanceTrade = z.infer<typeof BalanceTradeSchema>;
  * NPC trade schema for validation.
  */
 const NPCTradeSchema = BaseTradeSchema.extend({
-  type: z.literal('npc'),
+  type: z.literal("npc"),
   marketType: z.string(),
   ticker: z.string().nullable(),
   marketId: z.string().nullable(),
@@ -70,7 +70,7 @@ type NPCTrade = z.infer<typeof NPCTradeSchema>;
  * Position trade schema for validation.
  */
 const PositionTradeSchema = BaseTradeSchema.extend({
-  type: z.literal('position'),
+  type: z.literal("position"),
   market: z.object({
     id: z.string(),
     question: z.string(),
@@ -87,7 +87,7 @@ type PositionTrade = z.infer<typeof PositionTradeSchema>;
 /**
  * Trade schema union for validation.
  */
-const TradeSchema = z.discriminatedUnion('type', [
+const TradeSchema = z.discriminatedUnion("type", [
   BalanceTradeSchema,
   NPCTradeSchema,
   PositionTradeSchema,
@@ -114,7 +114,7 @@ type Trade = z.infer<typeof TradeSchema>;
 export function TradingFeedTab() {
   const [trades, setTrades] = useState<Trade[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'all' | TradeType>('all');
+  const [filter, setFilter] = useState<"all" | TradeType>("all");
   const [isRefreshing, startRefresh] = useTransition();
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -123,64 +123,64 @@ export function TradingFeedTab() {
   // Show/hide form fields based on trade type
   useEffect(() => {
     const tradeTypeSelect = document.querySelector<HTMLSelectElement>(
-      'select[name="tradeType"]'
+      'select[name="tradeType"]',
     );
-    const balanceFields = document.getElementById('balanceFields');
-    const npcFields = document.getElementById('npcFields');
+    const balanceFields = document.getElementById("balanceFields");
+    const npcFields = document.getElementById("npcFields");
 
     const handleTradeTypeChange = () => {
       if (!tradeTypeSelect || !balanceFields || !npcFields) return;
 
-      if (tradeTypeSelect.value === 'balance') {
-        balanceFields.classList.remove('hidden');
-        npcFields.classList.add('hidden');
+      if (tradeTypeSelect.value === "balance") {
+        balanceFields.classList.remove("hidden");
+        npcFields.classList.add("hidden");
         // Make balance fields required
         balanceFields
-          .querySelectorAll('input[required], select[required]')
+          .querySelectorAll("input[required], select[required]")
           .forEach((el) => {
-            el.setAttribute('required', '');
+            el.setAttribute("required", "");
           });
         // Remove required from NPC fields
-        npcFields.querySelectorAll('input[required]').forEach((el) => {
-          el.removeAttribute('required');
+        npcFields.querySelectorAll("input[required]").forEach((el) => {
+          el.removeAttribute("required");
         });
       } else {
-        balanceFields.classList.add('hidden');
-        npcFields.classList.remove('hidden');
+        balanceFields.classList.add("hidden");
+        npcFields.classList.remove("hidden");
         // Remove required from balance fields
         balanceFields
-          .querySelectorAll('input[required], select[required]')
+          .querySelectorAll("input[required], select[required]")
           .forEach((el) => {
-            el.removeAttribute('required');
+            el.removeAttribute("required");
           });
         // Make NPC fields required
-        npcFields.querySelectorAll('input[required]').forEach((el) => {
-          el.setAttribute('required', '');
+        npcFields.querySelectorAll("input[required]").forEach((el) => {
+          el.setAttribute("required", "");
         });
       }
     };
 
-    tradeTypeSelect?.addEventListener('change', handleTradeTypeChange);
+    tradeTypeSelect?.addEventListener("change", handleTradeTypeChange);
     // Set initial state
     handleTradeTypeChange();
 
     return () => {
-      tradeTypeSelect?.removeEventListener('change', handleTradeTypeChange);
+      tradeTypeSelect?.removeEventListener("change", handleTradeTypeChange);
     };
   }, []);
 
   const fetchAndSetTrades = useCallback(async () => {
     const url =
-      filter === 'all'
-        ? '/api/admin/trades?limit=50'
+      filter === "all"
+        ? "/api/admin/trades?limit=50"
         : `/api/admin/trades?limit=50&type=${filter}`;
 
     const response = await fetch(url);
-    if (!response.ok) throw new Error('Failed to fetch trades');
+    if (!response.ok) throw new Error("Failed to fetch trades");
     const data = await response.json();
     const validation = z.array(TradeSchema).safeParse(data.trades);
     if (!validation.success) {
-      throw new Error('Invalid trade data structure');
+      throw new Error("Invalid trade data structure");
     }
     setTrades(validation.data || []);
     setLoading(false);
@@ -196,7 +196,7 @@ export function TradingFeedTab() {
         fetchAndSetTrades();
       }
     },
-    [fetchAndSetTrades]
+    [fetchAndSetTrades],
   );
 
   useEffect(() => {
@@ -211,42 +211,42 @@ export function TradingFeedTab() {
     setCreateError(null);
 
     const formData = new FormData(e.currentTarget);
-    const tradeType = formData.get('tradeType') as string;
+    const tradeType = formData.get("tradeType") as string;
     const payload: Record<string, unknown> = { type: tradeType };
 
-    if (tradeType === 'balance') {
-      payload.userId = formData.get('userId') as string;
-      payload.transactionType = formData.get('transactionType') as string;
-      payload.amount = parseFloat(formData.get('amount') as string);
+    if (tradeType === "balance") {
+      payload.userId = formData.get("userId") as string;
+      payload.transactionType = formData.get("transactionType") as string;
+      payload.amount = parseFloat(formData.get("amount") as string);
       payload.description =
-        (formData.get('description') as string) || undefined;
-      payload.relatedId = (formData.get('relatedId') as string) || undefined;
-      payload.updateBalance = formData.get('updateBalance') === 'true';
-    } else if (tradeType === 'npc') {
-      payload.npcActorId = formData.get('npcActorId') as string;
-      payload.marketType = formData.get('marketType') as string;
-      payload.ticker = (formData.get('ticker') as string) || undefined;
-      payload.marketId = (formData.get('marketId') as string) || undefined;
-      payload.action = formData.get('action') as string;
-      payload.side = (formData.get('side') as string) || undefined;
-      payload.amount = parseFloat(formData.get('amount') as string);
-      payload.price = parseFloat(formData.get('price') as string);
-      payload.sentiment = formData.get('sentiment')
-        ? parseFloat(formData.get('sentiment') as string)
+        (formData.get("description") as string) || undefined;
+      payload.relatedId = (formData.get("relatedId") as string) || undefined;
+      payload.updateBalance = formData.get("updateBalance") === "true";
+    } else if (tradeType === "npc") {
+      payload.npcActorId = formData.get("npcActorId") as string;
+      payload.marketType = formData.get("marketType") as string;
+      payload.ticker = (formData.get("ticker") as string) || undefined;
+      payload.marketId = (formData.get("marketId") as string) || undefined;
+      payload.action = formData.get("action") as string;
+      payload.side = (formData.get("side") as string) || undefined;
+      payload.amount = parseFloat(formData.get("amount") as string);
+      payload.price = parseFloat(formData.get("price") as string);
+      payload.sentiment = formData.get("sentiment")
+        ? parseFloat(formData.get("sentiment") as string)
         : undefined;
-      payload.reason = (formData.get('reason') as string) || undefined;
+      payload.reason = (formData.get("reason") as string) || undefined;
     }
 
-    const response = await fetch(apiUrl('/api/admin/trades'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    const response = await fetch(apiUrl("/api/admin/trades"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
 
     if (!response.ok) {
       const errorData = await response.json();
       setCreating(false);
-      setCreateError(errorData.error || 'Failed to create trade');
+      setCreateError(errorData.error || "Failed to create trade");
       return;
     }
 
@@ -259,7 +259,7 @@ export function TradingFeedTab() {
 
   /** Use shared formatCompactCurrency for currency formatting */
   const formatCurrency = (value: string | number) => {
-    const num = typeof value === 'string' ? parseFloat(value) : value;
+    const num = typeof value === "string" ? parseFloat(value) : value;
     return formatCompactCurrency(Number.isNaN(num) ? 0 : num);
   };
 
@@ -275,7 +275,7 @@ export function TradingFeedTab() {
     if (days > 0) return `${days}d ago`;
     if (hours > 0) return `${hours}h ago`;
     if (minutes > 0) return `${minutes}m ago`;
-    return 'Just now';
+    return "Just now";
   };
 
   const TradeCard = ({ trade }: { trade: Trade }) => {
@@ -283,7 +283,7 @@ export function TradingFeedTab() {
     if (!trade.user) return null;
 
     const displayName =
-      trade.user.displayName || trade.user.username || 'Anonymous';
+      trade.user.displayName || trade.user.username || "Anonymous";
 
     return (
       <div className="rounded-2xl border border-border bg-card p-4 transition-colors hover:border-primary/50">
@@ -309,9 +309,9 @@ export function TradingFeedTab() {
             </div>
 
             {/* Trade Details */}
-            {trade.type === 'balance' && <BalanceTradeDetails trade={trade} />}
-            {trade.type === 'npc' && <NPCTradeDetails trade={trade} />}
-            {trade.type === 'position' && (
+            {trade.type === "balance" && <BalanceTradeDetails trade={trade} />}
+            {trade.type === "npc" && <NPCTradeDetails trade={trade} />}
+            {trade.type === "position" && (
               <PositionTradeDetails trade={trade} />
             )}
           </div>
@@ -329,21 +329,21 @@ export function TradingFeedTab() {
         <div className="flex items-center gap-2">
           <span
             className={cn(
-              'rounded px-2 py-1 font-medium text-xs',
+              "rounded px-2 py-1 font-medium text-xs",
               isPositive
-                ? 'bg-green-500/20 text-green-500'
-                : 'bg-red-500/20 text-red-500'
+                ? "bg-green-500/20 text-green-500"
+                : "bg-red-500/20 text-red-500",
             )}
           >
             {trade.transactionType}
           </span>
           <span
             className={cn(
-              'font-bold text-lg',
-              isPositive ? 'text-green-600' : 'text-red-600'
+              "font-bold text-lg",
+              isPositive ? "text-green-600" : "text-red-600",
             )}
           >
-            {isPositive ? '+' : ''}
+            {isPositive ? "+" : ""}
             {formatCurrency(amount)}
           </span>
         </div>
@@ -351,7 +351,7 @@ export function TradingFeedTab() {
           <p className="text-muted-foreground text-sm">{trade.description}</p>
         )}
         <div className="text-muted-foreground text-xs">
-          Balance: {formatCurrency(trade.balanceBefore)} →{' '}
+          Balance: {formatCurrency(trade.balanceBefore)} →{" "}
           {formatCurrency(trade.balanceAfter)}
         </div>
       </div>
@@ -359,17 +359,17 @@ export function TradingFeedTab() {
   };
 
   const NPCTradeDetails = ({ trade }: { trade: NPCTrade }) => {
-    const isLong = trade.side === 'long' || trade.side === 'YES';
+    const isLong = trade.side === "long" || trade.side === "YES";
 
     return (
       <div className="space-y-1">
         <div className="flex items-center gap-2">
           <span
             className={cn(
-              'rounded px-2 py-1 font-medium text-xs',
+              "rounded px-2 py-1 font-medium text-xs",
               isLong
-                ? 'bg-green-500/20 text-green-500'
-                : 'bg-red-500/20 text-red-500'
+                ? "bg-green-500/20 text-green-500"
+                : "bg-red-500/20 text-red-500",
             )}
           >
             {trade.action.toUpperCase()}
@@ -378,8 +378,8 @@ export function TradingFeedTab() {
           {trade.side && (
             <span
               className={cn(
-                'font-medium text-xs',
-                isLong ? 'text-green-600' : 'text-red-600'
+                "font-medium text-xs",
+                isLong ? "text-green-600" : "text-red-600",
               )}
             >
               {trade.side}
@@ -392,15 +392,15 @@ export function TradingFeedTab() {
           {trade.sentiment !== null && (
             <span
               className={cn(
-                'text-xs',
+                "text-xs",
                 trade.sentiment > 0
-                  ? 'text-green-600'
+                  ? "text-green-600"
                   : trade.sentiment < 0
-                    ? 'text-red-600'
-                    : 'text-gray-600'
+                    ? "text-red-600"
+                    : "text-gray-600",
               )}
             >
-              Sentiment: {trade.sentiment > 0 ? '+' : ''}
+              Sentiment: {trade.sentiment > 0 ? "+" : ""}
               {(trade.sentiment * 100).toFixed(0)}%
             </span>
           )}
@@ -415,17 +415,17 @@ export function TradingFeedTab() {
   };
 
   const PositionTradeDetails = ({ trade }: { trade: PositionTrade }) => {
-    const isYes = trade.side === 'YES';
+    const isYes = trade.side === "YES";
 
     return (
       <div className="space-y-1">
         <div className="flex items-center gap-2">
           <span
             className={cn(
-              'rounded px-2 py-1 font-medium text-xs',
+              "rounded px-2 py-1 font-medium text-xs",
               isYes
-                ? 'bg-green-500/20 text-green-500'
-                : 'bg-red-500/20 text-red-500'
+                ? "bg-green-500/20 text-green-500"
+                : "bg-red-500/20 text-red-500",
             )}
           >
             {trade.side}
@@ -443,11 +443,11 @@ export function TradingFeedTab() {
             <span className="text-muted-foreground">Resolved: </span>
             <span
               className={cn(
-                'font-medium',
-                trade.market.resolution ? 'text-green-600' : 'text-red-600'
+                "font-medium",
+                trade.market.resolution ? "text-green-600" : "text-red-600",
               )}
             >
-              {trade.market.resolution ? 'YES' : 'NO'}
+              {trade.market.resolution ? "YES" : "NO"}
             </span>
           </div>
         )}
@@ -472,24 +472,24 @@ export function TradingFeedTab() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex gap-2">
-          {(['all', 'balance', 'npc', 'position'] as const).map((f) => (
+          {(["all", "balance", "npc", "position"] as const).map((f) => (
             <button
               key={f}
               onClick={() => setFilter(f)}
               className={cn(
-                'rounded px-3 py-1.5 font-medium text-sm transition-colors',
+                "rounded px-3 py-1.5 font-medium text-sm transition-colors",
                 filter === f
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted text-muted-foreground hover:bg-muted/80",
               )}
             >
-              {f === 'all'
-                ? 'All'
-                : f === 'balance'
-                  ? 'Balance'
-                  : f === 'npc'
-                    ? 'NPC'
-                    : 'Position'}
+              {f === "all"
+                ? "All"
+                : f === "balance"
+                  ? "Balance"
+                  : f === "npc"
+                    ? "NPC"
+                    : "Position"}
             </button>
           ))}
         </div>
@@ -508,7 +508,7 @@ export function TradingFeedTab() {
             className="flex items-center gap-2 rounded bg-muted px-3 py-1.5 font-medium text-sm transition-colors hover:bg-muted/80 disabled:opacity-50"
           >
             <RefreshCw
-              className={cn('h-4 w-4', isRefreshing && 'animate-spin')}
+              className={cn("h-4 w-4", isRefreshing && "animate-spin")}
             />
             Refresh
           </button>
@@ -751,7 +751,7 @@ export function TradingFeedTab() {
                 disabled={creating}
                 className="rounded-lg bg-primary px-4 py-2 text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
               >
-                {creating ? 'Creating...' : 'Create Trade'}
+                {creating ? "Creating..." : "Create Trade"}
               </button>
               <button
                 type="button"

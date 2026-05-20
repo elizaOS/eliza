@@ -1,37 +1,37 @@
-'use client';
+"use client";
 
-import { FEE_CONFIG } from '@feed/engine/config/fees';
-import { FEED_POINTS_SYMBOL, cn } from '@feed/shared';
-import { Wallet } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { toast } from 'sonner';
+import { FEE_CONFIG } from "@feed/engine/config/fees";
+import { cn, FEED_POINTS_SYMBOL } from "@feed/shared";
+import { Wallet } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import {
   type OpenPerpDetails,
   TradeConfirmationDialog,
-} from '@/components/markets/TradeConfirmationDialog';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { useAuth } from '@/hooks/useAuth';
-import { usePerpOpenPreview } from '@/hooks/usePerpOpenPreview';
-import { usePerpTrade } from '@/hooks/usePerpTrade';
-import { formatBalance, formatPrice } from '@/lib/market-formatters';
+} from "@/components/markets/TradeConfirmationDialog";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { useAuth } from "@/hooks/useAuth";
+import { usePerpOpenPreview } from "@/hooks/usePerpOpenPreview";
+import { usePerpTrade } from "@/hooks/usePerpTrade";
+import { formatBalance, formatPrice } from "@/lib/market-formatters";
 import {
   getPerpRebalanceInfo,
   shouldApplyPerpBalanceGate,
-} from '@/lib/perps/rebalance';
-import { invalidatePerpMarketsCache } from '@/stores/perpMarketsStore';
+} from "@/lib/perps/rebalance";
+import { invalidatePerpMarketsCache } from "@/stores/perpMarketsStore";
 import {
   invalidateUserPositions,
   usePerpPositions,
-} from '@/stores/userPositionsStore';
+} from "@/stores/userPositionsStore";
 import {
   invalidateWalletBalance,
   useWalletBalance,
-} from '@/stores/walletBalanceStore';
-import type { PerpMarket } from '@/types/markets';
+} from "@/stores/walletBalanceStore";
+import type { PerpMarket } from "@/types/markets";
 
 interface PerpsOrderEntryPanelProps {
   market: PerpMarket | null;
-  initialSide?: 'long' | 'short';
+  initialSide?: "long" | "short";
   onRequestBuyPoints?: () => void;
 }
 
@@ -56,9 +56,9 @@ export function PerpsOrderEntryPanel({
 
   const { openPosition } = usePerpTrade({ getAccessToken });
 
-  const [side, setSide] = useState<'long' | 'short'>(initialSide ?? 'long');
-  const [orderType, setOrderType] = useState<'market' | 'limit'>('market');
-  const [size, setSize] = useState('100');
+  const [side, setSide] = useState<"long" | "short">(initialSide ?? "long");
+  const [orderType, setOrderType] = useState<"market" | "limit">("market");
+  const [size, setSize] = useState("100");
   const [leverage, setLeverage] = useState(10);
   const [submitting, setSubmitting] = useState(false);
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
@@ -71,7 +71,7 @@ export function PerpsOrderEntryPanel({
   const activePositions = useMemo(() => {
     if (!market) return [];
     return perpPositions.filter(
-      (p) => p.ticker.toLowerCase() === market.ticker.toLowerCase()
+      (p) => p.ticker.toLowerCase() === market.ticker.toLowerCase(),
     );
   }, [perpPositions, market]);
 
@@ -107,7 +107,7 @@ export function PerpsOrderEntryPanel({
   const clampedLeverage = Math.min(Math.max(leverage, 1), effectiveMaxLeverage);
   const topOfBookPrice = useMemo(() => {
     if (!market) return 0;
-    return side === 'long'
+    return side === "long"
       ? (market.askPrice ?? market.currentPrice)
       : (market.bidPrice ?? market.currentPrice);
   }, [market, side]);
@@ -120,7 +120,7 @@ export function PerpsOrderEntryPanel({
     side,
     size: sizeNum,
     leverage: clampedLeverage,
-    enabled: orderType === 'market',
+    enabled: orderType === "market",
     getAccessToken,
   });
 
@@ -142,10 +142,10 @@ export function PerpsOrderEntryPanel({
       flip: `Closing ${existingPosition.side.toUpperCase()} and opening ${side.toUpperCase()} ${formatPrice(info.newSize)}`,
     } as const;
     const labels = {
-      add: 'Add to Position',
-      reduce: 'Reduce Position',
-      close: 'Close Position',
-      flip: 'Flip Position',
+      add: "Add to Position",
+      reduce: "Reduce Position",
+      close: "Close Position",
+      flip: "Flip Position",
     } as const;
 
     return {
@@ -160,7 +160,7 @@ export function PerpsOrderEntryPanel({
       ? openPreview.totalRequired > 0
       : shouldApplyPerpBalanceGate(rebalanceInfo);
   const capitalCheckLeverage =
-    rebalanceInfo?.type === 'add'
+    rebalanceInfo?.type === "add"
       ? (existingPosition?.leverage ?? clampedLeverage)
       : clampedLeverage;
   const baseMargin =
@@ -184,14 +184,14 @@ export function PerpsOrderEntryPanel({
     !hasSufficientBalance;
 
   const submitLabel = useMemo(() => {
-    if (submitting) return 'Processing…';
-    if (!authenticated) return 'Log In to Trade';
+    if (submitting) return "Processing…";
+    if (!authenticated) return "Log In to Trade";
     if (rebalanceInfo) {
       const labels = {
-        add: 'ADD TO POSITION',
-        reduce: 'REDUCE POSITION',
-        close: 'CLOSE POSITION',
-        flip: 'FLIP POSITION',
+        add: "ADD TO POSITION",
+        reduce: "REDUCE POSITION",
+        close: "CLOSE POSITION",
+        flip: "FLIP POSITION",
       } as const;
       return labels[rebalanceInfo.type];
     }
@@ -209,13 +209,13 @@ export function PerpsOrderEntryPanel({
 
     if (sizeNum < market.minOrderSize) {
       toast.error(
-        `Minimum order size is ${FEED_POINTS_SYMBOL}${market.minOrderSize}`
+        `Minimum order size is ${FEED_POINTS_SYMBOL}${market.minOrderSize}`,
       );
       return;
     }
 
     if (authenticated && showBalanceWarning) {
-      toast.error('Insufficient balance for margin + fees');
+      toast.error("Insufficient balance for margin + fees");
       return;
     }
 
@@ -244,26 +244,26 @@ export function PerpsOrderEntryPanel({
         if (rebalanceInfo) {
           const messages = {
             add: {
-              title: 'Position increased!',
+              title: "Position increased!",
               description: `Added ${formatPrice(sizeNum)} to your ${side.toUpperCase()} position`,
             },
             reduce: {
-              title: 'Position reduced!',
+              title: "Position reduced!",
               description: `Reduced your position by ${formatPrice(sizeNum)}`,
             },
             close: {
-              title: 'Position closed!',
+              title: "Position closed!",
               description: `Closed your ${existingPosition?.side?.toUpperCase()} position`,
             },
             flip: {
-              title: 'Position flipped!',
+              title: "Position flipped!",
               description: `Flipped to ${clampedLeverage}x ${side.toUpperCase()} on ${market.ticker}`,
             },
           } as const;
           const msg = messages[rebalanceInfo.type];
           toast.success(msg.title, { description: msg.description });
         } else {
-          toast.success('Position opened!', {
+          toast.success("Position opened!", {
             description: `Opened ${clampedLeverage}x ${side.toUpperCase()} on ${market.ticker}`,
           });
         }
@@ -295,7 +295,7 @@ export function PerpsOrderEntryPanel({
   const liquidationPrice = useMemo(() => {
     if (openPreview) return openPreview.liquidationPrice ?? 0;
     if (!market) return 0;
-    return side === 'long'
+    return side === "long"
       ? quotedExecutionPrice * (1 - 0.9 / clampedLeverage)
       : quotedExecutionPrice * (1 + 0.9 / clampedLeverage);
   }, [clampedLeverage, market, openPreview, quotedExecutionPrice, side]);
@@ -305,7 +305,7 @@ export function PerpsOrderEntryPanel({
     if (!market) return 0;
     const price = market.currentPrice;
     if (price <= 0) return 0;
-    return side === 'long'
+    return side === "long"
       ? ((price - liquidationPrice) / price) * 100
       : ((liquidationPrice - price) / price) * 100;
   }, [liquidationPrice, market, openPreview, side]);
@@ -357,8 +357,8 @@ export function PerpsOrderEntryPanel({
                   Open Position
                 </div>
                 <div className="font-mono text-foreground text-xs">
-                  {existingPosition.leverage}x{' '}
-                  {existingPosition.side.toUpperCase()} •{' '}
+                  {existingPosition.leverage}x{" "}
+                  {existingPosition.side.toUpperCase()} •{" "}
                   {formatPrice(existingPosition.size)}
                 </div>
               </div>
@@ -379,24 +379,24 @@ export function PerpsOrderEntryPanel({
         <div className="mt-3 flex gap-1 rounded bg-muted p-1">
           <button
             type="button"
-            onClick={() => setSide('long')}
+            onClick={() => setSide("long")}
             className={cn(
-              'flex-1 rounded py-2 font-semibold text-xs transition-colors',
-              side === 'long'
-                ? 'bg-green-600 text-white shadow-sm'
-                : 'text-muted-foreground hover:bg-muted/80 hover:text-foreground'
+              "flex-1 rounded py-2 font-semibold text-xs transition-colors",
+              side === "long"
+                ? "bg-green-600 text-white shadow-sm"
+                : "text-muted-foreground hover:bg-muted/80 hover:text-foreground",
             )}
           >
             LONG
           </button>
           <button
             type="button"
-            onClick={() => setSide('short')}
+            onClick={() => setSide("short")}
             className={cn(
-              'flex-1 rounded py-2 font-semibold text-xs transition-colors',
-              side === 'short'
-                ? 'bg-red-600 text-white shadow-sm'
-                : 'text-muted-foreground hover:bg-muted/80 hover:text-foreground'
+              "flex-1 rounded py-2 font-semibold text-xs transition-colors",
+              side === "short"
+                ? "bg-red-600 text-white shadow-sm"
+                : "text-muted-foreground hover:bg-muted/80 hover:text-foreground",
             )}
           >
             SHORT
@@ -407,8 +407,8 @@ export function PerpsOrderEntryPanel({
           <label className="flex cursor-pointer items-center gap-2 text-muted-foreground hover:text-foreground">
             <input
               type="radio"
-              checked={orderType === 'market'}
-              onChange={() => setOrderType('market')}
+              checked={orderType === "market"}
+              onChange={() => setOrderType("market")}
               className="accent-primary"
             />
             Market
@@ -420,8 +420,8 @@ export function PerpsOrderEntryPanel({
           >
             <input
               type="radio"
-              checked={orderType === 'limit'}
-              onChange={() => setOrderType('limit')}
+              checked={orderType === "limit"}
+              onChange={() => setOrderType("limit")}
               className="accent-primary"
               disabled
             />
@@ -468,7 +468,7 @@ export function PerpsOrderEntryPanel({
               min="1"
               max={market.maxLeverage}
               value={clampedLeverage}
-              onChange={(e) => setLeverage(Number.parseInt(e.target.value))}
+              onChange={(e) => setLeverage(Number.parseInt(e.target.value, 10))}
               className="h-2 w-full cursor-pointer appearance-none rounded-full bg-border accent-primary"
             />
           </div>
@@ -483,7 +483,7 @@ export function PerpsOrderEntryPanel({
                       value={`${formatPrice(openPreview?.bidPrice ?? market.bidPrice ?? market.currentPrice)} / ${formatPrice(
                         openPreview?.askPrice ??
                           market.askPrice ??
-                          market.currentPrice
+                          market.currentPrice,
                       )}`}
                     />
                   )}
@@ -536,7 +536,7 @@ export function PerpsOrderEntryPanel({
             <div className="space-y-2 rounded bg-muted/50 p-3 text-xs">
               <Row
                 label="Action"
-                value={rebalanceInfo?.label ?? 'Modify Position'}
+                value={rebalanceInfo?.label ?? "Modify Position"}
               />
               <Row
                 label="Current Position"
@@ -546,7 +546,7 @@ export function PerpsOrderEntryPanel({
               <Row
                 label="Resulting Size"
                 value={formatPrice(
-                  rebalanceInfo?.newSize ?? existingPosition.size
+                  rebalanceInfo?.newSize ?? existingPosition.size,
                 )}
               />
               <div className="border-border border-t" />
@@ -607,10 +607,10 @@ export function PerpsOrderEntryPanel({
                 sizeNum < (market?.minOrderSize ?? 0)))
           }
           className={cn(
-            'w-full rounded py-3 font-semibold text-sm text-white transition-colors disabled:cursor-not-allowed disabled:opacity-40',
-            side === 'long'
-              ? 'bg-green-600 hover:bg-green-700'
-              : 'bg-red-600 hover:bg-red-700'
+            "w-full rounded py-3 font-semibold text-sm text-white transition-colors disabled:cursor-not-allowed disabled:opacity-40",
+            side === "long"
+              ? "bg-green-600 hover:bg-green-700"
+              : "bg-red-600 hover:bg-red-700",
           )}
         >
           {submitLabel}
@@ -626,7 +626,7 @@ export function PerpsOrderEntryPanel({
         tradeDetails={
           market && !rebalanceInfo
             ? ({
-                type: 'open-perp',
+                type: "open-perp",
                 ticker: market.ticker,
                 side,
                 size: sizeNum,
@@ -658,8 +658,8 @@ function Row({
       <span className="text-muted-foreground">{label}</span>
       <span
         className={cn(
-          'font-mono tabular-nums',
-          strong ? 'font-semibold text-foreground' : 'text-foreground'
+          "font-mono tabular-nums",
+          strong ? "font-semibold text-foreground" : "text-foreground",
         )}
       >
         {value}

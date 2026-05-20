@@ -5,17 +5,17 @@
  */
 
 export type MarketAction =
-  | 'open_long'
-  | 'open_short'
-  | 'buy_yes'
-  | 'buy_no'
-  | 'sell_yes'
-  | 'sell_no'
-  | 'close_position'
-  | 'hold'
-  | 'wait';
+  | "open_long"
+  | "open_short"
+  | "buy_yes"
+  | "buy_no"
+  | "sell_yes"
+  | "sell_no"
+  | "close_position"
+  | "hold"
+  | "wait";
 
-export type MarketType = 'perp' | 'prediction';
+export type MarketType = "perp" | "prediction";
 
 export interface TradingDecision {
   npcId: string;

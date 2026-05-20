@@ -42,11 +42,11 @@ import {
   relayCronToStaging,
   verifyCronAuth,
   withErrorHandling,
-} from '@feed/api';
+} from "@feed/api";
 import {
   PredictionDbAdapter as CorePredictionDbAdapter,
   PredictionMarketService as CorePredictionMarketService,
-} from '@feed/core/markets/prediction';
+} from "@feed/core/markets/prediction";
 import {
   type ArcStateType,
   and,
@@ -68,12 +68,12 @@ import {
   sql,
   timeframedMarkets,
   worldEvents,
-} from '@feed/db';
+} from "@feed/db";
 import {
-  FeedLLMClient,
   type DailyTopicContext,
   dailyTopicService,
   deriveTopicFromText,
+  FeedLLMClient,
   getPredictionMarketInitialization,
   isEligibleActor,
   mapGranularToDbTimeframe,
@@ -85,11 +85,11 @@ import {
   secureRandom,
   timeframeArcPlanner,
   weightedPick,
-} from '@feed/engine';
-import { isStringArray, logger, toISO } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { notifyResolvedMarketOwners } from '@/lib/services/market-resolution-notifications';
+} from "@feed/engine";
+import { isStringArray, logger, toISO } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { notifyResolvedMarketOwners } from "@/lib/services/market-resolution-notifications";
 
 /** Game state shape for cache */
 interface GameState {
@@ -101,7 +101,7 @@ interface GameState {
 
 // Vercel function configuration
 export const maxDuration = 300; // 5 minutes max
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 // ============================================================================
 // Market Creation Configuration
@@ -125,7 +125,7 @@ const DEFAULT_TICK_BUDGET_MS = 240000;
  * Falls back to DEFAULT_TICK_BUDGET_MS if env value is invalid (NaN or <= 0).
  */
 const TICK_BUDGET_MS = (() => {
-  const parsed = parseInt(process.env.MARKETS_TICK_BUDGET_MS || '', 10);
+  const parsed = parseInt(process.env.MARKETS_TICK_BUDGET_MS || "", 10);
   if (Number.isNaN(parsed) || parsed <= 0) {
     return DEFAULT_TICK_BUDGET_MS;
   }
@@ -166,45 +166,45 @@ const MARKET_STRUCTURE: Record<
   string,
   { count: number; durationMs: number; label: string }
 > = {
-  '3d': {
+  "3d": {
     count: 1,
     durationMs: 3 * 24 * 60 * 60 * 1000,
-    label: '3-day',
+    label: "3-day",
   },
-  '2d': {
+  "2d": {
     count: 1,
     durationMs: 2 * 24 * 60 * 60 * 1000,
-    label: '2-day',
+    label: "2-day",
   },
-  '1d': {
+  "1d": {
     count: 1,
     durationMs: 24 * 60 * 60 * 1000,
-    label: '1-day',
+    label: "1-day",
   },
-  '12h': {
+  "12h": {
     count: 1,
     durationMs: 12 * 60 * 60 * 1000,
-    label: '12-hour',
+    label: "12-hour",
   },
-  '6h': {
+  "6h": {
     count: 1,
     durationMs: 6 * 60 * 60 * 1000,
-    label: '6-hour',
+    label: "6-hour",
   },
-  '1h': {
+  "1h": {
     count: 1,
     durationMs: 60 * 60 * 1000,
-    label: '1-hour',
+    label: "1-hour",
   },
-  '30m': {
+  "30m": {
     count: 2,
     durationMs: 30 * 60 * 1000,
-    label: '30-minute',
+    label: "30-minute",
   },
-  '15m': {
+  "15m": {
     count: 2,
     durationMs: 15 * 60 * 1000,
-    label: '15-minute',
+    label: "15-minute",
   },
 };
 
@@ -254,7 +254,7 @@ const SUB_MARKET_RESOLUTION_BUFFER_MS = 5 * 60 * 1000; // 5 minutes
  */
 function getMaxSubMarketDuration(
   parentEndTime: Date,
-  now: number = Date.now()
+  now: number = Date.now(),
 ): number | null {
   const remainingTimeMs =
     parentEndTime.getTime() - now - SUB_MARKET_RESOLUTION_BUFFER_MS;
@@ -278,7 +278,7 @@ function getMaxSubMarketDuration(
  */
 function getConstrainedSubMarketDuration(
   parentEndTime: Date,
-  now: number = Date.now()
+  now: number = Date.now(),
 ): number | null {
   const maxDuration = getMaxSubMarketDuration(parentEndTime, now);
 
@@ -303,11 +303,11 @@ function getConstrainedSubMarketDuration(
  * - 30m: 22.5 to 45 minutes (midpoint between 30m and 1h)
  * - 1h: 45 minutes to 3 hours (capped at 1h since 2h/3h unsupported)
  */
-function inferSubMarketTimeframe(durationMs: number): '15m' | '30m' | '1h' {
+function inferSubMarketTimeframe(durationMs: number): "15m" | "30m" | "1h" {
   const minutes = durationMs / (60 * 1000);
-  if (minutes <= 22.5) return '15m';
-  if (minutes <= 45) return '30m';
-  return '1h'; // All durations > 45min map to 1h (closest supported key)
+  if (minutes <= 22.5) return "15m";
+  if (minutes <= 45) return "30m";
+  return "1h"; // All durations > 45min map to 1h (closest supported key)
 }
 
 // ============================================================================
@@ -324,9 +324,9 @@ function toStringArray(value: unknown): string[] {
 
   // Log warning for unexpected types in production
   logger.warn(
-    'Invalid string array in JSONB field',
+    "Invalid string array in JSONB field",
     { actualType: typeof value, isArray: Array.isArray(value) },
-    'TypeValidation'
+    "TypeValidation",
   );
   return [];
 }
@@ -350,9 +350,9 @@ function toStringArray(value: unknown): string[] {
 function selectRelevantMediaOrg(
   affiliatedActorIds: string[],
   affiliatedOrgIds: string[],
-  category: MarketCategory
+  category: MarketCategory,
 ): ReturnType<typeof StaticDataRegistry.getOrganization> {
-  const mediaOrgs = StaticDataRegistry.getOrganizationsByType('media');
+  const mediaOrgs = StaticDataRegistry.getOrganizationsByType("media");
 
   if (mediaOrgs.length === 0) return null;
   if (mediaOrgs.length === 1) return mediaOrgs[0] ?? null;
@@ -402,7 +402,7 @@ function selectRelevantMediaOrg(
   // Use weighted selection
   return weightedPick(
     scored.map((s) => s.org),
-    (org) => weightMap.get(org.id) ?? 1.0
+    (org) => weightMap.get(org.id) ?? 1.0,
   );
 }
 
@@ -427,20 +427,20 @@ export const GET = withErrorHandling(async function GET(req: NextRequest) {
  */
 export const POST = withErrorHandling(async function POST(_req: NextRequest) {
   // Verify cron authorization
-  if (!verifyCronAuth(_req, { jobName: 'MarketsTick' })) {
+  if (!verifyCronAuth(_req, { jobName: "MarketsTick" })) {
     logger.warn(
-      'Unauthorized markets-tick request attempt',
+      "Unauthorized markets-tick request attempt",
       undefined,
-      'MarketsTick'
+      "MarketsTick",
     );
     return NextResponse.json(
-      { error: 'Unauthorized cron request' },
-      { status: 401 }
+      { error: "Unauthorized cron request" },
+      { status: 401 },
     );
   }
 
-  const integrationProbe = _req.headers.get('x-integration-probe') === '1';
-  if (integrationProbe && process.env.NODE_ENV !== 'production') {
+  const integrationProbe = _req.headers.get("x-integration-probe") === "1";
+  if (integrationProbe && process.env.NODE_ENV !== "production") {
     const [game] = await db
       .select({
         id: games.id,
@@ -455,8 +455,8 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
       skipped: true,
       probe: true,
       reason: game?.isRunning
-        ? 'Integration probe completed'
-        : 'Game not running',
+        ? "Integration probe completed"
+        : "Game not running",
       marketsResolved: 0,
       marketsCreated: 0,
       subMarketsCreated: 0,
@@ -468,58 +468,58 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
 
   const startTime = Date.now();
   const processId = `markets-tick-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
-  logger.info('Markets tick started', { processId }, 'MarketsTick');
+  logger.info("Markets tick started", { processId }, "MarketsTick");
 
   // Relay to staging if configured (fan-out)
-  const relayResult = await relayCronToStaging(_req, 'markets-tick');
+  const relayResult = await relayCronToStaging(_req, "markets-tick");
   if (relayResult.forwarded) {
     logger.info(
-      'Cron execution relayed to staging (fan-out: continuing local execution)',
+      "Cron execution relayed to staging (fan-out: continuing local execution)",
       { status: relayResult.status, error: relayResult.error },
-      'MarketsTick'
+      "MarketsTick",
     );
   }
 
   // Acquire global lock to prevent overlapping cron invocations
   const globalLockAcquired = await DistributedLockService.acquireLock({
-    lockId: 'markets-tick-global',
+    lockId: "markets-tick-global",
     durationMs: 300 * 1000, // 5 minutes
-    operation: 'markets-tick-global',
+    operation: "markets-tick-global",
     processId,
   });
 
   if (!globalLockAcquired) {
     logger.info(
-      'Markets tick skipped - previous tick still running',
+      "Markets tick skipped - previous tick still running",
       { processId },
-      'MarketsTick'
+      "MarketsTick",
     );
     return NextResponse.json({
       success: true,
       skipped: true,
-      reason: 'Previous tick still running',
+      reason: "Previous tick still running",
     });
   }
 
   try {
     // Check GAME_START environment variable
     const gameStartEnv = process.env.GAME_START?.toLowerCase();
-    if (gameStartEnv === 'false' || gameStartEnv === '0') {
+    if (gameStartEnv === "false" || gameStartEnv === "0") {
       logger.info(
-        'Game disabled via GAME_START env var - skipping markets tick',
+        "Game disabled via GAME_START env var - skipping markets tick",
         { GAME_START: process.env.GAME_START },
-        'MarketsTick'
+        "MarketsTick",
       );
       return NextResponse.json({
         success: true,
         skipped: true,
-        reason: 'Game disabled',
+        reason: "Game disabled",
       });
     }
 
     // Get or fetch game state
     const gameState = await getCacheOrFetch<GameState>(
-      'markets-tick:game-state',
+      "markets-tick:game-state",
       async () => {
         const [game] = await db
           .select({
@@ -536,16 +536,16 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
           // Log warning so operators are alerted to missing game configuration
           // This could indicate a DB issue or missing game setup
           logger.warn(
-            'No continuous game found in database - using fallback state',
+            "No continuous game found in database - using fallback state",
             {
-              attemptedQuery: 'games.isContinuous = true',
-              fallbackId: 'continuous',
-              action: 'Markets tick will be skipped (isRunning: false)',
+              attemptedQuery: "games.isContinuous = true",
+              fallbackId: "continuous",
+              action: "Markets tick will be skipped (isRunning: false)",
             },
-            'MarketsTick'
+            "MarketsTick",
           );
           return {
-            id: 'continuous',
+            id: "continuous",
             isRunning: false,
             isContinuous: true,
             currentDay: 1,
@@ -559,19 +559,19 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
           currentDay: game.currentDay,
         };
       },
-      { ttl: 30 }
+      { ttl: 30 },
     );
 
     if (!gameState.isRunning) {
       logger.info(
-        'Game not running - skipping markets tick',
+        "Game not running - skipping markets tick",
         { gameId: gameState.id },
-        'MarketsTick'
+        "MarketsTick",
       );
       return NextResponse.json({
         success: true,
         skipped: true,
-        reason: 'Game not running',
+        reason: "Game not running",
       });
     }
 
@@ -601,25 +601,25 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
     // Fetch multiple topic candidates to spread markets across themes
     const topicCandidates = await dailyTopicService.getTopicCandidatesForDate(
       now,
-      3
+      3,
     );
     let topicRotationIndex = 0;
     const deadline = startTime + TICK_BUDGET_MS;
 
     if (topicCandidates.length === 0) {
       logger.warn(
-        'No daily topic available - new main market creation will be skipped',
+        "No daily topic available - new main market creation will be skipped",
         { date: toISO(now) },
-        'MarketsTick'
+        "MarketsTick",
       );
     } else {
       logger.info(
-        'Multi-topic candidates ready',
+        "Multi-topic candidates ready",
         {
           count: topicCandidates.length,
           topics: topicCandidates.map((t) => t.topicLabel),
         },
-        'MarketsTick'
+        "MarketsTick",
       );
     }
 
@@ -628,39 +628,42 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
     const activeMarkets = await getActiveMarketsByTimeframe();
     metrics.getActiveMarketsMs = Date.now() - activeMarketsStart;
     results.marketsByTimeframe = Object.fromEntries(
-      Object.entries(activeMarkets).map(([tf, markets]) => [tf, markets.length])
+      Object.entries(activeMarkets).map(([tf, markets]) => [
+        tf,
+        markets.length,
+      ]),
     );
 
     logger.info(
-      'Current market distribution',
+      "Current market distribution",
       {
         ...results.marketsByTimeframe,
         queryTimeMs: metrics.getActiveMarketsMs,
       },
-      'MarketsTick'
+      "MarketsTick",
     );
 
     // HARD CAP CHECK: Calculate total active markets from source of truth
     // The expected total is 10 (sum of all counts in MARKET_STRUCTURE)
     const expectedTotalMarkets = Object.values(MARKET_STRUCTURE).reduce(
       (sum, config) => sum + config.count,
-      0
+      0,
     );
     const actualTotalMarkets = Object.values(activeMarkets).reduce(
       (sum, markets) => sum + markets.length,
-      0
+      0,
     );
 
     // Log warning if we're over the expected limit (indicates a bug or data issue)
     if (actualTotalMarkets > expectedTotalMarkets) {
       logger.warn(
-        'Active market count exceeds expected limit',
+        "Active market count exceeds expected limit",
         {
           actual: actualTotalMarkets,
           expected: expectedTotalMarkets,
           distribution: results.marketsByTimeframe,
         },
-        'MarketsTick'
+        "MarketsTick",
       );
     }
 
@@ -676,12 +679,12 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
           timeframe: m.timeframe,
         })),
       },
-      'MarketsTick'
+      "MarketsTick",
     );
 
     for (const market of matureMarkets) {
       if (Date.now() > deadline) {
-        logger.warn('Deadline reached, stopping resolution', {}, 'MarketsTick');
+        logger.warn("Deadline reached, stopping resolution", {}, "MarketsTick");
         break;
       }
 
@@ -690,7 +693,7 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
         const resolutionResult = await resolveMarket(
           market,
           llmClient,
-          gameState
+          gameState,
         );
         if (resolutionResult.resolved) {
           results.marketsResolved++;
@@ -711,7 +714,7 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
           llmClient,
           gameState,
           topicForMarket,
-          topicCandidates
+          topicCandidates,
         );
 
         if (created) {
@@ -719,12 +722,12 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
         }
       } catch (error) {
         logger.error(
-          'Failed to resolve/replace market',
+          "Failed to resolve/replace market",
           {
             marketId: market.id,
             error: error instanceof Error ? error.message : String(error),
           },
-          'MarketsTick'
+          "MarketsTick",
         );
       }
     }
@@ -744,15 +747,15 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
       .where(
         and(
           eq(timeframedMarkets.isActive, true),
-          lte(timeframedMarkets.endTime, now)
-        )
+          lte(timeframedMarkets.endTime, now),
+        ),
       );
 
     if (orphanedMarkets.length > 0) {
       logger.info(
         `Found ${orphanedMarkets.length} orphaned timeframedMarkets past endTime`,
         { ids: orphanedMarkets.map((m) => m.id) },
-        'MarketsTick'
+        "MarketsTick",
       );
 
       for (const orphan of orphanedMarkets) {
@@ -775,11 +778,11 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
               .limit(1);
 
             // If question exists and is still active, resolve it
-            if (linkedQuestion && linkedQuestion.status === 'active') {
+            if (linkedQuestion && linkedQuestion.status === "active") {
               logger.info(
                 `Resolving orphaned market via question Q${linkedQuestion.questionNumber}`,
                 { timeframedMarketId: orphan.id },
-                'MarketsTick'
+                "MarketsTick",
               );
 
               try {
@@ -788,7 +791,7 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
                   await notifyResolvedMarketOwners(linkedQuestion.id);
                 } catch (notificationError) {
                   logger.error(
-                    'Resolved orphaned market without notification side effects',
+                    "Resolved orphaned market without notification side effects",
                     {
                       marketId: linkedQuestion.id,
                       error:
@@ -796,7 +799,7 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
                           ? notificationError.message
                           : String(notificationError),
                     },
-                    'MarketsTick'
+                    "MarketsTick",
                   );
                 }
                 // resolveQuestionPayouts now updates questions + timeframedMarkets
@@ -812,11 +815,11 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
                     .where(
                       and(
                         eq(positions.marketId, linkedQuestion.id),
-                        eq(positions.outcome, true)
-                      )
+                        eq(positions.outcome, true),
+                      ),
                     );
                   for (const w of winners) {
-                    void checkProgress(w.userId, { type: 'prediction_win' });
+                    void checkProgress(w.userId, { type: "prediction_win" });
                   }
                 } catch {
                   // Non-critical
@@ -825,7 +828,7 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
                 // Keep the orphan active so the next cron run can retry.
                 shouldMarkTimeframedResolved = false;
                 logger.error(
-                  'Failed to resolve orphaned question payouts',
+                  "Failed to resolve orphaned question payouts",
                   {
                     questionNumber: linkedQuestion.questionNumber,
                     error:
@@ -833,7 +836,7 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
                         ? payoutError.message
                         : String(payoutError),
                   },
-                  'MarketsTick'
+                  "MarketsTick",
                 );
               }
             }
@@ -854,7 +857,7 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
           }
         } catch (orphanError) {
           logger.error(
-            'Failed to resolve orphaned timeframedMarket',
+            "Failed to resolve orphaned timeframedMarket",
             {
               id: orphan.id,
               error:
@@ -862,7 +865,7 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
                   ? orphanError.message
                   : String(orphanError),
             },
-            'MarketsTick'
+            "MarketsTick",
           );
         }
       }
@@ -876,22 +879,22 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
     const updatedActiveMarkets = await getActiveMarketsByTimeframe();
     const updatedTotalMarkets = Object.values(updatedActiveMarkets).reduce(
       (sum, markets) => sum + markets.length,
-      0
+      0,
     );
 
     logger.info(
-      'Updated market distribution after resolution phase',
+      "Updated market distribution after resolution phase",
       {
         distribution: Object.fromEntries(
           Object.entries(updatedActiveMarkets).map(([tf, markets]) => [
             tf,
             markets.length,
-          ])
+          ]),
         ),
         total: updatedTotalMarkets,
         expected: expectedTotalMarkets,
       },
-      'MarketsTick'
+      "MarketsTick",
     );
 
     const creationStart = Date.now();
@@ -899,9 +902,9 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
     // Skip gap-filling if we're already at or over the hard cap
     if (updatedTotalMarkets >= expectedTotalMarkets) {
       logger.info(
-        'Skipping gap-filling phase - already at market limit',
+        "Skipping gap-filling phase - already at market limit",
         { total: updatedTotalMarkets, expected: expectedTotalMarkets },
-        'MarketsTick'
+        "MarketsTick",
       );
     } else {
       // Iterate over MARKET_STRUCTURE keys (granular timeframes like '15m', '30m', etc.)
@@ -916,7 +919,7 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
           logger.info(
             `Creating ${needed} missing ${timeframe} market(s)`,
             { currentCount, target: config.count },
-            'MarketsTick'
+            "MarketsTick",
           );
 
           for (let i = 0; i < needed; i++) {
@@ -938,7 +941,7 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
                 llmClient,
                 gameState,
                 topicForGap,
-                topicCandidates
+                topicCandidates,
               );
 
               if (created) {
@@ -946,12 +949,12 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
               }
             } catch (error) {
               logger.error(
-                'Failed to create market',
+                "Failed to create market",
                 {
                   timeframe,
                   error: error instanceof Error ? error.message : String(error),
                 },
-                'MarketsTick'
+                "MarketsTick",
               );
             }
           }
@@ -979,24 +982,24 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
           .where(
             and(
               eq(timeframedMarkets.isActive, true),
-              isNotNull(timeframedMarkets.parentMarketId)
-            )
+              isNotNull(timeframedMarkets.parentMarketId),
+            ),
           );
 
         const activeSubMarketCount = subMarketCountResult?.count ?? 0;
         const subMarketsNeeded = Math.max(
           0,
-          MAX_SUB_MARKETS - activeSubMarketCount
+          MAX_SUB_MARKETS - activeSubMarketCount,
         );
 
         logger.info(
-          'Sub-market status',
+          "Sub-market status",
           {
             activeSubMarkets: activeSubMarketCount,
             needed: subMarketsNeeded,
             max: MAX_SUB_MARKETS,
           },
-          'MarketsTick'
+          "MarketsTick",
         );
 
         // Track if we skipped due to cap for metrics
@@ -1009,13 +1012,13 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
         if (subMarketsNeeded > 0 && Date.now() < deadline) {
           const createCount = Math.min(
             subMarketsNeeded,
-            MAX_SUB_MARKETS_PER_TICK
+            MAX_SUB_MARKETS_PER_TICK,
           );
 
           logger.info(
             `Creating up to ${createCount} sub-markets this tick`,
             { needed: subMarketsNeeded, creating: createCount },
-            'MarketsTick'
+            "MarketsTick",
           );
 
           // Pick random active main markets as parents (one per sub-market to create)
@@ -1040,12 +1043,12 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
             .where(
               and(
                 eq(timeframedMarkets.isActive, true),
-                isNull(timeframedMarkets.parentMarketId)
-              )
+                isNull(timeframedMarkets.parentMarketId),
+              ),
             )
             .orderBy(sql`RANDOM()`)
             .limit(createCount)
-            .for('update', { of: [timeframedMarkets], skipLocked: true });
+            .for("update", { of: [timeframedMarkets], skipLocked: true });
 
           // Re-verify sub-market count after acquiring locks to prevent race condition
           // Another concurrent tick may have created sub-markets between our initial count and lock acquisition
@@ -1055,20 +1058,20 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
             .where(
               and(
                 eq(timeframedMarkets.isActive, true),
-                isNotNull(timeframedMarkets.parentMarketId)
-              )
+                isNotNull(timeframedMarkets.parentMarketId),
+              ),
             );
 
           const refreshedSubMarketCount = refreshedCountResult?.count ?? 0;
           if (refreshedSubMarketCount >= MAX_SUB_MARKETS) {
             logger.info(
-              'Sub-market cap reached after lock acquisition, aborting creation',
+              "Sub-market cap reached after lock acquisition, aborting creation",
               {
                 initialCount: activeSubMarketCount,
                 refreshedCount: refreshedSubMarketCount,
                 max: MAX_SUB_MARKETS,
               },
-              'MarketsTick'
+              "MarketsTick",
             );
             gapFillingSkippedDueToMax = true;
             return;
@@ -1079,9 +1082,9 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
           for (const parentMarket of parentMarkets) {
             if (Date.now() > deadline) {
               logger.info(
-                'Deadline reached, stopping sub-market creation',
+                "Deadline reached, stopping sub-market creation",
                 { created: results.subMarketsCreated },
-                'MarketsTick'
+                "MarketsTick",
               );
               break;
             }
@@ -1092,22 +1095,22 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
               const nowMs = Date.now();
               const duration = getConstrainedSubMarketDuration(
                 parentMarket.endTime,
-                nowMs
+                nowMs,
               );
 
               if (duration === null) {
                 // Parent doesn't have enough remaining time for a sub-market
                 const remainingMinutes = Math.round(
-                  (parentMarket.endTime.getTime() - nowMs) / 60000
+                  (parentMarket.endTime.getTime() - nowMs) / 60000,
                 );
                 logger.debug(
-                  'Skipping parent market - insufficient remaining time',
+                  "Skipping parent market - insufficient remaining time",
                   {
                     parentId: parentMarket.id,
                     remainingMinutes,
                     minRequired: SUB_MARKET_MIN_DURATION_MS / 60000,
                   },
-                  'MarketsTick'
+                  "MarketsTick",
                 );
                 skippedDueToInsufficientTime++;
                 continue;
@@ -1121,11 +1124,11 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
                 questionText: parentMarket.questionText,
                 category: parseMarketCategory(
                   parentMarket.category,
-                  `parent market ${parentMarket.id}`
+                  `parent market ${parentMarket.id}`,
                 ),
                 arcState: parentMarket.arcState,
                 affiliatedActorIds: toStringArray(
-                  parentMarket.affiliatedActorIds
+                  parentMarket.affiliatedActorIds,
                 ),
                 affiliatedOrgIds: toStringArray(parentMarket.affiliatedOrgIds),
                 rootMarketId: parentMarket.rootMarketId,
@@ -1137,31 +1140,31 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
                 parentMarketData,
                 duration,
                 llmClient,
-                gameState
+                gameState,
               );
 
               if (created) {
                 results.subMarketsCreated++;
                 logger.info(
-                  'Created sub-market',
+                  "Created sub-market",
                   {
                     parentId: parentMarket.id,
                     duration: Math.round(duration / 60000),
                     timeframe: inferSubMarketTimeframe(duration),
                     parentEndsInMinutes: Math.round(
-                      (parentMarket.endTime.getTime() - nowMs) / 60000
+                      (parentMarket.endTime.getTime() - nowMs) / 60000,
                     ),
                   },
-                  'MarketsTick'
+                  "MarketsTick",
                 );
               }
             } catch (error) {
               logger.error(
-                'Failed to create sub-market',
+                "Failed to create sub-market",
                 {
                   error: error instanceof Error ? error.message : String(error),
                 },
-                'MarketsTick'
+                "MarketsTick",
               );
             }
           }
@@ -1169,12 +1172,12 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
           // Log if we skipped any parents due to time constraints
           if (skippedDueToInsufficientTime > 0) {
             logger.info(
-              'Some parent markets skipped due to insufficient remaining time',
+              "Some parent markets skipped due to insufficient remaining time",
               {
                 skipped: skippedDueToInsufficientTime,
                 created: results.subMarketsCreated,
               },
-              'MarketsTick'
+              "MarketsTick",
             );
           }
         }
@@ -1182,7 +1185,7 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
 
       // Invalidate cache after sub-market creation to ensure consistency
       if (results.subMarketsCreated > 0) {
-        await invalidateCache('sub_markets', {
+        await invalidateCache("sub_markets", {
           namespace: CACHE_KEYS.ACTIVE_MARKETS,
         });
       }
@@ -1199,7 +1202,7 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
     };
 
     // Record execution for monitoring with detailed metrics
-    recordCronExecution('markets-tick', new Date(startTime), {
+    recordCronExecution("markets-tick", new Date(startTime), {
       success: true,
       durationMs,
       ...results,
@@ -1209,20 +1212,20 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
 
     // Emit structured log for metrics aggregation (Vercel/Datadog integration)
     logger.info(
-      'sub_market_metrics',
+      "sub_market_metrics",
       {
-        '@type': 'metric',
-        metric_name: 'sub_market_creation',
+        "@type": "metric",
+        metric_name: "sub_market_creation",
         created: subMarketMetrics.createdCount,
         skipped_due_to_cap: subMarketMetrics.gapFillingSkippedDueToMax ? 1 : 0,
         creation_time_ms: subMarketMetrics.creationTimeMs,
       },
-      'MarketsTick'
+      "MarketsTick",
     );
 
     // Log detailed performance breakdown for monitoring
     logger.info(
-      'Markets tick completed',
+      "Markets tick completed",
       {
         durationMs,
         ...results,
@@ -1240,13 +1243,13 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
         },
         subMarketMetrics,
       },
-      'MarketsTick'
+      "MarketsTick",
     );
 
     // Warn if execution is taking too long (over 2 minutes)
     if (durationMs > 120000) {
       logger.warn(
-        'Markets tick execution time exceeds 2 minutes',
+        "Markets tick execution time exceeds 2 minutes",
         {
           durationMs,
           resolutionMs: metrics.resolutionMs,
@@ -1254,7 +1257,7 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
           marketsResolved: results.marketsResolved,
           marketsCreated: results.marketsCreated,
         },
-        'MarketsTick'
+        "MarketsTick",
       );
     }
 
@@ -1266,20 +1269,20 @@ export const POST = withErrorHandling(async function POST(_req: NextRequest) {
     });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    logger.error('Markets tick failed', { error: errorMessage }, 'MarketsTick');
+    logger.error("Markets tick failed", { error: errorMessage }, "MarketsTick");
 
-    recordCronExecution('markets-tick', new Date(startTime), {
+    recordCronExecution("markets-tick", new Date(startTime), {
       success: false,
       error: errorMessage,
     });
 
     return NextResponse.json(
       { success: false, error: errorMessage },
-      { status: 500 }
+      { status: 500 },
     );
   } finally {
     // Always release the global lock
-    await DistributedLockService.releaseLock('markets-tick-global', processId);
+    await DistributedLockService.releaseLock("markets-tick-global", processId);
   }
 });
 
@@ -1313,8 +1316,8 @@ async function getActiveMarketsByTimeframe(): Promise<
     .where(
       and(
         eq(timeframedMarkets.isActive, true),
-        isNull(timeframedMarkets.parentMarketId)
-      )
+        isNull(timeframedMarkets.parentMarketId),
+      ),
     );
 
   // Group by stored granularTimeframe, falling back to inference for legacy markets
@@ -1371,14 +1374,14 @@ async function getMarketsReadyForResolution(now: Date): Promise<
     .from(questions)
     .leftJoin(timeframedMarkets, eq(timeframedMarkets.questionId, questions.id))
     .where(
-      and(eq(questions.status, 'active'), lte(questions.resolutionDate, now))
+      and(eq(questions.status, "active"), lte(questions.resolutionDate, now)),
     );
 
   return matureQuestions.map((q) => ({
     id: q.id,
     questionNumber: q.questionNumber,
     // Use stored timeframe from timeframedMarkets; fallback to '1d' if not found
-    timeframe: q.timeframe ?? '1d',
+    timeframe: q.timeframe ?? "1d",
     resolutionDate: q.resolutionDate,
   }));
 }
@@ -1400,12 +1403,12 @@ async function resolveMarket(
     timeframe: string;
   },
   llmClient: FeedLLMClient,
-  gameState: GameState
+  gameState: GameState,
 ): Promise<{ resolved: boolean }> {
   logger.info(
     `Resolving ${market.timeframe} market`,
     { questionNumber: market.questionNumber },
-    'MarketsTick'
+    "MarketsTick",
   );
 
   // Fetch full question data for proof generation
@@ -1419,17 +1422,17 @@ async function resolveMarket(
     logger.error(
       `Question not found for market ${market.questionNumber}`,
       {},
-      'MarketsTick'
+      "MarketsTick",
     );
     return { resolved: false };
   }
 
   // Check if already resolved (idempotency)
-  if (question.status === 'resolved') {
+  if (question.status === "resolved") {
     logger.info(
       `Market Q${market.questionNumber} already resolved`,
       {},
-      'MarketsTick'
+      "MarketsTick",
     );
     return { resolved: true };
   }
@@ -1439,7 +1442,7 @@ async function resolveMarket(
   // ==========================================================================
   try {
     const signalAnalysis = await SignalExtractionService.extractMarketSignal(
-      market.questionNumber
+      market.questionNumber,
     );
 
     logger.info(
@@ -1454,31 +1457,31 @@ async function resolveMarket(
         signalStrength: signalAnalysis.signalStrength,
         totalPosts: signalAnalysis.totalPosts,
       },
-      'MarketsTick'
+      "MarketsTick",
     );
 
     // Log narrative coherence check
     if (
-      signalAnalysis.suggestedOutcome !== 'UNCERTAIN' &&
+      signalAnalysis.suggestedOutcome !== "UNCERTAIN" &&
       signalAnalysis.confidence > 0.7
     ) {
-      const expectedOutcome = question.outcome ? 'YES' : 'NO';
+      const expectedOutcome = question.outcome ? "YES" : "NO";
       const coherent = signalAnalysis.suggestedOutcome === expectedOutcome;
       logger.info(
-        `Narrative coherence: ${coherent ? 'ALIGNED' : 'DIVERGENT'}`,
+        `Narrative coherence: ${coherent ? "ALIGNED" : "DIVERGENT"}`,
         {
           expected: expectedOutcome,
           suggested: signalAnalysis.suggestedOutcome,
           confidence: signalAnalysis.confidence,
         },
-        'MarketsTick'
+        "MarketsTick",
       );
     }
   } catch (error) {
     logger.warn(
       `Signal extraction failed for Q${market.questionNumber}`,
       { error: error instanceof Error ? error.message : String(error) },
-      'MarketsTick'
+      "MarketsTick",
     );
   }
 
@@ -1504,8 +1507,8 @@ async function resolveMarket(
           postStyle: a.postStyle,
           postExample: a.postExample,
           tier: a.tier!,
-          role: a.role ?? 'unknown',
-          initialLuck: (a.initialLuck as 'low' | 'medium' | 'high') ?? 'medium',
+          role: a.role ?? "unknown",
+          initialLuck: (a.initialLuck as "low" | "medium" | "high") ?? "medium",
           initialMood: a.initialMood ?? 0,
         }));
 
@@ -1518,7 +1521,7 @@ async function resolveMarket(
           type: o.type,
           canBeInvolved: o.canBeInvolved,
           initialPrice: o.initialPrice ?? undefined,
-        })
+        }),
       );
 
       // Get recent events for proof context
@@ -1528,8 +1531,8 @@ async function resolveMarket(
         .where(
           gte(
             worldEvents.timestamp,
-            new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
-          )
+            new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
+          ),
         )
         .orderBy(desc(worldEvents.timestamp))
         .limit(50);
@@ -1541,27 +1544,27 @@ async function resolveMarket(
           id: e.id,
           day: e.dayNumber || 0,
           type: e.eventType as
-            | 'announcement'
-            | 'meeting'
-            | 'leak'
-            | 'development'
-            | 'scandal'
-            | 'rumor'
-            | 'deal'
-            | 'conflict'
-            | 'revelation',
+            | "announcement"
+            | "meeting"
+            | "leak"
+            | "development"
+            | "scandal"
+            | "rumor"
+            | "deal"
+            | "conflict"
+            | "revelation",
           description: e.description,
           actors: toStringArray(e.actors),
           relatedQuestion: e.relatedQuestion || undefined,
-          pointsToward: (e.pointsToward === 'YES' || e.pointsToward === 'NO'
+          pointsToward: (e.pointsToward === "YES" || e.pointsToward === "NO"
             ? e.pointsToward
-            : undefined) as 'YES' | 'NO' | undefined,
+            : undefined) as "YES" | "NO" | undefined,
           visibility: e.visibility as
-            | 'public'
-            | 'leaked'
-            | 'secret'
-            | 'private'
-            | 'group',
+            | "public"
+            | "leaked"
+            | "secret"
+            | "private"
+            | "group",
         }));
 
       // Create minimal DayTimeline structure for proof generation context
@@ -1578,7 +1581,7 @@ async function resolveMarket(
         {
           day: 0,
           events: mappedEvents,
-          summary: 'Recent events context',
+          summary: "Recent events context",
           groupChats: {},
           feedPosts: [],
           luckChanges: [],
@@ -1593,14 +1596,14 @@ async function resolveMarket(
         scenario: question.scenarioId || 1,
         outcome: question.outcome,
         rank: question.rank || 1,
-        status: 'active' as const,
+        status: "active" as const,
       };
 
       const proofResult = await questionManager.generateResolutionWithProof(
         questionForManager,
         allActors,
         organizations,
-        recentTimelines
+        recentTimelines,
       );
 
       // Save proof to database
@@ -1611,10 +1614,10 @@ async function resolveMarket(
         // 1. Avoid counting toward the article rate limiter (feed pacing)
         // 2. Allow separate filtering in the /api/posts feed
         // 3. Keep resolution evidence separate from news articles
-        if (proofResult.proof?.type === 'article') {
+        if (proofResult.proof?.type === "article") {
           await tx.insert(posts).values({
             id: proofResult.proof.article.id,
-            type: 'proof', // Different from 'article' - exempt from rate limiting
+            type: "proof", // Different from 'article' - exempt from rate limiting
             content: proofResult.proof.article.summary,
             fullContent: proofResult.proof.article.content,
             articleTitle: proofResult.proof.article.title,
@@ -1639,7 +1642,7 @@ async function resolveMarket(
             resolutionConfidence: proofResult.confidence,
             requiresManualReview: proofResult.requiresManualReview,
             resolutionReviewStatus: proofResult.requiresManualReview
-              ? 'pending'
+              ? "pending"
               : null,
             updatedAt: new Date(),
           })
@@ -1649,11 +1652,11 @@ async function resolveMarket(
       logger.info(
         `Generated resolution proof for Q${market.questionNumber}`,
         {
-          hasArticle: proofResult.proof?.type === 'article',
+          hasArticle: proofResult.proof?.type === "article",
           confidence: proofResult.confidence,
           requiresManualReview: proofResult.requiresManualReview,
         },
-        'MarketsTick'
+        "MarketsTick",
       );
 
       // Skip resolution if manual review required
@@ -1661,7 +1664,7 @@ async function resolveMarket(
         logger.warn(
           `Q${market.questionNumber} queued for manual review`,
           { confidence: proofResult.confidence },
-          'MarketsTick'
+          "MarketsTick",
         );
         return { resolved: false };
       }
@@ -1669,7 +1672,7 @@ async function resolveMarket(
       logger.error(
         `Proof generation failed for Q${market.questionNumber}`,
         { error: error instanceof Error ? error.message : String(error) },
-        'MarketsTick'
+        "MarketsTick",
       );
       // Continue with resolution even without proof - payout is critical
     }
@@ -1690,11 +1693,11 @@ async function resolveMarket(
         error: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined,
       },
-      'MarketsTick'
+      "MarketsTick",
     );
     // Re-throw to abort cron run - positions must not be left unsettled
     throw new Error(
-      `Payout failed for Q${market.questionNumber}: ${error instanceof Error ? error.message : String(error)}`
+      `Payout failed for Q${market.questionNumber}: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
 
@@ -1710,7 +1713,7 @@ async function resolveMarket(
             ? notificationError.message
             : String(notificationError),
       },
-      'MarketsTick'
+      "MarketsTick",
     );
   }
 
@@ -1720,10 +1723,10 @@ async function resolveMarket(
       .select({ userId: positions.userId })
       .from(positions)
       .where(
-        and(eq(positions.marketId, market.id), eq(positions.outcome, true))
+        and(eq(positions.marketId, market.id), eq(positions.outcome, true)),
       );
     for (const w of winners) {
-      void checkProgress(w.userId, { type: 'prediction_win' });
+      void checkProgress(w.userId, { type: "prediction_win" });
     }
   } catch {
     // Non-critical — don't block resolution flow
@@ -1733,7 +1736,7 @@ async function resolveMarket(
   // to ensure transactional consistency with question and market updates.
 
   // Invalidate active markets cache since market is no longer active
-  await invalidateCache('main_markets', {
+  await invalidateCache("main_markets", {
     namespace: CACHE_KEYS.ACTIVE_MARKETS,
   });
 
@@ -1741,9 +1744,9 @@ async function resolveMarket(
     `Resolved ${market.timeframe} market completely`,
     {
       questionNumber: market.questionNumber,
-      outcome: question.outcome ? 'YES' : 'NO',
+      outcome: question.outcome ? "YES" : "NO",
     },
-    'MarketsTick'
+    "MarketsTick",
   );
 
   return { resolved: true };
@@ -1764,7 +1767,7 @@ async function createMarketForTimeframe(
   llmClient: FeedLLMClient,
   gameState: GameState,
   dailyTopic: DailyTopicContext | null,
-  allTopics: DailyTopicContext[] = []
+  allTopics: DailyTopicContext[] = [],
 ): Promise<boolean> {
   const now = new Date();
   const resolutionDate = new Date(now.getTime() + durationMs);
@@ -1772,9 +1775,9 @@ async function createMarketForTimeframe(
   try {
     if (!dailyTopic) {
       logger.warn(
-        'Skipping main market creation because no daily topic is available',
+        "Skipping main market creation because no daily topic is available",
         { timeframe },
-        'MarketsTick'
+        "MarketsTick",
       );
       return false;
     }
@@ -1784,21 +1787,21 @@ async function createMarketForTimeframe(
     // Count markets by duration to match the granular timeframe (e.g., 15m vs 30m)
     const config = MARKET_STRUCTURE[timeframe];
     if (!config) {
-      logger.warn(`Unknown timeframe: ${timeframe}`, {}, 'MarketsTick');
+      logger.warn(`Unknown timeframe: ${timeframe}`, {}, "MarketsTick");
       return false;
     }
 
     // Invalidate cache before idempotency check to prevent race conditions
     // If two cron ticks start within the cache TTL window, both could read stale counts
     // and attempt to create duplicate markets for the same timeframe
-    await invalidateCache('main_markets', {
+    await invalidateCache("main_markets", {
       namespace: CACHE_KEYS.ACTIVE_MARKETS,
     });
 
     // Query active main markets with Redis caching for performance
     // Cache reduces DB queries from up to 10 (one per timeframe) to 1 per TTL window
     const activeMarkets = await getCacheOrFetch(
-      'main_markets',
+      "main_markets",
       async () => {
         return db
           .select({
@@ -1811,14 +1814,14 @@ async function createMarketForTimeframe(
           .where(
             and(
               eq(timeframedMarkets.isActive, true),
-              isNull(timeframedMarkets.parentMarketId) // Only count main markets, not sub-markets
-            )
+              isNull(timeframedMarkets.parentMarketId), // Only count main markets, not sub-markets
+            ),
           );
       },
       {
         namespace: CACHE_KEYS.ACTIVE_MARKETS,
         ttl: DEFAULT_TTLS.ACTIVE_MARKETS,
-      }
+      },
     );
 
     // Count markets matching this granular timeframe
@@ -1836,7 +1839,7 @@ async function createMarketForTimeframe(
       logger.info(
         `Skipping ${timeframe} market creation - already at limit`,
         { currentCount, targetCount, timeframe },
-        'MarketsTick'
+        "MarketsTick",
       );
       return false;
     }
@@ -1851,7 +1854,7 @@ async function createMarketForTimeframe(
         currentCount,
         targetCount,
       },
-      'MarketsTick'
+      "MarketsTick",
     );
 
     // Use QuestionManager for narrative-connected question generation
@@ -1861,14 +1864,14 @@ async function createMarketForTimeframe(
       timeframe,
       durationMs,
       dailyTopic,
-      allTopics
+      allTopics,
     );
 
     if (!questionData) {
       logger.warn(
         `Failed to generate question for ${timeframe}`,
         {},
-        'MarketsTick'
+        "MarketsTick",
       );
       return false;
     }
@@ -1898,19 +1901,19 @@ async function createMarketForTimeframe(
       }));
 
     const organizations = StaticDataRegistry.getAllOrganizations()
-      .filter((o) => o.type === 'company')
+      .filter((o) => o.type === "company")
       .slice(0, 20)
       .map((o) => ({
         id: o.id,
         name: o.name,
         description: o.description,
         type: o.type as
-          | 'company'
-          | 'media'
-          | 'government'
-          | 'vc'
-          | 'organization'
-          | 'financial',
+          | "company"
+          | "media"
+          | "government"
+          | "vc"
+          | "organization"
+          | "financial",
         canBeInvolved: o.canBeInvolved ?? true,
       }));
 
@@ -1923,7 +1926,7 @@ async function createMarketForTimeframe(
       actors,
       organizations,
       questionData.affiliatedActorIds,
-      questionData.affiliatedOrgIds
+      questionData.affiliatedOrgIds,
     );
 
     // Wrap all DB writes in a transaction to prevent orphaned rows
@@ -1940,7 +1943,7 @@ async function createMarketForTimeframe(
         outcome: questionData.expectedOutcome,
         rank: 1,
         resolutionDate,
-        status: 'active',
+        status: "active",
         topicKey: dailyTopic.topicKey,
         topicLabel: dailyTopic.topicLabel,
         topicDate: dailyTopic.date,
@@ -1988,7 +1991,7 @@ async function createMarketForTimeframe(
         topicDate: dailyTopic.date,
         startTime: now,
         endTime: resolutionDate,
-        arcState: (arcPlan.phaseOrder[0] || 'setup') as ArcStateType,
+        arcState: (arcPlan.phaseOrder[0] || "setup") as ArcStateType,
         arcStateEnteredAt: now,
         // Store affiliated actors/orgs for context in NPC behavior
         affiliatedActorIds: arcPlan.affiliatedActorIds,
@@ -2010,7 +2013,7 @@ async function createMarketForTimeframe(
         insiders: arcPlan.insiders.length,
         deceivers: arcPlan.deceivers.length,
       },
-      'MarketsTick'
+      "MarketsTick",
     );
 
     // NPC trading on new markets is handled by npc-tick
@@ -2020,7 +2023,7 @@ async function createMarketForTimeframe(
     // - No inline LLM calls for NPC decisions
 
     // Invalidate active markets cache so next creation uses fresh data
-    await invalidateCache('main_markets', {
+    await invalidateCache("main_markets", {
       namespace: CACHE_KEYS.ACTIVE_MARKETS,
     });
 
@@ -2029,7 +2032,7 @@ async function createMarketForTimeframe(
     logger.error(
       `Failed to create ${timeframe} market`,
       { error: error instanceof Error ? error.message : String(error) },
-      'MarketsTick'
+      "MarketsTick",
     );
     return false;
   }
@@ -2043,70 +2046,70 @@ function inferCategory(questionText: string): MarketCategory {
   const text = questionText.toLowerCase();
 
   if (
-    text.includes('bitcoin') ||
-    text.includes('crypto') ||
-    text.includes('eth') ||
-    text.includes('token') ||
-    text.includes('blockchain')
+    text.includes("bitcoin") ||
+    text.includes("crypto") ||
+    text.includes("eth") ||
+    text.includes("token") ||
+    text.includes("blockchain")
   ) {
-    return 'crypto';
+    return "crypto";
   }
   if (
-    text.includes('tech') ||
-    text.includes('software') ||
-    text.includes('ai') ||
-    text.includes('stock') ||
-    text.includes('share') ||
-    text.includes('ticker')
+    text.includes("tech") ||
+    text.includes("software") ||
+    text.includes("ai") ||
+    text.includes("stock") ||
+    text.includes("share") ||
+    text.includes("ticker")
   ) {
-    return 'tech';
+    return "tech";
   }
   if (
-    text.includes('president') ||
-    text.includes('congress') ||
-    text.includes('vote') ||
-    text.includes('election') ||
-    text.includes('senate')
+    text.includes("president") ||
+    text.includes("congress") ||
+    text.includes("vote") ||
+    text.includes("election") ||
+    text.includes("senate")
   ) {
-    return 'politics';
+    return "politics";
   }
   if (
-    text.includes('movie') ||
-    text.includes('album') ||
-    text.includes('celebrity') ||
-    text.includes('award') ||
-    text.includes('music')
+    text.includes("movie") ||
+    text.includes("album") ||
+    text.includes("celebrity") ||
+    text.includes("award") ||
+    text.includes("music")
   ) {
-    return 'entertainment';
+    return "entertainment";
   }
   if (
-    text.includes('game') ||
-    text.includes('match') ||
-    text.includes('championship') ||
-    text.includes('score') ||
-    text.includes('team')
+    text.includes("game") ||
+    text.includes("match") ||
+    text.includes("championship") ||
+    text.includes("score") ||
+    text.includes("team")
   ) {
-    return 'sports';
+    return "sports";
   }
   if (
-    text.includes('research') ||
-    text.includes('study') ||
-    text.includes('discovery') ||
-    text.includes('experiment')
+    text.includes("research") ||
+    text.includes("study") ||
+    text.includes("discovery") ||
+    text.includes("experiment")
   ) {
-    return 'science';
+    return "science";
   }
   if (
-    text.includes('ceo') ||
-    text.includes('company') ||
-    text.includes('merger') ||
-    text.includes('deal') ||
-    text.includes('earnings')
+    text.includes("ceo") ||
+    text.includes("company") ||
+    text.includes("merger") ||
+    text.includes("deal") ||
+    text.includes("earnings")
   ) {
-    return 'business';
+    return "business";
   }
 
-  return 'general';
+  return "general";
 }
 
 /**
@@ -2128,7 +2131,7 @@ function mapTimeframeToDbType(timeframe: string): MarketTimeframe {
 function inferGranularTimeframe(durationMs: number): string {
   // Sort entries by duration ascending to find the best match
   const sortedEntries = Object.entries(MARKET_STRUCTURE).sort(
-    (a, b) => a[1].durationMs - b[1].durationMs
+    (a, b) => a[1].durationMs - b[1].durationMs,
   );
 
   // Find the closest matching timeframe with 10% tolerance
@@ -2140,7 +2143,7 @@ function inferGranularTimeframe(durationMs: number): string {
   }
 
   // If no match found, find the closest one
-  let closestKey = '1h'; // Default fallback
+  let closestKey = "1h"; // Default fallback
   let closestDiff = Infinity;
 
   for (const [key, config] of sortedEntries) {
@@ -2170,9 +2173,9 @@ async function getNextQuestionNumber(): Promise<number> {
   let maxNumber: number;
   if (rawMaxNumber === null || rawMaxNumber === undefined) {
     maxNumber = 0;
-  } else if (typeof rawMaxNumber === 'bigint') {
+  } else if (typeof rawMaxNumber === "bigint") {
     maxNumber = Number(rawMaxNumber);
-  } else if (typeof rawMaxNumber === 'string') {
+  } else if (typeof rawMaxNumber === "string") {
     maxNumber = parseInt(rawMaxNumber, 10);
     if (Number.isNaN(maxNumber)) {
       maxNumber = 0;
@@ -2201,14 +2204,14 @@ function getDefaultDuration(timeframe: string): number {
  * Valid MarketCategory values for runtime validation
  */
 const VALID_MARKET_CATEGORIES: readonly MarketCategory[] = [
-  'tech',
-  'crypto',
-  'politics',
-  'sports',
-  'business',
-  'entertainment',
-  'science',
-  'general',
+  "tech",
+  "crypto",
+  "politics",
+  "sports",
+  "business",
+  "entertainment",
+  "science",
+  "general",
 ] as const;
 
 /**
@@ -2216,7 +2219,7 @@ const VALID_MARKET_CATEGORIES: readonly MarketCategory[] = [
  */
 function isMarketCategory(value: unknown): value is MarketCategory {
   return (
-    typeof value === 'string' &&
+    typeof value === "string" &&
     VALID_MARKET_CATEGORIES.includes(value as MarketCategory)
   );
 }
@@ -2229,22 +2232,22 @@ function isMarketCategory(value: unknown): value is MarketCategory {
  */
 function parseMarketCategory(
   value: string | null | undefined,
-  context?: string
+  context?: string,
 ): MarketCategory {
   if (isMarketCategory(value)) {
     return value;
   }
   // Treat null, undefined, and empty string as missing data - no warning needed
-  if (value === null || value === undefined || value === '') {
-    return 'general';
+  if (value === null || value === undefined || value === "") {
+    return "general";
   }
   // Only warn for invalid non-empty strings (likely a bug or data corruption)
   logger.warn(
-    `Invalid MarketCategory "${value}"${context ? ` in ${context}` : ''}, defaulting to "general"`,
+    `Invalid MarketCategory "${value}"${context ? ` in ${context}` : ""}, defaulting to "general"`,
     { invalidValue: value, context },
-    'MarketsTick'
+    "MarketsTick",
   );
-  return 'general';
+  return "general";
 }
 
 /**
@@ -2271,7 +2274,7 @@ function resolveTopicForMarket(
     topicDate?: Date | string | null;
     questionText?: string | null;
   },
-  fallbackDate = new Date()
+  fallbackDate = new Date(),
 ): DailyTopicContext {
   if (market.topicKey && market.topicLabel) {
     return {
@@ -2281,16 +2284,16 @@ function resolveTopicForMarket(
       topicKey: market.topicKey,
       topicLabel: market.topicLabel,
       summary: market.questionText?.trim() || market.topicLabel,
-      sourceType: 'fallback_previous_day',
+      sourceType: "fallback_previous_day",
       sourceHeadlineIds: [],
-      selectionReason: 'Inherited from parent market topic',
+      selectionReason: "Inherited from parent market topic",
       isLocked: false,
     };
   }
 
   return deriveTopicFromText(
-    market.questionText?.trim() || 'Legacy parent market topic',
-    fallbackDate
+    market.questionText?.trim() || "Legacy parent market topic",
+    fallbackDate,
   );
 }
 
@@ -2303,7 +2306,7 @@ async function createSubMarket(
   parentMarket: ParentMarketData,
   durationMs: number,
   llmClient: FeedLLMClient,
-  gameState: GameState
+  gameState: GameState,
 ): Promise<boolean> {
   const now = new Date();
   const resolutionDate = new Date(now.getTime() + durationMs);
@@ -2336,7 +2339,7 @@ async function createSubMarket(
     }
 
     logger.debug(
-      'Creating arc-relevant sub-market',
+      "Creating arc-relevant sub-market",
       {
         parentId: parentMarket.id,
         parentCategory: parentMarket.category,
@@ -2344,7 +2347,7 @@ async function createSubMarket(
         contextOrg: contextOrg?.name,
         contextActor: contextActor?.name,
       },
-      'MarketsTick'
+      "MarketsTick",
     );
 
     // Generate question for sub-market using QuestionManager
@@ -2354,18 +2357,18 @@ async function createSubMarket(
     const questionData = await questionManager.generateTimeframeQuestion(
       timeframe,
       durationMs,
-      inheritedTopic
+      inheritedTopic,
     );
 
     if (!questionData) {
       logger.warn(
-        'Failed to generate question for sub-market',
+        "Failed to generate question for sub-market",
         {
           parentId: parentMarket.id,
           timeframe,
           category: parentMarket.category,
         },
-        'MarketsTick'
+        "MarketsTick",
       );
       return false;
     }
@@ -2398,19 +2401,19 @@ async function createSubMarket(
       }));
 
     const organizations = StaticDataRegistry.getAllOrganizations()
-      .filter((o) => o.type === 'company')
+      .filter((o) => o.type === "company")
       .slice(0, 20)
       .map((o) => ({
         id: o.id,
         name: o.name,
         description: o.description,
         type: o.type as
-          | 'company'
-          | 'media'
-          | 'government'
-          | 'vc'
-          | 'organization'
-          | 'financial',
+          | "company"
+          | "media"
+          | "government"
+          | "vc"
+          | "organization"
+          | "financial",
         canBeInvolved: o.canBeInvolved ?? true,
       }));
 
@@ -2423,7 +2426,7 @@ async function createSubMarket(
       actors,
       organizations,
       finalAffiliatedActorIds,
-      finalAffiliatedOrgIds
+      finalAffiliatedOrgIds,
     );
 
     // Wrap all DB writes in a transaction
@@ -2437,7 +2440,7 @@ async function createSubMarket(
         outcome: questionData.expectedOutcome,
         rank: 1,
         resolutionDate,
-        status: 'active',
+        status: "active",
         topicKey: inheritedTopic.topicKey,
         topicLabel: inheritedTopic.topicLabel,
         topicDate: inheritedTopic.date,
@@ -2481,7 +2484,7 @@ async function createSubMarket(
         rootMarketId: parentMarket.rootMarketId ?? parentMarket.id, // Use parent's root or parent itself
         startTime: now,
         endTime: resolutionDate,
-        arcState: (arcPlan.phaseOrder[0] || 'setup') as ArcStateType,
+        arcState: (arcPlan.phaseOrder[0] || "setup") as ArcStateType,
         arcStateEnteredAt: now,
         affiliatedActorIds: finalAffiliatedActorIds,
         affiliatedOrgIds: finalAffiliatedOrgIds,
@@ -2508,18 +2511,18 @@ async function createSubMarket(
         inheritedOrgs: finalAffiliatedOrgIds.length,
         inheritedActors: finalAffiliatedActorIds.length,
       },
-      'MarketsTick'
+      "MarketsTick",
     );
 
     return true;
   } catch (error) {
     logger.error(
-      'Failed to create sub-market',
+      "Failed to create sub-market",
       {
         parentId: parentMarket.id,
         error: error instanceof Error ? error.message : String(error),
       },
-      'MarketsTick'
+      "MarketsTick",
     );
     return false;
   }
@@ -2540,25 +2543,25 @@ async function createSubMarketPost(
     affiliatedOrgIds: string[];
     category: MarketCategory;
     topicLabel?: string;
-  }
+  },
 ): Promise<void> {
   try {
     // Select a relevant media organization based on market context
     // Falls back to random selection if no context provided
-    const mediaOrgs = StaticDataRegistry.getOrganizationsByType('media');
+    const mediaOrgs = StaticDataRegistry.getOrganizationsByType("media");
     const mediaOrg = parentMarketContext
       ? selectRelevantMediaOrg(
           parentMarketContext.affiliatedActorIds,
           parentMarketContext.affiliatedOrgIds,
-          parentMarketContext.category
+          parentMarketContext.category,
         )
       : (mediaOrgs[Math.floor(secureRandom() * mediaOrgs.length)] ?? null);
 
     if (!mediaOrg) {
       logger.warn(
-        'No media organization found for sub-market announcement',
+        "No media organization found for sub-market announcement",
         {},
-        'MarketsTick'
+        "MarketsTick",
       );
       return;
     }
@@ -2571,35 +2574,35 @@ async function createSubMarketPost(
       .limit(1);
 
     const postId = await generateSnowflakeId();
-    const durationLabel = 'short-term';
+    const durationLabel = "short-term";
 
     await db.insert(posts).values({
       id: postId,
       authorId: mediaOrg.id,
-      content: `NEW MARKET: "${questionText}"\n\nA new ${durationLabel} prediction market is now open${parentMarketContext?.topicLabel ? ` as part of today's ${parentMarketContext.topicLabel} storyline` : ''}. Trade now before it closes!`,
+      content: `NEW MARKET: "${questionText}"\n\nA new ${durationLabel} prediction market is now open${parentMarketContext?.topicLabel ? ` as part of today's ${parentMarketContext.topicLabel} storyline` : ""}. Trade now before it closes!`,
       timestamp: new Date(),
-      type: 'market_announcement',
+      type: "market_announcement",
       gameId: gameState.id,
       dayNumber: gameState.currentDay ?? 1,
       relatedQuestion: questionData?.questionNumber ?? null,
     });
 
     logger.debug(
-      'Created sub-market announcement post',
+      "Created sub-market announcement post",
       {
         postId,
         questionId,
         questionNumber: questionData?.questionNumber,
         orgId: mediaOrg.id,
       },
-      'MarketsTick'
+      "MarketsTick",
     );
   } catch (error) {
     // Non-critical error - log but don't fail market creation
     logger.warn(
-      'Failed to create sub-market announcement post',
+      "Failed to create sub-market announcement post",
       { error: error instanceof Error ? error.message : String(error) },
-      'MarketsTick'
+      "MarketsTick",
     );
   }
 }

@@ -2,7 +2,7 @@
  * State store adapters for GameTick.
  */
 
-export { DbStateStore } from './DbStateStore';
+export { DbStateStore } from "./DbStateStore";
 export {
   InMemoryStateStore,
   type PerpMarket,
@@ -12,4 +12,4 @@ export {
   type SimulationEvent,
   type SimulationPost,
   type SimulationUser,
-} from './InMemoryStateStore';
+} from "./InMemoryStateStore";

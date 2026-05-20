@@ -5,7 +5,6 @@
  * Shows the parent chain (walking UP) and direct replies (children).
  */
 
-import { and, comments, db, eq, isNull, posts, users } from '@feed/db';
 import type {
   Action,
   ActionResult,
@@ -13,8 +12,9 @@ import type {
   IAgentRuntime,
   Memory,
   State,
-} from '@elizaos/core';
-import { logger } from '../../../../shared/logger';
+} from "@elizaos/core";
+import { and, comments, db, eq, isNull, posts, users } from "@feed/db";
+import { logger } from "../../../../shared/logger";
 
 const MAX_THREAD_DEPTH = 10;
 
@@ -41,7 +41,7 @@ interface ThreadMessage {
 function buildThreadFromBottom(
   targetId: string,
   commentMap: Map<string, CommentWithRelations>,
-  agentUserId: string
+  agentUserId: string,
 ): ThreadMessage[] {
   const target = commentMap.get(targetId);
   if (!target) return [];
@@ -59,7 +59,7 @@ function buildThreadFromBottom(
 
   return chain.map((c, i) => ({
     id: c.id,
-    author: c.authorId === agentUserId ? 'You' : c.authorName,
+    author: c.authorId === agentUserId ? "You" : c.authorName,
     content: c.content,
     depth: i,
     isTarget: c.id === targetId,
@@ -67,36 +67,36 @@ function buildThreadFromBottom(
 }
 
 export const checkCommentDetailAction: Action = {
-  name: 'CHECK_COMMENT_DETAIL',
+  name: "CHECK_COMMENT_DETAIL",
   description:
-    'Get detailed information about a comment including its thread context (parent chain and replies).',
+    "Get detailed information about a comment including its thread context (parent chain and replies).",
 
   parameters: {
     commentId: {
-      type: 'string',
-      description: 'The ID of the comment to retrieve',
+      type: "string",
+      description: "The ID of the comment to retrieve",
       required: true,
     },
-  } as unknown as Action['parameters'],
+  } as unknown as Action["parameters"],
 
   examples: [
     [
       {
-        name: 'user',
-        content: { text: 'Show me comment 789' },
+        name: "user",
+        content: { text: "Show me comment 789" },
       },
       {
-        name: 'assistant',
-        content: { text: 'Let me get the details of that comment...' },
+        name: "assistant",
+        content: { text: "Let me get the details of that comment..." },
       },
     ],
     [
       {
-        name: 'user',
-        content: { text: 'What is the context of that comment?' },
+        name: "user",
+        content: { text: "What is the context of that comment?" },
       },
       {
-        name: 'assistant',
+        name: "assistant",
         content: { text: "I'll check the thread context..." },
       },
     ],
@@ -105,7 +105,7 @@ export const checkCommentDetailAction: Action = {
   validate: async (
     _runtime: IAgentRuntime,
     _message: Memory,
-    _state?: State
+    _state?: State,
   ): Promise<boolean> => true,
 
   handler: async (
@@ -113,7 +113,7 @@ export const checkCommentDetailAction: Action = {
     _message: Memory,
     state?: State,
     _options?: Record<string, unknown>,
-    _callback?: HandlerCallback
+    _callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const agentUserId = runtime.agentId;
     const actionParams = state?.data?.actionParams as
@@ -124,8 +124,8 @@ export const checkCommentDetailAction: Action = {
     if (!commentId) {
       return {
         success: false,
-        text: 'Missing commentId parameter. Please provide the comment ID.',
-        error: 'Missing commentId',
+        text: "Missing commentId parameter. Please provide the comment ID.",
+        error: "Missing commentId",
       };
     }
 
@@ -151,7 +151,7 @@ export const checkCommentDetailAction: Action = {
         return {
           success: false,
           text: `Comment not found with ID: ${commentId}`,
-          error: 'Comment not found',
+          error: "Comment not found",
         };
       }
 
@@ -173,7 +173,7 @@ export const checkCommentDetailAction: Action = {
         return {
           success: false,
           text: `Parent post not found for comment ${commentId}`,
-          error: 'Post not found',
+          error: "Post not found",
         };
       }
 
@@ -203,8 +203,8 @@ export const checkCommentDetailAction: Action = {
         .where(
           and(
             eq(comments.postId, targetComment.postId),
-            isNull(comments.deletedAt)
-          )
+            isNull(comments.deletedAt),
+          ),
         );
 
       // Build comment map
@@ -216,7 +216,7 @@ export const checkCommentDetailAction: Action = {
           authorId: c.authorId,
           parentCommentId: c.parentCommentId,
           createdAt: c.createdAt,
-          authorName: c.authorDisplayName || c.authorUsername || 'User',
+          authorName: c.authorDisplayName || c.authorUsername || "User",
         });
       }
 
@@ -224,7 +224,7 @@ export const checkCommentDetailAction: Action = {
       const threadContext = buildThreadFromBottom(
         commentId,
         commentMap,
-        agentUserId
+        agentUserId,
       );
 
       // Get direct replies to this comment
@@ -234,8 +234,8 @@ export const checkCommentDetailAction: Action = {
           id: c.id,
           author:
             c.authorId === agentUserId
-              ? 'You'
-              : c.authorDisplayName || c.authorUsername || 'User',
+              ? "You"
+              : c.authorDisplayName || c.authorUsername || "User",
           content:
             c.content.length > 100
               ? `${c.content.substring(0, 100)}...`
@@ -244,14 +244,14 @@ export const checkCommentDetailAction: Action = {
 
       const postAuthorName =
         post.authorId === agentUserId
-          ? 'You'
-          : post.authorDisplayName || post.authorUsername || 'User';
+          ? "You"
+          : post.authorDisplayName || post.authorUsername || "User";
 
       // Build formatted view like AutonomousBatchResponseService
       const threadLines = threadContext.map((msg) => {
-        const marker = msg.isTarget ? ' [TARGET COMMENT]' : '';
+        const marker = msg.isTarget ? " [TARGET COMMENT]" : "";
         const depthLabel =
-          msg.depth === 0 ? 'Comment' : `Reply (depth ${msg.depth})`;
+          msg.depth === 0 ? "Comment" : `Reply (depth ${msg.depth})`;
         const truncated =
           msg.content.length > 200
             ? `${msg.content.substring(0, 200)}...`
@@ -263,21 +263,21 @@ export const checkCommentDetailAction: Action = {
         directReplies.length > 0
           ? directReplies.map(
               (r: { id: string; author: string; content: string }) =>
-                `  - Reply [ID: ${r.id}] by @${r.author}: "${r.content}"`
+                `  - Reply [ID: ${r.id}] by @${r.author}: "${r.content}"`,
             )
           : [];
 
       const formattedView = `POST [ID: ${post.id}] by @${postAuthorName}:
-"${post.content.substring(0, 300)}${post.content.length > 300 ? '...' : ''}"
+"${post.content.substring(0, 300)}${post.content.length > 300 ? "..." : ""}"
 
 THREAD CONTEXT:
-${threadLines.join('\n')}
-${repliesLines.length > 0 ? `\nDIRECT REPLIES:\n${repliesLines.join('\n')}` : ''}`;
+${threadLines.join("\n")}
+${repliesLines.length > 0 ? `\nDIRECT REPLIES:\n${repliesLines.join("\n")}` : ""}`;
 
       logger.info(
         `[CHECK_COMMENT_DETAIL] Retrieved comment ${commentId} with ${threadContext.length} ancestors, ${directReplies.length} replies`,
         undefined,
-        'CheckCommentDetail'
+        "CheckCommentDetail",
       );
 
       return {
@@ -294,10 +294,10 @@ ${repliesLines.length > 0 ? `\nDIRECT REPLIES:\n${repliesLines.join('\n')}` : ''
             content: targetComment.content,
             author:
               targetComment.authorId === agentUserId
-                ? 'You'
+                ? "You"
                 : targetComment.authorDisplayName ||
                   targetComment.authorUsername ||
-                  'User',
+                  "User",
           },
           threadContext,
           directReplies,
@@ -311,8 +311,8 @@ ${repliesLines.length > 0 ? `\nDIRECT REPLIES:\n${repliesLines.join('\n')}` : ''
         },
       };
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      logger.error('[CHECK_COMMENT_DETAIL] Error:', errorMsg);
+      const errorMsg = error instanceof Error ? error.message : "Unknown error";
+      logger.error("[CHECK_COMMENT_DETAIL] Error:", errorMsg);
 
       return {
         success: false,

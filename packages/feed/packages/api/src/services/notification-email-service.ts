@@ -1,13 +1,13 @@
-import { createHmac, timingSafeEqual } from 'node:crypto';
-import { escapeHtml } from '../utils/html';
-import { resolveSendGridConfig, sendViaSendGrid } from './email-utils';
+import { createHmac, timingSafeEqual } from "node:crypto";
+import { escapeHtml } from "../utils/html";
+import { resolveSendGridConfig, sendViaSendGrid } from "./email-utils";
 
 export type EmailNotificationCategory =
-  | 'realtime'
-  | 'hourly_summary'
-  | 'daily_summary'
-  | 'weekly_summary'
-  | 'monthly_summary';
+  | "realtime"
+  | "hourly_summary"
+  | "daily_summary"
+  | "weekly_summary"
+  | "monthly_summary";
 
 interface UnsubscribeTokenPayload {
   userId: string;
@@ -27,13 +27,13 @@ const DEFAULT_UNSUBSCRIBE_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 30;
 
 function getBaseUrl(): string {
   const fromEnv = process.env.NEXT_PUBLIC_APP_URL?.trim();
-  if (fromEnv) return fromEnv.replace(/\/+$/, '');
+  if (fromEnv) return fromEnv.replace(/\/+$/, "");
 
   if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}`.replace(/\/+$/, '');
+    return `https://${process.env.VERCEL_URL}`.replace(/\/+$/, "");
   }
 
-  return 'http://localhost:3000';
+  return "http://localhost:3000";
 }
 
 function getUnsubscribeSecret(): string | null {
@@ -46,7 +46,7 @@ function getUnsubscribeSecret(): string | null {
 }
 
 function sign(value: string, secret: string): string {
-  return createHmac('sha256', secret).update(value).digest('base64url');
+  return createHmac("sha256", secret).update(value).digest("base64url");
 }
 
 export function createNotificationUnsubscribeToken(params: {
@@ -67,19 +67,19 @@ export function createNotificationUnsubscribeToken(params: {
   };
 
   const encodedPayload = Buffer.from(JSON.stringify(payload)).toString(
-    'base64url'
+    "base64url",
   );
   const signature = sign(encodedPayload, secret);
   return `${encodedPayload}.${signature}`;
 }
 
 export function verifyNotificationUnsubscribeToken(
-  token: string
+  token: string,
 ): UnsubscribeTokenPayload | null {
   const secret = getUnsubscribeSecret();
   if (!secret) return null;
 
-  const [encodedPayload, providedSignature] = token.split('.');
+  const [encodedPayload, providedSignature] = token.split(".");
   if (!encodedPayload || !providedSignature) {
     return null;
   }
@@ -97,14 +97,14 @@ export function verifyNotificationUnsubscribeToken(
   }
 
   try {
-    const decoded = Buffer.from(encodedPayload, 'base64url').toString('utf8');
+    const decoded = Buffer.from(encodedPayload, "base64url").toString("utf8");
     const payload = JSON.parse(decoded) as UnsubscribeTokenPayload;
 
     if (
       !payload ||
-      typeof payload.userId !== 'string' ||
-      typeof payload.email !== 'string' ||
-      typeof payload.exp !== 'number'
+      typeof payload.userId !== "string" ||
+      typeof payload.email !== "string" ||
+      typeof payload.exp !== "number"
     ) {
       return null;
     }
@@ -137,16 +137,16 @@ export function buildNotificationUnsubscribeUrl(params: {
 
 function getCategoryLabel(category: EmailNotificationCategory): string {
   switch (category) {
-    case 'hourly_summary':
-      return 'Hourly Summary';
-    case 'daily_summary':
-      return 'Daily Summary';
-    case 'weekly_summary':
-      return 'Weekly Summary';
-    case 'monthly_summary':
-      return 'Monthly Summary';
+    case "hourly_summary":
+      return "Hourly Summary";
+    case "daily_summary":
+      return "Daily Summary";
+    case "weekly_summary":
+      return "Weekly Summary";
+    case "monthly_summary":
+      return "Monthly Summary";
     default:
-      return 'Real-Time Notification';
+      return "Real-Time Notification";
   }
 }
 
@@ -161,7 +161,7 @@ function createEmailHtml(params: {
          You can unsubscribe from all notification emails at any time:
          <a href="${params.unsubscribeUrl}">Unsubscribe</a>
        </p>`
-    : '';
+    : "";
 
   return `
     <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;">
@@ -185,18 +185,18 @@ function createEmailText(params: {
 }): string {
   const unsubscribeSection = params.unsubscribeUrl
     ? `\n\nUnsubscribe: ${params.unsubscribeUrl}`
-    : '';
+    : "";
 
   return `${params.title}\n\nType: ${getCategoryLabel(params.category)}\n\n${params.message}${unsubscribeSection}`;
 }
 
 export async function sendNotificationEmail(
-  input: SendNotificationEmailInput
+  input: SendNotificationEmailInput,
 ): Promise<{ sent: boolean; reason?: string }> {
   const logContext = { userId: input.userId, category: input.category };
-  const config = resolveSendGridConfig('NotificationEmailService', logContext);
+  const config = resolveSendGridConfig("NotificationEmailService", logContext);
   if (!config) {
-    return { sent: false, reason: 'provider_not_configured' };
+    return { sent: false, reason: "provider_not_configured" };
   }
 
   const unsubscribeUrl = buildNotificationUnsubscribeUrl({
@@ -225,17 +225,17 @@ export async function sendNotificationEmail(
       personalizations: [{ to: [{ email: input.userEmail }] }],
       subject,
       content: [
-        { type: 'text/plain', value: text },
-        { type: 'text/html', value: html },
+        { type: "text/plain", value: text },
+        { type: "text/html", value: html },
       ],
       headers: unsubscribeUrl
         ? {
-            'List-Unsubscribe': `<${unsubscribeUrl}>`,
-            'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+            "List-Unsubscribe": `<${unsubscribeUrl}>`,
+            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
           }
         : undefined,
     },
-    'NotificationEmailService',
-    logContext
+    "NotificationEmailService",
+    logContext,
   );
 }

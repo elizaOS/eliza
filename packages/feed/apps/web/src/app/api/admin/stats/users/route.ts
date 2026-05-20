@@ -12,17 +12,17 @@ import {
   validateDateRange,
   validateEnum,
   withErrorHandling,
-} from '@feed/api';
-import { db } from '@feed/db';
-import { logger, toISO, toISOOrNull } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/api";
+import { db } from "@feed/db";
+import { logger, toISO, toISOOrNull } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 /** Valid user types for filtering - whitelist to prevent injection */
-const VALID_USER_TYPES = ['all', 'real', 'actors', 'agents'] as const;
+const VALID_USER_TYPES = ["all", "real", "actors", "agents"] as const;
 type UserType = (typeof VALID_USER_TYPES)[number];
 
 function validateUserType(value: string | null): UserType {
-  return validateEnum(value, VALID_USER_TYPES, 'all');
+  return validateEnum(value, VALID_USER_TYPES, "all");
 }
 
 function buildUserTypeFilter(userType: UserType): {
@@ -30,11 +30,11 @@ function buildUserTypeFilter(userType: UserType): {
   isAgent?: boolean;
 } {
   switch (userType) {
-    case 'real':
+    case "real":
       return { isActor: false, isAgent: false };
-    case 'actors':
+    case "actors":
       return { isActor: true };
-    case 'agents':
+    case "agents":
       return { isAgent: true };
     default:
       return {};
@@ -42,35 +42,35 @@ function buildUserTypeFilter(userType: UserType): {
 }
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
-  const admin = await requirePermission(request, 'view_users');
+  const admin = await requirePermission(request, "view_users");
 
   // Apply rate limiting to prevent abuse of expensive stats queries
   const rateLimitResult = applyRateLimit(
     admin.userId,
-    RATE_LIMIT_CONFIGS.ADMIN_STATS
+    RATE_LIMIT_CONFIGS.ADMIN_STATS,
   );
   if (!rateLimitResult.allowed) {
     return rateLimitError(rateLimitResult.retryAfter);
   }
 
   const { searchParams } = new URL(request.url);
-  const startDate = parseDateParam(searchParams.get('startDate'));
-  const endDate = parseDateParam(searchParams.get('endDate'));
-  const userType = validateUserType(searchParams.get('userType'));
-  const includeTimeSeries = searchParams.get('includeTimeSeries') === 'true';
+  const startDate = parseDateParam(searchParams.get("startDate"));
+  const endDate = parseDateParam(searchParams.get("endDate"));
+  const userType = validateUserType(searchParams.get("userType"));
+  const includeTimeSeries = searchParams.get("includeTimeSeries") === "true";
 
   // Validate date range to prevent heavy queries
   const dateRangeError = validateDateRange(startDate, endDate);
   if (dateRangeError) {
-    return errorResponse(dateRangeError, 'INVALID_DATE_RANGE', 400, {
+    return errorResponse(dateRangeError, "INVALID_DATE_RANGE", 400, {
       maxDays: MAX_DATE_RANGE_DAYS,
     });
   }
 
   logger.info(
-    'User stats requested',
+    "User stats requested",
     { startDate, endDate, userType, includeTimeSeries },
-    'GET /api/admin/stats/users'
+    "GET /api/admin/stats/users",
   );
 
   const now = new Date();
@@ -171,7 +171,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
     let dailySignups: Array<{ date: string; count: string }>;
 
-    if (userType === 'actors') {
+    if (userType === "actors") {
       dailySignups = await db.$queryRaw<{ date: string; count: string }>`
         SELECT DATE("createdAt") as date, COUNT(*) as count
         FROM "User"
@@ -179,7 +179,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
           AND "isActor" = true
         GROUP BY DATE("createdAt") ORDER BY date ASC
       `;
-    } else if (userType === 'agents') {
+    } else if (userType === "agents") {
       dailySignups = await db.$queryRaw<{ date: string; count: string }>`
         SELECT DATE("createdAt") as date, COUNT(*) as count
         FROM "User"
@@ -187,7 +187,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
           AND "isAgent" = true
         GROUP BY DATE("createdAt") ORDER BY date ASC
       `;
-    } else if (userType === 'real') {
+    } else if (userType === "real") {
       dailySignups = await db.$queryRaw<{ date: string; count: string }>`
         SELECT DATE("createdAt") as date, COUNT(*) as count
         FROM "User"
@@ -217,7 +217,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
   const topReferrers = await db.user.findMany({
     where: { ...userTypeFilter, referralCount: { gt: 0 } },
-    orderBy: { referralCount: 'desc' },
+    orderBy: { referralCount: "desc" },
     take: 10,
     select: {
       id: true,
@@ -230,7 +230,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
   const recentSignups = await db.user.findMany({
     where: combinedFilter,
-    orderBy: { createdAt: 'desc' },
+    orderBy: { createdAt: "desc" },
     take: 10,
     select: {
       id: true,
@@ -245,11 +245,11 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   });
 
   const baseCount =
-    userType === 'actors'
+    userType === "actors"
       ? actors
-      : userType === 'agents'
+      : userType === "agents"
         ? agents
-        : userType === 'real'
+        : userType === "real"
           ? realUsers
           : totalUsers;
 
@@ -304,7 +304,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       startDate: toISOOrNull(startDate),
       endDate: toISOOrNull(endDate),
       userType,
-      applied: Boolean(startDate || endDate || userType !== 'all'),
+      applied: Boolean(startDate || endDate || userType !== "all"),
     },
   });
 });

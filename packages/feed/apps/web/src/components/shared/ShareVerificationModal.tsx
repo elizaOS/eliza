@@ -1,11 +1,11 @@
-'use client';
+"use client";
 
-import { cn } from '@feed/shared';
-import { Check, X as XIcon } from 'lucide-react';
-import { useState } from 'react';
-import { toast } from 'sonner';
-import { getAuthToken } from '@/lib/auth';
-import { apiUrl } from '@/utils/api-url';
+import { cn } from "@feed/shared";
+import { Check, X as XIcon } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
+import { getAuthToken } from "@/lib/auth";
+import { apiUrl } from "@/utils/api-url";
 
 /**
  * Share verification modal component for verifying external shares.
@@ -32,7 +32,7 @@ interface ShareVerificationModalProps {
   isOpen: boolean;
   onClose: () => void;
   shareId: string;
-  platform: 'twitter' | 'farcaster';
+  platform: "twitter" | "farcaster";
   userId: string;
   onSuccess?: (reputationAwarded: number) => void;
 }
@@ -45,14 +45,14 @@ export function ShareVerificationModal({
   userId,
   onSuccess,
 }: ShareVerificationModalProps) {
-  const [postUrl, setPostUrl] = useState('');
+  const [postUrl, setPostUrl] = useState("");
   const [verifying, setVerifying] = useState(false);
 
   if (!isOpen) return null;
 
   const handleVerify = async () => {
     if (!postUrl.trim()) {
-      toast.error('Please enter the URL to your post');
+      toast.error("Please enter the URL to your post");
       return;
     }
 
@@ -60,29 +60,29 @@ export function ShareVerificationModal({
 
     const token = getAuthToken();
     const headers: HeadersInit = {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
     };
     if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
+      headers.Authorization = `Bearer ${token}`;
     }
 
     const response = await fetch(
       apiUrl(`/api/users/${encodeURIComponent(userId)}/verify-share`),
       {
-        method: 'POST',
+        method: "POST",
         headers,
         body: JSON.stringify({
           shareId,
           platform,
           postUrl: postUrl.trim(),
         }),
-      }
+      },
     );
 
     const data = await response.json();
 
     if (!response.ok) {
-      toast.error(data.message || data.error || 'Failed to verify share');
+      toast.error(data.message || data.error || "Failed to verify share");
       setVerifying(false);
       return;
     }
@@ -92,7 +92,7 @@ export function ShareVerificationModal({
       const reputationMessage =
         reputationAwarded > 0
           ? `Share verified! You earned ${reputationAwarded} reputation.`
-          : 'Share verified! Thank you for sharing!';
+          : "Share verified! Thank you for sharing!";
       toast.success(reputationMessage);
       onSuccess?.(reputationAwarded);
 
@@ -102,17 +102,17 @@ export function ShareVerificationModal({
       }, 2000);
     } else {
       toast.error(
-        data.message || 'Could not verify your post. Please check the URL.'
+        data.message || "Could not verify your post. Please check the URL.",
       );
     }
     setVerifying(false);
   };
 
-  const platformName = platform === 'twitter' ? 'X' : 'Farcaster';
+  const platformName = platform === "twitter" ? "X" : "Farcaster";
   const placeholderUrl =
-    platform === 'twitter'
-      ? 'https://x.com/username/status/1234567890'
-      : 'https://farcaster.xyz/username/0x1234abcd';
+    platform === "twitter"
+      ? "https://x.com/username/status/1234567890"
+      : "https://farcaster.xyz/username/0x1234abcd";
 
   return (
     <div
@@ -151,7 +151,7 @@ export function ShareVerificationModal({
               value={postUrl}
               onChange={(e) => setPostUrl(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') handleVerify();
+                if (e.key === "Enter") handleVerify();
               }}
               placeholder={placeholderUrl}
               className="w-full rounded-lg bg-sidebar-accent/50 px-4 py-2 focus:border-border focus:outline-none"
@@ -175,16 +175,14 @@ export function ShareVerificationModal({
               onClick={handleVerify}
               disabled={verifying || !postUrl.trim()}
               className={cn(
-                'flex-1 rounded-lg px-4 py-3 font-semibold transition-colors',
-                'bg-primary text-primary-foreground hover:bg-primary/90',
-                'disabled:cursor-not-allowed disabled:opacity-50',
-                'flex items-center justify-center gap-2'
+                "flex-1 rounded-lg px-4 py-3 font-semibold transition-colors",
+                "bg-primary text-primary-foreground hover:bg-primary/90",
+                "disabled:cursor-not-allowed disabled:opacity-50",
+                "flex items-center justify-center gap-2",
               )}
             >
               {verifying ? (
-                <>
-                  <span>Verifying...</span>
-                </>
+                <span>Verifying...</span>
               ) : (
                 <>
                   <Check className="h-4 w-4" />

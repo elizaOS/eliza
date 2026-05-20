@@ -1,16 +1,16 @@
-'use client';
+"use client";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
-import { ArrowLeft, Newspaper } from 'lucide-react';
-import Image from 'next/image';
-import { useRouter } from 'next/navigation';
-import { use, useEffect, useState } from 'react';
-import { MoreArticlesWidget } from '@/components/articles/MoreArticlesWidget';
-import { Response } from '@/components/chat/Response';
-import { PageContainer } from '@/components/shared/PageContainer';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { apiUrl } from '@/utils/api-url';
+import { ArrowLeft, Newspaper } from "lucide-react";
+import Image from "next/image";
+import { useRouter } from "next/navigation";
+import { use, useEffect, useState } from "react";
+import { MoreArticlesWidget } from "@/components/articles/MoreArticlesWidget";
+import { Response } from "@/components/chat/Response";
+import { PageContainer } from "@/components/shared/PageContainer";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { apiUrl } from "@/utils/api-url";
 
 interface ArticlePageProps {
   params: Promise<{ id: string }>;
@@ -53,7 +53,7 @@ export default function ArticlePage({ params }: ArticlePageProps) {
 
       if (!response.ok) {
         const result = await response.json().catch(() => ({}));
-        const errorMsg = result.error?.message || 'Failed to load article';
+        const errorMsg = result.error?.message || "Failed to load article";
         setError(errorMsg);
         setIsLoading(false);
         return;
@@ -63,7 +63,7 @@ export default function ArticlePage({ params }: ArticlePageProps) {
       const articleData = result.data || result;
 
       // Verify it's actually an article
-      if (articleData.type !== 'article') {
+      if (articleData.type !== "article") {
         // Redirect to regular post page if not an article
         router.replace(`/post/${articleId}`);
         setIsLoading(false);
@@ -115,10 +115,10 @@ export default function ArticlePage({ params }: ArticlePageProps) {
               <div className="text-center">
                 <h1 className="mb-2 font-bold text-2xl">Article Not Found</h1>
                 <p className="mb-4 text-muted-foreground">
-                  {error || 'The article you are looking for does not exist.'}
+                  {error || "The article you are looking for does not exist."}
                 </p>
                 <button
-                  onClick={() => router.push('/feed')}
+                  onClick={() => router.push("/feed")}
                   className="rounded-md bg-primary px-4 py-2 text-primary-foreground transition-colors hover:bg-primary/90"
                 >
                   Back to Feed
@@ -169,7 +169,7 @@ export default function ArticlePage({ params }: ArticlePageProps) {
                   <div className="relative mb-6 aspect-video w-full overflow-hidden rounded-lg">
                     <Image
                       src={article.imageUrl}
-                      alt={article.articleTitle || 'Article cover'}
+                      alt={article.articleTitle || "Article cover"}
                       fill
                       className="object-cover"
                       sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 800px"
@@ -196,10 +196,10 @@ export default function ArticlePage({ params }: ArticlePageProps) {
                   )}
                   <span>·</span>
                   <time>
-                    {publishedDate.toLocaleDateString('en-US', {
-                      month: 'long',
-                      day: 'numeric',
-                      year: 'numeric',
+                    {publishedDate.toLocaleDateString("en-US", {
+                      month: "long",
+                      day: "numeric",
+                      year: "numeric",
                     })}
                   </time>
                 </div>
@@ -249,7 +249,7 @@ export default function ArticlePage({ params }: ArticlePageProps) {
                 <div className="relative mb-4 aspect-video w-full overflow-hidden rounded-lg">
                   <Image
                     src={article.imageUrl}
-                    alt={article.articleTitle || 'Article cover'}
+                    alt={article.articleTitle || "Article cover"}
                     fill
                     className="object-cover"
                     sizes="100vw"
@@ -276,9 +276,9 @@ export default function ArticlePage({ params }: ArticlePageProps) {
                 )}
                 <span>·</span>
                 <time>
-                  {publishedDate.toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
+                  {publishedDate.toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
                   })}
                 </time>
               </div>

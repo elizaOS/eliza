@@ -15,11 +15,11 @@ import {
   RATE_LIMIT_CONFIGS,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { getOnboardingStatus, skipOnboarding } from '@feed/engine';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@feed/api";
+import { getOnboardingStatus, skipOnboarding } from "@feed/engine";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 /**
  * POST /api/onboarding/game-skip
@@ -71,13 +71,13 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // Rate limit: prevent abusive rapid calls to skip onboarding
   const rateLimit = await checkRateLimitAsync(
     user.userId,
-    RATE_LIMIT_CONFIGS.UPDATE_PROFILE // 5 per minute - reasonable for profile-like updates
+    RATE_LIMIT_CONFIGS.UPDATE_PROFILE, // 5 per minute - reasonable for profile-like updates
   );
 
   if (!rateLimit.allowed) {
     return NextResponse.json(
-      { error: 'Too many requests', retryAfter: rateLimit.retryAfter },
-      { status: 429 }
+      { error: "Too many requests", retryAfter: rateLimit.retryAfter },
+      { status: 429 },
     );
   }
 
@@ -86,7 +86,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   logger.info(
     `User skipped onboarding`,
     { userId: user.userId },
-    'GameOnboarding'
+    "GameOnboarding",
   );
 
   const onboardingStatus = await getOnboardingStatus(user.userId);

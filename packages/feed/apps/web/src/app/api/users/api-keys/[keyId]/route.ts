@@ -10,11 +10,11 @@ import {
   invalidateCachedKey,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { asUser, eq, userApiKeys } from '@feed/db';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@feed/api";
+import { asUser, eq, userApiKeys } from "@feed/db";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 /**
  * DELETE /api/users/api-keys/[keyId] - Revoke API key
@@ -22,7 +22,7 @@ import { NextResponse } from 'next/server';
 export const DELETE = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ keyId: string }> }
+    context: { params: Promise<{ keyId: string }> },
   ) => {
     const authUser = await authenticate(request);
     const { keyId } = await context.params;
@@ -35,7 +35,7 @@ export const DELETE = withErrorHandling(
           andFn(
             eq(keys.id, keyId),
             eq(keys.userId, authUser.userId),
-            isNullFn(keys.revokedAt)
+            isNullFn(keys.revokedAt),
           ),
       });
 
@@ -53,8 +53,8 @@ export const DELETE = withErrorHandling(
 
     if (!deleted || deleted.length === 0) {
       return NextResponse.json(
-        { error: 'API key not found or already revoked' },
-        { status: 404 }
+        { error: "API key not found or already revoked" },
+        { status: 404 },
       );
     }
 
@@ -65,13 +65,13 @@ export const DELETE = withErrorHandling(
     }
 
     logger.info(
-      'API key revoked',
+      "API key revoked",
       { userId: authUser.userId, keyId },
-      'API Keys'
+      "API Keys",
     );
 
     return successResponse({
-      message: 'API key revoked successfully',
+      message: "API key revoked successfully",
     });
-  }
+  },
 );

@@ -74,17 +74,17 @@
  * ```
  */
 
-import { requireAdmin, withErrorHandling } from '@feed/api';
-import { and, db, desc, eq, lt, moderationEscrows, sql } from '@feed/db';
-import { toISO, toISOOrNull } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { z } from 'zod';
+import { requireAdmin, withErrorHandling } from "@feed/api";
+import { and, db, desc, eq, lt, moderationEscrows, sql } from "@feed/db";
+import { toISO, toISOOrNull } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { z } from "zod";
 
 const ListEscrowQuerySchema = z.object({
   recipientId: z.string().optional(),
   adminId: z.string().optional(),
-  status: z.enum(['pending', 'paid', 'refunded', 'expired']).optional(),
+  status: z.enum(["pending", "paid", "refunded", "expired"]).optional(),
   limit: z.coerce.number().min(1).max(100).optional().default(50),
   offset: z.coerce.number().min(0).optional().default(0),
 });
@@ -94,20 +94,20 @@ export const GET = withErrorHandling(async (req: NextRequest) => {
 
   const { searchParams } = new URL(req.url);
   const validation = ListEscrowQuerySchema.safeParse({
-    recipientId: searchParams.get('recipientId'),
-    adminId: searchParams.get('adminId'),
-    status: searchParams.get('status'),
-    limit: searchParams.get('limit'),
-    offset: searchParams.get('offset'),
+    recipientId: searchParams.get("recipientId"),
+    adminId: searchParams.get("adminId"),
+    status: searchParams.get("status"),
+    limit: searchParams.get("limit"),
+    offset: searchParams.get("offset"),
   });
 
   if (!validation.success) {
     return NextResponse.json(
       {
         error:
-          validation.error.issues[0]?.message || 'Invalid query parameters',
+          validation.error.issues[0]?.message || "Invalid query parameters",
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -122,12 +122,12 @@ export const GET = withErrorHandling(async (req: NextRequest) => {
   const now = new Date();
   await db
     .update(moderationEscrows)
-    .set({ status: 'expired' })
+    .set({ status: "expired" })
     .where(
       and(
-        eq(moderationEscrows.status, 'pending'),
-        lt(moderationEscrows.expiresAt, now)
-      )
+        eq(moderationEscrows.status, "pending"),
+        lt(moderationEscrows.expiresAt, now),
+      ),
     );
 
   // Build where conditions for SQL query
@@ -177,15 +177,15 @@ export const GET = withErrorHandling(async (req: NextRequest) => {
     .from(moderationEscrows)
     .leftJoin(
       sql`"User" AS ${recipientAlias}`,
-      sql`${moderationEscrows.recipientId} = ${recipientAlias}."id"`
+      sql`${moderationEscrows.recipientId} = ${recipientAlias}."id"`,
     )
     .leftJoin(
       sql`"User" AS ${adminAlias}`,
-      sql`${moderationEscrows.adminId} = ${adminAlias}."id"`
+      sql`${moderationEscrows.adminId} = ${adminAlias}."id"`,
     )
     .leftJoin(
       sql`"User" AS ${refunderAlias}`,
-      sql`${moderationEscrows.refundedBy} = ${refunderAlias}."id"`
+      sql`${moderationEscrows.refundedBy} = ${refunderAlias}."id"`,
     )
     .where(whereClause)
     .orderBy(desc(moderationEscrows.createdAt))

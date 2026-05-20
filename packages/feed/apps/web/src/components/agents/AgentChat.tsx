@@ -1,29 +1,29 @@
-'use client';
+"use client";
 
-import { FEED_POINTS_SYMBOL, logger } from '@feed/shared';
-import { Wallet } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { toast } from 'sonner';
-import { ChatViewHeader } from '@/components/chats/ChatViewHeader';
-import type { MentionableAgent } from '@/components/chats/MentionAutocomplete';
-import { MessageInput } from '@/components/chats/MessageInput';
-import { MessageList } from '@/components/chats/MessageList';
+import { FEED_POINTS_SYMBOL, logger } from "@feed/shared";
+import { Wallet } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
+import { ChatViewHeader } from "@/components/chats/ChatViewHeader";
+import type { MentionableAgent } from "@/components/chats/MentionAutocomplete";
+import { MessageInput } from "@/components/chats/MessageInput";
+import { MessageList } from "@/components/chats/MessageList";
 import type {
   ChatDetails,
   Message as ChatMessage,
   ChatParticipant,
-} from '@/components/chats/types';
-import { Separator } from '@/components/shared/Separator';
-import { useAuth } from '@/hooks/useAuth';
-import { CHAT_PAGE_SIZE } from '@/lib/constants';
-import { apiUrl } from '@/utils/api-url';
+} from "@/components/chats/types";
+import { Separator } from "@/components/shared/Separator";
+import { useAuth } from "@/hooks/useAuth";
+import { CHAT_PAGE_SIZE } from "@/lib/constants";
+import { apiUrl } from "@/utils/api-url";
 
 /**
  * Chat message structure for agent chat.
  */
 interface Message {
   id: string;
-  role: 'user' | 'assistant' | 'system';
+  role: "user" | "assistant" | "system";
   content: string;
   modelUsed?: string;
   pointsCost: number;
@@ -62,7 +62,7 @@ interface AgentChatProps {
     username?: string;
     profileImageUrl?: string;
     virtualBalance?: number;
-    modelTier: 'free' | 'pro';
+    modelTier: "free" | "pro";
   };
   onBalanceUpdate?: (newBalance: number) => void;
   /** Callback when a message is sent or received (to refresh chat list) */
@@ -82,7 +82,7 @@ export function AgentChat({
 }: AgentChatProps) {
   const { user, getAccessToken } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
 
@@ -103,10 +103,10 @@ export function AgentChat({
   const previousAgentIdRef = useRef<string | null>(null);
 
   // Use pro mode based on agent's model tier
-  const usePro = agent.modelTier === 'pro';
+  const usePro = agent.modelTier === "pro";
 
   // Scroll to newest messages
-  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
     const container = chatContainerRef.current;
     if (container) {
       container.scrollTo({ top: container.scrollHeight, behavior });
@@ -134,7 +134,7 @@ export function AgentChat({
       messages: [],
       participants: [],
     }),
-    [agent.id, agent.name, agent.profileImageUrl, user?.id]
+    [agent.id, agent.name, agent.profileImageUrl, user?.id],
   );
 
   // Create participants array for MessageList
@@ -150,7 +150,7 @@ export function AgentChat({
     if (user) {
       list.push({
         id: user.id,
-        displayName: user.displayName || user.email || 'You',
+        displayName: user.displayName || user.email || "You",
         username: user.username || undefined,
         profileImageUrl: user.profileImageUrl || undefined,
       });
@@ -173,7 +173,7 @@ export function AgentChat({
     return messages.map((msg) => ({
       id: msg.id,
       content: msg.content,
-      senderId: msg.role === 'user' ? user?.id || '' : agent.id,
+      senderId: msg.role === "user" ? user?.id || "" : agent.id,
       createdAt: msg.createdAt,
     }));
   }, [messages, user?.id, agent.id]);
@@ -192,7 +192,7 @@ export function AgentChat({
         headers: {
           Authorization: `Bearer ${token}`,
         },
-      }
+      },
     );
 
     if (res.ok) {
@@ -208,7 +208,7 @@ export function AgentChat({
         setNextCursor(data.pagination?.nextCursor || null);
       }
     } else {
-      logger.error('Failed to fetch messages', undefined, 'AgentChat');
+      logger.error("Failed to fetch messages", undefined, "AgentChat");
     }
     setLoading(false);
   }, [agent.id, getAccessToken]);
@@ -230,7 +230,7 @@ export function AgentChat({
         headers: {
           Authorization: `Bearer ${token}`,
         },
-      }
+      },
     );
 
     if (res.ok) {
@@ -294,7 +294,7 @@ export function AgentChat({
     const startTime = Date.now();
 
     const scrollToEnd = () => {
-      endMarker.scrollIntoView({ behavior: 'auto', block: 'end' });
+      endMarker.scrollIntoView({ behavior: "auto", block: "end" });
     };
 
     const finish = () => {
@@ -358,7 +358,7 @@ export function AgentChat({
           loadMore();
         }
       },
-      { root: container, rootMargin: '0px 0px 0px 0px', threshold: 0.1 }
+      { root: container, rootMargin: "0px 0px 0px 0px", threshold: 0.1 },
     );
 
     observer.observe(sentinel);
@@ -382,13 +382,13 @@ export function AgentChat({
     if (!input.trim() || sending) return;
 
     const userMessage = input;
-    setInput('');
+    setInput("");
     setSending(true);
 
     // Optimistically add user message
     const optimisticMessage: Message = {
       id: Date.now().toString(),
-      role: 'user',
+      role: "user",
       content: userMessage,
       pointsCost: 0,
       createdAt: new Date().toISOString(),
@@ -396,21 +396,21 @@ export function AgentChat({
     setMessages((prev) => [...prev, optimisticMessage]);
 
     // Scroll to bottom after adding message
-    setTimeout(() => scrollToBottom('smooth'), 50);
+    setTimeout(() => scrollToBottom("smooth"), 50);
 
     const token = await getAccessToken();
     if (!token) {
       setMessages((prev) => prev.filter((m) => m.id !== optimisticMessage.id));
-      toast.error('Authentication required');
+      toast.error("Authentication required");
       setSending(false);
       return;
     }
 
     const res = await fetch(apiUrl(`/api/agents/${agent.id}/chat`), {
-      method: 'POST',
+      method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
         message: userMessage,
@@ -421,7 +421,7 @@ export function AgentChat({
     if (!res.ok) {
       const error = (await res.json()) as { error: string };
       setMessages((prev) => prev.filter((m) => m.id !== optimisticMessage.id));
-      toast.error(error.error || 'Failed to send message');
+      toast.error(error.error || "Failed to send message");
       setSending(false);
       return;
     }
@@ -437,7 +437,7 @@ export function AgentChat({
 
     if (!data.response || !data.messageId) {
       setMessages((prev) => prev.filter((m) => m.id !== optimisticMessage.id));
-      toast.error('Invalid response from agent');
+      toast.error("Invalid response from agent");
       setSending(false);
       return;
     }
@@ -445,7 +445,7 @@ export function AgentChat({
     // Add assistant message
     const assistantMessage: Message = {
       id: data.messageId,
-      role: 'assistant',
+      role: "assistant",
       content: data.response,
       modelUsed: data.modelUsed,
       pointsCost: data.pointsCost,
@@ -454,7 +454,7 @@ export function AgentChat({
     setMessages((prev) => [...prev, assistantMessage]);
 
     // Scroll to bottom after response
-    setTimeout(() => scrollToBottom('smooth'), 50);
+    setTimeout(() => scrollToBottom("smooth"), 50);
 
     // Update agent balance without full page refresh
     onBalanceUpdate?.(data.balanceAfter);

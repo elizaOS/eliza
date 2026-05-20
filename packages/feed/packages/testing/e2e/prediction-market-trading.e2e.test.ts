@@ -16,16 +16,16 @@
  * Run with: npx playwright test prediction-market-trading.e2e.test.ts
  */
 
-import { expect, test } from '@playwright/test';
+import { expect, test } from "@playwright/test";
 import {
   type BrowserDevAuthSession,
   installPlaywrightDevAuth,
-} from './dev-auth';
+} from "./dev-auth";
 
 const BASE_URL =
   process.env.PLAYWRIGHT_BASE_URL ||
   process.env.TEST_BASE_URL ||
-  'http://127.0.0.1:3400';
+  "http://127.0.0.1:3400";
 
 let serverAvailable = false;
 let authSession: BrowserDevAuthSession | null = null;
@@ -33,11 +33,11 @@ let authHeaders: Record<string, string> = {};
 
 async function apiGet<T>(path: string): Promise<T> {
   const response = await fetch(`${BASE_URL}${path}`, {
-    headers: { ...authHeaders, accept: 'application/json' },
+    headers: { ...authHeaders, accept: "application/json" },
   });
   if (!response.ok) {
     throw new Error(
-      `GET ${path} failed: ${response.status} ${await response.text()}`
+      `GET ${path} failed: ${response.status} ${await response.text()}`,
     );
   }
   return (await response.json()) as T;
@@ -45,17 +45,17 @@ async function apiGet<T>(path: string): Promise<T> {
 
 async function apiPost<T>(path: string, body: unknown): Promise<T> {
   const response = await fetch(`${BASE_URL}${path}`, {
-    method: 'POST',
+    method: "POST",
     headers: {
       ...authHeaders,
-      'content-type': 'application/json',
-      accept: 'application/json',
+      "content-type": "application/json",
+      accept: "application/json",
     },
     body: JSON.stringify(body),
   });
   if (!response.ok) {
     throw new Error(
-      `POST ${path} failed: ${response.status} ${await response.text()}`
+      `POST ${path} failed: ${response.status} ${await response.text()}`,
     );
   }
   return (await response.json()) as T;
@@ -96,7 +96,7 @@ type PredictionBuyResponse = {
   newBalance: number;
 };
 
-test.describe('Prediction Market Trading (Simulation)', () => {
+test.describe("Prediction Market Trading (Simulation)", () => {
   test.beforeAll(async ({ browser }) => {
     // Check server availability
     try {
@@ -118,18 +118,18 @@ test.describe('Prediction Market Trading (Simulation)', () => {
     authSession = await installPlaywrightDevAuth(page, BASE_URL);
 
     const cookies = await context.cookies();
-    const cookieHeader = cookies.map((c) => `${c.name}=${c.value}`).join('; ');
+    const cookieHeader = cookies.map((c) => `${c.name}=${c.value}`).join("; ");
     authHeaders = { cookie: cookieHeader };
 
     await page.close();
     await context.close();
   });
 
-  test('should list prediction markets', async () => {
-    test.skip(!serverAvailable, 'Server not available');
+  test("should list prediction markets", async () => {
+    test.skip(!serverAvailable, "Server not available");
 
     const data = await apiGet<{ questions: PredictionMarket[]; count: number }>(
-      '/api/markets/predictions'
+      "/api/markets/predictions",
     );
 
     expect(data.questions).toBeDefined();
@@ -140,24 +140,24 @@ test.describe('Prediction Market Trading (Simulation)', () => {
     if (firstMarket) {
       expect(firstMarket.id).toBeDefined();
       expect(firstMarket.question).toBeDefined();
-      expect(typeof firstMarket.yesProbability).toBe('number');
-      expect(typeof firstMarket.noProbability).toBe('number');
+      expect(typeof firstMarket.yesProbability).toBe("number");
+      expect(typeof firstMarket.noProbability).toBe("number");
     }
   });
 
-  test('should buy YES shares in a simulation prediction market', async () => {
-    test.skip(!serverAvailable, 'Server not available');
+  test("should buy YES shares in a simulation prediction market", async () => {
+    test.skip(!serverAvailable, "Server not available");
 
     const { questions } = await apiGet<{ questions: PredictionMarket[] }>(
-      '/api/markets/predictions'
+      "/api/markets/predictions",
     );
 
-    const market = questions.find((q) => !q.resolved && q.status === 'active');
+    const market = questions.find((q) => !q.resolved && q.status === "active");
     skipUnless(market);
 
     const result = await apiPost<PredictionBuyResponse>(
       `/api/markets/predictions/${market.id}/buy`,
-      { side: 'yes', amount: 10 }
+      { side: "yes", amount: 10 },
     );
 
     expect(result.position).toBeDefined();
@@ -166,22 +166,22 @@ test.describe('Prediction Market Trading (Simulation)', () => {
     expect(result.position.shares).toBeGreaterThan(0);
     expect(result.position.avgPrice).toBeGreaterThan(0);
     expect(result.fee.amount).toBeGreaterThanOrEqual(0);
-    expect(typeof result.newBalance).toBe('number');
+    expect(typeof result.newBalance).toBe("number");
   });
 
-  test('should buy NO shares in a simulation prediction market', async () => {
-    test.skip(!serverAvailable, 'Server not available');
+  test("should buy NO shares in a simulation prediction market", async () => {
+    test.skip(!serverAvailable, "Server not available");
 
     const { questions } = await apiGet<{ questions: PredictionMarket[] }>(
-      '/api/markets/predictions'
+      "/api/markets/predictions",
     );
 
-    const market = questions.find((q) => !q.resolved && q.status === 'active');
+    const market = questions.find((q) => !q.resolved && q.status === "active");
     skipUnless(market);
 
     const result = await apiPost<PredictionBuyResponse>(
       `/api/markets/predictions/${market.id}/buy`,
-      { side: 'no', amount: 10 }
+      { side: "no", amount: 10 },
     );
 
     expect(result.position).toBeDefined();
@@ -189,11 +189,11 @@ test.describe('Prediction Market Trading (Simulation)', () => {
     expect(result.position.shares).toBeGreaterThan(0);
   });
 
-  test('should reflect position in market listing after buy', async () => {
-    test.skip(!serverAvailable || !authSession, 'Server/auth not available');
+  test("should reflect position in market listing after buy", async () => {
+    test.skip(!serverAvailable || !authSession, "Server/auth not available");
 
     const { questions } = await apiGet<{ questions: PredictionMarket[] }>(
-      `/api/markets/predictions?userId=${authSession!.userId}`
+      `/api/markets/predictions?userId=${authSession?.userId}`,
     );
 
     // At least one market should have a user position from the prior buy tests
@@ -202,7 +202,7 @@ test.describe('Prediction Market Trading (Simulation)', () => {
         (q as PredictionMarket & { userPosition?: unknown }).userPosition !==
           null &&
         (q as PredictionMarket & { userPosition?: unknown }).userPosition !==
-          undefined
+          undefined,
     );
 
     // This may not exist if buy tests were skipped

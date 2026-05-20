@@ -9,9 +9,9 @@
  * - DEBUG_PROMPTS=true
  */
 
-import { logger } from '@feed/shared';
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { logger } from "@feed/shared";
 
 export interface PromptLogEntry {
   promptType: string;
@@ -33,10 +33,10 @@ export interface PromptLogEntry {
  */
 export function isPromptLoggingEnabled(): boolean {
   return (
-    process.env.DEBUG_SAVE_PROMPTS === 'true' ||
-    process.env.DEBUG_SAVE_PROMPTS === '1' ||
-    process.env.DEBUG_PROMPTS === 'true' ||
-    process.env.DEBUG_PROMPTS === '1'
+    process.env.DEBUG_SAVE_PROMPTS === "true" ||
+    process.env.DEBUG_SAVE_PROMPTS === "1" ||
+    process.env.DEBUG_PROMPTS === "true" ||
+    process.env.DEBUG_PROMPTS === "1"
   );
 }
 
@@ -48,10 +48,10 @@ export async function logPrompt(entry: PromptLogEntry): Promise<void> {
     return;
   }
 
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const safePromptType = entry.promptType.replace(/[^a-zA-Z0-9-_]/g, '_');
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const safePromptType = entry.promptType.replace(/[^a-zA-Z0-9-_]/g, "_");
   const filename = `${timestamp}_${safePromptType}.md`;
-  const debugDir = path.join(process.cwd(), 'debug', 'prompts');
+  const debugDir = path.join(process.cwd(), "debug", "prompts");
   const filepath = path.join(debugDir, filename);
 
   // Ensure prompt log directory exists
@@ -86,32 +86,32 @@ export async function logPrompt(entry: PromptLogEntry): Promise<void> {
   // Include prompt template in log if provided
   if (entry.promptTemplate) {
     lines.push(`## Prompt Template`, ``);
-    lines.push('```');
+    lines.push("```");
     lines.push(entry.promptTemplate);
-    lines.push('```');
+    lines.push("```");
     lines.push(``);
   }
 
   // Add rendered input
   lines.push(`# Input`, ``);
-  lines.push('```');
+  lines.push("```");
   lines.push(entry.input);
-  lines.push('```');
+  lines.push("```");
   lines.push(``);
 
   // Add raw output
   lines.push(`# Output`, ``);
-  lines.push('```');
+  lines.push("```");
   lines.push(entry.output);
-  lines.push('```');
+  lines.push("```");
   lines.push(``);
 
   // Add parsed output if available
   if (entry.parsedOutput) {
     lines.push(`## Parsed Output`, ``);
-    lines.push('```json');
+    lines.push("```json");
     lines.push(entry.parsedOutput);
-    lines.push('```');
+    lines.push("```");
     lines.push(``);
   }
 
@@ -120,7 +120,7 @@ export async function logPrompt(entry: PromptLogEntry): Promise<void> {
   lines.push(``);
 
   // Write to file
-  fs.writeFileSync(filepath, lines.join('\n'), 'utf-8');
+  fs.writeFileSync(filepath, lines.join("\n"), "utf-8");
 
   logger.debug(
     `Logged prompt to ${filename}`,
@@ -128,6 +128,6 @@ export async function logPrompt(entry: PromptLogEntry): Promise<void> {
       promptType: entry.promptType,
       filepath,
     },
-    'PromptLogger'
+    "PromptLogger",
   );
 }

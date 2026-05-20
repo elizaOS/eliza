@@ -5,8 +5,8 @@
  * Eliminates duplicate boilerplate across autonomous services.
  */
 
-import { db, eq, users } from '@feed/db';
-import { StaticDataRegistry } from '@feed/engine';
+import { db, eq, users } from "@feed/db";
+import { StaticDataRegistry } from "@feed/engine";
 
 export interface AgentContext {
   agentUserId: string;
@@ -27,7 +27,7 @@ export interface AgentContext {
  * @throws Error if agent not found and not an NPC
  */
 export async function getAgentContext(
-  agentUserId: string
+  agentUserId: string,
 ): Promise<AgentContext> {
   // Check if this is an NPC (has entry in StaticDataRegistry)
   const npcActor = StaticDataRegistry.getActor(agentUserId);

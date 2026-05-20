@@ -18,10 +18,10 @@
  * - See `api-key-lastused-flusher.ts` for flush service implementation
  */
 
-import { asSystem, eq, userApiKeys } from '@feed/db';
-import { logger } from '@feed/shared';
-import crypto from 'crypto';
-import { getRedisClient, isRedisAvailable } from '../redis';
+import crypto from "node:crypto";
+import { asSystem, eq, userApiKeys } from "@feed/db";
+import { logger } from "@feed/shared";
+import { getRedisClient, isRedisAvailable } from "../redis";
 
 // ============================================================================
 // Cache Configuration
@@ -58,8 +58,8 @@ const LAST_USED_UPDATE_INTERVAL_MS = 60 * 1000;
  * 3. Batch UPDATE query to database (single query with CASE statement)
  * 4. Remove processed entries from both structures
  */
-const REDIS_KEY_LAST_USED_UPDATES = 'api-key:last-used:updates'; // Hash
-const REDIS_KEY_LAST_USED_QUEUE = 'api-key:last-used:queue'; // Sorted Set
+const REDIS_KEY_LAST_USED_UPDATES = "api-key:last-used:updates"; // Hash
+const REDIS_KEY_LAST_USED_QUEUE = "api-key:last-used:queue"; // Sorted Set
 
 interface CachedKeyInfo {
   userId: string;
@@ -139,7 +139,7 @@ function touchCacheEntry(cached: CachedKeyInfo): void {
  */
 function scheduleLastUsedUpdate(
   keyId: string,
-  cached: CachedKeyInfo | undefined
+  cached: CachedKeyInfo | undefined,
 ): void {
   const now = Date.now();
 
@@ -184,9 +184,9 @@ function scheduleLastUsedUpdate(
     // succeeds even if Redis has issues.
     pipeline.exec().catch((err) => {
       logger.warn(
-        'Failed to write lastUsedAt to Redis cache',
+        "Failed to write lastUsedAt to Redis cache",
         { keyId, error: err },
-        'ApiKeyAuth'
+        "ApiKeyAuth",
       );
       // Fallback to direct DB write if Redis fails
       // WHY: Ensures lastUsedAt is still updated even if Redis is down. This maintains
@@ -225,9 +225,9 @@ function fallbackToDirectDbWrite(keyId: string): void {
       .where(eq(userApiKeys.id, keyId));
   }).catch((err) => {
     logger.warn(
-      'Failed to update lastUsedAt (fallback)',
+      "Failed to update lastUsedAt (fallback)",
       { keyId, error: err },
-      'ApiKeyAuth'
+      "ApiKeyAuth",
     );
   });
 }
@@ -248,7 +248,7 @@ function fallbackToDirectDbWrite(keyId: string): void {
  */
 export function generateApiKey(): string {
   const randomBytes = crypto.randomBytes(32);
-  const hex = randomBytes.toString('hex');
+  const hex = randomBytes.toString("hex");
   return `bab_live_${hex}`;
 }
 
@@ -269,7 +269,7 @@ export function generateApiKey(): string {
  * ```
  */
 export function hashApiKey(apiKey: string): string {
-  return crypto.createHash('sha256').update(apiKey).digest('hex');
+  return crypto.createHash("sha256").update(apiKey).digest("hex");
 }
 
 /**
@@ -295,7 +295,7 @@ export function verifyApiKey(apiKey: string, storedHash: string): boolean {
   const inputHash = hashApiKey(apiKey);
   return crypto.timingSafeEqual(
     Buffer.from(inputHash),
-    Buffer.from(storedHash)
+    Buffer.from(storedHash),
   );
 }
 
@@ -315,7 +315,7 @@ export function verifyApiKey(apiKey: string, storedHash: string): boolean {
  */
 export function generateTestApiKey(): string {
   const randomBytes = crypto.randomBytes(32);
-  const hex = randomBytes.toString('hex');
+  const hex = randomBytes.toString("hex");
   return `bab_test_${hex}`;
 }
 
@@ -345,7 +345,7 @@ export function generateTestApiKey(): string {
  * ```
  */
 export async function validateUserApiKey(
-  apiKey: string
+  apiKey: string,
 ): Promise<{ userId: string } | null> {
   if (!apiKey) return null;
 
@@ -364,12 +364,12 @@ export async function validateUserApiKey(
     return await dbClient.query.userApiKeys.findFirst({
       where: (
         keys,
-        { eq: eqFn, and: andFn, isNull: isNullFn, or: orFn, gt: gtFn }
+        { eq: eqFn, and: andFn, isNull: isNullFn, or: orFn, gt: gtFn },
       ) =>
         andFn(
           eqFn(keys.keyHash, keyHash),
           isNullFn(keys.revokedAt),
-          orFn(isNullFn(keys.expiresAt), gtFn(keys.expiresAt, new Date()))
+          orFn(isNullFn(keys.expiresAt), gtFn(keys.expiresAt, new Date())),
         ),
     });
   });

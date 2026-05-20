@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 /**
  * Error Boundary for Next.js App Router
@@ -9,10 +9,10 @@
  * Best practice: This should be a client component and provide a way to reset the error.
  */
 
-import * as Sentry from '@sentry/nextjs';
-import { AlertTriangle } from 'lucide-react';
-import { useEffect } from 'react';
-import { posthog } from '@/lib/posthog';
+import * as Sentry from "@sentry/nextjs";
+import { AlertTriangle } from "lucide-react";
+import { useEffect } from "react";
+import { posthog } from "@/lib/posthog";
 
 export default function Error({
   error,
@@ -24,20 +24,20 @@ export default function Error({
   useEffect(() => {
     // Capture error in Sentry with additional context
     Sentry.withScope((scope) => {
-      scope.setTag('errorBoundary', 'route');
+      scope.setTag("errorBoundary", "route");
       if (error.digest) {
-        scope.setTag('errorDigest', error.digest);
+        scope.setTag("errorDigest", error.digest);
       }
       Sentry.captureException(error);
     });
 
     // Track error in PostHog
     if (posthog) {
-      posthog.capture('$exception', {
-        $exception_type: error.name || 'Error',
+      posthog.capture("$exception", {
+        $exception_type: error.name || "Error",
         $exception_message: error.message,
         $exception_stack: error.stack,
-        errorBoundary: 'route',
+        errorBoundary: "route",
         digest: error.digest,
       });
     }
@@ -49,7 +49,7 @@ export default function Error({
         <AlertTriangle className="mx-auto mb-4 h-16 w-16 text-destructive" />
         <h2 className="mb-2 font-bold text-2xl">Something went wrong</h2>
         <p className="mb-6 text-muted-foreground">
-          {error.message || 'An unexpected error occurred'}
+          {error.message || "An unexpected error occurred"}
         </p>
         {error.digest && (
           <p className="mb-4 text-muted-foreground text-sm">
@@ -64,7 +64,7 @@ export default function Error({
             Try again
           </button>
           <button
-            onClick={() => (window.location.href = '/')}
+            onClick={() => (window.location.href = "/")}
             className="rounded-md bg-secondary px-6 py-2 text-secondary-foreground transition-colors hover:bg-secondary/90"
           >
             Go home

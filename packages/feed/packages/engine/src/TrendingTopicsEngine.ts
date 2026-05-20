@@ -37,10 +37,10 @@
  * ```
  */
 
-import { logger } from '@feed/shared';
-import type { FeedLLMClient } from './llm/openai-client';
-import { getPromptParams, renderPrompt, trendingTopics } from './prompts';
-import type { FeedPost } from './types/shared';
+import { logger } from "@feed/shared";
+import type { FeedLLMClient } from "./llm/openai-client";
+import { getPromptParams, renderPrompt, trendingTopics } from "./prompts";
+import type { FeedPost } from "./types/shared";
 
 /**
  * A trending topic with LLM-generated description
@@ -80,7 +80,7 @@ export class TrendingTopicsEngine {
   private lastUpdateTick = 0;
   private updateInterval = 4; // Update every 4 ticks (4 hours, 6x per day)
   /** Hash of the last top topics to detect changes */
-  private lastTopicsHash = '';
+  private lastTopicsHash = "";
   /** Minimum score change ratio required to trigger regeneration (30%) */
   private static readonly MIN_CHANGE_THRESHOLD = 0.3;
 
@@ -103,14 +103,14 @@ export class TrendingTopicsEngine {
   async updateTrends(
     recentPosts: FeedPost[],
     currentTick: number,
-    forceUpdate = false
+    forceUpdate = false,
   ): Promise<void> {
     // Validation
     if (!recentPosts || recentPosts.length === 0) {
       logger.warn(
-        'No recent posts available for trend detection',
+        "No recent posts available for trend detection",
         undefined,
-        'TrendingTopicsEngine'
+        "TrendingTopicsEngine",
       );
       return;
     }
@@ -131,9 +131,9 @@ export class TrendingTopicsEngine {
 
     if (tagFrequency.size === 0) {
       logger.warn(
-        'No tags found in recent posts - cannot generate trends',
+        "No tags found in recent posts - cannot generate trends",
         undefined,
-        'TrendingTopicsEngine'
+        "TrendingTopicsEngine",
       );
       return;
     }
@@ -143,9 +143,9 @@ export class TrendingTopicsEngine {
 
     if (rankedTopics.length === 0) {
       logger.warn(
-        'No topics to rank - cannot generate trends',
+        "No topics to rank - cannot generate trends",
         undefined,
-        'TrendingTopicsEngine'
+        "TrendingTopicsEngine",
       );
       return;
     }
@@ -165,7 +165,7 @@ export class TrendingTopicsEngine {
       logger.debug(
         `Skipping trend regeneration - topics unchanged (hash: ${newTopicsHash})`,
         { topTopics: topTopics.map((t) => t.tag) },
-        'TrendingTopicsEngine'
+        "TrendingTopicsEngine",
       );
       // Update the tick but reuse existing trends with updated counts
       this.lastUpdateTick = currentTick;
@@ -181,7 +181,7 @@ export class TrendingTopicsEngine {
         previousHash: this.lastTopicsHash,
         hasSignificantChange,
       },
-      'TrendingTopicsEngine'
+      "TrendingTopicsEngine",
     );
 
     this.lastUpdateTick = currentTick;
@@ -190,7 +190,7 @@ export class TrendingTopicsEngine {
     // 5. Generate LLM descriptions for each trend
     this.currentTrends = await this.generateTrendDescriptions(
       topTopics,
-      recentPosts
+      recentPosts,
     );
 
     logger.info(
@@ -198,7 +198,7 @@ export class TrendingTopicsEngine {
       {
         trends: this.currentTrends.map((t) => t.trendName),
       },
-      'TrendingTopicsEngine'
+      "TrendingTopicsEngine",
     );
   }
 
@@ -206,17 +206,17 @@ export class TrendingTopicsEngine {
    * Compute a hash of the top topics for change detection
    */
   private computeTopicsHash(
-    topics: Array<{ tag: string; count: number; score: number }>
+    topics: Array<{ tag: string; count: number; score: number }>,
   ): string {
     // Hash based on tag names and relative ordering
-    return topics.map((t) => `${t.tag}:${Math.round(t.score)}`).join('|');
+    return topics.map((t) => `${t.tag}:${Math.round(t.score)}`).join("|");
   }
 
   /**
    * Check if topics have changed significantly from previous update
    */
   private hasTopicsChanged(
-    newTopics: Array<{ tag: string; count: number; score: number }>
+    newTopics: Array<{ tag: string; count: number; score: number }>,
   ): boolean {
     // If no previous trends, definitely changed
     if (this.currentTrends.length === 0 || !this.lastTopicsHash) {
@@ -258,12 +258,12 @@ export class TrendingTopicsEngine {
    * Compute how much the scores have changed relative to current trends
    */
   private computeScoreChange(
-    newTopics: Array<{ tag: string; score: number }>
+    newTopics: Array<{ tag: string; score: number }>,
   ): number {
     if (this.currentTrends.length === 0) return 1;
 
     const currentScoreMap = new Map(
-      this.currentTrends.map((t) => [t.tag, t.score])
+      this.currentTrends.map((t) => [t.tag, t.score]),
     );
 
     let totalChange = 0;
@@ -292,7 +292,7 @@ export class TrendingTopicsEngine {
       score: number;
       relatedQuestions: number[];
       samplePosts: string[];
-    }>
+    }>,
   ): void {
     const newTopicMap = new Map(newTopics.map((t) => [t.tag, t]));
 
@@ -325,13 +325,13 @@ export class TrendingTopicsEngine {
    */
   getTrendContext(): string {
     if (this.currentTrends.length === 0) {
-      return 'No trending topics yet.';
+      return "No trending topics yet.";
     }
 
     const trendList = this.currentTrends
       .slice(0, 3) // Top 3 trends
       .map((t) => `"${t.trendName}" (${t.count} posts)`)
-      .join(', ');
+      .join(", ");
 
     return `🔥 Trending: ${trendList}`;
   }
@@ -344,23 +344,23 @@ export class TrendingTopicsEngine {
    */
   getDetailedTrendContext(): string {
     if (this.currentTrends.length === 0) {
-      return 'TRENDING TOPICS: (none yet)';
+      return "TRENDING TOPICS: (none yet)";
     }
 
     const trendList = this.currentTrends
       .map((t, i) => {
         if (!t.trendName || !t.description) {
           throw new Error(
-            `Invalid trend at index ${i}: missing trendName or description`
+            `Invalid trend at index ${i}: missing trendName or description`,
           );
         }
         const desc =
           t.description.length > 60
-            ? t.description.substring(0, 60) + '...'
+            ? `${t.description.substring(0, 60)}...`
             : t.description;
         return `${i + 1}."${t.trendName}"(${t.count}): ${desc}`;
       })
-      .join('\n');
+      .join("\n");
 
     return `TRENDING TOPICS:\n${trendList}`;
   }
@@ -425,7 +425,7 @@ export class TrendingTopicsEngine {
         relatedQuestions: Set<number>;
       }
     >,
-    currentTick: number
+    currentTick: number,
   ): Array<{
     tag: string;
     count: number;
@@ -484,7 +484,7 @@ export class TrendingTopicsEngine {
       relatedQuestions: number[];
       samplePosts: string[];
     }>,
-    allPosts: FeedPost[]
+    allPosts: FeedPost[],
   ): Promise<TrendingTopic[]> {
     // Build prompt with sample posts for each topic
     const topicsList = topics
@@ -497,19 +497,19 @@ export class TrendingTopicsEngine {
           .map((p) => {
             const content =
               p.content.length > 80
-                ? p.content.substring(0, 80) + '...'
+                ? `${p.content.substring(0, 80)}...`
                 : p.content;
             return `@${p.authorName}:"${content}"`;
           })
-          .join(' | ');
+          .join(" | ");
 
         return `${i + 1}. "${topic.tag}" (${topic.count}): ${posts}`;
       })
-      .join('\n');
+      .join("\n");
 
     const prompt = renderPrompt(trendingTopics, {
       topicsList,
-      previousTrends: '',
+      previousTrends: "",
     });
     const params = getPromptParams(trendingTopics);
 
@@ -518,9 +518,9 @@ export class TrendingTopicsEngine {
       undefined,
       {
         ...params,
-        format: 'xml',
-        promptType: 'trending_topics_generate',
-      }
+        format: "xml",
+        promptType: "trending_topics_generate",
+      },
     );
 
     // Extract trend descriptions from XML response structure
@@ -549,10 +549,10 @@ export class TrendingTopicsEngine {
    * Extract trend descriptions from LLM response (handles XML structure variations)
    */
   private extractTrendDescriptions(
-    rawResponse: Record<string, unknown>
+    rawResponse: Record<string, unknown>,
   ): Array<{ trendName: string; description: string }> {
     // Direct trends array
-    if ('trends' in rawResponse && Array.isArray(rawResponse.trends)) {
+    if ("trends" in rawResponse && Array.isArray(rawResponse.trends)) {
       return rawResponse.trends as Array<{
         trendName: string;
         description: string;
@@ -560,9 +560,9 @@ export class TrendingTopicsEngine {
     }
 
     // Wrapped in response object
-    if ('response' in rawResponse && rawResponse.response) {
+    if ("response" in rawResponse && rawResponse.response) {
       const response = rawResponse.response as Record<string, unknown>;
-      if ('trends' in response && Array.isArray(response.trends)) {
+      if ("trends" in response && Array.isArray(response.trends)) {
         return response.trends as Array<{
           trendName: string;
           description: string;
@@ -570,12 +570,12 @@ export class TrendingTopicsEngine {
       }
       // Single trend wrapped in object
       if (
-        'trends' in response &&
+        "trends" in response &&
         response.trends &&
-        typeof response.trends === 'object'
+        typeof response.trends === "object"
       ) {
         const trendsObj = response.trends as Record<string, unknown>;
-        if ('trend' in trendsObj) {
+        if ("trend" in trendsObj) {
           const trendData = trendsObj.trend;
           return Array.isArray(trendData)
             ? trendData
@@ -599,7 +599,7 @@ export class TrendingTopicsEngine {
       logger.warn(
         `Update interval ${ticks} is too low, using minimum of 1`,
         undefined,
-        'TrendingTopicsEngine'
+        "TrendingTopicsEngine",
       );
     }
   }
@@ -619,7 +619,7 @@ export class TrendingTopicsEngine {
    */
   async forceTrendUpdate(
     recentPosts: FeedPost[],
-    currentTick: number
+    currentTick: number,
   ): Promise<void> {
     await this.updateTrends(recentPosts, currentTick, true);
   }

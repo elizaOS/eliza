@@ -1,7 +1,7 @@
-import { PageContent } from './client';
+import { PageContent } from "./client";
 
 export function generateStaticParams() {
-  return [{ tokenId: '_placeholder' }];
+  return [{ tokenId: "_placeholder" }];
 }
 
 export default function Page() {

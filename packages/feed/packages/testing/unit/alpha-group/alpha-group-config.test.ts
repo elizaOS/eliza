@@ -8,7 +8,7 @@
  * - Helper functions (decay calculation, focus weights)
  */
 
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it } from "bun:test";
 
 import {
   ALPHA_GROUP_CONFIG,
@@ -16,11 +16,11 @@ import {
   DOMAIN_FOCUS_WEIGHTS,
   getFocusWeightsForDomains,
   shouldResetDeclineCount,
-} from '@feed/engine';
+} from "@feed/engine";
 
-describe('Alpha Group Configuration', () => {
-  describe('Default Values', () => {
-    it('should have sensible default values for all config options', () => {
+describe("Alpha Group Configuration", () => {
+  describe("Default Values", () => {
+    it("should have sensible default values for all config options", () => {
       // Invite probability
       expect(ALPHA_GROUP_CONFIG.inviteProbabilityMultiplier).toBe(1.0);
       expect(ALPHA_GROUP_CONFIG.maxInvitesPerTick).toBe(15);
@@ -60,7 +60,7 @@ describe('Alpha Group Configuration', () => {
       expect(ALPHA_GROUP_CONFIG.grandfatheringEnabled).toBe(true);
     });
 
-    it('should have thresholds lower than original hardcoded values', () => {
+    it("should have thresholds lower than original hardcoded values", () => {
       // Original values were: MIN_REPLIES=3, MIN_LIKES=5, MIN_TOTAL=10
       expect(ALPHA_GROUP_CONFIG.minReplies).toBeLessThan(3);
       expect(ALPHA_GROUP_CONFIG.minLikes).toBeLessThan(5);
@@ -68,8 +68,8 @@ describe('Alpha Group Configuration', () => {
     });
   });
 
-  describe('calculateNextEligibleDate', () => {
-    it('should calculate correct cooldown for first decline', () => {
+  describe("calculateNextEligibleDate", () => {
+    it("should calculate correct cooldown for first decline", () => {
       const now = Date.now();
       const nextEligible = calculateNextEligibleDate(1);
 
@@ -77,14 +77,14 @@ describe('Alpha Group Configuration', () => {
       const expectedMs =
         ALPHA_GROUP_CONFIG.inviteDecayBaseHours * 60 * 60 * 1000;
       expect(nextEligible.getTime()).toBeGreaterThanOrEqual(
-        now + expectedMs - 1000
+        now + expectedMs - 1000,
       );
       expect(nextEligible.getTime()).toBeLessThanOrEqual(
-        now + expectedMs + 1000
+        now + expectedMs + 1000,
       );
     });
 
-    it('should apply exponential backoff for subsequent declines', () => {
+    it("should apply exponential backoff for subsequent declines", () => {
       const now = Date.now();
 
       // Decline 1: 24h, Decline 2: 48h, Decline 3: 96h
@@ -99,7 +99,7 @@ describe('Alpha Group Configuration', () => {
       expect(decline3.getTime() - now).toBeGreaterThan(base * 3);
     });
 
-    it('should cap cooldown at max hours', () => {
+    it("should cap cooldown at max hours", () => {
       const now = Date.now();
 
       // 10 declines would be 24 * 2^9 = 12288 hours, but capped at 168
@@ -109,7 +109,7 @@ describe('Alpha Group Configuration', () => {
       expect(decline10.getTime() - now).toBeLessThanOrEqual(maxMs + 1000);
     });
 
-    it('should handle zero or negative decline counts', () => {
+    it("should handle zero or negative decline counts", () => {
       const now = Date.now();
 
       // Edge case: 0 declines should use base hours
@@ -120,100 +120,100 @@ describe('Alpha Group Configuration', () => {
     });
   });
 
-  describe('shouldResetDeclineCount', () => {
-    it('should return true for null lastDeclinedAt', () => {
+  describe("shouldResetDeclineCount", () => {
+    it("should return true for null lastDeclinedAt", () => {
       expect(shouldResetDeclineCount(null)).toBe(true);
     });
 
-    it('should return true if decline was more than resetDays ago', () => {
+    it("should return true if decline was more than resetDays ago", () => {
       const oldDate = new Date(
         Date.now() -
-          (ALPHA_GROUP_CONFIG.inviteDecayResetDays + 1) * 24 * 60 * 60 * 1000
+          (ALPHA_GROUP_CONFIG.inviteDecayResetDays + 1) * 24 * 60 * 60 * 1000,
       );
 
       expect(shouldResetDeclineCount(oldDate)).toBe(true);
     });
 
-    it('should return false if decline was recent', () => {
+    it("should return false if decline was recent", () => {
       const recentDate = new Date(
         Date.now() -
-          (ALPHA_GROUP_CONFIG.inviteDecayResetDays - 1) * 24 * 60 * 60 * 1000
+          (ALPHA_GROUP_CONFIG.inviteDecayResetDays - 1) * 24 * 60 * 60 * 1000,
       );
 
       expect(shouldResetDeclineCount(recentDate)).toBe(false);
     });
 
-    it('should return false for today', () => {
+    it("should return false for today", () => {
       const today = new Date();
       expect(shouldResetDeclineCount(today)).toBe(false);
     });
   });
 
-  describe('getFocusWeightsForDomains', () => {
-    it('should return trading-focused weights for crypto domains', () => {
-      const weights = getFocusWeightsForDomains(['crypto']);
+  describe("getFocusWeightsForDomains", () => {
+    it("should return trading-focused weights for crypto domains", () => {
+      const weights = getFocusWeightsForDomains(["crypto"]);
       expect(weights.trading).toBeGreaterThan(weights.social);
       expect(weights.social + weights.trading).toBeCloseTo(1, 5);
     });
 
-    it('should return trading-focused weights for trading domains', () => {
-      for (const domain of ['trading', 'finance', 'defi', 'markets']) {
+    it("should return trading-focused weights for trading domains", () => {
+      for (const domain of ["trading", "finance", "defi", "markets"]) {
         const weights = getFocusWeightsForDomains([domain]);
         expect(weights.trading).toBeGreaterThan(weights.social);
       }
     });
 
-    it('should return social-focused weights for media domains', () => {
-      for (const domain of ['media', 'politics', 'entertainment', 'culture']) {
+    it("should return social-focused weights for media domains", () => {
+      for (const domain of ["media", "politics", "entertainment", "culture"]) {
         const weights = getFocusWeightsForDomains([domain]);
         expect(weights.social).toBeGreaterThan(weights.trading);
       }
     });
 
-    it('should return balanced weights for tech domains', () => {
-      const weights = getFocusWeightsForDomains(['tech']);
+    it("should return balanced weights for tech domains", () => {
+      const weights = getFocusWeightsForDomains(["tech"]);
       // Tech is slightly social-leaning
       expect(weights.social).toBeGreaterThanOrEqual(0.5);
       expect(weights.trading).toBeLessThanOrEqual(0.5);
     });
 
-    it('should return default weights for empty domains', () => {
+    it("should return default weights for empty domains", () => {
       const weights = getFocusWeightsForDomains([]);
       expect(weights.social).toBe(ALPHA_GROUP_CONFIG.defaultSocialWeight);
       expect(weights.trading).toBe(ALPHA_GROUP_CONFIG.defaultTradingWeight);
     });
 
-    it('should return default weights for undefined domains', () => {
+    it("should return default weights for undefined domains", () => {
       const weights = getFocusWeightsForDomains(undefined);
       expect(weights.social).toBe(ALPHA_GROUP_CONFIG.defaultSocialWeight);
       expect(weights.trading).toBe(ALPHA_GROUP_CONFIG.defaultTradingWeight);
     });
 
-    it('should return default weights for unknown domains', () => {
-      const weights = getFocusWeightsForDomains(['unknown-domain', 'random']);
+    it("should return default weights for unknown domains", () => {
+      const weights = getFocusWeightsForDomains(["unknown-domain", "random"]);
       expect(weights.social).toBe(ALPHA_GROUP_CONFIG.defaultSocialWeight);
       expect(weights.trading).toBe(ALPHA_GROUP_CONFIG.defaultTradingWeight);
     });
 
-    it('should use first matching domain if multiple provided', () => {
+    it("should use first matching domain if multiple provided", () => {
       // If crypto is first, should use crypto weights
-      const cryptoFirst = getFocusWeightsForDomains(['crypto', 'media']);
+      const cryptoFirst = getFocusWeightsForDomains(["crypto", "media"]);
       expect(cryptoFirst.trading).toBeGreaterThan(cryptoFirst.social);
 
       // If media is first, should use media weights
-      const mediaFirst = getFocusWeightsForDomains(['media', 'crypto']);
+      const mediaFirst = getFocusWeightsForDomains(["media", "crypto"]);
       expect(mediaFirst.social).toBeGreaterThan(mediaFirst.trading);
     });
   });
 
-  describe('DOMAIN_FOCUS_WEIGHTS constant', () => {
-    it('should have weights that sum to 1.0 for each domain', () => {
+  describe("DOMAIN_FOCUS_WEIGHTS constant", () => {
+    it("should have weights that sum to 1.0 for each domain", () => {
       for (const weights of Object.values(DOMAIN_FOCUS_WEIGHTS)) {
         expect(weights.social + weights.trading).toBeCloseTo(1.0, 5);
       }
     });
 
-    it('should have all weights in 0-1 range', () => {
+    it("should have all weights in 0-1 range", () => {
       for (const weights of Object.values(DOMAIN_FOCUS_WEIGHTS)) {
         expect(weights.social).toBeGreaterThanOrEqual(0);
         expect(weights.social).toBeLessThanOrEqual(1);

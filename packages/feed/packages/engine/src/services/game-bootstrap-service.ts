@@ -5,7 +5,7 @@
  * Replaces the need for manual seeding scripts.
  */
 
-import { getSyntheticPerpQuoteState } from '@feed/core/markets/perps';
+import { getSyntheticPerpQuoteState } from "@feed/core/markets/perps";
 import {
   actorState,
   db,
@@ -19,12 +19,12 @@ import {
   rssFeedSources,
   sql,
   users,
-} from '@feed/db';
-import type { ActorTier } from '@feed/shared';
-import { logger } from '@feed/shared';
-import { DEFAULT_RSS_SOURCES } from '../config/rss-sources';
-import { CapitalAllocationService } from './capital-allocation-service';
-import { StaticDataRegistry } from './static-data-registry';
+} from "@feed/db";
+import type { ActorTier } from "@feed/shared";
+import { logger } from "@feed/shared";
+import { DEFAULT_RSS_SOURCES } from "../config/rss-sources";
+import { CapitalAllocationService } from "./capital-allocation-service";
+import { StaticDataRegistry } from "./static-data-registry";
 
 // Minimum balance thresholds by tier
 const MINIMUM_BALANCE_BY_TIER: Record<string, number> = {
@@ -66,7 +66,7 @@ export class GameBootstrapService {
   ): number | null {
     for (const candidate of candidates) {
       if (
-        typeof candidate === 'number' &&
+        typeof candidate === "number" &&
         Number.isFinite(candidate) &&
         candidate > 0
       ) {
@@ -82,10 +82,10 @@ export class GameBootstrapService {
   }): Promise<number> {
     let realPrice: number | null = null;
     try {
-      const { realPriceService } = await import('./real-price-service');
+      const { realPriceService } = await import("./real-price-service");
       const candidate = realPriceService.getBasePriceForOrg(org.id);
       if (
-        typeof candidate === 'number' &&
+        typeof candidate === "number" &&
         Number.isFinite(candidate) &&
         candidate > 0
       ) {
@@ -95,24 +95,30 @@ export class GameBootstrapService {
       // Real price service not available — use static price fallback.
     }
 
-    return this.getFirstPositivePrice(realPrice, org.initialPrice) ?? 100;
+    return (
+      GameBootstrapService.getFirstPositivePrice(realPrice, org.initialPrice) ??
+      100
+    );
   }
 
   static async bootstrapIfNeeded(): Promise<GameBootstrapResult | null> {
     const now = Date.now();
 
     // Check if we've bootstrapped recently
-    if (now - this.lastBootstrapTime < this.BOOTSTRAP_COOLDOWN_MS) {
+    if (
+      now - GameBootstrapService.lastBootstrapTime <
+      GameBootstrapService.BOOTSTRAP_COOLDOWN_MS
+    ) {
       return null;
     }
 
     // Prevent concurrent bootstrapping
-    if (this.isBootstrapping) {
+    if (GameBootstrapService.isBootstrapping) {
       return null;
     }
 
-    this.isBootstrapping = true;
-    this.lastBootstrapTime = now;
+    GameBootstrapService.isBootstrapping = true;
+    GameBootstrapService.lastBootstrapTime = now;
 
     const result: GameBootstrapResult = {
       actorsCreated: 0,
@@ -144,7 +150,7 @@ export class GameBootstrapService {
       // 1. Sync actor states (only dynamic data)
       for (const actor of staticActors) {
         if (!existingActorIds.has(actor.id)) {
-          await this.seedActorState(actor);
+          await GameBootstrapService.seedActorState(actor);
           result.actorsCreated++;
         }
       }
@@ -152,30 +158,33 @@ export class GameBootstrapService {
       // 2. Sync organization states (only dynamic data)
       for (const org of staticOrgs) {
         if (!existingOrgIds.has(org.id)) {
-          await this.seedOrganizationState(org);
+          await GameBootstrapService.seedOrganizationState(org);
           result.organizationsCreated++;
         }
       }
 
       // 3. Ensure minimum balances
-      const topUpResult = await this.ensureMinimumBalances();
+      const topUpResult = await GameBootstrapService.ensureMinimumBalances();
       result.actorsToppedUp = topUpResult.count;
       result.totalTopUpAmount = topUpResult.totalAmount;
 
       // 4. Ensure pools exist
-      result.poolsCreated = await this.ensureActorPools();
+      result.poolsCreated = await GameBootstrapService.ensureActorPools();
 
       // 4b. Ensure NPC User records exist (for wallet/payout operations)
-      result.npcUsersCreated = await this.ensureNpcUsers(staticActors);
+      result.npcUsersCreated =
+        await GameBootstrapService.ensureNpcUsers(staticActors);
 
       // 5. Ensure game state exists
-      result.gameStateInitialized = await this.ensureGameState();
+      result.gameStateInitialized =
+        await GameBootstrapService.ensureGameState();
 
       // 6. Ensure RSS feeds
-      result.rssFeedsCreated = await this.ensureRSSFeeds();
+      result.rssFeedsCreated = await GameBootstrapService.ensureRSSFeeds();
 
       // 7. Ensure perp market snapshots exist for all tradeable organizations
-      result.perpMarketsCreated = await this.ensurePerpMarketSnapshots();
+      result.perpMarketsCreated =
+        await GameBootstrapService.ensurePerpMarketSnapshots();
 
       // Log summary if anything changed
       const hasChanges =
@@ -189,25 +198,25 @@ export class GameBootstrapService {
         result.gameStateInitialized;
 
       if (hasChanges) {
-        logger.info('Game bootstrap complete', result, 'GameBootstrapService');
+        logger.info("Game bootstrap complete", result, "GameBootstrapService");
       }
 
       return result;
     } catch (error) {
       logger.error(
-        'Game bootstrap failed',
+        "Game bootstrap failed",
         { error: String(error) },
-        'GameBootstrapService'
+        "GameBootstrapService",
       );
       throw error;
     } finally {
-      this.isBootstrapping = false;
+      GameBootstrapService.isBootstrapping = false;
     }
   }
 
   static async forceFullSync(): Promise<GameBootstrapResult> {
-    this.lastBootstrapTime = 0;
-    this.isBootstrapping = false;
+    GameBootstrapService.lastBootstrapTime = 0;
+    GameBootstrapService.isBootstrapping = false;
 
     const result: GameBootstrapResult = {
       actorsCreated: 0,
@@ -229,33 +238,35 @@ export class GameBootstrapService {
 
     // Sync all actor states (update existing, create missing)
     for (const actor of staticActors) {
-      const syncResult = await this.syncActorState(actor);
+      const syncResult = await GameBootstrapService.syncActorState(actor);
       if (syncResult.created) result.actorsCreated++;
       if (syncResult.updated) result.actorsUpdated++;
     }
 
     // Sync all organization states
     for (const org of staticOrgs) {
-      const syncResult = await this.syncOrganizationState(org);
+      const syncResult = await GameBootstrapService.syncOrganizationState(org);
       if (syncResult.created) result.organizationsCreated++;
       if (syncResult.updated) result.organizationsUpdated++;
     }
 
     // Ensure minimum balances
-    const topUpResult = await this.ensureMinimumBalances();
+    const topUpResult = await GameBootstrapService.ensureMinimumBalances();
     result.actorsToppedUp = topUpResult.count;
     result.totalTopUpAmount = topUpResult.totalAmount;
 
-    result.poolsCreated = await this.ensureActorPools();
+    result.poolsCreated = await GameBootstrapService.ensureActorPools();
 
     // Ensure NPC User records exist (for wallet/payout operations)
-    result.npcUsersCreated = await this.ensureNpcUsers(staticActors);
+    result.npcUsersCreated =
+      await GameBootstrapService.ensureNpcUsers(staticActors);
 
-    result.gameStateInitialized = await this.ensureGameState();
-    result.rssFeedsCreated = await this.ensureRSSFeeds();
-    result.perpMarketsCreated = await this.ensurePerpMarketSnapshots();
+    result.gameStateInitialized = await GameBootstrapService.ensureGameState();
+    result.rssFeedsCreated = await GameBootstrapService.ensureRSSFeeds();
+    result.perpMarketsCreated =
+      await GameBootstrapService.ensurePerpMarketSnapshots();
 
-    logger.info('Force full sync complete', result, 'GameBootstrapService');
+    logger.info("Force full sync complete", result, "GameBootstrapService");
     return result;
   }
 
@@ -284,7 +295,7 @@ export class GameBootstrapService {
     logger.debug(
       `Seeded actor state ${actor.name} with $${capital.tradingBalance}`,
       { actorId: actor.id },
-      'GameBootstrapService'
+      "GameBootstrapService",
     );
   }
 
@@ -304,14 +315,14 @@ export class GameBootstrapService {
       .limit(1);
 
     if (existing.length === 0) {
-      await this.seedActorState(actor);
+      await GameBootstrapService.seedActorState(actor);
       return { created: true, updated: false };
     }
 
     const existingState = existing[0];
     if (!existingState) return { created: false, updated: false };
 
-    const tier = actor.tier || 'C_TIER';
+    const tier = actor.tier || "C_TIER";
     const minimumBalance =
       MINIMUM_BALANCE_BY_TIER[tier] || DEFAULT_MINIMUM_BALANCE;
     const currentBalance = Number(existingState.tradingBalance) || 0;
@@ -336,7 +347,7 @@ export class GameBootstrapService {
     initialPrice: number | null;
   }): Promise<void> {
     const effectivePrice =
-      await this.resolveCanonicalOrganizationSeedPrice(org);
+      await GameBootstrapService.resolveCanonicalOrganizationSeedPrice(org);
 
     await db.insert(organizationState).values({
       id: org.id,
@@ -348,7 +359,7 @@ export class GameBootstrapService {
     logger.debug(
       `Seeded organization state ${org.name}`,
       { orgId: org.id, price: effectivePrice },
-      'GameBootstrapService'
+      "GameBootstrapService",
     );
   }
 
@@ -368,7 +379,7 @@ export class GameBootstrapService {
       .limit(1);
 
     if (existing.length === 0) {
-      await this.seedOrganizationState(org);
+      await GameBootstrapService.seedOrganizationState(org);
       return { created: true, updated: false };
     }
 
@@ -376,11 +387,11 @@ export class GameBootstrapService {
     if (!existingState) return { created: false, updated: false };
 
     const currentPrice =
-      typeof existingState.currentPrice === 'number'
+      typeof existingState.currentPrice === "number"
         ? existingState.currentPrice
         : Number(existingState.currentPrice);
     const basePrice =
-      typeof existingState.basePrice === 'number'
+      typeof existingState.basePrice === "number"
         ? existingState.basePrice
         : Number(existingState.basePrice);
 
@@ -390,7 +401,7 @@ export class GameBootstrapService {
 
     if (hasInvalidCurrentPrice || hasInvalidBasePrice) {
       const canonicalPrice =
-        await this.resolveCanonicalOrganizationSeedPrice(org);
+        await GameBootstrapService.resolveCanonicalOrganizationSeedPrice(org);
       await db
         .update(organizationState)
         .set({
@@ -408,7 +419,7 @@ export class GameBootstrapService {
           previousBasePrice: existingState.basePrice,
           canonicalPrice,
         },
-        'GameBootstrapService'
+        "GameBootstrapService",
       );
 
       return { created: false, updated: true };
@@ -436,7 +447,7 @@ export class GameBootstrapService {
       // Get static actor data for tier info
       const staticActor = StaticDataRegistry.getActor(state.id);
       const currentBalance = Number(state.tradingBalance) || 0;
-      const tier = staticActor?.tier || 'C_TIER';
+      const tier = staticActor?.tier || "C_TIER";
       const minimumBalance =
         MINIMUM_BALANCE_BY_TIER[tier] || DEFAULT_MINIMUM_BALANCE;
 
@@ -458,7 +469,7 @@ export class GameBootstrapService {
         logger.debug(
           `Topped up ${staticActor?.name ?? state.id}: $${currentBalance} → +$${topUpAmount}`,
           { actorId: state.id, topUpAmount },
-          'GameBootstrapService'
+          "GameBootstrapService",
         );
       }
     }
@@ -497,11 +508,11 @@ export class GameBootstrapService {
           totalValue: balance.toString(),
           totalDeposits: balance.toString(),
           availableBalance: balance.toString(),
-          lifetimePnL: '0',
+          lifetimePnL: "0",
           performanceFeeRate: 0.05,
-          totalFeesCollected: '0',
+          totalFeesCollected: "0",
           isActive: true,
-          status: 'ACTIVE',
+          status: "ACTIVE",
           updatedAt: new Date(),
         });
 
@@ -522,7 +533,7 @@ export class GameBootstrapService {
    * This allows NPCs to receive wallet credits during payouts
    */
   private static async ensureNpcUsers(
-    staticActors: Array<{ id: string; name: string }>
+    staticActors: Array<{ id: string; name: string }>,
   ): Promise<number> {
     if (staticActors.length === 0) {
       return 0;
@@ -552,10 +563,10 @@ export class GameBootstrapService {
         displayName: actor.name,
         username: actor.id, // Use actor ID as username
         isActor: true,
-        virtualBalance: '10000', // NPCs get starting balance
-        totalDeposited: '10000',
-        totalWithdrawn: '0',
-        lifetimePnL: '0',
+        virtualBalance: "10000", // NPCs get starting balance
+        totalDeposited: "10000",
+        totalWithdrawn: "0",
+        lifetimePnL: "0",
         createdAt: now,
         updatedAt: now,
       });
@@ -567,7 +578,7 @@ export class GameBootstrapService {
       logger.info(
         `Created ${created} NPC User records`,
         { created },
-        'GameBootstrapService'
+        "GameBootstrapService",
       );
     }
 
@@ -596,7 +607,7 @@ export class GameBootstrapService {
         updatedAt: now,
       });
 
-      logger.info('Game state initialized', undefined, 'GameBootstrapService');
+      logger.info("Game state initialized", undefined, "GameBootstrapService");
       return true;
     }
 
@@ -673,7 +684,7 @@ export class GameBootstrapService {
       })
       .from(perpMarketSnapshots);
     const existingByTicker = new Map(
-      existingSnapshots.map((snapshot) => [snapshot.ticker, snapshot])
+      existingSnapshots.map((snapshot) => [snapshot.ticker, snapshot]),
     );
 
     // Get organization states for current prices
@@ -688,7 +699,7 @@ export class GameBootstrapService {
 
     const now = new Date();
     const nextFundingTime = new Date(
-      now.getTime() + FUNDING_INTERVAL_MS
+      now.getTime() + FUNDING_INTERVAL_MS,
     ).toISOString();
 
     for (const org of tradeableOrgs) {
@@ -698,11 +709,12 @@ export class GameBootstrapService {
 
       const state = stateByOrgId.get(org.id);
       const currentPrice =
-        this.getFirstPositivePrice(
+        GameBootstrapService.getFirstPositivePrice(
           state?.currentPrice,
           state?.basePrice,
-          org.initialPrice
-        ) ?? (await this.resolveCanonicalOrganizationSeedPrice(org));
+          org.initialPrice,
+        ) ??
+        (await GameBootstrapService.resolveCanonicalOrganizationSeedPrice(org));
       const existingSnapshot = existingByTicker.get(org.ticker);
       const initialQuote = getSyntheticPerpQuoteState({
         ticker: org.ticker,
@@ -768,7 +780,7 @@ export class GameBootstrapService {
         logger.debug(
           `Created perp market snapshot for ${org.ticker} (${org.name})`,
           { ticker: org.ticker, price: currentPrice },
-          'GameBootstrapService'
+          "GameBootstrapService",
         );
         continue;
       }
@@ -828,7 +840,7 @@ export class GameBootstrapService {
         logger.warn(
           `Repaired invalid perp market snapshot for ${org.ticker}`,
           { ticker: org.ticker, organizationId: org.id, currentPrice },
-          'GameBootstrapService'
+          "GameBootstrapService",
         );
       }
     }
@@ -837,7 +849,7 @@ export class GameBootstrapService {
       logger.info(
         `Created ${created} perp market snapshots`,
         { created },
-        'GameBootstrapService'
+        "GameBootstrapService",
       );
     }
 
@@ -845,7 +857,7 @@ export class GameBootstrapService {
       logger.info(
         `Repaired ${repaired} invalid perp market snapshots`,
         { repaired },
-        'GameBootstrapService'
+        "GameBootstrapService",
       );
     }
 

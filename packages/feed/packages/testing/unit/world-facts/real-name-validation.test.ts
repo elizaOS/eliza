@@ -8,18 +8,18 @@
  * - Prompt examples
  */
 
-import { describe, expect, it } from 'bun:test';
-import { getForbiddenRealNames, validateNoRealNames } from '@feed/engine';
+import { describe, expect, it } from "bun:test";
+import { getForbiddenRealNames, validateNoRealNames } from "@feed/engine";
 
-describe('Real Name Validation System', () => {
-  describe('Pattern-Based Detection', () => {
+describe("Real Name Validation System", () => {
+  describe("Pattern-Based Detection", () => {
     it('should detect "OpenAI" in various forms', () => {
       const testCases = [
-        'OpenAI released a new model',
-        'openai is leading in AI',
-        'Open AI announced today',
-        'open-ai partnership',
-        'OPENAI stock rises',
+        "OpenAI released a new model",
+        "openai is leading in AI",
+        "Open AI announced today",
+        "open-ai partnership",
+        "OPENAI stock rises",
       ];
 
       testCases.forEach((testCase) => {
@@ -27,7 +27,7 @@ describe('Real Name Validation System', () => {
         expect(violations.length).toBeGreaterThan(0);
         // Check if any violation contains an OpenAI-related pattern (case-insensitive)
         const hasOpenAIViolation = violations.some((v) =>
-          /open[\s-_]?ai/i.test(v)
+          /open[\s-_]?ai/i.test(v),
         );
         expect(hasOpenAIViolation).toBe(true);
       });
@@ -35,9 +35,9 @@ describe('Real Name Validation System', () => {
 
     it('should detect "Elon Musk" variations', () => {
       const testCases = [
-        'Elon Musk tweeted today',
-        'ELON MUSK announces',
-        'elon musk says',
+        "Elon Musk tweeted today",
+        "ELON MUSK announces",
+        "elon musk says",
       ];
 
       testCases.forEach((testCase) => {
@@ -48,9 +48,9 @@ describe('Real Name Validation System', () => {
 
     it('should detect "Sam Altman" variations', () => {
       const testCases = [
-        'Sam Altman posted',
-        'sam altman announced',
-        'SAM ALTMAN says',
+        "Sam Altman posted",
+        "sam altman announced",
+        "SAM ALTMAN says",
       ];
 
       testCases.forEach((testCase) => {
@@ -59,13 +59,13 @@ describe('Real Name Validation System', () => {
       });
     });
 
-    it('should NOT flag parody names', () => {
+    it("should NOT flag parody names", () => {
       const validCases = [
-        'OpenAGI released a new model',
-        'AIlon Musk tweeted today',
-        'Sam AIltman announced',
-        'MetAI partnership',
-        'TeslAI stock rises',
+        "OpenAGI released a new model",
+        "AIlon Musk tweeted today",
+        "Sam AIltman announced",
+        "MetAI partnership",
+        "TeslAI stock rises",
       ];
 
       validCases.forEach((testCase) => {
@@ -74,12 +74,12 @@ describe('Real Name Validation System', () => {
       });
     });
 
-    it('should NOT flag partial word matches', () => {
+    it("should NOT flag partial word matches", () => {
       const validCases = [
-        'metadata field',
-        'musket rifle',
-        'telescope view',
-        'goggles on',
+        "metadata field",
+        "musket rifle",
+        "telescope view",
+        "goggles on",
       ];
 
       validCases.forEach((testCase) => {
@@ -89,14 +89,14 @@ describe('Real Name Validation System', () => {
     });
   });
 
-  describe('Database Forbidden Names List', () => {
-    it('should have forbidden names loaded', () => {
+  describe("Database Forbidden Names List", () => {
+    it("should have forbidden names loaded", () => {
       const forbiddenNames = getForbiddenRealNames();
       expect(forbiddenNames).toBeDefined();
       expect(forbiddenNames.length).toBeGreaterThan(0);
     });
 
-    it('should detect names from database list', () => {
+    it("should detect names from database list", () => {
       const forbiddenNames = getForbiddenRealNames();
 
       // Test first few names from the list
@@ -104,54 +104,54 @@ describe('Real Name Validation System', () => {
 
       testNames.forEach((name) => {
         const violations = validateNoRealNames(
-          `Today ${name} announced something`
+          `Today ${name} announced something`,
         );
         expect(violations.length).toBeGreaterThan(0);
       });
     });
   });
 
-  describe('Edge Cases', () => {
-    it('should handle empty string', () => {
-      const violations = validateNoRealNames('');
+  describe("Edge Cases", () => {
+    it("should handle empty string", () => {
+      const violations = validateNoRealNames("");
       expect(violations.length).toBe(0);
     });
 
-    it('should handle text with no names', () => {
+    it("should handle text with no names", () => {
       const violations = validateNoRealNames(
-        'This is just regular text about AI and technology.'
+        "This is just regular text about AI and technology.",
       );
       expect(violations.length).toBe(0);
     });
 
-    it('should detect names in quotes', () => {
+    it("should detect names in quotes", () => {
       const violations = validateNoRealNames('"OpenAI" is a company');
       expect(violations.length).toBeGreaterThan(0);
     });
 
-    it('should detect names in parentheses', () => {
-      const violations = validateNoRealNames('(OpenAI) announced');
+    it("should detect names in parentheses", () => {
+      const violations = validateNoRealNames("(OpenAI) announced");
       expect(violations.length).toBeGreaterThan(0);
     });
 
-    it('should detect names with punctuation', () => {
-      const violations = validateNoRealNames('OpenAI, Meta, and Google');
+    it("should detect names with punctuation", () => {
+      const violations = validateNoRealNames("OpenAI, Meta, and Google");
       expect(violations.length).toBeGreaterThan(0);
     });
   });
 
-  describe('Mixed Content', () => {
-    it('should detect multiple real names in one text', () => {
-      const text = 'OpenAI and Meta partnership with Elon Musk';
+  describe("Mixed Content", () => {
+    it("should detect multiple real names in one text", () => {
+      const text = "OpenAI and Meta partnership with Elon Musk";
       const violations = validateNoRealNames(text);
 
       // Should catch at least OpenAI and Elon Musk patterns
       expect(violations.length).toBeGreaterThan(1);
     });
 
-    it('should allow parody names mixed with regular text', () => {
+    it("should allow parody names mixed with regular text", () => {
       const text =
-        'OpenAGI and MetAI partnership with AIlon Musk announced today';
+        "OpenAGI and MetAI partnership with AIlon Musk announced today";
       const violations = validateNoRealNames(text);
       expect(violations.length).toBe(0);
     });

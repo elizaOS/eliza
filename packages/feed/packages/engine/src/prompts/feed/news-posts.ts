@@ -1,11 +1,11 @@
-import { definePrompt } from '../define-prompt';
+import { definePrompt } from "../define-prompt";
 import {
   ANTI_REPETITION_RULES,
   FINAL_REMINDERS,
   STANDARD_FEED_RULES,
   VALUE_RANGES,
   WORLD_CONTEXT_HEADER,
-} from '../shared-sections';
+} from "../shared-sections";
 
 /**
  * Prompt for generating breaking news posts from media entities.
@@ -18,10 +18,10 @@ import {
  * Returns XML with news post content and metadata.
  */
 export const newsPosts = definePrompt({
-  id: 'news-posts',
-  version: '4.0.0',
-  category: 'feed',
-  description: 'Generates breaking news with full character context',
+  id: "news-posts",
+  version: "4.0.0",
+  category: "feed",
+  description: "Generates breaking news with full character context",
   temperature: 0.8,
   maxTokens: 8000,
   template: `{{realityGrounding}}

@@ -10,10 +10,10 @@
  * Uses provider pattern for Redis services (injected from API layer).
  */
 
-import { db, desc, gte, worldEvents } from '@feed/db';
-import { logger } from '@feed/shared';
-import { npcMemoryService } from './npc-memory-service';
-import { StaticDataRegistry } from './static-data-registry';
+import { db, desc, gte, worldEvents } from "@feed/db";
+import { logger } from "@feed/shared";
+import { npcMemoryService } from "./npc-memory-service";
+import { StaticDataRegistry } from "./static-data-registry";
 
 // =============================================================================
 // PROVIDER INTERFACES
@@ -27,7 +27,7 @@ export interface CachedEvent {
   affectedOrgIds: string[];
   severity: number;
   timestamp: number;
-  pointsToward: 'YES' | 'NO' | null;
+  pointsToward: "YES" | "NO" | null;
 }
 
 export interface OrgCoordinationContext {
@@ -43,8 +43,8 @@ export interface OrgReaction {
   npcName: string;
   eventId: string;
   angle: string;
-  actionType: 'post' | 'comment' | 'trade';
-  sentiment: 'positive' | 'negative' | 'neutral' | 'defensive';
+  actionType: "post" | "comment" | "trade";
+  sentiment: "positive" | "negative" | "neutral" | "defensive";
   timestamp: number;
 }
 
@@ -59,12 +59,12 @@ export interface OrgCoordinationProvider {
   getCoordinationContext(
     orgIds: string[],
     eventId: string,
-    orgNames: Map<string, string>
+    orgNames: Map<string, string>,
   ): Promise<OrgCoordinationContext[]>;
   hasOrgReactedEnough(
     orgId: string,
     eventId: string,
-    threshold: number
+    threshold: number,
   ): Promise<boolean>;
   recordOrgReaction(orgId: string, reaction: OrgReaction): Promise<boolean>;
 }
@@ -78,10 +78,10 @@ export interface PendingReaction {
   eventType: string;
   description: string;
   affectedOrgIds: string[];
-  npcRole: 'insider' | 'affiliated' | 'observer';
+  npcRole: "insider" | "affiliated" | "observer";
   severity: number;
   hoursAgo: number;
-  pointsToward: 'YES' | 'NO' | null;
+  pointsToward: "YES" | "NO" | null;
   orgCoordination: OrgCoordinationContext[];
   shouldReact: boolean;
   suggestedAction: string;
@@ -99,7 +99,7 @@ export function setEventCacheProvider(provider: EventCacheProvider): void {
 }
 
 export function setOrgCoordinationProvider(
-  provider: OrgCoordinationProvider
+  provider: OrgCoordinationProvider,
 ): void {
   orgCoordinationProvider = provider;
 }
@@ -129,7 +129,7 @@ export class EventReactionService {
    */
   async getPendingReactions(
     npcId: string,
-    options: { lookbackHours?: number; limit?: number } = {}
+    options: { lookbackHours?: number; limit?: number } = {},
   ): Promise<PendingReaction[]> {
     const { lookbackHours = 12, limit = 5 } = options;
 
@@ -139,7 +139,7 @@ export class EventReactionService {
       logger.debug(
         `Actor not found for pending reactions: ${npcId}`,
         { npcId },
-        'EventReactionService'
+        "EventReactionService",
       );
       return [];
     }
@@ -187,10 +187,10 @@ export class EventReactionService {
 
     // 3. Get witnessed events from NPC memory
     const memories = await npcMemoryService.getRecentMemories(npcId, 50, [
-      'witnessed_event',
+      "witnessed_event",
     ]);
     const witnessedEventIds = new Set(
-      memories.map((m) => m.eventId).filter((id): id is string => !!id)
+      memories.map((m) => m.eventId).filter((id): id is string => !!id),
     );
 
     // 4. Filter and enrich events
@@ -203,15 +203,15 @@ export class EventReactionService {
       const eventOrgIds = event.affectedOrgIds;
       const isDirectlyMentioned = event.actors?.includes(npcId) ?? false;
       const isAffiliated = eventOrgIds.some((orgId) =>
-        affiliatedOrgIds.has(orgId)
+        affiliatedOrgIds.has(orgId),
       );
 
       if (!isDirectlyMentioned && !isAffiliated) continue;
 
       // Determine role
-      const npcRole: PendingReaction['npcRole'] = isDirectlyMentioned
-        ? 'insider'
-        : 'affiliated';
+      const npcRole: PendingReaction["npcRole"] = isDirectlyMentioned
+        ? "insider"
+        : "affiliated";
 
       // Get org coordination context if available
       let orgCoordination: OrgCoordinationContext[] = [];
@@ -219,12 +219,12 @@ export class EventReactionService {
 
       if (orgCoordinationProvider) {
         const relevantOrgIds = eventOrgIds.filter((id) =>
-          affiliatedOrgIds.has(id)
+          affiliatedOrgIds.has(id),
         );
         orgCoordination = await orgCoordinationProvider.getCoordinationContext(
           relevantOrgIds,
           event.id,
-          orgNames
+          orgNames,
         );
 
         // Check if org has already reacted enough
@@ -233,7 +233,7 @@ export class EventReactionService {
             await orgCoordinationProvider.hasOrgReactedEnough(
               orgId,
               event.id,
-              3
+              3,
             )
           ) {
             shouldReact = false;
@@ -246,7 +246,7 @@ export class EventReactionService {
         npcRole,
         event.eventType,
         event.severity,
-        orgCoordination
+        orgCoordination,
       );
 
       pending.push({
@@ -278,7 +278,7 @@ export class EventReactionService {
   }
 
   private async queryEventsFromDb(
-    lookbackHours: number
+    lookbackHours: number,
   ): Promise<CachedEvent[]> {
     const cutoff = new Date(Date.now() - lookbackHours * 60 * 60 * 1000);
     const rows = await db
@@ -296,7 +296,7 @@ export class EventReactionService {
       affectedOrgIds: this.extractOrgIdsFromActors(row.actors ?? []),
       severity: SEVERITY_MAP[row.eventType] ?? 2,
       timestamp: row.timestamp.getTime(),
-      pointsToward: row.pointsToward as 'YES' | 'NO' | null,
+      pointsToward: row.pointsToward as "YES" | "NO" | null,
     }));
   }
 
@@ -310,43 +310,43 @@ export class EventReactionService {
   }
 
   private getSuggestedAction(
-    role: 'insider' | 'affiliated' | 'observer',
+    role: "insider" | "affiliated" | "observer",
     eventType: string,
     severity: number,
-    coordination: OrgCoordinationContext[]
+    coordination: OrgCoordinationContext[],
   ): string {
     // Check if org has enough reactions
     const totalOrgReactions = coordination.reduce(
       (sum, c) => sum + c.recentReactions.length,
-      0
+      0,
     );
 
     if (totalOrgReactions >= 3) {
-      return 'Observe - organization has responded sufficiently';
+      return "Observe - organization has responded sufficiently";
     }
 
-    if (role === 'insider') {
-      if (eventType === 'leak' || eventType === 'scandal') {
-        return 'POST - Address the situation directly (damage control)';
+    if (role === "insider") {
+      if (eventType === "leak" || eventType === "scandal") {
+        return "POST - Address the situation directly (damage control)";
       }
-      if (eventType === 'rumor') {
-        return 'POST - Confirm, deny, or redirect';
+      if (eventType === "rumor") {
+        return "POST - Confirm, deny, or redirect";
       }
-      return 'POST or COMMENT - Provide insider perspective';
+      return "POST or COMMENT - Provide insider perspective";
     }
 
-    if (role === 'affiliated') {
+    if (role === "affiliated") {
       if (severity >= 4) {
-        return 'Consider TRADING based on impact; COMMENT with perspective';
+        return "Consider TRADING based on impact; COMMENT with perspective";
       }
       if (coordination.some((c) => c.suggestedAngles.length > 0)) {
         const suggestion = coordination[0]?.suggestedAngles[0];
         return `COMMENT - ${suggestion}`;
       }
-      return 'COMMENT with your unique angle';
+      return "COMMENT with your unique angle";
     }
 
-    return 'Observe or brief COMMENT';
+    return "Observe or brief COMMENT";
   }
 
   /**
@@ -356,10 +356,10 @@ export class EventReactionService {
     npcId: string,
     eventId: string,
     reaction: string,
-    sentiment: number = 0
+    sentiment: number = 0,
   ): Promise<boolean> {
     return npcMemoryService.addMemory(npcId, {
-      type: 'witnessed_event',
+      type: "witnessed_event",
       timestamp: new Date().toISOString(),
       summary: reaction,
       eventId,
@@ -375,8 +375,8 @@ export class EventReactionService {
     npcName: string,
     eventId: string,
     angle: string,
-    actionType: 'post' | 'comment' | 'trade',
-    sentiment: 'positive' | 'negative' | 'neutral' | 'defensive'
+    actionType: "post" | "comment" | "trade",
+    sentiment: "positive" | "negative" | "neutral" | "defensive",
   ): Promise<void> {
     if (!orgCoordinationProvider) return;
 

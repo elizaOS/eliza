@@ -1,19 +1,19 @@
-import { logger } from '@feed/shared';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { toast } from 'sonner';
-import { useAuth } from '@/hooks/useAuth';
+import { logger } from "@feed/shared";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
+import { useAuth } from "@/hooks/useAuth";
 import type {
   EligibilityApiResponse,
   EligibilityResponse,
   MintConfirmResponse,
   MintFlowState,
-} from '@/types/nft';
-import { apiUrl } from '@/utils/api-url';
+} from "@/types/nft";
+import { apiUrl } from "@/utils/api-url";
 
 const MINTING_STATES = new Set<MintFlowState>([
-  'preparing',
-  'minting',
-  'confirming',
+  "preparing",
+  "minting",
+  "confirming",
 ]);
 
 interface UseNftMintResult {
@@ -21,7 +21,7 @@ interface UseNftMintResult {
   isCheckingEligibility: boolean;
   isMinting: boolean;
   flowState: MintFlowState;
-  mintedNft: MintConfirmResponse['nft'] | null;
+  mintedNft: MintConfirmResponse["nft"] | null;
   error: string | null;
   checkEligibility: () => Promise<void>;
   startMint: () => Promise<void>;
@@ -32,12 +32,12 @@ export function useNftMint(): UseNftMintResult {
   const { authenticated, getAccessToken } = useAuth();
 
   const [eligibility, setEligibility] = useState<EligibilityResponse | null>(
-    null
+    null,
   );
   const [isCheckingEligibility, setIsCheckingEligibility] = useState(false);
-  const [flowState, setFlowState] = useState<MintFlowState>('idle');
-  const [mintedNft, setMintedNft] = useState<MintConfirmResponse['nft'] | null>(
-    null
+  const [flowState, setFlowState] = useState<MintFlowState>("idle");
+  const [mintedNft, setMintedNft] = useState<MintConfirmResponse["nft"] | null>(
+    null,
   );
   const [error, setError] = useState<string | null>(null);
 
@@ -45,7 +45,7 @@ export function useNftMint(): UseNftMintResult {
     async (signal?: AbortSignal) => {
       const notAuthenticated: EligibilityResponse = {
         eligible: false,
-        status: 'not_authenticated',
+        status: "not_authenticated",
         hasMinted: false,
       };
 
@@ -55,7 +55,7 @@ export function useNftMint(): UseNftMintResult {
       }
 
       setIsCheckingEligibility(true);
-      setFlowState('checking_eligibility');
+      setFlowState("checking_eligibility");
       setError(null);
 
       try {
@@ -67,9 +67,9 @@ export function useNftMint(): UseNftMintResult {
         // Check if aborted before continuing
         if (signal?.aborted) return;
 
-        const response = await fetch(apiUrl('/api/nft/eligibility'), {
+        const response = await fetch(apiUrl("/api/nft/eligibility"), {
           headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-          credentials: 'include',
+          credentials: "include",
           signal, // Pass abort signal to fetch
         });
 
@@ -78,14 +78,14 @@ export function useNftMint(): UseNftMintResult {
 
         if (response.status === 401) {
           setEligibility(notAuthenticated);
-          setFlowState('idle');
+          setFlowState("idle");
           return;
         }
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
-          setError(errorData.error ?? 'Failed to check eligibility');
-          setFlowState('error');
+          setError(errorData.error ?? "Failed to check eligibility");
+          setFlowState("error");
           return;
         }
 
@@ -97,7 +97,7 @@ export function useNftMint(): UseNftMintResult {
 
         setEligibility(data);
 
-        if (data.status === 'already_minted' && data.mintedNft) {
+        if (data.status === "already_minted" && data.mintedNft) {
           // Note: eligibility endpoint only provides thumbnailUrl, not full resolution.
           // The thumbnailUrl is used as imageUrl here for display purposes.
           setMintedNft({
@@ -109,14 +109,14 @@ export function useNftMint(): UseNftMintResult {
           });
         }
 
-        setFlowState(data.eligible ? 'eligible' : 'idle');
+        setFlowState(data.eligible ? "eligible" : "idle");
       } catch (err) {
         // Ignore abort errors - component unmounted
-        if (err instanceof DOMException && err.name === 'AbortError') return;
+        if (err instanceof DOMException && err.name === "AbortError") return;
 
-        const message = err instanceof Error ? err.message : 'Network error';
+        const message = err instanceof Error ? err.message : "Network error";
         setError(message);
-        setFlowState('error');
+        setFlowState("error");
       } finally {
         // Only update if not aborted
         if (!signal?.aborted) {
@@ -124,7 +124,7 @@ export function useNftMint(): UseNftMintResult {
         }
       }
     },
-    [authenticated, getAccessToken]
+    [authenticated, getAccessToken],
   );
 
   const startMint = useCallback(async () => {
@@ -132,24 +132,24 @@ export function useNftMint(): UseNftMintResult {
       const uiMessage = errorId ? `${message} (Ref: ${errorId})` : message;
       setError(uiMessage);
       toast.error(uiMessage);
-      setFlowState('error');
+      setFlowState("error");
     };
 
     if (!authenticated) {
-      toast.error('Please connect your wallet first');
+      toast.error("Please connect your wallet first");
       return;
     }
 
     if (!eligibility?.eligible || eligibility.hasMinted) {
-      toast.error('You are not eligible to mint');
+      toast.error("You are not eligible to mint");
       return;
     }
 
-    setFlowState('preparing');
+    setFlowState("preparing");
     setError(null);
 
     try {
-      setFlowState('minting');
+      setFlowState("minting");
 
       // Per Privy cookie best practices, always refresh the session before
       // triggering a privileged server-side action.
@@ -164,54 +164,54 @@ export function useNftMint(): UseNftMintResult {
       }
       if (!userJwt) {
         handleError(
-          'Your session has expired. Please sign in again and try minting.'
+          "Your session has expired. Please sign in again and try minting.",
         );
         return;
       }
 
-      const mintResponse = await fetch(apiUrl('/api/nft/mint/execute'), {
-        method: 'POST',
+      const mintResponse = await fetch(apiUrl("/api/nft/mint/execute"), {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
           Authorization: `Bearer ${userJwt}`,
         },
-        credentials: 'include',
+        credentials: "include",
       });
 
       const result = await mintResponse.json();
 
-      if (result.status === 'error') {
+      if (result.status === "error") {
         logger.error(
-          '[NFT Mint Error]',
+          "[NFT Mint Error]",
           {
             step: result.step,
             errorId: result.errorId,
             message: result.error,
             debug: result.debug,
           },
-          'useNftMint'
+          "useNftMint",
         );
         handleError(result.error, result.errorId);
         return;
       }
 
-      if (result.status === 'pending') {
+      if (result.status === "pending") {
         // Transaction submitted but not yet confirmed
         // Show a different toast and let user know they can check later
         toast.info(result.message, { duration: 10000 });
-        setFlowState('eligible'); // Reset to eligible state so they can try again later
+        setFlowState("eligible"); // Reset to eligible state so they can try again later
         return;
       }
 
       // Transaction confirmed - update state with minted NFT
       setMintedNft(result.nft);
-      setFlowState('revealing');
+      setFlowState("revealing");
       setEligibility((prev) =>
         prev
           ? {
               ...prev,
               hasMinted: true,
-              status: 'already_minted',
+              status: "already_minted",
               mintedNft: {
                 tokenId: result.nft.tokenId,
                 name: result.nft.name,
@@ -219,12 +219,12 @@ export function useNftMint(): UseNftMintResult {
                 txHash: result.txHash,
               },
             }
-          : null
+          : null,
       );
 
-      toast.success('NFT minted successfully!');
+      toast.success("NFT minted successfully!");
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Transaction failed';
+      const message = err instanceof Error ? err.message : "Transaction failed";
       handleError(message);
     }
   }, [authenticated, eligibility, getAccessToken]);
@@ -232,10 +232,10 @@ export function useNftMint(): UseNftMintResult {
   const resetFlow = useCallback(() => {
     setFlowState(
       eligibility?.hasMinted
-        ? 'complete'
+        ? "complete"
         : eligibility?.eligible
-          ? 'eligible'
-          : 'idle'
+          ? "eligible"
+          : "idle",
     );
     setError(null);
   }, [eligibility?.hasMinted, eligibility?.eligible]);
@@ -252,7 +252,7 @@ export function useNftMint(): UseNftMintResult {
       checkEligibilityRef.current(abortController.signal);
     } else {
       setEligibility(null);
-      setFlowState('idle');
+      setFlowState("idle");
     }
 
     return () => {

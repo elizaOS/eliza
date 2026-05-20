@@ -1,12 +1,12 @@
-'use client';
+"use client";
 
-import dynamic from 'next/dynamic';
+import dynamic from "next/dynamic";
 
 const FullAppShellClient = dynamic(
-  () => import('./FullAppShellClient').then((mod) => mod.FullAppShellClient),
+  () => import("./FullAppShellClient").then((mod) => mod.FullAppShellClient),
   {
     ssr: false,
-  }
+  },
 );
 
 export function FullAppShell({ children }: { children: React.ReactNode }) {

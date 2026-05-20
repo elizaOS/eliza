@@ -5,34 +5,34 @@
  * Stores all data in JSON files for easy inspection and modification.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import type { ActorPort, OrganizationPort } from '../../ports/actors';
-import type { AgentPort } from '../../ports/agents';
-import type { GamePort } from '../../ports/game';
-import type { MarketPort } from '../../ports/markets';
-import type { PostPort } from '../../ports/posts';
-import type { QuestionPort } from '../../ports/questions';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import type { ActorPort, OrganizationPort } from "../../ports/actors";
+import type { AgentPort } from "../../ports/agents";
+import type { GamePort } from "../../ports/game";
+import type { MarketPort } from "../../ports/markets";
+import type { PostPort } from "../../ports/posts";
+import type { QuestionPort } from "../../ports/questions";
 import type {
   IStorageProvider,
   StorageMode,
   StorageProviderConfig,
-} from '../../ports/storage-provider';
-import type { TradingPort } from '../../ports/trading';
-import type { UserPort } from '../../ports/users';
-import { JsonIdGenerator } from './id-generator';
-import { JsonActorAdapter, JsonOrganizationAdapter } from './ports/actors';
-import { JsonAgentAdapter } from './ports/agents';
-import { JsonGameAdapter } from './ports/game';
-import { JsonMarketAdapter } from './ports/markets';
-import { JsonPostAdapter } from './ports/posts';
-import { JsonQuestionAdapter } from './ports/questions';
-import { JsonTradingAdapter } from './ports/trading';
-import { JsonUserAdapter } from './ports/users';
-import { createEmptyState, type JsonStorageState } from './types';
+} from "../../ports/storage-provider";
+import type { TradingPort } from "../../ports/trading";
+import type { UserPort } from "../../ports/users";
+import { JsonIdGenerator } from "./id-generator";
+import { JsonActorAdapter, JsonOrganizationAdapter } from "./ports/actors";
+import { JsonAgentAdapter } from "./ports/agents";
+import { JsonGameAdapter } from "./ports/game";
+import { JsonMarketAdapter } from "./ports/markets";
+import { JsonPostAdapter } from "./ports/posts";
+import { JsonQuestionAdapter } from "./ports/questions";
+import { JsonTradingAdapter } from "./ports/trading";
+import { JsonUserAdapter } from "./ports/users";
+import { createEmptyState, type JsonStorageState } from "./types";
 
 export class JsonStorageProvider implements IStorageProvider {
-  readonly mode: StorageMode = 'json';
+  readonly mode: StorageMode = "json";
 
   private state: JsonStorageState;
   private basePath: string;
@@ -51,40 +51,40 @@ export class JsonStorageProvider implements IStorageProvider {
   readonly users: UserPort;
 
   constructor(config: StorageProviderConfig) {
-    this.basePath = config.jsonBasePath ?? './feed-data';
+    this.basePath = config.jsonBasePath ?? "./feed-data";
     this.autoSave = config.persistOnChange ?? true;
     this.state = createEmptyState();
-    this.idGenerator = new JsonIdGenerator('sim');
+    this.idGenerator = new JsonIdGenerator("sim");
 
     // Initialize adapters with shared state
     this.actors = new JsonActorAdapter(this.state, this.idGenerator, () =>
-      this.onStateChange()
+      this.onStateChange(),
     );
     this.organizations = new JsonOrganizationAdapter(
       this.state,
       this.idGenerator,
-      () => this.onStateChange()
+      () => this.onStateChange(),
     );
     this.agents = new JsonAgentAdapter(this.state, this.idGenerator, () =>
-      this.onStateChange()
+      this.onStateChange(),
     );
     this.game = new JsonGameAdapter(this.state, this.idGenerator, () =>
-      this.onStateChange()
+      this.onStateChange(),
     );
     this.markets = new JsonMarketAdapter(this.state, this.idGenerator, () =>
-      this.onStateChange()
+      this.onStateChange(),
     );
     this.posts = new JsonPostAdapter(this.state, this.idGenerator, () =>
-      this.onStateChange()
+      this.onStateChange(),
     );
     this.questions = new JsonQuestionAdapter(this.state, this.idGenerator, () =>
-      this.onStateChange()
+      this.onStateChange(),
     );
     this.trading = new JsonTradingAdapter(this.state, this.idGenerator, () =>
-      this.onStateChange()
+      this.onStateChange(),
     );
     this.users = new JsonUserAdapter(this.state, this.idGenerator, () =>
-      this.onStateChange()
+      this.onStateChange(),
     );
   }
 
@@ -97,9 +97,9 @@ export class JsonStorageProvider implements IStorageProvider {
     }
 
     // Try to load existing state
-    const statePath = join(this.basePath, 'state.json');
+    const statePath = join(this.basePath, "state.json");
     if (existsSync(statePath)) {
-      const data = readFileSync(statePath, 'utf-8');
+      const data = readFileSync(statePath, "utf-8");
       const loaded = JSON.parse(data) as JsonStorageState;
       this.mergeState(loaded);
     }
@@ -116,7 +116,7 @@ export class JsonStorageProvider implements IStorageProvider {
   }
 
   async saveSnapshot(): Promise<void> {
-    const statePath = join(this.basePath, 'state.json');
+    const statePath = join(this.basePath, "state.json");
     this.state.metadata.updatedAt = new Date().toISOString();
 
     // Update counters from ID generator
@@ -138,15 +138,15 @@ export class JsonStorageProvider implements IStorageProvider {
   }
 
   async loadSnapshot(path: string): Promise<void> {
-    const data = readFileSync(path, 'utf-8');
+    const data = readFileSync(path, "utf-8");
     const loaded = JSON.parse(data) as JsonStorageState;
     this.mergeState(loaded);
   }
 
   async exportToJson(path: string): Promise<void> {
-    const exportPath = path.endsWith('.json')
+    const exportPath = path.endsWith(".json")
       ? path
-      : join(path, 'export.json');
+      : join(path, "export.json");
     this.state.metadata.updatedAt = new Date().toISOString();
     writeFileSync(exportPath, JSON.stringify(this.state, null, 2));
   }

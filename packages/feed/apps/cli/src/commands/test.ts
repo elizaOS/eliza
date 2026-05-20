@@ -9,10 +9,10 @@
  *   scambench-seed - Seed a ScamBench scenario into Feed chats
  */
 
-import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
-import { getOption, parseArgs, wantsHelp } from '../lib/args.js';
-import { logger } from '../lib/logger.js';
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import { getOption, parseArgs, wantsHelp } from "../lib/args.js";
+import { logger } from "../lib/logger.js";
 
 function printHelp(): void {
   console.log(`
@@ -50,20 +50,20 @@ EXAMPLES:
 
 function resolveDefaultCatalogPath(): string {
   const candidates = [
-    resolve(process.cwd(), '../scambench/generated/scenario-catalog.json'),
-    resolve(process.cwd(), '../../scambench/generated/scenario-catalog.json'),
-    resolve(process.cwd(), 'scambench/generated/scenario-catalog.json'),
+    resolve(process.cwd(), "../scambench/generated/scenario-catalog.json"),
+    resolve(process.cwd(), "../../scambench/generated/scenario-catalog.json"),
+    resolve(process.cwd(), "scambench/generated/scenario-catalog.json"),
     resolve(
       process.cwd(),
-      '../benchmarks/scambench/generated/scenario-catalog.json'
+      "../benchmarks/scambench/generated/scenario-catalog.json",
     ),
     resolve(
       process.cwd(),
-      '../../benchmarks/scambench/generated/scenario-catalog.json'
+      "../../benchmarks/scambench/generated/scenario-catalog.json",
     ),
     resolve(
       process.cwd(),
-      'benchmarks/scambench/generated/scenario-catalog.json'
+      "benchmarks/scambench/generated/scenario-catalog.json",
     ),
   ];
 
@@ -74,19 +74,19 @@ function resolveDefaultCatalogPath(): string {
 }
 
 async function runScamBenchSeed(
-  args: ReturnType<typeof parseArgs>
+  args: ReturnType<typeof parseArgs>,
 ): Promise<void> {
-  const scenarioId = getOption(args, 'scenario-id');
-  const userId = getOption(args, 'user-id');
-  const catalogPath = getOption(args, 'catalog') || resolveDefaultCatalogPath();
-  const targetChatsPerUser = Number(getOption(args, 'target-chats') || '3');
+  const scenarioId = getOption(args, "scenario-id");
+  const userId = getOption(args, "user-id");
+  const catalogPath = getOption(args, "catalog") || resolveDefaultCatalogPath();
+  const targetChatsPerUser = Number(getOption(args, "target-chats") || "3");
 
   if (!scenarioId || !userId) {
-    logger.fail('Missing required options: --scenario-id and --user-id');
+    logger.fail("Missing required options: --scenario-id and --user-id");
     process.exit(1);
   }
 
-  const catalogRaw = await readFile(resolve(catalogPath), 'utf-8');
+  const catalogRaw = await readFile(resolve(catalogPath), "utf-8");
   const catalog = JSON.parse(catalogRaw) as {
     scenarios?: Array<{
       id: string;
@@ -103,7 +103,7 @@ async function runScamBenchSeed(
     process.exit(1);
   }
 
-  const { seedScamBenchScenario } = await import('@feed/engine');
+  const { seedScamBenchScenario } = await import("@feed/engine");
   const scenarioPayload = {
     id: scenario.id,
     name: scenario.name,
@@ -118,7 +118,7 @@ async function runScamBenchSeed(
   const result = await seedScamBenchScenario({
     scenario: scenarioPayload as unknown as Parameters<
       typeof seedScamBenchScenario
-    >[0]['scenario'],
+    >[0]["scenario"],
     targetUserId: userId,
     targetChatsPerUser: Number.isFinite(targetChatsPerUser)
       ? Math.max(1, targetChatsPerUser)
@@ -126,36 +126,34 @@ async function runScamBenchSeed(
     createMissingSpeakers: true,
   });
 
-  logger.header('ScamBench Scenario Seeded');
+  logger.header("ScamBench Scenario Seeded");
   console.log(`Scenario: ${result.scenarioId}`);
   console.log(`Target user: ${result.targetUserId}`);
   console.log(`Auto-joined NPC chats: ${result.autoJoinedGroupChats}`);
   console.log(`Chats seeded: ${result.chats.length}`);
   console.log(`Messages seeded: ${result.messages.length}`);
   console.log(
-    `Speakers created/resolved: ${Object.keys(result.speakerUserIds).join(', ')}`
+    `Speakers created/resolved: ${Object.keys(result.speakerUserIds).join(", ")}`,
   );
 }
 
 async function runLoadTest(args: ReturnType<typeof parseArgs>): Promise<void> {
-  const scenario = getOption(args, 'scenario') || 'normal';
-  const baseUrl = getOption(args, 'url') || 'http://localhost:3000';
+  const scenario = getOption(args, "scenario") || "normal";
+  const baseUrl = getOption(args, "url") || "http://localhost:3000";
 
-  const validScenarios = ['light', 'normal', 'heavy', 'stress'];
+  const validScenarios = ["light", "normal", "heavy", "stress"];
   if (!validScenarios.includes(scenario)) {
     logger.fail(`Invalid scenario: ${scenario}`);
-    console.log(`Valid scenarios: ${validScenarios.join(', ')}`);
+    console.log(`Valid scenarios: ${validScenarios.join(", ")}`);
     process.exit(1);
   }
 
-  logger.header('Feed Load Test');
+  logger.header("Feed Load Test");
   console.log(`Scenario: ${scenario}`);
   console.log(`Base URL: ${baseUrl}\n`);
 
   // Import dynamically to avoid loading testing infrastructure if not needed
-  const { LoadTestSimulator, TEST_SCENARIOS } = await import(
-    '@feed/testing'
-  );
+  const { LoadTestSimulator, TEST_SCENARIOS } = await import("@feed/testing");
 
   const scenarioKey = scenario.toUpperCase() as keyof typeof TEST_SCENARIOS;
   const config = TEST_SCENARIOS[scenarioKey];
@@ -169,38 +167,38 @@ async function runLoadTest(args: ReturnType<typeof parseArgs>): Promise<void> {
   console.log(`✅ Server responding (status: ${response.status})\n`);
 
   // Enable query monitoring
-  process.env.ENABLE_QUERY_MONITORING = 'true';
+  process.env.ENABLE_QUERY_MONITORING = "true";
 
   // Run test
   const simulator = new LoadTestSimulator(baseUrl);
 
-  process.on('SIGINT', () => {
-    console.log('\n\n⚠️  Stopping test...');
+  process.on("SIGINT", () => {
+    console.log("\n\n⚠️  Stopping test...");
     simulator.stop();
   });
 
   const result = await simulator.runTest(config);
 
   // Display results
-  console.log('\n═══════════════════════════════════════');
-  console.log('  Load Test Results');
-  console.log('═══════════════════════════════════════\n');
+  console.log("\n═══════════════════════════════════════");
+  console.log("  Load Test Results");
+  console.log("═══════════════════════════════════════\n");
 
   console.log(`Total Requests:      ${result.totalRequests.toLocaleString()}`);
   console.log(
-    `Successful:          ${result.successfulRequests.toLocaleString()} (${(result.throughput.successRate * 100).toFixed(2)}%)`
+    `Successful:          ${result.successfulRequests.toLocaleString()} (${(result.throughput.successRate * 100).toFixed(2)}%)`,
   );
   console.log(`Failed:              ${result.failedRequests.toLocaleString()}`);
   console.log(`Duration:            ${(result.durationMs / 1000).toFixed(2)}s`);
   console.log(
-    `Throughput:          ${result.throughput.requestsPerSecond.toFixed(2)} req/s`
+    `Throughput:          ${result.throughput.requestsPerSecond.toFixed(2)} req/s`,
   );
 
-  console.log('\nResponse Times:');
+  console.log("\nResponse Times:");
   console.log(`  Min:               ${result.responseTime.min.toFixed(2)}ms`);
   console.log(`  Mean:              ${result.responseTime.mean.toFixed(2)}ms`);
   console.log(
-    `  Median:            ${result.responseTime.median.toFixed(2)}ms`
+    `  Median:            ${result.responseTime.median.toFixed(2)}ms`,
   );
   console.log(`  95th Percentile:   ${result.responseTime.p95.toFixed(2)}ms`);
   console.log(`  99th Percentile:   ${result.responseTime.p99.toFixed(2)}ms`);
@@ -210,64 +208,64 @@ async function runLoadTest(args: ReturnType<typeof parseArgs>): Promise<void> {
   const p95 = result.responseTime.p95;
   const successRate = result.throughput.successRate;
 
-  console.log('\n═══════════════════════════════════════');
-  console.log('  Assessment');
-  console.log('═══════════════════════════════════════\n');
+  console.log("\n═══════════════════════════════════════");
+  console.log("  Assessment");
+  console.log("═══════════════════════════════════════\n");
 
   if (successRate >= 0.99 && p95 < 200) {
-    console.log('✅ EXCELLENT - System performing well under load');
+    console.log("✅ EXCELLENT - System performing well under load");
   } else if (successRate >= 0.95 && p95 < 500) {
-    console.log('⚠️  GOOD - System stable with room for optimization');
+    console.log("⚠️  GOOD - System stable with room for optimization");
   } else if (successRate >= 0.9 && p95 < 1000) {
-    console.log('⚠️  FAIR - System needs optimization');
+    console.log("⚠️  FAIR - System needs optimization");
   } else {
-    console.log('❌ POOR - System has critical performance issues');
+    console.log("❌ POOR - System has critical performance issues");
   }
 }
 
 async function runA2AStressTest(
-  args: ReturnType<typeof parseArgs>
+  args: ReturnType<typeof parseArgs>,
 ): Promise<void> {
-  const scenario = getOption(args, 'scenario') || 'normal';
-  const baseUrl = getOption(args, 'url') || 'http://localhost:3000';
+  const scenario = getOption(args, "scenario") || "normal";
+  const baseUrl = getOption(args, "url") || "http://localhost:3000";
 
   const validScenarios = [
-    'light',
-    'normal',
-    'heavy',
-    'rate-limit',
-    'coalition',
+    "light",
+    "normal",
+    "heavy",
+    "rate-limit",
+    "coalition",
   ];
   if (!validScenarios.includes(scenario)) {
     logger.fail(`Invalid scenario: ${scenario}`);
-    console.log(`Valid scenarios: ${validScenarios.join(', ')}`);
+    console.log(`Valid scenarios: ${validScenarios.join(", ")}`);
     process.exit(1);
   }
 
-  logger.header('A2A Protocol Stress Test');
+  logger.header("A2A Protocol Stress Test");
   console.log(`Scenario: ${scenario}`);
   console.log(`Base URL: ${baseUrl}\n`);
 
   // Import dynamically
   const { LoadTestSimulator, A2A_TEST_SCENARIOS } = await import(
-    '@feed/testing'
+    "@feed/testing"
   );
 
   const scenarioKey = scenario
     .toUpperCase()
-    .replace('-', '_') as keyof typeof A2A_TEST_SCENARIOS;
+    .replace("-", "_") as keyof typeof A2A_TEST_SCENARIOS;
   const config = A2A_TEST_SCENARIOS[scenarioKey];
 
   console.log(`Concurrent Agents: ${config.concurrentUsers}`);
   console.log(`Duration: ${config.durationSeconds}s`);
-  console.log(`Max RPS: ${config.maxRps || 'unlimited'}\n`);
+  console.log(`Max RPS: ${config.maxRps || "unlimited"}\n`);
 
   // Check A2A endpoint
   const response = await fetch(`${baseUrl}/api/a2a`);
   const data = await response.json();
 
-  if (data.service !== 'Feed A2A Protocol') {
-    logger.fail('A2A endpoint not responding correctly');
+  if (data.service !== "Feed A2A Protocol") {
+    logger.fail("A2A endpoint not responding correctly");
     process.exit(1);
   }
   console.log(`✅ A2A endpoint active (version: ${data.version})\n`);
@@ -275,28 +273,28 @@ async function runA2AStressTest(
   // Run test
   const simulator = new LoadTestSimulator(baseUrl);
 
-  process.on('SIGINT', () => {
-    console.log('\n\n⚠️  Stopping test...');
+  process.on("SIGINT", () => {
+    console.log("\n\n⚠️  Stopping test...");
     simulator.stop();
   });
 
   const result = await simulator.runTest(config);
 
   // Display results
-  console.log('\n═══════════════════════════════════════');
-  console.log('  A2A Stress Test Results');
-  console.log('═══════════════════════════════════════\n');
+  console.log("\n═══════════════════════════════════════");
+  console.log("  A2A Stress Test Results");
+  console.log("═══════════════════════════════════════\n");
 
   console.log(`Total Requests:      ${result.totalRequests.toLocaleString()}`);
   console.log(
-    `Successful:          ${result.successfulRequests.toLocaleString()} (${(result.throughput.successRate * 100).toFixed(2)}%)`
+    `Successful:          ${result.successfulRequests.toLocaleString()} (${(result.throughput.successRate * 100).toFixed(2)}%)`,
   );
   console.log(`Failed:              ${result.failedRequests.toLocaleString()}`);
   console.log(
-    `Throughput:          ${result.throughput.requestsPerSecond.toFixed(2)} req/s`
+    `Throughput:          ${result.throughput.requestsPerSecond.toFixed(2)} req/s`,
   );
 
-  console.log('\nResponse Times:');
+  console.log("\nResponse Times:");
   console.log(`  Mean:              ${result.responseTime.mean.toFixed(2)}ms`);
   console.log(`  95th Percentile:   ${result.responseTime.p95.toFixed(2)}ms`);
   console.log(`  99th Percentile:   ${result.responseTime.p99.toFixed(2)}ms`);
@@ -305,21 +303,21 @@ async function runA2AStressTest(
   type LoadTestError = { endpoint: string; error: string; count: number };
   const rateLimitErrors = result.errors.filter(
     (e: LoadTestError) =>
-      e.error.includes('429') || e.error.toLowerCase().includes('rate limit')
+      e.error.includes("429") || e.error.toLowerCase().includes("rate limit"),
   );
   const totalRateLimitErrors = rateLimitErrors.reduce(
     (sum: number, e: LoadTestError) => sum + e.count,
-    0
+    0,
   );
 
-  console.log('\nRate Limiting:');
+  console.log("\nRate Limiting:");
   console.log(`  Rate Limit Errors: ${totalRateLimitErrors.toLocaleString()}`);
 
-  if (scenario === 'rate-limit') {
+  if (scenario === "rate-limit") {
     if (totalRateLimitErrors > 0) {
-      console.log('  ✅ Rate limiting is WORKING (expected in this test)');
+      console.log("  ✅ Rate limiting is WORKING (expected in this test)");
     } else {
-      console.log('  ⚠️  Rate limiting may NOT be working');
+      console.log("  ⚠️  Rate limiting may NOT be working");
     }
   }
 }
@@ -338,15 +336,15 @@ export async function runTestCommand(args: string[]): Promise<void> {
   }
 
   switch (parsed.command) {
-    case 'load':
+    case "load":
       await runLoadTest(parsed);
       break;
 
-    case 'a2a':
+    case "a2a":
       await runA2AStressTest(parsed);
       break;
 
-    case 'scambench-seed':
+    case "scambench-seed":
       await runScamBenchSeed(parsed);
       break;
 

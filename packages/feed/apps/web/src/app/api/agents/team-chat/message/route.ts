@@ -46,21 +46,21 @@
  *         description: No team chat exists
  */
 
-import { createGroq } from '@ai-sdk/groq';
-import { teamChatService } from '@feed/agents';
+import { createGroq } from "@ai-sdk/groq";
+import { teamChatService } from "@feed/agents";
 import {
   authenticateUser,
   broadcastChatMessage,
   checkRateLimitAsync,
   RATE_LIMIT_CONFIGS,
   withErrorHandling,
-} from '@feed/api';
-import { and, db, eq, generateSnowflakeId, messages, users } from '@feed/db';
-import { logger, toISO } from '@feed/shared';
-import { generateText } from 'ai';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { z } from 'zod';
+} from "@feed/api";
+import { and, db, eq, generateSnowflakeId, messages, users } from "@feed/db";
+import { logger, toISO } from "@feed/shared";
+import { generateText } from "ai";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { z } from "zod";
 
 // =============================================================================
 // Title Generation
@@ -73,21 +73,21 @@ import { z } from 'zod';
 async function generateAndUpdateChatTitle(
   chatId: string,
   firstMessage: string,
-  userId: string
+  userId: string,
 ): Promise<string | null> {
   try {
     if (!process.env.GROQ_API_KEY) {
       logger.warn(
-        'GROQ_API_KEY not set, skipping title generation',
+        "GROQ_API_KEY not set, skipping title generation",
         { chatId },
-        'TeamChatMessageAPI'
+        "TeamChatMessageAPI",
       );
       return null;
     }
 
     const groq = createGroq({
       apiKey: process.env.GROQ_API_KEY,
-      baseURL: 'https://api.groq.com/openai/v1',
+      baseURL: "https://api.groq.com/openai/v1",
     });
 
     const prompt = `Create a brief chat title (2-5 words) that captures the topic of this message.
@@ -105,13 +105,13 @@ Title:`;
     const abortController = new AbortController();
     const timeoutId = setTimeout(
       () => abortController.abort(),
-      GENERATE_TIMEOUT_MS
+      GENERATE_TIMEOUT_MS,
     );
 
     let result: { text: string };
     try {
       result = await generateText({
-        model: groq('llama-3.1-8b-instant'),
+        model: groq("llama-3.1-8b-instant"),
         prompt,
         temperature: 0.7,
         maxOutputTokens: 50,
@@ -129,30 +129,30 @@ Title:`;
       const updated = await teamChatService.updateChatTitleIfNull(
         chatId,
         title,
-        userId
+        userId,
       );
       if (updated) {
         logger.info(
-          'Generated chat title from first message',
+          "Generated chat title from first message",
           { chatId, title },
-          'TeamChatMessageAPI'
+          "TeamChatMessageAPI",
         );
         return title;
       }
       // Another message already set the title - this is fine, no error needed
       logger.debug(
-        'Chat title already set by concurrent request',
+        "Chat title already set by concurrent request",
         { chatId },
-        'TeamChatMessageAPI'
+        "TeamChatMessageAPI",
       );
       return null;
     }
     return null;
   } catch (error) {
     logger.error(
-      'Failed to generate chat title',
-      { chatId, error: error instanceof Error ? error.message : 'Unknown' },
-      'TeamChatMessageAPI'
+      "Failed to generate chat title",
+      { chatId, error: error instanceof Error ? error.message : "Unknown" },
+      "TeamChatMessageAPI",
     );
     return null;
   }
@@ -166,8 +166,8 @@ Title:`;
 const messageSchema = z.object({
   content: z
     .string()
-    .min(1, 'Message content is required')
-    .max(4000, 'Message too long. Maximum 4000 characters allowed.'),
+    .min(1, "Message content is required")
+    .max(4000, "Message too long. Maximum 4000 characters allowed."),
   // Target IDs for message routing in team chat
   // - Array of agent IDs when @mentioning agents
   // - Empty array or undefined = coordinator (no @mentions)
@@ -182,16 +182,16 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
   // Rate limit to prevent spam (especially important with agent auto-responses)
   const rateCheck = await checkRateLimitAsync(
     user.id,
-    RATE_LIMIT_CONFIGS.SEND_MESSAGE
+    RATE_LIMIT_CONFIGS.SEND_MESSAGE,
   );
   if (!rateCheck.allowed) {
     return NextResponse.json(
       {
         success: false,
-        error: 'Rate limit exceeded. Please wait before sending more messages.',
+        error: "Rate limit exceeded. Please wait before sending more messages.",
         retryAfter: rateCheck.retryAfter,
       },
-      { status: 429 }
+      { status: 429 },
     );
   }
 
@@ -200,8 +200,8 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
     body = await req.json();
   } catch {
     return NextResponse.json(
-      { success: false, error: 'Invalid JSON in request body' },
-      { status: 400 }
+      { success: false, error: "Invalid JSON in request body" },
+      { status: 400 },
     );
   }
 
@@ -210,8 +210,8 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
   if (!parseResult.success) {
     const firstError = parseResult.error.issues[0];
     return NextResponse.json(
-      { success: false, error: firstError?.message || 'Invalid request body' },
-      { status: 400 }
+      { success: false, error: firstError?.message || "Invalid request body" },
+      { status: 400 },
     );
   }
 
@@ -228,10 +228,10 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: 'No team chat exists',
-        message: 'Create your first agent to initialize your Agents chat.',
+        error: "No team chat exists",
+        message: "Create your first agent to initialize your Agents chat.",
       },
-      { status: 404 }
+      { status: 404 },
     );
   }
 
@@ -260,8 +260,8 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
       .where(
         and(
           eq(messages.id, replyToMessageId),
-          eq(messages.chatId, teamChat.chatId)
-        )
+          eq(messages.chatId, teamChat.chatId),
+        ),
       )
       .limit(1);
 
@@ -269,9 +269,9 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Invalid replyToMessageId: message not found in this chat',
+          error: "Invalid replyToMessageId: message not found in this chat",
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -292,7 +292,7 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
     chatId: teamChat.chatId,
     senderId: user.id,
     content: content.trim(),
-    type: 'user',
+    type: "user",
     createdAt: now,
     targetIds,
     replyToMessageId: replyToMessageId ?? null,
@@ -301,7 +301,7 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
   logger.info(
     `Team chat message sent by user ${user.id}`,
     { chatId: teamChat.chatId, messageId },
-    'TeamChatMessageAPI'
+    "TeamChatMessageAPI",
   );
 
   // Broadcast the message via SSE
@@ -310,7 +310,7 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
     content: content.trim(),
     chatId: teamChat.chatId,
     senderId: user.id,
-    type: 'user',
+    type: "user",
     createdAt: toISO(now),
     isGameChat: false,
     isDMChat: false,
@@ -323,19 +323,19 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
   let generatedTitle: string | null = null;
   const needsTitle = await teamChatService.chatNeedsTitle(
     teamChat.chatId,
-    user.id
+    user.id,
   );
   if (needsTitle) {
     const messageCount = await teamChatService.getUserMessageCount(
       teamChat.chatId,
-      user.id
+      user.id,
     );
     // Only generate on first message (count is 1 after insert)
     if (messageCount === 1) {
       generatedTitle = await generateAndUpdateChatTitle(
         teamChat.chatId,
         content.trim(),
-        user.id
+        user.id,
       );
     }
   }
@@ -352,12 +352,12 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
         content: content.trim(),
         chatId: teamChat.chatId,
         senderId: user.id,
-        type: 'user',
+        type: "user",
         createdAt: toISO(now),
       },
       // Include generated title if one was created
       generatedTitle,
     },
-    { status: 201 }
+    { status: 201 },
   );
 });

@@ -582,7 +582,7 @@ function handleFileLoad(event) {
       const data = JSON.parse(e.target.result);
       loadTrace(data);
     } catch (err) {
-      alert('Failed to parse JSON: ' + err.message);
+      alert(`Failed to parse JSON: ${err.message}`);
     }
   };
   reader.readAsText(file);
@@ -600,7 +600,7 @@ if (dropZone) {
     if (file) {
       const reader = new FileReader();
       reader.onload = (ev) => {
-        try { loadTrace(JSON.parse(ev.target.result)); } catch (err) { alert('Failed: ' + err.message); }
+        try { loadTrace(JSON.parse(ev.target.result)); } catch (err) { alert(`Failed: ${err.message}`); }
       };
       reader.readAsText(file);
     }
@@ -659,12 +659,12 @@ function updateTopStats() {
   const t = currentTrace;
   if (!t) return;
   const stats = document.getElementById('topStats');
-  const dur = t.durationMs ? (t.durationMs / 1000).toFixed(1) + 's' : 'N/A';
+  const dur = t.durationMs ? `${(t.durationMs / 1000).toFixed(1)}s` : 'N/A';
   const nodes = t.nodes ? t.nodes.length : 0;
   const llm = t.llmCalls ? t.llmCalls.length : 0;
   const npc = t.npcTrajectories ? t.npcTrajectories.length : 0;
   const tokens = t.tokenStats ? t.tokenStats.totalTokens.toLocaleString() : '0';
-  const cost = t.tokenStats && t.tokenStats.estimatedCostUSD ? '$' + t.tokenStats.estimatedCostUSD.toFixed(4) : '$0';
+  const cost = t.tokenStats?.estimatedCostUSD ? `$${t.tokenStats.estimatedCostUSD.toFixed(4)}` : '$0';
   const errors = t.nodes ? t.nodes.filter(n => n.status === 'error').length : 0;
   const skipped = t.nodes ? t.nodes.filter(n => n.status === 'skipped').length : 0;
 
@@ -686,7 +686,7 @@ function updateTopStats() {
 function renderDAG() {
   const svg = document.getElementById('dagCanvas');
   const t = currentTrace;
-  if (!t || !t.dag) return;
+  if (!t?.dag) return;
 
   // Layout computation
   const dag = t.dag;
@@ -774,8 +774,8 @@ function renderDAG() {
     rect.setAttribute('width', maxPX - minX);
     rect.setAttribute('height', maxPY - minY);
     rect.setAttribute('rx', 8);
-    rect.setAttribute('fill', PHASE_COLORS[phaseName] + '08');
-    rect.setAttribute('stroke', PHASE_COLORS[phaseName] + '30');
+    rect.setAttribute('fill', `${PHASE_COLORS[phaseName]}08`);
+    rect.setAttribute('stroke', `${PHASE_COLORS[phaseName]}30`);
     rect.setAttribute('stroke-width', 1);
     svg.appendChild(rect);
 
@@ -867,8 +867,8 @@ function renderDAG() {
     rect.setAttribute('width', pos.w);
     rect.setAttribute('height', pos.h);
     rect.setAttribute('rx', 6);
-    rect.setAttribute('fill', isSelected ? color + '25' : '#1a1a2e');
-    rect.setAttribute('stroke', isSelected ? color : status === 'error' ? '#ef4444' : status === 'skipped' ? '#555' : color + '60');
+    rect.setAttribute('fill', isSelected ? `${color}25` : '#1a1a2e');
+    rect.setAttribute('stroke', isSelected ? color : status === 'error' ? '#ef4444' : status === 'skipped' ? '#555' : `${color}60`);
     rect.setAttribute('stroke-width', isSelected ? 2 : 1);
     g.appendChild(rect);
 
@@ -900,8 +900,8 @@ function renderDAG() {
     info.setAttribute('font-family', 'inherit');
     const durText = trace ? formatDuration(trace.durationMs) : '--';
     const llmText = llmCount > 0 ? ` | ${llmCount} LLM` : '';
-    const inputKeys = trace && trace.inputs ? Object.keys(trace.inputs).length : 0;
-    const outputKeys = trace && trace.outputs ? Object.keys(trace.outputs).length : 0;
+    const inputKeys = trace?.inputs ? Object.keys(trace.inputs).length : 0;
+    const outputKeys = trace?.outputs ? Object.keys(trace.outputs).length : 0;
     info.textContent = `${durText}${llmText} | in:${inputKeys} out:${outputKeys}`;
     g.appendChild(info);
 
@@ -961,7 +961,7 @@ function showNodeDetail(nodeId) {
   document.getElementById('searchInput').value = '';
 
   // Get associated LLM calls
-  const llmCalls = nodeTrace && nodeTrace.llmCallIds
+  const llmCalls = nodeTrace?.llmCallIds
     ? nodeTrace.llmCallIds.map(id => t.llmCalls.find(c => c.callId === id)).filter(Boolean)
     : [];
 
@@ -991,7 +991,7 @@ function switchTab(el, nodeId) {
   const tab = el.dataset.tab;
 
   const nodeTrace = currentTrace.nodes.find(n => n.nodeId === nodeId);
-  const llmCalls = nodeTrace && nodeTrace.llmCallIds
+  const llmCalls = nodeTrace?.llmCallIds
     ? nodeTrace.llmCallIds.map(id => currentTrace.llmCalls.find(c => c.callId === id)).filter(Boolean)
     : [];
   const npcTrajectories = currentTrace.npcTrajectories || [];
@@ -1047,7 +1047,7 @@ function renderOverviewTab(dagNode, nodeTrace, llmCalls) {
           <tr><td class="kv-key">Duration</td><td class="kv-val">${formatDuration(nodeTrace.durationMs)}</td></tr>
           <tr><td class="kv-key">Started</td><td class="kv-val">${new Date(nodeTrace.startMs).toISOString()}</td></tr>
           <tr><td class="kv-key">Ended</td><td class="kv-val">${new Date(nodeTrace.endMs).toISOString()}</td></tr>
-          <tr><td class="kv-key">% of Tick</td><td class="kv-val">${currentTrace.durationMs ? ((nodeTrace.durationMs / currentTrace.durationMs) * 100).toFixed(1) + '%' : 'N/A'}</td></tr>
+          <tr><td class="kv-key">% of Tick</td><td class="kv-val">${currentTrace.durationMs ? `${((nodeTrace.durationMs / currentTrace.durationMs) * 100).toFixed(1)}%` : 'N/A'}</td></tr>
         </table>
         <div class="timing-bar">
           <div class="timing-bar-fill" style="width:${currentTrace.durationMs ? (nodeTrace.durationMs / currentTrace.durationMs * 100) : 0}%;background:${PHASE_COLORS[dagNode.phase]}"></div>
@@ -1147,7 +1147,7 @@ function renderDataTab(title, data) {
   Object.entries(data).forEach(([key, value]) => {
     const valStr = typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value);
     const isLarge = valStr.length > 200;
-    const _preview = isLarge ? valStr.slice(0, 200) + '...' : valStr;
+    const _preview = isLarge ? `${valStr.slice(0, 200)}...` : valStr;
     const typeLabel = Array.isArray(value) ? `Array[${value.length}]` : typeof value === 'object' && value !== null ? `Object{${Object.keys(value).length}}` : typeof value;
 
     html += `
@@ -1177,7 +1177,7 @@ function renderLLMCallsTab(llmCalls) {
     <span class="data-size">${llmCalls.length} calls | ${llmCalls.reduce((s,c) => s + (c.inputTokens||0) + (c.outputTokens||0), 0).toLocaleString()} tokens</span>
   </div>`;
 
-  llmCalls.forEach((call, idx) => {
+  llmCalls.forEach((call, _idx) => {
     const tokens = (call.inputTokens || 0) + (call.outputTokens || 0);
     html += `
       <div class="llm-card">
@@ -1338,26 +1338,26 @@ function safeId(str) {
 
 function truncText(str, max) {
   if (str == null) return '';
-  return str.length > max ? str.slice(0, max - 1) + '\u2026' : str;
+  return str.length > max ? `${str.slice(0, max - 1)}\u2026` : str;
 }
 
 function formatDuration(ms) {
   if (ms == null || ms === 0) return '0ms';
-  if (ms < 1000) return ms + 'ms';
-  if (ms < 60000) return (ms / 1000).toFixed(1) + 's';
-  return (ms / 60000).toFixed(1) + 'm';
+  if (ms < 1000) return `${ms}ms`;
+  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+  return `${(ms / 60000).toFixed(1)}m`;
 }
 
 function formatBytes(bytes) {
-  if (bytes < 1024) return bytes + 'B';
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + 'KB';
-  return (bytes / (1024 * 1024)).toFixed(1) + 'MB';
+  if (bytes < 1024) return `${bytes}B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
 }
 
 function syntaxHighlight(json) {
   return escapeHtml(json).replace(
-    /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,
-    function (match) {
+    /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)/g,
+    (match) => {
       let cls = 'json-number';
       if (/^"/.test(match)) {
         cls = /:$/.test(match) ? 'json-key' : 'json-string';
@@ -1366,7 +1366,7 @@ function syntaxHighlight(json) {
       } else if (/null/.test(match)) {
         cls = 'json-null';
       }
-      return '<span class="' + cls + '">' + match + '</span>';
+      return `<span class="${cls}">${match}</span>`;
     }
   );
 }
@@ -2501,7 +2501,7 @@ function renderDataGapsView() {
   // AUTO-DETECT: skipped nodes
   const skipped = t.nodes.filter(n => n.status === 'skipped');
   if (skipped.length > 0) {
-    const hasUnified = skipped.some(n => n.error && n.error.includes('unifiedNpcPipeline'));
+    const hasUnified = skipped.some(n => n.error?.includes('unifiedNpcPipeline'));
     const hasContext = skipped.every(n => Object.keys(n.inputs).length > 0 || Object.keys(n.outputs).length > 0);
     if (hasUnified) gaps.push({severity:'critical',title:'Unified NPC Pipeline Bypasses DAG',desc:`${skipped.map(n=>n.name).join(', ')} skipped. All NPC trading in npc-tick.`});
     else if (hasContext) fixed.push({title:`${skipped.length} Skipped Nodes Have Context`,desc:`${skipped.map(n=>n.name).join(', ')} — skipped but inputs/outputs explain WHY (conditions, thresholds, reasons).`});
@@ -2531,8 +2531,8 @@ function renderDataGapsView() {
   // AUTO-DETECT: sub-operations coverage
   const nodesWithSubOps = t.nodes.filter(n => n.subOperations?.length > 0);
   const nodesWithoutSubOps = t.nodes.filter(n => n.status === 'success' && (!n.subOperations || n.subOperations.length === 0));
-  if (nodesWithSubOps.length > 0) fixed.push({title:`${nodesWithSubOps.length} Nodes Have DB/External Operation Tracking`,desc:`${nodesWithSubOps.map(n=>n.name+' ('+n.subOperations.length+' ops)').join(', ')} — DB reads/writes and external calls visible.`});
-  if (nodesWithoutSubOps.length > 0) gaps.push({severity:'medium',title:`${nodesWithoutSubOps.length} Nodes Without Sub-Operation Tracking`,desc:`${nodesWithoutSubOps.slice(0,5).map(n=>n.name).join(', ')}${nodesWithoutSubOps.length>5?' + '+(nodesWithoutSubOps.length-5)+' more':''} — DB operations not instrumented yet.`});
+  if (nodesWithSubOps.length > 0) fixed.push({title:`${nodesWithSubOps.length} Nodes Have DB/External Operation Tracking`,desc:`${nodesWithSubOps.map(n=>`${n.name} (${n.subOperations.length} ops)`).join(', ')} — DB reads/writes and external calls visible.`});
+  if (nodesWithoutSubOps.length > 0) gaps.push({severity:'medium',title:`${nodesWithoutSubOps.length} Nodes Without Sub-Operation Tracking`,desc:`${nodesWithoutSubOps.slice(0,5).map(n=>n.name).join(', ')}${nodesWithoutSubOps.length>5?` + ${nodesWithoutSubOps.length-5} more`:''} — DB operations not instrumented yet.`});
 
   // AUTO-DETECT: NPC timestamps
   const allDecisions = t.npcTrajectories.flatMap(n => n.decisions);
@@ -2550,7 +2550,7 @@ function renderDataGapsView() {
 
   // STATIC: check if relationship engine has sub-ops instrumented
   const relNode = t.nodes.find(n => n.nodeId === 'relationships');
-  if (relNode && relNode.subOperations?.some(o => o.type === 'llm'))
+  if (relNode?.subOperations?.some(o => o.type === 'llm'))
     fixed.push({title:'Relationship Engine Internals Visible',desc:'LLM calls, DB reads/writes, and interaction tracking instrumented via subOperations.'});
   else if (relNode)
     gaps.push({severity:'medium',title:'Relationship Engine Internals Hidden',desc:'RelationshipEvolutionEngine does internal LLM calls + DB mutations. Only aggregate count surfaced.'});

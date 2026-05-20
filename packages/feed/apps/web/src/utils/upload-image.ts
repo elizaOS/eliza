@@ -3,9 +3,9 @@
  * Used by edit profile and onboarding for profile/cover image uploads.
  */
 
-import { apiFetch } from '@/utils/api-fetch';
+import { apiFetch } from "@/utils/api-fetch";
 
-export type UploadImageType = 'profile' | 'cover';
+export type UploadImageType = "profile" | "cover";
 
 export const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB
 
@@ -17,10 +17,10 @@ export const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB
  */
 export function validateImageFile(
   file: File,
-  maxSize: number = MAX_IMAGE_SIZE
+  maxSize: number = MAX_IMAGE_SIZE,
 ): string | null {
-  if (!file.type.startsWith('image/')) {
-    return 'Please select an image file';
+  if (!file.type.startsWith("image/")) {
+    return "Please select an image file";
   }
   if (file.size > maxSize) {
     const mb = Math.round(maxSize / (1024 * 1024));
@@ -44,20 +44,20 @@ interface UploadErrorResponse {
  */
 export async function uploadImage(
   file: File,
-  type: UploadImageType
+  type: UploadImageType,
 ): Promise<string> {
   const formData = new FormData();
-  formData.append('file', file);
-  formData.append('type', type);
+  formData.append("file", file);
+  formData.append("type", type);
 
-  const response = await apiFetch('/api/upload/image', {
-    method: 'POST',
+  const response = await apiFetch("/api/upload/image", {
+    method: "POST",
     body: formData,
   });
 
   if (!response.ok) {
     const body: UploadErrorResponse = await response.json().catch(() => ({}));
-    throw new Error(body.error ?? body.message ?? 'Upload failed');
+    throw new Error(body.error ?? body.message ?? "Upload failed");
   }
 
   const data = (await response.json()) as { url: string };

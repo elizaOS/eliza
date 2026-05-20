@@ -1,4 +1,4 @@
-import 'server-only';
+import "server-only";
 
 import {
   and,
@@ -14,23 +14,23 @@ import {
   positions,
   userPnLSnapshots,
   users,
-} from '@feed/db';
-import { FEE_CONFIG } from '@feed/engine/config/fees';
-import { toNumber } from '@feed/engine/portfolio-valuation';
-import { sql } from 'drizzle-orm';
+} from "@feed/db";
+import { FEE_CONFIG } from "@feed/engine/config/fees";
+import { toNumber } from "@feed/engine/portfolio-valuation";
+import { sql } from "drizzle-orm";
 import type {
   PnlHistoryPoint,
   PnlHistoryRange,
   UserPnlMetrics,
-} from './pnl-history-types';
-import { calculatePredictionPositionSnapshot } from './predictionPositionSnapshot';
+} from "./pnl-history-types";
+import { calculatePredictionPositionSnapshot } from "./predictionPositionSnapshot";
 
 export type {
   PnlHistoryPoint,
   PnlHistoryRange,
   PnlHistoryScope,
   UserPnlMetrics,
-} from './pnl-history-types';
+} from "./pnl-history-types";
 
 interface SnapshotMetricRow {
   currentPnL: number;
@@ -44,11 +44,11 @@ interface PnlMetricUserRow {
   privyId: string | null;
 }
 
-const TIMEFRAME_DURATIONS: Record<Exclude<PnlHistoryRange, 'ALL'>, number> = {
-  '1H': 60 * 60 * 1000,
-  '4H': 4 * 60 * 60 * 1000,
-  '1D': 24 * 60 * 60 * 1000,
-  '1W': 7 * 24 * 60 * 60 * 1000,
+const TIMEFRAME_DURATIONS: Record<Exclude<PnlHistoryRange, "ALL">, number> = {
+  "1H": 60 * 60 * 1000,
+  "4H": 4 * 60 * 60 * 1000,
+  "1D": 24 * 60 * 60 * 1000,
+  "1W": 7 * 24 * 60 * 60 * 1000,
 };
 
 const PNL_SNAPSHOT_INSERT_BATCH_SIZE = 250;
@@ -69,10 +69,10 @@ function chunkArray<T>(items: T[], size: number): T[][] {
  */
 export function getPnlHistoryCutoff(
   range: PnlHistoryRange,
-  now = new Date()
+  now = new Date(),
 ): Date | undefined {
   const durationMs =
-    TIMEFRAME_DURATIONS[range as Exclude<PnlHistoryRange, 'ALL'>];
+    TIMEFRAME_DURATIONS[range as Exclude<PnlHistoryRange, "ALL">];
   return durationMs ? new Date(now.getTime() - durationMs) : undefined;
 }
 
@@ -142,7 +142,7 @@ export function buildScopedPnlHistoryPoints(params: {
     if (!scopeIdSet.has(snapshot.userId)) continue;
 
     const time =
-      typeof snapshot.snapshotAt === 'string'
+      typeof snapshot.snapshotAt === "string"
         ? Date.parse(snapshot.snapshotAt)
         : Number(snapshot.snapshotAt.valueOf());
     if (!Number.isFinite(time)) continue;
@@ -201,8 +201,8 @@ export function buildScopedPnlHistoryPoints(params: {
 export async function loadCurrentUserPnlMetrics(
   targetUserIds?: string[],
   options: {
-    onPredictionPricingError?: 'fallback' | 'throw';
-  } = {}
+    onPredictionPricingError?: "fallback" | "throw";
+  } = {},
 ): Promise<Map<string, UserPnlMetrics>> {
   const userFilter =
     targetUserIds && targetUserIds.length > 0
@@ -210,8 +210,8 @@ export async function loadCurrentUserPnlMetrics(
           eq(users.isActor, false),
           or(
             inArray(users.id, targetUserIds),
-            inArray(users.privyId, targetUserIds)
-          )
+            inArray(users.privyId, targetUserIds),
+          ),
         )
       : eq(users.isActor, false);
 
@@ -244,7 +244,7 @@ export async function loadCurrentUserPnlMetrics(
 
   for (const userIdBatch of chunkArray(
     positionUserIds,
-    PNL_METRIC_QUERY_BATCH_SIZE
+    PNL_METRIC_QUERY_BATCH_SIZE,
   )) {
     const perpUnrealizedRows = await db
       .select({
@@ -255,8 +255,8 @@ export async function loadCurrentUserPnlMetrics(
       .where(
         and(
           inArray(perpPositions.userId, userIdBatch),
-          isNull(perpPositions.closedAt)
-        )
+          isNull(perpPositions.closedAt),
+        ),
       )
       .groupBy(perpPositions.userId);
 
@@ -286,9 +286,9 @@ export async function loadCurrentUserPnlMetrics(
       .where(
         and(
           inArray(positions.userId, userIdBatch),
-          eq(positions.status, 'active'),
-          eq(markets.resolved, false)
-        )
+          eq(positions.status, "active"),
+          eq(markets.resolved, false),
+        ),
       );
 
     for (const row of predictionRows) {
@@ -301,12 +301,12 @@ export async function loadCurrentUserPnlMetrics(
       const snapshot = calculatePredictionPositionSnapshot({
         shares: toNumber(row.shares),
         avgPrice: toNumber(row.avgPrice),
-        sideKey: row.side ? 'yes' : 'no',
+        sideKey: row.side ? "yes" : "no",
         yesShares: toNumber(row.yesShares),
         noShares: toNumber(row.noShares),
         feeRate: FEE_CONFIG.TRADING_FEE_RATE,
-        logContext: 'wallet/pnlHistory',
-        onSellPreviewError: options.onPredictionPricingError ?? 'fallback',
+        logContext: "wallet/pnlHistory",
+        onSellPreviewError: options.onPredictionPricingError ?? "fallback",
       });
 
       metrics.unrealizedPnL += snapshot.unrealizedPnL;
@@ -343,14 +343,14 @@ export async function loadScopedPnlHistoryPoints(params: {
       cutoff
         ? and(
             inArray(userPnLSnapshots.userId, scopeUserIds),
-            gte(userPnLSnapshots.snapshotAt, cutoff)
+            gte(userPnLSnapshots.snapshotAt, cutoff),
           )
-        : inArray(userPnLSnapshots.userId, scopeUserIds)
+        : inArray(userPnLSnapshots.userId, scopeUserIds),
     )
     .orderBy(asc(userPnLSnapshots.snapshotAt));
 
   const liveMetricsByUserId = await loadCurrentUserPnlMetrics(scopeUserIds, {
-    onPredictionPricingError: 'fallback',
+    onPredictionPricingError: "fallback",
   });
 
   return buildScopedPnlHistoryPoints({
@@ -375,7 +375,7 @@ async function loadSnapshotCandidateUserIds(): Promise<string[]> {
       .selectDistinct({ userId: positions.userId })
       .from(positions)
       .innerJoin(markets, eq(positions.marketId, markets.id))
-      .where(and(eq(positions.status, 'active'), eq(markets.resolved, false))),
+      .where(and(eq(positions.status, "active"), eq(markets.resolved, false))),
   ]);
 
   return Array.from(
@@ -383,7 +383,7 @@ async function loadSnapshotCandidateUserIds(): Promise<string[]> {
       ...lifetimeRows.map((row) => row.userId),
       ...perpRows.map((row) => row.userId),
       ...predictionRows.map((row) => row.userId),
-    ])
+    ]),
   );
 }
 
@@ -393,7 +393,7 @@ async function loadSnapshotCandidateUserIds(): Promise<string[]> {
  * in production and provides no extra chart value for dormant zero-P&L users.
  */
 export async function snapshotAllUserPnlMetrics(
-  snapshotAt: Date
+  snapshotAt: Date,
 ): Promise<number> {
   const normalizedSnapshotAt = getHourBoundary(snapshotAt);
   const targetUserIds = await loadSnapshotCandidateUserIds();
@@ -403,7 +403,7 @@ export async function snapshotAllUserPnlMetrics(
   }
 
   const metricsByUserId = await loadCurrentUserPnlMetrics(targetUserIds, {
-    onPredictionPricingError: 'throw',
+    onPredictionPricingError: "throw",
   });
   const snapshotRows = Array.from(metricsByUserId.values()).map((metrics) => ({
     id: `${metrics.userId}:${normalizedSnapshotAt.toISOString()}:pnl`,

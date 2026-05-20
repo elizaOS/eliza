@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { TeamChatView } from '@/components/chats';
-import { useAuth } from '@/hooks/useAuth';
-import { useTeamChat } from '@/hooks/useTeamChat';
+import { TeamChatView } from "@/components/chats";
+import { useAuth } from "@/hooks/useAuth";
+import { useTeamChat } from "@/hooks/useTeamChat";
 
 export function TerminalAgentsChat() {
   const { authenticated, user } = useAuth();
@@ -72,7 +72,7 @@ export function TerminalAgentsChat() {
                 {
                   id: user.id,
                   username: user.username || null,
-                  displayName: user.displayName || user.username || 'You',
+                  displayName: user.displayName || user.username || "You",
                   profileImageUrl: user.profileImageUrl || null,
                 },
               ]

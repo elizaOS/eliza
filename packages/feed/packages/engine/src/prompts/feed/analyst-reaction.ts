@@ -1,10 +1,10 @@
-import { definePrompt } from '../define-prompt';
+import { definePrompt } from "../define-prompt";
 import {
   ANTI_REPETITION_RULES,
   CONTENT_REQUIREMENTS_MARKET,
   FINAL_REMINDERS,
   WORLD_CONTEXT_HEADER_WITH_TRADES,
-} from '../shared-sections';
+} from "../shared-sections";
 
 /**
  * Prompt for generating analyst commentary on stock price movements.
@@ -17,10 +17,10 @@ import {
  * Returns XML with analyst commentary and metadata.
  */
 export const analystReaction = definePrompt({
-  id: 'analyst-reaction',
-  version: '4.0.0',
-  category: 'feed',
-  description: 'Analyst commentary with full narrative context',
+  id: "analyst-reaction",
+  version: "4.0.0",
+  category: "feed",
+  description: "Analyst commentary with full narrative context",
   temperature: 0.8,
   maxTokens: 600,
   template: `{{realityGrounding}}

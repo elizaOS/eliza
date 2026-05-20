@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { HelpCircle } from 'lucide-react';
+import { HelpCircle } from "lucide-react";
 
 interface TutorialHelpButtonProps {
   onClick: () => void;

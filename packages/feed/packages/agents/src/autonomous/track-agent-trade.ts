@@ -5,23 +5,23 @@
  * Environment properties match apps/web/src/lib/posthog/server.ts for consistent filtering.
  */
 
-import { checkProgress } from '@feed/api';
-import { PostHog } from 'posthog-node';
+import { checkProgress } from "@feed/api";
+import { PostHog } from "posthog-node";
 
 let client: PostHog | null = null;
 
-function getServerEnvironment(): 'production' | 'staging' | 'development' {
-  if (process.env.VERCEL_ENV === 'production') return 'production';
-  if (process.env.VERCEL_ENV === 'preview') return 'staging';
-  if (process.env.NODE_ENV === 'production') return 'production';
-  return 'development';
+function getServerEnvironment(): "production" | "staging" | "development" {
+  if (process.env.VERCEL_ENV === "production") return "production";
+  if (process.env.VERCEL_ENV === "preview") return "staging";
+  if (process.env.NODE_ENV === "production") return "production";
+  return "development";
 }
 
 function getEnvironmentProperties(): Record<string, string> {
   return {
     environment: getServerEnvironment(),
-    deployment_url: process.env.VERCEL_URL || 'localhost:3000',
-    app_version: process.env.VERCEL_GIT_COMMIT_SHA || 'dev',
+    deployment_url: process.env.VERCEL_URL || "localhost:3000",
+    app_version: process.env.VERCEL_GIT_COMMIT_SHA || "dev",
   };
 }
 
@@ -29,7 +29,7 @@ function getClient(): PostHog | null {
   if (client !== null) return client;
   const apiKey = process.env.NEXT_PUBLIC_POSTHOG_PROJECT_ID;
   const apiHost =
-    process.env.NEXT_PUBLIC_POSTHOG_HOST || 'https://us.i.posthog.com';
+    process.env.NEXT_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com";
   if (!apiKey) return null;
   try {
     // Match the config in apps/web/src/lib/posthog/server.ts so cron/serverless
@@ -48,7 +48,7 @@ function getClient(): PostHog | null {
 
 export interface AgentTradeExecutedProperties {
   agent_id: string;
-  market_type: 'prediction' | 'perp';
+  market_type: "prediction" | "perp";
   action: string;
   market_id?: string;
   ticker?: string;
@@ -68,7 +68,7 @@ export interface AgentTradeExecutedProperties {
  */
 export function trackAgentTradeExecuted(
   agentUserId: string,
-  properties: AgentTradeExecutedProperties
+  properties: AgentTradeExecutedProperties,
 ): void {
   const c = getClient();
   if (!c) return;
@@ -76,11 +76,11 @@ export function trackAgentTradeExecuted(
     c.capture({
       // Use owner as the actor so PostHog user counts represent humans, not agents
       distinctId: properties.owner_id,
-      event: 'agent_trade_executed',
+      event: "agent_trade_executed",
       properties: {
         ...properties,
         agent_id: agentUserId,
-        $lib: 'posthog-node',
+        $lib: "posthog-node",
         ...getEnvironmentProperties(),
         timestamp: new Date().toISOString(),
       },
@@ -90,5 +90,5 @@ export function trackAgentTradeExecuted(
   }
 
   // Track for achievements (fire-and-forget, uses owner's userId)
-  void checkProgress(properties.owner_id, { type: 'agent_trade_executed' });
+  void checkProgress(properties.owner_id, { type: "agent_trade_executed" });
 }

@@ -188,7 +188,7 @@ import {
   invalidateCachePattern,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
+} from "@feed/api";
 import {
   and,
   count,
@@ -201,16 +201,16 @@ import {
   inArray,
   notifications,
   users,
-} from '@feed/db';
+} from "@feed/db";
 import {
   logger,
   MarkNotificationsReadSchema,
   NotificationsQuerySchema,
   toISO,
-} from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { z } from 'zod';
-import { getMissingNotificationSchemaErrorCode } from './schema-compat';
+} from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { z } from "zod";
+import { getMissingNotificationSchemaErrorCode } from "./schema-compat";
 
 const ClearNotificationsSchema = z
   .object({
@@ -220,22 +220,22 @@ const ClearNotificationsSchema = z
   .refine(
     (value) => value.clearAll === true || value.notificationIds !== undefined,
     {
-      message: 'Provide notificationIds or clearAll=true',
-    }
+      message: "Provide notificationIds or clearAll=true",
+    },
   );
 
 export function serializeNotificationForApi(
   n: Record<string, unknown> & {
     actor?: Record<string, unknown> | null;
-  }
+  },
 ) {
   // Helper to safely convert any value to string (handles cached data)
   const toSafeString = (value: unknown): string => {
-    if (value === null || value === undefined) return '';
-    if (typeof value === 'string') return value;
-    if (typeof value === 'number') return String(value);
-    if (typeof value === 'boolean') return String(value);
-    if (typeof value === 'object' && 'toString' in value) {
+    if (value === null || value === undefined) return "";
+    if (typeof value === "string") return value;
+    if (typeof value === "number") return String(value);
+    if (typeof value === "boolean") return String(value);
+    if (typeof value === "object" && "toString" in value) {
       return (value as { toString: () => string }).toString();
     }
     return String(value);
@@ -245,7 +245,7 @@ export function serializeNotificationForApi(
   let createdAtISO: string;
   if (n.createdAt instanceof Date) {
     createdAtISO = toISO(n.createdAt);
-  } else if (typeof n.createdAt === 'string') {
+  } else if (typeof n.createdAt === "string") {
     createdAtISO = n.createdAt;
   } else {
     const dateValue = n.createdAt as string | number | Date;
@@ -272,7 +272,7 @@ export function serializeNotificationForApi(
     inviteId: n.inviteId ? toSafeString(n.inviteId) : null,
     message: toSafeString(n.message),
     data:
-      n.data && typeof n.data === 'object'
+      n.data && typeof n.data === "object"
         ? (n.data as Record<string, unknown>)
         : null,
     read: Boolean(n.read),
@@ -300,10 +300,10 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   const { searchParams } = new URL(request.url);
   const queryParams: Record<string, string> = {};
 
-  const limit = searchParams.get('limit');
-  const page = searchParams.get('page');
-  const unreadOnly = searchParams.get('unreadOnly');
-  const type = searchParams.get('type');
+  const limit = searchParams.get("limit");
+  const page = searchParams.get("page");
+  const unreadOnly = searchParams.get("unreadOnly");
+  const type = searchParams.get("type");
 
   if (limit) queryParams.limit = limit;
   if (page) queryParams.page = page;
@@ -369,8 +369,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
             .where(
               and(
                 eq(notifications.userId, authUser.userId),
-                eq(notifications.read, false)
-              )
+                eq(notifications.read, false),
+              ),
             );
 
           unreadCount = Number(unreadCountResult?.count ?? 0);
@@ -384,9 +384,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
           const errorMessage =
             error instanceof Error ? error.message : String(error);
           logger.warn(
-            'Notifications unavailable because the database schema is pending',
+            "Notifications unavailable because the database schema is pending",
             { userId: authUser.userId, code: missingSchemaCode, errorMessage },
-            'GET /api/notifications'
+            "GET /api/notifications",
           );
 
           return {
@@ -401,7 +401,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         // Get actor IDs to fetch user info
         const actorIds = [
           ...new Set(
-            rows.map((n) => n.actorId).filter((id): id is string => id !== null)
+            rows
+              .map((n) => n.actorId)
+              .filter((id): id is string => id !== null),
           ),
         ];
 
@@ -438,14 +440,14 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       {
         namespace: CACHE_KEYS.USER,
         ttl: 10, // 10 second cache (high-frequency endpoint, needs to be fresh)
-      }
+      },
     );
 
   if (!degraded) {
     logger.info(
-      'Notifications fetched successfully',
+      "Notifications fetched successfully",
       { userId: authUser.userId, count: notificationsList.length, unreadCount },
-      'GET /api/notifications'
+      "GET /api/notifications",
     );
   }
 
@@ -477,8 +479,8 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
       .where(
         and(
           eq(notifications.userId, authUser.userId),
-          eq(notifications.read, false)
-        )
+          eq(notifications.read, false),
+        ),
       );
 
     // Invalidate notification cache after update
@@ -487,13 +489,13 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
     });
 
     logger.info(
-      'All notifications marked as read',
+      "All notifications marked as read",
       { userId: authUser.userId },
-      'PATCH /api/notifications'
+      "PATCH /api/notifications",
     );
     return successResponse({
       success: true,
-      message: 'All notifications marked as read',
+      message: "All notifications marked as read",
     });
   }
 
@@ -505,8 +507,8 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
       .where(
         and(
           inArray(notifications.id, notificationIds),
-          eq(notifications.userId, authUser.userId) // Ensure user owns these notifications
-        )
+          eq(notifications.userId, authUser.userId), // Ensure user owns these notifications
+        ),
       );
 
     // Invalidate notification cache after update
@@ -515,19 +517,19 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
     });
 
     logger.info(
-      'Notifications marked as read',
+      "Notifications marked as read",
       { userId: authUser.userId, count: notificationIds.length },
-      'PATCH /api/notifications'
+      "PATCH /api/notifications",
     );
     return successResponse({
       success: true,
-      message: 'Notifications marked as read',
+      message: "Notifications marked as read",
     });
   }
 
   // This should not happen due to schema validation, but handle gracefully
   throw new InternalServerError(
-    'Invalid request: provide notificationIds array or markAllAsRead=true'
+    "Invalid request: provide notificationIds array or markAllAsRead=true",
   );
 });
 
@@ -542,7 +544,7 @@ export const DELETE = withErrorHandling(async (request: NextRequest) => {
     try {
       body = JSON.parse(rawBody);
     } catch {
-      return successResponse({ error: 'Invalid JSON body' }, 400);
+      return successResponse({ error: "Invalid JSON body" }, 400);
     }
   }
   const { notificationIds, clearAll } = ClearNotificationsSchema.parse(body);
@@ -557,14 +559,14 @@ export const DELETE = withErrorHandling(async (request: NextRequest) => {
     });
 
     logger.info(
-      'All notifications cleared',
+      "All notifications cleared",
       { userId: authUser.userId },
-      'DELETE /api/notifications'
+      "DELETE /api/notifications",
     );
 
     return successResponse({
       success: true,
-      message: 'All notifications cleared',
+      message: "All notifications cleared",
     });
   }
 
@@ -575,8 +577,8 @@ export const DELETE = withErrorHandling(async (request: NextRequest) => {
     .where(
       and(
         inArray(notifications.id, idsToDelete),
-        eq(notifications.userId, authUser.userId)
-      )
+        eq(notifications.userId, authUser.userId),
+      ),
     );
 
   await invalidateCachePattern(`notifications:${authUser.userId}:*`, {
@@ -584,13 +586,13 @@ export const DELETE = withErrorHandling(async (request: NextRequest) => {
   });
 
   logger.info(
-    'Notifications cleared',
+    "Notifications cleared",
     { userId: authUser.userId, count: idsToDelete.length },
-    'DELETE /api/notifications'
+    "DELETE /api/notifications",
   );
 
   return successResponse({
     success: true,
-    message: 'Notifications cleared',
+    message: "Notifications cleared",
   });
 });

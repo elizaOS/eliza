@@ -3,8 +3,8 @@
  * Uses Chroma's MetaMask wallet for auth via Privy.
  */
 
-import type { Page } from '@playwright/test';
-import { SEED_PHRASE } from './test-data';
+import type { Page } from "@playwright/test";
+import { SEED_PHRASE } from "./test-data";
 
 interface ChromaWallets {
   metamask: {
@@ -20,7 +20,7 @@ interface ChromaWallets {
  */
 export async function loginWithWallet(
   page: Page,
-  wallets?: ChromaWallets
+  wallets?: ChromaWallets,
 ): Promise<void> {
   // Import seed phrase if Chroma wallets available
   if (wallets?.metamask) {
@@ -35,7 +35,7 @@ export async function loginWithWallet(
   for (let i = 0; i < 30; i++) {
     if (
       (await page
-        .locator('button')
+        .locator("button")
         .count()
         .catch(() => 0)) > 0
     )
@@ -57,7 +57,7 @@ export async function loginWithWallet(
   // Click login button
   const loginButton = page
     .locator(
-      'button:has-text("Log in"), button:has-text("Connect Wallet"), button:has-text("Sign in")'
+      'button:has-text("Log in"), button:has-text("Connect Wallet"), button:has-text("Sign in")',
     )
     .first();
   if (await loginButton.isVisible({ timeout: 5000 }).catch(() => false)) {
@@ -98,7 +98,7 @@ export async function loginWithWallet(
   }
 
   // Close modal if still open
-  await page.keyboard.press('Escape').catch(() => {});
+  await page.keyboard.press("Escape").catch(() => {});
   await page.waitForTimeout(300);
   await page.mouse.click(10, 10).catch(() => {});
   await page.waitForTimeout(2000);

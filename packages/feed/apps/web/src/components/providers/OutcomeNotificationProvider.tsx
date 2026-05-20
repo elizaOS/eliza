@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import {
   createContext,
@@ -7,20 +7,20 @@ import {
   useMemo,
   useRef,
   useState,
-} from 'react';
+} from "react";
 import {
   type OutcomeNotification,
   OutcomeNotificationPopup,
-} from '@/components/notifications/OutcomeNotificationPopup';
-import { StackedSummaryPopup } from '@/components/notifications/StackedSummaryPopup';
-import { useMarketOutcomeListener } from '@/hooks/useMarketOutcomeListener';
-import { useQueuedOutcomes } from '@/hooks/useQueuedOutcomes';
+} from "@/components/notifications/OutcomeNotificationPopup";
+import { StackedSummaryPopup } from "@/components/notifications/StackedSummaryPopup";
+import { useMarketOutcomeListener } from "@/hooks/useMarketOutcomeListener";
+import { useQueuedOutcomes } from "@/hooks/useQueuedOutcomes";
 
 interface OutcomeNotificationContextValue {
   /** Show a single win/loss outcome notification pop-up */
-  showOutcome: (notification: Omit<OutcomeNotification, 'id'>) => void;
+  showOutcome: (notification: Omit<OutcomeNotification, "id">) => void;
   /** Show a stacked summary for multiple outcomes (e.g. user was away) */
-  showBatchOutcomes: (notifications: Omit<OutcomeNotification, 'id'>[]) => void;
+  showBatchOutcomes: (notifications: Omit<OutcomeNotification, "id">[]) => void;
 }
 
 const OutcomeNotificationContext =
@@ -31,7 +31,7 @@ export function useOutcomeNotification(): OutcomeNotificationContextValue {
   const ctx = useContext(OutcomeNotificationContext);
   if (!ctx)
     throw new Error(
-      'useOutcomeNotification requires OutcomeNotificationProvider'
+      "useOutcomeNotification requires OutcomeNotificationProvider",
     );
   return ctx;
 }
@@ -50,7 +50,7 @@ function OutcomeNotificationListeners() {
   return null;
 }
 
-type ActiveMode = 'idle' | 'single' | 'batch';
+type ActiveMode = "idle" | "single" | "batch";
 
 /**
  * Provides win/loss outcome notification pop-ups with mutual exclusion.
@@ -87,27 +87,27 @@ export function OutcomeNotificationProvider({
   >([]);
 
   // Refs for arbitration — deferred items live here, not in state
-  const modeRef = useRef<ActiveMode>('idle');
+  const modeRef = useRef<ActiveMode>("idle");
   const singleQueueRef = useRef<OutcomeNotification[]>([]);
   const pendingBatchRef = useRef<OutcomeNotification[] | null>(null);
 
   const showOutcome = useCallback(
-    (notification: Omit<OutcomeNotification, 'id'>) => {
+    (notification: Omit<OutcomeNotification, "id">) => {
       const full: OutcomeNotification = { ...notification, id: makeId() };
 
-      if (modeRef.current === 'idle') {
-        modeRef.current = 'single';
+      if (modeRef.current === "idle") {
+        modeRef.current = "single";
         setCurrent(full);
       } else {
         // Both 'single' and 'batch' → queue for later
         singleQueueRef.current.push(full);
       }
     },
-    []
+    [],
   );
 
   const showBatchOutcomes = useCallback(
-    (notifications: Omit<OutcomeNotification, 'id'>[]) => {
+    (notifications: Omit<OutcomeNotification, "id">[]) => {
       if (notifications.length === 0) return;
 
       // Single item → treat as single notification
@@ -118,16 +118,16 @@ export function OutcomeNotificationProvider({
 
       const full = notifications.map((n) => ({ ...n, id: makeId() }));
 
-      if (modeRef.current === 'idle') {
-        modeRef.current = 'batch';
+      if (modeRef.current === "idle") {
+        modeRef.current = "batch";
         setBatchNotifications(full);
-      } else if (modeRef.current === 'single') {
+      } else if (modeRef.current === "single") {
         // Defer — store in ref, show when single queue drains
         pendingBatchRef.current = full;
       }
       // If already in 'batch' mode, ignore (don't stack batches)
     },
-    [showOutcome]
+    [showOutcome],
   );
 
   const handleDismiss = useCallback(() => {
@@ -147,10 +147,10 @@ export function OutcomeNotificationProvider({
     if (pendingBatchRef.current) {
       const batch = pendingBatchRef.current;
       pendingBatchRef.current = null;
-      modeRef.current = 'batch';
+      modeRef.current = "batch";
       setBatchNotifications(batch);
     } else {
-      modeRef.current = 'idle';
+      modeRef.current = "idle";
     }
   }, []);
 
@@ -161,13 +161,13 @@ export function OutcomeNotificationProvider({
     if (singleQueueRef.current.length > 0) {
       const next = singleQueueRef.current.shift();
       if (next) {
-        modeRef.current = 'single';
+        modeRef.current = "single";
         setCurrent(next);
         return;
       }
     }
 
-    modeRef.current = 'idle';
+    modeRef.current = "idle";
   }, []);
 
   const handleBatchViewResult = useCallback(() => {
@@ -177,18 +177,18 @@ export function OutcomeNotificationProvider({
     if (singleQueueRef.current.length > 0) {
       const next = singleQueueRef.current.shift();
       if (next) {
-        modeRef.current = 'single';
+        modeRef.current = "single";
         setCurrent(next);
         return;
       }
     }
 
-    modeRef.current = 'idle';
+    modeRef.current = "idle";
   }, []);
 
   const value = useMemo(
     () => ({ showOutcome, showBatchOutcomes }),
-    [showOutcome, showBatchOutcomes]
+    [showOutcome, showBatchOutcomes],
   );
 
   return (

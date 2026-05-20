@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 /**
  * Global Error Boundary for Next.js App Router
@@ -12,11 +12,11 @@ export const dynamic = 'force-dynamic';
  * Best practice: This is the last line of defense for errors in the app.
  */
 
-import type { SeverityLevel } from '@sentry/nextjs';
-import * as Sentry from '@sentry/nextjs';
-import { AlertTriangle } from 'lucide-react';
-import { useEffect } from 'react';
-import { posthog } from '@/lib/posthog';
+import type { SeverityLevel } from "@sentry/nextjs";
+import * as Sentry from "@sentry/nextjs";
+import { AlertTriangle } from "lucide-react";
+import { useEffect } from "react";
+import { posthog } from "@/lib/posthog";
 
 export default function GlobalError({
   error,
@@ -28,12 +28,12 @@ export default function GlobalError({
   useEffect(() => {
     // Capture error in Sentry with highest priority context
     Sentry.withScope((scope) => {
-      scope.setLevel('fatal' as SeverityLevel); // Mark as fatal since it's a global error
-      scope.setTag('errorBoundary', 'global');
+      scope.setLevel("fatal" as SeverityLevel); // Mark as fatal since it's a global error
+      scope.setTag("errorBoundary", "global");
       if (error.digest) {
-        scope.setTag('errorDigest', error.digest);
+        scope.setTag("errorDigest", error.digest);
       }
-      scope.setContext('globalError', {
+      scope.setContext("globalError", {
         message: error.message,
         stack: error.stack,
         digest: error.digest,
@@ -43,13 +43,13 @@ export default function GlobalError({
 
     // Track error in PostHog
     if (posthog) {
-      posthog.capture('$exception', {
-        $exception_type: error.name || 'Error',
+      posthog.capture("$exception", {
+        $exception_type: error.name || "Error",
         $exception_message: error.message,
         $exception_stack: error.stack,
-        errorBoundary: 'global',
+        errorBoundary: "global",
         digest: error.digest,
-        severity: 'fatal',
+        severity: "fatal",
       });
     }
   }, [error]);
@@ -62,7 +62,7 @@ export default function GlobalError({
             <AlertTriangle className="mx-auto mb-4 h-16 w-16 text-destructive" />
             <h2 className="mb-2 font-bold text-2xl">Something went wrong</h2>
             <p className="mb-6 text-muted-foreground">
-              {error.message || 'An unexpected error occurred'}
+              {error.message || "An unexpected error occurred"}
             </p>
             {error.digest && (
               <p className="mb-4 text-muted-foreground text-sm">
@@ -77,7 +77,7 @@ export default function GlobalError({
                 Try again
               </button>
               <button
-                onClick={() => (window.location.href = '/')}
+                onClick={() => (window.location.href = "/")}
                 className="rounded-md bg-secondary px-6 py-2 text-secondary-foreground transition-colors hover:bg-secondary/90"
               >
                 Go home

@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { logger } from '@feed/shared';
-import { createContext, useContext, useEffect, useRef, useState } from 'react';
-import { useStewardAuthContext } from './StewardAuthProvider';
+import { logger } from "@feed/shared";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { useStewardAuthContext } from "./StewardAuthProvider";
 
 /**
  * Telegram Mini App Provider.
@@ -36,14 +36,14 @@ interface TelegramMiniAppContextType {
 }
 
 const TelegramMiniAppContext = createContext<TelegramMiniAppContextType | null>(
-  null
+  null,
 );
 
 export function useTelegramMiniApp() {
   const context = useContext(TelegramMiniAppContext);
   if (!context)
     throw new Error(
-      'useTelegramMiniApp must be used within TelegramMiniAppProvider'
+      "useTelegramMiniApp must be used within TelegramMiniAppProvider",
     );
   return context;
 }
@@ -61,21 +61,21 @@ export function TelegramMiniAppProvider({
 
   const hasInitialized = useRef(false);
   const hasAttemptedLogin = useRef(false);
-  const sdkRef = useRef<typeof import('@telegram-apps/sdk-react') | null>(null);
+  const sdkRef = useRef<typeof import("@telegram-apps/sdk-react") | null>(null);
   const initDataRawRef = useRef<string | null>(null);
 
   // ── Detect & Initialize ───────────────────────────────────────────────────
 
   useEffect(() => {
-    if (typeof window === 'undefined' || hasInitialized.current) return;
+    if (typeof window === "undefined" || hasInitialized.current) return;
     hasInitialized.current = true;
 
     const initialize = async () => {
       try {
-        const sdk = await import('@telegram-apps/sdk-react');
+        const sdk = await import("@telegram-apps/sdk-react");
         sdkRef.current = sdk;
 
-        const isTelegramEnv = await sdk.isTMA('complete');
+        const isTelegramEnv = await sdk.isTMA("complete");
         if (!isTelegramEnv) {
           setIsLoading(false);
           return;
@@ -106,7 +106,7 @@ export function TelegramMiniAppProvider({
           const u = initData.user;
           setTelegramUser({
             id: Number(u.id),
-            firstName: String(u.firstName ?? u.first_name ?? ''),
+            firstName: String(u.firstName ?? u.first_name ?? ""),
             lastName:
               u.lastName != null || u.last_name != null
                 ? String(u.lastName ?? u.last_name)
@@ -123,16 +123,16 @@ export function TelegramMiniAppProvider({
         if (sdk.miniApp.ready.isAvailable()) sdk.miniApp.ready();
 
         logger.info(
-          'Telegram Mini App initialized',
+          "Telegram Mini App initialized",
           { user: initData?.user?.username },
-          'TelegramMiniApp'
+          "TelegramMiniApp",
         );
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         logger.error(
-          'Telegram Mini App initialization failed',
+          "Telegram Mini App initialization failed",
           { error: message },
-          'TelegramMiniApp'
+          "TelegramMiniApp",
         );
         setError(message);
       } finally {
@@ -152,15 +152,15 @@ export function TelegramMiniAppProvider({
 
     const attemptLogin = async () => {
       logger.info(
-        'Attempting Telegram Mini App auto-login',
+        "Attempting Telegram Mini App auto-login",
         { userId: telegramUser?.id },
-        'TelegramMiniApp'
+        "TelegramMiniApp",
       );
 
-      const res = await fetch('/api/auth/telegram-miniapp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
+      const res = await fetch("/api/auth/telegram-miniapp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ initData: initDataRawRef.current }),
       });
 
@@ -170,22 +170,22 @@ export function TelegramMiniAppProvider({
         error?: string;
       };
       if (!data.ok || !data.token) {
-        throw new Error(data.error ?? 'Telegram miniapp auth failed');
+        throw new Error(data.error ?? "Telegram miniapp auth failed");
       }
 
       await onLoginSuccess(data.token);
       logger.info(
-        'Telegram Mini App login successful',
+        "Telegram Mini App login successful",
         { userId: telegramUser?.id },
-        'TelegramMiniApp'
+        "TelegramMiniApp",
       );
     };
 
     attemptLogin().catch((err: Error) => {
       logger.error(
-        'Telegram Mini App auto-login failed',
+        "Telegram Mini App auto-login failed",
         { error: err.message },
-        'TelegramMiniApp'
+        "TelegramMiniApp",
       );
       setError(err.message);
     });
@@ -198,12 +198,12 @@ export function TelegramMiniAppProvider({
     const sdk = sdkRef.current;
     if (sdk.backButton.mount.isAvailable()) sdk.backButton.mount();
     const handler = () => {
-      if (typeof window !== 'undefined') window.history.back();
+      if (typeof window !== "undefined") window.history.back();
     };
     if (sdk.backButton.onClick.isAvailable()) sdk.backButton.onClick(handler);
     const updateVisibility = () => {
       const isRoot =
-        window.location.pathname === '/' || window.location.pathname === '';
+        window.location.pathname === "/" || window.location.pathname === "";
       if (isRoot) {
         if (sdk.backButton.hide.isAvailable()) sdk.backButton.hide();
       } else {
@@ -211,9 +211,9 @@ export function TelegramMiniAppProvider({
       }
     };
     updateVisibility();
-    window.addEventListener('popstate', updateVisibility);
+    window.addEventListener("popstate", updateVisibility);
     return () => {
-      window.removeEventListener('popstate', updateVisibility);
+      window.removeEventListener("popstate", updateVisibility);
       if (sdk.backButton.offClick.isAvailable())
         sdk.backButton.offClick(handler);
       if (sdk.backButton.hide.isAvailable()) sdk.backButton.hide();
@@ -225,9 +225,9 @@ export function TelegramMiniAppProvider({
   const share = (url: string, text?: string) => {
     if (!isMiniApp || !sdkRef.current) return;
     const sdk = sdkRef.current;
-    const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(url)}${text ? `&text=${encodeURIComponent(text)}` : ''}`;
+    const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(url)}${text ? `&text=${encodeURIComponent(text)}` : ""}`;
     if (sdk.openTelegramLink.isAvailable()) sdk.openTelegramLink(shareUrl);
-    else if (typeof window !== 'undefined') window.open(shareUrl, '_blank');
+    else if (typeof window !== "undefined") window.open(shareUrl, "_blank");
   };
 
   const close = () => {
@@ -240,9 +240,9 @@ export function TelegramMiniAppProvider({
     // Phase 2: Telegram linking handled at login time via initData HMAC
     if (!isMiniApp || !initDataRawRef.current) return false;
     logger.info(
-      'Telegram linkAccount: re-triggering login flow',
+      "Telegram linkAccount: re-triggering login flow",
       { userId: telegramUser?.id },
-      'TelegramMiniApp'
+      "TelegramMiniApp",
     );
     return true;
   };

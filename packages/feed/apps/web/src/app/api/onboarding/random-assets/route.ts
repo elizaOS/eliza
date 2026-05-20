@@ -39,9 +39,9 @@
  * ```
  */
 
-import { successResponse, withErrorHandling } from '@feed/api';
-import { logger, TOTAL_AGENT_DEFAULT_PROFILE_PICTURES } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+import { successResponse, withErrorHandling } from "@feed/api";
+import { logger, TOTAL_AGENT_DEFAULT_PROFILE_PICTURES } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 const TOTAL_BANNERS = 100;
 
@@ -65,9 +65,9 @@ export const GET = withErrorHandling(async function GET(_request: NextRequest) {
   };
 
   logger.debug(
-    'Generated random assets',
+    "Generated random assets",
     assets,
-    'GET /api/onboarding/random-assets'
+    "GET /api/onboarding/random-assets",
   );
 
   return successResponse(assets);

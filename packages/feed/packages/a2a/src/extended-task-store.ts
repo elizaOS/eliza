@@ -8,8 +8,8 @@
  * @public
  */
 
-import type { Task } from '@a2a-js/sdk';
-import { InMemoryTaskStore } from '@a2a-js/sdk/server';
+import type { Task } from "@a2a-js/sdk";
+import { InMemoryTaskStore } from "@a2a-js/sdk/server";
 
 /**
  * Parameters for listing tasks
@@ -17,14 +17,14 @@ import { InMemoryTaskStore } from '@a2a-js/sdk/server';
 export interface ListTasksParams {
   contextId?: string;
   status?:
-    | 'submitted'
-    | 'working'
-    | 'input-required'
-    | 'auth-required'
-    | 'completed'
-    | 'failed'
-    | 'canceled'
-    | 'rejected';
+    | "submitted"
+    | "working"
+    | "input-required"
+    | "auth-required"
+    | "completed"
+    | "failed"
+    | "canceled"
+    | "rejected";
   pageSize?: number;
   pageToken?: string;
   historyLength?: number;
@@ -110,7 +110,7 @@ export class ExtendedTaskStore extends InMemoryTaskStore {
       const parsed = Number.parseInt(params.pageToken, 10);
       if (!Number.isFinite(parsed) || parsed < 0) {
         throw new Error(
-          `Invalid pageToken: expected non-negative integer, got "${params.pageToken}"`
+          `Invalid pageToken: expected non-negative integer, got "${params.pageToken}"`,
         );
       }
       pageOffset = parsed;
@@ -139,7 +139,7 @@ export class ExtendedTaskStore extends InMemoryTaskStore {
 
     // Calculate next page token
     const hasMore = allTasks.length > endIdx;
-    const nextPageToken = hasMore ? String(endIdx) : '';
+    const nextPageToken = hasMore ? String(endIdx) : "";
 
     return {
       tasks: processedTasks,

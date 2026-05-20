@@ -1,9 +1,9 @@
-import { definePrompt } from '../define-prompt';
+import { definePrompt } from "../define-prompt";
 import {
   CONTENT_REQUIREMENTS_MARKET,
   FINAL_REMINDERS,
   WORLD_CONTEXT_HEADER_WITH_TRADES,
-} from '../shared-sections';
+} from "../shared-sections";
 
 /**
  * Prompt for generating stock ticker style posts for price movements.
@@ -16,10 +16,10 @@ import {
  * Returns XML with ticker post and price data.
  */
 export const stockTicker = definePrompt({
-  id: 'stock-ticker',
-  version: '4.0.0',
-  category: 'feed',
-  description: 'Stock ticker posts with narrative connection',
+  id: "stock-ticker",
+  version: "4.0.0",
+  category: "feed",
+  description: "Stock ticker posts with narrative connection",
   temperature: 0.6,
   maxTokens: 400,
   template: `{{realityGrounding}}

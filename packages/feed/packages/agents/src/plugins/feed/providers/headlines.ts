@@ -3,28 +3,28 @@
  * Provides recent news headlines from RSS feeds
  */
 
-import { db } from '@feed/db';
-import { getTimeAgo } from '@feed/shared';
 import type {
   IAgentRuntime,
   Memory,
   Provider,
   ProviderResult,
   State,
-} from '@elizaos/core';
+} from "@elizaos/core";
+import { db } from "@feed/db";
+import { getTimeAgo } from "@feed/shared";
 
 /**
  * Provider: Recent Headlines
  * Gets recent news headlines from RSS feeds
  */
 export const headlinesProvider: Provider = {
-  name: 'FEED_HEADLINES',
-  description: 'Get recent news headlines from RSS feeds',
+  name: "FEED_HEADLINES",
+  description: "Get recent news headlines from RSS feeds",
 
   get: async (
     _runtime: IAgentRuntime,
     _message: Memory,
-    _state: State
+    _state: State,
   ): Promise<ProviderResult> => {
     // Get recent headlines (last 24 hours)
     const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -36,13 +36,13 @@ export const headlinesProvider: Provider = {
         },
       },
       orderBy: {
-        publishedAt: 'desc',
+        publishedAt: "desc",
       },
       take: 15,
     });
 
     if (headlines.length === 0) {
-      return { text: 'No recent headlines available.' };
+      return { text: "No recent headlines available." };
     }
 
     const headlinesText = headlines
@@ -50,9 +50,9 @@ export const headlinesProvider: Provider = {
         const timeAgo = getTimeAgo(h.publishedAt);
         return `${i + 1}. ${h.title}
    Source: ${h.sourceId}
-   ${timeAgo}${h.summary ? `\n   ${h.summary.substring(0, 100)}...` : ''}`;
+   ${timeAgo}${h.summary ? `\n   ${h.summary.substring(0, 100)}...` : ""}`;
       })
-      .join('\n\n');
+      .join("\n\n");
 
     return {
       text: `Recent Headlines (Last 24h):

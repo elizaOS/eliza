@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
-import { cn, logger } from '@feed/shared';
+import { cn, logger } from "@feed/shared";
 import {
   Activity,
   Bot,
@@ -10,22 +10,22 @@ import {
   Plus,
   TrendingUp,
   Users,
-} from 'lucide-react';
-import nextDynamic from 'next/dynamic';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
-import { Avatar } from '@/components/shared/Avatar';
-import { PageContainer } from '@/components/shared/PageContainer';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { Button } from '@/components/ui/button';
-import { useAuth } from '@/hooks/useAuth';
-import { apiUrl } from '@/utils/api-url';
+} from "lucide-react";
+import nextDynamic from "next/dynamic";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
+import { Avatar } from "@/components/shared/Avatar";
+import { PageContainer } from "@/components/shared/PageContainer";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { Button } from "@/components/ui/button";
+import { useAuth } from "@/hooks/useAuth";
+import { apiUrl } from "@/utils/api-url";
 
 // Lazy load activity feed for performance
 const AgentActivityFeed = nextDynamic(
   () =>
-    import('@/components/agents/AgentActivityFeed').then((m) => ({
+    import("@/components/agents/AgentActivityFeed").then((m) => ({
       default: m.AgentActivityFeed,
     })),
   {
@@ -45,7 +45,7 @@ const AgentActivityFeed = nextDynamic(
         ))}
       </div>
     ),
-  }
+  },
 );
 
 interface Agent {
@@ -57,7 +57,7 @@ interface Agent {
   virtualBalance?: number;
   isActive: boolean;
   autonomousEnabled: boolean;
-  modelTier: 'free' | 'pro';
+  modelTier: "free" | "pro";
   status: string;
   lifetimePnL: string;
   totalTrades: number;
@@ -72,23 +72,23 @@ export default function AgentsPage() {
   const { authenticated, ready, getAccessToken, login } = useAuth();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'all' | 'active' | 'idle'>('all');
+  const [filter, setFilter] = useState<"all" | "active" | "idle">("all");
 
   const fetchAgents = useCallback(async () => {
     setLoading(true);
     const token = await getAccessToken();
 
     if (!token) {
-      logger.error('No access token available', undefined, 'AgentsPage');
+      logger.error("No access token available", undefined, "AgentsPage");
       setLoading(false);
       return;
     }
 
-    let url = apiUrl('/api/agents');
-    if (filter === 'active') {
-      url += '?autonomousTrading=true';
-    } else if (filter === 'idle') {
-      url += '?autonomousTrading=false';
+    let url = apiUrl("/api/agents");
+    if (filter === "active") {
+      url += "?autonomousTrading=true";
+    } else if (filter === "idle") {
+      url += "?autonomousTrading=false";
     }
 
     try {
@@ -104,9 +104,9 @@ export default function AgentsPage() {
       }
     } catch (error) {
       logger.error(
-        'Failed to fetch agents',
+        "Failed to fetch agents",
         error instanceof Error ? error : { error },
-        'AgentsPage'
+        "AgentsPage",
       );
     } finally {
       setLoading(false);
@@ -122,14 +122,14 @@ export default function AgentsPage() {
   // Redirect to /agents/team - this page is now just a redirect
   useEffect(() => {
     if (ready && authenticated) {
-      router.replace('/agents/team');
+      router.replace("/agents/team");
     }
   }, [ready, authenticated, router]);
 
   // Auth required — redirect to feed and show login
   useEffect(() => {
     if (!ready || authenticated) return;
-    router.push('/feed');
+    router.push("/feed");
     const timer = setTimeout(() => login(), 500);
     return () => clearTimeout(timer);
   }, [ready, authenticated, router, login]);
@@ -173,7 +173,7 @@ export default function AgentsPage() {
                       </h3>
                       <p className="text-muted-foreground text-sm">
                         Coordinate all {agents.length} agent
-                        {agents.length !== 1 ? 's' : ''} in one chat
+                        {agents.length !== 1 ? "s" : ""} in one chat
                       </p>
                     </div>
                   </div>
@@ -192,34 +192,34 @@ export default function AgentsPage() {
         {/* Filters */}
         <div className="flex gap-2">
           <button
-            onClick={() => setFilter('all')}
+            onClick={() => setFilter("all")}
             className={cn(
-              'rounded-full px-4 py-2 font-medium text-sm transition-all',
-              filter === 'all'
-                ? 'bg-[#0066FF] text-primary-foreground'
-                : 'bg-muted/50 text-muted-foreground hover:bg-muted'
+              "rounded-full px-4 py-2 font-medium text-sm transition-all",
+              filter === "all"
+                ? "bg-[#0066FF] text-primary-foreground"
+                : "bg-muted/50 text-muted-foreground hover:bg-muted",
             )}
           >
             All
           </button>
           <button
-            onClick={() => setFilter('active')}
+            onClick={() => setFilter("active")}
             className={cn(
-              'rounded-full px-4 py-2 font-medium text-sm transition-all',
-              filter === 'active'
-                ? 'bg-[#0066FF] text-primary-foreground'
-                : 'bg-muted/50 text-muted-foreground hover:bg-muted'
+              "rounded-full px-4 py-2 font-medium text-sm transition-all",
+              filter === "active"
+                ? "bg-[#0066FF] text-primary-foreground"
+                : "bg-muted/50 text-muted-foreground hover:bg-muted",
             )}
           >
             Active
           </button>
           <button
-            onClick={() => setFilter('idle')}
+            onClick={() => setFilter("idle")}
             className={cn(
-              'rounded-full px-4 py-2 font-medium text-sm transition-all',
-              filter === 'idle'
-                ? 'bg-[#0066FF] text-primary-foreground'
-                : 'bg-muted/50 text-muted-foreground hover:bg-muted'
+              "rounded-full px-4 py-2 font-medium text-sm transition-all",
+              filter === "idle"
+                ? "bg-[#0066FF] text-primary-foreground"
+                : "bg-muted/50 text-muted-foreground hover:bg-muted",
             )}
           >
             Idle
@@ -291,8 +291,8 @@ export default function AgentsPage() {
                           <span
                             className={
                               agent.autonomousEnabled
-                                ? 'text-green-400'
-                                : 'text-muted-foreground'
+                                ? "text-green-400"
+                                : "text-muted-foreground"
                             }
                           >
                             {agent.autonomousEnabled ? (
@@ -301,7 +301,7 @@ export default function AgentsPage() {
                                 Active
                               </>
                             ) : (
-                              'Idle'
+                              "Idle"
                             )}
                           </span>
                           <span className="text-muted-foreground">•</span>
@@ -337,10 +337,10 @@ export default function AgentsPage() {
                         </div>
                         <div
                           className={cn(
-                            'flex items-center gap-1 font-semibold',
+                            "flex items-center gap-1 font-semibold",
                             parseFloat(agent.lifetimePnL) >= 0
-                              ? 'text-green-600'
-                              : 'text-red-600'
+                              ? "text-green-600"
+                              : "text-red-600",
                           )}
                         >
                           <TrendingUp className="h-3 w-3" />

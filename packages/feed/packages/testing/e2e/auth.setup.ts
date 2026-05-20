@@ -12,17 +12,17 @@
  * @see https://playwright.dev/docs/auth
  */
 
-import type { Page } from '@playwright/test';
-import { expect, test as setup } from '@playwright/test';
-import path from 'path';
-import { installPlaywrightDevAuth } from './dev-auth';
+import path from "node:path";
+import type { Page } from "@playwright/test";
+import { expect, test as setup } from "@playwright/test";
+import { installPlaywrightDevAuth } from "./dev-auth";
 
-const authFile = path.join(__dirname, '../../../.playwright/auth.json');
+const authFile = path.join(__dirname, "../../../.playwright/auth.json");
 const baseURL =
   process.env.PLAYWRIGHT_BASE_URL ||
   process.env.TEST_BASE_URL ||
-  process.env.TEST_API_URL?.replace(/\/api$/, '') ||
-  'http://127.0.0.1:3400';
+  process.env.TEST_API_URL?.replace(/\/api$/, "") ||
+  "http://127.0.0.1:3400";
 
 /**
  * Authenticate with Privy and wait for successful login
@@ -30,21 +30,21 @@ const baseURL =
 async function authenticateWithPrivy(
   page: Page,
   email: string,
-  password: string | undefined
+  password: string | undefined,
 ) {
   // Navigate to home page with dev mode forced to ensure app loads
   // Wait for navigation to complete, including any redirects
-  await page.goto('/?dev=true', { waitUntil: 'domcontentloaded' });
+  await page.goto("/?dev=true", { waitUntil: "domcontentloaded" });
 
   // Wait for any redirects to complete (page might redirect to /feed)
   try {
-    await page.waitForURL('**/?dev=true**', { timeout: 5000 }).catch(() => {
+    await page.waitForURL("**/?dev=true**", { timeout: 5000 }).catch(() => {
       // If redirected, wait for the new URL to be ready
-      return page.waitForLoadState('domcontentloaded');
+      return page.waitForLoadState("domcontentloaded");
     });
   } catch (_e) {
     // Continue if URL check times out - page might have redirected
-    await page.waitForLoadState('domcontentloaded');
+    await page.waitForLoadState("domcontentloaded");
   }
 
   // Wait for React to hydrate before checking for "Coming Soon"
@@ -53,25 +53,25 @@ async function authenticateWithPrivy(
 
   // Check for Coming Soon state after React has hydrated
   const comingSoon = await page
-    .locator('text=Coming Soon')
+    .locator("text=Coming Soon")
     .isVisible()
     .catch(() => false);
   if (comingSoon) {
     console.log(
-      '❌ Page is showing "Coming Soon" - localhost detection failed or dev mode not working'
+      '❌ Page is showing "Coming Soon" - localhost detection failed or dev mode not working',
     );
     // Try to force reload with dev parameter
-    console.log('🔄 Reloading page with dev=true...');
-    await page.goto('/?dev=true', { waitUntil: 'domcontentloaded' });
+    console.log("🔄 Reloading page with dev=true...");
+    await page.goto("/?dev=true", { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(2000); // Wait for React hydration
     if (
       await page
-        .locator('text=Coming Soon')
+        .locator("text=Coming Soon")
         .isVisible()
         .catch(() => false)
     ) {
       throw new Error(
-        'Page is showing "Coming Soon" preventing login flow - dev mode may not be working in CI'
+        'Page is showing "Coming Soon" preventing login flow - dev mode may not be working in CI',
       );
     }
   }
@@ -79,15 +79,15 @@ async function authenticateWithPrivy(
   // Wait for page to load completely (networkidle is better for SPAs than domcontentloaded)
   // In CI, networkidle can be flaky if there are background requests
   try {
-    await page.waitForLoadState('networkidle', { timeout: 30000 });
+    await page.waitForLoadState("networkidle", { timeout: 30000 });
   } catch (_e) {
-    console.log('⚠️  Network idle timed out, continuing...');
+    console.log("⚠️  Network idle timed out, continuing...");
   }
 
   // First, check if the "Privy not configured" warning banner is visible
   // This indicates NEXT_PUBLIC_PRIVY_APP_ID was not set at build time
   const warningBanner = page.locator(
-    '[data-testid="privy-not-configured-warning"]'
+    '[data-testid="privy-not-configured-warning"]',
   );
   const warningVisible = await warningBanner
     .isVisible({ timeout: 2000 })
@@ -95,24 +95,24 @@ async function authenticateWithPrivy(
 
   if (warningVisible) {
     console.log(
-      '❌ CRITICAL: "Privy not configured" warning banner is visible!'
+      '❌ CRITICAL: "Privy not configured" warning banner is visible!',
     );
     console.log(
-      '   This means NEXT_PUBLIC_PRIVY_APP_ID was NOT set when the app was built.'
+      "   This means NEXT_PUBLIC_PRIVY_APP_ID was NOT set when the app was built.",
     );
-    console.log('');
-    console.log('   To fix this:');
+    console.log("");
+    console.log("   To fix this:");
     console.log(
-      '   1. Verify the GitHub secret NEXT_PUBLIC_PRIVY_APP_ID (or PRIVY_APP_ID) is set'
-    );
-    console.log(
-      '   2. Check the "Build production" step logs for the secret availability check'
+      "   1. Verify the GitHub secret NEXT_PUBLIC_PRIVY_APP_ID (or PRIVY_APP_ID) is set",
     );
     console.log(
-      '   3. The secret should show as "SET (X chars, starts with cl...)"'
+      '   2. Check the "Build production" step logs for the secret availability check',
+    );
+    console.log(
+      '   3. The secret should show as "SET (X chars, starts with cl...)"',
     );
     throw new Error(
-      'Privy not configured: NEXT_PUBLIC_PRIVY_APP_ID was not set at build time'
+      "Privy not configured: NEXT_PUBLIC_PRIVY_APP_ID was not set at build time",
     );
   }
 
@@ -127,14 +127,14 @@ async function authenticateWithPrivy(
         return (
           win.privy !== undefined ||
           document.querySelector('script[src*="privy"]') !== null ||
-          document.querySelector('[data-privy]') !== null
+          document.querySelector("[data-privy]") !== null
         );
       },
-      { timeout: 45000 }
+      { timeout: 45000 },
     );
-    console.log('✅ Privy SDK detected');
+    console.log("✅ Privy SDK detected");
   } catch (_e) {
-    console.log('❌ Privy SDK check timed out');
+    console.log("❌ Privy SDK check timed out");
 
     // Diagnostic code - wrap in try-catch to handle case where page is already closed
     // This can happen if the test timeout is exceeded during the waitForFunction
@@ -143,7 +143,7 @@ async function authenticateWithPrivy(
       hasPrivyRoot: false,
       hasWarningBanner: false,
     };
-    let content = '';
+    let content = "";
     let scripts: string[] = [];
 
     try {
@@ -154,10 +154,10 @@ async function authenticateWithPrivy(
             const hasPrivyScript =
               document.querySelector('script[src*="privy"]') !== null;
             const hasPrivyRoot =
-              document.querySelector('[data-privy-root]') !== null;
+              document.querySelector("[data-privy-root]") !== null;
             const hasWarningBanner =
               document.querySelector(
-                '[data-testid="privy-not-configured-warning"]'
+                '[data-testid="privy-not-configured-warning"]',
               ) !== null;
             return { hasPrivyScript, hasPrivyRoot, hasWarningBanner };
           })
@@ -169,10 +169,10 @@ async function authenticateWithPrivy(
 
         content = await page
           .content()
-          .catch(() => '(page content unavailable)');
+          .catch(() => "(page content unavailable)");
         scripts = await page
           .evaluate(() => {
-            const scriptTags = Array.from(document.querySelectorAll('script'));
+            const scriptTags = Array.from(document.querySelectorAll("script"));
             return scriptTags
               .map((s) => s.src)
               .filter((src) => src)
@@ -181,60 +181,60 @@ async function authenticateWithPrivy(
           .catch(() => []);
       } else {
         console.log(
-          '⚠️  Page is already closed - cannot get detailed diagnostics'
+          "⚠️  Page is already closed - cannot get detailed diagnostics",
         );
       }
     } catch (diagError) {
       console.log(
-        '⚠️  Could not gather diagnostics (page may be closed):',
-        diagError instanceof Error ? diagError.message : String(diagError)
+        "⚠️  Could not gather diagnostics (page may be closed):",
+        diagError instanceof Error ? diagError.message : String(diagError),
       );
     }
 
-    console.log('📋 Privy diagnostics:');
+    console.log("📋 Privy diagnostics:");
     console.log(
-      `   - Privy script tag: ${diagnosticInfo.hasPrivyScript ? 'FOUND' : 'NOT FOUND'}`
+      `   - Privy script tag: ${diagnosticInfo.hasPrivyScript ? "FOUND" : "NOT FOUND"}`,
     );
     console.log(
-      `   - Privy root element: ${diagnosticInfo.hasPrivyRoot ? 'FOUND' : 'NOT FOUND'}`
+      `   - Privy root element: ${diagnosticInfo.hasPrivyRoot ? "FOUND" : "NOT FOUND"}`,
     );
     console.log(
-      `   - Warning banner: ${diagnosticInfo.hasWarningBanner ? 'VISIBLE (Privy not configured!)' : 'not visible'}`
+      `   - Warning banner: ${diagnosticInfo.hasWarningBanner ? "VISIBLE (Privy not configured!)" : "not visible"}`,
     );
     if (content) {
       console.log(`📄 Page content preview: ${content.substring(0, 500)}...`);
     }
     if (scripts.length > 0) {
-      console.log('📜 Script tags found:', scripts);
+      console.log("📜 Script tags found:", scripts);
     }
 
     if (!diagnosticInfo.hasPrivyScript && !diagnosticInfo.hasPrivyRoot) {
       throw new Error(
-        'Privy SDK failed to load - NEXT_PUBLIC_PRIVY_APP_ID may not have been set at build time.\n' +
-          'Check the CI "Build production" step logs for the secret availability check.'
+        "Privy SDK failed to load - NEXT_PUBLIC_PRIVY_APP_ID may not have been set at build time.\n" +
+          'Check the CI "Build production" step logs for the secret availability check.',
       );
     }
     throw new Error(
-      'Privy SDK failed to load - cannot proceed with authentication'
+      "Privy SDK failed to load - cannot proceed with authentication",
     );
   }
 
   // Wait for the login button to be enabled (not disabled)
   // This ensures Privy is ready and the button is clickable
   // The button is disabled when Privy's `ready` state is false
-  console.log('⏳ Waiting for login button to be enabled (Privy ready)...');
+  console.log("⏳ Waiting for login button to be enabled (Privy ready)...");
   try {
     await page.waitForFunction(
       () => {
-        const buttons = Array.from(document.querySelectorAll('button'));
+        const buttons = Array.from(document.querySelectorAll("button"));
         const loginBtn = buttons.find((btn) => {
-          const text = btn.textContent?.toLowerCase() || '';
+          const text = btn.textContent?.toLowerCase() || "";
           return (
-            text.includes('connect wallet') ||
-            text.includes('connect') ||
-            text.includes('log in') ||
-            text.includes('login') ||
-            text.includes('sign in')
+            text.includes("connect wallet") ||
+            text.includes("connect") ||
+            text.includes("log in") ||
+            text.includes("login") ||
+            text.includes("sign in")
           );
         });
 
@@ -243,23 +243,23 @@ async function authenticateWithPrivy(
           loginBtn !== undefined && !(loginBtn as HTMLButtonElement).disabled
         );
       },
-      { timeout: 45000 }
+      { timeout: 45000 },
     );
-    console.log('✅ Login button is enabled (Privy ready)');
+    console.log("✅ Login button is enabled (Privy ready)");
   } catch (_e) {
-    console.log('❌ Login button enabled check timed out');
+    console.log("❌ Login button enabled check timed out");
     // Log what buttons we found
     const buttons = await page.evaluate(() => {
-      return Array.from(document.querySelectorAll('button'))
+      return Array.from(document.querySelectorAll("button"))
         .map((b) => ({
           text: b.textContent?.trim(),
           disabled: b.disabled,
         }))
         .slice(0, 10);
     });
-    console.log('Buttons found:', buttons);
+    console.log("Buttons found:", buttons);
     throw new Error(
-      'Login button never became enabled - Privy might not be initialized correctly'
+      "Login button never became enabled - Privy might not be initialized correctly",
     );
   }
 
@@ -275,32 +275,32 @@ async function authenticateWithPrivy(
     .evaluate(() => {
       const hasUserMenu =
         document.querySelector('[data-testid="user-menu"]') !== null;
-      const hasProfile = Array.from(document.querySelectorAll('button')).some(
-        (b) => b.textContent?.includes('Profile')
+      const hasProfile = Array.from(document.querySelectorAll("button")).some(
+        (b) => b.textContent?.includes("Profile"),
       );
-      const hasToken = window.localStorage.getItem('privy:token') !== null;
+      const hasToken = window.localStorage.getItem("privy:token") !== null;
       return (hasUserMenu || hasProfile) && hasToken;
     })
     .catch(() => false);
 
   if (isAlreadyLoggedIn) {
-    console.log('✅ Already authenticated - skipping login flow');
+    console.log("✅ Already authenticated - skipping login flow");
     return;
   }
 
   // If we're on /feed, we're good - the GlobalLoginModal should be available or we can find a login button
-  if (currentUrl.includes('/feed') && !isAlreadyLoggedIn) {
-    console.log('ℹ️  Redirected to /feed - continuing login flow from here');
+  if (currentUrl.includes("/feed") && !isAlreadyLoggedIn) {
+    console.log("ℹ️  Redirected to /feed - continuing login flow from here");
   }
 
   // Check for Coming Soon state which would prevent login
   const comingSoonAgain = await page
-    .locator('text=Coming Soon')
+    .locator("text=Coming Soon")
     .isVisible()
     .catch(() => false);
   if (comingSoonAgain) {
     console.log(
-      '❌ Page is showing "Coming Soon" - localhost detection failed'
+      '❌ Page is showing "Coming Soon" - localhost detection failed',
     );
     throw new Error('Page is showing "Coming Soon" preventing login flow');
   }
@@ -320,11 +320,11 @@ async function authenticateWithPrivy(
   if (!isLoginModalOpen) {
     // Find login button - wait for it to be enabled (not disabled)
     // This ensures Privy is ready before we try to click
-    console.log('🔍 Looking for enabled login button...');
+    console.log("🔍 Looking for enabled login button...");
 
     const loginButton = page
       .locator(
-        'button:has-text("Log in"), button:has-text("Login"), button:has-text("Sign in"), button:has-text("Connect Wallet"), button:has-text("Connect"), [data-testid="privy-login"]'
+        'button:has-text("Log in"), button:has-text("Login"), button:has-text("Sign in"), button:has-text("Connect Wallet"), button:has-text("Connect"), [data-testid="privy-login"]',
       )
       .first();
 
@@ -332,34 +332,34 @@ async function authenticateWithPrivy(
     // The button is disabled when Privy's `ready` state is false
     try {
       await expect(loginButton).toBeVisible({ timeout: 15000 });
-      console.log('✅ Login button is visible');
+      console.log("✅ Login button is visible");
 
       // Wait for button to be enabled (Privy ready)
       await page
         .waitForFunction(
           () => {
-            const buttons = Array.from(document.querySelectorAll('button'));
+            const buttons = Array.from(document.querySelectorAll("button"));
             const btn = buttons.find((b) => {
-              const text = b.textContent?.toLowerCase() || '';
+              const text = b.textContent?.toLowerCase() || "";
               return (
-                text.includes('connect wallet') ||
-                text.includes('connect') ||
-                text.includes('log in') ||
-                text.includes('login') ||
-                text.includes('sign in')
+                text.includes("connect wallet") ||
+                text.includes("connect") ||
+                text.includes("log in") ||
+                text.includes("login") ||
+                text.includes("sign in")
               );
             });
             return btn !== null && !(btn as HTMLButtonElement).disabled;
           },
-          { timeout: 15000 }
+          { timeout: 15000 },
         )
         .catch(() => {
           console.log(
-            '⚠️  Button enabled check timed out, will try clicking anyway'
+            "⚠️  Button enabled check timed out, will try clicking anyway",
           );
         });
 
-      console.log('🖱️ Clicking login button...');
+      console.log("🖱️ Clicking login button...");
       // Now click the button - it should be enabled
       await loginButton.click({ timeout: 10000 });
       await page.waitForTimeout(2000); // Wait for modal to open
@@ -370,7 +370,7 @@ async function authenticateWithPrivy(
         .catch(() => false);
       console.log(`ℹ️ Email input visible after click: ${isLoginModalOpen}`);
     } catch (e) {
-      console.log('⚠️  Login button click failed, trying force click:', e);
+      console.log("⚠️  Login button click failed, trying force click:", e);
 
       // Fallback: Try force click if normal click failed
       try {
@@ -386,11 +386,11 @@ async function authenticateWithPrivy(
             .isVisible({ timeout: 5000 })
             .catch(() => false);
           console.log(
-            `ℹ️ Email input visible after force click: ${isLoginModalOpen}`
+            `ℹ️ Email input visible after force click: ${isLoginModalOpen}`,
           );
         }
       } catch (forceError) {
-        console.log('⚠️  Force click also failed:', forceError);
+        console.log("⚠️  Force click also failed:", forceError);
         // Re-check in case modal opened despite error
         isLoginModalOpen = await emailInput
           .isVisible({ timeout: 2000 })
@@ -410,7 +410,7 @@ async function authenticateWithPrivy(
       .catch(() => false);
 
     if (loggedInNow) {
-      console.log('✅ Logged in detected late');
+      console.log("✅ Logged in detected late");
       return;
     }
 
@@ -418,14 +418,14 @@ async function authenticateWithPrivy(
     const privyElements = await page
       .evaluate(() => {
         const privyModal = document.querySelector(
-          '[data-privy-modal], [class*="privy"], [id*="privy"]'
+          '[data-privy-modal], [class*="privy"], [id*="privy"]',
         );
-        const allButtons = Array.from(document.querySelectorAll('button')).map(
+        const allButtons = Array.from(document.querySelectorAll("button")).map(
           (b) => ({
             text: b.textContent?.trim(),
             visible: b.offsetParent !== null,
             enabled: !b.disabled,
-          })
+          }),
         );
         return {
           hasPrivyModal: privyModal !== null,
@@ -441,12 +441,12 @@ async function authenticateWithPrivy(
     console.log(`❌ Debug - Page Content Start: ${content.substring(0, 200)}`);
     console.log(`❌ Debug - Privy modal found: ${privyElements.hasPrivyModal}`);
     console.log(
-      '❌ Debug - First 10 buttons:',
-      JSON.stringify(privyElements.buttons, null, 2)
+      "❌ Debug - First 10 buttons:",
+      JSON.stringify(privyElements.buttons, null, 2),
     );
 
     // On localhost, app should auto-open modal. If not, something is wrong.
-    throw new Error('Could not find login button or open login modal on page');
+    throw new Error("Could not find login button or open login modal on page");
   }
 
   // Fill in email
@@ -456,7 +456,7 @@ async function authenticateWithPrivy(
 
   // Find the modal context from the email input to ensure we target the button INSIDE the modal
   const modalContext = emailInput.locator(
-    'xpath=ancestor::*[contains(@class, "Dialog") or @role="dialog"][1]'
+    'xpath=ancestor::*[contains(@class, "Dialog") or @role="dialog"][1]',
   );
 
   let submitButton;
@@ -465,7 +465,7 @@ async function authenticateWithPrivy(
     submitButton = modalContext.locator('button[type="submit"]').first();
     if (!(await submitButton.isVisible().catch(() => false))) {
       submitButton = modalContext
-        .locator('button')
+        .locator("button")
         .filter({ hasText: /Continue|Log in|Submit/i })
         .first();
     }
@@ -475,10 +475,10 @@ async function authenticateWithPrivy(
   }
 
   if (await submitButton.isVisible().catch(() => false)) {
-    console.log('🖱️ Clicking submit button');
+    console.log("🖱️ Clicking submit button");
     await submitButton.click();
   } else {
-    console.log('⚠️  Submit button not found in modal, trying fallback');
+    console.log("⚠️  Submit button not found in modal, trying fallback");
     // Fallback: try to find Continue button
     await page.locator('button:has-text("Continue")').first().click();
   }
@@ -493,7 +493,7 @@ async function authenticateWithPrivy(
       .catch(() => false);
 
     if (passwordVisible) {
-      console.log('⌨️ Filling password');
+      console.log("⌨️ Filling password");
       await passwordInput.fill(password);
       await page.waitForTimeout(500);
 
@@ -504,10 +504,10 @@ async function authenticateWithPrivy(
   }
 
   // Check for OTP screen (if required)
-  const otpText = page.getByText('Enter confirmation code').first();
+  const otpText = page.getByText("Enter confirmation code").first();
   const otpInput = page
     .locator(
-      'input[autocomplete="one-time-code"], input[name="code"], input[name="otp"], input[data-privy-otp-input]'
+      'input[autocomplete="one-time-code"], input[name="code"], input[name="otp"], input[data-privy-otp-input]',
     )
     .first();
 
@@ -517,7 +517,7 @@ async function authenticateWithPrivy(
     (await otpInput.isVisible({ timeout: 5000 }).catch(() => false));
 
   if (isOtpScreen) {
-    console.log('ℹ️ OTP screen detected');
+    console.log("ℹ️ OTP screen detected");
 
     // Try to get OTP from environment (CI/CD or .env)
     const otp = process.env.PRIVY_TEST_OTP;
@@ -547,11 +547,11 @@ async function authenticateWithPrivy(
       await page.waitForTimeout(2000);
     } else {
       console.log(
-        '❌ OTP required but PRIVY_TEST_OTP not found in environment'
+        "❌ OTP required but PRIVY_TEST_OTP not found in environment",
       );
       // Note: OTP codes are typically time-sensitive and can't be automated easily without a fixed test secret
       throw new Error(
-        'Authentication failed: OTP screen detected. Please use a test account that does not require OTP or provide PRIVY_TEST_OTP if applicable.'
+        "Authentication failed: OTP screen detected. Please use a test account that does not require OTP or provide PRIVY_TEST_OTP if applicable.",
       );
     }
   }
@@ -563,7 +563,7 @@ async function authenticateWithPrivy(
     await expect(page.locator('[data-testid="user-menu"]')).toBeVisible({
       timeout: 30000,
     });
-    console.log('✅ Authentication successful - user menu visible');
+    console.log("✅ Authentication successful - user menu visible");
   } catch (_error) {
     // Fallback: check for Privy token in localStorage as secondary verification
     type WindowWithPrivyToken = Window & {
@@ -572,18 +572,18 @@ async function authenticateWithPrivy(
     const hasToken = await page.evaluate(() => {
       const win = window as WindowWithPrivyToken;
       return (
-        window.localStorage.getItem('privy:token') !== null ||
+        window.localStorage.getItem("privy:token") !== null ||
         win.__privyAccessToken !== undefined
       );
     });
 
     if (hasToken) {
       console.log(
-        '✅ Authentication successful - token found (user menu may not be visible yet)'
+        "✅ Authentication successful - token found (user menu may not be visible yet)",
       );
     } else {
       throw new Error(
-        'Authentication verification failed: no user menu and no token found'
+        "Authentication verification failed: no user menu and no token found",
       );
     }
   }
@@ -595,7 +595,7 @@ async function authenticateWithPrivy(
  * This runs once before all tests in projects that depend on it.
  * The authenticated state is saved to .playwright/auth.json and reused.
  */
-setup('authenticate as admin', async ({ page }) => {
+setup("authenticate as admin", async ({ page }) => {
   setup.setTimeout(180000); // Increase timeout to 180s for auth flow in CI (includes Privy SDK load + diagnostics)
   const email = process.env.PRIVY_TEST_EMAIL?.trim();
   const password = process.env.PRIVY_TEST_PASSWORD;
@@ -606,11 +606,11 @@ setup('authenticate as admin', async ({ page }) => {
     if (!response.ok()) {
       throw new Error(`Server health check failed: ${response.status()}`);
     }
-    console.log('✅ Server health check passed');
+    console.log("✅ Server health check passed");
   } catch (error) {
-    console.error('❌ Server health check failed:', error);
+    console.error("❌ Server health check failed:", error);
     throw new Error(
-      `Server is not responding at ${baseURL}. Please ensure the server is running.`
+      `Server is not responding at ${baseURL}. Please ensure the server is running.`,
     );
   }
 
@@ -620,22 +620,22 @@ setup('authenticate as admin', async ({ page }) => {
       await authenticateWithPrivy(page, email, password);
       await page.waitForTimeout(2000);
     } else {
-      console.log('🔐 Using local development auth fallback for Playwright');
+      console.log("🔐 Using local development auth fallback for Playwright");
       await installPlaywrightDevAuth(page, baseURL);
     }
 
-    await page.goto('/admin?dev=true', { waitUntil: 'domcontentloaded' });
+    await page.goto("/admin?dev=true", { waitUntil: "domcontentloaded" });
 
     // Check that we're not redirected away (which would happen if not authenticated)
     // Use waitForURL for more reliable verification (Playwright best practice)
     try {
-      await page.waitForURL('**/admin**', { timeout: 10000 });
-      console.log('✅ Admin page URL verified');
+      await page.waitForURL("**/admin**", { timeout: 10000 });
+      console.log("✅ Admin page URL verified");
     } catch {
       const currentUrl = page.url();
-      if (!currentUrl.includes('/admin')) {
+      if (!currentUrl.includes("/admin")) {
         throw new Error(
-          `Authentication failed: redirected to ${currentUrl} instead of /admin`
+          `Authentication failed: redirected to ${currentUrl} instead of /admin`,
         );
       }
     }
@@ -647,41 +647,41 @@ setup('authenticate as admin', async ({ page }) => {
       await page
         .waitForResponse(
           (response) =>
-            response.url().includes('/api/admin/stats') &&
-            response.request().method() === 'GET' &&
+            response.url().includes("/api/admin/stats") &&
+            response.request().method() === "GET" &&
             response.ok(),
-          { timeout: 15000 }
+          { timeout: 15000 },
         )
         .catch(() => null);
       await expect(
-        page.getByRole('heading', { name: 'Admin Dashboard' })
+        page.getByRole("heading", { name: "Admin Dashboard" }),
       ).toBeVisible({ timeout: 15000 });
-      console.log('✅ Admin dashboard loaded');
+      console.log("✅ Admin dashboard loaded");
     } catch (error) {
       // If heading doesn't appear, check if we were redirected or if page is still loading
       const currentUrl = page.url();
-      if (!currentUrl.includes('/admin')) {
+      if (!currentUrl.includes("/admin")) {
         throw new Error(
-          `Admin access verification failed: redirected to ${currentUrl} instead of /admin`
+          `Admin access verification failed: redirected to ${currentUrl} instead of /admin`,
         );
       }
 
       // Check if we see "Access Denied" which means auth worked but user isn't admin
       const accessDenied = await page
-        .getByText('Access Denied')
+        .getByText("Access Denied")
         .isVisible({ timeout: 2000 })
         .catch(() => false);
       if (accessDenied) {
         // On localhost, any authenticated user should have access
         const isLocalhost =
-          currentUrl.includes('localhost') || currentUrl.includes('127.0.0.1');
+          currentUrl.includes("localhost") || currentUrl.includes("127.0.0.1");
         if (isLocalhost) {
           throw new Error(
-            'Admin access denied on localhost - this should not happen for authenticated users'
+            "Admin access denied on localhost - this should not happen for authenticated users",
           );
         }
         throw new Error(
-          'Admin access denied - user may not have admin privileges'
+          "Admin access denied - user may not have admin privileges",
         );
       }
 
@@ -689,31 +689,31 @@ setup('authenticate as admin', async ({ page }) => {
       // Wait a bit more and check again
       await page.waitForTimeout(2000);
       const headingVisible = await page
-        .getByRole('heading', { name: 'Admin Dashboard' })
+        .getByRole("heading", { name: "Admin Dashboard" })
         .isVisible({ timeout: 5000 })
         .catch(() => false);
       if (!headingVisible) {
         throw new Error(
-          `Admin dashboard heading not found after extended wait. Error: ${error instanceof Error ? error.message : String(error)}`
+          `Admin dashboard heading not found after extended wait. Error: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
-      console.log('✅ Admin dashboard loaded (after extended wait)');
+      console.log("✅ Admin dashboard loaded (after extended wait)");
     }
 
-    console.log('✅ Admin access verified');
+    console.log("✅ Admin access verified");
 
     // Save authenticated state
     await page.context().storageState({ path: authFile });
     console.log(`💾 Authentication state saved to ${authFile}`);
   } catch (error) {
-    console.error('❌ Authentication setup failed:', error);
+    console.error("❌ Authentication setup failed:", error);
 
     // Take a screenshot for debugging
     await page.screenshot({
-      path: '.playwright/auth-failure.png',
+      path: ".playwright/auth-failure.png",
       fullPage: true,
     });
-    console.log('📸 Screenshot saved to .playwright/auth-failure.png');
+    console.log("📸 Screenshot saved to .playwright/auth-failure.png");
 
     throw error;
   }

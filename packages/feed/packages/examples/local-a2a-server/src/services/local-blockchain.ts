@@ -3,19 +3,19 @@
  * Interacts with local anvil blockchain for agent registration verification
  */
 
-import { type Contract, ethers, type Provider } from 'ethers';
+import { type Contract, ethers, type Provider } from "ethers";
 
 // ERC-8004 Agent Registry ABI (minimal)
 const AGENT_REGISTRY_ABI = [
-  'function ownerOf(uint256 tokenId) view returns (address)',
-  'function balanceOf(address owner) view returns (uint256)',
-  'function tokenURI(uint256 tokenId) view returns (string)',
-  'event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)',
-  'function mint(address to, string calldata metadataURI) returns (uint256)',
+  "function ownerOf(uint256 tokenId) view returns (address)",
+  "function balanceOf(address owner) view returns (uint256)",
+  "function tokenURI(uint256 tokenId) view returns (string)",
+  "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)",
+  "function mint(address to, string calldata metadataURI) returns (uint256)",
 ];
 
 // Default addresses from local anvil deployment
-const DEFAULT_REGISTRY_ADDRESS = '0x5FbDB2315678afecb367f032d93F642f64180aa3';
+const DEFAULT_REGISTRY_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
 
 export class LocalBlockchain {
   private provider: Provider;
@@ -59,7 +59,7 @@ export class LocalBlockchain {
    */
   async verifyAgentRegistration(
     _walletAddress: string,
-    _tokenId: number
+    _tokenId: number,
   ): Promise<boolean> {
     // For local development, we skip on-chain verification
     // The blockchain may not be available
@@ -110,7 +110,7 @@ export class LocalBlockchain {
       this.registryContract = new ethers.Contract(
         this.registryAddress,
         AGENT_REGISTRY_ABI,
-        this.provider
+        this.provider,
       );
     }
     return this.registryContract;

@@ -63,11 +63,11 @@
  * ```
  */
 
-import { requireAdmin, successResponse, withErrorHandling } from '@feed/api';
-import { logger } from '@feed/shared';
-import { benchmarkService } from '@feed/training';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+import { requireAdmin, successResponse, withErrorHandling } from "@feed/api";
+import { logger } from "@feed/shared";
+import { benchmarkService } from "@feed/training";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 export const maxDuration = 300; // 5 minutes for benchmarking
 
@@ -78,10 +78,10 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   const { modelId, compare = true, threshold = 0.95 } = body;
 
   if (!modelId) {
-    return NextResponse.json({ error: 'Model ID required' }, { status: 400 });
+    return NextResponse.json({ error: "Model ID required" }, { status: 400 });
   }
 
-  logger.info('Starting model benchmark', { modelId }, 'BenchmarkAPI');
+  logger.info("Starting model benchmark", { modelId }, "BenchmarkAPI");
 
   // Run benchmark
   const benchmarkResults = await benchmarkService.benchmarkModel(modelId);
@@ -92,9 +92,9 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     : null;
 
   logger.info(
-    'Benchmark complete',
+    "Benchmark complete",
     { modelId, score: benchmarkResults.benchmarkScore },
-    'BenchmarkAPI'
+    "BenchmarkAPI",
   );
 
   return successResponse({

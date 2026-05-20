@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { useMemo } from 'react';
-import { useMarketWatchlistStore } from '@/stores/marketWatchlistStore';
+import { useMemo } from "react";
+import { useMarketWatchlistStore } from "@/stores/marketWatchlistStore";
 
 /**
  * Backwards-compatible perps-only watchlist hook.
@@ -18,23 +18,23 @@ export function useWatchlistStore() {
   const perpFavorites = useMemo(
     () =>
       favorites.flatMap((key) => {
-        const [kind, id] = key.split(':');
-        if (kind !== 'perp') return [];
+        const [kind, id] = key.split(":");
+        if (kind !== "perp") return [];
         if (!id) return [];
         return [id];
       }),
-    [favorites]
+    [favorites],
   );
 
   return useMemo(
     () => ({
       favorites: perpFavorites,
       toggleFavorite: (ticker: string) =>
-        toggleFavoriteKey({ kind: 'perp', id: ticker }),
+        toggleFavoriteKey({ kind: "perp", id: ticker }),
       isFavorite: (ticker: string) =>
-        isFavoriteKey({ kind: 'perp', id: ticker }),
+        isFavoriteKey({ kind: "perp", id: ticker }),
       clear,
     }),
-    [perpFavorites, toggleFavoriteKey, isFavoriteKey, clear]
+    [perpFavorites, toggleFavoriteKey, isFavoriteKey, clear],
   );
 }

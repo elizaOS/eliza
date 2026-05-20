@@ -1,19 +1,19 @@
-import { and, count, db, eq, users } from '@feed/db';
+import { and, count, db, eq, users } from "@feed/db";
 import type {
   LeaderboardEntry,
   LeaderboardPosition,
   LeaderboardResult,
   LeaderboardScope,
-} from './leaderboard-types';
+} from "./leaderboard-types";
 import {
   type TeamTradingPerformanceRow,
   TradingPerformanceService,
   type WalletTradingPerformanceRow,
-} from './trading-performance-service';
+} from "./trading-performance-service";
 
 function mapWalletEntry(
   row: WalletTradingPerformanceRow,
-  rank: number
+  rank: number,
 ): LeaderboardEntry {
   return {
     id: row.id,
@@ -36,7 +36,7 @@ function mapWalletEntry(
 
 function mapTeamEntry(
   row: TeamTradingPerformanceRow,
-  rank: number
+  rank: number,
 ): LeaderboardEntry {
   return {
     id: row.id,
@@ -66,7 +66,7 @@ function mapTeamEntry(
 export class TradingLeaderboardService {
   static async getWalletLeaderboard(
     page = 1,
-    pageSize = 100
+    pageSize = 100,
   ): Promise<LeaderboardResult> {
     const skip = (page - 1) * pageSize;
 
@@ -76,7 +76,7 @@ export class TradingLeaderboardService {
     ]);
 
     const usersWithRank = rows.map((row, index) =>
-      mapWalletEntry(row, skip + index + 1)
+      mapWalletEntry(row, skip + index + 1),
     );
 
     const totalCount = Number(countRows[0]?.count ?? 0);
@@ -86,14 +86,14 @@ export class TradingLeaderboardService {
       page,
       pageSize,
       totalPages: Math.ceil(totalCount / pageSize),
-      leaderboardType: 'wallet',
-      leaderboardMetric: 'trading',
+      leaderboardType: "wallet",
+      leaderboardMetric: "trading",
     };
   }
 
   static async getTeamLeaderboard(
     page = 1,
-    pageSize = 100
+    pageSize = 100,
   ): Promise<LeaderboardResult> {
     const skip = (page - 1) * pageSize;
 
@@ -106,7 +106,7 @@ export class TradingLeaderboardService {
     ]);
 
     const usersWithRank = rows.map((row, index) =>
-      mapTeamEntry(row, skip + index + 1)
+      mapTeamEntry(row, skip + index + 1),
     );
 
     const totalCount = Number(countRows[0]?.count ?? 0);
@@ -116,15 +116,15 @@ export class TradingLeaderboardService {
       page,
       pageSize,
       totalPages: Math.ceil(totalCount / pageSize),
-      leaderboardType: 'team',
-      leaderboardMetric: 'trading',
+      leaderboardType: "team",
+      leaderboardMetric: "trading",
     };
   }
 
   static async getUserPosition(
     userId: string,
     leaderboardType: LeaderboardScope,
-    pageSize = 100
+    pageSize = 100,
   ): Promise<LeaderboardPosition | null> {
     const [user] = await db
       .select({
@@ -139,11 +139,11 @@ export class TradingLeaderboardService {
     if (!user) return null;
 
     const effectiveUserId =
-      leaderboardType === 'team' && user.isAgent && user.managedBy
+      leaderboardType === "team" && user.isAgent && user.managedBy
         ? user.managedBy
         : user.id;
 
-    if (leaderboardType === 'wallet') {
+    if (leaderboardType === "wallet") {
       const row =
         await TradingPerformanceService.getWalletEntry(effectiveUserId);
       if (!row) return null;

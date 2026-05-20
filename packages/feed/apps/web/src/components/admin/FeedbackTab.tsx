@@ -11,14 +11,14 @@
  * - View screenshots and Linear issue links
  * - Statistics overview
  */
-'use client';
+"use client";
 
 import {
   cn,
   FEEDBACK_TYPE_CONFIG,
   type FeedbackType,
   logger,
-} from '@feed/shared';
+} from "@feed/shared";
 import {
   AlertTriangle,
   Bug,
@@ -31,11 +31,11 @@ import {
   Search,
   Star,
   Zap,
-} from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
-import { Avatar } from '@/components/shared/Avatar';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { apiUrl } from '@/utils/api-url';
+} from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Avatar } from "@/components/shared/Avatar";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { apiUrl } from "@/utils/api-url";
 
 /**
  * Feedback item structure from API
@@ -83,8 +83,8 @@ interface FeedbackResponse {
 /**
  * Filter types
  */
-type FeedbackTypeFilter = 'all' | FeedbackType;
-type LinearFilter = 'all' | 'synced' | 'not_synced';
+type FeedbackTypeFilter = "all" | FeedbackType;
+type LinearFilter = "all" | "synced" | "not_synced";
 
 /**
  * UI-specific feedback type config.
@@ -98,46 +98,46 @@ interface FeedbackTypeUIConfig {
 }
 
 const FEEDBACK_TYPE_UI_CONFIG: Record<
-  FeedbackType | 'unknown',
+  FeedbackType | "unknown",
   FeedbackTypeUIConfig
 > = {
   bug: {
     label: FEEDBACK_TYPE_CONFIG.bug.label,
     icon: Bug,
-    color: 'text-red-500',
-    bgColor: 'bg-red-500/10',
+    color: "text-red-500",
+    bgColor: "bg-red-500/10",
   },
   feature_request: {
     label: FEEDBACK_TYPE_CONFIG.feature_request.label,
     icon: Lightbulb,
-    color: 'text-amber-500',
-    bgColor: 'bg-amber-500/10',
+    color: "text-amber-500",
+    bgColor: "bg-amber-500/10",
   },
   performance: {
     label: FEEDBACK_TYPE_CONFIG.performance.label,
     icon: Zap,
-    color: 'text-blue-500',
-    bgColor: 'bg-blue-500/10',
+    color: "text-blue-500",
+    bgColor: "bg-blue-500/10",
   },
   unknown: {
-    label: 'Unknown',
+    label: "Unknown",
     icon: AlertTriangle,
-    color: 'text-gray-500',
-    bgColor: 'bg-gray-500/10',
+    color: "text-gray-500",
+    bgColor: "bg-gray-500/10",
   },
 };
 
 export function FeedbackTab() {
   const [feedback, setFeedback] = useState<FeedbackItem[]>([]);
-  const [stats, setStats] = useState<FeedbackResponse['stats'] | null>(null);
+  const [stats, setStats] = useState<FeedbackResponse["stats"] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [typeFilter, setTypeFilter] = useState<FeedbackTypeFilter>('all');
-  const [linearFilter, setLinearFilter] = useState<LinearFilter>('all');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [typeFilter, setTypeFilter] = useState<FeedbackTypeFilter>("all");
+  const [linearFilter, setLinearFilter] = useState<LinearFilter>("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selectedFeedback, setSelectedFeedback] = useState<FeedbackItem | null>(
-    null
+    null,
   );
   const [pagination, setPagination] = useState({
     total: 0,
@@ -161,26 +161,26 @@ export function FeedbackTab() {
     const fetchFeedback = async () => {
       setLoading(true);
       setError(null);
-      const params = new URLSearchParams({ limit: '50' });
+      const params = new URLSearchParams({ limit: "50" });
 
-      if (typeFilter !== 'all') {
-        params.set('type', typeFilter);
+      if (typeFilter !== "all") {
+        params.set("type", typeFilter);
       }
-      if (linearFilter === 'synced') {
-        params.set('hasLinearIssue', 'true');
-      } else if (linearFilter === 'not_synced') {
-        params.set('hasLinearIssue', 'false');
+      if (linearFilter === "synced") {
+        params.set("hasLinearIssue", "true");
+      } else if (linearFilter === "not_synced") {
+        params.set("hasLinearIssue", "false");
       }
       if (debouncedSearch.trim()) {
-        params.set('search', debouncedSearch.trim());
+        params.set("search", debouncedSearch.trim());
       }
 
       const response = await fetch(apiUrl(`/api/admin/feedback?${params}`));
       if (!response.ok) {
         logger.error(
-          'Failed to fetch feedback',
+          "Failed to fetch feedback",
           { status: response.status },
-          'FeedbackTab'
+          "FeedbackTab",
         );
         setError(`Failed to load feedback (${response.status})`);
         setLoading(false);
@@ -201,10 +201,10 @@ export function FeedbackTab() {
   useEffect(() => {
     if (!selectedFeedback) return;
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setSelectedFeedback(null);
+      if (e.key === "Escape") setSelectedFeedback(null);
     };
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
   }, [selectedFeedback]);
 
   // Manual refresh function for button
@@ -219,7 +219,7 @@ export function FeedbackTab() {
 
     const response = await fetch(
       `/api/admin/feedback/${feedbackId}/retry-sync`,
-      { method: 'POST' }
+      { method: "POST" },
     );
 
     if (!response.ok) {
@@ -237,14 +237,14 @@ export function FeedbackTab() {
         prev.map((item) =>
           item.id === feedbackId
             ? { ...item, linearIssue: data.linearIssue }
-            : item
-        )
+            : item,
+        ),
       );
       // Also update selected feedback if it's the same item
       setSelectedFeedback((prev) =>
         prev?.id === feedbackId
           ? { ...prev, linearIssue: data.linearIssue }
-          : prev
+          : prev,
       );
     }
 
@@ -394,19 +394,19 @@ export function FeedbackTab() {
                 key={item.id}
                 onClick={() => setSelectedFeedback(item)}
                 className={cn(
-                  'cursor-pointer rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary/50',
-                  selectedFeedback?.id === item.id && 'border-primary'
+                  "cursor-pointer rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary/50",
+                  selectedFeedback?.id === item.id && "border-primary",
                 )}
               >
                 <div className="flex items-start gap-4">
                   {/* Type Icon */}
                   <div
                     className={cn(
-                      'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg',
-                      config.bgColor
+                      "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
+                      config.bgColor,
                     )}
                   >
-                    <Icon className={cn('h-5 w-5', config.color)} />
+                    <Icon className={cn("h-5 w-5", config.color)} />
                   </div>
 
                   {/* Content */}
@@ -414,9 +414,9 @@ export function FeedbackTab() {
                     <div className="mb-1 flex items-center gap-2">
                       <span
                         className={cn(
-                          'rounded-full px-2 py-0.5 font-medium text-xs',
+                          "rounded-full px-2 py-0.5 font-medium text-xs",
                           config.bgColor,
-                          config.color
+                          config.color,
                         )}
                       >
                         {config.label}
@@ -435,7 +435,7 @@ export function FeedbackTab() {
                       )}
                       {item.linearIssue && (
                         <a
-                          href={item.linearIssue.url ?? '#'}
+                          href={item.linearIssue.url ?? "#"}
                           target="_blank"
                           rel="noopener noreferrer"
                           onClick={(e) => e.stopPropagation()}
@@ -448,7 +448,7 @@ export function FeedbackTab() {
                     </div>
 
                     <p className="line-clamp-2 text-sm">
-                      {item.description ?? 'No description'}
+                      {item.description ?? "No description"}
                     </p>
 
                     <div className="mt-2 flex items-center gap-3 text-muted-foreground text-xs">
@@ -457,7 +457,7 @@ export function FeedbackTab() {
                           <Avatar
                             src={item.user.profileImageUrl ?? undefined}
                             name={
-                              item.user.displayName ?? item.user.username ?? '?'
+                              item.user.displayName ?? item.user.username ?? "?"
                             }
                             size="sm"
                           />
@@ -507,11 +507,11 @@ export function FeedbackTab() {
                     <>
                       <div
                         className={cn(
-                          'flex h-12 w-12 items-center justify-center rounded-xl',
-                          config.bgColor
+                          "flex h-12 w-12 items-center justify-center rounded-xl",
+                          config.bgColor,
                         )}
                       >
-                        <Icon className={cn('h-6 w-6', config.color)} />
+                        <Icon className={cn("h-6 w-6", config.color)} />
                       </div>
                       <div>
                         <h3
@@ -541,7 +541,7 @@ export function FeedbackTab() {
             <div className="mb-4">
               <h4 className="mb-2 font-medium text-sm">Description</h4>
               <p className="rounded-lg bg-muted p-3 text-sm">
-                {selectedFeedback.description ?? 'No description provided'}
+                {selectedFeedback.description ?? "No description provided"}
               </p>
             </div>
 
@@ -582,10 +582,10 @@ export function FeedbackTab() {
                     <Star
                       key={i}
                       className={cn(
-                        'h-5 w-5',
+                        "h-5 w-5",
                         i < selectedFeedback.rating!
-                          ? 'fill-amber-500 text-amber-500'
-                          : 'text-muted-foreground'
+                          ? "fill-amber-500 text-amber-500"
+                          : "text-muted-foreground",
                       )}
                     />
                   ))}
@@ -601,7 +601,7 @@ export function FeedbackTab() {
               <h4 className="mb-2 font-medium text-sm">Linear Issue</h4>
               {selectedFeedback.linearIssue ? (
                 <a
-                  href={selectedFeedback.linearIssue.url ?? '#'}
+                  href={selectedFeedback.linearIssue.url ?? "#"}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 rounded-lg bg-primary/10 px-3 py-2 text-primary text-sm hover:bg-primary/20"
@@ -625,7 +625,7 @@ export function FeedbackTab() {
                     ) : (
                       <RefreshCw className="h-4 w-4" />
                     )}
-                    {syncing ? 'Syncing...' : 'Retry Sync to Linear'}
+                    {syncing ? "Syncing..." : "Retry Sync to Linear"}
                   </button>
                   {syncError && (
                     <p className="text-red-500 text-sm">{syncError}</p>
@@ -644,7 +644,7 @@ export function FeedbackTab() {
                     name={
                       selectedFeedback.user.displayName ??
                       selectedFeedback.user.username ??
-                      '?'
+                      "?"
                     }
                     size="md"
                   />
@@ -654,7 +654,7 @@ export function FeedbackTab() {
                         selectedFeedback.user.username}
                     </div>
                     <div className="text-muted-foreground text-sm">
-                      {selectedFeedback.user.email ?? 'No email'}
+                      {selectedFeedback.user.email ?? "No email"}
                     </div>
                   </div>
                 </div>
@@ -666,7 +666,7 @@ export function FeedbackTab() {
               <div className="flex justify-between">
                 <span>Score: {selectedFeedback.score}</span>
                 <span>
-                  Submitted:{' '}
+                  Submitted:{" "}
                   {new Date(selectedFeedback.createdAt).toLocaleString()}
                 </span>
               </div>

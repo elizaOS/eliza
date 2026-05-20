@@ -14,7 +14,7 @@
  *   bun run report:training-quality -- --export json       # Machine-readable
  */
 
-import { parseArgs } from 'node:util';
+import { parseArgs } from "node:util";
 import {
   db,
   desc,
@@ -23,30 +23,30 @@ import {
   posts,
   questions,
   worldEvents,
-} from '@feed/db';
+} from "@feed/db";
 
 // ── CLI args ──────────────────────────────────────────────────────────
 const { values: args } = parseArgs({
   options: {
-    days: { type: 'string', default: '7' },
-    'warnings-only': { type: 'boolean', default: false },
-    export: { type: 'string', default: 'text' },
+    days: { type: "string", default: "7" },
+    "warnings-only": { type: "boolean", default: false },
+    export: { type: "string", default: "text" },
   },
   strict: true,
 });
 
-const days = Number.parseInt(args.days || '7', 10);
-const warningsOnly = args['warnings-only'] ?? false;
-const exportFormat = args.export || 'text';
+const days = Number.parseInt(args.days || "7", 10);
+const warningsOnly = args["warnings-only"] ?? false;
+const exportFormat = args.export || "text";
 const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
 // ── ANSI helpers ──────────────────────────────────────────────────────
-const GREEN = '\x1b[32m';
-const YELLOW = '\x1b[33m';
-const RED = '\x1b[31m';
-const BOLD = '\x1b[1m';
+const GREEN = "\x1b[32m";
+const YELLOW = "\x1b[33m";
+const RED = "\x1b[31m";
+const BOLD = "\x1b[1m";
 // const DIM = '\x1b[2m'; // available for future use
-const RESET = '\x1b[0m';
+const RESET = "\x1b[0m";
 
 function ok(msg: string) {
   return `${GREEN}✅${RESET} ${msg}`;
@@ -102,60 +102,60 @@ function skewness(values: number[]): number {
 
 // ── Stop words for text analysis ──────────────────────────────────────
 const STOP_WORDS = new Set([
-  'the',
-  'a',
-  'an',
-  'is',
-  'are',
-  'was',
-  'were',
-  'will',
-  'be',
-  'been',
-  'by',
-  'to',
-  'of',
-  'in',
-  'for',
-  'and',
-  'or',
-  'on',
-  'at',
-  'it',
-  'its',
-  'as',
-  'if',
-  'do',
-  'does',
-  'did',
-  'has',
-  'have',
-  'had',
-  'not',
-  'no',
-  'but',
-  'that',
-  'this',
-  'with',
-  'from',
-  'they',
-  'them',
-  'their',
-  'just',
-  'about',
-  'into',
-  'than',
-  'more',
-  'very',
-  'can',
-  'could',
-  'would',
+  "the",
+  "a",
+  "an",
+  "is",
+  "are",
+  "was",
+  "were",
+  "will",
+  "be",
+  "been",
+  "by",
+  "to",
+  "of",
+  "in",
+  "for",
+  "and",
+  "or",
+  "on",
+  "at",
+  "it",
+  "its",
+  "as",
+  "if",
+  "do",
+  "does",
+  "did",
+  "has",
+  "have",
+  "had",
+  "not",
+  "no",
+  "but",
+  "that",
+  "this",
+  "with",
+  "from",
+  "they",
+  "them",
+  "their",
+  "just",
+  "about",
+  "into",
+  "than",
+  "more",
+  "very",
+  "can",
+  "could",
+  "would",
 ]);
 
 function extractTokens(text: string): string[] {
   return text
     .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/[^a-z0-9\s]/g, " ")
     .split(/\s+/)
     .filter((t) => t.length >= 3 && !STOP_WORDS.has(t));
 }
@@ -163,11 +163,11 @@ function extractTokens(text: string): string[] {
 function getOpeningTrigram(text: string): string {
   return text
     .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/[^a-z0-9\s]/g, " ")
     .split(/\s+/)
     .filter(Boolean)
     .slice(0, 3)
-    .join(' ');
+    .join(" ");
 }
 
 function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
@@ -181,7 +181,7 @@ function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
 // ── Warnings collector ────────────────────────────────────────────────
 interface Warning {
   category: string;
-  severity: 'warning' | 'critical';
+  severity: "warning" | "critical";
   metric: string;
   value: number | string;
   threshold: number | string;
@@ -195,12 +195,12 @@ function checkThreshold(
   metric: string,
   value: number,
   threshold: number,
-  direction: 'above' | 'below',
-  severity: 'warning' | 'critical',
-  message: string
+  direction: "above" | "below",
+  severity: "warning" | "critical",
+  message: string,
 ): boolean {
   const triggered =
-    direction === 'above' ? value > threshold : value < threshold;
+    direction === "above" ? value > threshold : value < threshold;
   if (triggered) {
     warnings.push({
       category,
@@ -240,19 +240,19 @@ async function main() {
       .orderBy(desc(questions.createdAt)),
   ]);
 
-  const npcPosts = allPosts.filter((p) => p.type !== 'article');
-  const articles = allPosts.filter((p) => p.type === 'article');
+  const npcPosts = allPosts.filter((p) => p.type !== "article");
+  const articles = allPosts.filter((p) => p.type === "article");
 
-  console.log(heading('=== TRAINING DATA QUALITY REPORT ==='));
+  console.log(heading("=== TRAINING DATA QUALITY REPORT ==="));
   console.log(
-    `Period: last ${days} days (since ${since.toISOString().slice(0, 10)})`
+    `Period: last ${days} days (since ${since.toISOString().slice(0, 10)})`,
   );
   console.log(
-    `Data: ${allPosts.length} posts (${npcPosts.length} NPC, ${articles.length} articles) | ${allTrades.length} trades | ${allEvents.length} events | ${allQuestions.length} questions`
+    `Data: ${allPosts.length} posts (${npcPosts.length} NPC, ${articles.length} articles) | ${allTrades.length} trades | ${allEvents.length} events | ${allQuestions.length} questions`,
   );
 
   // ── ENTITY DISTRIBUTION ───────────────────────────────────────────
-  if (!warningsOnly) console.log(heading('ENTITY DISTRIBUTION'));
+  if (!warningsOnly) console.log(heading("ENTITY DISTRIBUTION"));
 
   // Count entity mentions in posts
   const entityCounts = new Map<string, number>();
@@ -265,7 +265,7 @@ async function main() {
   const totalEntityMentions = entityValues.reduce((s, v) => s + v, 0);
   const entityGini = gini(entityValues);
   const sortedEntities = [...entityCounts.entries()].sort(
-    (a, b) => b[1] - a[1]
+    (a, b) => b[1] - a[1],
   );
   const top1Share =
     totalEntityMentions > 0
@@ -285,55 +285,55 @@ async function main() {
   const hhiOk = entityHHI < 0.1;
 
   checkThreshold(
-    'Entity',
-    'gini',
+    "Entity",
+    "gini",
     entityGini,
     0.75,
-    'above',
-    'warning',
-    `Entity Gini ${(entityGini * 100).toFixed(0)}% indicates severe concentration`
+    "above",
+    "warning",
+    `Entity Gini ${(entityGini * 100).toFixed(0)}% indicates severe concentration`,
   );
   checkThreshold(
-    'Entity',
-    'top1_share',
+    "Entity",
+    "top1_share",
     top1Share,
     0.25,
-    'above',
-    'critical',
-    `Top entity has ${(top1Share * 100).toFixed(0)}% of all mentions`
+    "above",
+    "critical",
+    `Top entity has ${(top1Share * 100).toFixed(0)}% of all mentions`,
   );
   checkThreshold(
-    'Entity',
-    'top5_share',
+    "Entity",
+    "top5_share",
     top5Share,
     0.6,
-    'above',
-    'warning',
-    `Top 5 entities have ${(top5Share * 100).toFixed(0)}% of mentions`
+    "above",
+    "warning",
+    `Top 5 entities have ${(top5Share * 100).toFixed(0)}% of mentions`,
   );
   checkThreshold(
-    'Entity',
-    'hhi',
+    "Entity",
+    "hhi",
     entityHHI,
     0.15,
-    'above',
-    'warning',
-    `Entity HHI ${entityHHI.toFixed(3)} indicates concentration`
+    "above",
+    "warning",
+    `Entity HHI ${entityHHI.toFixed(3)} indicates concentration`,
   );
 
   if (!warningsOnly) {
     console.log(
-      `  Gini coefficient: ${entityGini.toFixed(3)} ${giniOk ? ok('(0.3-0.75)') : warn(`(target: 0.3-0.75)`)}`
+      `  Gini coefficient: ${entityGini.toFixed(3)} ${giniOk ? ok("(0.3-0.75)") : warn(`(target: 0.3-0.75)`)}`,
     );
     console.log(
-      `  Top-1 share: ${sortedEntities[0]?.[0] || 'N/A'} ${(top1Share * 100).toFixed(1)}% ${top1Ok ? ok('(<15%)') : warn('(target: <15%)')}`
+      `  Top-1 share: ${sortedEntities[0]?.[0] || "N/A"} ${(top1Share * 100).toFixed(1)}% ${top1Ok ? ok("(<15%)") : warn("(target: <15%)")}`,
     );
     console.log(
-      `  Top-5 share: ${(top5Share * 100).toFixed(1)}% ${top5Ok ? ok('(<40%)') : warn('(target: <40%)')}`
+      `  Top-5 share: ${(top5Share * 100).toFixed(1)}% ${top5Ok ? ok("(<40%)") : warn("(target: <40%)")}`,
     );
     console.log(`  Unique authors: ${uniqueAuthors}`);
     console.log(
-      `  HHI: ${entityHHI.toFixed(4)} ${hhiOk ? ok('(<0.10)') : warn('(target: <0.10)')}`
+      `  HHI: ${entityHHI.toFixed(4)} ${hhiOk ? ok("(<0.10)") : warn("(target: <0.10)")}`,
     );
 
     if (sortedEntities.length > 0) {
@@ -346,7 +346,7 @@ async function main() {
   }
 
   // ── STRUCTURAL DIVERSITY ──────────────────────────────────────────
-  if (!warningsOnly) console.log(heading('STRUCTURAL DIVERSITY'));
+  if (!warningsOnly) console.log(heading("STRUCTURAL DIVERSITY"));
 
   const postContents = npcPosts.map((p) => p.content).filter(Boolean);
   const postLengths = postContents.map((c) => c.length);
@@ -371,8 +371,8 @@ async function main() {
   let exclamationCount = 0;
   let statementCount = 0;
   for (const c of postContents) {
-    if (c.endsWith('?')) questionCount++;
-    else if (c.endsWith('!')) exclamationCount++;
+    if (c.endsWith("?")) questionCount++;
+    else if (c.endsWith("!")) exclamationCount++;
     else statementCount++;
   }
   const totalSentences = postContents.length || 1;
@@ -416,90 +416,90 @@ async function main() {
   const avgJaccard = jaccardCount > 0 ? totalJaccard / jaccardCount : 0;
 
   checkThreshold(
-    'Structure',
-    'trigram_diversity',
+    "Structure",
+    "trigram_diversity",
     trigramDiversity,
     0.5,
-    'below',
-    'warning',
-    `Opening trigram diversity ${(trigramDiversity * 100).toFixed(0)}% is low`
+    "below",
+    "warning",
+    `Opening trigram diversity ${(trigramDiversity * 100).toFixed(0)}% is low`,
   );
   checkThreshold(
-    'Structure',
-    'opening_rep_rate',
+    "Structure",
+    "opening_rep_rate",
     openingRepRate,
     0.1,
-    'above',
-    'warning',
-    `Opening "${[...trigramCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0]}" repeated ${(openingRepRate * 100).toFixed(0)}% of posts`
+    "above",
+    "warning",
+    `Opening "${[...trigramCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0]}" repeated ${(openingRepRate * 100).toFixed(0)}% of posts`,
   );
   checkThreshold(
-    'Structure',
-    'length_stddev',
+    "Structure",
+    "length_stddev",
     lengthStd,
     20,
-    'below',
-    'warning',
-    `Post length std dev ${lengthStd.toFixed(0)} chars is low (target: >40)`
+    "below",
+    "warning",
+    `Post length std dev ${lengthStd.toFixed(0)} chars is low (target: >40)`,
   );
   checkThreshold(
-    'Structure',
-    'ceiling_rate',
+    "Structure",
+    "ceiling_rate",
     ceilingRate,
     0.3,
-    'above',
-    'warning',
-    `${(ceilingRate * 100).toFixed(0)}% of posts hit 200-char ceiling`
+    "above",
+    "warning",
+    `${(ceilingRate * 100).toFixed(0)}% of posts hit 200-char ceiling`,
   );
   checkThreshold(
-    'Structure',
-    'ttr',
+    "Structure",
+    "ttr",
     ttr,
     0.25,
-    'below',
-    'warning',
-    `Vocabulary richness ${(ttr * 100).toFixed(0)}% is low`
+    "below",
+    "warning",
+    `Vocabulary richness ${(ttr * 100).toFixed(0)}% is low`,
   );
   checkThreshold(
-    'Structure',
-    'consecutive_jaccard',
+    "Structure",
+    "consecutive_jaccard",
     avgJaccard,
     0.25,
-    'above',
-    'warning',
-    `Consecutive post similarity ${(avgJaccard * 100).toFixed(0)}% is high`
+    "above",
+    "warning",
+    `Consecutive post similarity ${(avgJaccard * 100).toFixed(0)}% is high`,
   );
 
   if (!warningsOnly) {
     console.log(
-      `  Unique opening trigrams: ${uniqueTrigrams.size}/${trigrams.length} (${(trigramDiversity * 100).toFixed(0)}%) ${trigramDiversity > 0.5 ? ok('') : warn('(target: >50%)')}`
+      `  Unique opening trigrams: ${uniqueTrigrams.size}/${trigrams.length} (${(trigramDiversity * 100).toFixed(0)}%) ${trigramDiversity > 0.5 ? ok("") : warn("(target: >50%)")}`,
     );
     console.log(
-      `  Max opening repetition: ${(openingRepRate * 100).toFixed(0)}% ${openingRepRate < 0.1 ? ok('') : warn('(target: <10%)')}`
+      `  Max opening repetition: ${(openingRepRate * 100).toFixed(0)}% ${openingRepRate < 0.1 ? ok("") : warn("(target: <10%)")}`,
     );
     console.log(
-      `  Sentence types: ${(questionRate * 100).toFixed(0)}% questions, ${(exclamationRate * 100).toFixed(0)}% exclamations, ${(statementRate * 100).toFixed(0)}% statements`
+      `  Sentence types: ${(questionRate * 100).toFixed(0)}% questions, ${(exclamationRate * 100).toFixed(0)}% exclamations, ${(statementRate * 100).toFixed(0)}% statements`,
     );
     console.log(
-      `  Post length: avg ${avgLength.toFixed(0)} chars, std ${lengthStd.toFixed(0)}, skew ${lengthSkew.toFixed(2)} ${lengthStd > 40 ? ok('') : warn('(target std: >40)')}`
+      `  Post length: avg ${avgLength.toFixed(0)} chars, std ${lengthStd.toFixed(0)}, skew ${lengthSkew.toFixed(2)} ${lengthStd > 40 ? ok("") : warn("(target std: >40)")}`,
     );
     console.log(
-      `  200-char ceiling hits: ${ceilingHits}/${postLengths.length} (${(ceilingRate * 100).toFixed(0)}%) ${ceilingRate < 0.15 ? ok('') : warn('(target: <15%)')}`
+      `  200-char ceiling hits: ${ceilingHits}/${postLengths.length} (${(ceilingRate * 100).toFixed(0)}%) ${ceilingRate < 0.15 ? ok("") : warn("(target: <15%)")}`,
     );
     console.log(
-      `  Vocabulary richness (TTR): ${(ttr * 100).toFixed(0)}% ${ttr > 0.4 ? ok('') : ttr > 0.25 ? warn('(target: >40%)') : crit('(target: >25%)')}`
+      `  Vocabulary richness (TTR): ${(ttr * 100).toFixed(0)}% ${ttr > 0.4 ? ok("") : ttr > 0.25 ? warn("(target: >40%)") : crit("(target: >25%)")}`,
     );
     console.log(
-      `  Consecutive post similarity: ${(avgJaccard * 100).toFixed(0)}% ${avgJaccard < 0.15 ? ok('') : warn('(target: <15%)')}`
+      `  Consecutive post similarity: ${(avgJaccard * 100).toFixed(0)}% ${avgJaccard < 0.15 ? ok("") : warn("(target: <15%)")}`,
     );
   }
 
   // ── TOPIC & THEME CONCENTRATION ───────────────────────────────────
-  if (!warningsOnly) console.log(heading('TOPIC CONCENTRATION'));
+  if (!warningsOnly) console.log(heading("TOPIC CONCENTRATION"));
 
   const topicCounts = new Map<string, number>();
   for (const q of allQuestions) {
-    const key = q.topicKey || 'general';
+    const key = q.topicKey || "general";
     topicCounts.set(key, (topicCounts.get(key) || 0) + 1);
   }
   const topicHHI = hhi([...topicCounts.values()]);
@@ -507,7 +507,7 @@ async function main() {
   // Event type distribution
   const eventTypeCounts = new Map<string, number>();
   for (const e of allEvents) {
-    const t = e.eventType || 'unknown';
+    const t = e.eventType || "unknown";
     eventTypeCounts.set(t, (eventTypeCounts.get(t) || 0) + 1);
   }
   const eventTypeShares = [...eventTypeCounts.values()];
@@ -516,7 +516,7 @@ async function main() {
 
   // Question near-duplicate rate
   const questionTexts = allQuestions
-    .filter((q) => q.status === 'active')
+    .filter((q) => q.status === "active")
     .map((q) => q.text);
   let nearDuplicates = 0;
   let totalPairs = 0;
@@ -531,59 +531,59 @@ async function main() {
   const nearDupRate = totalPairs > 0 ? nearDuplicates / totalPairs : 0;
 
   checkThreshold(
-    'Topic',
-    'topic_hhi',
+    "Topic",
+    "topic_hhi",
     topicHHI,
     0.25,
-    'above',
-    'warning',
-    `Topic HHI ${topicHHI.toFixed(3)} indicates concentration`
+    "above",
+    "warning",
+    `Topic HHI ${topicHHI.toFixed(3)} indicates concentration`,
   );
   checkThreshold(
-    'Topic',
-    'max_event_type_share',
+    "Topic",
+    "max_event_type_share",
     maxEventTypeShare,
     0.4,
-    'above',
-    'warning',
-    `Event type concentration: ${(maxEventTypeShare * 100).toFixed(0)}%`
+    "above",
+    "warning",
+    `Event type concentration: ${(maxEventTypeShare * 100).toFixed(0)}%`,
   );
   checkThreshold(
-    'Topic',
-    'near_duplicate_rate',
+    "Topic",
+    "near_duplicate_rate",
     nearDupRate,
     0.2,
-    'above',
-    'critical',
-    `${(nearDupRate * 100).toFixed(0)}% of active question pairs are near-duplicates`
+    "above",
+    "critical",
+    `${(nearDupRate * 100).toFixed(0)}% of active question pairs are near-duplicates`,
   );
 
   if (!warningsOnly) {
     console.log(
-      `  Topic HHI: ${topicHHI.toFixed(3)} ${topicHHI < 0.15 ? ok('') : warn('(target: <0.15)')}`
+      `  Topic HHI: ${topicHHI.toFixed(3)} ${topicHHI < 0.15 ? ok("") : warn("(target: <0.15)")}`,
     );
     console.log(`  Topic distribution:`);
     for (const [topic, count] of [...topicCounts.entries()].sort(
-      (a, b) => b[1] - a[1]
+      (a, b) => b[1] - a[1],
     )) {
       console.log(`    ${topic.padEnd(20)} ${count} questions`);
     }
     console.log(`  Event type distribution:`);
     for (const [type, count] of [...eventTypeCounts.entries()].sort(
-      (a, b) => b[1] - a[1]
+      (a, b) => b[1] - a[1],
     )) {
       const pct = ((count / allEvents.length) * 100).toFixed(0);
       console.log(
-        `    ${type.padEnd(20)} ${count} (${pct}%) ${Number(pct) > 40 ? warn('DOMINANT') : ''}`
+        `    ${type.padEnd(20)} ${count} (${pct}%) ${Number(pct) > 40 ? warn("DOMINANT") : ""}`,
       );
     }
     console.log(
-      `  Question near-duplicate rate: ${(nearDupRate * 100).toFixed(0)}% ${nearDupRate < 0.1 ? ok('') : warn('(target: <10%)')}`
+      `  Question near-duplicate rate: ${(nearDupRate * 100).toFixed(0)}% ${nearDupRate < 0.1 ? ok("") : warn("(target: <10%)")}`,
     );
   }
 
   // ── ACTION DISTRIBUTION ───────────────────────────────────────────
-  if (!warningsOnly) console.log(heading('ACTION DISTRIBUTION'));
+  if (!warningsOnly) console.log(heading("ACTION DISTRIBUTION"));
 
   const actionCounts = new Map<string, number>();
   for (const t of allTrades) {
@@ -596,64 +596,64 @@ async function main() {
 
   // YES vs NO balance
   const yesCount = allTrades.filter(
-    (t) => t.action === 'buy_yes' || t.action === 'open_long'
+    (t) => t.action === "buy_yes" || t.action === "open_long",
   ).length;
   const noCount = allTrades.filter(
-    (t) => t.action === 'buy_no' || t.action === 'open_short'
+    (t) => t.action === "buy_no" || t.action === "open_short",
   ).length;
   const yesPct = allTrades.length > 0 ? yesCount / allTrades.length : 0.5;
 
   // Market outcome balance
   const resolvedQs = allQuestions.filter(
-    (q) => q.status === 'resolved' && q.resolvedOutcome !== null
+    (q) => q.status === "resolved" && q.resolvedOutcome !== null,
   );
   const yesOutcomes = resolvedQs.filter(
-    (q) => q.resolvedOutcome === true
+    (q) => q.resolvedOutcome === true,
   ).length;
   const outcomePct =
     resolvedQs.length > 0 ? yesOutcomes / resolvedQs.length : 0.5;
 
   checkThreshold(
-    'Action',
-    'max_action_share',
+    "Action",
+    "max_action_share",
     maxActionShare,
     0.5,
-    'above',
-    'warning',
-    `Trade action "${[...actionCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0]}" is ${(maxActionShare * 100).toFixed(0)}% of all trades`
+    "above",
+    "warning",
+    `Trade action "${[...actionCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0]}" is ${(maxActionShare * 100).toFixed(0)}% of all trades`,
   );
   checkThreshold(
-    'Action',
-    'yes_bias',
+    "Action",
+    "yes_bias",
     yesPct,
     0.7,
-    'above',
-    'warning',
-    `YES/long trades are ${(yesPct * 100).toFixed(0)}% of all trades`
+    "above",
+    "warning",
+    `YES/long trades are ${(yesPct * 100).toFixed(0)}% of all trades`,
   );
 
   if (!warningsOnly) {
     console.log(`  Trade actions:`);
     for (const [action, count] of [...actionCounts.entries()].sort(
-      (a, b) => b[1] - a[1]
+      (a, b) => b[1] - a[1],
     )) {
       const pct = ((count / allTrades.length) * 100).toFixed(0);
       console.log(
-        `    ${action.padEnd(15)} ${count} (${pct}%) ${Number(pct) > 50 ? warn('DOMINANT') : ''}`
+        `    ${action.padEnd(15)} ${count} (${pct}%) ${Number(pct) > 50 ? warn("DOMINANT") : ""}`,
       );
     }
     console.log(
-      `  YES/long vs NO/short: ${yesCount} (${(yesPct * 100).toFixed(0)}%) / ${noCount} (${((1 - yesPct) * 100).toFixed(0)}%) ${Math.abs(yesPct - 0.5) < 0.2 ? ok('balanced') : warn('imbalanced')}`
+      `  YES/long vs NO/short: ${yesCount} (${(yesPct * 100).toFixed(0)}%) / ${noCount} (${((1 - yesPct) * 100).toFixed(0)}%) ${Math.abs(yesPct - 0.5) < 0.2 ? ok("balanced") : warn("imbalanced")}`,
     );
     if (resolvedQs.length > 0) {
       console.log(
-        `  Market outcomes: ${(outcomePct * 100).toFixed(0)}% YES / ${((1 - outcomePct) * 100).toFixed(0)}% NO ${Math.abs(outcomePct - 0.5) < 0.2 ? ok('') : warn('(target: 40-60%)')}`
+        `  Market outcomes: ${(outcomePct * 100).toFixed(0)}% YES / ${((1 - outcomePct) * 100).toFixed(0)}% NO ${Math.abs(outcomePct - 0.5) < 0.2 ? ok("") : warn("(target: 40-60%)")}`,
       );
     }
   }
 
   // ── TEMPORAL PATTERNS ──────────────────────────────────────────────
-  if (!warningsOnly) console.log(heading('TEMPORAL PATTERNS'));
+  if (!warningsOnly) console.log(heading("TEMPORAL PATTERNS"));
 
   // Posts per hour distribution
   const postsPerHour = new Map<number, number>();
@@ -697,62 +697,62 @@ async function main() {
   }
 
   checkThreshold(
-    'Temporal',
-    'hour_cv',
+    "Temporal",
+    "hour_cv",
     hourCV,
     1.0,
-    'above',
-    'warning',
-    `Hourly activity CV ${hourCV.toFixed(2)} indicates extreme bunching`
+    "above",
+    "warning",
+    `Hourly activity CV ${hourCV.toFixed(2)} indicates extreme bunching`,
   );
   checkThreshold(
-    'Temporal',
-    'event_cluster_ratio',
+    "Temporal",
+    "event_cluster_ratio",
     eventClusterRatio,
     10,
-    'above',
-    'warning',
-    `Event clustering ratio ${eventClusterRatio.toFixed(1)}x (max ${maxEventsPerHour} in one hour)`
+    "above",
+    "warning",
+    `Event clustering ratio ${eventClusterRatio.toFixed(1)}x (max ${maxEventsPerHour} in one hour)`,
   );
   checkThreshold(
-    'Temporal',
-    'autocorrelation',
+    "Temporal",
+    "autocorrelation",
     Math.abs(autoCorr),
     0.6,
-    'above',
-    'warning',
-    `Activity autocorrelation ${autoCorr.toFixed(2)} indicates predictable pattern`
+    "above",
+    "warning",
+    `Activity autocorrelation ${autoCorr.toFixed(2)} indicates predictable pattern`,
   );
 
   if (!warningsOnly) {
     console.log(
-      `  Hourly activity CV: ${hourCV.toFixed(2)} ${hourCV < 0.5 ? ok('uniform') : hourCV < 1.0 ? warn('moderate variation') : crit('extreme bunching')}`
+      `  Hourly activity CV: ${hourCV.toFixed(2)} ${hourCV < 0.5 ? ok("uniform") : hourCV < 1.0 ? warn("moderate variation") : crit("extreme bunching")}`,
     );
 
     // Show hour distribution as sparkline
     const maxH = Math.max(...hourCounts, 1);
     const bars = hourCounts.map((c) => {
       const height = Math.round((c / maxH) * 8);
-      return ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█', '█'][height] || '▁';
+      return ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█", "█"][height] || "▁";
     });
-    console.log(`  Hour distribution: ${bars.join('')}`);
+    console.log(`  Hour distribution: ${bars.join("")}`);
     console.log(
-      `  ${'                    '}0         6        12        18       23`
+      `  ${"                    "}0         6        12        18       23`,
     );
 
     console.log(
-      `  Event clustering: max ${maxEventsPerHour}/hour, avg ${avgEventsPerHour.toFixed(1)}/hour, ratio ${eventClusterRatio.toFixed(1)}x ${eventClusterRatio < 5 ? ok('') : warn('(target: <5x)')}`
+      `  Event clustering: max ${maxEventsPerHour}/hour, avg ${avgEventsPerHour.toFixed(1)}/hour, ratio ${eventClusterRatio.toFixed(1)}x ${eventClusterRatio < 5 ? ok("") : warn("(target: <5x)")}`,
     );
     console.log(
-      `  Autocorrelation (lag-1): ${autoCorr.toFixed(2)} ${Math.abs(autoCorr) < 0.3 ? ok('low') : warn('predictable pattern')}`
+      `  Autocorrelation (lag-1): ${autoCorr.toFixed(2)} ${Math.abs(autoCorr) < 0.3 ? ok("low") : warn("predictable pattern")}`,
     );
   }
 
   // ── TRAINING-SPECIFIC ─────────────────────────────────────────────
-  if (!warningsOnly) console.log(heading('TRAINING-SPECIFIC'));
+  if (!warningsOnly) console.log(heading("TRAINING-SPECIFIC"));
 
   // Real name leakage — derive from actor/org data instead of hardcoding
-  const { StaticDataRegistry } = await import('@feed/engine');
+  const { StaticDataRegistry } = await import("@feed/engine");
   const realNames: string[] = [];
   for (const actor of StaticDataRegistry.getAllActors()) {
     const pack = StaticDataRegistry.getPackActor(actor.id);
@@ -762,17 +762,17 @@ async function main() {
   }
   // Add common org real names
   realNames.push(
-    'OpenAI',
-    'Tesla',
-    'Meta ',
-    'Google',
-    'Microsoft',
-    'Amazon',
-    'Apple',
-    'NVIDIA',
-    'BlackRock',
-    'Bitcoin',
-    'Ethereum'
+    "OpenAI",
+    "Tesla",
+    "Meta ",
+    "Google",
+    "Microsoft",
+    "Amazon",
+    "Apple",
+    "NVIDIA",
+    "BlackRock",
+    "Bitcoin",
+    "Ethereum",
   );
   let realNameLeaks = 0;
   const leakExamples: string[] = [];
@@ -782,7 +782,7 @@ async function main() {
         realNameLeaks++;
         if (leakExamples.length < 3) {
           leakExamples.push(
-            `"${p.content.substring(0, 60)}..." contains "${name}"`
+            `"${p.content.substring(0, 60)}..." contains "${name}"`,
           );
         }
         break;
@@ -792,7 +792,7 @@ async function main() {
   const leakRate = npcPosts.length > 0 ? realNameLeaks / npcPosts.length : 0;
 
   // Hashtag leakage
-  const hashtagPosts = npcPosts.filter((p) => p.content.includes('#')).length;
+  const hashtagPosts = npcPosts.filter((p) => p.content.includes("#")).length;
   const hashtagRate = npcPosts.length > 0 ? hashtagPosts / npcPosts.length : 0;
 
   // Emoji leakage (basic check)
@@ -802,58 +802,58 @@ async function main() {
   const emojiRate = npcPosts.length > 0 ? emojiPosts / npcPosts.length : 0;
 
   checkThreshold(
-    'Training',
-    'real_name_leakage',
+    "Training",
+    "real_name_leakage",
     leakRate,
     0.05,
-    'above',
-    'critical',
-    `${(leakRate * 100).toFixed(1)}% of posts contain real names`
+    "above",
+    "critical",
+    `${(leakRate * 100).toFixed(1)}% of posts contain real names`,
   );
   checkThreshold(
-    'Training',
-    'hashtag_leakage',
+    "Training",
+    "hashtag_leakage",
     hashtagRate,
     0.02,
-    'above',
-    'critical',
-    `${(hashtagRate * 100).toFixed(1)}% of posts contain hashtags`
+    "above",
+    "critical",
+    `${(hashtagRate * 100).toFixed(1)}% of posts contain hashtags`,
   );
   checkThreshold(
-    'Training',
-    'emoji_leakage',
+    "Training",
+    "emoji_leakage",
     emojiRate,
     0.02,
-    'above',
-    'warning',
-    `${(emojiRate * 100).toFixed(1)}% of posts contain emojis`
+    "above",
+    "warning",
+    `${(emojiRate * 100).toFixed(1)}% of posts contain emojis`,
   );
 
   if (!warningsOnly) {
     console.log(
-      `  Real name leakage: ${realNameLeaks}/${npcPosts.length} (${(leakRate * 100).toFixed(1)}%) ${leakRate === 0 ? ok('none') : crit(`${realNameLeaks} posts`)}`
+      `  Real name leakage: ${realNameLeaks}/${npcPosts.length} (${(leakRate * 100).toFixed(1)}%) ${leakRate === 0 ? ok("none") : crit(`${realNameLeaks} posts`)}`,
     );
     for (const ex of leakExamples) {
       console.log(`    ${RED}→ ${ex}${RESET}`);
     }
     console.log(
-      `  Hashtag leakage: ${hashtagPosts}/${npcPosts.length} (${(hashtagRate * 100).toFixed(1)}%) ${hashtagRate === 0 ? ok('none') : crit(`${hashtagPosts} posts`)}`
+      `  Hashtag leakage: ${hashtagPosts}/${npcPosts.length} (${(hashtagRate * 100).toFixed(1)}%) ${hashtagRate === 0 ? ok("none") : crit(`${hashtagPosts} posts`)}`,
     );
     console.log(
-      `  Emoji leakage: ${emojiPosts}/${npcPosts.length} (${(emojiRate * 100).toFixed(1)}%) ${emojiRate === 0 ? ok('none') : warn(`${emojiPosts} posts`)}`
+      `  Emoji leakage: ${emojiPosts}/${npcPosts.length} (${(emojiRate * 100).toFixed(1)}%) ${emojiRate === 0 ? ok("none") : warn(`${emojiPosts} posts`)}`,
     );
 
     // Game mechanic leakage — posts that expose simulation internals
     const mechanicTerms = [
-      'predetermined',
-      'scripted',
-      'arc plan',
-      'game tick',
-      'simulation',
-      'clueStrength',
-      'pointsToward',
-      'insider status',
-      'NPC',
+      "predetermined",
+      "scripted",
+      "arc plan",
+      "game tick",
+      "simulation",
+      "clueStrength",
+      "pointsToward",
+      "insider status",
+      "NPC",
     ];
     let mechanicLeaks = 0;
     for (const p of npcPosts) {
@@ -865,25 +865,25 @@ async function main() {
     const mechanicRate =
       npcPosts.length > 0 ? mechanicLeaks / npcPosts.length : 0;
     checkThreshold(
-      'Training',
-      'mechanic_leakage',
+      "Training",
+      "mechanic_leakage",
       mechanicRate,
       0.01,
-      'above',
-      'critical',
-      `${(mechanicRate * 100).toFixed(1)}% of posts expose game mechanics`
+      "above",
+      "critical",
+      `${(mechanicRate * 100).toFixed(1)}% of posts expose game mechanics`,
     );
     console.log(
-      `  Game mechanic leakage: ${mechanicLeaks}/${npcPosts.length} (${(mechanicRate * 100).toFixed(1)}%) ${mechanicLeaks === 0 ? ok('none') : crit(`${mechanicLeaks} posts`)}`
+      `  Game mechanic leakage: ${mechanicLeaks}/${npcPosts.length} (${(mechanicRate * 100).toFixed(1)}%) ${mechanicLeaks === 0 ? ok("none") : crit(`${mechanicLeaks} posts`)}`,
     );
 
     // Sentiment distribution analysis
     const sentimentValues = npcPosts
       .map((p) => {
         const s = p.sentiment;
-        if (typeof s === 'number') return s;
-        if (s === 'positive') return 0.5;
-        if (s === 'negative') return -0.5;
+        if (typeof s === "number") return s;
+        if (s === "positive") return 0.5;
+        if (s === "negative") return -0.5;
         return 0;
       })
       .filter((s) => s !== 0);
@@ -894,65 +894,65 @@ async function main() {
       const sentStd = stdDev(sentimentValues);
       const sentSkew = skewness(sentimentValues);
       console.log(
-        `  Sentiment: mean ${sentMean.toFixed(2)}, std ${sentStd.toFixed(2)}, skew ${sentSkew.toFixed(2)} ${Math.abs(sentSkew) < 1.5 ? ok('') : warn('skewed')}`
+        `  Sentiment: mean ${sentMean.toFixed(2)}, std ${sentStd.toFixed(2)}, skew ${sentSkew.toFixed(2)} ${Math.abs(sentSkew) < 1.5 ? ok("") : warn("skewed")}`,
       );
       checkThreshold(
-        'Training',
-        'sentiment_skew',
+        "Training",
+        "sentiment_skew",
         Math.abs(sentSkew),
         1.5,
-        'above',
-        'warning',
-        `Sentiment skewness ${sentSkew.toFixed(2)} indicates bias`
+        "above",
+        "warning",
+        `Sentiment skewness ${sentSkew.toFixed(2)} indicates bias`,
       );
     } else {
       console.log(
-        `  Sentiment: insufficient numeric data (${sentimentValues.length} values)`
+        `  Sentiment: insufficient numeric data (${sentimentValues.length} values)`,
       );
     }
 
     // Market outcome balance
     const resolvedQs = allQuestions.filter(
-      (q) => q.status === 'resolved' && q.resolvedOutcome !== null
+      (q) => q.status === "resolved" && q.resolvedOutcome !== null,
     );
     if (resolvedQs.length > 0) {
       const yesOutcomes = resolvedQs.filter(
-        (q) => q.resolvedOutcome === true
+        (q) => q.resolvedOutcome === true,
       ).length;
       const outcomePct = yesOutcomes / resolvedQs.length;
       console.log(
-        `  Market outcomes: ${yesOutcomes}/${resolvedQs.length} YES (${(outcomePct * 100).toFixed(0)}%) ${Math.abs(outcomePct - 0.5) < 0.2 ? ok('balanced') : warn('imbalanced')}`
+        `  Market outcomes: ${yesOutcomes}/${resolvedQs.length} YES (${(outcomePct * 100).toFixed(0)}%) ${Math.abs(outcomePct - 0.5) < 0.2 ? ok("balanced") : warn("imbalanced")}`,
       );
       checkThreshold(
-        'Training',
-        'outcome_imbalance',
+        "Training",
+        "outcome_imbalance",
         Math.abs(outcomePct - 0.5),
         0.2,
-        'above',
-        'warning',
-        `Market outcomes ${(outcomePct * 100).toFixed(0)}% YES (target: 40-60%)`
+        "above",
+        "warning",
+        `Market outcomes ${(outcomePct * 100).toFixed(0)}% YES (target: 40-60%)`,
       );
     }
   }
 
   // ── WARNINGS SUMMARY ──────────────────────────────────────────────
-  console.log(heading('WARNINGS SUMMARY'));
+  console.log(heading("WARNINGS SUMMARY"));
   if (warnings.length === 0) {
-    console.log(ok('No warnings. Training data quality looks healthy.'));
+    console.log(ok("No warnings. Training data quality looks healthy."));
   } else {
-    const criticals = warnings.filter((w) => w.severity === 'critical');
-    const warns = warnings.filter((w) => w.severity === 'warning');
+    const criticals = warnings.filter((w) => w.severity === "critical");
+    const warns = warnings.filter((w) => w.severity === "warning");
     console.log(
-      `${criticals.length > 0 ? crit(`${criticals.length} critical`) : ''} ${warns.length > 0 ? warn(`${warns.length} warnings`) : ''}`
+      `${criticals.length > 0 ? crit(`${criticals.length} critical`) : ""} ${warns.length > 0 ? warn(`${warns.length} warnings`) : ""}`,
     );
     for (const w of warnings) {
-      const icon = w.severity === 'critical' ? crit('') : warn('');
+      const icon = w.severity === "critical" ? crit("") : warn("");
       console.log(`  ${icon} [${w.category}] ${w.message}`);
     }
   }
 
   // ── JSON EXPORT ───────────────────────────────────────────────────
-  if (exportFormat === 'json') {
+  if (exportFormat === "json") {
     const report = {
       period: { days, since: since.toISOString() },
       counts: {
@@ -1009,10 +1009,10 @@ async function main() {
       },
       warnings,
     };
-    console.log('\n' + JSON.stringify(report, null, 2));
+    console.log(`\n${JSON.stringify(report, null, 2)}`);
   }
 
-  process.exit(warnings.some((w) => w.severity === 'critical') ? 1 : 0);
+  process.exit(warnings.some((w) => w.severity === "critical") ? 1 : 0);
 }
 
 main().catch((e) => {

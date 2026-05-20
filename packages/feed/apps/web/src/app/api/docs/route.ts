@@ -40,8 +40,8 @@
  *                   type: string
  */
 
-import { generateAutoSpec, withErrorHandling } from '@feed/api';
-import { NextResponse } from 'next/server';
+import { generateAutoSpec, withErrorHandling } from "@feed/api";
+import { NextResponse } from "next/server";
 
 /**
  * GET /api/docs
@@ -67,13 +67,13 @@ export const GET = withErrorHandling(async function GET() {
 
   // Ensure openapi version field is present (required by Swagger UI)
   if (!spec.openapi && !spec.swagger) {
-    spec.openapi = '3.0.0';
+    spec.openapi = "3.0.0";
   }
 
   return NextResponse.json(spec, {
     headers: {
-      'Content-Type': 'application/json',
-      'Cache-Control': 'public, max-age=3600', // Cache for 1 hour
+      "Content-Type": "application/json",
+      "Cache-Control": "public, max-age=3600", // Cache for 1 hour
     },
   });
 });

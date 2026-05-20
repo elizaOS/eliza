@@ -1,13 +1,13 @@
-'use client';
+"use client";
 
-import type { LikeButtonProps } from '@feed/shared';
-import { cn } from '@feed/shared';
-import { Frown, Heart, Laugh } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { useAuth } from '@/hooks/useAuth';
-import { useSocialTracking } from '@/hooks/usePostHog';
-import { useInteractionStore } from '@/stores/interactionStore';
+import type { LikeButtonProps } from "@feed/shared";
+import { cn } from "@feed/shared";
+import { Frown, Heart, Laugh } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { useAuth } from "@/hooks/useAuth";
+import { useSocialTracking } from "@/hooks/usePostHog";
+import { useInteractionStore } from "@/stores/interactionStore";
 
 /**
  * Reaction configuration type for like button reactions.
@@ -27,34 +27,34 @@ type ReactionConfig = {
 const REACTION_TYPES: Record<string, ReactionConfig> = {
   like: {
     icon: Heart,
-    color: 'text-red-500',
-    bgColor: 'bg-red-500/10',
-    hoverColor: 'hover:bg-red-500/20',
-    label: 'Like',
+    color: "text-red-500",
+    bgColor: "bg-red-500/10",
+    hoverColor: "hover:bg-red-500/20",
+    label: "Like",
     fill: false,
   },
   love: {
     icon: Heart,
-    color: 'text-pink-500',
-    bgColor: 'bg-pink-500/10',
-    hoverColor: 'hover:bg-pink-500/20',
-    label: 'Love',
+    color: "text-pink-500",
+    bgColor: "bg-pink-500/10",
+    hoverColor: "hover:bg-pink-500/20",
+    label: "Love",
     fill: true,
   },
   laugh: {
     icon: Laugh,
-    color: 'text-yellow-500',
-    bgColor: 'bg-yellow-500/10',
-    hoverColor: 'hover:bg-yellow-500/20',
-    label: 'Laugh',
+    color: "text-yellow-500",
+    bgColor: "bg-yellow-500/10",
+    hoverColor: "hover:bg-yellow-500/20",
+    label: "Laugh",
     fill: false,
   },
   sad: {
     icon: Frown,
-    color: 'text-blue-500',
-    bgColor: 'bg-blue-500/10',
-    hoverColor: 'hover:bg-blue-500/20',
-    label: 'Sad',
+    color: "text-blue-500",
+    bgColor: "bg-blue-500/10",
+    hoverColor: "hover:bg-blue-500/20",
+    label: "Sad",
     fill: false,
   },
 };
@@ -92,9 +92,9 @@ type ReactionType = keyof typeof REACTION_TYPES;
  * ```
  */
 const sizeClasses = {
-  sm: 'text-xs gap-1',
-  md: 'h-10 px-3 text-sm gap-1.5',
-  lg: 'h-12 px-4 text-base gap-2',
+  sm: "text-xs gap-1",
+  md: "h-10 px-3 text-sm gap-1.5",
+  lg: "h-12 px-4 text-base gap-2",
 };
 
 const iconSizes = {
@@ -104,9 +104,9 @@ const iconSizes = {
 };
 
 const skeletonSizes = {
-  sm: 'w-4 h-4',
-  md: 'w-5 h-5',
-  lg: 'w-5 h-5',
+  sm: "w-4 h-4",
+  md: "w-5 h-5",
+  lg: "w-5 h-5",
 };
 
 export function LikeButton({
@@ -114,15 +114,15 @@ export function LikeButton({
   targetType,
   initialLiked = false,
   initialCount = 0,
-  initialReactionType = 'like',
-  size = 'md',
+  initialReactionType = "like",
+  size = "md",
   showCount = true,
   className,
   onLikeChange,
 }: LikeButtonProps & { initialReactionType?: ReactionType }) {
   const { authenticated, login } = useAuth();
   // Ensure size is properly typed for index access
-  const sizeKey: 'sm' | 'md' | 'lg' = size;
+  const sizeKey: "sm" | "md" | "lg" = size;
   const [currentReaction, setCurrentReaction] =
     useState<ReactionType>(initialReactionType);
   const [showReactionPicker, setShowReactionPicker] = useState(false);
@@ -142,7 +142,7 @@ export function LikeButton({
 
   // Get state from store instead of local state
   const storeData =
-    targetType === 'post'
+    targetType === "post"
       ? postInteractions.get(targetId)
       : commentInteractions.get(targetId);
 
@@ -169,7 +169,7 @@ export function LikeButton({
     setTimeout(() => setIsAnimating(false), 300);
 
     const willBeLiked = !isLiked;
-    if (targetType === 'post') {
+    if (targetType === "post") {
       await toggleLike(targetId);
       // Track like action (client-side for instant feedback)
       if (willBeLiked) {
@@ -196,7 +196,7 @@ export function LikeButton({
     // If already liked, changing reaction type doesn't toggle the like state
     if (isLiked) return;
 
-    if (targetType === 'post') {
+    if (targetType === "post") {
       await toggleLike(targetId);
       onLikeChange?.(true);
     } else {
@@ -245,16 +245,16 @@ export function LikeButton({
           type="button"
           disabled={isLoading}
           className={cn(
-            'flex items-center transition-all duration-200',
-            'bg-transparent hover:opacity-70',
-            isLiked ? fallbackReaction.color : 'text-muted-foreground',
+            "flex items-center transition-all duration-200",
+            "bg-transparent hover:opacity-70",
+            isLiked ? fallbackReaction.color : "text-muted-foreground",
             sizeClasses[sizeKey],
-            isLoading && 'cursor-wait opacity-50',
-            className
+            isLoading && "cursor-wait opacity-50",
+            className,
           )}
         >
           {isLoading ? (
-            <Skeleton className={cn('rounded', skeletonSizes[sizeKey])} />
+            <Skeleton className={cn("rounded", skeletonSizes[sizeKey])} />
           ) : (
             <FallbackIcon
               size={iconSizes[sizeKey]}
@@ -282,24 +282,24 @@ export function LikeButton({
         onTouchEnd={handleMouseUp}
         disabled={isLoading}
         className={cn(
-          'flex items-center transition-all duration-200',
-          'bg-transparent hover:opacity-70',
-          isLiked ? reaction.color : 'text-muted-foreground',
+          "flex items-center transition-all duration-200",
+          "bg-transparent hover:opacity-70",
+          isLiked ? reaction.color : "text-muted-foreground",
           sizeClasses[sizeKey],
-          isAnimating && 'scale-110',
-          isLoading && 'cursor-wait opacity-50',
-          className
+          isAnimating && "scale-110",
+          isLoading && "cursor-wait opacity-50",
+          className,
         )}
       >
         {isLoading ? (
-          <Skeleton className={cn('rounded', skeletonSizes[sizeKey])} />
+          <Skeleton className={cn("rounded", skeletonSizes[sizeKey])} />
         ) : (
           <Icon
             size={iconSizes[sizeKey]}
             className={cn(
-              'transition-all duration-200',
-              isLiked && reaction.fill && 'fill-current',
-              isAnimating && 'animate-bounce'
+              "transition-all duration-200",
+              isLiked && reaction.fill && "fill-current",
+              isAnimating && "animate-bounce",
             )}
           />
         )}
@@ -320,10 +320,10 @@ export function LikeButton({
           {/* Reaction Options */}
           <div
             className={cn(
-              'absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2',
-              'flex items-center gap-2 p-2',
-              'rounded-full border border-border bg-popover shadow-lg',
-              'fade-in slide-in-from-bottom-2 animate-in duration-200'
+              "absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2",
+              "flex items-center gap-2 p-2",
+              "rounded-full border border-border bg-popover shadow-lg",
+              "fade-in slide-in-from-bottom-2 animate-in duration-200",
             )}
           >
             {(Object.keys(REACTION_TYPES) as ReactionType[]).map((type) => {
@@ -337,10 +337,10 @@ export function LikeButton({
                   type="button"
                   onClick={() => handleReactionSelect(type)}
                   className={cn(
-                    'rounded-full p-2 transition-all duration-200',
-                    'hover:scale-125 active:scale-110',
+                    "rounded-full p-2 transition-all duration-200",
+                    "hover:scale-125 active:scale-110",
                     reactionOption.hoverColor,
-                    isSelected && cn(reactionOption.bgColor, 'scale-110')
+                    isSelected && cn(reactionOption.bgColor, "scale-110"),
                   )}
                   title={reactionOption.label}
                 >
@@ -348,7 +348,7 @@ export function LikeButton({
                     size={20}
                     className={cn(
                       reactionOption.color,
-                      reactionOption.fill && isSelected && 'fill-current'
+                      reactionOption.fill && isSelected && "fill-current",
                     )}
                   />
                 </button>

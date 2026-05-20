@@ -11,27 +11,27 @@
  * are identical to what the production cron paths enforce.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from "bun:test";
 import {
   calculatePriceFromHoldings,
   PERP_MARKET_CONFIG,
-} from '@feed/shared/constants/markets';
-import { PredictionPricing } from '../../core/markets/prediction/pricing';
+} from "@feed/shared/constants/markets";
+import { PredictionPricing } from "../../core/markets/prediction/pricing";
 
 // ---------------------------------------------------------------------------
 // 1. Prediction: 20 sequential trades never escape odds bounds
 // ---------------------------------------------------------------------------
-describe('Prediction market stability — sequential trades', () => {
+describe("Prediction market stability — sequential trades", () => {
   /**
    * Simulate what happens when 20 NPC agents each make a trade on a thin market.
    * Each trade is capped at MAX_ODDS_MOVE = 20ppt, so the net movement can still
    * compound, but we verify the CPMM bounds hold for reasonable trade sizes.
    */
-  test('20 sequential YES buys on thin pool — odds stay below 98%', () => {
+  test("20 sequential YES buys on thin pool — odds stay below 98%", () => {
     // Thin market: $1,000 liquidity
     let { yesShares, noShares } = PredictionPricing.initializeMarket(
       1_000,
-      0.5
+      0.5,
     );
     const TRADE_AMOUNT = 10; // $10 per NPC trade (small, within impact cap)
 
@@ -41,9 +41,9 @@ describe('Prediction market stability — sequential trades', () => {
       const calc = PredictionPricing.calculateBuyWithFees(
         yesShares,
         noShares,
-        'yes',
+        "yes",
         TRADE_AMOUNT,
-        0.01 // 1% fee
+        0.01, // 1% fee
       );
       yesShares = calc.newYesShares;
       noShares = calc.newNoShares;
@@ -59,10 +59,10 @@ describe('Prediction market stability — sequential trades', () => {
     expect(maxOdds).toBeGreaterThan(0.5); // some movement happened
   });
 
-  test('20 sequential NO buys on thin pool — odds stay above 2%', () => {
+  test("20 sequential NO buys on thin pool — odds stay above 2%", () => {
     let { yesShares, noShares } = PredictionPricing.initializeMarket(
       1_000,
-      0.5
+      0.5,
     );
     const TRADE_AMOUNT = 10;
 
@@ -72,9 +72,9 @@ describe('Prediction market stability — sequential trades', () => {
       const calc = PredictionPricing.calculateBuyWithFees(
         yesShares,
         noShares,
-        'no',
+        "no",
         TRADE_AMOUNT,
-        0.01
+        0.01,
       );
       yesShares = calc.newYesShares;
       noShares = calc.newNoShares;
@@ -86,23 +86,23 @@ describe('Prediction market stability — sequential trades', () => {
     expect(minYesOdds).toBeLessThan(0.5); // odds moved down
   });
 
-  test('alternating YES/NO trades — pool mean-reverts, odds stay in [5%, 95%]', () => {
+  test("alternating YES/NO trades — pool mean-reverts, odds stay in [5%, 95%]", () => {
     let { yesShares, noShares } = PredictionPricing.initializeMarket(
       5_000,
-      0.5
+      0.5,
     );
     const TRADE_AMOUNT = 50;
 
     const allYesOdds: number[] = [];
 
     for (let i = 0; i < 20; i++) {
-      const side = i % 2 === 0 ? 'yes' : 'no';
+      const side = i % 2 === 0 ? "yes" : "no";
       const calc = PredictionPricing.calculateBuyWithFees(
         yesShares,
         noShares,
         side,
         TRADE_AMOUNT,
-        0.01
+        0.01,
       );
       yesShares = calc.newYesShares;
       noShares = calc.newNoShares;
@@ -115,12 +115,12 @@ describe('Prediction market stability — sequential trades', () => {
     }
   });
 
-  test('large single trade exceeding 20ppt impact is detectable', () => {
+  test("large single trade exceeding 20ppt impact is detectable", () => {
     // This test documents the impact of a $2500 buy on a $10k pool
     // (which the service guard would reject) for reference
     const { yesShares, noShares } = PredictionPricing.initializeMarket(
       10_000,
-      0.5
+      0.5,
     );
     const currentYesOdds = noShares / (yesShares + noShares);
 
@@ -128,8 +128,8 @@ describe('Prediction market stability — sequential trades', () => {
     const calc = PredictionPricing.calculateBuy(
       yesShares,
       noShares,
-      'yes',
-      2970
+      "yes",
+      2970,
     );
     const oddsShift = Math.abs(calc.newYesPrice - currentYesOdds);
 
@@ -141,7 +141,7 @@ describe('Prediction market stability — sequential trades', () => {
 // ---------------------------------------------------------------------------
 // 2. Perp: 50 volatility ticks stay within [0.25×, 4×] initialPrice
 // ---------------------------------------------------------------------------
-describe('Perp market stability — simulated volatility ticks', () => {
+describe("Perp market stability — simulated volatility ticks", () => {
   /**
    * Simulate 50 volatility ticks using the same random-walk + clamp logic as
    * simulateMarketVolatility in game-tick.ts. Each tick applies a random move
@@ -162,7 +162,7 @@ describe('Perp market stability — simulated volatility ticks', () => {
     currentPrice: number,
     initialPrice: number,
     rng: () => number,
-    maxTickMove = 0.04
+    maxTickMove = 0.04,
   ): number {
     const FLOOR = 0.25;
     const CEILING = 4.0;
@@ -171,11 +171,11 @@ describe('Perp market stability — simulated volatility ticks', () => {
     const newPrice = currentPrice * (1 + move);
     return Math.max(
       initialPrice * FLOOR,
-      Math.min(newPrice, initialPrice * CEILING)
+      Math.min(newPrice, initialPrice * CEILING),
     );
   }
 
-  test('50 ticks with company profile (maxTickMove=4%) stay in [0.25×, 4×]', () => {
+  test("50 ticks with company profile (maxTickMove=4%) stay in [0.25×, 4×]", () => {
     const rng = lcg(42);
     const initialPrice = 100;
     let price = initialPrice;
@@ -193,7 +193,7 @@ describe('Perp market stability — simulated volatility ticks', () => {
     expect(maxPrice).toBeLessThanOrEqual(initialPrice * 4.0 + 0.001);
   });
 
-  test('50 ticks with media profile (maxTickMove=5%) stay in bounds', () => {
+  test("50 ticks with media profile (maxTickMove=5%) stay in bounds", () => {
     const rng = lcg(99);
     const initialPrice = 50;
     let price = initialPrice;
@@ -206,7 +206,7 @@ describe('Perp market stability — simulated volatility ticks', () => {
     expect(price).toBeLessThanOrEqual(initialPrice * 4.0 + 0.001);
   });
 
-  test('extreme directional run still clamps to ceiling', () => {
+  test("extreme directional run still clamps to ceiling", () => {
     const initialPrice = 100;
     let price = initialPrice;
 
@@ -218,7 +218,7 @@ describe('Perp market stability — simulated volatility ticks', () => {
     expect(price).toBeLessThanOrEqual(initialPrice * 4.0 + 0.001);
   });
 
-  test('extreme directional run still clamps to floor', () => {
+  test("extreme directional run still clamps to floor", () => {
     const initialPrice = 100;
     let price = initialPrice;
 
@@ -234,8 +234,8 @@ describe('Perp market stability — simulated volatility ticks', () => {
 // ---------------------------------------------------------------------------
 // 3. Perp AMM: calculatePriceFromHoldings respects new 4× ceiling
 // ---------------------------------------------------------------------------
-describe('Perp AMM — calculatePriceFromHoldings with 4× ceiling', () => {
-  test('net long OI that would exceed 4× is clamped — never exceeds ceiling', () => {
+describe("Perp AMM — calculatePriceFromHoldings with 4× ceiling", () => {
+  test("net long OI that would exceed 4× is clamped — never exceeds ceiling", () => {
     const initialPrice = 100;
     // With currentPrice near ceiling (380), the per-trade clamp allows up to 380*1.3=494,
     // but the absolute 4× ceiling (400) takes precedence.
@@ -244,18 +244,18 @@ describe('Perp AMM — calculatePriceFromHoldings with 4× ceiling', () => {
     const result = calculatePriceFromHoldings(
       initialPrice,
       currentPrice,
-      10_000_000
+      10_000_000,
     );
     expect(result).toBeLessThanOrEqual(
-      initialPrice * PERP_MARKET_CONFIG.PRICE_CEILING_RATIO + 0.001
+      initialPrice * PERP_MARKET_CONFIG.PRICE_CEILING_RATIO + 0.001,
     );
     expect(result).toBeCloseTo(
       initialPrice * PERP_MARKET_CONFIG.PRICE_CEILING_RATIO,
-      0
+      0,
     );
   });
 
-  test('net short OI that would go below 5% is clamped', () => {
+  test("net short OI that would go below 5% is clamped", () => {
     const initialPrice = 100;
     const currentPrice = 100;
 
@@ -263,28 +263,28 @@ describe('Perp AMM — calculatePriceFromHoldings with 4× ceiling', () => {
     const result = calculatePriceFromHoldings(
       initialPrice,
       currentPrice,
-      -10_000_000
+      -10_000_000,
     );
     expect(result).toBeGreaterThanOrEqual(
-      initialPrice * PERP_MARKET_CONFIG.PRICE_FLOOR_RATIO - 0.001
+      initialPrice * PERP_MARKET_CONFIG.PRICE_FLOOR_RATIO - 0.001,
     );
   });
 
-  test('zero holdings returns price close to initialPrice', () => {
+  test("zero holdings returns price close to initialPrice", () => {
     const initialPrice = 100;
     const currentPrice = 100;
     const result = calculatePriceFromHoldings(initialPrice, currentPrice, 0);
     expect(result).toBeCloseTo(initialPrice, 0);
   });
 
-  test('moderate longs move price up within per-trade cap', () => {
+  test("moderate longs move price up within per-trade cap", () => {
     const initialPrice = 100;
     const currentPrice = 100;
     // Small positive holdings — should move price up slightly
     const result = calculatePriceFromHoldings(initialPrice, currentPrice, 500);
     expect(result).toBeGreaterThan(currentPrice);
     expect(result).toBeLessThanOrEqual(
-      currentPrice * (1 + PERP_MARKET_CONFIG.MAX_CHANGE_PER_TRADE)
+      currentPrice * (1 + PERP_MARKET_CONFIG.MAX_CHANGE_PER_TRADE),
     );
   });
 });

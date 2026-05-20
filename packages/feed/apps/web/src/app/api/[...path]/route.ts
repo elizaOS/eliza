@@ -1,8 +1,8 @@
-import { withErrorHandling } from '@feed/api';
-import { NextResponse } from 'next/server';
+import { withErrorHandling } from "@feed/api";
+import { NextResponse } from "next/server";
 
 function notFoundResponse() {
-  return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  return NextResponse.json({ error: "Not found" }, { status: 404 });
 }
 
 export const GET = withErrorHandling(notFoundResponse);

@@ -11,20 +11,20 @@
  * @see https://linear.app/eliza-labs/issue/BAB-5
  */
 
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
   PredictionDbAdapter,
   PredictionMarketService,
-} from '@feed/core/markets/prediction';
-import { asSystem, db } from '@feed/db';
+} from "@feed/core/markets/prediction";
+import { asSystem, db } from "@feed/db";
 import {
   EventMarketLinkerService,
   MarketMetricsService,
   QuestionManager,
-} from '@feed/engine';
-import { generateSnowflakeId } from '@feed/shared';
+} from "@feed/engine";
+import { generateSnowflakeId } from "@feed/shared";
 
-describe('Market-Engine Integration (BAB-5)', () => {
+describe("Market-Engine Integration (BAB-5)", () => {
   // Test data tracking for cleanup
   const testQuestionIds: string[] = [];
   const testMarketIds: string[] = [];
@@ -73,8 +73,8 @@ describe('Market-Engine Integration (BAB-5)', () => {
     }
   });
 
-  describe('1.1 - Market-Engine Flow', () => {
-    test('should create market when question is created via ensureMarketExists', async () => {
+  describe("1.1 - Market-Engine Flow", () => {
+    test("should create market when question is created via ensureMarketExists", async () => {
       // Create a question first
       const questionId = await generateSnowflakeId();
       const uniqueQuestionNumber =
@@ -84,11 +84,11 @@ describe('Market-Engine Integration (BAB-5)', () => {
         data: {
           id: questionId,
           questionNumber: uniqueQuestionNumber,
-          text: 'BAB-5 Test: Will the integration work?',
+          text: "BAB-5 Test: Will the integration work?",
           scenarioId: 1,
           outcome: true,
           rank: 1,
-          status: 'active',
+          status: "active",
           resolutionDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
           createdDate: new Date(),
           createdAt: new Date(),
@@ -117,7 +117,7 @@ describe('Market-Engine Integration (BAB-5)', () => {
       const market = await marketService.ensureMarketExists({
         marketId: questionId,
         initialLiquidity: 20000,
-        description: 'Test market for BAB-5 integration',
+        description: "Test market for BAB-5 integration",
       });
 
       testMarketIds.push(market.id);
@@ -133,10 +133,10 @@ describe('Market-Engine Integration (BAB-5)', () => {
         where: { id: questionId },
       });
       expect(dbMarket).toBeTruthy();
-      expect(dbMarket?.question).toBe('BAB-5 Test: Will the integration work?');
+      expect(dbMarket?.question).toBe("BAB-5 Test: Will the integration work?");
     });
 
-    test('should return existing market if already exists', async () => {
+    test("should return existing market if already exists", async () => {
       // Create question and market
       const questionId = await generateSnowflakeId();
       const uniqueQuestionNumber =
@@ -146,11 +146,11 @@ describe('Market-Engine Integration (BAB-5)', () => {
         data: {
           id: questionId,
           questionNumber: uniqueQuestionNumber,
-          text: 'BAB-5 Test: Idempotent market creation',
+          text: "BAB-5 Test: Idempotent market creation",
           scenarioId: 1,
           outcome: false,
           rank: 1,
-          status: 'active',
+          status: "active",
           resolutionDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
           createdDate: new Date(),
           createdAt: new Date(),
@@ -192,7 +192,7 @@ describe('Market-Engine Integration (BAB-5)', () => {
       expect(market2.liquidity).toBe(market1.liquidity); // Original liquidity preserved
     });
 
-    test('should throw error when question does not exist', async () => {
+    test("should throw error when question does not exist", async () => {
       const marketService = new PredictionMarketService({
         db: new PredictionDbAdapter(),
         wallet: {
@@ -209,18 +209,18 @@ describe('Market-Engine Integration (BAB-5)', () => {
         },
       });
 
-      const fakeMarketId = 'non-existent-question-id-12345';
+      const fakeMarketId = "non-existent-question-id-12345";
 
       await expect(
         marketService.ensureMarketExists({
           marketId: fakeMarketId,
-        })
+        }),
       ).rejects.toThrow(/Market not found/);
     });
   });
 
-  describe('1.2 - ensureMarketExists Validation', () => {
-    test('should create market with correct initial state from question', async () => {
+  describe("1.2 - ensureMarketExists Validation", () => {
+    test("should create market with correct initial state from question", async () => {
       const questionId = await generateSnowflakeId();
       const uniqueQuestionNumber =
         Math.floor(Math.random() * 1000000000) + 1000000;
@@ -230,11 +230,11 @@ describe('Market-Engine Integration (BAB-5)', () => {
         data: {
           id: questionId,
           questionNumber: uniqueQuestionNumber,
-          text: 'BAB-5 Test: Market initial state validation',
+          text: "BAB-5 Test: Market initial state validation",
           scenarioId: 1,
           outcome: true,
           rank: 1,
-          status: 'active',
+          status: "active",
           resolutionDate,
           createdDate: new Date(),
           createdAt: new Date(),
@@ -262,14 +262,14 @@ describe('Market-Engine Integration (BAB-5)', () => {
       const market = await marketService.ensureMarketExists({
         marketId: questionId,
         initialLiquidity: 15000,
-        description: 'Custom description for test',
+        description: "Custom description for test",
       });
       testMarketIds.push(market.id);
 
       // Validate initial market state
       expect(market.id).toBe(questionId);
       expect(market.question).toBe(
-        'BAB-5 Test: Market initial state validation'
+        "BAB-5 Test: Market initial state validation",
       );
       expect(market.yesShares).toBeGreaterThan(0);
       expect(market.noShares).toBeGreaterThan(0);
@@ -278,12 +278,12 @@ describe('Market-Engine Integration (BAB-5)', () => {
 
       // End date should match resolution date
       const endDateDiff = Math.abs(
-        market.endDate.getTime() - resolutionDate.getTime()
+        market.endDate.getTime() - resolutionDate.getTime(),
       );
       expect(endDateDiff).toBeLessThan(1000); // Within 1 second
     });
 
-    test('should preserve market ID relationship with question', async () => {
+    test("should preserve market ID relationship with question", async () => {
       const questionId = await generateSnowflakeId();
       const uniqueQuestionNumber =
         Math.floor(Math.random() * 1000000000) + 1000000;
@@ -292,11 +292,11 @@ describe('Market-Engine Integration (BAB-5)', () => {
         data: {
           id: questionId,
           questionNumber: uniqueQuestionNumber,
-          text: 'BAB-5 Test: ID relationship',
+          text: "BAB-5 Test: ID relationship",
           scenarioId: 1,
           outcome: false,
           rank: 1,
-          status: 'active',
+          status: "active",
           resolutionDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
           createdDate: new Date(),
           createdAt: new Date(),
@@ -343,8 +343,8 @@ describe('Market-Engine Integration (BAB-5)', () => {
     });
   });
 
-  describe('1.3 - Event-Market Coherence', () => {
-    test('should track events related to questions', async () => {
+  describe("1.3 - Event-Market Coherence", () => {
+    test("should track events related to questions", async () => {
       // Create a question
       const questionId = await generateSnowflakeId();
       const uniqueQuestionNumber =
@@ -354,11 +354,11 @@ describe('Market-Engine Integration (BAB-5)', () => {
         data: {
           id: questionId,
           questionNumber: uniqueQuestionNumber,
-          text: 'BAB-5 Test: Will event tracking work?',
+          text: "BAB-5 Test: Will event tracking work?",
           scenarioId: 1,
           outcome: true,
           rank: 1,
-          status: 'active',
+          status: "active",
           resolutionDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
           createdDate: new Date(),
           createdAt: new Date(),
@@ -397,11 +397,11 @@ describe('Market-Engine Integration (BAB-5)', () => {
       await db.worldEvent.create({
         data: {
           id: eventId1,
-          eventType: 'announcement',
-          description: 'Positive development for question outcome',
-          visibility: 'public',
+          eventType: "announcement",
+          description: "Positive development for question outcome",
+          visibility: "public",
           relatedQuestion: uniqueQuestionNumber,
-          pointsToward: 'YES',
+          pointsToward: "YES",
           actors: [],
           timestamp: new Date(),
         },
@@ -411,11 +411,11 @@ describe('Market-Engine Integration (BAB-5)', () => {
       await db.worldEvent.create({
         data: {
           id: eventId2,
-          eventType: 'development',
-          description: 'Negative development against question outcome',
-          visibility: 'public',
+          eventType: "development",
+          description: "Negative development against question outcome",
+          visibility: "public",
           relatedQuestion: uniqueQuestionNumber,
-          pointsToward: 'NO',
+          pointsToward: "NO",
           actors: [],
           timestamp: new Date(),
         },
@@ -428,11 +428,11 @@ describe('Market-Engine Integration (BAB-5)', () => {
       });
 
       expect(relatedEvents.length).toBe(2);
-      expect(relatedEvents.some((e) => e.pointsToward === 'YES')).toBe(true);
-      expect(relatedEvents.some((e) => e.pointsToward === 'NO')).toBe(true);
+      expect(relatedEvents.some((e) => e.pointsToward === "YES")).toBe(true);
+      expect(relatedEvents.some((e) => e.pointsToward === "NO")).toBe(true);
     });
 
-    test('should have events with valid pointsToward values', async () => {
+    test("should have events with valid pointsToward values", async () => {
       // Get all events with relatedQuestion
       const eventsWithQuestions = await db.worldEvent.findMany({
         where: {
@@ -444,12 +444,12 @@ describe('Market-Engine Integration (BAB-5)', () => {
       for (const event of eventsWithQuestions) {
         // pointsToward should be null, 'YES', or 'NO'
         if (event.pointsToward !== null) {
-          expect(['YES', 'NO']).toContain(event.pointsToward);
+          expect(["YES", "NO"]).toContain(event.pointsToward);
         }
       }
     });
 
-    test('should not have orphan events pointing to non-existent questions', async () => {
+    test("should not have orphan events pointing to non-existent questions", async () => {
       // Get events that reference questions
       const eventsWithQuestions = await db.worldEvent.findMany({
         where: {
@@ -468,7 +468,7 @@ describe('Market-Engine Integration (BAB-5)', () => {
       });
 
       const existingQuestionNumbers = new Set(
-        questions.map((q) => q.questionNumber)
+        questions.map((q) => q.questionNumber),
       );
 
       // All referenced questions should exist
@@ -478,8 +478,8 @@ describe('Market-Engine Integration (BAB-5)', () => {
     });
   });
 
-  describe('1.4 - Atomic Resolution Flow', () => {
-    test('should resolve market and question atomically', async () => {
+  describe("1.4 - Atomic Resolution Flow", () => {
+    test("should resolve market and question atomically", async () => {
       // Create question
       const questionId = await generateSnowflakeId();
       const uniqueQuestionNumber =
@@ -489,11 +489,11 @@ describe('Market-Engine Integration (BAB-5)', () => {
         data: {
           id: questionId,
           questionNumber: uniqueQuestionNumber,
-          text: 'BAB-5 Test: Atomic resolution test',
+          text: "BAB-5 Test: Atomic resolution test",
           scenarioId: 1,
           outcome: true, // Expected outcome
           rank: 1,
-          status: 'active',
+          status: "active",
           resolutionDate: new Date(Date.now() - 1000), // Past date for resolution
           createdDate: new Date(),
           createdAt: new Date(),
@@ -506,10 +506,10 @@ describe('Market-Engine Integration (BAB-5)', () => {
       await db.market.create({
         data: {
           id: questionId,
-          question: 'BAB-5 Test: Atomic resolution test',
-          yesShares: '5000',
-          noShares: '5000',
-          liquidity: '10000',
+          question: "BAB-5 Test: Atomic resolution test",
+          yesShares: "5000",
+          noShares: "5000",
+          liquidity: "10000",
           resolved: false,
           endDate: new Date(Date.now() - 1000),
           createdAt: new Date(),
@@ -540,15 +540,15 @@ describe('Market-Engine Integration (BAB-5)', () => {
       // Resolve market
       await marketService.resolve({
         marketId: questionId,
-        winningSide: 'yes',
-        resolutionDescription: 'Test resolution for BAB-5',
+        winningSide: "yes",
+        resolutionDescription: "Test resolution for BAB-5",
       });
 
       // Also update question status (as game-tick does)
       await db.question.update({
         where: { id: questionId },
         data: {
-          status: 'resolved',
+          status: "resolved",
           resolvedOutcome: true,
           updatedAt: new Date(),
         },
@@ -562,13 +562,13 @@ describe('Market-Engine Integration (BAB-5)', () => {
         where: { id: questionId },
       });
 
-      expect(dbQuestion?.status).toBe('resolved');
+      expect(dbQuestion?.status).toBe("resolved");
       expect(dbQuestion?.resolvedOutcome).toBe(true);
       expect(dbMarket?.resolved).toBe(true);
       expect(dbMarket?.resolution).toBe(true); // YES won
     });
 
-    test('should prevent double resolution', async () => {
+    test("should prevent double resolution", async () => {
       // Create already resolved question and market
       const questionId = await generateSnowflakeId();
       const uniqueQuestionNumber =
@@ -578,11 +578,11 @@ describe('Market-Engine Integration (BAB-5)', () => {
         data: {
           id: questionId,
           questionNumber: uniqueQuestionNumber,
-          text: 'BAB-5 Test: Already resolved',
+          text: "BAB-5 Test: Already resolved",
           scenarioId: 1,
           outcome: false,
           rank: 1,
-          status: 'resolved',
+          status: "resolved",
           resolvedOutcome: false,
           resolutionDate: new Date(Date.now() - 1000),
           createdDate: new Date(),
@@ -595,10 +595,10 @@ describe('Market-Engine Integration (BAB-5)', () => {
       await db.market.create({
         data: {
           id: questionId,
-          question: 'BAB-5 Test: Already resolved',
-          yesShares: '5000',
-          noShares: '5000',
-          liquidity: '10000',
+          question: "BAB-5 Test: Already resolved",
+          yesShares: "5000",
+          noShares: "5000",
+          liquidity: "10000",
           resolved: true,
           resolution: false, // NO won
           endDate: new Date(Date.now() - 1000),
@@ -627,7 +627,7 @@ describe('Market-Engine Integration (BAB-5)', () => {
       // Second resolution should be a no-op (CorePredictionMarketService.resolve returns early if already resolved)
       await marketService.resolve({
         marketId: questionId,
-        winningSide: 'yes', // Trying different outcome
+        winningSide: "yes", // Trying different outcome
       });
 
       // Original resolution should be preserved
@@ -638,10 +638,10 @@ describe('Market-Engine Integration (BAB-5)', () => {
       expect(dbMarket?.resolution).toBe(false); // Original: NO won
     });
 
-    test('should have matching question-market resolution states', async () => {
+    test("should have matching question-market resolution states", async () => {
       // Check all resolved questions have matching resolved markets
       const resolvedQuestions = await db.question.findMany({
-        where: { status: 'resolved' },
+        where: { status: "resolved" },
         take: 50,
       });
 
@@ -662,8 +662,8 @@ describe('Market-Engine Integration (BAB-5)', () => {
     });
   });
 
-  describe('Additional Validation', () => {
-    test('should have valid market price ranges', async () => {
+  describe("Additional Validation", () => {
+    test("should have valid market price ranges", async () => {
       const activeMarkets = await db.market.findMany({
         where: {
           resolved: false,
@@ -696,10 +696,10 @@ describe('Market-Engine Integration (BAB-5)', () => {
       }
     });
 
-    test('should have QuestionManager class exported', () => {
+    test("should have QuestionManager class exported", () => {
       // Verify QuestionManager is properly exported and can be referenced
       expect(QuestionManager).toBeDefined();
-      expect(typeof QuestionManager).toBe('function');
+      expect(typeof QuestionManager).toBe("function");
       expect(QuestionManager.prototype.generateDailyQuestions).toBeDefined();
       expect(QuestionManager.prototype.getQuestionsToResolve).toBeDefined();
       expect(QuestionManager.prototype.resolveQuestion).toBeDefined();
@@ -710,8 +710,8 @@ describe('Market-Engine Integration (BAB-5)', () => {
   // Phase 2: MarketMetricsService Tests (BAB-5)
   // =========================================================================
 
-  describe('2.0 - MarketMetricsService', () => {
-    test('should gather metrics without errors', async () => {
+  describe("2.0 - MarketMetricsService", () => {
+    test("should gather metrics without errors", async () => {
       const metrics = await MarketMetricsService.gatherMetrics(24);
 
       // Should return valid structure
@@ -724,7 +724,7 @@ describe('Market-Engine Integration (BAB-5)', () => {
       expect(metrics.promptContext).toBeDefined();
     });
 
-    test('should return valid volatility values (0-1)', async () => {
+    test("should return valid volatility values (0-1)", async () => {
       const metrics = await MarketMetricsService.gatherMetrics(24);
 
       for (const market of metrics.volatilePredictions) {
@@ -738,7 +738,7 @@ describe('Market-Engine Integration (BAB-5)', () => {
       }
     });
 
-    test('should return valid probability values (0-1)', async () => {
+    test("should return valid probability values (0-1)", async () => {
       const metrics = await MarketMetricsService.gatherMetrics(24);
 
       for (const market of metrics.volatilePredictions) {
@@ -752,11 +752,11 @@ describe('Market-Engine Integration (BAB-5)', () => {
       }
     });
 
-    test('should format prompt context correctly', async () => {
+    test("should format prompt context correctly", async () => {
       const metrics = await MarketMetricsService.gatherMetrics(24);
 
       // promptContext should be a string
-      expect(typeof metrics.promptContext).toBe('string');
+      expect(typeof metrics.promptContext).toBe("string");
 
       // Should contain header if there's data
       if (
@@ -764,11 +764,11 @@ describe('Market-Engine Integration (BAB-5)', () => {
         metrics.activePredictions.length > 0 ||
         metrics.trendingPerps.length > 0
       ) {
-        expect(metrics.promptContext).toContain('MARKET METRICS');
+        expect(metrics.promptContext).toContain("MARKET METRICS");
       }
     });
 
-    test('should return valid summary statistics', async () => {
+    test("should return valid summary statistics", async () => {
       const metrics = await MarketMetricsService.gatherMetrics(24);
 
       expect(metrics.summary.avgPredictionVolatility).toBeGreaterThanOrEqual(0);
@@ -781,7 +781,7 @@ describe('Market-Engine Integration (BAB-5)', () => {
       expect(metrics.summary.marketHealthScore).toBeLessThanOrEqual(1);
     });
 
-    test('should limit results to top 5 per category', async () => {
+    test("should limit results to top 5 per category", async () => {
       const metrics = await MarketMetricsService.gatherMetrics(24);
 
       expect(metrics.volatilePredictions.length).toBeLessThanOrEqual(5);
@@ -795,8 +795,8 @@ describe('Market-Engine Integration (BAB-5)', () => {
   // Phase 2: EventMarketLinkerService Tests (BAB-5)
   // =========================================================================
 
-  describe('2.1 - EventMarketLinkerService', () => {
-    test('should get market event summaries without errors', async () => {
+  describe("2.1 - EventMarketLinkerService", () => {
+    test("should get market event summaries without errors", async () => {
       const summaries =
         await EventMarketLinkerService.getMarketEventSummaries(24);
 
@@ -808,15 +808,15 @@ describe('Market-Engine Integration (BAB-5)', () => {
         expect(summary.marketId).toBeDefined();
         expect(summary.questionNumber).toBeDefined();
         expect(summary.questionText).toBeDefined();
-        expect(typeof summary.currentProbability).toBe('number');
+        expect(typeof summary.currentProbability).toBe("number");
         expect(summary.recentImpacts).toBeInstanceOf(Array);
-        expect(['YES', 'NO', 'NEUTRAL']).toContain(summary.netDirection);
-        expect(typeof summary.aggregatedImpact).toBe('number');
-        expect(typeof summary.tradingRelevant).toBe('boolean');
+        expect(["YES", "NO", "NEUTRAL"]).toContain(summary.netDirection);
+        expect(typeof summary.aggregatedImpact).toBe("number");
+        expect(typeof summary.tradingRelevant).toBe("boolean");
       }
     });
 
-    test('should return valid aggregated impact values (-1 to 1)', async () => {
+    test("should return valid aggregated impact values (-1 to 1)", async () => {
       const summaries =
         await EventMarketLinkerService.getMarketEventSummaries(24);
 
@@ -826,7 +826,7 @@ describe('Market-Engine Integration (BAB-5)', () => {
       }
     });
 
-    test('should return valid probability values (0-1)', async () => {
+    test("should return valid probability values (0-1)", async () => {
       const summaries =
         await EventMarketLinkerService.getMarketEventSummaries(24);
 
@@ -836,36 +836,36 @@ describe('Market-Engine Integration (BAB-5)', () => {
       }
     });
 
-    test('should format trading context correctly', async () => {
+    test("should format trading context correctly", async () => {
       const summaries =
         await EventMarketLinkerService.getMarketEventSummaries(24);
       const context =
         EventMarketLinkerService.formatForTradingContext(summaries);
 
       // Should be a string
-      expect(typeof context).toBe('string');
+      expect(typeof context).toBe("string");
 
       // If there are trading-relevant summaries, should contain header
       const tradingRelevant = summaries.filter((s) => s.tradingRelevant);
       if (tradingRelevant.length > 0) {
-        expect(context).toContain('EVENT-MARKET SIGNALS');
+        expect(context).toContain("EVENT-MARKET SIGNALS");
       }
     });
 
-    test('should sort summaries by absolute aggregated impact', async () => {
+    test("should sort summaries by absolute aggregated impact", async () => {
       const summaries =
         await EventMarketLinkerService.getMarketEventSummaries(24);
 
       if (summaries.length >= 2) {
         for (let i = 0; i < summaries.length - 1; i++) {
-          const currentImpact = Math.abs(summaries[i]!.aggregatedImpact);
-          const nextImpact = Math.abs(summaries[i + 1]!.aggregatedImpact);
+          const currentImpact = Math.abs(summaries[i]?.aggregatedImpact);
+          const nextImpact = Math.abs(summaries[i + 1]?.aggregatedImpact);
           expect(currentImpact).toBeGreaterThanOrEqual(nextImpact);
         }
       }
     });
 
-    test('should mark high-impact summaries as trading relevant', async () => {
+    test("should mark high-impact summaries as trading relevant", async () => {
       const summaries =
         await EventMarketLinkerService.getMarketEventSummaries(24);
 
@@ -877,15 +877,15 @@ describe('Market-Engine Integration (BAB-5)', () => {
       }
     });
 
-    test('should have valid impact directions in recentImpacts', async () => {
+    test("should have valid impact directions in recentImpacts", async () => {
       const summaries =
         await EventMarketLinkerService.getMarketEventSummaries(24);
 
       for (const summary of summaries) {
         for (const impact of summary.recentImpacts) {
-          expect(['YES', 'NO', 'NEUTRAL']).toContain(impact.direction);
-          expect(['weak', 'moderate', 'strong']).toContain(
-            impact.impactStrength
+          expect(["YES", "NO", "NEUTRAL"]).toContain(impact.direction);
+          expect(["weak", "moderate", "strong"]).toContain(
+            impact.impactStrength,
           );
           expect(impact.suggestedPriceImpact).toBeGreaterThanOrEqual(0);
           expect(impact.confidence).toBeGreaterThanOrEqual(0);

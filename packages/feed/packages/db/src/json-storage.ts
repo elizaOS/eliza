@@ -20,15 +20,15 @@
  * ```
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import type { JsonValue } from './client';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import type { JsonValue } from "./client";
 
 // ============================================================================
 // Types
 // ============================================================================
 
-type StorageMode = 'postgres' | 'json' | 'memory';
+type StorageMode = "postgres" | "json" | "memory";
 
 interface JsonStorageState {
   metadata: {
@@ -75,7 +75,7 @@ type WhereInput<T> = {
   NOT?: WhereInput<T>;
 };
 
-type OrderByInput<T> = { [K in keyof T]?: 'asc' | 'desc' };
+type OrderByInput<T> = { [K in keyof T]?: "asc" | "desc" };
 
 // ============================================================================
 // State Management
@@ -88,10 +88,10 @@ let autoSave = true;
 function createEmptyState(): JsonStorageState {
   return {
     metadata: {
-      version: '1.0.0',
+      version: "1.0.0",
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      mode: 'json',
+      mode: "json",
     },
     tables: {},
     counters: {},
@@ -130,16 +130,16 @@ function generateId(tableName: string): string {
 
 function matchesWhere<T extends JsonRecord>(
   record: T,
-  where: WhereInput<T> | undefined
+  where: WhereInput<T> | undefined,
 ): boolean {
   if (!where) return true;
 
   const toComparableNumber = (
-    v: JsonValue | Date | undefined
+    v: JsonValue | Date | undefined,
   ): number | null => {
-    if (typeof v === 'number') return v;
+    if (typeof v === "number") return v;
     if (v instanceof Date) return v.getTime();
-    if (typeof v === 'string') {
+    if (typeof v === "string") {
       const parsed = Date.parse(v);
       return Number.isNaN(parsed) ? null : parsed;
     }
@@ -164,7 +164,7 @@ function matchesWhere<T extends JsonRecord>(
 
   // Handle field conditions
   for (const [key, condition] of Object.entries(where)) {
-    if (key === 'AND' || key === 'OR' || key === 'NOT') continue;
+    if (key === "AND" || key === "OR" || key === "NOT") continue;
 
     const value = record[key];
 
@@ -176,55 +176,55 @@ function matchesWhere<T extends JsonRecord>(
     if (condition === undefined) continue;
 
     if (
-      typeof condition === 'object' &&
+      typeof condition === "object" &&
       condition !== null &&
       !Array.isArray(condition) &&
       !(condition instanceof Date)
     ) {
       const ops = condition as Record<string, JsonValue>;
 
-      if ('equals' in ops) {
+      if ("equals" in ops) {
         if (value !== ops.equals) return false;
       }
-      if ('not' in ops) {
+      if ("not" in ops) {
         if (value === ops.not) return false;
       }
-      if ('in' in ops && Array.isArray(ops.in)) {
+      if ("in" in ops && Array.isArray(ops.in)) {
         if (!ops.in.includes(value as JsonValue)) return false;
       }
-      if ('notIn' in ops && Array.isArray(ops.notIn)) {
+      if ("notIn" in ops && Array.isArray(ops.notIn)) {
         if (ops.notIn.includes(value as JsonValue)) return false;
       }
-      if ('lt' in ops) {
+      if ("lt" in ops) {
         const left = toComparableNumber(value as JsonValue | Date | undefined);
         const right = toComparableNumber(
-          ops.lt as JsonValue | Date | undefined
+          ops.lt as JsonValue | Date | undefined,
         );
         if (left === null || right === null || left >= right) return false;
       }
-      if ('lte' in ops) {
+      if ("lte" in ops) {
         const left = toComparableNumber(value as JsonValue | Date | undefined);
         const right = toComparableNumber(
-          ops.lte as JsonValue | Date | undefined
+          ops.lte as JsonValue | Date | undefined,
         );
         if (left === null || right === null || left > right) return false;
       }
-      if ('gt' in ops) {
+      if ("gt" in ops) {
         const left = toComparableNumber(value as JsonValue | Date | undefined);
         const right = toComparableNumber(
-          ops.gt as JsonValue | Date | undefined
+          ops.gt as JsonValue | Date | undefined,
         );
         if (left === null || right === null || left <= right) return false;
       }
-      if ('gte' in ops) {
+      if ("gte" in ops) {
         const left = toComparableNumber(value as JsonValue | Date | undefined);
         const right = toComparableNumber(
-          ops.gte as JsonValue | Date | undefined
+          ops.gte as JsonValue | Date | undefined,
         );
         if (left === null || right === null || left < right) return false;
       }
-      if ('contains' in ops && typeof ops.contains === 'string') {
-        if (typeof value !== 'string' || !value.includes(ops.contains))
+      if ("contains" in ops && typeof ops.contains === "string") {
+        if (typeof value !== "string" || !value.includes(ops.contains))
           return false;
       }
     } else {
@@ -238,7 +238,7 @@ function matchesWhere<T extends JsonRecord>(
 
 function sortRecords<T extends JsonRecord>(
   records: T[],
-  orderBy: OrderByInput<T> | OrderByInput<T>[] | undefined
+  orderBy: OrderByInput<T> | OrderByInput<T>[] | undefined,
 ): T[] {
   if (!orderBy) return records;
 
@@ -252,12 +252,12 @@ function sortRecords<T extends JsonRecord>(
 
         if (aVal === bVal) continue;
         if (aVal === null || aVal === undefined)
-          return direction === 'asc' ? 1 : -1;
+          return direction === "asc" ? 1 : -1;
         if (bVal === null || bVal === undefined)
-          return direction === 'asc' ? -1 : 1;
+          return direction === "asc" ? -1 : 1;
 
         const comparison = aVal < bVal ? -1 : 1;
-        return direction === 'desc' ? -comparison : comparison;
+        return direction === "desc" ? -comparison : comparison;
       }
     }
     return 0;
@@ -277,7 +277,7 @@ export class JsonTableRepository<
 > {
   constructor(
     private readonly tableName: string,
-    private readonly idField: string = 'id'
+    private readonly idField: string = "id",
   ) {}
 
   async findUnique(options: FindOptions<TSelect>): Promise<TSelect | null> {
@@ -369,15 +369,15 @@ export class JsonTableRepository<
     const updateData: JsonRecord = {};
     for (const [key, value] of Object.entries(options.data)) {
       if (
-        typeof value === 'object' &&
+        typeof value === "object" &&
         value !== null &&
         !(value instanceof Date)
       ) {
         const ops = value as Record<string, number>;
-        if ('increment' in ops) {
+        if ("increment" in ops) {
           const current = (record[key as keyof TSelect] as number) ?? 0;
           updateData[key] = current + ops.increment;
-        } else if ('decrement' in ops) {
+        } else if ("decrement" in ops) {
           const current = (record[key as keyof TSelect] as number) ?? 0;
           updateData[key] = current - ops.decrement;
         } else {
@@ -424,7 +424,7 @@ export class JsonTableRepository<
   }
 
   async deleteMany(
-    options: { where?: WhereInput<TSelect> } = {}
+    options: { where?: WhereInput<TSelect> } = {},
   ): Promise<{ count: number }> {
     const records = await this.findMany({ where: options.where });
     const table = getTable(this.tableName);
@@ -476,7 +476,7 @@ export class JsonTableRepository<
         if (options._sum[key]) {
           sums[key] = records.reduce((sum, r) => {
             const val = r[key as keyof TSelect];
-            return sum + (typeof val === 'number' ? val : 0);
+            return sum + (typeof val === "number" ? val : 0);
           }, 0);
         }
       }
@@ -490,7 +490,7 @@ export class JsonTableRepository<
           const nums: number[] = [];
           for (const r of records) {
             const val = r[key as keyof TSelect];
-            if (typeof val === 'number') nums.push(val);
+            if (typeof val === "number") nums.push(val);
           }
           avgs[key] =
             nums.length > 0
@@ -513,9 +513,9 @@ export class JsonTableRepository<
     const groups = new Map<string, TSelect[]>();
 
     for (const record of records) {
-      const key = options.by.map((k) => String(record[k])).join('|');
+      const key = options.by.map((k) => String(record[k])).join("|");
       if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(record);
+      groups.get(key)?.push(record);
     }
 
     return Array.from(groups.entries()).map(([, groupRecords]) => {
@@ -552,7 +552,7 @@ function onStateChange(): void {
 /** Initialize JSON storage mode */
 export async function initJsonStorage(
   basePath: string,
-  options: { autoSave?: boolean } = {}
+  options: { autoSave?: boolean } = {},
 ): Promise<void> {
   storagePath = basePath;
   autoSave = options.autoSave ?? true;
@@ -563,9 +563,9 @@ export async function initJsonStorage(
   }
 
   // Load existing state if available
-  const statePath = join(basePath, 'state.json');
+  const statePath = join(basePath, "state.json");
   if (existsSync(statePath)) {
-    const data = readFileSync(statePath, 'utf-8');
+    const data = readFileSync(statePath, "utf-8");
     storageState = JSON.parse(data) as JsonStorageState;
   } else {
     storageState = createEmptyState();
@@ -576,14 +576,14 @@ export async function initJsonStorage(
 export async function saveJsonSnapshot(): Promise<void> {
   if (!storagePath || !storageState) return;
 
-  const statePath = join(storagePath, 'state.json');
+  const statePath = join(storagePath, "state.json");
   storageState.metadata.updatedAt = new Date().toISOString();
   writeFileSync(statePath, JSON.stringify(storageState, null, 2));
 }
 
 /** Load state from JSON file */
 export async function loadJsonSnapshot(path: string): Promise<void> {
-  const data = readFileSync(path, 'utf-8');
+  const data = readFileSync(path, "utf-8");
   storageState = JSON.parse(data) as JsonStorageState;
 }
 

@@ -7,9 +7,9 @@
  * Facts are loaded directly from TypeScript modules for serverless compatibility.
  */
 
-import { realityGroundingContent } from '../data/reality-grounding';
-import { worldEventExamplesContent } from '../data/world-event-examples';
-import { worldFactsContent } from '../data/world-facts';
+import { realityGroundingContent } from "../data/reality-grounding";
+import { worldEventExamplesContent } from "../data/world-event-examples";
+import { worldFactsContent } from "../data/world-facts";
 
 /**
  * Get current date and time context for prompts.
@@ -37,19 +37,19 @@ export function getCurrentDateContext(): {
   const now = new Date();
   return {
     dateISO: now.toISOString(),
-    dateFull: now.toLocaleDateString('en-US', {
-      weekday: 'long',
-      month: 'long',
-      day: 'numeric',
-      year: 'numeric',
+    dateFull: now.toLocaleDateString("en-US", {
+      weekday: "long",
+      month: "long",
+      day: "numeric",
+      year: "numeric",
     }),
-    time: now.toLocaleTimeString('en-US', {
-      hour: 'numeric',
-      minute: '2-digit',
+    time: now.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
       hour12: true,
     }),
     year: now.getFullYear().toString(),
-    month: now.toLocaleDateString('en-US', { month: 'long' }),
+    month: now.toLocaleDateString("en-US", { month: "long" }),
     day: now.getDate().toString(),
   };
 }
@@ -140,7 +140,7 @@ export function checkRealityGrounding(text: string): string[] {
   // Check for wildly outdated crypto prices (orders of magnitude off)
   if (/Bitcoin|BTC/i.test(text) && /\$[1-4]\d{0,3}(?:\s|,|$)/i.test(text)) {
     warnings.push(
-      'Content may reference outdated Bitcoin price (current ~$78k)'
+      "Content may reference outdated Bitcoin price (current ~$78k)",
     );
   }
 
@@ -177,10 +177,10 @@ CRITICAL: Ground all predictions in this reality. Use current dates, prices, and
 export function getMinimalRealityGrounding(): string {
   const dateCtx = getCurrentDateContext();
   const lines = realityGroundingContent
-    .split('\n')
-    .filter((l) => l.trim().length > 0 && !l.startsWith('#'))
+    .split("\n")
+    .filter((l) => l.trim().length > 0 && !l.startsWith("#"))
     .slice(0, 5);
-  const keyFacts = lines.join(' | ');
+  const keyFacts = lines.join(" | ");
 
   return `DATE: ${dateCtx.dateFull} | ${keyFacts}`;
 }

@@ -18,14 +18,14 @@ import {
   successResponse,
   TradingBalanceFundingService,
   withErrorHandling,
-} from '@feed/api';
+} from "@feed/api";
 import {
   FundTradingBalanceSchema,
   logger,
   toISO,
   UserIdParamSchema,
-} from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
   await requireAdmin(request);
@@ -39,20 +39,20 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     user.id,
     amount,
     reason,
-    description
+    description,
   );
 
   if (!result.success) {
     throw new BusinessLogicError(
-      result.error ?? 'Failed to fund trading balance',
-      'TRADING_BALANCE_FUNDING_FAILED'
+      result.error ?? "Failed to fund trading balance",
+      "TRADING_BALANCE_FUNDING_FAILED",
     );
   }
 
   logger.info(
-    'Trading balance funded via admin route',
+    "Trading balance funded via admin route",
     { userId: user.id, amount, reason, transactionId: result.transactionId },
-    'POST /api/users/trading-balance/funding'
+    "POST /api/users/trading-balance/funding",
   );
 
   return successResponse({
@@ -75,10 +75,10 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   const authUser = await authenticate(request);
 
   const { searchParams } = new URL(request.url);
-  const userIdParam = searchParams.get('userId');
+  const userIdParam = searchParams.get("userId");
 
   if (!userIdParam) {
-    throw new BusinessLogicError('User ID is required', 'USER_ID_REQUIRED');
+    throw new BusinessLogicError("User ID is required", "USER_ID_REQUIRED");
   }
 
   const { userId } = UserIdParamSchema.parse({ userId: userIdParam });
@@ -87,8 +87,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
   if (authUser.dbUserId !== canonicalUserId) {
     throw new BusinessLogicError(
-      'You can only view your own trading balance funding history',
-      'UNAUTHORIZED_ACCESS'
+      "You can only view your own trading balance funding history",
+      "UNAUTHORIZED_ACCESS",
     );
   }
 
@@ -96,9 +96,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     await TradingBalanceFundingService.getFundingHistory(canonicalUserId);
 
   logger.info(
-    'Trading balance funding history fetched',
+    "Trading balance funding history fetched",
     { userId: canonicalUserId, transactionCount: transactions.length },
-    'GET /api/users/trading-balance/funding'
+    "GET /api/users/trading-balance/funding",
   );
 
   return successResponse({

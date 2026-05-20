@@ -5,8 +5,9 @@
  * Considers goals, constraints, and opportunities to generate comprehensive action plans.
  */
 
-import { countTokensSync, truncateToTokenLimitSync } from '@feed/api';
-import type { JsonValue } from '@feed/db';
+import type { IAgentRuntime } from "@elizaos/core";
+import { countTokensSync, truncateToTokenLimitSync } from "@feed/api";
+import type { JsonValue } from "@feed/db";
 import {
   agentLogs,
   and,
@@ -19,33 +20,32 @@ import {
   perpPositions,
   positions,
   users,
-} from '@feed/db';
-import { StaticDataRegistry, type StaticOrganization } from '@feed/engine';
-import type { IAgentRuntime } from '@elizaos/core';
-import { sql } from 'drizzle-orm';
-import { callGroqDirect } from '../llm/direct-groq';
-import { getAgentConfig } from '../shared/agent-config';
-import { logger } from '../shared/logger';
-import { generateSnowflakeId } from '../shared/snowflake';
+} from "@feed/db";
+import { StaticDataRegistry, type StaticOrganization } from "@feed/engine";
+import { sql } from "drizzle-orm";
+import { callGroqDirect } from "../llm/direct-groq";
+import { getAgentConfig } from "../shared/agent-config";
+import { logger } from "../shared/logger";
+import { generateSnowflakeId } from "../shared/snowflake";
 import type {
   AgentConstraints,
   AgentDirective,
   AgentGoal,
-} from '../types/goals';
-import { autonomousBatchResponseService } from './AutonomousBatchResponseService';
-import { autonomousCommentingService } from './AutonomousCommentingService';
-import { autonomousDMService } from './AutonomousDMService';
-import { autonomousPostingService } from './AutonomousPostingService';
-import { autonomousTradingService } from './AutonomousTradingService';
+} from "../types/goals";
+import { autonomousBatchResponseService } from "./AutonomousBatchResponseService";
+import { autonomousCommentingService } from "./AutonomousCommentingService";
+import { autonomousDMService } from "./AutonomousDMService";
+import { autonomousPostingService } from "./AutonomousPostingService";
+import { autonomousTradingService } from "./AutonomousTradingService";
 import type {
   PendingChatMessage,
   PendingCommentReply,
-} from './templates/multi-step-decision';
+} from "./templates/multi-step-decision";
 import {
   gatherPendingChatMessages,
   gatherPendingCommentReplies,
-} from './utils';
-import { getPredictionMarketPrices } from './utils/prediction-pricing';
+} from "./utils";
+import { getPredictionMarketPrices } from "./utils/prediction-pricing";
 
 /**
  * Agent interface for planning
@@ -72,7 +72,7 @@ interface PlanningAgent {
  * Planned action definition
  */
 export interface PlannedAction {
-  type: 'trade' | 'post' | 'comment' | 'message' | 'respond';
+  type: "trade" | "post" | "comment" | "message" | "respond";
   priority: number; // 1-10
   reasoning: string;
   goalId?: string; // Which goal does this serve?
@@ -185,12 +185,12 @@ export class AutonomousPlanningCoordinator {
    */
   async generateActionPlan(
     agentUserId: string,
-    _runtime: IAgentRuntime
+    _runtime: IAgentRuntime,
   ): Promise<ActionPlan> {
     logger.info(
       `Generating action plan for agent ${agentUserId}`,
       undefined,
-      'PlanningCoordinator'
+      "PlanningCoordinator",
     );
 
     const [agent] = await db
@@ -200,7 +200,7 @@ export class AutonomousPlanningCoordinator {
       .limit(1);
 
     if (!agent) {
-      throw new Error('Agent not found');
+      throw new Error("Agent not found");
     }
 
     // Get agent config from separate table
@@ -211,7 +211,7 @@ export class AutonomousPlanningCoordinator {
 
     // Convert agent to PlanningAgent (null -> undefined for optional fields)
     const planningAgent: PlanningAgent = {
-      displayName: agent.displayName ?? 'Agent',
+      displayName: agent.displayName ?? "Agent",
       agentSystem: agentConfig?.systemPrompt ?? undefined,
       agentMaxActionsPerTick: agentConfig?.maxActionsPerTick ?? undefined,
       agentRiskTolerance: agentConfig?.riskTolerance ?? undefined,
@@ -224,9 +224,9 @@ export class AutonomousPlanningCoordinator {
     // If no goals configured, use simplified planning
     if (context.goals.active.length === 0) {
       logger.info(
-        'No goals configured, using simple single-action mode',
+        "No goals configured, using simple single-action mode",
         undefined,
-        'PlanningCoordinator'
+        "PlanningCoordinator",
       );
       return this.generateSimplePlan(planningAgent, context);
     }
@@ -242,7 +242,7 @@ export class AutonomousPlanningCoordinator {
       // 30K with 2K safety margin
       logger.warn(
         `Planning prompt too long: ${estimatedTokens} tokens, truncating`,
-        { agentUserId: agent.id }
+        { agentUserId: agent.id },
       );
       const truncated = truncateToTokenLimitSync(prompt, 30000, {
         ellipsis: true,
@@ -257,12 +257,12 @@ export class AutonomousPlanningCoordinator {
     const planResponse = await callGroqDirect({
       prompt: finalPrompt,
       system: planningAgent.agentSystem ?? undefined,
-      modelSize: 'large', // Uses trained W&B model if available
+      modelSize: "large", // Uses trained W&B model if available
       runtime: _runtime, // Pass runtime to access W&B trained models AND trajectory context
       temperature: 0.7,
       maxTokens: 1500, // Allow detailed planning
-      actionType: 'generate_action_plan',
-      purpose: 'reasoning', // RLAIF: This is a planning/reasoning call
+      actionType: "generate_action_plan",
+      purpose: "reasoning", // RLAIF: This is a planning/reasoning call
     });
 
     // Parse action plan
@@ -272,7 +272,7 @@ export class AutonomousPlanningCoordinator {
     const validatedPlan = this.validatePlan(
       plan,
       planningAgent,
-      context.constraints
+      context.constraints,
     );
 
     logger.info(
@@ -282,7 +282,7 @@ export class AutonomousPlanningCoordinator {
         actions: validatedPlan.actions.map((a) => a.type),
         goalsAddressed: validatedPlan.goalsAddressed,
       },
-      'PlanningCoordinator'
+      "PlanningCoordinator",
     );
 
     return validatedPlan;
@@ -292,23 +292,23 @@ export class AutonomousPlanningCoordinator {
    * Gather all context needed for planning
    */
   private async getPlanningContext(
-    agentUserId: string
+    agentUserId: string,
   ): Promise<PlanningContext> {
     // Get goals
     const goals = await db.agentGoal.findMany({
       where: { agentUserId },
-      orderBy: [{ priority: 'desc' }, { createdAt: 'desc' }],
+      orderBy: [{ priority: "desc" }, { createdAt: "desc" }],
     });
 
     const activeGoals = goals
-      .filter((g) => g.status === 'active')
+      .filter((g) => g.status === "active")
       .map((g) => ({
         ...g,
         target: g.target ? JSON.parse(JSON.stringify(g.target)) : undefined,
       })) as AgentGoal[];
 
     const completedGoals = goals
-      .filter((g) => g.status === 'completed')
+      .filter((g) => g.status === "completed")
       .map((g) => ({
         ...g,
         target: g.target ? JSON.parse(JSON.stringify(g.target)) : undefined,
@@ -338,9 +338,9 @@ export class AutonomousPlanningCoordinator {
     if (constraints && config) {
       constraints.general.maxActionsPerTick = config.maxActionsPerTick;
       constraints.general.riskTolerance = config.riskTolerance as
-        | 'low'
-        | 'medium'
-        | 'high';
+        | "low"
+        | "medium"
+        | "high";
     }
 
     // Get portfolio info
@@ -348,7 +348,7 @@ export class AutonomousPlanningCoordinator {
       .select({ count: sql<number>`count(*)::int` })
       .from(positions)
       .where(
-        and(eq(positions.userId, agentUserId), eq(positions.status, 'active'))
+        and(eq(positions.userId, agentUserId), eq(positions.status, "active")),
       );
     const positionsCount = positionCountResult?.count ?? 0;
 
@@ -358,8 +358,8 @@ export class AutonomousPlanningCoordinator {
       .where(
         and(
           eq(perpPositions.userId, agentUserId),
-          isNull(perpPositions.closedAt)
-        )
+          isNull(perpPositions.closedAt),
+        ),
       );
     const perpPositionsCount = perpPositionCountResult?.count ?? 0;
 
@@ -376,8 +376,8 @@ export class AutonomousPlanningCoordinator {
       .where(
         and(
           eq(agentLogs.agentUserId, agentUserId),
-          inArray(agentLogs.type, ['trade', 'post', 'comment', 'dm'])
-        )
+          inArray(agentLogs.type, ["trade", "post", "comment", "dm"]),
+        ),
       )
       .orderBy(desc(agentLogs.createdAt))
       .limit(10);
@@ -385,25 +385,25 @@ export class AutonomousPlanningCoordinator {
     // Detect trading opportunities
     const tradingOpportunities = await detectTradingOpportunities(
       agentUserId,
-      Number(user?.virtualBalance ?? 0)
+      Number(user?.virtualBalance ?? 0),
     );
 
     // Detect social opportunities
     const socialOpportunities = await detectSocialOpportunities(
       agentUserId,
       pendingCommentReplies,
-      pendingChatMessages
+      pendingChatMessages,
     );
 
     // Combine pending interactions for context (convert to unified format)
     const pendingForContext = [
       ...pendingCommentReplies.slice(0, 5).map((p) => ({
-        type: 'comment_reply' as const,
+        type: "comment_reply" as const,
         content: p.content,
         author: p.author,
       })),
       ...pendingChatMessages.slice(0, 5).map((p) => ({
-        type: p.isGroupChat ? ('group_message' as const) : ('dm' as const),
+        type: p.isGroupChat ? ("group_message" as const) : ("dm" as const),
         content: p.content,
         author: p.author,
       })),
@@ -415,10 +415,10 @@ export class AutonomousPlanningCoordinator {
         completed: completedGoals,
       },
       directives: {
-        always: directives.filter((d) => d.type === 'always'),
-        never: directives.filter((d) => d.type === 'never'),
-        prefer: directives.filter((d) => d.type === 'prefer'),
-        avoid: directives.filter((d) => d.type === 'avoid'),
+        always: directives.filter((d) => d.type === "always"),
+        never: directives.filter((d) => d.type === "never"),
+        prefer: directives.filter((d) => d.type === "prefer"),
+        avoid: directives.filter((d) => d.type === "avoid"),
       },
       constraints,
       portfolio: {
@@ -434,7 +434,7 @@ export class AutonomousPlanningCoordinator {
       recentActions: recentLogs.map((log) => ({
         type: log.type,
         timestamp: log.createdAt,
-        success: log.level !== 'error',
+        success: log.level !== "error",
       })),
     };
   }
@@ -444,35 +444,35 @@ export class AutonomousPlanningCoordinator {
    */
   private buildPlanningPrompt(
     agent: PlanningAgent,
-    context: PlanningContext
+    context: PlanningContext,
   ): string {
     const goalsText =
       context.goals.active.length > 0
         ? context.goals.active
             .map((g, i) => {
               const targetInfo = g.target
-                ? `Target: ${g.target.metric} = ${g.target.value}${g.target.unit || ''}`
-                : '';
+                ? `Target: ${g.target.metric} = ${g.target.value}${g.target.unit || ""}`
+                : "";
               return `${i + 1}. ${g.name} (Priority: ${g.priority}/10) - ${(g.progress * 100).toFixed(0)}% complete
    ${g.description}
    ${targetInfo}`;
             })
-            .join('\n\n')
-        : 'No goals configured';
+            .join("\n\n")
+        : "No goals configured";
 
     const directivesText =
       [
         ...context.directives.always.map((d) => `✓ ALWAYS: ${d.rule}`),
         ...context.directives.never.map((d) => `✗ NEVER: ${d.rule}`),
         ...context.directives.prefer.map((d) => `+ PREFER: ${d.rule}`),
-      ].join('\n') || 'No directives';
+      ].join("\n") || "No directives";
 
     const constraintsText = context.constraints
       ? `- Max actions this tick: ${context.constraints.general.maxActionsPerTick}
 - Max position: $${context.constraints.trading.maxPositionSize}
 - Max leverage: ${context.constraints.trading.maxLeverage}x
 - Risk tolerance: ${context.constraints.general.riskTolerance}`
-      : 'No specific constraints';
+      : "No specific constraints";
 
     const pendingText =
       context.pending.length > 0
@@ -480,10 +480,10 @@ export class AutonomousPlanningCoordinator {
             .slice(0, 5)
             .map(
               (p) =>
-                `- ${p.type}: "${p.content.substring(0, 60)}..." by ${p.author}`
+                `- ${p.type}: "${p.content.substring(0, 60)}..." by ${p.author}`,
             )
-            .join('\n')
-        : 'None';
+            .join("\n")
+        : "None";
 
     return `${agent.agentSystem}
 
@@ -501,14 +501,14 @@ ${constraintsText}
 === CURRENT SITUATION ===
 Portfolio:
 - Balance: $${context.portfolio.balance.toFixed(2)}
-- Lifetime P&L: ${context.portfolio.pnl >= 0 ? '+' : ''}$${context.portfolio.pnl.toFixed(2)}
+- Lifetime P&L: ${context.portfolio.pnl >= 0 ? "+" : ""}$${context.portfolio.pnl.toFixed(2)}
 - Open positions: ${context.portfolio.positions}
 
 Capabilities enabled:
-${agent.autonomousTrading ? '✓ Trading' : '✗ Trading'}
-${agent.autonomousPosting ? '✓ Posting' : '✗ Posting'}
-${agent.autonomousCommenting ? '✓ Commenting' : '✗ Commenting'}
-${agent.autonomousDMs ? '✓ Direct messages' : '✗ Direct messages'}
+${agent.autonomousTrading ? "✓ Trading" : "✗ Trading"}
+${agent.autonomousPosting ? "✓ Posting" : "✗ Posting"}
+${agent.autonomousCommenting ? "✓ Commenting" : "✗ Commenting"}
+${agent.autonomousDMs ? "✓ Direct messages" : "✗ Direct messages"}
 
 Pending interactions (${context.pending.length}):
 ${pendingText}
@@ -516,8 +516,8 @@ ${pendingText}
 Recent actions (last 10):
 ${context.recentActions
   .slice(0, 10)
-  .map((a) => `- ${a.type}: ${a.success ? 'success' : 'failed'}`)
-  .join('\n')}
+  .map((a) => `- ${a.type}: ${a.success ? "success" : "failed"}`)
+  .join("\n")}
 
 === YOUR TASK ===
 Plan ${context.constraints?.general.maxActionsPerTick || 3} or fewer actions for this tick to make maximum progress toward your goals.
@@ -561,19 +561,19 @@ Your action plan (JSON only):`;
    */
   private parseActionPlan(
     response: string,
-    _context: PlanningContext
+    _context: PlanningContext,
   ): ActionPlan {
     const jsonMatch = response.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       logger.warn(
-        'No JSON found in planning response, using empty plan',
+        "No JSON found in planning response, using empty plan",
         undefined,
-        'PlanningCoordinator'
+        "PlanningCoordinator",
       );
       return {
         actions: [],
         totalActions: 0,
-        reasoning: 'No valid plan generated',
+        reasoning: "No valid plan generated",
         goalsAddressed: [],
         estimatedCost: 0,
       };
@@ -592,7 +592,7 @@ Your action plan (JSON only):`;
     };
 
     const actions: PlannedAction[] = parsed.actions.map((a) => ({
-      type: a.type as PlannedAction['type'],
+      type: a.type as PlannedAction["type"],
       priority: a.priority,
       goalId: a.goalId,
       reasoning: a.reasoning,
@@ -619,7 +619,7 @@ Your action plan (JSON only):`;
   private validatePlan(
     plan: ActionPlan,
     agent: PlanningAgent,
-    constraints: AgentConstraints | null
+    constraints: AgentConstraints | null,
   ): ActionPlan {
     let validActions = [...plan.actions];
 
@@ -632,7 +632,7 @@ Your action plan (JSON only):`;
       logger.warn(
         `Plan has ${validActions.length} actions, limiting to ${maxActions}`,
         undefined,
-        'PlanningCoordinator'
+        "PlanningCoordinator",
       );
       validActions = validActions
         .sort((a, b) => b.priority - a.priority)
@@ -642,14 +642,14 @@ Your action plan (JSON only):`;
     // Filter by enabled capabilities
     validActions = validActions.filter((action) => {
       switch (action.type) {
-        case 'trade':
+        case "trade":
           return agent.autonomousTrading;
-        case 'post':
+        case "post":
           return agent.autonomousPosting;
-        case 'comment':
-        case 'respond':
+        case "comment":
+        case "respond":
           return agent.autonomousCommenting;
-        case 'message':
+        case "message":
           return agent.autonomousDMs;
         default:
           return true;
@@ -668,16 +668,16 @@ Your action plan (JSON only):`;
    */
   private generateSimplePlan(
     agent: PlanningAgent,
-    context: PlanningContext
+    context: PlanningContext,
   ): ActionPlan {
     const actions: PlannedAction[] = [];
 
     // Respond to pending interactions (priority 1)
     if (context.pending.length > 0 && agent.autonomousCommenting) {
       actions.push({
-        type: 'respond',
+        type: "respond",
         priority: 9,
-        reasoning: 'Respond to pending interactions',
+        reasoning: "Respond to pending interactions",
         estimatedImpact: 0.3,
         params: {},
       });
@@ -686,9 +686,9 @@ Your action plan (JSON only):`;
     // Trading (priority 2)
     if (agent.autonomousTrading) {
       actions.push({
-        type: 'trade',
+        type: "trade",
         priority: 7,
-        reasoning: 'Evaluate trading opportunities',
+        reasoning: "Evaluate trading opportunities",
         estimatedImpact: 0.5,
         params: {},
       });
@@ -697,9 +697,9 @@ Your action plan (JSON only):`;
     // Posting (priority 3)
     if (agent.autonomousPosting) {
       actions.push({
-        type: 'post',
+        type: "post",
         priority: 5,
-        reasoning: 'Create social content',
+        reasoning: "Create social content",
         estimatedImpact: 0.2,
         params: {},
       });
@@ -708,7 +708,7 @@ Your action plan (JSON only):`;
     return {
       actions: actions.slice(0, agent.agentMaxActionsPerTick || 3),
       totalActions: actions.length,
-      reasoning: 'Simple mode: executing enabled capabilities',
+      reasoning: "Simple mode: executing enabled capabilities",
       goalsAddressed: [],
       estimatedCost: actions.length,
     };
@@ -737,9 +737,9 @@ Your action plan (JSON only):`;
   async executePlan(
     agentUserId: string,
     runtime: IAgentRuntime,
-    plan: ActionPlan
+    plan: ActionPlan,
   ): Promise<AutonomousExecutionResult> {
-    const results: AutonomousExecutionResult['results'] = [];
+    const results: AutonomousExecutionResult["results"] = [];
     const goalsUpdated: Set<string> = new Set();
 
     logger.info(
@@ -748,12 +748,12 @@ Your action plan (JSON only):`;
         agentId: agentUserId,
         actions: plan.actions.map((a) => a.type),
       },
-      'PlanningCoordinator'
+      "PlanningCoordinator",
     );
 
     // Sort by priority
     const sortedActions = [...plan.actions].sort(
-      (a, b) => b.priority - a.priority
+      (a, b) => b.priority - a.priority,
     );
 
     for (const action of sortedActions) {
@@ -780,7 +780,7 @@ Your action plan (JSON only):`;
     const failed = results.filter((r) => !r.success).length;
 
     logger.info(
-      'Plan execution complete',
+      "Plan execution complete",
       {
         agentId: agentUserId,
         planned: plan.totalActions,
@@ -788,7 +788,7 @@ Your action plan (JSON only):`;
         successful,
         failed,
       },
-      'PlanningCoordinator'
+      "PlanningCoordinator",
     );
 
     return {
@@ -819,20 +819,20 @@ Your action plan (JSON only):`;
   private async executeAction(
     agentUserId: string,
     runtime: IAgentRuntime,
-    action: PlannedAction
+    action: PlannedAction,
   ): Promise<{ success: boolean; data?: JsonValue; error?: string }> {
     logger.info(
       `Executing ${action.type} action`,
       { agentId: agentUserId, priority: action.priority },
-      'PlanningCoordinator'
+      "PlanningCoordinator",
     );
 
     // Fail fast - don't catch errors here, let them propagate
     switch (action.type) {
-      case 'trade': {
+      case "trade": {
         const tradeResult = await autonomousTradingService.executeTrades(
           agentUserId,
-          runtime
+          runtime,
         );
         return {
           success: tradeResult.tradesExecuted > 0,
@@ -840,34 +840,34 @@ Your action plan (JSON only):`;
         };
       }
 
-      case 'post': {
+      case "post": {
         const postId = await autonomousPostingService.createAgentPost(
           agentUserId,
-          runtime
+          runtime,
         );
         return { success: !!postId, data: { postId } };
       }
 
-      case 'respond': {
+      case "respond": {
         const responses = await autonomousBatchResponseService.processBatch(
           agentUserId,
-          runtime
+          runtime,
         );
         return { success: responses > 0, data: { responses } };
       }
 
-      case 'comment': {
+      case "comment": {
         const commentId = await autonomousCommentingService.createAgentComment(
           agentUserId,
-          runtime
+          runtime,
         );
         return { success: !!commentId, data: { commentId } };
       }
 
-      case 'message': {
+      case "message": {
         const dmResponses = await autonomousDMService.respondToDMs(
           agentUserId,
-          runtime
+          runtime,
         );
         return { success: dmResponses > 0, data: { responses: dmResponses } };
       }
@@ -883,7 +883,7 @@ Your action plan (JSON only):`;
   private async updateGoalProgress(
     goalId: string,
     agentUserId: string,
-    action: PlannedAction
+    action: PlannedAction,
   ): Promise<void> {
     const goal = await db.agentGoal.findUnique({
       where: { id: goalId },
@@ -901,7 +901,7 @@ Your action plan (JSON only):`;
         updatedAt: new Date(),
         ...(newProgress >= 1.0
           ? {
-              status: 'completed',
+              status: "completed",
               completedAt: new Date(),
             }
           : {}),
@@ -921,14 +921,14 @@ Your action plan (JSON only):`;
     });
 
     logger.info(
-      'Updated goal progress',
+      "Updated goal progress",
       {
         goalId,
         oldProgress: goal.progress,
         newProgress,
         completed: newProgress >= 1.0,
       },
-      'PlanningCoordinator'
+      "PlanningCoordinator",
     );
   }
 }
@@ -938,7 +938,7 @@ Your action plan (JSON only):`;
  */
 async function detectTradingOpportunities(
   _agentUserId: string,
-  balance: number
+  balance: number,
 ): Promise<
   Array<{
     market: string;
@@ -960,7 +960,7 @@ async function detectTradingOpportunities(
       resolved: false,
       endDate: { gte: new Date() },
     },
-    orderBy: { createdAt: 'desc' },
+    orderBy: { createdAt: "desc" },
     take: 10,
   });
 
@@ -990,10 +990,10 @@ async function detectTradingOpportunities(
   // Get perp markets with significant price movement
   const orgStates = await getDbInstance().getAllOrganizationStates();
   const priceMap = new Map(
-    orgStates.map((s): [string, number | null] => [s.id, s.currentPrice])
+    orgStates.map((s): [string, number | null] => [s.id, s.currentPrice]),
   );
   const perpMarkets = StaticDataRegistry.getAllOrganizations()
-    .filter((o): o is StaticOrganization => o.type === 'company')
+    .filter((o): o is StaticOrganization => o.type === "company")
     .slice(0, 10)
     .map((o: StaticOrganization) => ({
       ...o,
@@ -1031,7 +1031,7 @@ async function detectTradingOpportunities(
 async function detectSocialOpportunities(
   agentUserId: string,
   pendingCommentReplies: PendingCommentReply[],
-  pendingChatMessages: PendingChatMessage[]
+  pendingChatMessages: PendingChatMessage[],
 ): Promise<
   Array<{
     type: string;
@@ -1048,20 +1048,20 @@ async function detectSocialOpportunities(
   // High-value comment reply interactions (direct questions, mentions)
   for (const reply of pendingCommentReplies) {
     const content = reply.content.toLowerCase();
-    const isQuestion = content.includes('?');
-    const isMention = content.includes('@') || content.includes(agentUserId);
+    const isQuestion = content.includes("?");
+    const isMention = content.includes("@") || content.includes(agentUserId);
     const isDirect = isQuestion || isMention;
 
     if (isDirect) {
       opportunities.push({
-        type: 'comment_reply',
+        type: "comment_reply",
         description: `${reply.author}: ${reply.content.substring(0, 60)}...`,
         engagementScore: 0.8,
       });
     } else if (reply.content.length > 50) {
       // Substantive comment
       opportunities.push({
-        type: 'comment_reply',
+        type: "comment_reply",
         description: `${reply.author}: ${reply.content.substring(0, 60)}...`,
         engagementScore: 0.5,
       });
@@ -1071,10 +1071,10 @@ async function detectSocialOpportunities(
   // High-value chat message interactions
   for (const msg of pendingChatMessages) {
     const content = msg.content.toLowerCase();
-    const isQuestion = content.includes('?');
-    const isMention = content.includes('@') || content.includes(agentUserId);
+    const isQuestion = content.includes("?");
+    const isMention = content.includes("@") || content.includes(agentUserId);
     const isDirect = isQuestion || isMention;
-    const msgType = msg.isGroupChat ? 'group_message' : 'dm';
+    const msgType = msg.isGroupChat ? "group_message" : "dm";
 
     if (isDirect) {
       opportunities.push({
@@ -1108,7 +1108,7 @@ async function detectSocialOpportunities(
   for (const trending of trendingTagsRaw) {
     if (trending.tag) {
       opportunities.push({
-        type: 'post',
+        type: "post",
         description: `Trending topic: ${trending.tag.displayName || trending.tag.name}`,
         engagementScore: trending.score / 100, // Normalize score
       });

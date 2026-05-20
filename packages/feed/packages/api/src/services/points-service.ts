@@ -8,4 +8,4 @@ export {
   type AwardReputationResult as AwardPointsResult,
   type ReputationHistoryItem as PointsHistoryItem,
   ReputationService as PointsService,
-} from './reputation-service';
+} from "./reputation-service";

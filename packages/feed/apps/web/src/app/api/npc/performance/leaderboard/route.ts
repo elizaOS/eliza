@@ -91,7 +91,7 @@ import {
   addPublicReadHeaders,
   publicRateLimit,
   withErrorHandling,
-} from '@feed/api';
+} from "@feed/api";
 import {
   actorState,
   db,
@@ -100,16 +100,16 @@ import {
   perpPositions,
   poolPositions,
   pools,
-} from '@feed/db';
+} from "@feed/db";
 import {
   buildFallbackMetricsByPool,
   NPCInvestmentManager,
   type PoolMetrics,
   StaticDataRegistry,
-} from '@feed/engine';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@feed/engine";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 const parseLimit = (raw: string | null) => {
   if (!raw) return 50;
@@ -129,8 +129,8 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
 
-  const limitParam = searchParams.get('limit');
-  const minValueParam = searchParams.get('minValue');
+  const limitParam = searchParams.get("limit");
+  const minValueParam = searchParams.get("minValue");
 
   const limit = parseLimit(limitParam);
   const minValue = parseMinValue(minValueParam);
@@ -196,7 +196,7 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
         activePools,
         balances,
         positionRows,
-        perpRows
+        perpRows,
       );
       return fallbackMetricsByPool;
     })();
@@ -216,7 +216,7 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
       } catch (error) {
         const fallback = (await loadFallbackMetrics()).get(pool.id);
         if (!fallback) {
-          logger.warn('Skipping NPC performance row due to metrics failure', {
+          logger.warn("Skipping NPC performance row due to metrics failure", {
             poolId: pool.id,
             actorId: pool.npcActorId,
             error: error instanceof Error ? error.message : String(error),
@@ -224,7 +224,7 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
           return null;
         }
 
-        logger.warn('Using batched fallback NPC performance metrics', {
+        logger.warn("Using batched fallback NPC performance metrics", {
           poolId: pool.id,
           actorId: pool.npcActorId,
           error: error instanceof Error ? error.message : String(error),
@@ -232,19 +232,19 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
 
         return { pool, metrics: fallback };
       }
-    })
+    }),
   );
 
   const leaderboard = leaderboardRows
     .filter(
       (row): row is NonNullable<(typeof leaderboardRows)[number]> =>
-        row !== null && row.metrics.totalValue >= minValue
+        row !== null && row.metrics.totalValue >= minValue,
     )
     .sort((a, b) => b.metrics.totalValue - a.metrics.totalValue)
     .slice(0, limit)
     .map(({ pool, metrics }, index) => {
       const initialValue = Number.parseFloat(
-        pool.totalDeposits?.toString() || '0'
+        pool.totalDeposits?.toString() || "0",
       );
       const roi =
         initialValue > 0
@@ -255,7 +255,7 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
       return {
         rank: index + 1,
         actorId: actor?.id || pool.npcActorId,
-        actorName: actor?.name || 'Unknown',
+        actorName: actor?.name || "Unknown",
         personality: actor?.personality || null,
         profileImageUrl: actor?.profileImageUrl || null,
         poolId: pool.id,

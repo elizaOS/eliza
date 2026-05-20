@@ -8,7 +8,9 @@
  * - Existing comment threads
  */
 
-import { countTokensSync, truncateToTokenLimitSync } from '@feed/api';
+import type { IAgentRuntime } from "@elizaos/core";
+import { parseKeyValueXml } from "@elizaos/core";
+import { countTokensSync, truncateToTokenLimitSync } from "@feed/api";
 import {
   and,
   comments,
@@ -25,16 +27,14 @@ import {
   posts,
   reactions,
   users,
-} from '@feed/db';
-import { StaticDataRegistry } from '@feed/engine';
-import type { IAgentRuntime } from '@elizaos/core';
-import { parseKeyValueXml } from '@elizaos/core';
-import { callGroqDirect } from '../llm/direct-groq';
-import { agentService } from '../services/AgentService';
-import { getAgentConfig } from '../shared/agent-config';
-import { logger } from '../shared/logger';
-import { getAgentContext } from './agent-context';
-import { executeDirectComment } from './DirectExecutors';
+} from "@feed/db";
+import { StaticDataRegistry } from "@feed/engine";
+import { callGroqDirect } from "../llm/direct-groq";
+import { agentService } from "../services/AgentService";
+import { getAgentConfig } from "../shared/agent-config";
+import { logger } from "../shared/logger";
+import { getAgentContext } from "./agent-context";
+import { executeDirectComment } from "./DirectExecutors";
 
 // Max characters for comment content in prompts
 const MAX_COMMENT_CHARS = 200;
@@ -72,7 +72,7 @@ export class AutonomousCommentingService {
    */
   async createAgentComment(
     agentUserId: string,
-    _runtime: IAgentRuntime
+    _runtime: IAgentRuntime,
   ): Promise<string | null> {
     // Resolve agent context (NPC vs USER_CONTROLLED)
     const { displayName: agentDisplayName } =
@@ -88,7 +88,9 @@ export class AutonomousCommentingService {
       .where(eq(comments.authorId, agentUserId));
 
     const commentedPostIds = new Set(
-      agentComments.map((c) => c.postId).filter((id) => id !== null) as string[]
+      agentComments
+        .map((c) => c.postId)
+        .filter((id) => id !== null) as string[],
     );
 
     // Get recent posts with author info
@@ -105,22 +107,22 @@ export class AutonomousCommentingService {
           ne(posts.authorId, agentUserId),
           isNull(posts.deletedAt),
           gte(posts.timestamp, oneDayAgo),
-          lte(posts.timestamp, now)
-        )
+          lte(posts.timestamp, now),
+        ),
       )
       .orderBy(desc(posts.createdAt))
       .limit(15);
 
     // Filter to posts agent hasn't commented on
     const uncommentedPosts = recentPostsRaw.filter(
-      (p) => !commentedPostIds.has(p.id)
+      (p) => !commentedPostIds.has(p.id),
     );
 
     if (uncommentedPosts.length === 0) {
       logger.info(
         `No uncommented posts for agent ${agentDisplayName}`,
         undefined,
-        'AutonomousCommenting'
+        "AutonomousCommenting",
       );
       return null;
     }
@@ -143,7 +145,7 @@ export class AutonomousCommentingService {
 
     // Filter comments to our posts
     const postComments = allComments.filter(
-      (c) => c.postId && postIds.includes(c.postId)
+      (c) => c.postId && postIds.includes(c.postId),
     );
 
     // Get like counts for these comments
@@ -153,7 +155,7 @@ export class AutonomousCommentingService {
         commentId: reactions.commentId,
       })
       .from(reactions)
-      .where(and(eq(reactions.type, 'like')));
+      .where(and(eq(reactions.type, "like")));
 
     // Count likes per comment (filter in memory since inArray might not work)
     const likeCounts = new Map<string, number>();
@@ -209,14 +211,14 @@ export class AutonomousCommentingService {
         .where(inArray(users.id, missingAuthorIds));
 
       for (const u of authorUsers) {
-        authorMap.set(u.id, u.displayName || u.username || 'User');
+        authorMap.set(u.id, u.displayName || u.username || "User");
       }
     }
 
     // Helper: Build thread from bottom by walking UP from target comment
     const buildThreadFromBottom = (
       targetComment: (typeof postCommentsWithLikes)[0],
-      commentMap: Map<string, (typeof postCommentsWithLikes)[0]>
+      commentMap: Map<string, (typeof postCommentsWithLikes)[0]>,
     ): ThreadMessage[] => {
       const chain: (typeof postCommentsWithLikes)[0][] = [targetComment];
       let currentParentId = targetComment.parentCommentId;
@@ -231,7 +233,7 @@ export class AutonomousCommentingService {
 
       return chain.map((c, i) => ({
         id: c.id,
-        authorName: authorMap.get(c.authorId) || 'User',
+        authorName: authorMap.get(c.authorId) || "User",
         content: c.content,
         depth: i,
       }));
@@ -239,10 +241,10 @@ export class AutonomousCommentingService {
 
     // Build thread structure for each post (from bottom up)
     const buildCommentThreads = (
-      postId: string
+      postId: string,
     ): { commentThreads: CommentThread[]; totalCount: number } => {
       const postCommentsList = postCommentsWithLikes.filter(
-        (c) => c.postId === postId
+        (c) => c.postId === postId,
       );
       const totalCount = postCommentsList.length;
 
@@ -321,7 +323,7 @@ export class AutonomousCommentingService {
           id: post.id,
           content: post.content,
           authorId: post.authorId,
-          authorName: authorMap.get(post.authorId) || 'User',
+          authorName: authorMap.get(post.authorId) || "User",
           createdAt: post.createdAt,
           commentCount: totalCount,
           commentThreads,
@@ -337,7 +339,7 @@ export class AutonomousCommentingService {
       .select()
       .from(positions)
       .where(
-        and(eq(positions.userId, agentUserId), eq(positions.status, 'active'))
+        and(eq(positions.userId, agentUserId), eq(positions.status, "active")),
       )
       .limit(5);
 
@@ -347,8 +349,8 @@ export class AutonomousCommentingService {
       .where(
         and(
           eq(perpPositions.userId, agentUserId),
-          isNull(perpPositions.closedAt)
-        )
+          isNull(perpPositions.closedAt),
+        ),
       )
       .limit(5);
 
@@ -359,15 +361,15 @@ export class AutonomousCommentingService {
       const { thread } = commentThread;
 
       const threadLines = thread.map((msg, idx) => {
-        const depthLabel = idx === 0 ? 'Comment' : `Reply (depth ${msg.depth})`;
+        const depthLabel = idx === 0 ? "Comment" : `Reply (depth ${msg.depth})`;
         const truncatedContent =
           msg.content.substring(0, MAX_COMMENT_CHARS) +
-          (msg.content.length > MAX_COMMENT_CHARS ? '...' : '');
+          (msg.content.length > MAX_COMMENT_CHARS ? "..." : "");
 
         return `    - ${depthLabel} [comment_id: ${msg.id}] @${msg.authorName}: "${truncatedContent}"`;
       });
 
-      return threadLines.join('\n');
+      return threadLines.join("\n");
     };
 
     // Build the evaluation prompt
@@ -375,33 +377,33 @@ export class AutonomousCommentingService {
       .map((post, idx) => {
         const threadsText =
           post.commentThreads.length > 0
-            ? `\n  Conversation threads:\n${post.commentThreads.map((ct) => formatCommentThread(ct)).join('\n\n')}`
-            : '\n  No comments yet';
+            ? `\n  Conversation threads:\n${post.commentThreads.map((ct) => formatCommentThread(ct)).join("\n\n")}`
+            : "\n  No comments yet";
 
         return `[${idx + 1}] Post by @${post.authorName}:
-"${post.content.substring(0, 300)}${post.content.length > 300 ? '...' : ''}"
+"${post.content.substring(0, 300)}${post.content.length > 300 ? "..." : ""}"
   (${post.commentCount} comments)${threadsText}`;
       })
-      .join('\n\n');
+      .join("\n\n");
 
     const tradingContext = [
       agentPositions.length > 0
-        ? `Prediction positions: ${agentPositions.map((p) => `${p.side ? 'YES' : 'NO'} on market ${p.marketId}`).join(', ')}`
-        : 'No prediction positions',
+        ? `Prediction positions: ${agentPositions.map((p) => `${p.side ? "YES" : "NO"} on market ${p.marketId}`).join(", ")}`
+        : "No prediction positions",
       agentPerpPositions.length > 0
-        ? `Perp positions: ${agentPerpPositions.map((p) => `${p.side} ${p.ticker}`).join(', ')}`
-        : 'No perp positions',
-    ].join('\n');
+        ? `Perp positions: ${agentPerpPositions.map((p) => `${p.side} ${p.ticker}`).join(", ")}`
+        : "No perp positions",
+    ].join("\n");
 
     const prompt = `CRITICAL: Your response MUST start with <response> immediately. No <think> tags. No reasoning. Output only the XML.
 
-${config?.systemPrompt ?? 'You are an AI agent on Feed.'}
+${config?.systemPrompt ?? "You are an AI agent on Feed."}
 
 You are ${agentDisplayName}, an AI agent on Feed.
 
 Your trading context:
 ${tradingContext}
-Strategy: ${config?.tradingStrategy || 'General market analysis'}
+Strategy: ${config?.tradingStrategy || "General market analysis"}
 
 Available posts to engage with:
 
@@ -481,27 +483,27 @@ If you want to skip (no relevant posts):
         callGroqDirect({
           prompt: currentPrompt,
           system: config?.systemPrompt ?? undefined,
-          modelSize: 'large',
+          modelSize: "large",
           runtime: _runtime,
           temperature: isRetry ? 0.5 : 0.7,
           maxTokens: 16384,
-          actionType: 'evaluate_comment_opportunity',
-          purpose: 'evaluation',
+          actionType: "evaluate_comment_opportunity",
+          purpose: "evaluation",
         }),
         new Promise<string>((_, reject) => {
-          setTimeout(() => reject(new Error('Timeout')), 20000);
+          setTimeout(() => reject(new Error("Timeout")), 20000);
         }),
       ]);
 
       // Extract response block
       const responseMatch = responseText.match(
-        /<response>([\s\S]*?)<\/response>/i
+        /<response>([\s\S]*?)<\/response>/i,
       );
       if (!responseMatch) {
         logger.warn(
-          'No <response> block found in comment evaluation',
+          "No <response> block found in comment evaluation",
           { attempt, raw: responseText.substring(0, 200) },
-          'AutonomousCommenting'
+          "AutonomousCommenting",
         );
         continue;
       }
@@ -534,26 +536,26 @@ If you want to skip (no relevant posts):
 
     if (!decision) {
       logger.warn(
-        'Failed to get comment decision from LLM',
+        "Failed to get comment decision from LLM",
         { agentUserId },
-        'AutonomousCommenting'
+        "AutonomousCommenting",
       );
       return null;
     }
 
     // Handle skip
-    if (decision.action === 'skip') {
+    if (decision.action === "skip") {
       logger.info(
         `Agent ${agentDisplayName} decided to skip commenting: ${decision.reason}`,
         undefined,
-        'AutonomousCommenting'
+        "AutonomousCommenting",
       );
       return null;
     }
 
     // Handle comment
     if (
-      decision.action === 'comment' &&
+      decision.action === "comment" &&
       decision.postIndex &&
       decision.content
     ) {
@@ -562,12 +564,12 @@ If you want to skip (no relevant posts):
         logger.warn(
           `Invalid post index: ${decision.postIndex}`,
           { agentUserId },
-          'AutonomousCommenting'
+          "AutonomousCommenting",
         );
         return null;
       }
 
-      const cleanContent = decision.content.trim().replace(/^["']|["']$/g, '');
+      const cleanContent = decision.content.trim().replace(/^["']|["']$/g, "");
       if (!cleanContent || cleanContent.length < 5) {
         return null;
       }
@@ -575,7 +577,7 @@ If you want to skip (no relevant posts):
       // Validate reply_to_comment_id if provided
       // Collect all comment IDs from comment threads
       const allCommentIds = selectedPost.commentThreads.flatMap((ct) =>
-        ct.thread.map((msg) => msg.id)
+        ct.thread.map((msg) => msg.id),
       );
 
       let parentCommentId: string | null = null;
@@ -591,7 +593,7 @@ If you want to skip (no relevant posts):
               postId: selectedPost.id,
               availableIds: allCommentIds,
             },
-            'AutonomousCommenting'
+            "AutonomousCommenting",
           );
         }
       }
@@ -608,16 +610,16 @@ If you want to skip (no relevant posts):
         logger.warn(
           `Failed to create comment: ${result.error}`,
           { agentUserId },
-          'AutonomousCommenting'
+          "AutonomousCommenting",
         );
         return null;
       }
 
       // Log the comment with prompt and completion for debugging/review
       await agentService.createLog(agentUserId, {
-        type: 'comment',
-        level: 'info',
-        message: `Created comment on post ${selectedPost.id}${parentCommentId ? ` (reply to ${parentCommentId})` : ''}: ${cleanContent.substring(0, 100)}${cleanContent.length > 100 ? '...' : ''}`,
+        type: "comment",
+        level: "info",
+        message: `Created comment on post ${selectedPost.id}${parentCommentId ? ` (reply to ${parentCommentId})` : ""}: ${cleanContent.substring(0, 100)}${cleanContent.length > 100 ? "..." : ""}`,
         prompt: usedPrompt ?? undefined,
         completion: llmCompletion ?? undefined,
         metadata: {
@@ -630,9 +632,9 @@ If you want to skip (no relevant posts):
       });
 
       logger.info(
-        `Agent ${agentDisplayName} commented on post ${selectedPost.id}${parentCommentId ? ` (reply to ${parentCommentId})` : ''}`,
+        `Agent ${agentDisplayName} commented on post ${selectedPost.id}${parentCommentId ? ` (reply to ${parentCommentId})` : ""}`,
         { content: cleanContent.substring(0, 50) },
-        'AutonomousCommenting'
+        "AutonomousCommenting",
       );
 
       return result.commentId ?? null;

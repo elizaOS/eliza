@@ -9,11 +9,11 @@
  * @see agent-patch-plan.md Phase 3.1
  */
 
-import { feedAgentCard } from '@feed/a2a';
-import { withErrorHandling } from '@feed/api';
-import { NextResponse } from 'next/server';
+import { feedAgentCard } from "@feed/a2a";
+import { withErrorHandling } from "@feed/api";
+import { NextResponse } from "next/server";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 /**
  * GET /api/game/card
@@ -22,8 +22,8 @@ export const dynamic = 'force-dynamic';
 export const GET = withErrorHandling(async function GET() {
   return NextResponse.json(feedAgentCard, {
     headers: {
-      'Cache-Control': 'public, max-age=3600', // Cache for 1 hour
-      'Content-Type': 'application/json',
+      "Cache-Control": "public, max-age=3600", // Cache for 1 hour
+      "Content-Type": "application/json",
     },
   });
 });

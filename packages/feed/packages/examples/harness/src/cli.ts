@@ -11,13 +11,13 @@
  *   bun run src/cli.ts list-archetypes
  */
 
-import { archetypeAgent } from './agents/archetype-agent';
-import { randomAgent } from './agents/random-agent';
-import { getAllArchetypes, getArchetype } from './archetypes';
-import { runHarness } from './harness';
-import type { ArchetypeConfig, TrainableAgent } from './types';
+import { archetypeAgent } from "./agents/archetype-agent";
+import { randomAgent } from "./agents/random-agent";
+import { getAllArchetypes, getArchetype } from "./archetypes";
+import { runHarness } from "./harness";
+import type { ArchetypeConfig, TrainableAgent } from "./types";
 
-const A2A_URL = process.env.A2A_URL || 'http://localhost:3001';
+const A2A_URL = process.env.A2A_URL || "http://localhost:3001";
 
 // Available agents
 const AGENTS: Record<string, TrainableAgent> = {
@@ -27,22 +27,21 @@ const AGENTS: Record<string, TrainableAgent> = {
 
 async function main() {
   const args = process.argv.slice(2);
-  const command = args[0] || 'help';
+  const command = args[0] || "help";
 
   switch (command) {
-    case 'train':
+    case "train":
       await runTrain(args.slice(1));
       break;
-    case 'test':
+    case "test":
       await runTest(args.slice(1));
       break;
-    case 'list-archetypes':
+    case "list-archetypes":
       listArchetypes();
       break;
-    case 'list-agents':
+    case "list-agents":
       listAgents();
       break;
-    case 'help':
     default:
       showHelp();
   }
@@ -50,39 +49,39 @@ async function main() {
 
 async function runTrain(args: string[]) {
   // Parse arguments
-  const archetypeArg = getArg(args, '--archetypes', '-a') || 'trader,degen';
-  const agentArg = getArg(args, '--agents', '-g') || 'archetype';
-  const ticksArg = getArg(args, '--ticks', '-t') || '10';
-  const parallelArg = getArg(args, '--parallel', '-p') || '4';
-  const instancesArg = getArg(args, '--instances', '-i') || '1';
-  const outputArg = getArg(args, '--output', '-o') || './trajectories';
-  const intervalArg = getArg(args, '--interval') || '2000';
+  const archetypeArg = getArg(args, "--archetypes", "-a") || "trader,degen";
+  const agentArg = getArg(args, "--agents", "-g") || "archetype";
+  const ticksArg = getArg(args, "--ticks", "-t") || "10";
+  const parallelArg = getArg(args, "--parallel", "-p") || "4";
+  const instancesArg = getArg(args, "--instances", "-i") || "1";
+  const outputArg = getArg(args, "--output", "-o") || "./trajectories";
+  const intervalArg = getArg(args, "--interval") || "2000";
 
   // Parse archetype list
   let archetypes: ArchetypeConfig[];
-  if (archetypeArg === 'all') {
+  if (archetypeArg === "all") {
     archetypes = getAllArchetypes();
   } else {
-    archetypes = archetypeArg.split(',').map((id) => getArchetype(id.trim()));
+    archetypes = archetypeArg.split(",").map((id) => getArchetype(id.trim()));
   }
 
   // Parse agent list
-  const agentIds = agentArg.split(',').map((id) => id.trim());
+  const agentIds = agentArg.split(",").map((id) => id.trim());
   const agents: TrainableAgent[] = agentIds.map((id) => {
     const agent = AGENTS[id];
     if (!agent) {
       console.error(
-        `Unknown agent: ${id}. Available: ${Object.keys(AGENTS).join(', ')}`
+        `Unknown agent: ${id}. Available: ${Object.keys(AGENTS).join(", ")}`,
       );
       process.exit(1);
     }
     return agent;
   });
 
-  console.log('\n🎯 Training Configuration:');
+  console.log("\n🎯 Training Configuration:");
   console.log(`   A2A URL: ${A2A_URL}`);
-  console.log(`   Agents: ${agentIds.join(', ')}`);
-  console.log(`   Archetypes: ${archetypes.map((a) => a.id).join(', ')}`);
+  console.log(`   Agents: ${agentIds.join(", ")}`);
+  console.log(`   Archetypes: ${archetypes.map((a) => a.id).join(", ")}`);
   console.log(`   Instances per combo: ${instancesArg}`);
   console.log(`   Ticks per agent: ${ticksArg}`);
   console.log(`   Parallel: ${parallelArg}`);
@@ -92,38 +91,38 @@ async function runTrain(args: string[]) {
     a2aUrl: A2A_URL,
     agents,
     archetypes,
-    instancesPerAgent: parseInt(instancesArg),
-    ticksPerAgent: parseInt(ticksArg),
-    parallelAgents: parseInt(parallelArg),
-    tickInterval: parseInt(intervalArg),
+    instancesPerAgent: parseInt(instancesArg, 10),
+    ticksPerAgent: parseInt(ticksArg, 10),
+    parallelAgents: parseInt(parallelArg, 10),
+    tickInterval: parseInt(intervalArg, 10),
     recordTrajectories: true,
     outputDir: outputArg,
   });
 
   // Print summary
-  console.log('\n📊 Training Summary:');
+  console.log("\n📊 Training Summary:");
   console.log(`   Total agents run: ${result.agentsRun}`);
   console.log(`   Total ticks: ${result.totalTicks}`);
   console.log(`   Trajectories: ${result.trajectories.length}`);
   console.log(`   Duration: ${(result.duration / 1000).toFixed(1)}s`);
   console.log(`   Errors: ${result.errors.length}`);
 
-  console.log('\n📈 By Archetype:');
+  console.log("\n📈 By Archetype:");
   for (const [id, stats] of Object.entries(result.stats.byArchetype)) {
     console.log(
-      `   ${id}: ${stats.agents} agents, ${stats.ticks} ticks, avg reward: ${stats.avgReward.toFixed(2)}`
+      `   ${id}: ${stats.agents} agents, ${stats.ticks} ticks, avg reward: ${stats.avgReward.toFixed(2)}`,
     );
   }
 
-  console.log('\n📈 By Agent:');
+  console.log("\n📈 By Agent:");
   for (const [id, stats] of Object.entries(result.stats.byAgent)) {
     console.log(
-      `   ${id}: ${stats.instances} instances, ${stats.ticks} ticks, avg reward: ${stats.avgReward.toFixed(2)}`
+      `   ${id}: ${stats.instances} instances, ${stats.ticks} ticks, avg reward: ${stats.avgReward.toFixed(2)}`,
     );
   }
 
   if (result.errors.length > 0) {
-    console.log('\n❌ Errors:');
+    console.log("\n❌ Errors:");
     for (const error of result.errors.slice(0, 5)) {
       console.log(`   ${error}`);
     }
@@ -134,13 +133,13 @@ async function runTrain(args: string[]) {
 }
 
 async function runTest(args: string[]) {
-  const agentArg = getArg(args, '--agent', '-a') || 'random';
-  const ticksArg = getArg(args, '--ticks', '-t') || '5';
+  const agentArg = getArg(args, "--agent", "-a") || "random";
+  const ticksArg = getArg(args, "--ticks", "-t") || "5";
 
   const agent = AGENTS[agentArg];
   if (!agent) {
     console.error(
-      `Unknown agent: ${agentArg}. Available: ${Object.keys(AGENTS).join(', ')}`
+      `Unknown agent: ${agentArg}. Available: ${Object.keys(AGENTS).join(", ")}`,
     );
     process.exit(1);
   }
@@ -150,9 +149,9 @@ async function runTest(args: string[]) {
   const result = await runHarness({
     a2aUrl: A2A_URL,
     agents: [agent],
-    archetypes: [getArchetype('trader')], // Use trader as test archetype
+    archetypes: [getArchetype("trader")], // Use trader as test archetype
     instancesPerAgent: 1,
-    ticksPerAgent: parseInt(ticksArg),
+    ticksPerAgent: parseInt(ticksArg, 10),
     parallelAgents: 1,
     tickInterval: 1000,
     recordTrajectories: false,
@@ -163,7 +162,7 @@ async function runTest(args: string[]) {
   console.log(`   Errors: ${result.errors.length}`);
 
   if (result.errors.length > 0) {
-    console.error('\n❌ Test failed with errors:');
+    console.error("\n❌ Test failed with errors:");
     for (const error of result.errors) {
       console.error(`   ${error}`);
     }
@@ -172,23 +171,23 @@ async function runTest(args: string[]) {
 }
 
 function listArchetypes() {
-  console.log('\n📋 Available Archetypes:\n');
+  console.log("\n📋 Available Archetypes:\n");
   for (const archetype of getAllArchetypes()) {
     console.log(`   ${archetype.id.padEnd(20)} ${archetype.name}`);
-    console.log(`   ${''.padEnd(20)} ${archetype.description}`);
+    console.log(`   ${"".padEnd(20)} ${archetype.description}`);
     console.log(
-      `   ${''.padEnd(20)} Risk: ${archetype.riskTolerance.toFixed(1)} | Ethics: ${archetype.traits.ethics.toFixed(1)}`
+      `   ${"".padEnd(20)} Risk: ${archetype.riskTolerance.toFixed(1)} | Ethics: ${archetype.traits.ethics.toFixed(1)}`,
     );
-    console.log('');
+    console.log("");
   }
 }
 
 function listAgents() {
-  console.log('\n🤖 Available Agents:\n');
+  console.log("\n🤖 Available Agents:\n");
   for (const [id, agent] of Object.entries(AGENTS)) {
     console.log(`   ${id.padEnd(20)} ${agent.name} (${agent.language})`);
   }
-  console.log('');
+  console.log("");
 }
 
 function showHelp() {
@@ -237,23 +236,23 @@ ENVIRONMENT:
 function getArg(
   args: string[],
   long: string,
-  short?: string
+  short?: string,
 ): string | undefined {
   for (let i = 0; i < args.length; i++) {
     if (args[i] === long || (short && args[i] === short)) {
       return args[i + 1];
     }
     if (args[i].startsWith(`${long}=`)) {
-      return args[i].split('=')[1];
+      return args[i].split("=")[1];
     }
     if (short && args[i].startsWith(`${short}=`)) {
-      return args[i].split('=')[1];
+      return args[i].split("=")[1];
     }
   }
   return undefined;
 }
 
 main().catch((error) => {
-  console.error('Fatal error:', error);
+  console.error("Fatal error:", error);
   process.exit(1);
 });

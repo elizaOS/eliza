@@ -1,8 +1,8 @@
-import { PredictionPricing } from '@feed/core/markets/prediction/client';
+import { PredictionPricing } from "@feed/core/markets/prediction/client";
 import {
   buildPredictionMarketProfile,
   getPredictionMarketLiquidityTier,
-} from './prediction-market-profiles';
+} from "./prediction-market-profiles";
 
 export interface SummaryStats {
   count: number;
@@ -35,10 +35,10 @@ export interface PredictionRealismMetrics {
   priceChange24h: SummaryStats | null;
   nearMidCount: number;
   extremeCount: number;
-  horizonBuckets: Record<'short' | 'medium' | 'long', number>;
-  urgencyLevels: Record<'imminent' | 'near-term' | 'dated', number>;
-  eventSensitivity: Record<'low' | 'medium' | 'high', number>;
-  liquidityTiers: Record<'thin' | 'balanced' | 'deep', number>;
+  horizonBuckets: Record<"short" | "medium" | "long", number>;
+  urgencyLevels: Record<"imminent" | "near-term" | "dated", number>;
+  eventSensitivity: Record<"low" | "medium" | "high", number>;
+  liquidityTiers: Record<"thin" | "balanced" | "deep", number>;
   warnings: string[];
 }
 
@@ -50,7 +50,7 @@ export interface PerpRealismMetrics {
   bidDepth: SummaryStats | null;
   askDepth: SummaryStats | null;
   depthRatioByOrderSize: Record<string, SummaryStats | null>;
-  liquidityRegimes: Record<'thin' | 'balanced' | 'deep', number>;
+  liquidityRegimes: Record<"thin" | "balanced" | "deep", number>;
   staleQuotesCount: number;
   invalidQuoteCount: number;
   invalidCurrentPriceCount: number;
@@ -67,7 +67,7 @@ export interface PerpRealismDiagnosticInput {
   spreadBps?: number;
   bidDepth?: number;
   askDepth?: number;
-  liquidityRegime?: 'thin' | 'balanced' | 'deep';
+  liquidityRegime?: "thin" | "balanced" | "deep";
   quoteUpdatedAt?: Date;
 }
 
@@ -80,7 +80,7 @@ function percentile(values: number[], q: number): number {
   if (ordered.length === 0) return 0;
   const index = Math.min(
     ordered.length - 1,
-    Math.max(0, Math.ceil(q * ordered.length) - 1)
+    Math.max(0, Math.ceil(q * ordered.length) - 1),
   );
   return ordered[index] ?? 0;
 }
@@ -115,10 +115,10 @@ export function computePredictionRealismMetrics(params: {
   now?: Date;
 }): PredictionRealismMetrics {
   const now = params.now ?? new Date();
-  const horizonBuckets = zeroCounts(['short', 'medium', 'long'] as const);
-  const urgencyLevels = zeroCounts(['imminent', 'near-term', 'dated'] as const);
-  const eventSensitivity = zeroCounts(['low', 'medium', 'high'] as const);
-  const liquidityTiers = zeroCounts(['thin', 'balanced', 'deep'] as const);
+  const horizonBuckets = zeroCounts(["short", "medium", "long"] as const);
+  const urgencyLevels = zeroCounts(["imminent", "near-term", "dated"] as const);
+  const eventSensitivity = zeroCounts(["low", "medium", "high"] as const);
+  const liquidityTiers = zeroCounts(["thin", "balanced", "deep"] as const);
 
   const yesPrices: number[] = [];
   const distanceFromMid: number[] = [];
@@ -127,7 +127,7 @@ export function computePredictionRealismMetrics(params: {
     const yesPrice = PredictionPricing.getCurrentPrice(
       market.yesShares,
       market.noShares,
-      'yes'
+      "yes",
     );
     const profile = buildPredictionMarketProfile({
       marketId: market.id,
@@ -145,10 +145,10 @@ export function computePredictionRealismMetrics(params: {
   }
 
   const nearMidCount = yesPrices.filter(
-    (price) => Math.abs(price - 0.5) <= 0.05
+    (price) => Math.abs(price - 0.5) <= 0.05,
   ).length;
   const extremeCount = yesPrices.filter(
-    (price) => price <= 0.2 || price >= 0.8
+    (price) => price <= 0.2 || price >= 0.8,
   ).length;
 
   const activeMarketIds = new Set(params.markets.map((market) => market.id));
@@ -163,7 +163,7 @@ export function computePredictionRealismMetrics(params: {
   const marketPriceChange24h = Array.from(historyByMarket.entries())
     .map(([, points]) => {
       const ordered = [...points].sort(
-        (a, b) => a.createdAt.getTime() - b.createdAt.getTime()
+        (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
       );
       const first = ordered[0];
       const last = ordered[ordered.length - 1];
@@ -185,19 +185,19 @@ export function computePredictionRealismMetrics(params: {
 
   if (yesPriceSummary && yesPriceSummary.max - yesPriceSummary.min < 0.15) {
     warnings.push(
-      'Prediction price dispersion is narrow; markets may still feel too similar.'
+      "Prediction price dispersion is narrow; markets may still feel too similar.",
     );
   }
 
   if (params.markets.length > 0 && nearMidCount / params.markets.length > 0.7) {
     warnings.push(
-      'Most prediction markets are clustered near 50/50; consider stronger profile/event differentiation.'
+      "Most prediction markets are clustered near 50/50; consider stronger profile/event differentiation.",
     );
   }
 
   if (Object.values(eventSensitivity).every((count) => count === 0)) {
     warnings.push(
-      'Prediction event sensitivity buckets are unexpectedly empty.'
+      "Prediction event sensitivity buckets are unexpectedly empty.",
     );
   }
 
@@ -223,7 +223,7 @@ export function computePerpRealismMetrics(params: {
 }): PerpRealismMetrics {
   const now = params.now ?? new Date();
   const sampleOrderSizes = params.sampleOrderSizes ?? [1000, 5000];
-  const liquidityRegimes = zeroCounts(['thin', 'balanced', 'deep'] as const);
+  const liquidityRegimes = zeroCounts(["thin", "balanced", "deep"] as const);
 
   const validQuotedMarkets = params.markets.filter((market) => {
     const bidPrice = market.bidPrice;
@@ -257,23 +257,23 @@ export function computePerpRealismMetrics(params: {
       market.askPrice !== undefined &&
       market.spreadBps !== undefined &&
       market.bidDepth !== undefined &&
-      market.askDepth !== undefined
+      market.askDepth !== undefined,
   );
 
   const spreads = coveredMarkets
     .map((market) => market.spreadBps)
-    .filter((value): value is number => typeof value === 'number');
+    .filter((value): value is number => typeof value === "number");
   const bidDepths = coveredMarkets
     .map((market) => market.bidDepth)
-    .filter((value): value is number => typeof value === 'number');
+    .filter((value): value is number => typeof value === "number");
   const askDepths = coveredMarkets
     .map((market) => market.askDepth)
-    .filter((value): value is number => typeof value === 'number');
+    .filter((value): value is number => typeof value === "number");
 
   let staleQuotesCount = 0;
   let invalidCurrentPriceCount = 0;
   for (const market of params.markets) {
-    const regime = market.liquidityRegime ?? 'thin';
+    const regime = market.liquidityRegime ?? "thin";
     liquidityRegimes[regime]++;
     if (
       market.currentPrice === undefined ||
@@ -292,7 +292,7 @@ export function computePerpRealismMetrics(params: {
 
   const invalidQuoteCount = Math.max(
     0,
-    coveredMarkets.length - validQuotedMarkets.length
+    coveredMarkets.length - validQuotedMarkets.length,
   );
 
   const depthRatioByOrderSize = Object.fromEntries(
@@ -300,10 +300,10 @@ export function computePerpRealismMetrics(params: {
       String(size),
       summarizeSeries(
         validQuotedMarkets.map(
-          (market) => size / Math.max(market.askDepth ?? 1, 1)
-        )
+          (market) => size / Math.max(market.askDepth ?? 1, 1),
+        ),
       ),
-    ])
+    ]),
   ) as Record<string, SummaryStats | null>;
 
   const warnings: string[] = [];
@@ -313,30 +313,30 @@ export function computePerpRealismMetrics(params: {
     params.markets.length > 0 &&
     coveredMarkets.length !== params.markets.length
   ) {
-    warnings.push('Some perp markets are missing quote-state fields.');
+    warnings.push("Some perp markets are missing quote-state fields.");
   }
 
   if (invalidQuoteCount > 0) {
     warnings.push(
-      `${invalidQuoteCount} perp markets have invalid quote-state structure (e.g. ask < bid or non-positive depth).`
+      `${invalidQuoteCount} perp markets have invalid quote-state structure (e.g. ask < bid or non-positive depth).`,
     );
   }
 
   if (spreadSummary && spreadSummary.max - spreadSummary.min < 10) {
     warnings.push(
-      'Perp spread dispersion is narrow; market personalities may still be too uniform.'
+      "Perp spread dispersion is narrow; market personalities may still be too uniform.",
     );
   }
 
   if (staleQuotesCount > 0) {
     warnings.push(
-      `${staleQuotesCount} perp markets have stale quote timestamps.`
+      `${staleQuotesCount} perp markets have stale quote timestamps.`,
     );
   }
 
   if (invalidCurrentPriceCount > 0) {
     warnings.push(
-      `${invalidCurrentPriceCount} perp markets have invalid canonical currentPrice values.`
+      `${invalidCurrentPriceCount} perp markets have invalid canonical currentPrice values.`,
     );
   }
 

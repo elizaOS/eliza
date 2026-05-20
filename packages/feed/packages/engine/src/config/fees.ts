@@ -25,18 +25,18 @@ export const FEE_CONFIG = {
 
   // Fee types
   FEE_TYPES: {
-    PRED_BUY: 'pred_buy',
-    PRED_SELL: 'pred_sell',
-    PERP_OPEN: 'perp_open',
-    PERP_CLOSE: 'perp_close',
-    PERP_ADD_TO_POSITION: 'perp_add_to_position',
-    PERP_FLIP_POSITION: 'perp_flip_position',
+    PRED_BUY: "pred_buy",
+    PRED_SELL: "pred_sell",
+    PERP_OPEN: "perp_open",
+    PERP_CLOSE: "perp_close",
+    PERP_ADD_TO_POSITION: "perp_add_to_position",
+    PERP_FLIP_POSITION: "perp_flip_position",
   } as const,
 
   // Balance transaction types for fees
   TRANSACTION_TYPES: {
-    TRADING_FEE: 'trading_fee',
-    REFERRAL_FEE_EARNED: 'referral_fee_earned',
+    TRADING_FEE: "trading_fee",
+    REFERRAL_FEE_EARNED: "referral_fee_earned",
   } as const,
 } as const;
 
@@ -70,7 +70,7 @@ export type FeeTransactionType =
   (typeof FEE_CONFIG.TRANSACTION_TYPES)[keyof typeof FEE_CONFIG.TRANSACTION_TYPES];
 
 const FEE_TYPE_VALUES: ReadonlySet<string> = new Set(
-  Object.values(FEE_CONFIG.FEE_TYPES)
+  Object.values(FEE_CONFIG.FEE_TYPES),
 );
 
 /** True if `value` is a configured trading fee type (e.g. for outbox / API validation). */

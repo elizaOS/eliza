@@ -3,13 +3,13 @@ import {
   issueRealtimeToken,
   type RealtimeChannel,
   withErrorHandling,
-} from '@feed/api';
-import { and, db, eq, inArray, users } from '@feed/db';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { z } from 'zod';
-import { isUserInDmChatId } from '../../chats/_lib/dm-chat-id';
+} from "@feed/api";
+import { and, db, eq, inArray, users } from "@feed/db";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { isUserInDmChatId } from "../../chats/_lib/dm-chat-id";
 
 const BodySchema = z.object({
   channels: z.array(z.string()).optional(),
@@ -20,15 +20,15 @@ const BodySchema = z.object({
 });
 
 const PUBLIC_CHANNELS: RealtimeChannel[] = [
-  'feed',
-  'markets',
-  'breaking-news',
-  'upcoming-events',
+  "feed",
+  "markets",
+  "breaking-news",
+  "upcoming-events",
 ];
 
 const dedupe = <T>(items: T[]) => Array.from(new Set(items));
 export const POST = withErrorHandling(async function POST(
-  request: NextRequest
+  request: NextRequest,
 ) {
   const user = await authenticate(request);
 
@@ -56,16 +56,16 @@ export const POST = withErrorHandling(async function POST(
   const derivedChatIds = dedupe([
     ...chatIds,
     ...requestedChannels
-      .filter((ch) => ch.startsWith('chat:'))
-      .map((ch) => ch.replace('chat:', '')),
+      .filter((ch) => ch.startsWith("chat:"))
+      .map((ch) => ch.replace("chat:", "")),
   ]).filter(Boolean);
 
   // Extract agent IDs from requested channels and explicit agentIds param
   const derivedAgentIds = dedupe([
     ...agentIds,
     ...requestedChannels
-      .filter((ch) => ch.startsWith('agent:'))
-      .map((ch) => ch.replace('agent:', '')),
+      .filter((ch) => ch.startsWith("agent:"))
+      .map((ch) => ch.replace("agent:", "")),
   ]).filter(Boolean);
 
   // Determine which chats are authorized for this user.
@@ -87,22 +87,22 @@ export const POST = withErrorHandling(async function POST(
   }
 
   const unauthorizedChats = derivedChatIds.filter(
-    (id) => !allowedChatIds.has(id)
+    (id) => !allowedChatIds.has(id),
   );
   if (unauthorizedChats.length > 0) {
     logger.warn(
-      'Realtime token: unauthorized chat channels requested',
+      "Realtime token: unauthorized chat channels requested",
       { userId: user.userId, unauthorizedChats },
-      'Realtime'
+      "Realtime",
     );
     return NextResponse.json(
-      { error: 'Unauthorized chat channels', unauthorizedChats },
-      { status: 403 }
+      { error: "Unauthorized chat channels", unauthorizedChats },
+      { status: 403 },
     );
   }
 
   const chatChannels: RealtimeChannel[] = Array.from(allowedChatIds).map(
-    (id) => `chat:${id}` as RealtimeChannel
+    (id) => `chat:${id}` as RealtimeChannel,
   );
 
   // Determine which agent channels are authorized for this user.
@@ -118,8 +118,8 @@ export const POST = withErrorHandling(async function POST(
         and(
           inArray(users.id, derivedAgentIds),
           eq(users.managedBy, user.userId),
-          eq(users.isAgent, true)
-        )
+          eq(users.isAgent, true),
+        ),
       );
 
     for (const agent of ownedAgents) {
@@ -134,23 +134,23 @@ export const POST = withErrorHandling(async function POST(
   //   when e.g., a stale agent ID is in the request but other channels are valid
   // - Client can check isConnected status to detect missing subscriptions
   const unauthorizedAgents = derivedAgentIds.filter(
-    (id) => !allowedAgentIds.has(id)
+    (id) => !allowedAgentIds.has(id),
   );
   if (unauthorizedAgents.length > 0) {
     logger.warn(
-      'Realtime token: unauthorized agent channels excluded',
+      "Realtime token: unauthorized agent channels excluded",
       { userId: user.userId, unauthorizedAgents },
-      'Realtime'
+      "Realtime",
     );
   }
 
   const agentChannels: RealtimeChannel[] = Array.from(allowedAgentIds).map(
-    (id) => `agent:${id}` as RealtimeChannel
+    (id) => `agent:${id}` as RealtimeChannel,
   );
 
   // Only allow explicitly known public channels from the request
   const requestedPublic = requestedChannels.filter((ch) =>
-    PUBLIC_CHANNELS.includes(ch)
+    PUBLIC_CHANNELS.includes(ch),
   );
 
   const finalChannels = dedupe([
@@ -162,8 +162,8 @@ export const POST = withErrorHandling(async function POST(
 
   if (finalChannels.length === 0) {
     return NextResponse.json(
-      { error: 'No channels authorized' },
-      { status: 403 }
+      { error: "No channels authorized" },
+      { status: 403 },
     );
   }
 
@@ -176,9 +176,9 @@ export const POST = withErrorHandling(async function POST(
   const expiresAt = Date.now() + (ttlSeconds ?? 900) * 1000;
 
   logger.info(
-    'Issued realtime token',
+    "Issued realtime token",
     { userId: user.userId, channels: finalChannels },
-    'Realtime'
+    "Realtime",
   );
 
   return NextResponse.json({

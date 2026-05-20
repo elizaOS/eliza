@@ -14,15 +14,15 @@ import {
   feedbacks,
   gte,
   users,
-} from '@feed/db';
-import { generateSnowflakeId, logger } from '@feed/shared';
-import { clamp01, clampPercent } from '../utils/math-utils';
+} from "@feed/db";
+import { generateSnowflakeId, logger } from "@feed/shared";
+import { clamp01, clampPercent } from "../utils/math-utils";
 import {
   calculateConfidenceScore,
   calculateWinRate,
   getTrustLevel,
   normalizePnL,
-} from './pnl-normalizer';
+} from "./pnl-normalizer";
 
 export interface ReputationScoreBreakdown {
   reputationScore: number;
@@ -117,7 +117,7 @@ export function calculateReputationScore(
   averageFeedbackScore: number,
   gamesPlayed: number,
   winRate = 0,
-  intelScore = averageFeedbackScore
+  intelScore = averageFeedbackScore,
 ): number {
   // Weight distribution
   const pnlWeight = 0.4;
@@ -156,12 +156,12 @@ export function calculateReputationScore(
 export async function updateGameMetrics(
   userId: string,
   gameScore: number,
-  won: boolean
+  won: boolean,
 ) {
   logger.info(
-    'Updating game metrics',
+    "Updating game metrics",
     { userId, gameScore, won },
-    'ReputationService'
+    "ReputationService",
   );
 
   // Get or create metrics
@@ -236,12 +236,12 @@ export async function updateTradingMetrics(
   userId: string,
   pnl: number,
   invested: number,
-  profitable: boolean
+  profitable: boolean,
 ) {
   logger.info(
-    'Updating trading metrics',
+    "Updating trading metrics",
     { userId, pnl, invested, profitable },
-    'ReputationService'
+    "ReputationService",
   );
 
   // Get user's lifetime PNL and total deposits
@@ -344,17 +344,17 @@ interface FeedbackContext {
 export async function updateFeedbackMetrics(
   userId: string,
   score: number,
-  context?: FeedbackContext
+  context?: FeedbackContext,
 ) {
   logger.info(
-    'Updating feedback metrics',
+    "Updating feedback metrics",
     {
       userId,
       score,
       category: context?.category,
       interactionType: context?.interactionType,
     },
-    'ReputationService'
+    "ReputationService",
   );
 
   // Get or create metrics
@@ -400,9 +400,9 @@ export async function updateFeedbackMetrics(
   const category = context?.category?.toLowerCase();
   const interactionType = context?.interactionType?.toLowerCase();
   const isIntel =
-    category === 'intel' ||
-    category === 'helpful_intel' ||
-    interactionType === 'intel';
+    category === "intel" ||
+    category === "helpful_intel" ||
+    interactionType === "intel";
 
   let intelFeedbackCount = metrics.intelFeedbackCount ?? 0;
   let averageIntelScore = metrics.averageIntelScore ?? 50;
@@ -456,7 +456,7 @@ export async function updateFeedbackMetrics(
  * @returns Updated metrics with new reputation score
  */
 export async function recalculateReputation(
-  userId: string
+  userId: string,
 ): Promise<RecalculatedReputation | null> {
   const [metrics] = await db
     .select()
@@ -474,7 +474,7 @@ export async function recalculateReputation(
     metrics.averageFeedbackScore,
     metrics.gamesPlayed,
     metrics.winRate ?? 0,
-    metrics.averageIntelScore ?? metrics.averageFeedbackScore
+    metrics.averageIntelScore ?? metrics.averageFeedbackScore,
   );
 
   // Determine trust level
@@ -495,9 +495,9 @@ export async function recalculateReputation(
     .where(eq(agentPerformanceMetrics.userId, userId));
 
   logger.info(
-    'Recalculated reputation',
+    "Recalculated reputation",
     { userId, reputationScore, trustLevel, confidenceScore },
-    'ReputationService'
+    "ReputationService",
   );
 
   return {
@@ -515,7 +515,7 @@ export async function recalculateReputation(
  * @returns Reputation score with component breakdown
  */
 export async function getReputationBreakdown(
-  userId: string
+  userId: string,
 ): Promise<ReputationScoreBreakdown | null> {
   let [metrics] = await db
     .select()
@@ -577,7 +577,7 @@ export async function getReputationLeaderboard(
   minGames = 5,
   options?: {
     activeSince?: Date | null;
-  }
+  },
 ): Promise<LeaderboardEntry[]> {
   const leaderboardFilters = [
     gte(agentPerformanceMetrics.gamesPlayed, minGames),
@@ -585,7 +585,7 @@ export async function getReputationLeaderboard(
 
   if (options?.activeSince) {
     leaderboardFilters.push(
-      gte(agentPerformanceMetrics.lastActivityAt, options.activeSince)
+      gte(agentPerformanceMetrics.lastActivityAt, options.activeSince),
     );
   }
 
@@ -633,7 +633,7 @@ export async function getReputationLeaderboard(
         winRate: agent.winRate,
         normalizedPnL: agent.normalizedPnL,
       };
-    })
+    }),
   );
 
   return results;
@@ -721,29 +721,29 @@ export function calculateTradeScore(metrics: TradeMetrics): number {
 export async function generateGameCompletionFeedback(
   agentId: string,
   gameId: string,
-  performanceMetrics: GameMetrics
+  performanceMetrics: GameMetrics,
 ) {
   logger.info(
-    'Generating game completion feedback',
+    "Generating game completion feedback",
     { agentId, gameId },
-    'AutoFeedback'
+    "AutoFeedback",
   );
 
   // Calculate feedback score from performance
   const score = calculateGameScore(performanceMetrics);
 
   // Determine comment based on performance
-  let comment = '';
+  let comment = "";
   if (score >= 80) {
     comment =
-      'Excellent game performance! Strong decision-making and risk management.';
+      "Excellent game performance! Strong decision-making and risk management.";
   } else if (score >= 60) {
-    comment = 'Good game performance with solid fundamentals.';
+    comment = "Good game performance with solid fundamentals.";
   } else if (score >= 40) {
-    comment = 'Moderate performance. Room for improvement in decision-making.';
+    comment = "Moderate performance. Room for improvement in decision-making.";
   } else {
     comment =
-      'Challenging game. Focus on improving risk management and decision quality.';
+      "Challenging game. Focus on improving risk management and decision quality.";
   }
 
   // Create feedback record
@@ -753,8 +753,8 @@ export async function generateGameCompletionFeedback(
     toUserId: agentId,
     score,
     comment,
-    category: 'game_performance',
-    interactionType: 'game_to_agent',
+    category: "game_performance",
+    interactionType: "game_to_agent",
     metadata: {
       gameId,
       won: performanceMetrics.won,
@@ -771,8 +771,8 @@ export async function generateGameCompletionFeedback(
   await updateGameMetrics(agentId, score, performanceMetrics.won);
 
   await updateFeedbackMetrics(agentId, score, {
-    category: 'game_performance',
-    interactionType: 'game_to_agent',
+    category: "game_performance",
+    interactionType: "game_to_agent",
   });
 
   // Get created feedback
@@ -782,7 +782,7 @@ export async function generateGameCompletionFeedback(
     .where(eq(feedbacks.id, feedbackId))
     .limit(1);
 
-  logger.info('Generated game feedback', { feedbackId, score }, 'AutoFeedback');
+  logger.info("Generated game feedback", { feedbackId, score }, "AutoFeedback");
 
   return feedback;
 }
@@ -798,29 +798,29 @@ export async function generateGameCompletionFeedback(
 export async function generateTradeCompletionFeedback(
   agentId: string,
   tradeId: string,
-  performanceMetrics: TradeMetrics
+  performanceMetrics: TradeMetrics,
 ) {
   logger.info(
-    'Generating trade completion feedback',
+    "Generating trade completion feedback",
     { agentId, tradeId },
-    'AutoFeedback'
+    "AutoFeedback",
   );
 
   // Calculate feedback score from trade performance
   const score = calculateTradeScore(performanceMetrics);
 
   // Determine comment
-  let comment = '';
+  let comment = "";
   if (score >= 80) {
     comment =
-      'Excellent trade execution with strong timing and risk management.';
+      "Excellent trade execution with strong timing and risk management.";
   } else if (score >= 60) {
-    comment = 'Good trade performance with solid fundamentals.';
+    comment = "Good trade performance with solid fundamentals.";
   } else if (score >= 40) {
     comment =
-      'Moderate trade performance. Consider improving entry/exit timing.';
+      "Moderate trade performance. Consider improving entry/exit timing.";
   } else {
-    comment = 'Challenging trade. Focus on risk management and timing.';
+    comment = "Challenging trade. Focus on risk management and timing.";
   }
 
   // Create feedback record
@@ -830,8 +830,8 @@ export async function generateTradeCompletionFeedback(
     toUserId: agentId,
     score,
     comment,
-    category: 'trade_performance',
-    interactionType: 'game_to_agent',
+    category: "trade_performance",
+    interactionType: "game_to_agent",
     metadata: {
       tradeId,
       profitable: performanceMetrics.profitable,
@@ -845,8 +845,8 @@ export async function generateTradeCompletionFeedback(
 
   // Update feedback metrics
   await updateFeedbackMetrics(agentId, score, {
-    category: 'trade_performance',
-    interactionType: 'trade_to_agent',
+    category: "trade_performance",
+    interactionType: "trade_to_agent",
   });
 
   // Get created feedback
@@ -857,9 +857,9 @@ export async function generateTradeCompletionFeedback(
     .limit(1);
 
   logger.info(
-    'Generated trade feedback',
+    "Generated trade feedback",
     { feedbackId, score },
-    'AutoFeedback'
+    "AutoFeedback",
   );
 
   return feedback;
@@ -878,12 +878,12 @@ export async function generateBatchGameFeedback(
     agentId: string;
     gameId: string;
     metrics: GameMetrics;
-  }>
+  }>,
 ) {
   logger.info(
-    'Generating batch game feedback',
+    "Generating batch game feedback",
     { count: completions.length },
-    'AutoFeedback'
+    "AutoFeedback",
   );
 
   // Process sequentially to avoid overwhelming the database
@@ -895,27 +895,27 @@ export async function generateBatchGameFeedback(
     const result = await generateGameCompletionFeedback(
       completion.agentId,
       completion.gameId,
-      completion.metrics
+      completion.metrics,
     );
-    results.push({ status: 'fulfilled', value: result });
+    results.push({ status: "fulfilled", value: result });
   }
 
-  const successful = results.filter((r) => r.status === 'fulfilled').length;
-  const failed = results.filter((r) => r.status === 'rejected').length;
+  const successful = results.filter((r) => r.status === "fulfilled").length;
+  const failed = results.filter((r) => r.status === "rejected").length;
 
   logger.info(
-    'Batch feedback generation complete',
+    "Batch feedback generation complete",
     { successful, failed },
-    'AutoFeedback'
+    "AutoFeedback",
   );
 
   return results
     .filter(
       (
-        r
+        r,
       ): r is PromiseFulfilledResult<
         Awaited<ReturnType<typeof generateGameCompletionFeedback>>
-      > => r.status === 'fulfilled'
+      > => r.status === "fulfilled",
     )
     .map((r) => r.value);
 }

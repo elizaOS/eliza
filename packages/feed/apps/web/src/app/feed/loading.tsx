@@ -1,5 +1,5 @@
-import { PageContainer } from '@/components/shared/PageContainer';
-import { FeedLayoutSkeleton } from '@/components/shared/Skeleton';
+import { PageContainer } from "@/components/shared/PageContainer";
+import { FeedLayoutSkeleton } from "@/components/shared/Skeleton";
 
 export default function FeedLoading() {
   return (

@@ -23,12 +23,12 @@ import {
   isNotNull,
   isNull,
   ne,
-} from '@feed/db';
-import { GROUP_CONFIG, generateSnowflakeId, logger } from '@feed/shared';
+} from "@feed/db";
+import { GROUP_CONFIG, generateSnowflakeId, logger } from "@feed/shared";
 
-import { DistributedLockService } from './distributed-lock-service';
-import { NPCInteractionTracker } from './npc-interaction-tracker';
-import { StaticDataRegistry } from './static-data-registry';
+import { DistributedLockService } from "./distributed-lock-service";
+import { NPCInteractionTracker } from "./npc-interaction-tracker";
+import { StaticDataRegistry } from "./static-data-registry";
 import {
   ALL_TIERS,
   getEffectiveTierConfig,
@@ -45,7 +45,7 @@ import {
   shouldDemote,
   TIER_CONFIG,
   type TierLevel,
-} from './tier-config';
+} from "./tier-config";
 
 export interface TierInfo {
   tier: TierLevel;
@@ -117,7 +117,7 @@ export class TieredGroupService {
       logger.warn(
         `Cannot create tiers for unknown NPC: ${npcId}`,
         undefined,
-        'TieredGroupService'
+        "TieredGroupService",
       );
       return [];
     }
@@ -138,28 +138,28 @@ export class TieredGroupService {
         groupMembers,
         and(
           eq(groupMembers.groupId, groups.id),
-          eq(groupMembers.isActive, true)
-        )
+          eq(groupMembers.isActive, true),
+        ),
       )
       .where(
         and(
           eq(groups.ownerId, npcId),
-          eq(groups.type, 'npc'),
-          isNotNull(groups.tier)
-        )
+          eq(groups.type, "npc"),
+          isNotNull(groups.tier),
+        ),
       )
       .groupBy(
         groups.id,
         groups.tier,
         groups.name,
         groups.maxMembers,
-        chats.id
+        chats.id,
       );
 
     const existingTierMap = new Map(
       existingTiersWithData
         .filter((g) => isValidTier(g.tier))
-        .map((g) => [g.tier as TierLevel, g])
+        .map((g) => [g.tier as TierLevel, g]),
     );
 
     const result: TierInfo[] = [];
@@ -197,7 +197,7 @@ export class TieredGroupService {
         await db.insert(groups).values({
           id: groupId,
           name: groupName,
-          type: 'npc',
+          type: "npc",
           ownerId: npcId,
           createdById: npcId,
           updatedAt: new Date(),
@@ -220,7 +220,7 @@ export class TieredGroupService {
           id: memberId,
           groupId,
           userId: npcId,
-          role: 'owner',
+          role: "owner",
           tier,
         });
 
@@ -233,7 +233,7 @@ export class TieredGroupService {
         logger.info(
           `Created tier ${tier} group for NPC`,
           { npcId, npcName: actor.name, groupId, groupName, tier },
-          'TieredGroupService'
+          "TieredGroupService",
         );
 
         result.push({
@@ -256,10 +256,10 @@ export class TieredGroupService {
         .where(
           and(
             eq(groups.ownerId, npcId),
-            eq(groups.type, 'npc'),
+            eq(groups.type, "npc"),
             isNotNull(groups.tier),
-            isNull(groups.parentGroupId)
-          )
+            isNull(groups.parentGroupId),
+          ),
         );
     }
 
@@ -288,22 +288,22 @@ export class TieredGroupService {
         groupMembers,
         and(
           eq(groupMembers.groupId, groups.id),
-          eq(groupMembers.isActive, true)
-        )
+          eq(groupMembers.isActive, true),
+        ),
       )
       .where(
         and(
           eq(groups.ownerId, npcId),
-          eq(groups.type, 'npc'),
-          isNotNull(groups.tier)
-        )
+          eq(groups.type, "npc"),
+          isNotNull(groups.tier),
+        ),
       )
       .groupBy(
         groups.id,
         groups.tier,
         groups.name,
         groups.maxMembers,
-        chats.id
+        chats.id,
       );
 
     const result: TierInfo[] = [];
@@ -314,7 +314,7 @@ export class TieredGroupService {
         logger.warn(
           `Invalid tier value ${g.tier} for group ${g.id}, skipping`,
           { groupId: g.id, tier: g.tier },
-          'TieredGroupService'
+          "TieredGroupService",
         );
         continue;
       }
@@ -348,7 +348,7 @@ export class TieredGroupService {
    */
   static async getMembershipStatus(
     userId: string,
-    npcId: string
+    npcId: string,
   ): Promise<MembershipStatus> {
     const now = Date.now();
 
@@ -372,9 +372,9 @@ export class TieredGroupService {
           eq(groupMembers.userId, userId),
           eq(groupMembers.isActive, true),
           eq(groups.ownerId, npcId),
-          eq(groups.type, 'npc'),
-          isNotNull(groups.tier)
-        )
+          eq(groups.type, "npc"),
+          isNotNull(groups.tier),
+        ),
       )
       .limit(1);
 
@@ -384,13 +384,13 @@ export class TieredGroupService {
         userId,
         npcId,
         undefined,
-        focusWeights
+        focusWeights,
       );
 
     // Determine eligible tier using NPC-specific thresholds
     const eligibleTier = getTierForEngagementScoreWithNpc(
       interactionScore.engagementScore,
-      npcId
+      npcId,
     );
 
     // If not a member, return early
@@ -408,7 +408,7 @@ export class TieredGroupService {
         tradingScore: interactionScore.tradingScore,
         eligibleTier,
         canBePromoted: false,
-        promotionBlockedReason: 'Not a member',
+        promotionBlockedReason: "Not a member",
         shouldBeDemoted: false,
         daysSinceLastActivity: 0,
       };
@@ -416,18 +416,18 @@ export class TieredGroupService {
 
     const currentTier = membership.tier;
     const daysInTier = Math.floor(
-      (now - membership.joinedAt.getTime()) / (1000 * 60 * 60 * 24)
+      (now - membership.joinedAt.getTime()) / (1000 * 60 * 60 * 24),
     );
 
     const lastActivity = membership.lastMessageAt ?? membership.joinedAt;
     const daysSinceLastActivity = Math.floor(
-      (now - lastActivity.getTime()) / (1000 * 60 * 60 * 24)
+      (now - lastActivity.getTime()) / (1000 * 60 * 60 * 24),
     );
 
     // Check demotion status (grandfathered members can still be demoted for inactivity)
     const shouldBeDemotedFlag = shouldDemote(
       currentTier,
-      daysSinceLastActivity
+      daysSinceLastActivity,
     );
 
     // Check promotion eligibility using NPC-specific thresholds
@@ -435,7 +435,7 @@ export class TieredGroupService {
     let promotionBlockedReason: string | null = null;
 
     if (currentTier === 1) {
-      promotionBlockedReason = 'Already at highest tier';
+      promotionBlockedReason = "Already at highest tier";
     } else {
       // Grandfathered members cannot be promoted until they meet current thresholds
       if (membership.isGrandfathered) {
@@ -454,12 +454,12 @@ export class TieredGroupService {
             currentTier,
             interactionScore.engagementScore,
             daysInTier,
-            npcId
+            npcId,
           )
         ) {
           const higherTier = getHigherTier(currentTier);
           if (higherTier) {
-            const tiers = await this.getNpcTiers(npcId);
+            const tiers = await TieredGroupService.getNpcTiers(npcId);
             const targetTier = tiers.find((t) => t.tier === higherTier);
             if (targetTier && !targetTier.isFull) {
               canBePromoted = true;
@@ -508,7 +508,7 @@ export class TieredGroupService {
    */
   static async getUserTierStatus(
     userId: string,
-    npcId: string
+    npcId: string,
   ): Promise<UserTierStatus> {
     // Find active membership
     const [membership] = await db
@@ -524,9 +524,9 @@ export class TieredGroupService {
           eq(groupMembers.userId, userId),
           eq(groupMembers.isActive, true),
           eq(groups.ownerId, npcId),
-          eq(groups.type, 'npc'),
-          isNotNull(groups.tier)
-        )
+          eq(groups.type, "npc"),
+          isNotNull(groups.tier),
+        ),
       )
       .limit(1);
 
@@ -542,17 +542,17 @@ export class TieredGroupService {
     if (isValidTier(membership?.tier)) {
       const currentTier = membership.tier;
       const daysInTier = Math.floor(
-        (Date.now() - membership.joinedAt.getTime()) / (1000 * 60 * 60 * 24)
+        (Date.now() - membership.joinedAt.getTime()) / (1000 * 60 * 60 * 24),
       );
 
       if (currentTier === 1) {
-        promotionBlockedReason = 'Already at highest tier';
+        promotionBlockedReason = "Already at highest tier";
       } else if (
         isEligibleForPromotion(currentTier, engagementScore, daysInTier)
       ) {
         const higherTier = getHigherTier(currentTier);
         if (higherTier) {
-          const tiers = await this.getNpcTiers(npcId);
+          const tiers = await TieredGroupService.getNpcTiers(npcId);
           const targetTier = tiers.find((t) => t.tier === higherTier);
           if (targetTier && !targetTier.isFull) {
             canBePromoted = true;
@@ -596,7 +596,7 @@ export class TieredGroupService {
    */
   static async inviteUserToTier(
     userId: string,
-    npcId: string
+    npcId: string,
   ): Promise<{ success: boolean; tier: TierLevel | null; reason: string }> {
     // Validate that npcId is a valid NPC
     const actor = StaticDataRegistry.getActor(npcId);
@@ -604,7 +604,7 @@ export class TieredGroupService {
       logger.warn(
         `inviteUserToTier called with invalid NPC ID: ${npcId}`,
         { userId, npcId },
-        'TieredGroupService'
+        "TieredGroupService",
       );
       return {
         success: false,
@@ -623,8 +623,8 @@ export class TieredGroupService {
           eq(groupMembers.userId, userId),
           eq(groupMembers.isActive, true),
           eq(groups.ownerId, npcId),
-          eq(groups.type, 'npc')
-        )
+          eq(groups.type, "npc"),
+        ),
       )
       .limit(1);
 
@@ -632,7 +632,7 @@ export class TieredGroupService {
       return {
         success: false,
         tier: null,
-        reason: 'Already in a group with this NPC',
+        reason: "Already in a group with this NPC",
       };
     }
 
@@ -645,8 +645,8 @@ export class TieredGroupService {
         and(
           eq(groupMembers.userId, userId),
           eq(groupMembers.isActive, true),
-          eq(groups.type, 'npc')
-        )
+          eq(groups.type, "npc"),
+        ),
       );
 
     if ((groupCount?.count ?? 0) >= GROUP_CONFIG.MAX_ACTIVE_USER_GROUPS) {
@@ -663,7 +663,7 @@ export class TieredGroupService {
     const engagementScore = interactionScore.engagementScore;
 
     // Ensure tiers exist (before lock)
-    await this.ensureAllTiersExist(npcId);
+    await TieredGroupService.ensureAllTiersExist(npcId);
 
     // Generate unique process ID for lock ownership
     const processId = `invite-${npcId}-${userId}-${Date.now()}`;
@@ -673,7 +673,7 @@ export class TieredGroupService {
     const lockAcquired = await DistributedLockService.acquireLock({
       lockId,
       durationMs: 10_000, // 10 second lock
-      operation: 'tier-invite',
+      operation: "tier-invite",
       processId,
     });
 
@@ -681,13 +681,13 @@ export class TieredGroupService {
       return {
         success: false,
         tier: null,
-        reason: 'Another invite operation in progress, please retry',
+        reason: "Another invite operation in progress, please retry",
       };
     }
 
     try {
       // Re-check capacity inside lock (critical section)
-      const tiers = await this.getNpcTiers(npcId);
+      const tiers = await TieredGroupService.getNpcTiers(npcId);
       let targetTier: TierInfo | null = null;
 
       for (const tier of ALL_TIERS) {
@@ -723,7 +723,7 @@ export class TieredGroupService {
           id: memberId,
           groupId: targetTier.groupId,
           userId,
-          role: 'member',
+          role: "member",
           addedBy: npcId,
           tier: targetTier.tier,
         });
@@ -740,7 +740,7 @@ export class TieredGroupService {
       });
 
       logger.info(
-        'User invited to tier',
+        "User invited to tier",
         {
           userId,
           npcId,
@@ -748,7 +748,7 @@ export class TieredGroupService {
           groupName: targetTier.groupName,
           engagementScore,
         },
-        'TieredGroupService'
+        "TieredGroupService",
       );
 
       return {
@@ -761,11 +761,11 @@ export class TieredGroupService {
       await DistributedLockService.releaseLock(lockId, processId).catch(
         (err) => {
           logger.error(
-            'Failed to release invite lock',
+            "Failed to release invite lock",
             { lockId, processId, error: String(err) },
-            'TieredGroupService'
+            "TieredGroupService",
           );
-        }
+        },
       );
     }
   }
@@ -777,7 +777,7 @@ export class TieredGroupService {
    * concurrent promotions could exceed group capacity.
    */
   static async promoteUser(userId: string, npcId: string): Promise<boolean> {
-    const status = await this.getUserTierStatus(userId, npcId);
+    const status = await TieredGroupService.getUserTierStatus(userId, npcId);
     if (!status.currentTier || !status.groupId || !status.canBePromoted)
       return false;
 
@@ -792,22 +792,22 @@ export class TieredGroupService {
     const lockAcquired = await DistributedLockService.acquireLock({
       lockId,
       durationMs: 10_000, // 10 second lock
-      operation: 'tier-promote',
+      operation: "tier-promote",
       processId,
     });
 
     if (!lockAcquired) {
       logger.info(
-        'Promote operation skipped - another promotion in progress',
+        "Promote operation skipped - another promotion in progress",
         { userId, npcId },
-        'TieredGroupService'
+        "TieredGroupService",
       );
       return false;
     }
 
     try {
       // Re-check capacity inside lock (critical section)
-      const tiers = await this.getNpcTiers(npcId);
+      const tiers = await TieredGroupService.getNpcTiers(npcId);
       const targetTier = tiers.find((t) => t.tier === higherTier);
       if (!targetTier || targetTier.isFull) return false;
 
@@ -841,8 +841,8 @@ export class TieredGroupService {
           .where(
             and(
               eq(groupMembers.groupId, currentGroupId),
-              eq(groupMembers.userId, userId)
-            )
+              eq(groupMembers.userId, userId),
+            ),
           );
 
         // Deactivate old chat participant
@@ -853,8 +853,8 @@ export class TieredGroupService {
             .where(
               and(
                 eq(chatParticipants.chatId, oldChat.id),
-                eq(chatParticipants.userId, userId)
-              )
+                eq(chatParticipants.userId, userId),
+              ),
             );
         }
 
@@ -863,7 +863,7 @@ export class TieredGroupService {
           id: newMemberId,
           groupId: targetTier.groupId,
           userId,
-          role: 'member',
+          role: "member",
           addedBy: npcId,
           tier: higherTier,
           previousTier: currentTier,
@@ -881,9 +881,9 @@ export class TieredGroupService {
       });
 
       logger.info(
-        'User promoted',
+        "User promoted",
         { userId, npcId, fromTier: currentTier, toTier: higherTier },
-        'TieredGroupService'
+        "TieredGroupService",
       );
 
       return true;
@@ -892,11 +892,11 @@ export class TieredGroupService {
       await DistributedLockService.releaseLock(lockId, processId).catch(
         (err) => {
           logger.error(
-            'Failed to release promotion lock',
+            "Failed to release promotion lock",
             { lockId, processId, error: String(err) },
-            'TieredGroupService'
+            "TieredGroupService",
           );
-        }
+        },
       );
     }
   }
@@ -925,16 +925,16 @@ export class TieredGroupService {
       .where(
         and(
           inArray(groups.ownerId, actorIds),
-          eq(groups.type, 'npc'),
+          eq(groups.type, "npc"),
           eq(groupMembers.isActive, true),
           isNotNull(groupMembers.tier),
-          ne(groupMembers.tier, 1) // Already at highest tier
-        )
+          ne(groupMembers.tier, 1), // Already at highest tier
+        ),
       );
 
     // Process each membership (promoteUser still needs individual checks)
     for (const m of allMemberships) {
-      if (await this.promoteUser(m.userId, m.npcId)) {
+      if (await TieredGroupService.promoteUser(m.userId, m.npcId)) {
         promotions++;
       }
     }
@@ -970,10 +970,10 @@ export class TieredGroupService {
       .where(
         and(
           inArray(groups.ownerId, actorIds),
-          eq(groups.type, 'npc'),
+          eq(groups.type, "npc"),
           eq(groupMembers.isActive, true),
-          isNotNull(groupMembers.tier)
-        )
+          isNotNull(groupMembers.tier),
+        ),
       );
 
     for (const m of allMemberships) {
@@ -982,14 +982,14 @@ export class TieredGroupService {
         logger.warn(
           `Invalid tier value ${m.tier} for membership, skipping demotion check`,
           { userId: m.userId, groupId: m.groupId, tier: m.tier },
-          'TieredGroupService'
+          "TieredGroupService",
         );
         continue;
       }
       const tier = m.tier;
       const lastActivity = m.lastMessageAt ?? m.joinedAt;
       const daysSince = Math.floor(
-        (now - lastActivity.getTime()) / (1000 * 60 * 60 * 24)
+        (now - lastActivity.getTime()) / (1000 * 60 * 60 * 24),
       );
 
       if (shouldDemote(tier, daysSince)) {
@@ -999,15 +999,15 @@ export class TieredGroupService {
         const lockAcquired = await DistributedLockService.acquireLock({
           lockId,
           durationMs: 5000,
-          operation: 'tier-op-demotion',
+          operation: "tier-op-demotion",
           processId,
         });
 
         if (!lockAcquired) {
           logger.warn(
-            'Failed to acquire lock for demotion operation',
+            "Failed to acquire lock for demotion operation",
             { lockId, userId: m.userId, npcId: m.npcId },
-            'TieredGroupService'
+            "TieredGroupService",
           );
           continue;
         }
@@ -1017,7 +1017,9 @@ export class TieredGroupService {
           const reason = `Inactive for ${daysSince} days`;
 
           // Pre-fetch data needed for transaction
-          const tiers = lowerTier ? await this.getNpcTiers(m.npcId) : [];
+          const tiers = lowerTier
+            ? await TieredGroupService.getNpcTiers(m.npcId)
+            : [];
           const targetTier = lowerTier
             ? tiers.find((t) => t.tier === lowerTier)
             : null;
@@ -1052,8 +1054,8 @@ export class TieredGroupService {
               .where(
                 and(
                   eq(groupMembers.groupId, m.groupId),
-                  eq(groupMembers.userId, m.userId)
-                )
+                  eq(groupMembers.userId, m.userId),
+                ),
               );
 
             // Deactivate chat participant for the old tier's chat
@@ -1064,8 +1066,8 @@ export class TieredGroupService {
                 .where(
                   and(
                     eq(chatParticipants.chatId, oldChat.id),
-                    eq(chatParticipants.userId, m.userId)
-                  )
+                    eq(chatParticipants.userId, m.userId),
+                  ),
                 );
             }
 
@@ -1075,7 +1077,7 @@ export class TieredGroupService {
                 id: newMemberId,
                 groupId: targetTier.groupId,
                 userId: m.userId,
-                role: 'member',
+                role: "member",
                 tier: lowerTier,
                 previousTier: tier,
                 demotedAt: new Date(),
@@ -1093,7 +1095,7 @@ export class TieredGroupService {
 
           demotions++;
           logger.info(
-            'User demoted',
+            "User demoted",
             {
               userId: m.userId,
               npcId: m.npcId,
@@ -1101,17 +1103,17 @@ export class TieredGroupService {
               toTier: lowerTier,
               reason,
             },
-            'TieredGroupService'
+            "TieredGroupService",
           );
         } finally {
           await DistributedLockService.releaseLock(lockId, processId).catch(
             (err) => {
               logger.error(
-                'Failed to release demotion lock',
+                "Failed to release demotion lock",
                 { lockId, processId, error: String(err) },
-                'TieredGroupService'
+                "TieredGroupService",
               );
-            }
+            },
           );
         }
       }
@@ -1154,10 +1156,10 @@ export class TieredGroupService {
         groupMembers,
         and(
           eq(groupMembers.groupId, groups.id),
-          eq(groupMembers.isActive, true)
-        )
+          eq(groupMembers.isActive, true),
+        ),
       )
-      .where(and(eq(groups.type, 'npc'), isNotNull(groups.tier)))
+      .where(and(eq(groups.type, "npc"), isNotNull(groups.tier)))
       .groupBy(groups.id, groups.ownerId, groups.tier, groups.maxMembers);
 
     // Track unique NPCs with groups

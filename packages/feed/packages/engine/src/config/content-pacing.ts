@@ -32,7 +32,7 @@
  * ```
  */
 
-import { NPC_CONTENT_PACING_CONFIG } from './npc-activity';
+import { NPC_CONTENT_PACING_CONFIG } from "./npc-activity";
 
 /**
  * Content pacing configuration constants
@@ -138,7 +138,7 @@ export function getTimeOfDayMultiplier(hour?: number): number {
 export function shouldActorPost(
   lastPostTime: Date | null,
   dailyPostCount: number,
-  hour?: number
+  hour?: number,
 ): boolean {
   // Check daily limit
   if (dailyPostCount >= CONTENT_PACING.maxPostsPerActorPerDay) {
@@ -174,14 +174,14 @@ export function shouldActorPost(
  */
 export function calculatePostsForTick(
   eligibleActorCount: number,
-  ticksPerHour: number = 60
+  ticksPerHour: number = 60,
 ): number {
   const targetPostsPerTick = CONTENT_PACING.targetPostsPerHour / ticksPerHour;
 
   // Use the minimum of eligible actors and calculated target
   const calculatedPosts = Math.min(
     eligibleActorCount,
-    Math.ceil(targetPostsPerTick)
+    Math.ceil(targetPostsPerTick),
   );
 
   // Apply the per-tick maximum

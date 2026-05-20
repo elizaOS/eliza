@@ -8,8 +8,8 @@ import type {
   AgentLogRecord,
   AgentMessageRecord,
   AgentPointsTransactionRecord,
-} from '../../ports/agents';
-import type { PointsTransactionRecord } from '../../ports/users';
+} from "../../ports/agents";
+import type { PointsTransactionRecord } from "../../ports/users";
 import type {
   ActorRecord,
   ActorStateRecord,
@@ -28,7 +28,7 @@ import type {
   StockPriceRecord,
   UserRecord,
   WorldEventRecord,
-} from '../../types';
+} from "../../types";
 
 /**
  * Complete storage state that can be serialized to JSON.
@@ -38,7 +38,7 @@ export interface JsonStorageState {
     version: string;
     createdAt: string;
     updatedAt: string;
-    mode: 'simulation' | 'training' | 'debug';
+    mode: "simulation" | "training" | "debug";
   };
 
   // Core entities
@@ -95,10 +95,10 @@ export interface JsonStorageState {
 export function createEmptyState(): JsonStorageState {
   return {
     metadata: {
-      version: '1.0.0',
+      version: "1.0.0",
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      mode: 'simulation',
+      mode: "simulation",
     },
     actors: {},
     actorStates: {},

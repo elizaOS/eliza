@@ -6,11 +6,11 @@ import type {
   FeeProcessor,
   TradingFeeOutboxPort,
   WalletPort,
-} from '../shared/common';
+} from "../shared/common";
 
-export type { WalletPort } from '../shared/common';
+export type { WalletPort } from "../shared/common";
 
-export type PerpSide = 'long' | 'short';
+export type PerpSide = "long" | "short";
 
 export interface PerpMarketRecord {
   ticker: string;
@@ -51,7 +51,7 @@ export interface PerpMarketRecord {
   spreadBps?: number;
   bidDepth?: number;
   askDepth?: number;
-  liquidityRegime?: 'thin' | 'balanced' | 'deep';
+  liquidityRegime?: "thin" | "balanced" | "deep";
   quoteUpdatedAt?: Date;
   markPrice?: number;
   indexPrice?: number;
@@ -91,7 +91,7 @@ export interface PerpDbPort {
   /** Get existing open position for user on specific ticker (for consolidation) */
   getOpenPositionByUserAndTicker(
     userId: string,
-    ticker: string
+    ticker: string,
   ): Promise<PerpPositionRecord | null>;
   /**
    * Lock and return an open position row for mutation.
@@ -99,7 +99,7 @@ export interface PerpDbPort {
    */
   lockOpenPositionById(id: string): Promise<PerpPositionRecord | null>;
   upsertPosition(
-    position: Omit<PerpPositionRecord, 'id'> & { id?: string }
+    position: Omit<PerpPositionRecord, "id"> & { id?: string },
   ): Promise<PerpPositionRecord>;
   /**
    * Execute operations within a transaction for atomicity.
@@ -111,55 +111,55 @@ export interface PerpDbPort {
     updates: Partial<
       Pick<
         PerpPositionRecord,
-        | 'currentPrice'
-        | 'unrealizedPnL'
-        | 'unrealizedPnLPercent'
-        | 'fundingPaid'
-        | 'liquidationPrice'
-        | 'lastUpdated'
-        | 'size'
-        | 'entryPrice'
+        | "currentPrice"
+        | "unrealizedPnL"
+        | "unrealizedPnLPercent"
+        | "fundingPaid"
+        | "liquidationPrice"
+        | "lastUpdated"
+        | "size"
+        | "entryPrice"
       >
-    >
+    >,
   ): Promise<void>;
   closePosition(
     positionId: string,
     updates: Partial<
       Pick<
         PerpPositionRecord,
-        | 'currentPrice'
-        | 'closedAt'
-        | 'realizedPnL'
-        | 'unrealizedPnL'
-        | 'unrealizedPnLPercent'
+        | "currentPrice"
+        | "closedAt"
+        | "realizedPnL"
+        | "unrealizedPnL"
+        | "unrealizedPnLPercent"
       >
-    >
+    >,
   ): Promise<void>;
   updateMarketStats(
     ticker: string,
     updates: Partial<
       Pick<
         PerpMarketRecord,
-        | 'currentPrice'
-        | 'price24hAgo'
-        | 'change24h'
-        | 'changePercent24h'
-        | 'high24h'
-        | 'low24h'
-        | 'volume24h'
-        | 'openInterest'
-        | 'fundingRate'
-        | 'bidPrice'
-        | 'askPrice'
-        | 'spreadBps'
-        | 'bidDepth'
-        | 'askDepth'
-        | 'liquidityRegime'
-        | 'quoteUpdatedAt'
-        | 'markPrice'
-        | 'indexPrice'
+        | "currentPrice"
+        | "price24hAgo"
+        | "change24h"
+        | "changePercent24h"
+        | "high24h"
+        | "low24h"
+        | "volume24h"
+        | "openInterest"
+        | "fundingRate"
+        | "bidPrice"
+        | "askPrice"
+        | "spreadBps"
+        | "bidDepth"
+        | "askDepth"
+        | "liquidityRegime"
+        | "quoteUpdatedAt"
+        | "markPrice"
+        | "indexPrice"
       >
-    >
+    >,
   ): Promise<void>;
 }
 
@@ -207,7 +207,7 @@ export interface PerpTradeResult {
   /** True if this trade modified an existing position (rebalance) */
   isRebalance?: boolean;
   /** Type of rebalance operation performed */
-  rebalanceType?: 'add' | 'reduce' | 'close' | 'flip';
+  rebalanceType?: "add" | "reduce" | "close" | "flip";
   /** Previous position size before modification */
   previousSize?: number;
   /** Previous entry price before modification */
@@ -215,9 +215,9 @@ export interface PerpTradeResult {
 }
 
 export interface PerpOpenExecutionPreview {
-  previewType?: 'open' | 'add' | 'reduce' | 'close' | 'flip';
+  previewType?: "open" | "add" | "reduce" | "close" | "flip";
   isRebalance?: boolean;
-  rebalanceType?: 'add' | 'reduce' | 'close' | 'flip';
+  rebalanceType?: "add" | "reduce" | "close" | "flip";
   ticker: string;
   side: PerpSide;
   size: number;
@@ -239,7 +239,7 @@ export interface PerpOpenExecutionPreview {
   spreadBps: number;
   bidDepth: number;
   askDepth: number;
-  liquidityRegime: 'thin' | 'balanced' | 'deep';
+  liquidityRegime: "thin" | "balanced" | "deep";
   marginRequired: number;
   estimatedFee: number;
   totalRequired: number;

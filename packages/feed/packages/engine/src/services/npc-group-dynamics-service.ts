@@ -38,28 +38,28 @@ import {
   sql,
   userInteractions,
   users,
-} from '@feed/db';
+} from "@feed/db";
 import {
   GROUP_CONFIG,
   generateSnowflakeId,
   jaccardSimilarity,
   logger,
-} from '@feed/shared';
-import { NPC_GROUP_DYNAMICS_CONFIG } from '../config/npc-activity';
-import { FeedLLMClient } from '../llm/openai-client';
-import { generateWorldContext, validateNoRealNames } from '../prompts';
+} from "@feed/shared";
+import { NPC_GROUP_DYNAMICS_CONFIG } from "../config/npc-activity";
+import { FeedLLMClient } from "../llm/openai-client";
+import { generateWorldContext, validateNoRealNames } from "../prompts";
 import {
   pickRandom,
   type RngFunction,
   randomChance,
-} from '../utils/randomization';
-import { MarketContextService } from './market-context-service';
-import { autoJoinEmptyUsersToNpcGroupChats } from './npc-group-chat-onboarding-service';
-import { NPCGroupDynamicsCalculations } from './npc-group-dynamics-calculations';
-import { sharedChatContextService } from './shared-chat-context-service';
-import { StaticDataRegistry } from './static-data-registry';
-import { getTierMessageGuidance } from './tier-config';
-import { TieredGroupService } from './tiered-group-service';
+} from "../utils/randomization";
+import { MarketContextService } from "./market-context-service";
+import { autoJoinEmptyUsersToNpcGroupChats } from "./npc-group-chat-onboarding-service";
+import { NPCGroupDynamicsCalculations } from "./npc-group-dynamics-calculations";
+import { sharedChatContextService } from "./shared-chat-context-service";
+import { StaticDataRegistry } from "./static-data-registry";
+import { getTierMessageGuidance } from "./tier-config";
+import { TieredGroupService } from "./tiered-group-service";
 
 // Singleton for NPC context
 const marketContextService = new MarketContextService();
@@ -77,9 +77,9 @@ export interface GroupDynamicsResult {
 }
 
 export function normalizeNpcGroupMessageResponse(
-  rawResponse: unknown
+  rawResponse: unknown,
 ): { message: string } | null {
-  if (typeof rawResponse === 'string') {
+  if (typeof rawResponse === "string") {
     const trimmed = rawResponse.trim();
     if (!trimmed) {
       return null;
@@ -94,21 +94,21 @@ export function normalizeNpcGroupMessageResponse(
   }
 
   if (
-    typeof rawResponse === 'object' &&
+    typeof rawResponse === "object" &&
     rawResponse !== null &&
     !Array.isArray(rawResponse)
   ) {
     const record = rawResponse as Record<string, unknown>;
     const nested =
-      typeof record.response === 'object' &&
+      typeof record.response === "object" &&
       record.response !== null &&
       !Array.isArray(record.response)
         ? (record.response as Record<string, unknown>)
         : null;
     const message =
-      (typeof nested?.message === 'string' && nested.message) ||
-      (typeof record.message === 'string' && record.message) ||
-      '';
+      (typeof nested?.message === "string" && nested.message) ||
+      (typeof record.message === "string" && record.message) ||
+      "";
 
     return message.trim() ? { message: message.trim() } : null;
   }
@@ -125,7 +125,7 @@ export class NPCGroupDynamicsService {
    * @param rng - Optional random number generator (defaults to Math.random)
    */
   static async processTickDynamics(
-    rng: RngFunction = Math.random
+    rng: RngFunction = Math.random,
   ): Promise<GroupDynamicsResult> {
     const startTime = Date.now();
     const result: GroupDynamicsResult = {
@@ -141,9 +141,9 @@ export class NPCGroupDynamicsService {
     };
 
     logger.info(
-      'Processing NPC group dynamics',
+      "Processing NPC group dynamics",
       undefined,
-      'NPCGroupDynamicsService'
+      "NPCGroupDynamicsService",
     );
 
     // Initialize LLM client for message generation
@@ -160,8 +160,8 @@ export class NPCGroupDynamicsService {
       enabled: NPC_GROUP_DYNAMICS_CONFIG.autoJoinEmptyUsersToNpcGroupChat,
       batchSize: NPC_GROUP_DYNAMICS_CONFIG.autoJoinEmptyUsersBatchSize,
       targetChatsPerUser:
-        process.env.NODE_ENV === 'development' ||
-        process.env.NODE_ENV === 'test'
+        process.env.NODE_ENV === "development" ||
+        process.env.NODE_ENV === "test"
           ? 3
           : 1,
       defaultMaxMembers: NPC_GROUP_DYNAMICS_CONFIG.maxGroupSize,
@@ -181,7 +181,7 @@ export class NPCGroupDynamicsService {
     if (llm) {
       const messages = await NPCGroupDynamicsService.postGroupMessages(
         llm,
-        rng
+        rng,
       );
       result.messagesPosted = messages;
     }
@@ -204,9 +204,9 @@ export class NPCGroupDynamicsService {
 
     const duration = Date.now() - startTime;
     logger.info(
-      'NPC group dynamics complete',
+      "NPC group dynamics complete",
       { ...result, duration },
-      'NPCGroupDynamicsService'
+      "NPCGroupDynamicsService",
     );
 
     return result;
@@ -251,7 +251,7 @@ export class NPCGroupDynamicsService {
 
       if (newTiers.length > 0) {
         logger.info(
-          'NPC tier groups created',
+          "NPC tier groups created",
           {
             npcId: npc.id,
             npcName: npc.name,
@@ -262,7 +262,7 @@ export class NPCGroupDynamicsService {
             })),
             existingTiers: tiers.length - newTiers.length,
           },
-          'NPCGroupDynamicsService'
+          "NPCGroupDynamicsService",
         );
       }
     }
@@ -323,15 +323,15 @@ export class NPCGroupDynamicsService {
                     or(
                       and(
                         eq(actorRelationships.actor1Id, candidate.id),
-                        inArray(actorRelationships.actor2Id, memberIdsArray)
+                        inArray(actorRelationships.actor2Id, memberIdsArray),
                       ),
                       and(
                         eq(actorRelationships.actor2Id, candidate.id),
-                        inArray(actorRelationships.actor1Id, memberIdsArray)
-                      )
+                        inArray(actorRelationships.actor1Id, memberIdsArray),
+                      ),
                     ),
-                    gte(actorRelationships.sentiment, 0.3)
-                  )
+                    gte(actorRelationships.sentiment, 0.3),
+                  ),
                 )
             : [];
 
@@ -347,8 +347,8 @@ export class NPCGroupDynamicsService {
             .where(
               and(
                 eq(chatParticipants.chatId, group.id),
-                eq(chatParticipants.userId, candidate.id)
-              )
+                eq(chatParticipants.userId, candidate.id),
+              ),
             )
             .limit(1);
 
@@ -380,8 +380,8 @@ export class NPCGroupDynamicsService {
               .where(
                 and(
                   eq(groupMembers.groupId, group.groupId),
-                  eq(groupMembers.userId, candidate.id)
-                )
+                  eq(groupMembers.userId, candidate.id),
+                ),
               )
               .limit(1);
 
@@ -404,7 +404,7 @@ export class NPCGroupDynamicsService {
                 id: await generateSnowflakeId(),
                 groupId: group.groupId,
                 userId: candidate.id,
-                role: 'member',
+                role: "member",
                 isActive: true,
                 addedBy: null, // NPC joining autonomously
               });
@@ -413,14 +413,14 @@ export class NPCGroupDynamicsService {
 
           joinsProcessed++;
           logger.info(
-            'NPC joined group',
+            "NPC joined group",
             {
               npcId: candidate.id,
               npcName: candidate.name,
               chatName: group.name,
               friendsInGroup: relationships.length,
             },
-            'NPCGroupDynamicsService'
+            "NPCGroupDynamicsService",
           );
 
           break; // Only one join per group per tick
@@ -483,15 +483,15 @@ export class NPCGroupDynamicsService {
               or(
                 and(
                   eq(actorRelationships.actor1Id, membership.userId),
-                  inArray(actorRelationships.actor2Id, memberIds)
+                  inArray(actorRelationships.actor2Id, memberIds),
                 ),
                 and(
                   eq(actorRelationships.actor2Id, membership.userId),
-                  inArray(actorRelationships.actor1Id, memberIds)
-                )
+                  inArray(actorRelationships.actor1Id, memberIds),
+                ),
               ),
-              lt(actorRelationships.sentiment, -0.3)
-            )
+              lt(actorRelationships.sentiment, -0.3),
+            ),
           );
 
         // Leave if too many enemies in group
@@ -512,20 +512,20 @@ export class NPCGroupDynamicsService {
               .where(
                 and(
                   eq(groupMembers.groupId, chat.groupId),
-                  eq(groupMembers.userId, membership.userId)
-                )
+                  eq(groupMembers.userId, membership.userId),
+                ),
               );
           }
 
           leavesProcessed++;
           logger.info(
-            'NPC left group',
+            "NPC left group",
             {
               npcId: membership.userId,
               chatName: chat.name,
               reason: `${negativeRelationships.length} negative relationships`,
             },
-            'NPCGroupDynamicsService'
+            "NPCGroupDynamicsService",
           );
         }
       }
@@ -548,7 +548,7 @@ export class NPCGroupDynamicsService {
    */
   private static async postGroupMessages(
     llm: FeedLLMClient,
-    rng: RngFunction
+    rng: RngFunction,
   ): Promise<number> {
     let messagesPosted = 0;
 
@@ -622,10 +622,10 @@ export class NPCGroupDynamicsService {
         .limit(5);
 
       // Get NPC-specific events (things that happened to THIS NPC)
-      const npcName = npcActor?.name || randomNpc.displayName || 'Unknown';
+      const npcName = npcActor?.name || randomNpc.displayName || "Unknown";
       const npcEvents = await marketContextService.getEventsForNPC(
         randomNpc.id,
-        npcName
+        npcName,
       );
 
       // Build personal events context
@@ -634,8 +634,8 @@ export class NPCGroupDynamicsService {
           ? `RECENT EVENTS INVOLVING YOU (use as insider knowledge):\n${npcEvents
               .slice(0, 5)
               .map((e) => `- [${e.type}] ${e.description}`)
-              .join('\n')}`
-          : '';
+              .join("\n")}`
+          : "";
 
       // Get sender details for recent messages
       const messageSenderIds = recentMsgs.slice(0, 5).map((m) => m.senderId);
@@ -650,19 +650,19 @@ export class NPCGroupDynamicsService {
               .where(inArray(users.id, messageSenderIds))
           : [];
       const senderMap = new Map(
-        senders.map((s) => [s.id, s.displayName || 'Someone'])
+        senders.map((s) => [s.id, s.displayName || "Someone"]),
       );
 
       // Build conversation context from recent messages
       const recentMessages = recentMsgs
         .slice(0, 5)
         .reverse()
-        .map((m) => `${senderMap.get(m.senderId) || 'Someone'}: ${m.content}`)
-        .join('\n');
+        .map((m) => `${senderMap.get(m.senderId) || "Someone"}: ${m.content}`)
+        .join("\n");
 
       const conversationContext = recentMessages
         ? `Recent conversation:\n${recentMessages}`
-        : '';
+        : "";
 
       // Build position context for insider trading info
       const positionContext =
@@ -670,16 +670,16 @@ export class NPCGroupDynamicsService {
           ? `YOUR CURRENT POSITIONS (share strategically):\n${npcPositions
               .map(
                 (p) =>
-                  `- ${p.marketType === 'perp' ? p.ticker : `Question #${p.marketId}`}: ${p.side} position, ${p.unrealizedPnL > 0 ? 'up' : 'down'} $${Math.abs(Number(p.unrealizedPnL)).toFixed(0)}`
+                  `- ${p.marketType === "perp" ? p.ticker : `Question #${p.marketId}`}: ${p.side} position, ${p.unrealizedPnL > 0 ? "up" : "down"} $${Math.abs(Number(p.unrealizedPnL)).toFixed(0)}`,
               )
-              .join('\n')}`
-          : '';
+              .join("\n")}`
+          : "";
 
       // Build affiliation context
       const affiliationContext =
         npcActor?.affiliations && npcActor.affiliations.length > 0
-          ? `Your affiliations: ${npcActor.affiliations.join(', ')}`
-          : '';
+          ? `Your affiliations: ${npcActor.affiliations.join(", ")}`
+          : "";
 
       // Get world context for consistent parody names and market awareness
       const worldContext = await generateWorldContext({ maxActors: 20 });
@@ -691,15 +691,15 @@ export class NPCGroupDynamicsService {
       // Character voice context for in-character messages
       const voiceContext = npcActor?.voice
         ? `YOUR VOICE: ${npcActor.voice}`
-        : '';
+        : "";
       const personalityContext = npcActor?.personality
         ? `PERSONALITY: ${npcActor.personality}`
-        : '';
+        : "";
       const postStyleContext = npcActor?.postStyle
         ? `STYLE: ${npcActor.postStyle}`
-        : '';
+        : "";
 
-      const prompt = `You are ${randomNpc.displayName} in a ${tier ? `TIER ${tier}` : 'private'} group chat.
+      const prompt = `You are ${randomNpc.displayName} in a ${tier ? `TIER ${tier}` : "private"} group chat.
 ${voiceContext}
 ${personalityContext}
 ${postStyleContext}
@@ -734,25 +734,25 @@ Return your response as XML:
           prompt,
           {
             properties: {
-              message: { type: 'string' },
+              message: { type: "string" },
             },
-            required: ['message'],
+            required: ["message"],
           },
           {
             temperature: 0.9,
             maxTokens: 100,
-            promptType: 'npc_group_dynamic_message',
-          }
+            promptType: "npc_group_dynamic_message",
+          },
         );
         response = normalizeNpcGroupMessageResponse(rawResponse);
       } catch (error) {
         logger.warn(
-          'LLM failed to generate group message, skipping',
+          "LLM failed to generate group message, skipping",
           {
             npcId: randomNpc.id,
             error: error instanceof Error ? error.message : String(error),
           },
-          'NPCGroupDynamicsService'
+          "NPCGroupDynamicsService",
         );
         continue;
       }
@@ -764,8 +764,8 @@ Return your response as XML:
       const rawContent = response.message.trim();
       // Strip hashtags (defense-in-depth since prompt forbids them)
       const messageContent = rawContent
-        .replace(/#\w+/g, '')
-        .replace(/\s+/g, ' ')
+        .replace(/#\w+/g, "")
+        .replace(/\s+/g, " ")
         .trim();
 
       // Validate message follows rules
@@ -775,13 +775,13 @@ Return your response as XML:
 
       if (realNameViolations.length > 0) {
         logger.warn(
-          'NPC group message validation failed, skipping',
+          "NPC group message validation failed, skipping",
           {
             npcId: randomNpc.id,
             violations: realNameViolations,
             message: messageContent,
           },
-          'NPCGroupDynamicsService'
+          "NPCGroupDynamicsService",
         );
         continue;
       }
@@ -792,13 +792,13 @@ Return your response as XML:
         messageContent.trim().split(/\s+/).length < 3
       ) {
         logger.warn(
-          'NPC group message too short, skipping',
+          "NPC group message too short, skipping",
           {
             npcId: randomNpc.id,
             length: messageContent.length,
             message: messageContent,
           },
-          'NPCGroupDynamicsService'
+          "NPCGroupDynamicsService",
         );
         continue;
       }
@@ -806,7 +806,7 @@ Return your response as XML:
       // Similarity guard: reject if too similar to any recent message in this chat (5-min window)
       const recentChatWindow = new Date(Date.now() - 5 * 60 * 1000);
       const recentChatMsgs = recentMsgs.filter(
-        (m) => m.createdAt >= recentChatWindow
+        (m) => m.createdAt >= recentChatWindow,
       );
       let tooSimilar = false;
       for (const recent of recentChatMsgs) {
@@ -817,9 +817,9 @@ Return your response as XML:
       }
       if (tooSimilar) {
         logger.warn(
-          'NPC group message too similar to recent message, skipping',
+          "NPC group message too similar to recent message, skipping",
           { npcId: randomNpc.id, chatId: group.id },
-          'NPCGroupDynamicsService'
+          "NPCGroupDynamicsService",
         );
         continue;
       }
@@ -850,25 +850,25 @@ Return your response as XML:
         });
       } catch (error) {
         logger.warn(
-          'Shared chat context refresh failed after NPC group post',
+          "Shared chat context refresh failed after NPC group post",
           {
             chatId: group.id,
             error: error instanceof Error ? error.message : String(error),
           },
-          'NPCGroupDynamicsService'
+          "NPCGroupDynamicsService",
         );
       }
 
       messagesPosted++;
       logger.debug(
-        'NPC posted to group',
+        "NPC posted to group",
         {
           npcId: randomNpc.id,
           npcName: randomNpc.displayName,
           chatId: group.id,
           chatName: group.name,
         },
-        'NPCGroupDynamicsService'
+        "NPCGroupDynamicsService",
       );
     }
 
@@ -896,7 +896,7 @@ Return your response as XML:
    */
   public static async calculateReplyGuyScore(
     userId: string,
-    npcIds: string[]
+    npcIds: string[],
   ): Promise<{
     score: number;
     breakdown: {
@@ -933,8 +933,8 @@ Return your response as XML:
             .where(
               and(
                 eq(follows.followerId, userId),
-                inArray(follows.followingId, npcIds)
-              )
+                inArray(follows.followingId, npcIds),
+              ),
             )
         : [{ count: 0 }];
     const followCount = followResult?.count ?? 0;
@@ -961,8 +961,8 @@ Return your response as XML:
               and(
                 eq(posts.authorId, userId),
                 inArray(posts.commentOnPostId, npcPostIds),
-                gte(posts.createdAt, oneWeekAgo)
-              )
+                gte(posts.createdAt, oneWeekAgo),
+              ),
             )
         : [{ count: 0 }];
     const commentCount = commentResult?.count ?? 0;
@@ -994,10 +994,10 @@ Return your response as XML:
             .where(
               and(
                 eq(reactions.userId, userId),
-                eq(reactions.type, 'like'),
+                eq(reactions.type, "like"),
                 inArray(reactions.postId, npcPostIds),
-                gte(reactions.createdAt, oneWeekAgo)
-              )
+                gte(reactions.createdAt, oneWeekAgo),
+              ),
             )
         : [{ count: 0 }];
     const likeCount = likeResult?.count ?? 0;
@@ -1034,8 +1034,8 @@ Return your response as XML:
               and(
                 eq(shares.userId, userId),
                 inArray(shares.postId, npcPostIds),
-                gte(shares.createdAt, oneWeekAgo)
-              )
+                gte(shares.createdAt, oneWeekAgo),
+              ),
             )
         : [{ count: 0 }];
     const repostCount = repostResult?.count ?? 0;
@@ -1062,7 +1062,7 @@ Return your response as XML:
     const relationshipModifier =
       await NPCGroupDynamicsService.calculateRelationshipModifier(
         userId,
-        npcIds
+        npcIds,
       );
     breakdown.relationshipModifier = relationshipModifier.modifier;
     breakdown.friendBoosts = relationshipModifier.friendBoosts;
@@ -1086,7 +1086,7 @@ Return your response as XML:
    */
   private static async calculateRelationshipModifier(
     userId: string,
-    targetNpcIds: string[]
+    targetNpcIds: string[],
   ): Promise<{
     modifier: number;
     friendBoosts: number;
@@ -1105,8 +1105,8 @@ Return your response as XML:
       .where(
         and(
           eq(userInteractions.userId, userId),
-          gte(userInteractions.timestamp, thirtyDaysAgo)
-        )
+          gte(userInteractions.timestamp, thirtyDaysAgo),
+        ),
       );
 
     // Get unique NPC IDs
@@ -1127,13 +1127,13 @@ Return your response as XML:
           or(
             and(
               eq(actorRelationships.actor1Id, targetNpcId),
-              inArray(actorRelationships.actor2Id, userEngagedNpcIds)
+              inArray(actorRelationships.actor2Id, userEngagedNpcIds),
             ),
             and(
               eq(actorRelationships.actor2Id, targetNpcId),
-              inArray(actorRelationships.actor1Id, userEngagedNpcIds)
-            )
-          )
+              inArray(actorRelationships.actor1Id, userEngagedNpcIds),
+            ),
+          ),
         );
 
       for (const rel of relationships) {
@@ -1142,7 +1142,7 @@ Return your response as XML:
           modifier *= 0.8; // 20% reduction per enemy
           enemyPenalties++;
           logger.debug(
-            'User engages with enemy NPC, reducing invite chance',
+            "User engages with enemy NPC, reducing invite chance",
             {
               userId,
               targetNpcId,
@@ -1151,7 +1151,7 @@ Return your response as XML:
               sentiment: rel.sentiment,
               newModifier: modifier,
             },
-            'NPCGroupDynamicsService'
+            "NPCGroupDynamicsService",
           );
         }
         // Friend relationship: boost invite chance slightly
@@ -1159,7 +1159,7 @@ Return your response as XML:
           modifier *= 1.1; // 10% boost per friend
           friendBoosts++;
           logger.debug(
-            'User engages with friend NPC, boosting invite chance',
+            "User engages with friend NPC, boosting invite chance",
             {
               userId,
               targetNpcId,
@@ -1168,7 +1168,7 @@ Return your response as XML:
               sentiment: rel.sentiment,
               newModifier: modifier,
             },
-            'NPCGroupDynamicsService'
+            "NPCGroupDynamicsService",
           );
         }
       }
@@ -1223,7 +1223,7 @@ Return your response as XML:
       // Get NPCs in this group (for scoring user interactions)
       // Check which members are NPCs using static registry
       const allActorIds = new Set(
-        StaticDataRegistry.getAllActors().map((a) => a.id)
+        StaticDataRegistry.getAllActors().map((a) => a.id),
       );
       const npcMemberIds = memberIdsArray.filter((id) => allActorIds.has(id));
 
@@ -1252,10 +1252,10 @@ Return your response as XML:
                   eq(users.isActor, false),
                   notInArray(
                     users.id,
-                    memberIdsArray.length > 0 ? memberIdsArray : ['']
+                    memberIdsArray.length > 0 ? memberIdsArray : [""],
                   ),
-                  inArray(users.id, userIdsWithShares)
-                )
+                  inArray(users.id, userIdsWithShares),
+                ),
               )
               .limit(30)
           : [];
@@ -1270,14 +1270,14 @@ Return your response as XML:
           const { score, breakdown } =
             await NPCGroupDynamicsService.calculateReplyGuyScore(
               user.id,
-              npcIds
+              npcIds,
             );
           return {
             user,
             score,
             breakdown,
           };
-        })
+        }),
       );
 
       // Filter out users with negative scores (spammers)
@@ -1335,8 +1335,8 @@ Return your response as XML:
         const newGroupId = await generateSnowflakeId();
         await db.insert(groups).values({
           id: newGroupId,
-          name: group.name || 'NPC Group',
-          type: 'npc',
+          name: group.name || "NPC Group",
+          type: "npc",
           ownerId: invitingNpcId,
           createdById: invitingNpcId,
           updatedAt: new Date(),
@@ -1355,8 +1355,8 @@ Return your response as XML:
           .where(
             and(
               eq(chatParticipants.chatId, group.id),
-              eq(chatParticipants.isActive, true)
-            )
+              eq(chatParticipants.isActive, true),
+            ),
           );
 
         for (const participant of existingParticipants) {
@@ -1367,8 +1367,8 @@ Return your response as XML:
             .where(
               and(
                 eq(groupMembers.groupId, newGroupId),
-                eq(groupMembers.userId, participant.userId)
-              )
+                eq(groupMembers.userId, participant.userId),
+              ),
             )
             .limit(1);
 
@@ -1378,7 +1378,7 @@ Return your response as XML:
               id: await generateSnowflakeId(),
               groupId: newGroupId,
               userId: participant.userId,
-              role: isOwner ? 'owner' : 'member',
+              role: isOwner ? "owner" : "member",
               addedBy: invitingNpcId,
             });
           }
@@ -1396,26 +1396,26 @@ Return your response as XML:
         .where(
           and(
             eq(groupInvites.groupId, groupId),
-            eq(groupInvites.invitedUserId, selectedCandidate.user.id)
-          )
+            eq(groupInvites.invitedUserId, selectedCandidate.user.id),
+          ),
         )
         .limit(1);
 
       if (existingInvite) {
-        if (existingInvite.status === 'pending') {
+        if (existingInvite.status === "pending") {
           // Already has pending invite, skip
           continue;
         }
-        if (existingInvite.status === 'accepted') {
+        if (existingInvite.status === "accepted") {
           // Already accepted, nothing to do - don't count as new invite
           continue;
         }
         // For declined invites, reset to pending (re-invite flow)
-        if (existingInvite.status === 'declined') {
+        if (existingInvite.status === "declined") {
           await db
             .update(groupInvites)
             .set({
-              status: 'pending',
+              status: "pending",
               invitedBy: invitingNpcId,
               invitedAt: new Date(),
               respondedAt: null,
@@ -1430,13 +1430,13 @@ Return your response as XML:
           groupId,
           invitedUserId: selectedCandidate.user.id,
           invitedBy: invitingNpcId,
-          status: 'pending',
+          status: "pending",
           message: `Join our group chat "${group.name}"!`,
         });
       }
       usersInvited++;
       logger.info(
-        'User invited to NPC group (reply guy score)',
+        "User invited to NPC group (reply guy score)",
         {
           userId: selectedCandidate.user.id,
           userName: selectedCandidate.user.displayName,
@@ -1446,7 +1446,7 @@ Return your response as XML:
           replyGuyScore: selectedCandidate.score,
           breakdown: selectedCandidate.breakdown,
         },
-        'NPCGroupDynamicsService'
+        "NPCGroupDynamicsService",
       );
     }
 
@@ -1476,20 +1476,20 @@ Return your response as XML:
           and(
             eq(groupMembers.userId, candidate.user.id),
             eq(groupMembers.isActive, true),
-            eq(groups.type, 'npc')
-          )
+            eq(groups.type, "npc"),
+          ),
         );
       const activeNpcGroupCount = countResult?.count ?? 0;
 
       if (activeNpcGroupCount >= GROUP_CONFIG.MAX_ACTIVE_USER_GROUPS) {
         logger.debug(
-          'User at NPC group limit, skipping invite',
+          "User at NPC group limit, skipping invite",
           {
             userId: candidate.user.id,
             activeNpcGroups: activeNpcGroupCount,
             maxNpcGroups: GROUP_CONFIG.MAX_ACTIVE_USER_GROUPS,
           },
-          'NPCGroupDynamicsService'
+          "NPCGroupDynamicsService",
         );
         continue;
       }
@@ -1503,8 +1503,8 @@ Return your response as XML:
           and(
             eq(groupMembers.userId, candidate.user.id),
             eq(groupMembers.isActive, true),
-            eq(groups.type, 'npc')
-          )
+            eq(groups.type, "npc"),
+          ),
         )
         .orderBy(desc(groupMembers.joinedAt))
         .limit(1);
@@ -1515,13 +1515,13 @@ Return your response as XML:
 
         if (hoursSinceJoin < GROUP_CONFIG.INVITE_COOLDOWN_HOURS) {
           logger.debug(
-            'User in invite cooldown, skipping',
+            "User in invite cooldown, skipping",
             {
               userId: candidate.user.id,
               hoursSinceJoin: hoursSinceJoin.toFixed(2),
               cooldownRequired: GROUP_CONFIG.INVITE_COOLDOWN_HOURS,
             },
-            'NPCGroupDynamicsService'
+            "NPCGroupDynamicsService",
           );
           continue;
         }
@@ -1545,17 +1545,17 @@ Return your response as XML:
     userMessageCount: number,
     totalMessages: number,
     participantCount: number,
-    windowDays = 7
+    windowDays = 7,
   ): {
     probability: number;
     reason: string;
-    category: 'inactive' | 'low' | 'over' | 'spam' | 'safe';
+    category: "inactive" | "low" | "over" | "spam" | "safe";
   } {
     return NPCGroupDynamicsCalculations.calculateKickProbability(
       userMessageCount,
       totalMessages,
       participantCount,
-      windowDays
+      windowDays,
     );
   }
 
@@ -1572,7 +1572,7 @@ Return your response as XML:
    * kicks gradual rather than immediate.
    */
   private static async kickUsersWithWeightedLogic(
-    rng: RngFunction
+    rng: RngFunction,
   ): Promise<number> {
     let usersKicked = 0;
 
@@ -1592,7 +1592,7 @@ Return your response as XML:
       })
       .from(chats)
       .innerJoin(groups, eq(chats.groupId, groups.id))
-      .where(and(eq(chats.isGroup, true), eq(groups.type, 'npc')));
+      .where(and(eq(chats.isGroup, true), eq(groups.type, "npc")));
 
     for (const group of groupList) {
       // Get participants for this group
@@ -1608,8 +1608,8 @@ Return your response as XML:
         .where(
           and(
             eq(messages.chatId, group.id),
-            gte(messages.createdAt, sevenDaysAgo)
-          )
+            gte(messages.createdAt, sevenDaysAgo),
+          ),
         );
 
       // Get user details for participants (both users and agents, excluding NPCs)
@@ -1627,8 +1627,8 @@ Return your response as XML:
               .where(
                 and(
                   inArray(users.id, participantUserIds),
-                  eq(users.isActor, false)
-                )
+                  eq(users.isActor, false),
+                ),
               )
           : [];
 
@@ -1641,7 +1641,7 @@ Return your response as XML:
       for (const msg of recentMsgs) {
         messageCounts.set(
           msg.senderId,
-          (messageCounts.get(msg.senderId) || 0) + 1
+          (messageCounts.get(msg.senderId) || 0) + 1,
         );
       }
 
@@ -1661,17 +1661,17 @@ Return your response as XML:
           userMessageCount,
           totalMessages,
           totalParticipants,
-          7 // 7-day window
+          7, // 7-day window
         );
 
         // Skip safe users
-        if (category === 'safe' || kickProbability === 0) {
+        if (category === "safe" || kickProbability === 0) {
           continue;
         }
 
         // Apply the probability with per-tick multiplier
         // 5% base multiplier, but spam gets 20% (faster kick for egregious behavior)
-        const tickMultiplier = category === 'spam' ? 0.2 : 0.05;
+        const tickMultiplier = category === "spam" ? 0.2 : 0.05;
 
         if (randomChance(kickProbability * tickMultiplier, rng)) {
           // PROTECTION: Don't kick if user would fall below minimum group count
@@ -1683,14 +1683,14 @@ Return your response as XML:
               and(
                 eq(groupMembers.userId, userId),
                 eq(groupMembers.isActive, true),
-                eq(groups.type, 'npc')
-              )
+                eq(groups.type, "npc"),
+              ),
             );
 
           const currentGroups = userGroupCount?.count ?? 0;
           if (currentGroups <= GROUP_CONFIG.MIN_DEFAULT_GROUPS) {
             logger.debug(
-              'Skipping kick - user at or below minimum group count',
+              "Skipping kick - user at or below minimum group count",
               {
                 userId,
                 userName: participant.displayName,
@@ -1699,7 +1699,7 @@ Return your response as XML:
                 chatName: group.name,
                 reason,
               },
-              'NPCGroupDynamicsService'
+              "NPCGroupDynamicsService",
             );
             continue;
           }
@@ -1710,8 +1710,8 @@ Return your response as XML:
             .where(
               and(
                 eq(chatParticipants.chatId, group.id),
-                eq(chatParticipants.userId, userId)
-              )
+                eq(chatParticipants.userId, userId),
+              ),
             );
 
           // If GroupMember exists, mark as removed
@@ -1727,14 +1727,14 @@ Return your response as XML:
               .where(
                 and(
                   eq(groupMembers.groupId, group.groupId),
-                  eq(groupMembers.userId, userId)
-                )
+                  eq(groupMembers.userId, userId),
+                ),
               );
           }
 
           usersKicked++;
           logger.info(
-            'User kicked from group with weighted logic',
+            "User kicked from group with weighted logic",
             {
               userId,
               userName: participant.displayName,
@@ -1745,13 +1745,13 @@ Return your response as XML:
               category,
               kickProbability: kickProbability.toFixed(2),
               effectiveProbability: (kickProbability * tickMultiplier).toFixed(
-                4
+                4,
               ),
               messageCount: userMessageCount,
               totalMessages,
               totalParticipants,
             },
-            'NPCGroupDynamicsService'
+            "NPCGroupDynamicsService",
           );
         }
       }

@@ -30,11 +30,11 @@
  *
  * Further detail: `packages/shared/src/utils/USER_IDENTIFIER.md`.
  */
-import { isValidSnowflakeId } from './snowflake';
+import { isValidSnowflakeId } from "./snowflake";
 
 export function resolveUserIdentifierKind(
-  identifier: string
-): 'id' | 'privyId' | 'stewardId' | 'username' {
+  identifier: string,
+): "id" | "privyId" | "stewardId" | "username" {
   // Check 1: Primary key (fastest index) - UUID or snowflake
   // WHY check UUID first? UUIDs are the most common ID format and have the fastest index (PK)
   // WHY this regex? Matches standard UUID format (versions 1-8, plus variant bits [89ab])
@@ -42,7 +42,7 @@ export function resolveUserIdentifierKind(
   const uuidRegex =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   if (uuidRegex.test(identifier)) {
-    return 'id';
+    return "id";
   }
 
   // Snowflake IDs are 64-bit integers (max 19 digits), but in practice are 15-19 digits
@@ -54,12 +54,12 @@ export function resolveUserIdentifierKind(
   // WHY both checks? Length check is fast regex, isValidSnowflakeId validates structure
   // This prevents "12345" (5-digit username) from being classified as an ID
   if (/^\d{15,19}$/.test(identifier) && isValidSnowflakeId(identifier)) {
-    return 'id';
+    return "id";
   }
 
   // Check 2a: Unique index - Privy DID
-  if (identifier.startsWith('did:privy:')) {
-    return 'privyId';
+  if (identifier.startsWith("did:privy:")) {
+    return "privyId";
   }
 
   // Check 2b: Unique index - Steward ID (UUID v4 that isn't a Feed PK)
@@ -79,5 +79,5 @@ export function resolveUserIdentifierKind(
   // - Any other format that doesn't match id or privyId
   // WHY not validate username format? Validation would add overhead; database will reject
   // invalid usernames anyway. Defaulting to username query is safe (will return null if not found)
-  return 'username';
+  return "username";
 }

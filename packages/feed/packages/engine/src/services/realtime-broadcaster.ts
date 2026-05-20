@@ -1,8 +1,8 @@
-import type { JsonValue } from '@feed/db';
+import type { JsonValue } from "@feed/db";
 
 export type BroadcastToChannelFn = (
   channel: string,
-  data: Record<string, JsonValue>
+  data: Record<string, JsonValue>,
 ) => Promise<void>;
 
 let broadcastFn: BroadcastToChannelFn | null = null;
@@ -19,7 +19,7 @@ export function setBroadcastToChannel(fn: BroadcastToChannelFn | null): void {
 
 export async function broadcastToChannel(
   channel: string,
-  data: Record<string, JsonValue>
+  data: Record<string, JsonValue>,
 ): Promise<void> {
   if (!broadcastFn) return;
   await broadcastFn(channel, data);

@@ -1,15 +1,15 @@
-'use client';
+"use client";
 
-import { cn, formatCompactCurrency } from '@feed/shared';
-import { ExternalLink, MoreVertical, Settings, Square } from 'lucide-react';
-import Link from 'next/link';
-import { Avatar } from '@/components/shared/Avatar';
+import { cn, formatCompactCurrency } from "@feed/shared";
+import { ExternalLink, MoreVertical, Settings, Square } from "lucide-react";
+import Link from "next/link";
+import { Avatar } from "@/components/shared/Avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+} from "@/components/ui/dropdown-menu";
 
 /** Agent info for member list */
 export interface TeamChatAgent {
@@ -18,7 +18,7 @@ export interface TeamChatAgent {
   displayName: string | null;
   profileImageUrl: string | null;
   isAgent: boolean;
-  modelTier: 'free' | 'pro';
+  modelTier: "free" | "pro";
   virtualBalance: number;
 }
 
@@ -50,15 +50,15 @@ interface MemberListProps {
   onViewSettings?: (agentId: string) => void;
   onSelectAgent?: (agentId: string) => void;
   selectedAgentId?: string | null;
-  viewMode?: 'list' | 'cards';
+  viewMode?: "list" | "cards";
   agentStatsMap?: ReadonlyMap<string, AgentStats>;
 }
 
 function formatTimeAgo(dateStr: string | null): string {
-  if (!dateStr) return 'Never';
+  if (!dateStr) return "Never";
   const diff = Date.now() - new Date(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'Just now';
+  if (mins < 1) return "Just now";
   if (mins < 60) return `${mins}m ago`;
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;
@@ -75,17 +75,17 @@ export function MemberList({
   onViewSettings,
   onSelectAgent,
   selectedAgentId,
-  viewMode = 'list',
+  viewMode = "list",
   agentStatsMap,
 }: MemberListProps) {
   if (!teamChat?.agents.length) return null;
 
-  if (viewMode === 'cards') {
+  if (viewMode === "cards") {
     return (
       <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
         <div className="space-y-3">
           {teamChat.agents.map((agent) => {
-            const agentName = agent.displayName || agent.username || 'Agent';
+            const agentName = agent.displayName || agent.username || "Agent";
             const isSelected = selectedAgentId === agent.id;
             const isProcessing = processingAgentIds.has(agent.id);
             const stats = agentStatsMap?.get(agent.id);
@@ -109,17 +109,17 @@ export function MemberList({
                   onSelectAgent?.(agent.id);
                 }}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
+                  if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
                     onTagAgent?.(agent);
                     onSelectAgent?.(agent.id);
                   }
                 }}
                 className={cn(
-                  'w-full cursor-pointer rounded-xl border p-3 text-left transition-all',
+                  "w-full cursor-pointer rounded-xl border p-3 text-left transition-all",
                   isSelected
-                    ? 'border-primary/40 bg-primary/5'
-                    : 'border-border bg-muted/30 hover:border-border/80 hover:bg-muted/50'
+                    ? "border-primary/40 bg-primary/5"
+                    : "border-border bg-muted/30 hover:border-border/80 hover:bg-muted/50",
                 )}
               >
                 {/* Top: Avatar + Name + Status + Gear */}
@@ -149,24 +149,24 @@ export function MemberList({
                       {hasStats && (
                         <span
                           className={cn(
-                            'inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-medium text-[10px]',
+                            "inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-medium text-[10px]",
                             stats.isActive
-                              ? 'bg-green-500/15 text-green-500'
-                              : 'bg-muted text-muted-foreground'
+                              ? "bg-green-500/15 text-green-500"
+                              : "bg-muted text-muted-foreground",
                           )}
                         >
                           <span
                             className={cn(
-                              'h-1.5 w-1.5 rounded-full',
+                              "h-1.5 w-1.5 rounded-full",
                               stats.isActive
-                                ? 'bg-green-500'
-                                : 'bg-muted-foreground'
+                                ? "bg-green-500"
+                                : "bg-muted-foreground",
                             )}
                           />
-                          {stats.isActive ? 'Active' : 'Idle'}
+                          {stats.isActive ? "Active" : "Idle"}
                         </span>
                       )}
-                      {agent.modelTier === 'pro' && (
+                      {agent.modelTier === "pro" && (
                         <span className="rounded bg-primary/20 px-1.5 py-0.5 font-medium text-[10px] text-primary">
                           PRO
                         </span>
@@ -205,17 +205,17 @@ export function MemberList({
                   <div className="flex flex-1 flex-col items-center justify-center px-1 py-2">
                     <span
                       className={cn(
-                        'font-semibold text-xs',
+                        "font-semibold text-xs",
                         hasStats
                           ? stats.lifetimePnL >= 0
-                            ? 'text-green-600'
-                            : 'text-red-600'
-                          : 'text-foreground'
+                            ? "text-green-600"
+                            : "text-red-600"
+                          : "text-foreground",
                       )}
                     >
                       {hasStats
-                        ? `${stats.lifetimePnL >= 0 ? '+' : ''}${formatCompactCurrency(stats.lifetimePnL)}`
-                        : '—'}
+                        ? `${stats.lifetimePnL >= 0 ? "+" : ""}${formatCompactCurrency(stats.lifetimePnL)}`
+                        : "—"}
                     </span>
                     <span className="text-[9px] text-muted-foreground uppercase tracking-wider">
                       P&L
@@ -224,7 +224,7 @@ export function MemberList({
                   <div className="w-px bg-border/60" />
                   <div className="flex flex-1 flex-col items-center justify-center px-1 py-2">
                     <span className="font-semibold text-foreground text-xs">
-                      {hasStats ? `${(stats.winRate * 100).toFixed(0)}%` : '—'}
+                      {hasStats ? `${(stats.winRate * 100).toFixed(0)}%` : "—"}
                     </span>
                     <span className="text-[9px] text-muted-foreground uppercase tracking-wider">
                       Win Rate
@@ -233,7 +233,7 @@ export function MemberList({
                   <div className="w-px bg-border/60" />
                   <div className="flex flex-1 flex-col items-center justify-center px-1 py-2">
                     <span className="font-semibold text-foreground text-xs">
-                      {hasStats ? stats.totalTrades : '—'}
+                      {hasStats ? stats.totalTrades : "—"}
                     </span>
                     <span className="text-[9px] text-muted-foreground uppercase tracking-wider">
                       Trades
@@ -248,10 +248,10 @@ export function MemberList({
                       <>
                         <span
                           className={cn(
-                            'h-1.5 w-1.5 rounded-full',
+                            "h-1.5 w-1.5 rounded-full",
                             stats.isActive
-                              ? 'bg-green-500'
-                              : 'bg-muted-foreground'
+                              ? "bg-green-500"
+                              : "bg-muted-foreground",
                           )}
                         />
                         Last active {formatTimeAgo(lastActive)}
@@ -295,15 +295,15 @@ export function MemberList({
       <nav role="list" aria-label="Team agents" className="space-y-1">
         {teamChat.agents.map((agent) => {
           const isProcessing = processingAgentIds.has(agent.id);
-          const agentName = agent.displayName || agent.username || 'Agent';
+          const agentName = agent.displayName || agent.username || "Agent";
 
           return (
             <div
               key={agent.id}
               className={cn(
-                'group flex min-w-0 items-center gap-2 rounded-lg p-2 transition-colors',
-                'hover:bg-muted/50 has-[[data-state=open]]:bg-muted/50',
-                isProcessing && 'opacity-70'
+                "group flex min-w-0 items-center gap-2 rounded-lg p-2 transition-colors",
+                "hover:bg-muted/50 has-[[data-state=open]]:bg-muted/50",
+                isProcessing && "opacity-70",
               )}
             >
               <button
@@ -313,8 +313,8 @@ export function MemberList({
                   onSelectAgent?.(agent.id);
                 }}
                 className={cn(
-                  'flex min-w-0 flex-1 items-center gap-3 text-left',
-                  'cursor-pointer'
+                  "flex min-w-0 flex-1 items-center gap-3 text-left",
+                  "cursor-pointer",
                 )}
                 aria-label={`Open ${agentName}`}
               >
@@ -330,7 +330,7 @@ export function MemberList({
                     <p className="truncate font-medium text-foreground text-sm">
                       {agentName}
                     </p>
-                    {agent.modelTier === 'pro' && (
+                    {agent.modelTier === "pro" && (
                       <span className="shrink-0 rounded bg-primary/20 px-1.5 py-0.5 font-medium text-[10px] text-primary">
                         PRO
                       </span>
@@ -360,9 +360,9 @@ export function MemberList({
                     <button
                       type="button"
                       className={cn(
-                        'flex h-7 w-7 flex-shrink-0 items-center justify-center rounded transition-colors',
-                        'text-muted-foreground hover:bg-muted hover:text-foreground',
-                        'focus:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100 lg:opacity-0'
+                        "flex h-7 w-7 flex-shrink-0 items-center justify-center rounded transition-colors",
+                        "text-muted-foreground hover:bg-muted hover:text-foreground",
+                        "focus:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100 lg:opacity-0",
                       )}
                       aria-label={`More options for ${agentName}`}
                     >

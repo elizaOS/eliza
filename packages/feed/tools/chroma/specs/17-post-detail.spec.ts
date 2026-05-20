@@ -5,20 +5,20 @@
  * interactions (like, share), and comment section with threading.
  */
 
-import { expect, test } from './fixtures';
-import { pageContainsText } from './helpers/interaction-helpers';
+import { expect, test } from "./fixtures";
+import { pageContainsText } from "./helpers/interaction-helpers";
 import {
   cooldownBetweenTests,
   isServerHealthy,
   navigateTo,
   waitForPageLoad,
-} from './helpers/page-helpers';
-import { loginWithWallet } from './helpers/privy-auth';
-import { ROUTES, SELECTORS, TIMEOUTS, VIEWPORTS } from './helpers/test-data';
+} from "./helpers/page-helpers";
+import { loginWithWallet } from "./helpers/privy-auth";
+import { ROUTES, SELECTORS, TIMEOUTS, VIEWPORTS } from "./helpers/test-data";
 
 test.setTimeout(TIMEOUTS.EXTRA_LONG);
 
-test.describe('Post Detail - Page Load', () => {
+test.describe("Post Detail - Page Load", () => {
   test.beforeEach(async ({ page }) => {
     if (!(await isServerHealthy())) {
       test.skip();
@@ -36,7 +36,7 @@ test.describe('Post Detail - Page Load', () => {
     await cooldownBetweenTests(page);
   });
 
-  test('loads post detail page from feed navigation', async ({ page }) => {
+  test("loads post detail page from feed navigation", async ({ page }) => {
     const postContent = page
       .locator('article p, [data-testid="post-card"] p, .post-content')
       .first();
@@ -50,41 +50,41 @@ test.describe('Post Detail - Page Load', () => {
       await page.waitForTimeout(2000);
 
       const url = page.url();
-      if (url.includes('/post/') || url.includes('/article/')) {
-        const body = await page.locator('body').textContent();
+      if (url.includes("/post/") || url.includes("/article/")) {
+        const body = await page.locator("body").textContent();
         expect(body?.length).toBeGreaterThan(100);
       }
     }
 
-    const body = await page.locator('body').textContent();
+    const body = await page.locator("body").textContent();
     expect(body?.length).toBeGreaterThan(100);
   });
 
-  test('displays full post content', async ({ page }) => {
+  test("displays full post content", async ({ page }) => {
     const postLink = page.locator('a[href*="/post/"]').first();
 
     if (
       await postLink.isVisible({ timeout: TIMEOUTS.SHORT }).catch(() => false)
     ) {
-      const href = await postLink.getAttribute('href');
+      const href = await postLink.getAttribute("href");
       if (href) {
         await navigateTo(page, href);
         await waitForPageLoad(page);
         await page.waitForTimeout(2000);
 
-        const body = await page.locator('body').textContent();
+        const body = await page.locator("body").textContent();
         expect(body?.length).toBeGreaterThan(100);
       }
     }
   });
 
-  test('displays post author info with avatar', async ({ page }) => {
+  test("displays post author info with avatar", async ({ page }) => {
     const postLink = page.locator('a[href*="/post/"]').first();
 
     if (
       await postLink.isVisible({ timeout: TIMEOUTS.SHORT }).catch(() => false)
     ) {
-      const href = await postLink.getAttribute('href');
+      const href = await postLink.getAttribute("href");
       if (href) {
         await navigateTo(page, href);
         await waitForPageLoad(page);
@@ -94,25 +94,25 @@ test.describe('Post Detail - Page Load', () => {
         const hasAuthorInfo =
           (await page
             .locator(
-              'img[alt*="avatar" i], [data-testid="profile-avatar"], .avatar'
+              'img[alt*="avatar" i], [data-testid="profile-avatar"], .avatar',
             )
             .first()
             .isVisible({ timeout: TIMEOUTS.SHORT })
-            .catch(() => false)) || (await pageContainsText(page, '@'));
+            .catch(() => false)) || (await pageContainsText(page, "@"));
 
-        const body = await page.locator('body').textContent();
+        const body = await page.locator("body").textContent();
         expect(hasAuthorInfo || (body?.length ?? 0) > 100).toBe(true);
       }
     }
   });
 
-  test('displays post timestamp', async ({ page }) => {
+  test("displays post timestamp", async ({ page }) => {
     const postLink = page.locator('a[href*="/post/"]').first();
 
     if (
       await postLink.isVisible({ timeout: TIMEOUTS.SHORT }).catch(() => false)
     ) {
-      const href = await postLink.getAttribute('href');
+      const href = await postLink.getAttribute("href");
       if (href) {
         await navigateTo(page, href);
         await waitForPageLoad(page);
@@ -121,23 +121,23 @@ test.describe('Post Detail - Page Load', () => {
         // Timestamp may be relative (ago) or absolute
         const hasTimestamp = await pageContainsText(
           page,
-          'ago',
-          'minute',
-          'hour',
-          'day',
-          'week',
-          'month',
-          '202'
+          "ago",
+          "minute",
+          "hour",
+          "day",
+          "week",
+          "month",
+          "202",
         );
 
-        const body = await page.locator('body').textContent();
+        const body = await page.locator("body").textContent();
         expect(hasTimestamp || (body?.length ?? 0) > 100).toBe(true);
       }
     }
   });
 });
 
-test.describe('Post Detail - Interactions', () => {
+test.describe("Post Detail - Interactions", () => {
   test.beforeEach(async ({ page }) => {
     if (!(await isServerHealthy())) {
       test.skip();
@@ -155,7 +155,7 @@ test.describe('Post Detail - Interactions', () => {
     if (
       await postLink.isVisible({ timeout: TIMEOUTS.SHORT }).catch(() => false)
     ) {
-      const href = await postLink.getAttribute('href');
+      const href = await postLink.getAttribute("href");
       if (href) {
         await navigateTo(page, href);
         await waitForPageLoad(page);
@@ -168,7 +168,7 @@ test.describe('Post Detail - Interactions', () => {
     await cooldownBetweenTests(page);
   });
 
-  test('clicks like button on post detail', async ({ page }) => {
+  test("clicks like button on post detail", async ({ page }) => {
     const likeButton = page.locator(SELECTORS.LIKE_BUTTON).first();
 
     if (
@@ -178,11 +178,11 @@ test.describe('Post Detail - Interactions', () => {
       await page.waitForTimeout(1000);
     }
 
-    const body = await page.locator('body').textContent();
+    const body = await page.locator("body").textContent();
     expect(body?.length).toBeGreaterThan(100);
   });
 
-  test('clicks share button on post detail', async ({ page }) => {
+  test("clicks share button on post detail", async ({ page }) => {
     const shareButton = page.locator(SELECTORS.SHARE_BUTTON).first();
 
     if (
@@ -194,14 +194,14 @@ test.describe('Post Detail - Interactions', () => {
       await page.waitForTimeout(1000);
 
       // Close any share dialog
-      await page.keyboard.press('Escape').catch(() => {});
+      await page.keyboard.press("Escape").catch(() => {});
     }
 
-    const body = await page.locator('body').textContent();
+    const body = await page.locator("body").textContent();
     expect(body?.length).toBeGreaterThan(100);
   });
 
-  test('displays comment count', async ({ page }) => {
+  test("displays comment count", async ({ page }) => {
     // Look for comment count indicator
     const commentButton = page.locator(SELECTORS.COMMENT_BUTTON).first();
     const hasCommentButton = await commentButton
@@ -210,19 +210,19 @@ test.describe('Post Detail - Interactions', () => {
 
     const hasCommentContent = await pageContainsText(
       page,
-      'comment',
-      'reply',
-      'response'
+      "comment",
+      "reply",
+      "response",
     );
 
-    const body = await page.locator('body').textContent();
+    const body = await page.locator("body").textContent();
     expect(
-      hasCommentButton || hasCommentContent || (body?.length ?? 0) > 100
+      hasCommentButton || hasCommentContent || (body?.length ?? 0) > 100,
     ).toBe(true);
   });
 });
 
-test.describe('Post Detail - Comment Section', () => {
+test.describe("Post Detail - Comment Section", () => {
   test.beforeEach(async ({ page }) => {
     if (!(await isServerHealthy())) {
       test.skip();
@@ -240,7 +240,7 @@ test.describe('Post Detail - Comment Section', () => {
     if (
       await postLink.isVisible({ timeout: TIMEOUTS.SHORT }).catch(() => false)
     ) {
-      const href = await postLink.getAttribute('href');
+      const href = await postLink.getAttribute("href");
       if (href) {
         await navigateTo(page, href);
         await waitForPageLoad(page);
@@ -253,42 +253,42 @@ test.describe('Post Detail - Comment Section', () => {
     await cooldownBetweenTests(page);
   });
 
-  test('displays comment section', async ({ page }) => {
+  test("displays comment section", async ({ page }) => {
     const url = page.url();
-    if (url.includes('/post/') || url.includes('/article/')) {
+    if (url.includes("/post/") || url.includes("/article/")) {
       const hasCommentSection = await pageContainsText(
         page,
-        'comment',
-        'reply',
-        'response',
-        'write'
+        "comment",
+        "reply",
+        "response",
+        "write",
       );
 
-      const body = await page.locator('body').textContent();
+      const body = await page.locator("body").textContent();
       expect(hasCommentSection || (body?.length ?? 0) > 100).toBe(true);
     }
   });
 
-  test('displays existing comments if any', async ({ page }) => {
+  test("displays existing comments if any", async ({ page }) => {
     const url = page.url();
-    if (url.includes('/post/')) {
+    if (url.includes("/post/")) {
       // Comments may or may not exist
       const comments = page.locator(
-        '[data-testid*="comment"], .comment, article article'
+        '[data-testid*="comment"], .comment, article article',
       );
       const _count = await comments.count().catch(() => 0);
 
-      const body = await page.locator('body').textContent();
+      const body = await page.locator("body").textContent();
       expect(body?.length).toBeGreaterThan(100);
     }
   });
 
-  test('shows comment input for authenticated users', async ({ page }) => {
+  test("shows comment input for authenticated users", async ({ page }) => {
     const url = page.url();
-    if (url.includes('/post/')) {
+    if (url.includes("/post/")) {
       const commentInput = page
         .locator(
-          'textarea[placeholder*="comment" i], textarea[placeholder*="reply" i], textarea[placeholder*="write" i], input[placeholder*="comment" i]'
+          'textarea[placeholder*="comment" i], textarea[placeholder*="reply" i], textarea[placeholder*="write" i], input[placeholder*="comment" i]',
         )
         .first();
 
@@ -296,17 +296,17 @@ test.describe('Post Detail - Comment Section', () => {
         .isVisible({ timeout: TIMEOUTS.SHORT })
         .catch(() => false);
 
-      const body = await page.locator('body').textContent();
+      const body = await page.locator("body").textContent();
       expect(hasInput || (body?.length ?? 0) > 100).toBe(true);
     }
   });
 
-  test('types and submits a comment', async ({ page }) => {
+  test("types and submits a comment", async ({ page }) => {
     const url = page.url();
-    if (url.includes('/post/')) {
+    if (url.includes("/post/")) {
       const commentInput = page
         .locator(
-          'textarea[placeholder*="comment" i], textarea[placeholder*="reply" i], textarea[placeholder*="write" i]'
+          'textarea[placeholder*="comment" i], textarea[placeholder*="reply" i], textarea[placeholder*="write" i]',
         )
         .first();
 
@@ -320,12 +320,12 @@ test.describe('Post Detail - Comment Section', () => {
         await page.waitForTimeout(500);
 
         const value = await commentInput.inputValue();
-        expect(value).toContain('E2E test comment');
+        expect(value).toContain("E2E test comment");
 
         // Look for submit button
         const submitButton = page
           .locator(
-            'button:has-text("Reply"), button:has-text("Comment"), button:has-text("Post"), button[type="submit"]'
+            'button:has-text("Reply"), button:has-text("Comment"), button:has-text("Post"), button[type="submit"]',
           )
           .first();
 
@@ -342,9 +342,9 @@ test.describe('Post Detail - Comment Section', () => {
     }
   });
 
-  test('shows reply button on existing comments', async ({ page }) => {
+  test("shows reply button on existing comments", async ({ page }) => {
     const url = page.url();
-    if (url.includes('/post/')) {
+    if (url.includes("/post/")) {
       const replyButton = page
         .locator('button:has-text("Reply"), button[aria-label*="reply" i]')
         .first();
@@ -353,9 +353,9 @@ test.describe('Post Detail - Comment Section', () => {
         .catch(() => false);
 
       // Reply buttons may not exist if there are no comments
-      const body = await page.locator('body').textContent();
-      expect(typeof hasReply === 'boolean' && (body?.length ?? 0) > 50).toBe(
-        true
+      const body = await page.locator("body").textContent();
+      expect(typeof hasReply === "boolean" && (body?.length ?? 0) > 50).toBe(
+        true,
       );
     }
   });

@@ -77,25 +77,25 @@ import {
   authenticate,
   ServiceUnavailableError,
   withErrorHandling,
-} from '@feed/api';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { trackServerEvent } from '@/lib/posthog/server';
+} from "@feed/api";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { trackServerEvent } from "@/lib/posthog/server";
 import {
   calculatePointsFromUSD,
   getBaseUrl,
   POINTS_CONFIG,
   stripe,
   validatePurchaseAmount,
-} from '@/lib/stripe/server';
+} from "@/lib/stripe/server";
 
 interface CreateCheckoutSessionBody {
   amountUSD: number;
 }
 
 const STRIPE_CHECKOUT_UNAVAILABLE_MESSAGE =
-  'Card payments are temporarily unavailable. Please try again later.';
+  "Card payments are temporarily unavailable. Please try again later.";
 
 export const POST = withErrorHandling(async function POST(req: NextRequest) {
   const authUser = await authenticate(req);
@@ -106,9 +106,9 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
       {
         success: false,
         error:
-          'User account not fully set up. Please complete your profile first.',
+          "User account not fully set up. Please complete your profile first.",
       },
-      { status: 401 }
+      { status: 401 },
     );
   }
 
@@ -121,8 +121,8 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
     body = await req.json();
   } catch {
     return NextResponse.json(
-      { success: false, error: 'Invalid JSON body' },
-      { status: 400 }
+      { success: false, error: "Invalid JSON body" },
+      { status: 400 },
     );
   }
   const { amountUSD } = body;
@@ -132,7 +132,7 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
   if (!validation.valid) {
     return NextResponse.json(
       { success: false, error: validation.error },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -140,8 +140,8 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
 
   // Get the origin from the request for accurate redirect URLs
   const requestOrigin =
-    req.headers.get('origin') ||
-    req.headers.get('referer')?.replace(/\/[^/]*$/, '');
+    req.headers.get("origin") ||
+    req.headers.get("referer")?.replace(/\/[^/]*$/, "");
   const baseUrl = getBaseUrl(requestOrigin || undefined);
 
   // Create Stripe Checkout Session
@@ -151,8 +151,8 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
   let session;
   try {
     session = await stripe.checkout.sessions.create({
-      mode: 'payment',
-      payment_method_types: ['card'],
+      mode: "payment",
+      payment_method_types: ["card"],
       line_items: [
         {
           price_data: {
@@ -168,11 +168,11 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
       ],
       // Store purchase details in metadata for webhook processing
       metadata: {
-        app: 'feed',
+        app: "feed",
         userId,
         balanceUnits: balanceUnits.toString(),
         amountUSD: amountUSD.toString(),
-        purchaseType: 'trading_balance',
+        purchaseType: "trading_balance",
       },
       // Pre-fill customer email if available
       customer_email: userEmail || undefined,
@@ -186,12 +186,12 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
   } catch (error) {
     throw new ServiceUnavailableError(
       STRIPE_CHECKOUT_UNAVAILABLE_MESSAGE,
-      'STRIPE_CHECKOUT_UNAVAILABLE',
+      "STRIPE_CHECKOUT_UNAVAILABLE",
       {
-        provider: 'stripe',
-        operation: 'checkout.sessions.create',
+        provider: "stripe",
+        operation: "checkout.sessions.create",
         reason: error instanceof Error ? error.message : String(error),
-      }
+      },
     );
   }
 
@@ -203,18 +203,18 @@ export const POST = withErrorHandling(async function POST(req: NextRequest) {
       amountUSD,
       balanceUnits,
     },
-    'StripeCheckout'
+    "StripeCheckout",
   );
 
-  void trackServerEvent(userId, 'stripe_checkout_initiated', {
+  void trackServerEvent(userId, "stripe_checkout_initiated", {
     amountUSD,
     balanceUnits,
     sessionId: session.id,
   }).catch((err) => {
     logger.warn(
-      'Failed to track stripe_checkout_initiated',
+      "Failed to track stripe_checkout_initiated",
       { error: err },
-      'StripeCheckout'
+      "StripeCheckout",
     );
   });
 

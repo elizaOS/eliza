@@ -8,9 +8,6 @@
  * - Funding rate
  */
 
-import { PerpDbAdapter, PerpMarketService } from '@feed/core/markets/perps';
-import { FEE_CONFIG, WalletService } from '@feed/engine';
-import type { MessageTag } from '@feed/shared';
 import type {
   Action,
   ActionResult,
@@ -18,69 +15,72 @@ import type {
   IAgentRuntime,
   Memory,
   State,
-} from '@elizaos/core';
-import { logger } from '../../../../shared/logger';
+} from "@elizaos/core";
+import { PerpDbAdapter, PerpMarketService } from "@feed/core/markets/perps";
+import { FEE_CONFIG, WalletService } from "@feed/engine";
+import type { MessageTag } from "@feed/shared";
+import { logger } from "../../../../shared/logger";
 
 /** Extended ActionResult with optional tag for UI */
 interface ActionResultWithTag extends ActionResult {
   tag?: MessageTag;
 }
 
-type SortOption = 'price' | 'change' | 'volume' | 'name';
+type SortOption = "price" | "change" | "volume" | "name";
 
 export const checkPerpsAction: Action = {
-  name: 'CHECK_PERPS',
+  name: "CHECK_PERPS",
   description:
-    'Check perpetual/stock market data - prices, 24h changes, volume, funding rates. Tickers are AI-themed (e.g., TSLAI for Tesla, AIPPL for Apple).',
+    "Check perpetual/stock market data - prices, 24h changes, volume, funding rates. Tickers are AI-themed (e.g., TSLAI for Tesla, AIPPL for Apple).",
   parameters: {
     ticker: {
-      type: 'string',
+      type: "string",
       description:
         'Exact ticker or name for specific market (e.g., "TSLAI" or "TeslAI"). If not found, returns available markets.',
       required: false,
     },
     limit: {
-      type: 'number',
+      type: "number",
       description:
-        'Number of markets to show (default: 10, max: 20). Only used when ticker is not provided.',
+        "Number of markets to show (default: 10, max: 20). Only used when ticker is not provided.",
       required: false,
     },
     sortBy: {
-      type: 'string',
+      type: "string",
       description:
         'Sort by: "price", "change", "volume", "name" (default: "volume"). Only used when ticker is not provided.',
       required: false,
     },
-  } as unknown as Action['parameters'],
+  } as unknown as Action["parameters"],
   examples: [
     [
       {
-        name: 'user',
+        name: "user",
         content: { text: "What's happening in the perp markets?" },
       },
       {
-        name: 'assistant',
+        name: "assistant",
         content: { text: "I'll check the perpetual markets for you." },
       },
     ],
     [
       {
-        name: 'user',
-        content: { text: 'Show me AIPPL price' },
+        name: "user",
+        content: { text: "Show me AIPPL price" },
       },
       {
-        name: 'assistant',
+        name: "assistant",
         content: { text: "I'll get the AIPPL market details." },
       },
     ],
     [
       {
-        name: 'user',
-        content: { text: 'Which stocks are moving the most?' },
+        name: "user",
+        content: { text: "Which stocks are moving the most?" },
       },
       {
-        name: 'assistant',
-        content: { text: 'Let me check the top movers.' },
+        name: "assistant",
+        content: { text: "Let me check the top movers." },
       },
     ],
   ],
@@ -88,7 +88,7 @@ export const checkPerpsAction: Action = {
   validate: async (
     _runtime: IAgentRuntime,
     _message: Memory,
-    _state?: State
+    _state?: State,
   ): Promise<boolean> => {
     return true;
   },
@@ -98,14 +98,14 @@ export const checkPerpsAction: Action = {
     _message: Memory,
     state?: State,
     _options?: Record<string, unknown>,
-    _callback?: HandlerCallback
+    _callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const actionParams = state?.data?.actionParams as
       | { ticker?: string; limit?: number; sortBy?: string }
       | undefined;
     const ticker = actionParams?.ticker?.toUpperCase();
     const limit = Math.min(Math.max(actionParams?.limit ?? 10, 1), 20);
-    const sortBy = (actionParams?.sortBy as SortOption) ?? 'volume';
+    const sortBy = (actionParams?.sortBy as SortOption) ?? "volume";
 
     try {
       const perpMarkets = await new PerpMarketService({
@@ -127,7 +127,7 @@ export const checkPerpsAction: Action = {
       if (perpMarkets.length === 0) {
         return {
           success: true,
-          text: 'No perpetual markets available.',
+          text: "No perpetual markets available.",
           data: { markets: [], count: 0 },
           values: { count: 0 },
         };
@@ -141,7 +141,7 @@ export const checkPerpsAction: Action = {
         const market = perpMarkets.find(
           (m) =>
             m.ticker.toUpperCase() === ticker ||
-            (m.name && m.name.toUpperCase() === ticker)
+            (m.name && m.name.toUpperCase() === ticker),
         );
 
         if (!market) {
@@ -150,14 +150,14 @@ export const checkPerpsAction: Action = {
           const availableTickers = perpMarkets
             .slice(0, displayLimit)
             .map((m) => `${m.ticker} (${m.name})`)
-            .join(', ');
+            .join(", ");
           // Only add ellipsis if list was truncated
-          const ellipsis = perpMarkets.length > displayLimit ? '...' : '';
+          const ellipsis = perpMarkets.length > displayLimit ? "..." : "";
 
           return {
             success: false,
             text: `Market "${ticker}" not found. Available: ${availableTickers}${ellipsis}`,
-            error: 'Market not found',
+            error: "Market not found",
           };
         }
 
@@ -174,12 +174,12 @@ export const checkPerpsAction: Action = {
         logger.info(
           `[CHECK_PERPS] Retrieved single market: ${ticker}`,
           { ticker, price: market.currentPrice },
-          'check-perps'
+          "check-perps",
         );
 
         return {
           success: true,
-          text: `${market.ticker}: $${market.currentPrice.toLocaleString()} (${market.changePercent24h >= 0 ? '+' : ''}${market.changePercent24h.toFixed(2)}%)`,
+          text: `${market.ticker}: $${market.currentPrice.toLocaleString()} (${market.changePercent24h >= 0 ? "+" : ""}${market.changePercent24h.toFixed(2)}%)`,
           data: { market: marketData },
           values: {
             ticker: market.ticker,
@@ -189,9 +189,9 @@ export const checkPerpsAction: Action = {
           },
           // Tag for specific market - opens detailed view
           tag: {
-            type: 'perps',
+            type: "perps",
             label: market.ticker,
-            icon: 'TrendingUp',
+            icon: "TrendingUp",
             entityId: market.ticker,
             data: { market: marketData },
           },
@@ -205,13 +205,13 @@ export const checkPerpsAction: Action = {
       // Sort markets
       const sortedMarkets = [...perpMarkets].sort((a, b) => {
         switch (sortBy) {
-          case 'price':
+          case "price":
             return b.currentPrice - a.currentPrice;
-          case 'change':
+          case "change":
             return Math.abs(b.changePercent24h) - Math.abs(a.changePercent24h);
-          case 'volume':
+          case "volume":
             return b.volume24h - a.volume24h;
-          case 'name':
+          case "name":
             return (a.name ?? a.ticker).localeCompare(b.name ?? b.ticker);
           default:
             return b.volume24h - a.volume24h;
@@ -221,15 +221,15 @@ export const checkPerpsAction: Action = {
       const displayedMarkets = sortedMarkets.slice(0, limit);
 
       const topGainer = displayedMarkets.reduce((max, m) =>
-        m.changePercent24h > max.changePercent24h ? m : max
+        m.changePercent24h > max.changePercent24h ? m : max,
       );
       const topLoser = displayedMarkets.reduce((min, m) =>
-        m.changePercent24h < min.changePercent24h ? m : min
+        m.changePercent24h < min.changePercent24h ? m : min,
       );
       logger.info(
         `[CHECK_PERPS] Retrieved ${displayedMarkets.length} markets`,
         { sortBy, limit },
-        'check-perps'
+        "check-perps",
       );
 
       // Format markets for tag data
@@ -260,15 +260,15 @@ export const checkPerpsAction: Action = {
         },
         // Tag for list view
         tag: {
-          type: 'perps',
-          label: 'Perpetuals',
-          icon: 'TrendingUp',
+          type: "perps",
+          label: "Perpetuals",
+          icon: "TrendingUp",
           data: { markets: marketsForTag },
         },
       } as ActionResultWithTag;
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      logger.error('[CHECK_PERPS] Error:', errorMsg);
+      const errorMsg = error instanceof Error ? error.message : "Unknown error";
+      logger.error("[CHECK_PERPS] Error:", errorMsg);
       return {
         success: false,
         text: `Failed to fetch perp markets: ${errorMsg}`,

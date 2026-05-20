@@ -61,12 +61,12 @@
  * ```
  */
 
-import { requireCronAuth, withErrorHandling } from '@feed/api';
-import { getReputationBreakdown, NPCInvestmentManager } from '@feed/engine';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { z } from 'zod';
+import { requireCronAuth, withErrorHandling } from "@feed/api";
+import { getReputationBreakdown, NPCInvestmentManager } from "@feed/engine";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { z } from "zod";
 
 const AllocationRequestSchema = z.object({
   npcUserId: z.string().min(1),
@@ -74,14 +74,14 @@ const AllocationRequestSchema = z.object({
 });
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
-  requireCronAuth(request, { jobName: 'NPCAllocation' });
+  requireCronAuth(request, { jobName: "NPCAllocation" });
 
   const body = AllocationRequestSchema.parse(await request.json());
 
   const adjustedAmount =
     await NPCInvestmentManager.calculateReputationAdjustedAllocation(
       body.npcUserId,
-      body.baseAmount
+      body.baseAmount,
     );
 
   const reputation = await getReputationBreakdown(body.npcUserId);
@@ -93,11 +93,11 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     logger.warn(
       `Could not retrieve reputation for ${body.npcUserId}`,
       undefined,
-      'NPCAllocation'
+      "NPCAllocation",
     );
   }
 
-  logger.info('Reputation-adjusted allocation calculated', {
+  logger.info("Reputation-adjusted allocation calculated", {
     npcUserId: body.npcUserId,
     baseAmount: body.baseAmount,
     adjustedAmount,

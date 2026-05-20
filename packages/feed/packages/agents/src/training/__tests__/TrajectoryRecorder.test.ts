@@ -5,12 +5,12 @@
  * Uses simulation mode to avoid database dependency.
  */
 
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
-import * as fs from 'fs';
-import * as path from 'path';
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import * as fs from "node:fs";
+import * as path from "node:path";
 
 // Mock ONLY external dependencies - not the code under test
-mock.module('@feed/db', () => ({
+mock.module("@feed/db", () => ({
   db: {
     insert: mock(() => ({
       values: mock(() => ({
@@ -20,22 +20,22 @@ mock.module('@feed/db', () => ({
   },
   trajectories: {},
   llmCallLogs: {},
-  rewardJudgments: { trajectoryId: 'trajectoryId' },
+  rewardJudgments: { trajectoryId: "trajectoryId" },
   isSimulationMode: () => true, // Always use simulation mode for tests
   getJsonStoragePath: () => null,
 }));
 
 // Import the REAL class after mocking db
-import { TrajectoryRecorder } from '../TrajectoryRecorder';
-import type { Action, EnvironmentState, LLMCall } from '../types';
+import { TrajectoryRecorder } from "../TrajectoryRecorder";
+import type { Action, EnvironmentState, LLMCall } from "../types";
 
 // =============================================================================
 // Test Setup
 // =============================================================================
 
-const TEST_OUTPUT_DIR = './training-data-output/trajectories';
+const TEST_OUTPUT_DIR = "./training-data-output/trajectories";
 
-describe('TrajectoryRecorder - Real Class Tests', () => {
+describe("TrajectoryRecorder - Real Class Tests", () => {
   let recorder: TrajectoryRecorder;
 
   beforeEach(() => {
@@ -44,7 +44,7 @@ describe('TrajectoryRecorder - Real Class Tests', () => {
     if (fs.existsSync(TEST_OUTPUT_DIR)) {
       const files = fs.readdirSync(TEST_OUTPUT_DIR);
       for (const file of files) {
-        if (file.startsWith('test-')) {
+        if (file.startsWith("test-")) {
           fs.unlinkSync(path.join(TEST_OUTPUT_DIR, file));
         }
       }
@@ -56,7 +56,7 @@ describe('TrajectoryRecorder - Real Class Tests', () => {
     if (fs.existsSync(TEST_OUTPUT_DIR)) {
       const files = fs.readdirSync(TEST_OUTPUT_DIR);
       for (const file of files) {
-        if (file.includes('test-agent')) {
+        if (file.includes("test-agent")) {
           try {
             fs.unlinkSync(path.join(TEST_OUTPUT_DIR, file));
           } catch {
@@ -71,23 +71,23 @@ describe('TrajectoryRecorder - Real Class Tests', () => {
   // Lifecycle Tests
   // ===========================================================================
 
-  test('startTrajectory creates a new active trajectory', async () => {
+  test("startTrajectory creates a new active trajectory", async () => {
     const trajectoryId = await recorder.startTrajectory({
-      agentId: 'test-agent-1',
-      archetype: 'trader',
+      agentId: "test-agent-1",
+      archetype: "trader",
     });
 
     expect(trajectoryId).toBeDefined();
-    expect(typeof trajectoryId).toBe('string');
+    expect(typeof trajectoryId).toBe("string");
     expect(trajectoryId.length).toBeGreaterThan(10);
     expect(recorder.isActive(trajectoryId)).toBe(true);
     expect(recorder.getActiveCount()).toBe(1);
   });
 
-  test('multiple trajectories can be active simultaneously', async () => {
-    const id1 = await recorder.startTrajectory({ agentId: 'test-agent-1' });
-    const id2 = await recorder.startTrajectory({ agentId: 'test-agent-2' });
-    const id3 = await recorder.startTrajectory({ agentId: 'test-agent-3' });
+  test("multiple trajectories can be active simultaneously", async () => {
+    const id1 = await recorder.startTrajectory({ agentId: "test-agent-1" });
+    const id2 = await recorder.startTrajectory({ agentId: "test-agent-2" });
+    const id3 = await recorder.startTrajectory({ agentId: "test-agent-3" });
 
     expect(recorder.getActiveCount()).toBe(3);
     expect(recorder.isActive(id1)).toBe(true);
@@ -97,24 +97,24 @@ describe('TrajectoryRecorder - Real Class Tests', () => {
     expect(id2).not.toBe(id3);
   });
 
-  test('getActiveTrajectory returns correct trajectory', async () => {
+  test("getActiveTrajectory returns correct trajectory", async () => {
     const trajectoryId = await recorder.startTrajectory({
-      agentId: 'test-agent-x',
-      archetype: 'degen',
-      scenarioId: 'test-scenario',
+      agentId: "test-agent-x",
+      archetype: "degen",
+      scenarioId: "test-scenario",
     });
 
     const active = recorder.getActiveTrajectory(trajectoryId);
 
     expect(active).toBeDefined();
-    expect(active?.agentId).toBe('test-agent-x');
-    expect(active?.archetype).toBe('degen');
-    expect(active?.scenarioId).toBe('test-scenario');
+    expect(active?.agentId).toBe("test-agent-x");
+    expect(active?.archetype).toBe("degen");
+    expect(active?.scenarioId).toBe("test-scenario");
     expect(active?.steps).toHaveLength(0);
   });
 
-  test('getActiveTrajectory returns undefined for non-existent id', () => {
-    const result = recorder.getActiveTrajectory('non-existent-id');
+  test("getActiveTrajectory returns undefined for non-existent id", () => {
+    const result = recorder.getActiveTrajectory("non-existent-id");
     expect(result).toBeUndefined();
   });
 
@@ -122,9 +122,9 @@ describe('TrajectoryRecorder - Real Class Tests', () => {
   // Step Recording Tests
   // ===========================================================================
 
-  test('startStep initializes current step with environment state', async () => {
+  test("startStep initializes current step with environment state", async () => {
     const trajectoryId = await recorder.startTrajectory({
-      agentId: 'test-agent',
+      agentId: "test-agent",
     });
 
     const envState: EnvironmentState = {
@@ -141,9 +141,9 @@ describe('TrajectoryRecorder - Real Class Tests', () => {
     expect(active?.currentStep?.stepNumber).toBe(0);
   });
 
-  test('startStep returns and tracks a current step id', async () => {
+  test("startStep returns and tracks a current step id", async () => {
     const trajectoryId = await recorder.startTrajectory({
-      agentId: 'test-agent',
+      agentId: "test-agent",
     });
 
     const stepId = recorder.startStep(trajectoryId, {
@@ -156,19 +156,19 @@ describe('TrajectoryRecorder - Real Class Tests', () => {
     expect(recorder.getCurrentStepId(trajectoryId)).toBe(stepId);
   });
 
-  test('startStep throws for non-existent trajectory', () => {
+  test("startStep throws for non-existent trajectory", () => {
     expect(() => {
-      recorder.startStep('fake-id', {
+      recorder.startStep("fake-id", {
         agentBalance: 0,
         agentPnL: 0,
         openPositions: 0,
       });
-    }).toThrow('Trajectory not found: fake-id');
+    }).toThrow("Trajectory not found: fake-id");
   });
 
-  test('logProviderAccess adds provider data to current step', async () => {
+  test("logProviderAccess adds provider data to current step", async () => {
     const trajectoryId = await recorder.startTrajectory({
-      agentId: 'test-agent',
+      agentId: "test-agent",
     });
     recorder.startStep(trajectoryId, {
       agentBalance: 1000,
@@ -177,36 +177,36 @@ describe('TrajectoryRecorder - Real Class Tests', () => {
     });
 
     recorder.logProviderAccess(trajectoryId, {
-      providerName: 'market-data',
-      data: { ticker: 'BTCAI', price: 50000 },
-      purpose: 'price lookup',
+      providerName: "market-data",
+      data: { ticker: "BTCAI", price: 50000 },
+      purpose: "price lookup",
     });
 
     const active = recorder.getActiveTrajectory(trajectoryId);
     expect(active?.currentStep?.providerAccesses).toHaveLength(1);
     expect(active?.currentStep?.providerAccesses?.[0]?.providerName).toBe(
-      'market-data'
+      "market-data",
     );
   });
 
-  test('logProviderAccess throws when no current step', async () => {
+  test("logProviderAccess throws when no current step", async () => {
     const trajectoryId = await recorder.startTrajectory({
-      agentId: 'test-agent',
+      agentId: "test-agent",
     });
     // Don't call startStep
 
     expect(() => {
       recorder.logProviderAccess(trajectoryId, {
-        providerName: 'test',
+        providerName: "test",
         data: {},
-        purpose: 'test',
+        purpose: "test",
       });
-    }).toThrow('No current step');
+    }).toThrow("No current step");
   });
 
-  test('logLLMCall adds LLM call to current step', async () => {
+  test("logLLMCall adds LLM call to current step", async () => {
     const trajectoryId = await recorder.startTrajectory({
-      agentId: 'test-agent',
+      agentId: "test-agent",
     });
     recorder.startStep(trajectoryId, {
       agentBalance: 1000,
@@ -215,14 +215,14 @@ describe('TrajectoryRecorder - Real Class Tests', () => {
     });
 
     const llmCall: LLMCall = {
-      model: 'gpt-oss-120b',
-      systemPrompt: 'You are a trading agent',
-      userPrompt: 'What should I do?',
-      response: 'Buy BTCAI',
-      reasoning: 'Bullish momentum',
+      model: "gpt-oss-120b",
+      systemPrompt: "You are a trading agent",
+      userPrompt: "What should I do?",
+      response: "Buy BTCAI",
+      reasoning: "Bullish momentum",
       temperature: 0.7,
       maxTokens: 2000,
-      purpose: 'action',
+      purpose: "action",
       latencyMs: 250,
     };
 
@@ -230,13 +230,13 @@ describe('TrajectoryRecorder - Real Class Tests', () => {
 
     const active = recorder.getActiveTrajectory(trajectoryId);
     expect(active?.currentStep?.llmCalls).toHaveLength(1);
-    expect(active?.currentStep?.llmCalls?.[0]?.model).toBe('gpt-oss-120b');
+    expect(active?.currentStep?.llmCalls?.[0]?.model).toBe("gpt-oss-120b");
     expect(active?.currentStep?.llmCalls?.[0]?.latencyMs).toBe(250);
   });
 
-  test('completeStep finalizes step and adds to trajectory', async () => {
+  test("completeStep finalizes step and adds to trajectory", async () => {
     const trajectoryId = await recorder.startTrajectory({
-      agentId: 'test-agent',
+      agentId: "test-agent",
     });
     recorder.startStep(trajectoryId, {
       agentBalance: 1000,
@@ -245,8 +245,8 @@ describe('TrajectoryRecorder - Real Class Tests', () => {
     });
 
     const action: Action = {
-      actionType: 'buy',
-      parameters: { ticker: 'BTCAI', amount: 100 },
+      actionType: "buy",
+      parameters: { ticker: "BTCAI", amount: 100 },
       success: true,
     };
 
@@ -254,14 +254,14 @@ describe('TrajectoryRecorder - Real Class Tests', () => {
 
     const active = recorder.getActiveTrajectory(trajectoryId);
     expect(active?.steps).toHaveLength(1);
-    expect(active?.steps[0]?.action.actionType).toBe('buy');
+    expect(active?.steps[0]?.action.actionType).toBe("buy");
     expect(active?.steps[0]?.reward).toBe(0.5);
     expect(active?.currentStep).toBeUndefined();
   });
 
-  test('completeStep accepts logger-style signature with step id', async () => {
+  test("completeStep accepts logger-style signature with step id", async () => {
     const trajectoryId = await recorder.startTrajectory({
-      agentId: 'test-agent',
+      agentId: "test-agent",
     });
     const stepId = recorder.startStep(trajectoryId, {
       agentBalance: 1000,
@@ -270,26 +270,26 @@ describe('TrajectoryRecorder - Real Class Tests', () => {
     });
 
     recorder.logLLMCall(stepId, {
-      model: 'gpt-oss-120b',
-      systemPrompt: 'You are a trading agent',
-      userPrompt: 'What should I do?',
-      response: 'Buy BTCAI',
+      model: "gpt-oss-120b",
+      systemPrompt: "You are a trading agent",
+      userPrompt: "What should I do?",
+      response: "Buy BTCAI",
       temperature: 0.7,
       maxTokens: 2000,
-      purpose: 'action',
+      purpose: "action",
     });
 
     recorder.completeStep(
       trajectoryId,
       stepId,
       {
-        actionType: 'buy',
-        actionName: 'buy',
-        parameters: { ticker: 'BTCAI', amount: 100 },
+        actionType: "buy",
+        actionName: "buy",
+        parameters: { ticker: "BTCAI", amount: 100 },
         success: true,
         result: { executed: true },
       },
-      { reward: 0.5 }
+      { reward: 0.5 },
     );
 
     const active = recorder.getActiveTrajectory(trajectoryId);
@@ -298,9 +298,9 @@ describe('TrajectoryRecorder - Real Class Tests', () => {
     expect(recorder.getCurrentStepId(trajectoryId)).toBeNull();
   });
 
-  test('multiple steps increment step number correctly', async () => {
+  test("multiple steps increment step number correctly", async () => {
     const trajectoryId = await recorder.startTrajectory({
-      agentId: 'test-agent',
+      agentId: "test-agent",
     });
 
     for (let i = 0; i < 5; i++) {
@@ -311,8 +311,8 @@ describe('TrajectoryRecorder - Real Class Tests', () => {
       });
       recorder.completeStep(
         trajectoryId,
-        { actionType: 'hold', parameters: {}, success: true },
-        0.1
+        { actionType: "hold", parameters: {}, success: true },
+        0.1,
       );
     }
 
@@ -326,10 +326,10 @@ describe('TrajectoryRecorder - Real Class Tests', () => {
   // End Trajectory Tests (Simulation Mode - File Output)
   // ===========================================================================
 
-  test('endTrajectory saves JSON file in simulation mode', async () => {
+  test("endTrajectory saves JSON file in simulation mode", async () => {
     const trajectoryId = await recorder.startTrajectory({
-      agentId: 'test-agent-file',
-      archetype: 'trader',
+      agentId: "test-agent-file",
+      archetype: "trader",
     });
 
     // Add a step
@@ -339,18 +339,18 @@ describe('TrajectoryRecorder - Real Class Tests', () => {
       openPositions: 0,
     });
     recorder.logLLMCall(trajectoryId, {
-      model: 'test-model',
-      systemPrompt: 'system',
-      userPrompt: 'user',
-      response: 'response',
+      model: "test-model",
+      systemPrompt: "system",
+      userPrompt: "user",
+      response: "response",
       temperature: 0.5,
       maxTokens: 100,
-      purpose: 'action',
+      purpose: "action",
     });
     recorder.completeStep(
       trajectoryId,
-      { actionType: 'buy', parameters: { ticker: 'BTCAI' }, success: true },
-      1.0
+      { actionType: "buy", parameters: { ticker: "BTCAI" }, success: true },
+      1.0,
     );
 
     await recorder.endTrajectory(trajectoryId, {
@@ -363,25 +363,25 @@ describe('TrajectoryRecorder - Real Class Tests', () => {
     expect(fs.existsSync(filePath)).toBe(true);
 
     // Verify file contents
-    const content = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-    expect(content.trajectory.agentId).toBe('test-agent-file');
-    expect(content.trajectory.archetype).toBe('trader');
+    const content = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+    expect(content.trajectory.agentId).toBe("test-agent-file");
+    expect(content.trajectory.archetype).toBe("trader");
     expect(content.trajectory.episodeLength).toBe(1);
     expect(content.trajectory.finalBalance).toBe(10500);
     expect(content.trajectory.finalPnL).toBe(500);
     expect(content.trajectory.aiJudgeReward).toBeGreaterThan(0);
-    expect(content.rewardJudgment.judgeModel).toBe('feed-deterministic');
+    expect(content.rewardJudgment.judgeModel).toBe("feed-deterministic");
     expect(content.llmCalls).toHaveLength(1);
 
     // Cleanup
     fs.unlinkSync(filePath);
   });
 
-  test('endTrajectory persists trust metadata for trust benchmarks', async () => {
+  test("endTrajectory persists trust metadata for trust benchmarks", async () => {
     const trajectoryId = await recorder.startTrajectory({
-      agentId: 'test-agent-trust',
-      archetype: 'infosec',
-      scenarioId: 'trust-blue',
+      agentId: "test-agent-trust",
+      archetype: "infosec",
+      scenarioId: "trust-blue",
     });
 
     recorder.startStep(
@@ -392,51 +392,51 @@ describe('TrajectoryRecorder - Real Class Tests', () => {
         openPositions: 0,
       },
       {
-        profile: 'blue',
+        profile: "blue",
         trustScore: 72,
         scamLossesAvoided: 1500,
         socialCapital: 25,
-      }
+      },
     );
     recorder.completeStep(
       trajectoryId,
-      { actionType: 'AUDIT', parameters: {}, success: true },
-      1.0
+      { actionType: "AUDIT", parameters: {}, success: true },
+      1.0,
     );
 
     await recorder.endTrajectory(trajectoryId, {
       finalBalance: 10100,
       finalPnL: 100,
       finalTrustScore: 72,
-      scenarioProfile: 'blue',
+      scenarioProfile: "blue",
     });
 
     const filePath = path.join(TEST_OUTPUT_DIR, `${trajectoryId}.json`);
-    const content = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    const content = JSON.parse(fs.readFileSync(filePath, "utf-8"));
     const metrics = JSON.parse(content.trajectory.metricsJson);
     const metadata = JSON.parse(content.trajectory.metadataJson);
 
     expect(content.trajectory.stepsJson).toContain('"trustState"');
     expect(metrics.finalTrustScore).toBe(72);
-    expect(metadata.scenarioProfile).toBe('blue');
+    expect(metadata.scenarioProfile).toBe("blue");
     expect(content.rewardJudgment.componentScores.trust).toBeGreaterThan(0.7);
 
     fs.unlinkSync(filePath);
   });
 
-  test('endTrajectory preserves run provenance metadata and batch identifiers', async () => {
+  test("endTrajectory preserves run provenance metadata and batch identifiers", async () => {
     const trajectoryId = await recorder.startTrajectory({
-      agentId: 'test-agent-provenance',
-      archetype: 'trust-blue',
-      scenarioId: 'trust-exp:blue',
-      episodeId: 'trust-run-1:test-agent-provenance:r1',
-      batchId: 'trust-run-1',
-      windowId: 'window-2026-03-27T00',
+      agentId: "test-agent-provenance",
+      archetype: "trust-blue",
+      scenarioId: "trust-exp:blue",
+      episodeId: "trust-run-1:test-agent-provenance:r1",
+      batchId: "trust-run-1",
+      windowId: "window-2026-03-27T00",
       metadata: {
-        experimentRunId: 'trust-run-1',
-        modelSize: '7b',
-        trainingProfile: 'blue-team',
-        team: 'blue',
+        experimentRunId: "trust-run-1",
+        modelSize: "7b",
+        trainingProfile: "blue-team",
+        team: "blue",
       },
     });
 
@@ -447,36 +447,36 @@ describe('TrajectoryRecorder - Real Class Tests', () => {
     });
     recorder.completeStep(
       trajectoryId,
-      { actionType: 'HOLD', parameters: {}, success: true },
-      0.5
+      { actionType: "HOLD", parameters: {}, success: true },
+      0.5,
     );
 
     await recorder.endTrajectory(trajectoryId, {
       finalBalance: 10050,
       finalPnL: 50,
-      scenarioProfile: 'blue-team:trusted',
+      scenarioProfile: "blue-team:trusted",
     });
 
     const filePath = path.join(TEST_OUTPUT_DIR, `${trajectoryId}.json`);
-    const content = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    const content = JSON.parse(fs.readFileSync(filePath, "utf-8"));
     const metadata = JSON.parse(content.trajectory.metadataJson);
 
-    expect(content.trajectory.batchId).toBe('trust-run-1');
+    expect(content.trajectory.batchId).toBe("trust-run-1");
     expect(content.trajectory.episodeId).toBe(
-      'trust-run-1:test-agent-provenance:r1'
+      "trust-run-1:test-agent-provenance:r1",
     );
-    expect(content.trajectory.windowId).toBe('window-2026-03-27T00');
-    expect(metadata.experimentRunId).toBe('trust-run-1');
-    expect(metadata.modelSize).toBe('7b');
-    expect(metadata.trainingProfile).toBe('blue-team');
-    expect(metadata.scenarioProfile).toBe('blue-team:trusted');
+    expect(content.trajectory.windowId).toBe("window-2026-03-27T00");
+    expect(metadata.experimentRunId).toBe("trust-run-1");
+    expect(metadata.modelSize).toBe("7b");
+    expect(metadata.trainingProfile).toBe("blue-team");
+    expect(metadata.scenarioProfile).toBe("blue-team:trusted");
 
     fs.unlinkSync(filePath);
   });
 
-  test('endTrajectory removes trajectory from active map', async () => {
+  test("endTrajectory removes trajectory from active map", async () => {
     const trajectoryId = await recorder.startTrajectory({
-      agentId: 'test-agent',
+      agentId: "test-agent",
     });
     expect(recorder.isActive(trajectoryId)).toBe(true);
 
@@ -486,15 +486,15 @@ describe('TrajectoryRecorder - Real Class Tests', () => {
     expect(recorder.getActiveCount()).toBe(0);
   });
 
-  test('endTrajectory throws for non-existent trajectory', async () => {
-    await expect(recorder.endTrajectory('fake-id')).rejects.toThrow(
-      'Trajectory not found: fake-id'
+  test("endTrajectory throws for non-existent trajectory", async () => {
+    await expect(recorder.endTrajectory("fake-id")).rejects.toThrow(
+      "Trajectory not found: fake-id",
     );
   });
 
-  test('endTrajectory calculates metrics correctly', async () => {
+  test("endTrajectory calculates metrics correctly", async () => {
     const trajectoryId = await recorder.startTrajectory({
-      agentId: 'test-agent',
+      agentId: "test-agent",
     });
 
     // Add buy action
@@ -505,8 +505,8 @@ describe('TrajectoryRecorder - Real Class Tests', () => {
     });
     recorder.completeStep(
       trajectoryId,
-      { actionType: 'BUY_YES', parameters: {}, success: true },
-      1.0
+      { actionType: "BUY_YES", parameters: {}, success: true },
+      1.0,
     );
 
     // Add sell action
@@ -517,8 +517,8 @@ describe('TrajectoryRecorder - Real Class Tests', () => {
     });
     recorder.completeStep(
       trajectoryId,
-      { actionType: 'SELL', parameters: {}, success: true },
-      0.5
+      { actionType: "SELL", parameters: {}, success: true },
+      0.5,
     );
 
     // Add failed action
@@ -530,24 +530,24 @@ describe('TrajectoryRecorder - Real Class Tests', () => {
     recorder.completeStep(
       trajectoryId,
       {
-        actionType: 'BUY_NO',
+        actionType: "BUY_NO",
         parameters: {},
         success: false,
-        error: 'Insufficient funds',
+        error: "Insufficient funds",
       },
-      -0.5
+      -0.5,
     );
 
     await recorder.endTrajectory(trajectoryId);
 
     // Check that file was written with correct metrics
     const filePath = path.join(TEST_OUTPUT_DIR, `${trajectoryId}.json`);
-    const content = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    const content = JSON.parse(fs.readFileSync(filePath, "utf-8"));
 
     expect(content.trajectory.episodeLength).toBe(3);
     expect(content.trajectory.tradesExecuted).toBe(3); // BUY_YES, SELL, BUY_NO
     expect(content.trajectory.totalReward).toBe(1.0); // 1.0 + 0.5 + (-0.5)
-    expect(content.trajectory.finalStatus).toBe('completed_with_errors');
+    expect(content.trajectory.finalStatus).toBe("completed_with_errors");
 
     fs.unlinkSync(filePath);
   });
@@ -556,15 +556,15 @@ describe('TrajectoryRecorder - Real Class Tests', () => {
   // Edge Cases
   // ===========================================================================
 
-  test('handles trajectory with zero steps', async () => {
+  test("handles trajectory with zero steps", async () => {
     const trajectoryId = await recorder.startTrajectory({
-      agentId: 'test-agent',
+      agentId: "test-agent",
     });
 
     await recorder.endTrajectory(trajectoryId);
 
     const filePath = path.join(TEST_OUTPUT_DIR, `${trajectoryId}.json`);
-    const content = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    const content = JSON.parse(fs.readFileSync(filePath, "utf-8"));
 
     expect(content.trajectory.episodeLength).toBe(0);
     expect(content.trajectory.totalReward).toBe(0);
@@ -573,9 +573,9 @@ describe('TrajectoryRecorder - Real Class Tests', () => {
     fs.unlinkSync(filePath);
   });
 
-  test('handles very long prompts in LLM calls', async () => {
+  test("handles very long prompts in LLM calls", async () => {
     const trajectoryId = await recorder.startTrajectory({
-      agentId: 'test-agent',
+      agentId: "test-agent",
     });
     recorder.startStep(trajectoryId, {
       agentBalance: 1000,
@@ -583,22 +583,22 @@ describe('TrajectoryRecorder - Real Class Tests', () => {
       openPositions: 0,
     });
 
-    const longPrompt = 'A'.repeat(50000); // 50k characters
+    const longPrompt = "A".repeat(50000); // 50k characters
 
     recorder.logLLMCall(trajectoryId, {
-      model: 'test',
+      model: "test",
       systemPrompt: longPrompt,
       userPrompt: longPrompt,
       response: longPrompt,
       temperature: 0.5,
       maxTokens: 100,
-      purpose: 'action',
+      purpose: "action",
     });
 
     recorder.completeStep(
       trajectoryId,
-      { actionType: 'hold', parameters: {}, success: true },
-      0
+      { actionType: "hold", parameters: {}, success: true },
+      0,
     );
 
     await recorder.endTrajectory(trajectoryId);
@@ -606,15 +606,15 @@ describe('TrajectoryRecorder - Real Class Tests', () => {
     const filePath = path.join(TEST_OUTPUT_DIR, `${trajectoryId}.json`);
     expect(fs.existsSync(filePath)).toBe(true);
 
-    const content = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    const content = JSON.parse(fs.readFileSync(filePath, "utf-8"));
     expect(content.llmCalls[0].systemPrompt.length).toBe(50000);
 
     fs.unlinkSync(filePath);
   });
 
-  test('handles negative rewards correctly', async () => {
+  test("handles negative rewards correctly", async () => {
     const trajectoryId = await recorder.startTrajectory({
-      agentId: 'test-agent',
+      agentId: "test-agent",
     });
 
     recorder.startStep(trajectoryId, {
@@ -624,14 +624,14 @@ describe('TrajectoryRecorder - Real Class Tests', () => {
     });
     recorder.completeStep(
       trajectoryId,
-      { actionType: 'buy', parameters: {}, success: false, error: 'Bad trade' },
-      -5.0
+      { actionType: "buy", parameters: {}, success: false, error: "Bad trade" },
+      -5.0,
     );
 
     await recorder.endTrajectory(trajectoryId);
 
     const filePath = path.join(TEST_OUTPUT_DIR, `${trajectoryId}.json`);
-    const content = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    const content = JSON.parse(fs.readFileSync(filePath, "utf-8"));
 
     expect(content.trajectory.totalReward).toBe(-5.0);
 

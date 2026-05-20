@@ -4,13 +4,13 @@
  * Creates and configures storage providers based on the specified mode.
  */
 
-import { JsonStorageProvider } from './adapters/json';
-import { PostgresStorageProvider } from './adapters/postgres';
+import { JsonStorageProvider } from "./adapters/json";
+import { PostgresStorageProvider } from "./adapters/postgres";
 import type {
   IStorageProvider,
   StorageProviderConfig,
-} from './ports/storage-provider';
-import { setStorageProvider } from './ports/storage-provider';
+} from "./ports/storage-provider";
+import { setStorageProvider } from "./ports/storage-provider";
 
 /**
  * Create a storage provider based on configuration.
@@ -28,22 +28,22 @@ import { setStorageProvider } from './ports/storage-provider';
  * ```
  */
 export async function createStorageProvider(
-  config: StorageProviderConfig
+  config: StorageProviderConfig,
 ): Promise<IStorageProvider> {
   let provider: IStorageProvider;
 
   switch (config.mode) {
-    case 'json':
+    case "json":
       provider = new JsonStorageProvider(config);
       break;
-    case 'memory':
+    case "memory":
       // Memory mode uses JSON provider without persistence
       provider = new JsonStorageProvider({
         ...config,
         persistOnChange: false,
       });
       break;
-    case 'postgres':
+    case "postgres":
       provider = new PostgresStorageProvider();
       break;
     default:
@@ -62,10 +62,10 @@ export async function createStorageProvider(
  * Convenience function with sensible defaults.
  */
 export async function createSimulationStorage(
-  basePath = './simulation-data'
+  basePath = "./simulation-data",
 ): Promise<IStorageProvider> {
   return createStorageProvider({
-    mode: 'json',
+    mode: "json",
     jsonBasePath: basePath,
     persistOnChange: true,
   });
@@ -77,7 +77,7 @@ export async function createSimulationStorage(
  */
 export async function createTestStorage(): Promise<IStorageProvider> {
   return createStorageProvider({
-    mode: 'memory',
+    mode: "memory",
     persistOnChange: false,
   });
 }

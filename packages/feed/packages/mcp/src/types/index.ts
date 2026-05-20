@@ -2,4 +2,4 @@
  * MCP Types
  */
 
-export * from './mcp';
+export * from "./mcp";

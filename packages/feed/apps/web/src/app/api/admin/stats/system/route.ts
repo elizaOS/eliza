@@ -5,14 +5,14 @@ import {
   requirePermission,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/api";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
-  await requirePermission(request, 'view_system');
+  await requirePermission(request, "view_system");
 
-  logger.info('System stats requested', {}, 'GET /api/admin/stats/system');
+  logger.info("System stats requested", {}, "GET /api/admin/stats/system");
 
   const snapshot = await getSystemStatusSnapshot();
 

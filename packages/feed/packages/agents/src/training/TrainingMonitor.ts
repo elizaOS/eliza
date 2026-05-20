@@ -5,17 +5,17 @@
  * Monitors Python training process and W&B runs.
  */
 
-import { and, db, eq, lt, trainingBatches } from '@feed/db';
-import { logger } from '@feed/shared';
+import { and, db, eq, lt, trainingBatches } from "@feed/db";
+import { logger } from "@feed/shared";
 
 export type TrainingStatus =
-  | 'pending'
-  | 'preparing'
-  | 'scoring'
-  | 'training'
-  | 'uploading'
-  | 'completed'
-  | 'failed';
+  | "pending"
+  | "preparing"
+  | "scoring"
+  | "training"
+  | "uploading"
+  | "completed"
+  | "failed";
 
 export interface TrainingProgress {
   batchId: string;
@@ -38,15 +38,15 @@ export class TrainingMonitor {
     await db
       .update(trainingBatches)
       .set({
-        status: 'training',
+        status: "training",
         startedAt: new Date(),
       })
       .where(eq(trainingBatches.batchId, batchId));
 
     logger.info(
-      'Started monitoring training job',
+      "Started monitoring training job",
       { batchId },
-      'TrainingMonitor'
+      "TrainingMonitor",
     );
   }
 
@@ -55,7 +55,7 @@ export class TrainingMonitor {
    */
   async updateProgress(
     batchId: string,
-    progress: Partial<TrainingProgress>
+    progress: Partial<TrainingProgress>,
   ): Promise<void> {
     interface UpdateData {
       status?: string;
@@ -70,12 +70,12 @@ export class TrainingMonitor {
       updates.status = progress.status;
     }
 
-    if (progress.status === 'completed') {
+    if (progress.status === "completed") {
       updates.completedAt = new Date();
       updates.trainingLoss = progress.loss;
     }
 
-    if (progress.status === 'failed') {
+    if (progress.status === "failed") {
       updates.error = progress.error;
     }
 
@@ -85,13 +85,13 @@ export class TrainingMonitor {
       .where(eq(trainingBatches.batchId, batchId));
 
     logger.info(
-      'Updated training progress',
+      "Updated training progress",
       {
         batchId,
         status: progress.status,
         progress: progress.progress,
       },
-      'TrainingMonitor'
+      "TrainingMonitor",
     );
   }
 
@@ -114,32 +114,32 @@ export class TrainingMonitor {
     // Calculate progress based on status
     let progress = 0;
     switch (batch.status) {
-      case 'pending':
+      case "pending":
         progress = 0;
         break;
-      case 'preparing':
+      case "preparing":
         progress = 0.1;
         break;
-      case 'scoring':
+      case "scoring":
         progress = 0.3;
         break;
-      case 'training':
+      case "training":
         progress = 0.6;
         break;
-      case 'uploading':
+      case "uploading":
         progress = 0.9;
         break;
-      case 'completed':
+      case "completed":
         progress = 1.0;
         break;
-      case 'failed':
+      case "failed":
         progress = 0;
         break;
     }
 
     // Estimate ETA based on average training time
     let eta: number | undefined;
-    if (batch.status === 'training' && batch.startedAt) {
+    if (batch.status === "training" && batch.startedAt) {
       const avgTrainingTime = 2 * 60 * 60 * 1000; // 2 hours average
       const elapsed = Date.now() - batch.startedAt.getTime();
       eta = Math.max(0, avgTrainingTime - elapsed);
@@ -166,19 +166,19 @@ export class TrainingMonitor {
       .from(trainingBatches)
       .where(
         and(
-          eq(trainingBatches.status, 'training'),
-          lt(trainingBatches.startedAt, fourHoursAgo)
-        )
+          eq(trainingBatches.status, "training"),
+          lt(trainingBatches.startedAt, fourHoursAgo),
+        ),
       );
 
     if (stuckJobs.length > 0) {
       logger.warn(
-        'Found stuck training jobs',
+        "Found stuck training jobs",
         {
           count: stuckJobs.length,
           jobs: stuckJobs.map((j: (typeof stuckJobs)[number]) => j.batchId),
         },
-        'TrainingMonitor'
+        "TrainingMonitor",
       );
     }
 
@@ -192,16 +192,16 @@ export class TrainingMonitor {
     await db
       .update(trainingBatches)
       .set({
-        status: 'failed',
+        status: "failed",
         error: `Cancelled: ${reason}`,
         completedAt: new Date(),
       })
       .where(eq(trainingBatches.batchId, batchId));
 
     logger.warn(
-      'Training job cancelled',
+      "Training job cancelled",
       { batchId, reason },
-      'TrainingMonitor'
+      "TrainingMonitor",
     );
   }
 }

@@ -13,7 +13,7 @@
  * use the functions in `entropy.ts` instead.
  */
 
-import { clamp01 } from './math-utils';
+import { clamp01 } from "./math-utils";
 
 /**
  * Type alias for a random number generator function.
@@ -45,7 +45,7 @@ export type RngFunction = () => number;
  */
 export function shuffleArray<T>(
   array: T[],
-  rng: RngFunction = Math.random
+  rng: RngFunction = Math.random,
 ): T[] {
   const shuffled = [...array];
   for (let i = shuffled.length - 1; i > 0; i--) {
@@ -77,7 +77,7 @@ export function shuffleArray<T>(
 export function sampleRandom<T>(
   array: T[],
   count: number,
-  rng: RngFunction = Math.random
+  rng: RngFunction = Math.random,
 ): T[] {
   const shuffled = shuffleArray(array, rng);
   return shuffled.slice(0, Math.min(count, array.length));
@@ -98,7 +98,7 @@ export function sampleRandom<T>(
  */
 export function pickRandom<T>(
   array: T[],
-  rng: RngFunction = Math.random
+  rng: RngFunction = Math.random,
 ): T | undefined {
   if (array.length === 0) return undefined;
   return array[Math.floor(rng() * array.length)];
@@ -123,7 +123,7 @@ export function pickRandom<T>(
  */
 export function randomChance(
   probability: number,
-  rng: RngFunction = Math.random
+  rng: RngFunction = Math.random,
 ): boolean {
   // Clamp probability to [0, 1] range (handles NaN by coercing to 0)
   const clampedProbability = clamp01(probability || 0);
@@ -147,7 +147,7 @@ export function randomChance(
 export function randomInt(
   min: number,
   max: number,
-  rng: RngFunction = Math.random
+  rng: RngFunction = Math.random,
 ): number {
   // Handle invalid ranges: return min if max <= min
   if (max <= min) return min;

@@ -39,10 +39,10 @@
  * ```
  */
 
-import { logger } from '@feed/shared';
-import { correlations } from '../data/organization-correlations';
-import type { Actor, Organization } from '../types';
-import { type RngFunction, randomChance } from '../utils/randomization';
+import { logger } from "@feed/shared";
+import { correlations } from "../data/organization-correlations";
+import type { Actor, Organization } from "../types";
+import { type RngFunction, randomChance } from "../utils/randomization";
 
 /**
  * NPC Persona Assignment
@@ -70,7 +70,7 @@ export interface PersonaAssignment {
   insiderOrgs: string[];
   expertise: string[];
   willingToLie: boolean;
-  selfInterest: 'wealth' | 'reputation' | 'ideology' | 'chaos';
+  selfInterest: "wealth" | "reputation" | "ideology" | "chaos";
   favorsActors: string[];
   opposesActors: string[];
   favorsOrgs: string[];
@@ -124,19 +124,19 @@ export class NPCPersonaGenerator {
     this.competitorMap = new Map<string, Set<string>>();
 
     for (const c of correlations) {
-      if (c.relationship !== 'competitor') continue;
+      if (c.relationship !== "competitor") continue;
 
       // Add primary -> related
       if (!this.competitorMap.has(c.primary)) {
         this.competitorMap.set(c.primary, new Set());
       }
-      this.competitorMap.get(c.primary)!.add(c.related);
+      this.competitorMap.get(c.primary)?.add(c.related);
 
       // Add related -> primary (bidirectional)
       if (!this.competitorMap.has(c.related)) {
         this.competitorMap.set(c.related, new Set());
       }
-      this.competitorMap.get(c.related)!.add(c.primary);
+      this.competitorMap.get(c.related)?.add(c.primary);
     }
 
     return this.competitorMap;
@@ -187,7 +187,7 @@ export class NPCPersonaGenerator {
   assignPersonas(
     actors: Actor[],
     organizations: Organization[],
-    rng: RngFunction = Math.random
+    rng: RngFunction = Math.random,
   ): Map<string, PersonaAssignment> {
     const personas = new Map<string, PersonaAssignment>();
 
@@ -196,7 +196,7 @@ export class NPCPersonaGenerator {
         actor,
         actors,
         organizations,
-        rng
+        rng,
       );
       personas.set(actor.id, persona);
     }
@@ -211,7 +211,7 @@ export class NPCPersonaGenerator {
         insiders: this.countInsiders(personas),
         liars: this.countLiars(personas),
       },
-      'NPCPersonaGenerator'
+      "NPCPersonaGenerator",
     );
 
     return personas;
@@ -224,59 +224,59 @@ export class NPCPersonaGenerator {
     actor: Actor,
     allActors: Actor[],
     organizations: Organization[],
-    rng: RngFunction
+    rng: RngFunction,
   ): PersonaAssignment {
     // Determine base reliability from role/personality/domain
     let baseReliability = 0.5;
     let willingToLie = false;
-    let selfInterest: 'wealth' | 'reputation' | 'ideology' | 'chaos' =
-      'reputation';
+    let selfInterest: "wealth" | "reputation" | "ideology" | "chaos" =
+      "reputation";
 
     // Conspiracy theorists and contrarians: Very low reliability
     if (
-      actor.personality?.includes('contrarian') ||
-      actor.personality?.includes('conspiracy') ||
-      actor.description?.toLowerCase().includes('conspiracy')
+      actor.personality?.includes("contrarian") ||
+      actor.personality?.includes("conspiracy") ||
+      actor.description?.toLowerCase().includes("conspiracy")
     ) {
       baseReliability = 0.15 + rng() * 0.15; // 0.15-0.30
       willingToLie = true;
-      selfInterest = 'chaos';
+      selfInterest = "chaos";
     }
     // Politicians: Low reliability, willing to lie
     else if (
-      actor.domain?.includes('politics') ||
-      actor.description?.toLowerCase().includes('politician') ||
-      actor.role === 'politician'
+      actor.domain?.includes("politics") ||
+      actor.description?.toLowerCase().includes("politician") ||
+      actor.role === "politician"
     ) {
       baseReliability = 0.25 + rng() * 0.15; // 0.25-0.40
       willingToLie = true;
-      selfInterest = 'reputation';
+      selfInterest = "reputation";
     }
     // Journalists: Medium reliability
     else if (
-      actor.domain?.includes('media') ||
-      actor.domain?.includes('journalism') ||
-      actor.role === 'journalist'
+      actor.domain?.includes("media") ||
+      actor.domain?.includes("journalism") ||
+      actor.role === "journalist"
     ) {
       baseReliability = 0.55 + rng() * 0.15; // 0.55-0.70
       willingToLie = false;
-      selfInterest = 'reputation';
+      selfInterest = "reputation";
     }
     // Finance/Tech experts: Medium-high reliability, sometimes willing to lie
     else if (
-      actor.domain?.includes('finance') ||
-      actor.domain?.includes('tech') ||
-      actor.role === 'expert'
+      actor.domain?.includes("finance") ||
+      actor.domain?.includes("tech") ||
+      actor.role === "expert"
     ) {
       baseReliability = 0.6 + rng() * 0.2; // 0.60-0.80
       willingToLie = randomChance(0.3, rng); // 30% willing to lie for profit
-      selfInterest = 'wealth';
+      selfInterest = "wealth";
     }
     // Everyone else: Medium reliability
     else {
       baseReliability = 0.5 + rng() * 0.2; // 0.50-0.70
       willingToLie = randomChance(0.2, rng); // 20% willing to lie
-      selfInterest = randomChance(0.5, rng) ? 'reputation' : 'wealth';
+      selfInterest = randomChance(0.5, rng) ? "reputation" : "wealth";
     }
 
     // Insiders get higher reliability about their orgs
@@ -298,14 +298,14 @@ export class NPCPersonaGenerator {
     const favorsActors = this.findActorsWithSharedAffiliations(
       actor,
       allActors,
-      insiderOrgs
+      insiderOrgs,
     );
 
     // Find actors from competing organizations (rivals)
     const opposesActors = this.findActorsFromCompetingOrgs(
       actor,
       allActors,
-      opposesOrgs
+      opposesOrgs,
     );
 
     return {
@@ -336,23 +336,23 @@ export class NPCPersonaGenerator {
    * - Medium reliability: 40-60%
    */
   private validatePersonaDistribution(
-    personas: Map<string, PersonaAssignment>
+    personas: Map<string, PersonaAssignment>,
   ): void {
     const reliabilities = Array.from(personas.values()).map(
-      (p) => p.reliability
+      (p) => p.reliability,
     );
 
     const avgReliability =
       reliabilities.reduce((a, b) => a + b, 0) / reliabilities.length;
     const insiders = Array.from(personas.values()).filter(
-      (p) => p.insiderOrgs.length > 0
+      (p) => p.insiderOrgs.length > 0,
     );
     const liars = Array.from(personas.values()).filter((p) => p.willingToLie);
     const highReliability = reliabilities.filter((r) => r > 0.7).length;
     const lowReliability = reliabilities.filter((r) => r < 0.4).length;
 
     logger.info(
-      'Persona distribution',
+      "Persona distribution",
       {
         total: personas.size,
         avgReliability: avgReliability.toFixed(2),
@@ -362,28 +362,28 @@ export class NPCPersonaGenerator {
         lowReliability,
         mediumReliability: personas.size - highReliability - lowReliability,
       },
-      'NPCPersonaGenerator'
+      "NPCPersonaGenerator",
     );
 
     // Warn if distribution is unusual
     if (avgReliability < 0.4 || avgReliability > 0.7) {
       logger.warn(
-        'Unusual reliability distribution',
+        "Unusual reliability distribution",
         {
           avgReliability,
-          expected: '0.45-0.65',
+          expected: "0.45-0.65",
         },
-        'NPCPersonaGenerator'
+        "NPCPersonaGenerator",
       );
     }
 
     if (insiders.length === 0 && personas.size > 10) {
       logger.warn(
-        'No insiders detected - game may lack insider advantage',
+        "No insiders detected - game may lack insider advantage",
         {
           totalNPCs: personas.size,
         },
-        'NPCPersonaGenerator'
+        "NPCPersonaGenerator",
       );
     }
   }
@@ -392,10 +392,10 @@ export class NPCPersonaGenerator {
    * Calculate average reliability across all personas
    */
   private calculateAvgReliability(
-    personas: Map<string, PersonaAssignment>
+    personas: Map<string, PersonaAssignment>,
   ): number {
     const reliabilities = Array.from(personas.values()).map(
-      (p) => p.reliability
+      (p) => p.reliability,
     );
     return reliabilities.reduce((a, b) => a + b, 0) / reliabilities.length;
   }
@@ -430,7 +430,7 @@ export class NPCPersonaGenerator {
    */
   private findCompetitorOrgs(
     affiliations: string[],
-    organizations: Organization[]
+    organizations: Organization[],
   ): string[] {
     if (affiliations.length === 0) return [];
 
@@ -467,7 +467,7 @@ export class NPCPersonaGenerator {
   private findActorsWithSharedAffiliations(
     actor: Actor,
     allActors: Actor[],
-    affiliations: string[]
+    affiliations: string[],
   ): string[] {
     if (affiliations.length === 0) return [];
 
@@ -481,7 +481,7 @@ export class NPCPersonaGenerator {
       // Check if any affiliations overlap
       const otherAffiliations = otherActor.affiliations || [];
       const hasSharedAffiliation = otherAffiliations.some((a) =>
-        affiliationSet.has(a)
+        affiliationSet.has(a),
       );
 
       if (hasSharedAffiliation) {
@@ -506,7 +506,7 @@ export class NPCPersonaGenerator {
   private findActorsFromCompetingOrgs(
     actor: Actor,
     allActors: Actor[],
-    competitorOrgs: string[]
+    competitorOrgs: string[],
   ): string[] {
     if (competitorOrgs.length === 0) return [];
 
@@ -520,7 +520,7 @@ export class NPCPersonaGenerator {
       // Check if actor works at a competitor org
       const otherAffiliations = otherActor.affiliations || [];
       const worksAtCompetitor = otherAffiliations.some((a) =>
-        competitorSet.has(a)
+        competitorSet.has(a),
       );
 
       if (worksAtCompetitor) {

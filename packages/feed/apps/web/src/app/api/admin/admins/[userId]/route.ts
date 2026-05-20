@@ -66,20 +66,20 @@ import {
   requireAdmin,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { db } from '@feed/db';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { z } from 'zod';
+} from "@feed/api";
+import { db } from "@feed/db";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { z } from "zod";
 
 const AdminActionSchema = z.object({
-  action: z.enum(['promote', 'demote']),
+  action: z.enum(["promote", "demote"]),
 });
 
 export const POST = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ userId: string }> }
+    context: { params: Promise<{ userId: string }> },
   ) => {
     // Require admin authentication
     const adminUser = await requireAdmin(request);
@@ -98,7 +98,7 @@ export const POST = withErrorHandling(
         targetUserId: userId,
         action,
       },
-      'POST /api/admin/admins/[userId]'
+      "POST /api/admin/admins/[userId]",
     );
 
     // Get target user
@@ -115,39 +115,39 @@ export const POST = withErrorHandling(
     });
 
     if (!targetUser) {
-      throw new NotFoundError('User', userId);
+      throw new NotFoundError("User", userId);
     }
 
     // Prevent modifying NPC/actors
     if (targetUser.isActor) {
       throw new BusinessLogicError(
-        'Cannot modify admin status of game actors',
-        'CANNOT_MODIFY_ACTOR'
+        "Cannot modify admin status of game actors",
+        "CANNOT_MODIFY_ACTOR",
       );
     }
 
     // Prevent modifying banned users
     if (targetUser.isBanned) {
       throw new BusinessLogicError(
-        'Cannot modify admin status of banned users',
-        'USER_BANNED'
+        "Cannot modify admin status of banned users",
+        "USER_BANNED",
       );
     }
 
     // Validate action makes sense
-    if (action === 'promote' && targetUser.isAdmin) {
-      throw new BusinessLogicError('User is already an admin', 'ALREADY_ADMIN');
+    if (action === "promote" && targetUser.isAdmin) {
+      throw new BusinessLogicError("User is already an admin", "ALREADY_ADMIN");
     }
 
-    if (action === 'demote' && !targetUser.isAdmin) {
-      throw new BusinessLogicError('User is not an admin', 'NOT_ADMIN');
+    if (action === "demote" && !targetUser.isAdmin) {
+      throw new BusinessLogicError("User is not an admin", "NOT_ADMIN");
     }
 
     // Prevent demoting yourself
-    if (action === 'demote' && targetUser.id === adminUser.userId) {
+    if (action === "demote" && targetUser.id === adminUser.userId) {
       throw new BusinessLogicError(
-        'Cannot demote yourself',
-        'CANNOT_DEMOTE_SELF'
+        "Cannot demote yourself",
+        "CANNOT_DEMOTE_SELF",
       );
     }
 
@@ -155,7 +155,7 @@ export const POST = withErrorHandling(
     const updatedUser = await db.user.update({
       where: { id: userId },
       data: {
-        isAdmin: action === 'promote',
+        isAdmin: action === "promote",
         updatedAt: new Date(),
       },
       select: {
@@ -180,21 +180,21 @@ export const POST = withErrorHandling(
         targetUsername: updatedUser.username,
         action,
       },
-      'POST /api/admin/admins/[userId]'
+      "POST /api/admin/admins/[userId]",
     );
 
     // Audit log the privilege change (persist to database)
     // This is a critical security operation that MUST be logged
-    logAdminAction(action === 'promote' ? 'PROMOTE_ADMIN' : 'DEMOTE_ADMIN', {
+    logAdminAction(action === "promote" ? "PROMOTE_ADMIN" : "DEMOTE_ADMIN", {
       adminId: adminUser.userId,
       ipAddress: getClientIp(request.headers) ?? undefined,
-      resourceType: 'user',
+      resourceType: "user",
       resourceId: userId,
       previousValue: {
         isAdmin: targetUser.isAdmin,
       },
       newValue: {
-        isAdmin: action === 'promote',
+        isAdmin: action === "promote",
       },
       metadata: {
         targetUsername: updatedUser.username,
@@ -202,9 +202,9 @@ export const POST = withErrorHandling(
       },
     }).catch((err) => {
       logger.error(
-        'Failed to persist critical audit log for privilege change',
+        "Failed to persist critical audit log for privilege change",
         { err, userId, action },
-        'POST /api/admin/admins/[userId]'
+        "POST /api/admin/admins/[userId]",
       );
     });
 
@@ -213,5 +213,5 @@ export const POST = withErrorHandling(
       user: updatedUser,
       action,
     });
-  }
+  },
 );

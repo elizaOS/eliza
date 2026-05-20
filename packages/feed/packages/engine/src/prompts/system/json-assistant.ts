@@ -1,4 +1,4 @@
-import { definePrompt } from '../define-prompt';
+import { definePrompt } from "../define-prompt";
 
 /**
  * System prompt for enforcing XML-only LLM responses.
@@ -14,10 +14,10 @@ import { definePrompt } from '../define-prompt';
  * ```
  */
 export const xmlAssistant = definePrompt({
-  id: 'xml-assistant',
-  version: '2.0.0',
-  category: 'system',
-  description: 'System message for XML-only LLM responses',
+  id: "xml-assistant",
+  version: "2.0.0",
+  category: "system",
+  description: "System message for XML-only LLM responses",
   temperature: 0,
   maxTokens: 0,
   template: `

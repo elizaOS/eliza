@@ -1,8 +1,8 @@
-import type { NarrativeStory } from '@feed/shared';
-import { logger } from '@feed/shared';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useAuth } from '@/hooks/useAuth';
-import { useSSEChannel } from '@/hooks/useSSE';
+import type { NarrativeStory } from "@feed/shared";
+import { logger } from "@feed/shared";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
+import { useSSEChannel } from "@/hooks/useSSE";
 
 interface UseStoriesFeedOptions {
   enabled?: boolean;
@@ -27,9 +27,9 @@ export interface UseStoriesFeedResult {
 }
 
 const PAGE_SIZE = 20;
-const ENDPOINT = '/api/feed/stories';
+const ENDPOINT = "/api/feed/stories";
 const SSE_DEBOUNCE_MS = 2_000;
-const LOG_CTX = 'useStoriesFeed';
+const LOG_CTX = "useStoriesFeed";
 
 interface StoriesFeedPageResponse {
   success?: boolean;
@@ -40,7 +40,7 @@ interface StoriesFeedPageResponse {
 }
 
 export function useStoriesFeed(
-  options: UseStoriesFeedOptions = {}
+  options: UseStoriesFeedOptions = {},
 ): UseStoriesFeedResult {
   const { enabled = true } = options;
   const { authenticated, getAccessToken } = useAuth();
@@ -79,7 +79,7 @@ export function useStoriesFeed(
   const fetchPage = useCallback(
     async (
       cursor: string | null,
-      signal: AbortSignal
+      signal: AbortSignal,
     ): Promise<StoriesFeedPageResponse | null> => {
       const headers = await buildHeaders();
       const url = cursor
@@ -92,7 +92,7 @@ export function useStoriesFeed(
       }
       return response.json() as Promise<StoriesFeedPageResponse>;
     },
-    [buildHeaders]
+    [buildHeaders],
   );
 
   const loadInitial = useCallback(
@@ -110,8 +110,8 @@ export function useStoriesFeed(
         syncHasMore(data.hasMore ?? false);
         setError(null);
       } catch (err) {
-        if (err instanceof Error && err.name === 'AbortError') return;
-        const msg = 'Failed to load Stories feed';
+        if (err instanceof Error && err.name === "AbortError") return;
+        const msg = "Failed to load Stories feed";
         logger.error(msg, { error: err }, LOG_CTX);
         if (storiesRef.current.length === 0) setError(msg);
       } finally {
@@ -121,7 +121,7 @@ export function useStoriesFeed(
         }
       }
     },
-    [fetchPage, syncHasMore]
+    [fetchPage, syncHasMore],
   );
 
   const refresh = useCallback(async () => {
@@ -156,8 +156,8 @@ export function useStoriesFeed(
         syncHasMore(data.hasMore ?? false);
       })
       .catch((err) => {
-        if (err instanceof Error && err.name === 'AbortError') return;
-        logger.error('Failed to load more Stories', { error: err }, LOG_CTX);
+        if (err instanceof Error && err.name === "AbortError") return;
+        logger.error("Failed to load more Stories", { error: err }, LOG_CTX);
       })
       .finally(() => {
         loadingMoreRef.current = false;
@@ -168,14 +168,14 @@ export function useStoriesFeed(
   }, [fetchPage, syncHasMore]);
 
   useSSEChannel(
-    enabled ? 'feed' : null,
+    enabled ? "feed" : null,
     useCallback(() => {
       if (!isMountedRef.current) return;
       if (sseDebounceRef.current) clearTimeout(sseDebounceRef.current);
       sseDebounceRef.current = setTimeout(() => {
         if (isMountedRef.current) void refresh();
       }, SSE_DEBOUNCE_MS);
-    }, [refresh])
+    }, [refresh]),
   );
 
   useEffect(() => {

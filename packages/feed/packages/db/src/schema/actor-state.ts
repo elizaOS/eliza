@@ -1,4 +1,4 @@
-import { sql } from 'drizzle-orm';
+import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
@@ -9,7 +9,7 @@ import {
   pgTable,
   text,
   timestamp,
-} from 'drizzle-orm/pg-core';
+} from "drizzle-orm/pg-core";
 
 /**
  * NPC Memory - Bounded memory of past interactions for continuity
@@ -18,12 +18,12 @@ import {
 export interface NpcMemory {
   id: string;
   type:
-    | 'posted'
-    | 'replied_to'
-    | 'mentioned_by'
-    | 'witnessed_event'
-    | 'traded'
-    | 'running_bit';
+    | "posted"
+    | "replied_to"
+    | "mentioned_by"
+    | "witnessed_event"
+    | "traded"
+    | "running_bit";
   timestamp: string; // ISO date string
   summary: string;
   actorIds?: string[];
@@ -51,54 +51,54 @@ export interface RelationshipState {
  * This table stores only fields that change during gameplay.
  */
 export const actorState = pgTable(
-  'ActorState',
+  "ActorState",
   {
-    id: text('id').primaryKey(),
-    tradingBalance: decimal('tradingBalance', { precision: 18, scale: 2 })
+    id: text("id").primaryKey(),
+    tradingBalance: decimal("tradingBalance", { precision: 18, scale: 2 })
       .notNull()
-      .default('10000'),
-    reputationPoints: integer('reputationPoints').notNull().default(10000),
-    hasPool: boolean('hasPool').notNull().default(false),
+      .default("10000"),
+    reputationPoints: integer("reputationPoints").notNull().default(10000),
+    hasPool: boolean("hasPool").notNull().default(false),
 
     // Activity tracking for organic behavior patterns
-    lastPostAt: timestamp('lastPostAt', { mode: 'date' }),
-    lastActiveAt: timestamp('lastActiveAt', { mode: 'date' }),
-    postsToday: integer('postsToday').notNull().default(0),
-    postsTodayResetAt: timestamp('postsTodayResetAt', { mode: 'date' }),
+    lastPostAt: timestamp("lastPostAt", { mode: "date" }),
+    lastActiveAt: timestamp("lastActiveAt", { mode: "date" }),
+    postsToday: integer("postsToday").notNull().default(0),
+    postsTodayResetAt: timestamp("postsTodayResetAt", { mode: "date" }),
 
     // Mood state (-1 to 1)
     // CHECK constraint current_mood_bounds enforces -1 <= currentMood <= 1 at DB level
-    currentMood: decimal('currentMood', { precision: 4, scale: 3 }).default(
-      '0'
+    currentMood: decimal("currentMood", { precision: 4, scale: 3 }).default(
+      "0",
     ),
 
     // Memory array for NPC context
     // Note: 50-memory limit is enforced in NpcMemoryService, not at DB level
-    recentMemories: jsonb('recentMemories')
+    recentMemories: jsonb("recentMemories")
       .$type<NpcMemory[]>()
       .default(sql`'[]'::jsonb`),
 
     // Relationships with other actors
-    relationships: jsonb('relationships')
+    relationships: jsonb("relationships")
       .$type<Record<string, RelationshipState>>()
       .default(sql`'{}'::jsonb`),
 
-    createdAt: timestamp('createdAt', { mode: 'date' }).notNull().defaultNow(),
-    updatedAt: timestamp('updatedAt', { mode: 'date' }).notNull(),
+    createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt", { mode: "date" }).notNull(),
   },
   (table) => [
-    index('ActorState_hasPool_idx').on(table.hasPool),
-    index('ActorState_reputationPoints_idx').on(table.reputationPoints),
-    index('ActorState_lastPostAt_idx').on(table.lastPostAt),
-    index('ActorState_lastActiveAt_idx').on(table.lastActiveAt),
+    index("ActorState_hasPool_idx").on(table.hasPool),
+    index("ActorState_reputationPoints_idx").on(table.reputationPoints),
+    index("ActorState_lastPostAt_idx").on(table.lastPostAt),
+    index("ActorState_lastActiveAt_idx").on(table.lastActiveAt),
     // Prevent negative trading balance at database level
-    check('positive_trading_balance', sql`${table.tradingBalance} >= 0`),
+    check("positive_trading_balance", sql`${table.tradingBalance} >= 0`),
     // Enforce mood bounds (-1 to 1) at database level
     check(
-      'current_mood_bounds',
-      sql`${table.currentMood} >= -1 AND ${table.currentMood} <= 1`
+      "current_mood_bounds",
+      sql`${table.currentMood} >= -1 AND ${table.currentMood} <= 1`,
     ),
-  ]
+  ],
 );
 
 // Type exports

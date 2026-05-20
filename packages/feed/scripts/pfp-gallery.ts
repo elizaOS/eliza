@@ -13,161 +13,161 @@
  * Output: ./output/pfp-gallery/index.html
  */
 
-import { execSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { mkdir, readdir, readFile, symlink, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { execSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { mkdir, readdir, readFile, symlink, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 
 // ─── Config ─────────────────────────────────────────────────────────────────
 
-const ROOT = join(import.meta.dir, '..');
-const OUTPUT_DIR = join(ROOT, 'output', 'pfp-gallery');
-const ACTORS_DIR = join(ROOT, 'packages/engine/src/data/actors');
-const ORGS_DIR = join(ROOT, 'packages/engine/src/data/organizations');
-const PUBLIC_ACTORS = join(ROOT, 'apps/web/public/images/actors');
-const PUBLIC_ACTOR_BANNERS = join(ROOT, 'apps/web/public/images/actor-banners');
-const PUBLIC_ORGS = join(ROOT, 'apps/web/public/images/organizations');
-const PUBLIC_ORG_BANNERS = join(ROOT, 'apps/web/public/images/org-banners');
+const ROOT = join(import.meta.dir, "..");
+const OUTPUT_DIR = join(ROOT, "output", "pfp-gallery");
+const ACTORS_DIR = join(ROOT, "packages/engine/src/data/actors");
+const ORGS_DIR = join(ROOT, "packages/engine/src/data/organizations");
+const PUBLIC_ACTORS = join(ROOT, "apps/web/public/images/actors");
+const PUBLIC_ACTOR_BANNERS = join(ROOT, "apps/web/public/images/actor-banners");
+const PUBLIC_ORGS = join(ROOT, "apps/web/public/images/organizations");
+const PUBLIC_ORG_BANNERS = join(ROOT, "apps/web/public/images/org-banners");
 
-const openAfter = process.argv.includes('--open');
+const openAfter = process.argv.includes("--open");
 
 // ─── User PFP constants (inlined — do NOT import generate-user-pfps.ts) ─────
 // These mirror the arrays in scripts/generate-user-pfps.ts. Keep in sync.
 
 const SUBJECTS = [
-  'a cat',
-  'a wolf',
-  'a fox',
-  'an owl',
-  'a bear',
-  'a raven',
-  'a koi fish',
-  'a stag',
-  'a tiger',
-  'a hawk',
-  'a panther',
-  'a lion',
-  'a dolphin',
-  'a snow leopard',
-  'an eagle',
-  'a red panda',
-  'a dragon',
-  'a phoenix',
-  'a griffin',
-  'a sphinx',
-  'a valkyrie',
-  'a celestial kirin',
-  'a sea serpent',
-  'a nine-tailed fox',
-  'a robot head',
-  'an astronaut helmet',
-  'a samurai helmet',
-  'a chess king piece',
-  'a knight in armor',
-  'a space explorer',
-  'a scholar with books',
-  'a captain at the helm',
-  'a diamond',
-  'a crown',
-  'an hourglass',
-  'a crystal ball',
-  'a compass rose',
-  'a crescent moon',
-  'a lightning bolt',
-  'a glowing lantern',
-  'a golden coin',
-  'a key',
-  'a fractal flower',
-  'a DNA helix',
-  'a geometric eye',
-  'a spiral galaxy',
-  'a lotus flower',
+  "a cat",
+  "a wolf",
+  "a fox",
+  "an owl",
+  "a bear",
+  "a raven",
+  "a koi fish",
+  "a stag",
+  "a tiger",
+  "a hawk",
+  "a panther",
+  "a lion",
+  "a dolphin",
+  "a snow leopard",
+  "an eagle",
+  "a red panda",
+  "a dragon",
+  "a phoenix",
+  "a griffin",
+  "a sphinx",
+  "a valkyrie",
+  "a celestial kirin",
+  "a sea serpent",
+  "a nine-tailed fox",
+  "a robot head",
+  "an astronaut helmet",
+  "a samurai helmet",
+  "a chess king piece",
+  "a knight in armor",
+  "a space explorer",
+  "a scholar with books",
+  "a captain at the helm",
+  "a diamond",
+  "a crown",
+  "an hourglass",
+  "a crystal ball",
+  "a compass rose",
+  "a crescent moon",
+  "a lightning bolt",
+  "a glowing lantern",
+  "a golden coin",
+  "a key",
+  "a fractal flower",
+  "a DNA helix",
+  "a geometric eye",
+  "a spiral galaxy",
+  "a lotus flower",
 ];
 
 const BACKGROUNDS = [
-  'a soft geometric gradient',
-  'concentric circles in muted tones',
-  'a mandala pattern',
-  'liquid marble in deep blue and gold',
-  'a topographic map in sepia',
-  'a clean studio gradient',
-  'a deep midnight blue',
-  'a rich forest green',
-  'a warm amber and gold gradient',
-  'a dark charcoal with soft glow',
-  'a pastel watercolor wash',
-  'a muted earth tone palette',
-  'an iridescent sheen',
-  'a stark white minimalist backdrop',
-  'a deep navy with stars',
-  'a dense jungle canopy',
-  'an underwater coral reef',
-  'a mountain range at dusk',
-  'a snowy mountain peak',
-  'a desert with dunes',
-  'outer space with nebulae',
-  'an ancient temple interior',
-  'a field of wildflowers',
-  'a serene lake at dawn',
-  'a bamboo forest in mist',
+  "a soft geometric gradient",
+  "concentric circles in muted tones",
+  "a mandala pattern",
+  "liquid marble in deep blue and gold",
+  "a topographic map in sepia",
+  "a clean studio gradient",
+  "a deep midnight blue",
+  "a rich forest green",
+  "a warm amber and gold gradient",
+  "a dark charcoal with soft glow",
+  "a pastel watercolor wash",
+  "a muted earth tone palette",
+  "an iridescent sheen",
+  "a stark white minimalist backdrop",
+  "a deep navy with stars",
+  "a dense jungle canopy",
+  "an underwater coral reef",
+  "a mountain range at dusk",
+  "a snowy mountain peak",
+  "a desert with dunes",
+  "outer space with nebulae",
+  "an ancient temple interior",
+  "a field of wildflowers",
+  "a serene lake at dawn",
+  "a bamboo forest in mist",
 ];
 
 const THEMES = [
-  'elegant and regal',
-  'ethereal and dreamlike',
-  'serene and zen',
-  'bold and powerful',
-  'ancient and mystical',
-  'minimalist and clean',
-  'cosmic and celestial',
-  'warm and inviting',
-  'cool and focused',
-  'vibrant and energetic',
-  'mysterious and atmospheric',
-  'crisp and modern',
-  'rich and luxurious',
-  'playful and whimsical',
-  'sharp and cinematic',
-  'soft and peaceful',
-  'heroic and epic',
-  'enchanted fairy tale',
-  'lo-fi chill',
-  'sophisticated and refined',
+  "elegant and regal",
+  "ethereal and dreamlike",
+  "serene and zen",
+  "bold and powerful",
+  "ancient and mystical",
+  "minimalist and clean",
+  "cosmic and celestial",
+  "warm and inviting",
+  "cool and focused",
+  "vibrant and energetic",
+  "mysterious and atmospheric",
+  "crisp and modern",
+  "rich and luxurious",
+  "playful and whimsical",
+  "sharp and cinematic",
+  "soft and peaceful",
+  "heroic and epic",
+  "enchanted fairy tale",
+  "lo-fi chill",
+  "sophisticated and refined",
 ];
 
 const STYLES = [
-  '3D Pixar render',
-  'hand-drawn ink illustration',
-  'digital concept art',
-  'anime illustration',
-  'oil painting',
-  'watercolor painting',
-  'low poly 3D',
-  'comic book illustration',
-  'woodblock print',
-  'stained glass illustration',
-  'ukiyo-e Japanese art',
-  'art nouveau poster',
-  'claymation style',
-  'pencil graphite sketch',
-  'vector flat design',
-  'impressionist painting',
-  'cel-shaded cartoon',
-  'matte painting',
-  'studio photography',
-  'linocut print',
-  'bold graphic design',
-  'fantasy concept art',
-  'character design sheet',
-  'luminous digital painting',
-  'soft pastel illustration',
+  "3D Pixar render",
+  "hand-drawn ink illustration",
+  "digital concept art",
+  "anime illustration",
+  "oil painting",
+  "watercolor painting",
+  "low poly 3D",
+  "comic book illustration",
+  "woodblock print",
+  "stained glass illustration",
+  "ukiyo-e Japanese art",
+  "art nouveau poster",
+  "claymation style",
+  "pencil graphite sketch",
+  "vector flat design",
+  "impressionist painting",
+  "cel-shaded cartoon",
+  "matte painting",
+  "studio photography",
+  "linocut print",
+  "bold graphic design",
+  "fantasy concept art",
+  "character design sheet",
+  "luminous digital painting",
+  "soft pastel illustration",
 ];
 
 function buildPrompt(
   subject: string,
   background: string,
   theme: string,
-  style: string
+  style: string,
 ): string {
   return `A polished profile picture avatar: ${subject}, ${theme} mood, rendered in ${style} style. Background: ${background}. Centered composition, close-up portrait framing, square crop. High quality, clean edges, no text, no watermarks, no logos.`;
 }
@@ -208,7 +208,7 @@ interface UserPreset {
 // ─── Data extraction (regex-based — no TS compile needed) ────────────────────
 
 function extractFieldRobust(source: string, field: string): string | undefined {
-  const fieldRe = new RegExp(`\\b${field}:\\s*`, 'g');
+  const fieldRe = new RegExp(`\\b${field}:\\s*`, "g");
   const match = fieldRe.exec(source);
   if (!match) return undefined;
 
@@ -221,17 +221,17 @@ function extractFieldRobust(source: string, field: string): string | undefined {
 
   while (i < segment.length) {
     const ch = segment[i];
-    if (ch === "'" || ch === '"' || ch === '`') {
+    if (ch === "'" || ch === '"' || ch === "`") {
       firstQuoteFound = true;
       const quote = ch;
       i++;
-      let str = '';
+      let str = "";
       while (i < segment.length && segment[i] !== quote) {
-        if (segment[i] === '\\') {
+        if (segment[i] === "\\") {
           i++;
           const esc = segment[i];
-          if (esc === 'n') str += '\n';
-          else if (esc === 't') str += '\t';
+          if (esc === "n") str += "\n";
+          else if (esc === "t") str += "\t";
           else str += esc;
         } else {
           str += segment[i];
@@ -249,16 +249,16 @@ function extractFieldRobust(source: string, field: string): string | undefined {
     }
   }
 
-  return parts.length > 0 ? parts.join('') : undefined;
+  return parts.length > 0 ? parts.join("") : undefined;
 }
 
 async function loadActors(): Promise<ActorEntry[]> {
   const files = await readdir(ACTORS_DIR);
   const actors: ActorEntry[] = [];
 
-  for (const file of files.filter((f) => f.endsWith('.ts'))) {
-    const id = file.replace('.ts', '');
-    const source = await readFile(join(ACTORS_DIR, file), 'utf-8');
+  for (const file of files.filter((f) => f.endsWith(".ts"))) {
+    const id = file.replace(".ts", "");
+    const source = await readFile(join(ACTORS_DIR, file), "utf-8");
 
     const pfpPath = join(PUBLIC_ACTORS, `${id}.jpg`);
     const bannerPath = join(PUBLIC_ACTOR_BANNERS, `${id}.jpg`);
@@ -267,9 +267,9 @@ async function loadActors(): Promise<ActorEntry[]> {
 
     actors.push({
       id,
-      name: extractFieldRobust(source, 'name') ?? id,
-      realName: extractFieldRobust(source, 'realName'),
-      pfpDescription: extractFieldRobust(source, 'pfpDescription'),
+      name: extractFieldRobust(source, "name") ?? id,
+      realName: extractFieldRobust(source, "realName"),
+      pfpDescription: extractFieldRobust(source, "pfpDescription"),
       hasPfp,
       hasBanner,
       pfpPath: hasPfp ? pfpPath : undefined,
@@ -284,9 +284,9 @@ async function loadOrgs(): Promise<OrgEntry[]> {
   const files = await readdir(ORGS_DIR);
   const orgs: OrgEntry[] = [];
 
-  for (const file of files.filter((f) => f.endsWith('.ts'))) {
-    const id = file.replace('.ts', '');
-    const source = await readFile(join(ORGS_DIR, file), 'utf-8');
+  for (const file of files.filter((f) => f.endsWith(".ts"))) {
+    const id = file.replace(".ts", "");
+    const source = await readFile(join(ORGS_DIR, file), "utf-8");
 
     const logoPath = join(PUBLIC_ORGS, `${id}.jpg`);
     const bannerPath = join(PUBLIC_ORG_BANNERS, `${id}.jpg`);
@@ -295,9 +295,9 @@ async function loadOrgs(): Promise<OrgEntry[]> {
 
     orgs.push({
       id,
-      name: extractFieldRobust(source, 'name') ?? id,
-      pfpDescription: extractFieldRobust(source, 'pfpDescription'),
-      bannerDescription: extractFieldRobust(source, 'bannerDescription'),
+      name: extractFieldRobust(source, "name") ?? id,
+      pfpDescription: extractFieldRobust(source, "pfpDescription"),
+      bannerDescription: extractFieldRobust(source, "bannerDescription"),
       hasLogo,
       hasBanner,
       logoPath: hasLogo ? logoPath : undefined,
@@ -351,7 +351,7 @@ function getUserPresets(count = 40): UserPreset[] {
         subjects[si % subjects.length]!,
         backgrounds[bi % backgrounds.length]!,
         themes[ti % themes.length]!,
-        styles[sti % styles.length]!
+        styles[sti % styles.length]!,
       ),
     });
     si++;
@@ -366,10 +366,10 @@ function getUserPresets(count = 40): UserPreset[] {
 
 function escHtml(s: string): string {
   return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 // Images are served via relative paths (symlinked into output/pfp-gallery/images/)
@@ -377,11 +377,11 @@ function imgSrc(imagePath: string | undefined): string | undefined {
   if (!imagePath) return undefined;
   // e.g. /root/.../apps/web/public/images/actors/ailon-musk.jpg
   // → images/actors/ailon-musk.jpg
-  const parts = imagePath.split('/images/');
+  const parts = imagePath.split("/images/");
   return parts.length > 1 ? `images/${parts[parts.length - 1]}` : undefined;
 }
 
-function imgTag(imagePath: string | undefined, alt: string, cls = ''): string {
+function imgTag(imagePath: string | undefined, alt: string, cls = ""): string {
   const src = imgSrc(imagePath);
   if (!src) {
     return `<div class="missing-img ${cls}">NO IMAGE</div>`;
@@ -390,22 +390,22 @@ function imgTag(imagePath: string | undefined, alt: string, cls = ''): string {
 }
 
 function badge(ok: boolean, label: string): string {
-  return `<span class="badge ${ok ? 'ok' : 'missing'}">${label}</span>`;
+  return `<span class="badge ${ok ? "ok" : "missing"}">${label}</span>`;
 }
 
 function actorCard(a: ActorEntry): string {
   const isMissing = !a.hasPfp || !a.hasBanner;
   return `
-<div class="card${isMissing ? ' card-warning' : ''}" id="actor-${a.id}">
+<div class="card${isMissing ? " card-warning" : ""}" id="actor-${a.id}">
   <div class="card-images">
-    ${imgTag(a.pfpPath, a.name, 'pfp-img')}
-    ${imgTag(a.bannerPath, `${a.name} banner`, 'banner-img')}
+    ${imgTag(a.pfpPath, a.name, "pfp-img")}
+    ${imgTag(a.bannerPath, `${a.name} banner`, "banner-img")}
   </div>
   <div class="card-meta">
     <div class="card-title">${escHtml(a.name)}</div>
     <div class="card-subtitle">${a.realName ? `Real: ${escHtml(a.realName)}` : '<em class="muted">No realName</em>'}</div>
     <div class="card-id" title="Click to copy">${escHtml(a.id)}</div>
-    <div class="badges">${badge(a.hasPfp, 'PFP')} ${badge(a.hasBanner, 'BANNER')}</div>
+    <div class="badges">${badge(a.hasPfp, "PFP")} ${badge(a.hasBanner, "BANNER")}</div>
     ${
       a.pfpDescription
         ? `<div class="description"><strong>pfpDescription:</strong><br>${escHtml(a.pfpDescription)}</div>`
@@ -418,15 +418,15 @@ function actorCard(a: ActorEntry): string {
 function orgCard(o: OrgEntry): string {
   const isMissing = !o.hasLogo || !o.hasBanner;
   return `
-<div class="card${isMissing ? ' card-warning' : ''}" id="org-${o.id}">
+<div class="card${isMissing ? " card-warning" : ""}" id="org-${o.id}">
   <div class="card-images">
-    ${imgTag(o.logoPath, o.name, 'pfp-img')}
-    ${imgTag(o.bannerPath, `${o.name} banner`, 'banner-img')}
+    ${imgTag(o.logoPath, o.name, "pfp-img")}
+    ${imgTag(o.bannerPath, `${o.name} banner`, "banner-img")}
   </div>
   <div class="card-meta">
     <div class="card-title">${escHtml(o.name)}</div>
     <div class="card-id" title="Click to copy">${escHtml(o.id)}</div>
-    <div class="badges">${badge(o.hasLogo, 'LOGO')} ${badge(o.hasBanner, 'BANNER')}</div>
+    <div class="badges">${badge(o.hasLogo, "LOGO")} ${badge(o.hasBanner, "BANNER")}</div>
     ${
       o.pfpDescription
         ? `<div class="description"><strong>pfpDescription:</strong><br>${escHtml(o.pfpDescription)}</div>`
@@ -453,7 +453,7 @@ function userPresetCard(p: UserPreset): string {
 function buildHtml(
   actors: ActorEntry[],
   orgs: OrgEntry[],
-  presets: UserPreset[]
+  presets: UserPreset[],
 ): string {
   const actorsMissing = actors.filter((a) => !a.hasPfp);
   const orgsMissing = orgs.filter((o) => !o.hasLogo);
@@ -547,23 +547,23 @@ nav a:hover { background: #1e1e2e; }
 </header>
 
 <div class="summary">
-  <div class="stat ${actors.filter((a) => a.hasPfp).length === actors.length ? 'ok' : 'warn'}">
+  <div class="stat ${actors.filter((a) => a.hasPfp).length === actors.length ? "ok" : "warn"}">
     <div class="stat-value">${actors.filter((a) => a.hasPfp).length}/${actors.length}</div>
     <div class="stat-label">Actor PFPs generated</div>
   </div>
-  <div class="stat ${actorsMissing.length === 0 ? 'ok' : 'err'}">
+  <div class="stat ${actorsMissing.length === 0 ? "ok" : "err"}">
     <div class="stat-value">${actorsMissing.length}</div>
     <div class="stat-label">Actors missing PFP</div>
   </div>
-  <div class="stat ${actors.filter((a) => a.hasBanner).length === actors.length ? 'ok' : 'warn'}">
+  <div class="stat ${actors.filter((a) => a.hasBanner).length === actors.length ? "ok" : "warn"}">
     <div class="stat-value">${actors.filter((a) => a.hasBanner).length}/${actors.length}</div>
     <div class="stat-label">Actor banners generated</div>
   </div>
-  <div class="stat ${orgsMissing.length === 0 ? 'ok' : 'warn'}">
+  <div class="stat ${orgsMissing.length === 0 ? "ok" : "warn"}">
     <div class="stat-value">${orgs.filter((o) => o.hasLogo).length}/${orgs.length}</div>
     <div class="stat-label">Org logos generated</div>
   </div>
-  <div class="stat ${actorsNoPfpDesc.length === 0 ? 'ok' : 'warn'}">
+  <div class="stat ${actorsNoPfpDesc.length === 0 ? "ok" : "warn"}">
     <div class="stat-value">${actorsNoPfpDesc.length}</div>
     <div class="stat-label">Actors missing pfpDescription</div>
   </div>
@@ -582,7 +582,7 @@ nav a:hover { background: #1e1e2e; }
     actorsMissing.length > 0
       ? `<strong style="font-size:0.8rem;color:#f59e0b">Actors missing PFP (${actorsMissing.length}):</strong>
   <div class="missing-list">
-    ${actorsMissing.map((a) => `<span class="missing-tag" title="${escHtml(a.name)}" onclick="navigator.clipboard.writeText('${escHtml(a.id)}')">${escHtml(a.id)}</span>`).join('')}
+    ${actorsMissing.map((a) => `<span class="missing-tag" title="${escHtml(a.name)}" onclick="navigator.clipboard.writeText('${escHtml(a.id)}')">${escHtml(a.id)}</span>`).join("")}
   </div>`
       : '<p style="color:#34d399;font-size:0.85rem">✓ All actors have PFPs</p>'
   }
@@ -593,7 +593,7 @@ nav a:hover { background: #1e1e2e; }
     orgsMissing.length > 0
       ? `<strong style="font-size:0.8rem;color:#f59e0b">Orgs missing logo (${orgsMissing.length}):</strong>
   <div class="missing-list">
-    ${orgsMissing.map((o) => `<span class="missing-tag" title="${escHtml(o.name)}" onclick="navigator.clipboard.writeText('${escHtml(o.id)}')">${escHtml(o.id)}</span>`).join('')}
+    ${orgsMissing.map((o) => `<span class="missing-tag" title="${escHtml(o.name)}" onclick="navigator.clipboard.writeText('${escHtml(o.id)}')">${escHtml(o.id)}</span>`).join("")}
   </div>`
       : '<p style="color:#34d399;font-size:0.85rem">✓ All orgs have logos</p>'
   }
@@ -603,9 +603,9 @@ nav a:hover { background: #1e1e2e; }
       ? `<br>
   <strong style="font-size:0.8rem;color:#f59e0b">Actors without pfpDescription (${actorsNoPfpDesc.length}):</strong>
   <div class="missing-list">
-    ${actorsNoPfpDesc.map((a) => `<span class="missing-tag" title="${escHtml(a.name)}">${escHtml(a.id)}</span>`).join('')}
+    ${actorsNoPfpDesc.map((a) => `<span class="missing-tag" title="${escHtml(a.name)}">${escHtml(a.id)}</span>`).join("")}
   </div>`
-      : ''
+      : ""
   }
 </div>
 
@@ -619,7 +619,7 @@ nav a:hover { background: #1e1e2e; }
     <button onclick="clearFilter('actors-grid', 'actor-filter', 'btn-missing-actors')">Clear</button>
   </div>
   <div class="cards" id="actors-grid">
-    ${actors.map(actorCard).join('\n')}
+    ${actors.map(actorCard).join("\n")}
   </div>
 </div>
 
@@ -633,7 +633,7 @@ nav a:hover { background: #1e1e2e; }
     <button onclick="clearFilter('orgs-grid', 'org-filter', 'btn-missing-orgs')">Clear</button>
   </div>
   <div class="cards" id="orgs-grid">
-    ${orgs.map(orgCard).join('\n')}
+    ${orgs.map(orgCard).join("\n")}
   </div>
 </div>
 
@@ -645,7 +645,7 @@ nav a:hover { background: #1e1e2e; }
     150 unique combos are used in total. Run <code>bun run pfp:user</code> (needs <code>FAL_KEY</code> env var) to generate actual images.
   </div>
   <div class="presets">
-    ${presets.map(userPresetCard).join('\n')}
+    ${presets.map(userPresetCard).join("\n")}
   </div>
 </div>
 
@@ -692,13 +692,13 @@ document.querySelectorAll('.card-id').forEach(el => {
 // ─── Main ────────────────────────────────────────────────────────────────────
 
 async function main() {
-  console.log('Loading actor data…');
+  console.log("Loading actor data…");
   const actors = await loadActors();
 
-  console.log('Loading organization data…');
+  console.log("Loading organization data…");
   const orgs = await loadOrgs();
 
-  console.log('Building user PFP preset list…');
+  console.log("Building user PFP preset list…");
   const presets = getUserPresets(40);
 
   // Summary to stdout
@@ -707,10 +707,10 @@ async function main() {
   const actorsNoPfpDesc = actors.filter((a) => !a.pfpDescription);
 
   console.log(
-    `\nActors: ${actors.length} total | ${actors.filter((a) => a.hasPfp).length} with PFP | ${actors.filter((a) => a.hasBanner).length} with banner`
+    `\nActors: ${actors.length} total | ${actors.filter((a) => a.hasPfp).length} with PFP | ${actors.filter((a) => a.hasBanner).length} with banner`,
   );
   console.log(
-    `Orgs:   ${orgs.length} total | ${orgs.filter((o) => o.hasLogo).length} with logo | ${orgs.filter((o) => o.hasBanner).length} with banner`
+    `Orgs:   ${orgs.length} total | ${orgs.filter((o) => o.hasLogo).length} with logo | ${orgs.filter((o) => o.hasBanner).length} with banner`,
   );
 
   if (actorsMissing.length > 0) {
@@ -723,25 +723,25 @@ async function main() {
   }
   if (actorsNoPfpDesc.length > 0) {
     console.log(
-      `\n⚠  Actors without pfpDescription (${actorsNoPfpDesc.length}):`
+      `\n⚠  Actors without pfpDescription (${actorsNoPfpDesc.length}):`,
     );
     for (const a of actorsNoPfpDesc) console.log(`   - ${a.id} (${a.name})`);
   }
 
-  console.log('\nGenerating HTML gallery…');
+  console.log("\nGenerating HTML gallery…");
   await mkdir(OUTPUT_DIR, { recursive: true });
 
   // Symlink image directories so they're served correctly over HTTP
   const imageLinks: Array<[string, string]> = [
-    ['actors', PUBLIC_ACTORS],
-    ['actor-banners', PUBLIC_ACTOR_BANNERS],
-    ['organizations', PUBLIC_ORGS],
-    ['org-banners', PUBLIC_ORG_BANNERS],
+    ["actors", PUBLIC_ACTORS],
+    ["actor-banners", PUBLIC_ACTOR_BANNERS],
+    ["organizations", PUBLIC_ORGS],
+    ["org-banners", PUBLIC_ORG_BANNERS],
   ];
   for (const [name, target] of imageLinks) {
-    const linkPath = join(OUTPUT_DIR, 'images', name);
+    const linkPath = join(OUTPUT_DIR, "images", name);
     if (!existsSync(linkPath)) {
-      await mkdir(join(OUTPUT_DIR, 'images'), { recursive: true });
+      await mkdir(join(OUTPUT_DIR, "images"), { recursive: true });
       await symlink(target, linkPath).catch(() => {
         /* already exists */
       });
@@ -749,18 +749,18 @@ async function main() {
   }
 
   const html = buildHtml(actors, orgs, presets);
-  const outPath = join(OUTPUT_DIR, 'index.html');
-  await writeFile(outPath, html, 'utf-8');
+  const outPath = join(OUTPUT_DIR, "index.html");
+  await writeFile(outPath, html, "utf-8");
 
   console.log(`\n✅ Gallery: ${outPath}`);
   console.log(
-    `   Serve:   bun run pfp:serve  (then SSH tunnel: ssh -L 8899:localhost:8899 user@server)`
+    `   Serve:   bun run pfp:serve  (then SSH tunnel: ssh -L 8899:localhost:8899 user@server)`,
   );
 
   if (openAfter) {
     try {
       execSync(
-        `xdg-open "${outPath}" 2>/dev/null || open "${outPath}" 2>/dev/null`
+        `xdg-open "${outPath}" 2>/dev/null || open "${outPath}" 2>/dev/null`,
       );
     } catch {
       /* ignore */

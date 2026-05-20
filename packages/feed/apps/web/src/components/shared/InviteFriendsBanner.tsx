@@ -1,12 +1,12 @@
-'use client';
+"use client";
 
-import { getReferralUrl } from '@feed/shared';
-import { Check, Copy, ExternalLink, Trophy, X } from 'lucide-react';
-import Link from 'next/link';
-import { useEffect, useState } from 'react';
-import { getAuthToken } from '@/lib/auth';
-import { useAuthStore } from '@/stores/authStore';
-import { apiUrl } from '@/utils/api-url';
+import { getReferralUrl } from "@feed/shared";
+import { Check, Copy, ExternalLink, Trophy, X } from "lucide-react";
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import { getAuthToken } from "@/lib/auth";
+import { useAuthStore } from "@/stores/authStore";
+import { apiUrl } from "@/utils/api-url";
 
 /**
  * Invite friends banner component for referral program.
@@ -47,19 +47,19 @@ export function InviteFriendsBanner({ onDismiss }: InviteFriendsBannerProps) {
       localStorage.setItem(viewKey, now.toString());
 
       // Update server if more than 1 day since last tracked
-      if (!lastView || now - parseInt(lastView) > 86400000) {
+      if (!lastView || now - parseInt(lastView, 10) > 86400000) {
         await fetch(
           `/api/users/${encodeURIComponent(user.id)}/update-profile`,
           {
-            method: 'POST',
+            method: "POST",
             headers: {
               Authorization: `Bearer ${token}`,
-              'Content-Type': 'application/json',
+              "Content-Type": "application/json",
             },
             body: JSON.stringify({
               bannerLastShown: new Date().toISOString(),
             }),
-          }
+          },
         );
       }
     };
@@ -84,11 +84,11 @@ export function InviteFriendsBanner({ onDismiss }: InviteFriendsBannerProps) {
 
     // Track dismiss in local storage
     const dismissKey = `banner_dismiss_${user.id}`;
-    const dismissCount = parseInt(localStorage.getItem(dismissKey) || '0');
+    const dismissCount = parseInt(localStorage.getItem(dismissKey) || "0", 10);
     localStorage.setItem(dismissKey, (dismissCount + 1).toString());
     localStorage.setItem(
       `banner_dismiss_time_${user.id}`,
-      Date.now().toString()
+      Date.now().toString(),
     );
 
     // Update server
@@ -97,15 +97,15 @@ export function InviteFriendsBanner({ onDismiss }: InviteFriendsBannerProps) {
       await fetch(
         apiUrl(`/api/users/${encodeURIComponent(user.id)}/update-profile`),
         {
-          method: 'POST',
+          method: "POST",
           headers: {
             Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
+            "Content-Type": "application/json",
           },
           body: JSON.stringify({
             bannerDismissCount: dismissCount + 1,
           }),
-        }
+        },
       );
 
       // Update local user state

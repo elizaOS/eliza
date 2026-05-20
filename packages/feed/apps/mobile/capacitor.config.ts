@@ -1,32 +1,32 @@
-import type { CapacitorConfig } from '@capacitor/cli';
+import type { CapacitorConfig } from "@capacitor/cli";
 
 const serverUrl = process.env.CAPACITOR_SERVER_URL;
 
 const config: CapacitorConfig = {
-  appId: 'market.feed.app',
-  appName: 'Feed',
-  webDir: 'out',
+  appId: "market.feed.app",
+  appName: "Feed",
+  webDir: "out",
   server: {
     ...(serverUrl ? { url: serverUrl, cleartext: true } : {}),
-    androidScheme: 'https',
+    androidScheme: "https",
   },
   plugins: {
     SplashScreen: {
       launchAutoHide: true,
       launchShowDuration: 2000,
-      backgroundColor: '#0a0a0a',
+      backgroundColor: "#0a0a0a",
       showSpinner: false,
-      androidScaleType: 'CENTER_CROP',
+      androidScaleType: "CENTER_CROP",
       splashFullScreen: true,
       splashImmersive: true,
     },
     Keyboard: {
-      resize: 'body',
-      style: 'dark',
+      resize: "body",
+      style: "dark",
     },
     StatusBar: {
-      style: 'DARK',
-      backgroundColor: '#0a0a0a',
+      style: "DARK",
+      backgroundColor: "#0a0a0a",
     },
   },
 };

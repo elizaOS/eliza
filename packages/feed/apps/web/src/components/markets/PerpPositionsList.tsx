@@ -1,24 +1,24 @@
-'use client';
+"use client";
 
 import {
   calculateUnrealizedPnL,
   cn,
   formatCurrency,
   logger,
-} from '@feed/shared';
-import { AlertTriangle, Bot, TrendingDown, TrendingUp } from 'lucide-react';
-import { useCallback, useMemo, useState } from 'react';
-import { toast } from 'sonner';
-import { useAuth } from '@/hooks/useAuth';
-import { useMarketPrices } from '@/hooks/useMarketPrices';
-import { usePerpTrade } from '@/hooks/usePerpTrade';
-import { invalidatePerpMarketsCache } from '@/stores/perpMarketsStore';
-import { useUserPositionsStore } from '@/stores/userPositionsStore';
-import type { DisplayPerpPosition } from '@/types/markets';
+} from "@feed/shared";
+import { AlertTriangle, Bot, TrendingDown, TrendingUp } from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
+import { toast } from "sonner";
+import { useAuth } from "@/hooks/useAuth";
+import { useMarketPrices } from "@/hooks/useMarketPrices";
+import { usePerpTrade } from "@/hooks/usePerpTrade";
+import { invalidatePerpMarketsCache } from "@/stores/perpMarketsStore";
+import { useUserPositionsStore } from "@/stores/userPositionsStore";
+import type { DisplayPerpPosition } from "@/types/markets";
 import {
   type ClosePerpDetails,
   TradeConfirmationDialog,
-} from './TradeConfirmationDialog';
+} from "./TradeConfirmationDialog";
 
 /**
  * Alias for DisplayPerpPosition for local usage.
@@ -55,16 +55,16 @@ interface PerpPositionsListProps {
   positions: PerpPosition[];
   onPositionClosed?: () => void | Promise<void>;
   onPositionClick?: (ticker: string) => void;
-  density?: 'default' | 'compact';
+  density?: "default" | "compact";
 }
 
 export function PerpPositionsList({
   positions,
   onPositionClosed,
   onPositionClick,
-  density = 'default',
+  density = "default",
 }: PerpPositionsListProps) {
-  const compact = density === 'compact';
+  const compact = density === "compact";
   const [closingIds, setClosingIds] = useState<Set<string>>(new Set());
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [pendingClose, setPendingClose] = useState<{
@@ -80,7 +80,7 @@ export function PerpPositionsList({
 
   const tickers = useMemo(
     () => positions.map((pos) => pos.ticker),
-    [positions]
+    [positions],
   );
   const livePrices = useMarketPrices(tickers);
 
@@ -94,10 +94,10 @@ export function PerpPositionsList({
           position.entryPrice,
           currentPrice,
           position.side,
-          position.size
+          position.size,
         );
         const liquidationDistance =
-          position.side === 'long'
+          position.side === "long"
             ? ((currentPrice - position.liquidationPrice) / currentPrice) * 100
             : ((position.liquidationPrice - currentPrice) / currentPrice) * 100;
         return {
@@ -109,7 +109,7 @@ export function PerpPositionsList({
           isNearLiquidation: liquidationDistance < 5,
         };
       }),
-    [positions, livePrices]
+    [positions, livePrices],
   );
 
   const handleCloseClick = useCallback(
@@ -117,12 +117,12 @@ export function PerpPositionsList({
       position: PerpPosition,
       currentPrice: number,
       pnl: number,
-      pnlPercent: number
+      pnlPercent: number,
     ) => {
       setPendingClose({ position, currentPrice, pnl, pnlPercent });
       setConfirmDialogOpen(true);
     },
-    []
+    [],
   );
 
   const handleConfirmClose = useCallback(async () => {
@@ -140,17 +140,17 @@ export function PerpPositionsList({
     try {
       const data = await closePerpPosition(positionId);
       const pnl =
-        typeof data?.pnl === 'number'
+        typeof data?.pnl === "number"
           ? data.pnl
-          : typeof data?.realizedPnL === 'number'
+          : typeof data?.realizedPnL === "number"
             ? data.realizedPnL
             : 0;
 
-      const pnlSign = pnl >= 0 ? '+' : '-';
-      toast.success('Position closed!', {
+      const pnlSign = pnl >= 0 ? "+" : "-";
+      toast.success("Position closed!", {
         description: `${closingPosition.ticker}: ${pnlSign}${formatCurrency(
           Math.abs(pnl),
-          { useThousandsSeparator: true }
+          { useThousandsSeparator: true },
         )} PnL`,
       });
 
@@ -165,16 +165,16 @@ export function PerpPositionsList({
       if (refreshResult instanceof Promise) {
         void refreshResult.catch((err) => {
           logger.debug(
-            'Background position refresh failed',
+            "Background position refresh failed",
             { error: err },
-            'PerpPositionsList'
+            "PerpPositionsList",
           );
         });
       }
     } catch (err) {
-      toast.error('Failed to close position', {
+      toast.error("Failed to close position", {
         description:
-          err instanceof Error ? err.message : 'An unexpected error occurred',
+          err instanceof Error ? err.message : "An unexpected error occurred",
       });
     } finally {
       setClosingIds((prev) => {
@@ -191,9 +191,9 @@ export function PerpPositionsList({
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
+    return date.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
     });
   };
 
@@ -201,12 +201,12 @@ export function PerpPositionsList({
     return (
       <div
         className={cn(
-          'text-center text-muted-foreground',
-          compact ? 'py-6' : 'py-8'
+          "text-center text-muted-foreground",
+          compact ? "py-6" : "py-8",
         )}
       >
         <p>No open positions</p>
-        <p className={cn(compact ? 'mt-1 text-xs' : 'mt-1 text-sm')}>
+        <p className={cn(compact ? "mt-1 text-xs" : "mt-1 text-sm")}>
           Open a long or short position to get started
         </p>
       </div>
@@ -214,7 +214,7 @@ export function PerpPositionsList({
   }
 
   return (
-    <div className={cn(compact ? 'space-y-1.5' : 'space-y-2')}>
+    <div className={cn(compact ? "space-y-1.5" : "space-y-2")}>
       {positionsWithPnL.map(
         ({
           position,
@@ -230,10 +230,10 @@ export function PerpPositionsList({
             <div
               key={position.id}
               className={cn(
-                'rounded transition-all',
-                compact ? 'p-2' : 'p-2.5',
-                isNearLiquidation ? 'bg-red-600/10' : 'bg-muted/40',
-                onPositionClick && 'cursor-pointer hover:bg-muted/60'
+                "rounded transition-all",
+                compact ? "p-2" : "p-2.5",
+                isNearLiquidation ? "bg-red-600/10" : "bg-muted/40",
+                onPositionClick && "cursor-pointer hover:bg-muted/60",
               )}
               onClick={() => onPositionClick?.(position.ticker)}
             >
@@ -242,13 +242,13 @@ export function PerpPositionsList({
                 <div className="flex items-center gap-1.5">
                   <span
                     className={cn(
-                      'flex shrink-0 items-center gap-0.5 rounded px-1.5 py-0.5 font-bold text-[11px]',
-                      position.side === 'long'
-                        ? 'bg-green-600/20 text-green-600'
-                        : 'bg-red-600/20 text-red-600'
+                      "flex shrink-0 items-center gap-0.5 rounded px-1.5 py-0.5 font-bold text-[11px]",
+                      position.side === "long"
+                        ? "bg-green-600/20 text-green-600"
+                        : "bg-red-600/20 text-red-600",
                     )}
                   >
-                    {position.side === 'long' ? (
+                    {position.side === "long" ? (
                       <TrendingUp size={10} />
                     ) : (
                       <TrendingDown size={10} />
@@ -261,20 +261,20 @@ export function PerpPositionsList({
                   {position.isAgentPosition && (
                     <span className="flex shrink-0 items-center gap-0.5 rounded bg-muted px-1 py-0.5 font-medium text-[11px] text-muted-foreground">
                       <Bot size={10} />
-                      {position.agentName || 'Agent'}
+                      {position.agentName || "Agent"}
                     </span>
                   )}
                 </div>
                 <span
                   className={cn(
-                    'shrink-0 font-bold text-xs',
-                    pnl >= 0 ? 'text-green-600' : 'text-red-600'
+                    "shrink-0 font-bold text-xs",
+                    pnl >= 0 ? "text-green-600" : "text-red-600",
                   )}
                 >
-                  {pnl >= 0 ? '+' : ''}
-                  {formatPrice(pnl)}{' '}
+                  {pnl >= 0 ? "+" : ""}
+                  {formatPrice(pnl)}{" "}
                   <span className="font-normal text-[11px]">
-                    ({pnl >= 0 ? '+' : ''}
+                    ({pnl >= 0 ? "+" : ""}
                     {pnlPercent.toFixed(2)}%)
                   </span>
                 </span>
@@ -290,23 +290,23 @@ export function PerpPositionsList({
                   </span>
                   <span className="text-muted-foreground/40">&middot;</span>
                   <span>
-                    Size{' '}
+                    Size{" "}
                     <span className="font-medium text-foreground">
                       {formatPrice(position.size)}
                     </span>
                   </span>
                   <span className="text-muted-foreground/40">&middot;</span>
                   <span>
-                    Liq{' '}
+                    Liq{" "}
                     <span className="font-medium text-foreground">
                       {formatPrice(position.liquidationPrice)}
                     </span>
                   </span>
                   <span className="text-muted-foreground/40">&middot;</span>
                   <span>
-                    Fund{' '}
+                    Fund{" "}
                     <span className="font-medium text-foreground">
-                      {position.fundingPaid >= 0 ? '-' : '+'}
+                      {position.fundingPaid >= 0 ? "-" : "+"}
                       {formatPrice(Math.abs(position.fundingPaid))}
                     </span>
                   </span>
@@ -322,14 +322,14 @@ export function PerpPositionsList({
                   }}
                   disabled={isClosing}
                   className={cn(
-                    'shrink-0 cursor-pointer rounded-full px-3 py-0.5 font-medium text-xs transition-all',
+                    "shrink-0 cursor-pointer rounded-full px-3 py-0.5 font-medium text-xs transition-all",
                     isNearLiquidation
-                      ? 'bg-red-600 text-primary-foreground hover:bg-red-700'
-                      : 'bg-muted text-foreground hover:bg-muted/80',
-                    isClosing && 'cursor-not-allowed opacity-50'
+                      ? "bg-red-600 text-primary-foreground hover:bg-red-700"
+                      : "bg-muted text-foreground hover:bg-muted/80",
+                    isClosing && "cursor-not-allowed opacity-50",
                   )}
                 >
-                  {isClosing ? 'Closing...' : 'Close'}
+                  {isClosing ? "Closing..." : "Close"}
                 </button>
               </div>
 
@@ -344,7 +344,7 @@ export function PerpPositionsList({
               )}
             </div>
           );
-        }
+        },
       )}
 
       {/* Confirmation Dialog */}
@@ -358,7 +358,7 @@ export function PerpPositionsList({
         tradeDetails={
           pendingClose
             ? ({
-                type: 'close-perp',
+                type: "close-perp",
                 ticker: pendingClose.position.ticker,
                 side: pendingClose.position.side,
                 size: pendingClose.position.size,

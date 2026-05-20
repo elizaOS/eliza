@@ -11,9 +11,9 @@ import type {
   Provider,
   ProviderResult,
   State,
-} from '@elizaos/core';
-import { logger } from '../../../shared/logger';
-import type { FeedRuntime } from '../types';
+} from "@elizaos/core";
+import { logger } from "../../../shared/logger";
+import type { FeedRuntime } from "../types";
 // import type { A2AChatsResponse, A2AUnreadCountResponse, A2ANotificationsResponse } from '../../../types/a2a-responses' // Commented out - not needed
 
 /**
@@ -21,25 +21,25 @@ import type { FeedRuntime } from '../types';
  * Gets agent's unread DMs and group chats via A2A
  */
 export const messagesProvider: Provider = {
-  name: 'FEED_MESSAGES',
-  description: 'Get unread messages and recent chats via A2A protocol',
+  name: "FEED_MESSAGES",
+  description: "Get unread messages and recent chats via A2A protocol",
 
   get: async (
     runtime: IAgentRuntime,
     _message: Memory,
-    _state: State
+    _state: State,
   ): Promise<ProviderResult> => {
     const feedRuntime = runtime as FeedRuntime;
 
     // A2A is REQUIRED
     if (!feedRuntime.a2aClient?.isConnected()) {
       logger.error(
-        'A2A client not connected - messages provider requires A2A protocol',
+        "A2A client not connected - messages provider requires A2A protocol",
         undefined,
-        runtime.agentId
+        runtime.agentId,
       );
       return {
-        text: 'ERROR: A2A client not connected. Cannot fetch messages. Please ensure A2A server is running.',
+        text: "ERROR: A2A client not connected. Cannot fetch messages. Please ensure A2A server is running.",
       };
     }
 
@@ -74,10 +74,10 @@ export const messagesProvider: Provider = {
         ? `Chats:\n${chats
             .map(
               (c) =>
-                `- ${c.name || 'Unnamed'} (${c.isGroup ? 'Group' : 'DM'}) | ID: ${c.id} | Participants: ${c.participants?.length ?? 0}`
+                `- ${c.name || "Unnamed"} (${c.isGroup ? "Group" : "DM"}) | ID: ${c.id} | Participants: ${c.participants?.length ?? 0}`,
             )
-            .join('\n')}`
-        : 'No chats available.';
+            .join("\n")}`
+        : "No chats available.";
 
     return {
       text: `${chatsText}\n\nUnread messages: ${unreadCount}`,
@@ -90,25 +90,25 @@ export const messagesProvider: Provider = {
  * Gets agent's recent notifications via A2A
  */
 export const notificationsProvider: Provider = {
-  name: 'FEED_NOTIFICATIONS',
-  description: 'Get recent notifications via A2A protocol',
+  name: "FEED_NOTIFICATIONS",
+  description: "Get recent notifications via A2A protocol",
 
   get: async (
     runtime: IAgentRuntime,
     _message: Memory,
-    _state: State
+    _state: State,
   ): Promise<ProviderResult> => {
     const feedRuntime = runtime as FeedRuntime;
 
     // A2A is REQUIRED
     if (!feedRuntime.a2aClient?.isConnected()) {
       logger.error(
-        'A2A client not connected - notifications provider requires A2A protocol',
+        "A2A client not connected - notifications provider requires A2A protocol",
         undefined,
-        runtime.agentId
+        runtime.agentId,
       );
       return {
-        text: 'ERROR: A2A client not connected. Cannot fetch notifications. Please ensure A2A server is running.',
+        text: "ERROR: A2A client not connected. Cannot fetch notifications. Please ensure A2A server is running.",
       };
     }
 
@@ -131,22 +131,22 @@ export const notificationsProvider: Provider = {
         (notificationsResult as { unreadCount?: number })?.unreadCount || 0;
 
       if (notifications.length === 0) {
-        return { text: 'No notifications available.' };
+        return { text: "No notifications available." };
       }
 
       const notificationsText = `Notifications (${unreadCount} unread):\n${notifications
         .map(
           (n, idx) =>
-            `${idx + 1}. [${n.read ? 'READ' : 'UNREAD'}] ${n.type}: ${n.message} (ID: ${n.id})`
+            `${idx + 1}. [${n.read ? "READ" : "UNREAD"}] ${n.type}: ${n.message} (ID: ${n.id})`,
         )
-        .join('\n\n')}`;
+        .join("\n\n")}`;
 
       return { text: notificationsText };
     } catch (error) {
       logger.error(
-        'Error fetching notifications via A2A',
+        "Error fetching notifications via A2A",
         { error, agentId: runtime.agentId },
-        'NotificationsProvider'
+        "NotificationsProvider",
       );
       throw error;
     }

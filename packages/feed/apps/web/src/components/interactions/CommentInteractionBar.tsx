@@ -1,11 +1,11 @@
-'use client';
+"use client";
 
-import { cn } from '@feed/shared';
-import { MessageCircle, Repeat2 } from 'lucide-react';
-import { memo } from 'react';
-import { useAuth } from '@/hooks/useAuth';
-import { useLoginModal } from '@/hooks/useLoginModal';
-import { LikeButton } from './LikeButton';
+import { cn } from "@feed/shared";
+import { MessageCircle, Repeat2 } from "lucide-react";
+import { memo } from "react";
+import { useAuth } from "@/hooks/useAuth";
+import { useLoginModal } from "@/hooks/useLoginModal";
+import { LikeButton } from "./LikeButton";
 
 /**
  * Props for CommentInteractionBar component.
@@ -53,8 +53,8 @@ export const CommentInteractionBar = memo(function CommentInteractionBar({
     e.stopPropagation();
     if (!authenticated) {
       showLoginModal({
-        title: 'Login to Reply',
-        message: 'Log in to reply to comments and engage with the community.',
+        title: "Login to Reply",
+        message: "Log in to reply to comments and engage with the community.",
       });
       return;
     }
@@ -65,8 +65,8 @@ export const CommentInteractionBar = memo(function CommentInteractionBar({
     e.stopPropagation();
     if (!authenticated) {
       showLoginModal({
-        title: 'Login to Repost',
-        message: 'Log in to share comments with your followers.',
+        title: "Login to Repost",
+        message: "Log in to share comments with your followers.",
       });
       return;
     }
@@ -76,8 +76,8 @@ export const CommentInteractionBar = memo(function CommentInteractionBar({
   return (
     <div
       className={cn(
-        'mt-2 flex w-full items-center justify-between text-muted-foreground',
-        className
+        "mt-2 flex w-full items-center justify-between text-muted-foreground",
+        className,
       )}
       onClick={(e) => e.stopPropagation()}
     >
@@ -86,9 +86,9 @@ export const CommentInteractionBar = memo(function CommentInteractionBar({
         type="button"
         onClick={handleReplyClick}
         className={cn(
-          'flex items-center gap-1',
-          'bg-transparent transition-all duration-200 hover:opacity-70',
-          'cursor-pointer text-muted-foreground text-xs'
+          "flex items-center gap-1",
+          "bg-transparent transition-all duration-200 hover:opacity-70",
+          "cursor-pointer text-muted-foreground text-xs",
         )}
         aria-label="Reply to comment"
       >
@@ -105,10 +105,10 @@ export const CommentInteractionBar = memo(function CommentInteractionBar({
           onClick={onRepostClick ? handleRepostClick : undefined}
           disabled={!onRepostClick}
           className={cn(
-            'flex items-center gap-1 text-xs',
+            "flex items-center gap-1 text-xs",
             onRepostClick
-              ? 'cursor-pointer bg-transparent text-muted-foreground transition-all duration-200 hover:opacity-70'
-              : 'cursor-default text-muted-foreground/40'
+              ? "cursor-pointer bg-transparent text-muted-foreground transition-all duration-200 hover:opacity-70"
+              : "cursor-default text-muted-foreground/40",
           )}
           aria-label="Repost comment"
         >

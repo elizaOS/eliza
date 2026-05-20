@@ -1,17 +1,17 @@
-'use client';
+"use client";
 
-import { FEED_POINTS_SYMBOL, cn } from '@feed/shared';
+import { cn, FEED_POINTS_SYMBOL } from "@feed/shared";
 import {
   AlertCircle,
   CheckCircle,
   Database,
   RefreshCw,
   TrendingUp,
-} from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
-import { toast } from 'sonner';
-import { getAuthToken } from '@/lib/auth';
-import { apiUrl } from '@/utils/api-url';
+} from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
+import { getAuthToken } from "@/lib/auth";
+import { apiUrl } from "@/utils/api-url";
 
 /**
  * Training data statistics structure for training data tab.
@@ -78,11 +78,11 @@ export function TrainingDataTab() {
     const token = getAuthToken();
     if (!token) {
       setLoading(false);
-      toast.error('Not authenticated');
+      toast.error("Not authenticated");
       return;
     }
 
-    const response = await fetch(apiUrl('/api/admin/training-data'), {
+    const response = await fetch(apiUrl("/api/admin/training-data"), {
       headers: {
         Authorization: `Bearer ${token}`,
       },
@@ -90,7 +90,7 @@ export function TrainingDataTab() {
 
     if (!response.ok) {
       setLoading(false);
-      toast.error('Failed to load training data');
+      toast.error("Failed to load training data");
       return;
     }
 
@@ -121,14 +121,14 @@ export function TrainingDataTab() {
 
   const getQualityColor = (quality: string) => {
     switch (quality) {
-      case 'good':
-        return 'text-green-500';
-      case 'fair':
-        return 'text-yellow-500';
-      case 'low':
-        return 'text-red-500';
+      case "good":
+        return "text-green-500";
+      case "fair":
+        return "text-yellow-500";
+      case "low":
+        return "text-red-500";
       default:
-        return 'text-muted-foreground';
+        return "text-muted-foreground";
     }
   };
 
@@ -150,7 +150,7 @@ export function TrainingDataTab() {
           disabled={loading}
           className="rounded-lg p-2 transition-colors hover:bg-accent"
         >
-          <RefreshCw className={cn('h-5 w-5', loading && 'animate-spin')} />
+          <RefreshCw className={cn("h-5 w-5", loading && "animate-spin")} />
         </button>
       </div>
 
@@ -197,14 +197,14 @@ export function TrainingDataTab() {
           <div className="mb-2 flex items-center justify-between">
             <AlertCircle
               className={cn(
-                'h-5 w-5',
-                getQualityColor(data.qualityMetrics.trainingDataQuality)
+                "h-5 w-5",
+                getQualityColor(data.qualityMetrics.trainingDataQuality),
               )}
             />
             <span
               className={cn(
-                'font-bold text-2xl capitalize',
-                getQualityColor(data.qualityMetrics.trainingDataQuality)
+                "font-bold text-2xl capitalize",
+                getQualityColor(data.qualityMetrics.trainingDataQuality),
               )}
             >
               {data.qualityMetrics.trainingDataQuality}
@@ -230,10 +230,10 @@ export function TrainingDataTab() {
             <div className="mb-1 text-muted-foreground text-sm">Avg P&L</div>
             <div
               className={cn(
-                'font-mono text-2xl',
+                "font-mono text-2xl",
                 data.qualityMetrics.avgPnl >= 0
-                  ? 'text-green-500'
-                  : 'text-red-500'
+                  ? "text-green-500"
+                  : "text-red-500",
               )}
             >
               {FEED_POINTS_SYMBOL}
@@ -259,18 +259,18 @@ export function TrainingDataTab() {
                   <div>
                     <div className="font-mono text-sm">{window.windowId}</div>
                     <div className="mt-1 text-muted-foreground text-xs">
-                      {window.trajectoryCount} agents •{' '}
+                      {window.trajectoryCount} agents •{" "}
                       {window.avgSteps.toFixed(0)} avg steps
                     </div>
                   </div>
                   <div className="text-right">
                     <div
                       className={cn(
-                        'font-mono text-sm',
-                        window.avgPnl >= 0 ? 'text-green-500' : 'text-red-500'
+                        "font-mono text-sm",
+                        window.avgPnl >= 0 ? "text-green-500" : "text-red-500",
                       )}
                     >
-                      {window.avgPnl >= 0 ? '+' : ''}
+                      {window.avgPnl >= 0 ? "+" : ""}
                       {FEED_POINTS_SYMBOL}
                       {window.avgPnl.toFixed(2)}
                     </div>
@@ -310,18 +310,20 @@ export function TrainingDataTab() {
                       Agent: {traj.agentId.substring(0, 12)}... •
                       {traj.tradesExecuted
                         ? ` ${traj.tradesExecuted} trades`
-                        : ' No trades'}
+                        : " No trades"}
                     </div>
                   </div>
                   <div className="text-right">
                     {traj.finalPnL !== null && (
                       <div
                         className={cn(
-                          'font-mono text-sm',
-                          traj.finalPnL >= 0 ? 'text-green-500' : 'text-red-500'
+                          "font-mono text-sm",
+                          traj.finalPnL >= 0
+                            ? "text-green-500"
+                            : "text-red-500",
                         )}
                       >
-                        {traj.finalPnL >= 0 ? '+' : ''}
+                        {traj.finalPnL >= 0 ? "+" : ""}
                         {FEED_POINTS_SYMBOL}
                         {traj.finalPnL.toFixed(2)}
                       </div>
@@ -388,11 +390,11 @@ export function TrainingDataTab() {
               </p>
               <p className="mb-3 text-green-200/80">
                 {data.summary.readyWindows} window
-                {data.summary.readyWindows > 1 ? 's' : ''} ready with sufficient
+                {data.summary.readyWindows > 1 ? "s" : ""} ready with sufficient
                 data. You can now run RL training:
               </p>
               <code className="block rounded bg-black/30 p-3 font-mono text-green-100 text-xs">
-                cd python{'\n'}
+                cd python{"\n"}
                 MODE=single python -m src.training.feed_trainer
               </code>
             </div>

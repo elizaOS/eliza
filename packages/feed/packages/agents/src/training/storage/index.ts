@@ -8,10 +8,10 @@ export {
   ModelStorageService,
   type ModelVersion,
   modelStorage,
-} from './ModelStorageService';
+} from "./ModelStorageService";
 
 export {
   type ArchivedWindow,
   TrainingDataArchiver,
   trainingDataArchiver,
-} from './TrainingDataArchiver';
+} from "./TrainingDataArchiver";

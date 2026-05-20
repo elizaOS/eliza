@@ -65,9 +65,9 @@
  * @see {@link @feed/engine#loadActorsData} Actors data loader (TypeScript imports)
  */
 
-import { withErrorHandling } from '@feed/api';
-import { loadActorsData } from '@feed/engine';
-import { NextResponse } from 'next/server';
+import { withErrorHandling } from "@feed/api";
+import { loadActorsData } from "@feed/engine";
+import { NextResponse } from "next/server";
 
 /**
  * GET /api/actors

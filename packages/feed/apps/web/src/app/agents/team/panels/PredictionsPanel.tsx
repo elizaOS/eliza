@@ -1,15 +1,15 @@
-'use client';
+"use client";
 
-import type { PredictionMarketData, PredictionsTagData } from '@feed/shared';
-import { cn } from '@feed/shared';
-import { CheckCircle, Clock, XCircle } from 'lucide-react';
-import { useMemo, useState } from 'react';
-import { PredictionProbabilityChart } from '@/components/markets/PredictionProbabilityChart';
-import { PredictionTradingModal } from '@/components/markets/PredictionTradingModal';
-import { Switch } from '@/components/ui/switch';
-import { usePredictionHistory } from '@/hooks/usePredictionHistory';
-import type { MarketTimeRange, PredictionMarket } from '@/types/markets';
-import { PanelViewMoreLink } from './PanelViewMoreLink';
+import type { PredictionMarketData, PredictionsTagData } from "@feed/shared";
+import { cn } from "@feed/shared";
+import { CheckCircle, Clock, XCircle } from "lucide-react";
+import { useMemo, useState } from "react";
+import { PredictionProbabilityChart } from "@/components/markets/PredictionProbabilityChart";
+import { PredictionTradingModal } from "@/components/markets/PredictionTradingModal";
+import { Switch } from "@/components/ui/switch";
+import { usePredictionHistory } from "@/hooks/usePredictionHistory";
+import type { MarketTimeRange, PredictionMarket } from "@/types/markets";
+import { PanelViewMoreLink } from "./PanelViewMoreLink";
 
 interface PredictionsPanelProps {
   data: PredictionsTagData;
@@ -17,17 +17,17 @@ interface PredictionsPanelProps {
 
 /** Convert tag prediction data to PredictionMarket format for modal */
 function toPredictionMarket(
-  prediction: PredictionMarketData
+  prediction: PredictionMarketData,
 ): PredictionMarket {
   return {
     id: prediction.id,
     text: prediction.question,
-    status: prediction.resolved ? 'resolved' : 'active',
+    status: prediction.resolved ? "resolved" : "active",
     resolutionDate: prediction.endDate,
     resolvedOutcome:
-      prediction.resolution === 'YES'
+      prediction.resolution === "YES"
         ? true
-        : prediction.resolution === 'NO'
+        : prediction.resolution === "NO"
           ? false
           : undefined,
     scenario: 0,
@@ -36,7 +36,7 @@ function toPredictionMarket(
   };
 }
 
-type TradeSide = 'YES' | 'NO';
+type TradeSide = "YES" | "NO";
 
 interface TradingState {
   market: PredictionMarket;
@@ -45,7 +45,7 @@ interface TradingState {
 
 export function PredictionsPanel({ data }: PredictionsPanelProps) {
   const [tradingState, setTradingState] = useState<TradingState | null>(null);
-  const [timeRange, setTimeRange] = useState<MarketTimeRange>('1D');
+  const [timeRange, setTimeRange] = useState<MarketTimeRange>("1D");
   const [showClosed, setShowClosed] = useState(false);
 
   // Fetch history for single prediction view
@@ -96,7 +96,7 @@ export function PredictionsPanel({ data }: PredictionsPanelProps) {
                 <Clock size={12} />
                 {prediction.daysUntil > 0
                   ? `${prediction.daysUntil}d left`
-                  : 'Ending soon'}
+                  : "Ending soon"}
               </span>
             )}
           </div>
@@ -153,12 +153,12 @@ export function PredictionsPanel({ data }: PredictionsPanelProps) {
         {prediction.resolved ? (
           <div
             className={cn(
-              'mb-4 rounded-lg p-3 text-center font-semibold',
-              prediction.resolution === 'YES'
-                ? 'bg-green-600/15 text-green-600'
-                : prediction.resolution === 'NO'
-                  ? 'bg-red-600/15 text-red-600'
-                  : 'bg-muted text-muted-foreground'
+              "mb-4 rounded-lg p-3 text-center font-semibold",
+              prediction.resolution === "YES"
+                ? "bg-green-600/15 text-green-600"
+                : prediction.resolution === "NO"
+                  ? "bg-red-600/15 text-red-600"
+                  : "bg-muted text-muted-foreground",
             )}
           >
             Resolved: {prediction.resolution}
@@ -169,7 +169,7 @@ export function PredictionsPanel({ data }: PredictionsPanelProps) {
             <button
               type="button"
               onClick={() =>
-                setTradingState({ market: predictionMarket, side: 'YES' })
+                setTradingState({ market: predictionMarket, side: "YES" })
               }
               className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-green-600 py-3 font-bold text-sm text-white transition-colors hover:bg-green-700"
             >
@@ -179,7 +179,7 @@ export function PredictionsPanel({ data }: PredictionsPanelProps) {
             <button
               type="button"
               onClick={() =>
-                setTradingState({ market: predictionMarket, side: 'NO' })
+                setTradingState({ market: predictionMarket, side: "NO" })
               }
               className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-red-600 py-3 font-bold text-sm text-white transition-colors hover:bg-red-700"
             >
@@ -232,7 +232,7 @@ export function PredictionsPanel({ data }: PredictionsPanelProps) {
     <div className="space-y-3 p-4">
       <div className="flex items-center justify-between">
         <h3 className="font-semibold text-sm">
-          {showClosed ? 'All Predictions' : 'Prediction Markets'}
+          {showClosed ? "All Predictions" : "Prediction Markets"}
         </h3>
         <div className="flex items-center gap-2">
           {status && (
@@ -268,8 +268,8 @@ export function PredictionsPanel({ data }: PredictionsPanelProps) {
               <div
                 key={prediction.id}
                 className={cn(
-                  'rounded-lg border border-border bg-card p-3',
-                  prediction.resolved && 'opacity-60'
+                  "rounded-lg border border-border bg-card p-3",
+                  prediction.resolved && "opacity-60",
                 )}
               >
                 <div className="flex items-start justify-between gap-2">
@@ -279,19 +279,19 @@ export function PredictionsPanel({ data }: PredictionsPanelProps) {
                   {prediction.resolved && (
                     <span
                       className={cn(
-                        'shrink-0 rounded-full px-1.5 py-0.5 font-medium text-[10px] leading-none',
-                        prediction.resolution === 'YES'
-                          ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                          : prediction.resolution === 'NO'
-                            ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                            : 'bg-muted text-muted-foreground'
+                        "shrink-0 rounded-full px-1.5 py-0.5 font-medium text-[10px] leading-none",
+                        prediction.resolution === "YES"
+                          ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                          : prediction.resolution === "NO"
+                            ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                            : "bg-muted text-muted-foreground",
                       )}
                     >
-                      {prediction.resolution === 'YES'
-                        ? 'Yes'
-                        : prediction.resolution === 'NO'
-                          ? 'No'
-                          : 'Cancelled'}
+                      {prediction.resolution === "YES"
+                        ? "Yes"
+                        : prediction.resolution === "NO"
+                          ? "No"
+                          : "Cancelled"}
                     </span>
                   )}
                 </div>
@@ -322,7 +322,7 @@ export function PredictionsPanel({ data }: PredictionsPanelProps) {
                       <span>
                         {prediction.daysUntil > 0
                           ? `${prediction.daysUntil}d left`
-                          : 'Ending soon'}
+                          : "Ending soon"}
                       </span>
                     ) : (
                       <span>End: {prediction.endDate}</span>
@@ -334,7 +334,7 @@ export function PredictionsPanel({ data }: PredictionsPanelProps) {
                   <button
                     type="button"
                     onClick={() =>
-                      setTradingState({ market: predictionMarket, side: 'YES' })
+                      setTradingState({ market: predictionMarket, side: "YES" })
                     }
                     className="mt-2 w-full rounded bg-primary/10 py-1.5 font-medium text-primary text-xs transition-colors hover:bg-primary/20"
                   >

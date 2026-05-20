@@ -12,10 +12,10 @@
  *   --dry-run    Show what would be inserted without making changes
  */
 
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import postgres from 'postgres';
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import postgres from "postgres";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -36,28 +36,28 @@ interface Journal {
 async function main() {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
-    console.error('DATABASE_URL is required');
+    console.error("DATABASE_URL is required");
     process.exit(1);
   }
 
-  const dryRun = process.argv.includes('--dry-run');
+  const dryRun = process.argv.includes("--dry-run");
   if (dryRun) {
-    console.log('DRY RUN MODE - No changes will be made\n');
+    console.log("DRY RUN MODE - No changes will be made\n");
   }
 
   // Read the journal file
   const journalPath = join(
     __dirname,
-    '../drizzle/migrations/meta/_journal.json'
+    "../drizzle/migrations/meta/_journal.json",
   );
-  const journalContent = readFileSync(journalPath, 'utf-8');
+  const journalContent = readFileSync(journalPath, "utf-8");
   const journal: Journal = JSON.parse(journalContent);
 
   console.log(`Found ${journal.entries.length} migrations in journal:\n`);
   for (const entry of journal.entries) {
     console.log(`  [${entry.idx}] ${entry.tag}`);
   }
-  console.log('');
+  console.log("");
 
   const sql = postgres(databaseUrl);
 
@@ -106,18 +106,18 @@ async function main() {
       inserted++;
     }
 
-    console.log('');
+    console.log("");
     console.log(`Summary:`);
     console.log(`  Skipped (already tracked): ${skipped}`);
-    console.log(`  ${dryRun ? 'Would insert' : 'Inserted'}: ${inserted}`);
+    console.log(`  ${dryRun ? "Would insert" : "Inserted"}: ${inserted}`);
 
     if (!dryRun && inserted > 0) {
-      console.log('\n✓ Migrations table synced successfully!');
-      console.log('  You can now run: bun run db:migrate');
+      console.log("\n✓ Migrations table synced successfully!");
+      console.log("  You can now run: bun run db:migrate");
     } else if (dryRun && inserted > 0) {
-      console.log('\nRun without --dry-run to apply changes.');
+      console.log("\nRun without --dry-run to apply changes.");
     } else {
-      console.log('\n✓ Migrations table is already up to date!');
+      console.log("\n✓ Migrations table is already up to date!");
     }
   } finally {
     await sql.end();
@@ -125,6 +125,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error('Error:', error);
+  console.error("Error:", error);
   process.exit(1);
 });

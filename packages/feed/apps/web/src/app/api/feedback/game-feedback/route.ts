@@ -54,9 +54,9 @@ import {
   successResponse,
   syncFeedbackToLinear,
   withErrorHandling,
-} from '@feed/api';
-import { GameFeedbackSchema, logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
+} from "@feed/api";
+import { GameFeedbackSchema, logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const authUser = await authenticate(request);
@@ -64,7 +64,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   const rateLimitError = checkRateLimitAndDuplicates(
     authUser.userId,
     null,
-    RATE_LIMIT_CONFIGS.SUBMIT_FEEDBACK
+    RATE_LIMIT_CONFIGS.SUBMIT_FEEDBACK,
   );
   if (rateLimitError) return rateLimitError;
 
@@ -83,17 +83,17 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     syncFeedbackToLinear(linearConfig, feedback.id, fromUser).catch(
       (error: unknown) => {
         // Distinguish timeout errors from other API errors for better observability
-        if (error instanceof Error && error.name === 'AbortError') {
-          logger.warn('Linear issue creation timed out', {
+        if (error instanceof Error && error.name === "AbortError") {
+          logger.warn("Linear issue creation timed out", {
             feedbackId: feedback.id,
           });
         } else {
-          logger.error('Linear issue creation failed', {
+          logger.error("Linear issue creation failed", {
             feedbackId: feedback.id,
             error: error instanceof Error ? error.message : String(error),
           });
         }
-      }
+      },
     );
   }
 
@@ -101,8 +101,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     {
       success: true,
       feedbackId: feedback.id,
-      message: 'Thank you for your feedback!',
+      message: "Thank you for your feedback!",
     },
-    201
+    201,
   );
 });

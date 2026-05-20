@@ -1,13 +1,13 @@
-'use client';
+"use client";
 
-import { cn } from '@feed/shared';
-import { Shield, ShieldCheck } from 'lucide-react';
-import { Tooltip } from '@/components/ui/tooltip';
+import { cn } from "@feed/shared";
+import { Shield, ShieldCheck } from "lucide-react";
+import { Tooltip } from "@/components/ui/tooltip";
 
 interface OnChainBadgeProps {
   isRegistered: boolean;
   nftTokenId?: number | null;
-  size?: 'sm' | 'md' | 'lg';
+  size?: "sm" | "md" | "lg";
   showLabel?: boolean;
   className?: string;
 }
@@ -15,14 +15,14 @@ interface OnChainBadgeProps {
 export function OnChainBadge({
   isRegistered,
   nftTokenId,
-  size = 'md',
+  size = "md",
   showLabel = false,
   className,
 }: OnChainBadgeProps) {
   const sizeClasses = {
-    sm: 'w-4 h-4',
-    md: 'w-5 h-5',
-    lg: 'w-6 h-6',
+    sm: "w-4 h-4",
+    md: "w-5 h-5",
+    lg: "w-6 h-6",
   };
 
   if (isRegistered && nftTokenId) {
@@ -38,9 +38,9 @@ export function OnChainBadge({
           </div>
         }
       >
-        <div className={cn('inline-flex items-center gap-1', className)}>
+        <div className={cn("inline-flex items-center gap-1", className)}>
           <ShieldCheck
-            className={cn(sizeClasses[size], 'shrink-0 text-green-500')}
+            className={cn(sizeClasses[size], "shrink-0 text-green-500")}
             fill="currentColor"
           />
           {showLabel && (
@@ -67,9 +67,9 @@ export function OnChainBadge({
         </div>
       }
     >
-      <div className={cn('inline-flex items-center gap-1', className)}>
+      <div className={cn("inline-flex items-center gap-1", className)}>
         <Shield
-          className={cn(sizeClasses[size], 'shrink-0 text-muted-foreground/50')}
+          className={cn(sizeClasses[size], "shrink-0 text-muted-foreground/50")}
         />
         {showLabel && (
           <span className="font-medium text-muted-foreground text-xs">

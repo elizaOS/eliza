@@ -41,19 +41,19 @@
  * ```
  */
 
-import { withCronAuth, withErrorHandling } from '@feed/api';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+import { withCronAuth, withErrorHandling } from "@feed/api";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 async function handler(_request: NextRequest) {
-  logger.info('Training cron endpoint called (currently disabled)');
+  logger.info("Training cron endpoint called (currently disabled)");
 
   return NextResponse.json({
     success: false,
-    message: 'Training automation is currently disabled',
-    hint: 'Training is handled by separate Eliza agent processes',
+    message: "Training automation is currently disabled",
+    hint: "Training is handled by separate Eliza agent processes",
   });
 }
 
-export const GET = withErrorHandling(withCronAuth('TrainingCron', handler));
+export const GET = withErrorHandling(withCronAuth("TrainingCron", handler));

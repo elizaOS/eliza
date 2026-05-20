@@ -9,35 +9,35 @@ import type {
   Provider,
   ProviderResult,
   State,
-} from '@elizaos/core';
-import { logger } from '../../../shared/logger';
-import type { FeedRuntime } from '../types';
+} from "@elizaos/core";
+import { logger } from "../../../shared/logger";
+import type { FeedRuntime } from "../types";
 
 /**
  * Provider: Trending Topics
  * Gets current trending tags and topics via A2A protocol
  */
 export const trendingTopicsProvider: Provider = {
-  name: 'FEED_TRENDING_TOPICS',
+  name: "FEED_TRENDING_TOPICS",
   description:
-    'Get currently trending topics and tags on Feed via A2A protocol',
+    "Get currently trending topics and tags on Feed via A2A protocol",
 
   get: async (
     runtime: IAgentRuntime,
     _message: Memory,
-    _state: State
+    _state: State,
   ): Promise<ProviderResult> => {
     const feedRuntime = runtime as FeedRuntime;
 
     // A2A is REQUIRED
     if (!feedRuntime.a2aClient?.isConnected()) {
       logger.error(
-        'A2A client not connected - trending topics provider requires A2A protocol',
+        "A2A client not connected - trending topics provider requires A2A protocol",
         undefined,
-        runtime.agentId
+        runtime.agentId,
       );
       return {
-        text: 'ERROR: A2A client not connected. Cannot fetch trending topics. Please ensure A2A server is running.',
+        text: "ERROR: A2A client not connected. Cannot fetch trending topics. Please ensure A2A server is running.",
       };
     }
 
@@ -58,18 +58,18 @@ export const trendingTopicsProvider: Provider = {
       )?.tags || [];
 
     if (tags.length === 0) {
-      return { text: 'No trending topics available.' };
+      return { text: "No trending topics available." };
     }
 
     const topicsText = tags
       .map(
         (
           t,
-          i
-        ) => `${i + 1}. #${t.name}${t.displayName ? ` (${t.displayName})` : ''}
-   ${t.category ? `Category: ${t.category}` : ''}${t.postCount !== undefined ? ` | ${t.postCount} posts` : ''}${t.score !== undefined ? ` | Score: ${t.score.toFixed(1)}` : ''}`
+          i,
+        ) => `${i + 1}. #${t.name}${t.displayName ? ` (${t.displayName})` : ""}
+   ${t.category ? `Category: ${t.category}` : ""}${t.postCount !== undefined ? ` | ${t.postCount} posts` : ""}${t.score !== undefined ? ` | Score: ${t.score.toFixed(1)}` : ""}`,
       )
-      .join('\n\n');
+      .join("\n\n");
 
     return {
       text: `🔥 Trending Topics:

@@ -20,13 +20,13 @@ import {
   messages,
   posts,
   users,
-} from '@feed/db';
+} from "@feed/db";
 import type {
   PendingChatMessage,
   PendingCommentReply,
   PostInfo,
   ThreadMessage,
-} from '../templates/multi-step-decision';
+} from "../templates/multi-step-decision";
 
 // =============================================================================
 // Constants
@@ -44,11 +44,11 @@ const MAX_COMMENTS_PER_QUERY = 500;
  * Gather pending comment replies with full thread context
  */
 export async function gatherPendingCommentReplies(
-  agentUserId: string
+  agentUserId: string,
 ): Promise<PendingCommentReply[]> {
   const interactions: PendingCommentReply[] = [];
   const windowStart = new Date(
-    Date.now() - INTERACTION_WINDOW_HOURS * 60 * 60 * 1000
+    Date.now() - INTERACTION_WINDOW_HOURS * 60 * 60 * 1000,
   );
 
   // Get agent's recent posts
@@ -59,8 +59,8 @@ export async function gatherPendingCommentReplies(
       and(
         eq(posts.authorId, agentUserId),
         isNull(posts.deletedAt),
-        gte(posts.createdAt, windowStart)
-      )
+        gte(posts.createdAt, windowStart),
+      ),
     );
   const agentPostIds = new Set(agentPosts.map((p) => p.id));
 
@@ -71,11 +71,13 @@ export async function gatherPendingCommentReplies(
     .where(
       and(
         eq(comments.authorId, agentUserId),
-        gte(comments.createdAt, windowStart)
-      )
+        gte(comments.createdAt, windowStart),
+      ),
     );
   const commentedPostIds = new Set(
-    agentCommentPosts.map((c) => c.postId).filter((id) => !agentPostIds.has(id))
+    agentCommentPosts
+      .map((c) => c.postId)
+      .filter((id) => !agentPostIds.has(id)),
   );
 
   const relevantPostIds = [...agentPostIds, ...commentedPostIds];
@@ -85,7 +87,7 @@ export async function gatherPendingCommentReplies(
   const allCommentsRaw = await db.query.comments.findMany({
     where: and(
       inArray(comments.postId, relevantPostIds),
-      isNull(comments.deletedAt)
+      isNull(comments.deletedAt),
     ),
     with: {
       author: {
@@ -107,7 +109,7 @@ export async function gatherPendingCommentReplies(
   // Build maps for efficient lookup
   type CommentWithRelations = (typeof allCommentsRaw)[number];
   const commentMap = new Map<string, CommentWithRelations>(
-    allCommentsRaw.map((c) => [c.id, c])
+    allCommentsRaw.map((c) => [c.id, c]),
   );
   const childrenMap = new Map<string, CommentWithRelations[]>();
   for (const comment of allCommentsRaw) {
@@ -135,7 +137,7 @@ export async function gatherPendingCommentReplies(
     const agentInAncestors = hasAgentInAncestors(
       comment,
       commentMap,
-      agentUserId
+      agentUserId,
     );
     if (!isOnAgentPost && !agentInAncestors) continue;
 
@@ -149,7 +151,7 @@ export async function gatherPendingCommentReplies(
       content: comment.post.content,
       authorName:
         comment.post.authorId === agentUserId
-          ? 'You'
+          ? "You"
           : formatUserName(postAuthor?.displayName, postAuthor?.username),
       isYourPost: isOnAgentPost,
     };
@@ -162,7 +164,7 @@ export async function gatherPendingCommentReplies(
       postId: comment.postId,
       author: formatUserName(
         comment.author?.displayName,
-        comment.author?.username
+        comment.author?.username,
       ),
       content: comment.content,
       post,
@@ -194,11 +196,11 @@ export async function gatherPendingCommentReplies(
  * Gather pending chat messages (DMs and group chats) with conversation context
  */
 export async function gatherPendingChatMessages(
-  agentUserId: string
+  agentUserId: string,
 ): Promise<PendingChatMessage[]> {
   const interactions: PendingChatMessage[] = [];
   const windowStart = new Date(
-    Date.now() - INTERACTION_WINDOW_HOURS * 60 * 60 * 1000
+    Date.now() - INTERACTION_WINDOW_HOURS * 60 * 60 * 1000,
   );
 
   // Get chats the agent is part of
@@ -219,11 +221,11 @@ export async function gatherPendingChatMessages(
   const teamGroups = await db
     .select({ id: groups.id })
     .from(groups)
-    .where(eq(groups.type, 'team'));
+    .where(eq(groups.type, "team"));
   const teamGroupIds = new Set(teamGroups.map((g) => g.id));
 
   const nonTeamChats = validChats.filter(
-    (c) => !c.chat?.groupId || !teamGroupIds.has(c.chat.groupId)
+    (c) => !c.chat?.groupId || !teamGroupIds.has(c.chat.groupId),
   );
   if (nonTeamChats.length === 0) return interactions;
 
@@ -237,8 +239,8 @@ export async function gatherPendingChatMessages(
     .where(
       and(
         inArray(messages.chatId, chatIds),
-        gte(messages.createdAt, windowStart)
-      )
+        gte(messages.createdAt, windowStart),
+      ),
     )
     .orderBy(desc(messages.createdAt))
     .limit(100);
@@ -301,7 +303,7 @@ export async function gatherPendingChatMessages(
 
     // Find latest message from someone other than agent
     const messagesFromOthers = chatMessages.filter(
-      (m) => m.senderId !== agentUserId
+      (m) => m.senderId !== agentUserId,
     );
     if (messagesFromOthers.length === 0) continue;
 
@@ -310,7 +312,7 @@ export async function gatherPendingChatMessages(
 
     // Check if agent already responded (compare timestamps, not IDs which may be text-based)
     const agentMessages = chatMessages.filter(
-      (m) => m.senderId === agentUserId
+      (m) => m.senderId === agentUserId,
     );
     const agentLastMessage = agentMessages[0];
     if (
@@ -326,15 +328,15 @@ export async function gatherPendingChatMessages(
       .slice()
       .reverse()
       .map((m) => ({
-        speaker: m.senderId === agentUserId ? 'You' : getUserName(m.senderId),
+        speaker: m.senderId === agentUserId ? "You" : getUserName(m.senderId),
         content: m.content,
       }));
 
-    const chatType = chat.isGroup ? 'Group Chat' : 'Direct Message';
+    const chatType = chat.isGroup ? "Group Chat" : "Direct Message";
     const formattedContext = `${chatType}: ${chat.name || chatType}
 
 Recent conversation:
-${contextMessages.map((m) => `${m.speaker}: ${m.content}`).join('\n')}`;
+${contextMessages.map((m) => `${m.speaker}: ${m.content}`).join("\n")}`;
 
     interactions.push({
       id: latestFromOther.id,
@@ -359,19 +361,19 @@ ${contextMessages.map((m) => `${m.speaker}: ${m.content}`).join('\n')}`;
 /** Format user name with both displayName and username when available */
 function formatUserName(
   displayName: string | null | undefined,
-  username: string | null | undefined
+  username: string | null | undefined,
 ): string {
   if (displayName && username) {
     return `${displayName} (@${username})`;
   }
-  return displayName || username || 'User';
+  return displayName || username || "User";
 }
 
 /** Check if agent participated in ancestor comment chain */
 function hasAgentInAncestors(
   comment: { parentCommentId: string | null; authorId: string },
   commentMap: Map<string, { parentCommentId: string | null; authorId: string }>,
-  agentUserId: string
+  agentUserId: string,
 ): boolean {
   let currentId = comment.parentCommentId;
   while (currentId) {
@@ -402,7 +404,7 @@ function buildThreadFromBottom(
       author?: { displayName: string | null; username: string | null } | null;
     }
   >,
-  agentUserId: string
+  agentUserId: string,
 ): ThreadMessage[] {
   const chain: (typeof target)[] = [target];
   let currentId = target.parentCommentId;
@@ -417,7 +419,7 @@ function buildThreadFromBottom(
   return chain.map((c, i) => ({
     authorName:
       c.authorId === agentUserId
-        ? 'You'
+        ? "You"
         : formatUserName(c.author?.displayName, c.author?.username),
     content: c.content,
     isYou: c.authorId === agentUserId,
@@ -428,14 +430,14 @@ function buildThreadFromBottom(
 /** Format thread for prompt display */
 function formatThreadForPrompt(
   post: PostInfo,
-  thread: ThreadMessage[]
+  thread: ThreadMessage[],
 ): string {
-  const postAuthorLabel = post.isYourPost ? 'You' : post.authorName;
+  const postAuthorLabel = post.isYourPost ? "You" : post.authorName;
 
   const threadLines = thread.map((msg, idx) => {
     const isLast = idx === thread.length - 1;
-    const replyIndicator = isLast ? ' [REPLY TO THIS]' : '';
-    const depthLabel = idx === 0 ? 'Comment' : `Reply (depth ${msg.depth})`;
+    const replyIndicator = isLast ? " [REPLY TO THIS]" : "";
+    const depthLabel = idx === 0 ? "Comment" : `Reply (depth ${msg.depth})`;
     return `- ${depthLabel} by ${msg.authorName}: "${msg.content}"${replyIndicator}`;
   });
 
@@ -443,5 +445,5 @@ function formatThreadForPrompt(
 "${post.content}"
 
 THREAD:
-${threadLines.join('\n')}`;
+${threadLines.join("\n")}`;
 }

@@ -78,11 +78,11 @@ import {
   publicRateLimit,
   requireUserByIdentifier,
   withErrorHandling,
-} from '@feed/api';
-import { db } from '@feed/db';
-import { getReputationBreakdown } from '@feed/engine';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@feed/api";
+import { db } from "@feed/db";
+import { getReputationBreakdown } from "@feed/engine";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 interface RouteParams {
   params: Promise<{
@@ -92,7 +92,7 @@ interface RouteParams {
 
 export const GET = withErrorHandling(async function GET(
   request: NextRequest,
-  { params }: RouteParams
+  { params }: RouteParams,
 ) {
   const { error, rateLimitInfo } = await publicRateLimit(request);
   if (error) return error;
@@ -121,7 +121,7 @@ export const GET = withErrorHandling(async function GET(
   const rank = await db.agentPerformanceMetrics.count({
     where: {
       reputationScore: {
-        gt: metrics!.reputationScore,
+        gt: metrics?.reputationScore,
       },
     },
   });
@@ -136,17 +136,17 @@ export const GET = withErrorHandling(async function GET(
   const res = NextResponse.json({
     success: true,
     userId: user.id,
-    reputationPoints: Math.round(metrics!.reputationScore),
-    averageFeedbackScore: metrics!.averageFeedbackScore,
-    totalFeedbackReceived: metrics!.totalFeedbackCount,
+    reputationPoints: Math.round(metrics?.reputationScore),
+    averageFeedbackScore: metrics?.averageFeedbackScore,
+    totalFeedbackReceived: metrics?.totalFeedbackCount,
     performance: {
-      gamesPlayed: metrics!.gamesPlayed,
-      gamesWon: metrics!.gamesWon,
-      averageGameScore: metrics!.averageGameScore,
-      winRate: metrics!.winRate,
+      gamesPlayed: metrics?.gamesPlayed,
+      gamesWon: metrics?.gamesWon,
+      averageGameScore: metrics?.averageGameScore,
+      winRate: metrics?.winRate,
     },
     recentTrend,
-    trustLevel: metrics!.trustLevel,
+    trustLevel: metrics?.trustLevel,
     rank: rank + 1,
     totalUsers,
   });

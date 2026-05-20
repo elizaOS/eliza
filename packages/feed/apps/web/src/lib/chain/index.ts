@@ -5,4 +5,4 @@ export {
   getExplorerBaseUrl,
   getExplorerName,
   getExplorerTxUrl,
-} from './explorer';
+} from "./explorer";

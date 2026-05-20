@@ -1,12 +1,12 @@
 const SYSTEM_NOTIFICATION_TYPES = new Set([
-  'system',
-  'market_resolved',
-  'hourly_summary',
-  'daily_summary',
-  'weekly_summary',
-  'monthly_summary',
-  'achievement_unlocked',
-  'challenge_completed',
+  "system",
+  "market_resolved",
+  "hourly_summary",
+  "daily_summary",
+  "weekly_summary",
+  "monthly_summary",
+  "achievement_unlocked",
+  "challenge_completed",
 ]);
 
 export interface NotificationPresentationInput {
@@ -25,7 +25,7 @@ export interface NotificationPresentation {
 }
 
 export function getNotificationPresentation(
-  notification: NotificationPresentationInput
+  notification: NotificationPresentationInput,
 ): NotificationPresentation {
   const isSystemStyle =
     notification.actor === null ||

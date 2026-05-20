@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 /**
  * Gated Vercel Speed Insights (real-user Web Vitals).
@@ -21,8 +21,8 @@
  *
  * @see docs/observability/speed-insights.md — full rationale, env table, roadmap.
  */
-import { SpeedInsights } from '@vercel/speed-insights/next';
-import { useCallback, useMemo } from 'react';
+import { SpeedInsights } from "@vercel/speed-insights/next";
+import { useCallback, useMemo } from "react";
 
 /**
  * Prefix allowlist for URLs whose vitals we keep.
@@ -30,25 +30,25 @@ import { useCallback, useMemo } from 'react';
  * to mis-type and drop all telemetry silently. Change here + update the doc together.
  */
 const TRACKED_ROUTE_PREFIXES = [
-  '/feed',
-  '/markets',
-  '/game',
-  '/wallet',
-  '/profile',
-  '/u/',
-  '/post/',
-  '/chats',
-  '/notifications',
-  '/leaderboard',
-  '/research',
-  '/ticker',
-  '/share/',
-  '/article/',
-  '/comment/',
+  "/feed",
+  "/markets",
+  "/game",
+  "/wallet",
+  "/profile",
+  "/u/",
+  "/post/",
+  "/chats",
+  "/notifications",
+  "/leaderboard",
+  "/research",
+  "/ticker",
+  "/share/",
+  "/article/",
+  "/comment/",
 ] as const;
 
 function shouldRecordPathname(pathname: string): boolean {
-  if (pathname === '/') {
+  if (pathname === "/") {
     return true;
   }
   for (const prefix of TRACKED_ROUTE_PREFIXES) {
@@ -69,7 +69,7 @@ function shouldRecordPathname(pathname: string): boolean {
  */
 function parseSampleFractionFromEnvPercent(): number {
   const raw = process.env.NEXT_PUBLIC_SPEED_INSIGHTS_SAMPLE_RATE;
-  if (raw === undefined || raw === '') {
+  if (raw === undefined || raw === "") {
     return 0.5;
   }
   const percent = Number.parseFloat(raw);
@@ -81,7 +81,7 @@ function parseSampleFractionFromEnvPercent(): number {
 }
 
 type VitalEvent = {
-  type: 'vital';
+  type: "vital";
   url: string;
   route?: string;
 };

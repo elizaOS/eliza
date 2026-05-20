@@ -4,9 +4,9 @@
  * @module testing/chroma/helpers/page-helpers
  */
 
-import type { Page } from '@playwright/test';
+import type { Page } from "@playwright/test";
 
-const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:3000';
+const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || "http://localhost:3000";
 
 // Track consecutive failures to detect server crash
 let consecutiveFailures = 0;
@@ -23,12 +23,12 @@ const MAX_CONSECUTIVE_FAILURES = 5;
  */
 export async function waitForServerHealthy(
   maxRetries = 15,
-  retryDelay = 2000
+  retryDelay = 2000,
 ): Promise<boolean> {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       const response = await fetch(`${BASE_URL}/`, {
-        method: 'GET',
+        method: "GET",
         signal: AbortSignal.timeout(15000),
       });
       // Accept any non-5xx response as "server is up"
@@ -72,7 +72,7 @@ export async function navigateTo(page: Page, route: string): Promise<void> {
   for (let attempt = 1; attempt <= 5; attempt++) {
     try {
       await page.goto(`${BASE_URL}${route}`, {
-        waitUntil: 'domcontentloaded',
+        waitUntil: "domcontentloaded",
         timeout: 45000,
       });
       consecutiveFailures = 0;
@@ -86,7 +86,7 @@ export async function navigateTo(page: Page, route: string): Promise<void> {
     }
   }
 
-  throw lastError ?? new Error('Navigation failed');
+  throw lastError ?? new Error("Navigation failed");
 }
 
 /**
@@ -100,15 +100,15 @@ export async function navigateTo(page: Page, route: string): Promise<void> {
 export async function hideNextDevOverlay(page: Page): Promise<void> {
   await page
     .evaluate(() => {
-      const overlay = document.querySelector('nextjs-portal');
+      const overlay = document.querySelector("nextjs-portal");
       if (overlay instanceof HTMLElement) {
-        overlay.style.pointerEvents = 'none';
-        overlay.style.display = 'none';
+        overlay.style.pointerEvents = "none";
+        overlay.style.display = "none";
       }
       // Also hide any error overlays
-      document.querySelectorAll('[data-nextjs-dev-overlay]').forEach((el) => {
+      document.querySelectorAll("[data-nextjs-dev-overlay]").forEach((el) => {
         if (el instanceof HTMLElement) {
-          el.style.pointerEvents = 'none';
+          el.style.pointerEvents = "none";
         }
       });
     })
@@ -123,10 +123,10 @@ export async function hideNextDevOverlay(page: Page): Promise<void> {
  */
 export async function waitForPageLoad(
   page: Page,
-  timeout = 20000
+  timeout = 20000,
 ): Promise<void> {
   try {
-    await page.waitForLoadState('domcontentloaded', { timeout });
+    await page.waitForLoadState("domcontentloaded", { timeout });
 
     // Hide Next.js dev overlay to prevent test interference
     await hideNextDevOverlay(page);
@@ -135,7 +135,7 @@ export async function waitForPageLoad(
     let hasButtons = false;
     for (let i = 0; i < 20; i++) {
       const buttonCount = await page
-        .locator('button')
+        .locator("button")
         .count()
         .catch(() => 0);
       if (buttonCount > 0) {
@@ -147,7 +147,7 @@ export async function waitForPageLoad(
 
     if (!hasButtons) {
       // Try reloading the page once
-      await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
+      await page.reload({ waitUntil: "domcontentloaded" }).catch(() => {});
       await page.waitForTimeout(2000);
       // Hide overlay again after reload
       await hideNextDevOverlay(page);
@@ -175,7 +175,7 @@ export async function cooldownBetweenTests(page: Page): Promise<void> {
 export async function isServerHealthy(): Promise<boolean> {
   try {
     const response = await fetch(`${BASE_URL}/`, {
-      method: 'GET',
+      method: "GET",
       signal: AbortSignal.timeout(5000),
     });
     return response.status < 500;

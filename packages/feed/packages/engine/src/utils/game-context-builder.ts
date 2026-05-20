@@ -30,28 +30,28 @@ import {
   posts,
   questions as questionsTable,
   worldEvents,
-} from '@feed/db';
-import { parseStringArraySafe } from '../services/jsonb-validators';
+} from "@feed/db";
+import { parseStringArraySafe } from "../services/jsonb-validators";
 import type {
   Actor,
   FeedPost,
   GroupChatMessage,
   Question,
   WorldEvent,
-} from '../types/shared';
-import { worldFactsService } from '../world-facts-service';
-import { CONTEXT_LIMITS, truncateArray, truncateText } from './context-limits';
+} from "../types/shared";
+import { worldFactsService } from "../world-facts-service";
+import { CONTEXT_LIMITS, truncateArray, truncateText } from "./context-limits";
 import {
   extractDayFromEvent,
   extractDayFromPost,
   extractDayFromTimestamp,
-} from './date-utils';
-import { shuffleArray } from './randomization';
+} from "./date-utils";
+import { shuffleArray } from "./randomization";
 import {
   type GamePhase,
   getPhaseForDay,
   getPhaseNarrativeGuidance,
-} from './shared-utils';
+} from "./shared-utils";
 
 export interface RichGameContext {
   // Event history
@@ -113,7 +113,7 @@ export async function buildRichGameContext(
     maxEvents?: number;
     maxPosts?: number;
     maxDays?: number;
-  }
+  },
 ): Promise<RichGameContext> {
   const {
     includeEventHistory = true,
@@ -141,22 +141,22 @@ export async function buildRichGameContext(
               return {
                 id: e.id,
                 day,
-                type: e.eventType as WorldEvent['type'],
+                type: e.eventType as WorldEvent["type"],
                 actors: truncateArray(
                   parseStringArraySafe(e.actors, {
-                    field: 'worldEvents.actors',
+                    field: "worldEvents.actors",
                   }),
-                  CONTEXT_LIMITS.MAX_ACTORS_PER_EVENT
+                  CONTEXT_LIMITS.MAX_ACTORS_PER_EVENT,
                 ),
                 description: truncateText(
-                  e.description || '',
-                  CONTEXT_LIMITS.MAX_EVENT_DESCRIPTION_LENGTH
+                  e.description || "",
+                  CONTEXT_LIMITS.MAX_EVENT_DESCRIPTION_LENGTH,
                 ),
                 relatedQuestion: e.relatedQuestion || null,
-                pointsToward: (e.pointsToward as 'YES' | 'NO' | null) || null,
-                visibility: e.visibility as WorldEvent['visibility'],
+                pointsToward: (e.pointsToward as "YES" | "NO" | null) || null,
+                visibility: e.visibility as WorldEvent["visibility"],
               } as WorldEvent;
-            })
+            }),
           )
       : Promise.resolve([]),
 
@@ -170,9 +170,9 @@ export async function buildRichGameContext(
               gameId ? eq(posts.gameId, gameId) : undefined,
               gte(
                 posts.createdAt,
-                new Date(Date.now() - maxDays * 24 * 60 * 60 * 1000)
-              )
-            )
+                new Date(Date.now() - maxDays * 24 * 60 * 60 * 1000),
+              ),
+            ),
           )
           .orderBy(desc(posts.createdAt))
           .limit(maxPosts)
@@ -183,15 +183,15 @@ export async function buildRichGameContext(
                 id: p.id,
                 day,
                 timestamp: p.createdAt.toISOString(),
-                type: p.type as FeedPost['type'],
+                type: p.type as FeedPost["type"],
                 content: truncateText(
                   p.content,
-                  CONTEXT_LIMITS.MAX_POST_CONTENT_LENGTH
+                  CONTEXT_LIMITS.MAX_POST_CONTENT_LENGTH,
                 ),
                 author: p.authorId,
                 authorName: truncateText(
-                  (p as { authorName?: string }).authorName || 'Unknown',
-                  50
+                  (p as { authorName?: string }).authorName || "Unknown",
+                  50,
                 ),
                 sentiment: p.sentiment ?? null,
                 clueStrength:
@@ -201,7 +201,7 @@ export async function buildRichGameContext(
                 relatedEvent:
                   (p as { relatedEvent?: string | null }).relatedEvent ?? null,
               } as FeedPost;
-            })
+            }),
           )
       : Promise.resolve([]),
 
@@ -219,16 +219,16 @@ export async function buildRichGameContext(
               id: q.id,
               text: truncateText(
                 q.text,
-                CONTEXT_LIMITS.MAX_QUESTION_TEXT_LENGTH
+                CONTEXT_LIMITS.MAX_QUESTION_TEXT_LENGTH,
               ),
               scenario: q.scenarioId || 0,
               outcome: q.resolvedOutcome ?? false,
               rank: 0,
-              status: q.status || 'active',
+              status: q.status || "active",
               resolvedOutcome: q.resolvedOutcome ?? undefined,
               resolutionDate: q.resolutionDate?.toISOString(),
-            }) as Question
-        )
+            }) as Question,
+        ),
       ),
 
     // Get world facts
@@ -247,7 +247,7 @@ export async function buildRichGameContext(
     if (!eventsByDay.has(day)) {
       eventsByDay.set(day, []);
     }
-    eventsByDay.get(day)!.push(event);
+    eventsByDay.get(day)?.push(event);
   }
 
   for (let day = startDay; day < currentDay; day++) {
@@ -264,15 +264,15 @@ export async function buildRichGameContext(
     if (!feedActivityByActor.has(post.author)) {
       feedActivityByActor.set(post.author, []);
     }
-    feedActivityByActor.get(post.author)!.push(post);
+    feedActivityByActor.get(post.author)?.push(post);
   }
 
   // Separate and shuffle active and resolved questions for entropy
   const activeQuestions = shuffleArray(
-    allQuestions.filter((q) => q.status === 'active')
+    allQuestions.filter((q) => q.status === "active"),
   );
   const resolvedQuestions = shuffleArray(
-    allQuestions.filter((q) => q.status === 'resolved')
+    allQuestions.filter((q) => q.status === "resolved"),
   );
 
   // Build character event histories
@@ -282,7 +282,7 @@ export async function buildRichGameContext(
       if (!characterEventHistories.has(actorId)) {
         characterEventHistories.set(actorId, []);
       }
-      characterEventHistories.get(actorId)!.push(event);
+      characterEventHistories.get(actorId)?.push(event);
     }
   }
 
@@ -305,32 +305,32 @@ export async function buildRichGameContext(
     allPreviousEvents: truncateArray(shuffleArray(allEvents), maxEvents),
     eventTimeline: truncateArray(
       eventTimeline,
-      CONTEXT_LIMITS.MAX_EVENT_TIMELINE_DAYS
+      CONTEXT_LIMITS.MAX_EVENT_TIMELINE_DAYS,
     ),
     recentFeedPosts: truncateArray(
       shuffleArray(allPosts),
-      CONTEXT_LIMITS.MAX_POSTS_RECENT
+      CONTEXT_LIMITS.MAX_POSTS_RECENT,
     ),
     feedActivityByActor,
     trendingTopics: [],
     recentGroupMessages: [],
     activeQuestions: truncateArray(
       activeQuestions,
-      CONTEXT_LIMITS.MAX_QUESTIONS_ACTIVE
+      CONTEXT_LIMITS.MAX_QUESTIONS_ACTIVE,
     ),
     resolvedQuestions: truncateArray(
       resolvedQuestions,
-      CONTEXT_LIMITS.MAX_QUESTIONS_RESOLVED
+      CONTEXT_LIMITS.MAX_QUESTIONS_RESOLVED,
     ),
     ongoingNarratives: truncateArray(
       shuffledNarratives,
-      CONTEXT_LIMITS.MAX_NARRATIVE_THREADS
+      CONTEXT_LIMITS.MAX_NARRATIVE_THREADS,
     ),
     characterEventHistories,
     characterPostHistories,
     worldFacts: truncateText(
-      worldFacts.general || '',
-      CONTEXT_LIMITS.MAX_SECTION_LENGTH
+      worldFacts.general || "",
+      CONTEXT_LIMITS.MAX_SECTION_LENGTH,
     ),
     phase,
   };
@@ -348,7 +348,7 @@ export function formatRichGameContext(
     includeNarrativeThreads?: boolean;
     maxEventsPerDay?: number;
     maxPostsPerActor?: number;
-  }
+  },
 ): string {
   const {
     includeEventTimeline = true,
@@ -364,7 +364,7 @@ export function formatRichGameContext(
   if (includeEventTimeline && context.eventTimeline.length > 0) {
     const timelineDays = truncateArray(
       context.eventTimeline,
-      CONTEXT_LIMITS.MAX_EVENT_TIMELINE_DAYS
+      CONTEXT_LIMITS.MAX_EVENT_TIMELINE_DAYS,
     );
     const timelineText = timelineDays
       .map(({ day, events }) => {
@@ -374,23 +374,23 @@ export function formatRichGameContext(
           .map((e) => {
             const actors =
               e.actors.length > 0
-                ? ` (${truncateArray(shuffleArray(e.actors), CONTEXT_LIMITS.MAX_ACTORS_PER_EVENT).join(', ')})`
-                : '';
-            const pointsToward = e.pointsToward ? ` → ${e.pointsToward}` : '';
+                ? ` (${truncateArray(shuffleArray(e.actors), CONTEXT_LIMITS.MAX_ACTORS_PER_EVENT).join(", ")})`
+                : "";
+            const pointsToward = e.pointsToward ? ` → ${e.pointsToward}` : "";
             const description = truncateText(
               e.description,
-              CONTEXT_LIMITS.MAX_EVENT_DESCRIPTION_LENGTH
+              CONTEXT_LIMITS.MAX_EVENT_DESCRIPTION_LENGTH,
             );
             return `  - [${e.type}] ${description}${actors}${pointsToward}`;
           })
-          .join('\n');
+          .join("\n");
         return `Day ${day}:\n${eventsText}`;
       })
-      .join('\n\n');
+      .join("\n\n");
 
     const sectionText =
       `=== COMPLETE EVENT TIMELINE ===\n` +
-      `Full history of all events from Day 1 to Day ${timelineDays[timelineDays.length - 1]?.day || 'current'}:\n\n${timelineText}\n` +
+      `Full history of all events from Day 1 to Day ${timelineDays[timelineDays.length - 1]?.day || "current"}:\n\n${timelineText}\n` +
       `\nUse this complete history to ensure narrative continuity and avoid repetition.`;
 
     sections.push(truncateText(sectionText, CONTEXT_LIMITS.MAX_SECTION_LENGTH));
@@ -400,16 +400,16 @@ export function formatRichGameContext(
   if (includeResolvedQuestions && context.resolvedQuestions.length > 0) {
     const resolvedText = truncateArray(
       context.resolvedQuestions,
-      CONTEXT_LIMITS.MAX_QUESTIONS_RESOLVED
+      CONTEXT_LIMITS.MAX_QUESTIONS_RESOLVED,
     )
       .map((q) => {
         const text = truncateText(
           q.text,
-          CONTEXT_LIMITS.MAX_QUESTION_TEXT_LENGTH
+          CONTEXT_LIMITS.MAX_QUESTION_TEXT_LENGTH,
         );
-        return `  - "${text}" → ${q.resolvedOutcome ? 'YES' : 'NO'}`;
+        return `  - "${text}" → ${q.resolvedOutcome ? "YES" : "NO"}`;
       })
-      .join('\n');
+      .join("\n");
 
     const sectionText =
       `=== RESOLVED QUESTIONS ===\n` +
@@ -423,22 +423,22 @@ export function formatRichGameContext(
   if (includeNarrativeThreads && context.ongoingNarratives.length > 0) {
     const narrativesText = truncateArray(
       context.ongoingNarratives,
-      CONTEXT_LIMITS.MAX_NARRATIVE_THREADS
+      CONTEXT_LIMITS.MAX_NARRATIVE_THREADS,
     )
       .map((n) => {
         // Shuffle actors within narrative for variety
         const actors =
           n.involvedActors.length > 0
-            ? ` (Actors: ${truncateArray(shuffleArray(n.involvedActors), 5).join(', ')})`
-            : '';
+            ? ` (Actors: ${truncateArray(shuffleArray(n.involvedActors), 5).join(", ")})`
+            : "";
         const questions =
           n.relatedQuestions.length > 0
-            ? ` (Questions: ${truncateArray(shuffleArray(n.relatedQuestions), CONTEXT_LIMITS.MAX_QUESTIONS_PER_NARRATIVE).join(', ')})`
-            : '';
+            ? ` (Questions: ${truncateArray(shuffleArray(n.relatedQuestions), CONTEXT_LIMITS.MAX_QUESTIONS_PER_NARRATIVE).join(", ")})`
+            : "";
         const description = truncateText(n.description, 200);
         return `  - ${n.theme}: ${description}${actors}${questions}`;
       })
-      .join('\n');
+      .join("\n");
 
     const sectionText =
       `=== ONGOING NARRATIVE THREADS ===\n` +
@@ -452,18 +452,18 @@ export function formatRichGameContext(
   if (includeFeedHistory && context.recentFeedPosts.length > 0) {
     const feedSummary = truncateArray(
       context.recentFeedPosts,
-      CONTEXT_LIMITS.MAX_POSTS_RECENT
+      CONTEXT_LIMITS.MAX_POSTS_RECENT,
     )
       .map((p) => {
         const day = p.day || extractDayFromTimestamp(p.timestamp);
         const content = truncateText(
           p.content,
-          CONTEXT_LIMITS.MAX_POST_CONTENT_LENGTH
+          CONTEXT_LIMITS.MAX_POST_CONTENT_LENGTH,
         );
         const authorName = truncateText(p.authorName, 50);
         return `  Day ${day}: @${authorName}: "${content}"`;
       })
-      .join('\n');
+      .join("\n");
 
     const sectionText =
       `=== RECENT FEED ACTIVITY ===\n` +
@@ -477,7 +477,7 @@ export function formatRichGameContext(
   if (context.worldFacts) {
     const factsText = truncateText(
       context.worldFacts,
-      CONTEXT_LIMITS.MAX_SECTION_LENGTH
+      CONTEXT_LIMITS.MAX_SECTION_LENGTH,
     );
     const sectionText =
       `=== ACCUMULATED WORLD FACTS ===\n` +
@@ -488,7 +488,7 @@ export function formatRichGameContext(
   }
 
   // Join sections and ensure total length is within limits
-  const fullContext = sections.join('\n\n');
+  const fullContext = sections.join("\n\n");
   return truncateText(fullContext, CONTEXT_LIMITS.MAX_TOTAL_CONTEXT_LENGTH);
 }
 
@@ -503,7 +503,7 @@ export function formatCharacterGameContext(
     includePersonalPosts?: boolean;
     maxPersonalEvents?: number;
     maxPersonalPosts?: number;
-  }
+  },
 ): string {
   const {
     includePersonalEvents = true,
@@ -521,14 +521,14 @@ export function formatCharacterGameContext(
       const eventsText = truncateArray(personalEvents, maxPersonalEvents)
         .map((e, i) => {
           const day = e.day;
-          const pointsToward = e.pointsToward ? ` → ${e.pointsToward}` : '';
+          const pointsToward = e.pointsToward ? ` → ${e.pointsToward}` : "";
           const description = truncateText(
             e.description,
-            CONTEXT_LIMITS.MAX_EVENT_DESCRIPTION_LENGTH
+            CONTEXT_LIMITS.MAX_EVENT_DESCRIPTION_LENGTH,
           );
           return `${i + 1}. Day ${day}: [${e.type}] ${description}${pointsToward}`;
         })
-        .join('\n');
+        .join("\n");
 
       const sectionText =
         `=== ${actor.name.toUpperCase()}'S EVENT HISTORY ===\n` +
@@ -536,7 +536,7 @@ export function formatCharacterGameContext(
         `\nReference these events naturally. Build on previous involvement.`;
 
       sections.push(
-        truncateText(sectionText, CONTEXT_LIMITS.MAX_SECTION_LENGTH)
+        truncateText(sectionText, CONTEXT_LIMITS.MAX_SECTION_LENGTH),
       );
     }
   }
@@ -550,11 +550,11 @@ export function formatCharacterGameContext(
           const day = p.day || extractDayFromTimestamp(p.timestamp);
           const content = truncateText(
             p.content,
-            CONTEXT_LIMITS.MAX_POST_CONTENT_LENGTH
+            CONTEXT_LIMITS.MAX_POST_CONTENT_LENGTH,
           );
           return `${i + 1}. Day ${day}: "${content}"`;
         })
-        .join('\n');
+        .join("\n");
 
       const sectionText =
         `=== ${actor.name.toUpperCase()}'S POST HISTORY ===\n` +
@@ -562,13 +562,13 @@ export function formatCharacterGameContext(
         `\nCRITICAL: Don't repeat these exact takes. Build on them or pivot to new angles.`;
 
       sections.push(
-        truncateText(sectionText, CONTEXT_LIMITS.MAX_SECTION_LENGTH)
+        truncateText(sectionText, CONTEXT_LIMITS.MAX_SECTION_LENGTH),
       );
     }
   }
 
   // Join sections and ensure total length is within limits
-  const fullContext = sections.join('\n\n');
+  const fullContext = sections.join("\n\n");
   return truncateText(fullContext, CONTEXT_LIMITS.MAX_TOTAL_CONTEXT_LENGTH);
 }
 
@@ -578,7 +578,7 @@ export function formatCharacterGameContext(
  */
 function extractNarrativeThreads(
   events: WorldEvent[],
-  _questions: Question[] // Currently unused but kept for future enhancement
+  _questions: Question[], // Currently unused but kept for future enhancement
 ): Array<{
   theme: string;
   description: string;
@@ -615,13 +615,13 @@ function extractNarrativeThreads(
   return Array.from(threadsByType.entries()).map(([theme, data]) => ({
     theme: truncateText(theme, 50),
     description: truncateText(
-      `${data.events.length} ${theme} events involving ${truncateArray(Array.from(data.actors), 5).join(', ')}`,
-      200
+      `${data.events.length} ${theme} events involving ${truncateArray(Array.from(data.actors), 5).join(", ")}`,
+      200,
     ),
     involvedActors: truncateArray(Array.from(data.actors), 5),
     relatedQuestions: truncateArray(
       Array.from(data.questions),
-      CONTEXT_LIMITS.MAX_QUESTIONS_PER_NARRATIVE
+      CONTEXT_LIMITS.MAX_QUESTIONS_PER_NARRATIVE,
     ),
   }));
 }
@@ -632,7 +632,7 @@ function extractNarrativeThreads(
  */
 export function extractNarrativeThreadsWithLoopDetection(
   events: WorldEvent[],
-  questions: Question[]
+  questions: Question[],
 ): {
   narratives: Array<{
     theme: string;
@@ -685,9 +685,9 @@ export function extractNarrativeThreadsWithLoopDetection(
     // Track description patterns for loop detection
     const normalizedDesc = event.description
       .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, '')
+      .replace(/[^a-z0-9\s]/g, "")
       .trim();
-    const words = normalizedDesc.split(/\s+/).slice(0, 5).join(' '); // First 5 words
+    const words = normalizedDesc.split(/\s+/).slice(0, 5).join(" "); // First 5 words
     descriptionPatterns.set(words, (descriptionPatterns.get(words) || 0) + 1);
 
     // Track actor-event type combinations
@@ -739,26 +739,26 @@ export function extractNarrativeThreadsWithLoopDetection(
         .slice(0, 3);
       const recentActivity =
         recentEvents.length > 0
-          ? `Recent: ${recentEvents.map((e) => truncateText(e.description, 50)).join('; ')}`
-          : 'No recent activity';
+          ? `Recent: ${recentEvents.map((e) => truncateText(e.description, 50)).join("; ")}`
+          : "No recent activity";
 
       return {
         theme: truncateText(theme, 50),
         description: truncateText(
-          `${data.events.length} ${theme} events from Day ${data.dayRange.min} to ${data.dayRange.max} involving ${truncateArray(Array.from(data.actors), 5).join(', ')}`,
-          250
+          `${data.events.length} ${theme} events from Day ${data.dayRange.min} to ${data.dayRange.max} involving ${truncateArray(Array.from(data.actors), 5).join(", ")}`,
+          250,
         ),
         involvedActors: truncateArray(
           Array.from(data.actors),
-          CONTEXT_LIMITS.MAX_ACTORS_PER_NARRATIVE
+          CONTEXT_LIMITS.MAX_ACTORS_PER_NARRATIVE,
         ),
         relatedQuestions: truncateArray(
           Array.from(data.questions),
-          CONTEXT_LIMITS.MAX_QUESTIONS_PER_NARRATIVE
+          CONTEXT_LIMITS.MAX_QUESTIONS_PER_NARRATIVE,
         ),
         recentActivity,
       };
-    }
+    },
   );
 
   // Generate suggestions based on patterns
@@ -766,7 +766,7 @@ export function extractNarrativeThreadsWithLoopDetection(
 
   if (potentialLoops.length > 0) {
     suggestions.push(
-      'LOOP PREVENTION: Varied content needed for these patterns:'
+      "LOOP PREVENTION: Varied content needed for these patterns:",
     );
     potentialLoops.slice(0, 3).forEach((loop) => {
       suggestions.push(`  - ${loop.warning}`);
@@ -776,14 +776,14 @@ export function extractNarrativeThreadsWithLoopDetection(
   // Check for question coverage
   // Convert to strings for consistent comparison since question IDs can be string or number
   const coveredQuestionIds = new Set(
-    narratives.flatMap((n) => n.relatedQuestions.map((q) => String(q)))
+    narratives.flatMap((n) => n.relatedQuestions.map((q) => String(q))),
   );
   const uncoveredQuestions = questions.filter(
-    (q) => q.status === 'active' && !coveredQuestionIds.has(String(q.id))
+    (q) => q.status === "active" && !coveredQuestionIds.has(String(q.id)),
   );
   if (uncoveredQuestions.length > 0) {
     suggestions.push(
-      `COVERAGE GAP: ${uncoveredQuestions.length} active questions have no related events`
+      `COVERAGE GAP: ${uncoveredQuestions.length} active questions have no related events`,
     );
   }
 
@@ -796,7 +796,7 @@ export function extractNarrativeThreadsWithLoopDetection(
  */
 export function generateAntiLoopContext(
   events: WorldEvent[],
-  posts: FeedPost[]
+  posts: FeedPost[],
 ): string {
   const recentEvents = events.slice(-30); // Last 30 events
   const recentPosts = posts.slice(-50); // Last 50 posts
@@ -837,28 +837,28 @@ export function generateAntiLoopContext(
     .slice(0, 5)
     .map(([topic]) => topic);
 
-  const sections: string[] = ['=== ANTI-LOOP WARNINGS ==='];
+  const sections: string[] = ["=== ANTI-LOOP WARNINGS ==="];
 
   if (overusedEventTypes.length > 0) {
-    sections.push(`Overused event types: ${overusedEventTypes.join(', ')}`);
-    sections.push('→ Generate different event types for variety');
+    sections.push(`Overused event types: ${overusedEventTypes.join(", ")}`);
+    sections.push("→ Generate different event types for variety");
   }
 
   if (overusedActors.length > 0) {
-    sections.push(`Overexposed actors: ${overusedActors.join(', ')}`);
-    sections.push('→ Feature different actors or give these a break');
+    sections.push(`Overexposed actors: ${overusedActors.join(", ")}`);
+    sections.push("→ Feature different actors or give these a break");
   }
 
   if (overusedTopics.length > 0) {
-    sections.push(`Overused topics: ${overusedTopics.join(', ')}`);
-    sections.push('→ Explore new angles or different subjects');
+    sections.push(`Overused topics: ${overusedTopics.join(", ")}`);
+    sections.push("→ Explore new angles or different subjects");
   }
 
   if (sections.length === 1) {
-    sections.push('No repetition patterns detected. Variety is good!');
+    sections.push("No repetition patterns detected. Variety is good!");
   }
 
-  return sections.join('\n');
+  return sections.join("\n");
 }
 
 /**
@@ -878,7 +878,7 @@ export function formatRichGameContextWithEntropy(
     includePhaseGuidance?: boolean;
     randomizeSectionOrder?: boolean;
     maxEventsPerDay?: number;
-  }
+  },
 ): string {
   const {
     includeEventTimeline = true,
@@ -905,7 +905,7 @@ export function formatRichGameContextWithEntropy(
   if (includeEventTimeline && context.eventTimeline.length > 0) {
     const timelineDays = truncateArray(
       context.eventTimeline,
-      CONTEXT_LIMITS.MAX_EVENT_TIMELINE_DAYS
+      CONTEXT_LIMITS.MAX_EVENT_TIMELINE_DAYS,
     );
     const timelineText = timelineDays
       .map(({ day, events }) => {
@@ -914,19 +914,19 @@ export function formatRichGameContextWithEntropy(
           .map((e) => {
             const actors =
               e.actors.length > 0
-                ? ` (${truncateArray(e.actors, CONTEXT_LIMITS.MAX_ACTORS_PER_EVENT).join(', ')})`
-                : '';
-            const pointsToward = e.pointsToward ? ` → ${e.pointsToward}` : '';
+                ? ` (${truncateArray(e.actors, CONTEXT_LIMITS.MAX_ACTORS_PER_EVENT).join(", ")})`
+                : "";
+            const pointsToward = e.pointsToward ? ` → ${e.pointsToward}` : "";
             const description = truncateText(
               e.description,
-              CONTEXT_LIMITS.MAX_EVENT_DESCRIPTION_LENGTH
+              CONTEXT_LIMITS.MAX_EVENT_DESCRIPTION_LENGTH,
             );
             return `  - [${e.type}] ${description}${actors}${pointsToward}`;
           })
-          .join('\n');
+          .join("\n");
         return `Day ${day}:\n${eventsText}`;
       })
-      .join('\n\n');
+      .join("\n\n");
 
     const sectionText =
       `=== COMPLETE EVENT TIMELINE ===\n` +
@@ -943,19 +943,19 @@ export function formatRichGameContextWithEntropy(
   if (includeResolvedQuestions && context.resolvedQuestions.length > 0) {
     const resolvedText = truncateArray(
       context.resolvedQuestions,
-      CONTEXT_LIMITS.MAX_QUESTIONS_RESOLVED
+      CONTEXT_LIMITS.MAX_QUESTIONS_RESOLVED,
     )
       .map((q) => {
         const text = truncateText(
           q.text,
-          CONTEXT_LIMITS.MAX_QUESTION_TEXT_LENGTH
+          CONTEXT_LIMITS.MAX_QUESTION_TEXT_LENGTH,
         );
         const date = q.resolutionDate
           ? ` (resolved ${new Date(q.resolutionDate).toLocaleDateString()})`
-          : '';
-        return `  - "${text}" → ${q.resolvedOutcome ? 'YES' : 'NO'}${date}`;
+          : "";
+        return `  - "${text}" → ${q.resolvedOutcome ? "YES" : "NO"}${date}`;
       })
-      .join('\n');
+      .join("\n");
 
     const sectionText =
       `=== RESOLVED QUESTIONS (CANON OUTCOMES) ===\n` +
@@ -973,16 +973,16 @@ export function formatRichGameContextWithEntropy(
   if (includeActiveQuestions && context.activeQuestions.length > 0) {
     const activeText = truncateArray(
       context.activeQuestions,
-      CONTEXT_LIMITS.MAX_QUESTIONS_ACTIVE
+      CONTEXT_LIMITS.MAX_QUESTIONS_ACTIVE,
     )
       .map((q) => {
         const text = truncateText(
           q.text,
-          CONTEXT_LIMITS.MAX_QUESTION_TEXT_LENGTH
+          CONTEXT_LIMITS.MAX_QUESTION_TEXT_LENGTH,
         );
         return `  - "${text}" (active, unresolved)`;
       })
-      .join('\n');
+      .join("\n");
 
     const sectionText =
       `=== ACTIVE QUESTIONS (IN PLAY) ===\n` +
@@ -1000,21 +1000,21 @@ export function formatRichGameContextWithEntropy(
   if (includeNarrativeThreads && context.ongoingNarratives.length > 0) {
     const narrativesText = truncateArray(
       context.ongoingNarratives,
-      CONTEXT_LIMITS.MAX_NARRATIVE_THREADS
+      CONTEXT_LIMITS.MAX_NARRATIVE_THREADS,
     )
       .map((n) => {
         const actors =
           n.involvedActors.length > 0
-            ? ` Actors: ${truncateArray(n.involvedActors, CONTEXT_LIMITS.MAX_ACTORS_PER_NARRATIVE).join(', ')}`
-            : '';
+            ? ` Actors: ${truncateArray(n.involvedActors, CONTEXT_LIMITS.MAX_ACTORS_PER_NARRATIVE).join(", ")}`
+            : "";
         const questions =
           n.relatedQuestions.length > 0
-            ? ` Questions: #${truncateArray(n.relatedQuestions, CONTEXT_LIMITS.MAX_QUESTIONS_PER_NARRATIVE).join(', #')}`
-            : '';
+            ? ` Questions: #${truncateArray(n.relatedQuestions, CONTEXT_LIMITS.MAX_QUESTIONS_PER_NARRATIVE).join(", #")}`
+            : "";
         const description = truncateText(n.description, 200);
         return `  - [${n.theme}] ${description}${actors}${questions}`;
       })
-      .join('\n');
+      .join("\n");
 
     const sectionText =
       `=== ONGOING NARRATIVE THREADS ===\n` +
@@ -1031,18 +1031,18 @@ export function formatRichGameContextWithEntropy(
   if (includeFeedHistory && context.recentFeedPosts.length > 0) {
     const feedSummary = truncateArray(
       context.recentFeedPosts,
-      CONTEXT_LIMITS.MAX_POSTS_RECENT
+      CONTEXT_LIMITS.MAX_POSTS_RECENT,
     )
       .map((p) => {
         const day = p.day || extractDayFromTimestamp(p.timestamp);
         const content = truncateText(
           p.content,
-          CONTEXT_LIMITS.MAX_POST_CONTENT_LENGTH
+          CONTEXT_LIMITS.MAX_POST_CONTENT_LENGTH,
         );
         const authorName = truncateText(p.authorName, 50);
         return `  Day ${day} @${authorName}: "${content}"`;
       })
-      .join('\n');
+      .join("\n");
 
     const sectionText =
       `=== RECENT FEED ACTIVITY ===\n` +
@@ -1059,7 +1059,7 @@ export function formatRichGameContextWithEntropy(
   if (includeWorldFacts && context.worldFacts) {
     const factsText = truncateText(
       context.worldFacts,
-      CONTEXT_LIMITS.MAX_SECTION_LENGTH
+      CONTEXT_LIMITS.MAX_SECTION_LENGTH,
     );
     const sectionText =
       `=== ACCUMULATED WORLD FACTS ===\n` +
@@ -1084,7 +1084,7 @@ export function formatRichGameContextWithEntropy(
       if (!priorityGroups.has(band)) {
         priorityGroups.set(band, []);
       }
-      priorityGroups.get(band)!.push(section);
+      priorityGroups.get(band)?.push(section);
     }
 
     orderedSections = [];
@@ -1098,7 +1098,7 @@ export function formatRichGameContextWithEntropy(
   }
 
   // Join sections with clear separators
-  const fullContext = orderedSections.map((s) => s.content).join('\n\n');
+  const fullContext = orderedSections.map((s) => s.content).join("\n\n");
   return truncateText(fullContext, CONTEXT_LIMITS.MAX_TOTAL_CONTEXT_LENGTH);
 }
 
@@ -1107,10 +1107,10 @@ export function formatRichGameContextWithEntropy(
  */
 export function formatDaySummaries(
   context: RichGameContext,
-  maxDays = CONTEXT_LIMITS.MAX_DAY_SUMMARIES
+  maxDays = CONTEXT_LIMITS.MAX_DAY_SUMMARIES,
 ): string {
   if (context.eventTimeline.length === 0) {
-    return '';
+    return "";
   }
 
   const summaries = truncateArray(context.eventTimeline, maxDays)
@@ -1120,11 +1120,11 @@ export function formatDaySummaries(
           ? `${events
               .slice(0, 3)
               .map((e) => truncateText(e.description, 50))
-              .join('; ')}; and ${events.length - 3} more`
-          : events.map((e) => truncateText(e.description, 50)).join('; ');
+              .join("; ")}; and ${events.length - 3} more`
+          : events.map((e) => truncateText(e.description, 50)).join("; ");
       return `Day ${day}: ${eventSummary}`;
     })
-    .join('\n');
+    .join("\n");
 
   return `=== DAY-BY-DAY SUMMARY ===\n${summaries}`;
 }
@@ -1146,7 +1146,7 @@ export interface CharacterRosterEntry {
   relationships?: Array<{
     otherName: string;
     type: string;
-    sentiment: 'ally' | 'rival' | 'neutral';
+    sentiment: "ally" | "rival" | "neutral";
   }>;
   // Context flags
   isMentionedInEvents?: boolean;
@@ -1176,7 +1176,7 @@ export function buildCharacterRoster(
       relationshipType: string;
       sentiment: number;
     }>;
-  }
+  },
 ): {
   briefRoster: string;
   detailedProfiles: string;
@@ -1204,10 +1204,10 @@ export function buildCharacterRoster(
           otherName: otherActor?.name || otherId,
           type: r.relationshipType,
           sentiment: (r.sentiment > 0.3
-            ? 'ally'
+            ? "ally"
             : r.sentiment < -0.3
-              ? 'rival'
-              : 'neutral') as 'ally' | 'rival' | 'neutral',
+              ? "rival"
+              : "neutral") as "ally" | "rival" | "neutral",
         };
       });
 
@@ -1216,8 +1216,8 @@ export function buildCharacterRoster(
       name: actor.name,
       briefDescription: truncateText(
         actor.description ||
-          `${actor.name} - ${actor.domain?.join(', ') || 'notable figure'}`,
-        100
+          `${actor.name} - ${actor.domain?.join(", ") || "notable figure"}`,
+        100,
       ),
       fullProfile: buildFullProfile(actor),
       domain: actor.domain,
@@ -1229,13 +1229,13 @@ export function buildCharacterRoster(
       isMentionedInEvents: events.some(
         (e) =>
           e.description.toLowerCase().includes(nameLower) ||
-          e.actors?.some((a) => a.toLowerCase() === nameLower)
+          e.actors?.some((a) => a.toLowerCase() === nameLower),
       ),
       isMentionedInQuestions:
         questions.some((q) => q.text.toLowerCase().includes(nameLower)) ||
         activeQuestionTexts.some((t) => t.toLowerCase().includes(nameLower)),
       isMentionedInTrending: trendingTopics.some((t) =>
-        t.toLowerCase().includes(nameLower)
+        t.toLowerCase().includes(nameLower),
       ),
     };
   });
@@ -1245,13 +1245,13 @@ export function buildCharacterRoster(
     (e) =>
       e.isMentionedInEvents ||
       e.isMentionedInQuestions ||
-      e.isMentionedInTrending
+      e.isMentionedInTrending,
   );
   const otherActors = rosterEntries.filter(
     (e) =>
       !e.isMentionedInEvents &&
       !e.isMentionedInQuestions &&
-      !e.isMentionedInTrending
+      !e.isMentionedInTrending,
   );
 
   // SHUFFLE both lists for entropy - mentioned first, then others
@@ -1261,23 +1261,23 @@ export function buildCharacterRoster(
   // Build brief roster (mentioned first, then others - both shuffled)
   const allShuffled = [...shuffledMentioned, ...shuffledOtherActors];
   const briefRosterLines = allShuffled.map((entry) => {
-    const domains = entry.domain?.slice(0, 2).join(', ') || '';
-    const affiliations = entry.affiliations?.slice(0, 2).join(', ') || '';
-    const context = [domains, affiliations].filter(Boolean).join(' | ');
-    return `• ${entry.name}${entry.tier ? ` [${entry.tier}]` : ''}: ${truncateText(entry.briefDescription, 80)}${context ? ` (${context})` : ''}`;
+    const domains = entry.domain?.slice(0, 2).join(", ") || "";
+    const affiliations = entry.affiliations?.slice(0, 2).join(", ") || "";
+    const context = [domains, affiliations].filter(Boolean).join(" | ");
+    return `• ${entry.name}${entry.tier ? ` [${entry.tier}]` : ""}: ${truncateText(entry.briefDescription, 80)}${context ? ` (${context})` : ""}`;
   });
 
   const briefRoster = `=== ALL MAJOR CHARACTERS (${allShuffled.length} total) ===
 These are ALL the NPCs in this game world. Use their EXACT names.
 
-${briefRosterLines.join('\n')}`;
+${briefRosterLines.join("\n")}`;
 
   // Build detailed profiles for mentioned actors only
   const detailedProfileLines = shuffledMentioned.map((entry) => {
     const mentionReasons: string[] = [];
-    if (entry.isMentionedInEvents) mentionReasons.push('events');
-    if (entry.isMentionedInQuestions) mentionReasons.push('questions');
-    if (entry.isMentionedInTrending) mentionReasons.push('trending');
+    if (entry.isMentionedInEvents) mentionReasons.push("events");
+    if (entry.isMentionedInQuestions) mentionReasons.push("questions");
+    if (entry.isMentionedInTrending) mentionReasons.push("trending");
 
     const relationshipsSummary =
       entry.relationships && entry.relationships.length > 0
@@ -1285,14 +1285,14 @@ ${briefRosterLines.join('\n')}`;
             .slice(0, 5)
             .map(
               (r) =>
-                `  - ${r.sentiment === 'ally' ? '✓' : r.sentiment === 'rival' ? '✗' : '○'} ${r.otherName}: ${r.type}`
+                `  - ${r.sentiment === "ally" ? "✓" : r.sentiment === "rival" ? "✗" : "○"} ${r.otherName}: ${r.type}`,
             )
-            .join('\n')}`
-        : '';
+            .join("\n")}`
+        : "";
 
     return `
-### ${entry.name} ${entry.tier ? `[${entry.tier}]` : ''} ###
-(Mentioned in: ${mentionReasons.join(', ')})
+### ${entry.name} ${entry.tier ? `[${entry.tier}]` : ""} ###
+(Mentioned in: ${mentionReasons.join(", ")})
 
 ${entry.fullProfile || entry.briefDescription}
 ${relationshipsSummary}`;
@@ -1304,17 +1304,17 @@ ${relationshipsSummary}`;
 Full profiles for characters mentioned in current context.
 Use this info to write authentic, in-character content.
 
-${detailedProfileLines.join('\n---\n')}`
-      : '';
+${detailedProfileLines.join("\n---\n")}`
+      : "";
 
   return {
     briefRoster: truncateText(
       briefRoster,
-      CONTEXT_LIMITS.MAX_SECTION_LENGTH * 2
+      CONTEXT_LIMITS.MAX_SECTION_LENGTH * 2,
     ),
     detailedProfiles: truncateText(
       detailedProfiles,
-      CONTEXT_LIMITS.MAX_SECTION_LENGTH * 2
+      CONTEXT_LIMITS.MAX_SECTION_LENGTH * 2,
     ),
     mentionedActorIds: new Set(mentionedActors.map((a) => a.id)),
   };
@@ -1338,12 +1338,12 @@ function buildFullProfile(actor: Actor): string {
 
   // Domain expertise
   if (actor.domain && actor.domain.length > 0) {
-    sections.push(`DOMAINS: ${actor.domain.join(', ')}`);
+    sections.push(`DOMAINS: ${actor.domain.join(", ")}`);
   }
 
   // Affiliations
   if (actor.affiliations && actor.affiliations.length > 0) {
-    sections.push(`AFFILIATIONS: ${actor.affiliations.join(', ')}`);
+    sections.push(`AFFILIATIONS: ${actor.affiliations.join(", ")}`);
   }
 
   // Personality
@@ -1365,7 +1365,7 @@ function buildFullProfile(actor: Actor): string {
   if (actor.postExample && actor.postExample.length > 0) {
     const examples = shuffleArray(actor.postExample).slice(0, 3);
     sections.push(
-      `EXAMPLE POSTS:\n${examples.map((e) => `  "${e}"`).join('\n')}`
+      `EXAMPLE POSTS:\n${examples.map((e) => `  "${e}"`).join("\n")}`,
     );
   }
 
@@ -1374,32 +1374,32 @@ function buildFullProfile(actor: Actor): string {
     const personaDetails: string[] = [];
     if (actor.persona.reliability !== undefined) {
       personaDetails.push(
-        `Reliability: ${(actor.persona.reliability * 100).toFixed(0)}%`
+        `Reliability: ${(actor.persona.reliability * 100).toFixed(0)}%`,
       );
     }
     if (actor.persona.expertise && actor.persona.expertise.length > 0) {
-      personaDetails.push(`Expertise: ${actor.persona.expertise.join(', ')}`);
+      personaDetails.push(`Expertise: ${actor.persona.expertise.join(", ")}`);
     }
     if (actor.persona.selfInterest) {
       personaDetails.push(`Motivation: ${actor.persona.selfInterest}`);
     }
     if (actor.persona.willingToLie !== undefined) {
       personaDetails.push(
-        `Will lie: ${actor.persona.willingToLie ? 'yes' : 'no'}`
+        `Will lie: ${actor.persona.willingToLie ? "yes" : "no"}`,
       );
     }
     if (actor.persona.favorsActors && actor.persona.favorsActors.length > 0) {
-      personaDetails.push(`Allies: ${actor.persona.favorsActors.join(', ')}`);
+      personaDetails.push(`Allies: ${actor.persona.favorsActors.join(", ")}`);
     }
     if (actor.persona.opposesActors && actor.persona.opposesActors.length > 0) {
-      personaDetails.push(`Rivals: ${actor.persona.opposesActors.join(', ')}`);
+      personaDetails.push(`Rivals: ${actor.persona.opposesActors.join(", ")}`);
     }
     if (personaDetails.length > 0) {
-      sections.push(`PERSONA: ${personaDetails.join(' | ')}`);
+      sections.push(`PERSONA: ${personaDetails.join(" | ")}`);
     }
   }
 
-  return sections.join('\n');
+  return sections.join("\n");
 }
 
 /**
@@ -1418,7 +1418,7 @@ export function formatCharacterAndOrgRoster(
     events?: WorldEvent[];
     questions?: Question[];
     shuffleAll?: boolean;
-  }
+  },
 ): string {
   const { events = [], questions = [], shuffleAll = true } = options || {};
 
@@ -1429,24 +1429,24 @@ export function formatCharacterAndOrgRoster(
   });
 
   // Build organization roster
-  let orgRoster = '';
+  let orgRoster = "";
   if (organizations && organizations.length > 0) {
     const orgsByType = new Map<string, typeof organizations>();
     for (const org of organizations) {
-      const type = org.type || 'other';
+      const type = org.type || "other";
       if (!orgsByType.has(type)) {
         orgsByType.set(type, []);
       }
-      orgsByType.get(type)!.push(org);
+      orgsByType.get(type)?.push(org);
     }
 
     const orgSections = Array.from(orgsByType.entries()).map(([type, orgs]) => {
       const shuffledOrgs = shuffleAll ? shuffleArray(orgs) : orgs;
       const orgLines = shuffledOrgs.map(
         (o) =>
-          `• ${o.name}: ${truncateText(o.description || 'No description', 100)}`
+          `• ${o.name}: ${truncateText(o.description || "No description", 100)}`,
       );
-      return `${type.toUpperCase()}:\n${orgLines.join('\n')}`;
+      return `${type.toUpperCase()}:\n${orgLines.join("\n")}`;
     });
 
     // Shuffle section order for variety
@@ -1455,14 +1455,14 @@ export function formatCharacterAndOrgRoster(
       : orgSections;
 
     orgRoster = `=== ORGANIZATIONS IN PLAY ===
-${shuffledSections.join('\n\n')}`;
+${shuffledSections.join("\n\n")}`;
   }
 
   // Combine all sections (shuffle order for entropy)
   const allSections = [briefRoster, detailedProfiles, orgRoster].filter(
-    Boolean
+    Boolean,
   );
   const finalSections = shuffleAll ? shuffleArray(allSections) : allSections;
 
-  return finalSections.join('\n\n');
+  return finalSections.join("\n\n");
 }

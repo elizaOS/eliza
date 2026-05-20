@@ -1,4 +1,4 @@
-import type { SVGProps } from 'react';
+import type { SVGProps } from "react";
 
 /**
  * Custom House icon with door cutout.
@@ -6,10 +6,10 @@ import type { SVGProps } from 'react';
  */
 export function HouseIcon({
   className,
-  fill = 'none',
+  fill = "none",
   ...props
 }: SVGProps<SVGSVGElement>) {
-  const isFilled = fill !== 'none';
+  const isFilled = fill !== "none";
 
   if (isFilled) {
     return (

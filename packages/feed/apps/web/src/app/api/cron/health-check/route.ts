@@ -14,13 +14,13 @@ import {
   sendDiscordSystemAlertIfNeeded,
   withCronAuth,
   withErrorHandling,
-} from '@feed/api';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@feed/api";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 export const maxDuration = 60;
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 async function handler(_request: NextRequest) {
   const startTime = Date.now();
@@ -32,14 +32,14 @@ async function handler(_request: NextRequest) {
 
   const alertResult = await sendDiscordSystemAlertIfNeeded(snapshot);
   const logMethod =
-    snapshot.status === 'critical'
-      ? 'error'
-      : snapshot.status === 'warning'
-        ? 'warn'
-        : 'info';
+    snapshot.status === "critical"
+      ? "error"
+      : snapshot.status === "warning"
+        ? "warn"
+        : "info";
 
   logger[logMethod](
-    'Health check completed',
+    "Health check completed",
     {
       duration,
       databaseConnected,
@@ -47,14 +47,14 @@ async function handler(_request: NextRequest) {
       issues: snapshot.issues,
       discordAlert: alertResult.reason,
     },
-    'HealthCheck'
+    "HealthCheck",
   );
 
   return NextResponse.json(
     {
       success: databaseConnected,
-      status: databaseConnected ? 'healthy' : 'unhealthy',
-      database: databaseConnected ? 'connected' : 'error',
+      status: databaseConnected ? "healthy" : "unhealthy",
+      database: databaseConnected ? "connected" : "error",
       duration,
       timestamp: snapshot.timestamp,
       systemStatus: snapshot.status,
@@ -66,8 +66,8 @@ async function handler(_request: NextRequest) {
         reason: alertResult.reason,
       },
     },
-    { status: httpStatus }
+    { status: httpStatus },
   );
 }
 
-export const GET = withErrorHandling(withCronAuth('HealthCheck', handler));
+export const GET = withErrorHandling(withCronAuth("HealthCheck", handler));

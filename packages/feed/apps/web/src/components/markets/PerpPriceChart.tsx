@@ -1,16 +1,16 @@
-'use client';
+"use client";
 
-import { cn } from '@feed/shared';
-import type { ISeriesApi, Time } from 'lightweight-charts';
-import { AreaSeries, CrosshairMode } from 'lightweight-charts';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { cn } from "@feed/shared";
+import type { ISeriesApi, Time } from "lightweight-charts";
+import { AreaSeries, CrosshairMode } from "lightweight-charts";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AREA_STYLES,
   formatChartPrice,
   formatChartTime,
   useLightweightChart,
-} from '@/components/charts/LightweightChartBase';
-import { MARKET_TIME_RANGES, type MarketTimeRange } from '@/types/markets';
+} from "@/components/charts/LightweightChartBase";
+import { MARKET_TIME_RANGES, type MarketTimeRange } from "@/types/markets";
 
 /**
  * Price point structure for chart data.
@@ -53,7 +53,7 @@ interface PerpPriceChartProps {
    * - fixed: uses a fixed-height chart (good for pages)
    * - fill: stretches to the available parent height (good for flex layouts like the terminal)
    */
-  height?: 'fixed' | 'fill';
+  height?: "fixed" | "fill";
   /** Optional className for the container */
   className?: string;
 }
@@ -83,13 +83,13 @@ export function PerpPriceChart({
   timeRange,
   onTimeRangeChange,
   showHeader = true,
-  height = 'fixed',
+  height = "fixed",
   className,
 }: PerpPriceChartProps) {
   const [chartInitError, setChartInitError] = useState<string | null>(null);
-  const priceSeries = useRef<ISeriesApi<'Area'> | null>(null);
+  const priceSeries = useRef<ISeriesApi<"Area"> | null>(null);
   const lastPriceLineRef = useRef<ReturnType<
-    ISeriesApi<'Area'>['createPriceLine']
+    ISeriesApi<"Area">["createPriceLine"]
   > | null>(null);
   const seriesInitialized = useRef(false);
 
@@ -106,7 +106,7 @@ export function PerpPriceChart({
     },
   });
 
-  const fillHeight = height === 'fill';
+  const fillHeight = height === "fill";
   const hasData = data.length > 0;
   const unavailableReason = chartInitError ?? chartBaseError;
 
@@ -120,19 +120,19 @@ export function PerpPriceChart({
         (point) =>
           Number.isFinite(point.time) &&
           Number.isFinite(point.price) &&
-          point.price > 0
+          point.price > 0,
       )
       .sort((a, b) => a.time - b.time);
 
     // Apply time range filter
     let filtered = validData;
-    if (timeRange !== 'ALL') {
+    if (timeRange !== "ALL") {
       const now = Date.now();
       const ranges: Record<MarketTimeRange, number> = {
-        '1H': 60 * 60 * 1000,
-        '4H': 4 * 60 * 60 * 1000,
-        '1D': 24 * 60 * 60 * 1000,
-        '1W': 7 * 24 * 60 * 60 * 1000,
+        "1H": 60 * 60 * 1000,
+        "4H": 4 * 60 * 60 * 1000,
+        "1D": 24 * 60 * 60 * 1000,
+        "1W": 7 * 24 * 60 * 60 * 1000,
         ALL: 0,
       };
       const cutoff = now - ranges[timeRange];
@@ -183,7 +183,7 @@ export function PerpPriceChart({
       const seriesOptions = {
         ...AREA_STYLES.green,
         priceFormat: {
-          type: 'custom' as const,
+          type: "custom" as const,
           formatter: (price: number) => formatChartPrice(price, true),
           minMove: 0.00000001,
         },
@@ -197,27 +197,27 @@ export function PerpPriceChart({
       const chartAny = chart as unknown as {
         addSeries?: (
           seriesType: unknown,
-          options: unknown
-        ) => ISeriesApi<'Area'>;
-        addAreaSeries?: (options: unknown) => ISeriesApi<'Area'>;
+          options: unknown,
+        ) => ISeriesApi<"Area">;
+        addAreaSeries?: (options: unknown) => ISeriesApi<"Area">;
       };
 
-      if (typeof chartAny.addSeries === 'function' && AreaSeries) {
+      if (typeof chartAny.addSeries === "function" && AreaSeries) {
         priceSeries.current = chartAny.addSeries.call(
           chart,
           AreaSeries,
-          seriesOptions
+          seriesOptions,
         );
-      } else if (typeof chartAny.addAreaSeries === 'function') {
+      } else if (typeof chartAny.addAreaSeries === "function") {
         priceSeries.current = chartAny.addAreaSeries.call(chart, seriesOptions);
       } else {
-        throw new Error('Unsupported lightweight-charts API');
+        throw new Error("Unsupported lightweight-charts API");
       }
 
       seriesInitialized.current = true;
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : 'Failed to initialize chart';
+        error instanceof Error ? error.message : "Failed to initialize chart";
       setChartInitError(message);
       priceSeries.current = null;
       seriesInitialized.current = false;
@@ -248,7 +248,7 @@ export function PerpPriceChart({
         priceSeries.current.setData([]);
       } catch (error) {
         const message =
-          error instanceof Error ? error.message : 'Failed to clear chart data';
+          error instanceof Error ? error.message : "Failed to clear chart data";
         setChartInitError(message);
       }
       return;
@@ -260,7 +260,7 @@ export function PerpPriceChart({
       chart.timeScale().fitContent();
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : 'Failed to render chart data';
+        error instanceof Error ? error.message : "Failed to render chart data";
       setChartInitError(message);
     }
   }, [chart, chartData]);
@@ -278,17 +278,17 @@ export function PerpPriceChart({
       // Add horizontal line at current price
       lastPriceLineRef.current = priceSeries.current.createPriceLine({
         price: currentPrice,
-        color: '#0066FF',
+        color: "#0066FF",
         lineWidth: 2,
         lineStyle: 2, // Dashed
         axisLabelVisible: true,
-        title: 'Current',
+        title: "Current",
       });
     } catch (error) {
       const message =
         error instanceof Error
           ? error.message
-          : 'Failed to update current price line';
+          : "Failed to update current price line";
       setChartInitError(message);
     }
   }, [currentPrice]);
@@ -296,10 +296,10 @@ export function PerpPriceChart({
   return (
     <div
       className={cn(
-        'flex w-full',
-        fillHeight ? 'h-full min-h-0 flex-col gap-3' : 'h-full flex-col',
-        showHeader && !fillHeight ? 'space-y-3' : '',
-        className
+        "flex w-full",
+        fillHeight ? "h-full min-h-0 flex-col gap-3" : "h-full flex-col",
+        showHeader && !fillHeight ? "space-y-3" : "",
+        className,
       )}
     >
       {/* Header with price info and time range selector */}
@@ -312,13 +312,13 @@ export function PerpPriceChart({
               </div>
               <div
                 className={cn(
-                  'font-medium text-sm',
-                  isPositive ? 'text-green-600' : 'text-red-600'
+                  "font-medium text-sm",
+                  isPositive ? "text-green-600" : "text-red-600",
                 )}
               >
-                {isPositive ? '↑' : '↓'}{' '}
+                {isPositive ? "↑" : "↓"}{" "}
                 {formatChartPrice(Math.abs(priceChange), true)} (
-                {priceChangePercent >= 0 ? '+' : ''}
+                {priceChangePercent >= 0 ? "+" : ""}
                 {priceChangePercent.toFixed(2)}%)
               </div>
             </div>
@@ -331,10 +331,10 @@ export function PerpPriceChart({
                 key={range}
                 onClick={() => onTimeRangeChange(range)}
                 className={cn(
-                  'cursor-pointer rounded px-2 py-1 text-xs transition-colors',
+                  "cursor-pointer rounded px-2 py-1 text-xs transition-colors",
                   timeRange === range
-                    ? 'bg-primary text-primary-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground",
                 )}
               >
                 {range}
@@ -345,12 +345,12 @@ export function PerpPriceChart({
       )}
 
       {/* Chart container */}
-      <div className={cn('relative', fillHeight && 'min-h-0 flex-1')}>
+      <div className={cn("relative", fillHeight && "min-h-0 flex-1")}>
         <div
           ref={chartContainerRef}
           className={cn(
-            'w-full rounded-lg bg-muted/10',
-            fillHeight ? 'h-full min-h-[240px]' : 'h-[400px]'
+            "w-full rounded-lg bg-muted/10",
+            fillHeight ? "h-full min-h-[240px]" : "h-[400px]",
           )}
         />
         {/* Overlay states are mutually exclusive - priority: unavailable > loading > initializing > empty */}

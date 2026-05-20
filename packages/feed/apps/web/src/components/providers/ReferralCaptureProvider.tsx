@@ -1,13 +1,13 @@
-'use client';
+"use client";
 
-import { logger } from '@feed/shared';
-import { useSearchParams } from 'next/navigation';
-import { useEffect } from 'react';
+import { logger } from "@feed/shared";
+import { useSearchParams } from "next/navigation";
+import { useEffect } from "react";
 import {
   readStorageItem,
   removeStorageItem,
   writeStorageItem,
-} from '@/utils/browser-storage';
+} from "@/utils/browser-storage";
 
 /**
  * Referral capture provider component for capturing referral codes from URL.
@@ -30,42 +30,42 @@ export function ReferralCaptureProvider() {
 
   useEffect(() => {
     // Get referral code from URL
-    const refCode = searchParams.get('ref');
+    const refCode = searchParams.get("ref");
 
     if (refCode) {
       // Store in sessionStorage (persists until browser tab is closed)
-      writeStorageItem('sessionStorage', 'referralCode', refCode);
+      writeStorageItem("sessionStorage", "referralCode", refCode);
 
       logger.info(
         `Captured referral code: ${refCode}`,
         { code: refCode },
-        'ReferralCaptureProvider'
+        "ReferralCaptureProvider",
       );
 
       // Also store timestamp to track how old the referral is
       writeStorageItem(
-        'sessionStorage',
-        'referralCodeTimestamp',
-        Date.now().toString()
+        "sessionStorage",
+        "referralCodeTimestamp",
+        Date.now().toString(),
       );
     }
 
     // Clean up expired referral codes (older than 30 days)
     const timestamp = readStorageItem(
-      'sessionStorage',
-      'referralCodeTimestamp'
+      "sessionStorage",
+      "referralCodeTimestamp",
     );
     if (timestamp) {
-      const age = Date.now() - Number.parseInt(timestamp);
+      const age = Date.now() - Number.parseInt(timestamp, 10);
       const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
 
       if (age > thirtyDaysMs) {
-        removeStorageItem('sessionStorage', 'referralCode');
-        removeStorageItem('sessionStorage', 'referralCodeTimestamp');
+        removeStorageItem("sessionStorage", "referralCode");
+        removeStorageItem("sessionStorage", "referralCodeTimestamp");
         logger.info(
-          'Removed expired referral code',
+          "Removed expired referral code",
           undefined,
-          'ReferralCaptureProvider'
+          "ReferralCaptureProvider",
         );
       }
     }
@@ -82,7 +82,7 @@ export function ReferralCaptureProvider() {
  * referral code that was captured from the URL.
  */
 export function getReferralCode(): string | null {
-  return readStorageItem('sessionStorage', 'referralCode');
+  return readStorageItem("sessionStorage", "referralCode");
 }
 
 /**
@@ -91,6 +91,6 @@ export function getReferralCode(): string | null {
  * Call this after successful signup to prevent reuse.
  */
 export function clearReferralCode(): void {
-  removeStorageItem('sessionStorage', 'referralCode');
-  removeStorageItem('sessionStorage', 'referralCodeTimestamp');
+  removeStorageItem("sessionStorage", "referralCode");
+  removeStorageItem("sessionStorage", "referralCodeTimestamp");
 }

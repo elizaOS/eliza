@@ -1,11 +1,11 @@
-'use client';
+"use client";
 
-import { cn, type FeedPost } from '@feed/shared';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { PostList } from '@/app/feed/components/PostList';
-import { useFeedPosts } from '@/app/feed/hooks/useFeedPosts';
-import { FeedSkeleton } from '@/components/shared/Skeleton';
-import { apiUrl } from '@/utils/api-url';
+import { cn, type FeedPost } from "@feed/shared";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { PostList } from "@/app/feed/components/PostList";
+import { useFeedPosts } from "@/app/feed/hooks/useFeedPosts";
+import { FeedSkeleton } from "@/components/shared/Skeleton";
+import { apiUrl } from "@/utils/api-url";
 
 interface TerminalSocialFeedProps {
   perpTicker?: string | null;
@@ -16,7 +16,7 @@ export function TerminalSocialFeed({ perpTicker }: TerminalSocialFeedProps) {
   const tag = useMemo(() => {
     const t = perpTicker?.trim();
     if (!t) return null;
-    return t.replace(/^\$/, '').toLowerCase();
+    return t.replace(/^\$/, "").toLowerCase();
   }, [perpTicker]);
 
   const [tagPosts, setTagPosts] = useState<FeedPost[]>([]);
@@ -46,7 +46,7 @@ export function TerminalSocialFeed({ perpTicker }: TerminalSocialFeedProps) {
   useEffect(() => {
     const controller = new AbortController();
     const loadActorNames = async () => {
-      const response = await fetch(apiUrl('/api/actors'), {
+      const response = await fetch(apiUrl("/api/actors"), {
         signal: controller.signal,
       }).catch(() => null);
       if (!response) return;
@@ -83,7 +83,7 @@ export function TerminalSocialFeed({ perpTicker }: TerminalSocialFeedProps) {
 
       const response = await fetch(
         `/api/trending/${encodeURIComponent(tag)}?limit=${limit}&offset=${offset}`,
-        { signal: controller.signal }
+        { signal: controller.signal },
       ).catch(() => null);
 
       // Guard: if this request was superseded by a newer one, bail out
@@ -152,7 +152,7 @@ export function TerminalSocialFeed({ perpTicker }: TerminalSocialFeedProps) {
       setTagLoading(false);
       setTagLoadingMore(false);
     },
-    [tag]
+    [tag],
   );
 
   useEffect(() => {
@@ -197,13 +197,13 @@ export function TerminalSocialFeed({ perpTicker }: TerminalSocialFeedProps) {
         <div className="shrink-0 px-2 pt-3">
           <div
             className={cn(
-              'flex items-center justify-between rounded-md border border-white/5 bg-background/40 px-3 py-2 text-muted-foreground text-xs'
+              "flex items-center justify-between rounded-md border border-white/5 bg-background/40 px-3 py-2 text-muted-foreground text-xs",
             )}
           >
             {tagMode ? (
               <>
                 <span className="min-w-0 truncate">
-                  Showing posts for{' '}
+                  Showing posts for{" "}
                   <span className="font-semibold text-foreground">
                     {tagInfo?.displayName ?? perpTicker}
                   </span>
@@ -229,7 +229,7 @@ export function TerminalSocialFeed({ perpTicker }: TerminalSocialFeedProps) {
                   }}
                   className="shrink-0 rounded px-2 py-1 font-semibold text-foreground/80 hover:bg-muted/20 hover:text-foreground"
                 >
-                  {perpTicker ?? 'Filtered'}
+                  {perpTicker ?? "Filtered"}
                 </button>
               </>
             )}

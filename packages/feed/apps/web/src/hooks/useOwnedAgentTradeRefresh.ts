@@ -1,10 +1,10 @@
-'use client';
+"use client";
 
-import { logger } from '@feed/shared';
-import { useCallback, useEffect, useMemo } from 'react';
-import { refreshOwnedPortfolioState } from '@/stores/portfolioRefresh';
-import { isAgentTradeActivityMessage } from './ownedAgentTradeRefresh.shared';
-import { useSSE } from './useSSE';
+import { logger } from "@feed/shared";
+import { useCallback, useEffect, useMemo } from "react";
+import { refreshOwnedPortfolioState } from "@/stores/portfolioRefresh";
+import { isAgentTradeActivityMessage } from "./ownedAgentTradeRefresh.shared";
+import { useSSE } from "./useSSE";
 
 interface UseOwnedAgentTradeRefreshOptions {
   userId?: string | null;
@@ -23,12 +23,12 @@ export function useOwnedAgentTradeRefresh({
     () =>
       Array.from(new Set(agentIds.filter(Boolean)))
         .sort()
-        .join(','),
-    [agentIds]
+        .join(","),
+    [agentIds],
   );
   const stableAgentIds = useMemo(
-    () => (agentIdsKey ? agentIdsKey.split(',') : []),
-    [agentIdsKey]
+    () => (agentIdsKey ? agentIdsKey.split(",") : []),
+    [agentIdsKey],
   );
 
   const handleAgentActivity = useCallback(
@@ -41,16 +41,16 @@ export function useOwnedAgentTradeRefresh({
 
       refreshOwnedPortfolioState(userId).catch((error) => {
         logger.warn(
-          'Failed to refresh owned portfolio after agent trade',
+          "Failed to refresh owned portfolio after agent trade",
           {
             userId,
             error: error instanceof Error ? error.message : String(error),
           },
-          'useOwnedAgentTradeRefresh'
+          "useOwnedAgentTradeRefresh",
         );
       });
     },
-    [onTrade, userId]
+    [onTrade, userId],
   );
 
   useEffect(() => {

@@ -4,29 +4,29 @@
  * Displays network statistics, database performance, and allows running load tests
  */
 
-'use client';
+"use client";
 
-import { useCallback, useEffect, useState } from 'react';
-import { AdminStandalonePage } from '@/components/admin/AdminStandalonePage';
+import { useCallback, useEffect, useState } from "react";
+import { AdminStandalonePage } from "@/components/admin/AdminStandalonePage";
 
 // Simple replacement components
 const Card = ({
   children,
-  className = '',
+  className = "",
 }: {
   children: React.ReactNode;
   className?: string;
 }) => <div className={`rounded-lg border p-4 ${className}`}>{children}</div>;
 const CardHeader = ({
   children,
-  className = '',
+  className = "",
 }: {
   children: React.ReactNode;
   className?: string;
 }) => <div className={`mb-4 ${className}`}>{children}</div>;
 const CardTitle = ({
   children,
-  className = '',
+  className = "",
 }: {
   children: React.ReactNode;
   className?: string;
@@ -36,23 +36,23 @@ const CardDescription = ({ children }: { children: React.ReactNode }) => (
 );
 const CardContent = ({
   children,
-  className = '',
+  className = "",
 }: {
   children: React.ReactNode;
   className?: string;
 }) => <div className={className}>{children}</div>;
 const Badge = ({
   children,
-  variant = 'default',
+  variant = "default",
 }: {
   children: React.ReactNode;
   variant?: string;
 }) => (
   <span
     className={`inline-flex items-center rounded-full px-2.5 py-0.5 font-medium text-xs ${
-      variant === 'destructive'
-        ? 'bg-red-100 text-red-800'
-        : 'bg-blue-100 text-blue-800'
+      variant === "destructive"
+        ? "bg-red-100 text-red-800"
+        : "bg-blue-100 text-blue-800"
     }`}
   >
     {children}
@@ -62,7 +62,7 @@ const Button = ({
   children,
   onClick,
   disabled,
-  className = '',
+  className = "",
 }: {
   children: React.ReactNode;
   onClick?: () => void | Promise<void>;
@@ -120,14 +120,14 @@ interface NetworkStats {
     pid: number;
   };
   health: {
-    database: 'healthy' | 'warning' | 'critical';
-    memory: 'healthy' | 'warning' | 'critical';
-    overall: 'healthy' | 'warning' | 'critical';
+    database: "healthy" | "warning" | "critical";
+    memory: "healthy" | "warning" | "critical";
+    overall: "healthy" | "warning" | "critical";
   };
 }
 
 interface LoadTestStatus {
-  status: 'idle' | 'running';
+  status: "idle" | "running";
   scenario?: string;
   startTime?: string;
   runningTimeMs?: number;
@@ -142,43 +142,43 @@ interface LoadTestStatus {
 
 const SCENARIOS = [
   {
-    value: 'LIGHT',
-    label: 'Light (100 users, 1 min)',
-    description: 'Basic load testing',
+    value: "LIGHT",
+    label: "Light (100 users, 1 min)",
+    description: "Basic load testing",
   },
   {
-    value: 'NORMAL',
-    label: 'Normal (500 users, 2 min)',
-    description: 'Typical production load',
+    value: "NORMAL",
+    label: "Normal (500 users, 2 min)",
+    description: "Typical production load",
   },
   {
-    value: 'HEAVY',
-    label: 'Heavy (1000 users, 5 min)',
-    description: 'High load scenario',
+    value: "HEAVY",
+    label: "Heavy (1000 users, 5 min)",
+    description: "High load scenario",
   },
   {
-    value: 'STRESS',
-    label: 'Stress (2000+ users, 5 min)',
-    description: 'Extreme load test',
+    value: "STRESS",
+    label: "Stress (2000+ users, 5 min)",
+    description: "Extreme load test",
   },
 ];
 
 export default function AdminPerformancePage() {
   const [stats, setStats] = useState<NetworkStats | null>(null);
   const [loadTestStatus, setLoadTestStatus] = useState<LoadTestStatus | null>(
-    null
+    null,
   );
-  const [selectedScenario, setSelectedScenario] = useState<string>('NORMAL');
+  const [selectedScenario, setSelectedScenario] = useState<string>("NORMAL");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
 
   // Fetch network stats
   const fetchStats = useCallback(async () => {
-    const response = await fetch('/api/admin/network-stats');
+    const response = await fetch("/api/admin/network-stats");
 
     if (!response.ok) {
-      throw new Error('Failed to fetch stats');
+      throw new Error("Failed to fetch stats");
     }
 
     const data = await response.json();
@@ -188,10 +188,10 @@ export default function AdminPerformancePage() {
 
   // Fetch load test status
   const fetchLoadTestStatus = useCallback(async () => {
-    const response = await fetch('/api/admin/load-test/status');
+    const response = await fetch("/api/admin/load-test/status");
 
     if (!response.ok) {
-      throw new Error('Failed to fetch load test status');
+      throw new Error("Failed to fetch load test status");
     }
 
     const data = await response.json();
@@ -203,15 +203,15 @@ export default function AdminPerformancePage() {
     setIsLoading(true);
     setError(null);
 
-    const response = await fetch('/api/admin/load-test', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    const response = await fetch("/api/admin/load-test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ scenario: selectedScenario }),
     });
 
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
-      throw new Error(data.error || 'Failed to start load test');
+      throw new Error(data.error || "Failed to start load test");
     }
 
     await fetchLoadTestStatus();
@@ -236,15 +236,15 @@ export default function AdminPerformancePage() {
   }, [autoRefresh, fetchLoadTestStatus, fetchStats]);
 
   const getHealthBadgeVariant = (
-    health: 'healthy' | 'warning' | 'critical'
-  ): 'default' | 'secondary' | 'destructive' => {
+    health: "healthy" | "warning" | "critical",
+  ): "default" | "secondary" | "destructive" => {
     switch (health) {
-      case 'healthy':
-        return 'default';
-      case 'warning':
-        return 'secondary';
-      case 'critical':
-        return 'destructive';
+      case "healthy":
+        return "default";
+      case "warning":
+        return "secondary";
+      case "critical":
+        return "destructive";
     }
   };
 
@@ -318,7 +318,7 @@ export default function AdminPerformancePage() {
                   {stats.health.memory.toUpperCase()}
                 </Badge>
                 <span className="text-muted-foreground text-sm">
-                  {stats.server.memory.heapUsed.toFixed(0)}MB /{' '}
+                  {stats.server.memory.heapUsed.toFixed(0)}MB /{" "}
                   {stats.server.memory.heapTotal.toFixed(0)}MB
                 </span>
               </div>
@@ -426,11 +426,11 @@ export default function AdminPerformancePage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {loadTestStatus?.status === 'running' ? (
+          {loadTestStatus?.status === "running" ? (
             <div className="rounded border border-blue-200 bg-blue-50 px-4 py-3 text-blue-800">
               <div className="font-semibold">Load test running...</div>
               <div className="text-sm">
-                Scenario: {loadTestStatus.scenario} | Running for:{' '}
+                Scenario: {loadTestStatus.scenario} | Running for:{" "}
                 {loadTestStatus.runningTimeSeconds}s
               </div>
             </div>
@@ -455,7 +455,7 @@ export default function AdminPerformancePage() {
               </div>
 
               <Button onClick={startLoadTest} disabled={isLoading}>
-                {isLoading ? 'Starting...' : 'Start Load Test'}
+                {isLoading ? "Starting..." : "Start Load Test"}
               </Button>
             </>
           )}
@@ -491,7 +491,7 @@ export default function AdminPerformancePage() {
                 <div>
                   <div className="font-bold text-lg">
                     {new Date(
-                      loadTestStatus.lastResult.endTime
+                      loadTestStatus.lastResult.endTime,
                     ).toLocaleTimeString()}
                   </div>
                   <div className="text-muted-foreground text-xs">

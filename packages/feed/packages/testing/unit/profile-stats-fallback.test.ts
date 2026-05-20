@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, mock } from 'bun:test';
+import { beforeEach, describe, expect, it, mock } from "bun:test";
 
 const mockGetUserProfileStats = mock();
 const mockLogger = {
@@ -6,32 +6,32 @@ const mockLogger = {
   error: mock(),
 };
 
-const _actualFeedApi = await import('@feed/api');
-mock.module('@feed/api', () => ({
+const _actualFeedApi = await import("@feed/api");
+mock.module("@feed/api", () => ({
   ..._actualFeedApi,
   cachedDb: {
     getUserProfileStats: mockGetUserProfileStats,
   },
 }));
 
-const _actualShared = await import('@feed/shared');
-mock.module('@feed/shared', () => ({
+const _actualShared = await import("@feed/shared");
+mock.module("@feed/shared", () => ({
   ..._actualShared,
   logger: mockLogger,
 }));
 
 const { getOptionalProfileStats } = await import(
-  '../../../apps/web/src/lib/users/profile-stats'
+  "../../../apps/web/src/lib/users/profile-stats"
 );
 
-describe('getOptionalProfileStats', () => {
+describe("getOptionalProfileStats", () => {
   beforeEach(() => {
     mockGetUserProfileStats.mockReset();
     mockLogger.warn.mockReset();
     mockLogger.error.mockReset();
   });
 
-  it('returns stats when cache lookup succeeds', async () => {
+  it("returns stats when cache lookup succeeds", async () => {
     const stats = {
       followers: 4,
       following: 2,
@@ -42,17 +42,17 @@ describe('getOptionalProfileStats', () => {
     };
     mockGetUserProfileStats.mockResolvedValue(stats);
 
-    const result = await getOptionalProfileStats('user-1', 'ProfileRoute');
+    const result = await getOptionalProfileStats("user-1", "ProfileRoute");
 
     expect(result).toEqual(stats);
     expect(mockLogger.warn).not.toHaveBeenCalled();
     expect(mockLogger.error).not.toHaveBeenCalled();
   });
 
-  it('returns zero fallback and warns when stats are unavailable', async () => {
+  it("returns zero fallback and warns when stats are unavailable", async () => {
     mockGetUserProfileStats.mockResolvedValue(null);
 
-    const result = await getOptionalProfileStats('user-1', 'ProfileRoute');
+    const result = await getOptionalProfileStats("user-1", "ProfileRoute");
 
     expect(result).toEqual({
       positions: 0,
@@ -66,10 +66,10 @@ describe('getOptionalProfileStats', () => {
     expect(mockLogger.error).not.toHaveBeenCalled();
   });
 
-  it('returns zero fallback and logs when stats fetching throws', async () => {
-    mockGetUserProfileStats.mockRejectedValue(new Error('redis unavailable'));
+  it("returns zero fallback and logs when stats fetching throws", async () => {
+    mockGetUserProfileStats.mockRejectedValue(new Error("redis unavailable"));
 
-    const result = await getOptionalProfileStats('user-1', 'ProfileRoute');
+    const result = await getOptionalProfileStats("user-1", "ProfileRoute");
 
     expect(result).toEqual({
       positions: 0,

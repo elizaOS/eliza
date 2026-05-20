@@ -52,9 +52,9 @@
  * @see {@link /lib/db/context} RLS context
  */
 
-import { authenticate, successResponse, withErrorHandling } from '@feed/api';
-import { asUser } from '@feed/db';
-import type { NextRequest } from 'next/server';
+import { authenticate, successResponse, withErrorHandling } from "@feed/api";
+import { asUser } from "@feed/db";
+import type { NextRequest } from "next/server";
 
 /**
  * GET /api/chats/unread-count
@@ -73,7 +73,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     const pendingDMCount = await db.dmAcceptance.count({
       where: {
         userId: user.userId,
-        status: 'pending',
+        status: "pending",
       },
     });
 

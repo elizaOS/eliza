@@ -1,5 +1,5 @@
-import { BadRequestError, NotFoundError } from '@feed/shared';
-import { PredictionPricing } from './pricing';
+import { BadRequestError, NotFoundError } from "@feed/shared";
+import { PredictionPricing } from "./pricing";
 import type {
   PredictionBuyInput,
   PredictionCancelInput,
@@ -13,7 +13,7 @@ import type {
   PredictionServiceDeps,
   PredictionSide,
   PredictionTradeResult,
-} from './types';
+} from "./types";
 
 const DEFAULT_LIQUIDITY = 10_000;
 const MIN_SHARES = 0.01;
@@ -77,7 +77,7 @@ export class PredictionMarketService {
 
     const question = await this.db.getQuestion?.(input.marketId);
     if (!question) {
-      throw new NotFoundError('Market', input.marketId);
+      throw new NotFoundError("Market", input.marketId);
     }
     return this.db.createMarketFromQuestion(
       question,
@@ -87,7 +87,7 @@ export class PredictionMarketService {
         gameId: input.gameId,
         dayNumber: input.dayNumber,
         initialYesProbability: input.initialYesProbability,
-      }
+      },
     );
   }
 
@@ -103,7 +103,7 @@ export class PredictionMarketService {
     if (this.db.listMarkets) {
       return this.db.listMarkets(options);
     }
-    throw new Error('listMarkets not implemented by db adapter');
+    throw new Error("listMarkets not implemented by db adapter");
   }
 
   /**
@@ -123,22 +123,22 @@ export class PredictionMarketService {
     if (this.db.listUserPositions) {
       return this.db.listUserPositions(userId);
     }
-    throw new Error('listUserPositions not implemented by db adapter');
+    throw new Error("listUserPositions not implemented by db adapter");
   }
 
   async buy(input: PredictionBuyInput): Promise<PredictionTradeResult> {
     const { marketId, userId, amount, side } = input;
     if (amount < MIN_TRADE_AMOUNT) {
       throw new BadRequestError(
-        `Trade amount must be at least ${MIN_TRADE_AMOUNT}`
+        `Trade amount must be at least ${MIN_TRADE_AMOUNT}`,
       );
     }
     const market = await this.ensureMarket(marketId);
 
     this.assertMarketActiveForBuy(market);
 
-    const tradeSource = this.deps.tradeSource ?? 'user_trade';
-    const tradeActorType = this.deps.tradeActorType ?? 'user';
+    const tradeSource = this.deps.tradeSource ?? "user_trade";
+    const tradeActorType = this.deps.tradeActorType ?? "user";
 
     // Calculate shares with fees (fee rate from deps)
     const calc = PredictionPricing.calculateBuyWithFees(
@@ -146,11 +146,11 @@ export class PredictionMarketService {
       market.noShares,
       side,
       amount,
-      this.deps.fees.tradingFeeRate
+      this.deps.fees.tradingFeeRate,
     );
 
     if (calc.netAmount <= 0) {
-      throw new BadRequestError('Trade amount too low after fees');
+      throw new BadRequestError("Trade amount too low after fees");
     }
 
     // Price impact guard: prevent single trades from swinging odds too far.
@@ -162,7 +162,7 @@ export class PredictionMarketService {
 
     if (oddsShift > maxAllowed) {
       throw new BadRequestError(
-        `Trade would move odds by ${(oddsShift * 100).toFixed(1)}ppt (max ${(maxAllowed * 100).toFixed(0)}ppt). Reduce trade size or split into smaller orders.`
+        `Trade would move odds by ${(oddsShift * 100).toFixed(1)}ppt (max ${(maxAllowed * 100).toFixed(0)}ppt). Reduce trade size or split into smaller orders.`,
       );
     }
 
@@ -172,14 +172,14 @@ export class PredictionMarketService {
       calc.newYesPrice > ODDS_HARD_CEILING
     ) {
       throw new BadRequestError(
-        `Trade would push YES odds to ${(calc.newYesPrice * 100).toFixed(1)}% — market is too thin for this trade size.`
+        `Trade would push YES odds to ${(calc.newYesPrice * 100).toFixed(1)}% — market is too thin for this trade size.`,
       );
     }
 
     await this.deps.wallet.debit({
       userId,
       amount,
-      reason: 'pred_buy',
+      reason: "pred_buy",
       description: `Buy ${side.toUpperCase()} in ${market.question}`,
       relatedId: marketId,
     });
@@ -201,7 +201,7 @@ export class PredictionMarketService {
               (existingPos.avgPrice * existingPos.shares +
                 calc.avgPrice * calc.sharesBought) /
               (existingPos.shares + calc.sharesBought),
-            status: 'active',
+            status: "active",
             updatedAt: this.now(),
           }
         : {
@@ -211,13 +211,13 @@ export class PredictionMarketService {
             side,
             shares: calc.sharesBought,
             avgPrice: calc.avgPrice,
-            status: 'active',
+            status: "active",
             outcome: null,
             pnl: 0,
             resolvedAt: null,
             createdAt: this.now(),
             updatedAt: this.now(),
-          }
+          },
     );
 
     await this.recordSnapshot({
@@ -227,12 +227,12 @@ export class PredictionMarketService {
       yesShares: calc.newYesShares,
       noShares: calc.newNoShares,
       liquidity: newLiquidity,
-      eventType: 'trade',
+      eventType: "trade",
       source: tradeSource,
     });
 
     await this.emitTrade({
-      type: 'prediction_trade',
+      type: "prediction_trade",
       marketId,
       yesPrice: calc.newYesPrice,
       noPrice: calc.newNoPrice,
@@ -242,7 +242,7 @@ export class PredictionMarketService {
       trade: {
         actorType: tradeActorType,
         actorId: userId,
-        action: 'buy',
+        action: "buy",
         side,
         shares: calc.sharesBought,
         amount,
@@ -258,7 +258,7 @@ export class PredictionMarketService {
       await this.deps.feeProcessor.processTradingFee({
         userId,
         amount,
-        type: 'pred_buy',
+        type: "pred_buy",
         relatedId: marketId,
         positionId: position.id,
       });
@@ -287,24 +287,24 @@ export class PredictionMarketService {
     const { marketId, userId, shares } = input;
     if (shares < MIN_SHARES) {
       throw new BadRequestError(
-        `Shares to sell must be at least ${MIN_SHARES}`
+        `Shares to sell must be at least ${MIN_SHARES}`,
       );
     }
     const market = await this.ensureMarket(marketId);
 
     this.assertMarketActiveForSell(market);
 
-    const tradeSource = this.deps.tradeSource ?? 'user_trade';
-    const tradeActorType = this.deps.tradeActorType ?? 'user';
+    const tradeSource = this.deps.tradeSource ?? "user_trade";
+    const tradeActorType = this.deps.tradeActorType ?? "user";
 
-    const yesPos = await this.db.getPosition(userId, marketId, 'yes');
-    const noPos = await this.db.getPosition(userId, marketId, 'no');
+    const yesPos = await this.db.getPosition(userId, marketId, "yes");
+    const noPos = await this.db.getPosition(userId, marketId, "no");
     const positions = [yesPos, noPos]
       .filter((p): p is NonNullable<typeof p> => !!p)
       // Only allow selling active positions (whitelist approach for security)
       // This prevents selling cancelled/voided/resolved positions that have already been settled
       .filter(
-        (p) => (!p.status || p.status === 'active') && p.shares > MIN_SHARES
+        (p) => (!p.status || p.status === "active") && p.shares > MIN_SHARES,
       );
 
     let pos: NonNullable<typeof yesPos> | NonNullable<typeof noPos> | null =
@@ -315,16 +315,16 @@ export class PredictionMarketService {
       pos = positions[0]!;
     } else if (positions.length > 1) {
       throw new BadRequestError(
-        'Multiple positions exist on this market. Specify positionId.'
+        "Multiple positions exist on this market. Specify positionId.",
       );
     }
 
     if (!pos) {
-      throw new NotFoundError('Position');
+      throw new NotFoundError("Position");
     }
 
     if (pos.shares < shares - 1e-9) {
-      throw new BadRequestError('Insufficient shares');
+      throw new BadRequestError("Insufficient shares");
     }
 
     const side: PredictionSide = pos.side;
@@ -333,12 +333,12 @@ export class PredictionMarketService {
       market.noShares,
       side,
       shares,
-      this.deps.fees.tradingFeeRate
+      this.deps.fees.tradingFeeRate,
     );
 
     const newLiquidity = market.liquidity - calc.totalCost;
     if (newLiquidity < 0) {
-      throw new BadRequestError('Sale would exceed available liquidity');
+      throw new BadRequestError("Sale would exceed available liquidity");
     }
     await this.db.updateMarketState(marketId, {
       yesShares: calc.newYesShares,
@@ -352,7 +352,7 @@ export class PredictionMarketService {
       await this.db.upsertPosition({
         ...pos,
         shares: 0,
-        status: 'closed',
+        status: "closed",
         updatedAt: this.now(),
       });
     } else {
@@ -369,14 +369,14 @@ export class PredictionMarketService {
     // Gross-up the cost basis to include entry fees for accurate net PnL accounting.
     const costBasisWithFees = grossUpBuyAmount(
       costBasis,
-      this.deps.fees.tradingFeeRate
+      this.deps.fees.tradingFeeRate,
     );
     const profitLoss = netProceeds - costBasisWithFees;
 
     await this.deps.wallet.credit({
       userId,
       amount: netProceeds,
-      reason: 'pred_sell',
+      reason: "pred_sell",
       description: `Sell ${side.toUpperCase()} in ${market.question}`,
       relatedId: marketId,
     });
@@ -384,7 +384,7 @@ export class PredictionMarketService {
     await this.deps.wallet.recordPnL({
       userId,
       pnl: profitLoss,
-      reason: 'pred_sell',
+      reason: "pred_sell",
       relatedId: marketId,
     });
 
@@ -395,12 +395,12 @@ export class PredictionMarketService {
       yesShares: calc.newYesShares,
       noShares: calc.newNoShares,
       liquidity: newLiquidity,
-      eventType: 'trade',
+      eventType: "trade",
       source: tradeSource,
     });
 
     await this.emitTrade({
-      type: 'prediction_trade',
+      type: "prediction_trade",
       marketId,
       yesPrice: calc.newYesPrice,
       noPrice: calc.newNoPrice,
@@ -410,7 +410,7 @@ export class PredictionMarketService {
       trade: {
         actorType: tradeActorType,
         actorId: userId,
-        action: 'sell',
+        action: "sell",
         side,
         shares,
         amount: netProceeds,
@@ -426,7 +426,7 @@ export class PredictionMarketService {
       await this.deps.feeProcessor.processTradingFee({
         userId,
         amount: calc.totalCost,
-        type: 'pred_sell',
+        type: "pred_sell",
         relatedId: marketId,
         positionId: pos.id,
       });
@@ -466,8 +466,8 @@ export class PredictionMarketService {
 
     // Pool-proportional payout: winners split losers' deposits
     const isWinnerSide = (p: { side: string }) =>
-      (winningSide === 'yes' && p.side === 'yes') ||
-      (winningSide === 'no' && p.side === 'no');
+      (winningSide === "yes" && p.side === "yes") ||
+      (winningSide === "no" && p.side === "no");
 
     const totalWinnerShares = positions
       .filter(isWinnerSide)
@@ -485,9 +485,9 @@ export class PredictionMarketService {
             p.shares,
             p.avgPrice,
             totalWinnerShares,
-            totalLoserDeposits
+            totalLoserDeposits,
           ),
-        0
+        0,
       );
 
     const liquidityReduction = Math.min(totalPayout, market.liquidity);
@@ -495,7 +495,7 @@ export class PredictionMarketService {
 
     await this.db.updateMarketState(marketId, {
       resolved: true,
-      resolution: winningSide === 'yes',
+      resolution: winningSide === "yes",
       liquidity: newLiquidity,
       resolutionProofUrl: resolutionProofUrl ?? undefined,
       resolutionDescription: resolutionDescription ?? undefined,
@@ -508,12 +508,12 @@ export class PredictionMarketService {
             pos.shares,
             pos.avgPrice,
             totalWinnerShares,
-            totalLoserDeposits
+            totalLoserDeposits,
           )
         : 0;
       const costBasisWithFees = grossUpBuyAmount(
         pos.avgPrice * pos.shares,
-        this.deps.fees.tradingFeeRate
+        this.deps.fees.tradingFeeRate,
       );
       const pnl = payout - costBasisWithFees;
 
@@ -521,7 +521,7 @@ export class PredictionMarketService {
         await this.deps.wallet.credit({
           userId: pos.userId,
           amount: payout,
-          reason: 'pred_resolve',
+          reason: "pred_resolve",
           description: `Payout ${winningSide.toUpperCase()} for ${market.question}`,
           relatedId: marketId,
         });
@@ -530,13 +530,13 @@ export class PredictionMarketService {
         await this.deps.wallet.recordPnL({
           userId: pos.userId,
           pnl,
-          reason: 'pred_resolve',
+          reason: "pred_resolve",
           relatedId: marketId,
         });
       }
       await this.db.upsertPosition({
         ...pos,
-        status: 'resolved',
+        status: "resolved",
         outcome: isWinner,
         pnl,
         resolvedAt: now,
@@ -546,17 +546,17 @@ export class PredictionMarketService {
 
     await this.recordSnapshot({
       marketId,
-      yesPrice: winningSide === 'yes' ? 1 : 0,
-      noPrice: winningSide === 'no' ? 1 : 0,
+      yesPrice: winningSide === "yes" ? 1 : 0,
+      noPrice: winningSide === "no" ? 1 : 0,
       yesShares: market.yesShares,
       noShares: market.noShares,
       liquidity: newLiquidity,
-      eventType: 'resolution',
-      source: 'system',
+      eventType: "resolution",
+      source: "system",
     });
 
     await this.emitResolution({
-      type: 'prediction_resolution',
+      type: "prediction_resolution",
       marketId,
       winningSide,
       yesShares: market.yesShares,
@@ -591,7 +591,7 @@ export class PredictionMarketService {
     // If already resolved with an outcome, can't cancel
     if (market.resolved && market.resolution !== null) {
       throw new BadRequestError(
-        'Market has already resolved with an outcome - cannot cancel'
+        "Market has already resolved with an outcome - cannot cancel",
       );
     }
 
@@ -612,13 +612,13 @@ export class PredictionMarketService {
     await this.db.updateMarketState(marketId, {
       resolved: true,
       resolution: null,
-      resolutionDescription: reason ?? 'Market cancelled',
+      resolutionDescription: reason ?? "Market cancelled",
     });
 
     // Refund each active position at cost basis
     for (const pos of positions) {
       // Skip already closed/resolved/cancelled positions
-      if (pos.status && pos.status !== 'active') {
+      if (pos.status && pos.status !== "active") {
         continue;
       }
 
@@ -630,7 +630,7 @@ export class PredictionMarketService {
         await this.deps.wallet.credit({
           userId: pos.userId,
           amount: refundAmount,
-          reason: 'pred_cancel',
+          reason: "pred_cancel",
           description: `Refund for cancelled market: ${market.question}`,
           relatedId: marketId,
         });
@@ -639,7 +639,7 @@ export class PredictionMarketService {
         await this.deps.wallet.recordPnL({
           userId: pos.userId,
           pnl: 0,
-          reason: 'pred_cancel',
+          reason: "pred_cancel",
           relatedId: marketId,
         });
 
@@ -650,7 +650,7 @@ export class PredictionMarketService {
       // Mark position as cancelled
       await this.db.upsertPosition({
         ...pos,
-        status: 'cancelled',
+        status: "cancelled",
         outcome: null,
         pnl: 0,
         resolvedAt: now,
@@ -666,15 +666,15 @@ export class PredictionMarketService {
       yesShares: market.yesShares,
       noShares: market.noShares,
       liquidity: market.liquidity,
-      eventType: 'resolution',
-      source: 'system',
+      eventType: "resolution",
+      source: "system",
     });
 
     // Emit cancellation event
     await this.emitResolution({
-      type: 'prediction_cancellation',
+      type: "prediction_cancellation",
       marketId,
-      reason: reason ?? 'Market cancelled',
+      reason: reason ?? "Market cancelled",
       positionsRefunded,
       totalRefunded,
       timestamp: now.toISOString(),
@@ -693,14 +693,14 @@ export class PredictionMarketService {
   // Helpers
   // ---------------------------------------------------------------------------
   private async ensureMarket(
-    marketId: string
+    marketId: string,
   ): Promise<PredictionMarketRecord> {
     const market = await this.db.getMarketById(marketId);
     if (market) return market;
 
     const question = await this.db.getQuestion?.(marketId);
     if (!question) {
-      throw new NotFoundError('Market', marketId);
+      throw new NotFoundError("Market", marketId);
     }
     return this.db.createMarketFromQuestion(question, DEFAULT_LIQUIDITY);
   }
@@ -711,13 +711,13 @@ export class PredictionMarketService {
    */
   private assertMarketActiveForBuy(market: PredictionMarketRecord) {
     if (market.resolved) {
-      throw new BadRequestError('Market has resolved');
+      throw new BadRequestError("Market has resolved");
     }
     if (new Date() > market.endDate) {
-      throw new BadRequestError('Market expired');
+      throw new BadRequestError("Market expired");
     }
     if (market.liquidity <= 0) {
-      throw new BadRequestError('Market has no liquidity');
+      throw new BadRequestError("Market has no liquidity");
     }
   }
 
@@ -730,11 +730,11 @@ export class PredictionMarketService {
   private assertMarketActiveForSell(market: PredictionMarketRecord) {
     if (market.resolved && market.resolution !== null) {
       throw new BadRequestError(
-        'Market has resolved with outcome - positions are auto-settled'
+        "Market has resolved with outcome - positions are auto-settled",
       );
     }
     if (market.liquidity <= 0) {
-      throw new BadRequestError('Market has no liquidity');
+      throw new BadRequestError("Market has no liquidity");
     }
   }
 
@@ -748,12 +748,12 @@ export class PredictionMarketService {
 
   private async emitTrade(payload: Record<string, unknown>) {
     if (!this.deps.broadcast) return;
-    await this.deps.broadcast.emit('markets', payload);
+    await this.deps.broadcast.emit("markets", payload);
   }
 
   private async emitResolution(payload: Record<string, unknown>) {
     if (!this.deps.broadcast) return;
-    await this.deps.broadcast.emit('markets', payload);
+    await this.deps.broadcast.emit("markets", payload);
   }
 
   private async invalidateCaches(marketId: string) {

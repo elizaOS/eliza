@@ -7,10 +7,10 @@
  * Run with: bun test packages/testing/performance/game-tick-performance.test.ts
  */
 
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { asSystem } from '@feed/db';
-import { executeGameTick } from '@feed/engine';
-import { generateSnowflakeId } from '@feed/shared';
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { asSystem } from "@feed/db";
+import { executeGameTick } from "@feed/engine";
+import { generateSnowflakeId } from "@feed/shared";
 
 // Performance thresholds (in milliseconds)
 const PERFORMANCE_THRESHOLDS = {
@@ -24,7 +24,7 @@ const PERFORMANCE_THRESHOLDS = {
   absoluteMaxMs: 600000, // 10 minutes
 };
 
-describe('Game Tick Performance', () => {
+describe("Game Tick Performance", () => {
   let gameState: { id: string; isRunning: boolean } | null = null;
   let initialGameRunning: boolean | undefined;
 
@@ -34,7 +34,7 @@ describe('Game Tick Performance', () => {
       return await db.game.findFirst({
         where: { isContinuous: true },
       });
-    }, 'perf-test-get-game-state');
+    }, "perf-test-get-game-state");
 
     if (!gameState) {
       // Create game state if it doesn't exist
@@ -48,7 +48,7 @@ describe('Game Tick Performance', () => {
             updatedAt: new Date(),
           },
         });
-      }, 'perf-test-create-game-state');
+      }, "perf-test-create-game-state");
     } else {
       initialGameRunning = gameState.isRunning;
       // Ensure game is running for tests
@@ -58,7 +58,7 @@ describe('Game Tick Performance', () => {
             where: { isContinuous: true },
             data: { isRunning: true },
           });
-        }, 'perf-test-enable-game');
+        }, "perf-test-enable-game");
       }
     }
   });
@@ -71,11 +71,11 @@ describe('Game Tick Performance', () => {
           where: { isContinuous: true },
           data: { isRunning: initialGameRunning },
         });
-      }, 'perf-test-restore-game-state');
+      }, "perf-test-restore-game-state");
     }
   });
 
-  test('game tick without content generation completes within threshold', async () => {
+  test("game tick without content generation completes within threshold", async () => {
     const startTime = Date.now();
 
     // Execute tick with skipContentGeneration=true (operational tasks only)
@@ -83,7 +83,7 @@ describe('Game Tick Performance', () => {
 
     const duration = Date.now() - startTime;
 
-    console.log('📊 Game Tick (no content) Performance:');
+    console.log("📊 Game Tick (no content) Performance:");
     console.log(`   Duration: ${duration}ms`);
     console.log(`   Markets Updated: ${result.marketsUpdated}`);
     console.log(`   Questions Resolved: ${result.questionsResolved}`);
@@ -95,12 +95,12 @@ describe('Game Tick Performance', () => {
 
     if (duration > PERFORMANCE_THRESHOLDS.warningThresholdMs) {
       console.warn(
-        `⚠️  Warning: Tick took ${duration}ms (threshold: ${PERFORMANCE_THRESHOLDS.warningThresholdMs}ms)`
+        `⚠️  Warning: Tick took ${duration}ms (threshold: ${PERFORMANCE_THRESHOLDS.warningThresholdMs}ms)`,
       );
     }
   }, 60000); // 1 minute test timeout
 
-  test('game tick with content generation completes within threshold', async () => {
+  test("game tick with content generation completes within threshold", async () => {
     const startTime = Date.now();
 
     // Execute full tick with content generation
@@ -108,7 +108,7 @@ describe('Game Tick Performance', () => {
 
     const duration = Date.now() - startTime;
 
-    console.log('📊 Game Tick (with content) Performance:');
+    console.log("📊 Game Tick (with content) Performance:");
     console.log(`   Duration: ${duration}ms`);
     console.log(`   Posts Created: ${result.postsCreated}`);
     console.log(`   Events Created: ${result.eventsCreated}`);
@@ -124,12 +124,12 @@ describe('Game Tick Performance', () => {
 
     if (duration > PERFORMANCE_THRESHOLDS.warningThresholdMs) {
       console.warn(
-        `⚠️  Warning: Full tick took ${duration}ms (threshold: ${PERFORMANCE_THRESHOLDS.warningThresholdMs}ms)`
+        `⚠️  Warning: Full tick took ${duration}ms (threshold: ${PERFORMANCE_THRESHOLDS.warningThresholdMs}ms)`,
       );
     }
   }, 180000); // 3 minute test timeout
 
-  test('multiple consecutive ticks maintain consistent performance', async () => {
+  test("multiple consecutive ticks maintain consistent performance", async () => {
     const tickDurations: number[] = [];
     const TICK_COUNT = 3;
 
@@ -148,9 +148,9 @@ describe('Game Tick Performance', () => {
     const minDuration = Math.min(...tickDurations);
     const variance = maxDuration - minDuration;
 
-    console.log('📊 Consecutive Ticks Performance:');
+    console.log("📊 Consecutive Ticks Performance:");
     console.log(
-      `   Durations: ${tickDurations.map((d) => `${d}ms`).join(', ')}`
+      `   Durations: ${tickDurations.map((d) => `${d}ms`).join(", ")}`,
     );
     console.log(`   Average: ${avgDuration.toFixed(0)}ms`);
     console.log(`   Min: ${minDuration}ms, Max: ${maxDuration}ms`);

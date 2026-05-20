@@ -1,6 +1,6 @@
-import { cn } from '@feed/shared';
-import type { HTMLAttributes, ReactNode } from 'react';
-import { forwardRef } from 'react';
+import { cn } from "@feed/shared";
+import type { HTMLAttributes, ReactNode } from "react";
+import { forwardRef } from "react";
 
 /**
  * Page container component for consistent page layout.
@@ -19,7 +19,7 @@ import { forwardRef } from 'react';
  * ```
  */
 interface PageContainerProps
-  extends Omit<HTMLAttributes<HTMLDivElement>, 'className'> {
+  extends Omit<HTMLAttributes<HTMLDivElement>, "className"> {
   children: ReactNode;
   className?: string;
   noPadding?: boolean;
@@ -32,20 +32,20 @@ export const PageContainer = forwardRef<HTMLDivElement, PageContainerProps>(
         ref={ref}
         className={cn(
           // Sharp corners, simple boxy layout
-          'overflow-x-hidden bg-background',
-          'h-full min-h-full w-full',
+          "overflow-x-hidden bg-background",
+          "h-full min-h-full w-full",
           // Desktop: Simple container - use full height
-          'md:h-full',
+          "md:h-full",
           // Consistent padding: 16px mobile, 24px desktop
-          !noPadding && 'px-4 md:px-6',
-          className
+          !noPadding && "px-4 md:px-6",
+          className,
         )}
         {...rest}
       >
         {children}
       </div>
     );
-  }
+  },
 );
 
-PageContainer.displayName = 'PageContainer';
+PageContainer.displayName = "PageContainer";

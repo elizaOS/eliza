@@ -5,12 +5,12 @@
  * survive the full trajectory recording pipeline in simulation mode.
  */
 
-import { afterAll, beforeAll, describe, expect, mock, test } from 'bun:test';
-import * as fs from 'fs';
-import * as path from 'path';
+import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
+import * as fs from "node:fs";
+import * as path from "node:path";
 
 // Mock ONLY external dependencies - not the code under test
-mock.module('@feed/db', () => ({
+mock.module("@feed/db", () => ({
   db: {
     insert: mock(() => ({
       values: mock(() => ({
@@ -20,18 +20,18 @@ mock.module('@feed/db', () => ({
   },
   trajectories: {},
   llmCallLogs: {},
-  rewardJudgments: { trajectoryId: 'trajectoryId' },
+  rewardJudgments: { trajectoryId: "trajectoryId" },
   isSimulationMode: () => true,
   getJsonStoragePath: () => null,
 }));
 
 // Import the REAL class after mocking db
-import { TrajectoryRecorder } from '../TrajectoryRecorder';
-import type { Action, EnvironmentState } from '../types';
+import { TrajectoryRecorder } from "../TrajectoryRecorder";
+import type { Action, EnvironmentState } from "../types";
 
-const TEST_OUTPUT_DIR = './training-data-output/trajectories';
+const TEST_OUTPUT_DIR = "./training-data-output/trajectories";
 
-describe('Group Chat Round-Trip', () => {
+describe("Group Chat Round-Trip", () => {
   let recorder: TrajectoryRecorder;
   let trajectoryId: string;
   let outputFilePath: string;
@@ -42,8 +42,8 @@ describe('Group Chat Round-Trip', () => {
 
     // Start trajectory with information-trader archetype
     trajectoryId = await recorder.startTrajectory({
-      agentId: 'test-agent-group-chat',
-      archetype: 'information-trader',
+      agentId: "test-agent-group-chat",
+      archetype: "information-trader",
     });
 
     // Record 3 steps with all new fields
@@ -53,7 +53,7 @@ describe('Group Chat Round-Trip', () => {
         agentPnL: i * 200,
         openPositions: i + 1,
         groupChatsActive: 2,
-        groupChatFacts: ['BTC bullish in alpha chat', 'ETH merger discussion'],
+        groupChatFacts: ["BTC bullish in alpha chat", "ETH merger discussion"],
         groupChatIntelTokenEstimate: 450,
         promptTokenEstimate: 4200,
         contextBreakdown: {
@@ -65,25 +65,25 @@ describe('Group Chat Round-Trip', () => {
           actionSchemas: 1350,
         },
         workingMemoryFactCount: 5,
-        workingMemoryActiveThesis: 'BTC uptrend continuation',
+        workingMemoryActiveThesis: "BTC uptrend continuation",
       };
 
       recorder.startStep(trajectoryId, envState);
 
       recorder.logLLMCall(trajectoryId, {
-        model: 'gpt-oss-120b',
-        systemPrompt: 'You are a trading agent with group chat intel',
+        model: "gpt-oss-120b",
+        systemPrompt: "You are a trading agent with group chat intel",
         userPrompt: `Step ${i}: evaluate positions`,
         response: `Buy BTCAI based on group chat sentiment`,
         temperature: 0.7,
         maxTokens: 2000,
-        purpose: 'action',
+        purpose: "action",
         latencyMs: 200 + i * 10,
       });
 
       const action: Action = {
-        actionType: 'BUY_YES',
-        parameters: { ticker: 'BTCAI', amount: 100 + i * 50 },
+        actionType: "BUY_YES",
+        parameters: { ticker: "BTCAI", amount: 100 + i * 50 },
         success: true,
       };
 
@@ -98,7 +98,7 @@ describe('Group Chat Round-Trip', () => {
 
     // Read the output JSON
     outputFilePath = path.join(TEST_OUTPUT_DIR, `${trajectoryId}.json`);
-    outputContent = JSON.parse(fs.readFileSync(outputFilePath, 'utf-8'));
+    outputContent = JSON.parse(fs.readFileSync(outputFilePath, "utf-8"));
   });
 
   afterAll(() => {
@@ -108,30 +108,30 @@ describe('Group Chat Round-Trip', () => {
     }
   });
 
-  test('output file exists and has correct archetype', () => {
+  test("output file exists and has correct archetype", () => {
     expect(fs.existsSync(outputFilePath)).toBe(true);
-    expect(outputContent.trajectory.archetype).toBe('information-trader');
+    expect(outputContent.trajectory.archetype).toBe("information-trader");
     expect(outputContent.trajectory.episodeLength).toBe(3);
   });
 
-  test('steps contain groupChatsActive in environment state', () => {
+  test("steps contain groupChatsActive in environment state", () => {
     const steps = JSON.parse(outputContent.trajectory.stepsJson);
     for (const step of steps) {
       expect(step.environmentState.groupChatsActive).toBe(2);
     }
   });
 
-  test('steps contain groupChatFacts in environment state', () => {
+  test("steps contain groupChatFacts in environment state", () => {
     const steps = JSON.parse(outputContent.trajectory.stepsJson);
     for (const step of steps) {
       expect(step.environmentState.groupChatFacts).toEqual([
-        'BTC bullish in alpha chat',
-        'ETH merger discussion',
+        "BTC bullish in alpha chat",
+        "ETH merger discussion",
       ]);
     }
   });
 
-  test('steps contain contextBreakdown in environment state', () => {
+  test("steps contain contextBreakdown in environment state", () => {
     const steps = JSON.parse(outputContent.trajectory.stepsJson);
     for (const step of steps) {
       expect(step.environmentState.contextBreakdown).toEqual({
@@ -145,19 +145,19 @@ describe('Group Chat Round-Trip', () => {
     }
   });
 
-  test('steps contain token and working memory fields', () => {
+  test("steps contain token and working memory fields", () => {
     const steps = JSON.parse(outputContent.trajectory.stepsJson);
     for (const step of steps) {
       expect(step.environmentState.groupChatIntelTokenEstimate).toBe(450);
       expect(step.environmentState.promptTokenEstimate).toBe(4200);
       expect(step.environmentState.workingMemoryFactCount).toBe(5);
       expect(step.environmentState.workingMemoryActiveThesis).toBe(
-        'BTC uptrend continuation'
+        "BTC uptrend continuation",
       );
     }
   });
 
-  test('metricsJson contains group chat and token aggregates', () => {
+  test("metricsJson contains group chat and token aggregates", () => {
     const metrics = JSON.parse(outputContent.trajectory.metricsJson);
     expect(metrics.groupChatStepsWithIntel).toBeDefined();
     expect(metrics.groupChatStepsWithIntel).toBe(3);

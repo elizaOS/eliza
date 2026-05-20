@@ -11,20 +11,20 @@
 import {
   broadcastToChannel,
   invalidateMarketsApiPerpsSnapshot,
-} from '@feed/api';
+} from "@feed/api";
 import {
   isOpenPerpPositionStateValid,
   PerpDbAdapter,
   PerpMarketService,
   type PerpServiceDeps,
   type PriceImpactPort,
-} from '@feed/core/markets/perps';
+} from "@feed/core/markets/perps";
 import type {
   BroadcastPort,
   FeeConfig,
   FeeProcessor,
   WalletPort,
-} from '@feed/core/markets/shared/common';
+} from "@feed/core/markets/shared/common";
 import {
   and,
   db,
@@ -33,20 +33,20 @@ import {
   organizationState,
   perpMarketSnapshots,
   perpPositions,
-} from '@feed/db';
+} from "@feed/db";
 import {
   FEE_CONFIG,
   FeeService,
   PriceUpdateService,
   WalletService,
-} from '@feed/engine';
+} from "@feed/engine";
 import {
   calculatePriceFromHoldings,
   type JsonValue,
   logger,
   PERP_MARKET_CONFIG,
-} from '@feed/shared';
-import { createTradingFeeOutboxAdapter } from '@/lib/services/trading-fee-outbox';
+} from "@feed/shared";
+import { createTradingFeeOutboxAdapter } from "@/lib/services/trading-fee-outbox";
 
 /**
  * Creates a WalletPort adapter that wraps WalletService methods.
@@ -59,8 +59,8 @@ export function createWalletAdapter(): WalletPort {
         userId,
         amount,
         reason,
-        description ?? '',
-        relatedId
+        description ?? "",
+        relatedId,
       );
     },
     credit: async ({ userId, amount, reason, description, relatedId }) => {
@@ -68,8 +68,8 @@ export function createWalletAdapter(): WalletPort {
         userId,
         amount,
         reason,
-        description ?? '',
-        relatedId
+        description ?? "",
+        relatedId,
       );
     },
     recordPnL: async ({ userId, pnl, reason, relatedId }) => {
@@ -86,8 +86,8 @@ export function createBroadcastAdapter(): BroadcastPort {
   return {
     emit: async (channel: string, payload: Record<string, unknown>) => {
       await broadcastToChannel(
-        channel as 'markets',
-        payload as Record<string, JsonValue>
+        channel as "markets",
+        payload as Record<string, JsonValue>,
       );
     },
   };
@@ -104,7 +104,7 @@ export function createFeeProcessorAdapter(): FeeProcessor {
         type as (typeof FEE_CONFIG.FEE_TYPES)[keyof typeof FEE_CONFIG.FEE_TYPES],
         amount,
         positionId,
-        relatedId
+        relatedId,
       ),
   };
 }
@@ -136,7 +136,7 @@ export function createPriceImpactAdapter(): PriceImpactPort {
       const perpDb = new PerpDbAdapter();
       const markets = await perpDb.listMarkets();
       const market = markets.find(
-        (m) => m.ticker.toUpperCase() === ticker.toUpperCase()
+        (m) => m.ticker.toUpperCase() === ticker.toUpperCase(),
       );
       return market?.currentPrice;
     },
@@ -197,7 +197,7 @@ export interface CreatePerpServiceOptions {
  * ```
  */
 export function createPerpMarketService(
-  options: CreatePerpServiceOptions = {}
+  options: CreatePerpServiceOptions = {},
 ): PerpMarketService {
   const deps: PerpServiceDeps = {
     db: new PerpDbAdapter(),
@@ -247,9 +247,9 @@ export async function applyUserTradePriceImpact(ticker: string): Promise<void> {
 
     if (!snapshot) {
       logger.warn(
-        'PerpMarketSnapshot not found for price impact',
+        "PerpMarketSnapshot not found for price impact",
         { ticker: normalizedTicker },
-        'PerpPriceImpact'
+        "PerpPriceImpact",
       );
       return;
     }
@@ -270,18 +270,18 @@ export async function applyUserTradePriceImpact(ticker: string): Promise<void> {
 
     if (!state) {
       logger.warn(
-        'OrganizationState not found for price impact',
+        "OrganizationState not found for price impact",
         { ticker: normalizedTicker, organizationId },
-        'PerpPriceImpact'
+        "PerpPriceImpact",
       );
       return;
     }
 
     const initialPrice = Number(
-      state.basePrice ?? snapshot.currentPrice ?? 100
+      state.basePrice ?? snapshot.currentPrice ?? 100,
     );
     const currentPrice = Number(
-      snapshot.currentPrice ?? state.currentPrice ?? initialPrice
+      snapshot.currentPrice ?? state.currentPrice ?? initialPrice,
     );
 
     // 3. Get all open positions for this ticker
@@ -297,8 +297,8 @@ export async function applyUserTradePriceImpact(ticker: string): Promise<void> {
       .where(
         and(
           eq(perpPositions.ticker, normalizedTicker),
-          isNull(perpPositions.closedAt)
-        )
+          isNull(perpPositions.closedAt),
+        ),
       );
 
     // 4. Calculate net holdings (longs - shorts)
@@ -311,17 +311,17 @@ export async function applyUserTradePriceImpact(ticker: string): Promise<void> {
       }
 
       const size = Number(pos.size);
-      netHoldings += pos.side === 'long' ? size : -size;
+      netHoldings += pos.side === "long" ? size : -size;
     }
 
     if (invalidPositions > 0) {
       logger.warn(
-        'Ignoring invalid open perp positions during price impact calculation',
+        "Ignoring invalid open perp positions during price impact calculation",
         {
           ticker: normalizedTicker,
           invalidPositions,
         },
-        'PerpPriceImpact'
+        "PerpPriceImpact",
       );
     }
 
@@ -330,7 +330,7 @@ export async function applyUserTradePriceImpact(ticker: string): Promise<void> {
       initialPrice,
       currentPrice,
       netHoldings,
-      PERP_MARKET_CONFIG
+      PERP_MARKET_CONFIG,
     );
 
     // 6. Only update if price actually changed meaningfully (at least 0.001% or $0.01)
@@ -346,14 +346,14 @@ export async function applyUserTradePriceImpact(ticker: string): Promise<void> {
         initialPrice,
         baseReserve: PERP_MARKET_CONFIG.INITIAL_BASE_RESERVE,
       },
-      'PerpPriceImpact'
+      "PerpPriceImpact",
     );
 
     if (Math.abs(change) < 0.001) {
       logger.info(
-        'Skipping price update - change too small',
+        "Skipping price update - change too small",
         { change },
-        'PerpPriceImpact'
+        "PerpPriceImpact",
       );
       return;
     }
@@ -361,7 +361,7 @@ export async function applyUserTradePriceImpact(ticker: string): Promise<void> {
     const changePercent = currentPrice > 0 ? (change / currentPrice) * 100 : 0;
 
     logger.info(
-      `User trade price impact: ${normalizedTicker} (${organizationId}) ${currentPrice.toFixed(2)} -> ${newPrice.toFixed(2)} (${changePercent > 0 ? '+' : ''}${changePercent.toFixed(2)}%)`,
+      `User trade price impact: ${normalizedTicker} (${organizationId}) ${currentPrice.toFixed(2)} -> ${newPrice.toFixed(2)} (${changePercent > 0 ? "+" : ""}${changePercent.toFixed(2)}%)`,
       {
         ticker: normalizedTicker,
         organizationId,
@@ -370,7 +370,7 @@ export async function applyUserTradePriceImpact(ticker: string): Promise<void> {
         netHoldings,
         change,
       },
-      'PerpPriceImpact'
+      "PerpPriceImpact",
     );
 
     // 8. Apply price update via PriceUpdateService (updates org + broadcasts)
@@ -378,8 +378,8 @@ export async function applyUserTradePriceImpact(ticker: string): Promise<void> {
       {
         organizationId, // Use the actual org ID, not the ticker
         newPrice,
-        source: 'user_trade',
-        reason: 'User trade price impact',
+        source: "user_trade",
+        reason: "User trade price impact",
         metadata: { ticker: normalizedTicker },
       },
     ]);
@@ -387,12 +387,12 @@ export async function applyUserTradePriceImpact(ticker: string): Promise<void> {
   } catch (error) {
     // Don't throw - price impact is enhancement, not critical path
     logger.error(
-      'Failed to apply user trade price impact',
+      "Failed to apply user trade price impact",
       {
         ticker: ticker.toUpperCase(),
         error: error instanceof Error ? error.message : String(error),
       },
-      'PerpPriceImpact'
+      "PerpPriceImpact",
     );
   }
 }

@@ -7,7 +7,7 @@
  * @packageDocumentation
  */
 
-import { broadcastTypingIndicator } from '@feed/api';
+import { broadcastTypingIndicator } from "@feed/api";
 import {
   and,
   chats,
@@ -19,11 +19,11 @@ import {
   messages,
   userAgentConfigs,
   users,
-} from '@feed/db';
-import { executeDirectMessage } from '../autonomous/DirectExecutors';
-import { callGroqDirect } from '../llm/direct-groq';
-import { agentRuntimeManager } from '../runtime/AgentRuntimeManager';
-import { logger } from '../shared/logger';
+} from "@feed/db";
+import { executeDirectMessage } from "../autonomous/DirectExecutors";
+import { callGroqDirect } from "../llm/direct-groq";
+import { agentRuntimeManager } from "../runtime/AgentRuntimeManager";
+import { logger } from "../shared/logger";
 
 /** Configuration for team chat response timing */
 const RESPONSE_TIMING = {
@@ -148,7 +148,7 @@ export class TeamChatResponseService {
       entries.sort((a, b) => a[1] - b[1]); // Sort by timestamp (oldest first)
       const toDelete = entries.slice(
         0,
-        entries.length - MAP_LIMITS.MAX_COOLDOWN_ENTRIES
+        entries.length - MAP_LIMITS.MAX_COOLDOWN_ENTRIES,
       );
       for (const [key] of toDelete) {
         this.agentResponseCooldowns.delete(key);
@@ -169,7 +169,7 @@ export class TeamChatResponseService {
       entries.sort((a, b) => a[1].startedAt - b[1].startedAt); // Sort by startedAt (oldest first)
       const toDelete = entries.slice(
         0,
-        entries.length - MAP_LIMITS.MAX_CHAIN_ENTRIES
+        entries.length - MAP_LIMITS.MAX_CHAIN_ENTRIES,
       );
       for (const [key] of toDelete) {
         this.activeChains.delete(key);
@@ -234,7 +234,7 @@ export class TeamChatResponseService {
    * @returns Result with triggered response details
    */
   async triggerMentionedAgentResponses(
-    params: TriggerResponseParams
+    params: TriggerResponseParams,
   ): Promise<TriggerResponseResult> {
     const {
       chatId,
@@ -259,7 +259,7 @@ export class TeamChatResponseService {
     logger.info(
       `Triggering responses from ${uniqueAgentIds.length} mentioned agent(s)`,
       { chatId, agentIds: uniqueAgentIds },
-      'TeamChatResponseService'
+      "TeamChatResponseService",
     );
 
     // Get recent conversation context
@@ -278,16 +278,16 @@ export class TeamChatResponseService {
     const conversationContext = recentMessages
       .reverse()
       .map((m) => {
-        const isSystem = m.senderId === 'system';
+        const isSystem = m.senderId === "system";
         const isSender = m.senderId === senderUserId;
         const label = isSystem
-          ? '[System]'
+          ? "[System]"
           : isSender
             ? senderDisplayName
-            : 'Agent';
+            : "Agent";
         return `${label}: ${m.content}`;
       })
-      .join('\n');
+      .join("\n");
 
     const result: TriggerResponseResult = {
       triggered: 0,
@@ -324,7 +324,7 @@ export class TeamChatResponseService {
 
       // Get agent info from batch (no per-agent DB query)
       const agent = agentInfoMap.get(agentId);
-      const agentName = agent?.displayName || agent?.username || 'Agent';
+      const agentName = agent?.displayName || agent?.username || "Agent";
 
       // Calculate delay: base delay + stagger for each agent
       const baseDelay =
@@ -350,13 +350,13 @@ export class TeamChatResponseService {
             logger.info(
               `Agent ${responseResult.agentName} responded to mention`,
               { chatId, messageId: responseResult.messageId },
-              'TeamChatResponseService'
+              "TeamChatResponseService",
             );
           } else {
             logger.warn(
               `Agent response failed: ${responseResult.error}`,
               { chatId, agentId },
-              'TeamChatResponseService'
+              "TeamChatResponseService",
             );
           }
         })
@@ -364,7 +364,7 @@ export class TeamChatResponseService {
           logger.error(
             `Failed to schedule agent response: ${error}`,
             { chatId, agentId },
-            'TeamChatResponseService'
+            "TeamChatResponseService",
           );
         });
 
@@ -418,12 +418,12 @@ export class TeamChatResponseService {
       logger.debug(
         `Agent ${agentId} on cooldown (A2A chain), skipping response`,
         { chatId, depth },
-        'TeamChatResponseService'
+        "TeamChatResponseService",
       );
       return {
         success: false,
-        agentName: 'Agent',
-        error: 'Agent on cooldown',
+        agentName: "Agent",
+        error: "Agent on cooldown",
       };
     }
 
@@ -432,12 +432,12 @@ export class TeamChatResponseService {
       logger.debug(
         `Agent ${agentId} already responded in this chain, skipping`,
         { chatId, depth },
-        'TeamChatResponseService'
+        "TeamChatResponseService",
       );
       return {
         success: false,
-        agentName: 'Agent',
-        error: 'Agent already responded in this chain',
+        agentName: "Agent",
+        error: "Agent already responded in this chain",
       };
     }
 
@@ -448,8 +448,8 @@ export class TeamChatResponseService {
     if (depth > 0 && this.isAgentOnCooldown(chatId, agentId)) {
       return {
         success: false,
-        agentName: 'Agent',
-        error: 'Agent on cooldown after delay',
+        agentName: "Agent",
+        error: "Agent on cooldown after delay",
       };
     }
 
@@ -474,10 +474,10 @@ export class TeamChatResponseService {
         .from(users)
         .where(eq(users.id, agentId))
         .limit(1);
-      agentName = agent?.displayName || agent?.username || 'Agent';
+      agentName = agent?.displayName || agent?.username || "Agent";
     }
-    const systemPrompt = config?.systemPrompt || 'You are a helpful AI agent.';
-    const personality = config?.personality || '';
+    const systemPrompt = config?.systemPrompt || "You are a helpful AI agent.";
+    const personality = config?.personality || "";
 
     // Broadcast typing indicator before generating response
     broadcastTypingIndicator(chatId, agentId, agentName, true).catch(
@@ -485,9 +485,9 @@ export class TeamChatResponseService {
         logger.warn(
           `Failed to broadcast typing indicator: ${error.message}`,
           { chatId, agentId },
-          'TeamChatResponseService'
+          "TeamChatResponseService",
         );
-      }
+      },
     );
 
     try {
@@ -498,7 +498,7 @@ export class TeamChatResponseService {
 
       const prompt = `${systemPrompt}
 
-${personality ? `Your personality: ${personality}\n` : ''}
+${personality ? `Your personality: ${personality}\n` : ""}
 You are ${agentName} in a team Command Center chat. ${senderDisplayName} just mentioned you directly.
 
 Recent conversation:
@@ -520,12 +520,12 @@ Generate ONLY the response text:`;
       const responseContent = await callGroqDirect({
         prompt,
         system: systemPrompt,
-        modelSize: 'large',
+        modelSize: "large",
         runtime,
         temperature: 0.7,
         maxTokens: 150,
-        actionType: 'team_chat_response',
-        purpose: 'response',
+        actionType: "team_chat_response",
+        purpose: "response",
       });
 
       // Clean and validate LLM response before storage
@@ -533,14 +533,14 @@ Generate ONLY the response text:`;
       // - Enforce max length to match API validation (4000 chars)
       const cleanContent = responseContent
         .trim()
-        .replace(/^["']|["']$/g, '')
+        .replace(/^["']|["']$/g, "")
         .slice(0, MAX_RESPONSE_CONTENT_LENGTH);
 
       if (!cleanContent || cleanContent.length < 5) {
         return {
           success: false,
           agentName,
-          error: 'Generated response was too short or empty',
+          error: "Generated response was too short or empty",
         };
       }
 
@@ -555,7 +555,7 @@ Generate ONLY the response text:`;
         return {
           success: false,
           agentName,
-          error: sendResult.error || 'Failed to send message',
+          error: sendResult.error || "Failed to send message",
         };
       }
 
@@ -577,7 +577,7 @@ Generate ONLY the response text:`;
         logger.debug(
           `Max chain depth reached (${depth}), not triggering agent-to-agent mentions`,
           { chatId, agentId },
-          'TeamChatResponseService'
+          "TeamChatResponseService",
         );
       }
 
@@ -593,7 +593,7 @@ Generate ONLY the response text:`;
         error:
           error instanceof Error
             ? error.message
-            : 'Failed to generate response',
+            : "Failed to generate response",
       };
     } finally {
       // Stop typing indicator even if LLM generation or send fails
@@ -602,9 +602,9 @@ Generate ONLY the response text:`;
           logger.warn(
             `Failed to stop typing indicator: ${error.message}`,
             { chatId, agentId },
-            'TeamChatResponseService'
+            "TeamChatResponseService",
           );
-        }
+        },
       );
     }
   }
@@ -661,8 +661,8 @@ Generate ONLY the response text:`;
         and(
           eq(groupMembers.groupId, chatWithGroup.groupId),
           eq(users.isAgent, true),
-          eq(groupMembers.isActive, true)
-        )
+          eq(groupMembers.isActive, true),
+        ),
       );
 
     // Find agents that were mentioned
@@ -688,7 +688,7 @@ Generate ONLY the response text:`;
     logger.info(
       `Agent ${respondingAgentName} mentioned ${mentionedAgentIds.length} other agent(s)`,
       { chatId, mentionedAgentIds },
-      'TeamChatResponseService'
+      "TeamChatResponseService",
     );
 
     // Trigger responses from mentioned agents (with additional delay)
@@ -711,9 +711,9 @@ Generate ONLY the response text:`;
       .reverse()
       .map((m) => {
         const isResponding = m.senderId === respondingAgentId;
-        return `${isResponding ? respondingAgentName : 'Agent'}: ${m.content}`;
+        return `${isResponding ? respondingAgentName : "Agent"}: ${m.content}`;
       })
-      .join('\n');
+      .join("\n");
 
     for (let i = 0; i < mentionedAgentIds.length; i++) {
       const mentionedAgentId = mentionedAgentIds[i];
@@ -728,7 +728,7 @@ Generate ONLY the response text:`;
         logger.debug(
           `Skipping agent ${mentionedAgentId} - on cooldown`,
           { chatId, depth },
-          'TeamChatResponseService'
+          "TeamChatResponseService",
         );
         continue;
       }
@@ -738,7 +738,7 @@ Generate ONLY the response text:`;
         logger.debug(
           `Skipping agent ${mentionedAgentId} - already in chain`,
           { chatId, depth },
-          'TeamChatResponseService'
+          "TeamChatResponseService",
         );
         continue;
       }
@@ -756,7 +756,7 @@ Generate ONLY the response text:`;
         logger.error(
           `Failed to trigger agent-to-agent response: ${error}`,
           { respondingAgentId, mentionedAgentId, depth },
-          'TeamChatResponseService'
+          "TeamChatResponseService",
         );
       });
     }
@@ -780,14 +780,14 @@ Generate ONLY the response text:`;
         // U+202A-U+202E: LTR/RTL embedding, override, isolate
         // U+2066-U+2069: isolate controls
         // U+200E, U+200F: LTR/RTL marks
-        .replace(/[\u202A-\u202E\u2066-\u2069\u200E\u200F]/g, '')
+        .replace(/[\u202A-\u202E\u2066-\u2069\u200E\u200F]/g, "")
         // Escape backticks to prevent code block injection
-        .replace(/```/g, '` ` `')
+        .replace(/```/g, "` ` `")
         // Collapse long runs of newlines
-        .replace(/\n{3,}/g, '\n\n')
+        .replace(/\n{3,}/g, "\n\n")
         // Collapse very long runs of repeated characters (>50 same char in a row)
         // This prevents tokenization attacks and excessive token usage
-        .replace(/(.)\1{50,}/g, (_match, char) => char.repeat(10) + '...')
+        .replace(/(.)\1{50,}/g, (_match, char) => `${char.repeat(10)}...`)
         // Truncate to prevent token overflow
         .slice(0, MAX_PROMPT_CONTENT_LENGTH)
     );
@@ -818,7 +818,7 @@ Generate ONLY the response text:`;
     while ((match = regex.exec(content)) !== null) {
       if (match[1]) {
         // Strip trailing punctuation that might be sentence-ending
-        const username = match[1].replace(/[.,!?;:)]+$/, '');
+        const username = match[1].replace(/[.,!?;:)]+$/, "");
         if (username) mentions.push(username.toLowerCase());
       }
     }

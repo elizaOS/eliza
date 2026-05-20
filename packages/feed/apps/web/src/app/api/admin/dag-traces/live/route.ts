@@ -8,21 +8,21 @@
  * Also emits in-progress node updates during active tick execution.
  */
 
-import * as fs from 'node:fs';
-import * as path from 'node:path';
-import { requireAdmin, withErrorHandling } from '@feed/api';
-import type { NextRequest } from 'next/server';
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { requireAdmin, withErrorHandling } from "@feed/api";
+import type { NextRequest } from "next/server";
 
-const TRACE_DIR = path.resolve(process.cwd(), 'runs', 'dag-traces');
+const TRACE_DIR = path.resolve(process.cwd(), "runs", "dag-traces");
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   await requireAdmin(request);
 
   const encoder = new TextEncoder();
-  let lastSeen = '';
+  let lastSeen = "";
   let closed = false;
 
   const stream = new ReadableStream({
@@ -31,7 +31,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         if (closed) return;
         try {
           controller.enqueue(
-            encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+            encoder.encode(
+              `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`,
+            ),
           );
         } catch {
           closed = true;
@@ -39,14 +41,14 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       };
 
       // Send initial state
-      send('connected', { timestamp: Date.now() });
+      send("connected", { timestamp: Date.now() });
 
       const poll = () => {
         if (closed) return;
 
         try {
           if (!fs.existsSync(TRACE_DIR)) {
-            send('status', { waiting: true, message: 'No traces yet' });
+            send("status", { waiting: true, message: "No traces yet" });
             return;
           }
 
@@ -54,14 +56,14 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
             .readdirSync(TRACE_DIR)
             .filter(
               (e) =>
-                e.startsWith('tick-') &&
-                fs.statSync(path.join(TRACE_DIR, e)).isDirectory()
+                e.startsWith("tick-") &&
+                fs.statSync(path.join(TRACE_DIR, e)).isDirectory(),
             )
             .sort()
             .reverse();
 
           if (entries.length === 0) {
-            send('status', { waiting: true, message: 'No traces yet' });
+            send("status", { waiting: true, message: "No traces yet" });
             return;
           }
 
@@ -73,14 +75,14 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
             const summaryPath = path.join(
               TRACE_DIR,
               newest,
-              'tick-summary.json'
+              "tick-summary.json",
             );
             if (fs.existsSync(summaryPath)) {
               try {
                 const summary = JSON.parse(
-                  fs.readFileSync(summaryPath, 'utf-8')
+                  fs.readFileSync(summaryPath, "utf-8"),
                 );
-                send('new-trace', {
+                send("new-trace", {
                   dirName: newest,
                   tickId: summary.tickId,
                   tickNumber: summary.tickNumber,
@@ -94,13 +96,13 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
                   gameTickResult: summary.gameTickResult,
                 });
               } catch {
-                send('new-trace', { dirName: newest, partial: true });
+                send("new-trace", { dirName: newest, partial: true });
               }
             }
           }
 
           // Send heartbeat with trace count
-          send('heartbeat', {
+          send("heartbeat", {
             traceCount: entries.length,
             latest: newest,
             timestamp: Date.now(),
@@ -115,7 +117,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       poll(); // immediate first poll
 
       // Clean up on close
-      request.signal.addEventListener('abort', () => {
+      request.signal.addEventListener("abort", () => {
         closed = true;
         clearInterval(interval);
         try {
@@ -129,9 +131,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
   return new Response(stream, {
     headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
     },
   });
 });

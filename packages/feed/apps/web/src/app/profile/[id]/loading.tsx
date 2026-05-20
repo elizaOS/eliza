@@ -7,11 +7,11 @@
  *
  * @returns {JSX.Element} Profile loading skeleton
  */
-import { PageContainer } from '@/components/shared/PageContainer';
+import { PageContainer } from "@/components/shared/PageContainer";
 import {
   FeedSkeleton,
   ProfileHeaderSkeleton,
-} from '@/components/shared/Skeleton';
+} from "@/components/shared/Skeleton";
 
 export default function ProfileLoading() {
   return (

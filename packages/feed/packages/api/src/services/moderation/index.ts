@@ -11,6 +11,6 @@ export {
   getMutedUserIds,
   hasBlocked,
   hasMuted,
-} from '@feed/db';
-export * from './points-distribution';
-export * from './report-evaluation';
+} from "@feed/db";
+export * from "./points-distribution";
+export * from "./report-evaluation";

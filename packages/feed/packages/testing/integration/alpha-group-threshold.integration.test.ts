@@ -21,16 +21,16 @@ import {
   expect,
   setDefaultTimeout,
   test,
-} from 'bun:test';
+} from "bun:test";
 
-import { db } from '@feed/db';
+import { db } from "@feed/db";
 import {
   ALPHA_GROUP_CONFIG,
   AlphaGroupInviteService,
   NPCInteractionTracker,
   TIER_CONFIG,
-} from '@feed/engine';
-import { generateSnowflakeId } from '@feed/shared';
+} from "@feed/engine";
+import { generateSnowflakeId } from "@feed/shared";
 
 // Set timeout to 60 seconds for integration tests
 setDefaultTimeout(60000);
@@ -75,14 +75,14 @@ async function createTestUser(options: {
 }
 
 async function createTestNPC(
-  name: string
+  name: string,
 ): Promise<{ id: string; name: string }> {
   const id = await generateSnowflakeId();
 
   await db.user.create({
     data: {
       id,
-      username: name.toLowerCase().replace(/\s+/g, '-'),
+      username: name.toLowerCase().replace(/\s+/g, "-"),
       displayName: name,
       isActor: true,
       isTest: true,
@@ -126,7 +126,7 @@ async function createLike(userId: string, postId: string): Promise<string> {
       id,
       userId,
       postId,
-      type: 'like',
+      type: "like",
       createdAt: new Date(),
     },
   });
@@ -154,10 +154,10 @@ async function createShare(userId: string, postId: string): Promise<string> {
 async function recordReplyInteraction(
   userId: string,
   npcId: string,
-  qualityScore = 0.8
+  qualityScore = 0.8,
 ): Promise<string> {
   const id = await generateSnowflakeId();
-  const postId = await createNPCPost(npcId, 'NPC post for reply');
+  const postId = await createNPCPost(npcId, "NPC post for reply");
   const commentId = await generateSnowflakeId();
 
   // Create the comment post
@@ -165,7 +165,7 @@ async function recordReplyInteraction(
     data: {
       id: commentId,
       authorId: userId,
-      content: 'Reply to NPC',
+      content: "Reply to NPC",
       commentOnPostId: postId,
       timestamp: new Date(),
     },
@@ -192,10 +192,10 @@ async function recordReplyInteraction(
 async function createTrade(
   userId: string,
   options: {
-    action?: 'open' | 'close';
+    action?: "open" | "close";
     pnl?: number;
     executedAt?: Date;
-  }
+  },
 ): Promise<string> {
   const id = await generateSnowflakeId();
 
@@ -203,9 +203,9 @@ async function createTrade(
     data: {
       id,
       agentUserId: userId,
-      ticker: 'BTC',
-      marketType: 'perp',
-      action: options.action ?? 'close',
+      ticker: "BTC",
+      marketType: "perp",
+      action: options.action ?? "close",
       amount: 100,
       price: 50000,
       pnl: options.pnl ?? 0,
@@ -224,7 +224,7 @@ async function createNpcGroup(npcId: string, tier: 1 | 2 | 3): Promise<string> {
     data: {
       id,
       name: `NPC Group Tier ${tier}`,
-      type: 'npc',
+      type: "npc",
       ownerId: npcId,
       createdById: npcId,
       tier,
@@ -243,7 +243,7 @@ async function addMemberToGroup(
     tier?: number;
     isGrandfathered?: boolean;
     joinedAt?: Date;
-  }
+  },
 ): Promise<string> {
   const id = await generateSnowflakeId();
 
@@ -268,10 +268,10 @@ async function createGroupInvite(
   userId: string,
   npcId: string,
   options?: {
-    status?: 'pending' | 'accepted' | 'declined';
+    status?: "pending" | "accepted" | "declined";
     declineCount?: number;
     nextEligibleAt?: Date;
-  }
+  },
 ): Promise<string> {
   const id = await generateSnowflakeId();
 
@@ -281,7 +281,7 @@ async function createGroupInvite(
       groupId,
       invitedUserId: userId,
       invitedBy: npcId,
-      status: options?.status ?? 'pending',
+      status: options?.status ?? "pending",
       declineCount: options?.declineCount ?? 0,
       nextEligibleAt: options?.nextEligibleAt,
     },
@@ -344,7 +344,7 @@ async function cleanupTestData(): Promise<void> {
 
 // ============ TESTS ============
 
-describe('Alpha Group Threshold System', () => {
+describe("Alpha Group Threshold System", () => {
   beforeAll(async () => {
     await cleanupTestData();
   });
@@ -353,26 +353,26 @@ describe('Alpha Group Threshold System', () => {
     await cleanupTestData();
   });
 
-  describe('Configuration Verification', () => {
-    test('config should have lowered thresholds', () => {
+  describe("Configuration Verification", () => {
+    test("config should have lowered thresholds", () => {
       // Verify thresholds are lower than original hardcoded values
       expect(ALPHA_GROUP_CONFIG.minReplies).toBe(1); // Was 3
       expect(ALPHA_GROUP_CONFIG.minLikes).toBe(2); // Was 5
       expect(ALPHA_GROUP_CONFIG.minTotalInteractions).toBe(5); // Was 10
     });
 
-    test('tier config should have tier-specific invite probabilities', () => {
+    test("tier config should have tier-specific invite probabilities", () => {
       expect(TIER_CONFIG[3].inviteProbability).toBe(0.1); // 10%
       expect(TIER_CONFIG[2].inviteProbability).toBe(0.02); // 2%
       expect(TIER_CONFIG[1].inviteProbability).toBe(0.005); // 0.5%
     });
 
-    test('tier 3 should have minEngagementScore of 20', () => {
+    test("tier 3 should have minEngagementScore of 20", () => {
       expect(TIER_CONFIG[3].minEngagementScore).toBe(20);
     });
   });
 
-  describe('Lower Threshold Engagement', () => {
+  describe("Lower Threshold Engagement", () => {
     beforeEach(async () => {
       await cleanupTestData();
     });
@@ -381,9 +381,9 @@ describe('Alpha Group Threshold System', () => {
       await cleanupTestData();
     });
 
-    test('user with minimal engagement (1 reply, 2 likes, 2 shares) should be eligible', async () => {
-      const npc = await createTestNPC('Friendly NPC');
-      const user = await createTestUser({ displayName: 'Minimal User' });
+    test("user with minimal engagement (1 reply, 2 likes, 2 shares) should be eligible", async () => {
+      const npc = await createTestNPC("Friendly NPC");
+      const user = await createTestUser({ displayName: "Minimal User" });
 
       // Create NPC posts
       const posts: string[] = [];
@@ -404,53 +404,53 @@ describe('Alpha Group Threshold System', () => {
 
       const score = await NPCInteractionTracker.calculateEngagementScore(
         user.id,
-        npc.id
+        npc.id,
       );
 
-      console.log('Minimal Engagement Score:', score);
+      console.log("Minimal Engagement Score:", score);
 
       // Should meet minimum thresholds
       expect(score.replyCount).toBeGreaterThanOrEqual(
-        ALPHA_GROUP_CONFIG.minReplies
+        ALPHA_GROUP_CONFIG.minReplies,
       );
       expect(score.likeCount).toBeGreaterThanOrEqual(
-        ALPHA_GROUP_CONFIG.minLikes
+        ALPHA_GROUP_CONFIG.minLikes,
       );
       expect(score.totalInteractions).toBeGreaterThanOrEqual(
-        ALPHA_GROUP_CONFIG.minTotalInteractions
+        ALPHA_GROUP_CONFIG.minTotalInteractions,
       );
       expect(score.isEligibleForInvite).toBe(true);
     });
 
-    test('user below minimum thresholds should NOT be eligible', async () => {
-      const npc = await createTestNPC('Strict NPC');
-      const user = await createTestUser({ displayName: 'Low Engagement User' });
+    test("user below minimum thresholds should NOT be eligible", async () => {
+      const npc = await createTestNPC("Strict NPC");
+      const user = await createTestUser({ displayName: "Low Engagement User" });
 
       // Only 1 like (below minLikes=2)
-      const post = await createNPCPost(npc.id, 'Single post');
+      const post = await createNPCPost(npc.id, "Single post");
       await createLike(user.id, post);
 
       // No replies (below minReplies=1)
 
       const score = await NPCInteractionTracker.calculateEngagementScore(
         user.id,
-        npc.id
+        npc.id,
       );
 
-      console.log('Low Engagement Score:', score);
+      console.log("Low Engagement Score:", score);
 
       expect(score.replyCount).toBe(0);
       expect(score.likeCount).toBe(1);
       expect(score.isEligibleForInvite).toBe(false);
       expect(
         score.eligibilityReasons.some((reason) =>
-          /Need.*more replies/.test(reason)
-        )
+          /Need.*more replies/.test(reason),
+        ),
       ).toBe(true);
     });
   });
 
-  describe('Trading Activity in Engagement', () => {
+  describe("Trading Activity in Engagement", () => {
     beforeEach(async () => {
       await cleanupTestData();
     });
@@ -459,33 +459,33 @@ describe('Alpha Group Threshold System', () => {
       await cleanupTestData();
     });
 
-    test('trades should contribute to engagement score when enabled', async () => {
-      const npc = await createTestNPC('Trading NPC');
+    test("trades should contribute to engagement score when enabled", async () => {
+      const npc = await createTestNPC("Trading NPC");
       const trader = await createTestUser({
-        displayName: 'Active Trader',
+        displayName: "Active Trader",
         isAgent: true,
       });
 
       // Minimal social engagement
       await recordReplyInteraction(trader.id, npc.id, 0.8);
-      const post = await createNPCPost(npc.id, 'Market post');
+      const post = await createNPCPost(npc.id, "Market post");
       await createLike(trader.id, post);
-      await createLike(trader.id, await createNPCPost(npc.id, 'Another post'));
+      await createLike(trader.id, await createNPCPost(npc.id, "Another post"));
 
       // Add trading activity: 5 trades, 3 profitable
       for (let i = 0; i < 5; i++) {
         await createTrade(trader.id, {
-          action: 'close',
+          action: "close",
           pnl: i < 3 ? 100 : -50, // 3 profitable, 2 loss
         });
       }
 
       const score = await NPCInteractionTracker.calculateEngagementScore(
         trader.id,
-        npc.id
+        npc.id,
       );
 
-      console.log('Trader Engagement Score:', score);
+      console.log("Trader Engagement Score:", score);
 
       // Trading stats should be populated
       expect(score.tradingStats.totalTrades).toBe(5);
@@ -497,9 +497,9 @@ describe('Alpha Group Threshold System', () => {
       expect(score.engagementScore).toBeGreaterThan(score.socialScore);
     });
 
-    test('user without trades should still be eligible with sufficient social engagement', async () => {
-      const npc = await createTestNPC('Social NPC');
-      const user = await createTestUser({ displayName: 'Social User' });
+    test("user without trades should still be eligible with sufficient social engagement", async () => {
+      const npc = await createTestNPC("Social NPC");
+      const user = await createTestUser({ displayName: "Social User" });
 
       // Strong social engagement
       for (let i = 0; i < 5; i++) {
@@ -514,10 +514,10 @@ describe('Alpha Group Threshold System', () => {
 
       const score = await NPCInteractionTracker.calculateEngagementScore(
         user.id,
-        npc.id
+        npc.id,
       );
 
-      console.log('Social-only Engagement Score:', score);
+      console.log("Social-only Engagement Score:", score);
 
       expect(score.tradingStats.totalTrades).toBe(0);
       expect(score.tradingScore).toBe(0);
@@ -526,7 +526,7 @@ describe('Alpha Group Threshold System', () => {
     });
   });
 
-  describe('Fast-Track for High-Value Traders', () => {
+  describe("Fast-Track for High-Value Traders", () => {
     beforeEach(async () => {
       await cleanupTestData();
     });
@@ -535,41 +535,41 @@ describe('Alpha Group Threshold System', () => {
       await cleanupTestData();
     });
 
-    test('trader meeting fast-track criteria should be eligible', async () => {
-      const npc = await createTestNPC('Alpha NPC');
+    test("trader meeting fast-track criteria should be eligible", async () => {
+      const npc = await createTestNPC("Alpha NPC");
       const whale = await createTestUser({
-        displayName: 'Whale Trader',
+        displayName: "Whale Trader",
         isAgent: true,
       });
 
       // Minimal social engagement (below normal thresholds)
-      const post = await createNPCPost(npc.id, 'Market post');
+      const post = await createNPCPost(npc.id, "Market post");
       await createLike(whale.id, post);
 
       // Strong trading: 15 trades, 10 profitable, total PnL > 5000
       for (let i = 0; i < 15; i++) {
         await createTrade(whale.id, {
-          action: 'close',
+          action: "close",
           pnl: i < 10 ? 800 : -200, // 10 wins, 5 losses, net = 7000
         });
       }
 
       const score = await NPCInteractionTracker.calculateEngagementScore(
         whale.id,
-        npc.id
+        npc.id,
       );
 
-      console.log('Whale Trader Score:', score);
+      console.log("Whale Trader Score:", score);
 
       // Should qualify for fast-track
       expect(score.tradingStats.totalTrades).toBeGreaterThanOrEqual(
-        ALPHA_GROUP_CONFIG.fastTrackMinTrades
+        ALPHA_GROUP_CONFIG.fastTrackMinTrades,
       );
       expect(score.tradingStats.totalPnL).toBeGreaterThanOrEqual(
-        ALPHA_GROUP_CONFIG.fastTrackMinPnL
+        ALPHA_GROUP_CONFIG.fastTrackMinPnL,
       );
       expect(score.tradingStats.winRate).toBeGreaterThanOrEqual(
-        ALPHA_GROUP_CONFIG.fastTrackMinWinRate
+        ALPHA_GROUP_CONFIG.fastTrackMinWinRate,
       );
       expect(score.qualifiesForFastTrack).toBe(true);
 
@@ -577,36 +577,36 @@ describe('Alpha Group Threshold System', () => {
       expect(score.isEligibleForInvite).toBe(true);
     });
 
-    test('trader with losses should NOT qualify for fast-track', async () => {
-      const npc = await createTestNPC('Selective NPC');
+    test("trader with losses should NOT qualify for fast-track", async () => {
+      const npc = await createTestNPC("Selective NPC");
       const loser = await createTestUser({
-        displayName: 'Losing Trader',
+        displayName: "Losing Trader",
         isAgent: true,
       });
 
       // Many trades but low win rate
       for (let i = 0; i < 20; i++) {
         await createTrade(loser.id, {
-          action: 'close',
+          action: "close",
           pnl: i < 5 ? 100 : -100, // 5 wins, 15 losses = 25% win rate
         });
       }
 
       const score = await NPCInteractionTracker.calculateEngagementScore(
         loser.id,
-        npc.id
+        npc.id,
       );
 
-      console.log('Losing Trader Score:', score);
+      console.log("Losing Trader Score:", score);
 
       expect(score.tradingStats.winRate).toBeLessThan(
-        ALPHA_GROUP_CONFIG.fastTrackMinWinRate
+        ALPHA_GROUP_CONFIG.fastTrackMinWinRate,
       );
       expect(score.qualifiesForFastTrack).toBe(false);
     });
   });
 
-  describe('Invite Decay Mechanism', () => {
+  describe("Invite Decay Mechanism", () => {
     beforeEach(async () => {
       await cleanupTestData();
     });
@@ -615,14 +615,14 @@ describe('Alpha Group Threshold System', () => {
       await cleanupTestData();
     });
 
-    test('declined invite should increase declineCount', async () => {
-      const npc = await createTestNPC('Persistent NPC');
-      const user = await createTestUser({ displayName: 'Declining User' });
+    test("declined invite should increase declineCount", async () => {
+      const npc = await createTestNPC("Persistent NPC");
+      const user = await createTestUser({ displayName: "Declining User" });
       const groupId = await createNpcGroup(npc.id, 3);
 
       // Create initial invite
       const inviteId = await createGroupInvite(groupId, user.id, npc.id, {
-        status: 'declined',
+        status: "declined",
         declineCount: 1,
         nextEligibleAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
       });
@@ -634,17 +634,17 @@ describe('Alpha Group Threshold System', () => {
 
       expect(invite?.declineCount).toBe(1);
       expect(invite?.nextEligibleAt).toBeDefined();
-      expect(invite?.nextEligibleAt!.getTime()).toBeGreaterThan(Date.now());
+      expect(invite?.nextEligibleAt?.getTime()).toBeGreaterThan(Date.now());
     });
 
-    test('user with max declines should not be eligible until reset', async () => {
-      const npc = await createTestNPC('Blocked NPC');
-      const user = await createTestUser({ displayName: 'Max Decline User' });
+    test("user with max declines should not be eligible until reset", async () => {
+      const npc = await createTestNPC("Blocked NPC");
+      const user = await createTestUser({ displayName: "Max Decline User" });
       const groupId = await createNpcGroup(npc.id, 3);
 
       // Create invite at max declines
       await createGroupInvite(groupId, user.id, npc.id, {
-        status: 'declined',
+        status: "declined",
         declineCount: ALPHA_GROUP_CONFIG.inviteDecayMaxDeclines,
         nextEligibleAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
       });
@@ -657,12 +657,12 @@ describe('Alpha Group Threshold System', () => {
       });
 
       expect(invite?.declineCount).toBe(
-        ALPHA_GROUP_CONFIG.inviteDecayMaxDeclines
+        ALPHA_GROUP_CONFIG.inviteDecayMaxDeclines,
       );
     });
   });
 
-  describe('Grandfathering Existing Members', () => {
+  describe("Grandfathering Existing Members", () => {
     beforeEach(async () => {
       await cleanupTestData();
     });
@@ -671,9 +671,9 @@ describe('Alpha Group Threshold System', () => {
       await cleanupTestData();
     });
 
-    test('grandfathered member should have isGrandfathered flag', async () => {
-      const npc = await createTestNPC('Legacy NPC');
-      const user = await createTestUser({ displayName: 'OG Member' });
+    test("grandfathered member should have isGrandfathered flag", async () => {
+      const npc = await createTestNPC("Legacy NPC");
+      const user = await createTestUser({ displayName: "OG Member" });
       const groupId = await createNpcGroup(npc.id, 2);
 
       // Add member as grandfathered
@@ -691,9 +691,9 @@ describe('Alpha Group Threshold System', () => {
       expect(member?.grandfatheredAt).toBeDefined();
     });
 
-    test('getMembershipStatus should reflect grandfathering', async () => {
-      const npc = await createTestNPC('Status NPC');
-      const user = await createTestUser({ displayName: 'Status User' });
+    test("getMembershipStatus should reflect grandfathering", async () => {
+      const npc = await createTestNPC("Status NPC");
+      const user = await createTestUser({ displayName: "Status User" });
       const groupId = await createNpcGroup(npc.id, 2);
 
       await addMemberToGroup(user.id, groupId, {
@@ -710,7 +710,7 @@ describe('Alpha Group Threshold System', () => {
     });
   });
 
-  describe('Engagement Score Calculation', () => {
+  describe("Engagement Score Calculation", () => {
     beforeEach(async () => {
       await cleanupTestData();
     });
@@ -719,13 +719,13 @@ describe('Alpha Group Threshold System', () => {
       await cleanupTestData();
     });
 
-    test('quality score should affect engagement calculation', async () => {
-      const npc = await createTestNPC('Quality NPC');
+    test("quality score should affect engagement calculation", async () => {
+      const npc = await createTestNPC("Quality NPC");
       const highQualityUser = await createTestUser({
-        displayName: 'Quality User',
+        displayName: "Quality User",
       });
       const lowQualityUser = await createTestUser({
-        displayName: 'Low Quality User',
+        displayName: "Low Quality User",
       });
 
       // High quality replies
@@ -740,39 +740,39 @@ describe('Alpha Group Threshold System', () => {
 
       const highScore = await NPCInteractionTracker.calculateEngagementScore(
         highQualityUser.id,
-        npc.id
+        npc.id,
       );
       const lowScore = await NPCInteractionTracker.calculateEngagementScore(
         lowQualityUser.id,
-        npc.id
+        npc.id,
       );
 
-      console.log('High Quality Score:', highScore.engagementScore);
-      console.log('Low Quality Score:', lowScore.engagementScore);
+      console.log("High Quality Score:", highScore.engagementScore);
+      console.log("Low Quality Score:", lowScore.engagementScore);
 
       // Same reply count
       expect(highScore.replyCount).toBe(lowScore.replyCount);
 
       // But different quality
       expect(highScore.avgQualityScore).toBeGreaterThan(
-        lowScore.avgQualityScore
+        lowScore.avgQualityScore,
       );
 
       // High quality user should be eligible, low quality might not be
       expect(highScore.avgQualityScore).toBeGreaterThan(
-        ALPHA_GROUP_CONFIG.minQualityScore
+        ALPHA_GROUP_CONFIG.minQualityScore,
       );
 
       // Low quality user should fail quality check
       expect(lowScore.avgQualityScore).toBeLessThan(
-        ALPHA_GROUP_CONFIG.minQualityScore
+        ALPHA_GROUP_CONFIG.minQualityScore,
       );
     });
 
-    test('engagement score should be bounded 0-100', async () => {
-      const npc = await createTestNPC('Bounds NPC');
+    test("engagement score should be bounded 0-100", async () => {
+      const npc = await createTestNPC("Bounds NPC");
       const superUser = await createTestUser({
-        displayName: 'Super Engaged User',
+        displayName: "Super Engaged User",
       });
 
       // Extreme engagement
@@ -785,15 +785,15 @@ describe('Alpha Group Threshold System', () => {
         await createShare(superUser.id, post);
       }
       for (let i = 0; i < 30; i++) {
-        await createTrade(superUser.id, { action: 'close', pnl: 1000 });
+        await createTrade(superUser.id, { action: "close", pnl: 1000 });
       }
 
       const score = await NPCInteractionTracker.calculateEngagementScore(
         superUser.id,
-        npc.id
+        npc.id,
       );
 
-      console.log('Super User Score:', score);
+      console.log("Super User Score:", score);
 
       expect(score.engagementScore).toBeLessThanOrEqual(100);
       expect(score.engagementScore).toBeGreaterThanOrEqual(0);
@@ -801,18 +801,18 @@ describe('Alpha Group Threshold System', () => {
       expect(score.tradingScore).toBeLessThanOrEqual(100);
     });
 
-    test('user with no engagement should have score of 0', async () => {
-      const npc = await createTestNPC('Empty NPC');
+    test("user with no engagement should have score of 0", async () => {
+      const npc = await createTestNPC("Empty NPC");
       const noEngagementUser = await createTestUser({
-        displayName: 'Ghost User',
+        displayName: "Ghost User",
       });
 
       const score = await NPCInteractionTracker.calculateEngagementScore(
         noEngagementUser.id,
-        npc.id
+        npc.id,
       );
 
-      console.log('No Engagement Score:', score);
+      console.log("No Engagement Score:", score);
 
       expect(score.replyCount).toBe(0);
       expect(score.likeCount).toBe(0);
@@ -824,21 +824,21 @@ describe('Alpha Group Threshold System', () => {
     });
   });
 
-  describe('Invite Statistics', () => {
-    test('should be able to retrieve invite statistics', async () => {
+  describe("Invite Statistics", () => {
+    test("should be able to retrieve invite statistics", async () => {
       const stats = await AlphaGroupInviteService.getInviteStats();
 
-      expect(stats).toHaveProperty('totalInvites');
-      expect(stats).toHaveProperty('activeGroups');
-      expect(stats).toHaveProperty('invitesLast24h');
-      expect(typeof stats.totalInvites).toBe('number');
+      expect(stats).toHaveProperty("totalInvites");
+      expect(stats).toHaveProperty("activeGroups");
+      expect(stats).toHaveProperty("invitesLast24h");
+      expect(typeof stats.totalInvites).toBe("number");
       expect(stats.totalInvites).toBeGreaterThanOrEqual(0);
 
-      console.log('Invite Statistics:', stats);
+      console.log("Invite Statistics:", stats);
     });
   });
 
-  describe('Edge Cases', () => {
+  describe("Edge Cases", () => {
     beforeEach(async () => {
       await cleanupTestData();
     });
@@ -847,43 +847,43 @@ describe('Alpha Group Threshold System', () => {
       await cleanupTestData();
     });
 
-    test('should handle user interacting with non-existent NPC gracefully', async () => {
-      const user = await createTestUser({ displayName: 'Lost User' });
+    test("should handle user interacting with non-existent NPC gracefully", async () => {
+      const user = await createTestUser({ displayName: "Lost User" });
 
       const score = await NPCInteractionTracker.calculateEngagementScore(
         user.id,
-        'non-existent-npc-id'
+        "non-existent-npc-id",
       );
 
       expect(score.engagementScore).toBe(0);
       expect(score.isEligibleForInvite).toBe(false);
     });
 
-    test('should handle trades with null PnL', async () => {
-      const npc = await createTestNPC('Trade Edge NPC');
+    test("should handle trades with null PnL", async () => {
+      const npc = await createTestNPC("Trade Edge NPC");
       const trader = await createTestUser({
-        displayName: 'Edge Trader',
+        displayName: "Edge Trader",
         isAgent: true,
       });
 
       // Create an open trade (no PnL yet)
-      await createTrade(trader.id, { action: 'open' });
+      await createTrade(trader.id, { action: "open" });
 
       // Create engagement for eligibility check
       await recordReplyInteraction(trader.id, npc.id, 0.8);
 
       const score = await NPCInteractionTracker.calculateEngagementScore(
         trader.id,
-        npc.id
+        npc.id,
       );
 
       // Open trades shouldn't count toward closed trade stats
       expect(score.tradingStats.totalTrades).toBe(0);
     });
 
-    test('should handle extremely old interactions', async () => {
-      const npc = await createTestNPC('Time NPC');
-      const user = await createTestUser({ displayName: 'Ancient User' });
+    test("should handle extremely old interactions", async () => {
+      const npc = await createTestNPC("Time NPC");
+      const user = await createTestUser({ displayName: "Ancient User" });
 
       // Create engagement
       await recordReplyInteraction(user.id, npc.id, 0.8);
@@ -897,7 +897,7 @@ describe('Alpha Group Threshold System', () => {
       const score = await NPCInteractionTracker.calculateEngagementScore(
         user.id,
         npc.id,
-        oldWindow
+        oldWindow,
       );
 
       // Should have no interactions in old window

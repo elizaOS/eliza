@@ -16,8 +16,8 @@ import {
   messages,
   type Transaction,
   users,
-} from '@feed/db';
-import { generateSnowflakeId, logger } from '@feed/shared';
+} from "@feed/db";
+import { generateSnowflakeId, logger } from "@feed/shared";
 
 /**
  * Get or create a DM chat between two users.
@@ -32,7 +32,7 @@ import { generateSnowflakeId, logger } from '@feed/shared';
  */
 export async function getOrCreateDMChat(
   userA: string,
-  userB: string
+  userB: string,
 ): Promise<string> {
   // Check if either user is an agent trying to DM their owner
   // Agents should use Agents chat instead
@@ -55,17 +55,17 @@ export async function getOrCreateDMChat(
   // Block agent-owner DMs (both directions)
   if (userAData?.isAgent && userAData?.managedBy === userB) {
     throw new Error(
-      'Agent-owner DMs are not allowed - use Agents chat instead'
+      "Agent-owner DMs are not allowed - use Agents chat instead",
     );
   }
   if (userBData?.isAgent && userBData?.managedBy === userA) {
     throw new Error(
-      'Agent-owner DMs are not allowed - use Agents chat instead'
+      "Agent-owner DMs are not allowed - use Agents chat instead",
     );
   }
 
   // Find existing DM chat using a single query with self-join
-  const otherParticipants = aliasedTable(chatParticipants, 'cp2');
+  const otherParticipants = aliasedTable(chatParticipants, "cp2");
 
   const existingChat = await db
     .select({ chatId: chatParticipants.chatId })
@@ -73,7 +73,7 @@ export async function getOrCreateDMChat(
     .innerJoin(chats, eq(chatParticipants.chatId, chats.id))
     .innerJoin(
       otherParticipants,
-      eq(chatParticipants.chatId, otherParticipants.chatId)
+      eq(chatParticipants.chatId, otherParticipants.chatId),
     )
     .where(
       and(
@@ -81,8 +81,8 @@ export async function getOrCreateDMChat(
         eq(chatParticipants.isActive, true),
         eq(chats.isGroup, false),
         eq(otherParticipants.userId, userB),
-        eq(otherParticipants.isActive, true)
-      )
+        eq(otherParticipants.isActive, true),
+      ),
     )
     .limit(1);
 
@@ -128,13 +128,13 @@ export async function getOrCreateDMChat(
         chatId,
         userId: userB,
         otherUserId: userA,
-        status: 'accepted',
+        status: "accepted",
         createdAt: now,
         acceptedAt: now,
       });
     });
 
-    logger.info('Created new DM chat', { chatId, userA, userB }, 'DMService');
+    logger.info("Created new DM chat", { chatId, userA, userB }, "DMService");
 
     return chatId;
   } catch (error) {
@@ -142,19 +142,19 @@ export async function getOrCreateDMChat(
     // Use Postgres error code 23505 (unique_violation) for reliable detection
     const isUniqueViolation =
       error instanceof Error &&
-      'code' in error &&
-      (error as Error & { code?: string }).code === '23505';
+      "code" in error &&
+      (error as Error & { code?: string }).code === "23505";
     if (isUniqueViolation) {
       logger.warn(
-        'Race condition detected, retrying chat lookup',
+        "Race condition detected, retrying chat lookup",
         { userA, userB },
-        'DMService'
+        "DMService",
       );
 
       // Retry lookup
       const retryOtherParticipants = aliasedTable(
         chatParticipants,
-        'cp2_retry'
+        "cp2_retry",
       );
       const retryMatch = await db
         .select({ chatId: chatParticipants.chatId })
@@ -162,7 +162,7 @@ export async function getOrCreateDMChat(
         .innerJoin(chats, eq(chatParticipants.chatId, chats.id))
         .innerJoin(
           retryOtherParticipants,
-          eq(chatParticipants.chatId, retryOtherParticipants.chatId)
+          eq(chatParticipants.chatId, retryOtherParticipants.chatId),
         )
         .where(
           and(
@@ -170,8 +170,8 @@ export async function getOrCreateDMChat(
             eq(chatParticipants.isActive, true),
             eq(chats.isGroup, false),
             eq(retryOtherParticipants.userId, userB),
-            eq(retryOtherParticipants.isActive, true)
-          )
+            eq(retryOtherParticipants.isActive, true),
+          ),
         )
         .limit(1);
 
@@ -194,7 +194,7 @@ export async function getOrCreateDMChat(
 export async function sendMessageToChat(
   chatId: string,
   senderId: string,
-  content: string
+  content: string,
 ): Promise<string> {
   const messageId = await generateSnowflakeId();
   const now = new Date();
@@ -208,9 +208,9 @@ export async function sendMessageToChat(
   });
 
   logger.debug(
-    'Sent message to chat',
+    "Sent message to chat",
     { messageId, chatId, senderId },
-    'DMService'
+    "DMService",
   );
 
   return messageId;

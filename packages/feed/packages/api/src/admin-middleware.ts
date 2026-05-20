@@ -28,19 +28,19 @@ import {
   notInArray,
   ROLE_PERMISSIONS,
   users,
-} from '@feed/db';
-import { logger } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import type { AuthenticatedUser } from './auth-middleware';
-import { authenticate } from './auth-middleware';
+} from "@feed/db";
+import { logger } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import type { AuthenticatedUser } from "./auth-middleware";
+import { authenticate } from "./auth-middleware";
 import {
   DEV_ADMIN_TOKEN_COOKIE_NAME,
   getDevAdminUser,
   isValidDevAdminToken,
-} from './dev-credentials';
-import { AuthorizationError } from './errors';
+} from "./dev-credentials";
+import { AuthorizationError } from "./errors";
 
-const isDevelopment = process.env.NODE_ENV !== 'production';
+const isDevelopment = process.env.NODE_ENV !== "production";
 
 /**
  * Authenticated admin user with role information
@@ -58,7 +58,7 @@ export interface AuthenticatedAdminUser extends AuthenticatedUser {
  */
 export async function getAdminRole(
   userId: string,
-  _privyId?: string
+  _privyId?: string,
 ): Promise<{ role: AdminRoleType | null; permissions: AdminPermission[] }> {
   // Check the adminRoles table first - only non-revoked roles
   const [adminRole] = await db
@@ -89,20 +89,20 @@ export async function getAdminRole(
 
   // Backward compatibility: Check isAdmin flag for legacy admins
   if (user?.isAdmin) {
-    return { role: 'ADMIN', permissions: ROLE_PERMISSIONS.ADMIN };
+    return { role: "ADMIN", permissions: ROLE_PERMISSIONS.ADMIN };
   }
 
   // Check admin email domain using the DB email (Steward verifies email ownership)
   const adminDomain = process.env.ADMIN_EMAIL_DOMAIN?.trim();
   if (adminDomain && user?.email) {
-    const emailDomain = user.email.split('@')[1]?.toLowerCase();
+    const emailDomain = user.email.split("@")[1]?.toLowerCase();
     if (emailDomain && emailDomain === adminDomain.toLowerCase()) {
       logger.info(
-        'Auto-promoting user to ADMIN via verified email domain',
+        "Auto-promoting user to ADMIN via verified email domain",
         { userId, emailDomain },
-        'getAdminRole'
+        "getAdminRole",
       );
-      return { role: 'ADMIN', permissions: ROLE_PERMISSIONS.ADMIN };
+      return { role: "ADMIN", permissions: ROLE_PERMISSIONS.ADMIN };
     }
   }
 
@@ -121,18 +121,18 @@ export async function getAdminRole(
  * - Requires isAdmin flag in database OR role in adminRoles table
  */
 export async function requireAdmin(
-  request: NextRequest
+  request: NextRequest,
 ): Promise<AuthenticatedAdminUser> {
   // In CI, accept a static test token for integration tests.
   // The token is only checked when CI=true (never in production deployments).
   // We provision a real DB-backed user so FK-dependent admin write paths
   // (whitelist grantedBy, role grants, etc.) don't 500.
   const ciAdminToken = process.env.CI_ADMIN_TOKEN;
-  if (ciAdminToken && process.env.CI === 'true') {
-    const headerToken = request.headers.get('x-dev-admin-token');
+  if (ciAdminToken && process.env.CI === "true") {
+    const headerToken = request.headers.get("x-dev-admin-token");
     if (headerToken && headerToken === ciAdminToken) {
-      const ciUserId = 'ci-admin-user';
-      const ciWallet = '0xCI00000000000000000000000000000000000001';
+      const ciUserId = "ci-admin-user";
+      const ciWallet = "0xCI00000000000000000000000000000000000001";
 
       // Upsert a real user row so FK constraints are satisfied
       await db
@@ -152,7 +152,7 @@ export async function requireAdmin(
         userId: ciUserId,
         dbUserId: ciUserId,
         walletAddress: ciWallet,
-        role: 'SUPER_ADMIN',
+        role: "SUPER_ADMIN",
         permissions: ROLE_PERMISSIONS.SUPER_ADMIN,
       };
     }
@@ -161,21 +161,21 @@ export async function requireAdmin(
   // In development, check for dev admin token first
   if (isDevelopment) {
     const devAdminToken =
-      request.headers.get('x-dev-admin-token') ??
+      request.headers.get("x-dev-admin-token") ??
       request.cookies.get(DEV_ADMIN_TOKEN_COOKIE_NAME)?.value;
     if (devAdminToken && isValidDevAdminToken(devAdminToken)) {
       const devUser = getDevAdminUser();
       if (devUser) {
         logger.info(
-          'Admin access granted via dev token',
+          "Admin access granted via dev token",
           { userId: devUser.userId },
-          'requireAdmin'
+          "requireAdmin",
         );
         return {
           userId: devUser.userId,
           dbUserId: devUser.dbUserId,
           walletAddress: devUser.walletAddress,
-          role: 'SUPER_ADMIN',
+          role: "SUPER_ADMIN",
           permissions: ROLE_PERMISSIONS.SUPER_ADMIN,
         };
       }
@@ -199,20 +199,20 @@ export async function requireAdmin(
 
   if (!dbUser) {
     logger.warn(
-      'Admin check failed: User not found in database',
+      "Admin check failed: User not found in database",
       { userId: user.userId },
-      'requireAdmin'
+      "requireAdmin",
     );
-    throw new AuthorizationError('User not found', 'admin', 'access');
+    throw new AuthorizationError("User not found", "admin", "access");
   }
 
   if (dbUser.isBanned) {
     logger.warn(
-      'Admin check failed: User is banned',
+      "Admin check failed: User is banned",
       { userId: user.userId },
-      'requireAdmin'
+      "requireAdmin",
     );
-    throw new AuthorizationError('User is banned', 'admin', 'access');
+    throw new AuthorizationError("User is banned", "admin", "access");
   }
 
   // Get admin role (checks both adminRoles table, isAdmin flag, and Privy email domain)
@@ -220,24 +220,24 @@ export async function requireAdmin(
 
   if (!role) {
     logger.warn(
-      'Admin check failed: User is not an admin',
+      "Admin check failed: User is not an admin",
       {
         userId: user.userId,
         username: dbUser.username,
       },
-      'requireAdmin'
+      "requireAdmin",
     );
-    throw new AuthorizationError('Admin access required', 'admin', 'access');
+    throw new AuthorizationError("Admin access required", "admin", "access");
   }
 
   logger.info(
-    'Admin access granted',
+    "Admin access granted",
     {
       userId: user.userId,
       username: dbUser.username,
       role,
     },
-    'requireAdmin'
+    "requireAdmin",
   );
 
   return {
@@ -252,24 +252,24 @@ export async function requireAdmin(
  */
 export async function requirePermission(
   request: NextRequest,
-  permission: AdminPermission
+  permission: AdminPermission,
 ): Promise<AuthenticatedAdminUser> {
   const admin = await requireAdmin(request);
 
   if (!admin.permissions.includes(permission)) {
     logger.warn(
-      'Permission check failed',
+      "Permission check failed",
       {
         userId: admin.userId,
         role: admin.role,
         requiredPermission: permission,
       },
-      'requirePermission'
+      "requirePermission",
     );
     throw new AuthorizationError(
       `Permission required: ${permission}`,
-      'admin',
-      permission
+      "admin",
+      permission,
     );
   }
 
@@ -280,23 +280,23 @@ export async function requirePermission(
  * Require SUPER_ADMIN role
  */
 export async function requireSuperAdmin(
-  request: NextRequest
+  request: NextRequest,
 ): Promise<AuthenticatedAdminUser> {
   const admin = await requireAdmin(request);
 
-  if (admin.role !== 'SUPER_ADMIN') {
+  if (admin.role !== "SUPER_ADMIN") {
     logger.warn(
-      'Super admin check failed',
+      "Super admin check failed",
       {
         userId: admin.userId,
         role: admin.role,
       },
-      'requireSuperAdmin'
+      "requireSuperAdmin",
     );
     throw new AuthorizationError(
-      'Super admin access required',
-      'admin',
-      'super_admin'
+      "Super admin access required",
+      "admin",
+      "super_admin",
     );
   }
 
@@ -367,7 +367,7 @@ export async function getAllAdmins(): Promise<
     .where(
       roleUserIds.length > 0
         ? and(eq(users.isAdmin, true), notInArray(users.id, roleUserIds))
-        : eq(users.isAdmin, true)
+        : eq(users.isAdmin, true),
     );
 
   const results: Array<{
@@ -404,7 +404,7 @@ export async function getAllAdmins(): Promise<
       username: legacy.username,
       displayName: legacy.displayName,
       profileImageUrl: legacy.profileImageUrl,
-      role: 'ADMIN',
+      role: "ADMIN",
       permissions: ROLE_PERMISSIONS.ADMIN,
       grantedAt: legacy.createdAt,
       grantedBy: legacy.id, // Self-granted for legacy

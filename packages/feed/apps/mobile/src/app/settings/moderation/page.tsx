@@ -1,1 +1,1 @@
-export { default } from '@web/app/settings/moderation/page';
+export { default } from "@web/app/settings/moderation/page";

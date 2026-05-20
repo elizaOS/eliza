@@ -6,10 +6,9 @@
  * Falls back to in-memory storage when Redis is unavailable.
  */
 
-import { logger } from '@feed/shared';
-
-import { randomUUID } from 'crypto';
-import { getRedisClient, isRedisAvailable } from '../redis/client';
+import { randomUUID } from "node:crypto";
+import { logger } from "@feed/shared";
+import { getRedisClient, isRedisAvailable } from "../redis/client";
 
 interface RateLimitRecord {
   count: number;
@@ -32,148 +31,148 @@ const memoryFallbackStore = new Map<string, RateLimitRecord>();
  */
 export const RATE_LIMIT_CONFIGS = {
   // Content creation
-  CREATE_POST: { maxRequests: 3, windowMs: 60000, actionType: 'create_post' }, // 3 posts per minute
+  CREATE_POST: { maxRequests: 3, windowMs: 60000, actionType: "create_post" }, // 3 posts per minute
   CREATE_COMMENT: {
     maxRequests: 10,
     windowMs: 60000,
-    actionType: 'create_comment',
+    actionType: "create_comment",
   }, // 10 comments per minute
 
   // Interactions
-  LIKE_POST: { maxRequests: 20, windowMs: 60000, actionType: 'like_post' }, // 20 likes per minute
+  LIKE_POST: { maxRequests: 20, windowMs: 60000, actionType: "like_post" }, // 20 likes per minute
   LIKE_COMMENT: {
     maxRequests: 20,
     windowMs: 60000,
-    actionType: 'like_comment',
+    actionType: "like_comment",
   }, // 20 likes per minute
-  SHARE_POST: { maxRequests: 5, windowMs: 60000, actionType: 'share_post' }, // 5 shares per minute
+  SHARE_POST: { maxRequests: 5, windowMs: 60000, actionType: "share_post" }, // 5 shares per minute
   FEED_EVENT_BATCH: {
     maxRequests: 120,
     windowMs: 60000,
-    actionType: 'feed_event_batch',
+    actionType: "feed_event_batch",
   }, // 120 telemetry batches per minute per user
 
   // Social actions
-  FOLLOW_USER: { maxRequests: 10, windowMs: 60000, actionType: 'follow_user' }, // 10 follows per minute
+  FOLLOW_USER: { maxRequests: 10, windowMs: 60000, actionType: "follow_user" }, // 10 follows per minute
   UNFOLLOW_USER: {
     maxRequests: 10,
     windowMs: 60000,
-    actionType: 'unfollow_user',
+    actionType: "unfollow_user",
   }, // 10 unfollows per minute
 
   // Messages
   SEND_MESSAGE: {
     maxRequests: 20,
     windowMs: 60000,
-    actionType: 'send_message',
+    actionType: "send_message",
   }, // 20 messages per minute
   REACTION_TOGGLE: {
     maxRequests: 30,
     windowMs: 60000,
-    actionType: 'reaction_toggle',
+    actionType: "reaction_toggle",
   }, // 30 reaction toggles per minute
   TYPING_INDICATOR: {
     maxRequests: 60,
     windowMs: 60000,
-    actionType: 'typing_indicator',
+    actionType: "typing_indicator",
   }, // 60 typing indicators per minute (1 per second max)
 
   // Uploads
-  UPLOAD_IMAGE: { maxRequests: 5, windowMs: 60000, actionType: 'upload_image' }, // 5 uploads per minute
+  UPLOAD_IMAGE: { maxRequests: 5, windowMs: 60000, actionType: "upload_image" }, // 5 uploads per minute
 
   // Feedback
   SUBMIT_FEEDBACK: {
     maxRequests: 5,
     windowMs: 60000,
-    actionType: 'submit_feedback',
+    actionType: "submit_feedback",
   }, // 5 feedback submissions per minute
 
   /** Public research / model pilot form (/research); no auth — keyed by IP only */
   MODEL_PILOT_INQUIRY: {
     maxRequests: 5,
     windowMs: 60000,
-    actionType: 'model_pilot_inquiry',
+    actionType: "model_pilot_inquiry",
   },
 
   // On-chain registration (expensive operation, limit aggressively)
   ONCHAIN_REGISTRATION: {
     maxRequests: 3,
     windowMs: 3600000,
-    actionType: 'onchain_registration',
+    actionType: "onchain_registration",
   }, // 3 attempts per hour
 
   // Profile updates
   UPDATE_PROFILE: {
     maxRequests: 5,
     windowMs: 60000,
-    actionType: 'update_profile',
+    actionType: "update_profile",
   }, // 5 updates per minute
 
   // SIWE Authentication
   SIWE_NONCE: {
     maxRequests: 10,
     windowMs: 60000,
-    actionType: 'siwe_nonce',
+    actionType: "siwe_nonce",
   }, // 10 nonce requests per minute per IP
 
   // Agent actions
   GENERATE_AGENT_PROFILE: {
     maxRequests: 5,
     windowMs: 60000,
-    actionType: 'generate_agent_profile',
+    actionType: "generate_agent_profile",
   }, // 5 generations per minute
   GENERATE_AGENT_FIELD: {
     maxRequests: 10,
     windowMs: 60000,
-    actionType: 'generate_agent_field',
+    actionType: "generate_agent_field",
   }, // 10 field generations per minute
   GENERATE_AGENT_AVATAR: {
     maxRequests: 8,
     windowMs: 60000,
-    actionType: 'generate_agent_avatar',
+    actionType: "generate_agent_avatar",
   }, // fal.ai image gen — keep tight
 
   // Market actions
   OPEN_POSITION: {
     maxRequests: 10,
     windowMs: 60000,
-    actionType: 'open_position',
+    actionType: "open_position",
   }, // 10 positions per minute
   CLOSE_POSITION: {
     maxRequests: 10,
     windowMs: 60000,
-    actionType: 'close_position',
+    actionType: "close_position",
   }, // 10 positions per minute
   BUY_PREDICTION: {
     maxRequests: 10,
     windowMs: 60000,
-    actionType: 'buy_prediction',
+    actionType: "buy_prediction",
   }, // 10 buys per minute
   SELL_PREDICTION: {
     maxRequests: 10,
     windowMs: 60000,
-    actionType: 'sell_prediction',
+    actionType: "sell_prediction",
   }, // 10 sells per minute
 
   // Admin actions (more generous limits)
   ADMIN_ACTION: {
     maxRequests: 100,
     windowMs: 60000,
-    actionType: 'admin_action',
+    actionType: "admin_action",
   }, // 100 admin actions per minute
 
   // Admin stats queries (expensive operations, stricter limits)
   ADMIN_STATS: {
     maxRequests: 30,
     windowMs: 60000,
-    actionType: 'admin_stats',
+    actionType: "admin_stats",
   }, // 30 stats queries per minute (expensive database operations)
 
   // Public endpoints (IP-based rate limiting)
   PUBLIC_BALANCE_FETCH: {
     maxRequests: 60,
     windowMs: 60000,
-    actionType: 'public_balance_fetch',
+    actionType: "public_balance_fetch",
   }, // 60 balance fetches per minute per IP (prevent enumeration)
 
   // Anonymous/unknown IP requests get stricter limits to prevent abuse
@@ -181,40 +180,40 @@ export const RATE_LIMIT_CONFIGS = {
   PUBLIC_BALANCE_FETCH_ANONYMOUS: {
     maxRequests: 10,
     windowMs: 60000,
-    actionType: 'public_balance_fetch_anonymous',
+    actionType: "public_balance_fetch_anonymous",
   }, // 10 fetches per minute for anonymous bucket (shared, stricter)
 
   // NFT image proxy (IPFS gateway protection)
   PUBLIC_NFT_IMAGE: {
     maxRequests: 60,
     windowMs: 60000,
-    actionType: 'public_nft_image',
+    actionType: "public_nft_image",
   }, // 60 image fetches per minute per IP
 
   // Anonymous NFT image requests (stricter)
   PUBLIC_NFT_IMAGE_ANONYMOUS: {
     maxRequests: 10,
     windowMs: 60000,
-    actionType: 'public_nft_image_anonymous',
+    actionType: "public_nft_image_anonymous",
   }, // 10 fetches per minute for anonymous bucket
 
   // External agent endpoints
   EXTERNAL_AGENT_DISCOVER: {
     maxRequests: 60,
     windowMs: 60000,
-    actionType: 'external_agent_discover',
+    actionType: "external_agent_discover",
   }, // 60 discovery requests per minute (default, can be overridden by agent's discoveryRateLimit)
   EXTERNAL_AGENT_REGISTER: {
     maxRequests: 5,
     windowMs: 3600000,
-    actionType: 'external_agent_register',
+    actionType: "external_agent_register",
   }, // 5 registrations per hour per user
 
   // A2A transfer operations (stricter limit for points/token transfers)
   A2A_TRANSFER_OPS: {
     maxRequests: Number(process.env.A2A_TRANSFER_RATE_LIMIT) || 10,
     windowMs: 60000,
-    actionType: 'a2a_transfer_ops',
+    actionType: "a2a_transfer_ops",
   }, // 10 transfers per minute (configurable via env)
 
   /**
@@ -230,17 +229,17 @@ export const RATE_LIMIT_CONFIGS = {
   PUBLIC_READ: {
     maxRequests: 60,
     windowMs: 60000,
-    actionType: 'public_read',
+    actionType: "public_read",
   },
   PUBLIC_READ_AUTHED: {
     maxRequests: 180,
     windowMs: 60000,
-    actionType: 'public_read_authed',
+    actionType: "public_read_authed",
   },
   PUBLIC_READ_ANONYMOUS: {
     maxRequests: 30,
     windowMs: 60000,
-    actionType: 'public_read_anonymous',
+    actionType: "public_read_anonymous",
   },
 
   /**
@@ -253,31 +252,31 @@ export const RATE_LIMIT_CONFIGS = {
   PUBLIC_FIREHOSE: {
     maxRequests: 5,
     windowMs: 60000,
-    actionType: 'public_firehose',
+    actionType: "public_firehose",
   },
   PUBLIC_FIREHOSE_AUTHED: {
     maxRequests: 20,
     windowMs: 60000,
-    actionType: 'public_firehose_authed',
+    actionType: "public_firehose_authed",
   },
   PUBLIC_FIREHOSE_ANONYMOUS: {
     maxRequests: 2,
     windowMs: 60000,
-    actionType: 'public_firehose_anonymous',
+    actionType: "public_firehose_anonymous",
   },
 
   // Wallet read endpoints (authenticated, per-user)
   WALLET_READ: {
     maxRequests: 60,
     windowMs: 60000,
-    actionType: 'wallet_read',
+    actionType: "wallet_read",
   }, // 60 reads per minute per user (tokens, nfts, transactions)
 
   // Wallet write endpoints (sendToken, sendNft)
   WALLET_TRANSFER: {
     maxRequests: 10,
     windowMs: 60000,
-    actionType: 'wallet_transfer',
+    actionType: "wallet_transfer",
   }, // 10 transfers per minute per user
 
   // Step-up auth / limit elevation requests
@@ -286,15 +285,15 @@ export const RATE_LIMIT_CONFIGS = {
   WALLET_STEP_UP: {
     maxRequests: 5,
     windowMs: 300000,
-    actionType: 'wallet_step_up',
+    actionType: "wallet_step_up",
   }, // 5 step-up requests per 5 minutes
 
   // Default fallback
-  DEFAULT: { maxRequests: 30, windowMs: 60000, actionType: 'default' }, // 30 requests per minute
+  DEFAULT: { maxRequests: 30, windowMs: 60000, actionType: "default" }, // 30 requests per minute
 } as const;
 
 // Redis key prefix for rate limiting
-const RATE_LIMIT_KEY_PREFIX = 'ratelimit';
+const RATE_LIMIT_KEY_PREFIX = "ratelimit";
 
 /**
  * Check if user has exceeded rate limit for a specific action.
@@ -305,7 +304,7 @@ const RATE_LIMIT_KEY_PREFIX = 'ratelimit';
  */
 export async function checkRateLimitAsync(
   userId: string,
-  config: RateLimitConfig
+  config: RateLimitConfig,
 ): Promise<{ allowed: boolean; retryAfter?: number; remaining?: number }> {
   const redis = getRedisClient();
 
@@ -316,9 +315,9 @@ export async function checkRateLimitAsync(
 
   // Fall back to in-memory (not suitable for serverless production)
   logger.debug(
-    'Using in-memory rate limiting fallback',
+    "Using in-memory rate limiting fallback",
     { userId, actionType: config.actionType },
-    'RateLimiter'
+    "RateLimiter",
   );
   return checkRateLimitMemory(userId, config);
 }
@@ -330,15 +329,15 @@ export async function checkRateLimitAsync(
  */
 export function checkRateLimit(
   userId: string,
-  config: RateLimitConfig
+  config: RateLimitConfig,
 ): { allowed: boolean; retryAfter?: number; remaining?: number } {
   // If Redis is available, we should be using the async version
   // Log a warning in production to encourage migration
   if (isRedisAvailable()) {
     logger.warn(
-      'Using synchronous rate limit check with Redis available - consider using checkRateLimitAsync',
+      "Using synchronous rate limit check with Redis available - consider using checkRateLimitAsync",
       { userId, actionType: config.actionType },
-      'RateLimiter'
+      "RateLimiter",
     );
   }
   return checkRateLimitMemory(userId, config);
@@ -351,7 +350,7 @@ export function checkRateLimit(
  */
 async function checkRateLimitRedis(
   userId: string,
-  config: RateLimitConfig
+  config: RateLimitConfig,
 ): Promise<{ allowed: boolean; retryAfter?: number; remaining?: number }> {
   const redis = getRedisClient();
   if (!redis) {
@@ -409,14 +408,14 @@ async function checkRateLimitRedis(
       windowStart.toString(),
       config.maxRequests.toString(),
       config.windowMs.toString(),
-      member
+      member,
     )) as [number, number, number];
 
     if (!result || !Array.isArray(result) || result.length < 3) {
       logger.warn(
-        'Redis Lua script returned unexpected result',
+        "Redis Lua script returned unexpected result",
         { userId, actionType: config.actionType, result },
-        'RateLimiter'
+        "RateLimiter",
       );
       return checkRateLimitMemory(userId, config);
     }
@@ -426,11 +425,11 @@ async function checkRateLimitRedis(
     if (allowed === 0) {
       // Rate limit exceeded
       const retryAfter = Math.ceil(
-        (oldestTimestamp + config.windowMs - now) / 1000
+        (oldestTimestamp + config.windowMs - now) / 1000,
       );
 
       logger.warn(
-        'Rate limit exceeded (Redis)',
+        "Rate limit exceeded (Redis)",
         {
           userId,
           actionType: config.actionType,
@@ -438,7 +437,7 @@ async function checkRateLimitRedis(
           maxRequests: config.maxRequests,
           retryAfter,
         },
-        'RateLimiter'
+        "RateLimiter",
       );
 
       return {
@@ -451,7 +450,7 @@ async function checkRateLimitRedis(
     const remaining = config.maxRequests - count;
 
     logger.debug(
-      'Rate limit check passed (Redis)',
+      "Rate limit check passed (Redis)",
       {
         userId,
         actionType: config.actionType,
@@ -459,7 +458,7 @@ async function checkRateLimitRedis(
         maxRequests: config.maxRequests,
         remaining,
       },
-      'RateLimiter'
+      "RateLimiter",
     );
 
     return {
@@ -468,13 +467,13 @@ async function checkRateLimitRedis(
     };
   } catch (error) {
     logger.error(
-      'Redis rate limit check failed, falling back to memory',
+      "Redis rate limit check failed, falling back to memory",
       {
         error: error instanceof Error ? error.message : String(error),
         userId,
         actionType: config.actionType,
       },
-      'RateLimiter'
+      "RateLimiter",
     );
     return checkRateLimitMemory(userId, config);
   }
@@ -486,7 +485,7 @@ async function checkRateLimitRedis(
  */
 function checkRateLimitMemory(
   userId: string,
-  config: RateLimitConfig
+  config: RateLimitConfig,
 ): { allowed: boolean; retryAfter?: number; remaining?: number } {
   const key = `${userId}:${config.actionType}`;
   const now = Date.now();
@@ -506,7 +505,7 @@ function checkRateLimitMemory(
   // Remove actions outside the current window (sliding window)
   const windowStart = now - config.windowMs;
   record.recentActions = record.recentActions.filter(
-    (timestamp) => timestamp > windowStart
+    (timestamp) => timestamp > windowStart,
   );
 
   // Check if user has exceeded the limit
@@ -517,7 +516,7 @@ function checkRateLimitMemory(
       : Math.ceil(config.windowMs / 1000);
 
     logger.warn(
-      'Rate limit exceeded (memory)',
+      "Rate limit exceeded (memory)",
       {
         userId,
         actionType: config.actionType,
@@ -525,7 +524,7 @@ function checkRateLimitMemory(
         maxRequests: config.maxRequests,
         retryAfter,
       },
-      'RateLimiter'
+      "RateLimiter",
     );
 
     return {
@@ -543,7 +542,7 @@ function checkRateLimitMemory(
   const remaining = config.maxRequests - record.recentActions.length;
 
   logger.debug(
-    'Rate limit check passed (memory)',
+    "Rate limit check passed (memory)",
     {
       userId,
       actionType: config.actionType,
@@ -551,7 +550,7 @@ function checkRateLimitMemory(
       maxRequests: config.maxRequests,
       remaining,
     },
-    'RateLimiter'
+    "RateLimiter",
   );
 
   return {
@@ -566,7 +565,7 @@ function checkRateLimitMemory(
  */
 export async function resetRateLimit(
   userId: string,
-  actionType: string
+  actionType: string,
 ): Promise<void> {
   // Clear from Redis if available
   const redis = getRedisClient();
@@ -579,7 +578,7 @@ export async function resetRateLimit(
   const memoryKey = `${userId}:${actionType}`;
   memoryFallbackStore.delete(memoryKey);
 
-  logger.info('Rate limit reset', { userId, actionType }, 'RateLimiter');
+  logger.info("Rate limit reset", { userId, actionType }, "RateLimiter");
 }
 
 /** Maximum iterations for SCAN loop to prevent infinite loops */
@@ -595,46 +594,46 @@ export async function clearAllRateLimits(): Promise<void> {
   if (redis && isRedisAvailable()) {
     try {
       // Use SCAN to find and delete all rate limit keys
-      let cursor = '0';
+      let cursor = "0";
       let iterations = 0;
       do {
         iterations++;
         if (iterations > MAX_SCAN_ITERATIONS) {
           logger.warn(
-            'clearAllRateLimits: MAX_SCAN_ITERATIONS reached, breaking out of loop',
+            "clearAllRateLimits: MAX_SCAN_ITERATIONS reached, breaking out of loop",
             {
               maxIterations: MAX_SCAN_ITERATIONS,
               keyPrefix: RATE_LIMIT_KEY_PREFIX,
             },
-            'RateLimiter'
+            "RateLimiter",
           );
           break;
         }
 
         const [newCursor, keys] = await redis.scan(
           cursor,
-          'MATCH',
+          "MATCH",
           `${RATE_LIMIT_KEY_PREFIX}:*`,
-          'COUNT',
-          100
+          "COUNT",
+          100,
         );
         cursor = newCursor;
         if (keys.length > 0) {
           await redis.del(...keys);
         }
-      } while (cursor !== '0');
+      } while (cursor !== "0");
     } catch (error) {
       logger.error(
-        'Failed to clear Redis rate limits',
+        "Failed to clear Redis rate limits",
         { error: error instanceof Error ? error.message : String(error) },
-        'RateLimiter'
+        "RateLimiter",
       );
     }
   }
 
   // Clear memory fallback
   memoryFallbackStore.clear();
-  logger.info('All rate limits cleared', {}, 'RateLimiter');
+  logger.info("All rate limits cleared", {}, "RateLimiter");
 }
 
 /**
@@ -642,7 +641,7 @@ export async function clearAllRateLimits(): Promise<void> {
  */
 export async function getRateLimitStatus(
   userId: string,
-  config: RateLimitConfig
+  config: RateLimitConfig,
 ): Promise<{ count: number; remaining: number; resetAt: Date }> {
   const redis = getRedisClient();
   const now = Date.now();
@@ -655,16 +654,16 @@ export async function getRateLimitStatus(
     try {
       // Use read-only operations to get status without mutating the sorted set
       // Count entries within the current window
-      const count = await redis.zcount(key, windowStart, '+inf');
+      const count = await redis.zcount(key, windowStart, "+inf");
       // Get the oldest entry's timestamp for reset calculation
       const oldestEntries = await redis.zrangebyscore(
         key,
         windowStart,
-        '+inf',
-        'WITHSCORES',
-        'LIMIT',
+        "+inf",
+        "WITHSCORES",
+        "LIMIT",
         0,
-        1
+        1,
       );
       // Only read oldestEntries[1] if at least 2 elements exist (entry + score)
       const oldestTimestamp =
@@ -680,13 +679,13 @@ export async function getRateLimitStatus(
     } catch (e) {
       // Log the Redis failure before falling back to memory
       logger.error(
-        'Redis rate limiter failed, falling back to in-memory',
+        "Redis rate limiter failed, falling back to in-memory",
         {
           error: e instanceof Error ? e.message : String(e),
           userId,
           actionType: config.actionType,
         },
-        'RateLimiter'
+        "RateLimiter",
       );
     }
   }
@@ -706,7 +705,7 @@ export async function getRateLimitStatus(
   // Remove expired actions
   const windowStart = now - config.windowMs;
   const validActions = record.recentActions.filter(
-    (timestamp) => timestamp > windowStart
+    (timestamp) => timestamp > windowStart,
   );
 
   const oldestAction = validActions[0] || now;
@@ -732,7 +731,7 @@ export function cleanupMemoryRateLimits(): void {
   for (const [key, record] of memoryFallbackStore.entries()) {
     // Remove records where all actions are older than maxAge
     const hasRecentActions = record.recentActions.some(
-      (timestamp) => now - timestamp < maxAge
+      (timestamp) => now - timestamp < maxAge,
     );
 
     if (!hasRecentActions) {
@@ -743,12 +742,12 @@ export function cleanupMemoryRateLimits(): void {
 
   if (cleanedCount > 0) {
     logger.info(
-      'Cleaned up old rate limit records (memory)',
+      "Cleaned up old rate limit records (memory)",
       {
         cleanedCount,
         totalRemaining: memoryFallbackStore.size,
       },
-      'RateLimiter'
+      "RateLimiter",
     );
   }
 }
@@ -765,7 +764,7 @@ export function startMemoryCleanup(): boolean {
   if (cleanupIntervalId !== null) {
     return false; // Already running
   }
-  if (typeof setInterval === 'undefined') {
+  if (typeof setInterval === "undefined") {
     return false; // Environment doesn't support setInterval
   }
   cleanupIntervalId = setInterval(cleanupMemoryRateLimits, 5 * 60 * 1000);
@@ -787,13 +786,13 @@ export function stopMemoryCleanup(): boolean {
 }
 
 // Auto-start cleanup only in production (not during tests)
-if (typeof setInterval !== 'undefined' && process.env.NODE_ENV !== 'test') {
+if (typeof setInterval !== "undefined" && process.env.NODE_ENV !== "test") {
   const autoStarted = startMemoryCleanup();
   if (!autoStarted) {
     logger.debug(
-      'Memory cleanup auto-start failed (already running or setInterval unavailable)',
+      "Memory cleanup auto-start failed (already running or setInterval unavailable)",
       { nodeEnv: process.env.NODE_ENV },
-      'RateLimiter'
+      "RateLimiter",
     );
   }
 }

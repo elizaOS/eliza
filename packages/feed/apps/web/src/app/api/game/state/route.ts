@@ -1,1 +1,1 @@
-export { GET } from '../control/route';
+export { GET } from "../control/route";

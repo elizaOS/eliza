@@ -12,13 +12,13 @@
  * - TTL: 24 hours (events older than this rarely need reactions)
  */
 
-import { logger } from '@feed/shared';
-import { getRedisClient } from '../redis/client';
+import { logger } from "@feed/shared";
+import { getRedisClient } from "../redis/client";
 
-const RECENT_EVENTS_KEY = 'events:recent';
-const PRIORITY_EVENTS_KEY = 'events:priority';
-const ORG_EVENTS_PREFIX = 'events:by-org:';
-const EVENT_DATA_PREFIX = 'event:data:';
+const RECENT_EVENTS_KEY = "events:recent";
+const PRIORITY_EVENTS_KEY = "events:priority";
+const ORG_EVENTS_PREFIX = "events:by-org:";
+const EVENT_DATA_PREFIX = "event:data:";
 const EVENT_TTL_SECONDS = 86400; // 24 hours
 
 export interface CachedEvent {
@@ -29,7 +29,7 @@ export interface CachedEvent {
   affectedOrgIds: string[];
   severity: number;
   timestamp: number;
-  pointsToward: 'YES' | 'NO' | null;
+  pointsToward: "YES" | "NO" | null;
 }
 
 /**
@@ -53,9 +53,9 @@ export class EventCacheService {
     const client = getRedisClient();
     if (!client) {
       logger.debug(
-        'Redis unavailable, skipping event cache',
+        "Redis unavailable, skipping event cache",
         {},
-        'EventCacheService'
+        "EventCacheService",
       );
       return false;
     }
@@ -65,7 +65,7 @@ export class EventCacheService {
 
       // Store event data with TTL
       const dataKey = `${EVENT_DATA_PREFIX}${event.id}`;
-      pipeline.set(dataKey, JSON.stringify(event), 'EX', EVENT_TTL_SECONDS);
+      pipeline.set(dataKey, JSON.stringify(event), "EX", EVENT_TTL_SECONDS);
 
       // Add to recent events sorted set (score = timestamp)
       pipeline.zadd(RECENT_EVENTS_KEY, event.timestamp, event.id);
@@ -86,23 +86,23 @@ export class EventCacheService {
       await pipeline.exec();
 
       logger.debug(
-        'Cached event',
+        "Cached event",
         {
           eventId: event.id,
           severity: event.severity,
           orgs: event.affectedOrgIds.length,
         },
-        'EventCacheService'
+        "EventCacheService",
       );
       return true;
     } catch (error) {
       logger.warn(
-        'Failed to cache event',
+        "Failed to cache event",
         {
           eventId: event.id,
           error: error instanceof Error ? error.message : String(error),
         },
-        'EventCacheService'
+        "EventCacheService",
       );
       return false;
     }
@@ -121,7 +121,7 @@ export class EventCacheService {
       const eventIds = await client.zrevrange(
         PRIORITY_EVENTS_KEY,
         0,
-        limit - 1
+        limit - 1,
       );
       if (eventIds.length === 0) return [];
 
@@ -134,7 +134,7 @@ export class EventCacheService {
 
       const events: CachedEvent[] = [];
       for (const [err, data] of results ?? []) {
-        if (!err && typeof data === 'string') {
+        if (!err && typeof data === "string") {
           try {
             events.push(JSON.parse(data) as CachedEvent);
           } catch {
@@ -146,9 +146,9 @@ export class EventCacheService {
       return events;
     } catch (error) {
       logger.warn(
-        'Failed to get priority events',
+        "Failed to get priority events",
         { error: error instanceof Error ? error.message : String(error) },
-        'EventCacheService'
+        "EventCacheService",
       );
       return [];
     }
@@ -159,7 +159,7 @@ export class EventCacheService {
    */
   async getEventsForOrg(
     orgId: string,
-    limit: number = 20
+    limit: number = 20,
   ): Promise<CachedEvent[]> {
     const client = getRedisClient();
     if (!client) return [];
@@ -177,7 +177,7 @@ export class EventCacheService {
 
       const events: CachedEvent[] = [];
       for (const [err, data] of results ?? []) {
-        if (!err && typeof data === 'string') {
+        if (!err && typeof data === "string") {
           try {
             events.push(JSON.parse(data) as CachedEvent);
           } catch {
@@ -189,12 +189,12 @@ export class EventCacheService {
       return events;
     } catch (error) {
       logger.warn(
-        'Failed to get org events',
+        "Failed to get org events",
         {
           orgId,
           error: error instanceof Error ? error.message : String(error),
         },
-        'EventCacheService'
+        "EventCacheService",
       );
       return [];
     }
@@ -205,7 +205,7 @@ export class EventCacheService {
    */
   async getRecentEvents(
     lookbackHours: number = 12,
-    limit: number = 50
+    limit: number = 50,
   ): Promise<CachedEvent[]> {
     const client = getRedisClient();
     if (!client) return [];
@@ -215,10 +215,10 @@ export class EventCacheService {
       const eventIds = await client.zrangebyscore(
         RECENT_EVENTS_KEY,
         minScore,
-        '+inf',
-        'LIMIT',
+        "+inf",
+        "LIMIT",
         0,
-        limit
+        limit,
       );
 
       if (eventIds.length === 0) return [];
@@ -231,7 +231,7 @@ export class EventCacheService {
 
       const events: CachedEvent[] = [];
       for (const [err, data] of results ?? []) {
-        if (!err && typeof data === 'string') {
+        if (!err && typeof data === "string") {
           try {
             events.push(JSON.parse(data) as CachedEvent);
           } catch {
@@ -243,12 +243,12 @@ export class EventCacheService {
       return events;
     } catch (error) {
       logger.warn(
-        'Failed to get recent events',
+        "Failed to get recent events",
         {
           lookbackHours,
           error: error instanceof Error ? error.message : String(error),
         },
-        'EventCacheService'
+        "EventCacheService",
       );
       return [];
     }
@@ -265,15 +265,15 @@ export class EventCacheService {
     try {
       // Remove from priority queue but keep in recent events
       await client.zrem(PRIORITY_EVENTS_KEY, eventId);
-      logger.debug('Deprioritized event', { eventId }, 'EventCacheService');
+      logger.debug("Deprioritized event", { eventId }, "EventCacheService");
     } catch (error) {
       logger.debug(
-        'Failed to deprioritize event',
+        "Failed to deprioritize event",
         {
           eventId,
           error: error instanceof Error ? error.message : String(error),
         },
-        'EventCacheService'
+        "EventCacheService",
       );
     }
   }
@@ -290,12 +290,12 @@ export class EventCacheService {
       await client.zremrangebyscore(RECENT_EVENTS_KEY, 0, cutoff);
       // Priority queue uses a different scale, but old entries will naturally
       // have low scores and can be cleaned up similarly
-      logger.debug('Cleaned up old events', {}, 'EventCacheService');
+      logger.debug("Cleaned up old events", {}, "EventCacheService");
     } catch (error) {
       logger.debug(
-        'Failed to cleanup events',
+        "Failed to cleanup events",
         { error: error instanceof Error ? error.message : String(error) },
-        'EventCacheService'
+        "EventCacheService",
       );
     }
   }

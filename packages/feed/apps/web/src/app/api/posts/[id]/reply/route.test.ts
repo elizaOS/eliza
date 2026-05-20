@@ -1,12 +1,12 @@
-import { beforeEach, describe, expect, it, mock } from 'bun:test';
-import type { NextRequest } from 'next/server';
+import { beforeEach, describe, expect, it, mock } from "bun:test";
+import type { NextRequest } from "next/server";
 
 const mockAuthenticate = mock();
 const mockEnsureEngineServices = mock();
 const mockCreateCommentPOST = mock();
 const mockParsePostId = mock();
 
-mock.module('@feed/api', () => ({
+mock.module("@feed/api", () => ({
   authenticate: mockAuthenticate,
   BusinessLogicError: class BusinessLogicError extends Error {},
   ensureUserForAuth: mock(),
@@ -15,13 +15,13 @@ mock.module('@feed/api', () => ({
   withErrorHandling: (
     handler: (
       request: NextRequest,
-      context: { params: Promise<{ id: string }> }
-    ) => Promise<unknown>
+      context: { params: Promise<{ id: string }> },
+    ) => Promise<unknown>,
   ) => handler,
   checkProgress: async () => ({ completed: true }),
 }));
 
-mock.module('@feed/db', () => ({
+mock.module("@feed/db", () => ({
   comments: {},
   db: {},
   eq: mock(),
@@ -29,7 +29,7 @@ mock.module('@feed/db', () => ({
   users: {},
 }));
 
-mock.module('@feed/engine', () => ({
+mock.module("@feed/engine", () => ({
   FollowingMechanics: {},
   GroupChatService: {},
   MessageQualityChecker: {},
@@ -37,7 +37,7 @@ mock.module('@feed/engine', () => ({
   ReplyRateLimiter: {},
 }));
 
-mock.module('@feed/shared', () => ({
+mock.module("@feed/shared", () => ({
   generateSnowflakeId: mock(),
   logger: {
     info: mock(),
@@ -51,17 +51,17 @@ mock.module('@feed/shared', () => ({
   },
 }));
 
-mock.module('@/lib/engine/ensure-engine-services', () => ({
+mock.module("@/lib/engine/ensure-engine-services", () => ({
   ensureEngineServices: mockEnsureEngineServices,
 }));
 
-mock.module('../comments/route', () => ({
+mock.module("../comments/route", () => ({
   POST: mockCreateCommentPOST,
 }));
 
-const { POST } = await import('./route');
+const { POST } = await import("./route");
 
-describe('POST /api/posts/[id]/reply', () => {
+describe("POST /api/posts/[id]/reply", () => {
   beforeEach(() => {
     mockAuthenticate.mockReset();
     mockEnsureEngineServices.mockReset();
@@ -69,22 +69,22 @@ describe('POST /api/posts/[id]/reply', () => {
     mockParsePostId.mockReset();
   });
 
-  it('delegates to the generic comments handler for standard post IDs', async () => {
-    mockAuthenticate.mockResolvedValue({ userId: 'user-1' });
+  it("delegates to the generic comments handler for standard post IDs", async () => {
+    mockAuthenticate.mockResolvedValue({ userId: "user-1" });
     mockParsePostId.mockReturnValue({
       success: false,
       metadata: {},
     });
     mockCreateCommentPOST.mockResolvedValue(
-      new Response(JSON.stringify({ delegated: true }), { status: 201 })
+      new Response(JSON.stringify({ delegated: true }), { status: 201 }),
     );
 
     const request = {
-      url: 'https://example.com/api/posts/post-123/reply',
-      method: 'POST',
+      url: "https://example.com/api/posts/post-123/reply",
+      method: "POST",
     } as NextRequest;
     const context = {
-      params: Promise.resolve({ id: 'post-123' }),
+      params: Promise.resolve({ id: "post-123" }),
     };
 
     const response = (await POST(request, context)) as Response;

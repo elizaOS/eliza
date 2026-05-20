@@ -1,11 +1,11 @@
-'use client';
+"use client";
 
-import { ArrowLeft, Loader2, Settings } from 'lucide-react';
-import Link from 'next/link';
-import { Avatar } from '@/components/shared/Avatar';
-import { Button } from '@/components/ui/button';
-import type { ChatDetails } from './types';
-import { getProfilePath } from './types';
+import { ArrowLeft, Loader2, Settings } from "lucide-react";
+import Link from "next/link";
+import { Avatar } from "@/components/shared/Avatar";
+import { Button } from "@/components/ui/button";
+import type { ChatDetails } from "./types";
+import { getProfilePath } from "./types";
 
 interface ChatViewHeaderProps {
   chatDetails: ChatDetails;
@@ -43,7 +43,7 @@ export function ChatViewHeader({
           >
             <Avatar
               id={chatDetails.chat.otherUser.id}
-              name={chatDetails.chat.otherUser.displayName || 'User'}
+              name={chatDetails.chat.otherUser.displayName || "User"}
               type="user"
               size="md"
               imageUrl={chatDetails.chat.otherUser.profileImageUrl || undefined}
@@ -57,14 +57,14 @@ export function ChatViewHeader({
         <div className="min-w-0 flex-1">
           {chatDetails.chat.isGroup ? (
             <h3 className="truncate font-bold text-foreground text-lg">
-              {chatDetails.chat.name || 'Chat'}
+              {chatDetails.chat.name || "Chat"}
             </h3>
           ) : chatDetails.chat.otherUser ? (
             <Link
               href={getProfilePath(chatDetails.chat.otherUser)}
               className="truncate font-bold text-foreground text-lg transition-colors hover:text-primary"
             >
-              {chatDetails.chat.otherUser.displayName || 'Chat'}
+              {chatDetails.chat.otherUser.displayName || "Chat"}
             </Link>
           ) : (
             <h3 className="truncate font-bold text-foreground text-lg">Chat</h3>

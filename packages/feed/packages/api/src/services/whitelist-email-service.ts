@@ -1,26 +1,26 @@
-import { db, inArray, users } from '@feed/db';
-import { logger } from '@feed/shared';
+import { db, inArray, users } from "@feed/db";
+import { logger } from "@feed/shared";
 import {
   type EmailRecipientRow,
   resolveRecipientEmail,
   resolveSendGridConfig,
   sendViaSendGrid,
-} from './email-utils';
+} from "./email-utils";
 
 const WHITELIST_WELCOME_SUBJECT =
   "Congratulations, you're off the waitlist. You can play Feed now.";
 
 const WHITELIST_WELCOME_TEXT = [
-  'Hey, you got in!',
-  '',
-  'Feed is an AI-built world where humans and AI compete through prediction markets and perpetuals. You can create your own agent team and compete to win.',
-  '',
-  'Head to feed.market, sign in, look around, then create one or two agents and tell them how they can help you win the game.',
-  '',
-  'Remember the best players get rewarded!',
-  '',
-  'Feed team',
-].join('\n');
+  "Hey, you got in!",
+  "",
+  "Feed is an AI-built world where humans and AI compete through prediction markets and perpetuals. You can create your own agent team and compete to win.",
+  "",
+  "Head to feed.market, sign in, look around, then create one or two agents and tell them how they can help you win the game.",
+  "",
+  "Remember the best players get rewarded!",
+  "",
+  "Feed team",
+].join("\n");
 
 const SEND_CONCURRENCY = 5;
 
@@ -32,19 +32,19 @@ function createWhitelistWelcomeHtml(): string {
     '  <p style="font-size:15px;line-height:1.6;color:#222;margin:0 0 16px;">Head to <a href="https://feed.market" style="color:#1a73e8;">feed.market</a>, sign in, look around, then create one or two agents and tell them how they can help you win the game.</p>',
     '  <p style="font-size:15px;line-height:1.6;color:#222;margin:0 0 16px;">Remember the best players get rewarded!</p>',
     '  <p style="font-size:15px;line-height:1.6;color:#222;margin:0;">Feed team</p>',
-    '</div>',
-  ].join('');
+    "</div>",
+  ].join("");
 }
 
 async function sendWhitelistWelcomeEmail(input: {
   userId: string;
   userEmail: string;
 }): Promise<{ sent: boolean; reason?: string }> {
-  const config = resolveSendGridConfig('WhitelistEmailService', {
+  const config = resolveSendGridConfig("WhitelistEmailService", {
     userId: input.userId,
   });
   if (!config) {
-    return { sent: false, reason: 'provider_not_configured' };
+    return { sent: false, reason: "provider_not_configured" };
   }
 
   return sendViaSendGrid(
@@ -54,17 +54,17 @@ async function sendWhitelistWelcomeEmail(input: {
       personalizations: [{ to: [{ email: input.userEmail }] }],
       subject: WHITELIST_WELCOME_SUBJECT,
       content: [
-        { type: 'text/plain', value: WHITELIST_WELCOME_TEXT },
-        { type: 'text/html', value: createWhitelistWelcomeHtml() },
+        { type: "text/plain", value: WHITELIST_WELCOME_TEXT },
+        { type: "text/html", value: createWhitelistWelcomeHtml() },
       ],
     },
-    'WhitelistEmailService',
-    { userId: input.userId }
+    "WhitelistEmailService",
+    { userId: input.userId },
   );
 }
 
 async function fetchRecipients(
-  userIds: string[]
+  userIds: string[],
 ): Promise<Map<string, EmailRecipientRow>> {
   if (userIds.length === 0) return new Map();
 
@@ -83,28 +83,28 @@ async function fetchRecipients(
 
 async function sendWelcomeEmailForUser(
   userId: string,
-  recipient: EmailRecipientRow | undefined
-): Promise<'sent' | 'skipped' | 'failed'> {
+  recipient: EmailRecipientRow | undefined,
+): Promise<"sent" | "skipped" | "failed"> {
   if (!recipient) {
     logger.warn(
-      'Skipping whitelist welcome email: user not found',
+      "Skipping whitelist welcome email: user not found",
       { userId },
-      'WhitelistEmailService'
+      "WhitelistEmailService",
     );
-    return 'skipped';
+    return "skipped";
   }
 
   const resolvedEmail = await resolveRecipientEmail(
     recipient,
-    'WhitelistEmailService'
+    "WhitelistEmailService",
   );
   if (!resolvedEmail) {
     logger.info(
-      'Skipping whitelist welcome email: no verified email found for user',
+      "Skipping whitelist welcome email: no verified email found for user",
       { userId },
-      'WhitelistEmailService'
+      "WhitelistEmailService",
     );
-    return 'skipped';
+    return "skipped";
   }
 
   const result = await sendWhitelistWelcomeEmail({
@@ -113,19 +113,19 @@ async function sendWelcomeEmailForUser(
   });
 
   if (result.sent) {
-    return 'sent';
+    return "sent";
   }
 
   logger.warn(
-    'Whitelist welcome email skipped by provider configuration or error',
-    { userId, reason: result.reason ?? 'unknown' },
-    'WhitelistEmailService'
+    "Whitelist welcome email skipped by provider configuration or error",
+    { userId, reason: result.reason ?? "unknown" },
+    "WhitelistEmailService",
   );
-  return 'failed';
+  return "failed";
 }
 
 export async function sendWhitelistWelcomeEmailsToUsers(
-  userIds: string[]
+  userIds: string[],
 ): Promise<void> {
   const uniqueUserIds = [...new Set(userIds.filter(Boolean))];
   if (uniqueUserIds.length === 0) return;
@@ -137,33 +137,33 @@ export async function sendWhitelistWelcomeEmailsToUsers(
 
     const chunkResults = await Promise.all(
       chunk.map((userId) =>
-        sendWelcomeEmailForUser(userId, recipients.get(userId))
-      )
+        sendWelcomeEmailForUser(userId, recipients.get(userId)),
+      ),
     );
 
-    const sentCount = chunkResults.filter((result) => result === 'sent').length;
+    const sentCount = chunkResults.filter((result) => result === "sent").length;
     const skippedCount = chunkResults.filter(
-      (result) => result === 'skipped'
+      (result) => result === "skipped",
     ).length;
     const failedCount = chunkResults.filter(
-      (result) => result === 'failed'
+      (result) => result === "failed",
     ).length;
 
     logger.info(
-      'Processed whitelist welcome email chunk',
+      "Processed whitelist welcome email chunk",
       {
         chunkSize: chunk.length,
         sentCount,
         skippedCount,
         failedCount,
       },
-      'WhitelistEmailService'
+      "WhitelistEmailService",
     );
   }
 }
 
 export async function sendWhitelistWelcomeEmailToUser(
-  userId: string
+  userId: string,
 ): Promise<void> {
   await sendWhitelistWelcomeEmailsToUsers([userId]);
 }

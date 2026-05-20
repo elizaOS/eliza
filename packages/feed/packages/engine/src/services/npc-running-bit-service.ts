@@ -10,12 +10,12 @@
  * - Lightweight (no LLM calls)
  */
 
-import { db, type NpcMemory } from '@feed/db';
-import { generateSnowflakeId } from '@feed/shared';
-import { SeededRandom } from '../utils/entropy';
-import { isDegenSpeaker } from '../utils/shared-utils';
-import { parseMemoriesSafe } from './jsonb-validators';
-import { StaticDataRegistry } from './static-data-registry';
+import { db, type NpcMemory } from "@feed/db";
+import { generateSnowflakeId } from "@feed/shared";
+import { SeededRandom } from "../utils/entropy";
+import { isDegenSpeaker } from "../utils/shared-utils";
+import { parseMemoriesSafe } from "./jsonb-validators";
+import { StaticDataRegistry } from "./static-data-registry";
 
 export interface RunningBitOptions {
   /** Current timestamp (used for memory timestamps) */
@@ -46,23 +46,23 @@ function getIsoWeekKey(date: Date): string {
   // ISO week date weeks start on Monday.
   // Adapted from common ISO week algorithm (no external deps).
   const d = new Date(
-    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate())
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
   );
   // Thursday in current week decides the year.
   const day = d.getUTCDay() || 7; // 1..7 (Mon..Sun)
   d.setUTCDate(d.getUTCDate() + 4 - day);
   const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
   const weekNo = Math.ceil(
-    ((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7
+    ((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7,
   );
   const year = d.getUTCFullYear();
-  const week = String(weekNo).padStart(2, '0');
+  const week = String(weekNo).padStart(2, "0");
   return `${year}-W${week}`;
 }
 
 function buildRunningBitKey(now: Date, currentDay?: number): string {
   if (
-    typeof currentDay === 'number' &&
+    typeof currentDay === "number" &&
     Number.isFinite(currentDay) &&
     currentDay >= 1
   ) {
@@ -74,7 +74,7 @@ function buildRunningBitKey(now: Date, currentDay?: number): string {
 
 function hasDomain(
   actorDomains: string[] | undefined,
-  domain: string
+  domain: string,
 ): boolean {
   return Array.isArray(actorDomains) && actorDomains.includes(domain);
 }
@@ -82,17 +82,17 @@ function hasDomain(
 function generateRunningBit(actorId: string, periodKey: string): string {
   const actor = StaticDataRegistry.getActor(actorId);
   const domains = actor?.domain ?? [];
-  const personality = (actor?.personality ?? '').toLowerCase();
+  const personality = (actor?.personality ?? "").toLowerCase();
 
   const candidates: string[] = [];
 
   // General, widely applicable bits
   candidates.push(
-    'You keep calling everything “signal” and nothing “noise.”',
-    'You keep doing the “I’m just asking questions” thing.',
-    'You keep treating the replies like they’re a hostile deposition.',
-    'You keep insisting the vibes are “obviously priced in.”',
-    'You keep turning every thread into an impromptu status contest.'
+    "You keep calling everything “signal” and nothing “noise.”",
+    "You keep doing the “I’m just asking questions” thing.",
+    "You keep treating the replies like they’re a hostile deposition.",
+    "You keep insisting the vibes are “obviously priced in.”",
+    "You keep turning every thread into an impromptu status contest.",
   );
 
   // Domain-specific flavor
@@ -107,45 +107,45 @@ function generateRunningBit(actorId: string, periodKey: string): string {
 
   if (degen) {
     candidates.push(
-      'You keep accusing people of being exit liquidity.',
-      'You keep saying “size” like it’s a personality trait.',
-      'You keep bringing up risk management right after taking the riskiest stance possible.',
-      'You keep acting like every disagreement is a liquidation event.'
+      "You keep accusing people of being exit liquidity.",
+      "You keep saying “size” like it’s a personality trait.",
+      "You keep bringing up risk management right after taking the riskiest stance possible.",
+      "You keep acting like every disagreement is a liquidation event.",
     );
   }
 
-  if (hasDomain(domains, 'tech') || hasDomain(domains, 'ai')) {
+  if (hasDomain(domains, "tech") || hasDomain(domains, "ai")) {
     candidates.push(
-      'You keep asking if their argument is “benchmarkable.”',
-      'You keep insisting everything is a scaling law problem.',
-      'You keep treating normal life like a product roadmap.',
-      'You keep using “just ship it” as a moral philosophy.'
+      "You keep asking if their argument is “benchmarkable.”",
+      "You keep insisting everything is a scaling law problem.",
+      "You keep treating normal life like a product roadmap.",
+      "You keep using “just ship it” as a moral philosophy.",
     );
   }
 
-  if (hasDomain(domains, 'politics')) {
+  if (hasDomain(domains, "politics")) {
     candidates.push(
-      'You keep turning every reply into a campaign stump speech.',
-      'You keep implying there’s a shadow committee behind everything.',
-      'You keep framing mild disagreements as existential threats.'
+      "You keep turning every reply into a campaign stump speech.",
+      "You keep implying there’s a shadow committee behind everything.",
+      "You keep framing mild disagreements as existential threats.",
     );
   }
 
-  if (hasDomain(domains, 'media') || hasDomain(domains, 'journalism')) {
+  if (hasDomain(domains, "media") || hasDomain(domains, "journalism")) {
     candidates.push(
-      'You keep saying “sources tell me” about things everyone can see.',
-      'You keep writing like you’re live-tweeting your own op-ed.',
-      'You keep turning every thread into a “thread” (even when it’s one sentence).'
+      "You keep saying “sources tell me” about things everyone can see.",
+      "You keep writing like you’re live-tweeting your own op-ed.",
+      "You keep turning every thread into a “thread” (even when it’s one sentence).",
     );
   }
 
   if (
-    personality.includes('conspiracy') ||
-    personality.includes('contrarian')
+    personality.includes("conspiracy") ||
+    personality.includes("contrarian")
   ) {
     candidates.push(
-      'You keep seeing a grand pattern where there’s clearly just chaos.',
-      'You keep acting like being wrong loudly is a public service.'
+      "You keep seeing a grand pattern where there’s clearly just chaos.",
+      "You keep acting like being wrong loudly is a public service.",
     );
   }
 
@@ -166,7 +166,7 @@ Use this as an occasional callback or framing device. Do NOT force it into every
  */
 export async function ensureRunningBits(
   actorIds: string[],
-  options: RunningBitOptions
+  options: RunningBitOptions,
 ): Promise<Record<string, string>> {
   const maxMemories = clampPositiveInt(options.maxMemories ?? 50, 50);
   if (actorIds.length === 0) return {};
@@ -190,18 +190,18 @@ export async function ensureRunningBits(
         db.actorState.create({
           data: {
             id,
-            tradingBalance: '10000',
+            tradingBalance: "10000",
             reputationPoints: 10000,
             hasPool: false,
             postsToday: 0,
-            currentMood: '0',
+            currentMood: "0",
             recentMemories: [],
             relationships: {},
             createdAt: now,
             updatedAt: now,
           },
-        })
-      )
+        }),
+      ),
     );
 
     // Re-fetch (still bounded by actorIds) so the rest of the logic can persist bits.
@@ -220,7 +220,7 @@ export async function ensureRunningBits(
       actorId: state.id,
     });
     const existing = memories.find(
-      (m) => m.type === 'running_bit' && m.eventId === periodKey
+      (m) => m.type === "running_bit" && m.eventId === periodKey,
     );
 
     if (existing && existing.summary.trim().length > 0) {
@@ -243,7 +243,7 @@ export async function ensureRunningBits(
     });
     const newMemory: NpcMemory = {
       id: await generateSnowflakeId(),
-      type: 'running_bit',
+      type: "running_bit",
       timestamp: now.toISOString(),
       summary: entry.bit,
       eventId: periodKey,
@@ -251,7 +251,7 @@ export async function ensureRunningBits(
     };
 
     const updatedMemories = [...existingMemories, newMemory].slice(
-      -maxMemories
+      -maxMemories,
     );
     const updateRes = await db.actorState.updateMany({
       where: { id: entry.actorId, updatedAt: state.updatedAt },
@@ -275,7 +275,7 @@ export async function ensureRunningBits(
  * Kept separate so callers can decide where/how often to inject it.
  */
 export function toRunningBitPromptContext(bit: string | undefined): string {
-  const trimmed = (bit ?? '').trim();
-  if (!trimmed) return '';
+  const trimmed = (bit ?? "").trim();
+  if (!trimmed) return "";
   return formatRunningBitPromptContext(trimmed);
 }

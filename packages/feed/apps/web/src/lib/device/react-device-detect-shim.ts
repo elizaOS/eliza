@@ -25,13 +25,13 @@ function isIPadOnDesktopPlatform(navigatorLike?: NavigatorLike): boolean {
   if (!navigatorLike) return false;
 
   return (
-    navigatorLike.platform === 'MacIntel' &&
+    navigatorLike.platform === "MacIntel" &&
     (navigatorLike.maxTouchPoints ?? 0) > 1
   );
 }
 
 export function detectDevice(navigatorLike?: NavigatorLike): DeviceDetection {
-  const userAgent = navigatorLike?.userAgent?.toLowerCase() ?? '';
+  const userAgent = navigatorLike?.userAgent?.toLowerCase() ?? "";
   const isIOS =
     IOS_USER_AGENT_PATTERN.test(userAgent) ||
     isIPadOnDesktopPlatform(navigatorLike);
@@ -53,13 +53,13 @@ export function detectDevice(navigatorLike?: NavigatorLike): DeviceDetection {
 }
 
 const detectedDevice = detectDevice(
-  typeof navigator === 'undefined'
+  typeof navigator === "undefined"
     ? undefined
     : {
         maxTouchPoints: navigator.maxTouchPoints,
         platform: navigator.platform,
         userAgent: navigator.userAgent,
-      }
+      },
 );
 
 export const isAndroid = detectedDevice.isAndroid;

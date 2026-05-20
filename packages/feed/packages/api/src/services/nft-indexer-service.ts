@@ -1,6 +1,6 @@
-import { db, eq, inArray, nftOwnership, users } from '@feed/db';
-import { ValidationError } from '@feed/shared';
-import { getNftChainId } from './nft/nft-chain';
+import { db, eq, inArray, nftOwnership, users } from "@feed/db";
+import { ValidationError } from "@feed/shared";
+import { getNftChainId } from "./nft/nft-chain";
 
 type JsonPrimitive = string | number | boolean | null;
 type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
@@ -9,17 +9,17 @@ type JsonObject = { [key: string]: JsonValue };
 export class NftIndexerUnavailableError extends Error {
   constructor(
     message: string,
-    public cause?: unknown
+    public cause?: unknown,
   ) {
     super(message);
-    this.name = 'NftIndexerUnavailableError';
+    this.name = "NftIndexerUnavailableError";
   }
 }
 
 function normalizeHexAddress(address: string): string {
   const trimmed = address.trim();
-  if (!trimmed) return '';
-  if (!trimmed.startsWith('0x') && !trimmed.startsWith('0X')) return trimmed;
+  if (!trimmed) return "";
+  if (!trimmed.startsWith("0x") && !trimmed.startsWith("0X")) return trimmed;
   return `0x${trimmed.slice(2).toLowerCase()}`;
 }
 
@@ -35,18 +35,18 @@ export function getNftCollectionIdFromEnv(): string {
 
   if (!contractAddressRaw) {
     throw new ValidationError(
-      'NFT_CONTRACT_ADDRESS not configured',
-      ['NFT_CONTRACT_ADDRESS'],
-      [{ field: 'NFT_CONTRACT_ADDRESS', message: 'Must be set' }]
+      "NFT_CONTRACT_ADDRESS not configured",
+      ["NFT_CONTRACT_ADDRESS"],
+      [{ field: "NFT_CONTRACT_ADDRESS", message: "Must be set" }],
     );
   }
 
   const contractAddress = normalizeHexAddress(contractAddressRaw);
   if (!/^0x[0-9a-f]{40}$/.test(contractAddress)) {
     throw new ValidationError(
-      'NFT_CONTRACT_ADDRESS is invalid',
-      ['NFT_CONTRACT_ADDRESS'],
-      [{ field: 'NFT_CONTRACT_ADDRESS', message: 'Must be a valid address' }]
+      "NFT_CONTRACT_ADDRESS is invalid",
+      ["NFT_CONTRACT_ADDRESS"],
+      [{ field: "NFT_CONTRACT_ADDRESS", message: "Must be a valid address" }],
     );
   }
 
@@ -117,15 +117,15 @@ function getCacheTtls(opts?: HasOnchainNftAccessOptions): {
 
 async function fetchGraphql<TData extends JsonObject>(
   url: string,
-  payload: { query: string; variables?: JsonObject }
+  payload: { query: string; variables?: JsonObject },
 ): Promise<TData> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
 
   try {
     const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      method: "POST",
+      headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
       signal: controller.signal,
     });
@@ -134,31 +134,31 @@ async function fetchGraphql<TData extends JsonObject>(
     if (!res.ok) {
       throw new NftIndexerUnavailableError(
         `Indexer returned HTTP ${res.status}`,
-        json
+        json,
       );
     }
 
-    if (!json || typeof json !== 'object') {
+    if (!json || typeof json !== "object") {
       throw new NftIndexerUnavailableError(
-        'Indexer returned non-JSON response'
+        "Indexer returned non-JSON response",
       );
     }
 
     const obj = json as { data?: TData; errors?: unknown };
     if (obj.errors) {
       throw new NftIndexerUnavailableError(
-        'Indexer GraphQL errors',
-        obj.errors
+        "Indexer GraphQL errors",
+        obj.errors,
       );
     }
     if (!obj.data) {
-      throw new NftIndexerUnavailableError('Indexer response missing data');
+      throw new NftIndexerUnavailableError("Indexer response missing data");
     }
 
     return obj.data;
   } catch (error) {
     if (error instanceof NftIndexerUnavailableError) throw error;
-    throw new NftIndexerUnavailableError('Failed to reach indexer', error);
+    throw new NftIndexerUnavailableError("Failed to reach indexer", error);
   } finally {
     clearTimeout(timeout);
   }
@@ -169,12 +169,12 @@ type HolderBalanceQueryData = {
 };
 
 export async function getNftHolderBalanceFromIndexer(
-  walletAddress: string
+  walletAddress: string,
 ): Promise<bigint> {
   const url = getNftIndexerGraphqlUrl();
   if (!url) {
     throw new NftIndexerUnavailableError(
-      'NFT_INDEXER_GRAPHQL_URL not configured'
+      "NFT_INDEXER_GRAPHQL_URL not configured",
     );
   }
 
@@ -184,8 +184,8 @@ export async function getNftHolderBalanceFromIndexer(
   } catch (error) {
     if (error instanceof ValidationError) {
       throw new NftIndexerUnavailableError(
-        'NFT collection config not valid',
-        error
+        "NFT collection config not valid",
+        error,
       );
     }
     throw error;
@@ -194,7 +194,7 @@ export async function getNftHolderBalanceFromIndexer(
 
   const data = await fetchGraphql<HolderBalanceQueryData>(url, {
     query:
-      'query($cid:String!,$addr:String!){NftHolder(where:{collection_id:{_eq:$cid},address:{_eq:$addr}},limit:1){balance}}',
+      "query($cid:String!,$addr:String!){NftHolder(where:{collection_id:{_eq:$cid},address:{_eq:$addr}},limit:1){balance}}",
     variables: { cid: collectionId, addr: address },
   });
 
@@ -206,7 +206,7 @@ export async function getNftHolderBalanceFromIndexer(
 
 export async function hasOnchainNftAccess(
   walletAddress: string,
-  opts?: HasOnchainNftAccessOptions
+  opts?: HasOnchainNftAccessOptions,
 ): Promise<boolean> {
   let collectionId: string;
   try {
@@ -214,14 +214,14 @@ export async function hasOnchainNftAccess(
   } catch (error) {
     if (error instanceof ValidationError) {
       throw new NftIndexerUnavailableError(
-        'NFT collection config not valid',
-        error
+        "NFT collection config not valid",
+        error,
       );
     }
     throw error;
   }
   const address = normalizeHexAddress(walletAddress);
-  const cacheScope = opts?.cacheScope?.trim() || 'default';
+  const cacheScope = opts?.cacheScope?.trim() || "default";
   const cacheKey = `${cacheScope}:${collectionId}:${address}`;
 
   if (opts?.bypassCache === true) {
@@ -263,12 +263,12 @@ type TokensByIdsQueryData = {
 };
 
 export async function getNftTokenOwnersFromIndexer(
-  tokenIds: number[]
+  tokenIds: number[],
 ): Promise<Map<number, { ownerAddress: string; acquiredAt: string }>> {
   const url = getNftIndexerGraphqlUrl();
   if (!url) {
     throw new NftIndexerUnavailableError(
-      'NFT_INDEXER_GRAPHQL_URL not configured'
+      "NFT_INDEXER_GRAPHQL_URL not configured",
     );
   }
 
@@ -278,8 +278,8 @@ export async function getNftTokenOwnersFromIndexer(
   } catch (error) {
     if (error instanceof ValidationError) {
       throw new NftIndexerUnavailableError(
-        'NFT collection config not valid',
-        error
+        "NFT collection config not valid",
+        error,
       );
     }
     throw error;
@@ -288,7 +288,7 @@ export async function getNftTokenOwnersFromIndexer(
 
   const data = await fetchGraphql<TokensByIdsQueryData>(url, {
     query:
-      'query($cid:String!,$tokenIds:[numeric!]!){NftToken(where:{collection_id:{_eq:$cid},tokenId:{_in:$tokenIds}}){tokenId updatedAt owner{address}}}',
+      "query($cid:String!,$tokenIds:[numeric!]!){NftToken(where:{collection_id:{_eq:$cid},tokenId:{_in:$tokenIds}}){tokenId updatedAt owner{address}}}",
     variables: { cid: collectionId, tokenIds: tokenIdStrings },
   });
 
@@ -312,12 +312,12 @@ type OwnedTokensQueryData = {
 
 export async function getOwnedTokenIdsFromIndexer(
   walletAddress: string,
-  opts?: { limit?: number }
+  opts?: { limit?: number },
 ): Promise<number[]> {
   const url = getNftIndexerGraphqlUrl();
   if (!url) {
     throw new NftIndexerUnavailableError(
-      'NFT_INDEXER_GRAPHQL_URL not configured'
+      "NFT_INDEXER_GRAPHQL_URL not configured",
     );
   }
 
@@ -327,8 +327,8 @@ export async function getOwnedTokenIdsFromIndexer(
   } catch (error) {
     if (error instanceof ValidationError) {
       throw new NftIndexerUnavailableError(
-        'NFT collection config not valid',
-        error
+        "NFT collection config not valid",
+        error,
       );
     }
     throw error;
@@ -338,7 +338,7 @@ export async function getOwnedTokenIdsFromIndexer(
 
   const data = await fetchGraphql<OwnedTokensQueryData>(url, {
     query:
-      'query($cid:String!,$addr:String!,$limit:Int!){NftToken(where:{collection_id:{_eq:$cid},owner:{address:{_eq:$addr}}},order_by:[{tokenId:asc}],limit:$limit){tokenId}}',
+      "query($cid:String!,$addr:String!,$limit:Int!){NftToken(where:{collection_id:{_eq:$cid},owner:{address:{_eq:$addr}}},order_by:[{tokenId:asc}],limit:$limit){tokenId}}",
     variables: { cid: collectionId, addr: address, limit },
   });
 
@@ -355,7 +355,7 @@ export async function getOwnedTokenIdsFromIndexer(
  * treat DB ownership as truthy for minted users and local testing.
  */
 export async function getOwnedTokenIdsFromDbFallback(
-  dbUserId: string
+  dbUserId: string,
 ): Promise<number[]> {
   const rows = await db
     .select({ tokenId: nftOwnership.tokenId })
@@ -365,7 +365,7 @@ export async function getOwnedTokenIdsFromDbFallback(
 }
 
 export async function getOwnerUsersByWalletAddresses(
-  ownerAddresses: string[]
+  ownerAddresses: string[],
 ): Promise<
   Map<
     string,
@@ -380,7 +380,7 @@ export async function getOwnerUsersByWalletAddresses(
   if (ownerAddresses.length === 0) return new Map();
 
   const normalized = Array.from(
-    new Set(ownerAddresses.map(normalizeHexAddress))
+    new Set(ownerAddresses.map(normalizeHexAddress)),
   );
   const rows = await db
     .select({

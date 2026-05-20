@@ -11,8 +11,8 @@
  * - Total: ~1.5 MB — well within IndexedDB quotas
  */
 
-import { del, get, set } from 'idb-keyval';
-import type { ChatMessage, ChatMessagesData } from '@/hooks/useChatMessages';
+import { del, get, set } from "idb-keyval";
+import type { ChatMessage, ChatMessagesData } from "@/hooks/useChatMessages";
 
 const MAX_CACHED_MESSAGES_PER_CHAT = 100;
 const MAX_CACHED_CHATS = 50;
@@ -25,7 +25,7 @@ interface CachedChatMessages {
   cachedAt: number;
 }
 
-const isBrowser = typeof window !== 'undefined';
+const isBrowser = typeof window !== "undefined";
 
 /** User-scoped key helpers — isolate cached data per authenticated user. */
 function storeKey(userId: string, chatId: string): string {
@@ -37,7 +37,7 @@ function indexKey(userId: string): string {
 
 export async function getCachedMessages(
   userId: string,
-  chatId: string
+  chatId: string,
 ): Promise<CachedChatMessages | null> {
   if (!isBrowser) return null;
   const cached = await get<CachedChatMessages>(storeKey(userId, chatId));
@@ -47,7 +47,7 @@ export async function getCachedMessages(
 export async function setCachedMessages(
   userId: string,
   chatId: string,
-  data: ChatMessagesData
+  data: ChatMessagesData,
 ): Promise<void> {
   if (!isBrowser) return;
   const trimmed: CachedChatMessages = {
@@ -78,7 +78,7 @@ export async function setCachedMessages(
  */
 export async function getCachedChatIds(
   userId: string,
-  limit = 10
+  limit = 10,
 ): Promise<string[]> {
   if (!isBrowser) return [];
   const index = await get<string[]>(indexKey(userId));

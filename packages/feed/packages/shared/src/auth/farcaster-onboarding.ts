@@ -4,8 +4,8 @@
  * Uses the proper Sign In with Farcaster (SIWF) protocol via relay.farcaster.xyz
  */
 
-import { logger } from '../utils/logger';
-import { signInWithFarcaster } from './farcaster-auth-client';
+import { logger } from "../utils/logger";
+import { signInWithFarcaster } from "./farcaster-auth-client";
 
 export interface FarcasterOnboardingProfile {
   fid: number;
@@ -20,24 +20,24 @@ export interface FarcasterOnboardingProfile {
  * Uses the proper SIWF protocol via relay.farcaster.xyz
  */
 export async function openFarcasterOnboardingPopup(
-  userId: string
+  userId: string,
 ): Promise<FarcasterOnboardingProfile> {
   const result = await signInWithFarcaster({
     userId,
     onStatusUpdate: (state) => {
       logger.debug(
-        'Farcaster auth status update',
+        "Farcaster auth status update",
         { state },
-        'FarcasterOnboarding'
+        "FarcasterOnboarding",
       );
     },
   });
 
   // Call the backend to verify and store the authentication
-  const response = await fetch('/api/auth/onboarding/farcaster/callback', {
-    method: 'POST',
+  const response = await fetch("/api/auth/onboarding/farcaster/callback", {
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
     },
     body: JSON.stringify({
       message: result.message,
@@ -56,7 +56,7 @@ export async function openFarcasterOnboardingPopup(
       error?: string;
     };
     throw new Error(
-      errorData.error || 'Failed to verify Farcaster authentication'
+      errorData.error || "Failed to verify Farcaster authentication",
     );
   }
 
@@ -74,7 +74,7 @@ export async function openFarcasterOnboardingPopup(
  * Note: This now uses the same proper SIWF flow
  */
 export async function openNeynarFarcasterAuth(
-  userId: string
+  userId: string,
 ): Promise<FarcasterOnboardingProfile> {
   return openFarcasterOnboardingPopup(userId);
 }
@@ -83,7 +83,7 @@ export async function openNeynarFarcasterAuth(
  * Fetch additional Farcaster profile data from Neynar API
  */
 export async function fetchFarcasterProfile(
-  fid: number
+  fid: number,
 ): Promise<FarcasterOnboardingProfile | null> {
   const response = await fetch(`/api/farcaster/profile/${fid}`);
 

@@ -2,15 +2,15 @@
  * APIs should not expose future posts or events.
  */
 
-import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
-import { cachedDb } from '@feed/api';
-import { db, generateSnowflakeId, getDbInstance } from '@feed/db';
-import { StaticDataRegistry } from '@feed/engine';
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { cachedDb } from "@feed/api";
+import { db, generateSnowflakeId, getDbInstance } from "@feed/db";
+import { StaticDataRegistry } from "@feed/engine";
 
 const BASE_URL =
   process.env.TEST_API_URL ||
   process.env.TEST_BASE_URL ||
-  'http://localhost:3000';
+  "http://localhost:3000";
 
 async function assertOk(response: Response): Promise<void> {
   if (response.ok) {
@@ -18,11 +18,11 @@ async function assertOk(response: Response): Promise<void> {
   }
 
   throw new Error(
-    `Expected ${response.url} to succeed, received ${response.status}: ${await response.text()}`
+    `Expected ${response.url} to succeed, received ${response.status}: ${await response.text()}`,
   );
 }
 
-describe('Time Filtering - API Endpoints', () => {
+describe("Time Filtering - API Endpoints", () => {
   let testActorId: string;
   let testUserId: string;
   let futurePostId: string;
@@ -41,7 +41,7 @@ describe('Time Filtering - API Endpoints', () => {
     const firstActor = allActors[0];
     if (!firstActor) {
       throw new Error(
-        'No actors in registry - cannot run time filtering tests'
+        "No actors in registry - cannot run time filtering tests",
       );
     }
     testActorId = firstActor.id;
@@ -50,7 +50,7 @@ describe('Time Filtering - API Endpoints', () => {
       data: {
         id: await generateSnowflakeId(),
         username: `test-user-${Date.now()}`,
-        displayName: 'Test User',
+        displayName: "Test User",
         isTest: false,
         updatedAt: new Date(),
       },
@@ -60,12 +60,12 @@ describe('Time Filtering - API Endpoints', () => {
     const pastPost = await db.post.create({
       data: {
         id: await generateSnowflakeId(),
-        content: 'Past post',
+        content: "Past post",
         authorId: testActorId,
-        gameId: 'continuous',
+        gameId: "continuous",
         dayNumber: Math.floor(Date.now() / (1000 * 60 * 60 * 24)),
         timestamp: oneHourAgo,
-        type: 'post',
+        type: "post",
       },
     });
     pastPostId = pastPost.id;
@@ -73,12 +73,12 @@ describe('Time Filtering - API Endpoints', () => {
     const currentPost = await db.post.create({
       data: {
         id: await generateSnowflakeId(),
-        content: 'Current post',
+        content: "Current post",
         authorId: testActorId,
-        gameId: 'continuous',
+        gameId: "continuous",
         dayNumber: Math.floor(Date.now() / (1000 * 60 * 60 * 24)),
         timestamp: now,
-        type: 'post',
+        type: "post",
       },
     });
     currentPostId = currentPost.id;
@@ -86,12 +86,12 @@ describe('Time Filtering - API Endpoints', () => {
     const futurePost = await db.post.create({
       data: {
         id: await generateSnowflakeId(),
-        content: 'Future post - should not appear',
+        content: "Future post - should not appear",
         authorId: testActorId,
-        gameId: 'continuous',
+        gameId: "continuous",
         dayNumber: Math.floor(Date.now() / (1000 * 60 * 60 * 24)),
         timestamp: oneHourFuture,
-        type: 'post',
+        type: "post",
       },
     });
     futurePostId = futurePost.id;
@@ -108,8 +108,8 @@ describe('Time Filtering - API Endpoints', () => {
     }
   });
 
-  describe('Database Service Methods', () => {
-    it('getRecentPosts should filter out future posts', async () => {
+  describe("Database Service Methods", () => {
+    it("getRecentPosts should filter out future posts", async () => {
       const [pastPost, currentPost, futurePost] = await Promise.all([
         db.post.findUnique({ where: { id: pastPostId } }),
         db.post.findUnique({ where: { id: currentPostId } }),
@@ -121,12 +121,12 @@ describe('Time Filtering - API Endpoints', () => {
       expect(futurePost).toBeTruthy();
 
       const freshNow = new Date();
-      expect(pastPost!.timestamp.getTime()).toBeLessThan(freshNow.getTime());
-      expect(currentPost!.timestamp.getTime()).toBeLessThanOrEqual(
-        freshNow.getTime()
+      expect(pastPost?.timestamp.getTime()).toBeLessThan(freshNow.getTime());
+      expect(currentPost?.timestamp.getTime()).toBeLessThanOrEqual(
+        freshNow.getTime(),
       );
-      expect(futurePost!.timestamp.getTime()).toBeGreaterThan(
-        freshNow.getTime()
+      expect(futurePost?.timestamp.getTime()).toBeGreaterThan(
+        freshNow.getTime(),
       );
 
       const posts = await getDbInstance().getRecentPosts(100);
@@ -136,12 +136,12 @@ describe('Time Filtering - API Endpoints', () => {
 
       for (const post of posts) {
         expect(post.timestamp.getTime()).toBeLessThanOrEqual(
-          freshNow.getTime()
+          freshNow.getTime(),
         );
       }
     });
 
-    it('getPostsByActor should filter out future posts', async () => {
+    it("getPostsByActor should filter out future posts", async () => {
       const actor = StaticDataRegistry.getActor(testActorId);
       expect(actor).toBeTruthy();
 
@@ -153,7 +153,7 @@ describe('Time Filtering - API Endpoints', () => {
       const freshNow = new Date();
       for (const post of posts) {
         expect(post.timestamp.getTime()).toBeLessThanOrEqual(
-          freshNow.getTime()
+          freshNow.getTime(),
         );
       }
 
@@ -164,8 +164,8 @@ describe('Time Filtering - API Endpoints', () => {
     });
   });
 
-  describe('Cached Database Service Methods', () => {
-    it('getRecentPosts should filter out future posts', async () => {
+  describe("Cached Database Service Methods", () => {
+    it("getRecentPosts should filter out future posts", async () => {
       const posts = await cachedDb.getRecentPosts(100);
       const postIds = posts.map((p) => p.id);
 
@@ -174,12 +174,12 @@ describe('Time Filtering - API Endpoints', () => {
       const freshNow = new Date();
       for (const post of posts) {
         expect(post.timestamp.getTime()).toBeLessThanOrEqual(
-          freshNow.getTime()
+          freshNow.getTime(),
         );
       }
     });
 
-    it('getPostsByActor should filter out future posts', async () => {
+    it("getPostsByActor should filter out future posts", async () => {
       const posts = await cachedDb.getPostsByActor(testActorId, 100);
       const postIds = posts.map((p) => p.id);
 
@@ -188,12 +188,12 @@ describe('Time Filtering - API Endpoints', () => {
       const freshNow = new Date();
       for (const post of posts) {
         expect(post.timestamp.getTime()).toBeLessThanOrEqual(
-          freshNow.getTime()
+          freshNow.getTime(),
         );
       }
     });
 
-    it('getPostsForFollowing should filter out future posts', async () => {
+    it("getPostsForFollowing should filter out future posts", async () => {
       await db.follow.create({
         data: {
           id: await generateSnowflakeId(),
@@ -205,7 +205,7 @@ describe('Time Filtering - API Endpoints', () => {
       const posts = await cachedDb.getPostsForFollowing(
         testUserId,
         [testActorId],
-        100
+        100,
       );
       const postIds = posts.map((p) => p.id);
 
@@ -214,7 +214,7 @@ describe('Time Filtering - API Endpoints', () => {
       const freshNow = new Date();
       for (const post of posts) {
         expect(post.timestamp.getTime()).toBeLessThanOrEqual(
-          freshNow.getTime()
+          freshNow.getTime(),
         );
       }
 
@@ -224,8 +224,8 @@ describe('Time Filtering - API Endpoints', () => {
     });
   });
 
-  describe('API Route Integration', () => {
-    it('GET /api/posts should filter out future posts', async () => {
+  describe("API Route Integration", () => {
+    it("GET /api/posts should filter out future posts", async () => {
       const response = await fetch(`${BASE_URL}/api/posts?limit=100`);
       await assertOk(response);
       const data = await response.json();
@@ -245,9 +245,9 @@ describe('Time Filtering - API Endpoints', () => {
       }
     });
 
-    it('GET /api/posts?actorId=... should filter out future posts', async () => {
+    it("GET /api/posts?actorId=... should filter out future posts", async () => {
       const response = await fetch(
-        `${BASE_URL}/api/posts?actorId=${testActorId}&limit=100`
+        `${BASE_URL}/api/posts?actorId=${testActorId}&limit=100`,
       );
       await assertOk(response);
       const data = await response.json();
@@ -267,28 +267,28 @@ describe('Time Filtering - API Endpoints', () => {
       }
     });
 
-    it('GET /api/users/[userId]/posts should filter out future posts', async () => {
+    it("GET /api/users/[userId]/posts should filter out future posts", async () => {
       const userPastPost = await db.post.create({
         data: {
           id: await generateSnowflakeId(),
-          content: 'User past post',
+          content: "User past post",
           authorId: testUserId,
-          gameId: 'continuous',
+          gameId: "continuous",
           dayNumber: Math.floor(Date.now() / (1000 * 60 * 60 * 24)),
           timestamp: oneHourAgo,
-          type: 'post',
+          type: "post",
         },
       });
 
       const userFuturePost = await db.post.create({
         data: {
           id: await generateSnowflakeId(),
-          content: 'User future post',
+          content: "User future post",
           authorId: testUserId,
-          gameId: 'continuous',
+          gameId: "continuous",
           dayNumber: Math.floor(Date.now() / (1000 * 60 * 60 * 24)),
           timestamp: oneHourFuture,
-          type: 'post',
+          type: "post",
         },
       });
 
@@ -297,8 +297,8 @@ describe('Time Filtering - API Endpoints', () => {
       const data = await response.json();
 
       expect(Array.isArray(data.items)).toBe(true);
-      expect(typeof data.total).toBe('number');
-      expect(data.type).toBe('posts');
+      expect(typeof data.total).toBe("number");
+      expect(data.type).toBe("posts");
       const postIds = data.items.map((p: { id: string }) => p.id);
 
       expect(postIds).not.toContain(userFuturePost.id);
@@ -317,31 +317,31 @@ describe('Time Filtering - API Endpoints', () => {
       });
     });
 
-    it('GET /api/feed/widgets/breaking-news should filter out future events', async () => {
+    it("GET /api/feed/widgets/breaking-news should filter out future events", async () => {
       const pastEvent = await db.worldEvent.create({
         data: {
           id: await generateSnowflakeId(),
-          eventType: 'announcement',
-          description: 'Past breaking news event',
+          eventType: "announcement",
+          description: "Past breaking news event",
           timestamp: oneHourAgo,
-          visibility: 'public',
-          gameId: 'continuous',
+          visibility: "public",
+          gameId: "continuous",
         },
       });
 
       const futureEvent = await db.worldEvent.create({
         data: {
           id: await generateSnowflakeId(),
-          eventType: 'announcement',
-          description: 'Future breaking news event',
+          eventType: "announcement",
+          description: "Future breaking news event",
           timestamp: oneHourFuture,
-          visibility: 'public',
-          gameId: 'continuous',
+          visibility: "public",
+          gameId: "continuous",
         },
       });
 
       const response = await fetch(
-        `${BASE_URL}/api/feed/widgets/breaking-news`
+        `${BASE_URL}/api/feed/widgets/breaking-news`,
       );
       await assertOk(response);
       const data = await response.json();
@@ -365,9 +365,9 @@ describe('Time Filtering - API Endpoints', () => {
       });
     });
 
-    it('GET /api/feed/widgets/trending-posts should filter out future posts', async () => {
+    it("GET /api/feed/widgets/trending-posts should filter out future posts", async () => {
       const response = await fetch(
-        `${BASE_URL}/api/feed/widgets/trending-posts`
+        `${BASE_URL}/api/feed/widgets/trending-posts`,
       );
       await assertOk(response);
       const data = await response.json();
@@ -388,32 +388,32 @@ describe('Time Filtering - API Endpoints', () => {
     });
   });
 
-  describe('Edge Cases', () => {
-    it('should handle posts exactly at current time', async () => {
+  describe("Edge Cases", () => {
+    it("should handle posts exactly at current time", async () => {
       const freshNow = new Date();
       const posts = await getDbInstance().getRecentPosts(100);
       const currentPost = posts.find((p) => p.id === currentPostId);
       if (currentPost) {
         expect(currentPost.timestamp.getTime()).toBeLessThanOrEqual(
-          freshNow.getTime()
+          freshNow.getTime(),
         );
       }
 
       expect(posts.length).toBeGreaterThan(0);
     });
 
-    it('should handle posts a few seconds in the future', async () => {
+    it("should handle posts a few seconds in the future", async () => {
       const freshNow = new Date();
       const nearFuture = new Date(freshNow.getTime() + 5000);
       const edgeCasePost = await db.post.create({
         data: {
           id: await generateSnowflakeId(),
-          content: 'Edge case - near future',
+          content: "Edge case - near future",
           authorId: testActorId,
-          gameId: 'continuous',
+          gameId: "continuous",
           dayNumber: Math.floor(Date.now() / (1000 * 60 * 60 * 24)),
           timestamp: nearFuture,
-          type: 'post',
+          type: "post",
         },
       });
 
@@ -425,18 +425,18 @@ describe('Time Filtering - API Endpoints', () => {
       await db.post.delete({ where: { id: edgeCasePost.id } });
     });
 
-    it('should handle posts far in the future', async () => {
+    it("should handle posts far in the future", async () => {
       const freshNow = new Date();
       const farFuture = new Date(freshNow.getTime() + 24 * 60 * 60 * 1000);
       const farFuturePost = await db.post.create({
         data: {
           id: await generateSnowflakeId(),
-          content: 'Far future post',
+          content: "Far future post",
           authorId: testActorId,
-          gameId: 'continuous',
+          gameId: "continuous",
           dayNumber: Math.floor(Date.now() / (1000 * 60 * 60 * 24)),
           timestamp: farFuture,
-          type: 'post',
+          type: "post",
         },
       });
 

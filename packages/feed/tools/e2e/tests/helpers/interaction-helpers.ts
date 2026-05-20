@@ -2,18 +2,18 @@
  * Shared interaction helpers for E2E tests.
  */
 
-import type { Locator, Page } from '@playwright/test';
-import { TIMEOUTS } from './test-data';
+import type { Locator, Page } from "@playwright/test";
+import { TIMEOUTS } from "./test-data";
 
 export async function clickTab(page: Page, tabName: string): Promise<boolean> {
   const tab = page
     .locator(
-      `[role="tab"]:has-text("${tabName}"), button:has-text("${tabName}"), a:has-text("${tabName}")`
+      `[role="tab"]:has-text("${tabName}"), button:has-text("${tabName}"), a:has-text("${tabName}")`,
     )
     .first();
   if (!(await tab.isVisible({ timeout: TIMEOUTS.SHORT }).catch(() => false)))
     return false;
-  const _before = await page.locator('body').textContent();
+  const _before = await page.locator("body").textContent();
   await tab.click({ force: true }).catch(() => {});
   await page.waitForTimeout(1000);
   return true;
@@ -22,7 +22,7 @@ export async function clickTab(page: Page, tabName: string): Promise<boolean> {
 export async function fillAndVerify(
   page: Page,
   selector: string,
-  value: string
+  value: string,
 ): Promise<string | null> {
   const input = page.locator(selector).first();
   if (!(await input.isVisible({ timeout: TIMEOUTS.SHORT }).catch(() => false)))
@@ -36,7 +36,7 @@ export async function fillAndVerify(
 export async function openModal(
   page: Page,
   triggerSelector: string,
-  modalSelector = '[role="dialog"]'
+  modalSelector = '[role="dialog"]',
 ): Promise<Locator | null> {
   const trigger = page.locator(triggerSelector).first();
   if (
@@ -52,7 +52,7 @@ export async function openModal(
 }
 
 export async function closeModal(page: Page): Promise<void> {
-  await page.keyboard.press('Escape').catch(() => {});
+  await page.keyboard.press("Escape").catch(() => {});
   await page.waitForTimeout(300);
   const closeButton = page
     .locator('button[aria-label*="close" i], button:has(svg.lucide-x)')
@@ -65,7 +65,7 @@ export async function closeModal(page: Page): Promise<void> {
 
 export async function scrollToLoadMore(
   page: Page,
-  itemSelector: string
+  itemSelector: string,
 ): Promise<{ before: number; after: number }> {
   const before = await page
     .locator(itemSelector)
@@ -84,7 +84,7 @@ export async function pageContainsText(
   page: Page,
   ...texts: string[]
 ): Promise<boolean> {
-  const content = await page.locator('body').textContent();
+  const content = await page.locator("body").textContent();
   if (!content) return false;
   const lower = content.toLowerCase();
   return texts.some((t) => lower.includes(t.toLowerCase()));
@@ -92,7 +92,7 @@ export async function pageContainsText(
 
 export async function clickFirstVisible(
   page: Page,
-  selectors: string[]
+  selectors: string[],
 ): Promise<boolean> {
   for (const selector of selectors) {
     const el = page.locator(selector).first();
@@ -105,16 +105,16 @@ export async function clickFirstVisible(
 }
 
 export function getBaseUrl(): string {
-  return process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:3000';
+  return process.env.PLAYWRIGHT_BASE_URL || "http://localhost:3000";
 }
 
 export async function navigateToTab(
   page: Page,
   basePath: string,
-  tabName: string
+  tabName: string,
 ): Promise<void> {
   await page.goto(`${getBaseUrl()}${basePath}?tab=${tabName}`, {
-    waitUntil: 'domcontentloaded',
+    waitUntil: "domcontentloaded",
     timeout: 45000,
   });
   await page.waitForTimeout(1500);

@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import type { ISeriesApi, Time } from 'lightweight-charts';
-import { ColorType, createChart, LineSeries } from 'lightweight-charts';
-import { memo, useEffect, useMemo, useRef } from 'react';
+import type { ISeriesApi, Time } from "lightweight-charts";
+import { ColorType, createChart, LineSeries } from "lightweight-charts";
+import { memo, useEffect, useMemo, useRef } from "react";
 
 /**
  * Chart data point for sparkline series.
@@ -52,8 +52,8 @@ function PredictionSparklineBase({
 }: PredictionSparklineProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<ReturnType<typeof createChart> | null>(null);
-  const yesSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
-  const noSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const yesSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const noSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
 
   const chartData = useMemo(() => {
     if (!data || data.length === 0) return { yes: [], no: [] };
@@ -97,8 +97,8 @@ function PredictionSparklineBase({
       width,
       height,
       layout: {
-        background: { type: ColorType.Solid, color: 'transparent' },
-        textColor: 'transparent',
+        background: { type: ColorType.Solid, color: "transparent" },
+        textColor: "transparent",
         attributionLogo: false,
       },
       grid: {
@@ -119,7 +119,7 @@ function PredictionSparklineBase({
 
     // YES series (green)
     yesSeriesRef.current = chart.addSeries(LineSeries, {
-      color: '#22c55e',
+      color: "#22c55e",
       lineWidth: 1,
       priceLineVisible: false,
       lastValueVisible: false,
@@ -128,7 +128,7 @@ function PredictionSparklineBase({
 
     // NO series (red)
     noSeriesRef.current = chart.addSeries(LineSeries, {
-      color: '#ef4444',
+      color: "#ef4444",
       lineWidth: 1,
       priceLineVisible: false,
       lastValueVisible: false,

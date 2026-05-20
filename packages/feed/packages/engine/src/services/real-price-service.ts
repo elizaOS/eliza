@@ -10,7 +10,7 @@
  * Falls back to hardcoded defaults on network failure — never throws.
  */
 
-import { logger } from '@feed/shared';
+import { logger } from "@feed/shared";
 
 interface CachedPrices {
   prices: Map<string, number>;
@@ -22,7 +22,7 @@ interface PriceMapping {
   /** Parody org file ID (matches the filename in data/organizations/) */
   orgFileId: string;
   /** Source: 'coingecko' for live fetch, 'static' for hardcoded reference */
-  source: 'coingecko' | 'static';
+  source: "coingecko" | "static";
   /** CoinGecko ID (only used if source='coingecko') */
   coinGeckoId?: string;
   /** Static reference price (used for stocks or as fallback) */
@@ -38,44 +38,44 @@ interface PriceMapping {
 const PRICE_MAPPINGS: PriceMapping[] = [
   // === CRYPTO (live from CoinGecko) ===
   {
-    orgFileId: 'ethereum-foundaition',
-    source: 'coingecko',
-    coinGeckoId: 'ethereum',
+    orgFileId: "ethereum-foundaition",
+    source: "coingecko",
+    coinGeckoId: "ethereum",
     staticPrice: 2100,
   },
   {
-    orgFileId: 'zcaish',
-    source: 'coingecko',
-    coinGeckoId: 'zcash',
+    orgFileId: "zcaish",
+    source: "coingecko",
+    coinGeckoId: "zcash",
     staticPrice: 240,
   },
 
   // === STOCKS (static reference prices — CoinGecko doesn't cover equities) ===
-  { orgFileId: 'nvidai', source: 'static', staticPrice: 950 },
-  { orgFileId: 'teslai', source: 'static', staticPrice: 250 },
-  { orgFileId: 'aipple', source: 'static', staticPrice: 225 },
-  { orgFileId: 'maicrosoft', source: 'static', staticPrice: 420 },
-  { orgFileId: 'aimazon', source: 'static', staticPrice: 195 },
-  { orgFileId: 'aiphabet', source: 'static', staticPrice: 165 },
-  { orgFileId: 'palaintir', source: 'static', staticPrice: 80 },
-  { orgFileId: 'netflaix', source: 'static', staticPrice: 900 },
-  { orgFileId: 'straitegy', source: 'static', staticPrice: 330 },
-  { orgFileId: 'spaicex', source: 'static', staticPrice: 180 },
-  { orgFileId: 'neurailink', source: 'static', staticPrice: 22 },
-  { orgFileId: 'aitropic', source: 'static', staticPrice: 45 },
-  { orgFileId: 'airk-invest', source: 'static', staticPrice: 55 },
+  { orgFileId: "nvidai", source: "static", staticPrice: 950 },
+  { orgFileId: "teslai", source: "static", staticPrice: 250 },
+  { orgFileId: "aipple", source: "static", staticPrice: 225 },
+  { orgFileId: "maicrosoft", source: "static", staticPrice: 420 },
+  { orgFileId: "aimazon", source: "static", staticPrice: 195 },
+  { orgFileId: "aiphabet", source: "static", staticPrice: 165 },
+  { orgFileId: "palaintir", source: "static", staticPrice: 80 },
+  { orgFileId: "netflaix", source: "static", staticPrice: 900 },
+  { orgFileId: "straitegy", source: "static", staticPrice: 330 },
+  { orgFileId: "spaicex", source: "static", staticPrice: 180 },
+  { orgFileId: "neurailink", source: "static", staticPrice: 22 },
+  { orgFileId: "aitropic", source: "static", staticPrice: 45 },
+  { orgFileId: "airk-invest", source: "static", staticPrice: 55 },
 ];
 
 /** Core crypto always fetched for market context */
 const CORE_CRYPTO_IDS = [
-  'bitcoin',
-  'ethereum',
-  'solana',
-  'chainlink',
-  'dogecoin',
+  "bitcoin",
+  "ethereum",
+  "solana",
+  "chainlink",
+  "dogecoin",
 ];
 
-const COINGECKO_API = 'https://api.coingecko.com/api/v3/simple/price';
+const COINGECKO_API = "https://api.coingecko.com/api/v3/simple/price";
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 const FETCH_TIMEOUT_MS = 10_000;
 
@@ -93,7 +93,7 @@ class RealPriceService {
 
     // Only fetch crypto IDs that we actually map to
     const cryptoMappings = PRICE_MAPPINGS.filter(
-      (m) => m.source === 'coingecko' && m.coinGeckoId
+      (m) => m.source === "coingecko" && m.coinGeckoId,
     );
     const allIds = [
       ...CORE_CRYPTO_IDS,
@@ -105,7 +105,7 @@ class RealPriceService {
     const changes = new Map<string, number>();
 
     try {
-      const url = `${COINGECKO_API}?ids=${uniqueIds.join(',')}&vs_currencies=usd&include_24hr_change=true`;
+      const url = `${COINGECKO_API}?ids=${uniqueIds.join(",")}&vs_currencies=usd&include_24hr_change=true`;
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
@@ -134,24 +134,24 @@ class RealPriceService {
       logger.info(
         `Fetched ${prices.size} crypto prices from CoinGecko`,
         {
-          btc: prices.get('bitcoin'),
-          eth: prices.get('ethereum'),
-          sol: prices.get('solana'),
+          btc: prices.get("bitcoin"),
+          eth: prices.get("ethereum"),
+          sol: prices.get("solana"),
         },
-        'RealPriceService'
+        "RealPriceService",
       );
     } catch (err) {
       logger.warn(
-        'CoinGecko fetch failed, using static prices only',
+        "CoinGecko fetch failed, using static prices only",
         err instanceof Error ? err : undefined,
-        'RealPriceService'
+        "RealPriceService",
       );
     }
 
     // Always add static prices for stock-based orgs
     // (these don't come from CoinGecko)
     for (const mapping of PRICE_MAPPINGS) {
-      if (mapping.source === 'static') {
+      if (mapping.source === "static") {
         // Use a synthetic key for static prices
         prices.set(`static:${mapping.orgFileId}`, mapping.staticPrice);
       }
@@ -169,7 +169,7 @@ class RealPriceService {
     const mapping = PRICE_MAPPINGS.find((m) => m.orgFileId === orgFileId);
     if (!mapping) return null;
 
-    if (mapping.source === 'coingecko' && mapping.coinGeckoId) {
+    if (mapping.source === "coingecko" && mapping.coinGeckoId) {
       const livePrice = this.cache?.prices.get(mapping.coinGeckoId);
       return livePrice ?? mapping.staticPrice;
     }
@@ -182,18 +182,18 @@ class RealPriceService {
    * Shows actual BTC, ETH, SOL prices + 24h changes.
    */
   getMarketContextForPrompt(): string {
-    if (!this.cache) return '';
+    if (!this.cache) return "";
 
     const lines: string[] = [];
 
     const format = (id: string, label: string) => {
-      const price = this.cache!.prices.get(id);
-      const change = this.cache!.changes.get(id);
+      const price = this.cache?.prices.get(id);
+      const change = this.cache?.changes.get(id);
       if (!price) return;
       const changeStr =
         change != null
-          ? ` (${change >= 0 ? '+' : ''}${change.toFixed(1)}% 24h)`
-          : '';
+          ? ` (${change >= 0 ? "+" : ""}${change.toFixed(1)}% 24h)`
+          : "";
       if (price >= 1000) {
         lines.push(`${label}: $${price.toLocaleString()}${changeStr}`);
       } else if (price >= 1) {
@@ -203,28 +203,28 @@ class RealPriceService {
       }
     };
 
-    format('bitcoin', 'Bitcoin');
-    format('ethereum', 'Ethereum');
-    format('solana', 'Solana');
-    format('chainlink', 'Chainlink');
-    format('dogecoin', 'Dogecoin');
+    format("bitcoin", "Bitcoin");
+    format("ethereum", "Ethereum");
+    format("solana", "Solana");
+    format("chainlink", "Chainlink");
+    format("dogecoin", "Dogecoin");
 
-    if (lines.length === 0) return '';
+    if (lines.length === 0) return "";
 
     // Add overall sentiment
-    const btcChange = this.cache.changes.get('bitcoin') ?? 0;
-    const ethChange = this.cache.changes.get('ethereum') ?? 0;
+    const btcChange = this.cache.changes.get("bitcoin") ?? 0;
+    const ethChange = this.cache.changes.get("ethereum") ?? 0;
     const avgChange = (btcChange + ethChange) / 2;
     const sentiment =
       avgChange > 2
-        ? 'strongly bullish'
+        ? "strongly bullish"
         : avgChange > 0
-          ? 'slightly bullish'
+          ? "slightly bullish"
           : avgChange > -2
-            ? 'slightly bearish'
-            : 'strongly bearish';
+            ? "slightly bearish"
+            : "strongly bearish";
 
-    return `REAL-WORLD CRYPTO MARKETS (use these to ground in-world prices):\n${lines.join('\n')}\nOverall sentiment: ${sentiment}`;
+    return `REAL-WORLD CRYPTO MARKETS (use these to ground in-world prices):\n${lines.join("\n")}\nOverall sentiment: ${sentiment}`;
   }
 }
 

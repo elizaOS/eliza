@@ -73,15 +73,15 @@ import {
   requireUserByIdentifier,
   successResponse,
   withErrorHandling,
-} from '@feed/api';
-import { and, db, eq, ne, users } from '@feed/db';
-import { logger, UserIdParamSchema } from '@feed/shared';
-import type { NextRequest } from 'next/server';
-import { z } from 'zod';
-import { trackServerEvent } from '@/lib/posthog/server';
+} from "@feed/api";
+import { and, db, eq, ne, users } from "@feed/db";
+import { logger, UserIdParamSchema } from "@feed/shared";
+import type { NextRequest } from "next/server";
+import { z } from "zod";
+import { trackServerEvent } from "@/lib/posthog/server";
 
 const LinkSocialRequestSchema = z.object({
-  platform: z.enum(['farcaster', 'twitter']),
+  platform: z.enum(["farcaster", "twitter"]),
   username: z.string().optional(),
 });
 
@@ -97,7 +97,7 @@ const LinkSocialRequestSchema = z.object({
 export const POST = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ userId: string }> }
+    context: { params: Promise<{ userId: string }> },
   ) => {
     // Authenticate user
     const authUser = await authenticate(request);
@@ -109,9 +109,9 @@ export const POST = withErrorHandling(
     // Verify user is linking their own account
     if (authUser.userId !== canonicalUserId) {
       throw new AuthorizationError(
-        'You can only link your own social accounts',
-        'social-account',
-        'link'
+        "You can only link your own social accounts",
+        "social-account",
+        "link",
       );
     }
 
@@ -132,13 +132,13 @@ export const POST = withErrorHandling(
       .limit(1);
 
     if (!user) {
-      throw new NotFoundError('User', canonicalUserId);
+      throw new NotFoundError("User", canonicalUserId);
     }
 
     // Check if already linked
     let alreadyLinked = false;
     switch (platform) {
-      case 'farcaster':
+      case "farcaster":
         alreadyLinked = user.hasFarcaster;
         // Check if Farcaster username is already linked to another user
         if (username && !alreadyLinked) {
@@ -148,19 +148,19 @@ export const POST = withErrorHandling(
             .where(
               and(
                 eq(users.farcasterUsername, username),
-                ne(users.id, canonicalUserId)
-              )
+                ne(users.id, canonicalUserId),
+              ),
             )
             .limit(1);
           if (existingFarcasterUser) {
             throw new ConflictError(
-              'Farcaster account already linked to another user',
-              'User.farcasterUsername'
+              "Farcaster account already linked to another user",
+              "User.farcasterUsername",
             );
           }
         }
         break;
-      case 'twitter':
+      case "twitter":
         alreadyLinked = user.hasTwitter;
         // Check if Twitter account is already linked to another user
         if (username && !alreadyLinked) {
@@ -170,14 +170,14 @@ export const POST = withErrorHandling(
             .where(
               and(
                 eq(users.twitterUsername, username),
-                ne(users.id, canonicalUserId)
-              )
+                ne(users.id, canonicalUserId),
+              ),
             )
             .limit(1);
           if (existingTwitterUser) {
             throw new ConflictError(
-              'Twitter account already linked to another user',
-              'User.twitterUsername'
+              "Twitter account already linked to another user",
+              "User.twitterUsername",
             );
           }
         }
@@ -187,11 +187,11 @@ export const POST = withErrorHandling(
     // Update user with social connection
     const updateData: Partial<typeof users.$inferInsert> = {};
     switch (platform) {
-      case 'farcaster':
+      case "farcaster":
         updateData.hasFarcaster = true;
         if (username) updateData.farcasterUsername = username;
         break;
-      case 'twitter':
+      case "twitter":
         updateData.hasTwitter = true;
         if (username) updateData.twitterUsername = username;
         break;
@@ -203,16 +203,16 @@ export const POST = withErrorHandling(
     let pointsResult;
     if (!alreadyLinked) {
       switch (platform) {
-        case 'farcaster':
+        case "farcaster":
           pointsResult = await ReputationService.awardFarcasterLink(
             canonicalUserId,
-            username
+            username,
           );
           break;
-        case 'twitter':
+        case "twitter":
           pointsResult = await ReputationService.awardTwitterLink(
             canonicalUserId,
-            username
+            username,
           );
           break;
       }
@@ -226,9 +226,9 @@ export const POST = withErrorHandling(
             logger.warn(
               `Failed to check and qualify referral for user ${canonicalUserId}`,
               { userId: canonicalUserId, error },
-              'POST /api/users/[userId]/link-social'
+              "POST /api/users/[userId]/link-social",
             );
-          }
+          },
         );
       }
     }
@@ -236,17 +236,17 @@ export const POST = withErrorHandling(
     logger.info(
       `User ${canonicalUserId} linked ${platform} account`,
       { userId: canonicalUserId, platform, username, alreadyLinked },
-      'POST /api/users/[userId]/link-social'
+      "POST /api/users/[userId]/link-social",
     );
 
     // Track social account linked event
-    trackServerEvent(canonicalUserId, 'social_account_linked', {
+    trackServerEvent(canonicalUserId, "social_account_linked", {
       platform,
       ...(username && { username }),
       wasAlreadyLinked: alreadyLinked,
       reputationAwarded: pointsResult?.reputationAwarded || 0,
     }).catch((error) => {
-      logger.warn('Failed to track social_account_linked event', { error });
+      logger.warn("Failed to track social_account_linked event", { error });
     });
 
     return successResponse({
@@ -260,5 +260,5 @@ export const POST = withErrorHandling(
           }
         : null,
     });
-  }
+  },
 );

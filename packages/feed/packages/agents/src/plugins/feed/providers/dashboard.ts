@@ -11,25 +11,25 @@ import type {
   Provider,
   ProviderResult,
   State,
-} from '@elizaos/core';
-import { logger } from '../../../shared/logger';
+} from "@elizaos/core";
+import { logger } from "../../../shared/logger";
 import type {
   A2ABalanceResponse,
   A2APositionsResponse,
-} from '../../../types/a2a-responses';
-import type { FeedRuntime } from '../types';
+} from "../../../types/a2a-responses";
+import type { FeedRuntime } from "../types";
 
 // Type guards for A2A responses
 function isA2ABalanceResponse(data: object): data is A2ABalanceResponse {
   return (
-    'balance' in data &&
-    typeof (data as A2ABalanceResponse).balance === 'number'
+    "balance" in data &&
+    typeof (data as A2ABalanceResponse).balance === "number"
   );
 }
 
 function isA2APositionsResponse(data: object): data is A2APositionsResponse {
   return (
-    'marketPositions' in data &&
+    "marketPositions" in data &&
     Array.isArray((data as A2APositionsResponse).marketPositions)
   );
 }
@@ -40,14 +40,14 @@ function isA2APositionsResponse(data: object): data is A2APositionsResponse {
  * ALL DATA FETCHED VIA A2A PROTOCOL
  */
 export const dashboardProvider: Provider = {
-  name: 'FEED_DASHBOARD',
+  name: "FEED_DASHBOARD",
   description:
-    'Get comprehensive agent dashboard with portfolio, markets, social feed, and pending interactions via A2A protocol',
+    "Get comprehensive agent dashboard with portfolio, markets, social feed, and pending interactions via A2A protocol",
 
   get: async (
     runtime: IAgentRuntime,
     _message: Memory,
-    _state: State
+    _state: State,
   ): Promise<ProviderResult> => {
     const feedRuntime = runtime as FeedRuntime;
     const agentUserId = runtime.agentId;
@@ -55,31 +55,31 @@ export const dashboardProvider: Provider = {
     // A2A is REQUIRED
     if (!feedRuntime.a2aClient?.isConnected()) {
       logger.error(
-        'A2A client not connected - dashboard provider requires A2A protocol',
+        "A2A client not connected - dashboard provider requires A2A protocol",
         undefined,
-        runtime.agentId
+        runtime.agentId,
       );
       return {
-        text: 'ERROR: A2A client not connected. Cannot load dashboard. Please ensure A2A server is running.',
+        text: "ERROR: A2A client not connected. Cannot load dashboard. Please ensure A2A server is running.",
       };
     }
 
     // Fetch ALL dashboard data via A2A protocol
     const [balance, positions, predictions, feed, chats, notifications] =
       await Promise.all([
-        feedRuntime.a2aClient.sendRequest('a2a.getBalance', {
+        feedRuntime.a2aClient.sendRequest("a2a.getBalance", {
           userId: agentUserId,
         }),
-        feedRuntime.a2aClient.sendRequest('a2a.getPositions', {
+        feedRuntime.a2aClient.sendRequest("a2a.getPositions", {
           userId: agentUserId,
         }),
         feedRuntime.a2aClient
-          .getPredictions({ status: 'active' })
+          .getPredictions({ status: "active" })
           .catch(() => ({ predictions: [] })),
         feedRuntime.a2aClient
           .getFeed({ limit: 5 })
           .catch(() => ({ posts: [] })),
-        feedRuntime.a2aClient.getChats('all').catch(() => ({ chats: [] })),
+        feedRuntime.a2aClient.getChats("all").catch(() => ({ chats: [] })),
         feedRuntime.a2aClient
           .getNotifications(5)
           .catch(() => ({ notifications: [] })),
@@ -88,17 +88,17 @@ export const dashboardProvider: Provider = {
     // Validate response structures using type guards
     if (
       !balance ||
-      typeof balance !== 'object' ||
+      typeof balance !== "object" ||
       !isA2ABalanceResponse(balance)
     ) {
-      throw new Error('Invalid balance data format from A2A client');
+      throw new Error("Invalid balance data format from A2A client");
     }
     if (
       !positions ||
-      typeof positions !== 'object' ||
+      typeof positions !== "object" ||
       !isA2APositionsResponse(positions)
     ) {
-      throw new Error('Invalid positions data format from A2A client');
+      throw new Error("Invalid positions data format from A2A client");
     }
     const balanceData = balance;
     const positionsData = positions;
@@ -132,9 +132,9 @@ ${
   predictionsData.predictions && predictionsData.predictions.length > 0
     ? `Recent: ${predictionsData.predictions
         .slice(0, 3)
-        .map((p) => (p.question || 'Unknown').substring(0, 50))
-        .join(', ')}`
-    : 'No active markets'
+        .map((p) => (p.question || "Unknown").substring(0, 50))
+        .join(", ")}`
+    : "No active markets"
 }
 
 📱 SOCIAL FEED
@@ -142,7 +142,7 @@ Recent Posts: ${recentPosts}
 ${
   feedData.posts && feedData.posts.length > 0 && feedData.posts[0]?.content
     ? `Latest: ${feedData.posts[0].content.substring(0, 100)}...`
-    : 'No recent posts'
+    : "No recent posts"
 }
 
 💬 MESSAGING
@@ -152,8 +152,8 @@ ${
     ? `Chats: ${chatsData.chats
         .slice(0, 3)
         .map((c) => c.name || c.id)
-        .join(', ')}`
-    : 'No active chats'
+        .join(", ")}`
+    : "No active chats"
 }
 
 🔔 NOTIFICATIONS
@@ -163,14 +163,14 @@ ${
   notificationsData.notifications.length > 0 &&
   notificationsData.notifications[0]?.message
     ? `Latest: ${notificationsData.notifications[0].message.substring(0, 80)}...`
-    : 'No notifications'
+    : "No notifications"
 }
 
 💡 OPPORTUNITIES
-- ${totalPositions > 0 ? 'Monitor open positions' : 'Consider opening positions'}
-- ${activeMarkets > 0 ? 'Review active markets' : 'Check for new markets'}
-- ${recentPosts > 0 ? 'Engage with recent posts' : 'Create new posts'}
-- ${unreadNotifications > 0 ? 'Review notifications' : 'All caught up'}`;
+- ${totalPositions > 0 ? "Monitor open positions" : "Consider opening positions"}
+- ${activeMarkets > 0 ? "Review active markets" : "Check for new markets"}
+- ${recentPosts > 0 ? "Engage with recent posts" : "Create new posts"}
+- ${unreadNotifications > 0 ? "Review notifications" : "All caught up"}`;
 
     return { text: result };
   },

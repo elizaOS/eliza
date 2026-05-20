@@ -5,24 +5,24 @@
  * messaging, group creation, reactions, replies, search, and SSE.
  */
 
-import { expect, test } from './fixtures';
+import { expect, test } from "./fixtures";
 import {
   closeModal,
   openModal,
   pageContainsText,
-} from './helpers/interaction-helpers';
+} from "./helpers/interaction-helpers";
 import {
   cooldownBetweenTests,
   isServerHealthy,
   navigateTo,
   waitForPageLoad,
-} from './helpers/page-helpers';
-import { loginWithWallet } from './helpers/privy-auth';
-import { ROUTES, SELECTORS, TIMEOUTS } from './helpers/test-data';
+} from "./helpers/page-helpers";
+import { loginWithWallet } from "./helpers/privy-auth";
+import { ROUTES, SELECTORS, TIMEOUTS } from "./helpers/test-data";
 
 test.setTimeout(90000);
 
-test.describe('Chats Page - Layout', () => {
+test.describe("Chats Page - Layout", () => {
   test.beforeEach(async ({ page }) => {
     if (!(await isServerHealthy())) {
       test.skip();
@@ -41,35 +41,35 @@ test.describe('Chats Page - Layout', () => {
     await cooldownBetweenTests(page);
   });
 
-  test('loads chats page with content', async ({ page }) => {
-    expect(page.url()).toContain('/chats');
+  test("loads chats page with content", async ({ page }) => {
+    expect(page.url()).toContain("/chats");
 
     const hasChatsContent = await pageContainsText(
       page,
-      'message',
-      'chat',
-      'conversation'
+      "message",
+      "chat",
+      "conversation",
     );
     expect(hasChatsContent).toBe(true);
   });
 
-  test('displays All/DMs/Groups filter tabs', async ({ page }) => {
+  test("displays All/DMs/Groups filter tabs", async ({ page }) => {
     const hasFilterContent = await pageContainsText(
       page,
-      'all',
-      'dm',
-      'group',
-      'direct',
-      'message',
-      'chat'
+      "all",
+      "dm",
+      "group",
+      "direct",
+      "message",
+      "chat",
     );
     expect(hasFilterContent).toBe(true);
   });
 
-  test('switches between filter tabs', async ({ page }) => {
+  test("switches between filter tabs", async ({ page }) => {
     const dmsTab = page
       .locator(
-        'button:has-text("DMs"), [role="tab"]:has-text("DMs"), button:has-text("Direct")'
+        'button:has-text("DMs"), [role="tab"]:has-text("DMs"), button:has-text("Direct")',
       )
       .first();
     const groupsTab = page
@@ -100,31 +100,31 @@ test.describe('Chats Page - Layout', () => {
       await page.waitForTimeout(500);
     }
 
-    const body = await page.locator('body').textContent();
+    const body = await page.locator("body").textContent();
     expect(body?.length).toBeGreaterThan(100);
   });
 
-  test('displays chats list', async ({ page }) => {
-    const body = await page.locator('body').textContent();
+  test("displays chats list", async ({ page }) => {
+    const body = await page.locator("body").textContent();
     expect(body).toBeTruthy();
   });
 
-  test('displays search conversations input', async ({ page }) => {
+  test("displays search conversations input", async ({ page }) => {
     const searchInput = page
       .locator(
-        'input[placeholder*="search" i], input[type="search"], input[placeholder*="find" i]'
+        'input[placeholder*="search" i], input[type="search"], input[placeholder*="find" i]',
       )
       .first();
     const hasSearch = await searchInput
       .isVisible({ timeout: TIMEOUTS.SHORT })
       .catch(() => false);
 
-    const body = await page.locator('body').textContent();
+    const body = await page.locator("body").textContent();
     expect(hasSearch || (body?.length ?? 0) > 100).toBe(true);
   });
 });
 
-test.describe('Chat Messaging', () => {
+test.describe("Chat Messaging", () => {
   test.beforeEach(async ({ page }) => {
     if (!(await isServerHealthy())) {
       test.skip();
@@ -143,13 +143,13 @@ test.describe('Chat Messaging', () => {
     await cooldownBetweenTests(page);
   });
 
-  test('types message and send button activates', async ({ page }) => {
+  test("types message and send button activates", async ({ page }) => {
     const chatInput = page.locator(SELECTORS.CHAT_INPUT).first();
 
     if (
       await chatInput.isVisible({ timeout: TIMEOUTS.SHORT }).catch(() => false)
     ) {
-      await chatInput.fill('Test message');
+      await chatInput.fill("Test message");
       await page.waitForTimeout(500);
 
       const sendButton = page.locator(SELECTORS.SEND_BUTTON).first();
@@ -165,23 +165,23 @@ test.describe('Chat Messaging', () => {
     }
   });
 
-  test('shows message timestamps', async ({ page }) => {
+  test("shows message timestamps", async ({ page }) => {
     // Timestamps are shown on messages
     const hasTimestamps = await pageContainsText(
       page,
-      'ago',
-      'am',
-      'pm',
-      'today',
-      'yesterday',
-      ':'
+      "ago",
+      "am",
+      "pm",
+      "today",
+      "yesterday",
+      ":",
     );
 
-    const body = await page.locator('body').textContent();
+    const body = await page.locator("body").textContent();
     expect(hasTimestamps || (body?.length ?? 0) > 100).toBe(true);
   });
 
-  test('displays SSE connection status', async ({ page }) => {
+  test("displays SSE connection status", async ({ page }) => {
     const sseStatus = page
       .locator('[data-testid="sse-status"], [data-status], .status-indicator')
       .or(page.getByText(/Live|Connecting|Connected|Online/i))
@@ -191,12 +191,12 @@ test.describe('Chat Messaging', () => {
       .catch(() => false);
 
     // SSE indicator may not be in current design
-    const body = await page.locator('body').textContent();
+    const body = await page.locator("body").textContent();
     expect(body?.length).toBeGreaterThan(100);
   });
 });
 
-test.describe('Chat - Group Creation', () => {
+test.describe("Chat - Group Creation", () => {
   test.beforeEach(async ({ page }) => {
     if (!(await isServerHealthy())) {
       test.skip();
@@ -215,10 +215,10 @@ test.describe('Chat - Group Creation', () => {
     await cooldownBetweenTests(page);
   });
 
-  test('opens group creation modal', async ({ page }) => {
+  test("opens group creation modal", async ({ page }) => {
     const createButton = page
       .locator(
-        'button:has-text("New Group"), button:has-text("Create Group"), button:has(svg.lucide-plus), button[aria-label*="group" i]'
+        'button:has-text("New Group"), button:has-text("Create Group"), button:has(svg.lucide-plus), button[aria-label*="group" i]',
       )
       .first();
 
@@ -242,10 +242,10 @@ test.describe('Chat - Group Creation', () => {
     }
   });
 
-  test('requires group name in creation form', async ({ page }) => {
+  test("requires group name in creation form", async ({ page }) => {
     const modal = await openModal(
       page,
-      'button:has-text("New Group"), button:has-text("Create Group"), button:has(svg.lucide-plus)'
+      'button:has-text("New Group"), button:has-text("Create Group"), button:has(svg.lucide-plus)',
     );
 
     if (modal) {
@@ -260,17 +260,17 @@ test.describe('Chat - Group Creation', () => {
           .catch(() => false)
       ) {
         const isDisabled = await submitButton.isDisabled().catch(() => false);
-        expect(typeof isDisabled).toBe('boolean');
+        expect(typeof isDisabled).toBe("boolean");
       }
 
       await closeModal(page);
     }
   });
 
-  test('closes group creation modal on cancel', async ({ page }) => {
+  test("closes group creation modal on cancel", async ({ page }) => {
     const modal = await openModal(
       page,
-      'button:has-text("New Group"), button:has-text("Create Group"), button:has(svg.lucide-plus)'
+      'button:has-text("New Group"), button:has-text("Create Group"), button:has(svg.lucide-plus)',
     );
 
     if (modal) {
@@ -293,7 +293,7 @@ test.describe('Chat - Group Creation', () => {
   });
 });
 
-test.describe('Chat - Search', () => {
+test.describe("Chat - Search", () => {
   test.beforeEach(async ({ page }) => {
     if (!(await isServerHealthy())) {
       test.skip();
@@ -312,7 +312,7 @@ test.describe('Chat - Search', () => {
     await cooldownBetweenTests(page);
   });
 
-  test('filters conversations by search text', async ({ page }) => {
+  test("filters conversations by search text", async ({ page }) => {
     const searchInput = page
       .locator('input[placeholder*="search" i], input[type="search"]')
       .first();
@@ -322,15 +322,15 @@ test.describe('Chat - Search', () => {
         .isVisible({ timeout: TIMEOUTS.SHORT })
         .catch(() => false)
     ) {
-      await searchInput.fill('test');
+      await searchInput.fill("test");
       await page.waitForTimeout(1000);
 
-      const body = await page.locator('body').textContent();
+      const body = await page.locator("body").textContent();
       expect(body?.length).toBeGreaterThan(50);
     }
   });
 
-  test('clears search and shows all conversations', async ({ page }) => {
+  test("clears search and shows all conversations", async ({ page }) => {
     const searchInput = page
       .locator('input[placeholder*="search" i], input[type="search"]')
       .first();
@@ -340,19 +340,19 @@ test.describe('Chat - Search', () => {
         .isVisible({ timeout: TIMEOUTS.SHORT })
         .catch(() => false)
     ) {
-      await searchInput.fill('test');
+      await searchInput.fill("test");
       await page.waitForTimeout(500);
 
       await searchInput.clear();
       await page.waitForTimeout(500);
 
-      const body = await page.locator('body').textContent();
+      const body = await page.locator("body").textContent();
       expect(body?.length).toBeGreaterThan(50);
     }
   });
 });
 
-test.describe('Chat - Mobile', () => {
+test.describe("Chat - Mobile", () => {
   test.beforeEach(async ({ page }) => {
     if (!(await isServerHealthy())) {
       test.skip();
@@ -371,24 +371,24 @@ test.describe('Chat - Mobile', () => {
     await cooldownBetweenTests(page);
   });
 
-  test('renders correctly on mobile viewport', async ({ page }) => {
-    expect(page.url()).toContain('/chats');
+  test("renders correctly on mobile viewport", async ({ page }) => {
+    expect(page.url()).toContain("/chats");
 
-    const body = await page.locator('body').textContent();
+    const body = await page.locator("body").textContent();
     expect(body).toBeTruthy();
 
     // No horizontal overflow
     const scrollWidth = await page.evaluate(
-      () => document.documentElement.scrollWidth
+      () => document.documentElement.scrollWidth,
     );
     const clientWidth = await page.evaluate(
-      () => document.documentElement.clientWidth
+      () => document.documentElement.clientWidth,
     );
     expect(scrollWidth).toBeLessThanOrEqual(clientWidth + 10);
   });
 });
 
-test.describe('Profile Message Button', () => {
+test.describe("Profile Message Button", () => {
   test.beforeEach(async ({ page }) => {
     if (!(await isServerHealthy())) {
       test.skip();
@@ -404,17 +404,17 @@ test.describe('Profile Message Button', () => {
     await cooldownBetweenTests(page);
   });
 
-  test('shows message button on user profiles', async ({ page }) => {
-    await navigateTo(page, '/profile/testuser1');
+  test("shows message button on user profiles", async ({ page }) => {
+    await navigateTo(page, "/profile/testuser1");
     await waitForPageLoad(page);
     await page.waitForTimeout(2000);
 
-    const body = await page.locator('body').textContent();
+    const body = await page.locator("body").textContent();
     expect(body).toBeTruthy();
   });
 
-  test('navigates to DM when clicking message button', async ({ page }) => {
-    await navigateTo(page, '/profile/testuser2');
+  test("navigates to DM when clicking message button", async ({ page }) => {
+    await navigateTo(page, "/profile/testuser2");
     await waitForPageLoad(page);
     await page.waitForTimeout(2000);
 
@@ -429,8 +429,8 @@ test.describe('Profile Message Button', () => {
       await page.waitForTimeout(2000);
 
       const url = page.url();
-      const wentToChats = url.includes('/chats');
-      const stayedOnProfile = url.includes('/profile');
+      const wentToChats = url.includes("/chats");
+      const stayedOnProfile = url.includes("/profile");
       expect(wentToChats || stayedOnProfile).toBe(true);
     }
   });
