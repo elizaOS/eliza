@@ -161,7 +161,16 @@ function looksLikeCapturedToolOutput(text: string): boolean {
   return body.length > 0;
 }
 
-function capturedToolOutputBlocksOnly(lines: string[]): boolean {
+function tailAfterEndMarker(line: string): string {
+  const idx = line.indexOf(TOOL_OUTPUT_END_MARKER);
+  return idx >= 0 ? line.slice(idx + TOOL_OUTPUT_END_MARKER.length).trim() : "";
+}
+
+function partitionToolOutputBlocks(lines: string[]): {
+  remainder: string[];
+  sawToolOutput: boolean;
+  unclosed: boolean;
+} {
   let insideToolOutput = false;
   let sawToolOutput = false;
   const remainder: string[] = [];
@@ -174,21 +183,19 @@ function capturedToolOutputBlocksOnly(lines: string[]): boolean {
     }
     if (insideToolOutput && trimmed.startsWith(TOOL_OUTPUT_END_MARKER)) {
       insideToolOutput = false;
-      const markerIndex = line.indexOf(TOOL_OUTPUT_END_MARKER);
-      const afterMarker =
-        markerIndex >= 0
-          ? line.slice(markerIndex + TOOL_OUTPUT_END_MARKER.length).trim()
-          : "";
-      if (afterMarker) remainder.push(afterMarker);
+      const after = tailAfterEndMarker(line);
+      if (after) remainder.push(after);
       continue;
     }
-    if (!insideToolOutput) {
-      remainder.push(line);
-    }
+    if (!insideToolOutput) remainder.push(line);
   }
-  return (
-    sawToolOutput && !insideToolOutput && remainder.join("\n").trim() === ""
-  );
+  return { remainder, sawToolOutput, unclosed: insideToolOutput };
+}
+
+function capturedToolOutputBlocksOnly(lines: string[]): boolean {
+  const { remainder, sawToolOutput, unclosed } =
+    partitionToolOutputBlocks(lines);
+  return sawToolOutput && !unclosed && remainder.join("\n").trim() === "";
 }
 
 function userFacingCompletionBody(text: string): string {
@@ -197,26 +204,7 @@ function userFacingCompletionBody(text: string): string {
   if (!lines.some((line) => line.trim().startsWith(TOOL_OUTPUT_END_MARKER))) {
     return body;
   }
-  let insideToolOutput = false;
-  const remainder: string[] = [];
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!insideToolOutput && trimmed.startsWith("[tool output:")) {
-      insideToolOutput = true;
-      continue;
-    }
-    if (insideToolOutput && trimmed.startsWith(TOOL_OUTPUT_END_MARKER)) {
-      insideToolOutput = false;
-      const markerIndex = line.indexOf(TOOL_OUTPUT_END_MARKER);
-      const afterMarker =
-        markerIndex >= 0
-          ? line.slice(markerIndex + TOOL_OUTPUT_END_MARKER.length).trim()
-          : "";
-      if (afterMarker) remainder.push(afterMarker);
-      continue;
-    }
-    if (!insideToolOutput) remainder.push(line);
-  }
+  const { remainder } = partitionToolOutputBlocks(lines);
   const userText = remainder.join("\n").trim();
   return userText || body;
 }

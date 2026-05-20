@@ -102,6 +102,9 @@ function getPackages() {
 
 function checkDocs(packages) {
   const failures = [];
+  const rootReadmePath = path.join(examplesRoot, "README.md");
+  const validationPath = path.join(examplesRoot, "VALIDATION.md");
+  const setupGuidePath = path.join(examplesRoot, "setup-guide.html");
 
   for (const pkg of packages) {
     if (!existsSync(path.join(pkg.dir, "README.md"))) {
@@ -109,15 +112,59 @@ function checkDocs(packages) {
     }
   }
 
-  for (const file of [
-    path.join(examplesRoot, "README.md"),
-    path.join(examplesRoot, "VALIDATION.md"),
-    path.join(examplesRoot, "setup-guide.html"),
-  ]) {
+  for (const file of [rootReadmePath, validationPath, setupGuidePath]) {
     if (!existsSync(file)) {
       failures.push({
         package: relativeToRepo(path.dirname(file)),
         reason: `missing ${path.basename(file)}`,
+      });
+    }
+  }
+
+  if (!existsSync(rootReadmePath) || !existsSync(validationPath) || !existsSync(setupGuidePath)) {
+    return failures;
+  }
+
+  const rootReadme = readFileSync(rootReadmePath, "utf8");
+  const validation = readFileSync(validationPath, "utf8");
+  const setupGuide = readFileSync(setupGuidePath, "utf8");
+
+  for (const requiredLink of ["setup-guide.html", "VALIDATION.md"]) {
+    if (!rootReadme.includes(requiredLink)) {
+      failures.push({
+        package: "packages/examples",
+        reason: `README.md missing link to ${requiredLink}`,
+      });
+    }
+  }
+
+  for (const pkg of packages) {
+    const exampleName = pkg.relativeDir.replace(/^packages\/examples\//, "");
+    if (!validation.includes(`| \`${exampleName}\` |`)) {
+      failures.push({
+        package: pkg.relativeDir,
+        reason: "missing row in VALIDATION.md example matrix",
+      });
+    }
+  }
+
+  for (const requiredText of [
+    "Roblox",
+    "Minecraft",
+    "AWS",
+    "GCP",
+    "Cloudflare",
+    "Convex",
+    "Supabase",
+    "Vercel",
+    "Social bots",
+    "Smartglasses",
+    "Wallet/trading",
+  ]) {
+    if (!setupGuide.includes(requiredText)) {
+      failures.push({
+        package: "packages/examples",
+        reason: `setup-guide.html missing ${requiredText} setup section`,
       });
     }
   }
