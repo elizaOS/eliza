@@ -1,8 +1,5 @@
-import {
-  Button,
-  type OverlayAppContext,
-  TerminalPluginView,
-} from "@elizaos/ui";
+import { Button, type OverlayAppContext } from "@elizaos/ui";
+import { TerminalPluginView } from "@elizaos/ui/components/views/TerminalPluginView";
 import { Activity, ChevronLeft, History } from "lucide-react";
 import { useState } from "react";
 import type { TrajectoryListItem } from "../api-client";

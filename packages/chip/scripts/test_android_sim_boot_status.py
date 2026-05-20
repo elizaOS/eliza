@@ -226,6 +226,45 @@ def test_aosp_linux_preflight_reports_uninstalled_repo_launcher() -> None:
             PREFLIGHT_REPORT.write_bytes(saved)
 
 
+def test_aosp_linux_preflight_allows_existing_checkout_without_repo() -> None:
+    saved = PREFLIGHT_REPORT.read_bytes() if PREFLIGHT_REPORT.is_file() else None
+    try:
+        with tempfile.TemporaryDirectory() as checkout, tempfile.TemporaryDirectory() as path_dir:
+            checkout_path = Path(checkout)
+            (checkout_path / "build").mkdir()
+            (checkout_path / "build/envsetup.sh").write_text("# fake envsetup\n")
+            (checkout_path / "device").mkdir()
+            result = run(
+                [
+                    sys.executable,
+                    str(PREFLIGHT),
+                    "--json",
+                    "--write-report",
+                    "--aosp-dir",
+                    str(checkout_path),
+                ],
+                {"PATH": fake_repo_path(Path(path_dir))},
+            )
+        data = json.loads(result.stdout)
+        blockers = data.get("blockers", [])
+        if any("repo is not installed" in item for item in blockers):
+            raise AssertionError(
+                "existing checkout should not be blocked by an uninstalled repo launcher: "
+                f"{blockers}"
+            )
+        warnings = data.get("warnings", [])
+        if not any("repo is not installed" in item for item in warnings):
+            raise AssertionError(
+                f"existing checkout should still warn about the broken repo launcher: {warnings}"
+            )
+    finally:
+        if saved is None:
+            PREFLIGHT_REPORT.unlink(missing_ok=True)
+        else:
+            PREFLIGHT_REPORT.parent.mkdir(parents=True, exist_ok=True)
+            PREFLIGHT_REPORT.write_bytes(saved)
+
+
 def main() -> int:
     saved = REPORT.read_bytes() if REPORT.is_file() else None
     try:
@@ -236,6 +275,7 @@ def main() -> int:
             test_boot_script_reports_uninstalled_repo_launcher,
             test_aosp_linux_preflight_blocks_without_aosp_dir,
             test_aosp_linux_preflight_reports_uninstalled_repo_launcher,
+            test_aosp_linux_preflight_allows_existing_checkout_without_repo,
         ):
             test()
             print(f"PASS {test.__name__}")

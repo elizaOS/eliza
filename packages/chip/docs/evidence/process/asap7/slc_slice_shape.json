@@ -1,0 +1,59 @@
+{
+  "schema": "eliza.pd_asap7_leaf_shape.v1",
+  "block_id": "slc_slice",
+  "rtl_top": "e1_slc",
+  "evidence_class": "predictive_finfet_shape_only_not_signoff",
+  "pdk": "ASAP7",
+  "corner": "RVT_TT_0p70V_25C",
+  "stdcell_library": "asap7sc7p5t_27",
+  "stdcell_library_source": "external/pdks/asap7/asap7sc7p5t_27 (ASU/ARM predictive 7 nm FinFET, BSD-3)",
+  "synth_tool": {
+    "name": "yosys",
+    "version": "Yosys 0.64+197 (git sha1 4e35ed595, clang++ 18.1.8 -fPIC -O3)",
+    "frontend": "slang (yosys-slang plugin)",
+    "mapper": "abc",
+    "memory_inference": true,
+    "param_overrides": [
+      "BANKS=2",
+      "SIZE_BYTES=2048",
+      "WAYS=2"
+    ],
+    "wall_clock_s": 332.88
+  },
+  "abc_target_period_ps": 4000,
+  "gate_count_total": 312499,
+  "sequential_cells": 19637,
+  "combinational_cells": 292862,
+  "estimated_std_cell_area_um2": 33838.24086,
+  "std_cell_area_mm2": 0.03383824086,
+  "abc_critical_path_delay_ps": null,
+  "max_freq_mhz": null,
+  "dyn_power_mw_per_mhz": null,
+  "leakage_mw": null,
+  "cell_histogram": {
+    "AND2x2_ASAP7_75t_R": 14,
+    "AND3x1_ASAP7_75t_R": 3418,
+    "AND4x2_ASAP7_75t_R": 17639,
+    "AND5x1_ASAP7_75t_R": 525,
+    "ASYNC_DFFHx1_ASAP7_75t_R": 19637,
+    "MAJx3_ASAP7_75t_R": 872,
+    "NAND2x1_ASAP7_75t_R": 227733,
+    "NOR2x1_ASAP7_75t_R": 16475,
+    "OR2x4_ASAP7_75t_R": 14,
+    "OR3x1_ASAP7_75t_R": 23374,
+    "OR4x2_ASAP7_75t_R": 211,
+    "OR5x2_ASAP7_75t_R": 34,
+    "XNOR2x2_ASAP7_75t_R": 2,
+    "XOR2x2_ASAP7_75t_R": 2551
+  },
+  "claim_boundary": "Synth-only ABC mapping against ASAP7 7.5T 27 nm-pitch RVT TT stdcell library. No PnR, no SRAM macro replacement, no power estimation. Use only as predictive FinFET-class shape input into scripts/project_ppa_to_n2p.py.",
+  "forbidden_uses": [
+    "cite_as_tsmc_n2p_signoff",
+    "cite_as_tsmc_a14_signoff",
+    "cite_as_intel_14a_signoff",
+    "cite_as_samsung_sf2p_signoff",
+    "cite_as_measured_silicon_evidence",
+    "cite_as_post_route_pnr_evidence",
+    "cite_as_sram_macro_density"
+  ]
+}

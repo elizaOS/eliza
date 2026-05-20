@@ -59,10 +59,13 @@ affect source, release claims, or tapeout-facing artifacts.
   before/after RTL, cocotb/formal/synthesis, and benchmark gates.
 - Compiler and code-generation automation is a separate evidence surface from
   BSP work. LLVM MLGO, TVM MetaSchedule/Ansor, AutoFDO/Propeller/BOLT,
-  IntrinTrans/VecIntrinBench/SimdBench, and agentic compiler optimization can
-  improve shipped binaries or RVV/NPU kernels, but E1 needs pinned toolchains,
-  source/binary/profile hashes, semantic tests, simulator/runtime logs,
-  calibrated benchmarks, and review before generated code or profiles are used.
+  IntrinTrans/VecIntrinBench/SimdBench, Autocomp, AccelOpt, V-Seek, RISC-V
+  Interaction Tree semantics, and agentic compiler optimization can improve
+  shipped binaries or RVV/NPU kernels, but E1 needs pinned toolchains,
+  source/binary/profile hashes, prompt/model revisions, optimization-memory
+  quarantine, semantic tests, simulator/runtime logs, calibrated benchmarks,
+  and review before generated code, kernels, profiles, memories, or proof
+  claims are used.
 - External model and corpus intake is now a first-class gate because current
   HuggingFace and GitHub assets include RTL models, Verilog corpora,
   metric-reasoning datasets, CircuitNet-style multimodal corpora, SVA data, and
@@ -80,11 +83,14 @@ affect source, release claims, or tapeout-facing artifacts.
   autorouters, FPGA placers, and inspection datasets are target-capture sources
   only until E1 has release-clean package, KiCad, SI/PI, RF, manufacturing, and
   FPGA evidence.
-- DFM, yield, lithography, OPC, and wafer-defect AI are important but sit
-  beyond ordinary PD prediction. Hotspot detectors, differentiable lithography,
-  ILT/OPC optimizers, and wafer-map classifiers need foundry decks, process
-  windows, mask rules, final layout, local labels, and manufacturing evidence;
-  otherwise they are research context and target capture only.
+- DTCO, TCAD, DFM, yield, lithography, OPC, and wafer-defect AI are important
+  but sit beyond ordinary PD prediction. TCAD agents and executable TCAD LLMs
+  must not generate E1 device/process assumptions without authorized decks,
+  simulators, calibration, raw logs, and process-device review. Hotspot
+  detectors, differentiable lithography, ILT/OPC optimizers, and wafer-map
+  classifiers need foundry decks, process windows, mask rules, final layout,
+  local labels, and manufacturing evidence; otherwise they are research context
+  and target capture only.
 - Post-silicon validation and lab-debug automation must stay explicit rather
   than being folded into simulator success. RISC-V architectural tests, RISCOF,
   riscv-dv, QED-style methods, SoC trace-debug reconstruction, cross-target
@@ -108,8 +114,8 @@ affect source, release claims, or tapeout-facing artifacts.
 | --- | --- | --- |
 | Agentic EDA orchestration | Agentic EDA survey, AutoEDA, ChatEDA, LLM-powered EDA log analysis, MCP4EDA, Synopsys.ai Copilot, Cadence JedAI, Cadence ChipStack AI Super Agent, Siemens Fuse EDA AI Agent, Phoenix-bench | Keep read-only RAG and dry-run runners first; require typed command schemas, explicit scopes, commercial license review, archived log/schema hashes, output hashes, deterministic replay, and reviewer disposition before write-capable agents or generated fixes. |
 | RTL generation | RTL-Coder, ChipCraftX RTLGen 7B, ChipSeek, RTLSeek, CodeV-R1, EvolVE, VeriAgent, OpenLLM-RTL, VerilogEval, CVDP | Evaluate against small E1-style tasks; block generated RTL, RL training, evolutionary search, evolving-memory loops, inference, and PPA claims until lint, simulation, synthesis, formal where applicable, contamination checks, and review pass. |
-| External models and corpora | OpenRTLSet, MG-Verilog, DeepCircuitX, MetRex, CircuitNet 3.0, VeriForge, LLM-EDA OpenCores, Hardware VerilogEval v2, LLM_4_Verilog, SiliconMind-V1, ChipCraftX, ChipSeek, RTLSeek, CodeV-R1, EvolVE, VeriAgent, CodeV-SVA, RadAI WM-811K | Capture HuggingFace/GitHub model and corpus intake targets only; block downloads, imports, training, fine-tuning, inference, evaluation, generated source, and release use until exact revisions, licenses, manifests, contamination checks, quarantine paths, deterministic local gates, and review exist. |
-| Benchmark contamination and evaluation hygiene | VeriContaminated, VerilogEval, RTLLM, CVDP, ProtocolLLM, OpenRTLSet, MG-Verilog, LLM-EDA OpenCores, Hardware VerilogEval v2, LLM_4_Verilog, CodeV-R1, EvolVE/IC-RTL, LLMSanitize, Min-K% probability contamination detection | Capture benchmark hygiene targets only; block public benchmark imports, held-out E1 prompt export, model runs, contamination-detector runs, score claims, and release use until exact revisions, task hashes, license review, non-overlap reports, near-duplicate checks, simulator/synthesis/formal logs, seeds, evaluator versions, and reviewer disposition exist. |
+| External models and corpora | OpenRTLSet, MG-Verilog, DeepCircuitX, MetRex, CircuitNet 3.0, VeriForge, LLM-EDA OpenCores, Hardware VerilogEval v2, LLM_4_Verilog, SiliconMind-V1, ChipCraftX, ChipSeek, RTLSeek, CodeV-R1, EvolVE, VeriAgent, SafeTune, TrojanLoC, CodeV-SVA, RadAI WM-811K | Capture HuggingFace/GitHub model and corpus intake targets only; block downloads, imports, training, fine-tuning, inference, evaluation, generated source, and release use until exact revisions, licenses, manifests, poisoning and contamination checks, quarantine paths, deterministic local gates, and review exist. |
+| Benchmark contamination and evaluation hygiene | VeriContaminated, VerilogEval, RTLLM, CVDP, ProtocolLLM, OpenRTLSet, MG-Verilog, LLM-EDA OpenCores, Hardware VerilogEval v2, LLM_4_Verilog, CodeV-R1, EvolVE/IC-RTL, SafeTune, TrojanLoC/TrojanInS, HarmChip, LLMSanitize, Min-K% probability contamination detection | Capture benchmark hygiene targets only; block public benchmark imports, held-out E1 prompt export, model runs, contamination-detector runs, security-jailbreak prompt runs, score claims, and release use until exact revisions, task hashes, license review, non-overlap reports, near-duplicate checks, simulator/synthesis/formal logs, seeds, evaluator versions, dual-use review, and reviewer disposition exist. |
 | Spec traceability and requirement coverage | IncreRTL, LLM-FSM, Spec2Assertion, CoverAssert, Qimeng-CodeV-SVA, AssertionForge, SANGAM, CodeV-SVA, ProtocolLLM | Capture requirements-to-RTL traceability targets only; block spec edits, RTL edits, generated trace matrices, generated SVAs, model runs, parser runs, formal/simulation/synthesis claims, and release use until stable requirement IDs, source hashes, non-overlap review, vacuity checks, deterministic gates, and reviewer disposition exist. |
 | IP, register-map, and platform-contract automation | SystemRDL, PeakRDL, PeakRDL IP-XACT, OpenTitan Reggen, IP-XACT, FuseSoC, Edalize, Bender, SiliconCompiler, RgGen | Capture IP/register/contract targets only; block external IP import, generator runs, generated RTL/headers/docs/IP-XACT/SystemRDL, memory-map or ABI edits, and release use until revisions, licenses, file manifests, generated output hashes, ABI diffs, platform/Linux/software contract gates, RTL/cocotb/synthesis evidence, and review exist. |
 | Repo-aware RTL assistance | RTLRepoCoder, ORAssistant-style retrieval | Build citation-required local RAG over E1 sources before any completion workflow. |
@@ -123,25 +129,25 @@ affect source, release claims, or tapeout-facing artifacts.
 | Simulator/NPU DSE | ZigZag, Timeloop/Accelergy, DOSA, DiffAxE | Use hashed architecture manifests; block claims until calibrated measurements exist. |
 | Simulator/benchmark targets | ZigZag, Timeloop/Accelergy, DOSA, RTLMUL | Capture local benchmark/runtime targets; block performance claims until logs exist. |
 | Software BSP, firmware, and boot simulation | LLM firmware validation, EoK RISC-V kernel optimization, IntrinTrans RVV, OpenSBI, U-Boot, MCP4EDA | Capture boot/BSP/firmware target tasks only; block generated patches, device-tree edits, boot claims, BSP claims, and kernel-performance claims until build logs, QEMU/Renode transcripts, static analysis, and review exist. |
-| Compiler autotuning and codegen | LLVM MLGO, Google ML Compiler Opt, TVM MetaSchedule, Ansor, AutoFDO, LLVM Propeller, BOLT, IntrinTrans, VecIntrinBench, SimdBench, Agentic Code Optimization, HINTPILOT, LLM-VeriOpt, xDSL RVV lowering | Capture compiler-model, RVV intrinsic, tensor-kernel schedule, profile-guided binary, and agentic optimization targets only; block generated code, compiler/pass changes, profile data, relinked binaries, autotuner/model execution, and performance claims until toolchain, correctness, simulator, benchmark, and review gates pass. |
-| Reliability, aging, EM, and soft errors | PROTON, EMspice 2.0, NBTI/HCI aging models, SOFIA, Ethos-U55 soft-error study, Ibex SEU formal evaluation, BEC, Hamartia, FIES, TensorFI, Ares, Caliptra error-injection requirements | Capture aging, EM, formal/QEMU fault-injection, NPU workload resilience, compiler reliability, and ECC/TMR mitigation targets only; block fault injection, aging/EM analysis, generated mitigation, signoff, and reliability claims until process models, mission profiles, fault manifests, simulator/formal logs, PD/signoff evidence, before/after PPA, and review exist. |
+| Compiler autotuning and codegen | LLVM MLGO, Google ML Compiler Opt, TVM MetaSchedule, Ansor, AutoFDO, LLVM Propeller, BOLT, IntrinTrans, VecIntrinBench, SimdBench, Agentic Code Optimization, HINTPILOT, LLM-VeriOpt, xDSL RVV lowering, Autocomp, AccelOpt, V-Seek, RISC-V Interaction Tree Semantics | Capture compiler-model, RVV intrinsic, tensor-kernel schedule, accelerator-kernel optimization, profile-guided binary, formal-semantics, and agentic optimization targets only; block generated code, compiler/pass changes, generated kernels, optimization memories, profile data, relinked binaries, proof claims, autotuner/model execution, and performance claims until toolchain, correctness, simulator, benchmark, formal, and review gates pass. |
+| Reliability, aging, EM, and soft errors | AgenticTCAD, TcadGPT, PROTON, EMspice 2.0, NBTI/HCI aging models, SOFIA, Ethos-U55 soft-error study, Ibex SEU formal evaluation, BEC, Hamartia, FIES, TensorFI, Ares, Caliptra error-injection requirements | Capture TCAD/DTCO process-device assumptions, aging, EM, formal/QEMU fault-injection, NPU workload resilience, compiler reliability, and ECC/TMR mitigation targets only; block generated TCAD decks/device assumptions, fault injection, aging/EM analysis, generated mitigation, signoff, and reliability claims until authorized decks, process models, calibration, mission profiles, fault manifests, simulator/formal logs, PD/signoff evidence, before/after PPA, and review exist. |
 | RTL PPA advisory | RTLMUL, VerilogEval, CVDP, DeepCircuitX, CktEvo | Capture local RTL and synthesis hashes only; do not load weights, import repo-level RTL/PPA datasets, generate RTL evolution edits, or emit PPA predictions without revision pinning, license review, equivalence/simulation/synthesis gates, and held-out E1 error analysis. |
-| HLS and accelerator DSE | HLSFactory, HLS-Eval, LLM-DSE, iDSE, SECDA-DSE | Capture E1 HLS candidate tasks from runtime/spec inputs; block generated directives, HLS, and RTL until C-sim, HLS synthesis, RTL simulation, synthesis, equivalence where applicable, and review pass. |
+| HLS and accelerator DSE | HLSFactory, HLS-Eval, LLM-DSE, iDSE, MPM-LLM4DSE, TimelyHLS, FlexLLM, TAPA/RapidStream, SECDA-DSE | Capture E1 HLS candidate tasks from runtime/spec inputs; block generated directives, HLS, RTL, imported QoR models, benchmark datasets, HLS libraries, and FPGA backends until revisions, licenses, manifests, C-sim, HLS synthesis, RTL simulation, synthesis, equivalence where applicable, replay, and review pass. |
 | Timing closure and ECO | TimingPredict, E2ESlack, TimingLLM, FluxEDA, AstroTune, OpenROAD Resizer, OpenPhySyn, learning-driven gate sizing, FusionSizer, ICCAD 2024 gate-sizing benchmark, IR-aware ECO RL, Open-LLM-ECO | Capture SDC, metrics, STA, resizer logs, PD evidence, and blocked AST/retrieval-assisted cross-stage parameter tuning plus gate-sizing/buffering/pin-swap/clone ECO boundaries for advisory timing triage; block constraint/config/ECO edits until before/after OpenSTA/OpenLane, power, DRC, antenna, manufacturing, and signoff gates pass. |
 | Routing, congestion, and DRC | CircuitNet, RoutePlacer/RouteGNN, OpenROAD FastRoute, OpenROAD TritonRoute, CU-GR, Dr.CU | Capture global-route, detailed-route, DRC, antenna, wirelength, guide, DEF/ODB, and signoff hashes for advisory routability triage; block route guides, DEF/ODB/GDS, Tcl, DRC fixes, router sweeps, and predictor claims until before/after routing, STA, power, manufacturing, and signoff gates pass. |
 | Clock tree and clock network | OpenROAD CTS, TritonCTS, GAN-CTS, CTS-Bench, OpenROAD two-phase clocking conversion | Capture CTS, clock, skew, post-CTS timing, DEF/ODB, constraints, and signoff hashes for advisory skew/latency/hold-risk triage; block generated clock trees, SDC/Tcl, useful-skew settings, and clocking conversion until before/after STA, DFT, CDC/RDC, power, routing, manufacturing, and signoff gates pass. |
 | Extraction, SPEF, and parasitics | OpenROAD OpenRCX, OpenLane timing-corner flow, Magic extraction, CapBench | Capture OpenRCX SPEF, RCX logs, Magic extracted SPICE, SDF, timing-corner manifests, and multi-corner STA evidence for advisory parasitic/SI triage; block generated SPEF/SDF/SPICE, extraction rules, SI waivers, RC predictions, and timing claims until before/after extraction, STA, DRC/LVS, antenna, route, power, and signoff gates pass. |
 | CDC/RDC and reset-domain signoff | Accellera CDC/RDC standard, formal CDC MSI methodology, Questa CDC/RDC Assist, OpenCDC, MCP4EDA | Capture clock/reset-domain target tasks only; block generated constraints, waivers, classifications, and signoff claims until local intent, deterministic CDC/RDC reports, reset-domain regressions, and review exist. |
-| Analog and mixed-signal | ALIGN, AutoCkt, GENIE-ASI, ACDC, ADO-LLM, AnalogGenie, Masala-CHAI, LIMCA | Capture padframe/package/SI-PI/IO targets only; block generated SPICE, analog layout, foundry IP, and analog IMC claims until SPICE, DRC/LVS, extraction, package, and human review evidence exists. |
+| Analog and mixed-signal | ALIGN, AutoCkt, GENIE-ASI, ACDC, ADO-LLM, AnalogGenie, Masala-CHAI, LIMCA, AnalogAgent, AnalogMaster, VLM-CAD, CircuitLM, EEschematic, AnalogCoder-Pro, AnalogCoder, AMS-Net | Capture padframe/package/SI-PI/IO, analog-agent, schematic parsing, sizing, and dataset-governance targets only; block generated SPICE, schematics, CircuitJSON, analog layout, foundry IP, and analog IMC claims until exact prompts/models/memory, SPICE decks, simulator logs, PVT sweeps, DRC/LVS, extraction, package/SI-PI, dataset provenance, and human analog review evidence exist. |
 | Memory, interconnect, and NoC DSE | ArchGym, AI NoC DSE, BookSim2, Ramulator2, DRAMsim3, DRAMSys, gem5-Aladdin, Gem5-AcceSys | Capture E1 memory/fabric target tasks and backend availability; block fabric, memory-map, coherency, QoS, and DRAM claims until local contract, simulator, benchmark, and RTL evidence exists. |
 | CPU microarchitecture AI | Agentic Architect, PerfVec, Concorde, ChampSim, BranchNet, LLBP, Pythia, Mockingjay, Drishti | Capture branch predictor, cache replacement, prefetcher, CPU performance-model, and simulator-backed DSE targets only; block generated RTL, simulator/model execution, trace import, IPC/MPKI/area/power/product claims, and release use until local traces, before/after simulator logs, RTL/cocotb/formal/synthesis, benchmark evidence, and review exist. |
 | DFT, ATPG, and manufacturing test | Fault DFT, VeriRAG/LLM4DFT, DeepTPI, DEFT, LITE scan instrumentation, DRL ATPG, ATPG via AI survey, ATPG Toolkit, NN-for-ATPG | Capture DFT/ATPG target tasks only; block scan insertion, test-point insertion, RTL testability repairs, generated patterns, and fault-coverage claims until netlist, scan policy, DFT-rule oracle, ATPG, manufacturing, and signoff evidence exists. |
-| Power, thermal, IR drop, and PDN | DeepOHeat, 2D-ThermAl, ThermEDGe/IREDGe, WACA-UNet, IR-Drop-Predictor, EDA IR-Drop Prediction, OpeNPDN, AiEDA, RTLMUL | Capture power/thermal/PDN target tasks only; block generated power maps, thermal maps, PDNs, IR-drop predictions, TOPS/W, and thermal claims until measured traces, package models, PDNSim/OpenROAD labels, and signoff evidence exist. |
-| Hardware security | Hardware Trojan ML, PEARL, TrojanSAINT, GNN-MFF, SecureRAG-RTL, TrojanWhisper, TrojanGYM, GHOST Benchmarks | Capture local RTL/security target tasks only; block scanner execution, Trojan insertion, vulnerability claims, generated-RTL trust claims, and release use until labels, deterministic regressions, provenance, and human security review exist. |
+| Power, thermal, IR drop, and PDN | AgenticTCAD, TcadGPT, DeepOHeat, 2D-ThermAl, ThermEDGe/IREDGe, WACA-UNet, IR-Drop-Predictor, EDA IR-Drop Prediction, OpeNPDN, AiEDA, RTLMUL, ArchPower, AutoPower | Capture TCAD-derived device/leakage/self-heating assumptions, architecture-level CPU/AP power modeling, and power/thermal/PDN target tasks only; block generated TCAD decks, power maps, thermal maps, PDNs, IR-drop predictions, architecture-power estimates, TOPS/W, and thermal claims until authorized process decks, calibration, measured traces, package models, local CPU/AP feature labels, PDNSim/OpenROAD labels, and signoff evidence exist. |
+| Hardware security | AI-assisted hardware security verification survey, Hardware Trojan ML, PEARL, TrojanSAINT, GNN-MFF, SecureRAG-RTL, SafeTune, TrojanLoC, HarmChip, Trojan explainability comparison, TrojanWhisper, TrojanGYM, GHOST Benchmarks | Capture local RTL/security target tasks only; block scanner execution, prompt red-team runs, poisoned-corpus import, Trojan insertion, vulnerability claims, generated-RTL trust claims, and release use until labels, deterministic regressions, provenance, prompt isolation, and human security review exist. |
 | Board, package, manufacturing, and FPGA | PCBSchemaGen, PCB-Bench, PCBAgent, NeurPCB, PCB-Migrator, PCB-PR-App, Freerouting, DREAMPlaceFPGA, RapidWright FPGA interchange, DeepPCB defect dataset | Capture local package, KiCad, FPGA, Wi-Fi/RF, and manufacturing target tasks only; block generated schematics, board placement/routing, Gerbers, package/pinout edits, FPGA output, fabrication claims, inspection claims, and release use until deterministic gates and review evidence exist. |
-| DFM, yield, lithography, and OPC | Litho-aware ML hotspot detection, DLHSD, LithoHoD, TorchLitho, OpenILT, DiffOPC, RadAI WM-811K wafer defect model, Pegasus LPA | Capture hotspot-screening, differentiable lithography, ILT/OPC, signoff-feature, and wafer-defect targets only; block layout/mask/OPC edits, lithography simulation, model execution, DFM/yield/mask/wafer-defect claims, and release use until foundry/process collateral, local layout labels, deterministic signoff gates, and review exist. |
-| Post-silicon validation and bring-up | Symbolic QED, SoC trace protocol debug, RISC-V DV, RISCOF, RISC-V architectural tests, OpenTitan chip tests, RISC-V Debug Specification, OpenOCD, sigrok-cli, ML/XAI boot-failure debug, LLM4SecHW | Capture post-silicon, FPGA, RISC-V compliance, RISC-V debug, trace-debug, and lab-evidence targets only; block generated lab scripts, test binaries, hardware runs, compliance/debug claims, silicon bring-up claims, and release use until local logs, traces, signatures, probe identity, board/silicon IDs, and review exist. |
-| Low-power intent, DVFS, and clock gating | IEEE 1801 UPF, IEEE UPF examples, Yosys `clockgate`, CODMAS/RTLOPT, Prompting for Power, POET, RTL PPA SOG estimation, OpenROAD two-phase clocking conversion | Capture power-state, UPF, clock-gating, DVFS, retention, isolation, and low-power verification targets only; block generated UPF, RTL edits, gated clocks, DVFS policy, retention/isolation insertion, power-saving claims, and release use until platform, RTL, formal, synthesis, DFT, CDC/RDC, power/thermal, and PD gates exist. |
+| DTCO, TCAD, DFM, yield, lithography, and OPC | AgenticTCAD, TcadGPT, Litho-aware ML hotspot detection, DLHSD, LithoHoD, TorchLitho, OpenILT, DiffOPC, RadAI WM-811K wafer defect model, Pegasus LPA | Capture TCAD/DTCO, hotspot-screening, differentiable lithography, ILT/OPC, signoff-feature, and wafer-defect targets only; block TCAD deck generation, device/process assumptions, layout/mask/OPC edits, lithography simulation, model execution, DFM/yield/mask/wafer-defect claims, and release use until foundry/process collateral, local layout labels, deterministic signoff gates, and review exist. |
+| Post-silicon validation and bring-up | Symbolic QED, SoC trace protocol debug, RISC-V DV, RISCOF, RISC-V architectural tests, OpenTitan chip tests, RISC-V Debug Specification, OpenOCD, sigrok-cli, ML/XAI boot-failure debug, LLM4SecHW, LLM4SecHW OSHD, ChipBench | Capture post-silicon, FPGA, RISC-V compliance, RISC-V debug, trace-debug, LLM hardware-debug benchmark, corpus-governance, and lab-evidence targets only; block generated lab scripts, test binaries, hardware runs, external debug-corpus import, compliance/debug claims, silicon bring-up claims, and release use until local logs, traces, signatures, probe identity, board/silicon IDs, dataset provenance, benchmark replay, and review exist. |
+| Low-power intent, DVFS, and clock gating | IEEE 1801 UPF, IEEE UPF examples, Yosys `clockgate`, Lighter, CODMAS/RTLOPT, RTL-OPT, Prompting for Power, POET, RTL PPA SOG estimation, OpenROAD two-phase clocking conversion | Capture power-state, UPF, clock-gating, DVFS, retention, isolation, low-power RTL benchmark, and low-power verification targets only; block generated UPF, RTL edits, gated clocks, DVFS policy, retention/isolation insertion, benchmark imports, plugin outputs, power-saving claims, and release use until platform, RTL, formal, synthesis, DFT, CDC/RDC, power/thermal, and PD gates exist. |
 
 ## Recommended Integration Order
 
@@ -178,7 +184,9 @@ affect source, release claims, or tapeout-facing artifacts.
     pinned revisions, and held-out E1 error analysis exist.
 11. Use `scripts/ai_eda/capture_hls_accelerator_targets.py --run-id validation`
     to keep HLS/accelerator automation anchored to local E1 runtime and spec
-    artifacts before any HLS generator or directive-search loop is enabled.
+    artifacts, external model/dataset intake, and backend review before any HLS
+    generator, QoR model, library import, FPGA backend, or directive-search loop
+    is enabled.
 12. Use `scripts/ai_eda/capture_timing_closure_targets.py --run-id validation`
     to capture timing-closure inputs, OpenLane STA/resizer evidence, and
     blocked gate-sizing/buffer-insertion/pin-swap/clone ECO boundaries before
@@ -246,11 +254,12 @@ affect source, release claims, or tapeout-facing artifacts.
     release claim is allowed.
 22. Use `scripts/ai_eda/capture_low_power_intent_targets.py --run-id validation`
     to keep IEEE 1801/UPF, low-power RTL generation, LLM clock-gating, Yosys
-    clock-gating, power-first RTL optimization, DVFS/idle-state, retention, and
-    isolation sources tied to local platform, RTL, formal, synthesis, DFT,
-    CDC/RDC, software/BSP, power/thermal, and PD blockers before any generated
-    UPF, gated clock, DVFS policy, power-domain artifact, or power-saving claim
-    is allowed.
+    and Lighter clock-gating, RTL-OPT-style benchmark evaluation, power-first
+    RTL optimization, DVFS/idle-state, retention, and isolation sources tied to
+    local platform, RTL, formal, synthesis, DFT, CDC/RDC, software/BSP,
+    power/thermal, and PD blockers before any generated UPF, gated clock, DVFS
+    policy, power-domain artifact, benchmark import, plugin output, or
+    power-saving claim is allowed.
 23. Use `scripts/ai_eda/capture_verification_debug_targets.py --run-id validation`
     to keep PRO-V, Saarthi, SANGAM, FVDebug, and SiliconMind-V1 tied to local
     RTL, formal, cocotb, assertion, and spec hashes before any AI-generated
@@ -284,10 +293,13 @@ affect source, release claims, or tapeout-facing artifacts.
     performance claim is allowed.
 28. Use `scripts/ai_eda/capture_compiler_autotuning_targets.py --run-id validation`
     to keep LLVM MLGO, TVM/Ansor schedule search, RVV intrinsic generation,
-    profile-guided binary optimization, and agentic compiler optimization tied
-    to local compiler pins, runtime tests, RVV autovec checks, benchmark
-    calibration, simulator/runtime logs, and review before any generated code,
-    profile, binary, or compiler-performance claim is allowed.
+    profile-guided binary optimization, Autocomp/AccelOpt/V-Seek-style
+    accelerator-kernel optimization, formal RISC-V semantics, and agentic
+    compiler optimization tied to local compiler pins, runtime tests, RVV
+    autovec checks, benchmark calibration, simulator/runtime logs,
+    semantic-equivalence evidence, and review before any generated code,
+    kernel, optimization memory, profile, binary, proof, or
+    compiler-performance claim is allowed.
 29. Use `scripts/ai_eda/capture_reliability_resilience_targets.py --run-id validation`
     to keep aging, EM, soft-error, formal/QEMU fault-injection, NPU workload
     resilience, and ECC/TMR mitigation work tied to process models, mission
@@ -341,8 +353,9 @@ affect source, release claims, or tapeout-facing artifacts.
     gates, and review.
 36. Use `scripts/ai_eda/capture_chiplet_3dic_package_targets.py --run-id validation`
     to keep chiplet partitioning, 2.5D/3DIC placement/topology, UCIe/die-to-die
-    standards, package metadata exchange, cost/yield models, and LLM/agentic
-    chiplet co-design work behind E1 package and architecture gates. Do not
+    standards, RapidChiplet/PlaceIT/DiffChip/TDPNavigator-style package DSE,
+    package metadata exchange, cost/yield models, and LLM/agentic chiplet
+    co-design work behind E1 package and architecture gates. Do not
     generate chiplet partitions, interposer layouts, package/bump maps,
     die-to-die interfaces, SI/PI/thermal models, RTL, PD configs, board/package
     edits, simulator outputs, or cost/yield/performance/signoff claims without
@@ -368,10 +381,12 @@ affect source, release claims, or tapeout-facing artifacts.
     simulation/STA/OpenLane/power gates, and review.
 39. Use `scripts/ai_eda/capture_physical_verification_targets.py --run-id validation`
     to keep KLayout DRC, Magic DRC/LVS, Netgen LVS, OpenROAD antenna checking,
-    Rule2DRC-style generated deck research, and post-EDA repair benchmarks
+    Rule2DRC/DRC-Coder-style generated deck research, OpenDRC backend
+    watchlist, structural EDA-code verification, and post-EDA repair benchmarks
     behind physical-verification governance. Do not generate or run DRC decks,
-    layout repairs, LVS waivers, antenna fixes, Tcl, patches, or AI signoff
-    triage, and do not claim DRC, LVS, antenna, physical signoff, or release
+    layout repairs, LVS waivers, antenna fixes, Tcl, patches, structural
+    verifier approvals, OpenDRC reports, or AI signoff triage, and do not claim
+    DRC, LVS, antenna, physical signoff, or release
     readiness without exact tool revisions, rule-deck hashes, layout/netlist
     hashes, before/after logs, deterministic extraction/STA/power/
     manufacturing/commercial-EDA gates where applicable, and review.

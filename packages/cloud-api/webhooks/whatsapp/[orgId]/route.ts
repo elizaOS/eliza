@@ -31,6 +31,7 @@ import {
   parseWhatsAppWebhookPayload,
   startWhatsAppTypingIndicator,
   type WhatsAppIncomingMessage,
+  type WhatsAppWebhookPayload,
 } from "@/lib/utils/whatsapp-api";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
@@ -75,7 +76,7 @@ async function handleWhatsAppWebhook(c: AppContext): Promise<Response> {
       }
     }
 
-    let payload: ReturnType<typeof parseWhatsAppWebhookPayload>;
+    let payload: WhatsAppWebhookPayload;
     try {
       const rawPayload = JSON.parse(rawBody);
       payload = parseWhatsAppWebhookPayload(rawPayload);
@@ -323,6 +324,8 @@ async function handleIncomingMessage(
           provider: "whatsapp",
           mediaUrls: agentResponse.mediaUrls,
           organizationId: phoneRouteResult.organizationId,
+          agentId: phoneRouteResult.agentId,
+          agentOrganizationId: phoneRouteResult.organizationId,
         });
 
         if (sent) {
@@ -361,6 +364,9 @@ async function handleIncomingMessage(
       provider: "whatsapp",
       mediaUrls: undefined,
       organizationId: routeResult.organizationId,
+      agentId: routeResult.agentId,
+      agentOrganizationId: routeResult.organizationId,
+      agentUserId: routeResult.userId,
     });
 
     if (sent) {

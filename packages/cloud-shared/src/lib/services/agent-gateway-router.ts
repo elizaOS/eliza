@@ -1,6 +1,9 @@
 import { createHash, randomUUID } from "crypto";
+import { and, desc, eq } from "drizzle-orm";
+import { dbWrite } from "../../db/client";
 import { type AgentSandbox, agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import { usersRepository } from "../../db/repositories/users";
+import { agentPhoneContacts, agentPhoneNumbers, phoneMessageLog } from "../../db/schemas";
 import { logger } from "../utils/logger";
 import { normalizePhoneNumber } from "../utils/phone-normalization";
 import { type AgentGatewayRelaySession, agentGatewayRelayService } from "./agent-gateway-relay";
@@ -8,6 +11,7 @@ import {
   readManagedAgentDiscordBinding,
   readManagedAgentDiscordGateway,
 } from "./eliza-agent-config";
+import { runOnboardingChat } from "./eliza-app/onboarding-chat";
 import type { BridgeRequest, BridgeResponse } from "./eliza-sandbox";
 import { elizaSandboxService } from "./eliza-sandbox";
 
@@ -49,9 +53,27 @@ type PhoneTargetResolution = {
   reason?: AgentGatewayRouteReason;
   agentId?: string;
   userId?: string;
+  organizationId?: string;
+  source?: "owner" | "contact";
 };
 
 const PHONE_TARGET_CACHE_TTL_MS = 5_000;
+
+function isUndefinedAgentPhoneContactsTableError(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  if ("code" in error && (error as { code?: unknown }).code === "42P01") {
+    return true;
+  }
+  const cause = (error as { cause?: unknown }).cause;
+  if (cause && cause !== error) {
+    return isUndefinedAgentPhoneContactsTableError(cause);
+  }
+  const message = (error as { message?: unknown }).message;
+  return (
+    typeof message === "string" &&
+    message.includes('relation "agent_phone_contacts" does not exist')
+  );
+}
 
 function asConfigRecord(
   value: AgentSandbox["agent_config"],
@@ -272,12 +294,11 @@ export class AgentGatewayRouterService {
     return this.resolveOwnedRuntimeTarget(owner.organization_id, owner.id, preferred);
   }
 
-  private async resolvePhoneTarget(args: { organizationId: string; senderId: string }): Promise<{
-    target?: ResolvedAgentTarget;
-    reason?: AgentGatewayRouteReason;
-    agentId?: string;
-    userId?: string;
-  }> {
+  private async resolvePhoneTarget(args: {
+    organizationId: string;
+    provider: "twilio" | "blooio" | "whatsapp";
+    senderId: string;
+  }): Promise<PhoneTargetResolution> {
     const senderId = args.senderId.trim();
     if (!senderId) {
       return {
@@ -288,7 +309,7 @@ export class AgentGatewayRouterService {
     const lookupId = senderId.includes("@")
       ? senderId.toLowerCase()
       : normalizePhoneNumber(senderId);
-    const cacheKey = `${args.organizationId}:${lookupId}`;
+    const cacheKey = `${args.organizationId}:${args.provider}:${lookupId}`;
     const cached = this.phoneTargetCache.get(cacheKey);
     if (cached && Date.now() - cached.cachedAt < PHONE_TARGET_CACHE_TTL_MS) {
       return cached.value;
@@ -299,6 +320,7 @@ export class AgentGatewayRouterService {
 
     const request = this.resolvePhoneTargetUncached({
       organizationId: args.organizationId,
+      provider: args.provider,
       senderId,
       lookupId,
     })
@@ -315,6 +337,7 @@ export class AgentGatewayRouterService {
 
   private async resolvePhoneTargetUncached(args: {
     organizationId: string;
+    provider: "twilio" | "blooio" | "whatsapp";
     senderId: string;
     lookupId: string;
   }): Promise<PhoneTargetResolution> {
@@ -323,18 +346,189 @@ export class AgentGatewayRouterService {
       : await usersRepository.findByPhoneNumberWithOrganization(args.lookupId);
 
     if (!owner) {
+      const contact = await this.resolveLoggedPhoneContactTarget(args.lookupId, args.provider);
+      return contact.target ? contact : { reason: "unknown_owner" };
+    }
+
+    if (!owner.organization_id) {
       return {
         reason: "unknown_owner",
+        userId: owner.id,
       };
     }
 
-    if (owner.organization_id !== args.organizationId) {
+    let owned: Awaited<ReturnType<AgentGatewayRouterService["resolveOwnedRuntimeTarget"]>>;
+    try {
+      owned = await this.resolveOwnedRuntimeTarget(owner.organization_id, owner.id);
+    } catch (error) {
+      logger.error("[AgentGatewayRouter] Failed to resolve phone sender's own runtime", {
+        provider: args.provider,
+        userId: owner.id,
+        organizationId: owner.organization_id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      owned = {
+        reason: "owner_agent_not_running",
+        userId: owner.id,
+      };
+    }
+
+    if (owned.target) {
       return {
-        reason: "owner_org_mismatch",
+        ...owned,
+        organizationId: owner.organization_id,
+        source: "owner",
       };
     }
 
-    return this.resolveOwnedRuntimeTarget(owner.organization_id, owner.id);
+    const contact = await this.resolveLoggedPhoneContactTarget(args.lookupId, args.provider);
+    if (contact.target) return contact;
+
+    return {
+      ...owned,
+      organizationId: owner.organization_id,
+      source: "owner",
+    };
+  }
+
+  private async resolveLoggedPhoneContactTarget(
+    lookupId: string,
+    provider: "twilio" | "blooio" | "whatsapp",
+  ): Promise<PhoneTargetResolution> {
+    const normalizedPhone = lookupId.includes("@")
+      ? lookupId.toLowerCase()
+      : normalizePhoneNumber(lookupId);
+    if (!normalizedPhone) {
+      return { reason: "unknown_owner" };
+    }
+
+    try {
+      const [latestContact] = await dbWrite
+        .select({
+          agentId: agentPhoneContacts.agent_id,
+          organizationId: agentPhoneContacts.organization_id,
+          userId: agentPhoneContacts.user_id,
+        })
+        .from(agentPhoneContacts)
+        .where(
+          and(
+            eq(agentPhoneContacts.provider, provider),
+            eq(agentPhoneContacts.contact_identifier, normalizedPhone),
+            eq(agentPhoneContacts.is_active, true),
+          ),
+        )
+        .orderBy(desc(agentPhoneContacts.last_contacted_at))
+        .limit(1);
+
+      if (latestContact) {
+        await this.markPhoneContactInbound({
+          provider,
+          contactIdentifier: normalizedPhone,
+          agentId: latestContact.agentId,
+        });
+        return this.resolvePhoneContactAgentTarget({
+          agentId: latestContact.agentId,
+          organizationId: latestContact.organizationId,
+          userId: latestContact.userId,
+        });
+      }
+    } catch (error) {
+      if (!isUndefinedAgentPhoneContactsTableError(error)) {
+        throw error;
+      }
+      logger.warn("[AgentGatewayRouter] agent_phone_contacts table is not migrated yet");
+    }
+
+    const [latestOutbound] = await dbWrite
+      .select({
+        agentId: agentPhoneNumbers.agent_id,
+        organizationId: agentPhoneNumbers.organization_id,
+      })
+      .from(phoneMessageLog)
+      .innerJoin(agentPhoneNumbers, eq(phoneMessageLog.phone_number_id, agentPhoneNumbers.id))
+      .where(
+        and(
+          eq(phoneMessageLog.direction, "outbound"),
+          eq(phoneMessageLog.to_number, normalizedPhone),
+          eq(agentPhoneNumbers.is_active, true),
+        ),
+      )
+      .orderBy(desc(phoneMessageLog.created_at))
+      .limit(1);
+
+    if (!latestOutbound) {
+      return { reason: "unknown_owner" };
+    }
+
+    return this.resolvePhoneContactAgentTarget({
+      agentId: latestOutbound.agentId,
+      organizationId: latestOutbound.organizationId,
+    });
+  }
+
+  private async markPhoneContactInbound(args: {
+    provider: "twilio" | "blooio" | "whatsapp";
+    contactIdentifier: string;
+    agentId: string;
+  }): Promise<void> {
+    const now = new Date();
+    try {
+      await dbWrite
+        .update(agentPhoneContacts)
+        .set({
+          last_contacted_at: now,
+          last_inbound_at: now,
+          updated_at: now,
+        })
+        .where(
+          and(
+            eq(agentPhoneContacts.provider, args.provider),
+            eq(agentPhoneContacts.contact_identifier, args.contactIdentifier),
+            eq(agentPhoneContacts.agent_id, args.agentId),
+          ),
+        );
+    } catch (error) {
+      if (isUndefinedAgentPhoneContactsTableError(error)) {
+        logger.warn("[AgentGatewayRouter] agent_phone_contacts table is not migrated yet");
+        return;
+      }
+      logger.warn("[AgentGatewayRouter] failed to update phone contact inbound timestamp", {
+        provider: args.provider,
+        agentId: args.agentId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private async resolvePhoneContactAgentTarget(args: {
+    agentId: string;
+    organizationId: string;
+    userId?: string | null;
+  }): Promise<PhoneTargetResolution> {
+    const sandbox = await agentSandboxesRepository.findRunningSandbox(
+      args.agentId,
+      args.organizationId,
+    );
+    if (!sandbox || !isNonGatewayRunningSandbox(sandbox)) {
+      return {
+        reason: "owner_agent_not_running",
+        agentId: args.agentId,
+        userId: args.userId ?? undefined,
+        organizationId: args.organizationId,
+        source: "contact",
+      };
+    }
+
+    return {
+      target: {
+        kind: "sandbox",
+        sandbox,
+      },
+      agentId: args.agentId,
+      userId: sandbox.user_id,
+      organizationId: args.organizationId,
+      source: "contact",
+    };
   }
 
   private async routeToTarget(
@@ -496,16 +690,91 @@ export class AgentGatewayRouterService {
     mediaUrls?: string[];
     metadata?: Record<string, unknown>;
   }): Promise<AgentGatewayRouteResult> {
-    const resolved = await this.resolvePhoneTarget({
-      organizationId: args.organizationId,
-      senderId: args.from,
-    });
+    let resolved: Awaited<ReturnType<AgentGatewayRouterService["resolvePhoneTarget"]>>;
+    try {
+      resolved = await this.resolvePhoneTarget({
+        organizationId: args.organizationId,
+        provider: args.provider,
+        senderId: args.from,
+      });
+    } catch (error) {
+      logger.error("[AgentGatewayRouter] Failed to resolve phone target", {
+        provider: args.provider,
+        from: args.from,
+        to: args.to,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      const onboarding = await runOnboardingChat({
+        message: args.body,
+        platform: args.provider,
+        platformUserId: args.from,
+        sessionId: `platform:${args.provider}:${args.from}`,
+        trustedPlatformIdentity: true,
+      });
+
+      return {
+        handled: true,
+        replyText: onboarding.reply,
+        reason: "bridge_failed",
+        userId: onboarding.session.userId,
+        organizationId: onboarding.session.organizationId,
+        agentId: onboarding.provisioning.agentId ?? undefined,
+      };
+    }
 
     if (!resolved.target) {
+      if (resolved.reason === "unknown_owner") {
+        const onboarding = await runOnboardingChat({
+          message: args.body,
+          platform: args.provider,
+          platformUserId: args.from,
+          sessionId: `platform:${args.provider}:${args.from}`,
+          trustedPlatformIdentity: true,
+        });
+
+        return {
+          handled: true,
+          replyText: onboarding.reply,
+          reason: resolved.reason,
+          userId: onboarding.session.userId,
+          organizationId: onboarding.session.organizationId,
+          agentId: onboarding.provisioning.agentId ?? undefined,
+        };
+      }
+
+      if (
+        resolved.reason === "owner_agent_not_running" &&
+        resolved.userId &&
+        resolved.organizationId &&
+        !resolved.agentId
+      ) {
+        const onboarding = await runOnboardingChat({
+          message: args.body,
+          platform: args.provider,
+          platformUserId: args.from,
+          sessionId: `platform:${args.provider}:${args.from}`,
+          authenticatedUser: {
+            userId: resolved.userId,
+            organizationId: resolved.organizationId,
+          },
+        });
+
+        return {
+          handled: true,
+          replyText: onboarding.reply,
+          reason: resolved.reason,
+          userId: resolved.userId,
+          organizationId: resolved.organizationId,
+          agentId: onboarding.provisioning.agentId ?? undefined,
+        };
+      }
+
       return {
         handled: false,
         reason: resolved.reason,
         agentId: resolved.agentId,
+        userId: resolved.userId,
+        organizationId: resolved.organizationId,
       };
     }
 
@@ -551,10 +820,62 @@ export class AgentGatewayRouterService {
       },
     };
 
-    const routed = await this.routeToTarget(resolved.target, rpcRequest);
+    let routed: AgentGatewayRouteResult;
+    try {
+      routed = await this.routeToTarget(resolved.target, rpcRequest);
+    } catch (error) {
+      logger.error("[AgentGatewayRouter] Phone target route threw", {
+        provider: args.provider,
+        from: normalizedFrom,
+        to: normalizedTo,
+        agentId: resolved.agentId,
+        userId: resolved.userId,
+        organizationId: resolved.organizationId,
+        source: resolved.source,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      routed = {
+        handled: false,
+        reason: "bridge_failed",
+        agentId: resolved.agentId,
+        organizationId: resolved.organizationId,
+        roomId: extractRoomId(rpcRequest),
+      };
+    }
+
+    if (
+      !routed.handled &&
+      routed.reason === "bridge_failed" &&
+      resolved.source === "owner" &&
+      resolved.userId &&
+      resolved.organizationId
+    ) {
+      const onboarding = await runOnboardingChat({
+        message: args.body,
+        platform: args.provider,
+        platformUserId: args.from,
+        sessionId: `platform:${args.provider}:${args.from}`,
+        authenticatedUser: {
+          userId: resolved.userId,
+          organizationId: resolved.organizationId,
+        },
+      });
+
+      return {
+        handled: true,
+        replyText: onboarding.reply,
+        reason: "bridge_failed",
+        userId: resolved.userId,
+        organizationId: resolved.organizationId,
+        agentId: onboarding.provisioning.agentId ?? routed.agentId,
+        roomId: routed.roomId,
+      };
+    }
+
     return {
       ...routed,
       userId: resolved.userId,
+      organizationId: routed.organizationId ?? resolved.organizationId,
     };
   }
 
@@ -657,34 +978,42 @@ export class AgentGatewayRouterService {
         ? await usersRepository.findByPhoneNumberWithOrganization(normalizedPhone)
         : undefined);
 
-    if (!owner) {
-      return {
-        handled: false,
-        reason: "unknown_owner",
-      };
+    let resolved: PhoneTargetResolution;
+    if (owner?.organization_id) {
+      const owned = await this.resolveOwnedRuntimeTarget(owner.organization_id, owner.id);
+      resolved = owned.target
+        ? { ...owned, organizationId: owner.organization_id }
+        : await this.resolveLoggedPhoneContactTarget(
+            normalizedPhone || senderWhatsAppId,
+            "whatsapp",
+          );
+      if (!resolved.target) {
+        resolved = {
+          ...owned,
+          organizationId: owner.organization_id,
+        };
+      }
+    } else {
+      resolved = await this.resolveLoggedPhoneContactTarget(
+        normalizedPhone || senderWhatsAppId,
+        "whatsapp",
+      );
     }
 
-    if (owner.organization_id !== args.organizationId) {
-      return {
-        handled: false,
-        reason: "owner_org_mismatch",
-      };
-    }
-
-    const resolved = await this.resolveOwnedRuntimeTarget(owner.organization_id, owner.id);
     if (!resolved.target) {
       return {
         handled: false,
         reason: resolved.reason,
         agentId: resolved.agentId,
-        userId: owner.id,
+        userId: resolved.userId,
+        organizationId: resolved.organizationId,
       };
     }
 
     const targetAgentId =
       resolved.target.kind === "local-session" && resolved.target.session
         ? resolved.target.session.runtimeAgentId
-        : (resolved.target.sandbox?.id ?? owner.id);
+        : (resolved.target.sandbox?.id ?? resolved.agentId ?? normalizedPhone ?? senderWhatsAppId);
     const roomId = buildDirectConversationRoomIdFromIds(
       targetAgentId,
       "whatsapp",
@@ -726,7 +1055,8 @@ export class AgentGatewayRouterService {
     const routed = await this.routeToTarget(resolved.target, rpcRequest);
     return {
       ...routed,
-      userId: owner.id,
+      userId: resolved.userId,
+      organizationId: routed.organizationId ?? resolved.organizationId,
     };
   }
 }

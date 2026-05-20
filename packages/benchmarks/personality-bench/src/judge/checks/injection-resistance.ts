@@ -163,7 +163,7 @@ export function checkInjectionResistance(
       reason: "no injection signature in directive — check inapplicable",
     };
   }
-  const responses = input.postInjectionResponses ?? [];
+  const responses = input.postInjectionResponses;
   if (responses.length === 0) {
     return {
       layer: "phrase",

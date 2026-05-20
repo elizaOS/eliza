@@ -81,6 +81,7 @@ predictive_lanes:
     captured_leaf_blocks:
       - block_id: tage_table
         flow_mode: yosys_abc_synth_only
+        rtl_top: tage_table
         scope: >
           One BPU TAGE tagged-table primitive (128-entry leaf-shape proxy of
           the production 4096-entry geometry; 14-bit valid+tag+ctr+useful
@@ -90,15 +91,66 @@ predictive_lanes:
         shape_report: docs/evidence/process/asap7/tage_table_shape.json
         projection_report: docs/evidence/process/asap7/tage_table_projection_n2p.json
         evidence_class: predictive_finfet_shape_only_not_signoff
-    pending_leaf_blocks:
-      - id: npu_tile_rf_leaf
-        status: orfs_post_route_required
-      - id: big_core_shell
-        status: orfs_post_route_required
-      - id: npu_tile
-        status: orfs_post_route_required
-      - id: slc_slice
-        status: orfs_post_route_required
+      - block_id: npu_tile_rf_leaf
+        flow_mode: yosys_abc_synth_only
+        rtl_top: e1_weight_buffer_sram
+        scope: >
+          NPU weight-staging register file leaf (512-entry x 32-bit + 4-bit
+          write-mask single-RW + single-R port, behavioral path) synthesized
+          standalone with yosys 0.64 + ABC -fast, mapped to asap7sc7p5t_27
+          RVT TT (0.70 V, 25 C). Storage is flat flops; production swap to a
+          hard SRAM macro under E1_HAVE_HARD_SRAM at N2P/A14/14A/SF2P.
+        shape_report: docs/evidence/process/asap7/npu_tile_rf_leaf_shape.json
+        projection_report: docs/evidence/process/asap7/npu_tile_rf_leaf_projection_n2p.json
+        evidence_class: predictive_finfet_shape_only_not_signoff
+      - block_id: big_core_shell
+        flow_mode: yosys_abc_synth_only
+        rtl_top: e1_cpu_subsystem_stub
+        scope: >
+          Big-core leaf shape from e1_cpu_subsystem_stub (32x64-bit RV64I
+          subset in-order microcontroller stub with RISC-V decoder, ALU,
+          architectural register file, and AXI4-Lite master FSM) synthesized
+          standalone with yosys 0.64 + ABC -fast, mapped to asap7sc7p5t_27
+          RVT TT (0.70 V, 25 C). Substitutes for the CVA6 / Ascalon / Kunminghu
+          big-core RTL until those land; the stub is real RISC-V execution
+          logic, not a placeholder.
+        shape_report: docs/evidence/process/asap7/big_core_shell_shape.json
+        projection_report: docs/evidence/process/asap7/big_core_shell_projection_n2p.json
+        evidence_class: predictive_finfet_shape_only_not_signoff
+      - block_id: npu_tile
+        flow_mode: yosys_abc_synth_only
+        rtl_top: e1_npu
+        scope: >
+          Full e1_npu monolithic NPU tile (16x32-bit scratch RF, 16 opcodes
+          including INT8/INT4/INT2/FP8 dot products, GEMM/vector engines,
+          AXI-Lite descriptor engine, perf counters) at production geometry.
+          Synthesized standalone with yosys 0.64 + ABC -fast, mapped to
+          asap7sc7p5t_27 RVT TT (0.70 V, 25 C). Weight-buffer SRAM macros
+          are characterized separately (see npu_tile_rf_leaf above + vendor
+          macro density at 38.1 Mb/mm^2 at N2).
+        shape_report: docs/evidence/process/asap7/npu_tile_shape.json
+        projection_report: docs/evidence/process/asap7/npu_tile_projection_n2p.json
+        evidence_class: predictive_finfet_shape_only_not_signoff
+      - block_id: slc_slice
+        flow_mode: yosys_abc_synth_only
+        rtl_top: e1_slc
+        scope: >
+          Shrunk e1_slc geometry (2 KiB, 2-way, 2 banks, 64 B line, 8 sets
+          per bank) covering the lookup/install FSM, BDI compression form
+          classifier, QoS-aware victim selection, and display-RT reservation
+          counter. Synthesized standalone with yosys 0.64 + ABC -fast,
+          mapped to asap7sc7p5t_27 RVT TT (0.70 V, 25 C). Production
+          geometry is 16 MiB/16-way/4-bank and replaces the flat-flop
+          data/tag/RRPV arrays with SRAM macros at vendor density
+          (38.1 Mb/mm^2 HD at N2). BANKS=2 is the minimum geometry that
+          keeps $clog2(BANKS) > 0 so cache_pkg bank-index bit slices
+          compile cleanly; smaller SIZE_BYTES/WAYS keep the per-bit flop
+          reset analysis tractable within a single workstation-minute
+          synth budget.
+        shape_report: docs/evidence/process/asap7/slc_slice_shape.json
+        projection_report: docs/evidence/process/asap7/slc_slice_projection_n2p.json
+        evidence_class: predictive_finfet_shape_only_not_signoff
+    pending_leaf_blocks: []
 
 advanced_lanes_blocked:
   - id: tsmc_n2p

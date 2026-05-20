@@ -12,8 +12,8 @@
  */
 import { logger } from "../utils/logger";
 import {
-  type DeploymentStatus,
   assertDeployable,
+  type DeploymentStatus,
   deploymentIdFor,
   publicStatusFor,
 } from "./app-deployments-helpers";

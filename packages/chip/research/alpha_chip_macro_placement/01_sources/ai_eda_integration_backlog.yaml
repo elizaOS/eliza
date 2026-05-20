@@ -762,24 +762,36 @@ work_items:
       - hls-eval
       - llm-dse
       - idse-hls
+      - mpm-llm4dse
+      - timelyhls
+      - flexllm-hls
+      - tapa-rapidstream
       - secda-dse
     target_area:
       - high_level_synthesis
       - accelerator_dse
+      - hls_qor_model
+      - timing_aware_hls
+      - fpga_hls_backend
+      - model_dataset_intake
       - simulator
       - runtime
     owner_scope: dry-run target capture only; no generated HLS or RTL
     objective: >
       Identify E1 runtime and NPU behaviors that could become HLS/accelerator
       DSE tasks, while keeping generated directives, generated HLS, generated
-      RTL, and benchmark claims blocked until deterministic gates exist.
+      RTL, imported QoR models, benchmark datasets, FPGA backends, and benchmark
+      claims blocked until deterministic gates exist.
     deliverables:
       - scripts/ai_eda/capture_hls_accelerator_targets.py
       - build/ai_eda/hls_accelerator_targets/<run-id>/targets_report.json
     evidence_gate: >
       HLS automation reports may only hash local specs/tests and backend
-      availability; generated code needs C-simulation, HLS synthesis, RTL
-      simulation, synthesis, equivalence where applicable, and human review.
+      availability; external models, datasets, libraries, and backends need
+      exact revisions, license review, manifests, replay gates, and reviewer
+      disposition before generated code is considered. Generated code needs
+      C-simulation, HLS synthesis, RTL simulation, synthesis, equivalence where
+      applicable, and human review.
     validation_commands:
       - python3 scripts/check_ai_eda_source_inventory.py
       - python3 scripts/ai_eda/capture_hls_accelerator_targets.py --run-id validation
@@ -788,12 +800,14 @@ work_items:
       - No HLS backend selected or version-pinned
       - No generated HLS artifact isolation policy beyond build/ai_eda
       - No pinned LLM-DSE environment, HLSyn input subset, prompt log, or directive-search replay manifest
+      - No approved MPM-LLM4DSE model/dataset intake, TimelyHLS benchmark replay, FlexLLM artifact review, or TAPA/RapidStream FPGA backend evidence
       - External benchmark/framework license review not complete
       - No E1 HLS C-simulation or generated-RTL equivalence harness
     acceptance_criteria:
       - Report records local runtime/spec input hashes.
       - Report states no HLS code or RTL is generated.
       - Candidate tasks list deterministic E1 follow-up gates.
+      - Model, dataset, library, and backend candidates remain metadata-only.
   - id: p1-timing-closure-target-capture
     title: Timing Closure And ECO Target Capture
     priority: P1
@@ -864,16 +878,30 @@ work_items:
       - analoggenie
       - masala-chai
       - limca
+      - analogagent
+      - analogmaster
+      - vlm-cad
+      - circuitlm
+      - eeschematic
+      - analogcoder-pro
+      - analogcoder
+      - ams-net
     target_area:
       - analog_layout
       - analog_sizing
+      - analog_agent
+      - schematic_generation
+      - schematic_to_netlist
       - padframe
       - si_pi
       - mixed_signal
     owner_scope: dry-run target capture only; no SPICE, layout, padframe, or IP generation
     objective: >
-      Track analog and mixed-signal AI automation sources while tying any future
-      E1 use to local padframe, package, Wi-Fi IO, SI/PI, and process evidence.
+      Track analog and mixed-signal AI automation sources, including 2026
+      LLM/VLM analog agents, schematic parsers, sizing optimizers, and
+      schematic/netlist datasets, while tying any future E1 use to local
+      padframe, package, Wi-Fi IO, SI/PI, process, simulator, dataset, and
+      analog-review evidence.
     deliverables:
       - scripts/ai_eda/capture_analog_mixed_signal_targets.py
       - build/ai_eda/analog_mixed_signal_targets/<run-id>/targets_report.json
@@ -889,6 +917,8 @@ work_items:
       - No local analog SPICE specs or testbenches for E1
       - No foundry pad library selected or released
       - No IBIS, S-parameter, package parasitic, or rail impedance model
+      - No quarantined analog LLM/agent harness with pinned prompts, model versions, memory snapshots, SPICE decks, simulator logs, PVT sweeps, and reviewer disposition
+      - No license-reviewed analog schematic/netlist dataset with exact snapshot, non-overlap review, and parser baselines
       - No approved flow for AI-generated SPICE, layout, or foundry IP
     acceptance_criteria:
       - Report hashes local package, padframe, SI/PI, Wi-Fi IO, and process inputs.
@@ -1054,6 +1084,8 @@ work_items:
     priority: P1
     status: IN_PROGRESS
     source_ids:
+      - agentictcad
+      - tcadgpt
       - deepoheat
       - thermal-generative-ai
       - thermedge-iredge
@@ -1063,24 +1095,33 @@ work_items:
       - openpdn
       - aieda
       - rtlmul
+      - archpower
+      - autopower
     target_area:
+      - dtco
+      - device_modeling
       - power_prediction
       - thermal_modeling
       - ir_drop_prediction
       - pdn_synthesis
       - ppa_prediction
+      - architecture_power_modeling
+      - simulator_power_modeling
     owner_scope: dry-run target capture only; no power maps, thermal maps, PDN edits, or signoff claims
     objective: >
-      Track AI-assisted power, thermal, IR-drop, and PDN sources while tying any
-      future E1 use to sustained measurement, package, PD signoff, and
-      deterministic benchmark gates.
+      Track AI-assisted TCAD-derived device assumptions, power, thermal,
+      IR-drop, PDN, and architecture-level CPU/AP power-model sources while
+      tying any future E1 use to authorized process collateral, sustained
+      measurement, package, PD signoff, simulator calibration, and deterministic
+      benchmark gates.
     deliverables:
       - scripts/ai_eda/capture_power_thermal_targets.py
       - build/ai_eda/power_thermal_targets/<run-id>/targets_report.json
     evidence_gate: >
       Power/thermal automation reports may only hash local evidence contracts
       and model inputs; predictions, generated PDNs, TOPS/W, IR-drop, thermal,
-      or product claims require measured or deterministic signoff evidence.
+      architecture-level power estimates, or product claims require measured or
+      deterministic signoff evidence.
     validation_commands:
       - python3 scripts/check_ai_eda_source_inventory.py
       - python3 scripts/ai_eda/capture_power_thermal_targets.py --run-id validation
@@ -1091,11 +1132,13 @@ work_items:
       - No package, board, airflow, heatsink, or phone skin thermal model calibrated to E1
       - No local OpenROAD/PDNSim IR-drop label corpus across repeated runs
       - No activity-aligned power map or vector-based post-route power evidence
+      - No approved TCAD/DTCO deck, model, simulator, calibration corpus, or process authority
+      - No approved ArchPower dataset intake, AutoPower revision, E1 CPU/AP feature mapping, or local held-out calibration labels
       - No approved flow for AI-generated PDN, power map, thermal map, or signoff waiver
     acceptance_criteria:
       - Report hashes sustained power, thermal, benchmark, PD, package, and checker inputs.
       - Report states no power, thermal, IR-drop, TOPS/W, or generated-PDN claim is made.
-      - Candidate tasks list deterministic power, thermal, PD signoff, board/package, and synthesis gates.
+      - Candidate tasks list deterministic power, thermal, architecture-power, PD signoff, board/package, and synthesis gates.
   - id: p1-floorplan-io-pdn-target-capture
     title: Floorplan, IO Placement, Tapcell, And PDN Target Capture
     priority: P1
@@ -1166,6 +1209,11 @@ work_items:
       - trojanwhisper
       - trojangym
       - ghost-benchmarks
+      - ai-hardware-security-verification-survey
+      - safetune-rtl-poisoning
+      - trojanloc
+      - harmchip
+      - trojan-xai-comparison
     target_area:
       - hardware_security
       - trojan_detection
@@ -1174,9 +1222,10 @@ work_items:
       - adversarial_benchmarking
     owner_scope: dry-run target capture only; no scanner execution, Trojan insertion, RTL edits, or vulnerability claims
     objective: >
-      Track AI-assisted hardware-security and Trojan-detection sources while
-      tying any future E1 use to RTL hashes, formal/simulation gates, no-
-      hardware-action policy, provenance, and human security review.
+      Track AI-assisted hardware-security, data-poisoning defense, LLM safety,
+      explainability, and Trojan-detection sources while tying any future E1
+      use to RTL hashes, formal/simulation gates, no-hardware-action policy,
+      provenance, prompt isolation, and human security review.
     deliverables:
       - scripts/ai_eda/capture_hardware_security_targets.py
       - build/ai_eda/hardware_security_targets/<run-id>/targets_report.json
@@ -1193,6 +1242,8 @@ work_items:
       - No local known-good/known-bad E1 RTL security label set
       - No pinned Trojan/vulnerability taxonomy mapped to the E1 threat model
       - No reviewed model, prompt, retrieval corpus, benchmark, or scanner license path
+      - No approved prompt quarantine or red-team isolation policy for HarmChip-style hardware-security jailbreak evaluation
+      - No poisoning-screening or line-level Trojan-localization workflow for external RTL fine-tuning corpora
       - No acceptance contract for AI security findings, suppressions, or reviewer signoff
       - No before/after deterministic regression gate for acting on AI security output
     acceptance_criteria:
@@ -1308,6 +1359,11 @@ work_items:
       - trojanwhisper
       - trojangym
       - ghost-benchmarks
+      - ai-hardware-security-verification-survey
+      - safetune-rtl-poisoning
+      - trojanloc
+      - harmchip
+      - trojan-xai-comparison
     target_area:
       - hardware_security
       - trojan_detection
@@ -1481,20 +1537,26 @@ work_items:
       - netgen-lvs
       - openroad-antenna-check
       - rule2drc
+      - drc-coder
+      - structural-eda-code-verification
+      - opendrc
       - posteda-bench
     target_area:
       - physical_verification
       - drc
       - lvs
       - antenna
+      - drc_checker_generation
+      - structural_script_verification
       - layout_repair
       - signoff
     owner_scope: dry-run target capture only; no layout, GDS, DEF, ODB, netlist, PDK-rule, PD config, constraint, DRC deck, waiver, antenna fix, Tcl, patch, tool run, or signoff claim
     objective: >
       Capture local E1 KLayout, Magic, Netgen, OpenROAD/OpenLane DRC/LVS/XOR,
       antenna, and signoff artifacts as hashed targets for future AI-assisted
-      physical-verification log triage while quarantining generated decks,
-      layout repairs, waivers, and antenna fixes.
+      physical-verification log triage, generated-checker research, and
+      structural script guardrails while quarantining generated decks, layout
+      repairs, waivers, and antenna fixes.
     deliverables:
       - scripts/ai_eda/capture_physical_verification_targets.py
       - build/ai_eda/physical_verification_targets/<run-id>/targets_report.json
@@ -1518,6 +1580,7 @@ work_items:
     blocked_by:
       - No foundry-approved DRC/LVS/antenna signoff deck, waiver policy, or commercial-signoff correlation for E1
       - No accepted AI-generated DRC deck, layout repair, antenna fix, or LVS waiver workflow with deterministic before/after artifacts
+      - No approved structural dependency schema, command whitelist, generated-script quarantine, or OpenDRC correlation evidence for physical-verification code generation
       - Current PD closure evidence is not release-clean
       - No release gate allowing AI physical-verification output to bypass deterministic tool and reviewer gates
     acceptance_criteria:
@@ -1532,7 +1595,9 @@ work_items:
       - ieee-1801-upf
       - ieee-upf-open-source
       - yosys-clockgate
+      - lighter-clock-gating
       - codmas-rtlopt
+      - rtl-opt-benchmark
       - prompting-for-power
       - poet-rtl-ppa
       - rtl-ppa-sog
@@ -1541,15 +1606,17 @@ work_items:
       - power_intent
       - upf
       - clock_gating
+      - low_power_rtl_benchmark
       - dvfs
       - low_power_verification
       - ppa
     owner_scope: dry-run target capture only; no RTL, SDC, UPF, clock-gating, DVFS, retention, isolation, or power-domain edits
     objective: >
       Track low-power RTL optimization, clock-gating, IEEE 1801 UPF, DVFS,
-      idle-state, retention, isolation, and power-aware verification sources
-      while tying any future E1 use to deterministic RTL, formal, synthesis,
-      DFT, CDC/RDC, power/thermal, and physical-design gates.
+      idle-state, retention, isolation, power-aware verification, open
+      clock-gating backends, and PPA benchmark sources while tying any future E1
+      use to deterministic RTL, formal, synthesis, DFT, CDC/RDC, power/thermal,
+      and physical-design gates.
     deliverables:
       - scripts/ai_eda/capture_low_power_intent_targets.py
       - build/ai_eda/low_power_intent_targets/<run-id>/targets_report.json
@@ -1557,7 +1624,9 @@ work_items:
       Low-power automation reports may only hash local RTL, SDC, power,
       thermal, CPU/AP, NPU, and PD inputs; generated UPF, clock-gating, DVFS,
       retention, isolation, level-shifter, or power-domain changes require
-      deterministic verification and review.
+      deterministic verification and review. External benchmark tasks and
+      plugin/library maps require pinned revisions, license review, non-overlap
+      checks, and reviewer disposition.
     validation_commands:
       - python3 scripts/check_ai_eda_source_inventory.py
       - python3 scripts/ai_eda/capture_low_power_intent_targets.py --run-id validation
@@ -1570,12 +1639,14 @@ work_items:
       - No E1 power-state table, always-on partition, supply-set map, or UPF source
       - No local power-aware simulation or formal low-power verification backend
       - No approved clock-gating, power-gating, DVFS, retention, isolation, or level-shifter insertion workflow
+      - No approved Lighter plugin revision, library-map review, or RTL-OPT benchmark asset/non-overlap review
       - No scan/DFT, CDC/RDC, reset, and timing policy for generated gated clocks or power domains
       - No workload-aligned voltage, frequency, power, and thermal traces for DVFS or idle-state validation
     acceptance_criteria:
       - Report hashes local RTL, SDC, power/thermal, CPU/AP, NPU, and PD inputs.
       - Report states no UPF, RTL, constraint, clock-gating, DVFS, retention, isolation, power-domain, or release claim is enabled.
       - Candidate tasks list deterministic platform, PD, RTL, formal, synthesis, CDC/RDC, DFT, software/BSP, and power/thermal gates.
+      - Benchmark and plugin candidates remain metadata-only until revision, license, non-overlap, and reviewer gates pass.
   - id: p1-post-silicon-validation-target-capture
     title: Post-Silicon, Bring-Up, And Lab-Debug Target Capture
     priority: P1
@@ -1592,6 +1663,8 @@ work_items:
       - sigrok-cli
       - ml-boot-failure-debug
       - llm4sechw-debug
+      - llm4sechw-oshd
+      - chipbench-ai-aided-design
     target_area:
       - post_silicon_validation
       - silicon_bringup
@@ -1599,13 +1672,16 @@ work_items:
       - riscv_compliance
       - lab_debug
       - boot_failure_triage
+      - hardware_debug_benchmark
+      - debug_dataset_governance
     owner_scope: dry-run target capture only; no hardware actions, generated lab scripts, test binaries, FPGA bitstreams, or compliance claims
     objective: >
       Track post-silicon debug methods, QED/trace-analysis approaches, RISC-V
       compatibility tests, random-instruction validation, cross-target
-      on-device tests, RISC-V debug/lab capture tooling, and ML/XAI
-      boot-failure triage while tying any future E1 use to QEMU/Renode, FPGA,
-      manufacturing, real-world, and lab evidence.
+      on-device tests, RISC-V debug/lab capture tooling, ML/XAI boot-failure
+      triage, LLM hardware-debug datasets, and LLM chip-debug benchmarks while
+      tying any future E1 use to QEMU/Renode, FPGA, manufacturing, real-world,
+      corpus-governance, benchmark, and lab evidence.
     deliverables:
       - scripts/ai_eda/capture_post_silicon_validation_targets.py
       - build/ai_eda/post_silicon_validation_targets/<run-id>/targets_report.json
@@ -1628,6 +1704,7 @@ work_items:
       - No trace schema for reset, boot, UART, JTAG, power, thermal, FPGA, or board observations
       - No pinned OpenOCD board configuration, RISC-V debug module transcript, probe inventory, or sigrok acquisition profile
       - No labeled boot-failure, post-silicon debug, or lab anomaly corpus for ML/XAI triage
+      - No approved LLM hardware-debug dataset or benchmark import with pinned revisions, licenses, task manifests, non-overlap review, replay logs, and reviewer disposition
       - No approved workflow for AI-generated lab scripts, test binaries, FPGA bitstreams, or hardware actions
     acceptance_criteria:
       - Report hashes local RISC-V compliance, QEMU/Renode, FPGA, package, board, benchmark, and release-gate inputs.
@@ -1688,6 +1765,8 @@ work_items:
     priority: P1
     status: IN_PROGRESS
     source_ids:
+      - agentictcad
+      - tcadgpt
       - litho-aware-ml-hotspot
       - dlhsd-hotspot-detection
       - lithohod
@@ -1697,6 +1776,9 @@ work_items:
       - radai-wm811k-wafer-defect-model
       - pegasus-lpa
     target_area:
+      - dtco
+      - tcad
+      - device_optimization
       - dfm
       - yield
       - lithography
@@ -1705,10 +1787,11 @@ work_items:
       - wafer_defect_classification
     owner_scope: dry-run target capture only; no layout, mask, OPC, lithography simulation, model inference, yield prediction, signoff, or release claims
     objective: >
-      Track ML lithography hotspot detection, differentiable lithography,
-      inverse lithography/OPC, and wafer defect classification while keeping all
-      future E1 use behind foundry/process evidence, local layout hashes,
-      manufacturing gates, and human review.
+      Track TCAD/DTCO agents, executable TCAD LLMs, ML lithography hotspot
+      detection, differentiable lithography, inverse lithography/OPC, and wafer
+      defect classification while keeping all future E1 use behind
+      foundry/process evidence, TCAD decks, local layout hashes, manufacturing
+      gates, and human review.
     deliverables:
       - scripts/ai_eda/capture_dfm_yield_lithography_targets.py
       - build/ai_eda/dfm_yield_lithography_targets/<run-id>/targets_report.json
@@ -1730,6 +1813,7 @@ work_items:
       - No license-reviewed ICCAD, foundry, wafer-map, AOI, or E1 manufacturing dataset selected for local training or evaluation
       - No local held-out E1 layout clips with human-reviewed hotspot, false-positive, or repair labels
       - No wafer, lot, die, board, camera, SEM, inspection, or first-article measurement corpus for yield or defect models
+      - No approved TCAD deck, simulator license/backend, calibration corpus, or process/device authority
       - No approved flow for AI-generated layout, mask, OPC, DFM fixes, yield prediction, or signoff waivers
     acceptance_criteria:
       - Report hashes local source inventory, SOTA review, PD signoff, manufacturing release, OpenLane, formal, synthesis, and PD predictor inputs.
@@ -1807,29 +1891,37 @@ work_items:
       - hintpilot
       - llm-veriopt
       - xdsl-rvv-lowering
+      - autocomp-kernel-optimization
+      - accelopt
+      - v-seek-riscv-llm-inference
+      - riscv-itree-semantics
     target_area:
       - compiler
       - riscv_vector
       - autotuning
       - profile_guided_optimization
       - tensor_kernel_scheduling
+      - accelerator_kernel_optimization
       - llm_code_optimization
+      - formal_semantics
     owner_scope: dry-run target capture only; no generated code, compiler execution, autotuning, LLM execution, binary/profile changes, or performance claims
     objective: >
       Track MLGO, tensor-kernel autotuning, RVV intrinsic generation,
-      profile-guided binary optimization, and agentic compiler optimization
-      while keeping any future E1 use behind compiler/toolchain provenance,
-      semantic correctness, simulator/runtime logs, benchmark evidence, and
-      review.
+      profile-guided binary optimization, agentic compiler optimization,
+      accelerator-kernel optimization, optimization-memory reuse, and formal
+      RISC-V semantics while keeping any future E1 use behind
+      compiler/toolchain provenance, semantic correctness, simulator/runtime
+      logs, benchmark evidence, and review.
     deliverables:
       - scripts/ai_eda/capture_compiler_autotuning_targets.py
       - build/ai_eda/compiler_autotuning_targets/<run-id>/targets_report.json
     evidence_gate: >
       Compiler automation reports may only hash local compiler, runtime,
       benchmark, toolchain, and evidence-gate artifacts; generated kernels,
-      compiler models, schedules, profiles, relinked binaries, and performance
-      claims require exact source/binary hashes, tool versions, correctness
-      tests, simulator/runtime logs, benchmark calibration, and review.
+      optimization memories, compiler models, schedules, profiles, relinked
+      binaries, and performance claims require exact source/binary hashes,
+      tool versions, correctness tests, simulator/runtime logs, benchmark
+      calibration, semantic-equivalence evidence, and review.
     validation_commands:
       - python3 scripts/check_ai_eda_source_inventory.py
       - python3 scripts/ai_eda/capture_compiler_autotuning_targets.py --run-id validation
@@ -1844,15 +1936,18 @@ work_items:
       - No local RISC-V simulator/runtime evidence proving generated kernels are semantically equivalent and ABI-compatible
       - No before/after benchmark evidence with target metadata, thermal/power state, compiler flags, raw logs, and calibration
       - No model or autotuner revision selected for MLGO, MetaSchedule, Ansor, agentic compiler optimization, or LLM vectorization
+      - No approved target adapter, prompt/model revision, optimization-memory quarantine, generated-kernel corpus, semantic-equivalence evidence, or replayed benchmark logs for Autocomp, AccelOpt, or V-Seek-style optimization
     acceptance_criteria:
       - Report hashes local source inventory, SOTA review, LLVM/IREE pins, runtime lowering/tests, AutoFDO/Propeller/BOLT harnesses, RVV autovec suite, compiler docs, and compiler reports.
       - Report states no source, compiler, codegen, binary, runtime, generated code, intrinsic, profile, compiler run, autotuning, LLM/model, benchmark, download, corpus import, prediction, performance claim, or release action is enabled.
-      - Candidate tasks list deterministic source inventory, compiler-version, RVV autovec, runtime, NPU contract, benchmark parser/calibration, simulator metric, scale feasibility, software contract, docs, and no-hardware-action gates.
+      - Candidate tasks list deterministic source inventory, compiler-version, RVV autovec, runtime, NPU contract, accelerator-kernel quarantine, benchmark parser/calibration, simulator metric, scale feasibility, software contract, docs, and no-hardware-action gates.
   - id: p1-reliability-resilience-target-capture
     title: Reliability, Aging, EM, And Soft-Error Target Capture
     priority: P1
     status: IN_PROGRESS
     source_ids:
+      - agentictcad
+      - tcadgpt
       - proton-em
       - emspice2
       - bti-hci-aging-models
@@ -1866,6 +1961,8 @@ work_items:
       - ares-dnn-fault-injection
       - caliptra-error-injection
     target_area:
+      - dtco
+      - tcad
       - reliability
       - electromigration
       - aging
@@ -1874,11 +1971,11 @@ work_items:
       - resilience_mitigation
     owner_scope: dry-run target capture only; no fault injection, aging/EM analysis, RTL/netlist/layout/firmware changes, mitigation generation, signoff, or reliability claims
     objective: >
-      Track aging, electromigration, soft-error, formal/QEMU fault-injection,
-      NPU workload resilience, and ECC/TMR mitigation sources while keeping any
-      future E1 use behind process collateral, fault manifests, deterministic
-      simulator/formal logs, physical signoff, benchmark/runtime evidence, and
-      review.
+      Track TCAD/DTCO process-device assumptions, aging, electromigration,
+      soft-error, formal/QEMU fault-injection, NPU workload resilience, and
+      ECC/TMR mitigation sources while keeping any future E1 use behind process
+      collateral, fault manifests, deterministic simulator/formal logs,
+      physical signoff, benchmark/runtime evidence, and review.
     deliverables:
       - scripts/ai_eda/capture_reliability_resilience_targets.py
       - build/ai_eda/reliability_resilience_targets/<run-id>/targets_report.json
@@ -1901,6 +1998,7 @@ work_items:
       - No calibrated activity, temperature, voltage, PDN current-density, or lifetime mission-profile evidence
       - No reviewed RTL/formal/QEMU fault-injection harness for E1 with fault-site manifests, random seeds, signatures, and pass/fail taxonomy
       - No local labels linking fault campaigns, formal traces, simulator failures, or silicon logs to approved mitigations
+      - No approved TCAD/DTCO model, deck, simulator, calibration corpus, or process-device authority
       - No approved workflow for AI-generated ECC, TMR, replay, redundancy, hardening, derating, or reliability ECO changes
       - No signoff evidence showing EM/IR, aging timing, soft-error, safety, or reliability closure
     acceptance_criteria:
@@ -1928,6 +2026,8 @@ work_items:
       - qimeng-codev-r1
       - evolve-verilog
       - veriagent
+      - safetune-rtl-poisoning
+      - trojanloc
       - codev-sva
       - radai-wm811k-wafer-defect-model
     target_area:
@@ -1995,6 +2095,9 @@ work_items:
       - llm4verilog-dataset
       - qimeng-codev-r1
       - evolve-verilog
+      - safetune-rtl-poisoning
+      - trojanloc
+      - harmchip
       - llmsanitize
       - min-k-prob-contamination
     target_area:
@@ -2211,6 +2314,10 @@ work_items:
     status: IN_PROGRESS
     source_ids:
       - tap-2p5d
+      - rapidchiplet
+      - placeit-chiplet-topology
+      - diffchip-chiplet-placement
+      - tdpnavigator-placer
       - chipletpart
       - chiplet-network-sim
       - eco-chip
@@ -2223,13 +2330,16 @@ work_items:
       - chiplet_package
       - architecture_partitioning
       - die_to_die_interconnect
+      - topology_synthesis
+      - thermal_aware_placement
       - package_codesign
       - system_modeling
     owner_scope: dry-run target capture only; no chiplet partition, interposer layout, UCIe/die-to-die interface, package/bump map, SI/PI/thermal model, architecture edit, RTL edit, PD edit, board/package edit, external simulator run, LLM/agent run, prediction, signoff claim, or release use
     objective: >
-      Track chiplet partitioning, 2.5D/3DIC placement/topology, die-to-die
-      standards, package metadata exchange, cost/yield models, and LLM/agentic
-      chiplet co-design work while keeping every output behind E1 architecture,
+      Track chiplet partitioning, 2.5D/3DIC placement/topology,
+      package-level DSE, thermally aware placement, multi-agent RL placement,
+      die-to-die standards, package metadata exchange, cost/yield models, and
+      LLM/agentic chiplet co-design work while keeping every output behind E1 architecture,
       package, memory, power/thermal, RTL, PD, software, manufacturing, and
       reviewer gates.
     deliverables:
@@ -2261,6 +2371,7 @@ work_items:
       - No UCIe or other die-to-die RTL, PHY collateral, verification suite, firmware contract, Linux contract, or package pin/bump evidence
       - No package vendor stack-up, SI/PI extraction, thermal stack, warpage, assembly, known-good-die, or yield evidence
       - No license-reviewed external chiplet/package simulator, placement, topology, or LLM-agent implementation with pinned revisions and local replay
+      - No approved RapidChiplet, PlaceIT, DiffChip, or TDPNavigator-style flow with pinned revisions/assets, package stack, power maps, traffic manifests, PHY assumptions, rewards/seeds where applicable, output hashes, thermal/SI/PI evidence, and reviewer disposition
       - No release gate allowing AI-generated chiplet partitioning, package changes, interposer routing, or die-to-die interfaces to bypass architecture, RTL, PD, software, package, manufacturing, and review gates
     acceptance_criteria:
       - Report hashes local inventory, provenance, backlog, readiness, SOTA docs, package pinout, bonding, padframe, package docs, manufacturing blockers, memory/power/process evidence gates, SI/PI gaps, checker scripts, and RAG manifest.

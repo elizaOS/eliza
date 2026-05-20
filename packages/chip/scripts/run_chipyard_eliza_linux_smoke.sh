@@ -70,7 +70,7 @@ cleanup_lock() {
 trap cleanup_lock EXIT HUP INT TERM
 
 if [ -z "$binary" ]; then
-	payload_export="$(python3 "$repo_dir/scripts/locate_chipyard_linux_payload.py" --export-env)"
+	payload_export="$(python3 "$repo_dir/scripts/locate_chipyard_linux_payload.py" --export-env --require-preferred || true)"
 	case "$payload_export" in
 		export\ CHIPYARD_LINUX_BINARY=*)
 			eval "$payload_export"
@@ -266,7 +266,8 @@ tail -n 80 "$log"
 
 if [ "$status" -ne 0 ]; then
 	if [ "${CHIPYARD_LINUX_SMOKE_RETRY_GENERATED:-1}" = "1" ] && [ "$attempt" = "1" ] && \
-		grep -Eq 'No rule to make target|fatal error: .*: No such file or directory|(^|/)(mm|VTestDriver)[^[:space:]]*\.d|VTestDriver[^[:space:]]*\.(mk|cpp|h|d)' "$log"; then
+		python3 "$repo_dir/scripts/check_chipyard_verilator_linux_smoke.py" \
+			--classify-generated-artifact-failure "$log"; then
 		printf 'STATUS: REPAIR chipyard.verilator_linux_smoke\n'
 		printf '  reason: generated Verilator model artifact failure in %s\n' "${log#"$repo_dir"/}"
 		printf '  action: remove stale/partial generated simulator outputs and retry once\n'

@@ -34,11 +34,44 @@
  * suppress (via `BargeInCancelToken.signal` with reason `"turn-suppressed"`).
  */
 
+import { access } from "node:fs/promises";
+import { homedir } from "node:os";
+import path from "node:path";
+
 import type {
 	Eliza1EotScoreResult,
 	Eliza1EotScorerOptions,
 } from "./eliza1-eot-scorer";
 import { Eliza1EotScorer } from "./eliza1-eot-scorer";
+
+type OrtModule = typeof import("onnxruntime-node");
+type OrtSession = import("onnxruntime-node").InferenceSession;
+type TokenValue = number | bigint;
+type TokenTensorLike = {
+	data: BigInt64Array | BigUint64Array | Int32Array | TokenValue[];
+	dims?: number[];
+};
+type TokenizerOutputLike = {
+	input_ids?: TokenTensorLike | TokenValue[] | TokenValue[][];
+};
+type CallableTokenizer = {
+	(
+		text: string,
+		options?: {
+			add_special_tokens?: boolean;
+			max_length?: number;
+			truncation?: boolean;
+		},
+	): Promise<TokenizerOutputLike>;
+	apply_chat_template(
+		messages: Array<{ role: string; content: string }>,
+		options?: {
+			add_generation_prompt?: boolean;
+			tokenize?: boolean;
+			add_special_tokens?: boolean;
+		},
+	): string;
+};
 
 // ---------------------------------------------------------------------------
 // Interface
@@ -291,6 +324,494 @@ export function turnDetectorRevisionForTier(
 	return LIVEKIT_TURN_DETECTOR_INTL_REVISION;
 }
 
+/**
+ * Default ONNX filename inside the bundle's turn-detector dir. Upstream
+ * publishes the INT8 graph as `onnx/model_q8.onnx` under both
+ * `v1.2.2-en` and `v0.4.1-intl`. The historical Eliza staging path used a
+ * flat `model_quantized.onnx` filename; for back-compat we also accept that
+ * via the `ELIZA_TURN_DETECTOR_ONNX` env var or an explicit `onnxFilename`.
+ */
+export const DEFAULT_LIVEKIT_TURN_DETECTOR_ONNX = "onnx/model_q8.onnx";
+
+/**
+ * Legacy filename kept for back-compat. Bundles staged before Voice Wave 2
+ * placed the ONNX flat at this name; the detector accepts either. New
+ * bundles use {@link DEFAULT_LIVEKIT_TURN_DETECTOR_ONNX}.
+ */
+export const LEGACY_LIVEKIT_TURN_DETECTOR_ONNX = "model_quantized.onnx";
+
+export interface LiveKitTurnDetectorOptions {
+	/** Directory containing tokenizer files and the ONNX graph. */
+	modelDir?: string;
+	/**
+	 * ONNX filename inside `modelDir`. Default: `onnx/model_q8.onnx`
+	 * (the upstream layout). Set to {@link LEGACY_LIVEKIT_TURN_DETECTOR_ONNX}
+	 * for bundles staged before Voice Wave 2.
+	 */
+	onnxFilename?: string;
+	/**
+	 * Upstream revision tag for telemetry and the model-card label only.
+	 * One of `"v1.2.2-en"` or `"v0.4.1-intl"` for the canonical LiveKit
+	 * detectors; arbitrary strings are accepted for fine-tunes. The actual
+	 * ONNX path is encoded in `modelDir` + `onnxFilename`.
+	 */
+	revision?: string;
+	/** Max history tokens. LiveKit's published runner uses 128. */
+	maxHistoryTokens?: number;
+	/** CPU execution threads for ONNX Runtime. Default: 2. */
+	intraOpNumThreads?: number;
+	/** Optional model label for telemetry. */
+	model?: string;
+}
+
+export const DEFAULT_LIVEKIT_TURN_DETECTOR_DIR = path.join(
+	homedir(),
+	".eliza",
+	"local-inference",
+	"models",
+	"turn-detector",
+	"livekit-turn-detector",
+);
+
+const LIVEKIT_IM_END_TOKEN = "<|im_end|>";
+
+/**
+ * Local LiveKit text turn detector. This is the same inference contract as
+ * the LiveKit Agents plugin, adapted to the main-branch HF export where the
+ * ONNX graph returns logits instead of a pre-sigmoided scalar.
+ */
+export class LiveKitTurnDetector implements EotClassifier {
+	private readonly modelDir: string;
+	private readonly maxHistoryTokens: number;
+	private readonly intraOpNumThreads: number;
+	private readonly model: string;
+	private readonly revision: string | undefined;
+	private ready: Promise<{
+		ort: OrtModule;
+		session: OrtSession;
+		tokenizer: CallableTokenizer;
+		imEndTokenId: number;
+	}> | null = null;
+
+	constructor(opts: LiveKitTurnDetectorOptions = {}) {
+		this.modelDir = opts.modelDir ?? DEFAULT_LIVEKIT_TURN_DETECTOR_DIR;
+		this.maxHistoryTokens = opts.maxHistoryTokens ?? 128;
+		this.intraOpNumThreads = opts.intraOpNumThreads ?? 2;
+		this.revision = opts.revision;
+		this.model = opts.model ?? this.defaultModelLabel(opts.revision);
+	}
+
+	private defaultModelLabel(revision: string | undefined): string {
+		if (!revision) return LIVEKIT_TURN_DETECTOR_HF_REPO;
+		return `${LIVEKIT_TURN_DETECTOR_HF_REPO}@${revision}`;
+	}
+
+	async score(partialTranscript: string): Promise<number> {
+		return (await this.signal(partialTranscript)).endOfTurnProbability;
+	}
+
+	async signal(partialTranscript: string): Promise<VoiceTurnSignal> {
+		const started = performance.now();
+		const loaded = await this.load();
+		const transcript = normalizeTurnDetectorText(partialTranscript);
+		const text = formatLiveKitTurnDetectorPrompt(loaded.tokenizer, transcript);
+		const encoded = await loaded.tokenizer(text, {
+			add_special_tokens: false,
+			max_length: this.maxHistoryTokens,
+			truncation: true,
+		});
+		const { data, dims } = tokenIdsToBigInt64(encoded);
+		const feeds = {
+			input_ids: new loaded.ort.Tensor("int64", data, dims),
+		};
+		const outputs = await loaded.session.run(feeds);
+		const outputName = loaded.session.outputNames[0];
+		const tensor =
+			(outputName ? outputs[outputName] : undefined) ??
+			Object.values(outputs)[0];
+		if (!tensor) {
+			throw new Error("[voice] LiveKit turn detector returned no outputs.");
+		}
+		const probability = probabilityFromOnnxOutput(tensor, loaded.imEndTokenId);
+		return turnSignalFromProbability({
+			probability,
+			transcript,
+			source: "livekit-turn-detector",
+			model: this.model,
+			latencyMs: performance.now() - started,
+		});
+	}
+
+	private load(): Promise<{
+		ort: OrtModule;
+		session: OrtSession;
+		tokenizer: CallableTokenizer;
+		imEndTokenId: number;
+	}> {
+		this.ready ??= this.loadInner();
+		return this.ready;
+	}
+
+	private async loadInner(): Promise<{
+		ort: OrtModule;
+		session: OrtSession;
+		tokenizer: CallableTokenizer;
+		imEndTokenId: number;
+	}> {
+		// TODO: Replace HuggingFace `tokenizer.json` loading with a tokenizer
+		// implementation backed by llama.cpp / ggml. Until that lands, this
+		// detector is non-functional and `createBundledLiveKitTurnDetector`
+		// returns null to force the heuristic fallback.
+		throw new Error(
+			"[voice] LiveKit turn detector requires a HuggingFace tokenizer; the @huggingface/transformers runtime dependency has been removed. Use HeuristicEotClassifier as the fallback.",
+		);
+	}
+}
+
+/**
+ * Construct a `LiveKitTurnDetector` if the bundle has the model installed
+ * on disk. Resolution order for the ONNX filename:
+ *
+ *   1. Explicit `opts.onnxFilename`.
+ *   2. `ELIZA_TURN_DETECTOR_ONNX` env var (operator override).
+ *   3. `onnx/model_q8.onnx` (the canonical upstream layout).
+ *   4. `model_quantized.onnx` (legacy Eliza staging layout, back-compat).
+ *
+ * Returns `null` if neither candidate ONNX is present alongside
+ * `tokenizer.json`. The caller falls back to {@link HeuristicEotClassifier}.
+ */
+export async function createBundledLiveKitTurnDetector(
+	opts: LiveKitTurnDetectorOptions = {},
+): Promise<LiveKitTurnDetector | null> {
+	const modelDir =
+		opts.modelDir ??
+		process.env.ELIZA_TURN_DETECTOR_MODEL_DIR ??
+		DEFAULT_LIVEKIT_TURN_DETECTOR_DIR;
+	const explicit = opts.onnxFilename ?? process.env.ELIZA_TURN_DETECTOR_ONNX;
+	const candidates = explicit
+		? [explicit]
+		: [DEFAULT_LIVEKIT_TURN_DETECTOR_ONNX, LEGACY_LIVEKIT_TURN_DETECTOR_ONNX];
+
+	let resolvedFilename: string | null = null;
+	for (const candidate of candidates) {
+		try {
+			await access(path.join(modelDir, candidate));
+			resolvedFilename = candidate;
+			break;
+		} catch {
+			// try next
+		}
+	}
+	if (resolvedFilename === null) return null;
+	try {
+		await access(path.join(modelDir, "tokenizer.json"));
+	} catch {
+		return null;
+	}
+	// TODO: The bundle contains a usable LiveKit turn detector, but the
+	// runtime can no longer load its HuggingFace tokenizer (the
+	// @huggingface/transformers runtime dependency has been removed). Return
+	// null so the engine falls back to HeuristicEotClassifier. Restore this
+	// detector once a ggml/llama.cpp-backed tokenizer is wired up.
+	return null;
+}
+
+function normalizeTurnDetectorText(text: string): string {
+	return text
+		.normalize("NFKC")
+		.toLowerCase()
+		.replace(/[^\p{L}\p{N}'\-\s]/gu, " ")
+		.replace(/\s+/g, " ")
+		.trim();
+}
+
+function formatLiveKitTurnDetectorPrompt(
+	tokenizer: CallableTokenizer,
+	transcript: string,
+): string {
+	const templated = tokenizer.apply_chat_template(
+		[{ role: "user", content: transcript }],
+		{
+			add_generation_prompt: false,
+			tokenize: false,
+			add_special_tokens: false,
+		},
+	);
+	const ix = templated.lastIndexOf(LIVEKIT_IM_END_TOKEN);
+	return ix >= 0 ? templated.slice(0, ix) : templated;
+}
+
+function tokenIdsToBigInt64(encoded: TokenizerOutputLike): {
+	data: BigInt64Array;
+	dims: number[];
+} {
+	const ids = encoded.input_ids;
+	if (!ids) throw new Error("[voice] tokenizer output missing input_ids.");
+	if (isTensorLike(ids) && ids.data) {
+		const dims = ids.dims ?? [1, ids.data.length];
+		return {
+			data: toBigInt64Array(ids.data),
+			dims,
+		};
+	}
+	if (Array.isArray(ids)) {
+		const flattened = ids.flat() as Array<number | bigint>;
+		const nestedWidth = Array.isArray(ids[0])
+			? (ids[0] as Array<number | bigint>).length
+			: ids.length;
+		return {
+			data: toBigInt64Array(flattened),
+			dims: Array.isArray(ids[0]) ? [ids.length, nestedWidth] : [1, ids.length],
+		};
+	}
+	throw new Error("[voice] unsupported tokenizer input_ids shape.");
+}
+
+function isTensorLike(value: unknown): value is TokenTensorLike {
+	return typeof value === "object" && value !== null && "data" in value;
+}
+
+function toBigInt64Array(
+	input: BigInt64Array | BigUint64Array | Int32Array | Array<number | bigint>,
+): BigInt64Array {
+	if (input instanceof BigInt64Array) return input;
+	const out = new BigInt64Array(input.length);
+	for (let i = 0; i < input.length; i++) {
+		out[i] = BigInt(input[i] as number | bigint);
+	}
+	return out;
+}
+
+function probabilityFromOnnxOutput(
+	tensor: import("onnxruntime-node").Tensor,
+	imEndTokenId: number,
+): number {
+	const data = tensor.data;
+	if (!(data instanceof Float32Array || data instanceof Float64Array)) {
+		throw new Error(
+			`[voice] LiveKit turn detector output must be float logits/probabilities, got ${tensor.type}.`,
+		);
+	}
+	const dims = tensor.dims;
+	if (dims.length >= 3) {
+		const vocabSize = dims[dims.length - 1];
+		if (imEndTokenId < 0 || imEndTokenId >= vocabSize) {
+			throw new Error(
+				`[voice] <|im_end|> token id ${imEndTokenId} outside detector vocab ${vocabSize}.`,
+			);
+		}
+		const sequenceLength = dims[dims.length - 2];
+		const offset = (sequenceLength - 1) * vocabSize;
+		return softmaxProbability(data, offset, vocabSize, imEndTokenId);
+	}
+	const last = data[data.length - 1];
+	return clampProbability(last);
+}
+
+function softmaxProbability(
+	logits: Float32Array | Float64Array,
+	offset: number,
+	length: number,
+	tokenId: number,
+): number {
+	let max = -Infinity;
+	for (let i = 0; i < length; i++) {
+		const value = logits[offset + i];
+		if (value > max) max = value;
+	}
+	let sum = 0;
+	for (let i = 0; i < length; i++) {
+		sum += Math.exp(logits[offset + i] - max);
+	}
+	return clampProbability(Math.exp(logits[offset + tokenId] - max) / sum);
+}
+
+// ---------------------------------------------------------------------------
+// Local Turnsense ONNX classifier (Apache-2.0 fallback)
+// ---------------------------------------------------------------------------
+
+/**
+ * `latishab/turnsense` is a SmolLM2-135M head fine-tuned as a *binary*
+ * end-of-utterance classifier (logits over `[NON_EOU, EOU]`). Architecturally
+ * the same backbone as `livekit/turn-detector @ v1.2.2-en` (4-layer SmolLM2),
+ * but the output is a 2-class softmax instead of a next-token distribution
+ * over `<|im_end|>`. Apache-2.0 licensed — useful as a FOSS fallback for
+ * environments where the LiveKit Model License is blocked.
+ *
+ * Upstream tree: https://huggingface.co/latishab/turnsense
+ * Quantized ONNX: `model_quantized.onnx` (~176 MB INT8 at the repo root).
+ *
+ * The classifier prepends `<|user|> ` to the latest user transcript, runs
+ * a 256-token-max truncation, and reads `softmax(logits)[EOU]` as the
+ * end-of-turn probability.
+ */
+export const TURNSENSE_HF_REPO = "latishab/turnsense";
+export const DEFAULT_TURNSENSE_ONNX = "model_quantized.onnx";
+export const DEFAULT_TURNSENSE_DIR = path.join(
+	homedir(),
+	".eliza",
+	"local-inference",
+	"models",
+	"turn-detector",
+	"turnsense",
+);
+
+export interface TurnsenseEotClassifierOptions {
+	/** Directory containing tokenizer files and the Turnsense ONNX. */
+	modelDir?: string;
+	/** ONNX filename inside `modelDir`. Default: `model_quantized.onnx`. */
+	onnxFilename?: string;
+	/** Max history tokens. Upstream uses 256. */
+	maxHistoryTokens?: number;
+	/** CPU execution threads for ONNX Runtime. Default: 2. */
+	intraOpNumThreads?: number;
+	/** Optional model label for telemetry. */
+	model?: string;
+}
+
+/**
+ * Turnsense binary EOU classifier. Returns the same `VoiceTurnSignal`
+ * shape as `LiveKitTurnDetector`; the `source` field is
+ * `"livekit-turn-detector"` regardless because the runtime gates on source
+ * for behaviour, and turnsense fills the same slot (text-based, batch-1,
+ * partial-transcript EOU).
+ */
+export class TurnsenseEotClassifier implements EotClassifier {
+	private readonly modelDir: string;
+	private readonly maxHistoryTokens: number;
+	private readonly intraOpNumThreads: number;
+	private readonly model: string;
+	private ready: Promise<{
+		ort: OrtModule;
+		session: OrtSession;
+		tokenizer: CallableTokenizer;
+	}> | null = null;
+
+	constructor(opts: TurnsenseEotClassifierOptions = {}) {
+		this.modelDir = opts.modelDir ?? DEFAULT_TURNSENSE_DIR;
+		this.maxHistoryTokens = opts.maxHistoryTokens ?? 256;
+		this.intraOpNumThreads = opts.intraOpNumThreads ?? 2;
+		this.model = opts.model ?? TURNSENSE_HF_REPO;
+	}
+
+	async score(partialTranscript: string): Promise<number> {
+		return (await this.signal(partialTranscript)).endOfTurnProbability;
+	}
+
+	async signal(partialTranscript: string): Promise<VoiceTurnSignal> {
+		const started = performance.now();
+		const loaded = await this.load();
+		const transcript = normalizeTurnDetectorText(partialTranscript);
+		const text = `<|user|> ${transcript}`;
+		const encoded = await loaded.tokenizer(text, {
+			add_special_tokens: false,
+			max_length: this.maxHistoryTokens,
+			truncation: true,
+		});
+		const { data, dims } = tokenIdsToBigInt64(encoded);
+		const feeds = {
+			input_ids: new loaded.ort.Tensor("int64", data, dims),
+		};
+		const outputs = await loaded.session.run(feeds);
+		const outputName = loaded.session.outputNames[0];
+		const tensor =
+			(outputName ? outputs[outputName] : undefined) ??
+			Object.values(outputs)[0];
+		if (!tensor) {
+			throw new Error("[voice] Turnsense classifier returned no outputs.");
+		}
+		const probability = probabilityFromTurnsenseOutput(tensor);
+		return turnSignalFromProbability({
+			probability,
+			transcript,
+			source: "livekit-turn-detector",
+			model: this.model,
+			latencyMs: performance.now() - started,
+		});
+	}
+
+	private load(): Promise<{
+		ort: OrtModule;
+		session: OrtSession;
+		tokenizer: CallableTokenizer;
+	}> {
+		this.ready ??= this.loadInner();
+		return this.ready;
+	}
+
+	private async loadInner(): Promise<{
+		ort: OrtModule;
+		session: OrtSession;
+		tokenizer: CallableTokenizer;
+	}> {
+		// TODO: Replace HuggingFace `tokenizer.json` loading with a tokenizer
+		// implementation backed by llama.cpp / ggml. Until that lands, this
+		// detector is non-functional and `createBundledTurnsenseEotClassifier`
+		// returns null to force the heuristic fallback.
+		throw new Error(
+			"[voice] Turnsense EOT classifier requires a HuggingFace tokenizer; the @huggingface/transformers runtime dependency has been removed. Use HeuristicEotClassifier as the fallback.",
+		);
+	}
+}
+
+/**
+ * Try to construct a Turnsense classifier from a locally-staged ONNX
+ * bundle. Returns `null` if the model dir / files are missing.
+ */
+export async function createBundledTurnsenseEotClassifier(
+	opts: TurnsenseEotClassifierOptions = {},
+): Promise<TurnsenseEotClassifier | null> {
+	const modelDir =
+		opts.modelDir ??
+		process.env.ELIZA_TURNSENSE_MODEL_DIR ??
+		DEFAULT_TURNSENSE_DIR;
+	const onnxFilename =
+		opts.onnxFilename ??
+		process.env.ELIZA_TURNSENSE_ONNX ??
+		DEFAULT_TURNSENSE_ONNX;
+	try {
+		await Promise.all([
+			access(path.join(modelDir, onnxFilename)),
+			access(path.join(modelDir, "tokenizer.json")),
+		]);
+	} catch {
+		return null;
+	}
+	// TODO: The bundle contains a usable Turnsense classifier, but the
+	// runtime can no longer load its HuggingFace tokenizer (the
+	// @huggingface/transformers runtime dependency has been removed). Return
+	// null so the engine falls back to HeuristicEotClassifier. Restore this
+	// detector once a ggml/llama.cpp-backed tokenizer is wired up.
+	void opts;
+	return null;
+}
+
+function probabilityFromTurnsenseOutput(
+	tensor: import("onnxruntime-node").Tensor,
+): number {
+	const data = tensor.data;
+	if (!(data instanceof Float32Array || data instanceof Float64Array)) {
+		throw new Error(
+			`[voice] Turnsense output must be float logits/probabilities, got ${tensor.type}.`,
+		);
+	}
+	// Output is `[batch=1, num_classes=2]` with class index 1 = EOU.
+	// Some Turnsense exports emit a flat 2-element vector; handle both.
+	if (data.length < 2) {
+		throw new Error(
+			`[voice] Turnsense output has unexpected length ${data.length}; expected ≥2.`,
+		);
+	}
+	const dims = tensor.dims;
+	const offset = dims.length >= 2 ? data.length - 2 : 0;
+	const logitNon = data[offset];
+	const logitEou = data[offset + 1];
+	const max = logitNon > logitEou ? logitNon : logitEou;
+	const expEou = Math.exp(logitEou - max);
+	const expNon = Math.exp(logitNon - max);
+	return clampProbability(expEou / (expEou + expNon));
+}
+
 // ---------------------------------------------------------------------------
 // Remote model adapter
 // ---------------------------------------------------------------------------
@@ -441,11 +962,4 @@ export class Eliza1EotClassifier implements EotClassifier {
 	async dispose(): Promise<void> {
 		await this.scorer.dispose();
 	}
-}
-
-export async function createBundledLiveKitTurnDetector(_opts?: {
-	modelDir?: string;
-	revision?: string;
-}): Promise<EotClassifier | null> {
-	return null;
 }

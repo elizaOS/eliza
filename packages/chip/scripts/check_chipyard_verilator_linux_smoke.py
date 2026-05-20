@@ -89,6 +89,14 @@ SYMBOL_LINE_RE = re.compile(
     r"^(?P<addr>[0-9a-fA-F]{8,16})\s+\S+\s+\S+\s+(?P<section>\S+)\s+"
     r"(?P<size>[0-9a-fA-F]{8,16})\s+(?P<name>\S+)$"
 )
+GENERATED_MODEL_FAILURE_PATTERNS = (
+    re.compile(r"No rule to make target .*(?:mm|VTestDriver)[^\s]*\.(?:d|mk|cpp|h)"),
+    re.compile(
+        r"fatal error: .*(?:mm|VTestDriver)[^\s]*\.(?:d|mk|cpp|h): "
+        r"No such file or directory"
+    ),
+    re.compile(r"No such file or directory.*(?:mm|VTestDriver)[^\s]*\.(?:d|mk|cpp|h)"),
+)
 
 
 def rel(path: Path) -> str:
@@ -123,6 +131,10 @@ def detect_stale_absolute_roots(
             if token in text and not host_root_text.startswith(token.rstrip("/"))
         }
     )
+
+
+def is_generated_model_artifact_failure(log_text: str) -> bool:
+    return any(pattern.search(log_text) is not None for pattern in GENERATED_MODEL_FAILURE_PATTERNS)
 
 
 def sha256_file(path: Path) -> str:
@@ -605,7 +617,7 @@ def parse_log_metadata() -> dict[str, object]:
             last_progress = line
         elif any(marker in line for marker in PROGRESS_MARKERS):
             last_progress = line
-        if "fatal error:" in line:
+        if "fatal error:" in line or "%Fatal:" in line:
             fatal_errors = metadata["fatal_errors"]
             if isinstance(fatal_errors, list):
                 fatal_errors.append(line.strip())
@@ -617,7 +629,11 @@ def parse_log_metadata() -> dict[str, object]:
             exceptions = metadata["exceptions"]
             if isinstance(exceptions, list):
                 exceptions.append(line.strip())
-        if "*** FAILED ***" in line:
+        if (
+            "*** FAILED ***" in line
+            or "Assertion failed in TestDriver" in line
+            or "Verilog $stop" in line
+        ):
             sim_failures = metadata["sim_failures"]
             if isinstance(sim_failures, list):
                 sim_failures.append(line.strip())
@@ -738,7 +754,20 @@ def classify_smoke_progress(
             "stage": "linux_boot",
             "next_step": "capture the complete generated-AP Linux boot transcript",
         }
+    sim_failures = log_metadata.get("sim_failures")
+    sim_timeout = isinstance(sim_failures, list) and any(
+        "timeout" in str(failure) for failure in sim_failures
+    )
     if "Linux version" in log_text:
+        if sim_timeout:
+            return {
+                "stage": "linux_banner_then_max_cycles",
+                "next_step": (
+                    "rerun the generated AP smoke with a larger "
+                    "CHIPYARD_LINUX_SMOKE_TIMEOUT_CYCLES budget and enough wall time "
+                    "to reach Linux command line/initramfs markers"
+                ),
+            }
         return {
             "stage": "linux_banner_only",
             "next_step": "continue until Linux command line/initramfs markers appear",
@@ -750,6 +779,18 @@ def classify_smoke_progress(
                 "treat the simulator pass marker as non-Linux evidence; rerun with "
                 "cycle-accurate UART serial enabled or a Linux boot marker source "
                 "before claiming generated AP Linux boot"
+            ),
+        }
+    if "OpenSBI" in log_text and (
+        "Assertion failed in TestDriver" in log_text or "Verilog $stop" in log_text
+    ):
+        return {
+            "stage": "opensbi_banner_then_testdriver_assert",
+            "next_step": (
+                "debug the generated TestDriver assertion after the OpenSBI banner; "
+                "if this is the generated max-cycle watchdog, rerun with a larger "
+                "CHIPYARD_LINUX_SMOKE_TIMEOUT_CYCLES budget and enough wall time "
+                "to reach OpenSBI handoff and Linux boot markers"
             ),
         }
     if has_accepted_opensbi_markers(log_text):
@@ -852,6 +893,20 @@ def classify_smoke_progress(
                 "the current payload stage"
             ),
         }
+    if (
+        "[timeout-wrapper]" in log_text
+        and "status=timeout" in log_text
+        and not log_metadata.get("simdram_entry")
+        and "SimDRAM loaded ELF entry=" not in log_text
+    ):
+        return {
+            "stage": "simulator_model_build_timeout",
+            "next_step": (
+                "rerun after the generated Verilator model has finished compiling, "
+                "or increase CHIPYARD_LINUX_SMOKE_TIMEOUT_SECONDS so the wall-clock "
+                "budget covers model build plus Linux simulation"
+            ),
+        }
     if log_metadata.get("simdram_entry") or "SimDRAM loaded ELF entry=" in log_text:
         return {
             "stage": "payload_loaded_no_cpu_progress",
@@ -930,7 +985,20 @@ def main() -> int:
         action="store_true",
         help="archive an interrupted smoke log only when no smoke runner owns the lock",
     )
+    parser.add_argument(
+        "--classify-generated-artifact-failure",
+        metavar="LOG",
+        help=(
+            "exit 0 only when LOG shows a stale/partial generated Verilator model "
+            "artifact failure that is safe to repair and retry once"
+        ),
+    )
     args = parser.parse_args()
+    if args.classify_generated_artifact_failure:
+        log_text = Path(args.classify_generated_artifact_failure).read_text(
+            encoding="utf-8", errors="replace"
+        )
+        return 0 if is_generated_model_artifact_failure(log_text) else 1
     if args.repair_incomplete_attempt:
         return repair_incomplete_attempt()
     if args.repair_stale_generated:
@@ -1000,7 +1068,7 @@ def main() -> int:
         fatal_errors = log_metadata.get("fatal_errors")
         if isinstance(fatal_errors, list):
             for fatal_error in fatal_errors:
-                blockers.append(f"{rel(LOG)} records build fatal error: {fatal_error}")
+                blockers.append(f"{rel(LOG)} records fatal error: {fatal_error}")
         exceptions = log_metadata.get("exceptions")
         if isinstance(exceptions, list):
             for exception in exceptions:
@@ -1009,7 +1077,12 @@ def main() -> int:
         if isinstance(sim_failures, list):
             for sim_failure in sim_failures:
                 hint = ""
-                if "timeout" in sim_failure and "max_core_cycles" not in log_text:
+                if "timeout" in sim_failure and "+max-cycles=" in log_text:
+                    hint = (
+                        "; increase CHIPYARD_LINUX_SMOKE_TIMEOUT_CYCLES "
+                        "and CHIPYARD_LINUX_SMOKE_TIMEOUT_SECONDS for this payload"
+                    )
+                elif "timeout" in sim_failure and "max_core_cycles" not in log_text:
                     hint = (
                         "; pass +max_core_cycles=0 or a larger value through "
                         "CHIPYARD_LINUX_SMOKE_EXTRA_SIM_FLAGS"

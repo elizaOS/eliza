@@ -101,7 +101,7 @@ export const pluginConfigScenarios: Scenario[] = [
             r.secretsInStorage.TWITTER_API_KEY === "tw-complete004-key" &&
             r.secretsInStorage.TWITTER_API_SECRET === "tw-complete004-secret",
           expected: "Both TWITTER_API_KEY and TWITTER_API_SECRET stored",
-          actual: `KEY=${r.secretsInStorage.TWITTER_API_KEY ?? "missing"}, SECRET=${r.secretsInStorage.TWITTER_API_SECRET ?? "missing"}`,
+          actual: `KEY=${r.secretsInStorage.TWITTER_API_KEY}, SECRET=${r.secretsInStorage.TWITTER_API_SECRET}`,
         }),
       },
       checkPluginActivated("mock-social"),

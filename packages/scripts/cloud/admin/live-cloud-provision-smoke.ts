@@ -313,7 +313,7 @@ async function createAgent(): Promise<void> {
           name: `Cloud Smoke ${runId}`,
           username: `cloud-smoke-${runId}`,
           system:
-            "You are a concise test assistant for cloud provisioning smoke checks.",
+            "Concise test assistant for cloud provisioning smoke checks.",
           bio: ["Cloud provisioning smoke test agent."],
           topics: ["cloud provisioning smoke"],
           adjectives: ["concise"],

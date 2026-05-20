@@ -27,7 +27,9 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # LLVM trunk needs lld + ccache + libxml2/libzstd/zlib dev headers + lit.
 # Versions are pinned by the apt manifest captured in the base image; this
-# layer only adds packages that are not already present.
+# layer only adds packages that are not already present. lit ships only via
+# pip on Ubuntu 24.04 (no python3-lit apt package), so it is installed into
+# the existing /opt/eliza-venv from the base image.
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
@@ -36,10 +38,21 @@ RUN set -eux; \
         libxml2-dev \
         libzstd-dev \
         zlib1g-dev \
-        swig \
-        python3-lit; \
+        swig; \
     dpkg-query -W -f='${Package}\t${Version}\t${Architecture}\n' \
         > /var/log/apt-manifest/installed-packages-llvm.tsv; \
+    rm -rf /var/lib/apt/lists/*
+
+RUN /opt/eliza-venv/bin/pip install --no-cache-dir 'lit>=18,<22'
+
+# AutoFDO roundtrip needs qemu-user (workload capture) and linux-tools-generic
+# (perf record). linux-tools-generic depends on the host kernel headers; we
+# install qemu-user-static here and pull `perf` from generic upstream tools at
+# AutoFDO time via PATH (the binary lives in /work bind-mount).
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+        qemu-user-static; \
     rm -rf /var/lib/apt/lists/*
 
 # ccache cache lives in the bind-mounted workspace so it survives container

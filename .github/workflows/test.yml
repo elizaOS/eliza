@@ -493,6 +493,54 @@ jobs:
             echo "Endpoint secrets are configured, but the full-surface provider live smoke was not observed for event \`${{ github.event_name }}\`. It runs only on \`workflow_dispatch\` and \`schedule\`."
           } >> "$GITHUB_STEP_SUMMARY"
 
+  github-live-artifact-validate:
+    name: Remote Capability GitHub Live Artifact Validator
+    needs:
+      - cloud-live-e2e
+      - provider-live-e2e
+    if: always() && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+      TURBO_REMOTE_ONLY: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: false
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Download cloud + provider live report artifacts
+        run: |
+          mkdir -p reports/remote-capabilities/cloud reports/remote-capabilities/providers
+          gh run download "$GITHUB_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name remote-capability-cloud-live-report \
+            --dir reports/remote-capabilities/cloud || echo "::notice::remote-capability-cloud-live-report artifact not present"
+          gh run download "$GITHUB_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name remote-capability-provider-live-report \
+            --dir reports/remote-capabilities/providers || echo "::notice::remote-capability-provider-live-report artifact not present"
+
+      - name: Re-validate cloud live report from downloaded artifact
+        if: needs.cloud-live-e2e.result == 'success'
+        run: bun run test:remote-capabilities:validate-live-reports --kind cloud --expect-count 1 --max-age-minutes 120 --max-future-minutes 5 --require-ci --require-file-identity reports/remote-capabilities/cloud
+
+      - name: Re-validate provider live reports from downloaded artifacts
+        if: needs.provider-live-e2e.result == 'success'
+        run: bun run test:remote-capabilities:validate-live-reports --kind provider --expect-count 3..4 --max-age-minutes 120 --max-future-minutes 5 --allowed-providers e2b,home-machine,mobile-companion,desktop-companion --require-providers e2b,home-machine,mobile-companion --require-ci --require-file-identity reports/remote-capabilities/providers
+
   test-status:
     name: All Tests Passed
     if: always()

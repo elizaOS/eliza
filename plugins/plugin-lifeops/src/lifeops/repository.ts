@@ -1146,6 +1146,18 @@ function parseCachedInboxSourceRef(
             sourceRef.externalId,
             "inbox sourceRef externalId",
           ),
+    ...(typeof sourceRef.phoneAccountId === "string" &&
+    sourceRef.phoneAccountId.trim().length > 0
+      ? { phoneAccountId: sourceRef.phoneAccountId.trim() }
+      : {}),
+    ...(typeof sourceRef.phoneAccountLabel === "string" &&
+    sourceRef.phoneAccountLabel.trim().length > 0
+      ? { phoneAccountLabel: sourceRef.phoneAccountLabel.trim() }
+      : {}),
+    ...(typeof sourceRef.phoneNumber === "string" &&
+    sourceRef.phoneNumber.trim().length > 0
+      ? { phoneNumber: sourceRef.phoneNumber.trim() }
+      : {}),
   };
 }
 
@@ -1168,6 +1180,18 @@ function normalizeInboxWriteSourceRef(
       sourceRef.externalId,
       "inbox sourceRef externalId",
     ),
+    ...(typeof sourceRef.phoneAccountId === "string" &&
+    sourceRef.phoneAccountId.trim().length > 0
+      ? { phoneAccountId: sourceRef.phoneAccountId.trim() }
+      : {}),
+    ...(typeof sourceRef.phoneAccountLabel === "string" &&
+    sourceRef.phoneAccountLabel.trim().length > 0
+      ? { phoneAccountLabel: sourceRef.phoneAccountLabel.trim() }
+      : {}),
+    ...(typeof sourceRef.phoneNumber === "string" &&
+    sourceRef.phoneNumber.trim().length > 0
+      ? { phoneNumber: sourceRef.phoneNumber.trim() }
+      : {}),
   };
 }
 
@@ -1272,6 +1296,9 @@ function parseCachedInboxMessage(
     gmailAccountEmail: row.gmail_account_email
       ? toText(row.gmail_account_email)
       : undefined,
+    phoneAccountId: sourceRef.phoneAccountId,
+    phoneAccountLabel: sourceRef.phoneAccountLabel,
+    phoneNumber: sourceRef.phoneNumber,
     lastSeenAt: row.last_seen_at ? toText(row.last_seen_at) : undefined,
     repliedAt: row.replied_at ? toText(row.replied_at) : undefined,
     priorityScore,

@@ -50,7 +50,7 @@
     "cd \"$ELIZA_LINUX_TREE\" && make ARCH=riscv eliza_e1.config olddefconfig && cd -",
     "sw/linux/scripts/capture-linux-bsp-evidence.sh \"$ELIZA_LINUX_TREE\" kernel-build",
     "sw/linux/scripts/capture-linux-bsp-evidence.sh \"$ELIZA_LINUX_TREE\" dtb-check",
-    "python3 scripts/locate_chipyard_linux_payload.py --require",
+    "python3 scripts/locate_chipyard_linux_payload.py --require-preferred",
     "CHIPYARD_LINUX_BINARY=<selected_payload> scripts/run_chipyard_eliza_linux_smoke.sh",
     "ELIZA_OPENSBI_HANDOFF_CMD='<exact boot command>' docs/sw/opensbi/capture-opensbi-evidence.sh \"$ELIZA_OPENSBI_TREE\" handoff",
     "E1_SMOKE_CMD='<target command for /usr/bin/e1-mmio-smoke>' sw/linux/scripts/capture-linux-bsp-evidence.sh \"$ELIZA_LINUX_TREE\" smoke",
@@ -99,7 +99,7 @@
       "artifact_type": "boot_log",
       "path": "docs/evidence/linux/eliza_e1_serial_boot.log",
       "producer": "CHIPYARD_LINUX_BINARY=<selected_payload> scripts/run_chipyard_eliza_linux_smoke.sh",
-      "unblock_command": "python3 scripts/locate_chipyard_linux_payload.py --require && CHIPYARD_LINUX_BINARY=<selected_payload> scripts/run_chipyard_eliza_linux_smoke.sh",
+      "unblock_command": "python3 scripts/locate_chipyard_linux_payload.py --require-preferred && CHIPYARD_LINUX_BINARY=<selected_payload> scripts/run_chipyard_eliza_linux_smoke.sh",
       "required_strings": [
         "eliza-evidence: target=linux artifact=eliza_e1_serial_boot",
         "OpenSBI",

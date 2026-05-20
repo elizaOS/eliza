@@ -69,4 +69,8 @@ export const SIDE_EFFECT_APP_MODULE_LOADERS: readonly SideEffectAppModuleLoader[
       key: "@elizaos/plugin-wifi/register",
       load: () => import("@elizaos/plugin-wifi/register"),
     },
+    {
+      key: "@elizaos/plugin-smartglasses/register",
+      load: () => import("@elizaos/plugin-smartglasses/register"),
+    },
   ];

@@ -49,7 +49,9 @@ tinyplay $remote_tone -D 0 -d 0
 wait" >/dev/null 2>&1 || die "tinyplay/tinycap pipeline failed on device"
 
 remote_bytes=$(adb_cmd shell "stat -c %s $remote_loop 2>/dev/null || wc -c < $remote_loop" | tr -d '\r ' || true)
-[ -n "$remote_bytes" ] && [ "$remote_bytes" -gt 44 ] || die "loopback capture missing or shorter than WAV header"
+if [ -z "$remote_bytes" ] || [ "$remote_bytes" -le 44 ]; then
+	die "loopback capture missing or shorter than WAV header"
+fi
 
 tmpdir=${ELIZA_PERIPHERAL_TMPDIR:-$(mktemp -d)}
 mkdir -p "$tmpdir"

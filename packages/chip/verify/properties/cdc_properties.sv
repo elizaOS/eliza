@@ -40,22 +40,41 @@ module cdc_handshake_props #(
     input  logic ack
 );
 
-    default clocking cb @(posedge clk_dst); endclocking
-    default disable iff (!rst_n_dst);
+    logic req_active;
+    logic ack_waiting;
+    logic [$clog2(MAX_HANDSHAKE_CYCLES + 1)-1:0] ack_wait_count;
 
-    // 1. Synchronised request must be stable until ack.
-    property p_sync_stable;
-        $rose(req_sync) |-> req_sync until_with ack;
-    endproperty
+    always_ff @(posedge clk_dst) begin
+        if (!rst_n_dst) begin
+            req_active <= 1'b0;
+            ack_waiting <= 1'b0;
+            ack_wait_count <= '0;
+        end else begin
+            if (req_sync && !req_active) begin
+                req_active <= 1'b1;
+            end else if (ack) begin
+                req_active <= 1'b0;
+            end
 
-    a_sync_stable: assert property (p_sync_stable);
+            if (req_active && !ack) begin
+                assert (req_sync);
+            end
 
-    // 2. ack must eventually retire the request within the bounded window.
-    property p_ack_settles;
-        ack |-> ##[0:MAX_HANDSHAKE_CYCLES] !req_sync;
-    endproperty
+            if (ack && req_sync) begin
+                ack_waiting <= 1'b1;
+                ack_wait_count <= '0;
+            end else if (!req_sync) begin
+                ack_waiting <= 1'b0;
+                ack_wait_count <= '0;
+            end else if (ack_waiting && ack_wait_count < MAX_HANDSHAKE_CYCLES) begin
+                ack_wait_count <= ack_wait_count + 1'b1;
+            end
 
-    a_ack_settles: assert property (p_ack_settles);
+            if (ack_waiting) begin
+                assert (ack_wait_count < MAX_HANDSHAKE_CYCLES);
+            end
+        end
+    end
 
 endmodule
 
@@ -71,22 +90,32 @@ module cdc_sync_no_glitch_props #(
     input  logic [BUS_W-1:0]  observed_bus
 );
 
-    default clocking cb @(posedge clk_dst); endclocking
-    default disable iff (!rst_n_dst);
+    logic [BUS_W-1:0] observed_bus_q;
+    logic [BUS_W-1:0] observed_delta;
+    logic observed_bus_q_valid;
+    integer bit_index;
+    integer changed_bits;
 
-    function automatic int unsigned popcount(input logic [BUS_W-1:0] value);
-        int unsigned count;
-        count = 0;
-        for (int i = 0; i < BUS_W; i++) begin
-            count += value[i];
+    always_comb begin
+        observed_delta = observed_bus ^ observed_bus_q;
+        changed_bits = 0;
+        for (bit_index = 0; bit_index < BUS_W; bit_index = bit_index + 1) begin
+            changed_bits = changed_bits + observed_delta[bit_index];
         end
-        return count;
-    endfunction
+    end
 
-    a_hamming1: assert property (
-        @(posedge clk_dst) disable iff (!rst_n_dst)
-        popcount(observed_bus ^ $past(observed_bus)) <= 1
-    );
+    always_ff @(posedge clk_dst) begin
+        if (!rst_n_dst) begin
+            observed_bus_q <= '0;
+            observed_bus_q_valid <= 1'b0;
+        end else begin
+            if (observed_bus_q_valid) begin
+                assert (changed_bits <= 1);
+            end
+            observed_bus_q <= observed_bus;
+            observed_bus_q_valid <= 1'b1;
+        end
+    end
 
 endmodule
 

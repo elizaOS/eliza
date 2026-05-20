@@ -100,6 +100,15 @@ function RegisteredWalletInventoryView(): JSX.Element {
   return <Component />;
 }
 
+function RegisteredAppShellPageView({
+  registration,
+}: {
+  registration: ReturnType<typeof listAppShellPages>[number];
+}): JSX.Element {
+  const Component = registration.Component;
+  return <Component />;
+}
+
 /** Render a built-in tab component bare (no chat pane / sidebar). */
 function renderInternalToolTab(tab: Tab): JSX.Element | null {
   switch (tab) {
@@ -488,6 +497,17 @@ export function AppWindowRenderer({
     }
   }
 
+  const appShellPage = resolveAppShellPageFromSlug(slug);
+  if (appShellPage) {
+    return (
+      <AppWindowFrame>
+        <AppWindowSuspense>
+          <RegisteredAppShellPageView registration={appShellPage} />
+        </AppWindowSuspense>
+      </AppWindowFrame>
+    );
+  }
+
   // Overlay apps register by package name. The slug is derived from the
   // package name via getAppSlug.
   const overlayName = resolveOverlayAppNameFromSlug(slug);
@@ -520,6 +540,20 @@ function resolveInternalToolTabFromSlug(slug: string): Tab | null {
     }
   }
   return null;
+}
+
+function resolveAppShellPageFromSlug(
+  slug: string,
+): ReturnType<typeof listAppShellPages>[number] | null {
+  const targetPath = `/apps/${slug}`;
+  return (
+    listAppShellPages().find((entry) => {
+      const entrySlug = entry.path.startsWith("/apps/")
+        ? entry.path.slice("/apps/".length).split("/")[0]
+        : null;
+      return entry.path === targetPath || entrySlug === slug;
+    }) ?? null
+  );
 }
 
 /**

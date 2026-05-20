@@ -355,7 +355,7 @@ async function generateEnhancedKaminoLiquidityReport(
     const marketStats = await data.kaminoLiquidityService.getMarketStatistics();
 
     // Create a focused prompt for the LLM
-    const liquidityPrompt = `You are a professional DeFi analyst specializing in Kamino Finance liquidity protocols. Generate a comprehensive, well-crafted analysis report for the token ${data.tokenIdentifier}.
+    const liquidityPrompt = `Generate a comprehensive liquidity analysis report for token ${data.tokenIdentifier} on Kamino Finance.
 
 TOKEN INFORMATION:
 ${formatTokenInfoForPrompt(data.tokenInfo)}

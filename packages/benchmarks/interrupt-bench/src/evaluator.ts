@@ -136,7 +136,7 @@ Rules:
       channel: step.channel,
       detail: {
         shouldRespond: parsed.shouldRespond,
-        replyTextLen: parsed.replyText?.length ?? 0,
+        replyTextLen: parsed.replyText.length,
         threadOps: parsed.threadOps,
         llmLatencyMs: llmLatency,
       },

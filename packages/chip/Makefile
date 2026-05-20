@@ -12,6 +12,7 @@ BUILD := build
 .PHONY: ci-release-evidence evidence-regression-test formal-fast formal-strict openlane-orchestration-test physical-gates-test pipeline-check-strict strict-release-gate-test
 .PHONY: rail-plan-check upf-check pdn-workload-signoff pmic-procurement-gate cocotb-droop cocotb-clock-stretcher cocotb-avfs cocotb-pmc cocotb-power fw-pmc-build
 .PHONY: chipyard-external-generation-plan chipyard-generated-path-check chipyard-generated-path-repair chipyard-import-preflight chipyard-linux-payload-check chipyard-payload-path-check chipyard-generated-ap-boot chipyard-verilator-linux-smoke-test chipyard-verilator-preflight chipyard-verilator-stale-path-repair cpu-ap-capture-plan-shell cpu-ap-capture-wire cpu-ap-capture-wire-preflight cpu-ap-dts-audit linux-boot-artifacts-check cpu-ap-boot-readiness-check minimum-linux-target-check minimum-linux-target-strict mvp-npu-ml-evidence-check minimum-linux-npu-target-check minimum-linux-npu-target-strict hello-npu-linux-smoke-check
+.PHONY: tapeout-readiness tapeout-readiness-strict tapeout-readiness-test
 
 .PHONY: venv tools lint lint-fix typecheck analysis verify-all smoke ci-fast ci-local ci-strict ci-pd benchmarks-dry-run benchmarks benchmark-tools benchmarks-local-host-evidence benchmark-modeled-artifacts benchmark-modeled-cpu-npu cpu-npu-modeled-benchmark-eval cpu-npu-burst-sustained-policy cpu-npu-burst-thermal-transient cpu-npu-aosp-governor-trace cpu-npu-14a-process-eval cpu-npu-competitive-envelope cpu-npu-tapeout-readiness-audit cpu-npu-tapeout-readiness-audit-test cpu-npu-design-space-frontier benchmark-sim-metrics benchmark-cpu-ap-sim-metrics benchmark-cpu-ap-sota-sim-metrics benchmark-sim-metrics-test benchmark-calibration-test benchmark-parser-test soc-thermal-sweep soc-thermal-sweep-test soc-optimization soc-optimization-work-order soc-optimization-test cpu-npu-2028-readiness-scorecard cpu-npu-2028-readiness-scorecard-test cpu-npu-manual-review cpu-npu-manual-review-test power-thermal-evidence-check power-thermal-evidence-test process-14a-effects-check process-14a-effects-test e1-npu-nnapi-proof-check mvp-status mvp-status-strict mvp-status-json mvp-simulator mvp-simulator-check mvp-simulator-status-test aosp-simulator-completion-check android-sim-peripheral-evidence linux-handoff-check chipyard-generator-check chipyard-generated-check chipyard-generated-linux-contract-check chipyard-verilator-linux-smoke-check cpu-ap-scaffold-check cpu-ap-capture-plan cpu-ap-capture-preflight cpu-ap-capture-wire cpu-ap-capture-wire-preflight cpu-ap-evidence-check cpu-ap-evidence-test cpu-ap-completion-gate no-hardware-action-check memory-uma-claim-gate memory-evidence-template-check memory-interconnect-contract-check memory-axi4-check iommu-evidence-check cocotb-axi4 cocotb-axi4-irq-w1c cocotb-axi4-multimaster cocotb-dram-ctrl cocotb-iommu stream-bench lmbench-bw mlc-bench dma-buf-negative dramsim-sweep npu-2028-target-check npu-runtime-contract-check npu-roadmap-check npu-open-scale-model-check npu-scale-sim-check scale-feasibility-gate verification-maturity-matrix-check project-plan-check prototype-status-dashboard-check phone-soc-claim-check product-feature-gates-check product-check product-release-check product-evidence-commands product-resolved-manifest pinout-check fpga-check fpga-release-check wifi-interface-check padframe-check board-package-evidence-check package-cross-probe-check kicad-artifact-check openlane-run-preflight-check physical-closure-work-order-check manufacturing-artifacts-check manufacturing-artifacts-release-check kicad-artifacts-check package-artifacts-check fpga-artifacts-check real-world-gates-check antenna-metadata-check antenna-metadata-release-check pd-preflight-check pd-contract-check pd-signoff-manifest-check bootrom-check rtl-check stub-audit cocotb cocotb-npu cocotb-contract cocotb-cpu verilator formal synth openlane openlane-smoke openroad qemu renode qemu-check qemu-check-strict qemu-os-check qemu-status-test renode-check renode-check-strict renode-status-test android-sim-boot-check android-sim-status-test aosp-linux-preflight aosp-linux-handoff aosp-linux-handoff-build-only platform-contract-check software-contract-check buildroot-check buildroot-scaffold-check buildroot-import-check linux-bsp-check linux-scaffold-check linux-import-check aosp-bsp-check aosp-scaffold-check aosp-import-check aosp-build-preflight aosp-build-riscv64 bsp-scaffold-check software-bsp-check software-bsp-scaffold-check software-bsp-external-preflight software-bsp-evidence-check software-bsp-test docs-check tool-versions record-tool-versions pipeline-check archive-check archive-release clean
 
@@ -98,6 +99,15 @@ cpu-npu-tapeout-readiness-audit: cpu-npu-competitive-envelope benchmarks-dry-run
 
 cpu-npu-tapeout-readiness-audit-test:
 	@$(PYTHON) scripts/test_cpu_npu_tapeout_readiness_audit.py
+
+tapeout-readiness:
+	@$(PYTHON) scripts/aggregate_tapeout_readiness.py
+
+tapeout-readiness-strict:
+	@$(PYTHON) scripts/aggregate_tapeout_readiness.py --strict
+
+tapeout-readiness-test:
+	@$(PYTHON) scripts/test_aggregate_tapeout_readiness.py
 
 cpu-npu-design-space-frontier: soc-optimization
 	@$(PYTHON) scripts/check_cpu_npu_design_space_frontier.py
@@ -455,6 +465,21 @@ security-2028-target-check:
 pd-util-check:
 	@$(PYTHON) scripts/check_pd_utilization.py
 
+spec-check-tests:
+	@$(PYTHON) -m unittest scripts.test_check_cpu_2028_target scripts.test_check_memory_2028_target scripts.test_check_security_2028_target scripts.test_check_pd_utilization
+
+npu-regmap-cross-check:
+	@$(PYTHON) scripts/check_e1_npu_regmap_cross_check.py
+
+power-thermal-projection:
+	@$(PYTHON) scripts/power_thermal_model.py --report
+
+power-thermal-projection-check:
+	@$(PYTHON) scripts/power_thermal_model.py --check
+
+power-thermal-projection-test:
+	@$(PYTHON) -m unittest scripts.test_power_thermal_model
+
 npu-runtime-contract-check:
 	@$(PYTHON) scripts/check_e1_npu_runtime_contract.py
 
@@ -736,7 +761,8 @@ mpki-eval-model:
 	cocotb-cache-stride cocotb-cache-bdi cocotb-cache-bdi-roundtrip \
 	cocotb-cache-berti cocotb-cache-ipcp cocotb-cache-spp \
 	cocotb-cache-best-offset cocotb-cache-fdip cocotb-cache-hawkeye \
-	cocotb-cache-mockingjay cocotb-cache-coherence-vectors \
+	cocotb-cache-mockingjay cocotb-cache-mockingjay-accuracy \
+	cocotb-cache-coherence-vectors \
 	formal-cache champsim-prefetch-sweep mockingjay-vs-lru-sweep \
 	lmbench-cache-curve stream-cache-bench pointer-chase-cache-bench
 
@@ -818,6 +844,12 @@ cocotb-cache-mockingjay:
 	  COCOTB_MODULE=test_mockingjay COCOTB_TOPLEVEL=e1_mockingjay \
 	  scripts/run_cocotb_cache.sh
 
+cocotb-cache-mockingjay-accuracy:
+	@PYTHON=$(COCOTB_PYTHON) COCOTB_DIR=verify/cocotb/cache \
+	  COCOTB_MODULE=test_mockingjay_accuracy \
+	  COCOTB_TOPLEVEL=e1_mockingjay_prod_tb \
+	  scripts/run_cocotb_cache.sh
+
 cocotb-cache-coherence-vectors:
 	@PYTHON=$(COCOTB_PYTHON) COCOTB_DIR=verify/cocotb/cache \
 	  COCOTB_MODULE=test_coherence_vectors COCOTB_TOPLEVEL=e1_l1d_cache \
@@ -827,11 +859,11 @@ formal-cache:
 	@scripts/run_formal_cache.sh
 
 champsim-prefetch-sweep:
-	@$(PYTHON) scripts/champsim_sweep.py --mode prefetch || \
+	@$(PYTHON) scripts/champsim_sweep.py --mode prefetch --commit-evidence || \
 	  ($(PYTHON) scripts/champsim_sweep.py --mode prefetch --blocked-evidence)
 
 mockingjay-vs-lru-sweep:
-	@$(PYTHON) scripts/champsim_sweep.py --mode mockingjay-vs-lru || \
+	@$(PYTHON) scripts/champsim_sweep.py --mode mockingjay-vs-lru --commit-evidence || \
 	  ($(PYTHON) scripts/champsim_sweep.py --mode mockingjay-vs-lru --blocked-evidence)
 
 lmbench-cache-curve:

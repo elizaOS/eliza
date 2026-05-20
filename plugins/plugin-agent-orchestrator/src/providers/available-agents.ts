@@ -17,7 +17,7 @@ const TERMINAL_SESSION_STATUSES = new Set([
 ]);
 
 function sessionSortTime(session: SessionInfo): number {
-  return new Date(session.lastActivityAt ?? session.createdAt).getTime();
+  return new Date(session.lastActivityAt).getTime();
 }
 
 function sessionIsActive(session: SessionInfo): boolean {
@@ -95,7 +95,7 @@ export const availableAgentsProvider: Provider = {
             ? ` — ${agent.reason}`
             : "";
         lines.push(
-          `- ${agent.agentType ?? agent.adapter}: ${agent.installed ? "installed" : "not installed"}${auth}${reason}`,
+          `- ${agent.agentType}: ${agent.installed ? "installed" : "not installed"}${auth}${reason}`,
         );
       }
     } else {

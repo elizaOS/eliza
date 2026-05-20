@@ -83,7 +83,7 @@ export const elizaAppConfig = {
     return {
       apiKey: optionalRuntimeEnv("ELIZA_APP_BLOOIO_API_KEY"),
       webhookSecret: process.env.ELIZA_APP_BLOOIO_WEBHOOK_SECRET || "",
-      phoneNumber: optionalRuntimeEnv("ELIZA_APP_BLOOIO_PHONE_NUMBER", "+14245074963"),
+      phoneNumber: optionalRuntimeEnv("ELIZA_APP_BLOOIO_PHONE_NUMBER", "+14159611510"),
     };
   },
 

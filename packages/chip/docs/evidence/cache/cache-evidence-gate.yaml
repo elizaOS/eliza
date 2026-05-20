@@ -113,31 +113,54 @@ blocked_real_claims:
     evidence_artifacts:
       - docs/evidence/cache/stream_bandwidth_report.json
       - docs/evidence/cache/stream_bandwidth_raw.log
-  - id: champsim_prefetcher_sweep
+  - id: pythia_rl_prefetcher_dpc3
     status: blocked
     reason: |
-      ChampSim sweep over Berti / IPCP / SPP / Best-Offset / Pythia on
-      DPC-3 traces is the academic-quality MPKI evidence. The wrapper at
-      `scripts/champsim_sweep.py` fails closed when ChampSim is not
-      installed or DPC-3 traces are unavailable (no internet).
+      Pythia (Bera et al., MICRO'21) is not part of the upstream ChampSim
+      2024-12 module set; it lives in the CMU-SAFARI Pythia tree as a
+      third-party drop-in. The DPC-3 sweep here exercises only the
+      modules built into upstream ChampSim (no/next_line/ip_stride/
+      spp_dev/va_ampm_lite). Pythia's IPC delta vs Berti/SPP remains
+      unmeasured.
     unblock_requires:
-      - ChampSim build success log
-      - DPC-3 trace fixture downloaded
-      - per-prefetcher MPKI delta JSON
+      - port CMU-SAFARI Pythia C++ module into external/ChampSim/prefetcher/
+      - rebuild champsim_pref_pythia variant binary
+      - rerun python3 scripts/champsim_sweep.py --mode prefetch
     evidence_artifacts:
-      - docs/evidence/cache/champsim_prefetch_sweep_report.json
-      - docs/evidence/cache/champsim_prefetch_sweep_raw.log
-  - id: mockingjay_vs_lru_sweep
+      - docs/evidence/cache/pythia_dpc3_report.json
+  - id: berti_ipcp_bingo_bop_dpc3
     status: blocked
     reason: |
-      Mockingjay vs LRU IPC delta at the published ~15% bar requires the
-      full Mockingjay productized RTL, not the academic-quality port shipped
-      here. Path is documented in docs/arch/cache-hierarchy.md.
+      Berti / IPCP / Bingo / Best-Offset are CRC submissions, not
+      upstream ChampSim 2024-12 modules. The current DPC-3 sweep
+      exercises only the bundled modules; the third-party drop-ins must
+      be ported into external/ChampSim/prefetcher/ before they can be
+      built and swept.
     unblock_requires:
-      - full Mockingjay productized RTL committed
-      - ChampSim or gem5 sweep showing measured IPC delta
+      - port Berti/IPCP/Bingo/BOP source into external/ChampSim/prefetcher/
+      - rebuild variant binaries
+      - rerun python3 scripts/champsim_sweep.py --mode prefetch
     evidence_artifacts:
-      - docs/evidence/cache/mockingjay_vs_lru_report.json
+      - docs/evidence/cache/champsim_external_prefetchers_report.json
+  - id: hawkeye_mockingjay_dpc3_replacement
+    status: blocked
+    reason: |
+      Hawkeye and the productized Mockingjay (HPCA'22) replacement
+      policies are not part of upstream ChampSim 2024-12. The
+      mockingjay-vs-lru sweep here exercises only bundled replacements
+      (lru / drrip / srrip / ship), which gives an IPC range between
+      LRU and DRRIP / SHiP-style policies but does not measure the
+      Mockingjay productized RTL. The cocotb harness at
+      `verify/cocotb/cache/test_mockingjay_accuracy.py` measures the
+      Mockingjay-prod RTL directly on a synthetic stream and remains
+      below threshold (see mockingjay_cocotb_synthetic_report.json).
+    unblock_requires:
+      - port CRC Mockingjay / Hawkeye C++ replacement modules into
+        external/ChampSim/replacement/
+      - rebuild variant binaries
+      - rerun python3 scripts/champsim_sweep.py --mode mockingjay-vs-lru
+    evidence_artifacts:
+      - docs/evidence/cache/hawkeye_mockingjay_dpc3_report.json
   - id: pythia_rl_prefetcher
     status: blocked
     reason: |
@@ -159,6 +182,58 @@ blocked_real_claims:
     evidence_artifacts:
       - docs/evidence/cache/silicon_lab_report.json
 
+measured_real_claims:
+  - id: champsim_prefetcher_sweep
+    status: measured_champsim_dpc3_only
+    evidence_class: champsim_dpc3_traces_only
+    reason: |
+      ChampSim 2024-12 (commit 24cc41bb) built locally from
+      external/ChampSim/; sweep run on the DPC-3 SPECspeed traces
+      403.gcc-16B, 401.bzip2-7B, and 429.mcf-22B at 2M warmup +
+      2M sim instructions per (variant x trace). The sweep covers the
+      prefetchers bundled in upstream ChampSim: no, next_line,
+      ip_stride, spp_dev, va_ampm_lite. Berti / IPCP / Bingo / BOP /
+      Pythia are third-party drop-ins and remain BLOCKED.
+    evidence_artifacts:
+      - docs/evidence/cache/champsim_prefetch_sweep_report.json
+  - id: mockingjay_vs_lru_sweep
+    status: measured_champsim_dpc3_only
+    evidence_class: champsim_dpc3_traces_only
+    reason: |
+      ChampSim mockingjay-vs-lru sweep run against the same DPC-3
+      trace set. Because Hawkeye / Mockingjay are not bundled in
+      upstream ChampSim 2024-12, the sweep compares the bundled
+      replacements (lru, drrip, ship, srrip). The artifact records
+      the LRU-baseline IPC + per-replacement deltas so future
+      Mockingjay drop-in evidence can be referenced against the same
+      baseline. At the captured 2 M warmup + 2 M simulation window
+      the LLC sees too few accesses to pressure replacement (~600
+      LLC LOAD misses across a 2048-set x 16-way LLC); all bundled
+      replacements collapse to the same IPC/MPKI. Longer workloads or
+      pressure-bearing traces are required to see drrip/ship/srrip
+      diverge — this is itself the BLOCKER for the +15 % HPCA'22
+      productized Mockingjay claim. The Mockingjay-prod RTL is
+      independently exercised by the cocotb harness; see
+      mockingjay_cocotb_synthetic_report.json.
+    evidence_artifacts:
+      - docs/evidence/cache/mockingjay_vs_lru_report.json
+  - id: mockingjay_cocotb_synthetic
+    status: measured_below_threshold
+    evidence_class: cocotb_synthetic_stream
+    reason: |
+      The cocotb harness
+      `verify/cocotb/cache/test_mockingjay_accuracy.py` drives
+      `rtl/cache/replacement/e1_mockingjay_prod.sv` against a 2000-op
+      scan+reuse synthetic stream and reports its hit-rate vs a pure-
+      Python LRU oracle. Captured numbers (mj=6.40 % vs lru=50.40 %)
+      are below the +10 % threshold; root cause is documented in the
+      artifact (find_victim deterministic tie-breaker on all-MAX_ETR
+      initial state collapses to one way; the 2k-op stream is too
+      short to warm the STT/RTP). The threshold remains the
+      productization bar.
+    evidence_artifacts:
+      - docs/evidence/cache/mockingjay_cocotb_synthetic_report.json
+
 required_artifact_schemas:
   docs/evidence/cache/phone_class_ipc_report.json: eliza.cache.phone_class_ipc.v1
   docs/evidence/cache/phone_class_ipc_traces.json: eliza.cache.phone_class_ipc_traces.v1
@@ -167,8 +242,11 @@ required_artifact_schemas:
   docs/evidence/cache/stream_bandwidth_report.json: eliza.cache.stream_bandwidth.v1
   docs/evidence/cache/stream_bandwidth_raw.log: eliza.cache.stream_raw.v1
   docs/evidence/cache/champsim_prefetch_sweep_report.json: eliza.cache.champsim_prefetch_sweep.v1
-  docs/evidence/cache/champsim_prefetch_sweep_raw.log: eliza.cache.champsim_raw.v1
   docs/evidence/cache/mockingjay_vs_lru_report.json: eliza.cache.mockingjay_vs_lru.v1
+  docs/evidence/cache/mockingjay_cocotb_synthetic_report.json: eliza.cache.mockingjay_cocotb_synthetic.v1
+  docs/evidence/cache/pythia_dpc3_report.json: eliza.cache.pythia_dpc3.v1
+  docs/evidence/cache/champsim_external_prefetchers_report.json: eliza.cache.champsim_external_prefetchers.v1
+  docs/evidence/cache/hawkeye_mockingjay_dpc3_report.json: eliza.cache.hawkeye_mockingjay_dpc3.v1
   docs/evidence/cache/pythia_productization_report.json: eliza.cache.pythia_productization.v1
   docs/evidence/cache/silicon_lab_report.json: eliza.cache.silicon_lab.v1
 
@@ -181,11 +259,13 @@ claim_rules:
     host benchmarks, or AXI-Lite SRAM model output.
   - Mockingjay and Pythia productization remain BLOCKED until full RTL
     drop-in evidence is recorded.
+  - "ChampSim DPC-3 numbers are tagged `evidence_class: champsim_dpc3_traces_only` and must not be promoted to phone-class without silicon or full-system-simulator evidence."
 
 next_commands:
   cache_hierarchy_claim_gate: make cache-hierarchy-claim-gate
   rtl_lint: make rtl-check
   cocotb_coherence: make cocotb-cache-coherence
-  champsim_sweep_blocked: make champsim-prefetch-sweep
-  mockingjay_sweep_blocked: make mockingjay-vs-lru-sweep
+  champsim_prefetch_sweep: make champsim-prefetch-sweep
+  mockingjay_vs_lru_sweep: make mockingjay-vs-lru-sweep
+  cocotb_mockingjay_accuracy: make cocotb-cache-mockingjay-accuracy
   lmbench_curve_local: make lmbench-cache-curve

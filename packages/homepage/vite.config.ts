@@ -16,6 +16,8 @@ function gh404Fallback(): Plugin {
     name: "gh-pages-404-fallback",
     apply: "build",
     closeBundle() {
+      if (process.env.CF_PAGES === "1") return;
+
       const outDir = path.resolve(__dirname, "dist");
       const indexHtml = path.join(outDir, "index.html");
       const notFoundHtml = path.join(outDir, "404.html");

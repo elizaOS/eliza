@@ -1,5 +1,7 @@
 """Tests for SWE-bench evaluator."""
 
+import json
+
 import pytest
 
 from benchmarks.swe_bench.evaluator import PatchQualityResult, SimplePatchEvaluator, SWEBenchEvaluator
@@ -157,6 +159,33 @@ ERROR: test_error
         assert "test_foo" in passed
         assert "test_bar" in passed
         assert len(failed) == 2
+
+    def test_prepare_docker_env_uses_isolated_config(
+        self,
+        evaluator: SWEBenchEvaluator,
+        tmp_path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Docker eval should not inherit broken host credential helpers by default."""
+        monkeypatch.delenv("SWE_BENCH_USE_HOST_DOCKER_CONFIG", raising=False)
+
+        env = evaluator._prepare_docker_env(tmp_path, {"DOCKER_CONFIG": "/host/docker"})
+
+        docker_config = tmp_path / "docker-config" / "config.json"
+        assert env["DOCKER_CONFIG"] == str(tmp_path / "docker-config")
+        assert json.loads(docker_config.read_text(encoding="utf-8")) == {"auths": {}}
+
+    def test_prepare_docker_env_can_keep_host_config(
+        self,
+        evaluator: SWEBenchEvaluator,
+        tmp_path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("SWE_BENCH_USE_HOST_DOCKER_CONFIG", "1")
+
+        env = evaluator._prepare_docker_env(tmp_path, {"DOCKER_CONFIG": "/host/docker"})
+
+        assert env["DOCKER_CONFIG"] == "/host/docker"
 
 
 @pytest.mark.integration

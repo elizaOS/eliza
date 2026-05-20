@@ -297,10 +297,10 @@ function resolveRuntimeAction(
   const wanted = new Set(actionNames);
 
   for (const action of actions) {
-    if (action?.name && wanted.has(action.name)) return action;
+    if (action.name && wanted.has(action.name)) return action;
   }
   for (const action of actions) {
-    if (action?.similes?.some((simile) => wanted.has(simile))) {
+    if (action.similes?.some((simile) => wanted.has(simile))) {
       return action;
     }
   }
@@ -403,7 +403,7 @@ async function invokeAction(args: {
 
   const captured: string[] = [];
   const callback: HandlerCallback = async (content) => {
-    if (typeof content?.text === "string" && content.text.trim()) {
+    if (typeof content.text === "string" && content.text.trim()) {
       captured.push(content.text.trim());
     }
     return [];

@@ -64,7 +64,7 @@ if [[ -z "$PY" ]]; then
     echo "BLOCKED: python not found; cannot read config" >&2
     exit 1
 fi
-read -r FLOW_MODE CLOCK_MHZ MEMORY_INFER PARAMS_RAW RTL_FILES_RAW < <("$PY" - "$CONFIG_PATH" "$BLOCK_ID" <<'PYEOF'
+read -r FLOW_MODE CLOCK_MHZ MEMORY_INFER RTL_TOP PARAMS_RAW RTL_FILES_RAW < <("$PY" - "$CONFIG_PATH" "$BLOCK_ID" <<'PYEOF'
 import sys
 import yaml
 cfg_path, block_id = sys.argv[1], sys.argv[2]
@@ -74,10 +74,11 @@ for block in data.get("blocks", []):
         mode = block.get("flow_mode") or "orfs_post_route"
         clock = block.get("clock_target_mhz") or 1000
         mem_infer = "1" if block.get("memory_inference") else "0"
+        rtl_top = block.get("rtl_top") or block_id
         params = block.get("synth_params") or {}
         param_str = ",".join(f"{k}={v}" for k, v in sorted(params.items())) or "-"
         rtl = ",".join(block.get("rtl_files") or [])
-        print(f"{mode} {clock} {mem_infer} {param_str} {rtl}")
+        print(f"{mode} {clock} {mem_infer} {rtl_top} {param_str} {rtl}")
         break
 else:
     sys.exit(2)
@@ -149,7 +150,8 @@ if [[ "$FLOW_MODE" == "yosys_abc_synth_only" ]]; then
     fi
 
     "$PY" "${REPO_ROOT}/scripts/run_asap7_leaf_synth.py" \
-        --module "$BLOCK_ID" \
+        --module "$RTL_TOP" \
+        --block-id "$BLOCK_ID" \
         "${RTL_ARGS[@]}" \
         "${LIB_ARGS[@]}" \
         --build-dir "${REPO_ROOT}/build/asap7/${BLOCK_ID}" \

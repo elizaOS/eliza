@@ -47,7 +47,7 @@ async function loadOpenAIPlugin(): Promise<Plugin> {
     openaiPlugin: Plugin;
     default: Plugin;
   };
-  return mod.openaiPlugin ?? mod.default;
+  return mod.openaiPlugin;
 }
 
 interface ResolvedLlm {

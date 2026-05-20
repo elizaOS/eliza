@@ -1,0 +1,38 @@
+{
+  "schema": "eliza.cache.mockingjay_cocotb_synthetic.v1",
+  "status": "measured_below_threshold",
+  "evidence_class": "cocotb_synthetic_stream",
+  "captured_utc": "2026-05-19T22:00:00+00:00",
+  "harness": "verify/cocotb/cache/test_mockingjay_accuracy.py",
+  "dut": "rtl/cache/replacement/e1_mockingjay_prod.sv",
+  "simulator": "verilator-5.049",
+  "stream": {
+    "type": "scan+reuse synthetic",
+    "num_ops": 2000,
+    "hot_sets": 4,
+    "hot_tags_per_set": 4,
+    "hot_reps_per_burst": 4,
+    "scan_unique_tags_per_set": 8,
+    "ways": 8,
+    "sets": 64
+  },
+  "result": {
+    "mockingjay_hit_rate": 0.064,
+    "lru_hit_rate": 0.504,
+    "abs_gain": -0.440,
+    "rel_gain": -0.873,
+    "dut_hits": 128,
+    "dut_misses": 1872
+  },
+  "pass_threshold_abs_or_rel": 0.10,
+  "passed_threshold": false,
+  "test_status": "FAIL",
+  "root_cause": "find_victim deterministic tie-breaker on all-MAX_ETR initial state collapses to a single way; tracker only ever installs at that way, so Mockingjay effectively occupies fewer ways than LRU until the STT warms. The 2000-op stream is too short to warm the STT/RTP enough to overcome that bias.",
+  "next_unblock_steps": [
+    "Lengthen NUM_OPS to >=50_000 to allow STT/RTP warmup",
+    "Replace find_victim deterministic tie-breaker with random-among-ties when m == MAX_ETR (no learned signal yet)",
+    "Re-run harness; expected to flip to mockingjay_hit_rate > lru_hit_rate after warmup"
+  ],
+  "phone_class_claim_blocked": true,
+  "phone_class_claim_blocked_reason": "cocotb synthetic stream is not phone-class; remains blocked until full-system-simulator or silicon evidence."
+}

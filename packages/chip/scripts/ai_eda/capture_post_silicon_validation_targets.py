@@ -131,6 +131,8 @@ def main() -> int:
             "sigrok-cli",
             "ml-boot-failure-debug",
             "llm4sechw-debug",
+            "llm4sechw-oshd",
+            "chipbench-ai-aided-design",
         ],
         "policy": {
             "changes_rtl": False,
@@ -210,6 +212,17 @@ def main() -> int:
                 ],
             },
             {
+                "id": "llm-hardware-debug-benchmark-and-corpus-watch",
+                "status": "CAPTURED_NOT_IMPORTED",
+                "target": "future LLM hardware-debug datasets or benchmarks must stay quarantined until exact revisions, licenses, task manifests, overlap review, generated outputs, logs, and reviewer disposition exist",
+                "acceptance_gates": [
+                    "python3 scripts/check_ai_eda_source_inventory.py",
+                    "python3 scripts/ai_eda/capture_external_model_corpus_intake_targets.py --run-id validation",
+                    "python3 scripts/ai_eda/capture_benchmark_evaluation_hygiene_targets.py --run-id validation",
+                    "make no-hardware-action-check",
+                ],
+            },
+            {
                 "id": "lab-release-evidence-watch",
                 "status": "CAPTURED_NOT_MEASURED",
                 "target": "future silicon or board lab automation must be promoted only through manufacturing, real-world, benchmark, and release gates",
@@ -227,6 +240,7 @@ def main() -> int:
             "no trace schema for reset, boot, UART, JTAG, power, thermal, FPGA, or board observations",
             "no pinned OpenOCD board configuration, RISC-V debug module transcript, probe inventory, or sigrok acquisition profile",
             "no labeled boot-failure, post-silicon debug, or lab anomaly corpus for ML/XAI triage",
+            "no approved LLM hardware-debug dataset or benchmark import with pinned revisions, licenses, task manifests, non-overlap review, replay logs, and reviewer disposition",
             "no approved workflow for AI-generated lab scripts, test binaries, FPGA bitstreams, or hardware actions",
         ],
     }

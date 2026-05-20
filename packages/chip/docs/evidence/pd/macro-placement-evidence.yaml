@@ -40,17 +40,25 @@ local_findings:
     delta_pct: -3.01
     interpretation: AlphaChip 3 % better on proxy; PPA truth not yet captured.
   dreamplace_head_to_head:
-    status: dry_run_validated_gpu_visible
+    status: ran_locally_cpu_e1_softmacro_full
+    hpwl_microns_openroad_baseline: 787550.9
+    hpwl_microns_dreamplace: 160149.5
+    hpwl_delta_pct: -79.66
+    dreamplace_runtime_s: 3.683
+    dreamplace_iterations: 472
+    dreamplace_device: CPU_8_threads_deterministic_seed_1337
+    three_way_json: build/reports/pd/three_way_placement_comparison.json
     evidence_boundary: |
-      DREAMPlace 4.0 evaluation harness (scripts/dreamplace_eval.py)
-      validates against /tmp/e1-alphachip/e1_softmacro_full/ benchmark
-      with --dry-run. RTX 5080 16 GB is visible on the host. Full run
-      BLOCKED on external/DREAMPlace clone + container build via
-      scripts/alphachip/build_dreamplace_from_source.sh. After that, a
-      real GPU placement run is a single command:
-      python3 scripts/dreamplace_eval.py
-        --bench-dir /tmp/e1-alphachip/e1_softmacro_full
-        --out-dir build/pd/dreamplace/e1_softmacro_full --use-gpu
+      DREAMPlace 4.0 (limbo018/DREAMPlace v37214b4) built CPU-only inside
+      limbo018/dreamplace:cuda image at external/DREAMPlace/install. CT
+      e1_softmacro_full benchmark converted to Bookshelf via
+      scripts/alphachip/pb_to_bookshelf.py (293 nodes, 2423 nets). HPWL
+      recomputed on both placements via scripts/alphachip/plc_hpwl.py for
+      apples-to-apples comparison. GPU build BLOCKED: host nvidia-docker
+      runtime/CDI vendor not registered; DREAMPlace prebuilt image is also
+      CUDA 11.0/sm_60-7.5 only (RTX 5080 is sm_120 Blackwell). AlphaChip
+      256-macro PPO placement is BLOCKED_pending_gpu_training; the 3-way
+      JSON records that slot explicitly with the resume command.
   openroad_autotuner_sweep:
     status: dry_run_validated_optuna_missing
     evidence_boundary: |
@@ -69,9 +77,12 @@ required_validators:
   - scripts/run_post_route_ppa.py --plc <alphachip.plc> --netlist <bench>.pb.txt --openroad-run-dir <run> --openlane-config pd/openlane/config.sky130.json --out-json research/alpha_chip_macro_placement/07_post_route_ppa/alphachip.json
   - scripts/run_post_route_ppa.py --plc <openroad.plc> --netlist <bench>.pb.txt --openroad-run-dir <run> --openlane-config pd/openlane/config.sky130.json --out-json research/alpha_chip_macro_placement/07_post_route_ppa/openroad.json
   - scripts/dreamplace_eval.py --bench-dir /tmp/e1-alphachip/e1_softmacro --out-dir build/pd/dreamplace/e1 --use-gpu
+hard_macros_available:
+  - sky130_sram_2kbyte_1rw1r_32x512_8
+  - e1_sram_4kb_1rw  # gated on completion of pd/macros/sky130/e1_sram_4kb_1rw/build + Magic DRC
 release_blockers:
-  - "OpenRAM-generated SRAM macros (4 KB, 16 KB, 64 KB) are not built. The PDK-shipped 2 KB sky130_sram_2kbyte_1rw1r_32x512_8 is now in the OpenLane release config but the OpenRAM 4/16/64 KB variants needed for the L1/L2 cache slices and the larger NPU buffers are still BLOCKED on `pip install openram` or the Docker recipe in pd/macros/sky130/README.md."
-  - "DREAMPlace 4.0 evaluation: external/DREAMPlace not cloned. GPU visible (RTX 5080 16 GB), recipe ready in scripts/alphachip/build_dreamplace_from_source.sh."
+  - "OpenRAM-generated 4 KB SRAM is now buildable: external/OpenRAM cloned + sky130_fd_bd_sram cell library installed via PDK_ROOT=/home/shaw/.openram-pdk, conda EDA stack at /home/shaw/.openram-miniconda. The 16 KB and 64 KB variants reuse the same flow."
+  - "DREAMPlace head-to-head ran locally (CPU); GPU path remains BLOCKED because Docker NVIDIA runtime is not registered and the prebuilt limbo018/dreamplace:cuda image targets sm_60-sm_75 (RTX 5080 is sm_120). For GPU acceleration, rebuild DREAMPlace inside a CUDA 12.x image with -DCMAKE_CUDA_FLAGS='-gencode=arch=compute_120,code=sm_120' once a working nvidia-docker runtime is in place."
   - "AlphaChip post-route PPA truth (run_post_route_ppa.py output) requires a release run with the new macros config to finish first."
   - "False Dawn controversy (arXiv 2302.11014) requires post-route PPA, not proxy cost, as the final acceptance metric."
   - "PPO RL training pending H200 GPU access. Nebius runbook ready at scripts/alphachip/nebius_h200_runbook.md. Local RTX 5080 has only 16 GB VRAM and is not sufficient for the full PPO trajectory buffer."

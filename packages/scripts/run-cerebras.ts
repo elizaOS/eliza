@@ -1065,7 +1065,7 @@ async function loadScenario(name: string): Promise<ScenarioFile> {
 // ---------------------------------------------------------------------------
 
 const DEFAULT_SYSTEM_PROMPT =
-  "You are a concise test agent. Use the provided tools when they are useful. " +
+  "Concise test agent. Use the provided tools when they are useful. " +
   "Always reply with strictly valid JSON when the message you are answering asks for it.";
 
 async function main(): Promise<void> {

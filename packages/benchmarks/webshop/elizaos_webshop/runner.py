@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import time
 from dataclasses import asdict
 from datetime import datetime
@@ -292,6 +293,12 @@ class WebShopRunner:
             "split": self.split,
             "profile": self.profile,
             "use_hf": self.use_hf,
+            "benchmark_task_agent": os.environ.get("BENCHMARK_TASK_AGENT", ""),
+            "acp_default_agent": os.environ.get("ELIZA_ACP_DEFAULT_AGENT", ""),
+            "default_agent_type": os.environ.get("ELIZA_DEFAULT_AGENT_TYPE", ""),
+            "agent_selection_strategy": os.environ.get(
+                "ELIZA_AGENT_SELECTION_STRATEGY", ""
+            ),
         }
 
         return WebShopReport(

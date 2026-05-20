@@ -28,17 +28,17 @@ function makeAdapter(): LlmAdapter {
       if (system.startsWith("You are diagnosing")) {
         return "Prompt fails to require GOOD outputs. Add the word GOOD.";
       }
-      if (system.startsWith("You are a prompt engineer revising")) {
+      if (system.startsWith("Revise the SYSTEM PROMPT")) {
         const prompt =
           input.user
             .split("Current prompt:\n")[1]
             ?.split("\n\nFailure analysis:")[0] ?? input.user;
         return `GOOD\n${prompt}`;
       }
-      if (system.startsWith("You are a prompt engineer reducing")) {
+      if (system.startsWith("Reduce the SYSTEM PROMPT")) {
         return input.user.replace(/\n{2,}/g, "\n").trim();
       }
-      if (system.startsWith("You are a prompt engineer merging")) {
+      if (system.startsWith("Merge two candidate")) {
         const aMatch = /PROMPT A:\n([\s\S]*?)\n\nPROMPT B:/.exec(input.user);
         const bMatch = /PROMPT B:\n([\s\S]*)$/.exec(input.user);
         return `${aMatch?.[1] ?? ""}\n${bMatch?.[1] ?? ""}`.trim();

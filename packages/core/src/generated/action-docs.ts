@@ -2899,6 +2899,22 @@ export const allActionsSpec = {
 				"Play a named Hiwonder action group (pre-recorded multi-servo motion). Options: name (required, must match a key in the profile's actions. groups).",
 		},
 		{
+			name: "AINEX_RUN_RL",
+			description:
+				"Run a text-conditioned learned policy on the AiNex. Pass `options.text` ",
+			parameters: [],
+			similes: [
+				"RUN_RL",
+				"TEXT_COMMAND",
+				"ROBOT_DO",
+				"ROBOT_SAY",
+				"PERFORM_TASK",
+				"EXECUTE_TASK",
+			],
+			descriptionCompressed:
+				"Run a text-conditioned learned policy on the AiNex. Pass `options.text`",
+		},
+		{
 			name: "AINEX_SET_SERVO",
 			description:
 				"Drive one or more AiNex servos to target pulse positions over a duration. Options: positions=[{id, position}], duration (seconds, default 0.5).",
@@ -7794,9 +7810,59 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "SMARTGLASSES_CONTROL",
+			description:
+				"Run Even Realities G1 control operations: clear/exit/start AI, connection-ready init including official same-init mode, RSVP display, heartbeat loop, raw packets, serial request, app whitelist/setup, silent mode, brightness, dashboard content, navigation, translation overlays, head-up angle, wear detection, notes, voice notes, notifications, and BMP images. Provide JSON with op and parameters.",
+			parameters: [],
+			descriptionCompressed:
+				"smartglasses-control: display session, raw packets, settings, dashboard, navigation, translate, notes, notifications, BMP",
+			similes: [
+				"EVEN_GLASSES_CONTROL",
+				"SMARTGLASSES_SETTINGS",
+				"SMARTGLASSES_NOTIFICATION",
+				"SMARTGLASSES_NOTE",
+			],
+		},
+		{
+			name: "SMARTGLASSES_DISPLAY_TEXT",
+			description:
+				"Display text on connected Even Realities G1/G2 smartglasses, wrapping text into five-line pages and sending the correct G1 display packets.",
+			parameters: [],
+			descriptionCompressed:
+				"smartglasses-display-text: show wrapped text on Even G1/G2 display",
+			similes: [
+				"DISPLAY_ON_GLASSES",
+				"EVEN_DISPLAY_TEXT",
+				"SHOW_ON_SMARTGLASSES",
+			],
+		},
+		{
+			name: "SMARTGLASSES_MICROPHONE",
+			description:
+				"Enable or disable microphone capture on Even Realities smartglasses. Long press / Even AI start and single tap enable, while double tap / recording stop disable automatically when events arrive.",
+			parameters: [],
+			descriptionCompressed:
+				"smartglasses-microphone: enable, disable, or toggle Even G1/G2 microphone",
+			similes: [
+				"EVEN_MICROPHONE",
+				"OPEN_GLASSES_MIC",
+				"CLOSE_GLASSES_MIC",
+				"TOGGLE_GLASSES_MIC",
+			],
+		},
+		{
+			name: "SMARTGLASSES_STATUS",
+			description:
+				"Report smartglasses connection, transport, microphone, latest event, and audio streaming status.",
+			parameters: [],
+			descriptionCompressed:
+				"smartglasses-status: connection, mic, last event, audio chunks",
+			similes: ["EVEN_GLASSES_STATUS", "GLASSES_STATUS"],
+		},
+		{
 			name: "TASKS",
 			description:
-				"Planner surface for orchestrator workspace operations and coding task delegation to dedicated ACP coding sub-agents (claude / codex / opencode). ",
+				"Planner surface for orchestrator workspace operations and coding task delegation to dedicated ACP coding sub-agents (elizaos / pi-agent / opencode / claude / codex). ",
 			parameters: [
 				{
 					name: "action",
@@ -7839,13 +7905,13 @@ export const allActionsSpec = {
 				{
 					name: "agentType",
 					description:
-						"Agent type (codex, claude, or opencode) for create / spawn_agent / control.resume.",
+						"Agent type (elizaos, pi-agent, opencode, codex, or claude) for create / spawn_agent / control.resume. Defaults to ELIZA_ACP_DEFAULT_AGENT, normally elizaos.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Agent type (codex, claude, or opencode) for create/spawn_agent/control. resume.",
+						"Agent type (elizaos, pi-agent, opencode, codex, or claude) for create/spawn_agent/control. resume. Defaults to ELIZA_ACP_DEFAULT_AGENT, normally elizaos.",
 				},
 				{
 					name: "agents",
@@ -8295,16 +8361,40 @@ export const allActionsSpec = {
 				},
 				{
 					name: "metadata",
-					description: "Additional metadata for action=create.",
+					description:
+						"Additional metadata for action=create / action=spawn_agent.",
 					required: false,
 					schema: {
 						type: "object",
 					},
-					descriptionCompressed: "Additional metadata for action=create.",
+					descriptionCompressed:
+						"Additional metadata for action=create/action=spawn_agent.",
+				},
+				{
+					name: "taskRoomId",
+					description:
+						"Optional task-owner swarm room id for action=create / action=spawn_agent.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional task-owner swarm room id for action=create/action=spawn_agent.",
+				},
+				{
+					name: "worktreeRoomId",
+					description:
+						"Optional worktree coordination swarm room id for action=create / action=spawn_agent.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional worktree coordination swarm room id for action=create/action=spawn_agent.",
 				},
 			],
 			descriptionCompressed:
-				"ACP coding sub-agent claude|codex|opencode: spawn|send|control|list|history",
+				"ACP coding sub-agent elizaos|pi-agent|opencode|claude|codex: spawn|send|control|list|history",
 			similes: [
 				"CREATE_AGENT_TASK",
 				"CREATE_TASK",
@@ -8452,6 +8542,8 @@ export const allActionsSpec = {
 							maxRetries: "example",
 							onVerificationFail: "retry",
 							metadata: "example",
+							taskRoomId: "example",
+							worktreeRoomId: "example",
 						},
 					},
 				},
@@ -9527,6 +9619,14 @@ export const allActionsSpec = {
 					},
 				},
 			],
+		},
+		{
+			name: "XR_QUERY_VISION",
+			description:
+				"Describe what the user is currently looking at through their XR headset camera. Use this when the user asks 'what do you see', 'look at this', or any question about their surroundings.",
+			parameters: [],
+			descriptionCompressed:
+				"Describe what user is looking at through their XR headset camera. Use when user asks 'what do you see', 'look at this', or any question about their...",
 		},
 	],
 } as const satisfies { version: string; actions: readonly ActionDoc[] };

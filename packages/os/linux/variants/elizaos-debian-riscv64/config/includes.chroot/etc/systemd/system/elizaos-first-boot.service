@@ -1,0 +1,18 @@
+# elizaOS RV64 variant userland-bootstrap (Wave 2B / first-boot scaffold)
+[Unit]
+Description=elizaOS first-boot setup (one-shot)
+DefaultDependencies=no
+After=local-fs.target systemd-tmpfiles-setup.service
+Before=multi-user.target elizaos-agent.service
+ConditionPathExists=!/var/lib/elizaos/.first-boot-complete
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/lib/elizaos/first-boot.sh
+ExecStartPost=/bin/systemctl disable elizaos-first-boot.service
+StandardOutput=journal+console
+StandardError=journal+console
+
+[Install]
+WantedBy=multi-user.target

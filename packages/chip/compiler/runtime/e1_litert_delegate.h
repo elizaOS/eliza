@@ -75,6 +75,19 @@ int e1_litert_delegate_descriptor_command_buffer_image(
     uint8_t* image_json,
     size_t* image_json_size);
 
+/* Materialize a descriptor command-buffer image for one execution sub-batch
+ * into `image_json`. This is used after descriptor_execution_batches split an
+ * original batch by GEMM MMIO preamble compatibility. */
+int e1_litert_delegate_execution_command_buffer_image(
+    E1LiteRtDelegate* delegate,
+    const char* module_json,
+    size_t module_json_length,
+    uint32_t arena_base,
+    uint32_t descriptor_base,
+    uint32_t execution_batch_index,
+    uint8_t* image_json,
+    size_t* image_json_size);
+
 /* Prepare the metadata package needed to stage one descriptor-ready batch into
  * `prepared_json`. This includes tensor arena sizing, GEMM MMIO preamble
  * values, and the descriptor image; it does not execute or submit the batch. */
@@ -85,6 +98,33 @@ int e1_litert_delegate_prepared_descriptor_batch(
     uint32_t arena_base,
     uint32_t descriptor_base,
     uint32_t batch_index,
+    uint8_t* prepared_json,
+    size_t* prepared_json_size);
+
+/* Prepare the metadata package needed to stage one descriptor execution
+ * sub-batch into `prepared_json`. This is used when an original command-buffer
+ * batch is split by GEMM MMIO preamble compatibility. */
+int e1_litert_delegate_prepared_descriptor_execution_batch(
+    E1LiteRtDelegate* delegate,
+    const char* module_json,
+    size_t module_json_length,
+    uint32_t arena_base,
+    uint32_t descriptor_base,
+    uint32_t execution_batch_index,
+    uint8_t* prepared_json,
+    size_t* prepared_json_size);
+
+/* Prepare metadata packages for all descriptor execution sub-batches into
+ * `prepared_json`. Descriptor bases are assigned as descriptor_base plus
+ * execution_batch_index multiplied by descriptor_stride_bytes; the caller still
+ * owns descriptor memory allocation and runtime execution. */
+int e1_litert_delegate_prepared_descriptor_execution_batches(
+    E1LiteRtDelegate* delegate,
+    const char* module_json,
+    size_t module_json_length,
+    uint32_t arena_base,
+    uint32_t descriptor_base,
+    uint32_t descriptor_stride_bytes,
     uint8_t* prepared_json,
     size_t* prepared_json_size);
 

@@ -1,25 +1,45 @@
 #!/usr/bin/env bash
-# elizaOS Debian RISC-V 64 — live-build orchestrator (skeleton).
+# elizaOS Debian RISC-V 64 — live-build orchestrator.
 #
-# Wave 2B-B1 scope: scaffolding only. This script wires up the steps a
-# real riscv64 ISO build needs — `lb config`, `lb build`, artifact copy,
-# checksum, manifest fill-in — but the rootfs configuration that makes
-# `lb build` actually produce a bootable image is Wave 4 work. Wave 4
-# stubs below fail closed with `exit 1` rather than silently no-op'ing.
+# Runs end-to-end inside the builder container baked by ./Dockerfile.
+# Steps:
+#   1. lb config   — apply auto/config to the variant tree.
+#   2. lb build    — produce binary.hybrid.iso (multi-GB download,
+#                    30+ minute build; intended for the builder host or
+#                    a CI runner, not for an interactive sub-agent).
+#   3. verify      — fail closed if the ISO is missing, < 200 MiB, or
+#                    refuses to mount via iso-info / isoinfo.
+#   4. checksum    — sha256 + size, written next to the artifact.
+#   5. manifest    — substitute build evidence into
+#                    manifest.json.template → out/<name>.manifest.json
+#                    and JSON-parse the result.
 #
-# Intended usage (once Wave 4 lands the rootfs config):
-#   ./build.sh             full build → out/elizaos-debian-riscv64-<ts>.iso
+# Intended invocation (do NOT run interactively — the live-build step
+# pulls multi-GB from Debian mirrors and takes 30+ minutes):
 #
-# Container entrypoint when invoked via the Dockerfile.
+#   docker build -t elizaos-debian-riscv64-builder .
+#   docker run --rm --privileged \
+#       -v "$(pwd):/build" -v "$(pwd)/out:/out" \
+#       elizaos-debian-riscv64-builder
+#
+# Tunables:
+#   ELIZAOS_OUT_DIR         override the host-side output dir.
+#   ELIZAOS_MIN_ISO_BYTES   override the 200 MiB minimum (bytes).
 set -euo pipefail
 
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "${PWD}/manifest.json.template" ] && [ -d "${PWD}/auto" ]; then
+    HERE="${PWD}"
+else
+    HERE="${ELIZAOS_VARIANT_DIR:-${SCRIPT_DIR}}"
+fi
 OUT="${ELIZAOS_OUT_DIR:-${HERE}/out}"
 ARCH="riscv64"
 KERNEL_FLAVOUR="riscv64"
 BOOTLOADER="grub-efi"
 BUILD_TS="$(date -u +%Y%m%dT%H%M%SZ)"
 ARTIFACT_BASENAME="elizaos-debian-riscv64-${BUILD_TS}"
+MIN_ISO_BYTES="${ELIZAOS_MIN_ISO_BYTES:-209715200}"  # 200 MiB
 
 mkdir -p "${OUT}"
 
@@ -28,13 +48,11 @@ echo "    arch:        ${ARCH}"
 echo "    kernel:      ${KERNEL_FLAVOUR}"
 echo "    bootloader:  ${BOOTLOADER}"
 echo "    output dir:  ${OUT}"
+echo "    build ts:    ${BUILD_TS}"
 
 # ── Step 1: lb config ────────────────────────────────────────────────
-# Initialise the live-build config tree with riscv64 defaults. The
-# auto/config script in this variant pins the architecture, kernel
-# flavour, and bootloader so re-running is idempotent.
 echo
-echo "--- step 1/4: lb config ---"
+echo "--- step 1/5: lb config ---"
 if ! command -v lb >/dev/null 2>&1; then
     echo "ERROR: live-build (lb) not found on PATH. Run inside the builder container." >&2
     exit 1
@@ -44,33 +62,67 @@ lb config \
     --distribution trixie \
     --architecture "${ARCH}" \
     --linux-flavours "${KERNEL_FLAVOUR}" \
-    --bootloaders "${BOOTLOADER}"
+    --archive-areas "main" \
+    --bootloaders "${BOOTLOADER}" \
+    --uefi-secure-boot disable
+
+patch_live_build_riscv64_grub_efi() {
+    helper="/usr/lib/live/build/binary_grub-efi"
+    if [ "${ARCH}" != "riscv64" ] || [ ! -w "${helper}" ]; then
+        return
+    fi
+    if grep -Fq 'riscv64-efi' "${helper}"; then
+        return
+    fi
+    python3 - "${helper}" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text()
+text = text.replace(
+    "\tarmhf)\n\t\tCheck_package chroot /usr/lib/grub/arm-efi/configfile.mod grub-efi-arm-bin\n\t\t;;\n",
+    "\tarmhf)\n\t\tCheck_package chroot /usr/lib/grub/arm-efi/configfile.mod grub-efi-arm-bin\n\t\t;;\n"
+    "\triscv64)\n\t\tCheck_package chroot /usr/lib/grub/riscv64-efi/configfile.mod grub-efi-riscv64-bin\n\t\t;;\n",
+)
+text = text.replace(
+    "\tarmhf)\n\t\t_SB_EFI_PLATFORM=\"arm\"\n\t\t_SB_EFI_NAME=\"arm\"\n\t\t_SB_EFI_DEB=\"arm\"\n\t\t;;\n",
+    "\tarmhf)\n\t\t_SB_EFI_PLATFORM=\"arm\"\n\t\t_SB_EFI_NAME=\"arm\"\n\t\t_SB_EFI_DEB=\"arm\"\n\t\t;;\n"
+    "\triscv64)\n\t\t_SB_EFI_PLATFORM=\"riscv64\"\n\t\t_SB_EFI_NAME=\"riscv64\"\n\t\t_SB_EFI_DEB=\"riscv64\"\n\t\t;;\n",
+)
+text = text.replace(
+    "\tarmhf)\n\t\tgen_efi_boot_img \"arm-efi\" \"arm\" \"debian-live/arm\"\n\t\tPATH=\"\\${PRE_EFI_IMAGE_PATH}\"\n\t\t;;\n",
+    "\tarmhf)\n\t\tgen_efi_boot_img \"arm-efi\" \"arm\" \"debian-live/arm\"\n\t\tPATH=\"\\${PRE_EFI_IMAGE_PATH}\"\n\t\t;;\n"
+    "\triscv64)\n\t\tgen_efi_boot_img \"riscv64-efi\" \"riscv64\" \"debian-live/riscv64\"\n\t\tPATH=\"\\${PRE_EFI_IMAGE_PATH}\"\n\t\t;;\n",
+)
+text = text.replace(
+    "rm -rf binary/boot/efi.img binary/boot/grub/i386-efi/ binary/boot/grub/x86_64-efi binary/boot/grub/arm64-efi binary/boot/grub/arm-efi",
+    "rm -rf binary/boot/efi.img binary/boot/grub/i386-efi/ binary/boot/grub/x86_64-efi binary/boot/grub/arm64-efi binary/boot/grub/arm-efi binary/boot/grub/riscv64-efi",
+)
+text = text.replace(
+    "rm -rf chroot/grub-efi-temp-arm-efi\nrm -rf chroot/grub-efi-temp-cfg",
+    "rm -rf chroot/grub-efi-temp-arm-efi\nrm -rf chroot/grub-efi-temp-riscv64-efi\nrm -rf chroot/grub-efi-temp-cfg",
+)
+text = text.replace(
+    "\t\tRemove_packages\n\t\tAPT_OPTIONS=\"${PRE_APT_OPTIONS}\"",
+    "\t\tRemove_packages || true\n\t\tAPT_OPTIONS=\"${PRE_APT_OPTIONS}\"",
+)
+path.write_text(text)
+PY
+}
+
+patch_live_build_riscv64_grub_efi
 
 # ── Step 2: lb build ─────────────────────────────────────────────────
-# STATUS_LATER: Wave 4. We do not yet have the chroot package list,
-# kernel/initrd selection, or the elizaOS userland integration needed
-# for `lb build` to produce a bootable riscv64 image. Wave 4 lands:
-#   - config/package-lists/elizaos.list.chroot
-#   - hooks for the elizaOS agent + greeter
-#   - U-Boot / grub-efi-riscv64 boot menu
-#   - firmware blob sourcing from the chip submodule at runtime
-# Until then this step fails closed so callers cannot mistake an
-# empty output for a real build.
 echo
-echo "--- step 2/4: lb build ---"
-echo "STATUS_LATER: Wave 4 — rootfs configuration not implemented." >&2
-echo "  Once Wave 4 lands the package lists + hooks, replace this gate" >&2
-echo "  with: lb build" >&2
-exit 1
+echo "--- step 2/5: lb build ---"
+lb build
 
-# ── Step 3: copy artifact + compute sha256/size ──────────────────────
-# Wave 4 will produce either binary.hybrid.iso (live-build default) or
-# a raw .img if we switch to image-mode. Both go to ${OUT} with a
-# stable, dated basename so the release pipeline can pick them up.
+# ── Step 3: verify artifact ──────────────────────────────────────────
 echo
-echo "--- step 3/4: copy artifact + checksums ---"
+echo "--- step 3/5: verify artifact ---"
 ARTIFACT_SRC=""
-for candidate in "${HERE}/binary.hybrid.iso" "${HERE}/binary.img" "${HERE}/live-image-${ARCH}.hybrid.iso"; do
+for candidate in "${HERE}/binary.hybrid.iso" "${HERE}/live-image-${ARCH}.hybrid.iso" "${HERE}/binary.img"; do
     if [ -f "${candidate}" ]; then
         ARTIFACT_SRC="${candidate}"
         break
@@ -78,27 +130,62 @@ for candidate in "${HERE}/binary.hybrid.iso" "${HERE}/binary.img" "${HERE}/live-
 done
 
 if [ -z "${ARTIFACT_SRC}" ]; then
-    echo "ERROR: no live-build output artifact found (expected binary.hybrid.iso / binary.img / live-image-${ARCH}.hybrid.iso)" >&2
+    echo "ERROR: no live-build output artifact found (expected binary.hybrid.iso / live-image-${ARCH}.hybrid.iso / binary.img)" >&2
     exit 1
 fi
+
+ARTIFACT_SIZE="$(stat -c %s "${ARTIFACT_SRC}")"
+if [ "${ARTIFACT_SIZE}" -lt "${MIN_ISO_BYTES}" ]; then
+    echo "ERROR: artifact ${ARTIFACT_SRC} is ${ARTIFACT_SIZE} bytes (< ${MIN_ISO_BYTES} byte floor)." >&2
+    echo "  This is too small to plausibly contain Debian + linux-image-riscv64; build is broken." >&2
+    exit 1
+fi
+
+case "${ARTIFACT_SRC}" in
+    *.iso)
+        # Prefer libcdio's iso-info; fall back to genisoimage's
+        # isoinfo. If neither is present, fail closed — we will not
+        # ship an ISO we did not check is mountable.
+        if command -v iso-info >/dev/null 2>&1; then
+            iso-info "${ARTIFACT_SRC}" >/dev/null
+        elif command -v isoinfo >/dev/null 2>&1; then
+            isoinfo -d -i "${ARTIFACT_SRC}" >/dev/null
+        else
+            echo "ERROR: neither iso-info nor isoinfo available; cannot verify ISO is mountable." >&2
+            exit 1
+        fi
+        ;;
+    *.img)
+        # Raw images: confirm the file is a recognisable filesystem or
+        # partition-table image. `file` ships in the builder.
+        if ! file "${ARTIFACT_SRC}" | grep -Eqi 'boot sector|partition|filesystem|DOS/MBR'; then
+            echo "ERROR: ${ARTIFACT_SRC} does not look like a bootable image." >&2
+            exit 1
+        fi
+        ;;
+esac
 
 ARTIFACT_EXT="${ARTIFACT_SRC##*.}"
 ARTIFACT_DST="${OUT}/${ARTIFACT_BASENAME}.${ARTIFACT_EXT}"
 cp "${ARTIFACT_SRC}" "${ARTIFACT_DST}"
 
+# ── Step 4: checksum ─────────────────────────────────────────────────
+echo
+echo "--- step 4/5: checksum ---"
 ARTIFACT_SHA256="$(sha256sum "${ARTIFACT_DST}" | awk '{ print $1 }')"
 ARTIFACT_SIZE="$(stat -c %s "${ARTIFACT_DST}")"
 echo "    artifact: ${ARTIFACT_DST}"
 echo "    sha256:   ${ARTIFACT_SHA256}"
 echo "    size:     ${ARTIFACT_SIZE} bytes"
 
-# ── Step 4: emit manifest fragment ───────────────────────────────────
-# Substitute the freshly-computed values into manifest.json.template
-# and write the result alongside the artifact. The release pipeline
-# (packages/os/release/) merges this fragment into the top-level
-# elizaos-os-release-manifest.json under `artifacts[]`.
+if ! printf '%s' "${ARTIFACT_SHA256}" | grep -Eq '^[a-f0-9]{64}$'; then
+    echo "ERROR: computed sha256 ${ARTIFACT_SHA256} does not match the schema pattern." >&2
+    exit 1
+fi
+
+# ── Step 5: emit manifest fragment ───────────────────────────────────
 echo
-echo "--- step 4/4: emit manifest fragment ---"
+echo "--- step 5/5: emit manifest fragment ---"
 MANIFEST_TEMPLATE="${HERE}/manifest.json.template"
 MANIFEST_OUT="${OUT}/${ARTIFACT_BASENAME}.manifest.json"
 
@@ -110,9 +197,18 @@ fi
 sed \
     -e "s|@@FILENAME@@|${ARTIFACT_BASENAME}.${ARTIFACT_EXT}|g" \
     -e "s|@@SHA256@@|${ARTIFACT_SHA256}|g" \
-    -e "s|\"sizeBytes\": 0|\"sizeBytes\": ${ARTIFACT_SIZE}|g" \
+    -e "s|@@SIZE_BYTES@@|${ARTIFACT_SIZE}|g" \
     -e "s|@@BUILD_TIMESTAMP@@|${BUILD_TS}|g" \
+    -e "s|@@ARCH@@|${ARCH}|g" \
+    -e "s|@@KERNEL_FLAVOUR@@|${KERNEL_FLAVOUR}|g" \
     "${MANIFEST_TEMPLATE}" > "${MANIFEST_OUT}"
+
+if command -v python3 >/dev/null 2>&1; then
+    if ! python3 -c "import json,sys; json.load(open('${MANIFEST_OUT}'))"; then
+        echo "ERROR: emitted manifest ${MANIFEST_OUT} is not valid JSON." >&2
+        exit 1
+    fi
+fi
 
 echo "    manifest: ${MANIFEST_OUT}"
 echo

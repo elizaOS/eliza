@@ -58,8 +58,7 @@ import {
 	type ModelSpec,
 } from "./types";
 
-const DEFAULT_LOCAL_SYSTEM_PROMPT =
-	"You are a helpful AI assistant. Respond to the current request only.";
+const DEFAULT_LOCAL_SYSTEM_PROMPT = "Respond to the current request only.";
 
 interface ContextEntry {
 	ctx: CapacitorLlamaContext;

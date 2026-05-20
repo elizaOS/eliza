@@ -3948,7 +3948,7 @@ ${report.tokenReports.join("\n")}
 		batchSize: number,
 		_senderName: string,
 	) {
-		const systemPrompt = `You are an expert crypto analyst specializing in Discord trading signal extraction. Your goal is to identify crypto-related trading signals, calls, recommendations, or sentiment from messages.
+		const systemPrompt = `Extract crypto trading signals, calls, recommendations, and sentiment from Discord messages.
 
 🎯 WHAT COUNTS AS A TRADING SIGNAL:
 • Direct trading advice: "buy X", "sell Y", "hold Z"

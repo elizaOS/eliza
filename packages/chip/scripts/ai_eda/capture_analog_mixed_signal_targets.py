@@ -102,6 +102,14 @@ def main() -> int:
             "analoggenie",
             "masala-chai",
             "limca",
+            "analogagent",
+            "analogmaster",
+            "vlm-cad",
+            "circuitlm",
+            "eeschematic",
+            "analogcoder-pro",
+            "analogcoder",
+            "ams-net",
         ],
         "policy": {
             "generates_spice_netlist": False,
@@ -147,6 +155,26 @@ def main() -> int:
                 ],
             },
             {
+                "id": "analog-agent-spice-loop-watch",
+                "status": "CAPTURED_NOT_RUN",
+                "target": "future analog LLM/agent sizing or topology loops must stay quarantined until exact prompts, model versions, memory, SPICE decks, simulator logs, PVT sweeps, and analog review exist",
+                "acceptance_gates": [
+                    "python3 scripts/check_ai_eda_source_inventory.py",
+                    "make padframe-check",
+                    "make board-package-evidence-check",
+                ],
+            },
+            {
+                "id": "schematic-image-netlist-parser-watch",
+                "status": "CAPTURED_NOT_PARSED",
+                "target": "future schematic image, CircuitJSON, or SPICE-to-schematic tools must prove source hashes, symbol libraries, ERC, electrical equivalence, and reviewer disposition",
+                "acceptance_gates": [
+                    "make padframe-check",
+                    "make package-cross-probe-check",
+                    "make no-hardware-action-check",
+                ],
+            },
+            {
                 "id": "analog-imc-research-watch",
                 "status": "RESEARCH_ONLY",
                 "target": "track analog IMC netlist-generation research without E1 source integration",
@@ -159,6 +187,8 @@ def main() -> int:
             "no local analog SPICE specs or testbenches for E1",
             "no foundry pad library selected or released",
             "no IBIS, S-parameter, package parasitic, or rail impedance model",
+            "no quarantined analog LLM/agent harness with pinned prompts, model versions, memory snapshots, SPICE decks, simulator logs, PVT sweeps, and reviewer disposition",
+            "no license-reviewed analog schematic/netlist dataset selected with exact snapshot, non-overlap review, and parser baselines",
             "no approved flow for AI-generated SPICE, analog layout, or foundry IP",
         ],
     }

@@ -983,7 +983,7 @@ function formatContextAsText(ctx: BenchmarkContext): string {
   } else if (ctx.tools && ctx.tools.length > 0) {
     // Tau-bench-style harnesses: emphasise tool calling
     sections.push(
-      `You are a customer service agent. You MUST use the available tools to help the customer.`,
+      `Customer service agent. Use the available tools to help the customer.`,
     );
     sections.push(
       `DO NOT respond directly to the customer yet. First call the appropriate tool using BENCHMARK_ACTION.`,

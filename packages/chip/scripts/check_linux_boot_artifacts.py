@@ -86,6 +86,8 @@ def payload_locator_status() -> dict[str, Any]:
             record.update(
                 {
                     "state": "pass" if info.runnable else "blocked",
+                    "role": module.payload_role(info.path),
+                    "preferred_for_linux_smoke": module.preferred_for_linux_smoke(info.path),
                     "entry": f"0x{info.entry:x}",
                     "size_bytes": info.size,
                     "contains_opensbi": info.contains_opensbi,
@@ -99,15 +101,24 @@ def payload_locator_status() -> dict[str, Any]:
     status["candidates"] = candidates
     if selected is None:
         status["problems"].append(
-            "no runnable RISC-V ELF payload with OpenSBI marker found; run "
+            "no runnable RISC-V ELF payload with OpenSBI and Linux version markers found; run "
             "python3 scripts/locate_chipyard_linux_payload.py --require"
         )
         return status
 
+    selected_is_preferred = module.preferred_for_linux_smoke(selected.path)
+    if not selected_is_preferred:
+        status["problems"].append(
+            "preferred linux-poweroff nodisk smoke payload is unavailable; run "
+            "python3 scripts/locate_chipyard_linux_payload.py --require-preferred"
+        )
+
     status.update(
         {
-            "state": "pass",
+            "state": "pass" if selected_is_preferred else "blocked",
             "selected_payload": module.rel(selected.path),
+            "selected_payload_role": module.payload_role(selected.path),
+            "selected_payload_preferred_for_linux_smoke": selected_is_preferred,
             "sha256": selected.sha256,
             "entry": f"0x{selected.entry:x}",
         }

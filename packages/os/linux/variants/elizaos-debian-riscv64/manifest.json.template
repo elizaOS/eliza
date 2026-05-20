@@ -11,7 +11,7 @@
   "filename": "@@FILENAME@@",
   "downloadUrl": "https://download.elizaos.ai/os/linux/@@FILENAME@@",
   "status": "planned",
-  "sizeBytes": 0,
+  "sizeBytes": @@SIZE_BYTES@@,
   "sha256": "@@SHA256@@",
   "signature": {
     "status": "pending",
@@ -25,11 +25,31 @@
       "hardware-board-boot"
     ],
     "evidence": [
-      { "id": "qemu-virt-boot", "status": "missing", "path": null },
-      { "id": "u-boot-extlinux-boot", "status": "missing", "path": null },
-      { "id": "grub-efi-riscv64-boot", "status": "missing", "path": null },
-      { "id": "hardware-board-boot", "status": "missing", "path": null }
+      {
+        "id": "qemu-virt-boot",
+        "status": "missing",
+        "path": null,
+        "notes": "qemu-system-riscv64 -M virt boot transcript not yet collected. provenance: scaffolding."
+      },
+      {
+        "id": "u-boot-extlinux-boot",
+        "status": "missing",
+        "path": null,
+        "notes": "config/includes.binary/extlinux/extlinux.conf staged for distroboot. Boot transcript not yet captured. provenance: scaffolding."
+      },
+      {
+        "id": "grub-efi-riscv64-boot",
+        "status": "missing",
+        "path": null,
+        "notes": "config/hooks/normal/0020-grub-efi-riscv64.hook.binary stages BOOTRISCV64.EFI + grub.cfg. Boot transcript not yet captured. provenance: scaffolding."
+      },
+      {
+        "id": "hardware-board-boot",
+        "status": "missing",
+        "path": null,
+        "notes": "No physical board bring-up evidence yet. provenance: scaffolding."
+      }
     ]
   },
-  "notes": "Wave 2B-B1 skeleton; real ISO build = Wave 4. Build timestamp: @@BUILD_TIMESTAMP@@."
+  "notes": "Wave 4 live-build artifact. provenance: scaffolding until a real build replaces the @@-prefixed placeholders. build_ts=@@BUILD_TIMESTAMP@@ arch=@@ARCH@@ kernel_flavour=@@KERNEL_FLAVOUR@@."
 }

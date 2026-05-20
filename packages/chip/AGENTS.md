@@ -4,6 +4,10 @@ This package is a pre-tapeout hardware/software evidence package for the
 Eliza E1 RISC-V AI SoC scaffold. Treat every change as production-grade
 engineering work intended for eventual publication.
 
+## Native over Docker on Linux x64
+
+This package's full PD/RTL/sim/formal toolchain is installed and supported natively on Linux x86_64. `tools/env.sh` exposes the local binaries on `PATH`. Use the native installs by default — Verilator, Icarus, Yosys, SymbiYosys, z3, OpenROAD, OpenLane, magic, klayout, netgen, QEMU, Renode, KiCad, OpenOCD, sigrok, the RISC-V toolchains. They live under `external/oss-cad-suite/`, `external/deb-tools/`, `external/openlane2/.venv/`, and `external/openroad/`. Run flows directly on the host; Docker is retained only as a documented fallback for macOS reproduction or pinned-image CI lanes. Native is faster, gives real stack traces, and avoids docker-daemon babysitting. If a make target or script hard-requires Docker when a native binary is already on `PATH`, treat that as a bug to fix.
+
 ## Quality Bar
 
 - Build on the existing architecture, contracts, and evidence gates. Do not

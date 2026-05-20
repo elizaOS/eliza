@@ -317,8 +317,7 @@ app.post("/", async (c) => {
 
     const result = streamText({
       model: getLanguageModel(selectedModel),
-      system: `You are a helpful AI assistant powered by elizaOS. You provide clear, accurate, and helpful responses.
-      You are knowledgeable about AI agents, development, and technology.`,
+      system: `Powered by elizaOS. Provide clear, accurate, and helpful responses about AI agents, development, and technology.`,
       messages: await convertToModelMessages(messages),
       abortSignal: c.req.raw.signal,
       timeout: routeTimeoutMs,

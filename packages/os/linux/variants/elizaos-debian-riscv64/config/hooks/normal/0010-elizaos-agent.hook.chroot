@@ -1,0 +1,50 @@
+#!/bin/sh
+# elizaOS agent placeholder install — runs inside the riscv64 chroot.
+#
+# Wave 4 scope: reserve `/opt/elizaos/` and record the install path so
+# the userland-bootstrap agent has a stable mount point to drop a real
+# build into. The real agent installer (bun + @elizaos/* package
+# resolution + service unit + first-boot config) lives behind a later
+# wave and intentionally is not staged here.
+#
+# Fail closed: if `/opt` is not writable or the install marker cannot be
+# written, the chroot stage aborts so a half-configured image cannot be
+# shipped silently.
+set -eu
+
+INSTALL_ROOT="/opt/elizaos"
+INSTALL_MARKER="${INSTALL_ROOT}/INSTALL_STATE.json"
+BUILD_TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+mkdir -p "${INSTALL_ROOT}/bin" "${INSTALL_ROOT}/state" "${INSTALL_ROOT}/var/log"
+
+cat > "${INSTALL_MARKER}" <<JSON
+{
+  "schemaVersion": 1,
+  "variant": "elizaos-debian-riscv64",
+  "installRoot": "${INSTALL_ROOT}",
+  "stagedAt": "${BUILD_TS}",
+  "stage": "placeholder",
+  "provenance": "scaffolding",
+  "todo": [
+    "userland-bootstrap: install bun runtime under /opt/elizaos/bin",
+    "userland-bootstrap: drop @elizaos/agent build into /opt/elizaos/app",
+    "userland-bootstrap: install systemd unit elizaos-agent.service",
+    "userland-bootstrap: seed MILADY_STATE_DIR=/opt/elizaos/state in /etc/default/elizaos"
+  ]
+}
+JSON
+
+chmod 0644 "${INSTALL_MARKER}"
+
+# Lock down SSH to key-only auth. The image ships with no authorized
+# keys; a board operator must provision keys before sshd is useful.
+if [ -f /etc/ssh/sshd_config ]; then
+    sed -i \
+        -e 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' \
+        -e 's/^#\?PermitRootLogin.*/PermitRootLogin prohibit-password/' \
+        -e 's/^#\?ChallengeResponseAuthentication.*/ChallengeResponseAuthentication no/' \
+        /etc/ssh/sshd_config
+fi
+
+echo "[0010-elizaos-agent] placeholder install recorded at ${INSTALL_MARKER}"

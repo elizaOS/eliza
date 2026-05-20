@@ -70,6 +70,25 @@ power, and manufacturing preparation.
   OpenROAD runs. Useful once there are enough repeated E1 PD runs to train or
   validate predictors.
 
+### Analog and mixed-signal agents
+
+- AnalogAgent paper: https://arxiv.org/abs/2603.23910
+- AnalogMaster paper: https://arxiv.org/abs/2604.20916
+- VLM-CAD paper: https://arxiv.org/abs/2601.07315
+- CircuitLM paper: https://arxiv.org/abs/2601.04505
+- EEschematic paper: https://arxiv.org/abs/2510.17002
+- AnalogCoder-Pro paper: https://arxiv.org/abs/2508.02518
+- AnalogCoder code: https://github.com/laiyao1/AnalogCoder
+- AMS-Net dataset site: https://ams-net.github.io/
+- Use: schematic/image/netlist parsing, analog topology generation, sizing,
+  SPICE feedback loops, VLM-grounded explainability, and analog dataset
+  governance.
+- E1 fit: target capture only. Do not generate SPICE, schematics, CircuitJSON,
+  analog layouts, padframe changes, foundry IP, or reusable analog memories for
+  E1 until exact prompts, model versions, memory snapshots, dataset snapshots,
+  SPICE/testbench decks, simulator logs, PVT sweeps, DRC/LVS/extraction,
+  package/SI-PI evidence, and human analog review exist.
+
 ## Placement and physical design research
 
 ### AlphaChip / Circuit Training
@@ -120,11 +139,20 @@ power, and manufacturing preparation.
 - HLS-Eval: https://github.com/sharc-lab/hls-eval
 - LLM-DSE: https://github.com/Nozidoali/LLM-DSE
 - iDSE: https://arxiv.org/abs/2505.22086
-- Use: HLS design-space datasets, HLS code-generation evaluation, and
-  LLM/agent-guided directive search.
+- MPM-LLM4DSE: https://arxiv.org/abs/2601.04801 and
+  https://github.com/wslcccc/MPM-LLM4DSE
+- TimelyHLS: https://arxiv.org/abs/2507.17962, with related benchmark/code at
+  https://github.com/zfsadik/Bench4HLS
+- FlexLLM HLS Library: https://arxiv.org/abs/2601.15710
+- TAPA/RapidStream TAPA: https://arxiv.org/abs/2209.02663 and
+  https://github.com/rapidstream-org/rapidstream-tapa
+- Use: HLS design-space datasets, HLS code-generation evaluation,
+  timing-aware HLS, multimodal HLS QoR modeling, HLS LLM libraries, FPGA HLS
+  backends, and LLM/agent-guided directive search.
 - E1 fit: useful for bounded NPU kernels only after a local HLS backend,
-  generated-artifact quarantine, C-sim, HLS synthesis, generated-RTL checks,
-  and runtime/driver gates exist.
+  generated-artifact quarantine, model/dataset/library/backend license review,
+  C-sim, HLS synthesis, generated-RTL checks, replay manifests, and
+  runtime/driver gates exist.
 
 ## RTL generation and EDA assistance
 
@@ -178,6 +206,23 @@ power, and manufacturing preparation.
   equivalence, cocotb/formal, synthesis/OpenLane, CDC/RDC, PPA, and review
   evidence exist.
 
+### Hardware Security, Poisoning, and LLM Safety
+
+- AI-assisted hardware security verification:
+  https://arxiv.org/abs/2604.01572
+- SecureRAG-RTL: https://arxiv.org/abs/2603.05689
+- SafeTune: https://arxiv.org/abs/2604.27238
+- TrojanLoC: https://arxiv.org/abs/2512.00591
+- HarmChip: https://arxiv.org/abs/2604.17093
+- Trojan explainability comparison: https://arxiv.org/abs/2601.18696
+- Use: security target capture for threat modeling, RTL vulnerability triage,
+  poisoned-corpus screening, line-level Trojan localization, explanation
+  quality, and domain-specific LLM safety evaluation.
+- E1 fit: never run adversarial prompts, import Trojan datasets, fine-tune RTL
+  models, trust generated countermeasures, or claim vulnerability findings
+  without prompt quarantine, dual-use review, RTL hashes, formal/simulation
+  evidence, no-hardware-action compliance, and human security disposition.
+
 ### ChatEDA and EDA Corpus
 
 - ChatEDA repo: https://github.com/wuhy68/ChatEDA
@@ -227,7 +272,19 @@ power, and manufacturing preparation.
   summaries are not evidence until tied to local artifact hashes, held-out
   tasks, formal/synthesis checks, and human review.
 
-## DFM, yield, lithography, and OPC
+## DTCO, TCAD, DFM, yield, lithography, and OPC
+
+### TCAD and device optimization
+
+- AgenticTCAD paper: https://arxiv.org/abs/2512.23742
+- TcadGPT paper: https://arxiv.org/abs/2601.10128
+- Use: future DTCO and device/process exploration only after exact TCAD decks,
+  simulator/tool identity, licenses, calibration data, generated deck hashes,
+  raw logs, and human process-device review exist.
+- E1 fit: metadata-only target capture. Do not generate TCAD decks, process
+  assumptions, leakage/self-heating assumptions, reliability corners, or
+  power/thermal inputs for E1 release without foundry-authorized collateral and
+  deterministic replay evidence.
 
 ### Hotspot detection
 
@@ -353,10 +410,30 @@ power, and manufacturing preparation.
 - HINTPILOT:
   https://openreview.net/pdf/1dad91bc6d5c443a15d5e88f1504a5532cfde1b0.pdf
 - LLM-VeriOpt: https://samainsworth.github.io/LLM-VeriOpt-CGO2026.pdf
+- Autocomp: https://arxiv.org/abs/2505.18574 and
+  https://github.com/ucb-bar/autocomp
+- AccelOpt: https://arxiv.org/abs/2511.15915 and
+  https://github.com/zhang677/AccelOpt
 - Use: LLM/agent loops that use compiler diagnostics, tests, verification, or
-  hints to rewrite code or guide compiler decisions.
-- E1 fit: target capture only. Generated source, hints, and profiles need local
-  semantic tests, compile logs, performance logs, and human disposition.
+  hints to rewrite code, generate accelerator kernels, or guide compiler
+  decisions.
+- E1 fit: target capture only. Generated source, hints, profiles, optimization
+  memories, and accelerator kernels need local semantic tests, compile logs,
+  simulator/runtime replay, performance logs, and human disposition.
+
+### RISC-V runtime kernels and formal semantics
+
+- V-Seek: https://arxiv.org/abs/2503.17422 with upstream runtime reference
+  https://github.com/ggml-org/llama.cpp
+- Interaction Tree Semantics for RISC-V:
+  https://arxiv.org/abs/2605.04933
+- Use: optimize RISC-V inference kernels and provide formal semantics for
+  compiler/hardware/software contract reasoning.
+- E1 fit: blocked proof and benchmark evidence. Runtime kernel changes require
+  target ISA profiles, compiler flags, binary hashes, simulator or hardware
+  logs, workload hashes, calibrated metrics, and review; formal semantics
+  require pinned formalization assets, theorem/proof logs, source/generated
+  hashes, and declared RISC-V subset coverage before any equivalence claim.
 
 ## Reliability, aging, EM, and resilience
 
@@ -432,6 +509,21 @@ power, and manufacturing preparation.
 - Use: ML datasets/code for congestion, DRC, IR drop, and net-delay prediction.
 - E1 fit: train/evaluate risk predictors from DEF/netlist features once E1 has
   enough generated PD runs.
+
+### Architecture-level power models
+
+- ArchPower: https://arxiv.org/abs/2512.06854,
+  https://github.com/hkust-zhiyao/ArchPower, and
+  https://huggingface.co/datasets/zqj23333/ArchPower
+- AutoPower: https://arxiv.org/abs/2508.12294 and
+  https://github.com/hkust-zhiyao/AutoPower
+- Use: early CPU/AP power estimation from architecture and event features,
+  fine-grained component/power-group labels, and few-shot calibration methods
+  before a full implementation loop is affordable.
+- E1 fit: target capture only. These can inform future simulator power models
+  after E1 has feature-schema mapping, workload manifests, local calibration
+  labels, train/test split manifests, and error analysis. External datasets or
+  trained models must not become E1 power evidence by themselves.
 
 ### Timing Closure and ECO
 
@@ -539,6 +631,19 @@ power, and manufacturing preparation.
   equivalence, RTL checks, formal, synthesis, DFT, CDC/RDC, STA, and measured or
   signoff power evidence before promotion.
 
+### Lighter
+
+- Repo: https://github.com/AUCOHL/Lighter
+- Paper:
+  https://woset-workshop.github.io/PDFs/2024/15_Lighter_An_Open_Source_Auto.pdf
+- Use: Yosys-plugin and library-map flow for automatic register clock gating
+  against open Sky130 and GF180 standard-cell libraries.
+- E1 fit: backend watchlist only. Lighter is attractive because E1 already has
+  open-flow ambitions, but plugin outputs need pinned revisions, library-map
+  hashes, ICG-cell policy, scan enable, CDC/RDC, equivalence, STA, synthesis,
+  and before/after power evidence before any generated gated-clock netlist is
+  promoted.
+
 ### CODMAS / RTLOPT
 
 - Paper: https://arxiv.org/abs/2603.17204
@@ -548,6 +653,16 @@ power, and manufacturing preparation.
 - E1 fit: useful benchmark pattern for future low-power RTL edits, but
   generated clock-gating remains outside source until local equivalence,
   timing, scan, and power gates exist.
+
+### RTL-OPT
+
+- Paper: https://arxiv.org/abs/2601.01765
+- Use: benchmark RTL optimization quality with functional correctness and PPA
+  metrics instead of syntax-only Verilog generation.
+- E1 fit: evaluation-method context only. Any benchmark task or result needs
+  exact assets, license review, non-overlap checks, synthesis setup hashes,
+  functional/equivalence logs, and before/after PPA evidence before it can
+  inform E1 low-power RTL changes.
 
 ### Prompting for Power
 
@@ -631,11 +746,18 @@ power, and manufacturing preparation.
 - ML/XAI boot-failure debug:
   https://rei.iteso.mx/items/d449d907-2591-4969-b402-1f32bee002ab
 - LLM4SecHW: https://arxiv.org/abs/2401.16448
+- LLM4SecHW OSHD dataset:
+  https://huggingface.co/datasets/KSU-HW-SEC/LLM4SecHW-OSHD
+- ChipBench paper: https://arxiv.org/abs/2601.21448
+- ChipBench code: https://github.com/zhongkaiyu/ChipBench
 - Use: structure tests that can run across simulation, FPGA, and silicon; learn
-  from labeled boot-failure telemetry; triage hardware defects with LLMs.
+  from labeled boot-failure telemetry; triage hardware defects with LLMs; and
+  evaluate whether LLMs can handle realistic Verilog debugging and
+  reference-model generation tasks before trusting them near E1.
 - E1 fit: target capture only. Generated lab scripts, test binaries, root-cause
-  reports, or fixes require local target IDs, logs, traces, deterministic gates,
-  and human review.
+  reports, fixes, benchmark imports, or debug-corpus use require local target
+  IDs, logs, traces, deterministic gates, dataset provenance, contamination
+  review, and human review.
 
 ## Recommended order for E1
 
@@ -647,7 +769,9 @@ power, and manufacturing preparation.
 6. Low-power target capture with
    `scripts/ai_eda/capture_low_power_intent_targets.py --run-id validation`.
    Do not generate UPF, gated clocks, DVFS policy, retention/isolation logic, or
-   power-domain artifacts until deterministic low-power evidence gates exist.
+   power-domain artifacts, and do not import clock-gating plugin outputs or
+   low-power RTL benchmark tasks, until deterministic low-power evidence gates
+   exist.
 7. Verification-debug target capture with
    `scripts/ai_eda/capture_verification_debug_targets.py --run-id validation`.
    Do not generate or promote verification plans, testbenches, UVM collateral,
@@ -729,8 +853,9 @@ power, and manufacturing preparation.
 20. Chiplet/2.5D/3DIC/package co-design target capture with
     `scripts/ai_eda/capture_chiplet_3dic_package_targets.py --run-id validation`.
     Do not generate chiplet partitions, interposer layouts, die-to-die
-    interfaces, package or bump maps, SI/PI/thermal models, architecture edits,
-    RTL edits, PD configs, board/package edits, simulator outputs, or
+    interfaces, RapidChiplet/PlaceIT/DiffChip/TDPNavigator-style topology or
+    placement outputs, package or bump maps, SI/PI/thermal models, architecture
+    edits, RTL edits, PD configs, board/package edits, simulator outputs, or
     cost/yield/performance/signoff claims without exact revisions,
     source/license review, package and architecture constraints, deterministic
     local gates, and review.
@@ -754,10 +879,11 @@ power, and manufacturing preparation.
     `scripts/ai_eda/capture_physical_verification_targets.py --run-id validation`.
     Do not run KLayout, Magic, Netgen, OpenROAD/OpenLane signoff steps, DRC,
     LVS, XOR, antenna checks, generated DRC decks, layout fixes, waivers, Tcl,
-    or patches, and do not claim DRC, LVS, antenna, physical signoff, or release
-    readiness without pinned tool and rule-deck revisions, layout/netlist
-    hashes, before/after deterministic logs, extraction/STA/power/
-    manufacturing/commercial-EDA gates where applicable, and review.
+    patches, structural-verifier approvals, or OpenDRC reports, and do not
+    claim DRC, LVS, antenna, physical signoff, or release readiness without
+    pinned tool and rule-deck revisions, layout/netlist hashes, before/after
+    deterministic logs, extraction/STA/power/manufacturing/commercial-EDA gates
+    where applicable, open-tool correlation where applicable, and review.
 24. Placement, legalization, density, and generative placement target capture
     with
     `scripts/ai_eda/capture_placement_legalization_targets.py --run-id validation`.

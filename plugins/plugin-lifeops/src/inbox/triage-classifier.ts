@@ -104,7 +104,7 @@ function buildTriagePrompt(
   const sections: string[] = [];
 
   sections.push(
-    "You are an inbox triage assistant. Classify each message into one of these categories:",
+    "Classify each message into one of these categories:",
     "",
     "- ignore: spam, irrelevant, automated notifications, bot messages, or general chat that needs no attention",
     "- info: informational updates the owner might want to see but doesn't need to act on",

@@ -23,6 +23,8 @@ export interface UseInboxOptions {
   maxParticipants?: number;
   /** Filter Gmail to a specific Google grant. */
   gmailAccountId?: string;
+  /** Filter phone-backed channels to one or more local phone identities. */
+  phoneAccountIds?: readonly string[];
   /** Only return threads that have gone unreplied for >24h with priority >=50. */
   missedOnly?: boolean;
   /** Sort thread groups by priority desc with recency tiebreaker. */
@@ -102,6 +104,9 @@ export function useInbox(opts: UseInboxOptions = {}): UseInboxResult {
         chatTypeFilter,
         maxParticipants: opts.maxParticipants,
         gmailAccountId: opts.gmailAccountId,
+        phoneAccountIds: opts.phoneAccountIds
+          ? [...opts.phoneAccountIds]
+          : undefined,
         missedOnly: opts.missedOnly,
         sortByPriority: opts.sortByPriority,
       });
@@ -125,6 +130,7 @@ export function useInbox(opts: UseInboxOptions = {}): UseInboxResult {
     chatTypeFilter,
     opts.maxParticipants,
     opts.gmailAccountId,
+    opts.phoneAccountIds,
     opts.missedOnly,
     opts.sortByPriority,
     t,

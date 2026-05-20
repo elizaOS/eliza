@@ -64,7 +64,6 @@ export const OPTIMIZED_PROMPT_SERVICE = "optimized_prompt";
 
 export type OptimizedPromptTask =
 	| "should_respond"
-	| "context_routing"
 	| "action_planner"
 	| "response"
 	| "media_description"
@@ -72,7 +71,6 @@ export type OptimizedPromptTask =
 
 export const OPTIMIZED_PROMPT_TASKS: readonly OptimizedPromptTask[] = [
 	"should_respond",
-	"context_routing",
 	"action_planner",
 	"response",
 	"media_description",
