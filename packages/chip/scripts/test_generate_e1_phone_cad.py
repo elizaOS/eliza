@@ -384,6 +384,50 @@ def test_evt0_phone_evt_fixture_cad_maps_to_interface_validation(tmp_path, monke
     assert (review / "evt-fixtures.md").is_file()
 
 
+def test_evt0_phone_evt_inspection_plan_writes_results_template(tmp_path, monkeypatch) -> None:
+    params = cad.load_params()
+    parts = cad.build_parts(params)
+    checks = cad.run_checks(params, parts)
+    out = tmp_path / "out"
+    review = tmp_path / "review"
+    out.mkdir()
+    review.mkdir()
+    monkeypatch.setattr(cad, "OUT_DIR", out)
+    monkeypatch.setattr(cad, "REVIEW_DIR", review)
+
+    clearance = cad.write_assembly_clearance_artifacts(params, parts)
+    tolerance_stack = cad.write_tolerance_stack_artifacts(params, checks)
+    interface_validation = cad.write_interface_validation_artifacts(
+        params, parts, checks, clearance, tolerance_stack
+    )
+    fixtures = cad.evt_fixture_parts(params)
+    evt_fixtures = cad.write_evt_fixture_artifacts(params, fixtures, interface_validation)
+    plan = cad.write_evt_inspection_plan_artifacts(params, interface_validation, evt_fixtures)
+    measurement_ids = {item["id"] for item in plan["measurements"]}
+    csv_text = (review / "evt-inspection-results-template.csv").read_text()
+
+    assert plan["status"] == "evt_inspection_plan_ready"
+    assert {
+        "power_button_actuation_force",
+        "power_button_travel",
+        "usb_c_insertion_force_no_rub",
+        "screen_adhesive_compression",
+        "display_fpc_bend_radius",
+        "rear_camera_lens_center_error",
+        "front_camera_under_glass_center_error",
+        "bottom_audio_leak_delta",
+        "handset_receiver_leak_delta",
+    }.issubset(measurement_ids)
+    assert plan["measurement_count"] >= 10
+    assert (
+        "sample_id,measurement_id,fixture,units,min,max,nominal,measured,pass,operator,notes"
+        in csv_text
+    )
+    assert "USB-C" in csv_text
+    assert (review / "evt-inspection-plan.json").is_file()
+    assert (review / "evt-inspection-plan.md").is_file()
+
+
 def test_evt0_phone_clearance_and_part_review_cover_assembly(tmp_path, monkeypatch) -> None:
     params = cad.load_params()
     parts = cad.build_parts(params)
@@ -595,6 +639,9 @@ def test_evt0_phone_readiness_audit_tracks_release_boundary(tmp_path, monkeypatc
         "interface-validation.md",
         "evt-fixtures.json",
         "evt-fixtures.md",
+        "evt-inspection-plan.json",
+        "evt-inspection-plan.md",
+        "evt-inspection-results-template.csv",
         "assembly-clearance.json",
         "assembly-clearance.md",
         "injection-molding-dfm.json",
@@ -645,6 +692,9 @@ def test_evt0_phone_readiness_audit_tracks_release_boundary(tmp_path, monkeypatc
     )
     fixtures = cad.evt_fixture_parts(params)
     evt_fixtures = cad.write_evt_fixture_artifacts(params, fixtures, interface_validation)
+    evt_inspection = cad.write_evt_inspection_plan_artifacts(
+        params, interface_validation, evt_fixtures
+    )
     mold_process = cad.write_mold_process_window_artifacts(
         params, parts, tooling, dfm, tolerance_stack
     )
@@ -677,6 +727,7 @@ def test_evt0_phone_readiness_audit_tracks_release_boundary(tmp_path, monkeypatc
         validation,
         interface_validation,
         evt_fixtures,
+        evt_inspection,
         clearance,
         part_review,
         dfm,
@@ -707,6 +758,9 @@ def test_evt0_phone_readiness_audit_tracks_release_boundary(tmp_path, monkeypatc
     assert readiness["required_outputs"]["evt_validation_fixtures"]
     assert readiness["parameters"]["evt_fixture_status"] == "evt_fixture_cad_ready"
     assert readiness["parameters"]["evt_fixture_count"] >= 7
+    assert readiness["required_outputs"]["evt_inspection_plan"]
+    assert readiness["parameters"]["evt_inspection_status"] == "evt_inspection_plan_ready"
+    assert readiness["parameters"]["evt_inspection_measurement_count"] >= 10
     assert readiness["subsystem_evidence_present"]["tolerance_release_package"]
     assert readiness["required_outputs"]["mold_process_window"]
     assert readiness["parameters"]["mold_process_window_status"] == "cad_mold_process_window_ready"

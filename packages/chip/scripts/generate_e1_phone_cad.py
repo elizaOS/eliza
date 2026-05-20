@@ -9,11 +9,11 @@ iterated against the KiCad phone-mainboard concept.
 
 from __future__ import annotations
 
+import csv
 import json
 import math
 import re
 import sys
-import csv
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
@@ -3322,6 +3322,321 @@ def write_evt_fixture_artifacts(
     return report
 
 
+def write_evt_inspection_plan_artifacts(
+    params: dict[str, Any],
+    interface_validation: dict[str, Any],
+    evt_fixtures: dict[str, Any],
+) -> dict[str, Any]:
+    comp = params["components"]
+    display = params["display"]
+    interface_cases = {case["id"]: case for case in interface_validation.get("interfaces", [])}
+    fixture_case_ids = {case["id"] for case in evt_fixtures.get("cases", [])}
+    measurements = [
+        {
+            "id": "power_button_actuation_force",
+            "interface_case": "power_button_force_travel_pressure",
+            "fixture_case": "button_force_travel_fixture",
+            "fixture": "evt_fixture_button_force_probe",
+            "sample_count": 10,
+            "units": "N",
+            "nominal": comp["power_button"]["force_n"],
+            "min": 1.2,
+            "max": 2.2,
+            "method": "Load-cell press normal to cap center until tactile event.",
+        },
+        {
+            "id": "power_button_travel",
+            "interface_case": "power_button_force_travel_pressure",
+            "fixture_case": "button_force_travel_fixture",
+            "fixture": "evt_fixture_button_force_probe",
+            "sample_count": 10,
+            "units": "mm",
+            "nominal": comp["power_button"]["travel_mm"],
+            "min": 0.25,
+            "max": 0.55,
+            "method": "Dial indicator travel from cap free height to tactile event.",
+        },
+        {
+            "id": "volume_button_actuation_force",
+            "interface_case": "volume_button_force_travel_pressure",
+            "fixture_case": "button_force_travel_fixture",
+            "fixture": "evt_fixture_button_force_probe",
+            "sample_count": 10,
+            "units": "N",
+            "nominal": comp["volume_button"]["force_n"],
+            "min": 1.2,
+            "max": 2.2,
+            "method": "Load-cell press at volume cap center and both cap ends.",
+        },
+        {
+            "id": "usb_c_insertion_force_no_rub",
+            "interface_case": "usb_c_insertion_capture",
+            "fixture_case": "usb_c_insertion_fixture",
+            "fixture": "evt_fixture_usb_c_insertion_gauge",
+            "sample_count": 5,
+            "units": "N",
+            "nominal": None,
+            "min": 0.0,
+            "max": 35.0,
+            "method": "Insert USB-C gauge/plug along port axis and record peak insertion force and aperture rub.",
+        },
+        {
+            "id": "screen_adhesive_compression",
+            "interface_case": "screen_bond_and_fpc_connection",
+            "fixture_case": "screen_bond_clamp_fixture",
+            "fixture": "evt_fixture_screen_bond_clamp_frame",
+            "sample_count": 5,
+            "units": "mm",
+            "nominal": round(
+                display["adhesive_thickness_mm"] * display["compression_target_pct"] / 100.0, 3
+            ),
+            "min": 0.03,
+            "max": 0.08,
+            "method": "Measure bond-line compression witness after clamp cure cycle.",
+        },
+        {
+            "id": "display_fpc_bend_radius",
+            "interface_case": "screen_bond_and_fpc_connection",
+            "fixture_case": "screen_bond_clamp_fixture",
+            "fixture": "evt_fixture_screen_bond_clamp_frame",
+            "sample_count": 5,
+            "units": "mm",
+            "nominal": display["fpc_bend_radius_mm"],
+            "min": 1.0,
+            "max": None,
+            "method": "Inspect FPC bend path after screen placement and board connection.",
+        },
+        {
+            "id": "rear_camera_lens_center_error",
+            "interface_case": "camera_glass_and_under_glass_strategy",
+            "fixture_case": "camera_alignment_fixture",
+            "fixture": "evt_fixture_rear_camera_alignment_pin",
+            "sample_count": 5,
+            "units": "mm",
+            "nominal": 0.0,
+            "min": 0.0,
+            "max": 0.25,
+            "method": "Insert rear lens datum pin and measure radial offset to camera cover window.",
+        },
+        {
+            "id": "front_camera_under_glass_center_error",
+            "interface_case": "camera_glass_and_under_glass_strategy",
+            "fixture_case": "camera_alignment_fixture",
+            "fixture": "evt_fixture_front_camera_alignment_pin",
+            "sample_count": 5,
+            "units": "mm",
+            "nominal": 0.0,
+            "min": 0.0,
+            "max": 0.30,
+            "method": "Inspect under-glass aperture alignment through cover glass.",
+        },
+        {
+            "id": "bottom_audio_leak_delta",
+            "interface_case": "bottom_audio_port_alignment",
+            "fixture_case": "acoustic_leak_fixture",
+            "fixture": "evt_fixture_bottom_acoustic_leak_mask",
+            "sample_count": 5,
+            "units": "dB",
+            "nominal": 0.0,
+            "min": 0.0,
+            "max": 3.0,
+            "method": "Compare masked/unmasked bottom speaker and mic path leakage at fixed tone.",
+        },
+        {
+            "id": "handset_receiver_leak_delta",
+            "interface_case": "handset_receiver_gasket_stack",
+            "fixture_case": "acoustic_leak_fixture",
+            "fixture": "evt_fixture_earpiece_leak_mask",
+            "sample_count": 5,
+            "units": "dB",
+            "nominal": 0.0,
+            "min": 0.0,
+            "max": 3.0,
+            "method": "Compare masked/unmasked receiver leakage around handset gasket.",
+        },
+    ]
+    rows = [
+        {
+            "sample_id": "",
+            "measurement_id": item["id"],
+            "fixture": item["fixture"],
+            "units": item["units"],
+            "min": "" if item["min"] is None else item["min"],
+            "max": "" if item["max"] is None else item["max"],
+            "nominal": "" if item["nominal"] is None else item["nominal"],
+            "measured": "",
+            "pass": "",
+            "operator": "",
+            "notes": item["method"],
+        }
+        for item in measurements
+    ]
+    csv_path = REVIEW_DIR / "evt-inspection-results-template.csv"
+    with csv_path.open("w", newline="") as csv_file:
+        writer = csv.DictWriter(
+            csv_file,
+            fieldnames=[
+                "sample_id",
+                "measurement_id",
+                "fixture",
+                "units",
+                "min",
+                "max",
+                "nominal",
+                "measured",
+                "pass",
+                "operator",
+                "notes",
+            ],
+        )
+        writer.writeheader()
+        writer.writerows(rows)
+
+    report = {
+        "claim_boundary": "EVT inspection plan and blank results template; not completed physical test evidence.",
+        "status": "evt_inspection_plan_ready"
+        if interface_validation["status"] == "cad_interface_validation_pass"
+        and evt_fixtures["status"] == "evt_fixture_cad_ready"
+        and all(item["interface_case"] in interface_cases for item in measurements)
+        and all(item["fixture_case"] in fixture_case_ids for item in measurements)
+        and csv_path.is_file()
+        else "blocked",
+        "measurement_count": len(measurements),
+        "results_template": "mechanical/e1-phone/review/evt-inspection-results-template.csv",
+        "measurements": measurements,
+        "release_rule": "Every measurement row must be populated for each EVT sample and pass before claiming physical interface validation.",
+    }
+    (REVIEW_DIR / "evt-inspection-plan.json").write_text(json.dumps(report, indent=2) + "\n")
+
+    lines = [
+        "# E1 Phone EVT Inspection Plan",
+        "",
+        "Status: inspection plan ready; results template is blank and does not prove physical validation.",
+        "",
+        f"Results template: `{report['results_template']}`",
+        "",
+        "## Measurements",
+        "",
+    ]
+    for item in measurements:
+        limits = (
+            f"{item['min']} to {item['max']}" if item["max"] is not None else f">= {item['min']}"
+        )
+        lines.append(
+            f"- `{item['id']}`: fixture `{item['fixture']}`, n={item['sample_count']}, {item['units']} limits {limits}"
+        )
+    lines.extend(["", "## Release Rule", "", f"- {report['release_rule']}"])
+    (REVIEW_DIR / "evt-inspection-plan.md").write_text("\n".join(lines) + "\n")
+    return report
+
+
+def write_evt_results_review_artifacts(evt_inspection: dict[str, Any]) -> dict[str, Any]:
+    csv_path = REVIEW_DIR / "evt-inspection-results-template.csv"
+    expected = {item["id"]: item for item in evt_inspection.get("measurements", [])}
+    rows: list[dict[str, str]] = []
+    if csv_path.is_file():
+        with csv_path.open(newline="") as csv_file:
+            rows = [dict(row) for row in csv.DictReader(csv_file)]
+
+    cases: list[dict[str, Any]] = []
+    for row in rows:
+        measurement_id = row.get("measurement_id", "")
+        expected_item = expected.get(measurement_id, {})
+        measured_text = row.get("measured", "").strip()
+        pass_text = row.get("pass", "").strip().lower()
+        sample_id = row.get("sample_id", "").strip()
+        operator = row.get("operator", "").strip()
+        measured_value: float | None = None
+        parse_ok = False
+        if measured_text:
+            with suppress(ValueError):
+                measured_value = float(measured_text)
+                parse_ok = True
+        min_value = expected_item.get("min")
+        max_value = expected_item.get("max")
+        within_min = measured_value is not None and (min_value is None or measured_value >= min_value)
+        within_max = measured_value is not None and (max_value is None or measured_value <= max_value)
+        numeric_pass = bool(parse_ok and within_min and within_max)
+        explicit_pass = pass_text in {"pass", "true", "yes", "y", "1"}
+        populated = bool(sample_id and operator and measured_text and pass_text)
+        cases.append(
+            {
+                "measurement_id": measurement_id,
+                "sample_id": sample_id,
+                "operator": operator,
+                "measured": measured_value,
+                "min": min_value,
+                "max": max_value,
+                "populated": populated,
+                "numeric_pass": numeric_pass,
+                "explicit_pass": explicit_pass,
+                "pass": populated and numeric_pass and explicit_pass,
+            }
+        )
+
+    expected_ids = set(expected)
+    observed_ids = {case["measurement_id"] for case in cases}
+    missing_measurements = sorted(expected_ids - observed_ids)
+    blank_or_incomplete = [
+        case["measurement_id"] for case in cases if not case["populated"]
+    ]
+    failed_measurements = [
+        case["measurement_id"]
+        for case in cases
+        if case["populated"] and not (case["numeric_pass"] and case["explicit_pass"])
+    ]
+    populated_count = sum(1 for case in cases if case["populated"])
+    status = (
+        "evt_results_pass"
+        if evt_inspection["status"] == "evt_inspection_plan_ready"
+        and expected_ids
+        and not missing_measurements
+        and not blank_or_incomplete
+        and not failed_measurements
+        and all(case["pass"] for case in cases)
+        else "blocked_no_physical_results"
+        if populated_count == 0
+        else "blocked_evt_results_incomplete_or_failed"
+    )
+    report = {
+        "claim_boundary": "Automated review of EVT measurement CSV; blank template rows are not physical validation evidence.",
+        "status": status,
+        "results_csv": "mechanical/e1-phone/review/evt-inspection-results-template.csv",
+        "expected_measurement_count": len(expected_ids),
+        "observed_row_count": len(cases),
+        "populated_result_count": populated_count,
+        "missing_measurements": missing_measurements,
+        "blank_or_incomplete_measurements": blank_or_incomplete,
+        "failed_measurements": failed_measurements,
+        "cases": cases,
+    }
+    (REVIEW_DIR / "evt-results-review.json").write_text(json.dumps(report, indent=2) + "\n")
+
+    lines = [
+        "# E1 Phone EVT Results Review",
+        "",
+        f"Status: {status}.",
+        "",
+        "This review is fail-closed: blank rows do not count as physical validation.",
+        "",
+        "## Summary",
+        "",
+        f"- Expected measurements: {len(expected_ids)}",
+        f"- Observed rows: {len(cases)}",
+        f"- Populated results: {populated_count}",
+    ]
+    if blank_or_incomplete:
+        lines.extend(["", "## Blank Or Incomplete", ""])
+        for measurement_id in blank_or_incomplete:
+            lines.append(f"- `{measurement_id}`")
+    if failed_measurements:
+        lines.extend(["", "## Failed Measurements", ""])
+        for measurement_id in failed_measurements:
+            lines.append(f"- `{measurement_id}`")
+    (REVIEW_DIR / "evt-results-review.md").write_text("\n".join(lines) + "\n")
+    return report
+
+
 def write_tolerance_stack_artifacts(
     params: dict[str, Any], checks: dict[str, Any]
 ) -> dict[str, Any]:
@@ -4030,6 +4345,8 @@ def write_readiness_artifacts(
     validation: dict[str, Any],
     interface_validation: dict[str, Any],
     evt_fixtures: dict[str, Any],
+    evt_inspection: dict[str, Any],
+    evt_results: dict[str, Any],
     clearance: dict[str, Any],
     part_review: dict[str, Any],
     dfm: dict[str, Any],
@@ -4317,6 +4634,7 @@ def write_readiness_artifacts(
             if validation["status"] == "cad_validation_inputs_ready"
             and interface_validation["status"] == "cad_interface_validation_pass"
             and evt_fixtures["status"] == "evt_fixture_cad_ready"
+            and evt_inspection["status"] == "evt_inspection_plan_ready"
             else "blocked",
             "evidence": [
                 "engineering-validation.json",
@@ -4325,6 +4643,11 @@ def write_readiness_artifacts(
                 "interface-validation.md",
                 "evt-fixtures.json",
                 "evt-fixtures.md",
+                "evt-inspection-plan.json",
+                "evt-inspection-plan.md",
+                "evt-inspection-results-template.csv",
+                "evt-results-review.json",
+                "evt-results-review.md",
                 "e1-phone-evt-fixtures.glb",
                 "evt-fixture-manifest.json",
                 "usb_c_insertion_envelope",
@@ -4335,6 +4658,20 @@ def write_readiness_artifacts(
             "remaining_blockers": [
                 "Tolerance, thermal, RF, acoustic, ingress, and drop results are CAD-derived planning checks only.",
                 "Need EVT samples and lab measurements to close DVT/PVT gates.",
+                "EVT results review is fail-closed until populated sample measurements pass.",
+            ],
+        },
+        {
+            "subsystem": "physical_evt_results",
+            "status": "cad_pass" if evt_results["status"] == "evt_results_pass" else "blocked",
+            "evidence": [
+                "evt-inspection-results-template.csv",
+                "evt-results-review.json",
+                "evt-results-review.md",
+            ],
+            "remaining_blockers": [
+                "No populated EVT measurement rows are present yet.",
+                "Need measured, passing first-article data before claiming physical validation.",
             ],
         },
         {
@@ -4381,6 +4718,12 @@ def write_readiness_artifacts(
         and (REVIEW_DIR / "evt-fixtures.md").is_file()
         and (OUT_DIR / "e1-phone-evt-fixtures.glb").is_file()
         and (OUT_DIR / "evt-fixture-manifest.json").is_file(),
+        "evt_inspection_plan": evt_inspection["status"] == "evt_inspection_plan_ready"
+        and (REVIEW_DIR / "evt-inspection-plan.json").is_file()
+        and (REVIEW_DIR / "evt-inspection-plan.md").is_file()
+        and (REVIEW_DIR / "evt-inspection-results-template.csv").is_file(),
+        "evt_results_review": (REVIEW_DIR / "evt-results-review.json").is_file()
+        and (REVIEW_DIR / "evt-results-review.md").is_file(),
         "assembly_clearance": (REVIEW_DIR / "assembly-clearance.json").is_file(),
         "injection_molding_dfm": (REVIEW_DIR / "injection-molding-dfm.json").is_file(),
         "mold_process_window": mold_process["status"] == "cad_mold_process_window_ready"
@@ -4411,15 +4754,13 @@ def write_readiness_artifacts(
             elif evidence in {item["id"] for item in clearance["cases"]}:
                 case = next(item for item in clearance["cases"] if item["id"] == evidence)
                 present = present and bool(case["pass"])
-            elif evidence.endswith(".glb"):
-                present = present and (OUT_DIR / evidence).is_file()
-            elif evidence in {
+            elif evidence.endswith(".glb") or evidence in {
                 "assembly-manifest.json",
                 "tooling-manifest.json",
                 "evt-fixture-manifest.json",
             }:
                 present = present and (OUT_DIR / evidence).is_file()
-            elif evidence.endswith((".json", ".md", ".png", ".svg")):
+            elif evidence.endswith((".json", ".md", ".png", ".svg", ".csv")):
                 present = present and (REVIEW_DIR / evidence).is_file()
             elif evidence.endswith(".step"):
                 present = present and (OUT_DIR / evidence).is_file()
@@ -4470,6 +4811,10 @@ def write_readiness_artifacts(
             "interface_validation_case_count": len(interface_validation.get("interfaces", [])),
             "evt_fixture_status": evt_fixtures["status"],
             "evt_fixture_count": evt_fixtures.get("fixture_count", 0),
+            "evt_inspection_status": evt_inspection["status"],
+            "evt_inspection_measurement_count": evt_inspection.get("measurement_count", 0),
+            "evt_results_status": evt_results["status"],
+            "evt_results_populated_count": evt_results.get("populated_result_count", 0),
             "assembly_clearance_status": clearance["status"],
             "injection_molding_dfm_status": dfm["status"],
             "tolerance_stack_status": tolerance_stack["status"],
@@ -4876,6 +5221,9 @@ def write_report(params: dict[str, Any], checks: dict[str, Any]) -> None:
             "interface_validation_md": "mechanical/e1-phone/review/interface-validation.md",
             "evt_fixtures_json": "mechanical/e1-phone/review/evt-fixtures.json",
             "evt_fixtures_md": "mechanical/e1-phone/review/evt-fixtures.md",
+            "evt_inspection_plan_json": "mechanical/e1-phone/review/evt-inspection-plan.json",
+            "evt_inspection_plan_md": "mechanical/e1-phone/review/evt-inspection-plan.md",
+            "evt_inspection_results_template": "mechanical/e1-phone/review/evt-inspection-results-template.csv",
             "evt_fixture_glb": "mechanical/e1-phone/out/e1-phone-evt-fixtures.glb",
             "evt_fixture_manifest": "mechanical/e1-phone/out/evt-fixture-manifest.json",
             "assembly_clearance_json": "mechanical/e1-phone/review/assembly-clearance.json",
@@ -4942,6 +5290,9 @@ def write_report(params: dict[str, Any], checks: dict[str, Any]) -> None:
         "- `mechanical/e1-phone/review/interface-validation.md`",
         "- `mechanical/e1-phone/review/evt-fixtures.json`",
         "- `mechanical/e1-phone/review/evt-fixtures.md`",
+        "- `mechanical/e1-phone/review/evt-inspection-plan.json`",
+        "- `mechanical/e1-phone/review/evt-inspection-plan.md`",
+        "- `mechanical/e1-phone/review/evt-inspection-results-template.csv`",
         "- `mechanical/e1-phone/out/e1-phone-evt-fixtures.glb`",
         "- `mechanical/e1-phone/out/evt-fixture-manifest.json`",
         "- `mechanical/e1-phone/review/assembly-clearance.json`",
@@ -5104,6 +5455,7 @@ def main() -> int:
     )
     fixtures = evt_fixture_parts(params)
     evt_fixtures = write_evt_fixture_artifacts(params, fixtures, interface_validation)
+    evt_inspection = write_evt_inspection_plan_artifacts(params, interface_validation, evt_fixtures)
     mold_process = write_mold_process_window_artifacts(params, parts, tooling, dfm, tolerance_stack)
     visual_decision = write_visual_decision_artifacts(
         params,
@@ -5127,6 +5479,7 @@ def main() -> int:
         validation,
         interface_validation,
         evt_fixtures,
+        evt_inspection,
         clearance,
         part_review,
         dfm,
