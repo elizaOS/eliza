@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/app-model-tester",
-  "version": "2.0.0-beta.4",
+  "version": "2.0.1",
   "type": "module",
   "main": "./dist/index.js",
   "exports": {
