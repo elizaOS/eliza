@@ -121,7 +121,7 @@ describe("Math Utilities", () => {
   describe("roundTo", () => {
     test("rounds to specified decimal places", () => {
       expect(roundTo(Math.PI, 2)).toBe(3.14);
-      expect(roundTo(Math.PI, 3)).toBe(Math.PI);
+      expect(roundTo(Math.PI, 3)).toBe(3.142);
       expect(roundTo(Math.PI, 0)).toBe(3);
     });
 
