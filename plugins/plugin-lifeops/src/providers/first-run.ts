@@ -20,7 +20,7 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { ChannelType, logger } from "@elizaos/core";
 import { createFirstRunStateStore } from "../lifeops/first-run/state.js";
 
 export interface FirstRunAffordance {
@@ -37,6 +37,8 @@ const QUIET_RESULT: ProviderResult = {
 };
 
 const ONE_LINE_MAX = 120;
+const FIRST_RUN_REQUEST_RE =
+  /\b(?:first[-\s]?run|first\s+run\s+setup|onboarding|initial\s+(?:setup|configuration)|setup\s+(?:this\s+)?(?:agent|bot|assistant)|configure\s+(?:this\s+)?(?:agent|bot|assistant)|use\s+defaults|customi[sz]e\s+(?:setup|first[-\s]?run))\b/iu;
 
 function buildOneLine(inProgress: boolean, partialPath?: string): string {
   if (inProgress) {
@@ -49,6 +51,30 @@ function buildOneLine(inProgress: boolean, partialPath?: string): string {
   return "First-run setup hasn't run yet. Ask whether to use defaults or customize.".slice(
     0,
     ONE_LINE_MAX,
+  );
+}
+
+function isPrivateFirstRunSurface(message: Memory): boolean {
+  const channelType = message.content.channelType;
+  return (
+    channelType === ChannelType.DM ||
+    channelType === ChannelType.VOICE_DM ||
+    channelType === ChannelType.SELF ||
+    channelType === ChannelType.API
+  );
+}
+
+function explicitlyRequestsFirstRun(message: Memory): boolean {
+  const text =
+    typeof message.content.text === "string" ? message.content.text : "";
+  return FIRST_RUN_REQUEST_RE.test(text);
+}
+
+function shouldSurfaceFirstRun(message: Memory, inProgress: boolean): boolean {
+  return (
+    inProgress ||
+    isPrivateFirstRunSurface(message) ||
+    explicitlyRequestsFirstRun(message)
   );
 }
 
@@ -96,6 +122,10 @@ export const firstRunProvider: Provider = {
     }
 
     const inProgress = record.status === "in_progress";
+    if (!shouldSurfaceFirstRun(message, inProgress)) {
+      return QUIET_RESULT;
+    }
+
     const oneLine = buildOneLine(inProgress, record.path);
     const affordance: FirstRunAffordance = {
       kind: "first_run_pending",
