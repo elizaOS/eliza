@@ -47,7 +47,7 @@ gcloud services enable artifactregistry.googleapis.com
 #### TypeScript
 
 ```bash
-cd examples/gcp
+cd packages/examples/gcp
 npm install
 npm run build
 
@@ -62,7 +62,7 @@ gcloud run deploy eliza-worker-ts \
 #### Python
 
 ```bash
-cd examples/gcp/python
+cd packages/packages/examples/gcp/python
 
 # Build and deploy
 gcloud run deploy eliza-worker-py \
@@ -75,7 +75,7 @@ gcloud run deploy eliza-worker-py \
 #### Rust
 
 ```bash
-cd examples/gcp/rust
+cd packages/packages/examples/gcp/rust
 
 # Build container
 docker build -t eliza-worker-rust .
@@ -109,7 +109,7 @@ curl -X POST $SERVICE_URL/chat \
   -d '{"message": "Hello, Eliza!"}'
 
 # Using the test client
-cd examples/gcp
+cd packages/examples/gcp
 bun run test-client.ts --url $SERVICE_URL
 ```
 
@@ -118,7 +118,7 @@ bun run test-client.ts --url $SERVICE_URL
 ### TypeScript
 
 ```bash
-cd examples/gcp
+cd packages/examples/gcp
 npm install
 npm run dev
 # Server runs at http://localhost:8080
@@ -127,7 +127,7 @@ npm run dev
 ### Python
 
 ```bash
-cd examples/gcp/python
+cd packages/packages/examples/gcp/python
 pip install -r requirements.txt
 python handler.py
 # Server runs at http://localhost:8080
@@ -136,7 +136,7 @@ python handler.py
 ### Rust
 
 ```bash
-cd examples/gcp/rust
+cd packages/packages/examples/gcp/rust
 cargo run
 # Server runs at http://localhost:8080
 ```
@@ -144,7 +144,7 @@ cargo run
 ## Project Structure
 
 ```
-examples/gcp/
+packages/examples/gcp/
 ├── README.md                 # This file
 ├── test-client.ts            # Interactive test client
 ├── package.json              # Test client dependencies

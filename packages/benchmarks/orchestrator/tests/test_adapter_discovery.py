@@ -137,6 +137,16 @@ def test_gauntlet_requires_clone_capable_surfpool_for_real_harness_rows(
         "_vision_language_compatible_harnesses",
         lambda: ("eliza",),
     )
+    monkeypatch.setattr(
+        orchestrator_adapters,
+        "_vision_language_compatible_harnesses",
+        lambda: ("eliza",),
+    )
+    monkeypatch.setattr(
+        orchestrator_adapters,
+        "_vision_language_compatible_harnesses",
+        lambda: ("eliza",),
+    )
     adapter = discover_adapters(_workspace_root()).adapters["gauntlet"]
     assert adapter.agent_compatibility == ()
     assert _is_harness_compatible(adapter, "eliza") is False
@@ -746,6 +756,11 @@ def test_direct_and_native_rows_keep_truthful_matrix_compatibility(
         "_has_hyperliquid_live_backend",
         lambda: True,
     )
+    monkeypatch.setattr(
+        orchestrator_adapters,
+        "_vision_language_compatible_harnesses",
+        lambda: ("eliza",),
+    )
 
     report = build_cross_matrix_report(
         _workspace_root().parent,
@@ -831,11 +846,18 @@ def test_direct_and_native_rows_keep_truthful_matrix_compatibility(
     ):
         for harness in ("eliza", "hermes", "openclaw"):
             cell = cells[(benchmark_id, harness)]
-            assert cell.compatible is True
-            assert cell.command
-            assert "hermes-adapter/run_env_cli.py" in cell.command_display
-            assert "--harness" in cell.command
-            assert cell.command[cell.command.index("--harness") + 1] == harness
+            if harness == "hermes":
+                assert cell.compatible is True
+                assert cell.command
+                assert "hermes-adapter/run_env_cli.py" in cell.command_display
+                assert "--harness" in cell.command
+                assert cell.command[cell.command.index("--harness") + 1] == harness
+            else:
+                assert cell.compatible is False
+                assert cell.command is None
+                assert cell.reason == (
+                    f"harness '{harness}' not in adapter compatibility (hermes)"
+                )
 
     for harness in ("eliza", "hermes", "openclaw"):
         cell = cells[("gauntlet", harness)]
@@ -1120,7 +1142,7 @@ def test_mmau_legacy_module_shims_find_renamed_audio_package(tmp_path: Path) -> 
     assert (tmp_path / "mmau-legacy" / "mmau-results.json").exists()
 
 
-def test_hermes_native_envs_publish_real_harness_rows(
+def test_hermes_native_envs_publish_hermes_harness_rows(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
@@ -1139,10 +1161,10 @@ def test_hermes_native_envs_publish_real_harness_rows(
     ):
         adapter = adapters[benchmark_id]
         assert adapter.directory == "hermes-adapter"
-        assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes")
+        assert adapter.agent_compatibility == ("hermes",)
         assert _is_harness_compatible(adapter, "hermes") is True
-        assert _is_harness_compatible(adapter, "eliza") is True
-        assert _is_harness_compatible(adapter, "openclaw") is True
+        assert _is_harness_compatible(adapter, "eliza") is False
+        assert _is_harness_compatible(adapter, "openclaw") is False
 
 
 def test_hermes_native_envs_require_sandbox_backend(

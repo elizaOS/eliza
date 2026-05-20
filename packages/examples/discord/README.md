@@ -34,7 +34,7 @@ bun run build
 ### 3. Configure Environment
 
 ```bash
-cd examples/discord
+cd packages/examples/discord
 cp env.example .env
 # Edit .env with your credentials
 ```
@@ -168,10 +168,10 @@ This example can work alongside the Telegram example. Both share the same `.env`
 
 ```bash
 # Run Discord bot
-cd examples/discord && bun start &
+cd packages/examples/discord && bun start &
 
 # Run Telegram bot (in another terminal)
-cd examples/telegram && bun start &
+cd packages/examples/telegram && bun start &
 ```
 
 ## License

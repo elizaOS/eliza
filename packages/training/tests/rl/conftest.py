@@ -26,6 +26,12 @@ _RL_DIR = _SCRIPTS_DIR / "rl"
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
+# Some surviving tests do their own `sys.path.insert(..., "../src/training")` and
+# then `from <module> import ...` flat. Add scripts/rl to sys.path so those
+# unqualified imports resolve to the unified location.
+if str(_RL_DIR) not in sys.path:
+    sys.path.insert(0, str(_RL_DIR))
+
 
 class _RLAliasFinder(importlib.abc.MetaPathFinder):
     """Map `src.X`, `src.training.X` -> `rl.X`."""

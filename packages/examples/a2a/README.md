@@ -89,7 +89,7 @@ curl -X POST http://localhost:3000/chat/stream \
 ## Quick Start
 
 ```bash
-cd examples/a2a
+cd packages/examples/a2a
 bun install
 bun run start
 ```
@@ -120,7 +120,7 @@ Optional configuration:
 ## Testing
 
 ```bash
-cd examples/a2a
+cd packages/examples/a2a
 bun run test
 ```
 

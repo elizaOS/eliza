@@ -5,7 +5,7 @@ A full-stack Next.js chat application using elizaOS AgentRuntime with PGLite and
 ## Quick Start
 
 ```bash
-cd examples/next
+cd packages/examples/next
 bun install
 
 # Set OpenAI key and run
@@ -16,7 +16,7 @@ Open http://localhost:3000
 
 ## How It Works
 
-The API route (`app/api/chat/route.ts`) mirrors `examples/chat/chat.ts`:
+The API route (`app/api/chat/route.ts`) mirrors `packages/examples/chat/chat.ts`:
 
 ```typescript
 const character: Character = {

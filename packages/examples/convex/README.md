@@ -41,7 +41,7 @@ Deploy an elizaOS agent as a Convex backend. Messages are processed through `run
 ### 1. Install Dependencies
 
 ```bash
-cd examples/convex
+cd packages/examples/convex
 bun install        # or npm install
 ```
 

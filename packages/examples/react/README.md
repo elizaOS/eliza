@@ -19,7 +19,7 @@ This example demonstrates:
 bun install
 
 # Navigate to this example
-cd examples/react
+cd packages/examples/react
 
 # Start development server
 bun dev

@@ -56,7 +56,7 @@ Get information about the agent.
 ## Quick Start
 
 ```bash
-cd examples/mcp
+cd packages/examples/mcp
 bun install
 OPENAI_API_KEY=your-key bun run start
 ```
@@ -98,6 +98,6 @@ Add to your Claude Desktop config (`claude_desktop_config.json`):
 ## Testing
 
 ```bash
-cd examples/mcp
+cd packages/examples/mcp
 bun run test
 ```

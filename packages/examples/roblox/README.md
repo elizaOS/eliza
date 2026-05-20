@@ -42,13 +42,13 @@ Not directly via Open Cloud.
 
 ### Examples
 
-- **TypeScript**: `examples/roblox/` (canonical agent runtime + `@elizaos/plugin-roblox`)
-- **Python**: `examples/roblox/python/` (canonical agent runtime + HTTP bridge)
-- **Rust**: `examples/roblox/rust/` (canonical agent runtime + HTTP bridge)
+- **TypeScript**: `packages/examples/roblox/` (canonical agent runtime + `@elizaos/plugin-roblox`)
+- **Python**: `packages/examples/roblox/python/` (canonical agent runtime + HTTP bridge)
+- **Rust**: `packages/examples/roblox/rust/` (canonical agent runtime + HTTP bridge)
 
 ### Roblox Studio scripts
 
-See `examples/roblox/roblox-studio/` for a minimal server-side script that:
+See `packages/examples/roblox/roblox-studio/` for a minimal server-side script that:
 - subscribes to the MessagingService topic
 - forwards player chat to the agent bridge
 - executes example actions like `teleport` and `move_npc`

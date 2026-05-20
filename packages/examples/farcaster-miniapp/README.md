@@ -17,14 +17,14 @@ bun install
 In one terminal (API):
 
 ```bash
-cd examples/farcaster-miniapp
+cd packages/examples/farcaster-miniapp
 bun run start
 ```
 
 In another terminal (UI):
 
 ```bash
-cd examples/farcaster-miniapp
+cd packages/examples/farcaster-miniapp
 bun run dev
 ```
 
@@ -40,7 +40,7 @@ Then open the Vite URL (default `http://localhost:3000`).
 ## Tests
 
 ```bash
-cd examples/farcaster-miniapp
+cd packages/examples/farcaster-miniapp
 bun run test
 ```
 

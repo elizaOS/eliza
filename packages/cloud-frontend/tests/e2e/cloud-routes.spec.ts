@@ -313,6 +313,34 @@ async function installApiMocks(page: Page) {
         });
       }
 
+      if (path === "/api/v1/containers/container_1/deployments") {
+        return route.fulfill({
+          json: {
+            success: true,
+            data: {
+              deployments: [
+                {
+                  id: "deployment_1",
+                  status: "success",
+                  cost: 1.25,
+                  metadata: {
+                    container_id: "container_1",
+                    container_name: "Test Container",
+                    desired_count: 1,
+                    cpu: 256,
+                    memory: 512,
+                    port: 3000,
+                    image_tag: "test",
+                  },
+                  deployed_at: new Date().toISOString(),
+                  duration_ms: 1200,
+                },
+              ],
+            },
+          },
+        });
+      }
+
       if (path.endsWith("/models/status")) {
         return route.fulfill({
           json: {

@@ -69,7 +69,7 @@ export function ContainerDeploymentHistory({
 
       const data = await response.json();
       if (data.success) {
-        setDeployments(data.data.deployments);
+        setDeployments(Array.isArray(data.data?.deployments) ? data.data.deployments : []);
       } else {
         setError(data.error || "Failed to load deployments");
       }

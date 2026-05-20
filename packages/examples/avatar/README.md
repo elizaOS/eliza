@@ -6,7 +6,7 @@ This is a simple, browser-only demo that renders a VRM avatar and chats with an 
 
 From repo root:
 
-- `cd examples/avatar`
+- `cd packages/examples/avatar`
 - `bun install`
 - `bun run dev`
 

@@ -1,6 +1,6 @@
 # Bluesky Agent Example
 
-A full-featured AI agent running on Bluesky, implemented in TypeScript, Python, and Rust. This agent uses the **complete elizaOS runtime pipeline** - no shortcuts, no bypasses.
+A full-featured TypeScript AI agent running on Bluesky. This agent uses the **complete elizaOS runtime pipeline** - no shortcuts, no bypasses.
 
 ## Key Features
 
@@ -16,7 +16,6 @@ A full-featured AI agent running on Bluesky, implemented in TypeScript, Python, 
 - **Direct Messages**: Processes and replies to DMs
 - **Automated Posting**: Optionally posts on a schedule
 - **SQL-backed Memory**: Persistent storage with PostgreSQL or PGLite
-- **Multi-language**: TypeScript, Python, and Rust implementations
 
 ## How It Works
 
@@ -74,55 +73,23 @@ bun run build
 
 ### 3. Run the Agent
 
-#### TypeScript
-
 ```bash
-cd examples/bluesky
+cd packages/examples/bluesky
 bun install
 bun run start
-```
-
-#### Python
-
-```bash
-cd examples/bluesky/python
-pip install -r requirements.txt
-python agent.py
-```
-
-#### Rust
-
-```bash
-cd examples/bluesky/rust/bluesky-agent
-cargo run --release
 ```
 
 ## Architecture
 
 ```
-examples/bluesky/
+packages/examples/bluesky/
 ├── env.example           # Environment template
 ├── README.md             # This file
-├── typescript/           # TypeScript implementation
-│   ├── agent.ts          # Main entry point (initializes runtime)
-│   ├── handlers.ts       # Event handlers (uses messageService.handleMessage)
-│   ├── character.ts      # Agent personality
-│   ├── package.json
-│   └── __tests__/        # Tests
-├── python/               # Python implementation
-│   ├── agent.py          # Main entry point
-│   ├── handlers.py       # Event handlers
-│   ├── character.py      # Agent personality
-│   ├── requirements.txt
-│   └── tests/            # Tests
-└── rust/                 # Rust implementation
-    └── bluesky-agent/
-        ├── src/
-        │   ├── main.rs   # Main entry point
-        │   ├── handlers.rs
-        │   └── character.rs
-        ├── Cargo.toml
-        └── tests/        # Tests
+├── agent.ts              # Main entry point (initializes runtime)
+├── handlers.ts           # Event handlers (uses messageService.handleMessage)
+├── character.ts          # Agent personality
+├── package.json
+└── __tests__/            # Tests
 ```
 
 ## The elizaOS Way

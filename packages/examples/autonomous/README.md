@@ -36,10 +36,10 @@ Notes:
 
 ## Shell sandbox setup
 
-Pick a safe directory (example below uses this repo’s `examples/autonomous/sandbox`):
+Pick a safe directory (example below uses this repo’s `packages/packages/examples/autonomous/sandbox`):
 
 ```bash
-export SHELL_ALLOWED_DIRECTORY="$(pwd)/examples/autonomous/sandbox"
+export SHELL_ALLOWED_DIRECTORY="$(pwd)/packages/examples/autonomous/sandbox"
 export SHELL_TIMEOUT=30000
 
 # Recommended extra restrictions (network/process control, etc.)
@@ -57,7 +57,7 @@ mkdir -p "$SHELL_ALLOWED_DIRECTORY"
 ### TypeScript
 
 ```bash
-cd examples/autonomous
+cd packages/examples/autonomous
 bun install
 bun run start
 ```
@@ -65,7 +65,7 @@ bun run start
 ### Python
 
 ```bash
-cd examples/autonomous/python
+cd packages/examples/autonomous/python
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -77,6 +77,6 @@ python autonomous.py
 > **Note**: The Rust example requires `elizaos-plugin-local-ai` with the `llm` feature enabled for actual inference. This feature depends on a vendored `llama_cpp_rs` crate that is not yet included in the repository. The example will compile but exit early with an error message until the vendor is added. See the plugin's `Cargo.toml` for details.
 
 ```bash
-cd examples/autonomous/rust/autonomous
+cd packages/examples/autonomous/rust/autonomous
 cargo run --release
 ```
