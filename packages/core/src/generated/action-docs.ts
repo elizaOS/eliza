@@ -9621,12 +9621,66 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "XR_CLOSE_VIEW",
+			description: "Closes a specific view panel on the connected XR headset.",
+			parameters: [],
+			similes: ["CLOSE_XR_VIEW", "HIDE_XR_PANEL", "XR_CLOSE", "XR_DISMISS"],
+			descriptionCompressed:
+				"Closes a specific view panel on the connected XR headset.",
+		},
+		{
+			name: "XR_LIST_VIEWS",
+			description:
+				"Lists all views available on the XR device and optionally sends a launcher catalog to the headset. Use this before XR_OPEN_VIEW.",
+			parameters: [],
+			similes: [
+				"LIST_XR_VIEWS",
+				"XR_VIEWS",
+				"WHAT_XR_VIEWS",
+				"SHOW_XR_LAUNCHER",
+			],
+			descriptionCompressed:
+				"Lists all views available on the XR device and optionally sends a launcher catalog to the headset. Use this before XR_OPEN_VIEW.",
+		},
+		{
+			name: "XR_OPEN_VIEW",
+			description:
+				"Opens a view panel on the connected XR headset by view id. Use XR_LIST_VIEWS first to discover available view ids.",
+			parameters: [],
+			similes: ["OPEN_XR_VIEW", "SHOW_XR_PANEL", "XR_SHOW", "XR_LAUNCH"],
+			descriptionCompressed:
+				"Opens a view panel on the connected XR headset by view id. Use XR_LIST_VIEWS first to discover available view ids.",
+		},
+		{
 			name: "XR_QUERY_VISION",
 			description:
 				"Describe what the user is currently looking at through their XR headset camera. Use this when the user asks 'what do you see', 'look at this', or any question about their surroundings.",
 			parameters: [],
 			descriptionCompressed:
 				"Describe what user is looking at through their XR headset camera. Use when user asks 'what do you see', 'look at this', or any question about their...",
+		},
+		{
+			name: "XR_RESIZE_VIEW",
+			description:
+				"Resizes or repositions the active XR view panel. Accepts scale (0.5 = half, 2.0 = double) and distance.",
+			parameters: [],
+			similes: [
+				"RESIZE_XR_PANEL",
+				"XR_MAKE_BIGGER",
+				"XR_MAKE_SMALLER",
+				"XR_SCALE",
+			],
+			descriptionCompressed:
+				"Resizes or repositions the active XR view panel. Accepts scale (0. 5 = half, 2. 0 = double) and distance.",
+		},
+		{
+			name: "XR_SWITCH_VIEW",
+			description:
+				"Switches the active (foreground) view on the XR headset without closing others.",
+			parameters: [],
+			similes: ["SWITCH_XR_VIEW", "XR_GO_TO", "XR_NAVIGATE"],
+			descriptionCompressed:
+				"Switches the active (foreground) view on the XR headset without closing others.",
 		},
 	],
 } as const satisfies { version: string; actions: readonly ActionDoc[] };

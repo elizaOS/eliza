@@ -1,6 +1,7 @@
 import { Button } from "@elizaos/ui";
 import { AlertCircle, Home, RefreshCw } from "lucide-react";
 import { Suspense } from "react";
+import { Helmet } from "react-helmet-async";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 function AuthErrorContent() {
@@ -81,29 +82,34 @@ function AuthErrorContent() {
  */
 export default function AuthErrorPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="flex min-h-screen items-center justify-center bg-black p-4">
-          <div className="absolute inset-0 bg-black" />
-          <div className="relative w-full max-w-md bg-black border border-white/14 p-8">
-            <div className="flex flex-col items-center gap-4 text-center">
-              <div className="flex h-14 w-14 items-center justify-center  bg-red-500/10">
-                <AlertCircle className="h-7 w-7 text-red-500" />
-              </div>
-              <div className="space-y-1">
-                <h2 className="text-xl font-semibold text-white">
-                  Authentication Error
-                </h2>
-                <p className="text-sm text-neutral-500">
-                  Loading error details...
-                </p>
+    <>
+      <Helmet>
+        <title>Authentication Error | Eliza Cloud</title>
+      </Helmet>
+      <Suspense
+        fallback={
+          <div className="flex min-h-screen items-center justify-center bg-black p-4">
+            <div className="absolute inset-0 bg-black" />
+            <div className="relative w-full max-w-md bg-black border border-white/14 p-8">
+              <div className="flex flex-col items-center gap-4 text-center">
+                <div className="flex h-14 w-14 items-center justify-center  bg-red-500/10">
+                  <AlertCircle className="h-7 w-7 text-red-500" />
+                </div>
+                <div className="space-y-1">
+                  <h2 className="text-xl font-semibold text-white">
+                    Authentication Error
+                  </h2>
+                  <p className="text-sm text-neutral-500">
+                    Loading error details...
+                  </p>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      }
-    >
-      <AuthErrorContent />
-    </Suspense>
+        }
+      >
+        <AuthErrorContent />
+      </Suspense>
+    </>
   );
 }

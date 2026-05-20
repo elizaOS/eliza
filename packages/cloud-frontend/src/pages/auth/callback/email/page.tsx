@@ -7,6 +7,7 @@ import { useAuth } from "@stwd/react";
 import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Helmet } from "react-helmet-async";
 import { useSearchParams } from "react-router-dom";
 import { syncStewardSessionCookie } from "../../../../lib/steward-session";
 
@@ -77,43 +78,58 @@ export default function StewardEmailCallbackPage() {
     };
   }, [isAuthenticated, returnTo, searchParams, verifyEmailCallback]);
 
+  const helmet = (
+    <Helmet>
+      <title>Email Sign-In | Eliza Cloud</title>
+    </Helmet>
+  );
+
   if (status === "error") {
     return (
-      <Frame>
-        <div className="bg-[#FF5800] p-4 text-black">
-          <AlertTriangle className="h-8 w-8" />
-        </div>
-        <h1 className="text-lg font-semibold text-white">Sign-in failed</h1>
-        <p className="max-w-xs text-center text-sm text-white/74">{error}</p>
-      </Frame>
+      <>
+        {helmet}
+        <Frame>
+          <div className="bg-[#FF5800] p-4 text-black">
+            <AlertTriangle className="h-8 w-8" />
+          </div>
+          <h1 className="text-lg font-semibold text-white">Sign-in failed</h1>
+          <p className="max-w-xs text-center text-sm text-white/74">{error}</p>
+        </Frame>
+      </>
     );
   }
 
   if (status === "success") {
     return (
-      <Frame>
-        <CheckCircle2 className="h-12 w-12 text-white" />
-        <h1 className="text-lg font-semibold text-white">Signed in</h1>
-        <p className="text-sm text-white/74">
-          Returning to the app authorization screen...
-        </p>
-        <BrandButton
-          className="mt-2"
-          onClick={() => returnTo && window.location.assign(returnTo)}
-        >
-          Continue to app authorization
-        </BrandButton>
-      </Frame>
+      <>
+        {helmet}
+        <Frame>
+          <CheckCircle2 className="h-12 w-12 text-white" />
+          <h1 className="text-lg font-semibold text-white">Signed in</h1>
+          <p className="text-sm text-white/74">
+            Returning to the app authorization screen...
+          </p>
+          <BrandButton
+            className="mt-2"
+            onClick={() => returnTo && window.location.assign(returnTo)}
+          >
+            Continue to app authorization
+          </BrandButton>
+        </Frame>
+      </>
     );
   }
 
   return (
-    <Frame>
-      <Loader2 className="h-12 w-12 animate-spin text-[#FF5800]" />
-      <h1 className="text-lg font-semibold text-white">
-        Verifying sign-in link...
-      </h1>
-    </Frame>
+    <>
+      {helmet}
+      <Frame>
+        <Loader2 className="h-12 w-12 animate-spin text-[#FF5800]" />
+        <h1 className="text-lg font-semibold text-white">
+          Verifying sign-in link...
+        </h1>
+      </Frame>
+    </>
   );
 }
 
