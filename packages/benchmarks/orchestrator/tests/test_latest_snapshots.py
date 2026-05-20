@@ -1858,6 +1858,54 @@ def test_rebuild_latest_restores_orchestrated_swe_score_from_saved_result(
     assert latest["score"] == 0.25
 
 
+def test_rebuild_latest_restores_swe_score_from_saved_result_metrics(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["swe_bench"],
+        repo_meta={},
+    )
+    result_path = tmp_path / "swe-bench-result.json"
+    result_path.write_text(
+        json.dumps({"resolve_rate": 0.5}, sort_keys=True),
+        encoding="utf-8",
+    )
+    _seed_run(
+        conn,
+        benchmark_id="swe_bench",
+        agent="hermes",
+        run_id="run_restorable_swe",
+        started_at="2026-05-12T00:00:00+00:00",
+        status="incompatible",
+        score=None,
+        metrics={
+            "reason": "latest_row_violates_current_compatibility",
+            "supported_harnesses": [],
+        },
+        result_json_path=str(result_path),
+    )
+
+    _rebuild_latest_result_snapshots(
+        conn,
+        tmp_path,
+        {"swe_bench": _adapter("swe_bench", agent_compatibility=("hermes",))},
+    )
+
+    latest = json.loads(
+        (tmp_path / "latest" / "swe_bench__hermes.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert latest["status"] == "succeeded"
+    assert latest["score"] == 0.5
+
+
 def test_rebuild_latest_prunes_unknown_benchmark_snapshots(
     tmp_path: Path,
 ) -> None:

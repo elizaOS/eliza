@@ -1739,6 +1739,7 @@ def _score_from_saved_result(result_path: Path, metrics: dict[str, Any]) -> floa
                 payload.get("score"),
                 payload.get("accuracy"),
                 payload.get("overall_score"),
+                payload.get("resolve_rate"),
                 payload.get("pass_at_1"),
                 payload.get("transcriptionNormalizedAccuracy"),
                 (payload.get("summary") or {}).get("accuracy")
@@ -1759,6 +1760,7 @@ def _score_from_saved_result(result_path: Path, metrics: dict[str, Any]) -> floa
                     payload_metrics.get("score"),
                     payload_metrics.get("accuracy"),
                     payload_metrics.get("overall_score"),
+                    payload_metrics.get("resolve_rate"),
                     payload_metrics.get("pass_rate"),
                     payload_metrics.get("eval/pass_rate"),
                     payload_metrics.get("pass_at_1"),
@@ -1770,6 +1772,7 @@ def _score_from_saved_result(result_path: Path, metrics: dict[str, Any]) -> floa
             metrics.get("score"),
             metrics.get("accuracy"),
             metrics.get("overall_score"),
+            metrics.get("resolve_rate"),
             metrics.get("pass_rate"),
             metrics.get("eval/pass_rate"),
             metrics.get("pass_at_1"),
