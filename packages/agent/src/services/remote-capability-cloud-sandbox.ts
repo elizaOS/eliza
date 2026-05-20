@@ -4,6 +4,7 @@ import {
   connectRemoteCapabilityEndpointProvider,
   installRemoteCapabilityEndpoint,
   type ProvisionedRemoteCapabilityEndpoint,
+  type RemoteCapabilityEndpointTrustPolicyOptions,
   type RemoteCapabilityEndpointProvider,
 } from "./remote-capability-endpoint-provider.ts";
 import type { RemoteCapabilityEndpointConfig } from "./remote-capability-router.ts";
@@ -24,6 +25,7 @@ export type CloudCapabilitySandboxProvisionOptions = {
   fetch?: typeof fetch;
   onProgress?: (status: string, detail?: string) => void;
   allowedModuleIds?: string[];
+  trustPolicy?: RemoteCapabilityEndpointTrustPolicyOptions;
 };
 
 export type CloudCapabilitySandboxProvisionResult = {
@@ -55,6 +57,9 @@ export const cloudCapabilityEndpointProvider: RemoteCapabilityEndpointProvider<C
       ...(options.allowedModuleIds === undefined
         ? {}
         : { allowedModuleIds: options.allowedModuleIds }),
+      ...(options.trustPolicy === undefined
+        ? {}
+        : { trustPolicy: options.trustPolicy }),
     }),
   };
 
@@ -227,6 +232,9 @@ export async function connectCloudCapabilitySandbox(
     ...(options.allowedModuleIds === undefined
       ? {}
       : { allowedModuleIds: options.allowedModuleIds }),
+    ...(options.trustPolicy === undefined
+      ? {}
+      : { trustPolicy: options.trustPolicy }),
   });
   assertCloudProvisionResult(result);
   return {

@@ -19,7 +19,8 @@ export type DspyArtifactTask =
   | "action_planner"
   | "response"
   | "media_description"
-  | "action_descriptions";
+  | "action_descriptions"
+  | "autonomy";
 
 export interface DspyArtifact {
   task: DspyArtifactTask;
