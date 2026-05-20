@@ -6,7 +6,11 @@ import { describe, expect, it, vi } from "vitest";
 
 import { SandboxService, SessionCwdService } from "../services/index.js";
 import { SANDBOX_SERVICE, SESSION_CWD_SERVICE } from "../types.js";
-import { resolveCryptoSpotPriceCommand, shellAction } from "./bash.js";
+import {
+  resolveCryptoSpotPriceCommand,
+  resolveDiskInspectionCommand,
+  shellAction,
+} from "./bash.js";
 
 interface RuntimeOptions {
   blockedPaths?: string;
@@ -132,6 +136,21 @@ describe("shellAction", () => {
     );
     expect(result.success).toBe(false);
     expect(result.text).toContain("timeout");
+  });
+
+  it("times out shell pipelines without waiting for orphaned children", async () => {
+    const started = Date.now();
+    const { runtime } = await makeRuntime();
+    const result = await shellAction.handler?.(
+      runtime,
+      makeMessage(),
+      undefined,
+      { command: "sleep 5 | cat", timeout: 200 },
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("timeout");
+    expect(Date.now() - started).toBeLessThan(2_500);
   });
 
   it("respects an explicit cwd", async () => {
@@ -430,6 +449,32 @@ describe("shellAction", () => {
     });
     expect(result.rewritten).toBe(false);
     expect(result.command).toContain("binance.com");
+  });
+
+  it("replaces broad disk cleanup scans with a bounded candidate probe", () => {
+    const result = resolveDiskInspectionCommand({
+      messageText:
+        "check disk space on / and /home and name the biggest cleanup candidate you can see",
+      command:
+        "df -h / /home && echo '---' && du -sh /* 2>/dev/null | sort -hr | head -n 5",
+    });
+
+    expect(result.rewritten).toBe(true);
+    expect(result.command).toContain("df -h / /home");
+    expect(result.command).toContain("/tmp");
+    expect(result.command).toContain("$HOME/.cache");
+    expect(result.command).not.toContain("/*");
+    expect(result.command).not.toContain("/home/*");
+  });
+
+  it("keeps targeted disk commands unchanged", () => {
+    const command = "df -h / /home; du -sh /tmp 2>/dev/null";
+    const result = resolveDiskInspectionCommand({
+      messageText: "check disk space and cleanup candidates",
+      command,
+    });
+
+    expect(result).toEqual({ command, rewritten: false });
   });
 
   it("adds user-facing text for neutral crypto spot-price JSON", async () => {

@@ -53,6 +53,11 @@ interface CryptoSpotCommandResolution {
   rewritten: boolean;
 }
 
+interface DiskInspectionCommandResolution {
+  command: string;
+  rewritten: boolean;
+}
+
 type ShellHistoryEntryLike = {
   command?: unknown;
 };
@@ -82,6 +87,9 @@ const CRYPTO_SPOT_ASSETS: CryptoSpotAsset[] = [
     terms: /\b(?:sol|solana)\b/iu,
   },
 ];
+
+const BOUNDED_DISK_INSPECTION_COMMAND =
+  'df -h / /home; printf \'\\n--- cleanup candidates ---\\n\'; for p in /tmp /var/tmp "$HOME/.cache" "$HOME/.bun" "$HOME/.npm" "$HOME/.local/share/Trash"; do [ -e "$p" ] && du -sh "$p" 2>/dev/null; done | sort -hr | head -n 10';
 
 function normalizeShellSubaction(
   value: string | undefined,
@@ -217,6 +225,36 @@ export function resolveCryptoSpotPriceCommand(args: {
     asset,
     rewritten: true,
   };
+}
+
+function asksForDiskInspection(text: string): boolean {
+  const normalized = text.toLowerCase().replace(/\s+/g, " ").trim();
+  if (!normalized) return false;
+  return /\b(?:disk|storage|filesystem|free space|cleanup|clean up|space)\b/.test(
+    normalized,
+  );
+}
+
+function usesBroadDiskUsageScan(command: string): boolean {
+  const normalized = command.replace(/\s+/g, " ").trim();
+  if (!/\bdu\b/.test(normalized)) return false;
+  return (
+    /\bdu\b[^;&|]*(?:\/\*|\/home\/\*)/.test(normalized) ||
+    /\bdu\b[^;&|]*\s\/(?:\s|$)/.test(normalized)
+  );
+}
+
+export function resolveDiskInspectionCommand(args: {
+  command: string;
+  messageText: string;
+}): DiskInspectionCommandResolution {
+  if (!asksForDiskInspection(args.messageText)) {
+    return { command: args.command, rewritten: false };
+  }
+  if (!usesBroadDiskUsageScan(args.command)) {
+    return { command: args.command, rewritten: false };
+  }
+  return { command: BOUNDED_DISK_INSPECTION_COMMAND, rewritten: true };
 }
 
 function shouldIgnoreUngroundedRuntimeCwd(args: {
@@ -711,6 +749,16 @@ export const shellAction: Action = {
       command = groundedCommand;
       coreLogger.warn(
         `${CODING_TOOLS_LOG_PREFIX} SHELL removed ungrounded runtime directory override; using cwd=${cwd}`,
+      );
+    }
+    const diskCommand = resolveDiskInspectionCommand({
+      command,
+      messageText: messageText(message),
+    });
+    if (diskCommand.rewritten) {
+      command = diskCommand.command;
+      coreLogger.warn(
+        `${CODING_TOOLS_LOG_PREFIX} SHELL replaced broad disk scan with bounded cleanup-candidate probe`,
       );
     }
     const cryptoCommand = resolveCryptoSpotPriceCommand({
