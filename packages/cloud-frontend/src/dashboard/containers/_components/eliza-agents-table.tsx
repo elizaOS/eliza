@@ -420,11 +420,24 @@ export function ElizaAgentsTable({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "suspend" }),
       });
-      if (!res.ok) {
+      if (!res.ok && res.status !== 202) {
         // Revert optimistic update
         void refreshData();
         throw new Error("Suspend failed");
       }
+
+      // 202 + jobId: the daemon executes the suspend asynchronously.
+      // Track the job so the table reflects the real completion (and
+      // the success toast doesn't lie before the container actually
+      // stops).
+      const data = await res.json().catch(() => ({}));
+      const jobId = (data as { data?: { jobId?: string } }).data?.jobId;
+      if (res.status === 202 && jobId) {
+        poller.track(id, jobId);
+        toast.success("Suspend queued");
+        return;
+      }
+
       toast.success("Agent suspended (snapshot saved)");
       void refreshData();
     } catch {
