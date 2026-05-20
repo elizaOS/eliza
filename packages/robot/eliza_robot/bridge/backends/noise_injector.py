@@ -226,6 +226,43 @@ class NoiseInjectorBackend(BridgeBackend):
         return out
 
     # ------------------------------------------------------------------
+    async def read_joint_positions(self, servo_ids: list[int] | None = None) -> dict[str, float]:
+        """Mirror the AinexRemoteBackend API for sim-only testbeds.
+
+        Returns the inner MuJoCo state with the per-joint observation
+        offsets applied (so the StateMirror sees the same noisy
+        observation a downstream consumer would get from real telemetry).
+        """
+        read = getattr(self._inner, "read_joint_positions", None)
+        if callable(read):
+            inner_positions = await read(servo_ids)
+        else:
+            # Fall back to env telemetry.
+            env = getattr(self._inner, "_env", None)
+            if env is None:
+                return {}
+            try:
+                telemetry = env._build_telemetry()
+                inner_positions = {
+                    k: float(v)
+                    for k, v in (telemetry.get("joint_positions") or {}).items()
+                }
+            except Exception:
+                return {}
+        if not inner_positions:
+            return {}
+        joint_noise_sigma = (
+            0.0 if self._profile.deterministic_only else 0.005
+        )
+        out: dict[str, float] = {}
+        for i, (name, val) in enumerate(inner_positions.items()):
+            idx = i % len(self._joint_offsets)
+            v = float(val) + self._joint_offsets[idx]
+            if joint_noise_sigma > 0.0:
+                v += float(self._np_rng.normal(0.0, joint_noise_sigma))
+            out[name] = v
+        return out
+
     def snapshot_camera(self, camera: str = "head") -> np.ndarray | None:
         frame = self._inner.snapshot_camera(camera)
         if frame is None:

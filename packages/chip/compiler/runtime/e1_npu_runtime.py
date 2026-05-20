@@ -220,6 +220,8 @@ class CommandBuffer:
         image: dict[int, int] = {}
         for descriptor_index, descriptor_words in enumerate(self.words()):
             descriptor_base = self._base + descriptor_index * self.DESCRIPTOR_BYTES
+            if descriptor_base + self.DESCRIPTOR_BYTES - 1 > 0xFFFF_FFFF:
+                raise ValueError("command buffer descriptor image exceeds 32-bit address space")
             for word_index, word in enumerate(descriptor_words):
                 image[descriptor_base + word_index * 4] = word & 0xFFFF_FFFF
         return image
@@ -286,6 +288,54 @@ def stage_prepared_descriptor_batch(
     write_mem32: Write32,
 ) -> dict[str, Any]:
     """Replay one prepared descriptor-batch package after metadata preflight."""
+    _validate_prepared_descriptor_batch(prepared)
+    sequence = prepared["host_runtime_sequence"]
+    result = stage_host_runtime_sequence(
+        sequence,
+        write_mmio32=write_mmio32,
+        write_mem32=write_mem32,
+    )
+    return {
+        "schema": "eliza.e1_npu_prepared_descriptor_batch_stage_result.v1",
+        "batch_index": prepared.get("batch_index"),
+        "mmio_writes": result["mmio_writes"],
+        "memory_writes": result["memory_writes"],
+        "host_runtime_sequence_stage_result": result,
+    }
+
+
+def stage_and_submit_prepared_descriptor_batch(
+    prepared: Mapping[str, Any],
+    runtime: E1NpuRuntime,
+    *,
+    write_mem32: Write32 | None = None,
+) -> dict[str, Any]:
+    """Program preamble, stage descriptor image, and submit a prepared batch."""
+    image, sequence, descriptor_count = _validate_prepared_descriptor_batch(prepared)
+    if not isinstance(runtime, E1NpuRuntime):
+        raise TypeError("prepared descriptor batch execution requires E1NpuRuntime")
+
+    mmio_writes = _program_sequence_preamble(sequence, runtime.write32)
+    submission = _descriptor_submission_from_image(image, descriptor_count)
+    status = runtime.stage_descriptor_image_and_submit(
+        image["descriptor_image"],
+        submission,
+        write_mem32=write_mem32,
+    )
+    return {
+        "schema": "eliza.e1_npu_prepared_descriptor_batch_submit_result.v1",
+        "batch_index": prepared.get("batch_index"),
+        "mmio_writes": mmio_writes + 6,
+        "memory_writes": descriptor_count * CommandBuffer.DESCRIPTOR_WORDS,
+        "status": status.status,
+        "polls": status.polls,
+        "desc_status": status.desc_status,
+    }
+
+
+def _validate_prepared_descriptor_batch(
+    prepared: Mapping[str, Any],
+) -> tuple[Mapping[str, Any], Mapping[str, Any], int]:
     if not isinstance(prepared, Mapping):
         raise TypeError("prepared descriptor batch must be a mapping")
     if prepared.get("schema") != "eliza.e1_npu_prepared_descriptor_batch.v1":
@@ -322,18 +372,7 @@ def stage_prepared_descriptor_batch(
     _validate_descriptor_writeback_preamble(prepared, image)
     _validate_descriptor_submission(image, sequence, descriptor_base, descriptor_count)
     _validate_sequence_descriptor_memory_writes(sequence, image)
-    result = stage_host_runtime_sequence(
-        sequence,
-        write_mmio32=write_mmio32,
-        write_mem32=write_mem32,
-    )
-    return {
-        "schema": "eliza.e1_npu_prepared_descriptor_batch_stage_result.v1",
-        "batch_index": prepared.get("batch_index"),
-        "mmio_writes": result["mmio_writes"],
-        "memory_writes": result["memory_writes"],
-        "host_runtime_sequence_stage_result": result,
-    }
+    return image, sequence, descriptor_count
 
 
 def stage_prepared_descriptor_execution_batches(
@@ -343,6 +382,30 @@ def stage_prepared_descriptor_execution_batches(
     write_mem32: Write32,
 ) -> dict[str, Any]:
     """Replay all prepared execution-batch host sequences in declared order."""
+    validated = _validate_prepared_descriptor_execution_batches(prepared)
+
+    results: list[dict[str, int | str]] = []
+    for _batch, _image, sequence, _descriptor_count in validated:
+        results.append(
+            stage_host_runtime_sequence(
+                sequence,
+                write_mmio32=write_mmio32,
+                write_mem32=write_mem32,
+            )
+        )
+
+    return {
+        "schema": "eliza.e1_npu_prepared_descriptor_execution_batches_stage_result.v1",
+        "execution_batch_count": len(results),
+        "mmio_writes": sum(int(result["mmio_writes"]) for result in results),
+        "memory_writes": sum(int(result["memory_writes"]) for result in results),
+        "batch_results": results,
+    }
+
+
+def _validate_prepared_descriptor_execution_batches(
+    prepared: Mapping[str, Any],
+) -> list[tuple[Mapping[str, Any], Mapping[str, Any], Mapping[str, Any], int]]:
     if not isinstance(prepared, Mapping):
         raise TypeError("prepared descriptor execution batches must be a mapping")
     if prepared.get("schema") != "eliza.e1_npu_prepared_descriptor_execution_batches.v1":
@@ -376,7 +439,7 @@ def stage_prepared_descriptor_execution_batches(
             "prepared descriptor execution batches descriptor_stride_bytes must be positive"
         )
 
-    sequences: list[Mapping[str, Any]] = []
+    validated: list[tuple[Mapping[str, Any], Mapping[str, Any], Mapping[str, Any], int]] = []
     for expected_index, batch in enumerate(batches):
         if not isinstance(batch, Mapping):
             raise TypeError("prepared execution batch entry must be a mapping")
@@ -427,25 +490,75 @@ def stage_prepared_descriptor_execution_batches(
         _validate_descriptor_writeback_preamble(batch, image)
         _validate_descriptor_submission(image, sequence, expected_descriptor_base, descriptor_count)
         _validate_sequence_descriptor_memory_writes(sequence, image)
-        sequences.append(sequence)
+        validated.append((batch, image, sequence, descriptor_count))
+    return validated
 
-    results: list[dict[str, int | str]] = []
-    for sequence in sequences:
-        results.append(
-            stage_host_runtime_sequence(
-                sequence,
-                write_mmio32=write_mmio32,
-                write_mem32=write_mem32,
-            )
+
+def stage_and_submit_prepared_descriptor_execution_batches(
+    prepared: Mapping[str, Any],
+    runtime: E1NpuRuntime,
+    *,
+    write_mem32: Write32 | None = None,
+) -> dict[str, Any]:
+    """Execute all prepared descriptor batches through the runtime descriptor API."""
+    validated = _validate_prepared_descriptor_execution_batches(prepared)
+    if not isinstance(runtime, E1NpuRuntime):
+        raise TypeError("prepared descriptor execution batches require E1NpuRuntime")
+    results: list[dict[str, Any]] = []
+    for batch, image, sequence, descriptor_count in validated:
+        mmio_writes = _program_sequence_preamble(sequence, runtime.write32)
+        submission = _descriptor_submission_from_image(image, descriptor_count)
+        status = runtime.stage_descriptor_image_and_submit(
+            image["descriptor_image"],
+            submission,
+            write_mem32=write_mem32,
         )
-
+        results.append(
+            {
+                "schema": "eliza.e1_npu_prepared_descriptor_batch_submit_result.v1",
+                "batch_index": batch.get("batch_index"),
+                "mmio_writes": mmio_writes + 6,
+                "memory_writes": descriptor_count * CommandBuffer.DESCRIPTOR_WORDS,
+                "status": status.status,
+                "polls": status.polls,
+                "desc_status": status.desc_status,
+            }
+        )
     return {
-        "schema": "eliza.e1_npu_prepared_descriptor_execution_batches_stage_result.v1",
+        "schema": "eliza.e1_npu_prepared_descriptor_execution_batches_submit_result.v1",
         "execution_batch_count": len(results),
         "mmio_writes": sum(int(result["mmio_writes"]) for result in results),
         "memory_writes": sum(int(result["memory_writes"]) for result in results),
         "batch_results": results,
     }
+
+
+def _program_sequence_preamble(sequence: Mapping[str, Any], write_mmio32: Write32) -> int:
+    if not callable(write_mmio32):
+        raise TypeError("prepared descriptor preamble writer must be callable")
+    writes = 0
+    for op in _required_sequence_list(sequence, "mmio_preamble_writes"):
+        if not isinstance(op, Mapping):
+            raise TypeError("host runtime sequence preamble entry must be a mapping")
+        for write in _required_sequence_list(op, "writes"):
+            address, value = _sequence_write_address_value(write)
+            write_mmio32(address, value)
+            writes += 1
+    return writes
+
+
+def _descriptor_submission_from_image(
+    image: Mapping[str, Any], descriptor_count: int
+) -> NpuDescriptorSubmission:
+    submission = image.get("submission")
+    if not isinstance(submission, Mapping):
+        raise ValueError("prepared execution batch requires descriptor submission metadata")
+    return NpuDescriptorSubmission(
+        base=_aligned_uint32(submission.get("base"), "prepared execution batch submission base"),
+        head=_nonnegative_int(submission.get("head"), "prepared execution batch submission head"),
+        tail=_nonnegative_int(submission.get("tail"), "prepared execution batch submission tail"),
+        timeout_polls=1024 * max(1, descriptor_count),
+    )
 
 
 def _aligned_uint32(value: Any, label: str) -> int:
@@ -933,9 +1046,10 @@ class E1NpuRuntime:
         ),
     )
 
-    def __init__(self, read32: Read32, write32: Write32):
+    def __init__(self, read32: Read32, write32: Write32, write_mem32: Write32 | None = None):
         self.read32 = read32
         self.write32 = write32
+        self.write_mem32 = write_mem32
 
     def _poll_status(self, timeout_polls: int, error_prefix: str) -> NpuRuntimeStatus:
         if timeout_polls <= 0:
@@ -1176,16 +1290,58 @@ class E1NpuRuntime:
             raise TypeError("submit requires a CommandBuffer instance")
         return self.submit_descriptors(command_buffer.submission())
 
+    def stage_and_submit(
+        self,
+        command_buffer: CommandBuffer,
+        *,
+        write_mem32: Write32 | None = None,
+    ) -> NpuRuntimeStatus:
+        """Stage a CommandBuffer descriptor image, submit it, and wait once.
+
+        This is the integrated host path for the prototype descriptor ring:
+        descriptor words are written into the caller-provided memory aperture,
+        then the RTL ring is armed through MMIO. It remains bounded to the
+        local eight-entry descriptor window and 64-byte scratchpad; it is not a
+        production DMA queue.
+        """
+        if not isinstance(command_buffer, CommandBuffer):
+            raise TypeError("stage_and_submit requires a CommandBuffer instance")
+        writer = write_mem32 if write_mem32 is not None else self.write_mem32
+        if writer is None:
+            raise ValueError("stage_and_submit requires a descriptor memory writer")
+        command_buffer.stage(writer)
+        return self.submit(command_buffer)
+
+    def stage_descriptor_image_and_submit(
+        self,
+        descriptor_image: Mapping[int | str, int],
+        submission: NpuDescriptorSubmission,
+        *,
+        write_mem32: Write32 | None = None,
+    ) -> NpuRuntimeStatus:
+        """Stage a pre-materialized descriptor image and submit its ring window."""
+        if not isinstance(descriptor_image, Mapping) or not descriptor_image:
+            raise ValueError("descriptor image submission requires non-empty descriptor_image")
+        if not isinstance(submission, NpuDescriptorSubmission):
+            raise TypeError("descriptor image submission requires NpuDescriptorSubmission")
+        writer = write_mem32 if write_mem32 is not None else self.write_mem32
+        if writer is None:
+            raise ValueError("descriptor image submission requires a descriptor memory writer")
+
+        materialized: dict[int, int] = {}
+        for address, value in descriptor_image.items():
+            parsed_address = _sequence_address(address)
+            if not isinstance(value, int) or value < 0 or value > 0xFFFF_FFFF:
+                raise ValueError("descriptor image values must be uint32")
+            materialized[parsed_address] = value
+        self._validate_descriptor_image_submission_window(materialized, submission)
+        for address in sorted(materialized):
+            writer(address, materialized[address])
+        return self.submit_descriptors(submission)
+
     def submit_descriptors(self, submission: NpuDescriptorSubmission) -> NpuRuntimeStatus:
         """Program the RTL descriptor ring and wait for hardware completion proof."""
-        if submission.base & 0x3:
-            raise ValueError("descriptor base must be 32-bit aligned")
-        if submission.head < 0 or submission.tail < 0:
-            raise ValueError("descriptor head/tail must be non-negative")
-        if submission.head >= self.DESC_RING_ENTRIES or submission.tail >= self.DESC_RING_ENTRIES:
-            raise ValueError("descriptor head/tail exceed RTL 3-bit queue window")
-        if submission.head == submission.tail:
-            raise ValueError("descriptor submission requires at least one queued descriptor")
+        self._queued_descriptor_slots(submission)
         self.write32(self.DESC_BASE, submission.base & 0xFFFF_FFFF)
         self.write32(self.DESC_HEAD, submission.head & 0xFFFF_FFFF)
         self.write32(self.DESC_TAIL, submission.tail & 0xFFFF_FFFF)
@@ -1209,6 +1365,41 @@ class E1NpuRuntime:
                 runtime_status,
             )
         return runtime_status
+
+    def _validate_descriptor_image_submission_window(
+        self,
+        materialized: Mapping[int, int],
+        submission: NpuDescriptorSubmission,
+    ) -> None:
+        slots = self._queued_descriptor_slots(submission)
+        expected_addresses: set[int] = set()
+        for slot in slots:
+            descriptor_base = submission.base + slot * CommandBuffer.DESCRIPTOR_BYTES
+            if descriptor_base + CommandBuffer.DESCRIPTOR_BYTES - 1 > 0xFFFF_FFFF:
+                raise ValueError("descriptor image submission window exceeds uint32")
+            for word_index in range(CommandBuffer.DESCRIPTOR_WORDS):
+                expected_addresses.add(descriptor_base + word_index * 4)
+        if set(materialized) != expected_addresses:
+            raise ValueError("descriptor image addresses do not match submission window")
+
+    def _queued_descriptor_slots(self, submission: NpuDescriptorSubmission) -> tuple[int, ...]:
+        if not isinstance(submission, NpuDescriptorSubmission):
+            raise TypeError("descriptor submission requires NpuDescriptorSubmission")
+        if submission.base < 0 or submission.base > 0xFFFF_FFFF or submission.base & 0x3:
+            raise ValueError("descriptor base must be an aligned uint32")
+        if submission.head < 0 or submission.tail < 0:
+            raise ValueError("descriptor head/tail must be non-negative")
+        if submission.head >= self.DESC_RING_ENTRIES or submission.tail >= self.DESC_RING_ENTRIES:
+            raise ValueError("descriptor head/tail exceed RTL 3-bit queue window")
+        if submission.head == submission.tail:
+            raise ValueError("descriptor submission requires at least one queued descriptor")
+        if submission.timeout_polls <= 0:
+            raise ValueError("descriptor submission timeout_polls must be positive")
+        queued = (submission.tail - submission.head) & (self.DESC_RING_ENTRIES - 1)
+        return tuple(
+            (submission.head + descriptor_index) & (self.DESC_RING_ENTRIES - 1)
+            for descriptor_index in range(queued)
+        )
 
     @classmethod
     def pack_stream_descriptor_word0(

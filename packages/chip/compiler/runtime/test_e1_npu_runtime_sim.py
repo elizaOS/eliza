@@ -35,8 +35,10 @@ from e1_npu_lowering import (
     lower_transformer_block_smoke,
 )
 from e1_npu_runtime import (
+    CommandBuffer,
     E1NpuRuntime,
     NpuDescriptorSubmission,
+    NpuStreamDescriptor,
     golden_dot4_fp8_e4m3,
     golden_dot16_s2,
     golden_exp2_neg_q0_8,
@@ -51,7 +53,7 @@ class E1NpuMmioSim:
     """Tiny behavioral MMIO model for userspace runtime smoke tests."""
 
     def __init__(self):
-        self.runtime = E1NpuRuntime(self.read32, self.write32)
+        self.runtime = E1NpuRuntime(self.read32, self.write32, self.write_mem32)
         self.memory: dict[int, int] = {}
         self.regs: dict[int, int] = {
             self.runtime.CTRL_STATUS: 0,
@@ -1594,6 +1596,59 @@ class E1NpuRuntimeSimTest(unittest.TestCase):
         self.assertEqual(counters["bytes_written"], 0)
         self.assertEqual(counters["read_beats"], 1)
         self.assertEqual(counters["write_beats"], 0)
+
+    def test_runtime_stage_and_submit_writes_descriptor_image_and_runs_gemm_writeback(self):
+        sim = E1NpuMmioSim()
+        a = [[1, -2, 3], [4, 5, -6]]
+        b = [[7, -8], [9, 10], [-11, 12]]
+        tensor_bytes = bytes(value & 0xFF for row in a for value in row) + bytes(
+            b[row][col] & 0xFF for row in range(3) for col in range(2)
+        )
+        for offset in range(0, len(tensor_bytes), 4):
+            sim.write_mem32(
+                0x8000 + offset,
+                int.from_bytes(tensor_bytes[offset : offset + 4], "little"),
+            )
+        sim.runtime.write32(sim.runtime.GEMM_CFG, 2 | (2 << 8) | (3 << 16))
+        sim.runtime.write32(sim.runtime.GEMM_BASE, 0 | (6 << 8) | (12 << 16))
+        sim.runtime.write32(sim.runtime.GEMM_STRIDE, 3 | (2 << 8) | (8 << 16))
+
+        buffer = CommandBuffer(base=0x2000)
+        buffer.append(
+            NpuStreamDescriptor(
+                opcode=sim.runtime.OP_GEMM_S8,
+                source_addr=0x8000,
+                scratch_offset=0,
+                byte_count=12,
+                writeback_request=True,
+                op_b=0x9000,
+            )
+        )
+
+        status = sim.runtime.stage_and_submit(buffer)
+
+        self.assertTrue(status.ok)
+        self.assertEqual(status.desc_status, sim.runtime.DESC_STATUS_DONE)
+        self.assertEqual(sim.memory[0x2000], buffer.words()[0][0])
+        self.assertEqual(
+            [sim.memory[0x9000 + offset] for offset in range(0, 16, 4)],
+            [0xFFFF_FFD4, 8, 139, 0xFFFF_FFCA],
+        )
+
+    def test_runtime_stage_and_submit_requires_memory_writer(self):
+        runtime = E1NpuRuntime(lambda _addr: 0, lambda _addr, _value: None)
+        buffer = CommandBuffer(base=0x2000)
+        buffer.append(
+            NpuStreamDescriptor(
+                opcode=runtime.OP_GEMM_S8,
+                source_addr=0x8000,
+                scratch_offset=0,
+                byte_count=4,
+            )
+        )
+
+        with self.assertRaisesRegex(ValueError, "memory writer"):
+            runtime.stage_and_submit(buffer)
 
     def test_runtime_stream_descriptor_word0_sets_owner_and_writeback_bits(self):
         word0 = E1NpuRuntime.pack_stream_descriptor_word0(

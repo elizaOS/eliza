@@ -22,6 +22,8 @@ from e1_npu_runtime import (
     NpuDescriptorSubmission,
     NpuRuntimeStatus,
     NpuStreamDescriptor,
+    stage_and_submit_prepared_descriptor_batch,
+    stage_and_submit_prepared_descriptor_execution_batches,
     stage_host_runtime_sequence,
     stage_prepared_descriptor_batch,
     stage_prepared_descriptor_execution_batches,
@@ -200,6 +202,15 @@ def test_command_buffer_descriptor_image_is_word_addressed_and_contiguous() -> N
     }
 
 
+def test_command_buffer_descriptor_image_rejects_address_overflow() -> None:
+    buffer = CommandBuffer(base=0xFFFF_FFF0)
+    buffer.append(_stream_descriptor())
+    buffer.append(_stream_descriptor())
+
+    with pytest.raises(ValueError, match="32-bit address space"):
+        buffer.descriptor_image()
+
+
 def test_command_buffer_stage_writes_descriptor_image_once() -> None:
     buffer = CommandBuffer(base=0x2000)
     descriptor = _stream_descriptor(scratch_offset=0)
@@ -217,6 +228,59 @@ def test_command_buffer_stage_rejects_invalid_writer_and_empty_buffer() -> None:
         buffer.stage(None)
     with pytest.raises(ValueError, match="at least one descriptor"):
         buffer.stage(lambda _address, _word: None)
+
+
+def test_stage_descriptor_image_and_submit_rejects_missing_window_word_before_writes() -> None:
+    buffer = CommandBuffer(base=0x2000)
+    buffer.append(_stream_descriptor())
+    image = buffer.descriptor_image()
+    image.pop(0x200C)
+    mmio_writes: list[tuple[int, int]] = []
+    memory_writes: list[tuple[int, int]] = []
+    runtime = E1NpuRuntime(
+        read32=lambda _address: 0,
+        write32=lambda address, value: mmio_writes.append((address, value)),
+        write_mem32=lambda address, value: memory_writes.append((address, value)),
+    )
+
+    with pytest.raises(ValueError, match="addresses do not match submission window"):
+        runtime.stage_descriptor_image_and_submit(image, buffer.submission())
+
+    assert mmio_writes == []
+    assert memory_writes == []
+
+
+def test_stage_descriptor_image_and_submit_rejects_extra_window_word_before_writes() -> None:
+    buffer = CommandBuffer(base=0x2000)
+    buffer.append(_stream_descriptor())
+    image = buffer.descriptor_image()
+    image[0x2010] = 0
+    mmio_writes: list[tuple[int, int]] = []
+    memory_writes: list[tuple[int, int]] = []
+    runtime = E1NpuRuntime(
+        read32=lambda _address: 0,
+        write32=lambda address, value: mmio_writes.append((address, value)),
+        write_mem32=lambda address, value: memory_writes.append((address, value)),
+    )
+
+    with pytest.raises(ValueError, match="addresses do not match submission window"):
+        runtime.stage_descriptor_image_and_submit(image, buffer.submission())
+
+    assert mmio_writes == []
+    assert memory_writes == []
+
+
+def test_submit_descriptors_rejects_negative_base_before_mmio_writes() -> None:
+    mmio_writes: list[tuple[int, int]] = []
+    runtime = E1NpuRuntime(
+        read32=lambda _address: 0,
+        write32=lambda address, value: mmio_writes.append((address, value)),
+    )
+
+    with pytest.raises(ValueError, match="aligned uint32"):
+        runtime.submit_descriptors(NpuDescriptorSubmission(base=-4, head=0, tail=1))
+
+    assert mmio_writes == []
 
 
 def test_stage_host_runtime_sequence_replays_memory_and_mmio_writes() -> None:
@@ -479,6 +543,74 @@ def test_stage_prepared_descriptor_execution_batches_is_fail_closed() -> None:
             write_mmio32=lambda _address, _value: None,
             write_mem32=lambda _address, _value: None,
         )
+
+
+def test_submit_prepared_descriptor_execution_batches_reuses_outer_validation() -> None:
+    prepared = (
+        partition_module(parse_module(_mismatched_dot_payload()))
+        .prepared_descriptor_execution_batches(
+            arena_base=0x8000_0000,
+            descriptor_base=0x2100,
+            descriptor_stride_bytes=0x40,
+        )
+        .as_dict()
+    )
+    sim = E1NpuMmioSim()
+    first_batch = dict(prepared["prepared_execution_batches"][0])
+    first_image = dict(first_batch["descriptor_command_buffer_image"])
+    first_image["execution_batch_index"] = 1
+    first_batch["descriptor_command_buffer_image"] = first_image
+
+    with pytest.raises(ValueError, match="ordered by execution_batch_index"):
+        stage_and_submit_prepared_descriptor_execution_batches(
+            {
+                **prepared,
+                "prepared_execution_batches": [
+                    first_batch,
+                    prepared["prepared_execution_batches"][1],
+                ],
+            },
+            sim.runtime,
+        )
+
+    assert sim.regs[sim.runtime.DESC_STATUS] == sim.runtime.DESC_STATUS_EMPTY
+    assert sim.runtime.descriptor_counters()["bytes_read"] == 0
+    assert sim.memory == {}
+
+
+def test_submit_prepared_descriptor_execution_batches_rejects_stride_mismatch_before_writes() -> (
+    None
+):
+    prepared = (
+        partition_module(parse_module(_mismatched_dot_payload()))
+        .prepared_descriptor_execution_batches(
+            arena_base=0x8000_0000,
+            descriptor_base=0x2100,
+            descriptor_stride_bytes=0x40,
+        )
+        .as_dict()
+    )
+    sim = E1NpuMmioSim()
+    first_batch = dict(prepared["prepared_execution_batches"][0])
+    first_image = dict(first_batch["descriptor_command_buffer_image"])
+    first_image["descriptor_base"] = 0x2200
+    first_batch["descriptor_command_buffer_image"] = first_image
+
+    with pytest.raises(ValueError, match="descriptor_base does not match"):
+        stage_and_submit_prepared_descriptor_execution_batches(
+            {
+                **prepared,
+                "prepared_execution_batches": [
+                    first_batch,
+                    prepared["prepared_execution_batches"][1],
+                ],
+            },
+            sim.runtime,
+        )
+
+    assert sim.regs[sim.runtime.DESC_STATUS] == sim.runtime.DESC_STATUS_EMPTY
+    assert sim.runtime.descriptor_counters()["bytes_read"] == 0
+    assert sim.memory == {}
 
 
 def test_stage_prepared_descriptor_execution_batches_validates_bases_before_writes() -> None:
@@ -1535,6 +1667,38 @@ def test_prepared_batch_host_runtime_sequence_stages_and_submits_in_sim() -> Non
     }
 
 
+def test_prepared_batch_stage_and_submit_uses_runtime_descriptor_api() -> None:
+    prepared = (
+        partition_module(parse_module(_dot_payload()))
+        .prepared_descriptor_batch(
+            arena_base=0x8000_0000,
+            descriptor_base=0x2000,
+        )
+        .as_dict()
+    )
+    sim = E1NpuMmioSim()
+    for offset, values in {
+        0: [1, 2, 3, 4],
+        4: [5, 6, 0, 0],
+        8: [7, 8, 9, 10],
+        12: [11, 12, 0, 0],
+    }.items():
+        sim.write_mem32(0x8000_0010 + offset, _pack_u8(values))
+
+    result = stage_and_submit_prepared_descriptor_batch(prepared, sim.runtime)
+
+    assert result["schema"] == "eliza.e1_npu_prepared_descriptor_batch_submit_result.v1"
+    assert result["mmio_writes"] == 9
+    assert result["memory_writes"] == 4
+    assert result["desc_status"] == sim.runtime.DESC_STATUS_DONE
+    assert {address: sim.memory[address] for address in range(0x8000_0000, 0x8000_0010, 4)} == {
+        0x8000_0000: 58,
+        0x8000_0004: 64,
+        0x8000_0008: 139,
+        0x8000_000C: 154,
+    }
+
+
 def test_prepared_execution_batch_host_runtime_sequence_stages_and_submits_in_sim() -> None:
     prepared = (
         partition_module(parse_module(_mismatched_dot_payload()))
@@ -1658,6 +1822,52 @@ def test_prepared_descriptor_execution_batches_stage_and_submit_in_sim() -> None
     }
     assert sim.runtime.descriptor_counters()["bytes_read"] == 60
     assert sim.runtime.descriptor_counters()["bytes_written"] == 40
+    assert {address: sim.memory[address] for address in range(0x8000_0000, 0x8000_0010, 4)} == {
+        0x8000_0000: 58,
+        0x8000_0004: 64,
+        0x8000_0008: 139,
+        0x8000_000C: 154,
+    }
+    assert {address: sim.memory[address] for address in range(0x8000_0020, 0x8000_0038, 4)} == {
+        0x8000_0020: 21,
+        0x8000_0024: 24,
+        0x8000_0028: 27,
+        0x8000_002C: 47,
+        0x8000_0030: 54,
+        0x8000_0034: 61,
+    }
+
+
+def test_prepared_descriptor_execution_batches_use_runtime_descriptor_api() -> None:
+    prepared = (
+        partition_module(parse_module(_mismatched_dot_payload()))
+        .prepared_descriptor_execution_batches(
+            arena_base=0x8000_0000,
+            descriptor_base=0x2100,
+            descriptor_stride_bytes=0x40,
+        )
+        .as_dict()
+    )
+    sim = E1NpuMmioSim()
+    for base, words in {
+        0x8000_0010: ([1, 2, 3, 4], [5, 6, 0, 0], [7, 8, 9, 10], [11, 12, 0, 0]),
+        0x8000_0038: ([1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 0, 0]),
+    }.items():
+        for word_index, values in enumerate(words):
+            sim.write_mem32(base + word_index * 4, _pack_u8(values))
+
+    result = stage_and_submit_prepared_descriptor_execution_batches(prepared, sim.runtime)
+
+    assert result["schema"] == (
+        "eliza.e1_npu_prepared_descriptor_execution_batches_submit_result.v1"
+    )
+    assert result["execution_batch_count"] == 2
+    assert result["mmio_writes"] == 18
+    assert result["memory_writes"] == 8
+    assert [batch["desc_status"] for batch in result["batch_results"]] == [
+        sim.runtime.DESC_STATUS_DONE,
+        sim.runtime.DESC_STATUS_DONE,
+    ]
     assert {address: sim.memory[address] for address in range(0x8000_0000, 0x8000_0010, 4)} == {
         0x8000_0000: 58,
         0x8000_0004: 64,

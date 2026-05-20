@@ -1,0 +1,63 @@
+{
+  "checkpoint": "/home/shaw/milady/eliza/packages/robot/checkpoints/text_conditioned_v2",
+  "host": "192.168.1.218:9090",
+  "policy_hz": 8.0,
+  "episode_s": 3.0,
+  "mirror_period_s": 0.05,
+  "n_prompts": 5,
+  "pass_count": 5,
+  "fail_count": 0,
+  "per_prompt": [
+    {
+      "prompt": "stand still",
+      "duration_s": 27.45,
+      "samples": 30,
+      "mean_rms_mrad": 4.797609010097332,
+      "median_rms_mrad": 0.0,
+      "p95_rms_mrad": 14.884585527272625,
+      "max_rms_mrad": 14.93953098505709,
+      "verdict": "PASS"
+    },
+    {
+      "prompt": "walk forward",
+      "duration_s": 7.98,
+      "samples": 30,
+      "mean_rms_mrad": 5.4431690348048285,
+      "median_rms_mrad": 3.9423548543893094,
+      "p95_rms_mrad": 14.136990587699872,
+      "max_rms_mrad": 15.555792511698845,
+      "verdict": "PASS"
+    },
+    {
+      "prompt": "turn left",
+      "duration_s": 9.2,
+      "samples": 26,
+      "mean_rms_mrad": 7.530923204419072,
+      "median_rms_mrad": 7.599438853315689,
+      "p95_rms_mrad": 14.813838678236717,
+      "max_rms_mrad": 16.155529871186104,
+      "verdict": "PASS"
+    },
+    {
+      "prompt": "turn right",
+      "duration_s": 13.78,
+      "samples": 30,
+      "mean_rms_mrad": 6.684072913167622,
+      "median_rms_mrad": 4.573672124769709,
+      "p95_rms_mrad": 13.539296788919815,
+      "max_rms_mrad": 14.916845921183405,
+      "verdict": "PASS"
+    },
+    {
+      "prompt": "wave hello",
+      "duration_s": 7.26,
+      "samples": 30,
+      "mean_rms_mrad": 6.029371482916385,
+      "median_rms_mrad": 4.739964989137077,
+      "p95_rms_mrad": 13.804095847385371,
+      "max_rms_mrad": 14.586579492226857,
+      "verdict": "PASS"
+    }
+  ],
+  "aggregate_mean_rms_mrad": 6.097029129081048
+}
