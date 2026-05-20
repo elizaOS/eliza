@@ -412,6 +412,82 @@ df -h / /home
 		);
 	});
 
+	it("recovers search-result prose that is already user-facing", async () => {
+		const runtime = {
+			useModel: vi.fn(
+				async () =>
+					"Search results: Bitcoin is trading at $105,000 USD from the market-data API.",
+			),
+		};
+
+		const result = await runEvaluator({
+			runtime,
+			context: {
+				id: "ctx",
+				staticPrefix: {
+					characterPrompt: { content: "agent_name: Eliza", stable: true },
+				},
+				events: [],
+			},
+			trajectory: {
+				context: { id: "ctx" },
+				steps: [
+					{
+						toolCall: { id: "tool-1", name: "SHELL", params: {} },
+						result: { success: true, text: '{"bitcoin":{"usd":105000}}' },
+					},
+				],
+				archivedSteps: [],
+				plannedQueue: [],
+				evaluatorOutputs: [],
+			},
+		});
+
+		expect(result.success).toBe(true);
+		expect(result.decision).toBe("FINISH");
+		expect(result.messageToUser).toContain("Bitcoin is trading");
+	});
+
+	it("does not recover evaluator work-planning notes as a user message", async () => {
+		const runtime = {
+			useModel: vi.fn(
+				async () =>
+					'We need to locate OpenCode vendored endpoint detection change. Search for "OpenCode" and maybe "endpoint detection".Let\'s grep for "OpenCode" again but focusing on directory where detection could be. Search for "endpoint detection".Use grep.Search for "opencode" case-insensitive.\n- **Standard parsing** - Using `new URL(...).hostname` relies on the built-in URL parser.\n- **Avoids regex pitfalls** - Hand-rolled regular expressions often miss valid forms.',
+			),
+		};
+
+		const result = await runEvaluator({
+			runtime,
+			context: {
+				id: "ctx",
+				staticPrefix: {
+					characterPrompt: { content: "agent_name: Eliza", stable: true },
+				},
+				events: [],
+			},
+			trajectory: {
+				context: { id: "ctx" },
+				steps: [
+					{
+						toolCall: { id: "tool-1", name: "SHELL", params: {} },
+						result: {
+							success: true,
+							text: "plugins/plugin-agent-orchestrator/vendor/opencode/packages/opencode/src/provider/provider.ts",
+						},
+					},
+				],
+				archivedSteps: [],
+				plannedQueue: [],
+				evaluatorOutputs: [],
+			},
+		});
+
+		expect(result.success).toBe(false);
+		expect(result.decision).toBe("CONTINUE");
+		expect(result.messageToUser).toBeUndefined();
+		expect(result.thought).toContain("Invalid evaluator output");
+	});
+
 	it("recovers clean evaluator prose with command fences after a successful tool result", async () => {
 		const runtime = {
 			useModel: vi.fn(
