@@ -1,0 +1,15 @@
+{
+  "name": "eliza-facewear-quest",
+  "version": "1.0.0",
+  "description": "Meta Quest 3 Bubblewrap TWA for Eliza Facewear",
+  "private": true,
+  "scripts": {
+    "build": "bubblewrap build",
+    "install-device": "bubblewrap install",
+    "update": "bubblewrap update",
+    "validate": "bubblewrap validate"
+  },
+  "devDependencies": {
+    "@bubblewrap/cli": "^1.22.0"
+  }
+}
